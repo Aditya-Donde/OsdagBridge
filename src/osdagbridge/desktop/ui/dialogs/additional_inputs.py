@@ -503,35 +503,44 @@ class AdditionalInputs(QDialog):
         widget = QWidget()
         widget.setStyleSheet("background-color: #f5f5f5;")
 
-        main_layout = QVBoxLayout(widget)
-        main_layout.setContentsMargins(12, 12, 12, 12)
-        main_layout.setSpacing(12)
+        # Use scroll area to prevent overlap
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.NoFrame)
+        scroll.setStyleSheet("QScrollArea { background: transparent; border: none; }")
+        
+        scroll_content = QWidget()
+        scroll_content.setStyleSheet("background-color: #f5f5f5;")
+        main_layout = QVBoxLayout(scroll_content)
+        main_layout.setContentsMargins(20, 20, 20, 20)
+        main_layout.setSpacing(16)
 
-        card_style = "QFrame { border: 1px solid #b2b2b2; border-radius: 8px; background-color: #ffffff; }"
-        label_style = "font-size: 11px; color: #3a3a3a; background: transparent; border: none;"
-        heading_style = "font-size: 12px; font-weight: 700; color: #2b2b2b; background: transparent; border: none;"
+        label_style = "font-size: 11px; color: #333333; background: transparent; border: none;"
+        
+        # Helper to create a pill-shaped frame
+        def create_pill_frame():
+            frame = QFrame()
+            frame.setStyleSheet("QFrame { border: 1px solid #a0a0a0; border-radius: 16px; background-color: #ffffff; }")
+            return frame
 
-        card = QFrame()
-        card.setStyleSheet(card_style)
-        card_layout = QVBoxLayout(card)
-        card_layout.setContentsMargins(16, 16, 16, 16)
-        card_layout.setSpacing(12)
-
-        # Safety factor inputs
+        # --- Top Grid (Gamma factors) - no frame, just rows ---
         grid = QGridLayout()
         grid.setContentsMargins(0, 0, 0, 0)
-        grid.setHorizontalSpacing(12)
-        grid.setVerticalSpacing(10)
-        grid.setColumnMinimumWidth(0, 250)
+        grid.setHorizontalSpacing(20)
+        grid.setVerticalSpacing(8)
+        grid.setColumnMinimumWidth(0, 300)
+        grid.setColumnStretch(0, 0)
+        grid.setColumnStretch(1, 0)
 
         def add_row(row, text, attr_name):
             lbl = QLabel(text)
             lbl.setStyleSheet(label_style)
+            lbl.setMinimumHeight(24)
             line = QLineEdit()
-            line.setFixedWidth(180)
+            line.setFixedSize(140, 26)
             apply_field_style(line)
             grid.addWidget(lbl, row, 0, Qt.AlignLeft | Qt.AlignVCenter)
-            grid.addWidget(line, row, 1, Qt.AlignLeft)
+            grid.addWidget(line, row, 1, Qt.AlignLeft | Qt.AlignVCenter)
             setattr(self, attr_name, line)
 
         add_row(0, "Concrete basic & seismic(Gamma_C)", "gamma_c_basic_input")
@@ -543,96 +552,121 @@ class AdditionalInputs(QDialog):
         add_row(6, "Fatigue Load(Gamma_flt)", "gamma_flt_input")
         add_row(7, "Fatigue Strength(Gamma_Mf, t)", "gamma_mf_input")
 
-        card_layout.addLayout(grid)
+        main_layout.addLayout(grid)
+        main_layout.addSpacing(8)
 
-        # Number of load cycles
+        # --- Number of load cycles in pill frame ---
+        cycles_frame = create_pill_frame()
+        cycles_frame.setFixedHeight(38)
+        cycles_layout = QHBoxLayout(cycles_frame)
+        cycles_layout.setContentsMargins(16, 6, 16, 6)
+        cycles_layout.setSpacing(10)
         cycles_label = QLabel("Number of Load Cycles(Cl605.3,Cl605.4)")
         cycles_label.setStyleSheet(label_style)
+        cycles_layout.addWidget(cycles_label)
+        cycles_layout.addStretch()
+        main_layout.addWidget(cycles_frame)
+
+        # --- Wide input below load cycles ---
         self.load_cycles_input = QLineEdit()
-        self.load_cycles_input.setMinimumWidth(420)
+        self.load_cycles_input.setFixedHeight(30)
         apply_field_style(self.load_cycles_input)
+        main_layout.addWidget(self.load_cycles_input)
 
-        card_layout.addWidget(cycles_label)
-        card_layout.addWidget(self.load_cycles_input)
-
-        # K factors row 1
-        k_row1 = QHBoxLayout()
-        k_row1.setSpacing(8)
+        # --- K factors row 1 in pill frame ---
+        k1_frame = create_pill_frame()
+        k1_frame.setFixedHeight(42)
+        k1_layout = QHBoxLayout(k1_frame)
+        k1_layout.setContentsMargins(16, 6, 16, 6)
+        k1_layout.setSpacing(16)
         for label, attr in [("K1:", "k1_input"), ("K3:", "k3_input"), ("K4:", "k4_input"), ("K6:", "k6_input")]:
             lbl = QLabel(label)
             lbl.setStyleSheet(label_style)
             line = QLineEdit()
-            line.setFixedWidth(110)
+            line.setFixedSize(80, 26)
             apply_field_style(line)
             setattr(self, attr, line)
-            k_row1.addWidget(lbl)
-            k_row1.addWidget(line)
-        k_row1.addStretch()
-        card_layout.addLayout(k_row1)
+            k1_layout.addWidget(lbl)
+            k1_layout.addWidget(line)
+        k1_layout.addStretch()
+        main_layout.addWidget(k1_frame)
 
-        # Limit row
-        limit_row = QHBoxLayout()
-        limit_row.setSpacing(8)
+        # --- Limit row in pill frame ---
+        limit_frame = create_pill_frame()
+        limit_frame.setFixedHeight(42)
+        limit_layout = QHBoxLayout(limit_frame)
+        limit_layout.setContentsMargins(16, 6, 16, 6)
+        limit_layout.setSpacing(16)
         limit_lbl = QLabel("Limit : L")
         limit_lbl.setStyleSheet(label_style)
         self.limit_input = QLineEdit()
-        self.limit_input.setFixedWidth(140)
+        self.limit_input.setFixedSize(120, 26)
         apply_field_style(self.limit_input)
         unit_lbl = QLabel("m")
         unit_lbl.setStyleSheet(label_style)
-        limit_row.addWidget(limit_lbl)
-        limit_row.addWidget(self.limit_input)
-        limit_row.addWidget(unit_lbl)
-        limit_row.addStretch()
-        card_layout.addLayout(limit_row)
+        limit_layout.addWidget(limit_lbl)
+        limit_layout.addWidget(self.limit_input)
+        limit_layout.addWidget(unit_lbl)
+        limit_layout.addStretch()
+        main_layout.addWidget(limit_frame)
 
-        # K factors row 2 with exposure
-        k_row2 = QHBoxLayout()
-        k_row2.setSpacing(8)
+        # --- K factors row 2 with exposure in pill frame ---
+        k2_frame = create_pill_frame()
+        k2_frame.setFixedHeight(42)
+        k2_layout = QHBoxLayout(k2_frame)
+        k2_layout.setContentsMargins(16, 6, 16, 6)
+        k2_layout.setSpacing(16)
         for label, attr in [("K3:", "k3_second_input"), ("K4:", "k4_second_input")]:
             lbl = QLabel(label)
             lbl.setStyleSheet(label_style)
             line = QLineEdit()
-            line.setFixedWidth(110)
+            line.setFixedSize(80, 26)
             apply_field_style(line)
             setattr(self, attr, line)
-            k_row2.addWidget(lbl)
-            k_row2.addWidget(line)
+            k2_layout.addWidget(lbl)
+            k2_layout.addWidget(line)
         exposure_lbl = QLabel("Exposure:")
         exposure_lbl.setStyleSheet(label_style)
         self.exposure_input = QLineEdit()
-        self.exposure_input.setFixedWidth(110)
+        self.exposure_input.setFixedSize(100, 26)
         apply_field_style(self.exposure_input)
-        k_row2.addWidget(exposure_lbl)
-        k_row2.addWidget(self.exposure_input)
-        k_row2.addStretch()
-        card_layout.addLayout(k_row2)
+        k2_layout.addWidget(exposure_lbl)
+        k2_layout.addWidget(self.exposure_input)
+        k2_layout.addStretch()
+        main_layout.addWidget(k2_frame)
 
-        # Post-buckling checkbox
+        # --- Post-buckling checkbox in pill frame ---
+        cb_frame = create_pill_frame()
+        cb_frame.setFixedHeight(42)
+        cb_layout = QHBoxLayout(cb_frame)
+        cb_layout.setContentsMargins(16, 6, 16, 6)
         self.post_buckling_checkbox = QCheckBox("Post-buckling Tension Field Action for Shear Resistance")
-        self.post_buckling_checkbox.setStyleSheet("font-size: 11px; color: #3a3a3a;")
-        card_layout.addWidget(self.post_buckling_checkbox)
+        self.post_buckling_checkbox.setStyleSheet("QCheckBox { font-size: 11px; color: #333333; background: transparent; spacing: 8px; }")
+        cb_layout.addWidget(self.post_buckling_checkbox)
+        cb_layout.addStretch()
+        main_layout.addWidget(cb_frame)
 
-        # Limit state groups
+        main_layout.addSpacing(8)
+
+        # --- Limit state groups side by side ---
         groups_layout = QHBoxLayout()
-        groups_layout.setSpacing(16)
+        groups_layout.setSpacing(20)
 
         def build_group(title, items):
             box = QGroupBox(title)
             box.setStyleSheet(
-                "QGroupBox { border: 1px solid #b2b2b2; border-radius: 6px; margin-top: 12px; padding-top: 12px; padding-left: 10px; }"
-                "QGroupBox::title { subcontrol-origin: margin; left: 10px; padding: 0 4px; background: #ffffff; font-weight: 600; color: #2b2b2b; }"
+                "QGroupBox { border: 1px solid #b0b0b0; border-radius: 6px; margin-top: 12px; padding: 8px; background: #ffffff; }"
+                "QGroupBox::title { subcontrol-origin: margin; subcontrol-position: top left; left: 12px; padding: 0 6px; background: #f5f5f5; font-weight: 600; font-size: 11px; color: #333333; }"
             )
             vbox = QVBoxLayout(box)
-            vbox.setContentsMargins(10, 6, 10, 10)
-            vbox.setSpacing(6)
+            vbox.setContentsMargins(16, 24, 16, 16)
+            vbox.setSpacing(12)
             checkboxes = []
             for text in items:
                 cb = QCheckBox(text)
-                cb.setStyleSheet("font-size: 11px; color: #3a3a3a;")
+                cb.setStyleSheet("QCheckBox { font-size: 11px; color: #333333; background: transparent; spacing: 8px; }")
                 vbox.addWidget(cb)
                 checkboxes.append(cb)
-            vbox.addStretch()
             return box, checkboxes
 
         ultimate_items = [
@@ -655,67 +689,16 @@ class AdditionalInputs(QDialog):
 
         groups_layout.addWidget(ultimate_box)
         groups_layout.addWidget(service_box)
-        groups_layout.addStretch()
 
-        card_layout.addLayout(groups_layout)
-
-        main_layout.addWidget(card)
+        main_layout.addLayout(groups_layout)
         main_layout.addStretch()
 
-        return widget
-    
-    def create_placeholder_tab(self, title, description):
-        """Create a styled placeholder tab with title and description"""
-        widget = QWidget()
-        widget.setStyleSheet("background-color: white;")
+        scroll.setWidget(scroll_content)
         
-        layout = QVBoxLayout(widget)
-        layout.setAlignment(Qt.AlignCenter)
-        layout.setContentsMargins(40, 40, 40, 40)
-        
-        # Icon or visual indicator
-        icon_label = QLabel("🚧")
-        icon_label.setStyleSheet("font-size: 48px;")
-        icon_label.setAlignment(Qt.AlignCenter)
-        layout.addWidget(icon_label)
-        
-        # Title
-        title_label = QLabel(title)
-        title_label.setStyleSheet("""
-            font-size: 18px;
-            font-weight: bold;
-            color: #333;
-            margin-top: 20px;
-            margin-bottom: 10px;
-        """)
-        title_label.setAlignment(Qt.AlignCenter)
-        layout.addWidget(title_label)
-        
-        # Status
-        status_label = QLabel("Under Development")
-        status_label.setStyleSheet("""
-            font-size: 14px;
-            color: #f39c12;
-            font-weight: bold;
-            margin-bottom: 20px;
-        """)
-        status_label.setAlignment(Qt.AlignCenter)
-        layout.addWidget(status_label)
-        
-        # Description
-        desc_label = QLabel(description)
-        desc_label.setStyleSheet("""
-            font-size: 12px;
-            color: #666;
-            line-height: 1.6;
-        """)
-        desc_label.setAlignment(Qt.AlignCenter)
-        desc_label.setWordWrap(True)
-        desc_label.setMaximumWidth(600)
-        layout.addWidget(desc_label)
-        
-        layout.addStretch()
-        
+        outer_layout = QVBoxLayout(widget)
+        outer_layout.setContentsMargins(0, 0, 0, 0)
+        outer_layout.addWidget(scroll)
+
         return widget
     
     def update_footpath_value(self, footpath_value):
@@ -1473,99 +1456,35 @@ class OptimizableField(QWidget):
         return (self.mode_combo.currentText(), self.input_field.text())
 
 class SectionPropertiesTab(QWidget):
-    """Sub-tab for Section Properties with custom navigation layout."""
+    """Sub-tab for Section Properties with QTabWidget navigation like Loading tab."""
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.nav_buttons = []
         self.init_ui()
 
     def init_ui(self):
-        """Initialize styled navigation and content panels."""
-        self.setStyleSheet("background-color: #f0f0f0;")
+        """Initialize styled tab navigation matching Loading subtabs."""
         main_layout = QVBoxLayout(self)
-        # Keep sides padded but remove top spacing so sub-tabs sit flush under main tabs
-        main_layout.setContentsMargins(10, 0, 10, 10)
+        main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(0)
 
-        # Top navigation bar (horizontal)
-        nav_bar = QWidget()
-        nav_bar.setStyleSheet("background-color: white;")
-        nav_bar_layout = QHBoxLayout(nav_bar)
-        nav_bar_layout.setContentsMargins(0, 0, 0, 0)
-        nav_bar_layout.setSpacing(0)
-        
-        main_layout.addWidget(nav_bar)
+        self.section_tabs = QTabWidget()
+        self.section_tabs.setDocumentMode(True)
+        self.section_tabs.setStyleSheet(
+            "QTabWidget::pane { border: none; background: #f5f5f5; }"
+            "QTabBar::tab { background: #e8e8e8; color: #4b4b4b; border: 1px solid #cfcfcf;"
+            " border-bottom: none; padding: 8px 20px; margin-right: 2px; min-width: 120px;"
+            " font-size: 11px; }"
+            "QTabBar::tab:selected { background: #90AF13; color: #ffffff; font-weight: bold; }"
+            "QTabBar::tab:!selected { margin-top: 2px; }"
+        )
 
-        # Content frame
-        content_frame = QFrame()
-        content_frame.setObjectName("sectionContentFrame")
-        content_frame.setStyleSheet("""
-            QFrame#sectionContentFrame {
-                background-color: #f0f0f0;
-                border: none;
-            }
-        """)
-        content_inner_layout = QVBoxLayout(content_frame)
-        content_inner_layout.setContentsMargins(0, 0, 0, 0)
-        content_inner_layout.setSpacing(0)
+        self.section_tabs.addTab(GirderDetailsTab(), "Girder Details")
+        self.section_tabs.addTab(StiffenerDetailsTab(), "Stiffener Details")
+        self.section_tabs.addTab(CrossBracingDetailsTab(), "Cross-Bracing Details")
+        self.section_tabs.addTab(EndDiaphragmDetailsTab(), "End Diaphragm Details")
 
-        self.stack = QStackedWidget()
-        self.stack.setObjectName("sectionStack")
-        self.stack.setStyleSheet("QStackedWidget#sectionStack { background-color: transparent; }")
-        content_inner_layout.addWidget(self.stack)
-
-        main_layout.addWidget(content_frame, 1)
-
-        sections = [
-            ("Girder Details", GirderDetailsTab),
-            ("Stiffener Details", StiffenerDetailsTab),
-            ("Cross-Bracing Details", CrossBracingDetailsTab),
-            ("End Diaphragm Details", EndDiaphragmDetailsTab),
-        ]
-
-        for i, (label, widget_class) in enumerate(sections):
-            btn = QPushButton(label)
-            btn.setObjectName("sectionNavBtn")
-            btn.setCheckable(True)
-            btn.setStyleSheet("""
-                QPushButton#sectionNavBtn {
-                    background-color: #e8e8e8;
-                    color: #333;
-                    border: 1px solid #b0b0b0;
-                    padding: 10px 20px;
-                    text-align: center;
-                    font-size: 10px;
-                    font-weight: bold;
-                    margin-top: 3px;
-                    margin-bottom: 10px;
-                }
-                QPushButton#sectionNavBtn:checked {
-                    background-color: #90AF13;
-                    color: white;
-                    font-weight: bold;
-                    border: 1px solid #90AF13;
-                }
-                QPushButton#sectionNavBtn:hover:!checked {
-                    background-color: #f5f5f5;
-                }
-            """)
-            btn.clicked.connect(lambda checked, idx=i: self.switch_section(idx))
-            self.nav_buttons.append(btn)
-            nav_bar_layout.addWidget(btn)
-
-            section_widget = widget_class()
-            self.stack.addWidget(section_widget)
-
-        if self.nav_buttons:
-            self.nav_buttons[0].setChecked(True)
-            self.stack.setCurrentIndex(0)
-
-    def switch_section(self, index):
-        """Switch the stacked widget page and update navigation states."""
-        self.stack.setCurrentIndex(index)
-        for btn_index, button in enumerate(self.nav_buttons):
-            button.setChecked(btn_index == index)
+        main_layout.addWidget(self.section_tabs)
 
 class GirderDetailsTab(QWidget):
     """Tab for Girder Details styled to match the provided reference."""
@@ -3045,7 +2964,7 @@ class LoadingTab(QWidget):
         self.load_tabs.addTab(self._build_seismic_load_tab(), "Seismic Load")
         self.load_tabs.addTab(self._build_wind_load_tab(), "Wind Load")
         self.load_tabs.addTab(self._build_temperature_load_tab(), "Temperature Load")
-        self.load_tabs.addTab(self._create_placeholder_page("Custom Load"), "Custom Load")
+        self.load_tabs.addTab(self._build_custom_load_tab(), "Custom Load")
         self.load_tabs.addTab(self._build_load_combination_tab(), "Load Combination")
         main_layout.addWidget(self.load_tabs)
 
@@ -3299,19 +3218,21 @@ class LoadingTab(QWidget):
         seismic_inputs_box = QFrame()
         seismic_inputs_box.setStyleSheet("QFrame { border: 1px solid #b2b2b2; border-radius: 8px; background-color: #ffffff; }")
         seismic_inputs_layout = QGridLayout(seismic_inputs_box)
-        seismic_inputs_layout.setContentsMargins(12, 12, 12, 12)
-        seismic_inputs_layout.setHorizontalSpacing(12)
-        seismic_inputs_layout.setVerticalSpacing(10)
+        seismic_inputs_layout.setContentsMargins(12, 16, 12, 16)
+        seismic_inputs_layout.setHorizontalSpacing(16)
+        seismic_inputs_layout.setVerticalSpacing(6)
         seismic_inputs_layout.setColumnMinimumWidth(0, 200)
 
         row = 0
+        field_height = 28
 
         # Seismic Zone
         lbl = QLabel("Seismic Zone:")
         lbl.setStyleSheet(label_style)
+        lbl.setFixedHeight(field_height)
         self.seismic_zone_combo = QComboBox()
         self.seismic_zone_combo.addItems(["II", "III", "IV", "V"])
-        self.seismic_zone_combo.setFixedWidth(field_width)
+        self.seismic_zone_combo.setFixedSize(field_width, field_height)
         apply_field_style(self.seismic_zone_combo)
         seismic_inputs_layout.addWidget(lbl, row, 0, Qt.AlignLeft | Qt.AlignVCenter)
         seismic_inputs_layout.addWidget(self.seismic_zone_combo, row, 1, Qt.AlignLeft)
@@ -3320,9 +3241,10 @@ class LoadingTab(QWidget):
         # Importance Factor
         lbl = QLabel("Importance Factor:")
         lbl.setStyleSheet(label_style)
+        lbl.setFixedHeight(field_height)
         self.importance_factor_input = QLineEdit()
         self.importance_factor_input.setText("1")
-        self.importance_factor_input.setFixedWidth(field_width)
+        self.importance_factor_input.setFixedSize(field_width, field_height)
         apply_field_style(self.importance_factor_input)
         seismic_inputs_layout.addWidget(lbl, row, 0, Qt.AlignLeft | Qt.AlignVCenter)
         seismic_inputs_layout.addWidget(self.importance_factor_input, row, 1, Qt.AlignLeft)
@@ -3331,13 +3253,14 @@ class LoadingTab(QWidget):
         # Type of Soil
         lbl = QLabel("Type of Soil:")
         lbl.setStyleSheet(label_style)
+        lbl.setFixedHeight(field_height)
         self.soil_type_combo = QComboBox()
         self.soil_type_combo.addItems([
-            "Type I – Rocky or Hard Soil Sites (N>30)",
-            "Type II – Medium Soil Sites",
-            "Type III – Soft Soil Sites"
+            "Type I – Rocky or Hard",
+            "Type II – Medium Soil",
+            "Type III – Soft Soil"
         ])
-        self.soil_type_combo.setFixedWidth(field_width + 30)
+        self.soil_type_combo.setFixedSize(field_width + 30, field_height)
         apply_field_style(self.soil_type_combo)
         seismic_inputs_layout.addWidget(lbl, row, 0, Qt.AlignLeft | Qt.AlignVCenter)
         seismic_inputs_layout.addWidget(self.soil_type_combo, row, 1, Qt.AlignLeft)
@@ -3346,8 +3269,9 @@ class LoadingTab(QWidget):
         # Time Period
         lbl = QLabel("Time Period:")
         lbl.setStyleSheet(label_style)
+        lbl.setFixedHeight(field_height)
         self.time_period_input = QLineEdit()
-        self.time_period_input.setFixedWidth(field_width)
+        self.time_period_input.setFixedSize(field_width, field_height)
         apply_field_style(self.time_period_input)
         seismic_inputs_layout.addWidget(lbl, row, 0, Qt.AlignLeft | Qt.AlignVCenter)
         seismic_inputs_layout.addWidget(self.time_period_input, row, 1, Qt.AlignLeft)
@@ -3356,9 +3280,10 @@ class LoadingTab(QWidget):
         # Damping Percentage
         lbl = QLabel("Damping Percentage:")
         lbl.setStyleSheet(label_style)
+        lbl.setFixedHeight(field_height)
         self.damping_input = QLineEdit()
         self.damping_input.setText("2")
-        self.damping_input.setFixedWidth(field_width)
+        self.damping_input.setFixedSize(field_width, field_height)
         apply_field_style(self.damping_input)
         seismic_inputs_layout.addWidget(lbl, row, 0, Qt.AlignLeft | Qt.AlignVCenter)
         seismic_inputs_layout.addWidget(self.damping_input, row, 1, Qt.AlignLeft)
@@ -3367,10 +3292,11 @@ class LoadingTab(QWidget):
         # Response Reduction Factor
         lbl = QLabel("Response Reduction Factor:")
         lbl.setStyleSheet(label_style)
+        lbl.setFixedHeight(field_height)
         self.response_factor_combo = QComboBox()
         self.response_factor_combo.addItems(["1", "2", "3", "4", "5"])
         self.response_factor_combo.setCurrentText("1")
-        self.response_factor_combo.setFixedWidth(field_width)
+        self.response_factor_combo.setFixedSize(field_width, field_height)
         apply_field_style(self.response_factor_combo)
         seismic_inputs_layout.addWidget(lbl, row, 0, Qt.AlignLeft | Qt.AlignVCenter)
         seismic_inputs_layout.addWidget(self.response_factor_combo, row, 1, Qt.AlignLeft)
@@ -3379,9 +3305,10 @@ class LoadingTab(QWidget):
         # Dead Load for Seismic Force
         lbl = QLabel("Dead Load for Seismic Force (kN):")
         lbl.setStyleSheet(label_style)
+        lbl.setFixedHeight(field_height)
         self.dead_load_seismic_combo = QComboBox()
         self.dead_load_seismic_combo.addItems(["Automatic", "Custom"])
-        self.dead_load_seismic_combo.setFixedWidth(field_width)
+        self.dead_load_seismic_combo.setFixedSize(field_width, field_height)
         apply_field_style(self.dead_load_seismic_combo)
         seismic_inputs_layout.addWidget(lbl, row, 0, Qt.AlignLeft | Qt.AlignVCenter)
         seismic_inputs_layout.addWidget(self.dead_load_seismic_combo, row, 1, Qt.AlignLeft)
@@ -3390,7 +3317,7 @@ class LoadingTab(QWidget):
         # Custom Value for Dead Load
         self.dead_load_custom_input = QLineEdit()
         self.dead_load_custom_input.setPlaceholderText("Custom Value")
-        self.dead_load_custom_input.setFixedWidth(field_width)
+        self.dead_load_custom_input.setFixedSize(field_width, field_height)
         self.dead_load_custom_input.setEnabled(False)
         apply_field_style(self.dead_load_custom_input)
         seismic_inputs_layout.addWidget(self.dead_load_custom_input, row, 1, Qt.AlignLeft)
@@ -3399,9 +3326,10 @@ class LoadingTab(QWidget):
         # Live Load for Seismic Force
         lbl = QLabel("Live Load for Seismic Force (kN):")
         lbl.setStyleSheet(label_style)
+        lbl.setFixedHeight(field_height)
         self.live_load_seismic_combo = QComboBox()
         self.live_load_seismic_combo.addItems(["Automatic", "Custom"])
-        self.live_load_seismic_combo.setFixedWidth(field_width)
+        self.live_load_seismic_combo.setFixedSize(field_width, field_height)
         apply_field_style(self.live_load_seismic_combo)
         seismic_inputs_layout.addWidget(lbl, row, 0, Qt.AlignLeft | Qt.AlignVCenter)
         seismic_inputs_layout.addWidget(self.live_load_seismic_combo, row, 1, Qt.AlignLeft)
@@ -3410,7 +3338,7 @@ class LoadingTab(QWidget):
         # Custom Value for Live Load
         self.live_load_custom_input = QLineEdit()
         self.live_load_custom_input.setPlaceholderText("Custom Value")
-        self.live_load_custom_input.setFixedWidth(field_width)
+        self.live_load_custom_input.setFixedSize(field_width, field_height)
         self.live_load_custom_input.setEnabled(False)
         apply_field_style(self.live_load_custom_input)
         seismic_inputs_layout.addWidget(self.live_load_custom_input, row, 1, Qt.AlignLeft)
@@ -3421,9 +3349,9 @@ class LoadingTab(QWidget):
         computed_box = QFrame()
         computed_box.setStyleSheet("QFrame { border: 1px solid #b2b2b2; border-radius: 8px; background-color: #ffffff; }")
         computed_layout = QGridLayout(computed_box)
-        computed_layout.setContentsMargins(12, 12, 12, 12)
-        computed_layout.setHorizontalSpacing(12)
-        computed_layout.setVerticalSpacing(10)
+        computed_layout.setContentsMargins(12, 16, 12, 16)
+        computed_layout.setHorizontalSpacing(16)
+        computed_layout.setVerticalSpacing(6)
         computed_layout.setColumnMinimumWidth(0, 200)
 
         computed_fields = [
@@ -3437,8 +3365,9 @@ class LoadingTab(QWidget):
         for idx, (label_text, field_name) in enumerate(computed_fields):
             lbl = QLabel(label_text)
             lbl.setStyleSheet(label_style)
+            lbl.setFixedHeight(field_height)
             field = QLineEdit()
-            field.setFixedWidth(field_width)
+            field.setFixedSize(field_width, field_height)
             field.setReadOnly(True)
             apply_field_style(field)
             computed_layout.addWidget(lbl, idx, 0, Qt.AlignLeft | Qt.AlignVCenter)
@@ -4064,8 +3993,313 @@ class LoadingTab(QWidget):
 
         return page
 
+    def _build_custom_load_tab(self):
+        """Build the Custom Load tab matching the provided layouts."""
+        page = QWidget()
+        page.setStyleSheet("background-color: #f0f0f0;")
+        page_layout = QVBoxLayout(page)
+        page_layout.setContentsMargins(8, 8, 8, 8)
+        page_layout.setSpacing(8)
+
+        content_row = QHBoxLayout()
+        content_row.setContentsMargins(0, 0, 0, 0)
+        content_row.setSpacing(12)
+
+        label_style = "font-size: 11px; color: #2a2a2a; background: transparent; border: none;"
+        heading_style = "font-size: 11px; font-weight: 700; color: #1a1a1a; background: transparent; border: none;"
+        field_width = 105
+
+        # Left column
+        left_column = QVBoxLayout()
+        left_column.setContentsMargins(0, 0, 0, 0)
+        left_column.setSpacing(8)
+
+        # Diagram placeholder
+        diagram = QFrame()
+        diagram.setMinimumSize(QSize(380, 130))
+        diagram.setMaximumHeight(130)
+        diagram.setStyleSheet("QFrame { border: 1px solid #a0a0a0; border-radius: 4px; background-color: #d0d0d0; }")
+        diagram_layout = QVBoxLayout(diagram)
+        diagram_layout.setContentsMargins(8, 8, 8, 8)
+        diagram_label = QLabel("Bridge Geometry\nDiagram")
+        diagram_label.setAlignment(Qt.AlignCenter)
+        diagram_label.setStyleSheet("font-size: 11px; font-weight: 600; color: #2a2a2a; background: transparent; border: none;")
+        diagram_layout.addWidget(diagram_label, 1)
+        left_column.addWidget(diagram)
+
+        # Input card
+        input_card = self._create_card()
+        input_card.setStyleSheet("QFrame { border: 1px solid #a0a0a0; border-radius: 4px; background-color: #ffffff; }")
+        input_layout = QVBoxLayout(input_card)
+        input_layout.setContentsMargins(10, 10, 10, 10)
+        input_layout.setSpacing(8)
+
+        title = QLabel("Custom Load Input Add/Edit:")
+        title.setStyleSheet(heading_style)
+        input_layout.addWidget(title)
+
+        form_grid = QGridLayout()
+        form_grid.setContentsMargins(0, 0, 0, 0)
+        form_grid.setHorizontalSpacing(8)
+        form_grid.setVerticalSpacing(8)
+        form_grid.setColumnMinimumWidth(0, 120)
+        form_grid.setColumnStretch(0, 0)
+        form_grid.setColumnStretch(1, 0)
+        form_grid.setColumnStretch(2, 0)
+
+        # Load Case row
+        lbl = QLabel("Load Case:")
+        lbl.setStyleSheet(label_style)
+        self.custom_load_case_combo = QComboBox()
+        self.custom_load_case_combo.addItems(["", "LL", "DL", "Custom"])
+        self.custom_load_case_combo.setFixedWidth(field_width)
+        apply_field_style(self.custom_load_case_combo)
+        form_grid.addWidget(lbl, 0, 0, Qt.AlignLeft | Qt.AlignVCenter)
+        form_grid.addWidget(self.custom_load_case_combo, 0, 1, Qt.AlignLeft)
+
+        self.custom_load_case_button = QPushButton("Custom")
+        self.custom_load_case_button.setFixedWidth(field_width)
+        self.custom_load_case_button.setStyleSheet(
+            "QPushButton { background: #e8e8e8; border: 1px solid #a0a0a0; border-radius: 3px; padding: 3px 8px; font-size: 11px; color: #2a2a2a; }"
+            "QPushButton:hover { background: #f0f0f0; }"
+            "QPushButton:pressed { background: #d8d8d8; }"
+        )
+        form_grid.addWidget(self.custom_load_case_button, 0, 2, Qt.AlignLeft)
+
+        # Load Type row
+        lbl = QLabel("Load Type:")
+        lbl.setStyleSheet(label_style)
+        self.custom_load_type_combo = QComboBox()
+        self.custom_load_type_combo.addItems(["Point", "Line/Area"])
+        self.custom_load_type_combo.setFixedWidth(field_width)
+        apply_field_style(self.custom_load_type_combo)
+        form_grid.addWidget(lbl, 1, 0, Qt.AlignLeft | Qt.AlignVCenter)
+        form_grid.addWidget(self.custom_load_type_combo, 1, 1, Qt.AlignLeft)
+
+        # Stacked inputs for Point vs Line/Area
+        self.custom_load_stack = QStackedWidget()
+        self.custom_load_stack.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+        self.custom_load_stack.setFixedWidth(360)
+        self.custom_load_stack.setStyleSheet(
+            "QStackedWidget { border: none; background: transparent; }"
+            "QWidget#customPointWidget, QWidget#customLineWidget { background: transparent; }"
+        )
+
+        # Point layout
+        point_widget = QWidget()
+        point_widget.setObjectName("customPointWidget")
+        point_grid = QGridLayout(point_widget)
+        point_grid.setContentsMargins(0, 0, 0, 0)
+        point_grid.setHorizontalSpacing(8)
+        point_grid.setVerticalSpacing(8)
+        point_grid.setColumnMinimumWidth(0, 240)
+        point_grid.setColumnStretch(0, 0)
+        point_grid.setColumnStretch(1, 0)
+
+        lbl = QLabel("Distance from Left Edge of Bridge Cross\nSection (m):")
+        lbl.setStyleSheet(label_style)
+        self.custom_point_left_input = QLineEdit()
+        self.custom_point_left_input.setFixedWidth(105)
+        apply_field_style(self.custom_point_left_input)
+        point_grid.addWidget(lbl, 0, 0, Qt.AlignLeft | Qt.AlignVCenter)
+        point_grid.addWidget(self.custom_point_left_input, 0, 1, Qt.AlignLeft)
+
+        lbl = QLabel("Distance from Center Line of Bearing\n(m):")
+        lbl.setStyleSheet(label_style)
+        self.custom_point_bearing_input = QLineEdit()
+        self.custom_point_bearing_input.setFixedWidth(105)
+        apply_field_style(self.custom_point_bearing_input)
+        point_grid.addWidget(lbl, 1, 0, Qt.AlignLeft | Qt.AlignVCenter)
+        point_grid.addWidget(self.custom_point_bearing_input, 1, 1, Qt.AlignLeft)
+
+        self.custom_load_stack.addWidget(point_widget)
+
+        # Line/Area layout
+        line_widget = QWidget()
+        line_widget.setObjectName("customLineWidget")
+        line_grid = QGridLayout(line_widget)
+        line_grid.setContentsMargins(0, 0, 0, 0)
+        line_grid.setHorizontalSpacing(8)
+        line_grid.setVerticalSpacing(4)
+        line_grid.setColumnMinimumWidth(0, 240)
+
+        def _start_end_row(label_text, start_attr, end_attr, row_idx):
+            row_label = QLabel(label_text)
+            row_label.setStyleSheet(label_style)
+            start_field = QLineEdit()
+            end_field = QLineEdit()
+            start_field.setFixedWidth(52)
+            end_field.setFixedWidth(52)
+            apply_field_style(start_field)
+            apply_field_style(end_field)
+
+            line_grid.addWidget(row_label, row_idx * 2, 0, Qt.AlignLeft | Qt.AlignVCenter)
+            line_grid.addWidget(start_field, row_idx * 2, 1, Qt.AlignLeft)
+            line_grid.addWidget(end_field, row_idx * 2, 2, Qt.AlignLeft)
+
+            start_lbl = QLabel("Start")
+            start_lbl.setStyleSheet("font-size: 9px; color: #505050;")
+            end_lbl = QLabel("End")
+            end_lbl.setStyleSheet("font-size: 9px; color: #505050;")
+            line_grid.addWidget(start_lbl, row_idx * 2 + 1, 1, Qt.AlignHCenter | Qt.AlignTop)
+            line_grid.addWidget(end_lbl, row_idx * 2 + 1, 2, Qt.AlignHCenter | Qt.AlignTop)
+
+            setattr(self, start_attr, start_field)
+            setattr(self, end_attr, end_field)
+
+        _start_end_row("Distance from Left Edge of Bridge Cross\nSection (m):", "custom_line_left_start", "custom_line_left_end", 0)
+        _start_end_row("Distance from Center Line of Bearing\n(m):", "custom_line_bearing_start", "custom_line_bearing_end", 1)
+
+        self.custom_load_stack.addWidget(line_widget)
+
+        # Place stack in grid
+        form_grid.addWidget(self.custom_load_stack, 2, 0, 1, 3)
+
+        input_layout.addLayout(form_grid)
+
+        # Save button bar
+        save_btn = QPushButton("Save")
+        save_btn.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        save_btn.setStyleSheet(
+            "QPushButton { background: #c8c8c8; border: 1px solid #a0a0a0; border-radius: 3px; padding: 5px 16px; font-weight: 600; font-size: 11px; color: #2a2a2a; }"
+            "QPushButton:hover { background: #d8d8d8; }"
+            "QPushButton:pressed { background: #b8b8b8; }"
+        )
+        save_row = QHBoxLayout()
+        save_row.setContentsMargins(0, 4, 0, 0)
+        save_row.addWidget(save_btn)
+        input_layout.addLayout(save_row)
+
+        left_column.addWidget(input_card)
+
+        # Custom Load Name list card
+        list_card = self._create_card()
+        list_card.setStyleSheet("QFrame { border: 1px solid #a0a0a0; border-radius: 4px; background-color: #ffffff; }")
+        list_card.setMinimumHeight(120)
+        list_layout = QVBoxLayout(list_card)
+        list_layout.setContentsMargins(10, 10, 10, 10)
+        list_layout.setSpacing(8)
+
+        list_title = QLabel("Custom Load Name")
+        list_title.setStyleSheet(heading_style)
+        list_layout.addWidget(list_title)
+
+        controls_row = QHBoxLayout()
+        controls_row.setSpacing(6)
+        self.custom_add_btn = QPushButton("Add")
+        self.custom_edit_btn = QPushButton("Edit")
+        self.custom_delete_btn = QPushButton("Delete")
+        for btn in (self.custom_add_btn, self.custom_edit_btn, self.custom_delete_btn):
+            btn.setFixedWidth(55)
+            btn.setStyleSheet(
+                "QPushButton { background: #ffffff; border: 1px solid #a0a0a0; border-radius: 3px; padding: 3px 8px; font-size: 11px; color: #2a2a2a; }"
+                "QPushButton:hover { background: #f0f0f0; }"
+                "QPushButton:pressed { background: #e0e0e0; }"
+            )
+            controls_row.addWidget(btn)
+        controls_row.addStretch()
+        list_layout.addLayout(controls_row)
+
+        self.custom_load_items = []
+        self.custom_load_list_container = QWidget()
+        self.custom_load_list_layout = QVBoxLayout(self.custom_load_list_container)
+        self.custom_load_list_layout.setContentsMargins(2, 2, 2, 2)
+        self.custom_load_list_layout.setSpacing(4)
+        self.custom_load_list_layout.addStretch()
+        list_layout.addWidget(self.custom_load_list_container)
+
+        left_column.addWidget(list_card)
+        left_column.addStretch()
+
+        # Right description card
+        right_card = self._create_card()
+        right_card.setStyleSheet("QFrame { border: 1px solid #a0a0a0; border-radius: 4px; background-color: #d8d8d8; }")
+        right_card.setMinimumWidth(260)
+        right_card.setMinimumHeight(480)
+        right_layout = QVBoxLayout(right_card)
+        right_layout.setContentsMargins(12, 12, 12, 12)
+        right_layout.setSpacing(8)
+
+        desc_title = QLabel("Description Box")
+        desc_title.setAlignment(Qt.AlignCenter)
+        desc_title.setStyleSheet("font-size: 11px; font-weight: 700; color: #1a1a1a; background: transparent; border: none;")
+        right_layout.addWidget(desc_title)
+        right_layout.addStretch()
+
+        content_row.addLayout(left_column, 3)
+        content_row.addWidget(right_card, 2)
+        page_layout.addLayout(content_row)
+
+        self._refresh_custom_load_list()
+
+        # Connections
+        self.custom_load_type_combo.currentTextChanged.connect(self._on_custom_load_type_changed)
+        self._on_custom_load_type_changed(self.custom_load_type_combo.currentText())
+
+        self.custom_add_btn.clicked.connect(self._on_add_custom_load)
+        self.custom_delete_btn.clicked.connect(self._on_delete_custom_load)
+        self.custom_edit_btn.clicked.connect(lambda: QMessageBox.information(self, "Edit", "Edit functionality will be added in a future update."))
+
+        return page
+
+    def _on_custom_load_type_changed(self, text):
+        """Toggle between point and line/area input layouts."""
+        if text.lower().startswith("point"):
+            self.custom_load_stack.setCurrentIndex(0)
+        else:
+            self.custom_load_stack.setCurrentIndex(1)
+
+    def _refresh_custom_load_list(self):
+        if not hasattr(self, "custom_load_list_layout"):
+            return
+        while self.custom_load_list_layout.count():
+            item = self.custom_load_list_layout.takeAt(0)
+            widget = item.widget()
+            if widget:
+                widget.deleteLater()
+        self.custom_load_checkboxes = []
+        for name in self.custom_load_items:
+            row = QHBoxLayout()
+            row.setContentsMargins(2, 0, 2, 0)
+            row.setSpacing(4)
+            label = QLabel(name)
+            label.setStyleSheet("font-size: 11px; font-style: italic; color: #3a3a3a; background: transparent; border: none;")
+            checkbox = QCheckBox()
+            row.addWidget(label)
+            row.addStretch()
+            row.addWidget(checkbox)
+            container = QWidget()
+            container.setLayout(row)
+            self.custom_load_list_layout.addWidget(container)
+            self.custom_load_checkboxes.append((name, checkbox))
+        self.custom_load_list_layout.addStretch()
+
+    def _on_add_custom_load(self):
+        next_index = len(self.custom_load_items) + 1
+        new_name = f"Custom Load {next_index}"
+        self.custom_load_items.append(new_name)
+        self._refresh_custom_load_list()
+
+    def _on_delete_custom_load(self):
+        if not getattr(self, "custom_load_checkboxes", None):
+            return
+        remaining = [name for name, cb in self.custom_load_checkboxes if not cb.isChecked()]
+        if len(remaining) == len(self.custom_load_checkboxes):
+            QMessageBox.information(self, "Delete", "Select at least one custom load to delete.")
+            return
+        self.custom_load_items = remaining
+        self._refresh_custom_load_list()
+        if not getattr(self, "custom_load_checkboxes", None):
+            return
+        remaining = [name for name, cb in self.custom_load_checkboxes if not cb.isChecked()]
+        if len(remaining) == len(self.custom_load_checkboxes):
+            QMessageBox.information(self, "Delete", "Select at least one custom load to delete.")
+            return
+        self.custom_load_items = remaining
+        self._refresh_custom_load_list()
+
     def _build_load_combination_tab(self):
-        """Build the Load Combination tab matching reference design"""
+        """Build the Load Combination tab and wire the Add/Edit modal."""
         page = QWidget()
         page.setStyleSheet("background-color: #f5f5f5;")
         page_layout = QVBoxLayout(page)
@@ -4076,150 +4310,330 @@ class LoadingTab(QWidget):
         content_row.setContentsMargins(0, 0, 0, 0)
         content_row.setSpacing(16)
 
+        heading_style = "font-size: 12px; font-weight: 700; color: #2b2b2b; background: transparent; border: none;"
         label_style = "font-size: 11px; color: #3a3a3a; background: transparent; border: none;"
 
-        # Left card - combination list
+        if not hasattr(self, "load_combo_items"):
+            self.load_combo_items = [
+                {"name": "DL + LL", "items": [{"case": "DL", "factor": "1.0"}, {"case": "LL", "factor": "1.0"}]},
+                {"name": "1.35 DL + 1.5 LL", "items": [{"case": "DL", "factor": "1.35"}, {"case": "LL", "factor": "1.5"}]},
+            ]
+
+        # Left card - combination list and controls
         left_card = self._create_card()
         left_card.setStyleSheet("QFrame { border: 1px solid #b2b2b2; border-radius: 10px; background-color: #ffffff; }")
         left_layout = QVBoxLayout(left_card)
         left_layout.setContentsMargins(16, 16, 16, 16)
-        left_layout.setSpacing(12)
+        left_layout.setSpacing(10)
 
-        # Auto include checkbox row
+        title = QLabel("Inputs:")
+        title.setStyleSheet(heading_style)
+        left_layout.addWidget(title)
+
+        combo_label = QLabel("Load Combination")
+        combo_label.setStyleSheet("font-size: 11px; font-style: italic; color: #2b2b2b; background: transparent; border: none;")
+        left_layout.addWidget(combo_label)
+
         auto_row = QHBoxLayout()
-        auto_row.setContentsMargins(0, 0, 0, 0)
         auto_row.setSpacing(8)
+        auto_row.setContentsMargins(0, 0, 0, 0)
         auto_label = QLabel("Auto include all IRC 6 Load Combinations")
-        auto_label.setStyleSheet("font-size: 11px; color: #3a3a3a; background: transparent; border: none;")
+        auto_label.setStyleSheet(label_style)
         self.auto_include_checkbox = QCheckBox()
         auto_row.addWidget(auto_label)
         auto_row.addWidget(self.auto_include_checkbox)
         auto_row.addStretch()
         left_layout.addLayout(auto_row)
 
-        # Combination Name label
-        combo_name_label = QLabel("Combination Name")
-        combo_name_label.setStyleSheet("font-size: 12px; font-weight: 700; color: #2b2b2b; background: transparent; border: none;")
-        left_layout.addWidget(combo_name_label)
+        controls_row = QHBoxLayout()
+        controls_row.setSpacing(6)
+        self.load_combo_add_btn = QPushButton("Add")
+        self.load_combo_edit_btn = QPushButton("Edit")
+        self.load_combo_delete_btn = QPushButton("Delete")
+        for btn in (self.load_combo_add_btn, self.load_combo_edit_btn, self.load_combo_delete_btn):
+            btn.setFixedWidth(60)
+            btn.setStyleSheet(
+                "QPushButton { background: #ffffff; border: 1px solid #a0a0a0; border-radius: 3px; padding: 4px 10px; font-size: 11px; color: #2a2a2a; }"
+                "QPushButton:hover { background: #f0f0f0; }"
+                "QPushButton:pressed { background: #e0e0e0; }"
+            )
+            controls_row.addWidget(btn)
+        controls_row.addStretch()
+        left_layout.addLayout(controls_row)
 
-        # Combination list area
-        self.combination_list_widget = QWidget()
-        self.combination_list_widget.setStyleSheet("background: #ffffff;")
-        self.combination_list_layout = QVBoxLayout(self.combination_list_widget)
-        self.combination_list_layout.setContentsMargins(0, 8, 0, 8)
-        self.combination_list_layout.setSpacing(8)
+        list_card = QFrame()
+        list_card.setStyleSheet("QFrame { border: 1px solid #a0a0a0; border-radius: 4px; background-color: #ffffff; }")
+        list_layout = QVBoxLayout(list_card)
+        list_layout.setContentsMargins(10, 10, 10, 10)
+        list_layout.setSpacing(6)
 
-        # Add sample combinations
-        sample_combos = ["DL + LL", "1.35 DL + 1.75 LL"]
-        for combo_text in sample_combos:
-            combo_label = QLabel(combo_text)
-            combo_label.setStyleSheet(label_style)
-            self.combination_list_layout.addWidget(combo_label)
+        self.load_combo_list_layout = QVBoxLayout()
+        self.load_combo_list_layout.setContentsMargins(2, 2, 2, 2)
+        self.load_combo_list_layout.setSpacing(6)
+        list_layout.addLayout(self.load_combo_list_layout)
+        left_layout.addWidget(list_card)
+        left_layout.addStretch()
 
-        self.combination_list_layout.addStretch()
-        left_layout.addWidget(self.combination_list_widget, 1)
+        # Right description card
+        right_card = self._create_card()
+        right_card.setStyleSheet("QFrame { border: 1px solid #9c9c9c; border-radius: 10px; background-color: #c8c8c8; }")
+        right_card.setMinimumWidth(270)
+        right_card.setMinimumHeight(360)
+        right_layout = QVBoxLayout(right_card)
+        right_layout.setContentsMargins(18, 18, 18, 18)
+        right_layout.setSpacing(12)
+        description_label = QLabel("Description Box")
+        description_label.setAlignment(Qt.AlignCenter)
+        description_label.setStyleSheet("font-size: 12px; font-weight: 700; color: #000000;")
+        description_label.setMinimumHeight(320)
+        right_layout.addWidget(description_label)
 
-        # Middle card - combination editor
-        middle_card = self._create_card()
-        middle_card.setStyleSheet("QFrame { border: 1px solid #b2b2b2; border-radius: 10px; background-color: #ffffff; }")
-        middle_layout = QVBoxLayout(middle_card)
-        middle_layout.setContentsMargins(16, 16, 16, 16)
-        middle_layout.setSpacing(12)
-
-        # Combination Name title
-        combo_title = QLabel("Combination Name")
-        combo_title.setStyleSheet("font-size: 12px; font-weight: 700; color: #2b2b2b; background: transparent; border: none;")
-        middle_layout.addWidget(combo_title)
-
-        # Editor area with table and buttons
-        editor_row = QHBoxLayout()
-        editor_row.setContentsMargins(0, 0, 0, 0)
-        editor_row.setSpacing(12)
-
-        # Table for Load Name and Scale Factor
-        table_box = QFrame()
-        table_box.setStyleSheet("QFrame { border: 1px solid #b2b2b2; border-radius: 4px; background-color: #ffffff; }")
-        table_layout = QVBoxLayout(table_box)
-        table_layout.setContentsMargins(0, 0, 0, 0)
-        table_layout.setSpacing(0)
-
-        # Header row
-        header_widget = QWidget()
-        header_widget.setStyleSheet("background: #ffffff; border-bottom: 1px solid #b2b2b2;")
-        header_layout = QHBoxLayout(header_widget)
-        header_layout.setContentsMargins(8, 8, 8, 8)
-        header_layout.setSpacing(8)
-
-        load_name_header = QLabel("Load Name")
-        load_name_header.setStyleSheet("font-size: 11px; font-weight: 600; color: #3a3a3a; background: transparent; border: none;")
-        load_name_header.setMinimumWidth(80)
-        scale_factor_header = QLabel("Scale Factor")
-        scale_factor_header.setStyleSheet("font-size: 11px; font-weight: 600; color: #3a3a3a; background: transparent; border: none;")
-        scale_factor_header.setMinimumWidth(80)
-
-        header_layout.addWidget(load_name_header)
-        header_layout.addWidget(scale_factor_header)
-        table_layout.addWidget(header_widget)
-
-        # Input row
-        input_widget = QWidget()
-        input_widget.setStyleSheet("background: #ffffff;")
-        input_layout = QHBoxLayout(input_widget)
-        input_layout.setContentsMargins(8, 8, 8, 8)
-        input_layout.setSpacing(8)
-
-        self.load_name_combo = QComboBox()
-        self.load_name_combo.addItems(["DL", "LL", "WL", "EL", "TL"])
-        self.load_name_combo.setMinimumWidth(80)
-        apply_field_style(self.load_name_combo)
-
-        self.scale_factor_input = QLineEdit()
-        self.scale_factor_input.setMinimumWidth(80)
-        apply_field_style(self.scale_factor_input)
-
-        input_layout.addWidget(self.load_name_combo)
-        input_layout.addWidget(self.scale_factor_input)
-        table_layout.addWidget(input_widget)
-
-        # Empty space for more rows
-        table_layout.addStretch()
-
-        editor_row.addWidget(table_box, 1)
-
-        # Add/Delete buttons column
-        button_col = QVBoxLayout()
-        button_col.setContentsMargins(0, 0, 0, 0)
-        button_col.setSpacing(8)
-
-        self.add_load_btn = QPushButton("Add")
-        self.add_load_btn.setFixedWidth(60)
-        self.add_load_btn.setStyleSheet(
-            "QPushButton { background: #ffffff; border: 1px solid #b2b2b2; border-radius: 4px; padding: 6px 12px; font-size: 11px; color: #3a3a3a; }"
-            "QPushButton:hover { background: #f0f0f0; }"
-            "QPushButton:pressed { background: #e0e0e0; }"
-        )
-
-        self.delete_load_btn = QPushButton("Delete")
-        self.delete_load_btn.setFixedWidth(60)
-        self.delete_load_btn.setStyleSheet(
-            "QPushButton { background: #ffffff; border: 1px solid #b2b2b2; border-radius: 4px; padding: 6px 12px; font-size: 11px; color: #3a3a3a; }"
-            "QPushButton:hover { background: #f0f0f0; }"
-            "QPushButton:pressed { background: #e0e0e0; }"
-        )
-
-        button_col.addWidget(self.add_load_btn)
-        button_col.addWidget(self.delete_load_btn)
-        button_col.addStretch()
-
-        editor_row.addLayout(button_col)
-        middle_layout.addLayout(editor_row, 1)
-
-        content_row.addWidget(left_card, 2)
-        content_row.addWidget(middle_card, 3)
+        content_row.addWidget(left_card, 3)
+        content_row.addWidget(right_card, 2)
 
         page_layout.addLayout(content_row)
 
+        self._refresh_load_combo_list()
+
+        self.load_combo_add_btn.clicked.connect(self._on_add_load_combo)
+        self.load_combo_edit_btn.clicked.connect(self._on_edit_load_combo)
+        self.load_combo_delete_btn.clicked.connect(self._on_delete_load_combo)
+
         return page
+
+    def _refresh_load_combo_list(self):
+        if not hasattr(self, "load_combo_list_layout"):
+            return
+        while self.load_combo_list_layout.count():
+            item = self.load_combo_list_layout.takeAt(0)
+            widget = item.widget()
+            if widget:
+                widget.deleteLater()
+        self.load_combo_checkboxes = []
+        if not getattr(self, "load_combo_items", None):
+            empty_lbl = QLabel("No combinations added yet.")
+            empty_lbl.setStyleSheet("font-size: 11px; color: #6a6a6a; background: transparent; border: none;")
+            self.load_combo_list_layout.addWidget(empty_lbl)
+            self.load_combo_list_layout.addStretch()
+            return
+
+        for combo in self.load_combo_items:
+            row = QHBoxLayout()
+            row.setContentsMargins(2, 0, 2, 0)
+            row.setSpacing(6)
+            label = QLabel(combo.get("name", "Combination"))
+            label.setStyleSheet("font-size: 11px; font-style: italic; color: #3a3a3a; background: transparent; border: none;")
+            checkbox = QCheckBox()
+            row.addWidget(label)
+            row.addStretch()
+            row.addWidget(checkbox)
+            container = QWidget()
+            container.setLayout(row)
+            self.load_combo_list_layout.addWidget(container)
+            self.load_combo_checkboxes.append((combo, checkbox))
+
+        self.load_combo_list_layout.addStretch()
+
+    def _get_selected_load_combos(self):
+        if not getattr(self, "load_combo_checkboxes", None):
+            return []
+        return [idx for idx, (_, cb) in enumerate(self.load_combo_checkboxes) if cb.isChecked()]
+
+    def _on_add_load_combo(self):
+        data = self._open_load_combo_dialog()
+        if data:
+            self.load_combo_items.append(data)
+            self._refresh_load_combo_list()
+
+    def _on_edit_load_combo(self):
+        selected = self._get_selected_load_combos()
+        if not selected:
+            QMessageBox.information(self, "Edit", "Select one load combination to edit.")
+            return
+        if len(selected) > 1:
+            QMessageBox.information(self, "Edit", "Select only one load combination to edit.")
+            return
+        index = selected[0]
+        current = self.load_combo_items[index]
+        data = self._open_load_combo_dialog(existing=current)
+        if data:
+            self.load_combo_items[index] = data
+            self._refresh_load_combo_list()
+
+    def _on_delete_load_combo(self):
+        selected = self._get_selected_load_combos()
+        if not selected:
+            QMessageBox.information(self, "Delete", "Select at least one load combination to delete.")
+            return
+        self.load_combo_items = [item for idx, item in enumerate(self.load_combo_items) if idx not in selected]
+        self._refresh_load_combo_list()
+
+    def _open_load_combo_dialog(self, existing=None):
+        dialog = QDialog(self)
+        dialog.setModal(True)
+        dialog.setWindowTitle("Edit Load Combination" if existing else "Add Load Combination")
+        dialog.setMinimumWidth(520)
+
+        layout = QVBoxLayout(dialog)
+        layout.setContentsMargins(14, 14, 14, 14)
+        layout.setSpacing(10)
+
+        label_style = "font-size: 11px; color: #2a2a2a; background: transparent; border: none;"
+
+        name_row = QHBoxLayout()
+        name_row.setSpacing(8)
+        name_label = QLabel("Combination Name:")
+        name_label.setStyleSheet(label_style)
+        name_input = QLineEdit()
+        name_input.setMinimumWidth(220)
+        apply_field_style(name_input)
+        name_row.addWidget(name_label)
+        name_row.addWidget(name_input, 1)
+        layout.addLayout(name_row)
+
+        fields_row = QGridLayout()
+        fields_row.setContentsMargins(0, 0, 0, 0)
+        fields_row.setHorizontalSpacing(10)
+        fields_row.setVerticalSpacing(6)
+
+        load_case_label = QLabel("Load Case:")
+        load_case_label.setStyleSheet(label_style)
+        load_case_combo = QComboBox()
+        load_case_combo.addItems(["DL", "SIDL", "LL", "WL", "EL", "IMF", "TL"])
+        apply_field_style(load_case_combo)
+
+        factor_label = QLabel("Partial Safety Factor:")
+        factor_label.setStyleSheet(label_style)
+        factor_input = QLineEdit()
+        factor_input.setText("1.0")
+        factor_input.setMinimumWidth(80)
+        apply_field_style(factor_input)
+
+        fields_row.addWidget(load_case_label, 0, 0, Qt.AlignLeft)
+        fields_row.addWidget(load_case_combo, 0, 1, Qt.AlignLeft)
+        fields_row.addWidget(factor_label, 0, 2, Qt.AlignLeft)
+        fields_row.addWidget(factor_input, 0, 3, Qt.AlignLeft)
+        fields_row.setColumnStretch(4, 1)
+        layout.addLayout(fields_row)
+
+        table_row = QHBoxLayout()
+        table_row.setSpacing(8)
+
+        table = QTableWidget(0, 3)
+        table.setHorizontalHeaderLabels(["S.No", "Load Case", "Partial Safety Factor"])
+        table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeToContents)
+        table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
+        table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeToContents)
+        table.verticalHeader().setVisible(False)
+        table.setStyleSheet("QTableWidget { background: #ffffff; } QHeaderView::section { color: #2a2a2a; background: #efefef; font-size: 10px; }")
+        table.setMinimumHeight(220)
+
+        button_col = QVBoxLayout()
+        button_col.setSpacing(6)
+        add_btn = QPushButton("Add")
+        modify_btn = QPushButton("Modify")
+        delete_btn = QPushButton("Delete")
+        for btn in (add_btn, modify_btn, delete_btn):
+            btn.setFixedWidth(80)
+            btn.setStyleSheet(
+                "QPushButton { background: #ffffff; border: 1px solid #a0a0a0; border-radius: 3px; padding: 5px 12px; font-size: 11px; color: #2a2a2a; }"
+                "QPushButton:hover { background: #f0f0f0; }"
+                "QPushButton:pressed { background: #e0e0e0; }"
+            )
+            button_col.addWidget(btn)
+        button_col.addStretch()
+
+        table_row.addWidget(table, 1)
+        table_row.addLayout(button_col)
+        layout.addLayout(table_row)
+
+        action_row = QHBoxLayout()
+        action_row.setContentsMargins(0, 4, 0, 0)
+        action_row.addStretch()
+        cancel_btn = QPushButton("Cancel")
+        save_btn = QPushButton("Save")
+        for btn in (cancel_btn, save_btn):
+            btn.setFixedWidth(80)
+            btn.setStyleSheet(
+                "QPushButton { background: #c8c8c8; border: 1px solid #a0a0a0; border-radius: 3px; padding: 6px 14px; font-weight: 600; font-size: 11px; color: #2a2a2a; }"
+                "QPushButton:hover { background: #d8d8d8; }"
+                "QPushButton:pressed { background: #b8b8b8; }"
+            )
+        action_row.addWidget(cancel_btn)
+        action_row.addWidget(save_btn)
+        layout.addLayout(action_row)
+
+        def refresh_row_numbers():
+            for row_idx in range(table.rowCount()):
+                item = table.item(row_idx, 0)
+                if item:
+                    item.setText(str(row_idx + 1))
+
+        def add_row():
+            case_text = load_case_combo.currentText().strip()
+            factor_text = factor_input.text().strip() or "1.0"
+            row_idx = table.rowCount()
+            table.insertRow(row_idx)
+            table.setItem(row_idx, 0, QTableWidgetItem(str(row_idx + 1)))
+            table.setItem(row_idx, 1, QTableWidgetItem(case_text))
+            table.setItem(row_idx, 2, QTableWidgetItem(factor_text))
+            refresh_row_numbers()
+
+        def modify_row():
+            row_idx = table.currentRow()
+            if row_idx < 0:
+                QMessageBox.information(dialog, "Modify", "Select one row to modify.")
+                return
+            table.setItem(row_idx, 1, QTableWidgetItem(load_case_combo.currentText().strip()))
+            table.setItem(row_idx, 2, QTableWidgetItem(factor_input.text().strip() or "1.0"))
+            refresh_row_numbers()
+
+        def delete_row():
+            row_idx = table.currentRow()
+            if row_idx < 0:
+                QMessageBox.information(dialog, "Delete", "Select one row to delete.")
+                return
+            table.removeRow(row_idx)
+            refresh_row_numbers()
+
+        def load_existing():
+            if not existing:
+                return
+            name_input.setText(existing.get("name", ""))
+            for item in existing.get("items", []):
+                case_text = item.get("case", "")
+                factor_text = item.get("factor", "")
+                if case_text:
+                    load_case_combo.setCurrentText(case_text)
+                factor_input.setText(factor_text or "1.0")
+                add_row()
+
+        def on_save():
+            name_text = name_input.text().strip() or "Load Combination"
+            rows = []
+            for row_idx in range(table.rowCount()):
+                case_item = table.item(row_idx, 1)
+                factor_item = table.item(row_idx, 2)
+                if not case_item or not factor_item:
+                    continue
+                rows.append({"case": case_item.text(), "factor": factor_item.text()})
+            if not rows:
+                QMessageBox.information(dialog, "Save", "Add at least one load case entry.")
+                return
+            dialog.accept()
+            dialog.result_data = {"name": name_text, "items": rows}
+
+        add_btn.clicked.connect(add_row)
+        modify_btn.clicked.connect(modify_row)
+        delete_btn.clicked.connect(delete_row)
+        save_btn.clicked.connect(on_save)
+        cancel_btn.clicked.connect(dialog.reject)
+
+        load_existing()
+
+        if dialog.exec() == QDialog.Accepted:
+            return getattr(dialog, "result_data", None)
+        return None
 
     def _create_placeholder_page(self, title):
         page = QWidget()
