@@ -11,9 +11,10 @@ from PySide6.QtWidgets import (
     QFrame, QGridLayout, QTableWidget, QTableWidgetItem, QHeaderView,
     QTextEdit, QDialog, QSizePolicy, QSizeGrip
 )
-from PySide6.QtCore import Qt, Signal, QSize
-from PySide6.QtGui import QDoubleValidator, QIntValidator
+from PySide6.QtCore import Qt, Signal, QSize, QRectF
+from PySide6.QtGui import QDoubleValidator, QIntValidator, QPainter, QColor, QPen, QFont
 
+from osdagbridge.core.bridge_components.super_structure.girder import properties as girder_properties
 from osdagbridge.core.utils.common import *
 from osdagbridge.desktop.ui.utils.custom_titlebar import CustomTitleBar
 
@@ -1384,6 +1385,112 @@ class SectionPropertiesTab(QWidget):
         for btn_index, button in enumerate(self.nav_buttons):
             button.setChecked(btn_index == index)
 
+
+class GirderSectionPreview(QWidget):
+    """Canvas that sketches an I-girder using the supplied dimensions."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._section_data = None
+        self.setMinimumSize(240, 160)
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+
+    def update_section(self, section_data):
+        """Store the latest section data and trigger a repaint."""
+
+        self._section_data = section_data
+        self.update()
+
+    def paintEvent(self, event):  # noqa: N802 - Qt override
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing, True)
+
+        canvas_rect = self.rect()
+        painter.fillRect(canvas_rect, QColor("#fafafa"))
+        painter.setPen(QPen(QColor("#d0d0d0"), 1))
+        painter.drawRoundedRect(canvas_rect.adjusted(0, 0, -1, -1), 6, 6)
+
+        if not self._section_data:
+            painter.setPen(QColor("#5a5a5a"))
+            font = painter.font()
+            font.setPointSizeF(max(9.0, font.pointSizeF()))
+            painter.setFont(font)
+            painter.drawText(canvas_rect.adjusted(12, 12, -12, -12), Qt.AlignCenter,
+                             "Enter girder dimensions\nto preview the section")
+            return
+
+        self._draw_section(painter, canvas_rect.adjusted(16, 16, -16, -16))
+
+    def _draw_section(self, painter, rect):
+        section = self._section_data or {}
+        depth = float(section.get("depth_mm") or 0)
+        top_width = float(section.get("top_flange_width_mm") or 0)
+        bottom_width = float(section.get("bottom_flange_width_mm") or top_width)
+        if not depth or not (top_width or bottom_width):
+            painter.setPen(QColor("#5a5a5a"))
+            painter.drawText(rect, Qt.AlignCenter, "Insufficient data")
+            return
+
+        bottom_width = bottom_width or top_width
+        web_thickness = float(section.get("web_thickness_mm") or max(depth * 0.02, 10.0))
+        top_thickness = float(section.get("top_flange_thickness_mm") or max(depth * 0.03, 12.0))
+        bottom_thickness = float(section.get("bottom_flange_thickness_mm") or top_thickness)
+
+        max_width = max(top_width, bottom_width, 1)
+        scale = min(rect.height() / depth, rect.width() / max_width) * 0.85
+        center_x = rect.center().x()
+        top_y = rect.center().y() - (depth * scale) / 2.0
+
+        flange_color = QColor("#9cc35b")
+        web_color = QColor("#6e8f3d")
+        outline_pen = QPen(QColor("#4b5c2b"), 1)
+
+        def _scaled_width(value):
+            return max(2.0, value * scale)
+
+        top_flange_rect = QRectF(
+            center_x - _scaled_width(top_width) / 2.0,
+            top_y,
+            _scaled_width(top_width),
+            max(6.0, top_thickness * scale),
+        )
+
+        bottom_flange_rect = QRectF(
+            center_x - _scaled_width(bottom_width) / 2.0,
+            top_y + (depth - bottom_thickness) * scale,
+            _scaled_width(bottom_width),
+            max(6.0, bottom_thickness * scale),
+        )
+
+        web_rect = QRectF(
+            center_x - _scaled_width(web_thickness) / 2.0,
+            top_flange_rect.bottom(),
+            _scaled_width(web_thickness),
+            max(12.0, (depth - top_thickness - bottom_thickness) * scale),
+        )
+
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(flange_color)
+        painter.drawRoundedRect(top_flange_rect, 2, 2)
+        painter.drawRoundedRect(bottom_flange_rect, 2, 2)
+
+        painter.setBrush(web_color)
+        painter.drawRect(web_rect)
+
+        painter.setPen(outline_pen)
+        painter.setBrush(Qt.NoBrush)
+        painter.drawRoundedRect(top_flange_rect, 2, 2)
+        painter.drawRoundedRect(bottom_flange_rect, 2, 2)
+        painter.drawRect(web_rect)
+
+        # Annotate key dimensions
+        font = painter.font()
+        font.setPointSizeF(9)
+        painter.setFont(font)
+        painter.drawText(rect.left(), rect.bottom() - 4, f"Depth: {depth:.0f} mm")
+        painter.drawText(rect.left(), rect.bottom() - 20, f"Top flange: {top_width:.0f} mm")
+        painter.drawText(rect.left(), rect.bottom() - 36, f"Bottom flange: {bottom_width:.0f} mm")
+
 class GirderDetailsTab(QWidget):
     """Tab for Girder Details styled to match the provided reference."""
 
@@ -1614,11 +1721,15 @@ class GirderDetailsTab(QWidget):
         image_layout.setContentsMargins(10, 10, 10, 10)
         image_layout.setSpacing(5)
 
-        self.dynamic_image_label = QLabel("Welded Girder")
-        self.dynamic_image_label.setAlignment(Qt.AlignCenter)
-        self.dynamic_image_label.setMinimumSize(240, 140)
-        self.dynamic_image_label.setStyleSheet("QLabel { border: 1px solid #d0d0d0; border-radius: 4px; background-color: #fafafa; font-weight: bold; color: #5b5b5b; }")
-        image_layout.addWidget(self.dynamic_image_label)
+        self.section_preview = GirderSectionPreview()
+        image_layout.addWidget(self.section_preview, 1)
+
+        self.preview_caption = QLabel("Provide girder inputs to preview")
+        self.preview_caption.setAlignment(Qt.AlignCenter)
+        self.preview_caption.setStyleSheet(
+            "QLabel { font-size: 10px; color: #5b5b5b; border: none; padding-top: 4px; }"
+        )
+        image_layout.addWidget(self.preview_caption)
 
         right_column_layout.addWidget(image_box)
 
@@ -1668,6 +1779,9 @@ class GirderDetailsTab(QWidget):
         main_layout.addWidget(right_column)
 
         self.type_combo.currentTextChanged.connect(self._on_type_changed)
+        self.is_section_combo.currentTextChanged.connect(self._update_preview)
+        for watcher in (self.total_depth_input, self.top_width_input, self.bottom_width_input):
+            watcher.textChanged.connect(self._update_preview)
         self._on_type_changed(self.type_combo.currentText())
 
         return container
@@ -1713,10 +1827,7 @@ class GirderDetailsTab(QWidget):
         is_welded = text.lower() == "welded"
         self._set_row_visibility(self.welded_rows, is_welded)
         self._set_row_visibility(self.rolled_rows, not is_welded)
-        if is_welded:
-            self.dynamic_image_label.setText("Welded Girder")
-        else:
-            self.dynamic_image_label.setText("Rolled Section")
+        self._update_preview()
 
     def _create_inner_box(self):
         """Create a bordered box for grouped controls"""
@@ -1779,6 +1890,52 @@ class GirderDetailsTab(QWidget):
         for label, widget in rows:
             label.setVisible(visible)
             widget.setVisible(visible)
+
+    def _update_preview(self):
+        if not hasattr(self, "section_preview"):
+            return
+
+        is_welded = self.type_combo.currentText().lower() == "welded"
+        if is_welded:
+            section = self._gather_welded_dimensions()
+            caption = "Welded girder preview" if section else "Enter depth and flange widths"
+        else:
+            designation = self.is_section_combo.currentText()
+            section = girder_properties.get_rolled_section(designation)
+            caption = f"Rolled section • {designation}" if section else "Rolled section unavailable"
+
+        self.section_preview.update_section(section)
+        if hasattr(self, "preview_caption"):
+            self.preview_caption.setText(caption)
+
+    def _gather_welded_dimensions(self):
+        depth = self._parse_float(self.total_depth_input.text())
+        top_width = self._parse_float(self.top_width_input.text())
+        bottom_width = self._parse_float(self.bottom_width_input.text()) or top_width
+
+        if not depth or not top_width or not bottom_width:
+            return None
+
+        web_thickness = max(8.0, depth * 0.02)
+        flange_thickness = max(10.0, depth * 0.03)
+
+        return {
+            "designation": "Custom Welded Girder",
+            "section_type": "welded",
+            "depth_mm": depth,
+            "top_flange_width_mm": top_width,
+            "bottom_flange_width_mm": bottom_width,
+            "web_thickness_mm": web_thickness,
+            "top_flange_thickness_mm": flange_thickness,
+            "bottom_flange_thickness_mm": flange_thickness,
+        }
+
+    @staticmethod
+    def _parse_float(text):
+        try:
+            return float(text)
+        except (TypeError, ValueError):
+            return None
 
 class StiffenerDetailsTab(QWidget):
     """Tab for Stiffener Details with compact layout"""
