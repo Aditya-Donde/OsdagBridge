@@ -275,20 +275,12 @@ class AdditionalInputs(QDialog):
         support_tab = self._build_support_conditions_tab()
         self.tabs.addTab(support_tab, "Support Conditions")
         
-        # Sub-Tab 5: Design Options
+        # Sub-Tab 5: Analysis/Design Options
         design_options_tab = self._build_design_options_tab()
-        self.tabs.addTab(design_options_tab, "Design Options")
+        self.tabs.addTab(design_options_tab, "Analysis/Design Options")
         
         # Sub-Tab 6: Design Options (Cont.)
-        analysis_design_tab = self.create_placeholder_tab(
-            "Design Options (Cont.)",
-            "This tab will contain:\n\n" +
-            "• Analysis Method\n" +
-            "• Design Code Options\n" +
-            "• Safety Factors\n" +
-            "• Other Design Parameters\n\n" +
-            "Implementation in progress..."
-        )
+        analysis_design_tab = self._build_design_options_cont_tab()
         self.tabs.addTab(analysis_design_tab, "Design Options (Cont.)")
         
         main_layout.addWidget(self.tabs)
@@ -393,28 +385,56 @@ class AdditionalInputs(QDialog):
         main_layout = QVBoxLayout(widget)
         main_layout.setContentsMargins(12, 12, 12, 12)
         main_layout.setSpacing(12)
-
-        # Main card
-        card = QFrame()
-        card.setStyleSheet("QFrame { border: 1px solid #b2b2b2; border-radius: 10px; background-color: #ffffff; }")
-        card_layout = QVBoxLayout(card)
-        card_layout.setContentsMargins(16, 16, 16, 16)
-        card_layout.setSpacing(12)
-
+        card_style = "QFrame { border: 1px solid #b2b2b2; border-radius: 8px; background-color: #ffffff; }"
         label_style = "font-size: 11px; color: #3a3a3a; background: transparent; border: none;"
         heading_style = "font-size: 12px; font-weight: 700; color: #2b2b2b; background: transparent; border: none;"
-        field_width = 120
+        field_width = 150
 
-        # Deck Design section
+        # Construction Stage card
+        construction_card = QFrame()
+        construction_card.setStyleSheet(card_style)
+        construction_layout = QVBoxLayout(construction_card)
+        construction_layout.setContentsMargins(16, 14, 16, 14)
+        construction_layout.setSpacing(10)
+
+        construction_title = QLabel("Construction Stage:")
+        construction_title.setStyleSheet(heading_style)
+        construction_layout.addWidget(construction_title)
+
+        construction_grid = QGridLayout()
+        construction_grid.setContentsMargins(0, 4, 0, 0)
+        construction_grid.setHorizontalSpacing(12)
+        construction_grid.setVerticalSpacing(8)
+        construction_grid.setColumnMinimumWidth(0, 130)
+
+        lbl = QLabel("Included:")
+        lbl.setStyleSheet(label_style)
+        self.construction_stage_combo = QComboBox()
+        self.construction_stage_combo.addItems(["Yes", "No"])
+        self.construction_stage_combo.setFixedWidth(field_width)
+        apply_field_style(self.construction_stage_combo)
+        construction_grid.addWidget(lbl, 0, 0, Qt.AlignLeft | Qt.AlignVCenter)
+        construction_grid.addWidget(self.construction_stage_combo, 0, 1, Qt.AlignLeft)
+
+        construction_layout.addLayout(construction_grid)
+        main_layout.addWidget(construction_card)
+
+        # Deck and Shear Studs card
+        design_card = QFrame()
+        design_card.setStyleSheet(card_style)
+        design_layout = QVBoxLayout(design_card)
+        design_layout.setContentsMargins(16, 16, 16, 16)
+        design_layout.setSpacing(14)
+
         deck_title = QLabel("Deck Design:")
         deck_title.setStyleSheet(heading_style)
-        card_layout.addWidget(deck_title)
+        design_layout.addWidget(deck_title)
 
         deck_grid = QGridLayout()
-        deck_grid.setContentsMargins(0, 4, 0, 0)
+        deck_grid.setContentsMargins(0, 2, 0, 0)
         deck_grid.setHorizontalSpacing(12)
         deck_grid.setVerticalSpacing(10)
-        deck_grid.setColumnMinimumWidth(0, 120)
+        deck_grid.setColumnMinimumWidth(0, 150)
 
         lbl = QLabel("Reinforcement Size:")
         lbl.setStyleSheet(label_style)
@@ -425,20 +445,27 @@ class AdditionalInputs(QDialog):
         deck_grid.addWidget(lbl, 0, 0, Qt.AlignLeft | Qt.AlignVCenter)
         deck_grid.addWidget(self.reinforcement_size_combo, 0, 1, Qt.AlignLeft)
 
-        card_layout.addLayout(deck_grid)
+        lbl = QLabel("Reinforcement Material:")
+        lbl.setStyleSheet(label_style)
+        self.reinforcement_material_combo = QComboBox()
+        self.reinforcement_material_combo.addItems(["Fe 415", "Fe 500", "Fe 550"])
+        self.reinforcement_material_combo.setFixedWidth(field_width)
+        apply_field_style(self.reinforcement_material_combo)
+        deck_grid.addWidget(lbl, 1, 0, Qt.AlignLeft | Qt.AlignVCenter)
+        deck_grid.addWidget(self.reinforcement_material_combo, 1, 1, Qt.AlignLeft)
 
-        # Shear Studs section
+        design_layout.addLayout(deck_grid)
+
         shear_title = QLabel("Shear Studs:")
         shear_title.setStyleSheet(heading_style)
-        card_layout.addWidget(shear_title)
+        design_layout.addWidget(shear_title)
 
         shear_grid = QGridLayout()
-        shear_grid.setContentsMargins(0, 4, 0, 0)
+        shear_grid.setContentsMargins(0, 2, 0, 0)
         shear_grid.setHorizontalSpacing(12)
         shear_grid.setVerticalSpacing(10)
-        shear_grid.setColumnMinimumWidth(0, 120)
+        shear_grid.setColumnMinimumWidth(0, 150)
 
-        # Material
         lbl = QLabel("Material:")
         lbl.setStyleSheet(label_style)
         self.shear_stud_material_input = QLineEdit()
@@ -447,7 +474,6 @@ class AdditionalInputs(QDialog):
         shear_grid.addWidget(lbl, 0, 0, Qt.AlignLeft | Qt.AlignVCenter)
         shear_grid.addWidget(self.shear_stud_material_input, 0, 1, Qt.AlignLeft)
 
-        # Diameter
         lbl = QLabel("Diameter (mm):")
         lbl.setStyleSheet(label_style)
         self.shear_stud_diameter_input = QLineEdit()
@@ -456,7 +482,6 @@ class AdditionalInputs(QDialog):
         shear_grid.addWidget(lbl, 1, 0, Qt.AlignLeft | Qt.AlignVCenter)
         shear_grid.addWidget(self.shear_stud_diameter_input, 1, 1, Qt.AlignLeft)
 
-        # Height
         lbl = QLabel("Height (mm):")
         lbl.setStyleSheet(label_style)
         self.shear_stud_height_input = QLineEdit()
@@ -465,8 +490,174 @@ class AdditionalInputs(QDialog):
         shear_grid.addWidget(lbl, 2, 0, Qt.AlignLeft | Qt.AlignVCenter)
         shear_grid.addWidget(self.shear_stud_height_input, 2, 1, Qt.AlignLeft)
 
-        card_layout.addLayout(shear_grid)
-        card_layout.addStretch()
+        design_layout.addLayout(shear_grid)
+        design_layout.addStretch()
+
+        main_layout.addWidget(design_card)
+        main_layout.addStretch()
+
+        return widget
+
+    def _build_design_options_cont_tab(self):
+        """Build the Design Options (Cont.) tab to match provided layout"""
+        widget = QWidget()
+        widget.setStyleSheet("background-color: #f5f5f5;")
+
+        main_layout = QVBoxLayout(widget)
+        main_layout.setContentsMargins(12, 12, 12, 12)
+        main_layout.setSpacing(12)
+
+        card_style = "QFrame { border: 1px solid #b2b2b2; border-radius: 8px; background-color: #ffffff; }"
+        label_style = "font-size: 11px; color: #3a3a3a; background: transparent; border: none;"
+        heading_style = "font-size: 12px; font-weight: 700; color: #2b2b2b; background: transparent; border: none;"
+
+        card = QFrame()
+        card.setStyleSheet(card_style)
+        card_layout = QVBoxLayout(card)
+        card_layout.setContentsMargins(16, 16, 16, 16)
+        card_layout.setSpacing(12)
+
+        # Safety factor inputs
+        grid = QGridLayout()
+        grid.setContentsMargins(0, 0, 0, 0)
+        grid.setHorizontalSpacing(12)
+        grid.setVerticalSpacing(10)
+        grid.setColumnMinimumWidth(0, 250)
+
+        def add_row(row, text, attr_name):
+            lbl = QLabel(text)
+            lbl.setStyleSheet(label_style)
+            line = QLineEdit()
+            line.setFixedWidth(180)
+            apply_field_style(line)
+            grid.addWidget(lbl, row, 0, Qt.AlignLeft | Qt.AlignVCenter)
+            grid.addWidget(line, row, 1, Qt.AlignLeft)
+            setattr(self, attr_name, line)
+
+        add_row(0, "Concrete basic & seismic(Gamma_C)", "gamma_c_basic_input")
+        add_row(1, "Concrete Accidental (Gamma_C)", "gamma_c_accidental_input")
+        add_row(2, "Structural steel for Yielding and Buckling(Gamma_M0)", "gamma_m0_input")
+        add_row(3, "Structural Steel For Ultimate Stress(Gamme_M1)", "gamma_m1_input")
+        add_row(4, "Reinforcing Steel (Gamma_s)", "gamma_s_input")
+        add_row(5, "Shear Connectors For Yield(Gamma_v)", "gamma_v_input")
+        add_row(6, "Fatigue Load(Gamma_flt)", "gamma_flt_input")
+        add_row(7, "Fatigue Strength(Gamma_Mf, t)", "gamma_mf_input")
+
+        card_layout.addLayout(grid)
+
+        # Number of load cycles
+        cycles_label = QLabel("Number of Load Cycles(Cl605.3,Cl605.4)")
+        cycles_label.setStyleSheet(label_style)
+        self.load_cycles_input = QLineEdit()
+        self.load_cycles_input.setMinimumWidth(420)
+        apply_field_style(self.load_cycles_input)
+
+        card_layout.addWidget(cycles_label)
+        card_layout.addWidget(self.load_cycles_input)
+
+        # K factors row 1
+        k_row1 = QHBoxLayout()
+        k_row1.setSpacing(8)
+        for label, attr in [("K1:", "k1_input"), ("K3:", "k3_input"), ("K4:", "k4_input"), ("K6:", "k6_input")]:
+            lbl = QLabel(label)
+            lbl.setStyleSheet(label_style)
+            line = QLineEdit()
+            line.setFixedWidth(110)
+            apply_field_style(line)
+            setattr(self, attr, line)
+            k_row1.addWidget(lbl)
+            k_row1.addWidget(line)
+        k_row1.addStretch()
+        card_layout.addLayout(k_row1)
+
+        # Limit row
+        limit_row = QHBoxLayout()
+        limit_row.setSpacing(8)
+        limit_lbl = QLabel("Limit : L")
+        limit_lbl.setStyleSheet(label_style)
+        self.limit_input = QLineEdit()
+        self.limit_input.setFixedWidth(140)
+        apply_field_style(self.limit_input)
+        unit_lbl = QLabel("m")
+        unit_lbl.setStyleSheet(label_style)
+        limit_row.addWidget(limit_lbl)
+        limit_row.addWidget(self.limit_input)
+        limit_row.addWidget(unit_lbl)
+        limit_row.addStretch()
+        card_layout.addLayout(limit_row)
+
+        # K factors row 2 with exposure
+        k_row2 = QHBoxLayout()
+        k_row2.setSpacing(8)
+        for label, attr in [("K3:", "k3_second_input"), ("K4:", "k4_second_input")]:
+            lbl = QLabel(label)
+            lbl.setStyleSheet(label_style)
+            line = QLineEdit()
+            line.setFixedWidth(110)
+            apply_field_style(line)
+            setattr(self, attr, line)
+            k_row2.addWidget(lbl)
+            k_row2.addWidget(line)
+        exposure_lbl = QLabel("Exposure:")
+        exposure_lbl.setStyleSheet(label_style)
+        self.exposure_input = QLineEdit()
+        self.exposure_input.setFixedWidth(110)
+        apply_field_style(self.exposure_input)
+        k_row2.addWidget(exposure_lbl)
+        k_row2.addWidget(self.exposure_input)
+        k_row2.addStretch()
+        card_layout.addLayout(k_row2)
+
+        # Post-buckling checkbox
+        self.post_buckling_checkbox = QCheckBox("Post-buckling Tension Field Action for Shear Resistance")
+        self.post_buckling_checkbox.setStyleSheet("font-size: 11px; color: #3a3a3a;")
+        card_layout.addWidget(self.post_buckling_checkbox)
+
+        # Limit state groups
+        groups_layout = QHBoxLayout()
+        groups_layout.setSpacing(16)
+
+        def build_group(title, items):
+            box = QGroupBox(title)
+            box.setStyleSheet(
+                "QGroupBox { border: 1px solid #b2b2b2; border-radius: 6px; margin-top: 12px; padding-top: 12px; padding-left: 10px; }"
+                "QGroupBox::title { subcontrol-origin: margin; left: 10px; padding: 0 4px; background: #ffffff; font-weight: 600; color: #2b2b2b; }"
+            )
+            vbox = QVBoxLayout(box)
+            vbox.setContentsMargins(10, 6, 10, 10)
+            vbox.setSpacing(6)
+            checkboxes = []
+            for text in items:
+                cb = QCheckBox(text)
+                cb.setStyleSheet("font-size: 11px; color: #3a3a3a;")
+                vbox.addWidget(cb)
+                checkboxes.append(cb)
+            vbox.addStretch()
+            return box, checkboxes
+
+        ultimate_items = [
+            "Bending Resistance",
+            "Resistance to Vertical Shear",
+            "Resistance to Lateral-torsional Buckling",
+            "Resistance to Transverse force",
+            "Resistance to Longitudinal Shear",
+            "Resistance to Fatigue",
+        ]
+        service_items = [
+            "Stress Limitation",
+            "Longitudinal Shear (SLS)",
+            "Deflection Control",
+            "Crack Width Check",
+        ]
+
+        ultimate_box, self.ultimate_checkboxes = build_group("Ultimate Limit States", ultimate_items)
+        service_box, self.service_checkboxes = build_group("Serviceability Limit States", service_items)
+
+        groups_layout.addWidget(ultimate_box)
+        groups_layout.addWidget(service_box)
+        groups_layout.addStretch()
+
+        card_layout.addLayout(groups_layout)
 
         main_layout.addWidget(card)
         main_layout.addStretch()
@@ -1293,15 +1484,16 @@ class SectionPropertiesTab(QWidget):
         """Initialize styled navigation and content panels."""
         self.setStyleSheet("background-color: #f0f0f0;")
         main_layout = QVBoxLayout(self)
-        main_layout.setContentsMargins(10, 10, 10, 10)
-        main_layout.setSpacing(10)
+        # Keep sides padded but remove top spacing so sub-tabs sit flush under main tabs
+        main_layout.setContentsMargins(10, 0, 10, 10)
+        main_layout.setSpacing(0)
 
         # Top navigation bar (horizontal)
         nav_bar = QWidget()
         nav_bar.setStyleSheet("background-color: white;")
         nav_bar_layout = QHBoxLayout(nav_bar)
-        nav_bar_layout.setContentsMargins(6, 0, 6, 0)
-        nav_bar_layout.setSpacing(5)
+        nav_bar_layout.setContentsMargins(0, 0, 0, 0)
+        nav_bar_layout.setSpacing(0)
         
         main_layout.addWidget(nav_bar)
 
@@ -1326,10 +1518,10 @@ class SectionPropertiesTab(QWidget):
         main_layout.addWidget(content_frame, 1)
 
         sections = [
-            ("Girder Details:", GirderDetailsTab),
-            ("Stiffener Details:", StiffenerDetailsTab),
-            ("Cross-Bracing Details:", CrossBracingDetailsTab),
-            ("End Diaphragm Details:", EndDiaphragmDetailsTab),
+            ("Girder Details", GirderDetailsTab),
+            ("Stiffener Details", StiffenerDetailsTab),
+            ("Cross-Bracing Details", CrossBracingDetailsTab),
+            ("End Diaphragm Details", EndDiaphragmDetailsTab),
         ]
 
         for i, (label, widget_class) in enumerate(sections):
@@ -1338,24 +1530,15 @@ class SectionPropertiesTab(QWidget):
             btn.setCheckable(True)
             btn.setStyleSheet("""
                 QPushButton#sectionNavBtn {
-                    background-color: white;
+                    background-color: #e8e8e8;
                     color: #333;
                     border: 1px solid #b0b0b0;
-                    border-right: none;
-                    padding: 3px 10px;
+                    padding: 10px 20px;
                     text-align: center;
                     font-size: 10px;
-                    font-weight: normal;
-                    min-height: 26px;
-                }
-                QPushButton#sectionNavBtn:first {
-                    border-top-left-radius: 5px;
-                    border-bottom-left-radius: 5px;
-                }
-                QPushButton#sectionNavBtn:last {
-                    border-right: 1px solid #b0b0b0;
-                    border-top-right-radius: 5px;
-                    border-bottom-right-radius: 5px;
+                    font-weight: bold;
+                    margin-top: 3px;
+                    margin-bottom: 10px;
                 }
                 QPushButton#sectionNavBtn:checked {
                     background-color: #90AF13;
@@ -2852,8 +3035,8 @@ class LoadingTab(QWidget):
             "QTabWidget::pane { border: none; background: #f5f5f5; }"
             "QTabBar::tab { background: #e8e8e8; color: #4b4b4b; border: 1px solid #cfcfcf;"
             " border-bottom: none; padding: 8px 20px; margin-right: 2px; min-width: 120px;"
-            " font-size: 11px; border-top-left-radius: 6px; border-top-right-radius: 6px; }"
-            "QTabBar::tab:selected { background: #9ecb3d; color: #ffffff; font-weight: bold; }"
+            " font-size: 11px; }"
+            "QTabBar::tab:selected { background: #90AF13; color: #ffffff; font-weight: bold; }"
             "QTabBar::tab:!selected { margin-top: 2px; }"
         )
 
@@ -3742,45 +3925,64 @@ class LoadingTab(QWidget):
         left_layout.setSpacing(12)
 
         label_style = "font-size: 11px; color: #3a3a3a; background: transparent; border: none;"
-        field_width = 120
+        heading_style = "font-size: 12px; font-weight: 700; color: #2b2b2b; background: transparent; border: none;"
+        field_width = 140
 
-        # ===== Inputs for evaluation per IRC6 Box =====
-        irc6_box = QFrame()
-        irc6_box.setStyleSheet("QFrame { border: 1px solid #b2b2b2; border-radius: 8px; background-color: #ffffff; }")
-        irc6_layout = QVBoxLayout(irc6_box)
-        irc6_layout.setContentsMargins(12, 12, 12, 12)
-        irc6_layout.setSpacing(10)
+        # ===== Temperature Load (TL) Inputs box =====
+        tl_box = QFrame()
+        tl_box.setStyleSheet("QFrame { border: 1px solid #b2b2b2; border-radius: 8px; background-color: #ffffff; }")
+        tl_layout = QVBoxLayout(tl_box)
+        tl_layout.setContentsMargins(12, 12, 12, 12)
+        tl_layout.setSpacing(10)
 
-        irc6_title = QLabel("Inputs for evaluation per IRC6")
-        irc6_title.setStyleSheet("font-size: 12px; font-weight: 700; color: #2b2b2b; background: transparent; border: none;")
-        irc6_layout.addWidget(irc6_title)
+        tl_title = QLabel("Temperature Load (TL) Inputs for evaluation per IRC6")
+        tl_title.setStyleSheet(heading_style)
+        tl_layout.addWidget(tl_title)
 
-        irc6_grid = QGridLayout()
-        irc6_grid.setContentsMargins(0, 4, 0, 0)
-        irc6_grid.setHorizontalSpacing(12)
-        irc6_grid.setVerticalSpacing(10)
-        irc6_grid.setColumnMinimumWidth(0, 200)
+        tl_grid = QGridLayout()
+        tl_grid.setContentsMargins(0, 4, 0, 0)
+        tl_grid.setHorizontalSpacing(12)
+        tl_grid.setVerticalSpacing(10)
+        tl_grid.setColumnMinimumWidth(0, 240)
 
         # Highest Maximum Air Temperature
-        lbl = QLabel("Highest Maximum Air Temperature:")
+        lbl = QLabel("Highest Maximum Air Temperature\n(°C):")
         lbl.setStyleSheet(label_style)
         self.highest_max_temp_input = QLineEdit()
         self.highest_max_temp_input.setFixedWidth(field_width)
         apply_field_style(self.highest_max_temp_input)
-        irc6_grid.addWidget(lbl, 0, 0, Qt.AlignLeft | Qt.AlignVCenter)
-        irc6_grid.addWidget(self.highest_max_temp_input, 0, 1, Qt.AlignLeft)
+        tl_grid.addWidget(lbl, 0, 0, Qt.AlignLeft | Qt.AlignVCenter)
+        tl_grid.addWidget(self.highest_max_temp_input, 0, 1, Qt.AlignLeft)
 
         # Lowest Minimum Air Temperature
-        lbl = QLabel("Lowest Minimum Air Temperature:")
+        lbl = QLabel("Lowest Minimum Air Temperature\n(°C):")
         lbl.setStyleSheet(label_style)
         self.lowest_min_temp_input = QLineEdit()
         self.lowest_min_temp_input.setFixedWidth(field_width)
         apply_field_style(self.lowest_min_temp_input)
-        irc6_grid.addWidget(lbl, 1, 0, Qt.AlignLeft | Qt.AlignVCenter)
-        irc6_grid.addWidget(self.lowest_min_temp_input, 1, 1, Qt.AlignLeft)
+        tl_grid.addWidget(lbl, 1, 0, Qt.AlignLeft | Qt.AlignVCenter)
+        tl_grid.addWidget(self.lowest_min_temp_input, 1, 1, Qt.AlignLeft)
 
-        irc6_layout.addLayout(irc6_grid)
-        left_layout.addWidget(irc6_box)
+        # Coefficient of Thermal Expansion for Steel
+        lbl = QLabel("Coefficient of Thermal Expansion for Steel\n(1/°C):")
+        lbl.setStyleSheet(label_style)
+        self.thermal_coeff_steel_input = QLineEdit()
+        self.thermal_coeff_steel_input.setFixedWidth(field_width)
+        apply_field_style(self.thermal_coeff_steel_input)
+        tl_grid.addWidget(lbl, 2, 0, Qt.AlignLeft | Qt.AlignVCenter)
+        tl_grid.addWidget(self.thermal_coeff_steel_input, 2, 1, Qt.AlignLeft)
+
+        # Coefficient of Thermal Expansion for RCC
+        lbl = QLabel("Coefficient of Thermal Expansion for RCC\n(1/°C):")
+        lbl.setStyleSheet(label_style)
+        self.thermal_coeff_rcc_input = QLineEdit()
+        self.thermal_coeff_rcc_input.setFixedWidth(field_width)
+        apply_field_style(self.thermal_coeff_rcc_input)
+        tl_grid.addWidget(lbl, 3, 0, Qt.AlignLeft | Qt.AlignVCenter)
+        tl_grid.addWidget(self.thermal_coeff_rcc_input, 3, 1, Qt.AlignLeft)
+
+        tl_layout.addLayout(tl_grid)
+        left_layout.addWidget(tl_box)
 
         # ===== Range of Effective Bridge Temperature Box =====
         range_box = QFrame()
@@ -3790,7 +3992,7 @@ class LoadingTab(QWidget):
         range_layout.setSpacing(10)
 
         range_title = QLabel("Range of Effective Bridge Temperature:")
-        range_title.setStyleSheet("font-size: 12px; font-weight: 700; color: #2b2b2b; background: transparent; border: none;")
+        range_title.setStyleSheet(heading_style)
         range_layout.addWidget(range_title)
 
         range_grid = QGridLayout()
@@ -3799,8 +4001,7 @@ class LoadingTab(QWidget):
         range_grid.setVerticalSpacing(10)
         range_grid.setColumnMinimumWidth(0, 200)
 
-        # Minimum
-        lbl = QLabel("Minimum:")
+        lbl = QLabel("Minimum (°C):")
         lbl.setStyleSheet(label_style)
         self.bridge_temp_min_input = QLineEdit()
         self.bridge_temp_min_input.setFixedWidth(field_width)
@@ -3808,8 +4009,7 @@ class LoadingTab(QWidget):
         range_grid.addWidget(lbl, 0, 0, Qt.AlignLeft | Qt.AlignVCenter)
         range_grid.addWidget(self.bridge_temp_min_input, 0, 1, Qt.AlignLeft)
 
-        # Maximum
-        lbl = QLabel("Maximum:")
+        lbl = QLabel("Maximum (°C):")
         lbl.setStyleSheet(label_style)
         self.bridge_temp_max_input = QLineEdit()
         self.bridge_temp_max_input.setFixedWidth(field_width)
@@ -3817,35 +4017,36 @@ class LoadingTab(QWidget):
         range_grid.addWidget(lbl, 1, 0, Qt.AlignLeft | Qt.AlignVCenter)
         range_grid.addWidget(self.bridge_temp_max_input, 1, 1, Qt.AlignLeft)
 
+        # Temperature for Design heading
+        temp_design_label = QLabel("Temperature for Design:")
+        temp_design_label.setStyleSheet(label_style + " font-weight: 600;")
+        range_grid.addWidget(temp_design_label, 2, 0, 1, 2, Qt.AlignLeft)
+
+        lbl = QLabel("Rise (°C):")
+        lbl.setStyleSheet(label_style)
+        self.temp_rise_input = QLineEdit()
+        self.temp_rise_input.setFixedWidth(field_width)
+        apply_field_style(self.temp_rise_input)
+        range_grid.addWidget(lbl, 3, 0, Qt.AlignLeft | Qt.AlignVCenter)
+        range_grid.addWidget(self.temp_rise_input, 3, 1, Qt.AlignLeft)
+
+        lbl = QLabel("Fall (°C):")
+        lbl.setStyleSheet(label_style)
+        self.temp_fall_input = QLineEdit()
+        self.temp_fall_input.setFixedWidth(field_width)
+        apply_field_style(self.temp_fall_input)
+        range_grid.addWidget(lbl, 4, 0, Qt.AlignLeft | Qt.AlignVCenter)
+        range_grid.addWidget(self.temp_fall_input, 4, 1, Qt.AlignLeft)
+
         range_layout.addLayout(range_grid)
         left_layout.addWidget(range_box)
-
-        # ===== Coefficient of Thermal Expansion Box =====
-        coeff_box = QFrame()
-        coeff_box.setStyleSheet("QFrame { border: 1px solid #b2b2b2; border-radius: 8px; background-color: #ffffff; }")
-        coeff_layout = QGridLayout(coeff_box)
-        coeff_layout.setContentsMargins(12, 12, 12, 12)
-        coeff_layout.setHorizontalSpacing(12)
-        coeff_layout.setVerticalSpacing(10)
-        coeff_layout.setColumnMinimumWidth(0, 200)
-
-        lbl = QLabel("Coefficient of Thermal Expansion for Steel:")
-        lbl.setStyleSheet(label_style)
-        self.thermal_coeff_combo = QComboBox()
-        self.thermal_coeff_combo.addItems(["12 × 10⁻⁶ /°C", "11.7 × 10⁻⁶ /°C", "Custom"])
-        self.thermal_coeff_combo.setFixedWidth(field_width)
-        apply_field_style(self.thermal_coeff_combo)
-        coeff_layout.addWidget(lbl, 0, 0, Qt.AlignLeft | Qt.AlignVCenter)
-        coeff_layout.addWidget(self.thermal_coeff_combo, 0, 1, Qt.AlignLeft)
-
-        left_layout.addWidget(coeff_box)
         left_layout.addStretch()
 
         # Right description card
         right_card = self._create_card()
         right_card.setStyleSheet("QFrame { border: 1px solid #9c9c9c; border-radius: 10px; background-color: #d4d4d4; }")
-        right_card.setMinimumWidth(200)
-        right_card.setMinimumHeight(400)
+        right_card.setMinimumWidth(230)
+        right_card.setMinimumHeight(520)
         right_layout = QVBoxLayout(right_card)
         right_layout.setContentsMargins(16, 16, 16, 16)
         right_layout.setSpacing(10)
