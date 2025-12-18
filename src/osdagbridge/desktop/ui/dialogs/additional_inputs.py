@@ -11,12 +11,13 @@ from PySide6.QtWidgets import (
     QFrame, QGridLayout, QTableWidget, QTableWidgetItem, QHeaderView,
     QTextEdit, QDialog, QSizePolicy, QSizeGrip
 )
-from PySide6.QtCore import Qt, Signal, QSize, QRectF
-from PySide6.QtGui import QDoubleValidator, QIntValidator, QPainter, QColor, QPen, QFont
+from PySide6.QtCore import Qt, Signal, QSize
+from PySide6.QtGui import QDoubleValidator, QIntValidator
 
 from osdagbridge.core.bridge_components.super_structure.girder import properties as girder_properties
 from osdagbridge.core.utils.common import *
 from osdagbridge.desktop.ui.utils.custom_titlebar import CustomTitleBar
+from osdagbridge.desktop.ui.utils.rolled_section_preview import RolledSectionPreview
 
 # =================================================================================
 #   CENTRALIZED STYLING
@@ -1386,111 +1387,6 @@ class SectionPropertiesTab(QWidget):
             button.setChecked(btn_index == index)
 
 
-class GirderSectionPreview(QWidget):
-    """Canvas that sketches an I-girder using the supplied dimensions."""
-
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self._section_data = None
-        self.setMinimumSize(240, 160)
-        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-
-    def update_section(self, section_data):
-        """Store the latest section data and trigger a repaint."""
-
-        self._section_data = section_data
-        self.update()
-
-    def paintEvent(self, event):  # noqa: N802 - Qt override
-        painter = QPainter(self)
-        painter.setRenderHint(QPainter.Antialiasing, True)
-
-        canvas_rect = self.rect()
-        painter.fillRect(canvas_rect, QColor("#fafafa"))
-        painter.setPen(QPen(QColor("#d0d0d0"), 1))
-        painter.drawRoundedRect(canvas_rect.adjusted(0, 0, -1, -1), 6, 6)
-
-        if not self._section_data:
-            painter.setPen(QColor("#5a5a5a"))
-            font = painter.font()
-            font.setPointSizeF(max(9.0, font.pointSizeF()))
-            painter.setFont(font)
-            painter.drawText(canvas_rect.adjusted(12, 12, -12, -12), Qt.AlignCenter,
-                             "Enter girder dimensions\nto preview the section")
-            return
-
-        self._draw_section(painter, canvas_rect.adjusted(16, 16, -16, -16))
-
-    def _draw_section(self, painter, rect):
-        section = self._section_data or {}
-        depth = float(section.get("depth_mm") or 0)
-        top_width = float(section.get("top_flange_width_mm") or 0)
-        bottom_width = float(section.get("bottom_flange_width_mm") or top_width)
-        if not depth or not (top_width or bottom_width):
-            painter.setPen(QColor("#5a5a5a"))
-            painter.drawText(rect, Qt.AlignCenter, "Insufficient data")
-            return
-
-        bottom_width = bottom_width or top_width
-        web_thickness = float(section.get("web_thickness_mm") or max(depth * 0.02, 10.0))
-        top_thickness = float(section.get("top_flange_thickness_mm") or max(depth * 0.03, 12.0))
-        bottom_thickness = float(section.get("bottom_flange_thickness_mm") or top_thickness)
-
-        max_width = max(top_width, bottom_width, 1)
-        scale = min(rect.height() / depth, rect.width() / max_width) * 0.85
-        center_x = rect.center().x()
-        top_y = rect.center().y() - (depth * scale) / 2.0
-
-        flange_color = QColor("#9cc35b")
-        web_color = QColor("#6e8f3d")
-        outline_pen = QPen(QColor("#4b5c2b"), 1)
-
-        def _scaled_width(value):
-            return max(2.0, value * scale)
-
-        top_flange_rect = QRectF(
-            center_x - _scaled_width(top_width) / 2.0,
-            top_y,
-            _scaled_width(top_width),
-            max(6.0, top_thickness * scale),
-        )
-
-        bottom_flange_rect = QRectF(
-            center_x - _scaled_width(bottom_width) / 2.0,
-            top_y + (depth - bottom_thickness) * scale,
-            _scaled_width(bottom_width),
-            max(6.0, bottom_thickness * scale),
-        )
-
-        web_rect = QRectF(
-            center_x - _scaled_width(web_thickness) / 2.0,
-            top_flange_rect.bottom(),
-            _scaled_width(web_thickness),
-            max(12.0, (depth - top_thickness - bottom_thickness) * scale),
-        )
-
-        painter.setPen(Qt.NoPen)
-        painter.setBrush(flange_color)
-        painter.drawRoundedRect(top_flange_rect, 2, 2)
-        painter.drawRoundedRect(bottom_flange_rect, 2, 2)
-
-        painter.setBrush(web_color)
-        painter.drawRect(web_rect)
-
-        painter.setPen(outline_pen)
-        painter.setBrush(Qt.NoBrush)
-        painter.drawRoundedRect(top_flange_rect, 2, 2)
-        painter.drawRoundedRect(bottom_flange_rect, 2, 2)
-        painter.drawRect(web_rect)
-
-        # Annotate key dimensions
-        font = painter.font()
-        font.setPointSizeF(9)
-        painter.setFont(font)
-        painter.drawText(rect.left(), rect.bottom() - 4, f"Depth: {depth:.0f} mm")
-        painter.drawText(rect.left(), rect.bottom() - 20, f"Top flange: {top_width:.0f} mm")
-        painter.drawText(rect.left(), rect.bottom() - 36, f"Bottom flange: {bottom_width:.0f} mm")
-
 class GirderDetailsTab(QWidget):
     """Tab for Girder Details styled to match the provided reference."""
 
@@ -1661,10 +1557,7 @@ class GirderDetailsTab(QWidget):
         row = self._add_box_row(inputs_grid, row, "Bottom Flange Thickness (mm):", self.bottom_thickness_combo, self.welded_rows)
 
         self.is_section_combo = QComboBox()
-        self.is_section_combo.addItems([
-            "ISMB 500", "ISMB 550", "ISMB 600",
-            "ISWB 500", "ISWB 550", "ISWB 600"
-        ])
+        self._populate_rolled_section_combo()
         apply_field_style(self.is_section_combo)
         self._add_box_row(inputs_grid, row, "IS Section:", self.is_section_combo, self.rolled_rows)
 
@@ -1721,7 +1614,7 @@ class GirderDetailsTab(QWidget):
         image_layout.setContentsMargins(10, 10, 10, 10)
         image_layout.setSpacing(5)
 
-        self.section_preview = GirderSectionPreview()
+        self.section_preview = RolledSectionPreview()
         image_layout.addWidget(self.section_preview, 1)
 
         self.preview_caption = QLabel("Provide girder inputs to preview")
@@ -1891,20 +1784,55 @@ class GirderDetailsTab(QWidget):
             label.setVisible(visible)
             widget.setVisible(visible)
 
+    def _populate_rolled_section_combo(self):
+        designations = sorted(girder_properties.list_available_sections().keys())
+        if not designations:
+            designations = [
+                "ISMB 500", "ISMB 550", "ISMB 600",
+                "ISWB 500", "ISWB 550", "ISWB 600",
+            ]
+        self.is_section_combo.clear()
+        self.is_section_combo.addItems(designations)
+
     def _update_preview(self):
         if not hasattr(self, "section_preview"):
             return
 
         is_welded = self.type_combo.currentText().lower() == "welded"
         if is_welded:
-            section = self._gather_welded_dimensions()
-            caption = "Welded girder preview" if section else "Enter depth and flange widths"
+            dims = self._gather_welded_dimensions()
+            caption = "Welded girder preview" if dims else "Enter depth and flange widths"
+            if dims:
+                self.section_preview.set_dimensions(
+                    depth_mm=dims["depth_mm"],
+                    flange_width_mm=dims["top_flange_width_mm"],
+                    bottom_flange_width_mm=dims["bottom_flange_width_mm"],
+                    web_thickness_mm=dims["web_thickness_mm"],
+                    flange_thickness_mm=dims["top_flange_thickness_mm"],
+                    bottom_flange_thickness_mm=dims["bottom_flange_thickness_mm"],
+                )
+            else:
+                self.section_preview.clear()
         else:
             designation = self.is_section_combo.currentText()
-            section = girder_properties.get_rolled_section(designation)
-            caption = f"Rolled section • {designation}" if section else "Rolled section unavailable"
+            beam = girder_properties.get_beam_profile(designation)
+            outline = girder_properties.get_rolled_section(designation) if beam is None else None
+            has_data = bool(beam or outline)
+            caption = f"Rolled section • {designation}" if has_data else "Rolled section unavailable"
+            if beam:
+                self.section_preview.set_section(beam)
+            elif outline:
+                self.section_preview.set_dimensions(
+                    depth_mm=outline["depth_mm"],
+                    flange_width_mm=outline["top_flange_width_mm"],
+                    bottom_flange_width_mm=outline["bottom_flange_width_mm"],
+                    web_thickness_mm=outline["web_thickness_mm"],
+                    flange_thickness_mm=outline["top_flange_thickness_mm"],
+                    bottom_flange_thickness_mm=outline["bottom_flange_thickness_mm"],
+                )
+            else:
+                self.section_preview.clear()
 
-        self.section_preview.update_section(section)
         if hasattr(self, "preview_caption"):
             self.preview_caption.setText(caption)
 
