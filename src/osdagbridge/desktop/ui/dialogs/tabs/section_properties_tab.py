@@ -14,10 +14,10 @@ from PySide6.QtGui import QDoubleValidator, QIntValidator
 from osdagbridge.core.utils.common import *
 from osdagbridge.desktop.ui.utils.custom_titlebar import CustomTitleBar
 from osdagbridge.desktop.ui.dialogs.tabs.common import apply_field_style
-from osdagbridge.desktop.ui.dialogs.tabs.girder_details_tab import GirderDetailsTab
-from osdagbridge.desktop.ui.dialogs.tabs.stiffener_details_tab import StiffenerDetailsTab
-from osdagbridge.desktop.ui.dialogs.tabs.cross_bracing_details_tab import CrossBracingDetailsTab
-from osdagbridge.desktop.ui.dialogs.tabs.end_diaphragm_details_tab import EndDiaphragmDetailsTab
+from osdagbridge.desktop.ui.dialogs.tabs.sub_tabs.section_properties.girder_details_tab import GirderDetailsTab
+from osdagbridge.desktop.ui.dialogs.tabs.sub_tabs.section_properties.stiffener_details_tab import StiffenerDetailsTab
+from osdagbridge.desktop.ui.dialogs.tabs.sub_tabs.section_properties.cross_bracing_details_tab import CrossBracingDetailsTab
+from osdagbridge.desktop.ui.dialogs.tabs.sub_tabs.section_properties.end_diaphragm_details_tab import EndDiaphragmDetailsTab
 
 class SectionPropertiesTab(QWidget):
     """Sub-tab for Section Properties with QTabWidget navigation like Loading tab."""

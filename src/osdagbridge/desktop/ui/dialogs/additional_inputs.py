@@ -20,10 +20,10 @@ from osdagbridge.desktop.ui.dialogs.tabs.common import apply_field_style, create
 from osdagbridge.desktop.ui.dialogs.tabs.typical_section_details import TypicalSectionDetailsTab
 from osdagbridge.desktop.ui.dialogs.tabs.optimizable_field import OptimizableField
 from osdagbridge.desktop.ui.dialogs.tabs.section_properties_tab import SectionPropertiesTab
-from osdagbridge.desktop.ui.dialogs.tabs.girder_details_tab import GirderDetailsTab
-from osdagbridge.desktop.ui.dialogs.tabs.stiffener_details_tab import StiffenerDetailsTab
-from osdagbridge.desktop.ui.dialogs.tabs.cross_bracing_details_tab import CrossBracingDetailsTab
-from osdagbridge.desktop.ui.dialogs.tabs.end_diaphragm_details_tab import EndDiaphragmDetailsTab
+from osdagbridge.desktop.ui.dialogs.tabs.sub_tabs.section_properties.girder_details_tab import GirderDetailsTab
+from osdagbridge.desktop.ui.dialogs.tabs.sub_tabs.section_properties.stiffener_details_tab import StiffenerDetailsTab
+from osdagbridge.desktop.ui.dialogs.tabs.sub_tabs.section_properties.cross_bracing_details_tab import CrossBracingDetailsTab
+from osdagbridge.desktop.ui.dialogs.tabs.sub_tabs.section_properties.end_diaphragm_details_tab import EndDiaphragmDetailsTab
 from osdagbridge.desktop.ui.dialogs.tabs.custom_vehicle_dialog import CustomVehicleDialog
 from osdagbridge.desktop.ui.dialogs.tabs.loading_tab import LoadingTab
 
