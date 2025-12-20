@@ -16,15 +16,15 @@ if not import_block_match:
 imports = import_block_match.group(0)
 
 classes = [
-    ("TypicalSectionDetailsTab", "typical_section_details.py"),
-    ("OptimizableField", "optimizable_field.py"),
-    ("SectionPropertiesTab", "section_properties_tab.py"),
-    ("GirderDetailsTab", "girder_details_tab.py"),
-    ("StiffenerDetailsTab", "stiffener_details_tab.py"),
-    ("CrossBracingDetailsTab", "cross_bracing_details_tab.py"),
-    ("EndDiaphragmDetailsTab", "end_diaphragm_details_tab.py"),
-    ("CustomVehicleDialog", "custom_vehicle_dialog.py"),
-    ("LoadingTab", "loading_tab.py"),
+    ("TypicalSectionDetailsTab", Path("tabs/typical_section_details.py")),
+    ("OptimizableField", Path("tabs/optimizable_field.py")),
+    ("SectionPropertiesTab", Path("tabs/section_properties_tab.py")),
+    ("GirderDetailsTab", Path("tabs/sub_tabs/section_properties/girder_details_tab.py")),
+    ("StiffenerDetailsTab", Path("tabs/sub_tabs/section_properties/stiffener_details_tab.py")),
+    ("CrossBracingDetailsTab", Path("tabs/sub_tabs/section_properties/cross_bracing_details_tab.py")),
+    ("EndDiaphragmDetailsTab", Path("tabs/sub_tabs/section_properties/end_diaphragm_details_tab.py")),
+    ("CustomVehicleDialog", Path("tabs/custom_vehicle_dialog.py")),
+    ("LoadingTab", Path("tabs/loading_tab.py")),
 ]
 
 def extract_class(name: str) -> str:
@@ -34,9 +34,10 @@ def extract_class(name: str) -> str:
         raise SystemExit(f"class {name} not found")
     return m.group(0).rstrip() + "\n"
 
-for class_name, filename in classes:
+for class_name, relative_path in classes:
     class_body = extract_class(class_name)
-    file_path = root / "tabs" / filename
+    file_path = root / relative_path
+    file_path.parent.mkdir(parents=True, exist_ok=True)
     header = '"""Auto-generated tab module extracted from additional_inputs."""\n' + imports + "\n" + helper_text + "\n\n"
     file_path.write_text(header + class_body + "\n", encoding="utf-8")
     print("wrote", file_path)

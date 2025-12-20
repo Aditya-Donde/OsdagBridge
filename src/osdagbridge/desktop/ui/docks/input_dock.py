@@ -1605,6 +1605,14 @@ class InputDock(QWidget):
         carriageway_width = self._get_effective_carriageway_width()
         
         self.additional_inputs = AdditionalInputs(footpath_value, carriageway_width)
+        # Track the inner widget we need to update when footpath changes
+        self.additional_inputs_widget = getattr(self.additional_inputs, "typical_section_tab", None)
+
+        # Reset references when dialog closes
+        if hasattr(self.additional_inputs, "finished"):
+            self.additional_inputs.finished.connect(self._handle_additional_inputs_closed)
+        self.additional_inputs.destroyed.connect(lambda _=None: self._handle_additional_inputs_closed())
+
         self.additional_inputs.show()
     
     def _apply_lock_state(self):
@@ -1631,13 +1639,18 @@ class InputDock(QWidget):
     def on_footpath_changed(self, footpath_value):
         """Update additional inputs when footpath changes"""
         if self.additional_inputs and self.additional_inputs.isVisible():
-            if hasattr(self, 'additional_inputs_widget'):
+            if self.additional_inputs_widget:
                 self.additional_inputs_widget.update_footpath_value(footpath_value)
 
     def on_include_median_changed(self, _value):
         self._update_carriageway_placeholder()
         # Re-validate silently so previously entered values honor the new limits
         self.validate_carriageway_width(show_message=False)
+        include = (_value == "Yes") if isinstance(_value, str) else bool(_value)
+        if self.additional_inputs and self.additional_inputs.isVisible():
+            median_tab = getattr(self.additional_inputs, "typical_section_tab", None)
+            if median_tab:
+                median_tab._update_median_visibility(median_tab.median_type.currentText(), include_median=include)
 
     def _carriageway_limits(self):
         include_median = self._is_median_included()
