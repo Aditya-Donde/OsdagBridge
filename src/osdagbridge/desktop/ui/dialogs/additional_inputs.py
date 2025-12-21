@@ -26,6 +26,11 @@ from osdagbridge.desktop.ui.dialogs.tabs.sub_tabs.section_properties.cross_braci
 from osdagbridge.desktop.ui.dialogs.tabs.sub_tabs.section_properties.end_diaphragm_details_tab import EndDiaphragmDetailsTab
 from osdagbridge.desktop.ui.dialogs.tabs.custom_vehicle_dialog import CustomVehicleDialog
 from osdagbridge.desktop.ui.dialogs.tabs.loading_tab import LoadingTab
+from osdagbridge.core.bridge_types.plate_girder.additional_inputs_schema import (
+    SUPPORT_CONDITIONS_SCHEMA,
+    DESIGN_OPTIONS_SCHEMA,
+    DESIGN_OPTIONS_CONT_SCHEMA,
+)
 
 # =================================================================================
 #   MAIN IMPLEMENTATION
@@ -136,93 +141,166 @@ class AdditionalInputs(QDialog):
         
         main_layout.addWidget(self.tabs)
         
-
         action_bar, self.defaults_button, self.save_button = create_action_button_bar()
         self.defaults_button.clicked.connect(lambda: self._show_placeholder_message("Defaults"))
         self.save_button.clicked.connect(lambda: self._show_placeholder_message("Save"))
         main_layout.addSpacing(6)
         main_layout.addWidget(action_bar)
 
-    def _show_placeholder_message(self, action_name):
-        """Show placeholder message for action buttons"""
-        QMessageBox.information(self, action_name, "This action will be available in an upcoming update.")
+    def _create_schema_widget(self, field_def, field_width):
+        field_type = field_def.get("type")
+        widget = None
+
+        if field_type == "combo":
+            widget = QComboBox()
+            widget.addItems(field_def.get("choices") or [])
+            default = field_def.get("default")
+            if default:
+                widget.setCurrentText(str(default))
+            widget.setFixedWidth(field_width)
+        elif field_type == "checkbox":
+            widget = QCheckBox(field_def.get("label", ""))
+            widget.setChecked(bool(field_def.get("default", False)))
+        else:
+            widget = QLineEdit()
+            default = field_def.get("default")
+            if default is not None:
+                widget.setText(str(default))
+            validator_def = field_def.get("validator")
+            if validator_def and validator_def.get("type") == "double_range":
+                bottom = validator_def.get("bottom", 0.0)
+                top = validator_def.get("top", 1e9)
+                decimals = validator_def.get("decimals", 2)
+                widget.setValidator(QDoubleValidator(bottom, top, decimals))
+            placeholder = field_def.get("placeholder")
+            if placeholder:
+                widget.setPlaceholderText(placeholder)
+            widget.setFixedWidth(field_width)
+
+        if field_type != "checkbox":
+            apply_field_style(widget)
+
+        bind_name = field_def.get("bind")
+        if bind_name:
+            setattr(self, bind_name, widget)
+
+        if field_def.get("id"):
+            widget.setObjectName(field_def["id"])
+
+        return widget
+
+    def _build_sections_from_schema(self, parent_layout, sections, heading_style, label_style, field_width):
+        for section in sections:
+            title = section.get("title")
+            section_field_width = section.get("field_width", field_width)
+
+            checkbox_groups = section.get("checkbox_groups")
+            if checkbox_groups:
+                groups_layout = QHBoxLayout()
+                groups_layout.setSpacing(20)
+
+                for group in checkbox_groups:
+                    box = QGroupBox(group.get("title", ""))
+                    box.setStyleSheet(
+                        "QGroupBox { border: 1px solid #b0b0b0; border-radius: 6px; margin-top: 12px; padding: 8px; background: #ffffff; }"
+                        "QGroupBox::title { subcontrol-origin: margin; subcontrol-position: top left; left: 12px; padding: 0 6px; background: #f5f5f5; font-weight: 600; font-size: 11px; color: #333333; }"
+                    )
+                    vbox = QVBoxLayout(box)
+                    vbox.setContentsMargins(16, 24, 16, 16)
+                    vbox.setSpacing(12)
+                    checkboxes = []
+                    for text in group.get("items", []):
+                        cb = QCheckBox(text)
+                        cb.setStyleSheet("QCheckBox { font-size: 11px; color: #333333; background: transparent; spacing: 8px; }")
+                        vbox.addWidget(cb)
+                        checkboxes.append(cb)
+
+                    bind_name = group.get("bind")
+                    if bind_name:
+                        setattr(self, bind_name, checkboxes)
+
+                    groups_layout.addWidget(box)
+
+                if title:
+                    title_lbl = QLabel(title)
+                    title_lbl.setStyleSheet(heading_style)
+                    parent_layout.addWidget(title_lbl)
+
+                parent_layout.addLayout(groups_layout)
+                continue
+
+            if title:
+                title_lbl = QLabel(title)
+                title_lbl.setStyleSheet(heading_style)
+                parent_layout.addWidget(title_lbl)
+
+            grid = QGridLayout()
+            grid.setContentsMargins(0, 8, 0, 0)
+            grid.setHorizontalSpacing(12)
+            grid.setVerticalSpacing(12)
+            grid.setColumnMinimumWidth(0, 120)
+
+            row_index = 0
+            for field_def in section.get("fields", []):
+                row_fields = field_def.get("row_fields")
+                if row_fields:
+                    col = 0
+                    for inline_def in row_fields:
+                        lbl = QLabel(inline_def.get("label", ""))
+                        lbl.setStyleSheet(label_style)
+                        grid.addWidget(lbl, row_index, col, Qt.AlignLeft | Qt.AlignVCenter)
+                        widget = self._create_schema_widget(inline_def, inline_def.get("width", section_field_width))
+                        grid.addWidget(widget, row_index, col + 1, Qt.AlignLeft)
+                        col += 2
+                    row_index += 1
+                    continue
+
+                field_type = field_def.get("type")
+                if field_type == "checkbox":
+                    widget = self._create_schema_widget(field_def, section_field_width)
+                    grid.addWidget(widget, row_index, 0, 1, 2, Qt.AlignLeft)
+                    row_index += 1
+                    continue
+
+                lbl = QLabel(field_def.get("label", ""))
+                lbl.setStyleSheet(label_style)
+                grid.addWidget(lbl, row_index, 0, Qt.AlignLeft | Qt.AlignVCenter)
+
+                widget = self._create_schema_widget(field_def, section_field_width)
+                grid.addWidget(widget, row_index, 1, Qt.AlignLeft)
+                row_index += 1
+
+            parent_layout.addLayout(grid)
 
     def _build_support_conditions_tab(self):
-        """Build the Support Conditions tab matching reference design"""
+        """Build the Support Conditions tab using schema-driven sections."""
         widget = QWidget()
         widget.setStyleSheet("background-color: #f5f5f5;")
-        
+
         main_layout = QVBoxLayout(widget)
         main_layout.setContentsMargins(12, 12, 12, 12)
         main_layout.setSpacing(12)
 
-        # Main card
+        card_style = "QFrame { border: 1px solid #b2b2b2; border-radius: 8px; background-color: #ffffff; }"
+        heading_style = "font-size: 12px; font-weight: 700; color: #2b2b2b; background: transparent; border: none;"
+        label_style = "font-size: 11px; color: #3a3a3a; background: transparent; border: none;"
+        field_width = 160
+
         card = QFrame()
-        card.setStyleSheet("QFrame { border: 1px solid #b2b2b2; border-radius: 10px; background-color: #ffffff; }")
+        card.setStyleSheet(card_style)
         card_layout = QVBoxLayout(card)
         card_layout.setContentsMargins(16, 16, 16, 16)
-        card_layout.setSpacing(16)
+        card_layout.setSpacing(12)
 
-        label_style = "font-size: 11px; color: #3a3a3a; background: transparent; border: none;"
-        heading_style = "font-size: 12px; font-weight: 700; color: #2b2b2b; background: transparent; border: none;"
-        field_width = 120
+        self._build_sections_from_schema(
+            card_layout,
+            SUPPORT_CONDITIONS_SCHEMA.get("sections", []),
+            heading_style,
+            label_style,
+            field_width,
+        )
 
-        # Support Condition section
-        support_title = QLabel("Support Condition*")
-        support_title.setStyleSheet(heading_style)
-        card_layout.addWidget(support_title)
-
-        support_grid = QGridLayout()
-        support_grid.setContentsMargins(0, 8, 0, 0)
-        support_grid.setHorizontalSpacing(12)
-        support_grid.setVerticalSpacing(12)
-        support_grid.setColumnMinimumWidth(0, 120)
-
-        # Left Support
-        lbl = QLabel("Left Support:")
-        lbl.setStyleSheet(label_style)
-        self.left_support_combo = QComboBox()
-        self.left_support_combo.addItems(["Fixed", "Pinned", "Roller"])
-        self.left_support_combo.setFixedWidth(field_width)
-        apply_field_style(self.left_support_combo)
-        support_grid.addWidget(lbl, 0, 0, Qt.AlignLeft | Qt.AlignVCenter)
-        support_grid.addWidget(self.left_support_combo, 0, 1, Qt.AlignLeft)
-
-        # Right Support
-        lbl = QLabel("Right Support:")
-        lbl.setStyleSheet(label_style)
-        self.right_support_combo = QComboBox()
-        self.right_support_combo.addItems(["Fixed", "Pinned", "Roller"])
-        self.right_support_combo.setFixedWidth(field_width)
-        apply_field_style(self.right_support_combo)
-        support_grid.addWidget(lbl, 1, 0, Qt.AlignLeft | Qt.AlignVCenter)
-        support_grid.addWidget(self.right_support_combo, 1, 1, Qt.AlignLeft)
-
-        card_layout.addLayout(support_grid)
-
-        # Bearing Length section
-        bearing_title = QLabel("Bearing length*")
-        bearing_title.setStyleSheet(heading_style)
-        card_layout.addWidget(bearing_title)
-
-        bearing_grid = QGridLayout()
-        bearing_grid.setContentsMargins(0, 8, 0, 0)
-        bearing_grid.setHorizontalSpacing(12)
-        bearing_grid.setVerticalSpacing(12)
-        bearing_grid.setColumnMinimumWidth(0, 120)
-
-        lbl = QLabel("Bearing Length Value")
-        lbl.setStyleSheet(label_style)
-        self.bearing_length_input = QLineEdit()
-        self.bearing_length_input.setText("0")
-        self.bearing_length_input.setFixedWidth(field_width)
-        apply_field_style(self.bearing_length_input)
-        bearing_grid.addWidget(lbl, 0, 0, Qt.AlignLeft | Qt.AlignVCenter)
-        bearing_grid.addWidget(self.bearing_length_input, 0, 1, Qt.AlignLeft)
-
-        card_layout.addLayout(bearing_grid)
         card_layout.addStretch()
-
         main_layout.addWidget(card)
         main_layout.addStretch()
 
@@ -239,112 +317,31 @@ class AdditionalInputs(QDialog):
         card_style = "QFrame { border: 1px solid #b2b2b2; border-radius: 8px; background-color: #ffffff; }"
         label_style = "font-size: 11px; color: #3a3a3a; background: transparent; border: none;"
         heading_style = "font-size: 12px; font-weight: 700; color: #2b2b2b; background: transparent; border: none;"
-        field_width = 150
+        default_field_width = 150
 
-        # Construction Stage card
-        construction_card = QFrame()
-        construction_card.setStyleSheet(card_style)
-        construction_layout = QVBoxLayout(construction_card)
-        construction_layout.setContentsMargins(16, 14, 16, 14)
-        construction_layout.setSpacing(10)
+        for card_schema in DESIGN_OPTIONS_SCHEMA.get("cards", []):
+            card = QFrame()
+            card.setStyleSheet(card_style)
+            card_layout = QVBoxLayout(card)
+            card_layout.setContentsMargins(16, 14, 16, 14)
+            card_layout.setSpacing(10)
 
-        construction_title = QLabel("Construction Stage:")
-        construction_title.setStyleSheet(heading_style)
-        construction_layout.addWidget(construction_title)
+            card_title = card_schema.get("title")
+            if card_title:
+                title_lbl = QLabel(f"{card_title}:")
+                title_lbl.setStyleSheet(heading_style)
+                card_layout.addWidget(title_lbl)
 
-        construction_grid = QGridLayout()
-        construction_grid.setContentsMargins(0, 4, 0, 0)
-        construction_grid.setHorizontalSpacing(12)
-        construction_grid.setVerticalSpacing(8)
-        construction_grid.setColumnMinimumWidth(0, 130)
+            self._build_sections_from_schema(
+                card_layout,
+                card_schema.get("sections", []),
+                heading_style,
+                label_style,
+                card_schema.get("field_width", default_field_width),
+            )
 
-        lbl = QLabel("Included:")
-        lbl.setStyleSheet(label_style)
-        self.construction_stage_combo = QComboBox()
-        self.construction_stage_combo.addItems(["Yes", "No"])
-        self.construction_stage_combo.setFixedWidth(field_width)
-        apply_field_style(self.construction_stage_combo)
-        construction_grid.addWidget(lbl, 0, 0, Qt.AlignLeft | Qt.AlignVCenter)
-        construction_grid.addWidget(self.construction_stage_combo, 0, 1, Qt.AlignLeft)
+            main_layout.addWidget(card)
 
-        construction_layout.addLayout(construction_grid)
-        main_layout.addWidget(construction_card)
-
-        # Deck and Shear Studs card
-        design_card = QFrame()
-        design_card.setStyleSheet(card_style)
-        design_layout = QVBoxLayout(design_card)
-        design_layout.setContentsMargins(16, 16, 16, 16)
-        design_layout.setSpacing(14)
-
-        deck_title = QLabel("Deck Design:")
-        deck_title.setStyleSheet(heading_style)
-        design_layout.addWidget(deck_title)
-
-        deck_grid = QGridLayout()
-        deck_grid.setContentsMargins(0, 2, 0, 0)
-        deck_grid.setHorizontalSpacing(12)
-        deck_grid.setVerticalSpacing(10)
-        deck_grid.setColumnMinimumWidth(0, 150)
-
-        lbl = QLabel("Reinforcement Size:")
-        lbl.setStyleSheet(label_style)
-        self.reinforcement_size_combo = QComboBox()
-        self.reinforcement_size_combo.addItems(["8 mm", "10 mm", "12 mm", "16 mm", "20 mm"])
-        self.reinforcement_size_combo.setFixedWidth(field_width)
-        apply_field_style(self.reinforcement_size_combo)
-        deck_grid.addWidget(lbl, 0, 0, Qt.AlignLeft | Qt.AlignVCenter)
-        deck_grid.addWidget(self.reinforcement_size_combo, 0, 1, Qt.AlignLeft)
-
-        lbl = QLabel("Reinforcement Material:")
-        lbl.setStyleSheet(label_style)
-        self.reinforcement_material_combo = QComboBox()
-        self.reinforcement_material_combo.addItems(["Fe 415", "Fe 500", "Fe 550"])
-        self.reinforcement_material_combo.setFixedWidth(field_width)
-        apply_field_style(self.reinforcement_material_combo)
-        deck_grid.addWidget(lbl, 1, 0, Qt.AlignLeft | Qt.AlignVCenter)
-        deck_grid.addWidget(self.reinforcement_material_combo, 1, 1, Qt.AlignLeft)
-
-        design_layout.addLayout(deck_grid)
-
-        shear_title = QLabel("Shear Studs:")
-        shear_title.setStyleSheet(heading_style)
-        design_layout.addWidget(shear_title)
-
-        shear_grid = QGridLayout()
-        shear_grid.setContentsMargins(0, 2, 0, 0)
-        shear_grid.setHorizontalSpacing(12)
-        shear_grid.setVerticalSpacing(10)
-        shear_grid.setColumnMinimumWidth(0, 150)
-
-        lbl = QLabel("Material:")
-        lbl.setStyleSheet(label_style)
-        self.shear_stud_material_input = QLineEdit()
-        self.shear_stud_material_input.setFixedWidth(field_width)
-        apply_field_style(self.shear_stud_material_input)
-        shear_grid.addWidget(lbl, 0, 0, Qt.AlignLeft | Qt.AlignVCenter)
-        shear_grid.addWidget(self.shear_stud_material_input, 0, 1, Qt.AlignLeft)
-
-        lbl = QLabel("Diameter (mm):")
-        lbl.setStyleSheet(label_style)
-        self.shear_stud_diameter_input = QLineEdit()
-        self.shear_stud_diameter_input.setFixedWidth(field_width)
-        apply_field_style(self.shear_stud_diameter_input)
-        shear_grid.addWidget(lbl, 1, 0, Qt.AlignLeft | Qt.AlignVCenter)
-        shear_grid.addWidget(self.shear_stud_diameter_input, 1, 1, Qt.AlignLeft)
-
-        lbl = QLabel("Height (mm):")
-        lbl.setStyleSheet(label_style)
-        self.shear_stud_height_input = QLineEdit()
-        self.shear_stud_height_input.setFixedWidth(field_width)
-        apply_field_style(self.shear_stud_height_input)
-        shear_grid.addWidget(lbl, 2, 0, Qt.AlignLeft | Qt.AlignVCenter)
-        shear_grid.addWidget(self.shear_stud_height_input, 2, 1, Qt.AlignLeft)
-
-        design_layout.addLayout(shear_grid)
-        design_layout.addStretch()
-
-        main_layout.addWidget(design_card)
         main_layout.addStretch()
 
         return widget
@@ -353,8 +350,7 @@ class AdditionalInputs(QDialog):
         """Build the Design Options (Cont.) tab to match provided layout"""
         widget = QWidget()
         widget.setStyleSheet("background-color: #f5f5f5;")
-
-        # Use scroll area to prevent overlap
+        
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.NoFrame)
@@ -367,181 +363,16 @@ class AdditionalInputs(QDialog):
         main_layout.setSpacing(16)
 
         label_style = "font-size: 11px; color: #333333; background: transparent; border: none;"
-        
-        # Helper to create a pill-shaped frame
-        def create_pill_frame():
-            frame = QFrame()
-            frame.setStyleSheet("QFrame { border: 1px solid #a0a0a0; border-radius: 16px; background-color: #ffffff; }")
-            return frame
+        heading_style = "font-size: 12px; font-weight: 700; color: #2b2b2b; background: transparent; border: none;"
 
-        # --- Top Grid (Gamma factors) - no frame, just rows ---
-        grid = QGridLayout()
-        grid.setContentsMargins(0, 0, 0, 0)
-        grid.setHorizontalSpacing(20)
-        grid.setVerticalSpacing(8)
-        grid.setColumnMinimumWidth(0, 300)
-        grid.setColumnStretch(0, 0)
-        grid.setColumnStretch(1, 0)
+        self._build_sections_from_schema(
+            main_layout,
+            DESIGN_OPTIONS_CONT_SCHEMA.get("sections", []),
+            heading_style,
+            label_style,
+            140,
+        )
 
-        def add_row(row, text, attr_name):
-            lbl = QLabel(text)
-            lbl.setStyleSheet(label_style)
-            lbl.setMinimumHeight(24)
-            line = QLineEdit()
-            line.setFixedSize(140, 26)
-            apply_field_style(line)
-            grid.addWidget(lbl, row, 0, Qt.AlignLeft | Qt.AlignVCenter)
-            grid.addWidget(line, row, 1, Qt.AlignLeft | Qt.AlignVCenter)
-            setattr(self, attr_name, line)
-
-        add_row(0, "Concrete basic & seismic(Gamma_C)", "gamma_c_basic_input")
-        add_row(1, "Concrete Accidental (Gamma_C)", "gamma_c_accidental_input")
-        add_row(2, "Structural steel for Yielding and Buckling(Gamma_M0)", "gamma_m0_input")
-        add_row(3, "Structural Steel For Ultimate Stress(Gamme_M1)", "gamma_m1_input")
-        add_row(4, "Reinforcing Steel (Gamma_s)", "gamma_s_input")
-        add_row(5, "Shear Connectors For Yield(Gamma_v)", "gamma_v_input")
-        add_row(6, "Fatigue Load(Gamma_flt)", "gamma_flt_input")
-        add_row(7, "Fatigue Strength(Gamma_Mf, t)", "gamma_mf_input")
-
-        main_layout.addLayout(grid)
-        main_layout.addSpacing(8)
-
-        # --- Number of load cycles in pill frame ---
-        cycles_frame = create_pill_frame()
-        cycles_frame.setFixedHeight(38)
-        cycles_layout = QHBoxLayout(cycles_frame)
-        cycles_layout.setContentsMargins(16, 6, 16, 6)
-        cycles_layout.setSpacing(10)
-        cycles_label = QLabel("Number of Load Cycles(Cl605.3,Cl605.4)")
-        cycles_label.setStyleSheet(label_style)
-        cycles_layout.addWidget(cycles_label)
-        cycles_layout.addStretch()
-        main_layout.addWidget(cycles_frame)
-
-        # --- Wide input below load cycles ---
-        self.load_cycles_input = QLineEdit()
-        self.load_cycles_input.setFixedHeight(30)
-        apply_field_style(self.load_cycles_input)
-        main_layout.addWidget(self.load_cycles_input)
-
-        # --- K factors row 1 in pill frame ---
-        k1_frame = create_pill_frame()
-        k1_frame.setFixedHeight(42)
-        k1_layout = QHBoxLayout(k1_frame)
-        k1_layout.setContentsMargins(16, 6, 16, 6)
-        k1_layout.setSpacing(16)
-        for label, attr in [("K1:", "k1_input"), ("K3:", "k3_input"), ("K4:", "k4_input"), ("K6:", "k6_input")]:
-            lbl = QLabel(label)
-            lbl.setStyleSheet(label_style)
-            line = QLineEdit()
-            line.setFixedSize(80, 26)
-            apply_field_style(line)
-            setattr(self, attr, line)
-            k1_layout.addWidget(lbl)
-            k1_layout.addWidget(line)
-        k1_layout.addStretch()
-        main_layout.addWidget(k1_frame)
-
-        # --- Limit row in pill frame ---
-        limit_frame = create_pill_frame()
-        limit_frame.setFixedHeight(42)
-        limit_layout = QHBoxLayout(limit_frame)
-        limit_layout.setContentsMargins(16, 6, 16, 6)
-        limit_layout.setSpacing(16)
-        limit_lbl = QLabel("Limit : L")
-        limit_lbl.setStyleSheet(label_style)
-        self.limit_input = QLineEdit()
-        self.limit_input.setFixedSize(120, 26)
-        apply_field_style(self.limit_input)
-        unit_lbl = QLabel("m")
-        unit_lbl.setStyleSheet(label_style)
-        limit_layout.addWidget(limit_lbl)
-        limit_layout.addWidget(self.limit_input)
-        limit_layout.addWidget(unit_lbl)
-        limit_layout.addStretch()
-        main_layout.addWidget(limit_frame)
-
-        # --- K factors row 2 with exposure in pill frame ---
-        k2_frame = create_pill_frame()
-        k2_frame.setFixedHeight(42)
-        k2_layout = QHBoxLayout(k2_frame)
-        k2_layout.setContentsMargins(16, 6, 16, 6)
-        k2_layout.setSpacing(16)
-        for label, attr in [("K3:", "k3_second_input"), ("K4:", "k4_second_input")]:
-            lbl = QLabel(label)
-            lbl.setStyleSheet(label_style)
-            line = QLineEdit()
-            line.setFixedSize(80, 26)
-            apply_field_style(line)
-            setattr(self, attr, line)
-            k2_layout.addWidget(lbl)
-            k2_layout.addWidget(line)
-        exposure_lbl = QLabel("Exposure:")
-        exposure_lbl.setStyleSheet(label_style)
-        self.exposure_input = QLineEdit()
-        self.exposure_input.setFixedSize(100, 26)
-        apply_field_style(self.exposure_input)
-        k2_layout.addWidget(exposure_lbl)
-        k2_layout.addWidget(self.exposure_input)
-        k2_layout.addStretch()
-        main_layout.addWidget(k2_frame)
-
-        # --- Post-buckling checkbox in pill frame ---
-        cb_frame = create_pill_frame()
-        cb_frame.setFixedHeight(42)
-        cb_layout = QHBoxLayout(cb_frame)
-        cb_layout.setContentsMargins(16, 6, 16, 6)
-        self.post_buckling_checkbox = QCheckBox("Post-buckling Tension Field Action for Shear Resistance")
-        self.post_buckling_checkbox.setStyleSheet("QCheckBox { font-size: 11px; color: #333333; background: transparent; spacing: 8px; }")
-        cb_layout.addWidget(self.post_buckling_checkbox)
-        cb_layout.addStretch()
-        main_layout.addWidget(cb_frame)
-
-        main_layout.addSpacing(8)
-
-        # --- Limit state groups side by side ---
-        groups_layout = QHBoxLayout()
-        groups_layout.setSpacing(20)
-
-        def build_group(title, items):
-            box = QGroupBox(title)
-            box.setStyleSheet(
-                "QGroupBox { border: 1px solid #b0b0b0; border-radius: 6px; margin-top: 12px; padding: 8px; background: #ffffff; }"
-                "QGroupBox::title { subcontrol-origin: margin; subcontrol-position: top left; left: 12px; padding: 0 6px; background: #f5f5f5; font-weight: 600; font-size: 11px; color: #333333; }"
-            )
-            vbox = QVBoxLayout(box)
-            vbox.setContentsMargins(16, 24, 16, 16)
-            vbox.setSpacing(12)
-            checkboxes = []
-            for text in items:
-                cb = QCheckBox(text)
-                cb.setStyleSheet("QCheckBox { font-size: 11px; color: #333333; background: transparent; spacing: 8px; }")
-                vbox.addWidget(cb)
-                checkboxes.append(cb)
-            return box, checkboxes
-
-        ultimate_items = [
-            "Bending Resistance",
-            "Resistance to Vertical Shear",
-            "Resistance to Lateral-torsional Buckling",
-            "Resistance to Transverse force",
-            "Resistance to Longitudinal Shear",
-            "Resistance to Fatigue",
-        ]
-        service_items = [
-            "Stress Limitation",
-            "Longitudinal Shear (SLS)",
-            "Deflection Control",
-            "Crack Width Check",
-        ]
-
-        ultimate_box, self.ultimate_checkboxes = build_group("Ultimate Limit States", ultimate_items)
-        service_box, self.service_checkboxes = build_group("Serviceability Limit States", service_items)
-
-        groups_layout.addWidget(ultimate_box)
-        groups_layout.addWidget(service_box)
-
-        main_layout.addLayout(groups_layout)
         main_layout.addStretch()
 
         scroll.setWidget(scroll_content)
@@ -551,8 +382,11 @@ class AdditionalInputs(QDialog):
         outer_layout.addWidget(scroll)
 
         return widget
-    
+
     def update_footpath_value(self, footpath_value):
         """Update footpath value across all tabs"""
         self.footpath_value = footpath_value
         self.typical_section_tab.update_footpath_value(footpath_value)
+
+    def _show_placeholder_message(self, action_name):
+        QMessageBox.information(self, "Coming soon", f"{action_name} action not implemented yet.")
