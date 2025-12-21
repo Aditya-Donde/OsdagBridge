@@ -9,56 +9,112 @@ class FrontendData:
         self.design_button_status = False
     
     def input_values(self):
-        """Return list of input fields for the UI"""
-        options_list = []
+        """Return structured schema for dynamic UI rendering."""
 
-        t1 = (KEY_MODULE, KEY_DISP_FINPLATE, TYPE_MODULE, None, True, 'No Validator')
-        options_list.append(t1)
-
-        # Type of Structure section
-        t2 = (None, DISP_TITLE_STRUCTURE, TYPE_TITLE, None, True, 'No Validator')
-        options_list.append(t2)
-
-        t3 = (KEY_STRUCTURE_TYPE, KEY_DISP_STRUCTURE_TYPE, TYPE_COMBOBOX, VALUES_STRUCTURE_TYPE, True, 'No Validator')
-        options_list.append(t3)
-
-        # Project Location section
-        t4 = (None, DISP_TITLE_PROJECT, TYPE_TITLE, None, True, 'No Validator')
-        options_list.append(t4)
-
-        t5 = (KEY_PROJECT_LOCATION, KEY_DISP_PROJECT_LOCATION, TYPE_COMBOBOX, VALUES_PROJECT_LOCATION, True, 'No Validator')
-        options_list.append(t5)
-
-        # Geometric Details section
-        t6 = (None, DISP_TITLE_GEOMETRIC, TYPE_TITLE, None, True, 'No Validator')
-        options_list.append(t6)
-
-        t7 = (KEY_SPAN, KEY_DISP_SPAN, TYPE_TEXTBOX, None, True, 'Double Validator')
-        options_list.append(t7)
-
-        t8 = (KEY_CARRIAGEWAY_WIDTH, KEY_DISP_CARRIAGEWAY_WIDTH, TYPE_TEXTBOX, None, True, 'Double Validator')
-        options_list.append(t8)
-
-        t9 = (KEY_FOOTPATH, KEY_DISP_FOOTPATH, TYPE_COMBOBOX, VALUES_FOOTPATH, True, 'No Validator')
-        options_list.append(t9)
-
-        t10 = (KEY_SKEW_ANGLE, KEY_DISP_SKEW_ANGLE, TYPE_TEXTBOX, None, True, 'Double Validator')
-        options_list.append(t10)
-
-        # Material Inputs section
-        t11 = (None, DISP_TITLE_MATERIAL, TYPE_TITLE, None, True, 'No Validator')
-        options_list.append(t11)
-
-        t12 = (KEY_GIRDER, KEY_DISP_GIRDER, TYPE_COMBOBOX, connectdb("Material"), True, 'No Validator')
-        options_list.append(t12)
-
-        t13 = (KEY_CROSS_BRACING, KEY_DISP_CROSS_BRACING, TYPE_COMBOBOX, connectdb("Material"), True, 'No Validator')
-        options_list.append(t13)
-
-        t14 = (KEY_DECK, KEY_DISP_DECK, TYPE_COMBOBOX, connectdb("Material"), True, 'No Validator')
-        options_list.append(t14)
-
-        return options_list
+        return [
+            {
+                "id": "geometric",
+                "title": "Geometric Details",
+                "fields": [
+                    {
+                        "id": KEY_SPAN,
+                        "label": KEY_DISP_SPAN + "*",
+                        "type": "line",
+                        "required": True,
+                        "validator": {
+                            "type": "double_range",
+                            "bottom": SPAN_MIN,
+                            "top": SPAN_MAX,
+                            "decimals": 2,
+                        },
+                        "placeholder": f"{SPAN_MIN}-{SPAN_MAX} m",
+                        "bind": "span_input",
+                    },
+                    {
+                        "id": KEY_CARRIAGEWAY_WIDTH,
+                        "label": KEY_DISP_CARRIAGEWAY_WIDTH + "*",
+                        "type": "line",
+                        "required": True,
+                        "validator": {
+                            "type": "double_range",
+                            "bottom": 0.0,
+                            "top": 100.0,
+                            "decimals": 2,
+                        },
+                        "placeholder": "Width",
+                        "bind": "carriageway_input",
+                        "on_editing_finished": "validate_carriageway_width",
+                    },
+                    {
+                        "id": KEY_INCLUDE_MEDIAN,
+                        "label": KEY_INCLUDE_MEDIAN,
+                        "type": "combo",
+                        "choices": ["No", "Yes"],
+                        "default": "No",
+                        "bind": "include_median_combo",
+                        "on_change": "on_include_median_changed",
+                    },
+                    {
+                        "id": KEY_FOOTPATH,
+                        "label": KEY_DISP_FOOTPATH,
+                        "type": "combo",
+                        "choices": VALUES_FOOTPATH,
+                        "default": VALUES_FOOTPATH[0] if VALUES_FOOTPATH else None,
+                        "bind": "footpath_combo",
+                        "on_change": "on_footpath_changed",
+                    },
+                    {
+                        "id": KEY_SKEW_ANGLE,
+                        "label": KEY_DISP_SKEW_ANGLE,
+                        "type": "line",
+                        "required": True,
+                        "validator": {
+                            "type": "double_range",
+                            "bottom": SKEW_ANGLE_MIN,
+                            "top": SKEW_ANGLE_MAX,
+                            "decimals": 1,
+                        },
+                        "placeholder": f"{SKEW_ANGLE_MIN} - {SKEW_ANGLE_MAX}°",
+                        "bind": "skew_input",
+                    },
+                ],
+            },
+            {
+                "id": "material",
+                "title": "Material Inputs",
+                "fields": [
+                    {
+                        "id": KEY_GIRDER,
+                        "label": KEY_DISP_GIRDER,
+                        "type": "combo",
+                        "choices": VALUES_MATERIAL,
+                        "bind": "girder_combo",
+                    },
+                    {
+                        "id": KEY_CROSS_BRACING,
+                        "label": KEY_DISP_CROSS_BRACING,
+                        "type": "combo",
+                        "choices": VALUES_MATERIAL,
+                        "bind": "cross_bracing_combo",
+                    },
+                    {
+                        "id": KEY_END_DIAPHRAGM,
+                        "label": KEY_DISP_END_DIAPHRAGM,
+                        "type": "combo",
+                        "choices": VALUES_MATERIAL,
+                        "bind": "end_diaphragm_combo",
+                    },
+                    {
+                        "id": KEY_DECK_CONCRETE_GRADE_BASIC,
+                        "label": KEY_DISP_DECK,
+                        "type": "combo",
+                        "choices": VALUES_DECK_CONCRETE_GRADE,
+                        "default": "M 25",
+                        "bind": "deck_combo",
+                    },
+                ],
+            },
+        ]
     
     def set_osdaglogger(self, key):
         """Logger setup"""
