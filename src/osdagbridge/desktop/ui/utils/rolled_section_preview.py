@@ -6,10 +6,14 @@ import math
 from typing import Dict, Optional
 
 from PySide6.QtCore import QPointF, QRectF, Qt
-from PySide6.QtGui import QColor, QFont, QFontMetricsF, QPainter, QPaintEvent, QPen
+from PySide6.QtGui import QColor, QFont, QFontMetricsF, QPainter, QPaintEvent, QPen, QTextDocument
 from PySide6.QtWidgets import QSizePolicy, QWidget
 
 from osdagbridge.core.bridge_components.super_structure.girder.properties import BeamSection
+
+
+OSDAG_BRAND_GREEN = QColor("#90AF13")
+OSDAG_FONT_FAMILY = "Ubuntu Sans"
 
 
 class RolledSectionPreview(QWidget):
@@ -22,21 +26,17 @@ class RolledSectionPreview(QWidget):
 
         self._outline_color = QColor("#1b1b1b")
         self._outline_width = 3.0
-        self._dimension_color = QColor("#1e88ff")
-        self._dimension_palette = {
-            "tfw": QColor("#1e88ff"),
-            "tft": QColor("#00a152"),
-            "bfw": QColor("#ff8f00"),
-            "bft": QColor("#f4511e"),
-            "d": QColor("#5e35b1"),
-            "wt": QColor("#00838f"),
-        }
+        self._brand_color = QColor(OSDAG_BRAND_GREEN)
+        self._dimension_color = QColor(OSDAG_BRAND_GREEN)
+        self._dimension_keys = ("tfw", "tft", "bfw", "bft", "d", "wt")
+        self._dimension_palette = {key: QColor(OSDAG_BRAND_GREEN) for key in self._dimension_keys}
         self._label_bg = QColor(255, 255, 255, 230)
         self._text_color = QColor("#0f0f0f")
+        self._brand_font_family = OSDAG_FONT_FAMILY
 
         self._outer_margin = 16
         self._annotation_margin_top = 36
-        self._annotation_margin_bottom = 26
+        self._annotation_margin_bottom = 28
         self._annotation_margin_left = 52
         self._annotation_margin_right = 74
         self._dim_gap = 12
@@ -171,6 +171,7 @@ class RolledSectionPreview(QWidget):
         painter.restore()
 
         font = QFont(self.font())
+        font.setFamily(self._brand_font_family)
         font.setPointSizeF(max(9.0, font.pointSizeF()))
         painter.setFont(font)
 
@@ -187,7 +188,7 @@ class RolledSectionPreview(QWidget):
         )
         self._draw_label(
             painter,
-            f"TFW: {self._format_mm(top_width)}",
+            self._format_label_markup("tfw", top_width),
             QPointF(top_flange.center().x(), width_dim_y - 6),
             Qt.AlignHCenter | Qt.AlignBottom,
             with_background=False,
@@ -196,22 +197,15 @@ class RolledSectionPreview(QWidget):
 
         # --- Top flange thickness dimension ---
         tft_color = self._set_dimension_pen(painter, "tft")
-        flange_dim_x = top_flange.left() - self._dim_gap
-        painter.drawLine(QPointF(top_flange.left(), top_flange.top()), QPointF(flange_dim_x, top_flange.top()))
-        painter.drawLine(QPointF(top_flange.left(), top_flange.bottom()), QPointF(flange_dim_x, top_flange.bottom()))
-        self._draw_dimension_line(
+        self._draw_vertical_thickness_dimension(
             painter,
-            QPointF(flange_dim_x, top_flange.top()),
-            QPointF(flange_dim_x, top_flange.bottom()),
+            top_flange.left(),
+            top_flange.top(),
+            top_flange.bottom(),
+            top_thickness,
             tft_color,
-        )
-        self._draw_label(
-            painter,
-            f"TFT: {self._format_mm(top_thickness)}",
-            QPointF(flange_dim_x - 4, top_flange.center().y()),
-            Qt.AlignRight | Qt.AlignVCenter,
-            with_background=False,
-            color=tft_color,
+            label_symbol="tft",
+            label_align=Qt.AlignRight | Qt.AlignVCenter,
         )
 
         # --- Bottom flange width dimension ---
@@ -227,7 +221,7 @@ class RolledSectionPreview(QWidget):
         )
         self._draw_label(
             painter,
-            f"BFW: {self._format_mm(bottom_width)}",
+            self._format_label_markup("bfw", bottom_width),
             QPointF(bottom_flange.center().x(), bottom_width_dim_y + 6),
             Qt.AlignHCenter | Qt.AlignTop,
             with_background=False,
@@ -236,22 +230,15 @@ class RolledSectionPreview(QWidget):
 
         # --- Bottom flange thickness dimension ---
         bft_color = self._set_dimension_pen(painter, "bft")
-        bottom_thickness_dim_x = bottom_flange.left() - self._dim_gap
-        painter.drawLine(QPointF(bottom_flange.left(), bottom_flange.top()), QPointF(bottom_thickness_dim_x, bottom_flange.top()))
-        painter.drawLine(QPointF(bottom_flange.left(), bottom_flange.bottom()), QPointF(bottom_thickness_dim_x, bottom_flange.bottom()))
-        self._draw_dimension_line(
+        self._draw_vertical_thickness_dimension(
             painter,
-            QPointF(bottom_thickness_dim_x, bottom_flange.top()),
-            QPointF(bottom_thickness_dim_x, bottom_flange.bottom()),
+            bottom_flange.left(),
+            bottom_flange.top(),
+            bottom_flange.bottom(),
+            bottom_thickness,
             bft_color,
-        )
-        self._draw_label(
-            painter,
-            f"BFT: {self._format_mm(bottom_thickness)}",
-            QPointF(bottom_thickness_dim_x - 4, bottom_flange.center().y()),
-            Qt.AlignRight | Qt.AlignVCenter,
-            with_background=False,
-            color=bft_color,
+            label_symbol="bft",
+            label_align=Qt.AlignRight | Qt.AlignVCenter,
         )
 
         # --- Overall depth dimension ---
@@ -267,7 +254,7 @@ class RolledSectionPreview(QWidget):
         )
         self._draw_label(
             painter,
-            f"D: {self._format_mm(depth)}",
+            self._format_label_markup("d", depth),
             QPointF(depth_dim_x + 10, (top_flange.top() + bottom_flange.bottom()) / 2.0),
             Qt.AlignLeft | Qt.AlignVCenter,
             with_background=False,
@@ -276,20 +263,16 @@ class RolledSectionPreview(QWidget):
 
         # --- Web thickness dimension ---
         wt_color = self._set_dimension_pen(painter, "wt")
-        mid_y = web.center().y()
-        right_anchor = QPointF(web.right(), mid_y)
-        left_anchor = QPointF(web.left(), mid_y)
-        self._draw_dimension_line(painter, left_anchor, right_anchor, wt_color)
-        painter.drawLine(right_anchor, QPointF(right_anchor.x(), right_anchor.y() + self._dim_gap * 0.7))
-        painter.drawLine(left_anchor, QPointF(left_anchor.x(), left_anchor.y() + self._dim_gap * 0.7))
-        self._draw_label(
+        self._draw_web_thickness_dimension(
             painter,
-            f"WT: {self._format_mm(web_thickness)}",
-            QPointF(left_anchor.x() - 6, mid_y + self._dim_gap * 0.2),
-            Qt.AlignRight | Qt.AlignBottom,
-            with_background=False,
-            color=wt_color,
+            web.left(),
+            web.right(),
+            web.center().y(),
+            web_thickness,
+            wt_color,
+            label_symbol="wt",
         )
+
 
     # ------------------------------------------------------------------
     # Drawing helpers
@@ -302,6 +285,7 @@ class RolledSectionPreview(QWidget):
         painter.drawRect(self.rect().adjusted(12, 12, -12, -12))
         painter.setPen(QColor("#6f6f6f"))
         font = QFont(self.font())
+        font.setFamily(self._brand_font_family)
         font.setPointSizeF(max(font.pointSizeF(), 10.0))
         painter.setFont(font)
         painter.drawText(self.rect(), Qt.AlignCenter, "Select a rolled section to preview")
@@ -315,16 +299,102 @@ class RolledSectionPreview(QWidget):
         painter.setPen(pen)
         return color
 
-    def _draw_dimension_line(self, painter: QPainter, start: QPointF, end: QPointF, color: QColor) -> None:
+    def _draw_vertical_thickness_dimension(
+        self,
+        painter: QPainter,
+        flange_edge_x: float,
+        top_y: float,
+        bottom_y: float,
+        thickness: Optional[float],
+        color: QColor,
+        *,
+        label_symbol: str,
+        label_align: Qt.Alignment,
+    ) -> None:
+        extension = self._dim_gap * 0.9
+        arrow_length = max(self._dim_gap * 1.2, self._arrow_size * 1.4)
+        dimension_x = flange_edge_x - extension
+        top_extension = QPointF(dimension_x, top_y)
+        bottom_extension = QPointF(dimension_x, bottom_y)
+
+        painter.drawLine(QPointF(flange_edge_x, top_y), top_extension)
+        painter.drawLine(QPointF(flange_edge_x, bottom_y), bottom_extension)
+        painter.drawLine(top_extension, bottom_extension)
+
+        painter.drawLine(QPointF(dimension_x, top_y - arrow_length), top_extension)
+        painter.drawLine(bottom_extension, QPointF(dimension_x, bottom_y + arrow_length))
+        self._draw_arrow_head(painter, top_extension, QPointF(0, -1), color)
+        self._draw_arrow_head(painter, bottom_extension, QPointF(0, 1), color)
+
+        label_anchor = QPointF(dimension_x - self._dim_gap * 0.4, (top_y + bottom_y) / 2.0)
+        self._draw_label(
+            painter,
+            self._format_label_markup(label_symbol, thickness),
+            label_anchor,
+            label_align,
+            with_background=False,
+            color=color,
+        )
+
+    def _draw_web_thickness_dimension(
+        self,
+        painter: QPainter,
+        left_x: float,
+        right_x: float,
+        mid_y: float,
+        thickness: Optional[float],
+        color: QColor,
+        *,
+        label_symbol: str,
+    ) -> None:
+        extension = self._dim_gap * 0.7
+        arrow_length = max(self._dim_gap * 1.2, self._arrow_size * 1.4)
+
+        painter.drawLine(QPointF(left_x, mid_y - extension), QPointF(left_x, mid_y + extension))
+        painter.drawLine(QPointF(right_x, mid_y - extension), QPointF(right_x, mid_y + extension))
+
+        painter.drawLine(QPointF(left_x - arrow_length, mid_y), QPointF(left_x, mid_y))
+        painter.drawLine(QPointF(right_x, mid_y), QPointF(right_x + arrow_length, mid_y))
+        self._draw_arrow_head(painter, QPointF(left_x, mid_y), QPointF(-1, 0), color)
+        self._draw_arrow_head(painter, QPointF(right_x, mid_y), QPointF(1, 0), color)
+
+        label_offset = self._dim_gap * 0.6
+        label_anchor = QPointF(left_x - arrow_length - label_offset, mid_y)
+        self._draw_label(
+            painter,
+            self._format_label_markup(label_symbol, thickness),
+            label_anchor,
+            Qt.AlignRight | Qt.AlignVCenter,
+            with_background=False,
+            color=color,
+        )
+
+    def _draw_dimension_line(
+        self,
+        painter: QPainter,
+        start: QPointF,
+        end: QPointF,
+        color: QColor,
+        *,
+        external: bool = False,
+    ) -> None:
         direction = QPointF(end.x() - start.x(), end.y() - start.y())
         length = math.hypot(direction.x(), direction.y())
         if length == 0:
             return
         unit = QPointF(direction.x() / length, direction.y() / length)
-        offset = unit * (self._arrow_size * 0.7)
-        painter.drawLine(start + offset, end - offset)
-        self._draw_arrow_head(painter, start, direction, color)
-        self._draw_arrow_head(painter, end, QPointF(-direction.x(), -direction.y()), color)
+        if external:
+            painter.drawLine(start, end)
+            outward = self._arrow_size * 0.9
+            outer_start = QPointF(start.x() - unit.x() * outward, start.y() - unit.y() * outward)
+            outer_end = QPointF(end.x() + unit.x() * outward, end.y() + unit.y() * outward)
+            self._draw_arrow_head(painter, outer_start, direction, color)
+            self._draw_arrow_head(painter, outer_end, QPointF(-direction.x(), -direction.y()), color)
+        else:
+            offset = unit * (self._arrow_size * 0.7)
+            painter.drawLine(start + offset, end - offset)
+            self._draw_arrow_head(painter, start, direction, color)
+            self._draw_arrow_head(painter, end, QPointF(-direction.x(), -direction.y()), color)
 
     def _draw_arrow_head(self, painter: QPainter, tip: QPointF, direction: QPointF, color: QColor) -> None:
         length = math.hypot(direction.x(), direction.y())
@@ -352,9 +422,16 @@ class RolledSectionPreview(QWidget):
         with_background: bool = True,
         color: Optional[QColor] = None,
     ) -> None:
-        metrics = QFontMetricsF(painter.font())
-        text_rect = metrics.boundingRect(text).adjusted(-6, -3, 6, 3)
-        rect = QRectF(0, 0, text_rect.width(), text_rect.height())
+        text_color = color or self._text_color
+        html_text = text if color is None else f'<span style="color:{self._color_to_hex(text_color)}">{text}</span>'
+
+        doc = QTextDocument()
+        doc.setDefaultFont(painter.font())
+        doc.setHtml(html_text)
+        text_size = doc.size()
+        padding_x = 6
+        padding_y = 4
+        rect = QRectF(0, 0, text_size.width() + padding_x * 2, text_size.height() + padding_y * 2)
 
         if align & Qt.AlignLeft:
             rect.moveLeft(anchor.x())
@@ -370,7 +447,13 @@ class RolledSectionPreview(QWidget):
         else:
             rect.moveCenter(QPointF(rect.center().x(), anchor.y()))
 
-        text_color = color or self._text_color
+        content_rect = QRectF(
+            rect.left() + padding_x,
+            rect.top() + padding_y,
+            text_size.width(),
+            text_size.height(),
+        )
+
         if with_background:
             painter.save()
             painter.setPen(Qt.NoPen)
@@ -379,9 +462,26 @@ class RolledSectionPreview(QWidget):
             painter.restore()
 
         painter.save()
-        painter.setPen(text_color)
-        painter.drawText(rect, Qt.AlignCenter, text)
+        painter.translate(content_rect.topLeft())
+        doc.drawContents(painter)
         painter.restore()
+
+    def _format_label_markup(self, symbol: str, value: Optional[float] = None) -> str:
+        formatted_symbol = self._format_symbol_markup(symbol)
+        if value is None:
+            return formatted_symbol
+        return f"{formatted_symbol} = {self._format_mm(value)}"
+
+    @staticmethod
+    def _format_symbol_markup(symbol: str) -> str:
+        clean = symbol.lower().strip()
+        if len(clean) <= 1:
+            return clean or symbol
+        return f"{clean[0]}<sub>{clean[1:]}</sub>"
+
+    @staticmethod
+    def _color_to_hex(color: QColor) -> str:
+        return color.name(QColor.HexRgb)
 
     @staticmethod
     def _format_mm(value: float) -> str:

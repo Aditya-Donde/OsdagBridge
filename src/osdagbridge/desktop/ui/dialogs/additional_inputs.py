@@ -1533,28 +1533,64 @@ class GirderDetailsTab(QWidget):
         row = self._add_box_row(inputs_grid, row, "Symmetry:", self.symmetry_combo)
 
         self.total_depth_input = self._create_line_edit()
-        row = self._add_box_row(inputs_grid, row, "Total Depth (mm):", self.total_depth_input, self.welded_rows)
+        row = self._add_box_row(
+            inputs_grid,
+            row,
+            "Total Depth (d, mm):",
+            self.total_depth_input,
+            self.welded_rows,
+        )
 
         self.web_thickness_combo = QComboBox()
         self.web_thickness_combo.addItems(["All", "Custom"])
         apply_field_style(self.web_thickness_combo)
-        row = self._add_box_row(inputs_grid, row, "Web Thickness (mm):", self.web_thickness_combo, self.welded_rows)
+        row = self._add_box_row(
+            inputs_grid,
+            row,
+            "Web Thickness (w<sub>t</sub>, mm):",
+            self.web_thickness_combo,
+            self.welded_rows,
+        )
 
         self.top_width_input = self._create_line_edit()
-        row = self._add_box_row(inputs_grid, row, "Width of Top Flange (mm):", self.top_width_input, self.welded_rows)
+        row = self._add_box_row(
+            inputs_grid,
+            row,
+            "Width of Top Flange (t<sub>fw</sub>, mm):",
+            self.top_width_input,
+            self.welded_rows,
+        )
 
         self.top_thickness_combo = QComboBox()
         self.top_thickness_combo.addItems(["All", "Custom"])
         apply_field_style(self.top_thickness_combo)
-        row = self._add_box_row(inputs_grid, row, "Top Flange Thickness (mm):", self.top_thickness_combo, self.welded_rows)
+        row = self._add_box_row(
+            inputs_grid,
+            row,
+            "Top Flange Thickness (t<sub>ft</sub>, mm):",
+            self.top_thickness_combo,
+            self.welded_rows,
+        )
 
         self.bottom_width_input = self._create_line_edit()
-        row = self._add_box_row(inputs_grid, row, "Width of Bottom Flange (mm):", self.bottom_width_input, self.welded_rows)
+        row = self._add_box_row(
+            inputs_grid,
+            row,
+            "Width of Bottom Flange (b<sub>fw</sub>, mm):",
+            self.bottom_width_input,
+            self.welded_rows,
+        )
 
         self.bottom_thickness_combo = QComboBox()
         self.bottom_thickness_combo.addItems(["All", "Custom"])
         apply_field_style(self.bottom_thickness_combo)
-        row = self._add_box_row(inputs_grid, row, "Bottom Flange Thickness (mm):", self.bottom_thickness_combo, self.welded_rows)
+        row = self._add_box_row(
+            inputs_grid,
+            row,
+            "Bottom Flange Thickness (b<sub>ft</sub>, mm):",
+            self.bottom_thickness_combo,
+            self.welded_rows,
+        )
 
         self.is_section_combo = QComboBox()
         self._populate_rolled_section_combo()
@@ -1620,7 +1656,7 @@ class GirderDetailsTab(QWidget):
         self.preview_caption = QLabel("Provide girder inputs to preview")
         self.preview_caption.setAlignment(Qt.AlignCenter)
         self.preview_caption.setStyleSheet(
-            "QLabel { font-size: 10px; color: #5b5b5b; border: none; padding-top: 4px; }"
+            "QLabel { font-size: 13px; font-weight: 700; color: #1e1e1e; border: none; padding-top: 6px; font-family: 'Ubuntu Sans', 'Segoe UI', sans-serif; }"
         )
         image_layout.addWidget(self.preview_caption)
 
