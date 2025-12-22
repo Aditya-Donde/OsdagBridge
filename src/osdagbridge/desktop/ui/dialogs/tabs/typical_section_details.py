@@ -186,6 +186,10 @@ class TypicalSectionDetailsTab(QWidget):
             self._update_crash_barrier_visibility(self.crash_barrier_type.currentText())
         if hasattr(self, "median_type"):
             self._update_median_visibility(self.median_type.currentText(), include_median=True)
+        if hasattr(self, "railing_load_mode"):
+            self.on_railing_load_mode_changed(self.railing_load_mode.currentText())
+        if hasattr(self, "wearing_material"):
+            self.on_wearing_material_changed(self.wearing_material.currentText())
 
     def _get_footpath_count(self):
         if self.footpath_value == "Both":
@@ -284,6 +288,16 @@ class TypicalSectionDetailsTab(QWidget):
     def _format_overhang(self, overhang):
         return f"{overhang:.3f}"
 
+    def _clear_adjust_notice(self):
+        if hasattr(self, "layout_adjust_notice"):
+            self.layout_adjust_notice.hide()
+            self.layout_adjust_notice.setText("")
+
+    def _show_adjust_notice(self, reason):
+        if hasattr(self, "layout_adjust_notice") and reason:
+            self.layout_adjust_notice.setText(f"Values adjusted for: {reason}")
+            self.layout_adjust_notice.show()
+
     def _set_layout_fields(self, spacing, overhang, girders):
         self.updating_fields = True
         try:
@@ -350,6 +364,7 @@ class TypicalSectionDetailsTab(QWidget):
     def _solve_layout(self, changed_field="width"):
         if self.updating_fields:
             return
+        self._clear_adjust_notice()
         overall_width = self.get_overall_bridge_width()
         if overall_width <= 0:
             QMessageBox.warning(self, "Layout", "Overall bridge width must be positive.")
@@ -375,6 +390,15 @@ class TypicalSectionDetailsTab(QWidget):
                 return
             _, n, spacing_use, overhang_use = pick
             self._set_layout_fields(spacing_use, overhang_use, n)
+            reason_parts = []
+            if abs(spacing_use - spacing_input) > 1e-6:
+                reason_parts.append(f"spacing {spacing_input:.2f}->{spacing_use:.2f}")
+            if abs(overhang_use - overhang_input) > 1e-6:
+                reason_parts.append(f"overhang {overhang_input:.2f}->{overhang_use:.2f}")
+            if girders_input is not None and n != girders_input:
+                reason_parts.append(f"girders {girders_input}->{n}")
+            if reason_parts:
+                self._show_adjust_notice(", ".join(reason_parts))
             self._update_overall_bridge_width_display()
             return
 
@@ -387,6 +411,15 @@ class TypicalSectionDetailsTab(QWidget):
                 return
             _, spacing_use, overhang_resolved, n = pick
             self._set_layout_fields(spacing_use, overhang_resolved, n)
+            reason_parts = []
+            if abs(overhang_resolved - overhang_input) > 1e-6:
+                reason_parts.append(f"overhang {overhang_input:.2f}->{overhang_resolved:.2f}")
+            if abs(spacing_use - spacing_input) > 1e-6:
+                reason_parts.append(f"spacing {spacing_input:.2f}->{spacing_use:.2f}")
+            if girders_input is not None and n != girders_input:
+                reason_parts.append(f"girders {girders_input}->{n}")
+            if reason_parts:
+                self._show_adjust_notice(", ".join(reason_parts))
             self._update_overall_bridge_width_display()
             return
 
@@ -399,6 +432,13 @@ class TypicalSectionDetailsTab(QWidget):
                 overhang_use = overall_width / 2.0
                 spacing_use = self._clamp(round(spacing_input, 1), *spacing_bounds)
                 self._set_layout_fields(spacing_use, overhang_use, n)
+                reason_parts = []
+                if abs(overhang_use - overhang_input) > 1e-6:
+                    reason_parts.append(f"overhang {overhang_input:.2f}->{overhang_use:.2f}")
+                if abs(spacing_use - spacing_input) > 1e-6:
+                    reason_parts.append(f"spacing {spacing_input:.2f}->{spacing_use:.2f}")
+                if reason_parts:
+                    self._show_adjust_notice(", ".join(reason_parts))
                 self._update_overall_bridge_width_display()
                 return
 
@@ -410,6 +450,13 @@ class TypicalSectionDetailsTab(QWidget):
                 QMessageBox.warning(self, "Layout", "Cannot satisfy constraints with the selected number of girders.")
                 return
             self._set_layout_fields(spacing_use, overhang_use, n)
+            reason_parts = []
+            if abs(spacing_use - spacing_input) > 1e-6:
+                reason_parts.append(f"spacing {spacing_input:.2f}->{spacing_use:.2f}")
+            if abs(overhang_use - overhang_input) > 1e-6:
+                reason_parts.append(f"overhang {overhang_input:.2f}->{overhang_use:.2f}")
+            if reason_parts:
+                self._show_adjust_notice(", ".join(reason_parts))
             self._update_overall_bridge_width_display()
             return
 
@@ -421,9 +468,81 @@ class TypicalSectionDetailsTab(QWidget):
         if pick:
             _, n, spacing_use, overhang_use = pick
             self._set_layout_fields(spacing_use, overhang_use, n)
+            reason_parts = []
+            if abs(spacing_use - spacing_input) > 1e-6:
+                reason_parts.append(f"spacing {spacing_input:.2f}->{spacing_use:.2f}")
+            if abs(overhang_use - overhang_input) > 1e-6:
+                reason_parts.append(f"overhang {overhang_input:.2f}->{overhang_use:.2f}")
+            if girders_input is not None and n != girders_input:
+                reason_parts.append(f"girders {girders_input}->{n}")
+            if reason_parts:
+                self._show_adjust_notice(", ".join(reason_parts))
         else:
             QMessageBox.warning(self, "Layout", "Cannot satisfy layout constraints for the current overall width.")
         self._update_overall_bridge_width_display()
+
+    def _reset_crash_barrier_defaults(self):
+        if hasattr(self, "crash_barrier_type"):
+            self.crash_barrier_type.setCurrentText("IRC 5 RCC")
+        if hasattr(self, "crash_barrier_density"):
+            self.crash_barrier_density.clear()
+        if hasattr(self, "crash_barrier_width"):
+            self.crash_barrier_width.setText(f"{DEFAULT_CRASH_BARRIER_WIDTH}")
+        if hasattr(self, "crash_barrier_height"):
+            self.crash_barrier_height.clear()
+        if hasattr(self, "crash_barrier_area"):
+            self.crash_barrier_area.clear()
+        if hasattr(self, "crash_barrier_load"):
+            self.crash_barrier_load.clear()
+        if hasattr(self, "crash_barrier_post_spacing"):
+            self.crash_barrier_post_spacing.setText("1")
+        if hasattr(self, "crash_barrier_type"):
+            self._update_crash_barrier_visibility(self.crash_barrier_type.currentText())
+
+    def reset_defaults(self):
+        # Layout defaults
+        if hasattr(self, "girder_spacing"):
+            self.girder_spacing.setText(self._format_spacing(DEFAULT_GIRDER_SPACING))
+        if hasattr(self, "deck_overhang"):
+            self.deck_overhang.setText(self._format_overhang(0.35 * DEFAULT_GIRDER_SPACING))
+        if hasattr(self, "no_of_girders"):
+            self.no_of_girders.setText("2")
+        self._clear_adjust_notice()
+        self._solve_layout("spacing")
+
+        # Crash barrier defaults
+        self._reset_crash_barrier_defaults()
+
+        # Median defaults
+        if hasattr(self, "median_type"):
+            self.median_type.setCurrentText("IRC 5 RCC")
+            self._update_median_visibility(self.median_type.currentText(), include_median=True)
+        if hasattr(self, "median_width"):
+            self.median_width.clear()
+        if hasattr(self, "median_height"):
+            self.median_height.clear()
+        if hasattr(self, "median_load"):
+            self.median_load.clear()
+        if hasattr(self, "median_post_spacing"):
+            self.median_post_spacing.setText("1")
+
+        # Railing defaults
+        if hasattr(self, "railing_type"):
+            self.railing_type.setCurrentText("IRC 5 - RCC Railing")
+        if hasattr(self, "railing_width"):
+            self.railing_width.setText(f"{DEFAULT_RAILING_WIDTH * 1000:.0f}")
+        if hasattr(self, "railing_height"):
+            self.railing_height.clear()
+        if hasattr(self, "railing_load_mode"):
+            self.railing_load_mode.setCurrentText("Automatic (IRC 6)")
+            self.on_railing_load_mode_changed(self.railing_load_mode.currentText())
+
+        # Wearing course defaults
+        if hasattr(self, "wearing_material"):
+            self.wearing_material.setCurrentText("Concrete")
+            self.on_wearing_material_changed(self.wearing_material.currentText())
+        if hasattr(self, "wearing_thickness") and not self.wearing_thickness.text():
+            self.wearing_thickness.setText("50")
 
     def _auto_compute_crash_barrier_load(self):
         barrier_type = self.crash_barrier_type.currentText() if hasattr(self, "crash_barrier_type") else ""
@@ -446,20 +565,31 @@ class TypicalSectionDetailsTab(QWidget):
     def _update_crash_barrier_visibility(self, barrier_type):
         is_metallic = self._is_metallic_barrier(barrier_type)
         is_rcc = self._is_rcc_barrier(barrier_type)
+        is_custom = barrier_type == "Custom"
 
-        # Density & Area hidden for metallic
+        # Density & Area hidden for metallic or custom options
+        hide_density_area = is_metallic or is_custom
         for widget in [self.crash_barrier_density, self.crash_barrier_density_label, self.crash_barrier_area, self.crash_barrier_area_label]:
-            widget.setVisible(not is_metallic)
+            widget.setVisible(not hide_density_area)
+        if hide_density_area:
+            self.crash_barrier_density.clear()
+            self.crash_barrier_area.clear()
 
         # Post spacing only for metallic
         for widget in [self.crash_barrier_post_spacing, self.crash_barrier_post_spacing_label]:
             widget.setVisible(is_metallic)
+        if is_metallic and self.crash_barrier_post_spacing and not self.crash_barrier_post_spacing.text():
+            self.crash_barrier_post_spacing.setText("1")
+        if not is_metallic:
+            self.crash_barrier_post_spacing.clear()
 
         # Load behavior
         self.crash_barrier_load.setEnabled(True)
         self.crash_barrier_load.setReadOnly(is_rcc)
         if is_rcc:
             self._auto_compute_crash_barrier_load()
+        else:
+            self.crash_barrier_load.setReadOnly(False)
 
     def _warn_if_custom_barrier(self, barrier_type):
         if barrier_type == "Custom":
@@ -473,7 +603,11 @@ class TypicalSectionDetailsTab(QWidget):
         return median_type.startswith("IRC 5 Metallic")
 
     def _is_rcc_median(self, median_type):
-        return median_type.startswith("IRC 5 RCC") or median_type.startswith("IRC 5 High Containment RCC")
+        return (
+            median_type.startswith("IRC 5 RCC")
+            or median_type.startswith("IRC 5 High Containment RCC")
+            or median_type.startswith("IRC 5 Raised Kerb")
+        )
 
     def _auto_compute_median_load(self):
         median_type = self.median_type.currentText() if hasattr(self, "median_type") else ""
@@ -492,6 +626,7 @@ class TypicalSectionDetailsTab(QWidget):
     def _update_median_visibility(self, median_type, include_median=True):
         is_metallic = self._is_metallic_median(median_type)
         is_rcc = self._is_rcc_median(median_type)
+        is_custom = median_type == "Custom"
         active = bool(include_median)
 
         # Gray-out: disable entire card when not included
@@ -510,21 +645,41 @@ class TypicalSectionDetailsTab(QWidget):
             if widget is not None:
                 widget.setEnabled(active)
 
-        # Density & Area hidden for metallic
+        # Density & Area hidden for metallic or custom
+        hide_density_area = is_metallic or is_custom
         for widget in [self.median_density, self.median_density_label, self.median_area, self.median_area_label]:
             if widget is not None:
-                widget.setVisible(active and not is_metallic)
+                widget.setVisible(active and not hide_density_area)
+        if hide_density_area:
+            if self.median_density:
+                self.median_density.clear()
+            if self.median_area:
+                self.median_area.clear()
 
         # Post spacing only for metallic
         for widget in [self.median_post_spacing, self.median_post_spacing_label]:
             if widget is not None:
                 widget.setVisible(active and is_metallic)
+        if active and is_metallic and self.median_post_spacing and not self.median_post_spacing.text():
+            self.median_post_spacing.setText("1")
+        if active and not is_metallic and self.median_post_spacing:
+            self.median_post_spacing.clear()
 
         # Load behavior
         self.median_load.setEnabled(active)
         self.median_load.setReadOnly(active and is_rcc)
         if active and is_rcc:
             self._auto_compute_median_load()
+        elif active and self.median_load:
+            self.median_load.setReadOnly(False)
+            self.median_load.clear()
+
+        if median_type == "Custom":
+            QMessageBox.warning(
+                self,
+                "Custom Median",
+                "Verify custom median design per IRC 6 guidance.",
+            )
 
     def get_overall_bridge_width(self):
         try:
@@ -654,12 +809,28 @@ class TypicalSectionDetailsTab(QWidget):
         if not hasattr(self, "railing_load_value"):
             return
         is_auto = mode.startswith("Automatic")
-        self.railing_load_value.setEnabled(not is_auto)
         if is_auto:
+            self.railing_load_value.setReadOnly(True)
+            self.railing_load_value.setText("1.5")
+        else:
+            self.railing_load_value.setReadOnly(False)
             self.railing_load_value.clear()
 
     def on_lane_count_changed(self, text):
         self._update_lane_details_rows(text)
+
+    def on_wearing_material_changed(self, material):
+        if not hasattr(self, "wearing_density") or not hasattr(self, "wearing_thickness"):
+            return
+        # Defaults per material; allow user edits afterward
+        if material == "Concrete":
+            self.wearing_density.setText("24.0")
+        elif material == "Bituminous":
+            self.wearing_density.setText("22.0")
+        else:
+            self.wearing_density.clear()
+        if not self.wearing_thickness.text():
+            self.wearing_thickness.setText("50")
 
     def _show_placeholder_message(self, action_name):
         QMessageBox.information(self, action_name, "This action will be available in an upcoming update.")

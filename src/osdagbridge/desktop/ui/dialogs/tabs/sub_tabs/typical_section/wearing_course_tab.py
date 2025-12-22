@@ -1,9 +1,9 @@
-"""Wearing Course sub-tab for Typical Section Details."""
+"""Wearing Course sub-tab for Typical Section Details (schema-driven)."""
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QGridLayout, QLabel, QComboBox, QLineEdit
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QDoubleValidator
 
-from osdagbridge.core.utils.common import VALUES_WEARING_COAT_MATERIAL
+from osdagbridge.core.bridge_types.plate_girder.typical_section_schema import WEARING_COURSE_TAB_SCHEMA
 
 
 class WearingCourseTab(QWidget):
@@ -14,6 +14,46 @@ class WearingCourseTab(QWidget):
         self.owner = owner
         self.setStyleSheet("background-color: white;")
         self._build_ui()
+
+    def _create_field(self, field_def, field_width=200):
+        owner = self.owner
+        ftype = field_def.get("type")
+
+        if ftype == "combo":
+            field = QComboBox()
+            field.addItems(field_def.get("choices") or [])
+        else:
+            field = QLineEdit()
+            validator_def = field_def.get("validator")
+            if validator_def:
+                vtype = validator_def.get("type")
+                if vtype == "double_range":
+                    bottom = validator_def.get("bottom", 0.0)
+                    top = validator_def.get("top", 1e9)
+                    decimals = validator_def.get("decimals", 3)
+                    field.setValidator(QDoubleValidator(bottom, top, decimals))
+
+            default = field_def.get("default")
+            if default is not None:
+                field.setText(str(default))
+
+        field.setObjectName(field_def.get("id", ""))
+        field.setFixedWidth(field_width)
+        owner.style_input_field(field)
+
+        bind_name = field_def.get("bind")
+        if bind_name:
+            setattr(owner, bind_name, field)
+
+        on_change = field_def.get("on_change")
+        if on_change and hasattr(owner, on_change) and ftype == "combo":
+            field.currentTextChanged.connect(getattr(owner, on_change))
+
+        on_editing_finished = field_def.get("on_editing_finished")
+        if on_editing_finished and hasattr(owner, on_editing_finished) and ftype != "combo":
+            field.editingFinished.connect(getattr(owner, on_editing_finished))
+
+        return field
 
     def _build_ui(self):
         owner = self.owner
@@ -29,27 +69,22 @@ class WearingCourseTab(QWidget):
         grid.setVerticalSpacing(10)
         grid.setColumnStretch(1, 1)
 
-        def add_row(row, label_text, widget):
-            label = QLabel(label_text)
-            label.setStyleSheet("font-size: 11px; color: #000;")
-            label.setMinimumWidth(200)
-            grid.addWidget(label, row, 0, Qt.AlignLeft)
-            grid.addWidget(widget, row, 1)
+        label_width = WEARING_COURSE_TAB_SCHEMA.get("label_width", 200)
 
-        owner.wearing_material = QComboBox()
-        owner.wearing_material.addItems(VALUES_WEARING_COAT_MATERIAL)
-        owner.style_input_field(owner.wearing_material)
-        add_row(0, "Material:", owner.wearing_material)
+        row_idx = 0
+        for row in WEARING_COURSE_TAB_SCHEMA.get("rows", []):
+            col = 0
+            for field_def in row.get("fields", []):
+                label = QLabel(field_def.get("label", ""))
+                label.setStyleSheet("font-size: 11px; color: #000;")
+                label.setMinimumWidth(label_width)
+                grid.addWidget(label, row_idx, col, Qt.AlignLeft)
+                col += 1
 
-        owner.wearing_density = QLineEdit()
-        owner.wearing_density.setValidator(QDoubleValidator(0.0, 40.0, 2))
-        owner.style_input_field(owner.wearing_density)
-        add_row(1, "Density (kN/m^3):", owner.wearing_density)
-
-        owner.wearing_thickness = QLineEdit()
-        owner.wearing_thickness.setValidator(QDoubleValidator(0.0, 200.0, 1))
-        owner.style_input_field(owner.wearing_thickness)
-        add_row(2, "Thickness (mm):", owner.wearing_thickness)
+                field = self._create_field(field_def, field_width=200)
+                grid.addWidget(field, row_idx, col)
+                col += 1
+            row_idx += 1
 
         card_layout.addLayout(grid)
         wearing_layout.addWidget(card)

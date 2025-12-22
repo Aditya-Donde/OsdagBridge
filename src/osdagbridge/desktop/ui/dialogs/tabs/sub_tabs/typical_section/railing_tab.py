@@ -1,9 +1,9 @@
-"""Railing sub-tab for Typical Section Details."""
-from PySide6.QtWidgets import QWidget, QVBoxLayout, QGridLayout, QLabel, QComboBox, QLineEdit, QHBoxLayout
+"""Railing sub-tab for Typical Section Details (schema-driven)."""
+from PySide6.QtWidgets import QWidget, QVBoxLayout, QGridLayout, QLabel, QComboBox, QLineEdit
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QDoubleValidator
 
-from osdagbridge.core.utils.common import DEFAULT_RAILING_WIDTH, MIN_RAILING_HEIGHT, VALUES_RAILING_TYPE
+from osdagbridge.core.bridge_types.plate_girder.typical_section_schema import RAILING_TAB_SCHEMA
 
 
 class RailingTab(QWidget):
@@ -14,6 +14,54 @@ class RailingTab(QWidget):
         self.owner = owner
         self.setStyleSheet("background-color: white;")
         self._build_ui()
+
+    def _create_field(self, field_def, field_width=200):
+        owner = self.owner
+        ftype = field_def.get("type")
+
+        if ftype == "combo":
+            field = QComboBox()
+            field.addItems(field_def.get("choices") or [])
+        else:
+            field = QLineEdit()
+            validator_def = field_def.get("validator")
+            if validator_def:
+                vtype = validator_def.get("type")
+                if vtype == "double_range":
+                    bottom = validator_def.get("bottom", 0.0)
+                    top = validator_def.get("top", 1e9)
+                    decimals = validator_def.get("decimals", 3)
+                    field.setValidator(QDoubleValidator(bottom, top, decimals))
+            default = field_def.get("default")
+            if default is not None:
+                field.setText(str(default))
+            placeholder = field_def.get("placeholder")
+            if placeholder:
+                field.setPlaceholderText(placeholder)
+            if field_def.get("enabled") is False:
+                field.setEnabled(False)
+
+        field.setObjectName(field_def.get("id", ""))
+        field.setFixedWidth(field_width)
+        owner.style_input_field(field)
+
+        bind_name = field_def.get("bind")
+        if bind_name:
+            setattr(owner, bind_name, field)
+
+        on_change = field_def.get("on_change")
+        if on_change and hasattr(owner, on_change) and ftype == "combo":
+            field.currentTextChanged.connect(getattr(owner, on_change))
+
+        on_text_changed = field_def.get("on_text_changed")
+        if on_text_changed and hasattr(owner, on_text_changed) and ftype != "combo":
+            field.textChanged.connect(getattr(owner, on_text_changed))
+
+        on_editing_finished = field_def.get("on_editing_finished")
+        if on_editing_finished and hasattr(owner, on_editing_finished) and ftype != "combo":
+            field.editingFinished.connect(getattr(owner, on_editing_finished))
+
+        return field
 
     def _build_ui(self):
         owner = self.owner
@@ -29,51 +77,22 @@ class RailingTab(QWidget):
         grid.setVerticalSpacing(10)
         grid.setColumnStretch(1, 1)
 
-        def add_row(row, label_text, widget):
-            label = QLabel(label_text)
-            label.setStyleSheet("font-size: 11px; color: #000;")
-            label.setMinimumWidth(180)
-            grid.addWidget(label, row, 0, Qt.AlignLeft)
-            grid.addWidget(widget, row, 1)
+        label_width = RAILING_TAB_SCHEMA.get("label_width", 180)
 
-        owner.railing_type = QComboBox()
-        owner.railing_type.addItems(VALUES_RAILING_TYPE)
-        owner.style_input_field(owner.railing_type)
-        add_row(0, "Type:", owner.railing_type)
+        row_idx = 0
+        for row in RAILING_TAB_SCHEMA.get("rows", []):
+            col = 0
+            for field_def in row.get("fields", []):
+                label = QLabel(field_def.get("label", ""))
+                label.setStyleSheet("font-size: 11px; color: #000;")
+                label.setMinimumWidth(label_width)
+                grid.addWidget(label, row_idx, col, Qt.AlignLeft)
+                col += 1
 
-        owner.railing_width = QLineEdit()
-        owner.railing_width.setValidator(QDoubleValidator(0.0, 2000.0, 1))
-        owner.railing_width.setText(f"{DEFAULT_RAILING_WIDTH * 1000:.0f}")
-        owner.style_input_field(owner.railing_width)
-        owner.railing_width.textChanged.connect(owner.recalculate_girders)
-        add_row(1, "Width (mm):", owner.railing_width)
-
-        owner.railing_height = QLineEdit()
-        owner.railing_height.setValidator(QDoubleValidator(MIN_RAILING_HEIGHT, 3.0, 3))
-        owner.style_input_field(owner.railing_height)
-        owner.railing_height.editingFinished.connect(owner.validate_railing_height)
-        add_row(2, "Height (m):", owner.railing_height)
-
-        load_row = QHBoxLayout()
-        load_row.setContentsMargins(0, 0, 0, 0)
-        load_row.setSpacing(12)
-
-        owner.railing_load_mode = QComboBox()
-        owner.railing_load_mode.addItems(["Automatic (IRC 6)", "User-defined"])
-        owner.style_input_field(owner.railing_load_mode)
-        owner.railing_load_mode.currentTextChanged.connect(owner.on_railing_load_mode_changed)
-        load_row.addWidget(owner.railing_load_mode)
-
-        owner.railing_load_value = QLineEdit()
-        owner.railing_load_value.setValidator(QDoubleValidator(0.0, 50.0, 2))
-        owner.railing_load_value.setPlaceholderText("Value")
-        owner.railing_load_value.setEnabled(False)
-        owner.style_input_field(owner.railing_load_value)
-        load_row.addWidget(owner.railing_load_value)
-
-        load_container = QWidget()
-        load_container.setLayout(load_row)
-        add_row(3, "Load (kN/m):", load_container)
+                field = self._create_field(field_def, field_width=200)
+                grid.addWidget(field, row_idx, col)
+                col += 1
+            row_idx += 1
 
         card_layout.addLayout(grid)
         railing_layout.addWidget(card)

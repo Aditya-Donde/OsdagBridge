@@ -1,8 +1,7 @@
-"""Lane Details sub-tab for Typical Section Details."""
+"""Lane Details sub-tab for Typical Section Details (schema-driven header)."""
 from PySide6.QtWidgets import (
     QWidget,
     QVBoxLayout,
-    QGridLayout,
     QLabel,
     QComboBox,
     QTableWidget,
@@ -10,6 +9,8 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
 )
 from PySide6.QtCore import Qt
+
+from osdagbridge.core.bridge_types.plate_girder.typical_section_schema import LANE_DETAILS_TAB_SCHEMA
 
 
 class LaneDetailsTab(QWidget):
@@ -20,6 +21,28 @@ class LaneDetailsTab(QWidget):
         self.owner = owner
         self.setStyleSheet("background-color: white;")
         self._build_ui()
+
+    def _create_field(self, field_def):
+        owner = self.owner
+        ftype = field_def.get("type")
+        if ftype == "combo":
+            field = QComboBox()
+            field.addItems(field_def.get("choices") or [])
+        else:
+            return None
+
+        field.setObjectName(field_def.get("id", ""))
+        owner.style_input_field(field)
+
+        bind_name = field_def.get("bind")
+        if bind_name:
+            setattr(owner, bind_name, field)
+
+        on_change = field_def.get("on_change")
+        if on_change and hasattr(owner, on_change):
+            field.currentTextChanged.connect(getattr(owner, on_change))
+
+        return field
 
     def _build_ui(self):
         owner = self.owner
@@ -34,17 +57,17 @@ class LaneDetailsTab(QWidget):
         selector_layout.setContentsMargins(0, 0, 0, 0)
         selector_layout.setSpacing(12)
 
-        lanes_label = QLabel("No. of Traffic Lanes:")
-        lanes_label.setStyleSheet("font-size: 11px; color: #000;")
-        selector_layout.addWidget(lanes_label)
+        for row in LANE_DETAILS_TAB_SCHEMA.get("rows", []):
+            for field_def in row.get("fields", []):
+                label = QLabel(field_def.get("label", ""))
+                label.setStyleSheet("font-size: 11px; color: #000;")
+                selector_layout.addWidget(label)
 
-        owner.lane_count_combo = QComboBox()
-        owner.lane_count_combo.addItems([str(i) for i in range(1, 7)])
-        owner.style_input_field(owner.lane_count_combo)
-        owner.lane_count_combo.currentTextChanged.connect(owner.on_lane_count_changed)
-        selector_layout.addWidget(owner.lane_count_combo)
+                field = self._create_field(field_def)
+                if field:
+                    selector_layout.addWidget(field)
+
         selector_layout.addStretch()
-
         card_layout.addLayout(selector_layout)
 
         owner.lane_table = QTableWidget()
