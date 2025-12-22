@@ -142,7 +142,7 @@ class AdditionalInputs(QDialog):
         main_layout.addWidget(self.tabs)
         
         action_bar, self.defaults_button, self.save_button = create_action_button_bar()
-        self.defaults_button.clicked.connect(lambda: self._show_placeholder_message("Defaults"))
+        self.defaults_button.clicked.connect(self._apply_defaults)
         self.save_button.clicked.connect(lambda: self._show_placeholder_message("Save"))
         main_layout.addSpacing(6)
         main_layout.addWidget(action_bar)
@@ -188,6 +188,12 @@ class AdditionalInputs(QDialog):
             widget.setObjectName(field_def["id"])
 
         return widget
+
+    def _apply_defaults(self):
+        if hasattr(self, "typical_section_tab") and hasattr(self.typical_section_tab, "reset_defaults"):
+            self.typical_section_tab.reset_defaults()
+        else:
+            self._show_placeholder_message("Defaults")
 
     def _build_sections_from_schema(self, parent_layout, sections, heading_style, label_style, field_width):
         for section in sections:

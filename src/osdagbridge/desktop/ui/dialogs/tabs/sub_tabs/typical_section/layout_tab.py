@@ -1,9 +1,12 @@
-"""Layout sub-tab for Typical Section Details."""
-from PySide6.QtWidgets import QWidget, QVBoxLayout, QGridLayout, QLabel, QLineEdit, QHBoxLayout
+"""Layout sub-tab for Typical Section Details (schema-driven)."""
+import copy
+from PySide6.QtWidgets import QWidget, QVBoxLayout, QGridLayout, QLabel, QLineEdit
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QDoubleValidator, QIntValidator
 
-from osdagbridge.core.utils.common import DEFAULT_GIRDER_SPACING, MIN_FOOTPATH_WIDTH
+from osdagbridge.core.bridge_types.plate_girder.typical_section_schema import LAYOUT_TAB_SCHEMA
+from osdagbridge.core.utils.common import DEFAULT_GIRDER_SPACING
+from osdagbridge.desktop.ui.dialogs.tabs.common import apply_field_style
 
 
 class LayoutTab(QWidget):
@@ -14,6 +17,49 @@ class LayoutTab(QWidget):
         self.owner = owner
         self.setStyleSheet("background-color: white;")
         self._build_ui()
+
+    def _create_field(self, field_def, default_width=180):
+        owner = self.owner
+        ftype = field_def.get("type")
+        field = QLineEdit()
+
+        validator_def = field_def.get("validator")
+        if validator_def:
+            vtype = validator_def.get("type")
+            if vtype == "double_range":
+                bottom = validator_def.get("bottom", 0.0)
+                top = validator_def.get("top", 1e9)
+                decimals = validator_def.get("decimals", 3)
+                field.setValidator(QDoubleValidator(bottom, top, decimals))
+            elif vtype == "int_range":
+                bottom = validator_def.get("bottom", 0)
+                top = validator_def.get("top", 1e9)
+                field.setValidator(QIntValidator(bottom, top))
+
+        default = field_def.get("default")
+        if default is not None:
+            field.setText(str(default))
+
+        if field_def.get("read_only"):
+            field.setReadOnly(True)
+
+        apply_field_style(field)
+        field.setFixedWidth(default_width)
+        field.setObjectName(field_def.get("id", ""))
+
+        bind_name = field_def.get("bind")
+        if bind_name:
+            setattr(owner, bind_name, field)
+
+        on_text_changed = field_def.get("on_text_changed")
+        if on_text_changed and hasattr(owner, on_text_changed):
+            field.textChanged.connect(getattr(owner, on_text_changed))
+
+        on_editing_finished = field_def.get("on_editing_finished")
+        if on_editing_finished and hasattr(owner, on_editing_finished):
+            field.editingFinished.connect(getattr(owner, on_editing_finished))
+
+        return field
 
     def _build_ui(self):
         owner = self.owner
@@ -40,67 +86,41 @@ class LayoutTab(QWidget):
             lbl.setMinimumWidth(180)
             return lbl
 
-        owner.girder_spacing = QLineEdit()
-        owner.girder_spacing.setValidator(QDoubleValidator(0.01, 50.0, 3))
-        owner.girder_spacing.setText(str(DEFAULT_GIRDER_SPACING))
-        owner.style_input_field(owner.girder_spacing)
-        owner.girder_spacing.textChanged.connect(owner.on_girder_spacing_changed)
+        schema_rows = copy.deepcopy(LAYOUT_TAB_SCHEMA.get("rows", []))
+        for row in schema_rows:
+            for field_def in row.get("fields", []):
+                if field_def.get("id") == "deck_overhang" and field_def.get("default") is None:
+                    field_def["default"] = f"{0.35 * DEFAULT_GIRDER_SPACING:.3f}"
 
-        owner.no_of_girders = QLineEdit()
-        owner.no_of_girders.setValidator(QIntValidator(2, 100))
-        owner.style_input_field(owner.no_of_girders)
-        owner.no_of_girders.textChanged.connect(owner.on_no_of_girders_changed)
+        owner.layout_adjust_notice = QLabel()
+        owner.layout_adjust_notice.setStyleSheet("font-size: 10px; font-style: italic; color: #666;")
+        owner.layout_adjust_notice.hide()
 
-        grid.addWidget(_label("Girder Spacing (m):"), 0, 0, Qt.AlignLeft)
-        grid.addWidget(owner.girder_spacing, 0, 1)
-        grid.addWidget(_label("No. of Girders:"), 0, 2, Qt.AlignLeft)
-        grid.addWidget(owner.no_of_girders, 0, 3)
+        row_idx = 0
+        for row_num, row in enumerate(schema_rows):
+            col = 0
+            for field_def in row.get("fields", []):
+                lbl = _label(field_def.get("label", ""))
+                grid.addWidget(lbl, row_idx, col, Qt.AlignLeft)
+                col += 1
 
-        owner.deck_overhang = QLineEdit()
-        owner.deck_overhang.setValidator(QDoubleValidator(0.0, 100.0, 3))
-        default_overhang = 0.35 * DEFAULT_GIRDER_SPACING
-        owner.deck_overhang.setText(f"{default_overhang:.3f}")
-        owner.style_input_field(owner.deck_overhang)
-        owner.deck_overhang.textChanged.connect(owner.on_deck_overhang_changed)
+                field = self._create_field(field_def, default_width=180)
+                grid.addWidget(field, row_idx, col)
+                col += 1
 
-        grid.addWidget(_label("Deck Overhang Width (m):"), 1, 0, Qt.AlignLeft)
-        grid.addWidget(owner.deck_overhang, 1, 1)
+                # Special tooltip for overall width
+                if field_def.get("id") == "overall_bridge_width_display":
+                    field.setToolTip(owner.overall_bridge_width_formula)
 
-        owner.overall_bridge_width_display = QLineEdit()
-        owner.style_input_field(owner.overall_bridge_width_display)
-        owner.overall_bridge_width_display.setReadOnly(True)
-        owner.overall_bridge_width_display.setToolTip(owner.overall_bridge_width_formula)
-        owner.overall_bridge_width_display.textChanged.connect(owner._reject_overall_width_override)
+            row_idx += 1
 
-        grid.addWidget(_label("Overall Bridge Width (m):"), 2, 0, Qt.AlignLeft)
-        grid.addWidget(owner.overall_bridge_width_display, 2, 1)
-
-        owner.deck_thickness = QLineEdit()
-        owner.deck_thickness.setValidator(QDoubleValidator(100.0, 500.0, 0))
-        owner.deck_thickness.setText("200")
-        owner.style_input_field(owner.deck_thickness)
-        owner.deck_thickness.editingFinished.connect(owner.validate_deck_thickness)
-
-        owner.footpath_thickness = QLineEdit()
-        owner.footpath_thickness.setValidator(QDoubleValidator(100.0, 500.0, 0))
-        owner.footpath_thickness.setText("200")
-        owner.style_input_field(owner.footpath_thickness)
-        owner.footpath_thickness.editingFinished.connect(owner.validate_footpath_thickness)
-
-        grid.addWidget(_label("Deck Thickness (mm):"), 3, 0, Qt.AlignLeft)
-        grid.addWidget(owner.deck_thickness, 3, 1)
-        grid.addWidget(_label("Footpath Thickness (mm):"), 4, 2, Qt.AlignLeft)
-        grid.addWidget(owner.footpath_thickness, 4, 3)
-
-        owner.footpath_width = QLineEdit()
-        owner.footpath_width.setValidator(QDoubleValidator(MIN_FOOTPATH_WIDTH, 5.0, 3))
-        owner.footpath_width.textChanged.connect(owner.on_footpath_width_changed)
-        owner.style_input_field(owner.footpath_width)
-        owner.footpath_width.setText(f"{MIN_FOOTPATH_WIDTH:.2f}")
-
-        grid.addWidget(_label("Footpath Width (m):"), 4, 0, Qt.AlignLeft)
-        grid.addWidget(owner.footpath_width, 4, 1)
+            # Place adjustment notice directly under the first row (No. of Girders line)
+            if row_num == 0:
+                col_span = max(col, 1)
+                grid.addWidget(owner.layout_adjust_notice, row_idx, 0, 1, col_span, Qt.AlignLeft)
+                row_idx += 1
 
         layout_layout.addLayout(grid)
+
         layout_layout.addStretch()
 
