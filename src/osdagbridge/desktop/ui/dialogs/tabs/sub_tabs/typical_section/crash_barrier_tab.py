@@ -15,13 +15,19 @@ class CrashBarrierTab(QWidget):
         self.setStyleSheet("background-color: white;")
         self._build_ui()
 
-    def _create_field(self, field_def, field_width=200):
+    def _create_field(self, field_def, field_width=260):
         owner = self.owner
         ftype = field_def.get("type")
 
         if ftype == "combo":
             field = QComboBox()
-            field.addItems(field_def.get("choices") or [])
+            choices = field_def.get("choices") or []
+            field.addItems(choices)
+            # Ensure long IRC 5 labels are fully visible
+            field.setSizeAdjustPolicy(QComboBox.AdjustToContents)
+            field.setMinimumContentsLength(max((len(c) for c in choices), default=0))
+            # Widen the popup view as well so text is not clipped
+            field.view().setMinimumWidth(320)
         else:
             field = QLineEdit()
             validator_def = field_def.get("validator")

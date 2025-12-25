@@ -720,6 +720,9 @@ class InputDock(QWidget):
                 widget.setPlaceholderText(placeholder)
 
         if object_name:
+            # Qt expects a string; guard against accidental non-string IDs (e.g., lists)
+            if not isinstance(object_name, str):
+                object_name = str(object_name)
             widget.setObjectName(object_name)
 
         apply_field_style(widget)
