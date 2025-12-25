@@ -1,28 +1,25 @@
-"""Auto-generated tab module extracted from additional_inputs."""
-import sys
-import os
-from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QTabWidget, QTabBar, QLabel, QLineEdit,
-    QComboBox, QGroupBox, QFormLayout, QPushButton, QScrollArea,
-    QCheckBox, QMessageBox, QSizePolicy, QSpacerItem, QStackedWidget,
-    QFrame, QGridLayout, QTableWidget, QTableWidgetItem, QHeaderView,
-    QTextEdit, QDialog, QSizePolicy, QSizeGrip
-)
-from PySide6.QtCore import Qt, Signal, QSize
-from PySide6.QtGui import QDoubleValidator, QIntValidator
+"""Schema-driven Girder Details tab for member properties."""
 
-from osdagbridge.core.utils.common import *
-from osdagbridge.desktop.ui.utils.custom_titlebar import CustomTitleBar
+from PySide6.QtWidgets import (
+    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit,
+    QComboBox, QScrollArea, QSizePolicy, QFrame, QGridLayout
+)
+from PySide6.QtCore import Qt
+
+from osdagbridge.core.bridge_types.plate_girder.member_properties_schema import GIRDER_DETAILS_SCHEMA
 from osdagbridge.desktop.ui.dialogs.tabs.common import apply_field_style
 
+
 class GirderDetailsTab(QWidget):
-    """Tab for Girder Details styled to match the provided reference."""
+    """Tab for Girder Details using the schema definition."""
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self.welded_rows = []
         self.rolled_rows = []
         self.section_property_inputs = {}
+        self.girder_count = 2
+        self.widgets = {}
         self.init_ui()
 
     def init_ui(self):
@@ -56,24 +53,31 @@ class GirderDetailsTab(QWidget):
         layout.setHorizontalSpacing(20)
         layout.setVerticalSpacing(12)
 
-        self.select_girder_combo = QComboBox()
-        self.select_girder_combo.addItems(["Girder 1", "Girder 2", "Girder 3", "Girder 4", "Girder 5", "All"])
-        apply_field_style(self.select_girder_combo)
-        self._set_field_width(self.select_girder_combo)
-
-        self.span_combo = QComboBox()
-        self.span_combo.addItems(["Custom", "Full Length"])
-        apply_field_style(self.span_combo)
-        self._set_field_width(self.span_combo)
+        row = 0
+        for field_def in GIRDER_DETAILS_SCHEMA["overview"]:
+            label = self._create_label(field_def["label"])
+            widget = self._create_field(field_def)
+            if field_def.get("id") == "span":
+                layout.addWidget(label, row, 2)
+                layout.addWidget(widget, row, 3)
+            else:
+                layout.addWidget(label, row, 0)
+                layout.addWidget(widget, row, 1)
+            row += 1
 
         self.member_id_input = QLineEdit("G1-1")
         apply_field_style(self.member_id_input)
         self._set_field_width(self.member_id_input)
 
-        self.member_select_combo = QComboBox()
-        self.member_select_combo.addItems(["Girder 1", "Girder 2", "Girder 3", "Girder 4", "Girder 5"])
-        apply_field_style(self.member_select_combo)
-        self._set_field_width(self.member_select_combo)
+        self.length_input = QLineEdit("30")
+        apply_field_style(self.length_input)
+        self._set_field_width(self.length_input)
+
+        layout.addWidget(self._create_label("Member ID:"), row, 0)
+        layout.addWidget(self.member_id_input, row, 1)
+        layout.addWidget(self._create_label("Length (m):"), row, 2)
+        layout.addWidget(self.length_input, row, 3)
+        row += 1
 
         self.distance_start_input = QLineEdit("0")
         self.distance_end_input = QLineEdit("30")
@@ -82,25 +86,12 @@ class GirderDetailsTab(QWidget):
         self._set_field_width(self.distance_start_input, 80)
         self._set_field_width(self.distance_end_input, 80)
 
-        self.length_input = QLineEdit("30")
-        apply_field_style(self.length_input)
-        self._set_field_width(self.length_input)
+        layout.addWidget(self._create_label("Distance from left edge (m):"), row, 0)
+        layout.addLayout(self._build_distance_row(), row, 1)
 
-        layout.addWidget(self._create_label("Select Girder:"), 0, 0)
-        layout.addWidget(self.select_girder_combo, 0, 1)
-        layout.addWidget(self._create_label("Span:"), 0, 2)
-        layout.addWidget(self.span_combo, 0, 3)
-
-        layout.addWidget(self._create_label("Member ID:"), 1, 0)
-        layout.addWidget(self.member_id_input, 1, 1)
-        layout.addWidget(self._create_label("Length (m):"), 1, 2)
-        layout.addWidget(self.length_input, 1, 3)
-
-        layout.addWidget(self._create_label("Distance from left edge (m):"), 2, 0)
-        layout.addLayout(self._build_distance_row(), 2, 1)
-
-        layout.addWidget(self._create_label("Member:"), 2, 2)
-        layout.addWidget(self.member_select_combo, 2, 3)
+        layout.addWidget(self._create_label("Member:"), row, 2)
+        member_combo = self._create_member_combo()
+        layout.addWidget(member_combo, row, 3)
 
         return card
 
@@ -121,14 +112,12 @@ class GirderDetailsTab(QWidget):
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(16)
 
-        # Left side - two bordered boxes stacked vertically
         left_column = QWidget()
         left_column.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         left_column_layout = QVBoxLayout(left_column)
         left_column_layout.setContentsMargins(0, 0, 0, 0)
         left_column_layout.setSpacing(12)
 
-        # Section Inputs box (single frame containing all fields)
         section_inputs_box = self._create_inner_box()
         section_inputs_layout = QVBoxLayout(section_inputs_box)
         section_inputs_layout.setContentsMargins(12, 8, 12, 12)
@@ -145,57 +134,15 @@ class GirderDetailsTab(QWidget):
         inputs_grid.setColumnStretch(0, 0)
         inputs_grid.setColumnStretch(1, 1)
 
-        self.design_combo = QComboBox()
-        self.design_combo.addItems(["Customized", "Optimized"])
-        apply_field_style(self.design_combo)
-        row = self._add_box_row(inputs_grid, 0, "Design:", self.design_combo)
-
-        self.type_combo = QComboBox()
-        self.type_combo.addItems(["Welded", "Rolled"])
-        apply_field_style(self.type_combo)
-        row = self._add_box_row(inputs_grid, row, "Type:", self.type_combo)
-
-        self.symmetry_combo = QComboBox()
-        self.symmetry_combo.addItems(["Girder Symmetric", "Girder Unsymmetric"])
-        apply_field_style(self.symmetry_combo)
-        row = self._add_box_row(inputs_grid, row, "Symmetry:", self.symmetry_combo)
-
-        self.total_depth_input = self._create_line_edit()
-        row = self._add_box_row(inputs_grid, row, "Total Depth (mm):", self.total_depth_input, self.welded_rows)
-
-        self.web_thickness_combo = QComboBox()
-        self.web_thickness_combo.addItems(["All", "Custom"])
-        apply_field_style(self.web_thickness_combo)
-        row = self._add_box_row(inputs_grid, row, "Web Thickness (mm):", self.web_thickness_combo, self.welded_rows)
-
-        self.top_width_input = self._create_line_edit()
-        row = self._add_box_row(inputs_grid, row, "Width of Top Flange (mm):", self.top_width_input, self.welded_rows)
-
-        self.top_thickness_combo = QComboBox()
-        self.top_thickness_combo.addItems(["All", "Custom"])
-        apply_field_style(self.top_thickness_combo)
-        row = self._add_box_row(inputs_grid, row, "Top Flange Thickness (mm):", self.top_thickness_combo, self.welded_rows)
-
-        self.bottom_width_input = self._create_line_edit()
-        row = self._add_box_row(inputs_grid, row, "Width of Bottom Flange (mm):", self.bottom_width_input, self.welded_rows)
-
-        self.bottom_thickness_combo = QComboBox()
-        self.bottom_thickness_combo.addItems(["All", "Custom"])
-        apply_field_style(self.bottom_thickness_combo)
-        row = self._add_box_row(inputs_grid, row, "Bottom Flange Thickness (mm):", self.bottom_thickness_combo, self.welded_rows)
-
-        self.is_section_combo = QComboBox()
-        self.is_section_combo.addItems([
-            "ISMB 500", "ISMB 550", "ISMB 600",
-            "ISWB 500", "ISWB 550", "ISWB 600"
-        ])
-        apply_field_style(self.is_section_combo)
-        self._add_box_row(inputs_grid, row, "IS Section:", self.is_section_combo, self.rolled_rows)
+        row = 0
+        for field_def in GIRDER_DETAILS_SCHEMA["section_inputs"]:
+            if field_def.get("id") in {"torsional_restraint", "warping_restraint", "web_type"}:
+                continue
+            row = self._add_schema_row(inputs_grid, row, field_def)
 
         section_inputs_layout.addLayout(inputs_grid)
         left_column_layout.addWidget(section_inputs_box)
 
-        # Restraint/Web details box
         restraint_box = self._create_inner_box()
         restraint_layout = QVBoxLayout(restraint_box)
         restraint_layout.setContentsMargins(12, 8, 12, 12)
@@ -212,34 +159,22 @@ class GirderDetailsTab(QWidget):
         restraint_grid.setColumnStretch(0, 0)
         restraint_grid.setColumnStretch(1, 1)
 
-        self.torsion_combo = QComboBox()
-        self.torsion_combo.addItems(VALUES_TORSIONAL_RESTRAINT)
-        apply_field_style(self.torsion_combo)
-        row = self._add_box_row(restraint_grid, 0, "Torsional Restraint:", self.torsion_combo)
-
-        self.warping_combo = QComboBox()
-        self.warping_combo.addItems(VALUES_WARPING_RESTRAINT)
-        apply_field_style(self.warping_combo)
-        row = self._add_box_row(restraint_grid, row, "Warping Restraint:", self.warping_combo)
-
-        self.web_type_combo = QComboBox()
-        self.web_type_combo.addItems(["Thin Web with ITS", "Thick Web"])
-        apply_field_style(self.web_type_combo)
-        self._add_box_row(restraint_grid, row, "Web Type*:", self.web_type_combo)
+        rrow = 0
+        for field_def in GIRDER_DETAILS_SCHEMA["section_inputs"]:
+            if field_def.get("id") in {"torsional_restraint", "warping_restraint", "web_type"}:
+                rrow = self._add_schema_row(restraint_grid, rrow, field_def)
 
         restraint_layout.addLayout(restraint_grid)
         left_column_layout.addWidget(restraint_box)
 
         main_layout.addWidget(left_column)
 
-        # Right side - image + section properties box
         right_column = QWidget()
         right_column.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         right_column_layout = QVBoxLayout(right_column)
         right_column_layout.setContentsMargins(0, 0, 0, 0)
         right_column_layout.setSpacing(12)
 
-        # Dynamic image box
         image_box = self._create_inner_box()
         image_layout = QVBoxLayout(image_box)
         image_layout.setContentsMargins(10, 10, 10, 10)
@@ -253,7 +188,6 @@ class GirderDetailsTab(QWidget):
 
         right_column_layout.addWidget(image_box)
 
-        # Section Properties box
         props_box = self._create_inner_box()
         props_layout = QVBoxLayout(props_box)
         props_layout.setContentsMargins(12, 10, 12, 10)
@@ -282,13 +216,12 @@ class GirderDetailsTab(QWidget):
             "Plastic Modulus, Zuz (cm3)",
             "Plastic Modulus, Zuy (cm3)",
             "Torsion Constant, It (cm4)",
-            "Warping Constant, Iw (cm6)"
+            "Warping Constant, Iw (cm6)",
         ]
 
         for index, text in enumerate(property_fields):
             label = self._create_small_label(text)
             line_edit = self._create_line_edit()
-            line_edit.setPlaceholderText("")
             properties_grid.addWidget(label, index, 0)
             properties_grid.addWidget(line_edit, index, 1)
             self.section_property_inputs[text] = line_edit
@@ -298,8 +231,11 @@ class GirderDetailsTab(QWidget):
 
         main_layout.addWidget(right_column)
 
-        self.type_combo.currentTextChanged.connect(self._on_type_changed)
-        self._on_type_changed(self.type_combo.currentText())
+        if hasattr(self, "type_combo"):
+            self.type_combo.currentTextChanged.connect(self._on_type_changed)
+        self._apply_mode_states()
+        if hasattr(self, "type_combo"):
+            self._on_type_changed(self.type_combo.currentText())
 
         return container
 
@@ -326,14 +262,108 @@ class GirderDetailsTab(QWidget):
         apply_field_style(line_edit)
         return line_edit
 
-    def _add_section_row(self, layout, row, text, widget, tracker=None):
-        label = self._create_label(text)
-        widget.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
-        self._set_field_width(widget)
-        layout.addWidget(label, row, 0)
+    def _create_member_combo(self):
+        combo = QComboBox()
+        apply_field_style(combo)
+        self._set_field_width(combo)
+        self.widgets["member_select_combo"] = combo
+        self._populate_member_list()
+        return combo
+
+    def _create_field(self, field_def):
+        field_type = field_def.get("type")
+        bind_name = field_def.get("bind")
+
+        if field_type == "combo_dynamic":
+            combo = QComboBox()
+            apply_field_style(combo)
+            self._set_field_width(combo)
+            if bind_name:
+                self.widgets[bind_name] = combo
+            self._populate_girder_lists()
+            return combo
+
+        if field_type == "combo":
+            combo = QComboBox()
+            combo.addItems(field_def.get("choices", []))
+            apply_field_style(combo)
+            self._set_field_width(combo)
+            if bind_name:
+                self.widgets[bind_name] = combo
+            return combo
+
+        line_edit = QLineEdit()
+        apply_field_style(line_edit)
+        if bind_name:
+            self.widgets[bind_name] = line_edit
+        return line_edit
+
+    def _add_schema_row(self, layout, row, field_def):
+        visible_for = field_def.get("visible_for")
+        tracker = None
+        if visible_for:
+            if "welded" in visible_for:
+                tracker = self.welded_rows
+            elif "rolled" in visible_for:
+                tracker = self.rolled_rows
+
+        if field_def.get("type") == "mode_line":
+            mode_combo = QComboBox()
+            mode_combo.addItems(field_def.get("mode_choices", []))
+            if field_def.get("default_mode"):
+                mode_combo.setCurrentText(field_def["default_mode"])
+            apply_field_style(mode_combo)
+            self._set_field_width(mode_combo, 130)
+
+            value_field = self._create_line_edit()
+            self._set_field_width(value_field)
+
+            bind_mode = field_def.get("bind_mode")
+            bind_value = field_def.get("bind_value")
+            if bind_mode:
+                self.widgets[bind_mode] = mode_combo
+            if bind_value:
+                self.widgets[bind_value] = value_field
+
+            row = self._add_mode_row(layout, row, field_def["label"], mode_combo, value_field, tracker)
+            mode_combo.currentTextChanged.connect(self._apply_mode_states)
+            return row
+
+        if field_def.get("type") == "combo":
+            combo = QComboBox()
+            combo.addItems(field_def.get("choices", []))
+            apply_field_style(combo)
+            self._set_field_width(combo)
+            bind_name = field_def.get("bind")
+            if bind_name:
+                self.widgets[bind_name] = combo
+            return self._add_box_row(layout, row, field_def["label"], combo, tracker)
+
+        widget = self._create_field(field_def)
+        return self._add_box_row(layout, row, field_def["label"], widget, tracker)
+
+    def _add_box_row(self, layout, row, label_text, widget, visibility_list=None):
+        label = self._create_small_label(label_text)
+        layout.addWidget(label, row, 0, Qt.AlignLeft | Qt.AlignVCenter)
         layout.addWidget(widget, row, 1)
-        if tracker is not None:
-            tracker.append((label, widget))
+        if visibility_list is not None:
+            visibility_list.append((label, widget))
+        return row + 1
+
+    def _add_mode_row(self, layout, row, label_text, mode_combo, value_field, visibility_list=None):
+        wrapper = QHBoxLayout()
+        wrapper.setContentsMargins(0, 0, 0, 0)
+        wrapper.setSpacing(8)
+        wrapper.addWidget(mode_combo)
+        wrapper.addWidget(value_field)
+        wrapper.addStretch()
+
+        label = self._create_small_label(label_text)
+        layout.addWidget(label, row, 0, Qt.AlignLeft | Qt.AlignVCenter)
+        layout.addLayout(wrapper, row, 1)
+        if visibility_list is not None:
+            visibility_list.append((label, mode_combo))
+            visibility_list.append((None, value_field))
         return row + 1
 
     def _set_field_width(self, widget, width=230):
@@ -344,15 +374,13 @@ class GirderDetailsTab(QWidget):
         is_welded = text.lower() == "welded"
         self._set_row_visibility(self.welded_rows, is_welded)
         self._set_row_visibility(self.rolled_rows, not is_welded)
-        if is_welded:
-            self.dynamic_image_label.setText("Welded Girder")
-        else:
-            self.dynamic_image_label.setText("Rolled Section")
+        self.dynamic_image_label.setText("Welded Girder" if is_welded else "Rolled Section")
+        self._apply_mode_states()
 
     def _create_inner_box(self):
-        """Create a bordered box for grouped controls"""
         box = QFrame()
-        box.setStyleSheet("""
+        box.setStyleSheet(
+            """
             QFrame {
                border: 1px solid #b0b0b0;
                border-radius: 6px;
@@ -377,37 +405,67 @@ class GirderDetailsTab(QWidget):
                padding: 0px;
                margin: 0px;
             }
-        """)
+            """
+        )
         return box
-
-    def _create_small_label(self, text):
-        """Create a smaller label for compact layouts"""
-        label = QLabel(text)
-        label.setStyleSheet("""
-            QLabel {
-               color: #2b2b2b;
-               font-size: 11px;
-               font-weight: 500;
-               background: transparent;
-               border: none;
-               padding: 0px;
-               margin: 0px;
-            }
-        """)
-        label.setAutoFillBackground(False)
-        return label
-
-    def _add_box_row(self, layout, row, label_text, widget, visibility_list=None):
-        """Add a row to a box grid layout"""
-        label = self._create_small_label(label_text)
-        layout.addWidget(label, row, 0, Qt.AlignLeft | Qt.AlignVCenter)
-        layout.addWidget(widget, row, 1)
-        if visibility_list is not None:
-            visibility_list.append((label, widget))
-        return row + 1
 
     def _set_row_visibility(self, rows, visible):
         for label, widget in rows:
-            label.setVisible(visible)
+            if label is not None:
+                label.setVisible(visible)
             widget.setVisible(visible)
 
+    def _sync_mode_field(self, mode_combo, value_field, optimized_placeholder=None, custom_label=None):
+        mode_text = mode_combo.currentText()
+        is_optimized = mode_text.lower().startswith("opt") or mode_text.lower() == "all"
+        is_custom = mode_text.lower().startswith("custom")
+        if is_optimized and optimized_placeholder is not None:
+            value_field.setReadOnly(True)
+            value_field.setPlaceholderText(optimized_placeholder)
+            value_field.clear()
+        elif is_custom:
+            value_field.setReadOnly(False)
+            if custom_label:
+                value_field.setPlaceholderText(custom_label)
+        else:
+            value_field.setReadOnly(False)
+        value_field.setEnabled(True)
+
+    def _populate_girder_lists(self):
+        combo = self.widgets.get("select_girder_combo")
+        if not combo:
+            return
+        items = [f"Girder {i}" for i in range(1, self.girder_count + 1)] + ["All"]
+        combo.clear()
+        combo.addItems(items)
+
+    def _populate_member_list(self):
+        combo = self.widgets.get("member_select_combo")
+        if not combo:
+            return
+        items = [f"Girder {i}" for i in range(1, self.girder_count + 1)]
+        combo.clear()
+        combo.addItems(items)
+
+    def set_girder_count(self, count):
+        try:
+            count_int = int(max(1, count))
+        except Exception:
+            count_int = 1
+        self.girder_count = count_int
+        self._populate_girder_lists()
+        self._populate_member_list()
+
+    def _apply_mode_states(self):
+        def sync_pair(mode_name, value_name, opt_placeholder=None, custom_label=None):
+            mode_widget = self.widgets.get(mode_name)
+            value_widget = self.widgets.get(value_name)
+            if mode_widget and value_widget:
+                self._sync_mode_field(mode_widget, value_widget, optimized_placeholder=opt_placeholder, custom_label=custom_label)
+
+        sync_pair("depth_mode_combo", "depth_input", opt_placeholder="Auto")
+        sync_pair("top_width_mode_combo", "top_width_input", opt_placeholder="Auto")
+        sync_pair("bottom_width_mode_combo", "bottom_width_input", opt_placeholder="Auto")
+        sync_pair("top_thickness_mode_combo", "top_thickness_input", custom_label="Custom")
+        sync_pair("bottom_thickness_mode_combo", "bottom_thickness_input", custom_label="Custom")
+        sync_pair("web_thickness_mode_combo", "web_thickness_input", custom_label="Custom")

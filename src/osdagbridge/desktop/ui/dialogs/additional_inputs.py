@@ -122,6 +122,12 @@ class AdditionalInputs(QDialog):
         # Sub-Tab 2: Member Properties
         self.section_properties_tab = SectionPropertiesTab()
         self.tabs.addTab(self.section_properties_tab, "Member Properties")
+
+        # Keep girder count in sync across tabs
+        try:
+            self.typical_section_tab.girder_count_changed.connect(self.section_properties_tab.set_girder_count)
+        except Exception:
+            pass
         
         # Sub-Tab 3: Loading
         self.loading_tab = LoadingTab()
