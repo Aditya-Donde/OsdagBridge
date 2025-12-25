@@ -43,10 +43,15 @@ class SectionPropertiesTab(QWidget):
             "QTabBar::tab:!selected { margin-top: 2px; }"
         )
 
-        self.section_tabs.addTab(GirderDetailsTab(), "Girder Details")
+        self.girder_details_tab = GirderDetailsTab()
+        self.section_tabs.addTab(self.girder_details_tab, "Girder Details")
         self.section_tabs.addTab(StiffenerDetailsTab(), "Stiffener Details")
         self.section_tabs.addTab(CrossBracingDetailsTab(), "Cross-Bracing Details")
         self.section_tabs.addTab(EndDiaphragmDetailsTab(), "End Diaphragm Details")
 
         main_layout.addWidget(self.section_tabs)
+
+    def set_girder_count(self, count):
+        if hasattr(self, "girder_details_tab") and hasattr(self.girder_details_tab, "set_girder_count"):
+            self.girder_details_tab.set_girder_count(count)
 

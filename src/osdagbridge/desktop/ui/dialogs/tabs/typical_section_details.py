@@ -27,6 +27,7 @@ class TypicalSectionDetailsTab(QWidget):
     """Sub-tab for Typical Section Details inputs"""
 
     footpath_changed = Signal(str)
+    girder_count_changed = Signal(int)
 
     def __init__(self, footpath_value="None", carriageway_width=7.5, parent=None):
         super().__init__(parent)
@@ -190,6 +191,12 @@ class TypicalSectionDetailsTab(QWidget):
             self.on_railing_load_mode_changed(self.railing_load_mode.currentText())
         if hasattr(self, "wearing_material"):
             self.on_wearing_material_changed(self.wearing_material.currentText())
+        # Propagate initial girder count to other tabs
+        try:
+            if hasattr(self, "no_of_girders") and self.no_of_girders.text():
+                self.girder_count_changed.emit(int(self.no_of_girders.text()))
+        except Exception:
+            pass
 
     def _get_footpath_count(self):
         if self.footpath_value == "Both":
@@ -304,6 +311,10 @@ class TypicalSectionDetailsTab(QWidget):
             self.girder_spacing.setText(self._format_spacing(spacing))
             self.deck_overhang.setText(self._format_overhang(overhang))
             self.no_of_girders.setText(str(int(girders)))
+            try:
+                self.girder_count_changed.emit(int(girders))
+            except Exception:
+                pass
         finally:
             self.updating_fields = False
 

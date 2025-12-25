@@ -1,0 +1,143 @@
+"""Schema for Member Properties - Girder Details (plate girder).
+
+This mirrors the UX spec for girder selection, span, symmetry, and mode-based
+inputs for flange widths/thicknesses, web thickness, and depth.
+"""
+
+GIRDER_DETAILS_SCHEMA = {
+    "overview": [
+        {
+            "id": "select_girder",
+            "label": "Select Girder:",
+            "type": "combo_dynamic",
+            "bind": "select_girder_combo",
+            "include_all": True,
+        },
+        {
+            "id": "span",
+            "label": "Span:",
+            "type": "combo",
+            "choices": ["Full Length", "Custom"],
+            "bind": "span_combo",
+        },
+    ],
+    "section_inputs": [
+        {
+            "id": "design",
+            "label": "Design:",
+            "type": "combo",
+            "choices": ["Customized", "Optimized"],
+            "bind": "design_combo",
+            "visible_for": ["welded"],
+        },
+        {
+            "id": "type",
+            "label": "Type:",
+            "type": "combo",
+            "choices": ["Welded", "Rolled"],
+            "bind": "type_combo",
+        },
+        {
+            "id": "symmetry",
+            "label": "Symmetry:",
+            "type": "combo",
+            "choices": ["Girder Symmetric", "Girder Unsymmetric"],
+            "bind": "symmetry_combo",
+            "visible_for": ["welded"],
+        },
+        {
+            "id": "depth",
+            "label": "Total Depth (mm):",
+            "type": "mode_line",
+            "mode_choices": ["Optimized", "Customized"],
+            "default_mode": "Optimized",
+            "bind_mode": "depth_mode_combo",
+            "bind_value": "depth_input",
+            "visible_for": ["welded"],
+        },
+        {
+            "id": "top_flange_width",
+            "label": "Top Flange Width (mm):",
+            "type": "mode_line",
+            "mode_choices": ["Optimized", "Customized"],
+            "default_mode": "Optimized",
+            "bind_mode": "top_width_mode_combo",
+            "bind_value": "top_width_input",
+            "visible_for": ["welded"],
+        },
+        {
+            "id": "top_flange_thickness",
+            "label": "Top Flange Thickness (mm):",
+            "type": "mode_line",
+            "mode_choices": ["All", "Custom"],
+            "default_mode": "All",
+            "bind_mode": "top_thickness_mode_combo",
+            "bind_value": "top_thickness_input",
+            "visible_for": ["welded"],
+        },
+        {
+            "id": "bottom_flange_width",
+            "label": "Bottom Flange Width (mm):",
+            "type": "mode_line",
+            "mode_choices": ["Optimized", "Customized"],
+            "default_mode": "Optimized",
+            "bind_mode": "bottom_width_mode_combo",
+            "bind_value": "bottom_width_input",
+            "visible_for": ["welded"],
+        },
+        {
+            "id": "bottom_flange_thickness",
+            "label": "Bottom Flange Thickness (mm):",
+            "type": "mode_line",
+            "mode_choices": ["All", "Custom"],
+            "default_mode": "All",
+            "bind_mode": "bottom_thickness_mode_combo",
+            "bind_value": "bottom_thickness_input",
+            "visible_for": ["welded"],
+        },
+        {
+            "id": "web_thickness",
+            "label": "Web Thickness (mm):",
+            "type": "mode_line",
+            "mode_choices": ["All", "Custom"],
+            "default_mode": "All",
+            "bind_mode": "web_thickness_mode_combo",
+            "bind_value": "web_thickness_input",
+            "visible_for": ["welded"],
+        },
+        {
+            "id": "is_section",
+            "label": "IS Section:",
+            "type": "combo",
+            "choices": [
+                "ISMB 500", "ISMB 550", "ISMB 600",
+                "ISWB 500", "ISWB 550", "ISWB 600",
+            ],
+            "bind": "is_section_combo",
+            "visible_for": ["rolled"],
+        },
+        {
+            "id": "torsional_restraint",
+            "label": "Torsional Restraint:",
+            "type": "combo",
+            "choices": [
+                "Fully Restrained", "Partially Restrained - Support Connect", "Partially Restrained - Bearing Support",
+            ],
+            "bind": "torsion_combo",
+        },
+        {
+            "id": "warping_restraint",
+            "label": "Warping Restraint:",
+            "type": "combo",
+            "choices": ["Both Flange Restraint", "No Restraint"],
+            "bind": "warping_combo",
+        },
+        {
+            "id": "web_type",
+            "label": "Web Type*:",
+            "type": "combo",
+            "choices": ["Thin Web with ITS", "Thick Web"],
+            "bind": "web_type_combo",
+        },
+    ],
+}
