@@ -494,7 +494,7 @@ class TypicalSectionDetailsTab(QWidget):
 
     def _reset_crash_barrier_defaults(self):
         if hasattr(self, "crash_barrier_type"):
-            self.crash_barrier_type.setCurrentText("IRC 5 RCC")
+            self.crash_barrier_type.setCurrentText("IRC 5 - RCC Crash Barrier")
         if hasattr(self, "crash_barrier_density"):
             self.crash_barrier_density.clear()
         if hasattr(self, "crash_barrier_width"):
@@ -526,7 +526,7 @@ class TypicalSectionDetailsTab(QWidget):
 
         # Median defaults
         if hasattr(self, "median_type"):
-            self.median_type.setCurrentText("IRC 5 RCC")
+            self.median_type.setCurrentText("IRC 5 - Raised Kerb")
             self._update_median_visibility(self.median_type.currentText(), include_median=True)
         if hasattr(self, "median_width"):
             self.median_width.clear()
@@ -557,7 +557,7 @@ class TypicalSectionDetailsTab(QWidget):
 
     def _auto_compute_crash_barrier_load(self):
         barrier_type = self.crash_barrier_type.currentText() if hasattr(self, "crash_barrier_type") else ""
-        if barrier_type.startswith("IRC 5 RCC"):
+        if self._is_rcc_barrier(barrier_type):
             try:
                 density = float(self.crash_barrier_density.text()) if self.crash_barrier_density.text() else 0.0
                 area = float(self.crash_barrier_area.text()) if self.crash_barrier_area.text() else 0.0
@@ -568,18 +568,21 @@ class TypicalSectionDetailsTab(QWidget):
         # For other types load is user-entered; do not overwrite
 
     def _is_metallic_barrier(self, barrier_type):
-        return barrier_type.startswith("IRC 5 Metallic")
+        return barrier_type.startswith("IRC 5 - Metallic Crash Barrier")
 
     def _is_rcc_barrier(self, barrier_type):
-        return barrier_type.startswith("IRC 5 RCC") or barrier_type.startswith("IRC 5 High Containment RCC")
+        return (
+            barrier_type.startswith("IRC 5 - RCC Crash Barrier")
+            or barrier_type.startswith("IRC 5 - High Containment RCC Crash Barrier")
+        )
 
     def _update_crash_barrier_visibility(self, barrier_type):
         is_metallic = self._is_metallic_barrier(barrier_type)
         is_rcc = self._is_rcc_barrier(barrier_type)
         is_custom = barrier_type == "Custom"
 
-        # Density & Area hidden for metallic or custom options
-        hide_density_area = is_metallic or is_custom
+        # Density & Area hidden only for metallic options
+        hide_density_area = is_metallic
         for widget in [self.crash_barrier_density, self.crash_barrier_density_label, self.crash_barrier_area, self.crash_barrier_area_label]:
             widget.setVisible(not hide_density_area)
         if hide_density_area:
@@ -611,14 +614,10 @@ class TypicalSectionDetailsTab(QWidget):
             )
 
     def _is_metallic_median(self, median_type):
-        return median_type.startswith("IRC 5 Metallic")
+        return median_type.startswith("IRC 5 - Metallic Crash Barrier")
 
     def _is_rcc_median(self, median_type):
-        return (
-            median_type.startswith("IRC 5 RCC")
-            or median_type.startswith("IRC 5 High Containment RCC")
-            or median_type.startswith("IRC 5 Raised Kerb")
-        )
+        return median_type.startswith("IRC 5 - RCC Crash Barrier") or median_type.startswith("IRC 5 - Raised Kerb")
 
     def _auto_compute_median_load(self):
         median_type = self.median_type.currentText() if hasattr(self, "median_type") else ""
@@ -657,7 +656,7 @@ class TypicalSectionDetailsTab(QWidget):
                 widget.setEnabled(active)
 
         # Density & Area hidden for metallic or custom
-        hide_density_area = is_metallic or is_custom
+        hide_density_area = is_metallic
         for widget in [self.median_density, self.median_density_label, self.median_area, self.median_area_label]:
             if widget is not None:
                 widget.setVisible(active and not hide_density_area)

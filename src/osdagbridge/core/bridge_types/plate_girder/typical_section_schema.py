@@ -106,14 +106,13 @@ CRASH_BARRIER_TAB_SCHEMA = {
                     "id": "crash_barrier_type",
                     "label": "Type:",
                     "type": "combo",
-                    "choices": [
-                        "IRC 5 Raised Kerb",
-                        "IRC 5 RCC",
-                        "IRC 5 High Containment RCC",
-                        "IRC 5 Metallic (Single W-Beam)",
-                        "IRC 5 Metallic (Double W-Beam)",
-                        "Custom",
-                    ],
+                        "choices": [
+                            "IRC 5 - RCC Crash Barrier",
+                            "IRC 5 - High Containment RCC Crash Barrier",
+                            "IRC 5 - Metallic Crash Barrier with Single W-Beam",
+                            "IRC 5 - Metallic Crash Barrier with Double W-Beam",
+                            "Custom",
+                        ],
                     "bind": "crash_barrier_type",
                     "on_change": "on_crash_barrier_type_changed",
                 }
@@ -203,13 +202,13 @@ MEDIAN_TAB_SCHEMA = {
                     "id": "median_type",
                     "label": "Type:",
                     "type": "combo",
-                    "choices": [
-                        "IRC 5 RCC",
-                        "IRC 5 High Containment RCC",
-                        "IRC 5 Metallic (Single W-Beam)",
-                        "IRC 5 Metallic (Double W-Beam)",
-                        "Custom",
-                    ],
+                        "choices": [
+                            "IRC 5 - Raised Kerb",
+                            "IRC 5 - RCC Crash Barrier",
+                            "IRC 5 - Metallic Crash Barrier with Single W-Beam",
+                            "IRC 5 - Metallic Crash Barrier with Double W-Beam",
+                            "Custom",
+                        ],
                     "bind": "median_type",
                     "on_change": "on_median_type_changed",
                 }
