@@ -763,7 +763,8 @@ class InputDock(QWidget):
                 }
                 """
             )
-            label.setMinimumWidth(110)
+            # Use a fixed label width so long captions do not shrink the input boxes.
+            label.setFixedWidth(150)
             row.addWidget(label)
 
             widget = self._create_field_widget(field_def)

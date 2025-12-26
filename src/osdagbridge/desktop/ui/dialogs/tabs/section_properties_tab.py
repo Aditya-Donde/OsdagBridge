@@ -44,14 +44,32 @@ class SectionPropertiesTab(QWidget):
         )
 
         self.girder_details_tab = GirderDetailsTab()
+        self.stiffener_details_tab = StiffenerDetailsTab()
+        self.cross_bracing_tab = CrossBracingDetailsTab()
+        self.end_diaphragm_tab = EndDiaphragmDetailsTab()
+
         self.section_tabs.addTab(self.girder_details_tab, "Girder Details")
-        self.section_tabs.addTab(StiffenerDetailsTab(), "Stiffener Details")
-        self.section_tabs.addTab(CrossBracingDetailsTab(), "Cross-Bracing Details")
-        self.section_tabs.addTab(EndDiaphragmDetailsTab(), "End Diaphragm Details")
+        self.section_tabs.addTab(self.stiffener_details_tab, "Stiffener Details")
+        self.section_tabs.addTab(self.cross_bracing_tab, "Cross-Bracing Details")
+        self.section_tabs.addTab(self.end_diaphragm_tab, "End Diaphragm Details")
 
         main_layout.addWidget(self.section_tabs)
 
     def set_girder_count(self, count):
         if hasattr(self, "girder_details_tab") and hasattr(self.girder_details_tab, "set_girder_count"):
             self.girder_details_tab.set_girder_count(count)
+
+    def reset_defaults(self):
+        if hasattr(self, "girder_details_tab") and hasattr(self.girder_details_tab, "reset_defaults"):
+            self.girder_details_tab.reset_defaults()
+        if hasattr(self, "cross_bracing_tab") and hasattr(self.cross_bracing_tab, "reset_defaults"):
+            self.cross_bracing_tab.reset_defaults()
+
+    def save_properties(self):
+        data = {}
+        if hasattr(self, "girder_details_tab") and hasattr(self.girder_details_tab, "collect_data"):
+            data["girder_details"] = self.girder_details_tab.collect_data()
+        if hasattr(self, "cross_bracing_tab") and hasattr(self.cross_bracing_tab, "collect_data"):
+            data["cross_bracing"] = self.cross_bracing_tab.collect_data()
+        return data
 
