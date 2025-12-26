@@ -6,7 +6,7 @@ from PySide6.QtWidgets import (
     QComboBox, QGroupBox, QFormLayout, QPushButton, QScrollArea,
     QCheckBox, QMessageBox, QSizePolicy, QSpacerItem, QStackedWidget,
     QFrame, QGridLayout, QTableWidget, QTableWidgetItem, QHeaderView,
-    QTextEdit, QDialog, QSizePolicy, QSizeGrip
+    QTextEdit, QDialog, QSizeGrip
 )
 from PySide6.QtCore import Qt, Signal, QSize
 from PySide6.QtGui import QDoubleValidator, QIntValidator
@@ -14,12 +14,14 @@ from PySide6.QtGui import QDoubleValidator, QIntValidator
 from osdagbridge.core.utils.common import *
 from osdagbridge.desktop.ui.utils.custom_titlebar import CustomTitleBar
 from osdagbridge.desktop.ui.dialogs.tabs.common import apply_field_style
+from osdagbridge.desktop.ui.widgets.section_viewer import SectionPreviewWidget, SectionCatalog
 
 class CrossBracingDetailsTab(QWidget):
     """Tab for Cross-Bracing Details with visual previews"""
 
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.catalog = SectionCatalog()
         self.init_ui()
 
     def init_ui(self):
@@ -41,26 +43,26 @@ class CrossBracingDetailsTab(QWidget):
         scroll.setWidget(container)
 
         container_layout = QVBoxLayout(container)
-        container_layout.setContentsMargins(0, 0, 0, 0)
-        container_layout.setSpacing(16)
+        container_layout.setContentsMargins(6, 6, 6, 6)
+        container_layout.setSpacing(8)
 
         primary_card = self._create_card_frame()
         card_layout = QHBoxLayout(primary_card)
-        card_layout.setContentsMargins(12, 10, 12, 10)
-        card_layout.setSpacing(10)
+        card_layout.setContentsMargins(10, 8, 10, 8)
+        card_layout.setSpacing(8)
 
         # Left column (inputs)
         left_column = QWidget()
         left_column.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         left_layout = QVBoxLayout(left_column)
         left_layout.setContentsMargins(0, 0, 0, 0)
-        left_layout.setSpacing(4)
+        left_layout.setSpacing(6)
 
         selection_box = self._create_inner_box()
         selection_layout = QGridLayout(selection_box)
         selection_layout.setContentsMargins(8, 4, 8, 4)
-        selection_layout.setHorizontalSpacing(8)
-        selection_layout.setVerticalSpacing(4)
+        selection_layout.setHorizontalSpacing(6)
+        selection_layout.setVerticalSpacing(2)
         selection_layout.setColumnMinimumWidth(0, 130)
         selection_layout.setColumnStretch(1, 1)
 
@@ -76,6 +78,7 @@ class CrossBracingDetailsTab(QWidget):
         selection_layout.addWidget(self._create_label("Member ID:"), 1, 0)
         selection_layout.addWidget(self.member_id_combo, 1, 1)
 
+        selection_box.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         left_layout.addWidget(selection_box)
 
         inputs_box = self._create_inner_box()
@@ -87,8 +90,8 @@ class CrossBracingDetailsTab(QWidget):
 
         inputs_grid = QGridLayout()
         inputs_grid.setContentsMargins(0, 0, 0, 0)
-        inputs_grid.setHorizontalSpacing(16)
-        inputs_grid.setVerticalSpacing(12)
+        inputs_grid.setHorizontalSpacing(12)
+        inputs_grid.setVerticalSpacing(8)
         inputs_grid.setColumnMinimumWidth(0, 130)
         inputs_grid.setColumnStretch(0, 0)
         inputs_grid.setColumnStretch(1, 1)
@@ -103,35 +106,38 @@ class CrossBracingDetailsTab(QWidget):
         apply_field_style(self.bracing_type_combo)
         row = self._add_grid_row(inputs_grid, row, "Type of Bracing:", self.bracing_type_combo)
 
-        section_options = [
-            "ISA 50 x 50 x 6", "ISA 65 x 65 x 6", "ISA 75 x 75 x 6",
-            "ISA 90 x 90 x 8", "ISA 100 x 100 x 8", "ISA 110 x 110 x 10",
-            "ISA 130 x 130 x 10", "ISMC 75", "ISMC 100", "ISMC 125",
-            "ISMC 150", "2-ISA 65 x 65 x 6", "2-ISA 75 x 75 x 6"
+        section_type_options = [
+            "Angle",
+            "Double Angle (Long Leg)",
+            "Double Angle (Short Leg)",
+            "Channel",
+            "Double Channel",
         ]
 
+        self.bracing_section_type_combo = QComboBox()
+        self.bracing_section_type_combo.addItems(section_type_options)
+        apply_field_style(self.bracing_section_type_combo)
+        row = self._add_grid_row(inputs_grid, row, "Bracing Section Type:", self.bracing_section_type_combo)
+
         self.bracing_section_combo = QComboBox()
-        self.bracing_section_combo.addItems(section_options)
         apply_field_style(self.bracing_section_combo)
         row = self._add_grid_row(inputs_grid, row, "Bracing Section:", self.bracing_section_combo)
 
         self.top_bracket_type_combo = QComboBox()
-        self.top_bracket_type_combo.addItems(["Double Angles", "Single Angle", "Channel"])
+        self.top_bracket_type_combo.addItems(section_type_options)
         apply_field_style(self.top_bracket_type_combo)
         row = self._add_grid_row(inputs_grid, row, "Top Bracket Section:", self.top_bracket_type_combo)
 
         self.top_bracket_size_combo = QComboBox()
-        self.top_bracket_size_combo.addItems(section_options)
         apply_field_style(self.top_bracket_size_combo)
         row = self._add_grid_row(inputs_grid, row, "Top Bracket Size:", self.top_bracket_size_combo)
 
         self.bottom_bracket_type_combo = QComboBox()
-        self.bottom_bracket_type_combo.addItems(["Double Angles", "Single Angle", "Channel"])
+        self.bottom_bracket_type_combo.addItems(section_type_options)
         apply_field_style(self.bottom_bracket_type_combo)
         row = self._add_grid_row(inputs_grid, row, "Bottom Bracket Section:", self.bottom_bracket_type_combo)
 
         self.bottom_bracket_size_combo = QComboBox()
-        self.bottom_bracket_size_combo.addItems(section_options)
         apply_field_style(self.bottom_bracket_size_combo)
         row = self._add_grid_row(inputs_grid, row, "Bottom Bracket Size:", self.bottom_bracket_size_combo)
 
@@ -143,6 +149,7 @@ class CrossBracingDetailsTab(QWidget):
 
         inputs_layout.addLayout(inputs_grid)
         left_layout.addWidget(inputs_box)
+        left_layout.addStretch(1)
 
         card_layout.addWidget(left_column)
 
@@ -178,9 +185,13 @@ class CrossBracingDetailsTab(QWidget):
         container_layout.addStretch()
 
         self.bracing_type_combo.currentTextChanged.connect(self._update_previews)
+        self.bracing_section_type_combo.currentTextChanged.connect(self._on_bracing_type_changed)
         self.bracing_section_combo.currentTextChanged.connect(self._update_previews)
+        self.top_bracket_type_combo.currentTextChanged.connect(self._on_top_bracket_type_changed)
         self.top_bracket_size_combo.currentTextChanged.connect(self._update_previews)
+        self.bottom_bracket_type_combo.currentTextChanged.connect(self._on_bottom_bracket_type_changed)
         self.bottom_bracket_size_combo.currentTextChanged.connect(self._update_previews)
+        self._populate_designations()
         self._update_previews()
 
     def _create_card_frame(self):
@@ -217,11 +228,10 @@ class CrossBracingDetailsTab(QWidget):
         return row + 1
 
     def _create_image_placeholder(self, height):
-        label = QLabel("Bracing Preview")
-        label.setAlignment(Qt.AlignCenter)
-        label.setMinimumHeight(height)
-        label.setStyleSheet("QLabel { border: 1px solid #d0d0d0; border-radius: 10px; background-color: #f7f7f7; font-weight: bold; color: #5b5b5b; }")
-        return label
+        widget = SectionPreviewWidget()
+        widget.setMinimumHeight(height)
+        widget.setStyleSheet("QWidget { border: 1px solid #d0d0d0; border-radius: 10px; background-color: #0f0f0f; }")
+        return widget
 
     def _create_preview_box(self, title):
         box = self._create_inner_box()
@@ -234,8 +244,87 @@ class CrossBracingDetailsTab(QWidget):
         return box, image
 
     def _update_previews(self):
-        self.bracing_image_label.setText(self.bracing_type_combo.currentText())
-        self.bracing_preview_label.setText(self.bracing_section_combo.currentText())
-        self.top_bracket_preview_label.setText(self.top_bracket_size_combo.currentText())
-        self.bottom_bracket_preview_label.setText(self.bottom_bracket_size_combo.currentText())
+        self._set_preview(self.bracing_preview_label, self.bracing_section_type_combo, self.bracing_section_combo)
+        self._set_preview(self.top_bracket_preview_label, self.top_bracket_type_combo, self.top_bracket_size_combo)
+        self._set_preview(self.bottom_bracket_preview_label, self.bottom_bracket_type_combo, self.bottom_bracket_size_combo)
+        self._set_preview(self.bracing_image_label, self.bracing_section_type_combo, self.bracing_section_combo)
+
+    def _set_preview(self, widget: SectionPreviewWidget, type_combo: QComboBox, size_combo: QComboBox):
+        stype = self._map_section_type(type_combo.currentText())
+        designation = size_combo.currentText()
+        widget.set_section(stype, designation)
+
+    def _populate_designations(self):
+        angles = self.catalog.list_angles()
+
+        def fill(combo: QComboBox, items):
+            combo.blockSignals(True)
+            combo.clear()
+            combo.addItems(items)
+            combo.blockSignals(False)
+
+        fill(self.bracing_section_combo, angles)
+        fill(self.top_bracket_size_combo, angles)
+        fill(self.bottom_bracket_size_combo, angles)
+
+    def _map_section_type(self, label: str) -> str:
+        mapping = {
+            "Angle": "angle",
+            "Double Angle (Long Leg)": "double_angle_long",
+            "Double Angle (Short Leg)": "double_angle_short",
+            "Channel": "channel",
+            "Double Channel": "double_channel",
+        }
+        return mapping.get(label, "angle")
+
+    def _on_bracing_type_changed(self, label: str):
+        self._update_designations_for(self.bracing_section_combo, label)
+        self._update_previews()
+
+    def _on_top_bracket_type_changed(self, label: str):
+        self._update_designations_for(self.top_bracket_size_combo, label)
+        self._update_previews()
+
+    def _on_bottom_bracket_type_changed(self, label: str):
+        self._update_designations_for(self.bottom_bracket_size_combo, label)
+        self._update_previews()
+
+    def _update_designations_for(self, combo: QComboBox, type_label: str):
+        stype = self._map_section_type(type_label)
+        if stype in ("angle", "double_angle_long", "double_angle_short"):
+            items = self.catalog.list_angles()
+        else:
+            items = self.catalog.list_channels()
+        combo.blockSignals(True)
+        combo.clear()
+        combo.addItems(items)
+        combo.blockSignals(False)
+
+    # ---- External API -----------------------------------------------------
+    def reset_defaults(self):
+        # Reset types to single angle and reload designations
+        for combo in [self.bracing_section_type_combo, self.top_bracket_type_combo, self.bottom_bracket_type_combo]:
+            combo.blockSignals(True)
+            combo.setCurrentIndex(0)
+            combo.blockSignals(False)
+        self._populate_designations()
+        # Select first designation for each
+        for combo in [self.bracing_section_combo, self.top_bracket_size_combo, self.bottom_bracket_size_combo]:
+            combo.setCurrentIndex(0 if combo.count() > 0 else -1)
+        self._update_previews()
+
+    def collect_data(self):
+        return {
+            "select_girders": self.select_girders_combo.currentText(),
+            "member_id": self.member_id_combo.currentText(),
+            "design": self.design_combo.currentText(),
+            "bracing_type": self.bracing_type_combo.currentText(),
+            "bracing_section_type": self.bracing_section_type_combo.currentText(),
+            "bracing_section": self.bracing_section_combo.currentText(),
+            "top_bracket_type": self.top_bracket_type_combo.currentText(),
+            "top_bracket_size": self.top_bracket_size_combo.currentText(),
+            "bottom_bracket_type": self.bottom_bracket_type_combo.currentText(),
+            "bottom_bracket_size": self.bottom_bracket_size_combo.currentText(),
+            "spacing": self.spacing_input.text(),
+        }
 
