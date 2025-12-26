@@ -19,6 +19,7 @@ from osdagbridge.desktop.ui.dialogs.project_location import ProjectLocationDialo
 from osdagbridge.desktop.ui.utils.custom_titlebar import CustomTitleBar
 
 MATERIAL_LABELS_RICH = {
+    # ---- CONCRETE (DECK) ----
     "Characteristic Compressive (Cube) Strength of Concrete, (fck)cu (MPa)":
         "Characteristic Compressive (Cube) Strength of Concrete, f<sub>ck</sub> (MPa)",
 
@@ -30,7 +31,24 @@ MATERIAL_LABELS_RICH = {
 
     "Thermal Expansion Coefficient, (×10⁻⁶/°C)":
         "Thermal Expansion Coefficient, (&times;10<sup>&minus;6</sup>/°C)",
+
+    # ---- STEEL (GIRDER / BRACING / DIAPHRAGM) ----
+    "Ultimate Tensile Strength, Fu (MPa)":
+        "Ultimate Tensile Strength, F<sub>u</sub> (MPa)",
+
+    "Yield Strength, Fy (MPa)":
+        "Yield Strength, F<sub>y</sub> (MPa)",
+
+    "Modulus of Elasticity, E (GPa)":
+        "Modulus of Elasticity, E (GPa)",
+
+    "Modulus of Rigidity, G (GPa)":
+        "Modulus of Rigidity, G (GPa)",
+
+    "Poisson's Ratio, ν":
+        "Poisson&apos;s Ratio, &nu;",
 }
+
 
 
 
@@ -199,7 +217,7 @@ class MaterialPropertiesDialog(QDialog):
         form_container = QWidget()
         form_layout = QVBoxLayout(form_container)
         form_layout.setContentsMargins(0, 0, 0, 0)
-        form_layout.setSpacing(10)
+        form_layout.setSpacing(12)
         
         # Member row
         member_row = QHBoxLayout()
@@ -266,6 +284,7 @@ class MaterialPropertiesDialog(QDialog):
 
         self._initialize_member_data()
         self._on_member_changed(self.member_combo.currentText())
+        self.setFixedSize(self.sizeHint())
 
     def setupWrapper(self):
         self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowSystemMenuHint)
@@ -281,15 +300,6 @@ class MaterialPropertiesDialog(QDialog):
         self.content_widget = QWidget(self)
         main_layout.addWidget(self.content_widget, 1)
 
-        size_grip = QSizeGrip(self)
-        size_grip.setFixedSize(16, 16)
-
-        overlay = QHBoxLayout()
-        overlay.setContentsMargins(0, 0, 4, 4)
-        overlay.addStretch(1)
-        overlay.addWidget(size_grip, 0, Qt.AlignBottom | Qt.AlignRight)
-        main_layout.addLayout(overlay)
-
     def closeEvent(self, event):
         self._save_current_member_form()
         super().closeEvent(event)
@@ -304,8 +314,13 @@ class MaterialPropertiesDialog(QDialog):
             row = QHBoxLayout()
             row.setContentsMargins(0, 0, 0, 0)
             row.setSpacing(18)
-            label = QLabel(label_text)
+            text = MATERIAL_LABELS_RICH.get(label_text, label_text)
+            label = QLabel(text)
+            label.setTextFormat(Qt.RichText)
             label.setStyleSheet("font-size: 12px; color: #2d2d2d;")
+            label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+            label.setFixedWidth(280)
+            label.setWordWrap(True) 
             label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
             label.setFixedWidth(280)
             line_edit = QLineEdit()
@@ -337,7 +352,7 @@ class MaterialPropertiesDialog(QDialog):
             label.setTextFormat(Qt.RichText)
 
             label.setStyleSheet("font-size: 12px; color: #2d2d2d;")
-            label.setAlignment(Qt.AlignLeft | Qt.AlignTop)
+            label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
             label.setFixedWidth(280)
             label.setWordWrap(True)
             if label_text == "Ecm Multiplication Factor":
@@ -360,16 +375,19 @@ class MaterialPropertiesDialog(QDialog):
                 row.addWidget(self.deck_factor_combo)
                 row.addStretch()
                 
-                # Add custom input row (hidden by default)
-                custom_row = QHBoxLayout()
-                custom_row.setContentsMargins(0, 0, 0, 0)
-                custom_row.setSpacing(18)
-                custom_label = QLabel("")  # Empty label for alignment
-                custom_label.setFixedWidth(280)
-                custom_row.addWidget(custom_label)
-                custom_row.addWidget(self.deck_factor_custom_input)
-                custom_row.addStretch()
-                layout.addLayout(custom_row)
+                self.deck_factor_custom_container = QWidget()
+                custom_layout = QHBoxLayout(self.deck_factor_custom_container)
+                custom_layout.setContentsMargins(0, 0, 0, 0)
+                custom_layout.setSpacing(18)
+
+                custom_label = QLabel("")
+                custom_label.setFixedWidth(280) 
+                custom_layout.addWidget(custom_label)
+                custom_layout.addWidget(self.deck_factor_custom_input)
+                custom_layout.addStretch()
+
+                self.deck_factor_custom_container.setVisible(False)
+                layout.addWidget(self.deck_factor_custom_container)
                 
                 self.deck_field_inputs[label_text] = self.deck_factor_combo
             else:
@@ -424,9 +442,7 @@ class MaterialPropertiesDialog(QDialog):
     
     def _get_concrete_from_db(self, grade):
 
-    # FIX: normalize grade from UI to match DB
         grade = grade.replace(" ", "").upper()
-
         base_dir = os.path.abspath(
             os.path.join(os.path.dirname(__file__), "..", "..", "..")
         )
@@ -438,7 +454,6 @@ class MaterialPropertiesDialog(QDialog):
 
         conn = sqlite3.connect(db_path)
         cursor = conn.cursor()
-
         cursor.execute(
         "SELECT fck, fctm, Ecm FROM Concrete WHERE grade = ?",
         (grade,)
@@ -456,8 +471,6 @@ class MaterialPropertiesDialog(QDialog):
 
         return None
 
-# DB values for deck material instead of formulas
-
     def _deck_defaults(self, grade, factor_value):
 
         data = self._get_concrete_from_db(grade)
@@ -472,7 +485,7 @@ class MaterialPropertiesDialog(QDialog):
             "Characteristic Compressive (Cube) Strength of Concrete, (fck)cu (MPa)": "{:.1f}".format(fck),
             "Mean Tensile Strength of Concrete, fctm (MPa)": "{:.1f}".format(fctm),
             "Secant Modulus of Elasticity of Concrete, Ecm (GPa)": "{:.1f}".format(ecm),
-            "Thermal Expansion Coefficient, (×10⁻⁶/°C)": "11.7", # Typical value for concrete
+            "Thermal Expansion Coefficient, (×10⁻⁶/°C)": "11.7", 
         }
     
     def _extract_numeric_grade(self, grade, default=250):
@@ -511,7 +524,7 @@ class MaterialPropertiesDialog(QDialog):
             data["material"] = self.material_combo.currentText()
 
 
-        # Ensure defaults are applied AFTER material is set
+        
         if data.get("is_default") and not self._loading:
             self._apply_defaults_for_member(member, update_ui=True)
 
@@ -554,10 +567,9 @@ class MaterialPropertiesDialog(QDialog):
                     self.deck_factor_custom_input.setText(custom_val)
                 self.deck_factor_custom_input.blockSignals(False)
             else:
-            # Use the full label as the key to match what _deck_defaults stores
+            
                 value = data["fields"].get(label, "")
             
-            # Format to 1 decimal place
                 try:
                     formatted_value = "{:.1f}".format(float(value))
                     widget.setText(formatted_value)
@@ -668,9 +680,9 @@ class MaterialPropertiesDialog(QDialog):
 
     def _update_custom_factor_visibility(self, label):
         is_custom = label == CUSTOM_ECM_FACTOR_LABEL
-        self.deck_factor_custom_input.setVisible(is_custom)
+        self.deck_factor_custom_container.setVisible(is_custom)
         self.deck_factor_custom_input.setEnabled(is_custom)
-        self.deck_factor_combo.setVisible(not is_custom)
+
 
     def _on_material_changed(self, material):
         if self._loading:
