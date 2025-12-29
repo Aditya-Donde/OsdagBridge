@@ -6,7 +6,7 @@ import math
 from typing import Dict, Optional
 
 from PySide6.QtCore import QPointF, QRectF, Qt
-from PySide6.QtGui import QColor, QFont, QFontMetricsF, QPainter, QPaintEvent, QPen, QTextDocument
+from PySide6.QtGui import QColor, QFont, QFontMetricsF, QPainter, QPaintEvent, QPainterPath, QPen, QTextDocument
 from PySide6.QtWidgets import QSizePolicy, QWidget
 
 from osdagbridge.core.bridge_components.super_structure.girder.properties import BeamSection
@@ -33,6 +33,7 @@ class RolledSectionPreview(QWidget):
         self._label_bg = QColor(255, 255, 255, 230)
         self._text_color = QColor("#0f0f0f")
         self._brand_font_family = OSDAG_FONT_FAMILY
+        self._show_welds = False
 
         self._outer_margin = 16
         self._annotation_margin_top = 36
@@ -41,6 +42,13 @@ class RolledSectionPreview(QWidget):
         self._annotation_margin_right = 74
         self._dim_gap = 12
         self._arrow_size = 9
+
+        # Minimum radii keep rolled sections visibly curved even when the
+        # catalogue omits R1/R2; welded previews stay sharp by skipping these.
+        self._min_root_radius_px = 6.0
+        self._min_toe_radius_px = 4.0
+        self._root_radius_ratio = 0.45
+        self._toe_radius_ratio = 0.35
 
         self.setMinimumSize(360, 260)
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
@@ -62,7 +70,10 @@ class RolledSectionPreview(QWidget):
                 "web_thickness": float(section.web_thickness_mm),
                 "top_flange_thickness": float(section.flange_thickness_mm),
                 "bottom_flange_thickness": float(section.flange_thickness_mm),
+                "root_radius_mm": float(section.root_radius_r1_mm or 0.0),
+                "toe_radius_mm": float(section.root_radius_r2_mm or 0.0),
             }
+        self._show_welds = False
         self.update()
 
     def set_dimensions(
@@ -74,6 +85,7 @@ class RolledSectionPreview(QWidget):
         flange_thickness_mm: float,
         bottom_flange_width_mm: Optional[float] = None,
         bottom_flange_thickness_mm: Optional[float] = None,
+        show_welds: bool = False,
     ) -> None:
         """Feed custom dimensions (e.g., welded sections) directly."""
 
@@ -85,7 +97,10 @@ class RolledSectionPreview(QWidget):
             "web_thickness": float(web_thickness_mm),
             "top_flange_thickness": float(flange_thickness_mm),
             "bottom_flange_thickness": float(bottom_flange_thickness_mm or flange_thickness_mm),
+            "root_radius_mm": 0.0,
+            "toe_radius_mm": 0.0,
         }
+        self._show_welds = show_welds
         self.update()
 
     def clear(self) -> None:
@@ -93,6 +108,7 @@ class RolledSectionPreview(QWidget):
 
         self._section = None
         self._dimensions = {}
+        self._show_welds = False
         self.update()
 
     # ------------------------------------------------------------------
@@ -160,15 +176,31 @@ class RolledSectionPreview(QWidget):
             bottom_height,
         )
 
+        root_radius_px = max(0.0, float(dims.get("root_radius_mm", 0.0)) * scale)
+        toe_radius_px = max(0.0, float(dims.get("toe_radius_mm", 0.0)) * scale)
+        section_path = self._build_section_path(
+            top_flange,
+            web,
+            bottom_flange,
+            root_radius_px,
+            toe_radius_px,
+        )
+
         painter.save()
         outline_pen = QPen(self._outline_color, self._outline_width)
         outline_pen.setJoinStyle(Qt.MiterJoin)
         painter.setPen(outline_pen)
         painter.setBrush(QColor("#fefefe"))
-        painter.drawRect(top_flange)
-        painter.drawRect(web)
-        painter.drawRect(bottom_flange)
+        if section_path is not None:
+            painter.drawPath(section_path)
+        else:
+            painter.drawRect(top_flange)
+            painter.drawRect(web)
+            painter.drawRect(bottom_flange)
         painter.restore()
+
+        if self._show_welds:
+            self._draw_welds(painter, top_flange, web, bottom_flange)
 
         font = QFont(self.font())
         font.setFamily(self._brand_font_family)
@@ -177,13 +209,15 @@ class RolledSectionPreview(QWidget):
 
         # --- Top flange width dimension ---
         tfw_color = self._set_dimension_pen(painter, "tfw")
-        width_dim_y = top_flange.top() - self._dim_gap
-        painter.drawLine(QPointF(top_flange.left(), top_flange.top()), QPointF(top_flange.left(), width_dim_y))
-        painter.drawLine(QPointF(top_flange.right(), top_flange.top()), QPointF(top_flange.right(), width_dim_y))
+        width_dim_y = self._snap_coordinate(top_flange.top() - self._dim_gap)
+        left_extension_end = QPointF(self._snap_coordinate(top_flange.left()), width_dim_y)
+        right_extension_end = QPointF(self._snap_coordinate(top_flange.right()), width_dim_y)
+        painter.drawLine(QPointF(left_extension_end.x(), top_flange.top()), left_extension_end)
+        painter.drawLine(QPointF(right_extension_end.x(), top_flange.top()), right_extension_end)
         self._draw_dimension_line(
             painter,
-            QPointF(top_flange.left(), width_dim_y),
-            QPointF(top_flange.right(), width_dim_y),
+            left_extension_end,
+            right_extension_end,
             tfw_color,
         )
         self._draw_label(
@@ -210,13 +244,15 @@ class RolledSectionPreview(QWidget):
 
         # --- Bottom flange width dimension ---
         bfw_color = self._set_dimension_pen(painter, "bfw")
-        bottom_width_dim_y = bottom_flange.bottom() + self._dim_gap
-        painter.drawLine(QPointF(bottom_flange.left(), bottom_flange.bottom()), QPointF(bottom_flange.left(), bottom_width_dim_y))
-        painter.drawLine(QPointF(bottom_flange.right(), bottom_flange.bottom()), QPointF(bottom_flange.right(), bottom_width_dim_y))
+        bottom_width_dim_y = self._snap_coordinate(bottom_flange.bottom() + self._dim_gap)
+        bottom_left_extension = QPointF(self._snap_coordinate(bottom_flange.left()), bottom_width_dim_y)
+        bottom_right_extension = QPointF(self._snap_coordinate(bottom_flange.right()), bottom_width_dim_y)
+        painter.drawLine(QPointF(bottom_left_extension.x(), bottom_flange.bottom()), bottom_left_extension)
+        painter.drawLine(QPointF(bottom_right_extension.x(), bottom_flange.bottom()), bottom_right_extension)
         self._draw_dimension_line(
             painter,
-            QPointF(bottom_flange.left(), bottom_width_dim_y),
-            QPointF(bottom_flange.right(), bottom_width_dim_y),
+            bottom_left_extension,
+            bottom_right_extension,
             bfw_color,
         )
         self._draw_label(
@@ -243,13 +279,16 @@ class RolledSectionPreview(QWidget):
 
         # --- Overall depth dimension ---
         depth_color = self._set_dimension_pen(painter, "d")
-        depth_dim_x = bottom_flange.right() + self._dim_gap
-        painter.drawLine(QPointF(bottom_flange.right(), top_flange.top()), QPointF(depth_dim_x, top_flange.top()))
-        painter.drawLine(QPointF(bottom_flange.right(), bottom_flange.bottom()), QPointF(depth_dim_x, bottom_flange.bottom()))
+        anchor_x = self._snap_coordinate(bottom_flange.right())
+        depth_dim_x = self._snap_coordinate(anchor_x + self._dim_gap)
+        top_depth_extension = QPointF(depth_dim_x, self._snap_coordinate(top_flange.top()))
+        bottom_depth_extension = QPointF(depth_dim_x, self._snap_coordinate(bottom_flange.bottom()))
+        painter.drawLine(QPointF(anchor_x, top_depth_extension.y()), top_depth_extension)
+        painter.drawLine(QPointF(anchor_x, bottom_depth_extension.y()), bottom_depth_extension)
         self._draw_dimension_line(
             painter,
-            QPointF(depth_dim_x, top_flange.top()),
-            QPointF(depth_dim_x, bottom_flange.bottom()),
+            top_depth_extension,
+            bottom_depth_extension,
             depth_color,
         )
         self._draw_label(
@@ -277,6 +316,189 @@ class RolledSectionPreview(QWidget):
     # ------------------------------------------------------------------
     # Drawing helpers
     # ------------------------------------------------------------------
+    def _build_section_path(
+        self,
+        top_flange: QRectF,
+        web: QRectF,
+        bottom_flange: QRectF,
+        root_radius: float,
+        toe_radius: float,
+    ) -> Optional[QPainterPath]:
+        if min(top_flange.width(), bottom_flange.width(), web.width()) <= 0:
+            return None
+
+        tf_left, tf_right = top_flange.left(), top_flange.right()
+        tf_top, tf_bottom = top_flange.top(), top_flange.bottom()
+        bf_left, bf_right = bottom_flange.left(), bottom_flange.right()
+        bf_top, bf_bottom = bottom_flange.top(), bottom_flange.bottom()
+        web_left, web_right = web.left(), web.right()
+
+        top_toe = self._effective_toe_radius_px(toe_radius, top_flange)
+        bottom_toe = self._effective_toe_radius_px(toe_radius, bottom_flange)
+        top_root = self._effective_root_radius_px(root_radius, top_flange, web)
+        bottom_root = self._effective_root_radius_px(root_radius, bottom_flange, web)
+
+        path = QPainterPath()
+        path.moveTo(tf_left + top_toe, tf_top)
+        path.lineTo(tf_right - top_toe, tf_top)
+        if top_toe > 0:
+            rect = QRectF(tf_right - 2 * top_toe, tf_top, 2 * top_toe, 2 * top_toe)
+            path.arcTo(rect, 90, -90)
+        else:
+            path.lineTo(tf_right, tf_top)
+
+        path.lineTo(tf_right, tf_bottom)
+
+        if top_root > 0:
+            path.lineTo(web_right + top_root, tf_bottom)
+            # Root fillet: curve DOWN onto the web (adding material in the corner)
+            rect = QRectF(web_right, tf_bottom, 2 * top_root, 2 * top_root)
+            path.arcTo(rect, 90, 90)
+        else:
+            path.lineTo(web_right, tf_bottom)
+
+        path.lineTo(web_right, bf_top - bottom_root)
+        if bottom_root > 0:
+            # Root fillet: curve OUT onto the bottom flange
+            rect = QRectF(web_right, bf_top - 2 * bottom_root, 2 * bottom_root, 2 * bottom_root)
+            path.arcTo(rect, 180, 90)
+        else:
+            path.lineTo(web_right, bf_top)
+
+        path.lineTo(bf_right, bf_top)
+        path.lineTo(bf_right, bf_bottom - bottom_toe)
+        if bottom_toe > 0:
+            rect = QRectF(bf_right - 2 * bottom_toe, bf_bottom - 2 * bottom_toe, 2 * bottom_toe, 2 * bottom_toe)
+            path.arcTo(rect, 0, -90)
+        else:
+            path.lineTo(bf_right, bf_bottom)
+
+        path.lineTo(bf_left + bottom_toe, bf_bottom)
+        if bottom_toe > 0:
+            rect = QRectF(bf_left, bf_bottom - 2 * bottom_toe, 2 * bottom_toe, 2 * bottom_toe)
+            path.arcTo(rect, 270, -90)
+        else:
+            path.lineTo(bf_left, bf_bottom)
+
+        path.lineTo(bf_left, bf_top)
+
+        if bottom_root > 0:
+            path.lineTo(web_left - bottom_root, bf_top)
+            # Root fillet: curve UP onto the web
+            rect = QRectF(web_left - 2 * bottom_root, bf_top - 2 * bottom_root, 2 * bottom_root, 2 * bottom_root)
+            path.arcTo(rect, 270, 90)
+        else:
+            path.lineTo(web_left, bf_top)
+
+        path.lineTo(web_left, tf_bottom + top_root)
+        if top_root > 0:
+            # Root fillet: curve OUT onto the top flange
+            rect = QRectF(web_left - 2 * top_root, tf_bottom, 2 * top_root, 2 * top_root)
+            path.arcTo(rect, 0, 90)
+        else:
+            path.lineTo(web_left, tf_bottom)
+
+        path.lineTo(tf_left, tf_bottom)
+        path.lineTo(tf_left, tf_top + top_toe)
+        if top_toe > 0:
+            rect = QRectF(tf_left, tf_top, 2 * top_toe, 2 * top_toe)
+            path.arcTo(rect, 180, -90)
+        else:
+            path.lineTo(tf_left, tf_top)
+
+        path.closeSubpath()
+        return path
+
+    def _snap_coordinate(self, value: float, *, precision: float = 0.5) -> float:
+        """Quantize coordinates to reduce anti-alias fuzz on shared anchors."""
+
+        if not precision or precision <= 0:
+            return value
+        return round(value / precision) * precision
+
+    def _effective_toe_radius_px(self, requested: float, flange: QRectF) -> float:
+        max_radius = max(0.0, min(flange.width(), flange.height()) / 2.0)
+        if max_radius == 0.0:
+            return 0.0
+
+        radius = max(0.0, requested)
+        if radius <= 0.0 and not self._show_welds:
+            radius = max(max_radius * self._toe_radius_ratio, self._min_toe_radius_px)
+
+        return self._snap_coordinate(min(radius, max_radius))
+
+    def _effective_root_radius_px(self, requested: float, flange: QRectF, web: QRectF) -> float:
+        # Limit root radius to fit within the flange overhang and not exceed half web height
+        flange_overhang = (flange.width() - web.width()) / 2.0
+        max_radius = max(0.0, min(flange_overhang, web.height() / 2.0))
+
+        if max_radius == 0.0:
+            return 0.0
+
+        radius = max(0.0, requested)
+        if radius <= 0.0 and not self._show_welds:
+            radius = max(max_radius * self._root_radius_ratio, self._min_root_radius_px)
+
+        return self._snap_coordinate(min(radius, max_radius))
+
+    def _draw_welds(self, painter: QPainter, top_flange: QRectF, web: QRectF, bottom_flange: QRectF) -> None:
+        painter.save()
+        painter.setRenderHint(QPainter.Antialiasing, True)
+        fill_color = QColor("#0f0f0f")
+        outline_pen = QPen(QColor("#0f0f0f"), 0.9)
+        outline_pen.setCosmetic(True)
+        painter.setBrush(fill_color)
+        painter.setPen(outline_pen)
+
+        horizontal_leg = max(4.0, min(web.width() * 0.8, 24.0))
+        top_vertical_leg = max(4.0, min(top_flange.height() * 0.9, 22.0))
+        bottom_vertical_leg = max(4.0, min(bottom_flange.height() * 0.9, 22.0))
+
+        for sign in (-1, 1):
+            top_corner_x = web.left() if sign < 0 else web.right()
+            top_corner = QPointF(top_corner_x, top_flange.bottom())
+            painter.drawPath(
+                self._build_fillet_path(
+                    top_corner,
+                    horizontal_leg,
+                    top_vertical_leg,
+                    horizontal_sign=sign,
+                    vertical_sign=1.0,
+                )
+            )
+
+            bottom_corner_x = web.left() if sign < 0 else web.right()
+            bottom_corner = QPointF(bottom_corner_x, bottom_flange.top())
+            painter.drawPath(
+                self._build_fillet_path(
+                    bottom_corner,
+                    horizontal_leg,
+                    bottom_vertical_leg,
+                    horizontal_sign=sign,
+                    vertical_sign=-1.0,
+                )
+            )
+
+        painter.restore()
+
+    def _build_fillet_path(
+        self,
+        corner: QPointF,
+        horizontal_leg: float,
+        vertical_leg: float,
+        *,
+        horizontal_sign: float,
+        vertical_sign: float,
+    ) -> QPainterPath:
+        leg_x = horizontal_leg * horizontal_sign
+        leg_y = vertical_leg * vertical_sign
+        path = QPainterPath(corner)
+        path.lineTo(QPointF(corner.x() + leg_x, corner.y()))
+        control = QPointF(corner.x() + leg_x * 0.55, corner.y() + leg_y * 0.55)
+        path.quadTo(control, QPointF(corner.x(), corner.y() + leg_y))
+        path.closeSubpath()
+        return path
+
     def _draw_placeholder(self, painter: QPainter) -> None:
         painter.save()
         pen = QPen(QColor("#b7b7b7"), 1.2, Qt.DashLine)
@@ -312,21 +534,23 @@ class RolledSectionPreview(QWidget):
         label_align: Qt.Alignment,
     ) -> None:
         extension = self._dim_gap * 0.9
-        arrow_length = max(self._dim_gap * 1.2, self._arrow_size * 1.4)
-        dimension_x = flange_edge_x - extension
-        top_extension = QPointF(dimension_x, top_y)
-        bottom_extension = QPointF(dimension_x, bottom_y)
+        anchor_x = self._snap_coordinate(flange_edge_x)
+        dimension_x = self._snap_coordinate(anchor_x - extension)
+        snapped_top_y = self._snap_coordinate(top_y)
+        snapped_bottom_y = self._snap_coordinate(bottom_y)
+        top_extension = QPointF(dimension_x, snapped_top_y)
+        bottom_extension = QPointF(dimension_x, snapped_bottom_y)
 
-        painter.drawLine(QPointF(flange_edge_x, top_y), top_extension)
-        painter.drawLine(QPointF(flange_edge_x, bottom_y), bottom_extension)
+        painter.drawLine(QPointF(anchor_x, snapped_top_y), top_extension)
+        painter.drawLine(QPointF(anchor_x, snapped_bottom_y), bottom_extension)
         painter.drawLine(top_extension, bottom_extension)
-
-        painter.drawLine(QPointF(dimension_x, top_y - arrow_length), top_extension)
-        painter.drawLine(bottom_extension, QPointF(dimension_x, bottom_y + arrow_length))
         self._draw_arrow_head(painter, top_extension, QPointF(0, -1), color)
         self._draw_arrow_head(painter, bottom_extension, QPointF(0, 1), color)
 
-        label_anchor = QPointF(dimension_x - self._dim_gap * 0.4, (top_y + bottom_y) / 2.0)
+        label_anchor = QPointF(
+            dimension_x - self._dim_gap * 0.4,
+            (snapped_top_y + snapped_bottom_y) / 2.0,
+        )
         self._draw_label(
             painter,
             self._format_label_markup(label_symbol, thickness),
@@ -347,19 +571,15 @@ class RolledSectionPreview(QWidget):
         *,
         label_symbol: str,
     ) -> None:
-        extension = self._dim_gap * 0.7
-        arrow_length = max(self._dim_gap * 1.2, self._arrow_size * 1.4)
-
-        painter.drawLine(QPointF(left_x, mid_y - extension), QPointF(left_x, mid_y + extension))
-        painter.drawLine(QPointF(right_x, mid_y - extension), QPointF(right_x, mid_y + extension))
-
-        painter.drawLine(QPointF(left_x - arrow_length, mid_y), QPointF(left_x, mid_y))
-        painter.drawLine(QPointF(right_x, mid_y), QPointF(right_x + arrow_length, mid_y))
-        self._draw_arrow_head(painter, QPointF(left_x, mid_y), QPointF(-1, 0), color)
-        self._draw_arrow_head(painter, QPointF(right_x, mid_y), QPointF(1, 0), color)
+        snapped_mid_y = self._snap_coordinate(mid_y)
+        left_point = QPointF(self._snap_coordinate(left_x), snapped_mid_y)
+        right_point = QPointF(self._snap_coordinate(right_x), snapped_mid_y)
+        painter.drawLine(left_point, right_point)
+        self._draw_arrow_head(painter, left_point, QPointF(-1, 0), color)
+        self._draw_arrow_head(painter, right_point, QPointF(1, 0), color)
 
         label_offset = self._dim_gap * 0.6
-        label_anchor = QPointF(left_x - arrow_length - label_offset, mid_y)
+        label_anchor = QPointF(left_point.x() - label_offset, snapped_mid_y)
         self._draw_label(
             painter,
             self._format_label_markup(label_symbol, thickness),
@@ -382,19 +602,9 @@ class RolledSectionPreview(QWidget):
         length = math.hypot(direction.x(), direction.y())
         if length == 0:
             return
-        unit = QPointF(direction.x() / length, direction.y() / length)
-        if external:
-            painter.drawLine(start, end)
-            outward = self._arrow_size * 0.9
-            outer_start = QPointF(start.x() - unit.x() * outward, start.y() - unit.y() * outward)
-            outer_end = QPointF(end.x() + unit.x() * outward, end.y() + unit.y() * outward)
-            self._draw_arrow_head(painter, outer_start, direction, color)
-            self._draw_arrow_head(painter, outer_end, QPointF(-direction.x(), -direction.y()), color)
-        else:
-            offset = unit * (self._arrow_size * 0.7)
-            painter.drawLine(start + offset, end - offset)
-            self._draw_arrow_head(painter, start, direction, color)
-            self._draw_arrow_head(painter, end, QPointF(-direction.x(), -direction.y()), color)
+        painter.drawLine(start, end)
+        self._draw_arrow_head(painter, start, direction, color)
+        self._draw_arrow_head(painter, end, QPointF(-direction.x(), -direction.y()), color)
 
     def _draw_arrow_head(self, painter: QPainter, tip: QPointF, direction: QPointF, color: QColor) -> None:
         length = math.hypot(direction.x(), direction.y())

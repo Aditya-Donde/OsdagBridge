@@ -1846,6 +1846,7 @@ class GirderDetailsTab(QWidget):
                     web_thickness_mm=dims["web_thickness_mm"],
                     flange_thickness_mm=dims["top_flange_thickness_mm"],
                     bottom_flange_thickness_mm=dims["bottom_flange_thickness_mm"],
+                    show_welds=True,
                 )
             else:
                 self.section_preview.clear()
