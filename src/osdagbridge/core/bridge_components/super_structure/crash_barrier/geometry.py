@@ -8,7 +8,9 @@ from osdagbridge.core.utils.common import (
     KEY_CRASH_BARRIER_TYPE,
     KEY_FOOTPATH,
     KEY_METALLIC_CRASH_BARRIER_TYPE,
-    KEY_MEDIAN_TYPE
+    KEY_MEDIAN_TYPE,
+    KEY_RIGID_CRASH_BARRIER_TYPE,
+    KEY_RAILING_TYPE
 )
 
 #  BASIC AREA UTILITIES
@@ -169,4 +171,92 @@ def median_metallic_barrier_area(barrier_type):
         "type": f"Median Metallic Barrier ({barrier_type})",
         "steel_area": post_area + beam_area,
         "kerb_area": kerb_area
+    }
+
+# FIG 1(a) : RCC Railing + Footpath
+def rcc_railing_area():
+    geom = IRC5_2015.cl_109_6_3_shapes(
+        barrier_type=KEY_CRASH_BARRIER_TYPE[2],     # Rigid
+        footpath=KEY_FOOTPATH[1],                   # With footpath
+        railing_type=KEY_RAILING_TYPE[0],           # RCC Railing
+        design_dict={},
+        crash_barrier_type=None
+    )
+
+    barrier_area = trapezoidal_area(
+        geom['crash_barrier_top_notch'],
+        geom['crash_barrier_width'],
+        geom['crash_barrier_height']
+    )
+
+    return {
+        "type": "Rigid Barrier with RCC Railing",
+        "barrier_area": barrier_area
+    }
+
+# FIG 1(b): Steel Railing + Footpath
+
+def steel_railing_area():
+    geom = IRC5_2015.cl_109_6_3_shapes(
+        barrier_type=KEY_CRASH_BARRIER_TYPE[2],     # Rigid
+        footpath=KEY_FOOTPATH[1],                   # With footpath
+        railing_type=KEY_RAILING_TYPE[1],           # Steel railing
+        design_dict={},
+        crash_barrier_type=None
+    )
+
+    barrier_area = trapezoidal_area(
+        geom['crash_barrier_top_notch'],
+        geom['crash_barrier_width'],
+        geom['crash_barrier_height']
+    )
+
+    return {
+        "type": "Rigid Barrier with Steel Railing",
+        "barrier_area": barrier_area
+    }
+
+
+# FIG-2 : Rigid Barrier Without Footpath
+
+def rigid_barrier_no_footpath_area():
+    geom = IRC5_2015.cl_109_6_3_shapes(
+        barrier_type=KEY_CRASH_BARRIER_TYPE[2],     # Rigid
+        footpath=KEY_FOOTPATH[0],                   # No footpath
+        railing_type=None,
+        design_dict={},
+        crash_barrier_type=KEY_RIGID_CRASH_BARRIER_TYPE[0]   # IRC-5R
+    )
+
+    barrier_area = trapezoidal_area(
+        geom['crash_barrier_top_notch'],
+        geom['crash_barrier_width'],
+        geom['crash_barrier_height']
+    )
+
+    return {
+        "type": "Rigid Barrier without Footpath ",
+        "barrier_area": barrier_area
+    }
+
+# FIG-3 : High Containment Crash Barrier
+
+def high_containment_barrier_area():
+    geom = IRC5_2015.cl_109_6_3_shapes(
+        barrier_type=KEY_CRASH_BARRIER_TYPE[2],     # Rigid
+        footpath=KEY_FOOTPATH[0],                   # No footpath
+        railing_type=None,
+        design_dict={},
+        crash_barrier_type=KEY_RIGID_CRASH_BARRIER_TYPE[1]   # High Containment
+    )
+
+    barrier_area = trapezoidal_area(
+        geom['crash_barrier_top_notch'],
+        geom['crash_barrier_width'],
+        geom['crash_barrier_height']
+    )
+
+    return {
+        "type": "High Containment Crash Barrier",
+        "barrier_area": barrier_area
     }

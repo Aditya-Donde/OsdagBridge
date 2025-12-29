@@ -331,7 +331,7 @@ class IRC5_2015(object):
                         'crash_barrier_base_notch': 100,
                         'crash_barrier_middle_length': 550
                     }
-                    IRC5_2015.cl_109_7_2_railing_height(railing_dims['railing_height'])
+                    # IRC5_2015.cl_109_7_2_3_railing_height(railing_dims['railing_height'])
                     design_dict.update(railing_dims)
 
                 elif railing_type == KEY_RAILING_TYPE[1]:  # steel
@@ -347,7 +347,7 @@ class IRC5_2015(object):
                         'crash_barrier_base_notch': 100,
                         'crash_barrier_middle_length': 550
                     }
-                    IRC5_2015.cl_109_7_2_railing_height(railing_dims['railing_height'])
+                    # IRC5_2015.cl_109_7_2_railing_height(railing_dims['railing_height'])
                     design_dict.update(railing_dims)
 
             elif footpath == KEY_FOOTPATH[0]:

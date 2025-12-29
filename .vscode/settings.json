@@ -1,0 +1,6 @@
+{
+    "python.analysis.extraPaths": [
+        "./src/osdagbridge/core/bridge_components/foundation/pile",
+        "./src/osdagbridge/core/bridge_components/super_structure/deck"
+    ]
+}
