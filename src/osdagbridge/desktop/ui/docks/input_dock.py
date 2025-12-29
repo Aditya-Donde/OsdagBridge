@@ -107,6 +107,9 @@ class NoScrollComboBox(QComboBox):
 def apply_field_style(widget):
     widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
     widget.setMinimumHeight(28)
+    # Keep a consistent control width that fits the sidebar and aligns with form buttons.
+    widget.setMinimumWidth(150)
+    widget.setMaximumWidth(150)
     
     if isinstance(widget, QComboBox):
         style = """
@@ -1265,6 +1268,7 @@ class InputDock(QWidget):
         
         add_here_btn = QPushButton("Add Here")
         add_here_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        add_here_btn.setFixedWidth(150)
         add_here_btn.setStyleSheet("""
             QPushButton {
                 background-color: #90AF13;
@@ -1274,7 +1278,6 @@ class InputDock(QWidget):
                 border-radius: 4px;
                 padding: 8px 20px;
                 font-size: 11px;
-                min-width: 80px;
             }
             QPushButton:hover {
                 background-color: #7a9a12;
@@ -1397,6 +1400,7 @@ class InputDock(QWidget):
         
         modify_geo_btn = QPushButton("Modify Here")
         modify_geo_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        modify_geo_btn.setFixedWidth(150)
         modify_geo_btn.setStyleSheet("""
             QPushButton {
                 background-color: #90AF13;
@@ -1406,7 +1410,6 @@ class InputDock(QWidget):
                 border-radius: 4px;
                 padding: 8px 20px;
                 font-size: 11px;
-                min-width: 80px;
             }
             QPushButton:hover {
                 background-color: #7a9a12;
@@ -1466,6 +1469,7 @@ class InputDock(QWidget):
         
         modify_mat_btn = QPushButton("Modify Here")
         modify_mat_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        modify_mat_btn.setFixedWidth(150)
         modify_mat_btn.setStyleSheet("""
             QPushButton {
                 background-color: #90AF13;
@@ -1475,7 +1479,6 @@ class InputDock(QWidget):
                 border-radius: 4px;
                 padding: 8px 20px;
                 font-size: 11px;
-                min-width: 80px;
             }
             QPushButton:hover {
                 background-color: #7a9a12;

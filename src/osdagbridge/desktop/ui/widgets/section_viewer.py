@@ -129,34 +129,25 @@ class SectionPreviewWidget(QWidget):
         return []
 
     def _build_angle_path(self, angle: AngleSection, origin: QPointF, mirror_long_leg: bool = False) -> QPainterPath:
-        # Outer L profile anchored at origin (0,0) at corner; legs along +x and +y
+        # Outer L profile anchored at origin (0,0) at corner; legs along +x/+y.
+        # When mirrored, flip across the Y-axis and offset by thickness so the two angles sit back-to-back without overlapping lines.
         a, b, t = angle.a, angle.b, angle.t
-        if mirror_long_leg:
-            # Mirror about Y-axis to place back-to-back
-            origin = QPointF(-a, origin.y())
+        sign = -1.0 if mirror_long_leg else 1.0
+        offset_x = -t if mirror_long_leg else 0.0
+        x0, y0 = origin.x() + offset_x, origin.y()
+
         path = QPainterPath()
-        # Outer
+        # Outline for solid L (union of two rectangles) without inner cutout lines.
         pts_outer = [
-            QPointF(origin.x(), origin.y()),
-            QPointF(origin.x() + a, origin.y()),
-            QPointF(origin.x() + a, origin.y() + t),
-            QPointF(origin.x() + t, origin.y() + t),
-            QPointF(origin.x() + t, origin.y() + b),
-            QPointF(origin.x(), origin.y() + b),
-        ]
-        # Inner cutout
-        pts_inner = [
-            QPointF(origin.x() + t, origin.y() + b - t),
-            QPointF(origin.x() + a - t, origin.y() + b - t),
-            QPointF(origin.x() + a - t, origin.y() + t),
-            QPointF(origin.x() + t, origin.y() + t),
+            QPointF(x0, y0),
+            QPointF(x0 + sign * a, y0),
+            QPointF(x0 + sign * a, y0 + t),
+            QPointF(x0 + sign * t, y0 + t),
+            QPointF(x0 + sign * t, y0 + b),
+            QPointF(x0, y0 + b),
         ]
         path.moveTo(pts_outer[0])
         for pt in pts_outer[1:]:
-            path.lineTo(pt)
-        path.closeSubpath()
-        path.moveTo(pts_inner[0])
-        for pt in pts_inner[1:]:
             path.lineTo(pt)
         path.closeSubpath()
         return path
