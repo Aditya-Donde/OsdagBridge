@@ -112,6 +112,10 @@ class LaneDetailsTab(QWidget):
         card_layout.addWidget(owner.lane_table)
         lane_layout.addWidget(card)
         lane_layout.addStretch()
-
+        # Keep lane numbering in sync initially and on any row insertions.
         owner._update_lane_details_rows(owner.lane_count_combo.currentText())
+        try:
+            owner.lane_table.model().rowsInserted.connect(lambda *_: owner._renumber_lanes())
+        except Exception:
+            pass
 

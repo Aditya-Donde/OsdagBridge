@@ -1,4 +1,3 @@
-"""Auto-generated tab module extracted from additional_inputs."""
 import sys
 import os
 from PySide6.QtWidgets import (
@@ -98,6 +97,8 @@ class CrossBracingDetailsTab(QWidget):
 
         self.design_combo = QComboBox()
         self.design_combo.addItems(["Customized", "Optimized"])
+        if self.design_combo.count() > 1:
+            self.design_combo.setCurrentIndex(1)  # Default to Optimized
         apply_field_style(self.design_combo)
         row = self._add_grid_row(inputs_grid, 0, "Design:", self.design_combo)
 
@@ -155,6 +156,7 @@ class CrossBracingDetailsTab(QWidget):
 
         # Right column (previews)
         right_column = QWidget()
+        self.right_column = right_column
         right_column.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         right_layout = QVBoxLayout(right_column)
         right_layout.setContentsMargins(0, 0, 0, 0)
@@ -191,8 +193,9 @@ class CrossBracingDetailsTab(QWidget):
         self.top_bracket_size_combo.currentTextChanged.connect(self._update_previews)
         self.bottom_bracket_type_combo.currentTextChanged.connect(self._on_bottom_bracket_type_changed)
         self.bottom_bracket_size_combo.currentTextChanged.connect(self._update_previews)
+        self.design_combo.currentTextChanged.connect(self._on_design_changed)
         self._populate_designations()
-        self._update_previews()
+        self._on_design_changed(self.design_combo.currentText())
 
     def _create_card_frame(self):
         card = QFrame()
@@ -244,28 +247,66 @@ class CrossBracingDetailsTab(QWidget):
         return box, image
 
     def _update_previews(self):
+        if self.design_combo.currentText() != "Customized":
+            # Hide geometry when optimization controls the section selection.
+            for widget in [
+                self.bracing_preview_label,
+                self.top_bracket_preview_label,
+                self.bottom_bracket_preview_label,
+                self.bracing_image_label,
+            ]:
+                widget.set_section("", "")
+            return
         self._set_preview(self.bracing_preview_label, self.bracing_section_type_combo, self.bracing_section_combo)
         self._set_preview(self.top_bracket_preview_label, self.top_bracket_type_combo, self.top_bracket_size_combo)
         self._set_preview(self.bottom_bracket_preview_label, self.bottom_bracket_type_combo, self.bottom_bracket_size_combo)
         self._set_preview(self.bracing_image_label, self.bracing_section_type_combo, self.bracing_section_combo)
 
+    def _apply_custom_mode(self, is_custom: bool):
+        # Only allow manual section selection (and show previews) in Customized mode.
+        self.right_column.setVisible(is_custom)
+        for widget in [
+            self.bracing_section_type_combo,
+            self.bracing_section_combo,
+            self.top_bracket_type_combo,
+            self.top_bracket_size_combo,
+            self.bottom_bracket_type_combo,
+            self.bottom_bracket_size_combo,
+        ]:
+            widget.setEnabled(is_custom)
+
+    def _on_design_changed(self, label: str):
+        is_custom = label == "Customized"
+        self._apply_custom_mode(is_custom)
+        self._update_previews()
+
+    # ---- Helpers for section labels -------------------------------------
+    def _display_name_for(self, designation: str, section_type: str) -> str:
+        name = (designation or "").strip()
+        if section_type in ("angle", "double_angle_long", "double_angle_short"):
+            name = name.lstrip("∠⌒⟡⟠").strip()
+            if not name.upper().startswith("IS"):
+                name = f"IS {name}"
+        return name
+
+    def _fill_combo(self, combo: QComboBox, items, section_type: str):
+        combo.blockSignals(True)
+        combo.clear()
+        for des in items:
+            combo.addItem(self._display_name_for(des, section_type), des)
+        combo.blockSignals(False)
+
     def _set_preview(self, widget: SectionPreviewWidget, type_combo: QComboBox, size_combo: QComboBox):
         stype = self._map_section_type(type_combo.currentText())
-        designation = size_combo.currentText()
+        designation = size_combo.currentData() or size_combo.currentText()
         widget.set_section(stype, designation)
 
     def _populate_designations(self):
         angles = self.catalog.list_angles()
 
-        def fill(combo: QComboBox, items):
-            combo.blockSignals(True)
-            combo.clear()
-            combo.addItems(items)
-            combo.blockSignals(False)
-
-        fill(self.bracing_section_combo, angles)
-        fill(self.top_bracket_size_combo, angles)
-        fill(self.bottom_bracket_size_combo, angles)
+        self._fill_combo(self.bracing_section_combo, angles, "angle")
+        self._fill_combo(self.top_bracket_size_combo, angles, "angle")
+        self._fill_combo(self.bottom_bracket_size_combo, angles, "angle")
 
     def _map_section_type(self, label: str) -> str:
         mapping = {
@@ -295,10 +336,7 @@ class CrossBracingDetailsTab(QWidget):
             items = self.catalog.list_angles()
         else:
             items = self.catalog.list_channels()
-        combo.blockSignals(True)
-        combo.clear()
-        combo.addItems(items)
-        combo.blockSignals(False)
+        self._fill_combo(combo, items, stype)
 
     # ---- External API -----------------------------------------------------
     def reset_defaults(self):

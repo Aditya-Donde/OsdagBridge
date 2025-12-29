@@ -232,23 +232,36 @@ class TypicalSectionDetailsTab(QWidget):
         try:
             num_lanes = int(count)
             self.lane_table.setRowCount(num_lanes)
-            
+
             for i in range(num_lanes):
                 # Lane number (non-editable)
                 lane_num_item = QTableWidgetItem(str(i + 1))
                 lane_num_item.setFlags(lane_num_item.flags() & ~Qt.ItemIsEditable)
                 lane_num_item.setTextAlignment(Qt.AlignCenter)
                 self.lane_table.setItem(i, 0, lane_num_item)
-                
+
                 # Distance field (editable)
                 if not self.lane_table.item(i, 1):
                     self.lane_table.setItem(i, 1, QTableWidgetItem(""))
-                
+
                 # Width field (editable)
                 if not self.lane_table.item(i, 2):
                     self.lane_table.setItem(i, 2, QTableWidgetItem(""))
+
+            # Ensure numbering stays in sync if rows are added elsewhere.
+            self._renumber_lanes()
         except ValueError:
             pass
+
+    def _renumber_lanes(self):
+        if not hasattr(self, "lane_table"):
+            return
+        rows = self.lane_table.rowCount()
+        for i in range(rows):
+            lane_num_item = QTableWidgetItem(str(i + 1))
+            lane_num_item.setFlags(lane_num_item.flags() & ~Qt.ItemIsEditable)
+            lane_num_item.setTextAlignment(Qt.AlignCenter)
+            self.lane_table.setItem(i, 0, lane_num_item)
 
     def update_footpath_value(self, footpath_value):
         self.footpath_value = footpath_value
