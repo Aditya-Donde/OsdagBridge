@@ -976,570 +976,11 @@ class InputDock(QWidget):
         group_container_layout.setContentsMargins(0, 0, 0, 0)
         group_container_layout.setSpacing(12)
 
+        self.section_contexts = {}
+        self.superstructure_body_layout = None
 
-        # === Type of Structure Box ===
-        type_box = QGroupBox("Type of Structure")
-        type_box.setStyleSheet("""
-            QGroupBox {
-                border: 1px solid #90AF13;
-                border-radius: 4px;
-                background-color: white;
-                padding: 8px;
-                margin-top: 12px;
-                font-size: 10px;
-                font-weight: bold;
-                color: #333;
-            }
-            QGroupBox::title {
-                subcontrol-origin: margin;
-                subcontrol-position: top left;
-                left: 8px;
-                padding: 0 4px;
-                margin-top: 4px;
-                background-color: white;
-                color: #333;
-            }
-        """)
-        type_box_layout = QVBoxLayout(type_box)
-        type_box_layout.setContentsMargins(8, 8, 8, 8)
-        type_box_layout.setSpacing(8)
-        
-        # Type of Structure field
-        type_row = QHBoxLayout()
-        type_field_label = QLabel("Type of Structure")
-        type_field_label.setStyleSheet("""
-            QLabel {
-                color: #000000;
-                font-size: 12px;
-                background: transparent;
-            }
-        """)
-        type_field_label.setMinimumWidth(110)
-        
-        self.structure_type_combo = NoScrollComboBox()
-        self.structure_type_combo.setObjectName(KEY_STRUCTURE_TYPE)
-        apply_field_style(self.structure_type_combo)
-        self.structure_type_combo.addItems(VALUES_STRUCTURE_TYPE)
-        
-        type_row.addWidget(type_field_label)
-        type_row.addWidget(self.structure_type_combo, 1)
-        type_box_layout.addLayout(type_row)
-
-        self.structure_note = QLabel("*Other structures not included")
-        self.structure_note.setStyleSheet("""
-            QLabel {
-                color: #000000;
-                font-size: 12px;
-                background: transparent;
-            }
-        """)
-        self.structure_note.setVisible(False)
-        type_box_layout.addWidget(self.structure_note)
-
-        self.structure_type_combo.currentTextChanged.connect(self.on_structure_type_changed)
-        group_container_layout.addWidget(type_box)
-        
-        # === Project Location Box ===
-        location_box = QGroupBox()
-        location_box.setStyleSheet("""
-            QGroupBox {
-                border: 1px solid #90AF13;
-                border-radius: 4px;
-                background-color: white;
-                padding: 8px;
-                margin-top: 12px;
-            }
-        """)
-        location_box_layout = QVBoxLayout(location_box)
-        location_box_layout.setContentsMargins(8, 8, 8, 8)
-        location_box_layout.setSpacing(8)
-
-        loc_header = QHBoxLayout()
-        loc_title = QLabel("Project Location*")
-        loc_title.setStyleSheet("""
-            QLabel {
-                color: #000000;
-                font-size: 12px;
-                background: transparent;
-            }
-        """)
-        loc_title.setMinimumWidth(110)
-        loc_header.addWidget(loc_title)
-        
-        add_here_btn = QPushButton("Add Here")
-        add_here_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        add_here_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #90AF13;
-                color: white;
-                font-weight: bold;
-                border: none;
-                border-radius: 4px;
-                padding: 8px 20px;
-                font-size: 11px;
-                min-width: 80px;
-            }
-            QPushButton:hover {
-                background-color: #7a9a12;
-            }
-            QPushButton:disabled{
-                background: #D0D0D0;
-                color: #666;
-            }
-            
-        """)
-        add_here_btn.clicked.connect(self.show_project_location_dialog)
-        loc_header.addWidget(add_here_btn, 1)
-        location_box_layout.addLayout(loc_header)        
-        group_container_layout.addWidget(location_box)
-        
-        # === Superstructure Section (Contains Everything) ===
-        structure_group = QGroupBox()
-        structure_group.setStyleSheet("""
-            QGroupBox {
-                border: 1px solid #90AF13;
-                border-radius: 5px;
-                margin-top: 0px;
-                padding-top: 5px;
-                background-color: white;
-            }
-        """)
-        structure_layout = QVBoxLayout()
-        structure_layout.setContentsMargins(10, 10, 10, 10)
-        structure_layout.setSpacing(10)
-        
-        # Header with title and collapse icon
-        struct_header = QHBoxLayout()
-        struct_title = QLabel("Superstructure")
-        struct_title.setStyleSheet("font-size: 13px; font-weight: bold; color: #333;")
-        struct_header.addWidget(struct_title)
-        struct_header.addStretch()
-        
-        # Collapse/expand toggle using SVG icon
-        toggle_btn = QPushButton()
-        toggle_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        toggle_btn.setCheckable(True)
-        toggle_btn.setChecked(True)
-        toggle_btn.setIcon(QIcon(":/vectors/arrow_up_light.svg"))
-        toggle_btn.setIconSize(QSize(20, 20))
-        toggle_btn.setStyleSheet("""
-            QPushButton {
-                background: transparent;
-                border: none;
-                padding: 2px;
-            }
-            QPushButton:hover {
-                background: transparent;
-            }
-            QPushButton:pressed {
-                background: transparent;
-            }
-        """)
-        struct_header.addWidget(toggle_btn)
-
-        structure_layout.addLayout(struct_header)
-
-        # body widget that contains everything inside the Superstructure and can be hidden
-        structure_body = QFrame()
-        structure_body.setFrameShape(QFrame.NoFrame)
-        structure_body_layout = QVBoxLayout(structure_body)
-        structure_body_layout.setContentsMargins(0, 0, 0, 0)
-        structure_body_layout.setSpacing(10)
-        structure_body.setVisible(True)
-        structure_layout.addWidget(structure_body)
-
-        def _toggle_structure(checked):
-            # checked True means show body (open)
-            structure_body.setVisible(checked)
-            toggle_btn.setIcon(QIcon(":/vectors/arrow_up_light.svg" if checked else ":/vectors/arrow_down_light.svg"))
-
-        toggle_btn.toggled.connect(_toggle_structure)
-        
-        # === Geometric Details Box ===
-        geo_box = QGroupBox("Geometric Details")
-        geo_box.setStyleSheet("""
-            QGroupBox {
-                border: 1px solid #90AF13;
-                border-radius: 4px;
-                background-color: white;
-                padding: 8px;
-                margin-top: 12px;
-                font-size: 10px;
-                font-weight: bold;
-                color: #333;
-            }
-            QGroupBox::title {
-                subcontrol-origin: margin;
-                subcontrol-position: top left;
-                left: 8px;
-                padding: 0 4px;
-                margin-top: 4px;
-                background-color: white;
-                color: #333;
-            }
-        """)
-        geo_box_layout = QVBoxLayout(geo_box)
-        geo_box_layout.setContentsMargins(8, 8, 8, 8)
-        geo_box_layout.setSpacing(8)
-        
-        # Span
-        span_row = QHBoxLayout()
-        span_label = QLabel("Span*")
-        span_label.setStyleSheet("""
-            QLabel {
-                color: #000000;
-                font-size: 12px;
-                background: transparent;
-            }
-        """)
-        span_label.setMinimumWidth(110)
-        self.span_input = QLineEdit()
-        self.span_input.setObjectName(KEY_SPAN)
-        apply_field_style(self.span_input)
-        self.span_input.setValidator(QDoubleValidator(SPAN_MIN, SPAN_MAX, 2))
-        self.span_input.setPlaceholderText(f"{SPAN_MIN}-{SPAN_MAX} m")
-        span_row.addWidget(span_label)
-        span_row.addWidget(self.span_input, 1)
-        geo_box_layout.addLayout(span_row)
-        
-        # Carriageway Width
-        carriageway_row = QHBoxLayout()
-        carriageway_label = QLabel("Carriageway Width*")
-        carriageway_label.setStyleSheet("""
-            QLabel {
-                color: #000000;
-                font-size: 12px;
-                background: transparent;
-            }
-        """)
-        carriageway_label.setMinimumWidth(110)
-        self.carriageway_input = QLineEdit()
-        self.carriageway_input.setObjectName(KEY_CARRIAGEWAY_WIDTH)
-        apply_field_style(self.carriageway_input)
-        self.carriageway_input.setValidator(QDoubleValidator(0.0, 100.0, 2))
-        self.carriageway_input.editingFinished.connect(self.validate_carriageway_width)
-        carriageway_row.addWidget(carriageway_label)
-        carriageway_row.addWidget(self.carriageway_input, 1)
-        geo_box_layout.addLayout(carriageway_row)
-
-        # Include Median option
-        median_row = QHBoxLayout()
-        median_row.setContentsMargins(0, 0, 0, 0)
-        median_row.setSpacing(8)
-
-        median_label = QLabel("Include Median")
-        median_label.setStyleSheet("""
-            QLabel {
-                color: #000000;
-                font-size: 12px;
-                background: transparent;
-            }
-        """)
-        median_label.setMinimumWidth(110)
-        median_row.addWidget(median_label)
-
-        self.include_median_combo = NoScrollComboBox()
-        self.include_median_combo.addItems(["No", "Yes"])
-        self.include_median_combo.setCurrentIndex(0)
-        self.include_median_combo.setObjectName(KEY_INCLUDE_MEDIAN)
-        apply_field_style(self.include_median_combo)
-        #self.include_median_combo.setMaximumWidth(110)
-        self.include_median_combo.currentTextChanged.connect(self.on_include_median_changed)
-        median_row.addWidget(self.include_median_combo, 1)
-        median_row.addStretch()
-        geo_box_layout.addLayout(median_row)
-        self._update_carriageway_placeholder()
-        
-        # Footpath
-        footpath_row = QHBoxLayout()
-        footpath_label = QLabel("Footpath")
-        footpath_label.setStyleSheet("""
-            QLabel {
-                color: #000000;
-                font-size: 12px;
-                background: transparent;
-            }
-        """)
-        footpath_label.setMinimumWidth(110)
-        self.footpath_combo = NoScrollComboBox()
-        self.footpath_combo.setObjectName(KEY_FOOTPATH)
-        apply_field_style(self.footpath_combo)
-        self.footpath_combo.addItems(VALUES_FOOTPATH)
-        self.footpath_combo.setCurrentIndex(0)
-        self.footpath_combo.currentTextChanged.connect(self.on_footpath_changed)
-        footpath_row.addWidget(footpath_label)
-        footpath_row.addWidget(self.footpath_combo, 1)
-        geo_box_layout.addLayout(footpath_row)
-        
-        # Skew Angle
-        skew_row = QHBoxLayout()
-        skew_label = QLabel("Skew Angle")
-        skew_label.setStyleSheet("""
-            QLabel {
-                color: #000000;
-                font-size: 12px;
-                background: transparent;
-            }
-        """)
-        skew_label.setMinimumWidth(110)
-        self.skew_input = QLineEdit()
-        self.skew_input.setObjectName(KEY_SKEW_ANGLE)
-        apply_field_style(self.skew_input)
-        self.skew_input.setValidator(QDoubleValidator(SKEW_ANGLE_MIN, SKEW_ANGLE_MAX, 1))
-        #self.skew_input.setText(f"{str(SKEW_ANGLE_DEFAULT)}°")
-        self.skew_input.setPlaceholderText(f"{SKEW_ANGLE_MIN} - {SKEW_ANGLE_MAX}°")
-        skew_row.addWidget(skew_label)
-        skew_row.addWidget(self.skew_input, 1)
-        geo_box_layout.addLayout(skew_row)
-        
-        # Additional Geometry (inside Geometric Details)
-        add_geo_row = QHBoxLayout()
-        add_geo_label = QLabel("Additional Geometry")
-        add_geo_label.setStyleSheet("""
-            QLabel {
-                color: #000000;
-                font-size: 12px;
-                background: transparent;
-            }
-        """)
-        add_geo_label.setMinimumWidth(110)
-        add_geo_row.addWidget(add_geo_label)
-        
-        modify_geo_btn = QPushButton("Modify Here")
-        modify_geo_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        modify_geo_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #90AF13;
-                color: white;
-                font-weight: bold;
-                border: none;
-                border-radius: 4px;
-                padding: 8px 20px;
-                font-size: 11px;
-                min-width: 80px;
-            }
-            QPushButton:hover {
-                background-color: #7a9a12;
-            }
-            QPushButton:disabled{
-                background: #D0D0D0;
-                color: #666;
-            }
-        """)
-        modify_geo_btn.clicked.connect(self.show_additional_inputs)
-        add_geo_row.addWidget(modify_geo_btn, 1)
-        geo_box_layout.addLayout(add_geo_row)
-        
-        structure_body_layout.addWidget(geo_box)
-        
-        # === Material Inputs Box ===
-        material_box = QGroupBox("Material Inputs")
-        material_box.setStyleSheet("""
-            QGroupBox {
-                border: 1px solid #90AF13;
-                border-radius: 4px;
-                background-color: white;
-                padding: 8px;
-                margin-top: 12px;
-                font-size: 10px;
-                font-weight: bold;
-                color: #333;
-            }
-            QGroupBox::title {
-                subcontrol-origin: margin;
-                subcontrol-position: top left;
-                left: 8px;
-                padding: 0 4px;
-                margin-top: 4px;
-                background-color: white;
-                color: #333;
-            }
-        """)
-        material_box_layout = QVBoxLayout(material_box)
-        material_box_layout.setContentsMargins(8, 8, 8, 8)
-        material_box_layout.setSpacing(8)
-        
-        # Girder
-        girder_row = QHBoxLayout()
-        girder_label = QLabel("Girder")
-        girder_label.setStyleSheet("""
-            QLabel {
-                color: #000000;
-                font-size: 12px;
-                background: transparent;
-            }
-        """)
-        girder_label.setMinimumWidth(110)
-        self.girder_combo = NoScrollComboBox()
-        self.girder_combo.setObjectName(KEY_GIRDER)
-        apply_field_style(self.girder_combo)
-        self.girder_combo.addItems(VALUES_MATERIAL)
-        girder_row.addWidget(girder_label)
-        girder_row.addWidget(self.girder_combo, 1)
-        material_box_layout.addLayout(girder_row)
-        
-        # Cross Bracing
-        cross_bracing_row = QHBoxLayout()
-        cross_bracing_label = QLabel("Cross Bracing")
-        cross_bracing_label.setStyleSheet("""
-            QLabel {
-                color: #000000;
-                font-size: 12px;
-                background: transparent;
-            }
-        """)
-        cross_bracing_label.setMinimumWidth(110)
-        self.cross_bracing_combo = NoScrollComboBox()
-        self.cross_bracing_combo.setObjectName(KEY_CROSS_BRACING)
-        apply_field_style(self.cross_bracing_combo)
-        self.cross_bracing_combo.addItems(VALUES_MATERIAL)
-        cross_bracing_row.addWidget(cross_bracing_label)
-        cross_bracing_row.addWidget(self.cross_bracing_combo, 1)
-        material_box_layout.addLayout(cross_bracing_row)
-
-        # End Diaphragm
-        end_diaphragm_row = QHBoxLayout()
-        end_diaphragm_label = QLabel("End Diaphragm")
-        end_diaphragm_label.setStyleSheet("""
-            QLabel {
-                color: #000000;
-                font-size: 12px;
-                background: transparent;
-            }
-        """)
-        end_diaphragm_label.setMinimumWidth(110)
-        self.end_diaphragm_combo = NoScrollComboBox()
-        self.end_diaphragm_combo.setObjectName(KEY_END_DIAPHRAGM)
-        apply_field_style(self.end_diaphragm_combo)
-        self.end_diaphragm_combo.addItems(VALUES_MATERIAL)
-        end_diaphragm_row.addWidget(end_diaphragm_label)
-        end_diaphragm_row.addWidget(self.end_diaphragm_combo, 1)
-        material_box_layout.addLayout(end_diaphragm_row)
-        
-        # Deck
-        deck_row = QHBoxLayout()
-        deck_label = QLabel("Deck")
-        deck_label.setStyleSheet("""
-            QLabel {
-                color: #000000;
-                font-size: 12px;
-                background: transparent;
-            }
-        """)
-        deck_label.setMinimumWidth(110)
-        self.deck_combo = NoScrollComboBox()
-        self.deck_combo.setObjectName(KEY_DECK_CONCRETE_GRADE_BASIC)
-        apply_field_style(self.deck_combo)
-        self.deck_combo.addItems(VALUES_DECK_CONCRETE_GRADE)
-        self.deck_combo.setCurrentText("M 25")
-        deck_row.addWidget(deck_label)
-        deck_row.addWidget(self.deck_combo, 1)
-        material_box_layout.addLayout(deck_row)
-
-        # Material Properties header with button
-        mat_prop_header = QHBoxLayout()
-        mat_prop_title = QLabel("Properties")
-        mat_prop_title.setStyleSheet("""
-            QLabel {
-                color: #000000;
-                font-size: 12px;
-                background: transparent;
-            }
-        """)
-        mat_prop_title.setMinimumWidth(110)
-        mat_prop_header.addWidget(mat_prop_title)
-        
-        modify_mat_btn = QPushButton("Modify Here")
-        modify_mat_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        modify_mat_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #90AF13;
-                color: white;
-                font-weight: bold;
-                border: none;
-                border-radius: 4px;
-                padding: 8px 20px;
-                font-size: 11px;
-                min-width: 80px;
-            }
-            QPushButton:hover {
-                background-color: #7a9a12;
-            }
-            QPushButton:disabled{
-                background: #f1f1f1;
-                color: #666;
-            }
-        """)
-        modify_mat_btn.clicked.connect(self.show_material_properties_dialog)
-        mat_prop_header.addWidget(modify_mat_btn, 1)
-        material_box_layout.addLayout(mat_prop_header)
-        
-        structure_body_layout.addWidget(material_box)
-        
-        # Close the Superstructure section
-        structure_group.setLayout(structure_layout)
-        group_container_layout.addWidget(structure_group)
-
-        # === Substructure Section (empty body for now) ===
-        sub_group = QGroupBox()
-        sub_group.setStyleSheet("""
-            QGroupBox {
-                border: 1px solid #90AF13;
-                border-radius: 5px;
-                margin-top: 8px;
-                padding-top: 5px;
-                background-color: white;
-            }
-        """)
-        sub_layout = QVBoxLayout()
-        sub_layout.setContentsMargins(10, 10, 10, 10)
-        sub_layout.setSpacing(8)
-
-        # Header with toggle
-        sub_header = QHBoxLayout()
-        sub_title = QLabel("Substructure")
-        sub_title.setStyleSheet("font-size: 13px; font-weight: bold; color: #333;")
-        sub_header.addWidget(sub_title)
-        sub_header.addStretch()
-
-        sub_toggle = QPushButton()
-        sub_toggle.setCursor(Qt.CursorShape.PointingHandCursor)
-        sub_toggle.setCheckable(True)
-        sub_toggle.setChecked(True)
-        sub_toggle.setIcon(QIcon(":/vectors/arrow_up_light.svg"))
-        sub_toggle.setIconSize(QSize(20, 20))
-        sub_toggle.setStyleSheet("""
-            QPushButton {
-                background: transparent;
-                border: none;
-                padding: 2px;
-            }
-            QPushButton:hover {
-                background: transparent;
-            }
-            QPushButton:pressed {
-                background: transparent;
-            }
-        """)
-        sub_header.addWidget(sub_toggle)
-        sub_layout.addLayout(sub_header)
-
-        sub_body = QFrame()
-        sub_body.setFrameShape(QFrame.NoFrame)
-        sub_body_layout = QVBoxLayout(sub_body)
-        sub_body_layout.setContentsMargins(0,0,0,0)
-        sub_body_layout.setSpacing(6)
-        sub_body.setVisible(True)
-        sub_layout.addWidget(sub_body)
-
-        def _toggle_sub(checked):
-            sub_body.setVisible(checked)
-            sub_toggle.setIcon(QIcon(":/vectors/arrow_up_light.svg" if checked else ":/vectors/arrow_down_light.svg"))
-
-        sub_toggle.toggled.connect(_toggle_sub)
-
-        sub_group.setLayout(sub_layout)
-        group_container_layout.addWidget(sub_group)
+        self._build_basic_inputs(field_list, group_container_layout)
+        self._add_substructure_section(group_container_layout)
 
         group_container_layout.addStretch()
         scroll_area.setWidget(group_container)
@@ -1597,6 +1038,479 @@ class InputDock(QWidget):
 
         left_layout.addWidget(h_scroll_area)
         self._apply_lock_state()
+
+    def _build_basic_inputs(self, field_definitions, root_layout):
+        current_section_id = None
+        for definition in field_definitions:
+            key, label, field_type, values, required, validator, metadata = self._normalize_definition(definition)
+            if field_type == TYPE_MODULE:
+                continue
+            if field_type == TYPE_TITLE:
+                section_id = key or label
+                section_context = self._create_section_context(section_id, label, metadata, root_layout)
+                current_section_id = section_context["id"]
+                continue
+            if current_section_id is None:
+                continue
+            section_context = self.section_contexts.get(current_section_id)
+            if not section_context:
+                continue
+            self._create_field_row(section_context, key, label, field_type, values, validator, metadata)
+
+        self._finalize_section_contexts()
+        self._update_carriageway_placeholder()
+
+    def _normalize_definition(self, definition):
+        if len(definition) == 6:
+            return (*definition, {})
+        return definition
+
+    def _create_section_context(self, section_id, title, metadata, root_layout):
+        container_key = (metadata or {}).get("container", "main")
+        parent_layout = self._get_container_layout(container_key, root_layout)
+
+        show_title = metadata.get("show_group_title", True) if metadata else True
+        group_title = title if show_title and title else ""
+        group_box = QGroupBox(group_title) if group_title else QGroupBox()
+        group_box.setStyleSheet(self._section_groupbox_style())
+
+        layout = QVBoxLayout(group_box)
+        layout.setContentsMargins(8, 8, 8, 8)
+        layout.setSpacing(8)
+
+        if metadata and metadata.get("custom_content") == "project_location":
+            self._add_project_location_controls(layout, metadata)
+
+        parent_layout.addWidget(group_box)
+        context = {
+            "id": section_id,
+            "layout": layout,
+            "metadata": metadata or {},
+            "group_box": group_box,
+        }
+        self.section_contexts[section_id] = context
+        return context
+
+    def _section_groupbox_style(self):
+        return (
+            "QGroupBox {\n"
+            "    border: 1px solid #90AF13;\n"
+            "    border-radius: 4px;\n"
+            "    background-color: white;\n"
+            "    padding: 8px;\n"
+            "    margin-top: 12px;\n"
+            "    font-size: 10px;\n"
+            "    font-weight: bold;\n"
+            "    color: #333;\n"
+            "}\n"
+            "QGroupBox::title {\n"
+            "    subcontrol-origin: margin;\n"
+            "    subcontrol-position: top left;\n"
+            "    left: 8px;\n"
+            "    padding: 0 4px;\n"
+            "    margin-top: 4px;\n"
+            "    background-color: white;\n"
+            "    color: #333;\n"
+            "}"
+        )
+
+    def _get_container_layout(self, container_key, root_layout):
+        if container_key == "superstructure":
+            if self.superstructure_body_layout is None:
+                self.superstructure_body_layout = self._create_superstructure_group(root_layout)
+            return self.superstructure_body_layout
+        return root_layout
+
+    def _create_superstructure_group(self, root_layout):
+        structure_group = QGroupBox()
+        structure_group.setStyleSheet(
+            "QGroupBox {\n"
+            "    border: 1px solid #90AF13;\n"
+            "    border-radius: 5px;\n"
+            "    margin-top: 0px;\n"
+            "    padding-top: 5px;\n"
+            "    background-color: white;\n"
+            "}"
+        )
+        structure_layout = QVBoxLayout()
+        structure_layout.setContentsMargins(10, 10, 10, 10)
+        structure_layout.setSpacing(10)
+
+        header = QHBoxLayout()
+        title = QLabel("Superstructure")
+        title.setStyleSheet("font-size: 13px; font-weight: bold; color: #333;")
+        header.addWidget(title)
+        header.addStretch()
+
+        toggle_btn = QPushButton()
+        toggle_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        toggle_btn.setCheckable(True)
+        toggle_btn.setChecked(True)
+        toggle_btn.setIcon(QIcon(":/vectors/arrow_up_light.svg"))
+        toggle_btn.setIconSize(QSize(20, 20))
+        toggle_btn.setStyleSheet(
+            "QPushButton {\n"
+            "    background: transparent;\n"
+            "    border: none;\n"
+            "    padding: 2px;\n"
+            "}\n"
+            "QPushButton:hover {\n"
+            "    background: transparent;\n"
+            "}\n"
+            "QPushButton:pressed {\n"
+            "    background: transparent;\n"
+            "}"
+        )
+        header.addWidget(toggle_btn)
+        structure_layout.addLayout(header)
+
+        structure_body = QFrame()
+        structure_body.setFrameShape(QFrame.NoFrame)
+        body_layout = QVBoxLayout(structure_body)
+        body_layout.setContentsMargins(0, 0, 0, 0)
+        body_layout.setSpacing(10)
+        structure_body.setVisible(True)
+        structure_layout.addWidget(structure_body)
+
+        def _toggle(checked):
+            structure_body.setVisible(checked)
+            toggle_btn.setIcon(QIcon(":/vectors/arrow_up_light.svg" if checked else ":/vectors/arrow_down_light.svg"))
+
+        toggle_btn.toggled.connect(_toggle)
+
+        structure_group.setLayout(structure_layout)
+        root_layout.addWidget(structure_group)
+        return body_layout
+
+    def _add_project_location_controls(self, layout, metadata):
+        label_text = metadata.get("header_label") or "Project Location*"
+        button_rows = metadata.get("button_rows")
+        if button_rows:
+            for row_entry in button_rows:
+                row_config = self._prepare_button_row_config(row_entry, {"label": label_text})
+                if row_config:
+                    self._add_button_row(layout, row_config)
+            return
+
+        fallback_row = self._prepare_button_row_config("project_location", {"label": label_text})
+        self._add_button_row(layout, fallback_row)
+
+    def _section_label_style(self):
+        return (
+            "QLabel {\n"
+            "    color: #000000;\n"
+            "    font-size: 12px;\n"
+            "    background: transparent;\n"
+            "}"
+        )
+
+    def _default_action_button_style(self):
+        return (
+            "QPushButton {\n"
+            "    background-color: #90AF13;\n"
+            "    color: white;\n"
+            "    font-weight: bold;\n"
+            "    border: none;\n"
+            "    border-radius: 4px;\n"
+            "    padding: 8px 20px;\n"
+            "    font-size: 11px;\n"
+            "    min-width: 80px;\n"
+            "}\n"
+            "QPushButton:hover {\n"
+            "    background-color: #7a9a12;\n"
+            "}\n"
+            "QPushButton:disabled{\n"
+            "    background: #D0D0D0;\n"
+            "    color: #666;\n"
+            "}"
+        )
+
+    def _default_row_config(self, row_type):
+        mapping = {
+            "project_location": {
+                "label": "Project Location*",
+                "buttons": [
+                    {"text": "Add Here", "action": "show_project_location_dialog"},
+                ],
+            },
+            "additional_geometry": {
+                "label": "Additional Geometry",
+                "buttons": [
+                    {"text": "Modify Here", "action": "show_additional_inputs"},
+                ],
+            },
+            "material_properties": {
+                "label": "Properties",
+                "buttons": [
+                    {"text": "Modify Here", "action": "show_material_properties_dialog"},
+                ],
+            },
+        }
+        return mapping.get(row_type, {})
+
+    def _prepare_button_row_config(self, config_entry, fallback_defaults=None):
+        fallback_defaults = fallback_defaults or {}
+        if isinstance(config_entry, str):
+            config = {"type": config_entry}
+        else:
+            config = dict(config_entry or {})
+
+        row_type = config.get("type")
+        defaults = self._default_row_config(row_type)
+
+        resolved = {}
+        resolved.update(defaults)
+        resolved.update(fallback_defaults)
+        resolved.update(config)
+
+        if not resolved.get("buttons"):
+            extra_defaults = self._default_row_config(resolved.get("type"))
+            if extra_defaults:
+                resolved.setdefault("buttons", extra_defaults.get("buttons"))
+                resolved.setdefault("label", extra_defaults.get("label"))
+
+        return resolved if resolved.get("buttons") else None
+
+    def _add_button_row(self, layout, config):
+        if not config:
+            return
+
+        row = QHBoxLayout()
+        row.setContentsMargins(0, 0, 0, 0)
+        row.setSpacing(8)
+
+        label_text = config.get("label")
+        if label_text:
+            field_label = QLabel(label_text)
+            field_label.setStyleSheet(self._section_label_style())
+            field_label.setMinimumWidth(config.get("label_min_width", 110))
+            row.addWidget(field_label)
+
+        buttons = config.get("buttons", [])
+        for button_config in buttons:
+            button = self._create_action_button(button_config)
+            stretch = button_config.get("stretch", 1 if len(buttons) == 1 else 0)
+            row.addWidget(button, stretch)
+
+        if config.get("add_stretch", True):
+            row.addStretch()
+
+        layout.addLayout(row)
+
+    def _create_action_button(self, config):
+        button = QPushButton(config.get("text", "Action"))
+        button.setCursor(Qt.CursorShape.PointingHandCursor)
+        if config.get("size_policy") == "fixed":
+            button.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+        else:
+            button.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+
+        icon_path = config.get("icon")
+        if icon_path:
+            button.setIcon(QIcon(icon_path))
+            icon_size = config.get("icon_size")
+            if isinstance(icon_size, (list, tuple)) and len(icon_size) == 2:
+                button.setIconSize(QSize(icon_size[0], icon_size[1]))
+
+        style = config.get("style") or self._default_action_button_style()
+        button.setStyleSheet(style)
+
+        tooltip = config.get("tooltip")
+        if tooltip:
+            button.setToolTip(tooltip)
+
+        action_name = config.get("action")
+        callback = getattr(self, action_name, None) if action_name else None
+        if callable(callback):
+            button.clicked.connect(callback)
+        else:
+            button.setEnabled(False)
+
+        return button
+
+    def _create_field_row(self, section_context, key, label, field_type, values, validator, metadata):
+        widget = self._create_input_widget(key, field_type, values, validator, metadata)
+        if widget is None:
+            return
+        row = QHBoxLayout()
+        row.setContentsMargins(0, 0, 0, 0)
+        row.setSpacing(8)
+        display_label = (metadata or {}).get("label") if metadata else None
+        field_label = QLabel(display_label or label)
+        field_label.setStyleSheet(self._section_label_style())
+        field_label.setMinimumWidth(110)
+        row.addWidget(field_label)
+        row.addWidget(widget, 1)
+        if metadata.get("add_stretch"):
+            row.addStretch()
+        section_context["layout"].addLayout(row)
+
+    def _create_input_widget(self, key, field_type, values, validator, metadata):
+        if field_type == TYPE_COMBOBOX:
+            widget = NoScrollComboBox()
+            apply_field_style(widget)
+            if values:
+                widget.addItems(values)
+            default_value = (metadata or {}).get("default")
+            if default_value:
+                idx = widget.findText(default_value)
+                if idx >= 0:
+                    widget.setCurrentIndex(idx)
+        elif field_type == TYPE_TEXTBOX:
+            widget = QLineEdit()
+            apply_field_style(widget)
+            validator_instance = self.get_validator(validator)
+            if validator_instance:
+                widget.setValidator(validator_instance)
+        else:
+            return None
+
+        if key:
+            widget.setObjectName(key)
+        self._register_input_widget(key, widget)
+        self._apply_field_specific_config(key, widget, metadata or {})
+        return widget
+
+    def _register_input_widget(self, key, widget):
+        if key == KEY_STRUCTURE_TYPE:
+            self.structure_type_combo = widget
+        elif key == KEY_SPAN:
+            self.span_input = widget
+        elif key == KEY_CARRIAGEWAY_WIDTH:
+            self.carriageway_input = widget
+        elif key == KEY_INCLUDE_MEDIAN:
+            self.include_median_combo = widget
+        elif key == KEY_FOOTPATH:
+            self.footpath_combo = widget
+        elif key == KEY_SKEW_ANGLE:
+            self.skew_input = widget
+        elif key == KEY_GIRDER:
+            self.girder_combo = widget
+        elif key == KEY_CROSS_BRACING:
+            self.cross_bracing_combo = widget
+        elif key == KEY_END_DIAPHRAGM:
+            self.end_diaphragm_combo = widget
+        elif key == KEY_DECK_CONCRETE_GRADE_BASIC:
+            self.deck_combo = widget
+
+    def _apply_field_specific_config(self, key, widget, metadata):
+        if not key or widget is None:
+            return
+        if key == KEY_STRUCTURE_TYPE and hasattr(widget, "currentTextChanged"):
+            widget.currentTextChanged.connect(self.on_structure_type_changed)
+        elif key == KEY_SPAN and isinstance(widget, QLineEdit):
+            widget.setValidator(QDoubleValidator(SPAN_MIN, SPAN_MAX, 2))
+            widget.setPlaceholderText(f"{SPAN_MIN}-{SPAN_MAX} m")
+        elif key == KEY_CARRIAGEWAY_WIDTH and isinstance(widget, QLineEdit):
+            widget.setValidator(QDoubleValidator(0.0, 100.0, 2))
+            widget.editingFinished.connect(self.validate_carriageway_width)
+        elif key == KEY_INCLUDE_MEDIAN and hasattr(widget, "currentTextChanged"):
+            widget.currentTextChanged.connect(self.on_include_median_changed)
+            default_value = metadata.get("default")
+            if default_value:
+                idx = widget.findText(default_value)
+                if idx >= 0:
+                    widget.setCurrentIndex(idx)
+        elif key == KEY_FOOTPATH and hasattr(widget, "currentTextChanged"):
+            widget.currentTextChanged.connect(self.on_footpath_changed)
+            default_value = metadata.get("default")
+            if default_value:
+                idx = widget.findText(default_value)
+                if idx >= 0:
+                    widget.setCurrentIndex(idx)
+        elif key == KEY_SKEW_ANGLE and isinstance(widget, QLineEdit):
+            widget.setValidator(QDoubleValidator(SKEW_ANGLE_MIN, SKEW_ANGLE_MAX, 1))
+            widget.setPlaceholderText(f"{SKEW_ANGLE_MIN} - {SKEW_ANGLE_MAX}°")
+        elif key == KEY_DECK_CONCRETE_GRADE_BASIC and hasattr(widget, "findText"):
+            default_value = metadata.get("default")
+            if default_value:
+                idx = widget.findText(default_value)
+                if idx >= 0:
+                    widget.setCurrentIndex(idx)
+
+    def _finalize_section_contexts(self):
+        for context in self.section_contexts.values():
+            metadata = context.get("metadata", {})
+            note_config = metadata.get("post_note")
+            if note_config:
+                self._add_section_note(context, note_config)
+
+            for row_entry in metadata.get("post_rows", []):
+                row_config = self._prepare_button_row_config(row_entry)
+                if row_config:
+                    self._add_button_row(context["layout"], row_config)
+
+    def _add_section_note(self, context, note_config):
+        note_label = QLabel(note_config.get("text", ""))
+        note_label.setStyleSheet(self._section_label_style())
+        note_label.setVisible(False)
+        context["layout"].addWidget(note_label)
+        attr_name = note_config.get("attr")
+        if attr_name:
+            setattr(self, attr_name, note_label)
+
+
+    def _add_substructure_section(self, parent_layout):
+        sub_group = QGroupBox()
+        sub_group.setStyleSheet(
+            "QGroupBox {\n"
+            "    border: 1px solid #90AF13;\n"
+            "    border-radius: 5px;\n"
+            "    margin-top: 8px;\n"
+            "    padding-top: 5px;\n"
+            "    background-color: white;\n"
+            "}"
+        )
+        sub_layout = QVBoxLayout()
+        sub_layout.setContentsMargins(10, 10, 10, 10)
+        sub_layout.setSpacing(8)
+
+        header = QHBoxLayout()
+        header.setContentsMargins(0, 0, 0, 0)
+        header.setSpacing(8)
+        title = QLabel("Substructure")
+        title.setStyleSheet("font-size: 13px; font-weight: bold; color: #333;")
+        header.addWidget(title)
+        header.addStretch()
+
+        toggle_btn = QPushButton()
+        toggle_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        toggle_btn.setCheckable(True)
+        toggle_btn.setChecked(True)
+        toggle_btn.setIcon(QIcon(":/vectors/arrow_up_light.svg"))
+        toggle_btn.setIconSize(QSize(20, 20))
+        toggle_btn.setStyleSheet(
+            "QPushButton {\n"
+            "    background: transparent;\n"
+            "    border: none;\n"
+            "    padding: 2px;\n"
+            "}\n"
+            "QPushButton:hover {\n"
+            "    background: transparent;\n"
+            "}\n"
+            "QPushButton:pressed {\n"
+            "    background: transparent;\n"
+            "}"
+        )
+        header.addWidget(toggle_btn)
+        sub_layout.addLayout(header)
+
+        sub_body = QFrame()
+        sub_body.setFrameShape(QFrame.NoFrame)
+        sub_body_layout = QVBoxLayout(sub_body)
+        sub_body_layout.setContentsMargins(0, 0, 0, 0)
+        sub_body_layout.setSpacing(6)
+        sub_body.setVisible(True)
+        sub_layout.addWidget(sub_body)
+
+        def _toggle(checked):
+            sub_body.setVisible(checked)
+            toggle_btn.setIcon(QIcon(":/vectors/arrow_up_light.svg" if checked else ":/vectors/arrow_down_light.svg"))
+
+        toggle_btn.toggled.connect(_toggle)
+
+        sub_group.setLayout(sub_layout)
+        parent_layout.addWidget(sub_group)
     
     def show_additional_inputs(self):
         """Show Additional Inputs dialog"""

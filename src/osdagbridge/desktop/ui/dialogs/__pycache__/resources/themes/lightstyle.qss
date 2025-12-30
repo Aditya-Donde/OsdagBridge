@@ -1,0 +1,243 @@
+/* ==============================================
+   OSDAG GUI STYLESHEET - ORGANIZED BY SPECIFICITY
+   ============================================== */
+
+/* ==============================================
+   1. GLOBAL STYLES (Least Specific)
+   ============================================== */
+QMainWindow {
+    background-color: #f4f4f4;
+    border: 1px solid #90af13;
+    margin: 0px;
+    padding: 0px;
+}
+
+QToolTip {
+    background-color: #FFFFFF;
+    color: #000000;
+    border: 1px solid #90AF13;
+    padding: 2px 2px;
+    font-size: 12px;
+    border-radius: 0px;
+    qproperty-alignment: AlignVCenter;
+}
+QSplitter::handle {
+    background-color: #D0D0D0;
+}
+
+/* Global Checkbox Style */
+QCheckBox {
+    font-size: 10px;
+    color: #333;
+    spacing: 6px;
+}
+QCheckBox::indicator {
+    width: 16px;
+    height: 16px;
+    border: 1px solid #333333;
+    border-radius: 3px;
+    background-color: #ffffff;
+}
+QCheckBox::indicator:hover {
+    border: 1px solid #555555;
+}
+QCheckBox::indicator:checked {
+    background-color: #ffffff;
+    border: 1px solid #333333;
+    image: url(:/vectors/checked.svg);
+}
+
+QMenuBar#template_page_menu_bar {
+    background-color: #F4F4F4;
+    color: #000000;
+    padding: 0px;
+}
+QMenuBar#template_page_menu_bar::item {
+    padding: 5px 10px;
+    background: transparent;
+    border-radius: 0px;
+}
+QMenuBar#template_page_menu_bar::item:selected {
+    background: #FFFFFF;
+}
+QMenuBar#template_page_menu_bar::item:pressed {
+    background: #E8E8E8;
+}
+QMenuBar#template_page_menu_bar QMenu {
+    background-color: #FFFFFF;
+    border: 1px solid #D0D0D0;
+    border-radius: 4px;
+    padding: 0px;
+}
+QMenuBar#template_page_menu_bar QMenu::item {
+    padding: 5px;
+    color: #000000;
+    font-size: 11px;
+}
+QMenuBar#template_page_menu_bar QMenu::item:selected {
+    background-color: #E6F0FF;
+    border-radius: 3px;
+}
+QMenuBar#template_page_menu_bar QMenu::separator {
+    height: 1px;
+    background: #F0F0F0;
+    margin-left: 2px;
+    margin-right: 2px;
+    margin-top: 0px;
+    margin-bottom: 0px;
+}
+QMenuBar#template_page_menu_bar QMenu::right-arrow {
+    width: 8px;
+    height: 8px;
+}
+
+/* Dropdown menu style */
+QMenu {
+    background: #fff;
+    border: 1px solid #90AF13;
+    font-size: 14px;
+    padding: 0px;
+}
+
+QMenu::item {
+    padding: 8px 16px;
+    color: #333;
+    border: none;
+    margin: 1px;
+}
+
+QMenu::item:selected {
+    background: #90AF13;
+    color: #fff;
+    border-radius: 2px;
+}
+
+/* ==============================================
+   3. GENERAL BUTTON STYLES (Base Level)
+   ============================================== */
+QPushButton {
+    background-color: white;
+    color: black;
+    font-weight: bold; 
+    border-radius: 5px;
+    border: 1px solid black;
+    padding: 5px 14px;
+    text-align: center;
+}
+
+QPushButton:hover {
+    background-color: #90AF13;
+    border: 1px solid #90AF13;
+    color: white;
+}
+
+QPushButton:pressed {
+    color: black;
+    background-color: white;
+    border: 1px solid black;
+}
+
+QWidget#CustomTitleBar { 
+    background-color: #f4f4f4;
+}
+QLabel#TitleLabel {
+    color: #000000;
+    padding: 0px;
+    background: transparent;
+}
+QLabel#LogoLabel {
+    background: transparent;
+    color: #ffffff;
+    font-size: 14px;
+}
+
+QToolButton#MinimizeButton {
+    background-color: transparent;
+    color: #000000;
+    border: 0px;
+    border-radius: 0px;
+    font-size: 16px;
+    border-radius: 0px;
+}
+
+QToolButton#MinimizeButton:hover {
+    background-color: #f1f1f1;
+}
+
+QToolButton#MinimizeButton:pressed {
+    background-color: #a6a6a6;
+}
+
+QToolButton#MaxRestoreButton {
+    background-color: transparent;
+    color: #000000;
+    border: 0px;
+    border-radius: 0px;
+    font-size: 16px;
+    border-radius: 0px;
+}
+
+QToolButton#MaxRestoreButton:hover {
+    background-color: #f1f1f1;
+}
+
+QToolButton#MaxRestoreButton:pressed {
+    background-color: #a6a6a6;
+}
+
+QToolButton#CloseButton {
+    background-color: transparent;
+    color: #000000;
+    border: 0px;
+    border-radius: 0px;
+    font-size: 16px;
+    border-radius: 0px;
+}
+
+QToolButton#CloseButton:hover {
+    background-color: #e74c3c;
+    color: #ffffff;
+}
+
+QToolButton#CloseButton:pressed {
+    background-color: #c0392b;
+}
+QWidget#BottomLine {
+    background-color: #90AF13;
+}
+/*=======================Logs-Dock===========================*/
+QWidget#logs_dock QLabel {
+    background-color: #F2F2F2;
+    color: #000000;
+    padding: 3px;
+    font-weight: bold;
+    font-size: 12px;
+}
+QWidget#logs_dock QTextEdit {
+    background-color: #F8F8F8;
+    border: 1px solid #D0D0D0;
+    font-family: 'Courier New', monospace;
+    font-size: 12px;
+    padding: 5px;
+    color: #000000;
+}
+QWidget#logs_dock QScrollBar:vertical {
+    background: #E0E0E0; /* Light grey for the scrollbar track */
+    width: 8px;
+    margin: 0px 0px 0px 3px;
+    border-radius: 2px;
+}
+QWidget#logs_dock QScrollBar::handle:vertical {
+    background: #A0A0A0; /* Medium grey for the scrollbar handle */
+    min-height: 30px;
+    border-radius: 2px;
+}
+QWidget#logs_dock QScrollBar::handle:vertical:hover {
+    background: #707070; /* Darker grey on hover for the handle */
+}
+QWidget#logs_dock QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+    height: 0px; /* Hides the up/down arrows */
+}
+QWidget#logs_dock QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {
+    background: none; /* Hides the area between handle and arrows */
+}

@@ -1,0 +1,36 @@
+<!-- Must Recompile this if any changes are made and these files -->
+<!-- Like changes in QSS, SVGs, etc -->
+<!-- Use the command in next comment while in /osdagbridge/src folder -->
+<!-- pyside6-rcc osdagbridge/desktop/resources/resources.qrc -o osdagbridge/desktop/resources/resources_rc.py -->
+
+
+<RCC>
+    <qresource prefix="/">
+        <file>vectors/arrow_down_light.svg</file>
+        <file>vectors/arrow_down_dark.svg</file>
+        <file>vectors/arrow_up_light.svg</file>
+        <file>vectors/arrow_up_dark.svg</file>
+
+        <file>themes/lightstyle.qss</file>
+        
+        <file>vectors/design.svg</file>
+        <file>vectors/save.svg</file>
+        <file>vectors/checked.svg</file>
+        <file>vectors/design_report.svg</file>
+        <file>vectors/lock_open.svg</file>
+        <file>vectors/lock_close.svg</file>
+        <file>vectors/Osdag_logo.svg</file>
+
+        <file>vectors/inputs_label_light.svg</file>
+        <file>vectors/input_dock_active_light.svg</file>
+        <file>vectors/input_dock_inactive_light.svg</file>
+
+        <file>vectors/logs_dock_active_light.svg</file>
+        <file>vectors/logs_dock_inactive_light.svg</file>
+
+        <file>vectors/output_dock_active_light.svg</file>
+        <file>vectors/output_dock_inactive_light.svg</file>
+        <file>vectors/outputs_label_light.svg</file>
+
+    </qresource>
+</RCC>

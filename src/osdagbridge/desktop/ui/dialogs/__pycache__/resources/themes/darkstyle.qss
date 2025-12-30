@@ -1,0 +1,32 @@
+/* ==============================================
+   OSDAG GUI STYLESHEET - ORGANIZED BY SPECIFICITY
+   ============================================== */
+
+/* ==============================================
+   1. GLOBAL STYLES (Least Specific)
+   ============================================== */
+* {
+    font-family: "Ubuntu Sans";
+}
+
+QMainWindow {
+    background-color: #282828;
+    border: 1px solid #6B7D20;
+    margin: 0px;
+    padding: 0px;
+}
+
+QTabWidget {
+    background-color: #333333;
+    border: 0px;
+}
+
+QToolTip {
+    background-color: #2B2B2B;
+    color: #D0D0D0;
+    border: 1px solid #6B7D20;
+    padding: 2px 2px;
+    font-size: 12px;
+    border-radius: 0px;
+    qproperty-alignment: AlignVCenter;
+}
