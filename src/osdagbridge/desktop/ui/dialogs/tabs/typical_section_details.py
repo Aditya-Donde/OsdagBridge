@@ -35,6 +35,8 @@ class TypicalSectionDetailsTab(QWidget):
         self.carriageway_width = carriageway_width
         self.updating_fields = False
         self._updating_overall_width_display = False
+        self._updating_lane_table = False
+        self._lane_cell_signal_connected = False
         self.crash_barrier_count = 2  # Assume two crash barriers at carriageway edges
         self.overall_bridge_width_formula = (
             "OverallBridgeWidth = CrossSectionLayout.total_width = CarriagewayWidth + "
@@ -180,15 +182,21 @@ class TypicalSectionDetailsTab(QWidget):
         input_layout.addWidget(self.input_tabs)
         main_layout.addWidget(input_container)
 
+        # Initialize lane defaults per IRC 5 Clause 104.3.1
+        self._initialize_lane_defaults()
+
         self.deck_thickness.textChanged.connect(self.update_footpath_thickness)
         self.recalculate_girders()
         # Initialize crash barrier visibility/load state
         if hasattr(self, "crash_barrier_type"):
-            self._update_crash_barrier_visibility(self.crash_barrier_type.currentText())
+            barrier_type = self.crash_barrier_type.currentText()
+            self._update_crash_barrier_visibility(barrier_type)
+            self._apply_crash_barrier_defaults(barrier_type, force=False)
         if hasattr(self, "median_type"):
-            self._update_median_visibility(self.median_type.currentText(), include_median=True)
+            median_type = self.median_type.currentText()
+            self._apply_median_defaults(median_type, force=False)
         if hasattr(self, "railing_load_mode"):
-            self.on_railing_load_mode_changed(self.railing_load_mode.currentText())
+            self._apply_railing_defaults(force=False)
         if hasattr(self, "wearing_material"):
             self.on_wearing_material_changed(self.wearing_material.currentText())
         # Propagate initial girder count to other tabs
@@ -229,29 +237,37 @@ class TypicalSectionDetailsTab(QWidget):
         return default
 
     def _update_lane_details_rows(self, count):
+        """Set up lane table rows for given lane count."""
+        if not hasattr(self, "lane_table"):
+            return
         try:
-            num_lanes = int(count)
+            num_lanes = max(0, int(count))
+        except (ValueError, TypeError):
+            return
+
+        was_updating = self._updating_lane_table
+        self._updating_lane_table = True
+        try:
             self.lane_table.setRowCount(num_lanes)
 
             for i in range(num_lanes):
-                # Lane number (non-editable)
+                # Lane number (non-editable, centered)
                 lane_num_item = QTableWidgetItem(str(i + 1))
                 lane_num_item.setFlags(lane_num_item.flags() & ~Qt.ItemIsEditable)
                 lane_num_item.setTextAlignment(Qt.AlignCenter)
                 self.lane_table.setItem(i, 0, lane_num_item)
 
-                # Distance field (editable)
-                if not self.lane_table.item(i, 1):
-                    self.lane_table.setItem(i, 1, QTableWidgetItem(""))
+                # Distance field (editable, centered)
+                dist_item = QTableWidgetItem("")
+                dist_item.setTextAlignment(Qt.AlignCenter)
+                self.lane_table.setItem(i, 1, dist_item)
 
-                # Width field (editable)
-                if not self.lane_table.item(i, 2):
-                    self.lane_table.setItem(i, 2, QTableWidgetItem(""))
-
-            # Ensure numbering stays in sync if rows are added elsewhere.
-            self._renumber_lanes()
-        except ValueError:
-            pass
+                # Width field (editable, centered)
+                width_item = QTableWidgetItem("")
+                width_item.setTextAlignment(Qt.AlignCenter)
+                self.lane_table.setItem(i, 2, width_item)
+        finally:
+            self._updating_lane_table = was_updating
 
     def _renumber_lanes(self):
         if not hasattr(self, "lane_table"):
@@ -262,6 +278,171 @@ class TypicalSectionDetailsTab(QWidget):
             lane_num_item.setFlags(lane_num_item.flags() & ~Qt.ItemIsEditable)
             lane_num_item.setTextAlignment(Qt.AlignCenter)
             self.lane_table.setItem(i, 0, lane_num_item)
+
+    def _design_lane_width_m(self):
+        """IRC 5 Clause 104.3.1 design lane width (m)."""
+        return 3.5
+
+    def _max_lane_count_allowed(self):
+        try:
+            width = float(self.carriageway_width) if self.carriageway_width else 0.0
+            max_lanes = int(math.floor(width / self._design_lane_width_m()))
+            return max(1, min(6, max_lanes if max_lanes > 0 else 1))
+        except Exception:
+            return 1
+
+    def _initialize_lane_defaults(self):
+        """Initialize lane table with IRC 5 Clause 104.3.1 defaults."""
+        if not hasattr(self, "lane_count_combo") or not hasattr(self, "lane_table"):
+            return
+        
+        max_allowed = self._max_lane_count_allowed()
+        
+        # Update combo choices to only show valid options
+        self._updating_lane_table = True
+        try:
+            self.lane_count_combo.blockSignals(True)
+            self.lane_count_combo.clear()
+            for i in range(1, max_allowed + 1):
+                self.lane_count_combo.addItem(str(i))
+            self.lane_count_combo.setCurrentText(str(max_allowed))
+            self.lane_count_combo.blockSignals(False)
+            
+            self._update_lane_details_rows(max_allowed)
+            self._populate_lane_defaults(max_allowed)
+        finally:
+            self._updating_lane_table = False
+        
+        # Connect cell change signal for validation
+        if not self._lane_cell_signal_connected:
+            try:
+                self.lane_table.cellChanged.connect(self._on_lane_cell_changed)
+                self._lane_cell_signal_connected = True
+            except Exception:
+                pass
+
+    def _set_lane_value(self, row, column, text):
+        """Set lane table cell value with centered alignment."""
+        item = self.lane_table.item(row, column)
+        if item is None:
+            item = QTableWidgetItem()
+            item.setTextAlignment(Qt.AlignCenter)
+            self.lane_table.setItem(row, column, item)
+        item.setText(text)
+
+    def _parse_lane_float(self, row, column):
+        try:
+            item = self.lane_table.item(row, column)
+            if item and item.text():
+                return float(item.text())
+        except ValueError:
+            return None
+        return None
+
+    def _populate_lane_defaults(self, lane_count):
+        """Populate lane table with IRC 5 defaults: 3.5 m width, cumulative start positions."""
+        if not hasattr(self, "lane_table") or lane_count <= 0:
+            return
+        design_width = self._design_lane_width_m()
+        start = 0.0
+        was_updating = self._updating_lane_table
+        self._updating_lane_table = True
+        try:
+            for i in range(lane_count):
+                self._set_lane_value(i, 1, f"{start:.3f}")
+                self._set_lane_value(i, 2, f"{design_width:.3f}")
+                start += design_width
+        finally:
+            self._updating_lane_table = was_updating
+
+    def _recompute_lane_starts(self):
+        """Recompute cumulative start positions based on lane widths."""
+        if not hasattr(self, "lane_table"):
+            return
+        rows = self.lane_table.rowCount()
+        if rows == 0:
+            return
+        design_width = self._design_lane_width_m()
+        start = 0.0
+        total_width = 0.0
+        was_updating = self._updating_lane_table
+        self._updating_lane_table = True
+        try:
+            for i in range(rows):
+                width_val = self._parse_lane_float(i, 2)
+                width = width_val if width_val is not None else design_width
+                if width < design_width:
+                    width = design_width
+                    self._set_lane_value(i, 2, f"{width:.3f}")
+                self._set_lane_value(i, 1, f"{start:.3f}")
+                start += width
+                total_width += width
+        finally:
+            self._updating_lane_table = was_updating
+
+        try:
+            carriageway = float(self.carriageway_width) if self.carriageway_width else None
+        except Exception:
+            carriageway = None
+        if carriageway and total_width - carriageway > 1e-6:
+            QMessageBox.warning(
+                self,
+                "Lane Width Exceeds Carriageway",
+                f"Sum of lane widths ({total_width:.3f} m) exceeds carriageway width provided ({carriageway:.3f} m).\n"
+                "Adjust lane count or widths per IRC 5 Clause 104.3.1.",
+            )
+
+    def _validate_lane_width(self, row):
+        design_width = self._design_lane_width_m()
+        width = self._parse_lane_float(row, 2)
+        if width is None:
+            self._set_lane_value(row, 2, f"{design_width:.3f}")
+            return
+        if width + 1e-6 < design_width:
+            QMessageBox.critical(
+                self,
+                "Lane Width Below IRC Minimum",
+                f"IRC 5 Clause 104.3.1 requires a lane width of at least {design_width:.2f} m.",
+            )
+            self._set_lane_value(row, 2, f"{design_width:.3f}")
+
+    def _validate_lane_start(self, row):
+        design_width = self._design_lane_width_m()
+        start = self._parse_lane_float(row, 1)
+        if start is None:
+            self._recompute_lane_starts()
+            return
+
+        if row == 0:
+            if abs(start) > 1e-6:
+                QMessageBox.warning(
+                    self,
+                    "Lane Start Offset",
+                    "First lane must start at 0 m from inner edge of crash barrier by default.",
+                )
+                self._recompute_lane_starts()
+            return
+
+        prev_start = self._parse_lane_float(row - 1, 1) or 0.0
+        prev_width = self._parse_lane_float(row - 1, 2) or design_width
+        expected = prev_start + prev_width
+        if abs(start - expected) > 1e-3:
+            QMessageBox.warning(
+                self,
+                "Lane Start Sequence",
+                "Each lane start must equal previous lane start plus previous lane width per IRC guidance.",
+            )
+            self._recompute_lane_starts()
+
+    def _on_lane_cell_changed(self, row, column):
+        if self._updating_lane_table:
+            return
+        if column == 2:
+            self._validate_lane_width(row)
+            self._recompute_lane_starts()
+        elif column == 1:
+            self._validate_lane_start(row)
+            self._recompute_lane_starts()
 
     def update_footpath_value(self, footpath_value):
         self.footpath_value = footpath_value
@@ -508,20 +689,12 @@ class TypicalSectionDetailsTab(QWidget):
     def _reset_crash_barrier_defaults(self):
         if hasattr(self, "crash_barrier_type"):
             self.crash_barrier_type.setCurrentText("IRC 5 - RCC Crash Barrier")
-        if hasattr(self, "crash_barrier_density"):
-            self.crash_barrier_density.clear()
-        if hasattr(self, "crash_barrier_width"):
-            self.crash_barrier_width.setText(f"{DEFAULT_CRASH_BARRIER_WIDTH}")
-        if hasattr(self, "crash_barrier_height"):
-            self.crash_barrier_height.clear()
-        if hasattr(self, "crash_barrier_area"):
-            self.crash_barrier_area.clear()
-        if hasattr(self, "crash_barrier_load"):
-            self.crash_barrier_load.clear()
         if hasattr(self, "crash_barrier_post_spacing"):
             self.crash_barrier_post_spacing.setText("1")
         if hasattr(self, "crash_barrier_type"):
-            self._update_crash_barrier_visibility(self.crash_barrier_type.currentText())
+            barrier_type = self.crash_barrier_type.currentText()
+            self._update_crash_barrier_visibility(barrier_type)
+            self._apply_crash_barrier_defaults(barrier_type, force=True)
 
     def reset_defaults(self):
         # Layout defaults
@@ -540,26 +713,13 @@ class TypicalSectionDetailsTab(QWidget):
         # Median defaults
         if hasattr(self, "median_type"):
             self.median_type.setCurrentText("IRC 5 - Raised Kerb")
-            self._update_median_visibility(self.median_type.currentText(), include_median=True)
-        if hasattr(self, "median_width"):
-            self.median_width.clear()
-        if hasattr(self, "median_height"):
-            self.median_height.clear()
-        if hasattr(self, "median_load"):
-            self.median_load.clear()
-        if hasattr(self, "median_post_spacing"):
-            self.median_post_spacing.setText("1")
+            median_type = self.median_type.currentText()
+            self._apply_median_defaults(median_type, force=True)
 
         # Railing defaults
         if hasattr(self, "railing_type"):
             self.railing_type.setCurrentText("IRC 5 - RCC Railing")
-        if hasattr(self, "railing_width"):
-            self.railing_width.setText(f"{DEFAULT_RAILING_WIDTH * 1000:.0f}")
-        if hasattr(self, "railing_height"):
-            self.railing_height.clear()
-        if hasattr(self, "railing_load_mode"):
-            self.railing_load_mode.setCurrentText("Automatic (IRC 6)")
-            self.on_railing_load_mode_changed(self.railing_load_mode.currentText())
+            self._apply_railing_defaults(force=True)
 
         # Wearing course defaults
         if hasattr(self, "wearing_material"):
@@ -579,6 +739,109 @@ class TypicalSectionDetailsTab(QWidget):
             except:
                 self.crash_barrier_load.clear()
         # For other types load is user-entered; do not overwrite
+
+    def _apply_crash_barrier_defaults(self, barrier_type: str, force: bool = False):
+        """Populate recommended defaults per IRC 5 selections.
+
+        force=True overwrites existing values (used on reset). Otherwise, only fill missing fields.
+        """
+        if not hasattr(self, "crash_barrier_density"):
+            return
+
+        is_rcc = self._is_rcc_barrier(barrier_type)
+        is_metallic = self._is_metallic_barrier(barrier_type)
+        is_custom = barrier_type == "Custom"
+
+        default_density = DEFAULT_CONCRETE_DENSITY  # kN/m3
+        default_width = f"{DEFAULT_CRASH_BARRIER_WIDTH}"  # m
+        default_height = "0.75"  # m
+
+        def _set(widget, value: str):
+            if widget is None:
+                return
+            if force or not widget.text():
+                widget.setText(value)
+
+        if is_rcc:
+            _set(self.crash_barrier_density, f"{default_density:.1f}")
+            _set(self.crash_barrier_width, default_width)
+            _set(self.crash_barrier_height, default_height)
+            if self.crash_barrier_width and self.crash_barrier_height:
+                try:
+                    w_val = float(self.crash_barrier_width.text() or 0.0)
+                    h_val = float(self.crash_barrier_height.text() or 0.0)
+                    area_val = w_val * h_val
+                    _set(self.crash_barrier_area, f"{area_val:.3f}")
+                except:
+                    pass
+            self._auto_compute_crash_barrier_load()
+        elif is_metallic:
+            if self.crash_barrier_post_spacing:
+                _set(self.crash_barrier_post_spacing, "1")
+            if force and self.crash_barrier_load:
+                self.crash_barrier_load.clear()
+        elif is_custom:
+            if force and self.crash_barrier_load:
+                self.crash_barrier_load.clear()
+
+        self._update_crash_barrier_visibility(barrier_type)
+
+    def _apply_median_defaults(self, median_type: str, force: bool = False):
+        if not hasattr(self, "median_density"):
+            return
+        is_rcc = self._is_rcc_median(median_type)
+        is_metallic = self._is_metallic_median(median_type)
+        is_custom = median_type == "Custom"
+
+        default_density = DEFAULT_CONCRETE_DENSITY  # kN/m3
+        default_width = f"{DEFAULT_CRASH_BARRIER_WIDTH}"  # m
+        default_height = "0.75"  # m
+
+        def _set(widget, value: str):
+            if widget is None:
+                return
+            if force or not widget.text():
+                widget.setText(value)
+
+        if is_rcc:
+            _set(self.median_density, f"{default_density:.1f}")
+            _set(self.median_width, default_width)
+            _set(self.median_height, default_height)
+            if self.median_width and self.median_height:
+                try:
+                    w_val = float(self.median_width.text() or 0.0)
+                    h_val = float(self.median_height.text() or 0.0)
+                    area_val = w_val * h_val
+                    _set(self.median_area, f"{area_val:.3f}")
+                except:
+                    pass
+            self._auto_compute_median_load()
+        elif is_metallic:
+            if self.median_post_spacing:
+                _set(self.median_post_spacing, "1")
+            if force and self.median_load:
+                self.median_load.clear()
+        elif is_custom:
+            if force and self.median_load:
+                self.median_load.clear()
+
+        self._update_median_visibility(median_type, include_median=True)
+
+    def _apply_railing_defaults(self, force: bool = False):
+        if not hasattr(self, "railing_type"):
+            return
+
+        def _set(widget, value: str):
+            if widget is None:
+                return
+            if force or not widget.text():
+                widget.setText(value)
+
+        _set(self.railing_width, f"{DEFAULT_RAILING_WIDTH * 1000:.0f}")
+        _set(self.railing_height, f"{MIN_RAILING_HEIGHT:.2f}")
+        if hasattr(self, "railing_load_mode"):
+            self.railing_load_mode.setCurrentText("Automatic (IRC 6)")
+            self.on_railing_load_mode_changed(self.railing_load_mode.currentText())
 
     def _is_metallic_barrier(self, barrier_type):
         return barrier_type.startswith("IRC 5 - Metallic Crash Barrier")
@@ -645,6 +908,7 @@ class TypicalSectionDetailsTab(QWidget):
 
     def on_median_type_changed(self, median_type):
         self._update_median_visibility(median_type, include_median=True)
+        self._apply_median_defaults(median_type)
 
     def _update_median_visibility(self, median_type, include_median=True):
         is_metallic = self._is_metallic_median(median_type)
@@ -826,6 +1090,7 @@ class TypicalSectionDetailsTab(QWidget):
                                  f"{barrier_type} crash barriers are not permitted on bridges without an outer footpath per IRC 5 Clause 109.6.4.")
         # Apply new visibility and load rules
         self._update_crash_barrier_visibility(barrier_type)
+        self._apply_crash_barrier_defaults(barrier_type)
         self._warn_if_custom_barrier(barrier_type)
 
     def on_railing_load_mode_changed(self, mode):
@@ -840,7 +1105,16 @@ class TypicalSectionDetailsTab(QWidget):
             self.railing_load_value.clear()
 
     def on_lane_count_changed(self, text):
-        self._update_lane_details_rows(text)
+        """Handle lane count selection change."""
+        if self._updating_lane_table:
+            return
+        try:
+            num_lanes = int(text)
+        except (TypeError, ValueError):
+            return
+
+        self._update_lane_details_rows(num_lanes)
+        self._populate_lane_defaults(num_lanes)
 
     def on_wearing_material_changed(self, material):
         if not hasattr(self, "wearing_density") or not hasattr(self, "wearing_thickness"):

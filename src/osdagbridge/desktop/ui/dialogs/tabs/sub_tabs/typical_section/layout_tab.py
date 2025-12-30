@@ -114,10 +114,9 @@ class LayoutTab(QWidget):
 
             row_idx += 1
 
-            # Place adjustment notice directly under the first row (No. of Girders line)
+            # Place adjustment notice directly under the "No. of Girders" field (right column)
             if row_num == 0:
-                col_span = max(col, 1)
-                grid.addWidget(owner.layout_adjust_notice, row_idx, 0, 1, col_span, Qt.AlignLeft)
+                grid.addWidget(owner.layout_adjust_notice, row_idx, 2, 1, 2, Qt.AlignLeft)
                 row_idx += 1
 
         layout_layout.addLayout(grid)

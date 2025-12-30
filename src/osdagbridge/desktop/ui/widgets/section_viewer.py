@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 from PySide6.QtCore import QPointF, QRectF, Qt
-from PySide6.QtGui import QColor, QPainter, QPainterPath, QPen
+from PySide6.QtGui import QColor, QFont, QPainter, QPainterPath, QPen
 from PySide6.QtWidgets import QWidget
 
 
@@ -93,7 +93,6 @@ class SectionPreviewWidget(QWidget):
         self._designation = designation
         self._geometry = self._build_geometry(section_type, designation)
         self._dimension_info = self._dimension_for(section_type, designation)
-        # Only angles are filled; channels stay outline for clearer C shape
         self._section_fill = section_type.startswith("angle")
         self.update()
 
@@ -211,8 +210,7 @@ class SectionPreviewWidget(QWidget):
         for r in rects:
             geom_bbox = geom_bbox.united(r)
         combined = QRectF(geom_bbox)
-        # Add generous margin so dimension arrows/text are not clipped.
-        margin = 18.0
+        margin = 35.0
         combined.adjust(-margin, -margin, margin, margin)
 
         if combined.width() <= 0 or combined.height() <= 0:
@@ -225,7 +223,7 @@ class SectionPreviewWidget(QWidget):
         painter.scale(scale, -scale)  # flip Y for engineering orientation
         painter.translate(-combined.center())
 
-        pen = QPen(QColor("#f7d65a"), 1.2 / max(scale, 1e-3))
+        pen = QPen(QColor("#f7d65a"), 1.5 / max(scale, 1e-3))
         painter.setPen(pen)
         brush = QColor(255, 215, 0, 40) if self._section_fill else Qt.NoBrush
         painter.setBrush(brush)
@@ -239,62 +237,39 @@ class SectionPreviewWidget(QWidget):
         info = self._dimension_info
         if not info or bbox.isNull():
             return
-        dim_pen = QPen(QColor("#ffffff"), 1.0 / max(scale, 1e-3))
-        painter.setPen(dim_pen)
-        painter.setBrush(Qt.NoBrush)
 
         if info.get("kind") == "angle":
             self._draw_angle_dimensions(painter, bbox, scale, info)
         elif info.get("kind") == "channel":
             self._draw_channel_dimensions(painter, bbox, scale, info)
 
+    def _fmt_val(self, val: float) -> str:
+        """Format dimension value cleanly."""
+        if val == int(val):
+            return str(int(val))
+        return f"{val:.1f}".rstrip("0").rstrip(".")
+
     def _draw_angle_dimensions(self, painter: QPainter, bbox: QRectF, scale: float, info: dict) -> None:
         x_left, x_right = bbox.left(), bbox.right()
         y_top, y_bottom = bbox.top(), bbox.bottom()
         t = info.get("t", 0.0)
-        offset = 16.0 / max(scale, 1e-3)
-        text_gap = 6.0 / max(scale, 1e-3)
+        a_val = info.get("a", bbox.height())
+        b_val = info.get("b", bbox.width())
 
-        # B (leg length along x)
-        self._draw_arrow(
-            painter,
-            QPointF(x_left, y_bottom + offset),
-            QPointF(x_right, y_bottom + offset),
-            "B",
-            QPointF(0, -text_gap * 0.6),
-            scale,
-        )
+        offset = 15.0
 
-        # H (leg length along y)
-        self._draw_arrow(
-            painter,
-            QPointF(x_left - offset, y_top),
-            QPointF(x_left - offset, y_bottom),
-            "H",
-            QPointF(text_gap, 0),
-            scale,
-        )
+        # W dimension (horizontal at bottom)
+        self._draw_dim_line_h(painter, scale, x_left, x_right, y_bottom + offset,
+                              "W", self._fmt_val(b_val))
 
+        # H dimension (vertical on left)
+        self._draw_dim_line_v(painter, scale, y_top, y_bottom, x_left - offset,
+                              "H", self._fmt_val(a_val))
+
+        # t dimension (thickness at top)
         if t > 0:
-            # tw across web thickness near the corner top
-            self._draw_arrow(
-                painter,
-                QPointF(x_left, y_top - offset * 0.7),
-                QPointF(x_left + t, y_top - offset * 0.7),
-                "tw",
-                QPointF(0, -text_gap * 0.4),
-                scale,
-            )
-
-            # tf across flange thickness near the tip of the flange
-            self._draw_arrow(
-                painter,
-                QPointF(x_right + offset * 0.6, y_top),
-                QPointF(x_right + offset * 0.6, y_top + t),
-                "tf",
-                QPointF(text_gap, 0),
-                scale,
-            )
+            self._draw_dim_line_h(painter, scale, x_left, x_left + t, y_top - offset * 0.8,
+                                  "t", self._fmt_val(t))
 
     def _draw_channel_dimensions(self, painter: QPainter, bbox: QRectF, scale: float, info: dict) -> None:
         x_left, x_right = bbox.left(), bbox.right()
@@ -302,79 +277,156 @@ class SectionPreviewWidget(QWidget):
         tw = info.get("tw", 0.0)
         tf = info.get("tf", 0.0)
         d = info.get("d", bbox.height())
-        offset = 14.0 / max(scale, 1e-3)
-        text_gap = 5.0 / max(scale, 1e-3)
+        b = info.get("b", bbox.width())
 
-        # B (flange width)
-        self._draw_arrow(
-            painter,
-            QPointF(x_left, y_bottom + offset),
-            QPointF(x_right, y_bottom + offset),
-            "B",
-            QPointF(0, -text_gap),
-            scale,
-        )
+        offset = 15.0
 
-        # H (depth)
-        self._draw_arrow(
-            painter,
-            QPointF(x_left - offset, y_top),
-            QPointF(x_left - offset, y_bottom),
-            "H",
-            QPointF(text_gap, 0),
-            scale,
-        )
+        # B dimension (horizontal at bottom)
+        self._draw_dim_line_h(painter, scale, x_left, x_right, y_bottom + offset,
+                              "B", self._fmt_val(b))
 
+        # D dimension (vertical on left)
+        self._draw_dim_line_v(painter, scale, y_top, y_bottom, x_left - offset,
+                              "D", self._fmt_val(d))
+
+        # tw dimension (web thickness)
         if tw > 0:
-            mid_x = x_left + tw / 2.0
-            self._draw_arrow(
-                painter,
-                QPointF(mid_x - tw / 2.0, y_top + d * 0.4 - offset * 0.4),
-                QPointF(mid_x + tw / 2.0, y_top + d * 0.4 - offset * 0.4),
-                "tw",
-                QPointF(0, -text_gap * 0.1),
-                scale,
-            )
+            mid_y = (y_top + y_bottom) / 2.0
+            self._draw_dim_line_h(painter, scale, x_left, x_left + tw, mid_y,
+                                  "t", self._fmt_val(tw), subscript="w")
 
+        # tf dimension (flange thickness on right)
         if tf > 0:
-            self._draw_arrow(
-                painter,
-                QPointF(x_right + offset * 0.8, y_top),
-                QPointF(x_right + offset * 0.8, y_top + tf),
-                "tf",
-                QPointF(text_gap, 0),
-                scale,
-            )
+            self._draw_dim_line_v(painter, scale, y_top, y_top + tf, x_right + offset * 0.7,
+                                  "t", self._fmt_val(tf), subscript="f")
 
-    def _draw_arrow(self, painter: QPainter, p1: QPointF, p2: QPointF, label: str, text_offset: QPointF, scale: float) -> None:
-        painter.drawLine(p1, p2)
+    def _draw_dim_line_h(self, painter: QPainter, scale: float,
+                         x1: float, x2: float, y: float,
+                         symbol: str, value: str, subscript: str = None) -> None:
+        """Draw horizontal dimension line with arrows and label."""
+        dim_pen = QPen(QColor("#ffffff"), 0.8 / max(scale, 1e-3))
+        painter.setPen(dim_pen)
+        painter.setBrush(Qt.NoBrush)
 
-        def _head(base: QPointF, direction: QPointF):
-            length = math.hypot(direction.x(), direction.y()) or 1e-6
-            ux, uy = direction.x() / length, direction.y() / length
-            size = 5.0 / max(scale, 1e-3)
-            perp = QPointF(-uy, ux)
-            tip1 = QPointF(base.x() - ux * size + perp.x() * size * 0.5, base.y() - uy * size + perp.y() * size * 0.5)
-            tip2 = QPointF(base.x() - ux * size - perp.x() * size * 0.5, base.y() - uy * size - perp.y() * size * 0.5)
-            painter.drawLine(base, tip1)
-            painter.drawLine(base, tip2)
+        # Main dimension line
+        painter.drawLine(QPointF(x1, y), QPointF(x2, y))
 
-        vec = QPointF(p2.x() - p1.x(), p2.y() - p1.y())
-        _head(p1, vec)
-        _head(p2, QPointF(-vec.x(), -vec.y()))
+        # Extension lines
+        ext = 5.0
+        painter.drawLine(QPointF(x1, y - ext), QPointF(x1, y + ext))
+        painter.drawLine(QPointF(x2, y - ext), QPointF(x2, y + ext))
 
-        mid = QPointF((p1.x() + p2.x()) / 2.0 + text_offset.x(), (p1.y() + p2.y()) / 2.0 + text_offset.y())
-        self._draw_text(painter, mid, label)
+        # Arrowheads
+        arrow_size = 3.0
+        # Left arrow
+        painter.drawLine(QPointF(x1, y), QPointF(x1 + arrow_size, y + arrow_size * 0.5))
+        painter.drawLine(QPointF(x1, y), QPointF(x1 + arrow_size, y - arrow_size * 0.5))
+        # Right arrow
+        painter.drawLine(QPointF(x2, y), QPointF(x2 - arrow_size, y + arrow_size * 0.5))
+        painter.drawLine(QPointF(x2, y), QPointF(x2 - arrow_size, y - arrow_size * 0.5))
 
-    def _draw_text(self, painter: QPainter, point: QPointF, text: str) -> None:
-        device_pt = painter.transform().map(point)
+        # Label above the line
+        mid_x = (x1 + x2) / 2.0
+        label_y = y + 6.0
+        self._draw_subscript_label(painter, scale, mid_x, label_y, symbol, value, subscript)
+
+    def _draw_dim_line_v(self, painter: QPainter, scale: float,
+                         y1: float, y2: float, x: float,
+                         symbol: str, value: str, subscript: str = None) -> None:
+        """Draw vertical dimension line with arrows and label."""
+        dim_pen = QPen(QColor("#ffffff"), 0.8 / max(scale, 1e-3))
+        painter.setPen(dim_pen)
+        painter.setBrush(Qt.NoBrush)
+
+        # Main dimension line
+        painter.drawLine(QPointF(x, y1), QPointF(x, y2))
+
+        # Extension lines
+        ext = 5.0
+        painter.drawLine(QPointF(x - ext, y1), QPointF(x + ext, y1))
+        painter.drawLine(QPointF(x - ext, y2), QPointF(x + ext, y2))
+
+        # Arrowheads
+        arrow_size = 3.0
+        # Top arrow
+        painter.drawLine(QPointF(x, y1), QPointF(x + arrow_size * 0.5, y1 + arrow_size))
+        painter.drawLine(QPointF(x, y1), QPointF(x - arrow_size * 0.5, y1 + arrow_size))
+        # Bottom arrow
+        painter.drawLine(QPointF(x, y2), QPointF(x + arrow_size * 0.5, y2 - arrow_size))
+        painter.drawLine(QPointF(x, y2), QPointF(x - arrow_size * 0.5, y2 - arrow_size))
+
+        # Label to the side
+        mid_y = (y1 + y2) / 2.0
+        label_x = x - 8.0
+        self._draw_subscript_label(painter, scale, label_x, mid_y, symbol, value, subscript, align_right=True)
+
+    def _draw_subscript_label(self, painter: QPainter, scale: float,
+                              x: float, y: float, symbol: str, value: str,
+                              subscript: str = None, superscript: str = None,
+                              align_right: bool = False) -> None:
+        """Draw label with proper subscript/superscript using QPainter only.
+        
+        - Subscript: smaller font, shifted down
+        - Superscript: smaller font, shifted up
+        - Uses QFontMetrics.horizontalAdvance() for correct positioning
+        """
+        device_pt = painter.transform().map(QPointF(x, y))
         painter.save()
         painter.resetTransform()
-        # Draw outline then foreground for better contrast on dark background
-        painter.setPen(QPen(QColor("#000000"), 3))
-        painter.drawText(device_pt, text)
-        painter.setPen(QPen(QColor("#ffffff"), 1))
-        painter.drawText(device_pt, text)
+
+        # Font setup
+        main_font = QFont("Arial", 9)
+        script_font = QFont("Arial", 6)  # Smaller for sub/superscript
+
+        px, py = device_pt.x(), device_pt.y()
+
+        # Build text segments: [(text, font, y_offset), ...]
+        segments = []
+        
+        # Main symbol
+        segments.append((symbol, main_font, 0))
+        
+        # Subscript (shifted down by ~3px)
+        if subscript:
+            segments.append((subscript, script_font, 3))
+        
+        # Superscript (shifted up by ~-5px) - for future use
+        if superscript:
+            segments.append((superscript, script_font, -5))
+        
+        # Value part
+        segments.append((f" = {value} mm", main_font, 0))
+
+        # Calculate total width for right alignment
+        total_width = 0
+        for text, font, _ in segments:
+            painter.setFont(font)
+            fm = painter.fontMetrics()
+            total_width += fm.horizontalAdvance(text)
+
+        # Starting x position
+        if align_right:
+            start_x = px - total_width
+        else:
+            start_x = px
+
+        # Draw function for a single pass
+        def draw_segments(color: QColor, offset_x: float = 0, offset_y: float = 0):
+            painter.setPen(QPen(color))
+            cursor_x = start_x + offset_x
+            for text, font, y_shift in segments:
+                painter.setFont(font)
+                fm = painter.fontMetrics()
+                painter.drawText(QPointF(cursor_x, py + y_shift + offset_y), text)
+                cursor_x += fm.horizontalAdvance(text)
+
+        # Outline pass (black, 4 directions)
+        for dx, dy in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+            draw_segments(QColor("#000000"), dx, dy)
+
+        # Foreground pass (white)
+        draw_segments(QColor("#ffffff"))
+
         painter.restore()
 
     # Convenience for external DB access
