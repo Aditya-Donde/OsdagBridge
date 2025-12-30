@@ -1,5 +1,5 @@
 """Crash Barrier sub-tab for Typical Section Details (schema-driven)."""
-from PySide6.QtWidgets import QWidget, QVBoxLayout, QGridLayout, QLabel, QComboBox, QLineEdit
+from PySide6.QtWidgets import QWidget, QVBoxLayout, QGridLayout, QLabel, QComboBox, QLineEdit, QSpacerItem, QSizePolicy
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QDoubleValidator
 
@@ -77,7 +77,10 @@ class CrashBarrierTab(QWidget):
         grid.setContentsMargins(0, 0, 0, 0)
         grid.setHorizontalSpacing(24)
         grid.setVerticalSpacing(10)
-        grid.setColumnStretch(1, 1)
+        # Keep fields beside labels; avoid stretching fields far to the right.
+        grid.setColumnStretch(0, 0)
+        grid.setColumnStretch(1, 0)
+        grid.setColumnStretch(2, 1)  # filler to keep fields near labels
 
         label_width = CRASH_BARRIER_TAB_SCHEMA.get("label_width", 200)
 
@@ -101,7 +104,7 @@ class CrashBarrierTab(QWidget):
                     self.owner.crash_barrier_post_spacing_label = label
 
                 field = self._create_field(field_def, field_width=200)
-                grid.addWidget(field, row_idx, col)
+                grid.addWidget(field, row_idx, col, Qt.AlignLeft)
                 col += 1
             row_idx += 1
 

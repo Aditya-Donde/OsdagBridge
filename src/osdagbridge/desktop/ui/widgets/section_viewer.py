@@ -81,6 +81,8 @@ class SectionPreviewWidget(QWidget):
         self._designation: str = ""
         self._geometry: List[QPainterPath] = []
         self._catalog = SectionCatalog()
+        self._dimension_info: Optional[dict] = None
+        self._section_fill = True
 
     def set_section(self, section_type: str, designation: str) -> None:
         """
@@ -90,7 +92,25 @@ class SectionPreviewWidget(QWidget):
         self._section_type = section_type
         self._designation = designation
         self._geometry = self._build_geometry(section_type, designation)
+        self._dimension_info = self._dimension_for(section_type, designation)
+        # Only angles are filled; channels stay outline for clearer C shape
+        self._section_fill = section_type.startswith("angle")
         self.update()
+
+    def _dimension_for(self, section_type: str, designation: str) -> Optional[dict]:
+        if not designation:
+            return None
+        if section_type in ("angle", "double_angle_long", "double_angle_short"):
+            angle = self._catalog.get_angle(designation)
+            if not angle:
+                return None
+            return {"kind": "angle", "a": angle.a, "b": angle.b, "t": angle.t}
+        if section_type in ("channel", "double_channel"):
+            ch = self._catalog.get_channel(designation)
+            if not ch:
+                return None
+            return {"kind": "channel", "b": ch.b, "d": ch.d, "tw": ch.tw, "tf": ch.tf}
+        return None
 
     # ---- Geometry builders -------------------------------------------------
     def _build_geometry(self, section_type: str, designation: str) -> List[QPainterPath]:
@@ -153,31 +173,25 @@ class SectionPreviewWidget(QWidget):
         return path
 
     def _build_channel_path(self, ch: ChannelSection, origin: QPointF, mirror: bool = False) -> QPainterPath:
+        # C-section outline: web at x=0..tw, flanges extend to +B; mirror flips about Y for doubles.
         d, b, tw, tf = ch.d, ch.b, ch.tw, ch.tf
-        offset_x = -b if mirror else 0.0
-        path = QPainterPath()
-        # outer rectangle with flanges top/bottom thickness tf and web thickness tw centered
-        x0 = origin.x() + offset_x
+        sign = -1.0 if mirror else 1.0
+        x0 = origin.x()
         y0 = origin.y()
-        # Draw as polygon (clockwise)
-        pts = [
-            QPointF(x0, y0),
-            QPointF(x0 + b, y0),
-            QPointF(x0 + b, y0 + tf),
-            QPointF(x0 + (b + tw) / 2.0, y0 + tf),
-            QPointF(x0 + (b + tw) / 2.0, y0 + d - tf),
-            QPointF(x0 + b, y0 + d - tf),
-            QPointF(x0 + b, y0 + d),
-            QPointF(x0, y0 + d),
-            QPointF(x0, y0 + d - tf),
-            QPointF(x0 + (b - tw) / 2.0, y0 + d - tf),
-            QPointF(x0 + (b - tw) / 2.0, y0 + tf),
-            QPointF(x0, y0 + tf),
-        ]
-        path.moveTo(pts[0])
-        for pt in pts[1:]:
-            path.lineTo(pt)
-        path.closeSubpath()
+
+        def px(x: float) -> float:
+            return x0 + sign * x
+
+        path = QPainterPath()
+        path.moveTo(px(0), y0)                  # start at top of web outer
+        path.lineTo(px(b), y0)                  # along top flange to tip
+        path.lineTo(px(b), y0 + tf)             # down flange thickness
+        path.lineTo(px(tw), y0 + tf)            # step to web inner face
+        path.lineTo(px(tw), y0 + d - tf)        # down web inner
+        path.lineTo(px(b), y0 + d - tf)         # out along bottom flange inner
+        path.lineTo(px(b), y0 + d)              # down to flange tip
+        path.lineTo(px(0), y0 + d)              # back to web outer bottom
+        path.lineTo(px(0), y0)                  # up web outer
         return path
 
     # ---- Painting ----------------------------------------------------------
@@ -193,10 +207,12 @@ class SectionPreviewWidget(QWidget):
 
         # Compute combined bounding box
         rects = [path.boundingRect() for path in self._geometry]
-        combined = QRectF()
+        geom_bbox = QRectF()
         for r in rects:
-            combined = combined.united(r)
-        margin = 6.0
+            geom_bbox = geom_bbox.united(r)
+        combined = QRectF(geom_bbox)
+        # Add generous margin so dimension arrows/text are not clipped.
+        margin = 18.0
         combined.adjust(-margin, -margin, margin, margin)
 
         if combined.width() <= 0 or combined.height() <= 0:
@@ -211,9 +227,155 @@ class SectionPreviewWidget(QWidget):
 
         pen = QPen(QColor("#f7d65a"), 1.2 / max(scale, 1e-3))
         painter.setPen(pen)
-        painter.setBrush(QColor(255, 215, 0, 40))
+        brush = QColor(255, 215, 0, 40) if self._section_fill else Qt.NoBrush
+        painter.setBrush(brush)
         for path in self._geometry:
             painter.drawPath(path)
+
+        self._draw_dimensions(painter, geom_bbox, scale)
+
+    # ---- Dimension annotations -------------------------------------------
+    def _draw_dimensions(self, painter: QPainter, bbox: QRectF, scale: float) -> None:
+        info = self._dimension_info
+        if not info or bbox.isNull():
+            return
+        dim_pen = QPen(QColor("#ffffff"), 1.0 / max(scale, 1e-3))
+        painter.setPen(dim_pen)
+        painter.setBrush(Qt.NoBrush)
+
+        if info.get("kind") == "angle":
+            self._draw_angle_dimensions(painter, bbox, scale, info)
+        elif info.get("kind") == "channel":
+            self._draw_channel_dimensions(painter, bbox, scale, info)
+
+    def _draw_angle_dimensions(self, painter: QPainter, bbox: QRectF, scale: float, info: dict) -> None:
+        x_left, x_right = bbox.left(), bbox.right()
+        y_top, y_bottom = bbox.top(), bbox.bottom()
+        t = info.get("t", 0.0)
+        offset = 16.0 / max(scale, 1e-3)
+        text_gap = 6.0 / max(scale, 1e-3)
+
+        # B (leg length along x)
+        self._draw_arrow(
+            painter,
+            QPointF(x_left, y_bottom + offset),
+            QPointF(x_right, y_bottom + offset),
+            "B",
+            QPointF(0, -text_gap * 0.6),
+            scale,
+        )
+
+        # H (leg length along y)
+        self._draw_arrow(
+            painter,
+            QPointF(x_left - offset, y_top),
+            QPointF(x_left - offset, y_bottom),
+            "H",
+            QPointF(text_gap, 0),
+            scale,
+        )
+
+        if t > 0:
+            # tw across web thickness near the corner top
+            self._draw_arrow(
+                painter,
+                QPointF(x_left, y_top - offset * 0.7),
+                QPointF(x_left + t, y_top - offset * 0.7),
+                "tw",
+                QPointF(0, -text_gap * 0.4),
+                scale,
+            )
+
+            # tf across flange thickness near the tip of the flange
+            self._draw_arrow(
+                painter,
+                QPointF(x_right + offset * 0.6, y_top),
+                QPointF(x_right + offset * 0.6, y_top + t),
+                "tf",
+                QPointF(text_gap, 0),
+                scale,
+            )
+
+    def _draw_channel_dimensions(self, painter: QPainter, bbox: QRectF, scale: float, info: dict) -> None:
+        x_left, x_right = bbox.left(), bbox.right()
+        y_top, y_bottom = bbox.top(), bbox.bottom()
+        tw = info.get("tw", 0.0)
+        tf = info.get("tf", 0.0)
+        d = info.get("d", bbox.height())
+        offset = 14.0 / max(scale, 1e-3)
+        text_gap = 5.0 / max(scale, 1e-3)
+
+        # B (flange width)
+        self._draw_arrow(
+            painter,
+            QPointF(x_left, y_bottom + offset),
+            QPointF(x_right, y_bottom + offset),
+            "B",
+            QPointF(0, -text_gap),
+            scale,
+        )
+
+        # H (depth)
+        self._draw_arrow(
+            painter,
+            QPointF(x_left - offset, y_top),
+            QPointF(x_left - offset, y_bottom),
+            "H",
+            QPointF(text_gap, 0),
+            scale,
+        )
+
+        if tw > 0:
+            mid_x = x_left + tw / 2.0
+            self._draw_arrow(
+                painter,
+                QPointF(mid_x - tw / 2.0, y_top + d * 0.4 - offset * 0.4),
+                QPointF(mid_x + tw / 2.0, y_top + d * 0.4 - offset * 0.4),
+                "tw",
+                QPointF(0, -text_gap * 0.1),
+                scale,
+            )
+
+        if tf > 0:
+            self._draw_arrow(
+                painter,
+                QPointF(x_right + offset * 0.8, y_top),
+                QPointF(x_right + offset * 0.8, y_top + tf),
+                "tf",
+                QPointF(text_gap, 0),
+                scale,
+            )
+
+    def _draw_arrow(self, painter: QPainter, p1: QPointF, p2: QPointF, label: str, text_offset: QPointF, scale: float) -> None:
+        painter.drawLine(p1, p2)
+
+        def _head(base: QPointF, direction: QPointF):
+            length = math.hypot(direction.x(), direction.y()) or 1e-6
+            ux, uy = direction.x() / length, direction.y() / length
+            size = 5.0 / max(scale, 1e-3)
+            perp = QPointF(-uy, ux)
+            tip1 = QPointF(base.x() - ux * size + perp.x() * size * 0.5, base.y() - uy * size + perp.y() * size * 0.5)
+            tip2 = QPointF(base.x() - ux * size - perp.x() * size * 0.5, base.y() - uy * size - perp.y() * size * 0.5)
+            painter.drawLine(base, tip1)
+            painter.drawLine(base, tip2)
+
+        vec = QPointF(p2.x() - p1.x(), p2.y() - p1.y())
+        _head(p1, vec)
+        _head(p2, QPointF(-vec.x(), -vec.y()))
+
+        mid = QPointF((p1.x() + p2.x()) / 2.0 + text_offset.x(), (p1.y() + p2.y()) / 2.0 + text_offset.y())
+        self._draw_text(painter, mid, label)
+
+    def _draw_text(self, painter: QPainter, point: QPointF, text: str) -> None:
+        device_pt = painter.transform().map(point)
+        painter.save()
+        painter.resetTransform()
+        # Draw outline then foreground for better contrast on dark background
+        painter.setPen(QPen(QColor("#000000"), 3))
+        painter.drawText(device_pt, text)
+        painter.setPen(QPen(QColor("#ffffff"), 1))
+        painter.drawText(device_pt, text)
+        painter.restore()
 
     # Convenience for external DB access
     @property

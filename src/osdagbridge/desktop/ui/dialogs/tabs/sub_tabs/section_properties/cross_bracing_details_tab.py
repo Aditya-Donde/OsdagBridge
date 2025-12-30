@@ -103,7 +103,7 @@ class CrossBracingDetailsTab(QWidget):
         row = self._add_grid_row(inputs_grid, 0, "Design:", self.design_combo)
 
         self.bracing_type_combo = QComboBox()
-        self.bracing_type_combo.addItems(["K-Bracing", "X-Bracing", "Diagonal", "Horizontal"])
+        self.bracing_type_combo.addItems(["K-Bracing", "X-Bracing"])
         apply_field_style(self.bracing_type_combo)
         row = self._add_grid_row(inputs_grid, row, "Type of Bracing:", self.bracing_type_combo)
 
@@ -161,15 +161,6 @@ class CrossBracingDetailsTab(QWidget):
         right_layout = QVBoxLayout(right_column)
         right_layout.setContentsMargins(0, 0, 0, 0)
         right_layout.setSpacing(14)
-
-        type_box = self._create_inner_box()
-        type_layout = QVBoxLayout(type_box)
-        type_layout.setContentsMargins(12, 10, 12, 10)
-        type_layout.setSpacing(10)
-        type_layout.addWidget(self._create_heading_label("Type of Bracing"))
-        self.bracing_image_label = self._create_image_placeholder(210)
-        type_layout.addWidget(self.bracing_image_label)
-        right_layout.addWidget(type_box)
 
         self.bracing_preview_box, self.bracing_preview_label = self._create_preview_box("Bracing")
         right_layout.addWidget(self.bracing_preview_box)
@@ -253,14 +244,12 @@ class CrossBracingDetailsTab(QWidget):
                 self.bracing_preview_label,
                 self.top_bracket_preview_label,
                 self.bottom_bracket_preview_label,
-                self.bracing_image_label,
             ]:
                 widget.set_section("", "")
             return
         self._set_preview(self.bracing_preview_label, self.bracing_section_type_combo, self.bracing_section_combo)
         self._set_preview(self.top_bracket_preview_label, self.top_bracket_type_combo, self.top_bracket_size_combo)
         self._set_preview(self.bottom_bracket_preview_label, self.bottom_bracket_type_combo, self.bottom_bracket_size_combo)
-        self._set_preview(self.bracing_image_label, self.bracing_section_type_combo, self.bracing_section_combo)
 
     def _apply_custom_mode(self, is_custom: bool):
         # Only allow manual section selection (and show previews) in Customized mode.
