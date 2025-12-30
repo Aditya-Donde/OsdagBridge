@@ -1503,7 +1503,18 @@ class InputDock(QWidget):
         
         carriageway_width = self._get_effective_carriageway_width()
         
-        self.additional_inputs = AdditionalInputs(footpath_value, carriageway_width)
+        try:
+            self.additional_inputs = AdditionalInputs(footpath_value, carriageway_width)
+        except Exception as e:
+            print(f"Error creating AdditionalInputs: {e}")
+            import traceback
+            traceback.print_exc()
+            return
+        
+        if self.additional_inputs is None:
+            print("Warning: AdditionalInputs returned None")
+            return
+            
         # Track the inner widget we need to update when footpath changes
         self.additional_inputs_widget = getattr(self.additional_inputs, "typical_section_tab", None)
 
