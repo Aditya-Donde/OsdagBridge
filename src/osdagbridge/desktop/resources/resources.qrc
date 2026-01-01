@@ -32,5 +32,10 @@
         <file>vectors/output_dock_inactive_light.svg</file>
         <file>vectors/outputs_label_light.svg</file>
 
+        <file>vectors/cross_section_open_light.svg</file>
+        <file>vectors/cross_section_closed_light.svg</file>
+        <file>vectors/top_view_open_light.svg</file>
+        <file>vectors/top_view_closed_light.svg</file>
+
     </qresource>
 </RCC>

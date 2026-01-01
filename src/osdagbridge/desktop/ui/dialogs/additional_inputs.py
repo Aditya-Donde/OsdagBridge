@@ -296,9 +296,13 @@ class AdditionalInputs(QDialog):
 
         action_bar, self.defaults_button, self.save_button = create_action_button_bar()
         self.defaults_button.clicked.connect(lambda: self._show_placeholder_message("Defaults"))
-        self.save_button.clicked.connect(lambda: self._show_placeholder_message("Save"))
+        self.save_button.clicked.connect(self._on_save_clicked)
         main_layout.addSpacing(6)
         main_layout.addWidget(action_bar)
+    
+    def _on_save_clicked(self):
+        """Handle save button click - accept the dialog"""
+        self.accept()  # This will close the dialog and return Accepted status
 
     def _show_placeholder_message(self, action_name):
         """Show placeholder message for action buttons"""
@@ -531,6 +535,44 @@ class AdditionalInputs(QDialog):
         """Update footpath value across all tabs"""
         self.footpath_value = footpath_value
         self.typical_section_tab.update_footpath_value(footpath_value)
+    
+    def get_all_values(self):
+        """Get all input values from the additional inputs dialog"""
+        from osdagbridge.core.utils.common import (
+            KEY_NO_OF_GIRDERS, KEY_GIRDER_SPACING, KEY_DECK_OVERHANG,
+            KEY_DECK_THICKNESS, KEY_FOOTPATH_WIDTH, KEY_FOOTPATH_THICKNESS,
+            KEY_CROSS_BRACING_SPACING
+        )
+        
+        values = {}
+        
+        # Get values from Typical Section Details tab - ONLY the 12 parameters needed for CAD
+        if hasattr(self.typical_section_tab, 'no_of_girders') and self.typical_section_tab.no_of_girders.text():
+            values[KEY_NO_OF_GIRDERS] = int(self.typical_section_tab.no_of_girders.text())
+        
+        if hasattr(self.typical_section_tab, 'girder_spacing') and self.typical_section_tab.girder_spacing.text():
+            values[KEY_GIRDER_SPACING] = float(self.typical_section_tab.girder_spacing.text())
+        
+        if hasattr(self.typical_section_tab, 'deck_overhang') and self.typical_section_tab.deck_overhang.text():
+            values[KEY_DECK_OVERHANG] = float(self.typical_section_tab.deck_overhang.text())
+        
+        if hasattr(self.typical_section_tab, 'deck_thickness') and self.typical_section_tab.deck_thickness.text():
+            values[KEY_DECK_THICKNESS] = float(self.typical_section_tab.deck_thickness.text())
+        
+        if hasattr(self.typical_section_tab, 'footpath_width') and self.typical_section_tab.footpath_width.text():
+            values[KEY_FOOTPATH_WIDTH] = float(self.typical_section_tab.footpath_width.text())
+        
+        if hasattr(self.typical_section_tab, 'footpath_thickness') and self.typical_section_tab.footpath_thickness.text():
+            values[KEY_FOOTPATH_THICKNESS] = float(self.typical_section_tab.footpath_thickness.text())
+        
+        # Get cross bracing spacing from Section Properties tab
+        if hasattr(self.section_properties_tab, 'cross_bracing_details_tab'):
+            bracing_tab = self.section_properties_tab.cross_bracing_details_tab
+            
+            if hasattr(bracing_tab, 'bracing_spacing') and bracing_tab.bracing_spacing.text():
+                values[KEY_CROSS_BRACING_SPACING] = float(bracing_tab.bracing_spacing.text())
+        
+        return values
 
 # =================================================================================
 #   SUB COMPONENTS
@@ -595,32 +637,36 @@ class TypicalSectionDetailsTab(QWidget):
         main_layout.setContentsMargins(10, 10, 10, 10)
         main_layout.setSpacing(0)
 
+        # Import CAD widget for cross-section view
+        from osdagbridge.desktop.ui.docks.cad_cross_section import CrossSectionCADWidget
+        
         diagram_widget = QWidget()
         diagram_widget.setStyleSheet("""
             QWidget {
-                background: transparent;
+                background: white;
                 border: 1px solid #b0b0b0;
                 border-radius: 8px;
             }
         """)
-        diagram_widget.setMinimumHeight(150)
-        diagram_widget.setMaximumHeight(200)
+        diagram_widget.setMinimumHeight(280)
+        diagram_widget.setMaximumHeight(380)
         diagram_layout = QVBoxLayout(diagram_widget)
-        diagram_layout.setContentsMargins(20, 20, 20, 20)
-        diagram_layout.setAlignment(Qt.AlignCenter)
+        diagram_layout.setContentsMargins(5, 5, 5, 5)
 
-        diagram_label = QLabel("Typical Section Details\nDiagram")
-        diagram_label.setAlignment(Qt.AlignCenter)
-        diagram_label.setStyleSheet("""
-            QLabel {
-                background-color: transparent;
-                border: none;
-                padding: 20px;
-                font-size: 13px;
-                color: #333;
-            }
-        """)
-        diagram_layout.addWidget(diagram_label)
+        # Add cross-section CAD view with scroll area
+        cad_scroll = QScrollArea()
+        cad_scroll.setWidgetResizable(True)
+        cad_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        cad_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        cad_scroll.setFrameShape(QFrame.NoFrame)
+        cad_scroll.setStyleSheet("QScrollArea { background: transparent; border: none; }")
+        
+        self.cad_preview = CrossSectionCADWidget()
+        self.cad_preview.scale_factor = 0.85  # Make diagram larger (85% of normal size)
+        self.cad_preview.setMinimumHeight(400)
+        cad_scroll.setWidget(self.cad_preview)
+        
+        diagram_layout.addWidget(cad_scroll)
 
         main_layout.addWidget(diagram_widget)
         main_layout.addSpacing(10)
@@ -676,6 +722,14 @@ class TypicalSectionDetailsTab(QWidget):
 
         self.deck_thickness.textChanged.connect(self.update_footpath_thickness)
         self.recalculate_girders()
+        
+        # Connect fields for dynamic updates
+        self.girder_spacing.editingFinished.connect(self.on_field_changed)
+        self.no_of_girders.editingFinished.connect(self.on_field_changed)
+        self.deck_overhang.editingFinished.connect(self.on_field_changed)
+        self.deck_thickness.editingFinished.connect(self.on_field_changed)
+        self.footpath_width.editingFinished.connect(self.on_field_changed)
+        self.footpath_thickness.editingFinished.connect(self.on_field_changed)
 
     def create_layout_tab(self):
         layout_widget = QWidget()
@@ -1241,6 +1295,34 @@ class TypicalSectionDetailsTab(QWidget):
 
     def _show_placeholder_message(self, action_name):
         QMessageBox.information(self, action_name, "This action will be available in an upcoming update.")
+    
+    def on_field_changed(self):
+        """Update CAD preview when fields change"""
+        if hasattr(self, 'cad_preview'):
+            # Get current values from fields
+            params = {}
+            
+            if self.no_of_girders.text():
+                params['num_girders'] = int(self.no_of_girders.text())
+            
+            if self.girder_spacing.text():
+                params['girder_spacing'] = float(self.girder_spacing.text()) * 1000  # Convert m to mm
+            
+            if self.deck_overhang.text():
+                params['deck_overhang'] = float(self.deck_overhang.text()) * 1000  # Convert m to mm
+            
+            if self.deck_thickness.text():
+                params['deck_thickness'] = float(self.deck_thickness.text())  # Already in mm
+            
+            if self.footpath_width.text():
+                params['footpath_width'] = float(self.footpath_width.text()) * 1000  # Convert m to mm
+            
+            if self.footpath_thickness.text():
+                params['footpath_thickness'] = float(self.footpath_thickness.text())  # Already in mm
+            
+            # Update CAD preview with new params
+            if params:
+                self.cad_preview.update_params(params)
 
 class OptimizableField(QWidget):
     """Widget that allows selection between Optimized/Customized/All modes with input field"""

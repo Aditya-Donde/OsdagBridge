@@ -2,7 +2,7 @@
 Log dock widget for Osdag GUI.
 Displays log messages and status updates.
 """
-from PySide6.QtWidgets import QWidget, QVBoxLayout, QTextEdit, QLabel
+from PySide6.QtWidgets import QWidget, QVBoxLayout, QTextEdit, QLabel, QFrame
 from PySide6.QtCore import Qt, QDateTime
 
 class LogDock(QWidget):
@@ -16,9 +16,25 @@ class LogDock(QWidget):
         self.adjust_size()
 
     def init_ui(self):
-        # Create layout for the log dock
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(5, 2, 5, 0)
+        # Outer layout with no margins
+        outer_layout = QVBoxLayout(self)
+        outer_layout.setContentsMargins(0, 0, 0, 0)
+        outer_layout.setSpacing(0)
+        
+        # Create a frame with visible border
+        border_frame = QFrame(self)
+        border_frame.setObjectName("logBorderFrame")
+        border_frame.setStyleSheet("""
+            QFrame#logBorderFrame {
+                border: 1px solid #000000;
+                background-color: white;
+            }
+        """)
+        outer_layout.addWidget(border_frame)
+        
+        # Create layout inside the border frame
+        layout = QVBoxLayout(border_frame)
+        layout.setContentsMargins(5, 5, 5, 0)
         layout.setSpacing(0)
 
         # Create a top strip for "Log Window"
@@ -36,7 +52,6 @@ class LogDock(QWidget):
         # Add init log text matching
         self.append_log(f"[{QDateTime.currentDateTime().toString('yyyy-MM-dd hh:mm:ss')}] Log initialized", "info")
 
-        self.setLayout(layout)
         self.show()  # Show init text
 
     def append_log(self, message, log_level="info"):
