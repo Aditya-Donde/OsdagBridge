@@ -69,15 +69,6 @@ LAYOUT_TAB_SCHEMA = {
                     "bind": "deck_thickness",
                     "on_editing_finished": "validate_deck_thickness",
                 },
-                {
-                    "id": "footpath_thickness",
-                    "label": "Footpath Thickness (mm):",
-                    "type": "line",
-                    "validator": {"type": "double_range", "bottom": 100.0, "top": 500.0, "decimals": 0},
-                    "default": "200",
-                    "bind": "footpath_thickness",
-                    "on_editing_finished": "validate_footpath_thickness",
-                },
             ]
         },
         {
@@ -90,7 +81,16 @@ LAYOUT_TAB_SCHEMA = {
                     "default": f"{MIN_FOOTPATH_WIDTH:.2f}",
                     "bind": "footpath_width",
                     "on_text_changed": "on_footpath_width_changed",
-                }
+                },
+                {
+                    "id": "footpath_thickness",
+                    "label": "Footpath Thickness (mm):",
+                    "type": "line",
+                    "validator": {"type": "double_range", "bottom": 100.0, "top": 500.0, "decimals": 0},
+                    "default": "200",
+                    "bind": "footpath_thickness",
+                    "on_editing_finished": "validate_footpath_thickness",
+                },
             ]
         },
     ],
