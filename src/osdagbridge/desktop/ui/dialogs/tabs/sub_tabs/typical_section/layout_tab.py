@@ -47,6 +47,14 @@ class LayoutTab(QWidget):
         field.setFixedWidth(default_width)
         field.setObjectName(field_def.get("id", ""))
 
+        # Make read-only displays visually disabled without breaking styling
+        if field_def.get("id") == "overall_bridge_width_display":
+            field.setEnabled(False)
+            field.setStyleSheet(
+                "QLineEdit { background-color: #f2f2f2; color: #666;"
+                " border: 1px solid #c0c0c0; border-radius: 4px; padding: 4px 6px; }"
+            )
+
         bind_name = field_def.get("bind")
         if bind_name:
             setattr(owner, bind_name, field)
@@ -114,10 +122,8 @@ class LayoutTab(QWidget):
 
             row_idx += 1
 
-            # Place adjustment notice directly under the "No. of Girders" field (right column)
-            if row_num == 0:
-                grid.addWidget(owner.layout_adjust_notice, row_idx, 2, 1, 2, Qt.AlignLeft)
-                row_idx += 1
+            # Place adjustment notice directly under the "No. of Girders" field (row 1, right side)
+            grid.addWidget(owner.layout_adjust_notice, 1, 2, 1, 2, Qt.AlignLeft)
 
         layout_layout.addLayout(grid)
 

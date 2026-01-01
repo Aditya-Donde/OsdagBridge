@@ -857,8 +857,8 @@ class TypicalSectionDetailsTab(QWidget):
         is_rcc = self._is_rcc_barrier(barrier_type)
         is_custom = barrier_type == "Custom"
 
-        # Density & Area hidden only for metallic options
-        hide_density_area = is_metallic
+        # Density & Area hidden for metallic or custom options
+        hide_density_area = is_metallic or is_custom
         for widget in [self.crash_barrier_density, self.crash_barrier_density_label, self.crash_barrier_area, self.crash_barrier_area_label]:
             widget.setVisible(not hide_density_area)
         if hide_density_area:
@@ -876,18 +876,11 @@ class TypicalSectionDetailsTab(QWidget):
         # Load behavior
         self.crash_barrier_load.setEnabled(True)
         self.crash_barrier_load.setReadOnly(is_rcc)
+        self.crash_barrier_load.setPlaceholderText("" if not is_custom else "Enter custom load per IRC 6 guidance")
         if is_rcc:
             self._auto_compute_crash_barrier_load()
         else:
             self.crash_barrier_load.setReadOnly(False)
-
-    def _warn_if_custom_barrier(self, barrier_type):
-        if barrier_type == "Custom":
-            QMessageBox.warning(
-                self,
-                "Custom Crash Barrier",
-                "Verify crash barrier design using IRC 6 Clause 206.6",
-            )
 
     def _is_metallic_median(self, median_type):
         return median_type.startswith("IRC 5 - Metallic Crash Barrier")
@@ -933,7 +926,7 @@ class TypicalSectionDetailsTab(QWidget):
                 widget.setEnabled(active)
 
         # Density & Area hidden for metallic or custom
-        hide_density_area = is_metallic
+        hide_density_area = is_metallic or is_custom
         for widget in [self.median_density, self.median_density_label, self.median_area, self.median_area_label]:
             if widget is not None:
                 widget.setVisible(active and not hide_density_area)
@@ -955,18 +948,13 @@ class TypicalSectionDetailsTab(QWidget):
         # Load behavior
         self.median_load.setEnabled(active)
         self.median_load.setReadOnly(active and is_rcc)
+        if active:
+            self.median_load.setPlaceholderText("" if not is_custom else "Enter custom load per IRC 6 guidance")
         if active and is_rcc:
             self._auto_compute_median_load()
         elif active and self.median_load:
             self.median_load.setReadOnly(False)
             self.median_load.clear()
-
-        if median_type == "Custom":
-            QMessageBox.warning(
-                self,
-                "Custom Median",
-                "Verify custom median design per IRC 6 guidance.",
-            )
 
     def get_overall_bridge_width(self):
         try:
@@ -1091,7 +1079,6 @@ class TypicalSectionDetailsTab(QWidget):
         # Apply new visibility and load rules
         self._update_crash_barrier_visibility(barrier_type)
         self._apply_crash_barrier_defaults(barrier_type)
-        self._warn_if_custom_barrier(barrier_type)
 
     def on_railing_load_mode_changed(self, mode):
         if not hasattr(self, "railing_load_value"):
