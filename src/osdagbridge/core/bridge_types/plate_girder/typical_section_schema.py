@@ -122,7 +122,7 @@ CRASH_BARRIER_TAB_SCHEMA = {
             "fields": [
                 {
                     "id": "crash_barrier_density",
-                    "label": "Material Density (kN/m^3):",
+                    "label": "Material Density (kN/m³):",
                     "type": "line",
                     "validator": {"type": "double_range", "bottom": 0.0, "top": 100.0, "decimals": 2},
                     "bind": "crash_barrier_density",
@@ -158,7 +158,7 @@ CRASH_BARRIER_TAB_SCHEMA = {
             "fields": [
                 {
                     "id": "crash_barrier_area",
-                    "label": "Area (m^2):",
+                    "label": "Area (m²):",
                     "type": "line",
                     "validator": {"type": "double_range", "bottom": 0.0, "top": 10.0, "decimals": 4},
                     "bind": "crash_barrier_area",
@@ -218,7 +218,7 @@ MEDIAN_TAB_SCHEMA = {
             "fields": [
                 {
                     "id": "median_density",
-                    "label": "Material Density (kN/m^3):",
+                    "label": "Material Density (kN/m³):",
                     "type": "line",
                     "validator": {"type": "double_range", "bottom": 0.0, "top": 100.0, "decimals": 2},
                     "bind": "median_density",
@@ -251,7 +251,7 @@ MEDIAN_TAB_SCHEMA = {
             "fields": [
                 {
                     "id": "median_area",
-                    "label": "Area (m^2):",
+                    "label": "Area (m²):",
                     "type": "line",
                     "validator": {"type": "double_range", "bottom": 0.0, "top": 10.0, "decimals": 4},
                     "bind": "median_area",
@@ -368,7 +368,7 @@ WEARING_COURSE_TAB_SCHEMA = {
             "fields": [
                 {
                     "id": "wearing_density",
-                    "label": "Density (kN/m^3):",
+                    "label": "Density (kN/m³):",
                     "type": "line",
                     "validator": {"type": "double_range", "bottom": 0.0, "top": 40.0, "decimals": 2},
                     "bind": "wearing_density",

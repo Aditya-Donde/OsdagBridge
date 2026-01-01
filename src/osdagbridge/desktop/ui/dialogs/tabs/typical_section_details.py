@@ -349,8 +349,8 @@ class TypicalSectionDetailsTab(QWidget):
         self._updating_lane_table = True
         try:
             for i in range(lane_count):
-                self._set_lane_value(i, 1, f"{start:.3f}")
-                self._set_lane_value(i, 2, f"{design_width:.3f}")
+                self._set_lane_value(i, 1, f"{start:.2f}")
+                self._set_lane_value(i, 2, f"{design_width:.2f}")
                 start += design_width
         finally:
             self._updating_lane_table = was_updating
@@ -373,8 +373,8 @@ class TypicalSectionDetailsTab(QWidget):
                 width = width_val if width_val is not None else design_width
                 if width < design_width:
                     width = design_width
-                    self._set_lane_value(i, 2, f"{width:.3f}")
-                self._set_lane_value(i, 1, f"{start:.3f}")
+                    self._set_lane_value(i, 2, f"{width:.2f}")
+                self._set_lane_value(i, 1, f"{start:.2f}")
                 start += width
                 total_width += width
         finally:
@@ -388,7 +388,7 @@ class TypicalSectionDetailsTab(QWidget):
             QMessageBox.warning(
                 self,
                 "Lane Width Exceeds Carriageway",
-                f"Sum of lane widths ({total_width:.3f} m) exceeds carriageway width provided ({carriageway:.3f} m).\n"
+                f"Sum of lane widths ({total_width:.2f} m) exceeds carriageway width provided ({carriageway:.2f} m).\n"
                 "Adjust lane count or widths per IRC 5 Clause 104.3.1.",
             )
 
@@ -396,7 +396,7 @@ class TypicalSectionDetailsTab(QWidget):
         design_width = self._design_lane_width_m()
         width = self._parse_lane_float(row, 2)
         if width is None:
-            self._set_lane_value(row, 2, f"{design_width:.3f}")
+            self._set_lane_value(row, 2, f"{design_width:.2f}")
             return
         if width + 1e-6 < design_width:
             QMessageBox.critical(
@@ -404,7 +404,7 @@ class TypicalSectionDetailsTab(QWidget):
                 "Lane Width Below IRC Minimum",
                 f"IRC 5 Clause 104.3.1 requires a lane width of at least {design_width:.2f} m.",
             )
-            self._set_lane_value(row, 2, f"{design_width:.3f}")
+            self._set_lane_value(row, 2, f"{design_width:.2f}")
 
     def _validate_lane_start(self, row):
         design_width = self._design_lane_width_m()
@@ -484,10 +484,10 @@ class TypicalSectionDetailsTab(QWidget):
         return layout.total_width
 
     def _format_spacing(self, spacing):
-        return f"{spacing:.1f}"
+        return f"{spacing:.2f}"
 
     def _format_overhang(self, overhang):
-        return f"{overhang:.3f}"
+        return f"{overhang:.2f}"
 
     def _clear_adjust_notice(self):
         if hasattr(self, "layout_adjust_notice"):
@@ -735,7 +735,7 @@ class TypicalSectionDetailsTab(QWidget):
                 density = float(self.crash_barrier_density.text()) if self.crash_barrier_density.text() else 0.0
                 area = float(self.crash_barrier_area.text()) if self.crash_barrier_area.text() else 0.0
                 load = density * area
-                self.crash_barrier_load.setText(f"{load:.3f}")
+                self.crash_barrier_load.setText(f"{load:.2f}")
             except:
                 self.crash_barrier_load.clear()
         # For other types load is user-entered; do not overwrite
@@ -771,7 +771,7 @@ class TypicalSectionDetailsTab(QWidget):
                     w_val = float(self.crash_barrier_width.text() or 0.0)
                     h_val = float(self.crash_barrier_height.text() or 0.0)
                     area_val = w_val * h_val
-                    _set(self.crash_barrier_area, f"{area_val:.3f}")
+                    _set(self.crash_barrier_area, f"{area_val:.2f}")
                 except:
                     pass
             self._auto_compute_crash_barrier_load()
@@ -812,7 +812,7 @@ class TypicalSectionDetailsTab(QWidget):
                     w_val = float(self.median_width.text() or 0.0)
                     h_val = float(self.median_height.text() or 0.0)
                     area_val = w_val * h_val
-                    _set(self.median_area, f"{area_val:.3f}")
+                    _set(self.median_area, f"{area_val:.2f}")
                 except:
                     pass
             self._auto_compute_median_load()
@@ -902,7 +902,7 @@ class TypicalSectionDetailsTab(QWidget):
                 density = float(self.median_density.text()) if self.median_density.text() else 0.0
                 area = float(self.median_area.text()) if self.median_area.text() else 0.0
                 load = density * area
-                self.median_load.setText(f"{load:.3f}")
+                self.median_load.setText(f"{load:.2f}")
             except:
                 self.median_load.clear()
 
@@ -979,7 +979,7 @@ class TypicalSectionDetailsTab(QWidget):
             try:
                 overall_width = self.get_overall_bridge_width()
                 self._updating_overall_width_display = True
-                self.overall_bridge_width_display.setText(f"{overall_width:.3f}")
+                self.overall_bridge_width_display.setText(f"{overall_width:.2f}")
                 self._updating_overall_width_display = False
             except:
                 self._updating_overall_width_display = False
@@ -1099,10 +1099,25 @@ class TypicalSectionDetailsTab(QWidget):
         is_auto = mode.startswith("Automatic")
         if is_auto:
             self.railing_load_value.setReadOnly(True)
+            self.railing_load_value.setEnabled(True)
             self.railing_load_value.setText("1.5")
+            self.railing_load_value.setPlaceholderText("")
+            # Subtle disabled styling for auto mode
+            self.railing_load_value.setStyleSheet(
+                "QLineEdit { background-color: #f1f1f1; color: #7a7a7a;"
+                " border: 1px solid #bfbfbf; border-radius: 4px; padding: 4px 6px; }"
+            )
         else:
+            # User-defined mode - allow user to enter value
             self.railing_load_value.setReadOnly(False)
+            self.railing_load_value.setEnabled(True)
             self.railing_load_value.clear()
+            self.railing_load_value.setPlaceholderText("Enter load value")
+            # Restore normal styling
+            self.railing_load_value.setStyleSheet(
+                "QLineEdit { background-color: #ffffff; color: #000000;"
+                " border: 1px solid #000000; border-radius: 4px; padding: 4px 6px; }"
+            )
 
     def on_lane_count_changed(self, text):
         """Handle lane count selection change."""
