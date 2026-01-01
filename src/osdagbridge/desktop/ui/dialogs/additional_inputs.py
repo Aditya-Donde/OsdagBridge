@@ -153,6 +153,32 @@ class AdditionalInputs(QDialog):
         main_layout.addSpacing(6)
         main_layout.addWidget(action_bar)
 
+        # Enforce max 2 decimal places for all double validators in the dialog
+        self._enforce_decimal_places(2)
+        # Normalize existing numeric text to 2 decimal places for consistent display
+        self._normalize_numeric_texts(2)
+
+    def _enforce_decimal_places(self, places=2):
+        """Force all QDoubleValidator instances in this dialog to the given decimal places."""
+        for line_edit in self.findChildren(QLineEdit):
+            validator = line_edit.validator()
+            if isinstance(validator, QDoubleValidator):
+                validator.setDecimals(places)
+                validator.setNotation(QDoubleValidator.StandardNotation)
+
+    def _normalize_numeric_texts(self, places=2):
+        """Format any numeric QLineEdit text to the specified decimal places."""
+        fmt = f"{{:.{places}f}}"
+        for line_edit in self.findChildren(QLineEdit):
+            text = line_edit.text().strip()
+            if not text:
+                continue
+            try:
+                val = float(text)
+                line_edit.setText(fmt.format(val))
+            except ValueError:
+                continue
+
     def _create_schema_widget(self, field_def, field_width):
         field_type = field_def.get("type")
         widget = None
