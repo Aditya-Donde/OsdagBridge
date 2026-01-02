@@ -233,7 +233,7 @@ class CrossBracingDetailsTab(QWidget):
         layout.setContentsMargins(12, 10, 12, 10)
         layout.setSpacing(8)
         layout.addWidget(self._create_heading_label(title))
-        image = self._create_image_placeholder(120)
+        image = self._create_image_placeholder(150)
         layout.addWidget(image)
         return box, image
 

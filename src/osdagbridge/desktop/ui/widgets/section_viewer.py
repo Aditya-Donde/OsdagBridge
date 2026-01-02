@@ -20,6 +20,8 @@ class AngleSection:
     a: float  # leg 1 (mm)
     b: float  # leg 2 (mm)
     t: float  # thickness (mm)
+    r1: float  # root radius (mm)
+    r2: float  # toe radius (mm)
 
 
 @dataclass
@@ -29,6 +31,8 @@ class ChannelSection:
     b: float  # flange width (mm)
     tw: float  # web thickness (mm)
     tf: float  # flange thickness (mm)
+    r1: float  # root radius (mm)
+    r2: float  # toe radius (mm)
 
 
 class SectionCatalog:
@@ -46,14 +50,29 @@ class SectionCatalog:
 
         # Equal and unequal angles
         for table in ("EqualAngle", "UnequalAngle"):
-            cur.execute(f"SELECT Designation, a, b, t FROM {table}")
-            for des, a, b, t in cur.fetchall():
-                self._angles[des.strip()] = AngleSection(designation=des.strip(), a=float(a), b=float(b), t=float(t))
+            cur.execute(f"SELECT Designation, a, b, t, R1, R2 FROM {table}")
+            for des, a, b, t, r1, r2 in cur.fetchall():
+                self._angles[des.strip()] = AngleSection(
+                    designation=des.strip(),
+                    a=float(a),
+                    b=float(b),
+                    t=float(t),
+                    r1=float(r1),
+                    r2=float(r2),
+                )
 
         # Channels
-        cur.execute("SELECT Designation, D, B, tw, T FROM Channels")
-        for des, d, b, tw, tf in cur.fetchall():
-            self._channels[des.strip()] = ChannelSection(designation=des.strip(), d=float(d), b=float(b), tw=float(tw), tf=float(tf))
+        cur.execute("SELECT Designation, D, B, tw, T, R1, R2 FROM Channels")
+        for des, d, b, tw, tf, r1, r2 in cur.fetchall():
+            self._channels[des.strip()] = ChannelSection(
+                designation=des.strip(),
+                d=float(d),
+                b=float(b),
+                tw=float(tw),
+                tf=float(tf),
+                r1=float(r1),
+                r2=float(r2),
+            )
 
         con.close()
 
@@ -75,8 +94,8 @@ class SectionPreviewWidget(QWidget):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setMinimumHeight(120)
-        self.setMinimumWidth(120)
+        self.setMinimumHeight(150)
+        self.setMinimumWidth(140)
         self._section_type: str = ""
         self._designation: str = ""
         self._geometry: List[QPainterPath] = []
@@ -93,7 +112,13 @@ class SectionPreviewWidget(QWidget):
         self._designation = designation
         self._geometry = self._build_geometry(section_type, designation)
         self._dimension_info = self._dimension_for(section_type, designation)
-        self._section_fill = section_type.startswith("angle")
+        self._section_fill = section_type in (
+            "angle",
+            "double_angle_long",
+            "double_angle_short",
+            "channel",
+            "double_channel",
+        )
         self.update()
 
     def _dimension_for(self, section_type: str, designation: str) -> Optional[dict]:
@@ -103,12 +128,22 @@ class SectionPreviewWidget(QWidget):
             angle = self._catalog.get_angle(designation)
             if not angle:
                 return None
-            return {"kind": "angle", "a": angle.a, "b": angle.b, "t": angle.t}
+            dims = {"kind": "angle", "a": angle.a, "b": angle.b, "t": angle.t}
+            # For double angles, report total envelope so the dimension labels match the drawn geometry.
+            if section_type == "double_angle_long":
+                # Long legs connected vertically, short legs extend horizontally
+                # Width = 2 * short leg, Height = long leg
+                dims.update({"w": angle.b * 2.0, "h": angle.a})
+            elif section_type == "double_angle_short":
+                # Short legs connected vertically, long legs extend horizontally
+                # Width = 2 * long leg, Height = short leg
+                dims.update({"w": angle.a * 2.0, "h": angle.b})
+            return dims
         if section_type in ("channel", "double_channel"):
             ch = self._catalog.get_channel(designation)
             if not ch:
                 return None
-            return {"kind": "channel", "b": ch.b, "d": ch.d, "tw": ch.tw, "tf": ch.tf}
+            return {"kind": "channel", "b": ch.b, "d": ch.d, "tw": ch.tw, "tf": ch.tf, "r1": ch.r1, "r2": ch.r2}
         return None
 
     # ---- Geometry builders -------------------------------------------------
@@ -122,16 +157,17 @@ class SectionPreviewWidget(QWidget):
             if section_type == "angle":
                 return [self._build_angle_path(angle, QPointF(0, 0))]
             elif section_type == "double_angle_long":
-                # back-to-back along long leg: mirror across Y axis
-                path1 = self._build_angle_path(angle, QPointF(0, 0))
-                mirror = self._build_angle_path(angle, QPointF(0, 0), mirror_long_leg=True)
-                return [path1, mirror]
+                # Long legs connected back-to-back vertically, short legs extend horizontally
+                # Like Figure 2: T-shape with long leg as the vertical stem
+                path1 = self._build_double_angle_long_path(angle, mirrored=False)
+                path2 = self._build_double_angle_long_path(angle, mirrored=True)
+                return [path1, path2]
             else:
-                # back-to-back along short leg: swap legs before mirroring
-                swapped = AngleSection(angle.designation, angle.b, angle.a, angle.t)
-                path1 = self._build_angle_path(swapped, QPointF(0, 0))
-                mirror = self._build_angle_path(swapped, QPointF(0, 0), mirror_long_leg=True)
-                return [path1, mirror]
+                # Short legs connected back-to-back vertically, long legs extend horizontally  
+                # Like Figure 3: cross/plus shape with short leg as the vertical stem
+                path1 = self._build_double_angle_short_path(angle, mirrored=False)
+                path2 = self._build_double_angle_short_path(angle, mirrored=True)
+                return [path1, path2]
 
         if section_type in ("channel", "double_channel"):
             ch = self._catalog.get_channel(designation)
@@ -140,30 +176,30 @@ class SectionPreviewWidget(QWidget):
             if section_type == "channel":
                 return [self._build_channel_path(ch, QPointF(0, 0))]
             else:
-                # Back-to-back about web centerline (S=0)
+                # Back-to-back: two Cs touching at web outer faces
                 p1 = self._build_channel_path(ch, QPointF(0, 0))
                 p2 = self._build_channel_path(ch, QPointF(0, 0), mirror=True)
                 return [p1, p2]
 
         return []
 
-    def _build_angle_path(self, angle: AngleSection, origin: QPointF, mirror_long_leg: bool = False) -> QPainterPath:
+    def _build_angle_path(self, angle: AngleSection, origin: QPointF, mirror_axis: str = None) -> QPainterPath:
         # Outer L profile anchored at origin (0,0) at corner; legs along +x/+y.
-        # When mirrored, flip across the Y-axis and offset by thickness so the two angles sit back-to-back without overlapping lines.
+        # mirror_axis: "y" mirrors about Y (long-leg back-to-back), "x" mirrors about X (short-leg back-to-back).
         a, b, t = angle.a, angle.b, angle.t
-        sign = -1.0 if mirror_long_leg else 1.0
-        offset_x = -t if mirror_long_leg else 0.0
-        x0, y0 = origin.x() + offset_x, origin.y()
+        sign_x = -1.0 if mirror_axis == "y" else 1.0
+        sign_y = -1.0 if mirror_axis == "x" else 1.0
+        x0, y0 = origin.x(), origin.y()
 
         path = QPainterPath()
         # Outline for solid L (union of two rectangles) without inner cutout lines.
         pts_outer = [
             QPointF(x0, y0),
-            QPointF(x0 + sign * a, y0),
-            QPointF(x0 + sign * a, y0 + t),
-            QPointF(x0 + sign * t, y0 + t),
-            QPointF(x0 + sign * t, y0 + b),
-            QPointF(x0, y0 + b),
+            QPointF(x0 + sign_x * a, y0),
+            QPointF(x0 + sign_x * a, y0 + sign_y * t),
+            QPointF(x0 + sign_x * t, y0 + sign_y * t),
+            QPointF(x0 + sign_x * t, y0 + sign_y * b),
+            QPointF(x0, y0 + sign_y * b),
         ]
         path.moveTo(pts_outer[0])
         for pt in pts_outer[1:]:
@@ -171,26 +207,94 @@ class SectionPreviewWidget(QWidget):
         path.closeSubpath()
         return path
 
+    def _build_double_angle_long_path(self, angle: AngleSection, mirrored: bool = False) -> QPainterPath:
+        """Double angle with long legs connected (Figure 2).
+        Long leg (a) is vertical, short leg (b) extends horizontally.
+        The two angles are back-to-back along the long leg.
+        Uses r1 radius at the inner corner.
+        """
+        a, b, t, r1 = angle.a, angle.b, angle.t, max(angle.r1, 0.0)
+        sign = -1.0 if mirrored else 1.0
+        
+        # Clamp radius to fit
+        r = min(r1, min(a - t, b - t) / 2)
+        r = max(r, 2.0)  # minimum visible curve
+        
+        path = QPainterPath()
+        # L-shape: vertical long leg, horizontal short leg
+        path.moveTo(QPointF(0, 0))                        # top of long leg at connection
+        path.lineTo(QPointF(sign * t, 0))                 # across thickness at top
+        path.lineTo(QPointF(sign * t, a - t - r))         # down inner face, stop before curve
+        # Inner corner fillet
+        path.quadTo(QPointF(sign * t, a - t), QPointF(sign * (t + r), a - t))
+        path.lineTo(QPointF(sign * b, a - t))             # out along short leg inner
+        path.lineTo(QPointF(sign * b, a))                 # down short leg thickness
+        path.lineTo(QPointF(0, a))                        # back to long leg outer
+        path.closeSubpath()
+        return path
+
+    def _build_double_angle_short_path(self, angle: AngleSection, mirrored: bool = False) -> QPainterPath:
+        """Double angle with short legs connected (Figure 3).
+        Short leg (b) is vertical, long leg (a) extends horizontally.
+        The two angles are back-to-back along the short leg.
+        Uses r1 radius at the inner corner.
+        """
+        a, b, t, r1 = angle.a, angle.b, angle.t, max(angle.r1, 0.0)
+        sign = -1.0 if mirrored else 1.0
+        
+        # Clamp radius to fit
+        r = min(r1, min(a - t, b - t) / 2)
+        r = max(r, 2.0)  # minimum visible curve
+        
+        path = QPainterPath()
+        # L-shape: vertical short leg, horizontal long leg
+        path.moveTo(QPointF(0, 0))                        # top of short leg at connection
+        path.lineTo(QPointF(sign * t, 0))                 # across thickness at top
+        path.lineTo(QPointF(sign * t, b - t - r))         # down inner face, stop before curve
+        # Inner corner fillet
+        path.quadTo(QPointF(sign * t, b - t), QPointF(sign * (t + r), b - t))
+        path.lineTo(QPointF(sign * a, b - t))             # out along long leg inner
+        path.lineTo(QPointF(sign * a, b))                 # down long leg thickness
+        path.lineTo(QPointF(0, b))                        # back to short leg outer
+        path.closeSubpath()
+        return path
+
     def _build_channel_path(self, ch: ChannelSection, origin: QPointF, mirror: bool = False) -> QPainterPath:
-        # C-section outline: web at x=0..tw, flanges extend to +B; mirror flips about Y for doubles.
-        d, b, tw, tf = ch.d, ch.b, ch.tw, ch.tf
+        # Simple C-section with small rounded inner corners to distinguish from I-beam.
+        # d = depth (vertical), b = flange width (horizontal from web outer to flange tip)
+        # tw = web thickness (horizontal), tf = flange thickness (vertical)
+        d, b, tw, tf, r1 = ch.d, ch.b, ch.tw, ch.tf, max(ch.r1, 0.0)
         sign = -1.0 if mirror else 1.0
         x0 = origin.x()
         y0 = origin.y()
+
+        # Use a visible fillet radius (clamped to fit)
+        r = min(r1, (d - 2 * tf) / 4, b - tw - 1)
+        r = max(r, 2.0)  # minimum visible curve
 
         def px(x: float) -> float:
             return x0 + sign * x
 
         path = QPainterPath()
-        path.moveTo(px(0), y0)                  # start at top of web outer
-        path.lineTo(px(b), y0)                  # along top flange to tip
-        path.lineTo(px(b), y0 + tf)             # down flange thickness
-        path.lineTo(px(tw), y0 + tf)            # step to web inner face
-        path.lineTo(px(tw), y0 + d - tf)        # down web inner
-        path.lineTo(px(b), y0 + d - tf)         # out along bottom flange inner
-        path.lineTo(px(b), y0 + d)              # down to flange tip
+        # Outer profile: start at web outer top corner
+        path.moveTo(px(0), y0)
+        path.lineTo(px(b), y0)                  # top flange outer (horizontal)
+        path.lineTo(px(b), y0 + tf)             # down flange thickness at tip
+        path.lineTo(px(tw + r), y0 + tf)        # inward along flange inner, stop before curve
+
+        # Top inner fillet (quarter circle)
+        path.quadTo(QPointF(px(tw), y0 + tf), QPointF(px(tw), y0 + tf + r))
+
+        # Web inner face down (vertical)
+        path.lineTo(px(tw), y0 + d - tf - r)
+
+        # Bottom inner fillet (quarter circle)
+        path.quadTo(QPointF(px(tw), y0 + d - tf), QPointF(px(tw + r), y0 + d - tf))
+
+        path.lineTo(px(b), y0 + d - tf)         # outward along bottom flange inner
+        path.lineTo(px(b), y0 + d)              # down to bottom flange outer tip
         path.lineTo(px(0), y0 + d)              # back to web outer bottom
-        path.lineTo(px(0), y0)                  # up web outer
+        path.closeSubpath()
         return path
 
     # ---- Painting ----------------------------------------------------------
@@ -223,11 +327,15 @@ class SectionPreviewWidget(QWidget):
         painter.scale(scale, -scale)  # flip Y for engineering orientation
         painter.translate(-combined.center())
 
-        pen = QPen(QColor("#f7d65a"), 1.5 / max(scale, 1e-3))
-        painter.setPen(pen)
-        brush = QColor(255, 215, 0, 40) if self._section_fill else Qt.NoBrush
-        painter.setBrush(brush)
+        pen = QPen(QColor("#f7d65a"), 1.8 / max(scale, 1e-3))
+        fill_brush = QColor(255, 215, 0, 70)
+
         for path in self._geometry:
+            painter.setPen(pen)
+            if self._section_fill:
+                painter.setBrush(fill_brush)
+            else:
+                painter.setBrush(Qt.NoBrush)
             painter.drawPath(path)
 
         self._draw_dimensions(painter, geom_bbox, scale)
@@ -253,8 +361,9 @@ class SectionPreviewWidget(QWidget):
         x_left, x_right = bbox.left(), bbox.right()
         y_top, y_bottom = bbox.top(), bbox.bottom()
         t = info.get("t", 0.0)
-        a_val = info.get("a", bbox.height())
-        b_val = info.get("b", bbox.width())
+        # Use explicit total envelope dimensions when provided (double angles), otherwise fall back to single-leg values.
+        a_val = info.get("h", info.get("a", bbox.height()))
+        b_val = info.get("w", info.get("b", bbox.width()))
 
         offset = 15.0
 
@@ -274,35 +383,38 @@ class SectionPreviewWidget(QWidget):
     def _draw_channel_dimensions(self, painter: QPainter, bbox: QRectF, scale: float, info: dict) -> None:
         x_left, x_right = bbox.left(), bbox.right()
         y_top, y_bottom = bbox.top(), bbox.bottom()
-        tw = info.get("tw", 0.0)
-        tf = info.get("tf", 0.0)
+        tw = info.get("tw", 0.0)  # web thickness (horizontal)
+        tf = info.get("tf", 0.0)  # flange thickness (vertical)
         d = info.get("d", bbox.height())
         b = info.get("b", bbox.width())
 
         offset = 15.0
 
-        # B dimension (horizontal at bottom)
-        self._draw_dim_line_h(painter, scale, x_left, x_right, y_bottom + offset,
+        # B dimension (horizontal at top - flange width)
+        self._draw_dim_line_h(painter, scale, x_left, x_right, y_top - offset,
                               "B", self._fmt_val(b))
 
-        # D dimension (vertical on left)
+        # D dimension (vertical on left - depth)
         self._draw_dim_line_v(painter, scale, y_top, y_bottom, x_left - offset,
                               "D", self._fmt_val(d))
 
-        # tw dimension (web thickness)
+        # tw dimension (web thickness - horizontal at bottom, measuring the web)
+        # For double channel the web is at center; for single it's at x_left
         if tw > 0:
-            mid_y = (y_top + y_bottom) / 2.0
-            self._draw_dim_line_h(painter, scale, x_left, x_left + tw, mid_y,
-                                  "t", self._fmt_val(tw), subscript="w")
+            # Place below diagram, measuring web thickness at center
+            web_center_x = (x_left + x_right) / 2.0
+            self._draw_dim_line_h(painter, scale, web_center_x - tw / 2, web_center_x + tw / 2,
+                                  y_bottom + offset, "t", self._fmt_val(tw), subscript="w", outer_arrows=True)
 
-        # tf dimension (flange thickness on right)
+        # tf dimension (flange thickness - vertical on the right side, label on right)
         if tf > 0:
-            self._draw_dim_line_v(painter, scale, y_top, y_top + tf, x_right + offset * 0.7,
-                                  "t", self._fmt_val(tf), subscript="f")
+            self._draw_dim_line_v(painter, scale, y_top, y_top + tf, x_right + 3.0,
+                                  "t", self._fmt_val(tf), subscript="f", outer_arrows=True, label_right=True)
 
     def _draw_dim_line_h(self, painter: QPainter, scale: float,
                          x1: float, x2: float, y: float,
-                         symbol: str, value: str, subscript: str = None) -> None:
+                         symbol: str, value: str, subscript: str = None,
+                         outer_arrows: bool = False) -> None:
         """Draw horizontal dimension line with arrows and label."""
         dim_pen = QPen(QColor("#ffffff"), 0.8 / max(scale, 1e-3))
         painter.setPen(dim_pen)
@@ -318,12 +430,25 @@ class SectionPreviewWidget(QWidget):
 
         # Arrowheads
         arrow_size = 3.0
-        # Left arrow
-        painter.drawLine(QPointF(x1, y), QPointF(x1 + arrow_size, y + arrow_size * 0.5))
-        painter.drawLine(QPointF(x1, y), QPointF(x1 + arrow_size, y - arrow_size * 0.5))
-        # Right arrow
-        painter.drawLine(QPointF(x2, y), QPointF(x2 - arrow_size, y + arrow_size * 0.5))
-        painter.drawLine(QPointF(x2, y), QPointF(x2 - arrow_size, y - arrow_size * 0.5))
+        if outer_arrows:
+            # Arrows pointing inward from outside (for small dimensions)
+            ext_len = 8.0
+            painter.drawLine(QPointF(x1 - ext_len, y), QPointF(x1, y))
+            painter.drawLine(QPointF(x2 + ext_len, y), QPointF(x2, y))
+            # Left arrow pointing right
+            painter.drawLine(QPointF(x1, y), QPointF(x1 - arrow_size, y + arrow_size * 0.5))
+            painter.drawLine(QPointF(x1, y), QPointF(x1 - arrow_size, y - arrow_size * 0.5))
+            # Right arrow pointing left
+            painter.drawLine(QPointF(x2, y), QPointF(x2 + arrow_size, y + arrow_size * 0.5))
+            painter.drawLine(QPointF(x2, y), QPointF(x2 + arrow_size, y - arrow_size * 0.5))
+        else:
+            # Internal arrows (for large dimensions)
+            # Left arrow pointing right
+            painter.drawLine(QPointF(x1, y), QPointF(x1 + arrow_size, y + arrow_size * 0.5))
+            painter.drawLine(QPointF(x1, y), QPointF(x1 + arrow_size, y - arrow_size * 0.5))
+            # Right arrow pointing left
+            painter.drawLine(QPointF(x2, y), QPointF(x2 - arrow_size, y + arrow_size * 0.5))
+            painter.drawLine(QPointF(x2, y), QPointF(x2 - arrow_size, y - arrow_size * 0.5))
 
         # Label above the line
         mid_x = (x1 + x2) / 2.0
@@ -332,7 +457,8 @@ class SectionPreviewWidget(QWidget):
 
     def _draw_dim_line_v(self, painter: QPainter, scale: float,
                          y1: float, y2: float, x: float,
-                         symbol: str, value: str, subscript: str = None) -> None:
+                         symbol: str, value: str, subscript: str = None,
+                         outer_arrows: bool = False, label_right: bool = False) -> None:
         """Draw vertical dimension line with arrows and label."""
         dim_pen = QPen(QColor("#ffffff"), 0.8 / max(scale, 1e-3))
         painter.setPen(dim_pen)
@@ -348,17 +474,34 @@ class SectionPreviewWidget(QWidget):
 
         # Arrowheads
         arrow_size = 3.0
-        # Top arrow
-        painter.drawLine(QPointF(x, y1), QPointF(x + arrow_size * 0.5, y1 + arrow_size))
-        painter.drawLine(QPointF(x, y1), QPointF(x - arrow_size * 0.5, y1 + arrow_size))
-        # Bottom arrow
-        painter.drawLine(QPointF(x, y2), QPointF(x + arrow_size * 0.5, y2 - arrow_size))
-        painter.drawLine(QPointF(x, y2), QPointF(x - arrow_size * 0.5, y2 - arrow_size))
+        if outer_arrows:
+            # Arrows pointing inward from outside (for small dimensions)
+            ext_len = 8.0
+            painter.drawLine(QPointF(x, y1 - ext_len), QPointF(x, y1))
+            painter.drawLine(QPointF(x, y2 + ext_len), QPointF(x, y2))
+            # Top arrow pointing down
+            painter.drawLine(QPointF(x, y1), QPointF(x + arrow_size * 0.5, y1 - arrow_size))
+            painter.drawLine(QPointF(x, y1), QPointF(x - arrow_size * 0.5, y1 - arrow_size))
+            # Bottom arrow pointing up
+            painter.drawLine(QPointF(x, y2), QPointF(x + arrow_size * 0.5, y2 + arrow_size))
+            painter.drawLine(QPointF(x, y2), QPointF(x - arrow_size * 0.5, y2 + arrow_size))
+        else:
+            # Internal arrows (for large dimensions)
+            # Top arrow pointing down
+            painter.drawLine(QPointF(x, y1), QPointF(x + arrow_size * 0.5, y1 + arrow_size))
+            painter.drawLine(QPointF(x, y1), QPointF(x - arrow_size * 0.5, y1 + arrow_size))
+            # Bottom arrow pointing up
+            painter.drawLine(QPointF(x, y2), QPointF(x + arrow_size * 0.5, y2 - arrow_size))
+            painter.drawLine(QPointF(x, y2), QPointF(x - arrow_size * 0.5, y2 - arrow_size))
 
         # Label to the side
         mid_y = (y1 + y2) / 2.0
-        label_x = x - 8.0
-        self._draw_subscript_label(painter, scale, label_x, mid_y, symbol, value, subscript, align_right=True)
+        if label_right:
+            label_x = x + 8.0
+            self._draw_subscript_label(painter, scale, label_x, mid_y, symbol, value, subscript, align_right=False)
+        else:
+            label_x = x - 8.0
+            self._draw_subscript_label(painter, scale, label_x, mid_y, symbol, value, subscript, align_right=True)
 
     def _draw_subscript_label(self, painter: QPainter, scale: float,
                               x: float, y: float, symbol: str, value: str,
