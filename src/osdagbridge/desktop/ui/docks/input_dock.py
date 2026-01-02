@@ -67,9 +67,6 @@ class NoScrollComboBox(QComboBox):
 def apply_field_style(widget):
     widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
     widget.setMinimumHeight(28)
-    # Keep a consistent control width that fits the sidebar and aligns with form buttons.
-    widget.setMinimumWidth(150)
-    widget.setMaximumWidth(150)
     
     if isinstance(widget, QComboBox):
         style = """
@@ -652,7 +649,6 @@ class InputDock(QWidget):
 
         # Get input fields from backend
         input_field_list = self.backend.input_values()
-        self.field_sections = {section.get("id"): section for section in input_field_list if isinstance(section, dict)}
 
         self.build_left_panel(input_field_list)
         self.main_layout.addWidget(self.left_container)
@@ -696,83 +692,6 @@ class InputDock(QWidget):
             return QDoubleValidator()
         else:
             return None
-
-    def _create_field_widget(self, field_def):
-        field_type = field_def.get("type")
-        widget = None
-
-        object_name = field_def.get("id")
-
-        if field_type == "combo":
-            widget = NoScrollComboBox()
-            choices = field_def.get("choices") or []
-            widget.addItems(choices)
-            default = field_def.get("default")
-            if default:
-                widget.setCurrentText(default)
-        else:
-            widget = QLineEdit()
-            validator_def = field_def.get("validator")
-            if validator_def and validator_def.get("type") == "double_range":
-                bottom = validator_def.get("bottom", 0.0)
-                top = validator_def.get("top", 1e9)
-                decimals = validator_def.get("decimals", 2)
-                widget.setValidator(QDoubleValidator(bottom, top, decimals))
-            placeholder = field_def.get("placeholder")
-            if placeholder:
-                widget.setPlaceholderText(placeholder)
-
-        if object_name:
-            # Qt expects a string; guard against accidental non-string IDs (e.g., lists)
-            if not isinstance(object_name, str):
-                object_name = str(object_name)
-            widget.setObjectName(object_name)
-
-        apply_field_style(widget)
-
-        bind_name = field_def.get("bind")
-        if bind_name:
-            setattr(self, bind_name, widget)
-
-        if field_type == "combo" and field_def.get("on_change"):
-            handler = getattr(self, field_def["on_change"], None)
-            if handler:
-                widget.currentTextChanged.connect(handler)
-
-        if field_type != "combo" and field_def.get("on_editing_finished"):
-            handler = getattr(self, field_def["on_editing_finished"], None)
-            if handler:
-                widget.editingFinished.connect(handler)
-
-        return widget
-
-    def _build_fields_from_section(self, layout, section_id):
-        section = self.field_sections.get(section_id)
-        if not section:
-            return
-
-        for field_def in section.get("fields", []):
-            row = QHBoxLayout()
-            row.setContentsMargins(0, 0, 0, 0)
-            row.setSpacing(8)
-
-            label = QLabel(field_def.get("label", ""))
-            label.setStyleSheet(
-                """
-                QLabel {
-                    color: #000000;
-                    font-size: 12px;
-                    background: transparent;
-                }
-                """
-            )
-            # Use a fixed label width so long captions do not shrink the input boxes.
-            label.setFixedWidth(150)
-            row.addWidget(label)
-
-            widget = self._create_field_widget(field_def)
-            row.addWidget(widget, 1)
-            layout.addLayout(row)
     
     def on_structure_type_changed(self, text):
         """Handle structure type combo box changes"""
@@ -1149,7 +1068,6 @@ class InputDock(QWidget):
         
         add_here_btn = QPushButton("Add Here")
         add_here_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        add_here_btn.setFixedWidth(150)
         add_here_btn.setStyleSheet("""
             QPushButton {
                 background-color: #90AF13;
@@ -1159,6 +1077,7 @@ class InputDock(QWidget):
                 border-radius: 4px;
                 padding: 8px 20px;
                 font-size: 11px;
+                min-width: 80px;
             }
             QPushButton:hover {
                 background-color: #7a9a12;
@@ -1263,8 +1182,115 @@ class InputDock(QWidget):
         geo_box_layout.setContentsMargins(8, 8, 8, 8)
         geo_box_layout.setSpacing(8)
         
-        self._build_fields_from_section(geo_box_layout, "geometric")
+        # Span
+        span_row = QHBoxLayout()
+        span_label = QLabel("Span*")
+        span_label.setStyleSheet("""
+            QLabel {
+                color: #000000;
+                font-size: 12px;
+                background: transparent;
+            }
+        """)
+        span_label.setMinimumWidth(110)
+        self.span_input = QLineEdit()
+        self.span_input.setObjectName(KEY_SPAN)
+        apply_field_style(self.span_input)
+        self.span_input.setValidator(QDoubleValidator(SPAN_MIN, SPAN_MAX, 2))
+        self.span_input.setPlaceholderText(f"{SPAN_MIN}-{SPAN_MAX} m")
+        span_row.addWidget(span_label)
+        span_row.addWidget(self.span_input, 1)
+        geo_box_layout.addLayout(span_row)
+        
+        # Carriageway Width
+        carriageway_row = QHBoxLayout()
+        carriageway_label = QLabel("Carriageway Width*")
+        carriageway_label.setStyleSheet("""
+            QLabel {
+                color: #000000;
+                font-size: 12px;
+                background: transparent;
+            }
+        """)
+        carriageway_label.setMinimumWidth(110)
+        self.carriageway_input = QLineEdit()
+        self.carriageway_input.setObjectName(KEY_CARRIAGEWAY_WIDTH)
+        apply_field_style(self.carriageway_input)
+        self.carriageway_input.setValidator(QDoubleValidator(0.0, 100.0, 2))
+        self.carriageway_input.editingFinished.connect(self.validate_carriageway_width)
+        carriageway_row.addWidget(carriageway_label)
+        carriageway_row.addWidget(self.carriageway_input, 1)
+        geo_box_layout.addLayout(carriageway_row)
+
+        # Include Median option
+        median_row = QHBoxLayout()
+        median_row.setContentsMargins(0, 0, 0, 0)
+        median_row.setSpacing(8)
+
+        median_label = QLabel("Include Median")
+        median_label.setStyleSheet("""
+            QLabel {
+                color: #000000;
+                font-size: 12px;
+                background: transparent;
+            }
+        """)
+        median_label.setMinimumWidth(110)
+        median_row.addWidget(median_label)
+
+        self.include_median_combo = NoScrollComboBox()
+        self.include_median_combo.addItems(["No", "Yes"])
+        self.include_median_combo.setCurrentIndex(0)
+        self.include_median_combo.setObjectName(KEY_INCLUDE_MEDIAN)
+        apply_field_style(self.include_median_combo)
+        #self.include_median_combo.setMaximumWidth(110)
+        self.include_median_combo.currentTextChanged.connect(self.on_include_median_changed)
+        median_row.addWidget(self.include_median_combo, 1)
+        median_row.addStretch()
+        geo_box_layout.addLayout(median_row)
         self._update_carriageway_placeholder()
+        
+        # Footpath
+        footpath_row = QHBoxLayout()
+        footpath_label = QLabel("Footpath")
+        footpath_label.setStyleSheet("""
+            QLabel {
+                color: #000000;
+                font-size: 12px;
+                background: transparent;
+            }
+        """)
+        footpath_label.setMinimumWidth(110)
+        self.footpath_combo = NoScrollComboBox()
+        self.footpath_combo.setObjectName("footpath")
+        apply_field_style(self.footpath_combo)
+        self.footpath_combo.addItems(VALUES_FOOTPATH)
+        self.footpath_combo.setCurrentIndex(0)
+        self.footpath_combo.currentTextChanged.connect(self.on_footpath_changed)
+        footpath_row.addWidget(footpath_label)
+        footpath_row.addWidget(self.footpath_combo, 1)
+        geo_box_layout.addLayout(footpath_row)
+        
+        # Skew Angle
+        skew_row = QHBoxLayout()
+        skew_label = QLabel("Skew Angle")
+        skew_label.setStyleSheet("""
+            QLabel {
+                color: #000000;
+                font-size: 12px;
+                background: transparent;
+            }
+        """)
+        skew_label.setMinimumWidth(110)
+        self.skew_input = QLineEdit()
+        self.skew_input.setObjectName(KEY_SKEW_ANGLE)
+        apply_field_style(self.skew_input)
+        self.skew_input.setValidator(QDoubleValidator(SKEW_ANGLE_MIN, SKEW_ANGLE_MAX, 1))
+        #self.skew_input.setText(f"{str(SKEW_ANGLE_DEFAULT)}°")
+        self.skew_input.setPlaceholderText(f"{SKEW_ANGLE_MIN} - {SKEW_ANGLE_MAX}°")
+        skew_row.addWidget(skew_label)
+        skew_row.addWidget(self.skew_input, 1)
+        geo_box_layout.addLayout(skew_row)
         
         # Additional Geometry (inside Geometric Details)
         add_geo_row = QHBoxLayout()
@@ -1281,7 +1307,6 @@ class InputDock(QWidget):
         
         modify_geo_btn = QPushButton("Modify Here")
         modify_geo_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        modify_geo_btn.setFixedWidth(150)
         modify_geo_btn.setStyleSheet("""
             QPushButton {
                 background-color: #90AF13;
@@ -1291,6 +1316,7 @@ class InputDock(QWidget):
                 border-radius: 4px;
                 padding: 8px 20px;
                 font-size: 11px;
+                min-width: 80px;
             }
             QPushButton:hover {
                 background-color: #7a9a12;
@@ -1333,7 +1359,82 @@ class InputDock(QWidget):
         material_box_layout.setContentsMargins(8, 8, 8, 8)
         material_box_layout.setSpacing(8)
         
-        self._build_fields_from_section(material_box_layout, "material")
+        # Girder
+        girder_row = QHBoxLayout()
+        girder_label = QLabel("Girder")
+        girder_label.setStyleSheet("""
+            QLabel {
+                color: #000000;
+                font-size: 12px;
+                background: transparent;
+            }
+        """)
+        girder_label.setMinimumWidth(110)
+        self.girder_combo = NoScrollComboBox()
+        self.girder_combo.setObjectName(KEY_GIRDER)
+        apply_field_style(self.girder_combo)
+        self.girder_combo.addItems(VALUES_MATERIAL)
+        girder_row.addWidget(girder_label)
+        girder_row.addWidget(self.girder_combo, 1)
+        material_box_layout.addLayout(girder_row)
+        
+        # Cross Bracing
+        cross_bracing_row = QHBoxLayout()
+        cross_bracing_label = QLabel("Cross Bracing")
+        cross_bracing_label.setStyleSheet("""
+            QLabel {
+                color: #000000;
+                font-size: 12px;
+                background: transparent;
+            }
+        """)
+        cross_bracing_label.setMinimumWidth(110)
+        self.cross_bracing_combo = NoScrollComboBox()
+        self.cross_bracing_combo.setObjectName(KEY_CROSS_BRACING)
+        apply_field_style(self.cross_bracing_combo)
+        self.cross_bracing_combo.addItems(VALUES_MATERIAL)
+        cross_bracing_row.addWidget(cross_bracing_label)
+        cross_bracing_row.addWidget(self.cross_bracing_combo, 1)
+        material_box_layout.addLayout(cross_bracing_row)
+
+        # End Diaphragm
+        end_diaphragm_row = QHBoxLayout()
+        end_diaphragm_label = QLabel("End Diaphragm")
+        end_diaphragm_label.setStyleSheet("""
+            QLabel {
+                color: #000000;
+                font-size: 12px;
+                background: transparent;
+            }
+        """)
+        end_diaphragm_label.setMinimumWidth(110)
+        self.end_diaphragm_combo = NoScrollComboBox()
+        self.end_diaphragm_combo.setObjectName(KEY_END_DIAPHRAGM)
+        apply_field_style(self.end_diaphragm_combo)
+        self.end_diaphragm_combo.addItems(VALUES_MATERIAL)
+        end_diaphragm_row.addWidget(end_diaphragm_label)
+        end_diaphragm_row.addWidget(self.end_diaphragm_combo, 1)
+        material_box_layout.addLayout(end_diaphragm_row)
+        
+        # Deck
+        deck_row = QHBoxLayout()
+        deck_label = QLabel("Deck")
+        deck_label.setStyleSheet("""
+            QLabel {
+                color: #000000;
+                font-size: 12px;
+                background: transparent;
+            }
+        """)
+        deck_label.setMinimumWidth(110)
+        self.deck_combo = NoScrollComboBox()
+        self.deck_combo.setObjectName(KEY_DECK_CONCRETE_GRADE_BASIC)
+        apply_field_style(self.deck_combo)
+        self.deck_combo.addItems(VALUES_DECK_CONCRETE_GRADE)
+        self.deck_combo.setCurrentText("M 25")
+        deck_row.addWidget(deck_label)
+        deck_row.addWidget(self.deck_combo, 1)
+        material_box_layout.addLayout(deck_row)
 
         # Material Properties header with button
         mat_prop_header = QHBoxLayout()
@@ -1350,7 +1451,6 @@ class InputDock(QWidget):
         
         modify_mat_btn = QPushButton("Modify Here")
         modify_mat_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        modify_mat_btn.setFixedWidth(150)
         modify_mat_btn.setStyleSheet("""
             QPushButton {
                 background-color: #90AF13;
@@ -1360,6 +1460,7 @@ class InputDock(QWidget):
                 border-radius: 4px;
                 padding: 8px 20px;
                 font-size: 11px;
+                min-width: 80px;
             }
             QPushButton:hover {
                 background-color: #7a9a12;
@@ -1503,26 +1604,7 @@ class InputDock(QWidget):
         
         carriageway_width = self._get_effective_carriageway_width()
         
-        try:
-            self.additional_inputs = AdditionalInputs(footpath_value, carriageway_width)
-        except Exception as e:
-            print(f"Error creating AdditionalInputs: {e}")
-            import traceback
-            traceback.print_exc()
-            return
-        
-        if self.additional_inputs is None:
-            print("Warning: AdditionalInputs returned None")
-            return
-            
-        # Track the inner widget we need to update when footpath changes
-        self.additional_inputs_widget = getattr(self.additional_inputs, "typical_section_tab", None)
-
-        # Reset references when dialog closes
-        if hasattr(self.additional_inputs, "finished"):
-            self.additional_inputs.finished.connect(self._handle_additional_inputs_closed)
-        self.additional_inputs.destroyed.connect(lambda _=None: self._handle_additional_inputs_closed())
-
+        self.additional_inputs = AdditionalInputs(footpath_value, carriageway_width)
         self.additional_inputs.show()
     
     def _apply_lock_state(self):
@@ -1549,18 +1631,13 @@ class InputDock(QWidget):
     def on_footpath_changed(self, footpath_value):
         """Update additional inputs when footpath changes"""
         if self.additional_inputs and self.additional_inputs.isVisible():
-            if self.additional_inputs_widget:
+            if hasattr(self, 'additional_inputs_widget'):
                 self.additional_inputs_widget.update_footpath_value(footpath_value)
 
     def on_include_median_changed(self, _value):
         self._update_carriageway_placeholder()
         # Re-validate silently so previously entered values honor the new limits
         self.validate_carriageway_width(show_message=False)
-        include = (_value == "Yes") if isinstance(_value, str) else bool(_value)
-        if self.additional_inputs and self.additional_inputs.isVisible():
-            median_tab = getattr(self.additional_inputs, "typical_section_tab", None)
-            if median_tab:
-                median_tab._update_median_visibility(median_tab.median_type.currentText(), include_median=include)
 
     def _carriageway_limits(self):
         include_median = self._is_median_included()
