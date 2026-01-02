@@ -71,7 +71,7 @@ class MedianTab(QWidget):
         card, card_layout = owner._create_section_card("Median Inputs:")
         grid = QGridLayout()
         grid.setContentsMargins(0, 0, 0, 0)
-        grid.setHorizontalSpacing(18)
+        grid.setHorizontalSpacing(24)
         grid.setVerticalSpacing(10)
         grid.setColumnStretch(0, 0)
         grid.setColumnStretch(1, 0)
