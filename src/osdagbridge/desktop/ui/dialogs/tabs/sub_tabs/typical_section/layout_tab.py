@@ -101,7 +101,9 @@ class LayoutTab(QWidget):
                     field_def["default"] = f"{0.35 * DEFAULT_GIRDER_SPACING:.3f}"
 
         owner.layout_adjust_notice = QLabel()
-        owner.layout_adjust_notice.setStyleSheet("font-size: 10px; font-style: italic; color: #666;")
+        owner.layout_adjust_notice.setStyleSheet(
+            "font-size: 10px; font-style: italic; color: #000000; background-color: transparent;"
+        )
         owner.layout_adjust_notice.hide()
 
         row_idx = 0

@@ -103,15 +103,16 @@ class SectionPreviewWidget(QWidget):
         self._dimension_info: Optional[dict] = None
         self._section_fill = True
 
-    def set_section(self, section_type: str, designation: str) -> None:
+    def set_section(self, section_type: str, designation: str, show_double_total: bool = True) -> None:
         """
         section_type: one of [angle, double_angle_long, double_angle_short, channel, double_channel]
         designation: designation string present in the DB (for doubles, pass base designation without the leading 2-)
+        show_double_total: for double-angle/channel, whether to show total envelope width/height (default True).
         """
         self._section_type = section_type
         self._designation = designation
         self._geometry = self._build_geometry(section_type, designation)
-        self._dimension_info = self._dimension_for(section_type, designation)
+        self._dimension_info = self._dimension_for(section_type, designation, show_double_total)
         self._section_fill = section_type in (
             "angle",
             "double_angle_long",
@@ -121,7 +122,7 @@ class SectionPreviewWidget(QWidget):
         )
         self.update()
 
-    def _dimension_for(self, section_type: str, designation: str) -> Optional[dict]:
+    def _dimension_for(self, section_type: str, designation: str, show_double_total: bool = True) -> Optional[dict]:
         if not designation:
             return None
         if section_type in ("angle", "double_angle_long", "double_angle_short"):
@@ -129,15 +130,17 @@ class SectionPreviewWidget(QWidget):
             if not angle:
                 return None
             dims = {"kind": "angle", "a": angle.a, "b": angle.b, "t": angle.t}
-            # For double angles, report total envelope so the dimension labels match the drawn geometry.
+            # For double angles, optionally report total envelope or single-leg width
             if section_type == "double_angle_long":
-                # Long legs connected vertically, short legs extend horizontally
-                # Width = 2 * short leg, Height = long leg
-                dims.update({"w": angle.b * 2.0, "h": angle.a})
+                if show_double_total:
+                    dims.update({"w": angle.b * 2.0, "h": angle.a})
+                else:
+                    dims.update({"w": angle.b, "h": angle.a})
             elif section_type == "double_angle_short":
-                # Short legs connected vertically, long legs extend horizontally
-                # Width = 2 * long leg, Height = short leg
-                dims.update({"w": angle.a * 2.0, "h": angle.b})
+                if show_double_total:
+                    dims.update({"w": angle.a * 2.0, "h": angle.b})
+                else:
+                    dims.update({"w": angle.a, "h": angle.b})
             return dims
         if section_type in ("channel", "double_channel"):
             ch = self._catalog.get_channel(designation)
