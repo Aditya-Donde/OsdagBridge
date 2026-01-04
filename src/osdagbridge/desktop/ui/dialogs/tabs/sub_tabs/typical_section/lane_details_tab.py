@@ -34,6 +34,14 @@ class LaneDetailsTab(QWidget):
         field.setObjectName(field_def.get("id", ""))
         owner.style_input_field(field)
 
+        # Make the lane count combo wider for readability
+        bind_name = field_def.get("bind")
+        if field_def.get("id") == "lane_count" or bind_name == "lane_count_combo":
+            try:
+                field.setFixedWidth(160)
+            except Exception:
+                pass
+
         bind_name = field_def.get("bind")
         if bind_name:
             setattr(owner, bind_name, field)

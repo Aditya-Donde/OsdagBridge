@@ -28,7 +28,7 @@ LAYOUT_TAB_SCHEMA = {
                     "id": "no_of_girders",
                     "label": "No. of Girders:",
                     "type": "line",
-                    "validator": {"type": "int_range", "bottom": 2, "top": 100},
+                    "validator": {"type": "int_range", "bottom": 1, "top": 100},
                     "bind": "no_of_girders",
                     "on_editing_finished": "on_no_of_girders_changed",
                 },
