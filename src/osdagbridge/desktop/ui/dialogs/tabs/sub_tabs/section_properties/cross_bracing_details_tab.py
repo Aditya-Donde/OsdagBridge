@@ -289,7 +289,7 @@ class CrossBracingDetailsTab(QWidget):
         stype = self._map_section_type(type_combo.currentText())
         designation = size_combo.currentData() or size_combo.currentText()
         show_double_total = True
-        if widget is self.bracing_preview_label and stype in ("double_angle_long", "double_angle_short"):
+        if stype in ("double_angle_long", "double_angle_short"):
             show_double_total = False
         widget.set_section(stype, designation, show_double_total)
 

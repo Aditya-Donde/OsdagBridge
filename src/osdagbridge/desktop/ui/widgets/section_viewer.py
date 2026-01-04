@@ -135,12 +135,12 @@ class SectionPreviewWidget(QWidget):
                 if show_double_total:
                     dims.update({"w": angle.b * 2.0, "h": angle.a})
                 else:
-                    dims.update({"w": angle.b, "h": angle.a})
+                    dims.update({"w": angle.b, "h": angle.a, "single_span": True})
             elif section_type == "double_angle_short":
                 if show_double_total:
                     dims.update({"w": angle.a * 2.0, "h": angle.b})
                 else:
-                    dims.update({"w": angle.a, "h": angle.b})
+                    dims.update({"w": angle.a, "h": angle.b, "single_span": True})
             return dims
         if section_type in ("channel", "double_channel"):
             ch = self._catalog.get_channel(designation)
@@ -362,6 +362,10 @@ class SectionPreviewWidget(QWidget):
 
     def _draw_angle_dimensions(self, painter: QPainter, bbox: QRectF, scale: float, info: dict) -> None:
         x_left, x_right = bbox.left(), bbox.right()
+        is_double = info.get("single_span", False)
+        # For single-side display on double angles, limit the width dimension to the left section only.
+        if is_double:
+            x_right = (x_left + x_right) / 2.0
         y_top, y_bottom = bbox.top(), bbox.bottom()
         t = info.get("t", 0.0)
         # Use explicit total envelope dimensions when provided (double angles), otherwise fall back to single-leg values.
@@ -370,18 +374,28 @@ class SectionPreviewWidget(QWidget):
 
         offset = 15.0
 
-        # W dimension (horizontal at bottom)
-        self._draw_dim_line_h(painter, scale, x_left, x_right, y_bottom + offset,
-                              "W", self._fmt_val(b_val))
+        # W dimension (horizontal at bottom for double angles, at top for single)
+        if is_double:
+            self._draw_dim_line_h(painter, scale, x_left, x_right, y_bottom + offset,
+                                  "W", self._fmt_val(b_val))
+        else:
+            self._draw_dim_line_h(painter, scale, x_left, x_right, y_top - offset,
+                                  "W", self._fmt_val(b_val))
 
         # H dimension (vertical on left)
         self._draw_dim_line_v(painter, scale, y_top, y_bottom, x_left - offset,
                               "H", self._fmt_val(a_val))
 
-        # t dimension (thickness at top)
+        # t dimension (thickness) — place at the center vertical stem for double angles, at the vertical leg for single angle.
         if t > 0:
-            self._draw_dim_line_h(painter, scale, x_left, x_left + t, y_top - offset * 0.8,
-                                  "t", self._fmt_val(t))
+            if is_double:
+                # For double angles, place t at the top above the center stem where the two angles meet.
+                self._draw_dim_line_h(painter, scale, 0, t, y_top - offset,
+                                      "t", self._fmt_val(t), outer_arrows=True)
+            else:
+                # Single angle: t at bottom near the vertical leg
+                self._draw_dim_line_h(painter, scale, x_left, x_left + t, y_bottom + offset,
+                                      "t", self._fmt_val(t), outer_arrows=True)
 
     def _draw_channel_dimensions(self, painter: QPainter, bbox: QRectF, scale: float, info: dict) -> None:
         x_left, x_right = bbox.left(), bbox.right()
