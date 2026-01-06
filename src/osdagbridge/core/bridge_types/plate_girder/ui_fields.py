@@ -246,9 +246,119 @@ class FrontendData:
         """Logger setup"""
         print("Logger set up (mock)")
     
-    def output_values(self, flag):
-        """output values List"""
-        return []
+    def output_values(self, flag=None):
+        """Return output dock definitions using the same tuple structure as input_values."""
+        outputs = []
+
+        outputs.append(
+            (
+                "section_output_analysis",
+                "Analysis Results",
+                TYPE_TITLE,
+                None,
+                True,
+                "No Validator",
+                {
+                    "kind": "analysis",
+                    "fields": [
+                        (
+                            "analysis_member",
+                            "Member:",
+                            "combobox",
+                            ["All"],
+                            True,
+                            "No Validator",
+                            {"label_min_width": 100},
+                        ),
+                        (
+                            "analysis_load_combination",
+                            "Load Combination:",
+                            "combobox",
+                            ["Envelope"],
+                            True,
+                            "No Validator",
+                            {"label_min_width": 100},
+                        ),
+                        (
+                            "analysis_forces",
+                            "Forces",
+                            "checkbox_grid",
+                            [
+                                ["Fx", "Mx", "Dx"],
+                                ["Fy", "My", "Dy"],
+                                ["Fz", "Mz", "Dz"],
+                            ],
+                            True,
+                            "No Validator",
+                            {},
+                        ),
+                        (
+                            "analysis_display_options",
+                            "Display Options:",
+                            "checkbox_row",
+                            ["Max", "Min"],
+                            True,
+                            "No Validator",
+                            {},
+                        ),
+                        (
+                            "analysis_utilization",
+                            "Controlling Utilization Ratio",
+                            "checkbox",
+                            None,
+                            True,
+                            "No Validator",
+                            {},
+                        ),
+                    ],
+                },
+            )
+        )
+
+        outputs.append(
+            (
+                "section_output_superstructure",
+                "Superstructure",
+                TYPE_TITLE,
+                None,
+                True,
+                "No Validator",
+                {
+                    "kind": "design",
+                    "rows": [
+                        {
+                            "label": "Steel Design",
+                            "buttons": [
+                                {"text": "Here", "action": "show_additional_inputs"},
+                            ],
+                        },
+                        {
+                            "label": "Deck Design",
+                            "buttons": [
+                                {"text": "Here", "action": "show_additional_inputs"},
+                            ],
+                        },
+                    ]
+                },
+            )
+        )
+
+        outputs.append(
+            (
+                "section_output_substructure",
+                "Substructure",
+                TYPE_TITLE,
+                None,
+                True,
+                "No Validator",
+                {
+                    "kind": "design",
+                    "rows": [],
+                },
+            )
+        )
+
+        return outputs
     
     def func_for_validation(self, design_inputs):
         """Validation Function"""

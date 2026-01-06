@@ -6,7 +6,7 @@ import math
 from typing import Dict, Optional
 
 from PySide6.QtCore import QPointF, QRectF, Qt
-from PySide6.QtGui import QColor, QFont, QFontMetricsF, QPainter, QPaintEvent, QPainterPath, QPen, QTextDocument
+from PySide6.QtGui import QColor, QFont, QPainter, QPaintEvent, QPainterPath, QPen, QTextDocument
 from PySide6.QtWidgets import QSizePolicy, QWidget
 
 from osdagbridge.core.bridge_components.super_structure.girder.properties import BeamSection
@@ -17,7 +17,7 @@ OSDAG_FONT_FAMILY = "Ubuntu Sans"
 
 
 class RolledSectionPreview(QWidget):
-    """Render a rolled section with CAD-style dimension annotations."""
+    """Render a rolled or welded section with CAD-style dimension annotations."""
 
     def __init__(self, parent: Optional[QWidget] = None) -> None:
         super().__init__(parent)
@@ -44,11 +44,9 @@ class RolledSectionPreview(QWidget):
         self._arrow_size = 9
 
         # Minimum radii keep rolled sections visibly curved even when the
-        # catalogue omits R1/R2; welded previews stay sharp by skipping these.
-        self._min_root_radius_px = 6.0
+        # catalogue omits R1/R2.
+        self._min_root_radius_px = 8.0
         self._min_toe_radius_px = 4.0
-        self._root_radius_ratio = 0.45
-        self._toe_radius_ratio = 0.35
 
         self.setMinimumSize(360, 260)
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
@@ -57,7 +55,7 @@ class RolledSectionPreview(QWidget):
     # Public API
     # ------------------------------------------------------------------
     def set_section(self, section: Optional[BeamSection]) -> None:
-        """Update the preview to show the supplied ``BeamSection``."""
+        """Update the preview to show the supplied ``BeamSection`` (assumed rolled)."""
 
         self._section = section
         if section is None:
@@ -73,6 +71,7 @@ class RolledSectionPreview(QWidget):
                 "root_radius_mm": float(section.root_radius_r1_mm or 0.0),
                 "toe_radius_mm": float(section.root_radius_r2_mm or 0.0),
             }
+        # Rolled sections do not show weld symbols.
         self._show_welds = False
         self.update()
 
@@ -87,7 +86,7 @@ class RolledSectionPreview(QWidget):
         bottom_flange_thickness_mm: Optional[float] = None,
         show_welds: bool = False,
     ) -> None:
-        """Feed custom dimensions (e.g., welded sections) directly."""
+        """Feed custom dimensions directly (e.g., for welded sections)."""
 
         self._section = None
         self._dimensions = {
@@ -97,6 +96,7 @@ class RolledSectionPreview(QWidget):
             "web_thickness": float(web_thickness_mm),
             "top_flange_thickness": float(flange_thickness_mm),
             "bottom_flange_thickness": float(bottom_flange_thickness_mm or flange_thickness_mm),
+            # Welded sections have no root/toe radii.
             "root_radius_mm": 0.0,
             "toe_radius_mm": 0.0,
         }
@@ -176,8 +176,9 @@ class RolledSectionPreview(QWidget):
             bottom_height,
         )
 
-        root_radius_px = max(0.0, float(dims.get("root_radius_mm", 0.0)) * scale)
-        toe_radius_px = max(0.0, float(dims.get("toe_radius_mm", 0.0)) * scale)
+        root_radius_px = float(dims.get("root_radius_mm", 0.0)) * scale
+        toe_radius_px = float(dims.get("toe_radius_mm", 0.0)) * scale
+        
         section_path = self._build_section_path(
             top_flange,
             web,
@@ -324,6 +325,11 @@ class RolledSectionPreview(QWidget):
         root_radius: float,
         toe_radius: float,
     ) -> Optional[QPainterPath]:
+        """
+        Builds the section path.
+        - For rolled sections: SHARP outer corners, CURVED inner corners/roots.
+        - For welded sections: ALL corners are SHARP (radii are 0).
+        """
         if min(top_flange.width(), bottom_flange.width(), web.width()) <= 0:
             return None
 
@@ -333,78 +339,112 @@ class RolledSectionPreview(QWidget):
         bf_top, bf_bottom = bottom_flange.top(), bottom_flange.bottom()
         web_left, web_right = web.left(), web.right()
 
-        top_toe = self._effective_toe_radius_px(toe_radius, top_flange)
-        bottom_toe = self._effective_toe_radius_px(toe_radius, bottom_flange)
+        # Determine effective radii.
+        # For welded sections, these will be 0.0.
+        # For rolled sections, minimum visual values are enforced if DB values are missing.
         top_root = self._effective_root_radius_px(root_radius, top_flange, web)
         bottom_root = self._effective_root_radius_px(root_radius, bottom_flange, web)
+        top_toe = self._effective_toe_radius_px(toe_radius, top_flange)
+        bottom_toe = self._effective_toe_radius_px(toe_radius, bottom_flange)
 
         path = QPainterPath()
-        path.moveTo(tf_left + top_toe, tf_top)
-        path.lineTo(tf_right - top_toe, tf_top)
+        
+        # --- TOP FLANGE ---
+        
+        # 1. Start at Top-Left Corner (Sharp)
+        path.moveTo(tf_left, tf_top)
+
+        # 2. Top Edge -> Top-Right Corner (Sharp)
+        path.lineTo(tf_right, tf_top)
+
+        # 3. Top-Right Vertical Face -> Start of Toe Curve
+        path.lineTo(tf_right, tf_bottom - top_toe)
+
+        # 4. Top-Right Inner Toe Curve (R2)
         if top_toe > 0:
-            rect = QRectF(tf_right - 2 * top_toe, tf_top, 2 * top_toe, 2 * top_toe)
-            path.arcTo(rect, 90, -90)
+            rect = QRectF(tf_right - 2*top_toe, tf_bottom - 2*top_toe, 2*top_toe, 2*top_toe)
+            path.arcTo(rect, 0, -90)
         else:
-            path.lineTo(tf_right, tf_top)
+            path.lineTo(tf_right, tf_bottom)
 
-        path.lineTo(tf_right, tf_bottom)
+        # 5. Underside -> Start of Root Curve (R1)
+        path.lineTo(web_right + top_root, tf_bottom)
 
+        # 6. Top-Right Root Fillet (R1)
         if top_root > 0:
-            path.lineTo(web_right + top_root, tf_bottom)
-            # Root fillet: curve DOWN onto the web (adding material in the corner)
-            rect = QRectF(web_right, tf_bottom, 2 * top_root, 2 * top_root)
+            rect = QRectF(web_right, tf_bottom, 2*top_root, 2*top_root)
             path.arcTo(rect, 90, 90)
         else:
             path.lineTo(web_right, tf_bottom)
 
+        # 7. Web Right Side -> Bottom Root
         path.lineTo(web_right, bf_top - bottom_root)
+
+        # 8. Bottom-Right Root Fillet (R1)
         if bottom_root > 0:
-            # Root fillet: curve OUT onto the bottom flange
-            rect = QRectF(web_right, bf_top - 2 * bottom_root, 2 * bottom_root, 2 * bottom_root)
+            rect = QRectF(web_right, bf_top - 2*bottom_root, 2*bottom_root, 2*bottom_root)
             path.arcTo(rect, 180, 90)
         else:
             path.lineTo(web_right, bf_top)
 
-        path.lineTo(bf_right, bf_top)
-        path.lineTo(bf_right, bf_bottom - bottom_toe)
+        # 9. Bottom Flange Top Side -> Inner Toe
+        path.lineTo(bf_right - bottom_toe, bf_top)
+
+        # 10. Bottom-Right Inner Toe Curve (R2)
         if bottom_toe > 0:
-            rect = QRectF(bf_right - 2 * bottom_toe, bf_bottom - 2 * bottom_toe, 2 * bottom_toe, 2 * bottom_toe)
-            path.arcTo(rect, 0, -90)
+            rect = QRectF(bf_right - 2*bottom_toe, bf_top, 2*bottom_toe, 2*bottom_toe)
+            path.arcTo(rect, 90, -90)
         else:
-            path.lineTo(bf_right, bf_bottom)
+            path.lineTo(bf_right, bf_top)
 
-        path.lineTo(bf_left + bottom_toe, bf_bottom)
+        # 11. Bottom-Right Vertical Face -> Bottom-Right Corner (Sharp)
+        path.lineTo(bf_right, bf_bottom)
+
+        # 12. Bottom Edge -> Bottom-Left Corner (Sharp)
+        path.lineTo(bf_left, bf_bottom)
+
+        # 13. Bottom-Left Vertical Face -> Inner Toe
+        path.lineTo(bf_left, bf_top + bottom_toe)
+
+        # 14. Bottom-Left Inner Toe Curve (R2)
         if bottom_toe > 0:
-            rect = QRectF(bf_left, bf_bottom - 2 * bottom_toe, 2 * bottom_toe, 2 * bottom_toe)
-            path.arcTo(rect, 270, -90)
+            rect = QRectF(bf_left, bf_top, 2*bottom_toe, 2*bottom_toe)
+            path.arcTo(rect, 180, -90)
         else:
-            path.lineTo(bf_left, bf_bottom)
+            path.lineTo(bf_left, bf_top)
 
-        path.lineTo(bf_left, bf_top)
+        # 15. Top Side -> Root
+        path.lineTo(web_left - bottom_root, bf_top)
 
+        # 16. Bottom-Left Root Fillet (R1)
         if bottom_root > 0:
-            path.lineTo(web_left - bottom_root, bf_top)
-            # Root fillet: curve UP onto the web
-            rect = QRectF(web_left - 2 * bottom_root, bf_top - 2 * bottom_root, 2 * bottom_root, 2 * bottom_root)
+            rect = QRectF(web_left - 2*bottom_root, bf_top - 2*bottom_root, 2*bottom_root, 2*bottom_root)
             path.arcTo(rect, 270, 90)
         else:
             path.lineTo(web_left, bf_top)
 
+        # 17. Web Left Side -> Top Root
         path.lineTo(web_left, tf_bottom + top_root)
+
+        # 18. Top-Left Root Fillet (R1)
         if top_root > 0:
-            # Root fillet: curve OUT onto the top flange
-            rect = QRectF(web_left - 2 * top_root, tf_bottom, 2 * top_root, 2 * top_root)
+            rect = QRectF(web_left - 2*top_root, tf_bottom, 2*top_root, 2*top_root)
             path.arcTo(rect, 0, 90)
         else:
             path.lineTo(web_left, tf_bottom)
 
-        path.lineTo(tf_left, tf_bottom)
-        path.lineTo(tf_left, tf_top + top_toe)
+        # 19. Underside -> Inner Toe
+        path.lineTo(tf_left + top_toe, tf_bottom)
+
+        # 20. Top-Left Inner Toe Curve (R2)
         if top_toe > 0:
-            rect = QRectF(tf_left, tf_top, 2 * top_toe, 2 * top_toe)
-            path.arcTo(rect, 180, -90)
+            rect = QRectF(tf_left, tf_bottom - 2*top_toe, 2*top_toe, 2*top_toe)
+            path.arcTo(rect, 270, -90)
         else:
-            path.lineTo(tf_left, tf_top)
+            path.lineTo(tf_left, tf_bottom)
+
+        # 21. Left Face -> Back to Start (Sharp)
+        path.lineTo(tf_left, tf_top)
 
         path.closeSubpath()
         return path
@@ -417,29 +457,32 @@ class RolledSectionPreview(QWidget):
         return round(value / precision) * precision
 
     def _effective_toe_radius_px(self, requested: float, flange: QRectF) -> float:
-        max_radius = max(0.0, min(flange.width(), flange.height()) / 2.0)
+        # If this is a welded section, radii must be sharp.
+        if self._show_welds:
+            return 0.0
+
+        max_radius = max(0.0, min(flange.width() / 2.0, flange.height()))
         if max_radius == 0.0:
             return 0.0
 
-        radius = max(0.0, requested)
-        if radius <= 0.0 and not self._show_welds:
-            radius = max(max_radius * self._toe_radius_ratio, self._min_toe_radius_px)
-
-        return self._snap_coordinate(min(radius, max_radius))
+        # Enforce Minimum Visual Radius (e.g. 4px) if requested is 0/missing for rolled sections
+        val = max(requested, self._min_toe_radius_px) 
+        return self._snap_coordinate(min(val, max_radius))
 
     def _effective_root_radius_px(self, requested: float, flange: QRectF, web: QRectF) -> float:
-        # Limit root radius to fit within the flange overhang and not exceed half web height
+        # If this is a welded section, radii must be sharp.
+        if self._show_welds:
+            return 0.0
+
         flange_overhang = (flange.width() - web.width()) / 2.0
         max_radius = max(0.0, min(flange_overhang, web.height() / 2.0))
 
         if max_radius == 0.0:
             return 0.0
 
-        radius = max(0.0, requested)
-        if radius <= 0.0 and not self._show_welds:
-            radius = max(max_radius * self._root_radius_ratio, self._min_root_radius_px)
-
-        return self._snap_coordinate(min(radius, max_radius))
+        # Enforce Minimum Visual Radius (e.g. 8px) if requested is 0/missing for rolled sections
+        val = max(requested, self._min_root_radius_px)
+        return self._snap_coordinate(min(val, max_radius))
 
     def _draw_welds(self, painter: QPainter, top_flange: QRectF, web: QRectF, bottom_flange: QRectF) -> None:
         painter.save()
@@ -510,7 +553,7 @@ class RolledSectionPreview(QWidget):
         font.setFamily(self._brand_font_family)
         font.setPointSizeF(max(font.pointSizeF(), 10.0))
         painter.setFont(font)
-        painter.drawText(self.rect(), Qt.AlignCenter, "Select a rolled section to preview")
+        painter.drawText(self.rect(), Qt.AlignCenter, "Select a section to preview")
         painter.restore()
 
     def _set_dimension_pen(self, painter: QPainter, key: str) -> QColor:
