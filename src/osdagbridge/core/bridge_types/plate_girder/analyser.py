@@ -3,7 +3,7 @@ from math import *
 import openseespy.opensees as ops
 from osdagbridge.core.utils.codes.irc6_2017 import *
 from osdagbridge.core.utils.common import *
-from bridge_geometry import *
+from osdagbridge.core.bridge_types.plate_girder.bridge_geometry import *
 
 
 class BridgeGrillageModel:
@@ -222,8 +222,8 @@ class BridgeGrillageModel:
         model.add_load_case(DL_self_weight)
         return DL_self_weight
 
-    def create_overlay_load(self, model=None, edge_clearance=0.30):
-        """Creates overlay slab load (patch).
+    def create_wearing_course_load(self, model=None, edge_clearance=0.0):
+        """Creates wearing course load (patch).
 
         If `model`, `L` or `w` are not provided they default to the
         instance values `self.model`, `self.L`, `self.w`.
@@ -270,7 +270,7 @@ class BridgeGrillageModel:
             point4=p4,
         )
 
-        DL_overlay = og.create_load_case(name="Overlay self weight")
+        DL_overlay = og.create_load_case(name="Wearing course self weight")
         DL_overlay.add_load(overlay)
         model.add_load_case(DL_overlay)
 
@@ -278,17 +278,262 @@ class BridgeGrillageModel:
         self.overlay_load_case = DL_overlay
 
         return DL_overlay
+    
+    def create_footpath_load(self, model=None):
+        """
+        Creates footpath patch loads on both sides of the bridge.
 
-    def analyze_plot(self, model=None):
+        Geometry is obtained from load_manager.
+        The created load case is stored on `self.footpath_load_case`.
+        """
+        model = model or self.model
+        if model is None:
+            raise ValueError("Model is not available. Create model before adding loads.")
+
+        # -------------------------------------------------
+        # Load magnitude (UDL over area)
+        # -------------------------------------------------
+        footpath_mag = 5.00 * kN / (1.0 ** 2)   # <-- update as per IRC value
+
+        # -------------------------------------------------
+        # Create load case
+        # -------------------------------------------------
+        DL_footpath = og.create_load_case(name="Footpath load")
+
+        # -------------------------------------------------
+        # Left & Right footpaths
+        # -------------------------------------------------
+        for side in ("left", "right"):
+            # geometry from load manager
+            geom = self.load_manager.footpath_load(side)
+
+            # convert geometry → ospgrillage vertices
+            p1 = og.create_load_vertex(
+                x=geom.p1.x, z=geom.p1.z, p=footpath_mag
+            )
+            p2 = og.create_load_vertex(
+                x=geom.p2.x, z=geom.p2.z, p=footpath_mag
+            )
+            p3 = og.create_load_vertex(
+                x=geom.p3.x, z=geom.p3.z, p=footpath_mag
+            )
+            p4 = og.create_load_vertex(
+                x=geom.p4.x, z=geom.p4.z, p=footpath_mag
+            )
+
+            # create patch load
+            footpath = og.create_load(
+                loadtype="patch",
+                name=f"{side} footpath",
+                point1=p1,
+                point2=p2,
+                point3=p3,
+                point4=p4,
+            )
+
+            DL_footpath.add_load(footpath)
+
+        # -------------------------------------------------
+        # Register load case
+        # -------------------------------------------------
+        model.add_load_case(DL_footpath)
+
+        # store reference
+        self.footpath_load_case = DL_footpath
+
+        return DL_footpath
+
+    def create_crash_barrier_load(self, model=None):
+        """
+        Creates crash (edge) barrier line loads on both sides of the bridge.
+
+        Geometry is obtained from load_manager.
+        The created load case is stored on `self.crash_barrier_load_case`.
+        """
+        model = model or self.model
+        if model is None:
+            raise ValueError("Model is not available. Create model before adding loads.")
+
+        # -------------------------------------------------
+        # Load magnitude (UDL along length)
+        # -------------------------------------------------
+        barrier_load = 6.54 * kN / m
+
+        # -------------------------------------------------
+        # Create load case
+        # -------------------------------------------------
+        DL_barrier = og.create_load_case(name="Crash barrier load")
+
+        # -------------------------------------------------
+        # Left & Right barriers
+        # -------------------------------------------------
+        for side in ("left", "right"):
+            # geometry from load manager
+            geom = self.load_manager.crash_barrier_load(side)
+
+            # convert geometry → ospgrillage vertices
+            p1 = og.create_load_vertex(
+                x=geom.start.x, z=geom.start.z, p=barrier_load
+            )
+            p2 = og.create_load_vertex(
+                x=geom.end.x, z=geom.end.z, p=barrier_load
+            )
+
+            # create line load
+            barrier = og.create_load(
+                loadtype="line",
+                name=f"{side} crash barrier",
+                point1=p1,
+                point2=p2,
+            )
+
+            DL_barrier.add_load(barrier)
+
+        # -------------------------------------------------
+        # Register load case
+        # -------------------------------------------------
+        model.add_load_case(DL_barrier)
+
+        # store reference
+        self.crash_barrier_load_case = DL_barrier
+
+        return DL_barrier
+
+
+    def create_railing_load(self, model=None):
+        """
+        Creates railing line loads on both sides of the bridge.
+
+        Geometry is obtained from load_manager.
+        The created load case is stored on `self.railing_load_case`.
+        """
+        model = model or self.model
+        if model is None:
+            raise ValueError("Model is not available. Create model before adding loads.")
+
+        # -------------------------------------------------
+        # Load magnitude (UDL along length)
+        # -------------------------------------------------
+        railing_udl = 1.50 * kN / m   # <-- update if code value differs
+
+        # -------------------------------------------------
+        # Create load case
+        # -------------------------------------------------
+        DL_railing = og.create_load_case(name="Railing load")
+
+        # -------------------------------------------------
+        # Left & Right railings
+        # -------------------------------------------------
+        for side in ("left", "right"):
+            # geometry from load manager
+            geom = self.load_manager.railing_load(side)
+
+            # convert geometry → ospgrillage vertices
+            p1 = og.create_load_vertex(
+                x=geom.start.x, z=geom.start.z, p=railing_udl
+            )
+            p2 = og.create_load_vertex(
+                x=geom.end.x, z=geom.end.z, p=railing_udl
+            )
+
+            # create line load
+            railing = og.create_load(
+                loadtype="line",
+                name=f"{side} railing",
+                point1=p1,
+                point2=p2,
+            )
+
+            DL_railing.add_load(railing)
+
+        # -------------------------------------------------
+        # Register load case
+        # -------------------------------------------------
+        model.add_load_case(DL_railing)
+
+        # store reference
+        self.railing_load_case = DL_railing
+
+        return DL_railing
+
+    def create_median_load(self, model=None):
+        """
+        Creates median line load acting along the centerline of the median.
+
+        Geometry is obtained from load_manager.
+        The created load case is stored on `self.median_load_case`.
+        """
+        model = model or self.model
+        if model is None:
+            raise ValueError("Model is not available. Create model before adding loads.")
+
+        # -------------------------------------------------
+        # Load magnitude (UDL along length)
+        # -------------------------------------------------
+        median_udl = 4.00 * kN / m   # <-- update as per IRC / project data
+
+        # -------------------------------------------------
+        # Get geometry from load manager
+        # -------------------------------------------------
+        geom = self.load_manager.median_line_load()
+
+        # -------------------------------------------------
+        # Convert geometry → ospgrillage vertices
+        # -------------------------------------------------
+        p1 = og.create_load_vertex(
+            x=geom.start.x, z=geom.start.z, p=median_udl
+        )
+        p2 = og.create_load_vertex(
+            x=geom.end.x, z=geom.end.z, p=median_udl
+        )
+
+        # -------------------------------------------------
+        # Create line load
+        # -------------------------------------------------
+        median_load = og.create_load(
+            loadtype="line",
+            name="median",
+            point1=p1,
+            point2=p2,
+        )
+
+        # -------------------------------------------------
+        # Create & register load case
+        # -------------------------------------------------
+        DL_median = og.create_load_case(name="Median load")
+        DL_median.add_load(median_load)
+        model.add_load_case(DL_median)
+
+        # store reference
+        self.median_load_case = DL_median
+
+        return DL_median
+
+    def analyze(self, model=None):
         model = model or self.model
         if model is None:
             raise ValueError("Model is not available. Create model before adding loads.")
         # Analysis
         model.analyze()
 
-        results = model.get_results(loadcase=['Overlay self weight', 'girder self weight'])
+        results = model.get_results(load_case=['girder self weight', 'Wearing course self weight', 'Footpath load', 'Crash barrier load', 'Railing load', 'Median load'])
         print("results")
         print(results) 
+
+        girder_results = model.get_results(load_case=[ 'girder self weight'])
+        print("girder_sw_results") 
+        print(girder_results)
+
+        # extract elements and nodes of beam 1
+        member_name = "exterior_main_beam_1"
+
+        # get the tag of elements and nodes
+        ext_beam_elements = model.get_element(member=member_name, options="elements",)
+        print(f"The element tags for Beam 1 is {ext_beam_elements}")
+
+        ext_beam_nodes = model.get_element(member=member_name, options="nodes")
+        print(f"The node tags for Beam 1 is {ext_beam_nodes[0]}")
+
 
 # ============================================================
 #   USAGE EXAMPLE
@@ -296,8 +541,12 @@ class BridgeGrillageModel:
 if __name__ == "__main__":
     bridge = BridgeGrillageModel()
     bridge.create_model()
-    bridge.plot_model()
+    # bridge.plot_model()
     # bridge.add_dead_loads()
     bridge.create_self_weight_load()
-    bridge.create_overlay_load()
-    bridge.analyze_plot()
+    bridge.create_wearing_course_load()
+    bridge.create_footpath_load()
+    bridge.create_crash_barrier_load()
+    bridge.create_railing_load()
+    bridge.create_median_load()
+    bridge.analyze()

@@ -5,7 +5,7 @@ Module for IRC 5:2015 bridge design clauses.
 """
 
 import math
-from common import *
+from osdagbridge.core.utils.common import *
 
 
 class IRC5_2015(object):
