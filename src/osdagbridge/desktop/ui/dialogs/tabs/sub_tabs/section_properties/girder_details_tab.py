@@ -6,7 +6,7 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCore import Qt
 
-from osdagbridge.core.bridge_types.plate_girder.member_properties_schema import GIRDER_DETAILS_SCHEMA
+from osdagbridge.core.bridge_types.plate_girder.ui_fields_additional_input import GIRDER_DETAILS_SCHEMA
 from osdagbridge.desktop.ui.dialogs.tabs.common import apply_field_style
 
 
