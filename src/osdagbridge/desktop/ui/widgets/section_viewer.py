@@ -129,16 +129,17 @@ class SectionPreviewWidget(QWidget):
             angle = self._catalog.get_angle(designation)
             if not angle:
                 return None
-            dims = {"kind": "angle", "a": angle.a, "b": angle.b, "t": angle.t}
+            # For single angles: take 'a' as horizontal (W) and 'b' as vertical (H)
+            dims = {"kind": "angle", "w": angle.a, "h": angle.b, "t": angle.t}
             # For double angles, optionally report total envelope or single-leg width
             if section_type == "double_angle_long":
                 if show_double_total:
-                    dims.update({"w": angle.b * 2.0, "h": angle.a})
+                    dims.update({"w": angle.b * 2.0, "h": angle.a})  # long leg (a) vertical
                 else:
                     dims.update({"w": angle.b, "h": angle.a, "single_span": True})
             elif section_type == "double_angle_short":
                 if show_double_total:
-                    dims.update({"w": angle.a * 2.0, "h": angle.b})
+                    dims.update({"w": angle.a * 2.0, "h": angle.b})  # short leg (b) vertical
                 else:
                     dims.update({"w": angle.a, "h": angle.b, "single_span": True})
             return dims
@@ -307,7 +308,8 @@ class SectionPreviewWidget(QWidget):
     def paintEvent(self, event):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
-        painter.fillRect(self.rect(), QColor("#0f0f0f"))
+        # Force a light background for clarity in embedded previews
+        painter.fillRect(self.rect(), QColor("#ffffff"))
 
         if not self._geometry:
             painter.setPen(QPen(QColor("#ffffff"), 1, Qt.DashLine))
@@ -412,8 +414,14 @@ class SectionPreviewWidget(QWidget):
         offset = 15.0
 
         # B dimension (horizontal at bottom - flange width)
-        self._draw_dim_line_h(painter, scale, x_left, x_right, y_bottom + offset,
-                              "B", self._fmt_val(b))
+        if is_double:
+            # For double channels, show B over a single channel width (use left channel span)
+            single_right = x_left + b
+            self._draw_dim_line_h(painter, scale, x_left, single_right, y_bottom + offset,
+                                  "B", self._fmt_val(b))
+        else:
+            self._draw_dim_line_h(painter, scale, x_left, x_right, y_bottom + offset,
+                                  "B", self._fmt_val(b))
 
         # D dimension (vertical on left - depth)
         self._draw_dim_line_v(painter, scale, y_top, y_bottom, x_left - offset,
@@ -422,9 +430,19 @@ class SectionPreviewWidget(QWidget):
         # tw dimension (web thickness)
         if tw > 0:
             if is_double:
-                # For double channel, place tw at center where the webs meet
-                self._draw_dim_line_h(painter, scale, -tw, tw, y_top - offset,
+                # For double channel, show tw at the center where the two webs meet, but keep it visible
+                self._draw_dim_line_h(painter, scale, -tw, 0, y_top - offset,
                                       "t", self._fmt_val(tw), subscript="w", outer_arrows=True, label_pos="below")
+                helper_pen = QPen(QColor("#90AF13"), 1.2 / max(scale, 1e-3))
+                painter.setPen(helper_pen)
+                start_y = y_top 
+                painter.drawLine(QPointF(-tw, start_y), QPointF(0, start_y))
+                # Dashed leader lines from the web edges up to the dimension line to show what tw measures
+                dash_pen = QPen(QColor("#90AF13"), 0.9 / max(scale, 1e-3), Qt.DashLine)
+                painter.setPen(dash_pen)
+                # Draw from bottom of flange (y_top + tf) to dimension line (y_top - offset) 
+                painter.drawLine(QPointF(-tw, start_y + tf), QPointF(-tw, y_top - offset))
+                painter.drawLine(QPointF(0, start_y + tf), QPointF(0, y_top - offset))
             else:
                 # For single channel, place tw at left aligned with the web
                 self._draw_dim_line_h(painter, scale, x_left, x_left + tw, y_top - offset,
@@ -440,7 +458,7 @@ class SectionPreviewWidget(QWidget):
                          symbol: str, value: str, subscript: str = None,
                          outer_arrows: bool = False, label_pos: str = "above") -> None:
         """Draw horizontal dimension line with arrows and label."""
-        dim_pen = QPen(QColor("#ffffff"), 0.8 / max(scale, 1e-3))
+        dim_pen = QPen(QColor("#90AF13"), 0.8 / max(scale, 1e-3))
         painter.setPen(dim_pen)
         painter.setBrush(Qt.NoBrush)
 
@@ -483,7 +501,7 @@ class SectionPreviewWidget(QWidget):
                          symbol: str, value: str, subscript: str = None,
                          outer_arrows: bool = False, label_right: bool = False) -> None:
         """Draw vertical dimension line with arrows and label."""
-        dim_pen = QPen(QColor("#ffffff"), 0.8 / max(scale, 1e-3))
+        dim_pen = QPen(QColor("#90AF13"), 0.8 / max(scale, 1e-3))
         painter.setPen(dim_pen)
         painter.setBrush(Qt.NoBrush)
 
@@ -549,7 +567,8 @@ class SectionPreviewWidget(QWidget):
         if valign in ("center", "middle"):
             py += 4
         elif valign == "above":
-            py -= 4
+            # Lift labels slightly further off the dimension line to avoid overlap
+            py -= 8
         elif valign == "below":
             py += 18
 
@@ -603,12 +622,8 @@ class SectionPreviewWidget(QWidget):
                 painter.drawText(QPointF(cursor_x, py + y_shift + offset_y), text)
                 cursor_x += fm.horizontalAdvance(text)
 
-        # Outline pass (black, 4 directions)
-        for dx, dy in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
-            draw_segments(QColor("#000000"), dx, dy)
-
-        # Foreground pass (white)
-        draw_segments(QColor("#ffffff"))
+        # Single-pass text (green per request) without black outline to avoid double/halo effect
+        draw_segments(QColor("#90AF13"))
 
         painter.restore()
 
