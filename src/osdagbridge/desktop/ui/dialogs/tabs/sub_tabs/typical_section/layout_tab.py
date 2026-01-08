@@ -4,7 +4,7 @@ from PySide6.QtWidgets import QWidget, QVBoxLayout, QGridLayout, QLabel, QLineEd
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QDoubleValidator, QIntValidator
 
-from osdagbridge.core.bridge_types.plate_girder.typical_section_schema import LAYOUT_TAB_SCHEMA
+from osdagbridge.core.bridge_types.plate_girder.ui_fields_additional_input import LAYOUT_TAB_SCHEMA
 from osdagbridge.core.utils.common import DEFAULT_GIRDER_SPACING
 from osdagbridge.desktop.ui.dialogs.tabs.common import apply_field_style
 

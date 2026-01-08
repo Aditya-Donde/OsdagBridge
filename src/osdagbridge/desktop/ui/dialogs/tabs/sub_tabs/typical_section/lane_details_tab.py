@@ -10,7 +10,7 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCore import Qt
 
-from osdagbridge.core.bridge_types.plate_girder.typical_section_schema import LANE_DETAILS_TAB_SCHEMA
+from osdagbridge.core.bridge_types.plate_girder.ui_fields_additional_input import LANE_DETAILS_TAB_SCHEMA
 
 
 class LaneDetailsTab(QWidget):

@@ -26,7 +26,7 @@ from osdagbridge.desktop.ui.dialogs.tabs.sub_tabs.section_properties.cross_braci
 from osdagbridge.desktop.ui.dialogs.tabs.sub_tabs.section_properties.end_diaphragm_details_tab import EndDiaphragmDetailsTab
 from osdagbridge.desktop.ui.dialogs.tabs.custom_vehicle_dialog import CustomVehicleDialog
 from osdagbridge.desktop.ui.dialogs.tabs.loading_tab import LoadingTab
-from osdagbridge.core.bridge_types.plate_girder.additional_inputs_schema import (
+from osdagbridge.core.bridge_types.plate_girder.ui_fields_additional_input import (
     SUPPORT_CONDITIONS_SCHEMA,
     DESIGN_OPTIONS_SCHEMA,
     DESIGN_OPTIONS_CONT_SCHEMA,
