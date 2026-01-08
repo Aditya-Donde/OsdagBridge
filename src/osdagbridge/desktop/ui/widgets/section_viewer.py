@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 from PySide6.QtCore import QPointF, QRectF, Qt
-from PySide6.QtGui import QColor, QFont, QPainter, QPainterPath, QPen
+from PySide6.QtGui import QColor, QFont, QFontMetrics, QPainter, QPainterPath, QPen
 from PySide6.QtWidgets import QWidget
 
 
@@ -146,7 +146,10 @@ class SectionPreviewWidget(QWidget):
             ch = self._catalog.get_channel(designation)
             if not ch:
                 return None
-            return {"kind": "channel", "b": ch.b, "d": ch.d, "tw": ch.tw, "tf": ch.tf, "r1": ch.r1, "r2": ch.r2}
+            dims = {"kind": "channel", "b": ch.b, "d": ch.d, "tw": ch.tw, "tf": ch.tf, "r1": ch.r1, "r2": ch.r2}
+            if section_type == "double_channel":
+                dims["is_double"] = True
+            return dims
         return None
 
     # ---- Geometry builders -------------------------------------------------
@@ -317,7 +320,7 @@ class SectionPreviewWidget(QWidget):
         for r in rects:
             geom_bbox = geom_bbox.united(r)
         combined = QRectF(geom_bbox)
-        margin = 35.0
+        margin = 45.0
         combined.adjust(-margin, -margin, margin, margin)
 
         if combined.width() <= 0 or combined.height() <= 0:
@@ -377,10 +380,10 @@ class SectionPreviewWidget(QWidget):
         # W dimension (horizontal at bottom for double angles, at top for single)
         if is_double:
             self._draw_dim_line_h(painter, scale, x_left, x_right, y_bottom + offset,
-                                  "W", self._fmt_val(b_val))
+                                  "W", self._fmt_val(b_val), label_pos="above")
         else:
             self._draw_dim_line_h(painter, scale, x_left, x_right, y_top - offset,
-                                  "W", self._fmt_val(b_val))
+                                  "W", self._fmt_val(b_val), label_pos="below")
 
         # H dimension (vertical on left)
         self._draw_dim_line_v(painter, scale, y_top, y_bottom, x_left - offset,
@@ -391,7 +394,7 @@ class SectionPreviewWidget(QWidget):
             if is_double:
                 # For double angles, place t at the top above the center stem where the two angles meet.
                 self._draw_dim_line_h(painter, scale, 0, t, y_top - offset,
-                                      "t", self._fmt_val(t), outer_arrows=True)
+                                      "t", self._fmt_val(t), outer_arrows=True, label_pos="below")
             else:
                 # Single angle: t at bottom near the vertical leg
                 self._draw_dim_line_h(painter, scale, x_left, x_left + t, y_bottom + offset,
@@ -404,34 +407,38 @@ class SectionPreviewWidget(QWidget):
         tf = info.get("tf", 0.0)  # flange thickness (vertical)
         d = info.get("d", bbox.height())
         b = info.get("b", bbox.width())
+        is_double = info.get("is_double", False)
 
         offset = 15.0
 
-        # B dimension (horizontal at top - flange width)
-        self._draw_dim_line_h(painter, scale, x_left, x_right, y_top - offset,
+        # B dimension (horizontal at bottom - flange width)
+        self._draw_dim_line_h(painter, scale, x_left, x_right, y_bottom + offset,
                               "B", self._fmt_val(b))
 
         # D dimension (vertical on left - depth)
         self._draw_dim_line_v(painter, scale, y_top, y_bottom, x_left - offset,
                               "D", self._fmt_val(d))
 
-        # tw dimension (web thickness - horizontal at bottom, measuring the web)
-        # For double channel the web is at center; for single it's at x_left
+        # tw dimension (web thickness)
         if tw > 0:
-            # Place below diagram, measuring web thickness at center
-            web_center_x = (x_left + x_right) / 2.0
-            self._draw_dim_line_h(painter, scale, web_center_x - tw / 2, web_center_x + tw / 2,
-                                  y_bottom + offset, "t", self._fmt_val(tw), subscript="w", outer_arrows=True)
+            if is_double:
+                # For double channel, place tw at center where the webs meet
+                self._draw_dim_line_h(painter, scale, -tw, tw, y_top - offset,
+                                      "t", self._fmt_val(tw), subscript="w", outer_arrows=True, label_pos="below")
+            else:
+                # For single channel, place tw at left aligned with the web
+                self._draw_dim_line_h(painter, scale, x_left, x_left + tw, y_top - offset,
+                                      "t", self._fmt_val(tw), subscript="w", outer_arrows=True, label_pos="below")
 
         # tf dimension (flange thickness - vertical on the right side, label on right)
         if tf > 0:
-            self._draw_dim_line_v(painter, scale, y_top, y_top + tf, x_right + 3.0,
+            self._draw_dim_line_v(painter, scale, y_top, y_top + tf, x_right + 12.0,
                                   "t", self._fmt_val(tf), subscript="f", outer_arrows=True, label_right=True)
 
     def _draw_dim_line_h(self, painter: QPainter, scale: float,
                          x1: float, x2: float, y: float,
                          symbol: str, value: str, subscript: str = None,
-                         outer_arrows: bool = False) -> None:
+                         outer_arrows: bool = False, label_pos: str = "above") -> None:
         """Draw horizontal dimension line with arrows and label."""
         dim_pen = QPen(QColor("#ffffff"), 0.8 / max(scale, 1e-3))
         painter.setPen(dim_pen)
@@ -467,10 +474,9 @@ class SectionPreviewWidget(QWidget):
             painter.drawLine(QPointF(x2, y), QPointF(x2 - arrow_size, y + arrow_size * 0.5))
             painter.drawLine(QPointF(x2, y), QPointF(x2 - arrow_size, y - arrow_size * 0.5))
 
-        # Label above the line
+        # Label
         mid_x = (x1 + x2) / 2.0
-        label_y = y + 6.0
-        self._draw_subscript_label(painter, scale, mid_x, label_y, symbol, value, subscript)
+        self._draw_subscript_label(painter, scale, mid_x, y, symbol, value, subscript, align_center=True, valign=label_pos)
 
     def _draw_dim_line_v(self, painter: QPainter, scale: float,
                          y1: float, y2: float, x: float,
@@ -523,7 +529,7 @@ class SectionPreviewWidget(QWidget):
     def _draw_subscript_label(self, painter: QPainter, scale: float,
                               x: float, y: float, symbol: str, value: str,
                               subscript: str = None, superscript: str = None,
-                              align_right: bool = False) -> None:
+                              align_right: bool = False, align_center: bool = False, valign: str = None) -> None:
         """Draw label with proper subscript/superscript using QPainter only.
         
         - Subscript: smaller font, shifted down
@@ -539,6 +545,13 @@ class SectionPreviewWidget(QWidget):
         script_font = QFont("Arial", 6)  # Smaller for sub/superscript
 
         px, py = device_pt.x(), device_pt.y()
+
+        if valign in ("center", "middle"):
+            py += 4
+        elif valign == "above":
+            py -= 4
+        elif valign == "below":
+            py += 18
 
         # Build text segments: [(text, font, y_offset), ...]
         segments = []
@@ -567,8 +580,18 @@ class SectionPreviewWidget(QWidget):
         # Starting x position
         if align_right:
             start_x = px - total_width
+        elif align_center:
+            start_x = px - total_width / 2.0
         else:
             start_x = px
+
+        # Draw background if needed to clear lines
+        if valign in ("center", "middle"):
+            fm_main = QFontMetrics(main_font)
+            text_height = fm_main.height()
+            # Background rect: slightly padded
+            bg_rect = QRectF(start_x - 2, py - text_height + 4, total_width + 4, text_height)
+            painter.fillRect(bg_rect, QColor("#0f0f0f"))
 
         # Draw function for a single pass
         def draw_segments(color: QColor, offset_x: float = 0, offset_y: float = 0):
