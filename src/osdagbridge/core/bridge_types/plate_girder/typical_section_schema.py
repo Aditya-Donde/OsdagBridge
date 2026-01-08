@@ -22,7 +22,7 @@ LAYOUT_TAB_SCHEMA = {
                     "validator": {"type": "double_range", "bottom": 0.01, "top": 50.0, "decimals": 3},
                     "default": DEFAULT_GIRDER_SPACING,
                     "bind": "girder_spacing",
-                    "on_editing_finished": "on_girder_spacing_changed",
+                    "on_text_changed": "on_girder_spacing_changed",
                 },
                 {
                     "id": "no_of_girders",
@@ -30,7 +30,7 @@ LAYOUT_TAB_SCHEMA = {
                     "type": "line",
                     "validator": {"type": "int_range", "bottom": 1, "top": 100},
                     "bind": "no_of_girders",
-                    "on_editing_finished": "on_no_of_girders_changed",
+                    "on_text_changed": "on_no_of_girders_changed",
                 },
             ]
         },
@@ -42,7 +42,7 @@ LAYOUT_TAB_SCHEMA = {
                     "type": "line",
                     "validator": {"type": "double_range", "bottom": 0.0, "top": 100.0, "decimals": 3},
                     "bind": "deck_overhang",
-                    "on_editing_finished": "on_deck_overhang_changed",
+                    "on_text_changed": "on_deck_overhang_changed",
                 }
             ]
         },

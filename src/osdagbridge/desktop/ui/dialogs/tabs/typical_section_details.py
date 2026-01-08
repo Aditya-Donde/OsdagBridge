@@ -88,6 +88,10 @@ class TypicalSectionDetailsTab(QWidget):
         self._updating_overall_width_display = False
         self._updating_lane_table = False
         self._lane_cell_signal_connected = False
+        # Track last known numeric values to avoid spurious recalculations on text-only edits
+        self._last_spacing_value: float | None = None
+        self._last_overhang_value: float | None = None
+        self._last_girders_value: int | None = None
         self.crash_barrier_count = 2  # Assume two crash barriers at carriageway edges
         self.overall_bridge_width_formula = (
             "OverallBridgeWidth = CrossSectionLayout.total_width = CarriagewayWidth + "
@@ -550,6 +554,28 @@ class TypicalSectionDetailsTab(QWidget):
         if hasattr(self, "layout_notice_container"):
             self.layout_notice_container.hide()
 
+    def _clear_layout_entry_fields(self, message: str) -> None:
+        """Clear layout inputs together when any of them is emptied and show an error."""
+        if self.updating_fields:
+            return
+        self.updating_fields = True
+        try:
+            for field in (
+                getattr(self, "girder_spacing", None),
+                getattr(self, "deck_overhang", None),
+                getattr(self, "no_of_girders", None),
+            ):
+                if field is not None:
+                    field.clear()
+            # Reset tracked values
+            self._last_spacing_value = None
+            self._last_overhang_value = None
+            self._last_girders_value = None
+        finally:
+            self.updating_fields = False
+        self._clear_adjust_notice()
+        show_warning(self, "Layout", message)
+
     def _show_adjust_notice(self, reason, warning=None):
         any_visible = bool(reason) or bool(warning)
         if hasattr(self, "layout_adjust_notice"):
@@ -578,6 +604,10 @@ class TypicalSectionDetailsTab(QWidget):
             self.girder_spacing.setText(self._format_spacing(spacing))
             self.deck_overhang.setText(self._format_overhang(overhang))
             self.no_of_girders.setText(str(int(girders)))
+            # Update tracked values to prevent spurious recalculations
+            self._last_spacing_value = spacing
+            self._last_overhang_value = overhang
+            self._last_girders_value = int(girders)
             try:
                 self.girder_count_changed.emit(int(girders))
             except Exception:
@@ -603,18 +633,7 @@ class TypicalSectionDetailsTab(QWidget):
         max_n = int(math.floor(overall_width / spacing_min) + 2) if spacing_min > 0 else 50
         
         best = None
-        for n in range(1, max(2, max_n) + 1):
-            if n == 1:
-                # For n=1, formula: overall_width = 2 * overhang
-                # Only valid if overhang == overall_width / 2
-                required_overhang = overall_width / 2.0
-                if abs(required_overhang - overhang) < 1e-6:
-                    # Any spacing is acceptable for n=1; use middle of range
-                    s_use = self._clamp((spacing_min + spacing_max) / 2.0, spacing_min, spacing_max)
-                    score = (0, n)  # lower n is worse, but valid
-                    best = (score, s_use, overhang, n)
-                continue
-
+        for n in range(2, max(2, max_n) + 1):
             # For n >= 2: spacing = (overall_width - 2 * overhang) / (n - 1)
             raw_spacing = (overall_width - 2.0 * overhang) / (n - 1)
             if raw_spacing <= 0:
@@ -666,7 +685,7 @@ class TypicalSectionDetailsTab(QWidget):
         ideal_overhang_max = 0.5 * spacing
         
         best = None
-        for n in range(1, max(2, max_n) + 1):
+        for n in range(2, max(2, max_n) + 1):
             if (n - 1) * spacing > overall_width + 1e-6:
                 break
             
@@ -795,35 +814,16 @@ class TypicalSectionDetailsTab(QWidget):
             return
 
         if changed_field == "girders":
-            if girders_input is None or girders_input < 1:
-                show_warning(self, "Layout", "Number of girders must be an integer greater than or equal to 1.")
-                return
+            if girders_input is None or girders_input < 2:
+                show_warning(self, "Layout", "Number of girders must be an integer greater than or equal to 2.")
+                if girders_input is None:
+                    return
+                girders_input = 2
+                self._set_layout_fields(spacing_input, overhang_input, girders_input)
             n = girders_input
             # Capture old values for comparison
             old_overhang = overhang_input
             old_spacing = spacing_input
-            
-            if n == 1:
-                # For n=1, overhang must be overall_width/2, spacing is not applicable
-                overhang_use = overall_width / 2.0
-                spacing_use = self._clamp(round(old_spacing, 2), *spacing_bounds)
-                self._set_layout_fields(spacing_use, overhang_use, n)
-                reason_parts = []
-                if abs(overhang_use - old_overhang) > 1e-6:
-                    reason_parts.append(f"overhang {old_overhang:.2f}→{overhang_use:.2f}")
-                if abs(spacing_use - old_spacing) > 0.01:
-                    reason_parts.append(f"spacing {old_spacing:.2f}→{spacing_use:.2f}")
-                
-                warning_msg = None
-                if overhang_use > spacing_use + 1e-6:
-                    warning_msg = f"Overhang ({overhang_use:.2f} m) exceeds girder spacing ({spacing_use:.2f} m)"
-                
-                if reason_parts:
-                    self._show_adjust_notice(", ".join(reason_parts), warning_msg)
-                elif warning_msg:
-                    self._show_adjust_notice(None, warning_msg)
-                self._update_overall_bridge_width_display()
-                return
 
             # For n >= 2: overall_width = 2*overhang + (n-1)*spacing
             # Keep n fixed, try to find spacing and overhang such that overhang is in ideal range
@@ -1211,16 +1211,55 @@ class TypicalSectionDetailsTab(QWidget):
         self._solve_layout("width")
 
     def on_girder_spacing_changed(self):
-        if not self.updating_fields:
-            self._solve_layout("spacing")
+        if self.updating_fields:
+            return
+        if not self.girder_spacing.text().strip():
+            self._clear_layout_entry_fields("Girder spacing, deck overhang, and number of girders are linked. Please enter all three.")
+            self._last_spacing_value = None
+            return
+        try:
+            new_val = float(self.girder_spacing.text().strip())
+        except ValueError:
+            return
+        # Skip recalculation if numeric value unchanged (e.g., "2.50" -> "2.5")
+        if self._last_spacing_value is not None and abs(new_val - self._last_spacing_value) < 1e-6:
+            return
+        self._last_spacing_value = new_val
+        self._solve_layout("spacing")
 
     def on_deck_overhang_changed(self):
-        if not self.updating_fields:
-            self._solve_layout("overhang")
+        if self.updating_fields:
+            return
+        if not self.deck_overhang.text().strip():
+            self._clear_layout_entry_fields("Girder spacing, deck overhang, and number of girders are linked. Please enter all three.")
+            self._last_overhang_value = None
+            return
+        try:
+            new_val = float(self.deck_overhang.text().strip())
+        except ValueError:
+            return
+        # Skip recalculation if numeric value unchanged (e.g., "1.31" -> "1.310")
+        if self._last_overhang_value is not None and abs(new_val - self._last_overhang_value) < 1e-6:
+            return
+        self._last_overhang_value = new_val
+        self._solve_layout("overhang")
 
     def on_no_of_girders_changed(self):
-        if not self.updating_fields:
-            self._solve_layout("girders")
+        if self.updating_fields:
+            return
+        if not self.no_of_girders.text().strip():
+            self._clear_layout_entry_fields("Girder spacing, deck overhang, and number of girders are linked. Please enter all three.")
+            self._last_girders_value = None
+            return
+        try:
+            new_val = int(float(self.no_of_girders.text().strip()))
+        except ValueError:
+            return
+        # Skip recalculation if numeric value unchanged (e.g., "2.00" -> "2")
+        if self._last_girders_value is not None and new_val == self._last_girders_value:
+            return
+        self._last_girders_value = new_val
+        self._solve_layout("girders")
 
     def on_footpath_width_changed(self):
         if not self.updating_fields:
