@@ -8,12 +8,14 @@ from .geometry import (
     median_raised_kerb_area,
     median_rcc_barrier_area,
     median_metallic_barrier_area,
-    rcc_railing_area,
-    steel_railing_area,
+    rigid_barrier_with_railing_area,
     rigid_barrier_no_footpath_area,
     high_containment_barrier_area
 )
 
+from osdagbridge.core.utils.common import (
+    KEY_RAILING_TYPE
+)
 # MATERIAL DENSITIES
 RCC_DENSITY = 25      # kN/m³
 STEEL_DENSITY = 78    # kN/m³
@@ -98,32 +100,37 @@ def median_metallic_barrier_load(barrier_type):
 # FIG 1(a) — Rigid Barrier + RCC Railing (with Footpath)
 
 def rcc_railing_load():
-    geom = rcc_railing_area()
+    from .geometry import rigid_barrier_with_railing_area
+    geom = rigid_barrier_with_railing_area(KEY_RAILING_TYPE[0])
 
-    barrier_load = load_from_area(geom["barrier_area"], RCC_DENSITY)
-
-    total = barrier_load
+    barrier_load = load_from_area(
+        geom["barrier_area"],
+        RCC_DENSITY
+    )
 
     return {
         "type": geom["type"],
         "rcc_barrier_load_kN_per_m": round(barrier_load, 3),
-        "total_load_kN_per_m": round(total, 3)
+        "total_load_kN_per_m": round(barrier_load, 3)
     }
 
 # FIG 1(b) — Rigid Barrier + Steel Railing (with Footpath)
 
 def steel_railing_load():
-    geom = steel_railing_area()
+    from .geometry import rigid_barrier_with_railing_area
+    geom = rigid_barrier_with_railing_area(KEY_RAILING_TYPE[1])
 
-    barrier_load = load_from_area(geom["barrier_area"], RCC_DENSITY)
-
-    total = barrier_load
+    barrier_load = load_from_area(
+        geom["barrier_area"],
+        RCC_DENSITY      # RCC body, railing material doesn't affect body load
+    )
 
     return {
         "type": geom["type"],
         "rcc_barrier_load_kN_per_m": round(barrier_load, 3),
-        "total_load_kN_per_m": round(total, 3)
+        "total_load_kN_per_m": round(barrier_load, 3)
     }
+
 
 # FIG 2 — Rigid Barrier without Footpath
 
