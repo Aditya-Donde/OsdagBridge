@@ -653,18 +653,30 @@ class RolledSectionPreview(QWidget):
         length = math.hypot(direction.x(), direction.y())
         if length == 0:
             return
+        
         unit = QPointF(direction.x() / length, direction.y() / length)
         normal = QPointF(-unit.y(), unit.x())
+        
         arrow = self._arrow_size
-        base = tip + unit * (arrow * 0.9)
-        left = base + normal * (arrow * 0.45)
-        right = base - normal * (arrow * 0.45)
+        
+        # --- Adjusted Geometry for Narrow/Tall Arrows ---
+        # 1.3 makes the arrow longer/taller (previously 0.9)
+        arrow_length = arrow * 1.3 
+        
+        # 0.25 makes the base narrower (previously 0.45)
+        # This creates a sharp, technical drafting look.
+        arrow_half_width = arrow * 0.25 
+
+        base = tip + unit * arrow_length
+        left = base + normal * arrow_half_width
+        right = base - normal * arrow_half_width
+        
         painter.save()
         painter.setBrush(color)
         painter.setPen(Qt.NoPen)
         painter.drawPolygon([tip, left, right])
         painter.restore()
-
+        
     def _draw_label(
         self,
         painter: QPainter,
