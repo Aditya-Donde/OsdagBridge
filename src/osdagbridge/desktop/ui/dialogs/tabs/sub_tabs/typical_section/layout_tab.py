@@ -1,6 +1,6 @@
 """Layout sub-tab for Typical Section Details (schema-driven)."""
 import copy
-from PySide6.QtWidgets import QWidget, QVBoxLayout, QGridLayout, QLabel, QLineEdit
+from PySide6.QtWidgets import QWidget, QVBoxLayout, QGridLayout, QLabel, QLineEdit, QSizePolicy
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QDoubleValidator, QIntValidator
 
@@ -100,11 +100,36 @@ class LayoutTab(QWidget):
                 if field_def.get("id") == "deck_overhang" and field_def.get("default") is None:
                     field_def["default"] = f"{0.35 * DEFAULT_GIRDER_SPACING:.3f}"
 
+        # Create adjustment notice label (shown when values are auto-adjusted)
         owner.layout_adjust_notice = QLabel()
         owner.layout_adjust_notice.setStyleSheet(
             "font-size: 10px; font-style: italic; color: #000000; background-color: transparent;"
         )
+        owner.layout_adjust_notice.setWordWrap(True)
+        owner.layout_adjust_notice.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Preferred)
+        owner.layout_adjust_notice.setFixedWidth(180)
         owner.layout_adjust_notice.hide()
+        
+        # Create warning notice label (shown when overhang exceeds spacing)
+        owner.layout_warning_notice = QLabel()
+        owner.layout_warning_notice.setStyleSheet(
+            "font-size: 10px; font-style: italic; color: #cc6600; background-color: transparent;"
+        )
+        owner.layout_warning_notice.setWordWrap(True)
+        owner.layout_warning_notice.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Preferred)
+        owner.layout_warning_notice.setFixedWidth(180)
+        owner.layout_warning_notice.hide()
+
+        # Container so notices don't resize grid columns (prevents UI shifting)
+        owner.layout_notice_container = QWidget()
+        owner.layout_notice_container.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Preferred)
+        owner.layout_notice_container.setFixedWidth(180)
+        notice_layout = QVBoxLayout(owner.layout_notice_container)
+        notice_layout.setContentsMargins(0, 0, 0, 0)
+        notice_layout.setSpacing(4)
+        notice_layout.addWidget(owner.layout_adjust_notice)
+        notice_layout.addWidget(owner.layout_warning_notice)
+        owner.layout_notice_container.hide()
 
         row_idx = 0
         for row_num, row in enumerate(schema_rows):
@@ -124,8 +149,9 @@ class LayoutTab(QWidget):
 
             row_idx += 1
 
-            # Place adjustment notice directly under the "No. of Girders" field (row 1, right side)
-            grid.addWidget(owner.layout_adjust_notice, 1, 2, 1, 2, Qt.AlignLeft)
+        # Place notices under the "No. of Girders" LABEL (row 0, col 2)
+        # Row 1 col 2 is empty in the schema (only left-side field), so it's the ideal anchor.
+        grid.addWidget(owner.layout_notice_container, 1, 2, 1, 1, Qt.AlignLeft | Qt.AlignTop)
 
         layout_layout.addLayout(grid)
 

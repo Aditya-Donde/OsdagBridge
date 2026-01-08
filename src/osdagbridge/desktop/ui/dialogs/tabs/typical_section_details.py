@@ -544,11 +544,33 @@ class TypicalSectionDetailsTab(QWidget):
         if hasattr(self, "layout_adjust_notice"):
             self.layout_adjust_notice.hide()
             self.layout_adjust_notice.setText("")
+        if hasattr(self, "layout_warning_notice"):
+            self.layout_warning_notice.hide()
+            self.layout_warning_notice.setText("")
+        if hasattr(self, "layout_notice_container"):
+            self.layout_notice_container.hide()
 
-    def _show_adjust_notice(self, reason):
-        if hasattr(self, "layout_adjust_notice") and reason:
-            self.layout_adjust_notice.setText(f"Values adjusted for: {reason}")
-            self.layout_adjust_notice.show()
+    def _show_adjust_notice(self, reason, warning=None):
+        any_visible = bool(reason) or bool(warning)
+        if hasattr(self, "layout_adjust_notice"):
+            if reason:
+                self.layout_adjust_notice.setText(f"Values adjusted: {reason}")
+                self.layout_adjust_notice.show()
+            else:
+                self.layout_adjust_notice.hide()
+                self.layout_adjust_notice.setText("")
+        if hasattr(self, "layout_warning_notice"):
+            if warning:
+                self.layout_warning_notice.setText(f"⚠ Warning: {warning}")
+                self.layout_warning_notice.show()
+            else:
+                self.layout_warning_notice.hide()
+                self.layout_warning_notice.setText("")
+        if hasattr(self, "layout_notice_container"):
+            if any_visible:
+                self.layout_notice_container.show()
+            else:
+                self.layout_notice_container.hide()
 
     def _set_layout_fields(self, spacing, overhang, girders):
         self.updating_fields = True
@@ -569,59 +591,105 @@ class TypicalSectionDetailsTab(QWidget):
         return 0.0, overall_width / 2.0
 
     def _spacing_candidates_for_overhang(self, overall_width, overhang, spacing_bounds):
+        """Find best (n, spacing) combination for a FIXED overhang.
+        
+        When user changes overhang, we keep overhang fixed and only adjust
+        girder spacing and number of girders.
+        
+        Formula: overall_width = 2 * overhang + (n - 1) * spacing
+        => spacing = (overall_width - 2 * overhang) / (n - 1)  for n >= 2
+        """
         spacing_min, spacing_max = spacing_bounds
         max_n = int(math.floor(overall_width / spacing_min) + 2) if spacing_min > 0 else 50
-        target_spacing = self._parse_length_value(self.girder_spacing, default=DEFAULT_GIRDER_SPACING)
+        
         best = None
         for n in range(1, max(2, max_n) + 1):
             if n == 1:
-                # Formula reduces to overall_width = 2 * overhang
+                # For n=1, formula: overall_width = 2 * overhang
+                # Only valid if overhang == overall_width / 2
                 required_overhang = overall_width / 2.0
                 if abs(required_overhang - overhang) < 1e-6:
-                    s_rounded = self._clamp(round(target_spacing, 1), spacing_min, spacing_max)
-                    o_calc = (overall_width - (n - 1) * s_rounded) / 2.0
-                    # Penalize if overhang > spacing
-                    overhang_penalty = 0 if o_calc <= s_rounded else (o_calc - s_rounded)
-                    score = (overhang_penalty, 0.0, abs(s_rounded - target_spacing), n)
-                    best = (score, s_rounded, o_calc, n)
+                    # Any spacing is acceptable for n=1; use middle of range
+                    s_use = self._clamp((spacing_min + spacing_max) / 2.0, spacing_min, spacing_max)
+                    score = (0, n)  # lower n is worse, but valid
+                    best = (score, s_use, overhang, n)
                 continue
 
+            # For n >= 2: spacing = (overall_width - 2 * overhang) / (n - 1)
             raw_spacing = (overall_width - 2.0 * overhang) / (n - 1)
             if raw_spacing <= 0:
                 continue
-            s_rounded = self._clamp(round(raw_spacing, 1), spacing_min, spacing_max)
-            o_calc = (overall_width - (n - 1) * s_rounded) / 2.0
-            o_min, o_max = self._deck_overhang_range(overall_width)
-            if o_calc < o_min - 1e-6 or o_calc > o_max + 1e-6:
+            
+            # Round spacing to 2 decimal places for display
+            s_rounded = round(raw_spacing, 2)
+            
+            # Check if rounded spacing is within valid bounds
+            if s_rounded < spacing_min - 1e-6 or s_rounded > spacing_max + 1e-6:
                 continue
-            spacing_diff = abs(s_rounded - target_spacing)
-            overhang_diff = abs(o_calc - overhang)
-            # Penalize if overhang > spacing (ideally overhang <= spacing)
-            overhang_penalty = 0 if o_calc <= s_rounded else (o_calc - s_rounded)
-            score = (overhang_penalty, overhang_diff, spacing_diff, n)
+            
+            s_rounded = self._clamp(s_rounded, spacing_min, spacing_max)
+            
+            # Prefer n values that result in overhang being 0.35-0.5 of spacing (ideal range)
+            ideal_min = 0.35 * s_rounded
+            ideal_max = 0.5 * s_rounded
+            if ideal_min <= overhang <= ideal_max:
+                score = (0, n)  # Ideal range, prefer lower n
+            else:
+                # Not in ideal range but still valid
+                score = (1, n)
+            
             if best is None or score < best[0]:
-                best = (score, s_rounded, o_calc, n)
+                best = (score, s_rounded, overhang, n)
+        
         return best
 
     def _pick_n_for_spacing(self, overall_width, spacing, spacing_bounds):
+        """Find best (n, overhang) combination for a FIXED spacing.
+        
+        When user changes spacing, we keep spacing fixed and only adjust
+        number of girders and overhang.
+        
+        Formula: overall_width = 2 * overhang + (n - 1) * spacing
+        => overhang = (overall_width - (n - 1) * spacing) / 2
+        
+        Ideally overhang should be 0.35 to 0.5 of spacing. If not possible,
+        allow overhang to vary between 0 and overall_width/2.
+        """
         spacing_min, spacing_max = spacing_bounds
-        spacing = self._clamp(round(spacing, 1), spacing_min, spacing_max)
-        # Prefer overhang <= spacing (ideally 0.35 * spacing), but allow up to spacing
-        target_overhang = self._clamp(0.35 * spacing, *self._deck_overhang_range(overall_width))
+        spacing = self._clamp(round(spacing, 2), spacing_min, spacing_max)
+        
+        o_min, o_max = self._deck_overhang_range(overall_width)
         max_n = int(math.floor(overall_width / spacing) + 2) if spacing > 0 else 1
+        
+        # Ideal overhang range: 0.35 to 0.5 of spacing
+        ideal_overhang_min = 0.35 * spacing
+        ideal_overhang_max = 0.5 * spacing
+        
         best = None
         for n in range(1, max(2, max_n) + 1):
             if (n - 1) * spacing > overall_width + 1e-6:
                 break
+            
             overhang = (overall_width - (n - 1) * spacing) / 2.0
-            o_min, o_max = self._deck_overhang_range(overall_width)
+            
+            # Check if overhang is within valid range (0 to overall_width/2)
             if overhang < o_min - 1e-6 or overhang > o_max + 1e-6:
                 continue
-            # Penalize overhang > spacing (ideally overhang should be smaller than girder spacing)
-            overhang_penalty = 0 if overhang <= spacing else (overhang - spacing)
-            score = (overhang_penalty, abs(overhang - target_overhang), abs(n - 2))
+            
+            # Score: prefer overhang in ideal range (0.35-0.5 of spacing)
+            if ideal_overhang_min <= overhang <= ideal_overhang_max:
+                # In ideal range
+                score = (0, abs(overhang - (ideal_overhang_min + ideal_overhang_max) / 2), n)
+            elif overhang <= spacing:
+                # Not in ideal range but overhang <= spacing (acceptable)
+                score = (1, abs(overhang - ideal_overhang_max), n)
+            else:
+                # Overhang > spacing (less desirable but valid)
+                score = (2, overhang - spacing, n)
+            
             if best is None or score < best[0]:
                 best = (score, n, spacing, overhang)
+        
         return best
 
     def _solve_layout(self, changed_field="width"):
@@ -658,50 +726,71 @@ class TypicalSectionDetailsTab(QWidget):
             old_spacing = spacing_input
             self._set_layout_fields(spacing_use, overhang_use, n)
             reason_parts = []
-            if abs(spacing_use - old_spacing) > 1e-6:
-                reason_parts.append(f"spacing {old_spacing:.2f}->{spacing_use:.2f}")
+            # Spacing should be kept as user specified (only minor rounding allowed)
+            if abs(spacing_use - old_spacing) > 0.01:
+                reason_parts.append(f"spacing {old_spacing:.2f}→{spacing_use:.2f}")
             if abs(overhang_use - old_overhang) > 1e-6:
-                reason_parts.append(f"overhang {old_overhang:.2f}->{overhang_use:.2f}")
+                reason_parts.append(f"overhang {old_overhang:.2f}→{overhang_use:.2f}")
             if old_girders is not None and n != old_girders:
-                reason_parts.append(f"girders {old_girders}->{n}")
+                reason_parts.append(f"girders {old_girders}→{n}")
+            
+            # Check if overhang exceeds girder spacing and show warning
+            warning_msg = None
+            if overhang_use > spacing_use + 1e-6:
+                warning_msg = f"Overhang ({overhang_use:.2f} m) exceeds girder spacing ({spacing_use:.2f} m)"
+            
             if reason_parts:
-                self._show_adjust_notice(", ".join(reason_parts))
+                self._show_adjust_notice(", ".join(reason_parts), warning_msg)
+            elif warning_msg:
+                self._show_adjust_notice(None, warning_msg)
             self._update_overall_bridge_width_display()
             return
 
         if changed_field == "overhang":
             # Check if user entered a value exceeding the maximum possible overhang
-            if overhang_input > o_max + 1e-6:
+            if overhang_input < o_min - 1e-6 or overhang_input > o_max + 1e-6:
                 show_warning(
                     self,
                     "Deck Overhang Width Error",
-                    f"Deck overhang width cannot exceed {o_max:.2f} m (half of Overall Bridge Width).\n\n"
-                    f"Maximum allowed: {o_max:.2f} m\n"
+                    f"Deck overhang width must be between {o_min:.2f} m and {o_max:.2f} m "
+                    f"(half of Overall Bridge Width).\n\n"
+                    f"Valid range: {o_min:.2f} m to {o_max:.2f} m\n"
                     f"You entered: {overhang_input:.2f} m\n\n"
-                    "To increase deck overhang, you need to increase the Overall Bridge Width "
-                    "(by adjusting carriageway width, crash barriers, footpaths, etc.)."
+                    "To change deck overhang limits, you need to adjust the Overall Bridge Width "
+                    "(by modifying carriageway width, crash barriers, footpaths, etc.)."
                 )
-            overhang_use = self._clamp(overhang_input, o_min, o_max)
+                self._update_overall_bridge_width_display()
+                return
+            
+            # Keep overhang fixed as user specified
+            overhang_use = overhang_input
             pick = self._spacing_candidates_for_overhang(overall_width, overhang_use, spacing_bounds)
             if not pick:
                 show_warning(self, "Layout", "Cannot satisfy constraints with the selected deck overhang.")
                 self._update_overall_bridge_width_display()
                 return
-            _, spacing_use, overhang_resolved, n = pick
+            _, spacing_use, _, n = pick
             # Capture old values for comparison
             old_overhang = overhang_input
             old_spacing = spacing_input
             old_girders = girders_input
-            self._set_layout_fields(spacing_use, overhang_resolved, n)
+            self._set_layout_fields(spacing_use, overhang_use, n)
             reason_parts = []
-            if abs(overhang_resolved - old_overhang) > 1e-6:
-                reason_parts.append(f"overhang {old_overhang:.2f}->{overhang_resolved:.2f}")
+            # Overhang should not change since user specified it
             if abs(spacing_use - old_spacing) > 1e-6:
-                reason_parts.append(f"spacing {old_spacing:.2f}->{spacing_use:.2f}")
+                reason_parts.append(f"spacing {old_spacing:.2f}→{spacing_use:.2f}")
             if old_girders is not None and n != old_girders:
-                reason_parts.append(f"girders {old_girders}->{n}")
+                reason_parts.append(f"girders {old_girders}→{n}")
+            
+            # Check if overhang exceeds girder spacing and show warning
+            warning_msg = None
+            if overhang_use > spacing_use + 1e-6:
+                warning_msg = f"Overhang ({overhang_use:.2f} m) exceeds girder spacing ({spacing_use:.2f} m)"
+            
             if reason_parts:
-                self._show_adjust_notice(", ".join(reason_parts))
+                self._show_adjust_notice(", ".join(reason_parts), warning_msg)
+            elif warning_msg:
+                self._show_adjust_notice(None, warning_msg)
             self._update_overall_bridge_width_display()
             return
 
@@ -713,35 +802,68 @@ class TypicalSectionDetailsTab(QWidget):
             # Capture old values for comparison
             old_overhang = overhang_input
             old_spacing = spacing_input
+            
             if n == 1:
+                # For n=1, overhang must be overall_width/2, spacing is not applicable
                 overhang_use = overall_width / 2.0
-                spacing_use = self._clamp(round(old_spacing, 1), *spacing_bounds)
+                spacing_use = self._clamp(round(old_spacing, 2), *spacing_bounds)
                 self._set_layout_fields(spacing_use, overhang_use, n)
                 reason_parts = []
                 if abs(overhang_use - old_overhang) > 1e-6:
-                    reason_parts.append(f"overhang {old_overhang:.2f}->{overhang_use:.2f}")
-                if abs(spacing_use - old_spacing) > 1e-6:
-                    reason_parts.append(f"spacing {old_spacing:.2f}->{spacing_use:.2f}")
+                    reason_parts.append(f"overhang {old_overhang:.2f}→{overhang_use:.2f}")
+                if abs(spacing_use - old_spacing) > 0.01:
+                    reason_parts.append(f"spacing {old_spacing:.2f}→{spacing_use:.2f}")
+                
+                warning_msg = None
+                if overhang_use > spacing_use + 1e-6:
+                    warning_msg = f"Overhang ({overhang_use:.2f} m) exceeds girder spacing ({spacing_use:.2f} m)"
+                
                 if reason_parts:
-                    self._show_adjust_notice(", ".join(reason_parts))
+                    self._show_adjust_notice(", ".join(reason_parts), warning_msg)
+                elif warning_msg:
+                    self._show_adjust_notice(None, warning_msg)
                 self._update_overall_bridge_width_display()
                 return
 
-            target_overhang = self._clamp(0.35 * old_spacing, o_min, o_max)
-            raw_spacing = (overall_width - 2.0 * target_overhang) / (n - 1)
-            spacing_use = self._clamp(round(raw_spacing, 1), *spacing_bounds)
+            # For n >= 2: overall_width = 2*overhang + (n-1)*spacing
+            # Keep n fixed, try to find spacing and overhang such that overhang is in ideal range
+            # Ideal overhang = 0.35 to 0.5 of spacing
+            
+            # Try to keep overhang in ideal range (0.35-0.5 of spacing)
+            # From formula: spacing = (overall_width - 2*overhang) / (n-1)
+            # If overhang = 0.35*spacing => spacing = overall_width / (n-1 + 0.7)
+            # If overhang = 0.5*spacing => spacing = overall_width / (n-1 + 1.0) = overall_width / n
+            
+            # Try target spacing that gives overhang in ideal range
+            ideal_spacing_for_0_35 = overall_width / (n - 1 + 0.7)
+            ideal_spacing_for_0_50 = overall_width / n
+            
+            # Pick spacing that's in the middle of the ideal range
+            target_spacing = (ideal_spacing_for_0_35 + ideal_spacing_for_0_50) / 2.0
+            spacing_use = self._clamp(round(target_spacing, 2), *spacing_bounds)
             overhang_use = (overall_width - (n - 1) * spacing_use) / 2.0
+            
+            # Check if overhang is within valid range
             if overhang_use < o_min - 1e-6 or overhang_use > o_max + 1e-6:
                 show_warning(self, "Layout", "Cannot satisfy constraints with the selected number of girders.")
                 return
+            
             self._set_layout_fields(spacing_use, overhang_use, n)
             reason_parts = []
-            if abs(spacing_use - old_spacing) > 1e-6:
-                reason_parts.append(f"spacing {old_spacing:.2f}->{spacing_use:.2f}")
+            if abs(spacing_use - old_spacing) > 0.01:
+                reason_parts.append(f"spacing {old_spacing:.2f}→{spacing_use:.2f}")
             if abs(overhang_use - old_overhang) > 1e-6:
-                reason_parts.append(f"overhang {old_overhang:.2f}->{overhang_use:.2f}")
+                reason_parts.append(f"overhang {old_overhang:.2f}→{overhang_use:.2f}")
+            
+            # Check if overhang exceeds girder spacing and show warning
+            warning_msg = None
+            if overhang_use > spacing_use + 1e-6:
+                warning_msg = f"Overhang ({overhang_use:.2f} m) exceeds girder spacing ({spacing_use:.2f} m)"
+            
             if reason_parts:
-                self._show_adjust_notice(", ".join(reason_parts))
+                self._show_adjust_notice(", ".join(reason_parts), warning_msg)
+            elif warning_msg:
+                self._show_adjust_notice(None, warning_msg)
             self._update_overall_bridge_width_display()
             return
 
@@ -758,14 +880,22 @@ class TypicalSectionDetailsTab(QWidget):
             _, n, spacing_use, overhang_use = pick
             self._set_layout_fields(spacing_use, overhang_use, n)
             reason_parts = []
-            if abs(spacing_use - old_spacing) > 1e-6:
-                reason_parts.append(f"spacing {old_spacing:.2f}->{spacing_use:.2f}")
+            if abs(spacing_use - old_spacing) > 0.01:
+                reason_parts.append(f"spacing {old_spacing:.2f}→{spacing_use:.2f}")
             if abs(overhang_use - old_overhang) > 1e-6:
-                reason_parts.append(f"overhang {old_overhang:.2f}->{overhang_use:.2f}")
+                reason_parts.append(f"overhang {old_overhang:.2f}→{overhang_use:.2f}")
             if old_girders is not None and n != old_girders:
-                reason_parts.append(f"girders {old_girders}->{n}")
+                reason_parts.append(f"girders {old_girders}→{n}")
+            
+            # Check if overhang exceeds girder spacing and show warning
+            warning_msg = None
+            if overhang_use > spacing_use + 1e-6:
+                warning_msg = f"Overhang ({overhang_use:.2f} m) exceeds girder spacing ({spacing_use:.2f} m)"
+            
             if reason_parts:
-                self._show_adjust_notice(", ".join(reason_parts))
+                self._show_adjust_notice(", ".join(reason_parts), warning_msg)
+            elif warning_msg:
+                self._show_adjust_notice(None, warning_msg)
         else:
             show_warning(self, "Layout", "Cannot satisfy layout constraints for the current overall width.")
         self._update_overall_bridge_width_display()

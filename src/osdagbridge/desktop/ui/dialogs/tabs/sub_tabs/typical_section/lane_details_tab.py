@@ -38,7 +38,7 @@ class LaneDetailsTab(QWidget):
         bind_name = field_def.get("bind")
         if field_def.get("id") == "lane_count" or bind_name == "lane_count_combo":
             try:
-                field.setFixedWidth(160)
+                field.setFixedWidth(180)
             except Exception:
                 pass
 
