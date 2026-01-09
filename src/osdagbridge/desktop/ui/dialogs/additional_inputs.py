@@ -12,7 +12,7 @@ from PySide6.QtWidgets import (
     QTextEdit, QDialog, QSizePolicy, QSizeGrip
 )
 from PySide6.QtCore import Qt, Signal, QSize
-from PySide6.QtGui import QDoubleValidator, QIntValidator
+from PySide6.QtGui import QDoubleValidator, QIntValidator, QStandardItemModel
 
 from osdagbridge.core.bridge_components.super_structure.girder import properties as girder_properties
 from osdagbridge.core.utils.common import *
@@ -178,6 +178,90 @@ SECTION_NAV_BUTTON_STYLE = """
     }
 """
 
+
+class CheckableComboBox(QComboBox):
+    """Multi-select combo box that keeps track of checked girders."""
+
+    checkedItemsChanged = Signal()
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        model = QStandardItemModel(self)
+        self.setModel(model)
+        self._updating_selection = False
+        model.itemChanged.connect(self._handle_item_changed)
+
+    def addItem(self, text, userData=None):
+        super().addItem(text, userData)
+        self._initialize_item(self.count() - 1)
+
+    def addItems(self, texts):
+        for text in texts:
+            self.addItem(text)
+
+    def _initialize_item(self, index):
+        item = self.model().item(index)
+        if not item:
+            return
+        item.setFlags(Qt.ItemIsEnabled | Qt.ItemIsUserCheckable)
+        if item.text().lower() == "all":
+            item.setData(Qt.Checked, Qt.CheckStateRole)
+        else:
+            item.setData(Qt.Unchecked, Qt.CheckStateRole)
+
+    def _handle_item_changed(self, item):
+        if self._updating_selection or item is None:
+            return
+        self._updating_selection = True
+        try:
+            text = item.text().strip().lower()
+            if text == "all":
+                if item.checkState() == Qt.Checked:
+                    self._uncheck_non_all_items()
+            else:
+                if item.checkState() == Qt.Checked:
+                    self._uncheck_all_item()
+        finally:
+            self._updating_selection = False
+        self.checkedItemsChanged.emit()
+
+    def _uncheck_non_all_items(self):
+        model = self.model()
+        for row in range(model.rowCount()):
+            item = model.item(row)
+            if not item:
+                continue
+            if item.text().strip().lower() == "all":
+                continue
+            item.setCheckState(Qt.Unchecked)
+
+    def _uncheck_all_item(self):
+        model = self.model()
+        for row in range(model.rowCount()):
+            item = model.item(row)
+            if item and item.text().strip().lower() == "all":
+                item.setCheckState(Qt.Unchecked)
+                break
+
+    def checked_items(self, include_all=False):
+        model = self.model()
+        selected = []
+        all_checked = False
+        for row in range(model.rowCount()):
+            item = model.item(row)
+            if not item or item.checkState() != Qt.Checked:
+                continue
+            text = item.text()
+            if text.strip().lower() == "all":
+                all_checked = True
+                if include_all:
+                    selected.append(text)
+            else:
+                selected.append(text)
+        if all_checked and not include_all:
+            return []
+        return [text for text in selected if text.strip().lower() != "all"]
+
 # =================================================================================
 #   MAIN IMPLEMENTATION
 # =================================================================================
@@ -301,6 +385,12 @@ class AdditionalInputs(QDialog):
         self.save_button.clicked.connect(lambda: self._show_placeholder_message("Save"))
         main_layout.addSpacing(6)
         main_layout.addWidget(action_bar)
+
+    def accept(self):
+        girder_tab = getattr(getattr(self, "section_properties_tab", None), "girder_tab", None)
+        if girder_tab and not girder_tab.validate_member_properties():
+            return
+        super().accept()
 
     def _show_placeholder_message(self, action_name):
         """Show placeholder message for action buttons"""
@@ -1289,6 +1379,8 @@ class SectionPropertiesTab(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.nav_buttons = []
+        self.section_widgets = []
+        self.girder_tab = None
         self.init_ui()
 
     def init_ui(self):
@@ -1374,6 +1466,9 @@ class SectionPropertiesTab(QWidget):
             nav_bar_layout.addWidget(btn)
 
             section_widget = widget_class()
+            if isinstance(section_widget, GirderDetailsTab):
+                self.girder_tab = section_widget
+            self.section_widgets.append(section_widget)
             self.stack.addWidget(section_widget)
 
         if self.nav_buttons:
@@ -1394,7 +1489,11 @@ class GirderDetailsTab(QWidget):
         super().__init__(parent)
         self.welded_rows = []
         self.rolled_rows = []
+        self.symmetry_row = []
         self.section_property_inputs = {}
+        self.segment_chain = {}
+        self._suppress_distance_updates = False
+        self.available_girders = [f"G{i}" for i in range(1, 6)]
         self.init_ui()
 
     def init_ui(self):
@@ -1427,25 +1526,31 @@ class GirderDetailsTab(QWidget):
         layout.setContentsMargins(18, 16, 18, 16)
         layout.setHorizontalSpacing(20)
         layout.setVerticalSpacing(12)
+        layout.setColumnStretch(1, 1)
+        layout.setColumnStretch(3, 1)
 
-        self.select_girder_combo = QComboBox()
-        self.select_girder_combo.addItems(["Girder 1", "Girder 2", "Girder 3", "Girder 4", "Girder 5", "All"])
+        self.select_girder_combo = CheckableComboBox()
+        self.select_girder_combo.addItems(["All"] + self.available_girders)
         apply_field_style(self.select_girder_combo)
         self._set_field_width(self.select_girder_combo)
+        layout.addWidget(self._create_label("Select Girder:"), 0, 0, Qt.AlignLeft | Qt.AlignVCenter)
+        layout.addWidget(self.select_girder_combo, 0, 1, 1, 3)
 
         self.span_combo = QComboBox()
-        self.span_combo.addItems(["Custom", "Full Length"])
+        self.span_combo.addItems(["Full Length", "Custom"])
         apply_field_style(self.span_combo)
         self._set_field_width(self.span_combo)
+        self.span_combo.currentTextChanged.connect(self._on_span_changed)
+        layout.addWidget(self._create_label("Span:"), 1, 0, Qt.AlignLeft | Qt.AlignVCenter)
+        layout.addWidget(self.span_combo, 1, 1, Qt.AlignLeft)
 
-        self.member_id_input = QLineEdit("G1-1")
+        self.member_id_input = QLineEdit()
+        self.member_id_input.setPlaceholderText("G1-1")
         apply_field_style(self.member_id_input)
         self._set_field_width(self.member_id_input)
-
-        self.member_select_combo = QComboBox()
-        self.member_select_combo.addItems(["Girder 1", "Girder 2", "Girder 3", "Girder 4", "Girder 5"])
-        apply_field_style(self.member_select_combo)
-        self._set_field_width(self.member_select_combo)
+        self.member_id_input.textChanged.connect(self._on_member_id_changed)
+        layout.addWidget(self._create_label("Member ID:"), 1, 2, Qt.AlignLeft | Qt.AlignVCenter)
+        layout.addWidget(self.member_id_input, 1, 3, Qt.AlignLeft)
 
         self.distance_start_input = QLineEdit("0")
         self.distance_end_input = QLineEdit("30")
@@ -1453,26 +1558,22 @@ class GirderDetailsTab(QWidget):
         apply_field_style(self.distance_end_input)
         self._set_field_width(self.distance_start_input, 80)
         self._set_field_width(self.distance_end_input, 80)
+        self.distance_start_input.editingFinished.connect(self._on_distance_start_changed)
+        self.distance_end_input.editingFinished.connect(self._on_distance_end_changed)
+        distance_row = self._build_distance_row()
+        layout.addWidget(self._create_label("Distance from left edge (m):"), 2, 0, Qt.AlignLeft | Qt.AlignTop)
+        layout.addLayout(distance_row, 2, 1, Qt.AlignLeft)
 
         self.length_input = QLineEdit("30")
         apply_field_style(self.length_input)
         self._set_field_width(self.length_input)
+        self.length_input.setReadOnly(True)
+        self.length_input.textChanged.connect(self._on_length_changed)
+        layout.addWidget(self._create_label("Length (m):"), 2, 2, Qt.AlignLeft | Qt.AlignVCenter)
+        layout.addWidget(self.length_input, 2, 3, Qt.AlignLeft)
 
-        layout.addWidget(self._create_label("Select Girder:"), 0, 0)
-        layout.addWidget(self.select_girder_combo, 0, 1)
-        layout.addWidget(self._create_label("Span:"), 0, 2)
-        layout.addWidget(self.span_combo, 0, 3)
-
-        layout.addWidget(self._create_label("Member ID:"), 1, 0)
-        layout.addWidget(self.member_id_input, 1, 1)
-        layout.addWidget(self._create_label("Length (m):"), 1, 2)
-        layout.addWidget(self.length_input, 1, 3)
-
-        layout.addWidget(self._create_label("Distance from left edge (m):"), 2, 0)
-        layout.addLayout(self._build_distance_row(), 2, 1)
-
-        layout.addWidget(self._create_label("Member:"), 2, 2)
-        layout.addWidget(self.member_select_combo, 2, 3)
+        self._setup_girder_selector()
+        self._on_span_changed(self.span_combo.currentText())
 
         return card
 
@@ -1518,7 +1619,7 @@ class GirderDetailsTab(QWidget):
         inputs_grid.setColumnStretch(1, 1)
 
         self.design_combo = QComboBox()
-        self.design_combo.addItems(["Customized", "Optimized"])
+        self.design_combo.addItems(["Optimized", "Customized"])
         apply_field_style(self.design_combo)
         row = self._add_box_row(inputs_grid, 0, "Design:", self.design_combo)
 
@@ -1530,7 +1631,7 @@ class GirderDetailsTab(QWidget):
         self.symmetry_combo = QComboBox()
         self.symmetry_combo.addItems(["Girder Symmetric", "Girder Unsymmetric"])
         apply_field_style(self.symmetry_combo)
-        row = self._add_box_row(inputs_grid, row, "Symmetry:", self.symmetry_combo)
+        row = self._add_box_row(inputs_grid, row, "Symmetry:", self.symmetry_combo, self.symmetry_row)
 
         self.total_depth_input = self._create_line_edit()
         row = self._add_box_row(
@@ -1707,10 +1808,12 @@ class GirderDetailsTab(QWidget):
 
         main_layout.addWidget(right_column)
 
+        self.design_combo.currentTextChanged.connect(self._on_design_changed)
         self.type_combo.currentTextChanged.connect(self._on_type_changed)
         self.is_section_combo.currentTextChanged.connect(self._update_preview)
         for watcher in (self.total_depth_input, self.top_width_input, self.bottom_width_input):
             watcher.textChanged.connect(self._update_preview)
+        self._on_design_changed(self.design_combo.currentText())
         self._on_type_changed(self.type_combo.currentText())
 
         return container
@@ -1752,11 +1855,320 @@ class GirderDetailsTab(QWidget):
         widget.setMaximumWidth(width)
         widget.setMinimumWidth(min(width, 160))
 
+    def _setup_girder_selector(self):
+        if hasattr(self.select_girder_combo, "checkedItemsChanged"):
+            self.select_girder_combo.checkedItemsChanged.connect(self._on_girders_selection_changed)
+        self._on_girders_selection_changed()
+
+    def _on_girders_selection_changed(self, *args):
+        if self.span_combo.currentText() == "Full Length":
+            self._update_member_id_edit_state()
+            return
+        current_text = self.member_id_input.text().strip()
+        if not self._is_valid_segment_id(current_text):
+            default_id = self._default_member_segment_id()
+            self._set_member_id_text(default_id)
+        self._update_member_id_edit_state()
+
+    def _get_selected_girders(self):
+        selected = []
+        if hasattr(self.select_girder_combo, "checked_items"):
+            selected = self.select_girder_combo.checked_items(include_all=True)
+        model = self.select_girder_combo.model()
+        if model is None:
+            return self.available_girders.copy()
+        all_checked = False
+        if selected:
+            all_checked = any(item.strip().lower() == "all" for item in selected)
+        else:
+            for row in range(model.rowCount()):
+                item = model.item(row)
+                if not item or item.checkState() != Qt.Checked:
+                    continue
+                text = item.text()
+                if text.strip().lower() == "all":
+                    all_checked = True
+                else:
+                    selected.append(text)
+        if all_checked or not selected:
+            return self.available_girders.copy()
+        normalized = [text for text in selected if text in self.available_girders]
+        return normalized if normalized else self.available_girders.copy()
+
+    def _default_member_segment_id(self, girders=None):
+        girders = girders or self._get_selected_girders()
+        base = girders[0] if girders else "G1"
+        return f"{base}-1"
+
+    def _set_member_id_text(self, value, block_signals=False):
+        if block_signals:
+            previous = self.member_id_input.blockSignals(True)
+            self.member_id_input.setText(value)
+            self.member_id_input.blockSignals(previous)
+        else:
+            self.member_id_input.setText(value)
+
+    def _is_valid_segment_id(self, member_id):
+        if not member_id or "-" not in member_id:
+            return False
+        base, index = self._split_member_id(member_id)
+        return bool(base and isinstance(index, int))
+
+    def _update_member_id_edit_state(self):
+        is_full_span = self.span_combo.currentText() == "Full Length"
+        self.member_id_input.setReadOnly(is_full_span)
+        if is_full_span:
+            girders = self._get_selected_girders()
+            display = ", ".join(girders) if girders else "G1"
+            self._set_member_id_text(display, block_signals=True)
+        else:
+            current_text = self.member_id_input.text().strip()
+            if not self._is_valid_segment_id(current_text):
+                default_id = self._default_member_segment_id()
+                self._set_member_id_text(default_id)
+        self._update_distance_field_states()
+
+    def _on_design_changed(self, text):
+        is_custom = text.lower() == "customized"
+        toggle_targets = (
+            self.type_combo,
+            self.symmetry_combo,
+            self.total_depth_input,
+            self.top_width_input,
+            self.bottom_width_input,
+        )
+        for widget in toggle_targets:
+            widget.setEnabled(is_custom)
+        self._apply_type_state()
+
     def _on_type_changed(self, text):
-        is_welded = text.lower() == "welded"
+        self._apply_type_state()
+        self._update_preview()
+
+    def _apply_type_state(self):
+        is_welded = self.type_combo.currentText().lower() == "welded"
+        is_custom = self.design_combo.currentText().lower() == "customized"
+
         self._set_row_visibility(self.welded_rows, is_welded)
         self._set_row_visibility(self.rolled_rows, not is_welded)
-        self._update_preview()
+
+        for label, widget in self.symmetry_row:
+            label.setVisible(is_welded)
+            widget.setVisible(is_welded)
+        self.symmetry_combo.setEnabled(is_welded and is_custom)
+
+        plate_widgets = (
+            self.total_depth_input,
+            self.web_thickness_combo,
+            self.top_width_input,
+            self.top_thickness_combo,
+            self.bottom_width_input,
+            self.bottom_thickness_combo,
+        )
+        for widget in plate_widgets:
+            widget.setEnabled(is_welded and is_custom)
+            widget.setVisible(is_welded)
+
+        self.is_section_combo.setVisible(not is_welded)
+        self.is_section_combo.setEnabled(not is_welded)
+
+    def _update_distance_field_states(self):
+        member_id = self.member_id_input.text().strip()
+        is_full_span = self.span_combo.currentText() == "Full Length"
+        if is_full_span:
+            self.distance_start_input.setReadOnly(True)
+            self.distance_end_input.setReadOnly(True)
+            return
+        if not self._is_valid_segment_id(member_id):
+            self.distance_start_input.setReadOnly(True)
+            self.distance_end_input.setReadOnly(True)
+            return
+        self.distance_start_input.setReadOnly(self._is_first_segment(member_id))
+        self.distance_end_input.setReadOnly(False)
+
+    def _on_span_changed(self, span_text):
+        is_full = span_text == "Full Length"
+        self.length_input.setReadOnly(not is_full)
+        if is_full:
+            self._apply_full_length_distances()
+        else:
+            member_id = self.member_id_input.text().strip()
+            if not self._is_valid_segment_id(member_id):
+                member_id = self._default_member_segment_id()
+                self._set_member_id_text(member_id)
+            self._load_segment_distances(member_id)
+        self._update_member_id_edit_state()
+
+    def _on_length_changed(self, _):
+        if self.span_combo.currentText() == "Full Length":
+            self._apply_full_length_distances()
+
+    def _apply_full_length_distances(self):
+        self._suppress_distance_updates = True
+        try:
+            total_span = self._get_total_span()
+            self._set_line_edit_value(self.distance_start_input, 0.0)
+            self._set_line_edit_value(self.distance_end_input, total_span)
+        finally:
+            self._suppress_distance_updates = False
+
+    def _on_member_id_changed(self, member_id):
+        member_id = member_id.strip()
+        if not member_id or self.span_combo.currentText() == "Full Length":
+            return
+        if not self._is_valid_segment_id(member_id):
+            self._update_distance_field_states()
+            return
+        if self._is_first_segment(member_id):
+            self._update_segment_record(member_id, start=0.0)
+        else:
+            previous_id = self._get_previous_segment_id(member_id)
+            previous_end = self.segment_chain.get(previous_id, {}).get("end") if previous_id else None
+            if previous_end is not None:
+                self._update_segment_record(member_id, start=previous_end)
+        self._load_segment_distances(member_id)
+        self._update_distance_field_states()
+
+    def _on_distance_start_changed(self):
+        if self._suppress_distance_updates:
+            return
+        current_id = self.member_id_input.text().strip()
+        if not current_id or not self._is_valid_segment_id(current_id):
+            return
+        if self._is_first_segment(current_id):
+            self._suppress_distance_updates = True
+            try:
+                self._set_line_edit_value(self.distance_start_input, 0.0)
+            finally:
+                self._suppress_distance_updates = False
+            self._update_segment_record(current_id, start=0.0)
+            return
+        value = self._parse_float(self.distance_start_input.text()) or 0.0
+        self._update_segment_record(current_id, start=value)
+
+    def _on_distance_end_changed(self):
+        if self._suppress_distance_updates:
+            return
+        current_id = self.member_id_input.text().strip()
+        if not current_id or self.span_combo.currentText() == "Full Length" or not self._is_valid_segment_id(current_id):
+            return
+        end_value = self._parse_float(self.distance_end_input.text())
+        if end_value is None:
+            end_value = 0.0
+
+        start_value = self._parse_float(self.distance_start_input.text())
+        if start_value is None:
+            start_value = self.segment_chain.get(current_id, {}).get("start")
+        if start_value is None and self._is_first_segment(current_id):
+            start_value = 0.0
+
+        if start_value is not None:
+            self._update_segment_record(current_id, start=start_value)
+        self._update_segment_record(current_id, end=end_value)
+        self._propagate_next_segment_start(current_id, end_value)
+
+    def _propagate_next_segment_start(self, member_id, next_start_value):
+        next_id = self._get_next_segment_id(member_id)
+        if not next_id:
+            return
+        self._update_segment_record(next_id, start=next_start_value)
+        if next_id == self.member_id_input.text().strip() and self.span_combo.currentText() != "Full Length":
+            self._load_segment_distances(next_id)
+
+    def _load_segment_distances(self, member_id):
+        if not member_id or not self._is_valid_segment_id(member_id):
+            return
+        record = self.segment_chain.setdefault(member_id, {})
+        if self._is_first_segment(member_id):
+            record.setdefault("start", 0.0)
+        elif "start" not in record:
+            previous_id = self._get_previous_segment_id(member_id)
+            if previous_id:
+                previous = self.segment_chain.get(previous_id, {})
+                if "end" in previous:
+                    record["start"] = previous["end"]
+
+        self._suppress_distance_updates = True
+        try:
+            if "start" in record:
+                self._set_line_edit_value(self.distance_start_input, record["start"])
+            else:
+                self.distance_start_input.clear()
+            if "end" in record:
+                self._set_line_edit_value(self.distance_end_input, record["end"])
+            else:
+                self.distance_end_input.clear()
+        finally:
+            self._suppress_distance_updates = False
+
+    def _update_segment_record(self, member_id, start=None, end=None):
+        if not member_id or not self._is_valid_segment_id(member_id):
+            return
+        record = self.segment_chain.setdefault(member_id, {})
+        if start is not None:
+            record["start"] = start
+        if end is not None:
+            record["end"] = end
+
+    def _get_total_span(self):
+        return self._parse_float(self.length_input.text()) or 0.0
+
+    def _is_first_segment(self, member_id):
+        _, index = self._split_member_id(member_id)
+        return index == 1
+
+    def _get_next_segment_id(self, member_id):
+        base, index = self._split_member_id(member_id)
+        if base is None or index is None:
+            return None
+        return f"{base}-{index + 1}"
+
+    def _get_previous_segment_id(self, member_id):
+        base, index = self._split_member_id(member_id)
+        if base is None or index is None or index <= 1:
+            return None
+        return f"{base}-{index - 1}"
+
+    def _split_member_id(self, member_id):
+        if "-" not in member_id:
+            return member_id, None
+        base, index = member_id.rsplit("-", 1)
+        try:
+            return base, int(index)
+        except ValueError:
+            return base, None
+
+    def _set_line_edit_value(self, line_edit, value):
+        if value is None:
+            return
+        text = f"{value:.3f}".rstrip("0").rstrip(".")
+        if not text:
+            text = "0"
+        previous_state = line_edit.blockSignals(True)
+        line_edit.setText(text)
+        line_edit.blockSignals(previous_state)
+
+    def validate_member_properties(self) -> bool:
+        if self.design_combo.currentText() != "Customized":
+            return True
+        required_fields = [
+            (self.total_depth_input, "Total Depth (d, mm)"),
+            (self.top_width_input, "Width of Top Flange (t_fw, mm)"),
+            (self.bottom_width_input, "Width of Bottom Flange (b_fw, mm)"),
+        ]
+        missing = []
+        for field, label in required_fields:
+            value = self._parse_float(field.text())
+            if value is None or value <= 0:
+                missing.append(label)
+        if missing:
+            QMessageBox.critical(
+                self,
+                "Incomplete Girder Inputs",
+                f"Please provide valid values for: {', '.join(missing)}.",
+            )
+            return False
+        return True
 
     def _create_inner_box(self):
         """Create a bordered box for grouped controls"""
