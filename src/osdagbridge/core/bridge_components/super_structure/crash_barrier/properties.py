@@ -41,35 +41,6 @@ def metallic_edge_barrier_load(barrier_type):
     }
 
 
-# FIG 1(a) — Rigid Barrier + RCC Railing (with Footpath)
-
-def rcc_railing_load():
-    geom = rcc_railing_area()
-
-    barrier_load = load_from_area(geom["barrier_area"], RCC_DENSITY)
-
-    total = barrier_load
-
-    return {
-        "type": geom["type"],
-        "rcc_barrier_load_kN_per_m": round(barrier_load, 3),
-        "total_load_kN_per_m": round(total, 3)
-    }
-
-# FIG 1(b) — Rigid Barrier + Steel Railing (with Footpath)
-
-def steel_railing_load():
-    geom = steel_railing_area()
-
-    barrier_load = load_from_area(geom["barrier_area"], RCC_DENSITY)
-
-    total = barrier_load
-
-    return {
-        "type": geom["type"],
-        "rcc_barrier_load_kN_per_m": round(barrier_load, 3),
-        "total_load_kN_per_m": round(total, 3)
-    }
 
 # FIG 2 — Rigid Barrier without Footpath
 
