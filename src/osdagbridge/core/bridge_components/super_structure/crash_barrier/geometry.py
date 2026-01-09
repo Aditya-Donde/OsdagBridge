@@ -71,51 +71,6 @@ def metallic_edge_barrier_area(barrier_type):
     }
 
 
-
-# FIG 1(a) : RCC Railing + Footpath
-def rcc_railing_area():
-    geom = IRC5_2015.cl_109_6_3_shapes(
-        barrier_type=KEY_CRASH_BARRIER_TYPE[2],     # Rigid
-        footpath=KEY_FOOTPATH[1],                   # With footpath
-        railing_type=KEY_RAILING_TYPE[0],           # RCC Railing
-        design_dict={},
-        crash_barrier_type=None
-    )
-
-    barrier_area = trapezoidal_area(
-        geom['crash_barrier_top_notch'],
-        geom['crash_barrier_width'],
-        geom['crash_barrier_height']
-    )
-
-    return {
-        "type": "Rigid Barrier with RCC Railing",
-        "barrier_area": barrier_area
-    }
-
-# FIG 1(b): Steel Railing + Footpath
-
-def steel_railing_area():
-    geom = IRC5_2015.cl_109_6_3_shapes(
-        barrier_type=KEY_CRASH_BARRIER_TYPE[2],     # Rigid
-        footpath=KEY_FOOTPATH[1],                   # With footpath
-        railing_type=KEY_RAILING_TYPE[1],           # Steel railing
-        design_dict={},
-        crash_barrier_type=None
-    )
-
-    barrier_area = trapezoidal_area(
-        geom['crash_barrier_top_notch'],
-        geom['crash_barrier_width'],
-        geom['crash_barrier_height']
-    )
-
-    return {
-        "type": "Rigid Barrier with Steel Railing",
-        "barrier_area": barrier_area
-    }
-
-
 # FIG-2 : Rigid Barrier Without Footpath
 
 def rigid_barrier_no_footpath_area():

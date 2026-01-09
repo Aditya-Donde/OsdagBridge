@@ -41,7 +41,6 @@ def metallic_edge_barrier_load(barrier_type):
     }
 
 
-
 # FIG 2 — Rigid Barrier without Footpath
 
 def rigid_barrier_no_footpath_load():
