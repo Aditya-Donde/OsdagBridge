@@ -956,7 +956,7 @@ class IRC6_2017:
         }
         return zone_factors
     
-    
+
     # Special Vehicle
 
     @staticmethod
@@ -978,7 +978,7 @@ class IRC6_2017:
             [18.0] * 20       # 20 trailer axles
         )
 
-        #  Convert tonne → kN 
+        # Convert tonne → kN
         wheel_loads = [ax * g for ax in axle_loads_tonne]
 
         #  Longitudinal Positions 

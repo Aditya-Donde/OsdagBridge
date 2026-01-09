@@ -12,6 +12,7 @@ Pa = 1
 MPa = N / ((mm) ** 2)
 GPa = kilo * MPa
 kPa = kilo * Pa
+g = 9.81
 
 # Constants for input types
 TYPE_MODULE = "module"
