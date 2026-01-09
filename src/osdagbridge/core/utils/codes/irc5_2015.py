@@ -329,7 +329,9 @@ class IRC5_2015(object):
                         'crash_barrier_radius2': 250,
                         'crash_barrier_top_notch': 175,
                         'crash_barrier_base_notch': 100,
-                        'crash_barrier_middle_length': 550
+                        'crash_barrier_middle_length': 550,        
+                        'wearing_course_thickness': 50,            
+
                     }
                     # IRC5_2015.cl_109_7_2_3_railing_height(railing_dims['railing_height'])
                     design_dict.update(railing_dims)
@@ -345,7 +347,8 @@ class IRC5_2015(object):
                         'crash_barrier_radius2': 250,
                         'crash_barrier_top_notch': 175,
                         'crash_barrier_base_notch': 100,
-                        'crash_barrier_middle_length': 550
+                        'crash_barrier_middle_length': 550,
+                        'wearing_course_thickness': 50
                     }
                     # IRC5_2015.cl_109_7_2_railing_height(railing_dims['railing_height'])
                     design_dict.update(railing_dims)
@@ -359,7 +362,9 @@ class IRC5_2015(object):
                         'crash_barrier_radius2': 250,
                         'crash_barrier_top_notch': 175,
                         'crash_barrier_base_notch': 100,
-                        'crash_barrier_middle_length': 750
+                        'crash_barrier_middle_length': 750,
+                        'wearing_course_thickness': 50
+                        
                     })
 
                 elif crash_barrier_type == KEY_RIGID_CRASH_BARRIER_TYPE[1]:  # High containment
@@ -370,7 +375,8 @@ class IRC5_2015(object):
                         'crash_barrier_radius2': 250,
                         'crash_barrier_top_notch': 250,
                         'crash_barrier_base_notch': 100,
-                        'crash_barrier_middle_length': 1200
+                        'crash_barrier_middle_length': 1200,
+                        'wearing_course_thickness': 50
                     })
 
         # METALLIC CRASH BARRIER – EDGE (IRC Fig. 4)
