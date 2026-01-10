@@ -165,13 +165,11 @@ class SectionPreviewWidget(QWidget):
                 return [self._build_angle_path(angle, QPointF(0, 0))]
             elif section_type == "double_angle_long":
                 # Long legs connected back-to-back vertically, short legs extend horizontally
-                # Like Figure 2: T-shape with long leg as the vertical stem
                 path1 = self._build_double_angle_long_path(angle, mirrored=False)
                 path2 = self._build_double_angle_long_path(angle, mirrored=True)
                 return [path1, path2]
             else:
                 # Short legs connected back-to-back vertically, long legs extend horizontally  
-                # Like Figure 3: cross/plus shape with short leg as the vertical stem
                 path1 = self._build_double_angle_short_path(angle, mirrored=False)
                 path2 = self._build_double_angle_short_path(angle, mirrored=True)
                 return [path1, path2]
@@ -267,7 +265,6 @@ class SectionPreviewWidget(QWidget):
         return path
 
     def _build_channel_path(self, ch: ChannelSection, origin: QPointF, mirror: bool = False) -> QPainterPath:
-        # Simple C-section with small rounded inner corners to distinguish from I-beam.
         # d = depth (vertical), b = flange width (horizontal from web outer to flange tip)
         # tw = web thickness (horizontal), tf = flange thickness (vertical)
         d, b, tw, tf, r1 = ch.d, ch.b, ch.tw, ch.tf, max(ch.r1, 0.0)
@@ -335,8 +332,8 @@ class SectionPreviewWidget(QWidget):
         painter.scale(scale, -scale)  # flip Y for engineering orientation
         painter.translate(-combined.center())
 
-        pen = QPen(QColor("#f7d65a"), 1.8 / max(scale, 1e-3))
-        fill_brush = QColor(255, 215, 0, 70)
+        pen = QPen(QColor("#90AF13"), 1.8 / max(scale, 1e-3))
+        fill_brush = QColor("#BBE31A")
 
         for path in self._geometry:
             painter.setPen(pen)
@@ -433,12 +430,12 @@ class SectionPreviewWidget(QWidget):
                 # For double channel, show tw at the center where the two webs meet, but keep it visible
                 self._draw_dim_line_h(painter, scale, -tw, 0, y_top - offset,
                                       "t", self._fmt_val(tw), subscript="w", outer_arrows=True, label_pos="below")
-                helper_pen = QPen(QColor("#90AF13"), 1.2 / max(scale, 1e-3))
+                helper_pen = QPen(QColor("#000000"), 1.2 / max(scale, 1e-3))
                 painter.setPen(helper_pen)
                 start_y = y_top 
                 painter.drawLine(QPointF(-tw, start_y), QPointF(0, start_y))
                 # Dashed leader lines from the web edges up to the dimension line to show what tw measures
-                dash_pen = QPen(QColor("#90AF13"), 0.9 / max(scale, 1e-3), Qt.DashLine)
+                dash_pen = QPen(QColor("#000000"), 0.9 / max(scale, 1e-3), Qt.DashLine)
                 painter.setPen(dash_pen)
                 # Draw from bottom of flange (y_top + tf) to dimension line (y_top - offset) 
                 painter.drawLine(QPointF(-tw, start_y + tf), QPointF(-tw, y_top - offset))
@@ -458,7 +455,7 @@ class SectionPreviewWidget(QWidget):
                          symbol: str, value: str, subscript: str = None,
                          outer_arrows: bool = False, label_pos: str = "above") -> None:
         """Draw horizontal dimension line with arrows and label."""
-        dim_pen = QPen(QColor("#90AF13"), 0.8 / max(scale, 1e-3))
+        dim_pen = QPen(QColor("#000000"), 0.8 / max(scale, 1e-3))
         painter.setPen(dim_pen)
         painter.setBrush(Qt.NoBrush)
 
@@ -470,27 +467,46 @@ class SectionPreviewWidget(QWidget):
         painter.drawLine(QPointF(x1, y - ext), QPointF(x1, y + ext))
         painter.drawLine(QPointF(x2, y - ext), QPointF(x2, y + ext))
 
-        # Arrowheads
-        arrow_size = 3.0
+        # Arrowheads - standard engineering 3:1 ratio (length:half-width)
+        arrow_length = 9.0
+        arrow_half_width = 3.0  # 3:1 ratio
+        painter.setBrush(QColor("#000000"))  # Fill the arrowheads
         if outer_arrows:
             # Arrows pointing inward from outside (for small dimensions)
-            ext_len = 8.0
+            ext_len = 12.0
             painter.drawLine(QPointF(x1 - ext_len, y), QPointF(x1, y))
             painter.drawLine(QPointF(x2 + ext_len, y), QPointF(x2, y))
-            # Left arrow pointing right
-            painter.drawLine(QPointF(x1, y), QPointF(x1 - arrow_size, y + arrow_size * 0.5))
-            painter.drawLine(QPointF(x1, y), QPointF(x1 - arrow_size, y - arrow_size * 0.5))
-            # Right arrow pointing left
-            painter.drawLine(QPointF(x2, y), QPointF(x2 + arrow_size, y + arrow_size * 0.5))
-            painter.drawLine(QPointF(x2, y), QPointF(x2 + arrow_size, y - arrow_size * 0.5))
+            # Left arrow pointing right (filled triangle)
+            left_arrow = QPainterPath()
+            left_arrow.moveTo(x1, y)
+            left_arrow.lineTo(x1 - arrow_length, y - arrow_half_width)
+            left_arrow.lineTo(x1 - arrow_length, y + arrow_half_width)
+            left_arrow.closeSubpath()
+            painter.drawPath(left_arrow)
+            # Right arrow pointing left (filled triangle)
+            right_arrow = QPainterPath()
+            right_arrow.moveTo(x2, y)
+            right_arrow.lineTo(x2 + arrow_length, y - arrow_half_width)
+            right_arrow.lineTo(x2 + arrow_length, y + arrow_half_width)
+            right_arrow.closeSubpath()
+            painter.drawPath(right_arrow)
         else:
             # Internal arrows (for large dimensions)
-            # Left arrow pointing right
-            painter.drawLine(QPointF(x1, y), QPointF(x1 + arrow_size, y + arrow_size * 0.5))
-            painter.drawLine(QPointF(x1, y), QPointF(x1 + arrow_size, y - arrow_size * 0.5))
-            # Right arrow pointing left
-            painter.drawLine(QPointF(x2, y), QPointF(x2 - arrow_size, y + arrow_size * 0.5))
-            painter.drawLine(QPointF(x2, y), QPointF(x2 - arrow_size, y - arrow_size * 0.5))
+            # Left arrow pointing right (filled triangle)
+            left_arrow = QPainterPath()
+            left_arrow.moveTo(x1, y)
+            left_arrow.lineTo(x1 + arrow_length, y - arrow_half_width)
+            left_arrow.lineTo(x1 + arrow_length, y + arrow_half_width)
+            left_arrow.closeSubpath()
+            painter.drawPath(left_arrow)
+            # Right arrow pointing left (filled triangle)
+            right_arrow = QPainterPath()
+            right_arrow.moveTo(x2, y)
+            right_arrow.lineTo(x2 - arrow_length, y - arrow_half_width)
+            right_arrow.lineTo(x2 - arrow_length, y + arrow_half_width)
+            right_arrow.closeSubpath()
+            painter.drawPath(right_arrow)
+        painter.setBrush(Qt.NoBrush)  # Reset brush
 
         # Label
         mid_x = (x1 + x2) / 2.0
@@ -501,7 +517,7 @@ class SectionPreviewWidget(QWidget):
                          symbol: str, value: str, subscript: str = None,
                          outer_arrows: bool = False, label_right: bool = False) -> None:
         """Draw vertical dimension line with arrows and label."""
-        dim_pen = QPen(QColor("#90AF13"), 0.8 / max(scale, 1e-3))
+        dim_pen = QPen(QColor("#000000"), 0.8 / max(scale, 1e-3))
         painter.setPen(dim_pen)
         painter.setBrush(Qt.NoBrush)
 
@@ -513,27 +529,46 @@ class SectionPreviewWidget(QWidget):
         painter.drawLine(QPointF(x - ext, y1), QPointF(x + ext, y1))
         painter.drawLine(QPointF(x - ext, y2), QPointF(x + ext, y2))
 
-        # Arrowheads
-        arrow_size = 3.0
+        # Arrowheads - standard engineering 3:1 ratio (length:half-width)
+        arrow_length = 9.0
+        arrow_half_width = 3.0  # 3:1 ratio
+        painter.setBrush(QColor("#000000"))  # Fill the arrowheads
         if outer_arrows:
             # Arrows pointing inward from outside (for small dimensions)
-            ext_len = 8.0
+            ext_len = 12.0
             painter.drawLine(QPointF(x, y1 - ext_len), QPointF(x, y1))
             painter.drawLine(QPointF(x, y2 + ext_len), QPointF(x, y2))
-            # Top arrow pointing down
-            painter.drawLine(QPointF(x, y1), QPointF(x + arrow_size * 0.5, y1 - arrow_size))
-            painter.drawLine(QPointF(x, y1), QPointF(x - arrow_size * 0.5, y1 - arrow_size))
-            # Bottom arrow pointing up
-            painter.drawLine(QPointF(x, y2), QPointF(x + arrow_size * 0.5, y2 + arrow_size))
-            painter.drawLine(QPointF(x, y2), QPointF(x - arrow_size * 0.5, y2 + arrow_size))
+            # Top arrow pointing down (filled triangle)
+            top_arrow = QPainterPath()
+            top_arrow.moveTo(x, y1)
+            top_arrow.lineTo(x - arrow_half_width, y1 - arrow_length)
+            top_arrow.lineTo(x + arrow_half_width, y1 - arrow_length)
+            top_arrow.closeSubpath()
+            painter.drawPath(top_arrow)
+            # Bottom arrow pointing up (filled triangle)
+            bottom_arrow = QPainterPath()
+            bottom_arrow.moveTo(x, y2)
+            bottom_arrow.lineTo(x - arrow_half_width, y2 + arrow_length)
+            bottom_arrow.lineTo(x + arrow_half_width, y2 + arrow_length)
+            bottom_arrow.closeSubpath()
+            painter.drawPath(bottom_arrow)
         else:
             # Internal arrows (for large dimensions)
-            # Top arrow pointing down
-            painter.drawLine(QPointF(x, y1), QPointF(x + arrow_size * 0.5, y1 + arrow_size))
-            painter.drawLine(QPointF(x, y1), QPointF(x - arrow_size * 0.5, y1 + arrow_size))
-            # Bottom arrow pointing up
-            painter.drawLine(QPointF(x, y2), QPointF(x + arrow_size * 0.5, y2 - arrow_size))
-            painter.drawLine(QPointF(x, y2), QPointF(x - arrow_size * 0.5, y2 - arrow_size))
+            # Top arrow pointing down (filled triangle)
+            top_arrow = QPainterPath()
+            top_arrow.moveTo(x, y1)
+            top_arrow.lineTo(x - arrow_half_width, y1 + arrow_length)
+            top_arrow.lineTo(x + arrow_half_width, y1 + arrow_length)
+            top_arrow.closeSubpath()
+            painter.drawPath(top_arrow)
+            # Bottom arrow pointing up (filled triangle)
+            bottom_arrow = QPainterPath()
+            bottom_arrow.moveTo(x, y2)
+            bottom_arrow.lineTo(x - arrow_half_width, y2 - arrow_length)
+            bottom_arrow.lineTo(x + arrow_half_width, y2 - arrow_length)
+            bottom_arrow.closeSubpath()
+            painter.drawPath(bottom_arrow)
+        painter.setBrush(Qt.NoBrush)  # Reset brush
 
         # Label to the side
         mid_y = (y1 + y2) / 2.0
@@ -622,8 +657,7 @@ class SectionPreviewWidget(QWidget):
                 painter.drawText(QPointF(cursor_x, py + y_shift + offset_y), text)
                 cursor_x += fm.horizontalAdvance(text)
 
-        # Single-pass text (green per request) without black outline to avoid double/halo effect
-        draw_segments(QColor("#90AF13"))
+        draw_segments(QColor("#000000"))
 
         painter.restore()
 
