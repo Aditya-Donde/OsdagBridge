@@ -9,6 +9,9 @@ from .geometry import (
     median_metallic_barrier_area,
 )
 
+from osdagbridge.core.utils.common import (
+    KEY_RAILING_TYPE
+)
 # MATERIAL DENSITIES
 RCC_DENSITY = 25      # kN/m³
 STEEL_DENSITY = 78    # kN/m³
@@ -41,17 +44,17 @@ def median_raised_kerb_load():
 def median_rcc_barrier_load():
     geom = median_rcc_barrier_area()
 
-    barrier_load = load_from_area(geom["rcc_barrier_area"], RCC_DENSITY)
-    kerb_load = load_from_area(geom["kerb_area"], RCC_DENSITY)
+    # single barrier
+    barrier_load_single = load_from_area(geom["rcc_barrier_area_single"], RCC_DENSITY)
+    kerb_load_single = load_from_area(geom["kerb_area_single"], RCC_DENSITY)
 
-    total_barrier = 2 * barrier_load
-    total_kerb = 2 * kerb_load
-    total = total_barrier + total_kerb
+    # median has TWO barriers + TWO kerbs
+    total = 2 * (barrier_load_single + kerb_load_single)
 
     return {
         "type": geom["type"],
-        "rcc_barrier_load_kN_per_m": round(barrier_load, 3),
-        "rcc_kerb_load_kN_per_m": round(kerb_load, 3),
+        "single_barrier_load_kN_per_m": round(barrier_load_single, 3),
+        "single_kerb_load_kN_per_m": round(kerb_load_single, 3),
         "total_load_kN_per_m": round(total, 3)
     }
 

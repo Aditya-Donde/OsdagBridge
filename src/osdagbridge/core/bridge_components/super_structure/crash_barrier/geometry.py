@@ -81,160 +81,6 @@ def circular_segment_area(R, theta):
     """
     return (R**2) * (math.tan(theta/2) - theta/2)
 
-# FIG 5(a)
-
-def median_raised_kerb_area():
-
-    geom = IRC5_2015.cl_109_6_3_shapes(
-        barrier_type=KEY_MEDIAN_TYPE[0],
-        footpath=None,
-        railing_type=None,
-        design_dict={},
-        crash_barrier_type=None
-    )
-
-    kerb_area = trapezoidal_area(
-        geom['kerb_top_width'],
-        geom['kerb_bottom_width'],
-        geom['kerb_height']
-    )
-
-    return {
-        "type": "Raised Kerb",
-        "kerb_area": kerb_area
-    }
-
-
-# FIG 5(b)
-
-def median_rcc_barrier_area():
-
-    geom = IRC5_2015.cl_109_6_3_shapes(
-        barrier_type=KEY_MEDIAN_TYPE[1],
-        footpath=None,
-        railing_type=None,
-        design_dict={},
-        crash_barrier_type=None
-    )
-
-    barrier_area = trapezoidal_area(
-        geom['barrier_top_width'],
-        geom['barrier_bottom_width'],
-        geom['barrier_height']
-    )
-
-    kerb_area = trapezoidal_area(
-        geom['kerb_top_width'],
-        geom['kerb_bottom_width'],
-        geom['kerb_height']
-    )
-
-    return {
-        "type": "RCC Crash Barrier",
-        "rcc_barrier_area": barrier_area,
-        "kerb_area": kerb_area
-    }
-
-# FIG 5 (C)
-
-def median_metallic_barrier_area(barrier_type):
-    """
-    barrier_type:
-        "Single"  → Single W-beam
-        "Double"  → Double W-beam
-    """
-
-    if barrier_type == "Double":
-        cb_type = KEY_METALLIC_CRASH_BARRIER_TYPE[1]   # Double W-beam
-    else:
-        cb_type = KEY_METALLIC_CRASH_BARRIER_TYPE[0]   # Single W-beam
-
-    geom = IRC5_2015.cl_109_6_3_shapes(
-        barrier_type=KEY_MEDIAN_TYPE[2],   # Metallic Median
-        footpath=None,
-        railing_type=None,
-        design_dict={},
-        crash_barrier_type=cb_type
-    )
-
-    kerb_area = trapezoidal_area(
-        geom['kerb_top_width'],
-        geom['kerb_bottom_width'],
-        geom['kerb_height']
-    )
-
-    post_area = post_and_spacer_area(
-        geom['post_section_area'],
-        geom['post_height'],
-        geom['spacer_height'],
-        geom['post_spacing']
-    )
-
-    beam_area = w_beam_area(
-        geom['w_beam_thickness'],
-        geom['w_beam_developed_length'],
-        geom['number_of_w_beams']
-    )
-
-    return {
-        "type": f"Median Metallic Barrier ({barrier_type})",
-        "steel_area": post_area + beam_area,
-        "kerb_area": kerb_area
-    }
-
-# FIG 1(a) : RCC Railing + Footpath
-# def rigid_barrier_with_railing_area(railing_type):
-#     """
-#     Computes RCC rigid crash barrier area (Fig 1a RCC railing, Fig 1b Steel railing)
-#     Only RCC barrier body is calculated (since railing load handled separately)
-#     """
-
-#     geom = IRC5_2015.cl_109_6_3_shapes(
-#         barrier_type=KEY_CRASH_BARRIER_TYPE[2],   # Rigid
-#         footpath=KEY_FOOTPATH[1],                 # With footpath (same for fig 1a & 1b)
-#         railing_type=railing_type,
-#         design_dict={},
-#         crash_barrier_type=None
-#     )
-
-#     W  = geom["crash_barrier_width"]
-#     Hm = geom["crash_barrier_middle_length"]
-#     T  = geom["crash_barrier_top_notch"]
-#     B  = geom["crash_barrier_base_notch"]
-#     R1 = geom["crash_barrier_radius1"]
-#     R2 = geom["crash_barrier_radius2"]
-
-#     #  TOP TRAPEZOID 
-#     top_bottom_width = (T + 50) / 2
-#     A_top = ((T + top_bottom_width) / 2) * Hm
-
-#     # MIDDLE REGION 
-
-#     A_middle_rect = 250 * top_bottom_width
-#     A_middle_tri  = 0.5 * 250 * top_bottom_width
-
-#     # BOTTOM RECTANGLE 
-#     A_bottom = W * B
-
-#     # CURVED PORTIONS 
-
-#     import math
-
-#     A_curve_big  = (math.pi * R2 * R2 / 4) - (R2 * R2 / 2)
-#     A_curve_small = (math.pi * R1 * R1 / 4) - (R1 * R1 / 2)
-
-#     A_curve = A_curve_big + A_curve_small
-
-#     total_area = A_top + A_middle_rect + A_middle_tri + A_bottom + A_curve
-
-#     return {
-#         "type": "Rigid Barrier with RCC Railing (Fig 1a)"
-#         if railing_type == KEY_RAILING_TYPE[0]
-#         else "Rigid Barrier with Steel Railing (Fig 1b)",
-#         "barrier_area": total_area
-#     }
-
-# fig 1
 
 def rigid_barrier_with_railing_area(railing):
     """
@@ -297,7 +143,7 @@ def rigid_barrier_with_railing_area(railing):
     A_trapezoids = A1 + A2 + A3
 
 
-    # CURVED SEGMENT AREAS (PPT FORMULA)
+    # CURVED SEGMENT AREAS 
 
     def segment_area(R, theta):
         return (R**2) * (math.tan(theta/2) - theta/2)
@@ -308,7 +154,7 @@ def rigid_barrier_with_railing_area(railing):
     # y = tan⁻¹(175/250)
     y = math.atan(175/250)
 
-    theta_big = y - x          # ≈ 0.52 rad  (same as your hand calc)
+    theta_big = y - x          # ≈ 0.52 rad 
 
     A_big_curve = segment_area(R2, theta_big)
 
