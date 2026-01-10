@@ -142,7 +142,7 @@ def rigid_barrier_with_railing_area(railing):
     A_trapezoids = A1 + A2 + A3
 
 
-    # CURVED SEGMENT AREAS (PPT FORMULA)
+    # CURVED SEGMENT AREAS 
 
     def segment_area(R, theta):
         return (R**2) * (math.tan(theta/2) - theta/2)
@@ -153,7 +153,7 @@ def rigid_barrier_with_railing_area(railing):
     # y = tan⁻¹(175/250)
     y = math.atan(175/250)
 
-    theta_big = y - x          # ≈ 0.52 rad  (same as your hand calc)
+    theta_big = y - x          # ≈ 0.52 rad 
 
     A_big_curve = segment_area(R2, theta_big)
 
