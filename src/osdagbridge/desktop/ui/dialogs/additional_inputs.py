@@ -2,6 +2,7 @@
 Additional Inputs Widget for Highway Bridge Design
 Provides detailed input fields for manual bridge parameter definition
 """
+import math
 import sys
 import os
 from PySide6.QtWidgets import (
@@ -99,6 +100,10 @@ def get_lineedit_style():
         QLineEdit:disabled{
             background: #f1f1f1;
             color: #666;
+        }
+        QLineEdit:read-only{
+            background: #f6f6f6;
+            color: #555555;
         }
         QLineEdit:hover {
             border: 1px solid #5d5d5d;
@@ -1490,6 +1495,7 @@ class GirderDetailsTab(QWidget):
         self.welded_rows = []
         self.rolled_rows = []
         self.symmetry_row = []
+        self.web_type_row = []
         self.section_property_inputs = {}
         self.segment_chain = {}
         self._suppress_distance_updates = False
@@ -1537,7 +1543,7 @@ class GirderDetailsTab(QWidget):
         layout.addWidget(self.select_girder_combo, 0, 1, 1, 3)
 
         self.span_combo = QComboBox()
-        self.span_combo.addItems(["Full Length", "Custom"])
+        self.span_combo.addItems(VALUES_GIRDER_SPAN_MODE)
         apply_field_style(self.span_combo)
         self._set_field_width(self.span_combo)
         self.span_combo.currentTextChanged.connect(self._on_span_changed)
@@ -1580,11 +1586,20 @@ class GirderDetailsTab(QWidget):
     def _build_distance_row(self):
         row = QHBoxLayout()
         row.setContentsMargins(0, 0, 0, 0)
-        row.setSpacing(8)
-        row.addWidget(self._create_small_label("Start"))
-        row.addWidget(self.distance_start_input)
-        row.addWidget(self._create_small_label("End"))
-        row.addWidget(self.distance_end_input)
+        row.setSpacing(16)
+
+        def _build_column(line_edit, caption):
+            column = QVBoxLayout()
+            column.setContentsMargins(0, 0, 0, 0)
+            column.setSpacing(2)
+            column.addWidget(line_edit)
+            label = self._create_small_label(caption)
+            label.setAlignment(Qt.AlignCenter)
+            column.addWidget(label, alignment=Qt.AlignCenter)
+            return column
+
+        row.addLayout(_build_column(self.distance_start_input, "Start"))
+        row.addLayout(_build_column(self.distance_end_input, "End"))
         return row
 
     def _build_section_card(self):
@@ -1619,17 +1634,17 @@ class GirderDetailsTab(QWidget):
         inputs_grid.setColumnStretch(1, 1)
 
         self.design_combo = QComboBox()
-        self.design_combo.addItems(["Optimized", "Customized"])
+        self.design_combo.addItems(VALUES_GIRDER_DESIGN_MODE)
         apply_field_style(self.design_combo)
         row = self._add_box_row(inputs_grid, 0, "Design:", self.design_combo)
 
         self.type_combo = QComboBox()
-        self.type_combo.addItems(["Welded", "Rolled"])
+        self.type_combo.addItems(VALUES_GIRDER_TYPE)
         apply_field_style(self.type_combo)
         row = self._add_box_row(inputs_grid, row, "Type:", self.type_combo)
 
         self.symmetry_combo = QComboBox()
-        self.symmetry_combo.addItems(["Girder Symmetric", "Girder Unsymmetric"])
+        self.symmetry_combo.addItems(VALUES_GIRDER_SYMMETRY)
         apply_field_style(self.symmetry_combo)
         row = self._add_box_row(inputs_grid, row, "Symmetry:", self.symmetry_combo, self.symmetry_row)
 
@@ -1643,7 +1658,7 @@ class GirderDetailsTab(QWidget):
         )
 
         self.web_thickness_combo = QComboBox()
-        self.web_thickness_combo.addItems(["All", "Custom"])
+        self.web_thickness_combo.addItems(VALUES_PROFILE_SCOPE)
         apply_field_style(self.web_thickness_combo)
         row = self._add_box_row(
             inputs_grid,
@@ -1663,7 +1678,7 @@ class GirderDetailsTab(QWidget):
         )
 
         self.top_thickness_combo = QComboBox()
-        self.top_thickness_combo.addItems(["All", "Custom"])
+        self.top_thickness_combo.addItems(VALUES_PROFILE_SCOPE)
         apply_field_style(self.top_thickness_combo)
         row = self._add_box_row(
             inputs_grid,
@@ -1683,7 +1698,7 @@ class GirderDetailsTab(QWidget):
         )
 
         self.bottom_thickness_combo = QComboBox()
-        self.bottom_thickness_combo.addItems(["All", "Custom"])
+        self.bottom_thickness_combo.addItems(VALUES_PROFILE_SCOPE)
         apply_field_style(self.bottom_thickness_combo)
         row = self._add_box_row(
             inputs_grid,
@@ -1704,8 +1719,8 @@ class GirderDetailsTab(QWidget):
         # Restraint/Web details box
         restraint_box = self._create_inner_box()
         restraint_layout = QVBoxLayout(restraint_box)
-        restraint_layout.setContentsMargins(12, 8, 12, 12)
-        restraint_layout.setSpacing(8)
+        restraint_layout.setContentsMargins(12, 6, 12, 10)
+        restraint_layout.setSpacing(6)
 
         restraint_title = self._create_label("Restraint & Web Details:")
         restraint_layout.addWidget(restraint_title)
@@ -1719,22 +1734,21 @@ class GirderDetailsTab(QWidget):
         restraint_grid.setColumnStretch(1, 1)
 
         self.torsion_combo = QComboBox()
-        self.torsion_combo.addItems(VALUES_TORSIONAL_RESTRAINT)
         apply_field_style(self.torsion_combo)
         row = self._add_box_row(restraint_grid, 0, "Torsional Restraint:", self.torsion_combo)
 
         self.warping_combo = QComboBox()
-        self.warping_combo.addItems(VALUES_WARPING_RESTRAINT)
         apply_field_style(self.warping_combo)
         row = self._add_box_row(restraint_grid, row, "Warping Restraint:", self.warping_combo)
 
         self.web_type_combo = QComboBox()
-        self.web_type_combo.addItems(["Thin Web with ITS", "Thick Web"])
         apply_field_style(self.web_type_combo)
-        self._add_box_row(restraint_grid, row, "Web Type*:", self.web_type_combo)
+        self._add_box_row(restraint_grid, row, "Web Type*:", self.web_type_combo, self.web_type_row)
 
         restraint_layout.addLayout(restraint_grid)
+        restraint_layout.addStretch(1)
         left_column_layout.addWidget(restraint_box)
+        self._configure_restraint_fields()
 
         main_layout.addWidget(left_column)
 
@@ -1939,6 +1953,9 @@ class GirderDetailsTab(QWidget):
         )
         for widget in toggle_targets:
             widget.setEnabled(is_custom)
+        if not is_custom:
+            self._lock_type_to_welded()
+            self._reset_section_state()
         self._apply_type_state()
 
     def _on_type_changed(self, text):
@@ -1969,8 +1986,27 @@ class GirderDetailsTab(QWidget):
             widget.setEnabled(is_welded and is_custom)
             widget.setVisible(is_welded)
 
+        for label, widget in self.web_type_row:
+            label.setVisible(is_welded)
+            widget.setVisible(is_welded)
+            widget.setEnabled(is_welded and is_custom)
+
         self.is_section_combo.setVisible(not is_welded)
         self.is_section_combo.setEnabled(not is_welded)
+
+    def _lock_type_to_welded(self):
+        welded_index = self.type_combo.findText("Welded", Qt.MatchFixedString)
+        if welded_index != -1 and self.type_combo.currentIndex() != welded_index:
+            previous = self.type_combo.blockSignals(True)
+            self.type_combo.setCurrentIndex(welded_index)
+            self.type_combo.blockSignals(previous)
+
+    def _reset_section_state(self):
+        for widget in (self.total_depth_input, self.top_width_input, self.bottom_width_input):
+            previous = widget.blockSignals(True)
+            widget.clear()
+            widget.blockSignals(previous)
+        self._update_preview()
 
     def _update_distance_field_states(self):
         member_id = self.member_id_input.text().strip()
@@ -2242,6 +2278,27 @@ class GirderDetailsTab(QWidget):
         self.is_section_combo.clear()
         self.is_section_combo.addItems(designations)
 
+    def _configure_restraint_fields(self):
+        torsion_items = self._constant_items("VALUES_TORSIONAL_RESTRAINT")
+        warping_items = self._constant_items("VALUES_WARPING_RESTRAINT")
+        web_type_items = self._constant_items("VALUES_WEB_TYPE")
+
+        self._reload_combo_items(self.torsion_combo, torsion_items)
+        self._reload_combo_items(self.warping_combo, warping_items)
+        self._reload_combo_items(self.web_type_combo, web_type_items)
+
+    @staticmethod
+    def _reload_combo_items(combo, items):
+        block = combo.blockSignals(True)
+        combo.clear()
+        combo.addItems(items)
+        combo.setCurrentIndex(0 if items else -1)
+        combo.blockSignals(block)
+
+    @staticmethod
+    def _constant_items(constant_name):
+        return list(globals().get(constant_name, []))
+
     def _update_preview(self):
         if not hasattr(self, "section_preview"):
             return
@@ -2284,6 +2341,7 @@ class GirderDetailsTab(QWidget):
 
         if hasattr(self, "preview_caption"):
             self.preview_caption.setText(caption)
+        self._update_section_properties()
 
     def _gather_welded_dimensions(self):
         depth = self._parse_float(self.total_depth_input.text())
@@ -2306,6 +2364,146 @@ class GirderDetailsTab(QWidget):
             "top_flange_thickness_mm": flange_thickness,
             "bottom_flange_thickness_mm": flange_thickness,
         }
+
+    def _update_section_properties(self):
+        if not self.section_property_inputs:
+            return
+        values = None
+        if self.type_combo.currentText().lower() == "welded":
+            dims = self._gather_welded_dimensions()
+            if dims:
+                values = self._compute_welded_properties(dims)
+        else:
+            designation = self.is_section_combo.currentText()
+            values = self._fetch_rolled_properties(designation)
+        if values:
+            self._apply_section_properties(values)
+        else:
+            self._clear_section_properties()
+
+    def _fetch_rolled_properties(self, designation):
+        if not designation:
+            return None
+        beam = girder_properties.get_beam_profile(designation)
+        if not beam:
+            return None
+        values = {
+            "Mass, M (Kg/m)": beam.mass_per_meter_kg,
+            "Sectional Area, a (cm2)": beam.area_cm2,
+            "2nd Moment of Area, Iz (cm4)": beam.moment_of_inertia_zz_cm4,
+            "2nd Moment of Area, Iy (cm4)": beam.moment_of_inertia_yy_cm4,
+            "Radius of Gyration, rz (cm)": beam.radius_of_gyration_z_cm,
+            "Radius of Gyration, ry (cm)": beam.radius_of_gyration_y_cm,
+            "Elastic Modulus, Zz (cm3)": beam.elastic_section_modulus_z_cm3,
+            "Elastic Modulus, Zy (cm3)": beam.elastic_section_modulus_y_cm3,
+            "Plastic Modulus, Zuz (cm3)": beam.plastic_section_modulus_z_cm3,
+            "Plastic Modulus, Zuy (cm3)": beam.plastic_section_modulus_y_cm3,
+            "Torsion Constant, It (cm4)": beam.torsion_constant_cm4,
+            "Warping Constant, Iw (cm6)": beam.warping_constant_cm6,
+        }
+        area = values.get("Sectional Area, a (cm2)")
+        iz = values.get("2nd Moment of Area, Iz (cm4)")
+        iy = values.get("2nd Moment of Area, Iy (cm4)")
+        if values.get("Radius of Gyration, rz (cm)") is None and area and iz:
+            values["Radius of Gyration, rz (cm)"] = math.sqrt(iz / area)
+        if values.get("Radius of Gyration, ry (cm)") is None and area and iy:
+            values["Radius of Gyration, ry (cm)"] = math.sqrt(iy / area)
+        return values
+
+    def _compute_welded_properties(self, dims):
+        depth = dims["depth_mm"]
+        top_width = dims["top_flange_width_mm"]
+        bottom_width = dims["bottom_flange_width_mm"]
+        web_thickness = dims["web_thickness_mm"]
+        top_thickness = dims["top_flange_thickness_mm"]
+        bottom_thickness = dims["bottom_flange_thickness_mm"]
+
+        h_web = max(depth - top_thickness - bottom_thickness, 1.0)
+        area_top = top_width * top_thickness
+        area_bottom = bottom_width * bottom_thickness
+        area_web = web_thickness * h_web
+        area_total_mm2 = area_top + area_bottom + area_web
+        area_cm2 = area_total_mm2 / 100.0
+        mass_kg_per_m = (area_total_mm2 / 1_000_000.0) * 7850.0
+
+        iz_web = (web_thickness * h_web ** 3) / 12.0
+        iz_top = (top_width * top_thickness ** 3) / 12.0
+        iz_bottom = (bottom_width * bottom_thickness ** 3) / 12.0
+        distance_top = h_web / 2.0 + top_thickness / 2.0
+        distance_bottom = h_web / 2.0 + bottom_thickness / 2.0
+        iz_top += area_top * distance_top ** 2
+        iz_bottom += area_bottom * distance_bottom ** 2
+        iz_cm4 = (iz_web + iz_top + iz_bottom) / 10000.0
+
+        iy_web = (h_web * web_thickness ** 3) / 12.0
+        iy_top = (top_thickness * top_width ** 3) / 12.0
+        iy_bottom = (bottom_thickness * bottom_width ** 3) / 12.0
+        iy_cm4 = (iy_web + iy_top + iy_bottom) / 10000.0
+
+        rz_cm = math.sqrt(iz_cm4 / area_cm2) if area_cm2 > 0 else None
+        ry_cm = math.sqrt(iy_cm4 / area_cm2) if area_cm2 > 0 else None
+
+        depth_cm = depth / 10.0
+        width_cm = max(top_width, bottom_width) / 10.0
+        zz_cm3 = iz_cm4 / (depth_cm / 2.0) if depth_cm > 0 else None
+        zy_cm3 = iy_cm4 / (width_cm / 2.0) if width_cm > 0 else None
+
+        zpl_major = (
+            area_top * distance_top +
+            area_bottom * distance_bottom +
+            (web_thickness * h_web ** 2) / 4.0
+        ) / 1000.0
+        zpl_minor = (
+            (top_thickness * top_width ** 2) / 4.0 +
+            (bottom_thickness * bottom_width ** 2) / 4.0 +
+            (h_web * web_thickness ** 2) / 4.0
+        ) / 1000.0
+
+        torsion_constant_cm4 = (
+            (top_width * top_thickness ** 3) / 3.0 +
+            (bottom_width * bottom_thickness ** 3) / 3.0 +
+            (h_web * web_thickness ** 3) / 3.0
+        ) / 10000.0
+
+        warping_constant_cm6 = (
+            ((top_width * top_thickness ** 3) + (bottom_width * bottom_thickness ** 3)) * h_web ** 2 / 24.0
+        ) / 1_000_000.0
+
+        return {
+            "Mass, M (Kg/m)": mass_kg_per_m,
+            "Sectional Area, a (cm2)": area_cm2,
+            "2nd Moment of Area, Iz (cm4)": iz_cm4,
+            "2nd Moment of Area, Iy (cm4)": iy_cm4,
+            "Radius of Gyration, rz (cm)": rz_cm,
+            "Radius of Gyration, ry (cm)": ry_cm,
+            "Elastic Modulus, Zz (cm3)": zz_cm3,
+            "Elastic Modulus, Zy (cm3)": zy_cm3,
+            "Plastic Modulus, Zuz (cm3)": zpl_major,
+            "Plastic Modulus, Zuy (cm3)": zpl_minor,
+            "Torsion Constant, It (cm4)": torsion_constant_cm4,
+            "Warping Constant, Iw (cm6)": warping_constant_cm6,
+        }
+
+    def _apply_section_properties(self, values):
+        for label, widget in self.section_property_inputs.items():
+            display = self._format_property_value(values.get(label))
+            previous = widget.blockSignals(True)
+            widget.setText(display)
+            widget.blockSignals(previous)
+
+    def _clear_section_properties(self):
+        for widget in self.section_property_inputs.values():
+            previous = widget.blockSignals(True)
+            widget.clear()
+            widget.blockSignals(previous)
+
+    @staticmethod
+    def _format_property_value(value):
+        if value is None:
+            return ""
+        if isinstance(value, (int, float)):
+            return f"{value:.2f}"
+        return str(value)
 
     @staticmethod
     def _parse_float(text):

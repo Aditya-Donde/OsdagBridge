@@ -199,12 +199,15 @@ VALUES_MEDIAN_TYPE = [
     "IRC 5 - Flush Median",
     "Custom"
 ]
-VALUES_GIRDER_TYPE = ["IS Standard Rolled Beam", "Plate Girder"]
-VALUES_GIRDER_SYMMETRY = ["Symmetrical", "Unsymmetrical"]
+VALUES_GIRDER_TYPE = ["Welded", "Rolled"]
+VALUES_GIRDER_SYMMETRY = ["Girder Symmetric", "Girder Unsymmetric"]
+VALUES_GIRDER_DESIGN_MODE = ["Optimized", "Customized"]
+VALUES_GIRDER_SPAN_MODE = ["Full Length", "Custom"]
+VALUES_PROFILE_SCOPE = ["All", "Custom"]
 VALUES_OPTIMIZATION_MODE = ["Optimized", "Customized", "All"]
 VALUES_TORSIONAL_RESTRAINT = ["Fully Restrained", "Partially Restrained - Support Connect", "Partially Restrained - Bearing Support"]
 VALUES_WARPING_RESTRAINT = ["Both Flange Restraint", "No Restraint"]
-VALUES_WEB_TYPE = ["Thin Web", "Thick Web"]
+VALUES_WEB_TYPE = ["Thin Web with ITS", "Thick Web with ITS"]
 VALUES_STIFFENER_DESIGN = ["Simple Post", "Tension Field"]
 VALUES_CROSS_BRACING_TYPE = ["K-bracing", "K-bracing with top bracket", "X-bracing", "X-bracing with bottom bracket", "X-bracing with top and bottom brackets"]
 VALUES_END_DIAPHRAGM_TYPE = ["Cross Bracing", "Rolled Beam", "Welded Beam"]
