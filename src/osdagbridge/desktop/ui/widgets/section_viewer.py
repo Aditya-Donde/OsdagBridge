@@ -313,21 +313,26 @@ class SectionPreviewWidget(QWidget):
             painter.drawText(self.rect(), Qt.AlignCenter, "No section")
             return
 
-        # Compute combined bounding box
+        # Compute combined bounding box for geometry
         rects = [path.boundingRect() for path in self._geometry]
         geom_bbox = QRectF()
         for r in rects:
             geom_bbox = geom_bbox.united(r)
-        combined = QRectF(geom_bbox)
-        margin = 45.0
-        combined.adjust(-margin, -margin, margin, margin)
 
-        if combined.width() <= 0 or combined.height() <= 0:
+        if geom_bbox.width() <= 0 or geom_bbox.height() <= 0:
             return
 
-        # Fit to widget
+        # Add fixed world-space padding to accommodate dimension lines/arrows
+        dim_pad_world = 30.0
+        combined = QRectF(geom_bbox)
+        combined.adjust(-dim_pad_world, -dim_pad_world, dim_pad_world, dim_pad_world)
+
+        # Ensure a minimum device-space padding so small sections do not look tiny and large ones do not overflow.
+        min_pixel_pad = 20.0
         rw, rh = self.width(), self.height()
-        scale = min(rw / combined.width(), rh / combined.height())
+        usable_w = max(rw - 2 * min_pixel_pad, 1.0)
+        usable_h = max(rh - 2 * min_pixel_pad, 1.0)
+        scale = min(usable_w / combined.width(), usable_h / combined.height())
         painter.translate(rw / 2.0, rh / 2.0)
         painter.scale(scale, -scale)  # flip Y for engineering orientation
         painter.translate(-combined.center())
@@ -467,9 +472,9 @@ class SectionPreviewWidget(QWidget):
         painter.drawLine(QPointF(x1, y - ext), QPointF(x1, y + ext))
         painter.drawLine(QPointF(x2, y - ext), QPointF(x2, y + ext))
 
-        # Arrowheads - standard engineering 3:1 ratio (length:half-width)
-        arrow_length = 9.0
-        arrow_half_width = 3.0  # 3:1 ratio
+        # Arrowheads - keep consistent pixel size by scaling down in world space (3:1 ratio)
+        arrow_length = 9.0 / max(scale, 1e-3)
+        arrow_half_width = 3.0 / max(scale, 1e-3)
         painter.setBrush(QColor("#000000"))  # Fill the arrowheads
         if outer_arrows:
             # Arrows pointing inward from outside (for small dimensions)
@@ -529,9 +534,9 @@ class SectionPreviewWidget(QWidget):
         painter.drawLine(QPointF(x - ext, y1), QPointF(x + ext, y1))
         painter.drawLine(QPointF(x - ext, y2), QPointF(x + ext, y2))
 
-        # Arrowheads - standard engineering 3:1 ratio (length:half-width)
-        arrow_length = 9.0
-        arrow_half_width = 3.0  # 3:1 ratio
+        # Arrowheads - keep consistent pixel size by scaling down in world space (3:1 ratio)
+        arrow_length = 9.0 / max(scale, 1e-3)
+        arrow_half_width = 3.0 / max(scale, 1e-3)
         painter.setBrush(QColor("#000000"))  # Fill the arrowheads
         if outer_arrows:
             # Arrows pointing inward from outside (for small dimensions)
