@@ -6,6 +6,7 @@ Module for IRC 5:2015 bridge design clauses.
 
 import math
 from osdagbridge.core.utils.common import *
+from osdagbridge.core.utils.common import KEY_MEDIAN_TYPE
 
 
 class IRC5_2015(object):
@@ -312,74 +313,147 @@ class IRC5_2015(object):
         if wearing_coat == KEY_WEARING_COAT[0] or wearing_coat == KEY_WEARING_COAT[1]:
             return True
 
-
     @staticmethod
     def cl_109_6_3_shapes(barrier_type, footpath, railing_type, design_dict, crash_barrier_type):
+        
         if barrier_type == KEY_CRASH_BARRIER_TYPE[2]:  # Rigid
-            if footpath == KEY_FOOTPATH[1] or footpath == KEY_FOOTPATH[2]:  # Single Side or Both Sides
+            if footpath == KEY_FOOTPATH[1] or footpath == KEY_FOOTPATH[2]:
                 if railing_type == KEY_RAILING_TYPE[0]:  # RCC
                     railing_dims = {
-                        'railing_height': None,  # Default height in mm, should be validated by cl_109_7_2_railing_height
-                        'railing_width': 275,  # in mm
+                        'railing_height': None,
+                        'railing_width': 275,
                         'railing_type': 'RCC',
-                        'crash_barrier_height': 900,  # in mm
-                        'crash_barrier_width': 450,  # in mm
-                        'crash_barrier_radius1': 50,  # in mm
-                        'crash_barrier_radius2': 250,  # in mm
-                        'crash_barrier_top_notch': 175,  # in mm
-                        'crash_barrier_base_notch': 100,  # in mm
-                        'crash_barrier_middle_length': 550  # in mm
+                        'crash_barrier_height': 900,
+                        'crash_barrier_width': 450,
+                        'crash_barrier_radius1': 50,
+                        'crash_barrier_radius2': 250,
+                        'crash_barrier_top_notch': 175,
+                        'crash_barrier_base_notch': 100,
+                        'crash_barrier_middle_length': 550,        
+                        'wearing_course_thickness': 50,            
+
                     }
-                    # Validate railing height
-                    IRC5_2015.cl_109_7_2_railing_height(railing_dims['railing_height'])
+                    # IRC5_2015.cl_109_7_2_3_railing_height(railing_dims['railing_height'])
                     design_dict.update(railing_dims)
-                    
+
                 elif railing_type == KEY_RAILING_TYPE[1]:  # steel
                     railing_dims = {
-                        'railing_height': None,  # Default height in mm, should be validated by cl_109_7_2_railing_height
-                        'railing_width': 200,  # in mm        check this
+                        'railing_height': None,
+                        'railing_width': 200,
                         'railing_type': 'steel',
-                        'crash_barrier_height': 900,  # in mm
-                        'crash_barrier_width': 450,  # in mm
-                        'crash_barrier_radius1': 50,  # in mm
-                        'crash_barrier_radius2': 250,  # in mm
-                        'crash_barrier_top_notch': 175,  # in mm
-                        'crash_barrier_base_notch': 100,  # in mm
-                        'crash_barrier_middle_length': 550  # in mm
+                        'crash_barrier_height': 900,
+                        'crash_barrier_width': 450,
+                        'crash_barrier_radius1': 50,
+                        'crash_barrier_radius2': 250,
+                        'crash_barrier_top_notch': 175,
+                        'crash_barrier_base_notch': 100,
+                        'crash_barrier_middle_length': 550,
+                        'wearing_course_thickness': 50
                     }
-                    # Validate railing height
-                    IRC5_2015.cl_109_7_2_railing_height(railing_dims['railing_height'])
+                    # IRC5_2015.cl_109_7_2_railing_height(railing_dims['railing_height'])
                     design_dict.update(railing_dims)
-            elif footpath == KEY_FOOTPATH[0] :  # None
+
+            elif footpath == KEY_FOOTPATH[0]:
                 if crash_barrier_type == KEY_RIGID_CRASH_BARRIER_TYPE[0]:  # IRC-5R
-                    crash_barrier_dims = {
-                        'crash_barrier_height': 1100,  # in mm
-                        'crash_barrier_width': 450,  # in mm
-                        'crash_barrier_radius1': 50, # in mm
-                        'crash_barrier_radius2': 250,  # in mm
-                        'crash_barrier_top_notch': 175,  # in mm
-                        'crash_barrier_base_notch': 100,  # in mm
-                        'crash_barrier_middle_length': 750  # in mm
-                    }
-                    design_dict.update(crash_barrier_dims)
-                elif crash_barrier_type == KEY_RIGID_CRASH_BARRIER_TYPE[1]:  # High Containment
-                    crash_barrier_dims = {
-                        'crash_barrier_height': 1550,  # in mm
-                        'crash_barrier_width': 525,  # in mm
-                        'crash_barrier_radius1': 50, # in mm
-                        'crash_barrier_radius2': 250,  # in mm
-                        'crash_barrier_top_notch': 250,  # in mm
-                        'crash_barrier_base_notch': 100,  # in mm
-                        'crash_barrier_middle_length': 1200  # in mm
-                    }
-                    design_dict.update(crash_barrier_dims)
+                    design_dict.update({
+                        'crash_barrier_height': 1100,
+                        'crash_barrier_width': 450,
+                        'crash_barrier_radius1': 50,
+                        'crash_barrier_radius2': 250,
+                        'crash_barrier_top_notch': 175,
+                        'crash_barrier_base_notch': 100,
+                        'crash_barrier_middle_length': 750,
+                        'wearing_course_thickness': 50
+                        
+                    })
 
+                elif crash_barrier_type == KEY_RIGID_CRASH_BARRIER_TYPE[1]:  # High containment
+                    design_dict.update({
+                        'crash_barrier_height': 1550,
+                        'crash_barrier_width': 525,
+                        'crash_barrier_radius1': 50,
+                        'crash_barrier_radius2': 250,
+                        'crash_barrier_top_notch': 250,
+                        'crash_barrier_base_notch': 100,
+                        'crash_barrier_middle_length': 1200,
+                        'wearing_course_thickness': 50
+                    })
 
+        # METALLIC CRASH BARRIER – EDGE (IRC Fig. 4)
+        elif barrier_type == KEY_CRASH_BARRIER_TYPE[1]:  # Semi-rigid
 
+            design_dict.update({
+                # Overall geometry
+                'crash_barrier_width': 550,
+                'crash_barrier_height': 950 + 100,
 
+                # RCC kerb
+                'kerb_height': 100,
+                'kerb_top_width': 500,
+                'kerb_bottom_width': 550,
 
+                # Steel post + spacer (ISMC 150)
+                'post_section_area': 2088,
+                'post_height': 950,
+                'spacer_height': 330,
+                'post_spacing': 1000,
 
+                # W-beam
+                'w_beam_thickness': 3,
+                'w_beam_developed_length': 750,
+                'number_of_w_beams': (
+                    2 if crash_barrier_type == KEY_METALLIC_CRASH_BARRIER_TYPE[1] else 1
+                )
+            })
 
+        # MEDIAN – FIG 5(a): RAISED KERB
+        elif barrier_type == KEY_MEDIAN_TYPE[0]:
 
+            design_dict.update({
+                'median_width': 1200,
+                'kerb_height': 100,
+                'kerb_top_width': 500,
+                'kerb_bottom_width': 550
+            })
 
+        # MEDIAN – FIG 5(b): RCC CRASH BARRIER
+        elif barrier_type == KEY_MEDIAN_TYPE[1]:
 
+            design_dict.update({
+                'median_width': 1200,
+
+                # RCC barrier
+                'barrier_height': 900,
+                'barrier_top_width': 175,
+                'barrier_bottom_width': 450,
+
+                # RCC kerb
+                'kerb_height': 100,
+                'kerb_top_width': 500,
+                'kerb_bottom_width': 550
+            })
+
+        # MEDIAN – FIG 5(c): METALLIC CRASH BARRIER
+        elif barrier_type == KEY_MEDIAN_TYPE[2]:
+
+            design_dict.update({
+                'median_width': 1200,
+
+                # Same as edge metallic barrier
+                'kerb_height': 100,
+                'kerb_top_width': 500,
+                'kerb_bottom_width': 550,
+
+                'post_section_area': 2088,
+                'post_height': 950,
+                'spacer_height': 330,
+                'post_spacing': 1000,
+
+                'w_beam_thickness': 3,
+                'w_beam_developed_length': 750,
+                'number_of_w_beams': (
+                    2 if crash_barrier_type == KEY_METALLIC_CRASH_BARRIER_TYPE[1] else 1
+                )
+            })
+
+        return design_dict

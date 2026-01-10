@@ -955,3 +955,83 @@ class IRC6_2017:
             'Zone V': 0.36
         }
         return zone_factors
+    
+
+    # Special Vehicle
+
+    @staticmethod
+    def cl_204_5_1_special_vehicle():
+
+        # IRC:6-2017 Clause 204.5 / 204.5.1
+        # Special Vehicle (Prime mover + 20 axle hydraulic trailer)
+
+        # Longitudinal Spacing 
+        dist12 = 3.200 * m
+        dist23 = 1.370 * m
+        dist34 = 5.389 * m
+        trailer_spacing = 1.500 * m
+
+        #  Axle Loads (tonnes) 
+        axle_loads_tonne = (
+            [6.0] +           # 1 steering axle
+            [9.5, 9.5] +      # 2 bogie axles
+            [18.0] * 20       # 20 trailer axles
+        )
+
+        # Convert tonne → kN
+        wheel_loads = [ax * g for ax in axle_loads_tonne]
+
+        #  Longitudinal Positions 
+        load_positions_x = [0.0]
+        load_positions_x.append(load_positions_x[-1] + dist12)
+        load_positions_x.append(load_positions_x[-1] + dist23)
+        load_positions_x.append(load_positions_x[-1] + dist34)
+
+        # 19 spacings → gives 20 trailer axle positions total
+        for _ in range(19):
+            load_positions_x.append(load_positions_x[-1] + trailer_spacing)
+
+        #  Transverse Positions 
+        load_positions_z = [-0.9, 0.9]
+
+        #  Totals 
+        total_load_tonne = sum(axle_loads_tonne)
+        total_load_kN = sum(wheel_loads)
+
+        #  Axle ↔ Position Explicit Mapping 
+
+        axle_load_map = []
+        location_table = []
+        header = f"{'Axle':>4} | {'X (m)':>7} | {'Load (t)':>8} | {'Load (kN)':>9}"
+        location_table.append(header)
+        location_table.append("-" * len(header))
+
+        for i in range(len(axle_loads_tonne)):
+            axle = {
+                'axle_no': i + 1,
+                'x': round(load_positions_x[i], 3),
+                'load_tonne': round(axle_loads_tonne[i], 2),
+                'load_kN': round(wheel_loads[i], 2)
+            }
+            axle_load_map.append(axle)
+
+            # printable line
+            location_table.append(
+                f"{axle['axle_no']:>4} | {axle['x']:>7.3f} | {axle['load_tonne']:>8.2f} | {axle['load_kN']:>9.2f}"
+            )
+
+        pretty_table = "\n".join(location_table)
+
+
+        assert len(load_positions_x) == len(axle_loads_tonne), \
+            "Axle count and position count mismatch"
+
+        return {
+            'x': load_positions_x,
+            'z': load_positions_z,
+            'wheel_loads': wheel_loads,
+            'total_load_kN': round(total_load_kN, 3),
+            'total_load_tonne': round(total_load_tonne, 3),
+            'axle_load_map': axle_load_map,
+            'pretty_axle_table': pretty_table
+        }
