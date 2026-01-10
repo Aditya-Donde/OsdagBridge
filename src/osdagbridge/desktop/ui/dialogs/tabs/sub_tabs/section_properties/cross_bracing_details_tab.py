@@ -232,7 +232,10 @@ class CrossBracingDetailsTab(QWidget):
         layout = QVBoxLayout(box)
         layout.setContentsMargins(12, 10, 12, 10)
         layout.setSpacing(8)
-        layout.addWidget(self._create_heading_label(title))
+        # Preview headings should be visually stronger — make them bold only here
+        heading = QLabel(title)
+        heading.setStyleSheet("font-size: 12px; font-weight: 700; color: #4b4b4b; border: none;")
+        layout.addWidget(heading)
         image = self._create_image_placeholder(150)
         layout.addWidget(image)
         return box, image
