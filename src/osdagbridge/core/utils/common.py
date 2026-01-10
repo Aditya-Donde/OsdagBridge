@@ -28,10 +28,10 @@ KEY_DISP_STRUCTURE_TYPE = "Structure Type"
 DISP_TITLE_PROJECT = "Project Location"
 KEY_DISP_PROJECT_LOCATION = "City in India*"
 DISP_TITLE_GEOMETRIC = "Geometric Details"
-KEY_DISP_SPAN = "Span*"
-KEY_DISP_CARRIAGEWAY_WIDTH = "Carriageway Width*"
+KEY_DISP_SPAN = "Span (m)* [20-45]"
+KEY_DISP_CARRIAGEWAY_WIDTH = "Carriageway Width (m)* [≥4.25]"
 KEY_DISP_FOOTPATH = "Footpath"
-KEY_DISP_SKEW_ANGLE = "Skew Angle (degrees)"
+KEY_DISP_SKEW_ANGLE = "Skew Angle (degrees) [±15]"
 DISP_TITLE_MATERIAL = "Material Inputs"
 KEY_DISP_GIRDER = "Girder"
 KEY_DISP_CROSS_BRACING = "Cross Bracing"
@@ -239,36 +239,3 @@ def connectdb(table_name, popup=None):
         return VALUES_MATERIAL
     return []
 
-# Unit definitions
-kilo = 1e3
-milli = 1e-3
-N = 1
-m = 1
-mm = milli * m
-m2 = m ** 2
-m3 = m ** 3
-m4 = m ** 4
-kN = kilo * N
-Pa = 1
-MPa = N / ((mm) ** 2)
-GPa = kilo * MPa
-kPa = kilo * Pa
-
-
-KEY_FOOTPATH = ["None", "Single Side", "Both Sides"]
-KEY_SAFETY_KERB_MIN_WIDTH = 750  # in mm
-KEY_SAFETY_KERB_PLACEMENT = ['Single Side', 'Both Sides', ]
-KEY_FOOTPATH_CLEAR_MIN_WIDTH = 1500  # in mm
-KEY_RAILING_MIN_HEIGHT = [1100, 1250] # in mm
-KEY_CYCLE_TRACK = ['None', 'Single', 'Both Sides'] 
-KEY_MIN_SKEW_ANGLE = 30  # in degrees
-KEY_WEARING_COAT = ['bituminous', 'concrete']
-KEY_CRASH_BARRIER_TYPE = ['Flexible', 'Semi-Rigid', 'Rigid']
-KEY_RAILING_TYPE = ['RCC', 'steel']
-KEY_MIN_LOGITUDINAL_GRADIENT = 0.3  # in percent
-KEY_MAX_BRIDGE_LENGTH_SINGLE_CURVE = 30  # in meters
-KEY_RIGID_CRASH_BARRIER_TYPE = ['IRC-5R', 'High Containment']
-
-KEY_MIN_SINGLE_LANE = 4.25  # in meters
-KEY_MIN_DOUBLE_LANE = 7.5  # in meters  
-KEY_ADDITIONAL_LANE = 3.5  # in meters
