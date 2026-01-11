@@ -53,13 +53,11 @@ def median_raised_kerb_area():
 def median_rcc_crash_barrier_area():
     """
     IRC Fig 5(b) Median with RCC crash barrier.
-    Accurate area calculation using:
+    Area calculation using:
       - TAN-based trapezoid splitting (3 trapezoids)
       - curve correction via segment formula:
             Aseg = R^2 ( tan(theta/2) - theta/2 )
-      - multiply by 2 (two barriers in median)
-
-    Returns area for 1 barrier and total area for 2 barriers.
+      - multiply by 2 (median has 2 barriers)
     """
 
     import math
@@ -72,51 +70,44 @@ def median_rcc_crash_barrier_area():
         crash_barrier_type=None
     )
 
-    # ----- BASIC DIMENSIONS FROM IRC -----
-    H_total = geom["barrier_height"]          # 900
-    W_base  = geom["barrier_bottom_width"]    # 450
-    W_top   = geom["barrier_top_width"]       # 175
+    H_total = geom["barrier_height"]
+    W_base  = geom["barrier_bottom_width"]
+    W_top   = geom["barrier_top_width"]
 
-    # Split heights from figure
-    H1 = 500     # top portion
-    H2 = 250     # middle portion
-    H3 = 100     # base portion
-    assert H1 + H2 + H3 == H_total
+    H1 = geom["barrier_split_h1"]
+    H2 = geom["barrier_split_h2"]
 
-    # Curve radii
-    R_small = 50
-    R_big   = 250
+    wearing = geom["wearing_course_thickness"]
+    H3 = geom["barrier_split_h3"] + wearing
 
-    # Total widening = (450 - 175) = 275.
-    # tan(theta) = side_increase / height
-    side_increase_total = (W_base - W_top) / 2  # = 137.5
+    R_small = geom["barrier_radius_small"]
+    R_big   = geom["barrier_radius_big"]
+
+    # x = atan(offset / H1)
+    curve_offset = geom["barrier_curve_offset"]
+
+    side_increase_total = (W_base - W_top) / 2
     theta = math.atan(side_increase_total / H_total)
 
-    # W(h) = W_top + 2 * (h * tan(theta))
-
-    # Level after H1
+    # Width at key heights
     W1 = W_top + 2 * (H1 * math.tan(theta))
-
     W2 = W_top + 2 * ((H1 + H2) * math.tan(theta))
-
-    # Bottom should match base width approximately
     W3 = W_base
 
-    # 3 TAN-BASED TRAPEZOIDS
-
+    # AREAS OF 3 TRAPEZOIDS 
     A1 = 0.5 * (W_top + W1) * H1
     A2 = 0.5 * (W1 + W2) * H2
     A3 = 0.5 * (W2 + W3) * H3
 
     A_traps = A1 + A2 + A3
 
+    # CURVE SEGMENT AREA FUNCTION
     def seg_area(R, ang):
         return (R**2) * (math.tan(ang/2) - ang/2)
 
-    # x = atan(50/500)   (small offset)
-    # y = atan(W_top/250)
-    x = math.atan(50 / H1)         # atan(50/500)
-    y = math.atan(W_top / H2)      # atan(175/250)
+    # angles from IRC-based dimensions
+    x = math.atan(curve_offset / H1)
+    y = math.atan(W_top / H2)
 
     theta_big = y - x
     A_big = seg_area(R_big, theta_big)
@@ -126,47 +117,17 @@ def median_rcc_crash_barrier_area():
 
     A_curve = A_big - A_small
 
-    # TOTAL AREA
-
+    # TOTAL AREAS 
     area_one = A_traps + A_curve
-    area_total = 2 * area_one  # median has 2 barriers
+    area_total = 2 * area_one   # median has 2 barriers
 
     return {
         "type": "Median RCC Crash Barrier (Fig 5b)",
+        "one_side_area": round(area_one, 3),
+        "total_area": round(area_total, 3),
         "theta_rad": round(theta, 6),
-        "one_side_area_mm2": round(area_one, 3),
-        "total_area_mm2": round(area_total, 3),
     }
 
-
-
-# def median_rcc_barrier_area():
-
-#     geom = IRC5_2015.cl_109_6_3_shapes(
-#         barrier_type=KEY_MEDIAN_TYPE[1],
-#         footpath=None,
-#         railing_type=None,
-#         design_dict={},
-#         crash_barrier_type=None
-#     )
-
-#     barrier_area = trapezoidal_area(
-#         geom['barrier_top_width'],
-#         geom['barrier_bottom_width'],
-#         geom['barrier_height']
-#     )
-
-#     kerb_area = trapezoidal_area(
-#         geom['kerb_top_width'],
-#         geom['kerb_bottom_width'],
-#         geom['kerb_height']
-#     )
-
-#     return {
-#         "type": "RCC Crash Barrier",
-#         "rcc_barrier_area": barrier_area,
-#         "kerb_area": kerb_area
-#     }
 
 # FIG 5 (C)
 
