@@ -416,22 +416,34 @@ class IRC5_2015(object):
                 'kerb_bottom_width': 550
             })
 
+
         # MEDIAN – FIG 5(b): RCC CRASH BARRIER
+
         elif barrier_type == KEY_MEDIAN_TYPE[1]:
 
-            design_dict.update({
+                design_dict.update({
                 'median_width': 1200,
 
-                # RCC barrier
+                # RCC barrier (overall)
                 'barrier_height': 900,
                 'barrier_top_width': 175,
                 'barrier_bottom_width': 450,
 
-                # RCC kerb
+                # HEIGHTS
+                'barrier_split_h1': 500,   # top portion height
+                'barrier_split_h2': 250,   # middle portion height
+                'barrier_split_h3': 100,   # base portion height
+                'barrier_radius_small': 50,
+                'barrier_radius_big': 250,
+                'wearing_course_thickness': 50,
+                'barrier_curve_offset': 50,
+
+                # RCC kerb (median kerb)
                 'kerb_height': 100,
                 'kerb_top_width': 500,
                 'kerb_bottom_width': 550
             })
+
 
         # MEDIAN – FIG 5(c): METALLIC CRASH BARRIER
         elif barrier_type == KEY_MEDIAN_TYPE[2]:
