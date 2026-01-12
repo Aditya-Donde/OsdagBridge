@@ -27,6 +27,10 @@ from osdagbridge.core.bridge_components.super_structure.railing.builder import (
     build_railings
 )
 
+from osdagbridge.core.bridge_components.super_structure.median.builder import (
+    build_median
+)
+
 # ---------------------------------------------------------------------
 # GIRDERS PARAMETERS
 # ---------------------------------------------------------------------
@@ -48,7 +52,7 @@ girder_spacing = 2750
 carriageway_width = 12000
 deck_thickness = 400
 
-footpath_config = "BOTH"          # NONE / LEFT / RIGHT / BOTH
+footpath_config = "LEFT"          # NONE / LEFT / RIGHT / BOTH
 crash_barrier_base_width = 600
 footpath_width = 1500
 railing_width = 300
@@ -59,6 +63,13 @@ railing_width = 300
 
 crash_barrier_width = 175
 crash_barrier_height = 900
+
+# ---------------------------------------------------------------------
+# MEDIAN PARAMETERS
+# ---------------------------------------------------------------------
+
+enable_median = True
+median_gap = 800
 
 # ---------------------------------------------------------------------
 # RAILING PARAMETERS
@@ -129,7 +140,27 @@ def generate_cad():
     )
 
     # -------------------------
-    # Railing system (FIXED)
+    # Median system
+    # -------------------------
+    median_barriers = []
+
+    if enable_median:
+        carriageway_center_y = deck_out["carriageway_center_y"]
+
+        median_barriers = build_median(
+            span_length=span_length_L,
+            deck_top_z=deck_out["deck_top_z"],
+            carriageway_center_y=carriageway_center_y,
+
+            crash_barrier_width=crash_barrier_width,
+            crash_barrier_height=crash_barrier_height,
+            crash_barrier_base_width=crash_barrier_base_width,
+
+            median_gap=median_gap
+        )
+
+    # -------------------------
+    # Railing system
     # -------------------------
     railings = build_railings(
         span_length=span_length_L,
@@ -156,5 +187,6 @@ def generate_cad():
         "total_deck_width": deck_out["total_deck_width"],
 
         "crash_barriers": crash_barriers,
+        "median_barriers": median_barriers,
         "railings": railings
     }
