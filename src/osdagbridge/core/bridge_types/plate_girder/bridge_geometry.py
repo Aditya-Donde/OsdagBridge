@@ -25,12 +25,12 @@ class PatchLoadGeometry:
 class SectionComponent:
     name: str
     width: float
-    x_start: float
-    x_end: float
+    z_start: float
+    z_end: float
 
     @property
     def center(self) -> float:
-        return 0.5 * (self.x_start + self.x_end)
+        return 0.5 * (self.z_start + self.z_end)
     
 
 @classmethod
@@ -44,8 +44,8 @@ class BridgeGeometry:
     """
     Defines global coordinate system of the bridge.
     Origin: bottom-left corner of deck
-    x → width
-    z → span
+    x → span
+    z → width
     """
 
     def __init__(self, span: float, width: float):
@@ -55,9 +55,9 @@ class BridgeGeometry:
     def bounds(self):
         return {
             "x_min": 0.0,
-            "x_max": self.width,
+            "x_max": self.span,
             "z_min": 0.0,
-            "z_max": self.span,
+            "z_max": self.width,
         }
 
 
@@ -80,25 +80,24 @@ class CrashBarrier(BridgeComponent):
 
     def to_global(self) -> LineLoadGeometry:
         if self.side == "left":
-            x = self.offset
+            z = self.offset
         elif self.side == "right":
-            x = self.bridge.width - self.offset
+            z = self.bridge.width - self.offset
         else:
             raise ValueError("side must be 'left' or 'right'")
 
         return LineLoadGeometry(
-            start=Point(x=x, z=0.0),
-            end=Point(x=x, z=self.bridge.span),
+            start=Point(x=0.0, z=z),
+            end=Point(x=self.bridge.span, z=z),
         )
-
 
 class DeckLoad(BridgeComponent):
     def to_global(self) -> PatchLoadGeometry:
         return PatchLoadGeometry(
             p1=Point(0.0, 0.0),
-            p2=Point(self.bridge.width, 0.0),
-            p3=Point(self.bridge.width, self.bridge.span),
-            p4=Point(0.0, self.bridge.span),
+            p2=Point(self.bridge.span, 0.0),
+            p3=Point(self.bridge.span, self.bridge.width),
+            p4=Point(0.0, self.bridge.width),
         )
 
 
@@ -109,10 +108,10 @@ class OverlayLoad(BridgeComponent):
 
     def to_global(self) -> PatchLoadGeometry:
         return PatchLoadGeometry(
-            p1=Point(self.c, 0.0),
-            p2=Point(self.bridge.width - self.c, 0.0),
-            p3=Point(self.bridge.width - self.c, self.bridge.span),
-            p4=Point(self.c, self.bridge.span),
+            p1=Point(0.0, self.c),
+            p2=Point(self.bridge.span, self.c),
+            p3=Point(self.bridge.span, self.bridge.width - self.c),
+            p4=Point(0.0, self.bridge.width - self.c),
         )
 
 
@@ -123,11 +122,11 @@ class RailingLoad(BridgeComponent):
         self.side = side
 
     def to_global(self) -> LineLoadGeometry:
-        x = self.offset if self.side == "left" else self.bridge.width - self.offset
+        z = self.offset if self.side == "left" else self.bridge.width - self.offset
 
         return LineLoadGeometry(
-            start=Point(x=x, z=0.0),
-            end=Point(x=x, z=self.bridge.span),
+            start=Point(x=0.0, z=z),
+            end=Point(x=self.bridge.span, z=z),
         )
 
 
@@ -138,11 +137,11 @@ class MedianLoad(BridgeComponent):
         self.side = side
 
     def to_global(self) -> LineLoadGeometry:
-        x = self.offset if self.side == "left" else self.bridge.width - self.offset
+        z = self.offset if self.side == "left" else self.bridge.width - self.offset
 
         return LineLoadGeometry(
-            start=Point(x=x, z=0.0),
-            end=Point(x=x, z=self.bridge.span),
+            start=Point(x=0.0, z=z),
+            end=Point(x=self.bridge.span, z=z),
         )
     
 
@@ -154,10 +153,10 @@ class FootpathLoad(BridgeComponent):
 
     def to_global(self) -> PatchLoadGeometry:
         return PatchLoadGeometry(
-            p1=Point(self.start, 0.0),
-            p2=Point(self.start + self.width, 0.0),
-            p3=Point(self.start + self.width, self.bridge.span),
-            p4=Point(self.start, self.bridge.span),
+            p1=Point(0.0, self.start),
+            p2=Point(self.bridge.span, 0.0),
+            p3=Point(self.bridge.span, self.start + self.width),
+            p4=Point(0.0, self.start + self.width),
         )
 
 
@@ -176,26 +175,26 @@ class LoadPlacementManager:
     def deck_load(self) -> PatchLoadGeometry:
         return PatchLoadGeometry(
             p1=Point(0.0, 0.0),
-            p2=Point(self.bridge.width, 0.0),
-            p3=Point(self.bridge.width, self.bridge.span),
-            p4=Point(0.0, self.bridge.span),
+            p2=Point(self.bridge.span, 0.0),
+            p3=Point(self.bridge.span, self.bridge.width),
+            p4=Point(0.0, self.bridge.width),
         )
 
     def overlay_load(self, edge_clearance: float) -> PatchLoadGeometry:
         return PatchLoadGeometry(
-            p1=Point(edge_clearance, 0.0),
-            p2=Point(self.bridge.width - edge_clearance, 0.0),
-            p3=Point(self.bridge.width - edge_clearance, self.bridge.span),
-            p4=Point(edge_clearance, self.bridge.span),
+            p1=Point(0.0, edge_clearance),
+            p2=Point(self.bridge.span, edge_clearance),
+            p3=Point(self.bridge.span, self.bridge.width - edge_clearance),
+            p4=Point(0.0, self.bridge.width - edge_clearance),
         )
 
     def footpath_load(self, side: str) -> PatchLoadGeometry:
         comp = self.layout.get_component(f"footpath_{side}")
         return PatchLoadGeometry(
-            p1=Point(comp.x_start, 0.0),
-            p2=Point(comp.x_end, 0.0),
-            p3=Point(comp.x_end, self.bridge.span),
-            p4=Point(comp.x_start, self.bridge.span),
+            p1=Point(0.0, comp.z_start),
+            p2=Point(self.bridge.span, comp.z_start),
+            p3=Point(self.bridge.span, comp.z_end),
+            p4=Point(0.0, comp.z_end),
         )
     
 
@@ -204,18 +203,18 @@ class LoadPlacementManager:
     # -------------------------
     def crash_barrier_load(self, side: str) -> LineLoadGeometry:
         comp = self.layout.get_component(f"crash_barrier_{side}")
-        x = comp.center
+        z = comp.center
         return LineLoadGeometry(
-            start=Point(x, 0.0),
-            end=Point(x, self.bridge.span),
+            start=Point(0.0, z),
+            end=Point(self.bridge.span, z),
         )
 
     def railing_load(self, side: str) -> LineLoadGeometry:
         comp = self.layout.get_component(f"railing_{side}")
-        x = comp.center
+        z = comp.center
         return LineLoadGeometry(
-            start=Point(x, 0.0),
-            end=Point(x, self.bridge.span),
+            start=Point(0.0, z),
+            end=Point(self.bridge.span, z),
         )
     
     def median_line_load(self) -> LineLoadGeometry:
@@ -223,11 +222,11 @@ class LoadPlacementManager:
         Line load corresponding to median (acting along its centerline)
         """
         comp = self.layout.get_component("median")
-        x = comp.center
+        z = comp.center
 
         return LineLoadGeometry(
-            start=Point(x, 0.0),
-            end=Point(x, self.bridge.span),
+            start=Point(0.0, z),
+            end=Point(self.bridge.span, z),
         )
 
 class CrossSectionLayout:
@@ -268,21 +267,20 @@ class CrossSectionLayout:
         self._build_layout()
 
     def _build_layout(self):
-        x = 0.0
+        z = 0.0
 
         def add(name, width):
-            nonlocal x
+            nonlocal z
             if width <= 0:
                 return
             comp = SectionComponent(
                 name=name,
                 width=width,
-                x_start=x,
-                x_end=x + width,
+                z_start=z,
+                z_end=z + width,
             )
             self._components.append(comp)
-            x += width
-
+            z += width
         # Left side
         if self.no_of_footpaths >= 1:
             add("railing_left", self.railing_width)
@@ -302,7 +300,7 @@ class CrossSectionLayout:
             add("footpath_right", self.footpath_width)
             add("railing_right", self.railing_width)
 
-        self.total_width = x
+        self.total_width = z
 
     def get_component(self, name: str) -> SectionComponent:
         for c in self._components:
