@@ -1,6 +1,6 @@
 """
 Test file for Plate Girder Bridge CAD Generator
-(Girder + Stiffeners + Deck + Crash Barriers + Railings)
+(Girder + Stiffeners + Deck + Crash Barriers + Median + Railings)
 """
 
 from OCC.Display.SimpleGui import init_display
@@ -20,6 +20,7 @@ COLOR_STIFFENER = (30/255, 30/255, 30/255)
 COLOR_DECK = (180/255, 180/255, 180/255)
 COLOR_DECK_TEXTURE = (150/255, 150/255, 150/255)
 COLOR_CRASH_BARRIER = (120/255, 120/255, 120/255)
+COLOR_MEDIAN = (110/255, 110/255, 110/255)
 COLOR_RAILING = (90/255, 90/255, 90/255)
 
 
@@ -34,6 +35,7 @@ def main():
     deck_color = Quantity_Color(*COLOR_DECK, Quantity_TOC_RGB)
     deck_texture_color = Quantity_Color(*COLOR_DECK_TEXTURE, Quantity_TOC_RGB)
     crash_barrier_color = Quantity_Color(*COLOR_CRASH_BARRIER, Quantity_TOC_RGB)
+    median_color = Quantity_Color(*COLOR_MEDIAN, Quantity_TOC_RGB)
     railing_color = Quantity_Color(*COLOR_RAILING, Quantity_TOC_RGB)
 
     # Display girders
@@ -59,7 +61,12 @@ def main():
     for barrier in cad["crash_barriers"]:
         display.DisplayColoredShape(barrier, crash_barrier_color, update=False)
 
-    #  Display railings 
+    # Display median barriers (optional)
+    if "median_barriers" in cad:
+        for median in cad["median_barriers"]:
+            display.DisplayColoredShape(median, median_color, update=False)
+
+    # Display railings
     for railing in cad["railings"]:
         display.DisplayColoredShape(railing, railing_color, update=False)
 

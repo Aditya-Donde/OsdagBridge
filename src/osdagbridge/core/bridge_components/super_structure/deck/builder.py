@@ -81,6 +81,37 @@ def calculate_deck_width(
         raise ValueError(f"Invalid footpath_config: {footpath_config}")
 
 
+def calculate_carriageway_center_y(
+    *,
+    footpath_config,
+    total_deck_width,
+    carriageway_width,
+    crash_barrier_base_width,
+    footpath_width,
+    railing_width
+):
+    """
+    Calculates carriageway center Y coordinate.
+    
+    Deck is centered at Y = 0.
+    """
+
+    # Start from LEFT edge of deck
+    y = -total_deck_width / 2
+
+    # Left crash barrier always exists
+    y += crash_barrier_base_width
+
+    # Optional left footpath + railing
+    if footpath_config in ("LEFT", "BOTH"):
+        y += footpath_width + railing_width
+
+    # Move to center of carriageway
+    y += carriageway_width / 2
+
+    return y
+
+
 # Deck slab geometry
 
 def _create_deck_slab(
@@ -296,6 +327,8 @@ def build_deck(
     footpath_width,
     railing_width
 ):
+    
+
     total_deck_width = calculate_deck_width(
         footpath_config=footpath_config,
         carriageway_width=carriageway_width,
@@ -303,6 +336,17 @@ def build_deck(
         footpath_width=footpath_width,
         railing_width=railing_width
     )
+
+    
+    carriageway_center_y = calculate_carriageway_center_y(
+        footpath_config=footpath_config,
+        total_deck_width=total_deck_width,
+        carriageway_width=carriageway_width,
+        crash_barrier_base_width=crash_barrier_base_width,
+        footpath_width=footpath_width,
+        railing_width=railing_width
+    )
+
 
     deck_slab = _create_deck_slab(
         span_length=span_length_L,
@@ -324,5 +368,8 @@ def build_deck(
         "deck_slab": deck_slab,
         "deck_textures": deck_textures,
         "deck_top_z": deck_top_z,
-        "total_deck_width": total_deck_width
+        "total_deck_width": total_deck_width,
+        "carriageway_center_y": carriageway_center_y
     }
+
+
