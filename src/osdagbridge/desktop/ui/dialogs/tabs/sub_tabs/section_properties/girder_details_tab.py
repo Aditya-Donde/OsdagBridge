@@ -455,6 +455,14 @@ class GirderDetailsTab(QWidget):
         self.girder_count = count_int
         self._populate_girder_lists()
         self._populate_member_list()
+        
+    def get_cad_data(self):
+        return {
+            "girder_type": self.type_combo.currentText(),
+            "span": self.span_input.text(),
+            "member_id": self.member_id_combo.currentText(),
+        }
+
 
     def _apply_mode_states(self):
         def sync_pair(mode_name, value_name, opt_placeholder=None, custom_label=None):

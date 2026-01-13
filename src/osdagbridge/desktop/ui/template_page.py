@@ -7,6 +7,10 @@ from PySide6.QtSvgWidgets import QSvgWidget
 from PySide6.QtCore import Qt, QFile, QTextStream, Signal
 from PySide6.QtGui import QIcon, QAction, QKeySequence
 
+from osdagbridge.desktop.ui.docks.cad_dual_view import BridgeDualCADWidget
+from osdagbridge.desktop.ui.dialogs.additional_inputs import AdditionalInputs
+
+
 from osdagbridge.desktop.ui.docks.input_dock import InputDock
 from osdagbridge.desktop.ui.docks.output_dock import OutputDock
 from osdagbridge.desktop.ui.docks.log_dock import LogDock
@@ -38,10 +42,20 @@ class DummyCADWidget(QWidget):
         layout.addWidget(label)
 
 class CustomWindow(QWidget):
+    
+    def open_additional_inputs(self):
+        dialog = AdditionalInputs(parent=self)
+        
+        if dialog.exec():
+            cad_data = dialog.get_cad_input_data()
+            self.cad_comp_widget.apply_cad_data(cad_data)
+
     def __init__(self, title: str, backend: object, parent=None):
         super().__init__()
         self.parent = parent
         self.backend = backend()
+        # >>> ADDED: one-time log splitter initialization flag
+        self._log_splitter_initialized = False
 
         self.setWindowTitle(title)
         self.setStyleSheet(
@@ -69,6 +83,44 @@ class CustomWindow(QWidget):
         self.output_dock = None
 
         self.init_ui()
+        
+    def _init_log_splitter_once(self):
+        if self._log_splitter_initialized:
+            return
+
+        splitter = self.cad_log_splitter
+        h = splitter.height()
+        if h <= 0:
+            return
+
+        splitter.setSizes([
+            int(h * 0.8),   # CAD
+            int(h * 0.2),   # Logs
+        ])
+        self._log_splitter_initialized = True
+
+    def cross_section_toggle(self):
+        self.cross_section_active = not self.cross_section_active
+        self.cad_comp_widget.set_cross_section_visible(self.cross_section_active)
+
+        icon = (
+            ":/vectors/cross_section_open_light.svg"
+            if self.cross_section_active
+            else ":/vectors/cross_section_closed_light.svg"
+        )
+        self.cross_section_control.load(icon)
+
+
+    def top_view_toggle(self):
+        self.top_view_active = not self.top_view_active
+        self.cad_comp_widget.set_top_view_visible(self.top_view_active)
+
+        icon = (
+            ":/vectors/top_view_open_light.svg"
+            if self.top_view_active
+            else ":/vectors/top_view_closed_light.svg"
+        )
+        self.top_view_control.load(icon)
 
     def init_ui(self):
         # Docking icons Parent class
@@ -96,13 +148,15 @@ class CustomWindow(QWidget):
         self.menu_bar.setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Fixed)
         self.menu_bar.setFixedHeight(28)
         self.menu_bar.setContentsMargins(0, 0, 0, 0)
-        menu_h_layout.addWidget(self.menu_bar)
+        menu_h_layout.addWidget(self.menu_bar, 1)
 
         # Control buttons
         control_btn_widget = QWidget()
         control_btn_widget.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+        control_btn_widget.setMaximumHeight(28)
         control_btn_widget.setObjectName("control_btn_widget")
         control_button_layout = QHBoxLayout(control_btn_widget)
+        control_button_layout.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
         control_button_layout.setSpacing(10)
         control_button_layout.setContentsMargins(5,5,5,5)
 
@@ -126,8 +180,25 @@ class CustomWindow(QWidget):
         self.output_dock_control.clicked.connect(self.output_dock_toggle)
         self.output_dock_active = False
         control_button_layout.addWidget(self.output_dock_control)
+        
+        # Cross-section view control
+        self.cross_section_control = ClickableSvgWidget()
+        self.cross_section_control.setFixedSize(18, 18)
+        self.cross_section_control.load(":/vectors/cross_section_open_light.svg")
+        self.cross_section_control.clicked.connect(self.cross_section_toggle)
+        self.cross_section_active = True
+        control_button_layout.addWidget(self.cross_section_control)
 
-        menu_h_layout.addWidget(control_btn_widget)
+        # Top view control
+        self.top_view_control = ClickableSvgWidget()
+        self.top_view_control.setFixedSize(18, 18)
+        self.top_view_control.load(":/vectors/top_view_open_light.svg")
+        self.top_view_control.clicked.connect(self.top_view_toggle)
+        self.top_view_active = True
+        control_button_layout.addWidget(self.top_view_control)
+        
+
+        menu_h_layout.addWidget(control_btn_widget, 0)
         main_v_layout.addLayout(menu_h_layout)
         self.create_menu_bar_items()
 
@@ -139,6 +210,7 @@ class CustomWindow(QWidget):
         self.splitter = QSplitter(Qt.Horizontal, self.body_widget)
         self.splitter.setHandleWidth(2)
         self.input_dock = InputDock(backend=self.backend, parent=self)
+        self.input_dock.input_value_changed.connect(self._update_cad_from_inputs)
         input_dock_width = self.input_dock.sizeHint().width()
         self._input_dock_default_width = input_dock_width
         self.splitter.addWidget(self.input_dock)
@@ -156,21 +228,44 @@ class CustomWindow(QWidget):
         central_V_layout = QVBoxLayout()
         central_V_layout.setContentsMargins(0, 0, 0, 0)
         central_V_layout.setSpacing(0)
+        
 
-        # Add cad component checkboxes
-        self.cad_comp_widget = DummyCADWidget()
-        central_V_layout.addWidget(self.cad_comp_widget)
+
+        # ----------------- CAD + LOG SPLITTER (ADDED) -----------------
 
         self.cad_log_splitter = QSplitter(Qt.Vertical)
-        self.cad_log_splitter.setHandleWidth(2)
-        # Add Cad Model Widget
+        self.cad_log_splitter.setHandleWidth(4)
+        self.cad_log_splitter.setChildrenCollapsible(False)
+        
+
+        # CAD widget (Dual CAD: Cross-section + Top view)
+        self.cad_comp_widget = BridgeDualCADWidget(parent=self)
+        self.cad_comp_widget.setSizePolicy(
+            QSizePolicy.Expanding, QSizePolicy.Expanding
+        )
         self.cad_log_splitter.addWidget(self.cad_comp_widget)
 
+
+        # Log dock (inside splitter)
         self.logs_dock = LogDock(parent=self)
         self.logs_dock.setVisible(False)
-        # log text
-        self.textEdit = self.logs_dock.log_display
+        self.logs_dock.setMinimumHeight(80)
+        self.logs_dock.setSizePolicy(
+            QSizePolicy.Expanding, QSizePolicy.Expanding
+        )
+
         self.cad_log_splitter.addWidget(self.logs_dock)
+
+        # Stretch ratio: CAD > Logs
+        self.cad_log_splitter.setStretchFactor(0, 8)
+        self.cad_log_splitter.setStretchFactor(1, 1)
+
+
+        # Log text handle
+        self.textEdit = self.logs_dock.log_display
+
+
+        # --------------------------------------------------------------
 
         # Prefer stretch factors so ratio persists on resize
         self.cad_log_splitter.setStretchFactor(0, 8)
@@ -204,6 +299,20 @@ class CustomWindow(QWidget):
         self.splitter.setSizes(target_sizes)
         self.layout.activate()
         main_v_layout.addWidget(self.body_widget)
+        
+    def _update_cad_from_inputs(self):
+        """
+        Collect inputs from InputDock and update CAD widgets
+        """
+        if not hasattr(self, 'cad_comp_widget'):
+            return
+
+        input_values = self.input_dock.get_all_input_values()
+        if not input_values:
+            return
+
+        self.cad_comp_widget.update_from_osdag_inputs(input_values)
+
 
     #---------------------------------Docking-Icons-Functionality-START----------------------------------------------
 
@@ -215,11 +324,33 @@ class CustomWindow(QWidget):
 
     def logs_dock_toggle(self):
         self.log_dock_active = not self.log_dock_active
-        self.logs_dock.setVisible(self.log_dock_active)
+
+        # >>> UPDATED: splitter-based show/hide
         if self.log_dock_active:
+            self.logs_dock.show()
             self.log_dock_control.load(":/vectors/logs_dock_active_light.svg")
         else:
+            self.logs_dock.hide()
             self.log_dock_control.load(":/vectors/logs_dock_inactive_light.svg")
+
+    
+    '''def _position_log_dock(self):
+        """Position log dock at bottom of central widget as overlay (max 1/5 height)"""
+        if hasattr(self, 'logs_dock') and hasattr(self, 'cad_comp_widget'):
+            cad_geom = self.cad_comp_widget.geometry()
+            log_height = min(cad_geom.height() // 5, 200)  # 1/5 of window height, max 200px
+            self.logs_dock.setGeometry(
+                cad_geom.x(),
+                cad_geom.y() + cad_geom.height() - log_height,
+                cad_geom.width(),
+                log_height
+            )'''
+    
+    def resizeEvent(self, event):
+        """Reposition log dock on window resize"""
+        super().resizeEvent(event)
+        #if hasattr(self, 'logs_dock') and self.logs_dock.isVisible():
+            #self._position_log_dock()
 
     def update_docking_icons(self, input_is_active=None, log_is_active=None, output_is_active=None):
             
@@ -411,6 +542,10 @@ class CustomWindow(QWidget):
         if not self.isVisible() or self.signalsBlocked():
             return
         
+        # >>> ADDED: one-time CAD–Log splitter initialization
+        if hasattr(self, 'cad_log_splitter'):
+            self._init_log_splitter_once()
+        
         # Check if splitter exists and has children
         try:
             if not hasattr(self, 'splitter') or self.splitter is None:
@@ -494,6 +629,8 @@ class CustomWindow(QWidget):
         design_prefs_action = QAction("Additional Inputs", self)
         design_prefs_action.setShortcut(QKeySequence("Alt+P"))
         edit_menu.addAction(design_prefs_action)
+        design_prefs_action.triggered.connect(self.open_additional_inputs)
+
 
         graphics_menu = self.menu_bar.addMenu("Graphics")
         zoom_in_action = QAction("Zoom In", self)
@@ -680,4 +817,3 @@ class OutputDockIndicator(QWidget):
         self.output_label = QSvgWidget(":/vectors/outputs_label_light.svg")
         output_layout.addWidget(self.output_label)
         self.output_label.setFixedWidth(28)
-

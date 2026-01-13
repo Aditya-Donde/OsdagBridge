@@ -6,7 +6,7 @@ from PySide6.QtWidgets import (
     QComboBox, QScrollArea, QLabel, QFormLayout, QLineEdit, QGroupBox, QSizePolicy, QMessageBox, QInputDialog, QDialog, QCheckBox, QFrame,
     QDialogButtonBox, QStackedWidget
 )
-from PySide6.QtCore import Qt, QRegularExpression, QSize, QTimer, QPoint, QEvent
+from PySide6.QtCore import Qt, QRegularExpression, QSize, QTimer, QPoint, QEvent, Signal
 from PySide6.QtGui import QPixmap, QDoubleValidator, QRegularExpressionValidator, QIcon
 from PySide6.QtSvgWidgets import *
 from osdagbridge.core.utils.common import *
@@ -622,6 +622,9 @@ class MaterialPropertiesDialog(QDialog):
 
 
 class InputDock(QWidget):
+    # Signal emitted when any input value changes
+    input_value_changed = Signal()
+    
     def __init__(self, backend, parent):
         super().__init__()
         self.parent = parent
@@ -634,6 +637,7 @@ class InputDock(QWidget):
         self.footpath_combo = None
         self.additional_inputs = None
         self.additional_inputs_widget = None
+        self.additional_input_values = {}  # Store values from additional inputs dialog
         self.material_dialog = None
         self.additional_inputs_btn = None
         self.lock_btn = None
@@ -797,6 +801,80 @@ class InputDock(QWidget):
     def paintEvent(self, event):
         self.update_lock_icon()
         return super().paintEvent(event)
+    
+    def get_all_input_values(self):
+        """Collect all input values from the input dock"""
+        input_values = {}
+        
+        # Helper function to safely get numeric value
+        def get_numeric_value(widget):
+            if isinstance(widget, QLineEdit):
+                text = widget.text().strip()
+                if text:
+                    try:
+                        return float(text)
+                    except ValueError:
+                        pass
+            return None
+        
+        # Collect span
+        if hasattr(self, 'span_input'):
+            val = get_numeric_value(self.span_input)
+            if val is not None:
+                input_values[KEY_SPAN] = val
+        
+        # Collect carriageway width
+        if hasattr(self, 'carriageway_input'):
+            val = get_numeric_value(self.carriageway_input)
+            if val is not None:
+                input_values[KEY_CARRIAGEWAY_WIDTH] = val
+        
+        # Collect skew angle
+        if hasattr(self, 'skew_input'):
+            val = get_numeric_value(self.skew_input)
+            if val is not None:
+                input_values[KEY_SKEW_ANGLE] = val
+            else:
+                input_values[KEY_SKEW_ANGLE] = 0.0  # Default
+        
+        # Collect footpath
+        # Footpath handling (derive numeric values, do NOT store KEY_FOOTPATH)
+        if hasattr(self, 'footpath_combo'):
+            footpath = self.footpath_combo.currentText()
+
+            if footpath.lower() == "none":
+                input_values[KEY_FOOTPATH_WIDTH] = 0.0
+                input_values[KEY_FOOTPATH_THICKNESS] = 0.0
+            else:
+                # Defaults (or override via Additional Inputs)
+                input_values.setdefault(KEY_FOOTPATH_WIDTH, 1.5)
+                input_values.setdefault(KEY_FOOTPATH_THICKNESS, 200.0)
+
+        
+        # Collect median
+        if hasattr(self, 'include_median_combo'):
+            input_values[KEY_INCLUDE_MEDIAN] = (self.include_median_combo.currentText() == "Yes")
+        
+        # Add default values for parameters that CAD widget needs
+        # These will be overridden by additional inputs if present
+        input_values.setdefault(KEY_NO_OF_GIRDERS, 4)
+        input_values.setdefault(KEY_GIRDER_SPACING, 2.75)
+        input_values.setdefault(KEY_DECK_OVERHANG, 1.0)
+        input_values.setdefault(KEY_DECK_THICKNESS, 200)
+        input_values.setdefault(KEY_FOOTPATH_WIDTH, 1.5)
+        input_values.setdefault(KEY_FOOTPATH_THICKNESS, 200)
+        input_values.setdefault(KEY_CROSS_BRACING_SPACING, 3.5)
+        input_values.setdefault(KEY_CRASH_BARRIER_WIDTH, 0.5)
+        
+        # Merge values from Additional Inputs dialog if they exist
+        if hasattr(self, 'additional_input_values') and self.additional_input_values:
+            input_values.update(self.additional_input_values)
+        
+        return input_values
+    
+    def emit_value_changed(self):
+        """Emit signal to notify that input values have changed"""
+        self.input_value_changed.emit()
 
     def toggle_input_dock(self):
         parent = self.parent
@@ -1198,6 +1276,7 @@ class InputDock(QWidget):
         apply_field_style(self.span_input)
         self.span_input.setValidator(QDoubleValidator(SPAN_MIN, SPAN_MAX, 2))
         self.span_input.setPlaceholderText(f"{SPAN_MIN}-{SPAN_MAX} m")
+        self.span_input.textChanged.connect(self.emit_value_changed)
         span_row.addWidget(span_label)
         span_row.addWidget(self.span_input, 1)
         geo_box_layout.addLayout(span_row)
@@ -1218,6 +1297,7 @@ class InputDock(QWidget):
         apply_field_style(self.carriageway_input)
         self.carriageway_input.setValidator(QDoubleValidator(0.0, 100.0, 2))
         self.carriageway_input.editingFinished.connect(self.validate_carriageway_width)
+        self.carriageway_input.textChanged.connect(self.emit_value_changed)
         carriageway_row.addWidget(carriageway_label)
         carriageway_row.addWidget(self.carriageway_input, 1)
         geo_box_layout.addLayout(carriageway_row)
@@ -1245,6 +1325,7 @@ class InputDock(QWidget):
         apply_field_style(self.include_median_combo)
         #self.include_median_combo.setMaximumWidth(110)
         self.include_median_combo.currentTextChanged.connect(self.on_include_median_changed)
+        self.include_median_combo.currentTextChanged.connect(self.emit_value_changed)
         median_row.addWidget(self.include_median_combo, 1)
         median_row.addStretch()
         geo_box_layout.addLayout(median_row)
@@ -1262,11 +1343,12 @@ class InputDock(QWidget):
         """)
         footpath_label.setMinimumWidth(110)
         self.footpath_combo = NoScrollComboBox()
-        self.footpath_combo.setObjectName("footpath")
+        #self.footpath_combo.setObjectName(KEY_FOOTPATH)
         apply_field_style(self.footpath_combo)
         self.footpath_combo.addItems(VALUES_FOOTPATH)
         self.footpath_combo.setCurrentIndex(0)
         self.footpath_combo.currentTextChanged.connect(self.on_footpath_changed)
+        self.footpath_combo.currentTextChanged.connect(self.emit_value_changed)
         footpath_row.addWidget(footpath_label)
         footpath_row.addWidget(self.footpath_combo, 1)
         geo_box_layout.addLayout(footpath_row)
@@ -1288,6 +1370,7 @@ class InputDock(QWidget):
         self.skew_input.setValidator(QDoubleValidator(SKEW_ANGLE_MIN, SKEW_ANGLE_MAX, 1))
         #self.skew_input.setText(f"{str(SKEW_ANGLE_DEFAULT)}°")
         self.skew_input.setPlaceholderText(f"{SKEW_ANGLE_MIN} - {SKEW_ANGLE_MAX}°")
+        self.skew_input.textChanged.connect(self.emit_value_changed)
         skew_row.addWidget(skew_label)
         skew_row.addWidget(self.skew_input, 1)
         geo_box_layout.addLayout(skew_row)
@@ -1605,7 +1688,21 @@ class InputDock(QWidget):
         carriageway_width = self._get_effective_carriageway_width()
         
         self.additional_inputs = AdditionalInputs(footpath_value, carriageway_width)
-        self.additional_inputs.show()
+        
+        self.additional_inputs = AdditionalInputs(footpath_value, carriageway_width)
+
+        # CONNECT HERE
+        self.additional_inputs.cadDataChanged.connect(self._on_additional_inputs_changed)
+
+        self.additional_inputs.exec()
+    
+    def _on_additional_inputs_changed(self, cad_data):
+        # Store additional input values
+        self.additional_input_values = cad_data
+
+        # Notify main window that inputs changed
+        self.input_value_changed.emit()
+
     
     def _apply_lock_state(self):
         self.update_lock_icon()
