@@ -1,10 +1,9 @@
 """
 CAD generator for Plate Girder Bridge.
 
-- Returns assembled CAD components
 """
 
-
+# Builder imports
 
 from osdagbridge.core.bridge_components.super_structure.plate_girder.builder import (
     build_girders
@@ -30,186 +29,183 @@ from osdagbridge.core.bridge_components.super_structure.cross_bracing.builder im
     build_cross_bracings
 )
 
-# GIRDERS PARAMETERS
 
-span_length_L = 25000
+# CAD GENERATOR CLASS
 
-girder_section_d = 900
-girder_section_bf = 500
-girder_section_tf = 260
-girder_section_tw = 100
+class PlateGirderCADGenerator:
+    """
+    Plate Girder Bridge CAD Generator.
 
-num_girders = 5
-girder_spacing = 2750
+    Holds parameters and generates assembled CAD geometry.
+    """
 
-# DECK PARAMETERS
+    def __init__(self):
 
-carriageway_width = 12000
-deck_thickness = 400
+        # GIRDERS PARAMETERS
+        self.span_length_L = 25000
 
-footpath_config = "LEFT"          # NONE / LEFT / RIGHT / BOTH
-crash_barrier_base_width = 600
-footpath_width = 1500
-railing_width = 300
+        self.girder_section_d = 900
+        self.girder_section_bf = 500
+        self.girder_section_tf = 260
+        self.girder_section_tw = 100
 
-# CRASH BARRIER PARAMETERS
+        self.num_girders = 5
+        self.girder_spacing = 2750
 
-crash_barrier_width = 175
-crash_barrier_height = 900
+        # DECK PARAMETERS
+        self.carriageway_width = 12000
+        self.deck_thickness = 400
 
-# MEDIAN PARAMETERS
+        self.footpath_config = "LEFT"   # NONE / LEFT / RIGHT / BOTH
+        self.crash_barrier_base_width = 600
+        self.footpath_width = 1500
+        self.railing_width = 300
 
-enable_median = True
-median_gap = 800
+        # CRASH BARRIER PARAMETERS
+        self.crash_barrier_width = 175
+        self.crash_barrier_height = 900
 
-# RAILING PARAMETERS
+        # MEDIAN PARAMETERS
+        self.enable_median = True
+        self.median_gap = 800
 
-railing_height = 1200
-rail_count = 3
+        # RAILING PARAMETERS
+        self.railing_height = 1200
+        self.rail_count = 3
 
-# STIFFENER PARAMETERS
+        # STIFFENER PARAMETERS
+        self.stiffener_width = 200
+        self.stiffener_length = 10
 
-stiffener_width = 200
-stiffener_length = 10
+        # CROSS BRACING PARAMETERS
+        self.cross_bracing_spacing = 4000
+        self.cross_bracing_thickness = 5
 
-# CROSS BRACING PARAMETERS
+        self.bracing_type = "K"   # "X" or "K"
+        self.x_bracket_option = "BOTH"
+        self.k_top_bracket = True
 
-cross_bracing_spacing = 4000
-cross_bracing_thickness = 5
+        self.cross_bracing_section_type = "CHANNEL"
+        self.cross_bracing_section_dims = {
+            "depth": 100,
+            "flange_width": 50,
+            "web_thickness": 5,
+            "flange_thickness": 7
+        }
 
-bracing_type = "K"               # "X" or "K"
+    # MAIN CAD GENERATION
 
-# X bracing option: "NONE" | "LOWER" | "UPPER" | "BOTH"
-x_bracket_option = "BOTH"
+    def generate(self):
+        """
+        Generate full bridge CAD.
 
-# K bracing option
-k_top_bracket = True
+        Returns
+        -------
+        dict
+            Dictionary of assembled CAD components
+        """
 
-# ---- SECTION SELECTION (NUMERIC ONLY) ----
-
-cross_bracing_section_type = "CHANNEL"
-
-#CHANNEL – ISMC 100
-cross_bracing_section_dims = {
-    "depth": 100,
-    "flange_width": 50,
-    "web_thickness": 5,
-    "flange_thickness": 7
-}
-
-# # If you want DOUBLE_ANGLE instead, comment above and use:
-# cross_bracing_section_type = "DOUBLE_ANGLE"
-# cross_bracing_section_dims = {
-#     "leg_h": 75,
-#     "leg_w": 75,
-#     "connection_type": "SHORTER_LEG"
-# }
-
-
-def generate_cad():
-
-    # Plate girder system
-    girders, stiffeners = build_girders(
-        span_length_L=span_length_L,
-        girder_section_d=girder_section_d,
-        girder_section_bf=girder_section_bf,
-        girder_section_tf=girder_section_tf,
-        girder_section_tw=girder_section_tw,
-        num_girders=num_girders,
-        girder_spacing=girder_spacing,
-        stiffener_width=stiffener_width,
-        stiffener_length=stiffener_length
-    )
-
-    # Cross bracing system
-    cross_bracings = build_cross_bracings(
-        span_length_L=span_length_L,
-        num_girders=num_girders,
-        girder_spacing=girder_spacing,
-        girder_depth=girder_section_d,
-        flange_thickness=girder_section_tf,
-        flange_width=girder_section_bf,
-
-        bracing_type=bracing_type,
-        section_type=cross_bracing_section_type,
-        section_dims=cross_bracing_section_dims,
-        thickness=cross_bracing_thickness,
-
-        panel_spacing=cross_bracing_spacing,
-        bracket_option=x_bracket_option,
-        top_bracket=k_top_bracket
-    )
-
-    # Deck system
-    deck_out = build_deck(
-        span_length_L=span_length_L,
-        girder_section_d=girder_section_d,
-        deck_thickness=deck_thickness,
-
-        footpath_config=footpath_config,
-        carriageway_width=carriageway_width,
-        crash_barrier_base_width=crash_barrier_base_width,
-        footpath_width=footpath_width,
-        railing_width=railing_width
-    )
-
-    # Crash barrier system
-    crash_barriers = build_crash_barriers(
-        span_length_L=span_length_L,
-        deck_top_z=deck_out["deck_top_z"],
-
-        footpath_config=footpath_config,
-        carriageway_width=carriageway_width,
-
-        crash_barrier_width=crash_barrier_width,
-        crash_barrier_height=crash_barrier_height,
-        crash_barrier_base_width=crash_barrier_base_width,
-
-        footpath_width=footpath_width,
-        railing_width=railing_width
-    )
-
-    # Median system
-    median_barriers = []
-
-    if enable_median:
-        median_barriers = build_median(
-            span_length=span_length_L,
-            deck_top_z=deck_out["deck_top_z"],
-            carriageway_center_y=deck_out["carriageway_center_y"],
-
-            crash_barrier_width=crash_barrier_width,
-            crash_barrier_height=crash_barrier_height,
-            crash_barrier_base_width=crash_barrier_base_width,
-
-            median_gap=median_gap
+        # Plate girder system
+        girders, stiffeners = build_girders(
+            span_length_L=self.span_length_L,
+            girder_section_d=self.girder_section_d,
+            girder_section_bf=self.girder_section_bf,
+            girder_section_tf=self.girder_section_tf,
+            girder_section_tw=self.girder_section_tw,
+            num_girders=self.num_girders,
+            girder_spacing=self.girder_spacing,
+            stiffener_width=self.stiffener_width,
+            stiffener_length=self.stiffener_length
         )
 
-    # Railing system
-    railings = build_railings(
-        span_length=span_length_L,
-        deck_top_z=deck_out["deck_top_z"],
-        total_deck_width=deck_out["total_deck_width"],
+        # Cross bracing system
+        cross_bracings = build_cross_bracings(
+            span_length_L=self.span_length_L,
+            num_girders=self.num_girders,
+            girder_spacing=self.girder_spacing,
+            girder_depth=self.girder_section_d,
+            flange_thickness=self.girder_section_tf,
+            flange_width=self.girder_section_bf,
 
-        footpath_config=footpath_config,
+            bracing_type=self.bracing_type,
+            section_type=self.cross_bracing_section_type,
+            section_dims=self.cross_bracing_section_dims,
+            thickness=self.cross_bracing_thickness,
 
-        railing_width=railing_width,
-        railing_height=railing_height,
-        rail_count=rail_count
-    )
+            panel_spacing=self.cross_bracing_spacing,
+            bracket_option=self.x_bracket_option,
+            top_bracket=self.k_top_bracket
+        )
 
-    # Final output
-    return {
-        "girders": girders,
-        "stiffeners": stiffeners,
-        "cross_bracings": cross_bracings,
+        # Deck system
+        deck_out = build_deck(
+            span_length_L=self.span_length_L,
+            girder_section_d=self.girder_section_d,
+            deck_thickness=self.deck_thickness,
 
-        "deck_slab": deck_out["deck_slab"],
-        "deck_textures": deck_out["deck_textures"],
-        "deck_top_z": deck_out["deck_top_z"],
-        "total_deck_width": deck_out["total_deck_width"],
+            footpath_config=self.footpath_config,
+            carriageway_width=self.carriageway_width,
+            crash_barrier_base_width=self.crash_barrier_base_width,
+            footpath_width=self.footpath_width,
+            railing_width=self.railing_width
+        )
 
-        "crash_barriers": crash_barriers,
-        "median_barriers": median_barriers,
-        "railings": railings
-    }
+        # Crash barrier system
+        crash_barriers = build_crash_barriers(
+            span_length_L=self.span_length_L,
+            deck_top_z=deck_out["deck_top_z"],
+
+            footpath_config=self.footpath_config,
+            carriageway_width=self.carriageway_width,
+
+            crash_barrier_width=self.crash_barrier_width,
+            crash_barrier_height=self.crash_barrier_height,
+            crash_barrier_base_width=self.crash_barrier_base_width,
+
+            footpath_width=self.footpath_width,
+            railing_width=self.railing_width
+        )
+
+        # Median system
+        median_barriers = []
+        if self.enable_median:
+            median_barriers = build_median(
+                span_length=self.span_length_L,
+                deck_top_z=deck_out["deck_top_z"],
+                carriageway_center_y=deck_out["carriageway_center_y"],
+
+                crash_barrier_width=self.crash_barrier_width,
+                crash_barrier_height=self.crash_barrier_height,
+                crash_barrier_base_width=self.crash_barrier_base_width,
+
+                median_gap=self.median_gap
+            )
+
+        # Railing system
+        railings = build_railings(
+            span_length=self.span_length_L,
+            deck_top_z=deck_out["deck_top_z"],
+            total_deck_width=deck_out["total_deck_width"],
+
+            footpath_config=self.footpath_config,
+
+            railing_width=self.railing_width,
+            railing_height=self.railing_height,
+            rail_count=self.rail_count
+        )
+
+        return {
+            "girders": girders,
+            "stiffeners": stiffeners,
+            "cross_bracings": cross_bracings,
+
+            "deck_slab": deck_out["deck_slab"],
+            "deck_textures": deck_out["deck_textures"],
+            "deck_top_z": deck_out["deck_top_z"],
+            "total_deck_width": deck_out["total_deck_width"],
+
+            "crash_barriers": crash_barriers,
+            "median_barriers": median_barriers,
+            "railings": railings
+        }
+
