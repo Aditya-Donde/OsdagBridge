@@ -29,6 +29,7 @@ KEY_PROJECT_LOCATION = "Project Location"
 KEY_SPAN = "Span"
 KEY_CARRIAGEWAY_WIDTH = "Carriageway Width"
 KEY_INCLUDE_MEDIAN = "Include Median"
+# KEY_FOOTPATH = "Footpath"
 KEY_FOOTPATH = ["None", "Single Side", "Both Sides"]
 KEY_SKEW_ANGLE = "Skew Angle"
 KEY_GIRDER = "Girder"
@@ -485,12 +486,15 @@ VALUES_MEDIAN_TYPE = [
     "IRC 5 - Flush Median",
     "Custom"
 ]
-VALUES_GIRDER_TYPE = ["IS Standard Rolled Beam", "Plate Girder"]
-VALUES_GIRDER_SYMMETRY = ["Symmetrical", "Unsymmetrical"]
+VALUES_GIRDER_TYPE = ["Welded", "Rolled"]
+VALUES_GIRDER_SYMMETRY = ["Girder Symmetric", "Girder Unsymmetric"]
+VALUES_GIRDER_DESIGN_MODE = ["Optimized", "Customized"]
+VALUES_GIRDER_SPAN_MODE = ["Full Length", "Custom"]
+VALUES_PROFILE_SCOPE = ["All", "Custom"]
 VALUES_OPTIMIZATION_MODE = ["Optimized", "Customized", "All"]
 VALUES_TORSIONAL_RESTRAINT = ["Fully Restrained", "Partially Restrained - Support Connect", "Partially Restrained - Bearing Support"]
 VALUES_WARPING_RESTRAINT = ["Both Flange Restraint", "No Restraint"]
-VALUES_WEB_TYPE = ["Thin Web", "Thick Web"]
+VALUES_WEB_TYPE = ["Thin Web with ITS", "Thick Web with ITS"]
 VALUES_STIFFENER_DESIGN = ["Simple Post", "Tension Field"]
 VALUES_CROSS_BRACING_TYPE = ["K-bracing", "K-bracing with top bracket", "X-bracing", "X-bracing with bottom bracket", "X-bracing with top and bottom brackets"]
 VALUES_END_DIAPHRAGM_TYPE = ["Cross Bracing", "Rolled Beam", "Welded Beam"]
@@ -503,7 +507,6 @@ VALUES_RAILING_TYPE = [
 VALUES_CUSTOM_AXLE_TYPE = ["Single", "Bogie"]
 VALUES_FOOTPATH_PRESSURE_MODE = ["Automatic", "User-defined"]
 VALUES_SUPPORT_TYPE = ["Fixed", "Pinned"]
-
 # Default values
 DEFAULT_SELF_WEIGHT_FACTOR = 1.0
 DEFAULT_CONCRETE_DENSITY = 25.0  # kN/m³
@@ -539,7 +542,6 @@ Pa = 1
 MPa = N / ((mm) ** 2)
 GPa = kilo * MPa
 kPa = kilo * Pa
-
 
 KEY_FOOTPATH = ["None", "Single Side", "Both Sides"]
 KEY_SAFETY_KERB_MIN_WIDTH = 750  # in mm
