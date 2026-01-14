@@ -558,3 +558,17 @@ KEY_RIGID_CRASH_BARRIER_TYPE = ['IRC-5R', 'High Containment']
 KEY_MIN_SINGLE_LANE = 4.25  # in meters
 KEY_MIN_DOUBLE_LANE = 7.5  # in meters  
 KEY_ADDITIONAL_LANE = 3.5  # in meters
+KEY_VEHICLE = ['Class70R(W)','Class70R(T)','ClassA','ClassB']
+KEY_TYPE_BRIDGE = ['Highway','Rural']
+KEY_DESIGN_FATIGUE = ['Dont design for fatigue','Regular Vehicles','Heavy Vehicles']
+KEY_TYPE_FOOTWAY = ['Default','Regular Footway','Crowded Footway']
+
+# Characteristic loads for footway types (kg/m^2)
+FOOTWAY_LOADS = {
+	'Default': 500,
+	'Regular Footway': 400,
+	'Crowded Footway': 500,
+}
+
+KEY_RAILING_TYPE = ['IRC 5 RCC railing','IRC 5 steel railing']
+KEY_TERRAIN_TYPE = ['plain','obstructed']
