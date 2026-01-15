@@ -18,48 +18,33 @@ g = 9.81
 CARRIAGEWAY_WIDTH_MIN = 4.25  # No median present
 CARRIAGEWAY_WIDTH_MIN_WITH_MEDIAN = 7.5  # Each carriageway when median provided
 CARRIAGEWAY_WIDTH_MAX_LIMIT = 23.6  # Current software cap (subject to change)
-# Typical Section Details Validation Constants (IRC 5)
-MIN_FOOTPATH_WIDTH = 1.5  # meters (IRC 5 Clause 104.3.6)
-MIN_RAILING_HEIGHT = 1.1  # meters (IRC 5 Clauses 109.7.2.3 & 109.7.2.4)
-MIN_SAFETY_KERB_WIDTH = 0.75  # meters (IRC 5 Clause 101.41)
-KEY_FOOTPATH_CLEAR_MIN_WIDTH = 1500  # in mm
-KEY_SAFETY_KERB_MIN_WIDTH = 750  # in mm
-# Typical Section Details Keys
-KEY_RAILING_MIN_HEIGHT = [1100, 1250] # in mm
-KEY_CYCLE_TRACK = ['None', 'Single', 'Both Sides'] 
-KEY_MIN_SKEW_ANGLE = 30  # in degrees
-KEY_MIN_LOGITUDINAL_GRADIENT = 0.3  # in percent
-KEY_MAX_BRIDGE_LENGTH_SINGLE_CURVE = 30  # in meters
-# Metallic crash barrier sub-types
-KEY_METALLIC_CRASH_BARRIER_TYPE = ['Single W-beam', 'Double W-beam']
-KEY_CRASH_BARRIER_TYPE = [
-    "Rigid",
-    "Semi-rigid",
-    "Flexible"
-]
 
 KEY_MIN_SINGLE_LANE = 4.25  # in meters
 KEY_MIN_DOUBLE_LANE = 7.5  # in meters  
 KEY_ADDITIONAL_LANE = 3.5  # in meters
 
-
-KEY_FOOTPATH = ["None", "Single Side", "Both Sides"]
+# Typical Section Details Validation Constants (IRC 5)
+KEY_FOOTPATH_CLEAR_MIN_WIDTH = 1500  # in mm (IRC 5 Clause 104.3.6)
 KEY_SAFETY_KERB_MIN_WIDTH = 750  # in mm
-KEY_SAFETY_KERB_PLACEMENT = ['Single Side', 'Both Sides', ]
-KEY_FOOTPATH_CLEAR_MIN_WIDTH = 1500  # in mm
 KEY_RAILING_MIN_HEIGHT = [1100, 1250] # in mm
 KEY_CYCLE_TRACK = ['None', 'Single', 'Both Sides'] 
+KEY_FOOTPATH = ["None", "Single Side", "Both Sides"]
 KEY_MIN_SKEW_ANGLE = 30  # in degrees
+KEY_MIN_LOGITUDINAL_GRADIENT = 0.3  # in percent
+KEY_MAX_BRIDGE_LENGTH_SINGLE_CURVE = 30  # in meters
 KEY_WEARING_COAT = ['bituminous', 'concrete']
 KEY_CRASH_BARRIER_TYPE = ['Flexible', 'Semi-Rigid', 'Rigid']
-KEY_RAILING_TYPE = ['RCC', 'steel']
-KEY_MIN_LOGITUDINAL_GRADIENT = 0.3  # in percent
-KEY_MAX_BRIDGE_LENGTH_SINGLE_CURVE = 30  # in meters
+KEY_METALLIC_CRASH_BARRIER_TYPE = ['Single W-beam', 'Double W-beam']
 KEY_RIGID_CRASH_BARRIER_TYPE = ['IRC-5R', 'High Containment']
+KEY_RAILING_TYPE = ['RCC', 'steel']
+KEY_MEDIAN_TYPE = [
+    'Raised Kerb',
+    'RCC Crash Barrier',
+    'Metallic Crash Barrier'
+]
 
-KEY_MIN_SINGLE_LANE = 4.25  # in meters
-KEY_MIN_DOUBLE_LANE = 7.5  # in meters  
-KEY_ADDITIONAL_LANE = 3.5  # in meters
+
+# IRC 6
 KEY_VEHICLE = ['Class70R(W)','Class70R(T)','ClassA','ClassB']
 KEY_TYPE_BRIDGE = ['Highway','Rural']
 KEY_DESIGN_FATIGUE = ['Dont design for fatigue','Regular Vehicles','Heavy Vehicles']
@@ -73,19 +58,12 @@ FOOTWAY_LOADS = {
 }
 
 KEY_RAILING_TYPE = ['IRC 5 RCC railing','IRC 5 steel railing']
-KEY_TERRAIN_TYPE = ['plain','obstructed']
-KEY_METALLIC_CRASH_BARRIER_TYPE = ['Single W-beam', 'Double W-beam']
-KEY_MEDIAN_TYPE = [
-    'Raised Kerb',
-    'RCC Crash Barrier',
-    'Metallic Crash Barrier'
+KEY_CRASH_BARRIER_TYPE = [
+    "Rigid",
+    "Semi-rigid",
+    "Flexible"
 ]
-
-
-
-
-
-
+KEY_TERRAIN_TYPE = ['plain','obstructed']
 
 
 # Skew Angle: IRC 24 (2010) requires detailed analysis when skew angle exceeds ±15 degrees
