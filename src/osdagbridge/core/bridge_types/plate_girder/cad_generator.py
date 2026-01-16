@@ -3,6 +3,11 @@ CAD generator for Plate Girder Bridge.
 
 """
 
+from OCC.Core.Quantity import Quantity_Color, Quantity_TOC_RGB, Quantity_NOC_BLACK
+from OCC.Core.TopoDS import TopoDS_Shape
+from OCC.Core.AIS import AIS_Shape
+from OCC.Core.TopAbs import TopAbs_EDGE
+
 # Builder imports
 
 from osdagbridge.core.bridge_components.super_structure.plate_girder.builder import (
@@ -30,6 +35,17 @@ from osdagbridge.core.bridge_components.super_structure.cross_bracing.builder im
 )
 
 
+KEY_CAD_GIRDER = "Girder"
+KEY_CAD_STIFFENER = "Stiffener"
+KEY_CAD_CROSS_BRACING = "Cross Bracing"
+KEY_CAD_DECK = "Deck"
+KEY_CAD_CRASH_BARRIER = "Crash Barrier"
+KEY_CAD_RAILING = "Railing"
+KEY_CAD_MEDIAN = "Median"
+KEY_MODULE_PG = "Plate Girder"
+
+
+
 # CAD GENERATOR CLASS
 
 class PlateGirderCADGenerator:
@@ -39,8 +55,9 @@ class PlateGirderCADGenerator:
     Holds parameters and generates assembled CAD geometry.
     """
 
-    def __init__(self):
+    def __init__(self, bridge_type = KEY_MODULE_PG):
 
+        self.bridge_type = bridge_type
         # GIRDERS PARAMETERS
         self.span_length_L = 25000
 
@@ -209,3 +226,133 @@ class PlateGirderCADGenerator:
             "railings": railings
         }
 
+    def display_3dModel(self, component):
+
+        hover_dict = {
+                            KEY_CAD_GIRDER: "Girder",
+                            KEY_CAD_STIFFENER: "Stiffener",
+                            KEY_CAD_DECK: "Deck",
+                            KEY_CAD_CRASH_BARRIER: "Crash Barrier",
+                            KEY_CAD_RAILING: "Railing",
+                            KEY_CAD_MEDIAN: "Median"
+        }
+
+        GIRDER_COLOR = Quantity_Color(72/255, 72/255, 54/255, Quantity_TOC_RGB)
+        STIFFENER_COLOR = Quantity_Color(30/255, 30/255, 30/255, Quantity_TOC_RGB)
+        DECK_COLOR = Quantity_Color(180/255, 180/255, 180/255, Quantity_TOC_RGB)
+        BARRIER_COLOR = Quantity_Color(120/255, 120/255, 120/255, Quantity_TOC_RGB)
+        BRACING_COLOR = Quantity_Color(60/255, 60/255, 60/255, Quantity_TOC_RGB)
+        RAILING_COLOR = Quantity_Color(120/255, 120/255, 120/255, Quantity_TOC_RGB)
+        MEDIAN_COLOR = Quantity_Color(120/255, 120/255, 120/255, Quantity_TOC_RGB)
+
+        self.component = component  
+        
+        if self.component == "Girder":
+            label = [KEY_CAD_GIRDER, hover_dict.get(KEY_CAD_GIRDER)]
+            shapes = self.model_data["girders"]
+            osdag_display_shape(self.display, shapes, color=GIRDER_COLOR, update=True, label=label, canvas=self.cad_widget)
+
+        elif self.component == "Stiffener":
+            label = [KEY_CAD_STIFFENER, hover_dict.get(KEY_CAD_STIFFENER)]
+            shapes = self.model_data["stiffeners"]
+            osdag_display_shape(self.display, shapes, color=STIFFENER_COLOR, update=True, label=label, canvas=self.cad_widget)
+
+        elif self.component == "Cross Bracing":
+            label = [KEY_CAD_CROSS_BRACING, hover_dict.get(KEY_CAD_CROSS_BRACING)]
+            shapes = self.model_data["cross_bracings"]
+            osdag_display_shape(self.display, shapes, color=BRACING_COLOR, update=True, label=label, canvas=self.cad_widget)
+
+        elif self.component == "Deck":
+            label = [KEY_CAD_DECK, hover_dict.get(KEY_CAD_DECK)]
+            shapes = self.model_data["deck_slab"]
+            osdag_display_shape(self.display, shapes, color=DECK_COLOR, update=True, label=label, canvas=self.cad_widget)
+
+        elif self.component == "Crash Barrier":
+            label = [KEY_CAD_CRASH_BARRIER, hover_dict.get(KEY_CAD_CRASH_BARRIER)]
+            shapes = self.model_data["crash_barriers"]
+            osdag_display_shape(self.display, shapes, color=BARRIER_COLOR, update=True, label=label, canvas=self.cad_widget)
+
+        elif self.component == "Railing":
+            label = [KEY_CAD_RAILING, hover_dict.get(KEY_CAD_RAILING)]
+            shapes = self.model_data["railings"]
+            osdag_display_shape(self.display, shapes, color=RAILING_COLOR, update=True, label=label, canvas=self.cad_widget)
+
+        elif self.component == "Median":
+            label = [KEY_CAD_MEDIAN, hover_dict.get(KEY_CAD_MEDIAN)]
+            shapes = self.model_data["median_barriers"]
+            osdag_display_shape(self.display, shapes, color=MEDIAN_COLOR, update=True, label=label, canvas=self.cad_widget)
+
+
+def osdag_display_shape(display, shapes, material=None, texture=None, color=None, transparency=None, update=False, label=[], canvas=None):
+    """
+    Display a shape with edge styling and register with memory manager.
+    
+    All shapes and AIS objects are registered with OCCMemoryManager to prevent
+    Python's garbage collector from freeing them while OCC/OpenGL are using them.
+    """
+
+    set_default_edge_style(shapes, display)
+    ais_object = display.DisplayShape(shapes, material, texture, color, transparency, update=update)
+    ais = ais_object[0] if isinstance(ais_object, list) else ais_object
+    
+    
+    if canvas.model_ais_objects.get(label[0]) is None:
+        canvas.model_ais_objects[label[0]] = [ais]
+    else:
+        canvas.model_ais_objects[label[0]] += [ais]
+    
+    # Activate selection mode for whole entity
+    display.Context.Activate(ais, 0)
+
+
+def color_the_edges(shp, display, color, width):
+    """
+    Colors the edges of a given shape.
+
+    :param shp: The shape to color (TopoDS_Shape).
+    :param display: The display context for rendering the shape.
+    :param color: The color to apply to the edges (Quantity_Color or predefined constant like Quantity_NOC_BLACK).
+    :param width: The width of the edges.
+    """
+    if not isinstance(shp, TopoDS_Shape):
+        raise TypeError("The 'shp' parameter must be a valid TopoDS_Shape.")
+    # shapeList = []
+    try:
+        # Initialize the edge explorer for the given shape
+        Ex = TopExp_Explorer(shp, TopAbs_EDGE)
+        # Get the display context
+        ctx = display.Context
+        # Iterate over the edges in the shape
+        while Ex.More():
+            # Extract the current edge
+            aEdge = topods.Edge(Ex.Current())
+
+            # Create an AIS_Shape for the edge
+            ais_shape = AIS_Shape(aEdge)
+            # Set the color
+            ais_shape.SetColor(color)
+            # Display the edge
+            ctx.Display(ais_shape, False)
+
+            # Store the edge for tracking
+            # shapeList.append(aEdge)
+
+            # Move to the next edge
+            Ex.Next()
+
+    except Exception as e:
+        print(f"An error occurred: {e}")
+        traceback.print_exc()  # This will print the full traceback
+
+        raise RuntimeError(f"Error while coloring edges: {e}")
+        
+    # return shapeList
+
+
+
+def set_default_edge_style(shp, display):
+    try:
+        color_the_edges(shp, display, Quantity_Color(Quantity_NOC_BLACK), 0.5)
+    except Exception as e:
+        # Edge styling is optional - don't crash if it fails
+        pass
