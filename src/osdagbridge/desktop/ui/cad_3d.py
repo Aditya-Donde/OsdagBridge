@@ -11,21 +11,22 @@ from PySide6.QtWidgets import (
     QApplication,
     QMainWindow,
     QWidget,
-    QVBoxLayout
+    QVBoxLayout,
+    QPushButton
 )
+from PySide6.QtCore import QTimer, Qt
 
 from OCC.Core.Quantity import Quantity_Color, Quantity_TOC_RGB
+from OCC.Display.backend import load_backend
 
 # CAD generator
 from osdagbridge.core.bridge_types.plate_girder.cad_generator import (
     PlateGirderCADGenerator
 )
 
-# Custom 3D Viewer
+# Custom 3D Viewer 
 from osdagbridge.desktop.ui.utils.custom_3dviewer import CustomViewer3d
 
-
-# MAIN WINDOW
 
 class CAD3DWindow(QMainWindow):
     """
@@ -41,14 +42,18 @@ class CAD3DWindow(QMainWindow):
         # CAD generator
         self.generator = PlateGirderCADGenerator()
 
-        # UI setup
+        self.generator.model_data = self.generator.generate()
+
+        # Internal CAD state
+        self.viewer = None
+        self.display = None
+        self._cad_init_pending = True
+
+        # UI + CAD setup
         self.setup_ui()
-        self.setup_viewer()
+        self.init_display()
 
-        # Load initial CAD
-        self.load_bridge()
-
-    # UI SETUP
+    # -UI SETUP 
 
     def setup_ui(self):
         central_widget = QWidget(self)
@@ -57,100 +62,244 @@ class CAD3DWindow(QMainWindow):
         self.layout = QVBoxLayout(central_widget)
         self.layout.setContentsMargins(0, 0, 0, 0)
 
-    def setup_viewer(self):
+    # CAD INITIALIZATION 
+
+    def init_display(self):
+        """
+        CAD initialization.
+
+        - Locks pythonOCC backend
+        - Creates CustomViewer3d
+        - Defers InitDriver for safety
+        """
+
+        load_backend("pyside6")
+
         self.viewer = CustomViewer3d(self)
         self.viewer.setMouseTracking(True)
-
-        # Initialize OCC driver
-        self.viewer.InitDriver()
-
-        self.viewer.context = self.viewer._display.Context
-        self.viewer.view = self.viewer._display.View
-
         self.layout.addWidget(self.viewer)
 
-    # CAD DISPLAY
+        QTimer.singleShot(0, self._deferred_init_driver)
 
+    def _deferred_init_driver(self):
+        if not self._cad_init_pending:
+            return
+
+        self.viewer.InitDriver()
+        self._cad_init_pending = False
+
+        self._complete_cad_init()
+        self.load_bridge()
+
+    def _complete_cad_init(self):
+        """
+        Complete CAD setup after InitDriver.
+        REQUIRED for hover, selection, view cube.
+        """
+
+        self.display = self.viewer._display
+
+        self.viewer.context = self.display.Context
+        self.viewer.view = self.display.View
+
+        self.viewer.context.SetAutomaticHilight(False)
+
+        if hasattr(self.viewer, "display_view_cube"):
+            self.viewer.display_view_cube()
+
+        # ADD ZOOM BUTTONS
+        self.create_cad_view_controls()
+
+    def _is_display_ready(self):
+        return self.display is not None and not self._cad_init_pending
+
+    # CAD DISPLAY 
     def load_bridge(self):
-        """
-        Generate and display bridge CAD.
-        """
-        cad_data = self.generator.generate()
-        display = self.viewer._display
+        if not self._is_display_ready():
+            return
+
+        cad_data = self.generator.model_data
+        display = self.display
+        context = self.viewer.context
 
         if hasattr(self.viewer, "cleanup_for_new_model"):
             self.viewer.cleanup_for_new_model()
         display.EraseAll()
 
-        # Colors
+        # ---------- COLORS ----------
         GIRDER_COLOR = Quantity_Color(72/255, 72/255, 54/255, Quantity_TOC_RGB)
         STIFFENER_COLOR = Quantity_Color(30/255, 30/255, 30/255, Quantity_TOC_RGB)
         DECK_COLOR = Quantity_Color(180/255, 180/255, 180/255, Quantity_TOC_RGB)
         BARRIER_COLOR = Quantity_Color(120/255, 120/255, 120/255, Quantity_TOC_RGB)
         BRACING_COLOR = Quantity_Color(60/255, 60/255, 60/255, Quantity_TOC_RGB)
 
-        # Girders
-        for g in cad_data.get("girders", []):
-            display.DisplayShape(g, color=GIRDER_COLOR, update=False)
+        # ---------- HELPER ----------
+        def display_and_register(shapes, key, label, color):
+            if not shapes:
+                return
 
-        # Stiffeners
-        for s in cad_data.get("stiffeners", []):
-            display.DisplayShape(s, color=STIFFENER_COLOR, update=False)
+            if not isinstance(shapes, list):
+                shapes = [shapes]
 
-        # Cross bracings
-        for b in cad_data.get("cross_bracings", []):
-            display.DisplayShape(b, color=BRACING_COLOR, update=False)
+            ais_list = []
 
-        # Deck
-        display.DisplayShape(
-            cad_data["deck_slab"],
-            color=DECK_COLOR,
-            update=False
+            for shp in shapes:
+                ais = display.DisplayShape(shp, color=color, update=False)
+                ais = ais[0] if isinstance(ais, list) else ais
+
+                context.Activate(ais, 0)   # REQUIRED for hover
+                ais_list.append(ais)
+
+            self.viewer.model_ais_objects[key] = ais_list
+            self.viewer.model_hover_labels[key] = label
+
+        # ---------- DISPLAY + REGISTER ----------
+        display_and_register(
+            cad_data.get("girders", []),
+            "Girder",
+            "Girder",
+            GIRDER_COLOR
         )
-        # Deck textures
+
+        display_and_register(
+            cad_data.get("stiffeners", []),
+            "Stiffener",
+            "Stiffener",
+            STIFFENER_COLOR
+        )
+
+        display_and_register(
+            cad_data.get("cross_bracings", []),
+            "Cross Bracing",
+            "Cross Bracing",
+            BRACING_COLOR
+        )
+
+        display_and_register(
+            cad_data.get("deck_slab"),
+            "Deck",
+            "Deck Slab",
+            DECK_COLOR
+        )
+        # ---------- DECK TEXTURES (DISPLAY ONLY, NO HOVER) ----------
         for tex in cad_data.get("deck_textures", []):
             display.DisplayShape(
                 tex,
-                color=Quantity_Color(0.2,0.2,0.2, Quantity_TOC_RGB),
+                color=Quantity_Color(0.2, 0.2, 0.2, Quantity_TOC_RGB),
                 update=False
             )
 
-        # Crash barriers
-        for cb in cad_data.get("crash_barriers", []):
-            display.DisplayShape(cb, color=BARRIER_COLOR, update=False)
 
-        # Median
-        for mb in cad_data.get("median_barriers", []):
-            display.DisplayShape(mb, color=BARRIER_COLOR, update=False)
+        display_and_register(
+            cad_data.get("crash_barriers", []),
+            "Crash Barrier",
+            "Crash Barrier",
+            BARRIER_COLOR
+        )
 
-        # Railings
-        for r in cad_data.get("railings", []):
-            display.DisplayShape(r, color=BARRIER_COLOR, update=False)
+        display_and_register(
+            cad_data.get("median_barriers", []),
+            "Median",
+            "Median Barrier",
+            BARRIER_COLOR
+        )
 
-        # View setup (Osdag standard)
+        display_and_register(
+            cad_data.get("railings", []),
+            "Railing",
+            "Railing",
+            BARRIER_COLOR
+        )
+
+        # ---------- FINAL VIEW ----------
         display.View_Iso()
         display.FitAll()
 
         if hasattr(self.viewer, "display_view_cube"):
             self.viewer.display_view_cube()
 
-    # REGENERATION
+
+    # ZOOM CONTROLS 
+
+    def create_cad_view_controls(self):
+        """Create zoom buttons below the view cube."""
+
+        self._view_cube_size = 75
+        self._view_cube_margin = 10
+        self._zoom_btn_size = 40
+        self._zoom_spacing = 6
+
+        self.zoom_in_btn = QPushButton("+", self.viewer)
+        self.zoom_in_btn.setFixedSize(self._zoom_btn_size, self._zoom_btn_size)
+        self.zoom_in_btn.setCursor(Qt.PointingHandCursor)
+        self.zoom_in_btn.clicked.connect(lambda: self.display.ZoomFactor(1.1))
+        self._style_zoom_button(self.zoom_in_btn)
+
+        self.zoom_out_btn = QPushButton("-", self.viewer)
+        self.zoom_out_btn.setFixedSize(self._zoom_btn_size, self._zoom_btn_size)
+        self.zoom_out_btn.setCursor(Qt.PointingHandCursor)
+        self.zoom_out_btn.clicked.connect(lambda: self.display.ZoomFactor(1 / 1.1))
+        self._style_zoom_button(self.zoom_out_btn)
+
+        self.zoom_in_btn.show()
+        self.zoom_out_btn.show()
+
+        self.position_zoom_buttons()
+
+        self._orig_resize_event = self.viewer.resizeEvent
+        self.viewer.resizeEvent = self._cad_resize_proxy
+
+    def _style_zoom_button(self, btn):
+        btn.setStyleSheet("""
+            QPushButton {
+                font-size: 20px;
+                font-weight: bold;
+                background-color: white;
+                border: 1px solid #bdbdbd;
+            }
+            QPushButton:hover {
+                background-color: #e6e6e6;
+            }
+            QPushButton:pressed {
+                background-color: #d6d6d6;
+            }
+        """)
+
+    def position_zoom_buttons(self):
+        if not hasattr(self, "zoom_in_btn"):
+            return
+
+        w = self.viewer.width()
+
+        cube_right = w - self._view_cube_margin
+        cube_left = cube_right - self._view_cube_size
+
+        cube_bottom = self._view_cube_margin + self._view_cube_size + 30
+
+        center_x = cube_left + self._view_cube_size // 2
+        btn_x = center_x - self._zoom_btn_size // 2
+
+        btn_y_1 = cube_bottom + self._zoom_spacing
+        btn_y_2 = btn_y_1 + self._zoom_btn_size + self._zoom_spacing
+
+        self.zoom_in_btn.move(btn_x, btn_y_1)
+        self.zoom_out_btn.move(btn_x, btn_y_2)
+
+    def _cad_resize_proxy(self, event):
+        if self._orig_resize_event:
+            self._orig_resize_event(event)
+        self.position_zoom_buttons()
+
 
     def regenerate_bridge(self):
-        """
-        Regenerate CAD (used when parameters change).
-        """
         self.load_bridge()
 
 
-# ENTRY POINT
 
 def main():
     app = QApplication(sys.argv)
-
     win = CAD3DWindow()
     win.show()
-
     sys.exit(app.exec())
 
 
