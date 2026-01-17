@@ -40,7 +40,7 @@ from osdagbridge.core.utils.common import (
     VALUES_WARPING_RESTRAINT,
     VALUES_WEB_TYPE,
 )
-from osdagbridge.desktop.ui.dialogs.tabs.common import apply_field_style
+from osdagbridge.desktop.ui.dialogs.tabs.common import CheckableComboBox, apply_field_style
 from osdagbridge.desktop.ui.utils.rolled_section_preview import RolledSectionPreview
 
 
