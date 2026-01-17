@@ -6,8 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Optional
 
-from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QStandardItemModel
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QComboBox,
     QFrame,
@@ -23,19 +22,18 @@ from PySide6.QtWidgets import (
 )
 
 from osdagbridge.core.utils.common import (
+    VALUES_GIRDER_DESIGN_MODE,
+    VALUES_GIRDER_SPAN_MODE,
     VALUES_GIRDER_SYMMETRY,
     VALUES_GIRDER_TYPE,
+    VALUES_PROFILE_SCOPE,
     VALUES_TORSIONAL_RESTRAINT,
     VALUES_WARPING_RESTRAINT,
     VALUES_WEB_TYPE,
 )
-from osdagbridge.desktop.ui.dialogs.tabs.common import apply_field_style
+from osdagbridge.desktop.ui.dialogs.tabs.common import CheckableComboBox, apply_field_style
 from osdagbridge.desktop.ui.utils.rolled_section_preview import RolledSectionPreview
 
-
-VALUES_GIRDER_SPAN_MODE = ["Full Length", "Segment"]
-VALUES_GIRDER_DESIGN_MODE = ["Optimized", "Customized"]
-VALUES_PROFILE_SCOPE = ["Optimized", "Customized"]
 
 DEFAULT_MEMBER_LENGTH_M = 30.0
 DEFAULT_DISTANCE_START_M = 0.0
@@ -176,139 +174,6 @@ class GirderSectionCatalog:
 
 
 girder_properties = GirderSectionCatalog()
-
-
-class CheckableComboBox(QComboBox):
-    """Multi-select combo box with checkable entries."""
-
-    checkedItemsChanged = Signal(list)
-
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.setModel(QStandardItemModel(self))
-        self.view().pressed.connect(self._handle_item_pressed)
-        self.setEditable(True)
-        line_edit = self.lineEdit()
-        line_edit.setReadOnly(True)
-        line_edit.setPlaceholderText("All girders")
-        line_edit.setFocusPolicy(Qt.NoFocus)
-        self._update_display()
-
-    def reset_items(self, texts: List[str]) -> None:
-        model = self.model()
-        if model is None:
-            return
-        model.blockSignals(True)
-        model.clear()
-        model.blockSignals(False)
-        super().clear()
-        for text in texts:
-            self.addItem(text)
-        self._update_display()
-
-    def set_checked_items(self, labels: Optional[List[str]] = None) -> None:
-        labels = labels or []
-        normalized = {label.strip().lower() for label in labels if label}
-        if not normalized:
-            self._set_all_state(True)
-            self.checkedItemsChanged.emit(self.checked_items(include_all=True))
-            return
-        model = self.model()
-        if model is None:
-            return
-        model.blockSignals(True)
-        for row in range(model.rowCount()):
-            item = model.item(row)
-            if not item:
-                continue
-            text_key = item.text().strip().lower()
-            if text_key == "all":
-                item.setCheckState(Qt.Checked if "all" in normalized else Qt.Unchecked)
-            else:
-                item.setCheckState(Qt.Checked if text_key in normalized else Qt.Unchecked)
-        model.blockSignals(False)
-        self._update_display()
-        self.checkedItemsChanged.emit(self.checked_items(include_all=True))
-
-    def addItems(self, texts: List[str]) -> None:
-        for text in texts:
-            super().addItem(text)
-            item = self.model().item(self.count() - 1)
-            if item is None:
-                continue
-            item.setFlags(Qt.ItemIsEnabled | Qt.ItemIsUserCheckable)
-            default_state = Qt.Checked if text.strip().lower() == "all" else Qt.Unchecked
-            item.setCheckState(default_state)
-        self._update_display()
-
-    def checked_items(self, include_all: bool = False) -> List[str]:
-        selections: List[str] = []
-        for row in range(self.model().rowCount()):
-            item = self.model().item(row)
-            if not item or item.checkState() != Qt.Checked:
-                continue
-            text = item.text()
-            if not include_all and text.strip().lower() == "all":
-                continue
-            selections.append(text)
-        return selections
-
-    def _handle_item_pressed(self, index) -> None:
-        item = self.model().itemFromIndex(index)
-        if item is None:
-            return
-        is_all_row = item.text().strip().lower() == "all"
-        new_state = Qt.Unchecked if item.checkState() == Qt.Checked else Qt.Checked
-        if is_all_row:
-            self._set_all_state(new_state == Qt.Checked)
-        else:
-            item.setCheckState(new_state)
-            if new_state == Qt.Unchecked:
-                self._ensure_all_unchecked()
-            else:
-                self._sync_all_state()
-        self._update_display()
-        self.checkedItemsChanged.emit(self.checked_items(include_all=True))
-
-    def _set_all_state(self, checked: bool) -> None:
-        state = Qt.Checked if checked else Qt.Unchecked
-        for row in range(self.model().rowCount()):
-            item = self.model().item(row)
-            if not item:
-                continue
-            if row == 0:
-                item.setCheckState(state)
-            else:
-                item.setCheckState(state)
-        if not checked and self.model().rowCount() > 1:
-            # Ensure at least one girder stays selected so downstream logic always has a value.
-            self.model().item(1).setCheckState(Qt.Checked)
-
-    def _ensure_all_unchecked(self) -> None:
-        first = self.model().item(0)
-        if first and first.text().strip().lower() == "all":
-            first.setCheckState(Qt.Unchecked)
-
-    def _sync_all_state(self) -> None:
-        first = self.model().item(0)
-        if not first or first.text().strip().lower() != "all":
-            return
-        all_checked = True
-        for row in range(1, self.model().rowCount()):
-            item = self.model().item(row)
-            if not item or item.checkState() != Qt.Checked:
-                all_checked = False
-                break
-        first.setCheckState(Qt.Checked if all_checked else Qt.Unchecked)
-
-    def _update_display(self) -> None:
-        selections = self.checked_items()
-        if not selections:
-            self.lineEdit().setText("All")
-        elif len(selections) == 1:
-            self.lineEdit().setText(selections[0])
-        else:
-            self.lineEdit().setText(f"{len(selections)} selected")
 
 
 class GirderDetailsTab(QWidget):
@@ -695,25 +560,64 @@ class GirderDetailsTab(QWidget):
         widget.setMinimumWidth(min(width, 160))
 
     def _setup_girder_selector(self):
-        if (
-            hasattr(self.select_girder_combo, "checkedItemsChanged")
-            and not self._girder_combo_connected
-        ):
-            self.select_girder_combo.checkedItemsChanged.connect(self._on_girders_selection_changed)
+        if not hasattr(self, "select_girder_combo"):
+            return
+        if not self._girder_combo_connected:
+            if hasattr(self.select_girder_combo, "checkedItemsChanged"):
+                self.select_girder_combo.checkedItemsChanged.connect(self._on_girders_selection_changed)
+            else:
+                self.select_girder_combo.currentTextChanged.connect(self._on_girders_selection_changed)
             self._girder_combo_connected = True
         self._on_girders_selection_changed()
 
     def _refresh_girder_combo_items(self, preferred_selection: Optional[List[str]] = None) -> None:
         if not hasattr(self, "select_girder_combo"):
             return
-        current_selection = preferred_selection or self._get_selected_girders()
-        valid_selection = [girder for girder in current_selection if girder in self.available_girders]
-        items = ["All"] + self.available_girders
-        self.select_girder_combo.reset_items(items)
-        if valid_selection:
-            self.select_girder_combo.set_checked_items(valid_selection)
+        if hasattr(self.select_girder_combo, "checked_items"):
+            # Preserve multi-selection if possible.
+            current_selection = preferred_selection or self.select_girder_combo.checked_items() or []
+            desired = [g for g in current_selection if g in self.available_girders]
+
+            block = self.select_girder_combo.blockSignals(True)
+            try:
+                # Temporarily suppress the internal toggle handler while rebuilding.
+                if hasattr(self.select_girder_combo, "_updating_selection"):
+                    self.select_girder_combo._updating_selection = True  # type: ignore[attr-defined]
+                self.select_girder_combo.clear()
+                self.select_girder_combo.addItems(["All"] + self.available_girders)
+
+                if desired:
+                    # Uncheck 'All', then check desired girders.
+                    for row in range(self.select_girder_combo.model().rowCount()):
+                        item = self.select_girder_combo.model().item(row)
+                        if not item:
+                            continue
+                        if item.text().strip().lower() == "all":
+                            item.setCheckState(Qt.Unchecked)
+                        elif item.text() in desired:
+                            item.setCheckState(Qt.Checked)
+                        else:
+                            item.setCheckState(Qt.Unchecked)
+            finally:
+                if hasattr(self.select_girder_combo, "_updating_selection"):
+                    self.select_girder_combo._updating_selection = False  # type: ignore[attr-defined]
+                self.select_girder_combo.blockSignals(block)
         else:
-            self.select_girder_combo.set_checked_items([])
+            current_text = self.select_girder_combo.currentText().strip()
+            current_selection = preferred_selection or []
+            candidate = next((girder for girder in current_selection if girder in self.available_girders), None)
+            if not candidate and current_text in self.available_girders:
+                candidate = current_text
+
+            block = self.select_girder_combo.blockSignals(True)
+            self.select_girder_combo.clear()
+            self.select_girder_combo.addItems(["All"] + self.available_girders)
+            if candidate:
+                index = self.select_girder_combo.findText(candidate, Qt.MatchFixedString)
+                self.select_girder_combo.setCurrentIndex(index if index != -1 else 0)
+            else:
+                self.select_girder_combo.setCurrentIndex(0)
+            self.select_girder_combo.blockSignals(block)
 
     def _on_girders_selection_changed(self, *args):
         if self.span_combo.currentText() == "Full Length":
@@ -726,29 +630,19 @@ class GirderDetailsTab(QWidget):
         self._update_member_id_edit_state()
 
     def _get_selected_girders(self):
-        selected = []
+        if not hasattr(self, "select_girder_combo"):
+            return self.available_girders.copy()
         if hasattr(self.select_girder_combo, "checked_items"):
-            selected = self.select_girder_combo.checked_items(include_all=True)
-        model = self.select_girder_combo.model()
-        if model is None:
+            # In this widget, checked_items() returns [] when "All" is selected.
+            checked = [g for g in self.select_girder_combo.checked_items() if g in self.available_girders]
+            return checked or self.available_girders.copy()
+
+        current = self.select_girder_combo.currentText().strip()
+        if not current or current.lower() == "all":
             return self.available_girders.copy()
-        all_checked = False
-        if selected:
-            all_checked = any(item.strip().lower() == "all" for item in selected)
-        else:
-            for row in range(model.rowCount()):
-                item = model.item(row)
-                if not item or item.checkState() != Qt.Checked:
-                    continue
-                text = item.text()
-                if text.strip().lower() == "all":
-                    all_checked = True
-                else:
-                    selected.append(text)
-        if all_checked or not selected:
-            return self.available_girders.copy()
-        normalized = [text for text in selected if text in self.available_girders]
-        return normalized if normalized else self.available_girders.copy()
+        if current in self.available_girders:
+            return [current]
+        return self.available_girders.copy()
 
     def _default_member_segment_id(self, girders=None):
         girders = girders or self._get_selected_girders()

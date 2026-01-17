@@ -1,11 +1,12 @@
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QSizePolicy,
-    QPushButton, QGroupBox, QCheckBox, QScrollArea, QFrame, QComboBox
+    QPushButton, QGroupBox, QCheckBox, QScrollArea, QFrame, QComboBox, QLineEdit
 )
 from PySide6.QtCore import Qt, QSize
 from PySide6.QtGui import QIcon
 
 from osdagbridge.desktop.ui.utils.custom_buttons import DockCustomButton
+from osdagbridge.core.utils.common import TYPE_TITLE
 
 class NoScrollComboBox(QComboBox):
     def wheelEvent(self, event):
@@ -85,10 +86,15 @@ def apply_field_style(widget):
 class OutputDock(QWidget):
     """Output dock with collapsible design controls and scrollable layout."""
 
-    def __init__(self, parent):
+    def __init__(self, backend=None, parent=None):
         super().__init__()
         self.parent = parent
+        self.backend = backend
         self.setStyleSheet("background: transparent;")
+        configs = self._load_configs()
+        self.analysis_config = configs.get("analysis")
+        # Configurable button rows per section; populated from backend ui_fields
+        self.section_configs = configs.get("design", [])
         self.init_ui()
 
     def toggle_output_dock(self):
@@ -190,90 +196,9 @@ class OutputDock(QWidget):
         scroll_layout.setContentsMargins(0, 0, 0, 0)
         scroll_layout.setSpacing(10)
 
-        results_group = QGroupBox("Analysis Results")
-        results_group.setStyleSheet(
-            """
-            QGroupBox {
-                font-weight: bold;
-                font-size: 11px;
-                color: #333;
-                border: 1px solid #90AF13;
-                border-radius: 4px;
-                margin-top: 8px;
-                padding-top: 12px;
-                background-color: white;
-            }
-            QGroupBox::title {
-                subcontrol-origin: margin;
-                subcontrol-position: top left;
-                left: 8px;
-                padding: 0 4px;
-                background-color: white;
-            }
-            """
-        )
-        results_layout = QVBoxLayout(results_group)
-        results_layout.setContentsMargins(10, 8, 10, 10)
-        results_layout.setSpacing(8)
-
-        member_row = QHBoxLayout()
-        member_label = QLabel("Member:")
-        member_label.setStyleSheet("font-size: 10px; color: #333; font-weight: normal;")
-        member_label.setMinimumWidth(100)
-        self.member_combo = NoScrollComboBox()
-        self.member_combo.addItems(["All"])
-        apply_field_style(self.member_combo)
-        member_row.addWidget(member_label)
-        member_row.addWidget(self.member_combo)
-        results_layout.addLayout(member_row)
-
-        load_combo_row = QHBoxLayout()
-        load_combo_label = QLabel("Load Combination:")
-        load_combo_label.setStyleSheet("font-size: 10px; color: #333; font-weight: normal;")
-        load_combo_label.setMinimumWidth(100)
-        self.load_combo = NoScrollComboBox()
-        self.load_combo.addItems(["Envelope"])
-        apply_field_style(self.load_combo)
-        load_combo_row.addWidget(load_combo_label)
-        load_combo_row.addWidget(self.load_combo)
-        results_layout.addLayout(load_combo_row)
-
-        forces_grid = QHBoxLayout()
-        forces_grid.setSpacing(8)
-
-        col1 = QVBoxLayout()
-        for text in ["Fx", "Mx", "Dx"]:
-            cb = QCheckBox(text)
-            col1.addWidget(cb)
-        col2 = QVBoxLayout()
-        for text in ["Fy", "My", "Dy"]:
-            cb = QCheckBox(text)
-            col2.addWidget(cb)
-        col3 = QVBoxLayout()
-        for text in ["Fz", "Mz", "Dz"]:
-            cb = QCheckBox(text)
-            col3.addWidget(cb)
-        forces_grid.addLayout(col1)
-        forces_grid.addLayout(col2)
-        forces_grid.addLayout(col3)
-        results_layout.addLayout(forces_grid)
-
-        display_label = QLabel("Display Options:")
-        display_label.setStyleSheet("font-size: 10px; color: #333; font-weight: normal; margin-top: 4px;")
-        results_layout.addWidget(display_label)
-
-        display_row = QHBoxLayout()
-        display_row.setSpacing(12)
-        for text in ["Max", "Min"]:
-            cb = QCheckBox(text)
-            display_row.addWidget(cb)
-        display_row.addStretch()
-        results_layout.addLayout(display_row)
-
-        utilization_check = QCheckBox("Controlling Utilization Ratio")
-        results_layout.addWidget(utilization_check)
-
-        scroll_layout.addWidget(results_group)
+        analysis_group = self._build_analysis_group()
+        if analysis_group:
+            scroll_layout.addWidget(analysis_group)
 
         design_group = QGroupBox("Design")
         design_group.setStyleSheet(
@@ -301,209 +226,10 @@ class OutputDock(QWidget):
         design_layout.setContentsMargins(10, 8, 10, 10)
         design_layout.setSpacing(8)
 
-        # === Superstructure Section (Contains Everything) ===
-        structure_group = QGroupBox()
-        structure_group.setStyleSheet("""
-            QGroupBox {
-                border: 1px solid #90AF13;
-                border-radius: 5px;
-                margin-top: 0px;
-                padding-top: 5px;
-                background-color: white;
-            }
-        """)
-        structure_layout = QVBoxLayout()
-        structure_layout.setContentsMargins(10, 10, 10, 10)
-        structure_layout.setSpacing(10)
-        
-        # Header with title and collapse icon
-        struct_header = QHBoxLayout()
-        struct_title = QLabel("Superstructure")
-        struct_title.setStyleSheet("font-size: 13px; font-weight: bold; color: #333;")
-        struct_header.addWidget(struct_title)
-        struct_header.addStretch()
-        
-        # Collapse/expand toggle using SVG icon
-        super_toggle_btn = QPushButton()
-        super_toggle_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        super_toggle_btn.setCheckable(True)
-        super_toggle_btn.setChecked(True)
-        super_toggle_btn.setIcon(QIcon(":/vectors/arrow_up_light.svg"))
-        super_toggle_btn.setIconSize(QSize(20, 20))
-        super_toggle_btn.setStyleSheet("""
-            QPushButton {
-                background: transparent;
-                border: none;
-                padding: 2px;
-            }
-            QPushButton:hover {
-                background: transparent;
-            }
-            QPushButton:pressed {
-                background: transparent;
-            }
-        """)
-        struct_header.addWidget(super_toggle_btn)
-
-        structure_layout.addLayout(struct_header)
-
-        # body widget that contains everything inside the Superstructure and can be hidden
-        super_body = QFrame()
-        super_body.setFrameShape(QFrame.NoFrame)
-        super_body_layout = QVBoxLayout(super_body)
-        super_body_layout.setContentsMargins(0, 0, 0, 0)
-        super_body_layout.setSpacing(10)
-        super_body.setVisible(True)
-        
-        # Additional Geometry (inside Superstructure body)
-        add_geo_row = QHBoxLayout()
-        add_geo_label = QLabel("Steel Design")
-        add_geo_label.setStyleSheet("""
-            QLabel {
-                color: #000000;
-                font-size: 12px;
-                background: transparent;
-            }
-        """)
-        add_geo_label.setMinimumWidth(110)
-        add_geo_row.addWidget(add_geo_label)
-        
-        modify_geo_btn = QPushButton("Here")
-        modify_geo_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        modify_geo_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #90AF13;
-                color: white;
-                font-weight: bold;
-                border: none;
-                border-radius: 4px;
-                padding: 8px 20px;
-                font-size: 11px;
-                min-width: 80px;
-            }
-            QPushButton:hover {
-                background-color: #7a9a12;
-            }
-        """)
-        modify_geo_btn.clicked.connect(self.show_additional_inputs)
-        add_geo_row.addWidget(modify_geo_btn, 1)
-        super_body_layout.addLayout(add_geo_row)
-
-        #---------------------------------------------
-
-                # Additional Geometry (inside Superstructure body)
-        add_geo_row = QHBoxLayout()
-        add_geo_label = QLabel("Deck Design")
-        add_geo_label.setStyleSheet("""
-            QLabel {
-                color: #000000;
-                font-size: 12px;
-                background: transparent;
-            }
-        """)
-        add_geo_label.setMinimumWidth(110)
-        add_geo_row.addWidget(add_geo_label)
-        
-        modify_geo_btn = QPushButton("Here")
-        modify_geo_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        modify_geo_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #90AF13;
-                color: white;
-                font-weight: bold;
-                border: none;
-                border-radius: 4px;
-                padding: 8px 20px;
-                font-size: 11px;
-                min-width: 80px;
-            }
-            QPushButton:hover {
-                background-color: #7a9a12;
-            }
-        """)
-        modify_geo_btn.clicked.connect(self.show_additional_inputs)
-        add_geo_row.addWidget(modify_geo_btn, 1)
-        super_body_layout.addLayout(add_geo_row)
-        
-        
-        # Add body to structure layout
-        structure_layout.addWidget(super_body)
-
-        def _toggle_superstructure(checked, body=super_body, btn=super_toggle_btn):
-            # checked True means show body (open)
-            body.setVisible(checked)
-            btn.setIcon(QIcon(":/vectors/arrow_up_light.svg" if checked else ":/vectors/arrow_down_light.svg"))
-
-        super_toggle_btn.toggled.connect(_toggle_superstructure)
-        structure_group.setLayout(structure_layout)
-        design_layout.addWidget(structure_group)
-
-        # === Substructure Section (Contains Everything) ===
-        structure_group = QGroupBox()
-        structure_group.setStyleSheet("""
-            QGroupBox {
-                border: 1px solid #90AF13;
-                border-radius: 5px;
-                margin-top: 0px;
-                padding-top: 5px;
-                background-color: white;
-            }
-        """)
-        structure_layout = QVBoxLayout()
-        structure_layout.setContentsMargins(10, 10, 10, 10)
-        structure_layout.setSpacing(10)
-        
-        # Header with title and collapse icon
-        struct_header = QHBoxLayout()
-        struct_title = QLabel("Substructure")
-        struct_title.setStyleSheet("font-size: 13px; font-weight: bold; color: #333;")
-        struct_header.addWidget(struct_title)
-        struct_header.addStretch()
-        
-        # Collapse/expand toggle using SVG icon
-        toggle_btn = QPushButton()
-        toggle_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        toggle_btn.setCheckable(True)
-        toggle_btn.setChecked(True)
-        toggle_btn.setIcon(QIcon(":/vectors/arrow_up_light.svg"))
-        toggle_btn.setIconSize(QSize(20, 20))
-        toggle_btn.setStyleSheet("""
-            QPushButton {
-                background: transparent;
-                border: none;
-                padding: 2px;
-            }
-            QPushButton:hover {
-                background: transparent;
-            }
-            QPushButton:pressed {
-                background: transparent;
-            }
-        """)
-        struct_header.addWidget(toggle_btn)
-
-        structure_layout.addLayout(struct_header)
-
-        # body widget that contains everything inside the Superstructure and can be hidden
-        structure_body = QFrame()
-        structure_body.setFrameShape(QFrame.NoFrame)
-        structure_body_layout = QVBoxLayout(structure_body)
-        structure_body_layout.setContentsMargins(0, 0, 0, 0)
-        structure_body_layout.setSpacing(10)
-        structure_body.setVisible(True)
-        
-        
-        # Add body to structure layout
-        structure_layout.addWidget(structure_body)
-
-        def _toggle_structure(checked):
-            # checked True means show body (open)
-            structure_body.setVisible(checked)
-            toggle_btn.setIcon(QIcon(":/vectors/arrow_up_light.svg" if checked else ":/vectors/arrow_down_light.svg"))
-
-        toggle_btn.toggled.connect(_toggle_structure)
-        structure_group.setLayout(structure_layout)
-        design_layout.addWidget(structure_group)
+        # Dynamic design sections
+        for section_cfg in self.section_configs:
+            section_group = self._create_toggle_group(section_cfg)
+            design_layout.addWidget(section_group)
 
         scroll_layout.addWidget(design_group)
         scroll_layout.addStretch()
@@ -532,3 +258,321 @@ class OutputDock(QWidget):
         """Handle showing additional geometry inputs."""
         # Implement your logic here
         print("Show additional inputs clicked")
+
+    # --- Helpers for dynamic section/button rendering ---
+    def _load_configs(self):
+        if self.backend and hasattr(self.backend, "output_values"):
+            try:
+                cfg = self.backend.output_values(flag=None)
+                if cfg is not None:
+                    return self._normalize_section_configs(cfg)
+            except Exception:
+                pass
+        return {"analysis": None, "design": []}
+
+    def _normalize_section_configs(self, cfg):
+        result = {"analysis": None, "design": []}
+        if not cfg:
+            return result
+
+        # Already structured dict
+        if isinstance(cfg, dict):
+            result["analysis"] = cfg.get("analysis")
+            if isinstance(cfg.get("design"), list):
+                result["design"] = cfg.get("design")
+            return result
+
+        # Legacy dict list: treat as design-only
+        if isinstance(cfg, list) and all(isinstance(item, dict) for item in cfg):
+            result["design"] = cfg
+            return result
+
+        # Tuple-based definitions similar to input_values
+        if isinstance(cfg, list) and all(isinstance(item, tuple) for item in cfg):
+            for item in cfg:
+                if len(item) < 7:
+                    continue
+                _, display_name, ui_type, _, is_visible, _, metadata = item
+                if ui_type != TYPE_TITLE or not is_visible:
+                    continue
+                metadata = metadata or {}
+                kind = metadata.get("kind", "design")
+                if kind == "analysis":
+                    result["analysis"] = {
+                        "title": display_name,
+                        "fields": metadata.get("fields", []),
+                    }
+                    continue
+                rows = metadata.get("rows") or metadata.get("post_rows") or []
+                if not isinstance(rows, list):
+                    rows = []
+                result["design"].append({"title": display_name, "rows": rows})
+            return result
+
+        return result
+
+    def _default_analysis_config(self):
+        return {
+            "title": "Analysis Results",
+            "fields": [
+                {"type": "combobox", "label": "Member:", "values": ["All"]},
+                {
+                    "type": "combobox",
+                    "label": "Load Combination:",
+                    "values": ["Envelope"],
+                },
+                {
+                    "type": "checkbox_grid",
+                    "columns": [["Fx", "Mx", "Dx"], ["Fy", "My", "Dy"], ["Fz", "Mz", "Dz"]],
+                },
+                {
+                    "type": "checkbox_row",
+                    "label": "Display Options:",
+                    "options": ["Max", "Min"],
+                },
+                {"type": "checkbox", "label": "Controlling Utilization Ratio"},
+            ],
+        }
+
+    def _analysis_group_style(self):
+        return (
+            "QGroupBox {\n"
+            "    font-weight: bold;\n"
+            "    font-size: 11px;\n"
+            "    color: #333;\n"
+            "    border: 1px solid #90AF13;\n"
+            "    border-radius: 4px;\n"
+            "    margin-top: 8px;\n"
+            "    padding-top: 12px;\n"
+            "    background-color: white;\n"
+            "}\n"
+            "QGroupBox::title {\n"
+            "    subcontrol-origin: margin;\n"
+            "    subcontrol-position: top left;\n"
+            "    left: 8px;\n"
+            "    padding: 0 4px;\n"
+            "    background-color: white;\n"
+            "}"
+        )
+
+    def _build_analysis_group(self):
+        cfg = self.analysis_config or self._default_analysis_config()
+        if not cfg:
+            return None
+
+        group = QGroupBox(cfg.get("title", "Analysis Results"))
+        group.setStyleSheet(self._analysis_group_style())
+        layout = QVBoxLayout(group)
+        layout.setContentsMargins(10, 8, 10, 10)
+        layout.setSpacing(8)
+
+        for field_cfg in cfg.get("fields", []):
+            self._add_analysis_field(layout, field_cfg)
+
+        return group
+
+    def _normalize_field_cfg(self, field_cfg):
+        if isinstance(field_cfg, dict):
+            return field_cfg
+        if isinstance(field_cfg, tuple) and len(field_cfg) >= 7:
+            key, label, field_type, values, is_visible, _validator, metadata = field_cfg
+            if not is_visible:
+                return None
+            meta = metadata or {}
+            normalized = {
+                "key": key,
+                "label": label,
+                "type": field_type,
+                "values": values,
+            }
+            normalized.update(meta)
+            return normalized
+        return None
+
+    def _add_analysis_field(self, layout, field_cfg):
+        cfg = self._normalize_field_cfg(field_cfg)
+        if not cfg:
+            return
+        field_type = cfg.get("type")
+        if field_type == "combobox":
+            row = QHBoxLayout()
+            row.setContentsMargins(0, 0, 0, 0)
+            row.setSpacing(8)
+            label = QLabel(cfg.get("label", ""))
+            label.setStyleSheet("font-size: 10px; color: #333; font-weight: normal;")
+            label.setMinimumWidth(cfg.get("label_min_width", 100))
+            combo = NoScrollComboBox()
+            values = cfg.get("values") or []
+            combo.addItems(values)
+            default = cfg.get("default")
+            if default and default in values:
+                combo.setCurrentText(default)
+            apply_field_style(combo)
+            row.addWidget(label)
+            row.addWidget(combo)
+            layout.addLayout(row)
+        elif field_type == "checkbox_grid":
+            columns = cfg.get("columns") or cfg.get("values") or []
+            grid = QHBoxLayout()
+            grid.setContentsMargins(0, 0, 0, 0)
+            grid.setSpacing(8)
+            for col_items in columns:
+                col_layout = QVBoxLayout()
+                col_layout.setContentsMargins(0, 0, 0, 0)
+                col_layout.setSpacing(2)
+                for text in col_items or []:
+                    cb = QCheckBox(str(text))
+                    col_layout.addWidget(cb)
+                grid.addLayout(col_layout)
+            if cfg.get("add_stretch", True):
+                grid.addStretch()
+            layout.addLayout(grid)
+        elif field_type == "checkbox_row":
+            row = QHBoxLayout()
+            row.setContentsMargins(0, 0, 0, 0)
+            row.setSpacing(12)
+            label = cfg.get("label")
+            if label:
+                lbl = QLabel(label)
+                lbl.setStyleSheet("font-size: 10px; color: #333; font-weight: normal; margin-top: 4px;")
+                row.addWidget(lbl)
+            options = cfg.get("options") or cfg.get("values") or []
+            for text in options:
+                cb = QCheckBox(str(text))
+                row.addWidget(cb)
+            if cfg.get("add_stretch", True):
+                row.addStretch()
+            layout.addLayout(row)
+        elif field_type == "checkbox":
+            cb = QCheckBox(cfg.get("label", ""))
+            layout.addWidget(cb)
+
+    def _section_label_style(self):
+        return (
+            "QLabel {\n"
+            "    color: #000000;\n"
+            "    font-size: 12px;\n"
+            "    background: transparent;\n"
+            "}"
+        )
+
+    def _default_action_button_style(self):
+        return (
+            "QPushButton {\n"
+            "    background-color: #90AF13;\n"
+            "    color: white;\n"
+            "    font-weight: bold;\n"
+            "    border: none;\n"
+            "    border-radius: 4px;\n"
+            "    padding: 8px 20px;\n"
+            "    font-size: 11px;\n"
+            "    min-width: 80px;\n"
+            "}\n"
+            "QPushButton:hover {\n"
+            "    background-color: #7a9a12;\n"
+            "}\n"
+        )
+
+    def _create_action_button(self, cfg):
+        btn = QPushButton(cfg.get("text", "Action"))
+        btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        style = cfg.get("style") or self._default_action_button_style()
+        btn.setStyleSheet(style)
+        if cfg.get("icon"):
+            btn.setIcon(QIcon(cfg["icon"]))
+            icon_size = cfg.get("icon_size")
+            if isinstance(icon_size, (list, tuple)) and len(icon_size) == 2:
+                btn.setIconSize(QSize(icon_size[0], icon_size[1]))
+        cb_name = cfg.get("action")
+        cb = getattr(self, cb_name, None) if cb_name else None
+        if callable(cb):
+            btn.clicked.connect(cb)
+        else:
+            btn.setEnabled(False)
+        return btn
+
+    def _add_button_row(self, parent_layout, row_cfg):
+        row = QHBoxLayout()
+        row.setContentsMargins(0, 0, 0, 0)
+        row.setSpacing(8)
+
+        label_text = row_cfg.get("label")
+        if label_text:
+            label = QLabel(label_text)
+            label.setStyleSheet(self._section_label_style())
+            label.setMinimumWidth(row_cfg.get("label_min_width", 110))
+            row.addWidget(label)
+
+        buttons = row_cfg.get("buttons", [])
+        for cfg in buttons:
+            btn = self._create_action_button(cfg)
+            row.addWidget(btn, cfg.get("stretch", 1 if len(buttons) == 1 else 0))
+
+        if row_cfg.get("add_stretch", True):
+            row.addStretch()
+
+        parent_layout.addLayout(row)
+
+    def _create_toggle_group(self, section_cfg):
+        group = QGroupBox()
+        group.setStyleSheet(
+            "QGroupBox {\n"
+            "    border: 1px solid #90AF13;\n"
+            "    border-radius: 5px;\n"
+            "    margin-top: 0px;\n"
+            "    padding-top: 5px;\n"
+            "    background-color: white;\n"
+            "}"
+        )
+        layout = QVBoxLayout()
+        layout.setContentsMargins(10, 10, 10, 10)
+        layout.setSpacing(10)
+
+        header = QHBoxLayout()
+        title = QLabel(section_cfg.get("title", ""))
+        title.setStyleSheet("font-size: 13px; font-weight: bold; color: #333;")
+        header.addWidget(title)
+        header.addStretch()
+
+        toggle_btn = QPushButton()
+        toggle_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        toggle_btn.setCheckable(True)
+        toggle_btn.setChecked(True)
+        toggle_btn.setIcon(QIcon(":/vectors/arrow_up_light.svg"))
+        toggle_btn.setIconSize(QSize(20, 20))
+        toggle_btn.setStyleSheet(
+            "QPushButton {\n"
+            "    background: transparent;\n"
+            "    border: none;\n"
+            "    padding: 2px;\n"
+            "}\n"
+            "QPushButton:hover {\n"
+            "    background: transparent;\n"
+            "}\n"
+            "QPushButton:pressed {\n"
+            "    background: transparent;\n"
+            "}"
+        )
+        header.addWidget(toggle_btn)
+        layout.addLayout(header)
+
+        body = QFrame()
+        body.setFrameShape(QFrame.NoFrame)
+        body_layout = QVBoxLayout(body)
+        body_layout.setContentsMargins(0, 0, 0, 0)
+        body_layout.setSpacing(10)
+        body.setVisible(True)
+
+        for row_cfg in section_cfg.get("rows", []):
+            self._add_button_row(body_layout, row_cfg)
+
+        layout.addWidget(body)
+
+        def _toggle(checked):
+            body.setVisible(checked)
+            toggle_btn.setIcon(QIcon(":/vectors/arrow_up_light.svg" if checked else ":/vectors/arrow_down_light.svg"))
+
+        toggle_btn.toggled.connect(_toggle)
+        group.setLayout(layout)
+        return group
