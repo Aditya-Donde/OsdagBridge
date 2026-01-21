@@ -9,6 +9,7 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QMessageBox,
     QPushButton,
+    QScrollArea,
     QStackedWidget,
     QSizePolicy,
     QVBoxLayout,
@@ -32,7 +33,23 @@ class CustomLoadTab(QWidget):
         owner = self.owner
 
         self.setStyleSheet("background-color: #f0f0f0;")
-        page_layout = QVBoxLayout(self)
+        
+        # Main layout with scroll area
+        main_layout = QVBoxLayout(self)
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        main_layout.setSpacing(0)
+        
+        # Create scroll area
+        scroll_area = QScrollArea()
+        scroll_area.setWidgetResizable(True)
+        scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        scroll_area.setStyleSheet("QScrollArea { border: none; background-color: #f0f0f0; }")
+        
+        # Create scrollable content widget
+        scroll_content = QWidget()
+        scroll_content.setStyleSheet("background-color: #f0f0f0;")
+        
+        page_layout = QVBoxLayout(scroll_content)
         page_layout.setContentsMargins(8, 8, 8, 8)
         page_layout.setSpacing(8)
 
@@ -42,7 +59,7 @@ class CustomLoadTab(QWidget):
 
         label_style = "font-size: 11px; color: #2a2a2a; background: transparent; border: none;"
         heading_style = "font-size: 11px; font-weight: 700; color: #1a1a1a; background: transparent; border: none;"
-        field_width = 105
+        field_width = 140
 
         left_column = QVBoxLayout()
         left_column.setContentsMargins(0, 0, 0, 0)
@@ -76,128 +93,207 @@ class CustomLoadTab(QWidget):
         title.setStyleSheet(heading_style)
         input_layout.addWidget(title)
 
-        form_grid = QGridLayout()
-        form_grid.setContentsMargins(0, 0, 0, 0)
-        form_grid.setHorizontalSpacing(8)
-        form_grid.setVerticalSpacing(8)
-        form_grid.setColumnMinimumWidth(0, 120)
-        form_grid.setColumnStretch(0, 0)
-        form_grid.setColumnStretch(1, 0)
-        form_grid.setColumnStretch(2, 0)
+        # Create a vertical layout for all fields
+        all_fields_layout = QVBoxLayout()
+        all_fields_layout.setContentsMargins(0, 0, 0, 0)
+        all_fields_layout.setSpacing(10)
 
+        # --- Load Case ---
+        load_case_row = QHBoxLayout()
+        load_case_row.setSpacing(8)
+        
         lbl = QLabel("Load Case:")
         lbl.setStyleSheet(label_style)
+        lbl.setFixedWidth(260)  # Fixed width to align with longer labels below
+        
         owner.custom_load_case_combo = QComboBox()
-        owner.custom_load_case_combo.addItems(["", "LL", "DL", "Custom"])
+        owner.custom_load_case_combo.addItems([
+            "DL", "DW", "SIDL", "LL", "EL", "WL", "TL", "Custom"
+        ])
         owner.custom_load_case_combo.setFixedWidth(field_width)
         apply_field_style(owner.custom_load_case_combo)
-        form_grid.addWidget(lbl, 0, 0, Qt.AlignLeft | Qt.AlignVCenter)
-        form_grid.addWidget(owner.custom_load_case_combo, 0, 1, Qt.AlignLeft)
+        
+        load_case_row.addWidget(lbl)
+        load_case_row.addWidget(owner.custom_load_case_combo)
+        load_case_row.addStretch()
+        all_fields_layout.addLayout(load_case_row)
 
-        owner.custom_load_case_button = QPushButton("Custom")
-        owner.custom_load_case_button.setFixedWidth(field_width)
-        owner.custom_load_case_button.setStyleSheet(
-            "QPushButton { background: #e8e8e8; border: 1px solid #a0a0a0; border-radius: 3px; padding: 3px 8px; font-size: 11px; color: #2a2a2a; }"
-            "QPushButton:hover { background: #f0f0f0; }"
-            "QPushButton:pressed { background: #d8d8d8; }"
-        )
-        form_grid.addWidget(owner.custom_load_case_button, 0, 2, Qt.AlignLeft)
+        # --- Custom Load Case Name ---
+        custom_name_row = QHBoxLayout()
+        custom_name_row.setSpacing(8)
+        
+        spacer_label = QLabel(" ")
+        spacer_label.setFixedWidth(260)
+        spacer_label.setStyleSheet("background: transparent; color: transparent; border: none;")
 
+        owner.custom_load_case_name_input = QLineEdit()
+        owner.custom_load_case_name_input.setPlaceholderText("custom")
+        owner.custom_load_case_name_input.setFixedWidth(field_width)
+        owner.custom_load_case_name_input.setEnabled(False)
+        apply_field_style(owner.custom_load_case_name_input)
+        
+        custom_name_row.addWidget(spacer_label)
+        custom_name_row.addWidget(owner.custom_load_case_name_input)
+        custom_name_row.addStretch()
+        all_fields_layout.addLayout(custom_name_row)
+
+        # --- Load Type ---
+        load_type_row = QHBoxLayout()
+        load_type_row.setSpacing(8)
+        
         lbl = QLabel("Load Type:")
         lbl.setStyleSheet(label_style)
+        lbl.setFixedWidth(260)
+        
         owner.custom_load_type_combo = QComboBox()
-        owner.custom_load_type_combo.addItems(["Point", "Line/Area"])
+        owner.custom_load_type_combo.addItems(["Point", "Line", "Area"])
         owner.custom_load_type_combo.setFixedWidth(field_width)
         apply_field_style(owner.custom_load_type_combo)
-        form_grid.addWidget(lbl, 1, 0, Qt.AlignLeft | Qt.AlignVCenter)
-        form_grid.addWidget(owner.custom_load_type_combo, 1, 1, Qt.AlignLeft)
+        
+        load_type_row.addWidget(lbl)
+        load_type_row.addWidget(owner.custom_load_type_combo)
+        load_type_row.addStretch()
+        all_fields_layout.addLayout(load_type_row)
 
+        input_layout.addLayout(all_fields_layout)
+
+        # Stacked widget for Point/Line/Area inputs
         self.custom_load_stack = QStackedWidget()
-        self.custom_load_stack.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
-        self.custom_load_stack.setFixedWidth(360)
+        self.custom_load_stack.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         self.custom_load_stack.setStyleSheet(
             "QStackedWidget { border: none; background: transparent; }"
             "QWidget#customPointWidget, QWidget#customLineWidget { background: transparent; }"
         )
 
+        # Point Widget
         point_widget = QWidget()
         point_widget.setObjectName("customPointWidget")
-        point_grid = QGridLayout(point_widget)
-        point_grid.setContentsMargins(0, 0, 0, 0)
-        point_grid.setHorizontalSpacing(8)
-        point_grid.setVerticalSpacing(8)
-        point_grid.setColumnMinimumWidth(0, 240)
-        point_grid.setColumnStretch(0, 0)
-        point_grid.setColumnStretch(1, 0)
+        point_layout = QVBoxLayout(point_widget)
+        point_layout.setContentsMargins(0, 8, 0, 0)
+        point_layout.setSpacing(10)
 
-        lbl = QLabel("Distance from Left Edge of Bridge Cross\nSection (m):")
+        # Point - Distance from Left Edge
+        point_left_row = QHBoxLayout()
+        point_left_row.setSpacing(8)
+        
+        lbl = QLabel("Distance from Left Edge of Bridge (m):")
         lbl.setStyleSheet(label_style)
+        lbl.setFixedWidth(260)
+        
         owner.custom_point_left_input = QLineEdit()
-        owner.custom_point_left_input.setFixedWidth(105)
+        owner.custom_point_left_input.setFixedWidth(field_width)
         apply_field_style(owner.custom_point_left_input)
-        point_grid.addWidget(lbl, 0, 0, Qt.AlignLeft | Qt.AlignVCenter)
-        point_grid.addWidget(owner.custom_point_left_input, 0, 1, Qt.AlignLeft)
+        
+        point_left_row.addWidget(lbl)
+        point_left_row.addWidget(owner.custom_point_left_input)
+        point_left_row.addStretch()
+        point_layout.addLayout(point_left_row)
 
-        lbl = QLabel("Distance from Center Line of Bearing\n(m):")
+        # Point - Distance from Center Line
+        point_bearing_row = QHBoxLayout()
+        point_bearing_row.setSpacing(8)
+        
+        lbl = QLabel("Distance from Center Line of Bearing (m):")
         lbl.setStyleSheet(label_style)
+        lbl.setFixedWidth(260)
+        
         owner.custom_point_bearing_input = QLineEdit()
-        owner.custom_point_bearing_input.setFixedWidth(105)
+        owner.custom_point_bearing_input.setFixedWidth(field_width)
         apply_field_style(owner.custom_point_bearing_input)
-        point_grid.addWidget(lbl, 1, 0, Qt.AlignLeft | Qt.AlignVCenter)
-        point_grid.addWidget(owner.custom_point_bearing_input, 1, 1, Qt.AlignLeft)
+        
+        point_bearing_row.addWidget(lbl)
+        point_bearing_row.addWidget(owner.custom_point_bearing_input)
+        point_bearing_row.addStretch()
+        point_layout.addLayout(point_bearing_row)
 
         self.custom_load_stack.addWidget(point_widget)
 
+        # Line Widget
         line_widget = QWidget()
         line_widget.setObjectName("customLineWidget")
-        line_grid = QGridLayout(line_widget)
-        line_grid.setContentsMargins(0, 0, 0, 0)
-        line_grid.setHorizontalSpacing(8)
-        line_grid.setVerticalSpacing(4)
-        line_grid.setColumnMinimumWidth(0, 240)
+        line_layout = QVBoxLayout(line_widget)
+        line_layout.setContentsMargins(0, 8, 0, 0)
+        line_layout.setSpacing(10)
 
-        def _start_end_row(label_text, start_attr, end_attr, row_idx):
-            row_label = QLabel(label_text)
-            row_label.setStyleSheet(label_style)
-            start_field = QLineEdit()
-            end_field = QLineEdit()
-            start_field.setFixedWidth(52)
-            end_field.setFixedWidth(52)
-            apply_field_style(start_field)
-            apply_field_style(end_field)
+        # Distance from Left Edge of Bridge
+        left_edge_row = QHBoxLayout()
+        left_edge_row.setSpacing(8)
+        
+        left_label = QLabel("Distance from Left Edge of Bridge (m):")
+        left_label.setStyleSheet(label_style)
+        left_label.setFixedWidth(260)
+        
+        # Start field
+        left_start_container = QVBoxLayout()
+        left_start_container.setSpacing(4)
+        left_start_lbl = QLabel("Start")
+        left_start_lbl.setStyleSheet("font-size: 9px; color: #505050;")
+        left_start_lbl.setAlignment(Qt.AlignCenter)
+        owner.custom_line_left_start = QLineEdit()
+        owner.custom_line_left_start.setFixedWidth(70)
+        apply_field_style(owner.custom_line_left_start)
+        left_start_container.addWidget(left_start_lbl)
+        left_start_container.addWidget(owner.custom_line_left_start)
+        
+        # End field
+        left_end_container = QVBoxLayout()
+        left_end_container.setSpacing(4)
+        left_end_lbl = QLabel("End")
+        left_end_lbl.setStyleSheet("font-size: 9px; color: #505050;")
+        left_end_lbl.setAlignment(Qt.AlignCenter)
+        owner.custom_line_left_end = QLineEdit()
+        owner.custom_line_left_end.setFixedWidth(70)
+        apply_field_style(owner.custom_line_left_end)
+        left_end_container.addWidget(left_end_lbl)
+        left_end_container.addWidget(owner.custom_line_left_end)
+        
+        left_edge_row.addWidget(left_label)
+        left_edge_row.addLayout(left_start_container)
+        left_edge_row.addLayout(left_end_container)
+        left_edge_row.addStretch()
+        line_layout.addLayout(left_edge_row)
 
-            line_grid.addWidget(row_label, row_idx * 2, 0, Qt.AlignLeft | Qt.AlignVCenter)
-            line_grid.addWidget(start_field, row_idx * 2, 1, Qt.AlignLeft)
-            line_grid.addWidget(end_field, row_idx * 2, 2, Qt.AlignLeft)
-
-            start_lbl = QLabel("Start")
-            start_lbl.setStyleSheet("font-size: 9px; color: #505050;")
-            end_lbl = QLabel("End")
-            end_lbl.setStyleSheet("font-size: 9px; color: #505050;")
-            line_grid.addWidget(start_lbl, row_idx * 2 + 1, 1, Qt.AlignHCenter | Qt.AlignTop)
-            line_grid.addWidget(end_lbl, row_idx * 2 + 1, 2, Qt.AlignHCenter | Qt.AlignTop)
-
-            setattr(owner, start_attr, start_field)
-            setattr(owner, end_attr, end_field)
-
-        _start_end_row(
-            "Distance from Left Edge of Bridge Cross\nSection (m):",
-            "custom_line_left_start",
-            "custom_line_left_end",
-            0,
-        )
-        _start_end_row(
-            "Distance from Center Line of Bearing\n(m):",
-            "custom_line_bearing_start",
-            "custom_line_bearing_end",
-            1,
-        )
+        # Distance from Center Line of Bearing
+        bearing_row = QHBoxLayout()
+        bearing_row.setSpacing(8)
+        
+        bearing_label = QLabel("Distance from Center Line of Bearing (m):")
+        bearing_label.setStyleSheet(label_style)
+        bearing_label.setFixedWidth(260)
+        
+        # Start field
+        bearing_start_container = QVBoxLayout()
+        bearing_start_container.setSpacing(4)
+        bearing_start_lbl = QLabel("Start")
+        bearing_start_lbl.setStyleSheet("font-size: 9px; color: #505050;")
+        bearing_start_lbl.setAlignment(Qt.AlignCenter)
+        owner.custom_line_bearing_start = QLineEdit()
+        owner.custom_line_bearing_start.setFixedWidth(70)
+        apply_field_style(owner.custom_line_bearing_start)
+        bearing_start_container.addWidget(bearing_start_lbl)
+        bearing_start_container.addWidget(owner.custom_line_bearing_start)
+        
+        # End field
+        bearing_end_container = QVBoxLayout()
+        bearing_end_container.setSpacing(4)
+        bearing_end_lbl = QLabel("End")
+        bearing_end_lbl.setStyleSheet("font-size: 9px; color: #505050;")
+        bearing_end_lbl.setAlignment(Qt.AlignCenter)
+        owner.custom_line_bearing_end = QLineEdit()
+        owner.custom_line_bearing_end.setFixedWidth(70)
+        apply_field_style(owner.custom_line_bearing_end)
+        bearing_end_container.addWidget(bearing_end_lbl)
+        bearing_end_container.addWidget(owner.custom_line_bearing_end)
+        
+        bearing_row.addWidget(bearing_label)
+        bearing_row.addLayout(bearing_start_container)
+        bearing_row.addLayout(bearing_end_container)
+        bearing_row.addStretch()
+        line_layout.addLayout(bearing_row)
 
         self.custom_load_stack.addWidget(line_widget)
 
-        form_grid.addWidget(self.custom_load_stack, 2, 0, 1, 3)
-
-        input_layout.addLayout(form_grid)
+        input_layout.addWidget(self.custom_load_stack)
 
         save_btn = QPushButton("Save")
         save_btn.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
@@ -207,17 +303,18 @@ class CustomLoadTab(QWidget):
             "QPushButton:pressed { background: #b8b8b8; }"
         )
         save_row = QHBoxLayout()
-        save_row.setContentsMargins(0, 4, 0, 0)
+        save_row.setContentsMargins(0, 8, 0, 0)
         save_row.addWidget(save_btn)
         input_layout.addLayout(save_row)
 
         left_column.addWidget(input_card)
 
+        # Second box for saved loads
         list_card = owner._create_card()
         list_card.setStyleSheet(
             "QFrame { border: 1px solid #a0a0a0; border-radius: 4px; background-color: #ffffff; }"
         )
-        list_card.setMinimumHeight(120)
+        list_card.setMinimumHeight(200)
         list_layout = QVBoxLayout(list_card)
         list_layout.setContentsMargins(10, 10, 10, 10)
         list_layout.setSpacing(8)
@@ -228,10 +325,9 @@ class CustomLoadTab(QWidget):
 
         controls_row = QHBoxLayout()
         controls_row.setSpacing(6)
-        owner.custom_add_btn = QPushButton("Add")
         owner.custom_edit_btn = QPushButton("Edit")
         owner.custom_delete_btn = QPushButton("Delete")
-        for btn in (owner.custom_add_btn, owner.custom_edit_btn, owner.custom_delete_btn):
+        for btn in (owner.custom_edit_btn, owner.custom_delete_btn):
             btn.setFixedWidth(55)
             btn.setStyleSheet(
                 "QPushButton { background: #ffffff; border: 1px solid #a0a0a0; border-radius: 3px; padding: 3px 8px; font-size: 11px; color: #2a2a2a; }"
@@ -250,7 +346,6 @@ class CustomLoadTab(QWidget):
         list_layout.addWidget(owner.custom_load_list_container)
 
         left_column.addWidget(list_card)
-        left_column.addStretch()
 
         right_card = owner._create_card()
         right_card.setStyleSheet(
@@ -274,22 +369,34 @@ class CustomLoadTab(QWidget):
         content_row.addWidget(right_card, 2)
         page_layout.addLayout(content_row)
 
+        # Set scroll content and add to main layout
+        scroll_area.setWidget(scroll_content)
+        main_layout.addWidget(scroll_area)
+
         owner.custom_load_type_combo.currentTextChanged.connect(self._on_custom_load_type_changed)
         self._on_custom_load_type_changed(owner.custom_load_type_combo.currentText())
 
-        owner.custom_add_btn.clicked.connect(self._on_add_custom_load)
+        save_btn.clicked.connect(self._on_save_custom_load)
         owner.custom_delete_btn.clicked.connect(self._on_delete_custom_load)
-        owner.custom_edit_btn.clicked.connect(
-            lambda: QMessageBox.information(self, "Edit", "Edit functionality will be added in a future update.")
+        owner.custom_edit_btn.clicked.connect(self._on_edit_custom_load)
+        owner.custom_load_case_combo.currentTextChanged.connect(
+            lambda t: self._on_load_case_changed(t)
         )
 
         self._refresh_custom_load_list()
 
     def _on_custom_load_type_changed(self, text):
-        if text.lower().startswith("point"):
+        if text == "Point":
             self.custom_load_stack.setCurrentIndex(0)
-        else:
+        else: 
             self.custom_load_stack.setCurrentIndex(1)
+
+    def _on_load_case_changed(self, text):
+        is_custom = (text == "Custom")
+        self.owner.custom_load_case_name_input.setEnabled(is_custom)
+        if not is_custom:
+            self.owner.custom_load_case_name_input.clear()
+
 
     def _refresh_custom_load_list(self):
         if not hasattr(self, "custom_load_list_layout"):
@@ -300,36 +407,177 @@ class CustomLoadTab(QWidget):
             if widget:
                 widget.deleteLater()
         self.custom_load_checkboxes = []
-        for name in self.custom_load_items:
+        for load_data in self.custom_load_items:
+            # load_data is now a dict with name and other properties
+            case = load_data.get("load_case", "")
+            ltype = load_data.get("load_type", "")
+            name = f"{case} - {ltype}"
+
             row = QHBoxLayout()
             row.setContentsMargins(2, 0, 2, 0)
             row.setSpacing(4)
+            
+            checkbox = QCheckBox()
             label = QLabel(name)
             label.setStyleSheet(
                 "font-size: 11px; font-style: italic; color: #3a3a3a; background: transparent; border: none;"
             )
-            checkbox = QCheckBox()
+            
+            row.addWidget(checkbox)
             row.addWidget(label)
             row.addStretch()
-            row.addWidget(checkbox)
+            
             container = QWidget()
             container.setLayout(row)
             self.custom_load_list_layout.addWidget(container)
-            self.custom_load_checkboxes.append((name, checkbox))
+            self.custom_load_checkboxes.append((load_data, checkbox))
         self.custom_load_list_layout.addStretch()
 
-    def _on_add_custom_load(self):
-        next_index = len(self.custom_load_items) + 1
-        new_name = f"Custom Load {next_index}"
-        self.custom_load_items.append(new_name)
+    def _on_save_custom_load(self):
+        owner = self.owner
+        
+        # Collect load data
+        load_data = {
+            "load_case": owner.custom_load_case_combo.currentText(),
+            "load_type": owner.custom_load_type_combo.currentText(),
+        }
+        
+        # Add custom load case name if applicable
+        if owner.custom_load_case_combo.currentText() == "Custom":
+            load_data["custom_load_case_name"] = owner.custom_load_case_name_input.text().strip()
+        
+        # Add type-specific data
+        if owner.custom_load_type_combo.currentText() == "Point":
+            load_data["point_left"] = owner.custom_point_left_input.text().strip()
+            load_data["point_bearing"] = owner.custom_point_bearing_input.text().strip()
+        else:  # Line or Area
+            load_data["line_left_start"] = owner.custom_line_left_start.text().strip()
+            load_data["line_left_end"] = owner.custom_line_left_end.text().strip()
+            load_data["line_bearing_start"] = owner.custom_line_bearing_start.text().strip()
+            load_data["line_bearing_end"] = owner.custom_line_bearing_end.text().strip()
+        
+        # Check if we're editing an existing load
+        if hasattr(self, '_editing_load_data') and self._editing_load_data:
+            # Update existing load
+            for i, item in enumerate(self.custom_load_items):
+                if item == self._editing_load_data:
+                    self.custom_load_items[i] = load_data
+                    break
+            self._editing_load_data = None
+        else:
+            # Add new load
+            self.custom_load_items.append(load_data)
+        
+        # Clear inputs and refresh list
+        self._clear_inputs()
         self._refresh_custom_load_list()
+        
+        msg = QMessageBox(self)
+        msg.setIcon(QMessageBox.Information)
+        msg.setWindowTitle("Saved")
+        msg.setText("Custom load has been saved.")
+        msg.setStyleSheet("QLabel { color: black; }")
+        msg.exec()
+
+    def _on_edit_custom_load(self):
+        if not hasattr(self, "custom_load_checkboxes"):
+            return
+        
+        # Find selected items
+        selected = [load_data for load_data, cb in self.custom_load_checkboxes if cb.isChecked()]
+        
+        if len(selected) == 0:
+            QMessageBox.information(self, "Edit", "Please select one custom load to edit.")
+            return
+        
+        if len(selected) > 1:
+            QMessageBox.information(self, "Edit", "Please select only one custom load to edit.")
+            return
+        
+        # Load the selected item into the form
+        load_data = selected[0]
+        self._editing_load_data = load_data
+        
+        owner = self.owner
+        
+        # Set load case
+        load_case = load_data.get("load_case", "DL")
+        index = owner.custom_load_case_combo.findText(load_case)
+        if index >= 0:
+            owner.custom_load_case_combo.setCurrentIndex(index)
+        
+        if load_case == "Custom":
+            owner.custom_load_case_name_input.setText(load_data.get("custom_load_case_name", ""))
+        
+        # Set load type
+        load_type = load_data.get("load_type", "Point")
+        index = owner.custom_load_type_combo.findText(load_type)
+        if index >= 0:
+            owner.custom_load_type_combo.setCurrentIndex(index)
+        
+        # Load type-specific data
+        if load_type == "Point":
+            owner.custom_point_left_input.setText(load_data.get("point_left", ""))
+            owner.custom_point_bearing_input.setText(load_data.get("point_bearing", ""))
+        else:
+            owner.custom_line_left_start.setText(load_data.get("line_left_start", ""))
+            owner.custom_line_left_end.setText(load_data.get("line_left_end", ""))
+            owner.custom_line_bearing_start.setText(load_data.get("line_bearing_start", ""))
+            owner.custom_line_bearing_end.setText(load_data.get("line_bearing_end", ""))
 
     def _on_delete_custom_load(self):
-        if not getattr(self, "custom_load_checkboxes", None):
+        if not hasattr(self, "custom_load_checkboxes"):
             return
-        remaining = [name for name, cb in self.custom_load_checkboxes if not cb.isChecked()]
-        if len(remaining) == len(self.custom_load_checkboxes):
-            QMessageBox.information(self, "Delete", "Select at least one custom load to delete.")
+        
+        # Find selected items
+        selected = [load_data for load_data, cb in self.custom_load_checkboxes if cb.isChecked()]
+        
+        if len(selected) == 0:
+            QMessageBox.information(self, "Delete", "Please select at least one custom load to delete.")
             return
-        self.custom_load_items[:] = remaining
+        
+        # Remove selected items
+        for load_data in selected:
+            if load_data in self.custom_load_items:
+                self.custom_load_items.remove(load_data)
+        
         self._refresh_custom_load_list()
+        msg = QMessageBox(self)
+        msg.setIcon(QMessageBox.Information)
+        msg.setWindowTitle("Deleted")
+        msg.setText(f"{len(selected)} custom load(s) deleted.")
+        msg.setStyleSheet("""
+        QLabel { color: black; }
+        QPushButton { color: black; }
+        """)
+        msg.exec()
+
+
+    def _clear_inputs(self):
+        """Clear all input fields"""
+        owner = self.owner
+        owner.custom_load_case_combo.setCurrentIndex(0)
+        owner.custom_load_case_name_input.clear()
+        owner.custom_load_type_combo.setCurrentIndex(0)
+        owner.custom_point_left_input.clear()
+        owner.custom_point_bearing_input.clear()
+        owner.custom_line_left_start.clear()
+        owner.custom_line_left_end.clear()
+        owner.custom_line_bearing_start.clear()
+        owner.custom_line_bearing_end.clear()
+
+    def reset_defaults(self):
+        """Reset Custom Load inputs to default values"""
+        # Clear inputs
+        self._clear_inputs()
+        
+        # Disable custom load case field
+        self.owner.custom_load_case_name_input.setEnabled(False)
+        
+        # Clear custom load items list
+        self.custom_load_items.clear()
+        self._refresh_custom_load_list()
+        
+        # Clear editing state
+        if hasattr(self, '_editing_load_data'):
+            self._editing_load_data = None

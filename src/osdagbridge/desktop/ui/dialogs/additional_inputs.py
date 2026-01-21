@@ -222,12 +222,22 @@ class AdditionalInputs(QDialog):
         return widget
 
     def _apply_defaults(self):
+        """Apply default values to all tabs"""
+
         if hasattr(self, "typical_section_tab") and hasattr(self.typical_section_tab, "reset_defaults"):
             self.typical_section_tab.reset_defaults()
+
         if hasattr(self, "section_properties_tab") and hasattr(self.section_properties_tab, "reset_defaults"):
             self.section_properties_tab.reset_defaults()
-        if not (hasattr(self, "typical_section_tab") or hasattr(self, "section_properties_tab")):
-            self._show_placeholder_message("Defaults")
+
+        if hasattr(self, "loading_tab"):
+            self.loading_tab.reset_defaults()
+
+            for i in range(self.loading_tab.load_tabs.count()):
+                tab = self.loading_tab.load_tabs.widget(i)
+                if hasattr(tab, "reset_defaults"):
+                    tab.reset_defaults()
+
 
     def _save_inputs(self):
         saved = {}

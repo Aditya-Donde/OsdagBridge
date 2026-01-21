@@ -25,13 +25,7 @@ class LoadCombinationTab(QWidget):
     def __init__(self, owner):
         super().__init__(owner)
         self.owner = owner
-        self.load_combo_items = getattr(owner, "load_combo_items", []) or [
-            {"name": "DL + LL", "items": [{"case": "DL", "factor": "1.0"}, {"case": "LL", "factor": "1.0"}]},
-            {
-                "name": "1.35 DL + 1.5 LL",
-                "items": [{"case": "DL", "factor": "1.35"}, {"case": "LL", "factor": "1.5"}],
-            },
-        ]
+        self.load_combo_items = getattr(owner, "load_combo_items", [])
         owner.load_combo_items = self.load_combo_items
         self._build_ui()
 
@@ -84,7 +78,8 @@ class LoadCombinationTab(QWidget):
         owner.load_combo_add_btn = QPushButton("Add")
         owner.load_combo_edit_btn = QPushButton("Edit")
         owner.load_combo_delete_btn = QPushButton("Delete")
-        for btn in (owner.load_combo_add_btn, owner.load_combo_edit_btn, owner.load_combo_delete_btn):
+        owner.load_combo_default_btn = QPushButton("Default")
+        for btn in (owner.load_combo_add_btn, owner.load_combo_edit_btn, owner.load_combo_delete_btn, owner.load_combo_default_btn):
             btn.setFixedWidth(60)
             btn.setStyleSheet(
                 "QPushButton { background: #ffffff; border: 1px solid #a0a0a0; border-radius: 3px; padding: 4px 10px; font-size: 11px; color: #2a2a2a; }"
@@ -133,7 +128,19 @@ class LoadCombinationTab(QWidget):
         owner.load_combo_add_btn.clicked.connect(self._on_add_load_combo)
         owner.load_combo_edit_btn.clicked.connect(self._on_edit_load_combo)
         owner.load_combo_delete_btn.clicked.connect(self._on_delete_load_combo)
+        owner.load_combo_default_btn.clicked.connect(self._on_reset_to_default)
 
+        self._refresh_load_combo_list()
+
+    def _on_reset_to_default(self):
+        """Reset load combinations to default values."""
+        self.load_combo_items = self._get_default_combos()
+        self.owner.load_combo_items = self.load_combo_items
+        
+        # Reset the auto-include checkbox if it exists
+        if hasattr(self.owner, 'auto_include_checkbox'):
+            self.owner.auto_include_checkbox.setChecked(False)
+        
         self._refresh_load_combo_list()
 
     def _refresh_load_combo_list(self):

@@ -1,6 +1,7 @@
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QFrame, QGridLayout, QHBoxLayout, QLabel, QLineEdit, QVBoxLayout, QWidget
 
+
 from osdagbridge.desktop.ui.dialogs.tabs.common import apply_field_style
 
 
@@ -44,7 +45,7 @@ class TemperatureLoadTab(QWidget):
         tl_layout.setContentsMargins(12, 12, 12, 12)
         tl_layout.setSpacing(10)
 
-        tl_title = QLabel("Temperature Load (TL) Inputs for evaluation per IRC6")
+        tl_title = QLabel("Temperature Load (TL) Inputs for Evaluation per IRC6")
         tl_title.setStyleSheet(heading_style)
         tl_layout.addWidget(tl_title)
 
@@ -59,6 +60,8 @@ class TemperatureLoadTab(QWidget):
         owner.highest_max_temp_input = QLineEdit()
         owner.highest_max_temp_input.setFixedWidth(field_width)
         apply_field_style(owner.highest_max_temp_input)
+        owner.highest_max_temp_input.setPlaceholderText("From Project Location")
+
         tl_grid.addWidget(lbl, 0, 0, Qt.AlignLeft | Qt.AlignVCenter)
         tl_grid.addWidget(owner.highest_max_temp_input, 0, 1, Qt.AlignLeft)
 
@@ -67,6 +70,8 @@ class TemperatureLoadTab(QWidget):
         owner.lowest_min_temp_input = QLineEdit()
         owner.lowest_min_temp_input.setFixedWidth(field_width)
         apply_field_style(owner.lowest_min_temp_input)
+        owner.lowest_min_temp_input.setPlaceholderText("From Project Location")
+
         tl_grid.addWidget(lbl, 1, 0, Qt.AlignLeft | Qt.AlignVCenter)
         tl_grid.addWidget(owner.lowest_min_temp_input, 1, 1, Qt.AlignLeft)
 
@@ -75,6 +80,8 @@ class TemperatureLoadTab(QWidget):
         owner.thermal_coeff_steel_input = QLineEdit()
         owner.thermal_coeff_steel_input.setFixedWidth(field_width)
         apply_field_style(owner.thermal_coeff_steel_input)
+        owner.thermal_coeff_steel_input.setText("12.0e-6")
+
         tl_grid.addWidget(lbl, 2, 0, Qt.AlignLeft | Qt.AlignVCenter)
         tl_grid.addWidget(owner.thermal_coeff_steel_input, 2, 1, Qt.AlignLeft)
 
@@ -83,6 +90,8 @@ class TemperatureLoadTab(QWidget):
         owner.thermal_coeff_rcc_input = QLineEdit()
         owner.thermal_coeff_rcc_input.setFixedWidth(field_width)
         apply_field_style(owner.thermal_coeff_rcc_input)
+        owner.thermal_coeff_rcc_input.setText("12.0e-6")
+
         tl_grid.addWidget(lbl, 3, 0, Qt.AlignLeft | Qt.AlignVCenter)
         tl_grid.addWidget(owner.thermal_coeff_rcc_input, 3, 1, Qt.AlignLeft)
 
@@ -142,6 +151,26 @@ class TemperatureLoadTab(QWidget):
         apply_field_style(owner.temp_fall_input)
         range_grid.addWidget(lbl, 4, 0, Qt.AlignLeft | Qt.AlignVCenter)
         range_grid.addWidget(owner.temp_fall_input, 4, 1, Qt.AlignLeft)
+
+        # Outputs from IRC 6 – should be read-only
+        readonly_input_style = """
+        QLineEdit {
+            color: #9e9e9e;
+            background-color: #f3f3f3;
+            border: 1px solid #3a3a3a;
+            border-radius: 4px;
+            padding: 4px;
+        }
+        """
+        
+        for field in (
+            owner.bridge_temp_min_input,
+            owner.bridge_temp_max_input,
+            owner.temp_rise_input,
+            owner.temp_fall_input,
+        ):
+            field.setReadOnly(True)
+            field.setStyleSheet(readonly_input_style)
 
         range_layout.addLayout(range_grid)
         left_layout.addWidget(range_box)
