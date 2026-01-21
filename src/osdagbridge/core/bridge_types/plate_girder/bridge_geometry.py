@@ -304,6 +304,48 @@ class CrossSectionLayout:
 
         self.total_width = z
 
+    def verify_bridge_width(self, num_long_grid: int, ext_to_int_dist: float, edge_beam_dist: float, tol: float = 1e-6,) -> bool:
+        """
+        Verify that the cross-section total_width matches the computed
+        overall bridge width from grillage geometry parameters.
+
+        Formula:
+            OverallBridgeWidth = (num_long_grid - 1) * ext_to_int_dist + 2 * edge_beam_dist
+
+        Parameters
+        ----------
+        num_long_grid : int
+            Number of longitudinal girders (n_l in analyser).
+        ext_to_int_dist : float
+            Spacing between exterior and interior girders.
+        edge_beam_dist : float
+            Edge distance / deck overhang.
+        tol : float
+            Numerical tolerance for comparison.
+
+        Returns
+        -------
+        bool
+            True if widths match within tolerance.
+
+        Raises
+        ------
+        ValueError
+            If the computed width does not match `total_width`.
+        """
+        computed_width = (num_long_grid - 1) * ext_to_int_dist + 2 * edge_beam_dist
+
+        if abs(self.total_width - computed_width) > tol:
+            raise ValueError(
+                f"Bridge width verification failed:\n"
+                f"  CrossSectionLayout total_width = {self.total_width:.4f} m\n"
+                f"  Computed from grillage geometry = {computed_width:.4f} m\n"
+                f"    (num_long_grid - 1) * ext_to_int_dist + 2 * edge_beam_dist\n"
+                f"    = ({num_long_grid} - 1) * {ext_to_int_dist:.4f} + 2 * {edge_beam_dist:.4f}\n"
+                f"  Difference = {abs(self.total_width - computed_width):.6f} m"
+            )
+        return True
+
     def get_component(self, name: str) -> SectionComponent:
         for c in self._components:
             if c.name == name:
