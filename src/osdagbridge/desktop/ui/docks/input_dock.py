@@ -712,23 +712,9 @@ class InputDock(QWidget):
         
         if dialog.exec() == QDialog.Accepted:
             location_data = dialog.get_selected_location()
+            if hasattr(self.backend, "set_input_value"):
+                self.backend.set_input_value(KEY_PROJECT_LOCATION, location_data)
             
-            # Process the location data as needed
-            if location_data['method'] == 'coordinates':
-                lat = location_data['data']['latitude']
-                lon = location_data['data']['longitude']
-                print(f"Selected coordinates: {lat}, {lon}")
-                
-            elif location_data['method'] == 'location_name':
-                state = location_data['data']['state']
-                district = location_data['data']['district']
-                print(f"Selected location: {district}, {state}")
-                
-            elif location_data['method'] == 'map':
-                print("Map selection (to be implemented)")
-            
-            if location_data['custom_params']:
-                print("Custom loading parameters requested")
 
     # Lock-Tooltip-Events-Starts-------------------------------------------------------------------------
     def eventFilter(self, obj, event):

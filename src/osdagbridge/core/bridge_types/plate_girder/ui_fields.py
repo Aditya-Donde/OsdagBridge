@@ -7,6 +7,28 @@ class FrontendData:
         self.module = KEY_DISP_FINPLATE
         self.design_status = False
         self.design_button_status = False
+        # Session-level UI input state (in-memory only)
+        self._input_state: dict[str, object] = {}
+        self._output_state: dict[str, object] = {}
+
+    def set_input_value(self, key: str, value: object) -> None:
+        """Store a single UI input value in memory."""
+        self._input_state[key] = value
+
+    def get_input_value(self, key: str, default: object = None) -> object:
+        """Retrieve a single UI input value from memory."""
+        return self._input_state.get(key, default)
+
+    def set_input_values(self, values: dict[str, object] | None) -> None:
+        """Bulk update input state."""
+        if values:
+            self._input_state.update(values)
+
+    def get_input_values_dict(self, include_empty: bool = True) -> dict[str, object]:
+        """Export all current input state."""
+        if include_empty:
+            return dict(self._input_state)
+        return {k: v for k, v in self._input_state.items() if v not in (None, "", [])}
     
     def input_values(self):
         """Return list of input fields for the UI"""
