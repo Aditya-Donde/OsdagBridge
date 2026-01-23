@@ -231,9 +231,24 @@ class AdditionalInputs(QDialog):
 
     def _save_inputs(self):
         saved = {}
-        if hasattr(self, "section_properties_tab") and hasattr(self.section_properties_tab, "save_properties"):
-            saved.update(self.section_properties_tab.save_properties() or {})
-        # No popup; silently succeed for now
+        try:
+            if hasattr(self, "section_properties_tab") and hasattr(self.section_properties_tab, "save_properties"):
+                saved.update(self.section_properties_tab.save_properties() or {})
+        except Exception as exc:
+            # If saving fails, the old code would never reach the confirmation popup.
+            QMessageBox.critical(self, "Save Failed", f"Could not save inputs.\n\n{exc}")
+            return
+
+        # Confirm save to the user (requested behavior). Use an explicit message box
+        # instance so it stays on top of the frameless dialog.
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Information)
+        box.setWindowTitle("Saved")
+        box.setText("Inputs saved successfully.")
+        box.setStandardButtons(QMessageBox.Ok)
+        box.setDefaultButton(QMessageBox.Ok)
+        box.setWindowModality(Qt.ApplicationModal)
+        box.exec()
 
     def _build_sections_from_schema(self, parent_layout, sections, heading_style, label_style, field_width):
         for section in sections:

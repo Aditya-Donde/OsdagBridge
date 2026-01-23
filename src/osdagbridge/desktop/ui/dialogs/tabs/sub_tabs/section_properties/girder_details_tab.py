@@ -1,22 +1,29 @@
 from __future__ import annotations
 
 import math
+import copy
 import sqlite3
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Optional
 
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QDoubleValidator
 from PySide6.QtWidgets import (
     QComboBox,
     QFrame,
     QGridLayout,
     QHBoxLayout,
+    QHeaderView,
     QLabel,
     QLineEdit,
     QMessageBox,
+    QPushButton,
     QScrollArea,
     QSizePolicy,
+    QStyledItemDelegate,
+    QTableWidget,
+    QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
@@ -31,12 +38,13 @@ from osdagbridge.core.utils.common import (
     VALUES_WARPING_RESTRAINT,
     VALUES_WEB_TYPE,
 )
-from osdagbridge.desktop.ui.dialogs.tabs.common import CheckableComboBox, apply_field_style
+from osdagbridge.desktop.ui.dialogs.tabs.common import apply_field_style
 from osdagbridge.desktop.ui.utils.rolled_section_preview import RolledSectionPreview
 
 
 DEFAULT_MEMBER_LENGTH_M = 30.0
 DEFAULT_DISTANCE_START_M = 0.0
+MAX_GIRDER_COUNT = 5
 
 
 def _locate_database() -> Path:
@@ -176,6 +184,28 @@ class GirderSectionCatalog:
 girder_properties = GirderSectionCatalog()
 
 
+class _EndDistanceDelegate(QStyledItemDelegate):
+    """Ensure table cell editor remains readable and numeric-friendly."""
+
+    def createEditor(self, parent, option, index):  # noqa: N802 (Qt naming)
+        editor = QLineEdit(parent)
+        editor.setAlignment(Qt.AlignCenter)
+        editor.setValidator(QDoubleValidator(0.0, 1e12, 3, editor))
+        editor.setStyleSheet(
+            "QLineEdit { padding: 2px 6px; border: 2px solid #90AF13; border-radius: 4px; "
+            "background: #ffffff; color: #000000; selection-background-color: #90AF13; selection-color: #000000; }"
+        )
+        return editor
+
+    def setEditorData(self, editor, index):  # noqa: N802 (Qt naming)
+        value = index.data() or ""
+        editor.setText(str(value))
+        editor.selectAll()
+
+    def setModelData(self, editor, model, index):  # noqa: N802 (Qt naming)
+        model.setData(index, editor.text())
+
+
 class GirderDetailsTab(QWidget):
     """Tab for Girder Details styled to match the provided reference."""
 
@@ -186,10 +216,41 @@ class GirderDetailsTab(QWidget):
         self.symmetry_row = []
         self.web_type_row = []
         self.section_property_inputs = {}
-        self.segment_chain = {}
+        # Segment chain is stored per girder:
+        # { 'G1': [ {'id': 'G1-1', 'start': 0.0, 'end': 30.0}, ... ], 'G2': [...] }
+        self.segment_chain: Dict[str, List[Dict[str, float]]] = {}
         self._suppress_distance_updates = False
-        self.available_girders = [f"G{i}" for i in range(1, 6)]
+        self._suppress_member_state_updates = False
+        # Always expose up to MAX_GIRDER_COUNT main girders in the UI.
+        self.available_girders = [f"G{i}" for i in range(1, MAX_GIRDER_COUNT + 1)]
         self._girder_combo_connected = False
+
+        # Master-Detail UI state
+        self._current_girder: str = self.available_girders[0] if self.available_girders else "G1"
+        self._current_segment_index: int = 0
+
+        # Per-member (Member ID) persistence + dirty tracking.
+        # {"G1": {"G1-1": {"inputs": {...}}}}
+        self._member_state: Dict[str, Dict[str, dict]] = {}
+        self._dirty_members: set[tuple[str, str]] = set()
+        self._last_member_combo_index: int = 0
+        # Template state used when a member is first visited.
+        self._default_member_state: Optional[dict] = None
+        # Section Inputs widgets are built later than the overview card. Avoid
+        # applying/storing per-member UI state before they exist.
+        self._section_inputs_built: bool = False
+
+        # Segment Manager widgets (right column)
+        self.girder_dropdown: Optional[QComboBox] = None
+        self.segment_table: Optional[QTableWidget] = None
+        self.split_add_button: Optional[QPushButton] = None
+        self.split_remove_button: Optional[QPushButton] = None
+
+        # Segment Details widgets (left column)
+        self.segment_length_input: Optional[QLineEdit] = None
+
+        # Section Inputs widgets
+        self.member_id_combo: Optional[QComboBox] = None
         self.init_ui()
 
     def init_ui(self):
@@ -218,79 +279,749 @@ class GirderDetailsTab(QWidget):
 
     def _build_overview_card(self):
         card = self._create_card_frame()
-        layout = QGridLayout(card)
-        layout.setContentsMargins(18, 16, 18, 16)
-        layout.setHorizontalSpacing(20)
-        layout.setVerticalSpacing(12)
-        layout.setColumnStretch(1, 1)
-        layout.setColumnStretch(3, 1)
+        outer = QHBoxLayout(card)
+        outer.setContentsMargins(18, 16, 18, 16)
+        outer.setSpacing(16)
 
-        self.select_girder_combo = CheckableComboBox()
-        self.select_girder_combo.addItems(["All"] + self.available_girders)
-        apply_field_style(self.select_girder_combo)
-        self._set_field_width(self.select_girder_combo)
-        layout.addWidget(self._create_label("Select Girder:"), 0, 0, Qt.AlignLeft | Qt.AlignVCenter)
-        layout.addWidget(self.select_girder_combo, 0, 1, 1, 3)
+        def _cad_placeholder(label: str) -> QFrame:
+            frame = QFrame()
+            frame.setFixedHeight(160)
+            frame.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+            frame.setStyleSheet(
+                "QFrame { border: 2px dashed #c0c0c0; border-radius: 8px; background: #fbfbfb; }"
+            )
+            layout = QVBoxLayout(frame)
+            layout.setContentsMargins(10, 10, 10, 10)
+            layout.setSpacing(0)
+            text = QLabel(label)
+            text.setAlignment(Qt.AlignCenter)
+            text.setStyleSheet("font-size: 12px; font-weight: 700; color: #666;")
+            layout.addWidget(text)
+            return frame
 
+        # LEFT: Select Girder + Total Span (matches reference layout)
+        left_panel = QWidget()
+        left_layout = QVBoxLayout(left_panel)
+        left_layout.setContentsMargins(0, 0, 0, 0)
+        left_layout.setSpacing(10)
+
+        # Placeholder area for CAD diagram (left)
+        left_layout.addWidget(_cad_placeholder("CAD Diagram Placeholder"))
+
+        details_box = self._create_inner_box()
+        details_layout = QGridLayout(details_box)
+        details_layout.setContentsMargins(12, 10, 12, 10)
+        details_layout.setHorizontalSpacing(14)
+        details_layout.setVerticalSpacing(10)
+        details_layout.setColumnMinimumWidth(0, 130)
+        details_layout.setColumnStretch(0, 0)
+        details_layout.setColumnStretch(1, 1)
+
+        # Keep span mode internally (for existing behavior) but hide it to match the reference UI.
         self.span_combo = QComboBox()
         self.span_combo.addItems(VALUES_GIRDER_SPAN_MODE)
         apply_field_style(self.span_combo)
-        self._set_field_width(self.span_combo)
+        self._set_field_width(self.span_combo, 180)
         self.span_combo.currentTextChanged.connect(self._on_span_changed)
-        layout.addWidget(self._create_label("Span:"), 1, 0, Qt.AlignLeft | Qt.AlignVCenter)
-        layout.addWidget(self.span_combo, 1, 1, Qt.AlignLeft)
+        span_label = self._create_label("Span:")
+        span_label.setVisible(False)
+        self.span_combo.setVisible(False)
+        details_layout.addWidget(span_label, 0, 0, Qt.AlignLeft | Qt.AlignVCenter)
+        details_layout.addWidget(self.span_combo, 0, 1)
 
-        self.member_id_input = QLineEdit()
-        self.member_id_input.setPlaceholderText("G1-1")
-        apply_field_style(self.member_id_input)
-        self._set_field_width(self.member_id_input)
-        self.member_id_input.textChanged.connect(self._on_member_id_changed)
-        layout.addWidget(self._create_label("Member ID:"), 1, 2, Qt.AlignLeft | Qt.AlignVCenter)
-        layout.addWidget(self.member_id_input, 1, 3, Qt.AlignLeft)
-
-        self.distance_start_input = QLineEdit("0")
-        self.distance_end_input = QLineEdit("30")
-        apply_field_style(self.distance_start_input)
-        apply_field_style(self.distance_end_input)
-        self._set_field_width(self.distance_start_input, 80)
-        self._set_field_width(self.distance_end_input, 80)
-        self.distance_start_input.editingFinished.connect(self._on_distance_start_changed)
-        self.distance_end_input.editingFinished.connect(self._on_distance_end_changed)
-        distance_row = self._build_distance_row()
-        layout.addWidget(self._create_label("Distance from left edge (m):"), 2, 0, Qt.AlignLeft | Qt.AlignTop)
-        layout.addLayout(distance_row, 2, 1, Qt.AlignLeft)
+        details_layout.addWidget(self._create_label("Select Girder:"), 1, 0, Qt.AlignLeft | Qt.AlignVCenter)
+        self.girder_dropdown = QComboBox()
+        # Display-friendly names while keeping stable internal IDs.
+        for girder in self.available_girders:
+            label = f"Girder {girder[1:]}" if girder.startswith("G") and girder[1:].isdigit() else girder
+            self.girder_dropdown.addItem(label, girder)
+        apply_field_style(self.girder_dropdown)
+        self._set_field_width(self.girder_dropdown, 180)
+        self.girder_dropdown.currentIndexChanged.connect(lambda _idx: self._on_girder_changed(self.girder_dropdown.currentData()))
+        details_layout.addWidget(self.girder_dropdown, 1, 1)
 
         self.length_input = QLineEdit("30")
         apply_field_style(self.length_input)
-        self._set_field_width(self.length_input)
-        self.length_input.setReadOnly(True)
+        self._set_field_width(self.length_input, 180)
+        self.length_input.setReadOnly(False)
         self.length_input.textChanged.connect(self._on_length_changed)
-        layout.addWidget(self._create_label("Length (m):"), 2, 2, Qt.AlignLeft | Qt.AlignVCenter)
-        layout.addWidget(self.length_input, 2, 3, Qt.AlignLeft)
+        details_layout.addWidget(self._create_label("Total Span (m):"), 2, 0, Qt.AlignLeft | Qt.AlignVCenter)
+        details_layout.addWidget(self.length_input, 2, 1)
 
-        self._setup_girder_selector()
+        # Hidden legacy fields: still used by existing split/ripple logic.
+        self.member_id_input = QLineEdit()
+        apply_field_style(self.member_id_input)
+        self.member_id_input.setReadOnly(True)
+        self.member_id_input.setVisible(False)
+
+        self.distance_start_input = QLineEdit("0")
+        apply_field_style(self.distance_start_input)
+        self.distance_start_input.setReadOnly(True)
+        self.distance_start_input.setVisible(False)
+
+        self.distance_end_input = QLineEdit("30")
+        apply_field_style(self.distance_end_input)
+        self.distance_end_input.editingFinished.connect(self._on_distance_end_changed)
+        self.distance_end_input.setVisible(False)
+
+        self.segment_length_input = QLineEdit("30")
+        apply_field_style(self.segment_length_input)
+        self.segment_length_input.setReadOnly(True)
+        self.segment_length_input.setVisible(False)
+
+        left_layout.addWidget(details_box)
+        left_layout.addStretch(1)
+
+        # RIGHT: Member segments table + add/remove buttons (matches reference layout)
+        manager_box = self._create_inner_box()
+        manager_layout = QVBoxLayout(manager_box)
+        manager_layout.setContentsMargins(12, 10, 12, 10)
+        manager_layout.setSpacing(8)
+
+        # Placeholder area for CAD diagram (right)
+        manager_layout.addWidget(_cad_placeholder("CAD Diagram Placeholder"))
+
+        table_row = QWidget()
+        table_row_layout = QHBoxLayout(table_row)
+        table_row_layout.setContentsMargins(0, 0, 0, 0)
+        table_row_layout.setSpacing(10)
+
+        self.segment_table = QTableWidget(0, 4)
+        self.segment_table.setHorizontalHeaderLabels(["Member ID", "Start (m)", "End (m)", "Length (m)"])
+        self.segment_table.horizontalHeader().setVisible(True)
+        self.segment_table.verticalHeader().setVisible(False)
+        self.segment_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        self.segment_table.horizontalHeader().setMinimumHeight(34)
+        self.segment_table.verticalHeader().setDefaultSectionSize(34)
+        self.segment_table.verticalHeader().setMinimumSectionSize(28)
+        self.segment_table.setShowGrid(True)
+        self.segment_table.setGridStyle(Qt.SolidLine)
+        self.segment_table.setAlternatingRowColors(True)
+        self.segment_table.setSelectionBehavior(QTableWidget.SelectRows)
+        self.segment_table.setSelectionMode(QTableWidget.SingleSelection)
+        # Allow editing End values (used for split/ripple), other columns remain read-only by item flags.
+        self.segment_table.setEditTriggers(QTableWidget.DoubleClicked | QTableWidget.SelectedClicked | QTableWidget.EditKeyPressed)
+        self.segment_table.setMinimumHeight(170)
+        self.segment_table.setStyleSheet(
+            "QTableWidget { background: #ffffff; border: 1px solid #d6d6d6; border-radius: 6px; gridline-color: #d0d0d0; }"
+            "QTableWidget::item { color: #1f1f1f; padding: 6px; }"
+            "QTableWidget::item:selected { background: #e8f0c9; color: #1a1a1a; }"
+            "QTableWidget::item:focus { outline: none; }"
+            "QTableWidget QLineEdit { background: #ffffff; color: #000000; }"
+            "QHeaderView::section { background: #f3f3f3; color: #2b2b2b; font-weight: 700; border: 1px solid #d0d0d0; padding: 6px; }"
+            "QTableCornerButton::section { background: #f3f3f3; border: 1px solid #d0d0d0; }"
+        )
+        self.segment_table.setItemDelegateForColumn(2, _EndDistanceDelegate(self.segment_table))
+        self.segment_table.currentCellChanged.connect(self._on_segment_row_changed)
+        # Single-click editing for End column (better UX) while keeping row selection.
+        self.segment_table.cellClicked.connect(self._on_segment_cell_clicked)
+        self.segment_table.itemChanged.connect(self._on_segment_table_item_changed)
+        table_row_layout.addWidget(self.segment_table, 1)
+
+        buttons_col = QWidget()
+        buttons_layout = QVBoxLayout(buttons_col)
+        buttons_layout.setContentsMargins(0, 0, 0, 0)
+        buttons_layout.setSpacing(8)
+
+        self.split_add_button = QPushButton("+")
+        self.split_add_button.setFixedSize(36, 36)
+        self.split_add_button.setStyleSheet(
+            "QPushButton { background-color: #90AF13; color: #111111; border: 1px solid #6f850f; border-radius: 6px; padding: 0px; font-weight: 900; font-size: 22px; }"
+            "QPushButton:hover { background-color: #7a9410; }"
+            "QPushButton:pressed { background-color: #6a840d; }"
+        )
+        self.split_add_button.setToolTip("Add/Split member segment")
+        self.split_add_button.clicked.connect(self._on_split_add_clicked)
+
+        self.split_remove_button = QPushButton("X")
+        self.split_remove_button.setFixedSize(36, 36)
+        self.split_remove_button.setStyleSheet(
+            "QPushButton { background-color: #c72626; color: #ffffff; border: 1px solid #8f1c1c; border-radius: 6px; padding: 0px; font-weight: 900; font-size: 16px; }"
+            "QPushButton:hover { background-color: #ae1f1f; }"
+            "QPushButton:pressed { background-color: #991a1a; }"
+        )
+        self.split_remove_button.setToolTip("Remove selected segment")
+        self.split_remove_button.clicked.connect(self._on_remove_segment_clicked)
+
+        buttons_layout.addWidget(self.split_add_button)
+        buttons_layout.addWidget(self.split_remove_button)
+        buttons_layout.addStretch(1)
+        table_row_layout.addWidget(buttons_col, 0)
+
+        manager_layout.addWidget(table_row)
+        manager_layout.addStretch(1)
+
+        outer.addWidget(left_panel, 1)
+        outer.addWidget(manager_box, 1)
+
+        # Initialize segment chain and UI selections
+        self._initialize_segment_chain_if_needed()
+        # Default to an editable span (Custom) while keeping legacy span-mode support.
+        if self.span_combo.findText("Custom") >= 0:
+            self.span_combo.setCurrentText("Custom")
         self._on_span_changed(self.span_combo.currentText())
+        self._on_girder_changed(self._current_girder)
 
         return card
 
-    def _build_distance_row(self):
-        row = QHBoxLayout()
-        row.setContentsMargins(0, 0, 0, 0)
-        row.setSpacing(16)
+    # ===== Master-Detail / Segment Chain helpers =====
 
-        def _build_column(line_edit, caption):
-            column = QVBoxLayout()
-            column.setContentsMargins(0, 0, 0, 0)
-            column.setSpacing(2)
-            column.addWidget(line_edit)
-            label = self._create_small_label(caption)
-            label.setAlignment(Qt.AlignCenter)
-            column.addWidget(label, alignment=Qt.AlignCenter)
-            return column
+    def _initialize_segment_chain_if_needed(self) -> None:
+        """Ensure each available girder has at least one segment spanning the total span."""
+        total_span = self._get_total_span() or DEFAULT_MEMBER_LENGTH_M
+        if not self.segment_chain:
+            for girder in self.available_girders:
+                self.segment_chain[girder] = [
+                    {"id": f"{girder}-1", "start": 0.0, "end": float(total_span)},
+                ]
 
-        row.addLayout(_build_column(self.distance_start_input, "Start"))
-        row.addLayout(_build_column(self.distance_end_input, "End"))
-        return row
+    def _ensure_girder_segments(self, girder: str) -> List[Dict[str, float]]:
+        total_span = self._get_total_span() or DEFAULT_MEMBER_LENGTH_M
+        segments = self.segment_chain.get(girder)
+        if not segments:
+            segments = [{"id": f"{girder}-1", "start": 0.0, "end": float(total_span)}]
+            self.segment_chain[girder] = segments
+
+        # Normalize starts to always equal previous end, and last end to total span.
+        segments[0]["start"] = 0.0
+        for i in range(1, len(segments)):
+            segments[i]["start"] = float(segments[i - 1].get("end", 0.0))
+        # Do NOT force the current last segment to end at total span here.
+        # End-at-span is enforced by the split logic (creating a fill segment),
+        # and by total span changes.
+        if "end" not in segments[-1] or segments[-1]["end"] is None:
+            segments[-1]["end"] = float(total_span)
+        return segments
+
+    @staticmethod
+    def _fmt_m(value: float) -> str:
+        text = f"{value:.3f}".rstrip("0").rstrip(".")
+        return text if text else "0"
+
+    def _refresh_segment_list(self, girder: str) -> None:
+        if not self.segment_table:
+            return
+        segments = self._ensure_girder_segments(girder)
+        self.segment_table.blockSignals(True)
+        try:
+            self.segment_table.setRowCount(len(segments))
+            for row, seg in enumerate(segments):
+                start = float(seg.get("start", 0.0))
+                end = float(seg.get("end", 0.0))
+                length = max(0.0, end - start)
+
+                # Member ID
+                id_item = QTableWidgetItem(str(seg.get("id", "")))
+                id_item.setTextAlignment(Qt.AlignCenter)
+                id_item.setFlags(id_item.flags() & ~Qt.ItemIsEditable)
+                self.segment_table.setItem(row, 0, id_item)
+
+                start_item = QTableWidgetItem(self._fmt_m(start))
+                start_item.setTextAlignment(Qt.AlignCenter)
+                start_item.setFlags(start_item.flags() & ~Qt.ItemIsEditable)
+                self.segment_table.setItem(row, 1, start_item)
+
+                end_item = QTableWidgetItem(self._fmt_m(end))
+                end_item.setTextAlignment(Qt.AlignCenter)
+                # End is editable (drives split/ripple).
+                self.segment_table.setItem(row, 2, end_item)
+
+                length_item = QTableWidgetItem(self._fmt_m(length))
+                length_item.setTextAlignment(Qt.AlignCenter)
+                length_item.setFlags(length_item.flags() & ~Qt.ItemIsEditable)
+                self.segment_table.setItem(row, 3, length_item)
+        finally:
+            self.segment_table.blockSignals(False)
+
+        self._sync_remove_button_visibility()
+
+    def _sync_remove_button_visibility(self) -> None:
+        """Hide X when only one segment exists (must always keep at least one)."""
+        if not self.split_remove_button:
+            return
+        segments = self._ensure_girder_segments(self._current_girder)
+        show_remove = len(segments) > 1
+        self.split_remove_button.setVisible(show_remove)
+        self.split_remove_button.setEnabled(show_remove)
+
+        self._refresh_member_id_combo()
+
+    # ===== Member (Member ID) state + dirty tracking =====
+
+    def _current_member_key(self) -> tuple[str, str]:
+        segments = self._ensure_girder_segments(self._current_girder)
+        if not segments:
+            return (self._current_girder, f"{self._current_girder}-1")
+        idx = max(0, min(self._current_segment_index, len(segments) - 1))
+        seg_id = str(segments[idx].get("id", f"{self._current_girder}-{idx + 1}"))
+        return (self._current_girder, seg_id)
+
+    def _ensure_member_state_initialized(self) -> None:
+        """Ensure current member has an initial stored state."""
+        girder, member_id = self._current_member_key()
+        if girder not in self._member_state:
+            self._member_state[girder] = {}
+        if member_id not in self._member_state[girder]:
+            # IMPORTANT: don't capture the *current* UI here because it may still
+            # reflect the previously selected member. Use a stable template.
+            if self._default_member_state is not None:
+                self._member_state[girder][member_id] = copy.deepcopy(self._default_member_state)
+            else:
+                self._member_state[girder][member_id] = self._capture_member_state()
+
+    def _mark_current_member_dirty(self) -> None:
+        if self._suppress_member_state_updates:
+            return
+        girder, member_id = self._current_member_key()
+        self._dirty_members.add((girder, member_id))
+
+    def _is_current_member_dirty(self) -> bool:
+        return self._current_member_key() in self._dirty_members
+
+    def _commit_current_member_state(self) -> None:
+        girder, member_id = self._current_member_key()
+        if girder not in self._member_state:
+            self._member_state[girder] = {}
+        self._member_state[girder][member_id] = self._capture_member_state()
+        self._dirty_members.discard((girder, member_id))
+
+    def _capture_member_state(self) -> dict:
+        """Capture Section Inputs for the current member (properties are derived)."""
+        return {
+            "inputs": {
+                "design": self.design_combo.currentText() if hasattr(self, "design_combo") else "",
+                "type": self.type_combo.currentText() if hasattr(self, "type_combo") else "",
+                "symmetry": self.symmetry_combo.currentText() if hasattr(self, "symmetry_combo") else "",
+                "total_depth": self.total_depth_input.text() if hasattr(self, "total_depth_input") else "",
+                "top_width": self.top_width_input.text() if hasattr(self, "top_width_input") else "",
+                "bottom_width": self.bottom_width_input.text() if hasattr(self, "bottom_width_input") else "",
+                "web_thickness": self.web_thickness_combo.currentText() if hasattr(self, "web_thickness_combo") else "",
+                "top_thickness": self.top_thickness_combo.currentText() if hasattr(self, "top_thickness_combo") else "",
+                "bottom_thickness": self.bottom_thickness_combo.currentText() if hasattr(self, "bottom_thickness_combo") else "",
+                "is_section": self.is_section_combo.currentText() if hasattr(self, "is_section_combo") else "",
+                "torsion": self.torsion_combo.currentText() if hasattr(self, "torsion_combo") else "",
+                "warping": self.warping_combo.currentText() if hasattr(self, "warping_combo") else "",
+                "web_type": self.web_type_combo.currentText() if hasattr(self, "web_type_combo") else "",
+            }
+        }
+
+    def _apply_member_state(self, state: dict) -> None:
+        # During early init, the overview card triggers segment selection before
+        # Section Inputs widgets are created.
+        if not getattr(self, "_section_inputs_built", False):
+            return
+        inputs = (state or {}).get("inputs", {})
+        self._suppress_member_state_updates = True
+        try:
+            if inputs.get("design"):
+                self.design_combo.setCurrentText(inputs["design"])
+            if inputs.get("type"):
+                self.type_combo.setCurrentText(inputs["type"])
+            if inputs.get("symmetry"):
+                self.symmetry_combo.setCurrentText(inputs["symmetry"])
+
+            self.total_depth_input.setText(inputs.get("total_depth", ""))
+            self.top_width_input.setText(inputs.get("top_width", ""))
+            self.bottom_width_input.setText(inputs.get("bottom_width", ""))
+
+            if inputs.get("web_thickness"):
+                self.web_thickness_combo.setCurrentText(inputs["web_thickness"])
+            if inputs.get("top_thickness"):
+                self.top_thickness_combo.setCurrentText(inputs["top_thickness"])
+            if inputs.get("bottom_thickness"):
+                self.bottom_thickness_combo.setCurrentText(inputs["bottom_thickness"])
+
+            if inputs.get("is_section"):
+                self.is_section_combo.setCurrentText(inputs["is_section"])
+            if inputs.get("torsion"):
+                self.torsion_combo.setCurrentText(inputs["torsion"])
+            if inputs.get("warping"):
+                self.warping_combo.setCurrentText(inputs["warping"])
+            if inputs.get("web_type"):
+                self.web_type_combo.setCurrentText(inputs["web_type"])
+        finally:
+            self._suppress_member_state_updates = False
+
+        self._update_preview()
+
+    def _wire_member_dirty_tracking(self) -> None:
+        """Mark current member dirty when Section Inputs change."""
+        def connect_combo(combo: QComboBox) -> None:
+            combo.currentTextChanged.connect(lambda _t: self._mark_current_member_dirty())
+
+        def connect_line(line: QLineEdit) -> None:
+            line.textChanged.connect(lambda _t: self._mark_current_member_dirty())
+
+        connect_combo(self.design_combo)
+        connect_combo(self.type_combo)
+        connect_combo(self.symmetry_combo)
+        connect_combo(self.web_thickness_combo)
+        connect_combo(self.top_thickness_combo)
+        connect_combo(self.bottom_thickness_combo)
+        connect_combo(self.is_section_combo)
+        connect_combo(self.torsion_combo)
+        connect_combo(self.warping_combo)
+        connect_combo(self.web_type_combo)
+
+        connect_line(self.total_depth_input)
+        connect_line(self.top_width_input)
+        connect_line(self.bottom_width_input)
+
+    def _confirm_switch_if_dirty(self) -> str:
+        """Return 'save'|'discard'|'cancel' before switching member."""
+        if not self._is_current_member_dirty():
+            return "discard"
+        _, member_id = self._current_member_key()
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Warning)
+        box.setWindowTitle("Unsaved Changes")
+        box.setText(f"You have unsaved changes for {member_id}. Save before switching?")
+        box.setStandardButtons(QMessageBox.Save | QMessageBox.Discard | QMessageBox.Cancel)
+        box.setDefaultButton(QMessageBox.Save)
+        result = box.exec()
+        if result == QMessageBox.Save:
+            return "save"
+        if result == QMessageBox.Discard:
+            self._dirty_members.discard(self._current_member_key())
+            return "discard"
+        return "cancel"
+
+    def _refresh_member_id_combo(self) -> None:
+        """Keep the Member ID dropdown in sync with the current girder's segments."""
+        if not self.member_id_combo:
+            return
+        segments = self._ensure_girder_segments(self._current_girder)
+        block = self.member_id_combo.blockSignals(True)
+        try:
+            current_index = self._current_segment_index
+            self.member_id_combo.clear()
+            for seg in segments:
+                seg_id = str(seg.get("id", ""))
+                self.member_id_combo.addItem(seg_id, seg_id)
+            if self.member_id_combo.count():
+                self.member_id_combo.setCurrentIndex(max(0, min(current_index, self.member_id_combo.count() - 1)))
+                self._last_member_combo_index = self.member_id_combo.currentIndex()
+        finally:
+            self.member_id_combo.blockSignals(block)
+
+    def _on_member_id_combo_changed(self, index: int) -> None:
+        if index is None or index < 0:
+            return
+        # Prompt if user is leaving a dirty member without saving.
+        if int(index) != int(self._current_segment_index):
+            decision = self._confirm_switch_if_dirty()
+            if decision == "cancel":
+                prev = self.member_id_combo.blockSignals(True)
+                try:
+                    self.member_id_combo.setCurrentIndex(self._last_member_combo_index)
+                finally:
+                    self.member_id_combo.blockSignals(prev)
+                return
+            if decision == "save":
+                self._commit_current_member_state()
+                # Confirm member-level save immediately (requested UX).
+                try:
+                    QMessageBox.information(self, "Saved", "Member inputs saved successfully.")
+                except Exception:
+                    pass
+
+        self._select_segment_index(int(index))
+        self._last_member_combo_index = int(index)
+
+    def _on_segment_table_item_changed(self, item: QTableWidgetItem) -> None:
+        """Bridge UI edits (End column) into the existing split/ripple logic."""
+        if not item or self._suppress_distance_updates:
+            return
+        # Only respond to End column edits.
+        if item.column() != 2:
+            return
+
+        row = item.row()
+        if row is None or row < 0:
+            return
+
+        # Select row so downstream logic uses correct current segment index.
+        self._current_segment_index = int(row)
+        if self.distance_end_input is None:
+            return
+
+        self.distance_end_input.setText(item.text())
+        self._on_distance_end_changed()
+
+    def _on_segment_cell_clicked(self, row: int, column: int) -> None:
+        """Start editing End (m) on single click."""
+        if not self.segment_table:
+            return
+        if row is None or row < 0:
+            return
+        if column != 2:
+            return
+        item = self.segment_table.item(row, column)
+        if item is None:
+            return
+        # Ensure the correct row is selected and open the editor immediately.
+        self.segment_table.setCurrentCell(row, column)
+        self.segment_table.editItem(item)
+
+    def _on_remove_segment_clicked(self) -> None:
+        """Remove the selected segment (keeps at least one segment)."""
+        girder = self._current_girder
+        segments = self._ensure_girder_segments(girder)
+        if not segments:
+            return
+        if len(segments) == 1:
+            return
+
+        idx = self._current_segment_index
+        idx = max(0, min(int(idx), len(segments) - 1))
+        segments.pop(idx)
+
+        # Renormalize starts, enforce last end == total span, and re-id sequentially.
+        total_span = float(self._get_total_span() or DEFAULT_MEMBER_LENGTH_M)
+        segments[0]["start"] = 0.0
+        for i in range(1, len(segments)):
+            segments[i]["start"] = float(segments[i - 1].get("end", 0.0))
+        segments[-1]["end"] = float(total_span)
+        for i, seg in enumerate(segments, start=1):
+            seg["id"] = f"{girder}-{i}"
+        self.segment_chain[girder] = segments
+
+        self._refresh_segment_list(girder)
+        self._select_segment_index(min(idx, len(segments) - 1))
+
+    def _select_segment_index(self, index: int) -> None:
+        segments = self._ensure_girder_segments(self._current_girder)
+        if not segments:
+            return
+        index = max(0, min(index, len(segments) - 1))
+        self._current_segment_index = index
+        if self.segment_table and self.segment_table.rowCount() > index:
+            self.segment_table.blockSignals(True)
+            try:
+                self.segment_table.setCurrentCell(index, 0)
+            finally:
+                self.segment_table.blockSignals(False)
+        self._load_segment_details(self._current_girder, index)
+
+        # Keep Member ID combo selection aligned without triggering confirmation loops.
+        if self.member_id_combo and self.member_id_combo.currentIndex() != index:
+            prev = self.member_id_combo.blockSignals(True)
+            try:
+                self.member_id_combo.setCurrentIndex(index)
+            finally:
+                self.member_id_combo.blockSignals(prev)
+            self._last_member_combo_index = index
+
+        # Load per-member Section Inputs for the selected Member ID.
+        if getattr(self, "_section_inputs_built", False):
+            self._ensure_member_state_initialized()
+            girder, member_id = self._current_member_key()
+            stored = self._member_state.get(girder, {}).get(member_id)
+            if stored:
+                self._apply_member_state(stored)
+
+    def _load_segment_details(self, girder: str, index: int) -> None:
+        segments = self._ensure_girder_segments(girder)
+        if not segments:
+            return
+        index = max(0, min(index, len(segments) - 1))
+        seg = segments[index]
+        start = float(seg.get("start", 0.0))
+        end = float(seg.get("end", 0.0))
+        length = max(0.0, end - start)
+
+        self._suppress_distance_updates = True
+        try:
+            self.member_id_input.setText(seg["id"])
+            self.distance_start_input.setText(self._fmt_m(start))
+            self.distance_end_input.setText(self._fmt_m(end))
+            if self.segment_length_input:
+                self.segment_length_input.setText(self._fmt_m(length))
+        finally:
+            self._suppress_distance_updates = False
+
+    def _on_girder_changed(self, girder: str) -> None:
+        if not girder:
+            return
+        self._current_girder = girder
+        self._refresh_segment_list(girder)
+        self._select_segment_index(0)
+        self._sync_remove_button_visibility()
+
+    def _on_segment_row_changed(self, current_row: int, _current_column: int, _previous_row: int, _previous_column: int) -> None:
+        if current_row is None or current_row < 0:
+            return
+        self._select_segment_index(int(current_row))
+
+    def _on_split_add_clicked(self) -> None:
+        """Split/Add Segment.
+
+        Spec-aligned behavior:
+        - If the selected segment is the last segment and its End Distance is < total span,
+          create the next segment to fill the gap (no popups).
+        """
+        girder = self._current_girder
+        segments = self._ensure_girder_segments(girder)
+        total_span = float(self._get_total_span() or DEFAULT_MEMBER_LENGTH_M)
+        if not segments:
+            return
+
+        idx = max(0, min(self._current_segment_index, len(segments) - 1))
+        if idx != len(segments) - 1:
+            # Only support add/fill from last segment for now (matches the described rule).
+            self._select_segment_index(len(segments) - 1)
+            idx = len(segments) - 1
+
+        current = segments[idx]
+        start = float(current.get("start", 0.0))
+
+        new_end = self._parse_float(self.distance_end_input.text()) if self.distance_end_input else None
+        if new_end is None:
+            new_end = float(current.get("end", total_span))
+
+        # Clamp/validate
+        new_end = max(start, min(float(new_end), total_span))
+
+        # If no gap, do nothing (no popup)
+        if abs(new_end - total_span) < 1e-9:
+            current["end"] = float(total_span)
+            self._refresh_segment_list(girder)
+            self._select_segment_index(idx)
+            return
+
+        # Update last segment end and create the fill segment
+        current["end"] = float(new_end)
+        next_id = f"{girder}-{len(segments) + 1}"
+        segments.append({"id": next_id, "start": float(new_end), "end": float(total_span)})
+
+        # Normalize starts for safety and enforce last end
+        segments[0]["start"] = 0.0
+        for i in range(1, len(segments)):
+            segments[i]["start"] = float(segments[i - 1].get("end", 0.0))
+        segments[-1]["end"] = float(total_span)
+        self.segment_chain[girder] = segments
+
+        self._refresh_segment_list(girder)
+        self._select_segment_index(idx)
+
+    # ===== Span/Length + Auto-split handlers =====
+
+    def _on_span_changed(self, span_text):
+        """Toggle total span editability.
+
+        - Custom: user can edit total span.
+        - Full Length: total span is locked (read-only).
+        """
+        is_full = (span_text or "").strip() == "Full Length"
+        self.length_input.setReadOnly(is_full)
+
+        self._initialize_segment_chain_if_needed()
+        self._refresh_segment_list(self._current_girder)
+        self._select_segment_index(self._current_segment_index)
+
+    def _on_length_changed(self, _):
+        """When total span changes, update the chain so the final segment ends at the new span."""
+        total_span = self._get_total_span()
+        if total_span is None:
+            return
+
+        for girder in self.available_girders:
+            segments = self._ensure_girder_segments(girder)
+            if not segments:
+                continue
+
+            # Clamp and remove segments beyond new span.
+            pruned: List[Dict[str, float]] = []
+            for seg in segments:
+                start = float(seg.get("start", 0.0))
+                end = float(seg.get("end", 0.0))
+                if start >= total_span:
+                    break
+                seg["end"] = min(end, float(total_span))
+                pruned.append(seg)
+
+            if not pruned:
+                pruned = [{"id": f"{girder}-1", "start": 0.0, "end": float(total_span)}]
+
+            # Renormalize starts and ids (keep ids stable if possible).
+            pruned[0]["start"] = 0.0
+            for i in range(1, len(pruned)):
+                pruned[i]["start"] = float(pruned[i - 1].get("end", 0.0))
+            pruned[-1]["end"] = float(total_span)
+            self.segment_chain[girder] = pruned
+
+        self._refresh_segment_list(self._current_girder)
+        self._select_segment_index(min(self._current_segment_index, len(self._ensure_girder_segments(self._current_girder)) - 1))
+
+    def _on_distance_end_changed(self):
+        """Auto-split algorithm + ripple edit.
+
+        - If user shortens the current *last* segment, a new fill segment is created.
+        - If user edits an intermediate segment, the next segment start is updated.
+        """
+        if self._suppress_distance_updates:
+            return
+        if not self.distance_end_input:
+            return
+
+        girder = self._current_girder
+        segments = self._ensure_girder_segments(girder)
+        if not segments:
+            return
+
+        idx = max(0, min(self._current_segment_index, len(segments) - 1))
+        current = segments[idx]
+
+        new_end = self._parse_float(self.distance_end_input.text())
+        if new_end is None:
+            # Revert to current stored end
+            self._load_segment_details(girder, idx)
+            return
+
+        total_span = float(self._get_total_span() or DEFAULT_MEMBER_LENGTH_M)
+        start = float(current.get("start", 0.0))
+        old_end = float(current.get("end", start))
+
+        # Clamp instead of warning popups.
+        if new_end < start:
+            new_end = start
+
+        is_last = idx == (len(segments) - 1)
+        if is_last:
+            if new_end > total_span:
+                new_end = total_span
+        else:
+            next_seg = segments[idx + 1]
+            next_end = float(next_seg.get("end", total_span))
+            if new_end > next_end:
+                new_end = next_end
+
+        # Apply edit
+        current["end"] = float(new_end)
+
+        if not is_last:
+            # Ripple: set the next start = new end
+            segments[idx + 1]["start"] = float(new_end)
+        else:
+            # Split trigger: if user shortens the last segment, create fill segment
+            if new_end < old_end and new_end < total_span:
+                next_id = f"{girder}-{len(segments) + 1}"
+                segments.append({"id": next_id, "start": float(new_end), "end": float(total_span)})
+            elif new_end > total_span:
+                current["end"] = float(total_span)
+
+        # Renormalize starts for all subsequent segments
+        segments[0]["start"] = 0.0
+        for i in range(1, len(segments)):
+            segments[i]["start"] = float(segments[i - 1].get("end", 0.0))
+
+        # Always enforce last end == total span after edits
+        segments[-1]["end"] = float(total_span)
+        self.segment_chain[girder] = segments
+
+        # Refresh master list + keep selection
+        self._refresh_segment_list(girder)
+        self._select_segment_index(idx)
 
     def _build_section_card(self):
         container = QWidget()
@@ -299,18 +1030,20 @@ class GirderDetailsTab(QWidget):
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(16)
 
-        # Left side - two bordered boxes stacked vertically
+        # Left side - single bordered box (Section Inputs + restraint fields)
         left_column = QWidget()
         left_column.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         left_column_layout = QVBoxLayout(left_column)
         left_column_layout.setContentsMargins(0, 0, 0, 0)
-        left_column_layout.setSpacing(12)
+        left_column_layout.setSpacing(0)
+        left_column_layout.setAlignment(Qt.AlignTop)
 
         # Section Inputs box (single frame containing all fields)
         section_inputs_box = self._create_inner_box()
         section_inputs_layout = QVBoxLayout(section_inputs_box)
         section_inputs_layout.setContentsMargins(12, 8, 12, 12)
         section_inputs_layout.setSpacing(8)
+        section_inputs_layout.setAlignment(Qt.AlignTop)
 
         section_inputs_title = self._create_label("Section Inputs:")
         section_inputs_layout.addWidget(section_inputs_title)
@@ -319,14 +1052,22 @@ class GirderDetailsTab(QWidget):
         inputs_grid.setContentsMargins(0, 0, 0, 0)
         inputs_grid.setHorizontalSpacing(16)
         inputs_grid.setVerticalSpacing(12)
-        inputs_grid.setColumnMinimumWidth(0, 150)
+        # Match the reference UI's aligned label column.
+        inputs_grid.setColumnMinimumWidth(0, 210)
         inputs_grid.setColumnStretch(0, 0)
         inputs_grid.setColumnStretch(1, 1)
+
+        # Member ID (segment selector) - mirrors reference UI.
+        self.member_id_combo = QComboBox()
+        apply_field_style(self.member_id_combo)
+        self._set_field_width(self.member_id_combo, 180)
+        self.member_id_combo.currentIndexChanged.connect(self._on_member_id_combo_changed)
+        row = self._add_box_row(inputs_grid, 0, "Member ID:", self.member_id_combo)
 
         self.design_combo = QComboBox()
         self.design_combo.addItems(VALUES_GIRDER_DESIGN_MODE)
         apply_field_style(self.design_combo)
-        row = self._add_box_row(inputs_grid, 0, "Design:", self.design_combo)
+        row = self._add_box_row(inputs_grid, row, "Design:", self.design_combo)
 
         self.type_combo = QComboBox()
         self.type_combo.addItems(VALUES_GIRDER_TYPE)
@@ -403,41 +1144,24 @@ class GirderDetailsTab(QWidget):
         apply_field_style(self.is_section_combo)
         self._add_box_row(inputs_grid, row, "IS Section:", self.is_section_combo, self.rolled_rows)
 
-        section_inputs_layout.addLayout(inputs_grid)
-        left_column_layout.addWidget(section_inputs_box)
-
-        # Restraint/Web details box
-        restraint_box = self._create_inner_box()
-        restraint_layout = QVBoxLayout(restraint_box)
-        restraint_layout.setContentsMargins(12, 6, 12, 10)
-        restraint_layout.setSpacing(6)
-
-        restraint_title = self._create_label("Restraint & Web Details:")
-        restraint_layout.addWidget(restraint_title)
-
-        restraint_grid = QGridLayout()
-        restraint_grid.setContentsMargins(0, 0, 0, 0)
-        restraint_grid.setHorizontalSpacing(16)
-        restraint_grid.setVerticalSpacing(12)
-        restraint_grid.setColumnMinimumWidth(0, 150)
-        restraint_grid.setColumnStretch(0, 0)
-        restraint_grid.setColumnStretch(1, 1)
-
+        # Append restraint/web fields into the same Section Inputs box (no extra frame / spacing).
         self.torsion_combo = QComboBox()
         apply_field_style(self.torsion_combo)
-        row = self._add_box_row(restraint_grid, 0, "Torsional Restraint:", self.torsion_combo)
+        row = self._add_box_row(inputs_grid, row + 1, "Torsional Restraint:", self.torsion_combo)
 
         self.warping_combo = QComboBox()
         apply_field_style(self.warping_combo)
-        row = self._add_box_row(restraint_grid, row, "Warping Restraint:", self.warping_combo)
+        row = self._add_box_row(inputs_grid, row, "Warping Restraint:", self.warping_combo)
 
         self.web_type_combo = QComboBox()
         apply_field_style(self.web_type_combo)
-        self._add_box_row(restraint_grid, row, "Web Type*:", self.web_type_combo, self.web_type_row)
+        self._add_box_row(inputs_grid, row, "Web Type*:", self.web_type_combo, self.web_type_row)
 
-        restraint_layout.addLayout(restraint_grid)
-        restraint_layout.addStretch(1)
-        left_column_layout.addWidget(restraint_box)
+        section_inputs_layout.addLayout(inputs_grid)
+        # Prevent the grid rows from stretching vertically (which creates large blank bands
+        # above the first input when the right column is taller). Extra height goes below.
+        section_inputs_layout.addStretch(1)
+        left_column_layout.addWidget(section_inputs_box)
         self._configure_restraint_fields()
 
         main_layout.addWidget(left_column)
@@ -447,7 +1171,7 @@ class GirderDetailsTab(QWidget):
         right_column.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         right_column_layout = QVBoxLayout(right_column)
         right_column_layout.setContentsMargins(0, 0, 0, 0)
-        right_column_layout.setSpacing(12)
+        right_column_layout.setSpacing(10)
 
         # Dynamic image box
         image_box = self._create_inner_box()
@@ -480,7 +1204,7 @@ class GirderDetailsTab(QWidget):
         properties_grid.setContentsMargins(0, 0, 0, 0)
         properties_grid.setHorizontalSpacing(12)
         properties_grid.setVerticalSpacing(10)
-        properties_grid.setColumnMinimumWidth(0, 140)
+        properties_grid.setColumnMinimumWidth(0, 210)
         properties_grid.setColumnStretch(0, 0)
         properties_grid.setColumnStretch(1, 1)
 
@@ -519,6 +1243,17 @@ class GirderDetailsTab(QWidget):
             watcher.textChanged.connect(self._update_preview)
         self._on_design_changed(self.design_combo.currentText())
         self._on_type_changed(self.type_combo.currentText())
+
+        # Capture a stable template state for new members.
+        self._default_member_state = self._capture_member_state()
+
+        # Track per-member edits and ensure current member has a baseline saved state.
+        self._wire_member_dirty_tracking()
+        self._section_inputs_built = True
+        self._refresh_member_id_combo()
+        # Now that Section Inputs exist, sync UI state to current segment and seed
+        # per-member state from the visible defaults.
+        self._select_segment_index(self._current_segment_index)
 
         return container
 
@@ -744,161 +1479,63 @@ class GirderDetailsTab(QWidget):
         self._update_preview()
 
     def _update_distance_field_states(self):
-        member_id = self.member_id_input.text().strip()
-        is_full_span = self.span_combo.currentText() == "Full Length"
-        if is_full_span:
-            self.distance_start_input.setReadOnly(True)
-            self.distance_end_input.setReadOnly(True)
-            return
-        if not self._is_valid_segment_id(member_id):
-            self.distance_start_input.setReadOnly(True)
-            self.distance_end_input.setReadOnly(True)
-            return
-        self.distance_start_input.setReadOnly(self._is_first_segment(member_id))
+        # Master-Detail spec:
+        # - Member ID: read-only
+        # - Start distance: read-only
+        # - End distance: editable
+        self.member_id_input.setReadOnly(True)
+        self.distance_start_input.setReadOnly(True)
         self.distance_end_input.setReadOnly(False)
+        if self.segment_length_input:
+            self.segment_length_input.setReadOnly(True)
 
     def _on_span_changed(self, span_text):
-        is_full = span_text == "Full Length"
-        self.length_input.setReadOnly(not is_full)
-        if is_full:
-            self._apply_full_length_distances()
-        else:
-            member_id = self.member_id_input.text().strip()
-            if not self._is_valid_segment_id(member_id):
-                member_id = self._default_member_segment_id()
-                self._set_member_id_text(member_id)
-            self._load_segment_distances(member_id)
-        self._update_member_id_edit_state()
+        # Preserve legacy span-mode behavior for total span editability.
+        is_full = (span_text or "").strip() == "Full Length"
+        self.length_input.setReadOnly(is_full)
 
-    def _on_length_changed(self, _):
-        if self.span_combo.currentText() == "Full Length":
-            self._apply_full_length_distances()
-
-    def _apply_full_length_distances(self):
-        self._suppress_distance_updates = True
-        try:
-            total_span = self._get_total_span()
-            self._set_line_edit_value(self.distance_start_input, 0.0)
-            self._set_line_edit_value(self.distance_end_input, total_span)
-        finally:
-            self._suppress_distance_updates = False
-
-    def _on_member_id_changed(self, member_id):
-        member_id = member_id.strip()
-        if not member_id or self.span_combo.currentText() == "Full Length":
-            return
-        if not self._is_valid_segment_id(member_id):
-            self._update_distance_field_states()
-            return
-        if self._is_first_segment(member_id):
-            self._update_segment_record(member_id, start=0.0)
-        else:
-            previous_id = self._get_previous_segment_id(member_id)
-            previous_end = self.segment_chain.get(previous_id, {}).get("end") if previous_id else None
-            if previous_end is not None:
-                self._update_segment_record(member_id, start=previous_end)
-        self._load_segment_distances(member_id)
+        self._initialize_segment_chain_if_needed()
+        self._refresh_segment_list(self._current_girder)
+        self._select_segment_index(self._current_segment_index)
         self._update_distance_field_states()
 
-    def _on_distance_start_changed(self):
-        if self._suppress_distance_updates:
+    def _on_length_changed(self, _):
+        # Total span changes affect all girders, regardless of mode.
+        total_span = self._get_total_span()
+        if total_span is None:
             return
-        current_id = self.member_id_input.text().strip()
-        if not current_id or not self._is_valid_segment_id(current_id):
-            return
-        if self._is_first_segment(current_id):
-            self._suppress_distance_updates = True
-            try:
-                self._set_line_edit_value(self.distance_start_input, 0.0)
-            finally:
-                self._suppress_distance_updates = False
-            self._update_segment_record(current_id, start=0.0)
-            return
-        value = self._parse_float(self.distance_start_input.text()) or 0.0
-        self._update_segment_record(current_id, start=value)
 
-    def _on_distance_end_changed(self):
-        if self._suppress_distance_updates:
-            return
-        current_id = self.member_id_input.text().strip()
-        if not current_id or self.span_combo.currentText() == "Full Length" or not self._is_valid_segment_id(current_id):
-            return
-        end_value = self._parse_float(self.distance_end_input.text())
-        if end_value is None:
-            end_value = 0.0
+        for girder in self.available_girders:
+            segments = self._ensure_girder_segments(girder)
+            if not segments:
+                self.segment_chain[girder] = [{"id": f"{girder}-1", "start": 0.0, "end": float(total_span)}]
+                continue
 
-        start_value = self._parse_float(self.distance_start_input.text())
-        if start_value is None:
-            start_value = self.segment_chain.get(current_id, {}).get("start")
-        if start_value is None and self._is_first_segment(current_id):
-            start_value = 0.0
+            # If any segment ends beyond the new span, clamp and drop trailing.
+            pruned: List[Dict[str, float]] = []
+            for seg in segments:
+                start = float(seg.get("start", 0.0))
+                if start >= total_span:
+                    break
+                end = float(seg.get("end", 0.0))
+                seg["end"] = min(end, float(total_span))
+                pruned.append(seg)
+            if not pruned:
+                pruned = [{"id": f"{girder}-1", "start": 0.0, "end": float(total_span)}]
+            pruned[0]["start"] = 0.0
+            for i in range(1, len(pruned)):
+                pruned[i]["start"] = float(pruned[i - 1].get("end", 0.0))
+            pruned[-1]["end"] = float(total_span)
+            self.segment_chain[girder] = pruned
 
-        if start_value is not None:
-            self._update_segment_record(current_id, start=start_value)
-        self._update_segment_record(current_id, end=end_value)
-        self._propagate_next_segment_start(current_id, end_value)
-
-    def _propagate_next_segment_start(self, member_id, next_start_value):
-        next_id = self._get_next_segment_id(member_id)
-        if not next_id:
-            return
-        self._update_segment_record(next_id, start=next_start_value)
-        if next_id == self.member_id_input.text().strip() and self.span_combo.currentText() != "Full Length":
-            self._load_segment_distances(next_id)
-
-    def _load_segment_distances(self, member_id):
-        if not member_id or not self._is_valid_segment_id(member_id):
-            return
-        record = self.segment_chain.setdefault(member_id, {})
-        if self._is_first_segment(member_id):
-            record.setdefault("start", 0.0)
-        elif "start" not in record:
-            previous_id = self._get_previous_segment_id(member_id)
-            if previous_id:
-                previous = self.segment_chain.get(previous_id, {})
-                if "end" in previous:
-                    record["start"] = previous["end"]
-
-        self._suppress_distance_updates = True
-        try:
-            if "start" in record:
-                self._set_line_edit_value(self.distance_start_input, record["start"])
-            else:
-                self.distance_start_input.clear()
-            if "end" in record:
-                self._set_line_edit_value(self.distance_end_input, record["end"])
-            else:
-                self.distance_end_input.clear()
-        finally:
-            self._suppress_distance_updates = False
-
-    def _update_segment_record(self, member_id, start=None, end=None):
-        if not member_id or not self._is_valid_segment_id(member_id):
-            return
-        record = self.segment_chain.setdefault(member_id, {})
-        if start is not None:
-            record["start"] = start
-        if end is not None:
-            record["end"] = end
+        self._refresh_segment_list(self._current_girder)
+        self._select_segment_index(self._current_segment_index)
 
     def _get_total_span(self):
-        return self._parse_float(self.length_input.text()) or 0.0
-
-    def _is_first_segment(self, member_id):
-        _, index = self._split_member_id(member_id)
-        return index == 1
-
-    def _get_next_segment_id(self, member_id):
-        base, index = self._split_member_id(member_id)
-        if base is None or index is None:
+        text = (self.length_input.text() or "").strip()
+        if not text:
             return None
-        return f"{base}-{index + 1}"
-
-    def _get_previous_segment_id(self, member_id):
-        base, index = self._split_member_id(member_id)
-        if base is None or index is None or index <= 1:
-            return None
-        return f"{base}-{index - 1}"
+        return self._parse_float(text)
 
     def _split_member_id(self, member_id):
         if "-" not in member_id:
@@ -1247,34 +1884,36 @@ class GirderDetailsTab(QWidget):
         except (TypeError, ValueError):
             return None
 
-    def _segment_belongs_to_available_girder(self, member_id: str) -> bool:
-        if not member_id:
-            return False
-        girder, _ = self._split_member_id(member_id)
-        return girder in self.available_girders
-
     def set_girder_count(self, count: Optional[int]) -> None:
-        if not hasattr(self, "select_girder_combo"):
-            return
         try:
             total = int(count) if count is not None else len(self.available_girders)
         except (TypeError, ValueError):
             total = len(self.available_girders)
-        total = max(1, total)
-        previous_selection = self._get_selected_girders()
+        total = max(1, min(MAX_GIRDER_COUNT, total))
         self.available_girders = [f"G{i}" for i in range(1, total + 1)]
-        self.segment_chain = {
-            member_id: dict(values)
-            for member_id, values in self.segment_chain.items()
-            if self._segment_belongs_to_available_girder(member_id)
-        }
-        self._refresh_girder_combo_items(previous_selection)
-        self._set_member_id_text(self._default_member_segment_id(), block_signals=True)
-        self._update_member_id_edit_state()
+
+        # Prune segment chains for removed girders and initialize new ones.
+        self.segment_chain = {g: segs for g, segs in self.segment_chain.items() if g in self.available_girders}
+        total_span = float(self._get_total_span() or DEFAULT_MEMBER_LENGTH_M)
+        for girder in self.available_girders:
+            if girder not in self.segment_chain:
+                self.segment_chain[girder] = [{"id": f"{girder}-1", "start": 0.0, "end": total_span}]
+
+        # Refresh dropdown
+        if self.girder_dropdown:
+            prev = self.girder_dropdown.blockSignals(True)
+            self.girder_dropdown.clear()
+            for girder in self.available_girders:
+                label = f"Girder {girder[1:]}" if girder.startswith("G") and girder[1:].isdigit() else girder
+                self.girder_dropdown.addItem(label, girder)
+            self.girder_dropdown.setCurrentIndex(0)
+            self.girder_dropdown.blockSignals(prev)
+
+        self._current_girder = self.available_girders[0] if self.available_girders else "G1"
+        self._on_girder_changed(self._current_girder)
 
     def reset_defaults(self) -> None:
         self.segment_chain.clear()
-        self._refresh_girder_combo_items()
 
         def _reset_combo(combo: QComboBox, index: int = 0):
             previous = combo.blockSignals(True)
@@ -1298,10 +1937,13 @@ class GirderDetailsTab(QWidget):
         if self.is_section_combo.count() > 0:
             _reset_combo(self.is_section_combo)
 
-        self._set_line_edit_value(self.distance_start_input, DEFAULT_DISTANCE_START_M)
-        self._set_line_edit_value(self.distance_end_input, DEFAULT_MEMBER_LENGTH_M)
+        # Total span default
         self._set_line_edit_value(self.length_input, DEFAULT_MEMBER_LENGTH_M)
-        self._set_member_id_text(self._default_member_segment_id(), block_signals=True)
+
+        # Segment chain defaults: one segment per girder spanning the full span
+        total_span = float(self._get_total_span() or DEFAULT_MEMBER_LENGTH_M)
+        for girder in self.available_girders:
+            self.segment_chain[girder] = [{"id": f"{girder}-1", "start": 0.0, "end": total_span}]
 
         for field in (
             self.total_depth_input,
@@ -1316,9 +1958,25 @@ class GirderDetailsTab(QWidget):
         self._on_type_changed(self.type_combo.currentText())
         self._update_preview()
         self._update_section_properties()
-        self._update_member_id_edit_state()
+
+        # Refresh master-detail UI
+        if self.girder_dropdown:
+            prev = self.girder_dropdown.blockSignals(True)
+            self.girder_dropdown.clear()
+            self.girder_dropdown.addItems(self.available_girders)
+            self.girder_dropdown.setCurrentIndex(0)
+            self.girder_dropdown.blockSignals(prev)
+
+        self._current_girder = self.available_girders[0] if self.available_girders else "G1"
+        self._refresh_segment_list(self._current_girder)
+        self._select_segment_index(0)
+        self._update_distance_field_states()
 
     def collect_data(self) -> dict:
+        # Treat the dialog-level Save as committing the current Member ID.
+        if self._is_current_member_dirty():
+            self._commit_current_member_state()
+
         welded_inputs = {
             "total_depth_mm": self.total_depth_input.text().strip(),
             "top_flange_width_mm": self.top_width_input.text().strip(),
@@ -1331,13 +1989,20 @@ class GirderDetailsTab(QWidget):
             label: field.text().strip()
             for label, field in self.section_property_inputs.items()
         }
+        current_segments = self._ensure_girder_segments(self._current_girder)
+        current_segment = None
+        if current_segments:
+            idx = max(0, min(self._current_segment_index, len(current_segments) - 1))
+            current_segment = dict(current_segments[idx])
         return {
-            "selected_girders": self._get_selected_girders(),
+            "selected_girders": [self._current_girder],
+            "selected_girder": self._current_girder,
             "span_mode": self.span_combo.currentText(),
             "member_id": self.member_id_input.text().strip(),
             "distance_start_m": self._parse_float(self.distance_start_input.text()),
             "distance_end_m": self._parse_float(self.distance_end_input.text()),
-            "length_m": self._parse_float(self.length_input.text()),
+            "total_span_m": self._parse_float(self.length_input.text()),
+            "current_segment": current_segment,
             "design_mode": self.design_combo.currentText(),
             "girder_type": self.type_combo.currentText(),
             "symmetry": self.symmetry_combo.currentText(),
@@ -1347,8 +2012,53 @@ class GirderDetailsTab(QWidget):
             "rolled_section": self.is_section_combo.currentText(),
             "welded_inputs": welded_inputs,
             "segment_chain": {
-                key: {"start": value.get("start"), "end": value.get("end")}
-                for key, value in self.segment_chain.items()
+                girder: [
+                    {"id": seg.get("id"), "start": seg.get("start"), "end": seg.get("end")}
+                    for seg in segments
+                ]
+                for girder, segments in self.segment_chain.items()
             },
+            # Per-member saved Section Inputs keyed by girder/member_id.
+            "member_states": self._member_state,
             "section_properties": properties_snapshot,
         }
+
+    # ===== Public helpers for other Member Properties tabs =====
+
+    def list_all_member_ids(self) -> List[str]:
+        """Return all current member IDs (segments) across all available girders."""
+        member_ids: List[str] = []
+        for girder in self.available_girders:
+            segments = self._ensure_girder_segments(girder)
+            for seg in segments:
+                seg_id = str(seg.get("id") or "").strip()
+                if seg_id:
+                    member_ids.append(seg_id)
+        return member_ids
+
+    def is_member_optimized(self, member_id: str) -> bool:
+        """True if the given member is set to Optimized design in Girder Details."""
+        member_id = str(member_id or "").strip()
+        if not member_id:
+            return False
+
+        girder = member_id.split("-")[0] if "-" in member_id else member_id
+
+        # If the requested member is currently active, reflect the live UI.
+        try:
+            current_girder, current_member_id = self._current_member_key()
+            if current_girder == girder and current_member_id == member_id:
+                return (self.design_combo.currentText() if hasattr(self, "design_combo") else "") == "Optimized"
+        except Exception:
+            pass
+
+        stored = (self._member_state.get(girder) or {}).get(member_id) or {}
+        design = ((stored.get("inputs") or {}).get("design") or "").strip()
+        if design:
+            return design == "Optimized"
+
+        # Fallback: if the member hasn't been visited/saved yet, assume current default.
+        try:
+            return (self.design_combo.currentText() if hasattr(self, "design_combo") else "") == "Optimized"
+        except Exception:
+            return False

@@ -55,6 +55,29 @@ class SectionPropertiesTab(QWidget):
 
         main_layout.addWidget(self.section_tabs)
 
+        # Bind stiffener tab to the girder tab for member list + optimized state.
+        try:
+            self.stiffener_details_tab.bind_girder_details_tab(self.girder_details_tab)
+        except Exception:
+            pass
+
+        # Refresh stiffener members whenever the tab becomes active.
+        try:
+            self.section_tabs.currentChanged.connect(self._on_section_tab_changed)
+        except Exception:
+            pass
+
+    def _on_section_tab_changed(self, index: int) -> None:
+        try:
+            widget = self.section_tabs.widget(index)
+        except Exception:
+            return
+        if widget is getattr(self, "stiffener_details_tab", None):
+            try:
+                self.stiffener_details_tab.refresh_girder_members()
+            except Exception:
+                pass
+
     def set_girder_count(self, count):
         if hasattr(self, "girder_details_tab") and hasattr(self.girder_details_tab, "set_girder_count"):
             self.girder_details_tab.set_girder_count(count)
@@ -69,6 +92,12 @@ class SectionPropertiesTab(QWidget):
         data = {}
         if hasattr(self, "girder_details_tab") and hasattr(self.girder_details_tab, "collect_data"):
             data["girder_details"] = self.girder_details_tab.collect_data()
+        if hasattr(self, "stiffener_details_tab"):
+            # Validate stiffener inputs before saving.
+            if hasattr(self.stiffener_details_tab, "validate"):
+                self.stiffener_details_tab.validate()
+            if hasattr(self.stiffener_details_tab, "collect_data"):
+                data["stiffener_details"] = self.stiffener_details_tab.collect_data()
         if hasattr(self, "cross_bracing_tab") and hasattr(self.cross_bracing_tab, "collect_data"):
             data["cross_bracing"] = self.cross_bracing_tab.collect_data()
         return data
