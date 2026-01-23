@@ -232,7 +232,10 @@ class CrossBracingDetailsTab(QWidget):
         layout = QVBoxLayout(box)
         layout.setContentsMargins(12, 10, 12, 10)
         layout.setSpacing(8)
-        layout.addWidget(self._create_heading_label(title))
+        # Preview headings should be visually stronger — make them bold only here
+        heading = QLabel(title)
+        heading.setStyleSheet("font-size: 12px; font-weight: 700; color: #4b4b4b; border: none;")
+        layout.addWidget(heading)
         image = self._create_image_placeholder(150)
         layout.addWidget(image)
         return box, image
@@ -288,7 +291,10 @@ class CrossBracingDetailsTab(QWidget):
     def _set_preview(self, widget: SectionPreviewWidget, type_combo: QComboBox, size_combo: QComboBox):
         stype = self._map_section_type(type_combo.currentText())
         designation = size_combo.currentData() or size_combo.currentText()
-        widget.set_section(stype, designation)
+        show_double_total = True
+        if stype in ("double_angle_long", "double_angle_short"):
+            show_double_total = False
+        widget.set_section(stype, designation, show_double_total)
 
     def _populate_designations(self):
         angles = self.catalog.list_angles()

@@ -278,7 +278,10 @@ class EndDiaphragmDetailsTab(QWidget):
             preview_layout = QVBoxLayout(preview_box)
             preview_layout.setContentsMargins(12, 8, 12, 8)
             preview_layout.setSpacing(6)
-            preview_layout.addWidget(self._create_heading_label(title))
+            # Make these preview titles bolder without affecting other headings
+            preview_heading = QLabel(title)
+            preview_heading.setStyleSheet("font-size: 12px; font-weight: 700; color: #4b4b4b; border: none;")
+            preview_layout.addWidget(preview_heading)
             preview_layout.addWidget(self._create_image_placeholder("Preview", 110))
             right_layout.addWidget(preview_box)
 

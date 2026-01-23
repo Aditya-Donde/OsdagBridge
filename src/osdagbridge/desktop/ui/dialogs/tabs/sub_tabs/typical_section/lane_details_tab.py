@@ -10,7 +10,7 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCore import Qt
 
-from osdagbridge.core.bridge_types.plate_girder.typical_section_schema import LANE_DETAILS_TAB_SCHEMA
+from osdagbridge.core.bridge_types.plate_girder.ui_fields_additional_input import LANE_DETAILS_TAB_SCHEMA
 
 
 class LaneDetailsTab(QWidget):
@@ -33,6 +33,14 @@ class LaneDetailsTab(QWidget):
 
         field.setObjectName(field_def.get("id", ""))
         owner.style_input_field(field)
+
+        # Make the lane count combo wider for readability
+        bind_name = field_def.get("bind")
+        if field_def.get("id") == "lane_count" or bind_name == "lane_count_combo":
+            try:
+                field.setFixedWidth(180)
+            except Exception:
+                pass
 
         bind_name = field_def.get("bind")
         if bind_name:

@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 from PySide6.QtCore import QPointF, QRectF, Qt
-from PySide6.QtGui import QColor, QFont, QPainter, QPainterPath, QPen
+from PySide6.QtGui import QColor, QFont, QFontMetrics, QPainter, QPainterPath, QPen
 from PySide6.QtWidgets import QWidget
 
 
@@ -103,15 +103,16 @@ class SectionPreviewWidget(QWidget):
         self._dimension_info: Optional[dict] = None
         self._section_fill = True
 
-    def set_section(self, section_type: str, designation: str) -> None:
+    def set_section(self, section_type: str, designation: str, show_double_total: bool = True) -> None:
         """
         section_type: one of [angle, double_angle_long, double_angle_short, channel, double_channel]
         designation: designation string present in the DB (for doubles, pass base designation without the leading 2-)
+        show_double_total: for double-angle/channel, whether to show total envelope width/height (default True).
         """
         self._section_type = section_type
         self._designation = designation
         self._geometry = self._build_geometry(section_type, designation)
-        self._dimension_info = self._dimension_for(section_type, designation)
+        self._dimension_info = self._dimension_for(section_type, designation, show_double_total)
         self._section_fill = section_type in (
             "angle",
             "double_angle_long",
@@ -121,29 +122,35 @@ class SectionPreviewWidget(QWidget):
         )
         self.update()
 
-    def _dimension_for(self, section_type: str, designation: str) -> Optional[dict]:
+    def _dimension_for(self, section_type: str, designation: str, show_double_total: bool = True) -> Optional[dict]:
         if not designation:
             return None
         if section_type in ("angle", "double_angle_long", "double_angle_short"):
             angle = self._catalog.get_angle(designation)
             if not angle:
                 return None
-            dims = {"kind": "angle", "a": angle.a, "b": angle.b, "t": angle.t}
-            # For double angles, report total envelope so the dimension labels match the drawn geometry.
+            # For single angles: take 'a' as horizontal (W) and 'b' as vertical (H)
+            dims = {"kind": "angle", "w": angle.a, "h": angle.b, "t": angle.t}
+            # For double angles, optionally report total envelope or single-leg width
             if section_type == "double_angle_long":
-                # Long legs connected vertically, short legs extend horizontally
-                # Width = 2 * short leg, Height = long leg
-                dims.update({"w": angle.b * 2.0, "h": angle.a})
+                if show_double_total:
+                    dims.update({"w": angle.b * 2.0, "h": angle.a})  # long leg (a) vertical
+                else:
+                    dims.update({"w": angle.b, "h": angle.a, "single_span": True})
             elif section_type == "double_angle_short":
-                # Short legs connected vertically, long legs extend horizontally
-                # Width = 2 * long leg, Height = short leg
-                dims.update({"w": angle.a * 2.0, "h": angle.b})
+                if show_double_total:
+                    dims.update({"w": angle.a * 2.0, "h": angle.b})  # short leg (b) vertical
+                else:
+                    dims.update({"w": angle.a, "h": angle.b, "single_span": True})
             return dims
         if section_type in ("channel", "double_channel"):
             ch = self._catalog.get_channel(designation)
             if not ch:
                 return None
-            return {"kind": "channel", "b": ch.b, "d": ch.d, "tw": ch.tw, "tf": ch.tf, "r1": ch.r1, "r2": ch.r2}
+            dims = {"kind": "channel", "b": ch.b, "d": ch.d, "tw": ch.tw, "tf": ch.tf, "r1": ch.r1, "r2": ch.r2}
+            if section_type == "double_channel":
+                dims["is_double"] = True
+            return dims
         return None
 
     # ---- Geometry builders -------------------------------------------------
@@ -158,13 +165,11 @@ class SectionPreviewWidget(QWidget):
                 return [self._build_angle_path(angle, QPointF(0, 0))]
             elif section_type == "double_angle_long":
                 # Long legs connected back-to-back vertically, short legs extend horizontally
-                # Like Figure 2: T-shape with long leg as the vertical stem
                 path1 = self._build_double_angle_long_path(angle, mirrored=False)
                 path2 = self._build_double_angle_long_path(angle, mirrored=True)
                 return [path1, path2]
             else:
                 # Short legs connected back-to-back vertically, long legs extend horizontally  
-                # Like Figure 3: cross/plus shape with short leg as the vertical stem
                 path1 = self._build_double_angle_short_path(angle, mirrored=False)
                 path2 = self._build_double_angle_short_path(angle, mirrored=True)
                 return [path1, path2]
@@ -260,7 +265,6 @@ class SectionPreviewWidget(QWidget):
         return path
 
     def _build_channel_path(self, ch: ChannelSection, origin: QPointF, mirror: bool = False) -> QPainterPath:
-        # Simple C-section with small rounded inner corners to distinguish from I-beam.
         # d = depth (vertical), b = flange width (horizontal from web outer to flange tip)
         # tw = web thickness (horizontal), tf = flange thickness (vertical)
         d, b, tw, tf, r1 = ch.d, ch.b, ch.tw, ch.tf, max(ch.r1, 0.0)
@@ -301,34 +305,40 @@ class SectionPreviewWidget(QWidget):
     def paintEvent(self, event):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
-        painter.fillRect(self.rect(), QColor("#0f0f0f"))
+        # Force a light background for clarity in embedded previews
+        painter.fillRect(self.rect(), QColor("#ffffff"))
 
         if not self._geometry:
             painter.setPen(QPen(QColor("#ffffff"), 1, Qt.DashLine))
             painter.drawText(self.rect(), Qt.AlignCenter, "No section")
             return
 
-        # Compute combined bounding box
+        # Compute combined bounding box for geometry
         rects = [path.boundingRect() for path in self._geometry]
         geom_bbox = QRectF()
         for r in rects:
             geom_bbox = geom_bbox.united(r)
-        combined = QRectF(geom_bbox)
-        margin = 35.0
-        combined.adjust(-margin, -margin, margin, margin)
 
-        if combined.width() <= 0 or combined.height() <= 0:
+        if geom_bbox.width() <= 0 or geom_bbox.height() <= 0:
             return
 
-        # Fit to widget
+        # Add fixed world-space padding to accommodate dimension lines/arrows
+        dim_pad_world = 30.0
+        combined = QRectF(geom_bbox)
+        combined.adjust(-dim_pad_world, -dim_pad_world, dim_pad_world, dim_pad_world)
+
+        # Ensure a minimum device-space padding so small sections do not look tiny and large ones do not overflow.
+        min_pixel_pad = 20.0
         rw, rh = self.width(), self.height()
-        scale = min(rw / combined.width(), rh / combined.height())
+        usable_w = max(rw - 2 * min_pixel_pad, 1.0)
+        usable_h = max(rh - 2 * min_pixel_pad, 1.0)
+        scale = min(usable_w / combined.width(), usable_h / combined.height())
         painter.translate(rw / 2.0, rh / 2.0)
         painter.scale(scale, -scale)  # flip Y for engineering orientation
         painter.translate(-combined.center())
 
-        pen = QPen(QColor("#f7d65a"), 1.8 / max(scale, 1e-3))
-        fill_brush = QColor(255, 215, 0, 70)
+        pen = QPen(QColor("#90AF13"), 1.8 / max(scale, 1e-3))
+        fill_brush = QColor("#BBE31A")
 
         for path in self._geometry:
             painter.setPen(pen)
@@ -359,6 +369,10 @@ class SectionPreviewWidget(QWidget):
 
     def _draw_angle_dimensions(self, painter: QPainter, bbox: QRectF, scale: float, info: dict) -> None:
         x_left, x_right = bbox.left(), bbox.right()
+        is_double = info.get("single_span", False)
+        # For single-side display on double angles, limit the width dimension to the left section only.
+        if is_double:
+            x_right = (x_left + x_right) / 2.0
         y_top, y_bottom = bbox.top(), bbox.bottom()
         t = info.get("t", 0.0)
         # Use explicit total envelope dimensions when provided (double angles), otherwise fall back to single-leg values.
@@ -367,18 +381,28 @@ class SectionPreviewWidget(QWidget):
 
         offset = 15.0
 
-        # W dimension (horizontal at bottom)
-        self._draw_dim_line_h(painter, scale, x_left, x_right, y_bottom + offset,
-                              "W", self._fmt_val(b_val))
+        # W dimension (horizontal at bottom for double angles, at top for single)
+        if is_double:
+            self._draw_dim_line_h(painter, scale, x_left, x_right, y_bottom + offset,
+                                  "W", self._fmt_val(b_val), label_pos="above")
+        else:
+            self._draw_dim_line_h(painter, scale, x_left, x_right, y_top - offset,
+                                  "W", self._fmt_val(b_val), label_pos="below")
 
         # H dimension (vertical on left)
         self._draw_dim_line_v(painter, scale, y_top, y_bottom, x_left - offset,
                               "H", self._fmt_val(a_val))
 
-        # t dimension (thickness at top)
+        # t dimension (thickness) — place at the center vertical stem for double angles, at the vertical leg for single angle.
         if t > 0:
-            self._draw_dim_line_h(painter, scale, x_left, x_left + t, y_top - offset * 0.8,
-                                  "t", self._fmt_val(t))
+            if is_double:
+                # For double angles, place t at the top above the center stem where the two angles meet.
+                self._draw_dim_line_h(painter, scale, 0, t, y_top - offset,
+                                      "t", self._fmt_val(t), outer_arrows=True, label_pos="below")
+            else:
+                # Single angle: t at bottom near the vertical leg
+                self._draw_dim_line_h(painter, scale, x_left, x_left + t, y_bottom + offset,
+                                      "t", self._fmt_val(t), outer_arrows=True)
 
     def _draw_channel_dimensions(self, painter: QPainter, bbox: QRectF, scale: float, info: dict) -> None:
         x_left, x_right = bbox.left(), bbox.right()
@@ -387,36 +411,56 @@ class SectionPreviewWidget(QWidget):
         tf = info.get("tf", 0.0)  # flange thickness (vertical)
         d = info.get("d", bbox.height())
         b = info.get("b", bbox.width())
+        is_double = info.get("is_double", False)
 
         offset = 15.0
 
-        # B dimension (horizontal at top - flange width)
-        self._draw_dim_line_h(painter, scale, x_left, x_right, y_top - offset,
-                              "B", self._fmt_val(b))
+        # B dimension (horizontal at bottom - flange width)
+        if is_double:
+            # For double channels, show B over a single channel width (use left channel span)
+            single_right = x_left + b
+            self._draw_dim_line_h(painter, scale, x_left, single_right, y_bottom + offset,
+                                  "B", self._fmt_val(b))
+        else:
+            self._draw_dim_line_h(painter, scale, x_left, x_right, y_bottom + offset,
+                                  "B", self._fmt_val(b))
 
         # D dimension (vertical on left - depth)
         self._draw_dim_line_v(painter, scale, y_top, y_bottom, x_left - offset,
                               "D", self._fmt_val(d))
 
-        # tw dimension (web thickness - horizontal at bottom, measuring the web)
-        # For double channel the web is at center; for single it's at x_left
+        # tw dimension (web thickness)
         if tw > 0:
-            # Place below diagram, measuring web thickness at center
-            web_center_x = (x_left + x_right) / 2.0
-            self._draw_dim_line_h(painter, scale, web_center_x - tw / 2, web_center_x + tw / 2,
-                                  y_bottom + offset, "t", self._fmt_val(tw), subscript="w", outer_arrows=True)
+            if is_double:
+                # For double channel, show tw at the center where the two webs meet, but keep it visible
+                self._draw_dim_line_h(painter, scale, -tw, 0, y_top - offset,
+                                      "t", self._fmt_val(tw), subscript="w", outer_arrows=True, label_pos="below")
+                helper_pen = QPen(QColor("#000000"), 1.2 / max(scale, 1e-3))
+                painter.setPen(helper_pen)
+                start_y = y_top 
+                painter.drawLine(QPointF(-tw, start_y), QPointF(0, start_y))
+                # Dashed leader lines from the web edges up to the dimension line to show what tw measures
+                dash_pen = QPen(QColor("#000000"), 0.9 / max(scale, 1e-3), Qt.DashLine)
+                painter.setPen(dash_pen)
+                # Draw from bottom of flange (y_top + tf) to dimension line (y_top - offset) 
+                painter.drawLine(QPointF(-tw, start_y + tf), QPointF(-tw, y_top - offset))
+                painter.drawLine(QPointF(0, start_y + tf), QPointF(0, y_top - offset))
+            else:
+                # For single channel, place tw at left aligned with the web
+                self._draw_dim_line_h(painter, scale, x_left, x_left + tw, y_top - offset,
+                                      "t", self._fmt_val(tw), subscript="w", outer_arrows=True, label_pos="below")
 
         # tf dimension (flange thickness - vertical on the right side, label on right)
         if tf > 0:
-            self._draw_dim_line_v(painter, scale, y_top, y_top + tf, x_right + 3.0,
+            self._draw_dim_line_v(painter, scale, y_top, y_top + tf, x_right + 12.0,
                                   "t", self._fmt_val(tf), subscript="f", outer_arrows=True, label_right=True)
 
     def _draw_dim_line_h(self, painter: QPainter, scale: float,
                          x1: float, x2: float, y: float,
                          symbol: str, value: str, subscript: str = None,
-                         outer_arrows: bool = False) -> None:
+                         outer_arrows: bool = False, label_pos: str = "above") -> None:
         """Draw horizontal dimension line with arrows and label."""
-        dim_pen = QPen(QColor("#ffffff"), 0.8 / max(scale, 1e-3))
+        dim_pen = QPen(QColor("#000000"), 0.8 / max(scale, 1e-3))
         painter.setPen(dim_pen)
         painter.setBrush(Qt.NoBrush)
 
@@ -428,39 +472,57 @@ class SectionPreviewWidget(QWidget):
         painter.drawLine(QPointF(x1, y - ext), QPointF(x1, y + ext))
         painter.drawLine(QPointF(x2, y - ext), QPointF(x2, y + ext))
 
-        # Arrowheads
-        arrow_size = 3.0
+        # Arrowheads - keep consistent pixel size by scaling down in world space (3:1 ratio)
+        arrow_length = 9.0 / max(scale, 1e-3)
+        arrow_half_width = 3.0 / max(scale, 1e-3)
+        painter.setBrush(QColor("#000000"))  # Fill the arrowheads
         if outer_arrows:
             # Arrows pointing inward from outside (for small dimensions)
-            ext_len = 8.0
+            ext_len = 12.0
             painter.drawLine(QPointF(x1 - ext_len, y), QPointF(x1, y))
             painter.drawLine(QPointF(x2 + ext_len, y), QPointF(x2, y))
-            # Left arrow pointing right
-            painter.drawLine(QPointF(x1, y), QPointF(x1 - arrow_size, y + arrow_size * 0.5))
-            painter.drawLine(QPointF(x1, y), QPointF(x1 - arrow_size, y - arrow_size * 0.5))
-            # Right arrow pointing left
-            painter.drawLine(QPointF(x2, y), QPointF(x2 + arrow_size, y + arrow_size * 0.5))
-            painter.drawLine(QPointF(x2, y), QPointF(x2 + arrow_size, y - arrow_size * 0.5))
+            # Left arrow pointing right (filled triangle)
+            left_arrow = QPainterPath()
+            left_arrow.moveTo(x1, y)
+            left_arrow.lineTo(x1 - arrow_length, y - arrow_half_width)
+            left_arrow.lineTo(x1 - arrow_length, y + arrow_half_width)
+            left_arrow.closeSubpath()
+            painter.drawPath(left_arrow)
+            # Right arrow pointing left (filled triangle)
+            right_arrow = QPainterPath()
+            right_arrow.moveTo(x2, y)
+            right_arrow.lineTo(x2 + arrow_length, y - arrow_half_width)
+            right_arrow.lineTo(x2 + arrow_length, y + arrow_half_width)
+            right_arrow.closeSubpath()
+            painter.drawPath(right_arrow)
         else:
             # Internal arrows (for large dimensions)
-            # Left arrow pointing right
-            painter.drawLine(QPointF(x1, y), QPointF(x1 + arrow_size, y + arrow_size * 0.5))
-            painter.drawLine(QPointF(x1, y), QPointF(x1 + arrow_size, y - arrow_size * 0.5))
-            # Right arrow pointing left
-            painter.drawLine(QPointF(x2, y), QPointF(x2 - arrow_size, y + arrow_size * 0.5))
-            painter.drawLine(QPointF(x2, y), QPointF(x2 - arrow_size, y - arrow_size * 0.5))
+            # Left arrow pointing right (filled triangle)
+            left_arrow = QPainterPath()
+            left_arrow.moveTo(x1, y)
+            left_arrow.lineTo(x1 + arrow_length, y - arrow_half_width)
+            left_arrow.lineTo(x1 + arrow_length, y + arrow_half_width)
+            left_arrow.closeSubpath()
+            painter.drawPath(left_arrow)
+            # Right arrow pointing left (filled triangle)
+            right_arrow = QPainterPath()
+            right_arrow.moveTo(x2, y)
+            right_arrow.lineTo(x2 - arrow_length, y - arrow_half_width)
+            right_arrow.lineTo(x2 - arrow_length, y + arrow_half_width)
+            right_arrow.closeSubpath()
+            painter.drawPath(right_arrow)
+        painter.setBrush(Qt.NoBrush)  # Reset brush
 
-        # Label above the line
+        # Label
         mid_x = (x1 + x2) / 2.0
-        label_y = y + 6.0
-        self._draw_subscript_label(painter, scale, mid_x, label_y, symbol, value, subscript)
+        self._draw_subscript_label(painter, scale, mid_x, y, symbol, value, subscript, align_center=True, valign=label_pos)
 
     def _draw_dim_line_v(self, painter: QPainter, scale: float,
                          y1: float, y2: float, x: float,
                          symbol: str, value: str, subscript: str = None,
                          outer_arrows: bool = False, label_right: bool = False) -> None:
         """Draw vertical dimension line with arrows and label."""
-        dim_pen = QPen(QColor("#ffffff"), 0.8 / max(scale, 1e-3))
+        dim_pen = QPen(QColor("#000000"), 0.8 / max(scale, 1e-3))
         painter.setPen(dim_pen)
         painter.setBrush(Qt.NoBrush)
 
@@ -472,27 +534,46 @@ class SectionPreviewWidget(QWidget):
         painter.drawLine(QPointF(x - ext, y1), QPointF(x + ext, y1))
         painter.drawLine(QPointF(x - ext, y2), QPointF(x + ext, y2))
 
-        # Arrowheads
-        arrow_size = 3.0
+        # Arrowheads - keep consistent pixel size by scaling down in world space (3:1 ratio)
+        arrow_length = 9.0 / max(scale, 1e-3)
+        arrow_half_width = 3.0 / max(scale, 1e-3)
+        painter.setBrush(QColor("#000000"))  # Fill the arrowheads
         if outer_arrows:
             # Arrows pointing inward from outside (for small dimensions)
-            ext_len = 8.0
+            ext_len = 12.0
             painter.drawLine(QPointF(x, y1 - ext_len), QPointF(x, y1))
             painter.drawLine(QPointF(x, y2 + ext_len), QPointF(x, y2))
-            # Top arrow pointing down
-            painter.drawLine(QPointF(x, y1), QPointF(x + arrow_size * 0.5, y1 - arrow_size))
-            painter.drawLine(QPointF(x, y1), QPointF(x - arrow_size * 0.5, y1 - arrow_size))
-            # Bottom arrow pointing up
-            painter.drawLine(QPointF(x, y2), QPointF(x + arrow_size * 0.5, y2 + arrow_size))
-            painter.drawLine(QPointF(x, y2), QPointF(x - arrow_size * 0.5, y2 + arrow_size))
+            # Top arrow pointing down (filled triangle)
+            top_arrow = QPainterPath()
+            top_arrow.moveTo(x, y1)
+            top_arrow.lineTo(x - arrow_half_width, y1 - arrow_length)
+            top_arrow.lineTo(x + arrow_half_width, y1 - arrow_length)
+            top_arrow.closeSubpath()
+            painter.drawPath(top_arrow)
+            # Bottom arrow pointing up (filled triangle)
+            bottom_arrow = QPainterPath()
+            bottom_arrow.moveTo(x, y2)
+            bottom_arrow.lineTo(x - arrow_half_width, y2 + arrow_length)
+            bottom_arrow.lineTo(x + arrow_half_width, y2 + arrow_length)
+            bottom_arrow.closeSubpath()
+            painter.drawPath(bottom_arrow)
         else:
             # Internal arrows (for large dimensions)
-            # Top arrow pointing down
-            painter.drawLine(QPointF(x, y1), QPointF(x + arrow_size * 0.5, y1 + arrow_size))
-            painter.drawLine(QPointF(x, y1), QPointF(x - arrow_size * 0.5, y1 + arrow_size))
-            # Bottom arrow pointing up
-            painter.drawLine(QPointF(x, y2), QPointF(x + arrow_size * 0.5, y2 - arrow_size))
-            painter.drawLine(QPointF(x, y2), QPointF(x - arrow_size * 0.5, y2 - arrow_size))
+            # Top arrow pointing down (filled triangle)
+            top_arrow = QPainterPath()
+            top_arrow.moveTo(x, y1)
+            top_arrow.lineTo(x - arrow_half_width, y1 + arrow_length)
+            top_arrow.lineTo(x + arrow_half_width, y1 + arrow_length)
+            top_arrow.closeSubpath()
+            painter.drawPath(top_arrow)
+            # Bottom arrow pointing up (filled triangle)
+            bottom_arrow = QPainterPath()
+            bottom_arrow.moveTo(x, y2)
+            bottom_arrow.lineTo(x - arrow_half_width, y2 - arrow_length)
+            bottom_arrow.lineTo(x + arrow_half_width, y2 - arrow_length)
+            bottom_arrow.closeSubpath()
+            painter.drawPath(bottom_arrow)
+        painter.setBrush(Qt.NoBrush)  # Reset brush
 
         # Label to the side
         mid_y = (y1 + y2) / 2.0
@@ -506,7 +587,7 @@ class SectionPreviewWidget(QWidget):
     def _draw_subscript_label(self, painter: QPainter, scale: float,
                               x: float, y: float, symbol: str, value: str,
                               subscript: str = None, superscript: str = None,
-                              align_right: bool = False) -> None:
+                              align_right: bool = False, align_center: bool = False, valign: str = None) -> None:
         """Draw label with proper subscript/superscript using QPainter only.
         
         - Subscript: smaller font, shifted down
@@ -522,6 +603,14 @@ class SectionPreviewWidget(QWidget):
         script_font = QFont("Arial", 6)  # Smaller for sub/superscript
 
         px, py = device_pt.x(), device_pt.y()
+
+        if valign in ("center", "middle"):
+            py += 4
+        elif valign == "above":
+            # Lift labels slightly further off the dimension line to avoid overlap
+            py -= 8
+        elif valign == "below":
+            py += 18
 
         # Build text segments: [(text, font, y_offset), ...]
         segments = []
@@ -550,8 +639,18 @@ class SectionPreviewWidget(QWidget):
         # Starting x position
         if align_right:
             start_x = px - total_width
+        elif align_center:
+            start_x = px - total_width / 2.0
         else:
             start_x = px
+
+        # Draw background if needed to clear lines
+        if valign in ("center", "middle"):
+            fm_main = QFontMetrics(main_font)
+            text_height = fm_main.height()
+            # Background rect: slightly padded
+            bg_rect = QRectF(start_x - 2, py - text_height + 4, total_width + 4, text_height)
+            painter.fillRect(bg_rect, QColor("#0f0f0f"))
 
         # Draw function for a single pass
         def draw_segments(color: QColor, offset_x: float = 0, offset_y: float = 0):
@@ -563,12 +662,7 @@ class SectionPreviewWidget(QWidget):
                 painter.drawText(QPointF(cursor_x, py + y_shift + offset_y), text)
                 cursor_x += fm.horizontalAdvance(text)
 
-        # Outline pass (black, 4 directions)
-        for dx, dy in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
-            draw_segments(QColor("#000000"), dx, dy)
-
-        # Foreground pass (white)
-        draw_segments(QColor("#ffffff"))
+        draw_segments(QColor("#000000"))
 
         painter.restore()
 
