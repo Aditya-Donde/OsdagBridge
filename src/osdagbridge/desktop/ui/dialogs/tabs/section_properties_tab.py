@@ -102,3 +102,29 @@ class SectionPropertiesTab(QWidget):
             data["cross_bracing"] = self.cross_bracing_tab.collect_data()
         return data
 
+    def restore_properties(self, data: dict) -> None:
+        """Restore previously saved properties into the sub-tabs."""
+        if not isinstance(data, dict):
+            return
+
+        girder_data = data.get("girder_details")
+        if isinstance(girder_data, dict) and hasattr(self, "girder_details_tab") and hasattr(self.girder_details_tab, "restore_data"):
+            try:
+                self.girder_details_tab.restore_data(girder_data)
+            except Exception:
+                pass
+
+        stiffener_data = data.get("stiffener_details")
+        if isinstance(stiffener_data, dict) and hasattr(self, "stiffener_details_tab") and hasattr(self.stiffener_details_tab, "restore_data"):
+            try:
+                self.stiffener_details_tab.restore_data(stiffener_data)
+            except Exception:
+                pass
+
+        # If stiffeners were restored, refresh member list (depends on girder segments).
+        try:
+            if hasattr(self, "stiffener_details_tab") and hasattr(self.stiffener_details_tab, "refresh_girder_members"):
+                self.stiffener_details_tab.refresh_girder_members()
+        except Exception:
+            pass
+

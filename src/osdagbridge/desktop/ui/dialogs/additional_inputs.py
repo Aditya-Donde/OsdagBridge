@@ -47,6 +47,7 @@ class AdditionalInputs(QDialog):
         self.setSizeGripEnabled(True)
         self.footpath_value = footpath_value
         self.carriageway_width = carriageway_width
+        self._last_saved_data = {}  # Track last saved state
         self.init_ui()
         self.setStyleSheet("""
             QDialog {
@@ -239,12 +240,32 @@ class AdditionalInputs(QDialog):
             QMessageBox.critical(self, "Save Failed", f"Could not save inputs.\n\n{exc}")
             return
 
+        # Store the saved data for later retrieval
+        self._last_saved_data = saved
+        
         # Confirm save to the user (requested behavior). Use an explicit message box
         # instance so it stays on top of the frameless dialog.
         box = QMessageBox(self)
         box.setIcon(QMessageBox.Information)
-        box.setWindowTitle("Saved")
-        box.setText("Inputs saved successfully.")
+        box.setWindowTitle
+        ("Saved")
+        
+        # Build detailed message
+        saved_items = []
+        if "girder_details" in saved:
+            saved_items.append("✓ Girder Details")
+        if "stiffener_details" in saved:
+            stiffener_data = saved.get("stiffener_details", {})
+            member_count = len(stiffener_data.get("stiffener_by_member", {}))
+            saved_items.append(f"✓ Stiffener Details ({member_count} members)")
+        if "cross_bracing" in saved:
+            saved_items.append("✓ Cross-Bracing Details")
+        
+        message = "Inputs saved successfully.\n\n"
+        if saved_items:
+            message += "Saved:\n" + "\n".join(saved_items)
+        
+        box.setText(message)
         box.setStandardButtons(QMessageBox.Ok)
         box.setDefaultButton(QMessageBox.Ok)
         box.setWindowModality(Qt.ApplicationModal)
@@ -451,3 +472,23 @@ class AdditionalInputs(QDialog):
 
     def _show_placeholder_message(self, action_name):
         QMessageBox.information(self, "Coming soon", f"{action_name} action not implemented yet.")
+    
+    def get_saved_data(self) -> dict:
+        """Get the last saved properties data.
+        
+        Returns:
+            Dictionary containing all saved properties including stiffener details.
+        """
+        return self._last_saved_data
+    
+    def set_properties_data(self, data: dict) -> None:
+        """Restore properties data from a previous save.
+        
+        Args:
+            data: Dictionary containing properties to restore.
+        """
+        if hasattr(self, "section_properties_tab") and hasattr(self.section_properties_tab, "restore_properties"):
+            try:
+                self.section_properties_tab.restore_properties(data)
+            except Exception:
+                pass

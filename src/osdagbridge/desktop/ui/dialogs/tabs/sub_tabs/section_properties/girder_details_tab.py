@@ -217,7 +217,7 @@ class GirderDetailsTab(QWidget):
         self.web_type_row = []
         self.section_property_inputs = {}
         # Segment chain is stored per girder:
-        # { 'G1': [ {'id': 'G1-1', 'start': 0.0, 'end': 30.0}, ... ], 'G2': [...] }
+        # { 'G1': [ {'id': 'G1M1', 'start': 0.0, 'end': 30.0}, ... ], 'G2': [...] }
         self.segment_chain: Dict[str, List[Dict[str, float]]] = {}
         self._suppress_distance_updates = False
         self._suppress_member_state_updates = False
@@ -230,7 +230,7 @@ class GirderDetailsTab(QWidget):
         self._current_segment_index: int = 0
 
         # Per-member (Member ID) persistence + dirty tracking.
-        # {"G1": {"G1-1": {"inputs": {...}}}}
+        # {"G1": {"G1M1": {"inputs": {...}}}}
         self._member_state: Dict[str, Dict[str, dict]] = {}
         self._dirty_members: set[tuple[str, str]] = set()
         self._last_member_combo_index: int = 0
@@ -300,17 +300,17 @@ class GirderDetailsTab(QWidget):
             return frame
 
         # LEFT: Select Girder + Total Span (matches reference layout)
-        left_panel = QWidget()
+        left_panel = self._create_inner_box()
         left_layout = QVBoxLayout(left_panel)
-        left_layout.setContentsMargins(0, 0, 0, 0)
+        left_layout.setContentsMargins(12, 10, 12, 10)
         left_layout.setSpacing(10)
 
         # Placeholder area for CAD diagram (left)
         left_layout.addWidget(_cad_placeholder("CAD Diagram Placeholder"))
 
-        details_box = self._create_inner_box()
+        details_box = QWidget()
         details_layout = QGridLayout(details_box)
-        details_layout.setContentsMargins(12, 10, 12, 10)
+        details_layout.setContentsMargins(0, 0, 0, 0)
         details_layout.setHorizontalSpacing(14)
         details_layout.setVerticalSpacing(10)
         details_layout.setColumnMinimumWidth(0, 130)
@@ -321,7 +321,7 @@ class GirderDetailsTab(QWidget):
         self.span_combo = QComboBox()
         self.span_combo.addItems(VALUES_GIRDER_SPAN_MODE)
         apply_field_style(self.span_combo)
-        self._set_field_width(self.span_combo, 180)
+        self._set_field_width(self.span_combo)
         self.span_combo.currentTextChanged.connect(self._on_span_changed)
         span_label = self._create_label("Span:")
         span_label.setVisible(False)
@@ -336,13 +336,13 @@ class GirderDetailsTab(QWidget):
             label = f"Girder {girder[1:]}" if girder.startswith("G") and girder[1:].isdigit() else girder
             self.girder_dropdown.addItem(label, girder)
         apply_field_style(self.girder_dropdown)
-        self._set_field_width(self.girder_dropdown, 180)
+        self._set_field_width(self.girder_dropdown)
         self.girder_dropdown.currentIndexChanged.connect(lambda _idx: self._on_girder_changed(self.girder_dropdown.currentData()))
         details_layout.addWidget(self.girder_dropdown, 1, 1)
 
         self.length_input = QLineEdit("30")
         apply_field_style(self.length_input)
-        self._set_field_width(self.length_input, 180)
+        self._set_field_width(self.length_input)
         self.length_input.setReadOnly(False)
         self.length_input.textChanged.connect(self._on_length_changed)
         details_layout.addWidget(self._create_label("Total Span (m):"), 2, 0, Qt.AlignLeft | Qt.AlignVCenter)
@@ -368,6 +368,11 @@ class GirderDetailsTab(QWidget):
         apply_field_style(self.segment_length_input)
         self.segment_length_input.setReadOnly(True)
         self.segment_length_input.setVisible(False)
+
+        details_layout.addWidget(self.member_id_input, 3, 0, 1, 2)
+        details_layout.addWidget(self.distance_start_input, 4, 0, 1, 2)
+        details_layout.addWidget(self.distance_end_input, 5, 0, 1, 2)
+        details_layout.addWidget(self.segment_length_input, 6, 0, 1, 2)
 
         left_layout.addWidget(details_box)
         left_layout.addStretch(1)
@@ -466,21 +471,53 @@ class GirderDetailsTab(QWidget):
 
     # ===== Master-Detail / Segment Chain helpers =====
 
+    @staticmethod
+    def _make_segment_id(girder: str, index: int) -> str:
+        """Format a segment/member ID as G1M1, G1M2, ..."""
+        return f"{girder}M{int(index)}"
+
+    def _migrate_member_state_key(self, girder: str, old_id: str, new_id: str) -> None:
+        if not old_id or not new_id or old_id == new_id:
+            return
+        if girder in self._member_state and old_id in self._member_state[girder] and new_id not in self._member_state[girder]:
+            self._member_state[girder][new_id] = self._member_state[girder].pop(old_id)
+        if (girder, old_id) in self._dirty_members and (girder, new_id) not in self._dirty_members:
+            self._dirty_members.discard((girder, old_id))
+            self._dirty_members.add((girder, new_id))
+
     def _initialize_segment_chain_if_needed(self) -> None:
         """Ensure each available girder has at least one segment spanning the total span."""
         total_span = self._get_total_span() or DEFAULT_MEMBER_LENGTH_M
         if not self.segment_chain:
             for girder in self.available_girders:
                 self.segment_chain[girder] = [
-                    {"id": f"{girder}-1", "start": 0.0, "end": float(total_span)},
+                    {"id": self._make_segment_id(girder, 1), "start": 0.0, "end": float(total_span)},
                 ]
 
     def _ensure_girder_segments(self, girder: str) -> List[Dict[str, float]]:
         total_span = self._get_total_span() or DEFAULT_MEMBER_LENGTH_M
         segments = self.segment_chain.get(girder)
         if not segments:
-            segments = [{"id": f"{girder}-1", "start": 0.0, "end": float(total_span)}]
+            segments = [{"id": self._make_segment_id(girder, 1), "start": 0.0, "end": float(total_span)}]
             self.segment_chain[girder] = segments
+
+        # Normalize ids to the requested GxMy format, migrating any stored member-state.
+        for i, seg in enumerate(segments, start=1):
+            desired = self._make_segment_id(girder, i)
+            existing = str(seg.get("id") or "").strip()
+            if not existing:
+                seg["id"] = desired
+                continue
+            # Migrate legacy pattern like "G1-2" -> "G1M2".
+            base, idx = self._split_member_id(existing)
+            if base == girder and isinstance(idx, int) and idx >= 1:
+                new_id = self._make_segment_id(girder, idx)
+                if existing != new_id:
+                    self._migrate_member_state_key(girder, existing, new_id)
+                    seg["id"] = new_id
+            else:
+                # If it doesn't match either format, leave it as-is.
+                pass
 
         # Normalize starts to always equal previous end, and last end to total span.
         segments[0]["start"] = 0.0
@@ -783,7 +820,11 @@ class GirderDetailsTab(QWidget):
             segments[i]["start"] = float(segments[i - 1].get("end", 0.0))
         segments[-1]["end"] = float(total_span)
         for i, seg in enumerate(segments, start=1):
-            seg["id"] = f"{girder}-{i}"
+            old_id = str(seg.get("id") or "").strip()
+            new_id = self._make_segment_id(girder, i)
+            if old_id and old_id != new_id:
+                self._migrate_member_state_key(girder, old_id, new_id)
+            seg["id"] = new_id
         self.segment_chain[girder] = segments
 
         self._refresh_segment_list(girder)
@@ -891,7 +932,7 @@ class GirderDetailsTab(QWidget):
 
         # Update last segment end and create the fill segment
         current["end"] = float(new_end)
-        next_id = f"{girder}-{len(segments) + 1}"
+        next_id = self._make_segment_id(girder, len(segments) + 1)
         segments.append({"id": next_id, "start": float(new_end), "end": float(total_span)})
 
         # Normalize starts for safety and enforce last end
@@ -941,7 +982,7 @@ class GirderDetailsTab(QWidget):
                 pruned.append(seg)
 
             if not pruned:
-                pruned = [{"id": f"{girder}-1", "start": 0.0, "end": float(total_span)}]
+                pruned = [{"id": self._make_segment_id(girder, 1), "start": 0.0, "end": float(total_span)}]
 
             # Renormalize starts and ids (keep ids stable if possible).
             pruned[0]["start"] = 0.0
@@ -1005,7 +1046,7 @@ class GirderDetailsTab(QWidget):
         else:
             # Split trigger: if user shortens the last segment, create fill segment
             if new_end < old_end and new_end < total_span:
-                next_id = f"{girder}-{len(segments) + 1}"
+                next_id = self._make_segment_id(girder, len(segments) + 1)
                 segments.append({"id": next_id, "start": float(new_end), "end": float(total_span)})
             elif new_end > total_span:
                 current["end"] = float(total_span)
@@ -1293,6 +1334,8 @@ class GirderDetailsTab(QWidget):
     def _set_field_width(self, widget, width=230):
         widget.setMaximumWidth(width)
         widget.setMinimumWidth(min(width, 160))
+        widget.setMinimumHeight(28)
+        widget.setMaximumHeight(40)
 
     def _setup_girder_selector(self):
         if not hasattr(self, "select_girder_combo"):
@@ -1382,7 +1425,7 @@ class GirderDetailsTab(QWidget):
     def _default_member_segment_id(self, girders=None):
         girders = girders or self._get_selected_girders()
         base = girders[0] if girders else "G1"
-        return f"{base}-1"
+        return self._make_segment_id(base, 1)
 
     def _set_member_id_text(self, value, block_signals=False):
         if block_signals:
@@ -1393,10 +1436,11 @@ class GirderDetailsTab(QWidget):
             self.member_id_input.setText(value)
 
     def _is_valid_segment_id(self, member_id):
-        if not member_id or "-" not in member_id:
+        member_id = str(member_id or "").strip()
+        if not member_id:
             return False
         base, index = self._split_member_id(member_id)
-        return bool(base and isinstance(index, int))
+        return bool(base and base in self.available_girders and isinstance(index, int) and index >= 1)
 
     def _update_member_id_edit_state(self):
         is_full_span = self.span_combo.currentText() == "Full Length"
@@ -1508,7 +1552,7 @@ class GirderDetailsTab(QWidget):
         for girder in self.available_girders:
             segments = self._ensure_girder_segments(girder)
             if not segments:
-                self.segment_chain[girder] = [{"id": f"{girder}-1", "start": 0.0, "end": float(total_span)}]
+                self.segment_chain[girder] = [{"id": self._make_segment_id(girder, 1), "start": 0.0, "end": float(total_span)}]
                 continue
 
             # If any segment ends beyond the new span, clamp and drop trailing.
@@ -1521,7 +1565,7 @@ class GirderDetailsTab(QWidget):
                 seg["end"] = min(end, float(total_span))
                 pruned.append(seg)
             if not pruned:
-                pruned = [{"id": f"{girder}-1", "start": 0.0, "end": float(total_span)}]
+                pruned = [{"id": self._make_segment_id(girder, 1), "start": 0.0, "end": float(total_span)}]
             pruned[0]["start"] = 0.0
             for i in range(1, len(pruned)):
                 pruned[i]["start"] = float(pruned[i - 1].get("end", 0.0))
@@ -1538,13 +1582,24 @@ class GirderDetailsTab(QWidget):
         return self._parse_float(text)
 
     def _split_member_id(self, member_id):
-        if "-" not in member_id:
-            return member_id, None
-        base, index = member_id.rsplit("-", 1)
-        try:
-            return base, int(index)
-        except ValueError:
+        member_id = str(member_id or "").strip()
+        if not member_id:
+            return "", None
+
+        # Preferred format: G1M2
+        if "M" in member_id:
+            base, index = member_id.rsplit("M", 1)
+            if base and index.isdigit():
+                return base, int(index)
+
+        # Backward compatible: G1-2
+        if "-" in member_id:
+            base, index = member_id.rsplit("-", 1)
+            if index.isdigit():
+                return base, int(index)
             return base, None
+
+        return member_id, None
 
     def _set_line_edit_value(self, line_edit, value):
         if value is None:
@@ -1897,7 +1952,7 @@ class GirderDetailsTab(QWidget):
         total_span = float(self._get_total_span() or DEFAULT_MEMBER_LENGTH_M)
         for girder in self.available_girders:
             if girder not in self.segment_chain:
-                self.segment_chain[girder] = [{"id": f"{girder}-1", "start": 0.0, "end": total_span}]
+                self.segment_chain[girder] = [{"id": self._make_segment_id(girder, 1), "start": 0.0, "end": total_span}]
 
         # Refresh dropdown
         if self.girder_dropdown:
@@ -1943,7 +1998,7 @@ class GirderDetailsTab(QWidget):
         # Segment chain defaults: one segment per girder spanning the full span
         total_span = float(self._get_total_span() or DEFAULT_MEMBER_LENGTH_M)
         for girder in self.available_girders:
-            self.segment_chain[girder] = [{"id": f"{girder}-1", "start": 0.0, "end": total_span}]
+            self.segment_chain[girder] = [{"id": self._make_segment_id(girder, 1), "start": 0.0, "end": total_span}]
 
         for field in (
             self.total_depth_input,
@@ -2023,6 +2078,89 @@ class GirderDetailsTab(QWidget):
             "section_properties": properties_snapshot,
         }
 
+    def restore_data(self, data: dict) -> None:
+        """Restore previously saved girder details.
+
+        This is used by the Additional Inputs dialog to persist Member Properties
+        (including segment chains) across dialog reopen.
+
+        Args:
+            data: Dict as returned by collect_data() (or compatible).
+        """
+        if not isinstance(data, dict):
+            return
+
+        # Restore total span early so segment normalization uses the right length.
+        total_span = data.get("total_span_m")
+        if total_span is not None and hasattr(self, "length_input") and self.length_input is not None:
+            try:
+                self._set_line_edit_value(self.length_input, float(total_span))
+            except Exception:
+                # Some callers may store this as an empty string.
+                try:
+                    text = str(total_span).strip()
+                    if text:
+                        self.length_input.setText(text)
+                except Exception:
+                    pass
+
+        segment_chain = data.get("segment_chain")
+        if isinstance(segment_chain, dict) and segment_chain:
+            # Normalize segment records to {id,start,end}.
+            normalized = {}
+            for girder, segments in segment_chain.items():
+                if not isinstance(segments, list):
+                    continue
+                seg_list = []
+                for seg in segments:
+                    if not isinstance(seg, dict):
+                        continue
+                    seg_list.append(
+                        {
+                            "id": str(seg.get("id") or "").strip() or None,
+                            "start": float(seg.get("start") or 0.0),
+                            "end": float(seg.get("end") or 0.0),
+                        }
+                    )
+                if seg_list:
+                    normalized[str(girder)] = seg_list
+            if normalized:
+                self.segment_chain = normalized
+
+        member_states = data.get("member_states")
+        if isinstance(member_states, dict):
+            self._member_state = member_states
+
+        # Restore current girder + current segment, then refresh dependent UI.
+        selected_girder = str(data.get("selected_girder") or data.get("selected_girders", [""])[0] or "").strip()
+        if selected_girder and selected_girder in self.available_girders:
+            self._current_girder = selected_girder
+
+        # Update dropdown and segment list.
+        if self.girder_dropdown is not None:
+            prev = self.girder_dropdown.blockSignals(True)
+            try:
+                if self.girder_dropdown.findText(self._current_girder) >= 0:
+                    self.girder_dropdown.setCurrentText(self._current_girder)
+            finally:
+                self.girder_dropdown.blockSignals(prev)
+
+        self._refresh_segment_list(self._current_girder)
+        self._refresh_member_id_combo()
+
+        # Try to restore the previously active segment.
+        target_index = 0
+        current_segment = data.get("current_segment")
+        if isinstance(current_segment, dict):
+            target_id = str(current_segment.get("id") or "").strip()
+            if target_id:
+                segments = self._ensure_girder_segments(self._current_girder)
+                for idx, seg in enumerate(segments):
+                    if str(seg.get("id") or "").strip() == target_id:
+                        target_index = idx
+                        break
+        self._select_segment_index(int(target_index))
+
     # ===== Public helpers for other Member Properties tabs =====
 
     def list_all_member_ids(self) -> List[str]:
@@ -2042,7 +2180,7 @@ class GirderDetailsTab(QWidget):
         if not member_id:
             return False
 
-        girder = member_id.split("-")[0] if "-" in member_id else member_id
+        girder, _idx = self._split_member_id(member_id)
 
         # If the requested member is currently active, reflect the live UI.
         try:

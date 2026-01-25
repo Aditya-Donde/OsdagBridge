@@ -1048,8 +1048,27 @@ class InputDock(QWidget):
         footpath_value = self.footpath_combo.currentText() if self.footpath_combo else "None"
         
         carriageway_width = self._get_effective_carriageway_width()
-        
+
+        # Lazily create the in-session storage for Additional Inputs.
+        if not hasattr(self, "_additional_inputs_saved_data"):
+            self._additional_inputs_saved_data = {}
+
         self.additional_inputs = AdditionalInputs(footpath_value, carriageway_width)
+        self.additional_inputs_widget = self.additional_inputs
+
+        # Restore previously saved dialog state (includes stiffener details).
+        if isinstance(getattr(self, "_additional_inputs_saved_data", None), dict) and self._additional_inputs_saved_data:
+            try:
+                self.additional_inputs.set_properties_data(self._additional_inputs_saved_data)
+            except Exception:
+                pass
+
+        # Capture state when dialog closes.
+        try:
+            self.additional_inputs.finished.connect(self._handle_additional_inputs_closed)
+        except Exception:
+            pass
+
         self.additional_inputs.show()
     
     def _apply_lock_state(self):
@@ -1070,6 +1089,14 @@ class InputDock(QWidget):
             self.additional_inputs_widget.setEnabled(enabled)
 
     def _handle_additional_inputs_closed(self):
+        # Persist the last saved Additional Inputs data for the session.
+        try:
+            if self.additional_inputs is not None and hasattr(self.additional_inputs, "get_saved_data"):
+                saved = self.additional_inputs.get_saved_data()
+                if isinstance(saved, dict) and saved:
+                    self._additional_inputs_saved_data = saved
+        except Exception:
+            pass
         self.additional_inputs = None
         self.additional_inputs_widget = None
 

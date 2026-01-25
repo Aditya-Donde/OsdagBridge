@@ -364,3 +364,4 @@ class FrontendData:
         """Validation Function"""
         return None
 
+#setter for input and output
