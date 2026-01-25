@@ -222,6 +222,67 @@ class BridgeGrillageModel:
         model.add_load_case(DL_self_weight)
         return DL_self_weight
 
+    def create_deck_load(self, model=None):
+        """
+        Creates deck slab patch load over the full bridge deck.
+
+        Geometry is obtained from load_manager.
+        The created load case is stored on `self.deck_load_case`.
+        """
+        model = model or self.model
+        if model is None:
+            raise ValueError("Model is not available. Create model before adding loads.")
+
+        # -------------------------------------------------
+        # Load magnitude (UDL over area)
+        # -------------------------------------------------
+        deck_mag = 25.0 * kN / (1.0 ** 2)   # <-- update as per slab + wearing course if needed
+
+        # -------------------------------------------------
+        # Get geometry from load manager
+        # -------------------------------------------------
+        geom = self.load_manager.deck_load()
+
+        # -------------------------------------------------
+        # Convert geometry → ospgrillage vertices
+        # -------------------------------------------------
+        p1 = og.create_load_vertex(
+            x=geom.p1.x, z=geom.p1.z, p=deck_mag
+        )
+        p2 = og.create_load_vertex(
+            x=geom.p2.x, z=geom.p2.z, p=deck_mag
+        )
+        p3 = og.create_load_vertex(
+            x=geom.p3.x, z=geom.p3.z, p=deck_mag
+        )
+        p4 = og.create_load_vertex(
+            x=geom.p4.x, z=geom.p4.z, p=deck_mag
+        )
+
+        # -------------------------------------------------
+        # Create patch load
+        # -------------------------------------------------
+        deck_load = og.create_load(
+            loadtype="patch",
+            name="deck slab",
+            point1=p1,
+            point2=p2,
+            point3=p3,
+            point4=p4,
+        )
+
+        # -------------------------------------------------
+        # Create & register load case
+        # -------------------------------------------------
+        DL_deck = og.create_load_case(name="Deck slab load")
+        DL_deck.add_load(deck_load)
+        model.add_load_case(DL_deck)
+
+        # store reference
+        self.deck_load_case = DL_deck
+
+        return DL_deck
+
     def create_wearing_course_load(self, model=None, edge_clearance=0.0):
         """Creates wearing course load (patch).
 
@@ -516,7 +577,7 @@ class BridgeGrillageModel:
         # Analysis
         model.analyze()
 
-        results = model.get_results(load_case=['girder self weight', 'Wearing course self weight', 'Footpath load', 'Crash barrier load', 'Railing load', 'Median load'])
+        results = model.get_results(load_case=['girder self weight', 'Deck slab load', 'Wearing course self weight', 'Footpath load', 'Crash barrier load', 'Railing load', 'Median load'])
         print("results")
         print(results) 
 
@@ -544,6 +605,7 @@ if __name__ == "__main__":
     # bridge.plot_model()
     # bridge.add_dead_loads()
     bridge.create_self_weight_load()
+    bridge.create_deck_load()
     bridge.create_wearing_course_load()
     bridge.create_footpath_load()
     bridge.create_crash_barrier_load()
