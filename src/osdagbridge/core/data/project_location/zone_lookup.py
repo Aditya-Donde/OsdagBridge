@@ -138,6 +138,49 @@ def get_zones_for_coordinates(lat: float, lon: float) -> Dict[str, Any]:
 
 
 
+def get_temperature_for_coordinates(lat: float, lon: float) -> Dict[str, Any]:
+    """
+    Get temperature data for the nearest station to given coordinates.
+    
+    Returns:
+        Dictionary with keys:
+        - max_temp: Maximum temperature in °C (or None)
+        - min_temp: Minimum temperature in °C (or None)
+        - nearest_station: Name of the nearest station (or None)
+        - nearest_state: State of the nearest station (or None)
+    """
+    from .database import Database
+    
+    result = {
+        "max_temp": None,
+        "min_temp": None,
+        "nearest_station": None,
+        "nearest_state": None,
+    }
+    
+    # Get the database path
+    db_path = os.path.join(os.path.dirname(__file__), "weather.db")
+    
+    if not os.path.exists(db_path):
+        return result
+    
+    try:
+        db = Database(db_path)
+        db.connect()
+        temp_data = db.get_nearest_station_temperature(lat, lon)
+        db.close()
+        
+        if temp_data:
+            result["max_temp"] = temp_data.get("max_temp")
+            result["min_temp"] = temp_data.get("min_temp")
+            result["nearest_station"] = temp_data.get("station")
+            result["nearest_state"] = temp_data.get("state")
+    except Exception as e:
+        print(f"Warning: Temperature lookup failed: {e}")
+    
+    return result
+
+
 def shapefiles_available() -> Dict[str, bool]:
     """Check which shapefiles are available."""
     return {

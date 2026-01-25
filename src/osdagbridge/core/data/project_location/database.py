@@ -181,6 +181,53 @@ class Database:
         result = self.cursor.fetchone()
         return result[0] if result else None
 
+    def get_nearest_station_temperature(self, lat: float, lon: float) -> Optional[Dict]:
+        """
+        Find the nearest station with temperature data based on coordinates.
+        
+        Uses simplified Euclidean distance (sufficient for nearby points within India).
+        Returns station info and temperature data for the nearest match.
+            
+        Returns:
+            Dict with keys: state, station, max_temp, min_temp, distance_deg
+            or None if no station with coordinates and temperature data exists.
+        """
+        # Query stations with coordinates and temperature data, calculate distance
+        # Using Euclidean approximation: sqrt((lat2-lat1)^2 + (lon2-lon1)^2)
+        self.cursor.execute(
+            """
+            SELECT s.state, s.station, s.latitude, s.longitude,
+                   t.max_temp, t.min_temp,
+                   ((s.latitude - ?) * (s.latitude - ?) + (s.longitude - ?) * (s.longitude - ?)) as dist_sq
+            FROM stations s
+            INNER JOIN temperature_data t ON s.state = t.state AND s.station = t.station
+            WHERE s.latitude IS NOT NULL 
+              AND s.longitude IS NOT NULL
+              AND t.max_temp IS NOT NULL
+              AND t.min_temp IS NOT NULL
+            ORDER BY dist_sq ASC
+            LIMIT 1
+            """,
+            (lat, lat, lon, lon),
+        )
+        result = self.cursor.fetchone()
+        
+        if not result:
+            return None
+        
+        import math
+        distance_deg = math.sqrt(result[6]) if result[6] else 0
+        
+        return {
+            'state': result[0],
+            'station': result[1],
+            'latitude': result[2],
+            'longitude': result[3],
+            'max_temp': result[4],
+            'min_temp': result[5],
+            'distance_deg': round(distance_deg, 4),
+        }
+
     def search_stations(self, search_term: str) -> List[Dict]:
         """
         Fuzzy search over canonical stations; great for autocomplete.

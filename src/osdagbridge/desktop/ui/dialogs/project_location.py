@@ -17,7 +17,12 @@ from osdagbridge.core.bridge_types.plate_girder.ui_fields_project_location impor
 
 from PySide6.QtCore import Slot, Signal, QObject, QUrl
 from osdagbridge.desktop.ui.widgets.native_map import NativeMapWidget
-from osdagbridge.core.data.project_location.zone_lookup import get_zones_for_coordinates
+from osdagbridge.core.data.project_location.zone_lookup import get_zones_for_coordinates, get_temperature_for_coordinates
+
+
+# Remember last custom weather values during the session so reopening the dialog
+# retains user-entered data instead of resetting to defaults.
+LAST_CUSTOM_WEATHER_DATA = None
 
 
 
@@ -153,9 +158,6 @@ class CustomWeatherDataDialog(QDialog):
             QPushButton#ghost:hover { background-color: #e6e6e6; }
         """)
         
-        # Wrapper for custom title bar if we wanted consistency, but standard frame is okay for sub-dialog.
-        # We'll stick to standard frame but white content.
-        
         layout = QVBoxLayout(self)
         layout.setSpacing(16)
         layout.setContentsMargins(25, 25, 25, 25)
@@ -281,7 +283,8 @@ class ProjectLocationDialog(QDialog):
         self.setObjectName("project_location_dialog")
         self.default_location = get_default_location()
         
-        self.custom_weather_data = None # Store custom data here to reuse
+        # Restore any previously entered custom weather data in this session
+        self.custom_weather_data = LAST_CUSTOM_WEATHER_DATA
 
         self.setStyleSheet("""
             QDialog#project_location_dialog {
@@ -319,6 +322,10 @@ class ProjectLocationDialog(QDialog):
         self._connect_signals()
         self._apply_default_location()
         self._set_active_method("location_name")
+
+        # If user had entered custom data earlier in the session, show it
+        if self.custom_weather_data:
+            self._update_irc_values(self.custom_weather_data)
         # Removed _lookup_weather call as it will be handled by signal
     
     def setupWrapper(self):
@@ -442,7 +449,7 @@ class ProjectLocationDialog(QDialog):
         self.btn_custom_data.setObjectName("primary")
         self.btn_custom_data.setCursor(Qt.PointingHandCursor)
         self.btn_custom_data.setMinimumWidth(150)
-        self.btn_custom_data.setAutoDefault(False) # FIX: Prevent Enter from triggering this
+        self.btn_custom_data.setAutoDefault(False)
         right_layout.addWidget(self.btn_custom_data)
         
         hint = QLabel("Manually overwrite wind, seismic zone & zone factor, and shade temps.")
@@ -598,20 +605,22 @@ class ProjectLocationDialog(QDialog):
         state = self.default_location.get("state", "")
         station = self.default_location.get("station", "")
 
+        # Block signals to avoid overwriting persisted custom data during initialization
+        self.state_combo.blockSignals(True)
+        self.district_combo.blockSignals(True)
+
         if state:
             idx = self.state_combo.findText(state)
             if idx >= 0:
                 self.state_combo.setCurrentIndex(idx)
-                # self._on_state_changed(state) # triggering manually if needed, but signals might handle if connected before.
-                # Since we connect signals *before* this, `setCurrentIndex` might trigger change.
-                # However, blocking signals or careful ordering is safer.
-                pass 
-                # Note: setCurrentIndex triggers signal if changed.
 
         if station:
             idx = self.district_combo.findText(station)
             if idx >= 0:
                 self.district_combo.setCurrentIndex(idx)
+
+        self.state_combo.blockSignals(False)
+        self.district_combo.blockSignals(False)
 
     def _on_map_location_selected(self, lat, lng):
         self.latitude_input.setText(f"{lat:.6f}")
@@ -633,17 +642,20 @@ class ProjectLocationDialog(QDialog):
             pass
     
     def _lookup_zones_for_coordinates(self, lat: float, lon: float):
-        """Lookup wind and seismic zones for given coordinates and update UI."""
+        """Lookup wind, seismic zones and temperature for given coordinates and update UI."""
         zone_data = get_zones_for_coordinates(lat, lon)
+        temp_data = get_temperature_for_coordinates(lat, lon)
         # Convert to weather dict format for _update_irc_values
         weather = {
             "wind_speed": zone_data.get("wind_Vb"),
             "zone": zone_data.get("seismic_zone"),
             "z_value": zone_data.get("zone_factor"),
-            "max_temp": None,  # Temperature lookup deferred
-            "min_temp": None,
+            "max_temp": temp_data.get("max_temp"),
+            "min_temp": temp_data.get("min_temp"),
         }
-        self.custom_weather_data = None  # Clear any custom data
+        global LAST_CUSTOM_WEATHER_DATA
+        self.custom_weather_data = None 
+        LAST_CUSTOM_WEATHER_DATA = None
         self._update_irc_values(weather)
     
     def _on_state_changed(self, state_name):
@@ -665,13 +677,17 @@ class ProjectLocationDialog(QDialog):
             
         weather = get_weather(state, district_name)
         # Clear custom data if user selects a new district, implying they want database values
+        global LAST_CUSTOM_WEATHER_DATA
         self.custom_weather_data = None 
+        LAST_CUSTOM_WEATHER_DATA = None
         self._update_irc_values(weather)
 
     def _open_custom_dialog(self):
         dlg = CustomWeatherDataDialog(self, self.custom_weather_data)
         if dlg.exec() == QDialog.Accepted:
             self.custom_weather_data = dlg.get_data()
+            global LAST_CUSTOM_WEATHER_DATA
+            LAST_CUSTOM_WEATHER_DATA = self.custom_weather_data
             self._update_irc_values(self.custom_weather_data)
 
     def _update_irc_values(self, weather):
