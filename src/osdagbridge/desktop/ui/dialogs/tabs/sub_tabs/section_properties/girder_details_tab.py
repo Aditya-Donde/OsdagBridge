@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Dict, List, Optional
 
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QDoubleValidator
+from PySide6.QtGui import QDoubleValidator, QColor, QPalette, QPen
 from PySide6.QtWidgets import (
     QComboBox,
     QFrame,
@@ -22,6 +22,8 @@ from PySide6.QtWidgets import (
     QScrollArea,
     QSizePolicy,
     QStyledItemDelegate,
+    QStyle,
+    QStyleOptionViewItem,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
@@ -184,16 +186,55 @@ class GirderSectionCatalog:
 girder_properties = GirderSectionCatalog()
 
 
+class _ReadOnlyCellDelegate(QStyledItemDelegate):
+    """Render read-only table cells in a muted gray, regardless of selection."""
+
+    _bg = QColor("#fafafa")
+    _text = QColor("#666666")
+
+    def paint(self, painter, option, index):  # noqa: N802 (Qt naming)
+        opt = QStyleOptionViewItem(option)
+        # Keep read-only cells gray even when the row is selected.
+        if opt.state & QStyle.State_Selected:
+            opt.state &= ~QStyle.State_Selected
+        opt.backgroundBrush = self._bg
+        opt.palette.setColor(QPalette.Base, self._bg)
+        opt.palette.setColor(QPalette.Text, self._text)
+        super().paint(painter, opt, index)
+
+
 class _EndDistanceDelegate(QStyledItemDelegate):
-    """Ensure table cell editor remains readable and numeric-friendly."""
+    """Make the End column feel editable (white) with a visible edit affordance."""
+
+    _bg = QColor("#ffffff")
+    _border = QColor("#c0c0c0")
+
+    def paint(self, painter, option, index):  # noqa: N802 (Qt naming)
+        # Keep End cells white even when the row is selected.
+        opt = QStyleOptionViewItem(option)
+        if opt.state & QStyle.State_Selected:
+            opt.state &= ~QStyle.State_Selected
+
+        opt.backgroundBrush = self._bg
+        opt.palette.setColor(QPalette.Base, self._bg)
+
+        super().paint(painter, opt, index)
+
+        # Border indicates "editable".
+        painter.save()
+        pen = QPen(self._border)
+        pen.setWidth(1)
+        painter.setPen(pen)
+        painter.drawRoundedRect(opt.rect.adjusted(3, 3, -3, -3), 4, 4)
+        painter.restore()
 
     def createEditor(self, parent, option, index):  # noqa: N802 (Qt naming)
         editor = QLineEdit(parent)
         editor.setAlignment(Qt.AlignCenter)
         editor.setValidator(QDoubleValidator(0.0, 1e12, 3, editor))
         editor.setStyleSheet(
-            "QLineEdit { padding: 2px 6px; border: 2px solid #90AF13; border-radius: 4px; "
-            "background: #ffffff; color: #000000; selection-background-color: #90AF13; selection-color: #000000; }"
+            "QLineEdit { padding: 0px 4px; border: 2px solid #90AF13; border-radius: 4px; "
+            "background: #ffffff; color: #000000; selection-background-color: #90AF13; selection-color: #ffffff; }"
         )
         return editor
 
@@ -274,14 +315,15 @@ class GirderDetailsTab(QWidget):
         content_layout.setSpacing(12)
 
         content_layout.addWidget(self._build_overview_card())
-        content_layout.addWidget(self._build_section_card())
+        # content_layout.addWidget(self._build_section_card())
         content_layout.addStretch()
 
     def _build_overview_card(self):
         card = self._create_card_frame()
-        outer = QHBoxLayout(card)
+        outer = QGridLayout(card)
         outer.setContentsMargins(18, 16, 18, 16)
-        outer.setSpacing(16)
+        outer.setHorizontalSpacing(16)
+        outer.setVerticalSpacing(16)
 
         def _cad_placeholder(label: str) -> QFrame:
             frame = QFrame()
@@ -301,6 +343,7 @@ class GirderDetailsTab(QWidget):
 
         # LEFT: Select Girder + Total Span (matches reference layout)
         left_panel = self._create_inner_box()
+        left_panel.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         left_layout = QVBoxLayout(left_panel)
         left_layout.setContentsMargins(12, 10, 12, 10)
         left_layout.setSpacing(10)
@@ -311,9 +354,9 @@ class GirderDetailsTab(QWidget):
         details_box = QWidget()
         details_layout = QGridLayout(details_box)
         details_layout.setContentsMargins(0, 0, 0, 0)
-        details_layout.setHorizontalSpacing(14)
+        details_layout.setHorizontalSpacing(16)
         details_layout.setVerticalSpacing(10)
-        details_layout.setColumnMinimumWidth(0, 130)
+        details_layout.setColumnMinimumWidth(0, 160)
         details_layout.setColumnStretch(0, 0)
         details_layout.setColumnStretch(1, 1)
 
@@ -379,9 +422,10 @@ class GirderDetailsTab(QWidget):
 
         # RIGHT: Member segments table + add/remove buttons (matches reference layout)
         manager_box = self._create_inner_box()
+        manager_box.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         manager_layout = QVBoxLayout(manager_box)
         manager_layout.setContentsMargins(12, 10, 12, 10)
-        manager_layout.setSpacing(8)
+        manager_layout.setSpacing(10)
 
         # Placeholder area for CAD diagram (right)
         manager_layout.addWidget(_cad_placeholder("CAD Diagram Placeholder"))
@@ -416,6 +460,10 @@ class GirderDetailsTab(QWidget):
             "QHeaderView::section { background: #f3f3f3; color: #2b2b2b; font-weight: 700; border: 1px solid #d0d0d0; padding: 6px; }"
             "QTableCornerButton::section { background: #f3f3f3; border: 1px solid #d0d0d0; }"
         )
+        ro_delegate = _ReadOnlyCellDelegate(self.segment_table)
+        self.segment_table.setItemDelegateForColumn(0, ro_delegate)
+        self.segment_table.setItemDelegateForColumn(1, ro_delegate)
+        self.segment_table.setItemDelegateForColumn(3, ro_delegate)
         self.segment_table.setItemDelegateForColumn(2, _EndDistanceDelegate(self.segment_table))
         self.segment_table.currentCellChanged.connect(self._on_segment_row_changed)
         # Single-click editing for End column (better UX) while keeping row selection.
@@ -456,8 +504,9 @@ class GirderDetailsTab(QWidget):
         manager_layout.addWidget(table_row)
         manager_layout.addStretch(1)
 
-        outer.addWidget(left_panel, 1)
-        outer.addWidget(manager_box, 1)
+        # Remove local add to layout, we will build the grid at the end
+        # outer.addWidget(left_panel, 1)
+        # outer.addWidget(manager_box, 1)
 
         # Initialize segment chain and UI selections
         self._initialize_segment_chain_if_needed()
@@ -466,6 +515,30 @@ class GirderDetailsTab(QWidget):
             self.span_combo.setCurrentText("Custom")
         self._on_span_changed(self.span_combo.currentText())
         self._on_girder_changed(self._current_girder)
+
+        outer.addWidget(left_panel, 0, 0)
+        outer.addWidget(manager_box, 0, 1)
+
+        # Build Section Properties (Inputs + Preview) inline with the grid layout
+        # for perfect vertical alignment of left/right columns.
+        section_container = self._build_section_card()
+        # Extract the two main widgets from the section container to place them directly
+        # into the main grid layout so they align with the columns above.
+        
+        # NOTE: _build_section_card returns a container with a QHBoxLayout containing
+        # left_column and right_column widgets. We extract them here.
+        section_layout = section_container.layout()
+        if section_layout and section_layout.count() >= 2:
+            left_col_widget = section_layout.itemAt(0).widget()
+            right_col_widget = section_layout.itemAt(1).widget()
+            
+            # Re-parent them to the main card just in case, though adding to layout handles it.
+            outer.addWidget(left_col_widget, 1, 0)
+            outer.addWidget(right_col_widget, 1, 1)
+
+        # Set column stretch to match left/right panels (equal width usually)
+        outer.setColumnStretch(0, 1)
+        outer.setColumnStretch(1, 1)
 
         return card
 
@@ -551,21 +624,24 @@ class GirderDetailsTab(QWidget):
                 id_item = QTableWidgetItem(str(seg.get("id", "")))
                 id_item.setTextAlignment(Qt.AlignCenter)
                 id_item.setFlags(id_item.flags() & ~Qt.ItemIsEditable)
+                id_item.setToolTip("Read-only")
                 self.segment_table.setItem(row, 0, id_item)
 
                 start_item = QTableWidgetItem(self._fmt_m(start))
                 start_item.setTextAlignment(Qt.AlignCenter)
                 start_item.setFlags(start_item.flags() & ~Qt.ItemIsEditable)
+                start_item.setToolTip("Read-only")
                 self.segment_table.setItem(row, 1, start_item)
 
                 end_item = QTableWidgetItem(self._fmt_m(end))
                 end_item.setTextAlignment(Qt.AlignCenter)
-                # End is editable (drives split/ripple).
+                end_item.setToolTip("Editable")
                 self.segment_table.setItem(row, 2, end_item)
 
                 length_item = QTableWidgetItem(self._fmt_m(length))
                 length_item.setTextAlignment(Qt.AlignCenter)
                 length_item.setFlags(length_item.flags() & ~Qt.ItemIsEditable)
+                length_item.setToolTip("Read-only")
                 self.segment_table.setItem(row, 3, length_item)
         finally:
             self.segment_table.blockSignals(False)
@@ -1092,32 +1168,35 @@ class GirderDetailsTab(QWidget):
         inputs_grid = QGridLayout()
         inputs_grid.setContentsMargins(0, 0, 0, 0)
         inputs_grid.setHorizontalSpacing(16)
-        inputs_grid.setVerticalSpacing(12)
+        inputs_grid.setVerticalSpacing(10)
         # Match the reference UI's aligned label column.
-        inputs_grid.setColumnMinimumWidth(0, 210)
+        inputs_grid.setColumnMinimumWidth(0, 160)
         inputs_grid.setColumnStretch(0, 0)
         inputs_grid.setColumnStretch(1, 1)
 
         # Member ID (segment selector) - mirrors reference UI.
         self.member_id_combo = QComboBox()
         apply_field_style(self.member_id_combo)
-        self._set_field_width(self.member_id_combo, 180)
+        self._set_field_width(self.member_id_combo)
         self.member_id_combo.currentIndexChanged.connect(self._on_member_id_combo_changed)
         row = self._add_box_row(inputs_grid, 0, "Member ID:", self.member_id_combo)
 
         self.design_combo = QComboBox()
         self.design_combo.addItems(VALUES_GIRDER_DESIGN_MODE)
         apply_field_style(self.design_combo)
+        self._set_field_width(self.design_combo)
         row = self._add_box_row(inputs_grid, row, "Design:", self.design_combo)
 
         self.type_combo = QComboBox()
         self.type_combo.addItems(VALUES_GIRDER_TYPE)
         apply_field_style(self.type_combo)
+        self._set_field_width(self.type_combo)
         row = self._add_box_row(inputs_grid, row, "Type:", self.type_combo)
 
         self.symmetry_combo = QComboBox()
         self.symmetry_combo.addItems(VALUES_GIRDER_SYMMETRY)
         apply_field_style(self.symmetry_combo)
+        self._set_field_width(self.symmetry_combo)
         row = self._add_box_row(inputs_grid, row, "Symmetry:", self.symmetry_combo, self.symmetry_row)
 
         self.total_depth_input = self._create_line_edit()
@@ -1132,6 +1211,7 @@ class GirderDetailsTab(QWidget):
         self.web_thickness_combo = QComboBox()
         self.web_thickness_combo.addItems(VALUES_PROFILE_SCOPE)
         apply_field_style(self.web_thickness_combo)
+        self._set_field_width(self.web_thickness_combo)
         row = self._add_box_row(
             inputs_grid,
             row,
@@ -1152,6 +1232,7 @@ class GirderDetailsTab(QWidget):
         self.top_thickness_combo = QComboBox()
         self.top_thickness_combo.addItems(VALUES_PROFILE_SCOPE)
         apply_field_style(self.top_thickness_combo)
+        self._set_field_width(self.top_thickness_combo)
         row = self._add_box_row(
             inputs_grid,
             row,
@@ -1172,6 +1253,7 @@ class GirderDetailsTab(QWidget):
         self.bottom_thickness_combo = QComboBox()
         self.bottom_thickness_combo.addItems(VALUES_PROFILE_SCOPE)
         apply_field_style(self.bottom_thickness_combo)
+        self._set_field_width(self.bottom_thickness_combo)
         row = self._add_box_row(
             inputs_grid,
             row,
@@ -1183,19 +1265,23 @@ class GirderDetailsTab(QWidget):
         self.is_section_combo = QComboBox()
         self._populate_rolled_section_combo()
         apply_field_style(self.is_section_combo)
+        self._set_field_width(self.is_section_combo)
         self._add_box_row(inputs_grid, row, "IS Section:", self.is_section_combo, self.rolled_rows)
 
         # Append restraint/web fields into the same Section Inputs box (no extra frame / spacing).
         self.torsion_combo = QComboBox()
         apply_field_style(self.torsion_combo)
+        self._set_field_width(self.torsion_combo)
         row = self._add_box_row(inputs_grid, row + 1, "Torsional Restraint:", self.torsion_combo)
 
         self.warping_combo = QComboBox()
         apply_field_style(self.warping_combo)
+        self._set_field_width(self.warping_combo)
         row = self._add_box_row(inputs_grid, row, "Warping Restraint:", self.warping_combo)
 
         self.web_type_combo = QComboBox()
         apply_field_style(self.web_type_combo)
+        self._set_field_width(self.web_type_combo)
         self._add_box_row(inputs_grid, row, "Web Type*:", self.web_type_combo, self.web_type_row)
 
         section_inputs_layout.addLayout(inputs_grid)
@@ -1243,9 +1329,9 @@ class GirderDetailsTab(QWidget):
 
         properties_grid = QGridLayout()
         properties_grid.setContentsMargins(0, 0, 0, 0)
-        properties_grid.setHorizontalSpacing(12)
+        properties_grid.setHorizontalSpacing(16)
         properties_grid.setVerticalSpacing(10)
-        properties_grid.setColumnMinimumWidth(0, 210)
+        properties_grid.setColumnMinimumWidth(0, 160)
         properties_grid.setColumnStretch(0, 0)
         properties_grid.setColumnStretch(1, 1)
 
@@ -1319,6 +1405,7 @@ class GirderDetailsTab(QWidget):
     def _create_line_edit(self):
         line_edit = QLineEdit()
         apply_field_style(line_edit)
+        self._set_field_width(line_edit)
         return line_edit
 
     def _add_section_row(self, layout, row, text, widget, tracker=None):
@@ -1331,9 +1418,9 @@ class GirderDetailsTab(QWidget):
             tracker.append((label, widget))
         return row + 1
 
-    def _set_field_width(self, widget, width=230):
+    def _set_field_width(self, widget, width=180):
         widget.setMaximumWidth(width)
-        widget.setMinimumWidth(min(width, 160))
+        widget.setMinimumWidth(min(width, 140))
         widget.setMinimumHeight(28)
         widget.setMaximumHeight(40)
 

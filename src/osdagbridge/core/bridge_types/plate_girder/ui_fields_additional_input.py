@@ -769,3 +769,5 @@ GIRDER_DETAILS_SCHEMA = {
         },
     ],
 }
+
+#function -> store in dict design dict
