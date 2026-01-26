@@ -595,6 +595,24 @@ class BridgeGrillageModel:
         ext_beam_nodes = model.get_element(member=member_name, options="nodes")
         print(f"The node tags for Beam 1 is {ext_beam_nodes[0]}")
 
+    def plot(self, model=None):
+        model = model or self.model
+        if model is None:
+            raise ValueError("Model is not available. Create model before plotting.")
+
+        results = model.get_results()
+        load_case_of_interest = 'girder self weight'
+
+        ext_beam_nodes = model.get_element(member="exterior_main_beam_1", options="nodes")
+
+        max_def = max(results.displacements.sel(Loadcase=load_case_of_interest,Component="dy",Node=ext_beam_nodes[0]))
+        max_report_def = f"The maximum deflection = {max_def.values*1000:.2f} mm"
+
+        og.plot_defo(model, results, member="exterior_main_beam_1", option="nodes",loadcase=load_case_of_interest)
+        og.plt.title(max_report_def)
+        og.plt.show()
+
+
 
 # ============================================================
 #   USAGE EXAMPLE
@@ -612,3 +630,4 @@ if __name__ == "__main__":
     bridge.create_railing_load()
     bridge.create_median_load()
     bridge.analyze()
+    bridge.plot()
