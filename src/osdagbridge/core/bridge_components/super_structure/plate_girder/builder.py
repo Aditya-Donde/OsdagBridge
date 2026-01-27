@@ -1,7 +1,6 @@
 """
 Plate Girder Geometry Builder (Geometry Only)
 
-- Based on standalone Osdag CAD plate girder logic
 - NO welds
 - NO viewer
 - NO fusion
@@ -21,9 +20,7 @@ from OCC.Core.BRepBuilderAPI import (
 )
 
 
-# ------------------------------------------------------------------
-# Helper geometry utilities (from standalone code)
-# ------------------------------------------------------------------
+# Helper geometry utilities (
 
 def _make_edge(p1, p2):
     return BRepBuilderAPI_MakeEdge(p1, p2).Edge()
@@ -116,9 +113,7 @@ def _create_stiffener_plate(position, width, height, thickness, chamfer, side):
     return BRepBuilderAPI_Transform(solid, trsf, True).Shape()
 
 
-# ------------------------------------------------------------------
 # MAIN API — this replaces old I-section builder
-# ------------------------------------------------------------------
 
 def build_plate_girder_geometry(
     *,
@@ -137,7 +132,7 @@ def build_plate_girder_geometry(
     Geometry-only Plate Girder builder for Osdag Bridge.
     """
 
-    # Directions (same as standalone)
+    # Directions 
     u_dir = np.array([0., 0., 1.])
     w_dir = np.array([0., 1., 0.])
 

@@ -11,8 +11,9 @@ from OCC.Core.TopAbs import TopAbs_EDGE
 # Builder imports
 
 from osdagbridge.core.bridge_components.super_structure.plate_girder.builder import (
-    build_girders
+    build_plate_girder_geometry
 )
+
 
 from osdagbridge.core.bridge_components.super_structure.deck.builder import (
     build_deck
@@ -55,25 +56,28 @@ class PlateGirderCADGenerator:
     Holds parameters and generates assembled CAD geometry.
     """
 
-    def __init__(self, bridge_type = KEY_MODULE_PG):
+    def __init__(self, bridge_type=KEY_MODULE_PG):
 
         self.bridge_type = bridge_type
+
         # GIRDERS PARAMETERS
         self.span_length_L = 25000
 
-        self.girder_section_d = 900
-        self.girder_section_bf = 500
-        self.girder_section_tf = 260
+        self.girder_section_d = 900          # clear web depth
+        self.girder_section_bf = 500  #top flange width
+        self.girder_section_bf_b = 500  #bottom flange width
+        self.girder_section_tf = 260  #top flange thickness
+        self.girder_section_tf_b = 260  #bottom flange thickness
         self.girder_section_tw = 100
 
         self.num_girders = 5
-        self.girder_spacing = 2750
+        self.girder_spacing = 2750           # center-to-center spacing
 
         # DECK PARAMETERS
         self.carriageway_width = 12000
         self.deck_thickness = 400
 
-        self.footpath_config = "LEFT"   # NONE / LEFT / RIGHT / BOTH
+        self.footpath_config = "BOTH"         # NONE / LEFT / RIGHT / BOTH
         self.crash_barrier_base_width = 600
         self.footpath_width = 1500
         self.railing_width = 300
@@ -98,7 +102,7 @@ class PlateGirderCADGenerator:
         self.cross_bracing_spacing = 4000
         self.cross_bracing_thickness = 5
 
-        self.bracing_type = "K"   # "X" or "K"
+        self.bracing_type = "K"               # "X" or "K"
         self.x_bracket_option = "BOTH"
         self.k_top_bracket = True
 
@@ -115,32 +119,75 @@ class PlateGirderCADGenerator:
     def generate(self):
         """
         Generate full bridge CAD.
-
-        Returns
-        -------
-        dict
-            Dictionary of assembled CAD components
         """
 
-        # Plate girder system
-        girders, stiffeners = build_girders(
-            span_length_L=self.span_length_L,
-            girder_section_d=self.girder_section_d,
-            girder_section_bf=self.girder_section_bf,
-            girder_section_tf=self.girder_section_tf,
-            girder_section_tw=self.girder_section_tw,
-            num_girders=self.num_girders,
-            girder_spacing=self.girder_spacing,
-            stiffener_width=self.stiffener_width,
-            stiffener_length=self.stiffener_length
+        # Local helpers
+        from OCC.Core.gp import gp_Trsf, gp_Vec
+        from OCC.Core.BRepBuilderAPI import BRepBuilderAPI_Transform
+
+        def _translate(shape, dx=0, dy=0, dz=0):
+            trsf = gp_Trsf()
+            trsf.SetTranslation(gp_Vec(dx, dy, dz))
+            return BRepBuilderAPI_Transform(shape, trsf, True).Shape()
+
+        # 1. BUILD SINGLE PLATE GIRDER GEOMETRY
+        pg = build_plate_girder_geometry(
+            D=self.girder_section_d,
+            tw=self.girder_section_tw,
+            length=self.span_length_L,
+            T_ft=self.girder_section_tf,
+            T_fb=self.girder_section_tf_b,
+            B_ft=self.girder_section_bf,
+            B_fb=self.girder_section_bf_b,
+            stiffener_spacing=750,
+            T_is=20,
+            chamfer_length=40
         )
 
-        # Cross bracing system
+        # 2. PLACE MULTIPLE GIRDERS (Y-DIRECTION, CENTERED)
+        girders = []
+        stiffeners = []
+
+        total_width = (self.num_girders - 1) * self.girder_spacing
+
+        for i in range(self.num_girders):
+            y_offset = (i * self.girder_spacing) - (total_width / 2)
+
+            # Web + flanges
+            for part in ("web", "top_flange", "bottom_flange"):
+                girders.append(
+                    _translate(pg[part], dy=y_offset)
+                )
+
+            # Stiffeners
+            for stiff in pg["stiffeners"]:
+                stiffeners.append(
+                    _translate(stiff, dy=y_offset)
+                )
+
+        # 3. REFERENCE Z-LEVELS 
+
+        # True girder depth (symmetric about web center)
+        # This restores the semantic contract expected by cross bracing builder
+        bracing_girder_depth = (
+            (self.girder_section_d / 2)
+            + self.girder_section_tf
+        )
+
+
+
+        # Top of girder for deck placement ONLY
+        girder_top_z = (self.girder_section_d / 2) + self.girder_section_tf
+
+        # 4. CROSS BRACING SYSTEM 
         cross_bracings = build_cross_bracings(
             span_length_L=self.span_length_L,
             num_girders=self.num_girders,
             girder_spacing=self.girder_spacing,
-            girder_depth=self.girder_section_d,
+
+            
+            girder_depth=bracing_girder_depth,
+
             flange_thickness=self.girder_section_tf,
             flange_width=self.girder_section_bf,
 
@@ -154,10 +201,10 @@ class PlateGirderCADGenerator:
             top_bracket=self.k_top_bracket
         )
 
-        # Deck system
+        # 5. DECK SYSTEM (USES TOP-OF-GIRDER Z)
         deck_out = build_deck(
             span_length_L=self.span_length_L,
-            girder_section_d=self.girder_section_d,
+            girder_section_d=girder_top_z,
             deck_thickness=self.deck_thickness,
 
             footpath_config=self.footpath_config,
@@ -167,7 +214,7 @@ class PlateGirderCADGenerator:
             railing_width=self.railing_width
         )
 
-        # Crash barrier system
+        # 6. CRASH BARRIERS
         crash_barriers = build_crash_barriers(
             span_length_L=self.span_length_L,
             deck_top_z=deck_out["deck_top_z"],
@@ -183,7 +230,7 @@ class PlateGirderCADGenerator:
             railing_width=self.railing_width
         )
 
-        # Median system
+        # 7. MEDIAN
         median_barriers = []
         if self.enable_median:
             median_barriers = build_median(
@@ -198,7 +245,7 @@ class PlateGirderCADGenerator:
                 median_gap=self.median_gap
             )
 
-        # Railing system
+        # 8. RAILINGS
         railings = build_railings(
             span_length=self.span_length_L,
             deck_top_z=deck_out["deck_top_z"],
@@ -211,6 +258,7 @@ class PlateGirderCADGenerator:
             rail_count=self.rail_count
         )
 
+        # FINAL RETURN
         return {
             "girders": girders,
             "stiffeners": stiffeners,
@@ -225,6 +273,7 @@ class PlateGirderCADGenerator:
             "median_barriers": median_barriers,
             "railings": railings
         }
+
 
     def display_3dModel(self, component):
 
