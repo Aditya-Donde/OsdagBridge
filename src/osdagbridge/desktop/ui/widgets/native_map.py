@@ -1,10 +1,25 @@
 
 import math
+from pathlib import Path
 from functools import lru_cache
 from PySide6.QtWidgets import QWidget
 from PySide6.QtCore import Qt, Signal, QPoint, QPointF, QRect, QRectF, QUrl
 from PySide6.QtGui import QPainter, QPixmap, QImage, QBrush, QColor, QPen, QMouseEvent, QWheelEvent, QPainterPath
 from PySide6.QtNetwork import QNetworkAccessManager, QNetworkRequest, QNetworkDiskCache, QNetworkReply
+
+# Path to zone overlay images
+_DATA_DIR = Path(__file__).resolve().parent.parent.parent.parent / "core" / "data" / "project_location"
+SEISMIC_ZONE_IMAGE = _DATA_DIR / "seismic.png"
+WIND_ZONE_IMAGE = _DATA_DIR / "wind.png"
+
+# India bounding box (approximate) for overlay alignment
+# These are the geographic bounds the overlay images represent
+INDIA_BOUNDS = {
+    "north": 37.1,  # Northern-most latitude
+    "south": 6.5,   # Southern-most latitude
+    "west": 68.0,   # Western-most longitude
+    "east": 97.5,   # Eastern-most longitude
+}
 
 class NativeMapWidget(QWidget):
     """
@@ -46,6 +61,11 @@ class NativeMapWidget(QWidget):
         self._is_panning = False
         self._mouse_press_pos = QPoint() # To distinguish click from pan
 
+        # Overlay settings ("none", "seismic", "wind")
+        self._overlay_type = "none"
+        self._overlay_opacity = 0.5  # 50% opacity
+        self._overlay_pixmap = None  # Cached QPixmap for the overlay
+
         # Initialize
         self.setMinimumSize(400, 300)
 
@@ -84,6 +104,10 @@ class NativeMapWidget(QWidget):
                 
                 # Logic to draw the specific tile
                 self.draw_tile(painter, tile_x, tile_y, col, row, view_x, view_y)
+        
+        # 3.5. Draw zone overlay if active
+        if self._overlay_type != "none" and self._overlay_pixmap:
+            self._draw_zone_overlay(painter, view_x, view_y)
         
         # 4. Draw Marker (Pin) if it exists
         if self.marker_lat is not None and self.marker_lon is not None:
@@ -271,3 +295,63 @@ class NativeMapWidget(QWidget):
                                              # Typically we don't emit if setting FROM the input.
                                              # We won't emit here to avoid loops.
         self.update()
+
+    def set_overlay_type(self, overlay_type: str, opacity: float = 0.5):
+        """
+        Set the zone overlay to display on top of the map.
+        
+        Args:
+            overlay_type: One of "none", "seismic", or "wind"
+            opacity: Overlay opacity (0.0 to 1.0), default 0.5 (50%)
+        """
+        self._overlay_type = overlay_type.lower()
+        self._overlay_opacity = max(0.0, min(1.0, opacity))
+        
+        if self._overlay_type == "seismic" and SEISMIC_ZONE_IMAGE.exists():
+            self._overlay_pixmap = QPixmap(str(SEISMIC_ZONE_IMAGE))
+        elif self._overlay_type == "wind" and WIND_ZONE_IMAGE.exists():
+            self._overlay_pixmap = QPixmap(str(WIND_ZONE_IMAGE))
+        else:
+            self._overlay_pixmap = None
+            self._overlay_type = "none"
+        
+        self.update()
+
+    def _draw_zone_overlay(self, painter: QPainter, view_x: float, view_y: float):
+        """
+        Draw the zone overlay image on the map, aligned to India's geographic bounds.
+        """
+        if not self._overlay_pixmap or self._overlay_pixmap.isNull():
+            return
+        
+        # Calculate screen position for India's bounding box
+        # Top-left corner (north-west)
+        nw_px_x, nw_px_y = self.lat_lon_to_pixel(
+            INDIA_BOUNDS["north"], INDIA_BOUNDS["west"], self.zoom
+        )
+        # Bottom-right corner (south-east)
+        se_px_x, se_px_y = self.lat_lon_to_pixel(
+            INDIA_BOUNDS["south"], INDIA_BOUNDS["east"], self.zoom
+        )
+        
+        # Convert world pixels to screen pixels
+        screen_x = nw_px_x - view_x
+        screen_y = nw_px_y - view_y
+        screen_width = se_px_x - nw_px_x
+        screen_height = se_px_y - nw_px_y
+        
+        # Skip drawing if completely outside viewport
+        if (screen_x + screen_width < 0 or screen_x > self.width() or
+            screen_y + screen_height < 0 or screen_y > self.height()):
+            return
+        
+        # Set opacity
+        painter.setOpacity(self._overlay_opacity)
+        
+        # Draw scaled overlay
+        target_rect = QRectF(screen_x, screen_y, screen_width, screen_height)
+        source_rect = QRectF(self._overlay_pixmap.rect())
+        painter.drawPixmap(target_rect.toRect(), self._overlay_pixmap, source_rect.toRect())
+        
+        # Reset opacity
+        painter.setOpacity(1.0)

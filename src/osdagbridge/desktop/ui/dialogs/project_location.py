@@ -20,9 +20,12 @@ from osdagbridge.desktop.ui.widgets.native_map import NativeMapWidget
 from osdagbridge.core.data.project_location.zone_lookup import get_zones_for_coordinates, get_temperature_for_coordinates
 
 
-# Remember last custom weather values during the session so reopening the dialog
-# retains user-entered data instead of resetting to defaults.
-LAST_CUSTOM_WEATHER_DATA = None
+# Session-level state to persist values across dialog open/close cycles
+# so that reopening the dialog retains user-entered or looked-up data.
+LAST_CUSTOM_WEATHER_DATA = None  # Custom data entered via the Custom Data dialog
+LAST_WEATHER_DATA = None  # Looked-up or persisted weather data (wind, seismic, temp)
+LAST_LOCATION_METHOD = None  # "location_name" or "map"
+LAST_LOCATION_DATA = None  # {"state": ..., "district": ...} or {"latitude": ..., "longitude": ...}
 
 
 
@@ -283,8 +286,9 @@ class ProjectLocationDialog(QDialog):
         self.setObjectName("project_location_dialog")
         self.default_location = get_default_location()
         
-        # Restore any previously entered custom weather data in this session
+        # Restore session-level state
         self.custom_weather_data = LAST_CUSTOM_WEATHER_DATA
+        self._current_weather_data = LAST_WEATHER_DATA  # Track current displayed weather
 
         self.setStyleSheet("""
             QDialog#project_location_dialog {
@@ -320,13 +324,9 @@ class ProjectLocationDialog(QDialog):
 
         self._setup_ui()
         self._connect_signals()
-        self._apply_default_location()
-        self._set_active_method("location_name")
-
-        # If user had entered custom data earlier in the session, show it
-        if self.custom_weather_data:
-            self._update_irc_values(self.custom_weather_data)
-        # Removed _lookup_weather call as it will be handled by signal
+        
+        # Restore previous session state if available, otherwise apply defaults
+        self._restore_session_state()
     
     def setupWrapper(self):
         self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowSystemMenuHint)
@@ -508,6 +508,26 @@ class ProjectLocationDialog(QDialog):
         vbox.setContentsMargins(0, 0, 0, 0)
         vbox.setSpacing(6)
 
+        # Zone overlay dropdown
+        overlay_container = QWidget()
+        overlay_container.setStyleSheet("background-color: #ffffff; border-bottom: 1px solid #d8e2c4;")
+        overlay_layout = QHBoxLayout(overlay_container)
+        overlay_layout.setContentsMargins(10, 8, 10, 8)
+        overlay_layout.setSpacing(10)
+        
+        overlay_label = QLabel("Zone Overlay:")
+        overlay_label.setStyleSheet("font-weight: 600; color: #2d2d2d; border: none;")
+        overlay_layout.addWidget(overlay_label)
+        
+        self.zone_overlay_combo = NoScrollComboBox()
+        self.zone_overlay_combo.addItems(["None", "Seismic Zone", "Wind Zone"])
+        self.zone_overlay_combo.setMinimumWidth(140)
+        apply_field_style(self.zone_overlay_combo)
+        overlay_layout.addWidget(self.zone_overlay_combo)
+        
+        overlay_layout.addStretch()
+        vbox.addWidget(overlay_container)
+
         self.map_view = NativeMapWidget()
         vbox.addWidget(self.map_view, 1)
 
@@ -584,6 +604,9 @@ class ProjectLocationDialog(QDialog):
         # Enter key on coordinates updates map
         self.latitude_input.returnPressed.connect(self._sync_map_from_inputs)
         self.longitude_input.returnPressed.connect(self._sync_map_from_inputs)
+        
+        # Zone overlay dropdown
+        self.zone_overlay_combo.currentTextChanged.connect(self._on_zone_overlay_changed)
 
     def _set_active_method(self, method):
         if method == "location_name" and self.method_radio_location.isChecked():
@@ -622,6 +645,70 @@ class ProjectLocationDialog(QDialog):
         self.state_combo.blockSignals(False)
         self.district_combo.blockSignals(False)
 
+    def _restore_session_state(self):
+        """Restore previous session state or apply defaults if first open."""
+        global LAST_LOCATION_METHOD, LAST_LOCATION_DATA, LAST_WEATHER_DATA
+        
+        if LAST_LOCATION_METHOD and LAST_LOCATION_DATA:
+            # Restore the previously selected method
+            if LAST_LOCATION_METHOD == "location_name":
+                self.method_radio_location.setChecked(True)
+                self._set_active_method("location_name")
+                
+                # Restore state and district
+                self.state_combo.blockSignals(True)
+                self.district_combo.blockSignals(True)
+                
+                state = LAST_LOCATION_DATA.get("state", "")
+                district = LAST_LOCATION_DATA.get("district", "")
+                
+                if state:
+                    idx = self.state_combo.findText(state)
+                    if idx >= 0:
+                        self.state_combo.setCurrentIndex(idx)
+                        # Populate districts for selected state
+                        districts = get_station_list(state, include_placeholder=True)
+                        self.district_combo.clear()
+                        self.district_combo.addItems(districts)
+                
+                if district:
+                    idx = self.district_combo.findText(district)
+                    if idx >= 0:
+                        self.district_combo.setCurrentIndex(idx)
+                
+                self.state_combo.blockSignals(False)
+                self.district_combo.blockSignals(False)
+                
+            elif LAST_LOCATION_METHOD == "map":
+                self.method_radio_map.setChecked(True)
+                self._set_active_method("map")
+                
+                # Restore coordinates
+                lat = LAST_LOCATION_DATA.get("latitude", "")
+                lon = LAST_LOCATION_DATA.get("longitude", "")
+                
+                if lat:
+                    self.latitude_input.setText(str(lat))
+                if lon:
+                    self.longitude_input.setText(str(lon))
+                
+                # Update map marker if coordinates are valid
+                try:
+                    if lat and lon:
+                        self.map_view.set_marker_location(float(lat), float(lon))
+                except (ValueError, TypeError):
+                    pass
+            
+            # Restore weather data (custom or looked-up)
+            if self.custom_weather_data:
+                self._update_irc_values(self.custom_weather_data)
+            elif LAST_WEATHER_DATA:
+                self._update_irc_values(LAST_WEATHER_DATA)
+        else:
+            # First time opening - apply defaults
+            self._apply_default_location()
+            self._set_active_method("location_name")
+
     def _on_map_location_selected(self, lat, lng):
         self.latitude_input.setText(f"{lat:.6f}")
         self.longitude_input.setText(f"{lng:.6f}")
@@ -641,6 +728,16 @@ class ProjectLocationDialog(QDialog):
             # Optionally show error or just ignore invalid input until valid
             pass
     
+    def _on_zone_overlay_changed(self, text: str):
+        """Handle zone overlay dropdown change."""
+        overlay_map = {
+            "None": "none",
+            "Seismic Zone": "seismic",
+            "Wind Zone": "wind"
+        }
+        overlay_type = overlay_map.get(text, "none")
+        self.map_view.set_overlay_type(overlay_type, opacity=0.5)
+    
     def _lookup_zones_for_coordinates(self, lat: float, lon: float):
         """Lookup wind, seismic zones and temperature for given coordinates and update UI."""
         zone_data = get_zones_for_coordinates(lat, lon)
@@ -653,9 +750,18 @@ class ProjectLocationDialog(QDialog):
             "max_temp": temp_data.get("max_temp"),
             "min_temp": temp_data.get("min_temp"),
         }
-        global LAST_CUSTOM_WEATHER_DATA
+        global LAST_CUSTOM_WEATHER_DATA, LAST_WEATHER_DATA, LAST_LOCATION_METHOD, LAST_LOCATION_DATA
         self.custom_weather_data = None 
         LAST_CUSTOM_WEATHER_DATA = None
+        
+        # Save looked-up weather and location data
+        LAST_WEATHER_DATA = weather
+        LAST_LOCATION_METHOD = "map"
+        LAST_LOCATION_DATA = {
+            "latitude": self.latitude_input.text(),
+            "longitude": self.longitude_input.text()
+        }
+        self._current_weather_data = weather
         self._update_irc_values(weather)
     
     def _on_state_changed(self, state_name):
@@ -677,17 +783,28 @@ class ProjectLocationDialog(QDialog):
             
         weather = get_weather(state, district_name)
         # Clear custom data if user selects a new district, implying they want database values
-        global LAST_CUSTOM_WEATHER_DATA
+        global LAST_CUSTOM_WEATHER_DATA, LAST_WEATHER_DATA, LAST_LOCATION_METHOD, LAST_LOCATION_DATA
         self.custom_weather_data = None 
         LAST_CUSTOM_WEATHER_DATA = None
+        
+        # Save looked-up weather and location data
+        LAST_WEATHER_DATA = weather
+        LAST_LOCATION_METHOD = "location_name"
+        LAST_LOCATION_DATA = {
+            "state": state,
+            "district": district_name
+        }
+        self._current_weather_data = weather
         self._update_irc_values(weather)
 
     def _open_custom_dialog(self):
         dlg = CustomWeatherDataDialog(self, self.custom_weather_data)
         if dlg.exec() == QDialog.Accepted:
             self.custom_weather_data = dlg.get_data()
-            global LAST_CUSTOM_WEATHER_DATA
+            global LAST_CUSTOM_WEATHER_DATA, LAST_WEATHER_DATA
             LAST_CUSTOM_WEATHER_DATA = self.custom_weather_data
+            LAST_WEATHER_DATA = self.custom_weather_data
+            self._current_weather_data = self.custom_weather_data
             self._update_irc_values(self.custom_weather_data)
 
     def _update_irc_values(self, weather):
@@ -713,7 +830,7 @@ class ProjectLocationDialog(QDialog):
         self.temp_label.setText(f"Shade Air Temperature (°C): {max_txt} / {min_txt}")
 
     def get_selected_location(self):
-        result = {'method': None, 'data': {}}
+        result = {'method': None, 'data': {}, 'weather_data': None}
 
         if self.method_radio_location.isChecked():
             result['method'] = 'location_name'
@@ -729,7 +846,13 @@ class ProjectLocationDialog(QDialog):
                 'longitude': self.longitude_input.text()
             }
         
-        # Helper to merge custom weather data if present
+        # Include weather data (custom or looked-up) for backend calculations
+        if self.custom_weather_data:
+            result['weather_data'] = self.custom_weather_data
+        elif self._current_weather_data:
+            result['weather_data'] = self._current_weather_data
+        
+        # Deprecated: kept for backward compatibility
         if self.custom_weather_data:
             result['custom_weather_data'] = self.custom_weather_data
 
