@@ -85,12 +85,16 @@ class IRC6_2017:
         # Spacing between two sucessive class 70R vehicles
         spacing_Class70R = 30.0 * m
 
-        # make a dictonary to return vehicle data
+        # Minimum clearance g_min between the road face of the kerb and the outer edge of the wheel or track 
+        min_clearance = 1.2 * m
+
+        # make a dictonary to return vehicleSdata
         return {
             'x': load_positions_x,
             'z': load_positions_z,
             'wheel_loads': wheel_loads,
-            'spacing_Class70R': spacing_Class70R
+            'spacing_Class70R': spacing_Class70R,
+            'min_clearance': min_clearance
         }
     
     @staticmethod
@@ -184,39 +188,26 @@ class IRC6_2017:
     @staticmethod
     def table_3(carriageway_width):
         """
-        Calculates the minimum clearance values for Class A train vehicles based on given clear carriageway width
-        as per IRC:6-2017 Table 3.
-        
-        Args:
-            clear_carriageway_width (float): The clear carriageway width in meters
-            
-        Returns:
-            dict: A dictionary containing calculated clearance values
-                 'g' - clearance between outer edges of passing vehicles (in meters)
-                 'f' - clearance between outer edge of wheel and roadway face (in millimeters)
-                 
-        Raises:
-            ValueError: If the carriageway width is less than 5.3 meters
+        IRC:6-2017 Table 3  Minimum clearance for Class A vehicle
+
+        Returns allowable clearance values.
         """
-        # Check if width is within valid range
         if carriageway_width < 5.3:
-            raise ValueError("Clear carriageway width must be at least 5.3 meters")
-            
-        # f value is constant 150 mm for all widths
-        f = 0.15  # meters
-        
-        # Calculate g value based on carriageway width
+            raise ValueError("Clear carriageway width must be at least 5.3 m")
+
+        f = 0.15  # meters (150 mm)
+
         if 5.3 <= carriageway_width <= 6.1:
-            # Linear interpolation between 0.4m at 5.3m width and 1.2m at 6.1m width
-            g = 0.4 + (carriageway_width - 5.3) * (1.2 - 0.4) / (6.1 - 5.3)
-        else:  # width > 6.1m
-            g = 1.2  # meters
-            
-        clearance = {
-            'g': round(g, 3),  # clearance in meters, rounded to 3 decimal places
-            'f': f  # clearance in meters
+            g = (0.4, 1.2)  # allowable range
+        else:  # > 6.1 m
+            g = (1.2, 1.2)  # fixed value
+
+        return {
+            "g_min": g[0],
+            "g_max": g[1],
+            "f": f
         }
-        return clearance
+
 
     @staticmethod
     def table_6(carriageway_width):
@@ -260,154 +251,41 @@ class IRC6_2017:
         return int(design_lanes)
 
     @staticmethod
-    def table_6A(carriageway_width, design_lanes=None, g_increment=0.0, span=1.0, vehicle=None):
+    def table_6A(carriageway_width):
         """
-        Computes the remaining carriageway width to be loaded as UDL and the
-        resulting UDL (per metre length) based on Table 6A rules.
+        IRC:6-2017 Table 6A
+        Returns all permissible vehicle combinations for a given carriageway width.
 
-        Args:
-            carriageway_width (float): carriageway width in meters
-            design_lanes (int, optional): number of lanes for design purposes.
-                If not provided, it will be determined by `table_6`.
-            g_increment (float, optional): additional clearance increment
-                (in metres) between adjacent vehicle lanes to be subtracted
-                from the carriageway when computing remaining width. Default
-                is 0.0 (no extra increment).
-
-        Returns:
-            dict: {
-                'design_lanes': int,
-                'vehicle_width': float,  # m (2.3 m)
-                'f_m': float,            # clearance f in m
-                'remaining_width': float,# width left for UDL (m, >=0)
-                'udl_intensity_kg_m2': float, # 500 kg/m2 (by spec)
-                'udl_kN_per_m': float    # UDL per metre length (kN/m)
-            }
-
-        Notes:
-            - Uses `table_2` to obtain the f value (in mm) and converts to metres.
-            - Vehicle width is taken as 2.3 m (1.8 + 0.5) as per the image.
-            - Remaining width is computed as: CW - (lanes * vehicle_width) - 2*f
-              where 2*f is clearance at both outer edges (minimum).
+        Each Class A vehicle occupies 1 lane.
+        Each Class 70R vehicle occupies 2 lanes.
         """
-        vehicle = ''
-        # validate input
-        if carriageway_width < 0:
-            raise ValueError("Carriageway width cannot be negative")
 
-        # determine design lanes if not provided
-        if design_lanes is None:
-            design_lanes = IRC6_2017.table_6(carriageway_width)
+        if carriageway_width <= 0:
+            raise ValueError("Invalid carriageway width")
 
-        # default vehicle for selection if not provided
-        if vehicle is None:
-            vehicle = KEY_VEHICLE[2] if len(KEY_VEHICLE) > 2 else ''
+        # Step 1: get design lanes from Table 6
+        design_lanes = IRC6_2017.table_6(carriageway_width)
 
-        # Branch by lane count
-        if design_lanes == 1:
-            # get f from table_3 (f returned in metres)
-            f_info = IRC6_2017.table_3(carriageway_width)
-            f_m = f_info.get('f', 0.15)
+        combinations = []
 
-            vehicle_width = 2.3  # m (1.8 + 0.5)
-            remaining_width = carriageway_width - (vehicle_width + 2.0 * f_m)
+        # Step 2: generate all valid combinations
+        max_70R = design_lanes // 2
 
-            # UDL intensity as specified for the remaining carriageway
-            udl_intensity_kg_m2 = 500.0  # kg/m2
-            udl_kg_per_m = udl_intensity_kg_m2 * max(remaining_width, 0.0) * span
-            udl_kN_per_m = udl_kg_per_m * 9.81 / 1000.0
+        for n70R in range(max_70R + 1):
+            nA = design_lanes - 2 * n70R
+            if nA >= 0:
+                combo = {}
+                if nA > 0:
+                    combo["ClassA"] = nA
+                if n70R > 0:
+                    combo["Class70R"] = n70R
+                combinations.append(combo)
 
-            return {
-                'design_lanes': int(design_lanes),
-                'vehicle_width': round(vehicle_width, 3),
-                'f_m': round(f_m, 3),
-                'remaining_width': round(remaining_width, 3),
-                'udl_intensity_kg_m2': udl_intensity_kg_m2,
-                'udl_kg_per_m': round(udl_kg_per_m, 3),
-                'udl_kN_per_m': round(udl_kN_per_m, 3)
-            }
+        return {
+            "design_lanes": design_lanes,
+            "vehicle_combinations": combinations
+        }
 
-        elif design_lanes == 2:
-            # Class 70R (wheel vehicle)
-            if vehicle == KEY_VEHICLE[0]:     # Class70R(W)
-                f_m = 1.2  # metres
-                vehicle_width = 2.790  # m
-                remaining_width = carriageway_width - (vehicle_width + 2.0 * f_m)
-
-                return {
-                    'design_lanes': int(design_lanes),
-                    'vehicle_width': round(vehicle_width, 3),
-                    'f_m': round(f_m, 3),
-                    'remaining_width': round(remaining_width, 3)
-                }
-
-            # Class A vehicles
-            elif vehicle == KEY_VEHICLE[2]:   # ClassA
-                f_info = IRC6_2017.table_3(carriageway_width)
-                f_m = f_info.get('f', 0.15)
-                g_m = f_info.get('g')
-
-                vehicle_width = 2.3  # m (1.8 + 0.5)
-                g_total = g_m + g_increment    #?
-                remaining_width = carriageway_width - ((2.0 * vehicle_width) + g_total + (2.0 * f_m))
-
-                return {
-                    'design_lanes': int(design_lanes),
-                    'vehicle_width': round(vehicle_width, 3),
-                    'f_m': round(f_m, 3),
-                    'remaining_width': round(remaining_width, 3)
-                }
-
-    
-
-            # Class A vehicles
-            elif vehicle == KEY_VEHICLE[2]:   # ClassA
-                f_info = IRC6_2017.table_3(carriageway_width)
-                f_m = f_info.get('f', 0.15)
-                g_m = f_info.get('g')
-
-                vehicle_width = 2.3  # m (1.8 + 0.5)
-                g_total = g_m + g_increment    #?
-                remaining_width = carriageway_width - ((2.0 * vehicle_width) + g_total + (2.0 * f_m))
-
-                return {
-                    'design_lanes': int(design_lanes),
-                    'vehicle_width': round(vehicle_width, 3),
-                    'f_m': round(f_m, 3),
-                    'remaining_width': round(remaining_width, 3)
-                }
-        elif design_lanes == 3:
-            if vehicle == KEY_VEHICLE[2]:   # ClassA
-                f_info = IRC6_2017.table_3(carriageway_width)
-                f_m = f_info.get('f', 0.15)
-                g_m = f_info.get('g')
-
-                vehicle_width = 2.3  # m (1.8 + 0.5)
-                g_total = g_m + g_increment    #?
-                remaining_width = carriageway_width - ((3.0 * vehicle_width) + (2.0 * f_m) + (2.0 * g_total))
-
-                return {
-                    'design_lanes': int(design_lanes),
-                    'vehicle_width': round(vehicle_width, 3),
-                    'f_m': round(f_m, 3),
-                    'remaining_width': round(remaining_width, 3)
-                }
-            elif vehicle == KEY_VEHICLE[0] and KEY_VEHICLE[2]:  # Class70R(W) and ClassA
-                f_info = IRC6_2017.table_3(carriageway_width)
-                f_m = f_info.get('f', 0.15)
-                g_m = f_info.get('g')
-                vehicle_width_70R = 2.790  # m
-                vehicle_width_A = 2.3  # m 
-                vehicle_width = vehicle_width_70R + vehicle_width_A  # m
-                g_total = 1.2 + g_increment
-                remaining_width = carriageway_width - ((2.0 * vehicle_width) + (2.0 * f_m) + g_total)
-
-                return {
-                    'design_lanes': int(design_lanes),
-                    'vehicle_width': round(vehicle_width, 3),
-                    'f_m': round(f_m, 3),
-                    'remaining_width': round(remaining_width, 3)
-                }
 
     
     
