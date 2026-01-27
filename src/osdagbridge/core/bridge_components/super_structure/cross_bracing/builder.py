@@ -207,7 +207,7 @@ def _create_horizontal_member_y(
     x, yL, yR, z, thickness, flange_width, section_type, dims, roll_sign
 ):
 
-    y0 = yL + flange_width
+    y0 = yL 
     y1 = yR
     length = y1 - y0
     y_mid = (y0 + y1) / 2
@@ -242,19 +242,23 @@ def _x_bracing(
     section_type, dims, bracket
 ):
 
-    z0 = tf / 2
-    z1 = depth - tf / 2
+    # ✅ WEB–FLANGE JUNCTIONS
+    z_bot = -depth / 2
+    z_top = +depth / 2
 
-    yl = yL + flange_w
+    yl = yL
     yr = yR
 
+
     braces = [
+        # Left TOP → Right BOTTOM
         _create_diagonal_member(
-            gp_Pnt(x, yl, z0), gp_Pnt(x, yr, z1),
+            gp_Pnt(x, yl, z_top), gp_Pnt(x, yr, z_bot),
             thickness, section_type, dims, +1
         ),
+        # Left BOTTOM → Right TOP
         _create_diagonal_member(
-            gp_Pnt(x, yl, z1), gp_Pnt(x, yr, z0),
+            gp_Pnt(x, yl, z_bot), gp_Pnt(x, yr, z_top),
             thickness, section_type, dims, -1
         )
     ]
@@ -262,7 +266,7 @@ def _x_bracing(
     if bracket in ("LOWER", "BOTH"):
         braces.append(
             _create_horizontal_member_y(
-                x, yL, yR, z0,
+                x, yL, yR, z_bot,
                 thickness, flange_w,
                 section_type, dims, +1
             )
@@ -271,7 +275,7 @@ def _x_bracing(
     if bracket in ("UPPER", "BOTH"):
         braces.append(
             _create_horizontal_member_y(
-                x, yL, yR, z1,
+                x, yL, yR, z_top,
                 thickness, flange_w,
                 section_type, dims, +1
             )
@@ -285,24 +289,24 @@ def _k_bracing(
     section_type, dims, top_bracket
 ):
 
-    z0 = tf / 2
-    z1 = depth - tf / 2
+    z_bot = -depth / 2
+    z_top = +depth / 2
 
-    yl = yL + flange_w
+    yl = yL
     yr = yR
     ym = (yl + yr) / 2
 
     braces = [
         _create_diagonal_member(
-            gp_Pnt(x, yl, z1), gp_Pnt(x, ym, z0),
+            gp_Pnt(x, yl, z_top), gp_Pnt(x, ym, z_bot),
             thickness, section_type, dims, +1
         ),
         _create_diagonal_member(
-            gp_Pnt(x, yr, z1), gp_Pnt(x, ym, z0),
+            gp_Pnt(x, yr, z_top), gp_Pnt(x, ym, z_bot),
             thickness, section_type, dims, -1
         ),
         _create_horizontal_member_y(
-            x, yL, yR, z0,
+            x, yL, yR, z_bot,
             thickness, flange_w,
             section_type, dims, +1
         )
@@ -311,14 +315,13 @@ def _k_bracing(
     if top_bracket:
         braces.append(
             _create_horizontal_member_y(
-                x, yL, yR, z1,
+                x, yL, yR, z_top,
                 thickness, flange_w,
                 section_type, dims, +1
             )
         )
 
     return braces
-
 
 # PUBLIC API
 
