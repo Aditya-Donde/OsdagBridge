@@ -12,6 +12,8 @@ from PySide6.QtWidgets import (
     QMainWindow,
     QWidget,
     QVBoxLayout,
+    QHBoxLayout,
+    QCheckBox,
     QPushButton
 )
 from PySide6.QtCore import QTimer, Qt
@@ -53,7 +55,7 @@ class CAD3DWindow(QMainWindow):
         self.setup_ui()
         self.init_display()
 
-    # -UI SETUP 
+    # UI SETUP 
 
     def setup_ui(self):
         central_widget = QWidget(self)
@@ -62,13 +64,18 @@ class CAD3DWindow(QMainWindow):
         self.layout = QVBoxLayout(central_widget)
         self.layout.setContentsMargins(0, 0, 0, 0)
 
+        # Component selector 
+        self.component_selector = BridgeComponentCheckbox(self)
+        self.component_selector.hide()
+        self.layout.addWidget(self.component_selector)
+
+
     # CAD INITIALIZATION 
 
     def init_display(self):
         """
         CAD initialization.
 
-        - Locks pythonOCC backend
         - Creates CustomViewer3d
         - Defers InitDriver for safety
         """
@@ -126,14 +133,14 @@ class CAD3DWindow(QMainWindow):
             self.viewer.cleanup_for_new_model()
         display.EraseAll()
 
-        # ---------- COLORS ----------
+        # COLORS 
         GIRDER_COLOR = Quantity_Color(72/255, 72/255, 54/255, Quantity_TOC_RGB)
         STIFFENER_COLOR = Quantity_Color(30/255, 30/255, 30/255, Quantity_TOC_RGB)
         DECK_COLOR = Quantity_Color(180/255, 180/255, 180/255, Quantity_TOC_RGB)
         BARRIER_COLOR = Quantity_Color(120/255, 120/255, 120/255, Quantity_TOC_RGB)
         BRACING_COLOR = Quantity_Color(60/255, 60/255, 60/255, Quantity_TOC_RGB)
 
-        # ---------- HELPER ----------
+        # HELPER 
         def display_and_register(shapes, key, label, color):
             if not shapes:
                 return
@@ -153,7 +160,10 @@ class CAD3DWindow(QMainWindow):
             self.viewer.model_ais_objects[key] = ais_list
             self.viewer.model_hover_labels[key] = label
 
-        # ---------- DISPLAY + REGISTER ----------
+        # DISPLAY + REGISTER 
+
+        self.viewer.model_ais_objects = {}
+
         display_and_register(
             cad_data.get("girders", []),
             "Girder",
@@ -181,13 +191,18 @@ class CAD3DWindow(QMainWindow):
             "Deck Slab",
             DECK_COLOR
         )
-        # ---------- DECK TEXTURES (DISPLAY ONLY, NO HOVER) ----------
+        # DECK TEXTURES (DISPLAY ONLY, NO HOVER)
+        self.viewer.deck_texture_ais = []
+
         for tex in cad_data.get("deck_textures", []):
-            display.DisplayShape(
+            ais = display.DisplayShape(
                 tex,
                 color=Quantity_Color(0.2, 0.2, 0.2, Quantity_TOC_RGB),
                 update=False
             )
+            ais = ais[0] if isinstance(ais, list) else ais
+            self.viewer.deck_texture_ais.append(ais)
+
 
 
         display_and_register(
@@ -211,13 +226,15 @@ class CAD3DWindow(QMainWindow):
             BARRIER_COLOR
         )
 
-        # ---------- FINAL VIEW ----------
+        # FINAL VIEW 
         display.View_Iso()
         display.FitAll()
 
         if hasattr(self.viewer, "display_view_cube"):
             self.viewer.display_view_cube()
 
+
+        self.component_selector.show()
 
     # ZOOM CONTROLS 
 
@@ -290,11 +307,136 @@ class CAD3DWindow(QMainWindow):
             self._orig_resize_event(event)
         self.position_zoom_buttons()
 
+    def show_full_model(self):
+        """
+        Display all bridge components 
+        """
+        if not self._is_display_ready():
+            return
+
+        context = self.viewer.context
+
+        # Show all structural components
+        for ais_list in self.viewer.model_ais_objects.values():
+            for ais in ais_list:
+                context.Display(ais, False)
+
+        # Show deck textures
+        for ais in getattr(self.viewer, "deck_texture_ais", []):
+            context.Display(ais, False)
+
+        self.display.FitAll()
+        self.display.Repaint()
+
+
+    def isolate_component(self, component_key):
+        """
+        Isolate a single bridge component using AIS visibility
+        Deck textures shown ONLY for Deck
+        """
+        if not self._is_display_ready():
+            return
+
+        context = self.viewer.context
+
+        # Hide all structural components
+        for ais_list in self.viewer.model_ais_objects.values():
+            for ais in ais_list:
+                context.Erase(ais, False)
+
+        # Hide deck textures by default
+        for ais in getattr(self.viewer, "deck_texture_ais", []):
+            context.Erase(ais, False)
+
+        # Show selected component
+        for ais in self.viewer.model_ais_objects.get(component_key, []):
+            context.Display(ais, False)
+
+        # Show deck textures ONLY if Deck is selected
+        if component_key == "Deck":
+            for ais in getattr(self.viewer, "deck_texture_ais", []):
+                context.Display(ais, False)
+
+        self.display.FitAll()
+        self.display.Repaint()
+
+
 
     def regenerate_bridge(self):
         self.load_bridge()
 
 
+
+class BridgeComponentCheckbox(QWidget):
+    """
+    Horizontal component selector 
+    """
+    def __init__(self, parent: CAD3DWindow):
+        super().__init__(parent)
+        self.parent = parent
+
+        self.setObjectName("cad_component_selector")
+        self.setFixedHeight(30)
+
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(12, 4, 12, 4)
+        layout.setSpacing(16)
+
+        layout.addStretch()
+
+        self.checkboxes = []
+
+        
+        self.components = [
+            ("Model", None),
+            ("Girder", "Girder"),
+            ("Deck", "Deck"),
+            ("Cross Bracing", "Cross Bracing"),
+            ("Crash Barrier", "Crash Barrier"),
+            ("Median", "Median"),
+            ("Railing", "Railing"),
+        ]
+
+        for label, key in self.components:
+            cb = QCheckBox(label, self)
+            cb.setObjectName(label)
+            cb.setCursor(Qt.PointingHandCursor)
+
+            cb.clicked.connect(
+                lambda checked, k=key, c=cb: self._on_click(k, c, checked)
+            )
+
+            layout.addWidget(cb)
+            self.checkboxes.append(cb)
+
+        layout.addStretch()
+
+        # Default selection → Model
+        self.checkboxes[0].setChecked(True)
+
+    def _on_click(self, component_key, clicked_cb, checked):
+        """
+        Enforce single selection (Osdag behavior)
+        """
+        if checked:
+            # Uncheck all others
+            for cb in self.checkboxes:
+                if cb != clicked_cb:
+                    cb.blockSignals(True)
+                    cb.setChecked(False)
+                    cb.blockSignals(False)
+
+            # if none is selected -> then full model
+            if component_key is None:
+                self.parent.show_full_model()
+            else:
+                self.parent.isolate_component(component_key)
+
+        else:
+            # Prevent "no selection" state
+            clicked_cb.blockSignals(True)
+            clicked_cb.setChecked(True)
+            clicked_cb.blockSignals(False)
 
 def main():
     app = QApplication(sys.argv)
