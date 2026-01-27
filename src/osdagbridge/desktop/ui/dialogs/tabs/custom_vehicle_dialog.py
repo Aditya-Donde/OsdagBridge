@@ -36,7 +36,6 @@ class CustomVehicleDialog(QDialog):
                 font-size: 11px;
                 background: transparent;
             }
-
             QLineEdit {
                 background-color: #ffffff;
                 border: 1px solid #8a8a8a;

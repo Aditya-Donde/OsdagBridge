@@ -7,28 +7,11 @@ from PySide6.QtWidgets import (
     QComboBox,
     QLineEdit,
     QFrame,
-    QGridLayout,
-    QCheckBox,
     QScrollArea,
 )
 
 from osdagbridge.desktop.ui.dialogs.tabs.common import apply_field_style
-
-IRC_SEISMIC_DEFAULTS = {
-    "seismic_zone": "II",
-    "importance_factor": "1.0",
-    "soil_type": "Type I – Rocky or Hard Soil",
-    "damping": "2",
-    "response_reduction_factor": "1",
-    "dead_load_mode": "Automatic",
-    "live_load_mode": "Automatic",
-}
-
-# STANDARDIZED DIMENSIONS - Define once, use everywhere
-FIELD_WIDTH = 180
-FIELD_HEIGHT = 28
-LABEL_MIN_WIDTH = 220
-
+from osdagbridge.core.bridge_types.plate_girder.ui_fields_additional_input import SEISMIC_LOAD_TAB_SCHEMA
 
 class SeismicLoadTab(QWidget):
     """Seismic/Earthquake Load tab content extracted from LoadingTab."""
@@ -36,10 +19,17 @@ class SeismicLoadTab(QWidget):
     def __init__(self, owner):
         super().__init__(owner)
         self.owner = owner
+        self.schema = SEISMIC_LOAD_TAB_SCHEMA
         self._build_ui()
 
     def _build_ui(self):
         owner = self.owner
+        schema = self.schema
+        
+        # Extract schema constants
+        LABEL_MIN_WIDTH = schema.get("label_width", 220)
+        FIELD_WIDTH = schema.get("field_width", 180)
+        FIELD_HEIGHT = schema.get("field_height", 28)
 
         self.setStyleSheet("background-color: #f5f5f5;")
         
@@ -80,180 +70,161 @@ class SeismicLoadTab(QWidget):
 
         label_style = "font-size: 11px; font-weight: 600; color: #3a3a3a; background: transparent; border: none;"
 
-        # ============ SEISMIC INPUTS BOX ============
-        seismic_inputs_box = QFrame()
-        seismic_inputs_box.setStyleSheet("""
-            QFrame {
-                border: 1px solid #9c9c9c;
-                border-radius: 6px;
-                background-color: #ffffff;
-                padding: 0px;
-            }
-        """)
-        seismic_inputs_box_layout = QVBoxLayout(seismic_inputs_box)
-        seismic_title = QLabel("Seismic/Earthquake Load (EL) Inputs:")
-        seismic_title.setStyleSheet("""
-            font-size: 12px;
-            font-weight: 700;
-            color: #3a3a3a;
-            background: transparent;
-            border: none;
-        """)
-        seismic_inputs_box_layout.addWidget(seismic_title)
-
-        seismic_inputs_box_layout.setContentsMargins(12, 12, 12, 12)
-        seismic_inputs_box_layout.setSpacing(14)
-
-        row = 0
-
-        def add_combo(label_text, combo_items, attr_name, with_custom=False, placeholder="Custom Value", width_override=None):
-            nonlocal row
-            row_layout = QHBoxLayout()
-            row_layout.setSpacing(10)
+        # Process sections from schema
+        for section in schema.get("sections", []):
+            section_type = section.get("type")
+            section_id = section.get("id")
             
-            lbl = QLabel(label_text)
-            lbl.setStyleSheet(label_style)
-            lbl.setMinimumWidth(LABEL_MIN_WIDTH)
+            # ============ SEISMIC INPUTS SECTION ============
+            if section_type == "input_group" and section_id == "seismic_inputs_section":
+                seismic_inputs_box = QFrame()
+                seismic_inputs_box.setStyleSheet("""
+                    QFrame {
+                        border: 1px solid #9c9c9c;
+                        border-radius: 6px;
+                        background-color: #ffffff;
+                        padding: 0px;
+                    }
+                """)
+                seismic_inputs_box_layout = QVBoxLayout(seismic_inputs_box)
+                seismic_inputs_box_layout.setContentsMargins(12, 12, 12, 12)
+                seismic_inputs_box_layout.setSpacing(14)
+
+                # Section title
+                seismic_title = QLabel(section.get("title", ""))
+                seismic_title.setStyleSheet("font-size: 12px; font-weight: 700; color: #3a3a3a; background: transparent; border: none;")
+                seismic_inputs_box_layout.addWidget(seismic_title)
+
+                # Process fields from schema
+                for field in section.get("fields", []):
+                    field_type = field.get("type")
+                    
+                    row_layout = QHBoxLayout()
+                    row_layout.setSpacing(10)
+                    
+                    lbl = QLabel(field.get("label", ""))
+                    lbl.setStyleSheet(label_style)
+                    lbl.setMinimumWidth(LABEL_MIN_WIDTH)
+                    row_layout.addWidget(lbl)
+                    
+                    # Create appropriate widget based on field type
+                    if field_type == "combo":
+                        widget = QComboBox()
+                        widget.addItems(field.get("choices", []))
+                        if field.get("default"):
+                            widget.setCurrentText(field.get("default"))
+                        widget.setFixedSize(FIELD_WIDTH, FIELD_HEIGHT)
+                        apply_field_style(widget)
+                        
+                        bind_name = field.get("bind")
+                        if bind_name:
+                            setattr(self, bind_name, widget)
+                        
+                        row_layout.addWidget(widget)
+                    
+                    elif field_type == "line":
+                        widget = QLineEdit()
+                        if field.get("default"):
+                            widget.setText(field.get("default"))
+                        widget.setFixedSize(FIELD_WIDTH, FIELD_HEIGHT)
+                        apply_field_style(widget)
+                        
+                        bind_name = field.get("bind")
+                        if bind_name:
+                            setattr(self, bind_name, widget)
+                        
+                        row_layout.addWidget(widget)
+                    
+                    elif field_type == "mode_line":
+                        # Mode combo
+                        mode_combo = QComboBox()
+                        mode_combo.addItems(field.get("mode_choices", []))
+                        if field.get("default_mode"):
+                            mode_combo.setCurrentText(field.get("default_mode"))
+                        mode_combo.setFixedSize(FIELD_WIDTH, FIELD_HEIGHT)
+                        apply_field_style(mode_combo)
+                        
+                        mode_bind = field.get("bind_mode")
+                        if mode_bind:
+                            setattr(self, mode_bind, mode_combo)
+                        
+                        row_layout.addWidget(mode_combo)
+                        
+                        # Value input
+                        value_input = QLineEdit()
+                        value_input.setPlaceholderText(field.get("placeholder", ""))
+                        value_input.setFixedSize(FIELD_WIDTH, FIELD_HEIGHT)
+                        value_input.setEnabled(False)
+                        apply_field_style(value_input)
+                        
+                        value_bind = field.get("bind_value")
+                        if value_bind:
+                            setattr(self, value_bind, value_input)
+                        
+                        row_layout.addWidget(value_input)
+                    
+                    row_layout.addStretch()
+                    seismic_inputs_box_layout.addLayout(row_layout)
+
+                left_layout.addWidget(seismic_inputs_box)
             
-            combo = QComboBox()
-            combo.addItems(combo_items)
-            combo.setFixedWidth(width_override if width_override else FIELD_WIDTH)
-            combo.setFixedHeight(FIELD_HEIGHT)
-            apply_field_style(combo)
-            
-            row_layout.addWidget(lbl)
-            row_layout.addWidget(combo)
-            
-            custom = None
-            if with_custom:
-                custom = QLineEdit()
-                custom.setPlaceholderText(placeholder)
-                custom.setFixedSize(FIELD_WIDTH, FIELD_HEIGHT)
-                custom.setEnabled(False)
-                apply_field_style(custom)
-                row_layout.addWidget(custom)
-            
-            row_layout.addStretch()
-            seismic_inputs_box_layout.addLayout(row_layout)
-            setattr(self, attr_name, combo)
-            row += 1
+            # ============ COMPUTED VALUES SECTION ============
+            elif section_type == "computed_group" and section_id == "computed_values_section":
+                computed_box = QFrame()
+                computed_box.setStyleSheet("""
+                    QFrame {
+                        border: 1px solid #9c9c9c;
+                        border-radius: 6px;
+                        background-color: #ffffff;
+                        padding: 0px;
+                    }
+                """)
+                computed_box_layout = QVBoxLayout(computed_box)
+                computed_box_layout.setContentsMargins(12, 12, 12, 12)
+                computed_box_layout.setSpacing(14)
 
-            return combo, custom
+                # Section title
+                computed_title = QLabel(section.get("title", ""))
+                computed_title.setStyleSheet("font-size: 11px; font-weight: 700; color: #3a3a3a; background: transparent; border: none;")
+                computed_box_layout.addWidget(computed_title)
 
-        def add_line_edit(label_text, attr_name, default=None):
-            nonlocal row
-            row_layout = QHBoxLayout()
-            row_layout.setSpacing(10)
-            
-            lbl = QLabel(label_text)
-            lbl.setStyleSheet(label_style)
-            lbl.setMinimumWidth(LABEL_MIN_WIDTH)
-            
-            line = QLineEdit()
-            if default is not None:
-                line.setText(default)
-            line.setFixedSize(FIELD_WIDTH, FIELD_HEIGHT)
-            apply_field_style(line)
-            
-            row_layout.addWidget(lbl)
-            row_layout.addWidget(line)
-            row_layout.addStretch()
-            
-            seismic_inputs_box_layout.addLayout(row_layout)
-            setattr(self, attr_name, line)
-            row += 1
+                # Create computed fields dictionary
+                self.seismic_computed_fields = {}
+                
+                for field in section.get("fields", []):
+                    row_layout = QHBoxLayout()
+                    row_layout.setSpacing(10)
+                    
+                    lbl = QLabel(field.get("label", ""))
+                    lbl.setStyleSheet(label_style)
+                    lbl.setMinimumWidth(LABEL_MIN_WIDTH)
+                    
+                    computed_field = QLineEdit()
+                    computed_field.setFixedSize(FIELD_WIDTH, FIELD_HEIGHT)
+                    computed_field.setReadOnly(True)
+                    computed_field.setStyleSheet("""
+                        QLineEdit {
+                            background-color: #f0f0f0;
+                            border: 1px solid #8a8a8a;
+                            border-radius: 5px;
+                            padding: 5px 8px;
+                            color: #5a5a5a;
+                            font-size: 11px;
+                        }
+                    """)
+                    
+                    bind_name = field.get("bind")
+                    if bind_name:
+                        self.seismic_computed_fields[bind_name] = computed_field
+                    
+                    row_layout.addWidget(lbl)
+                    row_layout.addWidget(computed_field)
+                    row_layout.addStretch()
+                    
+                    computed_box_layout.addLayout(row_layout)
 
-        add_combo("Seismic Zone:", ["II", "III", "IV", "V"], "seismic_zone_combo")
-        add_line_edit("Importance Factor:", "importance_factor_input", "1")
-        add_combo("Type of Soil:", [
-            "Type I – Rocky or Hard",
-            "Type II – Medium Soil",
-            "Type III – Soft Soil"
-        ], "soil_type_combo")
+                left_layout.addWidget(computed_box)
 
-        add_line_edit("Time Period:", "time_period_input")
-        add_line_edit("Damping Percentage:", "damping_input", "2")
-        add_combo("Response Reduction Factor:", ["1", "2", "3", "4", "5"], "response_factor_combo")
-
-        if hasattr(self.owner, "project_seismic_zone"):
-            self.seismic_zone_combo.setCurrentText(self.owner.project_seismic_zone)
-        else:
-            self.seismic_zone_combo.setCurrentText("II")  
-
-        self.response_factor_combo.setCurrentText("1")
-        _, self.dead_load_custom_input = add_combo(
-            "Dead Load for Seismic Force (kN):",
-            ["Automatic", "Custom"],
-            "dead_load_seismic_combo",
-            with_custom=True,
-        )
-
-        _, self.live_load_custom_input = add_combo(
-            "Live Load for Seismic Force (kN):",
-            ["Automatic", "Custom"],
-            "live_load_seismic_combo",
-            with_custom=True,
-        )
-
-        left_layout.addWidget(seismic_inputs_box)
-
-        # ============ COMPUTED VALUES BOX ============
-        computed_box = QFrame()
-        computed_box.setStyleSheet("""
-            QFrame {
-                border: 1px solid #9c9c9c;
-                border-radius: 6px;
-                background-color: #ffffff;
-                padding: 0px;
-            }
-        """)
-        computed_box_layout = QVBoxLayout(computed_box)
-        computed_box_layout.setContentsMargins(12, 12, 12, 12)
-        computed_box_layout.setSpacing(14)
-
-        # Add "Computed Values" title
-        computed_title = QLabel("Computed Values")
-        computed_title.setStyleSheet("font-size: 11px; font-weight: 700; color: #3a3a3a; background: transparent; border: none;")
-        computed_box_layout.addWidget(computed_title)
-
-        computed_fields = [
-            ("Zone Factor:", "zone_factor"),
-            ("Spectral Acceleration Coefficient:", "spectral_coeff"),
-            ("Horizontal Seismic Coefficient:", "horizontal_coeff"),
-            ("Vertical Seismic Coefficient:", "vertical_coeff"),
-        ]
-
-        self.seismic_computed_fields = {}
-        for label_text, field_name in computed_fields:
-            row_layout = QHBoxLayout()
-            row_layout.setSpacing(10)
-            
-            lbl = QLabel(label_text)
-            lbl.setStyleSheet(label_style)
-            lbl.setMinimumWidth(LABEL_MIN_WIDTH)
-            
-            field = QLineEdit()
-            field.setFixedSize(FIELD_WIDTH, FIELD_HEIGHT)
-            field.setReadOnly(True)
-            field.setStyleSheet("""
-                QLineEdit {
-                    background-color: #f0f0f0;
-                    border: 1px solid #8a8a8a;
-                    border-radius: 5px;
-                    padding: 5px 8px;
-                    color: #5a5a5a;
-                    font-size: 11px;
-                }
-            """)
-            
-            row_layout.addWidget(lbl)
-            row_layout.addWidget(field)
-            row_layout.addStretch()
-            
-            computed_box_layout.addLayout(row_layout)
-            self.seismic_computed_fields[field_name] = field
-
-        left_layout.addWidget(computed_box)
         left_layout.addStretch()
         left_card_layout.addWidget(content_wrapper)
 
@@ -266,16 +237,14 @@ class SeismicLoadTab(QWidget):
         right_layout.setContentsMargins(16, 16, 16, 16)
         right_layout.setSpacing(10)
 
-        desc_title = QLabel("Description Box")
+        # Description from schema
+        description = schema.get("description", {})
+        desc_title = QLabel(description.get("title", ""))
         desc_title.setAlignment(Qt.AlignCenter)
         desc_title.setStyleSheet("font-size: 12px; font-weight: 700; color: #000000; background: transparent; border: none;")
         right_layout.addWidget(desc_title)
 
-        desc_text = QLabel(
-            "Importance factor for normal, important, and critical bridges.\n\n"
-            "Seismic zone factors are defined according to IRC 6 specifications.\n\n"
-            "The spectral acceleration coefficient depends on soil type and time period."
-        )
+        desc_text = QLabel(description.get("text", ""))
         desc_text.setWordWrap(True)
         desc_text.setStyleSheet("font-size: 11px; color: #4b4b4b; background: transparent; border: none;")
         right_layout.addWidget(desc_text)
@@ -290,53 +259,64 @@ class SeismicLoadTab(QWidget):
         scroll_area.setWidget(scroll_content)
         main_layout.addWidget(scroll_area)
 
-        # Connect signals
-        self.dead_load_seismic_combo.currentTextChanged.connect(
-            lambda _: self._toggle_seismic_custom_inputs()
-        )
-        self.live_load_seismic_combo.currentTextChanged.connect(
-            lambda _: self._toggle_seismic_custom_inputs()
+        # Connect signals from schema
+        seismic_inputs = next(
+            (s for s in schema.get("sections", []) if s.get("id") == "seismic_inputs_section"),
+            None
         )
         
-        # Initialize state
-        self._toggle_seismic_custom_inputs()
+        if seismic_inputs:
+            for field in seismic_inputs.get("fields", []):
+                on_mode_change = field.get("on_mode_change")
+                if on_mode_change:
+                    mode_bind = field.get("bind_mode")
+                    if mode_bind and hasattr(self, mode_bind):
+                        combo = getattr(self, mode_bind)
+                        combo.currentTextChanged.connect(lambda _: self._toggle_seismic_custom_inputs())
+        
+        # Apply defaults and initialize state
         self._apply_seismic_defaults()
+        self._toggle_seismic_custom_inputs()
+        
+        # Apply project seismic zone if available
+        if hasattr(self.owner, "project_seismic_zone"):
+            self.seismic_zone_combo.setCurrentText(self.owner.project_seismic_zone)
 
     def _apply_seismic_defaults(self):
-        self.seismic_zone_combo.setCurrentText(
-            IRC_SEISMIC_DEFAULTS["seismic_zone"]
+        """Apply default values from schema"""
+        seismic_inputs = next(
+            (s for s in self.schema.get("sections", []) if s.get("id") == "seismic_inputs_section"),
+            None
         )
-        self.importance_factor_input.setText(
-            IRC_SEISMIC_DEFAULTS["importance_factor"]
-        )
-        self.soil_type_combo.setCurrentText(
-            IRC_SEISMIC_DEFAULTS["soil_type"]
-        )
-        self.damping_input.setText(
-            IRC_SEISMIC_DEFAULTS["damping"]
-        )
-        self.response_factor_combo.setCurrentText(
-            IRC_SEISMIC_DEFAULTS["response_reduction_factor"]
-        )
-
-        self.dead_load_seismic_combo.setCurrentText(
-            IRC_SEISMIC_DEFAULTS["dead_load_mode"]
-        )
-        self.live_load_seismic_combo.setCurrentText(
-            IRC_SEISMIC_DEFAULTS["live_load_mode"]
-        )
-
-        self.dead_load_custom_input.setDisabled(True)
-        self.live_load_custom_input.setDisabled(True)
-
+        
+        if not seismic_inputs:
+            return
+        
+        for field in seismic_inputs.get("fields", []):
+            bind_name = field.get("bind") or field.get("bind_mode")
+            if not bind_name or not hasattr(self, bind_name):
+                continue
+            
+            widget = getattr(self, bind_name)
+            default_value = field.get("default") or field.get("default_mode")
+            
+            if default_value:
+                if isinstance(widget, QComboBox):
+                    widget.setCurrentText(default_value)
+                elif isinstance(widget, QLineEdit):
+                    widget.setText(default_value)
 
     def _toggle_seismic_custom_inputs(self):
-        dead_is_custom = self.dead_load_seismic_combo.currentText() == "Custom"
-        self.dead_load_custom_input.setEnabled(dead_is_custom)
+        """Enable/disable custom inputs based on mode selection"""
+        if hasattr(self, 'dead_load_seismic_combo') and hasattr(self, 'dead_load_custom_input'):
+            dead_is_custom = self.dead_load_seismic_combo.currentText() == "Custom"
+            self.dead_load_custom_input.setEnabled(dead_is_custom)
 
-        live_is_custom = self.live_load_seismic_combo.currentText() == "Custom"
-        self.live_load_custom_input.setEnabled(live_is_custom)
+        if hasattr(self, 'live_load_seismic_combo') and hasattr(self, 'live_load_custom_input'):
+            live_is_custom = self.live_load_seismic_combo.currentText() == "Custom"
+            self.live_load_custom_input.setEnabled(live_is_custom)
 
     def reset_defaults(self):
-        """Reset Seismic Load inputs to IRC default values"""
+        """Reset Seismic Load inputs to schema default values"""
         self._apply_seismic_defaults()
+        self._toggle_seismic_custom_inputs()

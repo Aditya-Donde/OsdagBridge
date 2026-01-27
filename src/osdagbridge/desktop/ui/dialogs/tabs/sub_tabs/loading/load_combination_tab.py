@@ -17,7 +17,9 @@ from PySide6.QtWidgets import (
 from PySide6.QtWidgets import QHeaderView
 
 from osdagbridge.desktop.ui.dialogs.tabs.common import apply_field_style
-
+from osdagbridge.core.bridge_types.plate_girder.ui_fields_additional_input import (
+    LOAD_COMBINATION_TAB_SCHEMA,
+)
 
 class LoadCombinationTab(QWidget):
     """Load combination editor with add/edit modal."""
@@ -62,32 +64,12 @@ class LoadCombinationTab(QWidget):
         )
         left_layout.addWidget(combo_label)
 
-        auto_row = QHBoxLayout()
-        auto_row.setSpacing(8)
-        auto_row.setContentsMargins(0, 0, 0, 0)
-        auto_label = QLabel("Auto include all IRC 6 Load Combinations")
-        auto_label.setStyleSheet(label_style)
-        owner.auto_include_checkbox = QCheckBox()
-        auto_row.addWidget(auto_label)
-        auto_row.addWidget(owner.auto_include_checkbox)
-        auto_row.addStretch()
+        # Build auto-include checkbox from schema
+        auto_row = self._build_auto_include_row(label_style)
         left_layout.addLayout(auto_row)
 
-        controls_row = QHBoxLayout()
-        controls_row.setSpacing(6)
-        owner.load_combo_add_btn = QPushButton("Add")
-        owner.load_combo_edit_btn = QPushButton("Edit")
-        owner.load_combo_delete_btn = QPushButton("Delete")
-        owner.load_combo_default_btn = QPushButton("Default")
-        for btn in (owner.load_combo_add_btn, owner.load_combo_edit_btn, owner.load_combo_delete_btn, owner.load_combo_default_btn):
-            btn.setFixedWidth(60)
-            btn.setStyleSheet(
-                "QPushButton { background: #ffffff; border: 1px solid #a0a0a0; border-radius: 3px; padding: 4px 10px; font-size: 11px; color: #2a2a2a; }"
-                "QPushButton:hover { background: #f0f0f0; }"
-                "QPushButton:pressed { background: #e0e0e0; }"
-            )
-            controls_row.addWidget(btn)
-        controls_row.addStretch()
+        # Build control buttons from schema
+        controls_row = self._build_controls_row()
         left_layout.addLayout(controls_row)
 
         list_card = QFrame()
@@ -132,6 +114,54 @@ class LoadCombinationTab(QWidget):
 
         self._refresh_load_combo_list()
 
+    def _build_auto_include_row(self, label_style):
+        """Build the auto-include checkbox row from schema."""
+        schema = LOAD_COMBINATION_TAB_SCHEMA
+        auto_row = QHBoxLayout()
+        auto_row.setSpacing(8)
+        auto_row.setContentsMargins(0, 0, 0, 0)
+        
+        # Get field config from schema
+        field_config = schema["rows"][0]["fields"][0]
+        
+        auto_label = QLabel(field_config["label"])
+        auto_label.setStyleSheet(label_style)
+        
+        # Create checkbox and bind to owner
+        checkbox = QCheckBox()
+        setattr(self.owner, field_config["bind"], checkbox)
+        
+        auto_row.addWidget(auto_label)
+        auto_row.addWidget(checkbox)
+        auto_row.addStretch()
+        
+        return auto_row
+
+    def _build_controls_row(self):
+        """Build control buttons row from schema."""
+        schema = LOAD_COMBINATION_TAB_SCHEMA
+        controls_row = QHBoxLayout()
+        controls_row.setSpacing(6)
+        
+        button_style = (
+            "QPushButton { background: #ffffff; border: 1px solid #a0a0a0; border-radius: 3px; "
+            "padding: 4px 10px; font-size: 11px; color: #2a2a2a; }"
+            "QPushButton:hover { background: #f0f0f0; }"
+            "QPushButton:pressed { background: #e0e0e0; }"
+        )
+        
+        for btn_config in schema["controls"]:
+            btn = QPushButton(btn_config["label"])
+            btn.setFixedWidth(btn_config["width"])
+            btn.setStyleSheet(button_style)
+            
+            # Bind to owner
+            setattr(self.owner, btn_config["bind"], btn)
+            controls_row.addWidget(btn)
+        
+        controls_row.addStretch()
+        return controls_row
+
     def _on_reset_to_default(self):
         """Reset load combinations to default values."""
         self.load_combo_items = self._get_default_combos()
@@ -142,6 +172,10 @@ class LoadCombinationTab(QWidget):
             self.owner.auto_include_checkbox.setChecked(False)
         
         self._refresh_load_combo_list()
+
+    def _get_default_combos(self):
+        """Return default load combinations (placeholder implementation)."""
+        return []
 
     def _refresh_load_combo_list(self):
         if not hasattr(self, "load_combo_list_layout"):
@@ -211,165 +245,336 @@ class LoadCombinationTab(QWidget):
         self._refresh_load_combo_list()
 
     def _open_load_combo_dialog(self, existing=None):
+        """
+        Opens the Add/Edit Load Combination dialog.
+        Enhanced with better table visibility and styling.
+        """
         dialog = QDialog(self)
         dialog.setModal(True)
         dialog.setWindowTitle("Edit Load Combination" if existing else "Add Load Combination")
-        dialog.setMinimumWidth(520)
+        dialog.setMinimumWidth(600)
+        dialog.setMinimumHeight(500)
 
         layout = QVBoxLayout(dialog)
-        layout.setContentsMargins(14, 14, 14, 14)
-        layout.setSpacing(10)
+        layout.setContentsMargins(16, 16, 16, 16)
+        layout.setSpacing(12)
 
         label_style = "font-size: 11px; color: #2a2a2a; background: transparent; border: none;"
 
+        # Combination Name
         name_row = QHBoxLayout()
-        name_row.setSpacing(8)
+        name_row.setSpacing(10)
         name_label = QLabel("Combination Name:")
         name_label.setStyleSheet(label_style)
+        name_label.setFixedWidth(140)
         name_input = QLineEdit()
-        name_input.setMinimumWidth(220)
+        name_input.setMinimumWidth(300)
         apply_field_style(name_input)
         name_row.addWidget(name_label)
         name_row.addWidget(name_input, 1)
         layout.addLayout(name_row)
 
-        fields_row = QGridLayout()
-        fields_row.setContentsMargins(0, 0, 0, 0)
-        fields_row.setHorizontalSpacing(10)
-        fields_row.setVerticalSpacing(6)
+        # Input fields section
+        input_section = QFrame()
+        input_section.setStyleSheet(
+            "QFrame { border: 1px solid #c0c0c0; border-radius: 4px; background-color: #f8f8f8; padding: 8px; }"
+        )
+        input_section_layout = QVBoxLayout(input_section)
+        input_section_layout.setContentsMargins(12, 12, 12, 12)
+        input_section_layout.setSpacing(10)
 
+        fields_row = QHBoxLayout()
+        fields_row.setSpacing(12)
+
+        # Load Case
         load_case_label = QLabel("Load Case:")
         load_case_label.setStyleSheet(label_style)
         load_case_combo = QComboBox()
         load_case_combo.addItems(["DL", "SIDL", "LL", "WL", "EL", "IMF", "TL"])
+        load_case_combo.setMinimumWidth(100)
         apply_field_style(load_case_combo)
 
+        # Partial Safety Factor
         factor_label = QLabel("Partial Safety Factor:")
         factor_label.setStyleSheet(label_style)
         factor_input = QLineEdit()
         factor_input.setText("1.0")
-        factor_input.setMinimumWidth(80)
+        factor_input.setFixedWidth(100)
         apply_field_style(factor_input)
 
-        fields_row.addWidget(load_case_label, 0, 0, Qt.AlignLeft)
-        fields_row.addWidget(load_case_combo, 0, 1, Qt.AlignLeft)
-        fields_row.addWidget(factor_label, 0, 2, Qt.AlignLeft)
-        fields_row.addWidget(factor_input, 0, 3, Qt.AlignLeft)
-        fields_row.setColumnStretch(4, 1)
-        layout.addLayout(fields_row)
+        fields_row.addWidget(load_case_label)
+        fields_row.addWidget(load_case_combo)
+        fields_row.addSpacing(20)
+        fields_row.addWidget(factor_label)
+        fields_row.addWidget(factor_input)
+        fields_row.addStretch()
 
-        table_row = QHBoxLayout()
-        table_row.setSpacing(8)
+        input_section_layout.addLayout(fields_row)
+        layout.addWidget(input_section)
 
+        # Table section
+        table_container = QFrame()
+        table_container.setStyleSheet(
+            "QFrame { border: 1px solid #c0c0c0; border-radius: 4px; background-color: #ffffff; }"
+        )
+        table_container_layout = QHBoxLayout(table_container)
+        table_container_layout.setContentsMargins(10, 10, 10, 10)
+        table_container_layout.setSpacing(10)
+
+        # Enhanced Table Widget
         table = QTableWidget(0, 3)
         table.setHorizontalHeaderLabels(["S.No", "Load Case", "Partial Safety Factor"])
-        table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeToContents)
+        
+        # Set column widths for better visibility
+        table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Fixed)
         table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
-        table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeToContents)
+        table.horizontalHeader().setSectionResizeMode(2, QHeaderView.Stretch)
+        table.setColumnWidth(0, 60)
+        
         table.verticalHeader().setVisible(False)
-        table.setStyleSheet(
-            "QTableWidget { background: #ffffff; } QHeaderView::section { color: #2a2a2a; background: #efefef; font-size: 10px; }"
-        )
-        table.setMinimumHeight(220)
+        table.setSelectionBehavior(QTableWidget.SelectRows)
+        table.setSelectionMode(QTableWidget.SingleSelection)
+        
+        # Enhanced table styling for better visibility
+        table.setStyleSheet("""
+            QTableWidget {
+                background-color: #ffffff;
+                border: 1px solid #d0d0d0;
+                gridline-color: #e0e0e0;
+                selection-background-color: #d0e8ff;
+            }
+            QTableWidget::item {
+                padding: 6px;
+                color: #2a2a2a;
+                font-size: 11px;
+                border-bottom: 1px solid #e8e8e8;
+            }
+            QTableWidget::item:selected {
+                background-color: #d0e8ff;
+                color: #1a1a1a;
+            }
+            QHeaderView::section {
+                background-color: #f0f0f0;
+                color: #2a2a2a;
+                font-size: 11px;
+                font-weight: 600;
+                padding: 8px;
+                border: 1px solid #d0d0d0;
+                border-bottom: 2px solid #a0a0a0;
+            }
+            QHeaderView::section:horizontal {
+                border-top: none;
+            }
+        """)
+        
+        table.setMinimumHeight(250)
+        table.setAlternatingRowColors(True)
 
+        # Button column
         button_col = QVBoxLayout()
-        button_col.setSpacing(6)
+        button_col.setSpacing(8)
         add_btn = QPushButton("Add")
         modify_btn = QPushButton("Modify")
         delete_btn = QPushButton("Delete")
+        
         for btn in (add_btn, modify_btn, delete_btn):
-            btn.setFixedWidth(80)
+            btn.setFixedWidth(90)
+            btn.setFixedHeight(32)
             btn.setStyleSheet(
-                "QPushButton { background: #ffffff; border: 1px solid #a0a0a0; border-radius: 3px; padding: 5px 12px; font-size: 11px; color: #2a2a2a; }"
-                "QPushButton:hover { background: #f0f0f0; }"
-                "QPushButton:pressed { background: #e0e0e0; }"
+                "QPushButton { "
+                "   background: #ffffff; "
+                "   border: 1px solid #a0a0a0; "
+                "   border-radius: 4px; "
+                "   padding: 6px 12px; "
+                "   font-size: 11px; "
+                "   font-weight: 500; "
+                "   color: #2a2a2a; "
+                "}"
+                "QPushButton:hover { "
+                "   background: #f0f0f0; "
+                "   border: 1px solid #808080; "
+                "}"
+                "QPushButton:pressed { "
+                "   background: #e0e0e0; "
+                "}"
             )
             button_col.addWidget(btn)
+        
         button_col.addStretch()
 
-        table_row.addWidget(table, 1)
-        table_row.addLayout(button_col)
-        layout.addLayout(table_row)
+        table_container_layout.addWidget(table, 1)
+        table_container_layout.addLayout(button_col)
+        
+        layout.addWidget(table_container)
 
+        # Action buttons
         action_row = QHBoxLayout()
-        action_row.setContentsMargins(0, 4, 0, 0)
+        action_row.setContentsMargins(0, 8, 0, 0)
         action_row.addStretch()
         cancel_btn = QPushButton("Cancel")
         save_btn = QPushButton("Save")
+        
         for btn in (cancel_btn, save_btn):
-            btn.setFixedWidth(80)
+            btn.setFixedWidth(100)
+            btn.setFixedHeight(36)
             btn.setStyleSheet(
-                "QPushButton { background: #c8c8c8; border: 1px solid #a0a0a0; border-radius: 3px; padding: 6px 14px; font-weight: 600; font-size: 11px; color: #2a2a2a; }"
-                "QPushButton:hover { background: #d8d8d8; }"
-                "QPushButton:pressed { background: #b8b8b8; }"
+                "QPushButton { "
+                "   background: #c8c8c8; "
+                "   border: 1px solid #a0a0a0; "
+                "   border-radius: 4px; "
+                "   padding: 8px 16px; "
+                "   font-weight: 600; "
+                "   font-size: 11px; "
+                "   color: #2a2a2a; "
+                "}"
+                "QPushButton:hover { "
+                "   background: #d8d8d8; "
+                "}"
+                "QPushButton:pressed { "
+                "   background: #b8b8b8; "
+                "}"
             )
+        
         action_row.addWidget(cancel_btn)
+        action_row.addSpacing(8)
         action_row.addWidget(save_btn)
         layout.addLayout(action_row)
 
         def refresh_row_numbers():
+            """Update S.No column for all rows."""
             for row_idx in range(table.rowCount()):
                 item = table.item(row_idx, 0)
                 if item:
                     item.setText(str(row_idx + 1))
+                else:
+                    new_item = QTableWidgetItem(str(row_idx + 1))
+                    new_item.setTextAlignment(Qt.AlignCenter)
+                    new_item.setFlags(new_item.flags() & ~Qt.ItemIsEditable)
+                    table.setItem(row_idx, 0, new_item)
 
         def add_row():
+            """Add a new row to the table."""
             case_text = load_case_combo.currentText().strip()
             factor_text = factor_input.text().strip() or "1.0"
+            
+            if not case_text:
+                return
+            
             row_idx = table.rowCount()
             table.insertRow(row_idx)
-            table.setItem(row_idx, 0, QTableWidgetItem(str(row_idx + 1)))
-            table.setItem(row_idx, 1, QTableWidgetItem(case_text))
-            table.setItem(row_idx, 2, QTableWidgetItem(factor_text))
+            
+            # S.No
+            s_no_item = QTableWidgetItem(str(row_idx + 1))
+            s_no_item.setTextAlignment(Qt.AlignCenter)
+            s_no_item.setFlags(s_no_item.flags() & ~Qt.ItemIsEditable)
+            table.setItem(row_idx, 0, s_no_item)
+            
+            # Load Case
+            case_item = QTableWidgetItem(case_text)
+            case_item.setTextAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+            case_item.setFlags(case_item.flags() & ~Qt.ItemIsEditable)
+            table.setItem(row_idx, 1, case_item)
+            
+            # Partial Safety Factor
+            factor_item = QTableWidgetItem(factor_text)
+            factor_item.setTextAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+            factor_item.setFlags(factor_item.flags() & ~Qt.ItemIsEditable)
+            table.setItem(row_idx, 2, factor_item)
+            
             refresh_row_numbers()
+            
+            # Clear input fields after adding
+            factor_input.setText("1.0")
 
         def modify_row():
+            """Modify the selected row."""
             row_idx = table.currentRow()
             if row_idx < 0:
                 return
-            table.setItem(row_idx, 1, QTableWidgetItem(load_case_combo.currentText().strip()))
-            table.setItem(row_idx, 2, QTableWidgetItem(factor_input.text().strip() or "1.0"))
-            refresh_row_numbers()
+            
+            case_text = load_case_combo.currentText().strip()
+            factor_text = factor_input.text().strip() or "1.0"
+            
+            # Update Load Case
+            case_item = QTableWidgetItem(case_text)
+            case_item.setTextAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+            case_item.setFlags(case_item.flags() & ~Qt.ItemIsEditable)
+            table.setItem(row_idx, 1, case_item)
+            
+            # Update Partial Safety Factor
+            factor_item = QTableWidgetItem(factor_text)
+            factor_item.setTextAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+            factor_item.setFlags(factor_item.flags() & ~Qt.ItemIsEditable)
+            table.setItem(row_idx, 2, factor_item)
 
         def delete_row():
+            """Delete the selected row."""
             row_idx = table.currentRow()
             if row_idx < 0:
                 return
             table.removeRow(row_idx)
             refresh_row_numbers()
 
+        def on_table_selection_changed():
+            """Load selected row data into input fields."""
+            row_idx = table.currentRow()
+            if row_idx >= 0:
+                case_item = table.item(row_idx, 1)
+                factor_item = table.item(row_idx, 2)
+                
+                if case_item:
+                    load_case_combo.setCurrentText(case_item.text())
+                if factor_item:
+                    factor_input.setText(factor_item.text())
+
         def load_existing():
+            """Load existing data into the dialog."""
             if not existing:
                 return
+            
             name_input.setText(existing.get("name", ""))
+            
             for item in existing.get("items", []):
                 case_text = item.get("case", "")
-                factor_text = item.get("factor", "")
+                factor_text = item.get("factor", "1.0")
+                
                 if case_text:
                     load_case_combo.setCurrentText(case_text)
-                factor_input.setText(factor_text or "1.0")
-                add_row()
+                    factor_input.setText(factor_text)
+                    add_row()
 
         def on_save():
+            """Save the load combination."""
             name_text = name_input.text().strip() or "Load Combination"
             rows = []
+            
             for row_idx in range(table.rowCount()):
                 case_item = table.item(row_idx, 1)
                 factor_item = table.item(row_idx, 2)
+                
                 if not case_item or not factor_item:
                     continue
-                rows.append({"case": case_item.text(), "factor": factor_item.text()})
+                
+                rows.append({
+                    "case": case_item.text(),
+                    "factor": factor_item.text()
+                })
+            
             if not rows:
                 return
+            
             dialog.accept()
             dialog.result_data = {"name": name_text, "items": rows}
 
+        # Connect signals
         add_btn.clicked.connect(add_row)
         modify_btn.clicked.connect(modify_row)
         delete_btn.clicked.connect(delete_row)
         save_btn.clicked.connect(on_save)
         cancel_btn.clicked.connect(dialog.reject)
+        table.itemSelectionChanged.connect(on_table_selection_changed)
 
+        # Load existing data if editing
         load_existing()
 
         if dialog.exec() == QDialog.Accepted:
