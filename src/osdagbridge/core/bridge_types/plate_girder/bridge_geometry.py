@@ -287,13 +287,15 @@ class CrossSectionLayout:
             add("footpath_left", self.footpath_width)
 
         add("crash_barrier_left", self.crash_barrier_width)
-        add("carriageway_left", self.carriageway_width / 2.0)
 
-        # Median
-        add("median", self.median_width)
-
-        # Right side
-        add("carriageway_right", self.carriageway_width / 2.0)
+        # --- Carriageway + median logic ---
+        if self.median_width > 0.0:
+            add("carriageway_left", self.carriageway_width / 2.0)
+            add("median", self.median_width)
+            add("carriageway_right", self.carriageway_width / 2.0)
+        else:
+            add("carriageway", self.carriageway_width)
+        
         add("crash_barrier_right", self.crash_barrier_width)
 
         if self.no_of_footpaths >= 2:

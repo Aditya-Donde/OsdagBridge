@@ -570,6 +570,154 @@ class BridgeGrillageModel:
 
         return DL_median
 
+    
+    # ============================================================
+    #   Live Load
+    # ============================================================
+
+    def vehicle_lane_coordinates(self, x_coord):
+        """
+        Calculates x_coord and z_coord for vehicle placement
+        as per IRC:6-2017 Table 6.
+
+        z -> transverse direction
+        x -> longitudinal direction
+
+
+        """
+
+        layout = self.layout
+
+        x_coords = []
+        z_coords = []
+
+        # ---------- Single carriageway ----------
+        if layout.has_component("carriageway"):
+            cw = layout.get_component("carriageway")
+
+            n_lanes = IRC6_2017.table_6(cw.width)
+            lane_width = cw.width / n_lanes
+
+            for i in range(n_lanes):
+                z = cw.z_start + (i + 0.5) * lane_width
+                z_coords.append(z)
+                x_coords.append(x_coord)
+
+        # ---------- Split carriageway (with median) ----------
+        else:
+            if layout.has_component("carriageway_left"):
+                cw_left = layout.get_component("carriageway_left")
+
+                n_lanes = IRC6_2017.table_6(cw_left.width)
+                lane_width = cw_left.width / n_lanes
+
+                for i in range(n_lanes):
+                    z = cw_left.z_start + (i + 0.5) * lane_width
+                    z_coords.append(z)
+                    x_coords.append(x_coord)
+
+            if layout.has_component("carriageway_right"):
+                cw_right = layout.get_component("carriageway_right")
+
+                n_lanes = IRC6_2017.table_6(cw_right.width)
+                lane_width = cw_right.width / n_lanes
+
+                for i in range(n_lanes):
+                    z = cw_right.z_start + (i + 0.5) * lane_width
+                    z_coords.append(z)
+                    x_coords.append(x_coord)
+
+        return x_coords, z_coords
+
+    def add_vehicle_load_with_moving_path(
+        self,
+        model=None,
+        vehicle_type="CLASS70R",
+        load_case_name="Class 70R",
+        x_coord=0.0,
+        z_coord=0.0,
+        spacing=1.5,
+        span=None,
+        y_coord=0.0,
+    ):
+        """
+        Adds a vehicle load (static + moving) to the grillage model.
+
+        Parameters
+        ----------
+        model : ospgrillage.grillage.Grillage
+            Grillage model
+        vehicle_type : str
+            Load model type (e.g. 'M1600', 'CLASS70R')
+        load_case_name : str
+            Name of the static load case
+        x_coord : float
+            Initial longitudinal position of vehicle
+        z_coord : float
+            Transverse position of vehicle
+        spacing : float
+            Vehicle spacing for moving load start position
+        span : float
+            Bridge span length
+        y_coord : float, optional
+            Vertical coordinate (default = 0.0)
+
+        Returns
+        -------
+        dict
+            Dictionary containing:
+            - 'vehicle'
+            - 'static_load_case'
+            - 'moving_load_case'
+            - 'moving_path'
+        """
+        model = model or self.model
+        if model is None:
+            raise ValueError("Model is not available. Create model before adding loads.")
+
+        span = span or self.L
+
+        # -----------------------------
+        # Create vehicle
+        # -----------------------------
+        vehicle_generator = og.create_load_model(model_type=vehicle_type)
+        vehicle = vehicle_generator.create()
+
+        # Set global position
+        vehicle.set_global_coord(og.Point(x_coord, y_coord, z_coord))
+
+        # -----------------------------
+        # Static load case
+        # -----------------------------
+        static_lc = og.create_load_case(name=load_case_name)
+        static_lc.add_load(vehicle)
+        model.add_load_case(static_lc)
+
+        # -----------------------------
+        # Moving load path
+        # -----------------------------
+        start = og.create_point(x=-spacing, y=0, z=0)
+        end = og.Point(span, 0, 0)
+        path = og.create_moving_path(start_point=start, end_point=end)
+
+        # -----------------------------
+        # Moving load case
+        # -----------------------------
+        moving_lc_name = f"Moving {load_case_name}"
+        moving_lc = og.create_moving_load(name=moving_lc_name)
+        moving_lc.set_path(path)
+        moving_lc.add_load(vehicle)
+
+        model.add_load_case(moving_lc)
+
+        return {
+            "vehicle": vehicle,
+            "static_load_case": static_lc,
+            "moving_load_case": moving_lc,
+            "moving_path": path,
+        }
+    
+
     def analyze(self, model=None):
         model = model or self.model
         if model is None:
@@ -607,9 +755,44 @@ class BridgeGrillageModel:
 
         max_def = max(results.displacements.sel(Loadcase=load_case_of_interest,Component="dy",Node=ext_beam_nodes[0]))
         max_report_def = f"The maximum deflection = {max_def.values*1000:.2f} mm"
-
+        
+        # Plot deflection
         og.plot_defo(model, results, member="exterior_main_beam_1", option="nodes",loadcase=load_case_of_interest)
         og.plt.title(max_report_def)
+        og.plt.show()
+
+        # load case specific results
+        static_lc_result = model.get_results(load_case=['Deck slab load'])
+        print("static_lc_result")
+        print(static_lc_result)
+        
+        static_lc_forces = static_lc_result.forces
+
+        # Select a specific load case from result
+        load_case_name = 'Deck slab load'
+
+        # extract elements and nodes of beam 1
+        member_name = "exterior_main_beam_1"
+
+        # get the tag of elements and nodes
+        ext_beam_elements = model.get_element(member=member_name, options="elements",)
+        print(f"The element tags for Beam 1 is {ext_beam_elements}")
+
+        # extract maximum bending moment from beam 1(member_name) from static_lc_result
+        max_bending = max(static_lc_forces.sel(Component="Mz_i",Element=ext_beam_elements)).values/1000
+        print(f" Maximum bending moment = {max_bending:.2f} kNm") 
+
+        # ------------------------------------------------------------------------------
+        # Plotting
+        # ------------------------------------------------------------------------------
+
+        # Plot BMD and SFD (change component as needed)
+        load_case_of_interest = load_case_name 
+        og.plot_force(model, results, member="exterior_main_beam_1",component="Mz",loadcase=load_case_of_interest)
+
+        max_report_bending = f"Maximum bending moment = {max_bending:.2f} kNm"
+
+        og.plt.title(max_report_bending)
         og.plt.show()
 
 
