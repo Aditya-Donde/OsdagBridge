@@ -36,7 +36,7 @@ class NativeMapWidget(QWidget):
         self.latitude = 20.5937
         self.longitude = 78.9629
         self.zoom = 5
-        self.min_zoom = 2
+        self.min_zoom = 4  # Restrict zoom out to keep focus on India
         self.max_zoom = 18
         
         # Marker (None initially, or set to a default)
@@ -239,6 +239,11 @@ class NativeMapWidget(QWidget):
         new_px_y = center_px_y + dy_px
         
         self.latitude, self.longitude = self.pixel_to_lat_lon(new_px_x, new_px_y, self.zoom)
+        
+        # Clamp to India bounds to prevent navigating away
+        self.latitude = max(min(self.latitude, INDIA_BOUNDS["north"] + 1.0), INDIA_BOUNDS["south"] - 1.0)
+        self.longitude = max(min(self.longitude, INDIA_BOUNDS["east"] + 1.0), INDIA_BOUNDS["west"] - 1.0)
+        
         self.update()
 
     # --- Math Helpers (Web Mercator) ---

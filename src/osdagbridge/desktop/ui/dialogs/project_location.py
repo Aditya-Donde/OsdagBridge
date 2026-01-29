@@ -456,6 +456,25 @@ class ProjectLocationDialog(QDialog):
         hint.setWordWrap(True)
         hint.setObjectName("hint")
         right_layout.addWidget(hint)
+        
+        # Zone Legend (shown when overlay is active)
+        self.legend_container = QWidget()
+        self.legend_container.setVisible(False)
+        legend_layout = QVBoxLayout(self.legend_container)
+        legend_layout.setContentsMargins(0, 10, 0, 0)
+        legend_layout.setSpacing(4)
+        
+        self.legend_title = QLabel("Legend:")
+        self.legend_title.setStyleSheet("font-weight: 700; font-size: 11px; color: #2d2d2d; border: none;")
+        legend_layout.addWidget(self.legend_title)
+        
+        self.legend_items_widget = QWidget()
+        self.legend_items_layout = QVBoxLayout(self.legend_items_widget)
+        self.legend_items_layout.setContentsMargins(0, 0, 0, 0)
+        self.legend_items_layout.setSpacing(3)
+        legend_layout.addWidget(self.legend_items_widget)
+        
+        right_layout.addWidget(self.legend_container)
         right_layout.addStretch()
         
         body.addWidget(right_card, 1)
@@ -737,11 +756,79 @@ class ProjectLocationDialog(QDialog):
         }
         overlay_type = overlay_map.get(text, "none")
         self.map_view.set_overlay_type(overlay_type, opacity=0.5)
+        
+        # Update legend
+        self._update_zone_legend(overlay_type)
+    
+    def _update_zone_legend(self, overlay_type: str):
+        """Update the legend display based on overlay type."""
+        # Clear existing legend items
+        while self.legend_items_layout.count():
+            item = self.legend_items_layout.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+        
+        if overlay_type == "none":
+            self.legend_container.setVisible(False)
+            return
+        
+        self.legend_container.setVisible(True)
+        
+        if overlay_type == "seismic":
+            # Seismic zone legend colors (from the seismic map image)
+            zones = [
+                ("Zone II", "#a8d8f0"),   # Light blue
+                ("Zone III", "#f5f5a0"),  # Light yellow
+                ("Zone IV", "#90d090"),   # Light green
+                ("Zone V", "#f0a060"),    # Orange
+            ]
+        elif overlay_type == "wind":
+            # Wind zone legend colors (from the wind map image)
+            zones = [
+                ("56 m/s", "#f2b6c8"),  # Light pink
+                ("50 m/s", "#e57373"),  # Red / salmon
+                ("47 m/s", "#c6e6b8"),  # Light green
+                ("44 m/s", "#cfe8f3"),  # Light blue / cyan
+                ("39 m/s", "#fff3b0"),  # Pale yellow
+                ("33 m/s", "#d6cfee"),  # Light lavender
+            ]
+
+        else:
+            return
+        
+        for label_text, color in zones:
+            self._add_legend_item(label_text, color)
+    
+    def _add_legend_item(self, label_text: str, color: str):
+        """Add a single legend item with a colored box and label."""
+        item_widget = QWidget()
+        item_layout = QHBoxLayout(item_widget)
+        item_layout.setContentsMargins(0, 0, 0, 0)
+        item_layout.setSpacing(6)
+        
+        # Color box
+        color_box = QLabel()
+        color_box.setFixedSize(16, 12)
+        color_box.setStyleSheet(f"background-color: {color}; border: 1px solid #888; border-radius: 2px;")
+        item_layout.addWidget(color_box)
+        
+        # Label
+        label = QLabel(label_text)
+        label.setStyleSheet("font-size: 10px; color: #333; border: none;")
+        item_layout.addWidget(label)
+        item_layout.addStretch()
+        
+        self.legend_items_layout.addWidget(item_widget)
     
     def _lookup_zones_for_coordinates(self, lat: float, lon: float):
         """Lookup wind, seismic zones and temperature for given coordinates and update UI."""
         zone_data = get_zones_for_coordinates(lat, lon)
         temp_data = get_temperature_for_coordinates(lat, lon)
+        # Assuming that valid locations within India will always have a seismic zone/wind speed
+        if not zone_data.get("seismic_zone") and not zone_data.get("wind_Vb"):
+             QMessageBox.warning(self, "Location Error", "Data outside of India is not available.")
+             self._update_irc_values(None)
+             return
         # Convert to weather dict format for _update_irc_values
         weather = {
             "wind_speed": zone_data.get("wind_Vb"),
