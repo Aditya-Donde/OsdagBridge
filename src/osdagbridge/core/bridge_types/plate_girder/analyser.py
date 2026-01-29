@@ -5,6 +5,7 @@ from osdagbridge.core.utils.codes.irc6_2017 import *
 from osdagbridge.core.utils.common import *
 from osdagbridge.core.bridge_types.plate_girder.bridge_geometry import *
 import warnings
+from osdagbridge.core.bridge_types.plate_girder.analysis_results import PlateGirderAnalysisResults
 
 
 class BridgeGrillageModel:
@@ -1076,16 +1077,17 @@ class BridgeGrillageModel:
             "moving_load_case": moving_lc,
             "moving_path": path,
         }
-    
 
     def analyze(self, model=None):
+
         model = model or self.model
         if model is None:
-            raise ValueError("Model is not available. Create model before adding loads.")
-        # Analysis
+            raise ValueError("Model not created")
+
         model.analyze()
 
-        # results = model.get_results(load_case=['girder self weight', 'Deck slab load', 'Wearing course self weight', 'Footpath load', 'Crash barrier load', 'Railing load', 'Median load'])
+        # results = model.get_results(load_case=['girder self weight', 'Deck slab load', 'Wearing course self weight',
+        # 'Footpath load', 'Crash barrier load', 'Railing load', 'Median load'])
         results = model.get_results()
         print("results")
         print(results) 
@@ -1096,19 +1098,19 @@ class BridgeGrillageModel:
         df = Fy.to_pandas()
         df.to_excel("Mz_results_moving1.xlsx")
 
-        girder_results = model.get_results(load_case=[ 'girder self weight'])
-        print("girder_sw_results") 
-        print(girder_results)
+        results = model.get_results(
+            load_case=[
+                "girder self weight",
+                "Deck slab load",
+                "Wearing course self weight",
+                "Footpath load",
+                "Crash barrier load",
+                "Railing load",
+                "Median load"
+            ]
+        )
 
-        # extract elements and nodes of beam 1
-        member_name = "exterior_main_beam_1"
-
-        # get the tag of elements and nodes
-        ext_beam_elements = model.get_element(member=member_name, options="elements",)
-        print(f"The element tags for Beam 1 is {ext_beam_elements}")
-
-        ext_beam_nodes = model.get_element(member=member_name, options="nodes")
-        print(f"The node tags for Beam 1 is {ext_beam_nodes[0]}")
+        return results
 
     def plot(self, model=None):
         model = model or self.model
@@ -1186,3 +1188,14 @@ if __name__ == "__main__":
     bridge.create_moving_vehicle_load_cases()
     bridge.analyze()
     # bridge.plot()
+    bridge.plot()
+
+    results = bridge.analyze()
+
+    result_handler = PlateGirderAnalysisResults(
+        dataset=results,
+        model=bridge.model
+    )
+
+    result_handler.run_interactive_viewer()
+
