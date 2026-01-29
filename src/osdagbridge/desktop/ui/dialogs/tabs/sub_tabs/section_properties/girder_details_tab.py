@@ -443,6 +443,7 @@ class GirderDetailsTab(QWidget):
         self.segment_table.horizontalHeader().setMinimumHeight(34)
         self.segment_table.verticalHeader().setDefaultSectionSize(34)
         self.segment_table.verticalHeader().setMinimumSectionSize(28)
+        self.segment_table.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         self.segment_table.setShowGrid(True)
         self.segment_table.setGridStyle(Qt.SolidLine)
         self.segment_table.setAlternatingRowColors(True)
@@ -450,7 +451,10 @@ class GirderDetailsTab(QWidget):
         self.segment_table.setSelectionMode(QTableWidget.SingleSelection)
         # Allow editing End values (used for split/ripple), other columns remain read-only by item flags.
         self.segment_table.setEditTriggers(QTableWidget.DoubleClicked | QTableWidget.SelectedClicked | QTableWidget.EditKeyPressed)
-        self.segment_table.setMinimumHeight(170)
+        # Show only ~2 rows; scroll for additional rows.
+        _row_h = int(self.segment_table.verticalHeader().defaultSectionSize() or 34)
+        _hdr_h = 34
+        self.segment_table.setFixedHeight(_hdr_h + (2 * _row_h) + 10)
         self.segment_table.setStyleSheet(
             "QTableWidget { background: #ffffff; border: 1px solid #d6d6d6; border-radius: 6px; gridline-color: #d0d0d0; }"
             "QTableWidget::item { color: #1f1f1f; padding: 6px; }"
@@ -502,7 +506,6 @@ class GirderDetailsTab(QWidget):
         table_row_layout.addWidget(buttons_col, 0)
 
         manager_layout.addWidget(table_row)
-        manager_layout.addStretch(1)
 
         # Remove local add to layout, we will build the grid at the end
         # outer.addWidget(left_panel, 1)
