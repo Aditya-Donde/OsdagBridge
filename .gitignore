@@ -143,8 +143,6 @@ venv/
 ENV/
 env.bak/
 venv.bak/
-osdagbridge-env/
-ospgrillage/
 
 # Spyder project settings
 .spyderproject
