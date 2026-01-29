@@ -224,7 +224,7 @@ class CrossBracingDetailsTab(QWidget):
     def _create_image_placeholder(self, height):
         widget = SectionPreviewWidget()
         widget.setMinimumHeight(height)
-        widget.setStyleSheet("QWidget { border: 1px solid #d0d0d0; border-radius: 10px; background-color: #0f0f0f; }")
+        widget.setStyleSheet("QWidget { border: 1px solid #d0d0d0; border-radius: 10px; background-color: #ffffff; }")
         return widget
 
     def _create_preview_box(self, title):

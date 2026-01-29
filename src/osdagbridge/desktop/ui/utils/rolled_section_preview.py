@@ -115,7 +115,9 @@ class RolledSectionPreview(QWidget):
     def paintEvent(self, event: QPaintEvent) -> None:  # noqa: D401 - Qt override
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing, True)
-        painter.fillRect(self.rect(), self.palette().window())
+        # Force a light canvas so the widget stays readable even when the
+        # application uses a dark palette.
+        painter.fillRect(self.rect(), QColor("#ffffff"))
 
         if not self._dimensions:
             self._draw_placeholder(painter)
@@ -414,8 +416,9 @@ class RolledSectionPreview(QWidget):
     def _draw_welds(self, painter: QPainter, top_flange: QRectF, web: QRectF, bottom_flange: QRectF) -> None:
         painter.save()
         painter.setRenderHint(QPainter.Antialiasing, True)
-        fill_color = QColor("#0f0f0f")
-        outline_pen = QPen(QColor("#0f0f0f"), 0.9)
+        # Keep weld triangles visible on a light theme.
+        fill_color = QColor("#111111")
+        outline_pen = QPen(QColor("#111111"), 0.9)
         outline_pen.setCosmetic(True)
         painter.setBrush(fill_color)
         painter.setPen(outline_pen)

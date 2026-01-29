@@ -1,4 +1,11 @@
-"""Auto-generated tab module extracted from additional_inputs."""
+"""End diaphragm section-properties UI.
+
+This tab supports Cross Bracing, Rolled Beam and Welded Beam views.
+Rolled/Welded views render a live section preview and auto-fill section
+properties, matching the behavior used in the Girder tab.
+"""
+
+import math
 import sys
 import os
 from PySide6.QtWidgets import (
@@ -14,12 +21,37 @@ from PySide6.QtGui import QDoubleValidator, QIntValidator
 from osdagbridge.core.utils.common import *
 from osdagbridge.desktop.ui.utils.custom_titlebar import CustomTitleBar
 from osdagbridge.desktop.ui.dialogs.tabs.common import apply_field_style
+from osdagbridge.desktop.ui.utils.rolled_section_preview import RolledSectionPreview
+from osdagbridge.desktop.ui.widgets.section_viewer import SectionCatalog, SectionPreviewWidget
+
+# Reuse the same rolled section catalog that backs the Girder tab.
+from osdagbridge.desktop.ui.dialogs.tabs.sub_tabs.section_properties.girder_details_tab import (  # noqa: E501
+    girder_properties,
+)
 
 class EndDiaphragmDetailsTab(QWidget):
     """Tab for End Diaphragm Details with type-specific layouts"""
 
     def __init__(self, parent=None):
         super().__init__(parent)
+        # Cross bracing uses angle/channel section previews backed by the Osdag DB.
+        self._cross_catalog = SectionCatalog()
+        self._cross_previews = {}
+        self.cross_right_column = None
+        self.cross_design_combo = None
+        self.cross_bracing_section_type_combo = None
+        self.cross_bracing_section_combo = None
+        self.cross_top_bracket_type_combo = None
+        self.cross_top_bracket_size_combo = None
+        self.cross_bottom_bracket_type_combo = None
+        self.cross_bottom_bracket_size_combo = None
+
+        self._rolled_property_inputs = {}
+        self._welded_property_inputs = {}
+        self._rolled_preview = None
+        self._welded_preview = None
+        self._rolled_caption = None
+        self._welded_caption = None
         self.init_ui()
 
     def init_ui(self):
@@ -175,12 +207,324 @@ class EndDiaphragmDetailsTab(QWidget):
         for row, name in enumerate(properties):
             label = self._create_label(name)
             field = self._create_line_edit()
+            field.setReadOnly(True)
             grid.addWidget(label, row, 0)
             grid.addWidget(field, row, 1)
             inputs[name] = field
 
         layout.addLayout(grid)
         return box, inputs
+
+    @staticmethod
+    def _format_property_value(value):
+        if value is None:
+            return ""
+        if isinstance(value, (int, float)):
+            return f"{value:.2f}"
+        return str(value)
+
+    @staticmethod
+    def _parse_float(text):
+        try:
+            return float(text)
+        except (TypeError, ValueError):
+            return None
+
+    def _apply_section_properties(self, inputs, values):
+        for key, widget in inputs.items():
+            previous = widget.blockSignals(True)
+            widget.setText(self._format_property_value(values.get(key)))
+            widget.blockSignals(previous)
+
+    def _clear_section_properties(self, inputs):
+        for widget in inputs.values():
+            previous = widget.blockSignals(True)
+            widget.clear()
+            widget.blockSignals(previous)
+
+    def _populate_rolled_sections(self, combo: QComboBox) -> None:
+        designations = sorted(girder_properties.list_available_sections().keys())
+        if not designations:
+            designations = [
+                "ISMB 500",
+                "ISMB 550",
+                "ISMB 600",
+                "ISWB 500",
+                "ISWB 550",
+                "ISWB 600",
+            ]
+        block = combo.blockSignals(True)
+        combo.clear()
+        combo.addItems(designations)
+        combo.setCurrentIndex(0 if designations else -1)
+        combo.blockSignals(block)
+
+    def _fetch_rolled_properties(self, designation: str):
+        if not designation:
+            return None
+        beam = girder_properties.get_beam_profile(designation)
+        if not beam:
+            return None
+        values = {
+            "Mass, M (Kg/m)": beam.mass_per_meter_kg,
+            "Sectional Area, a (cm2)": beam.area_cm2,
+            "2nd Moment of Area, Iz (cm4)": beam.moment_of_inertia_zz_cm4,
+            "2nd Moment of Area, Iy (cm4)": beam.moment_of_inertia_yy_cm4,
+            "Radius of Gyration, rz (cm)": beam.radius_of_gyration_z_cm,
+            "Radius of Gyration, ry (cm)": beam.radius_of_gyration_y_cm,
+            "Elastic Modulus, Zz (cm3)": beam.elastic_section_modulus_z_cm3,
+            "Elastic Modulus, Zy (cm3)": beam.elastic_section_modulus_y_cm3,
+            "Plastic Modulus, Zuz (cm3)": beam.plastic_section_modulus_z_cm3,
+            "Plastic Modulus, Zuy (cm3)": beam.plastic_section_modulus_y_cm3,
+        }
+
+        area = values.get("Sectional Area, a (cm2)")
+        iz = values.get("2nd Moment of Area, Iz (cm4)")
+        iy = values.get("2nd Moment of Area, Iy (cm4)")
+        if values.get("Radius of Gyration, rz (cm)") is None and area and iz:
+            values["Radius of Gyration, rz (cm)"] = math.sqrt(iz / area)
+        if values.get("Radius of Gyration, ry (cm)") is None and area and iy:
+            values["Radius of Gyration, ry (cm)"] = math.sqrt(iy / area)
+        return values
+
+    def _gather_welded_dimensions(self):
+        depth = self._parse_float(getattr(self, "welded_total_depth", QLineEdit()).text())
+        top_width = self._parse_float(getattr(self, "welded_top_width", QLineEdit()).text())
+        bottom_width = self._parse_float(getattr(self, "welded_bottom_width", QLineEdit()).text()) or top_width
+
+        if not depth or not top_width or not bottom_width:
+            return None
+
+        # Match Girder welded behavior: infer thicknesses if not explicitly provided.
+        web_thickness = max(8.0, depth * 0.02)
+        flange_thickness = max(10.0, depth * 0.03)
+
+        return {
+            "designation": "Custom Welded End Diaphragm",
+            "section_type": "welded",
+            "depth_mm": depth,
+            "top_flange_width_mm": top_width,
+            "bottom_flange_width_mm": bottom_width,
+            "web_thickness_mm": web_thickness,
+            "top_flange_thickness_mm": flange_thickness,
+            "bottom_flange_thickness_mm": flange_thickness,
+        }
+
+    def _compute_welded_properties(self, dims):
+        depth = dims["depth_mm"]
+        top_width = dims["top_flange_width_mm"]
+        bottom_width = dims["bottom_flange_width_mm"]
+        web_thickness = dims["web_thickness_mm"]
+        top_thickness = dims["top_flange_thickness_mm"]
+        bottom_thickness = dims["bottom_flange_thickness_mm"]
+
+        h_web = max(depth - top_thickness - bottom_thickness, 1.0)
+        area_top = top_width * top_thickness
+        area_bottom = bottom_width * bottom_thickness
+        area_web = web_thickness * h_web
+        area_total_mm2 = area_top + area_bottom + area_web
+        area_cm2 = area_total_mm2 / 100.0
+        mass_kg_per_m = (area_total_mm2 / 1_000_000.0) * 7850.0
+
+        iz_web = (web_thickness * h_web**3) / 12.0
+        iz_top = (top_width * top_thickness**3) / 12.0
+        iz_bottom = (bottom_width * bottom_thickness**3) / 12.0
+        distance_top = h_web / 2.0 + top_thickness / 2.0
+        distance_bottom = h_web / 2.0 + bottom_thickness / 2.0
+        iz_top += area_top * distance_top**2
+        iz_bottom += area_bottom * distance_bottom**2
+        iz_cm4 = (iz_web + iz_top + iz_bottom) / 10000.0
+
+        iy_web = (h_web * web_thickness**3) / 12.0
+        iy_top = (top_thickness * top_width**3) / 12.0
+        iy_bottom = (bottom_thickness * bottom_width**3) / 12.0
+        iy_cm4 = (iy_web + iy_top + iy_bottom) / 10000.0
+
+        rz_cm = math.sqrt(iz_cm4 / area_cm2) if area_cm2 > 0 else None
+        ry_cm = math.sqrt(iy_cm4 / area_cm2) if area_cm2 > 0 else None
+
+        depth_cm = depth / 10.0
+        width_cm = max(top_width, bottom_width) / 10.0
+        zz_cm3 = iz_cm4 / (depth_cm / 2.0) if depth_cm > 0 else None
+        zy_cm3 = iy_cm4 / (width_cm / 2.0) if width_cm > 0 else None
+
+        zpl_major = (
+            area_top * distance_top + area_bottom * distance_bottom + (web_thickness * h_web**2) / 4.0
+        ) / 1000.0
+        zpl_minor = (
+            (top_thickness * top_width**2) / 4.0
+            + (bottom_thickness * bottom_width**2) / 4.0
+            + (h_web * web_thickness**2) / 4.0
+        ) / 1000.0
+
+        return {
+            "Mass, M (Kg/m)": mass_kg_per_m,
+            "Sectional Area, a (cm2)": area_cm2,
+            "2nd Moment of Area, Iz (cm4)": iz_cm4,
+            "2nd Moment of Area, Iy (cm4)": iy_cm4,
+            "Radius of Gyration, rz (cm)": rz_cm,
+            "Radius of Gyration, ry (cm)": ry_cm,
+            "Elastic Modulus, Zz (cm3)": zz_cm3,
+            "Elastic Modulus, Zy (cm3)": zy_cm3,
+            "Plastic Modulus, Zuz (cm3)": zpl_major,
+            "Plastic Modulus, Zuy (cm3)": zpl_minor,
+        }
+
+    def _update_rolled_preview_and_props(self):
+        if not self._rolled_preview:
+            return
+
+        designation = getattr(self, "rolled_is_section_combo", QComboBox()).currentText()
+        beam = girder_properties.get_beam_profile(designation)
+        outline = girder_properties.get_rolled_section(designation) if beam is None else None
+        has_data = bool(beam or outline)
+        caption = f"Rolled section • {designation}" if has_data else "Rolled section unavailable"
+
+        if beam:
+            self._rolled_preview.set_section(beam)
+        elif outline:
+            self._rolled_preview.set_dimensions(
+                depth_mm=outline["depth_mm"],
+                flange_width_mm=outline["top_flange_width_mm"],
+                bottom_flange_width_mm=outline["bottom_flange_width_mm"],
+                web_thickness_mm=outline["web_thickness_mm"],
+                flange_thickness_mm=outline["top_flange_thickness_mm"],
+                bottom_flange_thickness_mm=outline["bottom_flange_thickness_mm"],
+            )
+        else:
+            self._rolled_preview.clear()
+
+        if self._rolled_caption:
+            self._rolled_caption.setText(caption)
+
+        values = self._fetch_rolled_properties(designation)
+        if values:
+            self._apply_section_properties(self._rolled_property_inputs, values)
+        else:
+            self._clear_section_properties(self._rolled_property_inputs)
+
+    def _update_welded_preview_and_props(self):
+        if not self._welded_preview:
+            return
+        dims = self._gather_welded_dimensions()
+        caption = "Welded section preview" if dims else "Enter depth and flange widths"
+
+        if dims:
+            self._welded_preview.set_dimensions(
+                depth_mm=dims["depth_mm"],
+                flange_width_mm=dims["top_flange_width_mm"],
+                bottom_flange_width_mm=dims["bottom_flange_width_mm"],
+                web_thickness_mm=dims["web_thickness_mm"],
+                flange_thickness_mm=dims["top_flange_thickness_mm"],
+                bottom_flange_thickness_mm=dims["bottom_flange_thickness_mm"],
+                show_welds=True,
+            )
+            values = self._compute_welded_properties(dims)
+            self._apply_section_properties(self._welded_property_inputs, values)
+        else:
+            self._welded_preview.clear()
+            self._clear_section_properties(self._welded_property_inputs)
+
+        if self._welded_caption:
+            self._welded_caption.setText(caption)
+
+    # ---- Cross bracing helpers (angle/channel previews) -----------------
+    def _cross_map_section_type(self, label: str) -> str:
+        mapping = {
+            "Angle": "angle",
+            "Double Angle (Long Leg)": "double_angle_long",
+            "Double Angle (Short Leg)": "double_angle_short",
+            "Channel": "channel",
+            "Double Channel": "double_channel",
+        }
+        return mapping.get((label or "").strip(), "angle")
+
+    def _cross_display_name_for(self, designation: str, section_type: str) -> str:
+        name = (designation or "").strip()
+        if section_type in ("angle", "double_angle_long", "double_angle_short"):
+            name = name.lstrip("∠⌒⟡⟠").strip()
+            if name and not name.upper().startswith("IS"):
+                name = f"IS {name}"
+        return name
+
+    def _cross_fill_combo(self, combo: QComboBox, items, section_type: str) -> None:
+        if combo is None:
+            return
+        block = combo.blockSignals(True)
+        combo.clear()
+        for des in items:
+            combo.addItem(self._cross_display_name_for(des, section_type), des)
+        combo.setCurrentIndex(0 if combo.count() > 0 else -1)
+        combo.blockSignals(block)
+
+    def _cross_update_designations_for(self, combo: QComboBox, type_label: str) -> None:
+        stype = self._cross_map_section_type(type_label)
+        if stype in ("angle", "double_angle_long", "double_angle_short"):
+            items = self._cross_catalog.list_angles()
+        else:
+            items = self._cross_catalog.list_channels()
+        self._cross_fill_combo(combo, items, stype)
+
+    def _cross_populate_designations(self) -> None:
+        angles = self._cross_catalog.list_angles()
+        self._cross_fill_combo(self.cross_bracing_section_combo, angles, "angle")
+        self._cross_fill_combo(self.cross_top_bracket_size_combo, angles, "angle")
+        self._cross_fill_combo(self.cross_bottom_bracket_size_combo, angles, "angle")
+
+    def _cross_set_preview(self, key: str, type_combo: QComboBox, size_combo: QComboBox) -> None:
+        widget = self._cross_previews.get(key)
+        if not widget:
+            return
+        stype = self._cross_map_section_type(type_combo.currentText())
+        designation = size_combo.currentData() or size_combo.currentText()
+        # Match CrossBracingDetailsTab behavior: for double angles, don't show total envelope.
+        show_double_total = stype not in ("double_angle_long", "double_angle_short")
+        widget.set_section(stype, designation, show_double_total)
+
+    def _update_cross_previews(self) -> None:
+        if not self.cross_design_combo:
+            return
+
+        is_custom = self.cross_design_combo.currentText() == "Customized"
+        if not is_custom:
+            for widget in self._cross_previews.values():
+                widget.set_section("", "")
+            return
+
+        self._cross_set_preview(
+            "bracing",
+            self.cross_bracing_section_type_combo,
+            self.cross_bracing_section_combo,
+        )
+        self._cross_set_preview(
+            "top",
+            self.cross_top_bracket_type_combo,
+            self.cross_top_bracket_size_combo,
+        )
+        self._cross_set_preview(
+            "bottom",
+            self.cross_bottom_bracket_type_combo,
+            self.cross_bottom_bracket_size_combo,
+        )
+
+    def _apply_cross_custom_mode(self, is_custom: bool) -> None:
+        if self.cross_right_column is not None:
+            self.cross_right_column.setVisible(is_custom)
+        for widget in (
+            self.cross_bracing_section_type_combo,
+            self.cross_bracing_section_combo,
+            self.cross_top_bracket_type_combo,
+            self.cross_top_bracket_size_combo,
+            self.cross_bottom_bracket_type_combo,
+            self.cross_bottom_bracket_size_combo,
+        ):
+            if widget is not None:
+                widget.setEnabled(is_custom)
+
+    def _on_cross_design_changed(self, label: str) -> None:
+        is_custom = (label or "").strip() == "Customized"
+        self._apply_cross_custom_mode(is_custom)
+        self._update_cross_previews()
 
     # ---- View builders ----
     def _build_cross_bracing_view(self):
@@ -215,6 +559,7 @@ class EndDiaphragmDetailsTab(QWidget):
         design_combo.addItems(["Customized", "Optimized"])
         apply_field_style(design_combo)
         row = self._add_grid_row(grid, 0, "Design:", design_combo)
+        self.cross_design_combo = design_combo
 
         type_selector = QComboBox()
         type_selector.addItems(VALUES_END_DIAPHRAGM_TYPE)
@@ -227,29 +572,46 @@ class EndDiaphragmDetailsTab(QWidget):
         apply_field_style(bracing_combo)
         row = self._add_grid_row(grid, row, "Type of Bracing:", bracing_combo)
 
-        section_options = [
-            "Double Angles", "Single Angle", "Channel",
-            "ISA 100 x 100 x 8", "ISA 110 x 110 x 10"
+        section_type_options = [
+            "Angle",
+            "Double Angle (Long Leg)",
+            "Double Angle (Short Leg)",
+            "Channel",
+            "Double Channel",
         ]
 
-        bracing_section = QComboBox()
-        bracing_section.addItems(section_options)
-        apply_field_style(bracing_section)
-        row = self._add_grid_row(grid, row, "Bracing Section:", bracing_section)
+        bracing_section_type = QComboBox()
+        bracing_section_type.addItems(section_type_options)
+        apply_field_style(bracing_section_type)
+        row = self._add_grid_row(grid, row, "Bracing Section Type:", bracing_section_type)
+        self.cross_bracing_section_type_combo = bracing_section_type
 
-        top_bracket = QComboBox()
-        top_bracket.addItems(section_options)
-        apply_field_style(top_bracket)
-        row = self._add_grid_row(grid, row, "Top Bracket Section:", top_bracket)
+        bracing_section_size = QComboBox()
+        apply_field_style(bracing_section_size)
+        row = self._add_grid_row(grid, row, "Bracing Section:", bracing_section_size)
+        self.cross_bracing_section_combo = bracing_section_size
 
-        bottom_bracket = QComboBox()
-        bottom_bracket.addItems(section_options)
-        apply_field_style(bottom_bracket)
-        row = self._add_grid_row(grid, row, "Bottom Bracket Section:", bottom_bracket)
+        top_bracket_type = QComboBox()
+        top_bracket_type.addItems(section_type_options)
+        apply_field_style(top_bracket_type)
+        row = self._add_grid_row(grid, row, "Top Bracket Section:", top_bracket_type)
+        self.cross_top_bracket_type_combo = top_bracket_type
 
-        spacing_input = self._create_line_edit("Spacing (mm)")
-        spacing_input.setValidator(QDoubleValidator(0, 100000, 2))
-        self._add_grid_row(grid, row, "Spacing:", spacing_input)
+        top_bracket_size = QComboBox()
+        apply_field_style(top_bracket_size)
+        row = self._add_grid_row(grid, row, "Top Bracket Size:", top_bracket_size)
+        self.cross_top_bracket_size_combo = top_bracket_size
+
+        bottom_bracket_type = QComboBox()
+        bottom_bracket_type.addItems(section_type_options)
+        apply_field_style(bottom_bracket_type)
+        row = self._add_grid_row(grid, row, "Bottom Bracket Section:", bottom_bracket_type)
+        self.cross_bottom_bracket_type_combo = bottom_bracket_type
+
+        bottom_bracket_size = QComboBox()
+        apply_field_style(bottom_bracket_size)
+        row = self._add_grid_row(grid, row, "Bottom Bracket Size:", bottom_bracket_size)
+        self.cross_bottom_bracket_size_combo = bottom_bracket_size
 
         inputs_layout.addLayout(grid)
         inputs_box.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
@@ -259,6 +621,7 @@ class EndDiaphragmDetailsTab(QWidget):
         layout.addWidget(left_column)
 
         right_column = QWidget()
+        self.cross_right_column = right_column
         right_layout = QVBoxLayout(right_column)
         right_layout.setContentsMargins(0, 0, 0, 0)
         right_layout.setSpacing(10)
@@ -272,7 +635,7 @@ class EndDiaphragmDetailsTab(QWidget):
         type_layout.addWidget(self._create_image_placeholder("Bracing Layout", 170))
         right_layout.addWidget(type_box)
 
-        for title in ["Bracing", "Top Bracket", "Bottom Bracket"]:
+        for key, title in [("bracing", "Bracing"), ("top", "Top Bracket"), ("bottom", "Bottom Bracket")]:
             preview_box = self._create_inner_box()
             preview_box.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
             preview_layout = QVBoxLayout(preview_box)
@@ -282,13 +645,40 @@ class EndDiaphragmDetailsTab(QWidget):
             preview_heading = QLabel(title)
             preview_heading.setStyleSheet("font-size: 12px; font-weight: 700; color: #4b4b4b; border: none;")
             preview_layout.addWidget(preview_heading)
-            preview_layout.addWidget(self._create_image_placeholder("Preview", 110))
+            widget = SectionPreviewWidget()
+            widget.setMinimumHeight(110)
+            widget.setStyleSheet(
+                "QWidget { border: 1px solid #d0d0d0; border-radius: 10px; background-color: #ffffff; }"
+            )
+            preview_layout.addWidget(widget)
+            self._cross_previews[key] = widget
             right_layout.addWidget(preview_box)
 
         right_layout.addStretch()
         layout.addWidget(right_column)
         layout.setStretch(0, 3)
         layout.setStretch(1, 4)
+
+        # Wire up dynamic designations + previews (same logic as CrossBracingDetailsTab).
+        design_combo.currentTextChanged.connect(self._on_cross_design_changed)
+
+        bracing_section_type.currentTextChanged.connect(
+            lambda label: (self._cross_update_designations_for(bracing_section_size, label), self._update_cross_previews())
+        )
+        bracing_section_size.currentTextChanged.connect(self._update_cross_previews)
+
+        top_bracket_type.currentTextChanged.connect(
+            lambda label: (self._cross_update_designations_for(top_bracket_size, label), self._update_cross_previews())
+        )
+        top_bracket_size.currentTextChanged.connect(self._update_cross_previews)
+
+        bottom_bracket_type.currentTextChanged.connect(
+            lambda label: (self._cross_update_designations_for(bottom_bracket_size, label), self._update_cross_previews())
+        )
+        bottom_bracket_size.currentTextChanged.connect(self._update_cross_previews)
+
+        self._cross_populate_designations()
+        self._on_cross_design_changed(design_combo.currentText())
         return view, type_selector
 
     def _build_rolled_view(self):
@@ -331,12 +721,10 @@ class EndDiaphragmDetailsTab(QWidget):
         row = self._add_grid_row(grid, row, "Type:", type_selector)
 
         is_section_combo = QComboBox()
-        is_section_combo.addItems([
-            "ISMB 500", "ISMB 550", "ISMB 600",
-            "ISWB 500", "ISWB 550", "ISWB 600"
-        ])
         apply_field_style(is_section_combo)
+        self._populate_rolled_sections(is_section_combo)
         self._add_grid_row(grid, row, "IS Section:", is_section_combo)
+        self.rolled_is_section_combo = is_section_combo
 
         inputs_layout.addLayout(grid)
         inputs_box.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
@@ -355,15 +743,28 @@ class EndDiaphragmDetailsTab(QWidget):
         image_layout.setContentsMargins(12, 8, 12, 10)
         image_layout.setSpacing(6)
         image_layout.addWidget(self._create_heading_label("Dynamic Image"))
-        image_layout.addWidget(self._create_image_placeholder("Rolled Section", 170))
+
+        self._rolled_preview = RolledSectionPreview()
+        image_layout.addWidget(self._rolled_preview, 1)
+
+        self._rolled_caption = QLabel("Select a rolled section")
+        self._rolled_caption.setAlignment(Qt.AlignCenter)
+        self._rolled_caption.setStyleSheet(
+            "QLabel { font-size: 12px; font-weight: 700; color: #1e1e1e; border: none; padding-top: 6px; }"
+        )
+        image_layout.addWidget(self._rolled_caption)
         right_layout.addWidget(image_box)
 
-        props_box, _ = self._create_section_properties_box("Section Properties:")
+        props_box, props_inputs = self._create_section_properties_box("Section Properties:")
+        self._rolled_property_inputs = props_inputs
         props_box.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         right_layout.addWidget(props_box)
         right_layout.addStretch()
 
         layout.addWidget(right_column)
+
+        is_section_combo.currentTextChanged.connect(self._update_rolled_preview_and_props)
+        self._update_rolled_preview_and_props()
         return view, type_selector
 
     def _build_welded_view(self):
@@ -409,7 +810,9 @@ class EndDiaphragmDetailsTab(QWidget):
         row = self._add_grid_row(grid, row, "Symmetry:", symmetry_combo)
 
         total_depth = self._create_line_edit()
+        total_depth.setValidator(QDoubleValidator(0, 1_000_000, 3))
         row = self._add_grid_row(grid, row, "Total Depth (mm):", total_depth)
+        self.welded_total_depth = total_depth
 
         web_thick_combo = QComboBox()
         web_thick_combo.addItems(["All", "Custom"])
@@ -417,7 +820,9 @@ class EndDiaphragmDetailsTab(QWidget):
         row = self._add_grid_row(grid, row, "Web Thickness (mm):", web_thick_combo)
 
         top_width = self._create_line_edit()
+        top_width.setValidator(QDoubleValidator(0, 1_000_000, 3))
         row = self._add_grid_row(grid, row, "Width of Top Flange (mm):", top_width)
+        self.welded_top_width = top_width
 
         top_thickness_combo = QComboBox()
         top_thickness_combo.addItems(["All", "Custom"])
@@ -425,7 +830,9 @@ class EndDiaphragmDetailsTab(QWidget):
         row = self._add_grid_row(grid, row, "Top Flange Thickness (mm):", top_thickness_combo)
 
         bottom_width = self._create_line_edit()
+        bottom_width.setValidator(QDoubleValidator(0, 1_000_000, 3))
         row = self._add_grid_row(grid, row, "Width of Bottom Flange (mm):", bottom_width)
+        self.welded_bottom_width = bottom_width
 
         bottom_thickness_combo = QComboBox()
         bottom_thickness_combo.addItems(["All", "Custom"])
@@ -452,15 +859,29 @@ class EndDiaphragmDetailsTab(QWidget):
         image_layout.setContentsMargins(12, 8, 12, 10)
         image_layout.setSpacing(6)
         image_layout.addWidget(self._create_heading_label("Dynamic Image"))
-        image_layout.addWidget(self._create_image_placeholder("Welded Section", 170))
+
+        self._welded_preview = RolledSectionPreview()
+        image_layout.addWidget(self._welded_preview, 1)
+
+        self._welded_caption = QLabel("Enter welded inputs to preview")
+        self._welded_caption.setAlignment(Qt.AlignCenter)
+        self._welded_caption.setStyleSheet(
+            "QLabel { font-size: 12px; font-weight: 700; color: #1e1e1e; border: none; padding-top: 6px; }"
+        )
+        image_layout.addWidget(self._welded_caption)
         right_layout.addWidget(image_box)
 
-        props_box, _ = self._create_section_properties_box("Section Properties:")
+        props_box, props_inputs = self._create_section_properties_box("Section Properties:")
+        self._welded_property_inputs = props_inputs
         props_box.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         right_layout.addWidget(props_box)
         right_layout.addStretch()
 
         layout.addWidget(right_column)
+
+        for watcher in (total_depth, top_width, bottom_width):
+            watcher.textChanged.connect(self._update_welded_preview_and_props)
+        self._update_welded_preview_and_props()
         return view, type_selector
 
     def _handle_type_selection(self, value):
@@ -481,4 +902,12 @@ class EndDiaphragmDetailsTab(QWidget):
         for selector in self.type_selectors:
             selector.setCurrentText(target)
         self.block_type_sync = False
+
+        # Refresh preview/properties for the active view.
+        if target == "Cross Bracing":
+            self._update_cross_previews()
+        elif target == "Rolled Beam":
+            self._update_rolled_preview_and_props()
+        elif target == "Welded Beam":
+            self._update_welded_preview_and_props()
 

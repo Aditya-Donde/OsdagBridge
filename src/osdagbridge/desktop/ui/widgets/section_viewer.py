@@ -650,7 +650,7 @@ class SectionPreviewWidget(QWidget):
             text_height = fm_main.height()
             # Background rect: slightly padded
             bg_rect = QRectF(start_x - 2, py - text_height + 4, total_width + 4, text_height)
-            painter.fillRect(bg_rect, QColor("#0f0f0f"))
+            painter.fillRect(bg_rect, QColor(255, 255, 255, 235))
 
         # Draw function for a single pass
         def draw_segments(color: QColor, offset_x: float = 0, offset_y: float = 0):
