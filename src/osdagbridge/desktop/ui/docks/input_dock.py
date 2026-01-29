@@ -653,6 +653,12 @@ class InputDock(QWidget):
         self.left_container = QWidget()
 
         # Get input fields from backend
+        # Prime backend defaults once per session (safe no-op if not implemented).
+        try:
+            if hasattr(self.backend, "prime_defaults_from_definitions"):
+                self.backend.prime_defaults_from_definitions()
+        except Exception:
+            pass
         input_field_list = self.backend.input_values()
 
         self.build_left_panel(input_field_list)
@@ -1419,31 +1425,74 @@ class InputDock(QWidget):
         section_context["layout"].addLayout(row)
 
     def _create_input_widget(self, key, field_type, values, validator, metadata):
+        key_name = key if isinstance(key, str) else None
+
         if field_type == TYPE_COMBOBOX:
             widget = NoScrollComboBox()
             apply_field_style(widget)
             if values:
                 widget.addItems(values)
+
+            # Prefer backend-stored value, else metadata default.
+            try:
+                backend_value = self.backend.get_input_value(key_name) if key_name and hasattr(self.backend, "get_input_value") else None
+            except Exception:
+                backend_value = None
+
             default_value = (metadata or {}).get("default")
-            if default_value:
-                idx = widget.findText(default_value)
+
+            init_value = backend_value if backend_value not in (None, "") else default_value
+            if init_value not in (None, ""):
+                idx = widget.findText(str(init_value))
                 if idx >= 0:
                     widget.setCurrentIndex(idx)
+
+            # Persist changes back into backend.
+            if key_name and hasattr(widget, "currentTextChanged"):
+                try:
+                    widget.currentTextChanged.connect(lambda text, k=key_name: self._push_backend_value(k, text))
+                except Exception:
+                    pass
         elif field_type == TYPE_TEXTBOX:
             widget = QLineEdit()
             apply_field_style(widget)
             validator_instance = self.get_validator(validator)
             if validator_instance:
                 widget.setValidator(validator_instance)
+
+            # Restore value from backend if present.
+            try:
+                backend_value = self.backend.get_input_value(key_name) if key_name and hasattr(self.backend, "get_input_value") else None
+            except Exception:
+                backend_value = None
+
+            if backend_value not in (None, ""):
+                widget.setText(str(backend_value))
+
+            # Persist changes back into backend.
+            if key_name:
+                try:
+                    widget.editingFinished.connect(lambda k=key_name, w=widget: self._push_backend_value(k, w.text()))
+                except Exception:
+                    pass
         else:
             return None
 
-        key_name = key if isinstance(key, str) else None
         if key_name:
             widget.setObjectName(key_name)
         self._register_input_widget(key_name, widget)
         self._apply_field_specific_config(key_name, widget, metadata or {})
         return widget
+
+    def _push_backend_value(self, key: str, value):
+        if not key:
+            return
+        if not self.backend or not hasattr(self.backend, "set_input_value"):
+            return
+        try:
+            self.backend.set_input_value(key, value)
+        except Exception:
+            pass
 
     def _register_input_widget(self, key, widget):
         if key == KEY_STRUCTURE_TYPE:

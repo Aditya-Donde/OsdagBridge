@@ -18,6 +18,61 @@ class FrontendData:
         self.module = KEY_DISP_FINPLATE
         self.design_status = False
         self.design_button_status = False
+
+        # Simple UI state store (input/output docks).
+        # The docks can set values here, and `input_values()` can use them as defaults.
+        self._input_state: dict[str, object] = {}
+        self._output_state: dict[str, object] = {}
+
+    # -----------------------------
+    # Generic state getters/setters
+    # -----------------------------
+    def set_input_value(self, key: str, value):
+        if not key:
+            return
+        self._input_state[key] = value
+        print(f"DEBUG: Backend updated -> {key}: {value}")
+
+    def get_input_value(self, key: str, default=None):
+        if not key:
+            return default
+        return self._input_state.get(key, default)
+
+    def set_output_value(self, key: str, value):
+        if not key:
+            return
+        self._output_state[key] = value
+
+    def get_output_value(self, key: str, default=None):
+        if not key:
+            return default
+        return self._output_state.get(key, default)
+
+    def set_input_values(self, values: dict):
+        """Bulk update input state (e.g., when loading a saved project)."""
+        if not isinstance(values, dict):
+            return
+        for k, v in values.items():
+            if isinstance(k, str):
+                self._input_state[k] = v
+
+    def get_input_values_dict(self, include_empty: bool = False) -> dict:
+        """Export current input state; can be fed into analyzers/designers later."""
+        if include_empty:
+            return dict(self._input_state)
+        return {k: v for k, v in self._input_state.items() if v not in (None, "")}
+
+    def _iter_defined_input_keys(self):
+        """Yield keys that represent actual inputs (not titles/modules)."""
+        for item in self.input_values():
+            if not isinstance(item, tuple) or len(item) < 3:
+                continue
+            key, _label, ui_type = item[0], item[1], item[2]
+            if not isinstance(key, str):
+                continue
+            if ui_type in (TYPE_TITLE, TYPE_MODULE):
+                continue
+            yield key
     
     def input_values(self):
         """Return structured list of input definitions for the UI"""
@@ -364,4 +419,21 @@ class FrontendData:
         """Validation Function"""
         return None
 
-#setter for input and output
+    def prime_defaults_from_definitions(self):
+        """Populate state with any defaults declared in `input_values()` metadata."""
+        for item in self.input_values():
+            if not isinstance(item, tuple) or len(item) < 7:
+                continue
+            key, _label, ui_type, values, _required, _validator, metadata = item
+            if not isinstance(key, str):
+                continue
+            if ui_type in (TYPE_TITLE, TYPE_MODULE):
+                continue
+            if key in self._input_state:
+                continue
+            default = (metadata or {}).get("default")
+            if default is not None:
+                self._input_state[key] = default
+            elif ui_type == TYPE_COMBOBOX and isinstance(values, (list, tuple)) and values:
+                # If no explicit default is provided, keep the first item as a sensible initial value.
+                self._input_state[key] = values[0]
