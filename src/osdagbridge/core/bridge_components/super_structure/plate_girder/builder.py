@@ -73,7 +73,6 @@ def _rotate_about_z(shape, angle_deg):
 def _create_stiffener_plate(position, width, height, thickness, chamfer, side):
     """
     Creates a single stiffener plate (left or right).
-    Geometry copied from standalone logic (no welds).
     """
     x, y, z = map(float, position)
     c = chamfer
@@ -113,20 +112,21 @@ def _create_stiffener_plate(position, width, height, thickness, chamfer, side):
     return BRepBuilderAPI_Transform(solid, trsf, True).Shape()
 
 
-# MAIN API — this replaces old I-section builder
 
 def build_plate_girder_geometry(
     *,
-    D,
-    tw,
-    length,
-    T_ft,
-    T_fb,
-    B_ft,
-    B_fb,
-    stiffener_spacing,
-    T_is,
-    chamfer_length
+    D,                                  # Total depth       
+    tw,                                 # Web thickness
+    length,                             # Length along Y axis
+    T_ft,                               # Top flange thickness
+    T_fb,                               # Bottom flange thickness
+    B_ft,                               # Top flange width
+    B_fb,                               # Bottom flange width
+    stiffener_spacing,                  # Space between each stiffener plate
+    T_is,                               # Stiffener thickness
+    chamfer_length,                     # Triangular chamfer length
+    include_end_stiffeners=False,       # Whether to include end stiffeners
+    T_es=None                           # End stiffener thickness
 ):
     """
     Geometry-only Plate Girder builder for Osdag Bridge.
@@ -173,8 +173,20 @@ def build_plate_girder_geometry(
 
     num_panels = max(1, int(length // stiffener_spacing))
 
+    start_y = 0.0
+    end_y = length
+
+    if include_end_stiffeners:
+        end_stiffener_gap = T_es / 2.0
+        start_y = end_stiffener_gap + 50.0
+        end_y = length - (end_stiffener_gap + 50.0)
+
+
     for i in range(1, num_panels):
         y = i * stiffener_spacing
+
+        if y <= start_y or y >= end_y:
+            continue
 
         stiffeners.append(
             _create_stiffener_plate(
@@ -197,6 +209,43 @@ def build_plate_girder_geometry(
                 side="left"
             )
         )
+
+    # End stiffeners 
+    if include_end_stiffeners:
+        if T_es is None:
+            T_es = T_is
+
+        end_stiffener_gap = (T_es / 2.0)
+
+        end_positions = [
+            end_stiffener_gap,
+            end_stiffener_gap + 50.0,
+            length - (end_stiffener_gap + 50.0),
+            length - end_stiffener_gap,
+        ]
+
+        for y in end_positions:
+            stiffeners.append(
+                _create_stiffener_plate(
+                    position=[ tw / 2, y, 0 ],
+                    width=stiff_width,
+                    height=D,
+                    thickness=T_es,
+                    chamfer=chamfer_length,
+                    side="right"
+                )
+            )
+
+            stiffeners.append(
+                _create_stiffener_plate(
+                    position=[ -tw / 2, y, 0 ],
+                    width=stiff_width,
+                    height=D,
+                    thickness=T_es,
+                    chamfer=chamfer_length,
+                    side="left"
+                )
+            )
 
 
     web = _rotate_about_z(web, -90)
