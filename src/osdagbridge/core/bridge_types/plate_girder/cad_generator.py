@@ -77,20 +77,17 @@ class PlateGirderCADGenerator:
         self.carriageway_width = 12000
         self.deck_thickness = 400
 
-        self.footpath_config = "LEFT"         # NONE / LEFT / RIGHT / BOTH
-        self.crash_barrier_base_width = 600
+        self.footpath_config = "NONE"         # NONE / LEFT / RIGHT / BOTH
         self.footpath_width = 1500
         self.railing_width = 300
 
         # CRASH BARRIER PARAMETERS
-        self.crash_barrier_width = 175
-        self.crash_barrier_height = 900
         self.barrier_type = "Semi-Rigid"  # "Rigid" or "Semi-Rigid"
         self.crash_barrier_subtype = "Double W-beam"  # "IRC-5R", "High Containment", "Single W-beam", "Double W-beam"
 
         # MEDIAN PARAMETERS
         self.enable_median = True
-        self.median_type = "Metallic Crash Barrier"  # "Raised Kerb", "RCC Crash Barrier", "Metallic Crash Barrier"
+        self.median_type = "Raised Kerb"  # "Raised Kerb", "RCC Crash Barrier", "Metallic Crash Barrier"
 
         # RAILING PARAMETERS
         self.railing_height = 1200
@@ -210,21 +207,7 @@ class PlateGirderCADGenerator:
             top_bracket=self.k_top_bracket
         )
 
-        # 5. DECK SYSTEM (USES TOP-OF-GIRDER Z)
-        deck_out = build_deck(
-            span_length_L=self.span_length_L,
-            girder_section_d=girder_top_z,
-            deck_thickness=self.deck_thickness,
-
-            footpath_config=self.footpath_config,
-            carriageway_width=self.carriageway_width,
-            crash_barrier_base_width=self.crash_barrier_base_width,
-            footpath_width=self.footpath_width,
-            railing_width=self.railing_width
-        )
-
-        # 6. CRASH BARRIERS
-
+        # 5. IRC 5 SPECIFICATIONS (CRASH BARRIER)
         from osdagbridge.core.utils.codes.irc5_2015 import IRC5_2015
         from osdagbridge.core.utils.common import (
             KEY_CRASH_BARRIER_TYPE,
@@ -235,20 +218,16 @@ class PlateGirderCADGenerator:
             KEY_MEDIAN_TYPE
         )
 
-        #  IRC DESIGN (CRASH BARRIER) 
         # Map barrier_type string to KEY_CRASH_BARRIER_TYPE index
         barrier_type_map = {"Flexible": 0, "Semi-Rigid": 1, "Rigid": 2}
         barrier_idx = barrier_type_map.get(self.barrier_type, 2)
         
-        # Map crash_barrier_subtype for rigid barriers
+        # Map crash_barrier_subtype
         rigid_subtype_map = {"IRC-5R": 0, "High Containment": 1}
         metallic_subtype_map = {"Single W-beam": 0, "Double W-beam": 1}
 
         if self.barrier_type == "Rigid":
-            # Use rigid barrier specifications
-            # Get the crash barrier subtype (IRC-5R or High Containment)
             rigid_subtype_idx = rigid_subtype_map.get(self.crash_barrier_subtype, 0)
-            
             if self.footpath_config == "NONE":
                 design_dict = IRC5_2015.cl_109_6_3_shapes(
                     barrier_type=KEY_CRASH_BARRIER_TYPE[barrier_idx],
@@ -258,8 +237,6 @@ class PlateGirderCADGenerator:
                     crash_barrier_type=KEY_RIGID_CRASH_BARRIER_TYPE[rigid_subtype_idx]
                 )
             else:
-                # For footpath cases, we still need to pass the crash_barrier_type
-                # to get the correct dimensions (IRC-5R vs High Containment)
                 design_dict = IRC5_2015.cl_109_6_3_shapes(
                     barrier_type=KEY_CRASH_BARRIER_TYPE[barrier_idx],
                     footpath=KEY_FOOTPATH[1],
@@ -267,16 +244,35 @@ class PlateGirderCADGenerator:
                     design_dict={},
                     crash_barrier_type=KEY_RIGID_CRASH_BARRIER_TYPE[rigid_subtype_idx]
                 )
+            # For rigid, the base width is in "crash_barrier_width"
+            actual_base_width = design_dict.get("crash_barrier_width", 450)
         else:
-            # Use semi-rigid/metallic barrier specifications
+            # Semi-rigid / Metallic
+            metallic_subtype_idx = metallic_subtype_map.get(self.crash_barrier_subtype, 0)
             design_dict = IRC5_2015.cl_109_6_3_shapes(
-                barrier_type=KEY_CRASH_BARRIER_TYPE[1],  # Semi-rigid
+                barrier_type=KEY_CRASH_BARRIER_TYPE[1],
                 footpath=KEY_FOOTPATH[0] if self.footpath_config == "NONE" else KEY_FOOTPATH[1],
                 railing_type=None,
                 design_dict={},
-                crash_barrier_type=KEY_METALLIC_CRASH_BARRIER_TYPE[metallic_subtype_map.get(self.crash_barrier_subtype, 0)]
+                crash_barrier_type=KEY_METALLIC_CRASH_BARRIER_TYPE[metallic_subtype_idx]
             )
+            # For semi-rigid/metallic, the kerb bottom width is the base width
+            actual_base_width = design_dict.get("kerb_bottom_width", 550)
 
+        # 6. DECK SYSTEM (USES TOP-OF-GIRDER Z)
+        deck_out = build_deck(
+            span_length_L=self.span_length_L,
+            girder_section_d=girder_top_z,
+            deck_thickness=self.deck_thickness,
+
+            footpath_config=self.footpath_config,
+            carriageway_width=self.carriageway_width,
+            crash_barrier_base_width=actual_base_width,
+            footpath_width=self.footpath_width,
+            railing_width=self.railing_width
+        )
+
+        # 7. CRASH BARRIER PLACEMENT
         crash_barriers = build_crash_barriers(
             span_length_L=self.span_length_L,
             deck_top_z=deck_out["deck_top_z"],
@@ -288,19 +284,22 @@ class PlateGirderCADGenerator:
             barrier_type=self.barrier_type
         )
 
-        # 7. MEDIAN
+        # 8. MEDIAN
         median_barriers = []
         if self.enable_median:
             # Get median design specifications from IRC5_2015
             median_type_map = {"Raised Kerb": 0, "RCC Crash Barrier": 1, "Metallic Crash Barrier": 2}
             median_idx = median_type_map.get(self.median_type, 1)
             
+            # Map metallic subtype for median
+            metallic_subtype_idx = metallic_subtype_map.get(self.crash_barrier_subtype, 0)
+            
             median_design_dict = IRC5_2015.cl_109_6_3_shapes(
                 barrier_type=KEY_MEDIAN_TYPE[median_idx],
                 footpath=KEY_FOOTPATH[0],
                 railing_type=None,
                 design_dict={},
-                crash_barrier_type=KEY_METALLIC_CRASH_BARRIER_TYPE[0] if self.median_type == "Metallic Crash Barrier" else None
+                crash_barrier_type=KEY_METALLIC_CRASH_BARRIER_TYPE[metallic_subtype_idx] if self.median_type == "Metallic Crash Barrier" else None
             )
             
             median_barriers = build_median(

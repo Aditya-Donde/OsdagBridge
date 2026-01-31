@@ -234,7 +234,8 @@ def create_metallic_crash_barrier_median(length, design_dict):
         
         # Post on outer side (road facing)
         # Center of post in Y
-        post_y_center = kerb_top_width / 2.0 - post_offset - post_depth / 2.0
+        # For Median: width (75) is along Y, depth (150) is along X.
+        post_y_center = kerb_top_width / 2.0 - post_offset - post_width / 2.0
         
         # Create vertical channel post
         def create_vertical_channel(h, d, w, tw, tf):
@@ -335,7 +336,7 @@ def create_metallic_crash_barrier_median(length, design_dict):
         beam_z = kerb_height + beam_h - W_BEAM_HEIGHT / 2.0
 
         # Post Position
-        post_y_center = kerb_top_width / 2.0 - post_offset - post_depth / 2.0
+        post_y_center = kerb_top_width / 2.0 - post_offset - post_width / 2.0
         
         # SPACER GENERATION (Per Beam)
         # Spacer Center aligned with Beam Center
@@ -431,7 +432,8 @@ def build_median(
 ):
     """
     Build median barriers.
-    Always creates TWO barriers separated by the median width.
+    - Raised Kerb: Creates ONE central barrier.
+    - RCC & Metallic: Creates TWO barriers separated by the median width.
     """
 
     median_barriers = []
@@ -439,39 +441,48 @@ def build_median(
     # Get median width from design_dict (default 1200)
     median_total_width = design_dict.get("median_width", 1200)
     
-    # Create the base shape (one side)
+    # CASE 1: RAISED KERB (Single Central)
     if median_type == "Raised Kerb":
         barrier_shape = create_raised_kerb(span_length, design_dict)
-        barrier_base_width = design_dict.get("kerb_bottom_width", 550)
-    elif median_type == "RCC Crash Barrier":
-        barrier_shape = create_rcc_crash_barrier_median(span_length, design_dict)
-        barrier_base_width = design_dict.get("barrier_bottom_width", 450)
-    elif median_type == "Metallic Crash Barrier":
-        barrier_shape = create_metallic_crash_barrier_median(span_length, design_dict)
-        barrier_base_width = design_dict.get("kerb_bottom_width", 550)
+        # Centralized single barrier
+        central_barrier = _translate(
+            barrier_shape,
+            x=0.0,
+            y=carriageway_center_y,
+            z=deck_top_z
+        )
+        median_barriers.append(central_barrier)
+        return median_barriers
+
+    # CASE 2: RCC or METALLIC (Double Side mirrored)
+    elif median_type in ("RCC Crash Barrier", "Metallic Crash Barrier"):
+        if median_type == "RCC Crash Barrier":
+            barrier_shape = create_rcc_crash_barrier_median(span_length, design_dict)
+            barrier_base_width = design_dict.get("barrier_bottom_width", 450)
+        else: # Metallic
+            barrier_shape = create_metallic_crash_barrier_median(span_length, design_dict)
+            barrier_base_width = design_dict.get("kerb_bottom_width", 550)
+        
+        # Calculate offset so outer edges are at median_total_width / 2
+        # offset is the distance from center to barrier center
+        offset = (median_total_width - barrier_base_width) / 2.0
+
+        left_barrier = _mirror_y(barrier_shape)
+        left_barrier = _translate(
+            left_barrier,
+            x=0.0,
+            y=carriageway_center_y - offset,
+            z=deck_top_z
+        )
+        median_barriers.append(left_barrier)
+
+        right_barrier = _translate(
+            barrier_shape,
+            x=0.0,
+            y=carriageway_center_y + offset,
+            z=deck_top_z
+        )
+        median_barriers.append(right_barrier)
+        return median_barriers
     else:
         raise ValueError(f"Invalid median_type: {median_type}")
-
-    
-    offset = (median_total_width ) - (barrier_base_width / 2.0)
-
-    
-    left_barrier = _mirror_y(barrier_shape)
-    left_barrier = _translate(
-        left_barrier,
-        x=0.0,
-        y=carriageway_center_y - offset,
-        z=deck_top_z
-    )
-    median_barriers.append(left_barrier)
-
-    
-    right_barrier = _translate(
-        barrier_shape,
-        x=0.0,
-        y=carriageway_center_y + offset,
-        z=deck_top_z
-    )
-    median_barriers.append(right_barrier)
-
-    return median_barriers
