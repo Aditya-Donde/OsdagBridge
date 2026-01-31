@@ -721,10 +721,10 @@ class InputDock(QWidget):
                 print(f"Selected location: {district}, {state}")
                 
             elif location_data['method'] == 'map':
-                print("Map selection (to be implemented)")
+                pass
             
-            if location_data['custom_params']:
-                print("Custom loading parameters requested")
+            if location_data.get('custom_weather_data'):
+                pass
 
     # Lock-Tooltip-Events-Starts-------------------------------------------------------------------------
     def eventFilter(self, obj, event):

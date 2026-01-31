@@ -15,7 +15,7 @@ WIND_ZONE_IMAGE = _DATA_DIR / "wind.png"
 # India bounding box (approximate) for overlay alignment
 # These are the geographic bounds the overlay images represent
 INDIA_BOUNDS = {
-    "north": 37.1,  # Northern-most latitude
+    "north": 35,  # Northern-most latitude
     "south": 6.5,   # Southern-most latitude
     "west": 68.0,   # Western-most longitude
     "east": 97.5,   # Eastern-most longitude
