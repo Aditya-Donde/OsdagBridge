@@ -279,7 +279,7 @@ class CustomWeatherDataDialog(QDialog):
         save_btn = QPushButton("Save")
         save_btn.setObjectName("primary")
         save_btn.setCursor(Qt.PointingHandCursor)
-        save_btn.clicked.connect(self.accept)
+        save_btn.clicked.connect(self.validate_and_save)
         btn_layout.addWidget(save_btn)
         
         cancel_btn = QPushButton("Cancel")
@@ -289,6 +289,18 @@ class CustomWeatherDataDialog(QDialog):
         btn_layout.addWidget(cancel_btn)
         
         layout.addLayout(btn_layout)
+        
+    def validate_and_save(self):
+        wind = self.wind_input.text().strip()
+        zone = self.zone_combo.currentText()
+        max_t = self.max_temp_input.text().strip()
+        min_t = self.min_temp_input.text().strip()
+        
+        if not wind or not max_t or not min_t or zone == "Select Zone":
+            QMessageBox.warning(self, "Incomplete Data", "Please enter all fields (Wind Speed, Seismic Zone, and Temperatures) before saving.")
+            return
+
+        self.accept()
 
     def get_data(self):
         # Map zone to z_value automatically
