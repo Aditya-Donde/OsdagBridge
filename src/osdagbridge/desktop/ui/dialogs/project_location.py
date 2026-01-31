@@ -113,11 +113,10 @@ class CustomWeatherDataDialog(QDialog):
     """
     def __init__(self, parent=None, initial_data=None):
         super().__init__(parent)
-        self.setWindowTitle("Custom Weather Data")
-        self.setFixedSize(400, 380)
+        self.setFixedSize(400, 420)
         self.data = initial_data or {}
+        self.setWindowFlags(Qt.Dialog | Qt.FramelessWindowHint)
         
-        # Apply Osdag Theme
         self.setStyleSheet("""
             QDialog {
                 background-color: #ffffff;
@@ -158,8 +157,20 @@ class CustomWeatherDataDialog(QDialog):
             }
             QPushButton#ghost:hover { background-color: #e6e6e6; }
         """)
+
+        # Main layout structure for custom title bar
+        main_layout = QVBoxLayout(self)
+        main_layout.setContentsMargins(1, 1, 1, 1)
+        main_layout.setSpacing(0)
+
+        self.title_bar = CustomTitleBar()
+        self.title_bar.setTitle("Custom Weather Data")
+        main_layout.addWidget(self.title_bar)
         
-        layout = QVBoxLayout(self)
+        self.content_widget = QWidget(self)
+        main_layout.addWidget(self.content_widget, 1)
+
+        layout = QVBoxLayout(self.content_widget)
         layout.setSpacing(16)
         layout.setContentsMargins(25, 25, 25, 25)
         
@@ -175,15 +186,16 @@ class CustomWeatherDataDialog(QDialog):
         layout.addLayout(wind_layout)
 
         # Seismic Zone
-        zone_layout = QVBoxLayout()
-        zone_layout.setSpacing(6)
-        zone_layout.addWidget(QLabel("Seismic Zone"))
+        zone_label = QLabel("Seismic Zone")
+        layout.addWidget(zone_label)
+
         self.zone_combo = NoScrollComboBox()
         self.zone_combo.addItems(["Select Zone", "II", "III", "IV", "V"])
         if self.data.get("zone"):
             index = self.zone_combo.findText(self.data.get("zone"))
             if index >= 0:
                 self.zone_combo.setCurrentIndex(index)
+        
         # Apply specific combo style locally or via stylesheet above
         self.zone_combo.setStyleSheet("""
             QComboBox{
@@ -239,8 +251,36 @@ class CustomWeatherDataDialog(QDialog):
                 border: 1px solid #94b816;
             }
         """)
-        zone_layout.addWidget(self.zone_combo)
-        layout.addLayout(zone_layout)
+
+        # Side-by-side layout for Zone and Z-Factor
+        zone_row = QHBoxLayout()
+        zone_row.setSpacing(15)
+
+        # Add stretch factor 1 to make them equal width
+        zone_row.addWidget(self.zone_combo, 1)
+
+        zone_to_z = {"II": "0.10", "III": "0.16", "IV": "0.24", "V": "0.36"}
+        current_z = zone_to_z.get(self.zone_combo.currentText(), "")
+
+        self.zone_value = QLineEdit(str(current_z))
+        self.zone_value.setReadOnly(True)
+        self.zone_value.setPlaceholderText("Zone Factor (Z)")
+        self.zone_value.setStyleSheet("""
+            QLineEdit {
+                background-color: #f5f5f5;
+                color: #707070;
+                border: 1px solid #dcdcdc;
+                border-radius: 4px;
+                padding: 4px 8px;
+            }
+        """)
+        self.zone_combo.currentTextChanged.connect(
+            lambda text: self.zone_value.setText(zone_to_z.get(text, ""))
+        )
+
+        # Add stretch factor 1 to make them equal width
+        zone_row.addWidget(self.zone_value, 1)
+        layout.addLayout(zone_row)
 
         # Shade Air Temperature
         temp_lbl = QLabel("Shade Air Temperature (°C)")
@@ -320,6 +360,15 @@ class CustomWeatherDataDialog(QDialog):
             "max_temp": self.max_temp_input.text(),
             "min_temp": self.min_temp_input.text()
         }
+
+    def showEvent(self, event):
+        """Center dialog on parent window when shown."""
+        super().showEvent(event)
+        if self.parent():
+            parent_geo = self.parent().geometry()
+            x = parent_geo.x() + (parent_geo.width() - self.width()) // 2
+            y = parent_geo.y() + (parent_geo.height() - self.height()) // 2
+            self.move(x, y)
 
 
 class ProjectLocationDialog(QDialog):
