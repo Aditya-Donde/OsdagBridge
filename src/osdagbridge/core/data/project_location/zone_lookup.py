@@ -78,6 +78,21 @@ def _point_in_polygon_lookup(lat: float, lon: float, zones) -> Optional[Dict]:
         for geom, props in zones:
             if geom.contains(point):
                 return props
+        
+        # Check for nearest polygon within threshold (e.g. 0.5 deg ~= 55km)
+        # This handles points slightly outside boundaries (coastlines, borders)
+        min_dist = float('inf')
+        nearest_props = None
+        
+        for geom, props in zones:
+            dist = geom.distance(point)
+            if dist < min_dist:
+                min_dist = dist
+                nearest_props = props
+                
+        if nearest_props and min_dist < 0.5:
+             return nearest_props
+
         return None
     except ImportError:
         return None
