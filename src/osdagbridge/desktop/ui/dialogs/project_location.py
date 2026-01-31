@@ -107,8 +107,6 @@ def apply_field_style(widget):
         """)
 
 
-
-
 class CustomWeatherDataDialog(QDialog):
     """
     Dialog to manually input weather/seismic data.
@@ -116,7 +114,7 @@ class CustomWeatherDataDialog(QDialog):
     def __init__(self, parent=None, initial_data=None):
         super().__init__(parent)
         self.setWindowTitle("Custom Weather Data")
-        self.setFixedSize(400, 420)
+        self.setFixedSize(400, 380)
         self.data = initial_data or {}
         
         # Apply Osdag Theme
@@ -165,10 +163,6 @@ class CustomWeatherDataDialog(QDialog):
         layout.setSpacing(16)
         layout.setContentsMargins(25, 25, 25, 25)
         
-        title = QLabel("Enter Custom Values")
-        title.setStyleSheet("font-size: 16px; font-weight: 700; color: #90AF13; margin-bottom: 5px;")
-        layout.addWidget(title)
-
         # Basic Wind Speed
         wind_layout = QVBoxLayout()
         wind_layout.setSpacing(6)
@@ -199,24 +193,54 @@ class CustomWeatherDataDialog(QDialog):
                 background-color: white;
                 color: black;
             }
-            QComboBox::drop-down{ border: 0px; }
+            QComboBox::drop-down{ 
+                subcontrol-origin: padding;
+                subcontrol-position: top right;
+                border-left: 0px;
+            }
             QComboBox::down-arrow{ 
-                image: url(:/vectors/arrow_down_light.svg); width: 12px; height: 12px; margin-right: 8px; 
+                image: url(:/vectors/arrow_down_light.svg);
+                width: 12px;
+                height: 12px;
+                margin-right: 8px;
+            }
+            QComboBox::down-arrow:on {
+                image: url(:/vectors/arrow_up_light.svg);
+                width: 12px;
+                height: 12px;
+                margin-right: 8px;
+            }
+            QComboBox QAbstractItemView{
+                background-color: white;
+                border: 1px solid #dcdcdc;
+                outline: none;
+            }
+            QComboBox QAbstractItemView::item{
+                color: black;
+                background-color: white;
+                border: none;
+                border: 1px solid white;
+                border-radius: 0;
+                padding: 2px;
+            }
+            QComboBox QAbstractItemView::item:hover{
+                border: 1px solid #90AF13;
+                background-color: #90AF13;
+                color: black;
+            }
+            QComboBox QAbstractItemView::item:selected{
+                background-color: #90AF13;
+                color: black;
+                border: 1px solid #90AF13;
+            }
+            QComboBox QAbstractItemView::item:selected:hover{
+                background-color: #90AF13;
+                color: black;
+                border: 1px solid #94b816;
             }
         """)
         zone_layout.addWidget(self.zone_combo)
         layout.addLayout(zone_layout)
-
-        # Zone Factor (Z)
-        z_layout = QVBoxLayout()
-        z_layout.setSpacing(6)
-        z_layout.addWidget(QLabel("Zone Factor (Z)"))
-        self.z_input = QLineEdit()
-        self.z_input.setPlaceholderText("e.g. 0.36")
-        if self.data.get("z_value"):
-             self.z_input.setText(str(self.data.get("z_value")))
-        z_layout.addWidget(self.z_input)
-        layout.addLayout(z_layout)
 
         # Shade Air Temperature
         temp_lbl = QLabel("Shade Air Temperature (°C)")
@@ -267,10 +291,20 @@ class CustomWeatherDataDialog(QDialog):
         layout.addLayout(btn_layout)
 
     def get_data(self):
+        # Map zone to z_value automatically
+        zone_to_z = {
+            "II": "0.10",
+            "III": "0.16",
+            "IV": "0.24",
+            "V": "0.36"
+        }
+        selected_zone = self.zone_combo.currentText() if self.zone_combo.currentText() != "Select Zone" else ""
+        z_value = zone_to_z.get(selected_zone, "")
+        
         return {
             "wind_speed": self.wind_input.text(),
-            "zone": self.zone_combo.currentText() if self.zone_combo.currentText() != "Select Zone" else "",
-            "z_value": self.z_input.text(),
+            "zone": selected_zone,
+            "z_value": z_value,
             "max_temp": self.max_temp_input.text(),
             "min_temp": self.min_temp_input.text()
         }
@@ -356,10 +390,6 @@ class ProjectLocationDialog(QDialog):
         main_layout = QVBoxLayout(self.content_widget)
         main_layout.setContentsMargins(18, 18, 18, 14)
         main_layout.setSpacing(12)
-
-        header = QLabel("Project Location")
-        header.setObjectName("headline")
-        main_layout.addWidget(header)
 
         self._add_method_toggle(main_layout)
         self._build_body(main_layout)
@@ -869,6 +899,23 @@ class ProjectLocationDialog(QDialog):
             return # Should not happen if logic is correct
             
         weather = get_weather(state, district_name)
+        
+        # If DB is missing zone/wind data, use lat/long to query shapefiles
+        if weather and (not weather.get("zone") or not weather.get("wind_speed")):
+            lat = weather.get("latitude")
+            lon = weather.get("longitude")
+            if lat is not None and lon is not None:
+                # Use coordinates to fetch from shapefiles
+                zone_data = get_zones_for_coordinates(float(lat), float(lon))
+                
+                # Fill in missing values
+                if not weather.get("zone") and zone_data.get("seismic_zone"):
+                    weather["zone"] = zone_data.get("seismic_zone")
+                    if zone_data.get("zone_factor"):
+                        weather["z_value"] = zone_data.get("zone_factor")
+                
+                if not weather.get("wind_speed") and zone_data.get("wind_Vb"):
+                     weather["wind_speed"] = zone_data.get("wind_Vb")
         # Clear custom data if user selects a new district, implying they want database values
         global LAST_CUSTOM_WEATHER_DATA, LAST_WEATHER_DATA, LAST_LOCATION_METHOD, LAST_LOCATION_DATA
         self.custom_weather_data = None 

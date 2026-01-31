@@ -75,6 +75,8 @@ def get_weather(db: Database, state: str, station: str) -> Dict[str, Optional[fl
         "z_value": data.get("z_value"),
         "max_temp": data.get("max_temp"),
         "min_temp": data.get("min_temp"),
+        "latitude": data.get("latitude"),
+        "longitude": data.get("longitude"),
     }
 
 

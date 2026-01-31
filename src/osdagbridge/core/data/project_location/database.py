@@ -118,7 +118,8 @@ class Database:
             SELECT s.state, s.station,
                    t.max_temp, t.min_temp,
                    z.zone, z.z_value,
-                   w.wind_speed
+                   w.wind_speed,
+                   s.latitude, s.longitude
             FROM stations s
             LEFT JOIN temperature_data t ON s.state = t.state AND s.station = t.station
             LEFT JOIN zone_data z        ON s.state = z.state AND s.station = z.station
@@ -140,6 +141,8 @@ class Database:
             'zone': data[4],
             'z_value': data[5],
             'wind_speed': data[6],
+            'latitude': data[7],
+            'longitude': data[8],
         }
 
     def get_temperature_by_state_station(self, state: str, station: str) -> Optional[Tuple[float, float]]:
