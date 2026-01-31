@@ -53,7 +53,6 @@ class PermanentLoadTab(QWidget):
         left_layout.addStretch()
         left_card_layout.addWidget(content_wrapper)
 
-        # Right description card from schema
         right_card = owner._create_card()
         right_card.setStyleSheet(
             "QFrame { border: 1px solid #9c9c9c; border-radius: 10px; background-color: #d4d4d4; }"
@@ -64,7 +63,6 @@ class PermanentLoadTab(QWidget):
         right_layout.setContentsMargins(16, 16, 16, 16)
         right_layout.setSpacing(10)
 
-        # Get description from schema
         description = schema.get("description", {})
         
         desc_title = QLabel(description.get("title", "Description Box"))
@@ -98,26 +96,22 @@ class PermanentLoadTab(QWidget):
         section_box_layout.setContentsMargins(12, 12, 12, 12)
         section_box_layout.setSpacing(14)
 
-        # Section title
         if "title" in section:
             title_label = QLabel(section["title"])
             title_label.setStyleSheet("font-size: 11px; font-weight: 700; color: #3a3a3a; background: transparent; border: none;")
             section_box_layout.addWidget(title_label)
 
-        # Fields
         label_style = "font-size: 11px; font-weight: 600; color: #3a3a3a; background: transparent; border: none;"
         
         for field_def in section.get("fields", []):
             row = QHBoxLayout()
             row.setSpacing(10)
 
-            # Label
             label = QLabel(field_def["label"])
             label.setStyleSheet(label_style)
             label.setMinimumWidth(label_width)
             row.addWidget(label)
 
-            # Widget
             widget = self._create_field_widget(field_def)
             widget.setFixedSize(FIELD_WIDTH, FIELD_HEIGHT)
             row.addWidget(widget)
@@ -135,25 +129,21 @@ class PermanentLoadTab(QWidget):
         if field_type == "combo":
             widget = self.owner._create_yes_no_combo() if field_def.get("choices") == ["Yes", "No"] else QComboBox()
             
-            # For non yes/no combos, add items
             if field_def.get("choices") != ["Yes", "No"]:
                 choices = field_def.get("choices", [])
                 widget.addItems(choices)
             
-            # Set default
             default = field_def.get("default")
             if default:
                 widget.setCurrentText(default)
                 
         elif field_type == "line":
             widget = self.owner._create_line_edit()
-            
-            # Set default
+        
             default = field_def.get("default")
             if default:
                 widget.setText(default)
             
-            # Set validator
             validator_def = field_def.get("validator")
             if validator_def and validator_def.get("type") == "double_range":
                 validator = QDoubleValidator(
@@ -168,7 +158,6 @@ class PermanentLoadTab(QWidget):
         else:
             widget = self.owner._create_line_edit()
 
-        # Bind widget to instance attribute
         if bind_name:
             setattr(self, bind_name, widget)
 

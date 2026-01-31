@@ -80,7 +80,6 @@ class LiveLoadTab(QWidget):
 
         label_style = "font-size: 11px; font-weight: 600; color: #3a3a3a; background: transparent; border: none;"
 
-        # Process sections from schema
         for section in schema.get("sections", []):
             section_type = section.get("type")
             
@@ -254,7 +253,6 @@ class LiveLoadTab(QWidget):
         left_layout.addStretch()
         left_card_layout.addWidget(content_wrapper)
 
-        # RIGHT CARD - Description
         right_card = owner._create_card()
         right_card.setStyleSheet("QFrame { border: 1px solid #9c9c9c; border-radius: 10px; background-color: #d4d4d4; }")
         right_card.setMinimumWidth(260)
@@ -282,7 +280,6 @@ class LiveLoadTab(QWidget):
         scroll_area.setWidget(scroll_content)
         main_layout.addWidget(scroll_area)
 
-        # Connect signals
         owner.custom_vehicle_add_button.clicked.connect(self.show_custom_vehicle_dialog)
         
         footpath_section = next((s for s in schema.get("sections", []) if s.get("id") == "footpath_pressure"), None)
@@ -356,13 +353,11 @@ class LiveLoadTab(QWidget):
         self.custom_vehicle_table.insertRow(row)
         FIELD_HEIGHT = self.schema.get("field_height", 28)
 
-        # Column 0 → Vehicle Name
         name_item = QTableWidgetItem(name)
         name_item.setTextAlignment(Qt.AlignVCenter | Qt.AlignLeft)
         name_item.setFlags(Qt.ItemIsEnabled)
         self.custom_vehicle_table.setItem(row, 0, name_item)
 
-        # Column 1 → Checkbox
         checkbox = QCheckBox()
         checkbox.setChecked(True)
         checkbox_container = QWidget()
@@ -373,7 +368,6 @@ class LiveLoadTab(QWidget):
         checkbox_layout.addStretch()
         self.custom_vehicle_table.setCellWidget(row, 1, checkbox_container)
 
-        # Column 2 → Edit Button
         edit_btn = QPushButton("Edit")
         edit_btn.setFixedSize(48, FIELD_HEIGHT)
         edit_btn.setStyleSheet("QPushButton { background-color: white; border: 1px solid #3a3a3a; border-radius: 3px; font-size: 10px; font-weight: 600; color: #3a3a3a; padding: 0px; } QPushButton:hover { background-color: #f8f8f8; }")
@@ -386,7 +380,6 @@ class LiveLoadTab(QWidget):
         edit_layout.addStretch()
         self.custom_vehicle_table.setCellWidget(row, 2, edit_container)
 
-        # Column 3 → Delete Button
         delete_btn = QPushButton("Delete")
         delete_btn.setFixedSize(60, FIELD_HEIGHT)
         delete_btn.setStyleSheet("QPushButton { background-color: white; border: 1px solid #3a3a3a; border-radius: 3px; font-size: 10px; font-weight: 600; color: #3a3a3a; padding: 0px; } QPushButton:hover { background-color: #f8f8f8; }")

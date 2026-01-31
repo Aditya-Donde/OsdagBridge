@@ -50,7 +50,6 @@ class TemperatureLoadTab(QWidget):
         }
         """
 
-        # Build sections from schema
         for section in schema.get("sections", []):
             section_box = QFrame()
             section_box.setStyleSheet(
@@ -60,12 +59,10 @@ class TemperatureLoadTab(QWidget):
             section_layout.setContentsMargins(12, 12, 12, 12)
             section_layout.setSpacing(10)
 
-            # Section title
             section_title = QLabel(section.get("title", ""))
             section_title.setStyleSheet(heading_style)
             section_layout.addWidget(section_title)
 
-            # Grid for fields
             grid = QGridLayout()
             grid.setContentsMargins(0, 4, 0, 0)
             grid.setHorizontalSpacing(12)
@@ -74,25 +71,20 @@ class TemperatureLoadTab(QWidget):
 
             row = 0
             for field in section.get("fields", []):
-                # Label
                 lbl = QLabel(field.get("label", ""))
                 lbl.setStyleSheet(label_style)
                 grid.addWidget(lbl, row, 0, Qt.AlignLeft | Qt.AlignVCenter)
 
-                # Input field
                 input_widget = QLineEdit()
                 input_widget.setFixedWidth(field_width)
                 apply_field_style(input_widget)
 
-                # Set placeholder
                 if "placeholder" in field:
                     input_widget.setPlaceholderText(field["placeholder"])
 
-                # Set default value
                 if "default" in field:
                     input_widget.setText(field["default"])
 
-                # Apply validator
                 if "validator" in field:
                     validator_config = field["validator"]
                     if validator_config["type"] == "double_range":
@@ -112,12 +104,10 @@ class TemperatureLoadTab(QWidget):
                         )
                         input_widget.setValidator(validator)
 
-                # Apply read-only style if needed
                 if field.get("read_only", False):
                     input_widget.setReadOnly(True)
                     input_widget.setStyleSheet(readonly_input_style)
 
-                # Bind to owner
                 bind_name = field.get("bind")
                 if bind_name:
                     setattr(owner, bind_name, input_widget)
@@ -130,7 +120,6 @@ class TemperatureLoadTab(QWidget):
 
         left_layout.addStretch()
 
-        # Right card (Description Box)
         right_card = owner._create_card()
         right_card.setStyleSheet(
             "QFrame { border: 1px solid #9c9c9c; border-radius: 10px; background-color: #d4d4d4; }"

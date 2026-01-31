@@ -25,27 +25,23 @@ class WindLoadTab(QWidget):
     def _build_ui(self):
         owner = self.owner
         schema = self.schema
-        
-        # Extract schema constants
+      
         LABEL_MIN_WIDTH = schema.get("label_width", 260)
         FIELD_WIDTH = schema.get("field_width", 140)
         FIELD_HEIGHT = schema.get("field_height", 28)
-        COMBO_WIDTH = FIELD_WIDTH  # Same as field width for consistency
+        COMBO_WIDTH = FIELD_WIDTH  
 
         self.setStyleSheet("background-color: #f5f5f5;")
-        
-        # Main layout with scroll area
+  
         main_layout = QVBoxLayout(self)
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(0)
 
-        # Create scroll area
         scroll_area = QScrollArea()
         scroll_area.setWidgetResizable(True)
         scroll_area.setFrameShape(QFrame.NoFrame)
         scroll_area.setStyleSheet("QScrollArea { background-color: #f5f5f5; border: none; }")
 
-        # Scrollable content widget
         scroll_content = QWidget()
         scroll_content.setStyleSheet("background-color: #f5f5f5;")
         page_layout = QVBoxLayout(scroll_content)
@@ -56,7 +52,6 @@ class WindLoadTab(QWidget):
         content_row.setContentsMargins(0, 0, 0, 0)
         content_row.setSpacing(16)
 
-        # ============ LEFT CARD ============
         left_card = owner._create_card()
         left_card.setStyleSheet("QFrame { border: 1px solid #b2b2b2; border-radius: 10px; background-color: #ffffff; }")
         left_card_layout = QVBoxLayout(left_card)
@@ -71,12 +66,10 @@ class WindLoadTab(QWidget):
 
         label_style = "font-size: 11px; font-weight: 600; color: #3a3a3a; background: transparent; border: none;"
 
-        # Process sections from schema
         for section in schema.get("sections", []):
             section_type = section.get("type")
             section_id = section.get("id")
-            
-            # ============ WIND INPUTS SECTION ============
+         
             if section_type == "input_group" and section_id == "wind_inputs_section":
                 wind_inputs_box = QFrame()
                 wind_inputs_box.setStyleSheet("""
@@ -91,12 +84,10 @@ class WindLoadTab(QWidget):
                 wind_inputs_layout.setContentsMargins(12, 12, 12, 12)
                 wind_inputs_layout.setSpacing(14)
 
-                # Section title
                 wind_title = QLabel(section.get("title", ""))
                 wind_title.setStyleSheet("font-size: 12px; font-weight: 700; color: #3a3a3a; background: transparent; border: none;")
                 wind_inputs_layout.addWidget(wind_title)
 
-                # Process fields from schema
                 for field in section.get("fields", []):
                     field_type = field.get("type")
                     
@@ -107,8 +98,7 @@ class WindLoadTab(QWidget):
                     lbl.setStyleSheet(label_style)
                     lbl.setMinimumWidth(LABEL_MIN_WIDTH)
                     row_layout.addWidget(lbl)
-                    
-                    # Create appropriate widget based on field type
+              
                     if field_type == "line":
                         widget = QLineEdit()
                         if field.get("default"):
@@ -139,7 +129,6 @@ class WindLoadTab(QWidget):
                         row_layout.addWidget(widget)
                     
                     elif field_type == "mode_line":
-                        # Mode combo
                         mode_combo = QComboBox()
                         mode_combo.addItems(field.get("mode_choices", []))
                         if field.get("default_mode"):
@@ -152,8 +141,7 @@ class WindLoadTab(QWidget):
                             setattr(owner, mode_bind, mode_combo)
                         
                         row_layout.addWidget(mode_combo)
-                        
-                        # Value input
+            
                         value_input = QLineEdit()
                         if field.get("default_value"):
                             value_input.setText(field.get("default_value"))
@@ -173,8 +161,7 @@ class WindLoadTab(QWidget):
                     wind_inputs_layout.addLayout(row_layout)
 
                 left_layout.addWidget(wind_inputs_box)
-            
-            # ============ COMPUTED VALUES SECTION ============
+
             elif section_type == "computed_group" and section_id == "computed_values_section":
                 computed_box = QFrame()
                 computed_box.setStyleSheet("""
@@ -189,12 +176,10 @@ class WindLoadTab(QWidget):
                 computed_box_layout.setContentsMargins(12, 12, 12, 12)
                 computed_box_layout.setSpacing(14)
 
-                # Section title
                 computed_title = QLabel(section.get("title", ""))
                 computed_title.setStyleSheet("font-size: 11px; font-weight: 700; color: #3a3a3a; background: transparent; border: none;")
                 computed_box_layout.addWidget(computed_title)
 
-                # Create computed fields dictionary
                 owner.wind_computed_fields = {}
                 
                 for field in section.get("fields", []):
@@ -234,7 +219,6 @@ class WindLoadTab(QWidget):
         left_layout.addStretch()
         left_card_layout.addWidget(content_wrapper)
 
-        # ============ RIGHT CARD - Description Box ============
         right_card = owner._create_card()
         right_card.setStyleSheet("QFrame { border: 1px solid #9c9c9c; border-radius: 10px; background-color: #d4d4d4; }")
         right_card.setMinimumWidth(260)
@@ -243,7 +227,6 @@ class WindLoadTab(QWidget):
         right_layout.setContentsMargins(16, 16, 16, 16)
         right_layout.setSpacing(10)
 
-        # Description from schema
         description = schema.get("description", {})
         desc_title = QLabel(description.get("title", ""))
         desc_title.setAlignment(Qt.AlignCenter)
@@ -255,17 +238,12 @@ class WindLoadTab(QWidget):
         desc_text.setStyleSheet("font-size: 11px; color: #4b4b4b; background: transparent; border: none;")
         right_layout.addWidget(desc_text)
         right_layout.addStretch()
-
         content_row.addWidget(left_card, 3)
         content_row.addWidget(right_card, 2)
-
         page_layout.addLayout(content_row)
-
-        # Set scroll content and add to main layout
         scroll_area.setWidget(scroll_content)
         main_layout.addWidget(scroll_area)
 
-        # Connect signals from schema
         wind_inputs = next(
             (s for s in schema.get("sections", []) if s.get("id") == "wind_inputs_section"),
             None
@@ -280,13 +258,10 @@ class WindLoadTab(QWidget):
                     if mode_bind and value_bind and hasattr(owner, mode_bind) and hasattr(owner, value_bind):
                         mode_combo = getattr(owner, mode_bind)
                         value_input = getattr(owner, value_bind)
-                        
-                        # Connect signal to enable/disable custom input
+                      
                         mode_combo.currentTextChanged.connect(
                             lambda text, v=value_input: v.setEnabled(text == "Custom")
                         )
-        
-        # Apply defaults
         self.reset_defaults()
 
     def _block(self, widgets, block=True):
@@ -304,19 +279,16 @@ class WindLoadTab(QWidget):
         
         if not wind_inputs:
             return
-        
-        # Collect all mode_line combos for signal blocking
+       
         mode_combos = []
         for field in wind_inputs.get("fields", []):
             if field.get("type") == "mode_line":
                 mode_bind = field.get("bind_mode")
                 if mode_bind and hasattr(self.owner, mode_bind):
                     mode_combos.append(getattr(self.owner, mode_bind))
-        
-        # Block signals to avoid auto-enabling during reset
+      
         self._block(mode_combos, True)
         
-        # Apply defaults from schema
         for field in wind_inputs.get("fields", []):
             field_type = field.get("type")
             
@@ -348,14 +320,11 @@ class WindLoadTab(QWidget):
                     value_input = getattr(self.owner, value_bind)
                     default_value = field.get("default_value", "")
                     
-                    # For fields with default values, set them but keep disabled if mode is Automatic
                     if default_value:
                         value_input.setText(default_value)
                     else:
                         value_input.clear()
-                    
-                    # Disable if mode is Automatic
+                  
                     value_input.setEnabled(False)
-        
-        # Unblock signals
+                    
         self._block(mode_combos, False)

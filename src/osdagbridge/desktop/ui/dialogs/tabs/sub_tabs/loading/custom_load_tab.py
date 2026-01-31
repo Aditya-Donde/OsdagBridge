@@ -25,7 +25,6 @@ from osdagbridge.core.bridge_types.plate_girder.ui_fields_additional_input impor
 
 
 class CustomLoadTab(QWidget):
-    """Custom load input editor."""
 
     def __init__(self, owner):
         super().__init__(owner)
@@ -41,18 +40,15 @@ class CustomLoadTab(QWidget):
 
         self.setStyleSheet("background-color: #f0f0f0;")
         
-        # Main layout with scroll area
         main_layout = QVBoxLayout(self)
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(0)
         
-        # Create scroll area
         scroll_area = QScrollArea()
         scroll_area.setWidgetResizable(True)
         scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         scroll_area.setStyleSheet("QScrollArea { border: none; background-color: #f0f0f0; }")
         
-        # Create scrollable content widget
         scroll_content = QWidget()
         scroll_content.setStyleSheet("background-color: #f0f0f0;")
         
@@ -102,12 +98,10 @@ class CustomLoadTab(QWidget):
         title.setStyleSheet(heading_style)
         input_layout.addWidget(title)
 
-        # Create a vertical layout for all fields
         all_fields_layout = QVBoxLayout()
         all_fields_layout.setContentsMargins(0, 0, 0, 0)
         all_fields_layout.setSpacing(10)
 
-        # --- Load Case ---
         load_case_field = schema["fields"]["load_case"]
         load_case_row = QHBoxLayout()
         load_case_row.setSpacing(8)
@@ -123,30 +117,18 @@ class CustomLoadTab(QWidget):
         
         load_case_row.addWidget(lbl)
         load_case_row.addWidget(owner.custom_load_case_combo)
-        load_case_row.addStretch()
-        all_fields_layout.addLayout(load_case_row)
-
-        # --- Custom Load Case Name ---
-        custom_name_field = schema["fields"]["custom_load_case_name"]
-        custom_name_row = QHBoxLayout()
-        custom_name_row.setSpacing(8)
         
-        spacer_label = QLabel(" ")
-        spacer_label.setFixedWidth(label_width)
-        spacer_label.setStyleSheet("background: transparent; color: transparent; border: none;")
-
+        custom_name_field = schema["fields"]["custom_load_case_name"]
         owner.custom_load_case_name_input = QLineEdit()
         owner.custom_load_case_name_input.setPlaceholderText(custom_name_field["placeholder"])
         owner.custom_load_case_name_input.setFixedWidth(field_width)
         owner.custom_load_case_name_input.setEnabled(custom_name_field["enabled"])
         apply_field_style(owner.custom_load_case_name_input)
         
-        custom_name_row.addWidget(spacer_label)
-        custom_name_row.addWidget(owner.custom_load_case_name_input)
-        custom_name_row.addStretch()
-        all_fields_layout.addLayout(custom_name_row)
+        load_case_row.addWidget(owner.custom_load_case_name_input)
+        load_case_row.addStretch()
+        all_fields_layout.addLayout(load_case_row)
 
-        # --- Load Type ---
         load_type_field = schema["fields"]["load_type"]
         load_type_row = QHBoxLayout()
         load_type_row.setSpacing(8)
@@ -167,7 +149,6 @@ class CustomLoadTab(QWidget):
 
         input_layout.addLayout(all_fields_layout)
 
-        # Stacked widget for Point/Line/Area inputs
         self.custom_load_stack = QStackedWidget()
         self.custom_load_stack.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         self.custom_load_stack.setStyleSheet(
@@ -175,14 +156,12 @@ class CustomLoadTab(QWidget):
             "QWidget#customPointWidget, QWidget#customLineWidget { background: transparent; }"
         )
 
-        # Point Widget
         point_widget = QWidget()
         point_widget.setObjectName("customPointWidget")
         point_layout = QVBoxLayout(point_widget)
         point_layout.setContentsMargins(0, 8, 0, 0)
         point_layout.setSpacing(10)
 
-        # Point - Distance from Left Edge
         point_left_field = schema["fields"]["point_left"]
         point_left_row = QHBoxLayout()
         point_left_row.setSpacing(8)
@@ -201,7 +180,6 @@ class CustomLoadTab(QWidget):
         point_left_row.addStretch()
         point_layout.addLayout(point_left_row)
 
-        # Point - Distance from Center Line
         point_bearing_field = schema["fields"]["point_bearing"]
         point_bearing_row = QHBoxLayout()
         point_bearing_row.setSpacing(8)
@@ -222,14 +200,12 @@ class CustomLoadTab(QWidget):
 
         self.custom_load_stack.addWidget(point_widget)
 
-        # Line Widget
         line_widget = QWidget()
         line_widget.setObjectName("customLineWidget")
         line_layout = QVBoxLayout(line_widget)
         line_layout.setContentsMargins(0, 8, 0, 0)
         line_layout.setSpacing(10)
 
-        # Distance from Left Edge of Bridge
         line_left_start_field = schema["fields"]["line_left_start"]
         line_left_end_field = schema["fields"]["line_left_end"]
         
@@ -240,7 +216,6 @@ class CustomLoadTab(QWidget):
         left_label.setStyleSheet(label_style)
         left_label.setFixedWidth(label_width)
         
-        # Start field
         left_start_container = QVBoxLayout()
         left_start_container.setSpacing(4)
         left_start_lbl = QLabel(line_left_start_field["sub_label"])
@@ -253,7 +228,6 @@ class CustomLoadTab(QWidget):
         left_start_container.addWidget(left_start_lbl)
         left_start_container.addWidget(owner.custom_line_left_start)
         
-        # End field
         left_end_container = QVBoxLayout()
         left_end_container.setSpacing(4)
         left_end_lbl = QLabel(line_left_end_field["sub_label"])
@@ -272,7 +246,6 @@ class CustomLoadTab(QWidget):
         left_edge_row.addStretch()
         line_layout.addLayout(left_edge_row)
 
-        # Distance from Center Line of Bearing
         line_bearing_start_field = schema["fields"]["line_bearing_start"]
         line_bearing_end_field = schema["fields"]["line_bearing_end"]
         
@@ -283,7 +256,6 @@ class CustomLoadTab(QWidget):
         bearing_label.setStyleSheet(label_style)
         bearing_label.setFixedWidth(label_width)
         
-        # Start field
         bearing_start_container = QVBoxLayout()
         bearing_start_container.setSpacing(4)
         bearing_start_lbl = QLabel(line_bearing_start_field["sub_label"])
@@ -296,7 +268,6 @@ class CustomLoadTab(QWidget):
         bearing_start_container.addWidget(bearing_start_lbl)
         bearing_start_container.addWidget(owner.custom_line_bearing_start)
         
-        # End field
         bearing_end_container = QVBoxLayout()
         bearing_end_container.setSpacing(4)
         bearing_end_lbl = QLabel(line_bearing_end_field["sub_label"])
@@ -320,20 +291,34 @@ class CustomLoadTab(QWidget):
         input_layout.addWidget(self.custom_load_stack)
 
         save_btn = QPushButton("Save")
-        save_btn.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        save_btn.setMinimumWidth(120) 
+        save_btn.setFixedHeight(28)
         save_btn.setStyleSheet(
-            "QPushButton { background: #c8c8c8; border: 1px solid #a0a0a0; border-radius: 3px; padding: 5px 16px; font-weight: 600; font-size: 11px; color: #2a2a2a; }"
-            "QPushButton:hover { background: #d8d8d8; }"
-            "QPushButton:pressed { background: #b8b8b8; }"
+            "QPushButton { "
+            "   background: #ffffff; "
+            "   border: 1px solid #a0a0a0; "
+            "   border-radius: 3px; "
+            "   padding: 3px 8px; "
+            "   font-size: 11px; "
+            "   color: #2a2a2a; "
+            "} "
+            "QPushButton:hover { background: #f0f0f0; } "
+            "QPushButton:pressed { background: #e0e0e0; }"
         )
+
+
         save_row = QHBoxLayout()
-        save_row.setContentsMargins(0, 8, 0, 0)
-        save_row.addWidget(save_btn)
+        save_row.setContentsMargins(0, 12, 0, 0)
+
+        save_row.addStretch()         
+        save_row.addWidget(save_btn) 
+        save_row.addStretch()          
+
         input_layout.addLayout(save_row)
+
 
         left_column.addWidget(input_card)
 
-        # Second box for saved loads - NOW WITH TABLE
         list_card = owner._create_card()
         list_card.setStyleSheet(
             "QFrame { border: 1px solid #a0a0a0; border-radius: 4px; background-color: #ffffff; }"
@@ -362,7 +347,6 @@ class CustomLoadTab(QWidget):
         controls_row.addStretch()
         list_layout.addLayout(controls_row)
 
-        # Create table widget
         self.custom_load_table = QTableWidget(0, 4)
         self.custom_load_table.setHorizontalHeaderLabels([
             "Load Case",
@@ -371,7 +355,6 @@ class CustomLoadTab(QWidget):
             "Distance from Bearing (m)"
         ])
         
-        # Configure table appearance
         self.custom_load_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
         self.custom_load_table.verticalHeader().setVisible(False)
         self.custom_load_table.setSelectionBehavior(QTableWidget.SelectRows)
@@ -427,7 +410,6 @@ class CustomLoadTab(QWidget):
         content_row.addWidget(right_card, 2)
         page_layout.addLayout(content_row)
 
-        # Set scroll content and add to main layout
         scroll_area.setWidget(scroll_content)
         main_layout.addWidget(scroll_area)
 
@@ -444,7 +426,6 @@ class CustomLoadTab(QWidget):
         self._refresh_custom_load_table()
 
     def _apply_validator(self, widget, validator_config):
-        """Apply validator to a QLineEdit widget based on schema config."""
         if not validator_config:
             return
         
@@ -471,13 +452,11 @@ class CustomLoadTab(QWidget):
             self.owner.custom_load_case_name_input.clear()
 
     def _refresh_custom_load_table(self):
-        """Refresh the table to display all saved custom loads."""
         self.custom_load_table.setRowCount(0)
         
         for row_idx, load_data in enumerate(self.custom_load_items):
             self.custom_load_table.insertRow(row_idx)
             
-            # Column 0: Load Case
             load_case = load_data.get("load_case", "")
             if load_case == "Custom":
                 load_case_display = load_data.get("custom_load_case_name", "custom")
@@ -488,13 +467,11 @@ class CustomLoadTab(QWidget):
             item.setFlags(item.flags() & ~Qt.ItemIsEditable)
             self.custom_load_table.setItem(row_idx, 0, item)
             
-            # Column 1: Load Type
             load_type = load_data.get("load_type", "")
             item = QTableWidgetItem(load_type)
             item.setFlags(item.flags() & ~Qt.ItemIsEditable)
             self.custom_load_table.setItem(row_idx, 1, item)
             
-            # Column 2: Distance from Left Edge
             if load_type == "Point":
                 dist_left = load_data.get("point_left", "")
             else:
@@ -506,7 +483,6 @@ class CustomLoadTab(QWidget):
             item.setFlags(item.flags() & ~Qt.ItemIsEditable)
             self.custom_load_table.setItem(row_idx, 2, item)
             
-            # Column 3: Distance from Center Line of Bearing
             if load_type == "Point":
                 dist_bearing = load_data.get("point_bearing", "")
             else:
@@ -603,7 +579,6 @@ class CustomLoadTab(QWidget):
             QMessageBox.information(self, "Delete", "Please select at least one custom load to delete.")
             return
         
-        # Sort in reverse order to delete from end to avoid index shifting
         rows_to_delete = sorted([row.row() for row in selected_rows], reverse=True)
         
         for row_idx in rows_to_delete:
@@ -620,7 +595,6 @@ class CustomLoadTab(QWidget):
         msg.exec()
 
     def _clear_inputs(self):
-        """Clear all input fields"""
         owner = self.owner
         owner.custom_load_case_combo.setCurrentIndex(0)
         owner.custom_load_case_name_input.clear()
@@ -633,7 +607,6 @@ class CustomLoadTab(QWidget):
         owner.custom_line_bearing_end.clear()
 
     def reset_defaults(self):
-        """Reset Custom Load inputs to default values"""
         self._clear_inputs()
         self.owner.custom_load_case_name_input.setEnabled(False)
         self.custom_load_items.clear()

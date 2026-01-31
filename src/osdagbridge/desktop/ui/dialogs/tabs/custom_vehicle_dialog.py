@@ -18,17 +18,89 @@ from osdagbridge.desktop.ui.utils.custom_titlebar import CustomTitleBar
 from osdagbridge.desktop.ui.dialogs.tabs.common import apply_field_style
 
 class CustomVehicleDialog(QDialog):
-    """Dialog for adding or editing custom live load vehicles"""
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("Live Load Custom Vehicle Add/Edit")
+        
+        self.setObjectName("CustomVehicleDialog")
+        self.setWindowFlags(Qt.FramelessWindowHint | Qt.Dialog)
         self.setModal(True)
-        self.setFixedSize(600, 740)
+        self.setFixedSize(600, 760)
+        
+        self.setupWrapper()
+        self.init_ui()
+        
+        self.add_axle_button.clicked.connect(self.on_add_axle)
+        self.modify_axle_button.clicked.connect(self.on_modify_axle)
+        self.delete_axle_button.clicked.connect(self.on_delete_axle)
+        self.save_button.clicked.connect(self.on_save)
 
+    def setupWrapper(self):
+        main_layout = QVBoxLayout(self)
+        main_layout.setContentsMargins(1, 1, 1, 1)
+        main_layout.setSpacing(0)
+        
+        self.title_bar = CustomTitleBar()
+        self.title_bar.setTitle("Live Load Custom Vehicle")
+        main_layout.addWidget(self.title_bar)
+        
+        separator = QFrame()
+        separator.setFixedHeight(1)
+        separator.setStyleSheet("background-color: rgba(144, 175, 19, 85);")
+        main_layout.addWidget(separator)
+        
+        self.content_widget = QWidget(self)
+        main_layout.addWidget(self.content_widget, 1)
+        
         self.setStyleSheet("""
-            QDialog { 
-                background-color: #ffffff; 
+            QDialog#CustomVehicleDialog {
+                background-color: #ffffff;
+                border: 1px solid rgba(144, 175, 19, 140);
+                border-radius: 4px;
+            }
+        """)
+        
+        self.title_bar.setStyleSheet("""
+            QWidget#LoadComboTitleBar {
+                background-color: transparent;
+            }
+            QToolButton#CloseButton {
+                background-color: transparent;
+                border: none;
+                color: #2b2b2b;
+                font-size: 16px;
+            }
+            QToolButton#CloseButton:hover {
+                background-color: #e81123;
+                color: white;
+            }
+            QToolButton#CloseButton:pressed {
+                background-color: #c50d1c;
+            }
+            
+            QToolButton#MinimizeButton,
+            QToolButton#MaxRestoreButton {
+                background-color: transparent;
+                border: none;
+                color: #2b2b2b;
+                font-size: 16px;
+            }
+            QToolButton#MinimizeButton:hover,
+            QToolButton#MaxRestoreButton:hover {
+                background-color: #e8e8e8;
+            }
+        """)
+
+    def init_ui(self):
+        
+        layout = QVBoxLayout(self.content_widget)
+
+        layout.setContentsMargins(16, 16, 16, 16)
+        layout.setSpacing(8)
+        
+        self.content_widget.setStyleSheet("""
+            QWidget {
+                background-color: #ffffff;
             }
 
             QLabel {
@@ -117,21 +189,6 @@ class CustomVehicleDialog(QDialog):
                 height: 16px;
             }
         """)
-
-        self.init_ui()
-        
-        self.add_axle_button.clicked.connect(self.on_add_axle)
-        self.modify_axle_button.clicked.connect(self.on_modify_axle)
-        self.delete_axle_button.clicked.connect(self.on_delete_axle)
-        self.save_button.clicked.connect(self.on_save)
-
-
-    def init_ui(self):
-        layout = QVBoxLayout()
-        self.setLayout(layout)
-
-        layout.setContentsMargins(16, 16, 16, 16)
-        layout.setSpacing(8)
 
         name_row = QHBoxLayout()
         name_row.setSpacing(10)
@@ -321,7 +378,6 @@ class CustomVehicleDialog(QDialog):
         layout.addSpacing(4)
 
     def on_checkbox_clicked(self, row):
-        """Handle checkbox click - uncheck others and load data"""
         for r in range(self.axle_table.rowCount()):
             if r != row:
                 checkbox_widget = self.axle_table.cellWidget(r, 0)
@@ -339,7 +395,6 @@ class CustomVehicleDialog(QDialog):
             self.D_input.setText(spacing_item.text())
 
     def on_table_cell_clicked(self, row, column):
-        """Load the selected row's data into P# and D# input fields"""
         for r in range(self.axle_table.rowCount()):
             checkbox_widget = self.axle_table.cellWidget(r, 0)
             if checkbox_widget:
@@ -362,7 +417,6 @@ class CustomVehicleDialog(QDialog):
             self.D_input.setText(spacing_item.text())
 
     def on_add_axle(self):
-        """Add a new axle to the table"""
         load = self.P_input.text().strip()
         spacing = self.D_input.text().strip()
 
@@ -400,7 +454,6 @@ class CustomVehicleDialog(QDialog):
         self.D_input.clear()
 
     def on_modify_axle(self):
-        """Modify the selected axle in the table"""
         selected_row = -1
         for row in range(self.axle_table.rowCount()):
             checkbox_widget = self.axle_table.cellWidget(row, 0)
@@ -433,7 +486,6 @@ class CustomVehicleDialog(QDialog):
         self.D_input.clear()
 
     def on_delete_axle(self):
-        """Delete the selected axle from the table"""
         selected_row = -1
         for row in range(self.axle_table.rowCount()):
             checkbox_widget = self.axle_table.cellWidget(row, 0)
@@ -495,19 +547,15 @@ class CustomVehicleDialog(QDialog):
         return {label: field.text() for label, field in self.custom_fields.items()}
 
     def load_vehicle_data(self, vehicle_data):
-        """Load existing vehicle data into the dialog (EDIT mode)"""
 
-        # Set vehicle name
         self.vehicle_name_input.setText(vehicle_data.get("name", ""))
 
-        # Load axles
         self.axle_table.setRowCount(0)
 
         for axle in vehicle_data.get("axles", []):
             row = self.axle_table.rowCount()
             self.axle_table.insertRow(row)
 
-            # Checkbox
             checkbox_widget = QWidget()
             checkbox_layout = QHBoxLayout(checkbox_widget)
             checkbox_layout.setContentsMargins(0, 0, 0, 0)
@@ -516,21 +564,17 @@ class CustomVehicleDialog(QDialog):
             checkbox_layout.addWidget(checkbox)
             self.axle_table.setCellWidget(row, 0, checkbox_widget)
 
-            # Axle No
             no_item = QTableWidgetItem(axle.get("no", str(row + 1)))
             no_item.setTextAlignment(Qt.AlignCenter)
             self.axle_table.setItem(row, 1, no_item)
 
-            # Load (P)
             load_item = QTableWidgetItem(axle.get("load", ""))
             load_item.setTextAlignment(Qt.AlignCenter)
             self.axle_table.setItem(row, 2, load_item)
 
-            # Spacing (D)
             spacing_item = QTableWidgetItem(axle.get("spacing", ""))
             spacing_item.setTextAlignment(Qt.AlignCenter)
             self.axle_table.setItem(row, 3, spacing_item)
 
-        # Load vehicle parameters
         for label, field in self.custom_fields.items():
             field.setText(vehicle_data.get("parameters", {}).get(label, ""))

@@ -25,26 +25,22 @@ class SeismicLoadTab(QWidget):
     def _build_ui(self):
         owner = self.owner
         schema = self.schema
-        
-        # Extract schema constants
+
         LABEL_MIN_WIDTH = schema.get("label_width", 220)
         FIELD_WIDTH = schema.get("field_width", 180)
         FIELD_HEIGHT = schema.get("field_height", 28)
 
         self.setStyleSheet("background-color: #f5f5f5;")
-        
-        # Main layout with scroll area
+     
         main_layout = QVBoxLayout(self)
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(0)
 
-        # Create scroll area
         scroll_area = QScrollArea()
         scroll_area.setWidgetResizable(True)
         scroll_area.setFrameShape(QFrame.NoFrame)
         scroll_area.setStyleSheet("QScrollArea { background-color: #f5f5f5; border: none; }")
 
-        # Scrollable content widget
         scroll_content = QWidget()
         scroll_content.setStyleSheet("background-color: #f5f5f5;")
         page_layout = QVBoxLayout(scroll_content)
@@ -55,7 +51,6 @@ class SeismicLoadTab(QWidget):
         content_row.setContentsMargins(0, 0, 0, 0)
         content_row.setSpacing(16)
 
-        # ============ LEFT CARD ============
         left_card = owner._create_card()
         left_card.setStyleSheet("QFrame { border: 1px solid #b2b2b2; border-radius: 10px; background-color: #ffffff; }")
         left_card_layout = QVBoxLayout(left_card)
@@ -70,12 +65,10 @@ class SeismicLoadTab(QWidget):
 
         label_style = "font-size: 11px; font-weight: 600; color: #3a3a3a; background: transparent; border: none;"
 
-        # Process sections from schema
         for section in schema.get("sections", []):
             section_type = section.get("type")
             section_id = section.get("id")
-            
-            # ============ SEISMIC INPUTS SECTION ============
+         
             if section_type == "input_group" and section_id == "seismic_inputs_section":
                 seismic_inputs_box = QFrame()
                 seismic_inputs_box.setStyleSheet("""
@@ -90,12 +83,10 @@ class SeismicLoadTab(QWidget):
                 seismic_inputs_box_layout.setContentsMargins(12, 12, 12, 12)
                 seismic_inputs_box_layout.setSpacing(14)
 
-                # Section title
                 seismic_title = QLabel(section.get("title", ""))
                 seismic_title.setStyleSheet("font-size: 12px; font-weight: 700; color: #3a3a3a; background: transparent; border: none;")
                 seismic_inputs_box_layout.addWidget(seismic_title)
 
-                # Process fields from schema
                 for field in section.get("fields", []):
                     field_type = field.get("type")
                     
@@ -106,8 +97,7 @@ class SeismicLoadTab(QWidget):
                     lbl.setStyleSheet(label_style)
                     lbl.setMinimumWidth(LABEL_MIN_WIDTH)
                     row_layout.addWidget(lbl)
-                    
-                    # Create appropriate widget based on field type
+    
                     if field_type == "combo":
                         widget = QComboBox()
                         widget.addItems(field.get("choices", []))
@@ -136,7 +126,6 @@ class SeismicLoadTab(QWidget):
                         row_layout.addWidget(widget)
                     
                     elif field_type == "mode_line":
-                        # Mode combo
                         mode_combo = QComboBox()
                         mode_combo.addItems(field.get("mode_choices", []))
                         if field.get("default_mode"):
@@ -150,7 +139,6 @@ class SeismicLoadTab(QWidget):
                         
                         row_layout.addWidget(mode_combo)
                         
-                        # Value input
                         value_input = QLineEdit()
                         value_input.setPlaceholderText(field.get("placeholder", ""))
                         value_input.setFixedSize(FIELD_WIDTH, FIELD_HEIGHT)
@@ -167,8 +155,7 @@ class SeismicLoadTab(QWidget):
                     seismic_inputs_box_layout.addLayout(row_layout)
 
                 left_layout.addWidget(seismic_inputs_box)
-            
-            # ============ COMPUTED VALUES SECTION ============
+         
             elif section_type == "computed_group" and section_id == "computed_values_section":
                 computed_box = QFrame()
                 computed_box.setStyleSheet("""
@@ -183,12 +170,10 @@ class SeismicLoadTab(QWidget):
                 computed_box_layout.setContentsMargins(12, 12, 12, 12)
                 computed_box_layout.setSpacing(14)
 
-                # Section title
                 computed_title = QLabel(section.get("title", ""))
                 computed_title.setStyleSheet("font-size: 11px; font-weight: 700; color: #3a3a3a; background: transparent; border: none;")
                 computed_box_layout.addWidget(computed_title)
 
-                # Create computed fields dictionary
                 self.seismic_computed_fields = {}
                 
                 for field in section.get("fields", []):
@@ -228,7 +213,6 @@ class SeismicLoadTab(QWidget):
         left_layout.addStretch()
         left_card_layout.addWidget(content_wrapper)
 
-        # ============ RIGHT CARD - Description Box ============
         right_card = owner._create_card()
         right_card.setStyleSheet("QFrame { border: 1px solid #9c9c9c; border-radius: 10px; background-color: #d4d4d4; }")
         right_card.setMinimumWidth(260)
@@ -237,7 +221,6 @@ class SeismicLoadTab(QWidget):
         right_layout.setContentsMargins(16, 16, 16, 16)
         right_layout.setSpacing(10)
 
-        # Description from schema
         description = schema.get("description", {})
         desc_title = QLabel(description.get("title", ""))
         desc_title.setAlignment(Qt.AlignCenter)
@@ -255,11 +238,9 @@ class SeismicLoadTab(QWidget):
 
         page_layout.addLayout(content_row)
 
-        # Set scroll content and add to main layout
         scroll_area.setWidget(scroll_content)
         main_layout.addWidget(scroll_area)
 
-        # Connect signals from schema
         seismic_inputs = next(
             (s for s in schema.get("sections", []) if s.get("id") == "seismic_inputs_section"),
             None
@@ -273,12 +254,10 @@ class SeismicLoadTab(QWidget):
                     if mode_bind and hasattr(self, mode_bind):
                         combo = getattr(self, mode_bind)
                         combo.currentTextChanged.connect(lambda _: self._toggle_seismic_custom_inputs())
-        
-        # Apply defaults and initialize state
+      
         self._apply_seismic_defaults()
         self._toggle_seismic_custom_inputs()
-        
-        # Apply project seismic zone if available
+    
         if hasattr(self.owner, "project_seismic_zone"):
             self.seismic_zone_combo.setCurrentText(self.owner.project_seismic_zone)
 
