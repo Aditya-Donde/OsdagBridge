@@ -106,6 +106,22 @@ class Database:
         )
         return [row[0] for row in self.cursor.fetchall()]
 
+    def get_stations_by_state_with_temperature(self, state: str) -> List[str]:
+        """List stations for a given state that have valid temperature data (non-NULL)."""
+        self.cursor.execute(
+            """
+            SELECT s.station
+            FROM stations s
+            INNER JOIN temperature_data t ON s.state = t.state AND s.station = t.station
+            WHERE s.state = ?
+              AND t.max_temp IS NOT NULL
+              AND t.min_temp IS NOT NULL
+            ORDER BY s.station
+            """,
+            (state,),
+        )
+        return [row[0] for row in self.cursor.fetchall()]
+
     # -------------------- details (LEFT JOIN children) --------------------
 
     def get_weather_data_by_state_station(self, state: str, station: str) -> Optional[Dict]:

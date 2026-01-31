@@ -40,7 +40,8 @@ def get_state_list(db: Database, include_placeholder: bool = True) -> List[str]:
 
 @_with_db
 def get_station_list(db: Database, state: str, include_placeholder: bool = True) -> List[str]:
-    stations = db.get_stations_by_state(state) if state else []
+    # Only include stations that have temperature data
+    stations = db.get_stations_by_state_with_temperature(state) if state else []
     stations = stations or []
     if include_placeholder:
         return ["Select District", *stations] if stations else ["Select District"]
