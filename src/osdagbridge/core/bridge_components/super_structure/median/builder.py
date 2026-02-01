@@ -216,19 +216,70 @@ def create_metallic_barrier_system(length, design_dict, kerb_top_width, kerb_hei
     mu2 = W_BEAM_HEIGHT * 0.75
     amp = W_BEAM_DEPTH * 1.5       # Effective depth of the W-beam wave
     
-    def make_w_beam_wire():
+    from OCC.Core.GeomAPI import GeomAPI_PointsToBSpline
+    from OCC.Core.TColgp import TColgp_Array1OfPnt
+    from OCC.Core.BRepBuilderAPI import BRepBuilderAPI_MakeWire
+    from OCC.Core.BRepBuilderAPI import BRepBuilderAPI_MakeEdge
+
+
+    def make_w_beam_face():
         points = 40
         zs = np.linspace(0, W_BEAM_HEIGHT, points)
-        poly = BRepBuilderAPI_MakePolygon()
-        for z in zs:
-            y_wave = (amp * math.exp(-((z - mu1) ** 2) / (2 * sigma ** 2)) + 
-                      amp * math.exp(-((z - mu2) ** 2) / (2 * sigma ** 2)))
-            poly.Add(gp_Pnt(0.0, y_wave, z))
-        # Close the back face (flat at local y=0) to form a solid cross-section
-        poly.Add(gp_Pnt(0.0, 0.0, W_BEAM_HEIGHT))
-        poly.Add(gp_Pnt(0.0, 0.0, 0.0))
-        poly.Close()
-        return poly.Wire()
+
+        # ---------- OUTER CURVE ----------
+        outer_pts = TColgp_Array1OfPnt(1, points)
+        for i, z in enumerate(zs, start=1):
+            y_wave = (
+                amp * math.exp(-((z - mu1) ** 2) / (2 * sigma ** 2)) +
+                amp * math.exp(-((z - mu2) ** 2) / (2 * sigma ** 2))
+            )
+            outer_pts.SetValue(i, gp_Pnt(0.0, y_wave, z))
+        
+        y_top_outer = y_wave # Last y_wave value
+        y_bottom_outer = (
+            amp * math.exp(-((zs[0] - mu1) ** 2) / (2 * sigma ** 2)) +
+            amp * math.exp(-((zs[0] - mu2) ** 2) / (2 * sigma ** 2))
+        )
+
+        outer_curve = GeomAPI_PointsToBSpline(outer_pts).Curve()
+
+        # ---------- INNER CURVE (OFFSET) ----------
+        inner_pts = TColgp_Array1OfPnt(1, points)
+        for i, z in enumerate(zs, start=1):
+            y_wave_inner = (
+                amp * math.exp(-((z - mu1) ** 2) / (2 * sigma ** 2)) +
+                amp * math.exp(-((z - mu2) ** 2) / (2 * sigma ** 2))
+            ) - W_BEAM_THICKNESS
+            inner_pts.SetValue(i, gp_Pnt(0.0, y_wave_inner, z))
+        
+        y_top_inner = y_wave_inner
+        y_bottom_inner = (
+            amp * math.exp(-((zs[0] - mu1) ** 2) / (2 * sigma ** 2)) +
+            amp * math.exp(-((zs[0] - mu2) ** 2) / (2 * sigma ** 2))
+        ) - W_BEAM_THICKNESS
+
+        inner_curve = GeomAPI_PointsToBSpline(inner_pts).Curve()
+
+        # ---------- COMBINE INTO CLOSED WIRE ----------
+        wire = BRepBuilderAPI_MakeWire()
+        # Outer curve (upwards)
+        wire.Add(BRepBuilderAPI_MakeEdge(outer_curve).Edge())
+        # Top connecting edge
+        wire.Add(BRepBuilderAPI_MakeEdge(
+            gp_Pnt(0.0, y_top_outer, W_BEAM_HEIGHT),
+            gp_Pnt(0.0, y_top_inner, W_BEAM_HEIGHT)
+        ).Edge())
+        # Inner curve (downwards)
+        wire.Add(BRepBuilderAPI_MakeEdge(inner_curve).Edge())
+        # Bottom connecting edge
+        wire.Add(BRepBuilderAPI_MakeEdge(
+            gp_Pnt(0.0, y_bottom_inner, 0.0),
+            gp_Pnt(0.0, y_bottom_outer, 0.0)
+        ).Edge())
+
+        return BRepBuilderAPI_MakeFace(wire.Wire()).Face()
+
+
 
     #  ARRANGEMENT CALCULATIONS
     # Right side template: Post -> Spacer -> W-beam -> 75mm gap -> Kerb edge
@@ -309,11 +360,24 @@ def create_metallic_barrier_system(length, design_dict, kerb_top_width, kerb_hei
             spacer_solid = _translate(spacer_solid, x=x_pos, y=spacer_y_center, z=spacer_z)
             spacers_combined = spacer_solid if spacers_combined is None else BRepAlgoAPI_Fuse(spacers_combined, spacer_solid).Shape()
 
-        # Beam solid
-        wire = make_w_beam_wire()
-        beam_solid = BRepPrimAPI_MakePrism(BRepBuilderAPI_MakeFace(wire).Face(), gp_Vec(length, 0, 0)).Shape()
-        beam_solid = _translate(beam_solid, x=0, y=beam_back_y, z=beam_z)
-        beams_combined = beam_solid if beams_combined is None else BRepAlgoAPI_Fuse(beams_combined, beam_solid).Shape()
+        # Beam solid (HOLLOW W-BEAM)
+        beam_face = make_w_beam_face()
+
+        beam_solid = BRepPrimAPI_MakePrism(
+            beam_face,
+            gp_Vec(length, 0, 0)
+        ).Shape()
+
+        beam_solid = _translate(
+            beam_solid,
+            x=0, y=beam_back_y, z=beam_z
+        )
+
+        beams_combined = (
+            beam_solid if beams_combined is None
+            else BRepAlgoAPI_Fuse(beams_combined, beam_solid).Shape()
+        )
+
     
     return {
         "posts": posts_combined,

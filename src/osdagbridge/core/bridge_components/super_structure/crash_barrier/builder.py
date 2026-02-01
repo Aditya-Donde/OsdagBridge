@@ -18,6 +18,7 @@ from OCC.Core.BRepAlgoAPI import BRepAlgoAPI_Fuse
 from OCC.Core.GCE2d import GCE2d_MakeArcOfCircle
 from OCC.Core.Geom import Geom_Plane
 from OCC.Core.gp import gp_Pln
+import numpy as np
 import math
 
 
@@ -241,35 +242,69 @@ def create_semi_rigid_metallic_barrier(
     W_BEAM_HEIGHT = spacer_height  # Aligned with spacer height as requested
     W_BEAM_DEPTH = 60.0    # Standard W-beam depth
     W_BEAM_THICKNESS = design_dict.get("w_beam_thickness", 3.0)
+
+    sigma = W_BEAM_HEIGHT / 10.0
+    mu1 = W_BEAM_HEIGHT * 0.25
+    mu2 = W_BEAM_HEIGHT * 0.75
+    amp = W_BEAM_DEPTH * 1.5
     
-    def make_w_beam_wire():
+    from OCC.Core.GeomAPI import GeomAPI_PointsToBSpline
+    from OCC.Core.TColgp import TColgp_Array1OfPnt
+    from OCC.Core.BRepBuilderAPI import BRepBuilderAPI_MakeWire
+    from OCC.Core.BRepBuilderAPI import BRepBuilderAPI_MakeEdge
+
+    def make_w_beam_face():
         points = 40
         zs = np.linspace(0, W_BEAM_HEIGHT, points)
+
+        # ---------- OUTER CURVE ----------
+        outer_pts = TColgp_Array1OfPnt(1, points)
+        for i, z in enumerate(zs, start=1):
+            y_wave = (
+                amp * math.exp(-((z - mu1) ** 2) / (2 * sigma ** 2)) +
+                amp * math.exp(-((z - mu2) ** 2) / (2 * sigma ** 2))
+            )
+            outer_pts.SetValue(i, gp_Pnt(0.0, y_wave, z))
         
-        # Double Wave Profile
-        # Two guassians or sin waves in Y based on Z
+        y_top_outer = y_wave
+        y_bottom_outer = (
+            amp * math.exp(-((zs[0] - mu1) ** 2) / (2 * sigma ** 2)) +
+            amp * math.exp(-((zs[0] - mu2) ** 2) / (2 * sigma ** 2))
+        )
+
+        outer_curve = GeomAPI_PointsToBSpline(outer_pts).Curve()
+
+        # ---------- INNER CURVE (OFFSET) ----------
+        inner_pts = TColgp_Array1OfPnt(1, points)
+        for i, z in enumerate(zs, start=1):
+            y_wave_inner = (
+                amp * math.exp(-((z - mu1) ** 2) / (2 * sigma ** 2)) +
+                amp * math.exp(-((z - mu2) ** 2) / (2 * sigma ** 2))
+            ) - W_BEAM_THICKNESS
+            inner_pts.SetValue(i, gp_Pnt(0.0, y_wave_inner, z))
         
-        # Sum of gaussians as before, but on Z
-        sigma = W_BEAM_HEIGHT / 10.0
-        mu1 = W_BEAM_HEIGHT * 0.25
-        mu2 = W_BEAM_HEIGHT * 0.75
-        amp = W_BEAM_DEPTH * 1.5
-        
-        poly = BRepBuilderAPI_MakePolygon()
-        
-        for z in zs:
-            # Gaussian bumps
-            y = (amp * math.exp(-((z - mu1) ** 2) / (2 * sigma ** 2)) + 
-                 amp * math.exp(-((z - mu2) ** 2) / (2 * sigma ** 2)))
-            
-            poly.Add(gp_Pnt(0.0, y, z))
-        
-        # Close the back face (flat at y=0) to form a solid cross-section
-        poly.Add(gp_Pnt(0.0, 0.0, W_BEAM_HEIGHT))
-        poly.Add(gp_Pnt(0.0, 0.0, 0.0))
-        poly.Close()
-            
-        return poly.Wire()
+        y_top_inner = y_wave_inner
+        y_bottom_inner = (
+            amp * math.exp(-((zs[0] - mu1) ** 2) / (2 * sigma ** 2)) +
+            amp * math.exp(-((zs[0] - mu2) ** 2) / (2 * sigma ** 2))
+        ) - W_BEAM_THICKNESS
+
+        inner_curve = GeomAPI_PointsToBSpline(inner_pts).Curve()
+
+        # ---------- COMBINE INTO CLOSED WIRE ----------
+        wire = BRepBuilderAPI_MakeWire()
+        wire.Add(BRepBuilderAPI_MakeEdge(outer_curve).Edge())
+        wire.Add(BRepBuilderAPI_MakeEdge(
+            gp_Pnt(0.0, y_top_outer, W_BEAM_HEIGHT),
+            gp_Pnt(0.0, y_top_inner, W_BEAM_HEIGHT)
+        ).Edge())
+        wire.Add(BRepBuilderAPI_MakeEdge(inner_curve).Edge())
+        wire.Add(BRepBuilderAPI_MakeEdge(
+            gp_Pnt(0.0, y_bottom_inner, 0.0),
+            gp_Pnt(0.0, y_bottom_outer, 0.0)
+        ).Edge())
+
+        return BRepBuilderAPI_MakeFace(wire.Wire()).Face()
 
     beams_combined = None
 
@@ -321,8 +356,7 @@ def create_semi_rigid_metallic_barrier(
         # BEAM GENERATION
         beam_y_pos = spacer_y_center + spacer_width / 2.0
         
-        wire = make_w_beam_wire()
-        beam_face = BRepBuilderAPI_MakeFace(wire).Face()
+        beam_face = make_w_beam_face()
         
         beam_solid = BRepPrimAPI_MakePrism(
             beam_face, gp_Vec(length, 0, 0)
