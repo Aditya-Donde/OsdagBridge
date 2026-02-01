@@ -87,7 +87,7 @@ class PlateGirderCADGenerator:
 
         # MEDIAN PARAMETERS
         self.enable_median = True
-        self.median_type = "Raised Kerb"  # "Raised Kerb", "RCC Crash Barrier", "Metallic Crash Barrier"
+        self.median_type = "Metallic Crash Barrier"  # "Raised Kerb", "RCC Crash Barrier", "Metallic Crash Barrier"
 
         # RAILING PARAMETERS
         self.railing_height = 1200
@@ -156,16 +156,29 @@ class PlateGirderCADGenerator:
         girders = []
         stiffeners = []
 
+        girder_web = []
+        girder_flanges = []
+
         total_width = (self.num_girders - 1) * self.girder_spacing
 
         for i in range(self.num_girders):
             y_offset = (i * self.girder_spacing) - (total_width / 2)
 
-            # Web + flanges
-            for part in ("web", "top_flange", "bottom_flange"):
-                girders.append(
-                    _translate(pg[part], dy=y_offset)
-                )
+            # Web
+            web = _translate(pg["web"], dy=y_offset)
+            girders.append(web)
+            girder_web.append(web)
+
+            # Top flange
+            top_flange = _translate(pg["top_flange"], dy=y_offset)
+            girders.append(top_flange)
+            girder_flanges.append(top_flange)
+
+            # Bottom flange
+            bottom_flange = _translate(pg["bottom_flange"], dy=y_offset)
+            girders.append(bottom_flange)
+            girder_flanges.append(bottom_flange)
+
 
             # Stiffeners
             for stiff in pg["stiffeners"]:
@@ -324,6 +337,9 @@ class PlateGirderCADGenerator:
         # FINAL RETURN
         return {
             "girders": girders,
+            "girder_web": girder_web,
+            "girder_flanges": girder_flanges,
+
             "stiffeners": stiffeners,
             "cross_bracings": cross_bracings,
 
