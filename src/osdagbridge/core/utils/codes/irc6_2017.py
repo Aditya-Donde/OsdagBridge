@@ -2,6 +2,9 @@ from osdagbridge.core.utils.codes.irc5_2015 import IRC5_2015
 from osdagbridge.core.utils.codes.keyfile import *
 import math
 import numpy as np
+from osdagbridge.core.utils.codes.keyfile import *
+from osdagbridge.core.utils.codes.irc5_2015 import IRC5_2015
+
 
 
 class IRC6_2017:
@@ -925,3 +928,645 @@ class IRC6_2017:
             'axle_load_map': axle_load_map,
             'pretty_axle_table': pretty_table
         }
+
+    @staticmethod
+    def cl_204_5_3_sv_placement(carriageway_width, include_median='no', footpath='none'):
+        """
+        Determines Special Vehicle (SV) transverse placement requirements as per 
+        IRC:6-2017 Clause 204.5.3 / Table 6B.
+        
+        Parameters:
+            carriageway_width (float): Carriageway width in metres
+            include_median (str): 'yes' or 'no' - whether median is present
+            footpath (str): 'none', 'single_sided', or 'both_sides'
+            
+        Returns:
+            dict: Contains 'sv_applicable', 'eccentricity_mm', 'carriageway_width',
+                  'vehicle_combination' (if applicable), 'case_description'
+            Returns None if no SV combination is needed
+        """
+        # Normalize inputs
+        median_lower = include_median.strip().lower()
+        footpath_lower = footpath.strip().lower().replace(' ', '_').replace('-', '_')
+        
+        # Get number of design lanes from table_6A
+        result_6a = IRC6_2017.table_6A(carriageway_width)
+        num_lanes = result_6a.get('design_lanes', 1)
+        
+        # Check if SV combination applies (requires more than 1 lane)
+        if num_lanes <= 1:
+            return {
+                'sv_applicable': False,
+                'reason': f'Only {num_lanes} design lane(s). SV combination requires > 1 lane.',
+                'carriageway_width': carriageway_width,
+                'num_lanes': num_lanes
+            }
+        
+        # Case 1: Multi-lane undivided, no median, footpath on both sides or none
+        # Symmetrical configuration - eccentricity = +300mm
+        if median_lower == 'no' and footpath_lower in ['none', 'both_sides', 'both']:
+            return {
+                'sv_applicable': True,
+                'case': 1,
+                'case_description': 'Single Multi-Lane Undivided Carriageway with Symmetrical '
+                                   'Configuration with Footway on Both Sides or Without Footpath',
+                'eccentricity_mm': 300,
+                'carriageway_width': carriageway_width,
+                'num_lanes': num_lanes,
+                'note': 'No other load permitted during passage of SV loading'
+            }
+        
+        # Case 2: Multi-lane undivided, no median, footpath on single side
+        # Unsymmetrical configuration - eccentricity = -300mm (towards footpath side)
+        if median_lower == 'no' and footpath_lower in ['single_sided', 'single', 'one_side']:
+            return {
+                'sv_applicable': True,
+                'case': 2,
+                'case_description': 'Single Multi-Lane Undivided Carriageway having '
+                                   'Unsymmetrical Configuration with Footway on one Side',
+                'eccentricity_mm': -300,
+                'carriageway_width': carriageway_width,
+                'num_lanes': num_lanes,
+                'note': 'No other load permitted during passage of SV loading'
+            }
+        
+        # Case 5: Dual carriageway with central median (no structural gap),
+        # common substructure - eccentricity = +300mm and vehicle combination applies
+        if median_lower == 'yes':
+            # Get vehicle combination from table_6A
+            vehicle_combination = result_6a.get('vehicle_combinations', 'See Table 6A')
+            
+            return {
+                'sv_applicable': True,
+                'case': 5,
+                'case_description': 'Dual Multi-Lane Carriageway with Central Median but '
+                                   'without any Structural Gap with Common Sub-Structure '
+                                   '& Foundation for Dual Carriageway',
+                'eccentricity_mm': 300,
+                'carriageway_width': carriageway_width,
+                'num_lanes': num_lanes,
+                'vehicle_combination': vehicle_combination,
+                'note': 'Load Combinations & Partial safety factors as given in clause 204.5.4 '
+                       'shall apply for the entire structure'
+            }
+        
+        # No case matched - SV combination not required
+        return {
+            'sv_applicable': False,
+            'reason': 'Configuration does not require SV combination per Table 6B.',
+            'carriageway_width': carriageway_width,
+            'num_lanes': num_lanes,
+            'include_median': include_median,
+            'footpath': footpath
+        }
+    # =========================================================================
+    # CLAUSE 218: SEISMIC DESIGN FUNCTIONS
+    # =========================================================================
+
+    @staticmethod
+    def figure_17(city_or_region):
+        """
+        Returns the seismic zone for an Indian city/region as per IRC:6-2017 Figure 17.
+        
+        Parameters:
+            city_or_region (str): Name of the city or region (case-insensitive)
+            
+        Returns:
+            str: Seismic zone ('Zone II', 'Zone III', 'Zone IV', or 'Zone V')
+        """
+        # Comprehensive mapping of Indian cities/regions to seismic zones
+        # Based on IS 1893:2016 and IRC:6-2017 Figure 17
+        zone_mapping = {
+            # Zone V (Very High Seismic Risk) - Z = 0.36
+            'Zone V': [
+                'guwahati', 'shillong', 'imphal', 'kohima', 'aizawl', 'agartala',
+                'itanagar', 'gangtok', 'srinagar', 'jammu', 'dharamsala', 'mandi',
+                'kullu', 'chamba', 'uttarkashi', 'chamoli', 'pithoragarh', 'almora',
+                'nainital', 'tehri', 'pauri', 'rudraprayag', 'bageshwar', 'champawat',
+                'port blair', 'andaman', 'nicobar', 'digboi', 'dibrugarh', 'jorhat',
+                'tezpur', 'north lakhimpur', 'sibsagar', 'golaghat', 'nagaon',
+            ],
+            # Zone IV (High Seismic Risk) - Z = 0.24
+            'Zone IV': [
+                'delhi', 'new delhi', 'faridabad', 'gurgaon', 'gurugram', 'noida',
+                'ghaziabad', 'meerut', 'saharanpur', 'muzaffarnagar', 'dehradun',
+                'haridwar', 'rishikesh', 'roorkee', 'shimla', 'chandigarh', 'ludhiana',
+                'jalandhar', 'amritsar', 'pathankot', 'hoshiarpur', 'ambala',
+                'panchkula', 'karnal', 'panipat', 'rohtak', 'sonipat', 'lucknow',
+                'kanpur', 'agra', 'varanasi', 'allahabad', 'prayagraj', 'gorakhpur',
+                'bareilly', 'moradabad', 'aligarh', 'mathura', 'firozabad', 'patna',
+                'muzaffarpur', 'bhagalpur', 'gaya', 'darbhanga', 'munger', 'purnia',
+                'siliguri', 'darjeeling', 'jalpaiguri', 'cooch behar', 'malda',
+                'bhopal', 'jabalpur', 'gwalior', 'arunachal pradesh', 'manipur',
+                'meghalaya', 'mizoram', 'nagaland', 'sikkim', 'tripura',
+            ],
+            # Zone III (Moderate Seismic Risk) - Z = 0.16
+            'Zone III': [
+                'mumbai', 'pune', 'nashik', 'aurangabad', 'kolhapur', 'solapur',
+                'ahmednagar', 'satara', 'sangli', 'ratnagiri', 'kolkata', 'howrah',
+                'hooghly', 'bardhaman', 'burdwan', 'asansol', 'durgapur', 'midnapore',
+                'kharagpur', 'ahmedabad', 'vadodara', 'surat', 'rajkot', 'bhavnagar',
+                'jamnagar', 'junagadh', 'porbandar', 'kutch', 'bhuj', 'gandhidham',
+                'jaipur', 'jodhpur', 'udaipur', 'kota', 'ajmer', 'bikaner', 'alwar',
+                'bharatpur', 'sikar', 'jhunjhunu', 'chittorgarh', 'pali', 'nagaur',
+                'indore', 'ujjain', 'ratlam', 'guna', 'sagar', 'rewa', 'satna',
+                'cuttack', 'bhubaneswar', 'puri', 'rourkela', 'sambalpur', 'berhampur',
+                'ranchi', 'jamshedpur', 'dhanbad', 'bokaro', 'hazaribagh', 'deoghar',
+                'visakhapatnam', 'vijayawada', 'guntur', 'nellore', 'tirupati',
+                'mangalore', 'mangaluru', 'udupi', 'karwar', 'hubli', 'dharwad',
+                'belgaum', 'belagavi', 'goa', 'panaji', 'margao', 'vasco',
+                'thiruvananthapuram', 'trivandrum', 'kochi', 'cochin', 'kozhikode',
+                'calicut', 'thrissur', 'kannur', 'kollam', 'alappuzha', 'palakkad',
+                'coimbatore', 'madurai', 'tiruchirappalli', 'trichy', 'salem',
+                'tirunelveli', 'erode', 'vellore', 'thoothukudi', 'tuticorin',
+                'pondicherry', 'puducherry', 'lakshadweep',
+            ],
+            # Zone II (Low Seismic Risk) - Z = 0.10
+            'Zone II': [
+                'chennai', 'hyderabad', 'secunderabad', 'warangal', 'nizamabad',
+                'karimnagar', 'khammam', 'ramagundam', 'bengaluru', 'bangalore',
+                'mysore', 'mysuru', 'tumkur', 'davangere', 'bellary', 'ballari',
+                'gulbarga', 'kalaburagi', 'bidar', 'raichur', 'shimoga', 'shivamogga',
+                'nagpur', 'amravati', 'akola', 'chandrapur', 'wardha', 'yavatmal',
+                'nanded', 'latur', 'osmanabad', 'beed', 'jalna', 'parbhani',
+                'raipur', 'bhilai', 'durg', 'bilaspur', 'korba', 'rajnandgaon',
+                'kanyakumari', 'thanjavur', 'cuddalore', 'chidambaram', 'nagapattinam',
+                'karaikal', 'mahabalipuram', 'kanchipuram', 'chengalpattu',
+            ],
+        }
+        
+        # Normalize input
+        city_lower = city_or_region.strip().lower()
+        
+        # Search for the city in zone mapping
+        for zone, cities in zone_mapping.items():
+            if city_lower in cities:
+                return zone
+        
+        # If not found, raise error
+        raise ValueError(
+            f"City/region '{city_or_region}' not found in seismic zone database. "
+            "Please provide a valid Indian city or manually specify the seismic zone."
+        )
+
+    @staticmethod
+    def cl_218_3_seismic_combinations(r1, r2, r3):
+        """
+        Returns the design seismic force combinations as per IRC:6-2017 Clause 218.3.
+        
+        The design seismic force resultants shall be combined as:
+        a) ± r1 ± 0.3*r2 ± 0.3*r3
+        b) ± 0.3*r1 ± r2 ± 0.3*r3
+        c) ± 0.3*r1 ± 0.3*r2 ± r3
+        
+        Parameters:
+            r1 (float): Seismic force resultant in direction 1 (longitudinal)
+            r2 (float): Seismic force resultant in direction 2 (transverse)
+            r3 (float): Seismic force resultant in direction 3 (vertical)
+            
+        Returns:
+            list: List of dictionaries containing all combinations
+        """
+        combinations = [
+            # Combination a): ± r1 ± 0.3*r2 ± 0.3*r3
+            {'case': 'a', 'r1_factor': 1.0, 'r2_factor': 0.3, 'r3_factor': 0.3,
+             'r1': r1, 'r2': 0.3 * r2, 'r3': 0.3 * r3,
+             'total_positive': r1 + 0.3 * r2 + 0.3 * r3,
+             'description': '± r1 ± 0.3*r2 ± 0.3*r3'},
+            
+            # Combination b): ± 0.3*r1 ± r2 ± 0.3*r3
+            {'case': 'b', 'r1_factor': 0.3, 'r2_factor': 1.0, 'r3_factor': 0.3,
+             'r1': 0.3 * r1, 'r2': r2, 'r3': 0.3 * r3,
+             'total_positive': 0.3 * r1 + r2 + 0.3 * r3,
+             'description': '± 0.3*r1 ± r2 ± 0.3*r3'},
+            
+            # Combination c): ± 0.3*r1 ± 0.3*r2 ± r3
+            {'case': 'c', 'r1_factor': 0.3, 'r2_factor': 0.3, 'r3_factor': 1.0,
+             'r1': 0.3 * r1, 'r2': 0.3 * r2, 'r3': r3,
+             'total_positive': 0.3 * r1 + 0.3 * r2 + r3,
+             'description': '± 0.3*r1 ± 0.3*r2 ± r3'},
+        ]
+        
+        return combinations 
+
+    @staticmethod
+    def table_18(damping_percent=5.0):
+        """
+        Returns the damping multiplying factor as per IRC:6-2017 Table 18.
+        
+        Parameters:
+            damping_percent (float): Damping percentage (2, 5, or 10)
+            
+        Returns:
+            float: Multiplying factor for damping
+        """
+        # 2% damping: Prestressed concrete, Steel and composite steel
+        # 5% damping: Reinforced concrete
+        # 10% damping: Retrofitting of old bridges with RC piers
+        damping_factors = {
+            2: 1.4,
+            5: 1.0,
+            10: 0.8,
+        }
+        
+        if damping_percent in damping_factors:
+            return damping_factors[damping_percent]
+        
+        # Interpolate for intermediate values
+        if damping_percent < 2:
+            return 1.4
+        elif damping_percent < 5:
+            return 1.4 + (damping_percent - 2) * (1.0 - 1.4) / (5 - 2)
+        elif damping_percent < 10:
+            return 1.0 + (damping_percent - 5) * (0.8 - 1.0) / (10 - 5)
+        else:
+            return 0.8
+
+    @staticmethod
+    def table_19(bridge_class='normal'):
+        """
+        Returns the importance factor (I) as per IRC:6-2017 Table 19.
+        
+        Parameters:
+            bridge_class (str): One of 'normal', 'important', or 'large_critical'
+            
+        Returns:
+            float: Importance factor (1.0, 1.2, or 1.5)
+        """
+        # Normal bridges: All bridges except those mentioned below (I = 1.0)
+        # Important bridges: River bridges, flyovers, National/State Highways (I = 1.2)
+        # Large critical bridges: >1km, perennial rivers, no alternatives (I = 1.5)
+        importance_factors = {
+            'normal': 1.0,
+            'important': 1.2,
+            'large_critical': 1.5,
+        }
+        
+        bridge_class_lower = bridge_class.strip().lower()
+        
+        if bridge_class_lower not in importance_factors:
+            raise ValueError(
+                f"Invalid bridge class '{bridge_class}'. "
+                "Must be 'normal', 'important', or 'large_critical'."
+            )
+        
+        return importance_factors[bridge_class_lower]
+
+    @staticmethod
+    def table_20(bridge_component='integral', ductile_detailing=True, seismic_zone='Zone III'):
+        """
+        Returns the response reduction factor (R) as per IRC:6-2017 Table 20.
+        
+        Parameters:
+            bridge_component (str): Type of bridge component
+                - 'integral', 'semi_integral', 'framed' for type (a) - R=2.0 ductile
+                - 'precast', 'segmental', 'other' for type (b) - R=1.0 always
+            ductile_detailing (bool): Whether ductile detailing is provided
+            seismic_zone (str): Seismic zone (only Zone II allows non-ductile for type a)
+            
+        Returns:
+            float: Response reduction factor R
+        """
+        # R values: (with_ductile, without_ductile_zone_II_only)
+        # Type (a): Superstructure of integral/Semi integral bridge/Framed bridges
+        type_a = {
+            'integral': (2.0, 1.0),
+            'semi_integral': (2.0, 1.0),
+            'semi-integral': (2.0, 1.0),
+            'framed': (2.0, 1.0),
+        }
+        # Type (b): Other types of Superstructure, including precast segmental construction
+        type_b = {
+            'precast': (1.0, 1.0),
+            'segmental': (1.0, 1.0),
+            'precast_segmental': (1.0, 1.0),
+            'other': (1.0, 1.0),
+        }
+        
+        component_lower = bridge_component.strip().lower()
+        
+        # Determine which type the component belongs to
+        if component_lower in type_a:
+            r_ductile, r_non_ductile = type_a[component_lower]
+        elif component_lower in type_b:
+            r_ductile, r_non_ductile = type_b[component_lower]
+        elif component_lower == 'superstructure':
+            # Default to type (a) for backward compatibility
+            r_ductile, r_non_ductile = (2.0, 1.0)
+        else:
+            raise ValueError(
+                f"Invalid bridge_component '{bridge_component}'. "
+                "Use 'integral', 'semi_integral', 'framed' for type (a), or "
+                "'precast', 'segmental', 'other' for type (b)."
+            )
+        
+        if ductile_detailing:
+            return r_ductile
+        else:
+            # Non-ductile only allowed in Zone II
+            zone_lower = seismic_zone.strip().lower()
+            if zone_lower == 'zone ii':
+                return r_non_ductile
+            else:
+                raise ValueError(
+                    f"Non-ductile detailing (R={r_non_ductile}) is only allowed "
+                    f"in Zone II. Current zone: {seismic_zone}"
+                )
+
+    @staticmethod
+    def cl_218_5_1(zone, soil_type, dead_load_kN, live_load_kN=0.0,
+                   lateral_force_per_mm=None, period_T=None, 
+                   bridge_class='normal', bridge_component='superstructure',
+                   ductile_detailing=True, damping_percent=5.0,
+                   direction='perpendicular'):
+        """
+        Calculates seismic forces as per IRC:6-2017 Clause 218.5.1.
+        
+        Parameters:
+            zone (str): Seismic zone ('Zone II', 'Zone III', 'Zone IV', 'Zone V')
+            soil_type (int): Soil type (1=Rock/Hard, 2=Medium, 3=Soft)
+            dead_load_kN (float): Dead load in kN
+            live_load_kN (float): Live load in kN
+            lateral_force_per_mm (float): Force for 1mm deflection (kN/mm), for T calculation
+            period_T (float): Fundamental period (if known, overrides calculation)
+            bridge_class (str): 'normal', 'important', or 'large_critical'
+            bridge_component (str): Component type for R factor
+            ductile_detailing (bool): Whether ductile detailing is provided
+            damping_percent (float): Damping percentage (2, 5, or 10)
+            direction (str): 'perpendicular' (20% LL), 'parallel' (0% LL), or 'vertical'
+            
+        Returns:
+            dict: Contains T, Sa_g, Z, I, R, Ah, Feq, and Feq_design (Feq/R)
+        """
+        # Get zone factor Z from Table 16
+        zone_factors = IRC6_2017.table_16()
+        # Match zone by lowercase comparison
+        zone_lower = zone.strip().lower()
+        zone_key = next((k for k in zone_factors if k.lower() == zone_lower), None)
+        if zone_key is None:
+            raise ValueError(f"Invalid zone '{zone}'. Must be 'Zone II', 'Zone III', 'Zone IV', or 'Zone V'.")
+        Z = zone_factors[zone_key]
+        
+        # Get importance factor I
+        I = IRC6_2017.table_19(bridge_class)
+        
+        # Get response reduction factor R
+        R = IRC6_2017.table_20(bridge_component, ductile_detailing, zone)
+        
+        # Get damping multiplying factor
+        damping_factor = IRC6_2017.table_18(damping_percent)
+        
+        # Calculate fundamental period T
+        if period_T is not None:
+            T = period_T
+        elif lateral_force_per_mm is not None and lateral_force_per_mm > 0:
+            T = 2.0 * math.sqrt(dead_load_kN / (1000 * lateral_force_per_mm))
+        else:
+            # Default: assume 2.5 for Sa/g (small bridges approximation)
+            T = 0.5  # Results in Sa/g = 2.5 for all soil types
+        
+        # Cap T at 4.0 seconds
+        T = min(T, 4.0)
+        
+        # Calculate Sa/g based on soil type and period
+        if T < 0:
+            raise ValueError("Period T must be non-negative")
+        
+        if soil_type == 1:  # Type I: Rock/Hard (N > 30)
+            if T <= 0.10:
+                sa_g = 1 + 15 * T
+            elif T <= 0.40:
+                sa_g = 2.50
+            else:
+                sa_g = 1.00 / T
+        elif soil_type == 2:  # Type II: Medium (10 < N <= 30)
+            if T <= 0.10:
+                sa_g = 1 + 15 * T
+            elif T <= 0.55:
+                sa_g = 2.50
+            else:
+                sa_g = 1.36 / T
+        elif soil_type == 3:  # Type III: Soft (N < 10)
+            if T <= 0.10:
+                sa_g = 1 + 15 * T
+            elif T <= 0.67:
+                sa_g = 2.50
+            else:
+                sa_g = 1.67 / T
+        else:
+            raise ValueError(f"Invalid soil type {soil_type}. Must be 1, 2, or 3.")
+        
+        # Apply damping factor (Sa/g values are for 5% damping)
+        sa_g_adjusted = sa_g * damping_factor
+        
+        # Calculate horizontal seismic coefficient Ah
+        Ah = (Z / 2) * I * sa_g_adjusted
+        
+        # Calculate seismic force Feq
+        if direction.lower() == 'perpendicular':
+            appropriate_LL = 0.20 * live_load_kN
+        else:
+            appropriate_LL = 0.0
+        
+        Feq = Ah * (dead_load_kN + appropriate_LL)
+        
+        # Design force for combining with other forces (Feq/R)
+        Feq_design = Feq / R
+        
+        return {
+            'T': round(T, 3),
+            'Sa_g': round(sa_g, 3),
+            'Sa_g_adjusted': round(sa_g_adjusted, 3),
+            'Z': Z,
+            'I': I,
+            'R': R,
+            'damping_factor': damping_factor,
+            'Ah': round(Ah, 4),
+            'Feq': round(Feq, 3),
+            'Feq_design': round(Feq_design, 3),  # For force combinations
+            'direction': direction,
+        }
+
+
+    # =========================================================================
+    # ANNEX B: PARTIAL SAFETY FACTORS FOR LOADS
+    # =========================================================================
+
+    @staticmethod
+    def table_B2(load_type, effect='adding', load_category='leading', combination='basic'):
+        """
+        Returns the partial safety factor for ULS (Ultimate Limit State) as per 
+        IRC:6-2017 Table B.2.
+        
+        Parameters:
+            load_type (str): Type of load - 'dead_load', 'surfacing', 'live_load', 
+                            'wind_load', 'thermal_load', or 'seismic'
+            effect (str): 'adding' or 'relieving' (for dead_load and surfacing)
+            load_category (str): 'leading', 'accompanying', or 'construction' 
+                                (for live_load, wind_load, thermal_load)
+            combination (str): 'basic', 'accidental', or 'seismic'
+            
+        Returns:
+            float: Partial safety factor (None if not applicable)
+        """
+        load_type_lower = load_type.strip().lower()
+        effect_lower = effect.strip().lower()
+        load_category_lower = load_category.strip().lower()
+        combination_lower = combination.strip().lower()
+        
+        # 1.1 Dead Load, Snow load (if present), SIDL except surfacing
+        if load_type_lower == 'dead_load':
+            factors = {
+                'adding': {'basic': 1.35, 'accidental': 1.0, 'seismic': 1.35},
+                'relieving': {'basic': 1.0, 'accidental': 1.0, 'seismic': 1.0},
+            }
+            if effect_lower not in factors:
+                raise ValueError(f"Invalid effect '{effect}'. Must be 'adding' or 'relieving'.")
+            if combination_lower not in factors[effect_lower]:
+                raise ValueError(f"Invalid combination '{combination}'.")
+            return factors[effect_lower][combination_lower]
+        
+        # 1.2 Surfacing
+        elif load_type_lower == 'surfacing':
+            factors = {
+                'adding': {'basic': 1.75, 'accidental': 1.0, 'seismic': 1.75},
+                'relieving': {'basic': 1.0, 'accidental': 1.0, 'seismic': 1.0},
+            }
+            if effect_lower not in factors:
+                raise ValueError(f"Invalid effect '{effect}'. Must be 'adding' or 'relieving'.")
+            if combination_lower not in factors[effect_lower]:
+                raise ValueError(f"Invalid combination '{combination}'.")
+            return factors[effect_lower][combination_lower]
+        
+        # 2.1 Carriageway Live load and associated loads
+        elif load_type_lower == 'live_load':
+            factors = {
+                'leading': {'basic': 1.5, 'accidental': 0.75, 'seismic': None},
+                'accompanying': {'basic': 1.15, 'accidental': 0.2, 'seismic': 0.2},
+                'construction': {'basic': 1.35, 'accidental': 1.0, 'seismic': 1.0},
+            }
+            if load_category_lower not in factors:
+                raise ValueError(f"Invalid load_category '{load_category}'. Must be 'leading', 'accompanying', or 'construction'.")
+            if combination_lower not in factors[load_category_lower]:
+                raise ValueError(f"Invalid combination '{combination}'.")
+            return factors[load_category_lower][combination_lower]
+        
+        # 2.2 Wind Load during service and construction
+        elif load_type_lower == 'wind_load':
+            factors = {
+                'leading': {'basic': 1.5, 'accidental': None, 'seismic': None},
+                'accompanying': {'basic': 0.9, 'accidental': None, 'seismic': None},
+            }
+            if load_category_lower not in factors:
+                raise ValueError(f"Invalid load_category '{load_category}'. Must be 'leading' or 'accompanying'.")
+            if combination_lower not in factors[load_category_lower]:
+                raise ValueError(f"Invalid combination '{combination}'.")
+            return factors[load_category_lower][combination_lower]
+        
+        # 2.5 Thermal Loads
+        elif load_type_lower == 'thermal_load':
+            factors = {
+                'leading': {'basic': 1.5, 'accidental': None, 'seismic': None},
+                'accompanying': {'basic': 0.9, 'accidental': 0.5, 'seismic': 0.5},
+            }
+            if load_category_lower not in factors:
+                raise ValueError(f"Invalid load_category '{load_category}'. Must be 'leading' or 'accompanying'.")
+            if combination_lower not in factors[load_category_lower]:
+                raise ValueError(f"Invalid combination '{combination}'.")
+            return factors[load_category_lower][combination_lower]
+        
+        # 4. Seismic Effect
+        elif load_type_lower == 'seismic':
+            # load_category used as 'service' or 'construction' for seismic
+            factors = {
+                'service': 1.5,
+                'construction': 0.75,
+            }
+            if load_category_lower not in factors:
+                raise ValueError(f"Invalid condition '{load_category}'. Must be 'service' or 'construction'.")
+            return factors[load_category_lower]
+        
+        else:
+            raise ValueError(
+                f"Invalid load_type '{load_type}'. Must be 'dead_load', 'surfacing', "
+                "'live_load', 'wind_load', 'thermal_load', or 'seismic'."
+            )
+
+    @staticmethod
+    def table_B3(load_type, effect='adding', load_category='leading', combination='rare'):
+        """
+        Returns the partial safety factor for SLS (Serviceability Limit State) as per 
+        IRC:6-2017 Table B.3.
+        
+        Parameters:
+            load_type (str): Type of load - 'dead_load', 'surfacing', 'live_load', 
+                            'thermal_load', or 'wind_load'
+            effect (str): 'adding' or 'relieving' (for surfacing)
+            load_category (str): 'leading' or 'accompanying' (for live_load, thermal_load, wind_load)
+            combination (str): 'rare', 'frequent', or 'quasi_permanent'
+            
+        Returns:
+            float: Partial safety factor (None if not applicable)
+        """
+        load_type_lower = load_type.strip().lower()
+        effect_lower = effect.strip().lower()
+        load_category_lower = load_category.strip().lower()
+        combination_lower = combination.strip().lower()
+        
+        # 1.1 Dead Load, Snow load if present, SIDL except surfacing and back fill weight
+        if load_type_lower == 'dead_load':
+            return 1.0  # Always 1.0 for all SLS combinations
+        
+        # 1.2 Surfacing
+        elif load_type_lower == 'surfacing':
+            factors = {
+                'adding': {'rare': 1.2, 'frequent': 1.2, 'quasi_permanent': 1.2},
+                'relieving': {'rare': 1.0, 'frequent': 1.0, 'quasi_permanent': 1.0},
+            }
+            if effect_lower not in factors:
+                raise ValueError(f"Invalid effect '{effect}'. Must be 'adding' or 'relieving'.")
+            if combination_lower not in factors[effect_lower]:
+                raise ValueError(f"Invalid combination '{combination}'.")
+            return factors[effect_lower][combination_lower]
+        
+        # 3.1 Carriageway load and associated loads
+        elif load_type_lower == 'live_load':
+            factors = {
+                'leading': {'rare': 1.0, 'frequent': 0.75, 'quasi_permanent': None},
+                'accompanying': {'rare': 0.75, 'frequent': 0.2, 'quasi_permanent': 0},
+            }
+            if load_category_lower not in factors:
+                raise ValueError(f"Invalid load_category '{load_category}'. Must be 'leading' or 'accompanying'.")
+            if combination_lower not in factors[load_category_lower]:
+                raise ValueError(f"Invalid combination '{combination}'.")
+            return factors[load_category_lower][combination_lower]
+        
+        # 3.2 Thermal Load
+        elif load_type_lower == 'thermal_load':
+            factors = {
+                'leading': {'rare': 1.0, 'frequent': 0.60, 'quasi_permanent': None},
+                'accompanying': {'rare': 0.60, 'frequent': 0.50, 'quasi_permanent': 0.5},
+            }
+            if load_category_lower not in factors:
+                raise ValueError(f"Invalid load_category '{load_category}'. Must be 'leading' or 'accompanying'.")
+            if combination_lower not in factors[load_category_lower]:
+                raise ValueError(f"Invalid combination '{combination}'.")
+            return factors[load_category_lower][combination_lower]
+        
+        # 3.3 Wind Load
+        elif load_type_lower == 'wind_load':
+            factors = {
+                'leading': {'rare': 1.0, 'frequent': 0.60, 'quasi_permanent': None},
+                'accompanying': {'rare': 0.60, 'frequent': 0.50, 'quasi_permanent': 0},
+            }
+            if load_category_lower not in factors:
+                raise ValueError(f"Invalid load_category '{load_category}'. Must be 'leading' or 'accompanying'.")
+            if combination_lower not in factors[load_category_lower]:
+                raise ValueError(f"Invalid combination '{combination}'.")
+            return factors[load_category_lower][combination_lower]
+        
+        else:
+            raise ValueError(
+                f"Invalid load_type '{load_type}'. Must be 'dead_load', 'surfacing', "
+                "'live_load', 'thermal_load', or 'wind_load'."
+            )
