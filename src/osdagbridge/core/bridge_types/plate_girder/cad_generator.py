@@ -83,7 +83,7 @@ class PlateGirderCADGenerator:
 
         # CRASH BARRIER PARAMETERS
         self.barrier_type = "Semi-Rigid"  # "Rigid" or "Semi-Rigid"
-        self.crash_barrier_subtype = "Double W-beam"  # "IRC-5R", "High Containment", "Single W-beam", "Double W-beam"
+        self.crash_barrier_subtype = "Single W-beam"  # "IRC-5R", "High Containment", "Single W-beam", "Double W-beam"
 
         # MEDIAN PARAMETERS
         self.enable_median = True
@@ -286,7 +286,11 @@ class PlateGirderCADGenerator:
         )
 
         # 7. CRASH BARRIER PLACEMENT
-        crash_barriers = build_crash_barriers(
+
+        crash_barrier_w_beams = []
+        crash_barrier_other = []
+
+        crash_barriers_raw = build_crash_barriers(
             span_length_L=self.span_length_L,
             deck_top_z=deck_out["deck_top_z"],
             footpath_config=self.footpath_config,
@@ -296,6 +300,19 @@ class PlateGirderCADGenerator:
             design_dict=design_dict,
             barrier_type=self.barrier_type
         )
+
+        crash_barriers = []
+
+        for cb in crash_barriers_raw:
+            if isinstance(cb, dict):
+                if cb.get("w_beams"):
+                    crash_barrier_w_beams.append(cb["w_beams"])
+                for k in ("kerb", "posts", "spacers"):
+                    if cb.get(k):
+                        crash_barrier_other.append(cb[k])
+                        crash_barriers.append(cb[k])
+            else:
+                crash_barriers.append(cb)
 
         # 8. MEDIAN
         median_barriers = []
@@ -315,13 +332,25 @@ class PlateGirderCADGenerator:
                 crash_barrier_type=KEY_METALLIC_CRASH_BARRIER_TYPE[metallic_subtype_idx] if self.median_type == "Metallic Crash Barrier" else None
             )
             
-            median_barriers = build_median(
+            median_barriers_raw = build_median(
                 span_length=self.span_length_L,
                 deck_top_z=deck_out["deck_top_z"],
                 carriageway_center_y=deck_out["carriageway_center_y"],
                 design_dict=median_design_dict,
                 median_type=self.median_type
             )
+            
+            median_barriers = []
+            for mb in median_barriers_raw:
+                if isinstance(mb, dict):
+                    if mb.get("w_beams"):
+                        crash_barrier_w_beams.append(mb["w_beams"])
+                    for k in ("kerb", "posts", "spacers"):
+                        if mb.get(k):
+                            crash_barrier_other.append(mb[k]) # Using same 'other' list for coloring
+                            median_barriers.append(mb[k])
+                else:
+                    median_barriers.append(mb)
 
         # 8. RAILINGS
         railings = build_railings(
@@ -349,6 +378,7 @@ class PlateGirderCADGenerator:
             "total_deck_width": deck_out["total_deck_width"],
 
             "crash_barriers": crash_barriers,
+            "crash_barrier_w_beams": crash_barrier_w_beams,
             "median_barriers": median_barriers,
             "railings": railings
         }

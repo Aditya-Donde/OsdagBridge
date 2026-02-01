@@ -315,14 +315,11 @@ def create_metallic_barrier_system(length, design_dict, kerb_top_width, kerb_hei
         beam_solid = _translate(beam_solid, x=0, y=beam_back_y, z=beam_z)
         beams_combined = beam_solid if beams_combined is None else BRepAlgoAPI_Fuse(beams_combined, beam_solid).Shape()
     
-    # COMBINE all components (posts, spacers, beams)
-    combined = posts_combined
-    if spacers_combined is not None:
-        combined = BRepAlgoAPI_Fuse(combined, spacers_combined).Shape()
-    if beams_combined is not None:
-        combined = BRepAlgoAPI_Fuse(combined, beams_combined).Shape()
-    
-    return combined
+    return {
+        "posts": posts_combined,
+        "spacers": spacers_combined,
+        "w_beams": beams_combined
+    }
 
 
 def create_median_kerb(length, median_width, design_dict):
@@ -440,10 +437,10 @@ def build_median(
             y=carriageway_center_y,
             z=deck_top_z
         )
-        median_barriers.append(kerb_positioned)
+        median_barriers.append({"kerb": kerb_positioned})
         
         # Create metallic barrier system (posts, spacers, W-beams) for one side
-        barrier_system = create_metallic_barrier_system(
+        barrier_system_parts = create_metallic_barrier_system(
             span_length, 
             design_dict, 
             median_total_width,  # Pass the total median width as kerb_top_width
@@ -451,23 +448,18 @@ def build_median(
         )
         
         # Position left barrier system (mirrored)
-        left_barrier_system = _mirror_y(barrier_system)
-        left_barrier_system = _translate(
-            left_barrier_system,
-            x=0.0,
-            y=carriageway_center_y,
-            z=deck_top_z
-        )
-        median_barriers.append(left_barrier_system)
+        left_dict = {
+            k: _translate(_mirror_y(v), x=0.0, y=carriageway_center_y, z=deck_top_z) 
+            for k, v in barrier_system_parts.items() if v
+        }
+        median_barriers.append(left_dict)
         
         # Position right barrier system
-        right_barrier_system = _translate(
-            barrier_system,
-            x=0.0,
-            y=carriageway_center_y,
-            z=deck_top_z
-        )
-        median_barriers.append(right_barrier_system)
+        right_dict = {
+            k: _translate(v, x=0.0, y=carriageway_center_y, z=deck_top_z) 
+            for k, v in barrier_system_parts.items() if v
+        }
+        median_barriers.append(right_dict)
         
         return median_barriers
     

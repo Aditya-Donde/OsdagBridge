@@ -339,20 +339,19 @@ def create_semi_rigid_metallic_barrier(
             else BRepAlgoAPI_Fuse(beams_combined, beam_solid).Shape()
         )
 
-    # COMBINE ALL
-    combined = kerb_solid
-    if posts_combined:
-        combined = BRepAlgoAPI_Fuse(combined, posts_combined).Shape()
-    if spacers_combined:
-        combined = BRepAlgoAPI_Fuse(combined, spacers_combined).Shape()
-    if beams_combined:
-        combined = BRepAlgoAPI_Fuse(combined, beams_combined).Shape()
-
     # IF RIGHT SIDE: MIRROR
-    if side.upper() == "RIGHT":
-        combined = mirror_y(combined)
+    res = {
+        "kerb": kerb_solid,
+        "posts": posts_combined,
+        "spacers": spacers_combined,
+        "w_beams": beams_combined
+    }
 
-    return combined
+    if side.upper() == "RIGHT":
+        res = {k: mirror_y(v) for k, v in res.items() if v}
+
+    return res
+
 
 
 
@@ -500,37 +499,31 @@ def build_crash_barriers(
             design_dict=design_dict,
             side="LEFT"
         )
+        
+        crash_barriers.append(translate(right_shape, y=y_r, z=deck_top_z))
+        crash_barriers.append(translate(left_shape, y=y_l, z=deck_top_z))
+
     elif barrier_type == "Semi-Rigid":
-        right_shape = create_semi_rigid_metallic_barrier(
+        right_parts = create_semi_rigid_metallic_barrier(
             length=span_length_L,
             design_dict=design_dict,
             side="RIGHT"
         )
-        left_shape = create_semi_rigid_metallic_barrier(
+
+        left_parts = create_semi_rigid_metallic_barrier(
             length=span_length_L,
             design_dict=design_dict,
             side="LEFT"
         )
+
+        # Apply translations and store as dictionaries for coloring
+        right_dict = {k: translate(v, y=y_r, z=deck_top_z) for k, v in right_parts.items() if v}
+        left_dict = {k: translate(v, y=y_l, z=deck_top_z) for k, v in left_parts.items() if v}
+        
+        crash_barriers.append(right_dict)
+        crash_barriers.append(left_dict)
+        
     else:
         raise ValueError(f"Invalid barrier_type: {barrier_type}. Use 'Rigid' or 'Semi-Rigid'")
-
-    # PLACE SHAPES 
-
-    crash_barriers.append(
-        translate(
-            right_shape,
-            y=y_r,
-            z=deck_top_z
-        )
-    )
-
-    crash_barriers.append(
-        translate(
-            left_shape,
-            y=y_l,
-            z=deck_top_z
-        )
-    )
-
 
     return crash_barriers

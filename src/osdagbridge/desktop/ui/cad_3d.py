@@ -140,6 +140,9 @@ class CAD3DWindow(QMainWindow):
         DECK_COLOR = Quantity_Color(180/255, 180/255, 180/255, Quantity_TOC_RGB)
         BARRIER_COLOR = Quantity_Color(40/255, 40/255, 40/255, Quantity_TOC_RGB)  #Quantity_Color(120/255, 120/255, 120/255, Quantity_TOC_RGB)
         BRACING_COLOR = Quantity_Color(60/255, 60/255, 60/255, Quantity_TOC_RGB)
+        WBEAM_COLOR = Quantity_Color(160/255, 160/255, 120/255, Quantity_TOC_RGB)
+        BARRIER_POST_COLOR = Quantity_Color(40/255, 40/255, 40/255, Quantity_TOC_RGB)
+
 
         # HELPER 
         def display_and_register(shapes, key, label, color):
@@ -161,7 +164,7 @@ class CAD3DWindow(QMainWindow):
             self.viewer.model_ais_objects[key] = ais_list
             self.viewer.model_hover_labels[key] = label
 
-        # DISPLAY + REGISTER 
+      
 
         self.viewer.model_ais_objects = {}
 
@@ -217,11 +220,19 @@ class CAD3DWindow(QMainWindow):
 
 
         display_and_register(
+            cad_data.get("crash_barrier_w_beams", []),
+            "Crash Barrier W-Beam",
+            "W-Beam",
+            WBEAM_COLOR
+        )
+
+        display_and_register(
             cad_data.get("crash_barriers", []),
             "Crash Barrier",
-            "Crash Barrier",
-            BARRIER_COLOR
+            "Posts / Kerb",
+            BARRIER_POST_COLOR
         )
+
 
         display_and_register(
             cad_data.get("median_barriers", []),
