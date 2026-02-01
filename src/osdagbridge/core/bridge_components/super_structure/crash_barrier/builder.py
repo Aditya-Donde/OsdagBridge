@@ -159,8 +159,8 @@ def create_semi_rigid_metallic_barrier(
     ).Shape()
 
     # POSTS (ISMC 150)
-    post_depth = design_dict.get("post_depth", 150)  # Along X (Bridge Length)
-    post_width = design_dict.get("post_width", 75)   # Along Y (Transverse)
+    post_depth = design_dict.get("post_depth", 100)  # Along X (Bridge Length)
+    post_width = design_dict.get("post_width", 150)   # Along Y (Transverse)
     post_web_thk = design_dict.get("post_web_thickness", 5.0)
     post_flange_thk = design_dict.get("post_flange_thickness", 7.8)
     post_offset_from_edge = design_dict.get("post_offset_from_edge", 75) # From outer edge
@@ -229,19 +229,17 @@ def create_semi_rigid_metallic_barrier(
         )
 
     spacer_depth = design_dict.get("spacer_depth", 150)
-    spacer_width = design_dict.get("spacer_width", 75)
+    spacer_width = design_dict.get("spacer_width", 200)
     spacer_web_thk = design_dict.get("spacer_web_thickness", 5.0)
     spacer_flange_thk = design_dict.get("spacer_flange_thickness", 7.8)
     
     spacers_combined = None
 
-    # =========================================================
     # W-BEAM 
-    # =========================================================
     # Corrected Geometry: Vertical orientation (W-profile in Y-Z plane)
     
     W_BEAM_HEIGHT = spacer_height  # Aligned with spacer height as requested
-    W_BEAM_DEPTH = 83.0    # Standard W-beam depth
+    W_BEAM_DEPTH = 60.0    # Standard W-beam depth
     W_BEAM_THICKNESS = design_dict.get("w_beam_thickness", 3.0)
     
     def make_w_beam_wire():
