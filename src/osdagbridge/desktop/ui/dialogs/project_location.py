@@ -627,13 +627,13 @@ class ProjectLocationDialog(QDialog):
         
         overlay_label = QLabel("Zone Overlay:")
         overlay_label.setStyleSheet("font-weight: 600; color: #2d2d2d; border: none;")
-        overlay_layout.addWidget(overlay_label)
+        #overlay_layout.addWidget(overlay_label)
         
         self.zone_overlay_combo = NoScrollComboBox()
         self.zone_overlay_combo.addItems(["None", "Seismic Zone", "Wind Zone"])
         self.zone_overlay_combo.setMinimumWidth(140)
         apply_field_style(self.zone_overlay_combo)
-        overlay_layout.addWidget(self.zone_overlay_combo)
+        #overlay_layout.addWidget(self.zone_overlay_combo)
         
         overlay_layout.addStretch()
         vbox.addWidget(overlay_container)
