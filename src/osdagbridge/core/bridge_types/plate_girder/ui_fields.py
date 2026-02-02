@@ -31,7 +31,7 @@ class FrontendData:
         if not key:
             return
         self._input_state[key] = value
-        print(f"DEBUG: Backend updated -> {key}: {value}")
+        # print(f"DEBUG: Backend updated -> {key}: {value}")
 
     def get_input_value(self, key: str, default=None):
         if not key:

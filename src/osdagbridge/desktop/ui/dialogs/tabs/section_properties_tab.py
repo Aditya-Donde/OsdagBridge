@@ -61,6 +61,16 @@ class SectionPropertiesTab(QWidget):
         except Exception:
             pass
 
+        # Bind Cross Bracing + End Diaphragm to Girder Details for dynamic girder options.
+        try:
+            self.cross_bracing_tab.bind_girder_details_tab(self.girder_details_tab)
+        except Exception:
+            pass
+        try:
+            self.end_diaphragm_tab.bind_girder_details_tab(self.girder_details_tab)
+        except Exception:
+            pass
+
         # Refresh stiffener members whenever the tab becomes active.
         try:
             self.section_tabs.currentChanged.connect(self._on_section_tab_changed)
@@ -77,10 +87,33 @@ class SectionPropertiesTab(QWidget):
                 self.stiffener_details_tab.refresh_girder_members()
             except Exception:
                 pass
+        elif widget is getattr(self, "cross_bracing_tab", None):
+            try:
+                self.cross_bracing_tab.refresh_girder_options()
+            except Exception:
+                pass
+        elif widget is getattr(self, "end_diaphragm_tab", None):
+            try:
+                self.end_diaphragm_tab.refresh_girder_options()
+            except Exception:
+                pass
 
     def set_girder_count(self, count):
         if hasattr(self, "girder_details_tab") and hasattr(self.girder_details_tab, "set_girder_count"):
             self.girder_details_tab.set_girder_count(count)
+        # Keep dependent tabs in sync.
+        try:
+            self.stiffener_details_tab.refresh_girder_members()
+        except Exception:
+            pass
+        try:
+            self.cross_bracing_tab.refresh_girder_options()
+        except Exception:
+            pass
+        try:
+            self.end_diaphragm_tab.refresh_girder_options()
+        except Exception:
+            pass
 
     def reset_defaults(self):
         if hasattr(self, "girder_details_tab") and hasattr(self.girder_details_tab, "reset_defaults"):

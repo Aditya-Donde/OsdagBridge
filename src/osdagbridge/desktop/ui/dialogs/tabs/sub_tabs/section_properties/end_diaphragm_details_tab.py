@@ -34,6 +34,16 @@ class EndDiaphragmDetailsTab(QWidget):
 
     def __init__(self, parent=None):
         super().__init__(parent)
+        self._girder_details_tab = None
+        self._select_girders_combos = []
+        self._member_id_combos = []
+
+        # Persist UI state per (view_type, girder-pair, member-id).
+        # Also sync selection (girder/member index) across all three views.
+        self._selection_by_view: dict[str, tuple[QComboBox, QComboBox]] = {}
+        self._state_by_view_member_key: dict[str, dict] = {}
+        self._active_key_by_view: dict[str, str] = {}
+        self._block_selection_sync = False
         # Cross bracing uses angle/channel section previews backed by the Osdag DB.
         self._cross_catalog = SectionCatalog()
         self._cross_previews = {}
@@ -45,6 +55,7 @@ class EndDiaphragmDetailsTab(QWidget):
         self.cross_top_bracket_size_combo = None
         self.cross_bottom_bracket_type_combo = None
         self.cross_bottom_bracket_size_combo = None
+        self.cross_bracing_type_combo = None
 
         self._rolled_property_inputs = {}
         self._welded_property_inputs = {}
@@ -52,7 +63,308 @@ class EndDiaphragmDetailsTab(QWidget):
         self._welded_preview = None
         self._rolled_caption = None
         self._welded_caption = None
+
+        self.rolled_design_combo = None
+        self.welded_design_combo = None
+        self._rolled_inputs = []
+        self._welded_inputs = []
         self.init_ui()
+
+    def bind_girder_details_tab(self, girder_details_tab) -> None:
+        """Bind to Girder Details so Select Girders reflects user inputs."""
+        self._girder_details_tab = girder_details_tab
+        self.refresh_girder_options()
+
+    def showEvent(self, event):  # noqa: N802 (Qt naming)
+        super().showEvent(event)
+        self.refresh_girder_options()
+
+    def _girder_pairs(self) -> list[str]:
+        girders = []
+        if self._girder_details_tab is not None and hasattr(self._girder_details_tab, "available_girders"):
+            try:
+                girders = list(getattr(self._girder_details_tab, "available_girders") or [])
+            except Exception:
+                girders = []
+        if not girders:
+            girders = ["G1", "G2"]
+        pairs = [f"{girders[i]} to {girders[i + 1]}" for i in range(len(girders) - 1)]
+        return pairs or ["G1 to G2"]
+
+    def refresh_girder_options(self) -> None:
+        """Populate all view selection combos based on Girder Details."""
+        # Save current states before rebuilding options.
+        try:
+            self._store_all_view_states()
+        except Exception:
+            pass
+
+        pairs = self._girder_pairs()
+        member_items = [f"E{i}-1, E{i}-2" for i in range(1, len(pairs) + 1)]
+
+        for combo in list(self._select_girders_combos):
+            if combo is None:
+                continue
+            prev = combo.currentText().strip()
+            block = combo.blockSignals(True)
+            try:
+                combo.clear()
+                combo.addItems(pairs)
+                combo.setCurrentText(prev if prev in pairs else pairs[0])
+            finally:
+                combo.blockSignals(block)
+
+        for combo in list(self._member_id_combos):
+            if combo is None:
+                continue
+            prev = combo.currentText().strip()
+            block = combo.blockSignals(True)
+            try:
+                combo.clear()
+                combo.addItems(member_items)
+                combo.setCurrentText(prev if prev in member_items else member_items[0])
+            finally:
+                combo.blockSignals(block)
+
+        # After refresh, ensure state is restored for current selection.
+        self._restore_all_views_for_current_selection()
+
+    def _selection_key(self, view_key: str) -> str:
+        combos = self._selection_by_view.get(view_key)
+        if not combos:
+            return ""
+        girders_combo, member_combo = combos
+        pair = (girders_combo.currentText() or "").strip()
+        member = (member_combo.currentText() or "").strip()
+        return f"{view_key}::{pair}::{member}".strip(":")
+
+    def _default_state_for_view(self, view_key: str) -> dict:
+        key = (view_key or "").strip()
+        if key == "Cross Bracing":
+            angles = []
+            try:
+                angles = list(self._cross_catalog.list_angles() or [])
+            except Exception:
+                angles = []
+            first_angle = angles[0] if angles else ""
+            return {
+                "design": "Optimized",
+                "bracing_type": "K-Bracing",
+                "bracing_section_type": "Angle",
+                "bracing_section_data": first_angle,
+                "bracing_section_text": "",
+                "top_bracket_type": "Angle",
+                "top_bracket_data": first_angle,
+                "top_bracket_text": "",
+                "bottom_bracket_type": "Angle",
+                "bottom_bracket_data": first_angle,
+                "bottom_bracket_text": "",
+            }
+        if key == "Rolled Beam":
+            first = ""
+            if self.rolled_is_section_combo is not None and self.rolled_is_section_combo.count() > 0:
+                first = self.rolled_is_section_combo.itemText(0)
+            return {
+                "design": "Optimized",
+                "is_section": first,
+            }
+        if key == "Welded Beam":
+            return {
+                "design": "Optimized",
+                "welded_values": ["" for _ in (self._welded_inputs or [])],
+            }
+        return {"design": "Optimized"}
+
+    def _snapshot_view_state(self, view_key: str) -> dict:
+        key = (view_key or "").strip()
+        if key == "Cross Bracing":
+            return {
+                "design": self.cross_design_combo.currentText() if self.cross_design_combo is not None else "",
+                "bracing_type": self.cross_bracing_type_combo.currentText() if self.cross_bracing_type_combo is not None else "",
+                "bracing_section_type": self.cross_bracing_section_type_combo.currentText() if self.cross_bracing_section_type_combo is not None else "",
+                "bracing_section_data": self.cross_bracing_section_combo.currentData() if self.cross_bracing_section_combo is not None else None,
+                "bracing_section_text": self.cross_bracing_section_combo.currentText() if self.cross_bracing_section_combo is not None else "",
+                "top_bracket_type": self.cross_top_bracket_type_combo.currentText() if self.cross_top_bracket_type_combo is not None else "",
+                "top_bracket_data": self.cross_top_bracket_size_combo.currentData() if self.cross_top_bracket_size_combo is not None else None,
+                "top_bracket_text": self.cross_top_bracket_size_combo.currentText() if self.cross_top_bracket_size_combo is not None else "",
+                "bottom_bracket_type": self.cross_bottom_bracket_type_combo.currentText() if self.cross_bottom_bracket_type_combo is not None else "",
+                "bottom_bracket_data": self.cross_bottom_bracket_size_combo.currentData() if self.cross_bottom_bracket_size_combo is not None else None,
+                "bottom_bracket_text": self.cross_bottom_bracket_size_combo.currentText() if self.cross_bottom_bracket_size_combo is not None else "",
+            }
+        if key == "Rolled Beam":
+            return {
+                "design": self.rolled_design_combo.currentText() if self.rolled_design_combo is not None else "",
+                "is_section": self.rolled_is_section_combo.currentText() if self.rolled_is_section_combo is not None else "",
+            }
+        if key == "Welded Beam":
+            values = []
+            for widget in (self._welded_inputs or []):
+                if isinstance(widget, QComboBox):
+                    values.append(widget.currentText())
+                elif isinstance(widget, QLineEdit):
+                    values.append(widget.text())
+                else:
+                    values.append("")
+            return {
+                "design": self.welded_design_combo.currentText() if self.welded_design_combo is not None else "",
+                "welded_values": values,
+            }
+        return {"design": ""}
+
+    def _set_combo_to_data_or_text(self, combo: QComboBox, desired_data, desired_text: str) -> None:
+        if combo is None:
+            return
+        if desired_data is not None:
+            idx = combo.findData(desired_data)
+            if idx >= 0:
+                combo.setCurrentIndex(idx)
+                return
+        if desired_text:
+            idx = combo.findText(desired_text)
+            if idx >= 0:
+                combo.setCurrentIndex(idx)
+
+    def _apply_view_state(self, view_key: str, state: dict) -> None:
+        key = (view_key or "").strip()
+        if key == "Cross Bracing":
+            if self.cross_design_combo is not None:
+                self.cross_design_combo.setCurrentText(state.get("design") or self.cross_design_combo.currentText())
+            if self.cross_bracing_type_combo is not None:
+                self.cross_bracing_type_combo.setCurrentText(state.get("bracing_type") or self.cross_bracing_type_combo.currentText())
+
+            if self.cross_bracing_section_type_combo is not None:
+                self.cross_bracing_section_type_combo.setCurrentText(state.get("bracing_section_type") or self.cross_bracing_section_type_combo.currentText())
+                self._cross_update_designations_for(self.cross_bracing_section_combo, self.cross_bracing_section_type_combo.currentText())
+                self._set_combo_to_data_or_text(
+                    self.cross_bracing_section_combo,
+                    state.get("bracing_section_data"),
+                    state.get("bracing_section_text") or "",
+                )
+
+            if self.cross_top_bracket_type_combo is not None:
+                self.cross_top_bracket_type_combo.setCurrentText(state.get("top_bracket_type") or self.cross_top_bracket_type_combo.currentText())
+                self._cross_update_designations_for(self.cross_top_bracket_size_combo, self.cross_top_bracket_type_combo.currentText())
+                self._set_combo_to_data_or_text(
+                    self.cross_top_bracket_size_combo,
+                    state.get("top_bracket_data"),
+                    state.get("top_bracket_text") or "",
+                )
+
+            if self.cross_bottom_bracket_type_combo is not None:
+                self.cross_bottom_bracket_type_combo.setCurrentText(state.get("bottom_bracket_type") or self.cross_bottom_bracket_type_combo.currentText())
+                self._cross_update_designations_for(self.cross_bottom_bracket_size_combo, self.cross_bottom_bracket_type_combo.currentText())
+                self._set_combo_to_data_or_text(
+                    self.cross_bottom_bracket_size_combo,
+                    state.get("bottom_bracket_data"),
+                    state.get("bottom_bracket_text") or "",
+                )
+
+            self._on_cross_design_changed(self.cross_design_combo.currentText() if self.cross_design_combo is not None else "")
+            self._update_cross_previews()
+            return
+
+        if key == "Rolled Beam":
+            if self.rolled_design_combo is not None:
+                self.rolled_design_combo.setCurrentText(state.get("design") or self.rolled_design_combo.currentText())
+            if self.rolled_is_section_combo is not None:
+                desired = state.get("is_section") or ""
+                if desired:
+                    self.rolled_is_section_combo.setCurrentText(desired)
+                elif self.rolled_is_section_combo.count() > 0:
+                    self.rolled_is_section_combo.setCurrentIndex(0)
+            self._on_rolled_design_changed(self.rolled_design_combo.currentText() if self.rolled_design_combo is not None else "")
+            self._update_rolled_preview_and_props()
+            return
+
+        if key == "Welded Beam":
+            if self.welded_design_combo is not None:
+                self.welded_design_combo.setCurrentText(state.get("design") or self.welded_design_combo.currentText())
+            values = list(state.get("welded_values") or [])
+            for i, widget in enumerate(self._welded_inputs or []):
+                val = values[i] if i < len(values) else ""
+                if isinstance(widget, QComboBox):
+                    if val:
+                        widget.setCurrentText(val)
+                    elif widget.count() > 0:
+                        widget.setCurrentIndex(0)
+                elif isinstance(widget, QLineEdit):
+                    widget.setText(val or "")
+            self._on_welded_design_changed(self.welded_design_combo.currentText() if self.welded_design_combo is not None else "")
+            self._update_welded_preview_and_props()
+            return
+
+    def _store_view_state(self, view_key: str) -> None:
+        selection_key = self._selection_key(view_key)
+        if not selection_key:
+            return
+        self._state_by_view_member_key[selection_key] = self._snapshot_view_state(view_key)
+        self._active_key_by_view[view_key] = selection_key
+
+    def _load_view_state(self, view_key: str) -> None:
+        selection_key = self._selection_key(view_key)
+        if not selection_key:
+            return
+        self._active_key_by_view[view_key] = selection_key
+        state = self._state_by_view_member_key.get(selection_key)
+        if state is None:
+            state = self._default_state_for_view(view_key)
+        self._apply_view_state(view_key, state)
+
+    def _store_all_view_states(self) -> None:
+        for view_key in list(self._selection_by_view.keys()):
+            self._store_view_state(view_key)
+
+    def _restore_all_views_for_current_selection(self) -> None:
+        for view_key in list(self._selection_by_view.keys()):
+            self._load_view_state(view_key)
+
+    def _sync_selection_index_to_all_views(self, idx: int) -> None:
+        if self._block_selection_sync:
+            return
+        self._store_all_view_states()
+        self._block_selection_sync = True
+        try:
+            for view_key, (girders_combo, member_combo) in self._selection_by_view.items():
+                if girders_combo is not None and girders_combo.count() > 0:
+                    girders_combo.setCurrentIndex(min(max(idx, 0), girders_combo.count() - 1))
+                if member_combo is not None and member_combo.count() > 0:
+                    member_combo.setCurrentIndex(min(max(idx, 0), member_combo.count() - 1))
+        finally:
+            self._block_selection_sync = False
+        self._restore_all_views_for_current_selection()
+
+    def _is_optimized(self, combo: QComboBox | None) -> bool:
+        if combo is None:
+            return False
+        return (combo.currentText() or "").strip() == "Optimized"
+
+    def _design_combo_for_type(self, view_type: str | None) -> QComboBox | None:
+        key = (view_type or "").strip()
+        if key == "Cross Bracing":
+            return self.cross_design_combo
+        if key == "Rolled Beam":
+            return self.rolled_design_combo
+        if key == "Welded Beam":
+            return self.welded_design_combo
+        return None
+
+    def _apply_rolled_custom_mode(self, is_custom: bool) -> None:
+        for widget in self._rolled_inputs:
+            if widget is not None:
+                widget.setEnabled(is_custom)
+
+    def _on_rolled_design_changed(self, label: str) -> None:
+        is_custom = (label or "").strip() == "Customized"
+        self._apply_rolled_custom_mode(is_custom)
+
+    def _apply_welded_custom_mode(self, is_custom: bool) -> None:
+        for widget in self._welded_inputs:
+            if widget is not None:
+                widget.setEnabled(is_custom)
+
+    def _on_welded_design_changed(self, label: str) -> None:
+        is_custom = (label or "").strip() == "Customized"
+        self._apply_welded_custom_mode(is_custom)
 
     def init_ui(self):
         main_layout = QVBoxLayout(self)
@@ -94,6 +406,10 @@ class EndDiaphragmDetailsTab(QWidget):
         self._add_type_view("Welded Beam", welded_view, welded_selector)
 
         self._set_current_type("Cross Bracing")
+
+        # Now that all views/widgets exist, restore saved/default state for the
+        # current (girder, member) selection across all views.
+        self._restore_all_views_for_current_selection()
 
     def _add_type_view(self, key, widget, type_selector):
         self.views[key] = widget
@@ -137,6 +453,11 @@ class EndDiaphragmDetailsTab(QWidget):
         layout.addWidget(widget, row, 1)
         return row + 1
 
+    def _configure_combo_box(self, combo: QComboBox) -> None:
+        """Keep combos stable without forcing the right-side diagram to collapse."""
+        combo.setSizeAdjustPolicy(QComboBox.AdjustToMinimumContentsLengthWithIcon)
+        combo.setMinimumContentsLength(12)
+
     def _create_image_placeholder(self, text, min_height=140):
         label = QLabel(text)
         label.setAlignment(Qt.AlignCenter)
@@ -151,7 +472,7 @@ class EndDiaphragmDetailsTab(QWidget):
         apply_field_style(line_edit)
         return line_edit
 
-    def _create_selection_box(self):
+    def _create_selection_box(self, view_key: str):
         box = self._create_inner_box()
         box.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         layout = QGridLayout(box)
@@ -162,16 +483,35 @@ class EndDiaphragmDetailsTab(QWidget):
         layout.setColumnStretch(1, 1)
 
         girders_combo = QComboBox()
-        girders_combo.addItems(["G1 to G2", "G3 to G4", "All"])
+        # Populated from Girder Details when bound. (No All option.)
+        self._configure_combo_box(girders_combo)
         apply_field_style(girders_combo)
         layout.addWidget(self._create_label("Select Girders:"), 0, 0)
         layout.addWidget(girders_combo, 0, 1)
 
+        self._select_girders_combos.append(girders_combo)
+
         member_combo = QComboBox()
-        member_combo.addItems(["E1-1, E1-2", "E2-1, E2-2", "Custom"])
+        # Populated from Girder Details when bound. (No Custom option.)
+        self._configure_combo_box(member_combo)
         apply_field_style(member_combo)
         layout.addWidget(self._create_label("Member ID:"), 1, 0)
         layout.addWidget(member_combo, 1, 1)
+
+        self._member_id_combos.append(member_combo)
+
+        # Register selection widgets for state persistence.
+        self._selection_by_view[view_key] = (girders_combo, member_combo)
+
+        # Keep selection synced across views.
+        girders_combo.currentIndexChanged.connect(lambda idx, _k=view_key: self._sync_selection_index_to_all_views(idx))
+        member_combo.currentIndexChanged.connect(lambda idx, _k=view_key: self._sync_selection_index_to_all_views(idx))
+
+        # Seed with safe defaults so the UI isn't empty before binding.
+        try:
+            self.refresh_girder_options()
+        except Exception:
+            pass
 
         return box
 
@@ -508,8 +848,9 @@ class EndDiaphragmDetailsTab(QWidget):
         )
 
     def _apply_cross_custom_mode(self, is_custom: bool) -> None:
+        # Keep preview/diagram column visible even in Optimized mode.
         if self.cross_right_column is not None:
-            self.cross_right_column.setVisible(is_custom)
+            self.cross_right_column.setVisible(True)
         for widget in (
             self.cross_bracing_section_type_combo,
             self.cross_bracing_section_combo,
@@ -537,7 +878,7 @@ class EndDiaphragmDetailsTab(QWidget):
         left_layout = QVBoxLayout(left_column)
         left_layout.setContentsMargins(0, 0, 0, 0)
         left_layout.setSpacing(6)
-        left_layout.addWidget(self._create_selection_box())
+        left_layout.addWidget(self._create_selection_box("Cross Bracing"))
 
         inputs_box = self._create_inner_box()
         inputs_layout = QVBoxLayout(inputs_box)
@@ -557,6 +898,9 @@ class EndDiaphragmDetailsTab(QWidget):
 
         design_combo = QComboBox()
         design_combo.addItems(["Customized", "Optimized"])
+        if design_combo.count() > 1:
+            design_combo.setCurrentIndex(1)  # Default to Optimized
+        self._configure_combo_box(design_combo)
         apply_field_style(design_combo)
         row = self._add_grid_row(grid, 0, "Design:", design_combo)
         self.cross_design_combo = design_combo
@@ -564,13 +908,16 @@ class EndDiaphragmDetailsTab(QWidget):
         type_selector = QComboBox()
         type_selector.addItems(VALUES_END_DIAPHRAGM_TYPE)
         type_selector.setCurrentText("Cross Bracing")
+        self._configure_combo_box(type_selector)
         apply_field_style(type_selector)
         row = self._add_grid_row(grid, row, "Type:", type_selector)
 
         bracing_combo = QComboBox()
         bracing_combo.addItems(["K-Bracing", "X-Bracing", "Diagonal", "Horizontal"])
+        self._configure_combo_box(bracing_combo)
         apply_field_style(bracing_combo)
         row = self._add_grid_row(grid, row, "Type of Bracing:", bracing_combo)
+        self.cross_bracing_type_combo = bracing_combo
 
         section_type_options = [
             "Angle",
@@ -582,33 +929,39 @@ class EndDiaphragmDetailsTab(QWidget):
 
         bracing_section_type = QComboBox()
         bracing_section_type.addItems(section_type_options)
+        self._configure_combo_box(bracing_section_type)
         apply_field_style(bracing_section_type)
         row = self._add_grid_row(grid, row, "Bracing Section Type:", bracing_section_type)
         self.cross_bracing_section_type_combo = bracing_section_type
 
         bracing_section_size = QComboBox()
+        self._configure_combo_box(bracing_section_size)
         apply_field_style(bracing_section_size)
         row = self._add_grid_row(grid, row, "Bracing Section:", bracing_section_size)
         self.cross_bracing_section_combo = bracing_section_size
 
         top_bracket_type = QComboBox()
         top_bracket_type.addItems(section_type_options)
+        self._configure_combo_box(top_bracket_type)
         apply_field_style(top_bracket_type)
         row = self._add_grid_row(grid, row, "Top Bracket Section:", top_bracket_type)
         self.cross_top_bracket_type_combo = top_bracket_type
 
         top_bracket_size = QComboBox()
+        self._configure_combo_box(top_bracket_size)
         apply_field_style(top_bracket_size)
         row = self._add_grid_row(grid, row, "Top Bracket Size:", top_bracket_size)
         self.cross_top_bracket_size_combo = top_bracket_size
 
         bottom_bracket_type = QComboBox()
         bottom_bracket_type.addItems(section_type_options)
+        self._configure_combo_box(bottom_bracket_type)
         apply_field_style(bottom_bracket_type)
         row = self._add_grid_row(grid, row, "Bottom Bracket Section:", bottom_bracket_type)
         self.cross_bottom_bracket_type_combo = bottom_bracket_type
 
         bottom_bracket_size = QComboBox()
+        self._configure_combo_box(bottom_bracket_size)
         apply_field_style(bottom_bracket_size)
         row = self._add_grid_row(grid, row, "Bottom Bracket Size:", bottom_bracket_size)
         self.cross_bottom_bracket_size_combo = bottom_bracket_size
@@ -691,7 +1044,7 @@ class EndDiaphragmDetailsTab(QWidget):
         left_layout = QVBoxLayout(left_column)
         left_layout.setContentsMargins(0, 0, 0, 0)
         left_layout.setSpacing(8)
-        left_layout.addWidget(self._create_selection_box())
+        left_layout.addWidget(self._create_selection_box("Rolled Beam"))
 
         inputs_box = self._create_inner_box()
         inputs_layout = QVBoxLayout(inputs_box)
@@ -711,20 +1064,27 @@ class EndDiaphragmDetailsTab(QWidget):
 
         design_combo = QComboBox()
         design_combo.addItems(["Customized", "Optimized"])
+        if design_combo.count() > 1:
+            design_combo.setCurrentIndex(1)  # Default to Optimized
+        self.rolled_design_combo = design_combo
+        self._configure_combo_box(design_combo)
         apply_field_style(design_combo)
         row = self._add_grid_row(grid, 0, "Design:", design_combo)
 
         type_selector = QComboBox()
         type_selector.addItems(VALUES_END_DIAPHRAGM_TYPE)
         type_selector.setCurrentText("Rolled Beam")
+        self._configure_combo_box(type_selector)
         apply_field_style(type_selector)
         row = self._add_grid_row(grid, row, "Type:", type_selector)
 
         is_section_combo = QComboBox()
+        self._configure_combo_box(is_section_combo)
         apply_field_style(is_section_combo)
         self._populate_rolled_sections(is_section_combo)
         self._add_grid_row(grid, row, "IS Section:", is_section_combo)
         self.rolled_is_section_combo = is_section_combo
+        self._rolled_inputs = [is_section_combo]
 
         inputs_layout.addLayout(grid)
         inputs_box.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
@@ -763,8 +1123,10 @@ class EndDiaphragmDetailsTab(QWidget):
 
         layout.addWidget(right_column)
 
+        design_combo.currentTextChanged.connect(self._on_rolled_design_changed)
         is_section_combo.currentTextChanged.connect(self._update_rolled_preview_and_props)
         self._update_rolled_preview_and_props()
+        self._on_rolled_design_changed(design_combo.currentText())
         return view, type_selector
 
     def _build_welded_view(self):
@@ -777,7 +1139,7 @@ class EndDiaphragmDetailsTab(QWidget):
         left_layout = QVBoxLayout(left_column)
         left_layout.setContentsMargins(0, 0, 0, 0)
         left_layout.setSpacing(8)
-        left_layout.addWidget(self._create_selection_box())
+        left_layout.addWidget(self._create_selection_box("Welded Beam"))
 
         inputs_box = self._create_inner_box()
         inputs_layout = QVBoxLayout(inputs_box)
@@ -795,17 +1157,23 @@ class EndDiaphragmDetailsTab(QWidget):
 
         design_combo = QComboBox()
         design_combo.addItems(["Customized", "Optimized"])
+        if design_combo.count() > 1:
+            design_combo.setCurrentIndex(1)  # Default to Optimized
+        self.welded_design_combo = design_combo
+        self._configure_combo_box(design_combo)
         apply_field_style(design_combo)
         row = self._add_grid_row(grid, 0, "Design:", design_combo)
 
         type_selector = QComboBox()
         type_selector.addItems(VALUES_END_DIAPHRAGM_TYPE)
         type_selector.setCurrentText("Welded Beam")
+        self._configure_combo_box(type_selector)
         apply_field_style(type_selector)
         row = self._add_grid_row(grid, row, "Type:", type_selector)
 
         symmetry_combo = QComboBox()
         symmetry_combo.addItems(["Girder Symmetric", "Girder Unsymmetric"])
+        self._configure_combo_box(symmetry_combo)
         apply_field_style(symmetry_combo)
         row = self._add_grid_row(grid, row, "Symmetry:", symmetry_combo)
 
@@ -816,6 +1184,7 @@ class EndDiaphragmDetailsTab(QWidget):
 
         web_thick_combo = QComboBox()
         web_thick_combo.addItems(["All", "Custom"])
+        self._configure_combo_box(web_thick_combo)
         apply_field_style(web_thick_combo)
         row = self._add_grid_row(grid, row, "Web Thickness (mm):", web_thick_combo)
 
@@ -826,6 +1195,7 @@ class EndDiaphragmDetailsTab(QWidget):
 
         top_thickness_combo = QComboBox()
         top_thickness_combo.addItems(["All", "Custom"])
+        self._configure_combo_box(top_thickness_combo)
         apply_field_style(top_thickness_combo)
         row = self._add_grid_row(grid, row, "Top Flange Thickness (mm):", top_thickness_combo)
 
@@ -836,11 +1206,23 @@ class EndDiaphragmDetailsTab(QWidget):
 
         bottom_thickness_combo = QComboBox()
         bottom_thickness_combo.addItems(["All", "Custom"])
+        self._configure_combo_box(bottom_thickness_combo)
         apply_field_style(bottom_thickness_combo)
         row = self._add_grid_row(grid, row, "Bottom Flange Thickness (mm):", bottom_thickness_combo)
 
         bearing_thickness = self._create_line_edit()
         self._add_grid_row(grid, row, "Bearing Stiffener Thickness (mm):", bearing_thickness)
+
+        self._welded_inputs = [
+            symmetry_combo,
+            total_depth,
+            web_thick_combo,
+            top_width,
+            top_thickness_combo,
+            bottom_width,
+            bottom_thickness_combo,
+            bearing_thickness,
+        ]
 
         inputs_layout.addLayout(grid)
         inputs_box.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
@@ -879,9 +1261,11 @@ class EndDiaphragmDetailsTab(QWidget):
 
         layout.addWidget(right_column)
 
+        design_combo.currentTextChanged.connect(self._on_welded_design_changed)
         for watcher in (total_depth, top_width, bottom_width):
             watcher.textChanged.connect(self._update_welded_preview_and_props)
         self._update_welded_preview_and_props()
+        self._on_welded_design_changed(design_combo.currentText())
         return view, type_selector
 
     def _handle_type_selection(self, value):
@@ -895,6 +1279,10 @@ class EndDiaphragmDetailsTab(QWidget):
             return
         if self.current_type == target:
             return
+
+        previous_type = self.current_type
+        previous_was_optimized = self._is_optimized(self._design_combo_for_type(previous_type))
+
         self.current_type = target
         index = self.view_order.index(target)
         self.type_stack.setCurrentIndex(index)
@@ -902,6 +1290,20 @@ class EndDiaphragmDetailsTab(QWidget):
         for selector in self.type_selectors:
             selector.setCurrentText(target)
         self.block_type_sync = False
+
+        # If the user was in Optimized mode, keep Optimized when switching types.
+        if previous_was_optimized:
+            next_design_combo = self._design_combo_for_type(target)
+            if next_design_combo is not None:
+                next_design_combo.setCurrentText("Optimized")
+
+        # Ensure enabled/disabled state matches the selected design for the active view.
+        if target == "Cross Bracing" and self.cross_design_combo is not None:
+            self._on_cross_design_changed(self.cross_design_combo.currentText())
+        elif target == "Rolled Beam" and self.rolled_design_combo is not None:
+            self._on_rolled_design_changed(self.rolled_design_combo.currentText())
+        elif target == "Welded Beam" and self.welded_design_combo is not None:
+            self._on_welded_design_changed(self.welded_design_combo.currentText())
 
         # Refresh preview/properties for the active view.
         if target == "Cross Bracing":
