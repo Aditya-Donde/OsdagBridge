@@ -207,7 +207,7 @@ def create_metallic_barrier_system(length, design_dict, kerb_top_width, kerb_hei
     
     #  W-BEAM PARAMETERS
     W_BEAM_HEIGHT = spacer_height  # Aligned with spacer height 
-    W_BEAM_DEPTH = 83.0            # Standard W-beam depth
+    W_BEAM_DEPTH = 83.0            
     W_BEAM_THICKNESS = w_beam_thickness
     
     # Gaussian parameters for wave profile
@@ -226,7 +226,7 @@ def create_metallic_barrier_system(length, design_dict, kerb_top_width, kerb_hei
         points = 40
         zs = np.linspace(0, W_BEAM_HEIGHT, points)
 
-        # ---------- OUTER CURVE ----------
+        # OUTER CURVE
         outer_pts = TColgp_Array1OfPnt(1, points)
         for i, z in enumerate(zs, start=1):
             y_wave = (
@@ -243,7 +243,7 @@ def create_metallic_barrier_system(length, design_dict, kerb_top_width, kerb_hei
 
         outer_curve = GeomAPI_PointsToBSpline(outer_pts).Curve()
 
-        # ---------- INNER CURVE (OFFSET) ----------
+        # INNER CURVE (OFFSET) 
         inner_pts = TColgp_Array1OfPnt(1, points)
         for i, z in enumerate(zs, start=1):
             y_wave_inner = (
@@ -260,7 +260,7 @@ def create_metallic_barrier_system(length, design_dict, kerb_top_width, kerb_hei
 
         inner_curve = GeomAPI_PointsToBSpline(inner_pts).Curve()
 
-        # ---------- COMBINE INTO CLOSED WIRE ----------
+        # COMBINE INTO CLOSED WIRE 
         wire = BRepBuilderAPI_MakeWire()
         # Outer curve (upwards)
         wire.Add(BRepBuilderAPI_MakeEdge(outer_curve).Edge())

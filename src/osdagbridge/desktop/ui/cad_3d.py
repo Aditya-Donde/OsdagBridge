@@ -137,17 +137,17 @@ class CAD3DWindow(QMainWindow):
         WEB_COLOR = Quantity_Color(47/255.0, 47/255.0, 35/255.0, Quantity_TOC_RGB)
         FLANGE_COLOR = Quantity_Color(134/255.0, 134/255.0, 100/255.0, Quantity_TOC_RGB)
         STIFFENER_COLOR = Quantity_Color(72/255, 72/255, 54/255, Quantity_TOC_RGB)
-        DECK_COLOR = Quantity_Color(180/255, 180/255, 180/255, Quantity_TOC_RGB)
+        DECK_COLOR = Quantity_Color(100/255, 100/255, 100/255, Quantity_TOC_RGB)
         BARRIER_COLOR = Quantity_Color(40/255, 40/255, 40/255, Quantity_TOC_RGB)  #Quantity_Color(120/255, 120/255, 120/255, Quantity_TOC_RGB)
         BRACING_COLOR = Quantity_Color(60/255, 60/255, 60/255, Quantity_TOC_RGB)
-        WBEAM_COLOR = Quantity_Color(160/255, 160/255, 120/255, Quantity_TOC_RGB)
-        BARRIER_POST_COLOR = Quantity_Color(40/255, 40/255, 40/255, Quantity_TOC_RGB)
+        WBEAM_COLOR = Quantity_Color(128/255, 128/255, 128/255, Quantity_TOC_RGB)
+        BARRIER_POST_COLOR = Quantity_Color(20/255, 20/255, 20/255, Quantity_TOC_RGB)
         SUPPORT_COLOR = Quantity_Color(20/255.0, 20/255.0, 20/255.0, Quantity_TOC_RGB)
 
 
 
         # HELPER 
-        def display_and_register(shapes, key, label, color):
+        def display_and_register(shapes, key, label, color, transparency=None):
             if not shapes:
                 return
 
@@ -157,7 +157,7 @@ class CAD3DWindow(QMainWindow):
             ais_list = []
 
             for shp in shapes:
-                ais = display.DisplayShape(shp, color=color, update=False)
+                ais = display.DisplayShape(shp, color=color, transparency=transparency, update=False)
                 ais = ais[0] if isinstance(ais, list) else ais
 
                 context.Activate(ais, 0)   # REQUIRED for hover
@@ -198,7 +198,8 @@ class CAD3DWindow(QMainWindow):
             cad_data.get("supports", []),
             "Support",
             "Support",
-            SUPPORT_COLOR
+            SUPPORT_COLOR,
+            transparency=0.6
         )
 
 
