@@ -142,6 +142,8 @@ class CAD3DWindow(QMainWindow):
         BRACING_COLOR = Quantity_Color(60/255, 60/255, 60/255, Quantity_TOC_RGB)
         WBEAM_COLOR = Quantity_Color(160/255, 160/255, 120/255, Quantity_TOC_RGB)
         BARRIER_POST_COLOR = Quantity_Color(40/255, 40/255, 40/255, Quantity_TOC_RGB)
+        SUPPORT_COLOR = Quantity_Color(20/255.0, 20/255.0, 20/255.0, Quantity_TOC_RGB)
+
 
 
         # HELPER 
@@ -193,6 +195,14 @@ class CAD3DWindow(QMainWindow):
         )
 
         display_and_register(
+            cad_data.get("supports", []),
+            "Support",
+            "Support",
+            SUPPORT_COLOR
+        )
+
+
+        display_and_register(
             cad_data.get("cross_bracings", []),
             "Cross Bracing",
             "Cross Bracing",
@@ -226,10 +236,18 @@ class CAD3DWindow(QMainWindow):
             WBEAM_COLOR
         )
 
+        
+        display_and_register(
+            cad_data.get("median_w_beams", []),
+            "Median W-Beam",
+            "Median W-Beam",
+            WBEAM_COLOR
+        )
+
         display_and_register(
             cad_data.get("crash_barriers", []),
             "Crash Barrier",
-            "Posts / Kerb",
+            "Crash Barrier",
             BARRIER_POST_COLOR
         )
 
@@ -371,8 +389,25 @@ class CAD3DWindow(QMainWindow):
             context.Erase(ais, False)
 
         # Show selected component
-        for ais in self.viewer.model_ais_objects.get(component_key, []):
-            context.Display(ais, False)
+        if component_key == "Crash Barrier":
+            for key in ("Crash Barrier", "Crash Barrier W-Beam"):
+                for ais in self.viewer.model_ais_objects.get(key, []):
+                    context.Display(ais, False)
+
+        elif component_key == "Median":
+            for key in ("Median", "Median W-Beam"):
+                for ais in self.viewer.model_ais_objects.get(key, []):
+                    context.Display(ais, False)
+
+
+        elif component_key == "Girder":
+            for key in ("Girder Web", "Girder Flange", "Support"):
+                for ais in self.viewer.model_ais_objects.get(key, []):
+                    context.Display(ais, False)
+
+        else:
+            for ais in self.viewer.model_ais_objects.get(component_key, []):
+                context.Display(ais, False)
 
         # Show deck textures ONLY if Deck is selected
         if component_key == "Deck":

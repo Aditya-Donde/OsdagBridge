@@ -10,8 +10,8 @@ Plate Girder Geometry Builder (Geometry Only)
 import math
 import numpy as np
 
-from OCC.Core.gp import gp_Pnt, gp_Vec, gp_Trsf, gp_Ax3, gp_Dir
-from OCC.Core.BRepPrimAPI import BRepPrimAPI_MakePrism
+from OCC.Core.gp import gp_Pnt, gp_Vec, gp_Trsf, gp_Ax3, gp_Dir, gp_Ax2
+from OCC.Core.BRepPrimAPI import BRepPrimAPI_MakePrism, BRepPrimAPI_MakeCylinder
 from OCC.Core.BRepBuilderAPI import (
     BRepBuilderAPI_MakeEdge,
     BRepBuilderAPI_MakeWire,
@@ -110,6 +110,7 @@ def _create_stiffener_plate(position, width, height, thickness, chamfer, side):
     trsf.SetDisplacement(local_ax, global_ax)
 
     return BRepBuilderAPI_Transform(solid, trsf, True).Shape()
+
 
 
 
@@ -247,6 +248,72 @@ def build_plate_girder_geometry(
                 )
             )
 
+    # SUPPORTS 
+
+    supports_tri = []
+    supports_cyl = []
+
+    # Contact level (bottom of bottom flange)
+    z_contact = -(D / 2.0 + T_fb)
+
+    # Support width spans flange width
+    support_width = max(B_ft, B_fb)
+
+    
+    base_dim = min(0.10 * length, 0.75 * D)
+
+    # Triangle proportions
+    h_supp = base_dim / 1.5
+    w_supp = base_dim / 2.0
+
+    # Cylinder radius
+    r_cyl = h_supp / 2.0
+
+    # TRIANGULAR SUPPORT (LEFT)
+
+    y_apex = w_supp
+    z_apex = z_contact
+    x_face = -support_width / 2.0
+
+    p1 = gp_Pnt(x_face, y_apex, z_apex)
+    p2 = gp_Pnt(x_face, y_apex - w_supp, z_apex - h_supp)
+    p3 = gp_Pnt(x_face, y_apex + w_supp, z_apex - h_supp)
+
+    e1 = BRepBuilderAPI_MakeEdge(p1, p2).Edge()
+    e2 = BRepBuilderAPI_MakeEdge(p2, p3).Edge()
+    e3 = BRepBuilderAPI_MakeEdge(p3, p1).Edge()
+
+    wire = BRepBuilderAPI_MakeWire()
+    wire.Add(e1)
+    wire.Add(e2)
+    wire.Add(e3)
+
+    face = BRepBuilderAPI_MakeFace(wire.Wire()).Face()
+
+    tri_support = BRepPrimAPI_MakePrism(
+        face,
+        gp_Vec(support_width, 0, 0)
+    ).Shape()
+
+    supports_tri.append(tri_support)
+
+    # CYLINDRICAL SUPPORT (RIGHT)
+
+    y_cyl = length - r_cyl
+    z_cyl_center = z_contact - r_cyl
+
+    pt_cyl = gp_Pnt(-support_width / 2.0, y_cyl, z_cyl_center)
+    axis = gp_Ax2(pt_cyl, gp_Dir(1, 0, 0))
+
+    cyl_support = BRepPrimAPI_MakeCylinder(
+        axis,
+        r_cyl,
+        support_width
+    ).Shape()
+
+    supports_cyl.append(cyl_support)
+
+
 
     web = _rotate_about_z(web, -90)
     top_flange = _rotate_about_z(top_flange, -90)
@@ -256,10 +323,21 @@ def build_plate_girder_geometry(
         _rotate_about_z(s, -90) for s in stiffeners
     ]
 
+    supports_tri = [
+        _rotate_about_z(s, -90) for s in supports_tri
+    ]
+
+    supports_cyl = [
+        _rotate_about_z(s, -90) for s in supports_cyl
+    ]
+
+
 
     return {
         "web": web,
         "top_flange": top_flange,
         "bottom_flange": bottom_flange,
-        "stiffeners": stiffeners
+        "stiffeners": stiffeners,
+        "supports_tri": supports_tri,
+        "supports_cyl": supports_cyl
     }

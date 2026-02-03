@@ -61,7 +61,7 @@ class PlateGirderCADGenerator:
         self.bridge_type = bridge_type
 
         # GIRDERS PARAMETERS
-        self.span_length_L = 25000
+        self.span_length_L = 10000
 
         self.girder_section_d = 900          # clear web depth
         self.girder_section_bf = 500  #top flange width
@@ -185,6 +185,19 @@ class PlateGirderCADGenerator:
                 stiffeners.append(
                     _translate(stiff, dy=y_offset)
                 )
+
+        supports_tri = []
+        supports_cyl = []
+
+        for i in range(self.num_girders):
+            y_offset = (i * self.girder_spacing) - (total_width / 2)
+
+            for s in pg["supports_tri"]:
+                supports_tri.append(_translate(s, dy=y_offset))
+
+            for s in pg["supports_cyl"]:
+                supports_cyl.append(_translate(s, dy=y_offset))
+
 
         # 3. REFERENCE Z-LEVELS 
 
@@ -316,6 +329,7 @@ class PlateGirderCADGenerator:
 
         # 8. MEDIAN
         median_barriers = []
+        median_w_beams = [] 
         if self.enable_median:
             # Get median design specifications from IRC5_2015
             median_type_map = {"Raised Kerb": 0, "RCC Crash Barrier": 1, "Metallic Crash Barrier": 2}
@@ -341,10 +355,11 @@ class PlateGirderCADGenerator:
             )
             
             median_barriers = []
+            median_w_beams = []
             for mb in median_barriers_raw:
                 if isinstance(mb, dict):
                     if mb.get("w_beams"):
-                        crash_barrier_w_beams.append(mb["w_beams"])
+                        median_w_beams.append(mb["w_beams"])
                     for k in ("kerb", "posts", "spacers"):
                         if mb.get(k):
                             crash_barrier_other.append(mb[k]) # Using same 'other' list for coloring
@@ -363,6 +378,9 @@ class PlateGirderCADGenerator:
             rail_count=self.rail_count
         )
 
+        supports = supports_tri + supports_cyl
+
+
         # FINAL RETURN
         return {
             "girders": girders,
@@ -370,6 +388,12 @@ class PlateGirderCADGenerator:
             "girder_flanges": girder_flanges,
 
             "stiffeners": stiffeners,
+
+            "supports": supports, 
+            "supports_tri": supports_tri,
+            "supports_cyl": supports_cyl,
+
+
             "cross_bracings": cross_bracings,
 
             "deck_slab": deck_out["deck_slab"],
@@ -380,6 +404,7 @@ class PlateGirderCADGenerator:
             "crash_barriers": crash_barriers,
             "crash_barrier_w_beams": crash_barrier_w_beams,
             "median_barriers": median_barriers,
+            "median_w_beams": median_w_beams,
             "railings": railings
         }
 
