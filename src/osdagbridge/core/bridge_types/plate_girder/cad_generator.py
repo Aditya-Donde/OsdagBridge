@@ -77,21 +77,21 @@ class PlateGirderCADGenerator:
         self.carriageway_width = 12000
         self.deck_thickness = 400
 
-        self.footpath_config = "NONE"         # NONE / LEFT / RIGHT / BOTH
+        self.footpath_config = "BOTH"         # NONE / LEFT / RIGHT / BOTH
         self.footpath_width = 1500
         self.railing_width = 300
 
         # CRASH BARRIER PARAMETERS
-        self.barrier_type = "Semi-Rigid"  # "Rigid" or "Semi-Rigid"
-        self.crash_barrier_subtype = "Single W-beam"  # "IRC-5R", "High Containment", "Single W-beam", "Double W-beam"
+        self.barrier_type = "Rigid"  # "Rigid" or "Semi-Rigid"
+        self.crash_barrier_subtype = "IRC-5R"  # "IRC-5R", "High Containment", "Single W-beam", "Double W-beam"
 
         # MEDIAN PARAMETERS
         self.enable_median = True
         self.median_type = "Metallic Crash Barrier"  # "Raised Kerb", "RCC Crash Barrier", "Metallic Crash Barrier"
 
         # RAILING PARAMETERS
-        self.railing_height = 1200
         self.rail_count = 3
+        self.railing_type = "rcc"
 
         # STIFFENER PARAMETERS
         self.stiffener_width = 200
@@ -241,7 +241,8 @@ class PlateGirderCADGenerator:
             KEY_RAILING_TYPE,
             KEY_RIGID_CRASH_BARRIER_TYPE,
             KEY_METALLIC_CRASH_BARRIER_TYPE,
-            KEY_MEDIAN_TYPE
+            KEY_MEDIAN_TYPE,
+            VALUES_RAILING_TYPE
         )
 
         # Map barrier_type string to KEY_CRASH_BARRIER_TYPE index
@@ -252,25 +253,40 @@ class PlateGirderCADGenerator:
         rigid_subtype_map = {"IRC-5R": 0, "High Containment": 1}
         metallic_subtype_map = {"Single W-beam": 0, "Double W-beam": 1}
 
+        # Map railing type
+        railing_map = {
+            VALUES_RAILING_TYPE[0]: KEY_RAILING_TYPE[0], # RCC
+            VALUES_RAILING_TYPE[1]: KEY_RAILING_TYPE[1], # Steel
+        }
+        
+        # Robust selection: Check map, then check for rough string match (e.g. "steel")
+        selected_railing_key = railing_map.get(self.railing_type)
+        if selected_railing_key is None:
+            if "steel" in self.railing_type.lower():
+                selected_railing_key = KEY_RAILING_TYPE[1]
+            else:
+                selected_railing_key = KEY_RAILING_TYPE[0]
+
+        # If Semi-Rigid, force default RCC railing 
+        if self.barrier_type != "Rigid":
+            selected_railing_key = KEY_RAILING_TYPE[0]
+
+        # Determine explicit railing width for Deck Sizing
+        if selected_railing_key == KEY_RAILING_TYPE[1]: # Steel
+            actual_railing_width = 200
+        else:
+            actual_railing_width = 275
+
+        # Populate design_dict
         if self.barrier_type == "Rigid":
             rigid_subtype_idx = rigid_subtype_map.get(self.crash_barrier_subtype, 0)
-            if self.footpath_config == "NONE":
-                design_dict = IRC5_2015.cl_109_6_3_shapes(
-                    barrier_type=KEY_CRASH_BARRIER_TYPE[barrier_idx],
-                    footpath=KEY_FOOTPATH[0],
-                    railing_type=None,
-                    design_dict={},
-                    crash_barrier_type=KEY_RIGID_CRASH_BARRIER_TYPE[rigid_subtype_idx]
-                )
-            else:
-                design_dict = IRC5_2015.cl_109_6_3_shapes(
-                    barrier_type=KEY_CRASH_BARRIER_TYPE[barrier_idx],
-                    footpath=KEY_FOOTPATH[1],
-                    railing_type=KEY_RAILING_TYPE[0],
-                    design_dict={},
-                    crash_barrier_type=KEY_RIGID_CRASH_BARRIER_TYPE[rigid_subtype_idx]
-                )
-            # For rigid, the base width is in "crash_barrier_width"
+            design_dict = IRC5_2015.cl_109_6_3_shapes(
+                barrier_type=KEY_CRASH_BARRIER_TYPE[barrier_idx],
+                footpath=KEY_FOOTPATH[0] if self.footpath_config == "NONE" else KEY_FOOTPATH[1],
+                railing_type=selected_railing_key,
+                design_dict={},
+                crash_barrier_type=KEY_RIGID_CRASH_BARRIER_TYPE[rigid_subtype_idx]
+            )
             actual_base_width = design_dict.get("crash_barrier_width", 450)
         else:
             # Semi-rigid / Metallic
@@ -278,13 +294,21 @@ class PlateGirderCADGenerator:
             design_dict = IRC5_2015.cl_109_6_3_shapes(
                 barrier_type=KEY_CRASH_BARRIER_TYPE[1],
                 footpath=KEY_FOOTPATH[0] if self.footpath_config == "NONE" else KEY_FOOTPATH[1],
-                railing_type=None,
+                railing_type=selected_railing_key, # Passing this ensures dictionary gets updated with railing params
                 design_dict={},
                 crash_barrier_type=KEY_METALLIC_CRASH_BARRIER_TYPE[metallic_subtype_idx]
             )
-            # For semi-rigid/metallic, the kerb bottom width is the base width
             actual_base_width = design_dict.get("kerb_bottom_width", 550)
+            
+        # Ensure railing params are in design_dict 
+        if selected_railing_key == KEY_RAILING_TYPE[1]:
+            design_dict["railing_type"] = "steel"
+            design_dict["railing_width"] = 200
+        else:
+            design_dict["railing_type"] = "RCC"
+            design_dict["railing_width"] = 275
 
+        
         # 6. DECK SYSTEM (USES TOP-OF-GIRDER Z)
         deck_out = build_deck(
             span_length_L=self.span_length_L,
@@ -295,7 +319,7 @@ class PlateGirderCADGenerator:
             carriageway_width=self.carriageway_width,
             crash_barrier_base_width=actual_base_width,
             footpath_width=self.footpath_width,
-            railing_width=self.railing_width
+            railing_width=actual_railing_width
         )
 
         # 7. CRASH BARRIER PLACEMENT
@@ -309,7 +333,7 @@ class PlateGirderCADGenerator:
             footpath_config=self.footpath_config,
             carriageway_width=self.carriageway_width,
             footpath_width=self.footpath_width,
-            railing_width=self.railing_width,
+            railing_width=actual_railing_width,
             design_dict=design_dict,
             barrier_type=self.barrier_type
         )
@@ -368,14 +392,15 @@ class PlateGirderCADGenerator:
                     median_barriers.append(mb)
 
         # 8. RAILINGS
+
+
+        
         railings = build_railings(
             span_length=self.span_length_L,
             deck_top_z=deck_out["deck_top_z"],
             total_deck_width=deck_out["total_deck_width"],
             footpath_config=self.footpath_config,
-            railing_width=self.railing_width,
-            railing_height=self.railing_height,
-            rail_count=self.rail_count
+            design_dict=design_dict
         )
 
         supports = supports_tri + supports_cyl

@@ -240,7 +240,7 @@ def create_semi_rigid_metallic_barrier(
     # Corrected Geometry: Vertical orientation (W-profile in Y-Z plane)
     
     W_BEAM_HEIGHT = spacer_height  # Aligned with spacer height as requested
-    W_BEAM_DEPTH = 60.0    # Standard W-beam depth
+    W_BEAM_DEPTH = 83.0    
     W_BEAM_THICKNESS = design_dict.get("w_beam_thickness", 3.0)
 
     sigma = W_BEAM_HEIGHT / 10.0
