@@ -149,6 +149,7 @@ def create_action_button_bar(parent=None):
         QFrame#actionButtonBar QPushButton:pressed {
             background-color: #e0e0e0;
         }
+
         QFrame#actionButtonBar QPushButton:focus {
             outline: none;
         }
@@ -165,6 +166,6 @@ def create_action_button_bar(parent=None):
     layout.addWidget(defaults_button)
     layout.addWidget(save_button)
     layout.addStretch()
-    
+
 
     return frame, defaults_button, save_button

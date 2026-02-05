@@ -41,6 +41,11 @@ class LoadingTab(QWidget):
         self.custom_load_items = []
         self.load_combo_items = []
 
+
+        self.custom_vehicle_dialog = CustomVehicleDialog(self)
+        self.custom_load_items = []
+        self.load_combo_items = []
+
         self._build_ui()
 
     def _build_ui(self):
@@ -59,6 +64,7 @@ class LoadingTab(QWidget):
             "QTabBar::tab:!selected { margin-top: 2px; }"
         )
 
+
         self.permanent_load_tab = PermanentLoadTab(self)
         self.live_load_tab = LiveLoadTab(self)
         self.seismic_load_tab = SeismicLoadTab(self)
@@ -75,6 +81,15 @@ class LoadingTab(QWidget):
         self.load_tabs.addTab(self.custom_load_tab, "Custom Load")
         self.load_tabs.addTab(self.load_combination_tab, "Load Combination")
         
+
+        self.load_tabs.addTab(PermanentLoadTab(self), "Permanent Load")
+        self.load_tabs.addTab(LiveLoadTab(self), "Live Load")
+        self.load_tabs.addTab(SeismicLoadTab(self), "Seismic Load")
+        self.load_tabs.addTab(WindLoadTab(self), "Wind Load")
+        self.load_tabs.addTab(TemperatureLoadTab(self), "Temperature Load")
+        self.load_tabs.addTab(CustomLoadTab(self), "Custom Load")
+        self.load_tabs.addTab(LoadCombinationTab(self), "Load Combination")
+
 
         layout.addWidget(self.load_tabs)
 
@@ -149,6 +164,7 @@ class LoadingTab(QWidget):
             checkbox = QCheckBox()
             checkbox.setChecked(False)
 
+
         # Store references for Live Load defaults
             if "Vehicles from IRC 6" in title:
                 self.irc_vehicle_checkboxes.append(checkbox)
@@ -219,3 +235,4 @@ class LoadingTab(QWidget):
             self.temperature_load_tab.reset_defaults()
         if hasattr(self, "custom_load_tab") and hasattr(self.custom_load_tab, "reset_defaults"):
             self.custom_load_tab.reset_defaults()
+

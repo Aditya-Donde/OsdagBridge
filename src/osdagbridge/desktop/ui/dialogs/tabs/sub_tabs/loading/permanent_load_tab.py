@@ -1,3 +1,4 @@
+
 from PySide6.QtCore import Qt, QLocale
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QFrame, QComboBox, QLineEdit
 from PySide6.QtGui import QDoubleValidator
@@ -7,6 +8,10 @@ from osdagbridge.core.bridge_types.plate_girder.ui_fields_additional_input impor
 LABEL_MIN_WIDTH = 220
 FIELD_WIDTH = 180
 FIELD_HEIGHT = 28
+
+from PySide6.QtCore import Qt
+from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel
+
 
 
 class PermanentLoadTab(QWidget):
@@ -33,6 +38,7 @@ class PermanentLoadTab(QWidget):
         left_card.setStyleSheet(
             "QFrame { border: 1px solid #b2b2b2; border-radius: 10px; background-color: #ffffff; }"
         )
+
         left_card_layout = QVBoxLayout(left_card)
         left_card_layout.setContentsMargins(0, 0, 0, 0)
         left_card_layout.setSpacing(0)
@@ -75,6 +81,44 @@ class PermanentLoadTab(QWidget):
         desc_text.setStyleSheet("font-size: 11px; color: #4b4b4b; background: transparent; border: none;")
         right_layout.addWidget(desc_text)
         right_layout.addStretch()
+
+        left_layout = QVBoxLayout(left_card)
+        left_layout.setContentsMargins(16, 16, 16, 16)
+        left_layout.setSpacing(16)
+
+        owner._add_load_section(left_layout, "Dead Load (DL):", [
+            ("Include Member Self Weight:", owner._create_yes_no_combo()),
+            ("Self-weight factor:", owner._create_line_edit()),
+            ("Include Concrete Deck Weight:", owner._create_yes_no_combo()),
+        ])
+
+        owner._add_load_section(left_layout, "Dead Load for Surfacing (DW):", [
+            ("Include Load from Wearing Course:", owner._create_yes_no_combo()),
+        ])
+
+        owner._add_load_section(left_layout, "Super-Imposed Dead Load (SIDL):", [
+            ("Include Load from Crash Barrier:", owner._create_yes_no_combo()),
+            ("Include Load from Median:", owner._create_yes_no_combo()),
+            ("Include Load from Railing:", owner._create_yes_no_combo()),
+        ])
+
+        left_layout.addStretch()
+
+        right_card = owner._create_card()
+        right_card.setStyleSheet(
+            "QFrame { border: 1px solid #9c9c9c; border-radius: 10px; background-color: #c8c8c8; }"
+        )
+        right_card.setMinimumWidth(270)
+        right_card.setMinimumHeight(360)
+        right_layout = QVBoxLayout(right_card)
+        right_layout.setContentsMargins(18, 18, 18, 18)
+        right_layout.setSpacing(12)
+        description_label = QLabel("Description Box")
+        description_label.setAlignment(Qt.AlignCenter)
+        description_label.setStyleSheet("font-size: 12px; font-weight: 700; color: #000000;")
+        description_label.setMinimumHeight(320)
+        right_layout.addWidget(description_label)
+
 
         content_row.addWidget(left_card, 3)
         content_row.addWidget(right_card, 2)
@@ -195,3 +239,4 @@ class PermanentLoadTab(QWidget):
                         widget.setCurrentText(default)
                     elif isinstance(widget, QLineEdit):
                         widget.setText(default)
+
