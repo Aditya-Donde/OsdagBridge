@@ -191,7 +191,7 @@ def create_metallic_barrier_system(length, design_dict, kerb_top_width, kerb_hei
     w_beam_thickness = design_dict.get("w_beam_thickness", 3.0)
     
     #  CREATE POSTS (ISMC 150 as per IRC 5 Fig 5c)
-    post_depth = design_dict.get("post_depth", 100)
+    post_depth = design_dict.get("post_depth", 170)
     post_width = design_dict.get("post_width", 150)
     post_web_thk = design_dict.get("post_web_thickness", 5.0)
     post_flange_thk = design_dict.get("post_flange_thickness", 7.8)
@@ -284,7 +284,7 @@ def create_metallic_barrier_system(length, design_dict, kerb_top_width, kerb_hei
     #  ARRANGEMENT CALCULATIONS
     # Right side template: Post -> Spacer -> W-beam -> 75mm gap -> Kerb edge
     # Kerb edge is at +kerb_top_width / 2.0
-    gap_from_edge = 75.0
+    gap_from_edge = 5.0
     kerb_edge_y = kerb_top_width / 2.0
     
     # Beam peak face should be at gap_from_edge from kerb edge
