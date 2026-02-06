@@ -14,6 +14,7 @@ from osdagbridge.core.utils.common import *
 from osdagbridge.desktop.ui.utils.custom_titlebar import CustomTitleBar
 from osdagbridge.desktop.ui.dialogs.tabs.common import apply_field_style
 from osdagbridge.desktop.ui.widgets.section_viewer import SectionPreviewWidget, SectionCatalog
+from osdagbridge.desktop.ui.widgets.placeholder_section_preview import PlaceholderSectionPreviewWidget
 
 class CrossBracingDetailsTab(QWidget):
     """Tab for Cross-Bracing Details with visual previews"""
@@ -164,10 +165,10 @@ class CrossBracingDetailsTab(QWidget):
         row = self._add_grid_row(inputs_grid, row, "Bottom Bracket Size:", self.bottom_bracket_size_combo)
 
         self.spacing_input = QLineEdit()
-        self.spacing_input.setPlaceholderText("Spacing (mm)")
+        self.spacing_input.setPlaceholderText("(mm)")
         self.spacing_input.setValidator(QDoubleValidator(0, 100000, 2))
         apply_field_style(self.spacing_input)
-        self._add_grid_row(inputs_grid, row, "Spacing:", self.spacing_input)
+        self._add_grid_row(inputs_grid, row, "Spacing (mm):", self.spacing_input)
 
         inputs_layout.addLayout(inputs_grid)
         left_layout.addWidget(inputs_box)
@@ -190,7 +191,7 @@ class CrossBracingDetailsTab(QWidget):
         type_layout.setContentsMargins(12, 8, 12, 10)
         type_layout.setSpacing(6)
         type_layout.addWidget(self._create_heading_label("Type of Bracing"))
-        type_layout.addWidget(self._create_image_placeholder(170))
+        type_layout.addWidget(self._create_bracing_layout_placeholder("Bracing Layout", 170))
         right_layout.addWidget(type_box)
 
         self.bracing_preview_box, self.bracing_preview_label = self._create_preview_box("Bracing")
@@ -246,7 +247,7 @@ class CrossBracingDetailsTab(QWidget):
             "bottom_bracket_type": "Angle",
             "bottom_bracket_data": None,
             "bottom_bracket_text": "",
-            "spacing": "",
+            "spacing": "3",
         }
 
     def _snapshot_current_state(self) -> dict:
@@ -478,11 +479,15 @@ class CrossBracingDetailsTab(QWidget):
         combo.setSizeAdjustPolicy(QComboBox.AdjustToMinimumContentsLengthWithIcon)
         combo.setMinimumContentsLength(12)
 
-    def _create_image_placeholder(self, height):
-        widget = SectionPreviewWidget()
-        widget.setMinimumHeight(height)
-        widget.setStyleSheet("QWidget { border: 1px solid #d0d0d0; border-radius: 10px; background-color: #ffffff; }")
-        return widget
+    def _create_bracing_layout_placeholder(self, text: str, height: int):
+        label = QLabel(text)
+        label.setAlignment(Qt.AlignCenter)
+        label.setMinimumHeight(height)
+        label.setStyleSheet(
+            "QLabel { border: 1px solid #d0d0d0; border-radius: 10px; background-color: #f7f7f7; "
+            "font-weight: bold; color: #5b5b5b; }"
+        )
+        return label
 
     def _create_preview_box(self, title):
         box = self._create_inner_box()
@@ -492,7 +497,7 @@ class CrossBracingDetailsTab(QWidget):
         heading = QLabel(title)
         heading.setStyleSheet("font-size: 12px; font-weight: 700; color: #4b4b4b; border: none;")
         layout.addWidget(heading)
-        image = self._create_image_placeholder(110)
+        image = PlaceholderSectionPreviewWidget(title, 110)
         layout.addWidget(image)
         return box, image
 
@@ -592,16 +597,33 @@ class CrossBracingDetailsTab(QWidget):
 
     # ---- External API -----------------------------------------------------
     def reset_defaults(self):
-        # Reset types to single angle and reload designations
-        for combo in [self.bracing_section_type_combo, self.top_bracket_type_combo, self.bottom_bracket_type_combo]:
-            combo.blockSignals(True)
-            combo.setCurrentIndex(0)
-            combo.blockSignals(False)
-        self._populate_designations()
-        # Select first designation for each
-        for combo in [self.bracing_section_combo, self.top_bracket_size_combo, self.bottom_bracket_size_combo]:
-            combo.setCurrentIndex(0 if combo.count() > 0 else -1)
-        self._update_previews()
+        # Clear per-member persistence so Defaults returns to a clean slate.
+        self._state_by_member_key.clear()
+        self._active_member_key = None
+
+        # Refresh girder options (may have changed after Girder Defaults).
+        try:
+            self.refresh_girder_options()
+        except Exception:
+            pass
+
+        # Drop any state that may have been snapshotted during refresh.
+        self._state_by_member_key.clear()
+        self._active_member_key = None
+
+        # Reset selection to the first pair/member in a guarded way.
+        self._selection_sync_guard = True
+        try:
+            if self.select_girders_combo.count() > 0:
+                self.select_girders_combo.setCurrentIndex(0)
+            if self.member_id_combo.count() > 0:
+                self.member_id_combo.setCurrentIndex(0)
+        finally:
+            self._selection_sync_guard = False
+
+        # With no saved state for this member, this applies default UI values
+        # (Optimized + first options) and updates enable/disable + previews.
+        self._load_state_for_current_member()
 
     def collect_data(self):
         # Ensure the latest edits are persisted to the active member.

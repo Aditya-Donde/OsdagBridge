@@ -73,6 +73,39 @@ class FrontendData:
             if ui_type in (TYPE_TITLE, TYPE_MODULE):
                 continue
             yield key
+
+    def list_input_keys(self) -> list[str]:
+        """Return input keys in UI definition order."""
+        seen: set[str] = set()
+        ordered: list[str] = []
+        for key in self._iter_defined_input_keys():
+            if key in seen:
+                continue
+            seen.add(key)
+            ordered.append(key)
+        return ordered
+
+    def export_basic_inputs_as_list(self, include_empty: bool = False) -> list[dict]:
+        """Export basic inputs as a list of single-key dictionaries.
+
+        Example: [{"span": 30.0}, {"carriageway_width": 7.5}, ...]
+        """
+        values = self.get_input_values_dict(include_empty=include_empty)
+        out: list[dict] = []
+        for key in self.list_input_keys():
+            if key not in values:
+                continue
+            value = values.get(key)
+            if not include_empty and value in (None, ""):
+                continue
+            out.append({key: value})
+        return out
+
+    def set_final_design_inputs(self, final_inputs: list[dict]) -> None:
+        """Persist the final merged input payload for design execution."""
+        if not isinstance(final_inputs, list):
+            return
+        self.set_input_value("final_design_inputs", final_inputs)
     
     def input_values(self):
         """Return structured list of input definitions for the UI"""

@@ -1,6 +1,7 @@
 import sys
 import os
 import math
+import json
 from PySide6.QtWidgets import (
     QApplication, QWidget, QHBoxLayout, QVBoxLayout, QPushButton,
     QComboBox, QScrollArea, QLabel, QFormLayout, QLineEdit, QGroupBox, QSizePolicy, QMessageBox, QInputDialog, QDialog, QCheckBox, QFrame,
@@ -645,6 +646,15 @@ class InputDock(QWidget):
         self.scroll_area = None
         self.is_locked = False
 
+        # Saved session snapshots.
+        self._basic_inputs_saved_list: list[dict] = []
+        self._additional_inputs_saved_list: list[dict] = []
+        self._final_inputs_saved_list: list[dict] = []
+
+        # Bottom action buttons (wired in build_left_panel).
+        self.save_input_btn = None
+        self.design_btn = None
+
         self.setStyleSheet("background: transparent;")
         self.main_layout = QHBoxLayout(self)
         self.main_layout.setContentsMargins(0, 0, 0, 0)
@@ -1007,9 +1017,21 @@ class InputDock(QWidget):
         save_input_btn.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         btn_button_layout.addWidget(save_input_btn)
 
+        self.save_input_btn = save_input_btn
+        try:
+            self.save_input_btn.clicked.connect(self._on_save_input_clicked)
+        except Exception:
+            pass
+
         design_btn = DockCustomButton("Design", ":/vectors/design.svg")
         design_btn.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         btn_button_layout.addWidget(design_btn)
+
+        self.design_btn = design_btn
+        try:
+            self.design_btn.clicked.connect(self._on_design_clicked)
+        except Exception:
+            pass
 
         panel_layout.addLayout(btn_button_layout)
 
@@ -1048,6 +1070,202 @@ class InputDock(QWidget):
 
         left_layout.addWidget(h_scroll_area)
         self._apply_lock_state()
+
+    # -----------------------------
+    # Input serialization helpers
+    # -----------------------------
+    def _sync_basic_widgets_to_backend(self) -> None:
+        """Push the latest widget values into backend state.
+
+        Rationale: clicking Design can happen while a QLineEdit still has focus,
+        so editingFinished may not have fired yet.
+        """
+        if not self.backend or not hasattr(self.backend, "set_input_value"):
+            return
+
+        # Prefer definition order from backend if available.
+        keys = []
+        try:
+            if hasattr(self.backend, "list_input_keys"):
+                keys = list(self.backend.list_input_keys() or [])
+        except Exception:
+            keys = []
+
+        # Fallback: use all named widgets under the input panel.
+        if not keys and getattr(self, "left_panel", None) is not None:
+            try:
+                for widget in self.left_panel.findChildren((QLineEdit, QComboBox)):
+                    name = (widget.objectName() or "").strip()
+                    if name:
+                        keys.append(name)
+            except Exception:
+                return
+
+        for key in keys:
+            if not isinstance(key, str) or not key:
+                continue
+            widget = None
+            try:
+                widget = self.left_panel.findChild(QWidget, key) if getattr(self, "left_panel", None) is not None else None
+            except Exception:
+                widget = None
+
+            try:
+                if isinstance(widget, QLineEdit):
+                    self.backend.set_input_value(key, widget.text().strip())
+                elif isinstance(widget, QComboBox):
+                    self.backend.set_input_value(key, widget.currentText())
+            except Exception:
+                continue
+
+    def _collect_basic_inputs_list(self) -> list[dict]:
+        self._sync_basic_widgets_to_backend()
+        try:
+            if hasattr(self.backend, "export_basic_inputs_as_list"):
+                return list(self.backend.export_basic_inputs_as_list(include_empty=False) or [])
+        except Exception:
+            pass
+
+        # Fallback: best-effort build from backend dict.
+        values = {}
+        try:
+            if hasattr(self.backend, "get_input_values_dict"):
+                values = self.backend.get_input_values_dict(include_empty=False) or {}
+        except Exception:
+            values = {}
+        out: list[dict] = []
+        for k, v in (values or {}).items():
+            if v in (None, ""):
+                continue
+            out.append({k: v})
+        return out
+
+    def _collect_additional_inputs_snapshot(self) -> dict:
+        """Return the best available Additional Inputs payload.
+
+        Priority:
+        1) Live dialog (even if not yet saved),
+        2) last saved dialog state from the session,
+        3) empty.
+        """
+        # 1) Live dialog (if open)
+        try:
+            if self.additional_inputs is not None and hasattr(self.additional_inputs, "section_properties_tab"):
+                tab = self.additional_inputs.section_properties_tab
+                if tab is not None and hasattr(tab, "save_properties"):
+                    live = tab.save_properties() or {}
+                    if isinstance(live, dict) and live:
+                        return live
+        except Exception:
+            pass
+
+        # 2) Last saved
+        saved = getattr(self, "_additional_inputs_saved_data", None)
+        return saved if isinstance(saved, dict) else {}
+
+    def _collect_additional_inputs_list(self) -> list[dict]:
+        snapshot = self._collect_additional_inputs_snapshot()
+        if not isinstance(snapshot, dict) or not snapshot:
+            return []
+        out: list[dict] = []
+        # Keep order stable for downstream consumers.
+        for key in ("girder_details", "stiffener_details", "cross_bracing", "end_diaphragm"):
+            if key in snapshot:
+                out.append({key: snapshot.get(key)})
+        # Include any unknown keys last.
+        for key, val in snapshot.items():
+            if key in {"girder_details", "stiffener_details", "cross_bracing", "end_diaphragm"}:
+                continue
+            out.append({key: val})
+        return out
+
+    def _collect_final_inputs_list(self) -> list[dict]:
+        basic_list = self._collect_basic_inputs_list()
+        additional_list = self._collect_additional_inputs_list()
+        final_list = list(basic_list) + list(additional_list)
+        return final_list
+
+    def _debug_dump_final_inputs(self, final_inputs: list[dict], max_chars: int = 12000) -> None:
+        """Developer-oriented dump of the merged inputs.
+
+        Prints to stdout and (if available) appends to the GUI Logs dock.
+        Payload is truncated to avoid freezing the UI/terminal.
+        """
+        try:
+            payload = json.dumps(final_inputs, indent=2, ensure_ascii=False, default=str)
+        except Exception:
+            payload = str(final_inputs)
+
+        truncated = False
+        if isinstance(payload, str) and len(payload) > max_chars:
+            payload = payload[:max_chars] + f"\n... (truncated, total {len(payload)} chars)"
+            truncated = True
+
+        header = (
+            f"[OsdagBridge] final_design_inputs prepared: {len(final_inputs)} items"
+            + (" (truncated)" if truncated else "")
+        )
+
+        try:
+            print(header)
+            print(payload)
+        except Exception:
+            pass
+
+        # If the parent page has a Logs dock, mirror the dump there too.
+        try:
+            log_widget = getattr(self.parent, "textEdit", None)
+            if log_widget is not None and hasattr(log_widget, "append"):
+                log_widget.append(header)
+                # Keep the GUI log smaller than terminal.
+                gui_payload = payload if len(payload) <= 4000 else payload[:4000] + "\n... (truncated for GUI log)"
+                log_widget.append(gui_payload)
+        except Exception:
+            pass
+
+    # -----------------------------
+    # Button handlers
+    # -----------------------------
+    def _on_save_input_clicked(self) -> None:
+        self._basic_inputs_saved_list = self._collect_basic_inputs_list()
+        self._additional_inputs_saved_list = self._collect_additional_inputs_list()
+        self._final_inputs_saved_list = list(self._basic_inputs_saved_list) + list(self._additional_inputs_saved_list)
+
+        # Persist to backend for later export (csv/osi) or design execution.
+        try:
+            if hasattr(self.backend, "set_input_value"):
+                self.backend.set_input_value("basic_inputs_list", self._basic_inputs_saved_list)
+                self.backend.set_input_value("additional_inputs_list", self._additional_inputs_saved_list)
+            if hasattr(self.backend, "set_final_design_inputs"):
+                self.backend.set_final_design_inputs(self._final_inputs_saved_list)
+        except Exception:
+            pass
+
+        QMessageBox.information(
+            self,
+            "Inputs Saved",
+            "Basic + Additional inputs saved for this session.",
+        )
+
+    def _on_design_clicked(self) -> None:
+        self._final_inputs_saved_list = self._collect_final_inputs_list()
+
+        try:
+            if hasattr(self.backend, "set_final_design_inputs"):
+                self.backend.set_final_design_inputs(self._final_inputs_saved_list)
+            elif hasattr(self.backend, "set_input_value"):
+                self.backend.set_input_value("final_design_inputs", self._final_inputs_saved_list)
+        except Exception:
+            pass
+
+        QMessageBox.information(
+            self,
+            "Design Input Ready",
+            "Final merged input payload is prepared (Basic + Additional).",
+        )
+
+        # Option 2: print merged inputs for quick verification.
+        self._debug_dump_final_inputs(self._final_inputs_saved_list)
     
     def show_additional_inputs(self):
         """Show Additional Inputs dialog"""

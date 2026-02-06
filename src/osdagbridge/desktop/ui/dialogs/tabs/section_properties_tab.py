@@ -116,10 +116,88 @@ class SectionPropertiesTab(QWidget):
             pass
 
     def reset_defaults(self):
+        """Reset the entire Member Properties area back to its initial/default state."""
+
+        # Reset girder first so dependent tabs get a fresh member/pair list.
         if hasattr(self, "girder_details_tab") and hasattr(self.girder_details_tab, "reset_defaults"):
             self.girder_details_tab.reset_defaults()
+
+        # Ensure dependent tabs see updated girder/member options.
+        try:
+            self.stiffener_details_tab.refresh_girder_members()
+        except Exception:
+            pass
+        try:
+            self.cross_bracing_tab.refresh_girder_options()
+        except Exception:
+            pass
+        try:
+            self.end_diaphragm_tab.refresh_girder_options()
+        except Exception:
+            pass
+
+        # Now reset each dependent tab's own stored state.
+        if hasattr(self, "stiffener_details_tab") and hasattr(self.stiffener_details_tab, "reset_defaults"):
+            self.stiffener_details_tab.reset_defaults()
         if hasattr(self, "cross_bracing_tab") and hasattr(self.cross_bracing_tab, "reset_defaults"):
             self.cross_bracing_tab.reset_defaults()
+        if hasattr(self, "end_diaphragm_tab") and hasattr(self.end_diaphragm_tab, "reset_defaults"):
+            self.end_diaphragm_tab.reset_defaults()
+
+        # Default to the first sub-tab for a consistent UX.
+        try:
+            self.section_tabs.setCurrentIndex(0)
+        except Exception:
+            pass
+
+    def reset_active_tab_defaults(self) -> None:
+        """Reset only the currently active Member Properties sub-tab.
+
+        This is used by the dialog-level Defaults button to avoid wiping other
+        Member Properties tabs' inputs.
+        """
+
+        try:
+            active_widget = self.section_tabs.currentWidget()
+        except Exception:
+            active_widget = None
+
+        if active_widget is None:
+            return
+
+        # Girder Details has extra selection widgets (girder selector + segment table)
+        # that should not be reset when applying defaults for just this tab.
+        if active_widget is getattr(self, "girder_details_tab", None):
+            try:
+                self.girder_details_tab.reset_defaults(preserve_selection=True, preserve_segments=True)
+            except TypeError:
+                # Backward compatibility if signature differs.
+                self.girder_details_tab.reset_defaults()
+            return
+
+        # Dependent tabs rely on Girder Details for member/girder options.
+        # Ensure options are fresh but do not alter Girder Details state.
+        if active_widget is getattr(self, "stiffener_details_tab", None):
+            try:
+                self.stiffener_details_tab.refresh_girder_members()
+            except Exception:
+                pass
+        elif active_widget is getattr(self, "cross_bracing_tab", None):
+            try:
+                self.cross_bracing_tab.refresh_girder_options()
+            except Exception:
+                pass
+        elif active_widget is getattr(self, "end_diaphragm_tab", None):
+            try:
+                self.end_diaphragm_tab.refresh_girder_options()
+            except Exception:
+                pass
+
+        if hasattr(active_widget, "reset_defaults"):
+            try:
+                active_widget.reset_defaults()
+            except Exception:
+                pass
 
     def save_properties(self):
         data = {}

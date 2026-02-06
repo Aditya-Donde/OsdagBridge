@@ -268,6 +268,23 @@ class StiffenerDetailsTab(QWidget):
             "stiffener_by_member": dict(self._state_by_member),
         }
 
+    def reset_defaults(self) -> None:
+        """Reset UI + per-member stored values to the initial defaults."""
+        self._state_by_member.clear()
+        self._active_member_id = None
+
+        # Refresh members first (depends on Girder Details).
+        try:
+            self.refresh_girder_members()
+        except Exception:
+            pass
+
+        # Force UI to default member state for current selection.
+        member_id = (self.girder_member_combo.currentText() or "").strip()
+        if member_id:
+            self._active_member_id = member_id
+            self._load_member_state(member_id)
+
     def restore_data(self, data: dict) -> None:
         """Restore previously saved stiffener inputs.
 

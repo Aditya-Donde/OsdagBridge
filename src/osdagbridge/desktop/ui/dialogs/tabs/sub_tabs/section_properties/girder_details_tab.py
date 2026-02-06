@@ -2057,8 +2057,48 @@ class GirderDetailsTab(QWidget):
         self._current_girder = self.available_girders[0] if self.available_girders else "G1"
         self._on_girder_changed(self._current_girder)
 
-    def reset_defaults(self) -> None:
-        self.segment_chain.clear()
+    def reset_defaults(self, preserve_selection: bool = False, preserve_segments: bool = False) -> None:
+        """Reset UI + stored values to initial defaults.
+
+        Args:
+            preserve_selection: When True, keep the currently selected girder in
+                the girder selector.
+            preserve_segments: When True, keep the Member ID / Start / End
+                segment table (segment_chain) intact.
+        """
+
+        selected_girder = None
+        selected_segment_index = None
+        if preserve_selection:
+            try:
+                selected_girder = self._current_girder
+            except Exception:
+                selected_girder = None
+            try:
+                selected_segment_index = int(getattr(self, "_current_segment_index", 0))
+            except Exception:
+                selected_segment_index = 0
+
+        preserved_segment_chain = None
+        if preserve_segments:
+            try:
+                preserved_segment_chain = {g: [dict(seg) for seg in segs] for g, segs in self.segment_chain.items()}
+            except Exception:
+                preserved_segment_chain = None
+
+        # Clear per-member persistence so Defaults truly returns to a clean slate.
+        try:
+            self._member_state.clear()
+        except Exception:
+            self._member_state = {}
+        try:
+            self._dirty_members.clear()
+        except Exception:
+            self._dirty_members = set()
+        self._last_member_combo_index = 0
+
+        if not preserve_segments:
+            self.segment_chain.clear()
 
         def _reset_combo(combo: QComboBox, index: int = 0):
             previous = combo.blockSignals(True)
@@ -2086,9 +2126,14 @@ class GirderDetailsTab(QWidget):
         self._set_line_edit_value(self.length_input, DEFAULT_MEMBER_LENGTH_M)
 
         # Segment chain defaults: one segment per girder spanning the full span
-        total_span = float(self._get_total_span() or DEFAULT_MEMBER_LENGTH_M)
-        for girder in self.available_girders:
-            self.segment_chain[girder] = [{"id": self._make_segment_id(girder, 1), "start": 0.0, "end": total_span}]
+        # (only when not preserving segments, or if preserving but chain is empty).
+        if (not preserve_segments) or (not getattr(self, "segment_chain", None)):
+            total_span = float(self._get_total_span() or DEFAULT_MEMBER_LENGTH_M)
+            for girder in self.available_girders:
+                self.segment_chain[girder] = [{"id": self._make_segment_id(girder, 1), "start": 0.0, "end": total_span}]
+        elif preserved_segment_chain:
+            # Restore preserved segments after any internal recomputation.
+            self.segment_chain = preserved_segment_chain
 
         for field in (
             self.total_depth_input,
@@ -2104,17 +2149,41 @@ class GirderDetailsTab(QWidget):
         self._update_preview()
         self._update_section_properties()
 
+        # Capture the default template used when new members are first visited.
+        try:
+            self._default_member_state = self._capture_member_state()
+        except Exception:
+            self._default_member_state = None
+
         # Refresh master-detail UI
         if self.girder_dropdown:
             prev = self.girder_dropdown.blockSignals(True)
             self.girder_dropdown.clear()
-            self.girder_dropdown.addItems(self.available_girders)
-            self.girder_dropdown.setCurrentIndex(0)
+
+            # Keep display-friendly labels while preserving stable internal IDs via userData.
+            for girder in self.available_girders:
+                label = f"Girder {girder[1:]}" if girder.startswith("G") and girder[1:].isdigit() else girder
+                self.girder_dropdown.addItem(label, girder)
+
+            # Preserve selection when requested (match by userData, not label).
+            if preserve_selection and selected_girder and selected_girder in self.available_girders:
+                idx = self.girder_dropdown.findData(selected_girder)
+                self.girder_dropdown.setCurrentIndex(idx if idx != -1 else 0)
+            else:
+                self.girder_dropdown.setCurrentIndex(0)
+
             self.girder_dropdown.blockSignals(prev)
 
-        self._current_girder = self.available_girders[0] if self.available_girders else "G1"
+        if preserve_selection and selected_girder and selected_girder in self.available_girders:
+            self._current_girder = selected_girder
+        else:
+            self._current_girder = self.available_girders[0] if self.available_girders else "G1"
+
         self._refresh_segment_list(self._current_girder)
-        self._select_segment_index(0)
+        if preserve_segments and selected_segment_index is not None:
+            self._select_segment_index(max(0, selected_segment_index))
+        else:
+            self._select_segment_index(0)
         self._update_distance_field_states()
 
     def collect_data(self) -> dict:

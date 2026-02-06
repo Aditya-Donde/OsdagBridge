@@ -223,12 +223,40 @@ class AdditionalInputs(QDialog):
         return widget
 
     def _apply_defaults(self):
-        if hasattr(self, "typical_section_tab") and hasattr(self.typical_section_tab, "reset_defaults"):
-            self.typical_section_tab.reset_defaults()
-        if hasattr(self, "section_properties_tab") and hasattr(self.section_properties_tab, "reset_defaults"):
-            self.section_properties_tab.reset_defaults()
-        if not (hasattr(self, "typical_section_tab") or hasattr(self, "section_properties_tab")):
-            self._show_placeholder_message("Defaults")
+        """Apply defaults only to the currently visible top-level tab.
+
+        Important UX: within Member Properties, Defaults should only reset the
+        currently active sub-tab (not the entire Member Properties area).
+        """
+
+        try:
+            current_widget = self.tabs.currentWidget()
+        except Exception:
+            current_widget = None
+
+        if current_widget is getattr(self, "typical_section_tab", None):
+            if hasattr(self.typical_section_tab, "reset_defaults"):
+                self.typical_section_tab.reset_defaults()
+            return
+
+        if current_widget is getattr(self, "section_properties_tab", None):
+            # Member Properties: reset only active sub-tab.
+            if hasattr(self.section_properties_tab, "reset_active_tab_defaults"):
+                self.section_properties_tab.reset_active_tab_defaults()
+            elif hasattr(self.section_properties_tab, "reset_defaults"):
+                # Fallback to legacy behavior.
+                self.section_properties_tab.reset_defaults()
+            return
+
+        # Other tabs: best-effort reset if supported.
+        if current_widget is not None and hasattr(current_widget, "reset_defaults"):
+            try:
+                current_widget.reset_defaults()
+                return
+            except Exception:
+                pass
+
+        self._show_placeholder_message("Defaults")
 
     def _save_inputs(self):
         saved = {}
@@ -247,8 +275,7 @@ class AdditionalInputs(QDialog):
         # instance so it stays on top of the frameless dialog.
         box = QMessageBox(self)
         box.setIcon(QMessageBox.Information)
-        box.setWindowTitle
-        ("Saved")
+        box.setWindowTitle("Saved")
         
         # Build detailed message
         saved_items = []

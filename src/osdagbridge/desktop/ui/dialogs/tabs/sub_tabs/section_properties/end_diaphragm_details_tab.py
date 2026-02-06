@@ -23,6 +23,7 @@ from osdagbridge.desktop.ui.utils.custom_titlebar import CustomTitleBar
 from osdagbridge.desktop.ui.dialogs.tabs.common import apply_field_style
 from osdagbridge.desktop.ui.utils.rolled_section_preview import RolledSectionPreview
 from osdagbridge.desktop.ui.widgets.section_viewer import SectionCatalog, SectionPreviewWidget
+from osdagbridge.desktop.ui.widgets.placeholder_section_preview import PlaceholderSectionPreviewWidget
 
 # Reuse the same rolled section catalog that backs the Girder tab.
 from osdagbridge.desktop.ui.dialogs.tabs.sub_tabs.section_properties.girder_details_tab import (  # noqa: E501
@@ -998,11 +999,7 @@ class EndDiaphragmDetailsTab(QWidget):
             preview_heading = QLabel(title)
             preview_heading.setStyleSheet("font-size: 12px; font-weight: 700; color: #4b4b4b; border: none;")
             preview_layout.addWidget(preview_heading)
-            widget = SectionPreviewWidget()
-            widget.setMinimumHeight(110)
-            widget.setStyleSheet(
-                "QWidget { border: 1px solid #d0d0d0; border-radius: 10px; background-color: #ffffff; }"
-            )
+            widget = PlaceholderSectionPreviewWidget(title, 110)
             preview_layout.addWidget(widget)
             self._cross_previews[key] = widget
             right_layout.addWidget(preview_box)
@@ -1312,4 +1309,37 @@ class EndDiaphragmDetailsTab(QWidget):
             self._update_rolled_preview_and_props()
         elif target == "Welded Beam":
             self._update_welded_preview_and_props()
+
+    # ---- External API -----------------------------------------------------
+    def reset_defaults(self) -> None:
+        """Reset End Diaphragm inputs (all views) back to initial/default state."""
+
+        # Clear per-selection persistence.
+        self._state_by_view_member_key.clear()
+        self._active_key_by_view.clear()
+
+        # Reset selection combos to the first option across all views.
+        self._block_selection_sync = True
+        try:
+            for girders_combo, member_combo in (self._selection_by_view or {}).values():
+                if girders_combo is not None and girders_combo.count() > 0:
+                    girders_combo.setCurrentIndex(0)
+                if member_combo is not None and member_combo.count() > 0:
+                    member_combo.setCurrentIndex(0)
+        finally:
+            self._block_selection_sync = False
+
+        # Set the default type and ensure it doesn't try to preserve optimized
+        # state from a previous selection.
+        try:
+            self.current_type = None
+            self._set_current_type("Cross Bracing")
+        except Exception:
+            pass
+
+        # Apply default view state for current selection.
+        try:
+            self._restore_all_views_for_current_selection()
+        except Exception:
+            pass
 
