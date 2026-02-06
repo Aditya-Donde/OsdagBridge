@@ -1262,7 +1262,7 @@ class InputDock(QWidget):
         """)
         footpath_label.setMinimumWidth(110)
         self.footpath_combo = NoScrollComboBox()
-        self.footpath_combo.setObjectName(KEY_FOOTPATH)
+        self.footpath_combo.setObjectName("footpath")
         apply_field_style(self.footpath_combo)
         self.footpath_combo.addItems(VALUES_FOOTPATH)
         self.footpath_combo.setCurrentIndex(0)
