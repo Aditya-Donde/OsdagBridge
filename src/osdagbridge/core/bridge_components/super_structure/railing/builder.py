@@ -51,9 +51,7 @@ def create_rcc_railing(
     side="LEFT"
 ):
 
-    railing_width = 275 # Explicit width as per user request
-    # If height is None in dict, fall back to default? Or user input passed separately?
-    # Usually height is generic. Let's look for "railing_height".
+    railing_width = 275 # 
     railing_height = design_dict.get("railing_height")
     if railing_height is None:
         railing_height = 1100
@@ -105,7 +103,6 @@ def create_rcc_railing(
 
     final_shape = BRepAlgoAPI_Fuse(base, body_with_holes).Shape()
     
-    # Mirror based on side? 
     # For RCC railing (rectangular usually), mirroring Y might not change much unless Holes are asymmetric.
     # Holes are offset by HOLE_Y_OFFSET_RATIO (-0.2 * width).
     # So yes, we should mirror if RIGHT side.
@@ -199,8 +196,10 @@ def build_railings(
     deck_top_z,
     total_deck_width,
     footpath_config,
-    design_dict
+    design_dict,
+    skew_angle=0
 ):
+    import math
 
     if footpath_config == "NONE":
         return []
@@ -224,15 +223,23 @@ def build_railings(
         else:
             return create_rcc_railing(length=span_length, design_dict=design_dict, side=side)
 
+    # SKEW OFFSET CALCULATION
+    def get_skew_x(y):
+        if skew_angle == 0:
+            return 0.0
+        return y * math.tan(math.radians(skew_angle))
+
     # Placement Logic
     # Left Railing:
     # Center Y = -deck_half + width/2
     if footpath_config in ("LEFT", "BOTH"):
         shape = create_shape("LEFT")
+        y_pos = -deck_half + railing_width / 2.0
         railings.append(
             translate(
                 shape,
-                y=-deck_half + railing_width / 2.0,
+                x=get_skew_x(y_pos),
+                y=y_pos,
                 z=deck_top_z
             )
         )
@@ -241,10 +248,12 @@ def build_railings(
     # Center Y = +deck_half - width/2
     if footpath_config in ("RIGHT", "BOTH"):
         shape = create_shape("RIGHT")
+        y_pos = deck_half - railing_width / 2.0
         railings.append(
             translate(
                 shape,
-                y=deck_half - railing_width / 2.0,
+                x=get_skew_x(y_pos),
+                y=y_pos,
                 z=deck_top_z
             )
         )

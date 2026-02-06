@@ -119,29 +119,60 @@ def _create_deck_slab(
     span_length,
     deck_width,
     deck_thickness,
-    girder_depth
+    girder_depth,
+    skew_angle=0
 ):
-    slab = BRepPrimAPI_MakeBox(
-        span_length,
-        deck_width,
-        deck_thickness
-    ).Shape()
+    if skew_angle == 0:
+        slab = BRepPrimAPI_MakeBox(
+            span_length,
+            deck_width,
+            deck_thickness
+        ).Shape()
 
-    # center X and Y, bottom at Z=0
-    slab = _translate(
-        slab,
-        -span_length / 2,
-        -deck_width / 2,
-        0
-    )
+        # center X and Y, bottom at Z=0
+        slab = _translate(
+            slab,
+            -span_length / 2,
+            -deck_width / 2,
+            0
+        )
 
-    # move to final position
-    return _translate(
-        slab,
-        span_length / 2,
-        0,
-        girder_depth
-    )
+        # move to final position
+        return _translate(
+            slab,
+            span_length / 2,
+            0,
+            girder_depth
+        )
+    else:
+        # Skewed deck logic (Parallelogram in plan-view)
+        skew_rad = math.radians(skew_angle)
+        y_half = deck_width / 2
+        
+        # Calculate X shifts for top and bottom edges based on lateral distance from Y=0
+        shift_top = y_half * math.tan(skew_rad)
+        shift_bottom = -y_half * math.tan(skew_rad)
+        
+        # Vertices for the skewed footprint (centered in span)
+        # Start at 0, end at span_length in the local girder-aligned system
+        p1 = gp_Pnt(shift_bottom, -y_half, 0)                   # Bottom Left
+        p2 = gp_Pnt(span_length + shift_bottom, -y_half, 0)      # Bottom Right
+        p3 = gp_Pnt(span_length + shift_top, y_half, 0)          # Top Right
+        p4 = gp_Pnt(shift_top, y_half, 0)                       # Top Left
+        
+        poly = BRepBuilderAPI_MakePolygon()
+        poly.Add(p1)
+        poly.Add(p2)
+        poly.Add(p3)
+        poly.Add(p4)
+        poly.Close()
+        
+        face = BRepBuilderAPI_MakeFace(poly.Wire()).Face()
+        # Extrude upwards
+        slab = BRepPrimAPI_MakePrism(face, gp_Vec(0, 0, deck_thickness)).Shape()
+        
+        # Move to top of girders
+        return _translate(slab, 0, 0, girder_depth)
 
 
 # Texture primitives (exact logic from deck_texture.py)
@@ -219,55 +250,79 @@ def _generate_deck_texture(
     deck_length,
     deck_width,
     deck_thickness,
-    deck_top_z
+    deck_top_z,
+    skew_angle=0
 ):
     elements = []
 
     z_min = Z_GAP
     z_max = deck_thickness - Z_GAP - max(DOT_HEIGHT, TRI_HEIGHT)
+    
+    skew_rad = math.radians(skew_angle)
+    
+    def get_skew_x(x, y):
+        """Helper to shift X based on Y if skewed"""
+        if skew_angle == 0:
+            return x
+        # Shift relative to deck center Y=0
+        return x + y * math.tan(skew_rad)
 
     # FRONT & BACK (Y faces)
     rot_y = gp_Ax1(gp_Pnt(0, 0, 0), gp_Dir(1, 0, 0))
 
+    # FRONT & BACK (Y faces)
+    # These faces are long edges (usually parallel to X axis, but skewed now)
+    rot_y = gp_Ax1(gp_Pnt(0, 0, 0), gp_Dir(1, 0, 0))
+
     for y in (0.2, deck_width - 0.2):
+        # Local y relative to center for skew calculation
+        y_local = y - deck_width / 2
         for _ in range(120):
+            x_rand = random.uniform(EDGE_GAP, deck_length - EDGE_GAP)
             elements.append(
                 _create_dot(
-                    random.uniform(EDGE_GAP, deck_length - EDGE_GAP),
-                    y,
+                    get_skew_x(x_rand, y_local),
+                    y_local,
                     random.uniform(z_min, z_max)
                 )
             )
 
         for _ in range(15):
+            x_rand = random.uniform(EDGE_GAP, deck_length - EDGE_GAP)
             elements.append(
                 _create_triangle(
-                    random.uniform(EDGE_GAP, deck_length - EDGE_GAP),
-                    y,
+                    get_skew_x(x_rand, y_local),
+                    y_local,
                     random.uniform(z_min, z_max),
                     rot_y,
                     math.pi / 2
                 )
             )
 
-    # LEFT & RIGHT (X faces)
+    # LEFT & RIGHT (X faces - these are the skewed abutment faces)
     rot_x = gp_Ax1(gp_Pnt(0, 0, 0), gp_Dir(0, 1, 0))
 
-    for x in (0.2, deck_length - 0.2):
+    # Note: rotation for textures on skewed faces might not be perfectly perpendicular 
+    # but using normal dir or just shifting is usually enough for visual noise.
+    for x_base in (0.2, deck_length - 0.2):
         for _ in range(100):
+            y_rand = random.uniform(0.2, deck_width - 0.2)
+            y_local = y_rand - deck_width / 2
             elements.append(
                 _create_dot(
-                    x,
-                    random.uniform(EDGE_GAP, deck_width - EDGE_GAP),
+                    get_skew_x(x_base, y_local),
+                    y_local,
                     random.uniform(z_min, z_max)
                 )
             )
 
         for _ in range(20):
+            y_rand = random.uniform(0.2, deck_width - 0.2)
+            y_local = y_rand - deck_width / 2
             elements.append(
                 _create_triangle(
-                    x,
-                    random.uniform(EDGE_GAP, deck_width - EDGE_GAP),
+                    get_skew_x(x_base, y_local),
+                    y_local,
                     random.uniform(z_min, z_max),
                     rot_x,
                     -math.pi / 2
@@ -275,37 +330,37 @@ def _generate_deck_texture(
             )
 
     # TOP & BOTTOM
-    for z, up in (
+    for z_local, up in (
         (deck_thickness - 0.2, True),
         (0.2, False)
     ):
         for _ in range(150):
+            x_rand = random.uniform(EDGE_GAP, deck_length - EDGE_GAP)
+            y_rand = random.uniform(EDGE_GAP, deck_width - EDGE_GAP)
+            y_local = y_rand - deck_width / 2
             elements.append(
                 _create_dot_z(
-                    random.uniform(EDGE_GAP, deck_length - EDGE_GAP),
-                    random.uniform(EDGE_GAP, deck_width - EDGE_GAP),
-                    z,
+                    get_skew_x(x_rand, y_local),
+                    y_local,
+                    z_local,
                     up
                 )
             )
 
         for _ in range(50):
+            x_rand = random.uniform(EDGE_GAP, deck_length - EDGE_GAP)
+            y_rand = random.uniform(EDGE_GAP, deck_width - EDGE_GAP)
+            y_local = y_rand - deck_width / 2
             elements.append(
                 _create_triangle_xy(
-                    random.uniform(EDGE_GAP, deck_length - EDGE_GAP),
-                    random.uniform(EDGE_GAP, deck_width - EDGE_GAP),
-                    z,
+                    get_skew_x(x_rand, y_local),
+                    y_local,
+                    z_local,
                     up
                 )
             )
 
-    # Center in Y
-    elements = [
-        _translate(e, 0, -deck_width / 2, 0)
-        for e in elements
-    ]
-
-    # Lift to deck position
+    # Lift to deck position (already shifted in Y/X above)
     elements = [
         _translate(e, 0, 0, deck_top_z - deck_thickness)
         for e in elements
@@ -325,7 +380,8 @@ def build_deck(
     carriageway_width,
     crash_barrier_base_width,
     footpath_width,
-    railing_width
+    railing_width,
+    skew_angle=0
 ):
     
 
@@ -352,7 +408,8 @@ def build_deck(
         span_length=span_length_L,
         deck_width=total_deck_width,
         deck_thickness=deck_thickness,
-        girder_depth=girder_section_d
+        girder_depth=girder_section_d,
+        skew_angle=skew_angle
     )
 
     deck_top_z = girder_section_d + deck_thickness
@@ -361,7 +418,8 @@ def build_deck(
         deck_length=span_length_L,
         deck_width=total_deck_width,
         deck_thickness=deck_thickness,
-        deck_top_z=deck_top_z
+        deck_top_z=deck_top_z,
+        skew_angle=skew_angle
     )
 
     return {

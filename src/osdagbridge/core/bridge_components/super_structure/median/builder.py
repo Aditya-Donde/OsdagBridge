@@ -434,7 +434,8 @@ def build_median(
     deck_top_z,
     carriageway_center_y,
     design_dict,
-    median_type="RCC Crash Barrier"
+    median_type="RCC Crash Barrier",
+    skew_angle=0
 ):
     """
     Build median barriers.
@@ -443,6 +444,12 @@ def build_median(
     - Metallic Crash Barrier: Creates ONE continuous kerb with TWO metallic barrier systems 
       (posts + spacers + W-beams) on either side.
     """
+
+    # SKEW OFFSET CALCULATION
+    def get_skew_x(y):
+        if skew_angle == 0:
+            return 0.0
+        return y * math.tan(math.radians(skew_angle))
 
     median_barriers = []
     
@@ -453,10 +460,11 @@ def build_median(
     if median_type == "Raised Kerb":
         barrier_shape = create_raised_kerb(span_length, design_dict)
         # Centralized single barrier
+        y_pos = carriageway_center_y
         central_barrier = _translate(
             barrier_shape,
-            x=0.0,
-            y=carriageway_center_y,
+            x=get_skew_x(y_pos),
+            y=y_pos,
             z=deck_top_z
         )
         median_barriers.append(central_barrier)
@@ -471,19 +479,21 @@ def build_median(
         # offset is the distance from center to barrier center
         offset = (median_total_width - barrier_base_width) / 2.0
 
+        y_l = carriageway_center_y - offset
         left_barrier = _mirror_y(barrier_shape)
         left_barrier = _translate(
             left_barrier,
-            x=0.0,
-            y=carriageway_center_y - offset,
+            x=get_skew_x(y_l),
+            y=y_l,
             z=deck_top_z
         )
         median_barriers.append(left_barrier)
 
+        y_r = carriageway_center_y + offset
         right_barrier = _translate(
             barrier_shape,
-            x=0.0,
-            y=carriageway_center_y + offset,
+            x=get_skew_x(y_r),
+            y=y_r,
             z=deck_top_z
         )
         median_barriers.append(right_barrier)
@@ -495,10 +505,11 @@ def build_median(
         
         # Create single continuous kerb with total width = median_width
         kerb_shape = create_median_kerb(span_length, median_total_width, design_dict)
+        y_kerb = carriageway_center_y
         kerb_positioned = _translate(
             kerb_shape,
-            x=0.0,
-            y=carriageway_center_y,
+            x=get_skew_x(y_kerb),
+            y=y_kerb,
             z=deck_top_z
         )
         median_barriers.append({"kerb": kerb_positioned})
@@ -512,15 +523,17 @@ def build_median(
         )
         
         # Position left barrier system (mirrored)
+        # For simplicity, use the kerb center Y for skew shift if the systems are close to it
+        y_sys = carriageway_center_y 
         left_dict = {
-            k: _translate(_mirror_y(v), x=0.0, y=carriageway_center_y, z=deck_top_z) 
+            k: _translate(_mirror_y(v), x=get_skew_x(y_sys), y=carriageway_center_y, z=deck_top_z) 
             for k, v in barrier_system_parts.items() if v
         }
         median_barriers.append(left_dict)
         
         # Position right barrier system
         right_dict = {
-            k: _translate(v, x=0.0, y=carriageway_center_y, z=deck_top_z) 
+            k: _translate(v, x=get_skew_x(y_sys), y=carriageway_center_y, z=deck_top_z) 
             for k, v in barrier_system_parts.items() if v
         }
         median_barriers.append(right_dict)

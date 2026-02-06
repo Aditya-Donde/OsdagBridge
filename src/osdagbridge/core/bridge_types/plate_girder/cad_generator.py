@@ -73,6 +73,9 @@ class PlateGirderCADGenerator:
         self.num_girders = 5
         self.girder_spacing = 2750           # center-to-center spacing
 
+        # SKEW ANGLE PARAMETER
+        self.skew_angle = 25                  # skew angle in degrees (0 = no skew)
+
         # DECK PARAMETERS
         self.carriageway_width = 12000
         self.deck_thickness = 400
@@ -128,6 +131,7 @@ class PlateGirderCADGenerator:
         """
 
         # Local helpers
+        import math
         from OCC.Core.gp import gp_Trsf, gp_Vec
         from OCC.Core.BRepBuilderAPI import BRepBuilderAPI_Transform
 
@@ -135,6 +139,25 @@ class PlateGirderCADGenerator:
             trsf = gp_Trsf()
             trsf.SetTranslation(gp_Vec(dx, dy, dz))
             return BRepBuilderAPI_Transform(shape, trsf, True).Shape()
+        
+        def _calculate_skew_offset(lateral_position, reference_position=0):
+            """
+            Calculate longitudinal offset due to skew angle.
+            Plan-view geometric offset: shift = L × tan(θ)
+            
+            Args:
+                lateral_position: Transverse position (Y-coordinate)
+                reference_position: Reference lateral position with zero offset
+            
+            Returns:
+                Longitudinal offset (X-coordinate shift)
+            """
+            if self.skew_angle == 0:
+                return 0.0
+            
+            skew_rad = math.radians(self.skew_angle)
+            lateral_distance = lateral_position - reference_position
+            return lateral_distance * math.tan(skew_rad)
 
         # 1. BUILD SINGLE PLATE GIRDER GEOMETRY
         pg = build_plate_girder_geometry(
@@ -152,7 +175,7 @@ class PlateGirderCADGenerator:
             T_es=self.end_stiffener_thickness
         )
 
-        # 2. PLACE MULTIPLE GIRDERS (Y-DIRECTION, CENTERED)
+        # 2. PLACE MULTIPLE GIRDERS (Y-DIRECTION, CENTERED) WITH SKEW OFFSET
         girders = []
         stiffeners = []
 
@@ -160,43 +183,53 @@ class PlateGirderCADGenerator:
         girder_flanges = []
 
         total_width = (self.num_girders - 1) * self.girder_spacing
+        
+        # Reference position for skew (centerline = 0)
+        reference_position = 0.0
 
         for i in range(self.num_girders):
+            # Transverse offset (Y-direction)
             y_offset = (i * self.girder_spacing) - (total_width / 2)
+            
+            # Longitudinal offset due to skew (X-direction)
+            # Each girder shifts by L × tan(θ) based on lateral distance from center
+            x_offset = _calculate_skew_offset(y_offset, reference_position)
 
             # Web
-            web = _translate(pg["web"], dy=y_offset)
+            web = _translate(pg["web"], dx=x_offset, dy=y_offset)
             girders.append(web)
             girder_web.append(web)
 
             # Top flange
-            top_flange = _translate(pg["top_flange"], dy=y_offset)
+            top_flange = _translate(pg["top_flange"], dx=x_offset, dy=y_offset)
             girders.append(top_flange)
             girder_flanges.append(top_flange)
 
             # Bottom flange
-            bottom_flange = _translate(pg["bottom_flange"], dy=y_offset)
+            bottom_flange = _translate(pg["bottom_flange"], dx=x_offset, dy=y_offset)
             girders.append(bottom_flange)
             girder_flanges.append(bottom_flange)
 
 
-            # Stiffeners
+            # Stiffeners (follow parent girder's offset)
             for stiff in pg["stiffeners"]:
                 stiffeners.append(
-                    _translate(stiff, dy=y_offset)
+                    _translate(stiff, dx=x_offset, dy=y_offset)
                 )
 
         supports_tri = []
         supports_cyl = []
 
         for i in range(self.num_girders):
+            # Same offset calculation as girders
             y_offset = (i * self.girder_spacing) - (total_width / 2)
+            x_offset = _calculate_skew_offset(y_offset, reference_position)
 
             for s in pg["supports_tri"]:
-                supports_tri.append(_translate(s, dy=y_offset))
+                supports_tri.append(_translate(s, dx=x_offset, dy=y_offset))
 
             for s in pg["supports_cyl"]:
-                supports_cyl.append(_translate(s, dy=y_offset))
+                supports_cyl.append(_translate(s, dx=x_offset, dy=y_offset))
 
 
         # 3. REFERENCE Z-LEVELS 
@@ -210,8 +243,15 @@ class PlateGirderCADGenerator:
 
         # Top of girder for deck placement ONLY
         girder_top_z = (self.girder_section_d / 2) + self.girder_section_tf
+        
+        # 4. SKEW ANGLE (HANDLED BY COMPONENT BUILDERS)
+        # We pass self.skew_angle to components that support skewed geometry (like deck)
+        # Components that are placed relative to girders (like cross-bracing) follow girder offsets.
+        pass
 
-        # 4. CROSS BRACING SYSTEM 
+        # 5. CROSS BRACING SYSTEM
+        # Note: Cross bracings connect girders at their actual (skewed) positions
+        # The bracing builder handles placement and skew internally.
         cross_bracings = build_cross_bracings(
             span_length_L=self.span_length_L,
             num_girders=self.num_girders,
@@ -230,7 +270,8 @@ class PlateGirderCADGenerator:
 
             panel_spacing=self.cross_bracing_spacing,
             bracket_option=self.x_bracket_option,
-            top_bracket=self.k_top_bracket
+            top_bracket=self.k_top_bracket,
+            skew_angle=self.skew_angle
         )
 
         # 5. IRC 5 SPECIFICATIONS (CRASH BARRIER)
@@ -310,6 +351,7 @@ class PlateGirderCADGenerator:
 
         
         # 6. DECK SYSTEM (USES TOP-OF-GIRDER Z)
+        # Deck handles skewed geometry (parallelogram) internally
         deck_out = build_deck(
             span_length_L=self.span_length_L,
             girder_section_d=girder_top_z,
@@ -319,10 +361,14 @@ class PlateGirderCADGenerator:
             carriageway_width=self.carriageway_width,
             crash_barrier_base_width=actual_base_width,
             footpath_width=self.footpath_width,
-            railing_width=actual_railing_width
+            railing_width=actual_railing_width,
+            skew_angle=self.skew_angle
         )
 
         # 7. CRASH BARRIER PLACEMENT
+        # Barriers follow deck edges.
+        # Note: For skew, we might need to apply shifts to barriers as well
+        # if the barrier builder doesn't handle skew internally.
 
         crash_barrier_w_beams = []
         crash_barrier_other = []
@@ -335,7 +381,8 @@ class PlateGirderCADGenerator:
             footpath_width=self.footpath_width,
             railing_width=actual_railing_width,
             design_dict=design_dict,
-            barrier_type=self.barrier_type
+            barrier_type=self.barrier_type,
+            skew_angle=self.skew_angle
         )
 
         crash_barriers = []
@@ -375,7 +422,8 @@ class PlateGirderCADGenerator:
                 deck_top_z=deck_out["deck_top_z"],
                 carriageway_center_y=deck_out["carriageway_center_y"],
                 design_dict=median_design_dict,
-                median_type=self.median_type
+                median_type=self.median_type,
+                skew_angle=self.skew_angle
             )
             
             median_barriers = []
@@ -400,7 +448,8 @@ class PlateGirderCADGenerator:
             deck_top_z=deck_out["deck_top_z"],
             total_deck_width=deck_out["total_deck_width"],
             footpath_config=self.footpath_config,
-            design_dict=design_dict
+            design_dict=design_dict,
+            skew_angle=self.skew_angle
         )
 
         supports = supports_tri + supports_cyl

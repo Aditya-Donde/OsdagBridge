@@ -257,7 +257,7 @@ def create_semi_rigid_metallic_barrier(
         points = 40
         zs = np.linspace(0, W_BEAM_HEIGHT, points)
 
-        # ---------- OUTER CURVE ----------
+        # OUTER CURVE 
         outer_pts = TColgp_Array1OfPnt(1, points)
         for i, z in enumerate(zs, start=1):
             y_wave = (
@@ -274,7 +274,7 @@ def create_semi_rigid_metallic_barrier(
 
         outer_curve = GeomAPI_PointsToBSpline(outer_pts).Curve()
 
-        # ---------- INNER CURVE (OFFSET) ----------
+        # INNER CURVE (OFFSET) 
         inner_pts = TColgp_Array1OfPnt(1, points)
         for i, z in enumerate(zs, start=1):
             y_wave_inner = (
@@ -291,7 +291,7 @@ def create_semi_rigid_metallic_barrier(
 
         inner_curve = GeomAPI_PointsToBSpline(inner_pts).Curve()
 
-        # ---------- COMBINE INTO CLOSED WIRE ----------
+        # COMBINE INTO CLOSED WIRE 
         wire = BRepBuilderAPI_MakeWire()
         wire.Add(BRepBuilderAPI_MakeEdge(outer_curve).Edge())
         wire.Add(BRepBuilderAPI_MakeEdge(
@@ -447,7 +447,8 @@ def build_crash_barriers(
     footpath_width,
     railing_width,
     design_dict,
-    barrier_type="Rigid"
+    barrier_type="Rigid",
+    skew_angle=0
 ):
     """
     Returns list of crash barrier shapes.
@@ -521,6 +522,12 @@ def build_crash_barriers(
     else:
         raise ValueError(f"Invalid footpath_config: {footpath_config}")
 
+    # SKEW OFFSET CALCULATION
+    def get_skew_x(y):
+        if skew_angle == 0:
+            return 0.0
+        return y * math.tan(math.radians(skew_angle))
+
     # SELECT GEOMETRY BASED ON BARRIER TYPE
     if barrier_type == "Rigid":
         right_shape = create_rigid_rcc_crash_barrier(
@@ -534,8 +541,8 @@ def build_crash_barriers(
             side="LEFT"
         )
         
-        crash_barriers.append(translate(right_shape, y=y_r, z=deck_top_z))
-        crash_barriers.append(translate(left_shape, y=y_l, z=deck_top_z))
+        crash_barriers.append(translate(right_shape, x=get_skew_x(y_r), y=y_r, z=deck_top_z))
+        crash_barriers.append(translate(left_shape, x=get_skew_x(y_l), y=y_l, z=deck_top_z))
 
     elif barrier_type == "Semi-Rigid":
         right_parts = create_semi_rigid_metallic_barrier(
@@ -551,8 +558,8 @@ def build_crash_barriers(
         )
 
         # Apply translations and store as dictionaries for coloring
-        right_dict = {k: translate(v, y=y_r, z=deck_top_z) for k, v in right_parts.items() if v}
-        left_dict = {k: translate(v, y=y_l, z=deck_top_z) for k, v in left_parts.items() if v}
+        right_dict = {k: translate(v, x=get_skew_x(y_r), y=y_r, z=deck_top_z) for k, v in right_parts.items() if v}
+        left_dict = {k: translate(v, x=get_skew_x(y_l), y=y_l, z=deck_top_z) for k, v in left_parts.items() if v}
         
         crash_barriers.append(right_dict)
         crash_barriers.append(left_dict)

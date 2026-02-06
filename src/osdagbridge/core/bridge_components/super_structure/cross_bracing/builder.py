@@ -239,7 +239,7 @@ def _create_horizontal_member_y(
 
 def _x_bracing(
     x, yL, yR, depth, tf, thickness, flange_w,
-    section_type, dims, bracket
+    section_type, dims, bracket, skew_angle=0
 ):
 
     # ✅ WEB–FLANGE JUNCTIONS
@@ -249,35 +249,42 @@ def _x_bracing(
     yl = yL
     yr = yR
 
+    def get_skew_x(y):
+        if skew_angle == 0:
+            return 0.0
+        return y * math.tan(math.radians(skew_angle))
+
+    x_l = x + get_skew_x(yl)
+    x_r = x + get_skew_x(yr)
+
 
     braces = [
         # Left TOP → Right BOTTOM
         _create_diagonal_member(
-            gp_Pnt(x, yl, z_top), gp_Pnt(x, yr, z_bot),
+            gp_Pnt(x_l, yl, z_top), gp_Pnt(x_r, yr, z_bot),
             thickness, section_type, dims, +1
         ),
         # Left BOTTOM → Right TOP
         _create_diagonal_member(
-            gp_Pnt(x, yl, z_bot), gp_Pnt(x, yr, z_top),
+            gp_Pnt(x_l, yl, z_bot), gp_Pnt(x_r, yr, z_top),
             thickness, section_type, dims, -1
         )
     ]
 
     if bracket in ("LOWER", "BOTH"):
+        # Use diagonal member logic for skewed "horizontal" members
         braces.append(
-            _create_horizontal_member_y(
-                x, yL, yR, z_bot,
-                thickness, flange_w,
-                section_type, dims, +1
+            _create_diagonal_member(
+                gp_Pnt(x_l, yl, z_bot), gp_Pnt(x_r, yr, z_bot),
+                thickness, section_type, dims, +1
             )
         )
 
     if bracket in ("UPPER", "BOTH"):
         braces.append(
-            _create_horizontal_member_y(
-                x, yL, yR, z_top,
-                thickness, flange_w,
-                section_type, dims, +1
+            _create_diagonal_member(
+                gp_Pnt(x_l, yl, z_top), gp_Pnt(x_r, yr, z_top),
+                thickness, section_type, dims, +1
             )
         )
 
@@ -286,7 +293,7 @@ def _x_bracing(
 
 def _k_bracing(
     x, yL, yR, depth, tf, thickness, flange_w,
-    section_type, dims, top_bracket
+    section_type, dims, top_bracket, skew_angle=0
 ):
 
     z_bot = -depth / 2
@@ -296,28 +303,35 @@ def _k_bracing(
     yr = yR
     ym = (yl + yr) / 2
 
+    def get_skew_x(y):
+        if skew_angle == 0:
+            return 0.0
+        return y * math.tan(math.radians(skew_angle))
+
+    x_l = x + get_skew_x(yl)
+    x_r = x + get_skew_x(yr)
+    x_m = x + get_skew_x(ym)
+
     braces = [
         _create_diagonal_member(
-            gp_Pnt(x, yl, z_top), gp_Pnt(x, ym, z_bot),
+            gp_Pnt(x_l, yl, z_top), gp_Pnt(x_m, ym, z_bot),
             thickness, section_type, dims, +1
         ),
         _create_diagonal_member(
-            gp_Pnt(x, yr, z_top), gp_Pnt(x, ym, z_bot),
+            gp_Pnt(x_r, yr, z_top), gp_Pnt(x_m, ym, z_bot),
             thickness, section_type, dims, -1
         ),
-        _create_horizontal_member_y(
-            x, yL, yR, z_bot,
-            thickness, flange_w,
-            section_type, dims, +1
+        _create_diagonal_member(
+            gp_Pnt(x_l, yl, z_bot), gp_Pnt(x_r, yr, z_bot),
+            thickness, section_type, dims, +1
         )
     ]
 
     if top_bracket:
         braces.append(
-            _create_horizontal_member_y(
-                x, yL, yR, z_top,
-                thickness, flange_w,
-                section_type, dims, +1
+            _create_diagonal_member(
+                gp_Pnt(x_l, yl, z_top), gp_Pnt(x_r, yr, z_top),
+                thickness, section_type, dims, +1
             )
         )
 
@@ -341,7 +355,8 @@ def build_cross_bracings(
 
     panel_spacing,
     bracket_option="BOTH",
-    top_bracket=False
+    top_bracket=False,
+    skew_angle=0
 ):
     """
     Build cross bracings for entire bridge.
@@ -369,7 +384,8 @@ def build_cross_bracings(
                         girder_depth, flange_thickness,
                         thickness, flange_width,
                         section_type, section_dims,
-                        bracket_option
+                        bracket_option,
+                        skew_angle=skew_angle
                     )
                 )
 
@@ -380,10 +396,9 @@ def build_cross_bracings(
                         girder_depth, flange_thickness,
                         thickness, flange_width,
                         section_type, section_dims,
-                        top_bracket
+                        top_bracket,
+                        skew_angle=skew_angle
                     )
                 )
-
-        x += panel_spacing
 
     return bracings
