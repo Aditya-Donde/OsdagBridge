@@ -9,7 +9,7 @@ from .geometry import (
     median_metallic_barrier_area,
 )
 
-from osdagbridge.core.utils.common import (
+from osdagbridge.core.utils.codes.keyfile import (
     KEY_RAILING_TYPE
 )
 # MATERIAL DENSITIES

@@ -1,4 +1,4 @@
-from osdagbridge.core.utils.common import (
+from osdagbridge.core.utils.codes.keyfile import (
     KEY_RAILING_TYPE
 )
 # MATERIAL DENSITIES

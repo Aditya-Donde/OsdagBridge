@@ -1,8 +1,7 @@
 import math
 import numpy as np
-from osdagbridge.core.utils.common import *
 from osdagbridge.core.utils.codes.irc5_2015 import IRC5_2015
-
+from osdagbridge.core.utils.codes import keyfile as KEYS
 
 
 class IRC6_2017:
@@ -53,20 +52,20 @@ class IRC6_2017:
             'wheel_loads' - list of wheel loads (kN)
         """
         # Define units
-        front_gap = 0.81 * m
-        axle_dist1= 3.960 * m
-        axle_dist2= 1.520 * m
-        gap_bogie= 2.130 * m
-        bogie_axle_dist1= 1.370 * m
-        bogie_axle_dist2= 3.050 * m
-        rear_gap = 0.91 * m
+        front_gap = 0.81 * KEYS.m
+        axle_dist1= 3.960 * KEYS.m
+        axle_dist2= 1.520 * KEYS.m
+        gap_bogie= 2.130 * KEYS.m
+        bogie_axle_dist1= 1.370 * KEYS.m
+        bogie_axle_dist2= 3.050 * KEYS.m
+        rear_gap = 0.91 * KEYS.m
 
         # Define wheel loads (kN) for each longitudinal axle position
         # Mapping to the 7 longitudinal positions in `load_positions_x`.
         # Values provided by user (converted to kN):
         # [8, 12, 12, 17, 17, 17, 17]
-        wheel_loads = [8 * kN, 12 * kN, 12 * kN, 17 * kN,
-                      17 * kN, 17 * kN, 17 * kN]
+        wheel_loads = [8 * KEYS.kN, 12 * KEYS.kN, 12 * KEYS.kN, 17 * KEYS.kN,
+                      17 * KEYS.kN, 17 * KEYS.kN, 17 * KEYS.kN]
 
         # Define longitudinal positions of each axle
         load_positions_x = [
@@ -83,12 +82,12 @@ class IRC6_2017:
         load_positions_z = [-0.965, 0.965]
 
         # Spacing between two sucessive class 70R vehicles
-        spacing_Class70R = 30.0 * m
+        spacing_Class70R = 30.0 * KEYS.m
 
         # Minimum clearance g_min between the road face of the kerb and the outer edge of the wheel or track 
-        min_clearance = 1.2 * m
+        min_clearance = 1.2 * KEYS.m
 
-        # make a dictonary to return vehicleSdata
+        # make a dictonary to return vehicle data
         return {
             'x': load_positions_x,
             'z': load_positions_z,
@@ -107,11 +106,11 @@ class IRC6_2017:
             'wheel_loads' - list of wheel loads (kN)
         """
         # Define units
-        start_vertex_x = 0.0 * m
-        end_vertex_x = 4.570 * m
+        start_vertex_x = 0.0 * KEYS.m
+        end_vertex_x = 4.570 * KEYS.m
 
         # Define track loads (kN/m2) 
-        track_loads_udl = 4.32 * kN / m2 
+        track_loads_udl = 4.32 * KEYS.kN / KEYS.m2 
 
         # Define longitudinal positions of track vertices
         load_positions_x = [
@@ -123,7 +122,7 @@ class IRC6_2017:
         load_positions_z = [-1.03, 1.03]
 
         # Spacing between two sucessive class 70R track vehicles
-        spacing_Class70R_T = 90.0 * m
+        spacing_Class70R_T = 90.0 * KEYS.m
 
         # make a dictonary to return vehicle data
         return {
@@ -143,20 +142,20 @@ class IRC6_2017:
             'wheel_loads' - list of wheel loads (kN)
         """
         # Define units
-        front_gap = 0.6 * m
-        axle_dist1 = 1.100 * m
-        axle_dist2 = 3.200 * m
-        axle_dist3 = 1.200 * m
-        gap_bogie = 4.300 * m
-        bogie_axle_dist = 3.000 * m
-        rear_gap = 0.900 * m
+        front_gap = 0.6 * KEYS.m
+        axle_dist1 = 1.100 * KEYS.m
+        axle_dist2 = 3.200 * KEYS.m
+        axle_dist3 = 1.200 * KEYS.m
+        gap_bogie = 4.300 * KEYS.m
+        bogie_axle_dist = 3.000 * KEYS.m
+        rear_gap = 0.900 * KEYS.m
 
        # Define wheel loads (kN) for each longitudinal axle position
        # Mapping to the 8 longitudinal positions in `load_positions_x`.
        # Values provided by user (converted to kN):
        # [2.7, 2.7, 11.4, 11.4, 6.8, 6.8, 6.8, 6.8]
-        wheel_loads = [2.7 * kN, 2.7 * kN, 11.4 * kN, 11.4 * kN,
-                      6.8 * kN, 6.8 * kN, 6.8 * kN, 6.8 * kN]
+        wheel_loads = [2.7 * KEYS.kN, 2.7 * KEYS.kN, 11.4 * KEYS.kN, 11.4 * KEYS.kN,
+                      6.8 * KEYS.kN, 6.8 * KEYS.kN, 6.8 * KEYS.kN, 6.8 * KEYS.kN]
 
         # Define longitudinal positions of each axle
         load_positions_x = [
@@ -173,8 +172,8 @@ class IRC6_2017:
         load_positions_z = [-0.9,0.9]
 
         # Spacing between two sucessive class A vehicles
-        spacing_ClassA = 18.5 * m
-   
+        spacing_ClassA = 18.5 * KEYS.m
+
         # make a dictonary to return vehicle data
         return {
             'x': load_positions_x,
@@ -184,7 +183,7 @@ class IRC6_2017:
         }
     
     
-    
+
     @staticmethod
     def table_3(carriageway_width):
         """
@@ -207,7 +206,6 @@ class IRC6_2017:
             "g_max": g[1],
             "f": f
         }
-
 
     @staticmethod
     def table_6(carriageway_width):
@@ -286,8 +284,6 @@ class IRC6_2017:
             "vehicle_combinations": combinations
         }
 
-
-    
     
     @staticmethod
     def table_7(span: float) -> float:
@@ -367,15 +363,15 @@ class IRC6_2017:
             'wheel_loads' - list of wheel loads (kN)
         """
         # Define units
-        axle_dist1= 4.50 * m
-        axle_dist2= 1.40 * m
+        axle_dist1= 4.50 * KEYS.m
+        axle_dist2= 1.40 * KEYS.m
    
 
         # Define wheel loads (kN) for each longitudinal axle position
         # Mapping to the 3 longitudinal positions in `load_positions_x`.
         # Values provided by user (converted to kN):
         # [12, 14, 14]
-        wheel_loads = [12 * kN, 14 * kN, 14 * kN]
+        wheel_loads = [12 * KEYS.kN, 14 * KEYS.kN, 14 * KEYS.kN]
 
         # Define longitudinal positions of each axle
         load_positions_x = [
@@ -387,11 +383,11 @@ class IRC6_2017:
         # Transverse position of each wheel
         load_positions_z = [-0.840, 0.840]
 
-        if KEY_DESIGN_FATIGUE[2]:
+        if KEYS.KEY_DESIGN_FATIGUE[2]:
             fatigue_cycles = 10 * 10**6
-        elif KEY_DESIGN_FATIGUE[1]:
+        elif KEYS.KEY_DESIGN_FATIGUE[1]:
             fatigue_cycles = 2 * 10 **6
-        elif KEY_TYPE_BRIDGE[1]:
+        elif KEYS.KEY_TYPE_BRIDGE[1]:
             fatigue_cycles = 0
 
         # make a dictonary to return vehicle data
@@ -408,10 +404,10 @@ class IRC6_2017:
         Returns the footway load in kg/m2 based on the selected footway type
         as per IRC:6-2017 Clause 206.1.
         """
-        footway_type = KEY_TYPE_FOOTWAY[0]  # Default footway type
+        footway_type = KEYS.KEY_TYPE_FOOTWAY[0]
 
         # Get the load in kg/m2 from the FOOTWAY_LOADS dictionary
-        load_kg_m2 = FOOTWAY_LOADS.get(footway_type, 500)  # default to 500 kg/m2 if not found
+        load_kg_m2 = KEYS.FOOTWAY_LOADS.get(footway_type, 500)  # default to 500 kg/m2 if not found
 
         # Convert load to kN/m2
         load_kN_m2 = (load_kg_m2 * 9.81) / 1000.0  # kN/m2
@@ -421,26 +417,42 @@ class IRC6_2017:
     @staticmethod
     def cl_206_2_kerb_load():
         """
-        Returns the kerb load in kg/m2 based on the kerb width
-        as per IRC:6-2017 Clause 206.2.
-        """
-        if IRC5_2015.cl_109_8_1_road_kerb_outline('road_kerb_width') >= 600:
-            kerb_load_kg_m2 = FOOTWAY_LOADS.get('Default', 500)  # 500 kg/m2
+        IRC:6-2017 Clause 206.2
+        Kerb load based on kerb width (obtained from IRC5)
 
-        # Convert load to kN/m2
-        kerb_kN_m2 = (kerb_load_kg_m2 * 9.81) / 1000.0  # kN/m2
-        
-        return round(kerb_kN_m2, 3)
-    
+        @author: Sweta Pal
+        """
+
+        # Get kerb data from IRC5
+        kerb_data = IRC5_2015.cl_109_8_1_road_kerb_outline({})
+
+        kerb_width_mm = kerb_data.get("road_kerb_width", 0)
+
+        # Default footway load
+        footway_load_kg_m2 = KEYS.FOOTWAY_LOADS.get("Default", 500)
+
+        # Apply condition
+        kerb_load_kg_m2 = footway_load_kg_m2 if kerb_width_mm >= 600 else 0
+
+        # Convert to kN/m2
+        kerb_kN_m2 = (kerb_load_kg_m2 * 9.81) / 1000.0
+
+        return {
+            "kerb_width_mm": kerb_width_mm,
+            "kerb_load_kN_per_m2": round(kerb_kN_m2, 3),
+            "clause": "IRC 6:2017 - 206.2"
+        }
+
+
     @staticmethod
     def cl_206_5_railing_load():
         """
         Returns the parapet load in kg/m based on the parapet type
         as per IRC:6-2017 Clause 206.5.
         """
-        if KEY_RAILING_TYPE[0] == 'IRC 5 RCC railing':
+        if KEYS.KEY_RAILING_TYPE[0] == 'IRC 5 RCC railing':
             railing_load_kg_m2 = 150.0  # kg/m
-        elif KEY_RAILING_TYPE[0] == 'IRC 5 steel railing':
+        elif KEYS.KEY_RAILING_TYPE[0] == 'IRC 5 steel railing':
             railing_load_kg_m2 = 150.0  # kg/m
 
         return round(railing_load_kg_m2, 3)
@@ -480,18 +492,18 @@ class IRC6_2017:
             float: impact factor (IM)
         """
         if span < 9.0: #span less than 9 m
-            if KEY_VEHICLE[1]: # Class70R(T)
+            if KEYS.KEY_VEHICLE[1]: # Class70R(T)
                 if span < 5.0:
                     IM = 0.25
                 if span >= 5.0:
                     IM = 0.10
-            elif KEY_VEHICLE[0]: # Class70R(W)
+            elif KEYS.KEY_VEHICLE[0]: # Class70R(W)
                 IM = 0.25
         
         elif 9.0 <= span <= 45.0: #span between 9 m and 45 m
-            if KEY_VEHICLE[1]: # Class70R(T)
+            if KEYS.KEY_VEHICLE[1]: # Class70R(T)
                 IM = 0.10
-            elif KEY_VEHICLE[0]: # Class70R(W)
+            elif KEYS.KEY_VEHICLE[0]: # Class70R(W)
                 if span < 23.0:
                     IM = 0.25
                 if span >= 23.0:
@@ -544,11 +556,11 @@ class IRC6_2017:
             }
         }
 
-        if KEY_TERRAIN_TYPE not in table:
+        if KEYS.KEY_TERRAIN_TYPE not in table:
             raise ValueError("terrain must be 'plain' or 'obstructed'")
 
         # Extract terrain data
-        terrain_table = table[KEY_TERRAIN_TYPE]
+        terrain_table = table[KEYS.KEY_TERRAIN_TYPE]
 
         # Clamp height to 10 m minimum as per "Up to 10 m"
         if height <= 10:
@@ -606,7 +618,7 @@ class IRC6_2017:
         # -----------------------------
         # 1. Compute A1 (solid exposed area)
         # -----------------------------
-        exposed_height = railing_height + crash_barrier_height + deck_thickness - openings_in_railing
+        exposed_height = KEYS.railing_height + KEYS.crash_barrier_height + KEYS.deck_thickness - KEYS.openings_in_railing
         if exposed_height < 0:
             exposed_height = 0
 
@@ -614,7 +626,7 @@ class IRC6_2017:
         # -----------------------------
         # 2. Compute Pz using Table 12 scaling
         # -----------------------------
-        Pz = IRC6_2017.table_12(height_for_pz, terrain, basic_wind_speed)["Pz"]
+        Pz = IRC6_2017.table_12(KEYS.height_for_pz, KEYS.terrain, KEYS.basic_wind_speed)["Pz"]
 
         A1 = exposed_height   # m2 per metre length of bridge
 
@@ -628,14 +640,14 @@ class IRC6_2017:
         # -----------------------------
         girder_section = girder_section.lower()
         # Case 1: Plate girder, single girder
-        if girder_section == "plate" and number_of_girders == 1:
+        if girder_section == "plate" and KEYS.number_of_girders == 1:
             CD = 2.2
 
         # Case 2: Plate girder, 2 or more girders
-        elif girder_section == "plate" and number_of_girders >= 2:
+        elif girder_section == "plate" and KEYS.number_of_girders >= 2:
             if c_spacing is None or d_depth is None:
                 raise ValueError("For plate girders with n>=2, c_spacing and d_depth must be provided.")
-            ratio = c_spacing / (20 * d_depth)
+            ratio = KEYS.c_spacing / (20 * KEYS.d_depth)
             if ratio < 4:
                 CD = 2 * (1 + ratio)
             else:
@@ -739,7 +751,7 @@ class IRC6_2017:
         CD = 1.2  # Drag coefficient for parapet
         
         # Determine if railing or crash barrier is present
-        if KEY_RAILING_TYPE[0] or KEY_CRASH_BARRIER_TYPE[0]:
+        if KEYS.KEY_RAILING_TYPE[0] or KEYS.KEY_CRASH_BARRIER_TYPE[0]:
             railing_present = True
         else:
             railing_present = False
@@ -844,10 +856,10 @@ class IRC6_2017:
         # Special Vehicle (Prime mover + 20 axle hydraulic trailer)
 
         # Longitudinal Spacing 
-        dist12 = 3.200 * m
-        dist23 = 1.370 * m
-        dist34 = 5.389 * m
-        trailer_spacing = 1.500 * m
+        dist12 = 3.200 * KEYS.m
+        dist23 = 1.370 * KEYS.m
+        dist34 = 5.389 * KEYS.m
+        trailer_spacing = 1.500 * KEYS.m
 
         #  Axle Loads (tonnes) 
         axle_loads_tonne = (
@@ -857,7 +869,7 @@ class IRC6_2017:
         )
 
         # Convert tonne → kN
-        wheel_loads = [ax * g for ax in axle_loads_tonne]
+        wheel_loads = [ax * KEYS.g for ax in axle_loads_tonne]
 
         #  Longitudinal Positions 
         load_positions_x = [0.0]

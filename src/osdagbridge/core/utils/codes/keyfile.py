@@ -71,3 +71,47 @@ KEY_TERRAIN_TYPE = ['plain','obstructed']
 SKEW_ANGLE_MIN = -15.0
 SKEW_ANGLE_MAX = 15.0
 SKEW_ANGLE_DEFAULT = 0.0
+
+
+# IRC 22 
+
+# Section & fabrication types
+KEY_SECTION_FABRICATION = ["rolled", "welded"]
+
+KEY_SECTION_CLASS = [
+    "plastic",
+    "compact",
+    "semi-compact",
+    "slender"
+]
+
+KEY_SECTION_TYPE = [
+    "i_major",
+    "i_minor",
+    "rhs",
+    "chs"
+]
+
+#  Material safety factors (Table 1)
+GAMMA_M0_STEEL = 1.10
+GAMMA_M1_STEEL_ULTIMATE = 1.25
+GAMMA_M_REINFORCEMENT = 1.15
+GAMMA_M_SHEAR_CONCRETE = 1.25
+GAMMA_M_WELD_SHOP = 1.25
+GAMMA_M_WELD_FIELD = 1.50
+
+#  Annex III Structural Steel
+E_STEEL_MPA = 2.0e5
+G_STEEL_MPA = 0.77e5
+POISSON_RATIO_STEEL = 0.30
+
+# Coefficient of Thermal Expansion (COTE)
+COTE_STEEL_PER_C = 11.7e-6
+
+# Shear connector detailing limits
+MIN_STUD_HEIGHT_MM = 100
+MIN_STUD_HEIGHT_FACTOR = 4        # h ≥ 4d
+MAX_STUD_DIAMETER_FACTOR = 2      # d ≤ 2tf
+MIN_EDGE_DISTANCE_MM = 25
+MIN_STUD_HEAD_FACTOR = 1.5
+
