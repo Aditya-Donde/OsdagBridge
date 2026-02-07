@@ -298,9 +298,23 @@ def create_metallic_barrier_system(length, design_dict, kerb_top_width, kerb_hei
 
     #  GENERATE POSTS
     posts_combined = None
+    
+    # Start posts with an offset from the beginning to keep them within deck bounds
+    START_OFFSET = 170.0
+    effective_length = length - 2 * START_OFFSET
+    if effective_length < 0:
+        effective_length = 0
+        num_spaces = 0
+    else:
+        num_spaces = int(effective_length / post_spacing)
+        if num_spaces < 1:
+            num_spaces = 1
+    
+    actual_spacing = effective_length / num_spaces if num_spaces > 0 else 0
+    num_posts = num_spaces + 1 if num_spaces > 0 else 1
+
     for i in range(num_posts):
-        x_pos = i * post_spacing
-        if x_pos > length: break
+        x_pos = START_OFFSET + i * actual_spacing
         
         def create_vertical_channel(h, d, w, tw, tf):
             x_web_back, x_web_front = -tw / 2.0, tw / 2.0
@@ -338,8 +352,7 @@ def create_metallic_barrier_system(length, design_dict, kerb_top_width, kerb_hei
 
         # Spacers (one per post)
         for i in range(num_posts):
-            x_pos = i * post_spacing
-            if x_pos > length: break
+            x_pos = START_OFFSET + i * actual_spacing
             
             def create_vertical_spacer(h, d, w, tw, tf):
                 x_web_back, x_web_front = -tw / 2.0, tw / 2.0
@@ -363,14 +376,15 @@ def create_metallic_barrier_system(length, design_dict, kerb_top_width, kerb_hei
         # Beam solid (HOLLOW W-BEAM)
         beam_face = make_w_beam_face()
 
+        # Extrude W-beam for the effective length only
         beam_solid = BRepPrimAPI_MakePrism(
             beam_face,
-            gp_Vec(length, 0, 0)
+            gp_Vec(effective_length, 0, 0)
         ).Shape()
 
         beam_solid = _translate(
             beam_solid,
-            x=0, y=beam_back_y, z=beam_z
+            x=START_OFFSET, y=beam_back_y, z=beam_z
         )
 
         beams_combined = (
