@@ -1,5 +1,5 @@
 
-from OCC.Core.BRepPrimAPI import BRepPrimAPI_MakeBox
+from OCC.Core.BRepPrimAPI import BRepPrimAPI_MakeBox, BRepPrimAPI_MakeCylinder
 from OCC.Core.gp import gp_Trsf, gp_Vec, gp_Ax2, gp_Pnt, gp_Dir
 from OCC.Core.BRepBuilderAPI import BRepBuilderAPI_Transform
 from OCC.Core.BRepAlgoAPI import BRepAlgoAPI_Cut, BRepAlgoAPI_Fuse
@@ -40,6 +40,16 @@ def create_rectangular_prism(length, breadth, height):
     )
 
     return BRepBuilderAPI_Transform(box, trsf, True).Shape()
+
+
+def create_cylinder(radius, height):
+    """
+    Creates a cylinder centered at origin, extending along Z-axis.
+    X, Y: centered at 0
+    Z: 0 → height
+    """
+    cylinder = BRepPrimAPI_MakeCylinder(radius, height).Shape()
+    return cylinder
 
 
 # Geometry
@@ -120,7 +130,7 @@ def create_steel_railing(
     side="LEFT"
 ):
     """
-    Creates a steel railing with posts and rails.
+    Creates a steel railing with posts and rails on a concrete base.
     aligned with typical railing coordinate system.
     """
     railing_width = 200
@@ -128,18 +138,25 @@ def create_steel_railing(
     if railing_height is None:
         railing_height = 1100
 
-    # Parameters for steel railing
-    POST_SIZE = railing_width
-
+    # Concrete base dimensions
+    BASE_HEIGHT = 100  # 100mm height as per IRC standards
+    BASE_WIDTH = 375   # 375mm width for concrete base
+    
+    # Create concrete base with 375mm width
+    base = create_rectangular_prism(length, BASE_WIDTH, BASE_HEIGHT)
+    
+    # Parameters for steel railing (sits on top of base)
+    POST_DIAMETER = 150  # Circular post diameter in mm
+    POST_RADIUS = POST_DIAMETER / 2.0
     POST_SPACING = 1000
     RAIL_SIZE = 80
     
-    # Posts
-    post_height = railing_height
+    # Posts height (from top of base to top of railing)
+    post_height = railing_height - BASE_HEIGHT
     
     # Calculate number of gaps  
     # Safe length for posts center-to-beginning
-    effective_length = length - POST_SIZE
+    effective_length = length - POST_DIAMETER
     if effective_length < 0:
         effective_length = 0
         
@@ -151,38 +168,43 @@ def create_steel_railing(
     
     posts_shape = None
     
-    # Create posts
+    # Create circular posts (starting from top of base)
     # We need num_spaces + 1 posts to cover 0 to effective_length
     for i in range(num_spaces + 1):
-        x = i * actual_spacing
+        x = i * actual_spacing + POST_RADIUS  # Center the cylinder at x position
         
         # Clamp x to be safe 
-        if x > length - POST_SIZE:
-            x = length - POST_SIZE
+        if x > length - POST_RADIUS:
+            x = length - POST_RADIUS
             
-        post = create_rectangular_prism(POST_SIZE, POST_SIZE, post_height)
-        post = translate(post, x=x)
+        # Create cylindrical post
+        post = create_cylinder(POST_RADIUS, post_height)
+        post = translate(post, x=x, z=BASE_HEIGHT)
         
         if posts_shape is None:
             posts_shape = post
         else:
             posts_shape = BRepAlgoAPI_Fuse(posts_shape, post).Shape()
 
-    # Rails
+    # Rails (positioned relative to total railing height)
     # Top Rail
     top_rail = create_rectangular_prism(length, RAIL_SIZE, RAIL_SIZE)
     top_rail = translate(top_rail, z=railing_height - 2 * RAIL_SIZE)
     
     # Mid Rail
     mid_rail = create_rectangular_prism(length, RAIL_SIZE, RAIL_SIZE)
-    mid_rail = translate(mid_rail, z=railing_height * 0.5)
+    mid_rail = translate(mid_rail, z=BASE_HEIGHT + (post_height * 0.5))
 
     rails_fused = BRepAlgoAPI_Fuse(top_rail, mid_rail).Shape()
     
+    # Combine all components
     if posts_shape:
-        final_shape = BRepAlgoAPI_Fuse(posts_shape, rails_fused).Shape()
+        steel_structure = BRepAlgoAPI_Fuse(posts_shape, rails_fused).Shape()
     else:
-        final_shape = rails_fused
+        steel_structure = rails_fused
+    
+    # Fuse concrete base with steel structure
+    final_shape = BRepAlgoAPI_Fuse(base, steel_structure).Shape()
     
     if side == "RIGHT":
          final_shape = mirror_y(final_shape)
@@ -208,10 +230,11 @@ def build_railings(
     # Default to RCC if not found
     railing_type = design_dict.get("railing_type", "RCC")
     
+    # Use the actual base width for positioning
     if railing_type == "steel":
-        railing_width = 200
+        railing_width = 375  # Steel railing base width
     else:
-        railing_width = 275
+        railing_width = 275  # RCC railing width
 
     deck_half = total_deck_width / 2.0
     railings = []
