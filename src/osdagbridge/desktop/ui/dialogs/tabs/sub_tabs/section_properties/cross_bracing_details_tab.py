@@ -345,14 +345,6 @@ class CrossBracingDetailsTab(QWidget):
         for combo in [self.bracing_section_combo, self.top_bracket_size_combo, self.bottom_bracket_size_combo]:
             combo.setCurrentIndex(0 if combo.count() > 0 else -1)
         self._update_previews()
-        
-    def get_cad_data(self):
-        return {
-            "bracing_type": self.bracing_type_combo.currentText(),
-            "spacing": self.spacing_input.text(),
-            "section": self.bracing_section_combo.currentText(),
-        }
-
 
     def collect_data(self):
         return {
@@ -368,4 +360,3 @@ class CrossBracingDetailsTab(QWidget):
             "bottom_bracket_size": self.bottom_bracket_size_combo.currentText(),
             "spacing": self.spacing_input.text(),
         }
-

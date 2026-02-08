@@ -838,18 +838,8 @@ class InputDock(QWidget):
                 input_values[KEY_SKEW_ANGLE] = 0.0  # Default
         
         # Collect footpath
-        # Footpath handling (derive numeric values, do NOT store KEY_FOOTPATH)
         if hasattr(self, 'footpath_combo'):
-            footpath = self.footpath_combo.currentText()
-
-            if footpath.lower() == "none":
-                input_values[KEY_FOOTPATH_WIDTH] = 0.0
-                input_values[KEY_FOOTPATH_THICKNESS] = 0.0
-            else:
-                # Defaults (or override via Additional Inputs)
-                input_values.setdefault(KEY_FOOTPATH_WIDTH, 1.5)
-                input_values.setdefault(KEY_FOOTPATH_THICKNESS, 200.0)
-
+            input_values["footpath"] = self.footpath_combo.currentText()
         
         # Collect median
         if hasattr(self, 'include_median_combo'):
@@ -1343,7 +1333,7 @@ class InputDock(QWidget):
         """)
         footpath_label.setMinimumWidth(110)
         self.footpath_combo = NoScrollComboBox()
-        #self.footpath_combo.setObjectName(KEY_FOOTPATH)
+        self.footpath_combo.setObjectName("footpath")
         apply_field_style(self.footpath_combo)
         self.footpath_combo.addItems(VALUES_FOOTPATH)
         self.footpath_combo.setCurrentIndex(0)
@@ -1689,20 +1679,17 @@ class InputDock(QWidget):
         
         self.additional_inputs = AdditionalInputs(footpath_value, carriageway_width)
         
-        self.additional_inputs = AdditionalInputs(footpath_value, carriageway_width)
-
-        # CONNECT HERE
-        self.additional_inputs.cadDataChanged.connect(self._on_additional_inputs_changed)
-
-        self.additional_inputs.exec()
-    
-    def _on_additional_inputs_changed(self, cad_data):
-        # Store additional input values
-        self.additional_input_values = cad_data
-
-        # Notify main window that inputs changed
-        self.input_value_changed.emit()
-
+        # Connect to accept signal to handle save
+        result = self.additional_inputs.exec()
+        
+        # If user clicked Save (accepted), get values and trigger update
+        if result == AdditionalInputs.Accepted:
+            values = self.additional_inputs.get_all_values()
+            if values:
+                # Merge with existing input values
+                self.additional_input_values = values
+                # Emit signal to trigger CAD update
+                self.input_value_changed.emit()
     
     def _apply_lock_state(self):
         self.update_lock_icon()

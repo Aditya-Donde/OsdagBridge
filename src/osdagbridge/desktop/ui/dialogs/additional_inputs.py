@@ -38,7 +38,6 @@ from osdagbridge.core.bridge_types.plate_girder.ui_fields_additional_input impor
 
 class AdditionalInputs(QDialog):
     """Main dialog for Additional Inputs with tabbed interface"""
-    cadDataChanged = Signal(dict)
     
     def __init__(self, footpath_value="None", carriageway_width=7.5, parent=None):
         super().__init__(parent)
@@ -231,14 +230,62 @@ class AdditionalInputs(QDialog):
             self._show_placeholder_message("Defaults")
 
     def _save_inputs(self):
-        data = self.get_cad_input_data()
-        print("CAD DATA:", data)
-        self.cadDataChanged.emit(data)
+        """
+        Save additional inputs and close dialog.
+        Data will be collected by template_page via get_all_values().
+        """
         self.accept()
-        saved = {}
-        if hasattr(self, "section_properties_tab") and hasattr(self.section_properties_tab, "save_properties"):
-            saved.update(self.section_properties_tab.save_properties() or {})
-        # No popup; silently succeed for now
+  
+    def get_all_values(self):
+        """
+        Return CAD-relevant numeric values from Additional Inputs.
+        This is consumed by InputDock / template_page.
+        """
+
+        from osdagbridge.core.utils.common import (
+            KEY_NO_OF_GIRDERS,
+            KEY_GIRDER_SPACING,
+            KEY_DECK_OVERHANG,
+            KEY_DECK_THICKNESS,
+            KEY_FOOTPATH_WIDTH,
+            KEY_FOOTPATH_THICKNESS,
+            KEY_CROSS_BRACING_SPACING,
+        )
+
+        values = {}
+
+        # ---- Typical Section tab ----
+        ts = self.typical_section_tab
+
+        if hasattr(ts, "no_of_girders") and ts.no_of_girders.text():
+            values[KEY_NO_OF_GIRDERS] = int(float(ts.no_of_girders.text()))
+
+        if hasattr(ts, "girder_spacing") and ts.girder_spacing.text():
+            values[KEY_GIRDER_SPACING] = float(ts.girder_spacing.text())
+
+        if hasattr(ts, "deck_overhang") and ts.deck_overhang.text():
+            values[KEY_DECK_OVERHANG] = float(ts.deck_overhang.text())
+
+        if hasattr(ts, "deck_thickness") and ts.deck_thickness.text():
+            values[KEY_DECK_THICKNESS] = float(ts.deck_thickness.text())
+
+        if hasattr(ts, "footpath_width") and ts.footpath_width.text():
+            values[KEY_FOOTPATH_WIDTH] = float(ts.footpath_width.text())
+
+        if hasattr(ts, "footpath_thickness") and ts.footpath_thickness.text():
+            values[KEY_FOOTPATH_THICKNESS] = float(ts.footpath_thickness.text())
+
+        # ---- Cross bracing spacing (Section Properties tab) ----
+        try:
+            bracing_tab = self.section_properties_tab.cross_bracing_details_tab
+            if hasattr(bracing_tab, "bracing_spacing") and bracing_tab.bracing_spacing.text():
+                values[KEY_CROSS_BRACING_SPACING] = float(bracing_tab.bracing_spacing.text())
+        except Exception:
+            pass
+
+        return values
+
+
 
     def _build_sections_from_schema(self, parent_layout, sections, heading_style, label_style, field_width):
         for section in sections:
@@ -438,57 +485,6 @@ class AdditionalInputs(QDialog):
         """Update footpath value across all tabs"""
         self.footpath_value = footpath_value
         self.typical_section_tab.update_footpath_value(footpath_value)
-        
-    def get_cad_input_data(self):
-        data = {}
-
-        ts = self.typical_section_tab
-
-        # -------- CROSS SECTION --------
-        cross_section = {
-            "num_girders": ts.get_girder_count(),
-            "girder_spacing": ts.get_girder_spacing() * 1000,
-            "carriageway_width": ts.carriageway_width * 1000,
-            "deck_overhang": ts.get_deck_overhang() * 1000,
-            "deck_thickness": ts.get_deck_thickness(),
-            "footpath_width": ts.get_footpath_width() * 1000,
-            "footpath_thickness": ts.get_footpath_thickness(),
-            "footpath_config": ts.get_footpath_config(),
-            "median_present": ts.is_median_present(),
-        }
-
-        # -------- TOP VIEW --------
-        cb_tab = getattr(self.section_properties_tab, "cross_bracing_details_tab", None)
-
-        top_view = {
-            "span_length": (
-                ts.get_span_length() * 1000
-                if hasattr(ts, "get_span_length")
-                else 0.0
-            ),
-            "num_girders": cross_section["num_girders"],
-            "girder_spacing": cross_section["girder_spacing"],
-            "deck_overhang": cross_section["deck_overhang"],
-            "cross_bracing_spacing": (
-                cb_tab.get_cross_bracing_spacing() * 1000
-                if cb_tab and hasattr(cb_tab, "get_cross_bracing_spacing")
-                else 0.0
-            ),
-            "carriageway_width": cross_section["carriageway_width"],
-            "skew_angle": ts.get_skew_angle(),
-            "deck_thickness": cross_section["deck_thickness"],
-            "footpath_width": cross_section["footpath_width"],
-            "footpath_thickness": cross_section["footpath_thickness"],
-            "footpath_config": cross_section["footpath_config"],
-            "median_present": cross_section["median_present"],
-        }
-
-        data["cross_section"] = cross_section
-        data["top_view"] = top_view
-        return data
-
-
-
 
     def _show_placeholder_message(self, action_name):
         QMessageBox.information(self, "Coming soon", f"{action_name} action not implemented yet.")

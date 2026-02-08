@@ -7,49 +7,15 @@ from PySide6.QtSvgWidgets import QSvgWidget
 from PySide6.QtCore import Qt, QFile, QTextStream, Signal
 from PySide6.QtGui import QIcon, QAction, QKeySequence
 
-from osdagbridge.desktop.ui.docks.cad_dual_view import BridgeDualCADWidget
-from osdagbridge.desktop.ui.dialogs.additional_inputs import AdditionalInputs
-
-
 from osdagbridge.desktop.ui.docks.input_dock import InputDock
 from osdagbridge.desktop.ui.docks.output_dock import OutputDock
 from osdagbridge.desktop.ui.docks.log_dock import LogDock
+from osdagbridge.desktop.ui.docks.cad_dual_view import BridgeDualCADWidget
 
 from osdagbridge.core.bridge_types.plate_girder.ui_fields import FrontendData
 from osdagbridge.core.utils.common import *
 
-class DummyCADWidget(QWidget):
-    """Placeholder for CAD widget"""
-
-    def __init__(self):
-        super().__init__()
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(5, 2, 5, 0)
-        layout.setSpacing(0)
-        label = QLabel("CAD Window\n(Placeholder)")
-        label.setAlignment(Qt.AlignCenter)
-        label.setStyleSheet(
-            """
-            QLabel {
-                background-color: #f0f0f0;
-                border: 1px solid #999;
-                padding: 40px;
-                font-size: 18px;
-                color: #666;
-            }
-            """
-        )
-        layout.addWidget(label)
-
 class CustomWindow(QWidget):
-    
-    def open_additional_inputs(self):
-        dialog = AdditionalInputs(parent=self)
-        
-        if dialog.exec():
-            cad_data = dialog.get_cad_input_data()
-            self.cad_comp_widget.apply_cad_data(cad_data)
-
     def __init__(self, title: str, backend: object, parent=None):
         super().__init__()
         self.parent = parent
@@ -83,6 +49,9 @@ class CustomWindow(QWidget):
         self.output_dock = None
 
         self.init_ui()
+        # Central CAD state (single source of truth)
+        self.cad_state = {}
+
         
     def _init_log_splitter_once(self):
         if self._log_splitter_initialized:
@@ -99,28 +68,6 @@ class CustomWindow(QWidget):
         ])
         self._log_splitter_initialized = True
 
-    def cross_section_toggle(self):
-        self.cross_section_active = not self.cross_section_active
-        self.cad_comp_widget.set_cross_section_visible(self.cross_section_active)
-
-        icon = (
-            ":/vectors/cross_section_open_light.svg"
-            if self.cross_section_active
-            else ":/vectors/cross_section_closed_light.svg"
-        )
-        self.cross_section_control.load(icon)
-
-
-    def top_view_toggle(self):
-        self.top_view_active = not self.top_view_active
-        self.cad_comp_widget.set_top_view_visible(self.top_view_active)
-
-        icon = (
-            ":/vectors/top_view_open_light.svg"
-            if self.top_view_active
-            else ":/vectors/top_view_closed_light.svg"
-        )
-        self.top_view_control.load(icon)
 
     def init_ui(self):
         # Docking icons Parent class
@@ -148,17 +95,31 @@ class CustomWindow(QWidget):
         self.menu_bar.setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Fixed)
         self.menu_bar.setFixedHeight(28)
         self.menu_bar.setContentsMargins(0, 0, 0, 0)
-        menu_h_layout.addWidget(self.menu_bar, 1)
+        menu_h_layout.addWidget(self.menu_bar)
 
         # Control buttons
         control_btn_widget = QWidget()
         control_btn_widget.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
-        control_btn_widget.setMaximumHeight(28)
         control_btn_widget.setObjectName("control_btn_widget")
         control_button_layout = QHBoxLayout(control_btn_widget)
-        control_button_layout.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
         control_button_layout.setSpacing(10)
         control_button_layout.setContentsMargins(5,5,5,5)
+
+        # Cross-section view control
+        self.cross_section_control = ClickableSvgWidget()
+        self.cross_section_control.setFixedSize(18, 18)
+        self.cross_section_control.load(":/vectors/cross_section_open_light.svg")
+        self.cross_section_control.clicked.connect(self.cross_section_toggle)
+        self.cross_section_active = True
+        control_button_layout.addWidget(self.cross_section_control)
+
+        # Top view control
+        self.top_view_control = ClickableSvgWidget()
+        self.top_view_control.setFixedSize(18, 18)
+        self.top_view_control.load(":/vectors/top_view_open_light.svg")
+        self.top_view_control.clicked.connect(self.top_view_toggle)
+        self.top_view_active = True
+        control_button_layout.addWidget(self.top_view_control)
 
         self.input_dock_control = ClickableSvgWidget()
         self.input_dock_control.setFixedSize(18, 18)
@@ -180,25 +141,8 @@ class CustomWindow(QWidget):
         self.output_dock_control.clicked.connect(self.output_dock_toggle)
         self.output_dock_active = False
         control_button_layout.addWidget(self.output_dock_control)
-        
-        # Cross-section view control
-        self.cross_section_control = ClickableSvgWidget()
-        self.cross_section_control.setFixedSize(18, 18)
-        self.cross_section_control.load(":/vectors/cross_section_open_light.svg")
-        self.cross_section_control.clicked.connect(self.cross_section_toggle)
-        self.cross_section_active = True
-        control_button_layout.addWidget(self.cross_section_control)
 
-        # Top view control
-        self.top_view_control = ClickableSvgWidget()
-        self.top_view_control.setFixedSize(18, 18)
-        self.top_view_control.load(":/vectors/top_view_open_light.svg")
-        self.top_view_control.clicked.connect(self.top_view_toggle)
-        self.top_view_active = True
-        control_button_layout.addWidget(self.top_view_control)
-        
-
-        menu_h_layout.addWidget(control_btn_widget, 0)
+        menu_h_layout.addWidget(control_btn_widget)
         main_v_layout.addLayout(menu_h_layout)
         self.create_menu_bar_items()
 
@@ -210,13 +154,12 @@ class CustomWindow(QWidget):
         self.splitter = QSplitter(Qt.Horizontal, self.body_widget)
         self.splitter.setHandleWidth(2)
         self.input_dock = InputDock(backend=self.backend, parent=self)
-        self.input_dock.input_value_changed.connect(self._update_cad_from_inputs)
         input_dock_width = self.input_dock.sizeHint().width()
         self._input_dock_default_width = input_dock_width
         self.splitter.addWidget(self.input_dock)
 
-        central_widget = QWidget()
-        central_H_layout = QHBoxLayout(central_widget)
+        self.central_widget = QWidget()
+        central_H_layout = QHBoxLayout(self.central_widget)
 
         # Add dock indicator labels
         self.input_dock_label = InputDockIndicator(parent=self)
@@ -228,8 +171,6 @@ class CustomWindow(QWidget):
         central_V_layout = QVBoxLayout()
         central_V_layout.setContentsMargins(0, 0, 0, 0)
         central_V_layout.setSpacing(0)
-        
-
 
         # ----------------- CAD + LOG SPLITTER (ADDED) -----------------
 
@@ -238,49 +179,41 @@ class CustomWindow(QWidget):
         self.cad_log_splitter.setChildrenCollapsible(False)
         
 
-        # CAD widget (Dual CAD: Cross-section + Top view)
-        self.cad_comp_widget = BridgeDualCADWidget(parent=self)
+        # CAD widget
+        self.cad_comp_widget = BridgeDualCADWidget(self)
         self.cad_comp_widget.setSizePolicy(
             QSizePolicy.Expanding, QSizePolicy.Expanding
         )
         self.cad_log_splitter.addWidget(self.cad_comp_widget)
 
-
         # Log dock (inside splitter)
         self.logs_dock = LogDock(parent=self)
         self.logs_dock.setVisible(False)
-        self.logs_dock.setMinimumHeight(80)
         self.logs_dock.setSizePolicy(
             QSizePolicy.Expanding, QSizePolicy.Expanding
         )
-
+        self.logs_dock.setMinimumHeight(80)
         self.cad_log_splitter.addWidget(self.logs_dock)
 
         # Stretch ratio: CAD > Logs
         self.cad_log_splitter.setStretchFactor(0, 8)
         self.cad_log_splitter.setStretchFactor(1, 1)
 
-
-        # Log text handle
-        self.textEdit = self.logs_dock.log_display
-
+        central_V_layout.addWidget(self.cad_log_splitter)
 
         # --------------------------------------------------------------
 
-        # Prefer stretch factors so ratio persists on resize
-        self.cad_log_splitter.setStretchFactor(0, 8)
-        self.cad_log_splitter.setStretchFactor(1, 1)
-        # Seed an initial 8:1 split; will be refined after first show
-        self.cad_log_splitter.setSizes([8, 1])
+        
+        # log text
+        self.textEdit = self.logs_dock.log_display
 
-        central_V_layout.addWidget(self.cad_log_splitter)        
         central_H_layout.addLayout(central_V_layout, 6)
 
         # Add output dock indicator label
         self.output_dock_label = OutputDockIndicator(parent=self)
         self.output_dock_label.setVisible(True)
         central_H_layout.addWidget(self.output_dock_label, 1)
-        self.splitter.addWidget(central_widget)
+        self.splitter.addWidget(self.central_widget)
 
         # root is the greatest level of parent that is the MainWindow
         self.output_dock = OutputDock(parent=self)
@@ -300,21 +233,88 @@ class CustomWindow(QWidget):
         self.layout.activate()
         main_v_layout.addWidget(self.body_widget)
         
-    def _update_cad_from_inputs(self):
+        # Connect input dock changes to CAD widget for real-time updates
+        self.setup_cad_connections()
+    
+    def setup_cad_connections(self):
+        """Connect input dock field changes to CAD widget for real-time updates"""
+        # Connect to input dock's value changed signals
+        # This will update the CAD whenever any input field changes
+        if hasattr(self.input_dock, 'input_value_changed'):
+            self.input_dock.input_value_changed.connect(self.update_cad_from_inputs)
+            
+    def open_additional_inputs(self):
         """
-        Collect inputs from InputDock and update CAD widgets
+        Open Additional Inputs dialog and route values through CAD interface
         """
-        if not hasattr(self, 'cad_comp_widget'):
+        dialog = AdditionalInputs(parent=self)
+
+        if dialog.exec():
+            # Get values ONLY (do not update CAD directly)
+            values = dialog.get_all_values()
+
+            if values:
+                self.update_cad_state("additional_inputs", values)
+                
+    def update_cad_state(self, source: str, values: dict):
+        """
+        Central CAD interface (single source of truth)
+        source: 'input_dock' | 'additional_inputs'
+        """
+        if not values:
+            return
+
+        # 1. Store state
+        self.cad_state.update(values)
+
+        # 2. Apply state to CAD UI ONLY
+        if hasattr(self, 'cad_comp_widget'):
+            self.cad_comp_widget.update_from_osdag_inputs(self.cad_state)
+
+
+            
+    def update_cad_from_inputs(self):
+        """
+        Collect inputs from InputDock and send to CAD interface
+        """
+        if not self.input_dock:
             return
 
         input_values = self.input_dock.get_all_input_values()
         if not input_values:
             return
 
-        self.cad_comp_widget.update_from_osdag_inputs(input_values)
+        # IMPORTANT: send ONLY to interface
+        self.update_cad_state("input_dock", input_values)
 
 
     #---------------------------------Docking-Icons-Functionality-START----------------------------------------------
+
+    def cross_section_toggle(self):
+        """Toggle cross-section view visibility"""
+        self.cross_section_active = not self.cross_section_active
+        
+        if self.cross_section_active:
+            self.cross_section_control.load(":/vectors/cross_section_open_light.svg")
+        else:
+            self.cross_section_control.load(":/vectors/cross_section_closed_light.svg")
+        
+        # Update CAD widget
+        if hasattr(self, 'cad_comp_widget'):
+            self.cad_comp_widget.set_cross_section_visible(self.cross_section_active)
+    
+    def top_view_toggle(self):
+        """Toggle top view visibility"""
+        self.top_view_active = not self.top_view_active
+        
+        if self.top_view_active:
+            self.top_view_control.load(":/vectors/top_view_open_light.svg")
+        else:
+            self.top_view_control.load(":/vectors/top_view_closed_light.svg")
+        
+        # Update CAD widget
+        if hasattr(self, 'cad_comp_widget'):
+            self.cad_comp_widget.set_top_view_visible(self.top_view_active)
 
     def input_dock_toggle(self):
         self.input_dock.toggle_input_dock()
@@ -334,7 +334,7 @@ class CustomWindow(QWidget):
             self.log_dock_control.load(":/vectors/logs_dock_inactive_light.svg")
 
     
-    '''def _position_log_dock(self):
+    def _position_log_dock(self):
         """Position log dock at bottom of central widget as overlay (max 1/5 height)"""
         if hasattr(self, 'logs_dock') and hasattr(self, 'cad_comp_widget'):
             cad_geom = self.cad_comp_widget.geometry()
@@ -344,13 +344,13 @@ class CustomWindow(QWidget):
                 cad_geom.y() + cad_geom.height() - log_height,
                 cad_geom.width(),
                 log_height
-            )'''
+            )
     
     def resizeEvent(self, event):
         """Reposition log dock on window resize"""
         super().resizeEvent(event)
-        #if hasattr(self, 'logs_dock') and self.logs_dock.isVisible():
-            #self._position_log_dock()
+        if hasattr(self, 'logs_dock') and self.logs_dock.isVisible():
+            self._position_log_dock()
 
     def update_docking_icons(self, input_is_active=None, log_is_active=None, output_is_active=None):
             

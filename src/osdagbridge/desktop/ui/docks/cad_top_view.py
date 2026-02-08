@@ -25,20 +25,6 @@ class TopViewCADWidget(QWidget):
         
         # Setup zoom controls inside this widget
         self.setup_zoom_controls()
-        # ---- FIXED ZOOM OVERLAY (DO NOT MOVE ON SCROLL) ----
-        self.zoom_overlay = QWidget(self)
-        self.zoom_overlay.setFixedSize(55, 95)
-        self.zoom_overlay.raise_()
-
-        from PySide6.QtWidgets import QVBoxLayout
-        overlay_layout = QVBoxLayout(self.zoom_overlay)
-        overlay_layout.setContentsMargins(0, 0, 0, 0)
-        overlay_layout.setSpacing(6)
-
-        overlay_layout.addWidget(self.zoom_in_btn)
-        overlay_layout.addWidget(self.zoom_out_btn)
-        overlay_layout.addWidget(self.zoom_reset_btn)
-
         
         # Track scroll area for fixed button positioning
         self.scroll_area = None
@@ -171,14 +157,19 @@ class TopViewCADWidget(QWidget):
     
     def zoom_reset(self):
         self.zoom_level = 1.0
-        #self._update_widget_size()
+        self._update_widget_size()
         self.update()
     
     def _update_widget_size(self):
-        #  DO NOTHING
-        # Zoom must affect drawing only, NOT widget size
-        pass
-
+        """Update widget size based on zoom level for proper scrolling"""
+        base_width = 800
+        base_height = 600
+        # Add extra padding (20%) to ensure scrollbar reaches beyond content
+        padding_factor = 1.2
+        new_width = int(base_width * self.zoom_level * padding_factor)
+        new_height = int(base_height * self.zoom_level)
+        self.setMinimumSize(new_width, new_height)
+        self.resize(new_width, new_height)
     
     def resizeEvent(self, event):
         """Position zoom controls in top-right corner"""
@@ -197,26 +188,24 @@ class TopViewCADWidget(QWidget):
                 if isinstance(parent, QScrollArea):
                     self.scroll_area = parent
                     # Connect to scroll events
-                    #self.scroll_area.horizontalScrollBar().valueChanged.connect(self._position_zoom_buttons)
-                    #self.scroll_area.verticalScrollBar().valueChanged.connect(self._position_zoom_buttons)
+                    self.scroll_area.horizontalScrollBar().valueChanged.connect(self._position_zoom_buttons)
+                    self.scroll_area.verticalScrollBar().valueChanged.connect(self._position_zoom_buttons)
                     break
                 parent = parent.parent()
         
         if self.scroll_area:
             # Get viewport dimensions and scroll position
             viewport = self.scroll_area.viewport()
-            #scroll_x = self.scroll_area.horizontalScrollBar().value()
-            #scroll_y = self.scroll_area.verticalScrollBar().value()
+            scroll_x = self.scroll_area.horizontalScrollBar().value()
+            scroll_y = self.scroll_area.verticalScrollBar().value()
             
             # Position buttons at top-right of visible viewport (with safety margin)
             button_margin = 10
-            #x = max(button_margin, min(scroll_x + viewport.width() - 60, self.width() - 60))
-            #y = scroll_y + 10
-            x = self.width() - 55    # move left/right
-            y = 10                   # move up/down
+            x = max(button_margin, min(scroll_x + viewport.width() - 60, self.width() - 60))
+            y = scroll_y + 10
             
             self.zoom_in_btn.move(x, y)
-            self.zoom_out_btn.move(x, 30)
+            self.zoom_out_btn.move(x, y + 30)
             self.zoom_reset_btn.move(x - 25, y + 60)
             
             # Ensure buttons are visible on top
@@ -369,7 +358,6 @@ class TopViewCADWidget(QWidget):
                 QPointF(x2 - arrow_half, y2 - arrow_len),
                 QPointF(x2 + arrow_half, y2 - arrow_len)
             ]
-
             painter.drawPolygon(QPolygonF(bottom_arrow))
             
             if draw_extensions:
@@ -1293,7 +1281,3 @@ class TopViewCADWidget(QWidget):
         for i, note in enumerate(notes):
             note_y = notes_y + 22 + i * 13
             painter.drawText(32, note_y, note)
-
-
-
-

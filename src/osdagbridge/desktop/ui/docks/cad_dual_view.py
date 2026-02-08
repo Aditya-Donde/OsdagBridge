@@ -12,23 +12,6 @@ from .cad_top_view import TopViewCADWidget
 class BridgeDualCADWidget(QWidget):
     """Split view widget showing both cross-section and top view with individual controls"""
     
-    def apply_cad_data(self, cad_data: dict):
-        """
-        Apply CAD data coming from AdditionalInputs.get_cad_input_data()
-        """
-        if not cad_data:
-            return
-
-        # Upper half → Cross section
-        self.cross_section_widget.update_params(
-            cad_data.get("cross_section", {})
-        )
-
-        # Lower half → Top view
-        self.top_view_widget.update_params(
-            cad_data.get("top_view", {})
-        )
-
     def __init__(self, parent=None):
         super().__init__(parent)
         self.cross_zoom_level = 1.0
@@ -217,15 +200,15 @@ class BridgeDualCADWidget(QWidget):
         if KEY_FOOTPATH_THICKNESS in input_dict:
             params['footpath_thickness'] = float(input_dict[KEY_FOOTPATH_THICKNESS])
         
-        '''# Map footpath configuration
-        if KEY_FOOTPATH in input_dict:
-            footpath_value = input_dict[KEY_FOOTPATH]
+        # Map footpath configuration
+        if "footpath" in input_dict:
+            footpath_value = input_dict["footpath"]
             if footpath_value == "None":
                 params['footpath_config'] = 'none'
             elif footpath_value == "Single Sided":
                 params['footpath_config'] = 'left'
             elif footpath_value == "Both":
-                params['footpath_config'] = 'both' '''
+                params['footpath_config'] = 'both'
         
         # Map cross bracing spacing (meters to mm)
         if KEY_CROSS_BRACING_SPACING in input_dict:

@@ -468,12 +468,6 @@ class EndDiaphragmDetailsTab(QWidget):
             return
         if value in self.view_order:
             self._set_current_type(value)
-            
-    def get_cad_data(self):
-        return {
-            "type": self.current_type,
-        }
-
 
     def _set_current_type(self, target):
         if target not in self.view_order:
@@ -487,4 +481,3 @@ class EndDiaphragmDetailsTab(QWidget):
         for selector in self.type_selectors:
             selector.setCurrentText(target)
         self.block_type_sync = False
-

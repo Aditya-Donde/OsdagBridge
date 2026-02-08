@@ -64,24 +64,6 @@ class SectionPropertiesTab(QWidget):
             self.girder_details_tab.reset_defaults()
         if hasattr(self, "cross_bracing_tab") and hasattr(self.cross_bracing_tab, "reset_defaults"):
             self.cross_bracing_tab.reset_defaults()
-            
-    def get_cad_data(self):
-        """
-        Data required for TOP VIEW CAD rendering
-        """
-        data = {}
-
-        if hasattr(self, "girder_details_tab"):
-            data["girder"] = self.girder_details_tab.get_cad_data()
-
-        if hasattr(self, "cross_bracing_details_tab"):
-            data["cross_bracing"] = self.cross_bracing_details_tab.get_cad_data()
-
-        if hasattr(self, "end_diaphragm_details_tab"):
-            data["end_diaphragm"] = self.end_diaphragm_details_tab.get_cad_data()
-
-        return data
-
 
     def save_properties(self):
         data = {}
@@ -90,4 +72,3 @@ class SectionPropertiesTab(QWidget):
         if hasattr(self, "cross_bracing_tab") and hasattr(self.cross_bracing_tab, "collect_data"):
             data["cross_bracing"] = self.cross_bracing_tab.collect_data()
         return data
-
