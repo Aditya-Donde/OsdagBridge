@@ -24,10 +24,6 @@ from osdagbridge.core.bridge_types.plate_girder.ui_fields_additional_input impor
 )
 
 class LoadCombinationTab(QWidget):
-
-
-
-class LoadCombinationTab(QWidget):
     """Load combination editor with add/edit modal."""
 
 
@@ -314,7 +310,7 @@ class LoadCombinationTab(QWidget):
                 if checkbox and checkbox.isChecked():
                     included.append(row_idx)
         return included
-=======
+
         self._refresh_load_combo_list()
 
     def _refresh_load_combo_list(self):
@@ -451,7 +447,7 @@ class LoadCombinationTab(QWidget):
         layout.setContentsMargins(16, 16, 16, 16)
         layout.setSpacing(8)
 
-            self._refresh_load_combo_list()
+        self._refresh_load_combo_list()
 
     def _on_delete_load_combo(self):
         selected = self._get_selected_load_combos()
