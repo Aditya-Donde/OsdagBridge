@@ -50,41 +50,41 @@ class PlateGirderAnalysisResults:
     # ========================================================
     # OPENSEES NODAL DEFLECTION (FINAL STATE)
     # ========================================================
-    def get_girder_deflection(self, girder_nodes, direction):                       #give total deflection
-
-        dof_map = {"x": 1, "y": 2, "z": 3}
-        dof = dof_map[direction]
-
-        disp = {}
-        for n in girder_nodes:
-            try:
-                disp[n] = ops.nodeDisp(n, dof)
-            except Exception:
-                disp[n] = 0.0
-
-        return disp
-    # ========================================================
-    # OPENSEES DEFLECTION PER LOADCASE (RE-ANALYSIS)
-    # ========================================================
-    def get_deflection_per_loadcase(self, girder_nodes, loadcase, direction):
-
-        dof_map = {"x": 1, "y": 2, "z": 3}
-        dof = dof_map[direction]
-
-        # reset previous analysis
-        ops.wipeAnalysis()
-
-        # analyze only this loadcase
-        self.model.analyze(load_case=[loadcase])
-
-        disp = {}
-        for n in girder_nodes:
-            try:
-                disp[n] = ops.nodeDisp(n, dof)
-            except Exception:
-                disp[n] = 0.0
-
-        return disp
+    # def get_girder_deflection(self, girder_nodes, direction):                       #give total deflection
+    #
+    #     dof_map = {"x": 1, "y": 2, "z": 3}
+    #     dof = dof_map[direction]
+    #
+    #     disp = {}
+    #     for n in girder_nodes:
+    #         try:
+    #             disp[n] = ops.nodeDisp(n, dof)
+    #         except Exception:
+    #             disp[n] = 0.0
+    #
+    #     return disp
+    # # ========================================================
+    # # OPENSEES DEFLECTION PER LOADCASE (RE-ANALYSIS)
+    # # ========================================================
+    # def get_deflection_per_loadcase(self, girder_nodes, loadcase, direction):
+    #
+    #     dof_map = {"x": 1, "y": 2, "z": 3}
+    #     dof = dof_map[direction]
+    #
+    #     # reset previous analysis
+    #     ops.wipeAnalysis()
+    #
+    #     # analyze only this loadcase
+    #     self.model.analyze(load_case=[loadcase])
+    #
+    #     disp = {}
+    #     for n in girder_nodes:
+    #         try:
+    #             disp[n] = ops.nodeDisp(n, dof)
+    #         except Exception:
+    #             disp[n] = 0.0
+    #
+    #     return disp
 
 
     # ========================================================
@@ -176,51 +176,35 @@ class PlateGirderAnalysisResults:
 
         return dist
 
-
-    def get_elements_along_path(self, path, elements):
-        """
-        Returns:
-        - list of element IDs along the girder
-        - connectivity info for printing
-        """
-
-        path_elements = []
-        element_map = []
-
-        for eid, conn in elements.items():
-            if len(conn) != 2:
-                continue
-
-            n1, n2 = conn
-
-            # element lies on girder if both nodes are in BFS path
-            if n1 in path and n2 in path:
-                path_elements.append(eid)
-                element_map.append((eid, n1, n2))
-
-        return path_elements, element_map
     # ========================================================
     # BUILD LOGICAL GIRDERS (g1, g2, g3...)
     # ========================================================
-    def build_girders(self):                                                        #create girder
+    def build_girders(self, verbose=True):
 
         nodes, elements, adj = self.build_grillage_connectivity()
 
-        start_nodes = self.model.get_element(
-            member="start_edge", options="nodes"
-        )
-        end_nodes = self.model.get_element(
-            member="end_edge", options="nodes"
-        )
+        # AUTO EXTRACT START / END
+        x_coords = {n: coord[0] for n, coord in nodes.items()}
 
-        print("\nStart edge nodes :", start_nodes)
-        print("End edge nodes   :", end_nodes)
+        min_x = min(x_coords.values())
+        max_x = max(x_coords.values())
+
+        start_nodes = [n for n, x in x_coords.items() if x == min_x]
+        end_nodes = [n for n, x in x_coords.items() if x == max_x]
+
+        start_nodes.sort(key=lambda n: nodes[n][2])
+        end_nodes.sort(key=lambda n: nodes[n][2])
+
+        if verbose:
+            print("\nStart edge nodes :", start_nodes)
+            print("End edge nodes   :", end_nodes)
 
         # span length
         x_coords = [c[0] for c in nodes.values()]
         span_length = max(x_coords) - min(x_coords)
 
-        print(f"\nSpan length from geometry = {span_length}\n")
+        if verbose:
+            print(f"\nSpan length from geometry = {span_length}\n")
 
         girder_map = {}
 
@@ -231,19 +215,20 @@ class PlateGirderAnalysisResults:
 
             status = "VERIFIED" if abs(length - span_length) < 1e-6 else "NOT MATCHING"
 
-            print("----------------------------------------")
-            print(f"Girder g{i}")
-            print("----------------------------------------")
+            if verbose:
+                print("----------------------------------------")
+                print(f"Girder g{i}")
+                print("----------------------------------------")
 
-            print("Path     :", path)
-            print("Elements :", path_elements)
+                print("Path     :", path)
+                print("Elements :", path_elements)
 
-            print("\nElement connectivity:")
-            for eid, n1, n2 in element_map:
-                print(f"{eid:<5}: {n1} -> {n2}")
+                print("\nElement connectivity:")
+                for eid, n1, n2 in element_map:
+                    print(f"{eid:<5}: {n1} -> {n2}")
 
-            print(f"\nLength   : {length:.3f} m ({status})")
-            print("----------------------------------------\n")
+                print(f"\nLength   : {length:.3f} m ({status})")
+                print("----------------------------------------\n")
 
             girder_map[f"g{i}"] = {
                 "start": s,
@@ -256,65 +241,42 @@ class PlateGirderAnalysisResults:
 
         return girder_map, elements
 
-    def print_girder_paths_with_input(self):
+    # ========================================================
+    # PRINT SINGLE GIRDER (FORMATTED)
+    # ========================================================
+    def print_single_girder(self, girder_key):
         """
-        Asks user for basic grillage info and prints
-        girder-wise BFS paths in formatted form.
+        Prints one girder in formatted report style.
+
+        Example input:
+            g1
+            g2
+            g3
         """
 
-        # -----------------------------
-        # User input
-        # -----------------------------
-        try:
-            n_long = int(input("Enter number of longitudinal beams: "))
-            n_trans = int(input("Enter number of transverse slabs: "))
-            spacing = float(input("Enter spacing / distance (m): "))
-        except:
-            print("❌ Invalid input")
+        girder_map, _ = self.build_girders()
+
+        if girder_key not in girder_map:
+            print("❌ Girder not found")
             return
 
-        nodes, elements, adj = self.build_grillage_connectivity()
+        girder = girder_map[girder_key]
 
-        start_nodes = self.model.get_element(
-            member="start_edge", options="nodes"
-        )
+        print("----------------------------------------")
+        print(f"Girder {girder_key}")
+        print("----------------------------------------")
 
-        end_nodes = self.model.get_element(
-            member="end_edge", options="nodes"
-        )
+        print(f"Start node : {girder['start']}")
+        print(f"End node   : {girder['end']}")
+        print(f"Path       : {girder['path']}")
+        print(f"Elements   : {girder['elements']}")
 
-        print("\nStart edge nodes:", start_nodes)
-        print("End edge nodes  :", end_nodes)
-        print()
+        print("\nElement connectivity:")
+        for eid, n1, n2 in girder["element_map"]:
+            print(f"{eid:<5}: {n1} -> {n2}")
 
-        # -----------------------------
-        # Loop over girders
-        # -----------------------------
-        for i, (s, e) in enumerate(zip(start_nodes, end_nodes), start=1):
-
-            path = self.bfs_shortest_path(adj, s, e)
-            path_elements, element_map = self.get_elements_along_path(path, elements)
-            length = self.compute_path_distance(nodes, path)
-
-            print("----------------------------------------")
-            print(f"Girder g{i}")
-            print("----------------------------------------")
-
-            print(f"Start node : {s}")
-            print(f"End node   : {e}")
-            print(f"Path       : {path}")
-            print(f"Elements   : {path_elements}")
-
-            print("\nElement connectivity:")
-            for eid, n1, n2 in element_map:
-                print(f"{eid:<5}: {n1} -> {n2}")
-
-            print(f"\nLength     : {length:.3f} m")
-            print("----------------------------------------\n")
-
-    # ========================================================
-    # INTERACTIVE VIEWER
-    # ========================================================
+        print(f"\nLength     : {girder['length']:.3f} m")
+        print("----------------------------------------")
     def run_interactive_viewer(self):
 
         while True:
@@ -332,18 +294,49 @@ class PlateGirderAnalysisResults:
                 break
 
             # ======================================================
-            # OPTION 1 → ONLY BFS / GIRDER CONNECTIVITY
+            # OPTION 1 → SHOW SINGLE GIRDER PATH
             # ======================================================
             if main_choice == "1":
-                self.print_girder_paths_with_input()
+
+                # Build WITHOUT printing
+                girder_map, _ = self.build_girders(verbose=False)
+
+                print("\nAvailable Girders:")
+                for g in girder_map.keys():
+                    print(g)
+
+                key = input("\nEnter girder : ").strip()
+
+                if key not in girder_map:
+                    print("❌ Invalid girder")
+                    continue
+
+                girder = girder_map[key]
+
+                print("\n----------------------------------------")
+                print(f"Girder {key}")
+                print("----------------------------------------")
+                print(f"Start node : {girder['start']}")
+                print(f"End node   : {girder['end']}")
+                print(f"Node Path  : {girder['path']}")
+                print(f"Elements   : {girder['elements']}")
+
+                print("\nElement connectivity:")
+                for eid, n1, n2 in girder["element_map"]:
+                    print(f"{eid:<5}: {n1} -> {n2}")
+
+                print(f"\nLength     : {girder['length']:.3f} m")
+                print("----------------------------------------")
+
                 continue
 
+
             # ======================================================
-            # OPTION 2 → EXISTING RESULT VIEWER (UNCHANGED)
+            # OPTION 2 → EXISTING RESULT VIEWER
             # ======================================================
             if main_choice == "2":
 
-                girder_map, elements = self.build_girders()
+                girder_map, elements = self.build_girders(verbose=False)
                 loadcases = self.get_available_loadcases()
 
                 component_map = {
@@ -353,9 +346,9 @@ class PlateGirderAnalysisResults:
                     "4": "Mx_i",
                     "5": "My_i",
                     "6": "Mz_i",
-                    "7": "Dx",
-                    "8": "Dy",
-                    "9": "Dz"
+                    # "7": "Dx",
+                    # "8": "Dy",
+                    # "9": "Dz"
                 }
 
                 while True:
@@ -411,7 +404,8 @@ class PlateGirderAnalysisResults:
                             continue
 
                         lc = loadcases[lc_in - 1]
-
+                        import plots_widget
+                        plots_widget.CURRENT_LOADCASE = lc
                         # ================= RESULT TYPE LOOP =================
                         while True:
 
@@ -432,20 +426,20 @@ class PlateGirderAnalysisResults:
                             comp = component_map[r]
 
                             # ---------------- DEFLECTION ----------------
-                            if comp in ["Dx", "Dy", "Dz"]:
-
-                                direction = comp[-1].lower()
-
-                                disp = self.get_deflection_per_loadcase(
-                                    girder_nodes, lc, direction
-                                )
-
-                                print(f"\nDeflection ({comp}) | {lc}")
-                                print("--------------------------------")
-                                for n, v in disp.items():
-                                    print(f"Node {n}: {v}")
-                                print("--------------------------------")
-                                continue
+                            # if comp in ["Dx", "Dy", "Dz"]:
+                            #
+                            #     direction = comp[-1].lower()
+                            #
+                            #     disp = self.get_deflection_per_loadcase(
+                            #         girder_nodes, lc, direction
+                            #     )
+                            #
+                            #     print(f"\nDeflection ({comp}) | {lc}")
+                            #     print("--------------------------------")
+                            #     for n, v in disp.items():
+                            #         print(f"Node {n}: {v}")
+                            #     print("--------------------------------")
+                            #     continue
 
                             # ---------------- FORCES ----------------
                             res = self.get_beam_element_results(

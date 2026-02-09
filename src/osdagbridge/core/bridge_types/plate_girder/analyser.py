@@ -1110,6 +1110,8 @@ class BridgeGrillageModel:
             ]
         )
 
+        self.dataset = results
+
         return results
 
     def plot(self, model=None):
@@ -1189,6 +1191,8 @@ if __name__ == "__main__":
     bridge.analyze()
     # bridge.plot()
     bridge.plot()
+    # bridge.analyze()
+    # bridge.plot()
 
     results = bridge.analyze()
 

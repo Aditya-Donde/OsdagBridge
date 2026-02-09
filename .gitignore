@@ -1,4 +1,24 @@
-# Byte-compiled / optimized / DLL files
+# Mac
+.DS_Store
+
+# IDE
+.idea/
+
+# Python env
+osdagbridge-env/
+venv/
+env/
+
+# Sub repos / libs
+ospgrillage/
+
+# Temp plots
+temp_plot.html
+*.html
+
+# Python cache
+__pycache__/
+*.pyc# Byte-compiled / optimized / DLL files
 */__pycache__/
 *.py[codz]
 *$py.class
