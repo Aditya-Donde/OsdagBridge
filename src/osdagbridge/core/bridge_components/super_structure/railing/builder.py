@@ -133,7 +133,7 @@ def create_steel_railing(
     Creates a steel railing with posts and rails on a concrete base.
     aligned with typical railing coordinate system.
     """
-    railing_width = 200
+    # railing_width = 200
     railing_height = design_dict.get("railing_height")
     if railing_height is None:
         railing_height = 1100
@@ -146,17 +146,17 @@ def create_steel_railing(
     base = create_rectangular_prism(length, BASE_WIDTH, BASE_HEIGHT)
     
     # Parameters for steel railing (sits on top of base)
-    POST_DIAMETER = 150  # Circular post diameter in mm
-    POST_RADIUS = POST_DIAMETER / 2.0
+    POST_LENGTH = 150    # Rectangular post length in mm
+    POST_BREADTH = 150   # Rectangular post breadth in mm
     POST_SPACING = 1000
-    RAIL_SIZE = 80
+    RAIL_SIZE = 40
     
     # Posts height (from top of base to top of railing)
     post_height = railing_height - BASE_HEIGHT
     
     # Calculate number of gaps  
     # Safe length for posts center-to-beginning
-    effective_length = length - POST_DIAMETER
+    effective_length = length - POST_LENGTH
     if effective_length < 0:
         effective_length = 0
         
@@ -168,17 +168,17 @@ def create_steel_railing(
     
     posts_shape = None
     
-    # Create circular posts (starting from top of base)
+    # Create rectangular posts (starting from top of base)
     # We need num_spaces + 1 posts to cover 0 to effective_length
     for i in range(num_spaces + 1):
-        x = i * actual_spacing + POST_RADIUS  # Center the cylinder at x position
+        x = i * actual_spacing
         
         # Clamp x to be safe 
-        if x > length - POST_RADIUS:
-            x = length - POST_RADIUS
+        if x > length - POST_LENGTH:
+            x = length - POST_LENGTH
             
-        # Create cylindrical post
-        post = create_cylinder(POST_RADIUS, post_height)
+        # Create rectangular post
+        post = create_rectangular_prism(POST_LENGTH, POST_BREADTH, post_height)
         post = translate(post, x=x, z=BASE_HEIGHT)
         
         if posts_shape is None:

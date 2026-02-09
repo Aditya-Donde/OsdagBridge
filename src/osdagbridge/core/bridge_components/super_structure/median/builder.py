@@ -296,25 +296,31 @@ def create_metallic_barrier_system(length, design_dict, kerb_top_width, kerb_hei
     # Post is attached to the back of the spacer
     post_y_center = beam_back_y - spacer_width - post_width / 2.0
 
-    #  GENERATE POSTS
+    # Initialize combined shapes
     posts_combined = None
+    spacers_combined = None
+    beams_combined = None
+
+    # Calculate spacing range to keep posts/spacers within [0, length]
+    # Component spans from x_pos - tw/2 to x_pos + depth - tw/2
+    # To keep within [0, length]:
+    # x_pos - tw/2 >= 0  => x_pos >= tw/2
+    # x_pos + post_depth - tw/2 <= length => x_pos <= length - post_depth + tw/2
     
-    # Start posts with an offset from the beginning to keep them within deck bounds
-    START_OFFSET = 170.0
-    effective_length = length - 2 * START_OFFSET
-    if effective_length < 0:
-        effective_length = 0
-        num_spaces = 0
-    else:
-        num_spaces = int(effective_length / post_spacing)
-        if num_spaces < 1:
-            num_spaces = 1
+    start_x = post_web_thk / 2.0
+    end_x = length - post_depth + post_web_thk / 2.0
     
-    actual_spacing = effective_length / num_spaces if num_spaces > 0 else 0
-    num_posts = num_spaces + 1 if num_spaces > 0 else 1
+    post_range = end_x - start_x
+    
+    # Calculate number of posts based on original post_spacing
+    num_posts = int(length / post_spacing) + 1
+    if num_posts < 2:
+        num_posts = 2
+    
+    actual_spacing = post_range / (num_posts - 1)
 
     for i in range(num_posts):
-        x_pos = START_OFFSET + i * actual_spacing
+        x_pos = start_x + (i * actual_spacing)
         
         def create_vertical_channel(h, d, w, tw, tf):
             x_web_back, x_web_front = -tw / 2.0, tw / 2.0
@@ -336,9 +342,6 @@ def create_metallic_barrier_system(length, design_dict, kerb_top_width, kerb_hei
         posts_combined = post_solid if posts_combined is None else BRepAlgoAPI_Fuse(posts_combined, post_solid).Shape()
 
     #  GENERATE BEAMS AND SPACERS
-    spacers_combined = None
-    beams_combined = None
-    
     if number_of_w_beams == 1:
         beam_heights = [post_height - spacer_height / 2.0]
     else:
@@ -352,7 +355,7 @@ def create_metallic_barrier_system(length, design_dict, kerb_top_width, kerb_hei
 
         # Spacers (one per post)
         for i in range(num_posts):
-            x_pos = START_OFFSET + i * actual_spacing
+            x_pos = start_x + (i * actual_spacing)
             
             def create_vertical_spacer(h, d, w, tw, tf):
                 x_web_back, x_web_front = -tw / 2.0, tw / 2.0
@@ -376,15 +379,15 @@ def create_metallic_barrier_system(length, design_dict, kerb_top_width, kerb_hei
         # Beam solid (HOLLOW W-BEAM)
         beam_face = make_w_beam_face()
 
-        # Extrude W-beam for the effective length only
+        # Extrude W-beam for the full length
         beam_solid = BRepPrimAPI_MakePrism(
             beam_face,
-            gp_Vec(effective_length, 0, 0)
+            gp_Vec(length, 0, 0)
         ).Shape()
 
         beam_solid = _translate(
             beam_solid,
-            x=START_OFFSET, y=beam_back_y, z=beam_z
+            x=0.0, y=beam_back_y, z=beam_z
         )
 
         beams_combined = (
