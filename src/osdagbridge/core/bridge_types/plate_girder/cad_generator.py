@@ -1,5 +1,25 @@
 """
-CAD generator for Plate Girder Bridge.
+Plate Girder Bridge CAD Generator
+==================================
+
+This module generates complete 3D CAD models for plate girder bridges,
+including girders, deck, crash barriers, railings, median, and cross bracing systems.
+
+Components Generated:
+    - Plate Girders: Web, top flange, bottom flange, stiffeners
+    - Deck System: Concrete deck slab with textures
+    - Safety Features: Crash barriers, railings, median
+    - Bracing System: Cross bracings and end diaphragms
+    - Supports: Bearing supports (triangular and cylindrical)
+
+Features:
+    - Configurable number of girders and spacing
+    - Multiple bracing patterns (X, K)
+    - Various end diaphragm options
+    - Skew angle support
+    - IRC-compliant crash barriers and railings
+    - Flexible footpath and median configurations
+
 
 """
 
@@ -8,34 +28,27 @@ from OCC.Core.TopoDS import TopoDS_Shape
 from OCC.Core.AIS import AIS_Shape
 from OCC.Core.TopAbs import TopAbs_EDGE
 
-# Builder imports
-
+# Component builder imports
 from osdagbridge.core.bridge_components.super_structure.plate_girder.builder import (
     build_plate_girder_geometry
 )
-
-
 from osdagbridge.core.bridge_components.super_structure.deck.builder import (
     build_deck
 )
-
 from osdagbridge.core.bridge_components.super_structure.crash_barrier.builder import (
     build_crash_barriers
 )
-
 from osdagbridge.core.bridge_components.super_structure.railing.builder import (
     build_railings
 )
-
 from osdagbridge.core.bridge_components.super_structure.median.builder import (
     build_median
 )
-
 from osdagbridge.core.bridge_components.super_structure.cross_bracing.builder import (
     build_cross_bracings
 )
 
-
+# Component keys for CAD organization
 KEY_CAD_GIRDER = "Girder"
 KEY_CAD_STIFFENER = "Stiffener"
 KEY_CAD_CROSS_BRACING = "Cross Bracing"
@@ -46,96 +59,247 @@ KEY_CAD_MEDIAN = "Median"
 KEY_MODULE_PG = "Plate Girder"
 
 
-
 # CAD GENERATOR CLASS
 
 class PlateGirderCADGenerator:
     """
     Plate Girder Bridge CAD Generator.
-
-    Holds parameters and generates assembled CAD geometry.
+    
+    This class manages all parameters for a plate girder bridge and
+    generates the complete 3D CAD geometry.
+    
+    Attributes:
+        bridge_type: Type of bridge module
+        
+        Girder Parameters:
+            span_length_L: Total span length
+            girder_section_d: Clear web depth
+            girder_section_bf: Top flange width
+            girder_section_bf_b: Bottom flange width
+            girder_section_tf: Top flange thickness
+            girder_section_tf_b: Bottom flange thickness
+            girder_section_tw: Web thickness
+            num_girders: Number of parallel girders
+            girder_spacing: Center-to-center girder spacing
+            
+        Geometry:
+            skew_angle: Bridge skew angle in degrees (0 = no skew)
+            
+        Deck Parameters:
+            carriageway_width: Width of traffic lanes
+            deck_thickness: Deck slab thickness
+            footpath_config: Footpath configuration ("NONE", "LEFT", "RIGHT", "BOTH")
+            footpath_width: Width of footpath
+            railing_width: Width of railing
+            
+        Safety Features:
+            barrier_type: Type of crash barrier ("Rigid", "Semi-Rigid", "Flexible")
+            crash_barrier_subtype: Specific barrier design
+            enable_median: Whether to include median barrier
+            median_type: Type of median barrier
+            railing_type: Type of railing ("rcc", "steel")
+            rail_count: Number of rails
+            
+        Bracing System:
+            cross_bracing_spacing: Spacing between bracing frames
+            cross_bracing_thickness: Thickness of bracing members
+            bracing_type: Bracing pattern ("X" or "K")
+            x_bracket_option: X-bracing bracket option
+            k_top_bracket: K-bracing top bracket option
+            cross_bracing_section_type: Section type for bracing
+            cross_bracing_section_dims: Section dimensions
+                For ANGLE/DOUBLE_ANGLE sections:
+                    - leg_h: vertical leg height
+                    - leg_w: horizontal leg width
+                    - connection_type (DOUBLE_ANGLE only): "LONGER_LEG" or "SHORTER_LEG"
+                      determines which legs are connected back-to-back
+                For CHANNEL/DOUBLE_CHANNEL/I_SECTION:
+                    - depth: overall depth
+                    - flange_width: flange width
+                    - web_thickness: web thickness
+                    - flange_thickness: flange thickness
+            
+        End Diaphragm:
+            end_diaphragm_type: Type of end treatment
+            end_diaphragm_section: Section type for diaphragm
+            end_diaphragm_dims: Diaphragm dimensions
+            end_diaphragm_spacing: Reserved for future use
     """
 
     def __init__(self, bridge_type=KEY_MODULE_PG):
-
+        """
+        Initialize the CAD generator with default parameters.
+        
+        Args:
+            bridge_type: Type of bridge module (default: Plate Girder)
+        """
         self.bridge_type = bridge_type
 
-        # GIRDERS PARAMETERS
-        self.span_length_L = 10000
+        # GIRDER PARAMETERS
+        self.span_length_L = 10000           # Total span length (mm)
 
-        self.girder_section_d = 900          # clear web depth
-        self.girder_section_bf = 500  #top flange width
-        self.girder_section_bf_b = 500  #bottom flange width
-        self.girder_section_tf = 260  #top flange thickness
-        self.girder_section_tf_b = 260  #bottom flange thickness
-        self.girder_section_tw = 100
+        self.girder_section_d = 900          # Clear web depth (mm)
+        self.girder_section_bf = 500         # Top flange width (mm)
+        self.girder_section_bf_b = 500       # Bottom flange width (mm)
+        self.girder_section_tf = 260         # Top flange thickness (mm)
+        self.girder_section_tf_b = 260       # Bottom flange thickness (mm)
+        self.girder_section_tw = 100         # Web thickness (mm)
 
-        self.num_girders = 5
-        self.girder_spacing = 2750           # center-to-center spacing
+        self.num_girders = 5                 # Number of girders
+        self.girder_spacing = 2750           # Center-to-center spacing (mm)
 
-        # SKEW ANGLE PARAMETER
-        self.skew_angle = 25                  # skew angle in degrees (0 = no skew)
+        # GEOMETRY PARAMETERS
+        self.skew_angle = 0                  # Skew angle in degrees (0 = no skew)
 
         # DECK PARAMETERS
-        self.carriageway_width = 12000
-        self.deck_thickness = 400
+        self.carriageway_width = 12000       # Width of traffic lanes (mm)
+        self.deck_thickness = 400            # Deck slab thickness (mm)
 
-        self.footpath_config = "BOTH"         # NONE / LEFT / RIGHT / BOTH
-        self.footpath_width = 1500
-        self.railing_width = 300
+        self.footpath_config = "BOTH"        # "NONE" / "LEFT" / "RIGHT" / "BOTH"
+        self.footpath_width = 1500           # Footpath width (mm)
+        self.railing_width = 300             # Railing width (mm)
 
         # CRASH BARRIER PARAMETERS
-        self.barrier_type = "Rigid"  # "Rigid" or "Semi-Rigid"
-        self.crash_barrier_subtype = "IRC-5R"  # "IRC-5R", "High Containment", "Single W-beam", "Double W-beam"
+        self.barrier_type = "Rigid"          # "Rigid", "Semi-Rigid", or "Flexible"
+        self.crash_barrier_subtype = "IRC-5R"  # Specific barrier design
+        
+        # Options:
+        # - Rigid: "IRC-5R", "High Containment"
+        # - Semi-Rigid/Metallic: "Single W-beam", "Double W-beam"
 
         # MEDIAN PARAMETERS
-        self.enable_median = True
-        self.median_type = "Metallic Crash Barrier"  # "Raised Kerb", "RCC Crash Barrier", "Metallic Crash Barrier"
+        self.enable_median = True            # Include median barrier
+        self.median_type = "Metallic Crash Barrier"  
+        # Options: "Raised Kerb", "RCC Crash Barrier", "Metallic Crash Barrier"
 
         # RAILING PARAMETERS
-        self.rail_count = 3
-        self.railing_type = "rcc"
+        self.rail_count = 3                  # Number of rails
+        self.railing_type = "rcc"            # "rcc" or "steel"
 
         # STIFFENER PARAMETERS
-        self.stiffener_width = 200
-        self.stiffener_length = 10
+        self.stiffener_width = 200           # Stiffener width (mm)
+        self.stiffener_length = 10           # Stiffener length (mm)
 
-        # END STIFFENER PARAMETERS
-        self.include_end_stiffeners = True
-        self.end_stiffener_thickness = 25
-
+        # End stiffener configuration
+        self.include_end_stiffeners = True   # Include end stiffeners
+        self.end_stiffener_thickness = 25    # End stiffener thickness (mm)
 
         # CROSS BRACING PARAMETERS
-        self.cross_bracing_spacing = 4000
-        self.cross_bracing_thickness = 5
+        self.cross_bracing_spacing = 4000    # Spacing between bracing frames (mm)
+        self.cross_bracing_thickness = 5     # Bracing member thickness (mm)
 
-        self.bracing_type = "K"               # "X" or "K"
-        self.x_bracket_option = "BOTH"
-        self.k_top_bracket = True
+        self.bracing_type = "K"              # "X" or "K"
+        self.x_bracket_option = "BOTH"       # For X-bracing: "NONE", "UPPER", "LOWER", "BOTH"
+        self.k_top_bracket = True            # For K-bracing: include top bracket
 
-        self.cross_bracing_section_type = "CHANNEL"
+        # Section configuration - Choose one of the following:
+        
+        # OPTION 1: CHANNEL section (current default)
+        # self.cross_bracing_section_type = "CHANNEL"
+        # self.cross_bracing_section_dims = {
+        #     "depth": 100,
+        #     "flange_width": 50,
+        #     "web_thickness": 5,
+        #     "flange_thickness": 7
+        # }
+        
+        # OPTION 2: DOUBLE_ANGLE section (uncomment to use)
+        self.cross_bracing_section_type = "DOUBLE_ANGLE"
         self.cross_bracing_section_dims = {
-            "depth": 100,
-            "flange_width": 50,
-            "web_thickness": 5,
-            "flange_thickness": 7
+            "leg_h": 100,                    # Vertical leg height (longer leg)
+            "leg_w": 50,                     # Horizontal leg width (shorter leg)
+            "connection_type": "LONGER_LEG"  # "LONGER_LEG" or "SHORTER_LEG"
         }
+    
+        
+        # OPTION 3: ANGLE section (uncomment to use)
+        # self.cross_bracing_section_type = "ANGLE"
+        # self.cross_bracing_section_dims = {
+        #     "leg_h": 100,  # Vertical leg height
+        #     "leg_w": 50    # Horizontal leg width
+        # }
+        
+        # OPTION 4: DOUBLE_CHANNEL section (uncomment to use)
+        # self.cross_bracing_section_type = "DOUBLE_CHANNEL"
+        # self.cross_bracing_section_dims = {
+        #     "depth": 100,
+        #     "flange_width": 50,
+        #     "web_thickness": 5,
+        #     "flange_thickness": 7
+        # }
 
-
+        # END DIAPHRAGM PARAMETERS
+        self.end_diaphragm_type = "Cross Bracing"   # Options: "Cross Bracing", "Rolled Beam", "Welded Beam"
+        
+        
+        # If using "Cross Bracing" type, end diaphragms will use the same
+        # section as cross_bracing_section_type and cross_bracing_section_dims
+        
+        # If using "Rolled Beam" or "Welded Beam", these parameters are used:
+        self.end_diaphragm_section = "I_SECTION"
+        self.end_diaphragm_dims = {
+            "depth": 800,
+            "flange_width": 250,
+            "web_thickness": 12,
+            "flange_thickness": 20
+        }
+        self.end_diaphragm_spacing = 0       
 
     # MAIN CAD GENERATION
 
     def generate(self):
         """
-        Generate full bridge CAD.
+        Generate complete bridge CAD geometry.
+        
+        This method orchestrates the creation of all bridge components:
+        1. Plate girders (web, flanges, stiffeners)
+        2. Cross bracing system
+        3. Deck slab
+        4. Crash barriers
+        5. Median barriers (if enabled)
+        6. Railings
+        7. Support structures
+        
+        Returns:
+            dict: Dictionary containing all generated CAD components:
+                - girders: List of girder components (web + flanges)
+                - girder_web: List of web components only
+                - girder_flanges: List of flange components only
+                - stiffeners: List of stiffener components
+                - supports: All support structures
+                - supports_tri: Triangular supports
+                - supports_cyl: Cylindrical supports
+                - cross_bracings: Cross bracing members
+                - deck_slab: Deck slab geometry
+                - deck_textures: Deck surface textures
+                - deck_top_z: Z-coordinate of deck top surface
+                - total_deck_width: Total width of deck
+                - crash_barriers: Crash barrier components
+                - crash_barrier_w_beams: W-beam components (if metallic)
+                - median_barriers: Median barrier components
+                - median_w_beams: Median W-beams (if metallic)
+                - railings: Railing components
         """
-
-        # Local helpers
+        
+        # HELPER FUNCTIONS
+        
         import math
         from OCC.Core.gp import gp_Trsf, gp_Vec
         from OCC.Core.BRepBuilderAPI import BRepBuilderAPI_Transform
 
         def _translate(shape, dx=0, dy=0, dz=0):
+            """
+            Translate a shape by the specified offsets.
+            
+            Args:
+                shape: TopoDS_Shape to translate
+                dx: X-offset
+                dy: Y-offset
+                dz: Z-offset
+                
+            Returns:
+                Translated TopoDS_Shape
+            """
             trsf = gp_Trsf()
             trsf.SetTranslation(gp_Vec(dx, dy, dz))
             return BRepBuilderAPI_Transform(shape, trsf, True).Shape()
@@ -143,12 +307,14 @@ class PlateGirderCADGenerator:
         def _calculate_skew_offset(lateral_position, reference_position=0):
             """
             Calculate longitudinal offset due to skew angle.
-            Plan-view geometric offset: shift = L × tan(θ)
+            
+            This implements the plan-view geometric offset for skewed bridges:
+            longitudinal_shift = lateral_distance × tan(skew_angle)
             
             Args:
                 lateral_position: Transverse position (Y-coordinate)
                 reference_position: Reference lateral position with zero offset
-            
+                
             Returns:
                 Longitudinal offset (X-coordinate shift)
             """
@@ -159,7 +325,8 @@ class PlateGirderCADGenerator:
             lateral_distance = lateral_position - reference_position
             return lateral_distance * math.tan(skew_rad)
 
-        # 1. BUILD SINGLE PLATE GIRDER GEOMETRY
+        # STEP 1: BUILD SINGLE PLATE GIRDER GEOMETRY
+        
         pg = build_plate_girder_geometry(
             D=self.girder_section_d,
             tw=self.girder_section_tw,
@@ -175,106 +342,101 @@ class PlateGirderCADGenerator:
             T_es=self.end_stiffener_thickness
         )
 
-        # 2. PLACE MULTIPLE GIRDERS (Y-DIRECTION, CENTERED) WITH SKEW OFFSET
+        # STEP 2: PLACE MULTIPLE GIRDERS WITH SKEW OFFSET
+        
         girders = []
         stiffeners = []
-
         girder_web = []
         girder_flanges = []
 
         total_width = (self.num_girders - 1) * self.girder_spacing
-        
-        # Reference position for skew (centerline = 0)
-        reference_position = 0.0
+        reference_position = 0.0  # Centerline reference for skew
 
         for i in range(self.num_girders):
-            # Transverse offset (Y-direction)
+            # Calculate transverse offset (Y-direction)
             y_offset = (i * self.girder_spacing) - (total_width / 2)
             
-            # Longitudinal offset due to skew (X-direction)
-            # Each girder shifts by L × tan(θ) based on lateral distance from center
+            # Calculate longitudinal offset due to skew (X-direction)
             x_offset = _calculate_skew_offset(y_offset, reference_position)
 
-            # Web
+            # Place web
             web = _translate(pg["web"], dx=x_offset, dy=y_offset)
             girders.append(web)
             girder_web.append(web)
 
-            # Top flange
+            # Place top flange
             top_flange = _translate(pg["top_flange"], dx=x_offset, dy=y_offset)
             girders.append(top_flange)
             girder_flanges.append(top_flange)
 
-            # Bottom flange
+            # Place bottom flange
             bottom_flange = _translate(pg["bottom_flange"], dx=x_offset, dy=y_offset)
             girders.append(bottom_flange)
             girder_flanges.append(bottom_flange)
 
-
-            # Stiffeners (follow parent girder's offset)
+            # Place stiffeners (follow parent girder's offset)
             for stiff in pg["stiffeners"]:
                 stiffeners.append(
                     _translate(stiff, dx=x_offset, dy=y_offset)
                 )
 
+        # STEP 3: PLACE SUPPORT STRUCTURES
+        
         supports_tri = []
         supports_cyl = []
 
         for i in range(self.num_girders):
-            # Same offset calculation as girders
+            # Calculate offsets (same as girders)
             y_offset = (i * self.girder_spacing) - (total_width / 2)
             x_offset = _calculate_skew_offset(y_offset, reference_position)
 
+            # Place triangular supports
             for s in pg["supports_tri"]:
                 supports_tri.append(_translate(s, dx=x_offset, dy=y_offset))
 
+            # Place cylindrical supports
             for s in pg["supports_cyl"]:
                 supports_cyl.append(_translate(s, dx=x_offset, dy=y_offset))
 
-
-        # 3. REFERENCE Z-LEVELS 
-
+        # STEP 4: CALCULATE REFERENCE Z-LEVELS
+        
+        # Bracing girder depth (for cross bracing placement)
         bracing_girder_depth = (
-            (self.girder_section_d / 2)
-            + self.girder_section_tf
+            (self.girder_section_d / 2) + 
+            self.girder_section_tf
         )
 
-
-
-        # Top of girder for deck placement ONLY
+        # Top of girder for deck placement
         girder_top_z = (self.girder_section_d / 2) + self.girder_section_tf
-        
-        # 4. SKEW ANGLE (HANDLED BY COMPONENT BUILDERS)
-        # We pass self.skew_angle to components that support skewed geometry (like deck)
-        # Components that are placed relative to girders (like cross-bracing) follow girder offsets.
-        pass
 
-        # 5. CROSS BRACING SYSTEM
-        # Note: Cross bracings connect girders at their actual (skewed) positions
-        # The bracing builder handles placement and skew internally.
+        # STEP 5: BUILD CROSS BRACING SYSTEM
+        
         cross_bracings = build_cross_bracings(
             span_length_L=self.span_length_L,
             num_girders=self.num_girders,
             girder_spacing=self.girder_spacing,
-
-            
             girder_depth=bracing_girder_depth,
-
             flange_thickness=self.girder_section_tf,
             flange_width=self.girder_section_bf,
-
+            
             bracing_type=self.bracing_type,
             section_type=self.cross_bracing_section_type,
             section_dims=self.cross_bracing_section_dims,
             thickness=self.cross_bracing_thickness,
-
+            
             panel_spacing=self.cross_bracing_spacing,
             bracket_option=self.x_bracket_option,
             top_bracket=self.k_top_bracket,
-            skew_angle=self.skew_angle
+            skew_angle=self.skew_angle,
+            
+            end_diaphragm_type=self.end_diaphragm_type,
+            end_diaphragm_section=self.end_diaphragm_section,
+            end_diaphragm_dims=self.end_diaphragm_dims,
+            end_diaphragm_spacing=self.end_diaphragm_spacing
         )
 
-        # 5. IRC 5 SPECIFICATIONS (CRASH BARRIER)
+        # STEP 6: CONFIGURE CRASH BARRIER SPECIFICATIONS (IRC 5:2015)
+        
         from osdagbridge.core.utils.codes.irc5_2015 import IRC5_2015
         from osdagbridge.core.utils.common import (
             KEY_CRASH_BARRIER_TYPE,
@@ -286,21 +448,20 @@ class PlateGirderCADGenerator:
             VALUES_RAILING_TYPE
         )
 
-        # Map barrier_type string to KEY_CRASH_BARRIER_TYPE index
+        # Map barrier types to indices
         barrier_type_map = {"Flexible": 0, "Semi-Rigid": 1, "Rigid": 2}
         barrier_idx = barrier_type_map.get(self.barrier_type, 2)
         
-        # Map crash_barrier_subtype
         rigid_subtype_map = {"IRC-5R": 0, "High Containment": 1}
         metallic_subtype_map = {"Single W-beam": 0, "Double W-beam": 1}
 
-        # Map railing type
+        # Map railing types
         railing_map = {
-            VALUES_RAILING_TYPE[0]: KEY_RAILING_TYPE[0], # RCC
-            VALUES_RAILING_TYPE[1]: KEY_RAILING_TYPE[1], # Steel
+            VALUES_RAILING_TYPE[0]: KEY_RAILING_TYPE[0],  # RCC
+            VALUES_RAILING_TYPE[1]: KEY_RAILING_TYPE[1],  # Steel
         }
         
-        # Robust selection: Check map, then check for rough string match (e.g. "steel")
+        # Robust railing selection
         selected_railing_key = railing_map.get(self.railing_type)
         if selected_railing_key is None:
             if "steel" in self.railing_type.lower():
@@ -308,17 +469,17 @@ class PlateGirderCADGenerator:
             else:
                 selected_railing_key = KEY_RAILING_TYPE[0]
 
-        # If Semi-Rigid, force default RCC railing 
+        # Force RCC railing for Semi-Rigid barriers
         if self.barrier_type != "Rigid":
             selected_railing_key = KEY_RAILING_TYPE[0]
 
-        # Determine explicit railing width for Deck Sizing
-        if selected_railing_key == KEY_RAILING_TYPE[1]: # Steel
+        # Determine railing width
+        if selected_railing_key == KEY_RAILING_TYPE[1]:  # Steel
             actual_railing_width = 200
         else:
             actual_railing_width = 275
 
-        # Populate design_dict
+        # Populate design dictionary based on barrier type
         if self.barrier_type == "Rigid":
             rigid_subtype_idx = rigid_subtype_map.get(self.crash_barrier_subtype, 0)
             design_dict = IRC5_2015.cl_109_6_3_shapes(
@@ -330,18 +491,18 @@ class PlateGirderCADGenerator:
             )
             actual_base_width = design_dict.get("crash_barrier_width", 450)
         else:
-            # Semi-rigid / Metallic
+            # Semi-Rigid / Metallic barrier
             metallic_subtype_idx = metallic_subtype_map.get(self.crash_barrier_subtype, 0)
             design_dict = IRC5_2015.cl_109_6_3_shapes(
                 barrier_type=KEY_CRASH_BARRIER_TYPE[1],
                 footpath=KEY_FOOTPATH[0] if self.footpath_config == "NONE" else KEY_FOOTPATH[1],
-                railing_type=selected_railing_key, # Passing this ensures dictionary gets updated with railing params
+                railing_type=selected_railing_key,
                 design_dict={},
                 crash_barrier_type=KEY_METALLIC_CRASH_BARRIER_TYPE[metallic_subtype_idx]
             )
             actual_base_width = design_dict.get("kerb_bottom_width", 550)
-            
-        # Ensure railing params are in design_dict 
+        
+        # Ensure railing parameters are in design dictionary
         if selected_railing_key == KEY_RAILING_TYPE[1]:
             design_dict["railing_type"] = "steel"
             design_dict["railing_width"] = 200
@@ -349,14 +510,12 @@ class PlateGirderCADGenerator:
             design_dict["railing_type"] = "RCC"
             design_dict["railing_width"] = 275
 
+        # STEP 7: BUILD DECK SYSTEM
         
-        # 6. DECK SYSTEM (USES TOP-OF-GIRDER Z)
-        # Deck handles skewed geometry (parallelogram) internally
         deck_out = build_deck(
             span_length_L=self.span_length_L,
             girder_section_d=girder_top_z,
             deck_thickness=self.deck_thickness,
-
             footpath_config=self.footpath_config,
             carriageway_width=self.carriageway_width,
             crash_barrier_base_width=actual_base_width,
@@ -365,11 +524,8 @@ class PlateGirderCADGenerator:
             skew_angle=self.skew_angle
         )
 
-        # 7. CRASH BARRIER PLACEMENT
-        # Barriers follow deck edges.
-        # Note: For skew, we might need to apply shifts to barriers as well
-        # if the barrier builder doesn't handle skew internally.
-
+        # STEP 8: BUILD CRASH BARRIERS
+        
         crash_barrier_w_beams = []
         crash_barrier_other = []
 
@@ -387,6 +543,7 @@ class PlateGirderCADGenerator:
 
         crash_barriers = []
 
+        # Separate W-beams from other barrier components
         for cb in crash_barriers_raw:
             if isinstance(cb, dict):
                 if cb.get("w_beams"):
@@ -398,15 +555,20 @@ class PlateGirderCADGenerator:
             else:
                 crash_barriers.append(cb)
 
-        # 8. MEDIAN
+        # STEP 9: BUILD MEDIAN BARRIERS (IF ENABLED)
+        
         median_barriers = []
-        median_w_beams = [] 
+        median_w_beams = []
+        
         if self.enable_median:
-            # Get median design specifications from IRC5_2015
-            median_type_map = {"Raised Kerb": 0, "RCC Crash Barrier": 1, "Metallic Crash Barrier": 2}
+            # Get median design specifications from IRC 5:2015
+            median_type_map = {
+                "Raised Kerb": 0, 
+                "RCC Crash Barrier": 1, 
+                "Metallic Crash Barrier": 2
+            }
             median_idx = median_type_map.get(self.median_type, 1)
             
-            # Map metallic subtype for median
             metallic_subtype_idx = metallic_subtype_map.get(self.crash_barrier_subtype, 0)
             
             median_design_dict = IRC5_2015.cl_109_6_3_shapes(
@@ -414,7 +576,8 @@ class PlateGirderCADGenerator:
                 footpath=KEY_FOOTPATH[0],
                 railing_type=None,
                 design_dict={},
-                crash_barrier_type=KEY_METALLIC_CRASH_BARRIER_TYPE[metallic_subtype_idx] if self.median_type == "Metallic Crash Barrier" else None
+                crash_barrier_type=KEY_METALLIC_CRASH_BARRIER_TYPE[metallic_subtype_idx] 
+                    if self.median_type == "Metallic Crash Barrier" else None
             )
             
             median_barriers_raw = build_median(
@@ -426,22 +589,19 @@ class PlateGirderCADGenerator:
                 skew_angle=self.skew_angle
             )
             
-            median_barriers = []
-            median_w_beams = []
+            # Separate W-beams from other median components
             for mb in median_barriers_raw:
                 if isinstance(mb, dict):
                     if mb.get("w_beams"):
                         median_w_beams.append(mb["w_beams"])
                     for k in ("kerb", "posts", "spacers"):
                         if mb.get(k):
-                            crash_barrier_other.append(mb[k]) # Using same 'other' list for coloring
+                            crash_barrier_other.append(mb[k])
                             median_barriers.append(mb[k])
                 else:
                     median_barriers.append(mb)
 
-        # 8. RAILINGS
-
-
+        # STEP 10: BUILD RAILINGS
         
         railings = build_railings(
             span_length=self.span_length_L,
@@ -452,36 +612,46 @@ class PlateGirderCADGenerator:
             skew_angle=self.skew_angle
         )
 
+        # STEP 11: CONSOLIDATE SUPPORT STRUCTURES
+        
         supports = supports_tri + supports_cyl
 
-
-        # FINAL RETURN
+        # RETURN ALL GENERATED COMPONENTS
+        
         return {
+            # Girder components
             "girders": girders,
             "girder_web": girder_web,
             "girder_flanges": girder_flanges,
-
+            
+            # Stiffeners
             "stiffeners": stiffeners,
-
-            "supports": supports, 
+            
+            # Support structures
+            "supports": supports,
             "supports_tri": supports_tri,
             "supports_cyl": supports_cyl,
-
-
+            
+            # Cross bracing system
             "cross_bracings": cross_bracings,
-
+            
+            # Deck system
             "deck_slab": deck_out["deck_slab"],
             "deck_textures": deck_out["deck_textures"],
             "deck_top_z": deck_out["deck_top_z"],
             "total_deck_width": deck_out["total_deck_width"],
-
+            
+            # Crash barriers
             "crash_barriers": crash_barriers,
             "crash_barrier_w_beams": crash_barrier_w_beams,
+            
+            # Median barriers
             "median_barriers": median_barriers,
             "median_w_beams": median_w_beams,
+            
+            # Railings
             "railings": railings
         }
-
 
     def display_3dModel(self, component):
 
