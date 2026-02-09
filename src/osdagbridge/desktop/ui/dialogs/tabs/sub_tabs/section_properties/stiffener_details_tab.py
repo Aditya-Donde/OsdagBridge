@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QMessageBox,
+    QPushButton,
     QScrollArea,
     QSizePolicy,
     QTextEdit,
@@ -35,9 +36,12 @@ class StiffenerDetailsTab(QWidget):
         self._girder_details_tab = None
         self._state_by_member: Dict[str, dict] = {}
         self._active_member_id: Optional[str] = None
+        self._is_loading_ui: bool = False
         self.init_ui()
 
     def init_ui(self):
+        combo_width = 190  # keep all combo boxes strictly same width
+
         main_layout = QVBoxLayout(self)
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(0)
@@ -82,11 +86,27 @@ class StiffenerDetailsTab(QWidget):
 
         self.girder_member_combo = QComboBox()
         apply_field_style(self.girder_member_combo)
-        self.girder_member_combo.setFixedWidth(190)
+        self.girder_member_combo.setFixedWidth(combo_width)
         self.girder_member_combo.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
         girder_row.addWidget(self.girder_member_combo, 1)
 
         left_layout.addLayout(girder_row)
+
+        action_row = QHBoxLayout()
+        action_row.setContentsMargins(0, 0, 0, 0)
+        action_row.setSpacing(8)
+        self.apply_to_all_btn = QPushButton("Apply current to all")
+        self.apply_to_all_btn.setFixedHeight(26)
+        self.apply_to_all_btn.setStyleSheet(
+            "QPushButton { background: #ffffff; border: 1px solid #cfcfcf; border-radius: 6px; "
+            "padding: 4px 10px; font-size: 11px; color: #2b2b2b; }"
+            "QPushButton:hover { border-color: #90AF13; }"
+            "QPushButton:pressed { background: #f0f0f0; }"
+            "QPushButton:disabled { color: #8a8a8a; }"
+        )
+        action_row.addStretch(1)
+        action_row.addWidget(self.apply_to_all_btn)
+        left_layout.addLayout(action_row)
 
         stiffener_heading = QLabel("Stiffener Inputs")
         stiffener_heading.setStyleSheet("font-size: 11px; font-weight: 700; color: #000000; border: none; margin-top: 4px;")
@@ -103,6 +123,8 @@ class StiffenerDetailsTab(QWidget):
         self.intermediate_combo = QComboBox()
         self.intermediate_combo.addItems(VALUES_YES_NO)
         apply_field_style(self.intermediate_combo)
+        self.intermediate_combo.setFixedWidth(combo_width)
+        self.intermediate_combo.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
         row = self._add_form_row(inputs_grid, 0, "Intermediate Stiffener:", self.intermediate_combo)
 
         self.intermediate_spacing_input = QLineEdit()
@@ -114,16 +136,22 @@ class StiffenerDetailsTab(QWidget):
         self.longitudinal_combo = QComboBox()
         self.longitudinal_combo.addItems(VALUES_YES_NO)
         apply_field_style(self.longitudinal_combo)
+        self.longitudinal_combo.setFixedWidth(combo_width)
+        self.longitudinal_combo.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
         row = self._add_form_row(inputs_grid, row, "Longitudinal Stiffener:", self.longitudinal_combo)
 
         self.intermediate_thick_combo = QComboBox()
         self.intermediate_thick_combo.addItems(["All", "Customized"])
         apply_field_style(self.intermediate_thick_combo)
+        self.intermediate_thick_combo.setFixedWidth(combo_width)
+        self.intermediate_thick_combo.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
         row = self._add_form_row(inputs_grid, row, "Intermediate Stiffener Thickness (mm):", self.intermediate_thick_combo)
 
         self.long_thick_combo = QComboBox()
         self.long_thick_combo.addItems(["All", "Customized"])
         apply_field_style(self.long_thick_combo)
+        self.long_thick_combo.setFixedWidth(combo_width)
+        self.long_thick_combo.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
         row = self._add_form_row(inputs_grid, row, "Longitudinal Stiffener Thickness (mm):", self.long_thick_combo)
 
         left_layout.addLayout(inputs_grid)
@@ -141,6 +169,8 @@ class StiffenerDetailsTab(QWidget):
         self.method_combo = QComboBox()
         self.method_combo.addItems(VALUES_STIFFENER_DESIGN)
         apply_field_style(self.method_combo)
+        self.method_combo.setFixedWidth(combo_width)
+        self.method_combo.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
         self._add_form_row(buckling_grid, 0, "Shear Buckling Design Method:", self.method_combo)
 
         left_layout.addLayout(buckling_grid)
@@ -191,6 +221,11 @@ class StiffenerDetailsTab(QWidget):
         self.girder_member_combo.currentTextChanged.connect(self._on_member_changed)
         self.intermediate_combo.currentTextChanged.connect(self._on_intermediate_changed)
         self.longitudinal_combo.currentTextChanged.connect(self._on_longitudinal_changed)
+        self.intermediate_spacing_input.textChanged.connect(self._on_any_input_changed)
+        self.intermediate_thick_combo.currentTextChanged.connect(self._on_any_input_changed)
+        self.long_thick_combo.currentTextChanged.connect(self._on_any_input_changed)
+        self.method_combo.currentTextChanged.connect(self._on_any_input_changed)
+        self.apply_to_all_btn.clicked.connect(self._apply_current_to_all_members)
 
         # Defaults
         self._on_intermediate_changed(self.intermediate_combo.currentText())
@@ -212,7 +247,15 @@ class StiffenerDetailsTab(QWidget):
     def _add_form_row(self, layout, row, text, widget):
         label = self._create_label(text)
         layout.addWidget(label, row, 0, Qt.AlignLeft | Qt.AlignVCenter)
-        widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        # Respect fixed-width widgets (e.g., combo boxes) so all fields remain uniform.
+        try:
+            fixed_width = widget.minimumWidth() == widget.maximumWidth() and widget.minimumWidth() > 0
+        except Exception:
+            fixed_width = False
+        if fixed_width:
+            widget.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+        else:
+            widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         layout.addWidget(widget, row, 1)
         return row + 1
 
@@ -223,6 +266,9 @@ class StiffenerDetailsTab(QWidget):
 
     def refresh_girder_members(self) -> None:
         """Refresh the Select Girder Member dropdown from Girder Details segment chains."""
+        # Persist any in-progress edits before rebuilding the member list.
+        self._store_current_member_state()
+
         members = []
         if self._girder_details_tab is not None and hasattr(self._girder_details_tab, "list_all_member_ids"):
             try:
@@ -258,12 +304,26 @@ class StiffenerDetailsTab(QWidget):
             if state.get("intermediate_stiffener") == "Yes":
                 spacing = str(state.get("intermediate_spacing_mm") or "").strip()
                 if not spacing.isdigit() or int(spacing) <= 0:
+                    # Guide the user to the offending member + field.
+                    try:
+                        self.girder_member_combo.setCurrentText(str(member_id))
+                    except Exception:
+                        pass
+                    try:
+                        self.intermediate_spacing_input.setFocus()
+                        self.intermediate_spacing_input.selectAll()
+                    except Exception:
+                        pass
                     raise ValueError(
-                        f"Intermediate Stiffener Spacing (mm) is required for {member_id} when Intermediate Stiffener is Yes."
+                        f"Intermediate Stiffener Spacing (mm) is required for member '{member_id}' when Intermediate Stiffener is Yes."
                     )
 
     def collect_data(self) -> dict:
         self._store_current_member_state()
+        # Ensure all current members get a state entry so save/restore is consistent.
+        for member_id in self._list_current_member_ids():
+            if member_id not in self._state_by_member:
+                self._state_by_member[member_id] = dict(self._default_member_state())
         return {
             "stiffener_by_member": dict(self._state_by_member),
         }
@@ -319,6 +379,8 @@ class StiffenerDetailsTab(QWidget):
         }
 
     def _store_current_member_state(self) -> None:
+        if self._is_loading_ui:
+            return
         if not self._active_member_id:
             return
         self._state_by_member[self._active_member_id] = {
@@ -331,7 +393,12 @@ class StiffenerDetailsTab(QWidget):
         }
 
     def _load_member_state(self, member_id: str) -> None:
-        state = self._state_by_member.get(member_id) or self._default_member_state()
+        # Ensure every member has a state entry.
+        if member_id not in self._state_by_member:
+            self._state_by_member[member_id] = dict(self._default_member_state())
+        state = dict(self._state_by_member.get(member_id) or self._default_member_state())
+
+        self._is_loading_ui = True
 
         block_a = self.intermediate_combo.blockSignals(True)
         block_b = self.longitudinal_combo.blockSignals(True)
@@ -349,10 +416,13 @@ class StiffenerDetailsTab(QWidget):
             self.intermediate_combo.blockSignals(block_a)
             self.longitudinal_combo.blockSignals(block_b)
             self.method_combo.blockSignals(block_c)
+            self._is_loading_ui = False
 
         self._on_intermediate_changed(self.intermediate_combo.currentText())
         self._on_longitudinal_changed(self.longitudinal_combo.currentText())
-        self._update_enabled_state(member_id)
+        self._refresh_enabled_state(member_id)
+        # Keep in-memory state synced even when user only edits a single member.
+        self._store_current_member_state()
 
     def _on_member_changed(self, member_id: str) -> None:
         member_id = str(member_id or "").strip()
@@ -365,6 +435,10 @@ class StiffenerDetailsTab(QWidget):
         self._active_member_id = member_id
         self._load_member_state(member_id)
 
+    def _on_any_input_changed(self, *_args) -> None:
+        """Persist UI edits into per-member state as the user types/selects."""
+        self._store_current_member_state()
+
     def _on_intermediate_changed(self, text: str) -> None:
         is_yes = str(text).strip() == "Yes"
         if not is_yes:
@@ -373,15 +447,28 @@ class StiffenerDetailsTab(QWidget):
                 self.intermediate_spacing_input.setText("NA")
             finally:
                 self.intermediate_spacing_input.blockSignals(prev)
-            self.intermediate_spacing_input.setEnabled(False)
+            # Reset dependent selections when not applicable.
+            prev_mode = self.intermediate_thick_combo.blockSignals(True)
+            try:
+                self.intermediate_thick_combo.setCurrentText("All")
+            finally:
+                self.intermediate_thick_combo.blockSignals(prev_mode)
         else:
             if self.intermediate_spacing_input.text().strip().upper() == "NA":
                 self.intermediate_spacing_input.clear()
-            self.intermediate_spacing_input.setEnabled(True)
+        self._refresh_enabled_state(self._active_member_id or "")
+        self._store_current_member_state()
 
     def _on_longitudinal_changed(self, text: str) -> None:
         is_yes = str(text).strip() == "Yes"
-        self.long_thick_combo.setEnabled(is_yes)
+        if not is_yes:
+            prev_mode = self.long_thick_combo.blockSignals(True)
+            try:
+                self.long_thick_combo.setCurrentText("All")
+            finally:
+                self.long_thick_combo.blockSignals(prev_mode)
+        self._refresh_enabled_state(self._active_member_id or "")
+        self._store_current_member_state()
 
     def _is_member_optimized(self, member_id: str) -> bool:
         if self._girder_details_tab is None:
@@ -393,25 +480,48 @@ class StiffenerDetailsTab(QWidget):
                 return False
         return False
 
-    def _update_enabled_state(self, member_id: str) -> None:
-        optimized = self._is_member_optimized(member_id)
-        
-        # Disable all inputs when member is optimized
-        for widget in (
-            self.intermediate_combo,
-            self.longitudinal_combo,
-            self.intermediate_thick_combo,
-            self.long_thick_combo,
-            self.method_combo,
-        ):
-            widget.setEnabled(not optimized)
-        
-        # Handle spacing input based on both optimized state and intermediate stiffener selection
-        if optimized:
-            self.intermediate_spacing_input.setEnabled(False)
-        else:
-            is_yes = self.intermediate_combo.currentText().strip() == "Yes"
-            self.intermediate_spacing_input.setEnabled(is_yes)
+    def _refresh_enabled_state(self, member_id: str) -> None:
+        member_id = str(member_id or self._active_member_id or "").strip()
+        optimized = self._is_member_optimized(member_id) if member_id else False
+
+        base_enabled = not optimized
+        self.intermediate_combo.setEnabled(base_enabled)
+        self.longitudinal_combo.setEnabled(base_enabled)
+        self.method_combo.setEnabled(base_enabled)
+
+        intermediate_yes = self.intermediate_combo.currentText().strip() == "Yes"
+        longitudinal_yes = self.longitudinal_combo.currentText().strip() == "Yes"
+
+        self.intermediate_spacing_input.setEnabled(base_enabled and intermediate_yes)
+        self.intermediate_thick_combo.setEnabled(base_enabled and intermediate_yes)
+        self.long_thick_combo.setEnabled(base_enabled and longitudinal_yes)
+
+        # If optimized, applying changes makes no sense.
+        self.apply_to_all_btn.setEnabled(base_enabled)
+
+    def _list_current_member_ids(self) -> list[str]:
+        members: list[str] = []
+        for i in range(self.girder_member_combo.count()):
+            try:
+                members.append(str(self.girder_member_combo.itemText(i)).strip())
+            except Exception:
+                continue
+        return [m for m in members if m]
+
+    def _apply_current_to_all_members(self) -> None:
+        """Copy the currently selected member's inputs to all members."""
+        self._store_current_member_state()
+        if not self._active_member_id:
+            return
+
+        template = dict(self._state_by_member.get(self._active_member_id) or self._default_member_state())
+        for member_id in self._list_current_member_ids():
+            if self._is_member_optimized(member_id):
+                continue
+            self._state_by_member[member_id] = dict(template)
+
+        # Re-load to ensure the UI reflects the stored state for the active member.
+        self._load_member_state(self._active_member_id)
 
 
 

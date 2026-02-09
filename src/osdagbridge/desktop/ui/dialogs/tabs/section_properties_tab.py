@@ -211,6 +211,8 @@ class SectionPropertiesTab(QWidget):
                 data["stiffener_details"] = self.stiffener_details_tab.collect_data()
         if hasattr(self, "cross_bracing_tab") and hasattr(self.cross_bracing_tab, "collect_data"):
             data["cross_bracing"] = self.cross_bracing_tab.collect_data()
+        if hasattr(self, "end_diaphragm_tab") and hasattr(self.end_diaphragm_tab, "collect_data"):
+            data["end_diaphragm"] = self.end_diaphragm_tab.collect_data()
         return data
 
     def restore_properties(self, data: dict) -> None:
@@ -232,10 +234,36 @@ class SectionPropertiesTab(QWidget):
             except Exception:
                 pass
 
+        cross_data = data.get("cross_bracing")
+        if isinstance(cross_data, dict) and hasattr(self, "cross_bracing_tab") and hasattr(self.cross_bracing_tab, "restore_data"):
+            try:
+                self.cross_bracing_tab.restore_data(cross_data)
+            except Exception:
+                pass
+
+        end_data = data.get("end_diaphragm")
+        if isinstance(end_data, dict) and hasattr(self, "end_diaphragm_tab") and hasattr(self.end_diaphragm_tab, "restore_data"):
+            try:
+                self.end_diaphragm_tab.restore_data(end_data)
+            except Exception:
+                pass
+
         # If stiffeners were restored, refresh member list (depends on girder segments).
         try:
             if hasattr(self, "stiffener_details_tab") and hasattr(self.stiffener_details_tab, "refresh_girder_members"):
                 self.stiffener_details_tab.refresh_girder_members()
+        except Exception:
+            pass
+
+        # Dependent tabs rely on Girder Details for selector options.
+        try:
+            if hasattr(self, "cross_bracing_tab") and hasattr(self.cross_bracing_tab, "refresh_girder_options"):
+                self.cross_bracing_tab.refresh_girder_options()
+        except Exception:
+            pass
+        try:
+            if hasattr(self, "end_diaphragm_tab") and hasattr(self.end_diaphragm_tab, "refresh_girder_options"):
+                self.end_diaphragm_tab.refresh_girder_options()
         except Exception:
             pass
 

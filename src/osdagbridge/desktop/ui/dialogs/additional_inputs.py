@@ -287,6 +287,8 @@ class AdditionalInputs(QDialog):
             saved_items.append(f"✓ Stiffener Details ({member_count} members)")
         if "cross_bracing" in saved:
             saved_items.append("✓ Cross-Bracing Details")
+        if "end_diaphragm" in saved:
+            saved_items.append("✓ End Diaphragm Details")
         
         message = "Inputs saved successfully.\n\n"
         if saved_items:

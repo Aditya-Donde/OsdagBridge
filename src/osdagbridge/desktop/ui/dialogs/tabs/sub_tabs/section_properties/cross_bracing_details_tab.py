@@ -1,5 +1,6 @@
 import sys
 import os
+import math
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QTabWidget, QTabBar, QLabel, QLineEdit,
     QComboBox, QGroupBox, QFormLayout, QPushButton, QScrollArea,
@@ -23,6 +24,9 @@ class CrossBracingDetailsTab(QWidget):
         super().__init__(parent)
         self.catalog = SectionCatalog()
         self._girder_details_tab = None
+
+        # Keep all combo boxes strictly uniform in width.
+        self._combo_width = 190
 
         # Persist UI state per (girder-pair, member-id) so switching selection
         # restores user inputs for that specific member.
@@ -67,11 +71,12 @@ class CrossBracingDetailsTab(QWidget):
 
         selection_box = self._create_inner_box()
         selection_layout = QGridLayout(selection_box)
-        selection_layout.setContentsMargins(8, 4, 8, 4)
-        selection_layout.setHorizontalSpacing(6)
-        selection_layout.setVerticalSpacing(2)
-        selection_layout.setColumnMinimumWidth(0, 130)
-        selection_layout.setColumnStretch(1, 1)
+        selection_layout.setContentsMargins(12, 8, 12, 8)
+        selection_layout.setHorizontalSpacing(12)
+        selection_layout.setVerticalSpacing(8)
+        selection_layout.setColumnMinimumWidth(0, 180)
+        selection_layout.setColumnStretch(0, 0)
+        selection_layout.setColumnStretch(1, 0)
 
         self.select_girders_combo = QComboBox()
         # Populated from Girder Details when bound.
@@ -83,13 +88,29 @@ class CrossBracingDetailsTab(QWidget):
         self.member_id_combo = QComboBox()
         # Populated from Girder Details when bound. (No Custom option.)
         self._configure_combo_box(self.member_id_combo)
-        apply_field_style(self.member_id_combo)
+        # Member IDs are software-generated and must not be typed/edited.
+        self.member_id_combo.setEditable(False)
+        try:
+            self.member_id_combo.setInsertPolicy(QComboBox.NoInsert)
+        except Exception:
+            pass
+        # Hide the dropdown entirely; show a read-only display instead.
+        self.member_id_combo.setVisible(False)
+
+        self.member_id_display = QLineEdit()
+        self.member_id_display.setReadOnly(True)
+        self.member_id_display.setFixedSize(self._combo_width, 28)
+        self.member_id_display.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+        try:
+            self.member_id_display.setFocusPolicy(Qt.NoFocus)
+        except Exception:
+            pass
+        apply_field_style(self.member_id_display)
         selection_layout.addWidget(self._create_label("Member ID:"), 1, 0)
-        selection_layout.addWidget(self.member_id_combo, 1, 1)
+        selection_layout.addWidget(self.member_id_display, 1, 1)
 
         # Keep the two selectors aligned and persist state per selection.
         self.select_girders_combo.currentIndexChanged.connect(self._on_select_girders_index_changed)
-        self.member_id_combo.currentIndexChanged.connect(self._on_member_id_index_changed)
 
         selection_box.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         left_layout.addWidget(selection_box)
@@ -105,9 +126,9 @@ class CrossBracingDetailsTab(QWidget):
         inputs_grid.setContentsMargins(0, 0, 0, 0)
         inputs_grid.setHorizontalSpacing(12)
         inputs_grid.setVerticalSpacing(8)
-        inputs_grid.setColumnMinimumWidth(0, 130)
+        inputs_grid.setColumnMinimumWidth(0, 180)
         inputs_grid.setColumnStretch(0, 0)
-        inputs_grid.setColumnStretch(1, 1)
+        inputs_grid.setColumnStretch(1, 0)
 
         self.design_combo = QComboBox()
         self.design_combo.addItems(["Customized", "Optimized"])
@@ -165,10 +186,11 @@ class CrossBracingDetailsTab(QWidget):
         row = self._add_grid_row(inputs_grid, row, "Bottom Bracket Size:", self.bottom_bracket_size_combo)
 
         self.spacing_input = QLineEdit()
-        self.spacing_input.setPlaceholderText("(mm)")
         self.spacing_input.setValidator(QDoubleValidator(0, 100000, 2))
         apply_field_style(self.spacing_input)
-        self._add_grid_row(inputs_grid, row, "Spacing (mm):", self.spacing_input)
+        self.spacing_input.setFixedSize(self._combo_width, 28)
+        self.spacing_input.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+        self._add_grid_row(inputs_grid, row, "Spacing (m):", self.spacing_input)
 
         inputs_layout.addLayout(inputs_grid)
         left_layout.addWidget(inputs_box)
@@ -219,6 +241,7 @@ class CrossBracingDetailsTab(QWidget):
         self.bottom_bracket_type_combo.currentTextChanged.connect(self._on_bottom_bracket_type_changed)
         self.bottom_bracket_size_combo.currentTextChanged.connect(self._update_previews)
         self.design_combo.currentTextChanged.connect(self._on_design_changed)
+        self.spacing_input.textChanged.connect(self._on_span_or_spacing_changed)
         self._populate_designations()
         self._on_design_changed(self.design_combo.currentText())
 
@@ -228,10 +251,168 @@ class CrossBracingDetailsTab(QWidget):
         # Ensure initial selection loads its saved/default state.
         self._load_state_for_current_member()
 
+    def _on_span_or_spacing_changed(self, *_args) -> None:
+        # Member IDs are derived from Span + Spacing (software-driven).
+        try:
+            self._refresh_member_id_display()
+        except Exception:
+            pass
+
+    def _current_member_id(self) -> str:
+        return f"B{self._pair_index()}M1"
+
     def _current_member_key(self) -> str:
         pair = (self.select_girders_combo.currentText() or "").strip()
-        member = (self.member_id_combo.currentText() or "").strip()
+        member = self._current_member_id()
         return f"{pair}::{member}".strip(":")
+
+    @staticmethod
+    def _normalize_member_id(text: str, pair_index: int | None = None) -> str:
+        """Normalize legacy IDs/ranges to the canonical format B{pair}M{member}.
+
+        Accepts:
+        - 'B1M3' (canonical)
+        - 'B1-3' (legacy hyphen)
+        - 'B1-1 to B1-15' (legacy range; coerces to M1)
+        """
+        raw = (text or "").strip().replace(" ", "")
+        if not raw:
+            return ""
+
+        upper = raw.upper()
+
+        # Canonical already.
+        if "M" in upper and upper.startswith("B"):
+            return upper
+
+        # Legacy range like B1-1toB1-15 -> choose first.
+        if upper.startswith("B") and "TO" in upper:
+            # Try to keep the pair index if provided.
+            if pair_index is not None:
+                return f"B{pair_index}M1"
+            # Attempt to parse pair number from prefix.
+            try:
+                after_b = upper[1:]
+                pair_num = int("".join(ch for ch in after_b if ch.isdigit()) or 0)
+            except Exception:
+                pair_num = 0
+            return f"B{pair_num}M1" if pair_num > 0 else ""
+
+        # Legacy single member like B1-3.
+        if upper.startswith("B") and "-" in upper:
+            try:
+                b_part, m_part = upper.split("-", 1)
+                pair_num = int(b_part[1:])
+                mem_num = int("".join(ch for ch in m_part if ch.isdigit()))
+                return f"B{pair_num}M{mem_num}"
+            except Exception:
+                return ""
+
+        # Fallback: if only a member number is present and pair_index is known.
+        if pair_index is not None:
+            try:
+                mem_num = int("".join(ch for ch in upper if ch.isdigit()))
+                if mem_num > 0:
+                    return f"B{pair_index}M{mem_num}"
+            except Exception:
+                pass
+        return ""
+
+    @staticmethod
+    def _member_number(text: str) -> int | None:
+        text = (text or "").strip().upper().replace(" ", "")
+        if not text:
+            return None
+        if text.startswith("B") and "M" in text:
+            try:
+                _b, m = text.split("M", 1)
+                return int("".join(ch for ch in m if ch.isdigit()) or 0) or None
+            except Exception:
+                return None
+        if text.startswith("B") and "-" in text:
+            try:
+                _b, m = text.split("-", 1)
+                return int("".join(ch for ch in m if ch.isdigit()) or 0) or None
+            except Exception:
+                return None
+        return None
+
+    def _pair_index(self) -> int:
+        return max(0, int(self.select_girders_combo.currentIndex())) + 1
+
+    def _get_total_span_m(self) -> float | None:
+        tab = self._girder_details_tab
+        if tab is None:
+            return None
+        getter = getattr(tab, "_get_total_span", None)
+        if getter is None or not callable(getter):
+            return None
+        try:
+            span = getter()
+        except Exception:
+            return None
+        try:
+            span = float(span)
+        except Exception:
+            return None
+        return span if span > 0 else None
+
+    def _get_cross_bracing_spacing_m(self) -> float | None:
+        text = (self.spacing_input.text() or "").strip()
+        if not text:
+            return None
+        try:
+            spacing_m = float(text)
+        except Exception:
+            return None
+        if spacing_m <= 0:
+            return None
+        return spacing_m
+
+    def _cross_bracing_member_count(self) -> int:
+        """Compute number of cross bracing members (m) for a pair.
+
+        Based on the provided reference:
+            m = Span / CrossBracingSpacing - 1
+
+        Span is read from Girder Details "Total Span (m)".
+        Spacing is read from this tab "Spacing (m)".
+        """
+        span_m = self._get_total_span_m()
+        spacing_m = self._get_cross_bracing_spacing_m()
+        if not span_m or not spacing_m:
+            return 1
+        raw = (span_m / spacing_m) - 1.0
+        try:
+            m = int(math.floor(raw + 1e-9))
+        except Exception:
+            m = 1
+        return max(1, m)
+
+    def _member_ids_for_pair(self, pair_index: int) -> list[str]:
+        count = self._cross_bracing_member_count()
+        return [f"B{pair_index}M{i}" for i in range(1, count + 1)]
+
+    def _refresh_member_id_display(self) -> None:
+        pair_index = self._pair_index()
+        count = self._cross_bracing_member_count()
+        member_id = f"B{pair_index}M1"
+        display_text = member_id if count <= 1 else f"B{pair_index}M1 to B{pair_index}M{count}"
+        if hasattr(self, "member_id_display") and self.member_id_display is not None:
+            prev = self.member_id_display.blockSignals(True)
+            try:
+                self.member_id_display.setText(display_text)
+            finally:
+                self.member_id_display.blockSignals(prev)
+
+        # Keep the hidden combo in sync for any existing code paths.
+        block = self.member_id_combo.blockSignals(True)
+        try:
+            self.member_id_combo.clear()
+            self.member_id_combo.addItems([member_id])
+            self.member_id_combo.setCurrentIndex(0)
+        finally:
+            self.member_id_combo.blockSignals(block)
 
     def _default_member_state(self) -> dict:
         # Use the tab defaults (Optimized + first options) for new members.
@@ -358,20 +539,7 @@ class CrossBracingDetailsTab(QWidget):
         self._store_current_member_state()
         self._selection_sync_guard = True
         try:
-            if self.member_id_combo.count() > 0:
-                self.member_id_combo.setCurrentIndex(min(max(idx, 0), self.member_id_combo.count() - 1))
-        finally:
-            self._selection_sync_guard = False
-        self._load_state_for_current_member()
-
-    def _on_member_id_index_changed(self, idx: int) -> None:
-        if self._selection_sync_guard:
-            return
-        self._store_current_member_state()
-        self._selection_sync_guard = True
-        try:
-            if self.select_girders_combo.count() > 0:
-                self.select_girders_combo.setCurrentIndex(min(max(idx, 0), self.select_girders_combo.count() - 1))
+            self._refresh_member_id_display()
         finally:
             self._selection_sync_guard = False
         self._load_state_for_current_member()
@@ -379,6 +547,12 @@ class CrossBracingDetailsTab(QWidget):
     def bind_girder_details_tab(self, girder_details_tab) -> None:
         """Bind to Girder Details so girder pair options reflect user inputs."""
         self._girder_details_tab = girder_details_tab
+        try:
+            length_input = getattr(girder_details_tab, "length_input", None)
+            if length_input is not None and hasattr(length_input, "textChanged"):
+                length_input.textChanged.connect(self._on_span_or_spacing_changed)
+        except Exception:
+            pass
         self.refresh_girder_options()
 
     def showEvent(self, event):  # noqa: N802 (Qt naming)
@@ -410,7 +584,6 @@ class CrossBracingDetailsTab(QWidget):
         pairs = self._girder_pairs()
 
         prev_pair = self.select_girders_combo.currentText().strip() if hasattr(self, "select_girders_combo") else ""
-        prev_member = self.member_id_combo.currentText().strip() if hasattr(self, "member_id_combo") else ""
 
         block_a = self.select_girders_combo.blockSignals(True)
         try:
@@ -423,20 +596,8 @@ class CrossBracingDetailsTab(QWidget):
         finally:
             self.select_girders_combo.blockSignals(block_a)
 
-        # Member IDs follow pair index: B1..Bn (no Custom)
-        member_items = [f"B{i}-1 to B{i}-15" for i in range(1, len(pairs) + 1)]
-        block_b = self.member_id_combo.blockSignals(True)
-        try:
-            self.member_id_combo.clear()
-            self.member_id_combo.addItems(member_items)
-            if prev_member in member_items:
-                self.member_id_combo.setCurrentText(prev_member)
-            else:
-                # Keep member aligned with selected pair (1-based)
-                idx = max(0, self.select_girders_combo.currentIndex())
-                self.member_id_combo.setCurrentIndex(min(idx, len(member_items) - 1))
-        finally:
-            self.member_id_combo.blockSignals(block_b)
+        # Update the (read-only) Member ID display for the selected pair.
+        self._refresh_member_id_display()
 
         # Restore saved/default state for the currently selected member after refresh.
         self._load_state_for_current_member()
@@ -470,14 +631,28 @@ class CrossBracingDetailsTab(QWidget):
     def _add_grid_row(self, layout, row, text, widget):
         label = self._create_label(text)
         layout.addWidget(label, row, 0, Qt.AlignLeft | Qt.AlignVCenter)
-        widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-        layout.addWidget(widget, row, 1)
+        # Respect fixed-width widgets (e.g., combo boxes) so all fields remain uniform.
+        try:
+            fixed_width = widget.minimumWidth() == widget.maximumWidth() and widget.minimumWidth() > 0
+        except Exception:
+            fixed_width = False
+        if fixed_width:
+            widget.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+        else:
+            widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        # Left-align the widget so fixed-width combos line up.
+        layout.addWidget(widget, row, 1, Qt.AlignLeft | Qt.AlignVCenter)
         return row + 1
 
     def _configure_combo_box(self, combo: QComboBox) -> None:
         """Keep combos stable without forcing the right-side diagram to collapse."""
         combo.setSizeAdjustPolicy(QComboBox.AdjustToMinimumContentsLengthWithIcon)
         combo.setMinimumContentsLength(12)
+        try:
+            combo.setFixedWidth(int(getattr(self, "_combo_width", 190)))
+            combo.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+        except Exception:
+            pass
 
     def _create_bracing_layout_placeholder(self, text: str, height: int):
         label = QLabel(text)
@@ -628,9 +803,32 @@ class CrossBracingDetailsTab(QWidget):
     def collect_data(self):
         # Ensure the latest edits are persisted to the active member.
         self._store_current_member_state()
+
+        pairs = self._girder_pairs()
+
+        # For the UI we configure only one member (always M1) per pair.
+        # For the solver/export, expand the configured state to all members.
+        by_member: dict[str, dict] = {}
+        for pair_idx, pair_label in enumerate(pairs, start=1):
+            base_member = f"B{pair_idx}M1"
+            base_key = f"{pair_label}::{base_member}"
+            base_state = self._state_by_member_key.get(base_key)
+            if base_state is None:
+                base_state = dict(self._default_member_state())
+                self._state_by_member_key[base_key] = dict(base_state)
+
+            for member_id in self._member_ids_for_pair(pair_idx):
+                payload = dict(base_state or {})
+                payload["select_girders"] = pair_label
+                payload["member_id"] = member_id
+                by_member[member_id] = payload
+
+        # Backward compatible: keep current selection fields at the top-level.
+        current_pair = (self.select_girders_combo.currentText() or "").strip()
+        current_member = self._current_member_id().strip().upper()
         return {
-            "select_girders": self.select_girders_combo.currentText(),
-            "member_id": self.member_id_combo.currentText(),
+            "select_girders": current_pair,
+            "member_id": current_member,
             "design": self.design_combo.currentText(),
             "bracing_type": self.bracing_type_combo.currentText(),
             "bracing_section_type": self.bracing_section_type_combo.currentText(),
@@ -640,5 +838,57 @@ class CrossBracingDetailsTab(QWidget):
             "bottom_bracket_type": self.bottom_bracket_type_combo.currentText(),
             "bottom_bracket_size": self.bottom_bracket_size_combo.currentText(),
             "spacing": self.spacing_input.text(),
+            "cross_bracing_by_member": by_member,
         }
+
+    def restore_data(self, data: dict) -> None:
+        """Restore previously saved cross bracing inputs."""
+        if not isinstance(data, dict):
+            return
+
+        restored = data.get("cross_bracing_by_member")
+        if isinstance(restored, dict):
+            # Prefer restoring from the configured member (always M1) for each pair.
+            rebuilt: dict[str, dict] = {}
+            for _member_id, payload in restored.items():
+                if not isinstance(payload, dict):
+                    continue
+                pair_label = str(payload.get("select_girders") or "").strip()
+                member_id = str(payload.get("member_id") or _member_id or "").strip().upper()
+                if not pair_label:
+                    continue
+                # Only store state for M1 in the UI.
+                if not member_id.endswith("M1"):
+                    continue
+                state = dict(payload)
+                state.pop("select_girders", None)
+                state.pop("member_id", None)
+                rebuilt[f"{pair_label}::{member_id}"] = state
+            if rebuilt:
+                self._state_by_member_key = rebuilt
+
+        # Refresh dropdowns and try to restore selection.
+        try:
+            self.refresh_girder_options()
+        except Exception:
+            pass
+
+        target_pair = str(data.get("select_girders") or "").strip()
+        target_member = str(data.get("member_id") or "").strip().upper()
+        if target_pair:
+            try:
+                self.select_girders_combo.setCurrentText(target_pair)
+            except Exception:
+                pass
+        # Member ID is software-driven (always M1) so just refresh the display.
+        try:
+            self._refresh_member_id_display()
+        except Exception:
+            pass
+
+        # Ensure UI reflects stored state for restored selection.
+        try:
+            self._load_state_for_current_member()
+        except Exception:
+            pass
 

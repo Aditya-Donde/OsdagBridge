@@ -38,6 +38,10 @@ class EndDiaphragmDetailsTab(QWidget):
         self._girder_details_tab = None
         self._select_girders_combos = []
         self._member_id_combos = []
+        self._member_id_display_by_view: dict[str, QLineEdit] = {}
+
+        # Keep all combo boxes strictly uniform in width.
+        self._combo_width = 190
 
         # Persist UI state per (view_type, girder-pair, member-id).
         # Also sync selection (girder/member index) across all three views.
@@ -101,7 +105,6 @@ class EndDiaphragmDetailsTab(QWidget):
             pass
 
         pairs = self._girder_pairs()
-        member_items = [f"E{i}-1, E{i}-2" for i in range(1, len(pairs) + 1)]
 
         for combo in list(self._select_girders_combos):
             if combo is None:
@@ -115,20 +118,81 @@ class EndDiaphragmDetailsTab(QWidget):
             finally:
                 combo.blockSignals(block)
 
-        for combo in list(self._member_id_combos):
-            if combo is None:
+        # Member IDs are generated per girder-pair selection.
+        # End diaphragm uses 2 members per pair: E{pair}M1, E{pair}M2.
+        for view_key, (girders_combo, member_combo) in (self._selection_by_view or {}).items():
+            if girders_combo is None or member_combo is None:
                 continue
-            prev = combo.currentText().strip()
-            block = combo.blockSignals(True)
+            self._rebuild_member_ids_for_view(view_key, previous_member=(member_combo.currentText() or "").strip())
             try:
-                combo.clear()
-                combo.addItems(member_items)
-                combo.setCurrentText(prev if prev in member_items else member_items[0])
-            finally:
-                combo.blockSignals(block)
+                self._refresh_member_id_display(view_key)
+            except Exception:
+                pass
 
         # After refresh, ensure state is restored for current selection.
         self._restore_all_views_for_current_selection()
+
+    @staticmethod
+    def _member_number(text: str) -> int | None:
+        raw = (text or "").strip().upper().replace(" ", "")
+        if not raw:
+            return None
+        if "M" in raw:
+            try:
+                _p, m = raw.split("M", 1)
+                return int("".join(ch for ch in m if ch.isdigit()) or 0) or None
+            except Exception:
+                return None
+        if "-" in raw:
+            try:
+                _p, m = raw.split("-", 1)
+                return int("".join(ch for ch in m if ch.isdigit()) or 0) or None
+            except Exception:
+                return None
+        return None
+
+    def _pair_index_for_combo(self, girders_combo: QComboBox | None) -> int:
+        return max(0, int(girders_combo.currentIndex() if girders_combo is not None else 0)) + 1
+
+    def _member_ids_for_pair(self, pair_index: int) -> list[str]:
+        return [f"E{pair_index}M1", f"E{pair_index}M2"]
+
+    def _refresh_member_id_display(self, view_key: str) -> None:
+        combos = self._selection_by_view.get(view_key)
+        display = self._member_id_display_by_view.get(view_key)
+        if not combos or display is None:
+            return
+        _girders_combo, member_combo = combos
+        prev = display.blockSignals(True)
+        try:
+            display.setText((member_combo.currentText() or "").strip())
+        finally:
+            display.blockSignals(prev)
+
+    def _rebuild_member_ids_for_view(self, view_key: str, previous_member: str = "") -> None:
+        combos = self._selection_by_view.get(view_key)
+        if not combos:
+            return
+        girders_combo, member_combo = combos
+        if member_combo is None:
+            return
+        pair_index = self._pair_index_for_combo(girders_combo)
+        items = self._member_ids_for_pair(pair_index)
+
+        block = member_combo.blockSignals(True)
+        try:
+            member_combo.clear()
+            member_combo.addItems(items)
+            # UI requirement: show ID only (always M1).
+            member_combo.setCurrentText(f"E{pair_index}M1")
+            member_combo.setCurrentIndex(0)
+        finally:
+            member_combo.blockSignals(block)
+
+        try:
+            self._refresh_member_id_display(view_key)
+        except Exception:
+            pass
 
     def _selection_key(self, view_key: str) -> str:
         combos = self._selection_by_view.get(view_key)
@@ -320,6 +384,10 @@ class EndDiaphragmDetailsTab(QWidget):
             self._load_view_state(view_key)
 
     def _sync_selection_index_to_all_views(self, idx: int) -> None:
+        # Backward compatibility: treat this as girder-pair sync only.
+        self._sync_girder_index_to_all_views(idx)
+
+    def _sync_girder_index_to_all_views(self, idx: int) -> None:
         if self._block_selection_sync:
             return
         self._store_all_view_states()
@@ -328,8 +396,27 @@ class EndDiaphragmDetailsTab(QWidget):
             for view_key, (girders_combo, member_combo) in self._selection_by_view.items():
                 if girders_combo is not None and girders_combo.count() > 0:
                     girders_combo.setCurrentIndex(min(max(idx, 0), girders_combo.count() - 1))
+                # Rebuild member IDs to match the newly selected pair while
+                # preserving the M# selection when possible.
+                if member_combo is not None:
+                    self._rebuild_member_ids_for_view(view_key, previous_member=(member_combo.currentText() or "").strip())
+                    try:
+                        self._refresh_member_id_display(view_key)
+                    except Exception:
+                        pass
+        finally:
+            self._block_selection_sync = False
+        self._restore_all_views_for_current_selection()
+
+    def _sync_member_index_to_all_views(self, member_idx: int) -> None:
+        if self._block_selection_sync:
+            return
+        self._store_all_view_states()
+        self._block_selection_sync = True
+        try:
+            for _view_key, (_girders_combo, member_combo) in self._selection_by_view.items():
                 if member_combo is not None and member_combo.count() > 0:
-                    member_combo.setCurrentIndex(min(max(idx, 0), member_combo.count() - 1))
+                    member_combo.setCurrentIndex(min(max(member_idx, 0), member_combo.count() - 1))
         finally:
             self._block_selection_sync = False
         self._restore_all_views_for_current_selection()
@@ -450,7 +537,15 @@ class EndDiaphragmDetailsTab(QWidget):
     def _add_grid_row(self, layout, row, text, widget):
         label = self._create_label(text)
         layout.addWidget(label, row, 0, Qt.AlignLeft | Qt.AlignVCenter)
-        widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        # Respect fixed-width widgets (e.g., combo boxes) so all fields remain uniform.
+        try:
+            fixed_width = widget.minimumWidth() == widget.maximumWidth() and widget.minimumWidth() > 0
+        except Exception:
+            fixed_width = False
+        if fixed_width:
+            widget.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+        else:
+            widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         layout.addWidget(widget, row, 1)
         return row + 1
 
@@ -458,6 +553,11 @@ class EndDiaphragmDetailsTab(QWidget):
         """Keep combos stable without forcing the right-side diagram to collapse."""
         combo.setSizeAdjustPolicy(QComboBox.AdjustToMinimumContentsLengthWithIcon)
         combo.setMinimumContentsLength(12)
+        try:
+            combo.setFixedWidth(int(getattr(self, "_combo_width", 190)))
+            combo.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+        except Exception:
+            pass
 
     def _create_image_placeholder(self, text, min_height=140):
         label = QLabel(text)
@@ -495,18 +595,41 @@ class EndDiaphragmDetailsTab(QWidget):
         member_combo = QComboBox()
         # Populated from Girder Details when bound. (No Custom option.)
         self._configure_combo_box(member_combo)
+        # Member IDs are software-generated and must not be typed/edited.
+        member_combo.setEditable(False)
+        try:
+            member_combo.setInsertPolicy(QComboBox.NoInsert)
+        except Exception:
+            pass
+        # Lock the Member ID control: software-driven only.
+        member_combo.setEnabled(False)
+        member_combo.setVisible(False)
         apply_field_style(member_combo)
+
+        member_display = QLineEdit()
+        member_display.setReadOnly(True)
+        try:
+            member_display.setFixedWidth(int(getattr(self, "_combo_width", 190)))
+            member_display.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+        except Exception:
+            pass
+        try:
+            member_display.setFocusPolicy(Qt.NoFocus)
+        except Exception:
+            pass
+        apply_field_style(member_display)
         layout.addWidget(self._create_label("Member ID:"), 1, 0)
-        layout.addWidget(member_combo, 1, 1)
+        layout.addWidget(member_display, 1, 1)
 
         self._member_id_combos.append(member_combo)
 
         # Register selection widgets for state persistence.
         self._selection_by_view[view_key] = (girders_combo, member_combo)
+        self._member_id_display_by_view[view_key] = member_display
 
         # Keep selection synced across views.
-        girders_combo.currentIndexChanged.connect(lambda idx, _k=view_key: self._sync_selection_index_to_all_views(idx))
-        member_combo.currentIndexChanged.connect(lambda idx, _k=view_key: self._sync_selection_index_to_all_views(idx))
+        girders_combo.currentIndexChanged.connect(lambda idx, _k=view_key: self._sync_girder_index_to_all_views(idx))
+        member_combo.currentIndexChanged.connect(lambda idx, _k=view_key: self._sync_member_index_to_all_views(idx))
 
         # Seed with safe defaults so the UI isn't empty before binding.
         try:
@@ -514,7 +637,127 @@ class EndDiaphragmDetailsTab(QWidget):
         except Exception:
             pass
 
+        try:
+            self._refresh_member_id_display(view_key)
+        except Exception:
+            pass
+
         return box
+
+    def collect_data(self) -> dict:
+        """Serialize End Diaphragm inputs for all views/pairs/members."""
+        # Persist any in-flight edits first.
+        try:
+            self._store_all_view_states()
+        except Exception:
+            pass
+
+        pairs = self._girder_pairs()
+        view_keys = list(self._selection_by_view.keys())
+
+        # UI config is always M1. For solver/export, expand the configured state
+        # to both members (M1/M2) for each girder-pair.
+        by_view: dict[str, dict] = {}
+        for view_key in view_keys:
+            by_view.setdefault(view_key, {})
+            default_state = self._default_state_for_view(view_key)
+            for pair_idx, pair_label in enumerate(pairs, start=1):
+                base_member = f"E{pair_idx}M1"
+                base_key = f"{view_key}::{pair_label}::{base_member}"
+                base_state = self._state_by_view_member_key.get(base_key)
+                if base_state is None:
+                    base_state = dict(default_state)
+                    self._state_by_view_member_key[base_key] = dict(base_state)
+
+                for member_id in self._member_ids_for_pair(pair_idx):
+                    payload = dict(base_state or {})
+                    payload["select_girders"] = pair_label
+                    payload["member_id"] = (member_id or "").strip().upper()
+                    by_view[view_key][payload["member_id"]] = payload
+
+        # Current selection (for convenience/backward compatibility).
+        current_view = str(self.current_type or "").strip() or "Cross Bracing"
+        current_pair = ""
+        current_member = ""
+        combos = self._selection_by_view.get(current_view)
+        if combos:
+            girders_combo, member_combo = combos
+            current_pair = (girders_combo.currentText() or "").strip() if girders_combo is not None else ""
+            current_member = (member_combo.currentText() or "").strip().upper() if member_combo is not None else ""
+
+        return {
+            "type": current_view,
+            "select_girders": current_pair,
+            "member_id": current_member,
+            "end_diaphragm_by_view": by_view,
+        }
+
+    def restore_data(self, data: dict) -> None:
+        """Restore previously saved End Diaphragm inputs."""
+        if not isinstance(data, dict):
+            return
+
+        restored = data.get("end_diaphragm_by_view")
+        if isinstance(restored, dict):
+            rebuilt: dict[str, dict] = {}
+            # Rebuild internal selection-key map.
+            for view_key, members in restored.items():
+                if not isinstance(members, dict):
+                    continue
+                for member_id, payload in members.items():
+                    if not isinstance(payload, dict):
+                        continue
+                    pair_label = str(payload.get("select_girders") or "").strip()
+                    canonical_member = str(payload.get("member_id") or member_id or "").strip().upper()
+                    if not view_key or not pair_label or not canonical_member:
+                        continue
+                    # UI only stores M1; M2 (if present) is treated as derived.
+                    if not canonical_member.endswith("M1"):
+                        continue
+                    state = dict(payload)
+                    state.pop("select_girders", None)
+                    state.pop("member_id", None)
+                    rebuilt[f"{view_key}::{pair_label}::{canonical_member}"] = state
+            self._state_by_view_member_key = rebuilt
+
+        # Refresh combos and restore selection/type where possible.
+        try:
+            self.refresh_girder_options()
+        except Exception:
+            pass
+
+        target_type = str(data.get("type") or "").strip()
+        if target_type:
+            try:
+                self._set_current_type(target_type)
+            except Exception:
+                pass
+
+        target_pair = str(data.get("select_girders") or "").strip()
+        target_member = str(data.get("member_id") or "").strip().upper()
+        combos = self._selection_by_view.get(str(self.current_type or "Cross Bracing"))
+        if combos:
+            girders_combo, member_combo = combos
+            try:
+                if target_pair and girders_combo is not None:
+                    girders_combo.setCurrentText(target_pair)
+            except Exception:
+                pass
+            try:
+                if member_combo is not None:
+                    # Ensure items match selected pair, then set member.
+                    self._rebuild_member_ids_for_view(str(self.current_type or "Cross Bracing"), previous_member=target_member)
+                    try:
+                        self._refresh_member_id_display(str(self.current_type or "Cross Bracing"))
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+
+        try:
+            self._restore_all_views_for_current_selection()
+        except Exception:
+            pass
 
     def _create_section_properties_box(self, title):
         box = self._create_inner_box()
