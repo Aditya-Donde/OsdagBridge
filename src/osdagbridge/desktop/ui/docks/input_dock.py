@@ -11,7 +11,6 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt, QRegularExpression, QSize, QTimer, QPoint, QEvent
 from PySide6.QtGui import QPixmap, QDoubleValidator, QRegularExpressionValidator, QIcon
 from PySide6.QtSvgWidgets import *
-from matplotlib import text
 from osdagbridge.core.utils.common import *
 from osdagbridge.desktop.ui.dialogs.additional_inputs import AdditionalInputs
 from osdagbridge.desktop.ui.utils.custom_buttons import DockCustomButton
