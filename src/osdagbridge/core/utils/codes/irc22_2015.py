@@ -321,7 +321,7 @@ class IRC22_2014:
             "section_class": section_class,
             "clause": "IRC 22:2014 - 603 (Web Classification)"
         }
-
+    
     
     @staticmethod
     def cl_602_table2_i_outstanding_compression_flange(
@@ -380,69 +380,67 @@ class IRC22_2014:
             dc,
             combination_type="basic",
             is_compact=True,
-            beff_compact_limit=None,
-            fabrication=KEY_SECTION_FABRICATION[0]  # default = rolled
-        ):
+            fabrication=KEY_SECTION_FABRICATION[0]
+    ):
         """
-        IRC:22-2014
-        Clause 603.3.1 + Annexure I (I.1)
-        Positive Moment Resistance of Composite Beam
+        IRC:22-2014 Clause 603.3.1
+        Positive Moment Capacity of Composite Beam
+        Returns ONLY key design outputs.
         """
 
+        # Step 1: Effective width check (if non-compact)
         beff_used = beff
-        beff_compact_limit = None
-        beff_flange_limit = None
-        beff_web_limit = None
 
         if not is_compact:
-
             eps = math.sqrt(250.0 / fy)
             fabrication = fabrication.lower()
 
-            if fabrication == KEY_SECTION_FABRICATION[0]:      # rolled
-                flange_compact_ratio = 10.5 * eps
-                section_type = "Rolled"
-            elif fabrication == KEY_SECTION_FABRICATION[1]:    # welded
-                flange_compact_ratio = 9.4 * eps
-                section_type = "Welded"
-            else:
-                raise ValueError(
-                    f"Invalid fabrication type '{fabrication}'. "
-                    f"Allowed: {KEY_SECTION_FABRICATION}"
-                )
+            if fabrication == KEY_SECTION_FABRICATION[0]:   # rolled
+                flange_limit = 10.5 * eps * tf
+            else:                                            # welded
+                flange_limit = 9.4 * eps * tf
 
-            IS800_2007.Table2_i(
-                width=bf,
-                thickness=tf,
-                f_y=fy,
-                section_type=section_type
-            )
+            web_limit = 105.0 * eps * tw
 
-            beff_flange_limit = flange_compact_ratio * tf
+            beff_used = min(beff, flange_limit, web_limit)
 
-            IS800_2007.Table2_iii(
-                depth=ds,
-                thickness=tw,
-                f_y=fy,
-                classification_type="Neutral axis at mid-depth"
-            )
+        # Step 2: Material strengths
+        gamma_m0 = GAMMA_M0_STEEL
+        gamma_mc = GAMMA_M_SHEAR_CONCRETE
 
-            web_compact_ratio = 105.0 * eps
-            beff_web_limit = web_compact_ratio * tw
+        # Steel tension force
+        T_s = As * fy / gamma_m0   # N
 
-            beff_compact_limit = min(beff_flange_limit, beff_web_limit)
-            beff_used = min(beff, beff_compact_limit)
+        # Concrete compression force (per mm depth)
+        Cc_per_mm = 0.45 * fck * beff_used   # N/mm
 
-            return {
-                "beff_input": beff,
-                "beff_used": round(beff_used, 3),
-                "beff_compact_limit": round(beff_compact_limit, 3),
-                "beff_flange_limit": round(beff_flange_limit, 3),
-                "beff_web_limit": round(beff_web_limit, 3),
-            }
+        # Neutral axis depth
+        xu = T_s / Cc_per_mm
+
+        # Limit to slab depth
+        xu = min(xu, dc)
+
+        # Actual concrete force
+        Cc = 0.45 * fck * beff_used * xu
+
+        # Governing force
+        F = min(T_s, Cc)
+
+        # Lever arm
+        z = ds - xu / 2.0   # mm
+
+        # Moment capacity
+        Md_Nmm = F * z
+        Md_kNm = Md_Nmm / 1e6
+
+        return {
+            "positive_moment_capacity_Md_kNm": round(Md_kNm, 3),
+            "neutral_axis_depth_xu_mm": round(xu, 2),
+            "effective_width_used_beff_mm": round(beff_used, 2),
+            "clause": "IRC 22:2014 - Clause 603.3.1"
+        }
 
 
-# result = IRC22_2014.cl_603_3_3_1_buckling_resistance_moment(section_class="compact",Zp=6.5e6,Ze=5.8e6,fy=345,Iy=8.2e8,It=2.5e5,Iw=3.1e11,LLT=6000,section_type="rolled")
     @staticmethod
     def cl_603_3_3_1_buckling_resistance_moment(
         section_class,                 # plastic / compact / semi-compact
