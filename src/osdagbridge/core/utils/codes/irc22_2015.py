@@ -6,11 +6,8 @@ Module for IRC 22:2014 bridge design clauses.
 """
 
 from osdag_core.utils.common.is800_2007 import IS800_2007 
+from osdagbridge.core.utils.codes.keyfile import *
 import math
-
-from osdagbridge.core.utils.codes import keyfile as KEYS
-from osdagbridge.core.utils.codes.keyfile import KEY_SECTION_FABRICATION,KEY_SECTION_CLASS,KEY_SECTION_TYPE
-
 
 class IRC22_2014:
 
@@ -69,11 +66,11 @@ class IRC22_2014:
         """
 
         properties = {
-            "E_MPa": KEYS.E_STEEL_MPA,                 # Young's Modulus (MPa)
-            "E_GPa": KEYS.E_STEEL_MPA / 1000.0,        # Young's Modulus (GPa) - convenience
-            "G_MPa": KEYS.G_STEEL_MPA,                # Shear Modulus (MPa)
-            "nu": KEYS.POISSON_RATIO_STEEL,                     # Poisson's Ratio
-            "coefficient_of_thermal_expansion": KEYS.COTE_STEEL_PER_C  # per °C per unit length
+            "E_MPa": E_STEEL_MPA,                 # Young's Modulus (MPa)
+            "E_GPa": E_STEEL_MPA / 1000.0,        # Young's Modulus (GPa) - convenience
+            "G_MPa": G_STEEL_MPA,                # Shear Modulus (MPa)
+            "nu": POISSON_RATIO_STEEL,                     # Poisson's Ratio
+            "coefficient_of_thermal_expansion": COTE_STEEL_PER_C  # per °C per unit length
         }
 
         return properties
@@ -282,19 +279,43 @@ class IRC22_2014:
         tw_mm,
         fy_MPa,
         axial_force_N,
-        load_type="Compression",
-        section_class=KEY_SECTION_CLASS[0]
+        load_type="Compression"
     ):
-        return IS800_2007.Table2_web_OfI_H_box_section(
+        """
+        IRC:22-2014 Clause 603
+        Web classification (Ref: IS800 Table 2)
+
+        Returns:
+            section_class : Plastic / Compact / Semi-Compact / Slender
+        """
+
+        checks = IS800_2007.Table2_web_OfI_H_box_section(
             depth=depth_web_mm,
             web_thickness=tw_mm,
             f_y=fy_MPa,
             axial_load=axial_force_N,
-            load_type=load_type,
-            section_class=section_class
+            load_type=load_type
         )
-    
 
+        ratio = depth_web_mm / tw_mm
+        eps = math.sqrt(250 / fy_MPa)
+
+        if ratio <= 67*eps:
+            section_class = "Plastic"
+        elif ratio <= 83*eps:
+            section_class = "Compact"
+        elif ratio <= 124*eps:
+            section_class = "Semi-Compact"
+        else:
+            section_class = "Slender"
+
+        return {
+            "section_class": section_class,
+            "checks": checks,
+            "clause": "IRC 22:2014 - 603 (Web Classification)"
+        }
+
+    
     @staticmethod
     def cl_602_table2_i_outstanding_compression_flange(
         width_mm,
@@ -421,7 +442,7 @@ class IRC22_2014:
         Zp,                             # mm3
         Ze,                             # mm3
         fy,                             # MPa
-        gamma_mo=KEYS.GAMMA_M0_STEEL,
+        gamma_mo=GAMMA_M0_STEEL,
         support="KEY_DISP_SUPPORT1",
 
         Iy=None,                        # mm4
@@ -431,8 +452,8 @@ class IRC22_2014:
 
         section_type=KEY_SECTION_FABRICATION[0],  # rolled / welded
 
-        E=KEYS.E_STEEL_MPA,                  # MPa
-        G=KEYS.G_STEEL_MPA                  # MPa
+        E=E_STEEL_MPA,                  # MPa
+        G=G_STEEL_MPA                  # MPa
     ):
         """
         IRC:22-2014 Clause 603.3.3.1
@@ -448,8 +469,8 @@ class IRC22_2014:
         section_class = section_class.lower()
         section_type = section_type.lower()
 
-        if section_class not in KEYS.KEY_SECTION_CLASS:
-            raise ValueError(f"Invalid section_class. Allowed: {KEYS.KEY_SECTION_CLASS}")
+        if section_class not in KEY_SECTION_CLASS:
+            raise ValueError(f"Invalid section_class. Allowed: {KEY_SECTION_CLASS}")
 
         if section_type not in KEY_SECTION_FABRICATION:
             raise ValueError(f"Invalid section_type. Allowed: {KEY_SECTION_FABRICATION}")
@@ -548,7 +569,7 @@ class IRC22_2014:
         """
 
 
-        gamma_m0 = KEYS.GAMMA_M0_STEEL
+        gamma_m0 = GAMMA_M0_STEEL
         section_type = section_type.lower()
         fabrication = fabrication.lower()
 
@@ -568,7 +589,7 @@ class IRC22_2014:
             else:
                 raise ValueError("fabrication must be 'rolled' or 'welded'")
 
-        elif section_type == KEYS.KEY_SECTION_TYPE[1]:
+        elif section_type == KEY_SECTION_TYPE[1]:
             #  consistent symbols as per IRC22/IS800
             if bf is None or tf is None:
                 raise ValueError("For i_minor section: bf and tf are required")
@@ -617,7 +638,7 @@ class IRC22_2014:
         """
 
         import math
-        E_MPa = KEYS.E_STEEL_MPA
+        E_MPa = E_STEEL_MPA
 
         # 1) Get shear buckling coefficient Kv from IS800
         support = "only support" if stiffeners_at_support_only else "intermediate"
@@ -675,7 +696,7 @@ class IRC22_2014:
         Uses IS 800:2007 Clause 8.4.2.2(b)
         """
 
-        gamma_m0=KEYS.GAMMA_M0_STEEL
+        gamma_m0=GAMMA_M0_STEEL
         # IS800 function returns V_tf in kN (as per your shared code)
         phi, Mfr, s, wtf, psi, fv, Vtf = IS800_2007.cl_8_4_2_2_TensionField(
             c=c_mm,
@@ -774,7 +795,7 @@ class IRC22_2014:
         """
 
         # As per clause (fixed)
-        Es = KEYS.E_STEEL_MPA  # MPa (N/mm2)
+        Es = E_STEEL_MPA  # MPa (N/mm2)
 
         # Ecm from Annex III Table III.1 if not provided
         if Ecm is None:
@@ -1574,7 +1595,7 @@ class IRC22_2014:
         Qu_kN,             # stud design capacity (kN) -> from IRC22 606.3.1 
 
         # Material 
-        Es_MPa=KEYS.E_STEEL_MPA,      # MPa (as per IRC 22 clause 604.3)
+        Es_MPa=E_STEEL_MPA,      # MPa (as per IRC 22 clause 604.3)
         Ecm_MPa=None,      # MPa secant modulus of concrete (can be taken from IRC22 Table III.1)
 
         # Steel section inputs
@@ -1667,7 +1688,7 @@ class IRC22_2014:
         Qu_kN,              # stud capacity (kN) -> from IRC22 606.3.1
         shear_span_mm,      # L = length from zero moment to max moment section (mm)
         studs_per_section=2,
-        gamma_m=KEYS.GAMMA_M0_STEEL
+        gamma_m=GAMMA_M0_STEEL
     ):
         """
         IRC 22:2015 Clause 606.4.1.1 Full Shear Connection
@@ -1798,7 +1819,7 @@ class IRC22_2014:
         ccbottom_mm=None,      # bottom slab cover to transverse reinforcement
         d_bar_mm=None,         # bar diameter
 
-        required_clear_cover_mm=KEYS.MIN_EDGE_DISTANCE_MM  # required minimum clear cover
+        required_clear_cover_mm=MIN_EDGE_DISTANCE_MM  # required minimum clear cover
     ):
         """
         IRC 22:2015 Clause 606.6 - Detailing of Shear Connectors
@@ -1847,7 +1868,7 @@ class IRC22_2014:
             else:
                 edge_distance_mm = None
 
-        results["required_edge_distance_mm"] = KEYS.MIN_EDGE_DISTANCE_MM
+        results["required_edge_distance_mm"] = MIN_EDGE_DISTANCE_MM
         if edge_distance_mm is None:
             results["edge_distance_check"] = None
             results["edge_distance_check_note"] = "Edge distance not provided and insufficient data to calculate"

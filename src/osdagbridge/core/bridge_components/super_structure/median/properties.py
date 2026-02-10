@@ -1,6 +1,8 @@
 """
-Crash barrier self-weight calculations.
+Median self-weight calculations.
 Takes area values from geometry.py and converts them to load.
+
+@author: Sweta Pal
 """
 
 from .geometry import (

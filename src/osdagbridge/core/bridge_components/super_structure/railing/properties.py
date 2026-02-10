@@ -1,3 +1,10 @@
+"""
+Railing self-weight calculations.
+Takes area values from geometry.py and converts them to load.
+
+@author: Sweta Pal
+"""
+
 from osdagbridge.core.utils.codes.keyfile import (
     KEY_RAILING_TYPE
 )
