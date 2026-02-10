@@ -1,12 +1,10 @@
-from cProfile import label
 import sys
 import os
 import math
-import sqlite3
 from PySide6.QtWidgets import (
     QApplication, QWidget, QHBoxLayout, QVBoxLayout, QPushButton,
     QComboBox, QScrollArea, QLabel, QFormLayout, QLineEdit, QGroupBox, QSizePolicy, QMessageBox, QInputDialog, QDialog, QCheckBox, QFrame,
-    QDialogButtonBox, QStackedWidget, QSizeGrip
+    QDialogButtonBox, QStackedWidget
 )
 from PySide6.QtCore import Qt, QRegularExpression, QSize, QTimer, QPoint, QEvent
 from PySide6.QtGui import QPixmap, QDoubleValidator, QRegularExpressionValidator, QIcon
@@ -15,43 +13,6 @@ from osdagbridge.core.utils.common import *
 from osdagbridge.desktop.ui.dialogs.additional_inputs import AdditionalInputs
 from osdagbridge.desktop.ui.utils.custom_buttons import DockCustomButton
 from osdagbridge.desktop.ui.dialogs.project_location import ProjectLocationDialog
-from osdagbridge.desktop.ui.utils.custom_titlebar import CustomTitleBar
-
-MATERIAL_LABELS_RICH = {
-    # ---- CONCRETE (DECK) ----
-    "Characteristic Compressive (Cube) Strength of Concrete, (fck)cu (MPa)":
-        "Characteristic Compressive (Cube) Strength of Concrete, f<sub>ck</sub> (MPa)",
-
-    "Mean Tensile Strength of Concrete, fctm (MPa)":
-        "Mean Tensile Strength of Concrete, f<sub>ctm</sub> (MPa)",
-
-    "Secant Modulus of Elasticity of Concrete, Ecm (GPa)":
-        "Secant Modulus of Elasticity of Concrete, E<sub>cm</sub> (GPa)",
-
-    "Ecm Multiplication Factor":
-        "E<sub>cm</sub> Multiplication Factor",
-
-    "Thermal Expansion Coefficient, (×10⁻⁶/°C)":
-        "Thermal Expansion Coefficient, (&times;10<sup>&minus;6</sup>/°C)",
-
-    # ---- STEEL (GIRDER / BRACING / DIAPHRAGM) ----
-    "Ultimate Tensile Strength, Fu (MPa)":
-        "Ultimate Tensile Strength, F<sub>u</sub> (MPa)",
-
-    "Yield Strength, Fy (MPa)":
-        "Yield Strength, F<sub>y</sub> (MPa)",
-
-    "Modulus of Elasticity, E (GPa)":
-        "Modulus of Elasticity, E (GPa)",
-
-    "Modulus of Rigidity, G (GPa)":
-        "Modulus of Rigidity, G (GPa)",
-
-    "Poisson's Ratio, ν":
-        "Poisson&apos;s Ratio, &nu;",
-}
-
-
 
 
 STEEL_MEMBER_FIELDS = [
@@ -68,7 +29,6 @@ DECK_MEMBER_FIELDS = [
     "Mean Tensile Strength of Concrete, fctm (MPa)",
     "Secant Modulus of Elasticity of Concrete, Ecm (GPa)",
     "Ecm Multiplication Factor",
-    "Thermal Expansion Coefficient, (×10⁻⁶/°C)",
 ]
 
 STEEL_MODULUS_E_GPA = 200.0
@@ -102,7 +62,7 @@ CUSTOM_ECM_FACTOR_LABEL = "Custom"
 
 class NoScrollComboBox(QComboBox):
     def wheelEvent(self, event):
-        event.ignore()  
+        event.ignore()  # Prevent changing selection on scroll
 
 def apply_field_style(widget):
     widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
@@ -193,12 +153,7 @@ class MaterialPropertiesDialog(QDialog):
         super().__init__(parent)
         self.setWindowTitle("Material Properties")
         self.setMinimumWidth(580)
-        self.setStyleSheet("""
-        QDialog {
-            background-color: white;
-            border: 1px solid #90AF13;
-        }
-    """)
+        self.setStyleSheet("background-color: white;")
 
         self.parent_dock = parent
         self._loading = False
@@ -211,21 +166,21 @@ class MaterialPropertiesDialog(QDialog):
 
         self.material_combo = NoScrollComboBox()
         apply_field_style(self.material_combo)
-        self.setupWrapper()
-        main_layout = QVBoxLayout(self.content_widget)
+
+        main_layout = QVBoxLayout(self)
         main_layout.setContentsMargins(20, 16, 20, 16)
 
         # Create a container widget for all form fields
         form_container = QWidget()
         form_layout = QVBoxLayout(form_container)
         form_layout.setContentsMargins(0, 0, 0, 0)
-        form_layout.setSpacing(12)
+        form_layout.setSpacing(10)
         
         # Member row
         member_row = QHBoxLayout()
         member_row.setContentsMargins(0, 0, 0, 0)
         member_row.setSpacing(18)
-        member_label = QLabel("Member")
+        member_label = QLabel("Member*:")
         member_label.setStyleSheet("font-size: 12px; color: #2d2d2d;")
         member_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
         member_label.setFixedWidth(280)
@@ -239,7 +194,7 @@ class MaterialPropertiesDialog(QDialog):
         material_row = QHBoxLayout()
         material_row.setContentsMargins(0, 0, 0, 0)
         material_row.setSpacing(18)
-        material_label = QLabel("Material")
+        material_label = QLabel("Material*:")
         material_label.setStyleSheet("font-size: 12px; color: #2d2d2d;")
         material_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
         material_label.setFixedWidth(280)
@@ -259,6 +214,7 @@ class MaterialPropertiesDialog(QDialog):
         self.stack.addWidget(self.deck_page)
         main_layout.addWidget(self.stack)
 
+        # Updated default row with proper alignment
         default_row = QHBoxLayout()
         default_row.setContentsMargins(0, 0, 0, 0)
         default_row.setSpacing(18)
@@ -267,7 +223,7 @@ class MaterialPropertiesDialog(QDialog):
         default_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
         default_label.setFixedWidth(280)
         self.default_checkbox = QCheckBox()
-     
+        # Create container for checkbox to align it to the left
         checkbox_container = QWidget()
         checkbox_layout = QHBoxLayout(checkbox_container)
         checkbox_layout.setContentsMargins(0, 0, 0, 0)
@@ -285,21 +241,6 @@ class MaterialPropertiesDialog(QDialog):
 
         self._initialize_member_data()
         self._on_member_changed(self.member_combo.currentText())
-        self.setFixedSize(self.sizeHint())
-
-    def setupWrapper(self):
-        self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowSystemMenuHint)
-
-        main_layout = QVBoxLayout(self)
-        main_layout.setContentsMargins(1, 1, 1, 1)
-        main_layout.setSpacing(0)
-        
-        self.title_bar = CustomTitleBar()
-        self.title_bar.setTitle("Material Properties")
-        main_layout.addWidget(self.title_bar)
-        
-        self.content_widget = QWidget(self)
-        main_layout.addWidget(self.content_widget, 1)
 
     def closeEvent(self, event):
         self._save_current_member_form()
@@ -315,18 +256,14 @@ class MaterialPropertiesDialog(QDialog):
             row = QHBoxLayout()
             row.setContentsMargins(0, 0, 0, 0)
             row.setSpacing(18)
-            text = MATERIAL_LABELS_RICH.get(label_text, label_text)
-            label = QLabel(text)
-            label.setTextFormat(Qt.RichText)
+            label = QLabel(label_text)
             label.setStyleSheet("font-size: 12px; color: #2d2d2d;")
-            label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
-            label.setFixedWidth(280)
-            label.setWordWrap(True) 
             label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
             label.setFixedWidth(280)
             line_edit = QLineEdit()
             line_edit.setFixedWidth(242)
             apply_field_style(line_edit)
+            # Add validator for 1 decimal place
             line_edit.setValidator(QDoubleValidator(0.0, 99999.0, 1))
             line_edit.textEdited.connect(self._handle_user_override)
             self.steel_field_inputs[label_text] = line_edit
@@ -340,21 +277,15 @@ class MaterialPropertiesDialog(QDialog):
     def _build_deck_form(self):
         widget = QWidget()
         layout = QVBoxLayout(widget)
-        layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(10)
         self.deck_field_inputs = {}
         for label_text in DECK_MEMBER_FIELDS:
             row = QHBoxLayout()
-            row.setContentsMargins(0, 0, 0, 0)
             row.setSpacing(18)
-            text = MATERIAL_LABELS_RICH.get(label_text, label_text)
-            label = QLabel(text)
-            label.setTextFormat(Qt.RichText)
-
+            label = QLabel(label_text)
             label.setStyleSheet("font-size: 12px; color: #2d2d2d;")
             label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
             label.setFixedWidth(280)
-            label.setWordWrap(True)
             if label_text == "Ecm Multiplication Factor":
                 self.deck_factor_combo = NoScrollComboBox()
                 self.deck_factor_combo.addItems(ECM_FACTOR_LABELS)
@@ -375,26 +306,23 @@ class MaterialPropertiesDialog(QDialog):
                 row.addWidget(self.deck_factor_combo)
                 row.addStretch()
                 
-                self.deck_factor_custom_container = QWidget()
-                custom_layout = QHBoxLayout(self.deck_factor_custom_container)
-                custom_layout.setContentsMargins(0, 0, 0, 0)
-                custom_layout.setSpacing(18)
-
-                custom_label = QLabel("")
-                custom_label.setFixedWidth(280) 
-                custom_layout.addWidget(custom_label)
-                custom_layout.addWidget(self.deck_factor_custom_input)
-                custom_layout.addStretch()
-
-                self.deck_factor_custom_container.setVisible(False)
-                layout.addWidget(self.deck_factor_custom_container)
+                # Add custom input row (hidden by default)
+                custom_row = QHBoxLayout()
+                custom_row.setContentsMargins(0, 0, 0, 0)
+                custom_row.setSpacing(18)
+                custom_label = QLabel("")  # Empty label for alignment
+                custom_label.setFixedWidth(280)
+                custom_row.addWidget(custom_label)
+                custom_row.addWidget(self.deck_factor_custom_input)
+                custom_row.addStretch()
+                layout.addLayout(custom_row)
                 
                 self.deck_field_inputs[label_text] = self.deck_factor_combo
             else:
                 line_edit = QLineEdit()
                 line_edit.setFixedWidth(242)
                 apply_field_style(line_edit)
-             
+                # Add validator for 1 decimal place
                 line_edit.setValidator(QDoubleValidator(0.0, 99999.0, 1))
                 line_edit.textEdited.connect(self._handle_user_override)
                 row.addWidget(label)
@@ -412,7 +340,7 @@ class MaterialPropertiesDialog(QDialog):
             self.member_data[member] = {
                 "material": material,
                 "fields": fields,
-                "is_default": False if member == "Deck" else True,
+                "is_default": True,
                 "factor_label": DEFAULT_ECM_FACTOR_LABEL if member == "Deck" else None,
                 "custom_factor": "1.0" if member == "Deck" else None,
             }
@@ -437,55 +365,19 @@ class MaterialPropertiesDialog(QDialog):
             "Poisson's Ratio, ν": "{:.1f}".format(STEEL_POISSON_RATIO),
             "Thermal Expansion Coefficient, (×10⁻⁶/°C)": "{:.1f}".format(STEEL_THERMAL_COEFF),
         }
-    
-    def _get_concrete_from_db(self, grade):
-
-        grade = grade.replace(" ", "").upper()
-        base_dir = os.path.abspath(
-            os.path.join(os.path.dirname(__file__), "..", "..", "..")
-        )
-
-        db_path = os.path.join(
-            base_dir,
-            "core", "data", "ResourceFiles", "Intg_osdag.sqlite"
-        )
-
-        conn = sqlite3.connect(db_path)
-        cursor = conn.cursor()
-        cursor.execute(
-        "SELECT fck, fctm, Ecm FROM Concrete WHERE grade = ?",
-        (grade,)
-        )
-
-        row = cursor.fetchone()
-        conn.close()
-
-        if row:
-            return {
-            "fck": row[0],
-            "fctm": row[1],
-            "Ecm": row[2]
-        }
-
-        return None
 
     def _deck_defaults(self, grade, factor_value):
-
-        data = self._get_concrete_from_db(grade)
-        if not data:
-            return {}
-
-        fck = data["fck"]
-        fctm = data["fctm"]
-        ecm = round(data["Ecm"] * factor_value, 1)
-
+        strength = self._extract_numeric_grade(grade, default=25)
+        fck = float(strength)
+        fctm = round(0.7 * math.sqrt(fck), 1)
+        ecm = round(5.0 * math.sqrt(fck) * factor_value, 1)
         return {
             "Characteristic Compressive (Cube) Strength of Concrete, (fck)cu (MPa)": "{:.1f}".format(fck),
             "Mean Tensile Strength of Concrete, fctm (MPa)": "{:.1f}".format(fctm),
             "Secant Modulus of Elasticity of Concrete, Ecm (GPa)": "{:.1f}".format(ecm),
-            "Thermal Expansion Coefficient, (×10⁻⁶/°C)": "11.7", 
+            "Ecm Multiplication Factor": "{:.1f}".format(factor_value),
         }
-    
+
     def _extract_numeric_grade(self, grade, default=250):
         digits = ''.join(ch for ch in grade if ch.isdigit())
         try:
@@ -509,10 +401,11 @@ class MaterialPropertiesDialog(QDialog):
             self.member_data[member] = self._create_default_entry(member)
             data = self.member_data[member]
 
+        if data.get("is_default"):
+            self._apply_defaults_for_member(member, update_ui=False)
 
         materials = self._materials_for_member(member)
         self._loading = True
-
         self.material_combo.clear()
         self.material_combo.addItems(materials)
         if data["material"] in materials:
@@ -521,24 +414,17 @@ class MaterialPropertiesDialog(QDialog):
             self.material_combo.setCurrentIndex(0)
             data["material"] = self.material_combo.currentText()
 
-
-        
-        if data.get("is_default") and not self._loading:
-            self._apply_defaults_for_member(member, update_ui=True)
-
+        self.default_checkbox.setChecked(data.get("is_default", False))
+        if is_deck:
+            self._populate_deck_fields(data)
         else:
-            if is_deck:
-                self._populate_deck_fields(data)
-            else:
-                self._populate_steel_fields(data)
-            
+            self._populate_steel_fields(data)
         self._loading = False
-
 
     def _populate_steel_fields(self, data):
         for label, widget in self.steel_field_inputs.items():
-            
             value = data["fields"].get(label, "")
+            # Format to 1 decimal place
             try:
                 formatted_value = "{:.1f}".format(float(value))
                 widget.setText(formatted_value)
@@ -551,7 +437,7 @@ class MaterialPropertiesDialog(QDialog):
                 factor_label = data.get("factor_label", DEFAULT_ECM_FACTOR_LABEL)
                 if factor_label not in ECM_FACTOR_LABELS:
                     factor_label = DEFAULT_ECM_FACTOR_LABEL
-                    self.deck_factor_combo.blockSignals(True)
+                self.deck_factor_combo.blockSignals(True)
                 self.deck_factor_combo.setCurrentText(factor_label)
                 self.deck_factor_combo.blockSignals(False)
                 self._update_custom_factor_visibility(factor_label)
@@ -564,19 +450,13 @@ class MaterialPropertiesDialog(QDialog):
                     self.deck_factor_custom_input.setText(custom_val)
                 self.deck_factor_custom_input.blockSignals(False)
             else:
-            
                 value = data["fields"].get(label, "")
-            
+                # Format to 1 decimal place
                 try:
                     formatted_value = "{:.1f}".format(float(value))
                     widget.setText(formatted_value)
                 except (ValueError, TypeError):
                     widget.setText(value)
-
-        for label, widget in self.deck_field_inputs.items():
-            if isinstance(widget, QLineEdit):
-                widget.setReadOnly(False)
-                widget.setEnabled(True)
 
     def _save_current_member_form(self):
         if not self.current_member:
@@ -609,10 +489,11 @@ class MaterialPropertiesDialog(QDialog):
 
     def _apply_defaults_for_member(self, member, update_ui=True):
         data = self.member_data.setdefault(member, self._create_default_entry(member))
-
-        grade = data.get("material") or self._get_parent_grade(member)
+        grade = self._get_parent_grade(member) or data.get("material")
+        materials = self._materials_for_member(member)
+        if grade not in materials and materials:
+            grade = materials[0]
         data["material"] = grade
-
         if member == "Deck":
             data["factor_label"] = DEFAULT_ECM_FACTOR_LABEL
             data["custom_factor"] = "1.0"
@@ -674,36 +555,17 @@ class MaterialPropertiesDialog(QDialog):
 
     def _update_custom_factor_visibility(self, label):
         is_custom = label == CUSTOM_ECM_FACTOR_LABEL
-        self.deck_factor_custom_container.setVisible(is_custom)
+        self.deck_factor_custom_input.setVisible(is_custom)
         self.deck_factor_custom_input.setEnabled(is_custom)
-
+        self.deck_factor_combo.setVisible(not is_custom)
 
     def _on_material_changed(self, material):
         if self._loading:
             return
-
         data = self.member_data.get(self.current_member)
-        if not data:
-            return
-        
-        data["material"] = material
-
-        if self.current_member == "Deck":
-            factor_value = self._factor_value_from_label(
-                data.get("factor_label", DEFAULT_ECM_FACTOR_LABEL),
-                data.get("custom_factor")
-            )
-            data["fields"] = self._deck_defaults(material, factor_value)
-            self._populate_deck_fields(data)
-        else:
-            data["fields"] = self._steel_defaults(material)
-            self._populate_steel_fields(data)
-
-        data["is_default"] = True
-        self.default_checkbox.blockSignals(True)
-        self.default_checkbox.setChecked(True)
-        self.default_checkbox.blockSignals(False)
-
+        if data:
+            data["material"] = material
+        self._handle_user_override()
 
     def _on_default_toggled(self, state):
         if self._loading:
@@ -757,6 +619,8 @@ class MaterialPropertiesDialog(QDialog):
         for member, data in self.member_data.items():
             if data.get("is_default"):
                 self._apply_defaults_for_member(member, update_ui=(member == self.current_member))
+
+
 class InputDock(QWidget):
     def __init__(self, backend, parent):
         super().__init__()
@@ -783,11 +647,13 @@ class InputDock(QWidget):
 
         self.left_container = QWidget()
 
+        # Get input fields from backend
         input_field_list = self.backend.input_values()
 
         self.build_left_panel(input_field_list)
         self.main_layout.addWidget(self.left_container)
 
+        # Toggle strip
         self.toggle_strip = QWidget()
         self.toggle_strip.setStyleSheet("background-color: #90AF13;")
         self.toggle_strip.setFixedWidth(6)
@@ -842,7 +708,8 @@ class InputDock(QWidget):
         
         if dialog.exec() == QDialog.Accepted:
             location_data = dialog.get_selected_location()
-        
+            
+            # Process the location data as needed
             if location_data['method'] == 'coordinates':
                 lat = location_data['data']['latitude']
                 lon = location_data['data']['longitude']
@@ -859,11 +726,13 @@ class InputDock(QWidget):
             if location_data['custom_params']:
                 print("Custom loading parameters requested")
 
+    # Lock-Tooltip-Events-Starts-------------------------------------------------------------------------
     def eventFilter(self, obj, event):
+        # Check if it's the scroll area and it's a mouse press
         if obj == self.scroll_area and event.type() == QEvent.MouseButtonPress:
             if self.is_locked:
                 self.show_lock_tooltip()
-            return True  
+            return True  # Block the event
         return super().eventFilter(obj, event)
     
     def clear_force_hover(self):
@@ -873,21 +742,24 @@ class InputDock(QWidget):
             self.lock_btn.update()
 
     def show_lock_tooltip(self):
-       
+        # Stop any existing timer first
         if hasattr(self, 'tooltip_timer') and self.tooltip_timer.isActive():
             self.tooltip_timer.stop()
-       
+        
+        # Position tooltip to the right of the lock button
         lock_global_pos = self.lock_btn.mapToGlobal(self.lock_btn.rect().topRight())
         tooltip_pos = lock_global_pos + QPoint(5, 0)
         self.lock_btn.setProperty("forceHover", True)
         self.lock_btn.style().polish(self.lock_btn)
         self.lock_btn.update()
                 
+        # Adjust size and position
         self.lock_btn_tooltip.adjustSize()
         self.lock_btn_tooltip.move(tooltip_pos)
         self.lock_btn_tooltip.show()
         self.lock_btn_tooltip.raise_()
         
+        # Hide after 3 seconds
         if not hasattr(self, 'tooltip_timer'):
             self.tooltip_timer = QTimer()
             self.tooltip_timer.setSingleShot(True)
@@ -911,7 +783,8 @@ class InputDock(QWidget):
     
     def resizeEvent(self, event):
         super().resizeEvent(event)
-    
+        # Checking hasattr is only meant to prevent errors,
+        # while standalone testing of this widget
         if self.parent:
             if self.width() == 0:
                 if hasattr(self.parent, 'update_docking_icons'):
@@ -934,6 +807,9 @@ class InputDock(QWidget):
         self.toggle_btn.setText("❯" if is_collapsing else "❮")
         self.toggle_btn.setToolTip("Show panel" if is_collapsing else "Hide panel")
 
+    
+    # Lock-Tooltip-Events-Ends-------------------------------------------------------------------------
+
     def build_left_panel(self, field_list):
         left_layout = QVBoxLayout(self.left_container)
         left_layout.setContentsMargins(0, 0, 0, 0)
@@ -945,6 +821,7 @@ class InputDock(QWidget):
         panel_layout.setContentsMargins(15, 10, 15, 10)
         panel_layout.setSpacing(0)
 
+        # Top Bar with buttons
         top_bar = QHBoxLayout()
         top_bar.setSpacing(8)
         top_bar.setContentsMargins(0, 0, 0, 15)
@@ -993,6 +870,7 @@ class InputDock(QWidget):
         self.additional_inputs_btn.clicked.connect(self.show_additional_inputs)
         top_bar.addWidget(self.additional_inputs_btn)           
 
+        # Lock button
         self.lock_btn = QPushButton()
         self.lock_btn.setStyleSheet("""
             QPushButton {
@@ -1025,6 +903,7 @@ class InputDock(QWidget):
         top_bar.addWidget(self.lock_btn)
         panel_layout.addLayout(top_bar)
 
+        #-Lock-ToolTip--------------------------------------
         self.lock_btn_tooltip = QLabel("Unlock to Edit")
         self.lock_btn_tooltip.setStyleSheet("""
             QLabel{
@@ -1040,7 +919,9 @@ class InputDock(QWidget):
         self.lock_btn_tooltip.setObjectName("lock_btn_tooltip")
         self.lock_btn_tooltip.setWindowFlags(Qt.ToolTip)
         self.lock_btn_tooltip.hide()
+        #--------------------------------------------------
 
+        # Scroll area
         scroll_area = QScrollArea()
         self.scroll_area = scroll_area
         scroll_area.setWidgetResizable(True)
@@ -1823,7 +1704,7 @@ class InputDock(QWidget):
     def show_material_properties_dialog(self):
         """Open the material properties dialog with the relevant member selected."""
         if self.material_dialog is None:
-            self.material_dialog = MaterialPropertiesDialog()
+            self.material_dialog = MaterialPropertiesDialog(self)
 
         member = "Girder"
         focus_widget = QApplication.focusWidget()

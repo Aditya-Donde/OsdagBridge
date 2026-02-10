@@ -44,9 +44,66 @@ class SectionCatalog:
         self._channels: Dict[str, ChannelSection] = {}
         self._load()
 
+    def _ensure_schema(self, cur):
+    
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS EqualAngle (
+            Designation TEXT PRIMARY KEY,
+            a REAL,
+            b REAL,
+            t REAL,
+            R1 REAL,
+            R2 REAL
+        )
+        """)
+
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS UnequalAngle (
+            Designation TEXT PRIMARY KEY,
+            a REAL,
+            b REAL,
+            t REAL,
+            R1 REAL,
+            R2 REAL
+        )
+        """)
+
+    
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS Channels (
+            Designation TEXT PRIMARY KEY,
+            D REAL,
+            B REAL,
+            tw REAL,
+            T REAL,
+            R1 REAL,
+            R2 REAL
+        )
+        """)
+
+        cur.execute("""
+        INSERT OR IGNORE INTO EqualAngle
+        VALUES ('ISA 100x75x8', 100, 75, 8, 10, 10)
+        """)
+
+        cur.execute("""
+        INSERT OR IGNORE INTO UnequalAngle
+        VALUES ('ISA 90x60x6', 90, 60, 6, 8, 8)
+        """)
+
+        cur.execute("""
+        INSERT OR IGNORE INTO Channels
+        VALUES ('ISMC 200', 200, 75, 5.7, 8.5, 8, 8)
+        """)
+
+
+
     def _load(self) -> None:
         con = sqlite3.connect(self.db_path)
         cur = con.cursor()
+
+        self._ensure_schema(cur)  
+        con.commit()
 
         # Equal and unequal angles
         for table in ("EqualAngle", "UnequalAngle"):
