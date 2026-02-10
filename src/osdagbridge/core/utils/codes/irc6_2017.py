@@ -519,7 +519,7 @@ class IRC6_2017:
             
     
     @staticmethod
-    def table_12(height, basic_wind_speed=33):
+    def table_12(height, terrain, basic_wind_speed=33):
         """
         Returns wind speed (Vz) and wind pressure (Pz) according to IRC:6-2017 Table 12,
         including interpolation and scaling for arbitrary basic wind speed.
@@ -559,11 +559,11 @@ class IRC6_2017:
             }
         }
 
-        if KEY_TERRAIN_TYPE not in table:
+        if terrain not in table:
             raise ValueError("terrain must be 'plain' or 'obstructed'")
 
         # Extract terrain data
-        terrain_table = table[KEY_TERRAIN_TYPE]
+        terrain_table = table[terrain]
 
         # Clamp height to 10 m minimum as per "Up to 10 m"
         if height <= 10:
@@ -600,20 +600,38 @@ class IRC6_2017:
         return {"Vz": Vz_scaled, "Pz": Pz_scaled}
 
     @staticmethod
-    def cl_206_3_3_transverse_wind_load(span):
+    def cl_209_3_3_transverse_wind_load(
+            span,
+            railing_height,
+            crash_barrier_height,
+            deck_thickness,
+            openings_in_railing,
+            height_for_pz,
+            terrain,
+            basic_wind_speed,
+            girder_section,
+            number_of_girders,
+            c_spacing=None,
+            b_width=None,
+            d_depth=None
+    ):
         """
         Computes transverse wind force as per IRC:6-2017 Clause 209.3.3.
 
         Parameters:
             span (float): span in meters
-            railing_height, crash_barrier_height, deck_thickness, openings_in_railing (float): dimensions in m
+            railing_height (float): height of railing in m
+            crash_barrier_height (float): height of crash barrier in m
+            deck_thickness (float): thickness of deck in m
+            openings_in_railing (float): openings in railing in m
             height_for_pz (float): height at which Pz is evaluated (Table 12)
             terrain (str): "plain" or "obstructed"
-            basic_wind_speed (float): V_b
+            basic_wind_speed (float): V_b in m/s
             girder_section (str): "plate" or "rolled"
-            number_of_girders (int)
-            c_spacing (float): centre-to-centre spacing for plate girders (n ≥ 2)
-            b_width, d_depth (float): width & depth for rolled beams (for CD)
+            number_of_girders (int): number of girders
+            c_spacing (float, optional): centre-to-centre spacing for plate girders (n ≥ 2)
+            b_width (float, optional): width for rolled beams (for CD)
+            d_depth (float, optional): depth for rolled beams (for CD)
 
         Returns:
             dict: {"A1":..., "Pz":..., "G":..., "CD":..., "FT":...}
@@ -719,7 +737,7 @@ class IRC6_2017:
         Returns:
             float: Longitudinal wind force FL in kN (rounded to 3 decimal places)
         """
-        FL = 0.25 * IRC6_2017.cl_206_3_3_transverse_wind_load()['FT']
+        FL = 0.25 * IRC6_2017.cl_209_3_3_transverse_wind_load()['FT']
         return round(FL, 3)
     
     @staticmethod
@@ -729,8 +747,8 @@ class IRC6_2017:
         Returns:
             float: Vertical wind force FV in kN (rounded to 3 decimal places)
         """
-        G = IRC6_2017.cl_206_3_3_transverse_wind_load()['G']
-        Pz = IRC6_2017.cl_206_3_3_transverse_wind_load()['Pz']
+        G = IRC6_2017.cl_209_3_3_transverse_wind_load()['G']
+        Pz = IRC6_2017.cl_209_3_3_transverse_wind_load()['Pz']
 
         A3 = span * (carriageway_width + footpath_width)
         CL = 0.75  # Lift coefficient for flat plate
@@ -739,18 +757,34 @@ class IRC6_2017:
         return round(FV, 3)
     
     @staticmethod
-    def cl_209_3_6_transverse_wind_load_per_unit(railing_height, crash_barrier_height):
+    def cl_209_3_6_transverse_wind_load_per_unit(
+            railing_height,
+            crash_barrier_height,
+            height_for_pz,
+            terrain,
+            basic_wind_speed
+    ):
         """
-        Computes transverse wind load per unit length as per IRC:6-2017 Clause 209.3.6.
+        Computes transverse wind load per unit length on parapet/railing 
+        as per IRC:6-2017 Clause 209.3.6.
+        
         Args:
             railing_height (float): height of railing in metres
             crash_barrier_height (float): height of crash barrier in metres
+            height_for_pz (float): height at which Pz is evaluated (Table 12)
+            terrain (str): "plain" or "obstructed"
+            basic_wind_speed (float): basic wind speed V_b in m/s
+            
         Returns:
             float: Transverse wind load per unit length FTL in kN/m (rounded to 3 decimal places)
         """
         
-        G = IRC6_2017.cl_206_3_3_transverse_wind_load()['G']
-        Pz = IRC6_2017.cl_206_3_3_transverse_wind_load()['Pz']
+        # Wind pressure from Table 12
+        Pz = IRC6_2017.table_12(height_for_pz, terrain, basic_wind_speed)["Pz"]
+        
+        # Gust factor (constant per IRC:6 for spans ≤150m)
+        G = 2.0
+        
         CD = 1.2  # Drag coefficient for parapet
         
         # Determine if railing or crash barrier is present

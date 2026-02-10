@@ -130,16 +130,6 @@ class BridgeGrillageModel:
         self.layout.validate_against_bridge(self.bridge_geometry.width)
 
         # -------------------------------------------------
-        # Verify layout width against grillage geometry
-        # Formula: OverallBridgeWidth = (n_girders - 1) * girder_spacing + 2 * deck_overhang_width
-        # -------------------------------------------------
-        self.layout.verify_bridge_width(
-            num_long_grid=self.n_l,
-            ext_to_int_dist=self.ext_to_int_dist,
-            edge_beam_dist=self.edge_dist,
-        )
-
-        # -------------------------------------------------
         # Load placement manager
         # -------------------------------------------------
         self.load_manager = LoadPlacementManager(
