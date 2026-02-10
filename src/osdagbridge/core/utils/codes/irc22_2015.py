@@ -281,37 +281,44 @@ class IRC22_2014:
         axial_force_N,
         load_type="Compression"
     ):
-        """
-        IRC:22-2014 Clause 603
-        Web classification (Ref: IS800 Table 2)
 
-        Returns:
-            section_class : Plastic / Compact / Semi-Compact / Slender
-        """
-
+        # Call IS800 (for reference checks)
         checks = IS800_2007.Table2_web_OfI_H_box_section(
             depth=depth_web_mm,
             web_thickness=tw_mm,
             f_y=fy_MPa,
             axial_load=axial_force_N,
-            load_type=load_type
+            load_type=load_type,
+            section_class="Plastic"
         )
 
+        # --- Calculate actual ratios ---
         ratio = depth_web_mm / tw_mm
-        eps = math.sqrt(250 / fy_MPa)
+        eps = math.sqrt(250.0 / fy_MPa)
 
-        if ratio <= 67*eps:
+        plastic_limit = 67 * eps
+        compact_limit = 83 * eps
+        semi_limit = 124 * eps
+
+        # --- Determine class ---
+        if ratio <= plastic_limit:
             section_class = "Plastic"
-        elif ratio <= 83*eps:
+        elif ratio <= compact_limit:
             section_class = "Compact"
-        elif ratio <= 124*eps:
+        elif ratio <= semi_limit:
             section_class = "Semi-Compact"
         else:
             section_class = "Slender"
 
         return {
+            "depth_mm": depth_web_mm,
+            "tw_mm": tw_mm,
+            "d_by_t": round(ratio, 3),
+            "epsilon": round(eps, 3),
+            "plastic_limit": round(plastic_limit, 3),
+            "compact_limit": round(compact_limit, 3),
+            "semi_compact_limit": round(semi_limit, 3),
             "section_class": section_class,
-            "checks": checks,
             "clause": "IRC 22:2014 - 603 (Web Classification)"
         }
 
