@@ -1,7 +1,7 @@
 
-from OCC.Core.BRepPrimAPI import BRepPrimAPI_MakeBox, BRepPrimAPI_MakeCylinder
+from OCC.Core.BRepPrimAPI import BRepPrimAPI_MakeBox, BRepPrimAPI_MakeCylinder, BRepPrimAPI_MakePrism
 from OCC.Core.gp import gp_Trsf, gp_Vec, gp_Ax2, gp_Pnt, gp_Dir
-from OCC.Core.BRepBuilderAPI import BRepBuilderAPI_Transform
+from OCC.Core.BRepBuilderAPI import BRepBuilderAPI_Transform, BRepBuilderAPI_MakePolygon, BRepBuilderAPI_MakeFace
 from OCC.Core.BRepAlgoAPI import BRepAlgoAPI_Cut, BRepAlgoAPI_Fuse
 
 
@@ -25,21 +25,38 @@ def mirror_y(shape):
     return transformer.Shape()
 
 
-def create_rectangular_prism(length, breadth, height):
+def create_rectangular_prism(length, breadth, height, skew_angle=0):
     """
     Aligned with crash barrier:
     X: 0 → +length
     Y: -breadth/2 → +breadth/2
     Z: 0 → height
+    Supports skewing the end faces.
     """
-    box = BRepPrimAPI_MakeBox(length, breadth, height).Shape()
+    import math
+    skew_rad = math.radians(skew_angle)
+    
+    # Vertices for the skewed footprint (parallelogram in plan-view)
+    y_half = breadth / 2.0
+    
+    def get_skew_x(y):
+        return y * math.tan(skew_rad)
 
-    trsf = gp_Trsf()
-    trsf.SetTranslation(
-        gp_Vec(0.0, -breadth / 2.0, 0.0)
-    )
-
-    return BRepBuilderAPI_Transform(box, trsf, True).Shape()
+    p1 = gp_Pnt(get_skew_x(-y_half), -y_half, 0)
+    p2 = gp_Pnt(length + get_skew_x(-y_half), -y_half, 0)
+    p3 = gp_Pnt(length + get_skew_x(y_half), y_half, 0)
+    p4 = gp_Pnt(get_skew_x(y_half), y_half, 0)
+    
+    poly = BRepBuilderAPI_MakePolygon()
+    poly.Add(p1)
+    poly.Add(p2)
+    poly.Add(p3)
+    poly.Add(p4)
+    poly.Close()
+    
+    face = BRepBuilderAPI_MakeFace(poly.Wire()).Face()
+    # Extrude along Z
+    return BRepPrimAPI_MakePrism(face, gp_Vec(0, 0, height)).Shape()
 
 
 def create_cylinder(radius, height):
@@ -58,7 +75,8 @@ def create_rcc_railing(
     *,
     length,
     design_dict,
-    side="LEFT"
+    side="LEFT",
+    skew_angle=0
 ):
 
     railing_width = 275 # 
@@ -76,9 +94,9 @@ def create_rcc_railing(
     if body_height <= 0:
         raise ValueError("Railing height must be > base height")
 
-    base = create_rectangular_prism(length, railing_width, BASE_HEIGHT)
+    base = create_rectangular_prism(length, railing_width, BASE_HEIGHT, skew_angle=skew_angle)
 
-    body = create_rectangular_prism(length, railing_width, body_height)
+    body = create_rectangular_prism(length, railing_width, body_height, skew_angle=skew_angle)
     body = translate(body, z=BASE_HEIGHT)
 
     HOLE_LENGTH_RATIO = 1
@@ -97,7 +115,7 @@ def create_rcc_railing(
         z_center = BASE_HEIGHT + (i + 1) * spacing
 
         hole = create_rectangular_prism(
-            hole_length, hole_width, hole_height
+            hole_length, hole_width, hole_height, skew_angle=skew_angle
         )
 
         hole = translate(
@@ -127,7 +145,8 @@ def create_steel_railing(
     *,
     length,
     design_dict,
-    side="LEFT"
+    side="LEFT",
+    skew_angle=0
 ):
     """
     Creates a steel railing with posts and rails on a concrete base.
@@ -143,19 +162,16 @@ def create_steel_railing(
     BASE_WIDTH = 375   # 375mm width for concrete base
     
     # Create concrete base with 375mm width
-    base = create_rectangular_prism(length, BASE_WIDTH, BASE_HEIGHT)
+    base = create_rectangular_prism(length, BASE_WIDTH, BASE_HEIGHT, skew_angle=skew_angle)
     
     # Parameters for steel railing (sits on top of base)
+    post_height = railing_height - BASE_HEIGHT 
     POST_LENGTH = 150    # Rectangular post length in mm
     POST_BREADTH = 150   # Rectangular post breadth in mm
     POST_SPACING = 1000
     RAIL_SIZE = 40
     
-    # Posts height (from top of base to top of railing)
-    post_height = railing_height - BASE_HEIGHT
-    
-    # Calculate number of gaps  
-    # Safe length for posts center-to-beginning
+    # Calculate spacing
     effective_length = length - POST_LENGTH
     if effective_length < 0:
         effective_length = 0
@@ -168,17 +184,16 @@ def create_steel_railing(
     
     posts_shape = None
     
-    # Create rectangular posts (starting from top of base)
-    # We need num_spaces + 1 posts to cover 0 to effective_length
+    # Create rectangular posts
     for i in range(num_spaces + 1):
         x = i * actual_spacing
         
-        # Clamp x to be safe 
         if x > length - POST_LENGTH:
             x = length - POST_LENGTH
             
-        # Create rectangular post
-        post = create_rectangular_prism(POST_LENGTH, POST_BREADTH, post_height)
+        # Posts are NOT skewed themselves in standard practice, 
+        # but here we keep them square for simplicity and only skew the rails/base
+        post = create_rectangular_prism(POST_LENGTH, POST_BREADTH, post_height, skew_angle=skew_angle)
         post = translate(post, x=x, z=BASE_HEIGHT)
         
         if posts_shape is None:
@@ -188,11 +203,11 @@ def create_steel_railing(
 
     # Rails (positioned relative to total railing height)
     # Top Rail
-    top_rail = create_rectangular_prism(length, RAIL_SIZE, RAIL_SIZE)
+    top_rail = create_rectangular_prism(length, RAIL_SIZE, RAIL_SIZE, skew_angle=skew_angle)
     top_rail = translate(top_rail, z=railing_height - 2 * RAIL_SIZE)
     
     # Mid Rail
-    mid_rail = create_rectangular_prism(length, RAIL_SIZE, RAIL_SIZE)
+    mid_rail = create_rectangular_prism(length, RAIL_SIZE, RAIL_SIZE, skew_angle=skew_angle)
     mid_rail = translate(mid_rail, z=BASE_HEIGHT + (post_height * 0.5))
 
     rails_fused = BRepAlgoAPI_Fuse(top_rail, mid_rail).Shape()
@@ -241,10 +256,12 @@ def build_railings(
 
     # Helper to create correct type
     def create_shape(side):
+        # Invert skew for RIGHT side to compensate for mirror_y
+        s_angle = skew_angle if side == "LEFT" else -skew_angle
         if railing_type == "steel":
-            return create_steel_railing(length=span_length, design_dict=design_dict, side=side)
+            return create_steel_railing(length=span_length, design_dict=design_dict, side=side, skew_angle=s_angle)
         else:
-            return create_rcc_railing(length=span_length, design_dict=design_dict, side=side)
+            return create_rcc_railing(length=span_length, design_dict=design_dict, side=side, skew_angle=s_angle)
 
     # SKEW OFFSET CALCULATION
     def get_skew_x(y):

@@ -32,13 +32,15 @@ def _mirror_y(shape):
     return BRepBuilderAPI_Transform(shape, trsf, True).Shape()
 
 
-def _create_channel_section(length, depth, flange_width, web_thickness, flange_thickness):
+def _create_channel_section(length, depth, flange_width, web_thickness, flange_thickness, skew_angle=0):
     """
-    Creates a C-channel section extruded along Z-axis (initially).
-    Origin at center of the back of the web.
+    Creates a C-channel section extruded along X-axis.
+    Supports skewing the end faces.
     """
-    # Re-using the logic from crash_barrier/builder.py
-    
+    skew_rad = math.radians(skew_angle)
+    def get_skew_x(y):
+        return y * math.tan(skew_rad)
+
     y_web_back = -web_thickness / 2.0
     y_web_front = web_thickness / 2.0
     y_flange_tip = depth - web_thickness / 2.0 
@@ -46,15 +48,15 @@ def _create_channel_section(length, depth, flange_width, web_thickness, flange_t
     z_bottom = -flange_width / 2.0
     z_top = flange_width / 2.0
     
-    # Points for C-shape (facing +Y) in YZ plane
-    p1 = gp_Pnt(0, y_flange_tip, z_bottom)
-    p2 = gp_Pnt(0, y_web_back, z_bottom)
-    p3 = gp_Pnt(0, y_web_back, z_top)
-    p4 = gp_Pnt(0, y_flange_tip, z_top)
-    p5 = gp_Pnt(0, y_flange_tip, z_top - flange_thickness)
-    p6 = gp_Pnt(0, y_web_front, z_top - flange_thickness)
-    p7 = gp_Pnt(0, y_web_front, z_bottom + flange_thickness)
-    p8 = gp_Pnt(0, y_flange_tip, z_bottom + flange_thickness)
+    # Points for C-shape (facing +Y) in YZ plane -> SKEWED XY plane
+    p1 = gp_Pnt(get_skew_x(y_flange_tip), y_flange_tip, z_bottom)
+    p2 = gp_Pnt(get_skew_x(y_web_back), y_web_back, z_bottom)
+    p3 = gp_Pnt(get_skew_x(y_web_back), y_web_back, z_top)
+    p4 = gp_Pnt(get_skew_x(y_flange_tip), y_flange_tip, z_top)
+    p5 = gp_Pnt(get_skew_x(y_flange_tip), y_flange_tip, z_top - flange_thickness)
+    p6 = gp_Pnt(get_skew_x(y_web_front), y_web_front, z_top - flange_thickness)
+    p7 = gp_Pnt(get_skew_x(y_web_front), y_web_front, z_bottom + flange_thickness)
+    p8 = gp_Pnt(get_skew_x(y_flange_tip), y_flange_tip, z_bottom + flange_thickness)
     
     poly = BRepBuilderAPI_MakePolygon()
     for p in (p1, p2, p3, p4, p5, p6, p7, p8):
@@ -67,11 +69,14 @@ def _create_channel_section(length, depth, flange_width, web_thickness, flange_t
     return solid
 
 
-def create_raised_kerb(length, design_dict):
+def create_raised_kerb(length, design_dict, skew_angle=0):
     """
     Creates raised kerb median (IRC Fig 5a).
     Trapezoidal profile extruded along span.
     """
+    skew_rad = math.radians(skew_angle)
+    def get_skew_x(y):
+        return y * math.tan(skew_rad)
     kerb_height = design_dict.get("kerb_height")
     kerb_top_width = design_dict.get("kerb_top_width")
     kerb_bottom_width = design_dict.get("kerb_bottom_width")
@@ -86,10 +91,10 @@ def create_raised_kerb(length, design_dict):
     y_top_r = kerb_top_width / 2.0
     
     # Trapezoidal profile (counter-clockwise)
-    p1 = gp_Pnt(0, y_bottom_l, z0)
-    p2 = gp_Pnt(0, y_bottom_r, z0)
-    p3 = gp_Pnt(0, y_top_r, z1)
-    p4 = gp_Pnt(0, y_top_l, z1)
+    p1 = gp_Pnt(get_skew_x(y_bottom_l), y_bottom_l, z0)
+    p2 = gp_Pnt(get_skew_x(y_bottom_r), y_bottom_r, z0)
+    p3 = gp_Pnt(get_skew_x(y_top_r), y_top_r, z1)
+    p4 = gp_Pnt(get_skew_x(y_top_l), y_top_l, z1)
     
     poly = BRepBuilderAPI_MakePolygon()
     for p in (p1, p2, p3, p4):
@@ -102,7 +107,7 @@ def create_raised_kerb(length, design_dict):
     return solid
 
 
-def create_rcc_crash_barrier_median(length, design_dict):
+def create_rcc_crash_barrier_median(length, design_dict, skew_angle=0):
     """
     Creates RCC crash barrier median (IRC Fig 5b).
     Single New Jersey barrier profile (will be mirrored for the other side).
@@ -133,26 +138,31 @@ def create_rcc_crash_barrier_median(length, design_dict):
     y_top = barrier_top_width / 2.0
     y_trans = W_at_transition / 2.0
     
+    # SKEW LOGIC
+    skew_rad = math.radians(skew_angle)
+    def get_skew_x(y):
+        return y * math.tan(skew_rad)
+
     # 1. Bottom Right (Road side base)
-    p1 = gp_Pnt(0, y_base, z0)
+    p1 = gp_Pnt(get_skew_x(y_base), y_base, z0)
     
     # 2. Bottom Left (Median side base)
-    p2 = gp_Pnt(0, -y_base, z0)
+    p2 = gp_Pnt(get_skew_x(-y_base), -y_base, z0)
     
     # 3. Base Top Left (Median side)
-    p3 = gp_Pnt(0, -y_base, z1)
+    p3 = gp_Pnt(get_skew_x(-y_base), -y_base, z1)
     
     # 4. Top Left (Median side) - Sloped back face
-    p4 = gp_Pnt(0, -y_top, z3)
+    p4 = gp_Pnt(get_skew_x(-y_top), -y_top, z3)
     
     # 5. Top Right (Road side)
-    p5 = gp_Pnt(0, y_top, z3)
+    p5 = gp_Pnt(get_skew_x(y_top), y_top, z3)
     
     # 6. Transition Top Right (End of main slope)
-    p6 = gp_Pnt(0, y_trans, z2)
+    p6 = gp_Pnt(get_skew_x(y_trans), y_trans, z2)
     
     # 7. Base Top Right (Start of transition)
-    p7 = gp_Pnt(0, y_base, z1)
+    p7 = gp_Pnt(get_skew_x(y_base), y_base, z1)
     
     # Create Polygon
     poly = BRepBuilderAPI_MakePolygon()
@@ -166,7 +176,7 @@ def create_rcc_crash_barrier_median(length, design_dict):
     return solid
 
 
-def create_metallic_barrier_system(length, design_dict, kerb_top_width, kerb_height):
+def create_metallic_barrier_system(length, design_dict, kerb_top_width, kerb_height, skew_angle=0):
     """
     Creates metallic crash barrier system (IRC Fig 5c) - posts, spacers, and W-beams only.
     Single side system (will be positioned on each side of the central kerb).
@@ -222,6 +232,12 @@ def create_metallic_barrier_system(length, design_dict, kerb_top_width, kerb_hei
     from OCC.Core.BRepBuilderAPI import BRepBuilderAPI_MakeEdge
 
 
+    # SKEW LOGIC
+    skew_rad = math.radians(skew_angle)
+    def get_skew_x(y):
+        return y * math.tan(skew_rad)
+
+
     def make_w_beam_face():
         points = 40
         zs = np.linspace(0, W_BEAM_HEIGHT, points)
@@ -233,7 +249,8 @@ def create_metallic_barrier_system(length, design_dict, kerb_top_width, kerb_hei
                 amp * math.exp(-((z - mu1) ** 2) / (2 * sigma ** 2)) +
                 amp * math.exp(-((z - mu2) ** 2) / (2 * sigma ** 2))
             )
-            outer_pts.SetValue(i, gp_Pnt(0.0, y_wave, z))
+            # Offset X by y_wave * tan(skew)
+            outer_pts.SetValue(i, gp_Pnt(get_skew_x(y_wave), y_wave, z))
         
         y_top_outer = y_wave # Last y_wave value
         y_bottom_outer = (
@@ -250,7 +267,8 @@ def create_metallic_barrier_system(length, design_dict, kerb_top_width, kerb_hei
                 amp * math.exp(-((z - mu1) ** 2) / (2 * sigma ** 2)) +
                 amp * math.exp(-((z - mu2) ** 2) / (2 * sigma ** 2))
             ) - W_BEAM_THICKNESS
-            inner_pts.SetValue(i, gp_Pnt(0.0, y_wave_inner, z))
+            # Offset X by y_wave_inner * tan(skew)
+            inner_pts.SetValue(i, gp_Pnt(get_skew_x(y_wave_inner), y_wave_inner, z))
         
         y_top_inner = y_wave_inner
         y_bottom_inner = (
@@ -266,15 +284,15 @@ def create_metallic_barrier_system(length, design_dict, kerb_top_width, kerb_hei
         wire.Add(BRepBuilderAPI_MakeEdge(outer_curve).Edge())
         # Top connecting edge
         wire.Add(BRepBuilderAPI_MakeEdge(
-            gp_Pnt(0.0, y_top_outer, W_BEAM_HEIGHT),
-            gp_Pnt(0.0, y_top_inner, W_BEAM_HEIGHT)
+            gp_Pnt(get_skew_x(y_top_outer), y_top_outer, W_BEAM_HEIGHT),
+            gp_Pnt(get_skew_x(y_top_inner), y_top_inner, W_BEAM_HEIGHT)
         ).Edge())
         # Inner curve (downwards)
         wire.Add(BRepBuilderAPI_MakeEdge(inner_curve).Edge())
         # Bottom connecting edge
         wire.Add(BRepBuilderAPI_MakeEdge(
-            gp_Pnt(0.0, y_bottom_inner, 0.0),
-            gp_Pnt(0.0, y_bottom_outer, 0.0)
+            gp_Pnt(get_skew_x(y_bottom_inner), y_bottom_inner, 0.0),
+            gp_Pnt(get_skew_x(y_bottom_outer), y_bottom_outer, 0.0)
         ).Edge())
 
         return BRepBuilderAPI_MakeFace(wire.Wire()).Face()
@@ -282,7 +300,7 @@ def create_metallic_barrier_system(length, design_dict, kerb_top_width, kerb_hei
 
 
     #  ARRANGEMENT CALCULATIONS
-    # Right side template: Post -> Spacer -> W-beam -> 75mm gap -> Kerb edge
+    # Right side template: Post -> Spacer -> W-beam -> Kerb edge
     # Kerb edge is at +kerb_top_width / 2.0
     gap_from_edge = 5.0
     kerb_edge_y = kerb_top_width / 2.0
@@ -338,6 +356,8 @@ def create_metallic_barrier_system(length, design_dict, kerb_top_width, kerb_hei
             return BRepPrimAPI_MakePrism(BRepBuilderAPI_MakeFace(poly.Wire()).Face(), gp_Vec(0, 0, h)).Shape()
 
         post_solid = create_vertical_channel(post_height, post_depth, post_width, post_web_thk, post_flange_thk)
+        # Post itself is typically not skewed, but we could skew it if needed. 
+        # Keeping post vertical for now as standard.
         post_solid = _translate(post_solid, x=x_pos, y=post_y_center, z=kerb_height)
         posts_combined = post_solid if posts_combined is None else BRepAlgoAPI_Fuse(posts_combined, post_solid).Shape()
 
@@ -403,7 +423,7 @@ def create_metallic_barrier_system(length, design_dict, kerb_top_width, kerb_hei
     }
 
 
-def create_median_kerb(length, median_width, design_dict):
+def create_median_kerb(length, median_width, design_dict, skew_angle=0):
     """
     Creates a single continuous median kerb with specified total width.
     Used for metallic crash barrier median as per IRC Fig 5c.
@@ -412,10 +432,15 @@ def create_median_kerb(length, median_width, design_dict):
         length: Length of the kerb along the span
         median_width: Total width of the median (center to center distance)
         design_dict: Design parameters containing kerb dimensions
+        skew_angle: Bridge skew angle
     
     Returns:
         Kerb solid centered at y=0
     """
+    skew_rad = math.radians(skew_angle)
+    def get_skew_x(y):
+        return y * math.tan(skew_rad)
+
     kerb_height = design_dict.get("kerb_height", 100)
     # Use the median_width as the total kerb width
     kerb_top_width = median_width
@@ -430,10 +455,10 @@ def create_median_kerb(length, median_width, design_dict):
     y_top_r = kerb_top_width / 2.0
     
     # Trapezoidal profile (counter-clockwise)
-    p1 = gp_Pnt(0, y_bottom_l, z0)
-    p2 = gp_Pnt(0, y_bottom_r, z0)
-    p3 = gp_Pnt(0, y_top_r, z1)
-    p4 = gp_Pnt(0, y_top_l, z1)
+    p1 = gp_Pnt(get_skew_x(y_bottom_l), y_bottom_l, z0)
+    p2 = gp_Pnt(get_skew_x(y_bottom_r), y_bottom_r, z0)
+    p3 = gp_Pnt(get_skew_x(y_top_r), y_top_r, z1)
+    p4 = gp_Pnt(get_skew_x(y_top_l), y_top_l, z1)
     
     poly = BRepBuilderAPI_MakePolygon()
     for p in (p1, p2, p3, p4):
@@ -489,15 +514,16 @@ def build_median(
 
     # CASE 2: RCC CRASH BARRIER (Double Side mirrored)
     elif median_type == "RCC Crash Barrier":
-        barrier_shape = create_rcc_crash_barrier_median(span_length, design_dict)
+        # Left barrier (mirrored)
+        # For mirrored side, we need to invert skew angle during generation
+        left_shape = create_rcc_crash_barrier_median(span_length, design_dict, skew_angle=-skew_angle)
         barrier_base_width = design_dict.get("barrier_bottom_width", 450)
         
         # Calculate offset so outer edges are at median_total_width / 2
-        # offset is the distance from center to barrier center
         offset = (median_total_width - barrier_base_width) / 2.0
 
         y_l = carriageway_center_y - offset
-        left_barrier = _mirror_y(barrier_shape)
+        left_barrier = _mirror_y(left_shape)
         left_barrier = _translate(
             left_barrier,
             x=get_skew_x(y_l),
@@ -506,9 +532,11 @@ def build_median(
         )
         median_barriers.append(left_barrier)
 
+        # Right barrier (not mirrored)
+        right_shape = create_rcc_crash_barrier_median(span_length, design_dict, skew_angle=skew_angle)
         y_r = carriageway_center_y + offset
         right_barrier = _translate(
-            barrier_shape,
+            right_shape,
             x=get_skew_x(y_r),
             y=y_r,
             z=deck_top_z
@@ -521,7 +549,7 @@ def build_median(
         kerb_height = design_dict.get("kerb_height", 100)
         
         # Create single continuous kerb with total width = median_width
-        kerb_shape = create_median_kerb(span_length, median_total_width, design_dict)
+        kerb_shape = create_median_kerb(span_length, median_total_width, design_dict, skew_angle=skew_angle)
         y_kerb = carriageway_center_y
         kerb_positioned = _translate(
             kerb_shape,
@@ -532,26 +560,36 @@ def build_median(
         median_barriers.append({"kerb": kerb_positioned})
         
         # Create metallic barrier system (posts, spacers, W-beams) for one side
-        barrier_system_parts = create_metallic_barrier_system(
+        # PASS SKEW ANGLE TO SYSTEM PARTS
+        
+        # Left barrier system (mirrored)
+        left_parts = create_metallic_barrier_system(
             span_length, 
             design_dict, 
-            median_total_width,  # Pass the total median width as kerb_top_width
-            kerb_height
+            median_total_width,
+            kerb_height,
+            skew_angle=-skew_angle # Invert for mirror
         )
         
-        # Position left barrier system (mirrored)
-        # For simplicity, use the kerb center Y for skew shift if the systems are close to it
         y_sys = carriageway_center_y 
         left_dict = {
             k: _translate(_mirror_y(v), x=get_skew_x(y_sys), y=carriageway_center_y, z=deck_top_z) 
-            for k, v in barrier_system_parts.items() if v
+            for k, v in left_parts.items() if v
         }
         median_barriers.append(left_dict)
         
-        # Position right barrier system
+        # Right barrier system
+        right_parts = create_metallic_barrier_system(
+            span_length, 
+            design_dict, 
+            median_total_width,
+            kerb_height,
+            skew_angle=skew_angle
+        )
+        
         right_dict = {
             k: _translate(v, x=get_skew_x(y_sys), y=carriageway_center_y, z=deck_top_z) 
-            for k, v in barrier_system_parts.items() if v
+            for k, v in right_parts.items() if v
         }
         median_barriers.append(right_dict)
         

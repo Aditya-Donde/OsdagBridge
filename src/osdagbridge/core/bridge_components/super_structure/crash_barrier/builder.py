@@ -48,7 +48,8 @@ def create_rigid_rcc_crash_barrier(
     *,
     length,
     design_dict,
-    side="LEFT"
+    side="LEFT",
+    skew_angle=0
 ):
     
 
@@ -77,19 +78,24 @@ def create_rigid_rcc_crash_barrier(
     y_top = W_top / 2.0               # 87.5mm from center
     y_trans = W_at_transition / 2.0   # 125mm from center at transition
 
-    #  PROFILE POINTS (YZ PLANE)
+    # SKEW LOGIC
+    skew_rad = math.radians(skew_angle)
+    def get_skew_x(y):
+        return y * math.tan(skew_rad)
+
+    #  PROFILE POINTS (YZ PLANE -> SKEWED XY PLANE)
     # Right side is outer edge (road side), Left is inner edge
     
     # Points traced clockwise from bottom-right:
-    p1 = gp_Pnt(0, y_base, z0)       # Bottom right
-    p2 = gp_Pnt(0, -y_base, z0)      # Bottom left
+    p1 = gp_Pnt(get_skew_x(y_base), y_base, z0)       # Bottom right
+    p2 = gp_Pnt(get_skew_x(-y_base), -y_base, z0)      # Bottom left
     
-    p3 = gp_Pnt(0, -y_base, z1)      # Left side - top of base vertical
-    p4 = gp_Pnt(0, -y_top, z3)       # Left side - top corner (straight slope from base to top)
+    p3 = gp_Pnt(get_skew_x(-y_base), -y_base, z1)      # Left side - top of base vertical
+    p4 = gp_Pnt(get_skew_x(-y_top), -y_top, z3)       # Left side - top corner (straight slope from base to top)
     
-    p5 = gp_Pnt(0, y_top, z3)        # Right side - top corner
-    p6 = gp_Pnt(0, y_trans, z2)      # Right side - end of main slope / start of transition
-    p7 = gp_Pnt(0, y_base, z1)       # Right side - top of base vertical
+    p5 = gp_Pnt(get_skew_x(y_top), y_top, z3)        # Right side - top corner
+    p6 = gp_Pnt(get_skew_x(y_trans), y_trans, z2)      # Right side - end of main slope / start of transition
+    p7 = gp_Pnt(get_skew_x(y_base), y_base, z1)       # Right side - top of base vertical
 
     # Build face 
     poly = BRepBuilderAPI_MakePolygon()
@@ -98,6 +104,7 @@ def create_rigid_rcc_crash_barrier(
     poly.Close()
 
     face = BRepBuilderAPI_MakeFace(poly.Wire()).Face()
+    # Extrude along X (length)
     solid = BRepPrimAPI_MakePrism(face, gp_Vec(length, 0, 0)).Shape()
 
     #  MIRROR FOR RIGHT SIDE 
@@ -112,7 +119,8 @@ def create_semi_rigid_metallic_barrier(
     *,
     length,
     design_dict,
-    side="LEFT"
+    side="LEFT",
+    skew_angle=0
 ):
     """
     Creates semi-rigid metallic crash barrier (IRC Fig 4).
@@ -135,6 +143,11 @@ def create_semi_rigid_metallic_barrier(
 
 
 
+    # SKEW LOGIC
+    skew_rad = math.radians(skew_angle)
+    def get_skew_x(y):
+        return y * math.tan(skew_rad)
+
     # RCC KERB
     z0 = 0.0
     z1 = kerb_height
@@ -144,10 +157,10 @@ def create_semi_rigid_metallic_barrier(
     y_top_l = -kerb_top_width / 2.0
     y_top_r = kerb_top_width / 2.0
 
-    p1 = gp_Pnt(0, y_bottom_l, z0)
-    p2 = gp_Pnt(0, y_bottom_r, z0)
-    p3 = gp_Pnt(0, y_top_r, z1)
-    p4 = gp_Pnt(0, y_top_l, z1)
+    p1 = gp_Pnt(get_skew_x(y_bottom_l), y_bottom_l, z0)
+    p2 = gp_Pnt(get_skew_x(y_bottom_r), y_bottom_r, z0)
+    p3 = gp_Pnt(get_skew_x(y_top_r), y_top_r, z1)
+    p4 = gp_Pnt(get_skew_x(y_top_l), y_top_l, z1)
 
     kerb_poly = BRepBuilderAPI_MakePolygon()
     for p in (p1, p2, p3, p4):
@@ -166,7 +179,24 @@ def create_semi_rigid_metallic_barrier(
     post_flange_thk = design_dict.get("post_flange_thickness", 7.8)
     post_offset_from_edge = design_dict.get("post_offset_from_edge", 75) # From outer edge
 
+    # Component spans from x_pos - post_web_thk/2 to x_pos + post_depth - post_web_thk/2
+    # To keep within [0, length]:
+    # x_pos - post_web_thk/2 >= 0  => x_pos >= post_web_thk/2
+    # x_pos + post_depth - post_web_thk/2 <= length => x_pos <= length - post_depth + post_web_thk/2
+    
+    start_x = post_web_thk / 2.0
+    end_x = length - post_depth + post_web_thk / 2.0
+    
+    post_range = end_x - start_x
+    if post_range < 0:
+        post_range = 0
+        
     num_posts = int(length / post_spacing) + 1
+    if num_posts < 2:
+        num_posts = 2
+        
+    actual_spacing = post_range / (num_posts - 1) if num_posts > 1 else 0
+
     posts_combined = None
 
     def create_vertical_channel(h, d, w, tw, tf):
@@ -208,9 +238,7 @@ def create_semi_rigid_metallic_barrier(
     )
 
     for i in range(num_posts):
-        x_pos = i * post_spacing
-        if x_pos > length:
-            break
+        x_pos = start_x + (i * actual_spacing)
 
         post_solid = create_vertical_channel(
             post_height, post_depth,
@@ -264,7 +292,8 @@ def create_semi_rigid_metallic_barrier(
                 amp * math.exp(-((z - mu1) ** 2) / (2 * sigma ** 2)) +
                 amp * math.exp(-((z - mu2) ** 2) / (2 * sigma ** 2))
             )
-            outer_pts.SetValue(i, gp_Pnt(0.0, y_wave, z))
+            # Offset X by y_wave * tan(skew)
+            outer_pts.SetValue(i, gp_Pnt(get_skew_x(y_wave), y_wave, z))
         
         y_top_outer = y_wave
         y_bottom_outer = (
@@ -281,7 +310,8 @@ def create_semi_rigid_metallic_barrier(
                 amp * math.exp(-((z - mu1) ** 2) / (2 * sigma ** 2)) +
                 amp * math.exp(-((z - mu2) ** 2) / (2 * sigma ** 2))
             ) - W_BEAM_THICKNESS
-            inner_pts.SetValue(i, gp_Pnt(0.0, y_wave_inner, z))
+            # Offset X by y_wave_inner * tan(skew)
+            inner_pts.SetValue(i, gp_Pnt(get_skew_x(y_wave_inner), y_wave_inner, z))
         
         y_top_inner = y_wave_inner
         y_bottom_inner = (
@@ -295,13 +325,13 @@ def create_semi_rigid_metallic_barrier(
         wire = BRepBuilderAPI_MakeWire()
         wire.Add(BRepBuilderAPI_MakeEdge(outer_curve).Edge())
         wire.Add(BRepBuilderAPI_MakeEdge(
-            gp_Pnt(0.0, y_top_outer, W_BEAM_HEIGHT),
-            gp_Pnt(0.0, y_top_inner, W_BEAM_HEIGHT)
+            gp_Pnt(get_skew_x(y_top_outer), y_top_outer, W_BEAM_HEIGHT),
+            gp_Pnt(get_skew_x(y_top_inner), y_top_inner, W_BEAM_HEIGHT)
         ).Edge())
         wire.Add(BRepBuilderAPI_MakeEdge(inner_curve).Edge())
         wire.Add(BRepBuilderAPI_MakeEdge(
-            gp_Pnt(0.0, y_bottom_inner, 0.0),
-            gp_Pnt(0.0, y_bottom_outer, 0.0)
+            gp_Pnt(get_skew_x(y_bottom_inner), y_bottom_inner, 0.0),
+            gp_Pnt(get_skew_x(y_bottom_outer), y_bottom_outer, 0.0)
         ).Edge())
 
         return BRepBuilderAPI_MakeFace(wire.Wire()).Face()
@@ -331,10 +361,9 @@ def create_semi_rigid_metallic_barrier(
         spacer_z = kerb_height + h_center - spacer_height / 2.0
         spacer_y_center = post_y_center + post_width / 2.0 + spacer_width / 2.0
 
+        # Spacers (one per post)
         for i in range(num_posts):
-            x_pos = i * post_spacing
-            if x_pos > length:
-                break
+            x_pos = start_x + (i * actual_spacing)
 
             spacer_solid = create_vertical_channel(
                 spacer_height, spacer_depth,
@@ -533,12 +562,14 @@ def build_crash_barriers(
         right_shape = create_rigid_rcc_crash_barrier(
             length=span_length_L,
             design_dict=design_dict,
-            side="RIGHT"
+            side="RIGHT",
+            skew_angle=-skew_angle
         )
         left_shape = create_rigid_rcc_crash_barrier(
             length=span_length_L,
             design_dict=design_dict,
-            side="LEFT"
+            side="LEFT",
+            skew_angle=skew_angle
         )
         
         crash_barriers.append(translate(right_shape, x=get_skew_x(y_r), y=y_r, z=deck_top_z))
@@ -548,13 +579,15 @@ def build_crash_barriers(
         right_parts = create_semi_rigid_metallic_barrier(
             length=span_length_L,
             design_dict=design_dict,
-            side="RIGHT"
+            side="RIGHT",
+            skew_angle=-skew_angle
         )
 
         left_parts = create_semi_rigid_metallic_barrier(
             length=span_length_L,
             design_dict=design_dict,
-            side="LEFT"
+            side="LEFT",
+            skew_angle=skew_angle
         )
 
         # Apply translations and store as dictionaries for coloring
