@@ -380,64 +380,80 @@ class IRC22_2014:
             dc,
             combination_type="basic",
             is_compact=True,
-            fabrication=KEY_SECTION_FABRICATION[0]
-    ):
+            beff_compact_limit=None,
+            fabrication=KEY_SECTION_FABRICATION[0]  # default = rolled
+        ):
         """
-        IRC:22-2014 Clause 603.3.1
-        Positive Moment Capacity of Composite Beam
-        Returns ONLY key design outputs.
+        IRC:22-2014
+        Clause 603.3.1 + Annexure I (I.1)
+        Positive Moment Resistance of Composite Beam
         """
 
-        # Step 1: Effective width check (if non-compact)
+        # Step 1: Effective width restriction
         beff_used = beff
 
         if not is_compact:
+
             eps = math.sqrt(250.0 / fy)
             fabrication = fabrication.lower()
 
-            if fabrication == KEY_SECTION_FABRICATION[0]:   # rolled
-                flange_limit = 10.5 * eps * tf
-            else:                                            # welded
-                flange_limit = 9.4 * eps * tf
+            if fabrication == KEY_SECTION_FABRICATION[0]:      # rolled
+                flange_compact_ratio = 10.5 * eps
+                section_type = "Rolled"
+            elif fabrication == KEY_SECTION_FABRICATION[1]:    # welded
+                flange_compact_ratio = 9.4 * eps
+                section_type = "Welded"
+            else:
+                raise ValueError(
+                    f"Invalid fabrication type '{fabrication}'. "
+                    f"Allowed: {KEY_SECTION_FABRICATION}"
+                )
 
-            web_limit = 105.0 * eps * tw
+            # Flange compact check (IS800 reference)
+            IS800_2007.Table2_i(
+                width=bf,
+                thickness=tf,
+                f_y=fy,
+                section_type=section_type
+            )
 
-            beff_used = min(beff, flange_limit, web_limit)
+            beff_flange_limit = flange_compact_ratio * tf
 
-        # Step 2: Material strengths
-        gamma_m0 = GAMMA_M0_STEEL
-        gamma_mc = GAMMA_M_SHEAR_CONCRETE
+            # Web compact check (IS800 reference)
+            IS800_2007.Table2_iii(
+                depth=ds,
+                thickness=tw,
+                f_y=fy,
+                classification_type="Neutral axis at mid-depth"
+            )
 
-        # Steel tension force
-        T_s = As * fy / gamma_m0   # N
+            web_compact_ratio = 105.0 * eps
+            beff_web_limit = web_compact_ratio * tw
 
-        # Concrete compression force (per mm depth)
-        Cc_per_mm = 0.45 * fck * beff_used   # N/mm
+            beff_compact_limit = min(beff_flange_limit, beff_web_limit)
+            beff_used = min(beff, beff_compact_limit)
 
-        # Neutral axis depth
-        xu = T_s / Cc_per_mm
+        # Step 2: Positive Moment Capacity
+        # Full shear interaction assumption
 
-        # Limit to slab depth
-        xu = min(xu, dc)
+        # Concrete compression force (N)
+        C = 0.36 * fck * beff_used * dc
 
-        # Actual concrete force
-        Cc = 0.45 * fck * beff_used * xu
+        # Steel tension force (N)
+        T = Af * fy
 
         # Governing force
-        F = min(T_s, Cc)
+        F = min(C, T)
 
-        # Lever arm
-        z = ds - xu / 2.0   # mm
-
-        # Moment capacity
-        Md_Nmm = F * z
-        Md_kNm = Md_Nmm / 1e6
+        # Positive moment (Nmm)
+        Mp_Nmm = F * dc
+        Mp_kNm = Mp_Nmm / 1e6
 
         return {
-            "positive_moment_capacity_Md_kNm": round(Md_kNm, 3),
-            "neutral_axis_depth_xu_mm": round(xu, 2),
-            "effective_width_used_beff_mm": round(beff_used, 2),
-            "clause": "IRC 22:2014 - Clause 603.3.1"
+            "beff_used_mm": round(beff_used, 3),
+            "Mp_kNm": round(Mp_kNm, 3),
+            "governing_force": "concrete" if C < T else "steel",
+            "clause": "IRC 22:2014 - 603.3.1 Positive Moment Capacity"
         }
 
 
