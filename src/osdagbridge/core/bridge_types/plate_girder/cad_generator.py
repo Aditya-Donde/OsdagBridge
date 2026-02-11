@@ -136,7 +136,7 @@ class PlateGirderCADGenerator:
         self.bridge_type = bridge_type
 
         # GIRDER PARAMETERS
-        self.span_length_L = 10000           # Total span length (mm)
+        self.span_length_L = 25000           # Total span length (mm)
 
         self.girder_section_d = 900          # Clear web depth (mm)
         self.girder_section_bf = 500         # Top flange width (mm)
@@ -174,7 +174,7 @@ class PlateGirderCADGenerator:
 
         # RAILING PARAMETERS
         self.rail_count = 3                  # Number of rails
-        self.railing_type = "rcc"            # "rcc" or "steel"
+        self.railing_type = "steel"            # "rcc" or "steel"
 
         # STIFFENER PARAMETERS
         self.stiffener_width = 200           # Stiffener width (mm)
@@ -229,7 +229,7 @@ class PlateGirderCADGenerator:
         # }
 
         # END DIAPHRAGM PARAMETERS
-        self.end_diaphragm_type = "Cross Bracing"   # Options: "Cross Bracing", "Rolled Beam", "Welded Beam"
+        self.end_diaphragm_type = "Rolled Beam"   # Options: "Cross Bracing", "Rolled Beam", "Welded Beam"
         
         
         # If using "Cross Bracing" type, end diaphragms will use the same
@@ -241,9 +241,9 @@ class PlateGirderCADGenerator:
             "depth": 800,
             "flange_width": 250,
             "web_thickness": 12,
-            "flange_thickness": 20
+            "flange_thickness": 100
         }
-        self.end_diaphragm_spacing = 0       
+        self.end_diaphragm_spacing = 200       
 
     # MAIN CAD GENERATION
 
@@ -309,7 +309,7 @@ class PlateGirderCADGenerator:
             Calculate longitudinal offset due to skew angle.
             
             This implements the plan-view geometric offset for skewed bridges:
-            longitudinal_shift = lateral_distance × tan(skew_angle)
+            longitudinal_shift = lateral_distance x tan(skew_angle)
             
             Args:
                 lateral_position: Transverse position (Y-coordinate)
@@ -401,10 +401,8 @@ class PlateGirderCADGenerator:
         # STEP 4: CALCULATE REFERENCE Z-LEVELS
         
         # Bracing girder depth (for cross bracing placement)
-        bracing_girder_depth = (
-            (self.girder_section_d / 2) + 
-            self.girder_section_tf
-        )
+        # Use clear web depth D, so top/bottom are at +/- D/2
+        bracing_girder_depth = self.girder_section_d
 
         # Top of girder for deck placement
         girder_top_z = (self.girder_section_d / 2) + self.girder_section_tf

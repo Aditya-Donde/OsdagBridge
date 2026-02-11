@@ -583,8 +583,11 @@ def _diaphragm_bracing(x, yL, yR, depth, tf, thickness, section_type, dims, skew
     Returns:
         list: List containing the diaphragm member shape
     """
-    # Place at top of girder
-    z_top = depth / 2
+    # Place exactly at the bottom of the girder top flange
+    # top edge of web is at +depth / 2
+    # diaphragm is centered at gp_Pnt, so center = (top_edge) - (member_depth / 2)
+    member_depth = dims.get("depth", 100)
+    z_center = (depth / 2) - (member_depth / 2)
     
     def get_skew_x(y):
         """Calculate longitudinal offset due to skew."""
@@ -599,8 +602,8 @@ def _diaphragm_bracing(x, yL, yR, depth, tf, thickness, section_type, dims, skew
     # Create horizontal diaphragm member
     return [
         _create_diagonal_member(
-            gp_Pnt(x_l, yL, z_top), 
-            gp_Pnt(x_r, yR, z_top),
+            gp_Pnt(x_l, yL, z_center), 
+            gp_Pnt(x_r, yR, z_center),
             thickness, 
             section_type, 
             dims, 
@@ -656,7 +659,7 @@ def build_cross_bracings(
     total_width = (num_girders - 1) * girder_spacing
     
     # Loop through all bracing frames
-    for x in x_positions:
+    for idx_x, x in enumerate(x_positions):
         # Loop through all bays between girders
         for i in range(num_girders - 1):
             # Calculate lateral positions of left and right girders
@@ -665,15 +668,26 @@ def build_cross_bracings(
             
             # Check if this is an end position (first or last frame)
             is_end = (x == x_positions[0] or x == x_positions[-1])
+            is_first = (x == x_positions[0])
+            is_last = (x == x_positions[-1])
             
             # END DIAPHRAGM HANDLING
             if is_end:
+                # Apply longitudinal offset for end diaphragms
+                # Default offset if spacing is 0
+                offset = end_diaphragm_spacing if end_diaphragm_spacing > 0 else 200.0
+                
+                if is_first:
+                    x_eff = x + offset
+                else: # is_last
+                    x_eff = x - offset
+
                 if end_diaphragm_type == "Cross Bracing":
                     # Use the same bracing type (X or K) as internal panels
                     if bracing_type == "X":
                         bracings.extend(
                             _x_bracing(
-                                x, yL, yR,
+                                x_eff, yL, yR,
                                 girder_depth, flange_thickness,
                                 thickness, flange_width,
                                 section_type, section_dims,
@@ -684,7 +698,7 @@ def build_cross_bracings(
                     elif bracing_type == "K":
                         bracings.extend(
                             _k_bracing(
-                                x, yL, yR,
+                                x_eff, yL, yR,
                                 girder_depth, flange_thickness,
                                 thickness, flange_width,
                                 section_type, section_dims,
@@ -708,7 +722,7 @@ def build_cross_bracings(
                     
                     bracings.extend(
                         _diaphragm_bracing(
-                            x, yL, yR,
+                            x_eff, yL, yR,
                             girder_depth, flange_thickness,
                             thickness,
                             "I_SECTION",
@@ -733,7 +747,7 @@ def build_cross_bracings(
                     
                     bracings.extend(
                         _diaphragm_bracing(
-                            x, yL, yR,
+                            x_eff, yL, yR,
                             girder_depth, flange_thickness,
                             thickness,
                             "I_SECTION",
