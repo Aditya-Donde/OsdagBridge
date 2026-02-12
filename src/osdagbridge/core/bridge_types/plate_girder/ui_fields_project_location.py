@@ -12,9 +12,9 @@ from typing import Dict, List, Optional
 
 from osdagbridge.core.data.project_location.database import Database
 
-# Compute absolute path to weather.db sitting under core/data/project_location
+# Compute absolute path to weather.sqlite sitting under core/data/project_location
 DB_PATH = os.path.abspath(
-    os.path.join(os.path.dirname(__file__), "..", "..", "data", "project_location", "weather.db")
+    os.path.join(os.path.dirname(__file__), "..", "..", "data", "project_location", "weather.sqlite")
 )
 
 

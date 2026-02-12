@@ -174,7 +174,7 @@ def get_temperature_for_coordinates(lat: float, lon: float) -> Dict[str, Any]:
     }
     
     # Get the database path
-    db_path = os.path.join(os.path.dirname(__file__), "weather.db")
+    db_path = os.path.join(os.path.dirname(__file__), "weather.sqlite")
     
     if not os.path.exists(db_path):
         return result

@@ -9,7 +9,7 @@ class Database:
     stations = parent; temperature/zone/windspeed = children.
     """
 
-    def __init__(self, db_name: str = 'weather.db'):
+    def __init__(self, db_name: str = 'weather.sqlite'):
         self.db_name = db_name
         self.connection: Optional[sqlite3.Connection] = None
         self.cursor: Optional[sqlite3.Cursor] = None
@@ -18,9 +18,16 @@ class Database:
 
     def connect(self):
         """Establish connection to the database."""
+        db_missing = not os.path.exists(self.db_name)
         self.connection = sqlite3.connect(self.db_name)
         self.connection.execute("PRAGMA foreign_keys = ON")
         self.cursor = self.connection.cursor()
+        if db_missing or not self._table_exists("stations"):
+            schema_file = os.path.join(os.path.dirname(__file__), 'schema.sql')
+            if os.path.exists(schema_file):
+                with open(schema_file, 'r', encoding='utf-8') as f:
+                    self.connection.executescript(f.read())
+                self.connection.commit()
 
     def close(self):
         """Close the database connection."""
@@ -346,7 +353,7 @@ class Database:
 # -------------------- quick manual test --------------------
 
 if __name__ == '__main__':
-    db = Database('weather.db')
+    db = Database('weather.sqlite')
 
     print("Creating and populating database...")
     db.run_schema('schema.sql')
