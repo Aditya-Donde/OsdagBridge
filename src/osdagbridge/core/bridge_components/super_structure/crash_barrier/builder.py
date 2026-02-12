@@ -179,13 +179,25 @@ def create_semi_rigid_metallic_barrier(
     post_flange_thk = design_dict.get("post_flange_thickness", 7.8)
     post_offset_from_edge = design_dict.get("post_offset_from_edge", 75) # From outer edge
 
-    # Component spans from x_pos - post_web_thk/2 to x_pos + post_depth - post_web_thk/2
-    # To keep within [0, length]:
-    # x_pos - post_web_thk/2 >= 0  => x_pos >= post_web_thk/2
-    # x_pos + post_depth - post_web_thk/2 <= length => x_pos <= length - post_depth + post_web_thk/2
+    # Calculate Post Y (Center of Post)
+    post_y_center = (
+        -kerb_top_width / 2.0 
+        + post_offset_from_edge 
+        + post_width / 2.0
+    )
+
+    # SKEW ADJUSTMENT FOR POSTS/SPACERS
+    # Use absolute skew to ensure symmetric offsets for left/right alignment.
+    # We use the maximum possible kerb shift to ensure all parts stay inside.
+    skew_rad_abs = math.radians(abs(skew_angle))
+    safe_skew_shift = (kerb_bottom_width / 2.0) * math.tan(skew_rad_abs)
     
-    start_x = post_web_thk / 2.0
-    end_x = length - post_depth + post_web_thk / 2.0
+    # Added end offset (margin) to stay well within deck
+    end_offset = 150.0  
+    total_start_offset = safe_skew_shift + end_offset
+    
+    start_x = total_start_offset + post_web_thk / 2.0
+    end_x = length - total_start_offset - (post_depth - post_web_thk / 2.0)
     
     post_range = end_x - start_x
     if post_range < 0:
@@ -230,12 +242,6 @@ def create_semi_rigid_metallic_barrier(
     # Spacer is to the Right of Post.
     # Beam is to the Right of Spacer.
     
-    # Calculate Post Y (Center of Post)
-    post_y_center = (
-        -kerb_top_width / 2.0 
-        + post_offset_from_edge 
-        + post_width / 2.0
-    )
 
     for i in range(num_posts):
         x_pos = start_x + (i * actual_spacing)

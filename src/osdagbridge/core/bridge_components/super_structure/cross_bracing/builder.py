@@ -674,8 +674,21 @@ def build_cross_bracings(
             # END DIAPHRAGM HANDLING
             if is_end:
                 # Apply longitudinal offset for end diaphragms
-                # Default offset if spacing is 0
-                offset = end_diaphragm_spacing if end_diaphragm_spacing > 0 else 200.0
+                # Base offset from parameters or default
+                base_offset = end_diaphragm_spacing if end_diaphragm_spacing > 0 else 200.0
+                
+                # Skew-aware adjustment:
+                # Stiffeners are perpendicular to the girder axis (global Y in girder local coords).
+                # Diaphragms are skewed (parallel to skew).
+                # To clear the stiffener tip (which extends ~200mm from web), 
+                # we need an extra shift equal to (stiffener_width * tan(skew)).
+                
+                # We use a hardcoded 200mm for stiffener width for now to match cad_generator defaults
+                stiffener_width = 300.0
+                skew_rad = math.radians(abs(skew_angle))
+                extra_offset = stiffener_width * math.tan(skew_rad)
+                
+                offset = base_offset + extra_offset
                 
                 if is_first:
                     x_eff = x + offset
