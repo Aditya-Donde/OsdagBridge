@@ -14,6 +14,7 @@ from PySide6.QtGui import QDoubleValidator, QIntValidator
 from osdagbridge.core.utils.common import *
 from osdagbridge.desktop.ui.utils.custom_titlebar import CustomTitleBar
 from osdagbridge.desktop.ui.dialogs.tabs.common import apply_field_style
+from osdagbridge.desktop.ui.widgets.vehicle_viewer import VehicleViewer
 
 class CustomVehicleDialog(QDialog):
     """Dialog for adding or editing custom live load vehicles"""
@@ -175,17 +176,35 @@ class CustomVehicleDialog(QDialog):
         bottom_diagram_label.setStyleSheet("font-size: 9px; font-weight: 600; color: #5a5a5a; background: transparent;")
         layout.addWidget(bottom_diagram_label)
 
-        bottom_diagram = QLabel("")
-        bottom_diagram.setAlignment(Qt.AlignCenter)
-        bottom_diagram.setMinimumHeight(80)
-        bottom_diagram.setStyleSheet("""
-            QLabel {
-                border: 1px solid #8a8a8a;
-                border-radius: 4px;
-                background: #ffffff;
-            }
-        """)
-        layout.addWidget(bottom_diagram)
+        # Vehicle CAD Viewer
+        self.bottom_viewer = VehicleViewer()
+        self.bottom_viewer.setMinimumHeight(140)
+        layout.addWidget(self.bottom_viewer)
 
         layout.addStretch()
 
+        # Default values for preview
+        self.custom_fields["Width of Wheel, w (mm):"].setText("2500")
+        self.custom_fields["Minimum Clearance from Carriageway\nEdge, f (mm):"].setText("600")
+        self.custom_fields["Minimum Clearance from Crossing Vehicles,\ng (mm):"].setText("1200")
+
+        # Connect fields (static update on finish)
+        self.custom_fields["Width of Wheel, w (mm):"].editingFinished.connect(self.update_vehicle_view)
+        self.custom_fields["Minimum Clearance from Carriageway\nEdge, f (mm):"].editingFinished.connect(self.update_vehicle_view)
+        self.custom_fields["Minimum Clearance from Crossing Vehicles,\ng (mm):"].editingFinished.connect(self.update_vehicle_view)
+
+        # Initial draw
+        self.update_vehicle_view()
+
+
+    def update_vehicle_view(self):
+        try:
+            w = float(self.custom_fields["Width of Wheel, w (mm):"].text() or 0)
+            f = float(self.custom_fields["Minimum Clearance from Carriageway\nEdge, f (mm):"].text() or 0)
+            g = float(self.custom_fields["Minimum Clearance from Crossing Vehicles,\ng (mm):"].text() or 0)
+
+            print("Updating viewer:", w, f, g)   # <-- debug line
+
+            self.bottom_viewer.set_data(w, f, g)
+        except ValueError:
+            pass
