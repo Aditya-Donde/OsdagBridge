@@ -402,9 +402,8 @@ class PlateGirderAnalysisResults:
 
         for lc in moving_lcs:
             print(f"\n>>> Load Case: {lc}")
-            print(
-                f"{'Girder':<10} | {'Max Vy (kN)':<12} | {'Min Vy (kN)':<12} | {'Max Mz (kNm)':<12} | {'Min Mz (kNm)':<12}")
-            print("-" * 75)
+            print(f"{'Girder':<8} | {'Ele':<8} | {'Max Vy (kN)':>12} | {'Min Vy (kN)':>12} | {'Max Mz (kNm)':>12} | {'Min Mz (kNm)':>12}")
+            print("-" * 90)
 
             for girder_name, girder_data in girder_map.items():
                 if g_filter and girder_name not in g_filter:
@@ -416,20 +415,53 @@ class PlateGirderAnalysisResults:
                     # Select ONLY this loadcase and elements for this girder
                     subset = self.ds.sel(Loadcase=lc, Element=elements)
 
-                    # Get max/min across elements and both i/j components for this specific loadcase
-                    vy_max = max(subset.sel(Component="Vy_i")["forces"].max().values,
-                                 subset.sel(Component="Vy_j")["forces"].max().values)
-                    vy_min = min(subset.sel(Component="Vy_i")["forces"].min().values,
-                                 subset.sel(Component="Vy_j")["forces"].min().values)
-                    mz_max = max(subset.sel(Component="Mz_i")["forces"].max().values,
-                                 subset.sel(Component="Mz_j")["forces"].max().values)
-                    mz_min = min(subset.sel(Component="Mz_i")["forces"].min().values,
-                                 subset.sel(Component="Mz_j")["forces"].min().values)
+                    # --- Vy Envelope ---
+                    vy_i = subset.sel(Component="Vy_i")["forces"]
+                    vy_j = subset.sel(Component="Vy_j")["forces"]
 
-                    print(
-                        f"{girder_name:<10} | {float(vy_max):<12.3f} | {float(vy_min):<12.3f} | {float(mz_max):<12.3f} | {float(mz_min):<12.3f}")
+                    mxi, mxj = float(vy_i.max()), float(vy_j.max())
+                    if mxi >= mxj:
+                        v_max, v_max_e = mxi, int(vy_i.idxmax())
+                    else:
+                        v_max, v_max_e = mxj, int(vy_j.idxmax())
+
+                    mni, mnj = float(vy_i.min()), float(vy_j.min())
+                    if mni <= mnj:
+                        v_min, v_min_e = mni, int(vy_i.idxmin())
+                    else:
+                        v_min, v_min_e = mnj, int(vy_j.idxmin())
+
+                    # --- Mz Envelope ---
+                    mz_i = subset.sel(Component="Mz_i")["forces"]
+                    mz_j = subset.sel(Component="Mz_j")["forces"]
+
+                    mmxi, mmxj = float(mz_i.max()), float(mz_j.max())
+                    if mmxi >= mmxj:
+                        m_max, m_max_e = mmxi, int(mz_i.idxmax())
+                    else:
+                        m_max, m_max_e = mmxj, int(mz_j.idxmax())
+
+                    mmni, mmnj = float(mz_i.min()), float(mz_j.min())
+                    if mmni <= mmnj:
+                        m_min, m_min_e = mmni, int(mz_i.idxmin())
+                    else:
+                        m_min, m_min_e = mmnj, int(mz_j.idxmin())
+
+                    # Group results by element to avoid redundant rows
+                    # Each element that holds at least one extreme will get a row
+                    crit_eles = defaultdict(lambda: {"v_max": "-", "v_min": "-", "m_max": "-", "m_min": "-"})
+                    crit_eles[v_max_e]["v_max"] = f"{v_max:.3f}"
+                    crit_eles[v_min_e]["v_min"] = f"{v_min:.3f}"
+                    crit_eles[m_max_e]["m_max"] = f"{m_max:.3f}"
+                    crit_eles[m_min_e]["m_min"] = f"{m_min:.3f}"
+
+                    # Sort by element ID for consistent output
+                    for eid in sorted(crit_eles.keys()):
+                        vals = crit_eles[eid]
+                        print(f"{girder_name:<8} | {eid:<8} | {vals['v_max']:>12} | {vals['min_vy' if False else 'v_min']:>12} | {vals['m_max']:>12} | {vals['m_min']:>12}")
+
                 except Exception as e:
-                    print(f"{girder_name:<10} | ❌ Error: {e}")
+                    print(f"{girder_name:<8} | ❌ Error: {e}")
 
         print("\n===================================================================")
 
