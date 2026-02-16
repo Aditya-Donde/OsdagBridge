@@ -3,6 +3,7 @@
 
 - Embeds CustomViewer3d
 - Calls CAD generator
+- Multi-select component visibility
 """
 
 import sys
@@ -370,54 +371,54 @@ class CAD3DWindow(QMainWindow):
         self.display.Repaint()
 
 
-    def isolate_component(self, component_key):
+    def update_component_visibility(self, selected_components):
         """
-        Isolate a single bridge component using AIS visibility
-        Deck textures shown ONLY for Deck
+        Show/hide components based on multi-selection.
+        
+        Args:
+            selected_components: List of component keys that should be visible
         """
         if not self._is_display_ready():
             return
 
         context = self.viewer.context
 
-        # Hide all structural components
-        for ais_list in self.viewer.model_ais_objects.values():
+        # Component key mappings (handles composite components)
+        component_map = {
+            "Crash Barrier": ["Crash Barrier", "Crash Barrier W-Beam"],
+            "Median": ["Median", "Median W-Beam"],
+            "Girder": ["Girder Web", "Girder Flange", "Support", "Stiffener"],
+            "Deck": ["Deck"],
+            "Cross Bracing": ["Cross Bracing"],
+            "Railing": ["Railing"],
+            "Stiffener": ["Stiffener"]
+        }
+
+        # Collect all keys that should be visible
+        visible_keys = set()
+        for comp in selected_components:
+            if comp in component_map:
+                visible_keys.update(component_map[comp])
+
+        # Update visibility for all structural components
+        for key, ais_list in self.viewer.model_ais_objects.items():
+            should_show = key in visible_keys
             for ais in ais_list:
-                context.Erase(ais, False)
+                if should_show:
+                    context.Display(ais, False)
+                else:
+                    context.Erase(ais, False)
 
-        # Hide deck textures by default
+        # Handle deck textures (show only if Deck is selected)
+        show_deck_textures = "Deck" in selected_components
         for ais in getattr(self.viewer, "deck_texture_ais", []):
-            context.Erase(ais, False)
-
-        # Show selected component
-        if component_key == "Crash Barrier":
-            for key in ("Crash Barrier", "Crash Barrier W-Beam"):
-                for ais in self.viewer.model_ais_objects.get(key, []):
-                    context.Display(ais, False)
-
-        elif component_key == "Median":
-            for key in ("Median", "Median W-Beam"):
-                for ais in self.viewer.model_ais_objects.get(key, []):
-                    context.Display(ais, False)
-
-
-        elif component_key == "Girder":
-            for key in ("Girder Web", "Girder Flange", "Support"):
-                for ais in self.viewer.model_ais_objects.get(key, []):
-                    context.Display(ais, False)
-
-        else:
-            for ais in self.viewer.model_ais_objects.get(component_key, []):
+            if show_deck_textures:
                 context.Display(ais, False)
-
-        # Show deck textures ONLY if Deck is selected
-        if component_key == "Deck":
-            for ais in getattr(self.viewer, "deck_texture_ais", []):
-                context.Display(ais, False)
+            else:
+                context.Erase(ais, False)
 
         self.display.FitAll()
         self.display.Repaint()
-
 
 
     def regenerate_bridge(self):
@@ -427,7 +428,7 @@ class CAD3DWindow(QMainWindow):
 
 class BridgeComponentCheckbox(QWidget):
     """
-    Horizontal component selector 
+    Horizontal component selector with multi-select capability
     """
     def __init__(self, parent: CAD3DWindow):
         super().__init__(parent)
@@ -446,7 +447,7 @@ class BridgeComponentCheckbox(QWidget):
 
         
         self.components = [
-            ("Model", None),
+            ("Model", None),  # Special: shows full model
             ("Girder", "Girder"),
             ("Deck", "Deck"),
             ("Cross Bracing", "Cross Bracing"),
@@ -474,27 +475,58 @@ class BridgeComponentCheckbox(QWidget):
 
     def _on_click(self, component_key, clicked_cb, checked):
         """
-        Enforce single selection (Osdag behavior)
+        Handle multi-select logic:
+        - "Model" is exclusive (unchecks all others)
+        - Other components can be multi-selected
+        - Selecting any component unchecks "Model"
         """
-        if checked:
-            # Uncheck all others
-            for cb in self.checkboxes:
-                if cb != clicked_cb:
+        model_cb = self.checkboxes[0]  # "Model" checkbox
+        
+        if component_key is None:  # "Model" clicked
+            if checked:
+                # Uncheck all other components
+                for cb in self.checkboxes[1:]:
                     cb.blockSignals(True)
                     cb.setChecked(False)
                     cb.blockSignals(False)
-
-            # if none is selected -> then full model
-            if component_key is None:
                 self.parent.show_full_model()
             else:
-                self.parent.isolate_component(component_key)
+                # Don't allow unchecking Model if nothing else is selected
+                if not any(cb.isChecked() for cb in self.checkboxes[1:]):
+                    clicked_cb.blockSignals(True)
+                    clicked_cb.setChecked(True)
+                    clicked_cb.blockSignals(False)
+        
+        else:  # Component clicked
+            if checked:
+                # Uncheck "Model" when selecting a specific component
+                model_cb.blockSignals(True)
+                model_cb.setChecked(False)
+                model_cb.blockSignals(False)
+            else:
+                # If all components are unchecked, check "Model"
+                if not any(cb.isChecked() for cb in self.checkboxes):
+                    model_cb.blockSignals(True)
+                    model_cb.setChecked(True)
+                    model_cb.blockSignals(False)
+                    self.parent.show_full_model()
+                    return
+            
+            # Update visibility based on selected components
+            selected = [
+                key for cb, (_, key) in zip(self.checkboxes[1:], self.components[1:])
+                if cb.isChecked() and key is not None
+            ]
+            
+            if selected:
+                self.parent.update_component_visibility(selected)
+            else:
+                # If nothing selected, show full model
+                model_cb.blockSignals(True)
+                model_cb.setChecked(True)
+                model_cb.blockSignals(False)
+                self.parent.show_full_model()
 
-        else:
-            # Prevent "no selection" state
-            clicked_cb.blockSignals(True)
-            clicked_cb.setChecked(True)
-            clicked_cb.blockSignals(False)
 
 def main():
     app = QApplication(sys.argv)
