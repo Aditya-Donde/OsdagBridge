@@ -716,6 +716,9 @@ class GirderDetailsTab(QWidget):
                 "web_thickness": self.web_thickness_combo.currentText() if hasattr(self, "web_thickness_combo") else "",
                 "top_thickness": self.top_thickness_combo.currentText() if hasattr(self, "top_thickness_combo") else "",
                 "bottom_thickness": self.bottom_thickness_combo.currentText() if hasattr(self, "bottom_thickness_combo") else "",
+                "web_thickness_value": self.web_thickness_value_input.text() if hasattr(self, "web_thickness_value_input") else "",
+                "top_thickness_value": self.top_thickness_value_input.text() if hasattr(self, "top_thickness_value_input") else "",
+                "bottom_thickness_value": self.bottom_thickness_value_input.text() if hasattr(self, "bottom_thickness_value_input") else "",
                 "is_section": self.is_section_combo.currentText() if hasattr(self, "is_section_combo") else "",
                 "torsion": self.torsion_combo.currentText() if hasattr(self, "torsion_combo") else "",
                 "warping": self.warping_combo.currentText() if hasattr(self, "warping_combo") else "",
@@ -749,6 +752,10 @@ class GirderDetailsTab(QWidget):
             if inputs.get("bottom_thickness"):
                 self.bottom_thickness_combo.setCurrentText(inputs["bottom_thickness"])
 
+            self.web_thickness_value_input.setText(inputs.get("web_thickness_value", ""))
+            self.top_thickness_value_input.setText(inputs.get("top_thickness_value", ""))
+            self.bottom_thickness_value_input.setText(inputs.get("bottom_thickness_value", ""))
+
             if inputs.get("is_section"):
                 self.is_section_combo.setCurrentText(inputs["is_section"])
             if inputs.get("torsion"):
@@ -760,6 +767,7 @@ class GirderDetailsTab(QWidget):
         finally:
             self._suppress_member_state_updates = False
 
+        self._update_thickness_value_enabled_state()
         self._update_preview()
 
     def _wire_member_dirty_tracking(self) -> None:
@@ -784,6 +792,9 @@ class GirderDetailsTab(QWidget):
         connect_line(self.total_depth_input)
         connect_line(self.top_width_input)
         connect_line(self.bottom_width_input)
+        connect_line(self.web_thickness_value_input)
+        connect_line(self.top_thickness_value_input)
+        connect_line(self.bottom_thickness_value_input)
 
     def _confirm_switch_if_dirty(self) -> str:
         """Return 'save'|'discard'|'cancel' before switching member."""
@@ -1249,12 +1260,18 @@ class GirderDetailsTab(QWidget):
         self.web_thickness_combo = QComboBox()
         self.web_thickness_combo.addItems(VALUES_PROFILE_SCOPE)
         apply_field_style(self.web_thickness_combo)
-        self._set_field_width(self.web_thickness_combo)
+        self._set_field_width(self.web_thickness_combo, 180)
+
+        self.web_thickness_value_input = self._create_line_edit()
+        self._set_field_width(self.web_thickness_value_input, 78)
+        self.web_thickness_value_input.setValidator(QDoubleValidator(0.0, 1e12, 3, self.web_thickness_value_input))
+
+        self.web_thickness_widget = self._create_mode_value_widget(self.web_thickness_combo, self.web_thickness_value_input)
         row = self._add_box_row(
             inputs_grid,
             row,
             "Web Thickness (w<sub>t</sub>, mm):",
-            self.web_thickness_combo,
+            self.web_thickness_widget,
             self.welded_rows,
         )
 
@@ -1270,12 +1287,18 @@ class GirderDetailsTab(QWidget):
         self.top_thickness_combo = QComboBox()
         self.top_thickness_combo.addItems(VALUES_PROFILE_SCOPE)
         apply_field_style(self.top_thickness_combo)
-        self._set_field_width(self.top_thickness_combo)
+        self._set_field_width(self.top_thickness_combo, 180)
+
+        self.top_thickness_value_input = self._create_line_edit()
+        self._set_field_width(self.top_thickness_value_input, 78)
+        self.top_thickness_value_input.setValidator(QDoubleValidator(0.0, 1e12, 3, self.top_thickness_value_input))
+
+        self.top_thickness_widget = self._create_mode_value_widget(self.top_thickness_combo, self.top_thickness_value_input)
         row = self._add_box_row(
             inputs_grid,
             row,
             "Top Flange Thickness (t<sub>ft</sub>, mm):",
-            self.top_thickness_combo,
+            self.top_thickness_widget,
             self.welded_rows,
         )
 
@@ -1291,12 +1314,18 @@ class GirderDetailsTab(QWidget):
         self.bottom_thickness_combo = QComboBox()
         self.bottom_thickness_combo.addItems(VALUES_PROFILE_SCOPE)
         apply_field_style(self.bottom_thickness_combo)
-        self._set_field_width(self.bottom_thickness_combo)
+        self._set_field_width(self.bottom_thickness_combo, 180)
+
+        self.bottom_thickness_value_input = self._create_line_edit()
+        self._set_field_width(self.bottom_thickness_value_input, 78)
+        self.bottom_thickness_value_input.setValidator(QDoubleValidator(0.0, 1e12, 3, self.bottom_thickness_value_input))
+
+        self.bottom_thickness_widget = self._create_mode_value_widget(self.bottom_thickness_combo, self.bottom_thickness_value_input)
         row = self._add_box_row(
             inputs_grid,
             row,
             "Bottom Flange Thickness (b<sub>ft</sub>, mm):",
-            self.bottom_thickness_combo,
+            self.bottom_thickness_widget,
             self.welded_rows,
         )
 
@@ -1407,8 +1436,14 @@ class GirderDetailsTab(QWidget):
         self.is_section_combo.currentTextChanged.connect(self._update_preview)
         for watcher in (self.total_depth_input, self.top_width_input, self.bottom_width_input):
             watcher.textChanged.connect(self._update_preview)
+        for combo in (self.web_thickness_combo, self.top_thickness_combo, self.bottom_thickness_combo):
+            combo.currentTextChanged.connect(lambda _t: self._update_thickness_value_enabled_state())
+            combo.currentTextChanged.connect(self._update_preview)
+        for watcher in (self.web_thickness_value_input, self.top_thickness_value_input, self.bottom_thickness_value_input):
+            watcher.textChanged.connect(self._update_preview)
         self._on_design_changed(self.design_combo.currentText())
         self._on_type_changed(self.type_combo.currentText())
+        self._update_thickness_value_enabled_state()
 
         # Capture a stable template state for new members.
         self._default_member_state = self._capture_member_state()
@@ -1446,6 +1481,60 @@ class GirderDetailsTab(QWidget):
         apply_field_style(line_edit)
         self._set_field_width(line_edit)
         return line_edit
+
+    def _create_mode_value_widget(self, mode_combo: QComboBox, value_input: QLineEdit) -> QWidget:
+        widget = QWidget()
+        widget.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+        self._set_field_width(widget, 180)
+
+        layout = QHBoxLayout(widget)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(6)
+        layout.addWidget(mode_combo)
+        layout.addWidget(value_input)
+        return widget
+
+    def _is_custom_thickness_mode(self, combo: QComboBox) -> bool:
+        return (combo.currentText() or "").strip().lower() == "custom"
+
+    def _update_thickness_value_enabled_state(self) -> None:
+        is_welded = self.type_combo.currentText().lower() == "welded"
+        is_custom_design = self.design_combo.currentText().lower() == "customized"
+        allow_inputs = is_welded and is_custom_design
+
+        for mode_combo, value_input, wrapper in (
+            (
+                getattr(self, "web_thickness_combo", None),
+                getattr(self, "web_thickness_value_input", None),
+                getattr(self, "web_thickness_widget", None),
+            ),
+            (
+                getattr(self, "top_thickness_combo", None),
+                getattr(self, "top_thickness_value_input", None),
+                getattr(self, "top_thickness_widget", None),
+            ),
+            (
+                getattr(self, "bottom_thickness_combo", None),
+                getattr(self, "bottom_thickness_value_input", None),
+                getattr(self, "bottom_thickness_widget", None),
+            ),
+        ):
+            if not mode_combo or not value_input:
+                continue
+
+            show_value = bool(allow_inputs and self._is_custom_thickness_mode(mode_combo))
+
+            value_input.setEnabled(show_value)
+            value_input.setVisible(show_value)
+
+            if wrapper is not None:
+                self._set_field_width(wrapper, 180)
+
+            if show_value:
+                self._set_field_width(mode_combo, 96)
+                self._set_field_width(value_input, 78)
+            else:
+                self._set_field_width(mode_combo, 180)
 
     def _add_section_row(self, layout, row, text, widget, tracker=None):
         label = self._create_label(text)
@@ -1616,11 +1705,11 @@ class GirderDetailsTab(QWidget):
 
         plate_widgets = (
             self.total_depth_input,
-            self.web_thickness_combo,
+            self.web_thickness_widget,
             self.top_width_input,
-            self.top_thickness_combo,
+            self.top_thickness_widget,
             self.bottom_width_input,
-            self.bottom_thickness_combo,
+            self.bottom_thickness_widget,
         )
         for widget in plate_widgets:
             widget.setEnabled(is_welded and is_custom)
@@ -1633,6 +1722,7 @@ class GirderDetailsTab(QWidget):
 
         self.is_section_combo.setVisible(not is_welded)
         self.is_section_combo.setEnabled(not is_welded)
+        self._update_thickness_value_enabled_state()
 
     def _lock_type_to_welded(self):
         welded_index = self.type_combo.findText("Welded", Qt.MatchFixedString)
@@ -1643,6 +1733,10 @@ class GirderDetailsTab(QWidget):
 
     def _reset_section_state(self):
         for widget in (self.total_depth_input, self.top_width_input, self.bottom_width_input):
+            previous = widget.blockSignals(True)
+            widget.clear()
+            widget.blockSignals(previous)
+        for widget in (self.web_thickness_value_input, self.top_thickness_value_input, self.bottom_thickness_value_input):
             previous = widget.blockSignals(True)
             widget.clear()
             widget.blockSignals(previous)
@@ -1745,6 +1839,12 @@ class GirderDetailsTab(QWidget):
             (self.top_width_input, "Width of Top Flange (t_fw, mm)"),
             (self.bottom_width_input, "Width of Bottom Flange (b_fw, mm)"),
         ]
+        if self._is_custom_thickness_mode(self.web_thickness_combo):
+            required_fields.append((self.web_thickness_value_input, "Web Thickness (w_t, mm)"))
+        if self._is_custom_thickness_mode(self.top_thickness_combo):
+            required_fields.append((self.top_thickness_value_input, "Top Flange Thickness (t_ft, mm)"))
+        if self._is_custom_thickness_mode(self.bottom_thickness_combo):
+            required_fields.append((self.bottom_thickness_value_input, "Bottom Flange Thickness (b_ft, mm)"))
         missing = []
         for field, label in required_fields:
             value = self._parse_float(field.text())
@@ -1904,8 +2004,20 @@ class GirderDetailsTab(QWidget):
         if not depth or not top_width or not bottom_width:
             return None
 
-        web_thickness = max(8.0, depth * 0.02)
-        flange_thickness = max(10.0, depth * 0.03)
+        web_default = max(8.0, depth * 0.02)
+        flange_default = max(10.0, depth * 0.03)
+
+        web_thickness = web_default
+        if self._is_custom_thickness_mode(self.web_thickness_combo):
+            web_thickness = self._parse_float(self.web_thickness_value_input.text()) or web_default
+
+        top_thickness = flange_default
+        if self._is_custom_thickness_mode(self.top_thickness_combo):
+            top_thickness = self._parse_float(self.top_thickness_value_input.text()) or flange_default
+
+        bottom_thickness = flange_default
+        if self._is_custom_thickness_mode(self.bottom_thickness_combo):
+            bottom_thickness = self._parse_float(self.bottom_thickness_value_input.text()) or flange_default
 
         return {
             "designation": "Custom Welded Girder",
@@ -1914,8 +2026,8 @@ class GirderDetailsTab(QWidget):
             "top_flange_width_mm": top_width,
             "bottom_flange_width_mm": bottom_width,
             "web_thickness_mm": web_thickness,
-            "top_flange_thickness_mm": flange_thickness,
-            "bottom_flange_thickness_mm": flange_thickness,
+            "top_flange_thickness_mm": top_thickness,
+            "bottom_flange_thickness_mm": bottom_thickness,
         }
 
     def _update_section_properties(self):
@@ -2175,6 +2287,9 @@ class GirderDetailsTab(QWidget):
             self.total_depth_input,
             self.top_width_input,
             self.bottom_width_input,
+            self.web_thickness_value_input,
+            self.top_thickness_value_input,
+            self.bottom_thickness_value_input,
         ):
             previous = field.blockSignals(True)
             field.clear()
@@ -2234,6 +2349,9 @@ class GirderDetailsTab(QWidget):
             "web_thickness_mode": self.web_thickness_combo.currentText(),
             "top_thickness_mode": self.top_thickness_combo.currentText(),
             "bottom_thickness_mode": self.bottom_thickness_combo.currentText(),
+            "web_thickness_value_mm": self.web_thickness_value_input.text().strip(),
+            "top_thickness_value_mm": self.top_thickness_value_input.text().strip(),
+            "bottom_thickness_value_mm": self.bottom_thickness_value_input.text().strip(),
         }
         properties_snapshot = {
             label: field.text().strip()

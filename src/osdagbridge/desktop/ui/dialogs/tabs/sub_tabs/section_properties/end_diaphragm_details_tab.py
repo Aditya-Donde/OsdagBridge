@@ -465,6 +465,7 @@ class EndDiaphragmDetailsTab(QWidget):
         for widget in self._welded_inputs:
             if widget is not None:
                 widget.setEnabled(is_custom)
+        self._update_welded_thickness_value_enabled_state()
 
     def _on_welded_design_changed(self, label: str) -> None:
         is_custom = (label or "").strip() == "Customized"
@@ -590,6 +591,52 @@ class EndDiaphragmDetailsTab(QWidget):
             line_edit.setPlaceholderText(placeholder)
         apply_field_style(line_edit)
         return line_edit
+
+    def _create_mode_value_widget(self, mode_combo: QComboBox, value_input: QLineEdit) -> QWidget:
+        widget = QWidget()
+        widget.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+        try:
+            widget.setFixedWidth(int(getattr(self, "_combo_width", 190)))
+        except Exception:
+            pass
+        widget.setMinimumHeight(28)
+
+        layout = QHBoxLayout(widget)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(6)
+        layout.addWidget(mode_combo)
+        layout.addWidget(value_input)
+        return widget
+
+    def _is_custom_thickness_mode(self, combo: QComboBox | None) -> bool:
+        if combo is None:
+            return False
+        return (combo.currentText() or "").strip().lower() == "custom"
+
+    def _update_welded_thickness_value_enabled_state(self) -> None:
+        is_custom_design = (self.welded_design_combo.currentText() or "").strip() == "Customized" if self.welded_design_combo else False
+
+        for mode_combo, value_input in (
+            (getattr(self, "welded_web_thickness_combo", None), getattr(self, "welded_web_thickness_value", None)),
+            (getattr(self, "welded_top_thickness_combo", None), getattr(self, "welded_top_thickness_value", None)),
+            (getattr(self, "welded_bottom_thickness_combo", None), getattr(self, "welded_bottom_thickness_value", None)),
+        ):
+            if mode_combo is None or value_input is None:
+                continue
+
+            show_value = bool(is_custom_design and self._is_custom_thickness_mode(mode_combo))
+            value_input.setVisible(show_value)
+            value_input.setEnabled(show_value)
+
+            try:
+                total_width = int(getattr(self, "_combo_width", 190))
+                if show_value:
+                    mode_combo.setFixedWidth(max(96, total_width - 84))
+                    value_input.setFixedWidth(78)
+                else:
+                    mode_combo.setFixedWidth(total_width)
+            except Exception:
+                pass
 
     def _create_selection_box(self, view_key: str):
         box = self._create_inner_box()
@@ -895,9 +942,27 @@ class EndDiaphragmDetailsTab(QWidget):
         if not depth or not top_width or not bottom_width:
             return None
 
-        # Match Girder welded behavior: infer thicknesses if not explicitly provided.
-        web_thickness = max(8.0, depth * 0.02)
-        flange_thickness = max(10.0, depth * 0.03)
+        # Match Girder welded behavior: infer thicknesses unless Custom value is provided.
+        web_default = max(8.0, depth * 0.02)
+        flange_default = max(10.0, depth * 0.03)
+
+        web_thickness = web_default
+        web_mode = getattr(self, "welded_web_thickness_combo", None)
+        web_value = getattr(self, "welded_web_thickness_value", None)
+        if self._is_custom_thickness_mode(web_mode):
+            web_thickness = self._parse_float(web_value.text() if web_value is not None else "") or web_default
+
+        top_thickness = flange_default
+        top_mode = getattr(self, "welded_top_thickness_combo", None)
+        top_value = getattr(self, "welded_top_thickness_value", None)
+        if self._is_custom_thickness_mode(top_mode):
+            top_thickness = self._parse_float(top_value.text() if top_value is not None else "") or flange_default
+
+        bottom_thickness = flange_default
+        bottom_mode = getattr(self, "welded_bottom_thickness_combo", None)
+        bottom_value = getattr(self, "welded_bottom_thickness_value", None)
+        if self._is_custom_thickness_mode(bottom_mode):
+            bottom_thickness = self._parse_float(bottom_value.text() if bottom_value is not None else "") or flange_default
 
         return {
             "designation": "Custom Welded End Diaphragm",
@@ -906,8 +971,8 @@ class EndDiaphragmDetailsTab(QWidget):
             "top_flange_width_mm": top_width,
             "bottom_flange_width_mm": bottom_width,
             "web_thickness_mm": web_thickness,
-            "top_flange_thickness_mm": flange_thickness,
-            "bottom_flange_thickness_mm": flange_thickness,
+            "top_flange_thickness_mm": top_thickness,
+            "bottom_flange_thickness_mm": bottom_thickness,
         }
 
     def _compute_welded_properties(self, dims):
@@ -1444,10 +1509,22 @@ class EndDiaphragmDetailsTab(QWidget):
         self.welded_total_depth = total_depth
 
         web_thick_combo = QComboBox()
-        web_thick_combo.addItems(["All", "Custom"])
+        web_thick_combo.addItems(VALUES_PROFILE_SCOPE if "VALUES_PROFILE_SCOPE" in globals() else ["All", "Custom"])
         self._configure_combo_box(web_thick_combo)
         apply_field_style(web_thick_combo)
-        row = self._add_grid_row(grid, row, "Web Thickness (mm):", web_thick_combo)
+
+        web_thick_value = self._create_line_edit()
+        web_thick_value.setValidator(QDoubleValidator(0, 1_000_000, 3))
+        try:
+            web_thick_value.setFixedWidth(78)
+            web_thick_value.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+        except Exception:
+            pass
+
+        web_thick_widget = self._create_mode_value_widget(web_thick_combo, web_thick_value)
+        row = self._add_grid_row(grid, row, "Web Thickness (mm):", web_thick_widget)
+        self.welded_web_thickness_combo = web_thick_combo
+        self.welded_web_thickness_value = web_thick_value
 
         top_width = self._create_line_edit()
         top_width.setValidator(QDoubleValidator(0, 1_000_000, 3))
@@ -1460,10 +1537,22 @@ class EndDiaphragmDetailsTab(QWidget):
         self.welded_top_width = top_width
 
         top_thickness_combo = QComboBox()
-        top_thickness_combo.addItems(["All", "Custom"])
+        top_thickness_combo.addItems(VALUES_PROFILE_SCOPE if "VALUES_PROFILE_SCOPE" in globals() else ["All", "Custom"])
         self._configure_combo_box(top_thickness_combo)
         apply_field_style(top_thickness_combo)
-        row = self._add_grid_row(grid, row, "Top Flange Thickness (mm):", top_thickness_combo)
+
+        top_thickness_value = self._create_line_edit()
+        top_thickness_value.setValidator(QDoubleValidator(0, 1_000_000, 3))
+        try:
+            top_thickness_value.setFixedWidth(78)
+            top_thickness_value.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+        except Exception:
+            pass
+
+        top_thickness_widget = self._create_mode_value_widget(top_thickness_combo, top_thickness_value)
+        row = self._add_grid_row(grid, row, "Top Flange Thickness (mm):", top_thickness_widget)
+        self.welded_top_thickness_combo = top_thickness_combo
+        self.welded_top_thickness_value = top_thickness_value
 
         bottom_width = self._create_line_edit()
         bottom_width.setValidator(QDoubleValidator(0, 1_000_000, 3))
@@ -1476,19 +1565,34 @@ class EndDiaphragmDetailsTab(QWidget):
         self.welded_bottom_width = bottom_width
 
         bottom_thickness_combo = QComboBox()
-        bottom_thickness_combo.addItems(["All", "Custom"])
+        bottom_thickness_combo.addItems(VALUES_PROFILE_SCOPE if "VALUES_PROFILE_SCOPE" in globals() else ["All", "Custom"])
         self._configure_combo_box(bottom_thickness_combo)
         apply_field_style(bottom_thickness_combo)
-        row = self._add_grid_row(grid, row, "Bottom Flange Thickness (mm):", bottom_thickness_combo)
+
+        bottom_thickness_value = self._create_line_edit()
+        bottom_thickness_value.setValidator(QDoubleValidator(0, 1_000_000, 3))
+        try:
+            bottom_thickness_value.setFixedWidth(78)
+            bottom_thickness_value.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+        except Exception:
+            pass
+
+        bottom_thickness_widget = self._create_mode_value_widget(bottom_thickness_combo, bottom_thickness_value)
+        row = self._add_grid_row(grid, row, "Bottom Flange Thickness (mm):", bottom_thickness_widget)
+        self.welded_bottom_thickness_combo = bottom_thickness_combo
+        self.welded_bottom_thickness_value = bottom_thickness_value
 
         self._welded_inputs = [
             symmetry_combo,
             total_depth,
             web_thick_combo,
+            web_thick_value,
             top_width,
             top_thickness_combo,
+            top_thickness_value,
             bottom_width,
             bottom_thickness_combo,
+            bottom_thickness_value,
         ]
 
         inputs_layout.addLayout(grid)
@@ -1530,8 +1634,14 @@ class EndDiaphragmDetailsTab(QWidget):
         design_combo.currentTextChanged.connect(self._on_welded_design_changed)
         for watcher in (total_depth, top_width, bottom_width):
             watcher.textChanged.connect(self._update_welded_preview_and_props)
+        for watcher in (web_thick_value, top_thickness_value, bottom_thickness_value):
+            watcher.textChanged.connect(self._update_welded_preview_and_props)
+        for combo in (web_thick_combo, top_thickness_combo, bottom_thickness_combo):
+            combo.currentTextChanged.connect(lambda _t: self._update_welded_thickness_value_enabled_state())
+            combo.currentTextChanged.connect(self._update_welded_preview_and_props)
         self._update_welded_preview_and_props()
         self._on_welded_design_changed(design_combo.currentText())
+        self._update_welded_thickness_value_enabled_state()
         return view, type_selector
 
     def _handle_type_selection(self, value):
