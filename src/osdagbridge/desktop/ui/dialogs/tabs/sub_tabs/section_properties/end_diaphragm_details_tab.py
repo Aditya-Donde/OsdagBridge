@@ -38,6 +38,8 @@ class EndDiaphragmDetailsTab(QWidget):
         self._girder_details_tab = None
         self._select_girders_combos = []
         self._member_id_combos = []
+        # Member ID is software-generated (E{pair}M1 / E{pair}M2).
+        # Show both IDs as a read-only display; inputs apply to both ends.
         self._member_id_display_by_view: dict[str, QLineEdit] = {}
 
         # Keep all combo boxes strictly uniform in width.
@@ -162,10 +164,13 @@ class EndDiaphragmDetailsTab(QWidget):
         display = self._member_id_display_by_view.get(view_key)
         if not combos or display is None:
             return
-        _girders_combo, member_combo = combos
+        girders_combo, _member_combo = combos
+        pair_index = self._pair_index_for_combo(girders_combo)
+        members = self._member_ids_for_pair(pair_index)
+        text = " / ".join(members)
         prev = display.blockSignals(True)
         try:
-            display.setText((member_combo.currentText() or "").strip())
+            display.setText(text)
         finally:
             display.blockSignals(prev)
 
@@ -183,9 +188,12 @@ class EndDiaphragmDetailsTab(QWidget):
         try:
             member_combo.clear()
             member_combo.addItems(items)
-            # UI requirement: show ID only (always M1).
-            member_combo.setCurrentText(f"E{pair_index}M1")
-            member_combo.setCurrentIndex(0)
+            desired = (previous_member or "").strip().upper()
+            if desired and desired in [i.upper() for i in items]:
+                member_combo.setCurrentText(desired)
+            else:
+                member_combo.setCurrentText(f"E{pair_index}M1")
+                member_combo.setCurrentIndex(0)
         finally:
             member_combo.blockSignals(block)
 
@@ -295,7 +303,15 @@ class EndDiaphragmDetailsTab(QWidget):
             if self.cross_design_combo is not None:
                 self.cross_design_combo.setCurrentText(state.get("design") or self.cross_design_combo.currentText())
             if self.cross_bracing_type_combo is not None:
-                self.cross_bracing_type_combo.setCurrentText(state.get("bracing_type") or self.cross_bracing_type_combo.currentText())
+                desired = (state.get("bracing_type") or "").strip()
+                # Backward compatibility: older UI exposed Diagonal/Horizontal.
+                if desired in {"Diagonal", "Horizontal"}:
+                    desired = "X-Bracing"
+                if desired and self.cross_bracing_type_combo.findText(desired) >= 0:
+                    self.cross_bracing_type_combo.setCurrentText(desired)
+                else:
+                    # Keep current selection if desired isn't supported.
+                    self.cross_bracing_type_combo.setCurrentText(self.cross_bracing_type_combo.currentText())
 
             if self.cross_bracing_section_type_combo is not None:
                 self.cross_bracing_section_type_combo.setCurrentText(state.get("bracing_section_type") or self.cross_bracing_section_type_combo.currentText())
@@ -526,12 +542,14 @@ class EndDiaphragmDetailsTab(QWidget):
 
     def _create_heading_label(self, text):
         label = QLabel(text)
-        label.setStyleSheet("font-size: 12px; font-weight: 600; color: #4b4b4b; border: none; padding: 0px; margin: 0px;")
+        label.setStyleSheet("font-size: 12px; font-weight: 700; color: #4b4b4b; border: none; padding: 0px; margin: 0px;")
         return label
 
     def _create_label(self, text):
         label = QLabel(text)
-        label.setStyleSheet("font-size: 11px; color: #4b4b4b; border: none;")
+        # Keep default label styling, but emphasize the bracing type selector.
+        weight = "700" if (text or "").strip() == "Type of Bracing:" else "400"
+        label.setStyleSheet(f"font-size: 11px; font-weight: {weight}; color: #4b4b4b; border: none;")
         return label
 
     def _add_grid_row(self, layout, row, text, widget):
@@ -595,29 +613,24 @@ class EndDiaphragmDetailsTab(QWidget):
         member_combo = QComboBox()
         # Populated from Girder Details when bound. (No Custom option.)
         self._configure_combo_box(member_combo)
-        # Member IDs are software-generated and must not be typed/edited.
+        # Member IDs are software-generated and should not be edited.
+        # Keep an internal (hidden) combo for state keys; display both ends.
         member_combo.setEditable(False)
+        member_combo.setEnabled(False)
+        member_combo.setVisible(False)
         try:
             member_combo.setInsertPolicy(QComboBox.NoInsert)
         except Exception:
             pass
-        # Lock the Member ID control: software-driven only.
-        member_combo.setEnabled(False)
-        member_combo.setVisible(False)
         apply_field_style(member_combo)
 
         member_display = QLineEdit()
         member_display.setReadOnly(True)
+        apply_field_style(member_display)
         try:
             member_display.setFixedWidth(int(getattr(self, "_combo_width", 190)))
-            member_display.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
         except Exception:
             pass
-        try:
-            member_display.setFocusPolicy(Qt.NoFocus)
-        except Exception:
-            pass
-        apply_field_style(member_display)
         layout.addWidget(self._create_label("Member ID:"), 1, 0)
         layout.addWidget(member_display, 1, 1)
 
@@ -629,7 +642,6 @@ class EndDiaphragmDetailsTab(QWidget):
 
         # Keep selection synced across views.
         girders_combo.currentIndexChanged.connect(lambda idx, _k=view_key: self._sync_girder_index_to_all_views(idx))
-        member_combo.currentIndexChanged.connect(lambda idx, _k=view_key: self._sync_member_index_to_all_views(idx))
 
         # Seed with safe defaults so the UI isn't empty before binding.
         try:
@@ -655,24 +667,28 @@ class EndDiaphragmDetailsTab(QWidget):
         pairs = self._girder_pairs()
         view_keys = list(self._selection_by_view.keys())
 
-        # UI config is always M1. For solver/export, expand the configured state
-        # to both members (M1/M2) for each girder-pair.
+        # Serialize End Diaphragm inputs for both ends (M1/M2) for each girder-pair.
+        # Inputs are shared: M1 is treated as source-of-truth and duplicated to M2.
         by_view: dict[str, dict] = {}
         for view_key in view_keys:
             by_view.setdefault(view_key, {})
             default_state = self._default_state_for_view(view_key)
             for pair_idx, pair_label in enumerate(pairs, start=1):
-                base_member = f"E{pair_idx}M1"
-                base_key = f"{view_key}::{pair_label}::{base_member}"
-                base_state = self._state_by_view_member_key.get(base_key)
-                if base_state is None:
-                    base_state = dict(default_state)
-                    self._state_by_view_member_key[base_key] = dict(base_state)
+                source_key = f"{view_key}::{pair_label}::E{pair_idx}M1"
+                state = self._state_by_view_member_key.get(source_key)
+                if state is None:
+                    # Backward compatibility: if an older save had only M2, use it.
+                    state = self._state_by_view_member_key.get(f"{view_key}::{pair_label}::E{pair_idx}M2")
+                if state is None:
+                    state = dict(default_state)
+                # Normalize back into M1 so internal state remains stable.
+                self._state_by_view_member_key[source_key] = dict(state)
 
                 for member_id in self._member_ids_for_pair(pair_idx):
-                    payload = dict(base_state or {})
+                    member_id = (member_id or "").strip().upper()
+                    payload = dict(state or {})
                     payload["select_girders"] = pair_label
-                    payload["member_id"] = (member_id or "").strip().upper()
+                    payload["member_id"] = member_id
                     by_view[view_key][payload["member_id"]] = payload
 
         # Current selection (for convenience/backward compatibility).
@@ -709,10 +725,10 @@ class EndDiaphragmDetailsTab(QWidget):
                         continue
                     pair_label = str(payload.get("select_girders") or "").strip()
                     canonical_member = str(payload.get("member_id") or member_id or "").strip().upper()
+                    # Inputs apply to both ends; normalize any M2 state into M1.
+                    if canonical_member.endswith("M2"):
+                        canonical_member = canonical_member[:-1] + "1"
                     if not view_key or not pair_label or not canonical_member:
-                        continue
-                    # UI only stores M1; M2 (if present) is treated as derived.
-                    if not canonical_member.endswith("M1"):
                         continue
                     state = dict(payload)
                     state.pop("select_girders", None)
@@ -1129,7 +1145,7 @@ class EndDiaphragmDetailsTab(QWidget):
         inputs_layout.setContentsMargins(12, 4, 12, 8)
         inputs_layout.setSpacing(6)
         title = self._create_heading_label("Section Inputs:")
-        title.setStyleSheet("font-size: 12px; font-weight: 600; color: #4b4b4b; border: none; margin-top: 0px; margin-bottom: 2px;")
+        title.setStyleSheet("font-size: 12px; font-weight: 700; color: #4b4b4b; border: none; margin-top: 0px; margin-bottom: 2px;")
         inputs_layout.addWidget(title)
 
         grid = QGridLayout()
@@ -1157,7 +1173,8 @@ class EndDiaphragmDetailsTab(QWidget):
         row = self._add_grid_row(grid, row, "Type:", type_selector)
 
         bracing_combo = QComboBox()
-        bracing_combo.addItems(["K-Bracing", "X-Bracing", "Diagonal", "Horizontal"])
+        # Keep consistent with the standalone Cross Bracing tab.
+        bracing_combo.addItems(["K-Bracing", "X-Bracing"])
         self._configure_combo_box(bracing_combo)
         apply_field_style(bracing_combo)
         row = self._add_grid_row(grid, row, "Type of Bracing:", bracing_combo)
@@ -1342,7 +1359,6 @@ class EndDiaphragmDetailsTab(QWidget):
         image_layout = QVBoxLayout(image_box)
         image_layout.setContentsMargins(12, 8, 12, 10)
         image_layout.setSpacing(6)
-        image_layout.addWidget(self._create_heading_label("Dynamic Image"))
 
         self._rolled_preview = RolledSectionPreview()
         image_layout.addWidget(self._rolled_preview, 1)
@@ -1419,6 +1435,11 @@ class EndDiaphragmDetailsTab(QWidget):
 
         total_depth = self._create_line_edit()
         total_depth.setValidator(QDoubleValidator(0, 1_000_000, 3))
+        try:
+            total_depth.setFixedWidth(int(getattr(self, "_combo_width", 190)))
+            total_depth.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+        except Exception:
+            pass
         row = self._add_grid_row(grid, row, "Total Depth (mm):", total_depth)
         self.welded_total_depth = total_depth
 
@@ -1430,6 +1451,11 @@ class EndDiaphragmDetailsTab(QWidget):
 
         top_width = self._create_line_edit()
         top_width.setValidator(QDoubleValidator(0, 1_000_000, 3))
+        try:
+            top_width.setFixedWidth(int(getattr(self, "_combo_width", 190)))
+            top_width.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+        except Exception:
+            pass
         row = self._add_grid_row(grid, row, "Width of Top Flange (mm):", top_width)
         self.welded_top_width = top_width
 
@@ -1441,6 +1467,11 @@ class EndDiaphragmDetailsTab(QWidget):
 
         bottom_width = self._create_line_edit()
         bottom_width.setValidator(QDoubleValidator(0, 1_000_000, 3))
+        try:
+            bottom_width.setFixedWidth(int(getattr(self, "_combo_width", 190)))
+            bottom_width.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+        except Exception:
+            pass
         row = self._add_grid_row(grid, row, "Width of Bottom Flange (mm):", bottom_width)
         self.welded_bottom_width = bottom_width
 
@@ -1450,9 +1481,6 @@ class EndDiaphragmDetailsTab(QWidget):
         apply_field_style(bottom_thickness_combo)
         row = self._add_grid_row(grid, row, "Bottom Flange Thickness (mm):", bottom_thickness_combo)
 
-        bearing_thickness = self._create_line_edit()
-        self._add_grid_row(grid, row, "Bearing Stiffener Thickness (mm):", bearing_thickness)
-
         self._welded_inputs = [
             symmetry_combo,
             total_depth,
@@ -1461,7 +1489,6 @@ class EndDiaphragmDetailsTab(QWidget):
             top_thickness_combo,
             bottom_width,
             bottom_thickness_combo,
-            bearing_thickness,
         ]
 
         inputs_layout.addLayout(grid)
@@ -1480,7 +1507,6 @@ class EndDiaphragmDetailsTab(QWidget):
         image_layout = QVBoxLayout(image_box)
         image_layout.setContentsMargins(12, 8, 12, 10)
         image_layout.setSpacing(6)
-        image_layout.addWidget(self._create_heading_label("Dynamic Image"))
 
         self._welded_preview = RolledSectionPreview()
         image_layout.addWidget(self._welded_preview, 1)

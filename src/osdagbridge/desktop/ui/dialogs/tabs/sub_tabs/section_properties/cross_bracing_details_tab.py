@@ -620,12 +620,14 @@ class CrossBracingDetailsTab(QWidget):
 
     def _create_heading_label(self, text):
         label = QLabel(text)
-        label.setStyleSheet("font-size: 12px; font-weight: 600; color: #4b4b4b; border: none;")
+        label.setStyleSheet("font-size: 12px; font-weight: 700; color: #4b4b4b; border: none;")
         return label
 
     def _create_label(self, text):
         label = QLabel(text)
-        label.setStyleSheet("font-size: 11px; color: #4b4b4b; border: none;")
+        # Keep default label styling, but emphasize the bracing type selector.
+        weight = "700" if (text or "").strip() == "Type of Bracing:" else "400"
+        label.setStyleSheet(f"font-size: 11px; font-weight: {weight}; color: #4b4b4b; border: none;")
         return label
 
     def _add_grid_row(self, layout, row, text, widget):

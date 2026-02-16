@@ -494,7 +494,10 @@ VALUES_PROFILE_SCOPE = ["All", "Custom"]
 VALUES_OPTIMIZATION_MODE = ["Optimized", "Customized", "All"]
 VALUES_TORSIONAL_RESTRAINT = ["Fully Restrained", "Partially Restrained - Support Connect", "Partially Restrained - Bearing Support"]
 VALUES_WARPING_RESTRAINT = ["Both Flange Restraint", "No Restraint"]
-VALUES_WEB_TYPE = ["Thin Web with ITS", "Thick Web with ITS"]
+# Plate girder web classification used by the Section Properties UI.
+# Thin webs typically require intermediate transverse stiffeners (ITS), whereas
+# thick webs do not; keep the labels consistent across desktop UI + schemas.
+VALUES_WEB_TYPE = ["Thin Web with ITS", "Thick Web"]
 VALUES_STIFFENER_DESIGN = ["Simple Post Critical", "Tension Field"]
 VALUES_CROSS_BRACING_TYPE = ["K-bracing", "K-bracing with top bracket", "X-bracing", "X-bracing with bottom bracket", "X-bracing with top and bottom brackets"]
 VALUES_END_DIAPHRAGM_TYPE = ["Cross Bracing", "Rolled Beam", "Welded Beam"]

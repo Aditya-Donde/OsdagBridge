@@ -46,7 +46,9 @@ from osdagbridge.desktop.ui.utils.rolled_section_preview import RolledSectionPre
 
 DEFAULT_MEMBER_LENGTH_M = 30.0
 DEFAULT_DISTANCE_START_M = 0.0
-MAX_GIRDER_COUNT = 5
+# Upper bound for girder-specific UI controls (dropdowns/tables).
+# This is a UI safety cap; actual girder count is driven by the "No. of Girders" input.
+MAX_GIRDER_COUNT = 20
 
 
 def _locate_database() -> Path:
@@ -963,6 +965,38 @@ class GirderDetailsTab(QWidget):
     def _on_girder_changed(self, girder: str) -> None:
         if not girder:
             return
+
+        girder = str(girder).strip()
+        if not girder or girder == getattr(self, "_current_girder", ""):
+            return
+
+        # If user is leaving a dirty member, confirm save/discard/cancel.
+        # This mirrors Member ID switching behavior and ensures dependent tabs
+        # (e.g., Stiffener Details) see the correct per-member design mode.
+        if self._is_current_member_dirty():
+            decision = self._confirm_switch_if_dirty()
+            if decision == "cancel":
+                # Revert the dropdown selection back to the previous girder.
+                try:
+                    if self.girder_dropdown is not None:
+                        prev = self.girder_dropdown.blockSignals(True)
+                        try:
+                            old = getattr(self, "_current_girder", "")
+                            idx = self.girder_dropdown.findData(old)
+                            if idx >= 0:
+                                self.girder_dropdown.setCurrentIndex(idx)
+                        finally:
+                            self.girder_dropdown.blockSignals(prev)
+                except Exception:
+                    pass
+                return
+            if decision == "save":
+                self._commit_current_member_state()
+                try:
+                    QMessageBox.information(self, "Saved", "Member inputs saved successfully.")
+                except Exception:
+                    pass
+
         self._current_girder = girder
         self._refresh_segment_list(girder)
         self._select_segment_index(0)
@@ -1166,6 +1200,7 @@ class GirderDetailsTab(QWidget):
         section_inputs_layout.setAlignment(Qt.AlignTop)
 
         section_inputs_title = self._create_label("Section Inputs:")
+        section_inputs_title.setStyleSheet("font-size: 12px; font-weight: 700; color: #4b4b4b; border: none;")
         section_inputs_layout.addWidget(section_inputs_title)
 
         inputs_grid = QGridLayout()
@@ -1328,6 +1363,7 @@ class GirderDetailsTab(QWidget):
         props_layout.setSpacing(10)
 
         props_title = self._create_label("Section Properties:")
+        props_title.setStyleSheet("font-size: 12px; font-weight: 700; color: #4b4b4b; border: none;")
         props_layout.addWidget(props_title)
 
         properties_grid = QGridLayout()
@@ -2354,8 +2390,14 @@ class GirderDetailsTab(QWidget):
         if design:
             return design == "Optimized"
 
-        # Fallback: if the member hasn't been visited/saved yet, assume current default.
+        # Fallback: if the member hasn't been visited/saved yet, do NOT inherit
+        # whatever the currently active member is set to. New/unvisited members
+        # should behave like the UI default (Optimized) until explicitly changed.
         try:
-            return (self.design_combo.currentText() if hasattr(self, "design_combo") else "") == "Optimized"
+            template = getattr(self, "_default_member_state", None) or {}
+            default_design = str(((template.get("inputs") or {}).get("design") or "")).strip()
+            if default_design:
+                return default_design == "Optimized"
         except Exception:
-            return False
+            pass
+        return True
