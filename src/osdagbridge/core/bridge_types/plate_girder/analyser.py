@@ -18,45 +18,45 @@ class BridgeGrillageModel:
         )
 
         self.concrete_custom = og.create_material(
-            material="concrete", E=50 * GPa, v=0.3, rho=24 * kN / m**3
+            material="concrete", E=50 * GPa, v=0.3, rho=24 * kN / m ** 3
         )
 
         # -------------------- SECTIONS --------------------
         self.edge_longitudinal_section = og.create_section(
-            A=0.934 * m**2,
-            J=0.1857 * m**3,
-            Iz=0.3478 * m**4,
-            Iy=0.213602 * m**4,
-            Az=0.444795 * m**2,
-            Ay=0.258704 * m**2,
+            A=0.934 * m ** 2,
+            J=0.1857 * m ** 3,
+            Iz=0.3478 * m ** 4,
+            Iy=0.213602 * m ** 4,
+            Az=0.444795 * m ** 2,
+            Ay=0.258704 * m ** 2,
         )
 
         self.longitudinal_section = og.create_section(
-            A=1.025 * m**2,
-            J=0.1878 * m**3,
-            Iz=0.3694 * m**4,
-            Iy=0.3634 * m**4,
-            Az=0.4979 * m**2,
-            Ay=0.309 * m**2,
+            A=1.025 * m ** 2,
+            J=0.1878 * m ** 3,
+            Iz=0.3694 * m ** 4,
+            Iy=0.3634 * m ** 4,
+            Az=0.4979 * m ** 2,
+            Ay=0.309 * m ** 2,
         )
 
         self.transverse_section = og.create_section(
-            A=0.504 * m**2,
-            J=5.22303e-3 * m**3,
-            Iy=0.32928 * m**4,
-            Iz=1.3608e-3 * m**4,
-            Ay=0.42 * m**2,
-            Az=0.42 * m**2,
+            A=0.504 * m ** 2,
+            J=5.22303e-3 * m ** 3,
+            Iy=0.32928 * m ** 4,
+            Iz=1.3608e-3 * m ** 4,
+            Ay=0.42 * m ** 2,
+            Az=0.42 * m ** 2,
             unit_width=True,
         )
 
         self.end_transverse_section = og.create_section(
-            A=0.504 / 2 * m**2,
-            J=2.5012e-3 * m**3,
-            Iy=0.04116 * m**4,
-            Iz=0.6804e-3 * m**4,
-            Ay=0.21 * m**2,
-            Az=0.21 * m**2,
+            A=0.504 / 2 * m ** 2,
+            J=2.5012e-3 * m ** 3,
+            Iy=0.04116 * m ** 4,
+            Iz=0.6804e-3 * m ** 4,
+            Ay=0.21 * m ** 2,
+            Az=0.21 * m ** 2,
         )
 
         # -------------------- GRILLAGE MEMBERS --------------------
@@ -93,7 +93,7 @@ class BridgeGrillageModel:
 
         # placeholder for self weight load case created later
         self.self_weight_load_case = None
-        
+
         # self.geometry = GeometryDefinitions(self.L, self.w, self.model)
 
         # -------------------- GEOMETRY / LAYOUT --------------------
@@ -101,24 +101,21 @@ class BridgeGrillageModel:
         self.bridge_geometry = None
         self.load_manager = None
 
-        
-
-
     # ============================================================
     #   CREATE THE GRILLAGE MODEL
     # ============================================================
-    def create_model(self):   
-        
+    def create_model(self):
+
         # -------------------------------------------------
         # Create cross-section layout (UI inputs)
         # -------------------------------------------------
         self.layout = CrossSectionLayout(
-            carriageway_width=10.0,        # TODO: get from UI
-            crash_barrier_width=0.45,      # TODO: get from UI
-            footpath_width=1.50,           # TODO: get from UI
-            railing_width=0.30,            # TODO: get from UI
-            median_width=0.0,             # TODO: get from UI
-            no_of_footpaths=2,             # TODO: get from UI
+            carriageway_width=10.0,  # TODO: get from UI
+            crash_barrier_width=0.45,  # TODO: get from UI
+            footpath_width=1.50,  # TODO: get from UI
+            railing_width=0.30,  # TODO: get from UI
+            median_width=0.0,  # TODO: get from UI
+            no_of_footpaths=2,  # TODO: get from UI
         )
 
         # -------------------------------------------------
@@ -144,7 +141,6 @@ class BridgeGrillageModel:
         # Update width used by grillage model
         # -------------------------------------------------
         self.w = self.bridge_geometry.width
-
 
         self.model = og.create_grillage(
             bridge_name="Osdag Bridge",
@@ -200,7 +196,7 @@ class BridgeGrillageModel:
             raise ValueError("Model is not available. Create model before adding loads.")
 
         L = L or self.L
-        
+
         start_beam = 0
         end_beam = L
         beam_mag = 22.4 * kN / 1.0  # kN/m
@@ -219,8 +215,8 @@ class BridgeGrillageModel:
             )
 
             DL_self_weight.add_load(line_load)
-        
-        #store reference on the instance
+
+        # store reference on the instance
         self.self_weight_load_case = DL_self_weight
 
         model.add_load_case(DL_self_weight)
@@ -240,7 +236,7 @@ class BridgeGrillageModel:
         # -------------------------------------------------
         # Load magnitude (UDL over area)
         # -------------------------------------------------
-        deck_mag = 25.0 * kN / (1.0 ** 2)   # <-- update as per slab + wearing course if needed
+        deck_mag = 25.0 * kN / (1.0 ** 2)  # <-- update as per slab + wearing course if needed
 
         # -------------------------------------------------
         # Get geometry from load manager
@@ -301,7 +297,7 @@ class BridgeGrillageModel:
         # L = L or self.L
         # w = w or self.w
 
-        overlay_mag = 4.32 * kN / (1.0**2)
+        overlay_mag = 4.32 * kN / (1.0 ** 2)
 
         # --------------------------------
         # Get geometry from geometry module
@@ -343,7 +339,7 @@ class BridgeGrillageModel:
         self.overlay_load_case = DL_overlay
 
         return DL_overlay
-    
+
     def create_footpath_load(self, model=None):
         """
         Creates footpath patch loads on both sides of the bridge.
@@ -363,7 +359,7 @@ class BridgeGrillageModel:
         # -------------------------------------------------
         # Load magnitude (UDL over area)
         # -------------------------------------------------
-        footpath_mag = 5.00 * kN / (1.0 ** 2)   # <-- update as per IRC value
+        footpath_mag = 5.00 * kN / (1.0 ** 2)  # <-- update as per IRC value
 
         # -------------------------------------------------
         # Create load case
@@ -474,7 +470,6 @@ class BridgeGrillageModel:
 
         return DL_barrier
 
-
     def create_railing_load(self, model=None):
         """
         Creates railing line loads on both sides of the bridge.
@@ -485,7 +480,7 @@ class BridgeGrillageModel:
         model = model or self.model
         if model is None:
             raise ValueError("Model is not available. Create model before adding loads.")
-        
+
         # If there is no railing component in the layout, skip creating railing load
         if not self.layout.has_component("railing_left") or not self.layout.has_component("railing_right"):
             warnings.warn("No railing component in layout; skipping railing load creation")
@@ -495,7 +490,7 @@ class BridgeGrillageModel:
         # -------------------------------------------------
         # Load magnitude (UDL along length)
         # -------------------------------------------------
-        railing_udl = 1.50 * kN / m   # <-- update if code value differs
+        railing_udl = 1.50 * kN / m  # <-- update if code value differs
 
         # -------------------------------------------------
         # Create load case
@@ -551,7 +546,7 @@ class BridgeGrillageModel:
         # -------------------------------------------------
         # Load magnitude (UDL along length)
         # -------------------------------------------------
-        median_udl = 4.00 * kN / m   # <-- update as per IRC / project data
+        median_udl = 4.00 * kN / m  # <-- update as per IRC / project data
 
         # If there is no median component in the layout, skip creating median load
         if not self.layout.has_component("median"):
@@ -596,7 +591,6 @@ class BridgeGrillageModel:
 
         return DL_median
 
-    
     # ============================================================
     #   Live Load
     # ============================================================
@@ -716,7 +710,7 @@ class BridgeGrillageModel:
 
             result_cases.append(case_data)
 
-        print(f"Vehicle lane coordinate cases: {result_cases}")
+        # print(f"Vehicle lane coordinate cases: {result_cases}")
         return result_cases
 
     def create_vehicle_load_cases(self, model=None):
@@ -746,7 +740,6 @@ class BridgeGrillageModel:
             for vehicle_type, coord_list in combinations.items():
 
                 for lane_index, (x_coord, z_coord) in enumerate(coord_list, start=1):
-
                     # ---------------------------------------
                     # Create vehicle
                     # ---------------------------------------
@@ -771,14 +764,13 @@ class BridgeGrillageModel:
 
                     all_vehicle_load_cases.append(lc)
 
-                    print(f"Created load case: {load_case_name}")
+                    # print(f"Created load case: {load_case_name}")
 
         self.vehicle_load_cases_list = all_vehicle_load_cases
 
         return all_vehicle_load_cases
-    
 
-    def add_vehicle_load_cases_from_combinations(self,model=None):
+    def add_vehicle_load_cases_from_combinations(self, model=None):
         """
         Create vehicle load cases using coordinates from vehicle_lane_coordinates().
 
@@ -793,7 +785,7 @@ class BridgeGrillageModel:
             raise ValueError("Model not created yet.")
 
         vehicle_cases = self.vehicle_lane_coordinates()
-        
+
         alf = [1.0, 0.8, 0.4]
         dla = 1.3
         # -------------------------------------------------
@@ -814,7 +806,7 @@ class BridgeGrillageModel:
                     # -----------------------------
                     # Create load case name
                     # -----------------------------
-                    lc_name = f"Case{case_num} {vehicle_type} L{i+1}"
+                    lc_name = f"Case{case_num} {vehicle_type} L{i + 1}"
                     lc = og.create_load_case(name=lc_name)
 
                     # -----------------------------
@@ -864,17 +856,17 @@ class BridgeGrillageModel:
                     self.vehicle_load_cases_list.append(lc)
                     self.vehicle_moving_loads.append(vehicle)
 
-                    print(
-                        f"Created {lc_name} at x={x_coord}, z={z_coord}"
-                    )
+                    # print(
+                    #     f"Created {lc_name} at x={x_coord}, z={z_coord}"
+                    # )
 
         return self.vehicle_load_cases_list
 
     def create_moving_vehicle_load_cases(
-        self,
-        model=None,
-        start_offset=-25.0,
-        span=None,
+            self,
+            model=None,
+            start_offset=-25.0,
+            span=None,
     ):
         """
         Creates moving load cases corresponding to
@@ -907,7 +899,6 @@ class BridgeGrillageModel:
         self.moving_load_cases_list = []
 
         for i, vehicle in enumerate(self.vehicle_moving_loads):
-
             # Use static load case name
             static_lc_name = self.vehicle_load_cases_list[i].name
 
@@ -922,10 +913,9 @@ class BridgeGrillageModel:
 
             self.moving_load_cases_list.append(moving_load)
 
-            print(f"Created moving load case: {moving_name}")
+            # print(f"Created moving load case: {moving_name}")
 
         return self.moving_load_cases_list
-
 
     def vehicle_combination(self, carriageway_width=None):
         """
@@ -991,15 +981,15 @@ class BridgeGrillageModel:
         return sequences
 
     def add_vehicle_load_with_moving_path(
-        self,
-        model=None,
-        vehicle_type="CLASS70R",
-        load_case_name="Class 70R",
-        x_coord=0.0,
-        z_coord=0.0,
-        spacing=1.5,
-        span=None,
-        y_coord=0.0,
+            self,
+            model=None,
+            vehicle_type="CLASS70R",
+            load_case_name="Class 70R",
+            x_coord=0.0,
+            z_coord=0.0,
+            spacing=1.5,
+            span=None,
+            y_coord=0.0,
     ):
         """
         Adds a vehicle load (static + moving) to the grillage model.
@@ -1086,29 +1076,14 @@ class BridgeGrillageModel:
 
         model.analyze()
 
-        # results = model.get_results(load_case=['girder self weight', 'Deck slab load', 'Wearing course self weight',
-        # 'Footpath load', 'Crash barrier load', 'Railing load', 'Median load'])
+        # Get ALL loadcases
         results = model.get_results()
-        print("results")
-        print(results) 
-        
-        forces_table = results.forces
-        Fy = forces_table.sel(Component = "Mz_i")
-        print(Fy)
-        df = Fy.to_pandas()
-        df.to_excel("Mz_results_moving1.xlsx")
 
-        results = model.get_results(
-            load_case=[
-                "girder self weight",
-                "Deck slab load",
-                "Wearing course self weight",
-                "Footpath load",
-                "Crash barrier load",
-                "Railing load",
-                "Median load"
-            ]
-        )
+        # ✅ DEBUG: Show all detected loadcases
+        # print(results.coords["Loadcase"].values)
+
+        # print("Results dataset:")
+        # print(results)
 
         self.dataset = results
 
@@ -1124,11 +1099,11 @@ class BridgeGrillageModel:
 
         ext_beam_nodes = model.get_element(member="exterior_main_beam_1", options="nodes")
 
-        max_def = max(results.displacements.sel(Loadcase=load_case_of_interest,Component="dy",Node=ext_beam_nodes[0]))
-        max_report_def = f"The maximum deflection = {max_def.values*1000:.2f} mm"
-        
+        max_def = max(results.displacements.sel(Loadcase=load_case_of_interest, Component="dy", Node=ext_beam_nodes[0]))
+        max_report_def = f"The maximum deflection = {max_def.values * 1000:.2f} mm"
+
         # Plot deflection
-        og.plot_defo(model, results, member="exterior_main_beam_1", option="nodes",loadcase=load_case_of_interest)
+        og.plot_defo(model, results, member="exterior_main_beam_1", option="nodes", loadcase=load_case_of_interest)
         og.plt.title(max_report_def)
         og.plt.show()
 
@@ -1136,7 +1111,7 @@ class BridgeGrillageModel:
         static_lc_result = model.get_results(load_case=['Deck slab load'])
         print("static_lc_result")
         print(static_lc_result)
-        
+
         static_lc_forces = static_lc_result.forces
 
         # Select a specific load case from result
@@ -1146,26 +1121,25 @@ class BridgeGrillageModel:
         member_name = "exterior_main_beam_1"
 
         # get the tag of elements and nodes
-        ext_beam_elements = model.get_element(member=member_name, options="elements",)
+        ext_beam_elements = model.get_element(member=member_name, options="elements", )
         print(f"The element tags for Beam 1 is {ext_beam_elements}")
 
         # extract maximum bending moment from beam 1(member_name) from static_lc_result
-        max_bending = max(static_lc_forces.sel(Component="Mz_i",Element=ext_beam_elements)).values/1000
-        print(f" Maximum bending moment = {max_bending:.2f} kNm") 
+        max_bending = max(static_lc_forces.sel(Component="Mz_i", Element=ext_beam_elements)).values / 1000
+        print(f" Maximum bending moment = {max_bending:.2f} kNm")
 
         # ------------------------------------------------------------------------------
         # Plotting
         # ------------------------------------------------------------------------------
 
         # Plot BMD and SFD (change component as needed)
-        load_case_of_interest = load_case_name 
-        og.plot_force(model, results, member="exterior_main_beam_1",component="Mz",loadcase=load_case_of_interest)
+        load_case_of_interest = load_case_name
+        og.plot_force(model, results, member="exterior_main_beam_1", component="Mz", loadcase=load_case_of_interest)
 
         max_report_bending = f"Maximum bending moment = {max_bending:.2f} kNm"
 
         og.plt.title(max_report_bending)
         og.plt.show()
-
 
 
 # ============================================================
@@ -1188,10 +1162,6 @@ if __name__ == "__main__":
     bridge.create_vehicle_load_cases()
     bridge.add_vehicle_load_cases_from_combinations()
     bridge.create_moving_vehicle_load_cases()
-    bridge.analyze()
-    # bridge.plot()
-    bridge.plot()
-    # bridge.analyze()
     # bridge.plot()
 
     results = bridge.analyze()
@@ -1200,6 +1170,8 @@ if __name__ == "__main__":
         dataset=results,
         model=bridge.model
     )
+    # result_handler.debug_loadcase_detection()
 
     result_handler.run_interactive_viewer()
+    # result_handler.print_moving_load_trace()
 

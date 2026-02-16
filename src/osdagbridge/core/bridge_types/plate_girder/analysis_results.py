@@ -16,15 +16,14 @@ class PlateGirderAnalysisResults:
     # ========================================================
     # INITIALIZATION
     # ========================================================
-    def __init__(self, dataset, model):        #storing analysis result
+    def __init__(self, dataset, model):  # storing analysis result
         self.ds = dataset
         self.model = model
-
 
     # ========================================================
     # DATASET BASED RESULTS (FORCES / MOMENTS)
     # ========================================================
-    def get_beam_element_results(self, element_ids, loadcase, component):                   #reads beam force and moment
+    def get_beam_element_results(self, element_ids, loadcase, component):  # reads beam force and moment
 
         results = {}
 
@@ -42,10 +41,53 @@ class PlateGirderAnalysisResults:
 
         return results
 
-
-    def get_available_loadcases(self):                                              #get loadcases
+    def get_available_loadcases(self):  # get loadcases
         return list(self.ds.coords["Loadcase"].values)
 
+    # ========================================================
+    # LOADCASE CLASSIFICATION
+    def classify_loadcases(self):
+
+        all_lc = self.get_available_loadcases()
+
+        vehicle_static = []
+        vehicle_moving = []
+        dead_loads = []
+
+        for lc in all_lc:
+
+            name = str(lc).lower()
+
+            # -----------------------------
+            # MOVING VEHICLES
+            # -----------------------------
+            if "moving" in name:
+                vehicle_moving.append(lc)
+                continue
+
+            # -----------------------------
+            # STATIC VEHICLES
+            # Detect your naming pattern
+            # -----------------------------
+            if name.startswith("case"):
+                vehicle_static.append(lc)
+                continue
+
+            if "classa" in name or "70r" in name:
+                vehicle_static.append(lc)
+                continue
+
+            # -----------------------------
+            # DEAD LOADS
+            # -----------------------------
+            dead_loads.append(lc)
+
+        return {
+            "all": all_lc,
+            "dead": dead_loads,
+            "vehicle_static": vehicle_static,
+            "vehicle_moving": vehicle_moving,
+        }
 
     # ========================================================
     # OPENSEES NODAL DEFLECTION (FINAL STATE)
@@ -86,11 +128,10 @@ class PlateGirderAnalysisResults:
     #
     #     return disp
 
-
     # ========================================================
     # GRILLAGE CONNECTIVITY
     # ========================================================
-    def build_grillage_connectivity(self):          #connectivity between nodes[raph for bfs]
+    def build_grillage_connectivity(self):  # connectivity between nodes[raph for bfs]
 
         nodes = {}
         for n in ops.getNodeTags():
@@ -112,7 +153,6 @@ class PlateGirderAnalysisResults:
             adj[n2].add(n1)
 
         return nodes, elements, adj
-
 
     # ========================================================
     # BFS SHORTEST PATH
@@ -162,7 +202,7 @@ class PlateGirderAnalysisResults:
     # PATH LENGTH COMPUTATION
     # ========================================================
     def compute_path_distance(self, nodes, path):
-                                        # calculate girder length
+        # calculate girder length
         dist = 0.0
         for i in range(len(path) - 1):
             x1, y1, z1 = nodes[path[i]]
@@ -242,41 +282,157 @@ class PlateGirderAnalysisResults:
         return girder_map, elements
 
     # ========================================================
-    # PRINT SINGLE GIRDER (FORMATTED)
+    # PRINT MOVING LOAD TRACE
     # ========================================================
-    def print_single_girder(self, girder_key):
+    def print_moving_load_trace(self, load_case_filter=None, girder_filter=None, element_filter=None):
         """
-        Prints one girder in formatted report style.
+        Prints the BMD and SFD for every point (element) when cars are moving.
+        Iterates through all moving load cases and all girders.
 
-        Example input:
-            g1
-            g2
-            g3
+        :param load_case_filter: (str or list) Print only load cases containing this string(s).
+        :param girder_filter: (str or list) Print only girders matching this name(s) (e.g. "g1").
+        :param element_filter: (int or list) Print only specific element IDs.
         """
 
-        girder_map, _ = self.build_girders()
+        # Helper to normalize input to list
+        def to_list(val):
+            if val is None: return None
+            return [val] if not isinstance(val, (list, tuple)) else val
 
-        if girder_key not in girder_map:
-            print("❌ Girder not found")
+        lc_filter = to_list(load_case_filter)
+        g_filter = to_list(girder_filter)
+        e_filter = to_list(element_filter)
+
+        # 1. Classify loadcases to find moving ones
+        lc_groups = self.classify_loadcases()
+        moving_lcs = lc_groups["vehicle_moving"]
+
+        if not moving_lcs:
+            print("❌ No moving load cases found.")
             return
 
-        girder = girder_map[girder_key]
+        # 2. Build girders
+        girder_map, _ = self.build_girders(verbose=False)
 
-        print("----------------------------------------")
-        print(f"Girder {girder_key}")
-        print("----------------------------------------")
+        print("\n================ MOVING LOAD TRACE ================")
 
-        print(f"Start node : {girder['start']}")
-        print(f"End node   : {girder['end']}")
-        print(f"Path       : {girder['path']}")
-        print(f"Elements   : {girder['elements']}")
+        # 3. Iterate through moving load cases
+        for lc in moving_lcs:
+            # Apply load case filter
+            if lc_filter:
+                # Check if ANY of the filter strings are in the load case name
+                if not any(str(f) in lc for f in lc_filter):
+                    continue
 
-        print("\nElement connectivity:")
-        for eid, n1, n2 in girder["element_map"]:
-            print(f"{eid:<5}: {n1} -> {n2}")
+            print(f"\n>>> Load Case: {lc}")
 
-        print(f"\nLength     : {girder['length']:.3f} m")
-        print("----------------------------------------")
+            # 4. Iterate through girders
+            for girder_name, girder_data in girder_map.items():
+                # Apply girder filter
+                if g_filter and girder_name not in g_filter:
+                    continue
+
+                print(f"  --- Girder: {girder_name} ---")
+                print(
+                    f"  {'Element':<10} | {'Vy_i (kN)':<12} | {'Vy_j (kN)':<12} | {'Mz_i (kNm)':<12} | {'Mz_j (kNm)':<12}")
+                print("  " + "-" * 70)
+
+                elements = girder_data["elements"]
+
+                # Filter elements if requested
+                if e_filter:
+                    elements = [e for e in elements if e in e_filter]
+                    if not elements:
+                        continue  # Skip if no elements match
+
+                # 5. Get results for this girder and loadcase
+                # Retrieve all required components at once for efficiency
+                try:
+                    # Using dataset directly for speed scaling with multiple elements
+                    # Select specific loadcase and elements
+                    subset = self.ds.sel(Loadcase=lc, Element=elements)
+
+                    # Extract values
+                    vy_i = subset.sel(Component="Vy_i")["forces"].values
+                    vy_j = subset.sel(Component="Vy_j")["forces"].values
+                    mz_i = subset.sel(Component="Mz_i")["forces"].values
+                    mz_j = subset.sel(Component="Mz_j")["forces"].values
+
+                    # 6. Print results for each element
+                    for idx, eid in enumerate(elements):
+                        print(
+                            f"  {eid:<10} | {vy_i[idx]:<12.3f} | {vy_j[idx]:<12.3f} | {mz_i[idx]:<12.3f} | {mz_j[idx]:<12.3f}")
+
+                except Exception as e:
+                    print(f"  ❌ Error retrieving results for girder {girder_name}: {e}")
+
+        print("\n===================================================")
+
+    # ========================================================
+    # PRINT VEHICLE ENVELOPES
+    # ========================================================
+    def print_envelopes(self, load_case_filter=None, girder_filter=None):
+        """
+        Calculates and prints the max/min values for SFD and BMD for every moving load case position.
+        """
+
+        def to_list(val):
+            if val is None: return None
+            return [val] if not isinstance(val, (list, tuple)) else val
+
+        lc_filter = to_list(load_case_filter)
+        g_filter = to_list(girder_filter)
+
+        lc_groups = self.classify_loadcases()
+        moving_lcs = lc_groups["vehicle_moving"]
+
+        if not moving_lcs:
+            print("❌ No moving load cases found.")
+            return
+
+        if lc_filter:
+            moving_lcs = [lc for lc in moving_lcs if any(str(f) in lc for f in lc_filter)]
+            if not moving_lcs:
+                print("❌ No moving load cases match the filter.")
+                return
+
+        girder_map, _ = self.build_girders(verbose=False)
+
+        print("\n================ VEHICLE ENVELOPES (PER POSITION) ================")
+
+        for lc in moving_lcs:
+            print(f"\n>>> Load Case: {lc}")
+            print(
+                f"{'Girder':<10} | {'Max Vy (kN)':<12} | {'Min Vy (kN)':<12} | {'Max Mz (kNm)':<12} | {'Min Mz (kNm)':<12}")
+            print("-" * 75)
+
+            for girder_name, girder_data in girder_map.items():
+                if g_filter and girder_name not in g_filter:
+                    continue
+
+                elements = girder_data["elements"]
+
+                try:
+                    # Select ONLY this loadcase and elements for this girder
+                    subset = self.ds.sel(Loadcase=lc, Element=elements)
+
+                    # Get max/min across elements and both i/j components for this specific loadcase
+                    vy_max = max(subset.sel(Component="Vy_i")["forces"].max().values,
+                                 subset.sel(Component="Vy_j")["forces"].max().values)
+                    vy_min = min(subset.sel(Component="Vy_i")["forces"].min().values,
+                                 subset.sel(Component="Vy_j")["forces"].min().values)
+                    mz_max = max(subset.sel(Component="Mz_i")["forces"].max().values,
+                                 subset.sel(Component="Mz_j")["forces"].max().values)
+                    mz_min = min(subset.sel(Component="Mz_i")["forces"].min().values,
+                                 subset.sel(Component="Mz_j")["forces"].min().values)
+
+                    print(
+                        f"{girder_name:<10} | {float(vy_max):<12.3f} | {float(vy_min):<12.3f} | {float(mz_max):<12.3f} | {float(mz_min):<12.3f}")
+                except Exception as e:
+                    print(f"{girder_name:<10} | ❌ Error: {e}")
+
+        print("\n===================================================================")
+
     def run_interactive_viewer(self):
 
         while True:
@@ -284,7 +440,9 @@ class PlateGirderAnalysisResults:
             print("\n==============================")
             print("Select Option:")
             print("1. Show girder paths (BFS)")
-            print("2. Show analysis results")
+            print("2. Show Analysis Result")
+            print("3. Show moving load trace")
+            print("4. Show max/min envelopes")
             print("0. Exit")
             print("==============================")
 
@@ -329,7 +487,6 @@ class PlateGirderAnalysisResults:
                 print("----------------------------------------")
 
                 continue
-
 
             # ======================================================
             # OPTION 2 → EXISTING RESULT VIEWER
@@ -425,22 +582,6 @@ class PlateGirderAnalysisResults:
 
                             comp = component_map[r]
 
-                            # ---------------- DEFLECTION ----------------
-                            # if comp in ["Dx", "Dy", "Dz"]:
-                            #
-                            #     direction = comp[-1].lower()
-                            #
-                            #     disp = self.get_deflection_per_loadcase(
-                            #         girder_nodes, lc, direction
-                            #     )
-                            #
-                            #     print(f"\nDeflection ({comp}) | {lc}")
-                            #     print("--------------------------------")
-                            #     for n, v in disp.items():
-                            #         print(f"Node {n}: {v}")
-                            #     print("--------------------------------")
-                            #     continue
-
                             # ---------------- FORCES ----------------
                             res = self.get_beam_element_results(
                                 girder_elements, lc, comp
@@ -450,6 +591,74 @@ class PlateGirderAnalysisResults:
                             for eid, val in res.items():
                                 print(f"Element {eid}: {val}")
 
+                continue
+
+
+            elif main_choice == "3":
+                print("\n--- Moving Load Trace Configuration ---")
+
+                # Get moving load cases
+                lc_groups = self.classify_loadcases()
+                moving_lcs = lc_groups["vehicle_moving"]
+
+                if not moving_lcs:
+                    print("❌ No moving load cases found.")
+                    continue
+
+                # Show available girders
+                girder_map, _ = self.build_girders(verbose=False)
+                print("\nAvailable Girders:")
+                for g in girder_map.keys():
+                    print(f"  - {g}")
+
+                g_input = input("Enter Girder Name (or leave blank for all): ").strip()
+                if not g_input:
+                    g_input = None
+
+                # Show available moving load cases
+                print("\nAvailable Moving Load Cases:")
+                # Group by case type for better readability
+                case_types = {}
+                for lc in moving_lcs:
+                    # Extract case type (e.g., "Case1 ClassA" from "Moving Case1 ClassA L1 at...")
+                    parts = lc.split()
+                    if len(parts) >= 3:
+                        case_type = f"{parts[1]} {parts[2]}"  # e.g., "Case1 ClassA"
+                        if case_type not in case_types:
+                            case_types[case_type] = []
+                        case_types[case_type].append(lc)
+
+                for case_type in sorted(case_types.keys()):
+                    print(f"  - {case_type} ({len(case_types[case_type])} positions)")
+
+                print("\nEnter Load Case Filter (e.g., 'Case1', 'ClassA', 'Case2 Class70R')")
+                lc_input = input("Filter (or leave blank for all): ").strip()
+                if not lc_input:
+                    lc_input = None
+
+                print("\n")
+                self.print_moving_load_trace(load_case_filter=lc_input, girder_filter=g_input)
+
+                continue
+
+            elif main_choice == "4":
+                print("\n--- Envelope Configuration ---")
+
+                # Show available girders
+                girder_map, _ = self.build_girders(verbose=False)
+                print("\nAvailable Girders:")
+                for g in girder_map.keys():
+                    print(f"  - {g}")
+
+                g_input = input("Enter Girder Name (or leave blank for all): ").strip()
+                if not g_input:
+                    g_input = None
+
+                lc_input = input("Enter Load Case Filter (or leave blank for all): ").strip()
+                if not lc_input:
+                    lc_input = None
+
+                self.print_envelopes(load_case_filter=lc_input, girder_filter=g_input)
                 continue
 
             else:
