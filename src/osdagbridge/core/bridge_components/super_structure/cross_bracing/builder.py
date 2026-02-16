@@ -45,7 +45,7 @@ def _create_angle_section(length, leg_h, leg_w, thickness):
         thickness: Thickness of the angle
         
     Returns:
-        TopoDS_Shape: The angle section at origin
+        TopoDS_Shape: The angle section centered at origin
     """
     # Create two perpendicular legs
     # Vertical leg (longer)
@@ -57,7 +57,13 @@ def _create_angle_section(length, leg_h, leg_w, thickness):
     # Fuse the two legs to form L-shape
     angle = BRepAlgoAPI_Fuse(leg1, leg2).Shape()
     
-    return angle
+    # Center the section at origin (similar to channel and double angle sections)
+    # The angle should be centered around the X-axis
+    # Move it so the inner corner is at the centroid
+    trsf = gp_Trsf()
+    trsf.SetTranslation(gp_Vec(-length / 2, -leg_w / 2, -leg_h / 2))
+    
+    return BRepBuilderAPI_Transform(angle, trsf, True).Shape()
 
 
 def _create_channel_section(length, depth, flange_width, web_thickness, flange_thickness):
@@ -409,8 +415,11 @@ def _create_diagonal_member(p1, p2, thickness, section_type, dims, roll_sign):
 
 # BRACING PATTERN FUNCTIONS
 
-def _x_bracing(x, yL, yR, depth, tf, thickness, flange_w, 
-               section_type, dims, bracket, skew_angle=0):
+def _x_bracing(x, yL, yR, depth, tf, flange_w,
+               diagonal_thickness, diagonal_section_type, diagonal_dims,
+               top_chord_thickness, top_chord_section_type, top_chord_dims,
+               bottom_chord_thickness, bottom_chord_section_type, bottom_chord_dims,
+               bracket, skew_angle=0):
     """
     Create X-bracing pattern between two girders.
     
@@ -423,10 +432,20 @@ def _x_bracing(x, yL, yR, depth, tf, thickness, flange_w,
         yR: Right girder lateral position
         depth: Girder depth
         tf: Flange thickness
-        thickness: Bracing member thickness
         flange_w: Flange width
-        section_type: Section type for bracing
-        dims: Section dimensions
+        
+        diagonal_thickness: Thickness of diagonal members
+        diagonal_section_type: Section type for diagonal members
+        diagonal_dims: Section dimensions for diagonal members
+        
+        top_chord_thickness: Thickness of top chord/bracket
+        top_chord_section_type: Section type for top chord/bracket
+        top_chord_dims: Section dimensions for top chord/bracket
+        
+        bottom_chord_thickness: Thickness of bottom chord/bracket
+        bottom_chord_section_type: Section type for bottom chord/bracket
+        bottom_chord_dims: Section dimensions for bottom chord/bracket
+        
         bracket: Bracket option ("NONE", "UPPER", "LOWER", "BOTH")
         skew_angle: Bridge skew angle in degrees
         
@@ -447,46 +466,50 @@ def _x_bracing(x, yL, yR, depth, tf, thickness, flange_w,
     x_l = x + get_skew_x(yL)
     x_r = x + get_skew_x(yR)
     
-    # Create main X-diagonals
+    # Create main X-diagonals using diagonal section
     braces = [
         # Left TOP → Right BOTTOM diagonal
         _create_diagonal_member(
             gp_Pnt(x_l, yL, z_top), 
             gp_Pnt(x_r, yR, z_bot),
-            thickness, section_type, dims, +1
+            diagonal_thickness, diagonal_section_type, diagonal_dims, +1
         ),
         # Left BOTTOM → Right TOP diagonal
         _create_diagonal_member(
             gp_Pnt(x_l, yL, z_bot), 
             gp_Pnt(x_r, yR, z_top),
-            thickness, section_type, dims, -1
+            diagonal_thickness, diagonal_section_type, diagonal_dims, -1
         )
     ]
     
-    # Add optional brackets
+    # Add optional bottom bracket using bottom chord section
     if bracket in ("LOWER", "BOTH"):
         braces.append(
             _create_diagonal_member(
                 gp_Pnt(x_l, yL, z_bot), 
                 gp_Pnt(x_r, yR, z_bot),
-                thickness, section_type, dims, +1
+                bottom_chord_thickness, bottom_chord_section_type, bottom_chord_dims, +1
             )
         )
     
+    # Add optional top bracket using top chord section
     if bracket in ("UPPER", "BOTH"):
         braces.append(
             _create_diagonal_member(
                 gp_Pnt(x_l, yL, z_top), 
                 gp_Pnt(x_r, yR, z_top),
-                thickness, section_type, dims, +1
+                top_chord_thickness, top_chord_section_type, top_chord_dims, +1
             )
         )
     
     return braces
 
 
-def _k_bracing(x, yL, yR, depth, tf, thickness, flange_w,
-               section_type, dims, top_bracket, skew_angle=0):
+def _k_bracing(x, yL, yR, depth, tf, flange_w,
+               diagonal_thickness, diagonal_section_type, diagonal_dims,
+               top_chord_thickness, top_chord_section_type, top_chord_dims,
+               bottom_chord_thickness, bottom_chord_section_type, bottom_chord_dims,
+               top_bracket, skew_angle=0):
     """
     Create K-bracing pattern between two girders.
     
@@ -499,10 +522,20 @@ def _k_bracing(x, yL, yR, depth, tf, thickness, flange_w,
         yR: Right girder lateral position
         depth: Girder depth
         tf: Flange thickness
-        thickness: Bracing member thickness
         flange_w: Flange width
-        section_type: Section type for bracing
-        dims: Section dimensions
+        
+        diagonal_thickness: Thickness of diagonal members
+        diagonal_section_type: Section type for diagonal members
+        diagonal_dims: Section dimensions for diagonal members
+        
+        top_chord_thickness: Thickness of top chord/bracket
+        top_chord_section_type: Section type for top chord/bracket
+        top_chord_dims: Section dimensions for top chord/bracket
+        
+        bottom_chord_thickness: Thickness of bottom chord/bracket
+        bottom_chord_section_type: Section type for bottom chord/bracket
+        bottom_chord_dims: Section dimensions for bottom chord/bracket
+        
         top_bracket: Whether to include top horizontal bracket
         skew_angle: Bridge skew angle in degrees
         
@@ -529,33 +562,33 @@ def _k_bracing(x, yL, yR, depth, tf, thickness, flange_w,
     
     # Create K-pattern members
     braces = [
-        # Left TOP → Middle BOTTOM diagonal
+        # Left TOP → Middle BOTTOM diagonal (using diagonal section)
         _create_diagonal_member(
             gp_Pnt(x_l, yL, z_top), 
             gp_Pnt(x_m, ym, z_bot),
-            thickness, section_type, dims, +1
+            diagonal_thickness, diagonal_section_type, diagonal_dims, +1
         ),
-        # Right TOP → Middle BOTTOM diagonal
+        # Right TOP → Middle BOTTOM diagonal (using diagonal section)
         _create_diagonal_member(
             gp_Pnt(x_r, yR, z_top), 
             gp_Pnt(x_m, ym, z_bot),
-            thickness, section_type, dims, -1
+            diagonal_thickness, diagonal_section_type, diagonal_dims, -1
         ),
-        # Bottom horizontal (mandatory for K-bracing)
+        # Bottom horizontal (mandatory for K-bracing, using bottom chord section)
         _create_diagonal_member(
             gp_Pnt(x_l, yL, z_bot), 
             gp_Pnt(x_r, yR, z_bot),
-            thickness, section_type, dims, +1
+            bottom_chord_thickness, bottom_chord_section_type, bottom_chord_dims, +1
         )
     ]
     
-    # Add optional top bracket
+    # Add optional top bracket using top chord section
     if top_bracket:
         braces.append(
             _create_diagonal_member(
                 gp_Pnt(x_l, yL, z_top), 
                 gp_Pnt(x_r, yR, z_top),
-                thickness, section_type, dims, +1
+                top_chord_thickness, top_chord_section_type, top_chord_dims, +1
             )
         )
     
@@ -624,11 +657,23 @@ def build_cross_bracings(
     flange_thickness,
     flange_width,
     
-    # Bracing configuration
+    # Internal bracing configuration
     bracing_type,          # "X" or "K"
-    section_type,          # "ANGLE", "CHANNEL", "DOUBLE_ANGLE", etc.
-    section_dims,          # Dictionary with section dimensions
-    thickness,             # Member thickness
+    
+    # Diagonal member configuration
+    diagonal_section_type,
+    diagonal_section_dims,
+    diagonal_thickness,
+    
+    # Top chord/bracket configuration
+    top_chord_section_type,
+    top_chord_section_dims,
+    top_chord_thickness,
+    
+    # Bottom chord/bracket configuration
+    bottom_chord_section_type,
+    bottom_chord_section_dims,
+    bottom_chord_thickness,
     
     # Spacing and options
     panel_spacing,         # Spacing between bracing frames
@@ -638,9 +683,27 @@ def build_cross_bracings(
     
     # End diaphragm configuration
     end_diaphragm_type="Cross Bracing",  # "Cross Bracing", "Rolled Beam", "Welded Beam"
-    end_diaphragm_section="I_SECTION",   # Section type for diaphragm
-    end_diaphragm_dims=None,             # Custom dimensions for diaphragm
-    end_diaphragm_spacing=0            
+    end_diaphragm_bracing_type=None,     # If None, use bracing_type
+    
+    # End diaphragm diagonal configuration
+    end_diaphragm_diagonal_section_type=None,  # If None, error
+    end_diaphragm_diagonal_section_dims=None,
+    end_diaphragm_diagonal_thickness=None,
+    
+    # End diaphragm top chord configuration
+    end_diaphragm_top_chord_section_type=None,
+    end_diaphragm_top_chord_section_dims=None,
+    end_diaphragm_top_chord_thickness=None,
+    
+    # End diaphragm bottom chord configuration
+    end_diaphragm_bottom_chord_section_type=None,
+    end_diaphragm_bottom_chord_section_dims=None,
+    end_diaphragm_bottom_chord_thickness=None,
+    
+    # For Rolled/Welded beam diaphragms
+    end_diaphragm_section="I_SECTION",
+    end_diaphragm_dims=None,
+    end_diaphragm_spacing=0
 ):
 
     bracings = []
@@ -696,25 +759,39 @@ def build_cross_bracings(
                     x_eff = x - offset
 
                 if end_diaphragm_type == "Cross Bracing":
-                    # Use the same bracing type (X or K) as internal panels
-                    if bracing_type == "X":
+                    # Use end diaphragm section configurations
+                    if end_diaphragm_bracing_type == "X":
                         bracings.extend(
                             _x_bracing(
                                 x_eff, yL, yR,
-                                girder_depth, flange_thickness,
-                                thickness, flange_width,
-                                section_type, section_dims,
+                                girder_depth, flange_thickness, flange_width,
+                                end_diaphragm_diagonal_thickness,
+                                end_diaphragm_diagonal_section_type,
+                                end_diaphragm_diagonal_section_dims,
+                                end_diaphragm_top_chord_thickness,
+                                end_diaphragm_top_chord_section_type,
+                                end_diaphragm_top_chord_section_dims,
+                                end_diaphragm_bottom_chord_thickness,
+                                end_diaphragm_bottom_chord_section_type,
+                                end_diaphragm_bottom_chord_section_dims,
                                 bracket_option,
                                 skew_angle=skew_angle
                             )
                         )
-                    elif bracing_type == "K":
+                    elif end_diaphragm_bracing_type == "K":
                         bracings.extend(
                             _k_bracing(
                                 x_eff, yL, yR,
-                                girder_depth, flange_thickness,
-                                thickness, flange_width,
-                                section_type, section_dims,
+                                girder_depth, flange_thickness, flange_width,
+                                end_diaphragm_diagonal_thickness,
+                                end_diaphragm_diagonal_section_type,
+                                end_diaphragm_diagonal_section_dims,
+                                end_diaphragm_top_chord_thickness,
+                                end_diaphragm_top_chord_section_type,
+                                end_diaphragm_top_chord_section_dims,
+                                end_diaphragm_bottom_chord_thickness,
+                                end_diaphragm_bottom_chord_section_type,
+                                end_diaphragm_bottom_chord_section_dims,
                                 top_bracket,
                                 skew_angle=skew_angle
                             )
@@ -722,22 +799,18 @@ def build_cross_bracings(
                 
                 elif end_diaphragm_type == "Rolled Beam":
                     # Use I-section for rolled beam diaphragm
-                    diaphragm_dims = end_diaphragm_dims if end_diaphragm_dims is not None else section_dims
-                    
-                    # Validate dimensions or use defaults
-                    if "depth" not in diaphragm_dims or "flange_width" not in diaphragm_dims:
-                        diaphragm_dims = {
-                            "depth": girder_depth * 0.8,
-                            "flange_width": 200,
-                            "web_thickness": 10,
-                            "flange_thickness": 15
-                        }
+                    diaphragm_dims = end_diaphragm_dims if end_diaphragm_dims is not None else {
+                        "depth": girder_depth * 0.8,
+                        "flange_width": 200,
+                        "web_thickness": 10,
+                        "flange_thickness": 15
+                    }
                     
                     bracings.extend(
                         _diaphragm_bracing(
                             x_eff, yL, yR,
                             girder_depth, flange_thickness,
-                            thickness,
+                            diagonal_thickness,
                             "I_SECTION",
                             diaphragm_dims,
                             skew_angle=skew_angle
@@ -747,22 +820,27 @@ def build_cross_bracings(
                 elif end_diaphragm_type == "Welded Beam":
                     # Use I-section for welded beam diaphragm
                     # Welded beams can have different proportions than rolled
-                    diaphragm_dims = end_diaphragm_dims if end_diaphragm_dims is not None else section_dims
+                    diaphragm_dims = end_diaphragm_dims if end_diaphragm_dims is not None else {
+                        "depth": girder_depth * 0.85,  
+                        "flange_width": 250,            
+                        "web_thickness": 12,            
+                        "flange_thickness": 20          
+                    }
                     
                     # Validate dimensions or use defaults (slightly larger than rolled)
                     if "depth" not in diaphragm_dims or "flange_width" not in diaphragm_dims:
                         diaphragm_dims = {
-                            "depth": girder_depth * 0.85,  # Slightly deeper
-                            "flange_width": 250,            # Wider flange
-                            "web_thickness": 12,            # Thicker web
-                            "flange_thickness": 20          # Thicker flange
+                            "depth": girder_depth * 0.85,  
+                            "flange_width": 250,            
+                            "web_thickness": 12,            
+                            "flange_thickness": 20          
                         }
                     
                     bracings.extend(
                         _diaphragm_bracing(
                             x_eff, yL, yR,
                             girder_depth, flange_thickness,
-                            thickness,
+                            diagonal_thickness,
                             "I_SECTION",
                             diaphragm_dims,
                             skew_angle=skew_angle
@@ -772,14 +850,15 @@ def build_cross_bracings(
                 continue
             
             # INTERNAL BRACING HANDLING
-            # Build normal X or K bracing for internal panels
+            # Build normal X or K bracing for internal panels using separate sections
             if bracing_type == "X":
                 bracings.extend(
                     _x_bracing(
                         x, yL, yR,
-                        girder_depth, flange_thickness,
-                        thickness, flange_width,
-                        section_type, section_dims,
+                        girder_depth, flange_thickness, flange_width,
+                        diagonal_thickness, diagonal_section_type, diagonal_section_dims,
+                        top_chord_thickness, top_chord_section_type, top_chord_section_dims,
+                        bottom_chord_thickness, bottom_chord_section_type, bottom_chord_section_dims,
                         bracket_option,
                         skew_angle=skew_angle
                     )
@@ -789,9 +868,10 @@ def build_cross_bracings(
                 bracings.extend(
                     _k_bracing(
                         x, yL, yR,
-                        girder_depth, flange_thickness,
-                        thickness, flange_width,
-                        section_type, section_dims,
+                        girder_depth, flange_thickness, flange_width,
+                        diagonal_thickness, diagonal_section_type, diagonal_section_dims,
+                        top_chord_thickness, top_chord_section_type, top_chord_section_dims,
+                        bottom_chord_thickness, bottom_chord_section_type, bottom_chord_section_dims,
                         top_bracket,
                         skew_angle=skew_angle
                     )

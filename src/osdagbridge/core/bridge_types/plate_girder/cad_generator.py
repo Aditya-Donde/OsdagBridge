@@ -160,8 +160,8 @@ class PlateGirderCADGenerator:
         self.railing_width = 300             # Railing width (mm)
 
         # CRASH BARRIER PARAMETERS
-        self.barrier_type = "Rigid"          # "Rigid", "Semi-Rigid", or "Flexible"
-        self.crash_barrier_subtype = "IRC-5R"  # Specific barrier design
+        self.barrier_type = "Semi-Rigid"          # "Rigid", "Semi-Rigid", or "Flexible"
+        self.crash_barrier_subtype = "Double W-beam"  # Specific barrier design
         
         # Options:
         # - Rigid: "IRC-5R", "High Containment"
@@ -174,7 +174,7 @@ class PlateGirderCADGenerator:
 
         # RAILING PARAMETERS
         self.rail_count = 3                  # Number of rails
-        self.railing_type = "steel"            # "rcc" or "steel"
+        self.railing_type = "rcc"            # "rcc" or "steel"
 
         # STIFFENER PARAMETERS
         self.stiffener_width = 200           # Stiffener width (mm)
@@ -186,64 +186,80 @@ class PlateGirderCADGenerator:
 
         # CROSS BRACING PARAMETERS
         self.cross_bracing_spacing = 4000    # Spacing between bracing frames (mm)
-        self.cross_bracing_thickness = 5     # Bracing member thickness (mm)
 
         self.bracing_type = "K"              # "X" or "K"
         self.x_bracket_option = "BOTH"       # For X-bracing: "NONE", "UPPER", "LOWER", "BOTH"
         self.k_top_bracket = True            # For K-bracing: include top bracket
 
-        # Section configuration - Choose one of the following:
-        
-        # OPTION 1: CHANNEL section (current default)
-        # self.cross_bracing_section_type = "CHANNEL"
-        # self.cross_bracing_section_dims = {
-        #     "depth": 100,
-        #     "flange_width": 50,
-        #     "web_thickness": 5,
-        #     "flange_thickness": 7
-        # }
-        
-        # OPTION 2: DOUBLE_ANGLE section (uncomment to use)
-        self.cross_bracing_section_type = "DOUBLE_ANGLE"
-        self.cross_bracing_section_dims = {
+        # Diagonal members section configuration
+        self.diagonal_section_type = "ANGLE"
+        self.diagonal_section_dims = {
             "leg_h": 100,                    # Vertical leg height (longer leg)
             "leg_w": 50,                     # Horizontal leg width (shorter leg)
             "connection_type": "LONGER_LEG"  # "LONGER_LEG" or "SHORTER_LEG"
         }
-    
-        
-        # OPTION 3: ANGLE section (uncomment to use)
-        # self.cross_bracing_section_type = "ANGLE"
-        # self.cross_bracing_section_dims = {
-        #     "leg_h": 100,  # Vertical leg height
-        #     "leg_w": 50    # Horizontal leg width
-        # }
-        
-        # OPTION 4: DOUBLE_CHANNEL section (uncomment to use)
-        # self.cross_bracing_section_type = "DOUBLE_CHANNEL"
-        # self.cross_bracing_section_dims = {
-        #     "depth": 100,
-        #     "flange_width": 50,
-        #     "web_thickness": 5,
-        #     "flange_thickness": 7
-        # }
+        self.diagonal_thickness = 5          # Diagonal member thickness (mm)
+
+        # Top chord/bracket section configuration
+        self.top_chord_section_type = "ANGLE"
+        self.top_chord_section_dims = {
+            "leg_h": 80,
+            "leg_w": 40,
+            "connection_type": "LONGER_LEG"
+        }
+        self.top_chord_thickness = 5         # Top chord thickness (mm)
+
+        # Bottom chord/bracket section configuration
+        self.bottom_chord_section_type = "ANGLE"
+        self.bottom_chord_section_dims = {
+            "leg_h": 80,
+            "leg_w": 40,
+            "connection_type": "LONGER_LEG"
+        }
+        self.bottom_chord_thickness = 5      # Bottom chord thickness (mm)
 
         # END DIAPHRAGM PARAMETERS
-        self.end_diaphragm_type = "Rolled Beam"   # Options: "Cross Bracing", "Rolled Beam", "Welded Beam"
+        self.end_diaphragm_type = "Cross Bracing"   # Options: "Cross Bracing", "Rolled Beam", "Welded Beam"
+        self.end_diaphragm_spacing = 100     # Longitudinal offset from bridge ends (mm)
         
+        # For "Cross Bracing" type end diaphragms - separate section configuration
+        self.end_diaphragm_bracing_type = "K"  # "X" or "K"
         
-        # If using "Cross Bracing" type, end diaphragms will use the same
-        # section as cross_bracing_section_type and cross_bracing_section_dims
+        # End diaphragm diagonal members
+        self.end_diaphragm_diagonal_section_type = "ANGLE"
+        self.end_diaphragm_diagonal_section_dims = {
+            "leg_h": 100,
+            "leg_w": 50,
+            "connection_type": "LONGER_LEG"
+        }
+        self.end_diaphragm_diagonal_thickness = 5
         
-        # If using "Rolled Beam" or "Welded Beam", these parameters are used:
+        # End diaphragm top chord
+        self.end_diaphragm_top_chord_section_type = "ANGLE"
+        self.end_diaphragm_top_chord_section_dims = {
+            "leg_h": 80,
+            "leg_w": 40,
+            "connection_type": "LONGER_LEG"
+        }
+        self.end_diaphragm_top_chord_thickness = 5
+        
+        # End diaphragm bottom chord
+        self.end_diaphragm_bottom_chord_section_type = "ANGLE"
+        self.end_diaphragm_bottom_chord_section_dims = {
+            "leg_h": 80,
+            "leg_w": 40,
+            "connection_type": "LONGER_LEG"
+        }
+        self.end_diaphragm_bottom_chord_thickness = 5
+        
+        # For "Rolled Beam" or "Welded Beam" types (unchanged)
         self.end_diaphragm_section = "I_SECTION"
         self.end_diaphragm_dims = {
             "depth": 800,
             "flange_width": 250,
             "web_thickness": 12,
             "flange_thickness": 100
-        }
-        self.end_diaphragm_spacing = 200       
+        }       
 
     # MAIN CAD GENERATION
 
@@ -417,17 +433,49 @@ class PlateGirderCADGenerator:
             flange_thickness=self.girder_section_tf,
             flange_width=self.girder_section_bf,
             
+            # Internal bracing configuration
             bracing_type=self.bracing_type,
-            section_type=self.cross_bracing_section_type,
-            section_dims=self.cross_bracing_section_dims,
-            thickness=self.cross_bracing_thickness,
+            
+            # Diagonal members
+            diagonal_section_type=self.diagonal_section_type,
+            diagonal_section_dims=self.diagonal_section_dims,
+            diagonal_thickness=self.diagonal_thickness,
+            
+            # Top chord/bracket
+            top_chord_section_type=self.top_chord_section_type,
+            top_chord_section_dims=self.top_chord_section_dims,
+            top_chord_thickness=self.top_chord_thickness,
+            
+            # Bottom chord/bracket
+            bottom_chord_section_type=self.bottom_chord_section_type,
+            bottom_chord_section_dims=self.bottom_chord_section_dims,
+            bottom_chord_thickness=self.bottom_chord_thickness,
             
             panel_spacing=self.cross_bracing_spacing,
             bracket_option=self.x_bracket_option,
             top_bracket=self.k_top_bracket,
             skew_angle=self.skew_angle,
             
+            # End diaphragm configuration
             end_diaphragm_type=self.end_diaphragm_type,
+            end_diaphragm_bracing_type=self.end_diaphragm_bracing_type,
+            
+            # End diaphragm diagonal members
+            end_diaphragm_diagonal_section_type=self.end_diaphragm_diagonal_section_type,
+            end_diaphragm_diagonal_section_dims=self.end_diaphragm_diagonal_section_dims,
+            end_diaphragm_diagonal_thickness=self.end_diaphragm_diagonal_thickness,
+            
+            # End diaphragm top chord
+            end_diaphragm_top_chord_section_type=self.end_diaphragm_top_chord_section_type,
+            end_diaphragm_top_chord_section_dims=self.end_diaphragm_top_chord_section_dims,
+            end_diaphragm_top_chord_thickness=self.end_diaphragm_top_chord_thickness,
+            
+            # End diaphragm bottom chord
+            end_diaphragm_bottom_chord_section_type=self.end_diaphragm_bottom_chord_section_type,
+            end_diaphragm_bottom_chord_section_dims=self.end_diaphragm_bottom_chord_section_dims,
+            end_diaphragm_bottom_chord_thickness=self.end_diaphragm_bottom_chord_thickness,
+            
+            # For Rolled/Welded beam diaphragms
             end_diaphragm_section=self.end_diaphragm_section,
             end_diaphragm_dims=self.end_diaphragm_dims,
             end_diaphragm_spacing=self.end_diaphragm_spacing
