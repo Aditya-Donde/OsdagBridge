@@ -8,6 +8,8 @@ import math
 from PySide6.QtWidgets import QWidget, QPushButton, QScrollArea
 from PySide6.QtCore import Qt, QRectF, QPointF
 from PySide6.QtGui import QPainter, QPen, QColor, QFont, QBrush, QPolygonF
+from .cad_cross_section import CrossSectionCADWidget
+
 
 class TopViewCADWidget(QWidget):
     """Widget for drawing bridge top view"""
@@ -739,9 +741,10 @@ class TopViewCADWidget(QWidget):
         self.top_view_hover_zones = []
         
         # Define colors
-        GIRDER_COLOR = QColor(40, 90, 160) 
-        CROSS_BRACING_COLOR = QColor(220, 130, 40)
-        END_DIAPHRAGM_COLOR = QColor(120, 70, 40)
+        GIRDER_COLOR = CrossSectionCADWidget.GIRDER_COLOR
+        CROSS_BRACING_COLOR = CrossSectionCADWidget.CROSS_BRACING_COLOR
+        END_DIAPHRAGM_COLOR = CrossSectionCADWidget.END_DIAPHRAGM_COLOR
+
         
         # Highlight colors 
         GIRDER_HIGHLIGHT = QColor(80, 140, 220) 

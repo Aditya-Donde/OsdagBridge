@@ -13,7 +13,18 @@ import random
 
 class CrossSectionCADWidget(QWidget):
     """Widget for drawing bridge cross-section view"""
-    
+    # ===== SHARED CAD COLORS =====
+    GIRDER_COLOR = QColor(179, 180, 160)
+    STIFFENER_COLOR = QColor(79, 78, 70)
+    CROSS_BRACING_COLOR = QColor(235, 236, 211)
+    END_DIAPHRAGM_COLOR = QColor(134, 134, 100)
+
+    CONCRETE_COLOR = QColor(225, 225, 225)
+    BARRIER_COLOR = QColor(126, 126, 126)
+    MEDIAN_COLOR = QColor(221, 221, 221)
+    RAILING_COLOR = QColor(126, 126, 126)
+
+    BEARING_COLOR = QColor(255, 0, 0)
     
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -555,8 +566,14 @@ class CrossSectionCADWidget(QWidget):
             text_x = x1 + (12 if offset >= 0 else -45) + text_offset
             text_y = (y1 + y2) / 2 + 3
             
+            painter.save()
+            painter.setCompositionMode(QPainter.CompositionMode_SourceOver)
+
+            
             self.draw_text_with_background(painter, text_x, text_y, text,
                                         QColor(255, 255, 255, 255), QColor(0, 0, 0), 9, True)
+            painter.restore()
+
     
     def draw_dimension_arrow_text_outside(self, painter, x1, y1, x2, y2, text, horizontal=True, 
                                           text_side='right', text_offset=15):
@@ -1153,12 +1170,25 @@ class CrossSectionCADWidget(QWidget):
             # Mid of top & bottom flange (REFERENCE POINTS)
             top_flange_mid_y = girder_top_edge + tf_top / 2
             bottom_flange_mid_y = girder_bottom_edge - tf_bottom / 2
+            # --- Correct connection points (flange-web junction) ---
+            top_connection_y = girder_top_edge + tf_top + (0.02 * girder_depth_visual)
+            bottom_connection_y = girder_bottom_edge - tf_bottom + (0.02 * girder_depth_visual)
+
 
             
             
             for i in range(n - 1):
-                x1 = positions[i]
-                x2 = positions[i + 1]
+                # Shift bracing attachment from girder center to inner web face
+                web_thickness_px = (
+                    self.girder['web_thickness'] * scale *
+                    self.girder_visual_scale['web_thickness']
+                )
+
+                half_web = web_thickness_px / 2.0
+
+                x1 = positions[i] + half_web
+                x2 = positions[i + 1] - half_web
+
                 
                 # Draw cross bracing lines
                 line_spacing = 3
@@ -1182,10 +1212,10 @@ class CrossSectionCADWidget(QWidget):
 
                     # CROSS BRACING 1 (\ direction)
 
-                    p1 = QPointF(x1 + off_x, top_flange_mid_y + off_y)
-                    p2 = QPointF(x2 + off_x, bottom_flange_mid_y + off_y)
-                    p3 = QPointF(x2 - off_x, bottom_flange_mid_y - off_y)
-                    p4 = QPointF(x1 - off_x, top_flange_mid_y - off_y)
+                    p1 = QPointF(x1 + off_x, top_connection_y + off_y)
+                    p2 = QPointF(x2 + off_x, bottom_connection_y + off_y)
+                    p3 = QPointF(x2 - off_x, bottom_connection_y - off_y)
+                    p4 = QPointF(x1 - off_x, top_connection_y - off_y)
 
                     painter.setPen(Qt.NoPen)
                     painter.setBrush(QBrush(CROSS_BRACING_COLOR))
@@ -1198,10 +1228,10 @@ class CrossSectionCADWidget(QWidget):
 
                     # CROSS BRACING 2 (/ direction)
 
-                    p1 = QPointF(x1 + off_x, bottom_flange_mid_y + off_y)
-                    p2 = QPointF(x2 + off_x, top_flange_mid_y + off_y)
-                    p3 = QPointF(x2 - off_x, top_flange_mid_y - off_y)
-                    p4 = QPointF(x1 - off_x, bottom_flange_mid_y - off_y)
+                    p1 = QPointF(x1 + off_x, bottom_connection_y + off_y)
+                    p2 = QPointF(x2 + off_x, top_connection_y + off_y)
+                    p3 = QPointF(x2 - off_x, top_connection_y - off_y)
+                    p4 = QPointF(x1 - off_x, bottom_connection_y - off_y)
 
                     painter.setPen(Qt.NoPen)
                     painter.setBrush(QBrush(CROSS_BRACING_COLOR))
@@ -1395,7 +1425,9 @@ class CrossSectionCADWidget(QWidget):
             fp_start_x = deck_left_x + railing_width_px
             fp_end_x = left_barrier_x
             fp_visible_mm = (fp_end_x - fp_start_x) / scale
-            fp_visible_m = fp_visible_mm / 1000
+            fp_visible_mm = round(fp_visible_mm, 1)
+
+            fp_visible_m = round(fp_visible_mm / 1000.0, 2)
             if fp_visible_m > 0:
                 self.draw_dimension_arrow(painter, fp_start_x, Y_TOP_COMMON, 
                                         fp_end_x, Y_TOP_COMMON,
@@ -1445,7 +1477,9 @@ class CrossSectionCADWidget(QWidget):
             fp_start_x = right_barrier_end_x
             fp_end_x = deck_right_x - railing_width_px
             fp_visible_mm = (fp_end_x - fp_start_x) / scale
-            fp_visible_m = fp_visible_mm / 1000
+            fp_visible_mm = round(fp_visible_mm, 1)
+
+            fp_visible_m = round(fp_visible_mm / 1000.0, 2)
             if fp_visible_m > 0:
                 self.draw_dimension_arrow(painter, fp_start_x, Y_TOP_COMMON, 
                                         fp_end_x, Y_TOP_COMMON,

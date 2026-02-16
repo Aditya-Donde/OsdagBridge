@@ -22,6 +22,8 @@ from osdagbridge.desktop.ui.dialogs.tabs.sub_tabs.typical_section.median_tab imp
 from osdagbridge.desktop.ui.dialogs.tabs.sub_tabs.typical_section.railing_tab import RailingTab
 from osdagbridge.desktop.ui.dialogs.tabs.sub_tabs.typical_section.wearing_course_tab import WearingCourseTab
 from osdagbridge.desktop.ui.dialogs.tabs.sub_tabs.typical_section.lane_details_tab import LaneDetailsTab
+from osdagbridge.desktop.ui.docks.cad_cross_section import CrossSectionCADWidget
+
 
 
 def _styled_message_box(icon, title, text, parent=None):
@@ -155,27 +157,32 @@ class TypicalSectionDetailsTab(QWidget):
                 border-radius: 8px;
             }
         """)
-        diagram_widget.setMinimumHeight(150)
-        diagram_widget.setMaximumHeight(200)
-        diagram_layout = QVBoxLayout(diagram_widget)
-        diagram_layout.setContentsMargins(20, 20, 20, 20)
-        diagram_layout.setAlignment(Qt.AlignCenter)
+        diagram_widget.setMinimumHeight(280)
+        diagram_widget.setMaximumHeight(380)
 
-        diagram_label = QLabel("Typical Section Details\nDiagram")
-        diagram_label.setAlignment(Qt.AlignCenter)
-        diagram_label.setStyleSheet("""
-            QLabel {
-                background-color: transparent;
-                border: none;
-                padding: 20px;
-                font-size: 13px;
-                color: #333;
-            }
-        """)
-        diagram_layout.addWidget(diagram_label)
+        diagram_layout = QVBoxLayout(diagram_widget)
+        diagram_layout.setContentsMargins(5, 5, 5, 5)
+
+        # --- Cross Section CAD Preview ---
+        from osdagbridge.desktop.ui.docks.cad_cross_section import CrossSectionCADWidget
+
+        cad_scroll = QScrollArea()
+        cad_scroll.setWidgetResizable(True)
+        cad_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        cad_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        cad_scroll.setFrameShape(QFrame.NoFrame)
+        cad_scroll.setStyleSheet("QScrollArea { background: transparent; border: none; }")
+
+        self.cad_preview = CrossSectionCADWidget()
+        self.cad_preview.scale_factor = 0.85
+        self.cad_preview.setMinimumHeight(400)
+
+        cad_scroll.setWidget(self.cad_preview)
+        diagram_layout.addWidget(cad_scroll)
 
         main_layout.addWidget(diagram_widget)
         main_layout.addSpacing(10)
+
 
         input_container = QWidget()
         input_container.setStyleSheet("QWidget { background-color: white; }")
@@ -242,6 +249,21 @@ class TypicalSectionDetailsTab(QWidget):
 
         self.deck_thickness.textChanged.connect(self.update_footpath_thickness)
         self.recalculate_girders()
+        
+        # Update CAD when fields change
+        if hasattr(self, "girder_spacing"):
+            self.girder_spacing.editingFinished.connect(self._update_cad_preview)
+        if hasattr(self, "no_of_girders"):
+            self.no_of_girders.editingFinished.connect(self._update_cad_preview)
+        if hasattr(self, "deck_overhang"):
+            self.deck_overhang.editingFinished.connect(self._update_cad_preview)
+        if hasattr(self, "deck_thickness"):
+            self.deck_thickness.editingFinished.connect(self._update_cad_preview)
+        if hasattr(self, "footpath_width"):
+            self.footpath_width.editingFinished.connect(self._update_cad_preview)
+        if hasattr(self, "footpath_thickness"):
+            self.footpath_thickness.editingFinished.connect(self._update_cad_preview)
+
         # Initialize crash barrier visibility/load state
         if hasattr(self, "crash_barrier_type"):
             barrier_type = self.crash_barrier_type.currentText()
@@ -260,6 +282,34 @@ class TypicalSectionDetailsTab(QWidget):
                 self.girder_count_changed.emit(int(self.no_of_girders.text()))
         except Exception:
             pass
+        
+    def _update_cad_preview(self):
+        if not hasattr(self, 'cad_preview'):
+            return
+
+        params = {}
+
+        if hasattr(self, "no_of_girders") and self.no_of_girders.text():
+            params['num_girders'] = int(float(self.no_of_girders.text()))
+
+        if hasattr(self, "girder_spacing") and self.girder_spacing.text():
+            params['girder_spacing'] = float(self.girder_spacing.text()) * 1000
+
+        if hasattr(self, "deck_overhang") and self.deck_overhang.text():
+            params['deck_overhang'] = float(self.deck_overhang.text()) * 1000
+
+        if hasattr(self, "deck_thickness") and self.deck_thickness.text():
+            params['deck_thickness'] = float(self.deck_thickness.text())
+
+        if hasattr(self, "footpath_width") and self.footpath_width.text():
+            params['footpath_width'] = float(self.footpath_width.text()) * 1000
+
+        if hasattr(self, "footpath_thickness") and self.footpath_thickness.text():
+            params['footpath_thickness'] = float(self.footpath_thickness.text())
+
+        if params:
+            self.cad_preview.update_params(params)
+
 
     def _get_footpath_count(self):
         if self.footpath_value == "Both":
