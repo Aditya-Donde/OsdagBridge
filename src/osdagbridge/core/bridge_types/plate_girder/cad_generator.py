@@ -177,12 +177,15 @@ class PlateGirderCADGenerator:
         self.railing_type = "rcc"            # "rcc" or "steel"
 
         # STIFFENER PARAMETERS
-        self.stiffener_width = 200           # Stiffener width (mm)
-        self.stiffener_length = 10           # Stiffener length (mm)
-
-        # End stiffener configuration
-        self.include_end_stiffeners = True   # Include end stiffeners
-        self.end_stiffener_thickness = 25    # End stiffener thickness (mm)
+        
+        # Intermediate stiffener configuration
+        self.include_intermediate_stiffeners = True  # Include intermediate stiffeners
+        self.intermediate_stiffener_spacing = 750    # Spacing between intermediate stiffeners (mm)
+        self.intermediate_stiffener_thickness = 20   # Intermediate stiffener thickness (mm)
+        
+        # End stiffener configuration 
+        self.num_end_stiffener_pairs = 4     # Number of end stiffener pairs on each end
+        self.end_stiffener_thickness = 20    # End stiffener thickness (mm)
 
         # CROSS BRACING PARAMETERS
         self.cross_bracing_spacing = 4000    # Spacing between bracing frames (mm)
@@ -351,10 +354,11 @@ class PlateGirderCADGenerator:
             T_fb=self.girder_section_tf_b,
             B_ft=self.girder_section_bf,
             B_fb=self.girder_section_bf_b,
-            stiffener_spacing=750,
-            T_is=20,
+            include_intermediate_stiffeners=self.include_intermediate_stiffeners,
+            intermediate_stiffener_spacing=self.intermediate_stiffener_spacing,
+            intermediate_stiffener_thickness=self.intermediate_stiffener_thickness,
             chamfer_length=40,
-            include_end_stiffeners=self.include_end_stiffeners,
+            num_end_stiffener_pairs=self.num_end_stiffener_pairs,
             T_es=self.end_stiffener_thickness
         )
 

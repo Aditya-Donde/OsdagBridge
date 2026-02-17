@@ -20,6 +20,10 @@ from OCC.Core.BRepBuilderAPI import (
 )
 
 
+# END STIFFENER SPACING
+END_STIFFENER_SPACING = 50.0  # Spacing between end stiffener pairs (mm)
+
+
 # Helper geometry utilities (
 
 def _make_edge(p1, p2):
@@ -123,11 +127,12 @@ def build_plate_girder_geometry(
     T_fb,                               # Bottom flange thickness
     B_ft,                               # Top flange width
     B_fb,                               # Bottom flange width
-    stiffener_spacing,                  # Space between each stiffener plate
-    T_is,                               # Stiffener thickness
-    chamfer_length,                     # Triangular chamfer length
-    include_end_stiffeners=False,       # Whether to include end stiffeners
-    T_es=None                           # End stiffener thickness
+    include_intermediate_stiffeners=True,  # Whether to include intermediate stiffeners
+    intermediate_stiffener_spacing=750,    # Space between intermediate stiffeners (mm)
+    intermediate_stiffener_thickness=20,   # Intermediate stiffener thickness (mm)
+    chamfer_length=40,                     # Triangular chamfer length
+    num_end_stiffener_pairs=2,             # Number of end stiffener pairs on each end
+    T_es=25                                # End stiffener thickness (mm)
 ):
     """
     Geometry-only Plate Girder builder for Osdag Bridge.
@@ -167,71 +172,34 @@ def build_plate_girder_geometry(
         w_dir=w_dir
     )
 
-    # Stiffeners (intermediate only, no end stiffeners)
+    # Stiffeners
     stiffeners = []
     eff_depth = D - T_ft - T_fb
     stiff_width = (min(B_ft, B_fb) - tw) / 2
 
-    num_panels = max(1, int(length // stiffener_spacing))
+    # Intermediate stiffeners (only if enabled)
+    if include_intermediate_stiffeners:
+        num_panels = max(1, int(length // intermediate_stiffener_spacing))
 
-    start_y = 0.0
-    end_y = length
-
-    if include_end_stiffeners:
+        # Calculate exclusion zone for end stiffeners
         end_stiffener_gap = T_es / 2.0
-        start_y = end_stiffener_gap + 50.0
-        end_y = length - (end_stiffener_gap + 50.0)
+        end_stiffener_zone = end_stiffener_gap + (num_end_stiffener_pairs - 1) * END_STIFFENER_SPACING + END_STIFFENER_SPACING
+        start_y = end_stiffener_zone
+        end_y = length - end_stiffener_zone
 
 
-    for i in range(1, num_panels):
-        y = i * stiffener_spacing
+        for i in range(1, num_panels):
+            y = i * intermediate_stiffener_spacing
 
-        if y <= start_y or y >= end_y:
-            continue
+            if y <= start_y or y >= end_y:
+                continue
 
-        stiffeners.append(
-            _create_stiffener_plate(
-                position=[ tw / 2, y, 0 ],
-                width=stiff_width,
-                height=D,
-                thickness=T_is,
-                chamfer=chamfer_length,
-                side="right"
-            )
-        )
-
-        stiffeners.append(
-            _create_stiffener_plate(
-                position=[ -tw / 2, y, 0 ],
-                width=stiff_width,
-                height=D,
-                thickness=T_is,
-                chamfer=chamfer_length,
-                side="left"
-            )
-        )
-
-    # End stiffeners 
-    if include_end_stiffeners:
-        if T_es is None:
-            T_es = T_is
-
-        end_stiffener_gap = (T_es / 2.0)
-
-        end_positions = [
-            end_stiffener_gap,
-            end_stiffener_gap + 50.0,
-            length - (end_stiffener_gap + 50.0),
-            length - end_stiffener_gap,
-        ]
-
-        for y in end_positions:
             stiffeners.append(
                 _create_stiffener_plate(
                     position=[ tw / 2, y, 0 ],
                     width=stiff_width,
                     height=D,
-                    thickness=T_es,
+                    thickness=intermediate_stiffener_thickness,
                     chamfer=chamfer_length,
                     side="right"
                 )
@@ -242,11 +210,50 @@ def build_plate_girder_geometry(
                     position=[ -tw / 2, y, 0 ],
                     width=stiff_width,
                     height=D,
-                    thickness=T_es,
+                    thickness=intermediate_stiffener_thickness,
                     chamfer=chamfer_length,
                     side="left"
                 )
             )
+
+    # End stiffeners (always present)
+    end_stiffener_gap = (T_es / 2.0)
+
+    # Generate positions for the specified number of pairs
+    end_positions = []
+    
+    # Left end stiffeners
+    for i in range(num_end_stiffener_pairs):
+        y_pos = end_stiffener_gap + i * END_STIFFENER_SPACING
+        end_positions.append(y_pos)
+    
+    # Right end stiffeners
+    for i in range(num_end_stiffener_pairs):
+        y_pos = length - end_stiffener_gap - i * END_STIFFENER_SPACING
+        end_positions.append(y_pos)
+
+    for y in end_positions:
+        stiffeners.append(
+            _create_stiffener_plate(
+                position=[ tw / 2, y, 0 ],
+                width=stiff_width,
+                height=D,
+                thickness=T_es,
+                chamfer=chamfer_length,
+                side="right"
+            )
+        )
+
+        stiffeners.append(
+            _create_stiffener_plate(
+                position=[ -tw / 2, y, 0 ],
+                width=stiff_width,
+                height=D,
+                thickness=T_es,
+                chamfer=chamfer_length,
+                side="left"
+            )
+        )
 
     # SUPPORTS 
 
