@@ -9,6 +9,7 @@
 import math
 from collections import defaultdict, deque
 import openseespy.opensees as ops
+import pandas as pd
 
 
 class PlateGirderAnalysisResults:
@@ -333,9 +334,6 @@ class PlateGirderAnalysisResults:
                     continue
 
                 print(f"  --- Girder: {girder_name} ---")
-                print(
-                    f"  {'Element':<10} | {'Vy_i (kN)':<12} | {'Vy_j (kN)':<12} | {'Mz_i (kNm)':<12} | {'Mz_j (kNm)':<12}")
-                print("  " + "-" * 70)
 
                 elements = girder_data["elements"]
 
@@ -346,22 +344,18 @@ class PlateGirderAnalysisResults:
                         continue  # Skip if no elements match
 
                 # 5. Get results for this girder and loadcase
-                # Retrieve all required components at once for efficiency
                 try:
-                    # Using dataset directly for speed scaling with multiple elements
-                    # Select specific loadcase and elements
                     subset = self.ds.sel(Loadcase=lc, Element=elements)
 
-                    # Extract values
-                    vy_i = subset.sel(Component="Vy_i")["forces"].values
-                    vy_j = subset.sel(Component="Vy_j")["forces"].values
-                    mz_i = subset.sel(Component="Mz_i")["forces"].values
-                    mz_j = subset.sel(Component="Mz_j")["forces"].values
-
-                    # 6. Print results for each element
-                    for idx, eid in enumerate(elements):
-                        print(
-                            f"  {eid:<10} | {vy_i[idx]:<12.3f} | {vy_j[idx]:<12.3f} | {mz_i[idx]:<12.3f} | {mz_j[idx]:<12.3f}")
+                    # Extract values and create DataFrame
+                    df = pd.DataFrame({
+                        "Element": elements,
+                        "Vy_i (kN)": subset.sel(Component="Vy_i")["forces"].values,
+                        "Vy_j (kN)": subset.sel(Component="Vy_j")["forces"].values,
+                        "Mz_i (kNm)": subset.sel(Component="Mz_i")["forces"].values,
+                        "Mz_j (kNm)": subset.sel(Component="Mz_j")["forces"].values
+                    })
+                    print(df.to_string(index=False))
 
                 except Exception as e:
                     print(f"  ❌ Error retrieving results for girder {girder_name}: {e}")
@@ -402,8 +396,8 @@ class PlateGirderAnalysisResults:
 
         for lc in moving_lcs:
             print(f"\n>>> Load Case: {lc}")
-            print(f"{'Girder':<8} | {'Ele':<8} | {'Max Vy (kN)':>12} | {'Min Vy (kN)':>12} | {'Max Mz (kNm)':>12} | {'Min Mz (kNm)':>12}")
-            print("-" * 90)
+
+            lc_data = []
 
             for girder_name, girder_data in girder_map.items():
                 if g_filter and girder_name not in g_filter:
@@ -448,22 +442,174 @@ class PlateGirderAnalysisResults:
                         m_min, m_min_e = mmnj, int(mz_j.idxmin())
 
                     # Group results by element to avoid redundant rows
-                    # Each element that holds at least one extreme will get a row
-                    crit_eles = defaultdict(lambda: {"v_max": "-", "v_min": "-", "m_max": "-", "m_min": "-"})
-                    crit_eles[v_max_e]["v_max"] = f"{v_max:.3f}"
-                    crit_eles[v_min_e]["v_min"] = f"{v_min:.3f}"
-                    crit_eles[m_max_e]["m_max"] = f"{m_max:.3f}"
-                    crit_eles[m_min_e]["m_min"] = f"{m_min:.3f}"
+                    crit_eles = defaultdict(
+                        lambda: {"Max Vy (kN)": "-", "Min Vy (kN)": "-", "Max Mz (kNm)": "-", "Min Mz (kNm)": "-"})
+                    crit_eles[v_max_e]["Max Vy (kN)"] = f"{v_max:.3f}"
+                    crit_eles[v_min_e]["Min Vy (kN)"] = f"{v_min:.3f}"
+                    crit_eles[m_max_e]["Max Mz (kNm)"] = f"{m_max:.3f}"
+                    crit_eles[m_min_e]["Min Mz (kNm)"] = f"{m_min:.3f}"
 
-                    # Sort by element ID for consistent output
+                    # Add to loadcase data
                     for eid in sorted(crit_eles.keys()):
-                        vals = crit_eles[eid]
-                        print(f"{girder_name:<8} | {eid:<8} | {vals['v_max']:>12} | {vals['min_vy' if False else 'v_min']:>12} | {vals['m_max']:>12} | {vals['m_min']:>12}")
+                        row = {"Girder": girder_name, "Ele": eid}
+                        row.update(crit_eles[eid])
+                        lc_data.append(row)
 
                 except Exception as e:
-                    print(f"{girder_name:<8} | ❌ Error: {e}")
+                    lc_data.append({"Girder": girder_name, "Ele": "ERROR", "Max Vy (kN)": str(e)})
+
+            if lc_data:
+                df = pd.DataFrame(lc_data)
+                print(df.to_string(index=False))
 
         print("\n===================================================================")
+
+    def print_critical_max_state(self):
+        """
+        Finds the global maximum for a selected component across all moving load cases
+        within a selected category and displays the bridge-wide state at that critical position.
+        """
+        print("\n--- Critical Maximum Result Viewer ---")
+
+        # 1. Component Selection
+        print("Select Component:")
+        print("1. Vy_i")
+        print("2. Vy_j")
+        print("3. Mz_i")
+        print("4. Mz_j")
+        print("0. Back")
+
+        choice = input("Enter choice: ").strip()
+        if choice == "0":
+            return
+
+        comp_map = {"1": "Vy_i", "2": "Vy_j", "3": "Mz_i", "4": "Mz_j"}
+        if choice not in comp_map:
+            print("❌ Invalid selection")
+            return
+
+        comp = comp_map[choice]
+
+        # 2. Category Selection (Moving Load Cases)
+        lc_groups = self.classify_loadcases()
+        moving_lcs = lc_groups["vehicle_moving"]
+
+        if not moving_lcs:
+            print("❌ No moving load cases found.")
+            return
+
+        # Group by case type (e.g., "Case1 ClassA", "Case2 Class70R")
+        case_types = {}
+        for lc in moving_lcs:
+            parts = lc.split()
+            if len(parts) >= 3:
+                case_type = f"{parts[1]} {parts[2]}"
+                if case_type not in case_types:
+                    case_types[case_type] = []
+                case_types[case_type].append(lc)
+
+        categories = sorted(case_types.keys())
+        print("\nSelect Moving Load Category:")
+        for i, category in enumerate(categories, 1):
+            print(f"{i}. {category}")
+        print("0. Back")
+
+        cat_choice = input("Enter choice: ").strip()
+        if cat_choice == "0":
+            return
+
+        if not cat_choice.isdigit() or int(cat_choice) < 1 or int(cat_choice) > len(categories):
+            print("❌ Invalid selection")
+            return
+
+        selected_category = categories[int(cat_choice) - 1]
+        relevant_lcs = case_types[selected_category]
+
+        girder_map, _ = self.build_girders(verbose=False)
+
+        global_max = -float('inf')
+        crit_lc = None
+        crit_girder = None
+        crit_ele = None
+
+        print(f"\nSearching for maximum {comp} in {selected_category} ({len(relevant_lcs)} positions)...")
+
+        # 3. Search for global maximum within selected category
+        for lc in relevant_lcs:
+            for g_name, g_data in girder_map.items():
+                elements = g_data["elements"]
+                try:
+                    subset = self.ds.sel(Loadcase=lc, Element=elements, Component=comp)["forces"]
+                    current_max = float(subset.max())
+                    if current_max > global_max:
+                        global_max = current_max
+                        crit_lc = lc
+                        crit_girder = g_name
+                        crit_ele = int(subset.idxmax())
+                except Exception:
+                    continue
+
+        if crit_lc is None:
+            print("❌ No results found.")
+            return
+
+        print("\n" + "=" * 100)
+        print(" " * 35 + "GLOBAL CRITICAL MAXIMUM SUMMARY")
+        print("=" * 100)
+
+        # 3.1 Parse load case string for short name and position
+        # Format usually: "Moving Case1 ClassA L2 at global position [23.95,0.00,0.00]"
+        short_lc = crit_lc
+        position_str = "-"
+        if " at global position " in crit_lc:
+            parts = crit_lc.split(" at global position ")
+            short_lc = parts[0].replace("Moving ", "")  # e.g. "Case1 ClassA L2"
+            position_str = parts[1]  # e.g. "[23.95,0.00,0.00]"
+
+        summary_data = [{
+            "Component": comp,
+            "Girder": crit_girder,
+            "Element": crit_ele,
+            "Value": f"{global_max:.3f}",
+            "Loadcase (Short)": short_lc,
+            "Position": position_str
+        }]
+        summary_df = pd.DataFrame(summary_data)
+        print(summary_df.to_string(index=False))
+        print("=" * 100)
+
+        # 4. Print bridge-wide state at this critical load case position
+        print(f"\n--- Bridge State at {crit_lc} ---")
+
+        for g_name, g_data in girder_map.items():
+            elements = g_data["elements"]
+            print(f"\n>>> Girder: {g_name}")
+            try:
+                subset = self.ds.sel(Loadcase=crit_lc, Element=elements)
+
+                vy_i = subset.sel(Component="Vy_i")["forces"].values
+                vy_j = subset.sel(Component="Vy_j")["forces"].values
+                mz_i = subset.sel(Component="Mz_i")["forces"].values
+                mz_j = subset.sel(Component="Mz_j")["forces"].values
+
+                # Separate girder data collection
+                girder_data = []
+                for i, eid in enumerate(elements):
+                    row = {
+                        "Element": eid,
+                        "Vy_i": f"{vy_i[i]:.3f}",
+                        "Vy_j": f"{vy_j[i]:.3f}",
+                        "Mz_i": f"{mz_i[i]:.3f}",
+                        "Mz_j": f"{mz_j[i]:.3f}"
+                    }
+                    girder_data.append(row)
+
+                df = pd.DataFrame(girder_data)
+                print(df.to_string(index=False))
+            except Exception as e:
+                print(f"  ❌ Error for girder {g_name}: {e}")
+
+        print("\n" + "=" * 80)
 
     def run_interactive_viewer(self):
 
@@ -475,6 +621,7 @@ class PlateGirderAnalysisResults:
             print("2. Show Analysis Result")
             print("3. Show moving load trace")
             print("4. Show max/min envelopes")
+            print("5. Show critical maximum state")
             print("0. Exit")
             print("==============================")
 
@@ -620,8 +767,19 @@ class PlateGirderAnalysisResults:
                             )
 
                             print(f"\nResults | {key} | {lc} | {comp}")
+
+                            # Convert results to a pandas DataFrame for better formatting
+                            data = []
                             for eid, val in res.items():
-                                print(f"Element {eid}: {val}")
+                                try:
+                                    # Handle potential array values to get a clean scalar
+                                    scalar_val = float(val) if val is not None else val
+                                except (TypeError, ValueError):
+                                    scalar_val = val
+                                data.append({"Element": eid, comp: scalar_val})
+
+                            df = pd.DataFrame(data)
+                            print(df.to_string(index=False))
 
                 continue
 
@@ -691,6 +849,10 @@ class PlateGirderAnalysisResults:
                     lc_input = None
 
                 self.print_envelopes(load_case_filter=lc_input, girder_filter=g_input)
+                continue
+
+            elif main_choice == "5":
+                self.print_critical_max_state()
                 continue
 
             else:
