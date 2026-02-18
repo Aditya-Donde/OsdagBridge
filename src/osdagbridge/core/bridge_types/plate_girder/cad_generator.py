@@ -180,17 +180,25 @@ class PlateGirderCADGenerator:
         
         # Intermediate stiffener configuration
         self.include_intermediate_stiffeners = True  # Include intermediate stiffeners
-        self.intermediate_stiffener_spacing = 750    # Spacing between intermediate stiffeners (mm)
+        self.intermediate_stiffener_spacing = 2000    # Spacing between intermediate stiffeners (mm)
         self.intermediate_stiffener_thickness = 20   # Intermediate stiffener thickness (mm)
+        self.intermediate_stiffener_outstand = None  # outstand for intermediate stiffeners
         
         # End stiffener configuration 
         self.num_end_stiffener_pairs = 4     # Number of end stiffener pairs on each end
-        self.end_stiffener_thickness = 20    # End stiffener thickness (mm)
+        self.end_stiffener_thickness = 30    # End stiffener thickness (mm)
+        self.end_stiffener_outstand = None   # outstand for end stiffeners
+        
+        # Longitudinal stiffener configuration
+        self.include_longitudinal_stiffeners = True # Whether to include longitudinal stiffeners
+        self.num_longitudinal_stiffeners = 2        # Number of longitudinal stiffeners (1 or 2)
+        self.longitudinal_stiffener_thickness = 20  # Thickness of longitudinal stiffeners (mm)
+        self.longitudinal_stiffener_outstand = None # outstand for longitudinal stiffeners
 
         # CROSS BRACING PARAMETERS
         self.cross_bracing_spacing = 4000    # Spacing between bracing frames (mm)
 
-        self.bracing_type = "K"              # "X" or "K"
+        self.bracing_type = "X"              # "X" or "K"
         self.x_bracket_option = "BOTH"       # For X-bracing: "NONE", "UPPER", "LOWER", "BOTH"
         self.k_top_bracket = True            # For K-bracing: include top bracket
 
@@ -204,7 +212,7 @@ class PlateGirderCADGenerator:
         self.diagonal_thickness = 5          # Diagonal member thickness (mm)
 
         # Top chord/bracket section configuration
-        self.top_chord_section_type = "ANGLE"
+        self.top_chord_section_type = "DOUBLE_CHANNEL"
         self.top_chord_section_dims = {
             "leg_h": 80,
             "leg_w": 40,
@@ -238,7 +246,7 @@ class PlateGirderCADGenerator:
         self.end_diaphragm_diagonal_thickness = 5
         
         # End diaphragm top chord
-        self.end_diaphragm_top_chord_section_type = "ANGLE"
+        self.end_diaphragm_top_chord_section_type = "CHANNEL"
         self.end_diaphragm_top_chord_section_dims = {
             "leg_h": 80,
             "leg_w": 40,
@@ -359,7 +367,13 @@ class PlateGirderCADGenerator:
             intermediate_stiffener_thickness=self.intermediate_stiffener_thickness,
             chamfer_length=40,
             num_end_stiffener_pairs=self.num_end_stiffener_pairs,
-            T_es=self.end_stiffener_thickness
+            T_es=self.end_stiffener_thickness,
+            intermediate_stiffener_outstand=self.intermediate_stiffener_outstand,
+            end_stiffener_outstand=self.end_stiffener_outstand,
+            include_longitudinal_stiffeners=self.include_longitudinal_stiffeners,
+            num_longitudinal_stiffeners=self.num_longitudinal_stiffeners,
+            longitudinal_stiffener_thickness=self.longitudinal_stiffener_thickness,
+            longitudinal_stiffener_outstand=self.longitudinal_stiffener_outstand
         )
 
         # STEP 2: PLACE MULTIPLE GIRDERS WITH SKEW OFFSET

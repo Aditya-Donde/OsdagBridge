@@ -270,6 +270,10 @@ def build_plate_girder_geometry(
     if include_longitudinal_stiffeners:
         long_stiff_width = longitudinal_stiffener_outstand if longitudinal_stiffener_outstand is not None else default_stiff_width
         
+        # Start after the first end stiffener and end before the last one
+        long_stiff_start = T_es
+        long_stiff_len = length - 2 * long_stiff_start
+
         # Calculate vertical positions from the web top (D/2)
         heights = []
         if num_longitudinal_stiffeners == 1:
@@ -282,9 +286,9 @@ def build_plate_girder_geometry(
             
         for h in heights:
             long_stiff = _make_plate(
-                origin=np.array([tw / 2 + long_stiff_width / 2, length / 2, h]),
+                origin=np.array([tw / 2 + long_stiff_width / 2, long_stiff_start, h]),
                 length=long_stiff_width,
-                width=length,
+                width=long_stiff_len,
                 thickness=longitudinal_stiffener_thickness,
                 u_dir=np.array([0., 0., 1.]), # Thickness along Z
                 w_dir=np.array([0., 1., 0.])  # Length along Y
