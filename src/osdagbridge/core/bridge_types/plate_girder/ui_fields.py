@@ -55,6 +55,7 @@ class FrontendData:
         for k, v in values.items():
             if isinstance(k, str):
                 self._input_state[k] = v
+                
 
     def get_input_values_dict(self, include_empty: bool = False) -> dict:
         """Export current input state; can be fed into analyzers/designers later."""

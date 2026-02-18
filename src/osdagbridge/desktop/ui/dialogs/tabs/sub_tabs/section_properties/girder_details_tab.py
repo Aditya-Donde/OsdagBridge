@@ -2508,6 +2508,77 @@ class GirderDetailsTab(QWidget):
         if design:
             return design == "Optimized"
 
+    def get_member_section_dimensions(self, member_id: str) -> Optional[dict]:
+        """Return basic section dimensions for the given member.
+
+        Output keys: top_flange_width_mm, bottom_flange_width_mm, web_thickness_mm.
+        """
+        member_id = str(member_id or "").strip()
+        if not member_id:
+            return None
+
+        girder, _idx = self._split_member_id(member_id)
+
+        inputs = None
+        try:
+            current_girder, current_member_id = self._current_member_key()
+            if current_girder == girder and current_member_id == member_id:
+                inputs = (self._capture_member_state() or {}).get("inputs")
+        except Exception:
+            inputs = None
+
+        if inputs is None:
+            stored = (self._member_state.get(girder) or {}).get(member_id) or {}
+            inputs = (stored.get("inputs") or {})
+
+        return self._compute_section_dimensions_from_inputs(inputs)
+
+    def _compute_section_dimensions_from_inputs(self, inputs: dict) -> Optional[dict]:
+        if not isinstance(inputs, dict):
+            return None
+
+        section_type = str(inputs.get("type") or "").strip().lower()
+        if section_type == "welded":
+            depth = self._parse_float(inputs.get("total_depth"))
+            top_width = self._parse_float(inputs.get("top_width"))
+            bottom_width = self._parse_float(inputs.get("bottom_width")) or top_width
+
+            if not depth or not top_width or not bottom_width:
+                return None
+
+            web_thickness = None
+            if str(inputs.get("web_thickness") or "").strip().lower() == "custom":
+                web_thickness = self._parse_float(inputs.get("web_thickness_value"))
+
+            if not web_thickness:
+                web_thickness = max(8.0, depth * 0.02)
+
+            return {
+                "top_flange_width_mm": top_width,
+                "bottom_flange_width_mm": bottom_width,
+                "web_thickness_mm": web_thickness,
+            }
+
+        designation = str(inputs.get("is_section") or "").strip()
+        if not designation:
+            return None
+
+        beam = girder_properties.get_beam_profile(designation)
+        outline = girder_properties.get_rolled_section(designation) if beam is None else None
+        if beam:
+            return {
+                "top_flange_width_mm": float(beam.flange_width_mm),
+                "bottom_flange_width_mm": float(beam.flange_width_mm),
+                "web_thickness_mm": float(beam.web_thickness_mm),
+            }
+        if outline:
+            return {
+                "top_flange_width_mm": float(outline.get("top_flange_width_mm") or 0.0),
+                "bottom_flange_width_mm": float(outline.get("bottom_flange_width_mm") or 0.0),
+                "web_thickness_mm": float(outline.get("web_thickness_mm") or 0.0),
+            }
+        return None
+
         # Fallback: if the member hasn't been visited/saved yet, do NOT inherit
         # whatever the currently active member is set to. New/unvisited members
         # should behave like the UI default (Optimized) until explicitly changed.
