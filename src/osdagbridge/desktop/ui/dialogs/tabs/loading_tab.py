@@ -30,9 +30,17 @@ class LoadingTab(QWidget):
 
     def __init__(self, parent=None):
         super().__init__(parent)
+
+    # REQUIRED for Live Load defaults (MUST be before _build_ui)
+        self.irc_vehicle_checkboxes = []
+        self.irc_vehicle_labels = []
+        self.braking_vehicle_checkboxes = []
+        self.braking_vehicle_labels = []
+
         self.custom_vehicle_dialog = CustomVehicleDialog(self)
         self.custom_load_items = []
         self.load_combo_items = []
+
         self._build_ui()
 
     def _build_ui(self):
@@ -42,22 +50,50 @@ class LoadingTab(QWidget):
 
         self.load_tabs = QTabWidget()
         self.load_tabs.setDocumentMode(True)
-        self.load_tabs.setStyleSheet(
-            "QTabWidget::pane { border: none; background: #f5f5f5; }"
-            "QTabBar::tab { background: #e8e8e8; color: #4b4b4b; border: 1px solid #cfcfcf;"
-            " border-bottom: none; padding: 8px 20px; margin-right: 2px; min-width: 120px;"
-            " font-size: 11px; }"
-            "QTabBar::tab:selected { background: #90AF13; color: #ffffff; font-weight: bold; }"
-            "QTabBar::tab:!selected { margin-top: 2px; }"
-        )
 
-        self.load_tabs.addTab(PermanentLoadTab(self), "Permanent Load")
-        self.load_tabs.addTab(LiveLoadTab(self), "Live Load")
-        self.load_tabs.addTab(SeismicLoadTab(self), "Seismic Load")
-        self.load_tabs.addTab(WindLoadTab(self), "Wind Load")
-        self.load_tabs.addTab(TemperatureLoadTab(self), "Temperature Load")
-        self.load_tabs.addTab(CustomLoadTab(self), "Custom Load")
-        self.load_tabs.addTab(LoadCombinationTab(self), "Load Combination")
+        self.load_tabs.setUsesScrollButtons(True)
+        self.load_tabs.tabBar().setExpanding(False)
+
+        self.load_tabs.setMovable(False)
+
+        self.load_tabs.setStyleSheet(
+           "QTabBar::scroller {"
+            " width: 24px;"
+            "}"
+
+            "QTabBar::right-arrow {"
+            " image: none;"
+            " border: none;"
+            " background: transparent;"
+            "}"
+
+            "QTabBar::left-arrow {"
+            " image: none;"
+            " border: none;"
+            " background: transparent;"
+            "}"
+
+            "QTabBar::left-arrow:!enabled {"
+            " width: 0px;"
+            "}"
+
+        )
+        self.permanent_load_tab = PermanentLoadTab(self)
+        self.live_load_tab = LiveLoadTab(self)
+        self.seismic_load_tab = SeismicLoadTab(self)
+        self.wind_load_tab = WindLoadTab(self)
+        self.temperature_load_tab = TemperatureLoadTab(self)
+        self.custom_load_tab = CustomLoadTab(self)
+        self.load_combination_tab = LoadCombinationTab(self)
+
+        self.load_tabs.addTab(self.permanent_load_tab, "Permanent Load")
+        self.load_tabs.addTab(self.live_load_tab, "Live Load")
+        self.load_tabs.addTab(self.seismic_load_tab, "Seismic Load")
+        self.load_tabs.addTab(self.wind_load_tab, "Wind Load")
+        self.load_tabs.addTab(self.temperature_load_tab, "Temperature Load")
+        self.load_tabs.addTab(self.custom_load_tab, "Custom Load")
+        self.load_tabs.addTab(self.load_combination_tab, "Load Combination")
+        
 
         layout.addWidget(self.load_tabs)
 
@@ -131,6 +167,16 @@ class LoadingTab(QWidget):
                 )
             checkbox = QCheckBox()
             checkbox.setChecked(False)
+
+        # Store references for Live Load defaults
+            if "Vehicles from IRC 6" in title:
+                self.irc_vehicle_checkboxes.append(checkbox)
+                self.irc_vehicle_labels.append(label)
+
+            elif "Braking Load" in title:
+                self.braking_vehicle_checkboxes.append(checkbox)
+                self.braking_vehicle_labels.append(label)
+
             grid.addWidget(label, row, 0, Qt.AlignLeft | Qt.AlignVCenter)
             grid.addWidget(checkbox, row, 1, Qt.AlignRight | Qt.AlignVCenter)
 
@@ -161,3 +207,34 @@ class LoadingTab(QWidget):
         self.custom_vehicle_dialog.show()
         self.custom_vehicle_dialog.raise_()
         self.custom_vehicle_dialog.activateWindow()
+
+    def update_permanent_load_dependencies(self, has_median: bool, has_footpath: bool):
+        """
+        Forward dependency updates to PermanentLoadTab
+        """
+        if hasattr(self, "load_tabs"):
+            for i in range(self.load_tabs.count()):
+                tab = self.load_tabs.widget(i)
+                if hasattr(tab, "update_dependency_states"):
+                    tab.update_dependency_states(
+                        has_median=has_median,
+                        has_footpath=has_footpath
+                    )
+    def reset_defaults(self):
+        """Reset all loading sub-tabs to default values"""
+
+        if hasattr(self, "permanent_load_tab"):
+            self.permanent_load_tab.reset_defaults()
+
+        if hasattr(self, "live_load_tab") and hasattr(self.live_load_tab, "reset_defaults"):
+            self.live_load_tab.reset_defaults()
+        if hasattr(self, "seismic_load_tab") and hasattr(self.seismic_load_tab, "reset_defaults"):
+            self.seismic_load_tab.reset_defaults()
+
+        if hasattr(self, "wind_load_tab") and hasattr(self.wind_load_tab, "reset_defaults"):
+            self.wind_load_tab.reset_defaults()
+
+        if hasattr(self, "temperature_load_tab") and hasattr(self.temperature_load_tab, "reset_defaults"):
+            self.temperature_load_tab.reset_defaults()
+        if hasattr(self, "custom_load_tab") and hasattr(self.custom_load_tab, "reset_defaults"):
+            self.custom_load_tab.reset_defaults()

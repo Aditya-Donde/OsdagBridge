@@ -1,7 +1,9 @@
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QDoubleValidator, QIntValidator
 from PySide6.QtWidgets import QFrame, QGridLayout, QHBoxLayout, QLabel, QLineEdit, QVBoxLayout, QWidget
 
 from osdagbridge.desktop.ui.dialogs.tabs.common import apply_field_style
+from osdagbridge.core.bridge_types.plate_girder.ui_fields_additional_input import TEMPERATURE_LOAD_TAB_SCHEMA
 
 
 class TemperatureLoadTab(QWidget):
@@ -14,6 +16,7 @@ class TemperatureLoadTab(QWidget):
 
     def _build_ui(self):
         owner = self.owner
+        schema = TEMPERATURE_LOAD_TAB_SCHEMA
 
         self.setStyleSheet("background-color: #f5f5f5;")
         page_layout = QVBoxLayout(self)
@@ -34,117 +37,87 @@ class TemperatureLoadTab(QWidget):
 
         label_style = "font-size: 11px; color: #3a3a3a; background: transparent; border: none;"
         heading_style = "font-size: 12px; font-weight: 700; color: #2b2b2b; background: transparent; border: none;"
-        field_width = 140
+        field_width = schema.get("field_width", 140)
+        label_width = schema.get("label_width", 240)
 
-        tl_box = QFrame()
-        tl_box.setStyleSheet(
-            "QFrame { border: 1px solid #b2b2b2; border-radius: 8px; background-color: #ffffff; }"
-        )
-        tl_layout = QVBoxLayout(tl_box)
-        tl_layout.setContentsMargins(12, 12, 12, 12)
-        tl_layout.setSpacing(10)
+        readonly_input_style = """
+        QLineEdit {
+            color: #9e9e9e;
+            background-color: #f3f3f3;
+            border: 1px solid #3a3a3a;
+            border-radius: 4px;
+            padding: 4px;
+        }
+        """
 
-        tl_title = QLabel("Temperature Load (TL) Inputs for evaluation per IRC6")
-        tl_title.setStyleSheet(heading_style)
-        tl_layout.addWidget(tl_title)
+        for section in schema.get("sections", []):
+            section_box = QFrame()
+            section_box.setStyleSheet(
+                "QFrame { border: 1px solid #b2b2b2; border-radius: 8px; background-color: #ffffff; }"
+            )
+            section_layout = QVBoxLayout(section_box)
+            section_layout.setContentsMargins(12, 12, 12, 12)
+            section_layout.setSpacing(10)
 
-        tl_grid = QGridLayout()
-        tl_grid.setContentsMargins(0, 4, 0, 0)
-        tl_grid.setHorizontalSpacing(12)
-        tl_grid.setVerticalSpacing(10)
-        tl_grid.setColumnMinimumWidth(0, 240)
+            section_title = QLabel(section.get("title", ""))
+            section_title.setStyleSheet(heading_style)
+            section_layout.addWidget(section_title)
 
-        lbl = QLabel("Highest Maximum Air Temperature\n(°C):")
-        lbl.setStyleSheet(label_style)
-        owner.highest_max_temp_input = QLineEdit()
-        owner.highest_max_temp_input.setFixedWidth(field_width)
-        apply_field_style(owner.highest_max_temp_input)
-        tl_grid.addWidget(lbl, 0, 0, Qt.AlignLeft | Qt.AlignVCenter)
-        tl_grid.addWidget(owner.highest_max_temp_input, 0, 1, Qt.AlignLeft)
+            grid = QGridLayout()
+            grid.setContentsMargins(0, 4, 0, 0)
+            grid.setHorizontalSpacing(12)
+            grid.setVerticalSpacing(10)
+            grid.setColumnMinimumWidth(0, label_width)
 
-        lbl = QLabel("Lowest Minimum Air Temperature\n(°C):")
-        lbl.setStyleSheet(label_style)
-        owner.lowest_min_temp_input = QLineEdit()
-        owner.lowest_min_temp_input.setFixedWidth(field_width)
-        apply_field_style(owner.lowest_min_temp_input)
-        tl_grid.addWidget(lbl, 1, 0, Qt.AlignLeft | Qt.AlignVCenter)
-        tl_grid.addWidget(owner.lowest_min_temp_input, 1, 1, Qt.AlignLeft)
+            row = 0
+            for field in section.get("fields", []):
+                lbl = QLabel(field.get("label", ""))
+                lbl.setStyleSheet(label_style)
+                grid.addWidget(lbl, row, 0, Qt.AlignLeft | Qt.AlignVCenter)
 
-        lbl = QLabel("Coefficient of Thermal Expansion for Steel\n(1/°C):")
-        lbl.setStyleSheet(label_style)
-        owner.thermal_coeff_steel_input = QLineEdit()
-        owner.thermal_coeff_steel_input.setFixedWidth(field_width)
-        apply_field_style(owner.thermal_coeff_steel_input)
-        tl_grid.addWidget(lbl, 2, 0, Qt.AlignLeft | Qt.AlignVCenter)
-        tl_grid.addWidget(owner.thermal_coeff_steel_input, 2, 1, Qt.AlignLeft)
+                input_widget = QLineEdit()
+                input_widget.setFixedWidth(field_width)
+                apply_field_style(input_widget)
 
-        lbl = QLabel("Coefficient of Thermal Expansion for RCC\n(1/°C):")
-        lbl.setStyleSheet(label_style)
-        owner.thermal_coeff_rcc_input = QLineEdit()
-        owner.thermal_coeff_rcc_input.setFixedWidth(field_width)
-        apply_field_style(owner.thermal_coeff_rcc_input)
-        tl_grid.addWidget(lbl, 3, 0, Qt.AlignLeft | Qt.AlignVCenter)
-        tl_grid.addWidget(owner.thermal_coeff_rcc_input, 3, 1, Qt.AlignLeft)
+                if "placeholder" in field:
+                    input_widget.setPlaceholderText(field["placeholder"])
 
-        tl_layout.addLayout(tl_grid)
-        left_layout.addWidget(tl_box)
+                if "default" in field:
+                    input_widget.setText(field["default"])
 
-        range_box = QFrame()
-        range_box.setStyleSheet(
-            "QFrame { border: 1px solid #b2b2b2; border-radius: 8px; background-color: #ffffff; }"
-        )
-        range_layout = QVBoxLayout(range_box)
-        range_layout.setContentsMargins(12, 12, 12, 12)
-        range_layout.setSpacing(10)
+                if "validator" in field:
+                    validator_config = field["validator"]
+                    if validator_config["type"] == "double_range":
+                        validator = QDoubleValidator(
+                            validator_config["bottom"],
+                            validator_config["top"],
+                            validator_config.get("decimals", 2),
+                            input_widget
+                        )
+                        validator.setNotation(QDoubleValidator.StandardNotation)
+                        input_widget.setValidator(validator)
+                    elif validator_config["type"] == "int_range":
+                        validator = QIntValidator(
+                            validator_config["bottom"],
+                            validator_config["top"],
+                            input_widget
+                        )
+                        input_widget.setValidator(validator)
 
-        range_title = QLabel("Range of Effective Bridge Temperature:")
-        range_title.setStyleSheet(heading_style)
-        range_layout.addWidget(range_title)
+                if field.get("read_only", False):
+                    input_widget.setReadOnly(True)
+                    input_widget.setStyleSheet(readonly_input_style)
 
-        range_grid = QGridLayout()
-        range_grid.setContentsMargins(0, 4, 0, 0)
-        range_grid.setHorizontalSpacing(12)
-        range_grid.setVerticalSpacing(10)
-        range_grid.setColumnMinimumWidth(0, 200)
+                bind_name = field.get("bind")
+                if bind_name:
+                    setattr(owner, bind_name, input_widget)
 
-        lbl = QLabel("Minimum (°C):")
-        lbl.setStyleSheet(label_style)
-        owner.bridge_temp_min_input = QLineEdit()
-        owner.bridge_temp_min_input.setFixedWidth(field_width)
-        apply_field_style(owner.bridge_temp_min_input)
-        range_grid.addWidget(lbl, 0, 0, Qt.AlignLeft | Qt.AlignVCenter)
-        range_grid.addWidget(owner.bridge_temp_min_input, 0, 1, Qt.AlignLeft)
+                grid.addWidget(input_widget, row, 1, Qt.AlignLeft)
+                row += 1
 
-        lbl = QLabel("Maximum (°C):")
-        lbl.setStyleSheet(label_style)
-        owner.bridge_temp_max_input = QLineEdit()
-        owner.bridge_temp_max_input.setFixedWidth(field_width)
-        apply_field_style(owner.bridge_temp_max_input)
-        range_grid.addWidget(lbl, 1, 0, Qt.AlignLeft | Qt.AlignVCenter)
-        range_grid.addWidget(owner.bridge_temp_max_input, 1, 1, Qt.AlignLeft)
+            section_layout.addLayout(grid)
+            left_layout.addWidget(section_box)
 
-        temp_design_label = QLabel("Temperature for Design:")
-        temp_design_label.setStyleSheet(label_style + " font-weight: 600;")
-        range_grid.addWidget(temp_design_label, 2, 0, 1, 2, Qt.AlignLeft)
-
-        lbl = QLabel("Rise (°C):")
-        lbl.setStyleSheet(label_style)
-        owner.temp_rise_input = QLineEdit()
-        owner.temp_rise_input.setFixedWidth(field_width)
-        apply_field_style(owner.temp_rise_input)
-        range_grid.addWidget(lbl, 3, 0, Qt.AlignLeft | Qt.AlignVCenter)
-        range_grid.addWidget(owner.temp_rise_input, 3, 1, Qt.AlignLeft)
-
-        lbl = QLabel("Fall (°C):")
-        lbl.setStyleSheet(label_style)
-        owner.temp_fall_input = QLineEdit()
-        owner.temp_fall_input.setFixedWidth(field_width)
-        apply_field_style(owner.temp_fall_input)
-        range_grid.addWidget(lbl, 4, 0, Qt.AlignLeft | Qt.AlignVCenter)
-        range_grid.addWidget(owner.temp_fall_input, 4, 1, Qt.AlignLeft)
-
-        range_layout.addLayout(range_grid)
-        left_layout.addWidget(range_box)
         left_layout.addStretch()
 
         right_card = owner._create_card()
