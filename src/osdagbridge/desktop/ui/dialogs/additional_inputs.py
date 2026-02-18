@@ -222,6 +222,23 @@ class AdditionalInputs(QDialog):
         return widget
 
     def _apply_defaults(self):
+
+        """Apply default values to all tabs"""
+
+        if hasattr(self, "typical_section_tab") and hasattr(self.typical_section_tab, "reset_defaults"):
+            self.typical_section_tab.reset_defaults()
+
+        if hasattr(self, "section_properties_tab") and hasattr(self.section_properties_tab, "reset_defaults"):
+            self.section_properties_tab.reset_defaults()
+
+        if hasattr(self, "loading_tab"):
+            self.loading_tab.reset_defaults()
+
+            for i in range(self.loading_tab.load_tabs.count()):
+                tab = self.loading_tab.load_tabs.widget(i)
+                if hasattr(tab, "reset_defaults"):
+                    tab.reset_defaults()
+
         if hasattr(self, "typical_section_tab") and hasattr(self.typical_section_tab, "reset_defaults"):
             self.typical_section_tab.reset_defaults()
         if hasattr(self, "section_properties_tab") and hasattr(self.section_properties_tab, "reset_defaults"):
@@ -229,63 +246,12 @@ class AdditionalInputs(QDialog):
         if not (hasattr(self, "typical_section_tab") or hasattr(self, "section_properties_tab")):
             self._show_placeholder_message("Defaults")
 
+
     def _save_inputs(self):
-        """
-        Save additional inputs and close dialog.
-        Data will be collected by template_page via get_all_values().
-        """
-        self.accept()
-  
-    def get_all_values(self):
-        """
-        Return CAD-relevant numeric values from Additional Inputs.
-        This is consumed by InputDock / template_page.
-        """
-
-        from osdagbridge.core.utils.common import (
-            KEY_NO_OF_GIRDERS,
-            KEY_GIRDER_SPACING,
-            KEY_DECK_OVERHANG,
-            KEY_DECK_THICKNESS,
-            KEY_FOOTPATH_WIDTH,
-            KEY_FOOTPATH_THICKNESS,
-            KEY_CROSS_BRACING_SPACING,
-        )
-
-        values = {}
-
-        # ---- Typical Section tab ----
-        ts = self.typical_section_tab
-
-        if hasattr(ts, "no_of_girders") and ts.no_of_girders.text():
-            values[KEY_NO_OF_GIRDERS] = int(float(ts.no_of_girders.text()))
-
-        if hasattr(ts, "girder_spacing") and ts.girder_spacing.text():
-            values[KEY_GIRDER_SPACING] = float(ts.girder_spacing.text())
-
-        if hasattr(ts, "deck_overhang") and ts.deck_overhang.text():
-            values[KEY_DECK_OVERHANG] = float(ts.deck_overhang.text())
-
-        if hasattr(ts, "deck_thickness") and ts.deck_thickness.text():
-            values[KEY_DECK_THICKNESS] = float(ts.deck_thickness.text())
-
-        if hasattr(ts, "footpath_width") and ts.footpath_width.text():
-            values[KEY_FOOTPATH_WIDTH] = float(ts.footpath_width.text())
-
-        if hasattr(ts, "footpath_thickness") and ts.footpath_thickness.text():
-            values[KEY_FOOTPATH_THICKNESS] = float(ts.footpath_thickness.text())
-
-        # ---- Cross bracing spacing (Section Properties tab) ----
-        try:
-            bracing_tab = self.section_properties_tab.cross_bracing_details_tab
-            if hasattr(bracing_tab, "bracing_spacing") and bracing_tab.bracing_spacing.text():
-                values[KEY_CROSS_BRACING_SPACING] = float(bracing_tab.bracing_spacing.text())
-        except Exception:
-            pass
-
-        return values
-
-
+        saved = {}
+        if hasattr(self, "section_properties_tab") and hasattr(self.section_properties_tab, "save_properties"):
+            saved.update(self.section_properties_tab.save_properties() or {})
+        # No popup; silently succeed for now
 
     def _build_sections_from_schema(self, parent_layout, sections, heading_style, label_style, field_width):
         for section in sections:
