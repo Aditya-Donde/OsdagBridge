@@ -132,7 +132,13 @@ def build_plate_girder_geometry(
     intermediate_stiffener_thickness=20,   # Intermediate stiffener thickness (mm)
     chamfer_length=40,                     # Triangular chamfer length
     num_end_stiffener_pairs=2,             # Number of end stiffener pairs on each end
-    T_es=25                                # End stiffener thickness (mm)
+    T_es=25,                                # End stiffener thickness (mm)
+    intermediate_stiffener_outstand=None,  # Custom outstand for intermediate stiffeners
+    end_stiffener_outstand=None,            # Custom outstand for end stiffeners
+    include_longitudinal_stiffeners=False, # Whether to include longitudinal stiffeners
+    num_longitudinal_stiffeners=1,         # Number of longitudinal stiffeners (1 or 2)
+    longitudinal_stiffener_thickness=20,   # Thickness of longitudinal stiffeners (mm)
+    longitudinal_stiffener_outstand=None   # Custom outstand for longitudinal stiffeners
 ):
     """
     Geometry-only Plate Girder builder for Osdag Bridge.
@@ -175,7 +181,12 @@ def build_plate_girder_geometry(
     # Stiffeners
     stiffeners = []
     eff_depth = D - T_ft - T_fb
-    stiff_width = (min(B_ft, B_fb) - tw) / 2
+    
+    # Calculate default outstand if not provided
+    default_stiff_width = (min(B_ft, B_fb) - tw) / 2
+    
+    int_stiff_width = intermediate_stiffener_outstand if intermediate_stiffener_outstand is not None else default_stiff_width
+    end_stiff_width = end_stiffener_outstand if end_stiffener_outstand is not None else default_stiff_width
 
     # Intermediate stiffeners (only if enabled)
     if include_intermediate_stiffeners:
@@ -197,7 +208,7 @@ def build_plate_girder_geometry(
             stiffeners.append(
                 _create_stiffener_plate(
                     position=[ tw / 2, y, 0 ],
-                    width=stiff_width,
+                    width=int_stiff_width,
                     height=D,
                     thickness=intermediate_stiffener_thickness,
                     chamfer=chamfer_length,
@@ -208,7 +219,7 @@ def build_plate_girder_geometry(
             stiffeners.append(
                 _create_stiffener_plate(
                     position=[ -tw / 2, y, 0 ],
-                    width=stiff_width,
+                    width=int_stiff_width,
                     height=D,
                     thickness=intermediate_stiffener_thickness,
                     chamfer=chamfer_length,
@@ -236,7 +247,7 @@ def build_plate_girder_geometry(
         stiffeners.append(
             _create_stiffener_plate(
                 position=[ tw / 2, y, 0 ],
-                width=stiff_width,
+                width=end_stiff_width,
                 height=D,
                 thickness=T_es,
                 chamfer=chamfer_length,
@@ -247,13 +258,38 @@ def build_plate_girder_geometry(
         stiffeners.append(
             _create_stiffener_plate(
                 position=[ -tw / 2, y, 0 ],
-                width=stiff_width,
+                width=end_stiff_width,
                 height=D,
                 thickness=T_es,
                 chamfer=chamfer_length,
                 side="left"
             )
         )
+
+    # Longitudinal Stiffeners
+    if include_longitudinal_stiffeners:
+        long_stiff_width = longitudinal_stiffener_outstand if longitudinal_stiffener_outstand is not None else default_stiff_width
+        
+        # Calculate vertical positions from the web top (D/2)
+        heights = []
+        if num_longitudinal_stiffeners == 1:
+            # 1/3 height from web top
+            heights.append(D / 2 - D / 3)
+        elif num_longitudinal_stiffeners == 2:
+            # 1/3 and 2/3 height from web top
+            heights.append(D / 2 - D / 3)
+            heights.append(D / 2 - 2 * D / 3)
+            
+        for h in heights:
+            long_stiff = _make_plate(
+                origin=np.array([tw / 2 + long_stiff_width / 2, length / 2, h]),
+                length=long_stiff_width,
+                width=length,
+                thickness=longitudinal_stiffener_thickness,
+                u_dir=np.array([0., 0., 1.]), # Thickness along Z
+                w_dir=np.array([0., 1., 0.])  # Length along Y
+            )
+            stiffeners.append(long_stiff)
 
     # SUPPORTS 
 
