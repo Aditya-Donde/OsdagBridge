@@ -1,10 +1,4 @@
-"""Main plate-girder workflow stitcher.
-
-This module wires the plate girder pieces together in one place:
-basic input -> additional input -> initial sizing -> geometry ->
-analysis -> analysis results -> girder design -> modifier hook ->
-plot/CAD/report outputs.
-"""
+"""Main PG bridge file """
 
 from __future__ import annotations
 
