@@ -187,6 +187,15 @@ class PlateGirderCADGenerator:
         self.longitudinal_stiffener_thickness = design_params.longitudinal_stiffener_thickness
         self.longitudinal_stiffener_outstand = design_params.longitudinal_stiffener_outstand
 
+        # SHEAR STUD PARAMETERS
+        self.shear_stud_base_diameter = 50
+        self.shear_stud_top_diameter = 70
+        self.shear_stud_base_height = 150
+        self.shear_stud_top_height = 50
+        self.num_shear_studs_per_section = 4
+        self.shear_stud_transverse_spacing = 305
+        self.shear_stud_pitch = 500
+
         # CROSS BRACING PARAMETERS
         self.cross_bracing_spacing = design_params.cross_bracing_spacing
         self.bracing_type = design_params.bracing_type
@@ -355,13 +364,21 @@ class PlateGirderCADGenerator:
             include_longitudinal_stiffeners=self.include_longitudinal_stiffeners,
             num_longitudinal_stiffeners=self.num_longitudinal_stiffeners,
             longitudinal_stiffener_thickness=self.longitudinal_stiffener_thickness,
-            longitudinal_stiffener_outstand=self.longitudinal_stiffener_outstand
+            longitudinal_stiffener_outstand=self.longitudinal_stiffener_outstand,
+            shear_stud_base_diameter=self.shear_stud_base_diameter,
+            shear_stud_top_diameter=self.shear_stud_top_diameter,
+            shear_stud_base_height=self.shear_stud_base_height,
+            shear_stud_top_height=self.shear_stud_top_height,
+            num_shear_studs_per_section=self.num_shear_studs_per_section,
+            shear_stud_transverse_spacing=self.shear_stud_transverse_spacing,
+            shear_stud_pitch=self.shear_stud_pitch
         )
 
         # STEP 2: PLACE MULTIPLE GIRDERS WITH SKEW OFFSET
         
         girders = []
         stiffeners = []
+        shear_studs = []
         girder_web = []
         girder_flanges = []
 
@@ -394,6 +411,12 @@ class PlateGirderCADGenerator:
             for stiff in pg["stiffeners"]:
                 stiffeners.append(
                     _translate(stiff, dx=x_offset, dy=y_offset)
+                )
+
+            # Place shear studs
+            for stud in pg.get("shear_studs", []):
+                shear_studs.append(
+                    _translate(stud, dx=x_offset, dy=y_offset)
                 )
 
         # STEP 3: PLACE SUPPORT STRUCTURES
@@ -672,6 +695,9 @@ class PlateGirderCADGenerator:
             
             # Stiffeners
             "stiffeners": stiffeners,
+            
+            # Shear Studs
+            "shear_studs": shear_studs,
             
             # Support structures
             "supports": supports,

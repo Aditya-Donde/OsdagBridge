@@ -232,6 +232,13 @@ class CAD3DWindow(QWidget):
         )
 
         display_and_register(
+            cad_data.get("shear_studs", []),
+            "Shear Stud",
+            "Shear Stud",
+            STIFFENER_COLOR
+        )
+
+        display_and_register(
             cad_data.get("supports", []),
             "Support",
             "Support",
@@ -423,7 +430,7 @@ class CAD3DWindow(QWidget):
         component_map = {
             "Crash Barrier": ["Crash Barrier", "Crash Barrier W-Beam"],
             "Median": ["Median", "Median W-Beam"],
-            "Girder": ["Girder Web", "Girder Flange", "Support", "Stiffener"],
+            "Girder": ["Girder Web", "Girder Flange", "Support", "Stiffener", "Shear Stud"],
             "Deck": ["Deck"],
             "Cross Bracing": ["Cross Bracing"],
             "Railing": ["Railing"],

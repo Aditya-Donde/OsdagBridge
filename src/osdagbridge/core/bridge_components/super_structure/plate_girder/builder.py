@@ -18,6 +18,8 @@ from OCC.Core.BRepBuilderAPI import (
     BRepBuilderAPI_MakeFace,
     BRepBuilderAPI_Transform
 )
+from OCC.Core.BRepAlgoAPI import BRepAlgoAPI_Fuse
+
 
 
 # END STIFFENER SPACING
@@ -118,6 +120,26 @@ def _create_stiffener_plate(position, width, height, thickness, chamfer, side):
 
 
 
+
+def create_shear_stud(base_dia, base_height, top_dia, top_height):
+    """Create stepped cylindrical shape"""
+    base_radius = base_dia / 2.0
+    top_radius = top_dia / 2.0
+
+    # Base cylinder at origin
+    base_axis = gp_Ax2(gp_Pnt(0, 0, 0), gp_Dir(0, 0, 1))
+    base_cyl = BRepPrimAPI_MakeCylinder(base_axis, base_radius, base_height).Shape()
+
+    # Top cylinder placed on base
+    top_axis = gp_Ax2(gp_Pnt(0, 0, base_height), gp_Dir(0, 0, 1))
+    top_cyl = BRepPrimAPI_MakeCylinder(top_axis, top_radius, top_height).Shape()
+
+    # Fuse both
+    stepped_shape = BRepAlgoAPI_Fuse(base_cyl, top_cyl).Shape()
+
+    return stepped_shape
+
+
 def build_plate_girder_geometry(
     *,
     D,                                  # Total depth       
@@ -138,7 +160,14 @@ def build_plate_girder_geometry(
     include_longitudinal_stiffeners=False, # Whether to include longitudinal stiffeners
     num_longitudinal_stiffeners=1,         # Number of longitudinal stiffeners (1 or 2)
     longitudinal_stiffener_thickness=20,   # Thickness of longitudinal stiffeners (mm)
-    longitudinal_stiffener_outstand=None   # Custom outstand for longitudinal stiffeners
+    longitudinal_stiffener_outstand=None,  # Custom outstand for longitudinal stiffeners
+    shear_stud_base_diameter=16,           # Diameter of the shear stud base (mm)
+    shear_stud_top_diameter=25,            # Diameter of the shear stud top head (mm)
+    shear_stud_base_height=135,            # Height of the shear stud base (mm)
+    shear_stud_top_height=15,              # Height of the shear stud top head (mm)
+    num_shear_studs_per_section=2,         # Number of shear studs in the transverse direction
+    shear_stud_transverse_spacing=100,     # Spacing between shear studs in the transverse direction
+    shear_stud_pitch=200                   # Pitch (longitudinal spacing) of shear stud rows
 ):
     """
     Geometry-only Plate Girder builder for Osdag Bridge.
@@ -295,6 +324,57 @@ def build_plate_girder_geometry(
             )
             stiffeners.append(long_stiff)
 
+    # Shear Studs
+    shear_studs = []
+    if num_shear_studs_per_section > 0 and shear_stud_pitch > 0:
+        base_stud = create_shear_stud(shear_stud_base_diameter, shear_stud_base_height, shear_stud_top_diameter, shear_stud_top_height)
+        z_stud = D / 2.0 + T_ft  # Place ON TOP of the top flange
+        
+        # Longitudinal stud placement (Y direction) 
+        min_edge = 50.0
+
+        if length > 2 * min_edge:
+
+            # Maximum intervals ensuring edge ≥ 50 mm
+            max_intervals = int((length - 2 * min_edge) // shear_stud_pitch)
+
+            # Compute symmetric edge distance
+            edge = (length - max_intervals * shear_stud_pitch) / 2.0
+
+            start_y = edge
+            num_rows = max_intervals + 1
+
+        else:
+            # Very short girder → single centered stud row
+            start_y = length / 2.0
+            num_rows = 1
+            
+        # Transverse stud placement (X direction)
+        transverse_positions = []
+        if num_shear_studs_per_section == 1:
+            transverse_positions = [0.0]
+        else:
+            # Ensure the studs do not exceed the width of the top flange (B_ft)
+            min_edge_margin = max(50.0, shear_stud_base_diameter)
+            max_total_transverse_width = max(0.0, B_ft - 2 * min_edge_margin)
+            
+            desired_total_width = (num_shear_studs_per_section - 1) * shear_stud_transverse_spacing
+            actual_total_width = min(desired_total_width, max_total_transverse_width)
+            
+            actual_spacing = actual_total_width / (num_shear_studs_per_section - 1)
+            start_x = -actual_total_width / 2.0
+            
+            for k in range(num_shear_studs_per_section):
+                transverse_positions.append(start_x + k * actual_spacing)
+
+        for i in range(num_rows):
+            y_pos = start_y + i * shear_stud_pitch
+            for x_pos in transverse_positions:
+                trsf = gp_Trsf()
+                trsf.SetTranslation(gp_Vec(x_pos, y_pos, z_stud))
+                stud = BRepBuilderAPI_Transform(base_stud, trsf, True).Shape()
+                shear_studs.append(stud)
+
     # SUPPORTS 
 
     supports_tri = []
@@ -378,6 +458,10 @@ def build_plate_girder_geometry(
         _rotate_about_z(s, -90) for s in supports_cyl
     ]
 
+    shear_studs = [
+        _rotate_about_z(s, -90) for s in shear_studs
+    ]
+
 
 
     return {
@@ -386,5 +470,6 @@ def build_plate_girder_geometry(
         "bottom_flange": bottom_flange,
         "stiffeners": stiffeners,
         "supports_tri": supports_tri,
-        "supports_cyl": supports_cyl
+        "supports_cyl": supports_cyl,
+        "shear_studs": shear_studs
     }
