@@ -8,15 +8,23 @@ from PySide6.QtCore import QPointF, QRectF, Qt
 from PySide6.QtGui import QColor, QFont, QPainter, QPaintEvent, QPainterPath, QPen, QTextDocument
 from PySide6.QtWidgets import QSizePolicy, QWidget
 
+from osdagbridge.desktop.ui.utils.cad_palette import (
+    CAD_CANVAS_BG,
+    CAD_DIMENSION,
+    CAD_LABEL_BG,
+    CAD_OUTLINE,
+    CAD_PLACEHOLDER_BORDER,
+    CAD_PLACEHOLDER_TEXT,
+    CAD_SHAPE_FILL,
+    CAD_TEXT,
+    OSDAG_BRAND_GREEN,
+    OSDAG_FONT_FAMILY,
+)
+
 try:  # pragma: no cover - optional dependency
     from osdagbridge.core.bridge_components.super_structure.girder.properties import BeamSection  # type: ignore
 except Exception:  # pragma: no cover - fallback when module missing in current build
     BeamSection = Any  # type: ignore[misc,assignment]
-
-
-OSDAG_BRAND_GREEN = QColor("#90AF13")
-OSDAG_FONT_FAMILY = "Ubuntu Sans"
-
 
 class RolledSectionPreview(QWidget):
     """Render a rolled or welded section with CAD-style dimension annotations."""
@@ -26,14 +34,14 @@ class RolledSectionPreview(QWidget):
         self._section: Optional[BeamSection] = None
         self._dimensions: Dict[str, float] = {}
 
-        self._outline_color = QColor("#1b1b1b")
+        self._outline_color = QColor(CAD_OUTLINE)
         self._outline_width = 3.0
         self._brand_color = QColor(OSDAG_BRAND_GREEN)
-        self._dimension_color = QColor(OSDAG_BRAND_GREEN)
+        self._dimension_color = QColor(CAD_DIMENSION)
         self._dimension_keys = ("tfw", "tft", "bfw", "bft", "d", "wt")
-        self._dimension_palette = {key: QColor(OSDAG_BRAND_GREEN) for key in self._dimension_keys}
-        self._label_bg = QColor(255, 255, 255, 230)
-        self._text_color = QColor("#0f0f0f")
+        self._dimension_palette = {key: QColor(CAD_DIMENSION) for key in self._dimension_keys}
+        self._label_bg = QColor(CAD_LABEL_BG)
+        self._text_color = QColor(CAD_TEXT)
         self._brand_font_family = OSDAG_FONT_FAMILY
         self._show_welds = False
 
@@ -117,7 +125,7 @@ class RolledSectionPreview(QWidget):
         painter.setRenderHint(QPainter.Antialiasing, True)
         # Force a light canvas so the widget stays readable even when the
         # application uses a dark palette.
-        painter.fillRect(self.rect(), QColor("#ffffff"))
+        painter.fillRect(self.rect(), QColor(CAD_CANVAS_BG))
 
         if not self._dimensions:
             self._draw_placeholder(painter)
@@ -191,7 +199,7 @@ class RolledSectionPreview(QWidget):
         outline_pen = QPen(self._outline_color, self._outline_width)
         outline_pen.setJoinStyle(Qt.MiterJoin)
         painter.setPen(outline_pen)
-        painter.setBrush(QColor("#fefefe"))
+        painter.setBrush(QColor(CAD_SHAPE_FILL))
         if section_path is not None:
             painter.drawPath(section_path)
         else:
@@ -474,11 +482,11 @@ class RolledSectionPreview(QWidget):
 
     def _draw_placeholder(self, painter: QPainter) -> None:
         painter.save()
-        pen = QPen(QColor("#b7b7b7"), 1.2, Qt.DashLine)
+        pen = QPen(QColor(CAD_PLACEHOLDER_BORDER), 1.2, Qt.DashLine)
         pen.setCosmetic(True)
         painter.setPen(pen)
         painter.drawRect(self.rect().adjusted(12, 12, -12, -12))
-        painter.setPen(QColor("#6f6f6f"))
+        painter.setPen(QColor(CAD_PLACEHOLDER_TEXT))
         font = QFont(self.font())
         font.setFamily(self._brand_font_family)
         font.setPointSizeF(max(font.pointSizeF(), 10.0))

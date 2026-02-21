@@ -332,14 +332,14 @@ class GirderDetailsTab(QWidget):
             frame.setFixedHeight(160)
             frame.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
             frame.setStyleSheet(
-                "QFrame { border: 2px dashed #c0c0c0; border-radius: 8px; background: #fbfbfb; }"
+                "QFrame { border: 2px dashed #b7b7b7; border-radius: 8px; background: #ffffff; }"
             )
             layout = QVBoxLayout(frame)
             layout.setContentsMargins(10, 10, 10, 10)
             layout.setSpacing(0)
             text = QLabel(label)
             text.setAlignment(Qt.AlignCenter)
-            text.setStyleSheet("font-size: 12px; font-weight: 700; color: #666;")
+            text.setStyleSheet("font-size: 12px; font-weight: 700; color: #6f6f6f;")
             layout.addWidget(text)
             return frame
 
