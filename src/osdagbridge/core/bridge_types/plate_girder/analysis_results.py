@@ -17,9 +17,10 @@ class PlateGirderAnalysisResults:
     # ========================================================
     # INITIALIZATION
     # ========================================================
-    def __init__(self, dataset, model):  # storing analysis result
+    def __init__(self, dataset, model, edge_dist=0):  # storing analysis result
         self.ds = dataset
         self.model = model
+        self.edge_dist = edge_dist
 
     # ========================================================
     # DATASET BASED RESULTS (FORCES / MOMENTS)
@@ -248,8 +249,21 @@ class PlateGirderAnalysisResults:
             print(f"\nSpan length from geometry = {span_length}\n")
 
         girder_map = {}
+        all_pairs = list(zip(start_nodes, end_nodes))
+        num_pairs = len(all_pairs)
 
-        for i, (s, e) in enumerate(zip(start_nodes, end_nodes), start=1):
+        for i, (s, e) in enumerate(all_pairs, start=1):
+            # --- NAMING LOGIC ---
+            if self.edge_dist > 0:
+                if i == 1:
+                    name = "EB1"
+                elif i == num_pairs:
+                    name = "EB2"
+                else:
+                    name = f"G{i - 1}"
+            else:
+                name = f"G{i}"
+
             path = self.bfs_shortest_path(adj, s, e)
             path_elements, element_map = self.get_elements_along_path(path, elements)
             length = self.compute_path_distance(nodes, path)
@@ -258,7 +272,7 @@ class PlateGirderAnalysisResults:
 
             if verbose:
                 print("----------------------------------------")
-                print(f"Girder g{i}")
+                print(f"Member: {name}")
                 print("----------------------------------------")
 
                 print("Path     :", path)
@@ -271,7 +285,7 @@ class PlateGirderAnalysisResults:
                 print(f"\nLength   : {length:.3f} m ({status})")
                 print("----------------------------------------\n")
 
-            girder_map[f"g{i}"] = {
+            girder_map[name] = {
                 "start": s,
                 "end": e,
                 "path": path,
@@ -282,6 +296,18 @@ class PlateGirderAnalysisResults:
 
         return girder_map, elements
 
+    def filter_girders(self, girder_map):
+        if self.edge_dist > 0:
+            # If there's an overhang, show everything (EB1, G1...Gn, EB2)
+            return girder_map
+        else:
+            # If no overhang (dist=0), hide the physical edge girders (G1 and Gn)
+            keys = list(girder_map.keys())
+            if len(keys) <= 2:
+                return girder_map
+            filtered_keys = keys[1:-1]
+            return {k: girder_map[k] for k in filtered_keys}
+
     # ========================================================
     # PRINT MOVING LOAD TRACE
     # ========================================================
@@ -291,7 +317,7 @@ class PlateGirderAnalysisResults:
         Iterates through all moving load cases and all girders.
 
         :param load_case_filter: (str or list) Print only load cases containing this string(s).
-        :param girder_filter: (str or list) Print only girders matching this name(s) (e.g. "g1").
+        :param girder_filter: (str or list) Print only girders matching this name(s) (e.g. "G1").
         :param element_filter: (int or list) Print only specific element IDs.
         """
 
@@ -314,6 +340,7 @@ class PlateGirderAnalysisResults:
 
         # 2. Build girders
         girder_map, _ = self.build_girders(verbose=False)
+        girder_map = self.filter_girders(girder_map)
 
         print("\n================ MOVING LOAD TRACE ================")
 
@@ -350,10 +377,18 @@ class PlateGirderAnalysisResults:
                     # Extract values and create DataFrame
                     df = pd.DataFrame({
                         "Element": elements,
-                        "Vy_i (kN)": subset.sel(Component="Vy_i")["forces"].values,
-                        "Vy_j (kN)": subset.sel(Component="Vy_j")["forces"].values,
-                        "Mz_i (kNm)": subset.sel(Component="Mz_i")["forces"].values,
-                        "Mz_j (kNm)": subset.sel(Component="Mz_j")["forces"].values
+                        "Vx_i": subset.sel(Component="Vx_i")["forces"].values,
+                        "Vx_j": subset.sel(Component="Vx_j")["forces"].values,
+                        "Vy_i": subset.sel(Component="Vy_i")["forces"].values,
+                        "Vy_j": subset.sel(Component="Vy_j")["forces"].values,
+                        "Vz_i": subset.sel(Component="Vz_i")["forces"].values,
+                        "Vz_j": subset.sel(Component="Vz_j")["forces"].values,
+                        "Mx_i": subset.sel(Component="Mx_i")["forces"].values,
+                        "Mx_j": subset.sel(Component="Mx_j")["forces"].values,
+                        "My_i": subset.sel(Component="My_i")["forces"].values,
+                        "My_j": subset.sel(Component="My_j")["forces"].values,
+                        "Mz_i": subset.sel(Component="Mz_i")["forces"].values,
+                        "Mz_j": subset.sel(Component="Mz_j")["forces"].values,
                     })
                     print(df.to_string(index=False))
 
@@ -391,6 +426,7 @@ class PlateGirderAnalysisResults:
                 return
 
         girder_map, _ = self.build_girders(verbose=False)
+        girder_map = self.filter_girders(girder_map)
 
         print("\n================ VEHICLE ENVELOPES (PER POSITION) ================")
 
@@ -413,6 +449,27 @@ class PlateGirderAnalysisResults:
                     vy_i = subset.sel(Component="Vy_i")["forces"]
                     vy_j = subset.sel(Component="Vy_j")["forces"]
 
+                    # --- Vx Envelope ---
+                    vx_i = subset.sel(Component="Vx_i")["forces"]
+                    vx_j = subset.sel(Component="Vx_j")["forces"]
+
+                    # --- Vz Envelope ---
+                    vz_i = subset.sel(Component="Vz_i")["forces"]
+                    vz_j = subset.sel(Component="Vz_j")["forces"]
+
+                    # --- Mx Envelope ---
+                    mx_i = subset.sel(Component="Mx_i")["forces"]
+                    mx_j = subset.sel(Component="Mx_j")["forces"]
+
+                    # --- My Envelope ---
+                    my_i = subset.sel(Component="My_i")["forces"]
+                    my_j = subset.sel(Component="My_j")["forces"]
+
+                    # --- Mz Envelope ---
+                    mz_i = subset.sel(Component="Mz_i")["forces"]
+                    mz_j = subset.sel(Component="Mz_j")["forces"]
+
+                    # Compute max/min for Vy
                     mxi, mxj = float(vy_i.max()), float(vy_j.max())
                     if mxi >= mxj:
                         v_max, v_max_e = mxi, int(vy_i.idxmax())
@@ -425,10 +482,59 @@ class PlateGirderAnalysisResults:
                     else:
                         v_min, v_min_e = mnj, int(vy_j.idxmin())
 
-                    # --- Mz Envelope ---
-                    mz_i = subset.sel(Component="Mz_i")["forces"]
-                    mz_j = subset.sel(Component="Mz_j")["forces"]
+                    # Compute max/min for Vx
+                    mx_i_val, mx_j_val = float(vx_i.max()), float(vx_j.max())
+                    if mx_i_val >= mx_j_val:
+                        vx_max, vx_max_e = mx_i_val, int(vx_i.idxmax())
+                    else:
+                        vx_max, vx_max_e = mx_j_val, int(vx_j.idxmax())
 
+                    mn_i_val, mn_j_val = float(vx_i.min()), float(vx_j.min())
+                    if mn_i_val <= mn_j_val:
+                        vx_min, vx_min_e = mn_i_val, int(vx_i.idxmin())
+                    else:
+                        vx_min, vx_min_e = mn_j_val, int(vx_j.idxmin())
+
+                    # Compute max/min for Vz
+                    mz_i_val, mz_j_val = float(vz_i.max()), float(vz_j.max())
+                    if mz_i_val >= mz_j_val:
+                        vz_max, vz_max_e = mz_i_val, int(vz_i.idxmax())
+                    else:
+                        vz_max, vz_max_e = mz_j_val, int(vz_j.idxmax())
+
+                    mnz_i_val, mnz_j_val = float(vz_i.min()), float(vz_j.min())
+                    if mnz_i_val <= mnz_j_val:
+                        vz_min, vz_min_e = mnz_i_val, int(vz_i.idxmin())
+                    else:
+                        vz_min, vz_min_e = mnz_j_val, int(vz_j.idxmin())
+
+                    # Compute max/min for Mx
+                    mx_i_val, mx_j_val = float(mx_i.max()), float(mx_j.max())
+                    if mx_i_val >= mx_j_val:
+                        mx_max, mx_max_e = mx_i_val, int(mx_i.idxmax())
+                    else:
+                        mx_max, mx_max_e = mx_j_val, int(mx_j.idxmax())
+
+                    mnx_i_val, mnx_j_val = float(mx_i.min()), float(mx_j.min())
+                    if mnx_i_val <= mnx_j_val:
+                        mx_min, mx_min_e = mnx_i_val, int(mx_i.idxmin())
+                    else:
+                        mx_min, mx_min_e = mnx_j_val, int(mx_j.idxmin())
+
+                    # Compute max/min for My
+                    my_i_val, my_j_val = float(my_i.max()), float(my_j.max())
+                    if my_i_val >= my_j_val:
+                        my_max, my_max_e = my_i_val, int(my_i.idxmax())
+                    else:
+                        my_max, my_max_e = my_j_val, int(my_j.idxmax())
+
+                    mny_i_val, mny_j_val = float(my_i.min()), float(my_j.min())
+                    if mny_i_val <= mny_j_val:
+                        my_min, my_min_e = mny_i_val, int(my_i.idxmin())
+                    else:
+                        my_min, my_min_e = mny_j_val, int(my_j.idxmin())
+
+                    # Compute max/min for Mz
                     mmxi, mmxj = float(mz_i.max()), float(mz_j.max())
                     if mmxi >= mmxj:
                         m_max, m_max_e = mmxi, int(mz_i.idxmax())
@@ -443,9 +549,30 @@ class PlateGirderAnalysisResults:
 
                     # Group results by element to avoid redundant rows
                     crit_eles = defaultdict(
-                        lambda: {"Max Vy (kN)": "-", "Min Vy (kN)": "-", "Max Mz (kNm)": "-", "Min Mz (kNm)": "-"})
+                        lambda: {
+                            "Max Vy (kN)": "-",
+                            "Min Vy (kN)": "-",
+                            "Max Vx (kN)": "-",
+                            "Min Vx (kN)": "-",
+                            "Max Vz (kN)": "-",
+                            "Min Vz (kN)": "-",
+                            "Max Mx (kNm)": "-",
+                            "Min Mx (kNm)": "-",
+                            "Max My (kNm)": "-",
+                            "Min My (kNm)": "-",
+                            "Max Mz (kNm)": "-",
+                            "Min Mz (kNm)": "-",
+                        })
                     crit_eles[v_max_e]["Max Vy (kN)"] = f"{v_max:.3f}"
                     crit_eles[v_min_e]["Min Vy (kN)"] = f"{v_min:.3f}"
+                    crit_eles[vx_max_e]["Max Vx (kN)"] = f"{vx_max:.3f}"
+                    crit_eles[vx_min_e]["Min Vx (kN)"] = f"{vx_min:.3f}"
+                    crit_eles[vz_max_e]["Max Vz (kN)"] = f"{vz_max:.3f}"
+                    crit_eles[vz_min_e]["Min Vz (kN)"] = f"{vz_min:.3f}"
+                    crit_eles[mx_max_e]["Max Mx (kNm)"] = f"{mx_max:.3f}"
+                    crit_eles[mx_min_e]["Min Mx (kNm)"] = f"{mx_min:.3f}"
+                    crit_eles[my_max_e]["Max My (kNm)"] = f"{my_max:.3f}"
+                    crit_eles[my_min_e]["Min My (kNm)"] = f"{my_min:.3f}"
                     crit_eles[m_max_e]["Max Mz (kNm)"] = f"{m_max:.3f}"
                     crit_eles[m_min_e]["Min Mz (kNm)"] = f"{m_min:.3f}"
 
@@ -483,7 +610,12 @@ class PlateGirderAnalysisResults:
         if choice == "0":
             return
 
-        comp_map = {"1": "Vy_i", "2": "Vy_j", "3": "Mz_i", "4": "Mz_j"}
+        comp_map = {
+            "1": "Vy_i",
+            "2": "Vy_j",
+            "3": "Mz_i",
+            "4": "Mz_j",
+        }
         if choice not in comp_map:
             print("❌ Invalid selection")
             return
@@ -526,26 +658,43 @@ class PlateGirderAnalysisResults:
         relevant_lcs = case_types[selected_category]
 
         girder_map, _ = self.build_girders(verbose=False)
+        girder_map = self.filter_girders(girder_map)
 
-        global_max = -float('inf')
+        global_abs_max = -1.0
+        crit_val = 0.0
         crit_lc = None
         crit_girder = None
         crit_ele = None
 
-        print(f"\nSearching for maximum {comp} in {selected_category} ({len(relevant_lcs)} positions)...")
+        print(f"\nSearching for absolute maximum {comp} in {selected_category} ({len(relevant_lcs)} positions)...")
 
-        # 3. Search for global maximum within selected category
+        # 3. Search for absolute maximum within selected category
         for lc in relevant_lcs:
             for g_name, g_data in girder_map.items():
                 elements = g_data["elements"]
                 try:
                     subset = self.ds.sel(Loadcase=lc, Element=elements, Component=comp)["forces"]
-                    current_max = float(subset.max())
-                    if current_max > global_max:
-                        global_max = current_max
+
+                    # Find both max and min in this subset
+                    s_max = float(subset.max())
+                    s_min = float(subset.min())
+
+                    # Determine which has larger magnitude
+                    if abs(s_max) >= abs(s_min):
+                        local_abs_max = abs(s_max)
+                        local_val = s_max
+                        local_ele = int(subset.idxmax())
+                    else:
+                        local_abs_max = abs(s_min)
+                        local_val = s_min
+                        local_ele = int(subset.idxmin())
+
+                    if local_abs_max > global_abs_max:
+                        global_abs_max = local_abs_max
+                        crit_val = local_val
                         crit_lc = lc
                         crit_girder = g_name
-                        crit_ele = int(subset.idxmax())
+                        crit_ele = local_ele
                 except Exception:
                     continue
 
@@ -570,7 +719,7 @@ class PlateGirderAnalysisResults:
             "Component": comp,
             "Girder": crit_girder,
             "Element": crit_ele,
-            "Value": f"{global_max:.3f}",
+            "Value": f"{crit_val:.3f}",
             "Loadcase (Short)": short_lc,
             "Position": position_str
         }]
@@ -587,8 +736,16 @@ class PlateGirderAnalysisResults:
             try:
                 subset = self.ds.sel(Loadcase=crit_lc, Element=elements)
 
+                vx_i = subset.sel(Component="Vx_i")["forces"].values
+                vx_j = subset.sel(Component="Vx_j")["forces"].values
                 vy_i = subset.sel(Component="Vy_i")["forces"].values
                 vy_j = subset.sel(Component="Vy_j")["forces"].values
+                vz_i = subset.sel(Component="Vz_i")["forces"].values
+                vz_j = subset.sel(Component="Vz_j")["forces"].values
+                mx_i = subset.sel(Component="Mx_i")["forces"].values
+                mx_j = subset.sel(Component="Mx_j")["forces"].values
+                my_i = subset.sel(Component="My_i")["forces"].values
+                my_j = subset.sel(Component="My_j")["forces"].values
                 mz_i = subset.sel(Component="Mz_i")["forces"].values
                 mz_j = subset.sel(Component="Mz_j")["forces"].values
 
@@ -597,8 +754,16 @@ class PlateGirderAnalysisResults:
                 for i, eid in enumerate(elements):
                     row = {
                         "Element": eid,
+                        "Vx_i": f"{vx_i[i]:.3f}",
+                        "Vx_j": f"{vx_j[i]:.3f}",
                         "Vy_i": f"{vy_i[i]:.3f}",
                         "Vy_j": f"{vy_j[i]:.3f}",
+                        "Vz_i": f"{vz_i[i]:.3f}",
+                        "Vz_j": f"{vz_j[i]:.3f}",
+                        "Mx_i": f"{mx_i[i]:.3f}",
+                        "Mx_j": f"{mx_j[i]:.3f}",
+                        "My_i": f"{my_i[i]:.3f}",
+                        "My_j": f"{my_j[i]:.3f}",
                         "Mz_i": f"{mz_i[i]:.3f}",
                         "Mz_j": f"{mz_j[i]:.3f}"
                     }
@@ -673,6 +838,7 @@ class PlateGirderAnalysisResults:
             if main_choice == "2":
 
                 girder_map, elements = self.build_girders(verbose=False)
+                girder_map = self.filter_girders(girder_map)
                 loadcases = self.get_available_loadcases()
 
                 component_map = {
@@ -740,8 +906,7 @@ class PlateGirderAnalysisResults:
                             continue
 
                         lc = loadcases[lc_in - 1]
-                        import plots_widget
-                        plots_widget.CURRENT_LOADCASE = lc
+                        # Plotting disabled as per user request.
                         # ================= RESULT TYPE LOOP =================
                         while True:
 
@@ -786,67 +951,88 @@ class PlateGirderAnalysisResults:
 
             elif main_choice == "3":
                 print("\n--- Moving Load Trace Configuration ---")
-
-                # Get moving load cases
                 lc_groups = self.classify_loadcases()
                 moving_lcs = lc_groups["vehicle_moving"]
-
                 if not moving_lcs:
                     print("❌ No moving load cases found.")
                     continue
 
-                # Show available girders
                 girder_map, _ = self.build_girders(verbose=False)
-                print("\nAvailable Girders:")
-                for g in girder_map.keys():
-                    print(f"  - {g}")
+                girder_map = self.filter_girders(girder_map)
+                g_list = list(girder_map.keys())
 
-                g_input = input("Enter Girder Name (or leave blank for all): ").strip()
-                if not g_input:
+                print("\nSelect Girder:")
+                for i, g in enumerate(g_list, 1):
+                    print(f"{i}. {g}")
+                print(f"{len(g_list)+1}. All Girders")
+                print("0. Back")
+
+                g_choice = input("Enter choice: ").strip()
+                if g_choice == "0": continue
+                
+                if not g_choice:
                     g_input = None
+                elif g_choice == str(len(g_list)+1):
+                    g_input = None
+                elif g_choice.isdigit() and 1 <= int(g_choice) <= len(g_list):
+                    g_input = g_list[int(g_choice)-1]
+                else:
+                    print("❌ Invalid selection")
+                    continue
 
                 # Show available moving load cases
-                print("\nAvailable Moving Load Cases:")
-                # Group by case type for better readability
-                case_types = {}
+                print("\nAvailable Moving Load Categories:")
+                case_types = defaultdict(list)
                 for lc in moving_lcs:
-                    # Extract case type (e.g., "Case1 ClassA" from "Moving Case1 ClassA L1 at...")
                     parts = lc.split()
                     if len(parts) >= 3:
-                        case_type = f"{parts[1]} {parts[2]}"  # e.g., "Case1 ClassA"
-                        if case_type not in case_types:
-                            case_types[case_type] = []
-                        case_types[case_type].append(lc)
+                        case_types[f"{parts[1]} {parts[2]}"].append(lc)
 
-                for case_type in sorted(case_types.keys()):
-                    print(f"  - {case_type} ({len(case_types[case_type])} positions)")
+                cats = sorted(case_types.keys())
+                for i, cat in enumerate(cats, 1):
+                    print(f"{i}. {cat}")
+                print(f"{len(cats)+1}. All Categories")
+                print("0. Back")
 
-                print("\nEnter Load Case Filter (e.g., 'Case1', 'ClassA', 'Case2 Class70R')")
-                lc_input = input("Filter (or leave blank for all): ").strip()
-                if not lc_input:
+                lc_choice = input("Enter choice: ").strip()
+                if lc_choice == "0": continue
+                
+                if not lc_choice or lc_choice == str(len(cats)+1):
                     lc_input = None
+                elif lc_choice.isdigit() and 1 <= int(lc_choice) <= len(cats):
+                    lc_input = cats[int(lc_choice)-1]
+                else:
+                    print("❌ Invalid selection")
+                    continue
 
-                print("\n")
                 self.print_moving_load_trace(load_case_filter=lc_input, girder_filter=g_input)
-
                 continue
 
             elif main_choice == "4":
                 print("\n--- Envelope Configuration ---")
-
-                # Show available girders
                 girder_map, _ = self.build_girders(verbose=False)
-                print("\nAvailable Girders:")
-                for g in girder_map.keys():
-                    print(f"  - {g}")
+                girder_map = self.filter_girders(girder_map)
+                g_list = list(girder_map.keys())
+                
+                print("\nSelect Girder:")
+                for i, g in enumerate(g_list, 1):
+                    print(f"{i}. {g}")
+                print(f"{len(g_list)+1}. All Girders")
+                print("0. Back")
 
-                g_input = input("Enter Girder Name (or leave blank for all): ").strip()
-                if not g_input:
+                g_choice = input("Enter choice: ").strip()
+                if g_choice == "0": continue
+                
+                if not g_choice or g_choice == str(len(g_list)+1):
                     g_input = None
+                elif g_choice.isdigit() and 1 <= int(g_choice) <= len(g_list):
+                    g_input = g_list[int(g_choice)-1]
+                else:
+                    print("❌ Invalid selection")
+                    continue
 
-                lc_input = input("Enter Load Case Filter (or leave blank for all): ").strip()
-                if not lc_input:
-                    lc_input = None
+                lc_input = input("Enter Load Case Filter (e.g. 'ClassA') or leave blank for all: ").strip()
+                if not lc_input: lc_input = None
 
                 self.print_envelopes(load_case_filter=lc_input, girder_filter=g_input)
                 continue
@@ -857,3 +1043,4 @@ class PlateGirderAnalysisResults:
 
             else:
                 print("❌ Invalid option")
+

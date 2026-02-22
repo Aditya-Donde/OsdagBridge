@@ -81,7 +81,7 @@ class BridgeGrillageModel:
         # self.w = 11.565 * m
         self.n_l = 7
         self.n_t = 11
-        self.edge_dist = 1.05 * m
+        self.edge_dist = 0 * m
         self.ext_to_int_dist = 2.2775 * m
         self.angle = 0
 
@@ -149,7 +149,7 @@ class BridgeGrillageModel:
             skew=self.angle,
             num_long_grid=self.n_l,
             num_trans_grid=self.n_t,
-            edge_beam_dist=self.edge_dist,
+            edge_beam_dist=self.edge_dist,                                    #0-no overhang
             ext_to_int_dist=self.ext_to_int_dist,
             mesh_type="Oblique"  # ('Ortho' or 'Oblique')
         )
@@ -1168,7 +1168,8 @@ if __name__ == "__main__":
 
     result_handler = PlateGirderAnalysisResults(
         dataset=results,
-        model=bridge.model
+        model=bridge.model,
+        edge_dist=bridge.edge_dist
     )
     # result_handler.debug_loadcase_detection()
 
