@@ -9,6 +9,7 @@ Plate Girder Geometry Builder (Geometry Only)
 
 import math
 import numpy as np
+from dataclasses import dataclass
 
 from OCC.Core.gp import gp_Pnt, gp_Vec, gp_Trsf, gp_Ax3, gp_Dir, gp_Ax2
 from OCC.Core.BRepPrimAPI import BRepPrimAPI_MakePrism, BRepPrimAPI_MakeCylinder
@@ -19,6 +20,16 @@ from OCC.Core.BRepBuilderAPI import (
     BRepBuilderAPI_Transform
 )
 from OCC.Core.BRepAlgoAPI import BRepAlgoAPI_Fuse
+
+@dataclass
+class GirderSegment:
+    length: float
+    D: float
+    tw: float
+    T_ft: float
+    T_fb: float
+    B_ft: float
+    B_fb: float
 
 
 
@@ -149,6 +160,7 @@ def build_plate_girder_geometry(
     T_fb,                               # Bottom flange thickness
     B_ft,                               # Top flange width
     B_fb,                               # Bottom flange width
+    segments=None,                      # Optional list of GirderSegment
     include_intermediate_stiffeners=True,  # Whether to include intermediate stiffeners
     intermediate_stiffener_spacing=750,    # Space between intermediate stiffeners (mm)
     intermediate_stiffener_thickness=20,   # Intermediate stiffener thickness (mm)
@@ -177,38 +189,78 @@ def build_plate_girder_geometry(
     u_dir = np.array([0., 0., 1.])
     w_dir = np.array([0., 1., 0.])
 
-    # Web plate
-    web = _make_plate(
-        origin=np.array([0., 0., 0.]),
-        length=tw,
-        width=length,
-        thickness=D,
-        u_dir=u_dir,
-        w_dir=w_dir
-    )
+    if segments is None:
+        segments = [
+            GirderSegment(
+                length=length,
+                D=D,
+                tw=tw,
+                T_ft=T_ft,
+                T_fb=T_fb,
+                B_ft=B_ft,
+                B_fb=B_fb
+            )
+        ]
 
-    # Top flange
-    top_flange = _make_plate(
-        origin=np.array([0., 0., (D + T_ft) / 2]),
-        length=B_ft,
-        width=length,
-        thickness=T_ft,
-        u_dir=u_dir,
-        w_dir=w_dir
-    )
+    # Reference top of girder (used to keep top flanges flush)
+    Z_top = D / 2 + T_ft
 
-    # Bottom flange
-    bottom_flange = _make_plate(
-        origin=np.array([0., 0., -(D + T_fb) / 2]),
-        length=B_fb,
-        width=length,
-        thickness=T_fb,
-        u_dir=u_dir,
-        w_dir=w_dir
-    )
+    web_shapes = []
+    top_flange_shapes = []
+    bottom_flange_shapes = []
+
+    current_y = 0.0
+    for seg in segments:
+        seg_z_web_center = Z_top - seg.T_ft - seg.D / 2
+        
+        # Web plate
+        seg_web = _make_plate(
+            origin=np.array([0., current_y, seg_z_web_center]),
+            length=seg.tw,
+            width=seg.length,
+            thickness=seg.D,
+            u_dir=u_dir,
+            w_dir=w_dir
+        )
+        web_shapes.append(seg_web)
+
+        # Top flange
+        seg_tf_center = Z_top - seg.T_ft / 2
+        seg_top_flange = _make_plate(
+            origin=np.array([0., current_y, seg_tf_center]),
+            length=seg.B_ft,
+            width=seg.length,
+            thickness=seg.T_ft,
+            u_dir=u_dir,
+            w_dir=w_dir
+        )
+        top_flange_shapes.append(seg_top_flange)
+
+        # Bottom flange
+        seg_bf_center = Z_top - seg.T_ft - seg.D - seg.T_fb / 2
+        seg_bottom_flange = _make_plate(
+            origin=np.array([0., current_y, seg_bf_center]),
+            length=seg.B_fb,
+            width=seg.length,
+            thickness=seg.T_fb,
+            u_dir=u_dir,
+            w_dir=w_dir
+        )
+        bottom_flange_shapes.append(seg_bottom_flange)
+
+        current_y += seg.length
 
     # Stiffeners
     stiffeners = []
+    
+    def get_segment_at(y):
+        curr = 0.0
+        for s in segments:
+            if y <= curr + s.length + 1e-6:
+                return s, Z_top - s.T_ft - s.D / 2
+            curr += s.length
+        return segments[-1], Z_top - segments[-1].T_ft - segments[-1].D / 2
+    
     eff_depth = D - T_ft - T_fb
     
     # Calculate default outstand if not provided
@@ -234,11 +286,13 @@ def build_plate_girder_geometry(
             if y <= start_y or y >= end_y:
                 continue
 
+            seg, seg_z_center = get_segment_at(y)
+
             stiffeners.append(
                 _create_stiffener_plate(
-                    position=[ tw / 2, y, 0 ],
+                    position=[ seg.tw / 2, y, seg_z_center ],
                     width=int_stiff_width,
-                    height=D,
+                    height=seg.D,
                     thickness=intermediate_stiffener_thickness,
                     chamfer=chamfer_length,
                     side="right"
@@ -247,9 +301,9 @@ def build_plate_girder_geometry(
 
             stiffeners.append(
                 _create_stiffener_plate(
-                    position=[ -tw / 2, y, 0 ],
+                    position=[ -seg.tw / 2, y, seg_z_center ],
                     width=int_stiff_width,
-                    height=D,
+                    height=seg.D,
                     thickness=intermediate_stiffener_thickness,
                     chamfer=chamfer_length,
                     side="left"
@@ -273,11 +327,12 @@ def build_plate_girder_geometry(
         end_positions.append(y_pos)
 
     for y in end_positions:
+        seg, seg_z_center = get_segment_at(y)
         stiffeners.append(
             _create_stiffener_plate(
-                position=[ tw / 2, y, 0 ],
+                position=[ seg.tw / 2, y, seg_z_center ],
                 width=end_stiff_width,
-                height=D,
+                height=seg.D,
                 thickness=T_es,
                 chamfer=chamfer_length,
                 side="right"
@@ -286,9 +341,9 @@ def build_plate_girder_geometry(
 
         stiffeners.append(
             _create_stiffener_plate(
-                position=[ -tw / 2, y, 0 ],
+                position=[ -seg.tw / 2, y, seg_z_center ],
                 width=end_stiff_width,
-                height=D,
+                height=seg.D,
                 thickness=T_es,
                 chamfer=chamfer_length,
                 side="left"
@@ -298,31 +353,38 @@ def build_plate_girder_geometry(
     # Longitudinal Stiffeners
     if include_longitudinal_stiffeners:
         long_stiff_width = longitudinal_stiffener_outstand if longitudinal_stiffener_outstand is not None else default_stiff_width
-        
-        # Start after the first end stiffener and end before the last one
         long_stiff_start = T_es
-        long_stiff_len = length - 2 * long_stiff_start
 
-        # Calculate vertical positions from the web top (D/2)
-        heights = []
-        if num_longitudinal_stiffeners == 1:
-            # 1/3 height from web top
-            heights.append(D / 2 - D / 3)
-        elif num_longitudinal_stiffeners == 2:
-            # 1/3 and 2/3 height from web top
-            heights.append(D / 2 - D / 3)
-            heights.append(D / 2 - 2 * D / 3)
+        # We need to build longitudinal stiffeners segment by segment since their height/offset might change based on D
+        curr_y = 0.0
+        for seg in segments:
+            # Calculate segment-specific start and length, considering exclusion zones
+            seg_start_y = max(curr_y, long_stiff_start)
+            seg_end_y = min(curr_y + seg.length, length - T_es)
+            seg_len = seg_end_y - seg_start_y
             
-        for h in heights:
-            long_stiff = _make_plate(
-                origin=np.array([tw / 2 + long_stiff_width / 2, long_stiff_start, h]),
-                length=long_stiff_width,
-                width=long_stiff_len,
-                thickness=longitudinal_stiffener_thickness,
-                u_dir=np.array([0., 0., 1.]), # Thickness along Z
-                w_dir=np.array([0., 1., 0.])  # Length along Y
-            )
-            stiffeners.append(long_stiff)
+            if seg_len > 0:
+                seg_z_web_center = Z_top - seg.T_ft - seg.D / 2
+                
+                heights = []
+                if num_longitudinal_stiffeners == 1:
+                    heights.append(seg_z_web_center + seg.D / 2 - seg.D / 3)
+                elif num_longitudinal_stiffeners == 2:
+                    heights.append(seg_z_web_center + seg.D / 2 - seg.D / 3)
+                    heights.append(seg_z_web_center + seg.D / 2 - 2 * seg.D / 3)
+                    
+                for h in heights:
+                    long_stiff = _make_plate(
+                        origin=np.array([seg.tw / 2 + long_stiff_width / 2, seg_start_y, h]),
+                        length=long_stiff_width,
+                        width=seg_len,
+                        thickness=longitudinal_stiffener_thickness,
+                        u_dir=np.array([0., 0., 1.]),
+                        w_dir=np.array([0., 1., 0.])
+                    )
+                    stiffeners.append(long_stiff)
+            
+            curr_y += seg.length
 
     # Shear Studs
     shear_studs = []
@@ -380,12 +442,20 @@ def build_plate_girder_geometry(
     supports_tri = []
     supports_cyl = []
 
-    # Contact level (bottom of bottom flange)
-    z_contact = -(D / 2.0 + T_fb)
+    # Calculate actual contact levels from the end segments
+    Z_top = D / 2 + T_ft
+    seg_left = segments[0]
+    seg_right = segments[-1]
+    
+    # Left support Z level
+    z_contact_left = Z_top - seg_left.T_ft - seg_left.D - seg_left.T_fb
+
+    # Right support Z level
+    z_contact_right = Z_top - seg_right.T_ft - seg_right.D - seg_right.T_fb
 
     # Support width spans flange width
-    support_width = max(B_ft, B_fb)
-
+    support_width_left = max(seg_left.B_ft, seg_left.B_fb)
+    support_width_right = max(seg_right.B_ft, seg_right.B_fb)
     
     base_dim = min(0.10 * length, 0.75 * D)
 
@@ -399,8 +469,8 @@ def build_plate_girder_geometry(
     # TRIANGULAR SUPPORT (LEFT)
 
     y_apex = w_supp
-    z_apex = z_contact
-    x_face = -support_width / 2.0
+    z_apex = z_contact_left
+    x_face = -support_width_left / 2.0
 
     p1 = gp_Pnt(x_face, y_apex, z_apex)
     p2 = gp_Pnt(x_face, y_apex - w_supp, z_apex - h_supp)
@@ -419,7 +489,7 @@ def build_plate_girder_geometry(
 
     tri_support = BRepPrimAPI_MakePrism(
         face,
-        gp_Vec(support_width, 0, 0)
+        gp_Vec(support_width_left, 0, 0)
     ).Shape()
 
     supports_tri.append(tri_support)
@@ -427,24 +497,24 @@ def build_plate_girder_geometry(
     # CYLINDRICAL SUPPORT (RIGHT)
 
     y_cyl = length - r_cyl
-    z_cyl_center = z_contact - r_cyl
+    z_cyl_center = z_contact_right - r_cyl
 
-    pt_cyl = gp_Pnt(-support_width / 2.0, y_cyl, z_cyl_center)
+    pt_cyl = gp_Pnt(-support_width_right / 2.0, y_cyl, z_cyl_center)
     axis = gp_Ax2(pt_cyl, gp_Dir(1, 0, 0))
 
     cyl_support = BRepPrimAPI_MakeCylinder(
         axis,
         r_cyl,
-        support_width
+        support_width_right
     ).Shape()
 
     supports_cyl.append(cyl_support)
 
 
 
-    web = _rotate_about_z(web, -90)
-    top_flange = _rotate_about_z(top_flange, -90)
-    bottom_flange = _rotate_about_z(bottom_flange, -90)
+    web_shapes = [ _rotate_about_z(w, -90) for w in web_shapes ]
+    top_flange_shapes = [ _rotate_about_z(tf, -90) for tf in top_flange_shapes ]
+    bottom_flange_shapes = [ _rotate_about_z(bf, -90) for bf in bottom_flange_shapes ]
 
     stiffeners = [
         _rotate_about_z(s, -90) for s in stiffeners
@@ -465,9 +535,9 @@ def build_plate_girder_geometry(
 
 
     return {
-        "web": web,
-        "top_flange": top_flange,
-        "bottom_flange": bottom_flange,
+        "web": web_shapes,
+        "top_flange": top_flange_shapes,
+        "bottom_flange": bottom_flange_shapes,
         "stiffeners": stiffeners,
         "supports_tri": supports_tri,
         "supports_cyl": supports_cyl,
