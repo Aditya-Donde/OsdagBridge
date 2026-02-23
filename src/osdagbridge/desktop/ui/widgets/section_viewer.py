@@ -10,6 +10,15 @@ from PySide6.QtCore import QPointF, QRectF, Qt
 from PySide6.QtGui import QColor, QFont, QFontMetrics, QPainter, QPainterPath, QPen
 from PySide6.QtWidgets import QWidget
 
+from osdagbridge.desktop.ui.utils.cad_palette import (
+    CAD_CANVAS_BG,
+    CAD_DIMENSION,
+    CAD_OUTLINE,
+    CAD_PLACEHOLDER_BORDER,
+    CAD_PLACEHOLDER_TEXT,
+    CAD_SHAPE_FILL,
+)
+
 
 DB_PATH = Path(__file__).resolve().parents[3] / "core" / "data" / "ResourceFiles" / "Intg_osdag.sqlite"
 
@@ -306,10 +315,13 @@ class SectionPreviewWidget(QWidget):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
         # Force a light background for clarity in embedded previews
-        painter.fillRect(self.rect(), QColor("#ffffff"))
+        painter.fillRect(self.rect(), QColor(CAD_CANVAS_BG))
 
         if not self._geometry:
-            painter.setPen(QPen(QColor("#ffffff"), 1, Qt.DashLine))
+            pen = QPen(QColor(CAD_PLACEHOLDER_BORDER), 1.2, Qt.DashLine)
+            painter.setPen(pen)
+            painter.drawRect(self.rect().adjusted(12, 12, -12, -12))
+            painter.setPen(QColor(CAD_PLACEHOLDER_TEXT))
             painter.drawText(self.rect(), Qt.AlignCenter, "No section")
             return
 
@@ -337,8 +349,8 @@ class SectionPreviewWidget(QWidget):
         painter.scale(scale, -scale)  # flip Y for engineering orientation
         painter.translate(-combined.center())
 
-        pen = QPen(QColor("#90AF13"), 1.8 / max(scale, 1e-3))
-        fill_brush = QColor("#BBE31A")
+        pen = QPen(QColor(CAD_OUTLINE), 1.8 / max(scale, 1e-3))
+        fill_brush = QColor(CAD_SHAPE_FILL)
 
         for path in self._geometry:
             painter.setPen(pen)
@@ -435,12 +447,12 @@ class SectionPreviewWidget(QWidget):
                 # For double channel, show tw at the center where the two webs meet, but keep it visible
                 self._draw_dim_line_h(painter, scale, -tw, 0, y_top - offset,
                                       "t", self._fmt_val(tw), subscript="w", outer_arrows=True, label_pos="below")
-                helper_pen = QPen(QColor("#000000"), 1.2 / max(scale, 1e-3))
+                helper_pen = QPen(QColor(CAD_DIMENSION), 1.2 / max(scale, 1e-3))
                 painter.setPen(helper_pen)
                 start_y = y_top 
                 painter.drawLine(QPointF(-tw, start_y), QPointF(0, start_y))
                 # Dashed leader lines from the web edges up to the dimension line to show what tw measures
-                dash_pen = QPen(QColor("#000000"), 0.9 / max(scale, 1e-3), Qt.DashLine)
+                dash_pen = QPen(QColor(CAD_DIMENSION), 0.9 / max(scale, 1e-3), Qt.DashLine)
                 painter.setPen(dash_pen)
                 # Draw from bottom of flange (y_top + tf) to dimension line (y_top - offset) 
                 painter.drawLine(QPointF(-tw, start_y + tf), QPointF(-tw, y_top - offset))
@@ -460,7 +472,7 @@ class SectionPreviewWidget(QWidget):
                          symbol: str, value: str, subscript: str = None,
                          outer_arrows: bool = False, label_pos: str = "above") -> None:
         """Draw horizontal dimension line with arrows and label."""
-        dim_pen = QPen(QColor("#000000"), 0.8 / max(scale, 1e-3))
+        dim_pen = QPen(QColor(CAD_DIMENSION), 0.8 / max(scale, 1e-3))
         painter.setPen(dim_pen)
         painter.setBrush(Qt.NoBrush)
 
@@ -475,7 +487,7 @@ class SectionPreviewWidget(QWidget):
         # Arrowheads - keep consistent pixel size by scaling down in world space (3:1 ratio)
         arrow_length = 9.0 / max(scale, 1e-3)
         arrow_half_width = 3.0 / max(scale, 1e-3)
-        painter.setBrush(QColor("#000000"))  # Fill the arrowheads
+        painter.setBrush(QColor(CAD_DIMENSION))  # Fill the arrowheads
         if outer_arrows:
             # Arrows pointing inward from outside (for small dimensions)
             ext_len = 12.0
@@ -522,7 +534,7 @@ class SectionPreviewWidget(QWidget):
                          symbol: str, value: str, subscript: str = None,
                          outer_arrows: bool = False, label_right: bool = False) -> None:
         """Draw vertical dimension line with arrows and label."""
-        dim_pen = QPen(QColor("#000000"), 0.8 / max(scale, 1e-3))
+        dim_pen = QPen(QColor(CAD_DIMENSION), 0.8 / max(scale, 1e-3))
         painter.setPen(dim_pen)
         painter.setBrush(Qt.NoBrush)
 
@@ -537,7 +549,7 @@ class SectionPreviewWidget(QWidget):
         # Arrowheads - keep consistent pixel size by scaling down in world space (3:1 ratio)
         arrow_length = 9.0 / max(scale, 1e-3)
         arrow_half_width = 3.0 / max(scale, 1e-3)
-        painter.setBrush(QColor("#000000"))  # Fill the arrowheads
+        painter.setBrush(QColor(CAD_DIMENSION))  # Fill the arrowheads
         if outer_arrows:
             # Arrows pointing inward from outside (for small dimensions)
             ext_len = 12.0
@@ -650,7 +662,7 @@ class SectionPreviewWidget(QWidget):
             text_height = fm_main.height()
             # Background rect: slightly padded
             bg_rect = QRectF(start_x - 2, py - text_height + 4, total_width + 4, text_height)
-            painter.fillRect(bg_rect, QColor("#0f0f0f"))
+            painter.fillRect(bg_rect, QColor(255, 255, 255, 235))
 
         # Draw function for a single pass
         def draw_segments(color: QColor, offset_x: float = 0, offset_y: float = 0):
@@ -662,7 +674,7 @@ class SectionPreviewWidget(QWidget):
                 painter.drawText(QPointF(cursor_x, py + y_shift + offset_y), text)
                 cursor_x += fm.horizontalAdvance(text)
 
-        draw_segments(QColor("#000000"))
+        draw_segments(QColor(CAD_DIMENSION))
 
         painter.restore()
 

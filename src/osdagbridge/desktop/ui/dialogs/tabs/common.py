@@ -1,4 +1,7 @@
 """Shared helpers for the Additional Inputs dialog and its tabs."""
+
+from PySide6.QtCore import Qt, Signal
+from PySide6.QtGui import QStandardItemModel
 from PySide6.QtWidgets import (
     QComboBox,
     QLineEdit,
@@ -7,6 +10,83 @@ from PySide6.QtWidgets import (
     QPushButton,
     QHBoxLayout,
 )
+
+
+class CheckableComboBox(QComboBox):
+    """Multi-select combo with All/individual toggle behavior."""
+
+    checkedItemsChanged = Signal()
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        model = QStandardItemModel(self)
+        self.setModel(model)
+        self._updating_selection = False
+        model.itemChanged.connect(self._handle_item_changed)
+
+    def addItem(self, text, userData=None):  # noqa: N802 (Qt naming)
+        super().addItem(text, userData)
+        self._initialize_item(self.count() - 1)
+
+    def addItems(self, texts):  # noqa: N802 (Qt naming)
+        for text in texts:
+            self.addItem(text)
+
+    def _initialize_item(self, index):
+        item = self.model().item(index)
+        if not item:
+            return
+        item.setFlags(Qt.ItemIsEnabled | Qt.ItemIsUserCheckable)
+        item.setData(
+            Qt.Checked if item.text().strip().lower() == "all" else Qt.Unchecked,
+            Qt.CheckStateRole,
+        )
+
+    def _handle_item_changed(self, item):
+        if self._updating_selection or item is None:
+            return
+        self._updating_selection = True
+        try:
+            if item.text().strip().lower() == "all":
+                if item.checkState() == Qt.Checked:
+                    self._uncheck_non_all_items()
+            else:
+                if item.checkState() == Qt.Checked:
+                    self._uncheck_all_item()
+        finally:
+            self._updating_selection = False
+        self.checkedItemsChanged.emit()
+
+    def _uncheck_non_all_items(self):
+        for row in range(self.model().rowCount()):
+            item = self.model().item(row)
+            if item and item.text().strip().lower() != "all":
+                item.setCheckState(Qt.Unchecked)
+
+    def _uncheck_all_item(self):
+        for row in range(self.model().rowCount()):
+            item = self.model().item(row)
+            if item and item.text().strip().lower() == "all":
+                item.setCheckState(Qt.Unchecked)
+                break
+
+    def checked_items(self, include_all: bool = False):
+        selected, all_checked = [], False
+        for row in range(self.model().rowCount()):
+            item = self.model().item(row)
+            if not item or item.checkState() != Qt.Checked:
+                continue
+            text = item.text()
+            if text.strip().lower() == "all":
+                all_checked = True
+                if include_all:
+                    selected.append(text)
+            else:
+                selected.append(text)
+        if all_checked and not include_all:
+            return []
+        return selected
+
 
 
 def get_combobox_style():
@@ -85,6 +165,10 @@ def get_lineedit_style():
         QLineEdit:disabled{
             background: #f1f1f1;
             color: #666;
+        }
+        QLineEdit:read-only{
+            background: #f6f6f6;
+            color: #555555;
         }
         QLineEdit:hover {
             border: 1px solid #5d5d5d;
