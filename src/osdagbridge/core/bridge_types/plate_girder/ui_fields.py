@@ -256,6 +256,17 @@ class FrontendData:
                 {"label": "Skew Angle"},
             )
         )
+        options_list.append(
+            (
+                "Design",
+                "Design",
+                TYPE_COMBOBOX,
+                ["Customized", "Optimized"],
+                True,
+                'No Validator',
+                {"label": "Design", "default": "Customized"},
+            )
+        )
 
         # Material Inputs
         options_list.append(

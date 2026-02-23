@@ -6,10 +6,10 @@ from PySide6.QtWidgets import (
     QComboBox, QGroupBox, QFormLayout, QPushButton, QScrollArea,
     QCheckBox, QMessageBox, QSizePolicy, QSpacerItem, QStackedWidget,
     QFrame, QGridLayout, QTableWidget, QTableWidgetItem, QHeaderView,
-    QTextEdit, QDialog, QSizePolicy, QSizeGrip
+    QTextEdit, QDialog, QSizePolicy, QSizeGrip, QGraphicsDropShadowEffect
 )
 from PySide6.QtCore import Qt, Signal, QSize
-from PySide6.QtGui import QDoubleValidator, QIntValidator
+from PySide6.QtGui import QDoubleValidator, QIntValidator, QColor
 
 from osdagbridge.core.utils.common import *
 from osdagbridge.desktop.ui.utils.custom_titlebar import CustomTitleBar
@@ -18,6 +18,7 @@ from osdagbridge.desktop.ui.dialogs.tabs.sub_tabs.section_properties.girder_deta
 from osdagbridge.desktop.ui.dialogs.tabs.sub_tabs.section_properties.stiffener_details_tab import StiffenerDetailsTab
 from osdagbridge.desktop.ui.dialogs.tabs.sub_tabs.section_properties.cross_bracing_details_tab import CrossBracingDetailsTab
 from osdagbridge.desktop.ui.dialogs.tabs.sub_tabs.section_properties.end_diaphragm_details_tab import EndDiaphragmDetailsTab
+from osdagbridge.desktop.ui.utils.message_box import style_message_box
 
 class SectionPropertiesTab(QWidget):
     """Sub-tab for Section Properties with QTabWidget navigation like Loading tab."""
@@ -31,6 +32,12 @@ class SectionPropertiesTab(QWidget):
         main_layout = QVBoxLayout(self)
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(0)
+
+        self._content_frame = QFrame()
+        self._content_frame.setFrameShape(QFrame.NoFrame)
+        content_layout = QVBoxLayout(self._content_frame)
+        content_layout.setContentsMargins(0, 0, 0, 0)
+        content_layout.setSpacing(0)
 
         self.section_tabs = QTabWidget()
         self.section_tabs.setDocumentMode(True)
@@ -52,8 +59,80 @@ class SectionPropertiesTab(QWidget):
         self.section_tabs.addTab(self.stiffener_details_tab, "Stiffener Details")
         self.section_tabs.addTab(self.cross_bracing_tab, "Cross-Bracing Details")
         self.section_tabs.addTab(self.end_diaphragm_tab, "End Diaphragm Details")
+        self._last_section_tab_index = self.section_tabs.currentIndex()
 
-        main_layout.addWidget(self.section_tabs)
+        content_layout.addWidget(self.section_tabs)
+        main_layout.addWidget(self._content_frame)
+
+        self._lock_overlay = QFrame(self._content_frame)
+        self._lock_overlay.setObjectName("ValidationOverlay")
+        self._lock_overlay.setStyleSheet(
+            "QFrame#ValidationOverlay {"
+            " background-color: rgba(255, 255, 255, 225);"  # Stronger white overlay to dim content effectively
+            "}"
+        )
+        overlay_layout = QVBoxLayout(self._lock_overlay)
+        overlay_layout.setContentsMargins(0, 0, 0, 0)
+        overlay_layout.setAlignment(Qt.AlignCenter)
+
+        # Create a centered card for the message
+        message_card = QFrame()
+        message_card.setObjectName("MessageCard")
+        message_card.setStyleSheet(
+            "QFrame#MessageCard {"
+            " background-color: #ffffff;"
+            " border: 1px solid #dcdcdc;"
+            " border-radius: 12px;"
+            " padding: 24px 32px;"
+            " min-width: 280px;"
+            " max-width: 400px;"
+            "}"
+        )
+        # Add a subtle shadow for depth
+        shadow = QGraphicsDropShadowEffect(self)
+        shadow.setBlurRadius(20)
+        shadow.setColor(QColor(0, 0, 0, 40))
+        shadow.setOffset(0, 4)
+        message_card.setGraphicsEffect(shadow)
+        
+        card_layout = QVBoxLayout(message_card)
+        card_layout.setSpacing(16)
+        card_layout.setContentsMargins(0, 0, 0, 0)
+        card_layout.setAlignment(Qt.AlignCenter)
+
+        # Using an SVG icon if available would be better, but sticking to text/emoji for simplicity unless resources are added.
+        # Let's use a cleaner unicode lock or ensure the font renders it nicely.
+        # Alternatively, we can use a drawn shape or QIcon.
+        
+        lock_icon_label = QLabel("🔒")
+        lock_icon_label.setAlignment(Qt.AlignCenter)
+        # Larger, softer color for the icon
+        lock_icon_label.setStyleSheet("font-size: 48px; color: #7f8c8d; background: transparent; margin-bottom: 4px;")
+
+        title_label = QLabel("Read-Only Mode")
+        title_label.setAlignment(Qt.AlignCenter)
+        title_label.setStyleSheet(
+            "font-size: 16px; font-weight: 700; color: #2c3e50; background: transparent; font-family: 'Segoe UI', sans-serif;"
+        )
+
+        desc_label = QLabel(
+            "Member properties are automatically optimized based on design requirements.\n"
+            "Switch to 'Customized' design mode to edit manually."
+        )
+        desc_label.setAlignment(Qt.AlignCenter)
+        desc_label.setWordWrap(True)
+        desc_label.setStyleSheet(
+            "font-size: 13px; color: #57606f; line-height: 1.4; background: transparent;"
+        )
+
+        card_layout.addWidget(lock_icon_label)
+        card_layout.addWidget(title_label)
+        card_layout.addWidget(desc_label)
+
+        overlay_layout.addWidget(message_card)
+        
+        self._lock_overlay.hide()
+        self._update_lock_overlay_geometry()
 
         # Bind stiffener tab to the girder tab for member list + optimized state.
         try:
@@ -77,11 +156,58 @@ class SectionPropertiesTab(QWidget):
         except Exception:
             pass
 
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._update_lock_overlay_geometry()
+
+    def _update_lock_overlay_geometry(self):
+        if hasattr(self, "_lock_overlay") and hasattr(self, "_content_frame"):
+            self._lock_overlay.setGeometry(self._content_frame.rect())
+
+    def set_editable_mode(self, editable: bool) -> None:
+        self.section_tabs.setEnabled(editable)
+        self._lock_overlay.setVisible(not editable)
+        if not editable:
+            self._lock_overlay.raise_()
+
+    def has_unsaved_changes(self) -> bool:
+        try:
+            if hasattr(self, "girder_details_tab") and hasattr(self.girder_details_tab, "has_unsaved_changes"):
+                return bool(self.girder_details_tab.has_unsaved_changes())
+        except Exception:
+            pass
+        return False
+
     def _on_section_tab_changed(self, index: int) -> None:
+        previous = getattr(self, "_last_section_tab_index", 0)
+        if previous != index:
+            try:
+                leaving_girder_tab = previous == self.section_tabs.indexOf(getattr(self, "girder_details_tab", None))
+                if leaving_girder_tab and hasattr(self, "girder_details_tab") and hasattr(self.girder_details_tab, "has_unsaved_changes"):
+                    if self.girder_details_tab.has_unsaved_changes():
+                        box = QMessageBox(self)
+                        box.setIcon(QMessageBox.Warning)
+                        box.setWindowTitle("Unsaved Inputs")
+                        box.setText("Please save Member Properties before switching tabs.")
+                        style_message_box(box)
+                        box.setStandardButtons(QMessageBox.Ok)
+                        box.setDefaultButton(QMessageBox.Ok)
+                        box.setWindowModality(Qt.ApplicationModal)
+                        box.exec()
+                        prev = self.section_tabs.blockSignals(True)
+                        self.section_tabs.setCurrentIndex(previous)
+                        self.section_tabs.blockSignals(prev)
+                        return
+            except Exception:
+                pass
+
         try:
             widget = self.section_tabs.widget(index)
         except Exception:
             return
+
+        self._last_section_tab_index = index
+
         if widget is getattr(self, "stiffener_details_tab", None):
             try:
                 self.stiffener_details_tab.refresh_girder_members()
