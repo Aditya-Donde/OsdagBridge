@@ -875,6 +875,23 @@ class TypicalSectionDetailsTab(QWidget):
             old_overhang = overhang_input
             old_spacing = spacing_input
 
+            # If the selected number of girders cannot fit within the current
+            # overall bridge width, clamp to the maximum feasible count.
+            # With minimum spacing and non-negative overhang:
+            # overall_width >= (n-1) * spacing_min  =>  n_max = floor(overall_width/spacing_min) + 1
+            try:
+                spacing_min = float(spacing_bounds[0])
+            except Exception:
+                spacing_min = 1.0
+            if spacing_min <= 0:
+                spacing_min = 1.0
+            n_max = int(math.floor((overall_width + 1e-9) / spacing_min) + 1)
+            n_max = max(2, n_max)
+            if n > n_max:
+                # Clamp and proceed with a valid solution rather than leaving
+                # the UI with an impossible n value.
+                n = n_max
+
             # For n >= 2: overall_width = 2*overhang + (n-1)*spacing
             # Keep n fixed, try to find spacing and overhang such that overhang is in ideal range
             # Ideal overhang = 0.35 to 0.5 of spacing
@@ -895,7 +912,24 @@ class TypicalSectionDetailsTab(QWidget):
             
             # Check if overhang is within valid range
             if overhang_use < o_min - 1e-6 or overhang_use > o_max + 1e-6:
-                show_warning(self, "Layout", "Cannot satisfy constraints with the selected number of girders.")
+                show_warning(
+                    self,
+                    "Layout",
+                    "Cannot satisfy constraints with the selected number of girders. "
+                    f"For the current overall width ({overall_width:.2f} m) and minimum spacing ({spacing_min:.2f} m), "
+                    f"maximum feasible girders is {n_max}.",
+                )
+                # Revert to a safe fallback (previous value if available, else 2)
+                fallback_n = int(getattr(self, "_last_girders_value", 2) or 2)
+                fallback_n = max(2, min(fallback_n, n_max))
+                pick = self._pick_n_for_spacing(overall_width, spacing_use, spacing_bounds)
+                if pick:
+                    _, fallback_n2, spacing_f, overhang_f = pick
+                    fallback_n = max(2, min(int(fallback_n2), n_max))
+                    self._set_layout_fields(spacing_f, overhang_f, fallback_n)
+                else:
+                    self._set_layout_fields(self._clamp(spacing_use, *spacing_bounds), self._clamp(max(0.0, overhang_use), o_min, o_max), fallback_n)
+                self._update_overall_bridge_width_display()
                 return
             
             self._set_layout_fields(spacing_use, overhang_use, n)
@@ -904,6 +938,8 @@ class TypicalSectionDetailsTab(QWidget):
                 reason_parts.append(f"spacing {old_spacing:.2f}→{spacing_use:.2f}")
             if abs(overhang_use - old_overhang) > 1e-6:
                 reason_parts.append(f"overhang {old_overhang:.2f}→{overhang_use:.2f}")
+            if girders_input is not None and n != girders_input:
+                reason_parts.append(f"girders {girders_input}→{n}")
             
             # Check if overhang exceeds girder spacing and show warning
             warning_msg = None

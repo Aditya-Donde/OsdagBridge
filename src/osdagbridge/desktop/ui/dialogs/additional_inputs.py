@@ -47,6 +47,7 @@ class AdditionalInputs(QDialog):
         self.setSizeGripEnabled(True)
         self.footpath_value = footpath_value
         self.carriageway_width = carriageway_width
+        self._last_saved_data = {}  # Track last saved state
         self.init_ui()
         self.setStyleSheet("""
             QDialog {
@@ -222,36 +223,82 @@ class AdditionalInputs(QDialog):
         return widget
 
     def _apply_defaults(self):
+        """Apply defaults only to the currently visible top-level tab.
 
-        """Apply default values to all tabs"""
+        Important UX: within Member Properties, Defaults should only reset the
+        currently active sub-tab (not the entire Member Properties area).
+        """
 
-        if hasattr(self, "typical_section_tab") and hasattr(self.typical_section_tab, "reset_defaults"):
-            self.typical_section_tab.reset_defaults()
+        try:
+            current_widget = self.tabs.currentWidget()
+        except Exception:
+            current_widget = None
 
-        if hasattr(self, "section_properties_tab") and hasattr(self.section_properties_tab, "reset_defaults"):
-            self.section_properties_tab.reset_defaults()
+        if current_widget is getattr(self, "typical_section_tab", None):
+            if hasattr(self.typical_section_tab, "reset_defaults"):
+                self.typical_section_tab.reset_defaults()
+            return
 
-        if hasattr(self, "loading_tab"):
-            self.loading_tab.reset_defaults()
+        if current_widget is getattr(self, "section_properties_tab", None):
+            # Member Properties: reset only active sub-tab.
+            if hasattr(self.section_properties_tab, "reset_active_tab_defaults"):
+                self.section_properties_tab.reset_active_tab_defaults()
+            elif hasattr(self.section_properties_tab, "reset_defaults"):
+                # Fallback to legacy behavior.
+                self.section_properties_tab.reset_defaults()
+            return
 
-            for i in range(self.loading_tab.load_tabs.count()):
-                tab = self.loading_tab.load_tabs.widget(i)
-                if hasattr(tab, "reset_defaults"):
-                    tab.reset_defaults()
+        # Other tabs: best-effort reset if supported.
+        if current_widget is not None and hasattr(current_widget, "reset_defaults"):
+            try:
+                current_widget.reset_defaults()
+                return
+            except Exception:
+                pass
 
-        if hasattr(self, "typical_section_tab") and hasattr(self.typical_section_tab, "reset_defaults"):
-            self.typical_section_tab.reset_defaults()
-        if hasattr(self, "section_properties_tab") and hasattr(self.section_properties_tab, "reset_defaults"):
-            self.section_properties_tab.reset_defaults()
-        if not (hasattr(self, "typical_section_tab") or hasattr(self, "section_properties_tab")):
-            self._show_placeholder_message("Defaults")
-
+        self._show_placeholder_message("Defaults")
 
     def _save_inputs(self):
         saved = {}
-        if hasattr(self, "section_properties_tab") and hasattr(self.section_properties_tab, "save_properties"):
-            saved.update(self.section_properties_tab.save_properties() or {})
-        # No popup; silently succeed for now
+        try:
+            if hasattr(self, "section_properties_tab") and hasattr(self.section_properties_tab, "save_properties"):
+                saved.update(self.section_properties_tab.save_properties() or {})
+        except Exception as exc:
+            # If saving fails, the old code would never reach the confirmation popup.
+            QMessageBox.critical(self, "Save Failed", f"Could not save inputs.\n\n{exc}")
+            return
+
+        # Store the saved data for later retrieval
+        self._last_saved_data = saved
+        
+        # Confirm save to the user (requested behavior). Use an explicit message box
+        # instance so it stays on top of the frameless dialog.
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Information)
+        box.setWindowTitle("Saved")
+        
+        # Build detailed message
+        saved_items = []
+        if "girder_details" in saved:
+            saved_items.append("✓ Girder Details")
+        if "stiffener_details" in saved:
+            stiffener_data = saved.get("stiffener_details", {})
+            member_count = len(stiffener_data.get("stiffener_by_member", {}))
+            saved_items.append(f"✓ Stiffener Details ({member_count} members)")
+        if "cross_bracing" in saved:
+            saved_items.append("✓ Cross-Bracing Details")
+        if "end_diaphragm" in saved:
+            saved_items.append("✓ End Diaphragm Details")
+        
+        message = "Inputs saved successfully.\n\n"
+        if saved_items:
+            message += "Saved:\n" + "\n".join(saved_items)
+        
+        box.setText(message)
+        box.setStandardButtons(QMessageBox.Ok)
+        box.setDefaultButton(QMessageBox.Ok)
+        box.setWindowModality(Qt.ApplicationModal)
+        box.exec()
 
     def _build_sections_from_schema(self, parent_layout, sections, heading_style, label_style, field_width):
         for section in sections:
@@ -454,3 +501,23 @@ class AdditionalInputs(QDialog):
 
     def _show_placeholder_message(self, action_name):
         QMessageBox.information(self, "Coming soon", f"{action_name} action not implemented yet.")
+    
+    def get_saved_data(self) -> dict:
+        """Get the last saved properties data.
+        
+        Returns:
+            Dictionary containing all saved properties including stiffener details.
+        """
+        return self._last_saved_data
+    
+    def set_properties_data(self, data: dict) -> None:
+        """Restore properties data from a previous save.
+        
+        Args:
+            data: Dictionary containing properties to restore.
+        """
+        if hasattr(self, "section_properties_tab") and hasattr(self.section_properties_tab, "restore_properties"):
+            try:
+                self.section_properties_tab.restore_properties(data)
+            except Exception:
+                pass

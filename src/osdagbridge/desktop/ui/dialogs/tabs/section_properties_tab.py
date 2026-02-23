@@ -55,20 +55,215 @@ class SectionPropertiesTab(QWidget):
 
         main_layout.addWidget(self.section_tabs)
 
+        # Bind stiffener tab to the girder tab for member list + optimized state.
+        try:
+            self.stiffener_details_tab.bind_girder_details_tab(self.girder_details_tab)
+        except Exception:
+            pass
+
+        # Bind Cross Bracing + End Diaphragm to Girder Details for dynamic girder options.
+        try:
+            self.cross_bracing_tab.bind_girder_details_tab(self.girder_details_tab)
+        except Exception:
+            pass
+        try:
+            self.end_diaphragm_tab.bind_girder_details_tab(self.girder_details_tab)
+        except Exception:
+            pass
+
+        # Refresh stiffener members whenever the tab becomes active.
+        try:
+            self.section_tabs.currentChanged.connect(self._on_section_tab_changed)
+        except Exception:
+            pass
+
+    def _on_section_tab_changed(self, index: int) -> None:
+        try:
+            widget = self.section_tabs.widget(index)
+        except Exception:
+            return
+        if widget is getattr(self, "stiffener_details_tab", None):
+            try:
+                self.stiffener_details_tab.refresh_girder_members()
+            except Exception:
+                pass
+        elif widget is getattr(self, "cross_bracing_tab", None):
+            try:
+                self.cross_bracing_tab.refresh_girder_options()
+            except Exception:
+                pass
+        elif widget is getattr(self, "end_diaphragm_tab", None):
+            try:
+                self.end_diaphragm_tab.refresh_girder_options()
+            except Exception:
+                pass
+
     def set_girder_count(self, count):
         if hasattr(self, "girder_details_tab") and hasattr(self.girder_details_tab, "set_girder_count"):
             self.girder_details_tab.set_girder_count(count)
+        # Keep dependent tabs in sync.
+        try:
+            self.stiffener_details_tab.refresh_girder_members()
+        except Exception:
+            pass
+        try:
+            self.cross_bracing_tab.refresh_girder_options()
+        except Exception:
+            pass
+        try:
+            self.end_diaphragm_tab.refresh_girder_options()
+        except Exception:
+            pass
 
     def reset_defaults(self):
+        """Reset the entire Member Properties area back to its initial/default state."""
+
+        # Reset girder first so dependent tabs get a fresh member/pair list.
         if hasattr(self, "girder_details_tab") and hasattr(self.girder_details_tab, "reset_defaults"):
             self.girder_details_tab.reset_defaults()
+
+        # Ensure dependent tabs see updated girder/member options.
+        try:
+            self.stiffener_details_tab.refresh_girder_members()
+        except Exception:
+            pass
+        try:
+            self.cross_bracing_tab.refresh_girder_options()
+        except Exception:
+            pass
+        try:
+            self.end_diaphragm_tab.refresh_girder_options()
+        except Exception:
+            pass
+
+        # Now reset each dependent tab's own stored state.
+        if hasattr(self, "stiffener_details_tab") and hasattr(self.stiffener_details_tab, "reset_defaults"):
+            self.stiffener_details_tab.reset_defaults()
         if hasattr(self, "cross_bracing_tab") and hasattr(self.cross_bracing_tab, "reset_defaults"):
             self.cross_bracing_tab.reset_defaults()
+        if hasattr(self, "end_diaphragm_tab") and hasattr(self.end_diaphragm_tab, "reset_defaults"):
+            self.end_diaphragm_tab.reset_defaults()
+
+        # Default to the first sub-tab for a consistent UX.
+        try:
+            self.section_tabs.setCurrentIndex(0)
+        except Exception:
+            pass
+
+    def reset_active_tab_defaults(self) -> None:
+        """Reset only the currently active Member Properties sub-tab.
+
+        This is used by the dialog-level Defaults button to avoid wiping other
+        Member Properties tabs' inputs.
+        """
+
+        try:
+            active_widget = self.section_tabs.currentWidget()
+        except Exception:
+            active_widget = None
+
+        if active_widget is None:
+            return
+
+        # Girder Details has extra selection widgets (girder selector + segment table)
+        # that should not be reset when applying defaults for just this tab.
+        if active_widget is getattr(self, "girder_details_tab", None):
+            try:
+                self.girder_details_tab.reset_defaults(preserve_selection=True, preserve_segments=True)
+            except TypeError:
+                # Backward compatibility if signature differs.
+                self.girder_details_tab.reset_defaults()
+            return
+
+        # Dependent tabs rely on Girder Details for member/girder options.
+        # Ensure options are fresh but do not alter Girder Details state.
+        if active_widget is getattr(self, "stiffener_details_tab", None):
+            try:
+                self.stiffener_details_tab.refresh_girder_members()
+            except Exception:
+                pass
+        elif active_widget is getattr(self, "cross_bracing_tab", None):
+            try:
+                self.cross_bracing_tab.refresh_girder_options()
+            except Exception:
+                pass
+        elif active_widget is getattr(self, "end_diaphragm_tab", None):
+            try:
+                self.end_diaphragm_tab.refresh_girder_options()
+            except Exception:
+                pass
+
+        if hasattr(active_widget, "reset_defaults"):
+            try:
+                active_widget.reset_defaults()
+            except Exception:
+                pass
 
     def save_properties(self):
         data = {}
         if hasattr(self, "girder_details_tab") and hasattr(self.girder_details_tab, "collect_data"):
             data["girder_details"] = self.girder_details_tab.collect_data()
+        if hasattr(self, "stiffener_details_tab"):
+            # Validate stiffener inputs before saving.
+            if hasattr(self.stiffener_details_tab, "validate"):
+                self.stiffener_details_tab.validate()
+            if hasattr(self.stiffener_details_tab, "collect_data"):
+                data["stiffener_details"] = self.stiffener_details_tab.collect_data()
         if hasattr(self, "cross_bracing_tab") and hasattr(self.cross_bracing_tab, "collect_data"):
             data["cross_bracing"] = self.cross_bracing_tab.collect_data()
+        if hasattr(self, "end_diaphragm_tab") and hasattr(self.end_diaphragm_tab, "collect_data"):
+            data["end_diaphragm"] = self.end_diaphragm_tab.collect_data()
         return data
+
+    def restore_properties(self, data: dict) -> None:
+        """Restore previously saved properties into the sub-tabs."""
+        if not isinstance(data, dict):
+            return
+
+        girder_data = data.get("girder_details")
+        if isinstance(girder_data, dict) and hasattr(self, "girder_details_tab") and hasattr(self.girder_details_tab, "restore_data"):
+            try:
+                self.girder_details_tab.restore_data(girder_data)
+            except Exception:
+                pass
+
+        stiffener_data = data.get("stiffener_details")
+        if isinstance(stiffener_data, dict) and hasattr(self, "stiffener_details_tab") and hasattr(self.stiffener_details_tab, "restore_data"):
+            try:
+                self.stiffener_details_tab.restore_data(stiffener_data)
+            except Exception:
+                pass
+
+        cross_data = data.get("cross_bracing")
+        if isinstance(cross_data, dict) and hasattr(self, "cross_bracing_tab") and hasattr(self.cross_bracing_tab, "restore_data"):
+            try:
+                self.cross_bracing_tab.restore_data(cross_data)
+            except Exception:
+                pass
+
+        end_data = data.get("end_diaphragm")
+        if isinstance(end_data, dict) and hasattr(self, "end_diaphragm_tab") and hasattr(self.end_diaphragm_tab, "restore_data"):
+            try:
+                self.end_diaphragm_tab.restore_data(end_data)
+            except Exception:
+                pass
+
+        # If stiffeners were restored, refresh member list (depends on girder segments).
+        try:
+            if hasattr(self, "stiffener_details_tab") and hasattr(self.stiffener_details_tab, "refresh_girder_members"):
+                self.stiffener_details_tab.refresh_girder_members()
+        except Exception:
+            pass
+
+        # Dependent tabs rely on Girder Details for selector options.
+        try:
+            if hasattr(self, "cross_bracing_tab") and hasattr(self.cross_bracing_tab, "refresh_girder_options"):
+                self.cross_bracing_tab.refresh_girder_options()
+        except Exception:
+            pass
+        try:
+            if hasattr(self, "end_diaphragm_tab") and hasattr(self.end_diaphragm_tab, "refresh_girder_options"):
+                self.end_diaphragm_tab.refresh_girder_options()
+        except Exception:
+            pass
+
