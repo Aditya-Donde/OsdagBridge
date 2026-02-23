@@ -653,7 +653,8 @@ def build_cross_bracings(
     span_length_L,
     num_girders,
     girder_spacing,
-    girder_depth,
+    girder_depths,          # Can be float (uniform) or List[List[float]] [panel_idx][girder_idx]
+    reference_depth,        # Reference web depth for vertical alignment
     flange_thickness,
     flange_width,
     
@@ -729,6 +730,29 @@ def build_cross_bracings(
             yL = (i * girder_spacing) - total_width / 2
             yR = yL + girder_spacing
             
+            # Get girder depths for this bay
+            if isinstance(girder_depths, (int, float)):
+                d_L = girder_depths
+                d_R = girder_depths
+            else:
+                # depths[panel_idx][girder_idx]
+                d_L = girder_depths[idx_x][i]
+                d_R = girder_depths[idx_x][i+1]
+            
+            # The smaller girder depth controls the bracing height
+            eff_depth = min(d_L, d_R)
+            
+            # Calculate vertical offset to keep top flush with reference web top
+            # reference_depth/2 is the Z-coord of the top of the reference web
+            # eff_depth/2 is the Z-coord of the top of the bracing frame (at center)
+            z_offset = (reference_depth - eff_depth) / 2.0
+            
+            def _apply_z_offset(shapes, dz):
+                if not dz: return shapes
+                trsf = gp_Trsf()
+                trsf.SetTranslation(gp_Vec(0, 0, dz))
+                return [BRepBuilderAPI_Transform(s, trsf, True).Shape() for s in shapes]
+
             # Check if this is an end position (first or last frame)
             is_end = (x == x_positions[0] or x == x_positions[-1])
             is_first = (x == x_positions[0])
@@ -761,10 +785,9 @@ def build_cross_bracings(
                 if end_diaphragm_type == "Cross Bracing":
                     # Use end diaphragm section configurations
                     if end_diaphragm_bracing_type == "X":
-                        bracings.extend(
-                            _x_bracing(
+                        frame = _x_bracing(
                                 x_eff, yL, yR,
-                                girder_depth, flange_thickness, flange_width,
+                                eff_depth, flange_thickness, flange_width,
                                 end_diaphragm_diagonal_thickness,
                                 end_diaphragm_diagonal_section_type,
                                 end_diaphragm_diagonal_section_dims,
@@ -776,13 +799,12 @@ def build_cross_bracings(
                                 end_diaphragm_bottom_chord_section_dims,
                                 bracket_option,
                                 skew_angle=skew_angle
-                            )
                         )
+                        bracings.extend(_apply_z_offset(frame, z_offset))
                     elif end_diaphragm_bracing_type == "K":
-                        bracings.extend(
-                            _k_bracing(
+                        frame = _k_bracing(
                                 x_eff, yL, yR,
-                                girder_depth, flange_thickness, flange_width,
+                                eff_depth, flange_thickness, flange_width,
                                 end_diaphragm_diagonal_thickness,
                                 end_diaphragm_diagonal_section_type,
                                 end_diaphragm_diagonal_section_dims,
@@ -794,87 +816,62 @@ def build_cross_bracings(
                                 end_diaphragm_bottom_chord_section_dims,
                                 top_bracket,
                                 skew_angle=skew_angle
-                            )
                         )
+                        bracings.extend(_apply_z_offset(frame, z_offset))
                 
-                elif end_diaphragm_type == "Rolled Beam":
+                elif end_diaphragm_type == "Rolled Beam" or end_diaphragm_type == "Welded Beam":
                     # Use I-section for rolled beam diaphragm
                     diaphragm_dims = end_diaphragm_dims if end_diaphragm_dims is not None else {
-                        "depth": girder_depth * 0.8,
+                        "depth": eff_depth * 0.8,
                         "flange_width": 200,
                         "web_thickness": 10,
                         "flange_thickness": 15
                     }
                     
-                    bracings.extend(
-                        _diaphragm_bracing(
-                            x_eff, yL, yR,
-                            girder_depth, flange_thickness,
-                            diagonal_thickness,
-                            "I_SECTION",
-                            diaphragm_dims,
-                            skew_angle=skew_angle
-                        )
-                    )
-                
-                elif end_diaphragm_type == "Welded Beam":
-                    # Use I-section for welded beam diaphragm
-                    # Welded beams can have different proportions than rolled
-                    diaphragm_dims = end_diaphragm_dims if end_diaphragm_dims is not None else {
-                        "depth": girder_depth * 0.85,  
-                        "flange_width": 250,            
-                        "web_thickness": 12,            
-                        "flange_thickness": 20          
-                    }
-                    
                     # Validate dimensions or use defaults (slightly larger than rolled)
                     if "depth" not in diaphragm_dims or "flange_width" not in diaphragm_dims:
                         diaphragm_dims = {
-                            "depth": girder_depth * 0.85,  
+                            "depth": eff_depth * 0.85,  
                             "flange_width": 250,            
                             "web_thickness": 12,            
                             "flange_thickness": 20          
                         }
-                    
-                    bracings.extend(
-                        _diaphragm_bracing(
-                            x_eff, yL, yR,
-                            girder_depth, flange_thickness,
-                            diagonal_thickness,
-                            "I_SECTION",
-                            diaphragm_dims,
-                            skew_angle=skew_angle
-                        )
+                    frame = _diaphragm_bracing(
+                                x_eff, yL, yR,
+                                eff_depth, flange_thickness,
+                                end_diaphragm_thickness,
+                                end_diaphragm_section,
+                                end_diaphragm_dims,
+                                skew_angle=skew_angle
                     )
+                    bracings.extend(_apply_z_offset(frame, z_offset))
                 
                 continue
             
             # INTERNAL BRACING HANDLING
             # Build normal X or K bracing for internal panels using separate sections
             if bracing_type == "X":
-                bracings.extend(
-                    _x_bracing(
-                        x, yL, yR,
-                        girder_depth, flange_thickness, flange_width,
-                        diagonal_thickness, diagonal_section_type, diagonal_section_dims,
-                        top_chord_thickness, top_chord_section_type, top_chord_section_dims,
-                        bottom_chord_thickness, bottom_chord_section_type, bottom_chord_section_dims,
-                        bracket_option,
-                        skew_angle=skew_angle
-                    )
+                frame = _x_bracing(
+                    x, yL, yR,
+                    eff_depth, flange_thickness, flange_width,
+                    diagonal_thickness, diagonal_section_type, diagonal_section_dims,
+                    top_chord_thickness, top_chord_section_type, top_chord_section_dims,
+                    bottom_chord_thickness, bottom_chord_section_type, bottom_chord_section_dims,
+                    bracket_option,
+                    skew_angle=skew_angle
                 )
+                bracings.extend(_apply_z_offset(frame, z_offset))
             
             elif bracing_type == "K":
-                bracings.extend(
-                    _k_bracing(
-                        x, yL, yR,
-                        girder_depth, flange_thickness, flange_width,
-                        diagonal_thickness, diagonal_section_type, diagonal_section_dims,
-                        top_chord_thickness, top_chord_section_type, top_chord_section_dims,
-                        bottom_chord_thickness, bottom_chord_section_type, bottom_chord_section_dims,
-                        top_bracket,
-                        skew_angle=skew_angle
-                    )
+                frame = _k_bracing(
+                    x, yL, yR,
+                    eff_depth, flange_thickness, flange_width,
+                    diagonal_thickness, diagonal_section_type, diagonal_section_dims,
+                    top_chord_thickness, top_chord_section_type, top_chord_section_dims,
+                    bottom_chord_thickness, bottom_chord_section_type, bottom_chord_section_dims,
+                    top_bracket,
+                    skew_angle=skew_angle
                 )
+                bracings.extend(_apply_z_offset(frame, z_offset))
     
     return bracings
