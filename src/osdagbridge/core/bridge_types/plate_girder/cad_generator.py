@@ -30,7 +30,7 @@ from OCC.Core.TopAbs import TopAbs_EDGE
 
 # Component builder imports
 from osdagbridge.core.bridge_components.super_structure.plate_girder.builder import (
-    build_plate_girder_geometry
+    build_plate_girder_geometry, GirderSegment
 )
 from osdagbridge.core.bridge_components.super_structure.deck.builder import (
     build_deck
@@ -149,6 +149,33 @@ class PlateGirderCADGenerator:
         self.girder_section_tw = design_params.girder_section_tw
         self.num_girders = design_params.num_girders
         self.girder_spacing = design_params.girder_spacing
+
+        self.girder_segments = [
+            GirderSegment(
+                length=self.span_length_L,
+                D=self.girder_section_d,
+                tw=self.girder_section_tw,
+                T_ft=self.girder_section_tf,
+                T_fb=self.girder_section_tf_b,
+                B_ft=self.girder_section_bf,
+                B_fb=self.girder_section_bf_b
+            )
+        ]
+        
+        # Example: Girder 1 (index 0) and Girder 2 (index 1) split into 3 segments
+        self.girder_segments_dict = {
+            0: [
+                GirderSegment(length=3000, D=500, tw=100, T_ft=260, T_fb=260, B_ft=500, B_fb=500),
+                GirderSegment(length=4000, D=1400, tw=100, T_ft=260, T_fb=260, B_ft=700, B_fb=700),
+                GirderSegment(length=3000, D=700, tw=100, T_ft=260, T_fb=260, B_ft=500, B_fb=500)
+            ],
+            1: [
+                GirderSegment(length=2000, D=900, tw=100, T_ft=260, T_fb=260, B_ft=500, B_fb=500),
+                GirderSegment(length=5000, D=300, tw=100, T_ft=260, T_fb=260, B_ft=700, B_fb=700),
+                GirderSegment(length=3000, D=600, tw=100, T_ft=260, T_fb=260, B_ft=500, B_fb=500)
+            ]
+        }
+
 
         # GEOMETRY PARAMETERS
         self.skew_angle = design_params.skew_angle
@@ -343,49 +370,57 @@ class PlateGirderCADGenerator:
             lateral_distance = lateral_position - reference_position
             return lateral_distance * math.tan(skew_rad)
 
-        # STEP 1: BUILD SINGLE PLATE GIRDER GEOMETRY
-        
-        pg = build_plate_girder_geometry(
-            D=self.girder_section_d,
-            tw=self.girder_section_tw,
-            length=self.span_length_L,
-            T_ft=self.girder_section_tf,
-            T_fb=self.girder_section_tf_b,
-            B_ft=self.girder_section_bf,
-            B_fb=self.girder_section_bf_b,
-            include_intermediate_stiffeners=self.include_intermediate_stiffeners,
-            intermediate_stiffener_spacing=self.intermediate_stiffener_spacing,
-            intermediate_stiffener_thickness=self.intermediate_stiffener_thickness,
-            chamfer_length=40,
-            num_end_stiffener_pairs=self.num_end_stiffener_pairs,
-            T_es=self.end_stiffener_thickness,
-            intermediate_stiffener_outstand=self.intermediate_stiffener_outstand,
-            end_stiffener_outstand=self.end_stiffener_outstand,
-            include_longitudinal_stiffeners=self.include_longitudinal_stiffeners,
-            num_longitudinal_stiffeners=self.num_longitudinal_stiffeners,
-            longitudinal_stiffener_thickness=self.longitudinal_stiffener_thickness,
-            longitudinal_stiffener_outstand=self.longitudinal_stiffener_outstand,
-            shear_stud_base_diameter=self.shear_stud_base_diameter,
-            shear_stud_top_diameter=self.shear_stud_top_diameter,
-            shear_stud_base_height=self.shear_stud_base_height,
-            shear_stud_top_height=self.shear_stud_top_height,
-            num_shear_studs_per_section=self.num_shear_studs_per_section,
-            shear_stud_transverse_spacing=self.shear_stud_transverse_spacing,
-            shear_stud_pitch=self.shear_stud_pitch
-        )
+        # STEP 1: BUILD AND PLACE MULTIPLE GIRDERS WITH SKEW OFFSET
 
-        # STEP 2: PLACE MULTIPLE GIRDERS WITH SKEW OFFSET
-        
         girders = []
         stiffeners = []
         shear_studs = []
         girder_web = []
         girder_flanges = []
+        supports_tri = []
+        supports_cyl = []
 
         total_width = (self.num_girders - 1) * self.girder_spacing
         reference_position = 0.0  # Centerline reference for skew
 
         for i in range(self.num_girders):
+            
+            # Fetch segments for this particular girder if defined
+            if self.girder_segments_dict and i in self.girder_segments_dict:
+                current_segments = self.girder_segments_dict[i]
+            else:
+                current_segments = self.girder_segments
+                
+            pg = build_plate_girder_geometry(
+                D=self.girder_section_d,
+                tw=self.girder_section_tw,
+                length=self.span_length_L,
+                T_ft=self.girder_section_tf,
+                T_fb=self.girder_section_tf_b,
+                B_ft=self.girder_section_bf,
+                B_fb=self.girder_section_bf_b,
+                segments=current_segments,
+                include_intermediate_stiffeners=self.include_intermediate_stiffeners,
+                intermediate_stiffener_spacing=self.intermediate_stiffener_spacing,
+                intermediate_stiffener_thickness=self.intermediate_stiffener_thickness,
+                chamfer_length=40,
+                num_end_stiffener_pairs=self.num_end_stiffener_pairs,
+                T_es=self.end_stiffener_thickness,
+                intermediate_stiffener_outstand=self.intermediate_stiffener_outstand,
+                end_stiffener_outstand=self.end_stiffener_outstand,
+                include_longitudinal_stiffeners=self.include_longitudinal_stiffeners,
+                num_longitudinal_stiffeners=self.num_longitudinal_stiffeners,
+                longitudinal_stiffener_thickness=self.longitudinal_stiffener_thickness,
+                longitudinal_stiffener_outstand=self.longitudinal_stiffener_outstand,
+                shear_stud_base_diameter=self.shear_stud_base_diameter,
+                shear_stud_top_diameter=self.shear_stud_top_diameter,
+                shear_stud_base_height=self.shear_stud_base_height,
+                shear_stud_top_height=self.shear_stud_top_height,
+                num_shear_studs_per_section=self.num_shear_studs_per_section,
+                shear_stud_transverse_spacing=self.shear_stud_transverse_spacing,
+                shear_stud_pitch=self.shear_stud_pitch
+            )
+            
             # Calculate transverse offset (Y-direction)
             y_offset = (i * self.girder_spacing) - (total_width / 2)
             
@@ -393,19 +428,22 @@ class PlateGirderCADGenerator:
             x_offset = _calculate_skew_offset(y_offset, reference_position)
 
             # Place web
-            web = _translate(pg["web"], dx=x_offset, dy=y_offset)
-            girders.append(web)
-            girder_web.append(web)
+            for w in pg.get("web", []):
+                web = _translate(w, dx=x_offset, dy=y_offset)
+                girders.append(web)
+                girder_web.append(web)
 
             # Place top flange
-            top_flange = _translate(pg["top_flange"], dx=x_offset, dy=y_offset)
-            girders.append(top_flange)
-            girder_flanges.append(top_flange)
+            for tf in pg.get("top_flange", []):
+                top_flange = _translate(tf, dx=x_offset, dy=y_offset)
+                girders.append(top_flange)
+                girder_flanges.append(top_flange)
 
             # Place bottom flange
-            bottom_flange = _translate(pg["bottom_flange"], dx=x_offset, dy=y_offset)
-            girders.append(bottom_flange)
-            girder_flanges.append(bottom_flange)
+            for bf in pg.get("bottom_flange", []):
+                bottom_flange = _translate(bf, dx=x_offset, dy=y_offset)
+                girders.append(bottom_flange)
+                girder_flanges.append(bottom_flange)
 
             # Place stiffeners (follow parent girder's offset)
             for stiff in pg["stiffeners"]:
@@ -418,16 +456,6 @@ class PlateGirderCADGenerator:
                 shear_studs.append(
                     _translate(stud, dx=x_offset, dy=y_offset)
                 )
-
-        # STEP 3: PLACE SUPPORT STRUCTURES
-        
-        supports_tri = []
-        supports_cyl = []
-
-        for i in range(self.num_girders):
-            # Calculate offsets (same as girders)
-            y_offset = (i * self.girder_spacing) - (total_width / 2)
-            x_offset = _calculate_skew_offset(y_offset, reference_position)
 
             # Place triangular supports
             for s in pg["supports_tri"]:
@@ -448,11 +476,26 @@ class PlateGirderCADGenerator:
 
         # STEP 5: BUILD CROSS BRACING SYSTEM
         
+        # Prepare per-frame, per-girder depths for bracing
+        n_internal = int(self.span_length_L / self.cross_bracing_spacing) - 1
+        n_total = n_internal + 2
+        spacing = self.span_length_L / (n_total - 1)
+        x_positions = [i * spacing for i in range(n_total)]
+        
+        girder_depths_matrix = []
+        for x in x_positions:
+            frame_depths = []
+            for i in range(self.num_girders):
+                depth = self.get_girder_depth_at(i, x)
+                frame_depths.append(depth)
+            girder_depths_matrix.append(frame_depths)
+
         cross_bracings = build_cross_bracings(
             span_length_L=self.span_length_L,
             num_girders=self.num_girders,
             girder_spacing=self.girder_spacing,
-            girder_depth=bracing_girder_depth,
+            girder_depths=girder_depths_matrix,
+            reference_depth=self.girder_section_d,
             flange_thickness=self.girder_section_tf,
             flange_width=self.girder_section_bf,
             
