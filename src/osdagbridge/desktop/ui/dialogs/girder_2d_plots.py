@@ -11,17 +11,27 @@ import matplotlib.gridspec as gridspec
 
 from osdagbridge.core.bridge_types.plate_girder.analysis_results import PlateGirderAnalysisResults
 
+# =====================================================================
+# UI / Visual Configuration 
+# =====================================================================
+COLOR_PRIMARY_FILL = "#E0F2F1"      # Muted teal fill
+COLOR_PRIMARY_STROKE = "#00897B"    # Muted teal stroke
+COLOR_ZERO_LINE = "#B0BEC5"         # Soft grey zero line
+COLOR_GIRDER_LINE = "#90A4AE"       # Minimal structural line
+COLOR_NODE_REF = "#D0D0D0"          # Thicker, slightly darker reference lines for visibility
+COLOR_CURSOR = "#546E7A"            # Cursor line
+COLOR_SEPARATOR = "#E0E0E0"         # Soft visual boundary / bounding box
+COLOR_TEXT_LABEL = "#555555"        # Subtle, medium-weight labels
+
 class Girder2DPlotsWidget(QWidget):
     """
-    Production-ready PySide6 widget representing a generic 2D girder plot.
+    PySide6 widget representing a generic 2D girder plot.
     Displays vertically stacked plots:
     1. Girder (Structural reference)
     2. Bending Moment Diagram (BMD)
     3. Shear Force Diagram (SFD)
     4. Deflection Diagram
     
-    Acts as a single source of truth for extracting, parsing, and rendering
-    OpenSees Physics matrices for individual spans. No external helpers required.
     """
 
     def __init__(self, parent=None):
@@ -86,8 +96,20 @@ class Girder2DPlotsWidget(QWidget):
         self.girder_combo.currentTextChanged.connect(self._on_girder_selected)
         self.girder_combo.setEnabled(False) 
         
+        lbl_mode = QLabel("Interaction:")
+        lbl_mode.setFont(QFont("Segoe UI", 10, QFont.Bold))
+        lbl_mode.setStyleSheet("color: #333333;")
+        
+        self.mode_combo = QComboBox()
+        self.mode_combo.addItems(["Scroll for Values", "Maximum Values"])
+        self.mode_combo.setStyleSheet(self.girder_combo.styleSheet())
+        self.mode_combo.currentTextChanged.connect(self._on_mode_changed)
+        
         controls_layout.addWidget(lbl_select)
         controls_layout.addWidget(self.girder_combo)
+        controls_layout.addSpacing(20)
+        controls_layout.addWidget(lbl_mode)
+        controls_layout.addWidget(self.mode_combo)
         controls_layout.addStretch()
         
         self.main_layout.addLayout(controls_layout)
@@ -107,7 +129,7 @@ class Girder2DPlotsWidget(QWidget):
         
         # Right Side: Values Display Panel
         self.val_panel = QFrame()
-        self.val_panel.setStyleSheet("QFrame { background-color: #FAFAFA; border: 1px solid #DFDFDF; border-radius: 4px; }")
+        self.val_panel.setStyleSheet("QFrame { background-color: #FAFAFA; border: 1px solid #CCCCCC; border-radius: 4px; }")
         self.val_panel.setFixedWidth(180)
         
         val_layout = QVBoxLayout(self.val_panel)
@@ -128,7 +150,11 @@ class Girder2DPlotsWidget(QWidget):
             lbl.setAlignment(Qt.AlignCenter)
             
             val = QLineEdit("-")
-            val.setReadOnly(True)
+            if key == "x":
+                val.setReadOnly(False)
+                val.setToolTip("Enter X position and press Return")
+            else:
+                val.setReadOnly(True)
             val.setAlignment(Qt.AlignCenter)
             val.setStyleSheet("""
                 QLineEdit {
@@ -138,6 +164,7 @@ class Girder2DPlotsWidget(QWidget):
                     padding: 5px;
                     color: #111111;
                     font-size: 11px;
+                    outline: none;
                 }
             """)
             
@@ -148,6 +175,7 @@ class Girder2DPlotsWidget(QWidget):
             return container
 
         box_x = create_value_box("X Position (m)", "x")
+        self.fields["x"].returnPressed.connect(self._on_user_x_entered)
         box_bmd = create_value_box("BMD (kNm)", "bmd")
         box_sfd = create_value_box("SFD (kN)", "sfd")
         box_defl = create_value_box("Deflection (mm)", "defl")
@@ -172,19 +200,19 @@ class Girder2DPlotsWidget(QWidget):
         self._setup_event_handling()
 
     def _setup_axes(self):
-        """
-        Configures the axes using GridSpec to stack the 4 sections.
-        Ensures HSpace=0 to maintain single coherent reference lines.
-        """
+        # Increase 'hspace' to create subtle breathing room between distinct figures visually.
+        # Height ratio for label rows (index 1, 3, 5, 7) increased to prevent tight cramping.
         gs = gridspec.GridSpec(8, 1, figure=self.figure, 
-                               height_ratios=[0.8, 0.15, 3, 0.15, 3, 0.15, 3, 0.15], 
-                               hspace=0)
+                               height_ratios=[0.5, 0.6, 3, 0.6, 3, 0.6, 3, 0.6], 
+                               hspace=0.08)
         
-        self.figure.subplots_adjust(left=0.08, right=0.95, top=0.95, bottom=0.05)
+        self.figure.subplots_adjust(left=0.15, right=0.95, top=0.92, bottom=0.10)
         
-        # Primary reference axis
+        # Primary reference axis (Girder reintroduced)
         self.ax_girder = self.figure.add_subplot(gs[0])
         self.ax_lbl_girder = self.figure.add_subplot(gs[1], sharex=self.ax_girder)
+        self.ax_girder.set_visible(True)
+        self.ax_lbl_girder.set_visible(True)
         
         self.ax_bmd = self.figure.add_subplot(gs[2], sharex=self.ax_girder)
         self.ax_lbl_bmd = self.figure.add_subplot(gs[3], sharex=self.ax_girder)
@@ -195,17 +223,17 @@ class Girder2DPlotsWidget(QWidget):
         self.ax_defl = self.figure.add_subplot(gs[6], sharex=self.ax_girder)
         self.ax_lbl_defl = self.figure.add_subplot(gs[7], sharex=self.ax_girder)
         
-        self.all_axes = [self.ax_lbl_girder, self.ax_girder, 
-                         self.ax_lbl_bmd, self.ax_bmd, 
-                         self.ax_lbl_sfd, self.ax_sfd, 
-                         self.ax_lbl_defl, self.ax_defl]
+        self.all_axes = [self.ax_girder, self.ax_lbl_girder,
+                         self.ax_bmd, self.ax_lbl_bmd,
+                         self.ax_sfd, self.ax_lbl_sfd,
+                         self.ax_defl, self.ax_lbl_defl]
                          
-        self.plot_axes = [self.ax_girder, self.ax_bmd, self.ax_sfd, self.ax_defl]
+        self.plot_axes = [self.ax_bmd, self.ax_sfd, self.ax_defl]
         
     def _apply_axis_styles(self):
         """
         Applies strict engineering design constraints:
-        - No black edges/boundaries. All borders invisible.
+        - Soft bounding boxes for visual separation
         - Wipes all chart clutter (ticks, etc.).
         - Ensures deflection axis is inverted (downward positive).
         """
@@ -219,6 +247,19 @@ class Girder2DPlotsWidget(QWidget):
             ax.set_yticks([])
             ax.set_xticks([])
             ax.tick_params(axis='both', which='both', length=0, labelbottom=False, labelleft=False)
+
+        # Soft visually separate plot regions cleanly on all 4 sides for consistent container weight
+        for ax in self.plot_axes:
+            for spine in ax.spines.values():
+                spine.set_visible(True)
+                spine.set_color(COLOR_SEPARATOR)
+                spine.set_linewidth(1.0)
+                
+        # To maintain the solid bottom border despite GridSpec hspace adjustments,
+        # we explicitly ensure the bottom spine of plot axes is rendered strongly.
+        for ax in self.plot_axes:
+            ax.spines['bottom'].set_color('#CCCCCC')
+            ax.spines['bottom'].set_linewidth(1.2)
 
         if not self.ax_defl.yaxis.get_inverted():
             self.ax_defl.invert_yaxis()
@@ -344,9 +385,16 @@ class Girder2DPlotsWidget(QWidget):
             ax.clear()
             
         self._cursors.clear()
+        for text_obj in getattr(self, '_max_texts', []):
+            try: text_obj.remove()
+            except: pass
+        self._max_texts = []
         
-        # Reset visual labels strictly upon UI repaints
-        self._update_rhs_display(0, 0, 0, 0)
+        # Reset visual labels strictly upon UI repaints. Only X gets initial coordinate.
+        if len(self._x_data) > 0:
+            self.fields["x"].setText(f"{self._x_data[0]:.3f}")
+        for k in ["bmd", "sfd", "defl"]:
+            self.fields[k].setText("-")
         
         if len(self._x_data) == 0:
             self._apply_axis_styles()
@@ -356,47 +404,51 @@ class Girder2DPlotsWidget(QWidget):
         x_start, x_end = self._x_data[0], self._x_data[-1]
         padding = (x_end - x_start) * 0.05
         
-        # Figma Standard Colors
-        COLOR_GIRDER = '#22384C'    
-        COLOR_FILL = '#6B9CCC'      
-        COLOR_STROKE = '#2F5A82'    
-        COLOR_DEFL = '#0A0A0A'      
-        COLOR_SUPPORT = '#D0D0D0'   # Light Grey boundaries, NOT black
-        COLOR_ZERO = '#8C8C8C'      
+        # Consistent label injection (relaxed spacing, slightly lighter weight)
+        LABEL_PROPS = dict(va='center', ha='center', fontsize=10, fontweight='medium', color='#666666')
         
-        # Consistent label injection (center alignment strictly forced above the active chart)
-        LABEL_PROPS = dict(va='center', ha='center', fontsize=10, fontweight='bold', color='#333333')
-        self.ax_lbl_girder.text(0.5, 0.5, '', transform=self.ax_lbl_girder.transAxes, **LABEL_PROPS)
-        self.ax_lbl_bmd.text(0.5, 0.5, 'BMD', transform=self.ax_lbl_bmd.transAxes, **LABEL_PROPS)
-        self.ax_lbl_sfd.text(0.5, 0.5, 'SFD', transform=self.ax_lbl_sfd.transAxes, **LABEL_PROPS)
-        self.ax_lbl_defl.text(0.5, 0.5, 'Deflections', transform=self.ax_lbl_defl.transAxes, **LABEL_PROPS)
+        # Shift text up slightly (+0.2 on y-axis of transAxes) inside the label subplots to avoid bottom clipping.
+        # It creates artificial visual padding within the dedicated label box.
+        y_label_pos = 0.6
+        self.ax_lbl_bmd.text(0.5, y_label_pos, 'Bending Moment Diagram', transform=self.ax_lbl_bmd.transAxes, **LABEL_PROPS)
+        self.ax_lbl_sfd.text(0.5, y_label_pos, 'Shear Force Diagram', transform=self.ax_lbl_sfd.transAxes, **LABEL_PROPS)
+        self.ax_lbl_defl.text(0.5, y_label_pos, 'Deflection', transform=self.ax_lbl_defl.transAxes, **LABEL_PROPS)
+
+        # Node Reference Lines (Dashed, neutral grey, subtle to not dominate)
+        for node_x in self._x_data:
+            for ax in self.plot_axes:
+                ax.axvline(node_x, color='#D3D3D3', linestyle='--', linewidth=0.8, zorder=0, alpha=0.9)
 
         # ------------------------------------------------------------------
         # Top Plot (Girder geometry representation)
         # ------------------------------------------------------------------
-        self.ax_girder.plot([x_start, x_end], [0, 0], color=COLOR_GIRDER, linewidth=7, zorder=2)
-        self.ax_girder.set_ylim(-1, 1) 
-        self._draw_supports(self.ax_girder, x_start, x_end, is_bottom_plot=False, color=COLOR_GIRDER)
+        self.show_girder_diagram = True
+
+        if self.show_girder_diagram:
+            # Revert to standard muted grey weight
+            self.ax_girder.plot([x_start, x_end], [0, 0], color=COLOR_GIRDER_LINE, linewidth=3, zorder=2, alpha=0.9)
+            self.ax_girder.set_ylim(-1, 1) 
+            self._draw_supports(self.ax_girder, x_start, x_end, is_bottom_plot=False, color=COLOR_GIRDER_LINE, alpha=0.85)
 
         # ------------------------------------------------------------------
         # Middle Plots (BMD / SFD Matrices)
         # ------------------------------------------------------------------
         for data, ax in [(self._bmd_data, self.ax_bmd), (self._sfd_data, self.ax_sfd)]:
-            ax.fill_between(self._x_data, data, 0, color=COLOR_FILL, alpha=0.55, zorder=2)
-            ax.plot(self._x_data, data, color=COLOR_STROKE, linewidth=1.5, zorder=3)
-            ax.plot([x_start, x_end], [0, 0], color=COLOR_ZERO, lw=1.2, zorder=1)
+            ax.fill_between(self._x_data, data, 0, color=COLOR_PRIMARY_FILL, alpha=0.55, zorder=2)
+            ax.plot(self._x_data, data, color=COLOR_PRIMARY_STROKE, linewidth=1.5, zorder=3)
+            ax.plot([x_start, x_end], [0, 0], color=COLOR_ZERO_LINE, lw=1.2, zorder=1)
             
             y_max, y_min = np.max(data), np.min(data)
-            spread = max(abs(y_max), abs(y_min)) * 0.2
+            spread = max(abs(y_max), abs(y_min)) * 0.35
             if spread == 0: spread = 1
             ax.set_ylim(min(0, y_min) - spread, max(0, y_max) + spread)
 
         # ------------------------------------------------------------------
         # Bottom Plot (Deflection Curve)
         # ------------------------------------------------------------------
-        # Deflection vector displacement
-        self.ax_defl.plot(self._x_data, self._defl_data, color=COLOR_DEFL, linewidth=1.8, zorder=3)
-        self.ax_defl.plot([x_start, x_end], [0, 0], color=COLOR_ZERO, lw=1.2, zorder=1)
+        self.ax_defl.fill_between(self._x_data, self._defl_data, 0, color=COLOR_PRIMARY_FILL, alpha=0.35, zorder=2)
+        self.ax_defl.plot(self._x_data, self._defl_data, color=COLOR_PRIMARY_STROKE, linewidth=1.8, zorder=3)
+        self.ax_defl.plot([x_start, x_end], [0, 0], color=COLOR_ZERO_LINE, lw=1.2, zorder=1)
         
         d_max, d_min = np.max(self._defl_data), np.min(self._defl_data)
         d_pad = max(abs(d_max), abs(d_min)) * 0.4
@@ -404,20 +456,6 @@ class Girder2DPlotsWidget(QWidget):
         
         # Physically downward positive inversion applied mathematically
         self.ax_defl.set_ylim(min(0, d_min) - d_pad, max(0, d_max) + d_pad)
-        self._draw_supports(self.ax_defl, x_start, x_end, is_bottom_plot=True, color=COLOR_GIRDER)
-
-        # ------------------------------------------------------------------
-        # Standardized Dotted Reference Lines (Left/Right boundaries)
-        # ------------------------------------------------------------------
-        # Passes downward smoothly from the top Girder plot, stopping at the bottom label
-        vertical_span_axes = [self.ax_girder, self.ax_lbl_girder,
-                              self.ax_bmd, self.ax_lbl_bmd, 
-                              self.ax_sfd, self.ax_lbl_sfd, 
-                              self.ax_defl, self.ax_lbl_defl]
-        
-        for ax in vertical_span_axes:
-            ax.axvline(x_start, color=COLOR_SUPPORT, linestyle=':', linewidth=1.5, zorder=0)
-            ax.axvline(x_end, color=COLOR_SUPPORT, linestyle=':', linewidth=1.5, zorder=0)
 
         # Clear generic bounds, implement Figma white gaps constraint loop
         self.ax_lbl_girder.set_xlim(x_start - padding, x_end + padding)
@@ -425,7 +463,7 @@ class Girder2DPlotsWidget(QWidget):
         
         self.canvas.draw()
 
-    def _draw_supports(self, ax, x_start, x_end, is_bottom_plot=False, color='#22384C'):
+    def _draw_supports(self, ax, x_start, x_end, is_bottom_plot=False, color='#22384C', alpha=1.0):
         """
         Renders primitive structural support diagram physics symmetrically.
         Preserves rigid horizontal proportionality despite wildly shifting Y-axis ranges.
@@ -436,94 +474,178 @@ class Girder2DPlotsWidget(QWidget):
         ymin, ymax = ax.get_ylim()
         yrange = abs(ymax - ymin)
         
-        height_ratio = 3.0 if is_bottom_plot else 0.8
-        factor = 0.4 * (0.8 / height_ratio)
+        factor = 0.4
         sy = yrange * factor
-        
-        # Deflection plot computes visually downward using positive mathematics due to y-inversion
-        direction = 1 if is_bottom_plot else -1
-
-        COLOR_FILL = '#DFDFDF'
+        direction = -1
         COLOR_STROKE = color
         
-        # --- Left Support: Pin ---
-        base_y_pin = direction * sy
-        ax.fill([x_start, x_start-sx, x_start+sx], [0, base_y_pin, base_y_pin], 
-                color=COLOR_FILL, edgecolor=COLOR_STROKE, lw=1.2, zorder=5, clip_on=False)
-        ax.plot([x_start-sx*1.5, x_start+sx*1.5], [base_y_pin, base_y_pin], 
-                color=COLOR_STROKE, lw=1.5, zorder=5, clip_on=False)
-
-        # --- Right Support: Roller ---
-        roller_sy = sy * 0.75
-        base_y_roller = direction * roller_sy
-        ax.fill([x_end, x_end-sx, x_end+sx], [0, base_y_roller, base_y_roller], 
-                color=COLOR_FILL, edgecolor=COLOR_STROKE, lw=1.2, zorder=5, clip_on=False)
+        # Minimalist upward-pointing arrows for supports
+        arrow_len = direction * sy * 1.5
         
-        r_radius = sy * 0.125
-        cy = base_y_roller + direction * r_radius
-        ax.plot(x_end - sx*0.5, cy, marker='o', markersize=4, color='white', 
-                markeredgecolor=COLOR_STROKE, zorder=5, clip_on=False)
-        ax.plot(x_end + sx*0.5, cy, marker='o', markersize=4, color='white', 
-                markeredgecolor=COLOR_STROKE, zorder=5, clip_on=False)
-                
-        floor_y = cy + direction * r_radius
-        ax.plot([x_end-sx*1.5, x_end+sx*1.5], [floor_y, floor_y], 
-                color=COLOR_STROKE, lw=1.5, zorder=5, clip_on=False)
+        for x_loc in [x_start, x_end]:
+            ax.annotate('', xy=(x_loc, 0), xytext=(x_loc, arrow_len),
+                        arrowprops=dict(arrowstyle='->', color=COLOR_STROKE, lw=1.5, alpha=alpha),
+                        zorder=5, annotation_clip=False)
+            # Base horizontal line underneath arrow
+            ax.plot([x_loc - sx*1.5, x_loc + sx*1.5], [arrow_len, arrow_len], color=COLOR_STROKE, lw=1.5, alpha=alpha, zorder=5, clip_on=False)
 
     def _setup_event_handling(self):
-        # We exclusively handle definitive mouse clicks, prohibiting passive hovering per requirement.
+        # We exclusively handle definitive interactions, scrolling is prioritized for continuous flow tracking
         self.figure.canvas.mpl_connect('button_press_event', self._on_click)
+        self.figure.canvas.mpl_connect('scroll_event', self._on_scroll)
         
     def _on_click(self, event):
-        """
-        Triggers vertical reference tracking and RHS RHS data population exclusively via user click.
-        Cursor persists structurally until next event overrides it.
-        """
+        """Triggers vertical reference tracking and RHS data population via user click."""
         if self._x_data is None or len(self._x_data) == 0:
             return
-            
         if event.inaxes not in self.plot_axes:
             return
-            
-        # Register clicks exclusively from left mouse button
         if event.button != 1:
             return
             
-        click_x = event.xdata
-        if click_x is None:
+        click_x = max(self._x_data[0], min(self._x_data[-1], event.xdata))
+        
+        self.mode_combo.blockSignals(True)
+        self.mode_combo.setCurrentText("Scroll for Values")
+        self.mode_combo.blockSignals(False)
+        
+        self._set_cursor_x(click_x)
+
+    def _on_scroll(self, event):
+        """Scroll interaction moves an invisible preview position, updating the X box ONLY."""
+        if len(self._x_data) == 0 or event.inaxes not in self.plot_axes:
             return
             
-        click_x = max(self._x_data[0], min(self._x_data[-1], click_x))
+        try:
+            current_x = float(self.fields["x"].text())
+        except ValueError:
+            current_x = self._x_data[0]
+            
+        span = self._x_data[-1] - self._x_data[0]
+        step = span * 0.05 * event.step 
+        new_x = max(self._x_data[0], min(self._x_data[-1], current_x + step))
         
-        m_x = np.interp(click_x, self._x_data, self._bmd_data)
-        v_x = np.interp(click_x, self._x_data, self._sfd_data)
-        d_x = np.interp(click_x, self._x_data, self._defl_data)
+        self.mode_combo.blockSignals(True)
+        self.mode_combo.setCurrentText("Scroll for Values")
+        self.mode_combo.blockSignals(False)
         
-        self._update_cursors(click_x)
-        self._update_rhs_display(click_x, m_x, v_x, d_x)
+        # Only update preview text box; let user confirm
+        self.fields["x"].setText(f"{new_x:.3f}")
+
+    def _on_user_x_entered(self):
+        """Handles manual X input routing to update cursor."""
+        try:
+            val = float(self.fields["x"].text())
+            val = max(self._x_data[0], min(self._x_data[-1], val))
+            self.mode_combo.blockSignals(True)
+            self.mode_combo.setCurrentText("Scroll for Values")
+            self.mode_combo.blockSignals(False)
+            self._set_cursor_x(val)
+        except ValueError:
+            pass 
+
+    def _on_mode_changed(self, mode_text):
+        """Mode selection driver for finding automatic max thresholds."""
+        if len(self._x_data) == 0:
+            return
+            
+        if mode_text == "Scroll for Values":
+            # Do nothing, just wait for user interaction
+            return
+            
+        if mode_text == "Maximum Values":
+            self._show_maximums()
+
+    def _show_maximums(self):
+        """Calculates maximums independently, draws 3 vertical lines, updates RHS."""
+        idx_bmd = np.argmax(np.abs(self._bmd_data))
+        # SFD uses algebraic peak maximum positively
+        idx_sfd = np.argmax(self._sfd_data)
+        idx_defl = np.argmax(np.abs(self._defl_data))
         
-    def _update_cursors(self, click_x):
-        """
-        Calculates and draws a single structural vertical tracer spanning exclusively through
-        physics regions while omitting exterior white spaces.
-        """
-        vertical_span_axes = [self.ax_girder, self.ax_lbl_girder,
-                              self.ax_bmd, self.ax_lbl_bmd, 
-                              self.ax_sfd, self.ax_lbl_sfd, 
-                              self.ax_defl, self.ax_lbl_defl]
-                              
+        x_bmd = self._x_data[idx_bmd]
+        x_sfd = self._x_data[idx_sfd]
+        x_defl = self._x_data[idx_defl]
+        
+        # Clear maximum text labels if present
+        for text_obj in getattr(self, '_max_texts', []):
+            try: text_obj.remove()
+            except: pass
+        self._max_texts = []
+        
+        # Draw 3 explicit vertical lines
+        self._update_cursors(custom_x_list=[x_bmd, x_sfd, x_defl])
+        
+        self.fields["x"].setText("Multiple")
+        self.fields["bmd"].setText(f"{self._bmd_data[idx_bmd]:.3f}")
+        self.fields["sfd"].setText(f"{self._sfd_data[idx_sfd]:.3f}")
+        self.fields["defl"].setText(f"{self._defl_data[idx_defl]:.3f}")
+        
+        # Add text labels on the plots for the maximums
+        def add_max_label(ax, x_loc, val, label_name, is_absolute=True):
+            y_min, y_max = ax.get_ylim()
+            y_pos = y_max - (y_max - y_min) * 0.08
+            
+            x_span = self._x_data[-1] - self._x_data[0]
+            ha = 'center'
+            display_x = x_loc
+            
+            # Apply padding so the box bounding doesn't touch the plotting perimeter lines
+            if x_loc < self._x_data[0] + x_span * 0.15:
+                ha = 'left'
+                display_x = x_loc + x_span * 0.02
+            elif x_loc > self._x_data[-1] - x_span * 0.15:
+                ha = 'right'
+                display_x = x_loc - x_span * 0.02
+                
+            label_text = f"Max |{label_name}|" if is_absolute else f"Max {label_name}"
+            val_text = f"{abs(val):.2f}" if is_absolute else f"{val:.2f}"
+            
+            txt = ax.text(display_x, y_pos, f"{label_text} = {val_text}\nat x = {x_loc:.3f} m",
+                          color=COLOR_CURSOR, fontsize=9, fontweight='bold',
+                          bbox=dict(facecolor='white', edgecolor=COLOR_SEPARATOR, alpha=0.9, pad=4),
+                          ha=ha, va='top', zorder=20)
+            self._max_texts.append(txt)
+            
+        add_max_label(self.ax_bmd, x_bmd, self._bmd_data[idx_bmd], "BMD", True)
+        add_max_label(self.ax_sfd, x_sfd, self._sfd_data[idx_sfd], "SFD", False)
+        add_max_label(self.ax_defl, x_defl, self._defl_data[idx_defl], "Defl.", True)
+        
+        self.canvas.draw_idle()
+
+    def _set_cursor_x(self, x_val):
+        """Generalized setter mapping UI state cleanly."""
+        m_x = np.interp(x_val, self._x_data, self._bmd_data)
+        v_x = np.interp(x_val, self._x_data, self._sfd_data)
+        d_x = np.interp(x_val, self._x_data, self._defl_data)
+        
+        # Clear maximum text labels if present
+        for text_obj in getattr(self, '_max_texts', []):
+            try: text_obj.remove()
+            except: pass
+        self._max_texts = []
+        
+        self._update_cursors(custom_x_list=[x_val, x_val, x_val])
+        self._update_rhs_display(x_val, m_x, v_x, d_x)
+        
+    def _update_cursors(self, click_x=None, custom_x_list=None):
+        """Draws cursor lines strictly isolated within each plotting boundary. Never cuts labels."""
+        if custom_x_list is None:
+            custom_x_list = [click_x, click_x, click_x]
+            
+        # Only inject the cursor into axes representing the strict data bodies, preserving white space
+        # We ensure no axes lines overlap into the distinct label/gap GridSpec objects we configured above.
         if not self._cursors:
-            for ax in vertical_span_axes:
-                cursor = ax.axvline(click_x, color='#444444', linestyle='--', linewidth=1.2, zorder=10)
+            for i, ax in enumerate(self.plot_axes):
+                cursor = ax.axvline(custom_x_list[i], color='#78909C', linestyle='-', linewidth=1.2, zorder=10, alpha=0.9)
                 self._cursors.append(cursor)
         else:
-            for cursor in self._cursors:
-                cursor.set_xdata([click_x, click_x])
+            for i, cursor in enumerate(self._cursors):
+                cursor.set_xdata([custom_x_list[i], custom_x_list[i]])
                 
         self.canvas.draw_idle()
 
     def _update_rhs_display(self, x, m, v, d):
-        """Drives payload vectors directly into the physical screen blocks."""
         self.fields["x"].setText(f"{x:.3f}")
         self.fields["bmd"].setText(f"{m:.3f}")
         self.fields["sfd"].setText(f"{v:.3f}")
