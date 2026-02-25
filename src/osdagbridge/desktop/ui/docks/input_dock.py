@@ -1094,6 +1094,9 @@ class InputDock(QWidget):
 
         if field_type == TYPE_COMBOBOX:
             widget = NoScrollComboBox()
+            # Connect instant 2D CAD update
+            # widget.currentTextChanged.connect(self.emit_value_changed)
+
             apply_field_style(widget)
             if values:
                 widget.addItems(values)
@@ -1120,6 +1123,9 @@ class InputDock(QWidget):
                     pass
         elif field_type == TYPE_TEXTBOX:
             widget = QLineEdit()
+            # Connect instant 2D CAD update
+            # widget.textChanged.connect(self.emit_value_changed)
+
             apply_field_style(widget)
             validator_instance = self.get_validator(validator)
             if validator_instance:
