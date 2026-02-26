@@ -341,7 +341,7 @@ class FrontendData:
         )
 
         return options_list
-
+    
     def set_osdaglogger(self, key):
         """Logger setup"""
         print("Logger set up (mock)")
