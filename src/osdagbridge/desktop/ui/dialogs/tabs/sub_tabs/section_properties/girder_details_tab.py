@@ -795,7 +795,7 @@ class GirderDetailsTab(QWidget):
         left_layout.addWidget(details_box)
         left_layout.addStretch(1)
 
-        # RIGHT: Member segments table + add/remove buttons (matches reference layout)
+        # RIGHT: Member segments table with per-row actions
         manager_box = self._create_inner_box()
         manager_box.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         manager_layout = QVBoxLayout(manager_box)
@@ -808,16 +808,21 @@ class GirderDetailsTab(QWidget):
         table_row = QWidget()
         table_row_layout = QHBoxLayout(table_row)
         table_row_layout.setContentsMargins(0, 0, 0, 0)
-        table_row_layout.setSpacing(10)
+        table_row_layout.setSpacing(0)
 
-        self.segment_table = QTableWidget(0, 4)
-        self.segment_table.setHorizontalHeaderLabels(["Member ID", "Start (m)", "End (m)", "Length (m)"])
+        self.segment_table = QTableWidget(0, 5)
+        self.segment_table.setHorizontalHeaderLabels(["Member ID", "Start (m)", "End (m)", "Length (m)", "Action"])
         self.segment_table.horizontalHeader().setVisible(True)
         self.segment_table.verticalHeader().setVisible(False)
-        self.segment_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        self.segment_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
+        self.segment_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
+        self.segment_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.Stretch)
+        self.segment_table.horizontalHeader().setSectionResizeMode(3, QHeaderView.Stretch)
+        self.segment_table.horizontalHeader().setSectionResizeMode(4, QHeaderView.Fixed)
+        self.segment_table.setColumnWidth(4, 132)
         self.segment_table.horizontalHeader().setMinimumHeight(34)
-        self.segment_table.verticalHeader().setDefaultSectionSize(34)
-        self.segment_table.verticalHeader().setMinimumSectionSize(28)
+        self.segment_table.verticalHeader().setDefaultSectionSize(38)
+        self.segment_table.verticalHeader().setMinimumSectionSize(34)
         self.segment_table.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         self.segment_table.setShowGrid(True)
         self.segment_table.setGridStyle(Qt.SolidLine)
@@ -832,7 +837,7 @@ class GirderDetailsTab(QWidget):
         self.segment_table.setFixedHeight(_hdr_h + (2 * _row_h) + 10)
         self.segment_table.setStyleSheet(
             "QTableWidget { background: #ffffff; border: 1px solid #d6d6d6; border-radius: 6px; gridline-color: #d0d0d0; }"
-            "QTableWidget::item { color: #1f1f1f; padding: 6px; }"
+            "QTableWidget::item { color: #1f1f1f; padding: 4px 6px; }"
             "QTableWidget::item:selected { background: #e8f0c9; color: #1a1a1a; }"
             "QTableWidget::item:focus { outline: none; }"
             "QTableWidget QLineEdit { background: #ffffff; color: #000000; }"
@@ -849,37 +854,6 @@ class GirderDetailsTab(QWidget):
         self.segment_table.cellClicked.connect(self._on_segment_cell_clicked)
         self.segment_table.itemChanged.connect(self._on_segment_table_item_changed)
         table_row_layout.addWidget(self.segment_table, 1)
-
-        buttons_col = QWidget()
-        buttons_layout = QVBoxLayout(buttons_col)
-        buttons_layout.setContentsMargins(0, 0, 0, 0)
-        buttons_layout.setSpacing(8)
-
-        self.split_add_button = QPushButton("+")
-        self.split_add_button.setFixedSize(36, 36)
-        self.split_add_button.setStyleSheet(
-            "QPushButton { background-color: #90AF13; color: #111111; border: 1px solid #6f850f; border-radius: 6px; padding: 0px; font-weight: 900; font-size: 22px; }"
-            "QPushButton:hover { background-color: #7a9410; }"
-            "QPushButton:pressed { background-color: #6a840d; }"
-        )
-        self.split_add_button.setToolTip("Add/Split member segment")
-        self.split_add_button.clicked.connect(self._on_split_add_clicked)
-
-        self.split_remove_button = QPushButton("X")
-        self.split_remove_button.setFixedSize(36, 36)
-        self.split_remove_button.setStyleSheet(
-            "QPushButton { background-color: #c72626; color: #ffffff; border: 1px solid #8f1c1c; border-radius: 6px; padding: 0px; font-weight: 900; font-size: 16px; }"
-            "QPushButton:hover { background-color: #ae1f1f; }"
-            "QPushButton:pressed { background-color: #991a1a; }"
-        )
-        self.split_remove_button.setToolTip("Remove selected segment")
-        self.split_remove_button.clicked.connect(self._on_remove_segment_clicked)
-
-        buttons_layout.addWidget(self.split_add_button)
-        buttons_layout.addWidget(self.split_remove_button)
-        buttons_layout.addStretch(1)
-
-        table_row_layout.addWidget(buttons_col, 0)
 
         manager_layout.addWidget(table_row)
 
@@ -1021,21 +995,104 @@ class GirderDetailsTab(QWidget):
                 length_item.setFlags(length_item.flags() & ~Qt.ItemIsEditable)
                 length_item.setToolTip("Read-only")
                 self.segment_table.setItem(row, 3, length_item)
+
+                action_widget = self._create_segment_action_widget(row, can_remove=(len(segments) > 1))
+                self.segment_table.setCellWidget(row, 4, action_widget)
         finally:
             self.segment_table.blockSignals(False)
 
         self._sync_remove_button_visibility()
+        self._update_segment_action_row_highlight(self._current_segment_index)
 
     def _sync_remove_button_visibility(self) -> None:
-        """Hide X when only one segment exists (must always keep at least one)."""
-        if not self.split_remove_button:
-            return
+        """Keep per-row remove action disabled when only one segment exists."""
         segments = self._ensure_girder_segments(self._current_girder)
-        show_remove = len(segments) > 1
-        self.split_remove_button.setVisible(show_remove)
-        self.split_remove_button.setEnabled(show_remove)
+        can_remove = len(segments) > 1
+
+        if self.segment_table is not None:
+            for row in range(self.segment_table.rowCount()):
+                action_widget = self.segment_table.cellWidget(row, 4)
+                if action_widget is None:
+                    continue
+                remove_btn = action_widget.findChild(QPushButton, "segmentRemoveBtn")
+                if remove_btn is not None:
+                    remove_btn.setEnabled(can_remove)
+                    remove_btn.setToolTip("Remove this segment" if can_remove else "At least one segment is required")
 
         self._refresh_member_id_combo()
+
+    def _update_segment_action_row_highlight(self, current_row: int | None = None) -> None:
+        if self.segment_table is None:
+            return
+        selected_row = self.segment_table.currentRow() if current_row is None else int(current_row)
+        for row in range(self.segment_table.rowCount()):
+            action_widget = self.segment_table.cellWidget(row, 4)
+            if action_widget is None:
+                continue
+            bg = "#e8f0c9" if row == selected_row else "transparent"
+            action_widget.setStyleSheet(
+                "QWidget#segmentActionCell {"
+                f" background: {bg};"
+                " border: none;"
+                "}"
+            )
+
+    def _create_segment_action_widget(self, row: int, can_remove: bool) -> QWidget:
+        container = QWidget()
+        container.setObjectName("segmentActionCell")
+        layout = QHBoxLayout(container)
+        layout.setContentsMargins(0, 2, 0, 2)
+        layout.setSpacing(6)
+        layout.setAlignment(Qt.AlignCenter)
+        container.setStyleSheet("QWidget#segmentActionCell { background: transparent; border: none; }")
+
+        add_btn = QPushButton("+")
+        add_btn.setObjectName("segmentAddBtn")
+        add_btn.setFixedSize(34, 24)
+        add_btn.setCursor(Qt.PointingHandCursor)
+        add_btn.setToolTip("Split/Add segment")
+        add_btn.setStyleSheet(
+            "QPushButton { background-color: #90AF13; color: #111111; border: 1px solid #6f850f; border-radius: 7px; font-weight: 900; font-size: 17px; }"
+            "QPushButton:hover { background-color: #7a9410; }"
+            "QPushButton:pressed { background-color: #6a840d; }"
+        )
+        add_btn.clicked.connect(lambda _checked=False, r=row: self._on_add_segment_for_row(r))
+
+        remove_btn = QPushButton("−")
+        remove_btn.setObjectName("segmentRemoveBtn")
+        remove_btn.setFixedSize(34, 24)
+        remove_btn.setCursor(Qt.PointingHandCursor)
+        remove_btn.setEnabled(can_remove)
+        remove_btn.setToolTip("Remove this segment" if can_remove else "At least one segment is required")
+        remove_btn.setStyleSheet(
+            "QPushButton { background-color: #c72626; color: #ffffff; border: 1px solid #8f1c1c; border-radius: 7px; font-weight: 900; font-size: 17px; }"
+            "QPushButton:hover { background-color: #ae1f1f; }"
+            "QPushButton:pressed { background-color: #991a1a; }"
+            "QPushButton:disabled { background-color: #d6d6d6; color: #8c8c8c; border-color: #d6d6d6; }"
+        )
+        remove_btn.clicked.connect(lambda _checked=False, r=row: self._on_remove_segment_for_row(r))
+
+        layout.addStretch(1)
+        layout.addWidget(add_btn)
+        layout.addWidget(remove_btn)
+        layout.addStretch(1)
+        return container
+
+    def _on_add_segment_for_row(self, row: int) -> None:
+        if self.segment_table is None:
+            return
+        row = max(0, min(int(row), self.segment_table.rowCount() - 1))
+        self.segment_table.setCurrentCell(row, 2)
+        self._current_segment_index = row
+        self._on_split_add_clicked()
+
+    def _on_remove_segment_for_row(self, row: int) -> None:
+        if self.segment_table is None:
+            return
+        row = max(0, min(int(row), self.segment_table.rowCount() - 1))
+        self.segment_table.setCurrentCell(row, 2)
+        self._current_segment_index = row
+        self._on_remove_segment_clicked()
 
     # ===== Member (Member ID) state + dirty tracking =====
 
@@ -1070,7 +1127,10 @@ class GirderDetailsTab(QWidget):
         return self._current_member_key() in self._dirty_members
 
     def has_unsaved_changes(self) -> bool:
-        return bool(self._dirty_members) or self._is_current_member_dirty()
+        # Show unsaved-warning popups only for the active member the user is
+        # currently editing. Other member-level dirty flags are handled when
+        # switching member/girder and should not block unrelated tab switches.
+        return self._is_current_member_dirty()
 
     def _commit_current_member_state(self) -> None:
         girder, member_id = self._current_member_key()
@@ -1317,6 +1377,12 @@ class GirderDetailsTab(QWidget):
         if not segments:
             return
         if len(segments) == 1:
+            box = _style_message_box(QMessageBox(self))
+            box.setIcon(QMessageBox.Warning)
+            box.setWindowTitle("Cannot Remove")
+            box.setText("At least one member segment is required.")
+            box.setStandardButtons(QMessageBox.Ok)
+            box.exec()
             return
 
         idx = self._current_segment_index
@@ -1522,6 +1588,7 @@ class GirderDetailsTab(QWidget):
     def _on_segment_row_changed(self, current_row: int, _current_column: int, _previous_row: int, _previous_column: int) -> None:
         if current_row is None or current_row < 0:
             return
+        self._update_segment_action_row_highlight(current_row)
         self._select_segment_index(int(current_row))
 
     def _on_split_add_clicked(self) -> None:

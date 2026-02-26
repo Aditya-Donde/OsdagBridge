@@ -170,6 +170,10 @@ class SectionPropertiesTab(QWidget):
     def set_design_mode(self, mode_str: str) -> None:
         if hasattr(self, "girder_details_tab") and hasattr(self.girder_details_tab, "set_design_mode"):
             self.girder_details_tab.set_design_mode(mode_str)
+        if hasattr(self, "cross_bracing_tab") and hasattr(self.cross_bracing_tab, "set_design_mode"):
+            self.cross_bracing_tab.set_design_mode(mode_str)
+        if hasattr(self, "end_diaphragm_tab") and hasattr(self.end_diaphragm_tab, "set_design_mode"):
+            self.end_diaphragm_tab.set_design_mode(mode_str)
 
     def has_unsaved_changes(self) -> bool:
         try:
