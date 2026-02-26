@@ -8,6 +8,11 @@ from PySide6.QtWidgets import QWidget, QVBoxLayout, QSplitter, QScrollArea, QHBo
 from PySide6.QtCore import Qt, QPropertyAnimation, QEasingCurve
 from .cad_cross_section import CrossSectionCADWidget
 from .cad_top_view import TopViewCADWidget
+from osdagbridge.desktop.cad.irc5_geometry import (
+    CrashBarrierGeometry,
+    MedianGeometry,
+    RailingGeometry,
+)
 
 class BridgeDualCADWidget(QWidget):
     """Split view widget showing both cross-section and top view with individual controls"""
@@ -151,7 +156,7 @@ class BridgeDualCADWidget(QWidget):
             KEY_SPAN, KEY_CARRIAGEWAY_WIDTH, KEY_SKEW_ANGLE, KEY_FOOTPATH,
             KEY_NO_OF_GIRDERS, KEY_GIRDER_SPACING, KEY_DECK_OVERHANG,
             KEY_DECK_THICKNESS, KEY_FOOTPATH_WIDTH, KEY_FOOTPATH_THICKNESS,
-            KEY_CROSS_BRACING_SPACING, KEY_INCLUDE_MEDIAN
+            KEY_CROSS_BRACING_SPACING, KEY_INCLUDE_MEDIAN, KEY_WEARING_COAT_THICKNESS, KEY_WEARING_COAT_DENSITY, KEY_WEARING_COAT_MATERIAL,
         )
         
         params = {}
@@ -191,6 +196,61 @@ class BridgeDualCADWidget(QWidget):
         # Map footpath thickness (mm)
         if KEY_FOOTPATH_THICKNESS in input_dict:
             params['footpath_thickness'] = float(input_dict[KEY_FOOTPATH_THICKNESS])
+            
+        if "crash_barrier_type" in input_dict:
+            params['crash_barrier_type'] = input_dict["crash_barrier_type"]
+            
+        if "crash_barrier_height" in input_dict:
+            params['crash_barrier_height'] = float(input_dict["crash_barrier_height"]) * 1000
+            
+        if "crash_barrier_width" in input_dict:
+            params['crash_barrier_width'] = float(input_dict["crash_barrier_width"]) * 1000
+            
+        if "railing_type" in input_dict:
+            railing_type = input_dict["railing_type"]
+            geom = RailingGeometry.get_geometry(railing_type)
+
+            params["railing_type"] = railing_type
+
+            if geom:
+                if "height" in geom:
+                    params["railing_height"] = geom["height"]
+
+                if "width" in geom:
+                    params["railing_width"] = geom["width"]
+
+
+        if "median_type" in input_dict:
+            median_type = input_dict["median_type"]
+            geom = MedianGeometry.get_geometry(median_type)
+
+            params["median_type"] = median_type
+
+            if geom:
+                if "median_width" in geom:
+                    params["median_width"] = geom["median_width"]
+
+                if "barrier_height" in geom:
+                    params["median_height"] = geom["barrier_height"]
+                elif "kerb_height" in geom:
+                    params["median_height"] = geom["kerb_height"]
+                    
+        # ---- Wearing Coat ----
+        if KEY_WEARING_COAT_THICKNESS in input_dict:
+            params[KEY_WEARING_COAT_THICKNESS] = float(
+                input_dict[KEY_WEARING_COAT_THICKNESS]
+            )
+
+        if KEY_WEARING_COAT_DENSITY in input_dict:
+            params[KEY_WEARING_COAT_DENSITY] = float(
+                input_dict[KEY_WEARING_COAT_DENSITY]
+            )
+
+        if KEY_WEARING_COAT_MATERIAL in input_dict:
+            params[KEY_WEARING_COAT_MATERIAL] = input_dict[
+                KEY_WEARING_COAT_MATERIAL
+            ]
+
         
         # Map footpath configuration
         if KEY_FOOTPATH in input_dict:

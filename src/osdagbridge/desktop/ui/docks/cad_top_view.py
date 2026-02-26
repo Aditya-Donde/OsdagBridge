@@ -10,12 +10,27 @@ from PySide6.QtCore import Qt, QRectF, QPointF
 from PySide6.QtGui import QPainter, QPen, QColor, QFont, QBrush, QPolygonF
 from .cad_cross_section import CrossSectionCADWidget
 
+# ---- CAD Grey Palette ----
+CAD_DARK_GREY   = QColor(90, 90, 90)
+CAD_MEDIUM_GREY = QColor(130, 130, 130)
+CAD_LIGHT_GREY  = QColor(180, 180, 180)
+CAD_HOVER_GREY  = QColor(110, 110, 110)
+GIRDER_HIGHLIGHT = CAD_HOVER_GREY
+CROSS_BRACING_HIGHLIGHT = CAD_HOVER_GREY
+END_DIAPHRAGM_HIGHLIGHT = CAD_HOVER_GREY
+BEARING_HIGHLIGHT = CAD_HOVER_GREY
+# ---- Dimension text spacing (CAD standard) ----
+DIM_TEXT_GAP = 15          # distance from dimension line to text
+DIM_STACK_GAP = 15         # vertical gap between stacked dimensions
+LEADER_TEXT_OFFSET = 25    # leader label distance
+
 
 class TopViewCADWidget(QWidget):
     """Widget for drawing bridge top view"""
     
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.show_dimensions = False
         self.setMouseTracking(True)  # enable mouse tracking for hover
         
         # top view hover tracking 
@@ -327,6 +342,11 @@ class TopViewCADWidget(QWidget):
 
     def update_params(self, params):
         self.params.update(params)
+
+        # Show dimensions once user provides inputs
+        if params:
+            self.show_dimensions = True
+
         self.update()
     
     def mouseMoveEvent(self, event):
@@ -747,10 +767,10 @@ class TopViewCADWidget(QWidget):
 
         
         # Highlight colors 
-        GIRDER_HIGHLIGHT = QColor(80, 140, 220) 
-        CROSS_BRACING_HIGHLIGHT = QColor(255, 180, 90)
-        END_DIAPHRAGM_HIGHLIGHT = QColor(180, 120, 80)
-        BEARING_HIGHLIGHT = QColor(255, 80, 80)
+        GIRDER_HIGHLIGHT = CAD_HOVER_GREY
+        CROSS_BRACING_HIGHLIGHT = CAD_HOVER_GREY
+        END_DIAPHRAGM_HIGHLIGHT = CAD_HOVER_GREY
+        BEARING_HIGHLIGHT = CAD_HOVER_GREY
         
         # Use base canvas dimensions for consistent drawing regardless of zoom
         width = 800 * self.zoom_level
@@ -913,7 +933,7 @@ class TopViewCADWidget(QWidget):
                 ))
 
         # Draw center line of bearings
-        bearing_color = BEARING_HIGHLIGHT if bearing_hovered else QColor(255, 0, 0)
+        bearing_color = BEARING_HIGHLIGHT if bearing_hovered else CAD_DARK_GREY
         bearing_width = 2.5 if bearing_hovered else 1.5
         
         pen = QPen(bearing_color, bearing_width, Qt.CustomDashLine)
@@ -981,12 +1001,13 @@ class TopViewCADWidget(QWidget):
                                         skew_rad, scale, left_bearing_base_x)
 
         # Add dimensions (always visible) and hover labels (only on hover)
-        self.add_clean_top_view_dimensions(
-            painter, girder_lines, girder_positions_y, scale, n, bracing_positions_x,
-            skew_rad, start_x_base, end_x_base, left_bearing_base_x, right_bearing_base_x,
-            top_extent, bottom_extent, left_top_x, right_top_x,
-            GIRDER_COLOR, CROSS_BRACING_COLOR, END_DIAPHRAGM_COLOR
-        )
+        if self.show_dimensions:
+            self.add_clean_top_view_dimensions(
+                painter, girder_lines, girder_positions_y, scale, n, bracing_positions_x,
+                skew_rad, start_x_base, end_x_base, left_bearing_base_x, right_bearing_base_x,
+                top_extent, bottom_extent, left_top_x, right_top_x,
+                GIRDER_COLOR, CROSS_BRACING_COLOR, END_DIAPHRAGM_COLOR
+            )
 
         # Notes removed for cleaner layout in split view
 
@@ -1117,7 +1138,8 @@ class TopViewCADWidget(QWidget):
         y_offset_last = last_girder_y - girder_positions_y[0]
         x_offset_last = y_offset_last * math.tan(skew_rad)
         
-        dim_y_base = last_girder_y + 50
+        #dim_y_base = last_girder_y + 50
+        dim_y_base = last_girder_y + 28
         
         # SPAN LENGTH dimension (always visible)
         dim_y1 = dim_y_base
@@ -1132,7 +1154,8 @@ class TopViewCADWidget(QWidget):
 
         # BRACING SPACING dimension (always visible)
         if self.params['cross_bracing_spacing'] > 0 and len(bracing_positions) > 1:
-            dim_y2 = dim_y_base + 15
+            #dim_y2 = dim_y_base + 15
+            dim_y2 = dim_y_base + DIM_STACK_GAP
             cb_spacing_m = self.params['cross_bracing_spacing'] / 1000
             
             x1_brace = bracing_positions[0] + x_offset_last
@@ -1163,8 +1186,9 @@ class TopViewCADWidget(QWidget):
             )
             
             # Girder Spacing label + value (3 lines)
-            label_x = max(x1_at_end, x2_at_end) + 25
-            label_y = (y1 + y2) / 2
+            label_x = max(x1_at_end, x2_at_end) + 12
+            LABEL_OFFSET = 14  # tweak 10–18 if needed
+            label_y = (y1 + y2) / 2 + LABEL_OFFSET
 
             label_text = f"Girder\nSpacing\n= {gs_m:.2f} m"
 
@@ -1172,22 +1196,22 @@ class TopViewCADWidget(QWidget):
                 painter, label_x, label_y,
                 label_text,
                 QColor(255, 255, 255, 250),
-                QColor(0, 100, 0), 9, True
+                CAD_DARK_GREY, 9, True
             )
 
         # CL OF BEARING labels - ALWAYS VISIBLE (moved outside hover condition)
-        label_y_bearing = top_extent - 15
+        label_y_bearing = top_extent - 8
         
-        left_label_x = left_top_x - 80
+        left_label_x = left_top_x - 45
         right_label_x = right_top_x - 45
         
         self.draw_text_with_background(painter, left_label_x, label_y_bearing,
                                     "CL of Bearing", QColor(255, 255, 255, 250),
-                                    QColor(200, 0, 0), 9, True)
+                                    CAD_DARK_GREY, 9, True)
         
         self.draw_text_with_background(painter, right_label_x, label_y_bearing,
                                     "CL of Bearing", QColor(255, 255, 255, 250),
-                                    QColor(200, 0, 0), 9, True)
+                                    CAD_DARK_GREY, 9, True)
 
         # HOVER LABELS (only shown when hovered) 
         
@@ -1198,10 +1222,12 @@ class TopViewCADWidget(QWidget):
             target_y = first_girder['y']
             
             label_x = target_x
-            label_y = target_y - 30
+            
+            label_y = target_y - LEADER_TEXT_OFFSET
+            label_offset = LEADER_TEXT_OFFSET
             
             self.draw_clean_leader_line(painter, target_x, target_y, label_x, label_y,
-                                    "Girder", girder_color, QColor(0, 100, 0))
+                                    "Girder", CAD_DARK_GREY, CAD_DARK_GREY)
 
         # 2. CROSS BRACING label - show only when cross bracing is hovered
         if n > 1 and len(bracing_positions) > 0 and self.hovered_top_view_element == 'cross_bracing':
@@ -1224,7 +1250,7 @@ class TopViewCADWidget(QWidget):
             label_y = target_y - label_offset
             
             self.draw_clean_leader_line(painter, target_x, target_y, label_x, label_y,
-                                    "Cross Bracing", cross_bracing_color, QColor(200, 100, 0))
+                                    "Cross Bracing", CAD_DARK_GREY, CAD_DARK_GREY)
         
         # 3. END DIAPHRAGM label - show only when end diaphragm is hovered
         if n > 1 and len(girder_positions_y) >= 2 and self.hovered_top_view_element == 'end_diaphragm':
@@ -1244,7 +1270,7 @@ class TopViewCADWidget(QWidget):
             label_y = target_y + 5
             
             self.draw_clean_leader_line(painter, target_x, target_y, label_x, label_y,
-                                    "End Diaphragm", end_diaphragm_color, QColor(139, 69, 19))
+                                    "End Diaphragm", CAD_DARK_GREY, QColor(139, 69, 19))
 
     def draw_dimension_arrow_with_extensions_up(self, painter, x1, y1, x2, y2, text, girder_y):
         """Dimension line with arrows and extension lines going UP to girder level (dimension below)"""
@@ -1290,7 +1316,7 @@ class TopViewCADWidget(QWidget):
         
         # Draw text BELOW the dimension line (above in terms of value since we add to y)
         text_x = (x1 + x2) / 2
-        text_y = y1 + 15  # Below the dimension line
+        text_y = y1 + DIM_TEXT_GAP  # Below the dimension line
         
         font = QFont('Arial', 9, QFont.Bold)
         painter.setFont(font)
@@ -1366,8 +1392,8 @@ class TopViewCADWidget(QWidget):
         mid_x = (x1 + x2) / 2
         mid_y = (y1 + y2) / 2
         
-        text_x = mid_x + 8
-        text_y = mid_y + 4
+        text_x = mid_x + DIM_TEXT_GAP
+        text_y = mid_y
         
         self.draw_text_with_background(painter, text_x, text_y, text,
                                     QColor(255, 255, 255, 240), QColor(0, 0, 0), 9, True)

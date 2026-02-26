@@ -430,6 +430,140 @@ class AdditionalInputs(QDialog):
             if hasattr(self.design_options_cont_tab, "reset_defaults"):
                 self.design_options_cont_tab.reset_defaults()
             return 
+        # Confirm save to the user (requested behavior). Use an explicit message box
+        # instance so it stays on top of the frameless dialog.
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Information)
+        box.setWindowTitle("Saved")
+        box.setText("Inputs saved successfully.")
+        box.setStandardButtons(QMessageBox.Ok)
+        box.setDefaultButton(QMessageBox.Ok)
+        box.setWindowModality(Qt.ApplicationModal)
+        box.exec()
+        """
+        Save additional inputs and close dialog.
+        Data will be collected by template_page via get_all_values().
+        """
+        self.accept()
+  
+    def get_all_values(self):
+        """
+        Return CAD-relevant numeric values from Additional Inputs.
+        This is consumed by InputDock / template_page.
+        """
+
+        from osdagbridge.core.utils.common import (
+            KEY_NO_OF_GIRDERS,
+            KEY_GIRDER_SPACING,
+            KEY_DECK_OVERHANG,
+            KEY_DECK_THICKNESS,
+            KEY_FOOTPATH_WIDTH,
+            KEY_FOOTPATH_THICKNESS,
+            KEY_CROSS_BRACING_SPACING,
+            KEY_WEARING_COAT_THICKNESS,
+            KEY_WEARING_COAT_DENSITY,
+            KEY_WEARING_COAT_MATERIAL,
+        )
+
+        values = {}
+
+        # ---- Typical Section tab ----
+        ts = self.typical_section_tab
+
+        if hasattr(ts, "no_of_girders") and ts.no_of_girders.text():
+            values[KEY_NO_OF_GIRDERS] = int(float(ts.no_of_girders.text()))
+
+        if hasattr(ts, "girder_spacing") and ts.girder_spacing.text():
+            values[KEY_GIRDER_SPACING] = float(ts.girder_spacing.text())
+
+        if hasattr(ts, "deck_overhang") and ts.deck_overhang.text():
+            values[KEY_DECK_OVERHANG] = float(ts.deck_overhang.text())
+
+        if hasattr(ts, "deck_thickness") and ts.deck_thickness.text():
+            values[KEY_DECK_THICKNESS] = float(ts.deck_thickness.text())
+
+        if hasattr(ts, "footpath_width") and ts.footpath_width.text():
+            values[KEY_FOOTPATH_WIDTH] = float(ts.footpath_width.text())
+
+        if hasattr(ts, "footpath_thickness") and ts.footpath_thickness.text():
+            values[KEY_FOOTPATH_THICKNESS] = float(ts.footpath_thickness.text())
+            
+        if hasattr(ts, "wearing_material"):
+            values[KEY_WEARING_COAT_MATERIAL] = ts.wearing_material.currentText()
+            
+        if hasattr(ts, "wearing_thickness") and ts.wearing_thickness.text():
+            values[KEY_WEARING_COAT_THICKNESS] = float(ts.wearing_thickness.text())
+
+        if hasattr(ts, "wearing_density") and ts.wearing_density.text():
+            values[KEY_WEARING_COAT_DENSITY] = float(ts.wearing_density.text())
+            
+         # ---- Crash Barrier ----
+        if hasattr(ts, "crash_barrier_type"):
+            values["crash_barrier_type"] = ts.crash_barrier_type.currentText()
+            
+        if hasattr(ts, "crash_barrier_width") and ts.crash_barrier_width.text():
+            values["crash_barrier_width"] = float(ts.crash_barrier_width.text())
+
+        if hasattr(ts, "crash_barrier_height") and ts.crash_barrier_height.text():
+            values["crash_barrier_height"] = float(ts.crash_barrier_height.text())
+            
+        # ---- Railing ----
+        if hasattr(ts, "railing_type"):
+            values["railing_type"] = ts.railing_type.currentText()
+            
+        if hasattr(ts, "railing_height") and ts.railing_height.text():
+            values["railing_height"] = float(ts.railing_height.text())
+            
+        if hasattr(ts, "railing_post_spacing") and ts.railing_post_spacing.text():
+            values["railing_post_spacing"] = float(ts.railing_post_spacing.text())
+            
+        if hasattr(ts, "railing_rail_count") and ts.railing_rail_count.text():
+            values["railing_rail_count"] = int(float(ts.railing_rail_count.text()))
+            
+        if hasattr(ts, "railing_post_dia") and ts.railing_post_dia.text():
+            values["railing_post_dia"] = float(ts.railing_post_dia.text())
+            
+        if hasattr(ts, "railing_top_width") and ts.railing_top_width.text():
+            values["railing_top_width"] = float(ts.railing_top_width.text())
+            
+        if hasattr(ts, "railing_bottom_width") and ts.railing_bottom_width.text():
+            values["railing_bottom_width"] = float(ts.railing_bottom_width.text())
+
+        # ---- Median ----
+        if hasattr(ts, "median_type"):
+            values["median_type"] = ts.median_type.currentText()
+            
+        if hasattr(ts, "median_width") and ts.median_width.text():
+            values["median_width"] = float(ts.median_width.text())
+        
+        if hasattr(ts, "median_kerb_height") and ts.median_kerb_height.text():
+            values["median_kerb_height"] = float(ts.median_kerb_height.text())
+            
+        if hasattr(ts, "median_top_width") and ts.median_top_width.text():
+            values["median_top_width"] = float(ts.median_top_width.text())
+            
+        if hasattr(ts, "median_bottom_width") and ts.median_bottom_width.text():
+            values["median_bottom_width"] = float(ts.median_bottom_width.text())
+            
+        if hasattr(ts, "median_barrier_height") and ts.median_barrier_height.text():
+            values["median_barrier_height"] = float(ts.median_barrier_height.text())
+            
+        if hasattr(ts, "median_post_height") and ts.median_post_height.text():
+            values["median_post_height"] = float(ts.median_post_height.text())
+        
+
+        # ---- Cross bracing spacing (Section Properties tab) ----
+        try:
+            bracing_tab = self.section_properties_tab.cross_bracing_details_tab
+            if hasattr(bracing_tab, "bracing_spacing") and bracing_tab.bracing_spacing.text():
+                values[KEY_CROSS_BRACING_SPACING] = float(bracing_tab.bracing_spacing.text())
+            
+        except Exception:
+            pass
+
+        return values
+
+
 
     def _build_sections_from_schema(self, parent_layout, sections, heading_style, label_style, field_width):
         for section in sections:

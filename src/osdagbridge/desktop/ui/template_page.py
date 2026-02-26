@@ -32,17 +32,59 @@ class CustomWindow(QWidget):
                 margin: 0px;
                 padding: 0px;
             }
-            QMenuBar {
-                background-color: #F4F4F4;
-                color: #000000;
-                padding: 0px;
+
+            /* ===== SLIM SCROLLBARS (GLOBAL) ===== */
+
+            QScrollBar:vertical {
+                width: 8px;
+                background: transparent;
+                margin: 0px;
             }
-            QMenuBar::item {
-                padding: 5px 10px;
+
+            QScrollBar::handle:vertical {
+                background: #B0B0B0;
+                min-height: 30px;
+                border-radius: 4px;
+            }
+
+            QScrollBar::handle:vertical:hover {
+                background: #8A8A8A;
+            }
+
+            QScrollBar::add-line:vertical,
+            QScrollBar::sub-line:vertical {
+                height: 0px;
+            }
+
+            QScrollBar::add-page:vertical,
+            QScrollBar::sub-page:vertical {
                 background: transparent;
             }
-            QMenuBar::item:selected {
-                background: #FFFFFF;
+
+            QScrollBar:horizontal {
+                height: 8px;
+                background: transparent;
+                margin: 0px;
+            }
+
+            QScrollBar::handle:horizontal {
+                background: #B0B0B0;
+                min-width: 30px;
+                border-radius: 4px;
+            }
+
+            QScrollBar::handle:horizontal:hover {
+                background: #8A8A8A;
+            }
+
+            QScrollBar::add-line:horizontal,
+            QScrollBar::sub-line:horizontal {
+                width: 0px;
+            }
+
+            QScrollBar::add-page:horizontal,
+            QScrollBar::sub-page:horizontal {
+                background: transparent;
             }
             """
         )
