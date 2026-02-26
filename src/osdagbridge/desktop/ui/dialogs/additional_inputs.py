@@ -227,6 +227,10 @@ class AdditionalInputs(QDialog):
 
         return widget
 
+    def set_member_properties_design_mode(self, mode_str: str):
+        if hasattr(self, "section_properties_tab") and hasattr(self.section_properties_tab, "set_design_mode"):
+            self.section_properties_tab.set_design_mode(mode_str)
+
     def _apply_defaults(self):
         """Apply defaults only to the currently visible top-level tab.
 

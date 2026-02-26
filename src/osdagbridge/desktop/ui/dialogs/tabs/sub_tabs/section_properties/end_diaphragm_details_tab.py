@@ -838,26 +838,27 @@ class EndDiaphragmDetailsTab(QWidget):
         grid.setColumnStretch(1, 1)
 
         properties = [
-            "Mass, M (Kg/m)",
-            "Sectional Area, a (cm2)",
-            "2nd Moment of Area, Iz (cm4)",
-            "2nd Moment of Area, Iy (cm4)",
-            "Radius of Gyration, rz (cm)",
-            "Radius of Gyration, ry (cm)",
-            "Elastic Modulus, Zz (cm3)",
-            "Elastic Modulus, Zy (cm3)",
-            "Plastic Modulus, Zuz (cm3)",
-            "Plastic Modulus, Zuy (cm3)"
+            ("Mass, M (Kg/m)", "Mass, M (Kg/m)"),
+            ("Sectional Area, a (cm2)", "Sectional Area, a (cm<sup>2</sup>)"),
+            ("2nd Moment of Area, Iz (cm4)", "2nd Moment of Area, I<sub>z</sub> (cm<sup>4</sup>)"),
+            ("2nd Moment of Area, Iy (cm4)", "2nd Moment of Area, I<sub>y</sub> (cm<sup>4</sup>)"),
+            ("Radius of Gyration, rz (cm)", "Radius of Gyration, r<sub>z</sub> (cm)"),
+            ("Radius of Gyration, ry (cm)", "Radius of Gyration, r<sub>y</sub> (cm)"),
+            ("Elastic Modulus, Zz (cm3)", "Elastic Modulus, Z<sub>z</sub> (cm<sup>3</sup>)"),
+            ("Elastic Modulus, Zy (cm3)", "Elastic Modulus, Z<sub>y</sub> (cm<sup>3</sup>)"),
+            ("Plastic Modulus, Zuz (cm3)", "Plastic Modulus, Z<sub>uz</sub> (cm<sup>3</sup>)"),
+            ("Plastic Modulus, Zuy (cm3)", "Plastic Modulus, Z<sub>uy</sub> (cm<sup>3</sup>)"),
         ]
 
         inputs = {}
-        for row, name in enumerate(properties):
-            label = self._create_label(name)
+        for row, (key, label_text) in enumerate(properties):
+            label = self._create_label(label_text)
+            label.setTextFormat(Qt.RichText)
             field = self._create_line_edit()
             field.setReadOnly(True)
             grid.addWidget(label, row, 0)
             grid.addWidget(field, row, 1)
-            inputs[name] = field
+            inputs[key] = field
 
         layout.addLayout(grid)
         return box, inputs

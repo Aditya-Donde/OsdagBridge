@@ -165,10 +165,11 @@ class SectionPropertiesTab(QWidget):
             self._lock_overlay.setGeometry(self._content_frame.rect())
 
     def set_editable_mode(self, editable: bool) -> None:
-        self.section_tabs.setEnabled(editable)
-        self._lock_overlay.setVisible(not editable)
-        if not editable:
-            self._lock_overlay.raise_()
+        pass
+
+    def set_design_mode(self, mode_str: str) -> None:
+        if hasattr(self, "girder_details_tab") and hasattr(self.girder_details_tab, "set_design_mode"):
+            self.girder_details_tab.set_design_mode(mode_str)
 
     def has_unsaved_changes(self) -> bool:
         try:

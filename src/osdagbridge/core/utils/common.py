@@ -223,6 +223,12 @@ VALUES_MEDIAN_TYPE = [
 ]
 VALUES_GIRDER_TYPE = ["IS Standard Rolled Beam", "Plate Girder"]
 VALUES_GIRDER_SYMMETRY = ["Symmetrical", "Unsymmetrical"]
+VALUES_GIRDER_SUPPORT_TYPE = [
+    "Major Laterally Supported",
+    "Minor Laterally Unsupported",
+    "Major Laterally Unsupported",
+]
+
 VALUES_OPTIMIZATION_MODE = ["Optimized", "Customized", "All"]
 VALUES_TORSIONAL_RESTRAINT = [
     "Fully Restrained",
