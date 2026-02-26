@@ -21,45 +21,6 @@ from osdagbridge.core.utils.common import (
 )
 import random
 
-CRASH_BARRIER_TYPES = {
-
-    # === RCC BARRIERS ===
-    "IRC 5 - RCC Crash Barrier": {
-        "type": "rcc",
-        "total_height": 750.0,
-        "top_width": 150.0,
-        "bottom_width": 300.0,
-        "base_vertical": 100.0,
-        "mid_offset": 300.0,
-    },
-
-    "IRC 5 - High Containment RCC Crash Barrier": {
-        "type": "rcc",
-        "total_height": 900.0,
-        "top_width": 175.0,
-        "bottom_width": 350.0,
-        "base_vertical": 100.0,
-        "mid_offset": 350.0,
-    },
-
-    # === METALLIC BARRIERS ===
-    "IRC 5 - Metallic Crash Barrier with Single W-Beam": {
-        "type": "metallic",
-        "post_height": 750.0,
-        "kerb_height": 150.0,
-        "w_beams": 1,
-    },
-
-    "IRC 5 - Metallic Crash Barrier with Double W-Beam": {
-        "type": "metallic",
-        "post_height": 750.0,
-        "kerb_height": 150.0,
-        "w_beams": 2,
-    },
-}
-
-
-
 class CrossSectionCADWidget(QWidget):
     """Widget for drawing bridge cross-section view"""
     # ===== SHARED CAD COLORS =====
@@ -81,7 +42,7 @@ class CrossSectionCADWidget(QWidget):
         self.setMouseTracking(True)  # enable mouse tracking for hover
         self.concrete_brush = self.create_concrete_brush()
         self.crash_barrier_params = {}
-        self.crash_barrier_type = "IRC 5 - High Containment RCC Crash Barrier"
+        self.crash_barrier_type = "IRC 5 - RCC Crash Barrier"
         self.railing_type = None
         self.median_type = None
         # hover label regions: list of (QRectF, text, bg_color, text_color)
@@ -423,6 +384,10 @@ class CrossSectionCADWidget(QWidget):
 
         if "crash_barrier_geometry" in params:
             self.crash_barrier_params = params["crash_barrier_geometry"]
+
+        # Store crash barrier type so draw_crash_barrier() can dispatch on it
+        if "crash_barrier_type" in params:
+            self.crash_barrier_type = params["crash_barrier_type"]
 
         if "railing_type" in params:
             self.railing_type = params["railing_type"]
@@ -2108,24 +2073,27 @@ class CrossSectionCADWidget(QWidget):
         painter.drawPolygon(right_stiffener)
 
     def draw_crash_barrier(self, painter, x, y, scale, side='left'):
-
+        """Draw crash barrier cross-section using IRC 5 geometry spec.
+        """
         cb_type = self.crash_barrier_type
-        cb = CRASH_BARRIER_TYPES.get(cb_type)
+        geo = CrashBarrierGeometry.get_geometry(cb_type)
 
-        if not cb:
+        if not geo:
             return
 
-    
-        # ================= RCC CRASH BARRIER =================
-        if cb["type"] == "rcc":
-            TOTAL_HEIGHT = cb["total_height"]
-            TOP_WIDTH = cb["top_width"]
-            BOTTOM_WIDTH = cb["bottom_width"]
-            BASE_VERTICAL = cb["base_vertical"]
-            MID_OFFSET = cb["mid_offset"]
+        barrier_color = QColor(126, 126, 126)
+        if self.hovered_element == 'crash_barrier':
+            barrier_color = QColor(255, 250, 220)
+
+        # ------- RCC CRASH BARRIER --------
+        if geo["type"] == "rcc":
+            TOTAL_HEIGHT = geo["total_height"]
+            BOTTOM_WIDTH = geo["bottom_width"]
+            BASE_VERTICAL = geo["base_vertical"]
+            MID_OFFSET = geo["mid_offset"]
 
             h = TOTAL_HEIGHT * scale
-            bottom_w = self.params['crash_barrier_width'] * scale
+            bottom_w = BOTTOM_WIDTH * scale
             base_v = BASE_VERTICAL * scale
 
             y_bottom = y
@@ -2133,80 +2101,89 @@ class CrossSectionCADWidget(QWidget):
             y_mid = y - MID_OFFSET * scale
             y_top = y - h
 
-            right_at_mid = 250 * scale
-            left_at_top = 50 * scale
-            right_at_top = 225 * scale
+            
+            # Reference shape is High Containment (bottom_width=350 mm).
+            # All offsets scale proportionally to the actual bottom_width.
+            shape_scale  = BOTTOM_WIDTH / 350.0
+            right_at_mid = 250 * scale * shape_scale   # outer wall x at inflection
+            left_at_top  = 50  * scale * shape_scale   # inner wall x at top (lean)
+            right_at_top = 225 * scale * shape_scale   # outer wall x at top
 
-            barrier_color = QColor(126, 126, 126)
-
-            if self.hovered_element == 'crash_barrier':
-                barrier_color = QColor(255, 250, 220)
+            painter.setBrush(QBrush(barrier_color))
+            painter.setPen(QPen(QColor(0, 0, 0), max(1.5, scale * 1.5)))
 
             if side == 'left':
+                # Same as median RIGHT barrier (carriageway-facing curve on the right)
                 points = [
-                    QPointF(x, y_bottom),
-                    QPointF(x + bottom_w, y_bottom),
-                    QPointF(x + bottom_w, y_base_top),
-                    QPointF(x + right_at_mid, y_mid),
-                    QPointF(x + right_at_top, y_top),
-                    QPointF(x + left_at_top, y_top),
-                    QPointF(x, y_base_top),
+                    QPointF(x, y_bottom),    # BL
+                    QPointF(x + bottom_w, y_bottom),    # BR
+                    QPointF(x + bottom_w, y_base_top),  # R1 (outer, vertical base)
+                    QPointF(x + right_at_mid, y_mid),       # R2 (outer wall kink)
+                    QPointF(x + right_at_top, y_top),       # TR (outer wall top)
+                    QPointF(x + left_at_top, y_top),       # TL (inner wall top, leans in)
+                    QPointF(x, y_base_top),  # L1 (inner, vertical base)
                 ]
                 hover_rect = QRectF(x, y_top, bottom_w, h)
             else:
-                x_right = x
-                x_left = x - bottom_w
+                # Same as median LEFT barrier (carriageway-facing curve on the left)
+                # x is the RIGHT edge of this barrier
                 points = [
-                    QPointF(x_left, y_bottom),
-                    QPointF(x_right, y_bottom),
-                    QPointF(x_right, y_base_top),
-                    QPointF(x_right - left_at_top, y_top),
-                    QPointF(x_right - right_at_top, y_top),
-                    QPointF(x_right - right_at_mid, y_mid),
-                    QPointF(x_left, y_base_top),
+                    QPointF(x - bottom_w, y_bottom),    # BL
+                    QPointF(x, y_bottom),    # BR
+                    QPointF(x, y_base_top),  # R1 (inner, vertical base)
+                    QPointF(x - left_at_top, y_top),       # TR (inner wall top, leans in)
+                    QPointF(x - right_at_top, y_top),       # TL (outer wall top)
+                    QPointF(x - right_at_mid, y_mid),       # L2 (outer wall kink)
+                    QPointF(x - bottom_w, y_base_top),  # L1 (outer, vertical base)
                 ]
-                hover_rect = QRectF(x_left, y_top, bottom_w, h)
+                hover_rect = QRectF(x - bottom_w, y_top, bottom_w, h)
 
             self.cross_section_hover_zones.append((hover_rect, 'crash_barrier'))
-            painter.setBrush(QBrush(barrier_color))
-            painter.setPen(QPen(QColor(0, 0, 0), max(1.5, scale * 1.5)))
             painter.drawPolygon(QPolygonF(points))
             return
 
-        # ================= METALLIC W-BEAM =================
-        # Simple, visible, correct representation (posts + beams)
 
-        post_h = 750 * scale
-        kerb_h = 150 * scale
-        beam_spacing = 200 * scale
-        beam_thickness = 20 * scale
-        width = 350 * scale
+        # ================= METALLIC W-BEAM CRASH BARRIER =================
+        # Shape: kerb rectangle at deck level + thin post on top + w_beams horizontal beams
+        post_h_mm   = geo.get("post_height", 750)
+        kerb_h_mm   = geo.get("kerb_height", 150)
+        n_beams     = geo.get("w_beams", 1)
 
-        barrier_color = QColor(0, 120, 255) if "Single" in cb_type else QColor(255, 120, 0)
+        post_h  = post_h_mm  * scale
+        kerb_h  = kerb_h_mm  * scale
+        # Use crash_barrier_width param for total footprint width
+        width   = self.params.get('crash_barrier_width', 350) * scale
+        post_w  = max(4, 25 * scale)           # post cross-section width
+        beam_t  = max(3, 18 * scale)           # W-beam thickness
+        beam_w  = max(10, width * 0.7)         # W-beam length
 
+        metallic_post_color = QColor(80, 80, 200) if n_beams == 1 else QColor(200, 100, 0)
         if self.hovered_element == 'crash_barrier':
-            barrier_color = QColor(255, 250, 220)
+            metallic_post_color = QColor(255, 250, 220)
 
         if side == 'left':
             base_x = x
         else:
             base_x = x - width
 
-        # Kerb
+        # Kerb rectangle
         painter.setBrush(QBrush(QColor(180, 180, 180)))
-        painter.setPen(QPen(Qt.black, 1.2))
+        painter.setPen(QPen(Qt.black, max(1.0, scale)))
         painter.drawRect(QRectF(base_x, y - kerb_h, width, kerb_h))
 
-        # Posts
-        post_x = base_x + width / 2
-        painter.setBrush(QBrush(barrier_color))
-        painter.drawRect(QRectF(post_x - 10 * scale, y - kerb_h - post_h, 20 * scale, post_h))
+        # Vertical post (centred on kerb)
+        post_x = base_x + (width - post_w) / 2
+        painter.setBrush(QBrush(metallic_post_color))
+        painter.setPen(QPen(Qt.black, max(1.0, scale)))
+        painter.drawRect(QRectF(post_x, y - kerb_h - post_h, post_w, post_h))
 
-        # W-beams
-        beams = 1 if "Single" in cb_type else 2
-        for i in range(beams):
-            beam_y = y - kerb_h - 200 * scale - i * beam_spacing
-            painter.drawRect(QRectF(base_x + 20 * scale, beam_y, width - 40 * scale, beam_thickness))
+        # Horizontal W-beams – evenly spaced along post height
+        beam_x  = base_x + (width - beam_w) / 2
+        spacing = post_h / (n_beams + 1)
+        painter.setBrush(QBrush(metallic_post_color))
+        for i in range(n_beams):
+            beam_y = y - kerb_h - spacing * (i + 1) - beam_t / 2
+            painter.drawRect(QRectF(beam_x, beam_y, beam_w, beam_t))
 
         hover_rect = QRectF(base_x, y - kerb_h - post_h, width, post_h + kerb_h)
         self.cross_section_hover_zones.append((hover_rect, 'crash_barrier'))

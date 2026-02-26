@@ -1626,6 +1626,10 @@ class TypicalSectionDetailsTab(QWidget):
         # Recalculate AFTER geometry is locked
         self.recalculate_girders()
 
+        # Refresh CAD preview to show the newly selected barrier shape
+        self._update_cad_preview()
+
+
     def on_railing_load_mode_changed(self, mode):
         if not hasattr(self, "railing_load_value"):
             return
