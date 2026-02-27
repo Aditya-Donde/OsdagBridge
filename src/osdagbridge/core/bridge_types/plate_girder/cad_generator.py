@@ -47,6 +47,7 @@ from osdagbridge.core.bridge_components.super_structure.median.builder import (
 from osdagbridge.core.bridge_components.super_structure.cross_bracing.builder import (
     build_cross_bracings
 )
+from . import defaults as pg_defaults
 
 # Component keys for CAD organization
 KEY_CAD_GIRDER = "Girder"
@@ -134,143 +135,127 @@ class PlateGirderCADGenerator:
             bridge_type: Type of bridge module (default: Plate Girder)
         """
         self.bridge_type = bridge_type
+        self.span_length_L = pg_defaults.DEFAULT_CAD_SPAN_LENGTH_L
+        self.girder_section_d = pg_defaults.DEFAULT_CAD_GIRDER_SECTION_D
+        self.girder_section_bf = pg_defaults.DEFAULT_CAD_GIRDER_SECTION_BF
+        self.girder_section_bf_b = pg_defaults.DEFAULT_CAD_GIRDER_SECTION_BF_B
+        self.girder_section_tf = pg_defaults.DEFAULT_CAD_GIRDER_SECTION_TF
+        self.girder_section_tf_b = pg_defaults.DEFAULT_CAD_GIRDER_SECTION_TF_B
+        self.girder_section_tw = pg_defaults.DEFAULT_CAD_GIRDER_SECTION_TW
+        self.num_girders = pg_defaults.DEFAULT_CAD_NUM_GIRDERS
+        self.girder_spacing = pg_defaults.DEFAULT_CAD_GIRDER_SPACING
+        self.skew_angle = pg_defaults.DEFAULT_CAD_SKEW_ANGLE
 
-        # GIRDER PARAMETERS
-        self.span_length_L = 25000           # Total span length (mm)
+        self.carriageway_width = pg_defaults.DEFAULT_CAD_CARRIAGEWAY_WIDTH
+        self.deck_thickness = pg_defaults.DEFAULT_CAD_DECK_THICKNESS
+        self.footpath_config = pg_defaults.DEFAULT_CAD_FOOTPATH_CONFIG
+        self.footpath_width = pg_defaults.DEFAULT_CAD_FOOTPATH_WIDTH
+        self.railing_width = pg_defaults.DEFAULT_CAD_RAILING_WIDTH
 
-        self.girder_section_d = 900          # Clear web depth (mm)
-        self.girder_section_bf = 500         # Top flange width (mm)
-        self.girder_section_bf_b = 500       # Bottom flange width (mm)
-        self.girder_section_tf = 260         # Top flange thickness (mm)
-        self.girder_section_tf_b = 260       # Bottom flange thickness (mm)
-        self.girder_section_tw = 100         # Web thickness (mm)
+        self.barrier_type = pg_defaults.DEFAULT_CAD_BARRIER_TYPE
+        self.crash_barrier_subtype = pg_defaults.DEFAULT_CAD_CRASH_BARRIER_SUBTYPE
+        self.enable_median = pg_defaults.DEFAULT_CAD_ENABLE_MEDIAN
+        self.median_type = pg_defaults.DEFAULT_CAD_MEDIAN_TYPE
+        self.rail_count = pg_defaults.DEFAULT_CAD_RAIL_COUNT
+        self.railing_type = pg_defaults.DEFAULT_CAD_RAILING_TYPE
 
-        self.num_girders = 5                 # Number of girders
-        self.girder_spacing = 2750           # Center-to-center spacing (mm)
+        self.include_intermediate_stiffeners = (
+            pg_defaults.DEFAULT_CAD_INCLUDE_INTERMEDIATE_STIFFENERS
+        )
+        self.intermediate_stiffener_spacing = (
+            pg_defaults.DEFAULT_CAD_INTERMEDIATE_STIFFENER_SPACING
+        )
+        self.intermediate_stiffener_thickness = (
+            pg_defaults.DEFAULT_CAD_INTERMEDIATE_STIFFENER_THICKNESS
+        )
+        self.intermediate_stiffener_outstand = (
+            pg_defaults.DEFAULT_CAD_INTERMEDIATE_STIFFENER_OUTSTAND
+        )
+        self.num_end_stiffener_pairs = pg_defaults.DEFAULT_CAD_NUM_END_STIFFENER_PAIRS
+        self.end_stiffener_thickness = pg_defaults.DEFAULT_CAD_END_STIFFENER_THICKNESS
+        self.end_stiffener_outstand = pg_defaults.DEFAULT_CAD_END_STIFFENER_OUTSTAND
+        self.include_longitudinal_stiffeners = (
+            pg_defaults.DEFAULT_CAD_INCLUDE_LONGITUDINAL_STIFFENERS
+        )
+        self.num_longitudinal_stiffeners = (
+            pg_defaults.DEFAULT_CAD_NUM_LONGITUDINAL_STIFFENERS
+        )
+        self.longitudinal_stiffener_thickness = (
+            pg_defaults.DEFAULT_CAD_LONGITUDINAL_STIFFENER_THICKNESS
+        )
+        self.longitudinal_stiffener_outstand = (
+            pg_defaults.DEFAULT_CAD_LONGITUDINAL_STIFFENER_OUTSTAND
+        )
 
-        # GEOMETRY PARAMETERS
-        self.skew_angle = 0                  # Skew angle in degrees (0 = no skew)
-
-        # DECK PARAMETERS
-        self.carriageway_width = 12000       # Width of traffic lanes (mm)
-        self.deck_thickness = 400            # Deck slab thickness (mm)
-
-        self.footpath_config = "BOTH"        # "NONE" / "LEFT" / "RIGHT" / "BOTH"
-        self.footpath_width = 1500           # Footpath width (mm)
-        self.railing_width = 300             # Railing width (mm)
-
-        # CRASH BARRIER PARAMETERS
-        self.barrier_type = "Semi-Rigid"          # "Rigid", "Semi-Rigid", or "Flexible"
-        self.crash_barrier_subtype = "Double W-beam"  # Specific barrier design
-        
-        # Options:
-        # - Rigid: "IRC-5R", "High Containment"
-        # - Semi-Rigid/Metallic: "Single W-beam", "Double W-beam"
-
-        # MEDIAN PARAMETERS
-        self.enable_median = True            # Include median barrier
-        self.median_type = "Metallic Crash Barrier"  
-        # Options: "Raised Kerb", "RCC Crash Barrier", "Metallic Crash Barrier"
-
-        # RAILING PARAMETERS
-        self.rail_count = 3                  # Number of rails
-        self.railing_type = "rcc"            # "rcc" or "steel"
-
-        # STIFFENER PARAMETERS
-        
-        # Intermediate stiffener configuration
-        self.include_intermediate_stiffeners = True  # Include intermediate stiffeners
-        self.intermediate_stiffener_spacing = 2000    # Spacing between intermediate stiffeners (mm)
-        self.intermediate_stiffener_thickness = 20   # Intermediate stiffener thickness (mm)
-        self.intermediate_stiffener_outstand = None  # outstand for intermediate stiffeners
-        
-        # End stiffener configuration 
-        self.num_end_stiffener_pairs = 4     # Number of end stiffener pairs on each end
-        self.end_stiffener_thickness = 30    # End stiffener thickness (mm)
-        self.end_stiffener_outstand = None   # outstand for end stiffeners
-        
-        # Longitudinal stiffener configuration
-        self.include_longitudinal_stiffeners = True # Whether to include longitudinal stiffeners
-        self.num_longitudinal_stiffeners = 2        # Number of longitudinal stiffeners (1 or 2)
-        self.longitudinal_stiffener_thickness = 20  # Thickness of longitudinal stiffeners (mm)
-        self.longitudinal_stiffener_outstand = None # outstand for longitudinal stiffeners
-
-        # CROSS BRACING PARAMETERS
-        self.cross_bracing_spacing = 4000    # Spacing between bracing frames (mm)
-
-        self.bracing_type = "X"              # "X" or "K"
-        self.x_bracket_option = "BOTH"       # For X-bracing: "NONE", "UPPER", "LOWER", "BOTH"
-        self.k_top_bracket = True            # For K-bracing: include top bracket
-
-        # Diagonal members section configuration
-        self.diagonal_section_type = "ANGLE"
+        self.cross_bracing_spacing = pg_defaults.DEFAULT_CAD_CROSS_BRACING_SPACING
+        self.bracing_type = pg_defaults.DEFAULT_CAD_BRACING_TYPE
+        self.x_bracket_option = pg_defaults.DEFAULT_CAD_X_BRACKET_OPTION
+        self.k_top_bracket = pg_defaults.DEFAULT_CAD_K_TOP_BRACKET
+        self.diagonal_section_type = pg_defaults.DEFAULT_CAD_DIAGONAL_SECTION_TYPE
         self.diagonal_section_dims = {
-            "leg_h": 100,                    # Vertical leg height (longer leg)
-            "leg_w": 50,                     # Horizontal leg width (shorter leg)
-            "connection_type": "LONGER_LEG"  # "LONGER_LEG" or "SHORTER_LEG"
+            "leg_h": pg_defaults.DEFAULT_CAD_DIAGONAL_SECTION_LEG_H,
+            "leg_w": pg_defaults.DEFAULT_CAD_DIAGONAL_SECTION_LEG_W,
+            "connection_type": pg_defaults.DEFAULT_CAD_DIAGONAL_SECTION_CONNECTION_TYPE,
         }
-        self.diagonal_thickness = 5          # Diagonal member thickness (mm)
-
-        # Top chord/bracket section configuration
-        self.top_chord_section_type = "DOUBLE_CHANNEL"
+        self.diagonal_thickness = pg_defaults.DEFAULT_CAD_DIAGONAL_THICKNESS
+        self.top_chord_section_type = pg_defaults.DEFAULT_CAD_TOP_CHORD_SECTION_TYPE
         self.top_chord_section_dims = {
-            "leg_h": 80,
-            "leg_w": 40,
-            "connection_type": "LONGER_LEG"
+            "leg_h": pg_defaults.DEFAULT_CAD_TOP_CHORD_SECTION_LEG_H,
+            "leg_w": pg_defaults.DEFAULT_CAD_TOP_CHORD_SECTION_LEG_W,
+            "connection_type": pg_defaults.DEFAULT_CAD_TOP_CHORD_SECTION_CONNECTION_TYPE,
         }
-        self.top_chord_thickness = 5         # Top chord thickness (mm)
-
-        # Bottom chord/bracket section configuration
-        self.bottom_chord_section_type = "ANGLE"
+        self.top_chord_thickness = pg_defaults.DEFAULT_CAD_TOP_CHORD_THICKNESS
+        self.bottom_chord_section_type = pg_defaults.DEFAULT_CAD_BOTTOM_CHORD_SECTION_TYPE
         self.bottom_chord_section_dims = {
-            "leg_h": 80,
-            "leg_w": 40,
-            "connection_type": "LONGER_LEG"
+            "leg_h": pg_defaults.DEFAULT_CAD_BOTTOM_CHORD_SECTION_LEG_H,
+            "leg_w": pg_defaults.DEFAULT_CAD_BOTTOM_CHORD_SECTION_LEG_W,
+            "connection_type": pg_defaults.DEFAULT_CAD_BOTTOM_CHORD_SECTION_CONNECTION_TYPE,
         }
-        self.bottom_chord_thickness = 5      # Bottom chord thickness (mm)
+        self.bottom_chord_thickness = pg_defaults.DEFAULT_CAD_BOTTOM_CHORD_THICKNESS
 
-        # END DIAPHRAGM PARAMETERS
-        self.end_diaphragm_type = "Cross Bracing"   # Options: "Cross Bracing", "Rolled Beam", "Welded Beam"
-        self.end_diaphragm_spacing = 100     # Longitudinal offset from bridge ends (mm)
-        
-        # For "Cross Bracing" type end diaphragms - separate section configuration
-        self.end_diaphragm_bracing_type = "K"  # "X" or "K"
-        
-        # End diaphragm diagonal members
-        self.end_diaphragm_diagonal_section_type = "ANGLE"
+        self.end_diaphragm_type = pg_defaults.DEFAULT_CAD_END_DIAPHRAGM_TYPE
+        self.end_diaphragm_spacing = pg_defaults.DEFAULT_CAD_END_DIAPHRAGM_SPACING
+        self.end_diaphragm_bracing_type = pg_defaults.DEFAULT_CAD_END_DIAPHRAGM_BRACING_TYPE
+        self.end_diaphragm_diagonal_section_type = (
+            pg_defaults.DEFAULT_CAD_END_DIAPHRAGM_DIAGONAL_SECTION_TYPE
+        )
         self.end_diaphragm_diagonal_section_dims = {
-            "leg_h": 100,
-            "leg_w": 50,
-            "connection_type": "LONGER_LEG"
+            "leg_h": pg_defaults.DEFAULT_CAD_END_DIAPHRAGM_DIAGONAL_SECTION_LEG_H,
+            "leg_w": pg_defaults.DEFAULT_CAD_END_DIAPHRAGM_DIAGONAL_SECTION_LEG_W,
+            "connection_type": pg_defaults.DEFAULT_CAD_END_DIAPHRAGM_DIAGONAL_SECTION_CONNECTION_TYPE,
         }
-        self.end_diaphragm_diagonal_thickness = 5
-        
-        # End diaphragm top chord
-        self.end_diaphragm_top_chord_section_type = "CHANNEL"
+        self.end_diaphragm_diagonal_thickness = (
+            pg_defaults.DEFAULT_CAD_END_DIAPHRAGM_DIAGONAL_THICKNESS
+        )
+        self.end_diaphragm_top_chord_section_type = (
+            pg_defaults.DEFAULT_CAD_END_DIAPHRAGM_TOP_CHORD_SECTION_TYPE
+        )
         self.end_diaphragm_top_chord_section_dims = {
-            "leg_h": 80,
-            "leg_w": 40,
-            "connection_type": "LONGER_LEG"
+            "leg_h": pg_defaults.DEFAULT_CAD_END_DIAPHRAGM_TOP_CHORD_SECTION_LEG_H,
+            "leg_w": pg_defaults.DEFAULT_CAD_END_DIAPHRAGM_TOP_CHORD_SECTION_LEG_W,
+            "connection_type": pg_defaults.DEFAULT_CAD_END_DIAPHRAGM_TOP_CHORD_SECTION_CONNECTION_TYPE,
         }
-        self.end_diaphragm_top_chord_thickness = 5
-        
-        # End diaphragm bottom chord
-        self.end_diaphragm_bottom_chord_section_type = "ANGLE"
+        self.end_diaphragm_top_chord_thickness = (
+            pg_defaults.DEFAULT_CAD_END_DIAPHRAGM_TOP_CHORD_THICKNESS
+        )
+        self.end_diaphragm_bottom_chord_section_type = (
+            pg_defaults.DEFAULT_CAD_END_DIAPHRAGM_BOTTOM_CHORD_SECTION_TYPE
+        )
         self.end_diaphragm_bottom_chord_section_dims = {
-            "leg_h": 80,
-            "leg_w": 40,
-            "connection_type": "LONGER_LEG"
+            "leg_h": pg_defaults.DEFAULT_CAD_END_DIAPHRAGM_BOTTOM_CHORD_SECTION_LEG_H,
+            "leg_w": pg_defaults.DEFAULT_CAD_END_DIAPHRAGM_BOTTOM_CHORD_SECTION_LEG_W,
+            "connection_type": pg_defaults.DEFAULT_CAD_END_DIAPHRAGM_BOTTOM_CHORD_SECTION_CONNECTION_TYPE,
         }
-        self.end_diaphragm_bottom_chord_thickness = 5
-        
-        # For "Rolled Beam" or "Welded Beam" types (unchanged)
-        self.end_diaphragm_section = "I_SECTION"
+        self.end_diaphragm_bottom_chord_thickness = (
+            pg_defaults.DEFAULT_CAD_END_DIAPHRAGM_BOTTOM_CHORD_THICKNESS
+        )
+        self.end_diaphragm_section = pg_defaults.DEFAULT_CAD_END_DIAPHRAGM_SECTION
         self.end_diaphragm_dims = {
-            "depth": 800,
-            "flange_width": 250,
-            "web_thickness": 12,
-            "flange_thickness": 100
-        }       
+            "depth": pg_defaults.DEFAULT_CAD_END_DIAPHRAGM_DEPTH,
+            "flange_width": pg_defaults.DEFAULT_CAD_END_DIAPHRAGM_FLANGE_WIDTH,
+            "web_thickness": pg_defaults.DEFAULT_CAD_END_DIAPHRAGM_WEB_THICKNESS,
+            "flange_thickness": pg_defaults.DEFAULT_CAD_END_DIAPHRAGM_FLANGE_THICKNESS,
+        }
 
     # MAIN CAD GENERATION
 
@@ -365,7 +350,7 @@ class PlateGirderCADGenerator:
             include_intermediate_stiffeners=self.include_intermediate_stiffeners,
             intermediate_stiffener_spacing=self.intermediate_stiffener_spacing,
             intermediate_stiffener_thickness=self.intermediate_stiffener_thickness,
-            chamfer_length=40,
+            chamfer_length=pg_defaults.DEFAULT_CAD_CHAMFER_LENGTH_MM,
             num_end_stiffener_pairs=self.num_end_stiffener_pairs,
             T_es=self.end_stiffener_thickness,
             intermediate_stiffener_outstand=self.intermediate_stiffener_outstand,
@@ -539,9 +524,9 @@ class PlateGirderCADGenerator:
 
         # Determine railing width
         if selected_railing_key == KEY_RAILING_TYPE[1]:  # Steel
-            actual_railing_width = 200
+            actual_railing_width = pg_defaults.DEFAULT_STEEL_RAILING_WIDTH_MM
         else:
-            actual_railing_width = 275
+            actual_railing_width = pg_defaults.DEFAULT_RCC_RAILING_WIDTH_MM
 
         # Populate design dictionary based on barrier type
         if self.barrier_type == "Rigid":
@@ -553,7 +538,10 @@ class PlateGirderCADGenerator:
                 design_dict={},
                 crash_barrier_type=KEY_RIGID_CRASH_BARRIER_TYPE[rigid_subtype_idx]
             )
-            actual_base_width = design_dict.get("crash_barrier_width", 450)
+            actual_base_width = design_dict.get(
+                "crash_barrier_width",
+                pg_defaults.DEFAULT_IRC_RIGID_BARRIER_BASE_WIDTH_MM,
+            )
         else:
             # Semi-Rigid / Metallic barrier
             metallic_subtype_idx = metallic_subtype_map.get(self.crash_barrier_subtype, 0)
@@ -564,15 +552,18 @@ class PlateGirderCADGenerator:
                 design_dict={},
                 crash_barrier_type=KEY_METALLIC_CRASH_BARRIER_TYPE[metallic_subtype_idx]
             )
-            actual_base_width = design_dict.get("kerb_bottom_width", 550)
+            actual_base_width = design_dict.get(
+                "kerb_bottom_width",
+                pg_defaults.DEFAULT_IRC_METALLIC_BARRIER_BASE_WIDTH_MM,
+            )
         
         # Ensure railing parameters are in design dictionary
         if selected_railing_key == KEY_RAILING_TYPE[1]:
             design_dict["railing_type"] = "steel"
-            design_dict["railing_width"] = 200
+            design_dict["railing_width"] = pg_defaults.DEFAULT_STEEL_RAILING_WIDTH_MM
         else:
             design_dict["railing_type"] = "RCC"
-            design_dict["railing_width"] = 275
+            design_dict["railing_width"] = pg_defaults.DEFAULT_RCC_RAILING_WIDTH_MM
 
         # STEP 7: BUILD DECK SYSTEM
         

@@ -31,6 +31,17 @@ from osdagbridge.core.utils.common import (
 
 from .bridge_geometry import BridgeGeometry, CrossSectionLayout
 from .cad_generator import export_step
+from .defaults import (
+    DEFAULT_CARRIAGEWAY_WIDTH_M,
+    DEFAULT_DECK_THICKNESS_MM,
+    DEFAULT_GEOMETRY_TOLERANCE,
+    DEFAULT_GIRDER_SYMMETRY,
+    DEFAULT_MEDIAN_WIDTH_M,
+    DEFAULT_NO_OF_GIRDERS,
+    DEFAULT_SKEW_ANGLE_DEG,
+    DEFAULT_SPAN_M,
+    DEFAULT_STRUCTURE_NAME,
+)
 from .designer import design
 from .initial_sizing import BridgeConfigurationSolver, preliminary_sizing
 from .report_generator import section_report
@@ -166,13 +177,13 @@ class PlateGirderBridge:
             "structure_type",
             "name",
         )
-        return PlateGirderDTO(name=str(structure_name or "plate_girder_bridge"))
+        return PlateGirderDTO(name=str(structure_name or DEFAULT_STRUCTURE_NAME))
 
     def _run_initial_sizing(self, dto: PlateGirderDTO) -> Dict[str, Any]:
-        span = _as_float(_first_present(self.basic_inputs, KEY_SPAN, "span"), 33.5)
+        span = _as_float(_first_present(self.basic_inputs, KEY_SPAN, "span"), DEFAULT_SPAN_M)
         carriageway_width = _as_float(
             _first_present(self.basic_inputs, KEY_CARRIAGEWAY_WIDTH, "carriageway_width"),
-            10.0,
+            DEFAULT_CARRIAGEWAY_WIDTH_M,
         )
         no_of_footpaths = self._footpath_count()
         include_median = _as_bool(_first_present(self.basic_inputs, KEY_INCLUDE_MEDIAN, "include_median"))
@@ -189,13 +200,19 @@ class PlateGirderBridge:
             _first_present(self.additional_inputs, KEY_RAILING_WIDTH, "railing_width"),
             DEFAULT_RAILING_WIDTH if no_of_footpaths else 0.0,
         )
-        median_width = _as_float(_first_present(self.additional_inputs, "median_width"), 0.0)
+        median_width = _as_float(
+            _first_present(self.additional_inputs, "median_width"),
+            DEFAULT_MEDIAN_WIDTH_M,
+        )
         if not include_median:
-            median_width = 0.0
+            median_width = DEFAULT_MEDIAN_WIDTH_M
 
         n_girders = max(
             2,
-            _as_int(_first_present(self.additional_inputs, KEY_NO_OF_GIRDERS, "no_of_girders"), 4),
+            _as_int(
+                _first_present(self.additional_inputs, KEY_NO_OF_GIRDERS, "no_of_girders"),
+                DEFAULT_NO_OF_GIRDERS,
+            ),
         )
         girder_spacing = _as_float(
             _first_present(self.additional_inputs, KEY_GIRDER_SPACING, "girder_spacing"),
@@ -238,7 +255,10 @@ class PlateGirderBridge:
         )
 
         deck_thickness = solver.get_deck_thickness(
-            _as_float(_first_present(self.additional_inputs, KEY_DECK_THICKNESS, "deck_thickness"), 200.0)
+            _as_float(
+                _first_present(self.additional_inputs, KEY_DECK_THICKNESS, "deck_thickness"),
+                DEFAULT_DECK_THICKNESS_MM,
+            )
         )
         footpath_width_checked = solver.get_footpath_width(
             user_value=footpath_width,
@@ -248,7 +268,7 @@ class PlateGirderBridge:
             span=span,
             symmetry=str(
                 _first_present(self.additional_inputs, KEY_GIRDER_SYMMETRY, "symmetry")
-                or "Girder Symmetric"
+                or DEFAULT_GIRDER_SYMMETRY
             ),
             user_depth=_to_m(_first_present(self.additional_inputs, KEY_GIRDER_DEPTH, "depth")),
             B_top=top_flange_w,
@@ -277,7 +297,7 @@ class PlateGirderBridge:
         }
 
     def _build_geometry(self, initial_sizing: Dict[str, Any]) -> Dict[str, Any]:
-        span = _as_float(_first_present(self.basic_inputs, KEY_SPAN, "span"), 33.5)
+        span = _as_float(_first_present(self.basic_inputs, KEY_SPAN, "span"), DEFAULT_SPAN_M)
         layout_data = initial_sizing["layout"]
         resolved = initial_sizing["inputs_resolved"]
 
@@ -294,7 +314,7 @@ class PlateGirderBridge:
             num_long_grid=layout_data["no_of_girders"],
             ext_to_int_dist=layout_data["girder_spacing"],
             edge_beam_dist=layout_data["deck_overhang"],
-            tol=1e-3,
+            tol=DEFAULT_GEOMETRY_TOLERANCE,
         )
 
         return {
@@ -316,8 +336,11 @@ class PlateGirderBridge:
             return {"status": "skipped", "reason": f"analysis backend import failed: {exc}"}
 
         layout = initial_sizing["layout"]
-        span = _as_float(_first_present(self.basic_inputs, KEY_SPAN, "span"), 33.5)
-        skew = _as_float(_first_present(self.basic_inputs, KEY_SKEW_ANGLE, "skew_angle"), 0.0)
+        span = _as_float(_first_present(self.basic_inputs, KEY_SPAN, "span"), DEFAULT_SPAN_M)
+        skew = _as_float(
+            _first_present(self.basic_inputs, KEY_SKEW_ANGLE, "skew_angle"),
+            DEFAULT_SKEW_ANGLE_DEG,
+        )
 
         engine = BridgeGrillageModel()
         engine.L = span
