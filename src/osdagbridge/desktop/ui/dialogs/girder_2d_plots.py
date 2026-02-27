@@ -15,7 +15,7 @@ from osdagbridge.core.bridge_types.plate_girder.analysis_results import PlateGir
 # UI / Visual Configuration
 # -------------------------------------------------------------------------------------------------------------------------------------------------
 COLOR_PRIMARY_FILL = "#E0F2F1"      # Muted teal fill
-COLOR_PRIMARY_STROKE = "#00897B"    # Muted teal stroke
+COLOR_PRIMARY_STROKE = "#90BC00"    # osdag teal stroke
 COLOR_ZERO_LINE = "#B0BEC5"         # Soft grey zero line
 COLOR_GIRDER_LINE = "#90A4AE"       # Minimal structural line
 COLOR_NODE_REF = "#D0D0D0"          # Thicker, slightly darker reference lines for visibility
@@ -48,6 +48,7 @@ class Girder2DPlotsWidget(QWidget):
         self._sfd_data = np.array([])
         self._defl_data = np.array([])
         
+        self.current_x_position = 0.0
         self._cursors = []
         
         self._init_ui()
@@ -185,12 +186,12 @@ class Girder2DPlotsWidget(QWidget):
 
         box_x = create_value_box("x = _ (m)", "x")
         self.fields["x"].returnPressed.connect(self._on_user_x_entered)
-        box_bmd = create_value_box("BMD", "bmd")
-        box_sfd = create_value_box("SFD", "sfd")
-        box_defl = create_value_box("Deflection", "defl")
+        box_bmd = create_value_box("BMD = _ (kNm)", "bmd")
+        box_sfd = create_value_box("SFD = _ (kN)", "sfd")
+        box_defl = create_value_box("Deflection = _ (mm)", "defl")
 
         # -------------------------------------------------------------------------------------------------------------------------------------------------
-        # Proportional stretching to align natively with matplotlib axes vertical scales Now that Labels are BELOW the plots, the top stretch starts directly at the Girder plot!
+        # Proportional UI Layout: Stretch factors synchronize PySide RHS boxes visually with Matplotlib axes heights
         # -------------------------------------------------------------------------------------------------------------------------------------------------
         val_layout.addStretch(58) 
         val_layout.addWidget(box_x, stretch=80)
@@ -211,7 +212,7 @@ class Girder2DPlotsWidget(QWidget):
 
     def _setup_axes(self):
         # -------------------------------------------------------------------------------------------------------------------------------------------------
-        # Increase 'hspace' to create subtle breathing room between distinct figures visually. Height ratio for label rows (index 1, 3, 5, 7) increased to prevent tight cramping.
+        # Subplot Layout: Adjust 'hspace' and label row height-ratios to prevent visual cramping between separate charts
         # -------------------------------------------------------------------------------------------------------------------------------------------------
         gs = gridspec.GridSpec(8, 1, figure=self.figure, 
                                height_ratios=[0.5, 0.8, 3, 0.8, 3, 0.8, 3, 0.8], 
@@ -262,7 +263,7 @@ class Girder2DPlotsWidget(QWidget):
             ax.tick_params(axis='both', which='both', length=0, labelbottom=False, labelleft=False)
 
         # -------------------------------------------------------------------------------------------------------------------------------------------------
-        # Soft visually separate plot regions cleanly on all 4 sides for consistent container weight
+        # Visual Containment: Apply unheavy bounding boxes around primary plotting areas to group the diagrams
         # -------------------------------------------------------------------------------------------------------------------------------------------------
         for ax in self.plot_axes:
             for spine in ax.spines.values():
@@ -271,7 +272,7 @@ class Girder2DPlotsWidget(QWidget):
                 spine.set_linewidth(1.0)
                 
         # -------------------------------------------------------------------------------------------------------------------------------------------------
-        # To maintain the solid bottom border despite GridSpec hspace adjustments, we explicitly ensure the bottom spine of plot axes is rendered strongly.
+        # Layout Edge Case Fix: Explicitly reinforce bottom spines to counteract GridSpec hspace gaps
         # -------------------------------------------------------------------------------------------------------------------------------------------------
         for ax in self.plot_axes:
             ax.spines['bottom'].set_color('#CCCCCC')
@@ -357,48 +358,61 @@ class Girder2DPlotsWidget(QWidget):
             raw_bmd = [safe_float(bmd_dict.get(eid)) for eid in girder_elements] + [0.0]
             raw_sfd = [safe_float(sfd_dict.get(eid)) for eid in girder_elements] + [0.0]
             
-            bmd_array = np.nan_to_num(np.array(raw_bmd))
-            sfd_array = np.nan_to_num(np.array(raw_sfd))
-            
             # -------------------------------------------------------------------------------------------------------------------------------------------------
-            # Vertical Deflection matrix extraction OpenSees matrices map nodes non-sequentially. We must extract by explicit Node ID tags. Z is typically the vertical axis in our 3D bridge grillage, but we fallback to Y if it's 2D.
+            # Convert raw OpenSees values from base SI (N, N.m) to display units (kN, kN.m)
+            # -------------------------------------------------------------------------------------------------------------------------------------------------
+            bmd_array = np.array(raw_bmd, dtype=float) / 1000.0
+            sfd_array = np.array(raw_sfd, dtype=float) / 1000.0
+
+            # -------------------------------------------------------------------------------------------------------------------------------------------------
+            # BMD Validation: Enforce flat zero line for fully NaN arrays, clean partial NaNs
+            # -------------------------------------------------------------------------------------------------------------------------------------------------
+            if np.all(np.isnan(bmd_array)):
+                bmd_array = np.zeros_like(bmd_array)
+            elif np.any(np.isnan(bmd_array)):
+                bmd_array = np.nan_to_num(bmd_array)
+
+            # -------------------------------------------------------------------------------------------------------------------------------------------------
+            # SFD Validation: Enforce flat zero line for fully NaN arrays, clean partial NaNs
+            # -------------------------------------------------------------------------------------------------------------------------------------------------
+            if np.all(np.isnan(sfd_array)):
+                sfd_array = np.zeros_like(sfd_array)
+            elif np.any(np.isnan(sfd_array)):
+                sfd_array = np.nan_to_num(sfd_array)
+
+            # -------------------------------------------------------------------------------------------------------------------------------------------------
+            # Vertical Deflection Extraction: OpenSees matrices map nodes non-sequentially, requiring explicit lookup by Node Tag. Vertical is typically 'dy'.
             # -------------------------------------------------------------------------------------------------------------------------------------------------
             raw_defl = []
+            component_used = "dy"
+            
             try:
                 # -------------------------------------------------------------------------------------------------------------------------------------------------
-                # Displacements might be stored as 'y' (vertical), 'dy', or 'dz' depending on grid implementation
+                # Explicit Component Binding: Lock to 'dy' (vertical) to prevent silent fallback errors across UI configurations
                 # -------------------------------------------------------------------------------------------------------------------------------------------------
-                try: disp_y = self.raw_results.displacements.sel(Loadcase=self.loadcase, Component="y")
-                except: disp_y = None
-                
-                try: disp_dy = self.raw_results.displacements.sel(Loadcase=self.loadcase, Component="dy")
-                except: disp_dy = None
-                
-                try: disp_dz = self.raw_results.displacements.sel(Loadcase=self.loadcase, Component="dz")
-                except: disp_dz = None
+                disp_dy = self.raw_results.displacements.sel(Loadcase=self.loadcase, Component=component_used)
                 
                 for n in path_nodes:
                     try:
-                        # -------------------------------------------------------------------------------------------------------------------------------------------------
                         # Extract exact node displacement in meters, convert to mm for UI
-                        # -------------------------------------------------------------------------------------------------------------------------------------------------
-                        val_z = safe_float(disp_dz.sel(Node=n).values.item()) * 1000.0 if disp_dz is not None else 0.0
-                        val_dy = safe_float(disp_dy.sel(Node=n).values.item()) * 1000.0 if disp_dy is not None else 0.0
-                        val_y = safe_float(disp_y.sel(Node=n).values.item()) * 1000.0 if disp_y is not None else 0.0
-                        
-                        # -------------------------------------------------------------------------------------------------------------------------------------------------
-                        # Use whichever component actually contains vertical bending logic (non-zero)
-                        # -------------------------------------------------------------------------------------------------------------------------------------------------
-                        val = val_y if abs(val_y) > 0.0 else (val_z if abs(val_z) > abs(val_dy) else val_dy)
-                        raw_defl.append(val)
+                        val_dy = float(disp_dy.sel(Node=n).values.item()) * 1000.0
+                        raw_defl.append(val_dy)
                     except Exception:
-                        raw_defl.append(0.0)
+                        raw_defl.append(np.nan)
             except Exception as e:
-                print(f"Warning: Displacements omitted or matrix invalid. Error: {e}")
-                raw_defl = np.zeros_like(x_array)
-                    
-            defl_array = np.nan_to_num(np.array(raw_defl))
-            
+                # Fallback to NaN arrays if extraction fails
+                raw_defl = np.full(len(x_array), np.nan).tolist()
+
+            defl_array = np.array(raw_defl, dtype=float)
+
+            # -------------------------------------------------------------------------------------------------------------------------------------------------
+            # Deflection Validation: Enforce flat zero line for fully NaN arrays, clean partial NaNs
+            # -------------------------------------------------------------------------------------------------------------------------------------------------
+            if np.all(np.isnan(defl_array)):
+                defl_array = np.zeros_like(x_array)
+            elif np.any(np.isnan(defl_array)):
+                defl_array = np.nan_to_num(defl_array)
+
             self._plot_girder_data(x_array, bmd_array, sfd_array, defl_array)
             
         except Exception as e:
@@ -444,7 +458,7 @@ class Girder2DPlotsWidget(QWidget):
         LABEL_PROPS = dict(va='center', ha='center', fontsize=10, fontweight='medium', color='#666666')
         
         # -------------------------------------------------------------------------------------------------------------------------------------------------
-        # Shift text up slightly (+0.2 on y-axis of transAxes) inside the label subplots to avoid bottom clipping. It creates artificial visual padding within the dedicated label box.
+        # Typographic Adjustment: Shift Y-axis position to prevent bottom clipping inside narrow GridSpec label boxes
         # -------------------------------------------------------------------------------------------------------------------------------------------------
         y_label_pos = 0.5
         self.ax_lbl_bmd.text(0.5, y_label_pos, 'Bending Moment Diagram', transform=self.ax_lbl_bmd.transAxes, **LABEL_PROPS)
@@ -496,12 +510,12 @@ class Girder2DPlotsWidget(QWidget):
         if d_pad == 0: d_pad = 1
         
         # -------------------------------------------------------------------------------------------------------------------------------------------------
-        # Physically downward positive inversion applied mathematically
+        # Y-Axis Inversion: Mathematically apply padding to deflection bounds while honoring downward-positive rendering
         # -------------------------------------------------------------------------------------------------------------------------------------------------
         self.ax_defl.set_ylim(min(0, d_min) - d_pad, max(0, d_max) + d_pad)
 
         # -------------------------------------------------------------------------------------------------------------------------------------------------
-        # Clear generic bounds, implement Figma white gaps constraint loop
+        # Visual Bounds: Apply constraint loop to enforce Figma-specified white gaps
         # -------------------------------------------------------------------------------------------------------------------------------------------------
         self.ax_lbl_girder.set_xlim(x_start - padding, x_end + padding)
         self._apply_axis_styles()
@@ -525,7 +539,7 @@ class Girder2DPlotsWidget(QWidget):
         COLOR_STROKE = color
         
         # -------------------------------------------------------------------------------------------------------------------------------------------------
-        # Upward-pointing arrows for supports. Absolute point-based offsets guarantee a clearly visible tail (shaft) regardless of subplot Y-axis squashing.
+        # Support Graphics: Utilize absolute point-offsets to guarantee visible arrow shafts regardless of axis aspect ratio
         # -------------------------------------------------------------------------------------------------------------------------------------------------
         for x_loc in [x_start, x_end]:
             # Use 26pt length total, and 12pt arrowhead -> always yields a distinct 14pt shaft.
@@ -536,30 +550,61 @@ class Girder2DPlotsWidget(QWidget):
 
     def _setup_event_handling(self):
         # -------------------------------------------------------------------------------------------------------------------------------------------------
-        # We exclusively handle definitive interactions, scrolling is prioritized for continuous flow tracking
+        # We exclusively handle definitive interactions based on discrete Structural Nodes.
         # -------------------------------------------------------------------------------------------------------------------------------------------------
         self.figure.canvas.mpl_connect('button_press_event', self._on_click)
-        self.figure.canvas.mpl_connect('scroll_event', self._on_scroll)
         self.figure.canvas.mpl_connect('key_press_event', self._on_key_press)
+        # Scroll event explicitly disconnected from cursor movement
+        self.figure.canvas.mpl_connect('scroll_event', self._on_scroll)
+        
+    def move_cursor_to_x(self, x_val):
+        """
+        SINGLE SOURCE OF TRUTH for cursor movement and RHS value updates.
+        Allows exact continuous position inspection between discrete structural nodes.
+        """
+        if self._x_data is None or len(self._x_data) == 0:
+            return
+            
+        # Ensure position bounds
+        self.current_x_position = max(self._x_data[0], min(self._x_data[-1], float(x_val)))
+        
+        # Extract continuous values via linear interpolation
+        m_x = np.interp(self.current_x_position, self._x_data, self._bmd_data)
+        v_x = np.interp(self.current_x_position, self._x_data, self._sfd_data)
+        d_x = np.interp(self.current_x_position, self._x_data, self._defl_data)
+        
+        # Switch mode visually if necessary
+        self.mode_combo.blockSignals(True)
+        self.mode_combo.setCurrentText("Scroll for Values")
+        self.mode_combo.blockSignals(False)
+
+        # Clear maximum text labels if present
+        for text_obj in getattr(self, '_max_texts', []):
+            try: text_obj.remove()
+            except: pass
+        self._max_texts = []
+        
+        # Update UI Subcomponents
+        self._update_cursors(custom_x_list=[self.current_x_position, self.current_x_position, self.current_x_position])
+        self._update_rhs_display(self.current_x_position, m_x, v_x, d_x)
         
     def _on_key_press(self, event):
-        """Allows locking the dynamically scrolling preview cursor by hitting Enter."""
-        if event.key == 'enter':
-            try:
-                # -------------------------------------------------------------------------------------------------------------------------------------------------
-                # Extract the actively previewed X coordinate and evaluate the plot
-                # -------------------------------------------------------------------------------------------------------------------------------------------------
-                val = float(self.fields["x"].text())
-                val = max(self._x_data[0], min(self._x_data[-1], val))
-                self.mode_combo.blockSignals(True)
-                self.mode_combo.setCurrentText("Scroll for Values")
-                self.mode_combo.blockSignals(False)
-                self._set_cursor_x(val)
-            except ValueError:
-                pass
+        """Allows discrete node-to-node navigation using Arrow keys for quick scanning."""
+        if self._x_data is None or len(self._x_data) == 0:
+            return
+            
+        # Find which discrete node we are at or closest to
+        nearest_idx = (np.abs(self._x_data - self.current_x_position)).argmin()
+            
+        if event.key == 'right':
+            next_idx = min(len(self._x_data) - 1, nearest_idx + 1)
+            self.move_cursor_to_x(self._x_data[next_idx])
+        elif event.key == 'left':
+            prev_idx = max(0, nearest_idx - 1)
+            self.move_cursor_to_x(self._x_data[prev_idx])
         
     def _on_click(self, event):
-        """Triggers vertical reference tracking and RHS data population via user click."""
+        """Places the cursor exactly at the clicked geometric X-coordinate."""
         if self._x_data is None or len(self._x_data) == 0:
             return
         if event.inaxes not in self.plot_axes:
@@ -567,52 +612,24 @@ class Girder2DPlotsWidget(QWidget):
         if event.button != 1:
             return
             
-        click_x = max(self._x_data[0], min(self._x_data[-1], event.xdata))
+        # Exact position interaction
+        self.move_cursor_to_x(event.xdata)
         
-        self.mode_combo.blockSignals(True)
-        self.mode_combo.setCurrentText("Scroll for Values")
-        self.mode_combo.blockSignals(False)
-        
-        self._set_cursor_x(click_x)
-
-    def _on_scroll(self, event):
-        """Scroll interaction moves an invisible preview position, updating the X box ONLY."""
-        if len(self._x_data) == 0 or event.inaxes not in self.plot_axes:
-            return
-            
-        try:
-            current_x = float(self.fields["x"].text())
-        except ValueError:
-            current_x = self._x_data[0]
-            
-        span = self._x_data[-1] - self._x_data[0]
-        step = span * 0.05 * event.step 
-        new_x = max(self._x_data[0], min(self._x_data[-1], current_x + step))
-        
-        self.mode_combo.blockSignals(True)
-        self.mode_combo.setCurrentText("Scroll for Values")
-        self.mode_combo.blockSignals(False)
-        
-        # -------------------------------------------------------------------------------------------------------------------------------------------------
-        # Move the scroll cursor dynamically, and update preview text box; let user click or press Enter to confirm and fetch exact results
-        # -------------------------------------------------------------------------------------------------------------------------------------------------
-        self.fields["x"].setText(f"{new_x:.3f}")
-        self._update_cursors(custom_x_list=[new_x, new_x, new_x])
-        
-        # -------------------------------------------------------------------------------------------------------------------------------------------------
-        # Focus on canvas to capture key presses without clicking away
-        # -------------------------------------------------------------------------------------------------------------------------------------------------
+        # Focus on canvas to capture arrow key presses seamlessly
         self.canvas.setFocus()
 
+    def _on_scroll(self, event):
+        """
+        Scroll wheel interaction intentionally disabled for cursor movement.
+        Enforces click/arrow navigation for strict engineering UX without floating errors.
+        """
+        pass
+
     def _on_user_x_entered(self):
-        """Handles manual X input routing to update cursor."""
+        """Handles manual X input routing to perfectly place the cursor at any exact coordinate."""
         try:
             val = float(self.fields["x"].text())
-            val = max(self._x_data[0], min(self._x_data[-1], val))
-            self.mode_combo.blockSignals(True)
-            self.mode_combo.setCurrentText("Scroll for Values")
-            self.mode_combo.blockSignals(False)
-            self._set_cursor_x(val)
+            self.move_cursor_to_x(val)
         except ValueError:
             pass 
 
@@ -678,23 +695,6 @@ class Girder2DPlotsWidget(QWidget):
         self.fields["defl"].setText(f"max = {self._defl_data[idx_defl]:.2f} mm at x = {x_defl:.2f} m")
         
         self.canvas.draw_idle()
-
-    def _set_cursor_x(self, x_val):
-        """Generalized setter mapping UI state cleanly."""
-        m_x = np.interp(x_val, self._x_data, self._bmd_data)
-        v_x = np.interp(x_val, self._x_data, self._sfd_data)
-        d_x = np.interp(x_val, self._x_data, self._defl_data)
-        
-        # -------------------------------------------------------------------------------------------------------------------------------------------------
-        # Clear maximum text labels if present
-        # -------------------------------------------------------------------------------------------------------------------------------------------------
-        for text_obj in getattr(self, '_max_texts', []):
-            try: text_obj.remove()
-            except: pass
-        self._max_texts = []
-        
-        self._update_cursors(custom_x_list=[x_val, x_val, x_val])
-        self._update_rhs_display(x_val, m_x, v_x, d_x)
         
     def _update_cursors(self, click_x=None, custom_x_list=None):
         """Draws cursor lines strictly isolated within each plotting boundary. Never cuts labels."""
@@ -702,7 +702,7 @@ class Girder2DPlotsWidget(QWidget):
             custom_x_list = [click_x, click_x, click_x]
             
         # -------------------------------------------------------------------------------------------------------------------------------------------------
-        # Only inject the cursor into axes representing the strict data bodies, preserving white space We ensure no axes lines overlap into the distinct label/gap GridSpec objects we configured above.
+        # Cursor Injection: Target strict data axes exclusively to prevent cursor lines from bleeding into whitespace gaps
         # -------------------------------------------------------------------------------------------------------------------------------------------------
         if not self._cursors:
             for i, ax in enumerate(self.plot_axes):
