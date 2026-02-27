@@ -134,7 +134,7 @@ class Girder2DPlotsWidget(QWidget):
         # -------------------------------------------------------------------------------------------------------------------------------------------------
         self.val_panel = QFrame()
         self.val_panel.setStyleSheet("QFrame { background-color: #FAFAFA; border: 1px solid #CCCCCC; border-radius: 4px; }")
-        self.val_panel.setFixedWidth(180)
+        self.val_panel.setFixedWidth(250)
         
         val_layout = QVBoxLayout(self.val_panel)
         val_layout.setContentsMargins(10, 0, 10, 0)
@@ -157,18 +157,23 @@ class Girder2DPlotsWidget(QWidget):
             if key == "x":
                 val.setReadOnly(False)
                 val.setToolTip("Enter X position and press Return")
+                val.setPlaceholderText("Enter x value")
+                val.setText("")
             else:
                 val.setReadOnly(True)
             val.setAlignment(Qt.AlignCenter)
             val.setStyleSheet("""
                 QLineEdit {
                     background-color: #FFFFFF;
-                    border: 1px solid #CCCCCC;
+                    border: 1px solid #B0B0B0;
                     border-radius: 3px;
                     padding: 5px;
                     color: #111111;
                     font-size: 11px;
-                    outline: none;
+                }
+                QLineEdit:read-only {
+                    background-color: #F8F9FA;
+                    color: #444444;
                 }
             """)
             
@@ -178,11 +183,11 @@ class Girder2DPlotsWidget(QWidget):
             self.fields[key] = val
             return container
 
-        box_x = create_value_box("X Position (m)", "x")
+        box_x = create_value_box("x = _ (m)", "x")
         self.fields["x"].returnPressed.connect(self._on_user_x_entered)
-        box_bmd = create_value_box("BMD (kNm)", "bmd")
-        box_sfd = create_value_box("SFD (kN)", "sfd")
-        box_defl = create_value_box("Deflection (mm)", "defl")
+        box_bmd = create_value_box("BMD", "bmd")
+        box_sfd = create_value_box("SFD", "sfd")
+        box_defl = create_value_box("Deflection", "defl")
 
         # -------------------------------------------------------------------------------------------------------------------------------------------------
         # Proportional stretching to align natively with matplotlib axes vertical scales Now that Labels are BELOW the plots, the top stretch starts directly at the Girder plot!
@@ -209,8 +214,8 @@ class Girder2DPlotsWidget(QWidget):
         # Increase 'hspace' to create subtle breathing room between distinct figures visually. Height ratio for label rows (index 1, 3, 5, 7) increased to prevent tight cramping.
         # -------------------------------------------------------------------------------------------------------------------------------------------------
         gs = gridspec.GridSpec(8, 1, figure=self.figure, 
-                               height_ratios=[0.5, 0.6, 3, 0.6, 3, 0.6, 3, 0.6], 
-                               hspace=0.08)
+                               height_ratios=[0.5, 0.8, 3, 0.8, 3, 0.8, 3, 0.8], 
+                               hspace=0.15)
         
         self.figure.subplots_adjust(left=0.15, right=0.95, top=0.92, bottom=0.10)
         
@@ -422,12 +427,10 @@ class Girder2DPlotsWidget(QWidget):
         # -------------------------------------------------------------------------------------------------------------------------------------------------
         # Reset visual labels strictly upon UI repaints. Only X gets initial coordinate.
         # -------------------------------------------------------------------------------------------------------------------------------------------------
-        if len(self._x_data) > 0:
-            self.fields["x"].setText(f"{self._x_data[0]:.3f}")
-        for k in ["bmd", "sfd", "defl"]:
-            self.fields[k].setText("-")
-        
         if len(self._x_data) == 0:
+            for k in ["bmd", "sfd", "defl"]:
+                self.fields[k].setText("-")
+            self.fields["x"].clear()
             self._apply_axis_styles()
             self.canvas.draw()
             return
@@ -443,7 +446,7 @@ class Girder2DPlotsWidget(QWidget):
         # -------------------------------------------------------------------------------------------------------------------------------------------------
         # Shift text up slightly (+0.2 on y-axis of transAxes) inside the label subplots to avoid bottom clipping. It creates artificial visual padding within the dedicated label box.
         # -------------------------------------------------------------------------------------------------------------------------------------------------
-        y_label_pos = 0.6
+        y_label_pos = 0.5
         self.ax_lbl_bmd.text(0.5, y_label_pos, 'Bending Moment Diagram', transform=self.ax_lbl_bmd.transAxes, **LABEL_PROPS)
         self.ax_lbl_sfd.text(0.5, y_label_pos, 'Shear Force Diagram', transform=self.ax_lbl_sfd.transAxes, **LABEL_PROPS)
         self.ax_lbl_defl.text(0.5, y_label_pos, 'Deflection', transform=self.ax_lbl_defl.transAxes, **LABEL_PROPS)
@@ -465,7 +468,7 @@ class Girder2DPlotsWidget(QWidget):
             # Revert to standard muted grey weight
             # -------------------------------------------------------------------------------------------------------------------------------------------------
             self.ax_girder.plot([x_start, x_end], [0, 0], color=COLOR_GIRDER_LINE, linewidth=3, zorder=2, alpha=0.9)
-            self.ax_girder.set_ylim(-1, 1) 
+            self.ax_girder.set_ylim(-3.0, 1.0) 
             self._draw_supports(self.ax_girder, x_start, x_end, is_bottom_plot=False, color=COLOR_GIRDER_LINE, alpha=0.85)
 
         # -------------------------------------------------------------------------------------------------------------------------------------------------
@@ -504,36 +507,32 @@ class Girder2DPlotsWidget(QWidget):
         self._apply_axis_styles()
         
         self.canvas.draw()
+        
+        if self.mode_combo.currentText() == "Maximum Values":
+            self._show_maximums()
+        else:
+            self.fields["x"].clear()
+            for k in ["bmd", "sfd", "defl"]:
+                self.fields[k].setText("-")
 
     def _draw_supports(self, ax, x_start, x_end, is_bottom_plot=False, color='#22384C', alpha=1.0):
         """
         Renders primitive structural support diagram physics symmetrically.
-        Preserves rigid horizontal proportionality despite wildly shifting Y-axis ranges.
         """
-        span = x_end - x_start
-        sx = span * 0.012  
+        # TODO: Actual support conditions (and future reactions/loads) will be extracted 
+        # from analysis_results. For now, display simple vertical upward arrows to represent generic supports.
         
-        ymin, ymax = ax.get_ylim()
-        yrange = abs(ymax - ymin)
-        
-        factor = 0.4
-        sy = yrange * factor
-        direction = -1
         COLOR_STROKE = color
         
         # -------------------------------------------------------------------------------------------------------------------------------------------------
-        # Minimalist upward-pointing arrows for supports
+        # Upward-pointing arrows for supports. Absolute point-based offsets guarantee a clearly visible tail (shaft) regardless of subplot Y-axis squashing.
         # -------------------------------------------------------------------------------------------------------------------------------------------------
-        arrow_len = direction * sy * 1.5
-        
         for x_loc in [x_start, x_end]:
-            ax.annotate('', xy=(x_loc, 0), xytext=(x_loc, arrow_len),
-                        arrowprops=dict(arrowstyle='->', color=COLOR_STROKE, lw=1.5, alpha=alpha),
+            # Use 26pt length total, and 12pt arrowhead -> always yields a distinct 14pt shaft.
+            ax.annotate('', xy=(x_loc, 0), xycoords='data',
+                        xytext=(0, -26), textcoords='offset points',
+                        arrowprops=dict(arrowstyle='->', color=COLOR_STROKE, lw=2.0, mutation_scale=12, shrinkA=0, shrinkB=0, alpha=alpha),
                         zorder=5, annotation_clip=False)
-            # -------------------------------------------------------------------------------------------------------------------------------------------------
-            # Base horizontal line underneath arrow
-            # -------------------------------------------------------------------------------------------------------------------------------------------------
-            ax.plot([x_loc - sx*1.5, x_loc + sx*1.5], [arrow_len, arrow_len], color=COLOR_STROKE, lw=1.5, alpha=alpha, zorder=5, clip_on=False)
 
     def _setup_event_handling(self):
         # -------------------------------------------------------------------------------------------------------------------------------------------------
@@ -541,6 +540,23 @@ class Girder2DPlotsWidget(QWidget):
         # -------------------------------------------------------------------------------------------------------------------------------------------------
         self.figure.canvas.mpl_connect('button_press_event', self._on_click)
         self.figure.canvas.mpl_connect('scroll_event', self._on_scroll)
+        self.figure.canvas.mpl_connect('key_press_event', self._on_key_press)
+        
+    def _on_key_press(self, event):
+        """Allows locking the dynamically scrolling preview cursor by hitting Enter."""
+        if event.key == 'enter':
+            try:
+                # -------------------------------------------------------------------------------------------------------------------------------------------------
+                # Extract the actively previewed X coordinate and evaluate the plot
+                # -------------------------------------------------------------------------------------------------------------------------------------------------
+                val = float(self.fields["x"].text())
+                val = max(self._x_data[0], min(self._x_data[-1], val))
+                self.mode_combo.blockSignals(True)
+                self.mode_combo.setCurrentText("Scroll for Values")
+                self.mode_combo.blockSignals(False)
+                self._set_cursor_x(val)
+            except ValueError:
+                pass
         
     def _on_click(self, event):
         """Triggers vertical reference tracking and RHS data population via user click."""
@@ -578,9 +594,15 @@ class Girder2DPlotsWidget(QWidget):
         self.mode_combo.blockSignals(False)
         
         # -------------------------------------------------------------------------------------------------------------------------------------------------
-        # Only update preview text box; let user confirm
+        # Move the scroll cursor dynamically, and update preview text box; let user click or press Enter to confirm and fetch exact results
         # -------------------------------------------------------------------------------------------------------------------------------------------------
         self.fields["x"].setText(f"{new_x:.3f}")
+        self._update_cursors(custom_x_list=[new_x, new_x, new_x])
+        
+        # -------------------------------------------------------------------------------------------------------------------------------------------------
+        # Focus on canvas to capture key presses without clicking away
+        # -------------------------------------------------------------------------------------------------------------------------------------------------
+        self.canvas.setFocus()
 
     def _on_user_x_entered(self):
         """Handles manual X input routing to update cursor."""
@@ -600,9 +622,21 @@ class Girder2DPlotsWidget(QWidget):
             return
             
         if mode_text == "Scroll for Values":
-            # -------------------------------------------------------------------------------------------------------------------------------------------------
-            # Do nothing, just wait for user interaction
-            # -------------------------------------------------------------------------------------------------------------------------------------------------
+            for cursor in self._cursors:
+                try: cursor.remove()
+                except: pass
+            self._cursors.clear()
+            
+            for text_obj in getattr(self, '_max_texts', []):
+                try: text_obj.remove()
+                except: pass
+            self._max_texts = []
+            
+            self.fields["x"].clear()
+            for k in ["bmd", "sfd", "defl"]:
+                self.fields[k].setText("-")
+                
+            self.canvas.draw_idle()
             return
             
         if mode_text == "Maximum Values":
@@ -612,7 +646,7 @@ class Girder2DPlotsWidget(QWidget):
         """Calculates maximums independently, draws 3 vertical lines, updates RHS."""
         idx_bmd = np.argmax(np.abs(self._bmd_data))
         # -------------------------------------------------------------------------------------------------------------------------------------------------
-        # SFD uses algebraic peak maximum positively
+        # SFD uses true mathematical maximum, not absolute maximum
         # -------------------------------------------------------------------------------------------------------------------------------------------------
         idx_sfd = np.argmax(self._sfd_data)
         idx_defl = np.argmax(np.abs(self._defl_data))
@@ -634,44 +668,14 @@ class Girder2DPlotsWidget(QWidget):
         # -------------------------------------------------------------------------------------------------------------------------------------------------
         self._update_cursors(custom_x_list=[x_bmd, x_sfd, x_defl])
         
-        self.fields["x"].setText("Multiple")
-        self.fields["bmd"].setText(f"{self._bmd_data[idx_bmd]:.3f}")
-        self.fields["sfd"].setText(f"{self._sfd_data[idx_sfd]:.3f}")
-        self.fields["defl"].setText(f"{self._defl_data[idx_defl]:.3f}")
-        
-        # -------------------------------------------------------------------------------------------------------------------------------------------------
-        # Add text labels on the plots for the maximums
-        # -------------------------------------------------------------------------------------------------------------------------------------------------
-        def add_max_label(ax, x_loc, val, label_name, is_absolute=True):
-            y_min, y_max = ax.get_ylim()
-            y_pos = y_max - (y_max - y_min) * 0.08
+        if abs(x_bmd - x_sfd) < 1e-4 and abs(x_sfd - x_defl) < 1e-4:
+            self.fields["x"].setText(f"{x_bmd:.2f}")
+        else:
+            self.fields["x"].setText("Multiple")
             
-            x_span = self._x_data[-1] - self._x_data[0]
-            ha = 'center'
-            display_x = x_loc
-            
-            # -------------------------------------------------------------------------------------------------------------------------------------------------
-            # Apply padding so the box bounding doesn't touch the plotting perimeter lines
-            # -------------------------------------------------------------------------------------------------------------------------------------------------
-            if x_loc < self._x_data[0] + x_span * 0.15:
-                ha = 'left'
-                display_x = x_loc + x_span * 0.02
-            elif x_loc > self._x_data[-1] - x_span * 0.15:
-                ha = 'right'
-                display_x = x_loc - x_span * 0.02
-                
-            label_text = f"Max |{label_name}|" if is_absolute else f"Max {label_name}"
-            val_text = f"{abs(val):.2f}" if is_absolute else f"{val:.2f}"
-            
-            txt = ax.text(display_x, y_pos, f"{label_text} = {val_text}\nat x = {x_loc:.3f} m",
-                          color=COLOR_CURSOR, fontsize=9, fontweight='bold',
-                          bbox=dict(facecolor='white', edgecolor=COLOR_SEPARATOR, alpha=0.9, pad=4),
-                          ha=ha, va='top', zorder=20)
-            self._max_texts.append(txt)
-            
-        add_max_label(self.ax_bmd, x_bmd, self._bmd_data[idx_bmd], "BMD", True)
-        add_max_label(self.ax_sfd, x_sfd, self._sfd_data[idx_sfd], "SFD", False)
-        add_max_label(self.ax_defl, x_defl, self._defl_data[idx_defl], "Defl.", True)
+        self.fields["bmd"].setText(f"max = {self._bmd_data[idx_bmd]:.2f} kNm at x = {x_bmd:.2f} m")
+        self.fields["sfd"].setText(f"max = {self._sfd_data[idx_sfd]:.2f} kN at x = {x_sfd:.2f} m")
+        self.fields["defl"].setText(f"max = {self._defl_data[idx_defl]:.2f} mm at x = {x_defl:.2f} m")
         
         self.canvas.draw_idle()
 
@@ -702,7 +706,7 @@ class Girder2DPlotsWidget(QWidget):
         # -------------------------------------------------------------------------------------------------------------------------------------------------
         if not self._cursors:
             for i, ax in enumerate(self.plot_axes):
-                cursor = ax.axvline(custom_x_list[i], color='#78909C', linestyle='-', linewidth=1.2, zorder=10, alpha=0.9)
+                cursor = ax.axvline(custom_x_list[i], color='#78909C', linestyle='--', linewidth=1.2, zorder=10, alpha=0.9)
                 self._cursors.append(cursor)
         else:
             for i, cursor in enumerate(self._cursors):
@@ -712,6 +716,6 @@ class Girder2DPlotsWidget(QWidget):
 
     def _update_rhs_display(self, x, m, v, d):
         self.fields["x"].setText(f"{x:.3f}")
-        self.fields["bmd"].setText(f"{m:.3f}")
-        self.fields["sfd"].setText(f"{v:.3f}")
-        self.fields["defl"].setText(f"{d:.3f}")
+        self.fields["bmd"].setText(f"{m:.2f} kNm")
+        self.fields["sfd"].setText(f"{v:.2f} kN")
+        self.fields["defl"].setText(f"{d:.2f} mm")
