@@ -21,6 +21,7 @@ from osdagbridge.desktop.ui.utils.cad_palette import (
 
 
 DB_PATH = Path(__file__).resolve().parents[3] / "core" / "data" / "ResourceFiles" / "Intg_osdag.sqlite"
+DB_SQL_PATH = Path(__file__).resolve().parents[3] / "core" / "data" / "ResourceFiles" / "Intg_osdag.sql"
 
 
 @dataclass
@@ -53,37 +54,79 @@ class SectionCatalog:
         self._channels: Dict[str, ChannelSection] = {}
         self._load()
 
-    def _load(self) -> None:
+    def _bootstrap_db_if_needed(self) -> None:
+        """
+        Create the sqlite DB from bundled SQL if the DB file is missing/empty.
+        """
+        if self.db_path.exists() and self.db_path.stat().st_size > 0:
+            return
+        if not DB_SQL_PATH.exists():
+            return
+
+        self.db_path.parent.mkdir(parents=True, exist_ok=True)
         con = sqlite3.connect(self.db_path)
-        cur = con.cursor()
+        try:
+            con.executescript(DB_SQL_PATH.read_text(encoding="utf-8"))
+            con.commit()
+        finally:
+            con.close()
 
-        # Equal and unequal angles
-        for table in ("EqualAngle", "UnequalAngle"):
-            cur.execute(f"SELECT Designation, a, b, t, R1, R2 FROM {table}")
-            for des, a, b, t, r1, r2 in cur.fetchall():
-                self._angles[des.strip()] = AngleSection(
-                    designation=des.strip(),
-                    a=float(a),
-                    b=float(b),
-                    t=float(t),
-                    r1=float(r1),
-                    r2=float(r2),
-                )
+    @staticmethod
+    def _table_exists(cur: sqlite3.Cursor, table_name: str) -> bool:
+        cur.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name=? LIMIT 1",
+            (table_name,),
+        )
+        return cur.fetchone() is not None
 
-        # Channels
-        cur.execute("SELECT Designation, D, B, tw, T, R1, R2 FROM Channels")
-        for des, d, b, tw, tf, r1, r2 in cur.fetchall():
-            self._channels[des.strip()] = ChannelSection(
-                designation=des.strip(),
-                d=float(d),
-                b=float(b),
-                tw=float(tw),
-                tf=float(tf),
-                r1=float(r1),
-                r2=float(r2),
-            )
+    def _load(self) -> None:
+        self._bootstrap_db_if_needed()
+        if not self.db_path.exists():
+            return
 
-        con.close()
+        con = sqlite3.connect(self.db_path)
+        try:
+            cur = con.cursor()
+
+            # Equal and unequal angles
+            for table in ("EqualAngle", "UnequalAngle"):
+                if not self._table_exists(cur, table):
+                    continue
+                try:
+                    cur.execute(f"SELECT Designation, a, b, t, R1, R2 FROM {table}")
+                except sqlite3.Error:
+                    continue
+                for des, a, b, t, r1, r2 in cur.fetchall():
+                    self._angles[des.strip()] = AngleSection(
+                        designation=des.strip(),
+                        a=float(a),
+                        b=float(b),
+                        t=float(t),
+                        r1=float(r1),
+                        r2=float(r2),
+                    )
+
+            # Channels (keep alias fallback for older DBs)
+            for table in ("Channels", "Channel"):
+                if not self._table_exists(cur, table):
+                    continue
+                try:
+                    cur.execute(f"SELECT Designation, D, B, tw, T, R1, R2 FROM {table}")
+                except sqlite3.Error:
+                    continue
+                for des, d, b, tw, tf, r1, r2 in cur.fetchall():
+                    self._channels[des.strip()] = ChannelSection(
+                        designation=des.strip(),
+                        d=float(d),
+                        b=float(b),
+                        tw=float(tw),
+                        tf=float(tf),
+                        r1=float(r1),
+                        r2=float(r2),
+                    )
+                break
+        finally:
+            con.close()
 
     def list_angles(self) -> List[str]:
         return sorted(self._angles.keys())

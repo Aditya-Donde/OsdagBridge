@@ -13,6 +13,7 @@ from PySide6.QtCore import Qt, Signal, QSize
 from PySide6.QtGui import QDoubleValidator, QIntValidator
 
 from osdagbridge.core.bridge_types.plate_girder.bridge_geometry import CrossSectionLayout
+from osdagbridge.core.bridge_types.plate_girder import defaults as pg_defaults
 from osdagbridge.core.utils.common import *
 from osdagbridge.desktop.ui.utils.custom_titlebar import CustomTitleBar
 from osdagbridge.desktop.ui.dialogs.tabs.common import apply_field_style
@@ -94,6 +95,8 @@ class TypicalSectionDetailsTab(QWidget):
         self._last_spacing_value: float | None = None
         self._last_overhang_value: float | None = None
         self._last_girders_value: int | None = None
+        self._ai_user_overrides: set[str] = set()
+        self._ai_programmatic_update = False
         self.crash_barrier_count = 2  # Assume two crash barriers at carriageway edges
         self.overall_bridge_width_formula = (
             "OverallBridgeWidth = CrossSectionLayout.total_width = CarriagewayWidth + "
@@ -263,6 +266,10 @@ class TypicalSectionDetailsTab(QWidget):
             self.footpath_width.editingFinished.connect(self._update_cad_preview)
         if hasattr(self, "footpath_thickness"):
             self.footpath_thickness.editingFinished.connect(self._update_cad_preview)
+        if hasattr(self, "railing_type"):
+            self.railing_type.currentTextChanged.connect(self.on_railing_type_changed)
+
+        self._bind_ai_override_tracking()
 
         # Initialize crash barrier visibility/load state
         if hasattr(self, "crash_barrier_type"):
@@ -282,6 +289,53 @@ class TypicalSectionDetailsTab(QWidget):
                 self.girder_count_changed.emit(int(self.no_of_girders.text()))
         except Exception:
             pass
+
+    def _bind_ai_override_tracking(self):
+        tracked_fields = [
+            "crash_barrier_density",
+            "crash_barrier_width",
+            "crash_barrier_height",
+            "crash_barrier_area",
+            "crash_barrier_load",
+            "crash_barrier_post_spacing",
+            "median_density",
+            "median_width",
+            "median_height",
+            "median_area",
+            "median_load",
+            "median_post_spacing",
+        ]
+        for field_name in tracked_fields:
+            widget = getattr(self, field_name, None)
+            if isinstance(widget, QLineEdit):
+                widget.textEdited.connect(
+                    lambda _text, key=field_name: self._mark_ai_field_user_override(key)
+                )
+
+    def _mark_ai_field_user_override(self, field_name: str):
+        if self._ai_programmatic_update:
+            return
+        self._ai_user_overrides.add(field_name)
+
+    def _set_ai_field_value(self, field_name: str, value: str | None, force: bool = False):
+        if value is None:
+            return
+        widget = getattr(self, field_name, None)
+        if widget is None:
+            return
+        if not force and field_name in self._ai_user_overrides:
+            return
+        value_text = str(value)
+        if widget.text() == value_text:
+            if force:
+                self._ai_user_overrides.discard(field_name)
+            return
+        self._ai_programmatic_update = True
+        try:
+            widget.setText(value_text)
+        finally:
+            self._ai_programmatic_update = False
+        self._ai_user_overrides.discard(field_name)
         
     def _update_cad_preview(self):
         if not hasattr(self, 'cad_preview'):
@@ -554,6 +608,11 @@ class TypicalSectionDetailsTab(QWidget):
         if hasattr(self, "footpath_width"):
             self.footpath_width.setEnabled(footpath_value != "None")
             self.footpath_thickness.setEnabled(footpath_value != "None")
+        if hasattr(self, "crash_barrier_type"):
+            self._apply_crash_barrier_defaults(
+                self.crash_barrier_type.currentText(),
+                force=False,
+            )
         self.recalculate_girders()
         self.footpath_changed.emit(footpath_value)
 
@@ -989,14 +1048,13 @@ class TypicalSectionDetailsTab(QWidget):
     def _reset_crash_barrier_defaults(self):
         if hasattr(self, "crash_barrier_type"):
             self.crash_barrier_type.setCurrentText("IRC 5 - RCC Crash Barrier")
-        if hasattr(self, "crash_barrier_post_spacing"):
-            self.crash_barrier_post_spacing.setText("1")
         if hasattr(self, "crash_barrier_type"):
             barrier_type = self.crash_barrier_type.currentText()
             self._update_crash_barrier_visibility(barrier_type)
             self._apply_crash_barrier_defaults(barrier_type, force=True)
 
     def reset_defaults(self):
+        self._ai_user_overrides.clear()
         # Layout defaults
         if hasattr(self, "girder_spacing"):
             self.girder_spacing.setText(self._format_spacing(DEFAULT_GIRDER_SPACING))
@@ -1035,9 +1093,9 @@ class TypicalSectionDetailsTab(QWidget):
                 density = float(self.crash_barrier_density.text()) if self.crash_barrier_density.text() else 0.0
                 area = float(self.crash_barrier_area.text()) if self.crash_barrier_area.text() else 0.0
                 load = density * area
-                self.crash_barrier_load.setText(f"{load:.2f}")
+                self._set_ai_field_value("crash_barrier_load", f"{load:.2f}", force=True)
             except:
-                self.crash_barrier_load.clear()
+                self._set_ai_field_value("crash_barrier_load", "", force=True)
         # For other types load is user-entered; do not overwrite
 
     def _apply_crash_barrier_defaults(self, barrier_type: str, force: bool = False):
@@ -1052,32 +1110,59 @@ class TypicalSectionDetailsTab(QWidget):
         is_metallic = self._is_metallic_barrier(barrier_type)
         is_custom = barrier_type == "Custom"
 
-        default_density = DEFAULT_CONCRETE_DENSITY  # kN/m3
-        default_width = f"{DEFAULT_CRASH_BARRIER_WIDTH}"  # m
-        default_height = "0.75"  # m
-
-        def _set(widget, value: str):
-            if widget is None:
-                return
-            if force or not widget.text():
-                widget.setText(value)
+        defaults = pg_defaults.get_ai_crash_barrier_defaults(
+            barrier_type=barrier_type,
+            footpath_value=self.footpath_value,
+            railing_type=self.railing_type.currentText() if hasattr(self, "railing_type") else None,
+        )
 
         if is_rcc:
-            _set(self.crash_barrier_density, f"{default_density:.1f}")
-            _set(self.crash_barrier_width, default_width)
-            _set(self.crash_barrier_height, default_height)
-            if self.crash_barrier_width and self.crash_barrier_height:
-                try:
-                    w_val = float(self.crash_barrier_width.text() or 0.0)
-                    h_val = float(self.crash_barrier_height.text() or 0.0)
-                    area_val = w_val * h_val
-                    _set(self.crash_barrier_area, f"{area_val:.2f}")
-                except:
-                    pass
+            density = defaults.get("density")
+            width_m = defaults.get("width_m")
+            height_m = defaults.get("height_m")
+            area_m2 = defaults.get("area_m2")
+
+            self._set_ai_field_value(
+                "crash_barrier_density",
+                f"{density:.1f}" if density is not None else None,
+                force=force,
+            )
+            self._set_ai_field_value(
+                "crash_barrier_width",
+                f"{width_m:.3f}" if width_m is not None else None,
+                force=force,
+            )
+            self._set_ai_field_value(
+                "crash_barrier_height",
+                f"{height_m:.3f}" if height_m is not None else None,
+                force=force,
+            )
+            self._set_ai_field_value(
+                "crash_barrier_area",
+                f"{area_m2:.3f}" if area_m2 is not None else None,
+                force=force,
+            )
             self._auto_compute_crash_barrier_load()
         elif is_metallic:
-            if self.crash_barrier_post_spacing:
-                _set(self.crash_barrier_post_spacing, "1")
+            width_m = defaults.get("width_m")
+            height_m = defaults.get("height_m")
+            post_spacing_m = defaults.get("post_spacing_m")
+
+            self._set_ai_field_value(
+                "crash_barrier_width",
+                f"{width_m:.3f}" if width_m is not None else None,
+                force=force,
+            )
+            self._set_ai_field_value(
+                "crash_barrier_height",
+                f"{height_m:.3f}" if height_m is not None else None,
+                force=force,
+            )
+            self._set_ai_field_value(
+                "crash_barrier_post_spacing",
+                f"{post_spacing_m:.3f}" if post_spacing_m is not None else None,
+                force=force,
+            )
             if force and self.crash_barrier_load:
                 self.crash_barrier_load.clear()
         elif is_custom:
@@ -1093,32 +1178,55 @@ class TypicalSectionDetailsTab(QWidget):
         is_metallic = self._is_metallic_median(median_type)
         is_custom = median_type == "Custom"
 
-        default_density = DEFAULT_CONCRETE_DENSITY  # kN/m3
-        default_width = f"{DEFAULT_CRASH_BARRIER_WIDTH}"  # m
-        default_height = "0.75"  # m
-
-        def _set(widget, value: str):
-            if widget is None:
-                return
-            if force or not widget.text():
-                widget.setText(value)
+        defaults = pg_defaults.get_ai_median_defaults(median_type)
 
         if is_rcc:
-            _set(self.median_density, f"{default_density:.1f}")
-            _set(self.median_width, default_width)
-            _set(self.median_height, default_height)
-            if self.median_width and self.median_height:
-                try:
-                    w_val = float(self.median_width.text() or 0.0)
-                    h_val = float(self.median_height.text() or 0.0)
-                    area_val = w_val * h_val
-                    _set(self.median_area, f"{area_val:.2f}")
-                except:
-                    pass
+            density = defaults.get("density")
+            width_m = defaults.get("width_m")
+            height_m = defaults.get("height_m")
+            area_m2 = defaults.get("area_m2")
+
+            self._set_ai_field_value(
+                "median_density",
+                f"{density:.1f}" if density is not None else None,
+                force=force,
+            )
+            self._set_ai_field_value(
+                "median_width",
+                f"{width_m:.3f}" if width_m is not None else None,
+                force=force,
+            )
+            self._set_ai_field_value(
+                "median_height",
+                f"{height_m:.3f}" if height_m is not None else None,
+                force=force,
+            )
+            self._set_ai_field_value(
+                "median_area",
+                f"{area_m2:.3f}" if area_m2 is not None else None,
+                force=force,
+            )
             self._auto_compute_median_load()
         elif is_metallic:
-            if self.median_post_spacing:
-                _set(self.median_post_spacing, "1")
+            width_m = defaults.get("width_m")
+            height_m = defaults.get("height_m")
+            post_spacing_m = defaults.get("post_spacing_m")
+
+            self._set_ai_field_value(
+                "median_width",
+                f"{width_m:.3f}" if width_m is not None else None,
+                force=force,
+            )
+            self._set_ai_field_value(
+                "median_height",
+                f"{height_m:.3f}" if height_m is not None else None,
+                force=force,
+            )
+            self._set_ai_field_value(
+                "median_post_spacing",
+                f"{post_spacing_m:.3f}" if post_spacing_m is not None else None,
+                force=force,
+            )
             if force and self.median_load:
                 self.median_load.clear()
         elif is_custom:
@@ -1161,17 +1269,12 @@ class TypicalSectionDetailsTab(QWidget):
         hide_density_area = is_metallic or is_custom
         for widget in [self.crash_barrier_density, self.crash_barrier_density_label, self.crash_barrier_area, self.crash_barrier_area_label]:
             widget.setVisible(not hide_density_area)
-        if hide_density_area:
-            self.crash_barrier_density.clear()
-            self.crash_barrier_area.clear()
 
         # Post spacing only for metallic
         for widget in [self.crash_barrier_post_spacing, self.crash_barrier_post_spacing_label]:
             widget.setVisible(is_metallic)
         if is_metallic and self.crash_barrier_post_spacing and not self.crash_barrier_post_spacing.text():
-            self.crash_barrier_post_spacing.setText("1")
-        if not is_metallic:
-            self.crash_barrier_post_spacing.clear()
+            self._set_ai_field_value("crash_barrier_post_spacing", "1")
 
         # Load behavior
         self.crash_barrier_load.setEnabled(True)
@@ -1195,13 +1298,13 @@ class TypicalSectionDetailsTab(QWidget):
                 density = float(self.median_density.text()) if self.median_density.text() else 0.0
                 area = float(self.median_area.text()) if self.median_area.text() else 0.0
                 load = density * area
-                self.median_load.setText(f"{load:.2f}")
+                self._set_ai_field_value("median_load", f"{load:.2f}", force=True)
             except:
-                self.median_load.clear()
+                self._set_ai_field_value("median_load", "", force=True)
 
     def on_median_type_changed(self, median_type):
         self._update_median_visibility(median_type, include_median=True)
-        self._apply_median_defaults(median_type)
+        self._apply_median_defaults(median_type, force=True)
 
     def _update_median_visibility(self, median_type, include_median=True):
         is_metallic = self._is_metallic_median(median_type)
@@ -1230,20 +1333,13 @@ class TypicalSectionDetailsTab(QWidget):
         for widget in [self.median_density, self.median_density_label, self.median_area, self.median_area_label]:
             if widget is not None:
                 widget.setVisible(active and not hide_density_area)
-        if hide_density_area:
-            if self.median_density:
-                self.median_density.clear()
-            if self.median_area:
-                self.median_area.clear()
 
         # Post spacing only for metallic
         for widget in [self.median_post_spacing, self.median_post_spacing_label]:
             if widget is not None:
                 widget.setVisible(active and is_metallic)
         if active and is_metallic and self.median_post_spacing and not self.median_post_spacing.text():
-            self.median_post_spacing.setText("1")
-        if active and not is_metallic and self.median_post_spacing:
-            self.median_post_spacing.clear()
+            self._set_ai_field_value("median_post_spacing", "1")
 
         # Load behavior
         self.median_load.setEnabled(active)
@@ -1254,7 +1350,15 @@ class TypicalSectionDetailsTab(QWidget):
             self._auto_compute_median_load()
         elif active and self.median_load:
             self.median_load.setReadOnly(False)
-            self.median_load.clear()
+            if median_type == "Custom":
+                self._set_ai_field_value("median_load", "", force=True)
+
+    def on_railing_type_changed(self, _railing_type):
+        if hasattr(self, "crash_barrier_type"):
+            self._apply_crash_barrier_defaults(
+                self.crash_barrier_type.currentText(),
+                force=False,
+            )
 
     def get_overall_bridge_width(self):
         try:
@@ -1417,7 +1521,7 @@ class TypicalSectionDetailsTab(QWidget):
                                  f"{barrier_type} crash barriers are not permitted on bridges without an outer footpath per IRC 5 Clause 109.6.4.")
         # Apply new visibility and load rules
         self._update_crash_barrier_visibility(barrier_type)
-        self._apply_crash_barrier_defaults(barrier_type)
+        self._apply_crash_barrier_defaults(barrier_type, force=True)
 
     def on_railing_load_mode_changed(self, mode):
         if not hasattr(self, "railing_load_value"):
