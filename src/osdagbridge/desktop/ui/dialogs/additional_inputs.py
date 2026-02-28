@@ -292,25 +292,7 @@ class AdditionalInputs(QDialog):
         box.setIcon(QMessageBox.Information)
         box.setWindowTitle("Saved")
         style_message_box(box)
-        
-        # Build detailed message
-        saved_items = []
-        if "girder_details" in saved:
-            saved_items.append("✓ Girder Details")
-        if "stiffener_details" in saved:
-            stiffener_data = saved.get("stiffener_details", {})
-            member_count = len(stiffener_data.get("stiffener_by_member", {}))
-            saved_items.append(f"✓ Stiffener Details ({member_count} members)")
-        if "cross_bracing" in saved:
-            saved_items.append("✓ Cross-Bracing Details")
-        if "end_diaphragm" in saved:
-            saved_items.append("✓ End Diaphragm Details")
-        
-        message = "Inputs saved successfully.\n\n"
-        if saved_items:
-            message += "Saved:\n" + "\n".join(saved_items)
-        
-        box.setText(message)
+        box.setText("Inputs saved successfully.")
         box.setStandardButtons(QMessageBox.Ok)
         box.setDefaultButton(QMessageBox.Ok)
         box.setWindowModality(Qt.ApplicationModal)

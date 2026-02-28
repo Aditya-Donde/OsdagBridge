@@ -740,11 +740,11 @@ class GirderDetailsTab(QWidget):
         self.apply_exterior_button = QPushButton("Apply changes to exterior girders")
         self.apply_exterior_button.setFixedHeight(26)
         self.apply_exterior_button.setStyleSheet(
-            "QPushButton { background: #ffffff; border: 1px solid #cfcfcf; border-radius: 6px; "
-            "padding: 4px 10px; font-size: 11px; color: #2b2b2b; }"
-            "QPushButton:hover { border-color: #90AF13; }"
-            "QPushButton:pressed { background: #f0f0f0; }"
-            "QPushButton:disabled { color: #8a8a8a; }"
+            "QPushButton { background: #f0f0f0; border: 1px solid #b5b5b5; border-radius: 2px; "
+            "padding: 4px 10px; font-size: 11px; color: #000000; font-weight: 400; }"
+            "QPushButton:hover { background: #f0f0f0; border: 1px solid #b5b5b5; color: #000000; }"
+            "QPushButton:pressed { background: #f0f0f0; border: 1px solid #b5b5b5; color: #000000; }"
+            "QPushButton:disabled { color: #8a8a8a; border: 1px solid #cfcfcf; }"
         )
         self.apply_exterior_button.setToolTip("Apply changes to exterior girders (first and last)")
         self.apply_exterior_button.clicked.connect(self._on_apply_exterior_clicked)
@@ -752,11 +752,11 @@ class GirderDetailsTab(QWidget):
         self.apply_interior_button = QPushButton("Apply changes to interior girder")
         self.apply_interior_button.setFixedHeight(26)
         self.apply_interior_button.setStyleSheet(
-            "QPushButton { background: #ffffff; border: 1px solid #cfcfcf; border-radius: 6px; "
-            "padding: 4px 10px; font-size: 11px; color: #2b2b2b; }"
-            "QPushButton:hover { border-color: #90AF13; }"
-            "QPushButton:pressed { background: #f0f0f0; }"
-            "QPushButton:disabled { color: #8a8a8a; }"
+            "QPushButton { background: #f0f0f0; border: 1px solid #b5b5b5; border-radius: 2px; "
+            "padding: 4px 10px; font-size: 11px; color: #000000; font-weight: 400; }"
+            "QPushButton:hover { background: #f0f0f0; border: 1px solid #b5b5b5; color: #000000; }"
+            "QPushButton:pressed { background: #f0f0f0; border: 1px solid #b5b5b5; color: #000000; }"
+            "QPushButton:disabled { color: #8a8a8a; border: 1px solid #cfcfcf; }"
         )
         self.apply_interior_button.setToolTip("Apply changes to interior girder(s)")
         self.apply_interior_button.clicked.connect(self._on_apply_interior_clicked)
