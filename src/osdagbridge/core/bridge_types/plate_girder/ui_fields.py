@@ -418,13 +418,13 @@ class FrontendData:
                         {
                             "label": "Steel Design",
                             "buttons": [
-                                {"text": "Here", "action": "show_additional_inputs"},
+                                {"text": "Here", "action": "open_steel_design"},
                             ],
                         },
                         {
                             "label": "Deck Design",
                             "buttons": [
-                                {"text": "Here", "action": "show_additional_inputs"},
+                                {"text": "Here", "action": "open_deck_design"},
                             ],
                         },
                     ]
