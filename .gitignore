@@ -3,6 +3,7 @@
 *.py[codz]
 *$py.class
 .DS_Store
+*/.vscode/*
 
 # C extensions
 *.so

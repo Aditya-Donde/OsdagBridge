@@ -193,8 +193,8 @@ class BridgeDualCADWidget(QWidget):
             params['footpath_thickness'] = float(input_dict[KEY_FOOTPATH_THICKNESS])
         
         # Map footpath configuration
-        if "footpath" in input_dict:
-            footpath_value = input_dict["footpath"]
+        if KEY_FOOTPATH in input_dict:
+            footpath_value = input_dict[KEY_FOOTPATH]
             if footpath_value == "None":
                 params['footpath_config'] = 'none'
             elif footpath_value == "Single Sided":

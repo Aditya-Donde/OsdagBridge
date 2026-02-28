@@ -200,6 +200,7 @@ class InputDock(QWidget):
         self.update_lock_icon()
         return super().paintEvent(event)
     
+    # Collect all the input dock data to update 2D Cad
     def get_all_input_values(self):
         """Collect all input values from the input dock"""
         input_values = {}
@@ -213,34 +214,57 @@ class InputDock(QWidget):
                         return float(text)
                     except ValueError:
                         pass
+            elif isinstance(widget, QComboBox):
+                text = widget.currentText().strip()
+                return text
             return None
         
+        # # Collect all the Input Fields
+        # for tupple in self.backend.input_values():
+        #     if tupple[2] in [TYPE_COMBOBOX, TYPE_TEXTBOX]:
+        #         key = tupple[0]
+        #         widget = self.input_dock_widget.findChild(QWidget, key)
+        #         if widget:
+        #             val = get_numeric_value(widget)
+        #             if val is not None:
+        #                 input_values[key] = val
+        #             else:
+        #                 if key == KEY_SKEW_ANGLE:
+        #                     input_values[key] = 0.0  # Default skew angle
+        
+        # Hard code temporarily, will genralize after fixing inputdock generalization
+        
+        
         # Collect span
-        if hasattr(self, 'span_input'):
-            val = get_numeric_value(self.span_input)
-            if val is not None:
-                input_values[KEY_SPAN] = val
+        widget = self.input_dock_widget.findChild(QWidget, KEY_SPAN)
+        val = get_numeric_value(widget)
+        if val is not None:
+            input_values[KEY_SPAN] = get_numeric_value(widget)
         
         # Collect carriageway width
-        if hasattr(self, 'carriageway_input'):
-            val = get_numeric_value(self.carriageway_input)
-            if val is not None:
-                input_values[KEY_CARRIAGEWAY_WIDTH] = val
+        widget = self.input_dock_widget.findChild(QWidget, KEY_CARRIAGEWAY_WIDTH)
+        val = get_numeric_value(widget)
+        if val is not None:
+            input_values[KEY_CARRIAGEWAY_WIDTH] = get_numeric_value(widget)
         
         # Collect skew angle
-        if hasattr(self, 'skew_input'):
-            val = get_numeric_value(self.skew_input)
-            if val is not None:
-                input_values[KEY_SKEW_ANGLE] = val
-            else:
-                input_values[KEY_SKEW_ANGLE] = 0.0  # Default
+        widget = self.input_dock_widget.findChild(QWidget, KEY_SKEW_ANGLE)
+        val = get_numeric_value(widget)
+        if val is not None:
+            input_values[KEY_SKEW_ANGLE] = get_numeric_value(widget)
+        else:
+            input_values[KEY_SKEW_ANGLE] = 0.0  # Default
         
         # Collect footpath
-        if hasattr(self, 'footpath_combo'):
-            input_values["footpath"] = self.footpath_combo.currentText()
+        widget = self.input_dock_widget.findChild(QWidget, KEY_FOOTPATH)
+        val = get_numeric_value(widget)
+        if val is not None:
+            input_values[KEY_FOOTPATH] = get_numeric_value(widget)
         
         # Collect median
-        if hasattr(self, 'include_median_combo'):
+        widget = self.input_dock_widget.findChild(QWidget, KEY_INCLUDE_MEDIAN)
+        val = get_numeric_value(widget)
+        if val is not None:
             input_values[KEY_INCLUDE_MEDIAN] = (self.include_median_combo.currentText() == "Yes")
         
         # Add default values for parameters that CAD widget needs
@@ -429,6 +453,10 @@ class InputDock(QWidget):
         """)
 
         group_container = QWidget()
+
+        # This contains all the dynamically created UI
+        self.input_dock_widget = group_container
+
         self.input_widget = group_container
         group_container_layout = QVBoxLayout(group_container)
         group_container_layout.setContentsMargins(0, 0, 0, 0)
@@ -1095,7 +1123,7 @@ class InputDock(QWidget):
         if field_type == TYPE_COMBOBOX:
             widget = NoScrollComboBox()
             # Connect instant 2D CAD update
-            # widget.currentTextChanged.connect(self.emit_value_changed)
+            widget.currentTextChanged.connect(self.emit_value_changed)
 
             apply_field_style(widget)
             if values:
@@ -1124,7 +1152,7 @@ class InputDock(QWidget):
         elif field_type == TYPE_TEXTBOX:
             widget = QLineEdit()
             # Connect instant 2D CAD update
-            # widget.textChanged.connect(self.emit_value_changed)
+            widget.textChanged.connect(self.emit_value_changed)
 
             apply_field_style(widget)
             validator_instance = self.get_validator(validator)

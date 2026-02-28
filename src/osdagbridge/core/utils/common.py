@@ -557,7 +557,7 @@ MPa = N / ((mm) ** 2)
 GPa = kilo * MPa
 kPa = kilo * Pa
 
-KEY_FOOTPATH = ["None", "Single Side", "Both Sides"]
+KEY_FOOTPATH = "Footpath"
 KEY_SAFETY_KERB_MIN_WIDTH = 750  # in mm
 KEY_SAFETY_KERB_PLACEMENT = ['Single Side', 'Both Sides', ]
 KEY_FOOTPATH_CLEAR_MIN_WIDTH = 1500  # in mm

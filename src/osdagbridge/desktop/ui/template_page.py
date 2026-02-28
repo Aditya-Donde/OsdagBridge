@@ -280,6 +280,7 @@ class CustomWindow(QWidget):
             return
 
         input_values = self.input_dock.get_all_input_values()
+        # print("[DEBUG] Collected input values from InputDock:", input_values)
         if not input_values:
             return
 
