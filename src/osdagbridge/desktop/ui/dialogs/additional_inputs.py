@@ -18,6 +18,11 @@ from osdagbridge.desktop.ui.dialogs.tabs.common import apply_field_style, create
 from osdagbridge.desktop.ui.dialogs.custom_messagebox import CustomMessageBox, MessageBoxType
 from osdagbridge.desktop.ui.dialogs.tabs.typical_section_details import TypicalSectionDetailsTab, show_warning
 from osdagbridge.desktop.ui.dialogs.tabs.section_properties_tab import SectionPropertiesTab
+from osdagbridge.desktop.ui.dialogs.tabs.sub_tabs.section_properties.girder_details_tab import GirderDetailsTab
+from osdagbridge.desktop.ui.dialogs.tabs.sub_tabs.section_properties.stiffener_details_tab import StiffenerDetailsTab
+from osdagbridge.desktop.ui.dialogs.tabs.sub_tabs.section_properties.cross_bracing_details_tab import CrossBracingDetailsTab
+from osdagbridge.desktop.ui.dialogs.tabs.sub_tabs.section_properties.end_diaphragm_details_tab import EndDiaphragmDetailsTab
+from osdagbridge.desktop.ui.dialogs.tabs.custom_vehicle_dialog import CustomVehicleDialog
 from osdagbridge.desktop.ui.dialogs.tabs.loading_tab import LoadingTab
 from osdagbridge.desktop.ui.dialogs.tabs.support_conditions_tab import SupportConditionsTab
 from osdagbridge.desktop.ui.dialogs.tabs.design_options_tab import DesignOptionsTab
@@ -25,6 +30,48 @@ from osdagbridge.desktop.ui.dialogs.tabs.design_options_cont_tab import DesignOp
 from osdagbridge.desktop.ui.utils.combobox_utils import SmartCursorComboBoxView
 
 
+
+# =================================================================================
+#   CUSTOM COMBOBOX VIEW WITH SMART CURSOR HANDLING
+# =================================================================================
+
+class ComboBoxItemDelegate(QStyledItemDelegate):
+    """Delegate that renders disabled items in grey."""
+    
+    def paint(self, painter, option, index):
+        item = index.model().item(index.row())
+        if item and not item.isEnabled():
+            # For disabled items, draw background and text in grey
+            painter.fillRect(option.rect, option.palette.base())
+            painter.setPen(QColor(120, 120, 120))  # Grey color
+            text = index.data()
+            painter.drawText(option.rect, Qt.AlignLeft | Qt.AlignVCenter, f"  {text}")
+        else:
+            super().paint(painter, option, index)
+
+class SmartCursorComboBoxView(QListView):
+    """Custom list view for combobox that shows pointing hand for enabled items,
+    forbidden cursor for disabled items, and renders disabled items in grey."""
+    
+    def __init__(self):
+        super().__init__()
+        self.setItemDelegate(ComboBoxItemDelegate())
+    
+    def mouseMoveEvent(self, event):
+        index = self.indexAt(event.pos())
+        if index.isValid():
+            item = self.model().item(index.row())
+            if item and not item.isEnabled():
+                self.setCursor(Qt.ForbiddenCursor)
+            else:
+                self.setCursor(Qt.PointingHandCursor)
+        else:
+            self.setCursor(Qt.PointingHandCursor)
+        super().mouseMoveEvent(event)
+    
+    def leaveEvent(self, event):
+        self.setCursor(Qt.ArrowCursor)
+        super().leaveEvent(event)
 
 # =================================================================================
 #   MAIN IMPLEMENTATION
