@@ -4,7 +4,7 @@ from PySide6.QtWidgets import (
     QMenuBar, QSplitter, QSizePolicy, QPushButton, QScrollArea, QFrame,
 )
 from PySide6.QtSvgWidgets import QSvgWidget
-from PySide6.QtCore import Qt, QFile, QTextStream, Signal
+from PySide6.QtCore import Qt, QFile, QTextStream, Signal,QTimer
 from PySide6.QtGui import QIcon, QAction, QKeySequence
 
 from osdagbridge.desktop.ui.docks.input_dock import InputDock
