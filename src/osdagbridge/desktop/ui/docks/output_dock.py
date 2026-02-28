@@ -254,6 +254,18 @@ class OutputDock(QWidget):
         # Add content container to main layout
         self.main_layout.addWidget(content_container)
 
+    def open_steel_design(self):
+        """Open the Steel Design dialog."""
+        from osdagbridge.desktop.ui.dialogs.steel_design import SteelDesign
+        dlg = SteelDesign(parent=self.parent)
+        dlg.exec()
+
+    def open_deck_design(self):
+        """Open the Deck Design dialog."""
+        from osdagbridge.desktop.ui.dialogs.deck_design import DeckDesign
+        dlg = DeckDesign(parent=self.parent)
+        dlg.exec()
+
     def show_additional_inputs(self):
         """Handle showing additional geometry inputs."""
         # Implement your logic here
