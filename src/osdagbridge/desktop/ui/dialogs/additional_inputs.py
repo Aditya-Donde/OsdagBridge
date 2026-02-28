@@ -2,35 +2,72 @@
 Additional Inputs Widget for Highway Bridge Design
 Provides detailed input fields for manual bridge parameter definition
 """
-import sys
-import os
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QTabWidget, QTabBar, QLabel, QLineEdit,
     QComboBox, QGroupBox, QFormLayout, QPushButton, QScrollArea,
     QCheckBox, QMessageBox, QSizePolicy, QSpacerItem, QStackedWidget,
     QFrame, QGridLayout, QTableWidget, QTableWidgetItem, QHeaderView,
-    QTextEdit, QDialog, QSizePolicy, QSizeGrip
+    QTextEdit, QDialog, QSizePolicy, QSizeGrip, QListView, QStyledItemDelegate
 )
 from PySide6.QtCore import Qt, Signal, QSize
-from PySide6.QtGui import QDoubleValidator, QIntValidator
+from PySide6.QtGui import QDoubleValidator, QIntValidator, QColor, QValidator
 
 from osdagbridge.core.utils.common import *
 from osdagbridge.desktop.ui.utils.custom_titlebar import CustomTitleBar
 from osdagbridge.desktop.ui.dialogs.tabs.common import apply_field_style, create_action_button_bar
-from osdagbridge.desktop.ui.dialogs.tabs.typical_section_details import TypicalSectionDetailsTab
-from osdagbridge.desktop.ui.dialogs.tabs.optimizable_field import OptimizableField
+
+from osdagbridge.desktop.ui.dialogs.tabs.typical_section_details import TypicalSectionDetailsTab, show_warning
 from osdagbridge.desktop.ui.dialogs.tabs.section_properties_tab import SectionPropertiesTab
-from osdagbridge.desktop.ui.dialogs.tabs.sub_tabs.section_properties.girder_details_tab import GirderDetailsTab
-from osdagbridge.desktop.ui.dialogs.tabs.sub_tabs.section_properties.stiffener_details_tab import StiffenerDetailsTab
-from osdagbridge.desktop.ui.dialogs.tabs.sub_tabs.section_properties.cross_bracing_details_tab import CrossBracingDetailsTab
-from osdagbridge.desktop.ui.dialogs.tabs.sub_tabs.section_properties.end_diaphragm_details_tab import EndDiaphragmDetailsTab
-from osdagbridge.desktop.ui.dialogs.tabs.custom_vehicle_dialog import CustomVehicleDialog
 from osdagbridge.desktop.ui.dialogs.tabs.loading_tab import LoadingTab
+from osdagbridge.desktop.ui.dialogs.tabs.support_conditions_tab import SupportConditionsTab
+from osdagbridge.desktop.ui.dialogs.tabs.design_options_tab import DesignOptionsTab
+from osdagbridge.desktop.ui.dialogs.tabs.design_options_cont_tab import DesignOptionsContTab
 from osdagbridge.core.bridge_types.plate_girder.ui_fields_additional_input import (
-    SUPPORT_CONDITIONS_SCHEMA,
     DESIGN_OPTIONS_SCHEMA,
     DESIGN_OPTIONS_CONT_SCHEMA,
 )
+
+# =================================================================================
+#   CUSTOM COMBOBOX VIEW WITH SMART CURSOR HANDLING
+# =================================================================================
+
+class ComboBoxItemDelegate(QStyledItemDelegate):
+    """Delegate that renders disabled items in grey."""
+    
+    def paint(self, painter, option, index):
+        item = index.model().item(index.row())
+        if item and not item.isEnabled():
+            # For disabled items, draw background and text in grey
+            painter.fillRect(option.rect, option.palette.base())
+            painter.setPen(QColor(120, 120, 120))  # Grey color
+            text = index.data()
+            painter.drawText(option.rect, Qt.AlignLeft | Qt.AlignVCenter, f"  {text}")
+        else:
+            super().paint(painter, option, index)
+
+class SmartCursorComboBoxView(QListView):
+    """Custom list view for combobox that shows pointing hand for enabled items,
+    forbidden cursor for disabled items, and renders disabled items in grey."""
+    
+    def __init__(self):
+        super().__init__()
+        self.setItemDelegate(ComboBoxItemDelegate())
+    
+    def mouseMoveEvent(self, event):
+        index = self.indexAt(event.pos())
+        if index.isValid():
+            item = self.model().item(index.row())
+            if item and not item.isEnabled():
+                self.setCursor(Qt.ForbiddenCursor)
+            else:
+                self.setCursor(Qt.PointingHandCursor)
+        else:
+            self.setCursor(Qt.PointingHandCursor)
+        super().mouseMoveEvent(event)
+    
+    def leaveEvent(self, event):
+        self.setCursor(Qt.ArrowCursor)
+        super().leaveEvent(event)
 
 # =================================================================================
 #   MAIN IMPLEMENTATION
@@ -47,8 +84,8 @@ class AdditionalInputs(QDialog):
         self.setSizeGripEnabled(True)
         self.footpath_value = footpath_value
         self.carriageway_width = carriageway_width
-        self._member_properties_editable = True
-        self._last_saved_data = {}  # Track last saved state
+        self.saved_values = {}  # Store all input values here
+        self._member_properties_editable = True  # Default to editable
         self.init_ui()
         self.setStyleSheet("""
             QDialog {
@@ -56,7 +93,185 @@ class AdditionalInputs(QDialog):
                 border: 1px solid #90AF13;
             }
         """)
+   
+    #this fuction validtes the range for input fields
+    def _validate_widget(self, widget):
+        validator = widget.validator()
+        if not validator:
+            return None
 
+        text = widget.text().strip()
+        field_name = widget.objectName().replace("_", " ").title()
+
+        if text == "":
+            return f"{field_name} cannot be empty."
+
+        try:
+            value = float(text)
+        except ValueError:
+            return f"{field_name} must be a valid number."
+
+        if isinstance(validator, QDoubleValidator) or isinstance(validator, QIntValidator):
+            bottom = validator.bottom()
+            top = validator.top()
+
+            if value < bottom or value > top:
+                return f"{field_name} must be between {bottom} and {top}."
+
+        # ==============================
+        # SPECIAL: Shear Stud Height
+        # ==============================
+        if widget.objectName() == "shear_stud_height":
+            try:
+                diameter = float(self.shear_stud_diameter_combo.currentText())
+                deck_thickness = float(self.typical_section_tab.deck_thickness.text())
+
+                dynamic_min = max(4 * diameter, 100)
+                dynamic_max = deck_thickness - 25
+
+                if value < dynamic_min or value > dynamic_max:
+                    return (
+                        f"Shear Stud Height must be between "
+                        f"{dynamic_min:.0f} mm and {dynamic_max:.0f} mm."
+                    )
+            except Exception:
+                pass
+
+        return None
+    
+    #This function is set to validate only Three tabs, Add the rest three tabs accordingly
+    def _validate_all_fields(self):
+        errors = []
+
+        # Tabs we want to validate
+        valid_tabs = [
+            self.support_tab,
+            self.design_options_tab,
+            self.design_options_cont_tab,
+        ]
+
+        # Get all QLineEdits in entire dialog
+        all_line_edits = self.findChildren(QLineEdit)
+
+        for widget in all_line_edits:
+
+            # Skip invisible widgets
+            if not widget.isVisible():
+                continue
+
+            # Check if widget belongs to one of the target tabs
+            for tab in valid_tabs:
+                if tab and tab.isAncestorOf(widget):
+                    error = self._validate_widget(widget)
+                    if error:
+                        errors.append(error)
+                    break  # Stop checking other tabs
+
+        return errors
+    
+
+    def _save_inputs(self):
+        """
+        Save additional inputs.
+        Validate all fields first.
+        If errors exist -> show popup and DO NOT close dialog.
+        """
+        #this line takes all errors and show them together in the popup
+        errors = self._validate_all_fields()
+
+        if errors:
+            error_message = "\n\n".join(f"• {err}" for err in errors)
+
+            self._show_validation_errors(errors)
+
+            return  # STOP here, do not close dialog
+
+        # If everything is valid → continue saving
+    
+
+        self._collect_all_values()
+
+        if hasattr(self, "typical_section_tab") and hasattr(self.typical_section_tab, "save_values"):
+            self.saved_values.update(self.typical_section_tab.save_values() or {})
+
+        if hasattr(self, "section_properties_tab"):
+            if hasattr(self.section_properties_tab, "save_properties"):
+                self.section_properties_tab.save_properties()
+            if hasattr(self.section_properties_tab, "save_values"):
+                self.saved_values.update(self.section_properties_tab.save_values() or {})
+
+        if hasattr(self, "loading_tab") and hasattr(self.loading_tab, "save_values"):
+            self.saved_values.update(self.loading_tab.save_values() or {})
+
+        if hasattr(self, "support_tab") and hasattr(self.support_tab, "save_values"):
+            self.saved_values.update(self.support_tab.save_values() or {})
+
+        if hasattr(self, "design_options_tab") and hasattr(self.design_options_tab, "save_values"):
+            self.saved_values.update(self.design_options_tab.save_values() or {})
+
+        if hasattr(self, "design_options_cont_tab") and hasattr(self.design_options_cont_tab, "save_values"):
+            self.saved_values.update(self.design_options_cont_tab.save_values() or {})
+
+        self.accept()
+
+    #This part checks for all the errors in a particular tab and gives a popup after clicking save.
+    def _show_validation_errors(self, errors):
+        message = "\n\n".join(f"• {err}" for err in errors)
+
+        msg = QMessageBox(self)
+        msg.setIcon(QMessageBox.Warning)
+        msg.setWindowTitle("Validation Errors")
+        msg.setText(message)
+
+        msg.setStyleSheet("""
+            QMessageBox {
+                background-color: #ffffff;
+            }
+            QMessageBox QLabel {
+                color: #b00020;
+                font-size: 12px;
+            }
+            QMessageBox QPushButton {
+                background-color: #f0f0f0;
+                color: #000000;
+                border: 1px solid #888888;
+                border-radius: 4px;
+                padding: 6px 20px;
+                min-width: 80px;
+            }
+            QMessageBox QPushButton:hover {
+                background-color: #e0e0e0;
+            }
+        """)
+
+        msg.exec()  
+    
+    def _collect_all_values(self):
+        """Collect values from all bound widgets across all tabs."""
+        # Qt's findChildren doesn't accept a tuple; grab all QWidget descendants and filter
+        from PySide6.QtWidgets import QWidget
+
+        for widget in self.findChildren(QWidget):
+            widget_name = widget.objectName()
+            if not widget_name:
+                continue
+
+            if isinstance(widget, QLineEdit):
+                self.saved_values[widget_name] = widget.text()
+            elif isinstance(widget, QComboBox):
+                self.saved_values[widget_name] = widget.currentText()
+            elif isinstance(widget, QCheckBox):
+                self.saved_values[widget_name] = widget.isChecked()
+    
+    def get_saved_values(self):
+        """Return the dictionary of saved values."""
+        return self.saved_values.copy()
+
+    # compatibility helper used elsewhere in codebase
+    def get_all_values(self):
+        """Alias to get_saved_values for older callers."""
+        return self.get_saved_values()
+    
     def setupWrapper(self):
         self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowSystemMenuHint)
 
@@ -138,18 +353,17 @@ class AdditionalInputs(QDialog):
         self.tabs.addTab(self.loading_tab, "Loading")
         
         # Sub-Tab 4: Support Conditions
-        support_tab = self._build_support_conditions_tab()
-        self.tabs.addTab(support_tab, "Support Conditions")
+        self.support_tab = SupportConditionsTab(self)
+        self.tabs.addTab(self.support_tab, "Support Conditions")
         
         # Sub-Tab 5: Analysis/Design Options
-        design_options_tab = self._build_design_options_tab()
-        self.tabs.addTab(design_options_tab, "Analysis/Design Options")
+        self.design_options_tab = DesignOptionsTab(self)
+        self.tabs.addTab(self.design_options_tab, "Analysis/Design Options")
         
         # Sub-Tab 6: Design Options (Cont.)
-        analysis_design_tab = self._build_design_options_cont_tab()
-        self.tabs.addTab(analysis_design_tab, "Design Options (Cont.)")
-        self.tabs.currentChanged.connect(self._on_top_tab_changed)
-        
+        self.design_options_cont_tab = DesignOptionsContTab(self)
+        self.tabs.addTab(self.design_options_cont_tab, "Design Options (Cont.)")
+        self.tabs.currentChanged.connect(self._on_top_tab_changed)        
         main_layout.addWidget(self.tabs)
         
         action_bar, self.defaults_button, self.save_button = create_action_button_bar()
@@ -157,11 +371,12 @@ class AdditionalInputs(QDialog):
         self.save_button.clicked.connect(self._save_inputs)
         main_layout.addSpacing(6)
         main_layout.addWidget(action_bar)
-
+        
         # Enforce max 2 decimal places for all double validators in the dialog
         self._enforce_decimal_places(2)
         # Normalize existing numeric text to 2 decimal places for consistent display
         self._normalize_numeric_texts(2)
+
 
     def _enforce_decimal_places(self, places=2):
         """Force all QDoubleValidator instances in this dialog to the given decimal places."""
@@ -190,31 +405,78 @@ class AdditionalInputs(QDialog):
 
         if field_type == "combo":
             widget = QComboBox()
-            widget.addItems(field_def.get("choices") or [])
+            choices = field_def.get("choices") or []
+
+            for choice in choices:
+                widget.addItem(choice)
+
+            # apply enabled/disabled states if specified
+            enabled_list = field_def.get("enabled_choices")
+            if enabled_list is not None:
+                # after adding items we can disable the others
+                for idx in range(widget.count()):
+                    text = widget.itemText(idx)
+                    if text not in enabled_list:
+                        item = widget.model().item(idx)
+                        if item is not None:
+                            item.setEnabled(False)
+                            # grey out the text
+                            item.setForeground(Qt.gray)
+
             default = field_def.get("default")
             if default:
                 widget.setCurrentText(str(default))
+
             widget.setFixedWidth(field_width)
+            # use custom view with smart cursor handling for disabled items
+            try:
+                custom_view = SmartCursorComboBoxView()
+                widget.setView(custom_view)
+            except Exception:
+                pass
+
+            if field_def.get("id") == "shear_stud_diameter":
+                widget.currentTextChanged.connect(
+                    lambda: self._validate_widget(self.shear_stud_spacing_input),
+                )
+
         elif field_type == "checkbox":
             widget = QCheckBox(field_def.get("label", ""))
             widget.setChecked(bool(field_def.get("default", False)))
-        else:
+
+        elif field_type == "label":
+            widget = QLabel(field_def.get("default", ""))
+            widget.setFixedWidth(field_width)
+
+        elif field_type in ["line", "number"]:
             widget = QLineEdit()
+
             default = field_def.get("default")
             if default is not None:
                 widget.setText(str(default))
+                widget.setProperty("default_value", default)
             validator_def = field_def.get("validator")
-            if validator_def and validator_def.get("type") == "double_range":
-                bottom = validator_def.get("bottom", 0.0)
-                top = validator_def.get("top", 1e9)
-                decimals = validator_def.get("decimals", 2)
-                widget.setValidator(QDoubleValidator(bottom, top, decimals))
-            placeholder = field_def.get("placeholder")
-            if placeholder:
-                widget.setPlaceholderText(placeholder)
+
+            if validator_def:
+                if validator_def.get("type") == "double_range":
+                    bottom = validator_def.get("bottom", 0.0)
+                    top = validator_def.get("top", 1e9)
+                    decimals = validator_def.get("decimals", 2)
+                    validator = QDoubleValidator(bottom, top, decimals)
+                    widget.setValidator(validator)
+                    # placeholder showing range
+                    widget.setPlaceholderText(f"{bottom} - {top}")
+
+                elif validator_def.get("type") == "int_range":
+                    bottom = validator_def.get("bottom", 0)
+                    top = validator_def.get("top", 1_000_000)
+                    validator = QIntValidator(bottom, top)
+                    widget.setValidator(validator)
+                    widget.setPlaceholderText(f"{bottom} - {top}")
+
             widget.setFixedWidth(field_width)
 
-        if field_type != "checkbox":
+        if field_type not in ["checkbox", "label"]:
             apply_field_style(widget)
 
         bind_name = field_def.get("bind")
@@ -256,44 +518,66 @@ class AdditionalInputs(QDialog):
                 self.section_properties_tab.reset_defaults()
             return
 
-        # Other tabs: best-effort reset if supported.
-        if current_widget is not None and hasattr(current_widget, "reset_defaults"):
-            try:
-                current_widget.reset_defaults()
-                return
-            except Exception:
-                pass
+            for i in range(self.loading_tab.load_tabs.count()):
+                tab = self.loading_tab.load_tabs.widget(i)
+                if hasattr(tab, "reset_defaults"):
+                    tab.reset_defaults()
+
+        if hasattr(self, "typical_section_tab") and hasattr(self.typical_section_tab, "reset_defaults"):
+            self.typical_section_tab.reset_defaults()
+        if hasattr(self, "section_properties_tab") and hasattr(self.section_properties_tab, "reset_defaults"):
+            self.section_properties_tab.reset_defaults()
+        if not (hasattr(self, "typical_section_tab") or hasattr(self, "section_properties_tab")):
+            self._show_placeholder_message("Defaults")
+        if hasattr(self, "left_support_combo"):
+            self.left_support_combo.setCurrentText("Pinned")
+        if hasattr(self, "right_support_combo"):
+            self.right_support_combo.setCurrentText("Roller")
+        if hasattr(self, "bearing_length_input"):
+            self.bearing_length_input.setText("400")  
+
+        # -------- Reset Design Options --------
+        for card in DESIGN_OPTIONS_SCHEMA.get("cards", []):
+            for section in card.get("sections", []):
+                for field in section.get("fields", []):
+                    bind_name = field.get("bind")
+                    default_value = field.get("default")
+
+                    if bind_name and default_value is not None and hasattr(self, bind_name):
+                        widget = getattr(self, bind_name)
+
+                        if isinstance(widget, QLineEdit):
+                            widget.setText(str(default_value))
+
+                        elif isinstance(widget, QComboBox):
+                            widget.setCurrentText(str(default_value))
+                            
+        # -------- Reset Design Options (Cont.) --------
+        for section in DESIGN_OPTIONS_CONT_SCHEMA.get("sections", []):
+            # Normal fields
+            for field in section.get("fields", []):
+                bind_name = field.get("bind")
+                default_value = field.get("default")
+
+                if bind_name and default_value is not None and hasattr(self, bind_name):
+                    widget = getattr(self, bind_name)
+                    if isinstance(widget, QLineEdit):
+                        widget.setText(str(default_value))
+                    elif isinstance(widget, QComboBox):
+                        widget.setCurrentText(str(default_value))
+
+            # Checkbox groups (Limit States)
+            for group in section.get("checkbox_groups", []):
+                bind_name = group.get("bind")
+                default_checked = group.get("default_checked", False)
+
+                if bind_name and hasattr(self, bind_name):
+                    checkboxes = getattr(self, bind_name)
+                    for cb in checkboxes:
+                        cb.setChecked(default_checked)    
 
         self._show_placeholder_message("Defaults")
 
-    def _save_inputs(self):
-        saved = {}
-        try:
-            if hasattr(self, "section_properties_tab") and hasattr(self.section_properties_tab, "save_properties"):
-                saved.update(self.section_properties_tab.save_properties() or {})
-        except Exception as exc:
-            # If saving fails, the old code would never reach the confirmation popup.
-            box = QMessageBox(self)
-            box.setIcon(QMessageBox.Critical)
-            box.setWindowTitle("Save Failed")
-            box.setText(f"Could not save inputs.\n\n{exc}")
-            box.setStandardButtons(QMessageBox.Ok)
-            box.exec()
-            return
-
-        # Store the saved data for later retrieval
-        self._last_saved_data = saved
-        
-        # Confirm save to the user (requested behavior). Use an explicit message box
-        # instance so it stays on top of the frameless dialog.
-        box = QMessageBox(self)
-        box.setIcon(QMessageBox.Information)
-        box.setWindowTitle("Saved")
-        box.setText("Inputs saved successfully.")
-        box.setStandardButtons(QMessageBox.Ok)
-        box.setDefaultButton(QMessageBox.Ok)
-        box.setWindowModality(Qt.ApplicationModal)
-        box.exec()
 
     def _build_sections_from_schema(self, parent_layout, sections, heading_style, label_style, field_width):
         for section in sections:
@@ -315,11 +599,15 @@ class AdditionalInputs(QDialog):
                     vbox.setContentsMargins(16, 24, 16, 16)
                     vbox.setSpacing(12)
                     checkboxes = []
+                    default_checked = group.get("default_checked", False)
+
                     for text in group.get("items", []):
                         cb = QCheckBox(text)
+                        cb.setChecked(default_checked)
                         cb.setStyleSheet("QCheckBox { font-size: 11px; color: #333333; background: transparent; spacing: 8px; }")
                         vbox.addWidget(cb)
                         checkboxes.append(cb)
+                        
 
                     bind_name = group.get("bind")
                     if bind_name:
@@ -350,15 +638,30 @@ class AdditionalInputs(QDialog):
             for field_def in section.get("fields", []):
                 row_fields = field_def.get("row_fields")
                 if row_fields:
-                    col = 0
-                    for inline_def in row_fields:
-                        lbl = QLabel(inline_def.get("label", ""))
-                        lbl.setStyleSheet(label_style)
-                        grid.addWidget(lbl, row_index, col, Qt.AlignLeft | Qt.AlignVCenter)
-                        widget = self._create_schema_widget(inline_def, inline_def.get("width", section_field_width))
-                        grid.addWidget(widget, row_index, col + 1, Qt.AlignLeft)
-                        col += 2
-                    row_index += 1
+                    row_layout = QHBoxLayout()
+                    row_layout.setSpacing(8)  # reduce gap
+                    row_layout.setContentsMargins(0, 0, 0, 0)
+
+                    for i, inline_def in enumerate(row_fields):
+
+                        if inline_def.get("type") == "label":
+                            lbl = QLabel(inline_def.get("label", ""))
+                            lbl.setStyleSheet(label_style)
+                            row_layout.addWidget(lbl)
+
+                            # Add extra spacing only after "Limit :"
+                            if inline_def.get("after_spacing"):
+                                row_layout.addSpacing(inline_def["after_spacing"])
+
+                        else:
+                            widget = self._create_schema_widget(
+                                inline_def,
+                                inline_def.get("width", section_field_width)
+                            )
+                            row_layout.addWidget(widget)
+
+                    row_layout.addStretch()  # keep left aligned
+                    parent_layout.addLayout(row_layout)
                     continue
 
                 field_type = field_def.get("type")
@@ -369,125 +672,30 @@ class AdditionalInputs(QDialog):
                     continue
 
                 lbl = QLabel(field_def.get("label", ""))
+                lbl.setTextFormat(Qt.RichText)
                 lbl.setStyleSheet(label_style)
                 grid.addWidget(lbl, row_index, 0, Qt.AlignLeft | Qt.AlignVCenter)
 
                 widget = self._create_schema_widget(field_def, section_field_width)
-                grid.addWidget(widget, row_index, 1, Qt.AlignLeft)
+                # Create vertical container for error + field
+                field_container = QVBoxLayout()
+                field_container.setContentsMargins(0, 0, 0, 0)
+                field_container.setSpacing(2)
+
+                error_label = getattr(widget, "_error_label", None)
+                if error_label is not None:
+                    field_container.addWidget(error_label)
+
+                field_container.addWidget(widget)
+
+                container_widget = QWidget()
+                container_widget.setLayout(field_container)
+
+                grid.addWidget(container_widget, row_index, 1, Qt.AlignLeft)
                 row_index += 1
 
             parent_layout.addLayout(grid)
 
-    def _build_support_conditions_tab(self):
-        """Build the Support Conditions tab using schema-driven sections."""
-        widget = QWidget()
-        widget.setStyleSheet("background-color: #f5f5f5;")
-
-        main_layout = QVBoxLayout(widget)
-        main_layout.setContentsMargins(12, 12, 12, 12)
-        main_layout.setSpacing(12)
-
-        card_style = "QFrame { border: 1px solid #b2b2b2; border-radius: 8px; background-color: #ffffff; }"
-        heading_style = "font-size: 12px; font-weight: 700; color: #2b2b2b; background: transparent; border: none;"
-        label_style = "font-size: 11px; color: #3a3a3a; background: transparent; border: none;"
-        field_width = 160
-
-        card = QFrame()
-        card.setStyleSheet(card_style)
-        card_layout = QVBoxLayout(card)
-        card_layout.setContentsMargins(16, 16, 16, 16)
-        card_layout.setSpacing(12)
-
-        self._build_sections_from_schema(
-            card_layout,
-            SUPPORT_CONDITIONS_SCHEMA.get("sections", []),
-            heading_style,
-            label_style,
-            field_width,
-        )
-
-        card_layout.addStretch()
-        main_layout.addWidget(card)
-        main_layout.addStretch()
-
-        return widget
-
-    def _build_design_options_tab(self):
-        """Build the Design Options tab matching reference design"""
-        widget = QWidget()
-        widget.setStyleSheet("background-color: #f5f5f5;")
-        
-        main_layout = QVBoxLayout(widget)
-        main_layout.setContentsMargins(12, 12, 12, 12)
-        main_layout.setSpacing(12)
-        card_style = "QFrame { border: 1px solid #b2b2b2; border-radius: 8px; background-color: #ffffff; }"
-        label_style = "font-size: 11px; color: #3a3a3a; background: transparent; border: none;"
-        heading_style = "font-size: 12px; font-weight: 700; color: #2b2b2b; background: transparent; border: none;"
-        default_field_width = 150
-
-        for card_schema in DESIGN_OPTIONS_SCHEMA.get("cards", []):
-            card = QFrame()
-            card.setStyleSheet(card_style)
-            card_layout = QVBoxLayout(card)
-            card_layout.setContentsMargins(16, 14, 16, 14)
-            card_layout.setSpacing(10)
-
-            card_title = card_schema.get("title")
-            if card_title:
-                title_lbl = QLabel(f"{card_title}:")
-                title_lbl.setStyleSheet(heading_style)
-                card_layout.addWidget(title_lbl)
-
-            self._build_sections_from_schema(
-                card_layout,
-                card_schema.get("sections", []),
-                heading_style,
-                label_style,
-                card_schema.get("field_width", default_field_width),
-            )
-
-            main_layout.addWidget(card)
-
-        main_layout.addStretch()
-
-        return widget
-
-    def _build_design_options_cont_tab(self):
-        """Build the Design Options (Cont.) tab to match provided layout"""
-        widget = QWidget()
-        widget.setStyleSheet("background-color: #f5f5f5;")
-        
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setFrameShape(QFrame.NoFrame)
-        scroll.setStyleSheet("QScrollArea { background: transparent; border: none; }")
-        
-        scroll_content = QWidget()
-        scroll_content.setStyleSheet("background-color: #f5f5f5;")
-        main_layout = QVBoxLayout(scroll_content)
-        main_layout.setContentsMargins(20, 20, 20, 20)
-        main_layout.setSpacing(16)
-
-        label_style = "font-size: 11px; color: #333333; background: transparent; border: none;"
-        heading_style = "font-size: 12px; font-weight: 700; color: #2b2b2b; background: transparent; border: none;"
-
-        self._build_sections_from_schema(
-            main_layout,
-            DESIGN_OPTIONS_CONT_SCHEMA.get("sections", []),
-            heading_style,
-            label_style,
-            140,
-        )
-
-        main_layout.addStretch()
-
-        scroll.setWidget(scroll_content)
-        
-        outer_layout = QVBoxLayout(widget)
-        outer_layout.setContentsMargins(0, 0, 0, 0)
-        outer_layout.addWidget(scroll)
-
-        return widget
 
     def update_footpath_value(self, footpath_value):
         """Update footpath value across all tabs"""
