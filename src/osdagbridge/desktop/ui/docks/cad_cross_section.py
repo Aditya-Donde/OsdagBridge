@@ -2143,48 +2143,152 @@ class CrossSectionCADWidget(QWidget):
             return
 
 
-        # ================= METALLIC W-BEAM CRASH BARRIER =================
-        # Shape: kerb rectangle at deck level + thin post on top + w_beams horizontal beams
+        # METALLIC W-BEAM CRASH BARRIER 
         post_h_mm   = geo.get("post_height", 750)
         kerb_h_mm   = geo.get("kerb_height", 150)
         n_beams     = geo.get("w_beams", 1)
 
-        post_h  = post_h_mm  * scale
-        kerb_h  = kerb_h_mm  * scale
-        # Use crash_barrier_width param for total footprint width
-        width   = self.params.get('crash_barrier_width', 350) * scale
-        post_w  = max(4, 25 * scale)           # post cross-section width
-        beam_t  = max(3, 18 * scale)           # W-beam thickness
-        beam_w  = max(10, width * 0.7)         # W-beam length
+        # Fallback dimensions from 3D CAD/IRC 5 standards for missing details
+        kerb_top_w_mm    = 500.0
+        kerb_bottom_w_mm = 550.0
+        post_w_mm        = 150.0
+        post_offset_mm   = 75.0   # Offset from kerb edge
+        spacer_w_mm      = 200.0
+        spacer_h_mm      = 330.0
+        w_beam_h_mm      = 330.0  
+        w_beam_depth_mm  = 83.0   
+        w_beam_thk_mm    = 3.0
 
-        metallic_post_color = QColor(80, 80, 200) if n_beams == 1 else QColor(200, 100, 0)
-        if self.hovered_element == 'crash_barrier':
-            metallic_post_color = QColor(255, 250, 220)
+        # Scale all dimensions
+        post_h         = post_h_mm * scale
+        kerb_h         = kerb_h_mm * scale
+        kerb_top_w     = kerb_top_w_mm * scale
+        kerb_bottom_w  = kerb_bottom_w_mm * scale
+        post_w         = post_w_mm * scale
+        post_offset    = post_offset_mm * scale
+        spacer_w       = spacer_w_mm * scale
+        spacer_h       = spacer_h_mm * scale
+        w_beam_h       = w_beam_h_mm * scale
+        w_beam_depth   = w_beam_depth_mm * scale
+        w_beam_thk     = w_beam_thk_mm * scale
 
+        # Calculate positioning
         if side == 'left':
             base_x = x
+            # Points for kerb (Trapezoid: outer wall vertical, inner wall slopes)
+            # Symmetric trapezoid as per 3D code logic
+            kerb_points = [
+                QPointF(x, y),                                  # Bottom Left
+                QPointF(x + kerb_bottom_w, y),                  # Bottom Right
+                QPointF(x + (kerb_bottom_w + kerb_top_w)/2, y - kerb_h), # Top Right
+                QPointF(x + (kerb_bottom_w - kerb_top_w)/2, y - kerb_h)  # Top Left
+            ]
+            
+            # Post positioning (75mm from left end of kerb)
+            post_rect_x = x + post_offset
+            
+            # Spacer starts at post right edge and grows right
+            spacer_x_start = post_rect_x + post_w
+            spacer_width_val = spacer_w
+            
+            # W-Beam starts at spacer right edge
+            beam_root_x = spacer_x_start + spacer_w
+            
         else:
-            base_x = x - width
-
-        # Kerb rectangle
+            # Mirror for right side
+            base_x = x - kerb_bottom_w
+            kerb_points = [
+                QPointF(x - kerb_bottom_w, y),
+                QPointF(x, y),
+                QPointF(x - (kerb_bottom_w - kerb_top_w)/2, y - kerb_h),
+                QPointF(x - (kerb_bottom_w + kerb_top_w)/2, y - kerb_h)
+            ]
+            
+            # Post positioning (75mm from right end of kerb)
+            # x is the bottom-right coordinate of the kerb
+            post_rect_x = x - post_offset - post_w
+            
+            # Spacer starts at post left edge and grows left
+            spacer_x_start = post_rect_x
+            spacer_width_val = -spacer_w
+            
+            # W-Beam starts at spacer left edge (which is spacer_x_start - spacer_w)
+            beam_root_x = post_rect_x - spacer_w
+            
+        # Draw Kerb
         painter.setBrush(QBrush(QColor(180, 180, 180)))
         painter.setPen(QPen(Qt.black, max(1.0, scale)))
-        painter.drawRect(QRectF(base_x, y - kerb_h, width, kerb_h))
+        painter.drawPolygon(QPolygonF(kerb_points))
+        
+        # Draw Post
+        post_color = QColor(80, 80, 80) # Steel color
+        if self.hovered_element == 'crash_barrier':
+            post_color = QColor(255, 250, 220)
+        painter.setBrush(QBrush(post_color))
+        painter.drawRect(QRectF(post_rect_x, y - kerb_h - post_h, post_w, post_h))
+        
+        # Draw Spacer and W-Beam
+        if n_beams == 1:
+            h_centers = [post_h_mm - spacer_h_mm / 2.0]
+        else:
+            # Upper beam at top, lower beam below with 145mm gap (from 3D logic)
+            h_upper = post_h_mm - spacer_h_mm / 2.0
+            h_lower = h_upper - spacer_h_mm - 145
+            h_centers = [h_lower, h_upper]
 
-        # Vertical post (centred on kerb)
-        post_x = base_x + (width - post_w) / 2
-        painter.setBrush(QBrush(metallic_post_color))
-        painter.setPen(QPen(Qt.black, max(1.0, scale)))
-        painter.drawRect(QRectF(post_x, y - kerb_h - post_h, post_w, post_h))
+        for h_center_mm in h_centers:
+            h_center = h_center_mm * scale
+            spacer_y = y - kerb_h - h_center - spacer_h / 2
+            
+            # Draw Spacer
+            painter.setBrush(QBrush(post_color))
+            painter.drawRect(QRectF(spacer_x_start, spacer_y, spacer_width_val, spacer_h))
+            
+            # Draw W-Beam Profile (The double wave)
+            # Generate wave points
+            num_pts = 20 # Increased points for smoother wave
+            
+            def get_wave_y(z_rel): # z_rel from 0 to w_beam_h
+                sigma = w_beam_h / 10.0
+                mu1 = w_beam_h * 0.25
+                mu2 = w_beam_h * 0.75
+                amp = w_beam_depth * 1.5
+                
+                wave = (
+                    amp * math.exp(-((z_rel - mu1) ** 2) / (2 * sigma ** 2)) +
+                    amp * math.exp(-((z_rel - mu2) ** 2) / (2 * sigma ** 2))
+                )
+                return wave
+            
+            outer_wave = []
+            inner_wave = []
+            
+            for pt_idx in range(num_pts + 1):
+                z_rel = (pt_idx / num_pts) * w_beam_h
+                wave_val = get_wave_y(z_rel)
+                
+                curr_y = spacer_y + (w_beam_h - z_rel)
+                
+                if side == 'left':
+                    outer_wave.append(QPointF(beam_root_x + wave_val, curr_y))
+                    inner_wave.insert(0, QPointF(beam_root_x + wave_val - w_beam_thk, curr_y))
+                else:
+                    outer_wave.append(QPointF(beam_root_x - wave_val, curr_y))
+                    inner_wave.insert(0, QPointF(beam_root_x - wave_val + w_beam_thk, curr_y))
+            
+            w_beam_polygon = QPolygonF(outer_wave + inner_wave)
+            painter.setBrush(QBrush(QColor(120, 120, 120)))
+            painter.drawPolygon(w_beam_polygon)
 
-        # Horizontal W-beams – evenly spaced along post height
-        beam_x  = base_x + (width - beam_w) / 2
-        spacing = post_h / (n_beams + 1)
-        painter.setBrush(QBrush(metallic_post_color))
-        for i in range(n_beams):
-            beam_y = y - kerb_h - spacing * (i + 1) - beam_t / 2
-            painter.drawRect(QRectF(beam_x, beam_y, beam_w, beam_t))
-
-        hover_rect = QRectF(base_x, y - kerb_h - post_h, width, post_h + kerb_h)
+        # Hover rect for the whole assembly
+        assembly_top_y = y - kerb_h - post_h
+        assembly_bottom_y = y
+        if side == 'left':
+            assembly_width = max(kerb_bottom_w, (beam_root_x + w_beam_depth - x))
+            hover_rect = QRectF(x, assembly_top_y, abs(assembly_width), assembly_bottom_y - assembly_top_y)
+        else:
+            assembly_width = max(kerb_bottom_w, (x - (beam_root_x - w_beam_depth)))
+            hover_rect = QRectF(x - assembly_width, assembly_top_y, abs(assembly_width), assembly_bottom_y - assembly_top_y)
+            
         self.cross_section_hover_zones.append((hover_rect, 'crash_barrier'))
 
