@@ -56,6 +56,8 @@ class InputDock(QWidget):
         # Bottom action buttons (wired in build_left_panel).
         self.save_input_btn = None
         self.design_btn = None
+        self.design_mode_combo = None
+        self._current_design_mode = "Optimized"
 
         self.setStyleSheet("background: transparent;")
         self.main_layout = QHBoxLayout(self)
@@ -752,6 +754,11 @@ class InputDock(QWidget):
             except Exception:
                 pass
 
+        try:
+            self.additional_inputs.set_member_properties_design_mode(self._get_basic_design_mode())
+        except Exception:
+            pass
+
         # Capture state when dialog closes.
         try:
             self.additional_inputs.finished.connect(self._handle_additional_inputs_closed)
@@ -1196,6 +1203,8 @@ class InputDock(QWidget):
     def _register_input_widget(self, key, widget):
         if key == KEY_STRUCTURE_TYPE:
             self.structure_type_combo = widget
+        elif key == "Design":
+            self.design_mode_combo = widget
         elif key == KEY_SPAN:
             self.span_input = widget
         elif key == KEY_CARRIAGEWAY_WIDTH:
@@ -1249,6 +1258,28 @@ class InputDock(QWidget):
                 idx = widget.findText(default_value)
                 if idx >= 0:
                     widget.setCurrentIndex(idx)
+        elif key == "Design" and hasattr(widget, "currentTextChanged"):
+            widget.currentTextChanged.connect(self._on_design_mode_changed)
+            self._on_design_mode_changed(widget.currentText())
+
+    def _get_basic_design_mode(self) -> str:
+        if self.design_mode_combo is not None and hasattr(self.design_mode_combo, "currentText"):
+            value = str(self.design_mode_combo.currentText() or "").strip()
+            if value:
+                return value
+        value = str(getattr(self, "_current_design_mode", "") or "").strip()
+        return value or "Optimized"
+
+    def _on_design_mode_changed(self, mode_text: str) -> None:
+        mode = str(mode_text or "").strip() or "Optimized"
+        self._current_design_mode = mode
+
+        if self.additional_inputs is not None:
+            try:
+                if hasattr(self.additional_inputs, "set_member_properties_design_mode"):
+                    self.additional_inputs.set_member_properties_design_mode(mode)
+            except Exception:
+                pass
 
     def _finalize_section_contexts(self):
         for context in self.section_contexts.values():

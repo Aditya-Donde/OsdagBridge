@@ -6,10 +6,10 @@ from PySide6.QtWidgets import (
     QComboBox, QGroupBox, QFormLayout, QPushButton, QScrollArea,
     QCheckBox, QMessageBox, QSizePolicy, QSpacerItem, QStackedWidget,
     QFrame, QGridLayout, QTableWidget, QTableWidgetItem, QHeaderView,
-    QTextEdit, QDialog, QSizePolicy, QSizeGrip
+    QTextEdit, QDialog, QSizePolicy, QSizeGrip, QGraphicsDropShadowEffect
 )
 from PySide6.QtCore import Qt, Signal, QSize
-from PySide6.QtGui import QDoubleValidator, QIntValidator
+from PySide6.QtGui import QDoubleValidator, QIntValidator, QColor
 
 from osdagbridge.core.utils.common import *
 from osdagbridge.desktop.ui.utils.custom_titlebar import CustomTitleBar
@@ -32,6 +32,12 @@ class SectionPropertiesTab(QWidget):
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(0)
 
+        self._content_frame = QFrame()
+        self._content_frame.setFrameShape(QFrame.NoFrame)
+        content_layout = QVBoxLayout(self._content_frame)
+        content_layout.setContentsMargins(0, 0, 0, 0)
+        content_layout.setSpacing(0)
+
         self.section_tabs = QTabWidget()
         self.section_tabs.setDocumentMode(True)
         self.section_tabs.setStyleSheet(
@@ -52,8 +58,10 @@ class SectionPropertiesTab(QWidget):
         self.section_tabs.addTab(self.stiffener_details_tab, "Stiffener Details")
         self.section_tabs.addTab(self.cross_bracing_tab, "Cross-Bracing Details")
         self.section_tabs.addTab(self.end_diaphragm_tab, "End Diaphragm Details")
+        self._last_section_tab_index = self.section_tabs.currentIndex()
 
-        main_layout.addWidget(self.section_tabs)
+        content_layout.addWidget(self.section_tabs)
+        main_layout.addWidget(self._content_frame)
 
         # Bind stiffener tab to the girder tab for member list + optimized state.
         try:
@@ -77,11 +85,61 @@ class SectionPropertiesTab(QWidget):
         except Exception:
             pass
 
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._update_lock_overlay_geometry()
+
+    def _update_lock_overlay_geometry(self):
+        return
+
+    def set_editable_mode(self, editable: bool) -> None:
+        pass
+
+    def set_design_mode(self, mode_str: str) -> None:
+        if hasattr(self, "girder_details_tab") and hasattr(self.girder_details_tab, "set_design_mode"):
+            self.girder_details_tab.set_design_mode(mode_str)
+        if hasattr(self, "cross_bracing_tab") and hasattr(self.cross_bracing_tab, "set_design_mode"):
+            self.cross_bracing_tab.set_design_mode(mode_str)
+        if hasattr(self, "end_diaphragm_tab") and hasattr(self.end_diaphragm_tab, "set_design_mode"):
+            self.end_diaphragm_tab.set_design_mode(mode_str)
+
+    def has_unsaved_changes(self) -> bool:
+        try:
+            if hasattr(self, "girder_details_tab") and hasattr(self.girder_details_tab, "has_unsaved_changes"):
+                return bool(self.girder_details_tab.has_unsaved_changes())
+        except Exception:
+            pass
+        return False
+
     def _on_section_tab_changed(self, index: int) -> None:
+        previous = getattr(self, "_last_section_tab_index", 0)
+        if previous != index:
+            try:
+                leaving_girder_tab = previous == self.section_tabs.indexOf(getattr(self, "girder_details_tab", None))
+                if leaving_girder_tab and hasattr(self, "girder_details_tab") and hasattr(self.girder_details_tab, "has_unsaved_changes"):
+                    if self.girder_details_tab.has_unsaved_changes():
+                        box = QMessageBox(self)
+                        box.setIcon(QMessageBox.Warning)
+                        box.setWindowTitle("Unsaved Inputs")
+                        box.setText("Please save Member Properties before switching tabs.")
+                        box.setStandardButtons(QMessageBox.Ok)
+                        box.setDefaultButton(QMessageBox.Ok)
+                        box.setWindowModality(Qt.ApplicationModal)
+                        box.exec()
+                        prev = self.section_tabs.blockSignals(True)
+                        self.section_tabs.setCurrentIndex(previous)
+                        self.section_tabs.blockSignals(prev)
+                        return
+            except Exception:
+                pass
+
         try:
             widget = self.section_tabs.widget(index)
         except Exception:
             return
+
+        self._last_section_tab_index = index
+
         if widget is getattr(self, "stiffener_details_tab", None):
             try:
                 self.stiffener_details_tab.refresh_girder_members()

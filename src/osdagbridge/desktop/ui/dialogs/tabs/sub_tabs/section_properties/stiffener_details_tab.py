@@ -46,6 +46,7 @@ class StiffenerDetailsTab(QWidget):
 
     def init_ui(self):
         combo_width = 190  # keep all combo boxes strictly same width
+        self._form_label_width = 245
 
         main_layout = QVBoxLayout(self)
         main_layout.setContentsMargins(0, 0, 0, 0)
@@ -121,7 +122,7 @@ class StiffenerDetailsTab(QWidget):
         inputs_grid.setContentsMargins(0, 0, 0, 0)
         inputs_grid.setHorizontalSpacing(12)
         inputs_grid.setVerticalSpacing(10)
-        inputs_grid.setColumnMinimumWidth(0, 220)
+        inputs_grid.setColumnMinimumWidth(0, self._form_label_width)
         inputs_grid.setColumnStretch(0, 0)
         inputs_grid.setColumnStretch(1, 1)
 
@@ -133,7 +134,7 @@ class StiffenerDetailsTab(QWidget):
         row = self._add_form_row(
             inputs_grid,
             0,
-            "No. of Bearing Stiffeners at each end (on one side only):",
+            "No. of Bearing Stiffeners at each end\n(on one side only):",
             self.bearing_count_combo,
         )
 
@@ -147,8 +148,11 @@ class StiffenerDetailsTab(QWidget):
         self.bearing_outstand_input = QTextEdit()
         self.bearing_outstand_input.setReadOnly(True)
         self.bearing_outstand_input.setText(OUTSTAND_DEFAULT_TEXT)
-        self.bearing_outstand_input.setFixedHeight(34)
+        self.bearing_outstand_input.setFixedHeight(28)
         self.bearing_outstand_input.setFixedWidth(combo_width)
+        self.bearing_outstand_input.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.bearing_outstand_input.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.bearing_outstand_input.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
         self.bearing_outstand_input.setStyleSheet(
             "QTextEdit { border: 1px solid #d0d0d0; border-radius: 6px; background: #ffffff; "
             "color: #5b5b5b; font-size: 11px; }"
@@ -166,6 +170,8 @@ class StiffenerDetailsTab(QWidget):
         self.intermediate_spacing_input.setValidator(QIntValidator(1, 10**9, self.intermediate_spacing_input))
         apply_field_style(self.intermediate_spacing_input)
         self.intermediate_spacing_input.setPlaceholderText("NA")
+        self.intermediate_spacing_input.setFixedWidth(combo_width)
+        self.intermediate_spacing_input.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
         row = self._add_form_row(inputs_grid, row, "Intermediate Stiffener Spacing:", self.intermediate_spacing_input)
 
         self.intermediate_thick_combo = QComboBox()
@@ -178,8 +184,11 @@ class StiffenerDetailsTab(QWidget):
         self.intermediate_outstand_input = QTextEdit()
         self.intermediate_outstand_input.setReadOnly(True)
         self.intermediate_outstand_input.setText(OUTSTAND_DEFAULT_TEXT)
-        self.intermediate_outstand_input.setFixedHeight(34)
+        self.intermediate_outstand_input.setFixedHeight(28)
         self.intermediate_outstand_input.setFixedWidth(combo_width)
+        self.intermediate_outstand_input.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.intermediate_outstand_input.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.intermediate_outstand_input.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
         self.intermediate_outstand_input.setStyleSheet(
             "QTextEdit { border: 1px solid #d0d0d0; border-radius: 6px; background: #ffffff; "
             "color: #5b5b5b; font-size: 11px; }"
@@ -210,7 +219,7 @@ class StiffenerDetailsTab(QWidget):
         buckling_grid.setContentsMargins(0, 0, 0, 0)
         buckling_grid.setHorizontalSpacing(12)
         buckling_grid.setVerticalSpacing(10)
-        buckling_grid.setColumnMinimumWidth(0, 180)
+        buckling_grid.setColumnMinimumWidth(0, self._form_label_width)
 
         self.method_combo = QComboBox()
         self.method_combo.addItems(VALUES_STIFFENER_DESIGN)
@@ -291,6 +300,10 @@ class StiffenerDetailsTab(QWidget):
         label = QLabel(text)
         label.setStyleSheet("font-size: 11px; color: #3a3a3a; border: none;")
         label.setWordWrap(True)
+        label_width = int(getattr(self, "_form_label_width", 245) or 245)
+        label.setMinimumWidth(label_width)
+        label.setMaximumWidth(label_width)
+        label.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Preferred)
         return label
 
     def _add_form_row(self, layout, row, text, widget):

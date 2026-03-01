@@ -36,7 +36,7 @@ KEY_WEARING_COAT = ['bituminous', 'concrete']
 KEY_CRASH_BARRIER_TYPE = ['Flexible', 'Semi-Rigid', 'Rigid']
 KEY_METALLIC_CRASH_BARRIER_TYPE = ['Single W-beam', 'Double W-beam']
 KEY_RIGID_CRASH_BARRIER_TYPE = ['IRC-5R', 'High Containment']
-KEY_RAILING_TYPE = ['RCC', 'steel']
+KEY_RAILING_TYPE = ['IRC 5 RCC railing', 'IRC 5 steel railing']
 KEY_MEDIAN_TYPE = [
     'Raised Kerb',
     'RCC Crash Barrier',
@@ -57,12 +57,6 @@ FOOTWAY_LOADS = {
 	'Crowded Footway': 500,
 }
 
-KEY_RAILING_TYPE = ['IRC 5 RCC railing','IRC 5 steel railing']
-KEY_CRASH_BARRIER_TYPE = [
-    "Rigid",
-    "Semi-rigid",
-    "Flexible"
-]
 KEY_TERRAIN_TYPE = ['plain','obstructed']
 
 

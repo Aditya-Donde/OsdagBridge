@@ -10,7 +10,9 @@ from typing import Dict, List, Optional
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QDoubleValidator, QColor, QPalette, QPen
 from PySide6.QtWidgets import (
+    QAbstractItemView,
     QComboBox,
+    QDialog,
     QFrame,
     QGridLayout,
     QHBoxLayout,
@@ -19,6 +21,7 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QMessageBox,
     QPushButton,
+    QListWidget,
     QScrollArea,
     QSizePolicy,
     QStyledItemDelegate,
@@ -34,6 +37,7 @@ from osdagbridge.core.utils.common import (
     VALUES_GIRDER_DESIGN_MODE,
     VALUES_GIRDER_SPAN_MODE,
     VALUES_GIRDER_SYMMETRY,
+    VALUES_GIRDER_SUPPORT_TYPE,
     VALUES_GIRDER_TYPE,
     VALUES_PROFILE_SCOPE,
     VALUES_TORSIONAL_RESTRAINT,
@@ -41,6 +45,7 @@ from osdagbridge.core.utils.common import (
     VALUES_WEB_TYPE,
 )
 from osdagbridge.desktop.ui.dialogs.tabs.common import apply_field_style
+from osdagbridge.desktop.ui.utils.custom_titlebar import CustomTitleBar
 from osdagbridge.desktop.ui.utils.rolled_section_preview import RolledSectionPreview
 
 
@@ -50,7 +55,10 @@ DEFAULT_DISTANCE_START_M = 0.0
 # This is a UI safety cap; actual girder count is driven by the "No. of Girders" input.
 MAX_GIRDER_COUNT = 20
 
-
+SAIL_APPROVED_THICKNESS_VALUES = [
+    "8", "10", "12", "14", "16", "18", "20", "22", "25", "28", "32", "36",
+    "40", "45", "50", "56", "63", "75", "80", "90", "100", "110", "120",
+]
 def _locate_database() -> Path:
     current = Path(__file__).resolve()
     for parent in current.parents:
@@ -249,6 +257,320 @@ class _EndDistanceDelegate(QStyledItemDelegate):
         model.setData(index, editor.text())
 
 
+class _BoundsDialog(QDialog):
+    def __init__(self, title: str, bounds: dict, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle(title)
+        self.setWindowFlags(Qt.Dialog | Qt.FramelessWindowHint | Qt.WindowSystemMenuHint)
+        self.setWindowModality(Qt.ApplicationModal)
+        self.setModal(True)
+        self.setMinimumWidth(560)
+        self.setStyleSheet("QDialog { background: #ffffff; border: 1px solid #90AF13; }")
+
+        root_layout = QVBoxLayout(self)
+        root_layout.setContentsMargins(1, 1, 1, 1)
+        root_layout.setSpacing(0)
+
+        self.title_bar = CustomTitleBar(parent=self)
+        self.title_bar.setTitle(title)
+        root_layout.addWidget(self.title_bar)
+
+        content = QWidget(self)
+        content.setStyleSheet("background: #f3f3f3;")
+        root_layout.addWidget(content)
+
+        layout = QVBoxLayout(content)
+        layout.setContentsMargins(22, 16, 22, 16)
+        layout.setSpacing(12)
+
+        form_grid = QGridLayout()
+        form_grid.setHorizontalSpacing(14)
+        form_grid.setVerticalSpacing(10)
+
+        lower = float(bounds.get("lower", 0.0))
+        upper = float(bounds.get("upper", 0.0))
+        increment = float(bounds.get("increment", 0.0))
+
+        self.lower_input = QLineEdit(f"{lower:.2f}")
+        self.upper_input = QLineEdit(f"{upper:.2f}")
+        self.increment_input = QLineEdit(f"{increment:.2f}")
+
+        for line_edit in (self.lower_input, self.upper_input, self.increment_input):
+            line_edit.setValidator(QDoubleValidator(0.0, 1e12, 3, line_edit))
+            line_edit.setMinimumHeight(34)
+            line_edit.setStyleSheet(
+                "QLineEdit {"
+                " border: 1px solid #c8c8c8; border-radius: 8px;"
+                " background: #ffffff; color: #111111; padding: 6px 10px; font-size: 13px;"
+                "}"
+            )
+
+        labels = (
+            ("Lower Bound:", self.lower_input),
+            ("Upper Bound:", self.upper_input),
+            ("Increment:", self.increment_input),
+        )
+        for row, (text, widget) in enumerate(labels):
+            lbl = QLabel(text)
+            lbl.setStyleSheet("font-size: 12px; color: #202020; background: transparent;")
+            form_grid.addWidget(lbl, row, 0, Qt.AlignLeft | Qt.AlignVCenter)
+            form_grid.addWidget(widget, row, 1)
+
+        layout.addLayout(form_grid)
+
+        button_row = QHBoxLayout()
+        button_row.setContentsMargins(0, 4, 0, 0)
+        button_row.setSpacing(10)
+        button_row.addStretch(1)
+
+        cancel_btn = QPushButton("Cancel")
+        ok_btn = QPushButton("OK")
+        for button in (cancel_btn, ok_btn):
+            button.setMinimumHeight(34)
+            button.setStyleSheet(
+                "QPushButton {"
+                " background: #ffffff; color: #111111;"
+                " border: 1px solid #1f1f1f; border-radius: 10px;"
+                " min-width: 86px;"
+                " font-size: 12px; font-weight: 700;"
+                "}"
+                "QPushButton:hover { background: #f3f3f3; }"
+                "QPushButton:pressed { background: #e9e9e9; }"
+            )
+
+        cancel_btn.clicked.connect(self.reject)
+        ok_btn.clicked.connect(self._on_accept)
+        button_row.addWidget(cancel_btn)
+        button_row.addWidget(ok_btn)
+        layout.addLayout(button_row)
+
+        self._result = None
+
+    def _on_accept(self) -> None:
+        lower = self._parse_positive(self.lower_input.text())
+        upper = self._parse_positive(self.upper_input.text())
+        increment = self._parse_positive(self.increment_input.text())
+
+        if lower is None or upper is None or increment is None:
+            box = QMessageBox(self)
+            box.setIcon(QMessageBox.Warning)
+            box.setWindowTitle("Invalid Bounds")
+            box.setText("Please enter valid positive numeric values.")
+            box.setStandardButtons(QMessageBox.Ok)
+            box.exec()
+            return
+        if upper <= lower:
+            box = QMessageBox(self)
+            box.setIcon(QMessageBox.Warning)
+            box.setWindowTitle("Invalid Bounds")
+            box.setText("Upper bound must be greater than lower bound.")
+            box.setStandardButtons(QMessageBox.Ok)
+            box.exec()
+            return
+        if increment <= 0.0:
+            box = QMessageBox(self)
+            box.setIcon(QMessageBox.Warning)
+            box.setWindowTitle("Invalid Bounds")
+            box.setText("Increment must be greater than zero.")
+            box.setStandardButtons(QMessageBox.Ok)
+            box.exec()
+            return
+
+        self._result = {
+            "lower": float(lower),
+            "upper": float(upper),
+            "increment": float(increment),
+        }
+        self.accept()
+
+    @staticmethod
+    def _parse_positive(text: str) -> Optional[float]:
+        try:
+            return float(str(text).strip())
+        except Exception:
+            return None
+
+    def result_bounds(self) -> Optional[dict]:
+        return self._result
+
+
+class _ThicknessSelectionDialog(QDialog):
+    def __init__(self, title: str, selected_values: List[str], parent=None):
+        super().__init__(parent)
+        self.setWindowTitle(title)
+        self.setWindowFlags(Qt.Dialog | Qt.FramelessWindowHint | Qt.WindowSystemMenuHint)
+        self.setWindowModality(Qt.ApplicationModal)
+        self.setModal(True)
+        self.setMinimumSize(620, 520)
+        self.setStyleSheet("QDialog { background: #ffffff; border: 1px solid #90AF13; }")
+
+        root_layout = QVBoxLayout(self)
+        root_layout.setContentsMargins(1, 1, 1, 1)
+        root_layout.setSpacing(0)
+
+        self.title_bar = CustomTitleBar(parent=self)
+        self.title_bar.setTitle(title)
+        root_layout.addWidget(self.title_bar)
+
+        content = QWidget(self)
+        content.setStyleSheet("background: #f3f3f3;")
+        root_layout.addWidget(content)
+
+        layout = QVBoxLayout(content)
+        layout.setContentsMargins(24, 18, 24, 18)
+        layout.setSpacing(14)
+
+        top_row = QHBoxLayout()
+        top_row.setSpacing(18)
+
+        left_col = QVBoxLayout()
+        left_col.setSpacing(8)
+        left_lbl = QLabel("Available:")
+        left_lbl.setStyleSheet("font-size: 12px; font-weight: 600; color: #1f1f1f;")
+        self.available_list = QListWidget()
+        self.available_list.setSelectionMode(QAbstractItemView.ExtendedSelection)
+        self.available_list.setStyleSheet(
+            "QListWidget { background: #ffffff; border: 1px solid #c8c8c8; border-radius: 10px;"
+            " font-size: 14px; color: #1f1f1f; padding: 4px; }"
+        )
+        left_col.addWidget(left_lbl)
+        left_col.addWidget(self.available_list, 1)
+
+        buttons_col = QVBoxLayout()
+        buttons_col.setSpacing(10)
+        buttons_col.addStretch(1)
+        self.move_all_right_btn = self._move_btn(">>", True)
+        self.move_right_btn = self._move_btn(">", False)
+        self.move_left_btn = self._move_btn("<", False)
+        self.move_all_left_btn = self._move_btn("<<", True)
+        buttons_col.addWidget(self.move_all_right_btn)
+        buttons_col.addWidget(self.move_right_btn)
+        buttons_col.addWidget(self.move_left_btn)
+        buttons_col.addWidget(self.move_all_left_btn)
+        buttons_col.addStretch(1)
+
+        right_col = QVBoxLayout()
+        right_col.setSpacing(8)
+        right_lbl = QLabel("Selected:")
+        right_lbl.setStyleSheet("font-size: 12px; font-weight: 600; color: #1f1f1f;")
+        self.selected_list = QListWidget()
+        self.selected_list.setSelectionMode(QAbstractItemView.ExtendedSelection)
+        self.selected_list.setStyleSheet(
+            "QListWidget { background: #ffffff; border: 1px solid #c8c8c8; border-radius: 10px;"
+            " font-size: 14px; color: #1f1f1f; padding: 4px; }"
+        )
+        right_col.addWidget(right_lbl)
+        right_col.addWidget(self.selected_list, 1)
+
+        top_row.addLayout(left_col, 1)
+        top_row.addLayout(buttons_col)
+        top_row.addLayout(right_col, 1)
+        layout.addLayout(top_row, 1)
+
+        submit_row = QHBoxLayout()
+        submit_row.addStretch(1)
+        submit_btn = QPushButton("Submit")
+        submit_btn.setMinimumHeight(40)
+        submit_btn.setMinimumWidth(220)
+        submit_btn.setStyleSheet(
+            "QPushButton {"
+            " background: #90AF13; color: #ffffff;"
+            " border: 1px solid #90AF13; border-radius: 10px;"
+            " font-size: 14px; font-weight: 700;"
+            "}"
+            "QPushButton:hover { background: #7f9d11; }"
+            "QPushButton:pressed { background: #6f8b0f; }"
+        )
+        submit_btn.clicked.connect(self.accept)
+        submit_row.addWidget(submit_btn)
+        submit_row.addStretch(1)
+        layout.addLayout(submit_row)
+
+        selected = [v for v in selected_values if v in SAIL_APPROVED_THICKNESS_VALUES]
+        if not selected:
+            selected = list(SAIL_APPROVED_THICKNESS_VALUES)
+        available = [v for v in SAIL_APPROVED_THICKNESS_VALUES if v not in selected]
+
+        self.available_list.addItems(available)
+        self.selected_list.addItems(selected)
+
+        self.move_all_right_btn.clicked.connect(self._move_all_right)
+        self.move_right_btn.clicked.connect(self._move_selected_right)
+        self.move_left_btn.clicked.connect(self._move_selected_left)
+        self.move_all_left_btn.clicked.connect(self._move_all_left)
+
+        self._refresh_button_states()
+        self.available_list.itemSelectionChanged.connect(self._refresh_button_states)
+        self.selected_list.itemSelectionChanged.connect(self._refresh_button_states)
+
+    def _move_btn(self, text: str, primary: bool) -> QPushButton:
+        button = QPushButton(text)
+        button.setMinimumSize(84, 48)
+        if primary:
+            button.setStyleSheet(
+                "QPushButton { background: #90AF13; color: #ffffff; border: 1px solid #90AF13;"
+                " border-radius: 10px; font-size: 18px; font-weight: 800; }"
+                "QPushButton:hover { background: #7f9d11; }"
+                "QPushButton:pressed { background: #6f8b0f; }"
+                "QPushButton:disabled { background: #d2d2d2; color: #8a8a8a; border-color: #d2d2d2; }"
+            )
+        else:
+            button.setStyleSheet(
+                "QPushButton { background: #cfcfcf; color: #6b6b6b; border: 1px solid #cfcfcf;"
+                " border-radius: 10px; font-size: 18px; font-weight: 800; }"
+                "QPushButton:disabled { background: #dcdcdc; color: #9a9a9a; border-color: #dcdcdc; }"
+            )
+        return button
+
+    def _move_selected_right(self) -> None:
+        self._move_items(self.available_list, self.selected_list, selected_only=True)
+
+    def _move_selected_left(self) -> None:
+        self._move_items(self.selected_list, self.available_list, selected_only=True)
+
+    def _move_all_right(self) -> None:
+        self._move_items(self.available_list, self.selected_list, selected_only=False)
+
+    def _move_all_left(self) -> None:
+        self._move_items(self.selected_list, self.available_list, selected_only=False)
+
+    def _move_items(self, source: QListWidget, target: QListWidget, selected_only: bool) -> None:
+        rows = []
+        if selected_only:
+            rows = sorted([source.row(item) for item in source.selectedItems()], reverse=True)
+        else:
+            rows = list(range(source.count() - 1, -1, -1))
+
+        moved = []
+        for row in rows:
+            item = source.takeItem(row)
+            if item is not None:
+                moved.append(item.text())
+        for text in moved:
+            target.addItem(text)
+
+        self._sort_list(self.available_list)
+        self._sort_list(self.selected_list)
+        self._refresh_button_states()
+
+    def _sort_list(self, widget: QListWidget) -> None:
+        values = []
+        for i in range(widget.count()):
+            values.append(widget.item(i).text())
+        values = sorted(values, key=lambda v: SAIL_APPROVED_THICKNESS_VALUES.index(v) if v in SAIL_APPROVED_THICKNESS_VALUES else 9999)
+        widget.clear()
+        widget.addItems(values)
+
+    def _refresh_button_states(self) -> None:
+        self.move_right_btn.setEnabled(bool(self.available_list.selectedItems()))
+        self.move_left_btn.setEnabled(bool(self.selected_list.selectedItems()))
+        self.move_all_right_btn.setEnabled(self.available_list.count() > 0)
+        self.move_all_left_btn.setEnabled(self.selected_list.count() > 0)
+
+    def selected_values(self) -> List[str]:
+        return [self.selected_list.item(i).text() for i in range(self.selected_list.count())]
+
+
 class GirderDetailsTab(QWidget):
     """Tab for Girder Details styled to match the provided reference."""
 
@@ -277,6 +599,7 @@ class GirderDetailsTab(QWidget):
         self._member_state: Dict[str, Dict[str, dict]] = {}
         self._dirty_members: set[tuple[str, str]] = set()
         self._last_member_combo_index: int = 0
+        self._suppress_member_switch_prompt: bool = True
         # Template state used when a member is first visited.
         self._default_member_state: Optional[dict] = None
         # Section Inputs widgets are built later than the overview card. Avoid
@@ -294,7 +617,16 @@ class GirderDetailsTab(QWidget):
 
         # Section Inputs widgets
         self.member_id_combo: Optional[QComboBox] = None
+        self._dimension_bounds = {
+            "total_depth": {"lower": 200.0, "upper": 2000.0, "increment": 25.0},
+            "top_width": {"lower": 100.0, "upper": 1000.0, "increment": 10.0},
+            "bottom_width": {"lower": 100.0, "upper": 1000.0, "increment": 10.0},
+        }
         self.init_ui()
+
+    def set_design_mode(self, mode_str: str):
+        if hasattr(self, "design_combo"):
+             self.design_combo.setCurrentText(mode_str)
 
     def init_ui(self):
         main_layout = QVBoxLayout(self)
@@ -388,10 +720,45 @@ class GirderDetailsTab(QWidget):
         self.length_input = QLineEdit("30")
         apply_field_style(self.length_input)
         self._set_field_width(self.length_input)
-        self.length_input.setReadOnly(False)
+        self.length_input.setReadOnly(True)
+        self.length_input.setToolTip("Total Span is auto-controlled and cannot be edited here")
         self.length_input.textChanged.connect(self._on_length_changed)
         details_layout.addWidget(self._create_label("Total Span (m):"), 2, 0, Qt.AlignLeft | Qt.AlignVCenter)
         details_layout.addWidget(self.length_input, 2, 1)
+
+        # Exterior/Interior copy buttons layout (Row 3, spans 2 columns)
+        copy_buttons_layout = QHBoxLayout()
+        copy_buttons_layout.setContentsMargins(0, 0, 0, 0)
+        copy_buttons_layout.setSpacing(10)
+
+        self.apply_exterior_button = QPushButton("Apply changes to exterior girders")
+        self.apply_exterior_button.setFixedHeight(26)
+        self.apply_exterior_button.setStyleSheet(
+            "QPushButton { background: #f0f0f0; border: 1px solid #b5b5b5; border-radius: 2px; "
+            "padding: 4px 10px; font-size: 11px; color: #000000; font-weight: 400; }"
+            "QPushButton:hover { background: #f0f0f0; border: 1px solid #b5b5b5; color: #000000; }"
+            "QPushButton:pressed { background: #f0f0f0; border: 1px solid #b5b5b5; color: #000000; }"
+            "QPushButton:disabled { color: #8a8a8a; border: 1px solid #cfcfcf; }"
+        )
+        self.apply_exterior_button.setToolTip("Apply changes to exterior girders (first and last)")
+        self.apply_exterior_button.clicked.connect(self._on_apply_exterior_clicked)
+
+        self.apply_interior_button = QPushButton("Apply changes to interior girder")
+        self.apply_interior_button.setFixedHeight(26)
+        self.apply_interior_button.setStyleSheet(
+            "QPushButton { background: #f0f0f0; border: 1px solid #b5b5b5; border-radius: 2px; "
+            "padding: 4px 10px; font-size: 11px; color: #000000; font-weight: 400; }"
+            "QPushButton:hover { background: #f0f0f0; border: 1px solid #b5b5b5; color: #000000; }"
+            "QPushButton:pressed { background: #f0f0f0; border: 1px solid #b5b5b5; color: #000000; }"
+            "QPushButton:disabled { color: #8a8a8a; border: 1px solid #cfcfcf; }"
+        )
+        self.apply_interior_button.setToolTip("Apply changes to interior girder(s)")
+        self.apply_interior_button.clicked.connect(self._on_apply_interior_clicked)
+        
+        copy_buttons_layout.addWidget(self.apply_exterior_button)
+        copy_buttons_layout.addWidget(self.apply_interior_button)
+        
+        details_layout.addLayout(copy_buttons_layout, 3, 0, 1, 2)
 
         # Hidden legacy fields: still used by existing split/ripple logic.
         self.member_id_input = QLineEdit()
@@ -414,15 +781,15 @@ class GirderDetailsTab(QWidget):
         self.segment_length_input.setReadOnly(True)
         self.segment_length_input.setVisible(False)
 
-        details_layout.addWidget(self.member_id_input, 3, 0, 1, 2)
-        details_layout.addWidget(self.distance_start_input, 4, 0, 1, 2)
-        details_layout.addWidget(self.distance_end_input, 5, 0, 1, 2)
-        details_layout.addWidget(self.segment_length_input, 6, 0, 1, 2)
+        details_layout.addWidget(self.member_id_input, 4, 0, 1, 2)
+        details_layout.addWidget(self.distance_start_input, 5, 0, 1, 2)
+        details_layout.addWidget(self.distance_end_input, 6, 0, 1, 2)
+        details_layout.addWidget(self.segment_length_input, 7, 0, 1, 2)
 
         left_layout.addWidget(details_box)
         left_layout.addStretch(1)
 
-        # RIGHT: Member segments table + add/remove buttons (matches reference layout)
+        # RIGHT: Member segments table with per-row actions
         manager_box = self._create_inner_box()
         manager_box.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         manager_layout = QVBoxLayout(manager_box)
@@ -435,16 +802,21 @@ class GirderDetailsTab(QWidget):
         table_row = QWidget()
         table_row_layout = QHBoxLayout(table_row)
         table_row_layout.setContentsMargins(0, 0, 0, 0)
-        table_row_layout.setSpacing(10)
+        table_row_layout.setSpacing(0)
 
-        self.segment_table = QTableWidget(0, 4)
-        self.segment_table.setHorizontalHeaderLabels(["Member ID", "Start (m)", "End (m)", "Length (m)"])
+        self.segment_table = QTableWidget(0, 5)
+        self.segment_table.setHorizontalHeaderLabels(["Member ID", "Start (m)", "End (m)", "Length (m)", "Action"])
         self.segment_table.horizontalHeader().setVisible(True)
         self.segment_table.verticalHeader().setVisible(False)
-        self.segment_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        self.segment_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
+        self.segment_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
+        self.segment_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.Stretch)
+        self.segment_table.horizontalHeader().setSectionResizeMode(3, QHeaderView.Stretch)
+        self.segment_table.horizontalHeader().setSectionResizeMode(4, QHeaderView.Fixed)
+        self.segment_table.setColumnWidth(4, 132)
         self.segment_table.horizontalHeader().setMinimumHeight(34)
-        self.segment_table.verticalHeader().setDefaultSectionSize(34)
-        self.segment_table.verticalHeader().setMinimumSectionSize(28)
+        self.segment_table.verticalHeader().setDefaultSectionSize(38)
+        self.segment_table.verticalHeader().setMinimumSectionSize(34)
         self.segment_table.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         self.segment_table.setShowGrid(True)
         self.segment_table.setGridStyle(Qt.SolidLine)
@@ -459,7 +831,7 @@ class GirderDetailsTab(QWidget):
         self.segment_table.setFixedHeight(_hdr_h + (2 * _row_h) + 10)
         self.segment_table.setStyleSheet(
             "QTableWidget { background: #ffffff; border: 1px solid #d6d6d6; border-radius: 6px; gridline-color: #d0d0d0; }"
-            "QTableWidget::item { color: #1f1f1f; padding: 6px; }"
+            "QTableWidget::item { color: #1f1f1f; padding: 4px 6px; }"
             "QTableWidget::item:selected { background: #e8f0c9; color: #1a1a1a; }"
             "QTableWidget::item:focus { outline: none; }"
             "QTableWidget QLineEdit { background: #ffffff; color: #000000; }"
@@ -476,36 +848,6 @@ class GirderDetailsTab(QWidget):
         self.segment_table.cellClicked.connect(self._on_segment_cell_clicked)
         self.segment_table.itemChanged.connect(self._on_segment_table_item_changed)
         table_row_layout.addWidget(self.segment_table, 1)
-
-        buttons_col = QWidget()
-        buttons_layout = QVBoxLayout(buttons_col)
-        buttons_layout.setContentsMargins(0, 0, 0, 0)
-        buttons_layout.setSpacing(8)
-
-        self.split_add_button = QPushButton("+")
-        self.split_add_button.setFixedSize(36, 36)
-        self.split_add_button.setStyleSheet(
-            "QPushButton { background-color: #90AF13; color: #111111; border: 1px solid #6f850f; border-radius: 6px; padding: 0px; font-weight: 900; font-size: 22px; }"
-            "QPushButton:hover { background-color: #7a9410; }"
-            "QPushButton:pressed { background-color: #6a840d; }"
-        )
-        self.split_add_button.setToolTip("Add/Split member segment")
-        self.split_add_button.clicked.connect(self._on_split_add_clicked)
-
-        self.split_remove_button = QPushButton("X")
-        self.split_remove_button.setFixedSize(36, 36)
-        self.split_remove_button.setStyleSheet(
-            "QPushButton { background-color: #c72626; color: #ffffff; border: 1px solid #8f1c1c; border-radius: 6px; padding: 0px; font-weight: 900; font-size: 16px; }"
-            "QPushButton:hover { background-color: #ae1f1f; }"
-            "QPushButton:pressed { background-color: #991a1a; }"
-        )
-        self.split_remove_button.setToolTip("Remove selected segment")
-        self.split_remove_button.clicked.connect(self._on_remove_segment_clicked)
-
-        buttons_layout.addWidget(self.split_add_button)
-        buttons_layout.addWidget(self.split_remove_button)
-        buttons_layout.addStretch(1)
-        table_row_layout.addWidget(buttons_col, 0)
 
         manager_layout.addWidget(table_row)
 
@@ -594,16 +936,16 @@ class GirderDetailsTab(QWidget):
                     self._migrate_member_state_key(girder, existing, new_id)
                     seg["id"] = new_id
             else:
-                # If it doesn't match either format, leave it as-is.
-                pass
+                # Invalid/legacy ID: force canonical sequence and migrate state key.
+                self._migrate_member_state_key(girder, existing, desired)
+                seg["id"] = desired
 
-        # Normalize starts to always equal previous end, and last end to total span.
-        segments[0]["start"] = 0.0
+        # Keep explicit user-entered starts/ends as-is; only fill missing values.
+        if "start" not in segments[0] or segments[0]["start"] is None:
+            segments[0]["start"] = 0.0
         for i in range(1, len(segments)):
-            segments[i]["start"] = float(segments[i - 1].get("end", 0.0))
-        # Do NOT force the current last segment to end at total span here.
-        # End-at-span is enforced by the split logic (creating a fill segment),
-        # and by total span changes.
+            if "start" not in segments[i] or segments[i]["start"] is None:
+                segments[i]["start"] = float(segments[i - 1].get("end", 0.0))
         if "end" not in segments[-1] or segments[-1]["end"] is None:
             segments[-1]["end"] = float(total_span)
         return segments
@@ -619,14 +961,33 @@ class GirderDetailsTab(QWidget):
         segments = self._ensure_girder_segments(girder)
         self.segment_table.blockSignals(True)
         try:
+            # Hard reset row widgets/items each refresh to avoid stale cell-widgets
+            # being painted in wrong columns after repeated split/remove updates.
+            self.segment_table.clearContents()
+            self.segment_table.setRowCount(0)
             self.segment_table.setRowCount(len(segments))
             for row, seg in enumerate(segments):
+                # Defensive cleanup: ensure no stale widgets leak into data columns.
+                for col in (0, 1, 2, 3):
+                    if self.segment_table.cellWidget(row, col) is not None:
+                        self.segment_table.removeCellWidget(row, col)
+
+                # Enforce canonical member id at render-time.
+                desired_id = self._make_segment_id(girder, row + 1)
+                seg_id = str(seg.get("id") or "").strip()
+                base, index = self._split_member_id(seg_id)
+                if not (base == girder and isinstance(index, int) and index == (row + 1)):
+                    if seg_id and seg_id != desired_id:
+                        self._migrate_member_state_key(girder, seg_id, desired_id)
+                    seg_id = desired_id
+                    seg["id"] = seg_id
+
                 start = float(seg.get("start", 0.0))
                 end = float(seg.get("end", 0.0))
                 length = max(0.0, end - start)
 
                 # Member ID
-                id_item = QTableWidgetItem(str(seg.get("id", "")))
+                id_item = QTableWidgetItem(seg_id)
                 id_item.setTextAlignment(Qt.AlignCenter)
                 id_item.setFlags(id_item.flags() & ~Qt.ItemIsEditable)
                 id_item.setToolTip("Read-only")
@@ -648,21 +1009,110 @@ class GirderDetailsTab(QWidget):
                 length_item.setFlags(length_item.flags() & ~Qt.ItemIsEditable)
                 length_item.setToolTip("Read-only")
                 self.segment_table.setItem(row, 3, length_item)
+
+                action_widget = self._create_segment_action_widget(row, can_remove=(len(segments) > 1))
+                self.segment_table.setCellWidget(row, 4, action_widget)
         finally:
             self.segment_table.blockSignals(False)
 
         self._sync_remove_button_visibility()
+        self._update_segment_action_row_highlight(self._current_segment_index)
 
     def _sync_remove_button_visibility(self) -> None:
-        """Hide X when only one segment exists (must always keep at least one)."""
-        if not self.split_remove_button:
-            return
+        """Keep per-row remove action disabled when only one segment exists."""
         segments = self._ensure_girder_segments(self._current_girder)
-        show_remove = len(segments) > 1
-        self.split_remove_button.setVisible(show_remove)
-        self.split_remove_button.setEnabled(show_remove)
+        can_remove = len(segments) > 1
+
+        if self.segment_table is not None:
+            for row in range(self.segment_table.rowCount()):
+                action_widget = self.segment_table.cellWidget(row, 4)
+                if action_widget is None:
+                    continue
+                remove_btn = action_widget.findChild(QPushButton, "segmentRemoveBtn")
+                if remove_btn is not None:
+                    remove_btn.setEnabled(can_remove)
+                    remove_btn.setToolTip("Remove this segment" if can_remove else "At least one segment is required")
 
         self._refresh_member_id_combo()
+
+    def _update_segment_action_row_highlight(self, current_row: int | None = None) -> None:
+        if self.segment_table is None:
+            return
+        selected_row = self.segment_table.currentRow() if current_row is None else int(current_row)
+        for row in range(self.segment_table.rowCount()):
+            action_widget = self.segment_table.cellWidget(row, 4)
+            if action_widget is None:
+                continue
+            bg = "#e8f0c9" if row == selected_row else "transparent"
+            action_widget.setStyleSheet(
+                "QWidget#segmentActionCell {"
+                f" background: {bg};"
+                " border: none;"
+                "}"
+            )
+
+    def _create_segment_action_widget(self, row: int, can_remove: bool) -> QWidget:
+        container = QWidget()
+        container.setObjectName("segmentActionCell")
+        container.setFixedWidth(118)
+        container.setMinimumHeight(28)
+        container.setMaximumHeight(34)
+        layout = QHBoxLayout(container)
+        layout.setContentsMargins(0, 2, 0, 2)
+        layout.setSpacing(6)
+        layout.setAlignment(Qt.AlignCenter)
+        container.setStyleSheet("QWidget#segmentActionCell { background: transparent; border: none; }")
+
+        add_btn = QPushButton("+")
+        add_btn.setObjectName("segmentAddBtn")
+        add_btn.setFixedSize(34, 24)
+        add_btn.setFocusPolicy(Qt.NoFocus)
+        add_btn.setCursor(Qt.PointingHandCursor)
+        add_btn.setToolTip("Split/Add segment")
+        add_btn.setStyleSheet(
+            "QPushButton { background-color: #90AF13; color: #111111; border: 1px solid #6f850f; border-radius: 7px; font-weight: 900; font-size: 17px; }"
+            "QPushButton:hover { background-color: #7a9410; }"
+            "QPushButton:pressed { background-color: #6a840d; }"
+        )
+        add_btn.clicked.connect(lambda _checked=False, r=row: self._on_add_segment_for_row(r))
+
+        remove_btn = QPushButton("−")
+        remove_btn.setObjectName("segmentRemoveBtn")
+        remove_btn.setFixedSize(34, 24)
+        remove_btn.setFocusPolicy(Qt.NoFocus)
+        remove_btn.setCursor(Qt.PointingHandCursor)
+        remove_btn.setEnabled(can_remove)
+        remove_btn.setToolTip("Remove this segment" if can_remove else "At least one segment is required")
+        remove_btn.setStyleSheet(
+            "QPushButton { background-color: #c72626; color: #ffffff; border: 1px solid #8f1c1c; border-radius: 7px; font-weight: 900; font-size: 17px; }"
+            "QPushButton:hover { background-color: #ae1f1f; }"
+            "QPushButton:pressed { background-color: #991a1a; }"
+            "QPushButton:disabled { background-color: #d6d6d6; color: #8c8c8c; border-color: #d6d6d6; }"
+        )
+        remove_btn.clicked.connect(lambda _checked=False, r=row: self._on_remove_segment_for_row(r))
+
+        layout.addStretch(1)
+        layout.addWidget(add_btn)
+        if can_remove:
+            layout.addWidget(remove_btn)
+        layout.addStretch(1)
+        return container
+
+    def _on_add_segment_for_row(self, row: int) -> None:
+        if self.segment_table is None:
+            return
+        row = max(0, min(int(row), self.segment_table.rowCount() - 1))
+        self.segment_table.setCurrentCell(row, 2)
+        self._current_segment_index = row
+        self._on_split_add_clicked()
+
+    def _on_remove_segment_for_row(self, row: int) -> None:
+        if self.segment_table is None:
+            return
+        row = max(0, min(int(row), self.segment_table.rowCount() - 1))
+        self.segment_table.setCurrentCell(row, 2)
+        self._current_segment_index = row
+        self._on_remove_segment_clicked()
 
     # ===== Member (Member ID) state + dirty tracking =====
 
@@ -696,6 +1146,12 @@ class GirderDetailsTab(QWidget):
     def _is_current_member_dirty(self) -> bool:
         return self._current_member_key() in self._dirty_members
 
+    def has_unsaved_changes(self) -> bool:
+        # Show unsaved-warning popups only for the active member the user is
+        # currently editing. Other member-level dirty flags are handled when
+        # switching member/girder and should not block unrelated tab switches.
+        return self._is_current_member_dirty()
+
     def _commit_current_member_state(self) -> None:
         girder, member_id = self._current_member_key()
         if girder not in self._member_state:
@@ -709,16 +1165,21 @@ class GirderDetailsTab(QWidget):
             "inputs": {
                 "design": self.design_combo.currentText() if hasattr(self, "design_combo") else "",
                 "type": self.type_combo.currentText() if hasattr(self, "type_combo") else "",
+                "support_type": self.support_type_combo.currentText() if hasattr(self, "support_type_combo") else "",
                 "symmetry": self.symmetry_combo.currentText() if hasattr(self, "symmetry_combo") else "",
                 "total_depth": self.total_depth_input.text() if hasattr(self, "total_depth_input") else "",
                 "top_width": self.top_width_input.text() if hasattr(self, "top_width_input") else "",
                 "bottom_width": self.bottom_width_input.text() if hasattr(self, "bottom_width_input") else "",
+                "total_depth_bounds": dict(self._dimension_bounds.get("total_depth") or {}),
+                "top_width_bounds": dict(self._dimension_bounds.get("top_width") or {}),
+                "bottom_width_bounds": dict(self._dimension_bounds.get("bottom_width") or {}),
                 "web_thickness": self.web_thickness_combo.currentText() if hasattr(self, "web_thickness_combo") else "",
                 "top_thickness": self.top_thickness_combo.currentText() if hasattr(self, "top_thickness_combo") else "",
                 "bottom_thickness": self.bottom_thickness_combo.currentText() if hasattr(self, "bottom_thickness_combo") else "",
                 "web_thickness_value": self.web_thickness_value_input.text() if hasattr(self, "web_thickness_value_input") else "",
                 "top_thickness_value": self.top_thickness_value_input.text() if hasattr(self, "top_thickness_value_input") else "",
                 "bottom_thickness_value": self.bottom_thickness_value_input.text() if hasattr(self, "bottom_thickness_value_input") else "",
+                "support_width": self.support_width_input.text() if hasattr(self, "support_width_input") else "",
                 "is_section": self.is_section_combo.currentText() if hasattr(self, "is_section_combo") else "",
                 "torsion": self.torsion_combo.currentText() if hasattr(self, "torsion_combo") else "",
                 "warping": self.warping_combo.currentText() if hasattr(self, "warping_combo") else "",
@@ -738,12 +1199,38 @@ class GirderDetailsTab(QWidget):
                 self.design_combo.setCurrentText(inputs["design"])
             if inputs.get("type"):
                 self.type_combo.setCurrentText(inputs["type"])
+            if inputs.get("support_type"):
+                self.support_type_combo.setCurrentText(inputs["support_type"])
             if inputs.get("symmetry"):
                 self.symmetry_combo.setCurrentText(inputs["symmetry"])
 
             self.total_depth_input.setText(inputs.get("total_depth", ""))
             self.top_width_input.setText(inputs.get("top_width", ""))
             self.bottom_width_input.setText(inputs.get("bottom_width", ""))
+
+            total_depth_bounds = inputs.get("total_depth_bounds")
+            if isinstance(total_depth_bounds, dict):
+                self._dimension_bounds["total_depth"] = {
+                    "lower": float(total_depth_bounds.get("lower", 200.0)),
+                    "upper": float(total_depth_bounds.get("upper", 2000.0)),
+                    "increment": float(total_depth_bounds.get("increment", 25.0)),
+                }
+
+            top_width_bounds = inputs.get("top_width_bounds")
+            if isinstance(top_width_bounds, dict):
+                self._dimension_bounds["top_width"] = {
+                    "lower": float(top_width_bounds.get("lower", 100.0)),
+                    "upper": float(top_width_bounds.get("upper", 1000.0)),
+                    "increment": float(top_width_bounds.get("increment", 10.0)),
+                }
+
+            bottom_width_bounds = inputs.get("bottom_width_bounds")
+            if isinstance(bottom_width_bounds, dict):
+                self._dimension_bounds["bottom_width"] = {
+                    "lower": float(bottom_width_bounds.get("lower", 100.0)),
+                    "upper": float(bottom_width_bounds.get("upper", 1000.0)),
+                    "increment": float(bottom_width_bounds.get("increment", 10.0)),
+                }
 
             if inputs.get("web_thickness"):
                 self.web_thickness_combo.setCurrentText(inputs["web_thickness"])
@@ -755,6 +1242,7 @@ class GirderDetailsTab(QWidget):
             self.web_thickness_value_input.setText(inputs.get("web_thickness_value", ""))
             self.top_thickness_value_input.setText(inputs.get("top_thickness_value", ""))
             self.bottom_thickness_value_input.setText(inputs.get("bottom_thickness_value", ""))
+            self.support_width_input.setText(inputs.get("support_width", ""))
 
             if inputs.get("is_section"):
                 self.is_section_combo.setCurrentText(inputs["is_section"])
@@ -768,6 +1256,8 @@ class GirderDetailsTab(QWidget):
             self._suppress_member_state_updates = False
 
         self._update_thickness_value_enabled_state()
+        self._update_dimension_field_mode()
+        self._refresh_bounds_tooltips()
         self._update_preview()
 
     def _wire_member_dirty_tracking(self) -> None:
@@ -780,6 +1270,7 @@ class GirderDetailsTab(QWidget):
 
         connect_combo(self.design_combo)
         connect_combo(self.type_combo)
+        connect_combo(self.support_type_combo)
         connect_combo(self.symmetry_combo)
         connect_combo(self.web_thickness_combo)
         connect_combo(self.top_thickness_combo)
@@ -795,6 +1286,7 @@ class GirderDetailsTab(QWidget):
         connect_line(self.web_thickness_value_input)
         connect_line(self.top_thickness_value_input)
         connect_line(self.bottom_thickness_value_input)
+        connect_line(self.support_width_input)
 
     def _confirm_switch_if_dirty(self) -> str:
         """Return 'save'|'discard'|'cancel' before switching member."""
@@ -836,6 +1328,10 @@ class GirderDetailsTab(QWidget):
     def _on_member_id_combo_changed(self, index: int) -> None:
         if index is None or index < 0:
             return
+        if self._suppress_member_switch_prompt:
+            self._select_segment_index(int(index))
+            self._last_member_combo_index = int(index)
+            return
         # Prompt if user is leaving a dirty member without saving.
         if int(index) != int(self._current_segment_index):
             decision = self._confirm_switch_if_dirty()
@@ -850,7 +1346,12 @@ class GirderDetailsTab(QWidget):
                 self._commit_current_member_state()
                 # Confirm member-level save immediately (requested UX).
                 try:
-                    QMessageBox.information(self, "Saved", "Member inputs saved successfully.")
+                    box = QMessageBox(self)
+                    box.setIcon(QMessageBox.Information)
+                    box.setWindowTitle("Saved")
+                    box.setText("Member inputs saved successfully.")
+                    box.setStandardButtons(QMessageBox.Ok)
+                    box.exec()
                 except Exception:
                     pass
 
@@ -899,6 +1400,12 @@ class GirderDetailsTab(QWidget):
         if not segments:
             return
         if len(segments) == 1:
+            box = QMessageBox(self)
+            box.setIcon(QMessageBox.Warning)
+            box.setWindowTitle("Cannot Remove")
+            box.setText("At least one member segment is required.")
+            box.setStandardButtons(QMessageBox.Ok)
+            box.exec()
             return
 
         idx = self._current_segment_index
@@ -921,6 +1428,7 @@ class GirderDetailsTab(QWidget):
 
         self._refresh_segment_list(girder)
         self._select_segment_index(min(idx, len(segments) - 1))
+        self._mark_current_member_dirty()
 
     def _select_segment_index(self, index: int) -> None:
         segments = self._ensure_girder_segments(self._current_girder)
@@ -952,6 +1460,88 @@ class GirderDetailsTab(QWidget):
             stored = self._member_state.get(girder, {}).get(member_id)
             if stored:
                 self._apply_member_state(stored)
+
+    def _copy_girder_settings(self, source_girder: str, target_girders: List[str]) -> None:
+        """Copy all segments and their properties from source to target girders."""
+        if not source_girder or not target_girders:
+            return
+
+        # 1. Commit current state to ensure source is up-to-date
+        self._commit_current_member_state() # Always capture current UI state first
+
+        # 2. Get the full detailed structure of the source girder
+        # source_segments has IDs like G1M1, G1M2...
+        source_segments = self._ensure_girder_segments(source_girder)
+        
+        # We need to map G1My -> GxMy for each target Gx.
+        
+        successful_targets = []
+
+        for target in target_girders:
+            if target == source_girder:
+                continue
+                
+            # Create a FRESH segment list for target based on source geometry
+            new_target_segments = []
+            
+            # Wipe old state for this target to prevent ghost data
+            if target in self._member_state:
+                self._member_state[target] = {} # Clear properties
+            else:
+                self._member_state[target] = {}
+
+            for idx, src_seg in enumerate(source_segments):
+                # 1. Geometry copy
+                # Create a new segment dict with target ID
+                target_id = self._make_segment_id(target, idx + 1)
+                new_seg = copy.deepcopy(src_seg)
+                new_seg["id"] = target_id
+                new_target_segments.append(new_seg)
+
+                # 2. Property state copy
+                src_id = str(src_seg.get("id"))
+                if source_girder in self._member_state and src_id in self._member_state[source_girder]:
+                    # Clone the property dict
+                    props = copy.deepcopy(self._member_state[source_girder][src_id])
+                    self._member_state[target][target_id] = props
+            
+            # Commit the new geometry chain
+            self.segment_chain[target] = new_target_segments
+            successful_targets.append(target)
+            
+        if successful_targets:
+            # If target includes *current* girder (unlikely due to check above, but safe), refresh UI
+            if self._current_girder in successful_targets:
+                 self._refresh_segment_list(self._current_girder)
+                 self._select_segment_index(0)
+
+            QMessageBox.information(
+                self, 
+                "Applied Changes", 
+                f"Configuration applied to: {', '.join(successful_targets)}"
+            )
+
+    def _on_apply_exterior_clicked(self) -> None:
+        """Apply current girder configuration to First and Last girders."""
+        if not self.available_girders:
+            return
+            
+        first = self.available_girders[0]
+        last = self.available_girders[-1]
+        
+        # Unique targets, excluding self is handled inside _copy_girder_settings
+        targets = sorted(list(set([first, last])))
+        
+        self._copy_girder_settings(self._current_girder, targets)
+
+    def _on_apply_interior_clicked(self) -> None:
+        """Apply current girder configuration to all Interior girders (G2 to Gn-1)."""
+        if len(self.available_girders) <= 2:
+            QMessageBox.information(self, "Info", "No interior girders available (Total girders < 3).")
+            return
+            
+        targets = self.available_girders[1:-1]
+        self._copy_girder_settings(self._current_girder, targets)
 
     def _load_segment_details(self, girder: str, index: int) -> None:
         segments = self._ensure_girder_segments(girder)
@@ -1004,7 +1594,12 @@ class GirderDetailsTab(QWidget):
             if decision == "save":
                 self._commit_current_member_state()
                 try:
-                    QMessageBox.information(self, "Saved", "Member inputs saved successfully.")
+                    box = QMessageBox(self)
+                    box.setIcon(QMessageBox.Information)
+                    box.setWindowTitle("Saved")
+                    box.setText("Member inputs saved successfully.")
+                    box.setStandardButtons(QMessageBox.Ok)
+                    box.exec()
                 except Exception:
                     pass
 
@@ -1016,58 +1611,90 @@ class GirderDetailsTab(QWidget):
     def _on_segment_row_changed(self, current_row: int, _current_column: int, _previous_row: int, _previous_column: int) -> None:
         if current_row is None or current_row < 0:
             return
+        self._update_segment_action_row_highlight(current_row)
         self._select_segment_index(int(current_row))
 
     def _on_split_add_clicked(self) -> None:
-        """Split/Add Segment.
-
-        Spec-aligned behavior:
-        - If the selected segment is the last segment and its End Distance is < total span,
-          create the next segment to fill the gap (no popups).
-        """
+        """Split the selected segment into two equal halves."""
         girder = self._current_girder
         segments = self._ensure_girder_segments(girder)
-        total_span = float(self._get_total_span() or DEFAULT_MEMBER_LENGTH_M)
         if not segments:
             return
 
-        idx = max(0, min(self._current_segment_index, len(segments) - 1))
-        if idx != len(segments) - 1:
-            # Only support add/fill from last segment for now (matches the described rule).
-            self._select_segment_index(len(segments) - 1)
+        # Get the selected segment index.
+        idx = self.segment_table.currentRow()
+        if idx < 0:
             idx = len(segments) - 1
-
+            
         current = segments[idx]
         start = float(current.get("start", 0.0))
-
-        new_end = self._parse_float(self.distance_end_input.text()) if self.distance_end_input else None
-        if new_end is None:
-            new_end = float(current.get("end", total_span))
-
-        # Clamp/validate
-        new_end = max(start, min(float(new_end), total_span))
-
-        # If no gap, do nothing (no popup)
-        if abs(new_end - total_span) < 1e-9:
-            current["end"] = float(total_span)
-            self._refresh_segment_list(girder)
-            self._select_segment_index(idx)
+        end = float(current.get("end", 0.0))
+        length = end - start
+        
+        if length <= 0.01:
+            # Too small to split sensibly
             return
 
-        # Update last segment end and create the fill segment
-        current["end"] = float(new_end)
-        next_id = self._make_segment_id(girder, len(segments) + 1)
-        segments.append({"id": next_id, "start": float(new_end), "end": float(total_span)})
+        midpoint = start + (length / 2.0)
 
-        # Normalize starts for safety and enforce last end
-        segments[0]["start"] = 0.0
-        for i in range(1, len(segments)):
-            segments[i]["start"] = float(segments[i - 1].get("end", 0.0))
-        segments[-1]["end"] = float(total_span)
+        # Update current segment end to midpoint
+        current["end"] = midpoint
+        
+        # Insert new segment from midpoint to original end
+        new_segment = {"id": "", "start": midpoint, "end": end}
+        segments.insert(idx + 1, new_segment)
+        
+        # 1. Capture existing states mapped to their original indices
+        # We need to map the new segment list back to the old states carefully.
+        # The new list has one extra element at idx+1.
+        
+        reordered_states = []
+        
+        for i in range(len(segments)):
+            if i == idx + 1:
+                # This is the newly inserted segment.
+                # It should inherit properties from the segment it was split from (idx).
+                original_index = idx
+            elif i <= idx:
+                # These segments haven't moved.
+                original_index = i
+            else:
+                # These segments are shifted by 1.
+                original_index = i - 1
+                
+            original_id = self._make_segment_id(girder, original_index + 1)
+            
+            state = None
+            if girder in self._member_state and original_id in self._member_state[girder]:
+                state = self._member_state[girder][original_id]
+            
+            # If duplicating state for the new segment, ensure deep copy
+            if i == idx + 1 and state:
+                state = copy.deepcopy(state)
+                
+            reordered_states.append(state)
+
+        # 2. Clear old state for this girder completely
+        if girder in self._member_state:
+            self._member_state[girder] = {}
+            
+        # 3. Re-assign IDs and restore states to the new IDs
+        for i, seg in enumerate(segments):
+            new_id = self._make_segment_id(girder, i + 1)
+            seg["id"] = new_id
+            
+            state_to_restore = reordered_states[i]
+            if state_to_restore:
+                if girder not in self._member_state:
+                    self._member_state[girder] = {}
+                self._member_state[girder][new_id] = state_to_restore
+
         self.segment_chain[girder] = segments
 
         self._refresh_segment_list(girder)
-        self._select_segment_index(idx)
+        # Select the new segment (second half)
+        self._select_segment_index(idx + 1)
+        self._mark_current_member_dirty()
 
     # ===== Span/Length + Auto-split handlers =====
 
@@ -1077,8 +1704,7 @@ class GirderDetailsTab(QWidget):
         - Custom: user can edit total span.
         - Full Length: total span is locked (read-only).
         """
-        is_full = (span_text or "").strip() == "Full Length"
-        self.length_input.setReadOnly(is_full)
+        self.length_input.setReadOnly(True)
 
         self._initialize_segment_chain_if_needed()
         self._refresh_segment_list(self._current_girder)
@@ -1187,6 +1813,7 @@ class GirderDetailsTab(QWidget):
         # Refresh master list + keep selection
         self._refresh_segment_list(girder)
         self._select_segment_index(idx)
+        self._mark_current_member_dirty()
 
     def _build_section_card(self):
         container = QWidget()
@@ -1230,12 +1857,11 @@ class GirderDetailsTab(QWidget):
         self.member_id_combo.currentIndexChanged.connect(self._on_member_id_combo_changed)
         row = self._add_box_row(inputs_grid, 0, "Member ID:", self.member_id_combo)
 
+        # Hidden design combo to maintain compatibility with existing logic
         self.design_combo = QComboBox()
         self.design_combo.addItems(VALUES_GIRDER_DESIGN_MODE)
-        apply_field_style(self.design_combo)
-        self._set_field_width(self.design_combo)
-        row = self._add_box_row(inputs_grid, row, "Design:", self.design_combo)
-
+        self.design_combo.hide()
+        
         self.type_combo = QComboBox()
         self.type_combo.addItems(VALUES_GIRDER_TYPE)
         apply_field_style(self.type_combo)
@@ -1248,12 +1874,17 @@ class GirderDetailsTab(QWidget):
         self._set_field_width(self.symmetry_combo)
         row = self._add_box_row(inputs_grid, row, "Symmetry:", self.symmetry_combo, self.symmetry_row)
 
-        self.total_depth_input = self._create_line_edit()
+        self.support_type_combo = QComboBox()
+        self.support_type_combo.addItems(VALUES_GIRDER_SUPPORT_TYPE)
+        apply_field_style(self.support_type_combo)
+        self._set_field_width(self.support_type_combo)
+
+        self.total_depth_widget, self.total_depth_input, self.total_depth_bounds_button = self._create_dimension_input_widget("total_depth")
         row = self._add_box_row(
             inputs_grid,
             row,
             "Total Depth (d, mm):",
-            self.total_depth_input,
+            self.total_depth_widget,
             self.welded_rows,
         )
 
@@ -1267,6 +1898,11 @@ class GirderDetailsTab(QWidget):
         self.web_thickness_value_input.setValidator(QDoubleValidator(0.0, 1e12, 3, self.web_thickness_value_input))
 
         self.web_thickness_widget = self._create_mode_value_widget(self.web_thickness_combo, self.web_thickness_value_input)
+        self.web_thickness_value_combo = self._attach_thickness_value_dropdown(
+            self.web_thickness_widget,
+            self.web_thickness_value_input,
+            "web_thickness",
+        )
         row = self._add_box_row(
             inputs_grid,
             row,
@@ -1275,12 +1911,12 @@ class GirderDetailsTab(QWidget):
             self.welded_rows,
         )
 
-        self.top_width_input = self._create_line_edit()
+        self.top_width_widget, self.top_width_input, self.top_width_bounds_button = self._create_dimension_input_widget("top_width")
         row = self._add_box_row(
             inputs_grid,
             row,
             "Width of Top Flange (t<sub>fw</sub>, mm):",
-            self.top_width_input,
+            self.top_width_widget,
             self.welded_rows,
         )
 
@@ -1294,6 +1930,11 @@ class GirderDetailsTab(QWidget):
         self.top_thickness_value_input.setValidator(QDoubleValidator(0.0, 1e12, 3, self.top_thickness_value_input))
 
         self.top_thickness_widget = self._create_mode_value_widget(self.top_thickness_combo, self.top_thickness_value_input)
+        self.top_thickness_value_combo = self._attach_thickness_value_dropdown(
+            self.top_thickness_widget,
+            self.top_thickness_value_input,
+            "top_thickness",
+        )
         row = self._add_box_row(
             inputs_grid,
             row,
@@ -1302,12 +1943,12 @@ class GirderDetailsTab(QWidget):
             self.welded_rows,
         )
 
-        self.bottom_width_input = self._create_line_edit()
+        self.bottom_width_widget, self.bottom_width_input, self.bottom_width_bounds_button = self._create_dimension_input_widget("bottom_width")
         row = self._add_box_row(
             inputs_grid,
             row,
             "Width of Bottom Flange (b<sub>fw</sub>, mm):",
-            self.bottom_width_input,
+            self.bottom_width_widget,
             self.welded_rows,
         )
 
@@ -1321,11 +1962,33 @@ class GirderDetailsTab(QWidget):
         self.bottom_thickness_value_input.setValidator(QDoubleValidator(0.0, 1e12, 3, self.bottom_thickness_value_input))
 
         self.bottom_thickness_widget = self._create_mode_value_widget(self.bottom_thickness_combo, self.bottom_thickness_value_input)
+        self.bottom_thickness_value_combo = self._attach_thickness_value_dropdown(
+            self.bottom_thickness_widget,
+            self.bottom_thickness_value_input,
+            "bottom_thickness",
+        )
         row = self._add_box_row(
             inputs_grid,
             row,
             "Bottom Flange Thickness (b<sub>ft</sub>, mm):",
             self.bottom_thickness_widget,
+            self.welded_rows,
+        )
+
+        self.support_width_input = self._create_line_edit()
+        self.support_width_input.setValidator(QDoubleValidator(0.0, 1e12, 3, self.support_width_input))
+        row = self._add_box_row(
+            inputs_grid,
+            row,
+            "Support Type:",
+            self.support_type_combo,
+            self.welded_rows,
+        )
+        row = self._add_box_row(
+            inputs_grid,
+            row,
+            "Support Width (mm):",
+            self.support_width_input,
             self.welded_rows,
         )
 
@@ -1404,27 +2067,27 @@ class GirderDetailsTab(QWidget):
         properties_grid.setColumnStretch(1, 1)
 
         property_fields = [
-            "Mass, M (Kg/m)",
-            "Sectional Area, a (cm2)",
-            "2nd Moment of Area, Iz (cm4)",
-            "2nd Moment of Area, Iy (cm4)",
-            "Radius of Gyration, rz (cm)",
-            "Radius of Gyration, ry (cm)",
-            "Elastic Modulus, Zz (cm3)",
-            "Elastic Modulus, Zy (cm3)",
-            "Plastic Modulus, Zuz (cm3)",
-            "Plastic Modulus, Zuy (cm3)",
-            "Torsion Constant, It (cm4)",
-            "Warping Constant, Iw (cm6)"
+            ("Mass, M (Kg/m)", "Mass, M (Kg/m)"),
+            ("Sectional Area, a (cm2)", "Sectional Area, a (cm<sup>2</sup>)"),
+            ("2nd Moment of Area, Iz (cm4)", "2nd Moment of Area, I<sub>z</sub> (cm<sup>4</sup>)"),
+            ("2nd Moment of Area, Iy (cm4)", "2nd Moment of Area, I<sub>y</sub> (cm<sup>4</sup>)"),
+            ("Radius of Gyration, rz (cm)", "Radius of Gyration, r<sub>z</sub> (cm)"),
+            ("Radius of Gyration, ry (cm)", "Radius of Gyration, r<sub>y</sub> (cm)"),
+            ("Elastic Modulus, Zz (cm3)", "Elastic Modulus, Z<sub>z</sub> (cm<sup>3</sup>)"),
+            ("Elastic Modulus, Zy (cm3)", "Elastic Modulus, Z<sub>y</sub> (cm<sup>3</sup>)"),
+            ("Plastic Modulus, Zuz (cm3)", "Plastic Modulus, Z<sub>uz</sub> (cm<sup>3</sup>)"),
+            ("Plastic Modulus, Zuy (cm3)", "Plastic Modulus, Z<sub>uy</sub> (cm<sup>3</sup>)"),
+            ("Torsion Constant, It (cm4)", "Torsion Constant, I<sub>t</sub> (cm<sup>4</sup>)"),
+            ("Warping Constant, Iw (cm6)", "Warping Constant, I<sub>w</sub> (cm<sup>6</sup>)"),
         ]
 
-        for index, text in enumerate(property_fields):
-            label = self._create_small_label(text)
+        for index, (key, label_text) in enumerate(property_fields):
+            label = self._create_small_label(label_text)
             line_edit = self._create_line_edit()
             line_edit.setPlaceholderText("")
             properties_grid.addWidget(label, index, 0)
             properties_grid.addWidget(line_edit, index, 1)
-            self.section_property_inputs[text] = line_edit
+            self.section_property_inputs[key] = line_edit
 
         props_layout.addLayout(properties_grid)
         right_column_layout.addWidget(props_box)
@@ -1433,17 +2096,27 @@ class GirderDetailsTab(QWidget):
 
         self.design_combo.currentTextChanged.connect(self._on_design_changed)
         self.type_combo.currentTextChanged.connect(self._on_type_changed)
+        self.support_type_combo.currentTextChanged.connect(self._on_support_type_changed)
         self.is_section_combo.currentTextChanged.connect(self._update_preview)
         for watcher in (self.total_depth_input, self.top_width_input, self.bottom_width_input):
             watcher.textChanged.connect(self._update_preview)
-        for combo in (self.web_thickness_combo, self.top_thickness_combo, self.bottom_thickness_combo):
-            combo.currentTextChanged.connect(lambda _t: self._update_thickness_value_enabled_state())
-            combo.currentTextChanged.connect(self._update_preview)
+        self.web_thickness_combo.currentTextChanged.connect(
+            lambda text: self._on_thickness_mode_changed("web_thickness", text)
+        )
+        self.top_thickness_combo.currentTextChanged.connect(
+            lambda text: self._on_thickness_mode_changed("top_thickness", text)
+        )
+        self.bottom_thickness_combo.currentTextChanged.connect(
+            lambda text: self._on_thickness_mode_changed("bottom_thickness", text)
+        )
         for watcher in (self.web_thickness_value_input, self.top_thickness_value_input, self.bottom_thickness_value_input):
             watcher.textChanged.connect(self._update_preview)
         self._on_design_changed(self.design_combo.currentText())
         self._on_type_changed(self.type_combo.currentText())
+        self._on_support_type_changed(self.support_type_combo.currentText())
         self._update_thickness_value_enabled_state()
+        self._update_dimension_field_mode()
+        self._refresh_bounds_tooltips()
 
         # Capture a stable template state for new members.
         self._default_member_state = self._capture_member_state()
@@ -1455,6 +2128,7 @@ class GirderDetailsTab(QWidget):
         # Now that Section Inputs exist, sync UI state to current segment and seed
         # per-member state from the visible defaults.
         self._select_segment_index(self._current_segment_index)
+        self._suppress_member_switch_prompt = False
 
         return container
 
@@ -1494,6 +2168,198 @@ class GirderDetailsTab(QWidget):
         layout.addWidget(value_input)
         return widget
 
+    def _attach_thickness_value_dropdown(self, wrapper: QWidget, value_input: QLineEdit, field_key: str) -> QComboBox:
+        combo = QComboBox()
+        combo.addItems(SAIL_APPROVED_THICKNESS_VALUES)
+        apply_field_style(combo)
+        combo.setVisible(False)
+        self._set_field_width(combo, 180)
+
+        combo.currentTextChanged.connect(lambda text, inp=value_input: inp.setText(str(text or "")))
+        combo.currentTextChanged.connect(lambda _text: self._mark_current_member_dirty())
+        combo.currentTextChanged.connect(lambda _text: self._update_preview())
+
+        layout = wrapper.layout()
+        if layout is not None:
+            layout.addWidget(combo)
+        return combo
+
+    def _sync_thickness_value_dropdown(self, field_key: str) -> None:
+        value_input = getattr(self, f"{field_key}_value_input", None)
+        value_combo = getattr(self, f"{field_key}_value_combo", None)
+        if value_input is None or value_combo is None:
+            return
+        first = ""
+        selected = self._parse_selected_thickness_values(value_input.text())
+        if selected:
+            first = selected[0]
+        else:
+            parsed = str(value_input.text() or "").strip()
+            if parsed in SAIL_APPROVED_THICKNESS_VALUES:
+                first = parsed
+        if not first:
+            first = SAIL_APPROVED_THICKNESS_VALUES[0]
+            value_input.setText(first)
+
+        prev = value_combo.blockSignals(True)
+        try:
+            idx = value_combo.findText(first, Qt.MatchFixedString)
+            value_combo.setCurrentIndex(idx if idx >= 0 else 0)
+        finally:
+            value_combo.blockSignals(prev)
+
+    def _parse_selected_thickness_values(self, text: str) -> List[str]:
+        chunks = [c.strip() for c in str(text or "").split(",") if str(c).strip()]
+        return [v for v in chunks if v in SAIL_APPROVED_THICKNESS_VALUES]
+
+    def _on_thickness_mode_changed(self, field_key: str, _text: str) -> None:
+        self._update_thickness_value_enabled_state()
+        self._update_preview()
+
+        # Avoid auto-popup during restore/init signal cascades.
+        if self._suppress_member_state_updates or not getattr(self, "_section_inputs_built", False):
+            return
+
+        combo = getattr(self, f"{field_key}_combo", None)
+        if combo is None:
+            return
+        if not self._is_custom_thickness_mode(combo):
+            return
+
+        is_welded = (self.type_combo.currentText() or "").strip().lower() == "welded"
+        is_custom_design = (self.design_combo.currentText() or "").strip().lower() == "customized"
+        if is_welded and (not is_custom_design):
+            self._open_thickness_values_dialog(field_key)
+
+    def _open_thickness_values_dialog(self, field_key: str) -> None:
+        value_input = getattr(self, f"{field_key}_value_input", None)
+        if value_input is None:
+            return
+
+        selected = self._parse_selected_thickness_values(value_input.text())
+        titles = {
+            "web_thickness": "Select Values: Web Thickness",
+            "top_thickness": "Select Values: Top Flange Thickness",
+            "bottom_thickness": "Select Values: Bottom Flange Thickness",
+        }
+        dialog = _ThicknessSelectionDialog(titles.get(field_key, "Select Values"), selected, self)
+        if dialog.exec() != QDialog.Accepted:
+            return
+
+        chosen = dialog.selected_values()
+        value_input.setText(", ".join(chosen))
+        self._sync_thickness_value_dropdown(field_key)
+        self._mark_current_member_dirty()
+        self._update_preview()
+
+    def _create_dimension_input_widget(self, field_key: str):
+        widget = QWidget()
+        widget.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+        self._set_field_width(widget, 180)
+
+        layout = QHBoxLayout(widget)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
+
+        value_input = self._create_line_edit()
+        value_input.setValidator(QDoubleValidator(0.0, 1e12, 3, value_input))
+
+        bounds_button = QPushButton("Set Bounds")
+        bounds_button.setCursor(Qt.PointingHandCursor)
+        bounds_button.setMinimumHeight(28)
+        bounds_button.setStyleSheet(
+            "QPushButton {"
+            " border: 1px solid #2f2f2f; border-radius: 8px;"
+            " background: #ffffff; color: #111111; font-size: 12px; font-weight: 700;"
+            " padding: 4px 10px;"
+            "}"
+            "QPushButton:hover { background: #f2f2f2; }"
+            "QPushButton:pressed { background: #e9e9e9; }"
+        )
+        bounds_button.clicked.connect(lambda _checked=False, key=field_key: self._open_bounds_dialog(key))
+
+        layout.addWidget(value_input)
+        layout.addWidget(bounds_button)
+        return widget, value_input, bounds_button
+
+    def _update_dimension_field_mode(self) -> None:
+        is_custom = (self.design_combo.currentText() or "").strip().lower() == "customized"
+        is_welded = (self.type_combo.currentText() or "").strip().lower() == "welded"
+
+        for field_key in ("total_depth", "top_width", "bottom_width"):
+            value_input = getattr(self, f"{field_key}_input", None)
+            bounds_button = getattr(self, f"{field_key}_bounds_button", None)
+            if value_input is None or bounds_button is None:
+                continue
+
+            show_line_edit = bool(is_custom and is_welded)
+            value_input.setVisible(show_line_edit)
+            value_input.setEnabled(show_line_edit)
+            bounds_button.setVisible((not show_line_edit) and is_welded)
+            bounds_button.setEnabled((not show_line_edit) and is_welded)
+
+    def _default_dimension_bounds(self, field_key: str) -> dict:
+        defaults = {
+            "total_depth": {"lower": 200.0, "upper": 2000.0, "increment": 25.0},
+            "top_width": {"lower": 100.0, "upper": 1000.0, "increment": 10.0},
+            "bottom_width": {"lower": 100.0, "upper": 1000.0, "increment": 10.0},
+        }
+        return dict(defaults.get(field_key, {"lower": 0.0, "upper": 0.0, "increment": 0.0}))
+
+    def _normalized_dimension_bounds(self, field_key: str) -> dict:
+        defaults = self._default_dimension_bounds(field_key)
+        current = self._dimension_bounds.get(field_key) or {}
+        out = {}
+        for key in ("lower", "upper", "increment"):
+            try:
+                out[key] = float(current.get(key, defaults[key]))
+            except Exception:
+                out[key] = float(defaults[key])
+        return out
+
+    def _format_bounds_tooltip(self, field_key: str) -> str:
+        bounds = self._normalized_dimension_bounds(field_key)
+        try:
+            lower = float(bounds.get("lower", 0.0))
+            upper = float(bounds.get("upper", 0.0))
+            increment = float(bounds.get("increment", 0.0))
+        except Exception:
+            lower, upper, increment = 0.0, 0.0, 0.0
+        return (
+            f"Lower Bound: {lower:.2f}\n"
+            f"Upper Bound: {upper:.2f}\n"
+            f"Increment: {increment:.2f}"
+        )
+
+    def _refresh_bounds_tooltips(self) -> None:
+        for field_key in ("total_depth", "top_width", "bottom_width"):
+            bounds_button = getattr(self, f"{field_key}_bounds_button", None)
+            if bounds_button is not None:
+                bounds_button.setToolTip(self._format_bounds_tooltip(field_key))
+
+    def _open_bounds_dialog(self, field_key: str) -> None:
+        current = self._normalized_dimension_bounds(field_key)
+        titles = {
+            "total_depth": "Select Bound: Total Depth",
+            "top_width": "Select Bound: Topflange Width",
+            "bottom_width": "Select Bound: Bottomflange Width",
+        }
+        dialog = _BoundsDialog(titles.get(field_key, "Select Bound"), current, self)
+        if dialog.exec() != QDialog.Accepted:
+            return
+
+        result = dialog.result_bounds()
+        if not isinstance(result, dict):
+            return
+
+        self._dimension_bounds[field_key] = {
+            "lower": float(result.get("lower", 0.0)),
+            "upper": float(result.get("upper", 0.0)),
+            "increment": float(result.get("increment", 0.0)),
+        }
+        self._refresh_bounds_tooltips()
+        self._mark_current_member_dirty()
+
     def _is_custom_thickness_mode(self, combo: QComboBox) -> bool:
         return (combo.currentText() or "").strip().lower() == "custom"
 
@@ -1502,39 +2368,72 @@ class GirderDetailsTab(QWidget):
         is_custom_design = self.design_combo.currentText().lower() == "customized"
         allow_inputs = is_welded and is_custom_design
 
-        for mode_combo, value_input, wrapper in (
+        for field_key, mode_combo, value_input, value_combo, wrapper in (
             (
+                "web_thickness",
                 getattr(self, "web_thickness_combo", None),
                 getattr(self, "web_thickness_value_input", None),
+                getattr(self, "web_thickness_value_combo", None),
                 getattr(self, "web_thickness_widget", None),
             ),
             (
+                "top_thickness",
                 getattr(self, "top_thickness_combo", None),
                 getattr(self, "top_thickness_value_input", None),
+                getattr(self, "top_thickness_value_combo", None),
                 getattr(self, "top_thickness_widget", None),
             ),
             (
+                "bottom_thickness",
                 getattr(self, "bottom_thickness_combo", None),
                 getattr(self, "bottom_thickness_value_input", None),
+                getattr(self, "bottom_thickness_value_combo", None),
                 getattr(self, "bottom_thickness_widget", None),
             ),
         ):
             if not mode_combo or not value_input:
                 continue
 
-            show_value = bool(allow_inputs and self._is_custom_thickness_mode(mode_combo))
+            is_custom_mode = self._is_custom_thickness_mode(mode_combo)
 
-            value_input.setEnabled(show_value)
-            value_input.setVisible(show_value)
+            # Customized mode: one-box dropdown only (SAIL values).
+            if allow_inputs:
+                if mode_combo.currentText().strip().lower() != "custom":
+                    prev = mode_combo.blockSignals(True)
+                    mode_combo.setCurrentText("Custom")
+                    mode_combo.blockSignals(prev)
+
+                mode_combo.setVisible(False)
+                mode_combo.setEnabled(False)
+
+                value_input.setVisible(False)
+                value_input.setEnabled(False)
+                value_input.setReadOnly(True)
+
+                if value_combo is not None:
+                    value_combo.setVisible(True)
+                    value_combo.setEnabled(True)
+                    self._sync_thickness_value_dropdown(field_key)
+
+                if wrapper is not None:
+                    self._set_field_width(wrapper, 180)
+                continue
+
+            # Optimized mode: mode combo only; custom opens popup directly.
+            mode_combo.setVisible(is_welded)
+            mode_combo.setEnabled(is_welded)
+
+            value_input.setVisible(False)
+            value_input.setEnabled(False)
+            value_input.setReadOnly(True)
+
+            if value_combo is not None:
+                value_combo.setVisible(False)
+                value_combo.setEnabled(False)
 
             if wrapper is not None:
                 self._set_field_width(wrapper, 180)
-
-            if show_value:
-                self._set_field_width(mode_combo, 96)
-                self._set_field_width(value_input, 78)
-            else:
-                self._set_field_width(mode_combo, 180)
+            self._set_field_width(mode_combo, 180)
 
     def _add_section_row(self, layout, row, text, widget, tracker=None):
         label = self._create_label(text)
@@ -1676,20 +2575,22 @@ class GirderDetailsTab(QWidget):
         toggle_targets = (
             self.type_combo,
             self.symmetry_combo,
-            self.total_depth_input,
-            self.top_width_input,
-            self.bottom_width_input,
         )
         for widget in toggle_targets:
             widget.setEnabled(is_custom)
         if not is_custom:
             self._lock_type_to_welded()
             self._reset_section_state()
+        self._update_dimension_field_mode()
         self._apply_type_state()
 
     def _on_type_changed(self, text):
         self._apply_type_state()
         self._update_preview()
+
+    def _on_support_type_changed(self, support_type: str) -> None:
+        """Handle Support Type change."""
+        self._mark_current_member_dirty()
 
     def _apply_type_state(self):
         is_welded = self.type_combo.currentText().lower() == "welded"
@@ -1703,16 +2604,18 @@ class GirderDetailsTab(QWidget):
             widget.setVisible(is_welded)
         self.symmetry_combo.setEnabled(is_welded and is_custom)
 
+        # Dimension rows remain enabled in Optimized mode so "Set Bounds" stays clickable.
+        for widget in (self.total_depth_widget, self.top_width_widget, self.bottom_width_widget):
+            widget.setVisible(is_welded)
+            widget.setEnabled(is_welded)
+
         plate_widgets = (
-            self.total_depth_input,
             self.web_thickness_widget,
-            self.top_width_input,
             self.top_thickness_widget,
-            self.bottom_width_input,
             self.bottom_thickness_widget,
         )
         for widget in plate_widgets:
-            widget.setEnabled(is_welded and is_custom)
+            widget.setEnabled(is_welded)
             widget.setVisible(is_welded)
 
         for label, widget in self.web_type_row:
@@ -1723,6 +2626,7 @@ class GirderDetailsTab(QWidget):
         self.is_section_combo.setVisible(not is_welded)
         self.is_section_combo.setEnabled(not is_welded)
         self._update_thickness_value_enabled_state()
+        self._update_dimension_field_mode()
 
     def _lock_type_to_welded(self):
         welded_index = self.type_combo.findText("Welded", Qt.MatchFixedString)
@@ -1755,8 +2659,7 @@ class GirderDetailsTab(QWidget):
 
     def _on_span_changed(self, span_text):
         # Preserve legacy span-mode behavior for total span editability.
-        is_full = (span_text or "").strip() == "Full Length"
-        self.length_input.setReadOnly(is_full)
+        self.length_input.setReadOnly(True)
 
         self._initialize_segment_chain_if_needed()
         self._refresh_segment_list(self._current_girder)
@@ -1893,6 +2796,7 @@ class GirderDetailsTab(QWidget):
     def _create_small_label(self, text):
         """Create a smaller label for compact layouts"""
         label = QLabel(text)
+        label.setTextFormat(Qt.RichText)
         label.setStyleSheet("""
             QLabel {
                color: #2b2b2b;
@@ -2028,6 +2932,7 @@ class GirderDetailsTab(QWidget):
             "web_thickness_mm": web_thickness,
             "top_flange_thickness_mm": top_thickness,
             "bottom_flange_thickness_mm": bottom_thickness,
+            "support_width_mm": self._parse_float(self.support_width_input.text()) or 0.0,
         }
 
     def _update_section_properties(self):
@@ -2257,6 +3162,7 @@ class GirderDetailsTab(QWidget):
             self.span_combo,
             self.design_combo,
             self.type_combo,
+            self.support_type_combo,
             self.symmetry_combo,
             self.web_thickness_combo,
             self.top_thickness_combo,
@@ -2290,10 +3196,18 @@ class GirderDetailsTab(QWidget):
             self.web_thickness_value_input,
             self.top_thickness_value_input,
             self.bottom_thickness_value_input,
+            self.support_width_input,
         ):
             previous = field.blockSignals(True)
             field.clear()
             field.blockSignals(previous)
+
+        self._dimension_bounds = {
+            "total_depth": {"lower": 200.0, "upper": 2000.0, "increment": 25.0},
+            "top_width": {"lower": 100.0, "upper": 1000.0, "increment": 10.0},
+            "bottom_width": {"lower": 100.0, "upper": 1000.0, "increment": 10.0},
+        }
+        self._refresh_bounds_tooltips()
 
         self._on_design_changed(self.design_combo.currentText())
         self._on_type_changed(self.type_combo.currentText())
@@ -2341,17 +3255,23 @@ class GirderDetailsTab(QWidget):
         # Treat the dialog-level Save as committing the current Member ID.
         if self._is_current_member_dirty():
             self._commit_current_member_state()
+        # Save action marks member edits clean for this session.
+        self._dirty_members.clear()
 
         welded_inputs = {
             "total_depth_mm": self.total_depth_input.text().strip(),
             "top_flange_width_mm": self.top_width_input.text().strip(),
             "bottom_flange_width_mm": self.bottom_width_input.text().strip(),
+            "total_depth_bounds": dict(self._dimension_bounds.get("total_depth") or {}),
+            "top_flange_width_bounds": dict(self._dimension_bounds.get("top_width") or {}),
+            "bottom_flange_width_bounds": dict(self._dimension_bounds.get("bottom_width") or {}),
             "web_thickness_mode": self.web_thickness_combo.currentText(),
             "top_thickness_mode": self.top_thickness_combo.currentText(),
             "bottom_thickness_mode": self.bottom_thickness_combo.currentText(),
             "web_thickness_value_mm": self.web_thickness_value_input.text().strip(),
             "top_thickness_value_mm": self.top_thickness_value_input.text().strip(),
             "bottom_thickness_value_mm": self.bottom_thickness_value_input.text().strip(),
+            "support_width_mm": self.support_width_input.text().strip(),
         }
         properties_snapshot = {
             label: field.text().strip()
