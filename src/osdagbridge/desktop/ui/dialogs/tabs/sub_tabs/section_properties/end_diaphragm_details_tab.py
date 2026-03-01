@@ -27,7 +27,9 @@ from osdagbridge.desktop.ui.widgets.placeholder_section_preview import Placehold
 
 # Reuse the same rolled section catalog that backs the Girder tab.
 from osdagbridge.desktop.ui.dialogs.tabs.sub_tabs.section_properties.girder_details_tab import (  # noqa: E501
+    _BoundsDialog,
     girder_properties,
+    SAIL_APPROVED_THICKNESS_VALUES,
 )
 
 class EndDiaphragmDetailsTab(QWidget):
@@ -36,6 +38,12 @@ class EndDiaphragmDetailsTab(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self._girder_details_tab = None
+        self._global_design_mode = "Optimized"
+        self._dimension_bounds = {
+            "total_depth": {"lower": 200.0, "upper": 2000.0, "increment": 25.0},
+            "top_width": {"lower": 100.0, "upper": 1000.0, "increment": 10.0},
+            "bottom_width": {"lower": 100.0, "upper": 1000.0, "increment": 10.0},
+        }
         self._select_girders_combos = []
         self._member_id_combos = []
         # Member ID is software-generated (E{pair}M1 / E{pair}M2).
@@ -221,7 +229,7 @@ class EndDiaphragmDetailsTab(QWidget):
                 angles = []
             first_angle = angles[0] if angles else ""
             return {
-                "design": "Optimized",
+                "design": self._global_design_mode,
                 "bracing_type": "K-Bracing",
                 "bracing_section_type": "Angle",
                 "bracing_section_data": first_angle,
@@ -238,15 +246,18 @@ class EndDiaphragmDetailsTab(QWidget):
             if self.rolled_is_section_combo is not None and self.rolled_is_section_combo.count() > 0:
                 first = self.rolled_is_section_combo.itemText(0)
             return {
-                "design": "Optimized",
+                "design": self._global_design_mode,
                 "is_section": first,
             }
         if key == "Welded Beam":
             return {
-                "design": "Optimized",
+                "design": self._global_design_mode,
                 "welded_values": ["" for _ in (self._welded_inputs or [])],
+                "total_depth_bounds": dict(self._dimension_bounds.get("total_depth") or {}),
+                "top_width_bounds": dict(self._dimension_bounds.get("top_width") or {}),
+                "bottom_width_bounds": dict(self._dimension_bounds.get("bottom_width") or {}),
             }
-        return {"design": "Optimized"}
+        return {"design": self._global_design_mode}
 
     def _snapshot_view_state(self, view_key: str) -> dict:
         key = (view_key or "").strip()
@@ -281,6 +292,9 @@ class EndDiaphragmDetailsTab(QWidget):
             return {
                 "design": self.welded_design_combo.currentText() if self.welded_design_combo is not None else "",
                 "welded_values": values,
+                "total_depth_bounds": dict(self._dimension_bounds.get("total_depth") or {}),
+                "top_width_bounds": dict(self._dimension_bounds.get("top_width") or {}),
+                "bottom_width_bounds": dict(self._dimension_bounds.get("bottom_width") or {}),
             }
         return {"design": ""}
 
@@ -301,7 +315,7 @@ class EndDiaphragmDetailsTab(QWidget):
         key = (view_key or "").strip()
         if key == "Cross Bracing":
             if self.cross_design_combo is not None:
-                self.cross_design_combo.setCurrentText(state.get("design") or self.cross_design_combo.currentText())
+                self.cross_design_combo.setCurrentText(self._global_design_mode)
             if self.cross_bracing_type_combo is not None:
                 desired = (state.get("bracing_type") or "").strip()
                 # Backward compatibility: older UI exposed Diagonal/Horizontal.
@@ -340,26 +354,52 @@ class EndDiaphragmDetailsTab(QWidget):
                     state.get("bottom_bracket_text") or "",
                 )
 
-            self._on_cross_design_changed(self.cross_design_combo.currentText() if self.cross_design_combo is not None else "")
+            self._on_cross_design_changed(self._global_design_mode)
             self._update_cross_previews()
             return
 
         if key == "Rolled Beam":
             if self.rolled_design_combo is not None:
-                self.rolled_design_combo.setCurrentText(state.get("design") or self.rolled_design_combo.currentText())
+                self.rolled_design_combo.setCurrentText(self._global_design_mode)
             if self.rolled_is_section_combo is not None:
                 desired = state.get("is_section") or ""
                 if desired:
                     self.rolled_is_section_combo.setCurrentText(desired)
                 elif self.rolled_is_section_combo.count() > 0:
                     self.rolled_is_section_combo.setCurrentIndex(0)
-            self._on_rolled_design_changed(self.rolled_design_combo.currentText() if self.rolled_design_combo is not None else "")
+            self._on_rolled_design_changed(self._global_design_mode)
             self._update_rolled_preview_and_props()
             return
 
         if key == "Welded Beam":
             if self.welded_design_combo is not None:
-                self.welded_design_combo.setCurrentText(state.get("design") or self.welded_design_combo.currentText())
+                self.welded_design_combo.setCurrentText(self._global_design_mode)
+
+            total_depth_bounds = state.get("total_depth_bounds")
+            if isinstance(total_depth_bounds, dict):
+                self._dimension_bounds["total_depth"] = {
+                    "lower": float(total_depth_bounds.get("lower", 200.0)),
+                    "upper": float(total_depth_bounds.get("upper", 2000.0)),
+                    "increment": float(total_depth_bounds.get("increment", 25.0)),
+                }
+
+            top_width_bounds = state.get("top_width_bounds")
+            if isinstance(top_width_bounds, dict):
+                self._dimension_bounds["top_width"] = {
+                    "lower": float(top_width_bounds.get("lower", 100.0)),
+                    "upper": float(top_width_bounds.get("upper", 1000.0)),
+                    "increment": float(top_width_bounds.get("increment", 10.0)),
+                }
+
+            bottom_width_bounds = state.get("bottom_width_bounds")
+            if isinstance(bottom_width_bounds, dict):
+                self._dimension_bounds["bottom_width"] = {
+                    "lower": float(bottom_width_bounds.get("lower", 100.0)),
+                    "upper": float(bottom_width_bounds.get("upper", 1000.0)),
+                    "increment": float(bottom_width_bounds.get("increment", 10.0)),
+                }
+
+            self._refresh_bounds_tooltips()
             values = list(state.get("welded_values") or [])
             for i, widget in enumerate(self._welded_inputs or []):
                 val = values[i] if i < len(values) else ""
@@ -370,9 +410,27 @@ class EndDiaphragmDetailsTab(QWidget):
                         widget.setCurrentIndex(0)
                 elif isinstance(widget, QLineEdit):
                     widget.setText(val or "")
-            self._on_welded_design_changed(self.welded_design_combo.currentText() if self.welded_design_combo is not None else "")
+            self._on_welded_design_changed(self._global_design_mode)
             self._update_welded_preview_and_props()
             return
+
+    def set_design_mode(self, mode_str: str) -> None:
+        mode = "Customized" if str(mode_str or "").strip().lower() == "customized" else "Optimized"
+        self._global_design_mode = mode
+
+        for combo in (self.cross_design_combo, self.rolled_design_combo, self.welded_design_combo):
+            if combo is None:
+                continue
+            prev = combo.blockSignals(True)
+            try:
+                combo.setCurrentText(mode)
+            finally:
+                combo.blockSignals(prev)
+
+        self._on_cross_design_changed(mode)
+        self._on_rolled_design_changed(mode)
+        self._on_welded_design_changed(mode)
+        self._restore_all_views_for_current_selection()
 
     def _store_view_state(self, view_key: str) -> None:
         selection_key = self._selection_key(view_key)
@@ -470,6 +528,7 @@ class EndDiaphragmDetailsTab(QWidget):
     def _on_welded_design_changed(self, label: str) -> None:
         is_custom = (label or "").strip() == "Customized"
         self._apply_welded_custom_mode(is_custom)
+        self._update_welded_dimension_field_mode()
 
     def init_ui(self):
         main_layout = QVBoxLayout(self)
@@ -548,9 +607,7 @@ class EndDiaphragmDetailsTab(QWidget):
 
     def _create_label(self, text):
         label = QLabel(text)
-        # Keep default label styling, but emphasize the bracing type selector.
-        weight = "700" if (text or "").strip() == "Type of Bracing:" else "400"
-        label.setStyleSheet(f"font-size: 11px; font-weight: {weight}; color: #4b4b4b; border: none;")
+        label.setStyleSheet("font-size: 11px; font-weight: 400; color: #4b4b4b; border: none;")
         return label
 
     def _add_grid_row(self, layout, row, text, widget):
@@ -608,6 +665,149 @@ class EndDiaphragmDetailsTab(QWidget):
         layout.addWidget(value_input)
         return widget
 
+    def _create_dimension_input_widget(self, field_key: str):
+        widget = QWidget()
+        widget.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+        try:
+            widget.setFixedWidth(int(getattr(self, "_combo_width", 190)))
+        except Exception:
+            pass
+
+        layout = QHBoxLayout(widget)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
+
+        value_input = self._create_line_edit()
+        value_input.setValidator(QDoubleValidator(0.0, 1e12, 3, value_input))
+
+        bounds_button = QPushButton("Set Bounds")
+        bounds_button.setCursor(Qt.PointingHandCursor)
+        bounds_button.setMinimumHeight(28)
+        bounds_button.setStyleSheet(
+            "QPushButton {"
+            " border: 1px solid #2f2f2f; border-radius: 8px;"
+            " background: #ffffff; color: #111111; font-size: 12px; font-weight: 700;"
+            " padding: 4px 10px;"
+            "}"
+            "QPushButton:hover { background: #f2f2f2; }"
+            "QPushButton:pressed { background: #e9e9e9; }"
+        )
+        bounds_button.clicked.connect(lambda _checked=False, key=field_key: self._open_bounds_dialog(key))
+
+        layout.addWidget(value_input)
+        layout.addWidget(bounds_button)
+        return widget, value_input, bounds_button
+
+    def _default_dimension_bounds(self, field_key: str) -> dict:
+        defaults = {
+            "total_depth": {"lower": 200.0, "upper": 2000.0, "increment": 25.0},
+            "top_width": {"lower": 100.0, "upper": 1000.0, "increment": 10.0},
+            "bottom_width": {"lower": 100.0, "upper": 1000.0, "increment": 10.0},
+        }
+        return dict(defaults.get(field_key, {"lower": 0.0, "upper": 0.0, "increment": 0.0}))
+
+    def _normalized_dimension_bounds(self, field_key: str) -> dict:
+        defaults = self._default_dimension_bounds(field_key)
+        current = self._dimension_bounds.get(field_key) or {}
+        out = {}
+        for key in ("lower", "upper", "increment"):
+            try:
+                out[key] = float(current.get(key, defaults[key]))
+            except Exception:
+                out[key] = float(defaults[key])
+        return out
+
+    def _format_bounds_tooltip(self, field_key: str) -> str:
+        bounds = self._normalized_dimension_bounds(field_key)
+        try:
+            lower = float(bounds.get("lower", 0.0))
+            upper = float(bounds.get("upper", 0.0))
+            increment = float(bounds.get("increment", 0.0))
+        except Exception:
+            lower, upper, increment = 0.0, 0.0, 0.0
+        return (
+            f"Lower Bound: {lower:.2f}\n"
+            f"Upper Bound: {upper:.2f}\n"
+            f"Increment: {increment:.2f}"
+        )
+
+    def _refresh_bounds_tooltips(self) -> None:
+        for field_key in ("total_depth", "top_width", "bottom_width"):
+            bounds_button = getattr(self, f"welded_{field_key}_bounds_button", None)
+            if bounds_button is not None:
+                bounds_button.setToolTip(self._format_bounds_tooltip(field_key))
+
+    def _open_bounds_dialog(self, field_key: str) -> None:
+        current = self._normalized_dimension_bounds(field_key)
+        titles = {
+            "total_depth": "Select Bound: Total Depth",
+            "top_width": "Select Bound: Topflange Width",
+            "bottom_width": "Select Bound: Bottomflange Width",
+        }
+        dialog = _BoundsDialog(titles.get(field_key, "Select Bound"), current, self)
+        if dialog.exec() != QDialog.Accepted:
+            return
+
+        result = dialog.result_bounds()
+        if not isinstance(result, dict):
+            return
+
+        self._dimension_bounds[field_key] = {
+            "lower": float(result.get("lower", 0.0)),
+            "upper": float(result.get("upper", 0.0)),
+            "increment": float(result.get("increment", 0.0)),
+        }
+        self._refresh_bounds_tooltips()
+        self._update_welded_preview_and_props()
+
+    def _update_welded_dimension_field_mode(self) -> None:
+        is_custom_design = (self.welded_design_combo.currentText() or "").strip().lower() == "customized" if self.welded_design_combo else False
+
+        for field_key in ("total_depth", "top_width", "bottom_width"):
+            value_input = getattr(self, f"welded_{field_key}", None)
+            bounds_button = getattr(self, f"welded_{field_key}_bounds_button", None)
+            if value_input is None or bounds_button is None:
+                continue
+
+            show_line_edit = bool(is_custom_design)
+            value_input.setVisible(show_line_edit)
+            value_input.setEnabled(show_line_edit)
+            bounds_button.setVisible(not show_line_edit)
+            bounds_button.setEnabled(not show_line_edit)
+
+    def _attach_thickness_value_dropdown(self, wrapper: QWidget, value_input: QLineEdit) -> QComboBox:
+        combo = QComboBox()
+        combo.addItems(SAIL_APPROVED_THICKNESS_VALUES)
+        apply_field_style(combo)
+        combo.setVisible(False)
+        self._configure_combo_box(combo)
+
+        combo.currentTextChanged.connect(lambda text, inp=value_input: inp.setText(str(text or "")))
+        combo.currentTextChanged.connect(self._update_welded_preview_and_props)
+
+        layout = wrapper.layout()
+        if layout is not None:
+            layout.addWidget(combo)
+        return combo
+
+    def _sync_thickness_value_dropdown(self, mode_combo: QComboBox | None, value_input: QLineEdit | None, value_combo: QComboBox | None) -> None:
+        if mode_combo is None or value_input is None or value_combo is None:
+            return
+        if not self._is_custom_thickness_mode(mode_combo):
+            return
+
+        current_text = str(value_input.text() or "").strip()
+        if current_text not in SAIL_APPROVED_THICKNESS_VALUES:
+            current_text = SAIL_APPROVED_THICKNESS_VALUES[0]
+            value_input.setText(current_text)
+
+        prev = value_combo.blockSignals(True)
+        try:
+            idx = value_combo.findText(current_text, Qt.MatchFixedString)
+            value_combo.setCurrentIndex(idx if idx >= 0 else 0)
+        finally:
+            value_combo.blockSignals(prev)
+
     def _is_custom_thickness_mode(self, combo: QComboBox | None) -> bool:
         if combo is None:
             return False
@@ -616,27 +816,73 @@ class EndDiaphragmDetailsTab(QWidget):
     def _update_welded_thickness_value_enabled_state(self) -> None:
         is_custom_design = (self.welded_design_combo.currentText() or "").strip() == "Customized" if self.welded_design_combo else False
 
-        for mode_combo, value_input in (
-            (getattr(self, "welded_web_thickness_combo", None), getattr(self, "welded_web_thickness_value", None)),
-            (getattr(self, "welded_top_thickness_combo", None), getattr(self, "welded_top_thickness_value", None)),
-            (getattr(self, "welded_bottom_thickness_combo", None), getattr(self, "welded_bottom_thickness_value", None)),
+        for mode_combo, value_input, value_combo, wrapper in (
+            (
+                getattr(self, "welded_web_thickness_combo", None),
+                getattr(self, "welded_web_thickness_value", None),
+                getattr(self, "welded_web_thickness_value_combo", None),
+                getattr(self, "welded_web_thickness_widget", None),
+            ),
+            (
+                getattr(self, "welded_top_thickness_combo", None),
+                getattr(self, "welded_top_thickness_value", None),
+                getattr(self, "welded_top_thickness_value_combo", None),
+                getattr(self, "welded_top_thickness_widget", None),
+            ),
+            (
+                getattr(self, "welded_bottom_thickness_combo", None),
+                getattr(self, "welded_bottom_thickness_value", None),
+                getattr(self, "welded_bottom_thickness_value_combo", None),
+                getattr(self, "welded_bottom_thickness_widget", None),
+            ),
         ):
             if mode_combo is None or value_input is None:
                 continue
 
-            show_value = bool(is_custom_design and self._is_custom_thickness_mode(mode_combo))
-            value_input.setVisible(show_value)
-            value_input.setEnabled(show_value)
+            # Match Girder welded behavior:
+            # Customized -> force Custom mode and show SAIL-value dropdown only.
+            if is_custom_design:
+                if mode_combo.currentText().strip().lower() != "custom":
+                    prev = mode_combo.blockSignals(True)
+                    mode_combo.setCurrentText("Custom")
+                    mode_combo.blockSignals(prev)
 
-            try:
-                total_width = int(getattr(self, "_combo_width", 190))
-                if show_value:
-                    mode_combo.setFixedWidth(max(96, total_width - 84))
-                    value_input.setFixedWidth(78)
-                else:
-                    mode_combo.setFixedWidth(total_width)
-            except Exception:
-                pass
+                mode_combo.setVisible(False)
+                mode_combo.setEnabled(False)
+
+                value_input.setVisible(False)
+                value_input.setEnabled(False)
+                value_input.setReadOnly(True)
+
+                if value_combo is not None:
+                    value_combo.setVisible(True)
+                    value_combo.setEnabled(True)
+                    self._sync_thickness_value_dropdown(mode_combo, value_input, value_combo)
+
+                if wrapper is not None:
+                    try:
+                        wrapper.setFixedWidth(int(getattr(self, "_combo_width", 190)))
+                    except Exception:
+                        pass
+                continue
+
+            # Optimized -> show only mode combo; keep value controls hidden.
+            mode_combo.setVisible(True)
+            mode_combo.setEnabled(True)
+
+            value_input.setVisible(False)
+            value_input.setEnabled(False)
+            value_input.setReadOnly(True)
+
+            if value_combo is not None:
+                value_combo.setVisible(False)
+                value_combo.setEnabled(False)
+
+            if wrapper is not None:
+                try:
+                    wrapper.setFixedWidth(int(getattr(self, "_combo_width", 190)))
+                except Exception:
+                    pass
 
     def _create_selection_box(self, view_key: str):
         box = self._create_inner_box()
@@ -838,26 +1084,27 @@ class EndDiaphragmDetailsTab(QWidget):
         grid.setColumnStretch(1, 1)
 
         properties = [
-            "Mass, M (Kg/m)",
-            "Sectional Area, a (cm2)",
-            "2nd Moment of Area, Iz (cm4)",
-            "2nd Moment of Area, Iy (cm4)",
-            "Radius of Gyration, rz (cm)",
-            "Radius of Gyration, ry (cm)",
-            "Elastic Modulus, Zz (cm3)",
-            "Elastic Modulus, Zy (cm3)",
-            "Plastic Modulus, Zuz (cm3)",
-            "Plastic Modulus, Zuy (cm3)"
+            ("Mass, M (Kg/m)", "Mass, M (Kg/m)"),
+            ("Sectional Area, a (cm2)", "Sectional Area, a (cm<sup>2</sup>)"),
+            ("2nd Moment of Area, Iz (cm4)", "2nd Moment of Area, I<sub>z</sub> (cm<sup>4</sup>)"),
+            ("2nd Moment of Area, Iy (cm4)", "2nd Moment of Area, I<sub>y</sub> (cm<sup>4</sup>)"),
+            ("Radius of Gyration, rz (cm)", "Radius of Gyration, r<sub>z</sub> (cm)"),
+            ("Radius of Gyration, ry (cm)", "Radius of Gyration, r<sub>y</sub> (cm)"),
+            ("Elastic Modulus, Zz (cm3)", "Elastic Modulus, Z<sub>z</sub> (cm<sup>3</sup>)"),
+            ("Elastic Modulus, Zy (cm3)", "Elastic Modulus, Z<sub>y</sub> (cm<sup>3</sup>)"),
+            ("Plastic Modulus, Zuz (cm3)", "Plastic Modulus, Z<sub>uz</sub> (cm<sup>3</sup>)"),
+            ("Plastic Modulus, Zuy (cm3)", "Plastic Modulus, Z<sub>uy</sub> (cm<sup>3</sup>)"),
         ]
 
         inputs = {}
-        for row, name in enumerate(properties):
-            label = self._create_label(name)
+        for row, (key, label_text) in enumerate(properties):
+            label = self._create_label(label_text)
+            label.setTextFormat(Qt.RichText)
             field = self._create_line_edit()
             field.setReadOnly(True)
             grid.addWidget(label, row, 0)
             grid.addWidget(field, row, 1)
-            inputs[name] = field
+            inputs[key] = field
 
         layout.addLayout(grid)
         return box, inputs
@@ -1227,7 +1474,8 @@ class EndDiaphragmDetailsTab(QWidget):
             design_combo.setCurrentIndex(1)  # Default to Optimized
         self._configure_combo_box(design_combo)
         apply_field_style(design_combo)
-        row = self._add_grid_row(grid, 0, "Design:", design_combo)
+        design_combo.setVisible(False)
+        row = 0
         self.cross_design_combo = design_combo
 
         type_selector = QComboBox()
@@ -1391,7 +1639,8 @@ class EndDiaphragmDetailsTab(QWidget):
         self.rolled_design_combo = design_combo
         self._configure_combo_box(design_combo)
         apply_field_style(design_combo)
-        row = self._add_grid_row(grid, 0, "Design:", design_combo)
+        design_combo.setVisible(False)
+        row = 0
 
         type_selector = QComboBox()
         type_selector.addItems(VALUES_END_DIAPHRAGM_TYPE)
@@ -1483,7 +1732,8 @@ class EndDiaphragmDetailsTab(QWidget):
         self.welded_design_combo = design_combo
         self._configure_combo_box(design_combo)
         apply_field_style(design_combo)
-        row = self._add_grid_row(grid, 0, "Design:", design_combo)
+        design_combo.setVisible(False)
+        row = 0
 
         type_selector = QComboBox()
         type_selector.addItems(VALUES_END_DIAPHRAGM_TYPE)
@@ -1498,15 +1748,11 @@ class EndDiaphragmDetailsTab(QWidget):
         apply_field_style(symmetry_combo)
         row = self._add_grid_row(grid, row, "Symmetry:", symmetry_combo)
 
-        total_depth = self._create_line_edit()
-        total_depth.setValidator(QDoubleValidator(0, 1_000_000, 3))
-        try:
-            total_depth.setFixedWidth(int(getattr(self, "_combo_width", 190)))
-            total_depth.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
-        except Exception:
-            pass
-        row = self._add_grid_row(grid, row, "Total Depth (mm):", total_depth)
+        total_depth_widget, total_depth, total_depth_bounds_button = self._create_dimension_input_widget("total_depth")
+        row = self._add_grid_row(grid, row, "Total Depth (mm):", total_depth_widget)
         self.welded_total_depth = total_depth
+        self.welded_total_depth_widget = total_depth_widget
+        self.welded_total_depth_bounds_button = total_depth_bounds_button
 
         web_thick_combo = QComboBox()
         web_thick_combo.addItems(VALUES_PROFILE_SCOPE if "VALUES_PROFILE_SCOPE" in globals() else ["All", "Custom"])
@@ -1525,16 +1771,14 @@ class EndDiaphragmDetailsTab(QWidget):
         row = self._add_grid_row(grid, row, "Web Thickness (mm):", web_thick_widget)
         self.welded_web_thickness_combo = web_thick_combo
         self.welded_web_thickness_value = web_thick_value
+        self.welded_web_thickness_widget = web_thick_widget
+        self.welded_web_thickness_value_combo = self._attach_thickness_value_dropdown(web_thick_widget, web_thick_value)
 
-        top_width = self._create_line_edit()
-        top_width.setValidator(QDoubleValidator(0, 1_000_000, 3))
-        try:
-            top_width.setFixedWidth(int(getattr(self, "_combo_width", 190)))
-            top_width.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
-        except Exception:
-            pass
-        row = self._add_grid_row(grid, row, "Width of Top Flange (mm):", top_width)
+        top_width_widget, top_width, top_width_bounds_button = self._create_dimension_input_widget("top_width")
+        row = self._add_grid_row(grid, row, "Width of Top Flange (mm):", top_width_widget)
         self.welded_top_width = top_width
+        self.welded_top_width_widget = top_width_widget
+        self.welded_top_width_bounds_button = top_width_bounds_button
 
         top_thickness_combo = QComboBox()
         top_thickness_combo.addItems(VALUES_PROFILE_SCOPE if "VALUES_PROFILE_SCOPE" in globals() else ["All", "Custom"])
@@ -1553,16 +1797,14 @@ class EndDiaphragmDetailsTab(QWidget):
         row = self._add_grid_row(grid, row, "Top Flange Thickness (mm):", top_thickness_widget)
         self.welded_top_thickness_combo = top_thickness_combo
         self.welded_top_thickness_value = top_thickness_value
+        self.welded_top_thickness_widget = top_thickness_widget
+        self.welded_top_thickness_value_combo = self._attach_thickness_value_dropdown(top_thickness_widget, top_thickness_value)
 
-        bottom_width = self._create_line_edit()
-        bottom_width.setValidator(QDoubleValidator(0, 1_000_000, 3))
-        try:
-            bottom_width.setFixedWidth(int(getattr(self, "_combo_width", 190)))
-            bottom_width.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
-        except Exception:
-            pass
-        row = self._add_grid_row(grid, row, "Width of Bottom Flange (mm):", bottom_width)
+        bottom_width_widget, bottom_width, bottom_width_bounds_button = self._create_dimension_input_widget("bottom_width")
+        row = self._add_grid_row(grid, row, "Width of Bottom Flange (mm):", bottom_width_widget)
         self.welded_bottom_width = bottom_width
+        self.welded_bottom_width_widget = bottom_width_widget
+        self.welded_bottom_width_bounds_button = bottom_width_bounds_button
 
         bottom_thickness_combo = QComboBox()
         bottom_thickness_combo.addItems(VALUES_PROFILE_SCOPE if "VALUES_PROFILE_SCOPE" in globals() else ["All", "Custom"])
@@ -1581,6 +1823,8 @@ class EndDiaphragmDetailsTab(QWidget):
         row = self._add_grid_row(grid, row, "Bottom Flange Thickness (mm):", bottom_thickness_widget)
         self.welded_bottom_thickness_combo = bottom_thickness_combo
         self.welded_bottom_thickness_value = bottom_thickness_value
+        self.welded_bottom_thickness_widget = bottom_thickness_widget
+        self.welded_bottom_thickness_value_combo = self._attach_thickness_value_dropdown(bottom_thickness_widget, bottom_thickness_value)
 
         self._welded_inputs = [
             symmetry_combo,
@@ -1642,6 +1886,8 @@ class EndDiaphragmDetailsTab(QWidget):
         self._update_welded_preview_and_props()
         self._on_welded_design_changed(design_combo.currentText())
         self._update_welded_thickness_value_enabled_state()
+        self._update_welded_dimension_field_mode()
+        self._refresh_bounds_tooltips()
         return view, type_selector
 
     def _handle_type_selection(self, value):

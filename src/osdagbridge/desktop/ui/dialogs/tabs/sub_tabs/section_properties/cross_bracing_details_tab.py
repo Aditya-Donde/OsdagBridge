@@ -24,6 +24,7 @@ class CrossBracingDetailsTab(QWidget):
         super().__init__(parent)
         self.catalog = SectionCatalog()
         self._girder_details_tab = None
+        self._global_design_mode = "Optimized"
 
         # Keep all combo boxes strictly uniform in width.
         self._combo_width = 190
@@ -136,7 +137,8 @@ class CrossBracingDetailsTab(QWidget):
             self.design_combo.setCurrentIndex(1)  # Default to Optimized
         self._configure_combo_box(self.design_combo)
         apply_field_style(self.design_combo)
-        row = self._add_grid_row(inputs_grid, 0, "Design:", self.design_combo)
+        self.design_combo.setVisible(False)
+        row = 0
 
         self.bracing_type_combo = QComboBox()
         self.bracing_type_combo.addItems(["K-Bracing", "X-Bracing"])
@@ -243,7 +245,7 @@ class CrossBracingDetailsTab(QWidget):
         self.design_combo.currentTextChanged.connect(self._on_design_changed)
         self.spacing_input.textChanged.connect(self._on_span_or_spacing_changed)
         self._populate_designations()
-        self._on_design_changed(self.design_combo.currentText())
+        self._on_design_changed(self._global_design_mode)
 
         # Seed selection drop-downs with a safe default until Girder Details is bound.
         self.refresh_girder_options()
@@ -417,7 +419,7 @@ class CrossBracingDetailsTab(QWidget):
     def _default_member_state(self) -> dict:
         # Use the tab defaults (Optimized + first options) for new members.
         return {
-            "design": "Optimized",
+            "design": self._global_design_mode,
             "bracing_type": "K-Bracing",
             "bracing_section_type": "Angle",
             "bracing_section_data": None,
@@ -433,7 +435,7 @@ class CrossBracingDetailsTab(QWidget):
 
     def _snapshot_current_state(self) -> dict:
         return {
-            "design": self.design_combo.currentText(),
+            "design": self._global_design_mode,
             "bracing_type": self.bracing_type_combo.currentText(),
             "bracing_section_type": self.bracing_section_type_combo.currentText(),
             "bracing_section_data": self.bracing_section_combo.currentData(),
@@ -470,7 +472,7 @@ class CrossBracingDetailsTab(QWidget):
     def _apply_state(self, state: dict) -> None:
         # Apply in a safe order: set section types first (to repopulate size combos),
         # then set sizes, then design mode.
-        self.design_combo.setCurrentText(state.get("design") or self.design_combo.currentText())
+        self.design_combo.setCurrentText(self._global_design_mode)
         self.bracing_type_combo.setCurrentText(state.get("bracing_type") or self.bracing_type_combo.currentText())
 
         self.bracing_section_type_combo.setCurrentText(state.get("bracing_section_type") or self.bracing_section_type_combo.currentText())
@@ -500,7 +502,7 @@ class CrossBracingDetailsTab(QWidget):
         self.spacing_input.setText(state.get("spacing") or "")
 
         # Ensure enable/disable and previews match the restored design state.
-        self._on_design_changed(self.design_combo.currentText())
+        self._on_design_changed(self._global_design_mode)
 
     def _load_state_for_current_member(self) -> None:
         key = self._current_member_key()
@@ -625,9 +627,7 @@ class CrossBracingDetailsTab(QWidget):
 
     def _create_label(self, text):
         label = QLabel(text)
-        # Keep default label styling, but emphasize the bracing type selector.
-        weight = "700" if (text or "").strip() == "Type of Bracing:" else "400"
-        label.setStyleSheet(f"font-size: 11px; font-weight: {weight}; color: #4b4b4b; border: none;")
+        label.setStyleSheet("font-size: 11px; font-weight: 400; color: #4b4b4b; border: none;")
         return label
 
     def _add_grid_row(self, layout, row, text, widget):
@@ -710,6 +710,17 @@ class CrossBracingDetailsTab(QWidget):
         is_custom = label == "Customized"
         self._apply_custom_mode(is_custom)
         self._update_previews()
+
+    def set_design_mode(self, mode_str: str) -> None:
+        mode = "Customized" if str(mode_str or "").strip().lower() == "customized" else "Optimized"
+        self._global_design_mode = mode
+        if hasattr(self, "design_combo") and self.design_combo is not None:
+            prev = self.design_combo.blockSignals(True)
+            try:
+                self.design_combo.setCurrentText(mode)
+            finally:
+                self.design_combo.blockSignals(prev)
+        self._on_design_changed(mode)
 
     # ---- Helpers for section labels -------------------------------------
     def _display_name_for(self, designation: str, section_type: str) -> str:
@@ -831,7 +842,7 @@ class CrossBracingDetailsTab(QWidget):
         return {
             "select_girders": current_pair,
             "member_id": current_member,
-            "design": self.design_combo.currentText(),
+            "design": self._global_design_mode,
             "bracing_type": self.bracing_type_combo.currentText(),
             "bracing_section_type": self.bracing_section_type_combo.currentText(),
             "bracing_section": self.bracing_section_combo.currentText(),

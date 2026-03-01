@@ -256,6 +256,17 @@ class FrontendData:
                 {"label": "Skew Angle"},
             )
         )
+        options_list.append(
+            (
+                "Design",
+                "Design",
+                TYPE_COMBOBOX,
+                ["Optimized", "Customized"],
+                True,
+                'No Validator',
+                {"label": "Design", "default": "Optimized"},
+            )
+        )
 
         # Material Inputs
         options_list.append(
@@ -330,7 +341,7 @@ class FrontendData:
         )
 
         return options_list
-
+    
     def set_osdaglogger(self, key):
         """Logger setup"""
         print("Logger set up (mock)")

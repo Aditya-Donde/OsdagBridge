@@ -504,7 +504,7 @@ class PlateGirderCADGenerator:
         from osdagbridge.core.utils.codes.irc5_2015 import IRC5_2015
         from osdagbridge.core.utils.common import (
             KEY_CRASH_BARRIER_TYPE,
-            KEY_FOOTPATH,
+            VALUES_FOOTPATH,
             KEY_RAILING_TYPE,
             KEY_RIGID_CRASH_BARRIER_TYPE,
             KEY_METALLIC_CRASH_BARRIER_TYPE,
@@ -548,7 +548,7 @@ class PlateGirderCADGenerator:
             rigid_subtype_idx = rigid_subtype_map.get(self.crash_barrier_subtype, 0)
             design_dict = IRC5_2015.cl_109_6_3_shapes(
                 barrier_type=KEY_CRASH_BARRIER_TYPE[barrier_idx],
-                footpath=KEY_FOOTPATH[0] if self.footpath_config == "NONE" else KEY_FOOTPATH[1],
+                footpath=VALUES_FOOTPATH[0] if self.footpath_config == "NONE" else VALUES_FOOTPATH[1],
                 railing_type=selected_railing_key,
                 design_dict={},
                 crash_barrier_type=KEY_RIGID_CRASH_BARRIER_TYPE[rigid_subtype_idx]
@@ -559,7 +559,7 @@ class PlateGirderCADGenerator:
             metallic_subtype_idx = metallic_subtype_map.get(self.crash_barrier_subtype, 0)
             design_dict = IRC5_2015.cl_109_6_3_shapes(
                 barrier_type=KEY_CRASH_BARRIER_TYPE[1],
-                footpath=KEY_FOOTPATH[0] if self.footpath_config == "NONE" else KEY_FOOTPATH[1],
+                footpath=VALUES_FOOTPATH[0] if self.footpath_config == "NONE" else VALUES_FOOTPATH[1],
                 railing_type=selected_railing_key,
                 design_dict={},
                 crash_barrier_type=KEY_METALLIC_CRASH_BARRIER_TYPE[metallic_subtype_idx]
@@ -637,7 +637,7 @@ class PlateGirderCADGenerator:
             
             median_design_dict = IRC5_2015.cl_109_6_3_shapes(
                 barrier_type=KEY_MEDIAN_TYPE[median_idx],
-                footpath=KEY_FOOTPATH[0],
+                footpath=VALUES_FOOTPATH[0],
                 railing_type=None,
                 design_dict={},
                 crash_barrier_type=KEY_METALLIC_CRASH_BARRIER_TYPE[metallic_subtype_idx] 

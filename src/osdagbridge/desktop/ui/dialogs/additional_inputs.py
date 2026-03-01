@@ -47,6 +47,7 @@ class AdditionalInputs(QDialog):
         self.setSizeGripEnabled(True)
         self.footpath_value = footpath_value
         self.carriageway_width = carriageway_width
+        self._member_properties_editable = True
         self._last_saved_data = {}  # Track last saved state
         self.init_ui()
         self.setStyleSheet("""
@@ -115,6 +116,7 @@ class AdditionalInputs(QDialog):
                 color: #ffffff;
             }
         """)
+        self._last_top_tab_index = 0
         
         # Sub-Tab 1: Typical Section Details
         self.typical_section_tab = TypicalSectionDetailsTab(self.footpath_value, self.carriageway_width)
@@ -123,6 +125,7 @@ class AdditionalInputs(QDialog):
         # Sub-Tab 2: Member Properties
         self.section_properties_tab = SectionPropertiesTab()
         self.tabs.addTab(self.section_properties_tab, "Member Properties")
+        self.section_properties_tab.set_editable_mode(self._member_properties_editable)
 
         # Keep girder count in sync across tabs
         try:
@@ -145,6 +148,7 @@ class AdditionalInputs(QDialog):
         # Sub-Tab 6: Design Options (Cont.)
         analysis_design_tab = self._build_design_options_cont_tab()
         self.tabs.addTab(analysis_design_tab, "Design Options (Cont.)")
+        self.tabs.currentChanged.connect(self._on_top_tab_changed)
         
         main_layout.addWidget(self.tabs)
         
@@ -222,6 +226,10 @@ class AdditionalInputs(QDialog):
 
         return widget
 
+    def set_member_properties_design_mode(self, mode_str: str):
+        if hasattr(self, "section_properties_tab") and hasattr(self.section_properties_tab, "set_design_mode"):
+            self.section_properties_tab.set_design_mode(mode_str)
+
     def _apply_defaults(self):
         """Apply defaults only to the currently visible top-level tab.
 
@@ -265,7 +273,12 @@ class AdditionalInputs(QDialog):
                 saved.update(self.section_properties_tab.save_properties() or {})
         except Exception as exc:
             # If saving fails, the old code would never reach the confirmation popup.
-            QMessageBox.critical(self, "Save Failed", f"Could not save inputs.\n\n{exc}")
+            box = QMessageBox(self)
+            box.setIcon(QMessageBox.Critical)
+            box.setWindowTitle("Save Failed")
+            box.setText(f"Could not save inputs.\n\n{exc}")
+            box.setStandardButtons(QMessageBox.Ok)
+            box.exec()
             return
 
         # Store the saved data for later retrieval
@@ -276,25 +289,7 @@ class AdditionalInputs(QDialog):
         box = QMessageBox(self)
         box.setIcon(QMessageBox.Information)
         box.setWindowTitle("Saved")
-        
-        # Build detailed message
-        saved_items = []
-        if "girder_details" in saved:
-            saved_items.append("✓ Girder Details")
-        if "stiffener_details" in saved:
-            stiffener_data = saved.get("stiffener_details", {})
-            member_count = len(stiffener_data.get("stiffener_by_member", {}))
-            saved_items.append(f"✓ Stiffener Details ({member_count} members)")
-        if "cross_bracing" in saved:
-            saved_items.append("✓ Cross-Bracing Details")
-        if "end_diaphragm" in saved:
-            saved_items.append("✓ End Diaphragm Details")
-        
-        message = "Inputs saved successfully.\n\n"
-        if saved_items:
-            message += "Saved:\n" + "\n".join(saved_items)
-        
-        box.setText(message)
+        box.setText("Inputs saved successfully.")
         box.setStandardButtons(QMessageBox.Ok)
         box.setDefaultButton(QMessageBox.Ok)
         box.setWindowModality(Qt.ApplicationModal)
@@ -499,8 +494,53 @@ class AdditionalInputs(QDialog):
         self.footpath_value = footpath_value
         self.typical_section_tab.update_footpath_value(footpath_value)
 
+    def set_member_properties_editable(self, editable: bool) -> None:
+        self._member_properties_editable = bool(editable)
+        if hasattr(self, "section_properties_tab") and self.section_properties_tab is not None:
+            try:
+                self.section_properties_tab.set_editable_mode(self._member_properties_editable)
+            except Exception:
+                pass
+
     def _show_placeholder_message(self, action_name):
-        QMessageBox.information(self, "Coming soon", f"{action_name} action not implemented yet.")
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Information)
+        box.setWindowTitle("Coming soon")
+        box.setText(f"{action_name} action not implemented yet.")
+        box.setStandardButtons(QMessageBox.Ok)
+        box.exec()
+
+    def _on_top_tab_changed(self, index: int) -> None:
+        if index < 0:
+            return
+
+        previous = getattr(self, "_last_top_tab_index", 0)
+        if previous == index:
+            return
+
+        leaving_member_properties = (
+            previous == self.tabs.indexOf(getattr(self, "section_properties_tab", None))
+        )
+        if leaving_member_properties:
+            try:
+                if hasattr(self, "section_properties_tab") and hasattr(self.section_properties_tab, "has_unsaved_changes"):
+                    if self.section_properties_tab.has_unsaved_changes():
+                        box = QMessageBox(self)
+                        box.setIcon(QMessageBox.Warning)
+                        box.setWindowTitle("Unsaved Inputs")
+                        box.setText("Please save Member Properties before switching tabs.")
+                        box.setStandardButtons(QMessageBox.Ok)
+                        box.setDefaultButton(QMessageBox.Ok)
+                        box.setWindowModality(Qt.ApplicationModal)
+                        box.exec()
+                        prev = self.tabs.blockSignals(True)
+                        self.tabs.setCurrentIndex(previous)
+                        self.tabs.blockSignals(prev)
+                        return
+            except Exception:
+                pass
+
+        self._last_top_tab_index = index
     
     def get_saved_data(self) -> dict:
         """Get the last saved properties data.
