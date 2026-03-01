@@ -14,14 +14,13 @@ from osdagbridge.core.bridge_types.plate_girder.analysis_results import PlateGir
 # -------------------------------------------------------------------------------------------------------------------------------------------------
 # UI / Visual Configuration
 # -------------------------------------------------------------------------------------------------------------------------------------------------
-COLOR_PRIMARY_FILL = "#E0F2F1"      # Muted teal fill
-COLOR_PRIMARY_STROKE = "#90BC00"    # osdag teal stroke
+COLOR_PRIMARY_FILL = "#355C9A"      # Muted teal fill
+COLOR_PRIMARY_STROKE = "#355C9A"    # osdag teal stroke
 COLOR_ZERO_LINE = "#B0BEC5"         # Soft grey zero line
 COLOR_GIRDER_LINE = "#90A4AE"       # Minimal structural line
-COLOR_NODE_REF = "#D0D0D0"          # Thicker, slightly darker reference lines for visibility
-COLOR_CURSOR = "#546E7A"            # Cursor line
 COLOR_SEPARATOR = "#E0E0E0"         # Soft visual boundary / bounding box
-COLOR_TEXT_LABEL = "#555555"        # Subtle, medium-weight labels
+COLOR_DEFLECTION_LINE = "#C0392B"   # Red stroke
+COLOR_DEFLECTION_FILL = "#C0392B"   # Muted Red fill
 
 class Girder2DPlotsWidget(QWidget):
     """
@@ -488,9 +487,12 @@ class Girder2DPlotsWidget(QWidget):
         # -------------------------------------------------------------------------------------------------------------------------------------------------
         # Middle Plots (BMD / SFD Matrices)
         # -------------------------------------------------------------------------------------------------------------------------------------------------
-        for data, ax in [(self._bmd_data, self.ax_bmd), (self._sfd_data, self.ax_sfd)]:
-            ax.fill_between(self._x_data, data, 0, color=COLOR_PRIMARY_FILL, alpha=0.55, zorder=2)
-            ax.plot(self._x_data, data, color=COLOR_PRIMARY_STROKE, linewidth=1.5, zorder=3)
+        for data, ax, c_line, c_fill in [
+            (self._bmd_data, self.ax_bmd, COLOR_PRIMARY_STROKE, COLOR_PRIMARY_FILL),
+            (self._sfd_data, self.ax_sfd, COLOR_PRIMARY_STROKE, COLOR_PRIMARY_FILL)
+        ]:
+            ax.fill_between(self._x_data, data, 0, color=c_fill, alpha=0.25, zorder=2)
+            ax.plot(self._x_data, data, color=c_line, linewidth=1.5, zorder=3)
             ax.plot([x_start, x_end], [0, 0], color=COLOR_ZERO_LINE, lw=1.2, zorder=1)
             
             y_max, y_min = np.max(data), np.min(data)
@@ -501,8 +503,8 @@ class Girder2DPlotsWidget(QWidget):
         # -------------------------------------------------------------------------------------------------------------------------------------------------
         # Bottom Plot (Deflection Curve)
         # -------------------------------------------------------------------------------------------------------------------------------------------------
-        self.ax_defl.fill_between(self._x_data, self._defl_data, 0, color=COLOR_PRIMARY_FILL, alpha=0.35, zorder=2)
-        self.ax_defl.plot(self._x_data, self._defl_data, color=COLOR_PRIMARY_STROKE, linewidth=1.8, zorder=3)
+        self.ax_defl.fill_between(self._x_data, self._defl_data, 0, color=COLOR_DEFLECTION_FILL, alpha=0.35, zorder=2)
+        self.ax_defl.plot(self._x_data, self._defl_data, color=COLOR_DEFLECTION_LINE, linewidth=1.8, zorder=3)
         self.ax_defl.plot([x_start, x_end], [0, 0], color=COLOR_ZERO_LINE, lw=1.2, zorder=1)
         
         d_max, d_min = np.max(self._defl_data), np.min(self._defl_data)
@@ -719,3 +721,5 @@ class Girder2DPlotsWidget(QWidget):
         self.fields["bmd"].setText(f"{m:.2f} kNm")
         self.fields["sfd"].setText(f"{v:.2f} kN")
         self.fields["defl"].setText(f"{d:.2f} mm")
+        
+# @VT - March 1, 2026
