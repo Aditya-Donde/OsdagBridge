@@ -802,13 +802,181 @@ class CrossSectionCADWidget(QWidget):
         p.end()
         return QBrush(pixmap)
 
-    def draw_median_crash_barriers(self, painter, median_start_x, median_end_x, deck_top_y, scale, median_color):
-        """Draw two crash barriers for median, facing outward"""
-        painter.setBrush(QBrush(median_color))
+    def draw_median(self, painter, median_start_x, median_end_x, deck_top_y, scale, median_color):
+        """Dispatcher for different median types based on IRC 5 geometry"""
+        geo = MedianGeometry.get_geometry(self.median_type)
+        if not geo:
+            return
+
+        if geo["type"] == "kerb":
+            self.draw_raised_kerb_median(painter, median_start_x, median_end_x, deck_top_y, scale, median_color, geo)
+        elif geo["type"] == "rcc_barrier":
+            self.draw_rcc_barrier_median(painter, median_start_x, median_end_x, deck_top_y, scale, median_color, geo)
+        elif geo["type"] == "metallic":
+            self.draw_metallic_median(painter, median_start_x, median_end_x, deck_top_y, scale, median_color, geo)
+
+    def draw_raised_kerb_median(self, painter, median_start_x, median_end_x, deck_top_y, scale, median_color, geo):
+        """Draw Raised Kerb median (trapezoid shape)"""
+        h = geo.get("kerb_height", 225) * scale
+        top_w = geo.get("kerb_top_width", 1200) * scale
+        bottom_w = geo.get("kerb_bottom_width", 1200) * scale
+        
+        median_width_px = median_end_x - median_start_x
+        offset = (median_width_px - bottom_w) / 2
+        
+        y_bottom = deck_top_y
+        y_top = deck_top_y - h
+        
+        x_bl = median_start_x + offset
+        x_br = x_bl + bottom_w
+        x_tl = x_bl + (bottom_w - top_w) / 2
+        x_tr = x_tl + top_w
+        
+        points = [QPointF(x_bl, y_bottom), QPointF(x_br, y_bottom), QPointF(x_tr, y_top), QPointF(x_tl, y_top)]
+        
         if self.hovered_element == 'median':
-            MEDIAN_GREY = QColor(255, 250, 220)   # same highlight as crash barrier
+            painter.setBrush(QBrush(QColor(255, 250, 220)))
         else:
-            MEDIAN_GREY = QColor(126, 126, 126)
+            painter.setBrush(QBrush(median_color))
+            
+        painter.setPen(QPen(QColor(0, 0, 0), max(1.5, scale * 1.5)))
+        painter.drawPolygon(QPolygonF(points))
+        
+        hover_rect = QRectF(median_start_x, y_top, median_width_px, h)
+        self.cross_section_hover_zones.append((hover_rect, 'median'))
+
+    def draw_rcc_barrier_median(self, painter, median_start_x, median_end_x, deck_top_y, scale, median_color, geo):
+        """Draw two RCC crash barriers for median following standard shape"""
+        barrier_h_mm = geo.get("barrier_height", 900.0)
+        bottom_w_mm = geo.get("bottom_width", 450.0)
+        top_w_mm = geo.get("top_width", 175.0)
+        
+        h = barrier_h_mm * scale
+        bottom_w = bottom_w_mm * scale
+        median_width_px = median_end_x - median_start_x
+        
+        # Shape offsets proportional to standard HC barrier (350mm bottom)
+        shape_scale = bottom_w_mm / 350.0
+        base_v = 100.0 * scale
+        mid_y_off = 350.0 * scale
+        right_at_mid = 250.0 * scale * shape_scale
+        left_at_top = 50.0 * scale * shape_scale
+        right_at_top = 225.0 * scale * shape_scale
+        
+        y_bottom = deck_top_y
+        y_base_top = y_bottom - base_v
+        y_mid = y_bottom - mid_y_off
+        y_top = y_bottom - h
+        
+        barrier_brush = QBrush(QColor(255, 250, 220)) if self.hovered_element == 'median' else QBrush(QColor(126, 126, 126))
+        painter.setBrush(barrier_brush)
+        painter.setPen(QPen(Qt.black, max(1.5, scale * 1.5)))
+        
+        # LEFT assembly (faces LEFT)
+        x_l = median_start_x + bottom_w
+        points_l = [
+            QPointF(x_l - bottom_w, y_bottom), QPointF(x_l, y_bottom), QPointF(x_l, y_base_top),
+            QPointF(x_l - left_at_top, y_top), QPointF(x_l - right_at_top, y_top),
+            QPointF(x_l - right_at_mid, y_mid), QPointF(x_l - bottom_w, y_base_top)
+        ]
+        painter.drawPolygon(QPolygonF(points_l))
+        
+        # RIGHT assembly (faces RIGHT)
+        x_r = median_end_x - bottom_w
+        points_r = [
+            QPointF(x_r, y_bottom), QPointF(x_r + bottom_w, y_bottom), QPointF(x_r + bottom_w, y_base_top),
+            QPointF(x_r + right_at_mid, y_mid), QPointF(x_r + right_at_top, y_top),
+            QPointF(x_r + left_at_top, y_top), QPointF(x_r, y_base_top)
+        ]
+        painter.drawPolygon(QPolygonF(points_r))
+        
+        hover_rect = QRectF(median_start_x, y_top, median_width_px, h)
+        self.cross_section_hover_zones.append((hover_rect, 'median'))
+
+    def draw_metallic_median(self, painter, median_start_x, median_end_x, deck_top_y, scale, median_color, geo):
+        """Draw Metallic median with a common kerb base and beams on both sides"""
+        post_h_mm = geo.get("post_height", 950)
+        n_beams = geo.get("w_beams", 1)
+        median_width_mm = geo.get("median_width", 1200)
+        median_width_px = median_end_x - median_start_x
+        
+        kerb_h_mm = 225.0
+        h_kerb = kerb_h_mm * scale
+        top_w = (median_width_mm - 50.0) * scale
+        bottom_w = median_width_mm * scale
+        post_h = post_h_mm * scale
+        
+        y_bottom = deck_top_y
+        y_top_kerb = deck_top_y - h_kerb
+        x_bl, x_br = median_start_x, median_end_x
+        x_tl = x_bl + (bottom_w - top_w) / 2
+        x_tr = x_tl + top_w
+        
+        painter.setBrush(QBrush(QColor(180, 180, 180)))
+        painter.setPen(QPen(Qt.black, max(1.0, scale)))
+        painter.drawPolygon(QPolygonF([QPointF(x_bl, y_bottom), QPointF(x_br, y_bottom), QPointF(x_tr, y_top_kerb), QPointF(x_tl, y_top_kerb)]))
+        
+        post_w, post_offset = 150.0 * scale, 75.0 * scale
+        spacer_w, spacer_h = 200.0 * scale, 330.0 * scale
+        w_beam_h, w_beam_depth, w_beam_thk = 330.0 * scale, 83.0 * scale, 3.0 * scale
+        post_color = QColor(255, 250, 220) if self.hovered_element == 'median' else QColor(80, 80, 80)
+        
+        def draw_side_assembly(is_left):
+            # Assembly on Left side of median (near x_tl): [Beam] [Spacer] [Post] -> Facing left carriageway
+            # Assembly on Right side of median (near x_tr): [Post] [Spacer] [Beam] -> Facing right carriageway
+            
+            if is_left:
+                # x_tl is the left kerb end. Order: Beam (outer), Spacer (mid), Post (inner)
+                b_root_x = x_tl + w_beam_depth
+                s_x = x_tl + w_beam_depth
+                p_x = s_x + spacer_w
+            else:
+                # x_tr is the right kerb end. Order: Post (inner), Spacer (mid), Beam (outer)
+                b_root_x = x_tr - w_beam_depth
+                s_x = b_root_x - spacer_w
+                p_x = s_x - post_w
+
+            # Draw Post
+            painter.setBrush(QBrush(post_color))
+            painter.setPen(QPen(Qt.black, 1))
+            painter.drawRect(QRectF(p_x, y_top_kerb - post_h, post_w, post_h))
+            
+            h_centers = [post_h_mm - 165] if n_beams == 1 else [post_h_mm - 165, post_h_mm - 165 - 145 - 330]
+            for hc_mm in h_centers:
+                sy = y_top_kerb - hc_mm * scale - spacer_h / 2
+                
+                # Draw Spacer
+                painter.setBrush(QBrush(post_color))
+                painter.drawRect(QRectF(s_x, sy, spacer_w, spacer_h))
+                
+                # Draw W-Beam Profile (Wave)
+                num_pts = 15
+                outer_wave, inner_wave = [], []
+                for i in range(num_pts + 1):
+                    z_rel = (i / num_pts) * w_beam_h
+                    wave_val = (w_beam_depth * 1.5) * (math.exp(-((z_rel - w_beam_h*0.25)**2)/(2*(w_beam_h/10)**2)) + math.exp(-((z_rel - w_beam_h*0.75)**2)/(2*(w_beam_h/10)**2)))
+                    curr_y = sy + (w_beam_h - z_rel)
+                    
+                    if is_left:
+                        wx = b_root_x - wave_val  # Faces LEFT
+                        outer_wave.append(QPointF(wx, curr_y))
+                        inner_wave.insert(0, QPointF(wx + w_beam_thk, curr_y))
+                    else:
+                        wx = b_root_x + wave_val  # Faces RIGHT
+                        outer_wave.append(QPointF(wx, curr_y))
+                        inner_wave.insert(0, QPointF(wx - w_beam_thk, curr_y))
+                
+                painter.setBrush(QBrush(QColor(120, 120, 120)))
+                painter.drawPolygon(QPolygonF(outer_wave + inner_wave))
+
+        draw_side_assembly(True)
+        draw_side_assembly(False)
+        hover_rect = QRectF(median_start_x, y_top_kerb - post_h, median_width_px, post_h + h_kerb)
+        self.cross_section_hover_zones.append((hover_rect, 'median'))
+
+    def draw_median_crash_barriers(self, painter, median_start_x, median_end_x, deck_top_y, scale, median_color):
+        """DEPRECATED: Use draw_rcc_barrier_median or dispatcher instead."""
+        pass
         CONCRETE_COLOR = QColor(225, 225, 225)
 
         
@@ -1193,7 +1361,7 @@ class CrossSectionCADWidget(QWidget):
         #self.draw_crash_barrier(painter, right_barrier_end_x, cb_y, scale, side='right')
         
         if median_present:
-            self.draw_median_crash_barriers(painter, median_start_x, median_end_x, deck_top_y, scale, MEDIAN_GREY)
+            self.draw_median(painter, median_start_x, median_end_x, deck_top_y, scale, MEDIAN_GREY)
 
         # Draw the main deck bottom line solid (only the deck slab portion)
         painter.setPen(QPen(QColor(0, 0, 0), 1.5))
@@ -1758,23 +1926,37 @@ class CrossSectionCADWidget(QWidget):
             railing_top_y = right_railing_rect[1]
             components.append((railing_rect, "Railing", railing_center_x, railing_top_y, 'on_figure_top', None))
         
-        # Median barriers - text on top of figure (like railing)
+        # Median - text on top of figure (like railing or crash barrier)
         if median_present and median_start_x is not None:
+            # Get actual median height for correct label positioning
+            m_geo = MedianGeometry.get_geometry(self.median_type)
+            m_h = 0
+            if m_geo:
+                if m_geo.get("type") == "kerb":
+                    m_h = m_geo.get("kerb_height", 225) * scale
+                elif m_geo.get("type") == "rcc_barrier":
+                    m_h = m_geo.get("barrier_height", 900) * scale
+                elif m_geo.get("type") == "metallic":
+                    m_h = m_geo.get("post_height", 950) * scale
+            
+            if m_h == 0:
+                m_h = cb_height # Fallback
+
             median_rect = QRectF(
                 median_start_x,
-                deck_top_y - cb_height,
+                deck_top_y - m_h,
                 median_end_x - median_start_x,
-                cb_height
+                m_h
             )
             median_center_x = (median_start_x + median_end_x) / 2
-            median_top_y = deck_top_y - cb_height
+            median_top_y = deck_top_y - m_h
 
             components.append((
                 median_rect,
                 "Median",
                 median_center_x,
                 median_top_y,
-                'on_figure_top',   #  SAME AS RAILING
+                'on_figure_top',
                 None
             ))
         

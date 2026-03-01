@@ -27,7 +27,7 @@ class CrashBarrierGeometry:
             return {
                 "type": "metallic",
                 "w_beams": 1,
-                "post_height": 750.0,
+                "post_height": 950.0,
                 "kerb_height": 150.0,
             }
 
@@ -35,7 +35,7 @@ class CrashBarrierGeometry:
             return {
                 "type": "metallic",
                 "w_beams": 2,
-                "post_height": 750.0,
+                "post_height": 950.0,
                 "kerb_height": 150.0,
             }
 
@@ -90,12 +90,20 @@ class MedianGeometry:
                 "bottom_width": 450,
             }
 
-        elif median_type == "IRC 5 - Metallic Crash Barrier":
+        elif median_type == "IRC 5 - Metallic Crash Barrier with Single W-Beam":
             return {
                 "type": "metallic",
                 "median_width": 1200,
                 "post_height": 950,
                 "w_beams": 1,
+            }
+
+        elif median_type == "IRC 5 - Metallic Crash Barrier with Double W-Beam":
+            return {
+                "type": "metallic",
+                "median_width": 1200,
+                "post_height": 950,
+                "w_beams": 2,
             }
 
         return {}
