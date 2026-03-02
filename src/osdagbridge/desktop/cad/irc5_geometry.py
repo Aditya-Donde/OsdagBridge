@@ -59,7 +59,7 @@ class RailingGeometry:
             return {
                 "type": "steel",
                 "height": 1100,
-                "post_dia": 50,
+                "post_dia": 100,
                 "rail_count": 3,
                 "post_spacing": 2000,
             }

@@ -378,7 +378,6 @@ class CrossSectionCADWidget(QWidget):
         self._position_zoom_buttons()
     
     def update_params(self, params: dict):
-
         self.params.update(params)
         self.show_dimensions = True
 
@@ -814,6 +813,135 @@ class CrossSectionCADWidget(QWidget):
             self.draw_rcc_barrier_median(painter, median_start_x, median_end_x, deck_top_y, scale, median_color, geo)
         elif geo["type"] == "metallic":
             self.draw_metallic_median(painter, median_start_x, median_end_x, deck_top_y, scale, median_color, geo)
+
+    def draw_railing(self, painter, x, y, scale, side):
+        """Dispatcher for different railing types based on IRC 5 geometry"""
+        geo = RailingGeometry.get_geometry(self.railing_type)
+        if not geo:
+            # Fallback to existing RCC railing if type is not recognized
+            return self.draw_rcc_railing(painter, x, y, scale, side)
+
+        if geo["type"] == "rcc":
+            return self.draw_rcc_railing(painter, x, y, scale, side, geo)
+        elif geo["type"] == "steel":
+            return self.draw_steel_railing(painter, x, y, scale, side, geo)
+        
+        return self.draw_rcc_railing(painter, x, y, scale, side)
+
+    def draw_rcc_railing(self, painter, x, y, scale, side, geo=None):
+        """Draw RCC railing with exact dimensions:
+        - Height: 1100 mm
+        - Outer width: 375 mm
+        - Inner spacing: 275 mm
+        - Base thickness: 100 mm
+        """
+        RAILING_HEIGHT_MM = geo.get("height", 1100) if geo else 1100
+        OUTER_WIDTH_MM = 375
+        INNER_SPACING_MM = 275
+        BASE_THICKNESS_MM = 100
+        
+        wall_thickness_mm = (OUTER_WIDTH_MM - INNER_SPACING_MM) / 2
+        
+        total_h = RAILING_HEIGHT_MM * scale
+        outer_w = max(4, OUTER_WIDTH_MM * scale)
+        inner_w = max(2, INNER_SPACING_MM * scale)
+        base_h = max(3, BASE_THICKNESS_MM * scale)
+        wall_t = max(1, wall_thickness_mm * scale)
+        
+        post_h = total_h - base_h
+        
+        rect_x = x
+        base_top_y = y - base_h
+        post_top_y = y - total_h
+        
+        corner_radius = min(outer_w * 0.05, 4)
+        
+        painter.setBrush(QBrush(QColor(126,126,126) ))
+        painter.setPen(QPen(QColor(34, 34, 34), max(1.5, scale * 2)))
+        base_rect = QRectF(rect_x, base_top_y, outer_w, base_h)
+        painter.drawRect(base_rect)
+        
+        painter.setBrush(QBrush(QColor(126,126,126) ))
+        painter.setPen(QPen(QColor(34, 34, 34), max(1.5, scale * 2)))
+        post_rect = QRectF(rect_x, post_top_y, outer_w, post_h)
+        painter.drawRoundedRect(post_rect, corner_radius, corner_radius)
+        
+        inner_x = rect_x + wall_t
+        inner_top_margin = post_h * 0.08
+        inner_bottom_margin = post_h * 0.05
+        inner_height = post_h - inner_top_margin - inner_bottom_margin
+        
+        if inner_w > 3 and inner_height > 5:
+            painter.setBrush(QBrush(QColor(220, 220, 220)))
+            painter.setPen(QPen(QColor(120, 120, 120), max(1, scale)))
+            
+            inner_rect = QRectF(inner_x, post_top_y + inner_top_margin, inner_w, inner_height)
+            painter.drawRoundedRect(inner_rect, corner_radius * 0.5, corner_radius * 0.5)
+            
+            n_rails = 4
+            rail_spacing = inner_height / (n_rails + 1)
+            rail_height = max(2, 3 * scale)
+            
+            painter.setBrush(QBrush(QColor(180, 180, 180)))
+            painter.setPen(QPen(QColor(100, 100, 100), max(0.5, scale * 0.5)))
+            
+            for i in range(1, n_rails + 1):
+                rail_y = post_top_y + inner_top_margin + i * rail_spacing - rail_height/2
+                rail_rect = QRectF(inner_x + 2, rail_y, inner_w - 4, rail_height)
+                painter.drawRect(rail_rect)
+        
+        return (rect_x, post_top_y, rect_x + outer_w, y, outer_w)
+
+    def draw_steel_railing(self, painter, x, y, scale, side, geo):
+        """Draw Steel railing with:
+        - Concrete base: 100mm height, 375mm width
+        - Steel posts: 150mm x 150mm
+        - Steel rails: 40mm x 40mm (Top and Mid)
+        """
+        RAILING_HEIGHT_MM = geo.get("height", 1100)
+        BASE_HEIGHT_MM = 100
+        BASE_WIDTH_MM = 375
+        POST_SIZE_MM = 150
+        RAIL_SIZE_MM = 20
+        
+        total_h = RAILING_HEIGHT_MM * scale
+        base_h = max(3, BASE_HEIGHT_MM * scale)
+        base_w = max(4, BASE_WIDTH_MM * scale)
+        post_size = max(2, POST_SIZE_MM * scale)
+        rail_size = max(1, RAIL_SIZE_MM * scale)
+        
+        rect_x = x
+        base_top_y = y - base_h
+        railing_top_y = y - total_h
+        
+        # 1. Concrete Base
+        painter.setBrush(QBrush(QColor(126, 126, 126)))
+        painter.setPen(QPen(QColor(34, 34, 34), max(1.5, scale * 2)))
+        base_rect = QRectF(rect_x, base_top_y, base_w, base_h)
+        painter.drawRect(base_rect)
+        
+        # 2. Steel Post (center aligned on base in cross-section)
+        post_x = rect_x + (base_w - post_size) / 2
+        post_h = total_h - base_h
+        
+        painter.setBrush(QBrush(QColor(100, 100, 100))) # Darker grey for steel
+        painter.setPen(QPen(QColor(30, 30, 30), max(1.5, scale * 2)))
+        post_rect = QRectF(post_x, railing_top_y, post_size, post_h)
+        painter.drawRect(post_rect)
+        
+        # 3. Rails
+        # Top Rail (positioned relative to total railing height)
+        top_rail_y = railing_top_y + rail_size # Slightly down from very top 
+        top_rail_rect = QRectF(post_x, top_rail_y, post_size, rail_size)
+        painter.setBrush(QBrush(QColor(80, 80, 80)))
+        painter.drawRect(top_rail_rect)
+        
+        # Mid Rail
+        mid_rail_y = base_top_y - (post_h * 0.5) - rail_size / 2
+        mid_rail_rect = QRectF(post_x, mid_rail_y, post_size, rail_size)
+        painter.drawRect(mid_rail_rect)
+        
+        return (rect_x, railing_top_y, rect_x + base_w, y, base_w)
 
     def draw_raised_kerb_median(self, painter, median_start_x, median_end_x, deck_top_y, scale, median_color, geo):
         """Draw Raised Kerb median (trapezoid shape)"""
@@ -1507,11 +1635,11 @@ class CrossSectionCADWidget(QWidget):
 
         if fp_config in ['left', 'both'] and left_fp_width > 0:
             railing_x = deck_left_x
-            left_railing_rect = self.draw_railing_post_fixed(painter, railing_x, fp_top_y, scale, "left")
+            left_railing_rect = self.draw_railing(painter, railing_x, fp_top_y, scale, "left")
             
         if fp_config in ['right', 'both'] and right_fp_width > 0:
             railing_x = deck_right_x - railing_outer_width_px
-            right_railing_rect = self.draw_railing_post_fixed(painter, railing_x, fp_top_y, scale, "right")
+            right_railing_rect = self.draw_railing(painter, railing_x, fp_top_y, scale, "right")
         # Draw crash barriers
         cb_y = deck_top_y
         # Left barrier: x is where it STARTS (left edge)
@@ -1542,82 +1670,6 @@ class CrossSectionCADWidget(QWidget):
 
 
 
-    def draw_railing_post_fixed(self, painter, x, y, scale, side):
-        """Draw RCC railing with exact dimensions:
-        - Height: 1100 mm
-        - Outer width: 375 mm
-        - Inner spacing: 275 mm
-        - Base thickness: 100 mm
-        """
-        RAILING_HEIGHT_MM = 1100
-        OUTER_WIDTH_MM = 375
-        INNER_SPACING_MM = 275
-        BASE_THICKNESS_MM = 100
-        
-        wall_thickness_mm = (OUTER_WIDTH_MM - INNER_SPACING_MM) / 2
-        
-        total_h = RAILING_HEIGHT_MM * scale
-        outer_w = max(4, OUTER_WIDTH_MM * scale)
-        inner_w = max(2, INNER_SPACING_MM * scale)
-        base_h = max(3, BASE_THICKNESS_MM * scale)
-        wall_t = max(1, wall_thickness_mm * scale)
-        
-        post_h = total_h - base_h
-        
-        rect_x = x
-        base_bottom_y = y
-        base_top_y = y - base_h
-        post_top_y = y - total_h
-        
-        corner_radius = min(outer_w * 0.05, 4)
-        
-        painter.setBrush(QBrush(QColor(126,126,126) ))
-
-        painter.setPen(QPen(QColor(34, 34, 34), max(1.5, scale * 2)))
-        base_rect = QRectF(rect_x, base_top_y, outer_w, base_h)
-        painter.drawRect(base_rect)
-        
-        painter.setBrush(QBrush(QColor(126,126,126) ))
-
-        painter.setPen(QPen(QColor(34, 34, 34), max(1.5, scale * 2)))
-        post_rect = QRectF(rect_x, post_top_y, outer_w, post_h)
-        painter.drawRoundedRect(post_rect, corner_radius, corner_radius)
-        
-        inner_x = rect_x + wall_t
-        inner_top_margin = post_h * 0.08
-        inner_bottom_margin = post_h * 0.05
-        inner_height = post_h - inner_top_margin - inner_bottom_margin
-        
-        if inner_w > 3 and inner_height > 5:
-            painter.setBrush(QBrush(QColor(220, 220, 220)))
-            painter.setPen(QPen(QColor(120, 120, 120), max(1, scale)))
-            
-            inner_rect = QRectF(inner_x, post_top_y + inner_top_margin, inner_w, inner_height)
-            painter.drawRoundedRect(inner_rect, corner_radius * 0.5, corner_radius * 0.5)
-            
-            n_rails = 4
-            rail_spacing = inner_height / (n_rails + 1)
-            rail_height = max(2, 3 * scale)
-            
-            painter.setBrush(QBrush(QColor(180, 180, 180)))
-            painter.setPen(QPen(QColor(100, 100, 100), max(0.5, scale * 0.5)))
-            
-            for i in range(1, n_rails + 1):
-                rail_y = post_top_y + inner_top_margin + i * rail_spacing - rail_height/2
-                rail_rect = QRectF(inner_x + 2, rail_y, inner_w - 4, rail_height)
-                painter.drawRect(rail_rect)
-        
-        #painter.setPen(QPen(QColor(150, 150, 150), 1, Qt.DashLine))
-        #painter.setBrush(Qt.NoBrush)
-        #outline_margin = 2
-        #outline_rect = QRectF(rect_x - outline_margin,
-                            #post_top_y - outline_margin,
-                            #outer_w + 2 * outline_margin,
-                            #total_h + 2 * outline_margin)
-        #painter.drawRoundedRect(outline_rect, corner_radius + 2, corner_radius + 2)
-        
-        # Return bounding box with actual outer width
-        return (rect_x, post_top_y, rect_x + outer_w, y, outer_w)
 
     def add_professional_cross_section_dimensions(self, painter, deck_left_x, deck_right_x,
                         carriageway_start_x, carriageway_end_x,

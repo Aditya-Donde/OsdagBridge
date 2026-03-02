@@ -309,6 +309,7 @@ RAILING_TAB_SCHEMA = {
                     "type": "combo",
                     "choices": VALUES_RAILING_TYPE,
                     "bind": "railing_type",
+                    "on_change": "on_railing_type_changed",
                 }
             ]
         },
