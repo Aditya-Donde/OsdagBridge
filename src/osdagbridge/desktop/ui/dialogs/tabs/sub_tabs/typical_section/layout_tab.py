@@ -4,8 +4,8 @@ from PySide6.QtWidgets import QWidget, QVBoxLayout, QGridLayout, QLabel, QLineEd
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QDoubleValidator, QIntValidator
 
+from osdagbridge.core.bridge_types.plate_girder import defaults as pg_defaults
 from osdagbridge.core.bridge_types.plate_girder.ui_fields_additional_input import LAYOUT_TAB_SCHEMA
-from osdagbridge.core.utils.common import DEFAULT_GIRDER_SPACING
 from osdagbridge.desktop.ui.dialogs.tabs.common import apply_field_style
 
 
@@ -98,7 +98,7 @@ class LayoutTab(QWidget):
         for row in schema_rows:
             for field_def in row.get("fields", []):
                 if field_def.get("id") == "deck_overhang" and field_def.get("default") is None:
-                    field_def["default"] = f"{0.35 * DEFAULT_GIRDER_SPACING:.3f}"
+                    field_def["default"] = pg_defaults.DEFAULT_AI_LAYOUT_DECK_OVERHANG_M
 
         # Create adjustment notice label (shown when values are auto-adjusted)
         owner.layout_adjust_notice = QLabel()
@@ -156,4 +156,3 @@ class LayoutTab(QWidget):
         layout_layout.addLayout(grid)
 
         layout_layout.addStretch()
-

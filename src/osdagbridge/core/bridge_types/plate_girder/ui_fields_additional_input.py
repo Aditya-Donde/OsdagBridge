@@ -21,6 +21,23 @@ from osdagbridge.core.utils.common import (
 )
 from . import defaults as pg_defaults
 
+_LAYOUT_DEFAULTS = pg_defaults.get_ai_defaults("layout")
+_LAYOUT_GIRDER_SPACING = _LAYOUT_DEFAULTS.get(
+    "girder_spacing_m",
+    pg_defaults.DEFAULT_AI_LAYOUT_GIRDER_SPACING_M,
+)
+_LAYOUT_NO_OF_GIRDERS = _LAYOUT_DEFAULTS.get(
+    "no_of_girders",
+    pg_defaults.DEFAULT_AI_LAYOUT_NO_OF_GIRDERS,
+)
+_LAYOUT_DECK_OVERHANG = _LAYOUT_DEFAULTS.get(
+    "deck_overhang_m",
+    pg_defaults.DEFAULT_AI_LAYOUT_DECK_OVERHANG_M,
+)
+_LAYOUT_DECK_THICKNESS = f"{float(_LAYOUT_DEFAULTS.get('deck_thickness_mm', pg_defaults.DEFAULT_AI_LAYOUT_DECK_THICKNESS_MM)):.0f}"
+_LAYOUT_FOOTPATH_WIDTH = f"{float(_LAYOUT_DEFAULTS.get('footpath_width_m', pg_defaults.DEFAULT_AI_LAYOUT_FOOTPATH_WIDTH_M)):.2f}"
+_LAYOUT_FOOTPATH_THICKNESS = f"{float(_LAYOUT_DEFAULTS.get('footpath_thickness_mm', pg_defaults.DEFAULT_AI_LAYOUT_FOOTPATH_THICKNESS_MM)):.0f}"
+
 LAYOUT_TAB_SCHEMA = {
     "id": "layout_tab",
     "rows": [
@@ -31,7 +48,7 @@ LAYOUT_TAB_SCHEMA = {
                     "label": "Girder Spacing (m):",
                     "type": "line",
                     "validator": {"type": "double_range", "bottom": 0.01, "top": 50.0, "decimals": 3},
-                    "default": pg_defaults.DEFAULT_AI_LAYOUT_GIRDER_SPACING_M,
+                    "default": _LAYOUT_GIRDER_SPACING,
                     "bind": "girder_spacing",
                     "on_text_changed": "on_girder_spacing_changed",
                 },
@@ -40,6 +57,7 @@ LAYOUT_TAB_SCHEMA = {
                     "label": "No. of Girders:",
                     "type": "line",
                     "validator": {"type": "int_range", "bottom": 1, "top": 100},
+                    "default": _LAYOUT_NO_OF_GIRDERS,
                     "bind": "no_of_girders",
                     "on_editing_finished": "on_no_of_girders_changed",
                 },
@@ -52,6 +70,7 @@ LAYOUT_TAB_SCHEMA = {
                     "label": "Deck Overhang Width (m):",
                     "type": "line",
                     "validator": {"type": "double_range", "bottom": 0.0, "top": 100.0, "decimals": 3},
+                    "default": _LAYOUT_DECK_OVERHANG,
                     "bind": "deck_overhang",
                     "on_text_changed": "on_deck_overhang_changed",
                 }
@@ -76,7 +95,7 @@ LAYOUT_TAB_SCHEMA = {
                     "label": "Deck Thickness (mm):",
                     "type": "line",
                     "validator": {"type": "double_range", "bottom": 100.0, "top": 500.0, "decimals": 0},
-                    "default": pg_defaults.DEFAULT_AI_LAYOUT_DECK_THICKNESS_MM,
+                    "default": _LAYOUT_DECK_THICKNESS,
                     "bind": "deck_thickness",
                     "on_editing_finished": "validate_deck_thickness",
                 },
@@ -89,7 +108,7 @@ LAYOUT_TAB_SCHEMA = {
                     "label": "Footpath Width (m):",
                     "type": "line",
                     "validator": {"type": "double_range", "bottom": MIN_FOOTPATH_WIDTH, "top": 5.0, "decimals": 3},
-                    "default": pg_defaults.DEFAULT_AI_LAYOUT_FOOTPATH_WIDTH_M,
+                    "default": _LAYOUT_FOOTPATH_WIDTH,
                     "bind": "footpath_width",
                     "on_text_changed": "on_footpath_width_changed",
                 },
@@ -98,7 +117,7 @@ LAYOUT_TAB_SCHEMA = {
                     "label": "Footpath Thickness (mm):",
                     "type": "line",
                     "validator": {"type": "double_range", "bottom": 100.0, "top": 500.0, "decimals": 0},
-                    "default": pg_defaults.DEFAULT_AI_LAYOUT_FOOTPATH_THICKNESS_MM,
+                    "default": _LAYOUT_FOOTPATH_THICKNESS,
                     "bind": "footpath_thickness",
                     "on_editing_finished": "validate_footpath_thickness",
                 },

@@ -830,8 +830,14 @@ class TypicalSectionDetailsTab(QWidget):
             return
 
         spacing_bounds = self._spacing_bounds(overall_width)
-        spacing_input = self._parse_length_value(self.girder_spacing, default=DEFAULT_GIRDER_SPACING)
-        overhang_input = self._parse_length_value(self.deck_overhang, default=0.35 * spacing_input)
+        spacing_input = self._parse_length_value(
+            self.girder_spacing,
+            default=pg_defaults.DEFAULT_AI_LAYOUT_GIRDER_SPACING_M,
+        )
+        overhang_input = self._parse_length_value(
+            self.deck_overhang,
+            default=spacing_input * pg_defaults.DEFAULT_AI_LAYOUT_DECK_OVERHANG_RATIO,
+        )
         girders_input = None
         if self.no_of_girders.text().strip():
             try:
@@ -1020,7 +1026,11 @@ class TypicalSectionDetailsTab(QWidget):
         pick = self._pick_n_for_spacing(overall_width, old_spacing, spacing_bounds)
         if not pick:
             # Fallback to default spacing
-            pick = self._pick_n_for_spacing(overall_width, DEFAULT_GIRDER_SPACING, spacing_bounds)
+            pick = self._pick_n_for_spacing(
+                overall_width,
+                pg_defaults.DEFAULT_AI_LAYOUT_GIRDER_SPACING_M,
+                spacing_bounds,
+            )
         if pick:
             _, n, spacing_use, overhang_use = pick
             self._set_layout_fields(spacing_use, overhang_use, n)
@@ -1057,11 +1067,15 @@ class TypicalSectionDetailsTab(QWidget):
         self._ai_user_overrides.clear()
         # Layout defaults
         if hasattr(self, "girder_spacing"):
-            self.girder_spacing.setText(self._format_spacing(DEFAULT_GIRDER_SPACING))
+            self.girder_spacing.setText(
+                self._format_spacing(pg_defaults.DEFAULT_AI_LAYOUT_GIRDER_SPACING_M)
+            )
         if hasattr(self, "deck_overhang"):
-            self.deck_overhang.setText(self._format_overhang(0.35 * DEFAULT_GIRDER_SPACING))
+            self.deck_overhang.setText(
+                self._format_overhang(pg_defaults.DEFAULT_AI_LAYOUT_DECK_OVERHANG_M)
+            )
         if hasattr(self, "no_of_girders"):
-            self.no_of_girders.setText("2")
+            self.no_of_girders.setText(str(pg_defaults.DEFAULT_AI_LAYOUT_NO_OF_GIRDERS))
         self._clear_adjust_notice()
         self._solve_layout("spacing")
 
@@ -1486,7 +1500,7 @@ class TypicalSectionDetailsTab(QWidget):
             self.deck_thickness,
             100,
             500,
-            200,
+            float(pg_defaults.DEFAULT_AI_LAYOUT_DECK_THICKNESS_MM),
             "Deck thickness too small",
             "Deck thickness too large",
         )
@@ -1496,7 +1510,7 @@ class TypicalSectionDetailsTab(QWidget):
             self.footpath_thickness,
             100,
             500,
-            200,
+            float(pg_defaults.DEFAULT_AI_LAYOUT_FOOTPATH_THICKNESS_MM),
             "Footpath thickness too small",
             "Footpath thickness too large",
         )
