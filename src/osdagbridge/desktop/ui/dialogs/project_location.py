@@ -1,33 +1,27 @@
-from pathlib import Path
-
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QWidget,
-    QCheckBox, QFrame, QPushButton, QComboBox, QSizePolicy, QSizeGrip,
-    QRadioButton, QButtonGroup, QStackedWidget, QSpacerItem, QMessageBox
+    QFrame, QPushButton, QComboBox, QSizePolicy, QSizeGrip,
+    QRadioButton, QButtonGroup, QStackedWidget, QSpacerItem
 )
-from PySide6.QtGui import QDesktopServices
-from PySide6.QtCore import Qt, QUrl
-from osdagbridge.desktop.ui.utils.custom_titlebar import CustomTitleBar
+from PySide6.QtCore import Qt
+from osdagbridge.desktop.ui.dialogs.custom_titlebar import CustomTitleBar
+from osdagbridge.desktop.ui.dialogs.custom_messagebox import CustomMessageBox, MessageBoxType
 from osdagbridge.core.bridge_types.plate_girder.ui_fields_project_location import (
     get_state_list,
     get_station_list,
     get_default_location,
     get_weather,
 )
-
-from PySide6.QtCore import Slot, Signal, QObject, QUrl
 from osdagbridge.desktop.ui.widgets.native_map import NativeMapWidget
 from osdagbridge.core.data.project_location.zone_lookup import get_zones_for_coordinates, get_temperature_for_coordinates
 
 
 # Session-level state to persist values across dialog open/close cycles
 # so that reopening the dialog retains user-entered or looked-up data.
-LAST_CUSTOM_WEATHER_DATA = None  # Custom data entered via the Custom Data dialog
-LAST_WEATHER_DATA = None  # Looked-up or persisted weather data (wind, seismic, temp)
-LAST_LOCATION_METHOD = None  # "location_name" or "map"
-LAST_LOCATION_DATA = None  # {"state": ..., "district": ...} or {"latitude": ..., "longitude": ...}
-
-
+LAST_CUSTOM_WEATHER_DATA = None
+LAST_WEATHER_DATA = None
+LAST_LOCATION_METHOD = None  # "location_name", "map", or "custom_data"
+LAST_LOCATION_DATA = None   # {"state": ..., "district": ...} or {"latitude": ..., "longitude": ...}
 
 
 class NoScrollComboBox(QComboBox):
@@ -107,270 +101,6 @@ def apply_field_style(widget):
         """)
 
 
-class CustomWeatherDataDialog(QDialog):
-    """
-    Dialog to manually input weather/seismic data.
-    """
-    def __init__(self, parent=None, initial_data=None):
-        super().__init__(parent)
-        self.setFixedSize(400, 420)
-        self.data = initial_data or {}
-        self.setWindowFlags(Qt.Dialog | Qt.FramelessWindowHint)
-        
-        self.setStyleSheet("""
-            QDialog {
-                background-color: #ffffff;
-                border: 1px solid #90AF13;
-            }
-            QLabel {
-                color: #2d2d2d;
-                font-size: 12px;
-                font-weight: 500;
-            }
-            QLineEdit {
-                padding: 4px 8px;
-                border: 1px solid #dcdcdc;
-                border-radius: 4px;
-                background-color: white;
-                color: black;
-                font-size: 12px;
-            }
-            QLineEdit:focus {
-                border: 1px solid #90AF13;
-            }
-            QPushButton#primary {
-                background-color: #90AF13;
-                color: white;
-                border-radius: 6px;
-                padding: 6px 16px;
-                font-weight: 600;
-                border: none;
-            }
-            QPushButton#primary:hover { background-color: #7a9b0f; }
-            QPushButton#ghost {
-                background-color: #f1f1f1;
-                color: #1d1d1d;
-                border-radius: 6px;
-                padding: 6px 16px;
-                font-weight: 600;
-                border: none;
-            }
-            QPushButton#ghost:hover { background-color: #e6e6e6; }
-        """)
-
-        # Main layout structure for custom title bar
-        main_layout = QVBoxLayout(self)
-        main_layout.setContentsMargins(1, 1, 1, 1)
-        main_layout.setSpacing(0)
-
-        self.title_bar = CustomTitleBar()
-        self.title_bar.setTitle("Custom Weather Data")
-        main_layout.addWidget(self.title_bar)
-        
-        self.content_widget = QWidget(self)
-        main_layout.addWidget(self.content_widget, 1)
-
-        layout = QVBoxLayout(self.content_widget)
-        layout.setSpacing(16)
-        layout.setContentsMargins(25, 25, 25, 25)
-        
-        # Basic Wind Speed
-        wind_layout = QVBoxLayout()
-        wind_layout.setSpacing(6)
-        wind_layout.addWidget(QLabel("Basic Wind Speed (m/s)"))
-        self.wind_input = QLineEdit()
-        self.wind_input.setPlaceholderText("e.g. 50")
-        if self.data.get("wind_speed"):
-            self.wind_input.setText(str(self.data.get("wind_speed")))
-        wind_layout.addWidget(self.wind_input)
-        layout.addLayout(wind_layout)
-
-        # Seismic Zone
-        zone_label = QLabel("Seismic Zone")
-        layout.addWidget(zone_label)
-
-        self.zone_combo = NoScrollComboBox()
-        self.zone_combo.addItems(["Select Zone", "II", "III", "IV", "V"])
-        if self.data.get("zone"):
-            index = self.zone_combo.findText(self.data.get("zone"))
-            if index >= 0:
-                self.zone_combo.setCurrentIndex(index)
-        
-        # Apply specific combo style locally or via stylesheet above
-        self.zone_combo.setStyleSheet("""
-            QComboBox{
-                padding: 4px 8px;
-                border: 1px solid #dcdcdc;
-                border-radius: 4px;
-                background-color: white;
-                color: black;
-            }
-            QComboBox::drop-down{ 
-                subcontrol-origin: padding;
-                subcontrol-position: top right;
-                border-left: 0px;
-            }
-            QComboBox::down-arrow{ 
-                image: url(:/vectors/arrow_down_light.svg);
-                width: 12px;
-                height: 12px;
-                margin-right: 8px;
-            }
-            QComboBox::down-arrow:on {
-                image: url(:/vectors/arrow_up_light.svg);
-                width: 12px;
-                height: 12px;
-                margin-right: 8px;
-            }
-            QComboBox QAbstractItemView{
-                background-color: white;
-                border: 1px solid #dcdcdc;
-                outline: none;
-            }
-            QComboBox QAbstractItemView::item{
-                color: black;
-                background-color: white;
-                border: none;
-                border: 1px solid white;
-                border-radius: 0;
-                padding: 2px;
-            }
-            QComboBox QAbstractItemView::item:hover{
-                border: 1px solid #90AF13;
-                background-color: #90AF13;
-                color: black;
-            }
-            QComboBox QAbstractItemView::item:selected{
-                background-color: #90AF13;
-                color: black;
-                border: 1px solid #90AF13;
-            }
-            QComboBox QAbstractItemView::item:selected:hover{
-                background-color: #90AF13;
-                color: black;
-                border: 1px solid #94b816;
-            }
-        """)
-
-        # Side-by-side layout for Zone and Z-Factor
-        zone_row = QHBoxLayout()
-        zone_row.setSpacing(15)
-
-        # Add stretch factor 1 to make them equal width
-        zone_row.addWidget(self.zone_combo, 1)
-
-        zone_to_z = {"II": "0.10", "III": "0.16", "IV": "0.24", "V": "0.36"}
-        current_z = zone_to_z.get(self.zone_combo.currentText(), "")
-
-        self.zone_value = QLineEdit(str(current_z))
-        self.zone_value.setReadOnly(True)
-        self.zone_value.setPlaceholderText("Zone Factor (Z)")
-        self.zone_value.setStyleSheet("""
-            QLineEdit {
-                background-color: #f5f5f5;
-                color: #707070;
-                border: 1px solid #dcdcdc;
-                border-radius: 4px;
-                padding: 4px 8px;
-            }
-        """)
-        self.zone_combo.currentTextChanged.connect(
-            lambda text: self.zone_value.setText(zone_to_z.get(text, ""))
-        )
-
-        # Add stretch factor 1 to make them equal width
-        zone_row.addWidget(self.zone_value, 1)
-        layout.addLayout(zone_row)
-
-        # Shade Air Temperature
-        temp_lbl = QLabel("Shade Air Temperature (°C)")
-        layout.addWidget(temp_lbl)
-        
-        temp_layout = QHBoxLayout()
-        temp_layout.setSpacing(15)
-        
-        max_col = QVBoxLayout()
-        max_col.setSpacing(6)
-        self.max_temp_input = QLineEdit()
-        self.max_temp_input.setPlaceholderText("Max")
-        if self.data.get("max_temp"):
-             self.max_temp_input.setText(str(self.data.get("max_temp")))
-        max_col.addWidget(self.max_temp_input)
-        
-        min_col = QVBoxLayout()
-        min_col.setSpacing(6)
-        self.min_temp_input = QLineEdit()
-        self.min_temp_input.setPlaceholderText("Min")
-        if self.data.get("min_temp"):
-             self.min_temp_input.setText(str(self.data.get("min_temp")))
-        min_col.addWidget(self.min_temp_input)
-        
-        temp_layout.addLayout(max_col)
-        temp_layout.addLayout(min_col)
-        layout.addLayout(temp_layout)
-
-        layout.addStretch()
-
-        # Build Footer
-        btn_layout = QHBoxLayout()
-        btn_layout.setSpacing(10)
-        btn_layout.addStretch()
-        
-        save_btn = QPushButton("Save")
-        save_btn.setObjectName("primary")
-        save_btn.setCursor(Qt.PointingHandCursor)
-        save_btn.clicked.connect(self.validate_and_save)
-        btn_layout.addWidget(save_btn)
-        
-        cancel_btn = QPushButton("Cancel")
-        cancel_btn.setObjectName("ghost")
-        cancel_btn.setCursor(Qt.PointingHandCursor)
-        cancel_btn.clicked.connect(self.reject)
-        btn_layout.addWidget(cancel_btn)
-        
-        layout.addLayout(btn_layout)
-        
-    def validate_and_save(self):
-        wind = self.wind_input.text().strip()
-        zone = self.zone_combo.currentText()
-        max_t = self.max_temp_input.text().strip()
-        min_t = self.min_temp_input.text().strip()
-        
-        if not wind or not max_t or not min_t or zone == "Select Zone":
-            QMessageBox.warning(self, "Incomplete Data", "Please enter all fields (Wind Speed, Seismic Zone, and Temperatures) before saving.")
-            return
-
-        self.accept()
-
-    def get_data(self):
-        # Map zone to z_value automatically
-        zone_to_z = {
-            "II": "0.10",
-            "III": "0.16",
-            "IV": "0.24",
-            "V": "0.36"
-        }
-        selected_zone = self.zone_combo.currentText() if self.zone_combo.currentText() != "Select Zone" else ""
-        z_value = zone_to_z.get(selected_zone, "")
-        
-        return {
-            "wind_speed": self.wind_input.text(),
-            "zone": selected_zone,
-            "z_value": z_value,
-            "max_temp": self.max_temp_input.text(),
-            "min_temp": self.min_temp_input.text()
-        }
-
-    def showEvent(self, event):
-        """Center dialog on parent window when shown."""
-        super().showEvent(event)
-        if self.parent():
-            parent_geo = self.parent().geometry()
-            x = parent_geo.x() + (parent_geo.width() - self.width()) // 2
-            y = parent_geo.y() + (parent_geo.height() - self.height()) // 2
-            self.move(x, y)
-
-
 class ProjectLocationDialog(QDialog):
     """Dialog for selecting project location with multiple input methods."""
 
@@ -380,6 +110,8 @@ class ProjectLocationDialog(QDialog):
         self.setMinimumHeight(520)
         self.setObjectName("project_location_dialog")
         self.default_location = get_default_location()
+        self._session_committed = False
+        self._initial_session_state = None
         
         # Restore session-level state
         self.custom_weather_data = LAST_CUSTOM_WEATHER_DATA
@@ -392,28 +124,29 @@ class ProjectLocationDialog(QDialog):
             }
             QLabel#headline { font-size: 15px; font-weight: 700; color: #2d2d2d; }
             QLabel#hint { color: #4a4a4a; }
+            QLabel { color: #1f1f1f; }
             QRadioButton { font-size: 12px; color: #1f1f1f; }
             QRadioButton::indicator { width: 16px; height: 16px; }
             QRadioButton::indicator::unchecked { border: 2px solid #90AF13; border-radius: 9px; background: transparent; }
             QRadioButton::indicator::checked { border: 2px solid #90AF13; background: #90AF13; border-radius: 9px; }
             QCheckBox { font-size: 12px; color: #1f1f1f; }
             QPushButton#primary {
-                background-color: #90AF13;
-                color: white;
+                background-color: #ffffff;
+                color: #1f1f1f;
                 border-radius: 6px;
                 padding: 8px 18px;
                 font-weight: 600;
             }
-            QPushButton#primary:hover { background-color: #7a9b0f; }
+            QPushButton#primary:hover { background-color: #90AF13; }
             QPushButton#primary:pressed { background-color: #64850c; }
             QPushButton#ghost {
-                background-color: #f1f1f1;
+                background-color: #ffffff;
                 color: #1d1d1d;
                 border-radius: 6px;
                 padding: 8px 14px;
                 font-weight: 600;
             }
-            QPushButton#ghost:hover { background-color: #e6e6e6; }
+            QPushButton#ghost:hover { background-color: #90AF13; }
             QPushButton#ghost:pressed { background-color: #d9d9d9; }
         """)
 
@@ -422,6 +155,41 @@ class ProjectLocationDialog(QDialog):
         
         # Restore previous session state if available, otherwise apply defaults
         self._restore_session_state()
+        self._capture_initial_session_state()
+
+    def _capture_initial_session_state(self):
+        """Capture module-level session state at dialog open time for cancel rollback."""
+        self._initial_session_state = {
+            "custom_weather": LAST_CUSTOM_WEATHER_DATA,
+            "weather": LAST_WEATHER_DATA,
+            "location_method": LAST_LOCATION_METHOD,
+            "location_data": LAST_LOCATION_DATA,
+        }
+
+    def _restore_initial_session_state(self):
+        """Restore module-level session state captured when dialog was opened."""
+        global LAST_CUSTOM_WEATHER_DATA, LAST_WEATHER_DATA, LAST_LOCATION_METHOD, LAST_LOCATION_DATA
+        if not self._initial_session_state:
+            return
+
+        LAST_CUSTOM_WEATHER_DATA = self._initial_session_state.get("custom_weather")
+        LAST_WEATHER_DATA = self._initial_session_state.get("weather")
+        LAST_LOCATION_METHOD = self._initial_session_state.get("location_method")
+        LAST_LOCATION_DATA = self._initial_session_state.get("location_data")
+
+    def accept(self):
+        self._session_committed = True
+        super().accept()
+
+    def reject(self):
+        if not self._session_committed:
+            self._restore_initial_session_state()
+        super().reject()
+
+    def closeEvent(self, event):
+        if not self._session_committed:
+            self._restore_initial_session_state()
+        super().closeEvent(event)
     
     def setupWrapper(self):
         self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowSystemMenuHint)
@@ -456,6 +224,22 @@ class ProjectLocationDialog(QDialog):
         self._build_body(main_layout)
         self._add_footer_buttons(main_layout)
     
+    def _add_code_selector(self, layout):
+        self.code_widget = QWidget()
+        row = QHBoxLayout(self.code_widget)
+        row.setContentsMargins(0, 0, 0, 0)
+        row.setSpacing(10)
+        code_label = QLabel("Design Code")
+        code_label.setStyleSheet("font-size: 12px; font-weight: 600; color: #2d2d2d;")
+        self.code_combo = NoScrollComboBox()
+        self.code_combo.addItems(["IRC 6 (2017)"])
+        apply_field_style(self.code_combo)
+        self.code_combo.setFixedWidth(200)
+        row.addWidget(code_label)
+        row.addWidget(self.code_combo)
+        row.addStretch()
+        layout.addWidget(self.code_widget)
+
     def _add_method_toggle(self, layout):
         bar = QHBoxLayout()
         bar.setSpacing(18)
@@ -463,8 +247,9 @@ class ProjectLocationDialog(QDialog):
         self.method_group = QButtonGroup(self)
         self.method_radio_location = QRadioButton("Enter Location Name")
         self.method_radio_map = QRadioButton("Select on Map") 
+        self.method_custom_data = QRadioButton("Input Custom Data")
 
-        for radio in (self.method_radio_location, self.method_radio_map):
+        for radio in (self.method_radio_location, self.method_radio_map, self.method_custom_data):
             radio.setCursor(Qt.PointingHandCursor)
             self.method_group.addButton(radio)
             bar.addWidget(radio)
@@ -491,13 +276,14 @@ class ProjectLocationDialog(QDialog):
         left_layout.setContentsMargins(14, 12, 14, 12)
         left_layout.setSpacing(12)
 
+        self._add_code_selector(left_layout)
+
         self.method_stack = QStackedWidget()
         self._add_location_page()
         self._add_map_page()
+        self._add_custom_data_page()
         self.method_stack.setCurrentIndex(0)
         left_layout.addWidget(self.method_stack)
-
-        # Removed Lookup and Clear buttons row
 
         body.addWidget(left_card, 2)
 
@@ -518,9 +304,9 @@ class ProjectLocationDialog(QDialog):
         right_layout.setContentsMargins(14, 12, 14, 12)
         right_layout.setSpacing(8)
 
-        title = QLabel("IRC 6 (2017) Values:")
-        title.setObjectName("valueTitle")
-        right_layout.addWidget(title)
+        self.irc_title_label = QLabel("IRC 6 (2017) Values:")
+        self.irc_title_label.setObjectName("valueTitle")
+        right_layout.addWidget(self.irc_title_label)
 
         self.wind_speed_label = QLabel("Basic Wind Speed (m/sec): —")
         self.wind_speed_label.setObjectName("valueLabel")
@@ -536,18 +322,6 @@ class ProjectLocationDialog(QDialog):
 
         right_layout.addItem(QSpacerItem(0, 6))
 
-        self.btn_custom_data = QPushButton("Custom Data")
-        self.btn_custom_data.setObjectName("primary")
-        self.btn_custom_data.setCursor(Qt.PointingHandCursor)
-        self.btn_custom_data.setMinimumWidth(150)
-        self.btn_custom_data.setAutoDefault(False)
-        right_layout.addWidget(self.btn_custom_data)
-        
-        hint = QLabel("Manually overwrite wind, seismic zone & zone factor, and shade temps.")
-        hint.setWordWrap(True)
-        hint.setObjectName("hint")
-        right_layout.addWidget(hint)
-        
         # Zone Legend (shown when overlay is active)
         self.legend_container = QWidget()
         self.legend_container.setVisible(False)
@@ -618,35 +392,18 @@ class ProjectLocationDialog(QDialog):
         vbox.setContentsMargins(0, 0, 0, 0)
         vbox.setSpacing(6)
 
-        # Zone overlay dropdown
-        overlay_container = QWidget()
-        overlay_container.setStyleSheet("background-color: #ffffff; border-bottom: 1px solid #d8e2c4;")
-        overlay_layout = QHBoxLayout(overlay_container)
-        overlay_layout.setContentsMargins(10, 8, 10, 8)
-        overlay_layout.setSpacing(10)
-        
-        overlay_label = QLabel("Zone Overlay:")
-        overlay_label.setStyleSheet("font-weight: 600; color: #2d2d2d; border: none;")
-        #overlay_layout.addWidget(overlay_label)
-        
         self.zone_overlay_combo = NoScrollComboBox()
         self.zone_overlay_combo.addItems(["None", "Seismic Zone", "Wind Zone"])
-        self.zone_overlay_combo.setMinimumWidth(140)
-        apply_field_style(self.zone_overlay_combo)
-        #overlay_layout.addWidget(self.zone_overlay_combo)
-        
-        overlay_layout.addStretch()
-        vbox.addWidget(overlay_container)
 
         self.map_view = NativeMapWidget()
         vbox.addWidget(self.map_view, 1)
 
-        # Coordinate inputs integrated here
+        # Coordinate inputs
         coord_container = QWidget()
         coord_container.setStyleSheet("background-color: #ffffff; border-top: 1px solid #d8e2c4;")
         coord_layout = QVBoxLayout(coord_container)
         coord_layout.setContentsMargins(10, 10, 10, 10)
-        
+
         coord_label = QLabel("Enter Coordinates or Select on Map")
         coord_label.setStyleSheet("font-weight: bold; color: #2d2d2d;")
         coord_layout.addWidget(coord_label)
@@ -671,7 +428,7 @@ class ProjectLocationDialog(QDialog):
         row.addLayout(lat_col)
         row.addLayout(lng_col)
         coord_layout.addLayout(row)
-        
+
         vbox.addWidget(coord_container)
 
         # Connect map signal
@@ -679,10 +436,132 @@ class ProjectLocationDialog(QDialog):
 
         self.method_stack.addWidget(page)
 
+    def _add_custom_data_page(self):
+        page = QWidget()
+        vbox = QVBoxLayout(page)
+        vbox.setContentsMargins(2, 2, 2, 2)
+        vbox.setSpacing(10)
+
+        label = QLabel("Enter Custom Weather Data")
+        label.setObjectName("hint")
+        label.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)
+        label.setStyleSheet("font-weight: 700; color: #2d2d2d;")
+        vbox.addWidget(label)
+
+        # Basic Wind Speed
+        wind_row = QHBoxLayout()
+        wind_row.setSpacing(10)
+        wind_lbl = QLabel("Basic Wind Speed (m/s)")
+        wind_lbl.setFixedWidth(200)
+        self.custom_wind_input = QLineEdit()
+        self.custom_wind_input.setPlaceholderText("e.g. 50")
+        apply_field_style(self.custom_wind_input)
+        wind_row.addWidget(wind_lbl)
+        wind_row.addWidget(self.custom_wind_input)
+        vbox.addLayout(wind_row)
+
+        # Seismic Zone + Zone Factor
+        zone_row = QHBoxLayout()
+        zone_row.setSpacing(10)
+        zone_lbl = QLabel("Seismic Zone")
+        zone_lbl.setFixedWidth(200)
+        self.custom_zone_combo = NoScrollComboBox()
+        self.custom_zone_combo.addItems(["Select Zone", "II", "III", "IV", "V"])
+        apply_field_style(self.custom_zone_combo)
+        self.custom_zone_value = QLineEdit()
+        self.custom_zone_value.setReadOnly(True)
+        self.custom_zone_value.setPlaceholderText("Zone Factor (Z)")
+        self.custom_zone_value.setFixedWidth(100)
+        apply_field_style(self.custom_zone_value)
+        self.custom_zone_value.setStyleSheet("""
+            QLineEdit {
+                padding: 1px 7px;
+                border: 1px solid #d0d0d0;
+                border-radius: 6px;
+                background-color: #f5f5f5;
+                color: #707070;
+            }
+        """)
+        _zone_to_z = {"II": "0.10", "III": "0.16", "IV": "0.24", "V": "0.36"}
+        self.custom_zone_combo.currentTextChanged.connect(
+            lambda text: self.custom_zone_value.setText(_zone_to_z.get(text, ""))
+        )
+        zone_row.addWidget(zone_lbl)
+        zone_row.addWidget(self.custom_zone_combo, 1)
+        zone_row.addWidget(self.custom_zone_value)
+        vbox.addLayout(zone_row)
+
+        # Shade Air Temperature
+        temp_lbl = QLabel("Shade Air Temperature (°C)")
+        vbox.addWidget(temp_lbl)
+        temp_row = QHBoxLayout()
+        temp_row.setSpacing(10)
+        self.custom_max_temp = QLineEdit()
+        self.custom_max_temp.setPlaceholderText("Max")
+        apply_field_style(self.custom_max_temp)
+        self.custom_min_temp = QLineEdit()
+        self.custom_min_temp.setPlaceholderText("Min")
+        apply_field_style(self.custom_min_temp)
+        temp_row.addWidget(self.custom_max_temp)
+        temp_row.addWidget(self.custom_min_temp)
+        vbox.addLayout(temp_row)
+
+        # Apply button
+        apply_btn = QPushButton("Apply")
+        apply_btn.setObjectName("primary")
+        apply_btn.setCursor(Qt.PointingHandCursor)
+        apply_btn.setAutoDefault(False)
+        apply_btn.clicked.connect(self._apply_custom_data_inline)
+        vbox.addWidget(apply_btn, 0, Qt.AlignLeft)
+
+        vbox.addStretch()
+        self.method_stack.addWidget(page)
+
+    def _apply_custom_data_inline(self):
+        """Validate and apply the inline custom data fields."""
+        global LAST_CUSTOM_WEATHER_DATA, LAST_WEATHER_DATA, LAST_LOCATION_METHOD, LAST_LOCATION_DATA
+        wind = self.custom_wind_input.text().strip()
+        zone = self.custom_zone_combo.currentText()
+        max_t = self.custom_max_temp.text().strip()
+        min_t = self.custom_min_temp.text().strip()
+
+        if not wind or not max_t or not min_t or zone == "Select Zone":
+            CustomMessageBox(
+                title="Incomplete Data",
+                text="Please fill in all fields (Wind Speed, Seismic Zone, Max/Min Temperature).",
+                dialogType=MessageBoxType.Warning
+            ).exec()
+            return
+
+        _zone_to_z = {"II": "0.10", "III": "0.16", "IV": "0.24", "V": "0.36"}
+        data = {
+            "wind_speed": wind,
+            "zone": zone,
+            "z_value": _zone_to_z.get(zone, ""),
+            "max_temp": max_t,
+            "min_temp": min_t,
+        }
+        self.custom_weather_data = data
+        LAST_CUSTOM_WEATHER_DATA = data
+        LAST_WEATHER_DATA = data
+        LAST_LOCATION_METHOD = None
+        LAST_LOCATION_DATA = None
+        self._current_weather_data = data
+        self._update_irc_values(data)
+
     def validate_and_save(self):
-        
+        # If custom_data radio is selected, auto-apply first
+        if self.method_custom_data.isChecked():
+            self._apply_custom_data_inline()
+            if not self._current_weather_data:
+                return
+
         if not self._current_weather_data:
-            QMessageBox.warning(self, "Incomplete Data", "Please select a location either on the map or from the dropdown menu.")
+            CustomMessageBox(
+                title="Incomplete Data",
+                text="Please select a location either on the map or from the dropdown menu.",
+                dialogType=MessageBoxType.Warning
+            ).exec()
             return
 
         # Ensure all critical fields are present
@@ -695,7 +574,11 @@ class ProjectLocationDialog(QDialog):
         if w.get("max_temp") is None or w.get("min_temp") is None:
             missing.append("Temperature")
         if missing:
-            QMessageBox.warning(self, "Incomplete Data", f"Missing data: {', '.join(missing)}.\nPlease select a different location or use Custom Data to enter values manually.")
+            CustomMessageBox(
+                title="Incomplete Data",
+                text=f"Missing data: {', '.join(missing)}.\nPlease select a different location or use Custom Data to enter values manually.",
+                dialogType=MessageBoxType.Warning
+            ).exec()
             return
 
         self.accept()
@@ -725,12 +608,10 @@ class ProjectLocationDialog(QDialog):
     def _connect_signals(self):
         self.method_radio_location.toggled.connect(lambda: self._set_active_method("location_name"))
         self.method_radio_map.toggled.connect(lambda: self._set_active_method("map"))
+        self.method_custom_data.toggled.connect(lambda: self._set_active_method("custom_data"))
         self.state_combo.currentTextChanged.connect(self._on_state_changed)
         # Auto-update on district change
         self.district_combo.currentTextChanged.connect(self._on_district_changed)
-        
-        # New Signals
-        self.btn_custom_data.clicked.connect(self._open_custom_dialog)
         
         # Enter key on coordinates updates map
         self.latitude_input.returnPressed.connect(self._sync_map_from_inputs)
@@ -742,18 +623,40 @@ class ProjectLocationDialog(QDialog):
     def _set_active_method(self, method):
         if method == "location_name" and self.method_radio_location.isChecked():
             self.method_stack.setCurrentIndex(0)
+            self.code_widget.setVisible(True)
             self.latitude_input.setEnabled(False)
             self.longitude_input.setEnabled(False)
             self.state_combo.setEnabled(True)
             self.district_combo.setEnabled(True)
             self.map_view.setEnabled(False)
+            self.irc_title_label.setText("IRC 6 (2017) Values:")
         elif method == "map" and self.method_radio_map.isChecked():
             self.method_stack.setCurrentIndex(1)
+            self.code_widget.setVisible(True)
             self.latitude_input.setEnabled(True)
             self.longitude_input.setEnabled(True)
             self.state_combo.setEnabled(False)
             self.district_combo.setEnabled(False)
             self.map_view.setEnabled(True)
+            self.irc_title_label.setText("IRC 6 (2017) Values:")
+        elif method == "custom_data" and self.method_custom_data.isChecked():
+            self.method_stack.setCurrentIndex(2)
+            self.code_widget.setVisible(False)
+            self.latitude_input.setEnabled(False)
+            self.longitude_input.setEnabled(False)
+            self.state_combo.setEnabled(False)
+            self.district_combo.setEnabled(False)
+            self.map_view.setEnabled(False)
+            self.irc_title_label.setText("Custom Values:")
+            # Pre-fill inline fields from any previously saved custom data
+            if self.custom_weather_data:
+                self.custom_wind_input.setText(str(self.custom_weather_data.get("wind_speed", "")))
+                zone = self.custom_weather_data.get("zone", "")
+                idx = self.custom_zone_combo.findText(zone)
+                if idx >= 0:
+                    self.custom_zone_combo.setCurrentIndex(idx)
+                self.custom_max_temp.setText(str(self.custom_weather_data.get("max_temp", "")))
+                self.custom_min_temp.setText(str(self.custom_weather_data.get("min_temp", "")))
 
     def _apply_default_location(self):
         state = self.default_location.get("state", "")
@@ -981,7 +884,11 @@ class ProjectLocationDialog(QDialog):
         missing_max_temp = temp_data.get("max_temp") is None
         missing_min_temp = temp_data.get("min_temp") is None
         if missing_zone or missing_wind or missing_max_temp or missing_min_temp:
-            QMessageBox.warning(self, "Location Error", "Data for this location is not available.")
+            CustomMessageBox(
+                title="Location Error",
+                text="Data for this location is not available.\n (Outside of India)",
+                dialogType=MessageBoxType.Critical
+            ).exec()
             # Clear the pin from the map
             self._clear_map_selection()
             # Clear IRC values
@@ -1086,19 +993,6 @@ class ProjectLocationDialog(QDialog):
         self._current_weather_data = weather
         self._update_irc_values(weather)
 
-    def _open_custom_dialog(self):
-        dlg = CustomWeatherDataDialog(self, self.custom_weather_data)
-        if dlg.exec() == QDialog.Accepted:
-            self.custom_weather_data = dlg.get_data()
-            global LAST_CUSTOM_WEATHER_DATA, LAST_WEATHER_DATA, LAST_LOCATION_METHOD, LAST_LOCATION_DATA
-            LAST_CUSTOM_WEATHER_DATA = self.custom_weather_data
-            LAST_WEATHER_DATA = self.custom_weather_data
-            LAST_LOCATION_METHOD = None
-            LAST_LOCATION_DATA = None
-            self._clear_map_selection()
-            self._clear_location_selection()
-            self._current_weather_data = self.custom_weather_data
-            self._update_irc_values(self.custom_weather_data)
 
     def _update_irc_values(self, weather):
         if not weather:
@@ -1133,11 +1027,13 @@ class ProjectLocationDialog(QDialog):
             }
         elif self.method_radio_map.isChecked():
             result['method'] = 'map'
-            # Both map clicks and manual coordinate entry populate these fields
             result['data'] = {
                 'latitude': self.latitude_input.text(),
                 'longitude': self.longitude_input.text()
             }
+        elif self.method_custom_data.isChecked():
+            result['method'] = 'custom_data'
+            result['data'] = {}
         
         # Include weather data (custom or looked-up) for backend calculations
         if self.custom_weather_data:
