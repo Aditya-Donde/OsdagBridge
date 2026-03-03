@@ -7,8 +7,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Optional
 
-from PySide6.QtCore import Qt
-from PySide6.QtGui import QDoubleValidator, QColor, QPalette, QPen
+from PySide6.QtCore import Qt, QRectF
+from PySide6.QtGui import QDoubleValidator, QColor, QPalette, QPen, QPainter
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QComboBox,
@@ -394,6 +394,127 @@ class _BoundsDialog(QDialog):
         return self._result
 
 
+class _GirderCad2DView(QWidget):
+    """Simple 2D segmented girder view driven by member lengths."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setFixedHeight(160)
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self.setStyleSheet("QWidget { background: #ffffff; border: 1px solid #d6d6d6; border-radius: 6px; }")
+        self._segments: List[dict] = []
+        self._selected_member_id: str = ""
+        self._flange_thickness: float = 15.0
+
+    @staticmethod
+    def _fmt_length(length_m: float) -> str:
+        text = f"{float(length_m):.3f}".rstrip("0").rstrip(".")
+        return text if text else "0"
+
+    def set_segments(self, segments: List[Dict[str, float]]) -> None:
+        cleaned: List[dict] = []
+        for segment in segments or []:
+            start = float(segment.get("start", 0.0))
+            end = float(segment.get("end", 0.0))
+            length = max(0.0, end - start)
+            if length <= 0.0:
+                continue
+            cleaned.append(
+                {
+                    "id": str(segment.get("id") or ""),
+                    "length": float(length),
+                }
+            )
+        self._segments = cleaned
+        self.update()
+
+    def set_selected_member(self, member_id: str) -> None:
+        self._selected_member_id = str(member_id or "").strip()
+        self.update()
+
+    def paintEvent(self, event):  # noqa: N802 (Qt naming)
+        super().paintEvent(event)
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing, True)
+
+        drawing_rect = QRectF(self.rect()).adjusted(10.0, 24.0, -10.0, -18.0)
+        if drawing_rect.width() <= 0 or drawing_rect.height() <= 0:
+            return
+
+        outer_fill = QColor("#edf5d2")
+        outer_border = QPen(QColor("#90AF13"))
+        outer_border.setWidth(2)
+        painter.setPen(outer_border)
+        painter.setBrush(outer_fill)
+        painter.drawRect(drawing_rect)
+
+        if not self._segments:
+            painter.setPen(QPen(QColor("#5a5a5a")))
+            painter.drawText(drawing_rect, Qt.AlignCenter, "No member segments")
+            return
+
+        total_length = sum(float(segment["length"]) for segment in self._segments)
+        if total_length <= 0.0:
+            return
+
+        fill_palette = [QColor("#d7e7a5"), QColor("#c7dd82"), QColor("#b8d16a")]
+        partition_pen = QPen(QColor("#6f850f"))
+        partition_pen.setWidth(1)
+
+        flange_thickness = max(6.0, min(self._flange_thickness, drawing_rect.height() * 0.28))
+        web_top = drawing_rect.top() + flange_thickness
+        web_bottom = drawing_rect.bottom() - flange_thickness
+        web_height = max(2.0, web_bottom - web_top)
+
+        x = drawing_rect.left()
+        for index, segment in enumerate(self._segments):
+            ratio = float(segment["length"]) / total_length
+            segment_width = drawing_rect.width() * ratio
+            if index == len(self._segments) - 1:
+                segment_width = max(1.0, drawing_rect.right() - x)
+
+            segment_rect = QRectF(x, drawing_rect.top(), segment_width, drawing_rect.height())
+            top_flange_rect = QRectF(segment_rect.left(), segment_rect.top(), segment_rect.width(), flange_thickness)
+            web_rect = QRectF(segment_rect.left(), web_top, segment_rect.width(), web_height)
+            bottom_flange_rect = QRectF(segment_rect.left(), web_bottom, segment_rect.width(), flange_thickness)
+            base_fill = fill_palette[index % len(fill_palette)]
+            member_id = str(segment.get("id") or "")
+            is_selected = bool(self._selected_member_id) and member_id == self._selected_member_id
+
+            top_fill = base_fill.lighter(108 if not is_selected else 120)
+            web_fill = base_fill.darker(104 if not is_selected else 92)
+            bottom_fill = base_fill.lighter(96 if not is_selected else 112)
+
+            painter.setPen(Qt.NoPen)
+            painter.setBrush(top_fill)
+            painter.drawRect(top_flange_rect)
+            painter.setBrush(web_fill)
+            painter.drawRect(web_rect)
+            painter.setBrush(bottom_fill)
+            painter.drawRect(bottom_flange_rect)
+
+            if is_selected:
+                selected_pen = QPen(QColor("#2d3a07"))
+                selected_pen.setWidth(3)
+                painter.setPen(selected_pen)
+                painter.setBrush(Qt.NoBrush)
+                painter.drawRect(segment_rect.adjusted(1.5, 1.5, -1.5, -1.5))
+
+            label = f"{segment['id']} ({self._fmt_length(segment['length'])} m)"
+            painter.setPen(QPen(QColor("#1f1f1f")))
+            text_margin = 6
+            text_rect = segment_rect.adjusted(text_margin, 0, -text_margin, 0)
+            if text_rect.width() > 18:
+                elided = painter.fontMetrics().elidedText(label, Qt.ElideRight, int(text_rect.width()))
+                painter.drawText(text_rect, Qt.AlignCenter, elided)
+
+            if index < len(self._segments) - 1:
+                painter.setPen(partition_pen)
+                painter.drawLine(segment_rect.topRight(), segment_rect.bottomRight())
+
+            x = segment_rect.right()
+
+
 class _ThicknessSelectionDialog(QDialog):
     def __init__(self, title: str, selected_values: List[str], parent=None):
         super().__init__(parent)
@@ -425,7 +546,7 @@ class _ThicknessSelectionDialog(QDialog):
 
         left_col = QVBoxLayout()
         left_col.setSpacing(8)
-        left_lbl = QLabel("Available:")
+        left_lbl = QLabel("Available")
         left_lbl.setStyleSheet("font-size: 12px; font-weight: 600; color: #1f1f1f;")
         self.available_list = QListWidget()
         self.available_list.setSelectionMode(QAbstractItemView.ExtendedSelection)
@@ -451,7 +572,7 @@ class _ThicknessSelectionDialog(QDialog):
 
         right_col = QVBoxLayout()
         right_col.setSpacing(8)
-        right_lbl = QLabel("Selected:")
+        right_lbl = QLabel("Selected")
         right_lbl.setStyleSheet("font-size: 12px; font-weight: 600; color: #1f1f1f;")
         self.selected_list = QListWidget()
         self.selected_list.setSelectionMode(QAbstractItemView.ExtendedSelection)
@@ -609,6 +730,7 @@ class GirderDetailsTab(QWidget):
         # Segment Manager widgets (right column)
         self.girder_dropdown: Optional[QComboBox] = None
         self.segment_table: Optional[QTableWidget] = None
+        self.girder_cad_view: Optional[_GirderCad2DView] = None
         self.split_add_button: Optional[QPushButton] = None
         self.split_remove_button: Optional[QPushButton] = None
 
@@ -796,8 +918,9 @@ class GirderDetailsTab(QWidget):
         manager_layout.setContentsMargins(12, 10, 12, 10)
         manager_layout.setSpacing(10)
 
-        # Placeholder area for CAD diagram (right)
-        manager_layout.addWidget(_cad_placeholder("CAD Diagram Placeholder"))
+        # Dynamic 2D CAD area for member-partitioned girder (right)
+        self.girder_cad_view = _GirderCad2DView()
+        manager_layout.addWidget(self.girder_cad_view)
 
         table_row = QWidget()
         table_row_layout = QHBoxLayout(table_row)
@@ -955,10 +1078,25 @@ class GirderDetailsTab(QWidget):
         text = f"{value:.3f}".rstrip("0").rstrip(".")
         return text if text else "0"
 
+    def _update_girder_cad_view(self, girder: str, segments: Optional[List[Dict[str, float]]] = None, selected_index: Optional[int] = None) -> None:
+        if not self.girder_cad_view:
+            return
+        cad_segments = segments if segments is not None else self._ensure_girder_segments(girder)
+        self.girder_cad_view.set_segments(cad_segments)
+        if not cad_segments:
+            self.girder_cad_view.set_selected_member("")
+            return
+
+        idx = self._current_segment_index if selected_index is None else int(selected_index)
+        idx = max(0, min(idx, len(cad_segments) - 1))
+        selected_member_id = str(cad_segments[idx].get("id") or "")
+        self.girder_cad_view.set_selected_member(selected_member_id)
+
     def _refresh_segment_list(self, girder: str) -> None:
+        segments = self._ensure_girder_segments(girder)
+        self._update_girder_cad_view(girder, segments, self._current_segment_index)
         if not self.segment_table:
             return
-        segments = self._ensure_girder_segments(girder)
         self.segment_table.blockSignals(True)
         try:
             # Hard reset row widgets/items each refresh to avoid stale cell-widgets
@@ -1142,15 +1280,15 @@ class GirderDetailsTab(QWidget):
             return
         girder, member_id = self._current_member_key()
         self._dirty_members.add((girder, member_id))
+        # Autosave immediately on each state change.
+        self._commit_current_member_state()
 
     def _is_current_member_dirty(self) -> bool:
         return self._current_member_key() in self._dirty_members
 
     def has_unsaved_changes(self) -> bool:
-        # Show unsaved-warning popups only for the active member the user is
-        # currently editing. Other member-level dirty flags are handled when
-        # switching member/girder and should not block unrelated tab switches.
-        return self._is_current_member_dirty()
+        # Member state is auto-committed on change.
+        return False
 
     def _commit_current_member_state(self) -> None:
         girder, member_id = self._current_member_key()
@@ -1289,23 +1427,11 @@ class GirderDetailsTab(QWidget):
         connect_line(self.support_width_input)
 
     def _confirm_switch_if_dirty(self) -> str:
-        """Return 'save'|'discard'|'cancel' before switching member."""
+        """Autosave dirty state and allow switch without prompting."""
         if not self._is_current_member_dirty():
             return "discard"
-        _, member_id = self._current_member_key()
-        box = QMessageBox(self)
-        box.setIcon(QMessageBox.Warning)
-        box.setWindowTitle("Unsaved Changes")
-        box.setText(f"You have unsaved changes for {member_id}. Save before switching?")
-        box.setStandardButtons(QMessageBox.Save | QMessageBox.Discard | QMessageBox.Cancel)
-        box.setDefaultButton(QMessageBox.Save)
-        result = box.exec()
-        if result == QMessageBox.Save:
-            return "save"
-        if result == QMessageBox.Discard:
-            self._dirty_members.discard(self._current_member_key())
-            return "discard"
-        return "cancel"
+        self._commit_current_member_state()
+        return "save"
 
     def _refresh_member_id_combo(self) -> None:
         """Keep the Member ID dropdown in sync with the current girder's segments."""
@@ -1332,28 +1458,9 @@ class GirderDetailsTab(QWidget):
             self._select_segment_index(int(index))
             self._last_member_combo_index = int(index)
             return
-        # Prompt if user is leaving a dirty member without saving.
         if int(index) != int(self._current_segment_index):
-            decision = self._confirm_switch_if_dirty()
-            if decision == "cancel":
-                prev = self.member_id_combo.blockSignals(True)
-                try:
-                    self.member_id_combo.setCurrentIndex(self._last_member_combo_index)
-                finally:
-                    self.member_id_combo.blockSignals(prev)
-                return
-            if decision == "save":
+            if self._is_current_member_dirty():
                 self._commit_current_member_state()
-                # Confirm member-level save immediately (requested UX).
-                try:
-                    box = QMessageBox(self)
-                    box.setIcon(QMessageBox.Information)
-                    box.setWindowTitle("Saved")
-                    box.setText("Member inputs saved successfully.")
-                    box.setStandardButtons(QMessageBox.Ok)
-                    box.exec()
-                except Exception:
-                    pass
 
         self._select_segment_index(int(index))
         self._last_member_combo_index = int(index)
@@ -1436,6 +1543,7 @@ class GirderDetailsTab(QWidget):
             return
         index = max(0, min(index, len(segments) - 1))
         self._current_segment_index = index
+        self._update_girder_cad_view(self._current_girder, segments, index)
         if self.segment_table and self.segment_table.rowCount() > index:
             self.segment_table.blockSignals(True)
             try:
@@ -1571,37 +1679,9 @@ class GirderDetailsTab(QWidget):
         if not girder or girder == getattr(self, "_current_girder", ""):
             return
 
-        # If user is leaving a dirty member, confirm save/discard/cancel.
-        # This mirrors Member ID switching behavior and ensures dependent tabs
-        # (e.g., Stiffener Details) see the correct per-member design mode.
+        # Autosave dirty member state before switching girder.
         if self._is_current_member_dirty():
-            decision = self._confirm_switch_if_dirty()
-            if decision == "cancel":
-                # Revert the dropdown selection back to the previous girder.
-                try:
-                    if self.girder_dropdown is not None:
-                        prev = self.girder_dropdown.blockSignals(True)
-                        try:
-                            old = getattr(self, "_current_girder", "")
-                            idx = self.girder_dropdown.findData(old)
-                            if idx >= 0:
-                                self.girder_dropdown.setCurrentIndex(idx)
-                        finally:
-                            self.girder_dropdown.blockSignals(prev)
-                except Exception:
-                    pass
-                return
-            if decision == "save":
-                self._commit_current_member_state()
-                try:
-                    box = QMessageBox(self)
-                    box.setIcon(QMessageBox.Information)
-                    box.setWindowTitle("Saved")
-                    box.setText("Member inputs saved successfully.")
-                    box.setStandardButtons(QMessageBox.Ok)
-                    box.exec()
-                except Exception:
-                    pass
+            self._commit_current_member_state()
 
         self._current_girder = girder
         self._refresh_segment_list(girder)
@@ -1883,7 +1963,7 @@ class GirderDetailsTab(QWidget):
         row = self._add_box_row(
             inputs_grid,
             row,
-            "Total Depth (d, mm):",
+            "Total Depth, d (mm):",
             self.total_depth_widget,
             self.welded_rows,
         )
@@ -1906,7 +1986,7 @@ class GirderDetailsTab(QWidget):
         row = self._add_box_row(
             inputs_grid,
             row,
-            "Web Thickness (w<sub>t</sub>, mm):",
+            "Web Thickness, w<sub>t</sub> (mm):",
             self.web_thickness_widget,
             self.welded_rows,
         )
@@ -1915,7 +1995,7 @@ class GirderDetailsTab(QWidget):
         row = self._add_box_row(
             inputs_grid,
             row,
-            "Width of Top Flange (t<sub>fw</sub>, mm):",
+            "Width of Top Flange, t<sub>fw</sub> (mm):",
             self.top_width_widget,
             self.welded_rows,
         )
@@ -1938,7 +2018,7 @@ class GirderDetailsTab(QWidget):
         row = self._add_box_row(
             inputs_grid,
             row,
-            "Top Flange Thickness (t<sub>ft</sub>, mm):",
+            "Top Flange Thickness, t<sub>ft</sub> (mm):",
             self.top_thickness_widget,
             self.welded_rows,
         )
@@ -1947,7 +2027,7 @@ class GirderDetailsTab(QWidget):
         row = self._add_box_row(
             inputs_grid,
             row,
-            "Width of Bottom Flange (b<sub>fw</sub>, mm):",
+            "Width of Bottom Flange, b<sub>fw</sub> (mm):",
             self.bottom_width_widget,
             self.welded_rows,
         )
@@ -1970,7 +2050,7 @@ class GirderDetailsTab(QWidget):
         row = self._add_box_row(
             inputs_grid,
             row,
-            "Bottom Flange Thickness (b<sub>ft</sub>, mm):",
+            "Bottom Flange Thickness, b<sub>ft</sub> (mm):",
             self.bottom_thickness_widget,
             self.welded_rows,
         )
@@ -2138,14 +2218,17 @@ class GirderDetailsTab(QWidget):
         frame.setStyleSheet("QFrame#girderCard { background-color: white; border: 1px solid #cfcfcf; border-radius: 10px; }")
         return frame
 
+    def _normalize_label_text(self, text: str) -> str:
+        return str(text or "").rstrip(": ")
+
     def _create_label(self, text):
-        label = QLabel(text)
+        label = QLabel(self._normalize_label_text(text))
         label.setStyleSheet("font-size: 12px; color: #2f2f2f; font-weight: 600; background: transparent;")
         label.setAutoFillBackground(False)
         return label
 
     def _create_small_label(self, text):
-        label = QLabel(text)
+        label = QLabel(self._normalize_label_text(text))
         label.setStyleSheet("font-size: 10px; color: #5a5a5a; background: transparent;")
         label.setAutoFillBackground(False)
         return label
@@ -2795,7 +2878,7 @@ class GirderDetailsTab(QWidget):
 
     def _create_small_label(self, text):
         """Create a smaller label for compact layouts"""
-        label = QLabel(text)
+        label = QLabel(self._normalize_label_text(text))
         label.setTextFormat(Qt.RichText)
         label.setStyleSheet("""
             QLabel {
