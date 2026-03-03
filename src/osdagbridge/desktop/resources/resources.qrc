@@ -36,6 +36,10 @@
         <file>vectors/cross_section_closed_light.svg</file>
         <file>vectors/top_view_open_light.svg</file>
         <file>vectors/top_view_closed_light.svg</file>
+        <file>vectors/msg_success.svg</file>
+        <file>vectors/msg_warning.svg</file>
+        <file>vectors/msg_critical.svg</file>
+        <file>vectors/msg_about.svg</file>
 
     </qresource>
 </RCC>
