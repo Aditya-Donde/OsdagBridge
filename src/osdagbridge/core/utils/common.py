@@ -58,18 +58,6 @@ KEY_DISP_DECK_CONCRETE_GRADE = "Deck Concrete Grade [M25+]"
 # Sample values
 VALUES_STRUCTURE_TYPE = ["Highway Bridge", "Other"]
 
-VALUES_PROJECT_LOCATION = [
-    "Delhi", "Mumbai", "Bangalore", "Kolkata", "Chennai", "Hyderabad",
-    "Ahmedabad", "Pune", "Surat", "Jaipur", "Lucknow", "Kanpur",
-    "Nagpur", "Indore", "Thane", "Bhopal", "Visakhapatnam", "Pimpri-Chinchwad",
-    "Patna", "Vadodara", "Ghaziabad", "Ludhiana", "Agra", "Nashik",
-    "Faridabad", "Meerut", "Rajkot", "Kalyan-Dombivali", "Vasai-Virar", "Varanasi",
-    "Srinagar", "Aurangabad", "Dhanbad", "Amritsar", "Navi Mumbai", "Allahabad",
-    "Ranchi", "Howrah", "Coimbatore", "Jabalpur", "Gwalior", "Vijayawada",
-    "Jodhpur", "Madurai", "Raipur", "Kota", "Chandigarh", "Guwahati",
-    "Custom",
-]
-
 # Canonical footpath options used across UI + CAD/code clauses.
 VALUES_FOOTPATH = ["None", "Single Side", "Both Sides"]
 

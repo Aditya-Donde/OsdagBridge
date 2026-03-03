@@ -220,7 +220,7 @@ class FrontendData:
                 None,
                 True,
                 'Double Validator',
-                {"label": "Carriageway Width*"},
+                {"label": "Carriageway Width*\n(Each way)"},
             )
         )
         options_list.append(
@@ -279,18 +279,6 @@ class FrontendData:
                 'No Validator',
                 {
                     "container": "superstructure",
-                    "post_rows": [
-                        {
-                            "type": "material_properties",
-                            "label": "Properties",
-                            "buttons": [
-                                {
-                                    "text": "Modify Here",
-                                    "action": "show_material_properties_dialog",
-                                }
-                            ],
-                        }
-                    ],
                 },
             )
         )
