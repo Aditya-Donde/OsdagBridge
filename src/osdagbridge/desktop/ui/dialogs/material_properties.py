@@ -1,32 +1,20 @@
 from PySide6.QtWidgets import (
-    QDialog, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit,
-    QComboBox, QCheckBox, QStackedWidget
+    QDialog, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton
 )
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QDoubleValidator
+import re
 
-from osdagbridge.desktop.ui.utils.custom_titlebar import CustomTitleBar
+from osdagbridge.desktop.ui.dialogs.custom_titlebar import CustomTitleBar
+from osdagbridge.desktop.ui.dialogs.custom_messagebox import CustomMessageBox, MessageBoxType
 from osdagbridge.desktop.ui.docks.dock_utils import apply_field_style
-from osdagbridge.core.bridge_types.plate_girder.ui_fields import VALUES_MATERIAL, VALUES_DECK_CONCRETE_GRADE
+from osdagbridge.core.utils.common import VALUES_MATERIAL, VALUES_DECK_CONCRETE_GRADE
 
 
-DIALOG_TITLE_MATERIAL_PROPERTIES = "Material Properties" #ui need to be generalized
+DIALOG_TITLE_MATERIAL_PROPERTIES = "Enter Custom Properties"
+CUSTOM_MATERIAL_PREFIX = "Cus_"
 
-MEMBER_OPTION_GIRDER = "Girder"
-MEMBER_OPTION_CROSS_BRACING = "Cross Bracing"
-MEMBER_OPTION_END_DIAPHRAGM = "End Diaphragm"
-MEMBER_OPTION_DECK = "Deck"
-
-MEMBER_OPTIONS = [
-    MEMBER_OPTION_GIRDER,
-    MEMBER_OPTION_CROSS_BRACING,
-    MEMBER_OPTION_END_DIAPHRAGM,
-    MEMBER_OPTION_DECK
-]
-
-MATPROP_LABEL_MEMBER = "Member"
 MATPROP_LABEL_MATERIAL = "Material"
-MATPROP_LABEL_DEFAULT = "Default"
 
 ECM_FACTOR_OPTION_QUARTZITE = "Quartzite/granite aggregates = 1"
 ECM_FACTOR_OPTION_LIMESTONE = "Limestone aggregates = 0.9"
@@ -41,14 +29,7 @@ ECM_FACTOR_OPTIONS = [
     (ECM_FACTOR_OPTION_BASALT, 1.2),
     (ECM_FACTOR_OPTION_CUSTOM, None),
 ]
-
-ECM_FACTOR_LABELS = [text for text, _ in ECM_FACTOR_OPTIONS]
 DEFAULT_ECM_FACTOR_LABEL = ECM_FACTOR_OPTIONS[0][0]
-CUSTOM_ECM_FACTOR_LABEL = ECM_FACTOR_OPTION_CUSTOM
-
-PLACEHOLDER_CUSTOM_FACTOR = "Custom factor"
-INCLUDE_MEDIAN_OPTION_NO = "No"
-INCLUDE_MEDIAN_OPTION_YES = "Yes"
 
 STEEL_MODULUS_E_GPA = 200.0
 STEEL_MODULUS_G_GPA = 77.0
@@ -73,12 +54,21 @@ CONCRETE_GRADE_BASE_VALUES = {
     "M30": {"fck": 30.0, "fctm": 2.9, "Ecm": 30.0},
     "M35": {"fck": 35.0, "fctm": 3.2, "Ecm": 33.0},
     "M40": {"fck": 40.0, "fctm": 3.5, "Ecm": 34.0},
+    "M45": {"fck": 45.0, "fctm": 3.8, "Ecm": 36.0},
+    "M50": {"fck": 50.0, "fctm": 4.1, "Ecm": 37.0},
+    "M55": {"fck": 55.0, "fctm": 4.2, "Ecm": 38.0},
+    "M60": {"fck": 60.0, "fctm": 4.4, "Ecm": 39.0},
+    "M65": {"fck": 65.0, "fctm": 4.5, "Ecm": 40.0},
+    "M70": {"fck": 70.0, "fctm": 4.6, "Ecm": 41.0},
+    "M75": {"fck": 75.0, "fctm": 4.7, "Ecm": 42.0},
+    "M80": {"fck": 80.0, "fctm": 4.8, "Ecm": 42.0},
+    "M85": {"fck": 85.0, "fctm": 4.9, "Ecm": 43.0},
+    "M90": {"fck": 90.0, "fctm": 5.0, "Ecm": 44.0},
 }
 
 KEY_CONCRETE_FCK = "Characteristic Compressive (Cube) Strength of Concrete, (fck)cu (MPa)"
 KEY_CONCRETE_FCTM = "Mean Tensile Strength of Concrete, fctm (MPa)"
 KEY_CONCRETE_ECM = "Secant Modulus of Elasticity of Concrete, Ecm (GPa)"
-KEY_ECM_FACTOR = "Ecm Multiplication Factor"
 KEY_THERMAL_EXPANSION = "Thermal Expansion Coefficient, (×10⁻⁶/°C)"
 KEY_STEEL_FU = "Ultimate Tensile Strength, Fu (MPa)"
 KEY_STEEL_FY = "Yield Strength, Fy (MPa)"
@@ -89,7 +79,6 @@ KEY_STEEL_POISSON = "Poisson's Ratio, ν"
 DISP_CONCRETE_FCK = "Characteristic Compressive (Cube) Strength of Concrete, f<sub>ck</sub> (MPa)"
 DISP_CONCRETE_FCTM = "Mean Tensile Strength of Concrete, f<sub>ctm</sub> (MPa)"
 DISP_CONCRETE_ECM = "Secant Modulus of Elasticity of Concrete, E<sub>cm</sub> (GPa)"
-DISP_ECM_FACTOR = "E<sub>cm</sub> Multiplication Factor"
 DISP_THERMAL_EXPANSION = "Thermal Expansion Coefficient, (&times;10<sup>&minus;6</sup>/°C)"
 DISP_STEEL_FU = "Ultimate Tensile Strength, F<sub>u</sub> (MPa)"
 DISP_STEEL_FY = "Yield Strength, F<sub>y</sub> (MPa)"
@@ -99,84 +88,82 @@ DISP_STEEL_POISSON = "Poisson&apos;s Ratio, &nu;"
 
 
 TYPE_TEXTBOX = 'textbox'
-TYPE_COMBOBOX = 'combobox'
 
-def material_properties_values():
-    """Return list of material property fields"""
-    steel_props = []
-    t1 = (KEY_STEEL_FU, DISP_STEEL_FU, TYPE_TEXTBOX, None, True, 'Double Validator')
-    steel_props.append(t1)
+def steel_material_properties_values():
+    return [
+        (KEY_STEEL_FY, DISP_STEEL_FY, TYPE_TEXTBOX, None, True, 'Double Validator'),
+        (KEY_STEEL_FU, DISP_STEEL_FU, TYPE_TEXTBOX, None, True, 'Double Validator'),
+        (KEY_STEEL_E, DISP_STEEL_E, TYPE_TEXTBOX, None, True, 'Double Validator'),
+        (KEY_STEEL_G, DISP_STEEL_G, TYPE_TEXTBOX, None, True, 'Double Validator'),
+        (KEY_STEEL_POISSON, DISP_STEEL_POISSON, TYPE_TEXTBOX, None, True, 'Double Validator'),
+        (KEY_THERMAL_EXPANSION, DISP_THERMAL_EXPANSION, TYPE_TEXTBOX, None, True, 'Double Validator'),
+    ]
 
-    t2 = (KEY_STEEL_FY, DISP_STEEL_FY, TYPE_TEXTBOX, None, True, 'Double Validator')
-    steel_props.append(t2)
-
-    t3 = (KEY_STEEL_E, DISP_STEEL_E, TYPE_TEXTBOX, None, True, 'Double Validator')
-    steel_props.append(t3)
-
-    t4 = (KEY_STEEL_G, DISP_STEEL_G, TYPE_TEXTBOX, None, True, 'Double Validator')
-    steel_props.append(t4)
-
-    t5 = (KEY_STEEL_POISSON, DISP_STEEL_POISSON, TYPE_TEXTBOX, None, True, 'Double Validator')
-    steel_props.append(t5)
-
-    t6 = (KEY_THERMAL_EXPANSION, DISP_THERMAL_EXPANSION, TYPE_TEXTBOX, None, True, 'Double Validator')
-    steel_props.append(t6)
-
-    deck_props = []
-    t7 = (KEY_CONCRETE_FCK, DISP_CONCRETE_FCK, TYPE_TEXTBOX, None, True, 'Double Validator')
-    deck_props.append(t7)
-
-    t8 = (KEY_CONCRETE_FCTM, DISP_CONCRETE_FCTM, TYPE_TEXTBOX, None, True, 'Double Validator')
-    deck_props.append(t8)
-
-    t9 = (KEY_CONCRETE_ECM, DISP_CONCRETE_ECM, TYPE_TEXTBOX, None, True, 'Double Validator')
-    deck_props.append(t9)
-
-    t10 = (KEY_ECM_FACTOR, DISP_ECM_FACTOR, TYPE_COMBOBOX, ECM_FACTOR_LABELS, True, 'No Validator')
-    deck_props.append(t10)
-
-    t11 = (KEY_THERMAL_EXPANSION, DISP_THERMAL_EXPANSION, TYPE_TEXTBOX, None, True, 'Double Validator')
-    deck_props.append(t11)
-
-    return {
-        'steel': steel_props,
-        'deck': deck_props
-    }
-
-class NoScrollComboBox(QComboBox):
-    def wheelEvent(self, event):
-        event.ignore()
+def deck_material_properties_values():
+    return [
+        (KEY_CONCRETE_FCK, DISP_CONCRETE_FCK, TYPE_TEXTBOX, None, True, 'Double Validator'),
+        (KEY_CONCRETE_FCTM, DISP_CONCRETE_FCTM, TYPE_TEXTBOX, None, True, 'Double Validator'),
+        (KEY_CONCRETE_ECM, DISP_CONCRETE_ECM, TYPE_TEXTBOX, None, True, 'Double Validator'),
+        (KEY_THERMAL_EXPANSION, DISP_THERMAL_EXPANSION, TYPE_TEXTBOX, None, True, 'Double Validator'),
+    ]
 
 class MaterialPropertiesDialog(QDialog):
-    MEMBER_OPTIONS = MEMBER_OPTIONS
-    STEEL_MEMBERS = {MEMBER_OPTION_GIRDER, MEMBER_OPTION_CROSS_BRACING, MEMBER_OPTION_END_DIAPHRAGM}
-
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, read_only=False, selected_material=None, member=None, custom_fields=None):
         super().__init__(parent)
+        self.read_only = read_only
+        self.selected_material = selected_material or ""
+        self.member = member
+        self.custom_fields = custom_fields
+        self.is_deck_material = (self.member == "Deck") or self._is_deck_material(self.selected_material)
         self.setWindowTitle(DIALOG_TITLE_MATERIAL_PROPERTIES)
+        self.setObjectName("material_properties_dialog")
         self.setMinimumWidth(580)
         self.setStyleSheet("""
-        QDialog {
+        QDialog#material_properties_dialog {
             background-color: white;
             border: 1px solid #90AF13;
         }
+        QPushButton#primary {
+            background-color: #ffffff;
+            color: #1f1f1f;
+            border-radius: 6px;
+            padding: 8px 18px;
+            font-weight: 600;
+        }
+        QPushButton#primary:hover { background-color: #90AF13; }
+        QPushButton#primary:pressed { background-color: #64850c; }
+        QPushButton#ghost {
+            background-color: #ffffff;
+            color: #1d1d1d;
+            border-radius: 6px;
+            padding: 8px 14px;
+            font-weight: 600;
+        }
+        QPushButton#ghost:hover { background-color: #90AF13; }
+        QPushButton#ghost:pressed { background-color: #d9d9d9; }
     """)
 
-        self.parent_dock = parent
+        self.fields = deck_material_properties_values() if self.is_deck_material else steel_material_properties_values()
         self._loading = False
-        self.current_member = None
-        self.member_data = {}
+        initial_material = self.selected_material.strip() if self.read_only else CUSTOM_MATERIAL_PREFIX
+        self.form_data = {
+            "material": initial_material or CUSTOM_MATERIAL_PREFIX,
+            "fields": self._defaults_for_material(initial_material or CUSTOM_MATERIAL_PREFIX),
+        }
 
-        self.material_props = material_properties_values()
-        self.steel_fields = self.material_props['steel']
-        self.deck_fields = self.material_props['deck']
-
-        self.member_combo = NoScrollComboBox()
-        self.member_combo.addItems(self.MEMBER_OPTIONS)
-        apply_field_style(self.member_combo)
-
-        self.material_combo = NoScrollComboBox()
-        apply_field_style(self.material_combo)
+        self.material_input = QLineEdit(self.form_data["material"])
+        self.material_input.setReadOnly(True)
+        self.material_input.setFixedWidth(242)
+        self.material_input.setMinimumHeight(28)
+        self.material_input.setStyleSheet("""
+            QLineEdit {
+                padding: 1px 7px;
+                border: 1px solid #a8a8a8;
+                border-radius: 6px;
+                background-color: #f1f1f1;
+                color: #555555;
+            }
+        """)
         self.setupWrapper()
         main_layout = QVBoxLayout(self.content_widget)
         main_layout.setContentsMargins(20, 16, 20, 16)
@@ -186,19 +173,6 @@ class MaterialPropertiesDialog(QDialog):
         form_layout.setContentsMargins(0, 0, 0, 0)
         form_layout.setSpacing(12)
         
-        member_row = QHBoxLayout()
-        member_row.setContentsMargins(0, 0, 0, 0)
-        member_row.setSpacing(18)
-        member_label = QLabel(MATPROP_LABEL_MEMBER)
-        member_label.setStyleSheet("font-size: 12px; color: #2d2d2d;")
-        member_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
-        member_label.setFixedWidth(280)
-        self.member_combo.setFixedWidth(242)
-        member_row.addWidget(member_label)
-        member_row.addWidget(self.member_combo)
-        member_row.addStretch()
-        form_layout.addLayout(member_row)
-        
         material_row = QHBoxLayout()
         material_row.setContentsMargins(0, 0, 0, 0)
         material_row.setSpacing(18)
@@ -206,58 +180,37 @@ class MaterialPropertiesDialog(QDialog):
         material_label.setStyleSheet("font-size: 12px; color: #2d2d2d;")
         material_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
         material_label.setFixedWidth(280)
-        self.material_combo.setFixedWidth(242)
         material_row.addWidget(material_label)
-        material_row.addWidget(self.material_combo)
+        material_row.addWidget(self.material_input)
         material_row.addStretch()
         form_layout.addLayout(material_row)
         
         main_layout.addWidget(form_container)
 
-        self.stack = QStackedWidget()
-        self.stack.setContentsMargins(0, 0, 0, 0)
-        self.steel_page = self._build_steel_form()
-        self.deck_page = self._build_deck_form()
-        self.stack.addWidget(self.steel_page)
-        self.stack.addWidget(self.deck_page)
-        main_layout.addWidget(self.stack)
+        self.fields_page = self._build_fields_form()
+        main_layout.addWidget(self.fields_page)
 
-        default_row = QHBoxLayout()
-        default_row.setContentsMargins(0, 0, 0, 0)
-        default_row.setSpacing(18)
-        default_label = QLabel(MATPROP_LABEL_DEFAULT)
-        default_label.setStyleSheet("font-size: 12px; color: #2d2d2d;")
-        default_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
-        default_label.setFixedWidth(280)
-        self.default_checkbox = QCheckBox()
-     
-        checkbox_container = QWidget()
-        checkbox_layout = QHBoxLayout(checkbox_container)
-        checkbox_layout.setContentsMargins(0, 0, 0, 0)
-        checkbox_layout.setSpacing(0)
-        checkbox_layout.addWidget(self.default_checkbox)
-        checkbox_layout.addStretch()
-        
-        default_row.addWidget(default_label)
-        default_row.addWidget(checkbox_container)
-        main_layout.addLayout(default_row)
+        self._add_footer_buttons(main_layout)
 
-        self.member_combo.currentTextChanged.connect(self._on_member_changed)
-        self.material_combo.currentTextChanged.connect(self._on_material_changed)
-        self.default_checkbox.stateChanged.connect(self._on_default_toggled)
-
-        self._initialize_member_data()
-        self._on_member_changed(self.member_combo.currentText())
+        if self.read_only:
+            self._load_material_info_for_view(self.selected_material)
+            self._set_read_only_fields(True)
+            self.setWindowTitle("Material Information")
+            self.title_bar.setTitle("Material Information")
+            
+        else:
+            self._populate_fields()
+            self._update_custom_material_name()
         self.setFixedSize(self.sizeHint())
 
     def setupWrapper(self):
-        self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowSystemMenuHint)
+        self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowSystemMenuHint | Qt.Dialog)
 
         main_layout = QVBoxLayout(self)
         main_layout.setContentsMargins(1, 1, 1, 1)
         main_layout.setSpacing(0)
         
-        self.title_bar = CustomTitleBar()
+        self.title_bar = CustomTitleBar(parent=self)
         self.title_bar.setTitle(DIALOG_TITLE_MATERIAL_PROPERTIES)
         main_layout.addWidget(self.title_bar)
         
@@ -265,18 +218,60 @@ class MaterialPropertiesDialog(QDialog):
         main_layout.addWidget(self.content_widget, 1)
 
     def closeEvent(self, event):
-        self._save_current_member_form()
         super().closeEvent(event)
 
-    def _build_steel_form(self):
+    def _add_footer_buttons(self, layout):
+        footer = QHBoxLayout()
+        footer.addStretch()
+
+        if self.read_only:
+            ok_btn = QPushButton("OK")
+            ok_btn.setObjectName("primary")
+            ok_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            ok_btn.setMinimumWidth(90)
+            ok_btn.setAutoDefault(False)
+            ok_btn.clicked.connect(self.accept)
+            footer.addWidget(ok_btn)
+        else:
+            add_btn = QPushButton("Add")
+            add_btn.setObjectName("primary")
+            add_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            add_btn.setMinimumWidth(90)
+            add_btn.setAutoDefault(False)
+            add_btn.clicked.connect(self._validate_and_save)
+            footer.addWidget(add_btn)
+
+            cancel_btn = QPushButton("Cancel")
+            cancel_btn.setObjectName("ghost")
+            cancel_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            cancel_btn.setMinimumWidth(90)
+            cancel_btn.setAutoDefault(False)
+            cancel_btn.clicked.connect(self.reject)
+            footer.addWidget(cancel_btn)
+
+        layout.addLayout(footer)
+
+    def _validate_and_save(self):
+        for key, widget in self.field_inputs.items():
+            if not widget.text().strip():
+                CustomMessageBox(
+                    title="Validation Error",
+                    text=f"Please enter a valid value for {key}",
+                    dialogType=MessageBoxType.Critical,
+                ).exec()
+                return
+        self._save_form()
+        self.accept()
+
+    def _build_fields_form(self):
         widget = QWidget()
         layout = QVBoxLayout(widget)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(10)
-        self.steel_field_inputs = {}
+        self.field_inputs = {}
         
-        for field_tuple in self.steel_fields:
-            key, display_label, widget_type, values, required, validator = field_tuple
+        for field_tuple in self.fields:
+            key, display_label, _, _, _, _ = field_tuple
             
             row = QHBoxLayout()
             row.setContentsMargins(0, 0, 0, 0)
@@ -294,7 +289,11 @@ class MaterialPropertiesDialog(QDialog):
             apply_field_style(line_edit)
             line_edit.setValidator(QDoubleValidator(0.0, 99999.0, 1))
             line_edit.textEdited.connect(self._handle_user_override)
-            self.steel_field_inputs[key] = line_edit
+            if self.is_deck_material and key in (KEY_CONCRETE_FCK, KEY_CONCRETE_FCTM):
+                line_edit.textEdited.connect(self._update_custom_material_name)
+            elif (not self.is_deck_material) and key in (KEY_STEEL_FU, KEY_STEEL_FY):
+                line_edit.textEdited.connect(self._update_custom_material_name)
+            self.field_inputs[key] = line_edit
             
             row.addWidget(label)
             row.addWidget(line_edit)
@@ -304,105 +303,21 @@ class MaterialPropertiesDialog(QDialog):
         layout.addStretch()
         return widget
 
-    def _build_deck_form(self):
-        widget = QWidget()
-        layout = QVBoxLayout(widget)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(10)
-        self.deck_field_inputs = {}
-        
-        for field_tuple in self.deck_fields:
-            key, display_label, widget_type, values, required, validator = field_tuple
-            
-            row = QHBoxLayout()
-            row.setContentsMargins(0, 0, 0, 0)
-            row.setSpacing(18)
-            
-            label = QLabel(display_label)
-            label.setTextFormat(Qt.RichText)
-            label.setStyleSheet("font-size: 12px; color: #2d2d2d;")
-            label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
-            label.setFixedWidth(280)
-            label.setWordWrap(True)
-            
-            if key == KEY_ECM_FACTOR:
-                self.deck_factor_combo = NoScrollComboBox()
-                self.deck_factor_combo.addItems(values)
-                self.deck_factor_combo.setFixedWidth(242)
-                apply_field_style(self.deck_factor_combo)
-                self.deck_factor_combo.currentTextChanged.connect(self._on_factor_changed)
+    def _is_deck_material(self, material_name: str) -> bool:
+        normalized = (material_name or "").strip()
+        return normalized in VALUES_DECK_CONCRETE_GRADE
 
-                self.deck_factor_custom_input = QLineEdit()
-                apply_field_style(self.deck_factor_custom_input)
-                self.deck_factor_custom_input.setPlaceholderText(PLACEHOLDER_CUSTOM_FACTOR)
-                self.deck_factor_custom_input.setFixedWidth(242)
-                self.deck_factor_custom_input.setVisible(False)
-                self.deck_factor_custom_input.setEnabled(False)
-                self.deck_factor_custom_input.setValidator(QDoubleValidator(0.1, 5.0, 1))
-                self.deck_factor_custom_input.textEdited.connect(self._handle_user_override)
-
-                row.addWidget(label)
-                row.addWidget(self.deck_factor_combo)
-                row.addStretch()
-                
-                self.deck_factor_custom_container = QWidget()
-                custom_layout = QHBoxLayout(self.deck_factor_custom_container)
-                custom_layout.setContentsMargins(0, 0, 0, 0)
-                custom_layout.setSpacing(18)
-
-                custom_label = QLabel("")
-                custom_label.setFixedWidth(280) 
-                custom_layout.addWidget(custom_label)
-                custom_layout.addWidget(self.deck_factor_custom_input)
-                custom_layout.addStretch()
-
-                self.deck_factor_custom_container.setVisible(False)
-                layout.addWidget(self.deck_factor_custom_container)
-                
-                self.deck_field_inputs[key] = self.deck_factor_combo
-            else:
-                line_edit = QLineEdit()
-                line_edit.setFixedWidth(242)
-                apply_field_style(line_edit)
-                line_edit.setValidator(QDoubleValidator(0.0, 99999.0, 1))
-                line_edit.textEdited.connect(self._handle_user_override)
-                row.addWidget(label)
-                row.addWidget(line_edit)
-                row.addStretch()
-                self.deck_field_inputs[key] = line_edit
-                
-            layout.addLayout(row)
-            
-        layout.addStretch()
-        return widget
-
-    def _initialize_member_data(self):
-        for member in self.MEMBER_OPTIONS:
-            material = self._get_parent_grade(member)
-            fields = self._default_fields_for_member(member, material)
-            self.member_data[member] = {
-                "material": material,
-                "fields": fields,
-                "is_default": False if member == MEMBER_OPTION_DECK else True,
-                "factor_label": DEFAULT_ECM_FACTOR_LABEL if member == MEMBER_OPTION_DECK else None,
-                "custom_factor": "1.0" if member == MEMBER_OPTION_DECK else None,
-            }
-
-    def _default_fields_for_member(self, member, material=None, factor_label=None, custom_factor=None):
-        if member == MEMBER_OPTION_DECK:
-            grade = material or self._get_parent_grade(member) or (VALUES_DECK_CONCRETE_GRADE[0] if VALUES_DECK_CONCRETE_GRADE else "")
-            factor_label = factor_label or DEFAULT_ECM_FACTOR_LABEL
-            factor_value = self._factor_value_from_label(factor_label, custom_factor)
-            return self._deck_defaults(grade, factor_value)
-        grade = material or self._get_parent_grade(member) or (VALUES_MATERIAL[0] if VALUES_MATERIAL else "")
-        return self._steel_defaults(grade)
+    def _defaults_for_material(self, material_name):
+        if self.is_deck_material:
+            return self._deck_defaults(material_name, self._factor_value_from_label(DEFAULT_ECM_FACTOR_LABEL))
+        return self._steel_defaults(material_name)
 
     def _steel_defaults(self, grade):
         grade_value = self._extract_numeric_grade(grade)
         defaults = STEEL_GRADE_BASE_VALUES.get(grade_value, STEEL_GRADE_BASE_VALUES[250])
         
         result = {}
-        for field_tuple in self.steel_fields:
+        for field_tuple in steel_material_properties_values():
             key = field_tuple[0]
             if "Fu" in key:
                 result[key] = "{:.1f}".format(defaults["Fu"])
@@ -417,171 +332,28 @@ class MaterialPropertiesDialog(QDialog):
             elif "Thermal" in key:
                 result[key] = "{:.1f}".format(STEEL_THERMAL_COEFF)
         return result
-    
+
     def _get_concrete_from_code(self, grade):
-        grade = grade.replace(" ", "").upper()
-        return CONCRETE_GRADE_BASE_VALUES.get(grade)
+        normalized = (grade or "").replace(" ", "").upper()
+        return CONCRETE_GRADE_BASE_VALUES.get(normalized)
 
     def _deck_defaults(self, grade, factor_value):
         data = self._get_concrete_from_code(grade)
-
         if not data:
-            return {}
+            return {
+                KEY_CONCRETE_FCK: "",
+                KEY_CONCRETE_FCTM: "",
+                KEY_CONCRETE_ECM: "",
+                KEY_THERMAL_EXPANSION: "{:.1f}".format(STEEL_THERMAL_COEFF),
+            }
 
-        fck = data["fck"]
-        fctm = data["fctm"]
         ecm = round(data["Ecm"] * factor_value, 1)
-
-        result = {}
-        for field_tuple in self.deck_fields:
-            key = field_tuple[0]
-            if "fck" in key:
-                result[key] = "{:.1f}".format(fck)
-            elif "fctm" in key:
-                result[key] = "{:.1f}".format(fctm)
-            elif "Ecm (GPa)" in key:
-                result[key] = "{:.1f}".format(ecm)
-            elif "Thermal" in key:
-                result[key] = "11.7"
-        return result
-    
-    def _extract_numeric_grade(self, grade, default=250):
-        digits = ''.join(ch for ch in grade if ch.isdigit())
-        try:
-            return int(digits) if digits else default
-        except ValueError:
-            return default
-
-    def _materials_for_member(self, member):
-        return VALUES_DECK_CONCRETE_GRADE if member == MEMBER_OPTION_DECK else VALUES_MATERIAL
-
-    def _on_member_changed(self, member):
-        if self.current_member:
-            self._save_current_member_form()
-
-        self.current_member = member
-        is_deck = member == MEMBER_OPTION_DECK
-        self.stack.setCurrentWidget(self.deck_page if is_deck else self.steel_page)
-
-        data = self.member_data.get(member)
-        if not data:
-            self.member_data[member] = self._create_default_entry(member)
-            data = self.member_data[member]
-
-        materials = self._materials_for_member(member)
-        self._loading = True
-
-        self.material_combo.clear()
-        self.material_combo.addItems(materials)
-        if data["material"] in materials:
-            self.material_combo.setCurrentText(data["material"])
-        elif materials:
-            self.material_combo.setCurrentIndex(0)
-            data["material"] = self.material_combo.currentText()
-
-        if data.get("is_default") and not self._loading:
-            self._apply_defaults_for_member(member, update_ui=True)
-        else:
-            if is_deck:
-                self._populate_deck_fields(data)
-            else:
-                self._populate_steel_fields(data)
-            
-        self._loading = False
-
-    def _populate_steel_fields(self, data):
-        for label, widget in self.steel_field_inputs.items():
-            value = data["fields"].get(label, "")
-            try:
-                formatted_value = "{:.1f}".format(float(value))
-                widget.setText(formatted_value)
-            except (ValueError, TypeError):
-                widget.setText(value)
-
-    def _populate_deck_fields(self, data):
-        for label, widget in self.deck_field_inputs.items():
-            if label == KEY_ECM_FACTOR:
-                factor_label = data.get("factor_label", DEFAULT_ECM_FACTOR_LABEL)
-                if factor_label not in ECM_FACTOR_LABELS:
-                    factor_label = DEFAULT_ECM_FACTOR_LABEL
-                self.deck_factor_combo.blockSignals(True)
-                self.deck_factor_combo.setCurrentText(factor_label)
-                self.deck_factor_combo.blockSignals(False)
-                self._update_custom_factor_visibility(factor_label)
-                self.deck_factor_custom_input.blockSignals(True)
-                custom_val = data.get("custom_factor", "1.0")
-                try:
-                    formatted_custom = "{:.1f}".format(float(custom_val))
-                    self.deck_factor_custom_input.setText(formatted_custom)
-                except (ValueError, TypeError):
-                    self.deck_factor_custom_input.setText(custom_val)
-                self.deck_factor_custom_input.blockSignals(False)
-            else:
-                value = data["fields"].get(label, "")
-                try:
-                    formatted_value = "{:.1f}".format(float(value))
-                    widget.setText(formatted_value)
-                except (ValueError, TypeError):
-                    widget.setText(value)
-
-        for label, widget in self.deck_field_inputs.items():
-            if isinstance(widget, QLineEdit):
-                widget.setReadOnly(False)
-                widget.setEnabled(True)
-
-    def _save_current_member_form(self):
-        if not self.current_member:
-            return
-        data = self.member_data.setdefault(self.current_member, self._create_default_entry(self.current_member))
-        data["material"] = self.material_combo.currentText()
-        if self.current_member == MEMBER_OPTION_DECK:
-            for label, widget in self.deck_field_inputs.items():
-                if label == KEY_ECM_FACTOR:
-                    data["factor_label"] = self.deck_factor_combo.currentText()
-                    data["custom_factor"] = self.deck_factor_custom_input.text() or "1.0"
-                else:
-                    data["fields"][label] = widget.text()
-            factor_value = self._factor_value_from_label(data["factor_label"], data.get("custom_factor"))
-            data["fields"][KEY_ECM_FACTOR] = "{:.1f}".format(factor_value)
-        else:
-            for label, widget in self.steel_field_inputs.items():
-                data["fields"][label] = widget.text()
-        data["is_default"] = self.default_checkbox.isChecked()
-
-    def _create_default_entry(self, member):
-        material = self._get_parent_grade(member)
         return {
-            "material": material,
-            "fields": self._default_fields_for_member(member, material),
-            "is_default": True,
-            "factor_label": DEFAULT_ECM_FACTOR_LABEL if member == MEMBER_OPTION_DECK else None,
-            "custom_factor": "1.0" if member == MEMBER_OPTION_DECK else None,
+            KEY_CONCRETE_FCK: "{:.1f}".format(data["fck"]),
+            KEY_CONCRETE_FCTM: "{:.1f}".format(data["fctm"]),
+            KEY_CONCRETE_ECM: "{:.1f}".format(ecm),
+            KEY_THERMAL_EXPANSION: "{:.1f}".format(STEEL_THERMAL_COEFF),
         }
-
-    def _apply_defaults_for_member(self, member, update_ui=True):
-        data = self.member_data.setdefault(member, self._create_default_entry(member))
-
-        grade = data.get("material") or self._get_parent_grade(member)
-        data["material"] = grade
-
-        if member == MEMBER_OPTION_DECK:
-            data["factor_label"] = DEFAULT_ECM_FACTOR_LABEL
-            data["custom_factor"] = "1.0"
-            factor_value = self._factor_value_from_label(DEFAULT_ECM_FACTOR_LABEL)
-            data["fields"] = self._deck_defaults(grade, factor_value)
-        else:
-            data["fields"] = self._steel_defaults(grade)
-        data["is_default"] = True
-
-        if update_ui and member == self.current_member:
-            self._loading = True
-            self.material_combo.setCurrentText(grade)
-            if member == MEMBER_OPTION_DECK:
-                self._populate_deck_fields(data)
-            else:
-                self._populate_steel_fields(data)
-            self.default_checkbox.setChecked(True)
-            self._loading = False
 
     def _factor_value_from_label(self, label, custom_factor=None):
         for text, value in ECM_FACTOR_OPTIONS:
@@ -593,116 +365,135 @@ class MaterialPropertiesDialog(QDialog):
                         return 1.0
                 return value
         return 1.0
+    
+    def _extract_numeric_grade(self, grade, default=250):
+        text = (grade or "").upper().replace(" ", "")
 
-    def _reset_current_member_to_defaults(self):
-        if not self.current_member:
-            return
+        # Primary path: extract the base 3-digit steel grade from codes like
+        # E350B0, E350BR, E 250A, etc.
+        match = re.search(r"E?(250|275|300|350|410|450|550|600|650)", text)
+        if match:
+            return int(match.group(1))
 
-        self._apply_defaults_for_member(self.current_member, update_ui=False)
-        data = self.member_data.get(self.current_member)
-        if not data:
-            return
+        digits = ''.join(ch for ch in text if ch.isdigit())
+        if not digits:
+            return default
 
-        target_material = data.get("material", "")
-        self._loading = True
-        if target_material:
-            index = self.material_combo.findText(target_material)
-            if index >= 0:
-                self.material_combo.setCurrentIndex(index)
-            elif self.material_combo.count() > 0:
-                self.material_combo.setCurrentIndex(0)
-                data["material"] = self.material_combo.currentText()
-        if self.current_member == MEMBER_OPTION_DECK:
-            self._populate_deck_fields(data)
-        else:
-            self._populate_steel_fields(data)
-        self._loading = False
+        # Fallback path: if extra suffix digits exist, try first 3 digits.
+        if len(digits) >= 3:
+            first_three = int(digits[:3])
+            if first_three in STEEL_GRADE_BASE_VALUES:
+                return first_three
 
-        self.default_checkbox.blockSignals(True)
-        self.default_checkbox.setChecked(True)
-        self.default_checkbox.blockSignals(False)
-        self._save_current_member_form()
-
-    def _update_custom_factor_visibility(self, label):
-        is_custom = label == CUSTOM_ECM_FACTOR_LABEL
-        self.deck_factor_custom_container.setVisible(is_custom)
-        self.deck_factor_custom_input.setEnabled(is_custom)
-
-    def _on_material_changed(self, material):
-        if self._loading:
-            return
-
-        data = self.member_data.get(self.current_member)
-        if not data:
-            return
-        
-        data["material"] = material
-
-        if self.current_member == MEMBER_OPTION_DECK:
-            factor_value = self._factor_value_from_label(
-                data.get("factor_label", DEFAULT_ECM_FACTOR_LABEL),
-                data.get("custom_factor")
-            )
-            data["fields"] = self._deck_defaults(material, factor_value)
-            self._populate_deck_fields(data)
-        else:
-            data["fields"] = self._steel_defaults(material)
-            self._populate_steel_fields(data)
-
-        data["is_default"] = True
-        self.default_checkbox.blockSignals(True)
-        self.default_checkbox.setChecked(True)
-        self.default_checkbox.blockSignals(False)
-
-    def _on_default_toggled(self, state):
-        if self._loading:
-            return
         try:
-            check_state = Qt.CheckState(state)
+            parsed = int(digits)
+            return parsed if parsed in STEEL_GRADE_BASE_VALUES else default
         except ValueError:
-            check_state = Qt.CheckState.Checked if bool(state) else Qt.CheckState.Unchecked
-        if check_state == Qt.CheckState.Checked:
-            self._reset_current_member_to_defaults()
-        else:
-            data = self.member_data.get(self.current_member)
-            if data:
-                data["is_default"] = False
+            return default
 
-    def _on_factor_changed(self, label):
-        self._update_custom_factor_visibility(label)
-        self._handle_user_override()
+    def _populate_fields(self):
+        for label, widget in self.field_inputs.items():
+            value = self.form_data["fields"].get(label, "")
+            try:
+                formatted_value = "{:.1f}".format(float(value))
+                widget.setText(formatted_value)
+            except (ValueError, TypeError):
+                widget.setText(value)
+
+    def _save_form(self):
+        self.form_data["material"] = self.material_input.text().strip() or CUSTOM_MATERIAL_PREFIX
+        for label, widget in self.field_inputs.items():
+            self.form_data["fields"][label] = widget.text()
 
     def _handle_user_override(self):
         if self._loading:
             return
-        if self.default_checkbox.isChecked():
-            self._loading = True
-            self.default_checkbox.setChecked(False)
-            self._loading = False
-        data = self.member_data.get(self.current_member)
-        if data:
-            data["is_default"] = False
-        self._save_current_member_form()
 
-    def _get_parent_grade(self, member):
-        parent = self.parent_dock
-        if not parent:
+    def _normalize_material_token(self, text):
+        value = (text or "").strip()
+        if not value:
             return ""
-        mapping = {
-            MEMBER_OPTION_GIRDER: getattr(parent, "girder_combo", None),
-            MEMBER_OPTION_CROSS_BRACING: getattr(parent, "cross_bracing_combo", None),
-            MEMBER_OPTION_END_DIAPHRAGM: getattr(parent, "end_diaphragm_combo", None),
-            MEMBER_OPTION_DECK: getattr(parent, "deck_combo", None),
-        }
-        combo = mapping.get(member)
-        return combo.currentText() if combo else ""
+        try:
+            num = float(value)
+            if num.is_integer():
+                return str(int(num))
+            return f"{num:g}"
+        except ValueError:
+            return value
+
+    def _update_custom_material_name(self, *_):
+        if self.read_only:
+            return
+            
+        if self.is_deck_material:
+            fck_input = self.field_inputs.get(KEY_CONCRETE_FCK)
+            fctm_input = self.field_inputs.get(KEY_CONCRETE_FCTM)
+            val1 = self._normalize_material_token(fck_input.text() if fck_input else "")
+            val2 = self._normalize_material_token(fctm_input.text() if fctm_input else "")
+        else:
+            fy_input = self.field_inputs.get(KEY_STEEL_FY)
+            fu_input = self.field_inputs.get(KEY_STEEL_FU)
+            val1 = self._normalize_material_token(fy_input.text() if fy_input else "")
+            val2 = self._normalize_material_token(fu_input.text() if fu_input else "")
+
+        parts = [part for part in (val1, val2) if part]
+        material_name = CUSTOM_MATERIAL_PREFIX + "_".join(parts) if parts else CUSTOM_MATERIAL_PREFIX
+        self.material_input.setText(material_name)
+
+    def _set_read_only_fields(self, enabled: bool):
+        for widget in self.field_inputs.values():
+            widget.setReadOnly(enabled)
+            widget.setEnabled(not enabled)
+            if enabled:
+                widget.setStyleSheet("""
+                    QLineEdit {
+                        padding: 1px 7px;
+                        border: 1px solid #a8a8a8;
+                        border-radius: 6px;
+                        background-color: #f1f1f1;
+                        color: #555555;
+                    }
+                """)
+
+    def _load_material_info_for_view(self, material_name: str):
+        name = (material_name or "").strip()
+        if not name:
+            name = CUSTOM_MATERIAL_PREFIX
+
+        self.form_data["material"] = name
+        
+        if self.custom_fields:
+            self.form_data["fields"] = self.custom_fields.copy()
+        else:
+            if self.is_deck_material:
+                factor = self._factor_value_from_label(DEFAULT_ECM_FACTOR_LABEL)
+                self.form_data["fields"] = self._deck_defaults(name, factor)
+            else:
+                fy_value = ""
+                fu_value = ""
+
+                custom_match = re.match(r"^Cus_([0-9]+(?:\.[0-9]+)?)_([0-9]+(?:\.[0-9]+)?)$", name, re.IGNORECASE)
+                if custom_match:
+                    fy_value = custom_match.group(1)
+                    fu_value = custom_match.group(2)
+                else:
+                    grade_value = self._extract_numeric_grade(name, default=None)
+                    defaults = STEEL_GRADE_BASE_VALUES.get(grade_value) if grade_value is not None else None
+                    if defaults:
+                        fy_value = "{:.1f}".format(defaults["Fy"])
+                        fu_value = "{:.1f}".format(defaults["Fu"])
+
+                self.form_data["fields"] = {
+                    KEY_STEEL_FY: fy_value,
+                    KEY_STEEL_FU: fu_value,
+                    KEY_STEEL_E: "{:.1f}".format(STEEL_MODULUS_E_GPA),
+                    KEY_STEEL_G: "{:.1f}".format(STEEL_MODULUS_G_GPA),
+                    KEY_STEEL_POISSON: "{:.1f}".format(STEEL_POISSON_RATIO),
+                    KEY_THERMAL_EXPANSION: "{:.1f}".format(STEEL_THERMAL_COEFF),
+                }
+
+        self.material_input.setText(name)
+        self._populate_fields()
 
     def set_member(self, member):
-        index = self.member_combo.findText(member)
-        if index >= 0:
-            self.member_combo.setCurrentIndex(index)
-
-    def sync_with_parent_defaults(self):
-        for member, data in self.member_data.items():
-            if data.get("is_default"):
-                self._apply_defaults_for_member(member, update_ui=(member == self.current_member))
+        _ = member

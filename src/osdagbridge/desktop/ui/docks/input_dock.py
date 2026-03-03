@@ -5,7 +5,7 @@ import math
 import json
 from PySide6.QtWidgets import (
     QApplication, QWidget, QHBoxLayout, QVBoxLayout, QPushButton,
-    QComboBox, QScrollArea, QLabel,  QLineEdit, QGroupBox, QSizePolicy, QMessageBox,  QDialog, QCheckBox, QFrame,
+    QComboBox, QScrollArea, QLabel,  QLineEdit, QGroupBox, QSizePolicy, QMessageBox,  QDialog, QToolButton, QFrame,
     
 )
 from PySide6.QtCore import Qt, QRegularExpression, QSize, QTimer, QPoint, QEvent, Signal
@@ -18,7 +18,8 @@ from osdagbridge.desktop.ui.dialogs.project_location import ProjectLocationDialo
 from osdagbridge.desktop.ui.docks.dock_utils import apply_field_style
 from osdagbridge.desktop.ui.dialogs.material_properties import MaterialPropertiesDialog
 
-from osdagbridge.desktop.ui.utils.custom_titlebar import CustomTitleBar
+from osdagbridge.desktop.ui.dialogs.custom_titlebar import CustomTitleBar
+from osdagbridge.desktop.ui.dialogs.custom_messagebox import CustomMessageBox, MessageBoxType
 
 class NoScrollComboBox(QComboBox):
     def wheelEvent(self, event):
@@ -27,6 +28,7 @@ class NoScrollComboBox(QComboBox):
 class InputDock(QWidget):
     # Signal emitted when any input value changes
     input_value_changed = Signal()
+    MATERIAL_CUSTOM_OPTION = "Custom"
     
     def __init__(self, backend, parent):
         super().__init__()
@@ -58,6 +60,9 @@ class InputDock(QWidget):
         self.design_btn = None
         self.design_mode_combo = None
         self._current_design_mode = "Optimized"
+        self._material_custom_fields = {}
+        self._material_previous_selection = {}
+        self._material_combo_map = {}
 
         self.setStyleSheet("background: transparent;")
         self.main_layout = QHBoxLayout(self)
@@ -1018,12 +1023,6 @@ class InputDock(QWidget):
                     {"text": "Modify Here", "action": "show_additional_inputs"},
                 ],
             },
-            "material_properties": {
-                "label": "Properties",
-                "buttons": [
-                    {"text": "Modify Here", "action": "show_material_properties_dialog"},
-                ],
-            },
         }
         return mapping.get(row_type, {})
 
@@ -1119,7 +1118,29 @@ class InputDock(QWidget):
         field_label.setStyleSheet(self._section_label_style())
         field_label.setMinimumWidth(110)
         row.addWidget(field_label)
-        row.addWidget(widget, 1)
+        if self._is_material_input_key(key) and isinstance(widget, QComboBox):
+            combo_container = QWidget()
+            combo_layout = QHBoxLayout(combo_container)
+            combo_layout.setContentsMargins(0, 0, 0, 0)
+            combo_layout.setSpacing(4)
+            combo_layout.addWidget(widget, 1)
+
+            info_btn = QToolButton()
+            info_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            info_btn.setToolTip("View material properties")
+            info_btn.setAutoRaise(True)
+            info_btn.setIcon(QIcon(":/vectors/msg_about.svg"))
+            info_btn.setFixedSize(20, 20)
+            info_btn.setStyleSheet("QToolButton { border: none; padding: 0px; background: transparent; }")
+            if info_btn.icon().isNull():
+                info_btn.setText("i")
+            info_btn.setToolTip("View selected material properties")
+            info_btn.clicked.connect(lambda _checked=False, k=key: self._show_selected_material_info_for_key(k))
+            combo_layout.addWidget(info_btn)
+
+            row.addWidget(combo_container, 1)
+        else:
+            row.addWidget(widget, 1)
         if metadata.get("add_stretch"):
             row.addStretch()
         section_context["layout"].addLayout(row)
@@ -1134,7 +1155,11 @@ class InputDock(QWidget):
 
             apply_field_style(widget)
             if values:
-                widget.addItems(values)
+                items = [str(v) for v in values]
+                if self._is_material_input_key(key_name):
+                    items = [item for item in items if item != self.MATERIAL_CUSTOM_OPTION]
+                    items.append(self.MATERIAL_CUSTOM_OPTION)
+                widget.addItems(items)
 
             # Prefer backend-stored value, else metadata default.
             try:
@@ -1147,6 +1172,9 @@ class InputDock(QWidget):
             init_value = backend_value if backend_value not in (None, "") else default_value
             if init_value not in (None, ""):
                 idx = widget.findText(str(init_value))
+                if idx < 0 and self._is_material_input_key(key_name):
+                    self._ensure_material_option(widget, str(init_value))
+                    idx = widget.findText(str(init_value))
                 if idx >= 0:
                     widget.setCurrentIndex(idx)
 
@@ -1252,15 +1280,124 @@ class InputDock(QWidget):
         elif key == KEY_SKEW_ANGLE and isinstance(widget, QLineEdit):
             widget.setValidator(QDoubleValidator(SKEW_ANGLE_MIN, SKEW_ANGLE_MAX, 1))
             widget.setPlaceholderText(f"{SKEW_ANGLE_MIN} - {SKEW_ANGLE_MAX}°")
-        elif key == KEY_DECK_CONCRETE_GRADE_BASIC and hasattr(widget, "findText"):
-            default_value = metadata.get("default")
-            if default_value:
-                idx = widget.findText(default_value)
-                if idx >= 0:
-                    widget.setCurrentIndex(idx)
+        elif self._is_material_input_key(key) and isinstance(widget, QComboBox):
+            if key == KEY_DECK_CONCRETE_GRADE_BASIC and hasattr(widget, "findText"):
+                default_value = metadata.get("default")
+                if default_value:
+                    idx = widget.findText(default_value)
+                    if idx >= 0:
+                        widget.setCurrentIndex(idx)
+            self._material_combo_map[key] = widget
+            current_text = str(widget.currentText() or "").strip()
+            if current_text and current_text != self.MATERIAL_CUSTOM_OPTION:
+                self._material_previous_selection[key] = current_text
+            widget.currentTextChanged.connect(
+                lambda text, k=key, w=widget: self._on_material_selection_changed(k, w, text)
+            )
         elif key == "Design" and hasattr(widget, "currentTextChanged"):
             widget.currentTextChanged.connect(self._on_design_mode_changed)
             self._on_design_mode_changed(widget.currentText())
+
+    def _is_material_input_key(self, key) -> bool:
+        return key in {
+            KEY_GIRDER,
+            KEY_CROSS_BRACING,
+            KEY_END_DIAPHRAGM,
+            KEY_DECK_CONCRETE_GRADE_BASIC,
+        }
+
+    def _material_member_for_key(self, key: str) -> str:
+        return "Deck" if key in {KEY_DECK_CONCRETE_GRADE_BASIC, KEY_DECK} else "Girder"
+
+    def _set_combo_text_without_signal(self, combo: QComboBox, text: str) -> None:
+        idx = combo.findText(text)
+        if idx < 0:
+            return
+        blocked = combo.blockSignals(True)
+        try:
+            combo.setCurrentIndex(idx)
+        finally:
+            combo.blockSignals(blocked)
+
+    def _ensure_material_option(self, combo: QComboBox, material_name: str) -> None:
+        name = str(material_name or "").strip()
+        if not name or combo.findText(name) >= 0:
+            return
+        custom_idx = combo.findText(self.MATERIAL_CUSTOM_OPTION)
+        insert_at = custom_idx if custom_idx >= 0 else combo.count()
+        combo.insertItem(insert_at, name)
+
+    def _first_non_custom_option(self, combo: QComboBox) -> str:
+        for idx in range(combo.count()):
+            value = str(combo.itemText(idx) or "").strip()
+            if value and value != self.MATERIAL_CUSTOM_OPTION:
+                return value
+        return ""
+
+    def _open_custom_material_dialog_for_key(self, key: str, combo: QComboBox) -> bool:
+        member = self._material_member_for_key(key)
+        previous_value = self._material_previous_selection.get(key, "")
+
+        # Intentionally not passing parent to preserve original dialog appearance.
+        dialog = MaterialPropertiesDialog(read_only=False, selected_material=previous_value, member=member)
+        if dialog.exec() != QDialog.Accepted:
+            return False
+
+        form_data = getattr(dialog, "form_data", {})
+        material_name = str(form_data.get("material", "") or "").strip()
+        fields = form_data.get("fields", {})
+        if not material_name:
+            return False
+
+        self._material_custom_fields[material_name] = dict(fields) if isinstance(fields, dict) else {}
+        self._ensure_material_option(combo, material_name)
+        self._set_combo_text_without_signal(combo, material_name)
+        self._material_previous_selection[key] = material_name
+        self._push_backend_value(key, material_name)
+        self.emit_value_changed()
+        return True
+
+    def _on_material_selection_changed(self, key: str, combo: QComboBox, selected_text: str) -> None:
+        selected = str(selected_text or "").strip()
+        if not selected:
+            return
+
+        if selected == self.MATERIAL_CUSTOM_OPTION:
+            accepted = self._open_custom_material_dialog_for_key(key, combo)
+            if accepted:
+                return
+            fallback = self._material_previous_selection.get(key) or self._first_non_custom_option(combo)
+            if fallback:
+                self._set_combo_text_without_signal(combo, fallback)
+                self._push_backend_value(key, fallback)
+            return
+
+        self._material_previous_selection[key] = selected
+
+    def _show_selected_material_info_for_key(self, key: str) -> None:
+        combo = self._material_combo_map.get(key)
+        if combo is None:
+            return
+
+        selected_material = str(combo.currentText() or "").strip()
+        if not selected_material or selected_material == self.MATERIAL_CUSTOM_OPTION:
+            CustomMessageBox(
+                title="Material Data Unavailable",
+                text="No material selected or custom material details not provided.",
+                dialogType=MessageBoxType.Warning
+            ).exec()
+            return
+
+        member = self._material_member_for_key(key)
+        custom_fields = self._material_custom_fields.get(selected_material)
+        # Intentionally not passing parent to preserve original dialog appearance.
+        dialog = MaterialPropertiesDialog(
+            read_only=True,
+            selected_material=selected_material,
+            member=member,
+            custom_fields=custom_fields,
+        )
+        dialog.exec()
 
     def _get_basic_design_mode(self) -> str:
         if self.design_mode_combo is not None and hasattr(self.design_mode_combo, "currentText"):
@@ -1374,27 +1511,3 @@ class InputDock(QWidget):
         if not self.include_median_combo:
             return False
         return self.include_median_combo.currentText().lower() == "yes"
-
-    def show_material_properties_dialog(self):
-        """Open the material properties dialog with the relevant member selected."""
-        if self.material_dialog is None:
-            self.material_dialog = MaterialPropertiesDialog()
-
-        member = "Girder"
-        focus_widget = QApplication.focusWidget()
-        focus_map = {
-            getattr(self, 'girder_combo', None): "Girder",
-            getattr(self, 'deck_combo', None): "Deck",
-            getattr(self, 'cross_bracing_combo', None): "Cross Bracing",
-            getattr(self, 'end_diaphragm_combo', None): "End Diaphragm",
-        }
-        for widget, name in focus_map.items():
-            if widget is not None and widget is focus_widget:
-                member = name
-                break
-
-        self.material_dialog.sync_with_parent_defaults()
-        self.material_dialog.set_member(member)
-        self.material_dialog.show()
-        self.material_dialog.raise_()
-        self.material_dialog.activateWindow()
