@@ -86,7 +86,7 @@ class StiffenerDetailsTab(QWidget):
         girder_row.setContentsMargins(0, 0, 0, 0)
         girder_row.setSpacing(10)
 
-        girder_label = QLabel("Select Member ID:")
+        girder_label = QLabel("Select Member ID")
         girder_label.setStyleSheet("font-size: 11px; font-weight: 600; color: #3a3a3a; border: none;")
         girder_row.addWidget(girder_label)
 
@@ -296,8 +296,11 @@ class StiffenerDetailsTab(QWidget):
         )
         return card
 
+    def _normalize_label_text(self, text: str) -> str:
+        return str(text or "").rstrip(": ")
+
     def _create_label(self, text):
-        label = QLabel(text)
+        label = QLabel(self._normalize_label_text(text))
         label.setStyleSheet("font-size: 11px; color: #3a3a3a; border: none;")
         label.setWordWrap(True)
         label_width = int(getattr(self, "_form_label_width", 245) or 245)

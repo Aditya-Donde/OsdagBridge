@@ -438,21 +438,9 @@ class AdditionalInputs(QDialog):
                 if hasattr(tab, "reset_defaults"):
                     tab.reset_defaults()
             return
-        
-        if current_widget is getattr(self, "support_tab", None):
-            if hasattr(self.support_tab, "reset_defaults"):
-                self.support_tab.reset_defaults()
-            return
-        
-        if current_widget is getattr(self, "design_options_tab", None):
-            if hasattr(self.design_options_tab, "reset_defaults"):
-                self.design_options_tab.reset_defaults()
-            return
-        
-        if current_widget is getattr(self, "design_options_cont_tab", None):
-            if hasattr(self.design_options_cont_tab, "reset_defaults"):
-                self.design_options_cont_tab.reset_defaults()
-            return 
+
+        # Store the saved data for later retrieval
+        self._last_saved_data = saved
 
     def _build_sections_from_schema(self, parent_layout, sections, heading_style, label_style, field_width):
         for section in sections:
@@ -606,20 +594,8 @@ class AdditionalInputs(QDialog):
         )
         if leaving_member_properties:
             try:
-                if hasattr(self, "section_properties_tab") and hasattr(self.section_properties_tab, "has_unsaved_changes"):
-                    if self.section_properties_tab.has_unsaved_changes():
-                        box = QMessageBox(self)
-                        box.setIcon(QMessageBox.Warning)
-                        box.setWindowTitle("Unsaved Inputs")
-                        box.setText("Please save Member Properties before switching tabs.")
-                        box.setStandardButtons(QMessageBox.Ok)
-                        box.setDefaultButton(QMessageBox.Ok)
-                        box.setWindowModality(Qt.ApplicationModal)
-                        box.exec()
-                        prev = self.tabs.blockSignals(True)
-                        self.tabs.setCurrentIndex(previous)
-                        self.tabs.blockSignals(prev)
-                        return
+                if hasattr(self, "section_properties_tab") and hasattr(self.section_properties_tab, "save_properties"):
+                    self._last_saved_data = self.section_properties_tab.save_properties() or {}
             except Exception:
                 pass
 

@@ -28,6 +28,7 @@ from osdagbridge.desktop.ui.widgets.placeholder_section_preview import Placehold
 # Reuse the same rolled section catalog that backs the Girder tab.
 from osdagbridge.desktop.ui.dialogs.tabs.sub_tabs.section_properties.girder_details_tab import (  # noqa: E501
     _BoundsDialog,
+    _ThicknessSelectionDialog,
     girder_properties,
     SAIL_APPROVED_THICKNESS_VALUES,
 )
@@ -83,6 +84,7 @@ class EndDiaphragmDetailsTab(QWidget):
         self.welded_design_combo = None
         self._rolled_inputs = []
         self._welded_inputs = []
+        self._suppress_welded_thickness_popup = False
         self.init_ui()
 
     def bind_girder_details_tab(self, girder_details_tab) -> None:
@@ -372,46 +374,50 @@ class EndDiaphragmDetailsTab(QWidget):
             return
 
         if key == "Welded Beam":
-            if self.welded_design_combo is not None:
-                self.welded_design_combo.setCurrentText(self._global_design_mode)
+            self._suppress_welded_thickness_popup = True
+            try:
+                if self.welded_design_combo is not None:
+                    self.welded_design_combo.setCurrentText(self._global_design_mode)
 
-            total_depth_bounds = state.get("total_depth_bounds")
-            if isinstance(total_depth_bounds, dict):
-                self._dimension_bounds["total_depth"] = {
-                    "lower": float(total_depth_bounds.get("lower", 200.0)),
-                    "upper": float(total_depth_bounds.get("upper", 2000.0)),
-                    "increment": float(total_depth_bounds.get("increment", 25.0)),
-                }
+                total_depth_bounds = state.get("total_depth_bounds")
+                if isinstance(total_depth_bounds, dict):
+                    self._dimension_bounds["total_depth"] = {
+                        "lower": float(total_depth_bounds.get("lower", 200.0)),
+                        "upper": float(total_depth_bounds.get("upper", 2000.0)),
+                        "increment": float(total_depth_bounds.get("increment", 25.0)),
+                    }
 
-            top_width_bounds = state.get("top_width_bounds")
-            if isinstance(top_width_bounds, dict):
-                self._dimension_bounds["top_width"] = {
-                    "lower": float(top_width_bounds.get("lower", 100.0)),
-                    "upper": float(top_width_bounds.get("upper", 1000.0)),
-                    "increment": float(top_width_bounds.get("increment", 10.0)),
-                }
+                top_width_bounds = state.get("top_width_bounds")
+                if isinstance(top_width_bounds, dict):
+                    self._dimension_bounds["top_width"] = {
+                        "lower": float(top_width_bounds.get("lower", 100.0)),
+                        "upper": float(top_width_bounds.get("upper", 1000.0)),
+                        "increment": float(top_width_bounds.get("increment", 10.0)),
+                    }
 
-            bottom_width_bounds = state.get("bottom_width_bounds")
-            if isinstance(bottom_width_bounds, dict):
-                self._dimension_bounds["bottom_width"] = {
-                    "lower": float(bottom_width_bounds.get("lower", 100.0)),
-                    "upper": float(bottom_width_bounds.get("upper", 1000.0)),
-                    "increment": float(bottom_width_bounds.get("increment", 10.0)),
-                }
+                bottom_width_bounds = state.get("bottom_width_bounds")
+                if isinstance(bottom_width_bounds, dict):
+                    self._dimension_bounds["bottom_width"] = {
+                        "lower": float(bottom_width_bounds.get("lower", 100.0)),
+                        "upper": float(bottom_width_bounds.get("upper", 1000.0)),
+                        "increment": float(bottom_width_bounds.get("increment", 10.0)),
+                    }
 
-            self._refresh_bounds_tooltips()
-            values = list(state.get("welded_values") or [])
-            for i, widget in enumerate(self._welded_inputs or []):
-                val = values[i] if i < len(values) else ""
-                if isinstance(widget, QComboBox):
-                    if val:
-                        widget.setCurrentText(val)
-                    elif widget.count() > 0:
-                        widget.setCurrentIndex(0)
-                elif isinstance(widget, QLineEdit):
-                    widget.setText(val or "")
-            self._on_welded_design_changed(self._global_design_mode)
-            self._update_welded_preview_and_props()
+                self._refresh_bounds_tooltips()
+                values = list(state.get("welded_values") or [])
+                for i, widget in enumerate(self._welded_inputs or []):
+                    val = values[i] if i < len(values) else ""
+                    if isinstance(widget, QComboBox):
+                        if val:
+                            widget.setCurrentText(val)
+                        elif widget.count() > 0:
+                            widget.setCurrentIndex(0)
+                    elif isinstance(widget, QLineEdit):
+                        widget.setText(val or "")
+                self._on_welded_design_changed(self._global_design_mode)
+                self._update_welded_preview_and_props()
+            finally:
+                self._suppress_welded_thickness_popup = False
             return
 
     def set_design_mode(self, mode_str: str) -> None:
@@ -529,6 +535,7 @@ class EndDiaphragmDetailsTab(QWidget):
         is_custom = (label or "").strip() == "Customized"
         self._apply_welded_custom_mode(is_custom)
         self._update_welded_dimension_field_mode()
+        self._update_welded_preview_and_props()
 
     def init_ui(self):
         main_layout = QVBoxLayout(self)
@@ -600,13 +607,18 @@ class EndDiaphragmDetailsTab(QWidget):
         )
         return box
 
+    def _normalize_label_text(self, text: str) -> str:
+        return str(text or "").rstrip(": ")
+
     def _create_heading_label(self, text):
-        label = QLabel(text)
+        label = QLabel(self._normalize_label_text(text))
+        label.setTextFormat(Qt.RichText)
         label.setStyleSheet("font-size: 12px; font-weight: 700; color: #4b4b4b; border: none; padding: 0px; margin: 0px;")
         return label
 
     def _create_label(self, text):
-        label = QLabel(text)
+        label = QLabel(self._normalize_label_text(text))
+        label.setTextFormat(Qt.RichText)
         label.setStyleSheet("font-size: 11px; font-weight: 400; color: #4b4b4b; border: none;")
         return label
 
@@ -796,17 +808,69 @@ class EndDiaphragmDetailsTab(QWidget):
         if not self._is_custom_thickness_mode(mode_combo):
             return
 
-        current_text = str(value_input.text() or "").strip()
-        if current_text not in SAIL_APPROVED_THICKNESS_VALUES:
-            current_text = SAIL_APPROVED_THICKNESS_VALUES[0]
-            value_input.setText(current_text)
+        first = ""
+        selected = self._parse_selected_thickness_values(value_input.text())
+        if selected:
+            first = selected[0]
+        else:
+            current_text = str(value_input.text() or "").strip()
+            if current_text in SAIL_APPROVED_THICKNESS_VALUES:
+                first = current_text
+
+        if not first:
+            first = SAIL_APPROVED_THICKNESS_VALUES[0]
+            value_input.setText(first)
 
         prev = value_combo.blockSignals(True)
         try:
-            idx = value_combo.findText(current_text, Qt.MatchFixedString)
+            idx = value_combo.findText(first, Qt.MatchFixedString)
             value_combo.setCurrentIndex(idx if idx >= 0 else 0)
         finally:
             value_combo.blockSignals(prev)
+
+    @staticmethod
+    def _parse_selected_thickness_values(text: str) -> list[str]:
+        chunks = [c.strip() for c in str(text or "").split(",") if str(c).strip()]
+        return [v for v in chunks if v in SAIL_APPROVED_THICKNESS_VALUES]
+
+    def _on_welded_thickness_mode_changed(self, field_key: str, _text: str) -> None:
+        self._update_welded_thickness_value_enabled_state()
+        self._update_welded_preview_and_props()
+
+        if self._suppress_welded_thickness_popup:
+            return
+
+        is_custom_design = (self.welded_design_combo.currentText() or "").strip().lower() == "customized"
+        if is_custom_design:
+            return
+
+        mode_combo = getattr(self, f"{field_key}_combo", None)
+        if mode_combo is None or not self._is_custom_thickness_mode(mode_combo):
+            return
+
+        self._open_welded_thickness_values_dialog(field_key)
+
+    def _open_welded_thickness_values_dialog(self, field_key: str) -> None:
+        value_input = getattr(self, f"{field_key}_value", None)
+        mode_combo = getattr(self, f"{field_key}_combo", None)
+        value_combo = getattr(self, f"{field_key}_value_combo", None)
+        if value_input is None or mode_combo is None:
+            return
+
+        selected = self._parse_selected_thickness_values(value_input.text())
+        titles = {
+            "welded_web_thickness": "Select Values: Web Thickness",
+            "welded_top_thickness": "Select Values: Top Flange Thickness",
+            "welded_bottom_thickness": "Select Values: Bottom Flange Thickness",
+        }
+        dialog = _ThicknessSelectionDialog(titles.get(field_key, "Select Values"), selected, self)
+        if dialog.exec() != QDialog.Accepted:
+            return
+
+        chosen = dialog.selected_values()
+        value_input.setText(", ".join(chosen))
+        self._sync_thickness_value_dropdown(mode_combo, value_input, value_combo)
+        self._update_welded_preview_and_props()
 
     def _is_custom_thickness_mode(self, combo: QComboBox | None) -> bool:
         if combo is None:
@@ -1749,7 +1813,7 @@ class EndDiaphragmDetailsTab(QWidget):
         row = self._add_grid_row(grid, row, "Symmetry:", symmetry_combo)
 
         total_depth_widget, total_depth, total_depth_bounds_button = self._create_dimension_input_widget("total_depth")
-        row = self._add_grid_row(grid, row, "Total Depth (mm):", total_depth_widget)
+        row = self._add_grid_row(grid, row, "Total Depth, d (mm):", total_depth_widget)
         self.welded_total_depth = total_depth
         self.welded_total_depth_widget = total_depth_widget
         self.welded_total_depth_bounds_button = total_depth_bounds_button
@@ -1768,14 +1832,14 @@ class EndDiaphragmDetailsTab(QWidget):
             pass
 
         web_thick_widget = self._create_mode_value_widget(web_thick_combo, web_thick_value)
-        row = self._add_grid_row(grid, row, "Web Thickness (mm):", web_thick_widget)
+        row = self._add_grid_row(grid, row, "Web Thickness, w<sub>t</sub> (mm):", web_thick_widget)
         self.welded_web_thickness_combo = web_thick_combo
         self.welded_web_thickness_value = web_thick_value
         self.welded_web_thickness_widget = web_thick_widget
         self.welded_web_thickness_value_combo = self._attach_thickness_value_dropdown(web_thick_widget, web_thick_value)
 
         top_width_widget, top_width, top_width_bounds_button = self._create_dimension_input_widget("top_width")
-        row = self._add_grid_row(grid, row, "Width of Top Flange (mm):", top_width_widget)
+        row = self._add_grid_row(grid, row, "Width of Top Flange, t<sub>fw</sub> (mm):", top_width_widget)
         self.welded_top_width = top_width
         self.welded_top_width_widget = top_width_widget
         self.welded_top_width_bounds_button = top_width_bounds_button
@@ -1794,14 +1858,14 @@ class EndDiaphragmDetailsTab(QWidget):
             pass
 
         top_thickness_widget = self._create_mode_value_widget(top_thickness_combo, top_thickness_value)
-        row = self._add_grid_row(grid, row, "Top Flange Thickness (mm):", top_thickness_widget)
+        row = self._add_grid_row(grid, row, "Top Flange Thickness, t<sub>ft</sub> (mm):", top_thickness_widget)
         self.welded_top_thickness_combo = top_thickness_combo
         self.welded_top_thickness_value = top_thickness_value
         self.welded_top_thickness_widget = top_thickness_widget
         self.welded_top_thickness_value_combo = self._attach_thickness_value_dropdown(top_thickness_widget, top_thickness_value)
 
         bottom_width_widget, bottom_width, bottom_width_bounds_button = self._create_dimension_input_widget("bottom_width")
-        row = self._add_grid_row(grid, row, "Width of Bottom Flange (mm):", bottom_width_widget)
+        row = self._add_grid_row(grid, row, "Width of Bottom Flange, b<sub>fw</sub> (mm):", bottom_width_widget)
         self.welded_bottom_width = bottom_width
         self.welded_bottom_width_widget = bottom_width_widget
         self.welded_bottom_width_bounds_button = bottom_width_bounds_button
@@ -1820,7 +1884,7 @@ class EndDiaphragmDetailsTab(QWidget):
             pass
 
         bottom_thickness_widget = self._create_mode_value_widget(bottom_thickness_combo, bottom_thickness_value)
-        row = self._add_grid_row(grid, row, "Bottom Flange Thickness (mm):", bottom_thickness_widget)
+        row = self._add_grid_row(grid, row, "Bottom Flange Thickness, b<sub>ft</sub> (mm):", bottom_thickness_widget)
         self.welded_bottom_thickness_combo = bottom_thickness_combo
         self.welded_bottom_thickness_value = bottom_thickness_value
         self.welded_bottom_thickness_widget = bottom_thickness_widget
@@ -1880,9 +1944,15 @@ class EndDiaphragmDetailsTab(QWidget):
             watcher.textChanged.connect(self._update_welded_preview_and_props)
         for watcher in (web_thick_value, top_thickness_value, bottom_thickness_value):
             watcher.textChanged.connect(self._update_welded_preview_and_props)
-        for combo in (web_thick_combo, top_thickness_combo, bottom_thickness_combo):
-            combo.currentTextChanged.connect(lambda _t: self._update_welded_thickness_value_enabled_state())
-            combo.currentTextChanged.connect(self._update_welded_preview_and_props)
+        web_thick_combo.currentTextChanged.connect(
+            lambda text: self._on_welded_thickness_mode_changed("welded_web_thickness", text)
+        )
+        top_thickness_combo.currentTextChanged.connect(
+            lambda text: self._on_welded_thickness_mode_changed("welded_top_thickness", text)
+        )
+        bottom_thickness_combo.currentTextChanged.connect(
+            lambda text: self._on_welded_thickness_mode_changed("welded_bottom_thickness", text)
+        )
         self._update_welded_preview_and_props()
         self._on_welded_design_changed(design_combo.currentText())
         self._update_welded_thickness_value_enabled_state()

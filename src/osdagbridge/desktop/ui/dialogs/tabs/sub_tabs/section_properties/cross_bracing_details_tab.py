@@ -620,13 +620,16 @@ class CrossBracingDetailsTab(QWidget):
         )
         return box
 
+    def _normalize_label_text(self, text: str) -> str:
+        return str(text or "").rstrip(": ")
+
     def _create_heading_label(self, text):
-        label = QLabel(text)
+        label = QLabel(self._normalize_label_text(text))
         label.setStyleSheet("font-size: 12px; font-weight: 700; color: #4b4b4b; border: none;")
         return label
 
     def _create_label(self, text):
-        label = QLabel(text)
+        label = QLabel(self._normalize_label_text(text))
         label.setStyleSheet("font-size: 11px; font-weight: 400; color: #4b4b4b; border: none;")
         return label
 
