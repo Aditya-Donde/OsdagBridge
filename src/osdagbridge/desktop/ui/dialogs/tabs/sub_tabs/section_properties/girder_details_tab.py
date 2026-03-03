@@ -45,7 +45,7 @@ from osdagbridge.core.utils.common import (
     VALUES_WEB_TYPE,
 )
 from osdagbridge.desktop.ui.dialogs.tabs.common import apply_field_style
-from osdagbridge.desktop.ui.utils.custom_titlebar import CustomTitleBar
+from osdagbridge.desktop.ui.dialogs.custom_titlebar import CustomTitleBar
 from osdagbridge.desktop.ui.utils.rolled_section_preview import RolledSectionPreview
 
 

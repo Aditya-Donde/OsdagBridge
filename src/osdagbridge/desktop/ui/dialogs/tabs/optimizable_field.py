@@ -12,7 +12,7 @@ from PySide6.QtCore import Qt, Signal, QSize
 from PySide6.QtGui import QDoubleValidator, QIntValidator
 
 from osdagbridge.core.utils.common import *
-from osdagbridge.desktop.ui.utils.custom_titlebar import CustomTitleBar
+from osdagbridge.desktop.ui.dialogs.custom_titlebar import CustomTitleBar
 from osdagbridge.desktop.ui.dialogs.tabs.common import apply_field_style
 
 class OptimizableField(QWidget):

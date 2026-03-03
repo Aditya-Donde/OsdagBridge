@@ -3,7 +3,7 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCore import Qt
 
-from osdagbridge.desktop.ui.utils.custom_titlebar import CustomTitleBar
+from osdagbridge.desktop.ui.dialogs.custom_titlebar import CustomTitleBar
 from osdagbridge.desktop.ui.dialogs.tabs.steel_design_details import SteelDesignDetailsTab
 from osdagbridge.desktop.ui.dialogs.tabs.steel_design_analysis import SteelDesignAnalysisTab
 from osdagbridge.desktop.ui.dialogs.tabs.steel_design_check import SteelDesignCheckTab
