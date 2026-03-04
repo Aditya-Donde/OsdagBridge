@@ -31,47 +31,7 @@ from osdagbridge.desktop.ui.utils.combobox_utils import SmartCursorComboBoxView
 
 
 
-# =================================================================================
-#   CUSTOM COMBOBOX VIEW WITH SMART CURSOR HANDLING
-# =================================================================================
 
-class ComboBoxItemDelegate(QStyledItemDelegate):
-    """Delegate that renders disabled items in grey."""
-    
-    def paint(self, painter, option, index):
-        item = index.model().item(index.row())
-        if item and not item.isEnabled():
-            # For disabled items, draw background and text in grey
-            painter.fillRect(option.rect, option.palette.base())
-            painter.setPen(QColor(120, 120, 120))  # Grey color
-            text = index.data()
-            painter.drawText(option.rect, Qt.AlignLeft | Qt.AlignVCenter, f"  {text}")
-        else:
-            super().paint(painter, option, index)
-
-class SmartCursorComboBoxView(QListView):
-    """Custom list view for combobox that shows pointing hand for enabled items,
-    forbidden cursor for disabled items, and renders disabled items in grey."""
-    
-    def __init__(self):
-        super().__init__()
-        self.setItemDelegate(ComboBoxItemDelegate())
-    
-    def mouseMoveEvent(self, event):
-        index = self.indexAt(event.pos())
-        if index.isValid():
-            item = self.model().item(index.row())
-            if item and not item.isEnabled():
-                self.setCursor(Qt.ForbiddenCursor)
-            else:
-                self.setCursor(Qt.PointingHandCursor)
-        else:
-            self.setCursor(Qt.PointingHandCursor)
-        super().mouseMoveEvent(event)
-    
-    def leaveEvent(self, event):
-        self.setCursor(Qt.ArrowCursor)
-        super().leaveEvent(event)
 
 # =================================================================================
 #   MAIN IMPLEMENTATION
