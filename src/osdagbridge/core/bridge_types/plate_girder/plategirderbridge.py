@@ -30,7 +30,6 @@ from osdagbridge.core.utils.common import (
 )
 
 from .bridge_geometry import BridgeGeometry, CrossSectionLayout
-from .cad_generator import export_step
 from .designer import design
 from .initial_sizing import BridgeConfigurationSolver, preliminary_sizing
 from .report_generator import section_report
@@ -402,7 +401,7 @@ class PlateGirderBridge:
 
         cad_result: Dict[str, Any] = {"status": "skipped"}
         if cad_path:
-            export_step(dto, cad_path)
+            # export_step(dto, cad_path)
             cad_result = {"status": "generated", "path": cad_path}
 
         report_result = section_report(dto)
