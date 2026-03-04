@@ -7,9 +7,11 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QGroupBox,
     QCheckBox,
+    QLineEdit,
+    QComboBox
 )
 from PySide6.QtCore import Qt
-
+from PySide6.QtGui import QDoubleValidator, QIntValidator
 from osdagbridge.core.bridge_types.plate_girder.ui_fields_additional_input import (
     DESIGN_OPTIONS_CONT_SCHEMA,
 )
@@ -33,13 +35,93 @@ class DesignOptionsContTab(QWidget):
             if field_name.endswith("_combo") or field_name.endswith("_input"):
                 widget = getattr(self.parent_dialog, field_name, None)
                 if widget:
-                    from PySide6.QtWidgets import QLineEdit, QComboBox
                     if isinstance(widget, QLineEdit):
                         values[field_name] = widget.text()
                     elif isinstance(widget, QComboBox):
                         values[field_name] = widget.currentText()
+
+        for group_name in ("ultimate_checkboxes", "service_checkboxes"):
+            group = getattr(self.parent_dialog, group_name, None)
+            if isinstance(group, list) and group and isinstance(group[0], QCheckBox):
+                values[group_name] = {cb.text(): cb.isChecked() for cb in group}
+
         return values
 
+    def restore_values(self, data: dict):
+        """Restore previously saved checkbox groups and other values."""
+        if not isinstance(data, dict):
+            return
+
+        # Restore checkbox group states (Limit States)
+        for group_name in ("ultimate_checkboxes", "service_checkboxes"):
+            group_state = data.get(group_name)
+            group = getattr(self.parent_dialog, group_name, None)
+            if isinstance(group_state, dict) and isinstance(group, list):
+                for cb in group:
+                    if cb.text() in group_state:
+                        cb.setChecked(bool(group_state[cb.text()]))
+
+    def reset_defaults(self):
+        """Reset Design Options (Cont.) fields to schema defaults."""
+        for section in DESIGN_OPTIONS_CONT_SCHEMA.get("sections", []):
+
+            # normal fields
+            for field in section.get("fields", []):
+                bind_name = field.get("bind")
+                default_value = field.get("default")
+
+                if bind_name and default_value is not None and hasattr(self.parent_dialog, bind_name):
+                    widget = getattr(self.parent_dialog, bind_name)
+
+                    from PySide6.QtWidgets import QLineEdit, QComboBox
+
+                    if isinstance(widget, QLineEdit):
+                        widget.setText(str(default_value))
+                    elif isinstance(widget, QComboBox):
+                        widget.setCurrentText(str(default_value))
+
+            # checkbox groups
+            for group in section.get("checkbox_groups", []):
+                bind_name = group.get("bind")
+                default_checked = group.get("default_checked", False)
+
+                if bind_name and hasattr(self.parent_dialog, bind_name):
+                    checkboxes = getattr(self.parent_dialog, bind_name)
+                    for cb in checkboxes:
+                        cb.setChecked(default_checked)
+    def validate_tab(self):
+        errors = []
+
+        widgets = self.findChildren(QLineEdit)
+
+        for widget in widgets:
+
+            if not widget.isVisible():
+                continue
+
+            text = widget.text().strip()
+            field_name = widget.objectName().replace("_", " ").title()
+
+            if not text:
+                errors.append(f"{field_name} cannot be empty.")
+                continue
+
+            validator = widget.validator()
+
+            try:
+                value = float(text)
+            except ValueError:
+                errors.append(f"{field_name} must be a valid number.")
+                continue
+
+            if isinstance(validator, (QDoubleValidator, QIntValidator)):
+                if value < validator.bottom() or value > validator.top():
+                    errors.append(
+                        f"{field_name} must be between {validator.bottom()} and {validator.top()}."
+                    )
+
+        return errors
+                    
     def init_ui(self):
         #Changed Bg color
         self.setStyleSheet("background-color: #ffffff;")

@@ -4,9 +4,10 @@ from PySide6.QtWidgets import (
     QFrame,
     QLabel,
     QScrollArea,
+    QLineEdit
 )
 from PySide6.QtCore import Qt
-
+from PySide6.QtGui import QDoubleValidator, QIntValidator
 from osdagbridge.core.bridge_types.plate_girder.ui_fields_additional_input import (
     DESIGN_OPTIONS_SCHEMA,
 )
@@ -37,6 +38,71 @@ class DesignOptionsTab(QWidget):
                     elif isinstance(widget, QComboBox):
                         values[field_name] = widget.currentText()
         return values
+
+    def reset_defaults(self):
+        """Reset Design Options fields to schema defaults."""
+        for card in DESIGN_OPTIONS_SCHEMA.get("cards", []):
+            for section in card.get("sections", []):
+                for field in section.get("fields", []):
+                    bind_name = field.get("bind")
+                    default_value = field.get("default")
+
+                    if bind_name and default_value is not None and hasattr(self.parent_dialog, bind_name):
+                        widget = getattr(self.parent_dialog, bind_name)
+
+                        from PySide6.QtWidgets import QLineEdit, QComboBox
+
+                        if isinstance(widget, QLineEdit):
+                            widget.setText(str(default_value))
+                        elif isinstance(widget, QComboBox):
+                            widget.setCurrentText(str(default_value))
+
+    def validate_tab(self):
+        errors = []
+
+        widgets = self.findChildren(QLineEdit)
+
+        for widget in widgets:
+
+            if not widget.isVisible():
+                continue
+
+            text = widget.text().strip()
+            field_name = widget.objectName().replace("_", " ").title()
+
+            if not text:
+                errors.append(f"{field_name} cannot be empty.")
+                continue
+
+            validator = widget.validator()
+
+            try:
+                value = float(text)
+            except ValueError:
+                errors.append(f"{field_name} must be a valid number.")
+                continue
+
+            if isinstance(validator, (QDoubleValidator, QIntValidator)):
+                if value < validator.bottom() or value > validator.top():
+                    errors.append(
+                        f"{field_name} must be between {validator.bottom()} and {validator.top()}."
+                    )
+
+        if hasattr(self.parent_dialog, "shear_stud_diameter_combo") and hasattr(self.parent_dialog, "shear_stud_spacing_input"):
+
+            try:
+                diameter = float(self.parent_dialog.shear_stud_diameter_combo.currentText())
+                spacing = float(self.parent_dialog.shear_stud_spacing_input.text())
+
+                if spacing < 4 * diameter:
+                    errors.append(
+                        f"Shear Stud Spacing must be at least {4*diameter:.2f} mm for diameter {diameter:.2f} mm."
+                    )
+
+            except ValueError:
+                pass
+
+        return list(set(errors))
 
     def init_ui(self):
         # Changed Bg color
@@ -126,3 +192,45 @@ class DesignOptionsTab(QWidget):
         outer_layout = QVBoxLayout(self)
         outer_layout.setContentsMargins(0, 0, 0, 0)
         outer_layout.addWidget(scroll)
+
+        self._connect_validations()
+
+    def _connect_validations(self):
+
+        if hasattr(self.parent_dialog, "shear_stud_diameter") and hasattr(self.parent_dialog, "shear_stud_spacing_input"):
+
+            self.parent_dialog.shear_stud_diameter.currentTextChanged.connect(
+                self.validate_shear_stud_spacing
+            ) 
+
+    def validate_shear_stud_spacing(self):
+        spacing_widget = getattr(self.parent_dialog, "shear_stud_spacing_input", None)
+
+        if not spacing_widget:
+            return
+
+        text = spacing_widget.text().strip()
+
+        if not text:
+            return
+
+        try:
+            spacing = float(text)
+        except ValueError:
+            return
+
+        validator = spacing_widget.validator()
+
+        if validator:
+            bottom = validator.bottom()
+            top = validator.top()
+
+            if spacing < bottom or spacing > top:
+
+                from PySide6.QtWidgets import QMessageBox
+
+                QMessageBox.warning(
+                    self,
+                    "Invalid Shear Stud Spacing",
+                    f"Shear Stud Spacing must be between {bottom} and {top}.",
+                )          

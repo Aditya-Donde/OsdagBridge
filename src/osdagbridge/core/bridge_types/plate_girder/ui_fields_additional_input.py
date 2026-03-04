@@ -1153,7 +1153,7 @@ SUPPORT_CONDITIONS_SCHEMA = {
                     "id": "bearing_length",
                     "label": "Bearing Length Value (mm)",
                     "type": "line",
-                    "default": "400",
+                    "default": "400.00",
                     "placeholder": "Length",
                     "bind": "bearing_length_input",
                     "validator": {
@@ -1230,10 +1230,10 @@ DESIGN_OPTIONS_SCHEMA = {
                             "bind": "top_clear_cover_input",
                             "label": "Top Clear Cover (mm)",
                             "type": "number",
-                            "default": 50.0,
+                            "default": 50.00,
                             "validator": {
                                 "type": "double_range",
-                                "bottom": 40.0,
+                                "bottom": 40.00,
                                 "top": 75.0,
                                 "decimals": 1,
                             },
@@ -1244,7 +1244,7 @@ DESIGN_OPTIONS_SCHEMA = {
                             "id": "bottom_clear_cover",
                             "label": "Bottom Clear Cover (mm)",
                             "type": "number",
-                            "default": 40.0,
+                            "default": 40.00,
                             "validator": {
                                 "type": "double_range",
                                 "bottom": 35.0,
@@ -1283,7 +1283,7 @@ DESIGN_OPTIONS_SCHEMA = {
                             "id": "shear_stud_yield_strength",
                             "label": "Yield Strength (MPa)",
                             "type": "line",
-                            "default": "385",
+                            "default": "385.00",
                             "validator": {
                                 "type": "double_range",
                                 "bottom": 350,
@@ -1296,7 +1296,7 @@ DESIGN_OPTIONS_SCHEMA = {
                             "id": "shear_stud_ultimate_strength",
                             "label": "Ultimate Strength (MPa)",
                             "type": "line",
-                            "default": "495",
+                            "default": "495.00",
                             "validator": {
                                 "type": "double_range",
                                 "bottom": 350,
@@ -1317,7 +1317,7 @@ DESIGN_OPTIONS_SCHEMA = {
                             "id": "shear_stud_height",
                             "label": "Height (mm)",
                             "type": "line",
-                            "default": "100",
+                            "default": "100.00",
                             "validator": {
                                 "type": "double_range",
                                 "bottom": 0.0,
@@ -1338,7 +1338,7 @@ DESIGN_OPTIONS_SCHEMA = {
                             "id": "shear_stud_transverse_spacing",
                             "label": "Transverse Spacing (mm)",
                             "type": "line",
-                            "default": "100",
+                            "default": "100.00",
                             "validator": {
                                 "type": "double_range",
                                 "bottom": 0.0,
@@ -1367,7 +1367,7 @@ DESIGN_OPTIONS_CONT_SCHEMA = {
                     "id": "gamma_c_basic",
                     "label": "Concrete basic & seismic, &#947;<sub>c</sub>",
                     "type": "line",
-                    "default": "1.5",
+                    "default": "1.50",
                     "bind": "gamma_c_basic_input",
                     "validator": {
                         "type": "double_range",
@@ -1381,7 +1381,7 @@ DESIGN_OPTIONS_CONT_SCHEMA = {
                     "id": "gamma_c_accidental",
                     "label": "Concrete Accidental, &#947;<sub>c</sub>",
                     "type": "line",
-                    "default": "1.2",
+                    "default": "1.20",
                     "bind": "gamma_c_accidental_input",
                     "validator": {
                         "type": "double_range",
@@ -1395,7 +1395,7 @@ DESIGN_OPTIONS_CONT_SCHEMA = {
                     "id": "gamma_m0",
                     "label": "Structural steel for Yielding and Buckling, &#947;<sub>M0</sub>",
                     "type": "line",
-                    "default": "1.1",
+                    "default": "1.10",
                     "bind": "gamma_m0_input",
                     "validator": {
                         "type": "double_range",
@@ -1451,7 +1451,7 @@ DESIGN_OPTIONS_CONT_SCHEMA = {
                     "id": "gamma_flt",
                     "label": "Fatigue Load, &#947;<sub>flt</sub>",
                     "type": "line",
-                    "default": "1",
+                    "default": "1.00",
                     "bind": "gamma_flt_input",
                     "validator": {
                         "type": "double_range",
@@ -1481,7 +1481,7 @@ DESIGN_OPTIONS_CONT_SCHEMA = {
         {
             "title": "Resistance to Fatigue",
             "fields": [
-                {"id": "load_cycles", "label": "Number of Load Cycles", "type": "line", "default": "2000000", "bind": "load_cycles_input",
+                {"id": "load_cycles", "label": "Number of Load Cycles", "type": "line", "default": "2000000.00", "bind": "load_cycles_input",
                  "validator": {
                         "type": "double_range",
                         "bottom": 100000,
@@ -1500,7 +1500,7 @@ DESIGN_OPTIONS_CONT_SCHEMA = {
                     "row_fields": [
                         {"label": "Limit :", "type": "label","after_spacing": 408},
                         {"label": "L /", "type": "label"},
-                        {"id": "limit_l", "label": "", "type": "line", "default": "600", "bind": "limit_input", "width": 150,
+                        {"id": "limit_l", "label": "", "type": "line", "default": "600.00", "bind": "limit_input", "width": 150,
                         "validator": {
                             "type": "int_range",
                             "bottom": 300,

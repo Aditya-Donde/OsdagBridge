@@ -20,15 +20,25 @@ class SupportConditionsTab(QWidget):
         if hasattr(self.parent_dialog, "bearing_length_input"):
             values["bearing_length"] = self.parent_dialog.bearing_length_input.text()
         return values
-    
-    def reset_defaults(self):
-        """Reset to default values."""
-        if hasattr(self.parent_dialog, "left_support_combo"):
-            self.parent_dialog.left_support_combo.setCurrentText("Pinned")
-        if hasattr(self.parent_dialog, "right_support_combo"):
-            self.parent_dialog.right_support_combo.setCurrentText("Roller")
+
+    def validate_tab(self):
+        errors = []
+
         if hasattr(self.parent_dialog, "bearing_length_input"):
-            self.parent_dialog.bearing_length_input.setText("400")
+            widget = self.parent_dialog.bearing_length_input
+            text = widget.text().strip()
+
+            if not text:
+                errors.append("Bearing Length cannot be empty.")
+            else:
+                try:
+                    value = float(text)
+                    if value <= 0:
+                        errors.append("Bearing Length must be greater than 0.")
+                except ValueError:
+                    errors.append("Bearing Length must be a valid number.")
+
+        return errors
 
     def init_ui(self):
         
@@ -52,35 +62,49 @@ class SupportConditionsTab(QWidget):
         main_layout.setContentsMargins(12, 12, 12, 12)
         main_layout.setSpacing(12)
 
-        card = QFrame()
-        card.setObjectName("support_card")
-        card.setStyleSheet("""
-            QFrame#support_card {
-                border: 1px solid #b2b2b2;
-                border-radius: 8px;
-                background-color: #ffffff;
-            }
-            /* this selector is even more specific than the app stylesheet */
-            QFrame#support_card QLabel {
-                background: transparent;
-                border: none;
-                border-radius: 0;
-                padding: 0;
-            }
-        """)
+        # create a separate card for each section defined in the schema
+        for section in SUPPORT_CONDITIONS_SCHEMA["sections"]:
+            card = QFrame()
+            card.setObjectName("support_card")
+            card.setStyleSheet("""
+                QFrame#support_card {
+                    border: 1px solid #b2b2b2;
+                    border-radius: 8px;
+                    background-color: #ffffff;
+                }
+                /* this selector is even more specific than the app stylesheet */
+                QFrame#support_card QLabel {
+                    background: transparent;
+                    border: none;
+                    border-radius: 0;
+                    padding: 0;
+                }
+            """)
 
-        card_layout = QVBoxLayout(card)
-        card_layout.setContentsMargins(16, 16, 16, 16)
-        card_layout.setSpacing(12)
+            card_layout = QVBoxLayout(card)
+            card_layout.setContentsMargins(16, 16, 16, 16)
+            card_layout.setSpacing(12)
 
-        
-        self.parent_dialog._build_sections_from_schema(
-            card_layout,
-            SUPPORT_CONDITIONS_SCHEMA["sections"],
-            "font-size: 12px; font-weight: 700; color: #2b2b2b;",
-            "font-size: 11px; color: #3a3a3a;",
-            160,
-        )
+            # build only the current section inside its own frame
+            self.parent_dialog._build_sections_from_schema(
+                card_layout,
+                [section],
+                "font-size: 12px; font-weight: 700; color: #2b2b2b;",
+                "font-size: 11px; color: #3a3a3a;",
+                160,
+            )
 
-        main_layout.addWidget(card)
+            main_layout.addWidget(card)
+
         main_layout.addStretch()
+
+    def reset_defaults(self):
+        """Reset support conditions to default values."""
+        if hasattr(self.parent_dialog, "left_support_combo"):
+            self.parent_dialog.left_support_combo.setCurrentText("Pinned")
+
+        if hasattr(self.parent_dialog, "right_support_combo"):
+            self.parent_dialog.right_support_combo.setCurrentText("Roller")
+
+        if hasattr(self.parent_dialog, "bearing_length_input"):
+            self.parent_dialog.bearing_length_input.setText("400")

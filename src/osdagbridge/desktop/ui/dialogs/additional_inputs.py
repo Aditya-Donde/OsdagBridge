@@ -15,59 +15,19 @@ from PySide6.QtGui import QDoubleValidator, QIntValidator, QColor, QValidator
 from osdagbridge.core.utils.common import *
 from osdagbridge.desktop.ui.utils.custom_titlebar import CustomTitleBar
 from osdagbridge.desktop.ui.dialogs.tabs.common import apply_field_style, create_action_button_bar
-
 from osdagbridge.desktop.ui.dialogs.tabs.typical_section_details import TypicalSectionDetailsTab, show_warning
 from osdagbridge.desktop.ui.dialogs.tabs.section_properties_tab import SectionPropertiesTab
 from osdagbridge.desktop.ui.dialogs.tabs.loading_tab import LoadingTab
 from osdagbridge.desktop.ui.dialogs.tabs.support_conditions_tab import SupportConditionsTab
 from osdagbridge.desktop.ui.dialogs.tabs.design_options_tab import DesignOptionsTab
 from osdagbridge.desktop.ui.dialogs.tabs.design_options_cont_tab import DesignOptionsContTab
+from osdagbridge.desktop.ui.utils.combobox_utils import SmartCursorComboBoxView
 from osdagbridge.core.bridge_types.plate_girder.ui_fields_additional_input import (
     DESIGN_OPTIONS_SCHEMA,
     DESIGN_OPTIONS_CONT_SCHEMA,
 )
 
-# =================================================================================
-#   CUSTOM COMBOBOX VIEW WITH SMART CURSOR HANDLING
-# =================================================================================
 
-class ComboBoxItemDelegate(QStyledItemDelegate):
-    """Delegate that renders disabled items in grey."""
-    
-    def paint(self, painter, option, index):
-        item = index.model().item(index.row())
-        if item and not item.isEnabled():
-            # For disabled items, draw background and text in grey
-            painter.fillRect(option.rect, option.palette.base())
-            painter.setPen(QColor(120, 120, 120))  # Grey color
-            text = index.data()
-            painter.drawText(option.rect, Qt.AlignLeft | Qt.AlignVCenter, f"  {text}")
-        else:
-            super().paint(painter, option, index)
-
-class SmartCursorComboBoxView(QListView):
-    """Custom list view for combobox that shows pointing hand for enabled items,
-    forbidden cursor for disabled items, and renders disabled items in grey."""
-    
-    def __init__(self):
-        super().__init__()
-        self.setItemDelegate(ComboBoxItemDelegate())
-    
-    def mouseMoveEvent(self, event):
-        index = self.indexAt(event.pos())
-        if index.isValid():
-            item = self.model().item(index.row())
-            if item and not item.isEnabled():
-                self.setCursor(Qt.ForbiddenCursor)
-            else:
-                self.setCursor(Qt.PointingHandCursor)
-        else:
-            self.setCursor(Qt.PointingHandCursor)
-        super().mouseMoveEvent(event)
-    
-    def leaveEvent(self, event):
-        self.setCursor(Qt.ArrowCursor)
-        super().leaveEvent(event)
 
 # =================================================================================
 #   MAIN IMPLEMENTATION
@@ -84,8 +44,9 @@ class AdditionalInputs(QDialog):
         self.setSizeGripEnabled(True)
         self.footpath_value = footpath_value
         self.carriageway_width = carriageway_width
+        self._member_properties_editable = True
+        self._last_saved_data = {}
         self.saved_values = {}  # Store all input values here
-        self._member_properties_editable = True  # Default to editable
         self.init_ui()
         self.setStyleSheet("""
             QDialog {
@@ -93,128 +54,87 @@ class AdditionalInputs(QDialog):
                 border: 1px solid #90AF13;
             }
         """)
-   
-    #this fuction validtes the range for input fields
-    def _validate_widget(self, widget):
-        validator = widget.validator()
-        if not validator:
-            return None
-
-        text = widget.text().strip()
-        field_name = widget.objectName().replace("_", " ").title()
-
-        if text == "":
-            return f"{field_name} cannot be empty."
-
-        try:
-            value = float(text)
-        except ValueError:
-            return f"{field_name} must be a valid number."
-
-        if isinstance(validator, QDoubleValidator) or isinstance(validator, QIntValidator):
-            bottom = validator.bottom()
-            top = validator.top()
-
-            if value < bottom or value > top:
-                return f"{field_name} must be between {bottom} and {top}."
-
-        # ==============================
-        # SPECIAL: Shear Stud Height
-        # ==============================
-        if widget.objectName() == "shear_stud_height":
-            try:
-                diameter = float(self.shear_stud_diameter_combo.currentText())
-                deck_thickness = float(self.typical_section_tab.deck_thickness.text())
-
-                dynamic_min = max(4 * diameter, 100)
-                dynamic_max = deck_thickness - 25
-
-                if value < dynamic_min or value > dynamic_max:
-                    return (
-                        f"Shear Stud Height must be between "
-                        f"{dynamic_min:.0f} mm and {dynamic_max:.0f} mm."
-                    )
-            except Exception:
-                pass
-
-        return None
-    
-    #This function is set to validate only Three tabs, Add the rest three tabs accordingly
-    def _validate_all_fields(self):
-        errors = []
-
-        # Tabs we want to validate
-        valid_tabs = [
-            self.support_tab,
-            self.design_options_tab,
-            self.design_options_cont_tab,
-        ]
-
-        # Get all QLineEdits in entire dialog
-        all_line_edits = self.findChildren(QLineEdit)
-
-        for widget in all_line_edits:
-
-            # Skip invisible widgets
-            if not widget.isVisible():
-                continue
-
-            # Check if widget belongs to one of the target tabs
-            for tab in valid_tabs:
-                if tab and tab.isAncestorOf(widget):
-                    error = self._validate_widget(widget)
-                    if error:
-                        errors.append(error)
-                    break  # Stop checking other tabs
-
-        return errors
-    
 
     def _save_inputs(self):
+        saved = {}
         """
         Save additional inputs.
         Validate all fields first.
         If errors exist -> show popup and DO NOT close dialog.
         """
-        #this line takes all errors and show them together in the popup
-        errors = self._validate_all_fields()
+        #calls validate_widgets_in_tabs which validates all the fields in the following tabs
+        
+        #this funciton now asks all tabs to validate themselves
+        errors = []
+
+        for tab in [
+            self.support_tab,
+            self.design_options_tab,
+            self.design_options_cont_tab,
+        ]:
+            if hasattr(tab, "validate_tab"):
+                tab_errors = tab.validate_tab()
+                if tab_errors:
+                    errors.extend(tab_errors)
 
         if errors:
-            error_message = "\n\n".join(f"• {err}" for err in errors)
-
             self._show_validation_errors(errors)
-
-            return  # STOP here, do not close dialog
-
+            return
         # If everything is valid → continue saving
-    
 
+        #clears dictionary before saving new values
+        self.saved_values.clear()
+        #collects all inputs
         self._collect_all_values()
 
-        if hasattr(self, "typical_section_tab") and hasattr(self.typical_section_tab, "save_values"):
-            self.saved_values.update(self.typical_section_tab.save_values() or {})
+        saved = self.saved_values.copy()
 
-        if hasattr(self, "section_properties_tab"):
-            if hasattr(self.section_properties_tab, "save_properties"):
-                self.section_properties_tab.save_properties()
-            if hasattr(self.section_properties_tab, "save_values"):
-                self.saved_values.update(self.section_properties_tab.save_values() or {})
+        tabs = [
+            getattr(self, "typical_section_tab", None),
+            getattr(self, "section_properties_tab", None),
+            getattr(self, "loading_tab", None),
+            getattr(self, "support_tab", None),
+            getattr(self, "design_options_tab", None),
+            getattr(self, "design_options_cont_tab", None),
+        ]
 
-        if hasattr(self, "loading_tab") and hasattr(self.loading_tab, "save_values"):
-            self.saved_values.update(self.loading_tab.save_values() or {})
+        for tab in tabs:
+            if not tab:
+                continue
 
-        if hasattr(self, "support_tab") and hasattr(self.support_tab, "save_values"):
-            self.saved_values.update(self.support_tab.save_values() or {})
+            # save simple UI values
+            if hasattr(tab, "save_values"):
+                saved.update(tab.save_values() or {})
 
-        if hasattr(self, "design_options_tab") and hasattr(self.design_options_tab, "save_values"):
-            self.saved_values.update(self.design_options_tab.save_values() or {})
+            # save complex data structures
+            if hasattr(tab, "save_properties"):
+                saved.update(tab.save_properties() or {})
 
-        if hasattr(self, "design_options_cont_tab") and hasattr(self.design_options_cont_tab, "save_values"):
-            self.saved_values.update(self.design_options_cont_tab.save_values() or {})
+        self._last_saved_data = saved
 
-        self.accept()
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Information)
+        box.setWindowTitle("Saved")
+        box.setText("Inputs saved successfully.")
+        box.setStandardButtons(QMessageBox.Ok)
+        box.setDefaultButton(QMessageBox.Ok)
+        box.setWindowModality(Qt.ApplicationModal)
 
-    #This part checks for all the errors in a particular tab and gives a popup after clicking save.
+        box.setStyleSheet("""
+        QMessageBox {
+            background-color: #ffffff;
+        }
+
+        QMessageBox QLabel {
+            color: #2b2b2b;
+            font-size: 12px;
+        }
+        """)
+
+        box.exec()
+
+        # self.accept() 
+
     def _show_validation_errors(self, errors):
         message = "\n\n".join(f"• {err}" for err in errors)
 
@@ -239,17 +159,13 @@ class AdditionalInputs(QDialog):
                 padding: 6px 20px;
                 min-width: 80px;
             }
-            QMessageBox QPushButton:hover {
-                background-color: #e0e0e0;
-            }
         """)
 
-        msg.exec()  
+        msg.exec()    
     
     def _collect_all_values(self):
         """Collect values from all bound widgets across all tabs."""
         # Qt's findChildren doesn't accept a tuple; grab all QWidget descendants and filter
-        from PySide6.QtWidgets import QWidget
 
         for widget in self.findChildren(QWidget):
             widget_name = widget.objectName()
@@ -331,6 +247,7 @@ class AdditionalInputs(QDialog):
                 color: #ffffff;
             }
         """)
+
         self._last_top_tab_index = 0
         
         # Sub-Tab 1: Typical Section Details
@@ -363,6 +280,8 @@ class AdditionalInputs(QDialog):
         # Sub-Tab 6: Design Options (Cont.)
         self.design_options_cont_tab = DesignOptionsContTab(self)
         self.tabs.addTab(self.design_options_cont_tab, "Design Options (Cont.)")
+
+
         self.tabs.currentChanged.connect(self._on_top_tab_changed)        
         main_layout.addWidget(self.tabs)
         
@@ -434,11 +353,6 @@ class AdditionalInputs(QDialog):
                 widget.setView(custom_view)
             except Exception:
                 pass
-
-            if field_def.get("id") == "shear_stud_diameter":
-                widget.currentTextChanged.connect(
-                    lambda: self._validate_widget(self.shear_stud_spacing_input),
-                )
 
         elif field_type == "checkbox":
             widget = QCheckBox(field_def.get("label", ""))
@@ -518,66 +432,27 @@ class AdditionalInputs(QDialog):
                 self.section_properties_tab.reset_defaults()
             return
 
+        if current_widget is getattr(self, "loading_tab", None):
             for i in range(self.loading_tab.load_tabs.count()):
                 tab = self.loading_tab.load_tabs.widget(i)
                 if hasattr(tab, "reset_defaults"):
                     tab.reset_defaults()
-
-        if hasattr(self, "typical_section_tab") and hasattr(self.typical_section_tab, "reset_defaults"):
-            self.typical_section_tab.reset_defaults()
-        if hasattr(self, "section_properties_tab") and hasattr(self.section_properties_tab, "reset_defaults"):
-            self.section_properties_tab.reset_defaults()
-        if not (hasattr(self, "typical_section_tab") or hasattr(self, "section_properties_tab")):
-            self._show_placeholder_message("Defaults")
-        if hasattr(self, "left_support_combo"):
-            self.left_support_combo.setCurrentText("Pinned")
-        if hasattr(self, "right_support_combo"):
-            self.right_support_combo.setCurrentText("Roller")
-        if hasattr(self, "bearing_length_input"):
-            self.bearing_length_input.setText("400")  
-
-        # -------- Reset Design Options --------
-        for card in DESIGN_OPTIONS_SCHEMA.get("cards", []):
-            for section in card.get("sections", []):
-                for field in section.get("fields", []):
-                    bind_name = field.get("bind")
-                    default_value = field.get("default")
-
-                    if bind_name and default_value is not None and hasattr(self, bind_name):
-                        widget = getattr(self, bind_name)
-
-                        if isinstance(widget, QLineEdit):
-                            widget.setText(str(default_value))
-
-                        elif isinstance(widget, QComboBox):
-                            widget.setCurrentText(str(default_value))
-                            
-        # -------- Reset Design Options (Cont.) --------
-        for section in DESIGN_OPTIONS_CONT_SCHEMA.get("sections", []):
-            # Normal fields
-            for field in section.get("fields", []):
-                bind_name = field.get("bind")
-                default_value = field.get("default")
-
-                if bind_name and default_value is not None and hasattr(self, bind_name):
-                    widget = getattr(self, bind_name)
-                    if isinstance(widget, QLineEdit):
-                        widget.setText(str(default_value))
-                    elif isinstance(widget, QComboBox):
-                        widget.setCurrentText(str(default_value))
-
-            # Checkbox groups (Limit States)
-            for group in section.get("checkbox_groups", []):
-                bind_name = group.get("bind")
-                default_checked = group.get("default_checked", False)
-
-                if bind_name and hasattr(self, bind_name):
-                    checkboxes = getattr(self, bind_name)
-                    for cb in checkboxes:
-                        cb.setChecked(default_checked)    
-
-        self._show_placeholder_message("Defaults")
-
+            return
+        
+        if current_widget is getattr(self, "support_tab", None):
+            if hasattr(self.support_tab, "reset_defaults"):
+                self.support_tab.reset_defaults()
+            return
+        
+        if current_widget is getattr(self, "design_options_tab", None):
+            if hasattr(self.design_options_tab, "reset_defaults"):
+                self.design_options_tab.reset_defaults()
+            return
+        
+        if current_widget is getattr(self, "design_options_cont_tab", None):
+            if hasattr(self.design_options_cont_tab, "reset_defaults"):
+                self.design_options_cont_tab.reset_defaults()
+            return 
 
     def _build_sections_from_schema(self, parent_layout, sections, heading_style, label_style, field_width):
         for section in sections:
@@ -756,7 +631,7 @@ class AdditionalInputs(QDialog):
         Returns:
             Dictionary containing all saved properties including stiffener details.
         """
-        return self._last_saved_data
+        return self._last_saved_data.copy()
     
     def set_properties_data(self, data: dict) -> None:
         """Restore properties data from a previous save.
@@ -764,8 +639,50 @@ class AdditionalInputs(QDialog):
         Args:
             data: Dictionary containing properties to restore.
         """
-        if hasattr(self, "section_properties_tab") and hasattr(self.section_properties_tab, "restore_properties"):
-            try:
-                self.section_properties_tab.restore_properties(data)
-            except Exception:
-                pass
+
+        tabs = [
+            getattr(self, "typical_section_tab", None),
+            getattr(self, "section_properties_tab", None),
+            getattr(self, "loading_tab", None),
+            getattr(self, "support_tab", None),
+            getattr(self, "design_options_tab", None),
+            getattr(self, "design_options_cont_tab", None),
+        ]
+
+        for tab in tabs:
+            if not tab:
+                continue
+
+            if hasattr(tab, "restore_values"):
+                try:
+                    tab.restore_values(data)
+                except Exception:
+                    pass
+
+            if hasattr(tab, "restore_properties"):
+                try:
+                    tab.restore_properties(data)
+                except Exception:
+                    pass
+
+        # Generic restore fallback
+        try:
+            for widget in self.findChildren(QWidget):
+                name = widget.objectName()
+
+                if not name or name not in data:
+                    continue
+
+                value = data[name]
+
+                if isinstance(widget, QLineEdit):
+                    widget.setText(str(value))
+
+                elif isinstance(widget, QComboBox):
+                    widget.setCurrentText(str(value))
+
+                elif isinstance(widget, QCheckBox):
+                    widget.setChecked(bool(value))
+
+        except Exception:
+            pass
