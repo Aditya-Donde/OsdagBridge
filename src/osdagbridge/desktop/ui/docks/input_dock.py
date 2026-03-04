@@ -739,8 +739,8 @@ class InputDock(QWidget):
         # Option 2: print merged inputs for quick verification.
         self._debug_dump_final_inputs(self._final_inputs_saved_list)
     
-    def show_additional_inputs(self):
-        """Show Additional Inputs dialog"""
+    def _show_additional_inputs_dialog(self, target_tab_name=None):
+        """Show Additional Inputs dialog and optionally focus a specific top-level tab."""
         footpath_value = self.footpath_combo.currentText() if self.footpath_combo else "None"
         
         carriageway_width = self._get_effective_carriageway_width()
@@ -764,6 +764,16 @@ class InputDock(QWidget):
         except Exception:
             pass
 
+        if target_tab_name:
+            try:
+                for idx in range(self.additional_inputs.tabs.count()):
+                    tab_text = str(self.additional_inputs.tabs.tabText(idx) or "").strip()
+                    if tab_text.lower() == str(target_tab_name).strip().lower():
+                        self.additional_inputs.tabs.setCurrentIndex(idx)
+                        break
+            except Exception:
+                pass
+
         # Capture state when dialog closes.
         try:
             self.additional_inputs.finished.connect(self._handle_additional_inputs_closed)
@@ -781,6 +791,10 @@ class InputDock(QWidget):
                 self.additional_input_values = values
                 # Emit signal to trigger CAD update
                 self.input_value_changed.emit()
+
+    def show_additional_inputs(self):
+        """Show Additional Inputs dialog with its default initial tab."""
+        self._show_additional_inputs_dialog()
     
     def _apply_lock_state(self):
         self.update_lock_icon()
@@ -1306,8 +1320,8 @@ class InputDock(QWidget):
                 lambda text, k=key, w=widget: self._on_material_selection_changed(k, w, text)
             )
         elif key == "Design" and hasattr(widget, "currentTextChanged"):
-            widget.currentTextChanged.connect(self._on_design_mode_changed)
-            self._on_design_mode_changed(widget.currentText())
+            widget.currentTextChanged.connect(self._on_design_mode_changed_from_user)
+            self._set_design_mode(widget.currentText(), open_member_properties=False)
 
     def _is_material_input_key(self, key) -> bool:
         return key in {
@@ -1420,7 +1434,7 @@ class InputDock(QWidget):
         value = str(getattr(self, "_current_design_mode", "") or "").strip()
         return value or "Optimized"
 
-    def _on_design_mode_changed(self, mode_text: str) -> None:
+    def _set_design_mode(self, mode_text: str, open_member_properties: bool = False) -> None:
         mode = str(mode_text or "").strip() or "Optimized"
         self._current_design_mode = mode
 
@@ -1430,6 +1444,12 @@ class InputDock(QWidget):
                     self.additional_inputs.set_member_properties_design_mode(mode)
             except Exception:
                 pass
+
+        if open_member_properties and mode.lower() in {"custom"}:
+            self._show_additional_inputs_dialog("Member Properties")
+
+    def _on_design_mode_changed_from_user(self, mode_text: str) -> None:
+        self._set_design_mode(mode_text, open_member_properties=True)
 
     def _finalize_section_contexts(self):
         for context in self.section_contexts.values():

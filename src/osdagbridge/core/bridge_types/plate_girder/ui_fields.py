@@ -186,18 +186,6 @@ class FrontendData:
                 'No Validator',
                 {
                     "container": "superstructure",
-                    "post_rows": [
-                        {
-                            "type": "additional_geometry",
-                            "label": "Additional Geometry",
-                            "buttons": [
-                                {
-                                    "text": "Modify Here",
-                                    "action": "show_additional_inputs",
-                                }
-                            ],
-                        }
-                    ],
                 },
             )
         )
@@ -258,13 +246,53 @@ class FrontendData:
         )
         options_list.append(
             (
-                "Design",
-                "Design",
-                TYPE_COMBOBOX,
-                ["Optimized", "Customized"],
+                "section_additional_geometry",
+                "",
+                TYPE_TITLE,
+                None,
                 True,
                 'No Validator',
-                {"label": "Design", "default": "Optimized"},
+                {
+                    "container": "superstructure",
+                    "show_group_title": False,
+                    "post_rows": [
+                        {
+                            "type": "additional_geometry",
+                            "label": "Additional Geometry",
+                            "buttons": [
+                                {
+                                    "text": "Modify Here",
+                                    "action": "show_additional_inputs",
+                                }
+                            ],
+                        }
+                    ],
+                },
+            )
+        )
+        options_list.append(
+            (
+                "section_design_type",
+                "",
+                TYPE_TITLE,
+                None,
+                True,
+                'No Validator',
+                {
+                    "container": "superstructure",
+                    "show_group_title": False,
+                },
+            )
+        )
+        options_list.append(
+            (
+                "Design",
+                "Design Type",
+                TYPE_COMBOBOX,
+                ["Optimized", "Custom"],
+                True,
+                'No Validator',
+                {"label": "Design Type", "default": "Optimized"},
             )
         )
 
