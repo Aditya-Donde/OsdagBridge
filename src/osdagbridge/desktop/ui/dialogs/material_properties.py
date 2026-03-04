@@ -8,7 +8,7 @@ import re
 from osdagbridge.desktop.ui.dialogs.custom_titlebar import CustomTitleBar
 from osdagbridge.desktop.ui.dialogs.custom_messagebox import CustomMessageBox, MessageBoxType
 from osdagbridge.desktop.ui.docks.dock_utils import apply_field_style
-from osdagbridge.core.utils.common import VALUES_MATERIAL, VALUES_DECK_CONCRETE_GRADE
+from osdagbridge.core.utils.common import VALUES_MATERIAL, VALUES_DECK_CONCRETE_GRADE, KEY_GIRDER, KEY_CROSS_BRACING, KEY_END_DIAPHRAGM
 
 
 DIALOG_TITLE_MATERIAL_PROPERTIES = "Enter Custom Properties"
@@ -497,3 +497,24 @@ class MaterialPropertiesDialog(QDialog):
 
     def set_member(self, member):
         _ = member
+
+def sync_custom_materials_across_steel_members(combo_map, ensure_option_callback, material_name=None):
+    steel_keys = [KEY_GIRDER, KEY_CROSS_BRACING, KEY_END_DIAPHRAGM]
+    custom_materials = set()
+    
+    if material_name:
+        custom_materials.add(material_name)
+    else:
+        for key in steel_keys:
+            if key in combo_map:
+                combo = combo_map[key]
+                for i in range(combo.count()):
+                    text = combo.itemText(i)
+                    if text.startswith("Cus_"):
+                        custom_materials.add(text)
+                        
+    for key in steel_keys:
+        if key in combo_map:
+            combo = combo_map[key]
+            for mat in custom_materials:
+                ensure_option_callback(combo, mat)

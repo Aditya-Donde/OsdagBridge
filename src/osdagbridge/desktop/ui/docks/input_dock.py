@@ -9,14 +9,14 @@ from PySide6.QtWidgets import (
     
 )
 from PySide6.QtCore import Qt, QRegularExpression, QSize, QTimer, QPoint, QEvent, Signal
-from PySide6.QtGui import QPixmap, QDoubleValidator, QRegularExpressionValidator, QIcon
+from PySide6.QtGui import QPixmap, QDoubleValidator, QRegularExpressionValidator, QIcon, QColor, QBrush
 from PySide6.QtSvgWidgets import *
 from osdagbridge.core.utils.common import *
 from osdagbridge.desktop.ui.dialogs.additional_inputs import AdditionalInputs
 from osdagbridge.desktop.ui.utils.custom_buttons import DockCustomButton
 from osdagbridge.desktop.ui.dialogs.project_location import ProjectLocationDialog
 from osdagbridge.desktop.ui.docks.dock_utils import apply_field_style
-from osdagbridge.desktop.ui.dialogs.material_properties import MaterialPropertiesDialog
+from osdagbridge.desktop.ui.dialogs.material_properties import MaterialPropertiesDialog, sync_custom_materials_across_steel_members
 
 from osdagbridge.desktop.ui.dialogs.custom_titlebar import CustomTitleBar
 from osdagbridge.desktop.ui.dialogs.custom_messagebox import CustomMessageBox, MessageBoxType
@@ -831,6 +831,7 @@ class InputDock(QWidget):
 
         self._finalize_section_contexts()
         self._update_carriageway_placeholder()
+        sync_custom_materials_across_steel_members(self._material_combo_map, self._ensure_material_option)
 
     def _normalize_definition(self, definition):
         if len(definition) == 6:
@@ -1161,6 +1162,16 @@ class InputDock(QWidget):
                     items.append(self.MATERIAL_CUSTOM_OPTION)
                 widget.addItems(items)
 
+                for i, text in enumerate(items):
+                    # Intentionally disabling other option
+                    if text == "Other":
+                        widget.setItemData(i, QBrush(QColor("gray")), Qt.ItemDataRole.ForegroundRole)
+                        model = widget.model()
+                        if hasattr(model, 'item'):
+                            item = model.item(i)
+                            if item:
+                                item.setEnabled(False)
+
             # Prefer backend-stored value, else metadata default.
             try:
                 backend_value = self.backend.get_input_value(key_name) if key_name and hasattr(self.backend, "get_input_value") else None
@@ -1351,6 +1362,8 @@ class InputDock(QWidget):
 
         self._material_custom_fields[material_name] = dict(fields) if isinstance(fields, dict) else {}
         self._ensure_material_option(combo, material_name)
+        if member == "Girder":
+            sync_custom_materials_across_steel_members(self._material_combo_map, self._ensure_material_option, material_name)
         self._set_combo_text_without_signal(combo, material_name)
         self._material_previous_selection[key] = material_name
         self._push_backend_value(key, material_name)
