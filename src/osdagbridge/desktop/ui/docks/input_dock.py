@@ -18,7 +18,7 @@ from osdagbridge.desktop.ui.dialogs.project_location import ProjectLocationDialo
 from osdagbridge.desktop.ui.docks.dock_utils import apply_field_style
 from osdagbridge.desktop.ui.dialogs.material_properties import MaterialPropertiesDialog, sync_custom_materials_across_steel_members
 
-from osdagbridge.desktop.ui.dialogs.custom_titlebar import CustomTitleBar
+from osdagbridge.desktop.ui.utils.custom_titlebar import CustomTitleBar
 from osdagbridge.desktop.ui.dialogs.custom_messagebox import CustomMessageBox, MessageBoxType
 
 class NoScrollComboBox(QComboBox):

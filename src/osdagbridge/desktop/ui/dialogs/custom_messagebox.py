@@ -7,7 +7,7 @@ from PySide6.QtGui import QIcon, QPixmap
 # from custom_titlebar import CustomTitleBar
 # from resources_rc import *
 
-from osdagbridge.desktop.ui.dialogs.custom_titlebar import CustomTitleBar
+from osdagbridge.desktop.ui.utils.custom_titlebar import CustomTitleBar
 from osdagbridge.desktop.resources.resources_rc import *
 
 class MessageBoxType:

@@ -18,7 +18,7 @@ from PySide6.QtCore import Qt
 
 from osdagbridge.desktop.ui.dialogs.tabs.common import apply_field_style
 from osdagbridge.desktop.ui.utils.styled_scroll_area import StyledScrollArea
-from osdagbridge.desktop.ui.dialogs.custom_titlebar import CustomTitleBar
+from osdagbridge.desktop.ui.utils.custom_titlebar import CustomTitleBar
 
 
 class NoScrollTable(QTableWidget):

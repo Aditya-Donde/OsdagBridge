@@ -17,7 +17,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtWidgets import QHeaderView
 
 from osdagbridge.desktop.ui.dialogs.tabs.common import apply_field_style
-from osdagbridge.desktop.ui.dialogs.custom_titlebar import CustomTitleBar
+from osdagbridge.desktop.ui.utils.custom_titlebar import CustomTitleBar
 from osdagbridge.core.bridge_types.plate_girder.ui_fields_additional_input import (
     LOAD_COMBINATION_TAB_SCHEMA,
 )

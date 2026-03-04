@@ -5,7 +5,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QDoubleValidator
 import re
 
-from osdagbridge.desktop.ui.dialogs.custom_titlebar import CustomTitleBar
+from osdagbridge.desktop.ui.utils.custom_titlebar import CustomTitleBar
 from osdagbridge.desktop.ui.dialogs.custom_messagebox import CustomMessageBox, MessageBoxType
 from osdagbridge.desktop.ui.docks.dock_utils import apply_field_style
 from osdagbridge.core.utils.common import VALUES_MATERIAL, VALUES_DECK_CONCRETE_GRADE, KEY_GIRDER, KEY_CROSS_BRACING, KEY_END_DIAPHRAGM

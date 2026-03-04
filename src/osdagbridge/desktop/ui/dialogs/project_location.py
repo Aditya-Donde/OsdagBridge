@@ -4,7 +4,7 @@ from PySide6.QtWidgets import (
     QRadioButton, QButtonGroup, QStackedWidget, QSpacerItem
 )
 from PySide6.QtCore import Qt
-from osdagbridge.desktop.ui.dialogs.custom_titlebar import CustomTitleBar
+from osdagbridge.desktop.ui.utils.custom_titlebar import CustomTitleBar
 from osdagbridge.desktop.ui.dialogs.custom_messagebox import CustomMessageBox, MessageBoxType
 from osdagbridge.core.bridge_types.plate_girder.ui_fields_project_location import (
     get_state_list,
