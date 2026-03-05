@@ -145,14 +145,14 @@ class SteelDesign(QDialog):
     # =========================================================================
 
     def _setup_analysis_plots(self):
-        """Integrate production-ready analytical plotting inside the empty UI placeholder."""
+        """Analytical plotting inside the empty UI placeholder."""
 
         # 1. Figure + Canvas
         self.figure = Figure(figsize=(6, 8))
         self.canvas = FigureCanvas(self.figure)
         self.canvas.setStyleSheet("background-color: transparent;")
         
-        # 1.5 Add Interaction combobox
+        # 1.5 Interaction combobox
         self.interaction_combo = QComboBox()
         self.interaction_combo.addItems(["Maximum Values", "Interactive"])
         self.interaction_combo.setFixedWidth(160)
@@ -193,9 +193,10 @@ class SteelDesign(QDialog):
             ax.spines['top'].set_visible(False)
             ax.spines['right'].set_visible(False)
             ax.spines['left'].set_visible(False)
+            ax.spines['bottom'].set_visible(False)
             ax.set_yticks([])
             ax.set_ylabel("")
-            ax.axhline(0, color='black', linewidth=1)
+            ax.axhline(0, color='black', linewidth=0)
 
         self.ax_defl.invert_yaxis()
 
