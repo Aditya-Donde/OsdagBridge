@@ -754,3 +754,97 @@ def _match_length(arr: np.ndarray, target_len: int) -> np.ndarray:
         return arr[:target_len]
     else:
         return np.concatenate([arr, np.zeros(target_len - n, dtype=arr.dtype)])
+=======
+            # --- VERIFICATION MECHANISM ---
+            print("\n--- Steel Design Verification ---")
+            cad_state = self._main_window.cad_state
+            
+            print(f"DEBUG: cad_state keys: {list(cad_state.keys())}")
+            
+            main_window = self._main_window
+            print(f"DEBUG: main_window has _analysis_engine? {hasattr(main_window, '_analysis_engine')}")
+            if hasattr(main_window, 'backend'):
+                print(f"DEBUG: main_window.backend has analyser? {hasattr(main_window.backend, 'analyser')}")
+                print(f"DEBUG: main_window.backend has _analysis_engine? {hasattr(main_window.backend, '_analysis_engine')}")
+                if hasattr(main_window.backend, 'analyser'):
+                    print(f"DEBUG: backend.analyser has model? {hasattr(main_window.backend.analyser, 'model')}")
+            
+            if hasattr(main_window, 'analyser'):
+                print(f"DEBUG: main_window has analyser object.")
+                
+            # 1 & 2. Print results object and attributes
+            analyser_model = None
+            for key, val in cad_state.items():
+                if hasattr(val, '_analysis_engine') or hasattr(val, 'model'):
+                    if hasattr(val, 'model') and hasattr(val.model, 'get_results'):
+                        analyser_model = val
+                        break
+                        
+            if analyser_model:
+                try:
+                    results_obj = analyser_model.model.get_results()
+                    print(f"Results object: {results_obj}")
+                    print(f"Available attributes: {dir(results_obj)}\n")
+                    
+                    if hasattr(results_obj, 'forces'):
+                        # 3. Print a sample analyser force value
+                        forces = results_obj.forces
+                        print("Sample analyser force value:")
+                        
+                        # Find a valid loadcase and element dynamically
+                        first_lc = forces.coords['Loadcase'].values[0]
+                        first_ele = forces.coords['Element'].values[0]
+                        
+                        try:
+                            sample_mz = forces.sel(Loadcase=first_lc, Element=first_ele, Component="Mz_i").item()
+                            print(f"Element {first_ele}, Loadcase {first_lc}, Mz_i = {sample_mz}")
+                            
+                            # 4. Print UI extracted arrays
+                            from osdagbridge.core.bridge_types.plate_girder.analysis_results import PlateGirderAnalysisResults
+                            import numpy as np
+                            
+                            ar_helper = PlateGirderAnalysisResults(results_obj, analyser_model.model)
+                            girders, _ = ar_helper.build_girders(verbose=False)
+                            
+                            if girders:
+                                first_girder_name = list(girders.keys())[0]
+                                g_elements = girders[first_girder_name]["elements"]
+                                
+                                # UI Extracting identically to Girder2DPlotsWidget
+                                bmd_dict = ar_helper.get_beam_element_results(g_elements, first_lc, "Mz_i")
+                                sfd_dict = ar_helper.get_beam_element_results(g_elements, first_lc, "Vy_i")
+                                
+                                def safe_float(v):
+                                    if v is None: return 0.0
+                                    try: return float(v)
+                                    except: return 0.0
+                                    
+                                raw_bmd = [safe_float(bmd_dict.get(eid)) for eid in g_elements] + [0.0]
+                                raw_sfd = [safe_float(sfd_dict.get(eid)) for eid in g_elements] + [0.0]
+                                
+                                bmd_array = np.nan_to_num(np.array(raw_bmd))
+                                sfd_array = np.nan_to_num(np.array(raw_sfd))
+                                
+                                # Ensure we compare against the correct element that we sampled
+                                # Girders may start at different elements, let's find the correct index:
+                                if first_ele in g_elements:
+                                    idx = g_elements.index(first_ele)
+                                    ui_val = bmd_array[idx]
+                                    
+                                    print("\nUI extracted value:")
+                                    print(f"bmd[{idx}] = {ui_val}")
+                                    
+                                    # 5. Compare
+                                    if abs(float(sample_mz) - float(ui_val)) < 1e-6:
+                                        print("\nVerification: MATCH")
+                                    else:
+                                        print(f"\nVerification: MISMATCH (Analyser: {sample_mz} != UI: {ui_val})")
+                                else:
+                                    print(f"\nCannot verify: Element {first_ele} is not in the first girder {first_girder_name}.")
+                        except KeyError:
+                            print("Component Mz_i not found or coords mismatch in xarray.")
+                except Exception as e:
+                    print(f"Verification Error: {e}")
+            else:
+                print("Could not locate analyser_model in cad_state to verify.")
+            print("---------------------------------\n")
