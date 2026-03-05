@@ -37,7 +37,8 @@ from osdagbridge.core.bridge_types.plate_girder.ui_fields_additional_input impor
 class AdditionalInputs(QDialog):
     """Main dialog for Additional Inputs with tabbed interface"""
     
-    def __init__(self, footpath_value="None", carriageway_width=7.5, parent=None):
+    def __init__(self, footpath_value="None", carriageway_width=7.5, parent=None, initial_cad_state=None):
+        self._initial_cad_state = initial_cad_state or {}
         super().__init__(parent)
         self.setObjectName("AdditionalInputs")
         self.resize(1024, 720)
@@ -221,7 +222,10 @@ class AdditionalInputs(QDialog):
         self._last_top_tab_index = 0
         
         # Sub-Tab 1: Typical Section Details
-        self.typical_section_tab = TypicalSectionDetailsTab(self.footpath_value, self.carriageway_width)
+        self.typical_section_tab = TypicalSectionDetailsTab(
+            self.footpath_value, self.carriageway_width,
+            initial_cad_state=self._initial_cad_state,
+        )
         self.tabs.addTab(self.typical_section_tab, "Typical Section Details")
         
         # Sub-Tab 2: Member Properties

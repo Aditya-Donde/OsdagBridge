@@ -87,7 +87,8 @@ class TypicalSectionDetailsTab(QWidget):
     footpath_changed = Signal(str)
     girder_count_changed = Signal(int)
 
-    def __init__(self, footpath_value="None", carriageway_width=7.5, parent=None):
+    def __init__(self, footpath_value="None", carriageway_width=7.5, parent=None, initial_cad_state=None):
+        self._initial_cad_state = initial_cad_state or {}
         super().__init__(parent)
         self.footpath_value = footpath_value
         self.carriageway_width = carriageway_width
@@ -106,6 +107,9 @@ class TypicalSectionDetailsTab(QWidget):
             "(NoOfFootpaths x RailingWidth)"
         )
         self.init_ui()
+        # Apply homepage CAD state so the preview starts in sync
+        if self._initial_cad_state:
+            self.cad_preview.update_params(self._initial_cad_state)
 
     def style_input_field(self, field):
         apply_field_style(field)
@@ -377,6 +381,8 @@ class TypicalSectionDetailsTab(QWidget):
 
         if params:
             self.cad_preview.update_params(params)
+
+        print(f"params: {params}")
             
     def get_typical_section_params(self) -> dict:
         params = {}

@@ -47,6 +47,7 @@ class TopViewCADWidget(QWidget):
         self.scroll_area = None
         
         # bridge parameters with default values (all in mm)
+        # These are the CAD state variables
         self.params = {
             'span_length': 35000,
             'num_girders': 4,

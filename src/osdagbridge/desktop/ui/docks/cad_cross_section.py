@@ -62,6 +62,7 @@ class CrossSectionCADWidget(QWidget):
         self._zoom_controls_setup = False
         
         # bridge parameters with default values (all in mm)
+        # These are the CAD state variables
         self.params = {
             'span_length': 35000,
             'num_girders': 4,

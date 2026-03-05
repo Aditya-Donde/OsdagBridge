@@ -288,6 +288,8 @@ class InputDock(QWidget):
         # Merge values from Additional Inputs dialog if they exist
         if hasattr(self, 'additional_input_values') and self.additional_input_values:
             input_values.update(self.additional_input_values)
+
+        print(f"input_values: {input_values}")
         
         return input_values
     
@@ -749,7 +751,15 @@ class InputDock(QWidget):
         if not hasattr(self, "_additional_inputs_saved_data"):
             self._additional_inputs_saved_data = {}
 
-        self.additional_inputs = AdditionalInputs(footpath_value, carriageway_width)
+        # Grab homepage CAD state so dialog preview starts in sync
+        initial_cad_state = {}
+        try:
+            if hasattr(self.parent, 'cad_comp_widget'):
+                initial_cad_state = dict(self.parent.cad_comp_widget.cross_section_widget.params)
+        except Exception:
+            pass
+
+        self.additional_inputs = AdditionalInputs(footpath_value, carriageway_width, initial_cad_state=initial_cad_state)
         self.additional_inputs_widget = self.additional_inputs
         
         # Propagate project location data to additional inputs (for Temperature Load etc)
@@ -1482,6 +1492,8 @@ class InputDock(QWidget):
         if self.additional_inputs and self.additional_inputs.isVisible():
             if hasattr(self, 'additional_inputs_widget'):
                 self.additional_inputs_widget.update_footpath_value(footpath_value)
+        # Notify CAD so the homepage cross-section updates immediately
+        self.emit_value_changed()
 
     def on_include_median_changed(self, _value):
         self._update_carriageway_placeholder()

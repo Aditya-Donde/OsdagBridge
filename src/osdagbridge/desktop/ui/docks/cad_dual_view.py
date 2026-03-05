@@ -257,9 +257,9 @@ class BridgeDualCADWidget(QWidget):
             footpath_value = input_dict[KEY_FOOTPATH]
             if footpath_value == "None":
                 params['footpath_config'] = 'none'
-            elif footpath_value == "Single Sided":
+            elif footpath_value == "Single Side":
                 params['footpath_config'] = 'left'
-            elif footpath_value == "Both":
+            elif footpath_value == "Both Sides":
                 params['footpath_config'] = 'both'
         
         # Map cross bracing spacing (meters to mm)
@@ -269,10 +269,27 @@ class BridgeDualCADWidget(QWidget):
         # Map median present
         if KEY_INCLUDE_MEDIAN in input_dict:
             params['median_present'] = bool(input_dict[KEY_INCLUDE_MEDIAN])
+            # When enabling median from homepage and no median_type was set yet,
+            # provide a sensible default so the CAD can draw a shape.
+            if params['median_present'] and 'median_type' not in input_dict:
+                default_type = "IRC 5 - Raised Kerb"
+                params['median_type'] = default_type
+                geom = MedianGeometry.get_geometry(default_type)
+                if geom:
+                    if "median_width" in geom:
+                        params["median_width"] = geom["median_width"]
+                    if "kerb_height" in geom:
+                        params["median_height"] = geom["kerb_height"]
+                    elif "barrier_height" in geom:
+                        params["median_height"] = geom["barrier_height"]
+
+        print(f"@@{params}")
         
         # Update both widgets with same parameters
         self.cross_section_widget.update_params(params)
         self.top_view_widget.update_params(params)
+
+
     
     def update_specific_param(self, param_key, value):
         """
