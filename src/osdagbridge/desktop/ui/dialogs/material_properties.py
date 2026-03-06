@@ -16,6 +16,7 @@ from osdagbridge.core.utils.resource_db import ensure_resource_database
 
 DIALOG_TITLE_MATERIAL_PROPERTIES = "Enter Custom Properties"
 CUSTOM_MATERIAL_PREFIX = "Cus_"
+DEFAULT_DECK_CUSTOM_GRADE = "M 15"
 
 MATPROP_LABEL_MATERIAL = "Material"
 
@@ -361,7 +362,10 @@ class MaterialPropertiesDialog(QDialog):
 
     def _defaults_for_material(self, material_name):
         if self.is_deck_material:
-            return self._deck_defaults(material_name, self._factor_value_from_label(DEFAULT_ECM_FACTOR_LABEL))
+            grade = (material_name or "").strip()
+            if not grade or grade.startswith(CUSTOM_MATERIAL_PREFIX) or self._get_concrete_from_code(grade) is None:
+                grade = DEFAULT_DECK_CUSTOM_GRADE
+            return self._deck_defaults(grade, self._factor_value_from_label(DEFAULT_ECM_FACTOR_LABEL))
         return self._steel_defaults(material_name)
 
     def _steel_defaults(self, grade):
