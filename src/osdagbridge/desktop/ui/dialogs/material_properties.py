@@ -11,6 +11,7 @@ from osdagbridge.desktop.ui.utils.custom_titlebar import CustomTitleBar
 from osdagbridge.desktop.ui.dialogs.custom_messagebox import CustomMessageBox, MessageBoxType
 from osdagbridge.desktop.ui.docks.dock_utils import apply_field_style
 from osdagbridge.core.utils.common import VALUES_MATERIAL, VALUES_DECK_CONCRETE_GRADE, KEY_GIRDER, KEY_CROSS_BRACING, KEY_END_DIAPHRAGM
+from osdagbridge.core.utils.resource_db import ensure_resource_database
 
 
 DIALOG_TITLE_MATERIAL_PROPERTIES = "Enter Custom Properties"
@@ -38,17 +39,8 @@ STEEL_MODULUS_G_GPA = 77.0
 STEEL_POISSON_RATIO = 0.30
 STEEL_THERMAL_COEFF = 11.7
 
-def _locate_resource_file(file_name: str) -> Path:
-    current = Path(__file__).resolve()
-    for parent in current.parents:
-        candidate = parent / "core" / "data" / "ResourceFiles" / file_name
-        if candidate.exists():
-            return candidate
-    return current.parents[3] / "core" / "data" / "ResourceFiles" / file_name
-
-
 def _execute_resource_query(query: str):
-    db_path = _locate_resource_file("Intg_osdag.sqlite")
+    db_path = ensure_resource_database(Path(__file__).resolve())
     if not db_path.exists():
         return None
 

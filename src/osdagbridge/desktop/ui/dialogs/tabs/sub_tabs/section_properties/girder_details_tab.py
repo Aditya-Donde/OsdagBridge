@@ -47,6 +47,7 @@ from osdagbridge.core.utils.common import (
 from osdagbridge.desktop.ui.dialogs.tabs.common import apply_field_style
 from osdagbridge.desktop.ui.utils.custom_titlebar import CustomTitleBar
 from osdagbridge.desktop.ui.utils.rolled_section_preview import RolledSectionPreview
+from osdagbridge.core.utils.resource_db import ensure_resource_database
 
 
 DEFAULT_MEMBER_LENGTH_M = 30.0
@@ -60,13 +61,7 @@ SAIL_APPROVED_THICKNESS_VALUES = [
     "40", "45", "50", "56", "63", "75", "80", "90", "100", "110", "120",
 ]
 def _locate_database() -> Path:
-    current = Path(__file__).resolve()
-    for parent in current.parents:
-        candidate = parent / "core" / "data" / "ResourceFiles" / "Intg_osdag.sqlite"
-        if candidate.exists():
-            return candidate
-    # Fall back to the repo-relative location even if it does not exist to avoid crashes.
-    return current.parents[1] / "core" / "data" / "ResourceFiles" / "Intg_osdag.sqlite"
+    return ensure_resource_database(Path(__file__).resolve())
 
 
 DB_PATH = _locate_database()
