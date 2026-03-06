@@ -761,21 +761,27 @@ class InputDock(QWidget):
 
         self.additional_inputs = AdditionalInputs(footpath_value, carriageway_width, initial_cad_state=initial_cad_state)
         self.additional_inputs_widget = self.additional_inputs
+
+        dialog = AdditionalInputs(footpath_value, carriageway_width, initial_cad_state=initial_cad_state)
+        
+        self.additional_inputs = dialog
+        self.additional_inputs_widget = dialog
         
         # Propagate project location data to additional inputs (for Temperature Load etc)
         location_data = self.backend.get_input_value(KEY_PROJECT_LOCATION) if hasattr(self.backend, "get_input_value") else None
         if location_data and hasattr(self.additional_inputs, 'update_project_location'):
             self.additional_inputs.update_project_location(location_data)
+        
 
         # Restore previously saved dialog state (includes stiffener details).
         if isinstance(getattr(self, "_additional_inputs_saved_data", None), dict) and self._additional_inputs_saved_data:
             try:
-                self.additional_inputs.set_properties_data(self._additional_inputs_saved_data)
+                dialog.set_properties_data(self._additional_inputs_saved_data)
             except Exception:
                 pass
 
         try:
-            self.additional_inputs.set_member_properties_design_mode(self._get_basic_design_mode())
+            dialog.set_member_properties_design_mode(self._get_basic_design_mode())
         except Exception:
             pass
 
@@ -791,16 +797,16 @@ class InputDock(QWidget):
 
         # Capture state when dialog closes.
         try:
-            self.additional_inputs.finished.connect(self._handle_additional_inputs_closed)
+            dialog.finished.connect(self._handle_additional_inputs_closed)
         except Exception:
             pass
 
         # Connect to accept signal to handle save
-        result = self.additional_inputs.exec_()
+        result = dialog.exec_()
         
         # If user clicked Save (accepted), get values and trigger update
         if result == AdditionalInputs.Accepted:
-            values = self.additional_inputs.get_all_values()
+            values = dialog.get_all_values()
             if values:
                 # Merge with existing input values
                 self.additional_input_values = values

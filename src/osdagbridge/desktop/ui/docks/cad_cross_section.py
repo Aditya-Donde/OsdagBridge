@@ -382,8 +382,8 @@ class CrossSectionCADWidget(QWidget):
         self.params.update(params)
         self.show_dimensions = True
 
-        if "crash_barrier_geometry" in params:
-            self.crash_barrier_params = params["crash_barrier_geometry"]
+        # if "crash_barrier_geometry" in params:
+        #     self.crash_barrier_params = params["crash_barrier_geometry"]
 
         # Store crash barrier type so draw_crash_barrier() can dispatch on it
         if "crash_barrier_type" in params:

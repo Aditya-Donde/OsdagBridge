@@ -324,7 +324,7 @@ class TypicalSectionDetailsTab(QWidget):
         params = {}
 
         if hasattr(self, "no_of_girders") and self.no_of_girders.text():
-            params['num_girders'] = int(float(self.no_of_girders.text()))
+            params['num_girders'] = int(self.no_of_girders.text())
 
         if hasattr(self, "girder_spacing") and self.girder_spacing.text():
             params['girder_spacing'] = float(self.girder_spacing.text()) * 1000
@@ -381,6 +381,8 @@ class TypicalSectionDetailsTab(QWidget):
 
         if params:
             self.cad_preview.update_params(params)
+
+        
 
         print(f"params: {params}")
             
