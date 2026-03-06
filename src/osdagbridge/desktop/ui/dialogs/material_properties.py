@@ -3,6 +3,8 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QDoubleValidator
+from pathlib import Path
+import sqlite3
 import re
 
 from osdagbridge.desktop.ui.utils.custom_titlebar import CustomTitleBar
@@ -36,35 +38,93 @@ STEEL_MODULUS_G_GPA = 77.0
 STEEL_POISSON_RATIO = 0.30
 STEEL_THERMAL_COEFF = 11.7
 
-STEEL_GRADE_BASE_VALUES = {
-    250: {"Fy": 250, "Fu": 410},
-    275: {"Fy": 275, "Fu": 430},
-    300: {"Fy": 300, "Fu": 440},
-    350: {"Fy": 350, "Fu": 490},
-    410: {"Fy": 410, "Fu": 540},
-    450: {"Fy": 450, "Fu": 570},
-    550: {"Fy": 550, "Fu": 650},
-    600: {"Fy": 600, "Fu": 700},
-    650: {"Fy": 650, "Fu": 750},
-}
+def _locate_resource_file(file_name: str) -> Path:
+    current = Path(__file__).resolve()
+    for parent in current.parents:
+        candidate = parent / "core" / "data" / "ResourceFiles" / file_name
+        if candidate.exists():
+            return candidate
+    return current.parents[3] / "core" / "data" / "ResourceFiles" / file_name
 
-CONCRETE_GRADE_BASE_VALUES = {
-    "M20": {"fck": 20.0, "fctm": 2.2, "Ecm": 22.0},
-    "M25": {"fck": 25.0, "fctm": 2.6, "Ecm": 25.0},
-    "M30": {"fck": 30.0, "fctm": 2.9, "Ecm": 30.0},
-    "M35": {"fck": 35.0, "fctm": 3.2, "Ecm": 33.0},
-    "M40": {"fck": 40.0, "fctm": 3.5, "Ecm": 34.0},
-    "M45": {"fck": 45.0, "fctm": 3.8, "Ecm": 36.0},
-    "M50": {"fck": 50.0, "fctm": 4.1, "Ecm": 37.0},
-    "M55": {"fck": 55.0, "fctm": 4.2, "Ecm": 38.0},
-    "M60": {"fck": 60.0, "fctm": 4.4, "Ecm": 39.0},
-    "M65": {"fck": 65.0, "fctm": 4.5, "Ecm": 40.0},
-    "M70": {"fck": 70.0, "fctm": 4.6, "Ecm": 41.0},
-    "M75": {"fck": 75.0, "fctm": 4.7, "Ecm": 42.0},
-    "M80": {"fck": 80.0, "fctm": 4.8, "Ecm": 42.0},
-    "M85": {"fck": 85.0, "fctm": 4.9, "Ecm": 43.0},
-    "M90": {"fck": 90.0, "fctm": 5.0, "Ecm": 44.0},
-}
+
+def _execute_resource_query(query: str):
+    db_path = _locate_resource_file("Intg_osdag.sqlite")
+    if not db_path.exists():
+        return None
+
+    connection = sqlite3.connect(str(db_path))
+    cursor = connection.cursor()
+    try:
+        cursor.execute(query)
+        return cursor.fetchall()
+    except sqlite3.Error:
+        return None
+    finally:
+        connection.close()
+
+
+def _load_concrete_grade_values_from_db():
+    rows = _execute_resource_query(
+        """
+        SELECT Grade, fck, fctm, Ecm
+        FROM Concrete_Grade_Properties
+        """
+    )
+
+    values = {}
+    if rows is not None:
+        for grade, fck, fctm, ecm in rows:
+            key = str(grade).strip().upper()
+            values[key] = {
+                "fck": float(fck),
+                "fctm": float(fctm),
+                "Ecm": float(ecm),
+            }
+
+    return values
+
+
+def _normalize_steel_material_name(name: str) -> str:
+    return "".join(str(name or "").upper().split())
+
+
+def _load_steel_material_values_from_db():
+    values = {}
+    rows = _execute_resource_query(
+        '''
+        SELECT [Material Name], [Yield Strength], [Ultimate Tensile Strength]
+        FROM Material
+        '''
+    )
+    if rows is None:
+        # Backward-compatibility for older local DBs.
+        rows = _execute_resource_query(
+            '''
+            SELECT Grade, [Yield Stress (< 20)], [Ultimate Tensile Stress]
+            FROM Material
+            '''
+        )
+
+    if rows is None:
+        return {}
+
+    try:
+        for material_name, fy, fu in rows:
+            key = _normalize_steel_material_name(material_name)
+            if not key:
+                continue
+
+            fy_val = float(fy)
+            fu_val = float(fu)
+            values[key] = {"Fy": fy_val, "Fu": fu_val}
+
+        return values
+    except (TypeError, ValueError):
+        return {}
+
+
+STEEL_MATERIAL_BASE_VALUES = _load_steel_material_values_from_db()
+CONCRETE_GRADE_BASE_VALUES = _load_concrete_grade_values_from_db()
 
 KEY_CONCRETE_FCK = "Characteristic Compressive (Cube) Strength of Concrete, (fck)cu (MPa)"
 KEY_CONCRETE_FCTM = "Mean Tensile Strength of Concrete, fctm (MPa)"
@@ -313,16 +373,25 @@ class MaterialPropertiesDialog(QDialog):
         return self._steel_defaults(material_name)
 
     def _steel_defaults(self, grade):
-        grade_value = self._extract_numeric_grade(grade)
-        defaults = STEEL_GRADE_BASE_VALUES.get(grade_value, STEEL_GRADE_BASE_VALUES[250])
+        normalized_name = _normalize_steel_material_name(grade)
+        defaults = STEEL_MATERIAL_BASE_VALUES.get(normalized_name) or {}
+
+        if not defaults:
+            # Backward fallback for custom/older naming patterns.
+            grade_value = self._extract_numeric_grade(grade)
+            prefix = f"E{grade_value}"
+            for key, values in STEEL_MATERIAL_BASE_VALUES.items():
+                if key.startswith(prefix):
+                    defaults = values
+                    break
         
         result = {}
         for field_tuple in steel_material_properties_values():
             key = field_tuple[0]
             if "Fu" in key:
-                result[key] = "{:.1f}".format(defaults["Fu"])
+                result[key] = "{:.1f}".format(defaults.get("Fu", 0.0))
             elif "Fy" in key:
-                result[key] = "{:.1f}".format(defaults["Fy"])
+                result[key] = "{:.1f}".format(defaults.get("Fy", 0.0))
             elif "E (GPa)" in key and "Rigidity" not in key:
                 result[key] = "{:.1f}".format(STEEL_MODULUS_E_GPA)
             elif "G (GPa)" in key:
@@ -382,12 +451,12 @@ class MaterialPropertiesDialog(QDialog):
         # Fallback path: if extra suffix digits exist, try first 3 digits.
         if len(digits) >= 3:
             first_three = int(digits[:3])
-            if first_three in STEEL_GRADE_BASE_VALUES:
+            if any(key.startswith(f"E{first_three}") for key in STEEL_MATERIAL_BASE_VALUES):
                 return first_three
 
         try:
             parsed = int(digits)
-            return parsed if parsed in STEEL_GRADE_BASE_VALUES else default
+            return parsed if any(key.startswith(f"E{parsed}") for key in STEEL_MATERIAL_BASE_VALUES) else default
         except ValueError:
             return default
 
@@ -477,8 +546,16 @@ class MaterialPropertiesDialog(QDialog):
                     fy_value = custom_match.group(1)
                     fu_value = custom_match.group(2)
                 else:
-                    grade_value = self._extract_numeric_grade(name, default=None)
-                    defaults = STEEL_GRADE_BASE_VALUES.get(grade_value) if grade_value is not None else None
+                    defaults = STEEL_MATERIAL_BASE_VALUES.get(_normalize_steel_material_name(name))
+                    if not defaults:
+                        grade_value = self._extract_numeric_grade(name, default=None)
+                        defaults = None
+                        if grade_value is not None:
+                            prefix = f"E{grade_value}"
+                            for key, values in STEEL_MATERIAL_BASE_VALUES.items():
+                                if key.startswith(prefix):
+                                    defaults = values
+                                    break
                     if defaults:
                         fy_value = "{:.1f}".format(defaults["Fy"])
                         fu_value = "{:.1f}".format(defaults["Fu"])

@@ -352,7 +352,7 @@ class FrontendData:
                 VALUES_DECK_CONCRETE_GRADE,
                 True,
                 'No Validator',
-                {"label": "Deck", "default": "M 25"},
+                {"label": "Deck"},
             )
         )
 
