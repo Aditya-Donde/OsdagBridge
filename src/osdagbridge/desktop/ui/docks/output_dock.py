@@ -1,6 +1,6 @@
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QSizePolicy,
-    QPushButton, QGroupBox, QCheckBox, QScrollArea, QFrame, QComboBox, QLineEdit
+    QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QLabel, QSizePolicy,
+    QPushButton, QGroupBox, QCheckBox, QScrollArea, QFrame, QComboBox, QRadioButton, QButtonGroup, QLineEdit
 )
 from PySide6.QtCore import Qt, QSize
 from PySide6.QtGui import QIcon
@@ -196,9 +196,183 @@ class OutputDock(QWidget):
         scroll_layout.setContentsMargins(0, 0, 0, 0)
         scroll_layout.setSpacing(10)
 
-        analysis_group = self._build_analysis_group()
-        if analysis_group:
-            scroll_layout.addWidget(analysis_group)
+        results_group = QGroupBox("Analysis Results")
+        results_group.setStyleSheet(
+            """
+            QGroupBox {
+                font-weight: bold;
+                font-size: 11px;
+                color: #333;
+                border: 1px solid #90AF13;
+                border-radius: 4px;
+                margin-top: 8px;
+                padding-top: 12px;
+                background-color: white;
+            }
+            QGroupBox::title {
+                subcontrol-origin: margin;
+                subcontrol-position: top left;
+                left: 8px;
+                padding: 0 4px;
+                background-color: white;
+            }
+            """
+        )
+        results_layout = QVBoxLayout(results_group)
+        results_layout.setContentsMargins(10, 8, 10, 10)
+        results_layout.setSpacing(8)
+
+        member_row = QHBoxLayout()
+        member_label = QLabel("Member")
+        member_label.setStyleSheet("""
+            QLabel {
+                color: #000000;
+                font-size: 12px;
+                background: transparent;
+            }
+        """)
+        member_label.setMinimumWidth(104)
+        self.member_combo = NoScrollComboBox()
+        self.member_combo.addItems(["All"])
+        apply_field_style(self.member_combo)
+        member_row.addWidget(member_label)
+        member_row.addWidget(self.member_combo)
+        results_layout.addLayout(member_row)
+
+        load_combo_row = QHBoxLayout()
+        load_combo_label = QLabel("Load Combination")
+        load_combo_label.setStyleSheet("""
+            QLabel {
+                color: #000000;
+                font-size: 12px;
+                background: transparent;
+            }
+        """)
+        load_combo_label.setMinimumWidth(100)
+        self.load_combo = NoScrollComboBox()
+        self.load_combo.addItems(["Envelope"])
+        apply_field_style(self.load_combo)
+        load_combo_row.addWidget(load_combo_label)
+        load_combo_row.addWidget(self.load_combo)
+        results_layout.addLayout(load_combo_row)
+
+        forces_grid = QHBoxLayout()
+        forces_grid.setSpacing(8)
+
+        self.force_group = QButtonGroup(self)
+        self.force_group.setExclusive(True)
+
+        radio_style = """
+        QRadioButton {
+            font-size: 12px;
+            color: #000000;
+            spacing: 6px;
+        }
+        QRadioButton::indicator {
+            width: 14px;
+            height: 14px;
+        }
+        QRadioButton::indicator:checked {
+            background-color: #90AF13;
+            border: 2px solid #90AF13;
+            border-radius: 7px;
+        }
+        QRadioButton::indicator:unchecked {
+            border: 2px solid #777;
+            border-radius: 7px;
+        }
+        """
+
+        col1 = QVBoxLayout()
+        col2 = QVBoxLayout()
+        col3 = QVBoxLayout()
+
+        labels = [
+            ("F<sub>x</sub>", col1),
+            ("M<sub>x</sub>", col1),
+            ("D<sub>x</sub>", col1),
+
+            ("F<sub>y</sub>", col2),
+            ("M<sub>y</sub>", col2),
+            ("D<sub>y</sub>", col2),
+
+            ("F<sub>z</sub>", col3),
+            ("M<sub>z</sub>", col3),
+            ("D<sub>z</sub>", col3),
+        ]
+
+        for text, col in labels:
+            row = QHBoxLayout()
+
+            rb = QRadioButton()
+            rb.setStyleSheet(radio_style)
+
+            label = QLabel(text)
+            label.setTextFormat(Qt.RichText)
+            label.setStyleSheet("font-size: 12px; color: #000000;")
+
+            row.addWidget(rb)
+            row.addWidget(label)
+            row.addStretch()
+
+            self.force_group.addButton(rb)
+            col.addLayout(row)
+
+        forces_grid.addLayout(col1)
+        forces_grid.addLayout(col2)
+        forces_grid.addLayout(col3)
+
+        results_layout.addLayout(forces_grid)
+
+        display_group = QGroupBox("Display Options")
+        display_group.setStyleSheet("""
+            QGroupBox {
+                font-weight: bold;
+                font-size: 11px;
+                color: #333;
+                border: 1px solid #90AF13;
+                border-radius: 4px;
+                margin-top: 8px;
+                padding-top: 12px;
+                background-color: white;
+            }
+            QGroupBox::title {
+                subcontrol-origin: margin;
+                subcontrol-position: top left;
+                left: 8px;
+                padding: 0 4px;
+                background-color: white;
+            }
+        """)
+
+        display_layout = QGridLayout(display_group)
+        display_layout.setContentsMargins(10, 8, 10, 10)
+        display_layout.setHorizontalSpacing(30)
+        display_layout.setVerticalSpacing(8)
+
+        max_cb = QCheckBox("Max")
+        min_cb = QCheckBox("Min")
+        util_cb = QCheckBox("Controlling Utilization Ratio")
+
+        checkbox_style = """
+        QCheckBox {
+            font-size: 12px;
+            color: #000000;
+            spacing: 6px;
+        }
+        """
+
+        max_cb.setStyleSheet(checkbox_style)
+        min_cb.setStyleSheet(checkbox_style)
+        util_cb.setStyleSheet(checkbox_style)
+
+        display_layout.addWidget(max_cb, 0, 0)
+        display_layout.addWidget(min_cb, 0, 1)
+        display_layout.addWidget(util_cb, 1, 0, 1, 2)
+
+        results_layout.addWidget(display_group)
+
+        scroll_layout.addWidget(results_group)
 
         design_group = QGroupBox("Design")
         design_group.setStyleSheet(
