@@ -288,15 +288,15 @@ class OutputDock(QWidget):
         col3 = QVBoxLayout()
 
         labels = [
-            ("F<sub>x</sub>", col1),
-            ("M<sub>x</sub>", col1),
+            ("V<sub>x</sub>", col1),
+            ("T<sub>x</sub>", col1),
             ("D<sub>x</sub>", col1),
 
-            ("F<sub>y</sub>", col2),
+            ("V<sub>y</sub>", col2),
             ("M<sub>y</sub>", col2),
             ("D<sub>y</sub>", col2),
 
-            ("F<sub>z</sub>", col3),
+            ("V<sub>z</sub>", col3),
             ("M<sub>z</sub>", col3),
             ("D<sub>z</sub>", col3),
         ]
