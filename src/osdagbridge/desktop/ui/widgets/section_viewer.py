@@ -18,10 +18,9 @@ from osdagbridge.desktop.ui.utils.cad_palette import (
     CAD_PLACEHOLDER_TEXT,
     CAD_SHAPE_FILL,
 )
-from osdagbridge.core.utils.resource_db import ensure_resource_database, locate_resource_database
 
 
-DB_PATH = locate_resource_database(Path(__file__).resolve())
+DB_PATH = Path(__file__).resolve().parents[3] / "core" / "data" / "ResourceFiles" / "Intg_osdag.sqlite"
 
 
 @dataclass
@@ -55,7 +54,6 @@ class SectionCatalog:
         self._load()
 
     def _load(self) -> None:
-        self.db_path = ensure_resource_database(Path(__file__).resolve())
         con = sqlite3.connect(self.db_path)
         cur = con.cursor()
 
