@@ -17,7 +17,8 @@ from osdagbridge.desktop.ui.docks.output_dock import (
 from osdagbridge.desktop.ui.dialogs.tabs.common import apply_field_style
 from osdagbridge.desktop.ui.utils.styled_scroll_area import StyledScrollArea
 
-# From load_combination_tab.py defaults + output_dock
+# Fallback load combination labels used to pre-populate the dropdown before
+# live load cases are discovered from the analyser results.
 LOAD_COMBINATIONS = [
     "Envelope",
     "DL + LL",
@@ -28,6 +29,21 @@ LOAD_COMBINATIONS = [
 
 
 class SteelDesignAnalysisTab(QWidget):
+    """
+    Analysis Results tab for the Steel Design dialog.
+
+    Builds a two-column layout:
+      - Left panel  : member / load-case selector and summary result fields.
+      - Right section: diagram placeholder (replaced at runtime by a matplotlib
+                       canvas) and side labels showing values at the cursor or
+                       maximum positions.
+
+    Public collections:
+        result_fields (dict): {key: QLineEdit} for M_max, V_max, D_max, R_A, R_B.
+        x_fields      (dict): {key: QLabel/QLineEdit} for M_x, V_x, D_x values.
+                              Labels are swapped to QLabel by SteelDesign at runtime
+                              to support two-line HTML text.
+    """
 
     def __init__(self, parent=None):
         self.result_fields = {}
@@ -257,7 +273,7 @@ class SteelDesignAnalysisTab(QWidget):
 
         right_layout.addSpacerItem(QSpacerItem(0, 100, QSizePolicy.Fixed, QSizePolicy.Fixed))
         self.vx_field = self._side_field()
-        right_layout.addLayout(self._side_row("V<sub>x</sub>", self.vx_field))
+        right_layout.addLayout(self._side_row("V<sub>y</sub>", self.vx_field))
 
         right_layout.addSpacerItem(QSpacerItem(0, 100, QSizePolicy.Fixed, QSizePolicy.Fixed))
         self.dx_field = self._side_field()
@@ -284,11 +300,15 @@ class SteelDesignAnalysisTab(QWidget):
     # ── PUBLIC API ────────────────────────────────────────────────────────────
 
     def set_girder_count(self, count):
-        """Mirrors GirderDetailsTab.set_girder_count — no hardcoding."""
+        """Repopulate member_combo with 'Girder 1' … 'Girder N' entries."""
         self.member_combo.clear()
         self.member_combo.addItems(["All"] + [f"Girder {i}" for i in range(1, count + 1)])
 
     def load_data(self, cad_state: dict):
+        """
+        Pre-fill fields from a cad_state snapshot (e.g. on dialog open).
+        Silently ignores missing or invalid entries.
+        """
         if not cad_state:
             return
         try:
