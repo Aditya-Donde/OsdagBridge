@@ -14,6 +14,7 @@ from osdagbridge.desktop.ui.docks.cad_dual_view import BridgeDualCADWidget
 from osdagbridge.desktop.ui.dialogs.additional_inputs import AdditionalInputs
 
 from osdagbridge.core.bridge_types.plate_girder.ui_fields import FrontendData
+from osdagbridge.core.bridge_types.plate_girder.defaults import DEFAULTS_DICT
 from osdagbridge.core.utils.common import *
 
 class CustomWindow(QWidget):
@@ -21,6 +22,10 @@ class CustomWindow(QWidget):
         super().__init__()
         self.parent = parent
         self.backend = backend()
+
+        # Defaults
+        self.defaults = DEFAULTS_DICT
+
         # one-time log splitter initialization flag
         self._log_splitter_initialized = False
 
@@ -235,6 +240,24 @@ class CustomWindow(QWidget):
         # Connect input dock changes to CAD widget for real-time updates
         self.setup_cad_connections()
     
+    #-------Common-Design-Save-Additional-Inputs-Functionality-START-------
+
+    def common_design_func(self, trigger: str):
+        """
+        Trigger belongs to one of ["Design", "Save", "Additional Inputs"]
+        """
+        if trigger == "Design":
+            # Collect all the values from input Dock
+            pass
+        elif trigger == "Save":
+            # Collect all the values from input Dock and save to osi/csv
+            pass
+        elif trigger == "Additional Inputs":
+            # Show Additional Inputs
+            pass
+
+    #-------Common-Design-Save-Additional-Inputs-Functionality-END---------
+    
     def setup_cad_connections(self):
         """Connect input dock field changes to CAD widget for real-time updates"""
         # Connect to input dock's value changed signals
@@ -280,7 +303,9 @@ class CustomWindow(QWidget):
             return
 
         input_values = self.input_dock.get_all_input_values()
-        # print("[DEBUG] Collected input values from InputDock:", input_values)
+
+        print("[DEBUG] Collected input values from InputDock:", input_values)
+        
         if not input_values:
             return
 
