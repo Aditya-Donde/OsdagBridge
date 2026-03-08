@@ -222,7 +222,7 @@ class InputDock(QWidget):
 
         self.design_btn = DockCustomButton("Design", ":/vectors/design.svg")
         self.design_btn.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-        self.design_btn.clicked.connect(self._on_design_clicked)
+        self.design_btn.clicked.connect(lambda _, trigger="Design": self.parent.common_design_func(trigger))
         btn_layout.addWidget(self.design_btn)
         return btn_layout
 
@@ -335,12 +335,10 @@ class InputDock(QWidget):
             if idx >= 0:
                 widget.setCurrentIndex(idx)
 
-        # Always wire backend sync + change signal.
+        # Signal the change in value so to update the input_dictionary
         widget.currentTextChanged.connect(
-            lambda text, k=key: self.backend.set_input_value(k, text)
-            if hasattr(self.backend, "set_input_value") else None
+            lambda text, k=key: self._on_field_changed(k, text)
         )
-        widget.currentTextChanged.connect(self.input_value_changed)
 
         # Wire generic on_changed callbacks declared in schema.
         for cb_name in self._as_list(meta.get("on_changed")):
@@ -390,12 +388,10 @@ class InputDock(QWidget):
         if default is not None:
             widget.setText(str(default))
 
-        # Backend sync
-        widget.editingFinished.connect(
-            lambda k=key, w=widget: self.backend.set_input_value(k, w.text())
-            if hasattr(self.backend, "set_input_value") else None
-        )   
-        widget.textChanged.connect(self.input_value_changed)
+        # Signal when value changed to update input_dictionary 
+        widget.textChanged.connect(
+            lambda text, k=key: self._on_field_changed(k, text)
+        )
 
         # Extra callbacks declared in schema
         for cb_name in self._as_list(meta.get("on_editing_finished")):
@@ -673,8 +669,6 @@ class InputDock(QWidget):
                             self._material_combo_map, self._ensure_material_option, mat)
                     self._set_combo_silently(combo, mat)
                     self._material_previous_selection[key] = mat
-                    self.backend.set_input_value(key, mat)
-                    self.input_value_changed.emit()
                     return
             fallback = self._material_previous_selection.get(key, "")
             if not fallback:
@@ -723,7 +717,7 @@ class InputDock(QWidget):
     def show_project_location_dialog(self):
         dialog = ProjectLocationDialog()
         if dialog.exec() == QDialog.Accepted:
-            self.backend.set_input_value(KEY_PROJECT_LOCATION, dialog.get_selected_location())
+            self._on_field_changed(KEY_PROJECT_LOCATION, dialog.get_selected_location())
 
     def show_additional_inputs(self):
         self._open_additional_inputs()
@@ -826,8 +820,29 @@ class InputDock(QWidget):
             self.parent.update_docking_icons(input_is_active=self.width() > 0)
 
     # ══════════════════════════════════════════════════════════════════════════
-    # Input serialization
+    # Inputs Saving using input_dictionary
     # ══════════════════════════════════════════════════════════════════════════
+    
+    # Update input_dictionary on value changed
+    def _on_field_changed(self, key: str, value: str):
+        """
+        Called on every widget value change.
+        If value is empty/None, falls back to DEFAULTS_DICT.
+        Updates parent input_dict and notifies listeners.
+        """
+        if hasattr(self.parent, "input_dict"):
+            # If Empty or None Value then set the default
+            # print(f"@Change: {value}, default: {DEFAULTS_DICT.get(key)}")
+            if value is None or value == "":
+                self.parent.input_dict[key] = DEFAULTS_DICT.get(key)
+            else:
+                self.parent.input_dict[key] = value
+            # print(f"@Final: {self.parent.input_dict[key]}")
+            
+        else:
+            print("[ERROR]: template_page.input_dictionary Not Found")
+        
+        self.input_value_changed.emit()
 
     def _collect_basic_inputs(self) -> list[dict]:
         out = []
@@ -846,8 +861,8 @@ class InputDock(QWidget):
                 continue
             if val:
                 out.append({key: val})
-                if hasattr(self.backend, "set_input_value"):
-                    self.backend.set_input_value(key, val)
+                # if hasattr(self.backend, "set_input_value"):
+                #     self.backend.set_input_value(key, val)
         return out
 
     def _collect_additional_inputs(self) -> list[dict]:
@@ -878,21 +893,6 @@ class InputDock(QWidget):
             dialogType=MessageBoxType.Warning
         ).exec()
 
-    def _on_design_clicked(self):
-        final = self._collect_basic_inputs() + self._collect_additional_inputs()
-        if hasattr(self.backend, "set_final_design_inputs"):
-            self.backend.set_final_design_inputs(final)
-        CustomMessageBox(
-            title="Design Input Ready",
-            text="Final input payload prepared.",
-            dialogType=MessageBoxType.Warning
-        ).exec()
-        try:
-            print(f"[OsdagBridge] {len(final)} items")
-            print(json.dumps(final, indent=2, ensure_ascii=False, default=str)[:12000])
-        except Exception:
-            pass
-
     # ══════════════════════════════════════════════════════════════════════════
     # CAD update helper
     # ══════════════════════════════════════════════════════════════════════════
@@ -912,9 +912,6 @@ class InputDock(QWidget):
         if self.additional_input_values:
             values.update(self.additional_input_values)
         return values
-
-    def emit_value_changed(self):
-        self.input_value_changed.emit()
 
     # ══════════════════════════════════════════════════════════════════════════
     # Utilities
