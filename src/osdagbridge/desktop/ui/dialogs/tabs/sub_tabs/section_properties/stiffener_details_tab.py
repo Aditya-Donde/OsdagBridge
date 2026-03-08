@@ -25,7 +25,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from osdagbridge.core.utils.common import VALUES_YES_NO, VALUES_STIFFENER_DESIGN
+from osdagbridge.core.utils.common import VALUES_NO_YES, VALUES_STIFFENER_DESIGN
 from osdagbridge.desktop.ui.dialogs.tabs.common import apply_field_style
 
 OUTSTAND_DEFAULT_TEXT = "NA"
@@ -160,7 +160,7 @@ class StiffenerDetailsTab(QWidget):
         row = self._add_form_row(inputs_grid, row, "Outstand of Bearing Stiffener (mm):", self.bearing_outstand_input)
 
         self.intermediate_combo = QComboBox()
-        self.intermediate_combo.addItems(VALUES_YES_NO)
+        self.intermediate_combo.addItems(VALUES_NO_YES)
         apply_field_style(self.intermediate_combo)
         self.intermediate_combo.setFixedWidth(combo_width)
         self.intermediate_combo.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)

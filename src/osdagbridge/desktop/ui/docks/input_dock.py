@@ -30,6 +30,7 @@ from osdagbridge.desktop.ui.dialogs.material_properties import (
 )
 from osdagbridge.desktop.ui.dialogs.custom_messagebox import CustomMessageBox, MessageBoxType
 from osdagbridge.core.bridge_types.plate_girder.defaults import DEFAULTS_DICT
+from osdagbridge.core.bridge_types.plate_girder.validator import BridgeInputValidator
 
 
 MATERIAL_CUSTOM_OPTION = "Custom"
@@ -61,6 +62,9 @@ class InputDock(QWidget):
         super().__init__()
         self.parent  = parent
         self.backend = backend
+
+        # For on spot validation of input fields when changed
+        self.validator = BridgeInputValidator()
 
         self.is_locked            = False
         self._current_design_mode = "Optimized"
@@ -393,6 +397,12 @@ class InputDock(QWidget):
             lambda text, k=key: self._on_field_changed(k, text)
         )
 
+        # Validation on focus-out — mandatory for all textbox fields
+        # This will validate the input, either it say nothing or popup warning and set specific valid value
+        widget.editingFinished.connect(
+            lambda k=key, w=widget: self._validate_field(k, w)
+        )
+
         # Extra callbacks declared in schema
         for cb_name in self._as_list(meta.get("on_editing_finished")):
             cb = getattr(self, cb_name, None)
@@ -589,10 +599,6 @@ class InputDock(QWidget):
         if self._current_design_mode.lower() == "custom":
             self._open_additional_inputs(target_tab="Member Properties")
 
-    def _validate_carriageway_width_silent(self, *_):
-        """Silent validation (no message box) — called from schema on_changed."""
-        self.validate_carriageway_width(show_message=False)
-
     # ══════════════════════════════════════════════════════════════════════════
     # Carriageway validation
     # ══════════════════════════════════════════════════════════════════════════
@@ -603,39 +609,6 @@ class InputDock(QWidget):
     def _carriageway_limits(self):
         min_w = CARRIAGEWAY_WIDTH_MIN_WITH_MEDIAN if self._is_median_included() else CARRIAGEWAY_WIDTH_MIN
         return min_w, CARRIAGEWAY_WIDTH_MAX_LIMIT
-
-    def validate_carriageway_width(self, show_message=True):
-        w = self._w(KEY_CARRIAGEWAY_WIDTH)
-        if not isinstance(w, QLineEdit) or not w.text().strip():
-            return
-        try:
-            value = float(w.text())
-        except ValueError:
-            w.clear()
-            if show_message:
-                CustomMessageBox(
-                    title="Carriageway Width",
-                    text="Please enter a numeric value.",
-                    dialogType=MessageBoxType.Warning
-                ).exec()
-            return
-        min_w, max_w = self._carriageway_limits()
-        msg = None
-        if value < min_w:
-            msg = ("IRC 5 Cl.104.3.1: min carriageway width with median is 7.5 m per side."
-                   if self._is_median_included() else
-                   "IRC 5 Cl.104.3.1: min carriageway width is 4.25 m.")
-            value = min_w
-        elif value > max_w:
-            msg = "Software limits carriageway width to 23.6 m."
-            value = max_w
-        w.setText(f"{value:.2f}")
-        if msg and show_message:
-            CustomMessageBox(
-                title="Carriageway Width",
-                text=msg,
-                dialogType=MessageBoxType.Warning
-            ).exec()
 
     def _get_effective_carriageway_width(self) -> float:
         min_w, max_w = self._carriageway_limits()
@@ -818,6 +791,26 @@ class InputDock(QWidget):
         super().resizeEvent(event)
         if self.parent and hasattr(self.parent, "update_docking_icons"):
             self.parent.update_docking_icons(input_is_active=self.width() > 0)
+
+    # Validate the value of text box and show warning and set valid value
+    def _validate_field(self, key: str, widget: QLineEdit):
+        """
+        Called on editingFinished for validated textbox fields.
+        Reads widget value, validates against current input_dict,
+        corrects the widget and input_dict if needed, shows message.
+        """
+        result = self.validator.validate_basic_inputs(key, self.parent.input_dict)
+        if result is None:
+            return
+        corrected, message = result
+        widget.setText(str(corrected))
+        # Update value in input_dict
+        self._on_field_changed(key, str(corrected))
+        CustomMessageBox(
+            title="Input Error", 
+            text=message, 
+            dialogType=MessageBoxType.Warning
+        ).exec()
 
     # ══════════════════════════════════════════════════════════════════════════
     # Inputs Saving using input_dictionary
