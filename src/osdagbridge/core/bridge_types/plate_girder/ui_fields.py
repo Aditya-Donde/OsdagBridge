@@ -69,23 +69,12 @@ class FrontendData:
 
     # ── State getters / setters ───────────────────────────────────────────────
 
-    def set_input_value(self, key: str, value):
-        if key:
-            self._input_state[key] = value
-
-    def get_input_value(self, key: str, default=None):
-        return self._input_state.get(key, default) if key else default
-
     def set_output_value(self, key: str, value):
         if key:
             self._output_state[key] = value
 
     def get_output_value(self, key: str, default=None):
         return self._output_state.get(key, default) if key else default
-
-    def set_final_design_inputs(self, final_inputs: list[dict]) -> None:
-        if isinstance(final_inputs, list):
-            self._input_state["final_design_inputs"] = final_inputs
 
     # ── UI field definitions ──────────────────────────────────────────────────
 

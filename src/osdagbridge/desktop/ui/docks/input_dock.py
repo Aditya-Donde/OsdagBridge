@@ -221,7 +221,7 @@ class InputDock(QWidget):
 
         self.save_input_btn = DockCustomButton("Save Input", ":/vectors/save.svg")
         self.save_input_btn.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-        self.save_input_btn.clicked.connect(self._on_save_input_clicked)
+        # self.save_input_btn.clicked.connect(self._on_save_input_clicked)
         btn_layout.addWidget(self.save_input_btn)
 
         self.design_btn = DockCustomButton("Design", ":/vectors/design.svg")
@@ -873,18 +873,6 @@ class InputDock(QWidget):
         out  = [{k: snapshot[k]} for k in ordered if k in snapshot]
         out += [{k: v} for k, v in snapshot.items() if k not in ordered]
         return out
-
-    def _on_save_input_clicked(self):
-        self._basic_inputs_saved_list      = self._collect_basic_inputs()
-        self._additional_inputs_saved_list = self._collect_additional_inputs()
-        final = self._basic_inputs_saved_list + self._additional_inputs_saved_list
-        if hasattr(self.backend, "set_final_design_inputs"):
-            self.backend.set_final_design_inputs(final)
-        CustomMessageBox(
-            title="Inputs Saved",
-            text="Basic + Additional inputs saved for this session.",
-            dialogType=MessageBoxType.Warning
-        ).exec()
 
     # ══════════════════════════════════════════════════════════════════════════
     # CAD update helper
