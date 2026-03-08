@@ -23,8 +23,9 @@ class CustomWindow(QWidget):
         self.parent = parent
         self.backend = backend()
 
-        # Defaults
-        self.defaults = DEFAULTS_DICT
+        # Source for all input values.
+        # Initialised from DEFAULTS_DICT; updated live as the user edits fields.
+        self.input_dict = dict(DEFAULTS_DICT)
 
         # one-time log splitter initialization flag
         self._log_splitter_initialized = False
@@ -248,7 +249,7 @@ class CustomWindow(QWidget):
         """
         if trigger == "Design":
             # Collect all the values from input Dock
-            pass
+            print(f"@@input_dictionary: {self.input_dict}")
         elif trigger == "Save":
             # Collect all the values from input Dock and save to osi/csv
             pass
@@ -292,8 +293,6 @@ class CustomWindow(QWidget):
         # 2. Apply state to CAD UI ONLY
         if hasattr(self, 'cad_comp_widget'):
             self.cad_comp_widget.update_from_osdag_inputs(self.cad_state)
-
-
             
     def update_cad_from_inputs(self):
         """
@@ -304,13 +303,13 @@ class CustomWindow(QWidget):
 
         input_values = self.input_dock.get_all_input_values()
 
-        print("[DEBUG] Collected input values from InputDock:", input_values)
+        # print("[DEBUG] Collected input values from InputDock:", input_values)
         
         if not input_values:
             return
 
         # IMPORTANT: send ONLY to interface
-        self.update_cad_state("input_dock", input_values)
+        # self.update_cad_state("input_dock", input_values)
 
 
     #---------------------------------Docking-Icons-Functionality-START----------------------------------------------
