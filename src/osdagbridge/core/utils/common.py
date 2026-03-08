@@ -202,7 +202,7 @@ KEY_RIGHT_SUPPORT = "Right Support"
 KEY_BEARING_LENGTH = "Bearing Length"
 
 # Value Lists for Additional Inputs
-VALUES_YES_NO = ["No", "Yes"]
+VALUES_NO_YES = ["No", "Yes"]
 VALUES_DECK_CONCRETE_GRADE = [
     "M 15", "M 20", "M 25", "M 30", "M 35", "M 40", "M 45", "M 50",
     "M 55", "M 60", "M 65", "M 70", "M 75", "M 80",
