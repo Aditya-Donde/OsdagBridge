@@ -231,10 +231,11 @@ class OutputDock(QWidget):
                 background: transparent;
             }
         """)
-        member_label.setMinimumWidth(104)
+        member_label.setMinimumWidth(120)
         self.member_combo = NoScrollComboBox()
         self.member_combo.addItems(["All"])
         apply_field_style(self.member_combo)
+        self.member_combo.setFixedWidth(242)
         member_row.addWidget(member_label)
         member_row.addWidget(self.member_combo)
         results_layout.addLayout(member_row)
@@ -248,10 +249,11 @@ class OutputDock(QWidget):
                 background: transparent;
             }
         """)
-        load_combo_label.setMinimumWidth(100)
+        load_combo_label.setMinimumWidth(120)
         self.load_combo = NoScrollComboBox()
         self.load_combo.addItems(["Envelope"])
         apply_field_style(self.load_combo)
+        self.load_combo.setFixedWidth(242)
         load_combo_row.addWidget(load_combo_label)
         load_combo_row.addWidget(self.load_combo)
         results_layout.addLayout(load_combo_row)
