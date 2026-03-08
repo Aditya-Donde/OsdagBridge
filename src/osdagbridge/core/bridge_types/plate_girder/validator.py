@@ -7,7 +7,7 @@ from math import isclose
 
 from osdagbridge.core.utils.codes.keyfile import *
 from osdagbridge.core.utils.codes.irc5_2015 import IRC5_2015
-
+from osdagbridge.core.utils.common import *
 
 class BridgeInputValidator:
 
@@ -15,66 +15,58 @@ class BridgeInputValidator:
     # BASIC INPUT VALIDATION (DDCL 2.1.2)
     # ==========================================================
 
-    def validate_basic_inputs(self, inputs: dict) -> dict:
+    def validate_basic_inputs(self, key: str, inputs: dict) -> dict:
+        """
+        Validate a single field by key against inputs dict.
+        Returns (corrected_value, message) on error, None if valid.
+        """
 
-        errors = {}
-		
-        span = self._to_float(inputs.get("span"))
-        carriageway_width = self._to_float(inputs.get("carriageway_width"))
-        median = inputs.get("median")
-        footpath = inputs.get("footpath")
-        skew_angle = self._to_float(inputs.get("skew_angle"))
-
-		# ----------------------------------
+        # ----------------------------------
 		# Span (Software Scope Limit)
 		# ----------------------------------
-        if span is None or not (20 <= span <= 45):
-            errors["span"] = "Span must be between 20 m and 45 m (software limitation)."
-			
-			
+   
+        if key == KEY_SPAN:
+            span = self._to_float(inputs.get(KEY_SPAN))
+            if span is None:
+                return SPAN_MIN, "Span must be a numeric value."
+            if span < SPAN_MIN:
+                return SPAN_MIN, f"Span must be between {SPAN_MIN} m and {SPAN_MAX} m (software limitation)."
+            if span > SPAN_MAX:
+                return SPAN_MAX, f"Span must be between {SPAN_MIN} m and {SPAN_MAX} m (software limitation)."
+
 		# ----------------------------------
 		# Carriageway Width (IRC 5 Cl.104.3.1)
 		# ----------------------------------
-        if carriageway_width is None:
-            errors["carriageway_width"] = "Carriageway width must be specified."
-
-        else:
-			# Determine minimum lane assumption
-            if median == "No":
-                assumed_lanes = 1
-            else:
-                assumed_lanes = 2
-
-            required_width = IRC5_2015.cl_104_3_1_carriageway_width(
-				carriageway_width,
-				assumed_lanes
-			)
-
+        elif key == KEY_CARRIAGEWAY_WIDTH:
+            carriageway_width = self._to_float(inputs.get(KEY_CARRIAGEWAY_WIDTH))
+            median = inputs.get(KEY_INCLUDE_MEDIAN)
+            
+            if carriageway_width is None:
+                min_w = CARRIAGEWAY_WIDTH_MIN_WITH_MEDIAN if median else CARRIAGEWAY_WIDTH_MIN
+                return min_w, "Carriageway width must be specified."
+            
+            assumed_lanes = 2 if median else 1
+            required_width = IRC5_2015.cl_104_3_1_carriageway_width(carriageway_width, assumed_lanes)
+            
             if carriageway_width < required_width:
-                errors["carriageway_width"] = (
-					f"Minimum carriageway width required is "
-					f"{required_width:.2f} m as per IRC 5:2015 Clause 104.3.1."
-				)
-
-			# Software upper limit
-            if carriageway_width > 23.6:
-                errors["carriageway_width"] = (
-					"Carriageway width exceeds 23.6 m (software limitation)."
-				)
+                return required_width, f"Minimum carriageway width required is {required_width:.2f} m as per IRC 5:2015 Clause 104.3.1."
+            if carriageway_width > CARRIAGEWAY_WIDTH_MAX_LIMIT:
+                return CARRIAGEWAY_WIDTH_MAX_LIMIT, f"Carriageway width exceeds {CARRIAGEWAY_WIDTH_MAX_LIMIT} m (software limitation)."
 
 
         # ----------------------------
         # Skew Angle (IRC 24 via keyfile)
         # ----------------------------
-        if skew_angle is not None:
-            if not (SKEW_ANGLE_MIN <= skew_angle <= SKEW_ANGLE_MAX):
-                errors["skew_angle"] = (
-                    f"Skew angle must be between "
-                    f"{SKEW_ANGLE_MIN}° and {SKEW_ANGLE_MAX}°."
-                )
+        elif key == KEY_SKEW_ANGLE:
+            skew_angle = self._to_float(inputs.get(KEY_SKEW_ANGLE))
+            if skew_angle is None:
+                return SKEW_ANGLE_MIN, "Skew angle must be a numeric value."
+            if skew_angle < SKEW_ANGLE_MIN:
+                return SKEW_ANGLE_MIN, f"Skew angle must be between {SKEW_ANGLE_MIN}° and {SKEW_ANGLE_MAX}°."
+            if skew_angle > SKEW_ANGLE_MAX:
+                return SKEW_ANGLE_MAX, f"Skew angle must be between {SKEW_ANGLE_MIN}° and {SKEW_ANGLE_MAX}°."
 
-        return self._format_response(errors)
-		
+        return None		
 
     # ==========================================================
     # ADDITIONAL INPUT VALIDATION (DDCL 2.1.3)
@@ -107,7 +99,7 @@ class BridgeInputValidator:
         # Safety Kerb Check (IRC 5 Cl.101.41)
         # ----------------------------
         kerb_width = self._to_float(inputs.get("kerb_width"))
-        footpath = inputs.get("footpath")
+        footpath = inputs.get(KEY_FOOTPATH)
 
         if kerb_width is not None:
 

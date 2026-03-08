@@ -15,7 +15,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QDoubleValidator, QIntValidator, QValidator
 import copy
 
-from osdagbridge.core.utils.common import VALUES_YES_NO
+from osdagbridge.core.utils.common import VALUES_NO_YES
 from osdagbridge.desktop.ui.dialogs.tabs.common import apply_field_style
 from osdagbridge.desktop.ui.dialogs.tabs.sub_tabs.loading.permanent_load_tab import PermanentLoadTab
 from osdagbridge.desktop.ui.dialogs.tabs.sub_tabs.loading.live_load_tab import LiveLoadTab
@@ -104,7 +104,7 @@ class LoadingTab(QWidget):
 
     def _create_yes_no_combo(self):
         combo = QComboBox()
-        combo.addItems(VALUES_YES_NO)
+        combo.addItems(VALUES_NO_YES)
         combo.setCurrentText("Yes")
         apply_field_style(combo)
         return combo
