@@ -15,14 +15,12 @@ from osdagbridge.core.bridge_types.plate_girder.ui_fields_project_location impor
 from osdagbridge.desktop.ui.widgets.native_map import NativeMapWidget
 from osdagbridge.core.data.project_location.zone_lookup import get_zones_for_coordinates, get_temperature_for_coordinates
 
-
 # Session-level state to persist values across dialog open/close cycles
 # so that reopening the dialog retains user-entered or looked-up data.
-LAST_CUSTOM_WEATHER_DATA = None
-LAST_WEATHER_DATA = None
-LAST_LOCATION_METHOD = None  # "location_name", "map", or "custom_data"
-LAST_LOCATION_DATA = None   # {"state": ..., "district": ...} or {"latitude": ..., "longitude": ...}
-
+LAST_CUSTOM_WEATHER_DATA = None  # Custom data entered via the Custom Data dialog
+LAST_WEATHER_DATA = None  # Looked-up or persisted weather data (wind, seismic, temp)
+LAST_LOCATION_METHOD = None  # "location_name" or "map"
+LAST_LOCATION_DATA = None  # {"state": ..., "district": ...} or {"latitude": ..., "longitude": ...}
 
 class NoScrollComboBox(QComboBox):
     def wheelEvent(self, event):
@@ -1016,6 +1014,7 @@ class ProjectLocationDialog(QDialog):
         self.seismic_zone_label.setText(f"Seismic Zone: {zone_txt}    Z = {z_txt}")
         self.temp_label.setText(f"Shade Air Temperature (°C): {max_txt} / {min_txt}")
 
+    # To extract the location selected in popup
     def get_selected_location(self):
         result = {'method': None, 'data': {}, 'weather_data': None}
 
