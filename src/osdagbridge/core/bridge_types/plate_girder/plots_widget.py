@@ -1171,4 +1171,3 @@ if __name__ == "__main__":
     w.resize(1200, 800)
     w.show()
     sys.exit(app.exec())
-    sys.exit(app.exec())

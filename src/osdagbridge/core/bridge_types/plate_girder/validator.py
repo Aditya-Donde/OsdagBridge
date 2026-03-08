@@ -19,46 +19,46 @@ class BridgeInputValidator:
 
         errors = {}
 		
-		span = self._to_float(inputs.get("span"))
-		carriageway_width = self._to_float(inputs.get("carriageway_width"))
-		median = inputs.get("median")
-		footpath = inputs.get("footpath")
-		skew_angle = self._to_float(inputs.get("skew_angle"))
+        span = self._to_float(inputs.get("span"))
+        carriageway_width = self._to_float(inputs.get("carriageway_width"))
+        median = inputs.get("median")
+        footpath = inputs.get("footpath")
+        skew_angle = self._to_float(inputs.get("skew_angle"))
 
 		# ----------------------------------
 		# Span (Software Scope Limit)
 		# ----------------------------------
-		if span is None or not (20 <= span <= 45):
-			errors["span"] = "Span must be between 20 m and 45 m (software limitation)."
+        if span is None or not (20 <= span <= 45):
+            errors["span"] = "Span must be between 20 m and 45 m (software limitation)."
 			
 			
 		# ----------------------------------
 		# Carriageway Width (IRC 5 Cl.104.3.1)
 		# ----------------------------------
-		if carriageway_width is None:
-			errors["carriageway_width"] = "Carriageway width must be specified."
+        if carriageway_width is None:
+            errors["carriageway_width"] = "Carriageway width must be specified."
 
-		else:
+        else:
 			# Determine minimum lane assumption
-			if median == "No":
-				assumed_lanes = 1
-			else:
-				assumed_lanes = 2
+            if median == "No":
+                assumed_lanes = 1
+            else:
+                assumed_lanes = 2
 
-			required_width = IRC5_2015.cl_104_3_1_carriageway_width(
+            required_width = IRC5_2015.cl_104_3_1_carriageway_width(
 				carriageway_width,
 				assumed_lanes
 			)
 
-			if carriageway_width < required_width:
-				errors["carriageway_width"] = (
+            if carriageway_width < required_width:
+                errors["carriageway_width"] = (
 					f"Minimum carriageway width required is "
 					f"{required_width:.2f} m as per IRC 5:2015 Clause 104.3.1."
 				)
 
 			# Software upper limit
-			if carriageway_width > 23.6:
-				errors["carriageway_width"] = (
+            if carriageway_width > 23.6:
+                errors["carriageway_width"] = (
 					"Carriageway width exceeds 23.6 m (software limitation)."
 				)
 
