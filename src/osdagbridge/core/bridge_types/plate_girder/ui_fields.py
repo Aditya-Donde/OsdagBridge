@@ -141,11 +141,10 @@ class FrontendData:
             (KEY_CARRIAGEWAY_WIDTH, KEY_DISP_CARRIAGEWAY_WIDTH, TYPE_TEXTBOX, None,
                 True, "Double Validator",
                 {
-                    "placeholder_dynamic": "_carriageway_placeholder_text",
-                    "on_editing_finished": "validate_carriageway_width",
+                    "placeholder_dynamic": "_carriageway_placeholder_text"
                 }),
 
-            (KEY_INCLUDE_MEDIAN, "Include Median", TYPE_COMBOBOX, VALUES_YES_NO,
+            (KEY_INCLUDE_MEDIAN, "Include Median", TYPE_COMBOBOX, VALUES_NO_YES,
                 True, "No Validator",
                 {
                     "default":         DEFAULTS_DICT.get(KEY_INCLUDE_MEDIAN),
