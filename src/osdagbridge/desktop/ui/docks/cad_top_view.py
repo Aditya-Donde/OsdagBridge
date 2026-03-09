@@ -30,7 +30,9 @@ class TopViewCADWidget(QWidget):
     
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.show_dimensions = False
+        self.show_dimensions = True
+        self.show_span_values = False
+        self.show_carriageway_values = False
         self.setMouseTracking(True)  # enable mouse tracking for hover
         
         # top view hover tracking 
@@ -341,13 +343,17 @@ class TopViewCADWidget(QWidget):
                 self._position_zoom_buttons()
         return super().eventFilter(obj, event)
 
-    def update_params(self, params):
+    def update_params(self, params: dict):
         self.params.update(params)
 
-        # Show dimensions once user provides inputs
-        if params:
-            self.show_dimensions = True
+        # enable value display only when user edits inputs
+        if "span_length" in params:
+            self.show_span_values = True
 
+        if "carriageway_width" in params:
+            self.show_carriageway_values = True
+
+        self.show_dimensions = True
         self.update()
     
     def mouseMoveEvent(self, event):
@@ -1102,10 +1108,12 @@ class TopViewCADWidget(QWidget):
         label_y = ref_y - label_radius * math.sin(label_angle_rad)
         
         # Format with explicit sign (+ or -) - showing ORIGINAL input value
-        if skew_deg >= 0:
-            angle_text = f"Skew = +{abs(skew_deg):.1f}°"
-        else:
-            angle_text = f"Skew = {skew_deg:.1f}°"
+        angle_text = "Skew"
+        if self.show_carriageway_values:
+            if skew_deg >= 0:
+                angle_text += f" = +{abs(skew_deg):.1f}°"
+            else:
+                angle_text += f" = {skew_deg:.1f}°"
         
         # Adjust label position based on skew direction
         if skew_deg > 0:
@@ -1147,10 +1155,13 @@ class TopViewCADWidget(QWidget):
         x1_span = last_girder['x1']
         x2_span = last_girder['x2']
         span_m = self.params['span_length'] / 1000
+        label_span = "Span Length"
+        if self.show_span_values:
+            label_span += f" = {span_m:.1f} m"
         
         self.draw_dimension_arrow_with_extensions_up(
             painter, x1_span, dim_y1, x2_span, dim_y1,
-            f"Span Length = {span_m:.1f} m", last_girder_y
+            label_span, last_girder_y
         )
 
         # BRACING SPACING dimension (always visible)
@@ -1158,13 +1169,16 @@ class TopViewCADWidget(QWidget):
             #dim_y2 = dim_y_base + 15
             dim_y2 = dim_y_base + DIM_STACK_GAP
             cb_spacing_m = self.params['cross_bracing_spacing'] / 1000
+            label_cb = "Bracing Spacing"
+            if self.show_span_values:
+                label_cb += f" = {cb_spacing_m:.2f} m"
             
             x1_brace = bracing_positions[0] + x_offset_last
             x2_brace = bracing_positions[1] + x_offset_last
             
             self.draw_dimension_arrow_with_extensions_up(
                 painter, x1_brace, dim_y2, x2_brace, dim_y2,
-                f"Bracing Spacing = {cb_spacing_m:.2f} m", last_girder_y
+                label_cb, last_girder_y
             )
 
         # GIRDER SPACING dimension (always visible)
@@ -1191,7 +1205,9 @@ class TopViewCADWidget(QWidget):
             LABEL_OFFSET = 14  # tweak 10–18 if needed
             label_y = (y1 + y2) / 2 + LABEL_OFFSET
 
-            label_text = f"Girder\nSpacing\n= {gs_m:.2f} m"
+            label_text = "Girder\nSpacing"
+            if self.show_carriageway_values:
+                label_text += f"\n= {gs_m:.2f} m"
 
             self.draw_text_with_background(
                 painter, label_x, label_y,

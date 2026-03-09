@@ -38,7 +38,9 @@ class CrossSectionCADWidget(QWidget):
     
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.show_dimensions = False
+        self.show_dimensions = True
+        self.show_span_values = False
+        self.show_carriageway_values = False
         self.setMouseTracking(True)  # enable mouse tracking for hover
         self.concrete_brush = self.create_concrete_brush()
         self.crash_barrier_params = {}
@@ -380,21 +382,23 @@ class CrossSectionCADWidget(QWidget):
     
     def update_params(self, params: dict):
         self.params.update(params)
-        self.show_dimensions = True
 
-        # if "crash_barrier_geometry" in params:
-        #     self.crash_barrier_params = params["crash_barrier_geometry"]
+        if "span_length" in params:
+            self.show_span_values = True
 
-        # Store crash barrier type so draw_crash_barrier() can dispatch on it
+        if "carriageway_width" in params:
+            self.show_carriageway_values = True
+
         if "crash_barrier_type" in params:
             self.crash_barrier_type = params["crash_barrier_type"]
-
+ 
         if "railing_type" in params:
             self.railing_type = params["railing_type"]
 
         if "median_type" in params:
             self.median_type = params["median_type"]
 
+        self.show_dimensions = True
         self.update()
     
     def mouseMoveEvent(self, event):
@@ -1198,7 +1202,7 @@ class CrossSectionCADWidget(QWidget):
         """Draw cross-section with median support and hover highlighting"""
         
         GIRDER_COLOR = QColor(179, 180, 160)           # girder → dark olive-grey
-        STIFFENER_COLOR = QColor(79, 78, 70)         # stiffener → very dark olive
+        STIFFENER_COLOR = QColor(150, 150, 150)         
         CROSS_BRACING_COLOR = QColor(239, 240, 215)     # cross bracing → light olive
         END_DIAPHRAGM_COLOR = QColor(134, 134, 100)
         BARRIER_GREY = QColor(221, 221, 221)  # slightly dark grey
@@ -1718,7 +1722,9 @@ class CrossSectionCADWidget(QWidget):
         )
 
         mid_x = (deck_left_x + deck_right_x) / 2.0
-        label_text = f"Overall Bridge Width = {total_width_m:.2f} m"
+        label_text = "Overall Bridge Width"
+        if self.show_carriageway_values:
+            label_text += f" = {total_width_m:.2f} m"
 
         font = QFont('Arial', 9, QFont.Bold)
         painter.setFont(font)
@@ -1749,9 +1755,13 @@ class CrossSectionCADWidget(QWidget):
 
             fp_visible_m = round(fp_visible_mm / 1000.0, 2)
             if fp_visible_m > 0:
+                label_text = "Footpath Width"
+                if self.show_carriageway_values:
+                    label_text += f" = {fp_visible_m:.2f} m"
+                
                 self.draw_dimension_arrow(painter, fp_start_x, Y_TOP_COMMON, 
                                         fp_end_x, Y_TOP_COMMON,
-                                        f"Footpath Width = {fp_visible_m:.2f} m", True, 
+                                        label_text, True, 
                                         extension_direction='down',
                                         extension_end_y=fp_top_y)
         
@@ -1766,29 +1776,41 @@ class CrossSectionCADWidget(QWidget):
             cw_m = self.params['carriageway_width'] / 1000
             
             # Left carriageway - starts exactly at left barrier visual end
+            label_cw = "Carriageway"
+            if self.show_carriageway_values:
+                label_cw += f" = {cw_m:.2f} m"
+            
             self.draw_dimension_arrow(painter, actual_cw_start, Y_TOP_COMMON, median_start_x, Y_TOP_COMMON,
-                                    f"Carriageway = {cw_m:.2f} m", True, 
+                                    label_cw, True, 
                                     extension_direction='down',
                                     extension_end_y=deck_top_y)
             
             # Median dimension
             median_m = median_width / 1000
+            label_median = "Median"
+            if self.show_carriageway_values:
+                label_median += f" = {median_m:.2f} m"
+                
             self.draw_dimension_arrow(painter, median_start_x, Y_TOP_COMMON - 35, median_end_x, Y_TOP_COMMON - 35,
-                                    f"Median = {median_m:.2f} m", True, 
+                                    label_median, True, 
                                     extension_direction='down',
                                     extension_end_y=deck_top_y)
             
             # Right carriageway - ends exactly at right barrier visual start
             self.draw_dimension_arrow(painter, median_end_x, Y_TOP_COMMON, actual_cw_end, Y_TOP_COMMON,
-                                    f"Carriageway = {cw_m:.2f} m", True, 
+                                    label_cw, True, 
                                     extension_direction='down',
                                     extension_end_y=deck_top_y)
         else:
             # Single carriageway
             cw_m = self.params['carriageway_width'] / 1000
             # From left barrier visual end to right barrier visual start
+            label_cw = "Carriageway Width"
+            if self.show_carriageway_values:
+                label_cw += f" = {cw_m:.2f} m"
+            
             self.draw_dimension_arrow(painter, actual_cw_start, Y_TOP_COMMON, actual_cw_end, Y_TOP_COMMON,
-                                    f"Carriageway Width = {cw_m:.2f} m", True, 
+                                    label_cw, True, 
                                     extension_direction='down',
                                     extension_end_y=deck_top_y)
         
@@ -1801,9 +1823,13 @@ class CrossSectionCADWidget(QWidget):
 
             fp_visible_m = round(fp_visible_mm / 1000.0, 2)
             if fp_visible_m > 0:
+                label_fp = "Footpath Width"
+                if self.show_carriageway_values:
+                    label_fp += f" = {fp_visible_m:.2f} m"
+                
                 self.draw_dimension_arrow(painter, fp_start_x, Y_TOP_COMMON, 
                                         fp_end_x, Y_TOP_COMMON,
-                                        f"Footpath Width = {fp_visible_m:.2f} m", True, 
+                                        label_fp, True, 
                                         extension_direction='down',
                                         extension_end_y=fp_top_y)
         
@@ -1814,8 +1840,12 @@ class CrossSectionCADWidget(QWidget):
         if n > 0 and len(positions) > 0:
             first_girder_x = positions[0]
             overhang_m = self.params.get('deck_overhang', 1000) / 1000
+            label_overhang = "Overhang"
+            if self.show_carriageway_values:
+                label_overhang += f" = {overhang_m:.2f} m"
+                
             self.draw_dimension_arrow(painter, deck_left_x, Y_BOTTOM_COMMON, first_girder_x, Y_BOTTOM_COMMON,
-                                    f"Overhang = {overhang_m:.2f} m", True,
+                                    label_overhang, True,
                                     extension_direction='up',
                                     extension_end_y=deck_bottom_y)
         
@@ -1828,8 +1858,12 @@ class CrossSectionCADWidget(QWidget):
             x_right = positions[1]
             
             gs_m = self.params['girder_spacing'] / 1000
+            label_gs = "Girder Spacing"
+            if self.show_carriageway_values:
+                label_gs += f" = {gs_m:.2f} m"
+                
             self.draw_dimension_arrow(painter, x_left, Y_BOTTOM_COMMON, x_right, Y_BOTTOM_COMMON,
-                                    f"Girder Spacing = {gs_m:.2f} m", True, 
+                                    label_gs, True, 
                                     extension_direction='up',
                                     extension_end_y=base_y)
         
@@ -1838,13 +1872,19 @@ class CrossSectionCADWidget(QWidget):
         
         if fp_config in ['left', 'both'] and left_fp_width > 0 and fp_thick_px > 5:
             x_dim = deck_left_x - 8
+            label_ft = "Footpath\nThickness"
+            if self.show_carriageway_values:
+                label_ft += f" = {fp_t_mm:.0f} mm"
             self.draw_vertical_dimension_with_arrow(painter, x_dim, fp_top_y, deck_bottom_y,
-                                                    f"Footpath\nThickness = {fp_t_mm:.0f} mm", 'left')
+                                                    label_ft, 'left')
         
         if fp_config == 'right' and right_fp_width > 0 and fp_thick_px > 5:
             x_dim = deck_right_x + 8
+            label_ft = "Footpath\nThickness"
+            if self.show_carriageway_values:
+                label_ft += f" = {fp_t_mm:.0f} mm"
             self.draw_vertical_dimension_with_arrow(painter, x_dim, fp_top_y, deck_bottom_y,
-                                                    f"Footpath\nThickness = {fp_t_mm:.0f} mm", 'right')
+                                                    label_ft, 'right')
         
         # DECK THICKNESS DIMENSION - position adjusted for median
         deck_t_mm = self.params['deck_thickness']
@@ -1888,7 +1928,9 @@ class CrossSectionCADWidget(QWidget):
                             QPointF(deck_center_x + tick_len, deck_bottom_y))
             
             # Renamed to "Deck Thickness"
-            text = f"Deck Thickness = {deck_t_mm:.0f} mm"
+            text = "Deck Thickness"
+            if self.show_carriageway_values:
+                text += f" = {deck_t_mm:.0f} mm"
             font = QFont('Arial', 9, QFont.Bold)
             painter.setFont(font)
             metrics = painter.fontMetrics()
