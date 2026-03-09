@@ -9,13 +9,152 @@ from PySide6.QtWidgets import (
     QTextEdit, QDialog, QSizeGrip
 )
 from PySide6.QtCore import Qt, Signal, QSize
-from PySide6.QtGui import QDoubleValidator, QIntValidator
+from PySide6.QtGui import QDoubleValidator, QIntValidator, QPainter, QPen, QColor
 
 from osdagbridge.core.utils.common import *
 from osdagbridge.desktop.ui.utils.custom_titlebar import CustomTitleBar
 from osdagbridge.desktop.ui.dialogs.tabs.common import apply_field_style
 from osdagbridge.desktop.ui.widgets.section_viewer import SectionPreviewWidget, SectionCatalog
 from osdagbridge.desktop.ui.widgets.placeholder_section_preview import PlaceholderSectionPreviewWidget
+
+
+class BracingLayoutCadWidget(QWidget):
+    """Simple CAD-like bracing layout preview for K/X bracing."""
+
+    def __init__(self, min_height: int = 170, parent=None):
+        super().__init__(parent)
+        self._bracing_type = "K-Bracing"
+        self._top_bracket = False
+        self._bottom_bracket = True
+        self.setMinimumHeight(int(min_height))
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+
+    def set_layout(self, bracing_type: str, top_bracket: bool, bottom_bracket: bool) -> None:
+        self._bracing_type = (bracing_type or "K-Bracing").strip() or "K-Bracing"
+        self._top_bracket = bool(top_bracket)
+        self._bottom_bracket = bool(bottom_bracket)
+        self.update()
+
+    def paintEvent(self, _event):  # noqa: N802 (Qt naming)
+        from PySide6.QtCore import QPointF
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing, True)
+
+        # Main background frame
+        frame = self.rect().adjusted(6, 6, -6, -6)
+        painter.fillRect(frame, QColor("#ffffff"))
+        painter.setPen(QPen(QColor("#000000"), 1))
+        painter.setBrush(Qt.NoBrush)
+        painter.drawRect(frame)
+
+        draw = frame.adjusted(18, 12, -18, -12)
+        if draw.width() <= 10 or draw.height() <= 10:
+            return
+
+        # Coordinates
+        x_left = draw.left() + int(draw.width() * 0.15)
+        x_right = draw.right() - int(draw.width() * 0.15)
+        y_top = draw.top() + int(draw.height() * 0.12)
+        y_bottom = draw.bottom() - int(draw.height() * 0.12)
+        
+        fw = 40  # flange width
+        ft = 8   # flange thickness
+        wt = 6   # web thickness
+        st_w = 8 # stiffener width
+
+        # Connection Points (at the edge of the stiffeners)
+        x_l_conn = x_left + wt // 2 + st_w
+        x_r_conn = x_right - wt // 2 - st_w
+
+        strut_offset = 12
+        y_T_WP = y_top + strut_offset if self._top_bracket else y_top + 15
+        y_B_WP = y_bottom - strut_offset if self._bottom_bracket else y_bottom - 15
+
+        wp_tl = QPointF(x_l_conn, y_T_WP)
+        wp_tr = QPointF(x_r_conn, y_T_WP)
+        wp_bl = QPointF(x_l_conn, y_B_WP)
+        wp_br = QPointF(x_r_conn, y_B_WP)
+
+        # Monochrome CAD style: line-only geometry, no fill shading.
+        line_color = QColor("#000000")
+
+        # 1. Draw Brackets (Horizontal Struts)
+        painter.setPen(QPen(line_color, 2))
+        if self._top_bracket:
+            painter.drawLine(wp_tl, wp_tr)
+        if self._bottom_bracket:
+            painter.drawLine(wp_bl, wp_br)
+
+        # 2. Draw Bracing Members
+        brace_pen = QPen(line_color, 2)
+        brace_pen.setCapStyle(Qt.RoundCap)
+        brace_pen.setJoinStyle(Qt.RoundJoin)
+        painter.setPen(brace_pen)
+        
+        if self._bracing_type == "K-Bracing":
+            if self._top_bracket and not self._bottom_bracket:
+                apex = QPointF((x_l_conn + x_r_conn) / 2.0, y_T_WP)
+                painter.drawLine(wp_bl, apex)
+                painter.drawLine(wp_br, apex)
+            else:
+                apex = QPointF((x_l_conn + x_r_conn) / 2.0, y_B_WP)
+                painter.drawLine(wp_tl, apex)
+                painter.drawLine(wp_tr, apex)
+        else:
+            painter.drawLine(wp_tl, wp_br)
+            painter.drawLine(wp_bl, wp_tr)
+
+        # 3. Draw Nodes (Connections)
+        def draw_node(pt):
+            painter.setPen(QPen(line_color, 1.5))
+            painter.setBrush(Qt.NoBrush)
+            painter.drawEllipse(pt, 3, 3)
+
+        draw_node(wp_tl)
+        draw_node(wp_tr)
+        draw_node(wp_bl)
+        draw_node(wp_br)
+
+        if self._bracing_type == "K-Bracing":
+            if self._top_bracket and not self._bottom_bracket:
+                apex = QPointF((x_l_conn + x_r_conn) / 2.0, y_T_WP)
+                draw_node(apex)
+            else:
+                apex = QPointF((x_l_conn + x_r_conn) / 2.0, y_B_WP)
+                draw_node(apex)
+        else:
+            wp_center = QPointF((x_l_conn + x_r_conn) / 2.0, (y_T_WP + y_B_WP) / 2.0)
+            draw_node(wp_center)
+
+        # 4. Draw I-Girders
+        painter.setPen(QPen(line_color, 1.6))
+        painter.setBrush(Qt.NoBrush)
+
+        # Stiffeners (outline only)
+        painter.drawRect(int(x_left + wt//2), int(y_top), st_w, int(y_bottom - y_top))
+        painter.drawRect(int(x_right - wt//2 - st_w), int(y_top), st_w, int(y_bottom - y_top))
+
+        # Girder body outlines (double-line geometry with flange/web rectangles)
+        # Left Girder
+        painter.drawRect(int(x_left - fw//2), int(y_top - ft), fw, ft)
+        painter.drawRect(int(x_left - fw//2), int(y_bottom), fw, ft)
+        painter.drawRect(int(x_left - wt//2), int(y_top), wt, int(y_bottom - y_top))
+
+        # Right Girder
+        painter.drawRect(int(x_right - fw//2), int(y_top - ft), fw, ft)
+        painter.drawRect(int(x_right - fw//2), int(y_bottom), fw, ft)
+        painter.drawRect(int(x_right - wt//2), int(y_top), wt, int(y_bottom - y_top))
+
+        # Gusset plates at stiffeners (outline only)
+        painter.setPen(QPen(line_color, 1.4))
+        painter.setBrush(Qt.NoBrush)
+        gs_h = 16 
+        gs_w = 6  
+        
+        painter.drawPolygon([QPointF(x_l_conn, y_T_WP - gs_h/2), QPointF(x_l_conn + gs_w, y_T_WP), QPointF(x_l_conn, y_T_WP + gs_h/2)])
+        painter.drawPolygon([QPointF(x_r_conn, y_T_WP - gs_h/2), QPointF(x_r_conn - gs_w, y_T_WP), QPointF(x_r_conn, y_T_WP + gs_h/2)])
+        painter.drawPolygon([QPointF(x_l_conn, y_B_WP - gs_h/2), QPointF(x_l_conn + gs_w, y_B_WP), QPointF(x_l_conn, y_B_WP + gs_h/2)])
+        painter.drawPolygon([QPointF(x_r_conn, y_B_WP - gs_h/2), QPointF(x_r_conn - gs_w, y_B_WP), QPointF(x_r_conn, y_B_WP + gs_h/2)])
 
 class CrossBracingDetailsTab(QWidget):
     """Tab for Cross-Bracing Details with visual previews"""
@@ -34,6 +173,7 @@ class CrossBracingDetailsTab(QWidget):
         self._state_by_member_key: dict[str, dict] = {}
         self._active_member_key: str | None = None
         self._selection_sync_guard = False
+        self._updating_bracket_rules = False
         self.init_ui()
 
     def init_ui(self):
@@ -165,27 +305,35 @@ class CrossBracingDetailsTab(QWidget):
         apply_field_style(self.bracing_section_combo)
         row = self._add_grid_row(inputs_grid, row, "Bracing Section:", self.bracing_section_combo)
 
+        self.top_bracket_checkbox = QCheckBox()
+        self.top_bracket_checkbox.setChecked(False)
+        row = self._add_grid_row(inputs_grid, row, "Top Bracket:", self.top_bracket_checkbox)
+
         self.top_bracket_type_combo = QComboBox()
         self.top_bracket_type_combo.addItems(section_type_options)
         self._configure_combo_box(self.top_bracket_type_combo)
         apply_field_style(self.top_bracket_type_combo)
-        row = self._add_grid_row(inputs_grid, row, "Top Bracket Section:", self.top_bracket_type_combo)
+        row = self._add_grid_row(inputs_grid, row, "Top Bracket Section Type:", self.top_bracket_type_combo)
 
         self.top_bracket_size_combo = QComboBox()
         self._configure_combo_box(self.top_bracket_size_combo)
         apply_field_style(self.top_bracket_size_combo)
-        row = self._add_grid_row(inputs_grid, row, "Top Bracket Size:", self.top_bracket_size_combo)
+        row = self._add_grid_row(inputs_grid, row, "Top Bracket Section:", self.top_bracket_size_combo)
+
+        self.bottom_bracket_checkbox = QCheckBox()
+        self.bottom_bracket_checkbox.setChecked(True)
+        row = self._add_grid_row(inputs_grid, row, "Bottom Bracket:", self.bottom_bracket_checkbox)
 
         self.bottom_bracket_type_combo = QComboBox()
         self.bottom_bracket_type_combo.addItems(section_type_options)
         self._configure_combo_box(self.bottom_bracket_type_combo)
         apply_field_style(self.bottom_bracket_type_combo)
-        row = self._add_grid_row(inputs_grid, row, "Bottom Bracket Section:", self.bottom_bracket_type_combo)
+        row = self._add_grid_row(inputs_grid, row, "Bottom Bracket Section Type:", self.bottom_bracket_type_combo)
 
         self.bottom_bracket_size_combo = QComboBox()
         self._configure_combo_box(self.bottom_bracket_size_combo)
         apply_field_style(self.bottom_bracket_size_combo)
-        row = self._add_grid_row(inputs_grid, row, "Bottom Bracket Size:", self.bottom_bracket_size_combo)
+        row = self._add_grid_row(inputs_grid, row, "Bottom Bracket Section:", self.bottom_bracket_size_combo)
 
         self.spacing_input = QLineEdit()
         self.spacing_input.setValidator(QDoubleValidator(0, 100000, 2))
@@ -215,7 +363,9 @@ class CrossBracingDetailsTab(QWidget):
         type_layout.setContentsMargins(12, 8, 12, 10)
         type_layout.setSpacing(6)
         type_layout.addWidget(self._create_heading_label("Type of Bracing"))
-        type_layout.addWidget(self._create_bracing_layout_placeholder("Bracing Layout", 170))
+        self.bracing_layout_widget = BracingLayoutCadWidget(170)
+        self.bracing_layout_widget.setFixedHeight(170)
+        type_layout.addWidget(self.bracing_layout_widget)
         right_layout.addWidget(type_box)
 
         self.bracing_preview_box, self.bracing_preview_label = self._create_preview_box("Bracing")
@@ -236,10 +386,13 @@ class CrossBracingDetailsTab(QWidget):
         container_layout.addStretch()
 
         self.bracing_type_combo.currentTextChanged.connect(self._update_previews)
+        self.bracing_type_combo.currentTextChanged.connect(self._on_bracing_layout_changed)
         self.bracing_section_type_combo.currentTextChanged.connect(self._on_bracing_type_changed)
         self.bracing_section_combo.currentTextChanged.connect(self._update_previews)
+        self.top_bracket_checkbox.toggled.connect(self._on_bracing_layout_changed)
         self.top_bracket_type_combo.currentTextChanged.connect(self._on_top_bracket_type_changed)
         self.top_bracket_size_combo.currentTextChanged.connect(self._update_previews)
+        self.bottom_bracket_checkbox.toggled.connect(self._on_bracing_layout_changed)
         self.bottom_bracket_type_combo.currentTextChanged.connect(self._on_bottom_bracket_type_changed)
         self.bottom_bracket_size_combo.currentTextChanged.connect(self._update_previews)
         self.design_combo.currentTextChanged.connect(self._on_design_changed)
@@ -252,6 +405,7 @@ class CrossBracingDetailsTab(QWidget):
 
         # Ensure initial selection loads its saved/default state.
         self._load_state_for_current_member()
+        self._on_bracing_layout_changed()
 
     def _on_span_or_spacing_changed(self, *_args) -> None:
         # Member IDs are derived from Span + Spacing (software-driven).
@@ -424,9 +578,11 @@ class CrossBracingDetailsTab(QWidget):
             "bracing_section_type": "Angle",
             "bracing_section_data": None,
             "bracing_section_text": "",
+            "top_bracket_enabled": False,
             "top_bracket_type": "Angle",
             "top_bracket_data": None,
             "top_bracket_text": "",
+            "bottom_bracket_enabled": True,
             "bottom_bracket_type": "Angle",
             "bottom_bracket_data": None,
             "bottom_bracket_text": "",
@@ -440,9 +596,11 @@ class CrossBracingDetailsTab(QWidget):
             "bracing_section_type": self.bracing_section_type_combo.currentText(),
             "bracing_section_data": self.bracing_section_combo.currentData(),
             "bracing_section_text": self.bracing_section_combo.currentText(),
+            "top_bracket_enabled": self.top_bracket_checkbox.isChecked(),
             "top_bracket_type": self.top_bracket_type_combo.currentText(),
             "top_bracket_data": self.top_bracket_size_combo.currentData(),
             "top_bracket_text": self.top_bracket_size_combo.currentText(),
+            "bottom_bracket_enabled": self.bottom_bracket_checkbox.isChecked(),
             "bottom_bracket_type": self.bottom_bracket_type_combo.currentText(),
             "bottom_bracket_data": self.bottom_bracket_size_combo.currentData(),
             "bottom_bracket_text": self.bottom_bracket_size_combo.currentText(),
@@ -483,6 +641,8 @@ class CrossBracingDetailsTab(QWidget):
             state.get("bracing_section_text") or "",
         )
 
+        self.top_bracket_checkbox.setChecked(bool(state.get("top_bracket_enabled", False)))
+
         self.top_bracket_type_combo.setCurrentText(state.get("top_bracket_type") or self.top_bracket_type_combo.currentText())
         self._update_designations_for(self.top_bracket_size_combo, self.top_bracket_type_combo.currentText())
         self._set_combo_to_data_or_text(
@@ -490,6 +650,8 @@ class CrossBracingDetailsTab(QWidget):
             state.get("top_bracket_data"),
             state.get("top_bracket_text") or "",
         )
+
+        self.bottom_bracket_checkbox.setChecked(bool(state.get("bottom_bracket_enabled", True)))
 
         self.bottom_bracket_type_combo.setCurrentText(state.get("bottom_bracket_type") or self.bottom_bracket_type_combo.currentText())
         self._update_designations_for(self.bottom_bracket_size_combo, self.bottom_bracket_type_combo.currentText())
@@ -500,6 +662,7 @@ class CrossBracingDetailsTab(QWidget):
         )
 
         self.spacing_input.setText(state.get("spacing") or "")
+        self._on_bracing_layout_changed()
 
         # Ensure enable/disable and previews match the restored design state.
         self._on_design_changed(self._global_design_mode)
@@ -516,8 +679,10 @@ class CrossBracingDetailsTab(QWidget):
         guard_b = self.bracing_type_combo.blockSignals(True)
         guard_c = self.bracing_section_type_combo.blockSignals(True)
         guard_d = self.bracing_section_combo.blockSignals(True)
+        guard_d2 = self.top_bracket_checkbox.blockSignals(True)
         guard_e = self.top_bracket_type_combo.blockSignals(True)
         guard_f = self.top_bracket_size_combo.blockSignals(True)
+        guard_g2 = self.bottom_bracket_checkbox.blockSignals(True)
         guard_g = self.bottom_bracket_type_combo.blockSignals(True)
         guard_h = self.bottom_bracket_size_combo.blockSignals(True)
         try:
@@ -527,8 +692,10 @@ class CrossBracingDetailsTab(QWidget):
             self.bracing_type_combo.blockSignals(guard_b)
             self.bracing_section_type_combo.blockSignals(guard_c)
             self.bracing_section_combo.blockSignals(guard_d)
+            self.top_bracket_checkbox.blockSignals(guard_d2)
             self.top_bracket_type_combo.blockSignals(guard_e)
             self.top_bracket_size_combo.blockSignals(guard_f)
+            self.bottom_bracket_checkbox.blockSignals(guard_g2)
             self.bottom_bracket_type_combo.blockSignals(guard_g)
             self.bottom_bracket_size_combo.blockSignals(guard_h)
 
@@ -671,6 +838,7 @@ class CrossBracingDetailsTab(QWidget):
 
     def _create_preview_box(self, title):
         box = self._create_inner_box()
+        box.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         layout = QVBoxLayout(box)
         layout.setContentsMargins(12, 10, 12, 10)
         layout.setSpacing(8)
@@ -678,7 +846,9 @@ class CrossBracingDetailsTab(QWidget):
         heading.setStyleSheet("font-size: 12px; font-weight: 700; color: #4b4b4b; border: none;")
         layout.addWidget(heading)
         image = PlaceholderSectionPreviewWidget(title, 110)
+        image.setFixedHeight(110)
         layout.addWidget(image)
+        box.setFixedHeight(154)
         return box, image
 
     def _update_previews(self):
@@ -692,8 +862,14 @@ class CrossBracingDetailsTab(QWidget):
                 widget.set_section("", "")
             return
         self._set_preview(self.bracing_preview_label, self.bracing_section_type_combo, self.bracing_section_combo)
-        self._set_preview(self.top_bracket_preview_label, self.top_bracket_type_combo, self.top_bracket_size_combo)
-        self._set_preview(self.bottom_bracket_preview_label, self.bottom_bracket_type_combo, self.bottom_bracket_size_combo)
+        if self.top_bracket_checkbox.isChecked():
+            self._set_preview(self.top_bracket_preview_label, self.top_bracket_type_combo, self.top_bracket_size_combo)
+        else:
+            self.top_bracket_preview_label.set_section("", "")
+        if self.bottom_bracket_checkbox.isChecked():
+            self._set_preview(self.bottom_bracket_preview_label, self.bottom_bracket_type_combo, self.bottom_bracket_size_combo)
+        else:
+            self.bottom_bracket_preview_label.set_section("", "")
 
     def _apply_custom_mode(self, is_custom: bool):
         # Only allow manual section selection in Customized mode.
@@ -708,6 +884,7 @@ class CrossBracingDetailsTab(QWidget):
             self.bottom_bracket_size_combo,
         ]:
             widget.setEnabled(is_custom)
+        self._on_bracing_layout_changed()
 
     def _on_design_changed(self, label: str):
         is_custom = label == "Customized"
@@ -776,6 +953,44 @@ class CrossBracingDetailsTab(QWidget):
 
     def _on_bottom_bracket_type_changed(self, label: str):
         self._update_designations_for(self.bottom_bracket_size_combo, label)
+        self._update_previews()
+
+    def _on_bracing_layout_changed(self, *_args):
+        if self._updating_bracket_rules:
+            return
+        self._updating_bracket_rules = True
+        try:
+            bracing = (self.bracing_type_combo.currentText() or "").strip()
+            is_custom = self.design_combo.currentText() == "Customized"
+
+            if bracing == "K-Bracing":
+                self.bottom_bracket_checkbox.setChecked(True)
+                self.bottom_bracket_checkbox.setEnabled(False)
+                self.top_bracket_checkbox.setEnabled(True)
+            else:
+                self.bottom_bracket_checkbox.setEnabled(True)
+                self.top_bracket_checkbox.setEnabled(True)
+
+            top_enabled = is_custom and self.top_bracket_checkbox.isChecked()
+            bottom_enabled = is_custom and self.bottom_bracket_checkbox.isChecked()
+
+            self.top_bracket_type_combo.setEnabled(top_enabled)
+            self.top_bracket_size_combo.setEnabled(top_enabled)
+            self.bottom_bracket_type_combo.setEnabled(bottom_enabled)
+            self.bottom_bracket_size_combo.setEnabled(bottom_enabled)
+
+            self.top_bracket_preview_box.setVisible(self.top_bracket_checkbox.isChecked())
+            self.bottom_bracket_preview_box.setVisible(self.bottom_bracket_checkbox.isChecked())
+
+            if hasattr(self, "bracing_layout_widget") and self.bracing_layout_widget is not None:
+                self.bracing_layout_widget.set_layout(
+                    bracing,
+                    self.top_bracket_checkbox.isChecked(),
+                    self.bottom_bracket_checkbox.isChecked(),
+                )
+        finally:
+            self._updating_bracket_rules = False
+
         self._update_previews()
 
     def _update_designations_for(self, combo: QComboBox, type_label: str):
@@ -849,8 +1064,10 @@ class CrossBracingDetailsTab(QWidget):
             "bracing_type": self.bracing_type_combo.currentText(),
             "bracing_section_type": self.bracing_section_type_combo.currentText(),
             "bracing_section": self.bracing_section_combo.currentText(),
+            "top_bracket_enabled": self.top_bracket_checkbox.isChecked(),
             "top_bracket_type": self.top_bracket_type_combo.currentText(),
             "top_bracket_size": self.top_bracket_size_combo.currentText(),
+            "bottom_bracket_enabled": self.bottom_bracket_checkbox.isChecked(),
             "bottom_bracket_type": self.bottom_bracket_type_combo.currentText(),
             "bottom_bracket_size": self.bottom_bracket_size_combo.currentText(),
             "spacing": self.spacing_input.text(),

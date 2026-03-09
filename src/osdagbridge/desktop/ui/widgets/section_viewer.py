@@ -101,9 +101,9 @@ class SectionCatalog:
 class SectionPreviewWidget(QWidget):
     """Simple 2D outline renderer for angle/channel variants."""
 
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, min_height: int = 150):
         super().__init__(parent)
-        self.setMinimumHeight(150)
+        self.setMinimumHeight(int(min_height))
         self.setMinimumWidth(140)
         self._section_type: str = ""
         self._designation: str = ""
@@ -334,13 +334,15 @@ class SectionPreviewWidget(QWidget):
         if geom_bbox.width() <= 0 or geom_bbox.height() <= 0:
             return
 
-        # Add fixed world-space padding to accommodate dimension lines/arrows
-        dim_pad_world = 30.0
+        # Adaptive world-space padding keeps small sections legible and
+        # large sections from feeling cramped in the same preview slot.
+        max_dim = max(geom_bbox.width(), geom_bbox.height())
+        dim_pad_world = max(12.0, min(26.0, max_dim * 0.20))
         combined = QRectF(geom_bbox)
         combined.adjust(-dim_pad_world, -dim_pad_world, dim_pad_world, dim_pad_world)
 
-        # Ensure a minimum device-space padding so small sections do not look tiny and large ones do not overflow.
-        min_pixel_pad = 20.0
+        # Keep enough pixel padding for labels but avoid shrinking content too much.
+        min_pixel_pad = 18.0
         rw, rh = self.width(), self.height()
         usable_w = max(rw - 2 * min_pixel_pad, 1.0)
         usable_h = max(rh - 2 * min_pixel_pad, 1.0)
@@ -391,7 +393,8 @@ class SectionPreviewWidget(QWidget):
         a_val = info.get("h", info.get("a", bbox.height()))
         b_val = info.get("w", info.get("b", bbox.width()))
 
-        offset = 15.0
+        max_dim = max(bbox.width(), bbox.height())
+        offset = max(6.0, min(14.0, max_dim * 0.12))
 
         # W dimension (horizontal at bottom for double angles, at top for single)
         if is_double:
@@ -425,7 +428,8 @@ class SectionPreviewWidget(QWidget):
         b = info.get("b", bbox.width())
         is_double = info.get("is_double", False)
 
-        offset = 15.0
+        max_dim = max(bbox.width(), bbox.height())
+        offset = max(6.0, min(14.0, max_dim * 0.12))
 
         # B dimension (horizontal at bottom - flange width)
         if is_double:
@@ -464,7 +468,7 @@ class SectionPreviewWidget(QWidget):
 
         # tf dimension (flange thickness - vertical on the right side, label on right)
         if tf > 0:
-            self._draw_dim_line_v(painter, scale, y_top, y_top + tf, x_right + 12.0,
+            self._draw_dim_line_v(painter, scale, y_top, y_top + tf, x_right + max(8.0, offset * 0.8),
                                   "t", self._fmt_val(tf), subscript="f", outer_arrows=True, label_right=True)
 
     def _draw_dim_line_h(self, painter: QPainter, scale: float,
@@ -619,10 +623,11 @@ class SectionPreviewWidget(QWidget):
         if valign in ("center", "middle"):
             py += 4
         elif valign == "above":
-            # Lift labels slightly further off the dimension line to avoid overlap
+            # Lift labels slightly above dimension line.
             py -= 8
         elif valign == "below":
-            py += 18
+            # Keep below-labels close enough that they remain visible in compact previews.
+            py += 14
 
         # Build text segments: [(text, font, y_offset), ...]
         segments = []
@@ -656,13 +661,22 @@ class SectionPreviewWidget(QWidget):
         else:
             start_x = px
 
-        # Draw background if needed to clear lines
-        if valign in ("center", "middle"):
-            fm_main = QFontMetrics(main_font)
-            text_height = fm_main.height()
-            # Background rect: slightly padded
-            bg_rect = QRectF(start_x - 2, py - text_height + 4, total_width + 4, text_height)
-            painter.fillRect(bg_rect, QColor(255, 255, 255, 235))
+        # Clamp label extents to the preview widget bounds so text never gets cut.
+        fm_main = QFontMetrics(main_font)
+        text_height = fm_main.height()
+        left_margin = 6.0
+        right_margin = 6.0
+        top_margin = 6.0
+        bottom_margin = 6.0
+
+        start_x = max(left_margin, min(start_x, self.width() - right_margin - total_width))
+        min_baseline = top_margin + fm_main.ascent()
+        max_baseline = self.height() - bottom_margin - fm_main.descent()
+        py = max(min_baseline, min(py, max_baseline))
+
+        # Draw a subtle background behind labels for legibility over geometry lines.
+        bg_rect = QRectF(start_x - 2, py - text_height + 4, total_width + 4, text_height)
+        painter.fillRect(bg_rect, QColor(255, 255, 255, 242))
 
         # Draw function for a single pass
         def draw_segments(color: QColor, offset_x: float = 0, offset_y: float = 0):

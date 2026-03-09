@@ -25,7 +25,7 @@ class PlaceholderSectionPreviewWidget(QWidget):
             "background-color: #f7f7f7; font-weight: bold; color: #5b5b5b; }"
         )
 
-        self._preview = SectionPreviewWidget()
+        self._preview = SectionPreviewWidget(min_height=min_height)
         self._preview.setMinimumHeight(min_height)
         self._preview.setStyleSheet(
             "QWidget { border: 1px solid #d0d0d0; border-radius: 10px; background-color: #ffffff; }"

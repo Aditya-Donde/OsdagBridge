@@ -401,7 +401,7 @@ class _GirderCad2DView(QWidget):
         super().__init__(parent)
         self.setFixedHeight(160)
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-        self.setStyleSheet("QWidget { background: #ffffff; border: 1px solid #d6d6d6; border-radius: 6px; }")
+        self.setStyleSheet("QWidget { background: #ffffff; border: 1px solid #cfcfcf; border-radius: 6px; }")
         self._segments: List[dict] = []
         self._selected_member_id: str = ""
         self._flange_thickness: float = 15.0
@@ -441,9 +441,9 @@ class _GirderCad2DView(QWidget):
         if drawing_rect.width() <= 0 or drawing_rect.height() <= 0:
             return
 
-        outer_fill = QColor("#edf5d2")
-        outer_border = QPen(QColor("#90AF13"))
-        outer_border.setWidth(2)
+        outer_fill = QColor("#ffffff")
+        outer_border = QPen(QColor("#222222"))
+        outer_border.setWidth(1)
         painter.setPen(outer_border)
         painter.setBrush(outer_fill)
         painter.drawRect(drawing_rect)
@@ -457,16 +457,25 @@ class _GirderCad2DView(QWidget):
         if total_length <= 0.0:
             return
 
-        fill_palette = [QColor("#d7e7a5"), QColor("#c7dd82"), QColor("#b8d16a")]
-        partition_pen = QPen(QColor("#6f850f"))
+        # Monochrome palette for a clean technical look.
+        fill_palette = [QColor("#f5f5f5"), QColor("#eeeeee"), QColor("#e7e7e7")]
+        partition_pen = QPen(QColor("#656565"))
         partition_pen.setWidth(1)
+        partition_pen.setStyle(Qt.DashLine)
+        partition_pen.setDashPattern([6, 4])
 
-        flange_thickness = max(6.0, min(self._flange_thickness, drawing_rect.height() * 0.28))
+        # Keep flanges visually meaningful even for compact/tall drawing areas.
+        flange_thickness = max(10.0, min(self._flange_thickness, drawing_rect.height() * 0.24))
         web_top = drawing_rect.top() + flange_thickness
         web_bottom = drawing_rect.bottom() - flange_thickness
         web_height = max(2.0, web_bottom - web_top)
 
+        # Flange-web boundary lines improve structural readability in grayscale.
+        flange_boundary_pen = QPen(QColor("#8b8b8b"))
+        flange_boundary_pen.setWidth(1)
+
         x = drawing_rect.left()
+        partition_xs: List[float] = []
         for index, segment in enumerate(self._segments):
             ratio = float(segment["length"]) / total_length
             segment_width = drawing_rect.width() * ratio
@@ -481,9 +490,9 @@ class _GirderCad2DView(QWidget):
             member_id = str(segment.get("id") or "")
             is_selected = bool(self._selected_member_id) and member_id == self._selected_member_id
 
-            top_fill = base_fill.lighter(108 if not is_selected else 120)
-            web_fill = base_fill.darker(104 if not is_selected else 92)
-            bottom_fill = base_fill.lighter(96 if not is_selected else 112)
+            top_fill = QColor("#f0f0f0") if not is_selected else QColor("#e4e4e4")
+            web_fill = QColor("#cfcfcf") if not is_selected else QColor("#c2c2c2")
+            bottom_fill = QColor("#f0f0f0") if not is_selected else QColor("#e4e4e4")
 
             painter.setPen(Qt.NoPen)
             painter.setBrush(top_fill)
@@ -493,15 +502,21 @@ class _GirderCad2DView(QWidget):
             painter.setBrush(bottom_fill)
             painter.drawRect(bottom_flange_rect)
 
+            # Draw flange boundaries explicitly so thickness is always visible.
+            painter.setPen(flange_boundary_pen)
+            painter.setBrush(Qt.NoBrush)
+            painter.drawLine(top_flange_rect.bottomLeft(), top_flange_rect.bottomRight())
+            painter.drawLine(bottom_flange_rect.topLeft(), bottom_flange_rect.topRight())
+
             if is_selected:
-                selected_pen = QPen(QColor("#2d3a07"))
-                selected_pen.setWidth(3)
+                selected_pen = QPen(QColor("#111111"))
+                selected_pen.setWidth(2)
                 painter.setPen(selected_pen)
                 painter.setBrush(Qt.NoBrush)
                 painter.drawRect(segment_rect.adjusted(1.5, 1.5, -1.5, -1.5))
 
             label = f"{segment['id']} ({self._fmt_length(segment['length'])} m)"
-            painter.setPen(QPen(QColor("#1f1f1f")))
+            painter.setPen(QPen(QColor("#121212")))
             text_margin = 6
             text_rect = segment_rect.adjusted(text_margin, 0, -text_margin, 0)
             if text_rect.width() > 18:
@@ -509,10 +524,17 @@ class _GirderCad2DView(QWidget):
                 painter.drawText(text_rect, Qt.AlignCenter, elided)
 
             if index < len(self._segments) - 1:
-                painter.setPen(partition_pen)
-                painter.drawLine(segment_rect.topRight(), segment_rect.bottomRight())
+                partition_xs.append(segment_rect.right())
 
             x = segment_rect.right()
+
+        # Draw partitions in a final pass so fills/selection cannot hide them.
+        painter.setPen(partition_pen)
+        for px in partition_xs:
+            painter.drawLine(
+                QRectF(px, drawing_rect.top(), 0.0, drawing_rect.height()).topLeft(),
+                QRectF(px, drawing_rect.top(), 0.0, drawing_rect.height()).bottomLeft(),
+            )
 
 
 class _ThicknessSelectionDialog(QDialog):
