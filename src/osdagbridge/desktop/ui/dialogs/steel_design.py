@@ -1,6 +1,6 @@
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QTabWidget, QWidget, QSizeGrip,
-    QSizePolicy, QComboBox, QLabel
+    QSizePolicy, QGroupBox, QRadioButton, QLabel
 )
 from PySide6.QtCore import Qt
 
@@ -148,20 +148,46 @@ class SteelDesign(QDialog):
         self.canvas.setStyleSheet("background-color: transparent;")
         self.canvas.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
 
-        # ── Interaction mode dropdown ─────────────────────────────────────────
-        self.interaction_combo = QComboBox()
-        self.interaction_combo.addItems(["Maximum Values", "Interactive"])
-        self.interaction_combo.setFixedWidth(160)
-        self.interaction_combo.setMinimumHeight(28)
-        self.interaction_combo.setStyleSheet(self.analysis_tab.member_combo.styleSheet())
-        self.interaction_combo.currentTextChanged.connect(self._on_interaction_mode_changed)
+        # ── Interaction mode radio buttons ────────────────────────────────────
+        mode_group = QGroupBox("Display Location")
+        mode_group.setStyleSheet("""
+            QGroupBox {
+                font-weight: bold;
+                color: #555555;
+                border: 1px solid #cccccc;
+                border-radius: 4px;
+                margin-top: 6px;
+                padding-top: 10px;
+            }
+            QGroupBox::title {
+                subcontrol-origin: margin;
+                left: 10px;
+                padding: 0 3px;
+                color: #777777;
+                font-size: 10px;
+            }
+        """)
+        mode_layout = QHBoxLayout(mode_group)
+        mode_layout.setContentsMargins(10, 5, 10, 5)
+        
+        self.radio_max = QRadioButton("Maximum Values")
+        self.radio_scroll = QRadioButton("Scroll for Values")
+        
+        # Default to Maximum Values
+        self.radio_max.setChecked(True)
+        
+        # Connect signals
+        self.radio_max.toggled.connect(self._on_interaction_mode_changed)
+        self.radio_scroll.toggled.connect(self._on_interaction_mode_changed)
+        
+        mode_layout.addWidget(self.radio_max)
+        mode_layout.addSpacing(15)
+        mode_layout.addWidget(self.radio_scroll)
+        mode_layout.addStretch()
 
         combo_layout = QHBoxLayout()
         combo_layout.addStretch()
-        lbl_mode = QLabel("Interaction:")
-        lbl_mode.setStyleSheet("font-size: 11px; font-weight: bold; color: #333;")
-        combo_layout.addWidget(lbl_mode)
-        combo_layout.addWidget(self.interaction_combo)
+        combo_layout.addWidget(mode_group)
 
         # Canvas wrapper: fixed height so it doesn't push surrounding layout
         canvas_wrapper = QWidget()
@@ -198,13 +224,22 @@ class SteelDesign(QDialog):
         self.ax_defl   = self.figure.add_subplot(gs[3])
         self.figure.subplots_adjust(left=0.08, right=0.96, top=0.95, bottom=0.08, hspace=0.35)
 
-        for ax in (self.ax_scheme, self.ax_bmd, self.ax_sfd, self.ax_defl):
+        # Schematic: frameless
+        self.ax_scheme.set_facecolor('#ffffff')
+        self.ax_scheme.grid(False)
+        for spine in self.ax_scheme.spines.values():
+            spine.set_visible(False)
+        self.ax_scheme.set_yticks([])
+        self.ax_scheme.set_ylabel("")
+        
+        # Data axes: show all four spines as a visible frame
+        for ax in (self.ax_bmd, self.ax_sfd, self.ax_defl):
             ax.set_facecolor('#ffffff')
             ax.grid(False)
-            ax.spines['top'].set_visible(False)
-            ax.spines['right'].set_visible(False)
-            ax.spines['left'].set_visible(False)
-            ax.spines['bottom'].set_visible(False)
+            for spine in ax.spines.values():
+                spine.set_visible(True)
+                spine.set_linewidth(0.8)
+                spine.set_color('#cccccc')
             ax.set_yticks([])
             ax.set_ylabel("")
             ax.axhline(0, color='black', linewidth=0)
@@ -302,16 +337,13 @@ class SteelDesign(QDialog):
         if self._cached_model is None:
             self._discover_and_cache_model()
 
-        if self._cached_model is None:
-            return
-
-        if self._cached_results is None:
+        if self._cached_model is not None and self._cached_results is None:
             try:
                 self._cached_results = self._cached_model.get_results()
             except Exception:
-                return
+                pass
 
-        if not self._girder_map:
+        if self._cached_results is not None and not self._girder_map:
             self._build_girder_map()
 
         if self._girder_map and not self._data_initialized:
@@ -321,34 +353,40 @@ class SteelDesign(QDialog):
 
         self._update_analysis_plots()
 
-    def _on_interaction_mode_changed(self, _index=None):
+    @property
+    def _interaction_mode(self) -> str:
+        """Return the active display mode based on radio button selection."""
+        return "Maximum Values" if getattr(self, "radio_max", None) and self.radio_max.isChecked() else "Scroll for Values"
+
+    def _on_interaction_mode_changed(self, checked=None):
         """
-        Respond to interaction mode dropdown changes.
-        Resets cursor to position 0 when switching to Interactive mode,
+        Respond to radio button selection changes.
+        Resets cursor to position 0 when switching to Scroll for Values mode,
         then refreshes the right-panel fields and redraws cursor lines.
         """
-        if self.interaction_combo.currentText() == "Interactive":
+        if checked is False:
+            return
+        if self._interaction_mode == "Scroll for Values":
             self._cursor_idx = 0
+            self._cursor_x   = None
         self._update_right_panel_for_mode()
         self._draw_cursors()
 
     def _on_canvas_click(self, event):
         """
-        Move the interactive cursor to the clicked x-position and show
-        interpolated BMD/SFD/Defl values at that exact location.
-        Clicking between structural nodes returns linearly-interpolated values.
-        Only active in Interactive mode.
+        Handle mouse clicks on the matplotlib canvas.
+        If in Scroll for Values mode, determines which structural node is closest
+        to the click's x-coordinate and snaps the cursor to that node.
         """
-        if self.interaction_combo.currentText() != "Interactive":
+        if self._interaction_mode != "Scroll for Values":
             return
         if event.xdata is None or self._current_x is None:
             return
 
-        # Clamp to the girder's x-range
-        x_clicked = float(np.clip(event.xdata, self._current_x[0], self._current_x[-1]))
-        self._cursor_x   = x_clicked
-        # Track nearest node index so arrow keys start from a sensible position
-        self._cursor_idx = int(np.argmin(np.abs(self._current_x - x_clicked)))
+        idx = (np.abs(self._current_x - event.xdata)).argmin()
+        self._cursor_idx = int(idx)
+        self._cursor_x = float(self._current_x[self._cursor_idx])
+        
         self._update_right_panel_for_mode()
         self._draw_cursors()
 
@@ -356,9 +394,9 @@ class SteelDesign(QDialog):
         """
         Move the interactive cursor left or right through structural nodes
         using the arrow keys. Each step snaps to the next/previous node.
-        Only active in Interactive mode.
+        Only active in Scroll for Values mode.
         """
-        if self.interaction_combo.currentText() != "Interactive":
+        if self._interaction_mode != "Scroll for Values":
             return
         if self._current_x is None:
             return
@@ -382,48 +420,53 @@ class SteelDesign(QDialog):
 
     def _discover_and_cache_model(self):
         """
-        Locate the ospgrillage model by instantiating PlateGirderBridge from
-        the application's cad_state / backend defaults and running the analysis.
+        Locate the ospgrillage model from the application's *already-completed*
+        analysis engine. Walks cad_state and backend for any PlateGirderBridge
+        or BridgeGrillageModel whose _analysis_engine is populated.
 
-        On success, caches both the model and its results for later re-use.
-        Does nothing if input data is unavailable or analysis fails.
+        Does NOT re-run analysis. If no engine is found, leaves
+        _cached_model as None so the blank-state message is shown.
         """
         mw = self._main_window
-        input_data = {}
 
+        # ── 1. Walk cad_state values ──────────────────────────────────────────
+        if hasattr(mw, 'cad_state') and mw.cad_state:
+            for val in mw.cad_state.values():
+                # PlateGirderBridge stores completed engine at ._analysis_engine
+                engine = getattr(val, '_analysis_engine', None)
+                if engine is not None:
+                    model = getattr(engine, 'model', None)
+                    if model is not None:
+                        self._cached_model = model
+                        return
+
+                # BridgeGrillageModel stored directly in cad_state
+                model = getattr(val, 'model', None)
+                if model is not None and hasattr(model, 'get_results'):
+                    self._cached_model = model
+                    return
+
+        # ── 2. Try backend's run result or direct attribute ───────────────────
         if hasattr(mw, 'backend') and mw.backend:
             try:
-                defaults = mw.backend.get_input_values_dict(include_empty=True)
-                if defaults:
-                    input_data.update(defaults)
+                # Some backend implementations expose the last run result
+                result = getattr(mw.backend, 'last_run_result', None)
+                if result is None and hasattr(mw.backend, 'get_run_result'):
+                    result = mw.backend.get_run_result()
+
+                for source in (result, mw.backend):
+                    if source is None:
+                        continue
+                    engine = getattr(source, '_analysis_engine', None)
+                    if engine is not None:
+                        model = getattr(engine, 'model', None)
+                        if model is not None:
+                            self._cached_model = model
+                            return
             except Exception:
                 pass
 
-        if hasattr(mw, 'cad_state') and mw.cad_state:
-            input_data.update(mw.cad_state)
-
-        if not input_data:
-            return
-
-        from osdagbridge.core.bridge_types.plate_girder.plategirderbridge import PlateGirderBridge
-
-        bridge_obj = PlateGirderBridge(basic_inputs=input_data, additional_inputs=input_data)
-        try:
-            bridge_obj.run(run_analysis=True, include_live_load=True)
-        except Exception:
-            return
-
-        engine = getattr(bridge_obj, '_analysis_engine', None)
-        if engine is None:
-            return
-
-        model = getattr(engine, 'model', None)
-        if model is not None:
-            self._cached_model = model
-            try:
-                self._cached_results = model.get_results()
-            except Exception:
-                pass
+        # No completed engine found — _cached_model stays None.
 
     def _build_girder_map(self):
         """
@@ -642,7 +685,7 @@ class SteelDesign(QDialog):
 
         self._clear_axes()
         self._render_plots(xs, bmd_values, sfd_values, defl_values)
-        self._update_rhs_fields(self._current_max_dict)
+        self._update_value_fields(self._current_max_dict)
         self._on_interaction_mode_changed()
 
     def _render_plots(self, xs, bmd_values, sfd_values, defl_values):
@@ -659,10 +702,16 @@ class SteelDesign(QDialog):
         self.ax_scheme.set_ylim(-0.25, 0.1)
         self.ax_scheme.axis('off')
 
-        # Vertical node grid lines across all panels
-        for ax in (self.ax_scheme, self.ax_bmd, self.ax_sfd, self.ax_defl):
-            for x in xs:
-                ax.axvline(x, linestyle=":", linewidth=0.5, color="#bfbfbf")
+        # Vertical node grid lines (clipped for data axes)
+        for ax in (self.ax_bmd, self.ax_sfd, self.ax_defl):
+            for x in xs[1:-1]:  # Skip the very first and very last nodes to avoid spine overlap
+                ax.axvline(x, linestyle=":", linewidth=0.5, color="#bfbfbf", clip_on=True)
+            ax.set_xlim(xs[0], xs[-1])  # Constrain data axes perfectly to the girder span
+            
+        # Schematic node grid lines (unclipped as schematic has no frame)
+        for x in xs:
+            self.ax_scheme.axvline(x, linestyle=":", linewidth=0.5, color="#bfbfbf")
+        self.ax_scheme.set_xlim(xs[0], xs[-1])
 
         # ── Bending Moment Diagram ────────────────────────────────────────────
         self.ax_bmd.plot(xs, bmd_values, color='#4C72B0', linewidth=1.5)
@@ -690,27 +739,39 @@ class SteelDesign(QDialog):
         self.canvas.draw()
 
     def _clear_axes(self):
-        """Clear all axes and restore shared baseline formatting before re-render."""
+        """Clear all axes and restore baseline formatting before re-render."""
         for ax in (self.ax_scheme, self.ax_bmd, self.ax_sfd, self.ax_defl):
             ax.clear()
             ax.set_facecolor('#ffffff')
             ax.grid(False)
-            ax.spines['top'].set_visible(False)
-            ax.spines['right'].set_visible(False)
-            ax.spines['left'].set_visible(False)
             ax.set_yticks([])
             ax.set_ylabel("")
             ax.axis('on')
+            
+        # Schematic: frameless
+        for spine in self.ax_scheme.spines.values():
+            spine.set_visible(False)
+            
+        # Data axes: show all four spines as a visible frame
+        for ax in (self.ax_bmd, self.ax_sfd, self.ax_defl):
+            for spine in ax.spines.values():
+                spine.set_visible(True)
+                spine.set_linewidth(0.8)
+                spine.set_color('#cccccc')
+                
         self.canvas.draw()
 
     def _show_blank_state(self):
-        """Show a placeholder message when no analysis results are available."""
+        """
+        Show a placeholder message when no analysis results are available.
+        Directs the user to run the analysis before viewing the tab.
+        """
         self._clear_axes()
         for ax in (self.ax_scheme, self.ax_bmd, self.ax_sfd, self.ax_defl):
             ax.axis('off')
         self.ax_sfd.text(
             0.5, 0.5,
-            "Run analysis to generate structural results.",
+            "Run the analysis first to see results.",
             ha='center', va='center', transform=self.ax_sfd.transAxes,
             color='#666666', fontsize=11, style='italic',
         )
@@ -745,7 +806,7 @@ class SteelDesign(QDialog):
     #   UI UPDATE HELPERS
     # =========================================================================
 
-    def _update_rhs_fields(self, max_dict):
+    def _update_value_fields(self, max_dict):
         """
         Populate the left-panel summary result fields with the computed maximum
         values for bending moment, shear force, and deflection.
@@ -772,7 +833,7 @@ class SteelDesign(QDialog):
         if self._current_x is None:
             return
 
-        mode = self.interaction_combo.currentText()
+        mode = self._interaction_mode
 
         if mode == "Maximum Values":
             max_d = getattr(self, "_current_max_dict", {})
@@ -831,11 +892,8 @@ class SteelDesign(QDialog):
         """
         Draw vertical dashed cursor lines on the BMD, SFD, and Deflection axes.
 
-        Maximum Values mode : each axis gets its own line at the x-position of
-                              that diagram's maximum value.
-        Interactive mode    : all three axes share a single line at the current
-                              cursor node position.
-        Clears any previously drawn cursor lines before redrawing.
+        Maximum Values mode: Draws a line at the peak absolute value location for each respective diagram.
+        Scroll for Values mode: Draws a shared vertical line across all three diagrams at the current scroll position.
         """
         for line in self._cursor_lines:
             try:
@@ -848,9 +906,9 @@ class SteelDesign(QDialog):
             self.canvas.draw()
             return
 
-        mode = self.interaction_combo.currentText()
+        mode = self._interaction_mode
 
-        if mode == "Interactive":
+        if mode == "Scroll for Values":
             # Draw cursor at the exact x-position (may be between nodes)
             cx = getattr(self, "_cursor_x", None)
             if cx is None:
@@ -859,19 +917,19 @@ class SteelDesign(QDialog):
                 cx = float(self._current_x[idx])
             for ax in (self.ax_bmd, self.ax_sfd, self.ax_defl):
                 self._cursor_lines.append(
-                    ax.axvline(cx, color='#1f4e79', linestyle='--', linewidth=1.5)
+                    ax.axvline(cx, color='#1f4e79', linestyle='--', linewidth=1.5, clip_on=True)
                 )
 
         elif mode == "Maximum Values" and hasattr(self, "_current_max_dict"):
             max_d = self._current_max_dict
             self._cursor_lines.append(
-                self.ax_bmd.axvline(max_d.get("x_M", 0.0), color='#1f4e79', linestyle='--', linewidth=1.5)
+                self.ax_bmd.axvline(max_d.get("x_M", 0.0), color='#1f4e79', linestyle='--', linewidth=1.5, clip_on=True)
             )
             self._cursor_lines.append(
-                self.ax_sfd.axvline(max_d.get("x_V", 0.0), color='#1f4e79', linestyle='--', linewidth=1.5)
+                self.ax_sfd.axvline(max_d.get("x_V", 0.0), color='#1f4e79', linestyle='--', linewidth=1.5, clip_on=True)
             )
             self._cursor_lines.append(
-                self.ax_defl.axvline(max_d.get("x_D", 0.0), color='#1f4e79', linestyle='--', linewidth=1.5)
+                self.ax_defl.axvline(max_d.get("x_D", 0.0), color='#1f4e79', linestyle='--', linewidth=1.5, clip_on=True)
             )
 
         self.canvas.draw()
