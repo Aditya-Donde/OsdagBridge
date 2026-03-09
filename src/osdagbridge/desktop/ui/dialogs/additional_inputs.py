@@ -222,10 +222,7 @@ class AdditionalInputs(QDialog):
         self._last_top_tab_index = 0
         
         # Sub-Tab 1: Typical Section Details
-        self.typical_section_tab = TypicalSectionDetailsTab(
-            self.footpath_value, self.carriageway_width,
-            initial_cad_state=self._initial_cad_state,
-        )
+        self.typical_section_tab = TypicalSectionDetailsTab(self.footpath_value, self.carriageway_width, initial_cad_state=self._initial_cad_state)
         self.tabs.addTab(self.typical_section_tab, "Typical Section Details")
         
         # Sub-Tab 2: Member Properties

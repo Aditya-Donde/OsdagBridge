@@ -91,9 +91,11 @@ class CustomWindow(QWidget):
         self.input_dock = None
         self.output_dock = None
 
-        self.init_ui()
         # Central CAD state (single source of truth)
+        # Must be initialized BEFORE init_ui because init_ui calls update_cad_from_inputs
         self.cad_state = {}
+
+        self.init_ui()
 
         
     def _init_log_splitter_once(self):
@@ -276,6 +278,9 @@ class CustomWindow(QWidget):
         
         # Connect input dock changes to CAD widget for real-time updates
         self.setup_cad_connections()
+        
+        # Initial CAD update to sync with starting UI values (e.g., footpath=None)
+        self.update_cad_from_inputs()
     
     def setup_cad_connections(self):
         """Connect input dock field changes to CAD widget for real-time updates"""
