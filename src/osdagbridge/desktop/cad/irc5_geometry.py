@@ -51,7 +51,7 @@ class RailingGeometry:
             return {
                 "type": "rcc",
                 "height": 1100,
-                "width": 275,
+                "width": 375,
                 "post_spacing": 2000,
             }
 
@@ -59,6 +59,7 @@ class RailingGeometry:
             return {
                 "type": "steel",
                 "height": 1100,
+                "width": 375,
                 "post_dia": 100,
                 "rail_count": 3,
                 "post_spacing": 2000,

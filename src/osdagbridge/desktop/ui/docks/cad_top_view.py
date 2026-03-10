@@ -64,7 +64,7 @@ class TopViewCADWidget(QWidget):
             'railing_height': 1000,
             'footpath_config': 'both',
             'deck_overhang': 1000,
-            'railing_width': 100,
+            'railing_width': 375,
             'median_present': False,
             'median_width': 1200,
         }
@@ -661,24 +661,35 @@ class TopViewCADWidget(QWidget):
         fp_config = self.params.get('footpath_config', 'both')
         median_present = self.params.get('median_present', False)
         median_width = self.params.get('median_width', 1200)
+        RAILING_WIDTH = 375 # Standard outer width of RCC railing in mm
         
+        if fp_config == 'both':
+            num_fp = 2
+        elif fp_config in ['left', 'both']:
+            # Handle cases where config might be 'left' or 'right'
+            # Note: 'both' is already handled, 'left' or 'right' means 1 footpath
+            num_fp = 1 if fp_config in ['left', 'right'] else 0
+        else:
+            num_fp = 0
+            
+        # Re-evaluating num_fp for clarity
+        num_fp = 0
         if fp_config == 'both':
             num_fp = 2
         elif fp_config in ['left', 'right']:
             num_fp = 1
-        else:
-            num_fp = 0
         
         # If median is present, we have full carriageway on each side
+        # Footpath width is clear width, so we add railing width for each footpath
         if median_present:
             deck_total = (carriageway * 2 +  # Full carriageway on each side
                           median_width +
                           2 * crash_barrier + 
-                          num_fp * footpath_width)
+                          num_fp * (footpath_width + RAILING_WIDTH))
         else:
             deck_total = (carriageway + 
                           2 * crash_barrier + 
-                          num_fp * footpath_width)
+                          num_fp * (footpath_width + RAILING_WIDTH))
         
         return deck_total, num_fp
 

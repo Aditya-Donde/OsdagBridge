@@ -79,7 +79,7 @@ class CrossSectionCADWidget(QWidget):
             'railing_height': 1000,
             'footpath_config': 'both',
             'deck_overhang': 1000,
-            'railing_width': 100,
+            'railing_width': 375,
             'median_present': False,
             'median_width': 1200,
         }
@@ -734,32 +734,27 @@ class CrossSectionCADWidget(QWidget):
                                        QColor(255, 255, 255, 255), text_color, 9, True)
     
     def compute_deck_total_width(self):
-        """Compute total deck width including median if present"""
+
         carriageway = self.params.get('carriageway_width', 10500)
         crash_barrier = self.params.get('crash_barrier_width', 500)
         footpath_width = self.params.get('footpath_width', 1500)
         fp_config = self.params.get('footpath_config', 'both')
         median_present = self.params.get('median_present', False)
         median_width = self.params.get('median_width', 1200)
-        
-        if fp_config == 'both':
-            num_fp = 2
-        elif fp_config in ['left', 'right']:
-            num_fp = 1
-        else:
-            num_fp = 0
-        
-        # If median is present, we have full carriageway on each side
-        if median_present:
-            deck_total = (carriageway * 2 +  # Full carriageway on each side
-                          median_width +
-                          2 * crash_barrier + 
-                          num_fp * footpath_width)
-        else:
-            deck_total = (carriageway + 
-                          2 * crash_barrier + 
-                          num_fp * footpath_width)
-        
+        railing_width = self.params.get('railing_width', 375)
+
+        num_fp = {'both':2, 'left':1, 'right':1, 'none':0}.get(fp_config, 0)
+
+        carriageway_total = carriageway * 2 if median_present else carriageway
+        median = median_width if median_present else 0
+
+        deck_total = (
+            carriageway_total +
+            median +
+            2 * crash_barrier +
+            num_fp * (footpath_width + railing_width)
+        )
+
         return deck_total, num_fp
     
     def create_concrete_brush(self):
@@ -833,17 +828,13 @@ class CrossSectionCADWidget(QWidget):
         
         return self.draw_rcc_railing(painter, x, y, scale, side)
 
-    def draw_rcc_railing(self, painter, x, y, scale, side, geo=None):
-        """Draw RCC railing with exact dimensions:
-        - Height: 1100 mm
-        - Outer width: 375 mm
-        - Inner spacing: 275 mm
-        - Base thickness: 100 mm
-        """
-        RAILING_HEIGHT_MM = geo.get("height", 1100) if geo else 1100
-        OUTER_WIDTH_MM = 375
-        INNER_SPACING_MM = 275
-        BASE_THICKNESS_MM = 100
+    def draw_rcc_railing(self, painter, x_start, y_base, scale, side='left', geo=None):
+        """Draw standard RCC railing based on IRC diagrams"""
+        # Dimensions for RCC railing (mm)
+        OUTER_WIDTH_MM = self.params.get('railing_width', 375)
+        RAILING_HEIGHT_MM = self.params.get('railing_height', 1000)
+        INNER_SPACING_MM = 275 # Default for RCC
+        BASE_THICKNESS_MM = 100 # Default for RCC
         
         wall_thickness_mm = (OUTER_WIDTH_MM - INNER_SPACING_MM) / 2
         
@@ -855,9 +846,9 @@ class CrossSectionCADWidget(QWidget):
         
         post_h = total_h - base_h
         
-        rect_x = x
-        base_top_y = y - base_h
-        post_top_y = y - total_h
+        rect_x = x_start
+        base_top_y = y_base - base_h
+        post_top_y = y_base - total_h
         
         corner_radius = min(outer_w * 0.05, 4)
         
@@ -895,7 +886,7 @@ class CrossSectionCADWidget(QWidget):
                 rail_rect = QRectF(inner_x + 2, rail_y, inner_w - 4, rail_height)
                 painter.drawRect(rail_rect)
         
-        return (rect_x, post_top_y, rect_x + outer_w, y, outer_w)
+        return (rect_x, post_top_y, rect_x + outer_w, y_base, outer_w)
 
     def draw_steel_railing(self, painter, x, y, scale, side, geo):
         """Draw Steel railing with:
@@ -904,10 +895,10 @@ class CrossSectionCADWidget(QWidget):
         - Steel rails: 40mm x 40mm (Top and Mid)
         """
         RAILING_HEIGHT_MM = geo.get("height", 1100)
-        BASE_HEIGHT_MM = 100
-        BASE_WIDTH_MM = 375
-        POST_SIZE_MM = 150
-        RAIL_SIZE_MM = 20
+        BASE_HEIGHT_MM = geo.get("base_height", 100)
+        BASE_WIDTH_MM = geo.get("base_width", 375)
+        POST_SIZE_MM = geo.get("post_size", 150)
+        RAIL_SIZE_MM = geo.get("rail_size", 20)
         
         total_h = RAILING_HEIGHT_MM * scale
         base_h = max(3, BASE_HEIGHT_MM * scale)
@@ -1272,20 +1263,27 @@ class CrossSectionCADWidget(QWidget):
         deck_right_x = deck_start_x + total_deck_width * scale
         
         # Calculate all widths in pixels
+        railing_width_px = self.params['railing_width'] * scale
         crash_barrier_width_px = self.params['crash_barrier_width'] * scale
         left_fp_width_px = left_fp_width * scale
         right_fp_width_px = right_fp_width * scale
         
         # LAYOUT FROM LEFT TO RIGHT
-        # 1. Left footpath starts at deck_left_x
-        left_fp_x = deck_left_x
+        left_railing_present = (fp_config in ['left', 'both'])
+        right_railing_present = (fp_config in ['right', 'both'])
         
-        # 2. Left crash barrier starts after left footpath
+        left_rail_w_px = railing_width_px if left_railing_present else 0
+        right_rail_w_px = railing_width_px if right_railing_present else 0
+
+        # 1. Left footpath starts after left railing (if exists)
+        left_fp_x = deck_left_x + left_rail_w_px
+        
+        # 2. Left crash barrier starts after left footpath clear width
         left_barrier_x = left_fp_x + left_fp_width_px
         left_barrier_end_x = left_barrier_x + crash_barrier_width_px
         
-        # 3. Right footpath ends at deck_right_x
-        right_fp_x = deck_right_x - right_fp_width_px
+        # 3. Right footpath starts after right crash barrier and ends before right railing (if exists)
+        right_fp_x = deck_right_x - right_rail_w_px - right_fp_width_px
         
         # 4. Right crash barrier ENDS where right footpath STARTS
         right_barrier_end_x = right_fp_x
@@ -1333,13 +1331,13 @@ class CrossSectionCADWidget(QWidget):
         max_allowed_x = deck_right_x - flange_half_px - 1
         positions = [max(min_allowed_x, min(max_allowed_x, p)) for p in positions]
 
-        RAILING_OUTER_WIDTH_MM = 375
-        railing_outer_width_px = RAILING_OUTER_WIDTH_MM * scale
+        # Draw deck slab
+        railing_outer_width_px = self.params.get('railing_width', 375) * scale
         railing_width_px = railing_outer_width_px
 
         # Draw deck slab
-        deck_slab_left = left_barrier_x
-        deck_slab_right = right_barrier_end_x
+        deck_slab_left = deck_left_x
+        deck_slab_right = deck_right_x
         
         # Check if deck is hovered (visible brightness)
         deck_hovered = (self.hovered_element == 'deck')
@@ -1413,7 +1411,7 @@ class CrossSectionCADWidget(QWidget):
             )
             self.cross_section_hover_zones.append((wc_hover_rect, 'wearing_course'))'''
         
-        # Register hover zone for deck
+        # Register hover zone for deck - full width
         deck_hover_rect = QRectF(deck_slab_left, deck_top_y,
                                 deck_slab_right - deck_slab_left, deck_thick_px)
         self.cross_section_hover_zones.append((deck_hover_rect, 'deck'))
@@ -1433,10 +1431,11 @@ class CrossSectionCADWidget(QWidget):
 
         # making the line dashed
         if fp_config in ['left', 'both'] and left_fp_width > 0:
-            # Draw footpath fill only (no border)
+            # Draw footpath fill only SIT ON TOP of the main slab
             painter.setBrush(self.concrete_brush)
 
             painter.setPen(Qt.NoPen)
+            # sit one pixel higher or precisely on top y edge
             painter.drawRect(QRectF(left_fp_x, fp_top_y,
                                 left_fp_width_px, fp_thick_px))
             
@@ -1744,11 +1743,15 @@ class CrossSectionCADWidget(QWidget):
         )
 
         # LEVEL 2: Footpath dimensions
-        #y_level2 = deck_top_y - 65  # Moved down more
+        left_railing_present = (fp_config in ['left', 'both'])
+        right_railing_present = (fp_config in ['right', 'both'])
+        left_rail_w_px = railing_width_px if left_railing_present else 0
+        right_rail_w_px = railing_width_px if right_railing_present else 0
+
         Y_TOP_COMMON = deck_top_y - (3.2 * DIM_OFFSET)
         
-        if fp_config in ['left', 'both'] and left_fp_width > 0:
-            fp_start_x = deck_left_x + railing_width_px
+        if left_railing_present and left_fp_width > 0:
+            fp_start_x = deck_left_x + left_rail_w_px
             fp_end_x = left_barrier_x
             fp_visible_mm = (fp_end_x - fp_start_x) / scale
             fp_visible_mm = round(fp_visible_mm, 1)
@@ -1766,8 +1769,7 @@ class CrossSectionCADWidget(QWidget):
                                         extension_end_y=fp_top_y)
         
         # LEVEL 2c: Carriageway/Median Dimensions
-        #y_level2c = deck_top_y - 35  # Moved down more
-        Y_TOP_COMMON = deck_top_y - (3.2 * DIM_OFFSET)
+        # Already defined above as Y_TOP_COMMON
     
         actual_cw_start = left_barrier_visual_end
         actual_cw_end = right_barrier_visual_start
@@ -1815,9 +1817,9 @@ class CrossSectionCADWidget(QWidget):
                                     extension_end_y=deck_top_y)
         
         # Right footpath dimension
-        if fp_config in ['right', 'both'] and right_fp_width > 0:
+        if right_railing_present and right_fp_width > 0:
             fp_start_x = right_barrier_end_x
-            fp_end_x = deck_right_x - railing_width_px
+            fp_end_x = deck_right_x - right_rail_w_px
             fp_visible_mm = (fp_end_x - fp_start_x) / scale
             fp_visible_mm = round(fp_visible_mm, 1)
 
