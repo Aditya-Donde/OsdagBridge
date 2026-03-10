@@ -684,6 +684,46 @@ class AdditionalInputs(QDialog):
             parent_layout.addLayout(grid)
 
 
+
+    # 2D CAD functions for tab enabling and disabling inside the addition inputs dialog    ---> starts here 
+    # Tab visibility helpers
+    def _find_inner_tab_index(self, tab_widget, tab_name: str) -> int:
+        """Return the index of an inner tab by its label, or -1 if not found."""
+        for i in range(tab_widget.count()):
+            if tab_widget.tabText(i).strip().lower() == tab_name.strip().lower():
+                return i
+        return -1
+
+    def apply_tab_visibility(self, footpath_value: str, include_median: str) -> None:
+        """Disable inner sub-tabs based on the current Input Dock selections.
+
+        Rules:
+        - Railing tab  → disabled when footpath_value == "None"
+          (no footpath means no railing is needed)
+        - Median tab   → disabled when include_median == "No"
+          (median excluded by the user)
+
+        This method is called once right after the dialog is created, so the
+        disabled state is visible from the moment the user opens the dialog.
+        """
+        inner_tabs = self.typical_section_tab.input_tabs
+
+        # Railing tab 
+        railing_index = self._find_inner_tab_index(inner_tabs, "Railing")
+        if railing_index >= 0:
+            railing_enabled = (footpath_value != "None")
+            inner_tabs.setTabEnabled(railing_index, railing_enabled)
+
+        #  Median tab 
+        median_index = self._find_inner_tab_index(inner_tabs, "Median")
+        if median_index >= 0:
+            median_enabled = (include_median != "No")
+            inner_tabs.setTabEnabled(median_index, median_enabled)
+            
+    # 2D CAD functions for tab enabling and disabling inside the addition inputs dialog    ---> ends here 
+
+       
+
     def update_footpath_value(self, footpath_value):
         """Update footpath value across all tabs"""
         self.footpath_value = footpath_value

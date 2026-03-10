@@ -217,6 +217,11 @@ class TypicalSectionDetailsTab(QWidget):
                 font-size: 11px;
                 min-width: 80px;
             }
+            QTabBar::tab:disabled {
+                color: #bfbfbf;
+                background: #e6e6e6;
+            }
+
             QTabBar::tab:last {
                 border-right: 1px solid #b0b0b0;
             }

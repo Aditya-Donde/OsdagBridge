@@ -214,10 +214,10 @@ class BridgeDualCADWidget(QWidget):
 
             if geom:
                 if "height" in geom:
-                    params["railing_height"] = geom["height"]
+                    params["railing_height"] = geom["railing_height"]
 
                 if "width" in geom:
-                    params["railing_width"] = geom["width"]
+                    params["railing_width"] = geom["railing_width"]
 
 
         if "median_type" in input_dict:

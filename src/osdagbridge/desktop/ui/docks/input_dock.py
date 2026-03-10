@@ -774,6 +774,12 @@ class InputDock(QWidget):
             self.additional_inputs.update_project_location(location_data)
         
 
+        # Disable inner tabs based on current Input Dock selections.
+        # Railing tab is disabled when no footpath is selected.
+        # Median tab is disabled when median is not included.
+        include_median = self.include_median_combo.currentText() if self.include_median_combo else "Yes"
+        dialog.apply_tab_visibility(footpath_value, include_median)
+
         # Restore previously saved dialog state (includes stiffener details).
         if isinstance(getattr(self, "_additional_inputs_saved_data", None), dict) and self._additional_inputs_saved_data:
             try:
