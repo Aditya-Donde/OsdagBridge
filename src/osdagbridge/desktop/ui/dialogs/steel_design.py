@@ -242,7 +242,7 @@ class SteelDesign(QDialog):
                 spine.set_color('#cccccc')
             ax.set_yticks([])
             ax.set_ylabel("")
-            ax.axhline(0, color='black', linewidth=0)
+            ax.axhline(0, color='black', linewidth=0, clip_on=True)
 
         self.ax_defl.invert_yaxis()
 
@@ -303,6 +303,8 @@ class SteelDesign(QDialog):
         self.tabs.currentChanged.connect(self._on_tab_changed)
         self.analysis_tab.member_combo.currentIndexChanged.connect(self._update_analysis_plots)
         self.analysis_tab.load_combo.currentIndexChanged.connect(self._update_analysis_plots)
+        if hasattr(self.analysis_tab, "component_combo"):
+            self.analysis_tab.component_combo.currentIndexChanged.connect(self._update_analysis_plots)
         self.canvas.mpl_connect('button_press_event', self._on_canvas_click)
         self.canvas.mpl_connect('key_press_event', self._on_key_press)
         self.canvas.setFocusPolicy(Qt.StrongFocus)
@@ -333,6 +335,39 @@ class SteelDesign(QDialog):
         """
         if index != 1:
             return
+
+        # TEMPORARY: auto-run analysis for UI testing
+        # This will be removed once the core–UI workflow is connected.
+        if self._cached_model is None:
+            try:
+                import sys
+                from unittest.mock import MagicMock
+                mock_cad = MagicMock()
+                mock_cad.export_step = lambda *args, **kwargs: None
+                sys.modules["osdagbridge.core.bridge_types.plate_girder.cad_generator"] = mock_cad
+
+                mock_designer = MagicMock()
+                mock_designer.design = lambda *args, **kwargs: None
+                sys.modules["osdagbridge.core.bridge_types.plate_girder.designer"] = mock_designer
+
+                mock_report = MagicMock()
+                mock_report.section_report = lambda *args, **kwargs: None
+                sys.modules["osdagbridge.core.bridge_types.plate_girder.report_generator"] = mock_report
+
+                from osdagbridge.core.bridge_types.plate_girder.plategirderbridge import PlateGirderBridge
+                if hasattr(self._main_window, 'cad_state') and self._main_window.cad_state:
+                    bridge = PlateGirderBridge(
+                        basic_inputs=self._main_window.cad_state,
+                        additional_inputs=self._main_window.cad_state
+                    )
+                    # mock the model type selection so it works cleanly internally
+                    self._main_window.cad_state['Model Selection'] = "M35"
+                    bridge.run(run_analysis=True)
+                    self._main_window.backend = bridge._analysis_engine
+                    self._cached_model = bridge._analysis_engine.model
+            except BaseException as e:
+                import traceback
+                print(f"Auto-run analysis failed:\n{traceback.format_exc()}")
 
         if self._cached_model is None:
             self._discover_and_cache_model()
@@ -716,21 +751,21 @@ class SteelDesign(QDialog):
         # ── Bending Moment Diagram ────────────────────────────────────────────
         self.ax_bmd.plot(xs, bmd_values, color='#4C72B0', linewidth=1.5)
         self.ax_bmd.fill_between(xs, bmd_values, 0, color='#4C72B0', alpha=0.25)
-        self.ax_bmd.axhline(0, color='#B0BEC5', linewidth=1.0)
+        self.ax_bmd.axhline(0, color='#B0BEC5', linewidth=1.0, clip_on=True)
         self.ax_bmd.set_title("Bending Moment Diagram", fontsize=10, pad=5, y=-0.25)
         self.ax_bmd.get_xaxis().set_visible(False)
 
         # ── Shear Force Diagram ───────────────────────────────────────────────
         self.ax_sfd.plot(xs, sfd_values, color='#4C72B0', linewidth=1.5)
         self.ax_sfd.fill_between(xs, sfd_values, 0, color='#4C72B0', alpha=0.25)
-        self.ax_sfd.axhline(0, color='#B0BEC5', linewidth=1.0)
+        self.ax_sfd.axhline(0, color='#B0BEC5', linewidth=1.0, clip_on=True)
         self.ax_sfd.set_title("Shear Force Diagram", fontsize=10, pad=5, y=-0.25)
         self.ax_sfd.get_xaxis().set_visible(False)
 
         # ── Deflection Diagram ────────────────────────────────────────────────
         self.ax_defl.plot(xs, defl_values, color='#4C72B0', linewidth=1.5)
         self.ax_defl.fill_between(xs, defl_values, 0, color='#4C72B0', alpha=0.25)
-        self.ax_defl.axhline(0, color='#B0BEC5', linewidth=1.0)
+        self.ax_defl.axhline(0, color='#B0BEC5', linewidth=1.0, clip_on=True)
         if not self.ax_defl.yaxis.get_inverted():
             self.ax_defl.invert_yaxis()  # y-axis reset after clear; re-invert
         self.ax_defl.set_title("Deflection", fontsize=10, pad=5, y=-0.4)
@@ -812,9 +847,15 @@ class SteelDesign(QDialog):
         values for bending moment, shear force, and deflection.
         """
         mapping = [
-            ("M_max", "M_max", "{:.2f} kNm"),
-            ("V_max", "V_max", "{:.2f} kN"),
-            ("D_max", "D_max", "{:.4f} mm"),
+            ("T_x", "T_x", "{:.2f} kNm"),
+            ("M_y", "M_y", "{:.2f} kNm"),
+            ("M_max", "M_z", "{:.2f} kNm"),
+            ("V_x", "V_x", "{:.2f} kN"),
+            ("V_max", "V_y", "{:.2f} kN"),
+            ("V_z", "V_z", "{:.2f} kN"),
+            ("D_x", "D_x", "{:.4f} mm"),
+            ("D_max", "D_y", "{:.4f} mm"),
+            ("D_z", "D_z", "{:.4f} mm"),
         ]
         for dict_key, field_key, fmt in mapping:
             if field_key in self.analysis_tab.result_fields:
@@ -844,19 +885,19 @@ class SteelDesign(QDialog):
             if hasattr(self.analysis_tab, "x_input"):
                 self.analysis_tab.x_input.setText("Multiple")
 
-            if "M_x" in self.analysis_tab.x_fields:
-                self.analysis_tab.x_fields["M_x"].setMinimumHeight(42)
-                self.analysis_tab.x_fields["M_x"].setText(
+            if "M_z" in self.analysis_tab.x_fields:
+                self.analysis_tab.x_fields["M_z"].setMinimumHeight(55)
+                self.analysis_tab.x_fields["M_z"].setText(
                     f"{m_val:.2f} kNm<br>at x = {max_d.get('x_M', 0.0):.2f} m"
                 )
-            if "V_x" in self.analysis_tab.x_fields:
-                self.analysis_tab.x_fields["V_x"].setMinimumHeight(42)
-                self.analysis_tab.x_fields["V_x"].setText(
+            if "V_y" in self.analysis_tab.x_fields:
+                self.analysis_tab.x_fields["V_y"].setMinimumHeight(55)
+                self.analysis_tab.x_fields["V_y"].setText(
                     f"{v_val:.2f} kN<br>at x = {max_d.get('x_V', 0.0):.2f} m"
                 )
-            if "D_x" in self.analysis_tab.x_fields:
-                self.analysis_tab.x_fields["D_x"].setMinimumHeight(42)
-                self.analysis_tab.x_fields["D_x"].setText(
+            if "D_y" in self.analysis_tab.x_fields:
+                self.analysis_tab.x_fields["D_y"].setMinimumHeight(55)
+                self.analysis_tab.x_fields["D_y"].setText(
                     f"{d_val:.4f} mm<br>at x = {max_d.get('x_D', 0.0):.2f} m"
                 )
 
@@ -878,15 +919,15 @@ class SteelDesign(QDialog):
             if hasattr(self.analysis_tab, "x_input"):
                 self.analysis_tab.x_input.setText(f"{cx:.2f} m")
 
-            if "M_x" in self.analysis_tab.x_fields:
-                self.analysis_tab.x_fields["M_x"].setMinimumHeight(28)
-                self.analysis_tab.x_fields["M_x"].setText(f"{m_val:.2f} kNm")
-            if "V_x" in self.analysis_tab.x_fields:
-                self.analysis_tab.x_fields["V_x"].setMinimumHeight(28)
-                self.analysis_tab.x_fields["V_x"].setText(f"{v_val:.2f} kN")
-            if "D_x" in self.analysis_tab.x_fields:
-                self.analysis_tab.x_fields["D_x"].setMinimumHeight(28)
-                self.analysis_tab.x_fields["D_x"].setText(f"{d_val:.4f} mm")
+            if "M_z" in self.analysis_tab.x_fields:
+                self.analysis_tab.x_fields["M_z"].setMinimumHeight(35)
+                self.analysis_tab.x_fields["M_z"].setText(f"{m_val:.2f} kNm")
+            if "V_y" in self.analysis_tab.x_fields:
+                self.analysis_tab.x_fields["V_y"].setMinimumHeight(35)
+                self.analysis_tab.x_fields["V_y"].setText(f"{v_val:.2f} kN")
+            if "D_y" in self.analysis_tab.x_fields:
+                self.analysis_tab.x_fields["D_y"].setMinimumHeight(35)
+                self.analysis_tab.x_fields["D_y"].setText(f"{d_val:.4f} mm")
 
     def _draw_cursors(self):
         """

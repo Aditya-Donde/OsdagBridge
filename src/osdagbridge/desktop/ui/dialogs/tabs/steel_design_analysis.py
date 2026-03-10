@@ -8,6 +8,8 @@ from PySide6.QtWidgets import (
     QFrame,
     QSizePolicy,
     QSpacerItem,
+    QGroupBox,
+    QFormLayout,
 )
 from PySide6.QtCore import Qt
 
@@ -114,9 +116,8 @@ class SteelDesignAnalysisTab(QWidget):
         lbl = QLabel(text)
         lbl.setTextFormat(Qt.RichText)
         lbl.setStyleSheet("font-size: 10px; color: #5a5a5a; background: transparent;")
-        lbl.setFixedWidth(40)
+        lbl.setMinimumWidth(90)
         return lbl
-
     def _make_grid(self):
         grid = QGridLayout()
         grid.setContentsMargins(0, 0, 0, 0)
@@ -132,7 +133,7 @@ class SteelDesignAnalysisTab(QWidget):
         field = QLineEdit()
         field.setReadOnly(True)
         field.setFixedWidth(150)
-        field.setMinimumHeight(28)
+        field.setMinimumHeight(24)
         field.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
         apply_field_style(field)
         return field
@@ -186,9 +187,17 @@ class SteelDesignAnalysisTab(QWidget):
         self.load_combo.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
         self.load_combo.addItems(LOAD_COMBINATIONS)
 
+        self.component_combo = NoScrollComboBox()
+        apply_field_style(self.component_combo)
+        self.component_combo.setFixedWidth(150)
+        self.component_combo.setMinimumHeight(28)
+        self.component_combo.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+        self.component_combo.addItems(["Major (M_z, V_y, and D_y)"])
+
         r = 0
         r = self._add_row(sel_grid, r, "Member ID:",        self.member_combo)
         r = self._add_row(sel_grid, r, "Load Combination:", self.load_combo)
+        r = self._add_row(sel_grid, r, "Component:",        self.component_combo)
         sel_layout.addLayout(sel_grid)
         layout.addWidget(sel_card)
 
@@ -199,20 +208,66 @@ class SteelDesignAnalysisTab(QWidget):
         res_layout.setSpacing(10)
         res_layout.addWidget(self._create_label("Results:"))
 
-        res_grid = self._make_grid()
+        gb_style = """
+            QGroupBox {
+                border: 1px solid #cfcfcf;
+                border-radius: 4px;
+                margin-top: 22px;
+                font-size: 11px;
+                color: #5a5a5a;
+            }
+            QGroupBox::title {
+                subcontrol-origin: margin;
+                subcontrol-position: top left;
+                top: 2px;
+                left: 7px;
+                padding: 0 5px;
+                color: #5a5a5a;
+            }
+        """
+
+        # Support Reactions
+        reac_group = QGroupBox("Support Reactions")
+        reac_group.setStyleSheet(gb_style)
+        reac_layout = QGridLayout(reac_group)
+        reac_layout.setContentsMargins(10, 15, 10, 10)
+        reac_layout.setVerticalSpacing(4)
+        
         r = 0
+        for key, label in [("R_A", "R_A"), ("R_Z", "R_Z")]:
+            field = self._readonly_field()
+            reac_layout.addWidget(self._create_small_label(label), r, 0)
+            reac_layout.addWidget(field, r, 1)
+            self.result_fields[key] = field
+            r += 1
+
+        # Maximum Values
+        max_group = QGroupBox("Maximum Values")
+        max_group.setStyleSheet(gb_style)
+        max_layout = QGridLayout(max_group)
+        max_layout.setContentsMargins(10, 15, 10, 10)
+        max_layout.setVerticalSpacing(4)
+
+        m = 0
         for key, label in [
-            ("R_A",   "R<sub>A</sub>"),
-            ("R_B",   "R<sub>B</sub>"),
-            ("M_max", "M<sub>max</sub>"),
-            ("V_max", "V<sub>max</sub>"),
-            ("D_max", "D<sub>max</sub>"),
+            ("T_x", "T_x (kNm)"),
+            ("M_y", "M_y (kNm)"),
+            ("M_z", "M_z (kNm)"),
+            ("V_x", "V_x (kN)"),
+            ("V_y", "V_y (kN)"),
+            ("V_z", "V_z (kN)"),
+            ("D_x", "D_x (mm)"),
+            ("D_y", "D_y (mm)"),
+            ("D_z", "D_z (mm)"),
         ]:
             field = self._readonly_field()
-            r = self._add_row(res_grid, r, label, field)
+            max_layout.addWidget(self._create_small_label(label), m, 0)
+            max_layout.addWidget(field, m, 1)
             self.result_fields[key] = field
+            m += 1
 
-        res_layout.addLayout(res_grid)
+        res_layout.addWidget(reac_group)
+        res_layout.addWidget(max_group)
         layout.addWidget(res_card)
         layout.addStretch()
 
@@ -253,7 +308,7 @@ class SteelDesignAnalysisTab(QWidget):
         # Right column: x input + M_x / V_x / D_x spaced to diagram zones
         right_col = QWidget()
         right_col.setStyleSheet("background: transparent;")
-        right_col.setFixedWidth(170)
+        right_col.setFixedWidth(220)
         right_col.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Expanding)
 
         right_layout = QVBoxLayout(right_col)
@@ -269,21 +324,21 @@ class SteelDesignAnalysisTab(QWidget):
 
         right_layout.addSpacerItem(QSpacerItem(0, 100, QSizePolicy.Fixed, QSizePolicy.Fixed))
         self.mx_field = self._side_field()
-        right_layout.addLayout(self._side_row("M<sub>x</sub>", self.mx_field))
+        right_layout.addLayout(self._side_row("M_z (kNm)", self.mx_field))
 
         right_layout.addSpacerItem(QSpacerItem(0, 100, QSizePolicy.Fixed, QSizePolicy.Fixed))
         self.vx_field = self._side_field()
-        right_layout.addLayout(self._side_row("V<sub>y</sub>", self.vx_field))
+        right_layout.addLayout(self._side_row("V_y (kN)", self.vx_field))
 
         right_layout.addSpacerItem(QSpacerItem(0, 100, QSizePolicy.Fixed, QSizePolicy.Fixed))
         self.dx_field = self._side_field()
-        right_layout.addLayout(self._side_row("D<sub>x</sub>", self.dx_field))
+        right_layout.addLayout(self._side_row("D_y (mm)", self.dx_field))
 
         right_layout.addStretch()
 
-        self.x_fields["M_x"] = self.mx_field
-        self.x_fields["V_x"] = self.vx_field
-        self.x_fields["D_x"] = self.dx_field
+        self.x_fields["M_z"] = self.mx_field
+        self.x_fields["V_y"] = self.vx_field
+        self.x_fields["D_y"] = self.dx_field
 
         inner_row.addWidget(right_col, 0)
         return wrapper
