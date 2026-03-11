@@ -24,15 +24,17 @@ import random
 class CrossSectionCADWidget(QWidget):
     """Widget for drawing bridge cross-section view"""
     # ===== SHARED CAD COLORS =====
-    GIRDER_COLOR = QColor(179, 180, 160)
-    STIFFENER_COLOR = QColor(79, 78, 70)
+    GIRDER_COLOR = QColor(179, 180, 160) 
+    STIFFENER_COLOR = QColor(79, 78, 70) 
     CROSS_BRACING_COLOR = QColor(235, 236, 211)
+    RAILING_COLOR = QColor(210, 210, 210)
+    BARRIER_COLOR = QColor(210, 210, 210)
+
+    
     END_DIAPHRAGM_COLOR = QColor(134, 134, 100)
 
     CONCRETE_COLOR = QColor(225, 225, 225)
-    BARRIER_COLOR = QColor(126, 126, 126)
     MEDIAN_COLOR = QColor(221, 221, 221)
-    RAILING_COLOR = QColor(126, 126, 126)
 
     BEARING_COLOR = QColor(255, 0, 0)
     
@@ -920,7 +922,8 @@ class CrossSectionCADWidget(QWidget):
         post_x = rect_x + (base_w - post_size) / 2
         post_h = total_h - base_h
         
-        painter.setBrush(QBrush(QColor(100, 100, 100))) # Darker grey for steel
+        # Draw post outline only (no fill) so areas between rails are transparent
+        painter.setBrush(Qt.NoBrush)
         painter.setPen(QPen(QColor(30, 30, 30), max(1.5, scale * 2)))
         post_rect = QRectF(post_x, railing_top_y, post_size, post_h)
         painter.drawRect(post_rect)
@@ -1192,14 +1195,19 @@ class CrossSectionCADWidget(QWidget):
     def draw_cross_section(self, painter):
         """Draw cross-section with median support and hover highlighting"""
         
-        GIRDER_COLOR = QColor(179, 180, 160)           # girder → dark olive-grey
-        STIFFENER_COLOR = QColor(150, 150, 150)         
-        CROSS_BRACING_COLOR = QColor(239, 240, 215)     # cross bracing → light olive
+        GIRDER_COLOR = QColor(130, 130, 130)
+        STIFFENER_COLOR = QColor(210, 210, 205)
+        CROSS_BRACING_COLOR = QColor(250, 240, 211)
+        RAILING_COLOR = QColor(225, 225, 225)
+        BARRIER_COLOR = QColor(225, 225, 225)
+
+
+        MEDIAN_GREY = QColor(221, 221, 221) 
+        CONCRETE_COLOR = QColor(225, 225, 225)
+
         END_DIAPHRAGM_COLOR = QColor(134, 134, 100)
         BARRIER_GREY = QColor(221, 221, 221)  # slightly dark grey
         RAILING_GREY = QColor(221, 221, 221)
-        MEDIAN_GREY = QColor(221, 221, 221) 
-        CONCRETE_COLOR = QColor(225, 225, 225)
         
         base_width = 800
         base_height = 400
