@@ -184,7 +184,7 @@ class TypicalSectionDetailsTab(QWidget):
 
         self.cad_preview = CrossSectionCADWidget()
         self.cad_preview.scale_factor = 0.85
-        self.cad_preview.setMinimumHeight(400)
+        self.cad_preview.setMinimumHeight(90)  # Allows layout to fit it smoothly without scrollbars
 
         cad_scroll.setWidget(self.cad_preview)
         diagram_layout.addWidget(cad_scroll)

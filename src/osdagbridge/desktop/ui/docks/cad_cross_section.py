@@ -252,16 +252,16 @@ class CrossSectionCADWidget(QWidget):
 
 
     def showEvent(self, event):
-        """Setup zoom controls on first show"""
+        """Standardize size and center after widget is shown"""
         super().showEvent(event)
-        if not self._zoom_controls_setup:
-            self._zoom_controls_setup = True
-            # Check if this is a preview
-            is_preview = self.scale_factor < 1.0 if hasattr(self, 'scale_factor') else False
-            # Only show zoom buttons if NOT a preview
-            if not is_preview and hasattr(self, 'zoom_in_btn'):
-                # Position buttons immediately
-                self._position_zoom_buttons()
+        # Check if this is a preview
+        is_preview = self.scale_factor < 1.0 if hasattr(self, 'scale_factor') else False
+        # Only show zoom buttons and center if NOT a preview
+        if not is_preview:
+            # Position zoom buttons
+            self._position_zoom_buttons()
+            # Single-shot timer to center after layout is complete
+            QTimer.singleShot(200, self.zoom_reset)
     
     def zoom_in(self):
         """Zoom in while keeping view centered"""
@@ -368,8 +368,16 @@ class CrossSectionCADWidget(QWidget):
     
     def _update_widget_size(self):
         """Update widget size based on zoom level for proper scrolling"""
-        base_width = 800
-        base_height = 600
+        # Check if this is a preview
+        is_preview = self.scale_factor < 1.0 if hasattr(self, 'scale_factor') else False
+        
+        if is_preview:
+            # For dialog previews, don't force a large minimum size
+            # The preview widget will conform to the dialog's layout
+            return
+
+        base_width = 1200
+        base_height = 800
         # Add extra padding (20%) to ensure scrollbar reaches beyond content
         padding_factor = 1.2
         new_width = int(base_width * self.zoom_level * padding_factor)
@@ -654,7 +662,7 @@ class CrossSectionCADWidget(QWidget):
             text_width = metrics.boundingRect(text).width()
             
             self.draw_text_with_background(painter, text_x - text_width/2, text_y, text, 
-                                        QColor(255, 255, 255, 255), QColor(0, 0, 0), 9, True)
+                                        QColor(255, 255, 255, 255), QColor(0, 0, 0), 9, False)
         else:
             painter.drawLine(QPointF(x1 - ext_len, y1), QPointF(x1 + ext_len, y1))
             painter.drawLine(QPointF(x2 - ext_len, y2), QPointF(x2 + ext_len, y2))
@@ -680,7 +688,7 @@ class CrossSectionCADWidget(QWidget):
                 text_x = x1 + text_offset
             
             self.draw_text_with_background(painter, text_x, text_y, text,
-                                        QColor(255, 255, 255, 255), QColor(0, 0, 0), 9, True)
+                                        QColor(255, 255, 255, 255), QColor(0, 0, 0), 9, False)
         
     def draw_leader_arrow(self, painter, from_x, from_y, to_x, to_y, text, bg_color=QColor(255, 255, 255, 250), text_color=QColor(0, 0, 0)):
         """a leader line with arrow pointing to component"""
@@ -1209,11 +1217,17 @@ class CrossSectionCADWidget(QWidget):
         BARRIER_GREY = QColor(221, 221, 221)  # slightly dark grey
         RAILING_GREY = QColor(221, 221, 221)
         
-        base_width = 800
-        base_height = 400
-        
-        width = base_width * self.zoom_level
-        height = base_height * self.zoom_level
+        is_preview = self.scale_factor < 1.0 if hasattr(self, 'scale_factor') else False
+
+        if is_preview:
+            # Fit inside the actual widget dimensions for the dialog preview
+            width = self.width()
+            height = self.height()
+        else:
+            base_width = 1200
+            base_height = 800
+            width = base_width * self.zoom_level
+            height = base_height * self.zoom_level
 
         fp_config = self.params.get('footpath_config', 'both')
         left_fp_width = self.params['footpath_width'] if fp_config in ['left', 'both'] else 0
@@ -1222,11 +1236,15 @@ class CrossSectionCADWidget(QWidget):
         total_deck_width, num_fp = self.compute_deck_total_width()
 
         # Reduced margins for better space utilization
-        margin = 80
-        scale = min((width - 2*margin) / total_deck_width,
-                (height - 2*margin - 80) / (self.girder['depth'] * self.girder_visual_scale['depth'] +
+        margin_x = 10 if is_preview else 80
+        margin_y = 10 if is_preview else 80
+        
+        scale_x = (width - 2 * margin_x) / total_deck_width
+        scale_y = (height - 2 * margin_y - (40 if is_preview else 80)) / (self.girder['depth'] * self.girder_visual_scale['depth'] +
                                                 self.params['deck_thickness'] +
-                                                self.params['footpath_thickness'] + 1500))
+                                                self.params['footpath_thickness'] + 1500)
+        
+        scale = min(scale_x, scale_y)
         
         # Apply scale factor for size adjustment (zoom_level already applied to width/height)
         scale = scale * self.scale_factor
@@ -1242,12 +1260,12 @@ class CrossSectionCADWidget(QWidget):
                               self.crash_barrier['height'] * scale + 
                               self.railing['height'] * scale)
         
-        # Ensure proper positioning - use margin from top instead of centering for small heights
-        top_margin = 20
-        if height < 300:  # For small heights (like Additional Inputs), position from top
-            base_y = height - top_margin
+        # Ensure proper positioning
+        if is_preview:
+            # Perfectly center within the preview height, slightly shifted up for bottom labels
+            base_y = (height + total_bridge_height) / 2 - 20
         else:
-            base_y = (height + total_bridge_height) / 2 - 30
+            base_y = (height + total_bridge_height) / 2 - 70
 
         girder_depth_visual = self.girder['depth'] * scale * self.girder_visual_scale['depth']
         girder_top_y = base_y - girder_depth_visual
@@ -1714,9 +1732,10 @@ class CrossSectionCADWidget(QWidget):
         # Right barrier ENDS at right_barrier_end_x and extends LEFT by crash_barrier_visual_px
         right_barrier_visual_start = right_barrier_end_x - crash_barrier_visual_px
         
-        # LEVEL 1: Overall Bridge Width
-        #y_level1 = deck_top_y - 115
-        Y_OVERALL = base_y + 55
+        # DIMENSION LEVELS (Bottom)
+        Y_OVERHANG = base_y + 35
+        Y_GIRDER_SPACING = base_y + 70
+        Y_OVERALL = base_y + 105
         total_width_m = (deck_right_x - deck_left_x) / scale / 1000.0
 
         self.draw_dimension_arrow(
@@ -1854,25 +1873,21 @@ class CrossSectionCADWidget(QWidget):
             if self.show_carriageway_values:
                 label_overhang += f" = {overhang_m:.2f} m"
                 
-            self.draw_dimension_arrow(painter, deck_left_x, Y_BOTTOM_COMMON, first_girder_x, Y_BOTTOM_COMMON,
+            self.draw_dimension_arrow(painter, deck_left_x, Y_OVERHANG, first_girder_x, Y_OVERHANG,
                                     label_overhang, True,
                                     extension_direction='up',
                                     extension_end_y=deck_bottom_y)
         
         # Girder spacing
         if n > 1 and len(positions) >= 2:
-            #y_level4 = base_y + 60  # Moved up
-            Y_BOTTOM_COMMON = base_y + (1.2 * DIM_OFFSET)
-            
             x_left = positions[0]
             x_right = positions[1]
-            
             gs_m = self.params['girder_spacing'] / 1000
             label_gs = "Girder Spacing"
             if self.show_carriageway_values:
                 label_gs += f" = {gs_m:.2f} m"
                 
-            self.draw_dimension_arrow(painter, x_left, Y_BOTTOM_COMMON, x_right, Y_BOTTOM_COMMON,
+            self.draw_dimension_arrow(painter, x_left, Y_GIRDER_SPACING, x_right, Y_GIRDER_SPACING,
                                     label_gs, True, 
                                     extension_direction='up',
                                     extension_end_y=base_y)

@@ -6,7 +6,7 @@ Author: Arushi
 
 import math
 from PySide6.QtWidgets import QWidget, QPushButton, QScrollArea
-from PySide6.QtCore import Qt, QRectF, QPointF
+from PySide6.QtCore import Qt, QRectF, QPointF, QTimer
 from PySide6.QtGui import QPainter, QPen, QColor, QFont, QBrush, QPolygonF
 from .cad_cross_section import CrossSectionCADWidget
 
@@ -21,7 +21,7 @@ END_DIAPHRAGM_HIGHLIGHT = CAD_HOVER_GREY
 BEARING_HIGHLIGHT = CAD_HOVER_GREY
 # ---- Dimension text spacing (CAD standard) ----
 DIM_TEXT_GAP = 15          # distance from dimension line to text
-DIM_STACK_GAP = 15         # vertical gap between stacked dimensions
+DIM_STACK_GAP = 28         # vertical gap between stacked dimensions
 LEADER_TEXT_OFFSET = 25    # leader label distance
 
 
@@ -164,6 +164,14 @@ class TopViewCADWidget(QWidget):
         
         # Set minimum size for visibility (reduced for better shrinking)
         self.setMinimumSize(400, 300)
+
+    def showEvent(self, event):
+        """Standardize size and center after widget is shown"""
+        super().showEvent(event)
+        # Position zoom buttons
+        self._position_zoom_buttons()
+        # Single-shot timer to center after layout is complete
+        QTimer.singleShot(200, self.zoom_reset)
     
     def zoom_in(self):
         """Zoom in while keeping view centered"""
@@ -791,8 +799,8 @@ class TopViewCADWidget(QWidget):
         BEARING_HIGHLIGHT = CAD_HOVER_GREY
         
         # Use base canvas dimensions for consistent drawing regardless of zoom
-        width = 800 * self.zoom_level
-        height = 600 * self.zoom_level
+        width = 900 * self.zoom_level
+        height = 750 * self.zoom_level
 
         # Reduced margins for better space utilization in split view
         margin = 60
@@ -1161,24 +1169,9 @@ class TopViewCADWidget(QWidget):
         #dim_y_base = last_girder_y + 50
         dim_y_base = last_girder_y + 28
         
-        # SPAN LENGTH dimension (always visible)
+        # BRACING SPACING dimension (closer to bridge)
         dim_y1 = dim_y_base
-        x1_span = last_girder['x1']
-        x2_span = last_girder['x2']
-        span_m = self.params['span_length'] / 1000
-        label_span = "Span Length"
-        if self.show_span_values:
-            label_span += f" = {span_m:.1f} m"
-        
-        self.draw_dimension_arrow_with_extensions_up(
-            painter, x1_span, dim_y1, x2_span, dim_y1,
-            label_span, last_girder_y
-        )
-
-        # BRACING SPACING dimension (always visible)
         if self.params['cross_bracing_spacing'] > 0 and len(bracing_positions) > 1:
-            #dim_y2 = dim_y_base + 15
-            dim_y2 = dim_y_base + DIM_STACK_GAP
             cb_spacing_m = self.params['cross_bracing_spacing'] / 1000
             label_cb = "Bracing Spacing"
             if self.show_span_values:
@@ -1188,9 +1181,26 @@ class TopViewCADWidget(QWidget):
             x2_brace = bracing_positions[1] + x_offset_last
             
             self.draw_dimension_arrow_with_extensions_up(
-                painter, x1_brace, dim_y2, x2_brace, dim_y2,
+                painter, x1_brace, dim_y1, x2_brace, dim_y1,
                 label_cb, last_girder_y
             )
+            dim_y_next = dim_y_base + DIM_STACK_GAP
+        else:
+            dim_y_next = dim_y_base
+
+        # SPAN LENGTH dimension (below bracing spacing)
+        dim_y2 = dim_y_next
+        x1_span = last_girder['x1']
+        x2_span = last_girder['x2']
+        span_m = self.params['span_length'] / 1000
+        label_span = "Span Length"
+        if self.show_span_values:
+            label_span += f" = {span_m:.1f} m"
+        
+        self.draw_dimension_arrow_with_extensions_up(
+            painter, x1_span, dim_y2, x2_span, dim_y2,
+            label_span, last_girder_y
+        )
 
         # GIRDER SPACING dimension (always visible)
         if n > 1:
@@ -1302,7 +1312,7 @@ class TopViewCADWidget(QWidget):
 
     def draw_dimension_arrow_with_extensions_up(self, painter, x1, y1, x2, y2, text, girder_y):
         """Dimension line with arrows and extension lines going UP to girder level (dimension below)"""
-        painter.setPen(QPen(QColor(0, 0, 0), 0.8))
+        painter.setPen(QPen(QColor(0, 0, 0), 1.0))
         
         # Draw main dimension line
         painter.drawLine(QPointF(x1, y1), QPointF(x2, y2))
@@ -1313,7 +1323,7 @@ class TopViewCADWidget(QWidget):
         painter.drawLine(QPointF(x2, y2), QPointF(x2, girder_y))
         
         # Reset pen for arrows
-        painter.setPen(QPen(QColor(0, 0, 0), 0.8))
+        painter.setPen(QPen(QColor(0, 0, 0), 1.0))
         
         # Draw end ticks
         ext_len = 6
@@ -1342,9 +1352,9 @@ class TopViewCADWidget(QWidget):
 
         painter.drawPolygon(QPolygonF(right_arrow))
         
-        # Draw text BELOW the dimension line (above in terms of value since we add to y)
+        # Draw text ABOVE the dimension line to prevent blotting out the line
         text_x = (x1 + x2) / 2
-        text_y = y1 + DIM_TEXT_GAP  # Below the dimension line
+        text_y = y1 - 6
         
         font = QFont('Arial', 9, QFont.Bold)
         painter.setFont(font)
