@@ -7,7 +7,6 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QFrame,
     QSizePolicy,
-    QSpacerItem,
     QGroupBox,
     QFormLayout,
 )
@@ -67,7 +66,7 @@ class SteelDesignAnalysisTab(QWidget):
         # Same margins/spacing as girder_details_tab content_layout
         container_layout = QVBoxLayout(container)
         container_layout.setContentsMargins(10, 10, 10, 10)
-        container_layout.setSpacing(12)
+        container_layout.setSpacing(6)
 
         # ── MAIN ROW ─────────────────────────────────────────────────────────
         main_row = QHBoxLayout()
@@ -116,7 +115,7 @@ class SteelDesignAnalysisTab(QWidget):
         lbl = QLabel(text)
         lbl.setTextFormat(Qt.RichText)
         lbl.setStyleSheet("font-size: 10px; color: #5a5a5a; background: transparent;")
-        lbl.setMinimumWidth(90)
+        lbl.setMinimumWidth(60)
         return lbl
     def _make_grid(self):
         grid = QGridLayout()
@@ -141,8 +140,8 @@ class SteelDesignAnalysisTab(QWidget):
     def _side_field(self):
         field = QLineEdit()
         field.setReadOnly(True)
-        field.setFixedWidth(120)
-        field.setMinimumHeight(28)
+        field.setFixedWidth(100)
+        field.setMinimumHeight(24)
         field.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
         apply_field_style(field)
         return field
@@ -192,7 +191,11 @@ class SteelDesignAnalysisTab(QWidget):
         self.component_combo.setFixedWidth(150)
         self.component_combo.setMinimumHeight(28)
         self.component_combo.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
-        self.component_combo.addItems(["Major (M_z, V_y, and D_y)"])
+        self.component_combo.addItems([
+            "Major (M_z, V_y, D_y)",
+            "Minor (M_y, V_z, D_z)",
+            "Axial (M_x, F_x, D_x)",
+        ])
 
         r = 0
         r = self._add_row(sel_grid, r, "Member ID:",        self.member_combo)
@@ -253,7 +256,7 @@ class SteelDesignAnalysisTab(QWidget):
             ("T_x", "T_x (kNm)"),
             ("M_y", "M_y (kNm)"),
             ("M_z", "M_z (kNm)"),
-            ("V_x", "V_x (kN)"),
+            ("F_x", "F_x (kN)"),
             ("V_y", "V_y (kN)"),
             ("V_z", "V_z (kN)"),
             ("D_x", "D_x (mm)"),
@@ -290,7 +293,7 @@ class SteelDesignAnalysisTab(QWidget):
 
         # Diagram placeholder — standalone, no card around it
         self.diagram_placeholder = QLabel()
-        self.diagram_placeholder.setMinimumSize(260, 440)
+        self.diagram_placeholder.setMinimumSize(260, 300)
         self.diagram_placeholder.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.diagram_placeholder.setAlignment(Qt.AlignCenter)
         self.diagram_placeholder.setText("[BMD / SFD / Deflection Diagram]")
@@ -305,36 +308,37 @@ class SteelDesignAnalysisTab(QWidget):
         """)
         inner_row.addWidget(self.diagram_placeholder, 1)
 
-        # Right column: x input + M_x / V_x / D_x spaced to diagram zones
+        # Right column: x position + three value fields distributed vertically
         right_col = QWidget()
         right_col.setStyleSheet("background: transparent;")
-        right_col.setFixedWidth(220)
+        right_col.setMaximumWidth(200)
         right_col.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Expanding)
 
         right_layout = QVBoxLayout(right_col)
         right_layout.setContentsMargins(0, 0, 0, 0)
         right_layout.setSpacing(0)
 
+        # x-position row: label + input on one line
         self.x_input = QLineEdit()
-        self.x_input.setFixedWidth(120)
-        self.x_input.setMinimumHeight(28)
+        self.x_input.setFixedWidth(90)
+        self.x_input.setMinimumHeight(24)
         self.x_input.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
         apply_field_style(self.x_input)
-        right_layout.addLayout(self._side_row("x", self.x_input))
+        right_layout.addLayout(self._side_row("x (m)", self.x_input))
 
-        right_layout.addSpacerItem(QSpacerItem(0, 100, QSizePolicy.Fixed, QSizePolicy.Fixed))
+        right_layout.addStretch(1)
         self.mx_field = self._side_field()
         right_layout.addLayout(self._side_row("M_z (kNm)", self.mx_field))
 
-        right_layout.addSpacerItem(QSpacerItem(0, 100, QSizePolicy.Fixed, QSizePolicy.Fixed))
+        right_layout.addStretch(1)
         self.vx_field = self._side_field()
         right_layout.addLayout(self._side_row("V_y (kN)", self.vx_field))
 
-        right_layout.addSpacerItem(QSpacerItem(0, 100, QSizePolicy.Fixed, QSizePolicy.Fixed))
+        right_layout.addStretch(1)
         self.dx_field = self._side_field()
         right_layout.addLayout(self._side_row("D_y (mm)", self.dx_field))
 
-        right_layout.addStretch()
+        right_layout.addStretch(1)
 
         self.x_fields["M_z"] = self.mx_field
         self.x_fields["V_y"] = self.vx_field
@@ -345,11 +349,10 @@ class SteelDesignAnalysisTab(QWidget):
 
     def _side_row(self, label_text, widget):
         row = QHBoxLayout()
-        row.setSpacing(6)
+        row.setSpacing(4)
         row.setContentsMargins(0, 0, 0, 0)
         row.addWidget(self._side_label(label_text))
         row.addWidget(widget)
-        row.addStretch()
         return row
 
     # ── PUBLIC API ────────────────────────────────────────────────────────────

@@ -143,7 +143,7 @@ class SteelDesign(QDialog):
           - Initialise interaction state and data caches
         """
         # ── Figure + canvas ───────────────────────────────────────────────────
-        self.figure = Figure(figsize=(6, 8))
+        self.figure = Figure(figsize=(6, 2.4))
         self.canvas = FigureCanvas(self.figure)
         self.canvas.setStyleSheet("background-color: transparent;")
         self.canvas.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
@@ -185,17 +185,18 @@ class SteelDesign(QDialog):
         mode_layout.addWidget(self.radio_scroll)
         mode_layout.addStretch()
 
-        combo_layout = QHBoxLayout()
-        combo_layout.addStretch()
-        combo_layout.addWidget(mode_group)
-
-        # Canvas wrapper: fixed height so it doesn't push surrounding layout
+        # Canvas wrapper: expands to fill available space
         canvas_wrapper = QWidget()
-        canvas_wrapper.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-        canvas_wrapper.setFixedHeight(580)
+        canvas_wrapper.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         vbox = QVBoxLayout(canvas_wrapper)
         vbox.setContentsMargins(0, 0, 0, 0)
-        vbox.addLayout(combo_layout)
+        vbox.setSpacing(4)
+        # Mode controls aligned to the right, above the canvas
+        mode_row = QHBoxLayout()
+        mode_row.setContentsMargins(0, 0, 0, 0)
+        mode_row.addStretch()
+        mode_row.addWidget(mode_group)
+        vbox.addLayout(mode_row)
         vbox.addWidget(self.canvas, 1)  # stretch=1 so canvas claims remaining height
 
         # ── Swap placeholder with canvas wrapper ──────────────────────────────
@@ -217,12 +218,12 @@ class SteelDesign(QDialog):
                         diagram_layout.setStretchFactor(widget, 0)
 
         # ── Four stacked subplots ─────────────────────────────────────────────
-        gs = self.figure.add_gridspec(4, 1, height_ratios=[0.4, 1, 1, 1])
+        gs = self.figure.add_gridspec(4, 1, height_ratios=[0.25, 1, 1, 1], hspace=0.32)
         self.ax_scheme = self.figure.add_subplot(gs[0])
         self.ax_bmd    = self.figure.add_subplot(gs[1])
         self.ax_sfd    = self.figure.add_subplot(gs[2])
         self.ax_defl   = self.figure.add_subplot(gs[3])
-        self.figure.subplots_adjust(left=0.08, right=0.96, top=0.95, bottom=0.08, hspace=0.35)
+        self.figure.subplots_adjust(left=0.08, right=0.96, top=0.94, bottom=0.12)
 
         # Schematic: frameless
         self.ax_scheme.set_facecolor('#ffffff')
@@ -249,7 +250,7 @@ class SteelDesign(QDialog):
         # ── Replace QLineEdit side-fields with QLabels (supports HTML/two lines) ──
         # Spacer heights align each label with the vertical centre of its diagram band.
         # Tuned to the [0.4, 1, 1, 1] gridspec running inside a 580px canvas.
-        _SPACER_HEIGHTS = [90, 100, 100]
+        _SPACER_HEIGHTS = [60, 75, 75]
 
         for key, field in list(self.analysis_tab.x_fields.items()):
             lbl = QLabel()
@@ -336,39 +337,6 @@ class SteelDesign(QDialog):
         if index != 1:
             return
 
-        # TEMPORARY: auto-run analysis for UI testing
-        # This will be removed once the core–UI workflow is connected.
-        if self._cached_model is None:
-            try:
-                import sys
-                from unittest.mock import MagicMock
-                mock_cad = MagicMock()
-                mock_cad.export_step = lambda *args, **kwargs: None
-                sys.modules["osdagbridge.core.bridge_types.plate_girder.cad_generator"] = mock_cad
-
-                mock_designer = MagicMock()
-                mock_designer.design = lambda *args, **kwargs: None
-                sys.modules["osdagbridge.core.bridge_types.plate_girder.designer"] = mock_designer
-
-                mock_report = MagicMock()
-                mock_report.section_report = lambda *args, **kwargs: None
-                sys.modules["osdagbridge.core.bridge_types.plate_girder.report_generator"] = mock_report
-
-                from osdagbridge.core.bridge_types.plate_girder.plategirderbridge import PlateGirderBridge
-                if hasattr(self._main_window, 'cad_state') and self._main_window.cad_state:
-                    bridge = PlateGirderBridge(
-                        basic_inputs=self._main_window.cad_state,
-                        additional_inputs=self._main_window.cad_state
-                    )
-                    # mock the model type selection so it works cleanly internally
-                    self._main_window.cad_state['Model Selection'] = "M35"
-                    bridge.run(run_analysis=True)
-                    self._main_window.backend = bridge._analysis_engine
-                    self._cached_model = bridge._analysis_engine.model
-            except BaseException as e:
-                import traceback
-                print(f"Auto-run analysis failed:\n{traceback.format_exc()}")
-
         if self._cached_model is None:
             self._discover_and_cache_model()
 
@@ -410,18 +378,21 @@ class SteelDesign(QDialog):
     def _on_canvas_click(self, event):
         """
         Handle mouse clicks on the matplotlib canvas.
-        If in Scroll for Values mode, determines which structural node is closest
-        to the click's x-coordinate and snaps the cursor to that node.
+        In Scroll for Values mode, moves the cursor to the exact click x-position
+        (clamped to the girder span) and interpolates BMD / SFD / Deflection values.
+        Works for any x, not just mesh node positions.
         """
         if self._interaction_mode != "Scroll for Values":
             return
         if event.xdata is None or self._current_x is None:
             return
 
-        idx = (np.abs(self._current_x - event.xdata)).argmin()
-        self._cursor_idx = int(idx)
-        self._cursor_x = float(self._current_x[self._cursor_idx])
-        
+        # Accept any x within the span; values are interpolated in _update_right_panel_for_mode
+        self._cursor_x = float(np.clip(event.xdata, self._current_x[0], self._current_x[-1]))
+        # Track nearest node index for arrow-key navigation continuity
+        idx = int(np.searchsorted(self._current_x, self._cursor_x, side='right')) - 1
+        self._cursor_idx = max(0, min(len(self._current_x) - 1, idx))
+
         self._update_right_panel_for_mode()
         self._draw_cursors()
 
@@ -566,7 +537,8 @@ class SteelDesign(QDialog):
                 "path":     node_path,
             }
 
-    def _extract_member_results(self, member_key, loadcase):
+    def _extract_member_results(self, member_key, loadcase,
+                                bmd_key="Mz_i", sfd_key="Vy_i", defl_key="dy"):
         """
         Extract x-coordinate, BMD, SFD, and deflection arrays for a given
         girder and load case directly from the cached ospgrillage results xarray.
@@ -574,9 +546,12 @@ class SteelDesign(QDialog):
         Args:
             member_key (str): Girder identifier key, e.g. "g1".
             loadcase   (str): Load case label as stored in results.forces.
+            bmd_key    (str): Force component name for the moment diagram (default: "Mz_i").
+            sfd_key    (str): Force component name for the shear diagram  (default: "Vy_i").
+            defl_key   (str): Displacement component for deflection        (default: "dy").
 
         Returns:
-            tuple (xs, bmd, sfd, defl) of numpy arrays, or None on failure.
+            tuple (xs, bmd, sfd, defl, all_data) of numpy arrays, or None on failure.
             Units: xs [m], bmd [kNm], sfd [kN], defl [mm].
         """
         if member_key not in self._girder_map:
@@ -606,7 +581,7 @@ class SteelDesign(QDialog):
             # Extract force components from the results xarray
             forces = self._cached_results.forces
 
-            def _get_force_array(component):
+            def _get_force_array(component, is_moment=False, is_force=False):
                 """Extract one per-element force component for the given loadcase."""
                 values = []
                 try:
@@ -620,34 +595,49 @@ class SteelDesign(QDialog):
                 except Exception:
                     values = [0.0] * len(element_ids)
                 values.append(0.0)  # pad to match node_path length (n_elements + 1)
-                return values
-
-            bmd_values = np.nan_to_num(
-                _match_length(np.array(_get_force_array("Mz_i"), dtype=float) / 1000.0, len(xs))
-            )  # N·m → kNm
-            sfd_values = np.nan_to_num(
-                _match_length(np.array(_get_force_array("Vy_i"), dtype=float) / 1000.0, len(xs))
-            )  # N → kN
+                
+                arr = np.nan_to_num(_match_length(np.array(values, dtype=float), len(xs)))
+                if is_moment:
+                    return arr / 1000.0  # N·m → kNm
+                if is_force:
+                    return arr / 1000.0  # N → kN
+                return arr
 
             # Extract vertical displacements per node
-            disp     = self._cached_results.displacements
-            defl_raw = []
-            try:
-                disp_dy = disp.sel(Loadcase=loadcase, Component="dy")
-                for node_tag in node_path:
-                    try:
-                        v = float(disp_dy.sel(Node=node_tag).values.item()) * 1000.0  # m → mm
-                        defl_raw.append(v)
-                    except Exception:
-                        defl_raw.append(np.nan)
-            except Exception:
-                defl_raw = [np.nan] * len(node_path)
+            disp = self._cached_results.displacements
+            
+            def _get_disp_array(component):
+                defl_raw = []
+                try:
+                    disp_sel = disp.sel(Loadcase=loadcase, Component=component)
+                    for node_tag in node_path:
+                        try:
+                            v = float(disp_sel.sel(Node=node_tag).values.item()) * 1000.0  # m → mm
+                            defl_raw.append(v)
+                        except Exception:
+                            defl_raw.append(np.nan)
+                except Exception:
+                    defl_raw = [np.nan] * len(node_path)
+                    
+                return np.nan_to_num(_match_length(np.array(defl_raw, dtype=float), len(xs)))
 
-            defl_values = np.nan_to_num(
-                _match_length(np.array(defl_raw, dtype=float), len(xs))
-            )
+            all_data = {
+                "Mz_i": _get_force_array("Mz_i", is_moment=True),
+                "My_i": _get_force_array("My_i", is_moment=True),
+                "Mx_i": _get_force_array("Mx_i", is_moment=True),
+                "Vy_i": _get_force_array("Vy_i", is_force=True),
+                "Vz_i": _get_force_array("Vz_i", is_force=True),
+                "Fx_i": _get_force_array("Fx_i", is_force=True),
+                "dy":   _get_disp_array("dy"),
+                "dz":   _get_disp_array("dz"),
+                "dx":   _get_disp_array("dx"),
+            }
 
-            return xs, bmd_values, sfd_values, defl_values
+            bmd_values = all_data.get(bmd_key, np.zeros(len(xs)))
+            sfd_values = all_data.get(sfd_key, np.zeros(len(xs)))
+            defl_values = all_data.get(defl_key, np.zeros(len(xs)))
+
+            return xs, bmd_values, sfd_values, defl_values, all_data
 
         except Exception:
             return None
@@ -690,9 +680,9 @@ class SteelDesign(QDialog):
 
     def _update_analysis_plots(self, *_args):
         """
-        Master orchestrator called when the girder or load combination selection
-        changes. Extracts data arrays, computes maximums, renders all plots,
-        and refreshes the right-hand result panel.
+        Master orchestrator called when the girder, load combination, or component
+        selection changes. Extracts data arrays for the selected component, computes
+        maximums, renders all plots, and refreshes the right-hand result panel.
         """
         if self._cached_results is None or not self._girder_map:
             self._show_blank_state()
@@ -705,22 +695,66 @@ class SteelDesign(QDialog):
         if not member_key or member_key not in self._girder_map:
             return
 
-        result = self._extract_member_results(member_key, loadcase)
+        # ── Determine active component ────────────────────────────────────────
+        comp_idx = 0
+        if hasattr(self.analysis_tab, "component_combo"):
+            comp_idx = self.analysis_tab.component_combo.currentIndex()
+
+        # Maps: (bmd_force_key, sfd_force_key, defl_disp_key, rhs_labels, max_field_keys)
+        _COMPONENT_CFG = [
+            # Major
+            ("Mz_i", "Vy_i", "dy",
+             ("M_z (kNm)", "V_y (kN)", "D_y (mm)"),
+             ("M_z",       "V_y",      "D_y")),
+            # Minor
+            ("My_i", "Vz_i", "dz",
+             ("M_y (kNm)", "V_z (kN)", "D_z (mm)"),
+             ("M_y",       "V_z",      "D_z")),
+            # Axial
+            ("Mx_i", "Fx_i", "dx",
+             ("M_x (kNm)", "F_x (kN)", "D_x (mm)"),
+             ("M_x",       "F_x",      "D_x")),
+        ]
+        bmd_key, sfd_key, defl_key, rhs_labels, max_keys = _COMPONENT_CFG[min(comp_idx, 2)]
+
+        result = self._extract_member_results(member_key, loadcase, bmd_key, sfd_key, defl_key)
         if result is None:
             self._show_blank_state()
             return
 
-        xs, bmd_values, sfd_values, defl_values = result
+        xs, bmd_values, sfd_values, defl_values, all_data = result
         self._current_x    = xs
         self._current_bmd  = bmd_values
         self._current_sfd  = sfd_values
         self._current_defl = defl_values
 
-        self._current_max_dict = self._compute_maximums(xs, bmd_values, sfd_values, defl_values)
+        self._current_max_dict = self._compute_maximums(xs, bmd_values, sfd_values, defl_values, all_data)
+
+        # ── Update RHS field labels to match the active component ─────────────
+        # Rebuild x_fields mapping so that _update_right_panel_for_mode uses
+        # the correct keys regardless of which component is selected.
+        old_keys = list(self.analysis_tab.x_fields.keys())
+        fields   = list(self.analysis_tab.x_fields.values())
+        new_keys = list(max_keys)   # e.g. ["M_z", "V_y", "D_y"]
+        self.analysis_tab.x_fields = dict(zip(new_keys, fields))
+
+        # Update the side-row label widgets text
+        lbl_texts = list(rhs_labels)   # ("M_z (kNm)", "V_y (kN)", "D_y (mm)")
+        for field, lbl_text in zip(fields, lbl_texts):
+            parent_widget = field.parentWidget()
+            if parent_widget and parent_widget.layout():
+                sub = parent_widget.layout()
+                for j in range(sub.count()):
+                    w = sub.itemAt(j).widget() if sub.itemAt(j) else None
+                    if isinstance(w, QLabel) and w is not field:
+                        w.setText(lbl_text)
+                        break
+
+        self._current_max_keys = max_keys
 
         self._clear_axes()
         self._render_plots(xs, bmd_values, sfd_values, defl_values)
-        self._update_value_fields(self._current_max_dict)
+        self._update_value_fields(self._current_max_dict, max_keys)
         self._on_interaction_mode_changed()
 
     def _render_plots(self, xs, bmd_values, sfd_values, defl_values):
@@ -816,19 +850,19 @@ class SteelDesign(QDialog):
     #   CALCULATION UTILITIES
     # =========================================================================
 
-    def _compute_maximums(self, xs, bmd_values, sfd_values, defl_values):
+    def _compute_maximums(self, xs, bmd_values, sfd_values, defl_values, all_data):
         """
-        Find the peak absolute values for BMD, SFD, and Deflection and the
+        Find the peak absolute values for all components and the
         corresponding x-positions along the girder.
 
         Returns:
-            dict with keys M_max, V_max, D_max (signed values) and
-            x_M, x_V, x_D (positions in metres).
+            dict with UI keys and x-positions.
         """
         idx_m = int(np.argmax(np.abs(bmd_values)))
         idx_v = int(np.argmax(np.abs(sfd_values)))
         idx_d = int(np.argmax(np.abs(defl_values)))
-        return {
+        
+        result = {
             "M_max": bmd_values[idx_m],
             "V_max": sfd_values[idx_v],
             "D_max": defl_values[idx_d],
@@ -836,26 +870,37 @@ class SteelDesign(QDialog):
             "x_V":  float(xs[idx_v]),
             "x_D":  float(xs[idx_d]),
         }
+        
+        comps = ["Mz_i", "My_i", "Mx_i", "Vy_i", "Vz_i", "Fx_i", "dy", "dz", "dx"]
+        ui_keys = ["M_z", "M_y", "T_x", "V_y", "V_z", "F_x", "D_y", "D_z", "D_x"]
+        
+        for comp, uik in zip(comps, ui_keys):
+            arr = all_data.get(comp, np.zeros(len(xs)))
+            idx_max = int(np.argmax(np.abs(arr)))
+            result[uik] = float(arr[idx_max])
+            result[f"x_{uik}"] = float(xs[idx_max])
+
+        return result
 
     # =========================================================================
     #   UI UPDATE HELPERS
     # =========================================================================
 
-    def _update_value_fields(self, max_dict):
+    def _update_value_fields(self, max_dict, max_keys=None):
         """
         Populate the left-panel summary result fields with the computed maximum
-        values for bending moment, shear force, and deflection.
+        values for all components.
         """
         mapping = [
-            ("T_x", "T_x", "{:.2f} kNm"),
-            ("M_y", "M_y", "{:.2f} kNm"),
-            ("M_max", "M_z", "{:.2f} kNm"),
-            ("V_x", "V_x", "{:.2f} kN"),
-            ("V_max", "V_y", "{:.2f} kN"),
-            ("V_z", "V_z", "{:.2f} kN"),
-            ("D_x", "D_x", "{:.4f} mm"),
-            ("D_max", "D_y", "{:.4f} mm"),
-            ("D_z", "D_z", "{:.4f} mm"),
+            ("T_x",   "T_x",    "{:.2f} kNm"),
+            ("M_y",   "M_y",    "{:.2f} kNm"),
+            ("M_z",   "M_z",    "{:.2f} kNm"),
+            ("F_x",   "F_x",    "{:.2f} kN"),
+            ("V_y",   "V_y",    "{:.2f} kN"),
+            ("V_z",   "V_z",    "{:.2f} kN"),
+            ("D_x",   "D_x",    "{:.4f} mm"),
+            ("D_y",   "D_y",    "{:.4f} mm"),
+            ("D_z",   "D_z",    "{:.4f} mm"),
         ]
         for dict_key, field_key, fmt in mapping:
             if field_key in self.analysis_tab.result_fields:
@@ -867,41 +912,46 @@ class SteelDesign(QDialog):
         Refresh the right-column position/value labels based on the active mode.
 
         Maximum Values mode : shows each diagram's peak value and x-position
-                              on two lines; expands label height to 42 px.
+                              on two lines; expands label height to 55 px.
         Interactive mode    : shows the value at the current cursor index
-                              on a single line; compresses label height to 28 px.
+                              on a single line; compresses label height to 35 px.
+
+        This method is component-agnostic: it reads x_fields keys that are
+        remapped by _update_analysis_plots whenever the component changes.
         """
         if self._current_x is None:
             return
 
-        mode = self._interaction_mode
+        mode    = self._interaction_mode
+        xf      = self.analysis_tab.x_fields   # {bmd_key: label, sfd_key: label, defl_key: label}
+        keys    = list(xf.keys())              # [bmd_key, sfd_key, defl_key]
+
+        # Unit suffix helpers for single-line interactive labels
+        def _unit(k):
+            if k.startswith("D"):
+                return "mm"
+            elif k.startswith("M"):
+                return "kNm"
+            return "kN"
 
         if mode == "Maximum Values":
-            max_d = getattr(self, "_current_max_dict", {})
-            m_val = max_d.get("M_max", 0.0)
-            v_val = max_d.get("V_max", 0.0)
-            d_val = max_d.get("D_max", 0.0)
+            max_d  = getattr(self, "_current_max_dict", {})
+            vals   = [max_d.get("M_max", 0.0), max_d.get("V_max", 0.0), max_d.get("D_max", 0.0)]
+            x_pos  = [max_d.get("x_M", 0.0),   max_d.get("x_V", 0.0),   max_d.get("x_D", 0.0)]
+            fmts   = ["{:.2f} {u}<br>at x = {x:.2f} m",
+                      "{:.2f} {u}<br>at x = {x:.2f} m",
+                      "{:.4f} {u}<br>at x = {x:.2f} m"]
 
             if hasattr(self.analysis_tab, "x_input"):
                 self.analysis_tab.x_input.setText("Multiple")
 
-            if "M_z" in self.analysis_tab.x_fields:
-                self.analysis_tab.x_fields["M_z"].setMinimumHeight(55)
-                self.analysis_tab.x_fields["M_z"].setText(
-                    f"{m_val:.2f} kNm<br>at x = {max_d.get('x_M', 0.0):.2f} m"
-                )
-            if "V_y" in self.analysis_tab.x_fields:
-                self.analysis_tab.x_fields["V_y"].setMinimumHeight(55)
-                self.analysis_tab.x_fields["V_y"].setText(
-                    f"{v_val:.2f} kN<br>at x = {max_d.get('x_V', 0.0):.2f} m"
-                )
-            if "D_y" in self.analysis_tab.x_fields:
-                self.analysis_tab.x_fields["D_y"].setMinimumHeight(55)
-                self.analysis_tab.x_fields["D_y"].setText(
-                    f"{d_val:.4f} mm<br>at x = {max_d.get('x_D', 0.0):.2f} m"
-                )
+            for key, val, xp, fmt in zip(keys, vals, x_pos, fmts):
+                if key in xf:
+                    xf[key].setMinimumHeight(55)
+                    u = _unit(key)
+                    xf[key].setText(fmt.format(val, u=u, x=xp))
 
-        else:  # Interactive mode
+        else:  # "Scroll for Values"
             # Use the exact cursor x-position (set by click or arrow key).
             # Fall back to node 0 if not yet set.
             cx = getattr(self, "_cursor_x", None)
@@ -912,22 +962,18 @@ class SteelDesign(QDialog):
                 self._cursor_x = cx
 
             # Linearly interpolate each diagram at the exact cursor x
-            m_val = float(np.interp(cx, self._current_x, self._current_bmd))
-            v_val = float(np.interp(cx, self._current_x, self._current_sfd))
-            d_val = float(np.interp(cx, self._current_x, self._current_defl))
+            interp_data = [self._current_bmd, self._current_sfd, self._current_defl]
+            fmts_scalar = ["{:.2f} {u}", "{:.2f} {u}", "{:.4f} {u}"]
 
             if hasattr(self.analysis_tab, "x_input"):
                 self.analysis_tab.x_input.setText(f"{cx:.2f} m")
 
-            if "M_z" in self.analysis_tab.x_fields:
-                self.analysis_tab.x_fields["M_z"].setMinimumHeight(35)
-                self.analysis_tab.x_fields["M_z"].setText(f"{m_val:.2f} kNm")
-            if "V_y" in self.analysis_tab.x_fields:
-                self.analysis_tab.x_fields["V_y"].setMinimumHeight(35)
-                self.analysis_tab.x_fields["V_y"].setText(f"{v_val:.2f} kN")
-            if "D_y" in self.analysis_tab.x_fields:
-                self.analysis_tab.x_fields["D_y"].setMinimumHeight(35)
-                self.analysis_tab.x_fields["D_y"].setText(f"{d_val:.4f} mm")
+            for key, data, fmt in zip(keys, interp_data, fmts_scalar):
+                if key in xf:
+                    val = float(np.interp(cx, self._current_x, data))
+                    xf[key].setMinimumHeight(35)
+                    xf[key].setText(fmt.format(val, u=_unit(key)))
+
 
     def _draw_cursors(self):
         """
