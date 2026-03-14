@@ -23,6 +23,9 @@ TYPE_TEXTBOX = "textbox"
 TYPE_IMAGE = "image"
 TYPE_BUTTON = "button"
 TYPE_NOTE   = "note"
+TYPE_CHECKBOX       = "checkbox"
+TYPE_CHECKBOX_ROW   = "checkbox_row"
+TYPE_CHECKBOX_GRID  = "checkbox_grid"
 
 # Keys for inputs (consistent dot notation for object names)
 KEY_MODULE = "Module"
@@ -40,6 +43,21 @@ KEY_CROSS_BRACING = "material.cross_bracing"
 KEY_END_DIAPHRAGM = "material.end_diaphragm"
 KEY_DECK = "Deck"
 KEY_DECK_CONCRETE_GRADE_BASIC = "material.deck_concrete_grade"
+
+# ── Output section keys ───────────────────────────────────────────────────────
+KEY_SECTION_OUTPUT_ANALYSIS       = "section.output.analysis"
+KEY_SECTION_OUTPUT_SUPERSTRUCTURE = "section.output.superstructure"
+KEY_SECTION_OUTPUT_SUBSTRUCTURE   = "section.output.substructure"
+
+# ── Output field keys ─────────────────────────────────────────────────────────
+KEY_ANALYSIS_MEMBER           = "analysis.member"
+KEY_ANALYSIS_LOAD_COMBINATION = "analysis.load_combination"
+KEY_ANALYSIS_FORCES           = "analysis.forces"
+KEY_ANALYSIS_DISPLAY_OPTIONS  = "analysis.display_options"
+KEY_ANALYSIS_UTILIZATION      = "analysis.utilization"
+
+KEY_BTN_STEEL_DESIGN          = "btn.steel_design"
+KEY_BTN_DECK_DESIGN           = "btn.deck_design"
 
 # Module + section identifiers (also used as UI keys)
 KEY_MODULE_PLATE_GIRDER = "module.plate_girder"
