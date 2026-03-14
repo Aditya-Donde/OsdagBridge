@@ -97,6 +97,44 @@ class LoadingTab(QWidget):
 
         layout.addWidget(self.load_tabs)
 
+    def get_values(self) -> dict:
+        """Return ``{sub_tab_id: {field_id: value}}`` for all Loading sub-tabs.
+
+        Collects values from each sub-tab widget by traversing named child widgets.
+        """
+
+        def _collect(widget):
+            if widget is None:
+                return {}
+            vals = {}
+            # PySide6 findChildren does not accept a tuple of types — call per type.
+            candidates = (
+                list(widget.findChildren(QLineEdit))
+                + list(widget.findChildren(QComboBox))
+                + list(widget.findChildren(QCheckBox))
+            )
+            for w in candidates:
+                key = w.objectName()
+                if not key or key.startswith("qt_"):
+                    continue
+                if isinstance(w, QLineEdit):
+                    vals[key] = w.text()
+                elif isinstance(w, QComboBox):
+                    vals[key] = w.currentText()
+                elif isinstance(w, QCheckBox):
+                    vals[key] = w.isChecked()
+            return vals
+
+        return {
+            "permanent_load":   _collect(getattr(self, "permanent_load_tab", None)),
+            "live_load":        _collect(getattr(self, "live_load_tab", None)),
+            "seismic_load":     _collect(getattr(self, "seismic_load_tab", None)),
+            "wind_load":        _collect(getattr(self, "wind_load_tab", None)),
+            "temperature_load": _collect(getattr(self, "temperature_load_tab", None)),
+            "custom_load":      _collect(getattr(self, "custom_load_tab", None)),
+            "load_combination": _collect(getattr(self, "load_combination_tab", None)),
+        }
+
     def _create_card(self):
         card = QFrame()
         card.setStyleSheet("QFrame { border: 1px solid #cfcfcf; border-radius: 12px; background-color: #ffffff; }")

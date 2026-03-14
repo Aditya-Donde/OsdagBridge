@@ -14,7 +14,7 @@ from osdagbridge.desktop.ui.docks.cad_dual_view import BridgeDualCADWidget
 from osdagbridge.desktop.ui.dialogs.additional_inputs import AdditionalInputs
 
 from osdagbridge.core.bridge_types.plate_girder.ui_fields import FrontendData
-from osdagbridge.core.bridge_types.plate_girder.defaults import DEFAULTS_DICT
+from osdagbridge.core.bridge_types.plate_girder.defaults import DEFAULTS_DICT, AI_DEFAULTS
 from osdagbridge.core.utils.common import *
 
 class CustomWindow(QWidget):
@@ -24,8 +24,14 @@ class CustomWindow(QWidget):
         self.backend = backend()
 
         # Source for all input values.
-        # Initialised from DEFAULTS_DICT; updated live as the user edits fields.
-        self.input_dict = dict(DEFAULTS_DICT)
+        # Seed with ALL AI_DEFAULTS sub-keys first so every additional-input field
+        # has a default present even before the dialog is opened.
+        self.input_dict = {}
+        for section_vals in AI_DEFAULTS.values():
+            if isinstance(section_vals, dict):
+                self.input_dict.update(section_vals)
+        # DEFAULTS_DICT overrides with remapped/computed keys (e.g. "left_support").
+        self.input_dict.update(DEFAULTS_DICT)
 
         # one-time log splitter initialization flag
         self._log_splitter_initialized = False
@@ -248,7 +254,13 @@ class CustomWindow(QWidget):
         Trigger belongs to one of ["Design", "Save", "Additional Inputs"]
         """
         if trigger == "Design":
-            # Collect all the values from input Dock
+            # Collect the complete set of values: basic inputs + all defaults +
+            # any values captured from the Additional Inputs dialog.
+            if hasattr(self, "input_dock") and self.input_dock is not None:
+                complete_values = self.input_dock.get_all_input_values()
+                # Sync back into input_dict so the rest of the codebase sees the
+                # full picture via self.input_dict as well.
+                self.input_dict.update(complete_values)
             print(f"@@input_dictionary: {self.input_dict}")
         elif trigger == "Save":
             # Collect all the values from input Dock and save to osi/csv

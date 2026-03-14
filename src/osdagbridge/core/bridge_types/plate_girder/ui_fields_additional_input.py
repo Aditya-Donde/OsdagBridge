@@ -1491,3 +1491,73 @@ GIRDER_DETAILS_SCHEMA = {
 }
 
 #function -> store in dict design dict
+
+# ---------------------------------------------------------------------------
+# ADDITIONAL INPUTS TAB HIERARCHY CONFIG
+# ---------------------------------------------------------------------------
+# Declarative map of top-level tabs → sub-tabs used throughout the codebase
+# to build and track the nested inputs dictionary:
+#   { top_tab_id: { sub_tab_id: { field_key: value } } }
+#
+# Tabs that delegate to custom widget classes list "schema": None; schema-driven
+# tabs reference their schema constant by name for documentation purposes.
+# ---------------------------------------------------------------------------
+
+ADDITIONAL_INPUTS_TAB_CONFIG = [
+    {
+        "id": "typical_section",
+        "label": "Typical Section Details",
+        "sub_tabs": [
+            {"id": "layout",        "label": "Layout",        "schema": "LAYOUT_TAB_SCHEMA"},
+            {"id": "crash_barrier", "label": "Crash Barrier", "schema": "CRASH_BARRIER_TAB_SCHEMA"},
+            {"id": "median",        "label": "Median",        "schema": "MEDIAN_TAB_SCHEMA"},
+            {"id": "railing",       "label": "Railing",       "schema": "RAILING_TAB_SCHEMA"},
+            {"id": "wearing_course","label": "Wearing Course","schema": "WEARING_COURSE_TAB_SCHEMA"},
+            {"id": "lane_details",  "label": "Lane Details",  "schema": "LANE_DETAILS_TAB_SCHEMA"},
+        ],
+    },
+    {
+        "id": "member_properties",
+        "label": "Member Properties",
+        "sub_tabs": [
+            {"id": "girder_details",    "label": "Girder Details",     "schema": "GIRDER_DETAILS_SCHEMA"},
+            {"id": "stiffener_details", "label": "Stiffener Details",  "schema": "STIFFENER_DETAILS_SCHEMA"},
+            {"id": "cross_bracing",     "label": "Cross-Bracing",      "schema": "CROSS_BRACING_DETAILS_SCHEMA"},
+            {"id": "end_diaphragm",     "label": "End Diaphragm",      "schema": "END_DIAPHRAGM_DETAILS_SCHEMA"},
+        ],
+    },
+    {
+        "id": "loading",
+        "label": "Loading",
+        "sub_tabs": [
+            {"id": "permanent_load",   "label": "Permanent Load",    "schema": "PERMANENT_LOAD_TAB_SCHEMA"},
+            {"id": "live_load",        "label": "Live Load",          "schema": "LIVE_LOAD_TAB_SCHEMA"},
+            {"id": "seismic_load",     "label": "Seismic Load",       "schema": "SEISMIC_LOAD_TAB_SCHEMA"},
+            {"id": "wind_load",        "label": "Wind Load",          "schema": "WIND_LOAD_TAB_SCHEMA"},
+            {"id": "temperature_load", "label": "Temperature Load",   "schema": "TEMPERATURE_LOAD_TAB_SCHEMA"},
+            {"id": "custom_load",      "label": "Custom Load",        "schema": "CUSTOM_LOAD_TAB_SCHEMA"},
+            {"id": "load_combination", "label": "Load Combination",   "schema": "LOAD_COMBINATION_TAB_SCHEMA"},
+        ],
+    },
+    {
+        "id": "support_conditions",
+        "label": "Support Conditions",
+        "sub_tabs": [
+            {"id": "support_conditions", "label": "Support Conditions", "schema": "SUPPORT_CONDITIONS_SCHEMA"},
+        ],
+    },
+    {
+        "id": "design_options",
+        "label": "Analysis/Design Options",
+        "sub_tabs": [
+            {"id": "design_options", "label": "Design Options", "schema": "DESIGN_OPTIONS_SCHEMA"},
+        ],
+    },
+    {
+        "id": "design_options_cont",
+        "label": "Design Options (Cont.)",
+        "sub_tabs": [
+            {"id": "design_options_cont", "label": "Design Options (Cont.)", "schema": "DESIGN_OPTIONS_CONT_SCHEMA"},
+        ],
+    },
+]

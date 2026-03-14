@@ -1063,6 +1063,44 @@ class TypicalSectionDetailsTab(QWidget):
             self._update_crash_barrier_visibility(barrier_type)
             self._apply_crash_barrier_defaults(barrier_type, force=True)
 
+    def get_values(self) -> dict:
+        """Return ``{sub_tab_id: {field_id: value}}`` for all Typical Section sub-tabs.
+
+        Collects values from each sub-tab widget by traversing their child
+        widgets whose objectName matches a schema field id.
+        """
+
+        def _collect(widget):
+            if widget is None:
+                return {}
+            vals = {}
+            # PySide6 findChildren does not accept a tuple of types — call per type.
+            candidates = (
+                list(widget.findChildren(QLineEdit))
+                + list(widget.findChildren(QComboBox))
+                + list(widget.findChildren(QCheckBox))
+            )
+            for w in candidates:
+                key = w.objectName()
+                if not key or key.startswith("qt_"):
+                    continue
+                if isinstance(w, QLineEdit):
+                    vals[key] = w.text()
+                elif isinstance(w, QComboBox):
+                    vals[key] = w.currentText()
+                elif isinstance(w, QCheckBox):
+                    vals[key] = w.isChecked()
+            return vals
+
+        return {
+            "layout":        _collect(getattr(self, "layout_tab", None)),
+            "crash_barrier": _collect(getattr(self, "crash_barrier_tab", None)),
+            "median":        _collect(getattr(self, "median_tab", None)),
+            "railing":       _collect(getattr(self, "railing_tab", None)),
+            "wearing_course":_collect(getattr(self, "wearing_course_tab", None)),
+            "lane_details":  _collect(getattr(self, "lane_details_tab", None)),
+        }
+
     def reset_defaults(self):
         self._ai_user_overrides.clear()
         # Layout defaults

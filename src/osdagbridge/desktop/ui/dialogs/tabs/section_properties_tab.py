@@ -257,6 +257,17 @@ class SectionPropertiesTab(QWidget):
             except Exception:
                 pass
 
+    def get_values(self) -> dict:
+        """Return ``{sub_tab_id: data_dict}`` for all Member Properties sub-tabs.
+
+        Delegates to ``save_properties()`` which already collects data from each
+        sub-tab via ``collect_data()``.
+        """
+        try:
+            return self.save_properties() or {}
+        except Exception:
+            return {}
+
     def save_properties(self):
         data = {}
         if hasattr(self, "girder_details_tab") and hasattr(self.girder_details_tab, "collect_data"):

@@ -29,7 +29,7 @@ from osdagbridge.desktop.ui.dialogs.material_properties import (
     MaterialPropertiesDialog, sync_custom_materials_across_steel_members,
 )
 from osdagbridge.desktop.ui.dialogs.custom_messagebox import CustomMessageBox, MessageBoxType
-from osdagbridge.core.bridge_types.plate_girder.defaults import DEFAULTS_DICT
+from osdagbridge.core.bridge_types.plate_girder.defaults import DEFAULTS_DICT, AI_DEFAULTS
 from osdagbridge.core.bridge_types.plate_girder.validator import BridgeInputValidator
 
 
@@ -699,32 +699,46 @@ class InputDock(QWidget):
         footpath_value    = self._text(KEY_FOOTPATH) or "None"
         carriageway_width = self._get_effective_carriageway_width()
 
-        self.additional_inputs = AdditionalInputs(footpath_value, carriageway_width)
+        dlg = AdditionalInputs(footpath_value, carriageway_width)
+        self.additional_inputs = dlg
 
         if self._additional_inputs_saved_data:
             try:
-                self.additional_inputs.set_properties_data(self._additional_inputs_saved_data)
+                dlg.set_properties_data(self._additional_inputs_saved_data)
             except Exception:
                 pass
         try:
-            self.additional_inputs.set_member_properties_design_mode(self._current_design_mode)
+            dlg.set_member_properties_design_mode(self._current_design_mode)
         except Exception:
             pass
         if target_tab:
             try:
-                for i in range(self.additional_inputs.tabs.count()):
-                    if self.additional_inputs.tabs.tabText(i).strip().lower() == target_tab.lower():
-                        self.additional_inputs.tabs.setCurrentIndex(i)
+                for i in range(dlg.tabs.count()):
+                    if dlg.tabs.tabText(i).strip().lower() == target_tab.lower():
+                        dlg.tabs.setCurrentIndex(i)
                         break
             except Exception:
                 pass
 
-        self.additional_inputs.finished.connect(self._on_additional_inputs_closed)
+        dlg.finished.connect(self._on_additional_inputs_closed)
 
-        if self.additional_inputs.exec_() == AdditionalInputs.Accepted:
-            values = self.additional_inputs.get_all_values()
+        # exec_() blocks until dialog closes; _on_additional_inputs_closed fires
+        # via finished signal (inside exec) and sets self.additional_inputs=None,
+        # so use the local `dlg` reference for post-close value collection.
+        if dlg.exec_() == AdditionalInputs.Accepted:
+            try:
+                values = dlg.get_all_values()
+            except Exception:
+                values = None
             if values:
                 self.additional_input_values = values
+                # Also flatten and sync into parent.input_dict so it stays complete.
+                if hasattr(self.parent, "input_dict"):
+                    for top_tab_data in values.values():
+                        if isinstance(top_tab_data, dict):
+                            for sub_tab_data in top_tab_data.values():
+                                if isinstance(sub_tab_data, dict):
+                                    self.parent.input_dict.update(sub_tab_data)
                 self.input_value_changed.emit()
 
     def _on_additional_inputs_closed(self):
@@ -825,12 +839,12 @@ class InputDock(QWidget):
         """
         if hasattr(self.parent, "input_dict"):
             # If Empty or None Value then set the default
-            # print(f"@Change: {value}, default: {DEFAULTS_DICT.get(key)}")
+            print(f"@Change: {value}, default: {DEFAULTS_DICT.get(key)}")
             if value is None or value == "":
                 self.parent.input_dict[key] = DEFAULTS_DICT.get(key)
             else:
                 self.parent.input_dict[key] = value
-            # print(f"@Final: {self.parent.input_dict[key]}")
+            print(f"@Final: {self.parent.input_dict[key]}")
             
         else:
             print("[ERROR]: template_page.input_dictionary Not Found")
@@ -886,12 +900,26 @@ class InputDock(QWidget):
             KEY_FOOTPATH:          self._text(KEY_FOOTPATH),
             KEY_INCLUDE_MEDIAN:    self._is_median_included(),
         }
-        # Fill remaining defaults from DEFAULTS_DICT — single source of truth.
+        # Layer 1: seed ALL AI_DEFAULTS sub-keys as fallback defaults so the dict
+        # is always fully populated even before the Additional Inputs dialog is opened.
+        for section_vals in AI_DEFAULTS.values():
+            if isinstance(section_vals, dict):
+                for k, v in section_vals.items():
+                    values.setdefault(k, v)
+        # Layer 2: DEFAULTS_DICT overrides with remapped/computed keys (e.g. "left_support").
         for key, val in DEFAULTS_DICT.items():
             values.setdefault(key, val)
-        # Overlay any values captured from the Additional Inputs dialog.
+        # Layer 3: overlay values captured from the Additional Inputs dialog.
+        # additional_input_values is a nested dict:
+        #   { top_tab_id: { sub_tab_id: { field_key: value } } }
+        # Flatten it into the output dict so downstream code is unaffected.
         if self.additional_input_values:
-            values.update(self.additional_input_values)
+            if isinstance(self.additional_input_values, dict):
+                for top_tab_data in self.additional_input_values.values():
+                    if isinstance(top_tab_data, dict):
+                        for sub_tab_data in top_tab_data.values():
+                            if isinstance(sub_tab_data, dict):
+                                values.update(sub_tab_data)
         return values
 
     # ══════════════════════════════════════════════════════════════════════════

@@ -283,7 +283,7 @@ class AdditionalInputs(QDialog):
 
         # Store the saved data for later retrieval
         self._last_saved_data = saved
-        
+
         # Confirm save to the user (requested behavior). Use an explicit message box
         # instance so it stays on top of the frameless dialog.
         box = QMessageBox(self)
@@ -294,6 +294,108 @@ class AdditionalInputs(QDialog):
         box.setDefaultButton(QMessageBox.Ok)
         box.setWindowModality(Qt.ApplicationModal)
         box.exec()
+
+        # Accept the dialog so the caller receives Accepted and can call get_all_values().
+        self.accept()
+
+    # ══════════════════════════════════════════════════════════════════════════
+    # Nested-dict value collection
+    # ══════════════════════════════════════════════════════════════════════════
+
+    @staticmethod
+    def _widget_value(widget):
+        """Extract the current value from a QLineEdit, QComboBox, or QCheckBox."""
+        if isinstance(widget, QLineEdit):
+            return widget.text()
+        if isinstance(widget, QComboBox):
+            return widget.currentText()
+        if isinstance(widget, QCheckBox):
+            return widget.isChecked()
+        return None
+
+    @staticmethod
+    def _iter_schema_fields(obj):
+        """Recursively yield all field dicts that have both 'id' and 'bind' keys.
+
+        Handles every schema format used in this project:
+        ``rows``, ``sections``, ``cards``, ``fields``, and inline ``row_fields``.
+        """
+        if isinstance(obj, list):
+            for item in obj:
+                yield from AdditionalInputs._iter_schema_fields(item)
+        elif isinstance(obj, dict):
+            if "id" in obj and "bind" in obj:
+                yield obj
+            if "row_fields" in obj:
+                for rf in obj["row_fields"]:
+                    if "id" in rf and "bind" in rf:
+                        yield rf
+            for key in ("rows", "sections", "cards", "fields"):
+                if key in obj:
+                    yield from AdditionalInputs._iter_schema_fields(obj[key])
+
+    def _collect_values_from_bound_schema(self, schema) -> dict:
+        """Return ``{field_id: value}`` for widgets that are bound to *self*.
+
+        Used for schema-driven tabs whose widgets are set as attributes via
+        ``setattr(self, bind_name, widget)`` inside ``_create_schema_widget``.
+        """
+        values = {}
+        for field in self._iter_schema_fields(schema):
+            fid = field.get("id")
+            bind = field.get("bind")
+            if not fid or not bind:
+                continue
+            widget = getattr(self, bind, None)
+            if widget is None:
+                continue
+            val = self._widget_value(widget)
+            if val is not None:
+                values[fid] = val
+        return values
+
+    def get_all_values(self) -> dict:
+        """Return all additional-input values as a nested dictionary.
+
+        Structure::
+
+            {
+                top_tab_id: {
+                    sub_tab_id: {field_key: value, ...},
+                    ...
+                },
+                ...
+            }
+
+        This mirrors ``ADDITIONAL_INPUTS_TAB_CONFIG`` and makes every sub-tab's
+        data independently addressable for validation and downstream use.
+        """
+        result = {}
+
+        # 1. Typical Section Details — delegated to TypicalSectionDetailsTab
+        if hasattr(self, "typical_section_tab") and hasattr(self.typical_section_tab, "get_values"):
+            result["typical_section"] = self.typical_section_tab.get_values()
+
+        # 2. Member Properties — delegated to SectionPropertiesTab
+        if hasattr(self, "section_properties_tab") and hasattr(self.section_properties_tab, "get_values"):
+            result["member_properties"] = self.section_properties_tab.get_values()
+
+        # 3. Loading — delegated to LoadingTab
+        if hasattr(self, "loading_tab") and hasattr(self.loading_tab, "get_values"):
+            result["loading"] = self.loading_tab.get_values()
+
+        # 4–6. Schema-driven tabs whose widgets are bound directly to self
+        result["support_conditions"] = {
+            "support_conditions": self._collect_values_from_bound_schema(SUPPORT_CONDITIONS_SCHEMA),
+        }
+        result["design_options"] = {
+            "design_options": self._collect_values_from_bound_schema(DESIGN_OPTIONS_SCHEMA),
+        }
+        result["design_options_cont"] = {
+            "design_options_cont": self._collect_values_from_bound_schema(DESIGN_OPTIONS_CONT_SCHEMA),
+        }
+
+        return result
 
     def _build_sections_from_schema(self, parent_layout, sections, heading_style, label_style, field_width):
         for section in sections:
