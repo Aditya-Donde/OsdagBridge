@@ -70,30 +70,30 @@ class BridgeDualCADWidget(QWidget):
         layout.addWidget(self.splitter)
     
     def set_cross_section_visible(self, visible):
-        """Set cross-section view visibility (called from template_page)"""
         self.cross_visible = visible
-        if self.cross_visible:
-            self.cross_scroll.show()
-            if not self.top_visible:
-                self.splitter.setSizes([self.height(), 0])
-            else:
-                self.splitter.setSizes([self.height()//2, self.height()//2])
-        else:
-            self.cross_scroll.hide()
-            self.splitter.setSizes([0, self.height()])
-    
+        self.cross_scroll.setVisible(visible)
+        self._restore_splitter()
+
     def set_top_view_visible(self, visible):
-        """Set top view visibility (called from template_page)"""
         self.top_visible = visible
-        if self.top_visible:
-            self.top_scroll.show()
-            if not self.cross_visible:
-                self.splitter.setSizes([0, self.height()])
-            else:
-                self.splitter.setSizes([self.height()//2, self.height()//2])
+        self.top_scroll.setVisible(visible)
+        self._restore_splitter()
+
+    def _restore_splitter(self):
+        """Reset splitter to correct ratio based on which views are visible."""
+        if self.cross_visible and self.top_visible:
+            # Both visible — equal split via stretch factors, no fixed sizes
+            self.splitter.setStretchFactor(0, 1)
+            self.splitter.setStretchFactor(1, 1)
+            self.splitter.setSizes([1, 1])   # relative, Qt normalises to available height
+        elif self.cross_visible:
+            self.splitter.setStretchFactor(0, 1)
+            self.splitter.setStretchFactor(1, 0)
+            self.splitter.setSizes([1, 0])
         else:
-            self.top_scroll.hide()
-            self.splitter.setSizes([self.height(), 0])
+            self.splitter.setStretchFactor(0, 0)
+            self.splitter.setStretchFactor(1, 1)
+            self.splitter.setSizes([0, 1])
     
     # Cross-section zoom methods
     def cross_zoom_in(self):

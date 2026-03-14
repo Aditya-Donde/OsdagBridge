@@ -27,9 +27,6 @@ class CustomWindow(QWidget):
         # Initialised from DEFAULTS_DICT; updated live as the user edits fields.
         self.input_dict = dict(DEFAULTS_DICT)
 
-        # one-time log splitter initialization flag
-        self._log_splitter_initialized = False
-
         self.setWindowTitle(title)
         self.setStyleSheet(
             """
@@ -58,23 +55,6 @@ class CustomWindow(QWidget):
         self.init_ui()
         # Central CAD state (single source of truth)
         self.cad_state = {}
-
-        
-    def _init_log_splitter_once(self):
-        if self._log_splitter_initialized:
-            return
-
-        splitter = self.cad_log_splitter
-        h = splitter.height()
-        if h <= 0:
-            return
-
-        splitter.setSizes([
-            int(h * 0.8),   # CAD
-            int(h * 0.2),   # Logs
-        ])
-        self._log_splitter_initialized = True
-
 
     def init_ui(self):
         # Docking icons Parent class
@@ -112,10 +92,18 @@ class CustomWindow(QWidget):
         control_button_layout.setSpacing(10)
         control_button_layout.setContentsMargins(5,5,5,5)
 
+        # Input Dock
+        self.input_dock_control = ClickableSvgWidget()
+        self.input_dock_control.setFixedSize(18, 18)
+        self.input_dock_control.load(":/vectors/view_btn/input_dock_active.svg")
+        self.input_dock_control.clicked.connect(self.input_dock_toggle)
+        self.input_dock_active = True
+        control_button_layout.addWidget(self.input_dock_control)
+
         # Cross-section view control
         self.cross_section_control = ClickableSvgWidget()
         self.cross_section_control.setFixedSize(18, 18)
-        self.cross_section_control.load(":/vectors/cross_section_open_light.svg")
+        self.cross_section_control.load(":/vectors/view_btn/cross_section_active.svg")
         self.cross_section_control.clicked.connect(self.cross_section_toggle)
         self.cross_section_active = True
         control_button_layout.addWidget(self.cross_section_control)
@@ -123,27 +111,37 @@ class CustomWindow(QWidget):
         # Top view control
         self.top_view_control = ClickableSvgWidget()
         self.top_view_control.setFixedSize(18, 18)
-        self.top_view_control.load(":/vectors/top_view_open_light.svg")
+        self.top_view_control.load(":/vectors/view_btn/top_view_active.svg")
         self.top_view_control.clicked.connect(self.top_view_toggle)
         self.top_view_active = True
         control_button_layout.addWidget(self.top_view_control)
 
-        self.input_dock_control = ClickableSvgWidget()
-        self.input_dock_control.setFixedSize(18, 18)
-        self.input_dock_control.load(":/vectors/input_dock_active_light.svg")
-        self.input_dock_control.clicked.connect(self.input_dock_toggle)
-        self.input_dock_active = True
-        control_button_layout.addWidget(self.input_dock_control)
-
+        # Logs Dock Control
         self.log_dock_control = ClickableSvgWidget()
-        self.log_dock_control.load(":/vectors/logs_dock_inactive_light.svg")
+        self.log_dock_control.load(":/vectors/view_btn/logs_dock_inactive.svg")
         self.log_dock_control.setFixedSize(18, 18)
         self.log_dock_control.clicked.connect(self.logs_dock_toggle)
         self.log_dock_active = False
         control_button_layout.addWidget(self.log_dock_control)
 
+        # 3D Cad Control
+        self.cad_3d_control = ClickableSvgWidget()
+        self.cad_3d_control.load(":/vectors/view_btn/3d_cad_inactive.svg")
+        self.cad_3d_control.setFixedSize(18, 18)
+        self.cad_3d_control.clicked.connect(self.cad_3d_view_toggle)
+        self.cad_3d_view_active = False
+        control_button_layout.addWidget(self.cad_3d_control)
+
+        # Plots Control
+        self.plots_control = ClickableSvgWidget()
+        self.plots_control.load(":/vectors/view_btn/plots_inactive.svg")
+        self.plots_control.setFixedSize(18, 18)
+        self.plots_control.clicked.connect(self.plots_view_toggle)
+        self.plots_view_active = False
+        control_button_layout.addWidget(self.plots_control)
+
         self.output_dock_control = ClickableSvgWidget()
-        self.output_dock_control.load(":/vectors/output_dock_inactive_light.svg")
+        self.output_dock_control.load(":/vectors/view_btn/output_dock_inactive.svg")
         self.output_dock_control.setFixedSize(18, 18)
         self.output_dock_control.clicked.connect(self.output_dock_toggle)
         self.output_dock_active = False
@@ -192,6 +190,16 @@ class CustomWindow(QWidget):
         )
         self.cad_log_splitter.addWidget(self.cad_comp_widget)
 
+        # 3D CAD placeholder (mutually exclusive with dual view + plots)
+        self.cad_3d_widget = CentralPlaceholderWidget("3D CAD Here")
+        self.cad_3d_widget.setVisible(False)
+        self.cad_log_splitter.addWidget(self.cad_3d_widget)
+
+        # Plots placeholder (mutually exclusive with dual view + 3d cad)
+        self.plots_widget = CentralPlaceholderWidget("Analysis Plots Here")
+        self.plots_widget.setVisible(False)
+        self.cad_log_splitter.addWidget(self.plots_widget)
+
         # Log dock (inside splitter)
         self.logs_dock = LogDock(parent=self)
         self.logs_dock.setVisible(False)
@@ -200,10 +208,6 @@ class CustomWindow(QWidget):
         )
         self.logs_dock.setMinimumHeight(80)
         self.cad_log_splitter.addWidget(self.logs_dock)
-
-        # Stretch ratio: CAD > Logs
-        self.cad_log_splitter.setStretchFactor(0, 8)
-        self.cad_log_splitter.setStretchFactor(1, 1)
 
         central_V_layout.addWidget(self.cad_log_splitter)
 
@@ -247,6 +251,10 @@ class CustomWindow(QWidget):
         """
         Trigger belongs to one of ["Design", "Save", "Additional Inputs"]
         """
+        print(f"@plot:{self.plots_view_active}")
+        print(f"@3d:{self.cad_3d_view_active}")
+        print(f"@top:{self.top_view_active}")
+        print(f"@c/s:{self.cross_section_active}")
         if trigger == "Design":
             # Collect all the values from input Dock
             print(f"@@input_dictionary: {self.input_dict}")
@@ -314,50 +322,180 @@ class CustomWindow(QWidget):
 
     #---------------------------------Docking-Icons-Functionality-START----------------------------------------------
 
-    def cross_section_toggle(self):
-        """Toggle cross-section view visibility"""
-        self.cross_section_active = not self.cross_section_active
-        
-        if self.cross_section_active:
-            self.cross_section_control.load(":/vectors/cross_section_open_light.svg")
-        else:
-            self.cross_section_control.load(":/vectors/cross_section_closed_light.svg")
-        
-        # Update CAD widget
-        if hasattr(self, 'cad_comp_widget'):
-            self.cad_comp_widget.set_cross_section_visible(self.cross_section_active)
-    
-    def top_view_toggle(self):
-        """Toggle top view visibility"""
-        self.top_view_active = not self.top_view_active
-        
-        if self.top_view_active:
-            self.top_view_control.load(":/vectors/top_view_open_light.svg")
-        else:
-            self.top_view_control.load(":/vectors/top_view_closed_light.svg")
-        
-        # Update CAD widget
-        if hasattr(self, 'cad_comp_widget'):
-            self.cad_comp_widget.set_top_view_visible(self.top_view_active)
-
     def input_dock_toggle(self):
         self.input_dock.toggle_input_dock()
         
     def output_dock_toggle(self):
         self.output_dock.toggle_output_dock()
 
+    def cross_section_toggle(self):
+        # If 3D CAD or Plots is active, restore dual view instead of toggling
+        if self.cad_3d_view_active or self.plots_view_active:
+            # Deactivate 3D CAD & update icon
+            self.cad_3d_view_active = False
+            self.cad_3d_control.load(":/vectors/view_btn/3d_cad_inactive.svg")
+            # Deactivate Plots & update icon
+            self.plots_view_active = False
+            self.plots_control.load(":/vectors/view_btn/plots_inactive.svg")
+            # Restore Cross Section as active & update icon
+            self.cross_section_active = True
+            self.cross_section_control.load(":/vectors/view_btn/cross_section_active.svg")
+            # Restore Top View as active & update icon
+            self.top_view_active = True
+            self.top_view_control.load(":/vectors/view_btn/top_view_active.svg")
+            # Switch central area back to dual view widget
+            self._set_central_view('dual')
+            # Explicitly show both sub-views inside BridgeDualCADWidget
+            # (they were hidden when the competing view was activated)
+            self.cad_comp_widget.set_cross_section_visible(True)
+            self.cad_comp_widget.set_top_view_visible(True)
+            return
+
+        # Normal toggle within dual view
+        self.cross_section_active = not self.cross_section_active
+        if self.cross_section_active:
+            self.cross_section_control.load(":/vectors/view_btn/cross_section_active.svg")
+        else:
+            self.cross_section_control.load(":/vectors/view_btn/cross_section_inactive.svg")
+        self.cad_comp_widget.set_cross_section_visible(self.cross_section_active)
+
+
+    def top_view_toggle(self):
+        # If 3D CAD or Plots is active, restore dual view instead of toggling
+        if self.cad_3d_view_active or self.plots_view_active:
+            # Deactivate 3D CAD & update icon
+            self.cad_3d_view_active = False
+            self.cad_3d_control.load(":/vectors/view_btn/3d_cad_inactive.svg")
+            # Deactivate Plots & update icon
+            self.plots_view_active = False
+            self.plots_control.load(":/vectors/view_btn/plots_inactive.svg")
+            # Restore Top View as active & update icon
+            self.top_view_active = True
+            self.top_view_control.load(":/vectors/view_btn/top_view_active.svg")
+            # Restore Cross Section as active & update icon
+            self.cross_section_active = True
+            self.cross_section_control.load(":/vectors/view_btn/cross_section_active.svg")
+            # Switch central area back to dual view widget
+            self._set_central_view('dual')
+            # Explicitly show both sub-views inside BridgeDualCADWidget
+            # (they were hidden when the competing view was activated)
+            self.cad_comp_widget.set_cross_section_visible(True)
+            self.cad_comp_widget.set_top_view_visible(True)
+            return
+
+        # Normal toggle within dual view
+        self.top_view_active = not self.top_view_active
+        if self.top_view_active:
+            self.top_view_control.load(":/vectors/view_btn/top_view_active.svg")
+        else:
+            self.top_view_control.load(":/vectors/view_btn/top_view_inactive.svg")
+        self.cad_comp_widget.set_top_view_visible(self.top_view_active)
+
+
+    def cad_3d_view_toggle(self):
+        self.cad_3d_view_active = not self.cad_3d_view_active
+
+        if self.cad_3d_view_active:
+            # 3D CAD is mutually exclusive — deactivate Plots & update icon
+            self.plots_view_active = False
+            self.plots_control.load(":/vectors/view_btn/plots_inactive.svg")
+            # Hide dual sub-views & update icons
+            self.cross_section_active = False
+            self.cross_section_control.load(":/vectors/view_btn/cross_section_inactive.svg")
+            self.top_view_active = False
+            self.top_view_control.load(":/vectors/view_btn/top_view_inactive.svg")
+            # Mark 3D CAD as active & update icon
+            self.cad_3d_control.load(":/vectors/view_btn/3d_cad_active.svg")
+            # Switch central area to 3D CAD widget
+            self._set_central_view('3d')
+        else:
+            # 3D CAD turned off — mark inactive & update icon
+            self.cad_3d_control.load(":/vectors/view_btn/3d_cad_inactive.svg")
+            # Restore dual view button states & update icons
+            self.cross_section_active = True
+            self.top_view_active = True
+            self.cross_section_control.load(":/vectors/view_btn/cross_section_active.svg")
+            self.top_view_control.load(":/vectors/view_btn/top_view_active.svg")
+            # Switch central area back to dual view widget
+            # widget has a real height when splitter sizes are calculated
+            self._set_central_view('dual')
+            # Explicitly show both sub-views inside BridgeDualCADWidget
+            self.cad_comp_widget.set_cross_section_visible(True)
+            self.cad_comp_widget.set_top_view_visible(True)
+
+
+    def plots_view_toggle(self):
+        self.plots_view_active = not self.plots_view_active
+
+        if self.plots_view_active:
+            # Plots is mutually exclusive — deactivate 3D CAD & update icon
+            self.cad_3d_view_active = False
+            self.cad_3d_control.load(":/vectors/view_btn/3d_cad_inactive.svg")
+            # Hide dual sub-views & update icons
+            self.cross_section_active = False
+            self.cross_section_control.load(":/vectors/view_btn/cross_section_inactive.svg")
+            self.top_view_active = False
+            self.top_view_control.load(":/vectors/view_btn/top_view_inactive.svg")
+            # Mark Plots as active & update icon
+            self.plots_control.load(":/vectors/view_btn/plots_active.svg")
+            # Switch central area to Plots widget
+            self._set_central_view('plots')
+        else:
+            # Plots turned off — mark inactive & update icon
+            self.plots_control.load(":/vectors/view_btn/plots_inactive.svg")
+            # Restore dual view button states & update icons
+            self.cross_section_active = True
+            self.top_view_active = True
+            self.cross_section_control.load(":/vectors/view_btn/cross_section_active.svg")
+            self.top_view_control.load(":/vectors/view_btn/top_view_active.svg")
+            # Switch central area back to dual view widget
+            # widget has a real height when splitter sizes are calculated
+            self._set_central_view('dual')
+            # Explicitly show both sub-views inside BridgeDualCADWidget
+            self.cad_comp_widget.set_cross_section_visible(True)
+            self.cad_comp_widget.set_top_view_visible(True)
+
+
     def logs_dock_toggle(self):
         self.log_dock_active = not self.log_dock_active
 
-        # >>> UPDATED: splitter-based show/hide
+        # Re-apply current central view so the vertical splitter ratio
+        # (4/5 active view : 1/5 log dock) is recalculated after show/hide
+        if self.cad_3d_view_active:
+            self._set_central_view('3d')
+        elif self.plots_view_active:
+            self._set_central_view('plots')
+        else:
+            self._set_central_view('dual')
+
+        # Show/hide log dock & update icon
         if self.log_dock_active:
             self.logs_dock.show()
-            self.log_dock_control.load(":/vectors/logs_dock_active_light.svg")
+            self.log_dock_control.load(":/vectors/view_btn/logs_dock_active.svg")
         else:
             self.logs_dock.hide()
-            self.log_dock_control.load(":/vectors/logs_dock_inactive_light.svg")
+            self.log_dock_control.load(":/vectors/view_btn/logs_dock_inactive.svg")
 
-    
+    # Helper function to show and hide the 3D CAD | Plots | 2D CAD widgets
+    def _set_central_view(self, view: str):
+        # Show only the requested widget; hide the other two
+        self.cad_comp_widget.setVisible(view == 'dual')
+        self.cad_3d_widget.setVisible(view == '3d')
+        self.plots_widget.setVisible(view == 'plots')
+
+        # Enforce 4:1 height ratio between active view and log dock
+        # Splitter index order: [dual(0), 3d(1), plots(2), logs(3)]
+        total  = self.cad_log_splitter.height()
+        view_h = int(total * 4 / 5)
+        log_h  = total - view_h
+
+        if view == 'dual':
+            self.cad_log_splitter.setSizes([view_h, 0, 0, log_h])
+        elif view == '3d':
+            self.cad_log_splitter.setSizes([0, view_h, 0, log_h])
+        else:  # plots
+            self.cad_log_splitter.setSizes([0, 0, view_h, log_h])
+        
     def _position_log_dock(self):
         """Position log dock at bottom of central widget as overlay (max 1/5 height)"""
         if hasattr(self, 'logs_dock') and hasattr(self, 'cad_comp_widget'):
@@ -369,12 +507,6 @@ class CustomWindow(QWidget):
                 cad_geom.width(),
                 log_height
             )
-    
-    def resizeEvent(self, event):
-        """Reposition log dock on window resize"""
-        super().resizeEvent(event)
-        if hasattr(self, 'logs_dock') and self.logs_dock.isVisible():
-            self._position_log_dock()
 
     def update_docking_icons(self, input_is_active=None, log_is_active=None, output_is_active=None):
             
@@ -383,18 +515,18 @@ class CustomWindow(QWidget):
             # Update and save control state
             self.input_dock_active = input_is_active
             if self.input_dock_active:
-                self.input_dock_control.load(":/vectors/input_dock_active_light.svg")
+                self.input_dock_control.load(":/vectors/view_btn/input_dock_active.svg")
             else:
-                self.input_dock_control.load(":/vectors/input_dock_inactive_light.svg")
+                self.input_dock_control.load(":/vectors/view_btn/input_dock_inactive.svg")
                         
         # Update output dock icon
         if(output_is_active is not None):
             # Update and save control state
             self.output_dock_active = output_is_active
             if self.output_dock_active:
-                self.output_dock_control.load(":/vectors/output_dock_active_light.svg")
+                self.output_dock_control.load(":/vectors/view_btn/output_dock_active.svg")
             else:
-                self.output_dock_control.load(":/vectors/output_dock_inactive_light.svg")
+                self.output_dock_control.load(":/vectors/view_btn/output_dock_inactive.svg")
 
         # Update log dock icon
         if(log_is_active is not None):
@@ -402,9 +534,9 @@ class CustomWindow(QWidget):
             # Update and save control state
             self.logs_dock_active = log_is_active
             if self.log_dock_active:
-                self.log_dock_control.load(":/vectors/logs_dock_active_light.svg")
+                self.log_dock_control.load(":/vectors/view_btn/logs_dock_active.svg")
             else:
-                self.log_dock_control.load(":/vectors/logs_dock_inactive_light.svg")
+                self.log_dock_control.load(":/vectors/view_btn/logs_dock_inactive.svg")
 
     def toggle_animate(self, show: bool, dock: str = 'output', on_finished=None):
         sizes = self.splitter.sizes()
@@ -565,10 +697,6 @@ class CustomWindow(QWidget):
         # Check if being deleted
         if not self.isVisible() or self.signalsBlocked():
             return
-        
-        # >>> ADDED: one-time CAD–Log splitter initialization
-        if hasattr(self, 'cad_log_splitter'):
-            self._init_log_splitter_once()
         
         # Check if splitter exists and has children
         try:
@@ -841,3 +969,17 @@ class OutputDockIndicator(QWidget):
         self.output_label = QSvgWidget(":/vectors/outputs_label_light.svg")
         output_layout.addWidget(self.output_label)
         self.output_label.setFixedWidth(28)
+
+class CentralPlaceholderWidget(QWidget):
+    """
+    Temporary placeholder for 3D CAD / Plots views.
+    Must be removed after CAD and Plot Integration.
+    """
+    def __init__(self, text: str, parent=None):
+        super().__init__(parent)
+        layout = QVBoxLayout(self)
+        label = QLabel(text)
+        label.setAlignment(Qt.AlignCenter)
+        label.setStyleSheet("font-size: 18px; color: #90AF13; font-weight: bold;")
+        layout.addWidget(label)
+        self.setStyleSheet("background-color: #F8FAF0; border: 1px solid #90AF13;")
