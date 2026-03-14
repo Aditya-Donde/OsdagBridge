@@ -23,6 +23,15 @@ from .initial_sizing import (
     DEFAULT_DECK_OVERHANG_RATIO as IS_DEFAULT_DECK_OVERHANG_RATIO,
     DEFAULT_DECK_THICKNESS as IS_DEFAULT_DECK_THICKNESS_MM,
     DEFAULT_FOOTPATH_WIDTH as IS_DEFAULT_FOOTPATH_WIDTH_M,
+    # Layout bounds
+    MIN_GIRDER_SPACING as IS_MIN_GIRDER_SPACING_M,
+    # Deck thickness bounds
+    MIN_DECK_THICKNESS as IS_MIN_DECK_THICKNESS_MM,
+    MAX_DECK_THICKNESS as IS_MAX_DECK_THICKNESS_MM,
+    # Girder depth span ratios
+    DEFAULT_DEPTH_SPAN_RATIO as IS_DEFAULT_DEPTH_SPAN_RATIO,
+    MIN_DEPTH_SPAN_RATIO as IS_MIN_DEPTH_SPAN_RATIO,
+    MAX_DEPTH_SPAN_RATIO as IS_MAX_DEPTH_SPAN_RATIO,
 )
 
 # Workflow/runtime defaults used by plategirderbridge.py
@@ -129,15 +138,24 @@ DEFAULT_CAD_END_DIAPHRAGM_WEB_THICKNESS = 12
 DEFAULT_CAD_END_DIAPHRAGM_FLANGE_THICKNESS = 100
 
 # Dictionary-driven Additional-input defaults used by ui_fields_additional_input.py.
-# Layout values are sourced from initial_sizing.py to keep UI/backend in sync.
+# All layout values are sourced from initial_sizing.py to keep UI/backend in sync.
 AI_LAYOUT_DEFAULTS = {
+    # defaults
     "girder_spacing_m": float(DEFAULT_GIRDER_SPACING),
     "no_of_girders": int(DEFAULT_NO_OF_GIRDERS),
     "deck_overhang_ratio": float(IS_DEFAULT_DECK_OVERHANG_RATIO),
+    # overhang = ratio × spacing (initial_sizing.py line 236: overhang = 0.5 * spacing)
     "deck_overhang_m": round(float(DEFAULT_GIRDER_SPACING) * float(IS_DEFAULT_DECK_OVERHANG_RATIO), 3),
     "deck_thickness_mm": float(IS_DEFAULT_DECK_THICKNESS_MM),
     "footpath_width_m": float(IS_DEFAULT_FOOTPATH_WIDTH_M),
     "footpath_thickness_mm": float(IS_DEFAULT_DECK_THICKNESS_MM),
+    # bounds sourced from initial_sizing.py
+    "min_girder_spacing_m": float(IS_MIN_GIRDER_SPACING_M),
+    "min_deck_thickness_mm": float(IS_MIN_DECK_THICKNESS_MM),
+    "max_deck_thickness_mm": float(IS_MAX_DECK_THICKNESS_MM),
+    "default_depth_span_ratio": int(IS_DEFAULT_DEPTH_SPAN_RATIO),
+    "min_depth_span_ratio": int(IS_MIN_DEPTH_SPAN_RATIO),
+    "max_depth_span_ratio": int(IS_MAX_DEPTH_SPAN_RATIO),
 }
 
 AI_DEFAULTS: dict[str, dict[str, object]] = {
@@ -238,6 +256,13 @@ DEFAULT_AI_LAYOUT_DECK_OVERHANG_M = AI_DEFAULTS["layout"]["deck_overhang_m"]
 DEFAULT_AI_LAYOUT_DECK_THICKNESS_MM = f"{AI_DEFAULTS['layout']['deck_thickness_mm']:.0f}"
 DEFAULT_AI_LAYOUT_FOOTPATH_WIDTH_M = f"{AI_DEFAULTS['layout']['footpath_width_m']:.2f}"
 DEFAULT_AI_LAYOUT_FOOTPATH_THICKNESS_MM = f"{AI_DEFAULTS['layout']['footpath_thickness_mm']:.0f}"
+# Layout bounds (numeric, for use by validator and backend — sourced from initial_sizing.py)
+DEFAULT_AI_LAYOUT_MIN_GIRDER_SPACING_M = AI_DEFAULTS["layout"]["min_girder_spacing_m"]
+DEFAULT_AI_LAYOUT_MIN_DECK_THICKNESS_MM = AI_DEFAULTS["layout"]["min_deck_thickness_mm"]
+DEFAULT_AI_LAYOUT_MAX_DECK_THICKNESS_MM = AI_DEFAULTS["layout"]["max_deck_thickness_mm"]
+DEFAULT_AI_LAYOUT_DEFAULT_DEPTH_SPAN_RATIO = AI_DEFAULTS["layout"]["default_depth_span_ratio"]
+DEFAULT_AI_LAYOUT_MIN_DEPTH_SPAN_RATIO = AI_DEFAULTS["layout"]["min_depth_span_ratio"]
+DEFAULT_AI_LAYOUT_MAX_DEPTH_SPAN_RATIO = AI_DEFAULTS["layout"]["max_depth_span_ratio"]
 
 DEFAULT_AI_CRASH_BARRIER_WIDTH_M = AI_DEFAULTS["crash_barrier"]["width_m"]
 DEFAULT_AI_CRASH_BARRIER_POST_SPACING_M = AI_DEFAULTS["crash_barrier"]["post_spacing_m"]
@@ -524,8 +549,24 @@ DEFAULTS_DICT = {
     KEY_END_DIAPHRAGM: material_values[0],
     KEY_DECK_CONCRETE_GRADE_BASIC: VALUES_DECK_CONCRETE_GRADE[0],
 
-    # Additional Inputs Defaults
-    
-
+    # Additional Inputs Defaults (layout)
+    "girder_spacing":   AI_DEFAULTS["layout"]["girder_spacing_m"],
+    "no_of_girders":    AI_DEFAULTS["layout"]["no_of_girders"],
+    "deck_overhang":    AI_DEFAULTS["layout"]["deck_overhang_m"],
+    "deck_thickness":   AI_DEFAULTS["layout"]["deck_thickness_mm"],
+    "footpath_width":   AI_DEFAULTS["layout"]["footpath_width_m"],
+    "footpath_thickness": AI_DEFAULTS["layout"]["footpath_thickness_mm"],
+    # Additional Inputs Defaults (crash barrier)
+    "crash_barrier_width":        AI_DEFAULTS["crash_barrier"]["width_m"],
+    "crash_barrier_post_spacing": float(AI_DEFAULTS["crash_barrier"]["post_spacing_m"]),
+    # Additional Inputs Defaults (railing)
+    "railing_width": float(AI_DEFAULTS["railing"]["width_mm"]) / 1000.0,
+    # Additional Inputs Defaults (wearing course)
+    "wearing_density":   float(AI_DEFAULTS["wearing_course"]["density_kn_per_m3"]),
+    "wearing_thickness": float(AI_DEFAULTS["wearing_course"]["thickness_mm"]),
+    # Additional Inputs Defaults (support conditions)
+    "left_support":    AI_DEFAULTS["support_conditions"]["left"],
+    "right_support":   AI_DEFAULTS["support_conditions"]["right"],
+    "bearing_length":  float(AI_DEFAULTS["support_conditions"]["bearing_length"]),
 }
 #--------------Inp-dict-End----------------
