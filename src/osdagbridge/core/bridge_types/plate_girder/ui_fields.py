@@ -219,42 +219,50 @@ class FrontendData:
 
     def output_values(self, flag=None):
         return [
-            (
-                "section_output_analysis", "Analysis Results",
+            # ── Analysis Results ──────────────────────────────────────────────
+            (KEY_SECTION_OUTPUT_ANALYSIS, "Analysis Results",
                 TYPE_TITLE, None, True, "No Validator",
-                {
-                    "kind": "analysis",
-                    "fields": [
-                        ("analysis_member",           "Member:",                       "combobox",      ["All"],                                              True, "No Validator", {}),
-                        ("analysis_load_combination", "Load Combination:",             "combobox",      ["Envelope"],                                         True, "No Validator", {}),
-                        ("analysis_forces",           "Forces",                        "checkbox_grid", [["Fx","Mx","Dx"], ["Fy","My","Dy"], ["Fz","Mz","Dz"]], True, "No Validator", {}),
-                        ("analysis_display_options",  "Display Options:",              "checkbox_row",  ["Max", "Min"],                                       True, "No Validator", {}),
-                        ("analysis_utilization",      "Controlling Utilization Ratio", "checkbox",      None,                                                 True, "No Validator", {}),
-                    ],
-                },
-            ),
-            (
-                "section_output_superstructure", "Superstructure",
-                TYPE_TITLE, None, True, "No Validator",
-                {
-                    "kind": "design",
-                    "rows": [
-                        {"label": "Steel Design", "buttons": [{"text": "Here", "action": "open_steel_design"}]},
-                        {"label": "Deck Design",  "buttons": [{"text": "Here", "action": "open_deck_design"}]},
-                    ],
-                },
-            ),
-            (
-                "section_output_substructure", "Substructure",
-                TYPE_TITLE, None, True, "No Validator",
-                {"kind": "design", "rows": []},
-            ),
-        ]
+                {"kind": "analysis"}),
 
+            (KEY_ANALYSIS_MEMBER, "Member:",
+                TYPE_COMBOBOX, ["All"], True, "No Validator", {}),
+
+            (KEY_ANALYSIS_LOAD_COMBINATION, "Load Combination:",
+                TYPE_COMBOBOX, ["Envelope"], True, "No Validator", {}),
+
+            (KEY_ANALYSIS_FORCES, None,           # None = no label
+                TYPE_CHECKBOX_GRID,
+                [["Vx","Tx","Dx"], ["Vy","Ty","Dy"], ["Vz","Tz","Dz"]],
+                True, "No Validator", {"exclusive": True}),
+
+            (KEY_ANALYSIS_DISPLAY_OPTIONS, None,  # label goes on the groupbox title instead
+                TYPE_CHECKBOX_ROW, ["Max", "Min"],
+                True, "No Validator",
+                {"exclusive": False, "group_title": "Display Options"}),
+
+            (KEY_ANALYSIS_UTILIZATION, "Controlling Utilization Ratio",
+                TYPE_CHECKBOX, None, True, "No Validator",
+                {"group_end": True}),             # closes the Display Options box
+
+            # ── Superstructure ────────────────────────────────────────────────
+            (KEY_SECTION_OUTPUT_SUPERSTRUCTURE, "Superstructure",
+                TYPE_TITLE, None, True, "No Validator",
+                {"kind": "design"}),
+
+            (KEY_BTN_STEEL_DESIGN, "Steel Design",
+                TYPE_BUTTON, None, True, "No Validator",
+                {"action": "open_steel_design", "button_label": "Here"}),
+
+            (KEY_BTN_DECK_DESIGN, "Deck Design",
+                TYPE_BUTTON, None, True, "No Validator",
+                {"action": "open_deck_design", "button_label": "Here"}),
+
+            # ── Substructure ──────────────────────────────────────────────────
+            (KEY_SECTION_OUTPUT_SUBSTRUCTURE, "Substructure",
+                TYPE_TITLE, None, True, "No Validator",
+                {"kind": "design"}),
+        ]
     # ── Domain hooks ──────────────────────────────────────────────────────────
 
     def set_osdaglogger(self, key):
         pass
-
-    def func_for_validation(self, design_inputs):
-        return None
