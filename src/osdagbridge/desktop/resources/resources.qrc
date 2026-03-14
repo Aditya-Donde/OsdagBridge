@@ -22,20 +22,23 @@
         <file>vectors/Osdag_logo.svg</file>
 
         <file>vectors/inputs_label_light.svg</file>
-        <file>vectors/input_dock_active_light.svg</file>
-        <file>vectors/input_dock_inactive_light.svg</file>
-
-        <file>vectors/logs_dock_active_light.svg</file>
-        <file>vectors/logs_dock_inactive_light.svg</file>
-
-        <file>vectors/output_dock_active_light.svg</file>
-        <file>vectors/output_dock_inactive_light.svg</file>
         <file>vectors/outputs_label_light.svg</file>
 
-        <file>vectors/cross_section_open_light.svg</file>
-        <file>vectors/cross_section_closed_light.svg</file>
-        <file>vectors/top_view_open_light.svg</file>
-        <file>vectors/top_view_closed_light.svg</file>
+        <file>vectors/view_btn/input_dock_active.svg</file>
+        <file>vectors/view_btn/input_dock_inactive.svg</file>
+        <file>vectors/view_btn/logs_dock_active.svg</file>
+        <file>vectors/view_btn/logs_dock_inactive.svg</file>
+        <file>vectors/view_btn/output_dock_active.svg</file>
+        <file>vectors/view_btn/output_dock_inactive.svg</file>
+        <file>vectors/view_btn/cross_section_active.svg</file>
+        <file>vectors/view_btn/cross_section_inactive.svg</file>
+        <file>vectors/view_btn/top_view_active.svg</file>
+        <file>vectors/view_btn/top_view_inactive.svg</file>
+        <file>vectors/view_btn/3d_cad_active.svg</file>
+        <file>vectors/view_btn/3d_cad_inactive.svg</file>
+        <file>vectors/view_btn/plots_active.svg</file>
+        <file>vectors/view_btn/plots_inactive.svg</file>
+
         <file>vectors/msg_success.svg</file>
         <file>vectors/msg_warning.svg</file>
         <file>vectors/msg_critical.svg</file>
