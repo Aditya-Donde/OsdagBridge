@@ -190,8 +190,9 @@ class CustomWindow(QWidget):
         )
         self.cad_log_splitter.addWidget(self.cad_comp_widget)
 
+        from osdagbridge.desktop.ui.cad_3d import CAD3DWindow
         # 3D CAD placeholder (mutually exclusive with dual view + plots)
-        self.cad_3d_widget = CentralPlaceholderWidget("3D CAD Here")
+        self.cad_3d_widget = CAD3DWindow()
         self.cad_3d_widget.setVisible(False)
         self.cad_log_splitter.addWidget(self.cad_3d_widget)
 

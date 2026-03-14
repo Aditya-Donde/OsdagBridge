@@ -31,7 +31,7 @@ from osdagbridge.core.bridge_types.plate_girder.cad_generator import (
 from osdagbridge.desktop.ui.utils.custom_3dviewer import CustomViewer3d
 
 
-class CAD3DWindow(QMainWindow):
+class CAD3DWindow(QWidget):
     """
     Main 3D CAD window for OsdagBridge.
     """
@@ -59,10 +59,8 @@ class CAD3DWindow(QMainWindow):
     # UI SETUP 
 
     def setup_ui(self):
-        central_widget = QWidget(self)
-        self.setCentralWidget(central_widget)
 
-        self.layout = QVBoxLayout(central_widget)
+        self.layout = QVBoxLayout(self)
         self.layout.setContentsMargins(0, 0, 0, 0)
 
         # Component selector 
@@ -527,13 +525,12 @@ class BridgeComponentCheckbox(QWidget):
                 model_cb.blockSignals(False)
                 self.parent.show_full_model()
 
-
+# Standalone Testing----------------------------
 def main():
     app = QApplication(sys.argv)
     win = CAD3DWindow()
     win.show()
     sys.exit(app.exec())
-
 
 if __name__ == "__main__":
     main()
