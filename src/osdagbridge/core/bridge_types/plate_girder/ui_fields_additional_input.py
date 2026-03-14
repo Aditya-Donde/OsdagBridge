@@ -156,6 +156,7 @@ CRASH_BARRIER_TAB_SCHEMA = {
                     "type": "line",
                     "validator": {"type": "double_range", "bottom": 0.0, "top": 100.0, "decimals": 2},
                     "bind": "crash_barrier_density",
+                    "label_bind": "crash_barrier_density_label",
                     "on_editing_finished": "_auto_compute_crash_barrier_load",
                 }
             ]
@@ -192,6 +193,7 @@ CRASH_BARRIER_TAB_SCHEMA = {
                     "type": "line",
                     "validator": {"type": "double_range", "bottom": 0.0, "top": 10.0, "decimals": 4},
                     "bind": "crash_barrier_area",
+                    "label_bind": "crash_barrier_area_label",
                     "on_editing_finished": "_auto_compute_crash_barrier_load",
                 }
             ]
@@ -216,6 +218,7 @@ CRASH_BARRIER_TAB_SCHEMA = {
                     "default": pg_defaults.DEFAULT_AI_CRASH_BARRIER_POST_SPACING_M,
                     "validator": {"type": "double_range", "bottom": 0.0, "top": 10.0, "decimals": 3},
                     "bind": "crash_barrier_post_spacing",
+                    "label_bind": "crash_barrier_post_spacing_label",
                 }
             ]
         },
@@ -252,6 +255,7 @@ MEDIAN_TAB_SCHEMA = {
                     "type": "line",
                     "validator": {"type": "double_range", "bottom": 0.0, "top": 100.0, "decimals": 2},
                     "bind": "median_density",
+                    "label_bind": "median_density_label",
                 }
             ]
         },
@@ -285,6 +289,7 @@ MEDIAN_TAB_SCHEMA = {
                     "type": "line",
                     "validator": {"type": "double_range", "bottom": 0.0, "top": 10.0, "decimals": 4},
                     "bind": "median_area",
+                    "label_bind": "median_area_label",
                 }
             ]
         },
@@ -307,6 +312,7 @@ MEDIAN_TAB_SCHEMA = {
                     "type": "line",
                     "validator": {"type": "double_range", "bottom": 0.0, "top": 10.0, "decimals": 3},
                     "bind": "median_post_spacing",
+                    "label_bind": "median_post_spacing_label",
                     "default": pg_defaults.DEFAULT_AI_MEDIAN_POST_SPACING_M,
                 }
             ]

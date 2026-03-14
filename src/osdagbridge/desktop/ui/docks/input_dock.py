@@ -725,21 +725,23 @@ class InputDock(QWidget):
         # exec_() blocks until dialog closes; _on_additional_inputs_closed fires
         # via finished signal (inside exec) and sets self.additional_inputs=None,
         # so use the local `dlg` reference for post-close value collection.
-        if dlg.exec_() == AdditionalInputs.Accepted:
-            try:
-                values = dlg.get_all_values()
-            except Exception:
-                values = None
-            if values:
-                self.additional_input_values = values
-                # Also flatten and sync into parent.input_dict so it stays complete.
-                if hasattr(self.parent, "input_dict"):
-                    for top_tab_data in values.values():
-                        if isinstance(top_tab_data, dict):
-                            for sub_tab_data in top_tab_data.values():
-                                if isinstance(sub_tab_data, dict):
-                                    self.parent.input_dict.update(sub_tab_data)
-                self.input_value_changed.emit()
+        # Always collect values regardless of accept/reject — user may have hit Apply
+        # (which saves without closing) and then closed via the title-bar X button.
+        dlg.exec_()
+        try:
+            values = dlg.get_all_values()
+        except Exception:
+            values = None
+        if values:
+            self.additional_input_values = values
+            # Also flatten and sync into parent.input_dict so it stays complete.
+            if hasattr(self.parent, "input_dict"):
+                for top_tab_data in values.values():
+                    if isinstance(top_tab_data, dict):
+                        for sub_tab_data in top_tab_data.values():
+                            if isinstance(sub_tab_data, dict):
+                                self.parent.input_dict.update(sub_tab_data)
+            self.input_value_changed.emit()
 
     def _on_additional_inputs_closed(self):
         try:
@@ -838,16 +840,12 @@ class InputDock(QWidget):
         Updates parent input_dict and notifies listeners.
         """
         if hasattr(self.parent, "input_dict"):
-            # If Empty or None Value then set the default
-            print(f"@Change: {value}, default: {DEFAULTS_DICT.get(key)}")
             if value is None or value == "":
                 self.parent.input_dict[key] = DEFAULTS_DICT.get(key)
             else:
                 self.parent.input_dict[key] = value
-            print(f"@Final: {self.parent.input_dict[key]}")
-            
         else:
-            print("[ERROR]: template_page.input_dictionary Not Found")
+            pass  # parent not yet initialised — value will be picked up at design time
         
         self.input_value_changed.emit()
 
@@ -875,8 +873,8 @@ class InputDock(QWidget):
     def _collect_additional_inputs(self) -> list[dict]:
         snapshot = {}
         try:
-            if self.additional_inputs and hasattr(self.additional_inputs, "section_properties_tab"):
-                tab = self.additional_inputs.section_properties_tab
+            if self.additional_inputs and hasattr(self.additional_inputs, "member_properties_tab"):
+                tab = self.additional_inputs.member_properties_tab
                 if tab and hasattr(tab, "save_properties"):
                     snapshot = tab.save_properties() or {}
         except Exception:

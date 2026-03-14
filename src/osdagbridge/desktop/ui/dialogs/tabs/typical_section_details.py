@@ -1,5 +1,4 @@
-"""Auto-generated tab module extracted from additional_inputs."""
-import sys
+"""Tab module for Typical Section Details."""
 import os
 import math
 from PySide6.QtWidgets import (
@@ -9,13 +8,12 @@ from PySide6.QtWidgets import (
     QFrame, QGridLayout, QTableWidget, QTableWidgetItem, QHeaderView,
     QTextEdit, QDialog, QSizePolicy, QSizeGrip
 )
-from PySide6.QtCore import Qt, Signal, QSize
-from PySide6.QtGui import QDoubleValidator, QIntValidator
+from PySide6.QtCore import Qt, Signal
+from PySide6.QtGui import QDoubleValidator
 
 from osdagbridge.core.bridge_types.plate_girder.bridge_geometry import CrossSectionLayout
 from osdagbridge.core.bridge_types.plate_girder import defaults as pg_defaults
 from osdagbridge.core.utils.common import *
-from osdagbridge.desktop.ui.utils.custom_titlebar import CustomTitleBar
 from osdagbridge.desktop.ui.dialogs.tabs.common import apply_field_style
 from osdagbridge.desktop.ui.dialogs.tabs.sub_tabs.typical_section.layout_tab import LayoutTab
 from osdagbridge.desktop.ui.dialogs.tabs.sub_tabs.typical_section.crash_barrier_tab import CrashBarrierTab
