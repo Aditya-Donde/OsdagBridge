@@ -110,6 +110,9 @@ class CAD3DWindow(QMainWindow):
         self.viewer.context = self.display.Context
         self.viewer.view = self.display.View
 
+        self.display.set_bg_gradient_color([255, 255, 255], [126, 126, 126])
+
+
         self.viewer.context.SetAutomaticHilight(False)
 
         if hasattr(self.viewer, "display_view_cube"):
