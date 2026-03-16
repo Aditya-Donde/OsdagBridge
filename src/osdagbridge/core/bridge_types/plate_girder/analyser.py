@@ -329,7 +329,12 @@ class BridgeGrillageModel:
         self.model.set_member(self.longitudinal_beam, member="interior_main_beam")
         self.model.set_member(self.longitudinal_beam, member="exterior_main_beam_1")
         self.model.set_member(self.longitudinal_beam, member="exterior_main_beam_2")
-        self.model.set_member(self.edge_longitudinal_beam, member="edge_beam")
+        
+        # Assign edge properties only if overhang exists; otherwise treat as normal girders
+        if self.edge_dist > 0:
+            self.model.set_member(self.edge_longitudinal_beam, member="edge_beam")
+        else:
+            self.model.set_member(self.longitudinal_beam, member="edge_beam")
         self.model.set_member(self.transverse_slab, member="transverse_slab")
         self.model.set_member(self.end_transverse_slab, member="start_edge")
         self.model.set_member(self.end_transverse_slab, member="end_edge")
@@ -1324,7 +1329,7 @@ if __name__ == "__main__":
         L=33.5 * m,
         n_l=7,
         n_t=11,
-        edge_dist=0 * m,
+        edge_dist=0 * m,   # 0-consider edge , else not    overhang-edgebeams
         ext_to_int_dist=2.2775 * m,
         angle=0,
         carriageway_width=10.0 * m,
@@ -1403,10 +1408,12 @@ if __name__ == "__main__":
 
     result_handler = PlateGirderAnalysisResults(
         dataset=results,
-        model=bridge.model,
+        bridge=bridge,
         edge_dist=bridge.edge_dist
     )
-    # result_handler.debug_loadcase_detection()
+
 
     result_handler.run_interactive_viewer()
+
     # result_handler.print_moving_load_trace()
+

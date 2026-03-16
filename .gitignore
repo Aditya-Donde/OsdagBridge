@@ -79,6 +79,7 @@ local_settings.py
 # Project-specific temp files
 temp_plot.html
 *.html
+mat_lib.json
 src/osdag_map_cache/
 /osdag_map_cache/
 
