@@ -13,6 +13,7 @@ from PySide6.QtGui import QDoubleValidator, QIntValidator, QPainter, QPen, QColo
 
 from osdagbridge.core.utils.common import *
 from osdagbridge.desktop.ui.utils.custom_titlebar import CustomTitleBar
+from osdagbridge.desktop.ui.utils.cad_palette import CAD_DIMENSION
 from osdagbridge.desktop.ui.dialogs.tabs.common import apply_field_style
 from osdagbridge.desktop.ui.widgets.section_viewer import SectionPreviewWidget, SectionCatalog
 from osdagbridge.desktop.ui.widgets.placeholder_section_preview import PlaceholderSectionPreviewWidget
@@ -26,13 +27,24 @@ class BracingLayoutCadWidget(QWidget):
         self._bracing_type = "K-Bracing"
         self._top_bracket = False
         self._bottom_bracket = True
+        self._member_label = ""
+        self._girder_pair = ""
         self.setMinimumHeight(int(min_height))
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
 
-    def set_layout(self, bracing_type: str, top_bracket: bool, bottom_bracket: bool) -> None:
+    def set_layout(
+        self,
+        bracing_type: str,
+        top_bracket: bool,
+        bottom_bracket: bool,
+        member_label: str = "",
+        girder_pair: str = "",
+    ) -> None:
         self._bracing_type = (bracing_type or "K-Bracing").strip() or "K-Bracing"
         self._top_bracket = bool(top_bracket)
         self._bottom_bracket = bool(bottom_bracket)
+        self._member_label = (member_label or "").strip()
+        self._girder_pair = (girder_pair or "").strip()
         self.update()
 
     def paintEvent(self, _event):  # noqa: N802 (Qt naming)
@@ -40,14 +52,11 @@ class BracingLayoutCadWidget(QWidget):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing, True)
 
-        # Main background frame
-        frame = self.rect().adjusted(6, 6, -6, -6)
-        painter.fillRect(frame, QColor("#ffffff"))
-        painter.setPen(QPen(QColor("#000000"), 1))
-        painter.setBrush(Qt.NoBrush)
-        painter.drawRect(frame)
+        # Plain background (no outer border line).
+        canvas = self.rect()
+        painter.fillRect(canvas, QColor("#ffffff"))
 
-        draw = frame.adjusted(18, 12, -18, -12)
+        draw = canvas.adjusted(24, 18, -24, -18)
         if draw.width() <= 10 or draw.height() <= 10:
             return
 
@@ -60,11 +69,10 @@ class BracingLayoutCadWidget(QWidget):
         fw = 40  # flange width
         ft = 8   # flange thickness
         wt = 6   # web thickness
-        st_w = 8 # stiffener width
 
-        # Connection Points (at the edge of the stiffeners)
-        x_l_conn = x_left + wt // 2 + st_w
-        x_r_conn = x_right - wt // 2 - st_w
+        # Connection points at web outer faces (clean two-line I-section look).
+        x_l_conn = x_left + wt // 2
+        x_r_conn = x_right - wt // 2
 
         strut_offset = 12
         y_T_WP = y_top + strut_offset if self._top_bracket else y_top + 15
@@ -78,7 +86,7 @@ class BracingLayoutCadWidget(QWidget):
         # Monochrome CAD style: line-only geometry, no fill shading.
         line_color = QColor("#000000")
 
-        # 1. Draw Brackets (Horizontal Struts)
+        # 1. Draw top/bottom bracing lines based on current selection.
         painter.setPen(QPen(line_color, 2))
         if self._top_bracket:
             painter.drawLine(wp_tl, wp_tr)
@@ -104,35 +112,9 @@ class BracingLayoutCadWidget(QWidget):
             painter.drawLine(wp_tl, wp_br)
             painter.drawLine(wp_bl, wp_tr)
 
-        # 3. Draw Nodes (Connections)
-        def draw_node(pt):
-            painter.setPen(QPen(line_color, 1.5))
-            painter.setBrush(Qt.NoBrush)
-            painter.drawEllipse(pt, 3, 3)
-
-        draw_node(wp_tl)
-        draw_node(wp_tr)
-        draw_node(wp_bl)
-        draw_node(wp_br)
-
-        if self._bracing_type == "K-Bracing":
-            if self._top_bracket and not self._bottom_bracket:
-                apex = QPointF((x_l_conn + x_r_conn) / 2.0, y_T_WP)
-                draw_node(apex)
-            else:
-                apex = QPointF((x_l_conn + x_r_conn) / 2.0, y_B_WP)
-                draw_node(apex)
-        else:
-            wp_center = QPointF((x_l_conn + x_r_conn) / 2.0, (y_T_WP + y_B_WP) / 2.0)
-            draw_node(wp_center)
-
-        # 4. Draw I-Girders
+        # 3. Draw I-Girders
         painter.setPen(QPen(line_color, 1.6))
         painter.setBrush(Qt.NoBrush)
-
-        # Stiffeners (outline only)
-        painter.drawRect(int(x_left + wt//2), int(y_top), st_w, int(y_bottom - y_top))
-        painter.drawRect(int(x_right - wt//2 - st_w), int(y_top), st_w, int(y_bottom - y_top))
 
         # Girder body outlines (double-line geometry with flange/web rectangles)
         # Left Girder
@@ -145,16 +127,64 @@ class BracingLayoutCadWidget(QWidget):
         painter.drawRect(int(x_right - fw//2), int(y_bottom), fw, ft)
         painter.drawRect(int(x_right - wt//2), int(y_top), wt, int(y_bottom - y_top))
 
-        # Gusset plates at stiffeners (outline only)
-        painter.setPen(QPen(line_color, 1.4))
-        painter.setBrush(Qt.NoBrush)
-        gs_h = 16 
-        gs_w = 6  
-        
-        painter.drawPolygon([QPointF(x_l_conn, y_T_WP - gs_h/2), QPointF(x_l_conn + gs_w, y_T_WP), QPointF(x_l_conn, y_T_WP + gs_h/2)])
-        painter.drawPolygon([QPointF(x_r_conn, y_T_WP - gs_h/2), QPointF(x_r_conn - gs_w, y_T_WP), QPointF(x_r_conn, y_T_WP + gs_h/2)])
-        painter.drawPolygon([QPointF(x_l_conn, y_B_WP - gs_h/2), QPointF(x_l_conn + gs_w, y_B_WP), QPointF(x_l_conn, y_B_WP + gs_h/2)])
-        painter.drawPolygon([QPointF(x_r_conn, y_B_WP - gs_h/2), QPointF(x_r_conn - gs_w, y_B_WP), QPointF(x_r_conn, y_B_WP + gs_h/2)])
+        # 4. Label boxes below the girders (no arrows/leaders).
+
+        def compact_member_label(raw_text: str) -> str:
+            text = (raw_text or "").strip()
+            if " to " in text:
+                parts = [part.strip() for part in text.split(" to ", 1)]
+                if len(parts) == 2 and parts[0] and parts[1]:
+                    return f"{parts[0]} - {parts[1]}"
+            return text or "B1M1"
+
+        pair_text = self._girder_pair or "G1 to G2"
+        left_girder, right_girder = "G1", "G2"
+        if " to " in pair_text:
+            parts = [part.strip() for part in pair_text.split(" to ", 1)]
+            if len(parts) == 2 and parts[0] and parts[1]:
+                left_girder, right_girder = parts[0], parts[1]
+
+        pen = QPen(CAD_DIMENSION, 1.1)
+        painter.setPen(pen)
+        font = painter.font()
+        font.setPointSize(8)
+        font.setBold(True)
+        painter.setFont(font)
+        fm = painter.fontMetrics()
+
+        label_bg = QColor(255, 255, 255, 225)
+        pad_x = 6
+        pad_y = 3
+
+        def draw_label_box(text: str, center_x: float, box_y: float) -> None:
+            if not text:
+                return
+            txt_w = fm.horizontalAdvance(text)
+            txt_h = fm.height()
+            box_w = txt_w + (2 * pad_x)
+            box_h = txt_h + (2 * pad_y)
+
+            box_x = center_x - (box_w / 2.0)
+            # Keep labels visible while preserving a common baseline.
+            box_x = max(8.0, min(box_x, self.width() - box_w - 8.0))
+            box_y = max(8.0, min(box_y, self.height() - box_h - 8.0))
+
+            # Draw label box
+            painter.setPen(Qt.NoPen)
+            painter.setBrush(label_bg)
+            painter.drawRoundedRect(int(box_x), int(box_y), int(box_w), int(box_h), 4, 4)
+            painter.setBrush(Qt.NoBrush)
+            painter.setPen(QPen(CAD_DIMENSION, 1.0))
+            painter.drawText(int(box_x + pad_x), int(box_y + box_h - pad_y - 2), text)
+
+        # Uniform row under girders: left, center, right labels with equal spacing.
+        member_text = compact_member_label(self._member_label)
+        label_y = y_bottom + ft + 8
+        mid_x = (x_left + x_right) / 2.0
+
+        draw_label_box(f"Girder {left_girder}", x_left, label_y)
+        draw_label_box(member_text, mid_x, label_y)
+        draw_label_box(f"Girder {right_girder}", x_right, label_y)
 
 class CrossBracingDetailsTab(QWidget):
     """Tab for Cross-Bracing Details with visual previews"""
@@ -167,6 +197,8 @@ class CrossBracingDetailsTab(QWidget):
 
         # Keep all combo boxes strictly uniform in width.
         self._combo_width = 190
+        # Keep label columns uniform across all left-panel grids.
+        self._label_col_width = 260
 
         # Persist UI state per (girder-pair, member-id) so switching selection
         # restores user inputs for that specific member.
@@ -215,16 +247,19 @@ class CrossBracingDetailsTab(QWidget):
         selection_layout.setContentsMargins(12, 8, 12, 8)
         selection_layout.setHorizontalSpacing(12)
         selection_layout.setVerticalSpacing(8)
-        selection_layout.setColumnMinimumWidth(0, 180)
+        selection_layout.setColumnMinimumWidth(0, int(self._label_col_width))
+        selection_layout.setColumnMinimumWidth(1, int(self._combo_width))
         selection_layout.setColumnStretch(0, 0)
-        selection_layout.setColumnStretch(1, 0)
+        selection_layout.setColumnStretch(1, 1)
 
         self.select_girders_combo = QComboBox()
         # Populated from Girder Details when bound.
         self._configure_combo_box(self.select_girders_combo)
         apply_field_style(self.select_girders_combo)
-        selection_layout.addWidget(self._create_label("Select Girders:"), 0, 0)
-        selection_layout.addWidget(self.select_girders_combo, 0, 1)
+        self.select_girders_combo.setFixedHeight(28)
+        self.select_girders_combo.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+        selection_layout.addWidget(self._create_label("Select Girders:"), 0, 0, Qt.AlignLeft | Qt.AlignVCenter)
+        selection_layout.addWidget(self.select_girders_combo, 0, 1, Qt.AlignLeft | Qt.AlignVCenter)
 
         self.member_id_combo = QComboBox()
         # Populated from Girder Details when bound. (No Custom option.)
@@ -247,8 +282,8 @@ class CrossBracingDetailsTab(QWidget):
         except Exception:
             pass
         apply_field_style(self.member_id_display)
-        selection_layout.addWidget(self._create_label("Member ID:"), 1, 0)
-        selection_layout.addWidget(self.member_id_display, 1, 1)
+        selection_layout.addWidget(self._create_label("Member ID:"), 1, 0, Qt.AlignLeft | Qt.AlignVCenter)
+        selection_layout.addWidget(self.member_id_display, 1, 1, Qt.AlignLeft | Qt.AlignVCenter)
 
         # Keep the two selectors aligned and persist state per selection.
         self.select_girders_combo.currentIndexChanged.connect(self._on_select_girders_index_changed)
@@ -267,9 +302,10 @@ class CrossBracingDetailsTab(QWidget):
         inputs_grid.setContentsMargins(0, 0, 0, 0)
         inputs_grid.setHorizontalSpacing(12)
         inputs_grid.setVerticalSpacing(8)
-        inputs_grid.setColumnMinimumWidth(0, 180)
+        inputs_grid.setColumnMinimumWidth(0, int(self._label_col_width))
+        inputs_grid.setColumnMinimumWidth(1, int(self._combo_width))
         inputs_grid.setColumnStretch(0, 0)
-        inputs_grid.setColumnStretch(1, 0)
+        inputs_grid.setColumnStretch(1, 1)
 
         self.design_combo = QComboBox()
         self.design_combo.addItems(["Customized", "Optimized"])
@@ -380,8 +416,9 @@ class CrossBracingDetailsTab(QWidget):
         right_layout.addStretch()
 
         card_layout.addWidget(right_column)
-        card_layout.setStretch(0, 3)
-        card_layout.setStretch(1, 4)
+        # Keep both panels visually balanced like Girder Details.
+        card_layout.setStretch(0, 1)
+        card_layout.setStretch(1, 1)
         container_layout.addWidget(primary_card)
         container_layout.addStretch()
 
@@ -651,7 +688,11 @@ class CrossBracingDetailsTab(QWidget):
             state.get("top_bracket_text") or "",
         )
 
-        self.bottom_bracket_checkbox.setChecked(bool(state.get("bottom_bracket_enabled", True)))
+        # For K-bracing, bottom bracket is mandatory.
+        if (state.get("bracing_type") or "") == "K-Bracing":
+            self.bottom_bracket_checkbox.setChecked(True)
+        else:
+            self.bottom_bracket_checkbox.setChecked(bool(state.get("bottom_bracket_enabled", True)))
 
         self.bottom_bracket_type_combo.setCurrentText(state.get("bottom_bracket_type") or self.bottom_bracket_type_combo.currentText())
         self._update_designations_for(self.bottom_bracket_size_combo, self.bottom_bracket_type_combo.currentText())
@@ -987,6 +1028,8 @@ class CrossBracingDetailsTab(QWidget):
                     bracing,
                     self.top_bracket_checkbox.isChecked(),
                     self.bottom_bracket_checkbox.isChecked(),
+                    self.member_id_display.text() if hasattr(self, "member_id_display") else "",
+                    self.select_girders_combo.currentText() if hasattr(self, "select_girders_combo") else "",
                 )
         finally:
             self._updating_bracket_rules = False

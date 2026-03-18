@@ -405,6 +405,7 @@ class _GirderCad2DView(QWidget):
         self._segments: List[dict] = []
         self._selected_member_id: str = ""
         self._flange_thickness: float = 15.0
+        self._view_mode: str = "side"
 
     @staticmethod
     def _fmt_length(length_m: float) -> str:
@@ -432,6 +433,58 @@ class _GirderCad2DView(QWidget):
         self._selected_member_id = str(member_id or "").strip()
         self.update()
 
+    def set_view_mode(self, mode: str) -> None:
+        normalized = str(mode or "").strip().lower()
+        if normalized not in {"cross", "side"}:
+            normalized = "side"
+        if self._view_mode != normalized:
+            self._view_mode = normalized
+            self.update()
+
+    def _paint_cross_section(self, painter: QPainter, drawing_rect: QRectF) -> None:
+        clear_pen = QPen(QColor("#2f2f2f"))
+        clear_pen.setWidth(1)
+        painter.setPen(clear_pen)
+        painter.setBrush(QColor("#ffffff"))
+        painter.drawRect(drawing_rect)
+
+        usable = drawing_rect.adjusted(drawing_rect.width() * 0.18, 12.0, -drawing_rect.width() * 0.18, -22.0)
+        if usable.width() <= 0.0 or usable.height() <= 0.0:
+            return
+
+        top_width = usable.width() * 0.82
+        bottom_width = usable.width() * 0.74
+        flange_thickness = max(10.0, min(self._flange_thickness, usable.height() * 0.20))
+        web_thickness = max(8.0, min(20.0, usable.width() * 0.10))
+
+        center_x = usable.center().x()
+        top_flange = QRectF(center_x - (top_width / 2.0), usable.top(), top_width, flange_thickness)
+        bottom_flange = QRectF(center_x - (bottom_width / 2.0), usable.bottom() - flange_thickness, bottom_width, flange_thickness)
+        web_top = top_flange.bottom()
+        web_bottom = bottom_flange.top()
+        web = QRectF(center_x - (web_thickness / 2.0), web_top, web_thickness, max(2.0, web_bottom - web_top))
+
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(QColor("#ebebeb"))
+        painter.drawRect(top_flange)
+        painter.setBrush(QColor("#cecece"))
+        painter.drawRect(web)
+        painter.setBrush(QColor("#ebebeb"))
+        painter.drawRect(bottom_flange)
+
+        outline = QPen(QColor("#5e5e5e"))
+        outline.setWidth(1)
+        painter.setPen(outline)
+        painter.setBrush(Qt.NoBrush)
+        painter.drawRect(top_flange)
+        painter.drawRect(web)
+        painter.drawRect(bottom_flange)
+
+        label_member = self._selected_member_id or (str(self._segments[0].get("id") or "") if self._segments else "")
+        label = f"Cross Section • {label_member}" if label_member else "Cross Section"
+        painter.setPen(QPen(QColor("#2a2a2a")))
+        painter.drawText(drawing_rect.adjusted(8.0, 0.0, -8.0, -2.0), Qt.AlignHCenter | Qt.AlignBottom, label)
+
     def paintEvent(self, event):  # noqa: N802 (Qt naming)
         super().paintEvent(event)
         painter = QPainter(self)
@@ -455,6 +508,10 @@ class _GirderCad2DView(QWidget):
 
         total_length = sum(float(segment["length"]) for segment in self._segments)
         if total_length <= 0.0:
+            return
+
+        if self._view_mode == "cross":
+            self._paint_cross_section(painter, drawing_rect)
             return
 
         # Monochrome palette for a clean technical look.
@@ -753,6 +810,9 @@ class GirderDetailsTab(QWidget):
         self.girder_dropdown: Optional[QComboBox] = None
         self.segment_table: Optional[QTableWidget] = None
         self.girder_cad_view: Optional[_GirderCad2DView] = None
+        self.cross_section_view_btn: Optional[QPushButton] = None
+        self.side_view_btn: Optional[QPushButton] = None
+        self._girder_view_mode: str = "side"
         self.split_add_button: Optional[QPushButton] = None
         self.split_remove_button: Optional[QPushButton] = None
 
@@ -803,31 +863,12 @@ class GirderDetailsTab(QWidget):
         outer.setHorizontalSpacing(16)
         outer.setVerticalSpacing(16)
 
-        def _cad_placeholder(label: str) -> QFrame:
-            frame = QFrame()
-            frame.setFixedHeight(160)
-            frame.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-            frame.setStyleSheet(
-                "QFrame { border: 2px dashed #b7b7b7; border-radius: 8px; background: #ffffff; }"
-            )
-            layout = QVBoxLayout(frame)
-            layout.setContentsMargins(10, 10, 10, 10)
-            layout.setSpacing(0)
-            text = QLabel(label)
-            text.setAlignment(Qt.AlignCenter)
-            text.setStyleSheet("font-size: 12px; font-weight: 700; color: #6f6f6f;")
-            layout.addWidget(text)
-            return frame
-
-        # LEFT: Select Girder + Total Span (matches reference layout)
+        # LEFT: Girder selection and span details.
         left_panel = self._create_inner_box()
         left_panel.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         left_layout = QVBoxLayout(left_panel)
         left_layout.setContentsMargins(12, 10, 12, 10)
         left_layout.setSpacing(10)
-
-        # Placeholder area for CAD diagram (left)
-        left_layout.addWidget(_cad_placeholder("CAD Diagram Placeholder"))
 
         details_box = QWidget()
         details_layout = QGridLayout(details_box)
@@ -940,10 +981,6 @@ class GirderDetailsTab(QWidget):
         manager_layout.setContentsMargins(12, 10, 12, 10)
         manager_layout.setSpacing(10)
 
-        # Dynamic 2D CAD area for member-partitioned girder (right)
-        self.girder_cad_view = _GirderCad2DView()
-        manager_layout.addWidget(self.girder_cad_view)
-
         table_row = QWidget()
         table_row_layout = QHBoxLayout(table_row)
         table_row_layout.setContentsMargins(0, 0, 0, 0)
@@ -996,6 +1033,39 @@ class GirderDetailsTab(QWidget):
 
         manager_layout.addWidget(table_row)
 
+        # Top dedicated CAD section with view switch buttons.
+        top_cad_box = self._create_inner_box()
+        top_cad_layout = QHBoxLayout(top_cad_box)
+        top_cad_layout.setContentsMargins(12, 10, 12, 10)
+        top_cad_layout.setSpacing(12)
+
+        self.girder_cad_view = _GirderCad2DView()
+        top_cad_layout.addWidget(self.girder_cad_view, 1)
+
+        view_switch_col = QVBoxLayout()
+        view_switch_col.setContentsMargins(0, 0, 0, 0)
+        view_switch_col.setSpacing(8)
+
+        self.cross_section_view_btn = QPushButton("Cross Section")
+        self.cross_section_view_btn.setCheckable(True)
+        self.cross_section_view_btn.setFixedWidth(130)
+        self.cross_section_view_btn.setFixedHeight(32)
+
+        self.side_view_btn = QPushButton("Side View")
+        self.side_view_btn.setCheckable(True)
+        self.side_view_btn.setFixedWidth(130)
+        self.side_view_btn.setFixedHeight(32)
+
+        self.cross_section_view_btn.clicked.connect(lambda _checked: self._set_girder_cad_view_mode("cross"))
+        self.side_view_btn.clicked.connect(lambda _checked: self._set_girder_cad_view_mode("side"))
+
+        view_switch_col.addWidget(self.cross_section_view_btn)
+        view_switch_col.addWidget(self.side_view_btn)
+        view_switch_col.addStretch(1)
+        top_cad_layout.addLayout(view_switch_col)
+
+        self._set_girder_cad_view_mode("side")
+
         # Remove local add to layout, we will build the grid at the end
         # outer.addWidget(left_panel, 1)
         # outer.addWidget(manager_box, 1)
@@ -1008,8 +1078,12 @@ class GirderDetailsTab(QWidget):
         self._on_span_changed(self.span_combo.currentText())
         self._on_girder_changed(self._current_girder)
 
-        outer.addWidget(left_panel, 0, 0)
-        outer.addWidget(manager_box, 0, 1)
+        # Row 0: CAD + view switching controls (spans full width).
+        outer.addWidget(top_cad_box, 0, 0, 1, 2)
+
+        # Row 1: details and member table.
+        outer.addWidget(left_panel, 1, 0)
+        outer.addWidget(manager_box, 1, 1)
 
         # Build Section Properties (Inputs + Preview) inline with the grid layout
         # for perfect vertical alignment of left/right columns.
@@ -1025,8 +1099,8 @@ class GirderDetailsTab(QWidget):
             right_col_widget = section_layout.itemAt(1).widget()
             
             # Re-parent them to the main card just in case, though adding to layout handles it.
-            outer.addWidget(left_col_widget, 1, 0)
-            outer.addWidget(right_col_widget, 1, 1)
+            outer.addWidget(left_col_widget, 2, 0)
+            outer.addWidget(right_col_widget, 2, 1)
 
         # Set column stretch to match left/right panels (equal width usually)
         outer.setColumnStretch(0, 1)
@@ -1104,6 +1178,7 @@ class GirderDetailsTab(QWidget):
         if not self.girder_cad_view:
             return
         cad_segments = segments if segments is not None else self._ensure_girder_segments(girder)
+        self.girder_cad_view.set_view_mode(self._girder_view_mode)
         self.girder_cad_view.set_segments(cad_segments)
         if not cad_segments:
             self.girder_cad_view.set_selected_member("")
@@ -1113,6 +1188,42 @@ class GirderDetailsTab(QWidget):
         idx = max(0, min(idx, len(cad_segments) - 1))
         selected_member_id = str(cad_segments[idx].get("id") or "")
         self.girder_cad_view.set_selected_member(selected_member_id)
+
+    def _set_girder_cad_view_mode(self, mode: str) -> None:
+        normalized = str(mode or "").strip().lower()
+        if normalized not in {"cross", "side"}:
+            normalized = "side"
+        self._girder_view_mode = normalized
+
+        if self.girder_cad_view is not None:
+            self.girder_cad_view.set_view_mode(normalized)
+
+        is_cross = normalized == "cross"
+        if self.cross_section_view_btn is not None:
+            block = self.cross_section_view_btn.blockSignals(True)
+            self.cross_section_view_btn.setChecked(is_cross)
+            self.cross_section_view_btn.blockSignals(block)
+        if self.side_view_btn is not None:
+            block = self.side_view_btn.blockSignals(True)
+            self.side_view_btn.setChecked(not is_cross)
+            self.side_view_btn.blockSignals(block)
+
+        active_style = (
+            "QPushButton { background: #f2f2f2; border: 1px solid #4a4a4a; border-radius: 2px; "
+            "color: #1f1f1f; font-size: 12px; font-weight: 600; }"
+            "QPushButton:hover { background: #f2f2f2; }"
+            "QPushButton:pressed { background: #e7e7e7; }"
+        )
+        inactive_style = (
+            "QPushButton { background: #ffffff; border: 1px solid #8f8f8f; border-radius: 2px; "
+            "color: #2f2f2f; font-size: 12px; font-weight: 500; }"
+            "QPushButton:hover { background: #f5f5f5; }"
+            "QPushButton:pressed { background: #ececec; }"
+        )
+        if self.cross_section_view_btn is not None:
+            self.cross_section_view_btn.setStyleSheet(active_style if is_cross else inactive_style)
+        if self.side_view_btn is not None:
+            self.side_view_btn.setStyleSheet(active_style if not is_cross else inactive_style)
 
     def _refresh_segment_list(self, girder: str) -> None:
         segments = self._ensure_girder_segments(girder)

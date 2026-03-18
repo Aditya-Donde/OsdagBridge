@@ -5,10 +5,11 @@ This tab is part of Member Properties (Section Properties) and stores inputs per
 
 from __future__ import annotations
 
-from typing import Dict, Optional
+import re
+from typing import Dict, List, Optional
 
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QIntValidator
+from PySide6.QtGui import QColor, QIntValidator, QPainter, QPen
 from PySide6.QtWidgets import (
     QComboBox,
     QFrame,
@@ -32,6 +33,220 @@ OUTSTAND_DEFAULT_TEXT = "NA"
 VALUES_BEARING_STIFFENER_COUNT = ["1", "2", "3", "4"]
 VALUES_STIFFENER_THICKNESS_MODE = ["All", "Customized"]
 VALUES_LONGITUDINAL_STIFFENER = ["No", "Yes and 1 stiffener", "Yes and 2 stiffeners"]
+
+
+class StiffenerCadPreviewWidget(QWidget):
+    """2D CAD-style stiffener preview driven by per-member stiffener inputs."""
+
+    # Keep preview colors aligned with the desktop theme palette.
+    THEME_BG = QColor("#f4f4f4")
+    THEME_BORDER = QColor("#d0d0d0")
+    THEME_TEXT = QColor("#333333")
+    THEME_CANVAS = QColor("#f8f8f8")
+    THEME_GIRDER = QColor("#d9d9d9")
+    THEME_GIRDER_BORDER = QColor("#3a3a3a")
+    THEME_SEGMENT_LINE = QColor("#888888")
+    BEARING_COLOR = QColor("#90AF13")
+    INTERMEDIATE_COLOR = QColor("#6B7D20")
+    LONG_COLOR = QColor("#4a4a4a")
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._segments: List[dict] = []
+        self._stiffener_by_member: Dict[str, dict] = {}
+        self._active_member_id: str = ""
+        self.setMinimumHeight(170)
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+
+    def set_data(self, segments: List[dict], stiffener_by_member: Dict[str, dict], active_member_id: str) -> None:
+        cleaned: List[dict] = []
+        for seg in segments or []:
+            try:
+                start = float(seg.get("start", 0.0))
+                end = float(seg.get("end", 0.0))
+            except Exception:
+                continue
+            length = max(0.0, end - start)
+            if length <= 0.0:
+                continue
+            cleaned.append(
+                {
+                    "id": str(seg.get("id") or ""),
+                    "start": start,
+                    "end": end,
+                    "length": length,
+                }
+            )
+        self._segments = cleaned
+        self._stiffener_by_member = dict(stiffener_by_member or {})
+        self._active_member_id = str(active_member_id or "").strip()
+        self.update()
+
+    @staticmethod
+    def _member_girder(member_id: str) -> str:
+        match = re.match(r"^(G\d+)M\d+$", str(member_id or "").strip())
+        return match.group(1) if match else ""
+
+    def _state_for(self, member_id: str) -> dict:
+        return dict(self._stiffener_by_member.get(str(member_id or "").strip()) or {})
+
+    def _parse_positive_int(self, value) -> Optional[int]:
+        try:
+            text = str(value or "").strip()
+            if not text.isdigit():
+                return None
+            parsed = int(text)
+            return parsed if parsed > 0 else None
+        except Exception:
+            return None
+
+    def _longitudinal_levels(self, mode: str, web_top: float, web_height: float) -> List[float]:
+        text = str(mode or "").strip().lower()
+        if "2" in text:
+            return [web_top + (web_height / 3.0), web_top + (2.0 * web_height / 3.0)]
+        if "1" in text:
+            return [web_top + (web_height / 3.0)]
+        return []
+
+    def paintEvent(self, _event):  # noqa: N802 (Qt naming)
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing, True)
+
+        frame = self.rect().adjusted(6, 6, -6, -6)
+        painter.fillRect(frame, self.THEME_BG)
+        painter.setPen(QPen(self.THEME_BORDER, 1.0))
+        painter.drawRect(frame)
+
+        draw = frame.adjusted(14, 18, -14, -24)
+        if draw.width() < 20 or draw.height() < 20:
+            return
+
+        if not self._segments:
+            painter.setPen(QPen(self.THEME_TEXT, 1.0))
+            painter.drawText(draw, Qt.AlignCenter, "No member segments")
+            return
+
+        total_length = sum(float(seg.get("length") or 0.0) for seg in self._segments)
+        if total_length <= 0.0:
+            painter.setPen(QPen(self.THEME_TEXT, 1.0))
+            painter.drawText(draw, Qt.AlignCenter, "Invalid segment lengths")
+            return
+
+        # Girder strip inside a light themed canvas.
+        cad_bg = draw.adjusted(0, 14, 0, -8)
+        painter.fillRect(cad_bg, self.THEME_CANVAS)
+
+        girder_rect = cad_bg.adjusted(14, 18, -14, -18)
+        painter.fillRect(girder_rect, self.THEME_GIRDER)
+        painter.setPen(QPen(self.THEME_GIRDER_BORDER, 1.0))
+        painter.drawRect(girder_rect)
+
+        web_top = girder_rect.top()
+        web_bottom = girder_rect.bottom()
+        web_height = max(1.0, web_bottom - web_top)
+
+        active_state = self._state_for(self._active_member_id)
+        # Bearing stiffeners are support-only and should mirror at both ends.
+        bearing_count = self._parse_positive_int(active_state.get("bearing_stiffeners_each_end")) or 2
+        bearing_count = max(1, min(8, bearing_count))
+
+        # Resolve selected girder from active member (fallback to first segment's girder).
+        active_girder = self._member_girder(self._active_member_id)
+        if not active_girder and self._segments:
+            active_girder = self._member_girder(str(self._segments[0].get("id") or ""))
+
+        x = float(girder_rect.left())
+        segment_rects: List[dict] = []
+        for idx, seg in enumerate(self._segments):
+            ratio = float(seg["length"]) / total_length
+            width = girder_rect.width() * ratio
+            if idx == len(self._segments) - 1:
+                width = max(1.0, float(girder_rect.right()) - x)
+            segment_rects.append({"id": seg["id"], "left": x, "right": x + width})
+            x += width
+
+        # Draw segment labels close to the girder for better visual association.
+        label_gap = 4
+        label_height = 20
+        label_bottom = int(max(draw.top() + label_height, girder_rect.top() - label_gap))
+        label_top = int(max(draw.top(), label_bottom - label_height))
+        for idx, seg_rect in enumerate(segment_rects):
+            left = float(seg_rect["left"])
+            right = float(seg_rect["right"])
+            label_rect = draw.adjusted(0, 0, 0, 0)
+            label_rect.setTop(label_top)
+            label_rect.setBottom(label_bottom)
+            label_rect.setLeft(int(left))
+            label_rect.setRight(int(right))
+
+            seg_id = str(seg_rect["id"] or "")
+            painter.setPen(QPen(self.THEME_TEXT, 1.0))
+            painter.drawText(label_rect, Qt.AlignHCenter | Qt.AlignVCenter, seg_id)
+
+            if idx > 0:
+                painter.setPen(QPen(self.THEME_SEGMENT_LINE, 1.0))
+                painter.drawLine(int(left), int(girder_rect.top()), int(left), int(girder_rect.bottom()))
+
+        # Draw per-segment stiffeners.
+        for idx, seg_rect in enumerate(segment_rects):
+            seg_id = str(seg_rect["id"] or "")
+            seg_state = self._state_for(seg_id)
+            left = float(seg_rect["left"])
+            right = float(seg_rect["right"])
+            width = max(1.0, right - left)
+            is_first = idx == 0
+            is_last = idx == len(segment_rects) - 1
+
+            # Keep a clear support zone near ends so intermediate lines do not overlap
+            # with bearing stiffeners and make the drawing look cluttered.
+            spacing_px = max(8.0, min(24.0, width * 0.08))
+            edge_offset = max(6.0, min(18.0, width * 0.04))
+            bearing_zone_px = edge_offset + ((bearing_count - 1) * spacing_px) + 6.0
+
+            seg_girder = self._member_girder(seg_id)
+            if active_girder and seg_girder and seg_girder != active_girder:
+                continue
+
+            # Intermediate stiffeners between segment ends as per segment-wise spacing.
+            include_intermediate = str(seg_state.get("intermediate_stiffener") or "").strip() == "Yes"
+            spacing_mm = self._parse_positive_int(seg_state.get("intermediate_spacing_mm"))
+            if include_intermediate and spacing_mm and float(self._segments[idx]["length"]) > 0.0:
+                seg_len_mm = float(self._segments[idx]["length"]) * 1000.0
+                if seg_len_mm > spacing_mm:
+                    painter.setPen(QPen(self.INTERMEDIATE_COLOR, 2.0))
+                    pos_mm = float(spacing_mm)
+                    while pos_mm < seg_len_mm:
+                        ratio = pos_mm / seg_len_mm
+                        x_pos = left + (ratio * width)
+                        if is_first and x_pos <= (left + bearing_zone_px):
+                            pos_mm += float(spacing_mm)
+                            continue
+                        if is_last and x_pos >= (right - bearing_zone_px):
+                            pos_mm += float(spacing_mm)
+                            continue
+                        if (x_pos - left) > 3.0 and (right - x_pos) > 3.0:
+                            painter.drawLine(int(x_pos), int(web_top), int(x_pos), int(web_bottom))
+                        pos_mm += float(spacing_mm)
+
+            # Bearing stiffeners only at first and last member of the selected girder.
+            # Draw these after intermediate lines so bearing stiffeners remain visible.
+            if is_first or is_last:
+                painter.setPen(QPen(self.BEARING_COLOR, 2.0))
+                for i in range(bearing_count):
+                    if is_first:
+                        x_pos = left + edge_offset + (i * spacing_px)
+                    else:
+                        x_pos = right - edge_offset - (i * spacing_px)
+                    x_pos = max(left + 2.0, min(right - 2.0, x_pos))
+                    painter.drawLine(int(x_pos), int(web_top), int(x_pos), int(web_bottom))
+
+            # Longitudinal stiffeners by option: none / one at 1/3 / two at 1/3 and 2/3 from top.
+            long_mode = str(seg_state.get("longitudinal_stiffener") or "")
+            levels = self._longitudinal_levels(long_mode, web_top, web_height)
+            if levels:
+                painter.setPen(QPen(self.LONG_COLOR, 3.0))
+                for y_pos in levels:
+                    painter.drawLine(int(left), int(y_pos), int(right), int(y_pos))
 
 class StiffenerDetailsTab(QWidget):
     """Tab for Stiffener Details with compact layout"""
@@ -115,7 +330,9 @@ class StiffenerDetailsTab(QWidget):
         left_layout.addLayout(action_row)
 
         stiffener_heading = QLabel("Stiffener Inputs")
-        stiffener_heading.setStyleSheet("font-size: 11px; font-weight: 700; color: #000000; border: none; margin-top: 4px;")
+        stiffener_heading.setIndent(0)
+        stiffener_heading.setContentsMargins(0, 0, 0, 0)
+        stiffener_heading.setStyleSheet("font-size: 11px; font-weight: 700; color: #000000; border: none;")
         left_layout.addWidget(stiffener_heading)
 
         inputs_grid = QGridLayout()
@@ -253,8 +470,6 @@ class StiffenerDetailsTab(QWidget):
 
         card_layout.addWidget(right_column, 3)
 
-        container_layout.addWidget(card_frame)
-
         # Dynamic image box
         image_box = self._create_card_frame()
         image_layout = QVBoxLayout(image_box)
@@ -262,14 +477,27 @@ class StiffenerDetailsTab(QWidget):
         image_layout.setSpacing(8)
 
         self.dynamic_image_label = QLabel("Dynamic Image")
-        self.dynamic_image_label.setAlignment(Qt.AlignCenter)
-        self.dynamic_image_label.setMinimumHeight(140)
-        self.dynamic_image_label.setStyleSheet(
-            "QLabel { border: 1px solid #d8d8d8; border-radius: 8px; background-color: #f8f8f8; "
-            "font-weight: 600; color: #5b5b5b; font-size: 11px; }"
-        )
+        self.dynamic_image_label.setVisible(False)
         image_layout.addWidget(self.dynamic_image_label)
+
+        preview_top_row = QWidget()
+        preview_top_layout = QHBoxLayout(preview_top_row)
+        preview_top_layout.setContentsMargins(0, 0, 0, 0)
+        preview_top_layout.setSpacing(12)
+
+        self.stiffener_cad_preview = StiffenerCadPreviewWidget()
+        self.stiffener_cad_preview.setStyleSheet(
+            "QWidget { border: 1px solid #d8d8d8; border-radius: 8px; background-color: #f8f8f8; }"
+        )
+        preview_top_layout.addWidget(self.stiffener_cad_preview, 3)
+        preview_top_layout.addWidget(self._create_stiffener_legend_widget(), 1, Qt.AlignTop)
+
+        image_layout.addWidget(preview_top_row, 0, Qt.AlignTop)
+        image_layout.addStretch(1)
         container_layout.addWidget(image_box)
+
+        # Input + description card below CAD preview.
+        container_layout.addWidget(card_frame)
 
 
         # Signals
@@ -288,6 +516,7 @@ class StiffenerDetailsTab(QWidget):
         self._on_intermediate_changed(self.intermediate_combo.currentText())
         self._on_longitudinal_changed(self.longitudinal_combo.currentText())
         self.refresh_girder_members()
+        self._update_dynamic_cad_preview()
 
     def _create_card_frame(self):
         card = QFrame()
@@ -295,6 +524,49 @@ class StiffenerDetailsTab(QWidget):
             "QFrame { border: 1px solid #d6d6d6; border-radius: 8px; background-color: #f7f7f7; }"
         )
         return card
+
+    def _create_stiffener_legend_widget(self) -> QWidget:
+        legend = QFrame()
+        legend.setMinimumWidth(180)
+        legend.setStyleSheet(
+            "QFrame { border: 1px solid #d8d8d8; border-radius: 8px; background-color: #ffffff; }"
+        )
+
+        layout = QVBoxLayout(legend)
+        layout.setContentsMargins(10, 10, 10, 10)
+        layout.setSpacing(8)
+
+        title = QLabel("Legend")
+        title.setStyleSheet("font-size: 11px; font-weight: 700; color: #333333; border: none;")
+        layout.addWidget(title)
+
+        items = [
+            ("Bearing stiffener", StiffenerCadPreviewWidget.BEARING_COLOR),
+            ("Intermediate stiffener", StiffenerCadPreviewWidget.INTERMEDIATE_COLOR),
+            ("Longitudinal stiffener", StiffenerCadPreviewWidget.LONG_COLOR),
+        ]
+
+        for text, color in items:
+            row = QWidget()
+            row_layout = QHBoxLayout(row)
+            row_layout.setContentsMargins(0, 0, 0, 0)
+            row_layout.setSpacing(8)
+
+            swatch = QLabel()
+            swatch.setFixedSize(22, 10)
+            swatch.setStyleSheet(
+                f"QLabel {{ border: 1px solid #777777; border-radius: 2px; background-color: {color.name()}; }}"
+            )
+
+            label = QLabel(text)
+            label.setStyleSheet("font-size: 10px; color: #3a3a3a; border: none;")
+
+            row_layout.addWidget(swatch, 0, Qt.AlignVCenter)
+            row_layout.addWidget(label, 1, Qt.AlignVCenter)
+            layout.addWidget(row)
+
+        layout.addStretch(1)
+        return legend
 
     def _normalize_label_text(self, text: str) -> str:
         return str(text or "").rstrip(": ")
@@ -328,6 +600,7 @@ class StiffenerDetailsTab(QWidget):
         """Bind to the Girder Details tab to populate members and detect optimized members."""
         self._girder_details_tab = girder_details_tab
         self.refresh_girder_members()
+        self._update_dynamic_cad_preview()
 
     def refresh_girder_members(self) -> None:
         """Refresh the Select Girder Member dropdown from Girder Details segment chains."""
@@ -359,6 +632,7 @@ class StiffenerDetailsTab(QWidget):
 
         # Ensure state exists and UI is synced to the active selection.
         self._on_member_changed(self.girder_member_combo.currentText())
+        self._update_dynamic_cad_preview()
 
     def validate(self) -> None:
         """Validate current stored inputs before saving the dialog."""
@@ -464,6 +738,7 @@ class StiffenerDetailsTab(QWidget):
             "longitudinal_thickness_mode": self.long_thick_combo.currentText(),
             "shear_buckling_method": self.method_combo.currentText(),
         }
+        self._update_dynamic_cad_preview()
 
     def _load_member_state(self, member_id: str) -> None:
         # Ensure every member has a state entry.
@@ -513,6 +788,7 @@ class StiffenerDetailsTab(QWidget):
 
         self._active_member_id = member_id
         self._load_member_state(member_id)
+        self._update_dynamic_cad_preview()
 
     def _on_any_input_changed(self, *_args) -> None:
         """Persist UI edits into per-member state as the user types/selects."""
@@ -583,7 +859,7 @@ class StiffenerDetailsTab(QWidget):
         self._store_current_member_state()
 
     def _on_longitudinal_changed(self, text: str) -> None:
-        is_yes = str(text).strip() == "Yes"
+        is_yes = str(text).strip().startswith("Yes")
         if not is_yes:
             prev_mode = self.long_thick_combo.blockSignals(True)
             try:
@@ -649,6 +925,41 @@ class StiffenerDetailsTab(QWidget):
 
         # Re-load to ensure the UI reflects the stored state for the active member.
         self._load_member_state(self._active_member_id)
+        self._update_dynamic_cad_preview()
+
+    def _resolve_preview_segments_for_active_member(self) -> List[dict]:
+        if self._girder_details_tab is None:
+            return []
+
+        active_member = str(self._active_member_id or "").strip()
+        match = re.match(r"^(G\d+)M\d+$", active_member)
+        girder = match.group(1) if match else ""
+        if not girder:
+            current = str(self.girder_member_combo.currentText() or "").strip()
+            fallback = re.match(r"^(G\d+)M\d+$", current)
+            girder = fallback.group(1) if fallback else ""
+        if not girder:
+            return []
+
+        try:
+            if hasattr(self._girder_details_tab, "_ensure_girder_segments"):
+                segments = self._girder_details_tab._ensure_girder_segments(girder)  # type: ignore[attr-defined]
+            else:
+                segments = (getattr(self._girder_details_tab, "segment_chain", {}) or {}).get(girder, [])
+        except Exception:
+            segments = []
+
+        return list(segments or [])
+
+    def _update_dynamic_cad_preview(self) -> None:
+        if not hasattr(self, "stiffener_cad_preview"):
+            return
+        segments = self._resolve_preview_segments_for_active_member()
+        self.stiffener_cad_preview.set_data(
+            segments=segments,
+            stiffener_by_member=self._state_by_member,
+            active_member_id=self._active_member_id or self.girder_member_combo.currentText(),
+        )
 
 
 
