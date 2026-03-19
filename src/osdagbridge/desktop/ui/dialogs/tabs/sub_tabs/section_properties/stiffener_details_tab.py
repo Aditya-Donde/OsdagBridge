@@ -33,6 +33,7 @@ OUTSTAND_DEFAULT_TEXT = "NA"
 VALUES_BEARING_STIFFENER_COUNT = ["1", "2", "3", "4"]
 VALUES_STIFFENER_THICKNESS_MODE = ["All", "Customized"]
 VALUES_LONGITUDINAL_STIFFENER = ["No", "Yes and 1 stiffener", "Yes and 2 stiffeners"]
+MIN_BEARING_SPACING_MM = 50
 
 
 class StiffenerCadPreviewWidget(QWidget):
@@ -44,6 +45,8 @@ class StiffenerCadPreviewWidget(QWidget):
     THEME_TEXT = QColor("#333333")
     THEME_CANVAS = QColor("#f8f8f8")
     THEME_GIRDER = QColor("#d9d9d9")
+    THEME_FLANGE = QColor("#c9c9c9")
+    THEME_WEB = QColor("#dcdcdc")
     THEME_GIRDER_BORDER = QColor("#3a3a3a")
     THEME_SEGMENT_LINE = QColor("#888888")
     BEARING_COLOR = QColor("#90AF13")
@@ -54,11 +57,18 @@ class StiffenerCadPreviewWidget(QWidget):
         super().__init__(parent)
         self._segments: List[dict] = []
         self._stiffener_by_member: Dict[str, dict] = {}
+        self._section_dims_by_member: Dict[str, dict] = {}
         self._active_member_id: str = ""
-        self.setMinimumHeight(170)
+        self.setMinimumHeight(210)
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
 
-    def set_data(self, segments: List[dict], stiffener_by_member: Dict[str, dict], active_member_id: str) -> None:
+    def set_data(
+        self,
+        segments: List[dict],
+        stiffener_by_member: Dict[str, dict],
+        active_member_id: str,
+        section_dims_by_member: Optional[Dict[str, dict]] = None,
+    ) -> None:
         cleaned: List[dict] = []
         for seg in segments or []:
             try:
@@ -79,6 +89,7 @@ class StiffenerCadPreviewWidget(QWidget):
             )
         self._segments = cleaned
         self._stiffener_by_member = dict(stiffener_by_member or {})
+        self._section_dims_by_member = dict(section_dims_by_member or {})
         self._active_member_id = str(active_member_id or "").strip()
         self.update()
 
@@ -89,6 +100,9 @@ class StiffenerCadPreviewWidget(QWidget):
 
     def _state_for(self, member_id: str) -> dict:
         return dict(self._stiffener_by_member.get(str(member_id or "").strip()) or {})
+
+    def _dims_for(self, member_id: str) -> dict:
+        return dict(self._section_dims_by_member.get(str(member_id or "").strip()) or {})
 
     def _parse_positive_int(self, value) -> Optional[int]:
         try:
@@ -138,22 +152,95 @@ class StiffenerCadPreviewWidget(QWidget):
 
         girder_rect = cad_bg.adjusted(14, 18, -14, -18)
         painter.fillRect(girder_rect, self.THEME_GIRDER)
+
+        # Draw separate top and bottom flange thickness bands similar to girder CAD.
+        active_dims = self._dims_for(self._active_member_id)
+        try:
+            depth_mm = float(active_dims.get("depth_mm") or 0.0)
+            top_t_mm = float(active_dims.get("top_flange_thickness_mm") or 0.0)
+            bot_t_mm = float(active_dims.get("bottom_flange_thickness_mm") or 0.0)
+        except (TypeError, ValueError):
+            depth_mm = 0.0
+            top_t_mm = 0.0
+            bot_t_mm = 0.0
+
+        if depth_mm > 0.0 and top_t_mm > 0.0 and bot_t_mm > 0.0:
+            top_flange_px = int(round((top_t_mm / depth_mm) * girder_rect.height()))
+            bottom_flange_px = int(round((bot_t_mm / depth_mm) * girder_rect.height()))
+        else:
+            # Fallback for missing dimensions.
+            top_flange_px = max(4, int(round(girder_rect.height() * 0.08)))
+            bottom_flange_px = max(4, int(round(girder_rect.height() * 0.08)))
+
+        # Keep a workable web region even with very thick flanges.
+        max_each = max(4, int(round(girder_rect.height() * 0.22)))
+        top_flange_px = min(max_each, max(3, top_flange_px))
+        bottom_flange_px = min(max_each, max(3, bottom_flange_px))
+        if top_flange_px + bottom_flange_px > girder_rect.height() - 8:
+            overflow = (top_flange_px + bottom_flange_px) - (girder_rect.height() - 8)
+            reduce_top = overflow // 2
+            reduce_bottom = overflow - reduce_top
+            top_flange_px = max(3, top_flange_px - reduce_top)
+            bottom_flange_px = max(3, bottom_flange_px - reduce_bottom)
+
+        flange_x = int(girder_rect.left())
+        flange_w = int(girder_rect.width())
+        top_flange_y = int(girder_rect.top())
+        bottom_flange_y = int(girder_rect.bottom() - bottom_flange_px + 1)
+
+        painter.fillRect(flange_x, top_flange_y, flange_w, int(top_flange_px), self.THEME_FLANGE)
+        painter.fillRect(flange_x, bottom_flange_y, flange_w, int(bottom_flange_px), self.THEME_FLANGE)
+
+        web_top = girder_rect.top() + top_flange_px
+        web_bottom = girder_rect.bottom() - bottom_flange_px
+        if web_bottom < web_top:
+            web_bottom = web_top
+
+        painter.fillRect(
+            int(girder_rect.left()),
+            int(web_top),
+            int(girder_rect.width()),
+            int(max(1, web_bottom - web_top + 1)),
+            self.THEME_WEB,
+        )
+
         painter.setPen(QPen(self.THEME_GIRDER_BORDER, 1.0))
         painter.drawRect(girder_rect)
+        painter.drawLine(int(girder_rect.left()), int(web_top), int(girder_rect.right()), int(web_top))
+        painter.drawLine(int(girder_rect.left()), int(web_bottom), int(girder_rect.right()), int(web_bottom))
 
-        web_top = girder_rect.top()
-        web_bottom = girder_rect.bottom()
         web_height = max(1.0, web_bottom - web_top)
-
-        active_state = self._state_for(self._active_member_id)
-        # Bearing stiffeners are support-only and should mirror at both ends.
-        bearing_count = self._parse_positive_int(active_state.get("bearing_stiffeners_each_end")) or 2
-        bearing_count = max(1, min(8, bearing_count))
 
         # Resolve selected girder from active member (fallback to first segment's girder).
         active_girder = self._member_girder(self._active_member_id)
         if not active_girder and self._segments:
             active_girder = self._member_girder(str(self._segments[0].get("id") or ""))
+
+        # Bearing settings are governed by exterior member IDs (first/last segment of the girder).
+        bearing_source_state: dict = {}
+        if self._segments:
+            first_id = str(self._segments[0].get("id") or "")
+            last_id = str(self._segments[-1].get("id") or "")
+            first_state = self._state_for(first_id)
+            last_state = self._state_for(last_id)
+            bearing_source_state = first_state or last_state
+        if not bearing_source_state:
+            bearing_source_state = self._state_for(self._active_member_id)
+
+        # Bearing stiffeners are support-only and should mirror at both ends.
+        bearing_count = self._parse_positive_int(bearing_source_state.get("bearing_stiffeners_each_end")) or 2
+        bearing_count = max(1, min(8, bearing_count))
+
+        min_member_length_mm = min((float(seg.get("length") or 0.0) for seg in self._segments), default=0.0) * 1000.0
+        px_per_mm = girder_rect.width() / max(1.0, total_length * 1000.0)
+        custom_bearing_spacing_mm = self._parse_positive_int(bearing_source_state.get("bearing_spacing_mm"))
+        if custom_bearing_spacing_mm:
+            bearing_spacing_mm = float(custom_bearing_spacing_mm)
+        else:
+            # Auto spacing: derive from the smallest member length for consistent visual density.
+            bearing_spacing_mm = max(MIN_BEARING_SPACING_MM, min_member_length_mm / float(bearing_count + 1))
+        spacing_px_uniform = max(8.0, min(24.0, bearing_spacing_mm * px_per_mm))
+        edge_offset_uniform = spacing_px_uniform
 
         x = float(girder_rect.left())
         segment_rects: List[dict] = []
@@ -199,8 +286,8 @@ class StiffenerCadPreviewWidget(QWidget):
 
             # Keep a clear support zone near ends so intermediate lines do not overlap
             # with bearing stiffeners and make the drawing look cluttered.
-            spacing_px = max(8.0, min(24.0, width * 0.08))
-            edge_offset = max(6.0, min(18.0, width * 0.04))
+            spacing_px = spacing_px_uniform
+            edge_offset = edge_offset_uniform
             bearing_zone_px = edge_offset + ((bearing_count - 1) * spacing_px) + 6.0
 
             seg_girder = self._member_girder(seg_id)
@@ -348,19 +435,37 @@ class StiffenerDetailsTab(QWidget):
         apply_field_style(self.bearing_count_combo)
         self.bearing_count_combo.setFixedWidth(combo_width)
         self.bearing_count_combo.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+        bearing_count_row = 0
         row = self._add_form_row(
             inputs_grid,
             0,
             "No. of Bearing Stiffeners at each end\n(on one side only):",
             self.bearing_count_combo,
         )
+        # Keep references so bearing rows can be fully hidden for interior members.
+        self._bearing_count_label_widget = inputs_grid.itemAtPosition(bearing_count_row, 0).widget()
+        self._bearing_count_field_widget = self.bearing_count_combo
+
+        self.bearing_spacing_input = QLineEdit()
+        self.bearing_spacing_input.setValidator(QIntValidator(1, 10**9, self.bearing_spacing_input))
+        apply_field_style(self.bearing_spacing_input)
+        self.bearing_spacing_input.setPlaceholderText("Auto (based on min member length)")
+        self.bearing_spacing_input.setFixedWidth(combo_width)
+        self.bearing_spacing_input.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+        bearing_spacing_row = row
+        row = self._add_form_row(inputs_grid, row, "Bearing Stiffener Spacing (mm):", self.bearing_spacing_input)
+        self._bearing_spacing_label_widget = inputs_grid.itemAtPosition(bearing_spacing_row, 0).widget()
+        self._bearing_spacing_field_widget = self.bearing_spacing_input
 
         self.bearing_thick_combo = QComboBox()
         self.bearing_thick_combo.addItems(VALUES_STIFFENER_THICKNESS_MODE)
         apply_field_style(self.bearing_thick_combo)
         self.bearing_thick_combo.setFixedWidth(combo_width)
         self.bearing_thick_combo.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+        bearing_thick_row = row
         row = self._add_form_row(inputs_grid, row, "Bearing Stiffener Thickness (mm):", self.bearing_thick_combo)
+        self._bearing_thick_label_widget = inputs_grid.itemAtPosition(bearing_thick_row, 0).widget()
+        self._bearing_thick_field_widget = self.bearing_thick_combo
 
         self.bearing_outstand_input = QTextEdit()
         self.bearing_outstand_input.setReadOnly(True)
@@ -374,7 +479,17 @@ class StiffenerDetailsTab(QWidget):
             "QTextEdit { border: 1px solid #d0d0d0; border-radius: 6px; background: #ffffff; "
             "color: #5b5b5b; font-size: 11px; }"
         )
+        bearing_outstand_row = row
         row = self._add_form_row(inputs_grid, row, "Outstand of Bearing Stiffener (mm):", self.bearing_outstand_input)
+        self._bearing_outstand_label_widget = inputs_grid.itemAtPosition(bearing_outstand_row, 0).widget()
+        self._bearing_outstand_field_widget = self.bearing_outstand_input
+
+        self._bearing_row_widgets = [
+            (self._bearing_count_label_widget, self._bearing_count_field_widget),
+            (self._bearing_spacing_label_widget, self._bearing_spacing_field_widget),
+            (self._bearing_thick_label_widget, self._bearing_thick_field_widget),
+            (self._bearing_outstand_label_widget, self._bearing_outstand_field_widget),
+        ]
 
         self.intermediate_combo = QComboBox()
         self.intermediate_combo.addItems(VALUES_YES_NO)
@@ -481,6 +596,7 @@ class StiffenerDetailsTab(QWidget):
         image_layout.addWidget(self.dynamic_image_label)
 
         preview_top_row = QWidget()
+        preview_top_row.setMinimumHeight(240)
         preview_top_layout = QHBoxLayout(preview_top_row)
         preview_top_layout.setContentsMargins(0, 0, 0, 0)
         preview_top_layout.setSpacing(12)
@@ -503,6 +619,7 @@ class StiffenerDetailsTab(QWidget):
         # Signals
         self.girder_member_combo.currentTextChanged.connect(self._on_member_changed)
         self.bearing_count_combo.currentTextChanged.connect(self._on_any_input_changed)
+        self.bearing_spacing_input.textChanged.connect(self._on_any_input_changed)
         self.bearing_thick_combo.currentTextChanged.connect(self._on_any_input_changed)
         self.intermediate_combo.currentTextChanged.connect(self._on_intermediate_changed)
         self.longitudinal_combo.currentTextChanged.connect(self._on_longitudinal_changed)
@@ -710,6 +827,7 @@ class StiffenerDetailsTab(QWidget):
     def _default_member_state(self) -> dict:
         return {
             "bearing_stiffeners_each_end": "2",
+            "bearing_spacing_mm": "",
             "bearing_thickness_mode": "All",
             "bearing_outstand_mm": OUTSTAND_DEFAULT_TEXT,
             "intermediate_stiffener": "No",
@@ -728,6 +846,7 @@ class StiffenerDetailsTab(QWidget):
             return
         self._state_by_member[self._active_member_id] = {
             "bearing_stiffeners_each_end": self.bearing_count_combo.currentText(),
+            "bearing_spacing_mm": self.bearing_spacing_input.text().strip(),
             "bearing_thickness_mode": self.bearing_thick_combo.currentText(),
             "bearing_outstand_mm": self.bearing_outstand_input.toPlainText().strip(),
             "intermediate_stiffener": self.intermediate_combo.currentText(),
@@ -759,6 +878,7 @@ class StiffenerDetailsTab(QWidget):
             self.method_combo.setCurrentText(state.get("shear_buckling_method", self.method_combo.itemText(0)))
 
             self.bearing_count_combo.setCurrentText(state.get("bearing_stiffeners_each_end", "2"))
+            self.bearing_spacing_input.setText(str(state.get("bearing_spacing_mm", "")))
             self.bearing_thick_combo.setCurrentText(state.get("bearing_thickness_mode", "All"))
             self.bearing_outstand_input.setText(state.get("bearing_outstand_mm", OUTSTAND_DEFAULT_TEXT))
             self.intermediate_outstand_input.setText(state.get("intermediate_outstand_mm", OUTSTAND_DEFAULT_TEXT))
@@ -882,9 +1002,24 @@ class StiffenerDetailsTab(QWidget):
     def _refresh_enabled_state(self, member_id: str) -> None:
         member_id = str(member_id or self._active_member_id or "").strip()
         optimized = self._is_member_optimized(member_id) if member_id else False
+        exterior = self._is_exterior_member(member_id) if member_id else False
 
         base_enabled = not optimized
-        self.bearing_count_combo.setEnabled(base_enabled)
+        show_bearing_rows = bool(exterior)
+        for label_widget, field_widget in getattr(self, "_bearing_row_widgets", []):
+            if label_widget is not None:
+                label_widget.setVisible(show_bearing_rows)
+            if field_widget is not None:
+                field_widget.setVisible(show_bearing_rows)
+        self.bearing_count_combo.setEnabled(base_enabled and exterior)
+        self.bearing_spacing_input.setEnabled(base_enabled and exterior)
+        if exterior:
+            self.bearing_count_combo.setToolTip("")
+            self.bearing_spacing_input.setToolTip("Leave empty for auto spacing from minimum member length.")
+        else:
+            hint = "Bearing count/spacing is editable only for exterior member IDs (end members)."
+            self.bearing_count_combo.setToolTip(hint)
+            self.bearing_spacing_input.setToolTip(hint)
         self.bearing_thick_combo.setEnabled(base_enabled)
         self.bearing_outstand_input.setEnabled(base_enabled)
         self.intermediate_outstand_input.setEnabled(base_enabled)
@@ -901,6 +1036,32 @@ class StiffenerDetailsTab(QWidget):
 
         # If optimized, applying changes makes no sense.
         self.apply_to_all_btn.setEnabled(base_enabled)
+
+    @staticmethod
+    def _parse_member_indices(member_id: str) -> tuple[Optional[int], Optional[int]]:
+        match = re.match(r"^G(\d+)M(\d+)$", str(member_id or "").strip())
+        if not match:
+            return None, None
+        try:
+            return int(match.group(1)), int(match.group(2))
+        except Exception:
+            return None, None
+
+    def _is_exterior_member(self, member_id: str) -> bool:
+        current_girder, current_member = self._parse_member_indices(member_id)
+        if current_girder is None or current_member is None:
+            return True
+
+        members_in_same_girder: List[int] = []
+        for mid in self._list_current_member_ids():
+            g_idx, m_idx = self._parse_member_indices(mid)
+            if g_idx == current_girder and m_idx is not None:
+                members_in_same_girder.append(m_idx)
+
+        if not members_in_same_girder:
+            return True
+
+        return current_member in {min(members_in_same_girder), max(members_in_same_girder)}
 
     def _list_current_member_ids(self) -> list[str]:
         members: list[str] = []
@@ -951,14 +1112,36 @@ class StiffenerDetailsTab(QWidget):
 
         return list(segments or [])
 
+    def _resolve_preview_section_dimensions(self, segments: List[dict]) -> Dict[str, dict]:
+        dims_by_member: Dict[str, dict] = {}
+        if self._girder_details_tab is None:
+            return dims_by_member
+        if not hasattr(self._girder_details_tab, "get_member_section_dimensions"):
+            return dims_by_member
+
+        for seg in segments or []:
+            member_id = str((seg or {}).get("id") or "").strip()
+            if not member_id:
+                continue
+            try:
+                dims = self._girder_details_tab.get_member_section_dimensions(member_id)
+            except Exception:
+                dims = None
+            if isinstance(dims, dict):
+                dims_by_member[member_id] = dict(dims)
+
+        return dims_by_member
+
     def _update_dynamic_cad_preview(self) -> None:
         if not hasattr(self, "stiffener_cad_preview"):
             return
         segments = self._resolve_preview_segments_for_active_member()
+        dims_by_member = self._resolve_preview_section_dimensions(segments)
         self.stiffener_cad_preview.set_data(
             segments=segments,
             stiffener_by_member=self._state_by_member,
             active_member_id=self._active_member_id or self.girder_member_combo.currentText(),
+            section_dims_by_member=dims_by_member,
         )
 
 
