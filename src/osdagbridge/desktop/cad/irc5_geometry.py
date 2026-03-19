@@ -6,9 +6,9 @@ class CrashBarrierGeometry:
         if barrier_type == "IRC 5 - High Containment RCC Crash Barrier":
             return {
                 "type": "rcc",
-                "total_height": 900.0,
-                "top_width": 175.0,
-                "bottom_width": 350.0,
+                "total_height": 1550.0,
+                "top_width": 250.0,
+                "bottom_width": 525.0,
                 "base_vertical": 100.0,
                 "mid_offset": 350.0,
             }
@@ -16,11 +16,11 @@ class CrashBarrierGeometry:
         elif barrier_type == "IRC 5 - RCC Crash Barrier":
             return {
                 "type": "rcc",
-                "total_height": 750.0,
-                "top_width": 150.0,
-                "bottom_width": 300.0,
+                "total_height": 900.0,
+                "top_width": 175.0,
+                "bottom_width": 450.0,
                 "base_vertical": 100.0,
-                "mid_offset": 300.0,
+                "mid_offset": 350.0,
             }
 
         elif barrier_type == "IRC 5 - Metallic Crash Barrier with Single W-Beam":

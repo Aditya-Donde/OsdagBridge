@@ -177,14 +177,12 @@ class TypicalSectionDetailsTab(QWidget):
 
         cad_scroll = QScrollArea()
         cad_scroll.setWidgetResizable(True)
-        cad_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        cad_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         cad_scroll.setFrameShape(QFrame.NoFrame)
         cad_scroll.setStyleSheet("QScrollArea { background: transparent; border: none; }")
 
         self.cad_preview = CrossSectionCADWidget()
-        self.cad_preview.scale_factor = 0.85
-        self.cad_preview.setMinimumHeight(90)  # Allows layout to fit it smoothly without scrollbars
+        self.cad_preview.scale_factor = 0.65
+        self.cad_preview.setMinimumHeight(200) 
 
         cad_scroll.setWidget(self.cad_preview)
         diagram_layout.addWidget(cad_scroll)
@@ -329,7 +327,7 @@ class TypicalSectionDetailsTab(QWidget):
         params = {}
 
         if hasattr(self, "no_of_girders") and self.no_of_girders.text():
-            params['num_girders'] = int(self.no_of_girders.text())
+            params['num_girders'] = int(float(self.no_of_girders.text()))
 
         if hasattr(self, "girder_spacing") and self.girder_spacing.text():
             params['girder_spacing'] = float(self.girder_spacing.text()) * 1000
@@ -369,8 +367,16 @@ class TypicalSectionDetailsTab(QWidget):
 
         if hasattr(self, "median_height") and self.median_height.text():
             params["median_height"] = float(self.median_height.text()) * 1000
+            
+        # ---- Crash Barrier ----
+        if hasattr(self, "crash_barrier_width") and self.crash_barrier_width.text():
+            params["crash_barrier_width"] = float(self.crash_barrier_width.text()) * 1000
+
+        if hasattr(self, "crash_barrier_height") and self.crash_barrier_height.text():
+            params["crash_barrier_height"] = float(self.crash_barrier_height.text()) * 1000
 
         # ---- Railing ----
+
         if hasattr(self, "railing_type"):
             params["railing_type"] = self.railing_type.currentText()
 
@@ -1182,8 +1188,9 @@ class TypicalSectionDetailsTab(QWidget):
         if is_rcc and geom:
             _set(self.crash_barrier_density, f"{DEFAULT_CONCRETE_DENSITY:.1f}")
 
-            if "top_width" in geom:
-                _set(self.crash_barrier_width, f"{geom['top_width'] / 1000:.2f}")
+            if "bottom_width" in geom:
+                _set(self.crash_barrier_width, f"{geom['bottom_width'] / 1000:.2f}")
+
 
             if "total_height" in geom:
                 _set(self.crash_barrier_height, f"{geom['total_height'] / 1000:.2f}")
@@ -1508,6 +1515,8 @@ class TypicalSectionDetailsTab(QWidget):
     def recalculate_girders(self):
         self._update_overall_bridge_width_display()
         self._solve_layout("width")
+        self._update_cad_preview()
+
 
     def on_girder_spacing_changed(self):
         if self.updating_fields:

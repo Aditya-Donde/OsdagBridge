@@ -28,7 +28,7 @@ class CrossSectionCADWidget(QWidget):
     STIFFENER_COLOR = QColor(79, 78, 70) 
     CROSS_BRACING_COLOR = QColor(235, 236, 211)
     RAILING_COLOR = QColor(210, 210, 210)
-    BARRIER_COLOR = QColor(210, 210, 210)
+    BARRIER_COLOR = QColor(220, 220, 220)
 
     
     END_DIAPHRAGM_COLOR = QColor(134, 134, 100)
@@ -574,12 +574,12 @@ class CrossSectionCADWidget(QWidget):
             # Dimension line is BELOW the figure -> text ABOVE line
                  text_y = y1 - 6 + text_offset
             
-            font = QFont('Arial', 9, QFont.Bold)
+            font = QFont('Arial', 9, QFont.Normal)
             metrics = painter.fontMetrics()
             text_width = metrics.boundingRect(text).width()
             
             self.draw_text_with_background(painter, text_x - text_width/2, text_y, text, 
-                                        QColor(255, 255, 255, 255), QColor(0, 0, 0), 9, True)
+                                        QColor(255, 255, 255, 255), QColor(0, 0, 0), 9, False)
         else:
             top_arrow = [
                 QPointF(x1, y1),
@@ -616,7 +616,7 @@ class CrossSectionCADWidget(QWidget):
 
             
             self.draw_text_with_background(painter, text_x, text_y, text,
-                                        QColor(255, 255, 255, 255), QColor(0, 0, 0), 9, True)
+                                        QColor(255, 255, 255, 255), QColor(0, 0, 0), 9, False)
             painter.restore()
 
     
@@ -656,7 +656,7 @@ class CrossSectionCADWidget(QWidget):
                 text_x = (x1 + x2) / 2
                 text_y = y1 + text_offset + 10
                 
-            font = QFont('Arial', 9, QFont.Bold)
+            font = QFont('Arial', 9, QFont.Normal)
             painter.setFont(font)
             metrics = painter.fontMetrics()
             text_width = metrics.boundingRect(text).width()
@@ -709,7 +709,7 @@ class CrossSectionCADWidget(QWidget):
         painter.setBrush(QBrush(QColor(0, 0, 0)))
         painter.drawPolygon(QPolygonF(arrow_points))
         
-        self.draw_text_with_background(painter, from_x - 5, from_y - 5, text, bg_color, text_color, 9, True)
+        self.draw_text_with_background(painter, from_x - 5, from_y - 5, text, bg_color, text_color, 9, False)
     
     def draw_clean_leader_line(self, painter, target_x, target_y, label_x, label_y, text, 
                                 text_color=QColor(0, 0, 0), line_color=QColor(100, 100, 100)):
@@ -725,7 +725,7 @@ class CrossSectionCADWidget(QWidget):
         painter.drawEllipse(QPointF(target_x, target_y), 3, 3)
         
         # Draw text at label position
-        font = QFont('Arial', 9, QFont.Bold)
+        font = QFont('Arial', 9, QFont.Normal)
         painter.setFont(font)
         metrics = painter.fontMetrics()
         text_width = metrics.boundingRect(text).width()
@@ -741,7 +741,7 @@ class CrossSectionCADWidget(QWidget):
         
         # Draw text with background
         self.draw_text_with_background(painter, text_x, text_y, text,
-                                       QColor(255, 255, 255, 255), text_color, 9, True)
+                                       QColor(255, 255, 255, 255), text_color, 9, False)
     
     def compute_deck_total_width(self):
 
@@ -862,39 +862,42 @@ class CrossSectionCADWidget(QWidget):
         
         corner_radius = min(outer_w * 0.05, 4)
         
-        painter.setBrush(QBrush(QColor(126,126,126) ))
+        painter.setBrush(QBrush(QColor(220, 220, 220))) # Light grey base
         painter.setPen(QPen(QColor(34, 34, 34), max(1.5, scale * 2)))
         base_rect = QRectF(rect_x, base_top_y, outer_w, base_h)
         painter.drawRect(base_rect)
         
-        painter.setBrush(QBrush(QColor(126,126,126) ))
+        painter.setBrush(QBrush(QColor(220, 220, 220))) # Light grey post body
         painter.setPen(QPen(QColor(34, 34, 34), max(1.5, scale * 2)))
         post_rect = QRectF(rect_x, post_top_y, outer_w, post_h)
         painter.drawRoundedRect(post_rect, corner_radius, corner_radius)
         
         inner_x = rect_x + wall_t
-        inner_top_margin = post_h * 0.08
-        inner_bottom_margin = post_h * 0.05
+        inner_top_margin = post_h * 0.03
+        inner_bottom_margin = post_h * 0.03
         inner_height = post_h - inner_top_margin - inner_bottom_margin
         
         if inner_w > 3 and inner_height > 5:
-            painter.setBrush(QBrush(QColor(220, 220, 220)))
-            painter.setPen(QPen(QColor(120, 120, 120), max(1, scale)))
+            # Removed inner rectangle lining as requested
             
-            inner_rect = QRectF(inner_x, post_top_y + inner_top_margin, inner_w, inner_height)
-            painter.drawRoundedRect(inner_rect, corner_radius * 0.5, corner_radius * 0.5)
+            n_voids = 3
+            void_w = inner_w * 0.7
+            void_h = void_w # Make them squares
             
-            n_rails = 4
-            rail_spacing = inner_height / (n_rails + 1)
-            rail_height = max(2, 3 * scale)
+            # Vertical spacing to distribute voids evenly
+            void_spacing = (inner_height - n_voids * void_h) / (n_voids + 1)
             
-            painter.setBrush(QBrush(QColor(180, 180, 180)))
-            painter.setPen(QPen(QColor(100, 100, 100), max(0.5, scale * 0.5)))
+            painter.setBrush(QBrush(QColor(170, 170, 170))) # Dark grey
+            painter.setPen(QPen(QColor(30, 30, 30), max(1, scale)))
             
-            for i in range(1, n_rails + 1):
-                rail_y = post_top_y + inner_top_margin + i * rail_spacing - rail_height/2
-                rail_rect = QRectF(inner_x + 2, rail_y, inner_w - 4, rail_height)
-                painter.drawRect(rail_rect)
+            for i in range(n_voids):
+                v_y = post_top_y + inner_top_margin + (i + 1) * void_spacing + i * void_h
+                v_x = inner_x + (inner_w - void_w) / 2
+                void_rect = QRectF(v_x, v_y, void_w, void_h)
+                
+                # Apply rounded corners to voids
+                v_radius = corner_radius * 0.8
+                painter.drawRoundedRect(void_rect, v_radius, v_radius)
         
         return (rect_x, post_top_y, rect_x + outer_w, y_base, outer_w)
 
@@ -1207,7 +1210,7 @@ class CrossSectionCADWidget(QWidget):
         STIFFENER_COLOR = QColor(210, 210, 205)
         CROSS_BRACING_COLOR = QColor(250, 240, 211)
         RAILING_COLOR = QColor(225, 225, 225)
-        BARRIER_COLOR = QColor(225, 225, 225)
+        BARRIER_COLOR = QColor(220, 220, 220)
 
 
         MEDIAN_GREY = QColor(221, 221, 221) 
@@ -1715,9 +1718,6 @@ class CrossSectionCADWidget(QWidget):
         fp_thick_px = self.params['footpath_thickness'] * scale
         deck_thick_px = self.params['deck_thickness'] * scale
         
-        CRASH_BARRIER_VISUAL_WIDTH = 350.0  # BOTTOM_WIDTH
-        crash_barrier_visual_px = CRASH_BARRIER_VISUAL_WIDTH * scale
-        
         # Calculate barrier positions if not passed
         if crash_barrier_width_px is None:
             crash_barrier_width_px = self.params['crash_barrier_width'] * scale
@@ -1726,16 +1726,17 @@ class CrossSectionCADWidget(QWidget):
         if right_barrier_end_x is None:
             right_barrier_end_x = right_barrier_x + crash_barrier_width_px
         
-        # Left barrier starts at left_barrier_x and extends RIGHT by crash_barrier_visual_px
-        left_barrier_visual_end = left_barrier_x + crash_barrier_visual_px
+        # Left barrier starts at left_barrier_x and extends RIGHT by crash_barrier_width_px
+        left_barrier_visual_end = left_barrier_x + crash_barrier_width_px
         
-        # Right barrier ENDS at right_barrier_end_x and extends LEFT by crash_barrier_visual_px
-        right_barrier_visual_start = right_barrier_end_x - crash_barrier_visual_px
+        # Right barrier ENDS at right_barrier_end_x and extends LEFT by crash_barrier_width_px
+        right_barrier_visual_start = right_barrier_end_x - crash_barrier_width_px
+
         
         # DIMENSION LEVELS (Bottom)
         Y_OVERHANG = base_y + 35
-        Y_GIRDER_SPACING = base_y + 70
-        Y_OVERALL = base_y + 105
+        Y_GIRDER_SPACING = base_y + 35
+        Y_OVERALL = base_y + 70
         total_width_m = (deck_right_x - deck_left_x) / scale / 1000.0
 
         self.draw_dimension_arrow(
@@ -1752,7 +1753,7 @@ class CrossSectionCADWidget(QWidget):
         if self.show_carriageway_values:
             label_text += f" = {total_width_m:.2f} m"
 
-        font = QFont('Arial', 9, QFont.Bold)
+        font = QFont('Arial', 9, QFont.Normal)
         painter.setFont(font)
         metrics = painter.fontMetrics()
         text_w = metrics.boundingRect(label_text).width()
@@ -1766,7 +1767,7 @@ class CrossSectionCADWidget(QWidget):
             QColor(255, 255, 255, 255),
             QColor(0, 0, 0),
             9,
-            True
+            False
         )
 
         # LEVEL 2: Footpath dimensions
@@ -1880,8 +1881,14 @@ class CrossSectionCADWidget(QWidget):
         
         # Girder spacing
         if n > 1 and len(positions) >= 2:
-            x_left = positions[0]
-            x_right = positions[1]
+            # Shift to second pair if available to avoid overlap with overhang label
+            if n > 2:
+                x_left = positions[1]
+                x_right = positions[2]
+            else:
+                x_left = positions[0]
+                x_right = positions[1]
+                
             gs_m = self.params['girder_spacing'] / 1000
             label_gs = "Girder Spacing"
             if self.show_carriageway_values:
@@ -1956,7 +1963,7 @@ class CrossSectionCADWidget(QWidget):
             text = "Deck Thickness"
             if self.show_carriageway_values:
                 text += f" = {deck_t_mm:.0f} mm"
-            font = QFont('Arial', 9, QFont.Bold)
+            font = QFont('Arial', 9, QFont.Normal)
             painter.setFont(font)
             metrics = painter.fontMetrics()
             text_width = metrics.boundingRect(text).width()
@@ -1964,7 +1971,7 @@ class CrossSectionCADWidget(QWidget):
             text_y = deck_top_y - 8
             
             self.draw_text_with_background(painter, text_x, text_y, text,
-                                        QColor(255, 255, 255, 255), QColor(0, 0, 0), 9, True)
+                                        QColor(255, 255, 255, 255), QColor(0, 0, 0), 9, False)
     def add_cross_section_hover_labels(self, painter, carriageway_start_x, carriageway_end_x,
                     left_barrier_x, right_barrier_x, deck_top_y, deck_bottom_y,
                     deck_thick_px, positions, base_y, scale, n, fp_config,
@@ -2110,7 +2117,7 @@ class CrossSectionCADWidget(QWidget):
             rect, name, target_x, target_y, label_type, extra = components[self.hovered_label_index]
             
             if label_type == 'on_figure_top':
-                font = QFont('Arial', 9, QFont.Bold)
+                font = QFont('Arial', 9, QFont.Normal)
                 painter.setFont(font)
                 metrics = painter.fontMetrics()
                 text_width = metrics.boundingRect(name).width()
@@ -2120,7 +2127,7 @@ class CrossSectionCADWidget(QWidget):
                 text_y = target_y - 5
                 
                 self.draw_text_with_background(painter, text_x, text_y, name,
-                                            QColor(255, 255, 255, 220), QColor(60, 60, 60), 9, True)
+                                            QColor(255, 255, 255, 220), QColor(60, 60, 60), 9, False)
             
             elif label_type == 'straight_line':
                 painter.setPen(QPen(QColor(100, 100, 100), 1.0, Qt.DotLine))
@@ -2130,7 +2137,7 @@ class CrossSectionCADWidget(QWidget):
                 painter.setBrush(Qt.NoBrush)
                 painter.drawEllipse(QPointF(target_x, target_y), 3, 3)
                 
-                font = QFont('Arial', 9, QFont.Bold)
+                font = QFont('Arial', 9, QFont.Normal)
                 painter.setFont(font)
                 metrics = painter.fontMetrics()
                 text_width = metrics.boundingRect(name).width()
@@ -2139,7 +2146,7 @@ class CrossSectionCADWidget(QWidget):
                 text_y = label_line_y + 6
                 
                 self.draw_text_with_background(painter, text_x, text_y, name,
-                                            QColor(255, 255, 255, 255), QColor(60, 60, 60), 9, True)
+                                            QColor(255, 255, 255, 255), QColor(60, 60, 60), 9, False)
             
             elif label_type == 'tilted_line_left':
                 label_x = target_x - 25
@@ -2152,7 +2159,7 @@ class CrossSectionCADWidget(QWidget):
                 painter.setBrush(Qt.NoBrush)
                 painter.drawEllipse(QPointF(target_x, target_y), 3, 3)
                 
-                font = QFont('Arial', 9, QFont.Bold)
+                font = QFont('Arial', 9, QFont.Normal)
                 painter.setFont(font)
                 metrics = painter.fontMetrics()
                 text_width = metrics.boundingRect(name).width()
@@ -2161,7 +2168,7 @@ class CrossSectionCADWidget(QWidget):
                 text_y = label_y + 4
                 
                 self.draw_text_with_background(painter, text_x, text_y, name,
-                                            QColor(255, 255, 255, 255), QColor(60, 60, 60), 9, True)
+                                            QColor(255, 255, 255, 255), QColor(60, 60, 60), 9, False)
             
             elif label_type == 'lower_pointer':
                 label_y = target_y + 35
@@ -2205,7 +2212,7 @@ class CrossSectionCADWidget(QWidget):
         painter.drawPolygon(QPolygonF(bottom_arrow))
         
         # TEXT PART (multi-line)
-        font = QFont('Arial', 9, QFont.Bold)
+        font = QFont('Arial', 9, QFont.Normal)
         painter.setFont(font)
         metrics = painter.fontMetrics()
         
@@ -2383,7 +2390,7 @@ class CrossSectionCADWidget(QWidget):
         if not geo:
             return
 
-        barrier_color = QColor(126, 126, 126)
+        barrier_color = QColor(220, 220, 220)
         if self.hovered_element == 'crash_barrier':
             barrier_color = QColor(255, 250, 220)
 
@@ -2406,8 +2413,8 @@ class CrossSectionCADWidget(QWidget):
             
             # Reference shape is High Containment (bottom_width=350 mm).
             # All offsets scale proportionally to the actual bottom_width.
-            shape_scale  = BOTTOM_WIDTH / 350.0
-            right_at_mid = 250 * scale * shape_scale   # outer wall x at inflection
+            shape_scale  = BOTTOM_WIDTH / 525.0
+            right_at_mid = 300 * scale * shape_scale   # outer wall x at inflection
             left_at_top  = 50  * scale * shape_scale   # inner wall x at top (lean)
             right_at_top = 225 * scale * shape_scale   # outer wall x at top
 
