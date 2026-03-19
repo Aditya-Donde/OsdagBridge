@@ -721,6 +721,7 @@ class InputDock(QWidget):
                 pass
 
         dlg.finished.connect(self._on_additional_inputs_closed)
+        dlg.values_changed.connect(self._on_additional_inputs_values_changed)
 
         # exec_() blocks until dialog closes; _on_additional_inputs_closed fires
         # via finished signal (inside exec) and sets self.additional_inputs=None,
@@ -751,6 +752,19 @@ class InputDock(QWidget):
         except Exception:
             pass
         self.additional_inputs = None
+
+    def _on_additional_inputs_values_changed(self, values: dict):
+        """Update dicts in real-time while the dialog is still open."""
+        if not values:
+            return
+        self.additional_input_values = values
+        if hasattr(self.parent, "input_dict"):
+            for top_tab_data in values.values():
+                if isinstance(top_tab_data, dict):
+                    for sub_tab_data in top_tab_data.values():
+                        if isinstance(sub_tab_data, dict):
+                            self.parent.input_dict.update(sub_tab_data)
+        self.input_value_changed.emit()
 
     # ══════════════════════════════════════════════════════════════════════════
     # Lock / unlock

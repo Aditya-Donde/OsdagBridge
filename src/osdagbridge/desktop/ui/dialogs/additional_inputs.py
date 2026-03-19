@@ -16,7 +16,7 @@ from PySide6.QtWidgets import (
     QComboBox, QPushButton, QCheckBox, QMessageBox, QSizePolicy,
     QFrame, QDialog, QSizeGrip,
 )
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QDoubleValidator
 
 from osdagbridge.core.utils.common import *
@@ -118,6 +118,8 @@ class AdditionalInputs(QDialog):
     anywhere in this class.
     """
 
+    values_changed = Signal(dict)  # emitted whenever any field changes
+
     def __init__(self, footpath_value="None", carriageway_width=7.5, parent=None):
         super().__init__(parent)
         self.setObjectName("AdditionalInputs")
@@ -190,6 +192,7 @@ class AdditionalInputs(QDialog):
             setattr(self, f"{cfg['id']}_tab", widget)
             self.tabs.addTab(widget, cfg["label"])
         self._post_tab_wiring()
+        self._connect_value_watchers()
 
     def _post_tab_wiring(self):
         """Cross-tab connections that require both tabs to already exist."""
@@ -221,17 +224,11 @@ class AdditionalInputs(QDialog):
         self.defaults_button.clicked.connect(self._apply_defaults)
         hl.addWidget(self.defaults_button)
 
-        self.apply_button = QPushButton("Apply")
-        self.apply_button.setStyleSheet(_BTN_STYLE)
-        self.apply_button.setToolTip("Save inputs without closing the dialog")
-        self.apply_button.clicked.connect(self._save_inputs)
-        hl.addWidget(self.apply_button)
-
-        self.close_button = QPushButton("Save && Close")
-        self.close_button.setStyleSheet(_BTN_PRIMARY_STYLE)
-        self.close_button.setToolTip("Save inputs and close the dialog")
-        self.close_button.clicked.connect(self._save_and_close)
-        hl.addWidget(self.close_button)
+        self.save_button = QPushButton("Save")
+        self.save_button.setStyleSheet(_BTN_PRIMARY_STYLE)
+        self.save_button.setToolTip("Save inputs and move to next tab")
+        self.save_button.clicked.connect(self._save_and_next)
+        hl.addWidget(self.save_button)
 
         hl.addStretch()
         return bar
@@ -277,9 +274,31 @@ class AdditionalInputs(QDialog):
         except Exception:
             pass
 
-    def _save_and_close(self):
+    def _save_and_next(self):
+        """Save current tab then advance to the next tab; close on the last tab."""
         self._save_inputs()
-        self.accept()
+        current = self.tabs.currentIndex()
+        total   = self.tabs.count()
+        if current < total - 1:
+            self.tabs.setCurrentIndex(current + 1)
+        else:
+            self.accept()
+
+    def _connect_value_watchers(self):
+        """Connect every input widget's change signal to _on_any_value_changed."""
+        for le in self.findChildren(QLineEdit):
+            le.textChanged.connect(self._on_any_value_changed)
+        for cb in self.findChildren(QComboBox):
+            cb.currentTextChanged.connect(self._on_any_value_changed)
+        for ck in self.findChildren(QCheckBox):
+            ck.stateChanged.connect(self._on_any_value_changed)
+
+    def _on_any_value_changed(self, *args):
+        """Collect all current values and emit so callers can update in real-time."""
+        try:
+            self.values_changed.emit(self.get_all_values())
+        except Exception:
+            pass
 
     # ── Value collection ──────────────────────────────────────────────────────
 

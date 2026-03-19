@@ -261,7 +261,8 @@ class CustomWindow(QWidget):
                 # Sync back into input_dict so the rest of the codebase sees the
                 # full picture via self.input_dict as well.
                 self.input_dict.update(complete_values)
-            print(f"@@input_dictionary: {self.input_dict}")
+            from pprint import pprint  
+            pprint(f"@@input_dictionary: {self.input_dict}")
         elif trigger == "Save":
             # Collect all the values from input Dock and save to osi/csv
             pass
