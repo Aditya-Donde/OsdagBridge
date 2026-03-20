@@ -6,6 +6,10 @@ from copy import deepcopy
 
 from osdagbridge.core.utils.codes.irc5_2015 import IRC5_2015
 from osdagbridge.core.utils.codes.keyfile import (
+    GAMMA_M0_STEEL,
+    GAMMA_M1_STEEL_ULTIMATE,
+    GAMMA_M_REINFORCEMENT,
+    GAMMA_M_SHEAR_CONCRETE,
     KEY_CRASH_BARRIER_TYPE,
     KEY_FOOTPATH,
     KEY_MEDIAN_TYPE,
@@ -34,7 +38,7 @@ from .initial_sizing import (
     MAX_DEPTH_SPAN_RATIO as IS_MAX_DEPTH_SPAN_RATIO,
 )
 
-# Workflow/runtime defaults used by plategirderbridge.py
+# Workflow / Runtime Defaults
 DEFAULT_STRUCTURE_NAME = "plate_girder_bridge"
 DEFAULT_SPAN_M = 33.5
 DEFAULT_CARRIAGEWAY_WIDTH_M = 10.0
@@ -45,100 +49,8 @@ DEFAULT_GIRDER_SYMMETRY = "Girder Symmetric"
 DEFAULT_SKEW_ANGLE_DEG = 0.0
 DEFAULT_GEOMETRY_TOLERANCE = 1e-3
 
-# CAD defaults used by cad_generator.py
-DEFAULT_CAD_CHAMFER_LENGTH_MM = 40
-DEFAULT_IRC_RIGID_BARRIER_BASE_WIDTH_MM = 450
-DEFAULT_IRC_METALLIC_BARRIER_BASE_WIDTH_MM = 550
-DEFAULT_STEEL_RAILING_WIDTH_MM = 200
-DEFAULT_RCC_RAILING_WIDTH_MM = 275
-
-DEFAULT_CAD_SPAN_LENGTH_L = 25000
-DEFAULT_CAD_GIRDER_SECTION_D = 900
-DEFAULT_CAD_GIRDER_SECTION_BF = 500
-DEFAULT_CAD_GIRDER_SECTION_BF_B = 500
-DEFAULT_CAD_GIRDER_SECTION_TF = 260
-DEFAULT_CAD_GIRDER_SECTION_TF_B = 260
-DEFAULT_CAD_GIRDER_SECTION_TW = 100
-DEFAULT_CAD_NUM_GIRDERS = 5
-DEFAULT_CAD_GIRDER_SPACING = 2750
-DEFAULT_CAD_SKEW_ANGLE = 0
-
-DEFAULT_CAD_CARRIAGEWAY_WIDTH = 12000
-DEFAULT_CAD_DECK_THICKNESS = 400
-DEFAULT_CAD_FOOTPATH_CONFIG = "BOTH"
-DEFAULT_CAD_FOOTPATH_WIDTH = 1500
-DEFAULT_CAD_RAILING_WIDTH = 300
-
-DEFAULT_CAD_BARRIER_TYPE = "Semi-Rigid"
-DEFAULT_CAD_CRASH_BARRIER_SUBTYPE = "Double W-beam"
-DEFAULT_CAD_ENABLE_MEDIAN = True
-DEFAULT_CAD_MEDIAN_TYPE = "Metallic Crash Barrier"
-DEFAULT_CAD_RAIL_COUNT = 3
-DEFAULT_CAD_RAILING_TYPE = "rcc"
-
-DEFAULT_CAD_INCLUDE_INTERMEDIATE_STIFFENERS = True
-DEFAULT_CAD_INTERMEDIATE_STIFFENER_SPACING = 2000
-DEFAULT_CAD_INTERMEDIATE_STIFFENER_THICKNESS = 20
-DEFAULT_CAD_INTERMEDIATE_STIFFENER_OUTSTAND = None
-DEFAULT_CAD_NUM_END_STIFFENER_PAIRS = 4
-DEFAULT_CAD_END_STIFFENER_THICKNESS = 30
-DEFAULT_CAD_END_STIFFENER_OUTSTAND = None
-DEFAULT_CAD_INCLUDE_LONGITUDINAL_STIFFENERS = True
-DEFAULT_CAD_NUM_LONGITUDINAL_STIFFENERS = 2
-DEFAULT_CAD_LONGITUDINAL_STIFFENER_THICKNESS = 20
-DEFAULT_CAD_LONGITUDINAL_STIFFENER_OUTSTAND = None
-
-DEFAULT_CAD_CROSS_BRACING_SPACING = 4000
-DEFAULT_CAD_BRACING_TYPE = "X"
-DEFAULT_CAD_X_BRACKET_OPTION = "BOTH"
-DEFAULT_CAD_K_TOP_BRACKET = True
-DEFAULT_CAD_DIAGONAL_SECTION_TYPE = "ANGLE"
-DEFAULT_CAD_DIAGONAL_SECTION_LEG_H = 100
-DEFAULT_CAD_DIAGONAL_SECTION_LEG_W = 50
-DEFAULT_CAD_DIAGONAL_SECTION_CONNECTION_TYPE = "LONGER_LEG"
-DEFAULT_CAD_DIAGONAL_THICKNESS = 5
-
-DEFAULT_CAD_TOP_CHORD_SECTION_TYPE = "DOUBLE_CHANNEL"
-DEFAULT_CAD_TOP_CHORD_SECTION_LEG_H = 80
-DEFAULT_CAD_TOP_CHORD_SECTION_LEG_W = 40
-DEFAULT_CAD_TOP_CHORD_SECTION_CONNECTION_TYPE = "LONGER_LEG"
-DEFAULT_CAD_TOP_CHORD_THICKNESS = 5
-
-DEFAULT_CAD_BOTTOM_CHORD_SECTION_TYPE = "ANGLE"
-DEFAULT_CAD_BOTTOM_CHORD_SECTION_LEG_H = 80
-DEFAULT_CAD_BOTTOM_CHORD_SECTION_LEG_W = 40
-DEFAULT_CAD_BOTTOM_CHORD_SECTION_CONNECTION_TYPE = "LONGER_LEG"
-DEFAULT_CAD_BOTTOM_CHORD_THICKNESS = 5
-
-DEFAULT_CAD_END_DIAPHRAGM_TYPE = "Cross Bracing"
-DEFAULT_CAD_END_DIAPHRAGM_SPACING = 100
-DEFAULT_CAD_END_DIAPHRAGM_BRACING_TYPE = "K"
-DEFAULT_CAD_END_DIAPHRAGM_DIAGONAL_SECTION_TYPE = "ANGLE"
-DEFAULT_CAD_END_DIAPHRAGM_DIAGONAL_SECTION_LEG_H = 100
-DEFAULT_CAD_END_DIAPHRAGM_DIAGONAL_SECTION_LEG_W = 50
-DEFAULT_CAD_END_DIAPHRAGM_DIAGONAL_SECTION_CONNECTION_TYPE = "LONGER_LEG"
-DEFAULT_CAD_END_DIAPHRAGM_DIAGONAL_THICKNESS = 5
-
-DEFAULT_CAD_END_DIAPHRAGM_TOP_CHORD_SECTION_TYPE = "CHANNEL"
-DEFAULT_CAD_END_DIAPHRAGM_TOP_CHORD_SECTION_LEG_H = 80
-DEFAULT_CAD_END_DIAPHRAGM_TOP_CHORD_SECTION_LEG_W = 40
-DEFAULT_CAD_END_DIAPHRAGM_TOP_CHORD_SECTION_CONNECTION_TYPE = "LONGER_LEG"
-DEFAULT_CAD_END_DIAPHRAGM_TOP_CHORD_THICKNESS = 5
-
-DEFAULT_CAD_END_DIAPHRAGM_BOTTOM_CHORD_SECTION_TYPE = "ANGLE"
-DEFAULT_CAD_END_DIAPHRAGM_BOTTOM_CHORD_SECTION_LEG_H = 80
-DEFAULT_CAD_END_DIAPHRAGM_BOTTOM_CHORD_SECTION_LEG_W = 40
-DEFAULT_CAD_END_DIAPHRAGM_BOTTOM_CHORD_SECTION_CONNECTION_TYPE = "LONGER_LEG"
-DEFAULT_CAD_END_DIAPHRAGM_BOTTOM_CHORD_THICKNESS = 5
-
-DEFAULT_CAD_END_DIAPHRAGM_SECTION = "I_SECTION"
-DEFAULT_CAD_END_DIAPHRAGM_DEPTH = 800
-DEFAULT_CAD_END_DIAPHRAGM_FLANGE_WIDTH = 250
-DEFAULT_CAD_END_DIAPHRAGM_WEB_THICKNESS = 12
-DEFAULT_CAD_END_DIAPHRAGM_FLANGE_THICKNESS = 100
-
-# Dictionary-driven Additional-input defaults used by ui_fields_additional_input.py.
-# All layout values are sourced from initial_sizing.py to keep UI/backend in sync.
+# Additional Inputs Defaults
+# Layout
 AI_LAYOUT_DEFAULTS = {
     # defaults
     "girder_spacing_m": float(DEFAULT_GIRDER_SPACING),
@@ -159,21 +71,36 @@ AI_LAYOUT_DEFAULTS = {
 }
 
 AI_DEFAULTS: dict[str, dict[str, object]] = {
+    # Layout
     "layout": deepcopy(AI_LAYOUT_DEFAULTS),
+    # Crash Barrier
     "crash_barrier": {
+        "type": "IRC 5 - RCC Crash Barrier",
         "width_m": float(DEFAULT_CRASH_BARRIER_WIDTH),
         "post_spacing_m": "1",
     },
+    # Median
     "median": {
+        "type": "IRC 5 - Raised Kerb",
         "post_spacing_m": "1",
     },
+    # Railing
     "railing": {
+        "type": "IRC 5 - RCC Railing",
+        "load_mode": "Automatic (IRC 6)",
         "width_mm": f"{DEFAULT_RAILING_WIDTH * 1000:.0f}",
     },
+    # Wearing Course
     "wearing_course": {
+        "material": "Concrete",
         "density_kn_per_m3": "24.0",
         "thickness_mm": "50",
     },
+    # Lane Details
+    "lane_details": {
+        "lane_count": "2",
+    },
+    # Permanent Load
     "permanent_load": {
         "include_self_weight": "Yes",
         "self_weight_factor": "1.00",
@@ -183,6 +110,7 @@ AI_DEFAULTS: dict[str, dict[str, object]] = {
         "include_median": "Yes",
         "include_railing": "Yes",
     },
+    # Live Load
     "live_load": {
         "irc_vehicles_checked": True,
         "braking_vehicles_checked": True,
@@ -190,16 +118,19 @@ AI_DEFAULTS: dict[str, dict[str, object]] = {
         "footpath_mode": "Automatic",
         "footpath_pressure_kn_per_mm2": "5.00",
     },
+    # Seismic Load
     "seismic_load": {
         "zone": "II",
         "importance_factor": "1.0",
-        "soil_type": "Type I – Rocky or Hard Soil",
+        "soil_type": "Type I \u2013 Rocky or Hard Soil",
         "damping_percent": "2",
         "response_reduction_factor": "1",
         "dead_load_mode": "Automatic",
         "live_load_mode": "Automatic",
     },
+    # Wind Load
     "wind_load": {
+        "basic_wind_speed": "33",
         "avg_exposed_height_m": "10",
         "terrain_type": "Plain Terrain",
         "site_topography": "Flat",
@@ -216,21 +147,57 @@ AI_DEFAULTS: dict[str, dict[str, object]] = {
         "ecc_deck_mode": "Automatic",
         "ll_ecc_mode": "Automatic",
     },
+    # Temperature Load
     "temperature_load": {
+        "highest_max_temp": "50",
+        "lowest_min_temp": "10",
         "thermal_coeff_steel_per_c": "12.0e-6",
         "thermal_coeff_rcc_per_c": "12.0e-6",
     },
+    # Support Conditions
     "support_conditions": {
         "left": "Fixed",
         "right": "Pinned",
         "bearing_length": "0",
     },
+    # Design Options
     "design_options": {
         "construction_stage": "Yes",
         "reinforcement_size": "12 mm",
         "reinforcement_material": "Fe 500",
+        "shear_stud_material": "Fe 410",
+        "shear_stud_diameter": "22",
+        "shear_stud_height": "100",
     },
+    # Design Options (Cont.)
+    "design_options_cont": {
+        "gamma_c_basic": "1.50",
+        "gamma_c_accidental": "1.20",
+        "gamma_m0": f"{GAMMA_M0_STEEL}",
+        "gamma_m1": f"{GAMMA_M1_STEEL_ULTIMATE}",
+        "gamma_s": f"{GAMMA_M_REINFORCEMENT}",
+        "gamma_v": f"{GAMMA_M_SHEAR_CONCRETE}",
+        "gamma_flt": "1.15",
+        "gamma_mf": "1.35",
+        "load_cycles": "2000000",
+        "k1": "1.0",
+        "k3": "1.0",
+        "k4": "1.0",
+        "k6": "1.0",
+        "k3_second": "1.0",
+        "k4_second": "1.0",
+        "limit_l": f"{DEFAULT_SPAN_M}",
+    },
+    # Girder Details
     "girder_details": {
+        "type": "Welded",
+        "span": "Full Length",
+        "design": "Optimized",
+        "symmetry": "Girder Symmetric",
+        "torsional_restraint": "Fully Restrained",
+        "warping_restraint": "Both Flanges Restrained",
+        "web_type": "Thin Web with ITS",
+        "is_section": "ISMB 500",
         "depth_mode": "Optimized",
         "top_flange_width_mode": "Optimized",
         "top_flange_thickness_mode": "All",
@@ -241,6 +208,7 @@ AI_DEFAULTS: dict[str, dict[str, object]] = {
 }
 
 
+# get_ai_defaults() accessor
 def get_ai_defaults(section: str | None = None) -> dict[str, object] | dict[str, dict[str, object]]:
     """Return dictionary-based Additional Inputs defaults."""
     if section is None:
@@ -248,7 +216,9 @@ def get_ai_defaults(section: str | None = None) -> dict[str, object] | dict[str,
     return deepcopy(AI_DEFAULTS.get(section, {}))
 
 
-# Compatibility aliases consumed across UI/CAD modules.
+# Compatibility Aliases
+
+# Layout
 DEFAULT_AI_LAYOUT_GIRDER_SPACING_M = AI_DEFAULTS["layout"]["girder_spacing_m"]
 DEFAULT_AI_LAYOUT_NO_OF_GIRDERS = AI_DEFAULTS["layout"]["no_of_girders"]
 DEFAULT_AI_LAYOUT_DECK_OVERHANG_RATIO = AI_DEFAULTS["layout"]["deck_overhang_ratio"]
@@ -264,14 +234,29 @@ DEFAULT_AI_LAYOUT_DEFAULT_DEPTH_SPAN_RATIO = AI_DEFAULTS["layout"]["default_dept
 DEFAULT_AI_LAYOUT_MIN_DEPTH_SPAN_RATIO = AI_DEFAULTS["layout"]["min_depth_span_ratio"]
 DEFAULT_AI_LAYOUT_MAX_DEPTH_SPAN_RATIO = AI_DEFAULTS["layout"]["max_depth_span_ratio"]
 
+# Crash Barrier
+DEFAULT_AI_CRASH_BARRIER_TYPE = AI_DEFAULTS["crash_barrier"]["type"]
 DEFAULT_AI_CRASH_BARRIER_WIDTH_M = AI_DEFAULTS["crash_barrier"]["width_m"]
 DEFAULT_AI_CRASH_BARRIER_POST_SPACING_M = AI_DEFAULTS["crash_barrier"]["post_spacing_m"]
+
+# Median
+DEFAULT_AI_MEDIAN_TYPE = AI_DEFAULTS["median"]["type"]
 DEFAULT_AI_MEDIAN_POST_SPACING_M = AI_DEFAULTS["median"]["post_spacing_m"]
+
+# Railing
+DEFAULT_AI_RAILING_TYPE = AI_DEFAULTS["railing"]["type"]
+DEFAULT_AI_RAILING_LOAD_MODE = AI_DEFAULTS["railing"]["load_mode"]
 DEFAULT_AI_RAILING_WIDTH_MM = AI_DEFAULTS["railing"]["width_mm"]
 
+# Wearing Course
+DEFAULT_AI_WEARING_MATERIAL = AI_DEFAULTS["wearing_course"]["material"]
 DEFAULT_AI_WEARING_DENSITY_KN_PER_M3 = AI_DEFAULTS["wearing_course"]["density_kn_per_m3"]
 DEFAULT_AI_WEARING_THICKNESS_MM = AI_DEFAULTS["wearing_course"]["thickness_mm"]
 
+# Lane Details
+DEFAULT_AI_LANE_COUNT = AI_DEFAULTS["lane_details"]["lane_count"]
+
+# Permanent Load
 DEFAULT_AI_PERM_INCLUDE_SELF_WEIGHT = AI_DEFAULTS["permanent_load"]["include_self_weight"]
 DEFAULT_AI_PERM_SELF_WEIGHT_FACTOR = AI_DEFAULTS["permanent_load"]["self_weight_factor"]
 DEFAULT_AI_PERM_INCLUDE_DECK_WEIGHT = AI_DEFAULTS["permanent_load"]["include_deck_weight"]
@@ -280,12 +265,14 @@ DEFAULT_AI_PERM_INCLUDE_CRASH_BARRIER = AI_DEFAULTS["permanent_load"]["include_c
 DEFAULT_AI_PERM_INCLUDE_MEDIAN = AI_DEFAULTS["permanent_load"]["include_median"]
 DEFAULT_AI_PERM_INCLUDE_RAILING = AI_DEFAULTS["permanent_load"]["include_railing"]
 
+# Live Load
 DEFAULT_AI_LIVE_IRC_VEHICLES_CHECKED = AI_DEFAULTS["live_load"]["irc_vehicles_checked"]
 DEFAULT_AI_LIVE_BRAKING_VEHICLES_CHECKED = AI_DEFAULTS["live_load"]["braking_vehicles_checked"]
 DEFAULT_AI_LIVE_ECCENTRICITY_M = AI_DEFAULTS["live_load"]["eccentricity_m"]
 DEFAULT_AI_LIVE_FOOTPATH_MODE = AI_DEFAULTS["live_load"]["footpath_mode"]
 DEFAULT_AI_LIVE_FOOTPATH_PRESSURE_KN_PER_MM2 = AI_DEFAULTS["live_load"]["footpath_pressure_kn_per_mm2"]
 
+# Seismic Load
 DEFAULT_AI_SEISMIC_ZONE = AI_DEFAULTS["seismic_load"]["zone"]
 DEFAULT_AI_SEISMIC_IMPORTANCE_FACTOR = AI_DEFAULTS["seismic_load"]["importance_factor"]
 DEFAULT_AI_SEISMIC_SOIL_TYPE = AI_DEFAULTS["seismic_load"]["soil_type"]
@@ -294,6 +281,8 @@ DEFAULT_AI_SEISMIC_RESPONSE_REDUCTION_FACTOR = AI_DEFAULTS["seismic_load"]["resp
 DEFAULT_AI_SEISMIC_DEAD_LOAD_MODE = AI_DEFAULTS["seismic_load"]["dead_load_mode"]
 DEFAULT_AI_SEISMIC_LIVE_LOAD_MODE = AI_DEFAULTS["seismic_load"]["live_load_mode"]
 
+# Wind Load
+DEFAULT_AI_WIND_BASIC_WIND_SPEED = AI_DEFAULTS["wind_load"]["basic_wind_speed"]
 DEFAULT_AI_WIND_AVG_EXPOSED_HEIGHT_M = AI_DEFAULTS["wind_load"]["avg_exposed_height_m"]
 DEFAULT_AI_WIND_TERRAIN_TYPE = AI_DEFAULTS["wind_load"]["terrain_type"]
 DEFAULT_AI_WIND_SITE_TOPOGRAPHY = AI_DEFAULTS["wind_load"]["site_topography"]
@@ -310,17 +299,52 @@ DEFAULT_AI_WIND_EXPOSED_FRONTAL_AREA_MODE = AI_DEFAULTS["wind_load"]["exposed_fr
 DEFAULT_AI_WIND_ECC_DECK_MODE = AI_DEFAULTS["wind_load"]["ecc_deck_mode"]
 DEFAULT_AI_WIND_LL_ECC_MODE = AI_DEFAULTS["wind_load"]["ll_ecc_mode"]
 
+# Temperature Load
+DEFAULT_AI_TEMP_HIGHEST_MAX_TEMP = AI_DEFAULTS["temperature_load"]["highest_max_temp"]
+DEFAULT_AI_TEMP_LOWEST_MIN_TEMP = AI_DEFAULTS["temperature_load"]["lowest_min_temp"]
 DEFAULT_AI_TEMP_THERMAL_COEFF_STEEL_PER_C = AI_DEFAULTS["temperature_load"]["thermal_coeff_steel_per_c"]
 DEFAULT_AI_TEMP_THERMAL_COEFF_RCC_PER_C = AI_DEFAULTS["temperature_load"]["thermal_coeff_rcc_per_c"]
 
+# Support Conditions
 DEFAULT_AI_SUPPORT_LEFT = AI_DEFAULTS["support_conditions"]["left"]
 DEFAULT_AI_SUPPORT_RIGHT = AI_DEFAULTS["support_conditions"]["right"]
 DEFAULT_AI_SUPPORT_BEARING_LENGTH = AI_DEFAULTS["support_conditions"]["bearing_length"]
 
+# Design Options
 DEFAULT_AI_DESIGN_CONSTRUCTION_STAGE = AI_DEFAULTS["design_options"]["construction_stage"]
 DEFAULT_AI_DESIGN_REINFORCEMENT_SIZE = AI_DEFAULTS["design_options"]["reinforcement_size"]
 DEFAULT_AI_DESIGN_REINFORCEMENT_MATERIAL = AI_DEFAULTS["design_options"]["reinforcement_material"]
+DEFAULT_AI_DESIGN_SHEAR_STUD_MATERIAL = AI_DEFAULTS["design_options"]["shear_stud_material"]
+DEFAULT_AI_DESIGN_SHEAR_STUD_DIAMETER = AI_DEFAULTS["design_options"]["shear_stud_diameter"]
+DEFAULT_AI_DESIGN_SHEAR_STUD_HEIGHT = AI_DEFAULTS["design_options"]["shear_stud_height"]
 
+# Design Options (Cont.)
+DEFAULT_AI_DESIGN_CONT_GAMMA_C_BASIC = AI_DEFAULTS["design_options_cont"]["gamma_c_basic"]
+DEFAULT_AI_DESIGN_CONT_GAMMA_C_ACCIDENTAL = AI_DEFAULTS["design_options_cont"]["gamma_c_accidental"]
+DEFAULT_AI_DESIGN_CONT_GAMMA_M0 = AI_DEFAULTS["design_options_cont"]["gamma_m0"]
+DEFAULT_AI_DESIGN_CONT_GAMMA_M1 = AI_DEFAULTS["design_options_cont"]["gamma_m1"]
+DEFAULT_AI_DESIGN_CONT_GAMMA_S = AI_DEFAULTS["design_options_cont"]["gamma_s"]
+DEFAULT_AI_DESIGN_CONT_GAMMA_V = AI_DEFAULTS["design_options_cont"]["gamma_v"]
+DEFAULT_AI_DESIGN_CONT_GAMMA_FLT = AI_DEFAULTS["design_options_cont"]["gamma_flt"]
+DEFAULT_AI_DESIGN_CONT_GAMMA_MF = AI_DEFAULTS["design_options_cont"]["gamma_mf"]
+DEFAULT_AI_DESIGN_CONT_LOAD_CYCLES = AI_DEFAULTS["design_options_cont"]["load_cycles"]
+DEFAULT_AI_DESIGN_CONT_K1 = AI_DEFAULTS["design_options_cont"]["k1"]
+DEFAULT_AI_DESIGN_CONT_K3 = AI_DEFAULTS["design_options_cont"]["k3"]
+DEFAULT_AI_DESIGN_CONT_K4 = AI_DEFAULTS["design_options_cont"]["k4"]
+DEFAULT_AI_DESIGN_CONT_K6 = AI_DEFAULTS["design_options_cont"]["k6"]
+DEFAULT_AI_DESIGN_CONT_K3_SECOND = AI_DEFAULTS["design_options_cont"]["k3_second"]
+DEFAULT_AI_DESIGN_CONT_K4_SECOND = AI_DEFAULTS["design_options_cont"]["k4_second"]
+DEFAULT_AI_DESIGN_CONT_LIMIT_L = AI_DEFAULTS["design_options_cont"]["limit_l"]
+
+# Girder Details
+DEFAULT_AI_GIRDER_TYPE = AI_DEFAULTS["girder_details"]["type"]
+DEFAULT_AI_GIRDER_SPAN = AI_DEFAULTS["girder_details"]["span"]
+DEFAULT_AI_GIRDER_DESIGN = AI_DEFAULTS["girder_details"]["design"]
+DEFAULT_AI_GIRDER_SYMMETRY = AI_DEFAULTS["girder_details"]["symmetry"]
+DEFAULT_AI_GIRDER_TORSIONAL_RESTRAINT = AI_DEFAULTS["girder_details"]["torsional_restraint"]
+DEFAULT_AI_GIRDER_WARPING_RESTRAINT = AI_DEFAULTS["girder_details"]["warping_restraint"]
+DEFAULT_AI_GIRDER_WEB_TYPE = AI_DEFAULTS["girder_details"]["web_type"]
+DEFAULT_AI_GIRDER_IS_SECTION = AI_DEFAULTS["girder_details"]["is_section"]
 DEFAULT_AI_GIRDER_DEPTH_MODE = AI_DEFAULTS["girder_details"]["depth_mode"]
 DEFAULT_AI_GIRDER_TOP_FLANGE_WIDTH_MODE = AI_DEFAULTS["girder_details"]["top_flange_width_mode"]
 DEFAULT_AI_GIRDER_TOP_FLANGE_THICKNESS_MODE = AI_DEFAULTS["girder_details"]["top_flange_thickness_mode"]
@@ -328,7 +352,7 @@ DEFAULT_AI_GIRDER_BOTTOM_FLANGE_WIDTH_MODE = AI_DEFAULTS["girder_details"]["bott
 DEFAULT_AI_GIRDER_BOTTOM_FLANGE_THICKNESS_MODE = AI_DEFAULTS["girder_details"]["bottom_flange_thickness_mode"]
 DEFAULT_AI_GIRDER_WEB_THICKNESS_MODE = AI_DEFAULTS["girder_details"]["web_thickness_mode"]
 
-# Additional-input labels used by the Typical Section UI
+# Label / Name Constants
 AI_CRASH_BARRIER_RCC = "IRC 5 - RCC Crash Barrier"
 AI_CRASH_BARRIER_HIGH_CONTAINMENT = "IRC 5 - High Containment RCC Crash Barrier"
 AI_CRASH_BARRIER_METALLIC_SINGLE = "IRC 5 - Metallic Crash Barrier with Single W-Beam"
@@ -340,6 +364,7 @@ AI_MEDIAN_METALLIC_DOUBLE = "IRC 5 - Metallic Crash Barrier with Double W-Beam"
 AI_TYPE_CUSTOM = "Custom"
 
 
+# Internal Helpers
 def _mm_to_m(value: float | int | None, fallback_m: float) -> float:
     if value is None:
         return fallback_m
@@ -361,6 +386,7 @@ def _resolve_irc_railing(railing_type: str | None) -> str:
     return KEY_RAILING_TYPE[0]
 
 
+# IRC-Backed Dynamic Default Functions
 def get_ai_crash_barrier_defaults(
     barrier_type: str,
     footpath_value: str = "Both Sides",
@@ -431,7 +457,7 @@ def get_ai_crash_barrier_defaults(
 
     width_m = _mm_to_m(
         design_dict.get("crash_barrier_width"),
-        DEFAULT_IRC_METALLIC_BARRIER_BASE_WIDTH_MM / 1000.0,
+        550 / 1000.0,
     )
     height_m = _mm_to_m(design_dict.get("crash_barrier_height"), 1.05)
     post_spacing_m = _mm_to_m(
@@ -525,11 +551,11 @@ def get_ai_median_defaults(median_type: str) -> dict[str, float | None]:
     return defaults
 
 
-#--------------Inp-dict-Start--------------
+# Input Dock Defaults (DEFAULTS_DICT)
 from osdagbridge.core.utils.common import (
     KEY_STRUCTURE_TYPE, KEY_PROJECT_LOCATION, KEY_SPAN, KEY_CARRIAGEWAY_WIDTH, KEY_INCLUDE_MEDIAN,
-    KEY_FOOTPATH, KEY_SKEW_ANGLE, KEY_DESIGN_MODE, KEY_GIRDER, KEY_CROSS_BRACING, KEY_END_DIAPHRAGM, KEY_DECK_CONCRETE_GRADE_BASIC,
-    VALUES_DECK_CONCRETE_GRADE,
+    KEY_FOOTPATH, KEY_SKEW_ANGLE, KEY_DESIGN_MODE, KEY_GIRDER, KEY_CROSS_BRACING, KEY_END_DIAPHRAGM,
+    KEY_DECK_CONCRETE_GRADE_BASIC, VALUES_DECK_CONCRETE_GRADE,
     connectdb,
 )
 material_values = connectdb("Material")
@@ -569,4 +595,3 @@ DEFAULTS_DICT = {
     "right_support":   AI_DEFAULTS["support_conditions"]["right"],
     "bearing_length":  float(AI_DEFAULTS["support_conditions"]["bearing_length"]),
 }
-#--------------Inp-dict-End----------------
