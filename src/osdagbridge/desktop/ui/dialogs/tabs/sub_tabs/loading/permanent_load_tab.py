@@ -158,6 +158,7 @@ class PermanentLoadTab(QWidget):
         else:
             widget = self.owner._create_line_edit()
 
+        widget.setObjectName(field_def.get("id", ""))
         if bind_name:
             setattr(self, bind_name, widget)
 

@@ -211,6 +211,7 @@ class LiveLoadTab(QWidget):
                 ecc_input = getattr(owner, bind_name)
                 ecc_input.setFixedSize(FIELD_WIDTH, FIELD_HEIGHT)
                 ecc_input.setText(ecc_section.get("default", ""))
+                ecc_input.setObjectName(ecc_section.get("id", ""))
                 apply_field_style(ecc_input)
                 
             ecc_row.addWidget(ecc_label)
@@ -233,6 +234,7 @@ class LiveLoadTab(QWidget):
                 mode_combo.addItems(footpath_section.get("mode_choices", []))
                 mode_combo.setCurrentText(footpath_section.get("default_mode", ""))
                 mode_combo.setFixedSize(footpath_section.get("mode_width", 120), FIELD_HEIGHT)
+                mode_combo.setObjectName(footpath_section.get("id", ""))
                 apply_field_style(mode_combo)
 
             value_bind = footpath_section.get("bind_value")
@@ -241,6 +243,7 @@ class LiveLoadTab(QWidget):
                 value_input = getattr(owner, value_bind)
                 value_input.setFixedSize(footpath_section.get("value_width", 80), FIELD_HEIGHT)
                 value_input.setText(footpath_section.get("default_value", ""))
+                value_input.setObjectName(footpath_section.get("id", "") + "_value")
                 apply_field_style(value_input)
 
             footpath_row.addWidget(footpath_label)

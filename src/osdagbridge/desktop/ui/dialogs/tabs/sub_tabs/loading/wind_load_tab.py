@@ -107,13 +107,13 @@ class WindLoadTab(QWidget):
                             widget.setPlaceholderText(field.get("placeholder"))
                         widget.setFixedSize(FIELD_WIDTH, FIELD_HEIGHT)
                         apply_field_style(widget)
-                        
+                        widget.setObjectName(field.get("id", ""))
                         bind_name = field.get("bind")
                         if bind_name:
                             setattr(owner, bind_name, widget)
-                        
+
                         row_layout.addWidget(widget)
-                    
+
                     elif field_type == "combo":
                         widget = QComboBox()
                         widget.addItems(field.get("choices", []))
@@ -121,13 +121,13 @@ class WindLoadTab(QWidget):
                             widget.setCurrentText(field.get("default"))
                         widget.setFixedSize(COMBO_WIDTH, FIELD_HEIGHT)
                         apply_field_style(widget)
-                        
+                        widget.setObjectName(field.get("id", ""))
                         bind_name = field.get("bind")
                         if bind_name:
                             setattr(owner, bind_name, widget)
-                        
+
                         row_layout.addWidget(widget)
-                    
+
                     elif field_type == "mode_line":
                         mode_combo = QComboBox()
                         mode_combo.addItems(field.get("mode_choices", []))
@@ -135,13 +135,13 @@ class WindLoadTab(QWidget):
                             mode_combo.setCurrentText(field.get("default_mode"))
                         mode_combo.setFixedSize(COMBO_WIDTH, FIELD_HEIGHT)
                         apply_field_style(mode_combo)
-                        
+                        mode_combo.setObjectName(field.get("id", ""))
                         mode_bind = field.get("bind_mode")
                         if mode_bind:
                             setattr(owner, mode_bind, mode_combo)
-                        
+
                         row_layout.addWidget(mode_combo)
-            
+
                         value_input = QLineEdit()
                         if field.get("default_value"):
                             value_input.setText(field.get("default_value"))
@@ -150,11 +150,11 @@ class WindLoadTab(QWidget):
                         value_input.setFixedSize(FIELD_WIDTH, FIELD_HEIGHT)
                         value_input.setEnabled(False)
                         apply_field_style(value_input)
-                        
+                        value_input.setObjectName(field.get("id", "") + "_value")
                         value_bind = field.get("bind_value")
                         if value_bind:
                             setattr(owner, value_bind, value_input)
-                        
+
                         row_layout.addWidget(value_input)
                     
                     row_layout.addStretch()

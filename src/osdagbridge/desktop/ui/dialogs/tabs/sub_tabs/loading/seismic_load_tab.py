@@ -105,26 +105,26 @@ class SeismicLoadTab(QWidget):
                             widget.setCurrentText(field.get("default"))
                         widget.setFixedSize(FIELD_WIDTH, FIELD_HEIGHT)
                         apply_field_style(widget)
-                        
+                        widget.setObjectName(field.get("id", ""))
                         bind_name = field.get("bind")
                         if bind_name:
                             setattr(self, bind_name, widget)
-                        
+
                         row_layout.addWidget(widget)
-                    
+
                     elif field_type == "line":
                         widget = QLineEdit()
                         if field.get("default"):
                             widget.setText(field.get("default"))
                         widget.setFixedSize(FIELD_WIDTH, FIELD_HEIGHT)
                         apply_field_style(widget)
-                        
+                        widget.setObjectName(field.get("id", ""))
                         bind_name = field.get("bind")
                         if bind_name:
                             setattr(self, bind_name, widget)
-                        
+
                         row_layout.addWidget(widget)
-                    
+
                     elif field_type == "mode_line":
                         mode_combo = QComboBox()
                         mode_combo.addItems(field.get("mode_choices", []))
@@ -132,19 +132,19 @@ class SeismicLoadTab(QWidget):
                             mode_combo.setCurrentText(field.get("default_mode"))
                         mode_combo.setFixedSize(FIELD_WIDTH, FIELD_HEIGHT)
                         apply_field_style(mode_combo)
-                        
+                        mode_combo.setObjectName(field.get("id", ""))
                         mode_bind = field.get("bind_mode")
                         if mode_bind:
                             setattr(self, mode_bind, mode_combo)
-                        
+
                         row_layout.addWidget(mode_combo)
-                        
+
                         value_input = QLineEdit()
                         value_input.setPlaceholderText(field.get("placeholder", ""))
                         value_input.setFixedSize(FIELD_WIDTH, FIELD_HEIGHT)
                         value_input.setEnabled(False)
                         apply_field_style(value_input)
-                        
+                        value_input.setObjectName(field.get("id", "") + "_value")
                         value_bind = field.get("bind_value")
                         if value_bind:
                             setattr(self, value_bind, value_input)

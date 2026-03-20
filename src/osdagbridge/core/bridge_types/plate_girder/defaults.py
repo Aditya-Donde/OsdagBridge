@@ -582,16 +582,93 @@ DEFAULTS_DICT = {
     "deck_thickness":   AI_DEFAULTS["layout"]["deck_thickness_mm"],
     "footpath_width":   AI_DEFAULTS["layout"]["footpath_width_m"],
     "footpath_thickness": AI_DEFAULTS["layout"]["footpath_thickness_mm"],
-    # Additional Inputs Defaults (crash barrier)
+    # Additional Inputs Defaults (crash barrier — static; IRC-computed fields set below)
+    "crash_barrier_type":         DEFAULT_AI_CRASH_BARRIER_TYPE,
     "crash_barrier_width":        AI_DEFAULTS["crash_barrier"]["width_m"],
     "crash_barrier_post_spacing": float(AI_DEFAULTS["crash_barrier"]["post_spacing_m"]),
+    # Additional Inputs Defaults (median — static; IRC-computed fields set below)
+    "median_type":         DEFAULT_AI_MEDIAN_TYPE,
+    "median_post_spacing": float(DEFAULT_AI_MEDIAN_POST_SPACING_M),
     # Additional Inputs Defaults (railing)
-    "railing_width": float(AI_DEFAULTS["railing"]["width_mm"]) / 1000.0,
+    "railing_type":      DEFAULT_AI_RAILING_TYPE,
+    "railing_width":     float(AI_DEFAULTS["railing"]["width_mm"]) / 1000.0,
+    "railing_load_mode": DEFAULT_AI_RAILING_LOAD_MODE,
     # Additional Inputs Defaults (wearing course)
+    "wearing_material":  DEFAULT_AI_WEARING_MATERIAL,
     "wearing_density":   float(AI_DEFAULTS["wearing_course"]["density_kn_per_m3"]),
     "wearing_thickness": float(AI_DEFAULTS["wearing_course"]["thickness_mm"]),
+    # Additional Inputs Defaults (lane details)
+    "lane_count": str(DEFAULT_AI_LANE_COUNT),
+    # Additional Inputs Defaults (permanent load)
+    "include_self_weight":    DEFAULT_AI_PERM_INCLUDE_SELF_WEIGHT,
+    "self_weight_factor":     DEFAULT_AI_PERM_SELF_WEIGHT_FACTOR,
+    "include_deck_weight":    DEFAULT_AI_PERM_INCLUDE_DECK_WEIGHT,
+    "include_wearing_course": DEFAULT_AI_PERM_INCLUDE_WEARING_COURSE,
+    "include_crash_barrier":  DEFAULT_AI_PERM_INCLUDE_CRASH_BARRIER,
+    "include_median":         DEFAULT_AI_PERM_INCLUDE_MEDIAN,
+    "include_railing":        DEFAULT_AI_PERM_INCLUDE_RAILING,
+    # Additional Inputs Defaults (live load)
+    "eccentricity":             DEFAULT_AI_LIVE_ECCENTRICITY_M,
+    "footpath_pressure":        DEFAULT_AI_LIVE_FOOTPATH_MODE,
+    "footpath_pressure_value":  DEFAULT_AI_LIVE_FOOTPATH_PRESSURE_KN_PER_MM2,
+    # Additional Inputs Defaults (seismic load)
+    "seismic_zone":              DEFAULT_AI_SEISMIC_ZONE,
+    "importance_factor":         DEFAULT_AI_SEISMIC_IMPORTANCE_FACTOR,
+    "soil_type":                 DEFAULT_AI_SEISMIC_SOIL_TYPE,
+    "damping":                   DEFAULT_AI_SEISMIC_DAMPING_PERCENT,
+    "response_reduction_factor": DEFAULT_AI_SEISMIC_RESPONSE_REDUCTION_FACTOR,
+    "dead_load_seismic":         DEFAULT_AI_SEISMIC_DEAD_LOAD_MODE,
+    "live_load_seismic":         DEFAULT_AI_SEISMIC_LIVE_LOAD_MODE,
+    # Additional Inputs Defaults (wind load — modes; value fields default empty)
+    "basic_wind_speed":    DEFAULT_AI_WIND_BASIC_WIND_SPEED,
+    "avg_exposed_height":  DEFAULT_AI_WIND_AVG_EXPOSED_HEIGHT_M,
+    "terrain_type":        DEFAULT_AI_WIND_TERRAIN_TYPE,
+    "site_topography":     DEFAULT_AI_WIND_SITE_TOPOGRAPHY,
+    "gust_factor":         DEFAULT_AI_WIND_GUST_FACTOR_MODE,
+    "gust_factor_value":   DEFAULT_AI_WIND_GUST_FACTOR,
+    "drag_coeff":          DEFAULT_AI_WIND_DRAG_COEFF_MODE,
+    "drag_coeff_ll":       DEFAULT_AI_WIND_DRAG_COEFF_LL_MODE,
+    "drag_coeff_ll_value": DEFAULT_AI_WIND_DRAG_COEFF_LL,
+    "lift_coeff":          DEFAULT_AI_WIND_LIFT_COEFF_MODE,
+    "lift_coeff_value":    DEFAULT_AI_WIND_LIFT_COEFF,
+    "super_area_elev":     DEFAULT_AI_WIND_SUPER_AREA_ELEV_MODE,
+    "super_area_plain":    DEFAULT_AI_WIND_SUPER_AREA_PLAIN_MODE,
+    "exposed_frontal_area": DEFAULT_AI_WIND_EXPOSED_FRONTAL_AREA_MODE,
+    "wind_ecc_deck":       DEFAULT_AI_WIND_ECC_DECK_MODE,
+    "wind_ll_ecc":         DEFAULT_AI_WIND_LL_ECC_MODE,
+    # Additional Inputs Defaults (temperature load)
+    "highest_max_temp":    DEFAULT_AI_TEMP_HIGHEST_MAX_TEMP,
+    "lowest_min_temp":     DEFAULT_AI_TEMP_LOWEST_MIN_TEMP,
+    "thermal_coeff_steel": DEFAULT_AI_TEMP_THERMAL_COEFF_STEEL_PER_C,
+    "thermal_coeff_rcc":   DEFAULT_AI_TEMP_THERMAL_COEFF_RCC_PER_C,
+    # Additional Inputs Defaults (design options)
+    "construction_stage":     DEFAULT_AI_DESIGN_CONSTRUCTION_STAGE,
+    "reinforcement_size":     DEFAULT_AI_DESIGN_REINFORCEMENT_SIZE,
+    "reinforcement_material": DEFAULT_AI_DESIGN_REINFORCEMENT_MATERIAL,
+    "shear_stud_material":    DEFAULT_AI_DESIGN_SHEAR_STUD_MATERIAL,
+    "shear_stud_diameter":    DEFAULT_AI_DESIGN_SHEAR_STUD_DIAMETER,
+    "shear_stud_height":      DEFAULT_AI_DESIGN_SHEAR_STUD_HEIGHT,
     # Additional Inputs Defaults (support conditions)
-    "left_support":    AI_DEFAULTS["support_conditions"]["left"],
-    "right_support":   AI_DEFAULTS["support_conditions"]["right"],
-    "bearing_length":  float(AI_DEFAULTS["support_conditions"]["bearing_length"]),
+    "left_support":   AI_DEFAULTS["support_conditions"]["left"],
+    "right_support":  AI_DEFAULTS["support_conditions"]["right"],
+    "bearing_length": float(AI_DEFAULTS["support_conditions"]["bearing_length"]),
 }
+
+# Eagerly compute IRC-backed crash barrier defaults (height, density, area, load are IRC-derived).
+_cb = get_ai_crash_barrier_defaults(DEFAULT_AI_CRASH_BARRIER_TYPE)
+DEFAULTS_DICT.update({
+    "crash_barrier_height":  _cb["height_m"]     if _cb.get("height_m")     is not None else 0.75,
+    "crash_barrier_density": _cb["density"]       if _cb.get("density")       is not None else float(DEFAULT_CONCRETE_DENSITY),
+    "crash_barrier_area":    _cb["area_m2"]       if _cb.get("area_m2")       is not None else 0.375,
+    "crash_barrier_load":    _cb["load_kn_per_m"] if _cb.get("load_kn_per_m") is not None else 9.375,
+})
+
+# Eagerly compute IRC-backed median defaults (width, height, density, area, load are IRC-derived).
+_med = get_ai_median_defaults(DEFAULT_AI_MEDIAN_TYPE)
+DEFAULTS_DICT.update({
+    "median_width":   _med["width_m"]      if _med.get("width_m")      is not None else 0.5,
+    "median_height":  _med["height_m"]     if _med.get("height_m")     is not None else 0.225,
+    "median_density": _med["density"]      if _med.get("density")      is not None else float(DEFAULT_CONCRETE_DENSITY),
+    "median_area":    _med["area_m2"]      if _med.get("area_m2")      is not None else 0.27,
+    "median_load":    _med["load_kn_per_m"] if _med.get("load_kn_per_m") is not None else 6.75,
+})
