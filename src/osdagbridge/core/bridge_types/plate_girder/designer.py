@@ -325,84 +325,6 @@ class DemandEnvelope:
     location: str = "midspan"
     member: str = ""
     source: str = "manual"
-
-
-class DemandExtractor:
-    """
-    Factory for DemandEnvelope objects.
-
-    Two entry-points:
-        1. from_manual(...)           - user supplies demand values directly
-        2. apply_load_factors(...)    - builds envelope from unfactored DL/LL
-    """
-
-    @staticmethod
-    def from_analysis_results(
-        analysis: PlateGirderAnalysisResults,
-        element_ids: list,
-        moment_component: str = "Mz",
-        shear_component: str = "Vy",
-        location: str = "midspan",
-        member: str = "interior_girder"
-    ) -> DemandEnvelope:
-        """
-        Extract governing moment and shear directly from analysis results.
-        """
-
-        loadcases = analysis.get_available_loadcases()
-
-        Mu = 0.0
-        Vu = 0.0
-        governing_case = None
-
-        for lc in loadcases:
-
-            # Get moment and shear results
-            M_results = analysis.get_beam_element_results(
-                element_ids, lc, moment_component
-            )
-
-            V_results = analysis.get_beam_element_results(
-                element_ids, lc, shear_component
-            )
-
-            # find max moment
-            for val in M_results.values():
-                if val is None:
-                    continue
-
-                try:
-                    # check if val is iterable or array and get max absolute
-                    m = max(abs(v) for v in val)
-                except TypeError:
-                    m = abs(val)
-
-                if m > Mu:
-                    Mu = m
-                    governing_case = lc
-
-            # find max shear
-            for val in V_results.values():
-                if val is None:
-                    continue
-
-                try:
-                    v = max(abs(v) for v in val)
-                except TypeError:
-                    v = abs(val)
-
-                if v > Vu:
-                    Vu = v
-
-        return DemandEnvelope(
-            Mu_kNm=round(Mu, 3),
-            Vu_kN=round(Vu, 3),
-            governing_combination=str(governing_case),
-            location=location,
-            member=member,
-            source="analysis_results",
-        )
-
     @staticmethod
     def from_manual(
         Mu_kNm: float,
@@ -448,6 +370,48 @@ class DemandExtractor:
                 f"gDL={gamma_dead} x DL + gLL={gamma_live} x IF={impact_factor} x LL"
             ),
             location="midspan", source="factored_components",
+        )
+
+    @staticmethod
+    def from_analysis_results(
+        analysis,
+        element_ids: list,
+        member: str = "interior_girder"
+    ) -> "DemandEnvelope":
+        """Extract Max Mz and Vy from all loadcases for the given elements."""
+        def _scalar(val):
+            if val is None:
+                return None
+            try:
+                return float(val)
+            except (TypeError, ValueError):
+                try:
+                    return float(val[0])
+                except Exception:
+                    return None
+
+        max_mz = 0.0
+        max_vy = 0.0
+
+        for lc in analysis.get_available_loadcases():
+            mz_res = analysis.get_beam_element_results(element_ids, lc, "Mz_i")
+            for val in mz_res.values():
+                scalar = _scalar(val)
+                if scalar is not None:
+                    max_mz = max(max_mz, abs(scalar))
+
+            vy_res = analysis.get_beam_element_results(element_ids, lc, "Vy_i")
+            for val in vy_res.values():
+                scalar = _scalar(val)
+                if scalar is not None:
+                    max_vy = max(max_vy, abs(scalar))
+
+        # Basic load factor 1.5 since they might be unfactored in analysis.
+        # But for now we just extract absolute max.
+        return DemandEnvelope(
+            Mu_kNm=max_mz, Vu_kN=max_vy,
+            governing_combination="Max envelope from linear analysis",
+            location="critical", member=member, source="analysis_results"
         )
 
 
@@ -1418,7 +1382,7 @@ def _extract_demands_from_analysis(config: BridgeConfig) -> DemandEnvelope:
 
     element_ids = girder_map.get(inner_girder, {}).get("elements", [])
 
-    env = DemandExtractor.from_analysis_results(
+    env = DemandEnvelope.from_analysis_results(
         analysis=result_handler,
         element_ids=element_ids,
         member=f"interior_girder_{inner_girder}"
