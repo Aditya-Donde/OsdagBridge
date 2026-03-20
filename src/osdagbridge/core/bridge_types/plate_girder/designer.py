@@ -46,6 +46,10 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Dict, List, Optional
 
+try:
+    from osdagbridge.core.bridge_types.plate_girder.analysis_results import PlateGirderAnalysisResults
+except ImportError:
+    from analysis_results import PlateGirderAnalysisResults
 
 # ======================================================================
 #  SECTION 1 -- BRIDGE CONFIGURATION (Input Dataclasses)
@@ -331,6 +335,73 @@ class DemandExtractor:
         1. from_manual(...)           - user supplies demand values directly
         2. apply_load_factors(...)    - builds envelope from unfactored DL/LL
     """
+
+    @staticmethod
+    def from_analysis_results(
+        analysis: PlateGirderAnalysisResults,
+        element_ids: list,
+        moment_component: str = "Mz",
+        shear_component: str = "Vy",
+        location: str = "midspan",
+        member: str = "interior_girder"
+    ) -> DemandEnvelope:
+        """
+        Extract governing moment and shear directly from analysis results.
+        """
+
+        loadcases = analysis.get_available_loadcases()
+
+        Mu = 0.0
+        Vu = 0.0
+        governing_case = None
+
+        for lc in loadcases:
+
+            # Get moment and shear results
+            M_results = analysis.get_beam_element_results(
+                element_ids, lc, moment_component
+            )
+
+            V_results = analysis.get_beam_element_results(
+                element_ids, lc, shear_component
+            )
+
+            # find max moment
+            for val in M_results.values():
+                if val is None:
+                    continue
+
+                try:
+                    # check if val is iterable or array and get max absolute
+                    m = max(abs(v) for v in val)
+                except TypeError:
+                    m = abs(val)
+
+                if m > Mu:
+                    Mu = m
+                    governing_case = lc
+
+            # find max shear
+            for val in V_results.values():
+                if val is None:
+                    continue
+
+                try:
+                    v = max(abs(v) for v in val)
+                except TypeError:
+                    v = abs(val)
+
+                if v > Vu:
+                    Vu = v
+
+        return DemandEnvelope(
+            Mu_kNm=round(Mu, 3),
+            Vu_kN=round(Vu, 3),
+            governing_combination=str(governing_case),
+            location=location,
+            member=member,
+            source="analysis_results",
+        )
 
     @staticmethod
     def from_manual(
@@ -1293,46 +1364,78 @@ class ReportGenerator:
 # ======================================================================
 
 
-def _example_demands(config: BridgeConfig) -> DemandEnvelope:
+def _extract_demands_from_analysis(config: BridgeConfig) -> DemandEnvelope:
     """
-    Realistic factored demand values for the 33.5 m bridge.
-
-    Dead Load Components (per girder):
-        Steel self-weight  : ~3 kN/m
-        Deck slab          : 25 kN/m3 x t_slab x beam_spacing
-        SDL (wearing, rail): distributed
-
-    Live Load (IRC Class 70R + Class A):
-        M_LL ~ 1,800 kNm,  V_LL ~ 350 kN  (per interior girder)
-
-    Factored (ULS Comb I):
-        gamma_DL = 1.35,  gamma_LL = 1.50,  Impact Factor = 1.10
+    Run the grillage analysis and exact demands via PlateGirderAnalysisResults.
     """
-    L = config.geometry.span
-    A_steel_m2 = config.section.A_steel * 1e-6
-    w_sw = A_steel_m2 * 78.5
-    w_slab = 25.0 * (config.slab.thickness / 1000.0) * config.geometry.beam_spacing
-    w_sdl = (4.32 * config.geometry.beam_spacing + 1.5 + 4.0 / config.geometry.n_girders)
-    w_total_dl = w_sw + w_slab + w_sdl
+    try:
+        from osdagbridge.core.bridge_types.plate_girder.analyser import BridgeGrillageModel
+    except ImportError:
+        # Fallback to absolute if ran directly
+        import sys
+        import os
+        sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..', '..')))
+        from osdagbridge.core.bridge_types.plate_girder.analyser import BridgeGrillageModel
 
-    M_dl = w_total_dl * L ** 2 / 8.0
-    V_dl = w_total_dl * L / 2.0
-    M_ll, V_ll = 1800.0, 350.0
-    gamma_dl, gamma_ll, impact = 1.35, 1.50, 1.10
+    from osdagbridge.core.bridge_types.plate_girder.analysis_results import PlateGirderAnalysisResults
 
-    Mu = gamma_dl * M_dl + gamma_ll * impact * M_ll
-    Vu = gamma_dl * V_dl + gamma_ll * impact * V_ll
+    print("  -> Initializing the bridge model for analysis...")
+    bridge = BridgeGrillageModel()
+    bridge.create_model()
+    bridge.create_self_weight_load()
+    bridge.create_deck_load()
+    bridge.create_wearing_course_load()
+    bridge.create_footpath_load()
+    bridge.create_crash_barrier_load()
+    bridge.create_railing_load()
+    bridge.create_median_load()
+    bridge.vehicle_lane_coordinates()
+    bridge.create_vehicle_load_cases()
+    bridge.add_vehicle_load_cases_from_combinations()
+    bridge.create_moving_vehicle_load_cases()
 
-    return DemandExtractor.from_manual(
-        Mu_kNm=round(Mu, 2), Vu_kN=round(Vu, 2),
-        delta_live_mm=28.0, delta_total_mm=38.0,
-        stress_range_MPa=config.fatigue.stress_range,
-        shear_range_MPa=config.fatigue.shear_range,
-        Nsc=config.fatigue.Nsc,
-        combination=f"ULS Comb I: {gamma_dl}*DL + {gamma_ll}*{impact}*LL",
-        location="midspan (interior girder)",
-        member="interior_longitudinal_beam",
+    print("  -> Running analysis (this may take a moment)...")
+    results = bridge.analyze()
+
+    result_handler = PlateGirderAnalysisResults(
+        dataset=results,
+        model=bridge.model,
+        edge_dist=bridge.edge_dist
     )
+
+    girder_map, _ = result_handler.build_girders(verbose=False)
+    girder_map = result_handler.filter_girders(girder_map)
+
+    # Pick a typical interior girder
+    g_list = list(girder_map.keys())
+    if len(g_list) > 2:
+        inner_girder = g_list[len(g_list)//2]
+    elif len(g_list) > 0:
+        inner_girder = g_list[0]
+    else:
+        inner_girder = "G1"
+        girder_map["G1"] = {"elements": []}
+
+    element_ids = girder_map.get(inner_girder, {}).get("elements", [])
+
+    env = DemandExtractor.from_analysis_results(
+        analysis=result_handler,
+        element_ids=element_ids,
+        member=f"interior_girder_{inner_girder}"
+    )
+
+    # Convert N to kN, Nm to kNm based on common.py scaling
+    env.Mu_kNm = round(env.Mu_kNm / 1000.0, 2)
+    env.Vu_kN = round(env.Vu_kN / 1000.0, 2)
+
+    # Append fixed values for required SLS & Fatigue fields (as analysis alone lacks these out of the box)
+    env.delta_live_mm = 28.0
+    env.delta_total_mm = 38.0
+    env.stress_range_MPa = config.fatigue.stress_range
+    env.shear_range_MPa = config.fatigue.shear_range
+    env.Nsc = config.fatigue.Nsc
+    
+    return env
 
 
 def run_design_check(
@@ -1374,7 +1477,7 @@ def run_design_check(
     # -- Step 2: Demand from Analyser --
     print("\n[Step 2/5] Extracting design demands (Analyser) ...")
     if demand is None:
-        demand = _example_demands(config)
+        demand = _extract_demands_from_analysis(config)
     print(f"  Mu = {demand.Mu_kNm:.2f} kNm")
     print(f"  Vu = {demand.Vu_kN:.2f} kN")
     print(f"  Source: {demand.source}")
