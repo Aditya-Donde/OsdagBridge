@@ -1,6 +1,7 @@
 from __future__ import annotations
 from dataclasses import dataclass
 from math import sqrt
+from typing import Optional, Tuple
 
 # Import constants from common.py for consistency
 from osdagbridge.core.utils.common import (
@@ -15,7 +16,6 @@ from osdagbridge.core.utils.codes.irc5_2015 import IRC5_2015
 
 # Import existing functions from bridge_geometry.py (Point 1 and validation)
 from osdagbridge.core.bridge_types.plate_girder.bridge_geometry import (
-    calculate_bridge_width,
     CrossSectionLayout,
 )
 
@@ -71,7 +71,7 @@ class BridgeConfigurationSolver:
         footpath_width: float = 0.0,
         railing_width: float = 0.0,
         median_width: float = 0.0,
-        no_of_footpaths: int = 0,
+        n_footpaths: int = 0,
         flange_width: float = 0.0,  # max of top/bottom flange for spacing limit
     ):
         """
@@ -83,7 +83,7 @@ class BridgeConfigurationSolver:
         - footpath_width : float - Width of each footpath in meters.
         - railing_width : float - Width of each railing in meters.
         - median_width : float - Width of median in meters.
-        - no_of_footpaths : int - Number of footpaths (0, 1, or 2).
+        - n_footpaths : int - Number of footpaths (0, 1, or 2).
         - flange_width : float - Maximum flange width for spacing upper bound.
         """
         self.carriageway_width = carriageway_width
@@ -91,18 +91,18 @@ class BridgeConfigurationSolver:
         self.footpath_width = footpath_width if footpath_width > 0 else 0.0
         self.railing_width = railing_width
         self.median_width = median_width
-        self.no_of_footpaths = no_of_footpaths
+        self.n_footpaths = n_footpaths
         self.flange_width = flange_width
     
     # =========================================================================
     # Point 1: Calculate Overall Bridge Width
-    # Uses calculate_bridge_width from bridge_geometry.py
+    # Uses CrossSectionLayout.total_width from bridge_geometry.py
     # =========================================================================
     def calculate_overall_bridge_width(self) -> float:
         """
         Calculate overall bridge width from component widths.
         
-        Delegates to calculate_bridge_width() from bridge_geometry.py.
+        Delegates to CrossSectionLayout.total_width from bridge_geometry.py.
         
         Formula:
             OverallBridgeWidth = CarriagewayWidth + 2 * CrashBarrierWidth
@@ -114,14 +114,15 @@ class BridgeConfigurationSolver:
         float
             Overall bridge width in meters.
         """
-        return calculate_bridge_width(
+        layout = CrossSectionLayout(
             carriageway_width=self.carriageway_width,
             crash_barrier_width=self.crash_barrier_width,
-            median_width=self.median_width,
-            no_of_footpaths=self.no_of_footpaths,
             footpath_width=self.footpath_width,
             railing_width=self.railing_width,
+            median_width=self.median_width,
+            n_footpaths=self.n_footpaths,
         )
+        return layout.total_width
     
     def verify_bridge_width(
         self,
@@ -154,7 +155,7 @@ class BridgeConfigurationSolver:
             railing_width=self.railing_width,
             footpath_width=self.footpath_width,
             median_width=self.median_width,
-            no_of_footpaths=self.no_of_footpaths,
+            n_footpaths=self.n_footpaths,
         )
         return layout.verify_bridge_width(
             num_long_grid=no_of_girders,
@@ -632,4 +633,4 @@ class BridgeConfigurationSolver:
 # Legacy function for backward compatibility
 def preliminary_sizing(dto):
     """Legacy stub - use BridgeConfigurationSolver instead."""
-    return {"depth_m": dto.name}
+    return {"name": dto.name}
