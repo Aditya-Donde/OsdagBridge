@@ -192,7 +192,7 @@ class CustomWindow(QWidget):
 
         from osdagbridge.desktop.ui.cad_3d import CAD3DWindow
         # 3D CAD placeholder (mutually exclusive with dual view + plots)
-        self.cad_3d_widget = CAD3DWindow()
+        self.cad_3d_widget = CentralPlaceholderWidget("3D CAD Here")
         self.cad_3d_widget.setVisible(False)
         self.cad_log_splitter.addWidget(self.cad_3d_widget)
 
@@ -257,8 +257,10 @@ class CustomWindow(QWidget):
         print(f"@top:{self.top_view_active}")
         print(f"@c/s:{self.cross_section_active}")
         if trigger == "Design":
-            # Collect all the values from input Dock
+            # Collect all the values from input Dock and pass to backend
+            self.backend.set_input(self.input_dict)
             print(f"@@input_dictionary: {self.input_dict}")
+            self.backend.design()
         elif trigger == "Save":
             # Collect all the values from input Dock and save to osi/csv
             pass
