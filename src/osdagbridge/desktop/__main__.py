@@ -96,7 +96,7 @@ create_sqlite()
 
 # Import template_page
 from osdagbridge.desktop.ui.template_page import CustomWindow
-from osdagbridge.core.bridge_types.plate_girder.ui_fields import FrontendData
+from osdagbridge.core.bridge_types.plate_girder.plategirderbridge import PlateGirderBridge
 
 def load_stylesheet():
     """Load the global QSS stylesheet from resources."""
@@ -117,7 +117,7 @@ def main():
     if stylesheet:
         app.setStyleSheet(stylesheet)
     
-    window = CustomWindow("Osdag Bridge", FrontendData)
+    window = CustomWindow("OsdagBridge", PlateGirderBridge)
     window.showMaximized()
     window.show()
 

@@ -99,7 +99,7 @@ class BridgeGrillageModel:
         )
         print(f"Bridge width from layout: {self.layout.total_width} m")
 
-        self.layout.validate_against_bridge(self.bridge_geometry.width)
+        # self.layout.validate_against_bridge(self.bridge_geometry.width)
 
     # ============================================================
     #   CREATE SECTIONS

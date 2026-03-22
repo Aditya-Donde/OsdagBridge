@@ -1,442 +1,357 @@
-"""Main PG bridge file """
-
 from __future__ import annotations
-
-from dataclasses import asdict, dataclass, field
-from typing import Any, Callable, Dict, Mapping, Optional
+import sqlite3
+from pathlib import Path
+from .ui_fields import FrontendData
+from .dto import DeckLayoutProperties, GrillageGeometry, SectionProperties, MaterialProperties
+from .defaults import (
+    DEFAULTS_DICT,
+    DEFAULT_SPAN_M,
+    DEFAULT_CARRIAGEWAY_WIDTH_M,
+    DEFAULT_NO_OF_GIRDERS,
+    DEFAULT_GIRDER_SYMMETRY,
+    DEFAULT_MEDIAN_WIDTH_M,
+)
+from .initial_sizing import BridgeConfigurationSolver, DEFAULT_FOOTPATH_WIDTH
+from .analyser import BridgeGrillageModel
 
 from osdagbridge.core.utils.common import (
-    DEFAULT_CRASH_BARRIER_WIDTH,
-    DEFAULT_GIRDER_SPACING,
-    DEFAULT_RAILING_WIDTH,
-    KEY_CARRIAGEWAY_WIDTH,
-    KEY_CRASH_BARRIER_WIDTH,
-    KEY_DECK_OVERHANG,
-    KEY_DECK_THICKNESS,
-    KEY_FOOTPATH_WIDTH,
-    KEY_GIRDER_BOTTOM_FLANGE_WIDTH,
-    KEY_GIRDER_DEPTH,
-    KEY_GIRDER_SPACING,
-    KEY_GIRDER_SYMMETRY,
-    KEY_GIRDER_TOP_FLANGE_WIDTH,
-    KEY_GIRDER_TOP_FLANGE_THICKNESS,
-    KEY_GIRDER_WEB_THICKNESS,
-    KEY_INCLUDE_MEDIAN,
-    KEY_NO_OF_GIRDERS,
-    KEY_RAILING_WIDTH,
-    KEY_SKEW_ANGLE,
+    KEY_STRUCTURE_TYPE,
+    KEY_PROJECT_LOCATION,
     KEY_SPAN,
-    MIN_FOOTPATH_WIDTH,
+    KEY_CARRIAGEWAY_WIDTH,
+    KEY_INCLUDE_MEDIAN,
+    KEY_FOOTPATH,
+    KEY_SKEW_ANGLE,
+    KEY_DESIGN_MODE,
+    KEY_GIRDER,
+    KEY_CROSS_BRACING,
+    KEY_END_DIAPHRAGM,
+    KEY_DECK_CONCRETE_GRADE_BASIC,
+    DEFAULT_CRASH_BARRIER_WIDTH,
+    DEFAULT_RAILING_WIDTH,
+    DEFAULT_GIRDER_SPACING,
+    MPa,
+    GPa,
+    kN,
+    m,
 )
 
-from .bridge_geometry import BridgeGeometry, CrossSectionLayout
-from .cad_generator import export_step
-from .designer import design
-from .initial_sizing import BridgeConfigurationSolver, preliminary_sizing
-from .report_generator import section_report
-from .ui_fields import FrontendData
-from .ui_fields_additional_input import (
-    CRASH_BARRIER_TAB_SCHEMA,
-    DESIGN_OPTIONS_CONT_SCHEMA,
-    DESIGN_OPTIONS_SCHEMA,
-    GIRDER_DETAILS_SCHEMA,
-    LANE_DETAILS_TAB_SCHEMA,
-    LAYOUT_TAB_SCHEMA,
-    MEDIAN_TAB_SCHEMA,
-    RAILING_TAB_SCHEMA,
-    SUPPORT_CONDITIONS_SCHEMA,
-    WEARING_COURSE_TAB_SCHEMA,
-)
+# Default median width (m) used when user enables median but no additional-input
+# width has been supplied yet.
+_DEFAULT_MEDIAN_WIDTH_M = 1.2
 
-try:
-    from .dto import PlateGirderDTO
-except Exception:
-    @dataclass
-    class PlateGirderDTO:
-        """Fallback DTO when dto.py is unavailable."""
+_DB_PATH = Path(__file__).resolve().parents[2] / "data" / "ResourceFiles" / "Intg_osdag.sqlite"
 
-        name: str
-
-
-def _first_present(source: Mapping[str, Any], *keys: str) -> Any:
-    for key in keys:
-        if key in source and source[key] not in ("", None):
-            return source[key]
-    return None
-
-
-def _as_float(value: Any, default: float) -> float:
-    if value in ("", None):
-        return default
-    try:
-        return float(value)
-    except (TypeError, ValueError):
-        return default
-
-
-def _as_int(value: Any, default: int) -> int:
-    if value in ("", None):
-        return default
-    try:
-        return int(float(value))
-    except (TypeError, ValueError):
-        return default
-
-
-def _as_bool(value: Any, default: bool = False) -> bool:
-    if value is None:
-        return default
-    if isinstance(value, bool):
-        return value
-    if isinstance(value, (int, float)):
-        return bool(value)
-    return str(value).strip().lower() in {"1", "true", "yes", "y"}
-
-
-def _to_m(value: Any) -> float:
-    """Accept meters directly; if value looks like mm, convert to meters."""
-    as_float = _as_float(value, 0.0)
-    return as_float / 1000.0 if as_float > 10.0 else as_float
-
-
-@dataclass
-class PlateGirderRunResult:
-    dto: PlateGirderDTO
-    initial_sizing: Dict[str, Any] = field(default_factory=dict)
-    geometry: Dict[str, Any] = field(default_factory=dict)
-    analysis: Dict[str, Any] = field(default_factory=dict)
-    analysis_results: Dict[str, Any] = field(default_factory=dict)
-    design: Dict[str, Any] = field(default_factory=dict)
-    modifier: Dict[str, Any] = field(default_factory=dict)
-    cad: Dict[str, Any] = field(default_factory=dict)
-    report: Dict[str, Any] = field(default_factory=dict)
-
-    def to_dict(self) -> Dict[str, Any]:
-        return asdict(self)
+# Steel constants (same values used in analyser.py __main__)
+_STEEL_E        = 200 * GPa    # Elastic modulus (Pa)
+_STEEL_V        = 0.3          # Poisson's ratio
+_STEEL_RHO      = 78.5 * kN / m ** 3  # Unit weight (N/m³)
+_STEEL_E0       = 200 * GPa    # Initial elastic modulus (Pa)
+_STEEL_B        = 0.01         # Strain-hardening ratio
+_STEEL_FY_DEFAULT = 250 * MPa  # Fallback Fy if material not found in DB (Pa)
 
 
 class PlateGirderBridge:
-    """Coordinator that stitches all plate-girder modules."""
+    """Core backend for Plate Girder Bridge."""
 
-    def __init__(
-        self,
-        basic_inputs: Optional[Mapping[str, Any]] = None,
-        additional_inputs: Optional[Mapping[str, Any]] = None,
-        modifier_hook: Optional[Callable[[PlateGirderRunResult], Dict[str, Any]]] = None,
-    ) -> None:
-        self.basic_inputs = dict(basic_inputs or {})
-        self.additional_inputs = dict(additional_inputs or {})
-        self.modifier_hook = modifier_hook
-        self._analysis_engine = None
+    # Keys that originate from the basic input dock.
+    # Everything else in input_dict is treated as an additional input.
+    _BASIC_INPUT_KEYS = frozenset({
+        KEY_STRUCTURE_TYPE,
+        KEY_PROJECT_LOCATION,
+        KEY_SPAN,
+        KEY_CARRIAGEWAY_WIDTH,
+        KEY_INCLUDE_MEDIAN,
+        KEY_FOOTPATH,
+        KEY_SKEW_ANGLE,
+        KEY_DESIGN_MODE,
+        KEY_GIRDER,
+        KEY_CROSS_BRACING,
+        KEY_END_DIAPHRAGM,
+        KEY_DECK_CONCRETE_GRADE_BASIC,
+    })
 
-    @staticmethod
-    def get_basic_input_schema() -> list:
-        return FrontendData().input_values()
+    def __init__(self) -> None:
+        self.input_dict: dict = {}
+        self.basic_inputs: dict = {}
+        self.additional_inputs: dict = {}
+        self._frontend = FrontendData()
 
-    @staticmethod
-    def get_additional_input_schema() -> Dict[str, Dict[str, Any]]:
-        return {
-            "layout": LAYOUT_TAB_SCHEMA,
-            "crash_barrier": CRASH_BARRIER_TAB_SCHEMA,
-            "median": MEDIAN_TAB_SCHEMA,
-            "railing": RAILING_TAB_SCHEMA,
-            "wearing_course": WEARING_COURSE_TAB_SCHEMA,
-            "lane_details": LANE_DETAILS_TAB_SCHEMA,
-            "support_conditions": SUPPORT_CONDITIONS_SCHEMA,
-            "design_options": DESIGN_OPTIONS_SCHEMA,
-            "design_options_cont": DESIGN_OPTIONS_CONT_SCHEMA,
-            "girder_details": GIRDER_DETAILS_SCHEMA,
+        # Results populated by design()
+        self.sizing_result = None
+        self.section_props: dict = {}
+        self.grillage_geometry: GrillageGeometry | None = None
+        self.deck_layout: DeckLayoutProperties | None = None
+
+        # Analyser — populated by setup_grillage()
+        self.grillage_model: BridgeGrillageModel = BridgeGrillageModel()
+
+    def input_values(self) -> list:
+        """Return UI field definitions for the InputDock (delegated to FrontendData)."""
+        return self._frontend.input_values()
+    
+    def output_values(self) -> list:
+        """Return UI field definitions for the OutputDock (delegated to FrontendData)."""
+        return self._frontend.output_values()
+
+    def set_input(self, input_dict: dict) -> None:
+        """
+        Receive and store the input dictionary from the UI.
+
+        Stores the full dict in ``self.input_dict`` and splits it into:
+        - ``self.basic_inputs``  — keys from the main input dock
+        - ``self.additional_inputs`` — all remaining keys (additional-input dialog, etc.)
+
+        Parameters
+        ----------
+        input_dict : dict
+            The flat dictionary built and maintained by ``CustomWindow``.
+        """
+        self.input_dict = dict(input_dict)
+        self.basic_inputs = {
+            k: v for k, v in self.input_dict.items()
+            if k in self._BASIC_INPUT_KEYS
+        }
+        self.additional_inputs = {
+            k: v for k, v in self.input_dict.items()
+            if k not in self._BASIC_INPUT_KEYS
         }
 
-    def _footpath_count(self) -> int:
-        footpath_value = _first_present(self.basic_inputs, "footpath", "Footpath")
-        if footpath_value is None:
-            return 0
-        text = str(footpath_value).strip().lower()
-        if "both" in text:
-            return 2
-        if "single" in text:
-            return 1
-        return 0
+    # ─────────────────────────────────────────────────────────────────────────
+    # Design pipeline
+    # ─────────────────────────────────────────────────────────────────────────
 
-    def _build_dto(self) -> PlateGirderDTO:
-        structure_name = _first_present(
-            self.basic_inputs,
-            "Structure Type",
-            "structure_type",
-            "name",
-        )
-        return PlateGirderDTO(name=str(structure_name or "plate_girder_bridge"))
+    def design(self) -> None:
+        """
+        Run the full initial-sizing pipeline in order:
+          1. Parse basic inputs
+          2. Solve bridge layout
+          3. Build result DTOs
+          4. Set up grillage model geometry and sections
+        """
+        parsed = self._parse_basic_inputs()
+        self._solve_bridge_layout(parsed)
+        self._build_dtos(parsed)
+        self.setup_grillage()
 
-    def _run_initial_sizing(self, dto: PlateGirderDTO) -> Dict[str, Any]:
-        span = _as_float(_first_present(self.basic_inputs, KEY_SPAN, "span"), 33.5)
-        carriageway_width = _as_float(
-            _first_present(self.basic_inputs, KEY_CARRIAGEWAY_WIDTH, "carriageway_width"),
-            10.0,
-        )
-        no_of_footpaths = self._footpath_count()
-        include_median = _as_bool(_first_present(self.basic_inputs, KEY_INCLUDE_MEDIAN, "include_median"))
-
-        crash_barrier_width = _as_float(
-            _first_present(self.additional_inputs, KEY_CRASH_BARRIER_WIDTH, "crash_barrier_width"),
-            DEFAULT_CRASH_BARRIER_WIDTH,
-        )
-        footpath_width = _as_float(
-            _first_present(self.additional_inputs, KEY_FOOTPATH_WIDTH, "footpath_width"),
-            MIN_FOOTPATH_WIDTH if no_of_footpaths else 0.0,
-        )
-        railing_width = _as_float(
-            _first_present(self.additional_inputs, KEY_RAILING_WIDTH, "railing_width"),
-            DEFAULT_RAILING_WIDTH if no_of_footpaths else 0.0,
-        )
-        median_width = _as_float(_first_present(self.additional_inputs, "median_width"), 0.0)
-        if not include_median:
-            median_width = 0.0
-
-        n_girders = max(
-            2,
-            _as_int(_first_present(self.additional_inputs, KEY_NO_OF_GIRDERS, "no_of_girders"), 4),
-        )
-        girder_spacing = _as_float(
-            _first_present(self.additional_inputs, KEY_GIRDER_SPACING, "girder_spacing"),
-            DEFAULT_GIRDER_SPACING,
-        )
-        deck_overhang = _as_float(
-            _first_present(self.additional_inputs, KEY_DECK_OVERHANG, "deck_overhang"),
-            0.5 * DEFAULT_GIRDER_SPACING,
+        print(
+            f"[PlateGirderBridge.design] "
+            f"span={parsed['span']} m | overall_width={self.sizing_result.overall_width} m | "
+            f"girders={self.sizing_result.no_of_girders} | "
+            f"spacing={self.sizing_result.girder_spacing} m | "
+            f"overhang={self.sizing_result.deck_overhang} m | "
+            f"girder_depth={self.section_props['D']:.3f} m"
         )
 
-        top_flange_w = _to_m(
-            _first_present(self.additional_inputs, KEY_GIRDER_TOP_FLANGE_WIDTH, "top_flange_width")
-        )
-        bot_flange_w = _to_m(
-            _first_present(self.additional_inputs, KEY_GIRDER_BOTTOM_FLANGE_WIDTH, "bottom_flange_width")
-        )
-        max_flange_width = max(top_flange_w, bot_flange_w, 0.0)
+    def _parse_basic_inputs(self) -> dict:
+        """Extract and normalise scalar values from ``self.basic_inputs``."""
+        span       = self._to_float(KEY_SPAN,             DEFAULT_SPAN_M)
+        cw_width   = self._to_float(KEY_CARRIAGEWAY_WIDTH, DEFAULT_CARRIAGEWAY_WIDTH_M)
+        skew_angle = self._to_float(KEY_SKEW_ANGLE,        0.0)
 
-        solver = BridgeConfigurationSolver(
-            carriageway_width=carriageway_width,
-            crash_barrier_width=crash_barrier_width,
+        include_median = str(self.basic_inputs.get(KEY_INCLUDE_MEDIAN, "No")).strip()
+        footpath_str   = str(self.basic_inputs.get(KEY_FOOTPATH,       "None")).strip()
+        design_mode    = str(self.basic_inputs.get(KEY_DESIGN_MODE,    "Optimized")).strip()
+
+        if footpath_str in ("None", ""):
+            n_footpaths    = 0
+            footpath_width = 0.0
+            railing_width  = 0.0
+        elif "Both" in footpath_str:
+            n_footpaths    = 2
+            footpath_width = DEFAULT_FOOTPATH_WIDTH
+            railing_width  = DEFAULT_RAILING_WIDTH
+        else:                                        # Single Side
+            n_footpaths    = 1
+            footpath_width = DEFAULT_FOOTPATH_WIDTH
+            railing_width  = DEFAULT_RAILING_WIDTH
+
+        median_width = (
+            _DEFAULT_MEDIAN_WIDTH_M if include_median.lower() == "yes" else 0.0
+        )
+
+        return dict(
+            span=span,
+            cw_width=cw_width,
+            skew_angle=skew_angle,
+            design_mode=design_mode,
+            n_footpaths=n_footpaths,
             footpath_width=footpath_width,
             railing_width=railing_width,
             median_width=median_width,
-            no_of_footpaths=no_of_footpaths,
-            flange_width=max_flange_width,
         )
 
-        changed_field = "girders"
-        if _first_present(self.additional_inputs, KEY_DECK_OVERHANG, "deck_overhang") is not None:
-            changed_field = "overhang"
-        elif _first_present(self.additional_inputs, KEY_GIRDER_SPACING, "girder_spacing") is not None:
-            changed_field = "spacing"
-
-        layout_result = solver._solve_layout(
-            no_of_girders=n_girders,
-            girder_spacing=girder_spacing,
-            deck_overhang=deck_overhang,
-            changed_field=changed_field,
+    def _solve_bridge_layout(self, parsed: dict) -> None:
+        """Run BridgeConfigurationSolver and store sizing + section results."""
+        solver = BridgeConfigurationSolver(
+            carriageway_width=parsed["cw_width"],
+            crash_barrier_width=DEFAULT_CRASH_BARRIER_WIDTH,
+            footpath_width=parsed["footpath_width"],
+            railing_width=parsed["railing_width"],
+            median_width=parsed["median_width"],
+            n_footpaths=parsed["n_footpaths"],
         )
 
-        deck_thickness = solver.get_deck_thickness(
-            _as_float(_first_present(self.additional_inputs, KEY_DECK_THICKNESS, "deck_thickness"), 200.0)
-        )
-        footpath_width_checked = solver.get_footpath_width(
-            user_value=footpath_width,
-            footpath={0: "None", 1: "Single Side", 2: "Both Sides"}.get(no_of_footpaths, "None"),
-        )
-        section_properties = solver.compute_section_properties(
-            span=span,
-            symmetry=str(
-                _first_present(self.additional_inputs, KEY_GIRDER_SYMMETRY, "symmetry")
-                or "Girder Symmetric"
-            ),
-            user_depth=_to_m(_first_present(self.additional_inputs, KEY_GIRDER_DEPTH, "depth")),
-            B_top=top_flange_w,
-            B_bot=bot_flange_w,
-            t_f_top=_to_m(
-                _first_present(self.additional_inputs, KEY_GIRDER_TOP_FLANGE_THICKNESS, "top_flange_thickness")
-            ),
-            t_f_bot=_to_m(_first_present(self.additional_inputs, "bottom_flange_thickness")),
-            t_w=_to_m(_first_present(self.additional_inputs, KEY_GIRDER_WEB_THICKNESS, "web_thickness")),
+        sizing_result = solver._solve_layout(
+            no_of_girders=DEFAULT_NO_OF_GIRDERS,
+            changed_field="girders",
         )
 
-        return {
-            "legacy_initial_sizing": preliminary_sizing(dto),
-            "layout": asdict(layout_result),
-            "deck_thickness_mm": deck_thickness,
-            "footpath_width_m": footpath_width_checked,
-            "section_properties": section_properties,
-            "inputs_resolved": {
-                "span_m": span,
-                "carriageway_width_m": carriageway_width,
-                "crash_barrier_width_m": crash_barrier_width,
-                "railing_width_m": railing_width,
-                "median_width_m": median_width,
-                "no_of_footpaths": no_of_footpaths,
-            },
-        }
-
-    def _build_geometry(self, initial_sizing: Dict[str, Any]) -> Dict[str, Any]:
-        span = _as_float(_first_present(self.basic_inputs, KEY_SPAN, "span"), 33.5)
-        layout_data = initial_sizing["layout"]
-        resolved = initial_sizing["inputs_resolved"]
-
-        layout = CrossSectionLayout(
-            carriageway_width=resolved["carriageway_width_m"],
-            crash_barrier_width=resolved["crash_barrier_width_m"],
-            railing_width=resolved["railing_width_m"],
-            footpath_width=initial_sizing["footpath_width_m"],
-            median_width=resolved["median_width_m"],
-            no_of_footpaths=resolved["no_of_footpaths"],
+        symmetry = (
+            DEFAULT_GIRDER_SYMMETRY
+            if parsed["design_mode"] == "Optimized"
+            else "Girder Unsymmetric"
         )
-        geometry = BridgeGeometry(span=span, width=layout.total_width)
-        layout.verify_bridge_width(
-            num_long_grid=layout_data["no_of_girders"],
-            ext_to_int_dist=layout_data["girder_spacing"],
-            edge_beam_dist=layout_data["deck_overhang"],
-            tol=1e-3,
+        section_props = solver.compute_section_properties(
+            span=parsed["span"],
+            symmetry=symmetry,
         )
 
-        return {
-            "span_m": geometry.span,
-            "width_m": geometry.width,
-            "bounds": geometry.bounds(),
-            "cross_section": layout.describe(),
-        }
+        self.sizing_result = sizing_result
+        self.section_props = section_props
 
-    def _prepare_or_run_analysis(
-        self,
-        initial_sizing: Dict[str, Any],
-        run_analysis: bool,
-        include_live_load: bool,
-    ) -> Dict[str, Any]:
+    def _build_dtos(self, parsed: dict) -> None:
+        """Construct GrillageGeometry and DeckLayoutProperties DTOs from solved results."""
+        span = parsed["span"]
+        # n_t: transverse grid lines — approx one division every 2 × girder spacings
+        n_t = max(3, int(round(span / (DEFAULT_GIRDER_SPACING * 2))))
+
+        self.grillage_geometry = GrillageGeometry(
+            L=span,
+            n_l=self.sizing_result.no_of_girders,
+            n_t=n_t,
+            edge_dist=self.sizing_result.deck_overhang,
+            ext_to_int_dist=self.sizing_result.girder_spacing,
+            angle=parsed["skew_angle"],
+        )
+
+        self.deck_layout = DeckLayoutProperties(
+            carriageway_width=parsed["cw_width"],
+            crash_barrier_width=DEFAULT_CRASH_BARRIER_WIDTH,
+            footpath_width=parsed["footpath_width"],
+            railing_width=parsed["railing_width"],
+            median_width=parsed["median_width"],
+            n_footpaths=parsed["n_footpaths"],
+        )
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # Grillage model setup
+    # ─────────────────────────────────────────────────────────────────────────
+
+    def setup_grillage(self) -> None:
+        """
+        Initialise and build the BridgeGrillageModel in order:
+          1. set_geometry   — grillage dimensions and cross-section layout
+          2. create_sections — section properties for all member types
+          3. create_material — steel material from the DB-backed girder selection
+          4. assign_members  — pair sections with material to create member objects
+          5. create_model    — build and run the OpenSees grillage model
+
+        Must be called after design() has populated grillage_geometry,
+        deck_layout, and section_props.
+        """
+        self.grillage_model.set_geometry(self.grillage_geometry, self.deck_layout)
+        self.grillage_model.create_sections(
+            longitudinal=self._girder_section(),
+            edge_longitudinal=self._girder_section(),
+            transverse=self._transverse_section(),
+            end_transverse=self._end_transverse_section(),
+        )
+        self.grillage_model.create_material(self._build_material_props())
+        self.grillage_model.assign_members()
+        self.grillage_model.create_model()
+
+    def _lookup_material_fy(self, material_name: str) -> float:
+        """
+        Query the Osdag SQLite database for the Yield Strength of the given
+        material name.  Returns Fy in Pa.  Falls back to _STEEL_FY_DEFAULT
+        if the DB is missing or the material is not found.
+        """
+        if not _DB_PATH.exists():
+            return _STEEL_FY_DEFAULT
         try:
-            from .analyser import BridgeGrillageModel  # Imported lazily: heavy deps.
-        except Exception as exc:
-            return {"status": "skipped", "reason": f"analysis backend import failed: {exc}"}
-
-        layout = initial_sizing["layout"]
-        span = _as_float(_first_present(self.basic_inputs, KEY_SPAN, "span"), 33.5)
-        skew = _as_float(_first_present(self.basic_inputs, KEY_SKEW_ANGLE, "skew_angle"), 0.0)
-
-        engine = BridgeGrillageModel()
-        engine.L = span
-        engine.n_l = layout["no_of_girders"]
-        engine.ext_to_int_dist = layout["girder_spacing"]
-        engine.edge_dist = layout["deck_overhang"]
-        engine.angle = skew
-        engine.create_model()
-
-        created_dead = []
-        for method_name in (
-            "create_self_weight_load",
-            "create_deck_load",
-            "create_wearing_course_load",
-            "create_footpath_load",
-            "create_crash_barrier_load",
-            "create_railing_load",
-            "create_median_load",
-        ):
-            method = getattr(engine, method_name)
-            load_case = method()
-            if load_case is not None:
-                created_dead.append(method_name)
-
-        created_live = []
-        if include_live_load:
-            for method_name in (
-                "create_vehicle_load_cases",
-                "add_vehicle_load_cases_from_combinations",
-                "create_moving_vehicle_load_cases",
-            ):
-                getattr(engine, method_name)()
-                created_live.append(method_name)
-
-        status = "prepared"
-        if run_analysis:
-            engine.analyze()
-            status = "completed"
-
-        self._analysis_engine = engine
-        return {
-            "status": status,
-            "dead_load_steps": created_dead,
-            "live_load_steps": created_live,
-        }
-
-    def _collect_analysis_results(self, analysis: Dict[str, Any]) -> Dict[str, Any]:
-        if analysis.get("status") == "skipped":
-            return {"status": "skipped", "reason": analysis.get("reason")}
-        if analysis.get("status") != "completed":
-            return {
-                "status": "not_run",
-                "note": "Analysis model is prepared. Run with run_analysis=True to produce results.",
-            }
-        return {"status": "completed", "note": "Use BridgeGrillageModel results/plot APIs for detailed tables."}
-
-    def run(
-        self,
-        *,
-        run_analysis: bool = False,
-        include_live_load: bool = True,
-        cad_path: Optional[str] = None,
-    ) -> PlateGirderRunResult:
-        dto = self._build_dto()
-        initial_sizing = self._run_initial_sizing(dto)
-        geometry = self._build_geometry(initial_sizing)
-        analysis = self._prepare_or_run_analysis(initial_sizing, run_analysis, include_live_load)
-        analysis_results = self._collect_analysis_results(analysis)
-        design_result = design(dto)
-
-        modifier_result: Dict[str, Any] = {"status": "skipped", "reason": "no modifier hook provided"}
-        if self.modifier_hook is not None:
-            temp = PlateGirderRunResult(
-                dto=dto,
-                initial_sizing=initial_sizing,
-                geometry=geometry,
-                analysis=analysis,
-                analysis_results=analysis_results,
-                design=design_result,
+            con = sqlite3.connect(_DB_PATH)
+            cur = con.cursor()
+            cur.execute(
+                'SELECT "Yield Strength" FROM Material WHERE "Material Name" = ?',
+                (material_name,),
             )
-            modifier_result = self.modifier_hook(temp)
+            row = cur.fetchone()
+            con.close()
+            if row:
+                return float(row[0]) * MPa   # DB stores MPa as integer → convert to Pa
+        except sqlite3.Error:
+            pass
+        return _STEEL_FY_DEFAULT
 
-        cad_result: Dict[str, Any] = {"status": "skipped"}
-        if cad_path:
-            export_step(dto, cad_path)
-            cad_result = {"status": "generated", "path": cad_path}
-
-        report_result = section_report(dto)
-
-        return PlateGirderRunResult(
-            dto=dto,
-            initial_sizing=initial_sizing,
-            geometry=geometry,
-            analysis=analysis,
-            analysis_results=analysis_results,
-            design=design_result,
-            modifier=modifier_result,
-            cad=cad_result,
-            report=report_result,
+    def _build_material_props(self) -> MaterialProperties:
+        """Build a MaterialProperties from the selected girder material in basic_inputs."""
+        material_name = str(self.basic_inputs.get(KEY_GIRDER, "")).strip()
+        fy = self._lookup_material_fy(material_name) if material_name else _STEEL_FY_DEFAULT
+        print(fy)
+        return MaterialProperties(
+            material="steel",
+            E=_STEEL_E,
+            v=_STEEL_V,
+            rho=_STEEL_RHO,
+            Fy=fy,
+            E0=_STEEL_E0,
+            b=_STEEL_B,
         )
 
+    def _girder_section(self) -> SectionProperties:
+        """Build a SectionProperties for the main/edge longitudinal girder from section_props."""
+        sp = self.section_props
+        Az = sp["d_web"] * sp["t_w"]                       # web shear area (strong axis)
+        Ay = 2 * sp["B_top"] * sp["t_f_top"]               # flange shear area (weak axis)
+        return SectionProperties(
+            A=sp["Area"],
+            J=sp["I_t"],
+            Iz=sp["I_z"],
+            Iy=sp["I_y"],
+            Az=Az,
+            Ay=Ay,
+        )
 
-def run_plategirder_bridge(
-    basic_inputs: Optional[Mapping[str, Any]] = None,
-    additional_inputs: Optional[Mapping[str, Any]] = None,
-    *,
-    run_analysis: bool = False,
-    include_live_load: bool = True,
-    cad_path: Optional[str] = None,
-    modifier_hook: Optional[Callable[[PlateGirderRunResult], Dict[str, Any]]] = None,
-) -> Dict[str, Any]:
-    """Functional wrapper around PlateGirderBridge."""
-    bridge = PlateGirderBridge(
-        basic_inputs=basic_inputs,
-        additional_inputs=additional_inputs,
-        modifier_hook=modifier_hook,
-    )
-    return bridge.run(
-        run_analysis=run_analysis,
-        include_live_load=include_live_load,
-        cad_path=cad_path,
-    ).to_dict()
+    def _transverse_section(self) -> SectionProperties:
+        """Build a SectionProperties for the transverse deck slab (half-depth, unit width)."""
+        sp = self.section_props
+        t = sp["D"] / 2                                     # approximate slab thickness
+        Az = t * sp["t_w"]
+        Ay = t * sp["t_w"]
+        return SectionProperties(
+            A=sp["Area"] / 2,
+            J=sp["I_t"] / 2,
+            Iz=sp["I_z"] / 2,
+            Iy=sp["I_y"] / 2,
+            Az=Az,
+            Ay=Ay,
+        )
+
+    def _end_transverse_section(self) -> SectionProperties:
+        """Build a SectionProperties for the end transverse slab (quarter-depth)."""
+        sp = self.section_props
+        Az = sp["d_web"] / 2 * sp["t_w"]
+        Ay = sp["B_top"] * sp["t_f_top"]
+        return SectionProperties(
+            A=sp["Area"] / 4,
+            J=sp["I_t"] / 4,
+            Iz=sp["I_z"] / 4,
+            Iy=sp["I_y"] / 4,
+            Az=Az,
+            Ay=Ay,
+        )
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # Helpers
+    # ─────────────────────────────────────────────────────────────────────────
+
+    def _to_float(self, key: str, fallback: float) -> float:
+        """Safely convert a basic_inputs value to float, falling back on error."""
+        val = self.basic_inputs.get(key)
+        if val is None or str(val).strip().lower() in ("", "none"):
+            return fallback
+        try:
+            return float(val)
+        except (TypeError, ValueError):
+            return fallback
