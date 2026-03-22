@@ -1,118 +1,13 @@
 import ospgrillage as og
-from math import *
-import openseespy.opensees as ops
-from osdagbridge.core.utils.codes.irc6_2017 import *
+# from math import sqrt, pi 
+# import openseespy.opensees as ops
+from osdagbridge.core.utils.codes.irc6_2017 import IRC6_2017
 from osdagbridge.core.utils.common import *
-from osdagbridge.core.bridge_types.plate_girder.bridge_geometry import *
+from osdagbridge.core.bridge_types.plate_girder.bridge_geometry import BridgeGeometry, CrossSectionLayout
 from osdagbridge.core.bridge_types.plate_girder.load_placement import LoadPlacementManager
 import warnings
-from dataclasses import dataclass
 from osdagbridge.core.bridge_types.plate_girder.analysis_results import PlateGirderAnalysisResults
-
-
-@dataclass
-class SectionProperties:
-    """
-    Holds cross-section properties for a single grillage member.
-
-    Attributes
-    ----------
-    A : float
-        Cross-sectional area (m^2).
-    J : float
-        Torsional constant (m^3).
-    Iz : float
-        Second moment of area about z-axis (m^4).
-    Iy : float
-        Second moment of area about y-axis (m^4).
-    Az : float
-        Shear area in z-direction (m^2).
-    Ay : float
-        Shear area in y-direction (m^2).
-    """
-    A: float
-    J: float
-    Iz: float
-    Iy: float
-    Az: float
-    Ay: float
-
-
-@dataclass
-class MaterialProperties:
-    """
-    Holds custom material properties for a grillage member.
-
-    Attributes
-    ----------
-    material : str
-        Material type string (e.g. "steel", "concrete").
-    E : float
-        Elastic modulus (Pa).
-    v : float
-        Poisson's ratio.
-    rho : float
-        Density (kN/m^3).
-    Fy : float, optional
-        Yield strength (Pa). Required for steel.
-    E0 : float, optional
-        Initial elastic modulus (Pa). Required for steel.
-    b : float, optional
-        Strain-hardening ratio. Required for steel.
-    """
-    material: str
-    E: float
-    v: float
-    rho: float
-    Fy: float = None
-    E0: float = None
-    b: float = None
-
-
-@dataclass
-class GrillageGeometry:
-    """
-    Holds grillage geometry and cross-section layout parameters.
-
-    Attributes
-    ----------
-    L : float
-        Bridge span length (m).
-    n_l : int
-        Number of longitudinal grid lines.
-    n_t : int
-        Number of transverse grid lines.
-    edge_dist : float
-        Edge beam distance / overhang (m). Use 0 for no overhang.
-    ext_to_int_dist : float
-        Distance from exterior to interior beam (m).
-    angle : float
-        Skew angle in degrees. Use 0 for a right bridge.
-    carriageway_width : float
-        Width of the carriageway (m).
-    crash_barrier_width : float
-        Width of each crash barrier (m).
-    footpath_width : float
-        Width of each footpath (m).
-    railing_width : float
-        Width of each railing (m).
-    median_width : float
-        Width of the median (m). Use 0 if no median.
-    no_of_footpaths : int
-        Number of footpaths.
-    """
-    L: float
-    n_l: int
-    n_t: int
-    edge_dist: float
-    ext_to_int_dist: float
-    angle: float
-    carriageway_width: float
-    crash_barrier_width: float
-    footpath_width: float
-    railing_width: float
-    median_width: float
-    no_of_footpaths: int
+from osdagbridge.core.bridge_types.plate_girder.dto import (SectionProperties, MaterialProperties, GrillageGeometry, DeckLayoutProperties)
 
 
 class BridgeGrillageModel:
@@ -145,6 +40,7 @@ class BridgeGrillageModel:
         self.edge_dist = None
         self.ext_to_int_dist = None
         self.angle = None
+        self.w: float | None = None  # updated from bridge geometry width after set_geometry()
 
         # placeholder for model
         self.model = None
@@ -165,7 +61,7 @@ class BridgeGrillageModel:
     # ============================================================
     #   SET GEOMETRY
     # ============================================================
-    def set_geometry(self, geometry: GrillageGeometry):
+    def set_geometry(self, geometry: GrillageGeometry, layout: DeckLayoutProperties):
         """
         Sets grillage geometry and builds the cross-section layout and bridge
         geometry from user-supplied GrillageGeometry.
@@ -186,12 +82,12 @@ class BridgeGrillageModel:
         # Cross-section layout
         # -------------------------------------------------
         self.layout = CrossSectionLayout(
-            carriageway_width=geometry.carriageway_width,
-            crash_barrier_width=geometry.crash_barrier_width,
-            footpath_width=geometry.footpath_width,
-            railing_width=geometry.railing_width,
-            median_width=geometry.median_width,
-            no_of_footpaths=geometry.no_of_footpaths,
+            carriageway_width=layout.carriageway_width,
+            crash_barrier_width=layout.crash_barrier_width,
+            footpath_width=layout.footpath_width,
+            railing_width=layout.railing_width,
+            median_width=layout.median_width,
+            n_footpaths=layout.n_footpaths,
         )
 
         # -------------------------------------------------
@@ -269,7 +165,7 @@ class BridgeGrillageModel:
     # ============================================================
     def create_material(self, props: MaterialProperties):
         """
-        Creates a custom material and assigns it to all grillage members.
+        Creates a custom material from the supplied properties.
 
         Parameters
         ----------
@@ -281,7 +177,14 @@ class BridgeGrillageModel:
             Fy=props.Fy, E0=props.E0, b=props.b
         )
 
-        # Re-assign members now that material is defined
+    def assign_members(self):
+        """
+        Creates grillage members by pairing each section with the current
+        material (``self.steel_custom``).
+
+        Must be called after both ``create_sections()`` and
+        ``create_material()`` have been called.
+        """
         self.longitudinal_beam = og.create_member(
             section=self.longitudinal_section, material=self.steel_custom
         )
@@ -320,7 +223,7 @@ class BridgeGrillageModel:
             skew=self.angle,
             num_long_grid=self.n_l,
             num_trans_grid=self.n_t,
-            edge_beam_dist=self.edge_dist,                                    #0-no overhang
+            edge_beam_dist=self.edge_dist,                                    
             ext_to_int_dist=self.ext_to_int_dist,
             mesh_type="Oblique"  # ('Ortho' or 'Oblique')
         )
@@ -1093,68 +996,6 @@ class BridgeGrillageModel:
 
         return self.moving_load_cases_list
 
-    def vehicle_combination(self, carriageway_width=None):
-        """
-        Generate all ordered vehicle placement sequences for design lanes determined
-        from `carriageway_width` using `IRC6_2017.table_6`.
-
-        - 'ClassA' occupies 1 lane
-        - 'Class70R' occupies 2 lanes
-
-        Example (3 lanes) ->
-            ['ClassA','ClassA','ClassA'], ['ClassA','Class70R'], ['Class70R','ClassA']
-
-        Parameters
-        ----------
-        carriageway_width : float, optional
-            Carriageway width in metres. If omitted, attempts to read from the
-            instance `self.layout` (single or split carriageway).
-
-        Returns
-        -------
-        list of lists
-            Each inner list is an ordered sequence of vehicle types that fills
-            the design lanes exactly.
-        """
-        # Determine carriageway width: prefer provided parameter, else attempt to read from layout
-        # if carriageway_width is None:
-        #     cw = None
-        #     if getattr(self, 'layout', None) and self.layout.has_component('carriageway'):
-        #         cw = self.layout.get_component('carriageway').width
-        #     else:
-        #         left = 0.0
-        #         right = 0.0
-        #         if getattr(self, 'layout', None) and self.layout.has_component('carriageway_left'):
-        #             left = self.layout.get_component('carriageway_left').width
-        #         if getattr(self, 'layout', None) and self.layout.has_component('carriageway_right'):
-        #             right = self.layout.get_component('carriageway_right').width
-        #         if left + right > 0.0:
-        #             cw = left + right
-        #     if cw is None:
-        #         raise ValueError("carriageway_width must be provided or layout with carriageway must exist")
-        #     carriageway_width = cw
-
-        lanes = IRC6_2017.table_6(carriageway_width)
-
-        sequences = []
-
-        def _build(remaining_lanes, current_seq):
-            if remaining_lanes == 0:
-                sequences.append(list(current_seq))
-                return
-            # place ClassA (1 lane)
-            current_seq.append("ClassA")
-            _build(remaining_lanes - 1, current_seq)
-            current_seq.pop()
-            # place Class70R (2 lanes) if space
-            if remaining_lanes >= 2:
-                current_seq.append("Class70R")
-                _build(remaining_lanes - 2, current_seq)
-                current_seq.pop()
-
-        _build(lanes, [])
-        print("Vehicle placement sequences:", sequences)
-        return sequences
 
     def add_vehicle_load_with_moving_path(
             self,
@@ -1329,15 +1170,16 @@ if __name__ == "__main__":
         L=33.5 * m,
         n_l=7,
         n_t=11,
-        edge_dist=0 * m,   # 0-consider edge , else not    overhang-edgebeams
+        edge_dist=1.1 * m,
         ext_to_int_dist=2.2775 * m,
         angle=0,
-        carriageway_width=10.0 * m,
+    ), DeckLayoutProperties(
+        carriageway_width=7.0 * m,
         crash_barrier_width=0.45 * m,
         footpath_width=1.50 * m,
         railing_width=0.30 * m,
         median_width=0.0 * m,
-        no_of_footpaths=2,
+        n_footpaths=2,
     ))
 
     # --- Test section values (replace with UI inputs later) ---
@@ -1387,6 +1229,8 @@ if __name__ == "__main__":
         b=0.01,
     ))
 
+    bridge.assign_members()
+
     bridge.create_model()
     # bridge.plot_model()
     # bridge.add_dead_loads()
@@ -1398,7 +1242,6 @@ if __name__ == "__main__":
     bridge.create_railing_load()
     bridge.create_median_load()
     bridge.vehicle_lane_coordinates()
-    # bridge.vehicle_combination(carriageway_width=6.0)
     bridge.create_vehicle_load_cases()
     bridge.add_vehicle_load_cases_from_combinations()
     bridge.create_moving_vehicle_load_cases()

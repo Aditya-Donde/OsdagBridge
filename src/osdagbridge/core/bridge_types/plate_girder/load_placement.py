@@ -3,6 +3,8 @@ from __future__ import annotations
 from .bridge_geometry import (
     BridgeGeometry,
     CrossSectionLayout,
+)
+from .dto import (
     LineLoadGeometry,
     PatchLoadGeometry,
     Point,
