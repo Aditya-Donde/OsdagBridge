@@ -32,7 +32,7 @@ from osdagbridge.core.utils.common import (
     DEFAULT_GIRDER_SPACING,
     MPa,
     GPa,
-    kN,
+    N,
     m,
 )
 
@@ -43,9 +43,6 @@ _DEFAULT_MEDIAN_WIDTH_M = 1.2
 _DB_PATH = Path(__file__).resolve().parents[2] / "data" / "ResourceFiles" / "Intg_osdag.sqlite"
 
 # Steel constants (same values used in analyser.py __main__)
-_STEEL_E        = 200 * GPa    # Elastic modulus (Pa)
-_STEEL_V        = 0.3          # Poisson's ratio
-_STEEL_RHO      = 78.5 * kN / m ** 3  # Unit weight (N/m³)
 _STEEL_E0       = 200 * GPa    # Initial elastic modulus (Pa)
 _STEEL_B        = 0.01         # Strain-hardening ratio
 _STEEL_FY_DEFAULT = 250 * MPa  # Fallback Fy if material not found in DB (Pa)
@@ -261,39 +258,54 @@ class PlateGirderBridge:
         self.grillage_model.assign_members()
         self.grillage_model.create_model()
 
-    def _lookup_material_fy(self, material_name: str) -> float:
+    def _lookup_material(self, material_name: str, property: str) -> float:
         """
-        Query the Osdag SQLite database for the Yield Strength of the given
-        material name.  Returns Fy in Pa.  Falls back to _STEEL_FY_DEFAULT
+        Query the Osdag SQLite database for the specified property of the given
+        material name.  Returns the property value in its respective units.  Falls back to the default value
         if the DB is missing or the material is not found.
         """
         if not _DB_PATH.exists():
-            return _STEEL_FY_DEFAULT
+            raise LookupError(f"Material database not found at {_DB_PATH} in PlateGirderBridge._lookup_material")
         try:
             con = sqlite3.connect(_DB_PATH)
             cur = con.cursor()
+            query_map = {
+                "E": "Modulus of Elasticity",
+                "V": "Poisson's Ratio",
+                "rho": "Density",
+                "fy": "Yield Strength",
+            }
             cur.execute(
-                'SELECT "Yield Strength" FROM Material WHERE "Material Name" = ?',
+                f'SELECT "{query_map.get(property)}" FROM Material WHERE "Material Name" = ?',
                 (material_name,),
             )
             row = cur.fetchone()
             con.close()
             if row:
-                return float(row[0]) * MPa   # DB stores MPa as integer → convert to Pa
+                if property == "E":                    # Elastic modulus (Pa)
+                    return float(row[0]) * GPa
+                elif property == "V":                  # Poisson's ratio (unitless)
+                    return float(row[0])
+                elif property == "rho":                # Unit weight (N/m³)
+                    return float(row[0]) * N / m ** 3
+                elif property == "fy":                 # Yield strength (Pa)
+                    return float(row[0]) * MPa         # DB stores MPa as integer → convert to Pa
         except sqlite3.Error:
-            pass
-        return _STEEL_FY_DEFAULT
+            raise LookupError(f"Error querying material database in PlateGirderBridge._lookup_material: {sqlite3.Error}")
 
     def _build_material_props(self) -> MaterialProperties:
         """Build a MaterialProperties from the selected girder material in basic_inputs."""
         material_name = str(self.basic_inputs.get(KEY_GIRDER, "")).strip()
-        fy = self._lookup_material_fy(material_name) if material_name else _STEEL_FY_DEFAULT
-        print(fy)
+        e = self._lookup_material(material_name, "E") if material_name else _STEEL_FY_DEFAULT
+        v = self._lookup_material(material_name, "V") if material_name else _STEEL_FY_DEFAULT
+        rho = self._lookup_material(material_name, "rho") if material_name else _STEEL_FY_DEFAULT
+        fy = self._lookup_material(material_name, "fy") if material_name else _STEEL_FY_DEFAULT
+        # print(f"e: {e}, v: {v}, rho: {rho}, fy: {fy}")
         return MaterialProperties(
             material="steel",
-            E=_STEEL_E,
-            v=_STEEL_V,
-            rho=_STEEL_RHO,
+            E=e,
+            v=v,
+            rho=rho,
             Fy=fy,
             E0=_STEEL_E0,
             b=_STEEL_B,
