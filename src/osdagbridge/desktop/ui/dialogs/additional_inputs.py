@@ -318,6 +318,15 @@ class AdditionalInputs(QDialog):
             except ValueError:
                 continue
 
+    def _normalize_member_properties_design_mode(self, mode_str: str) -> str:
+        """Map upstream design labels to Member Properties supported values."""
+        value = str(mode_str or "").strip().lower()
+        if value in {"custom", "customized"}:
+            return "Customized"
+        if value in {"optimized", "optimised"}:
+            return "Optimized"
+        return "Optimized"
+
     def _create_schema_widget(self, field_def, field_width):
         field_type = field_def.get("type")
         widget = None
@@ -403,8 +412,9 @@ class AdditionalInputs(QDialog):
         return widget
 
     def set_member_properties_design_mode(self, mode_str: str):
+        normalized_mode = self._normalize_member_properties_design_mode(mode_str)
         if hasattr(self, "section_properties_tab") and hasattr(self.section_properties_tab, "set_design_mode"):
-            self.section_properties_tab.set_design_mode(mode_str)
+            self.section_properties_tab.set_design_mode(normalized_mode)
 
     def _apply_defaults(self):
         """Apply defaults only to the currently visible top-level tab.
@@ -439,8 +449,20 @@ class AdditionalInputs(QDialog):
                     tab.reset_defaults()
             return
 
-        # Store the saved data for later retrieval
-        self._last_saved_data = saved
+        if current_widget is getattr(self, "support_tab", None):
+            if hasattr(self.support_tab, "reset_defaults"):
+                self.support_tab.reset_defaults()
+            return
+
+        if current_widget is getattr(self, "design_options_tab", None):
+            if hasattr(self.design_options_tab, "reset_defaults"):
+                self.design_options_tab.reset_defaults()
+            return
+
+        if current_widget is getattr(self, "design_options_cont_tab", None):
+            if hasattr(self.design_options_cont_tab, "reset_defaults"):
+                self.design_options_cont_tab.reset_defaults()
+            return
 
     def _build_sections_from_schema(self, parent_layout, sections, heading_style, label_style, field_width):
         for section in sections:

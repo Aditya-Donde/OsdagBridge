@@ -449,7 +449,6 @@ class StiffenerDetailsTab(QWidget):
         self.bearing_spacing_input = QLineEdit()
         self.bearing_spacing_input.setValidator(QIntValidator(1, 10**9, self.bearing_spacing_input))
         apply_field_style(self.bearing_spacing_input)
-        self.bearing_spacing_input.setPlaceholderText("Auto (based on min member length)")
         self.bearing_spacing_input.setFixedWidth(combo_width)
         self.bearing_spacing_input.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
         bearing_spacing_row = row

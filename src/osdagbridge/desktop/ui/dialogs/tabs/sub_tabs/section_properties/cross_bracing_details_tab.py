@@ -689,7 +689,8 @@ class CrossBracingDetailsTab(QWidget):
         )
 
         # For K-bracing, bottom bracket is mandatory.
-        if (state.get("bracing_type") or "") == "K-Bracing":
+        effective_bracing = (state.get("bracing_type") or self.bracing_type_combo.currentText() or "").strip()
+        if effective_bracing == "K-Bracing":
             self.bottom_bracket_checkbox.setChecked(True)
         else:
             self.bottom_bracket_checkbox.setChecked(bool(state.get("bottom_bracket_enabled", True)))
@@ -1006,7 +1007,8 @@ class CrossBracingDetailsTab(QWidget):
 
             if bracing == "K-Bracing":
                 self.bottom_bracket_checkbox.setChecked(True)
-                self.bottom_bracket_checkbox.setEnabled(False)
+                # Keep enabled so the checked state is always visually clear.
+                self.bottom_bracket_checkbox.setEnabled(True)
                 self.top_bracket_checkbox.setEnabled(True)
             else:
                 self.bottom_bracket_checkbox.setEnabled(True)
@@ -1021,7 +1023,10 @@ class CrossBracingDetailsTab(QWidget):
             self.bottom_bracket_size_combo.setEnabled(bottom_enabled)
 
             self.top_bracket_preview_box.setVisible(self.top_bracket_checkbox.isChecked())
-            self.bottom_bracket_preview_box.setVisible(self.bottom_bracket_checkbox.isChecked())
+            show_bottom = self.bottom_bracket_checkbox.isChecked() or bracing == "K-Bracing"
+            if show_bottom and not self.bottom_bracket_checkbox.isChecked():
+                self.bottom_bracket_checkbox.setChecked(True)
+            self.bottom_bracket_preview_box.setVisible(show_bottom)
 
             if hasattr(self, "bracing_layout_widget") and self.bracing_layout_widget is not None:
                 self.bracing_layout_widget.set_layout(
