@@ -125,11 +125,16 @@ class PlateGirderBridge:
           2. Solve bridge layout
           3. Build result DTOs
           4. Set up grillage model geometry and sections
+          5. Apply dead loads
+          6. Apply live loads
         """
         parsed = self._parse_basic_inputs()
         self._solve_bridge_layout(parsed)
         self._build_dtos(parsed)
         self.setup_grillage()
+        self.add_dead_loads()
+        self.add_live_loads()
+        self.analyze()
 
         print(
             f"[PlateGirderBridge.design] "
@@ -354,6 +359,184 @@ class PlateGirderBridge:
             Ay=Ay,
         )
 
+    # ─────────────────────────────────────────────────────────────────────────
+    # Dead loads — permanent loads applied after the grillage model is built
+    # ─────────────────────────────────────────────────────────────────────────
+
+    def add_dead_loads(self) -> None:
+        """
+        Apply all permanent dead loads to the grillage model in order:
+          1. Girder self weight     — line load along each longitudinal member
+          2. Deck slab              — patch load over the full deck area
+          3. Wearing course         — patch load over the carriageway area
+          4. Footpath               — patch load on footpath strips (skipped if none)
+          5. Crash barrier          — line load at each barrier centreline (skipped if none)
+          6. Railing                — line load at each railing centreline (skipped if none)
+
+        Must be called after setup_grillage() has built and registered the model.
+        """
+        m = self.grillage_model
+        m.create_self_weight_load()
+        m.create_deck_load()
+        m.create_wearing_course_load()
+        m.create_footpath_load()
+        m.create_crash_barrier_load()
+        m.create_railing_load()
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # Live loads — vehicle and moving loads applied after the grillage model
+    # ─────────────────────────────────────────────────────────────────────────
+
+    def add_live_loads(self) -> None:
+        """
+        Apply all live loads to the grillage model in order:
+          1. Vehicle load cases — static placements per IRC:6 Table 6A
+          2. Moving vehicle load cases — moving paths for each vehicle
+
+        Must be called after setup_grillage() has built and registered the model.
+        """
+        m = self.grillage_model
+        m.add_vehicle_load_cases_from_combinations()
+        m.create_moving_vehicle_load_cases()
+
+    def vehicle_lane_coordinates(self) -> list:
+        """
+        Return vehicle-to-coordinate mappings for all IRC:6-2017 Table 6A
+        combinations.
+
+        Delegates to BridgeGrillageModel.vehicle_lane_coordinates().
+
+        Returns
+        -------
+        list of dict
+            Each dict has 'case_num' and 'combinations' keys.
+        """
+        return self.grillage_model.vehicle_lane_coordinates()
+
+    def create_vehicle_load_cases(self) -> list:
+        """
+        Create static vehicle load cases based on IRC:6-2017 lane combinations.
+
+        Delegates to BridgeGrillageModel.create_vehicle_load_cases().
+
+        Returns
+        -------
+        list
+            All created load case objects.
+        """
+        return self.grillage_model.create_vehicle_load_cases()
+
+    def add_vehicle_load_cases_from_combinations(self) -> list:
+        """
+        Create vehicle load cases with lane factors (alf) and dynamic load
+        allowance (dla) applied, using IRC:6-2017 combinations.
+
+        Delegates to BridgeGrillageModel.add_vehicle_load_cases_from_combinations().
+
+        Returns
+        -------
+        list
+            All created load case objects.
+        """
+        return self.grillage_model.add_vehicle_load_cases_from_combinations()
+
+    def create_moving_vehicle_load_cases(
+        self,
+        start_offset: float = -25.0,
+        span: float | None = None,
+    ) -> list:
+        """
+        Create moving load cases for all vehicles previously created by
+        add_vehicle_load_cases_from_combinations().
+
+        Delegates to BridgeGrillageModel.create_moving_vehicle_load_cases().
+
+        Parameters
+        ----------
+        start_offset : float
+            Longitudinal offset (m) behind the bridge start where vehicles
+            begin traversal (default -25.0).
+        span : float, optional
+            Override the bridge span (m); defaults to the analysed span.
+
+        Returns
+        -------
+        list
+            All created moving load case objects.
+        """
+        return self.grillage_model.create_moving_vehicle_load_cases(
+            start_offset=start_offset,
+            span=span,
+        )
+
+    def add_vehicle_load_with_moving_path(
+        self,
+        vehicle_type: str = "CLASS70R",
+        load_case_name: str = "Class 70R",
+        x_coord: float = 0.0,
+        z_coord: float = 0.0,
+        spacing: float = 1.5,
+        span: float | None = None,
+        y_coord: float = 0.0,
+    ) -> dict:
+        """
+        Add a single vehicle (static + moving) at an explicit position.
+
+        Delegates to BridgeGrillageModel.add_vehicle_load_with_moving_path().
+
+        Parameters
+        ----------
+        vehicle_type : str
+            Load model type (e.g. ``'CLASS70R'``, ``'CLASSA'``).
+        load_case_name : str
+            Name given to the static load case.
+        x_coord : float
+            Initial longitudinal position (m) of the vehicle.
+        z_coord : float
+            Transverse position (m) of the vehicle.
+        spacing : float
+            Distance (m) behind bridge start for the moving path origin.
+        span : float, optional
+            Override the bridge span (m).
+        y_coord : float
+            Vertical coordinate (default 0.0).
+
+        Returns
+        -------
+        dict
+            Keys: ``'vehicle'``, ``'static_load_case'``,
+            ``'moving_load_case'``, ``'moving_path'``.
+        """
+        return self.grillage_model.add_vehicle_load_with_moving_path(
+            vehicle_type=vehicle_type,
+            load_case_name=load_case_name,
+            x_coord=x_coord,
+            z_coord=z_coord,
+            spacing=spacing,
+            span=span,
+            y_coord=y_coord,
+        )
+
+    def analyze(self):
+        """
+        Run the OpenSees grillage analysis for all registered load cases.
+
+        Delegates to BridgeGrillageModel.analyze(), which executes the model,
+        retrieves results for every load case, and stores them in
+        ``self.grillage_model.dataset``.
+
+        Must be called after add_dead_loads() and add_live_loads() have
+        registered all load cases on the model.
+
+        Returns
+        -------
+        xarray.Dataset
+            Results dataset containing displacements and forces for all load
+            cases, indexed by Loadcase, Node/Element, and Component.
+        """
+        return self.grillage_model.analyze()
+        
+    
     # ─────────────────────────────────────────────────────────────────────────
     # Helpers
     # ─────────────────────────────────────────────────────────────────────────
