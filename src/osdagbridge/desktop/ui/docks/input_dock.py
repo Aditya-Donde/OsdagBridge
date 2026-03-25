@@ -751,6 +751,11 @@ class InputDock(QWidget):
 
         self.additional_inputs = AdditionalInputs(footpath_value, carriageway_width)
         self.additional_inputs_widget = self.additional_inputs
+        
+        # Propagate project location data to additional inputs (for Temperature Load etc)
+        location_data = self.backend.get_input_value(KEY_PROJECT_LOCATION) if hasattr(self.backend, "get_input_value") else None
+        if location_data and hasattr(self.additional_inputs, 'update_project_location'):
+            self.additional_inputs.update_project_location(location_data)
 
         # Restore previously saved dialog state (includes stiffener details).
         if isinstance(getattr(self, "_additional_inputs_saved_data", None), dict) and self._additional_inputs_saved_data:

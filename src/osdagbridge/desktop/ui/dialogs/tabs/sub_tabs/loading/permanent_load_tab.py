@@ -163,22 +163,6 @@ class PermanentLoadTab(QWidget):
 
         return widget
 
-    def update_dependency_states(self, has_median: bool, has_footpath: bool):
-        """
-        Enable/disable load options based on basic inputs
-        """
-        # Median dependency
-        if hasattr(self, 'include_median_combo'):
-            self.include_median_combo.setEnabled(has_median)
-            if not has_median:
-                self.include_median_combo.setCurrentText("No")
-
-        # Railing dependency
-        if hasattr(self, 'include_railing_combo'):
-            self.include_railing_combo.setEnabled(has_footpath)
-            if not has_footpath:
-                self.include_railing_combo.setCurrentText("No")
-    
     def reset_defaults(self):
         """Reset Permanent Load inputs to default values"""
         schema = PERMANENT_LOAD_TAB_SCHEMA

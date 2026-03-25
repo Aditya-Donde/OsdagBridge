@@ -1,4 +1,4 @@
-﻿"""
+"""
 Additional Inputs Widget for Highway Bridge Design
 Provides detailed input fields for manual bridge parameter definition
 """
@@ -15,6 +15,7 @@ from PySide6.QtGui import QDoubleValidator, QIntValidator, QColor, QValidator
 from osdagbridge.core.utils.common import *
 from osdagbridge.desktop.ui.utils.custom_titlebar import CustomTitleBar
 from osdagbridge.desktop.ui.dialogs.tabs.common import apply_field_style, create_action_button_bar
+from osdagbridge.desktop.ui.dialogs.custom_messagebox import CustomMessageBox, MessageBoxType
 from osdagbridge.desktop.ui.dialogs.tabs.typical_section_details import TypicalSectionDetailsTab, show_warning
 from osdagbridge.desktop.ui.dialogs.tabs.section_properties_tab import SectionPropertiesTab
 from osdagbridge.desktop.ui.dialogs.tabs.loading_tab import LoadingTab
@@ -68,6 +69,7 @@ class AdditionalInputs(QDialog):
         errors = []
 
         for tab in [
+            self.loading_tab,
             self.support_tab,
             self.design_options_tab,
             self.design_options_cont_tab,
@@ -112,56 +114,24 @@ class AdditionalInputs(QDialog):
 
         self._last_saved_data = saved
 
-        box = QMessageBox(self)
-        box.setIcon(QMessageBox.Information)
-        box.setWindowTitle("Saved")
-        box.setText("Inputs saved successfully.")
-        box.setStandardButtons(QMessageBox.Ok)
-        box.setDefaultButton(QMessageBox.Ok)
-        box.setWindowModality(Qt.ApplicationModal)
-
-        box.setStyleSheet("""
-        QMessageBox {
-            background-color: #ffffff;
-        }
-
-        QMessageBox QLabel {
-            color: #2b2b2b;
-            font-size: 12px;
-        }
-        """)
-
-        box.exec()
+        CustomMessageBox(
+            title="Saved",
+            text="Inputs saved successfully.",
+            buttons=["OK"],
+            dialogType=MessageBoxType.Success,
+        ).exec()
 
         # self.accept() 
 
     def _show_validation_errors(self, errors):
         message = "\n\n".join(f"• {err}" for err in errors)
 
-        msg = QMessageBox(self)
-        msg.setIcon(QMessageBox.Warning)
-        msg.setWindowTitle("Validation Errors")
-        msg.setText(message)
-
-        msg.setStyleSheet("""
-            QMessageBox {
-                background-color: #ffffff;
-            }
-            QMessageBox QLabel {
-                color: #b00020;
-                font-size: 12px;
-            }
-            QMessageBox QPushButton {
-                background-color: #f0f0f0;
-                color: #000000;
-                border: 1px solid #888888;
-                border-radius: 4px;
-                padding: 6px 20px;
-                min-width: 80px;
-            }
-        """)
-
-        msg.exec()    
+        CustomMessageBox(
+            title="Validation Errors",
+            text=message,
+            buttons=["OK"],
+            dialogType=MessageBoxType.Warning,
+        ).exec()
     
     def _collect_all_values(self):
         """Collect values from all bound widgets across all tabs."""
@@ -302,13 +272,20 @@ class AdditionalInputs(QDialog):
         for line_edit in self.findChildren(QLineEdit):
             validator = line_edit.validator()
             if isinstance(validator, QDoubleValidator):
-                validator.setDecimals(places)
-                validator.setNotation(QDoubleValidator.StandardNotation)
+                # Only enforce standard notation decimals if it's not explicitly scientific
+                if validator.notation() != QDoubleValidator.ScientificNotation:
+                    validator.setDecimals(places)
+                    validator.setNotation(QDoubleValidator.StandardNotation)
 
     def _normalize_numeric_texts(self, places=2):
         """Format any numeric QLineEdit text to the specified decimal places."""
         fmt = f"{{:.{places}f}}"
         for line_edit in self.findChildren(QLineEdit):
+            # Skip fields with scientific validators
+            validator = line_edit.validator()
+            if isinstance(validator, QDoubleValidator) and validator.notation() == QDoubleValidator.ScientificNotation:
+                continue
+                
             text = line_edit.text().strip()
             if not text:
                 continue
@@ -577,6 +554,18 @@ class AdditionalInputs(QDialog):
         self.footpath_value = footpath_value
         self.typical_section_tab.update_footpath_value(footpath_value)
 
+    def update_project_location(self, location_data):
+        """Update dependent tabs when project location changes"""
+        if hasattr(self, "loading_tab"):
+            if hasattr(self.loading_tab, "temperature_load_tab") and hasattr(self.loading_tab.temperature_load_tab, "update_project_location"):
+                self.loading_tab.temperature_load_tab.update_project_location(location_data)
+            
+            if hasattr(self.loading_tab, "seismic_load_tab") and hasattr(self.loading_tab.seismic_load_tab, "update_project_location"):
+                self.loading_tab.seismic_load_tab.update_project_location(location_data)
+                
+            if hasattr(self.loading_tab, "wind_load_tab") and hasattr(self.loading_tab.wind_load_tab, "update_project_location"):
+                self.loading_tab.wind_load_tab.update_project_location(location_data)
+
     def set_member_properties_editable(self, editable: bool) -> None:
         self._member_properties_editable = bool(editable)
         if hasattr(self, "section_properties_tab") and self.section_properties_tab is not None:
@@ -586,12 +575,12 @@ class AdditionalInputs(QDialog):
                 pass
 
     def _show_placeholder_message(self, action_name):
-        box = QMessageBox(self)
-        box.setIcon(QMessageBox.Information)
-        box.setWindowTitle("Coming soon")
-        box.setText(f"{action_name} action not implemented yet.")
-        box.setStandardButtons(QMessageBox.Ok)
-        box.exec()
+        CustomMessageBox(
+            title="Coming soon",
+            text=f"{action_name} action not implemented yet.",
+            buttons=["OK"],
+            dialogType=MessageBoxType.Information,
+        ).exec()
 
     def _on_top_tab_changed(self, index: int) -> None:
         if index < 0:
@@ -608,14 +597,12 @@ class AdditionalInputs(QDialog):
             try:
                 if hasattr(self, "section_properties_tab") and hasattr(self.section_properties_tab, "has_unsaved_changes"):
                     if self.section_properties_tab.has_unsaved_changes():
-                        box = QMessageBox(self)
-                        box.setIcon(QMessageBox.Warning)
-                        box.setWindowTitle("Unsaved Inputs")
-                        box.setText("Please save Member Properties before switching tabs.")
-                        box.setStandardButtons(QMessageBox.Ok)
-                        box.setDefaultButton(QMessageBox.Ok)
-                        box.setWindowModality(Qt.ApplicationModal)
-                        box.exec()
+                        CustomMessageBox(
+                            title="Unsaved Inputs",
+                            text="Please save Member Properties before switching tabs.",
+                            buttons=["OK"],
+                            dialogType=MessageBoxType.Warning,
+                        ).exec()
                         prev = self.tabs.blockSignals(True)
                         self.tabs.setCurrentIndex(previous)
                         self.tabs.blockSignals(prev)

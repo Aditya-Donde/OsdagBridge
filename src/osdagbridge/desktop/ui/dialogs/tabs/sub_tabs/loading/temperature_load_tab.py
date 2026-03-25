@@ -94,7 +94,10 @@ class TemperatureLoadTab(QWidget):
                             validator_config.get("decimals", 2),
                             input_widget
                         )
-                        validator.setNotation(QDoubleValidator.StandardNotation)
+                        if validator_config.get("notation") == "scientific":
+                            validator.setNotation(QDoubleValidator.ScientificNotation)
+                        else:
+                            validator.setNotation(QDoubleValidator.StandardNotation)
                         input_widget.setValidator(validator)
                     elif validator_config["type"] == "int_range":
                         validator = QIntValidator(
@@ -107,6 +110,9 @@ class TemperatureLoadTab(QWidget):
                 if field.get("read_only", False):
                     input_widget.setReadOnly(True)
                     input_widget.setStyleSheet(readonly_input_style)
+                
+                if not field.get("enabled", True):
+                    input_widget.setEnabled(False)
 
                 bind_name = field.get("bind")
                 if bind_name:
@@ -130,7 +136,8 @@ class TemperatureLoadTab(QWidget):
         right_layout.setContentsMargins(16, 16, 16, 16)
         right_layout.setSpacing(10)
 
-        desc_title = QLabel("Description Box")
+        description = schema.get("description", {})
+        desc_title = QLabel(description.get("title", "Description Box"))
         desc_title.setAlignment(Qt.AlignCenter)
         desc_title.setStyleSheet(
             "font-size: 12px; font-weight: 700; color: #2b2b2b; background: transparent; border: none;"
@@ -142,3 +149,17 @@ class TemperatureLoadTab(QWidget):
         content_row.addWidget(right_card, 2)
 
         page_layout.addLayout(content_row)
+
+    def update_project_location(self, location_data):
+        if not location_data:
+            return
+        
+        weather = location_data.get("weather_data")
+        if weather:
+            max_t = weather.get("max_temp")
+            min_t = weather.get("min_temp")
+            
+            if max_t is not None and hasattr(self.owner, "highest_max_temp_input"):
+                self.owner.highest_max_temp_input.setText(str(max_t))
+            if min_t is not None and hasattr(self.owner, "lowest_min_temp_input"):
+                self.owner.lowest_min_temp_input.setText(str(min_t))

@@ -70,7 +70,7 @@ class WindLoadTab(QWidget):
             section_type = section.get("type")
             section_id = section.get("id")
          
-            if section_type == "input_group" and section_id == "wind_inputs_section":
+            if section_type == "input_group":
                 wind_inputs_box = QFrame()
                 wind_inputs_box.setStyleSheet("""
                     QFrame {
@@ -90,6 +90,7 @@ class WindLoadTab(QWidget):
 
                 for field in section.get("fields", []):
                     field_type = field.get("type")
+                    field_id = field.get("id")
                     
                     row_layout = QHBoxLayout()
                     row_layout.setSpacing(10)
@@ -111,6 +112,14 @@ class WindLoadTab(QWidget):
                         bind_name = field.get("bind")
                         if bind_name:
                             setattr(owner, bind_name, widget)
+
+                        if field.get("read_only"):
+                            widget.setReadOnly(True)
+                            if field_id == "basic_wind_speed":
+                                widget.setToolTip("Auto-filled from software output (project location wind speed)")
+                                
+                        if not field.get("enabled", True):
+                            widget.setEnabled(False)
                         
                         row_layout.addWidget(widget)
                     
@@ -119,7 +128,8 @@ class WindLoadTab(QWidget):
                         widget.addItems(field.get("choices", []))
                         if field.get("default"):
                             widget.setCurrentText(field.get("default"))
-                        widget.setFixedSize(COMBO_WIDTH, FIELD_HEIGHT)
+                        combo_width = COMBO_WIDTH
+                        widget.setFixedSize(combo_width, FIELD_HEIGHT)
                         apply_field_style(widget)
                         
                         bind_name = field.get("bind")
@@ -328,3 +338,14 @@ class WindLoadTab(QWidget):
                     value_input.setEnabled(False)
                     
         self._block(mode_combos, False)
+
+    def update_project_location(self, location_data):
+        if not location_data:
+            return
+            
+        weather = location_data.get("weather_data")
+        if weather:
+            wind = weather.get("wind_speed")
+            
+            if wind is not None and hasattr(self.owner, "basic_wind_speed_input"):
+                self.owner.basic_wind_speed_input.setText(str(wind))

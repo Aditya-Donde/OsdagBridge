@@ -18,6 +18,7 @@ from PySide6.QtWidgets import QHeaderView
 
 from osdagbridge.desktop.ui.dialogs.tabs.common import apply_field_style
 from osdagbridge.desktop.ui.utils.custom_titlebar import CustomTitleBar
+from osdagbridge.desktop.ui.dialogs.custom_messagebox import CustomMessageBox, MessageBoxType
 from osdagbridge.core.bridge_types.plate_girder.ui_fields_additional_input import (
     LOAD_COMBINATION_TAB_SCHEMA,
 )
@@ -34,6 +35,8 @@ class LoadCombinationTab(QWidget):
     def _build_ui(self):
         owner = self.owner
 
+        schema = LOAD_COMBINATION_TAB_SCHEMA
+        
         self.setStyleSheet("background-color: #f5f5f5;")
         page_layout = QVBoxLayout(self)
         page_layout.setContentsMargins(12, 12, 12, 12)
@@ -43,25 +46,110 @@ class LoadCombinationTab(QWidget):
         content_row.setContentsMargins(0, 0, 0, 0)
         content_row.setSpacing(16)
 
-        heading_style = "font-size: 12px; font-weight: 700; color: #2b2b2b; background: transparent; border: none;"
+        left_container = QWidget()
+        left_container.setStyleSheet("background-color: transparent;")
+        left_layout = QVBoxLayout(left_container)
+        left_layout.setContentsMargins(0, 0, 0, 0)
+        left_layout.setSpacing(16)
+        
+        # Build sections from schema
+        for section in schema.get("sections", []):
+            if section["type"] == "dynamic_checkbox_list":
+                section_widget = self._build_dynamic_checkbox_section(section)
+            elif section["type"] == "custom_load_combo_table":
+                section_widget = self._build_custom_combo_section(section)
+            else:
+                section_widget = owner._build_section(section, schema)
+            left_layout.addWidget(section_widget)
+        
+        left_layout.addStretch()
 
-        left_card = owner._create_card()
-        left_card.setStyleSheet(
-            "QFrame { border: 1px solid #b2b2b2; border-radius: 10px; background-color: #ffffff; }"
+        right_card = owner._create_card()
+        right_card.setStyleSheet("QFrame { border: 1px solid #9c9c9c; border-radius: 10px; background-color: #c8c8c8; }")
+        right_card.setMinimumWidth(270)
+        right_card.setMinimumHeight(360)
+        right_layout = QVBoxLayout(right_card)
+        right_layout.setContentsMargins(18, 18, 18, 18)
+        right_layout.setSpacing(12)
+        description_label = QLabel("Description Box")
+        description_label.setAlignment(Qt.AlignCenter)
+        description_label.setStyleSheet("font-size: 12px; font-weight: 700; color: #000000;")
+        description_label.setMinimumHeight(320)
+        right_layout.addWidget(description_label)
+
+        content_row.addWidget(left_container, 3)
+        content_row.addWidget(right_card, 2)
+        page_layout.addLayout(content_row)
+
+        owner.load_combo_add_btn.clicked.connect(self._on_add_load_combo)
+        self.edit_btn.clicked.connect(self._on_edit_load_combo)
+        self.delete_btn.clicked.connect(self._on_delete_load_combo)
+        
+        self.load_combo_table.itemSelectionChanged.connect(self._on_table_selection_changed)
+        self._refresh_load_combo_table()
+        
+    def _build_dynamic_checkbox_section(self, section):
+        from PySide6.QtWidgets import QFrame
+        frame = QFrame()
+        frame.setStyleSheet("QFrame { border: 1px solid #b2b2b2; border-radius: 6px; background-color: #ffffff; }")
+        layout = QVBoxLayout(frame)
+        layout.setContentsMargins(12, 12, 12, 12)
+        layout.setSpacing(10)
+        
+        title = QLabel(section.get("title", ""))
+        title.setStyleSheet("font-size: 11px; font-weight: bold; color: #2b2b2b; border: none;")
+        layout.addWidget(title)
+        
+        self.irc_content_layout = QVBoxLayout()
+        layout.addLayout(self.irc_content_layout)
+        
+        self.irc_placeholder = QWidget()
+        self.irc_placeholder.setMinimumHeight(100)
+        self.irc_placeholder.setStyleSheet("border: none;")
+        self.irc_content_layout.addWidget(self.irc_placeholder)
+        
+        return frame
+
+    def _build_custom_combo_section(self, section_config):
+        from PySide6.QtWidgets import QFrame
+        frame = QFrame()
+        frame.setStyleSheet("QFrame { border: 1px solid #b2b2b2; border-radius: 6px; background-color: #ffffff; }")
+        layout = QVBoxLayout(frame)
+        layout.setContentsMargins(12, 12, 12, 12)
+        layout.setSpacing(10)
+        
+        header_row = QHBoxLayout()
+        self.custom_combo_title = QLabel(section_config.get("title", ""))
+        self.custom_combo_title.setStyleSheet("font-size: 11px; font-weight: bold; color: #2b2b2b; border: none;")
+        self.custom_combo_title.setVisible(bool(self.load_combo_items))
+        header_row.addWidget(self.custom_combo_title)
+        
+        button_style = (
+            "QPushButton { background: #ffffff; border: 1px solid #a0a0a0; border-radius: 3px; "
+            "padding: 4px 10px; font-size: 11px; color: #2a2a2a; }"
+            "QPushButton:hover { background: #f0f0f0; }"
+            "QPushButton:pressed { background: #e0e0e0; }"
         )
-        left_layout = QVBoxLayout(left_card)
-        left_layout.setContentsMargins(16, 16, 16, 16)
-        left_layout.setSpacing(10)
-
-        title = QLabel("Load Combination Inputs")
-        title.setStyleSheet(heading_style)
-        left_layout.addWidget(title)
-
-        controls_row = self._build_controls_row()
-        left_layout.addLayout(controls_row)
+        add_btn = QPushButton("Add Custom Combination")
+        add_btn.setStyleSheet(button_style)
+        setattr(self.owner, section_config["add_button_bind"], add_btn)
+        header_row.addWidget(add_btn)
+        
+        self.edit_btn = QPushButton("Modify")
+        self.edit_btn.setStyleSheet(button_style)
+        self.edit_btn.setVisible(False)
+        header_row.addWidget(self.edit_btn)
+        
+        self.delete_btn = QPushButton("Delete")
+        self.delete_btn.setStyleSheet(button_style)
+        self.delete_btn.setVisible(False)
+        header_row.addWidget(self.delete_btn)
+        
+        header_row.addStretch()
+        layout.addLayout(header_row)
 
         self.load_combo_table = QTableWidget(0, 3)
-        self.load_combo_table.setHorizontalHeaderLabels(["Sr. No.", "Combination Name", "Include"])
+        self.load_combo_table.setHorizontalHeaderLabels(["S.No.", "Combination Name", "Include"])
         self.load_combo_table.verticalHeader().setDefaultSectionSize(40)
         
         self.load_combo_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Fixed)
@@ -112,58 +200,10 @@ class LoadCombinationTab(QWidget):
         self.load_combo_table.setMaximumHeight(260)
         self.load_combo_table.setAlternatingRowColors(False)
         
-        left_layout.addWidget(self.load_combo_table)
-        left_layout.addStretch()
-
-        right_card = owner._create_card()
-        right_card.setStyleSheet(
-            "QFrame { border: 1px solid #9c9c9c; border-radius: 10px; background-color: #c8c8c8; }"
-        )
-        right_card.setMinimumWidth(270)
-        right_card.setMinimumHeight(360)
-        right_layout = QVBoxLayout(right_card)
-        right_layout.setContentsMargins(18, 18, 18, 18)
-        right_layout.setSpacing(12)
-        description_label = QLabel("Description Box")
-        description_label.setAlignment(Qt.AlignCenter)
-        description_label.setStyleSheet("font-size: 12px; font-weight: 700; color: #000000;")
-        description_label.setMinimumHeight(320)
-        right_layout.addWidget(description_label)
-
-        content_row.addWidget(left_card, 3)
-        content_row.addWidget(right_card, 2)
-
-        page_layout.addLayout(content_row)
-
-        owner.load_combo_add_btn.clicked.connect(self._on_add_load_combo)
-        owner.load_combo_edit_btn.clicked.connect(self._on_edit_load_combo)
-        owner.load_combo_delete_btn.clicked.connect(self._on_delete_load_combo)
-
-        self._refresh_load_combo_table()
-
-    def _build_controls_row(self):
-        schema = LOAD_COMBINATION_TAB_SCHEMA
-        controls_row = QHBoxLayout()
-        controls_row.setSpacing(6)
+        layout.addWidget(self.load_combo_table)
+        setattr(self.owner, section_config["bind"], self.load_combo_table)
         
-        button_style = (
-            "QPushButton { background: #ffffff; border: 1px solid #a0a0a0; border-radius: 3px; "
-            "padding: 4px 10px; font-size: 11px; color: #2a2a2a; }"
-            "QPushButton:hover { background: #f0f0f0; }"
-            "QPushButton:pressed { background: #e0e0e0; }"
-        )
-        
-        for btn_config in schema["controls"]:
-            if btn_config["label"] == "Default":
-                continue
-            btn = QPushButton(btn_config["label"])
-            btn.setFixedWidth(btn_config["width"])
-            btn.setStyleSheet(button_style)
-            setattr(self.owner, btn_config["bind"], btn)
-            controls_row.addWidget(btn)
-        
-        controls_row.addStretch()
-        return controls_row
+        return frame
 
     def _get_default_combos(self):
         return []
@@ -171,12 +211,18 @@ class LoadCombinationTab(QWidget):
     def _refresh_load_combo_table(self):
         if not hasattr(self, "load_combo_table"):
             return
+
+        has_items = bool(self.load_combo_items)
+        if hasattr(self, "custom_combo_title"):
+            self.custom_combo_title.setVisible(has_items)
         
         self.load_combo_table.setRowCount(0)
         
-        if not self.load_combo_items:
-            self.load_combo_table.setFixedHeight(180)
+        if not has_items:
+            self.load_combo_table.setVisible(False)
             return
+
+        self.load_combo_table.setVisible(True)
 
         
         for idx, combo in enumerate(self.load_combo_items):
@@ -241,6 +287,13 @@ class LoadCombinationTab(QWidget):
                     included.append(row_idx)
         return included
 
+    def _on_table_selection_changed(self):
+        has_selection = bool(self.load_combo_table.selectedItems())
+        if hasattr(self, 'edit_btn'):
+            self.edit_btn.setVisible(has_selection)
+        if hasattr(self, 'delete_btn'):
+            self.delete_btn.setVisible(has_selection)
+
     def _on_add_load_combo(self):
         data = self._open_load_combo_dialog()
         if data:
@@ -290,11 +343,14 @@ class LoadCombinationTab(QWidget):
         main_layout.addWidget(separator)
 
         content_widget = QWidget(dialog)
+        content_widget.setObjectName("LoadCombinationContent")
         main_layout.addWidget(content_widget, 1)
         
         dialog.setStyleSheet("""
-        QDialog#LoadCombinationDialog {
+        QDialog#LoadCombinationDialog, QWidget#LoadCombinationContent {
             background-color: #ffffff;
+        }
+        QDialog#LoadCombinationDialog {
             border: 1px solid rgba(144, 175, 19, 140);
             border-radius: 4px;
         }
@@ -339,9 +395,7 @@ class LoadCombinationTab(QWidget):
         layout.addLayout(name_row)
 
         input_section = QFrame()
-        input_section.setStyleSheet(
-            "QFrame { border: 1px solid #c0c0c0; border-radius: 4px; background-color: #f8f8f8; padding: 8px; }"
-        )
+        input_section.setStyleSheet("QFrame { border: none; background-color: transparent; }")
         input_section_layout = QVBoxLayout(input_section)
         input_section_layout.setContentsMargins(12, 12, 12, 12)
         input_section_layout.setSpacing(10)
@@ -352,7 +406,21 @@ class LoadCombinationTab(QWidget):
         load_case_label = QLabel("Load Case:")
         load_case_label.setStyleSheet(label_style)
         load_case_combo = QComboBox()
-        load_case_combo.addItems(["DL", "SIDL", "LL", "WL", "EL", "IMF", "TL"])
+        
+        base_items = ["DL", "DW", "SIDL", "LL", "WL", "EL", "TL"]
+        custom_items = []
+        if hasattr(self.owner, "custom_load_items"):
+            for item in self.owner.custom_load_items:
+                case = item.get("load_case", "")
+                if case == "Custom":
+                    custom_name = item.get("custom_load_case_name", "")
+                    if custom_name and custom_name not in custom_items and custom_name not in base_items:
+                        custom_items.append(custom_name)
+                elif case and case not in custom_items and case not in base_items:
+                    custom_items.append(case)
+        
+        load_case_combo.addItems(base_items + custom_items)
+        
         load_case_combo.setMinimumWidth(100)
         apply_field_style(load_case_combo)
 
@@ -382,7 +450,7 @@ class LoadCombinationTab(QWidget):
         table_container_layout.setSpacing(10)
 
         table = QTableWidget(0, 3)
-        table.setHorizontalHeaderLabels(["Sr.No", "Load Case", "Partial Safety Factor"])
+        table.setHorizontalHeaderLabels(["S.No", "Load Case", "Partial Safety Factor"])
         
         table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Fixed)
         table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
@@ -587,6 +655,18 @@ class LoadCombinationTab(QWidget):
 
         def on_save():
             name_text = name_input.text().strip() or "Load Combination"
+            
+            # Prevent duplicate names
+            existing_names = [item.get("name") for item in self.load_combo_items if item != existing]
+            if name_text in existing_names:
+                CustomMessageBox(
+                    title="Duplicate Name",
+                    text=f"A load combination with the name '{name_text}' already exists. Please choose a different name.",
+                    buttons=["OK"],
+                    dialogType=MessageBoxType.Warning,
+                ).exec()
+                return
+
             rows = []
             
             for row_idx in range(table.rowCount()):

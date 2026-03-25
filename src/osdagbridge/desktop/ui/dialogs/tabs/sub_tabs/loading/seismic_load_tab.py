@@ -109,7 +109,8 @@ class SeismicLoadTab(QWidget):
                         bind_name = field.get("bind")
                         if bind_name:
                             setattr(self, bind_name, widget)
-                        
+
+                        # Seismic zone combo (if configured as combo) is derived from project location output.
                         row_layout.addWidget(widget)
                     
                     elif field_type == "line":
@@ -122,6 +123,13 @@ class SeismicLoadTab(QWidget):
                         bind_name = field.get("bind")
                         if bind_name:
                             setattr(self, bind_name, widget)
+
+                        if field.get("id") == "seismic_zone":
+                            widget.setReadOnly(True)
+                            widget.setToolTip("Auto-filled from software output (project location seismic zone)")
+                            
+                        if not field.get("enabled", True):
+                            widget.setEnabled(False)
                         
                         row_layout.addWidget(widget)
                     
@@ -258,8 +266,12 @@ class SeismicLoadTab(QWidget):
         self._apply_seismic_defaults()
         self._toggle_seismic_custom_inputs()
     
-        if hasattr(self.owner, "project_seismic_zone"):
-            self.seismic_zone_combo.setCurrentText(self.owner.project_seismic_zone)
+        if hasattr(self.owner, "project_seismic_zone") and hasattr(self, "seismic_zone_combo"):
+            zone_val = str(self.owner.project_seismic_zone)
+            if isinstance(self.seismic_zone_combo, QComboBox):
+                self.seismic_zone_combo.setCurrentText(zone_val)
+            elif isinstance(self.seismic_zone_combo, QLineEdit):
+                self.seismic_zone_combo.setText(zone_val)
 
     def _apply_seismic_defaults(self):
         """Apply default values from schema"""
@@ -299,3 +311,24 @@ class SeismicLoadTab(QWidget):
         """Reset Seismic Load inputs to schema default values"""
         self._apply_seismic_defaults()
         self._toggle_seismic_custom_inputs()
+        
+    def update_project_location(self, location_data):
+        if not location_data:
+            return
+            
+        weather = location_data.get("weather_data")
+        if weather:
+            zone = weather.get("zone")
+            z_val = weather.get("z_value")
+            
+            if zone is not None and hasattr(self, "seismic_zone_combo"):
+                if isinstance(self.seismic_zone_combo, QComboBox):
+                    # Check if 'zone' text exists in choices, avoiding errors
+                    idx = self.seismic_zone_combo.findText(str(zone))
+                    if idx >= 0:
+                        self.seismic_zone_combo.setCurrentIndex(idx)
+                elif isinstance(self.seismic_zone_combo, QLineEdit):
+                    self.seismic_zone_combo.setText(str(zone))
+                    
+            if z_val is not None and "zone_factor" in getattr(self, "seismic_computed_fields", {}):
+                self.seismic_computed_fields["zone_factor"].setText(str(z_val))

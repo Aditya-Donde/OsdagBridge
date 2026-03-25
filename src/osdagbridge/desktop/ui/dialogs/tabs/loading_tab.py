@@ -12,10 +12,11 @@ from PySide6.QtWidgets import (
     QSizePolicy,
 )
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QDoubleValidator, QIntValidator, QValidator
+import copy
 
 from osdagbridge.core.utils.common import VALUES_YES_NO
 from osdagbridge.desktop.ui.dialogs.tabs.common import apply_field_style
-from osdagbridge.desktop.ui.dialogs.tabs.custom_vehicle_dialog import CustomVehicleDialog
 from osdagbridge.desktop.ui.dialogs.tabs.sub_tabs.loading.permanent_load_tab import PermanentLoadTab
 from osdagbridge.desktop.ui.dialogs.tabs.sub_tabs.loading.live_load_tab import LiveLoadTab
 from osdagbridge.desktop.ui.dialogs.tabs.sub_tabs.loading.seismic_load_tab import SeismicLoadTab
@@ -37,7 +38,6 @@ class LoadingTab(QWidget):
         self.braking_vehicle_checkboxes = []
         self.braking_vehicle_labels = []
 
-        self.custom_vehicle_dialog = CustomVehicleDialog(self)
         self.custom_load_items = []
         self.load_combo_items = []
 
@@ -203,11 +203,6 @@ class LoadingTab(QWidget):
             if not is_custom:
                 self.live_load_custom_input.clear()
 
-    def show_custom_vehicle_dialog(self):
-        self.custom_vehicle_dialog.show()
-        self.custom_vehicle_dialog.raise_()
-        self.custom_vehicle_dialog.activateWindow()
-
     def update_permanent_load_dependencies(self, has_median: bool, has_footpath: bool):
         """
         Forward dependency updates to PermanentLoadTab
@@ -238,3 +233,217 @@ class LoadingTab(QWidget):
             self.temperature_load_tab.reset_defaults()
         if hasattr(self, "custom_load_tab") and hasattr(self.custom_load_tab, "reset_defaults"):
             self.custom_load_tab.reset_defaults()
+
+    def _format_field_name(self, name: str) -> str:
+        return str(name or "field").replace("_", " ").strip().title()
+
+    def _build_named_widget_map(self):
+        named_widgets = {}
+
+        def collect(scope_obj, prefix=""):
+            for attr_name, value in vars(scope_obj).items():
+                if isinstance(value, (QLineEdit, QComboBox, QCheckBox)):
+                    key = f"{prefix}.{attr_name}" if prefix else attr_name
+                    named_widgets[key] = value
+
+        collect(self)
+        for tab_name in (
+            "permanent_load_tab",
+            "live_load_tab",
+            "seismic_load_tab",
+            "wind_load_tab",
+            "temperature_load_tab",
+            "custom_load_tab",
+            "load_combination_tab",
+        ):
+            tab = getattr(self, tab_name, None)
+            if tab is not None:
+                collect(tab, tab_name)
+
+        return named_widgets
+
+    def _sync_load_combo_included_flags(self):
+        tab = getattr(self, "load_combination_tab", None)
+        table = getattr(tab, "load_combo_table", None) if tab else None
+        if not tab or table is None:
+            return
+
+        for row_idx in range(table.rowCount()):
+            if row_idx >= len(self.load_combo_items):
+                break
+            included = False
+            checkbox_widget = table.cellWidget(row_idx, 2)
+            if checkbox_widget is not None:
+                checkbox = checkbox_widget.findChild(QCheckBox)
+                if checkbox is not None:
+                    included = checkbox.isChecked()
+            self.load_combo_items[row_idx]["included"] = included
+
+    def validate_tab(self):
+        errors = []
+        named_widgets = self._build_named_widget_map()
+        #Validate only fields from the currently active Loading sub-tab.
+        active_tab = self.load_tabs.currentWidget() if hasattr(self, "load_tabs") else None
+        active_tab_name = None
+        for tab_name in (
+            "permanent_load_tab",
+            "live_load_tab",
+            "seismic_load_tab",
+            "wind_load_tab",
+            "temperature_load_tab",
+            "custom_load_tab",
+            "load_combination_tab",
+        ):
+            if getattr(self, tab_name, None) is active_tab:
+                active_tab_name = tab_name
+                break
+
+        custom_entry_fields = {
+            "custom_load_case_name_input",
+            "custom_point_left_input",
+            "custom_point_bearing_input",
+            "custom_line_left_start",
+            "custom_line_left_end",
+            "custom_line_bearing_start",
+            "custom_line_bearing_end",
+        }
+
+        for key, widget in named_widgets.items():
+            if not isinstance(widget, QLineEdit):
+                continue
+
+            # Validate only fields from the currently active Loading sub-tab.
+            key_parts = key.split(".", 1)
+            if len(key_parts) == 2:
+                key_tab_name, attr_name = key_parts
+                if active_tab_name and key_tab_name != active_tab_name:
+                    continue
+            else:
+                attr_name = key_parts[0]
+
+            # Custom Load Add/Edit inputs are transient and validated on tab-level Save.
+            if active_tab_name == "custom_load_tab" and attr_name in custom_entry_fields:
+                continue
+
+            if not widget.isEnabled() or widget.isReadOnly():
+                continue
+            if not widget.isVisible():
+                continue
+
+            field_name = self._format_field_name(key.split(".")[-1])
+            text = widget.text().strip()
+            if not text:
+                errors.append(f"{field_name} cannot be empty.")
+                continue
+
+            validator = widget.validator()
+            if validator is None:
+                continue
+
+            state = validator.validate(text, 0)[0]
+            if state == QValidator.Acceptable:
+                continue
+
+            if isinstance(validator, (QDoubleValidator, QIntValidator)):
+                errors.append(
+                    f"{field_name} must be between {validator.bottom()} and {validator.top()}."
+                )
+            else:
+                errors.append(f"{field_name} has invalid value.")
+
+        # Additional consistency checks for custom collections used in Loading.
+        custom_load_tab = getattr(self, "custom_load_tab", None)
+        if custom_load_tab is not None and hasattr(custom_load_tab, "_editing_load_data"):
+            if getattr(custom_load_tab, "_editing_load_data", None):
+                errors.append("Please save or clear the Custom Load currently being edited.")
+
+        return list(dict.fromkeys(errors))
+
+    def save_values(self):
+        values = {}
+        named_widgets = self._build_named_widget_map()
+
+        for key, widget in named_widgets.items():
+            if isinstance(widget, QLineEdit):
+                values[key] = widget.text()
+            elif isinstance(widget, QComboBox):
+                values[key] = widget.currentText()
+            elif isinstance(widget, QCheckBox):
+                values[key] = widget.isChecked()
+
+        # Persist checkbox list states that are dynamically generated.
+        if getattr(self, "irc_vehicle_labels", None) and getattr(self, "irc_vehicle_checkboxes", None):
+            values["loading.irc_vehicle_checks"] = {
+                lbl.text(): cb.isChecked()
+                for lbl, cb in zip(self.irc_vehicle_labels, self.irc_vehicle_checkboxes)
+            }
+
+        if getattr(self, "braking_vehicle_labels", None) and getattr(self, "braking_vehicle_checkboxes", None):
+            values["loading.braking_vehicle_checks"] = {
+                lbl.text(): cb.isChecked()
+                for lbl, cb in zip(self.braking_vehicle_labels, self.braking_vehicle_checkboxes)
+            }
+
+        self._sync_load_combo_included_flags()
+        values["loading.custom_load_items"] = copy.deepcopy(self.custom_load_items)
+        values["loading.load_combo_items"] = copy.deepcopy(self.load_combo_items)
+
+        live_tab = getattr(self, "live_load_tab", None)
+        if live_tab is not None:
+            values["loading.live_custom_vehicles"] = copy.deepcopy(getattr(live_tab, "custom_vehicles", {}))
+            values["loading.live_has_real_custom_vehicle"] = bool(getattr(live_tab, "has_real_custom_vehicle", False))
+
+        return values
+
+    def restore_values(self, data: dict):
+        if not isinstance(data, dict):
+            return
+
+        named_widgets = self._build_named_widget_map()
+        for key, value in data.items():
+            if key not in named_widgets:
+                continue
+            widget = named_widgets[key]
+            if isinstance(widget, QLineEdit):
+                widget.setText(str(value))
+            elif isinstance(widget, QComboBox):
+                widget.setCurrentText(str(value))
+            elif isinstance(widget, QCheckBox):
+                widget.setChecked(bool(value))
+
+        custom_load_items = data.get("loading.custom_load_items")
+        if isinstance(custom_load_items, list):
+            self.custom_load_items.clear()
+            self.custom_load_items.extend(copy.deepcopy(custom_load_items))
+            if hasattr(self, "custom_load_tab") and hasattr(self.custom_load_tab, "_refresh_custom_load_table"):
+                self.custom_load_tab._refresh_custom_load_table()
+
+        load_combo_items = data.get("loading.load_combo_items")
+        if isinstance(load_combo_items, list):
+            self.load_combo_items.clear()
+            self.load_combo_items.extend(copy.deepcopy(load_combo_items))
+            if hasattr(self, "load_combination_tab") and hasattr(self.load_combination_tab, "_refresh_load_combo_table"):
+                self.load_combination_tab._refresh_load_combo_table()
+
+        irc_states = data.get("loading.irc_vehicle_checks")
+        if isinstance(irc_states, dict):
+            for lbl, cb in zip(getattr(self, "irc_vehicle_labels", []), getattr(self, "irc_vehicle_checkboxes", [])):
+                cb.setChecked(bool(irc_states.get(lbl.text(), cb.isChecked())))
+
+        braking_states = data.get("loading.braking_vehicle_checks")
+        if isinstance(braking_states, dict):
+            for lbl, cb in zip(getattr(self, "braking_vehicle_labels", []), getattr(self, "braking_vehicle_checkboxes", [])):
+                cb.setChecked(bool(braking_states.get(lbl.text(), cb.isChecked())))
+
+        live_tab = getattr(self, "live_load_tab", None)
+        custom_vehicles = data.get("loading.live_custom_vehicles")
+        if live_tab is not None and isinstance(custom_vehicles, dict):
+            if hasattr(live_tab, "custom_vehicle_table"):
+                live_tab.custom_vehicle_table.setRowCount(0)
+                live_tab.custom_vehicles.clear()
+                live_tab.has_real_custom_vehicle = bool(data.get("loading.live_has_real_custom_vehicle", bool(custom_vehicles)))
+                for vehicle_name, vehicle_data in custom_vehicles.items():
+                    merged = dict(vehicle_data)
+                    merged["name"] = vehicle_name
+                    if hasattr(live_tab, "_add_custom_vehicle"):
+                        live_tab._add_custom_vehicle(merged)

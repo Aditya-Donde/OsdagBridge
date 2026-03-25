@@ -2,11 +2,12 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QCheckBox, QComboBox,
     QLineEdit, QPushButton, QScrollArea, QFrame, QTableWidget,
-    QTableWidgetItem, QMessageBox, QDialog, QHeaderView, QStyledItemDelegate
+    QTableWidgetItem, QDialog, QHeaderView, QStyledItemDelegate
 )
 from PySide6.QtGui import QPainter, QPen
 from osdagbridge.desktop.ui.dialogs.tabs.common import apply_field_style
 from osdagbridge.desktop.ui.dialogs.tabs.custom_vehicle_dialog import CustomVehicleDialog
+from osdagbridge.desktop.ui.dialogs.custom_messagebox import CustomMessageBox, MessageBoxType
 from osdagbridge.core.bridge_types.plate_girder.ui_fields_additional_input import LIVE_LOAD_TAB_SCHEMA
 
 class BorderDelegate(QStyledItemDelegate):
@@ -74,7 +75,7 @@ class LiveLoadTab(QWidget):
         left_layout.setContentsMargins(14, 14, 14, 14)
         left_layout.setSpacing(12)
 
-        title = QLabel("Live Load (LL) Inputs:")
+        title = QLabel("Live Load (LL) Inputs")
         title.setStyleSheet("font-size: 12px; font-weight: 700; color: #3a3a3a; background: transparent; border: none;")
         left_layout.addWidget(title)
 
@@ -129,14 +130,14 @@ class LiveLoadTab(QWidget):
                 header_row.setContentsMargins(0, 0, 0, 0)
                 header_row.setSpacing(10)
                 
-                header_label = QLabel(section.get("title", ""))
-                header_label.setStyleSheet("font-size: 11px; font-weight: 700; color: #3a3a3a; background: transparent; border: none;")
-                header_label.setMinimumWidth(LABEL_MIN_WIDTH)
-                header_row.addWidget(header_label)
+                self.custom_vehicle_header_label = QLabel(section.get("title", ""))
+                self.custom_vehicle_header_label.setStyleSheet("font-size: 11px; font-weight: 700; color: #3a3a3a; background: transparent; border: none;")
+                self.custom_vehicle_header_label.setMinimumWidth(LABEL_MIN_WIDTH)
+                header_row.addWidget(self.custom_vehicle_header_label)
                 
                 add_button_bind = section.get("add_button_bind")
                 if add_button_bind:
-                    setattr(owner, add_button_bind, QPushButton("Add"))
+                    setattr(owner, add_button_bind, QPushButton("Add Custom Vehicle"))
                     add_button = getattr(owner, add_button_bind)
                     add_button.setStyleSheet("QPushButton { background-color: white; border: 1px solid #3a3a3a; border-radius: 3px; font-size: 10px; font-weight: 600; color: #3a3a3a; padding: 3px 8px; } QPushButton:hover { background-color: #f8f8f8; }")
                     add_button.setFixedHeight(FIELD_HEIGHT)
@@ -218,8 +219,16 @@ class LiveLoadTab(QWidget):
             ecc_row.addStretch()
             self.remaining_box_layout.addLayout(ecc_row)
 
+        left_layout.addWidget(remaining_box)
+
         footpath_section = next((s for s in schema.get("sections", []) if s.get("id") == "footpath_pressure"), None)
         if footpath_section:
+            footpath_box = QFrame()
+            footpath_box.setStyleSheet("QFrame { border: 1px solid #9c9c9c; border-radius: 6px; background-color: #ffffff; padding: 0px; }")
+            footpath_box_layout = QVBoxLayout(footpath_box)
+            footpath_box_layout.setContentsMargins(12, 12, 12, 12)
+            footpath_box_layout.setSpacing(8)
+
             footpath_row = QHBoxLayout()
             footpath_row.setSpacing(10)
             footpath_label = QLabel(footpath_section.get("label", ""))
@@ -247,9 +256,8 @@ class LiveLoadTab(QWidget):
             footpath_row.addWidget(mode_combo)
             footpath_row.addWidget(value_input)
             footpath_row.addStretch()
-            self.remaining_box_layout.addLayout(footpath_row)
-
-        left_layout.addWidget(remaining_box)
+            footpath_box_layout.addLayout(footpath_row)
+            left_layout.addWidget(footpath_box)
         left_layout.addStretch()
         left_card_layout.addWidget(content_wrapper)
 
@@ -281,6 +289,7 @@ class LiveLoadTab(QWidget):
         main_layout.addWidget(scroll_area)
 
         owner.custom_vehicle_add_button.clicked.connect(self.show_custom_vehicle_dialog)
+        self._update_custom_vehicle_header()
         
         footpath_section = next((s for s in schema.get("sections", []) if s.get("id") == "footpath_pressure"), None)
         if footpath_section:
@@ -303,8 +312,9 @@ class LiveLoadTab(QWidget):
         
         irc_section = next((s for s in self.schema.get("sections", []) if s.get("id") == "irc_vehicles_section"), None)
         irc_vehicles = irc_section.get("items", []) if irc_section else []
+        irc_braking_vehicles = [v for v in irc_vehicles if v == "Class SV"]
         custom_vehicle_names = list(self.custom_vehicles.keys()) if self.has_real_custom_vehicle else []
-        all_braking_vehicles = irc_vehicles + custom_vehicle_names
+        all_braking_vehicles = irc_braking_vehicles + custom_vehicle_names
         
         self.owner.braking_vehicle_checkboxes = []
         self.owner.braking_vehicle_labels = []
@@ -345,7 +355,12 @@ class LiveLoadTab(QWidget):
 
         name = vehicle_data["name"]
         if name in self.custom_vehicles:
-            QMessageBox.warning(self, "Duplicate Vehicle", f"Custom vehicle '{name}' already exists.")
+            CustomMessageBox(
+                title="Duplicate Vehicle",
+                text=f"Custom vehicle '{name}' already exists.",
+                buttons=["OK"],
+                dialogType=MessageBoxType.Warning,
+            ).exec()
             return
 
         self.custom_vehicles[name] = vehicle_data
@@ -396,6 +411,7 @@ class LiveLoadTab(QWidget):
         self._update_custom_vehicle_table_height()
         self._update_custom_vehicle_box_height()
         self._update_braking_vehicles_section()
+        self._update_custom_vehicle_header()
 
     def _update_row_borders(self):
         """Force table to repaint with updated borders"""
@@ -412,7 +428,12 @@ class LiveLoadTab(QWidget):
 
             if new_name != name:
                 if new_name in self.custom_vehicles:
-                    QMessageBox.warning(self, "Duplicate Vehicle", f"Custom vehicle '{new_name}' already exists.")
+                    CustomMessageBox(
+                        title="Duplicate Vehicle",
+                        text=f"Custom vehicle '{new_name}' already exists.",
+                        buttons=["OK"],
+                        dialogType=MessageBoxType.Warning,
+                    ).exec()
                     return
 
                 self.custom_vehicles.pop(name)
@@ -429,14 +450,14 @@ class LiveLoadTab(QWidget):
                 self.custom_vehicles[name] = new_data
 
     def _delete_custom_vehicle(self, name):
-        msg = QMessageBox(self)
-        msg.setWindowTitle("Delete Vehicle")
-        msg.setText(f"Delete custom vehicle '{name}'?")
-        msg.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
-        msg.setStyleSheet("QLabel { color: black; font-size: 12px; } QPushButton { min-width: 70px; font-size: 11px; }")
-        reply = msg.exec()
+        reply = CustomMessageBox(
+            title="Delete Vehicle",
+            text=f"Delete custom vehicle '{name}'?",
+            buttons=["Yes", "No"],
+            dialogType=MessageBoxType.Warning,
+        ).exec()
 
-        if reply == QMessageBox.Yes:
+        if reply == "Yes":
             self.custom_vehicles.pop(name, None)
             
             for row in range(self.custom_vehicle_table.rowCount()):
@@ -453,6 +474,7 @@ class LiveLoadTab(QWidget):
             self._update_custom_vehicle_table_height()
             self._update_custom_vehicle_box_height()
             self._update_braking_vehicles_section()
+            self._update_custom_vehicle_header()
 
     def reset_defaults(self):
         """Reset Live Load inputs to schema default values"""
@@ -478,6 +500,7 @@ class LiveLoadTab(QWidget):
         self._update_custom_vehicle_table_height()
         self._update_custom_vehicle_box_height()
         self._update_braking_vehicles_section()
+        self._update_custom_vehicle_header()
         
         braking_section = next((s for s in self.schema.get("sections", []) if s.get("id") == "braking_section"), None)
         if braking_section:
@@ -497,6 +520,15 @@ class LiveLoadTab(QWidget):
         total_height += 4
         total_height = min(total_height, 150)
         self.custom_vehicle_table.setFixedHeight(total_height)
+    
+    def _update_custom_vehicle_header(self):
+        has_vehicles = self.custom_vehicle_table.rowCount() > 0
+        if has_vehicles:
+            self.custom_vehicle_header_label.setVisible(True)
+            self.owner.custom_vehicle_add_button.setText("Add")
+        else:
+            self.custom_vehicle_header_label.setVisible(False)
+            self.owner.custom_vehicle_add_button.setText("Add Custom Vehicle")
     
     def _update_custom_vehicle_box_height(self):
         """Update the custom vehicle box height based on content"""
