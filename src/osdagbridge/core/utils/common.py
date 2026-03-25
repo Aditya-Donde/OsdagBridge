@@ -90,18 +90,6 @@ VALUES_STRUCTURE_TYPE = ["Highway Bridge", "Other"]
 # Canonical footpath options used across UI + CAD/code clauses.
 VALUES_FOOTPATH = ["None", "Single Side", "Both Sides"]
 
-VALUES_MATERIAL = [
-    "E 250A", "E 250BR", "E 250B0", "E 250C",
-    "E 275A", "E 275BR", "E 275B0", "E 275C",
-    "E 300A", "E 300BR", "E 300B0", "E 300C",
-    "E 350A", "E 350BR", "E 350B0", "E 350C",
-    "E 410A", "E 410BR", "E 410B0", "E 410C",
-    "E 450A", "E 450BR",
-    "E 550A", "E 550BR",
-    "E 600A", "E 600BR",
-    "E 650A", "E 650BR",
-]
-
 # Validation limits
 SPAN_MIN = 20.0
 SPAN_MAX = 45.0
@@ -221,11 +209,6 @@ KEY_BEARING_LENGTH = "Bearing Length"
 
 # Value Lists for Additional Inputs
 VALUES_NO_YES = ["No", "Yes"]
-VALUES_DECK_CONCRETE_GRADE = [
-    "M 15", "M 20", "M 25", "M 30", "M 35", "M 40", "M 45", "M 50",
-    "M 55", "M 60", "M 65", "M 70", "M 75", "M 80",
-    "M 85", "M 90",
-]
 VALUES_REINF_MATERIAL = ["Fe 415", "Fe 500", "Fe 550"]
 VALUES_REINF_SIZE = ["8", "10", "12", "16", "20", "25", "32"]
 VALUES_CRASH_BARRIER_TYPE = [
@@ -298,10 +281,39 @@ FOOTWAY_LOADS = {
 }
 KEY_TERRAIN_TYPE = ["plain", "obstructed"]
 
+from pathlib import Path
+import sqlite3
+_DB_PATH = Path(__file__).resolve().parents[1] / "data" / "ResourceFiles" / "Intg_osdag.sqlite"
 
-def connectdb(table_name, popup=None):
-    """Mock database connection - returns sample data."""
-    if table_name == "Material":
-        return VALUES_MATERIAL
-    return []
+def connectdb(table_name: str) -> list[str]:
+    """
+    Fetches all grade designations from the Grade column of the given table.
+
+    Parameters
+    ----------
+    table_name : str
+        Name of the table to query.
+
+    Returns
+    -------
+    list[str]
+        List of grade strings (e.g. ["M15", "M20", ...]).
+
+    Raises
+    ------
+    LookupError
+        If the database is not found or the query fails.
+    """
+    if not _DB_PATH.exists():
+        raise LookupError(f"Material database not found at {_DB_PATH} in get_grades")
+
+    try:
+        con = sqlite3.connect(_DB_PATH)
+        cur = con.cursor()
+        cur.execute(f'SELECT Grade FROM {table_name}')
+        rows = cur.fetchall()
+        con.close()
+        return [row[0] for row in rows]
+    except sqlite3.Error as e:
+        raise LookupError(f"Error querying database in connectdb(): {e}")
 

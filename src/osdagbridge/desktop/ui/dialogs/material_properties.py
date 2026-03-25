@@ -10,8 +10,9 @@ import re
 from osdagbridge.desktop.ui.utils.custom_titlebar import CustomTitleBar
 from osdagbridge.desktop.ui.dialogs.custom_messagebox import CustomMessageBox, MessageBoxType
 from osdagbridge.desktop.ui.docks.dock_utils import apply_field_style
-from osdagbridge.core.utils.common import VALUES_MATERIAL, VALUES_DECK_CONCRETE_GRADE, KEY_GIRDER, KEY_CROSS_BRACING, KEY_END_DIAPHRAGM
+from osdagbridge.core.utils.common import connectdb, KEY_GIRDER, KEY_CROSS_BRACING, KEY_END_DIAPHRAGM
 
+concrete_properies = connectdb("Concrete_Grade_Properties")
 
 DIALOG_TITLE_MATERIAL_PROPERTIES = "Enter Custom Properties"
 CUSTOM_MATERIAL_PREFIX = "Cus_"
@@ -366,7 +367,7 @@ class MaterialPropertiesDialog(QDialog):
 
     def _is_deck_material(self, material_name: str) -> bool:
         normalized = (material_name or "").strip()
-        return normalized in VALUES_DECK_CONCRETE_GRADE
+        return normalized in concrete_properies
 
     def _defaults_for_material(self, material_name):
         if self.is_deck_material:

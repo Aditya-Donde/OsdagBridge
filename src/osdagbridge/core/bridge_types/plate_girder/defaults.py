@@ -504,10 +504,10 @@ def get_ai_median_defaults(median_type: str) -> dict[str, float | None]:
 from osdagbridge.core.utils.common import (
     KEY_STRUCTURE_TYPE, KEY_PROJECT_LOCATION, KEY_SPAN, KEY_CARRIAGEWAY_WIDTH, KEY_INCLUDE_MEDIAN,
     KEY_FOOTPATH, KEY_SKEW_ANGLE, KEY_DESIGN_MODE, KEY_GIRDER, KEY_CROSS_BRACING, KEY_END_DIAPHRAGM, KEY_DECK_CONCRETE_GRADE_BASIC,
-    VALUES_DECK_CONCRETE_GRADE,
     connectdb,
 )
-material_values = connectdb("Material")
+steel_properties = connectdb("Steel_Grade_Properties")
+concrete_properies = connectdb("Concrete_Grade_Properties")
 
 DEFAULTS_DICT = {
     # Input Dock Defaults
@@ -519,10 +519,10 @@ DEFAULTS_DICT = {
     KEY_FOOTPATH: "None",
     KEY_SKEW_ANGLE: DEFAULT_SKEW_ANGLE_DEG,
     KEY_DESIGN_MODE: "Optimized",
-    KEY_GIRDER: material_values[0],
-    KEY_CROSS_BRACING: material_values[0],
-    KEY_END_DIAPHRAGM: material_values[0],
-    KEY_DECK_CONCRETE_GRADE_BASIC: VALUES_DECK_CONCRETE_GRADE[0],
+    KEY_GIRDER: steel_properties[0],
+    KEY_CROSS_BRACING: steel_properties[0],
+    KEY_END_DIAPHRAGM: steel_properties[0],
+    KEY_DECK_CONCRETE_GRADE_BASIC: concrete_properies[0],
 
     # Additional Inputs Defaults
     

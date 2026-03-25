@@ -7,7 +7,7 @@ from osdagbridge.core.bridge_types.plate_girder.bridge_geometry import BridgeGeo
 from osdagbridge.core.bridge_types.plate_girder.load_placement import LoadPlacementManager
 import warnings
 from osdagbridge.core.bridge_types.plate_girder.analysis_results import PlateGirderAnalysisResults
-from osdagbridge.core.bridge_types.plate_girder.dto import (SectionProperties, MaterialProperties, GrillageGeometry, DeckLayoutProperties)
+from osdagbridge.core.bridge_types.plate_girder.dto import (SectionProperties, SteelProperties, MaterialProperties, GrillageGeometry, DeckLayoutProperties)
 
 
 class BridgeGrillageModel:
@@ -169,12 +169,12 @@ class BridgeGrillageModel:
 
         Parameters
         ----------
-        props : MaterialProperties
+        props : SteelProperties
             Material properties supplied by the user.
         """
         self.steel_custom = og.create_material(
-            material=props.material, E=props.E, v=props.v, rho=props.rho,
-            Fy=props.Fy, E0=props.E0, b=props.b
+            material="steel", E=props.steel_prop.E, v=props.steel_prop.v, rho=props.steel_prop.rho,
+            Fy=props.steel_prop.Fy, E0=props.steel_prop.E0, b=props.steel_prop.b
         )
 
     def assign_members(self):
@@ -1219,8 +1219,8 @@ if __name__ == "__main__":
     )
 
     # --- Test material values (replace with UI inputs later) ---
-    bridge.create_material(MaterialProperties(
-        material="steel",
+    bridge.create_material(SteelProperties(
+        grade="steel",
         E=200 * GPa,
         v=0.3,
         rho=78.5 * kN / m ** 3,

@@ -2,7 +2,7 @@ from __future__ import annotations
 import sqlite3
 from pathlib import Path
 from .ui_fields import FrontendData
-from .dto import DeckLayoutProperties, GrillageGeometry, SectionProperties, MaterialProperties
+from .dto import ConcreteProperties, DeckLayoutProperties, GrillageGeometry, SectionProperties, SteelProperties, MaterialProperties, ConcreteProperties
 from .defaults import (
     DEFAULTS_DICT,
     DEFAULT_SPAN_M,
@@ -271,50 +271,74 @@ class PlateGirderBridge:
         """
         if not _DB_PATH.exists():
             raise LookupError(f"Material database not found at {_DB_PATH} in PlateGirderBridge._lookup_material")
+        
+        # Choose the table: steel or concrete
+        table = 'Steel_Grade_Properties' if material_name[0] == 'E' else 'Concrete_Grade_Properties'
+
         try:
             con = sqlite3.connect(_DB_PATH)
             cur = con.cursor()
-            query_map = {
-                "E": "Modulus of Elasticity",
-                "V": "Poisson's Ratio",
-                "rho": "Density",
-                "fy": "Yield Strength",
-            }
             cur.execute(
-                f'SELECT "{query_map.get(property)}" FROM Material WHERE "Material Name" = ?',
+                f'SELECT "{property}" FROM {table} WHERE "Grade" = ?',
                 (material_name,),
             )
             row = cur.fetchone()
             con.close()
             if row:
-                if property == "E":                    # Elastic modulus (Pa)
+                if property == "Modulus of Elasticity":     # Elastic modulus (Pa)
                     return float(row[0]) * GPa
-                elif property == "V":                  # Poisson's ratio (unitless)
+                elif property == "Poisson's Ratio":         # Poisson's ratio (unitless)
                     return float(row[0])
-                elif property == "rho":                # Unit weight (N/m³)
+                elif property == "Density":                 # Unit weight (N/m³)
                     return float(row[0]) * N / m ** 3
-                elif property == "fy":                 # Yield strength (Pa)
-                    return float(row[0]) * MPa         # DB stores MPa as integer → convert to Pa
+                elif property == "Yield Strength":          # Yield strength (Pa)
+                    return float(row[0]) * MPa              # DB stores MPa as integer → convert to Pa
+                elif property in ("fck", "fctm", "Ecm"):  # Concrete properties (MPa or GPa depending on property)
+                    return float(row[0])
+                else:
+                    raise SyntaxError(f"Unknown property '{property}' requested in table '{table}' in PlateGirderBridge._lookup_material")
+
         except sqlite3.Error:
             raise LookupError(f"Error querying material database in PlateGirderBridge._lookup_material: {sqlite3.Error}")
 
     def _build_material_props(self) -> MaterialProperties:
         """Build a MaterialProperties from the selected girder material in basic_inputs."""
-        material_name = str(self.basic_inputs.get(KEY_GIRDER, "")).strip()
-        e = self._lookup_material(material_name, "E") if material_name else _STEEL_FY_DEFAULT
-        v = self._lookup_material(material_name, "V") if material_name else _STEEL_FY_DEFAULT
-        rho = self._lookup_material(material_name, "rho") if material_name else _STEEL_FY_DEFAULT
-        fy = self._lookup_material(material_name, "fy") if material_name else _STEEL_FY_DEFAULT
-        # print(f"e: {e}, v: {v}, rho: {rho}, fy: {fy}")
+        
+        # Collecting Steel Grade Properties
+        steel_grade = str(self.basic_inputs.get(KEY_GIRDER)).strip()
+        e = self._lookup_material(steel_grade, "Modulus of Elasticity")
+        v = self._lookup_material(steel_grade, "Poisson's Ratio")
+        rho = self._lookup_material(steel_grade, "Density")
+        fy = self._lookup_material(steel_grade, "Yield Strength")
+        # print(f"grade: {steel_grade}, e: {e}, v: {v}, rho: {rho}, fy: {fy}")
+        steel_prop = SteelProperties(
+                        grade=steel_grade,
+                        E=e,
+                        v=v,
+                        rho=rho,
+                        Fy=fy,
+                        E0=_STEEL_E0,
+                        b=_STEEL_B,
+                    )
+        
+        # Collecting Deck Concrete Properties
+        concrete_grade = str(self.basic_inputs.get(KEY_DECK_CONCRETE_GRADE_BASIC)).strip()
+        fck = self._lookup_material(concrete_grade, "fck")
+        fctm = self._lookup_material(concrete_grade, "fctm")
+        Ecm = self._lookup_material(concrete_grade, "Ecm")
+        # print(f"grade: {concrete_grade}, fck: {fck}, fctm: {fctm}, Ecm: {Ecm}")
+        concrete_prop = ConcreteProperties(
+                        grade=concrete_grade,
+                        fck=fck,
+                        fctm=fctm,
+                        Ecm=Ecm,
+                    )
+        
+        # Return Material Properties DTO
         return MaterialProperties(
-            material="steel",
-            E=e,
-            v=v,
-            rho=rho,
-            Fy=fy,
-            E0=_STEEL_E0,
-            b=_STEEL_B,
-        )
+                        steel_prop=steel_prop,
+                        concrete_prop=concrete_prop
+                    )
 
     def _girder_section(self) -> SectionProperties:
         """Build a SectionProperties for the main/edge longitudinal girder from section_props."""
