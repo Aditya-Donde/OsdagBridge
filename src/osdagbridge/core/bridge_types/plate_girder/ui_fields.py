@@ -91,7 +91,8 @@ class FrontendData:
           - All per-field validation, placeholders, callbacks, and material
             behaviour are declared here — InputDock has no key-specific logic.
         """
-        material_values = connectdb("Material")
+        steel_properties = connectdb("Steel_Grade_Properties")
+        concrete_properies = connectdb("Concrete_Grade_Properties")
 
         return [
             # ── Module marker ─────────────────────────────────────────────────
@@ -185,21 +186,21 @@ class FrontendData:
             (KEY_SECTION_MATERIAL, DISP_TITLE_MATERIAL, TYPE_TITLE, None, True, "No Validator",
                 {"container": "superstructure"}),
 
-            (KEY_GIRDER, KEY_DISP_GIRDER, TYPE_COMBOBOX, material_values,
+            (KEY_GIRDER, KEY_DISP_GIRDER, TYPE_COMBOBOX, steel_properties,
                 True, "No Validator",
                 {
                     "is_material_field": True,
                     "member_type":       "Girder",
                 }),
 
-            (KEY_CROSS_BRACING, KEY_DISP_CROSS_BRACING, TYPE_COMBOBOX, material_values,
+            (KEY_CROSS_BRACING, KEY_DISP_CROSS_BRACING, TYPE_COMBOBOX, steel_properties,
                 True, "No Validator",
                 {
                     "is_material_field": True,
                     "member_type":       "Girder",
                 }),
 
-            (KEY_END_DIAPHRAGM, KEY_DISP_END_DIAPHRAGM, TYPE_COMBOBOX, material_values,
+            (KEY_END_DIAPHRAGM, KEY_DISP_END_DIAPHRAGM, TYPE_COMBOBOX, steel_properties,
                 True, "No Validator",
                 {
                     "is_material_field": True,
@@ -207,7 +208,7 @@ class FrontendData:
                 }),
 
             (KEY_DECK_CONCRETE_GRADE_BASIC, KEY_DISP_DECK_CONCRETE_GRADE, TYPE_COMBOBOX,
-                VALUES_DECK_CONCRETE_GRADE, True, "No Validator",
+                concrete_properies, True, "No Validator",
                 {
                     "default":           DEFAULTS_DICT.get(KEY_DECK_CONCRETE_GRADE_BASIC),
                     "is_material_field": True,
