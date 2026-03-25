@@ -34,7 +34,7 @@ from osdagbridge.core.utils.common import (
 )
 from osdagbridge.desktop.ui.utils.custom_buttons import DockCustomButton
 from osdagbridge.desktop.ui.docks.dock_utils import apply_field_style
-
+from osdagbridge.desktop.ui.utils.combobox_utils import RichCheckBox
 
 # ── Styles ────────────────────────────────────────────────────────────────────
 
@@ -408,7 +408,7 @@ class OutputDock(QWidget):
             outer.addWidget(lbl)
 
         columns  = values if isinstance(values, list) else []
-        all_cbs: list[QCheckBox] = []
+        all_cbs: list[RichCheckBox] = []
         num_cols = len(columns)
 
         grid = QGridLayout()
@@ -425,7 +425,7 @@ class OutputDock(QWidget):
         for row in range(num_rows):
             for col, col_items in enumerate(columns):
                 if row < len(col_items):
-                    cb = QCheckBox(str(col_items[row]))
+                    cb = RichCheckBox(str(col_items[row]))
                     all_cbs.append(cb)
                     grid.addWidget(cb, row, col, alignment=Qt.AlignCenter)
 

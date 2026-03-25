@@ -233,7 +233,9 @@ class FrontendData:
 
             (KEY_ANALYSIS_FORCES, None,           # None = no label
                 TYPE_CHECKBOX_GRID,
-                [["Vx","Tx","Dx"], ["Vy","Ty","Dy"], ["Vz","Tz","Dz"]],
+                [["F<sub>x</sub>","V<sub>y</sub>","V<sub>z</sub>"], 
+                 ["T<sub>x</sub>","M<sub>y</sub>","M<sub>z</sub>"], 
+                 ["D<sub>x</sub>","D<sub>y</sub>","D<sub>z</sub>"]],
                 True, "No Validator", {"exclusive": True}),
 
             (KEY_ANALYSIS_DISPLAY_OPTIONS, None,  # label goes on the groupbox title instead
