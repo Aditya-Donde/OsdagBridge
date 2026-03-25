@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional
+from typing import Literal, Optional, Union
 
 __all__ = [
     "SectionComponent",
@@ -87,13 +87,13 @@ class SectionProperties:
 
 
 @dataclass(frozen=True)
-class MaterialProperties:
+class SteelProperties:
     """
     Holds custom material properties for a grillage member.
 
     Attributes
     ----------
-    material : str
+    grade : str
         Material type string (e.g. "steel", "concrete").
     E : float
         Elastic modulus (Pa).
@@ -108,7 +108,7 @@ class MaterialProperties:
     b : float, optional
         Strain-hardening ratio. Required for steel.
     """
-    material: str
+    grade: str
     E: float
     v: float
     rho: float
@@ -117,12 +117,57 @@ class MaterialProperties:
     b: Optional[float] = None
 
     def __post_init__(self) -> None:
-        if self.material == "steel":
+        if self.grade == "steel":
             if any(val is None for val in (self.Fy, self.E0, self.b)):
                 raise ValueError(
                     "Fy, E0, and b are all required when material is 'steel'."
                 )
 
+@dataclass(frozen=True)
+class ConcreteProperties:
+    """
+    Holds material properties for a concrete grillage member.
+
+    Attributes
+    ----------
+    grade : str
+        Concrete grade designation (e.g. "M25", "M30").
+    fck : float
+        Characteristic compressive cylinder strength (MPa).
+    fctm : float
+        Mean axial tensile strength (MPa).
+    Ecm : float
+        Mean secant modulus of elasticity (GPa).
+    """
+    grade: str
+    fck: float
+    fctm: float
+    Ecm: float
+
+    def __post_init__(self) -> None:
+        if not self.grade:
+            raise ValueError("grade must not be empty.")
+        if any(val is None for val in (self.fck, self.fctm, self.Ecm)):
+            raise ValueError("fck, fctm, and Ecm must not be None.")
+
+@dataclass(frozen=True)
+class MaterialProperties:
+    """
+    Holds material type and its corresponding properties for a grillage member.
+
+    Attributes
+    ----------
+    steel_prop : SteelProperties 
+    concrete_prop : ConcreteProperties
+    """
+    steel_prop: SteelProperties
+    concrete_prop: ConcreteProperties
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.steel_prop, SteelProperties):
+            raise ValueError("steel_prop must be a SteelProperties instance.")
+        if not isinstance(self.concrete_prop, ConcreteProperties):
+            raise ValueError("concrete_prop must be a ConcreteProperties instance.")
 
 @dataclass(frozen=True)
 class GrillageGeometry:

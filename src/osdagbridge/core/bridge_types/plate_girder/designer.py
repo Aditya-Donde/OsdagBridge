@@ -53,7 +53,7 @@ from typing import Dict, List, Optional
 
 
 @dataclass
-class MaterialProperties:
+class SteelProperties:
     """
     Material strengths and partial safety factors.
 
@@ -238,7 +238,7 @@ class BridgeConfig:
             |-- DCREngine
             +-- ReportGenerator
     """
-    material: MaterialProperties = field(default_factory=MaterialProperties)
+    material: SteelProperties = field(default_factory=SteelProperties)
     section: SteelSection = field(default_factory=lambda: SteelSection(
         D=1500, bf_top=400, tf_top=20, bf_bot=500, tf_bot=25, tw=12,
     ))
@@ -256,7 +256,7 @@ class BridgeConfig:
         matching the ospgrillage analyser model.
         """
         return cls(
-            material=MaterialProperties(
+            material=SteelProperties(
                 steel_grade="E350", fy=350.0, fu=490.0, Es=200_000.0,
                 concrete_grade="M65", fck=65.0, fctm=4.1, Ecm=38_000.0,
                 rebar_grade="Fe500", fy_rebar=500.0,
