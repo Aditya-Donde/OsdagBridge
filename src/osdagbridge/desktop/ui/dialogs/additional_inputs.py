@@ -719,6 +719,10 @@ class AdditionalInputs(QDialog):
         if median_index >= 0:
             median_enabled = (include_median != "No")
             inner_tabs.setTabEnabled(median_index, median_enabled)
+        
+        # Trigger CAD update to reflect visibility changes
+        if hasattr(self.typical_section_tab, "_update_cad_preview"):
+            self.typical_section_tab._update_cad_preview()
             
     # 2D CAD functions for tab enabling and disabling inside the addition inputs dialog    ---> ends here 
 

@@ -768,45 +768,86 @@ class CrossSectionCADWidget(QWidget):
         return deck_total, num_fp
     
     def create_concrete_brush(self):
-        """Concrete hatch pattern brush (aggregate look)"""
-        size = 25  # pattern tile size
-        pixmap = QPixmap(size, size)
-        pixmap.fill(Qt.transparent)
+        import random, math
+        
+
+        SIZE = 120
+        DOT_COUNT = 100
+        TRI_COUNT = 30
+        rng = random.Random(42)  # ← seeded RNG so tiles are deterministic
+
+        def rand(): return rng.random()
+        def rr(a, b): return a + rand() * (b - a)
+
+        # ── Draw one copy of the content, offset by (ox, oy)
+        def draw_content(p: QPainter, ox: float, oy: float):
+            p.save()
+            p.translate(ox, oy)
+
+            # Fine aggregate — dots (sand / grit)
+            p.setPen(Qt.NoPen)
+            for _ in range(DOT_COUNT):
+                x, y = rr(0, SIZE), rr(0, SIZE)
+                r = rr(0.6, 2.2)
+                h = int(rr(40, 110))
+                p.setBrush(QColor(h, h, h))
+                p.drawEllipse(QPointF(x, y), r, r)
+
+            # Coarse aggregate — irregular triangles
+            for _ in range(TRI_COUNT):
+                cx, cy = rr(0, SIZE), rr(0, SIZE)
+                base_angle = rr(0, 2 * math.pi)
+                h = int(rr(70, 140))
+                sat = int(rr(0, 10))
+
+                poly = QPolygonF()
+                for v in range(3):
+                    ang = base_angle + v * (2 * math.pi / 3) + rr(-0.45, 0.45)
+                    dist = rr(SIZE * 0.032, SIZE * 0.072)
+                    poly.append(QPointF(cx + math.cos(ang) * dist,
+                                        cy + math.sin(ang) * dist))
+
+                fill_col = QColor(h + sat, h, h - sat)
+                alpha = int(rr(64, 140))         # 25–55 % opacity stroke
+                stroke_col = QColor(20, 20, 20, alpha)
+                lw = rr(0.4, 0.8)
+
+                p.setBrush(fill_col)
+                p.setPen(QPen(stroke_col, lw))
+                p.drawPolygon(poly)
+
+            # Micro-scratches — cement paste surface texture
+            p.setBrush(Qt.NoBrush)
+            scratch_count = int(SIZE * 0.3)
+            for _ in range(scratch_count):
+                x, y = rr(0, SIZE), rr(0, SIZE)
+                length = rr(2, SIZE * 0.08)
+                ang = rr(0, math.pi * 2)
+                alpha = int(rr(10, 31))           # 4–12 % opacity
+                p.setPen(QPen(QColor(90, 85, 80, alpha), rr(0.3, 0.7)))
+                p.drawLine(QPointF(x, y),
+                        QPointF(x + math.cos(ang) * length,
+                                y + math.sin(ang) * length))
+
+            p.restore()
+
+        # ── Build tile pixmap
+        pixmap = QPixmap(SIZE, SIZE)
+        pixmap.fill(QColor(225, 225, 225))     
 
         p = QPainter(pixmap)
         p.setRenderHint(QPainter.Antialiasing)
 
-        # light grey base (optional)
-        p.fillRect(0, 0, size, size, QColor(245, 245, 245))
+        # Draw all 9 offset copies so shapes that straddle any edge
+        # are completed on the opposite side → perfect seamless wrap
+        for dx in (-SIZE, 0, SIZE):
+            for dy in (-SIZE, 0, SIZE):
+                draw_content(p, dx, dy)
 
-        # dots (sand)
-        p.setPen(QPen(QColor(150, 150, 150), 1))
-        for i in range(35):
-            x = random.randint(0, size - 1)
-            y = random.randint(0, size - 1)
-            p.drawPoint(x, y)
-        
-        #Angular stones
-        p.setPen(QPen(QColor(130, 130, 130), 1.2))
-        for _ in range(6):
-            cx = random.randint(6, size - 6)
-            cy = random.randint(6, size - 6)
-
-            poly = QPolygonF()
-            sides = random.randint(3, 5)
-            base_angle = random.uniform(0, 2 * math.pi)
-
-            for _ in range(sides):
-                angle = base_angle + random.uniform(-0.8, 0.8)
-                radius = random.uniform(3, 7)
-                poly.append(
-                    QPointF(
-                        cx + radius * math.cos(angle),
-                        cy + radius * math.sin(angle)
-                    )
-                )
-
-            p.drawPolygon(poly)
+        # Very subtle wash to unify everything
+        p.setPen(Qt.NoPen)
+        p.setBrush(QColor(100, 95, 88, 10))
+        p.drawRect(0, 0, SIZE, SIZE)
 
         p.end()
         return QBrush(pixmap)
@@ -1006,7 +1047,7 @@ class CrossSectionCADWidget(QWidget):
         y_mid = y_bottom - mid_y_off
         y_top = y_bottom - h
         
-        barrier_brush = QBrush(QColor(255, 250, 220)) if self.hovered_element == 'median' else QBrush(QColor(126, 126, 126))
+        barrier_brush = QBrush(QColor(255, 250, 220)) if self.hovered_element == 'median' else QBrush(QColor(220, 220, 220))
         painter.setBrush(barrier_brush)
         painter.setPen(QPen(Qt.black, max(1.5, scale * 1.5)))
         
@@ -1050,14 +1091,14 @@ class CrossSectionCADWidget(QWidget):
         x_tl = x_bl + (bottom_w - top_w) / 2
         x_tr = x_tl + top_w
         
-        painter.setBrush(QBrush(QColor(180, 180, 180)))
+        painter.setBrush(QBrush(QColor(220, 220, 220)))
         painter.setPen(QPen(Qt.black, max(1.0, scale)))
         painter.drawPolygon(QPolygonF([QPointF(x_bl, y_bottom), QPointF(x_br, y_bottom), QPointF(x_tr, y_top_kerb), QPointF(x_tl, y_top_kerb)]))
         
         post_w, post_offset = 150.0 * scale, 75.0 * scale
         spacer_w, spacer_h = 200.0 * scale, 330.0 * scale
         w_beam_h, w_beam_depth, w_beam_thk = 330.0 * scale, 83.0 * scale, 3.0 * scale
-        post_color = QColor(255, 250, 220) if self.hovered_element == 'median' else QColor(80, 80, 80)
+        post_color = QColor(255, 250, 220) if self.hovered_element == 'median' else QColor(220, 220, 220)
         
         def draw_side_assembly(is_left):
             # Assembly on Left side of median (near x_tl): [Beam] [Spacer] [Post] -> Facing left carriageway
@@ -1622,46 +1663,53 @@ class CrossSectionCADWidget(QWidget):
 
             # Geometry vector (true bracing direction)
             dx = x2 - x1
-            dy = bottom_R - top_L
-            length = math.hypot(dx, dy)
-            if length <= 0:
-                continue
-
-            # Perpendicular direction
-            perp_x = -dy / length
-            perp_y =  dx / length
-
             thickness = 3.5 * (self.zoom_level / 1.2)
-            off_x = perp_x * thickness / 2
-            off_y = perp_y * thickness / 2
 
             # ===== CROSS BRACING (\) =====
-            p1 = QPointF(x1 + off_x, top_L    + off_y)
-            p2 = QPointF(x2 + off_x, bottom_R + off_y)
-            p3 = QPointF(x2 - off_x, bottom_R - off_y)
-            p4 = QPointF(x1 - off_x, top_L    - off_y)
+            dy_bs = bottom_R - top_L
+            L_bs = math.hypot(dx, dy_bs)
+            if L_bs > 0:
+                perp_x_bs = -dy_bs / L_bs
+                perp_y_bs = dx / L_bs
+                
+                off_x_bs = perp_x_bs * thickness / 2
+                off_y_bs = perp_y_bs * thickness / 2
+                
+                p1 = QPointF(x1 + off_x_bs, top_L    + off_y_bs)
+                p2 = QPointF(x2 + off_x_bs, bottom_R + off_y_bs)
+                p3 = QPointF(x2 - off_x_bs, bottom_R - off_y_bs)
+                p4 = QPointF(x1 - off_x_bs, top_L    - off_y_bs)
 
-            painter.setPen(Qt.NoPen)
-            painter.setBrush(QBrush(CROSS_BRACING_COLOR))
-            painter.drawPolygon(QPolygonF([p1, p2, p3, p4]))
+                painter.setPen(Qt.NoPen)
+                painter.setBrush(QBrush(CROSS_BRACING_COLOR))
+                painter.drawPolygon(QPolygonF([p1, p2, p3, p4]))
 
-            painter.setPen(QPen(CROSS_BRACING_COLOR.darker(220), 1.5))
-            painter.drawLine(p1, p2)
-            painter.drawLine(p4, p3)
+                painter.setPen(QPen(CROSS_BRACING_COLOR.darker(220), 1.5))
+                painter.drawLine(p1, p2)
+                painter.drawLine(p4, p3)
 
             # ===== CROSS BRACING (/) =====
-            p1 = QPointF(x1 + off_x, bottom_L + off_y)
-            p2 = QPointF(x2 + off_x, top_R    + off_y)
-            p3 = QPointF(x2 - off_x, top_R    - off_y)
-            p4 = QPointF(x1 - off_x, bottom_L - off_y)
+            dy_sl = top_R - bottom_L
+            L_sl = math.hypot(dx, dy_sl)
+            if L_sl > 0:
+                perp_x_sl = -dy_sl / L_sl
+                perp_y_sl = dx / L_sl
+                
+                off_x_sl = perp_x_sl * thickness / 2
+                off_y_sl = perp_y_sl * thickness / 2
+                
+                p1 = QPointF(x1 + off_x_sl, bottom_L + off_y_sl)
+                p2 = QPointF(x2 + off_x_sl, top_R    + off_y_sl)
+                p3 = QPointF(x2 - off_x_sl, top_R    - off_y_sl)
+                p4 = QPointF(x1 - off_x_sl, bottom_L - off_y_sl)
 
-            painter.setPen(Qt.NoPen)
-            painter.setBrush(QBrush(CROSS_BRACING_COLOR))
-            painter.drawPolygon(QPolygonF([p1, p2, p3, p4]))
+                painter.setPen(Qt.NoPen)
+                painter.setBrush(QBrush(CROSS_BRACING_COLOR))
+                painter.drawPolygon(QPolygonF([p1, p2, p3, p4]))
 
-            painter.setPen(QPen(CROSS_BRACING_COLOR.darker(220), 1.5))
-            painter.drawLine(p1, p2)
-            painter.drawLine(p4, p3)
+                painter.setPen(QPen(CROSS_BRACING_COLOR.darker(220), 1.5))
+                painter.drawLine(p1, p2)
+                painter.drawLine(p4, p3)
         # Draw railings
         left_railing_rect = None
         right_railing_rect = None

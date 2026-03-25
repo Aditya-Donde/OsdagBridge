@@ -387,7 +387,11 @@ class TypicalSectionDetailsTab(QWidget):
             params["railing_height"] = float(self.railing_height.text()) * 1000
             
         # ---- Median presence ----
-        if hasattr(self, "median_type"):
+        if hasattr(self, "median_tab"):
+            median_idx = self.input_tabs.indexOf(self.median_tab)
+            is_median_enabled = self.input_tabs.isTabEnabled(median_idx)
+            params["median_present"] = is_median_enabled
+        elif hasattr(self, "median_type"):
             params["median_present"] = self.median_type.currentText() != "None"
 
         if params:
