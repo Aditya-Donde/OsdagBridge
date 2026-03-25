@@ -27,7 +27,7 @@ QSplitter::handle {
 
 /* Global Checkbox Style */
 QCheckBox {
-    font-size: 10px;
+    font-size: 12px;
     color: #333;
     spacing: 6px;
 }
