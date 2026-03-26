@@ -317,13 +317,15 @@ class StiffenerCadPreviewWidget(QWidget):
 
             # Bearing stiffeners only at first and last member of the selected girder.
             # Draw these after intermediate lines so bearing stiffeners remain visible.
-            if is_first or is_last:
-                painter.setPen(QPen(self.BEARING_COLOR, 2.0))
+            painter.setPen(QPen(self.BEARING_COLOR, 2.0))
+            if is_first:
                 for i in range(bearing_count):
-                    if is_first:
-                        x_pos = left + edge_offset + (i * spacing_px)
-                    else:
-                        x_pos = right - edge_offset - (i * spacing_px)
+                    x_pos = left + edge_offset + (i * spacing_px)
+                    x_pos = max(left + 2.0, min(right - 2.0, x_pos))
+                    painter.drawLine(int(x_pos), int(web_top), int(x_pos), int(web_bottom))
+            if is_last:
+                for i in range(bearing_count):
+                    x_pos = right - edge_offset - (i * spacing_px)
                     x_pos = max(left + 2.0, min(right - 2.0, x_pos))
                     painter.drawLine(int(x_pos), int(web_top), int(x_pos), int(web_bottom))
 
@@ -439,7 +441,7 @@ class StiffenerDetailsTab(QWidget):
         row = self._add_form_row(
             inputs_grid,
             0,
-            "No. of Bearing Stiffeners at each end\n(on one side only):",
+            "No. of Bearing Stiffeners\n(on one side only):",
             self.bearing_count_combo,
         )
         # Keep references so bearing rows can be fully hidden for interior members.
@@ -1002,6 +1004,7 @@ class StiffenerDetailsTab(QWidget):
         member_id = str(member_id or self._active_member_id or "").strip()
         optimized = self._is_member_optimized(member_id) if member_id else False
         exterior = self._is_exterior_member(member_id) if member_id else False
+        self._update_bearing_count_label(member_id)
 
         base_enabled = not optimized
         show_bearing_rows = bool(exterior)
@@ -1061,6 +1064,26 @@ class StiffenerDetailsTab(QWidget):
             return True
 
         return current_member in {min(members_in_same_girder), max(members_in_same_girder)}
+
+    def _count_members_in_girder(self, member_id: str) -> int:
+        current_girder, _ = self._parse_member_indices(member_id)
+        if current_girder is None:
+            return 0
+
+        count = 0
+        for mid in self._list_current_member_ids():
+            g_idx, _ = self._parse_member_indices(mid)
+            if g_idx == current_girder:
+                count += 1
+        return count
+
+    def _update_bearing_count_label(self, member_id: str) -> None:
+        label_widget = getattr(self, "_bearing_count_label_widget", None)
+        if label_widget is None:
+            return
+
+        text = "No. of Bearing Stiffeners\n(on one side only)"
+        label_widget.setText(text)
 
     def _list_current_member_ids(self) -> list[str]:
         members: list[str] = []
