@@ -283,7 +283,10 @@ class CustomWindow(QWidget):
         """
         Open Additional Inputs dialog and route values through CAD interface
         """
-        dialog = AdditionalInputs(parent=self)
+        dialog = AdditionalInputs(
+            base_values=getattr(self, "input_dict", {}),
+            parent=self,
+        )
 
         if dialog.exec():
             # Get values ONLY (do not update CAD directly)

@@ -1191,6 +1191,10 @@ SUPPORT_CONDITIONS_SCHEMA = {
 
 DESIGN_OPTIONS_SCHEMA = {
     "id": "design_options",
+    "live_validation": {
+        "enabled": True,
+        "fields": ["shear_stud_diameter", "shear_stud_height"],
+    },
     "cards": [
         {
             "title": "Construction Stage",
@@ -1243,18 +1247,21 @@ DESIGN_OPTIONS_SCHEMA = {
                             "label": "Material:",
                             "type": "line",
                             "placeholder": "Material",
+                            "default": pg_defaults.DEFAULT_AI_DESIGN_SHEAR_STUD_MATERIAL,
                             "bind": "shear_stud_material_input",
                         },
                         {
                             "id": "shear_stud_diameter",
                             "label": "Diameter (mm):",
                             "type": "line",
+                            "default": pg_defaults.DEFAULT_AI_DESIGN_SHEAR_STUD_DIAMETER,
                             "bind": "shear_stud_diameter_input",
                         },
                         {
                             "id": "shear_stud_height",
                             "label": "Height (mm):",
                             "type": "line",
+                            "default": pg_defaults.DEFAULT_AI_DESIGN_SHEAR_STUD_HEIGHT,
                             "bind": "shear_stud_height_input",
                         },
                     ],
@@ -1266,19 +1273,40 @@ DESIGN_OPTIONS_SCHEMA = {
 
 DESIGN_OPTIONS_CONT_SCHEMA = {
     "id": "design_options_cont",
+    "live_validation": {
+        "enabled": True,
+        "fields": [
+            "gamma_c_basic",
+            "gamma_c_accidental",
+            "gamma_m0",
+            "gamma_m1",
+            "gamma_s",
+            "gamma_v",
+            "gamma_flt",
+            "gamma_mf",
+            "load_cycles",
+            "k1",
+            "k3",
+            "k4",
+            "k6",
+            "limit_l",
+            "k3_second",
+            "k4_second",
+        ],
+    },
     "sections": [
         {
             "title": "Partial Safety Factors",
             "field_width": 150,
             "fields": [
-                {"id": "gamma_c_basic", "label": "Concrete basic & seismic(Gamma_C)", "type": "line", "bind": "gamma_c_basic_input"},
-                {"id": "gamma_c_accidental", "label": "Concrete Accidental (Gamma_C)", "type": "line", "bind": "gamma_c_accidental_input"},
-                {"id": "gamma_m0", "label": "Structural steel for Yielding and Buckling(Gamma_M0)", "type": "line", "bind": "gamma_m0_input"},
-                {"id": "gamma_m1", "label": "Structural Steel For Ultimate Stress(Gamme_M1)", "type": "line", "bind": "gamma_m1_input"},
-                {"id": "gamma_s", "label": "Reinforcing Steel (Gamma_s)", "type": "line", "bind": "gamma_s_input"},
-                {"id": "gamma_v", "label": "Shear Connectors For Yield(Gamma_v)", "type": "line", "bind": "gamma_v_input"},
-                {"id": "gamma_flt", "label": "Fatigue Load(Gamma_flt)", "type": "line", "bind": "gamma_flt_input"},
-                {"id": "gamma_mf", "label": "Fatigue Strength(Gamma_Mf, t)", "type": "line", "bind": "gamma_mf_input"},
+                {"id": "gamma_c_basic", "label": "Concrete basic & seismic(Gamma_C)", "type": "line", "default": pg_defaults.DEFAULT_AI_DESIGN_CONT_GAMMA_C_BASIC, "bind": "gamma_c_basic_input"},
+                {"id": "gamma_c_accidental", "label": "Concrete Accidental (Gamma_C)", "type": "line", "default": pg_defaults.DEFAULT_AI_DESIGN_CONT_GAMMA_C_ACCIDENTAL, "bind": "gamma_c_accidental_input"},
+                {"id": "gamma_m0", "label": "Structural steel for Yielding and Buckling(Gamma_M0)", "type": "line", "default": pg_defaults.DEFAULT_AI_DESIGN_CONT_GAMMA_M0, "bind": "gamma_m0_input"},
+                {"id": "gamma_m1", "label": "Structural Steel For Ultimate Stress(Gamme_M1)", "type": "line", "default": pg_defaults.DEFAULT_AI_DESIGN_CONT_GAMMA_M1, "bind": "gamma_m1_input"},
+                {"id": "gamma_s", "label": "Reinforcing Steel (Gamma_s)", "type": "line", "default": pg_defaults.DEFAULT_AI_DESIGN_CONT_GAMMA_S, "bind": "gamma_s_input"},
+                {"id": "gamma_v", "label": "Shear Connectors For Yield(Gamma_v)", "type": "line", "default": pg_defaults.DEFAULT_AI_DESIGN_CONT_GAMMA_V, "bind": "gamma_v_input"},
+                {"id": "gamma_flt", "label": "Fatigue Load(Gamma_flt)", "type": "line", "default": pg_defaults.DEFAULT_AI_DESIGN_CONT_GAMMA_FLT, "bind": "gamma_flt_input"},
+                {"id": "gamma_mf", "label": "Fatigue Strength(Gamma_Mf, t)", "type": "line", "default": pg_defaults.DEFAULT_AI_DESIGN_CONT_GAMMA_MF, "bind": "gamma_mf_input"},
             ],
         },
         {
@@ -1289,6 +1317,7 @@ DESIGN_OPTIONS_CONT_SCHEMA = {
                     "id": "load_cycles",
                     "label": "Number of Load Cycles(Cl605.3,Cl605.4)",
                     "type": "line",
+                    "default": pg_defaults.DEFAULT_AI_DESIGN_CONT_LOAD_CYCLES,
                     "bind": "load_cycles_input",
                 }
             ],
@@ -1299,21 +1328,21 @@ DESIGN_OPTIONS_CONT_SCHEMA = {
             "fields": [
                 {
                     "row_fields": [
-                        {"id": "k1", "label": "K1:", "type": "line", "bind": "k1_input", "width": 80},
-                        {"id": "k3", "label": "K3:", "type": "line", "bind": "k3_input", "width": 80},
-                        {"id": "k4", "label": "K4:", "type": "line", "bind": "k4_input", "width": 80},
-                        {"id": "k6", "label": "K6:", "type": "line", "bind": "k6_input", "width": 80},
+                        {"id": "k1", "label": "K1:", "type": "line", "default": pg_defaults.DEFAULT_AI_DESIGN_CONT_K1, "bind": "k1_input", "width": 80},
+                        {"id": "k3", "label": "K3:", "type": "line", "default": pg_defaults.DEFAULT_AI_DESIGN_CONT_K3, "bind": "k3_input", "width": 80},
+                        {"id": "k4", "label": "K4:", "type": "line", "default": pg_defaults.DEFAULT_AI_DESIGN_CONT_K4, "bind": "k4_input", "width": 80},
+                        {"id": "k6", "label": "K6:", "type": "line", "default": pg_defaults.DEFAULT_AI_DESIGN_CONT_K6, "bind": "k6_input", "width": 80},
                     ]
                 },
                 {
                     "row_fields": [
-                        {"id": "limit_l", "label": "Limit : L (m)", "type": "line", "bind": "limit_input", "width": 120}
+                        {"id": "limit_l", "label": "Limit : L (m)", "type": "line", "default": pg_defaults.DEFAULT_AI_DESIGN_CONT_LIMIT_L, "bind": "limit_input", "width": 120}
                     ]
                 },
                 {
                     "row_fields": [
-                        {"id": "k3_second", "label": "K3:", "type": "line", "bind": "k3_second_input", "width": 80},
-                        {"id": "k4_second", "label": "K4:", "type": "line", "bind": "k4_second_input", "width": 80},
+                        {"id": "k3_second", "label": "K3:", "type": "line", "default": pg_defaults.DEFAULT_AI_DESIGN_CONT_K3_SECOND, "bind": "k3_second_input", "width": 80},
+                        {"id": "k4_second", "label": "K4:", "type": "line", "default": pg_defaults.DEFAULT_AI_DESIGN_CONT_K4_SECOND, "bind": "k4_second_input", "width": 80},
                         {"id": "exposure", "label": "Exposure:", "type": "line", "bind": "exposure_input", "width": 100},
                     ]
                 },

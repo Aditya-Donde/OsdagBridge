@@ -50,12 +50,16 @@ class GeneralizedSchemaSubTab(QWidget):
         callback methods are resolved.  Defaults to *self*.
     parent:
         Standard Qt parent widget.
+    validation_handler:
+        Optional callable invoked on ``editingFinished`` for schema-controlled
+        validation. The handler receives ``(tab_id, field_id, widget)``.
     """
 
-    def __init__(self, schema: dict, owner=None, parent=None):
+    def __init__(self, schema: dict, owner=None, parent=None, validation_handler=None):
         super().__init__(parent)
         self._schema = schema
         self._owner  = owner or self
+        self._validation_handler = validation_handler
         # field_id  ->  primary widget (QLineEdit / QComboBox / QCheckBox)
         self._widget_map: dict[str, QWidget] = {}
         self.setStyleSheet("background-color: white;")
@@ -295,15 +299,57 @@ class GeneralizedSchemaSubTab(QWidget):
             on_finished = field_def.get("on_editing_finished")
             if on_finished and hasattr(owner, on_finished):
                 widget.editingFinished.connect(getattr(owner, on_finished))
+            if self._should_run_live_validation(field_def, widget):
+                widget.editingFinished.connect(
+                    lambda fid=fid, w=widget: self._run_live_validation(fid, w)
+                )
 
         # ── common registration ───────────────────────────────────────
         if fid:
             widget.setObjectName(fid)
             self._widget_map[fid] = widget
+            self._register_widget_state(fid, field_def, widget)
         if bind:
             setattr(owner, bind, widget)
 
         return widget
+
+    def _should_run_live_validation(self, field_def: dict, widget: QWidget) -> bool:
+        if not callable(self._validation_handler):
+            return False
+        if not isinstance(widget, QLineEdit):
+            return False
+        if field_def.get("read_only") or field_def.get("type") == "computed":
+            return False
+
+        config = self._schema.get("live_validation")
+        if isinstance(config, dict):
+            if not config.get("enabled", False):
+                return False
+            fields = config.get("fields") or []
+            return not fields or field_def.get("id") in fields
+        return bool(config)
+
+    def _run_live_validation(self, field_id: str, widget: QLineEdit) -> None:
+        tab_id = str(self._schema.get("id", "") or "").strip()
+        if not tab_id or not field_id or not callable(self._validation_handler):
+            return
+        self._validation_handler(tab_id, field_id, widget)
+
+    def _register_widget_state(self, field_id: str, field_def: dict, widget: QWidget) -> None:
+        if not field_id or not isinstance(widget, QLineEdit):
+            return
+
+        default = field_def.get("default")
+        widget.setProperty("schema_tab_id", self._schema.get("id"))
+        widget.setProperty("schema_field_id", field_id)
+        widget.setProperty("schema_default", None if default is None else str(default))
+
+        initial_text = widget.text().strip()
+        if initial_text:
+            widget.setProperty("last_valid_text", initial_text)
+        elif default is not None:
+            widget.setProperty("last_valid_text", str(default))
 
     # ------------------------------------------------------------------
     # Data
@@ -342,6 +388,7 @@ class GeneralizedSchemaSubTab(QWidget):
             return
         if isinstance(widget, QLineEdit):
             widget.setText(str(default))
+            widget.setProperty("last_valid_text", str(default))
         elif isinstance(widget, QComboBox):
             widget.setCurrentText(str(default))
         elif isinstance(widget, QCheckBox):

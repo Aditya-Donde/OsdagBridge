@@ -698,8 +698,14 @@ class InputDock(QWidget):
     def _open_additional_inputs(self, target_tab=None):
         footpath_value    = self._text(KEY_FOOTPATH) or "None"
         carriageway_width = self._get_effective_carriageway_width()
+        base_values = self.get_all_input_values()
 
-        dlg = AdditionalInputs(footpath_value, carriageway_width)
+        dlg = AdditionalInputs(
+            footpath_value,
+            carriageway_width,
+            base_values=base_values,
+            parent=self,
+        )
         self.additional_inputs = dlg
 
         if self._additional_inputs_saved_data:

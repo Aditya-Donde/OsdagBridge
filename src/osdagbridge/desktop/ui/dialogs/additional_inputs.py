@@ -20,6 +20,8 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QDoubleValidator
 
 from osdagbridge.core.utils.common import *
+from osdagbridge.core.bridge_types.plate_girder.validator import BridgeInputValidator
+from osdagbridge.desktop.ui.dialogs.custom_messagebox import CustomMessageBox, MessageBoxType
 from osdagbridge.desktop.ui.utils.custom_titlebar import CustomTitleBar
 from osdagbridge.desktop.ui.dialogs.tabs.typical_section_details import TypicalSectionDetailsTab
 from osdagbridge.desktop.ui.dialogs.tabs.section_properties_tab import SectionPropertiesTab
@@ -30,6 +32,14 @@ from osdagbridge.core.bridge_types.plate_girder.ui_fields_additional_input impor
     DESIGN_OPTIONS_CONT_SCHEMA,
 )
 from osdagbridge.desktop.ui.dialogs.tabs.generalized_schema_tab import GeneralizedSchemaSubTab
+
+
+def _make_schema_tab(schema: dict):
+    """Build a generalized schema tab with dialog-managed validation hooks."""
+    return lambda dlg: GeneralizedSchemaSubTab(
+        schema,
+        validation_handler=dlg._validate_schema_field,
+    )
 
 # ── Tab registry ──────────────────────────────────────────────────────────────
 # One entry per top-level tab.  ``factory(dlg)`` receives the dialog instance
@@ -57,17 +67,17 @@ _TAB_REGISTRY = [
     {
         "id":      "support_conditions",
         "label":   "Support Conditions",
-        "factory": lambda dlg: GeneralizedSchemaSubTab(SUPPORT_CONDITIONS_SCHEMA),
+        "factory": _make_schema_tab(SUPPORT_CONDITIONS_SCHEMA),
     },
     {
         "id":      "design_options",
         "label":   "Analysis/Design Options",
-        "factory": lambda dlg: GeneralizedSchemaSubTab(DESIGN_OPTIONS_SCHEMA),
+        "factory": _make_schema_tab(DESIGN_OPTIONS_SCHEMA),
     },
     {
         "id":      "design_options_cont",
         "label":   "Design Options (Cont.)",
-        "factory": lambda dlg: GeneralizedSchemaSubTab(DESIGN_OPTIONS_CONT_SCHEMA),
+        "factory": _make_schema_tab(DESIGN_OPTIONS_CONT_SCHEMA),
     },
 ]
 
@@ -120,7 +130,7 @@ class AdditionalInputs(QDialog):
 
     values_changed = Signal(dict)  # emitted whenever any field changes
 
-    def __init__(self, footpath_value="None", carriageway_width=7.5, parent=None):
+    def __init__(self, footpath_value="None", carriageway_width=7.5, base_values=None, parent=None):
         super().__init__(parent)
         self.setObjectName("AdditionalInputs")
         self.resize(1024, 720)
@@ -128,6 +138,9 @@ class AdditionalInputs(QDialog):
         self.setSizeGripEnabled(True)
         self.footpath_value    = footpath_value
         self.carriageway_width = carriageway_width
+        self._base_input_context = dict(base_values or {})
+        self._validator = BridgeInputValidator()
+        self._working_values = {}
         self._member_properties_editable = True
         self._last_saved_data = {}
         self._init_ui()
@@ -137,7 +150,7 @@ class AdditionalInputs(QDialog):
 
     def _setup_shell(self):
         """Frameless window chrome with custom title bar and size grip."""
-        self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowSystemMenuHint)
+        self.setWindowFlags(Qt.Dialog | Qt.FramelessWindowHint | Qt.WindowSystemMenuHint)
 
         root = QVBoxLayout(self)
         root.setContentsMargins(1, 1, 1, 1)
@@ -184,6 +197,7 @@ class AdditionalInputs(QDialog):
 
         self._enforce_decimal_places(2)
         self._normalize_numeric_texts(2)
+        self._refresh_working_values()
 
     def _build_tabs(self):
         """Instantiate and register every tab from ``_TAB_REGISTRY``."""
@@ -249,7 +263,9 @@ class AdditionalInputs(QDialog):
             if not text:
                 continue
             try:
-                le.setText(fmt.format(float(text)))
+                normalized = fmt.format(float(text))
+                le.setText(normalized)
+                le.setProperty("last_valid_text", normalized)
             except ValueError:
                 pass
 
@@ -296,9 +312,70 @@ class AdditionalInputs(QDialog):
     def _on_any_value_changed(self, *args):
         """Collect all current values and emit so callers can update in real-time."""
         try:
-            self.values_changed.emit(self.get_all_values())
+            self.values_changed.emit(self._refresh_working_values())
         except Exception:
             pass
+
+    def _refresh_working_values(self) -> dict:
+        """Snapshot the current dialog state for real-time consumers."""
+        self._working_values = self.get_all_values()
+        return self._working_values
+
+    def get_working_values(self) -> dict:
+        return self._refresh_working_values()
+
+    def _build_validation_context(self) -> dict:
+        """Merge external inputs with the dialog's current working values."""
+        context = dict(self._base_input_context)
+        current_values = self._refresh_working_values()
+
+        for top_tab_data in current_values.values():
+            if not isinstance(top_tab_data, dict):
+                continue
+            for sub_tab_data in top_tab_data.values():
+                if isinstance(sub_tab_data, dict):
+                    context.update(sub_tab_data)
+
+        return context
+
+    def _validation_fallback_for(self, widget: QLineEdit) -> str:
+        last_valid = widget.property("last_valid_text")
+        if last_valid not in (None, ""):
+            return str(last_valid)
+
+        default = widget.property("schema_default")
+        if default not in (None, ""):
+            return str(default)
+
+        return ""
+
+    def _validate_schema_field(self, tab_id: str, field_id: str, widget: QLineEdit) -> bool:
+        """Focus-out validation bridge for schema-driven tabs."""
+        result = self._validator.validate_additional_inputs(
+            str(tab_id or "").strip(),
+            str(field_id or "").strip(),
+            self._build_validation_context(),
+        )
+        if result is None:
+            current_text = widget.text().strip()
+            if current_text:
+                widget.setProperty("last_valid_text", current_text)
+            return True
+
+        corrected, message = result
+        replacement = self._validation_fallback_for(widget) if corrected is None else str(corrected)
+        if widget.text() != replacement:
+            widget.setText(replacement)
+        if replacement:
+            widget.setProperty("last_valid_text", replacement)
+
+        self._refresh_working_values()
+        CustomMessageBox(
+            title="Input Error",
+            text=message,
+            dialogType=MessageBoxType.Warning,
+        ).exec()
+        return False
 
     # ── Value collection ──────────────────────────────────────────────────────
 
