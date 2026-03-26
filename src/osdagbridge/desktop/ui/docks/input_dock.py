@@ -704,7 +704,6 @@ class InputDock(QWidget):
             footpath_value,
             carriageway_width,
             base_values=base_values,
-            parent=self,
         )
         self.additional_inputs = dlg
 

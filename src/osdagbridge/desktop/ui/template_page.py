@@ -285,7 +285,6 @@ class CustomWindow(QWidget):
         """
         dialog = AdditionalInputs(
             base_values=getattr(self, "input_dict", {}),
-            parent=self,
         )
 
         if dialog.exec():
