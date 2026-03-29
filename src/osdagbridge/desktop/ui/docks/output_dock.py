@@ -257,8 +257,51 @@ class OutputDock(QWidget):
     def open_steel_design(self):
         """Open the Steel Design dialog."""
         from osdagbridge.desktop.ui.dialogs.steel_design import SteelDesign
-        dlg = SteelDesign(parent=self.parent)
-        dlg.exec()
+        from osdagbridge.core.bridge_types.plate_girder.analyser import BridgeGrillageModel
+        from PySide6.QtCore import QTimer
+
+        print("Running temporary analyser pipeline for UI testing...")
+        bridge = BridgeGrillageModel()
+        bridge.create_model()
+        bridge.create_self_weight_load()
+        bridge.create_deck_load()
+        results = bridge.analyze()
+        model = bridge.model
+        print("Analysis complete. Results:", type(results))
+
+        # We must keep a reference to dlg so it's not garbage collected if we don't use exec()
+        self._steel_design_dlg = SteelDesign(parent=None)
+        self._steel_design_dlg._data_initialized = False
+        
+        def _inject_and_plot():
+            dlg = self._steel_design_dlg
+            try:
+                # Inject model and results directly into the graph engine,
+                # which now owns all data pipeline state.
+                dlg.graph_engine._cached_model   = model
+                dlg.graph_engine._cached_results = results
+
+                dlg.graph_engine.build_girder_map()
+                print("Girder map built:", dlg.graph_engine._girder_map)
+
+                dlg._populate_member_combo()
+                dlg._populate_load_combo()
+                dlg._data_initialized = True
+
+                # Switch to Analysis Results tab (triggers _on_tab_changed → _update_analysis_plots)
+                dlg.tabs.setCurrentIndex(1)
+                # Also call directly in case tab was already at index 1
+                dlg._update_analysis_plots()
+            except Exception as e:
+                import traceback
+                print("ERROR in UI testing injection:")
+                traceback.print_exc()
+
+        # Show the dialog modelessly so we can defer injection
+        self._steel_design_dlg.show()
+        
+        # Defer until Qt event loop is free and canvas is visible
+        QTimer.singleShot(200, _inject_and_plot)
 
     def open_deck_design(self):
         """Open the Deck Design dialog."""

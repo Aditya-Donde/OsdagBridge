@@ -26,7 +26,7 @@ LOAD_COMBINATIONS = [
     "WL", "EL", "IMF", "TL",
 ]
 
-# 8 design checks from the screenshot — 2 columns × 4 rows
+# 8 design checks from the screenshot ΓÇö 2 columns ├ù 4 rows
 DESIGN_CHECKS = [
     ("flexure",          "Strength Limit State (Flexure)"),
     ("shear_long_trans", "Resistance to Longitudinal and Transverse Shear"),
@@ -42,11 +42,11 @@ DESIGN_CHECKS = [
 class SteelDesignCheckTab(QWidget):
 
     def __init__(self, parent=None):
-        self.check_outputs = {}   # key → QTextEdit for each check result
+        self.check_outputs = {}   # key ΓåÆ QTextEdit for each check result
 
         super().__init__(parent)
 
-        # ── identical white bg to SteelDesignDetailsTab ───────────────────────
+        # ΓöÇΓöÇ identical white bg to SteelDesignDetailsTab ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
         self.setStyleSheet("background-color: white;")
 
         main_layout = QVBoxLayout(self)
@@ -62,10 +62,10 @@ class SteelDesignCheckTab(QWidget):
         container_layout.setContentsMargins(18, 6, 18, 12)
         container_layout.setSpacing(16)
 
-        # ── TOP BAR: Member ID (left) + Load Combination (right) ─────────────
+        # ΓöÇΓöÇ TOP BAR: Member ID (left) + Load Combination (right) ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
         container_layout.addLayout(self._build_top_bar())
 
-        # ── CHECK CARDS GRID: 2 columns ───────────────────────────────────────
+        # ΓöÇΓöÇ CHECK CARDS GRID: 2 columns ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
         container_layout.addLayout(self._build_checks_grid())
 
         container_layout.addStretch()
@@ -73,7 +73,7 @@ class SteelDesignCheckTab(QWidget):
         scroll_area.setWidget(container)
         main_layout.addWidget(scroll_area)
 
-    # ── HELPERS — exact copy from steel_design_details.py ────────────────────
+    # ΓöÇΓöÇ HELPERS ΓÇö exact copy from steel_design_details.py ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 
     def _section_card(self, title):
         card = QFrame()
@@ -96,7 +96,7 @@ class SteelDesignCheckTab(QWidget):
 
     def _row_label(self, text):
         lbl = QLabel(text)
-        lbl.setStyleSheet("font-size: 13px; color: #000;")
+        lbl.setStyleSheet("font-size: 11px; color: #333333;")
         lbl.setMinimumWidth(180)
         return lbl
 
@@ -124,7 +124,7 @@ class SteelDesignCheckTab(QWidget):
         grid.addWidget(widget,                row, 1, Qt.AlignLeft | Qt.AlignVCenter)
         return row + 1
 
-    # ── TOP BAR ───────────────────────────────────────────────────────────────
+    # ΓöÇΓöÇ TOP BAR ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 
     def _build_top_bar(self):
         bar = QHBoxLayout()
@@ -164,7 +164,7 @@ class SteelDesignCheckTab(QWidget):
 
         return bar
 
-    # ── CHECK CARDS GRID ──────────────────────────────────────────────────────
+    # ΓöÇΓöÇ CHECK CARDS GRID ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 
     def _build_checks_grid(self):
         """
@@ -199,8 +199,8 @@ class SteelDesignCheckTab(QWidget):
         card.setStyleSheet("""
             QFrame#checkCard {
                 background-color: white;
-                border: 1px solid #CFCFCF;
-                border-radius: 8px;
+                border: 1px solid #b0b0b0;
+                border-radius: 6px;
             }
         """)
         card.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
@@ -213,9 +213,9 @@ class SteelDesignCheckTab(QWidget):
         title_lbl = QLabel(title)
         title_lbl.setStyleSheet("""
             QLabel {
-                font-size: 11px;
+                font-size: 13px;
                 font-weight: bold;
-                color: #000;
+                color: #2B2B2B;
                 background: transparent;
                 border: none;
             }
@@ -223,7 +223,7 @@ class SteelDesignCheckTab(QWidget):
         title_lbl.setWordWrap(True)
         card_layout.addWidget(title_lbl)
 
-        # Output area — readonly, expandable, shows check results
+        # Output area ΓÇö readonly, expandable, shows check results
         output = QTextEdit()
         output.setReadOnly(True)
         output.setFixedHeight(60)
@@ -241,7 +241,7 @@ class SteelDesignCheckTab(QWidget):
         self.check_outputs[key] = output
         return card
 
-    # ── PUBLIC API ────────────────────────────────────────────────────────────
+    # ΓöÇΓöÇ PUBLIC API ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 
     def set_girder_count(self, count):
         """Mirrors GirderDetailsTab.set_girder_count."""
@@ -249,7 +249,7 @@ class SteelDesignCheckTab(QWidget):
         self.member_combo.addItems(["All"] + [f"Girder {i}" for i in range(1, count + 1)])
 
     def load_data(self, cad_state: dict):
-        """Populate from cad_state — populate girder count if available."""
+        """Populate from cad_state ΓÇö populate girder count if available."""
         if not cad_state:
             return
         try:

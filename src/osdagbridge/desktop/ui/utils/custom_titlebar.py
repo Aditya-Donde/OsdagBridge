@@ -134,7 +134,7 @@ class CustomTitleBar(QWidget):
     def mousePressEvent(self, event: QMouseEvent):
         """Handle mouse press for dragging."""
         if event.button() == Qt.LeftButton:
-            if self.parent() and self.parent().isWindow():
+            if self.parent():
                 self._drag_pos = event.globalPosition().toPoint() - self.parent().frameGeometry().topLeft()
                 event.accept()
 
@@ -142,8 +142,7 @@ class CustomTitleBar(QWidget):
         """Handle mouse move for dragging."""
         if (event.buttons() & Qt.LeftButton and 
             not self._drag_pos.isNull() and 
-            self.parent() and 
-            self.parent().isWindow()):
+            self.parent()):
             self.parent().move(event.globalPosition().toPoint() - self._drag_pos)
             event.accept()
 
