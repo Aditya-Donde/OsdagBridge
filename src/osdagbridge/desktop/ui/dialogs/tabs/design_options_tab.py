@@ -4,14 +4,19 @@ from PySide6.QtWidgets import (
     QFrame,
     QLabel,
     QScrollArea,
-    QLineEdit
+    QLineEdit,
+    QMessageBox,
+    QGridLayout,
+    QLineEdit,
+    QComboBox
+
 )
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QDoubleValidator, QIntValidator
 from osdagbridge.core.bridge_types.plate_girder.ui_fields_additional_input import (
     DESIGN_OPTIONS_SCHEMA,
 )
-
+from osdagbridge.desktop.ui.dialogs.tabs.sub_tabs.section_properties.girder_details_tab import _BoundsDialog
 
 class DesignOptionsTab(QWidget):
     """
@@ -23,6 +28,12 @@ class DesignOptionsTab(QWidget):
     def __init__(self, parent_dialog):
         super().__init__()
         self.parent_dialog = parent_dialog
+        self._reinforcement_bounds = {
+            "lower": 8.0,
+            "upper": 40.0,
+            "increment": 1.0
+        }
+        self._reinforcement_values = [8, 10, 12, 16, 20, 25, 28, 32, 36, 40]
         self.init_ui()
     
     def save_values(self):
@@ -32,12 +43,32 @@ class DesignOptionsTab(QWidget):
             if field_name.endswith("_combo") or field_name.endswith("_input"):
                 widget = getattr(self.parent_dialog, field_name, None)
                 if widget:
-                    from PySide6.QtWidgets import QLineEdit, QComboBox
                     if isinstance(widget, QLineEdit):
                         values[field_name] = widget.text()
                     elif isinstance(widget, QComboBox):
                         values[field_name] = widget.currentText()
+
+        values["reinforcement_bounds"] = self._reinforcement_bounds
+
         return values
+
+    def restore_properties(self, data: dict):
+        bounds = data.get("reinforcement_bounds")
+
+        if bounds:
+            self._reinforcement_bounds = {
+                   "lower": float(bounds.get("lower", 8.0)),
+                   "upper": float(bounds.get("upper", 40.0)),
+                   "increment": float(bounds.get("increment", 1.0))  # safe default
+            }
+
+            STANDARD = [8, 10, 12, 16, 20, 25, 28, 32, 36, 40]
+
+            self._reinforcement_values = [
+                s for s in STANDARD
+                if self._reinforcement_bounds["lower"] <= s <= self._reinforcement_bounds["upper"]
+            ] 
+            
 
     def reset_defaults(self):
         """Reset Design Options fields to schema defaults."""
@@ -233,4 +264,65 @@ class DesignOptionsTab(QWidget):
                     self,
                     "Invalid Shear Stud Spacing",
                     f"Shear Stud Spacing must be between {bottom} and {top}.",
-                )          
+                )   
+
+    def _open_reinforcement_bounds(self):
+
+        dialog = BoundsDialogNoIncrement(
+            "Reinforcement Size",
+            self._reinforcement_bounds,
+            self
+        )
+
+        if dialog.exec():
+            result = dialog.result_bounds()
+            if result:
+                result.pop("increment", None)
+                self._reinforcement_bounds = result
+
+                STANDARD = [8, 10, 12, 16, 20, 25, 28, 32, 36, 40]
+
+                self._reinforcement_values = [
+                    s for s in STANDARD
+                    if result["lower"] <= s <= result["upper"]
+                ]
+
+                print("Reinforcement:", self._reinforcement_values) 
+
+        
+
+
+class BoundsDialogNoIncrement(_BoundsDialog):
+    def __init__(self, title, bounds, parent=None):
+        super().__init__(title, bounds, parent)
+
+        self.increment_input.hide()
+
+        layout = self.findChild(QGridLayout)
+        if layout:
+            item = layout.itemAtPosition(2, 0)
+            if item and item.widget():
+                item.widget().hide()
+
+    def _on_accept(self):
+        lower = self._parse_positive(self.lower_input.text())
+        upper = self._parse_positive(self.upper_input.text())
+
+        if lower is None or upper is None:
+            QMessageBox.warning(self, "Invalid Bounds", "Please enter valid numbers.")
+            return
+
+        if upper <= lower:
+            QMessageBox.warning(self, "Invalid Bounds", "Upper must be greater than lower.")
+            return
+
+        self._result = {
+            "lower": float(lower),
+            "upper": float(upper),
+            "increment": None
+        }
+        self.accept()
+   
+
+               
+

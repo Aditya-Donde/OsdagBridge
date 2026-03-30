@@ -1,6 +1,7 @@
-from PySide6.QtWidgets import QWidget, QVBoxLayout, QFrame
+from PySide6.QtWidgets import QWidget, QVBoxLayout, QFrame, QHBoxLayout, QSizePolicy
 from osdagbridge.core.bridge_types.plate_girder.ui_fields_additional_input import SUPPORT_CONDITIONS_SCHEMA
-
+from osdagbridge.desktop.ui.docks.support__conditions_cad import SupportCADWidget
+from osdagbridge.desktop.ui.docks.support_detail_cad import SupportDetailCADWidget
 
 class SupportConditionsTab(QWidget):
 
@@ -96,6 +97,42 @@ class SupportConditionsTab(QWidget):
 
             main_layout.addWidget(card)
 
+
+        cad_card = QFrame()
+        cad_card.setObjectName("support_card")
+        cad_card.setStyleSheet("""
+            QFrame#support_card {
+                border: 1px solid #b2b2b2;
+                border-radius: 8px;
+                background-color: #ffffff;
+            }
+        """)
+
+        cad_layout = QVBoxLayout(cad_card)
+        cad_layout.setContentsMargins(10, 10, 10, 10)
+
+        cad_row = QHBoxLayout()
+        cad_row.setSpacing(12)
+
+        self.left_cad = SupportCADWidget()
+        self.left_cad.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self.left_cad.setMinimumSize(300, 250)
+        cad_row.addWidget(self.left_cad, 1)
+
+        self.right_cad = SupportDetailCADWidget()
+        self.right_cad.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self.right_cad.setMinimumSize(150, 200)
+        cad_row.addWidget(self.right_cad, 1)
+
+        if hasattr(self.parent_dialog, "bearing_length_input"):
+            self.parent_dialog.bearing_length_input.textChanged.connect(
+                self.update_cad
+            )
+
+        cad_layout.addLayout(cad_row)
+
+        main_layout.addWidget(cad_card)
+        
         main_layout.addStretch()
 
     def reset_defaults(self):
@@ -108,3 +145,21 @@ class SupportConditionsTab(QWidget):
 
         if hasattr(self.parent_dialog, "bearing_length_input"):
             self.parent_dialog.bearing_length_input.setText("400")
+
+
+    def update_cad(self):
+        if hasattr(self.parent_dialog, "bearing_length_input"):
+            text = self.parent_dialog.bearing_length_input.text()
+
+            try:
+                value = float(text)
+            except:
+                value = 400
+
+            if hasattr(self, "right_cad"):
+                self.right_cad.update_params({
+                    "bearing_length": value
+                })   
+                
+    
+                     
