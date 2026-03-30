@@ -146,19 +146,21 @@ class BracingLayoutCadWidget(QWidget):
 
         pen = QPen(CAD_DIMENSION, 1.1)
         painter.setPen(pen)
-        font = painter.font()
-        font.setPointSize(8)
-        font.setBold(True)
-        painter.setFont(font)
-        fm = painter.fontMetrics()
 
         label_bg = QColor(255, 255, 255, 225)
         pad_x = 6
         pad_y = 3
 
-        def draw_label_box(text: str, center_x: float, box_y: float) -> None:
+        def draw_label_box(text: str, center_x: float, box_y: float, font_size: int = 8) -> None:
             if not text:
                 return
+            
+            f = painter.font()
+            f.setPointSize(font_size)
+            f.setBold(True)
+            painter.setFont(f)
+            fm = painter.fontMetrics()
+
             txt_w = fm.horizontalAdvance(text)
             txt_h = fm.height()
             box_w = txt_w + (2 * pad_x)
@@ -182,9 +184,9 @@ class BracingLayoutCadWidget(QWidget):
         label_y = y_bottom + ft + 8
         mid_x = (x_left + x_right) / 2.0
 
-        draw_label_box(f"Girder {left_girder}", x_left, label_y)
-        draw_label_box(member_text, mid_x, label_y)
-        draw_label_box(f"Girder {right_girder}", x_right, label_y)
+        draw_label_box(f"Girder {left_girder}", x_left, label_y, 8)
+        draw_label_box(member_text, mid_x, label_y, 11)
+        draw_label_box(f"Girder {right_girder}", x_right, label_y, 8)
 
 class CrossBracingDetailsTab(QWidget):
     """Tab for Cross-Bracing Details with visual previews"""
@@ -342,6 +344,8 @@ class CrossBracingDetailsTab(QWidget):
         row = self._add_grid_row(inputs_grid, row, "Bracing Section Designation:", self.bracing_section_combo)
 
         self.top_chord_checkbox = QCheckBox()
+        self.top_chord_checkbox.setFixedHeight(28)
+        self.top_chord_checkbox.setStyleSheet("margin-left: 2px;")
         self.top_chord_checkbox.setChecked(False)
         row = self._add_grid_row(inputs_grid, row, "Top Chord:", self.top_chord_checkbox)
 
@@ -357,6 +361,8 @@ class CrossBracingDetailsTab(QWidget):
         row = self._add_grid_row(inputs_grid, row, "Top Chord Section Designation:", self.top_chord_size_combo)
 
         self.bottom_chord_checkbox = QCheckBox()
+        self.bottom_chord_checkbox.setFixedHeight(28)
+        self.bottom_chord_checkbox.setStyleSheet("margin-left: 2px;")
         self.bottom_chord_checkbox.setChecked(True)
         row = self._add_grid_row(inputs_grid, row, "Bottom Chord:", self.bottom_chord_checkbox)
 
