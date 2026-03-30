@@ -30,10 +30,18 @@ from osdagbridge.core.utils.common import (
 )
 
 from .bridge_geometry import BridgeGeometry, CrossSectionLayout
-from .cad_generator import export_step
-from .designer import design
+# from .cad_generator import export_step
+def export_step(dto, path):
+    print("Warning: export_step is not implemented yet.")
+# from .designer import design
+def design(dto):
+    print("Warning: design is not implemented yet.")
+    return {"status": "skipped"}
 from .initial_sizing import BridgeConfigurationSolver, preliminary_sizing
-from .report_generator import section_report
+# from .report_generator import section_report
+def section_report(dto):
+    print("Warning: section_report is not implemented yet.")
+    return {"status": "skipped"}
 from .ui_fields import FrontendData
 from .ui_fields_additional_input import (
     CRASH_BARRIER_TAB_SCHEMA,
