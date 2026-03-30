@@ -24,6 +24,7 @@ from osdagbridge.desktop.ui.dialogs.tabs.common import apply_field_style
 from osdagbridge.desktop.ui.utils.rolled_section_preview import RolledSectionPreview
 from osdagbridge.desktop.ui.widgets.section_viewer import SectionCatalog, SectionPreviewWidget
 from osdagbridge.desktop.ui.widgets.placeholder_section_preview import PlaceholderSectionPreviewWidget
+from .cross_bracing_details_tab import BracingLayoutCadWidget
 
 # Reuse the same rolled section catalog that backs the Girder tab.
 from osdagbridge.desktop.ui.dialogs.tabs.sub_tabs.section_properties.girder_details_tab import (  # noqa: E501
@@ -53,6 +54,7 @@ class EndDiaphragmDetailsTab(QWidget):
 
         # Keep all combo boxes strictly uniform in width.
         self._combo_width = 190
+        self._label_col_width = 260
 
         # Persist UI state per (view_type, girder-pair, member-id).
         # Also sync selection (girder/member index) across all three views.
@@ -63,15 +65,20 @@ class EndDiaphragmDetailsTab(QWidget):
         # Cross bracing uses angle/channel section previews backed by the Osdag DB.
         self._cross_catalog = SectionCatalog()
         self._cross_previews = {}
+        self._cross_preview_boxes = {}
+        self._updating_cross_chord_rules = False
         self.cross_right_column = None
         self.cross_design_combo = None
         self.cross_bracing_section_type_combo = None
         self.cross_bracing_section_combo = None
+        self.cross_top_chord_checkbox = None
         self.cross_top_chord_type_combo = None
         self.cross_top_chord_size_combo = None
+        self.cross_bottom_chord_checkbox = None
         self.cross_bottom_chord_type_combo = None
         self.cross_bottom_chord_size_combo = None
         self.cross_bracing_type_combo = None
+        self.cross_bracing_layout_widget = None
 
         self._rolled_property_inputs = {}
         self._welded_property_inputs = {}
@@ -184,6 +191,12 @@ class EndDiaphragmDetailsTab(QWidget):
         finally:
             display.blockSignals(prev)
 
+        if view_key == "Cross Bracing":
+            try:
+                self._on_cross_bracing_layout_changed()
+            except Exception:
+                pass
+
     def _rebuild_member_ids_for_view(self, view_key: str, previous_member: str = "") -> None:
         combos = self._selection_by_view.get(view_key)
         if not combos:
@@ -236,9 +249,11 @@ class EndDiaphragmDetailsTab(QWidget):
                 "bracing_section_type": "Angle",
                 "bracing_section_data": first_angle,
                 "bracing_section_text": "",
+                "top_chord_enabled": False,
                 "top_chord_type": "Angle",
                 "top_chord_data": first_angle,
                 "top_chord_text": "",
+                "bottom_chord_enabled": True,
                 "bottom_chord_type": "Angle",
                 "bottom_chord_data": first_angle,
                 "bottom_chord_text": "",
@@ -270,9 +285,11 @@ class EndDiaphragmDetailsTab(QWidget):
                 "bracing_section_type": self.cross_bracing_section_type_combo.currentText() if self.cross_bracing_section_type_combo is not None else "",
                 "bracing_section_data": self.cross_bracing_section_combo.currentData() if self.cross_bracing_section_combo is not None else None,
                 "bracing_section_text": self.cross_bracing_section_combo.currentText() if self.cross_bracing_section_combo is not None else "",
+                "top_chord_enabled": self.cross_top_chord_checkbox.isChecked() if self.cross_top_chord_checkbox is not None else False,
                 "top_chord_type": self.cross_top_chord_type_combo.currentText() if self.cross_top_chord_type_combo is not None else "",
                 "top_chord_data": self.cross_top_chord_size_combo.currentData() if self.cross_top_chord_size_combo is not None else None,
                 "top_chord_text": self.cross_top_chord_size_combo.currentText() if self.cross_top_chord_size_combo is not None else "",
+                "bottom_chord_enabled": self.cross_bottom_chord_checkbox.isChecked() if self.cross_bottom_chord_checkbox is not None else True,
                 "bottom_chord_type": self.cross_bottom_chord_type_combo.currentText() if self.cross_bottom_chord_type_combo is not None else "",
                 "bottom_chord_data": self.cross_bottom_chord_size_combo.currentData() if self.cross_bottom_chord_size_combo is not None else None,
                 "bottom_chord_text": self.cross_bottom_chord_size_combo.currentText() if self.cross_bottom_chord_size_combo is not None else "",
@@ -338,6 +355,9 @@ class EndDiaphragmDetailsTab(QWidget):
                     state.get("bracing_section_text") or "",
                 )
 
+            if self.cross_top_chord_checkbox is not None:
+                self.cross_top_chord_checkbox.setChecked(bool(state.get("top_chord_enabled", False)))
+
             if self.cross_top_chord_type_combo is not None:
                 self.cross_top_chord_type_combo.setCurrentText(state.get("top_chord_type") or self.cross_top_chord_type_combo.currentText())
                 self._cross_update_designations_for(self.cross_top_chord_size_combo, self.cross_top_chord_type_combo.currentText())
@@ -346,6 +366,9 @@ class EndDiaphragmDetailsTab(QWidget):
                     state.get("top_chord_data"),
                     state.get("top_chord_text") or "",
                 )
+
+            if self.cross_bottom_chord_checkbox is not None:
+                self.cross_bottom_chord_checkbox.setChecked(bool(state.get("bottom_chord_enabled", True)))
 
             if self.cross_bottom_chord_type_combo is not None:
                 self.cross_bottom_chord_type_combo.setCurrentText(state.get("bottom_chord_type") or self.cross_bottom_chord_type_combo.currentText())
@@ -357,6 +380,7 @@ class EndDiaphragmDetailsTab(QWidget):
                 )
 
             self._on_cross_design_changed(self._global_design_mode)
+            self._on_cross_bracing_layout_changed()
             self._update_cross_previews()
             return
 
@@ -634,7 +658,7 @@ class EndDiaphragmDetailsTab(QWidget):
             widget.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
         else:
             widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-        layout.addWidget(widget, row, 1)
+        layout.addWidget(widget, row, 1, Qt.AlignLeft | Qt.AlignVCenter)
         return row + 1
 
     def _configure_combo_box(self, combo: QComboBox) -> None:
@@ -952,18 +976,22 @@ class EndDiaphragmDetailsTab(QWidget):
         box = self._create_inner_box()
         box.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         layout = QGridLayout(box)
-        layout.setContentsMargins(10, 8, 10, 8)
+        layout.setContentsMargins(12, 8, 12, 8)
         layout.setHorizontalSpacing(12)
         layout.setVerticalSpacing(8)
-        layout.setColumnMinimumWidth(0, 120)
+        layout.setColumnMinimumWidth(0, int(getattr(self, "_label_col_width", 260)))
+        layout.setColumnMinimumWidth(1, int(getattr(self, "_combo_width", 190)))
+        layout.setColumnStretch(0, 0)
         layout.setColumnStretch(1, 1)
 
         girders_combo = QComboBox()
         # Populated from Girder Details when bound. (No All option.)
         self._configure_combo_box(girders_combo)
         apply_field_style(girders_combo)
-        layout.addWidget(self._create_label("Select Girders:"), 0, 0)
-        layout.addWidget(girders_combo, 0, 1)
+        girders_combo.setFixedHeight(28)
+        girders_combo.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+        layout.addWidget(self._create_label("Select Girders:"), 0, 0, Qt.AlignLeft | Qt.AlignVCenter)
+        layout.addWidget(girders_combo, 0, 1, Qt.AlignLeft | Qt.AlignVCenter)
 
         self._select_girders_combos.append(girders_combo)
 
@@ -984,12 +1012,14 @@ class EndDiaphragmDetailsTab(QWidget):
         member_display = QLineEdit()
         member_display.setReadOnly(True)
         apply_field_style(member_display)
+        member_display.setFixedSize(int(getattr(self, "_combo_width", 190)), 28)
+        member_display.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
         try:
-            member_display.setFixedWidth(int(getattr(self, "_combo_width", 190)))
+            member_display.setFocusPolicy(Qt.NoFocus)
         except Exception:
             pass
-        layout.addWidget(self._create_label("Member ID:"), 1, 0)
-        layout.addWidget(member_display, 1, 1)
+        layout.addWidget(self._create_label("Member ID:"), 1, 0, Qt.AlignLeft | Qt.AlignVCenter)
+        layout.addWidget(member_display, 1, 1, Qt.AlignLeft | Qt.AlignVCenter)
 
         self._member_id_combos.append(member_combo)
 
@@ -1472,16 +1502,84 @@ class EndDiaphragmDetailsTab(QWidget):
             self.cross_bracing_section_type_combo,
             self.cross_bracing_section_combo,
         )
-        self._cross_set_preview(
-            "top",
-            self.cross_top_chord_type_combo,
-            self.cross_top_chord_size_combo,
-        )
-        self._cross_set_preview(
-            "bottom",
-            self.cross_bottom_chord_type_combo,
-            self.cross_bottom_chord_size_combo,
-        )
+        top_on = bool(self.cross_top_chord_checkbox is not None and self.cross_top_chord_checkbox.isChecked())
+        bottom_on = bool(self.cross_bottom_chord_checkbox is not None and self.cross_bottom_chord_checkbox.isChecked())
+        bracing = (self.cross_bracing_type_combo.currentText() if self.cross_bracing_type_combo is not None else "").strip()
+
+        if top_on:
+            self._cross_set_preview(
+                "top",
+                self.cross_top_chord_type_combo,
+                self.cross_top_chord_size_combo,
+            )
+        else:
+            top_widget = self._cross_previews.get("top")
+            if top_widget is not None:
+                top_widget.set_section("", "")
+
+        show_bottom = bottom_on or bracing == "K-Bracing"
+        if show_bottom:
+            self._cross_set_preview(
+                "bottom",
+                self.cross_bottom_chord_type_combo,
+                self.cross_bottom_chord_size_combo,
+            )
+        else:
+            bottom_widget = self._cross_previews.get("bottom")
+            if bottom_widget is not None:
+                bottom_widget.set_section("", "")
+
+    def _on_cross_bracing_layout_changed(self, *_args) -> None:
+        if self._updating_cross_chord_rules:
+            return
+
+        self._updating_cross_chord_rules = True
+        try:
+            bracing = (self.cross_bracing_type_combo.currentText() if self.cross_bracing_type_combo is not None else "").strip()
+            is_custom = bool(self.cross_design_combo is not None and self.cross_design_combo.currentText() == "Customized")
+
+            if bracing == "K-Bracing" and self.cross_bottom_chord_checkbox is not None:
+                self.cross_bottom_chord_checkbox.setChecked(True)
+
+            top_checked = bool(self.cross_top_chord_checkbox is not None and self.cross_top_chord_checkbox.isChecked())
+            bottom_checked = bool(self.cross_bottom_chord_checkbox is not None and self.cross_bottom_chord_checkbox.isChecked())
+
+            if self.cross_top_chord_type_combo is not None:
+                self.cross_top_chord_type_combo.setEnabled(is_custom and top_checked)
+            if self.cross_top_chord_size_combo is not None:
+                self.cross_top_chord_size_combo.setEnabled(is_custom and top_checked)
+            if self.cross_bottom_chord_type_combo is not None:
+                self.cross_bottom_chord_type_combo.setEnabled(is_custom and bottom_checked)
+            if self.cross_bottom_chord_size_combo is not None:
+                self.cross_bottom_chord_size_combo.setEnabled(is_custom and bottom_checked)
+
+            top_box = self._cross_preview_boxes.get("top")
+            if top_box is not None:
+                top_box.setVisible(top_checked)
+
+            show_bottom = bottom_checked or bracing == "K-Bracing"
+            bottom_box = self._cross_preview_boxes.get("bottom")
+            if bottom_box is not None:
+                bottom_box.setVisible(show_bottom)
+
+            if self.cross_bracing_layout_widget is not None:
+                display = self._member_id_display_by_view.get("Cross Bracing")
+                member_text = display.text() if display is not None else ""
+                pair_text = ""
+                combos = self._selection_by_view.get("Cross Bracing")
+                if combos and combos[0] is not None:
+                    pair_text = combos[0].currentText() or ""
+                self.cross_bracing_layout_widget.set_layout(
+                    bracing,
+                    top_checked,
+                    bottom_checked,
+                    member_text,
+                    pair_text,
+                )
+        finally:
+            self._updating_cross_chord_rules = False
+
+        self._update_cross_previews()
 
     def _apply_cross_custom_mode(self, is_custom: bool) -> None:
         # Keep preview/diagram column visible even in Optimized mode.
@@ -1490,18 +1588,19 @@ class EndDiaphragmDetailsTab(QWidget):
         for widget in (
             self.cross_bracing_section_type_combo,
             self.cross_bracing_section_combo,
-            self.cross_top_chord_type_combo,
-            self.cross_top_chord_size_combo,
-            self.cross_bottom_chord_type_combo,
-            self.cross_bottom_chord_size_combo,
         ):
             if widget is not None:
                 widget.setEnabled(is_custom)
 
+        for checkbox in (self.cross_top_chord_checkbox, self.cross_bottom_chord_checkbox):
+            if checkbox is not None:
+                checkbox.setEnabled(True)
+
+        self._on_cross_bracing_layout_changed()
+
     def _on_cross_design_changed(self, label: str) -> None:
         is_custom = (label or "").strip() == "Customized"
         self._apply_cross_custom_mode(is_custom)
-        self._update_cross_previews()
 
     # ---- View builders ----
     def _build_cross_bracing_view(self):
@@ -1511,6 +1610,7 @@ class EndDiaphragmDetailsTab(QWidget):
         layout.setSpacing(12)
 
         left_column = QWidget()
+        left_column.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         left_layout = QVBoxLayout(left_column)
         left_layout.setContentsMargins(0, 0, 0, 0)
         left_layout.setSpacing(6)
@@ -1518,17 +1618,16 @@ class EndDiaphragmDetailsTab(QWidget):
 
         inputs_box = self._create_inner_box()
         inputs_layout = QVBoxLayout(inputs_box)
-        inputs_layout.setContentsMargins(12, 4, 12, 8)
+        inputs_layout.setContentsMargins(12, 8, 12, 8)
         inputs_layout.setSpacing(6)
-        title = self._create_heading_label("Section Inputs:")
-        title.setStyleSheet("font-size: 12px; font-weight: 700; color: #4b4b4b; border: none; margin-top: 0px; margin-bottom: 2px;")
-        inputs_layout.addWidget(title)
+        inputs_layout.addWidget(self._create_heading_label("Section Inputs:"))
 
         grid = QGridLayout()
         grid.setContentsMargins(0, 0, 0, 0)
         grid.setHorizontalSpacing(12)
-        grid.setVerticalSpacing(10)
-        grid.setColumnMinimumWidth(0, 130)
+        grid.setVerticalSpacing(8)
+        grid.setColumnMinimumWidth(0, int(getattr(self, "_label_col_width", 260)))
+        grid.setColumnMinimumWidth(1, int(getattr(self, "_combo_width", 190)))
         grid.setColumnStretch(0, 0)
         grid.setColumnStretch(1, 1)
 
@@ -1575,44 +1674,57 @@ class EndDiaphragmDetailsTab(QWidget):
         bracing_section_size = QComboBox()
         self._configure_combo_box(bracing_section_size)
         apply_field_style(bracing_section_size)
-        row = self._add_grid_row(grid, row, "Bracing Section:", bracing_section_size)
+        row = self._add_grid_row(grid, row, "Bracing Section Designation:", bracing_section_size)
         self.cross_bracing_section_combo = bracing_section_size
+
+        self.cross_top_chord_checkbox = QCheckBox()
+        self.cross_top_chord_checkbox.setFixedHeight(28)
+        self.cross_top_chord_checkbox.setStyleSheet("margin-left: 2px;")
+        self.cross_top_chord_checkbox.setChecked(False)
+        row = self._add_grid_row(grid, row, "Top Chord:", self.cross_top_chord_checkbox)
 
         top_chord_type = QComboBox()
         top_chord_type.addItems(section_type_options)
         self._configure_combo_box(top_chord_type)
         apply_field_style(top_chord_type)
-        row = self._add_grid_row(grid, row, "Top Chord Section:", top_chord_type)
+        row = self._add_grid_row(grid, row, "Top Chord Section Type:", top_chord_type)
         self.cross_top_chord_type_combo = top_chord_type
 
         top_chord_size = QComboBox()
         self._configure_combo_box(top_chord_size)
         apply_field_style(top_chord_size)
-        row = self._add_grid_row(grid, row, "Top Chord Size:", top_chord_size)
+        row = self._add_grid_row(grid, row, "Top Chord Section Designation:", top_chord_size)
         self.cross_top_chord_size_combo = top_chord_size
+
+        self.cross_bottom_chord_checkbox = QCheckBox()
+        self.cross_bottom_chord_checkbox.setFixedHeight(28)
+        self.cross_bottom_chord_checkbox.setStyleSheet("margin-left: 2px;")
+        self.cross_bottom_chord_checkbox.setChecked(True)
+        row = self._add_grid_row(grid, row, "Bottom Chord:", self.cross_bottom_chord_checkbox)
 
         bottom_chord_type = QComboBox()
         bottom_chord_type.addItems(section_type_options)
         self._configure_combo_box(bottom_chord_type)
         apply_field_style(bottom_chord_type)
-        row = self._add_grid_row(grid, row, "Bottom Chord Section:", bottom_chord_type)
+        row = self._add_grid_row(grid, row, "Bottom Chord Section Type:", bottom_chord_type)
         self.cross_bottom_chord_type_combo = bottom_chord_type
 
         bottom_chord_size = QComboBox()
         self._configure_combo_box(bottom_chord_size)
         apply_field_style(bottom_chord_size)
-        row = self._add_grid_row(grid, row, "Bottom Chord Size:", bottom_chord_size)
+        row = self._add_grid_row(grid, row, "Bottom Chord Section Designation:", bottom_chord_size)
         self.cross_bottom_chord_size_combo = bottom_chord_size
 
         inputs_layout.addLayout(grid)
-        inputs_box.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        inputs_box.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         left_layout.addWidget(inputs_box)
-        left_layout.addStretch()
+        left_layout.addStretch(1)
 
         layout.addWidget(left_column)
 
         right_column = QWidget()
         self.cross_right_column = right_column
+        right_column.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         right_layout = QVBoxLayout(right_column)
         right_layout.setContentsMargins(0, 0, 0, 0)
         right_layout.setSpacing(10)
@@ -1623,11 +1735,13 @@ class EndDiaphragmDetailsTab(QWidget):
         type_layout.setContentsMargins(12, 8, 12, 10)
         type_layout.setSpacing(6)
         type_layout.addWidget(self._create_heading_label("Type of Bracing"))
-        type_layout.addWidget(self._create_image_placeholder("Bracing Layout", 170))
+        self.cross_bracing_layout_widget = BracingLayoutCadWidget(min_height=170)
+        type_layout.addWidget(self.cross_bracing_layout_widget)
         right_layout.addWidget(type_box)
 
         for key, title in [("bracing", "Bracing"), ("top", "Top Chord"), ("bottom", "Bottom Chord")]:
             preview_box = self._create_inner_box()
+            self._cross_preview_boxes[key] = preview_box
             preview_box.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
             preview_layout = QVBoxLayout(preview_box)
             preview_layout.setContentsMargins(12, 8, 12, 8)
@@ -1643,11 +1757,15 @@ class EndDiaphragmDetailsTab(QWidget):
 
         right_layout.addStretch()
         layout.addWidget(right_column)
-        layout.setStretch(0, 3)
-        layout.setStretch(1, 4)
+        layout.setStretch(0, 1)
+        layout.setStretch(1, 1)
 
         # Wire up dynamic designations + previews (same logic as CrossBracingDetailsTab).
         design_combo.currentTextChanged.connect(self._on_cross_design_changed)
+
+        self.cross_bracing_type_combo.currentTextChanged.connect(self._on_cross_bracing_layout_changed)
+        self.cross_top_chord_checkbox.toggled.connect(self._on_cross_bracing_layout_changed)
+        self.cross_bottom_chord_checkbox.toggled.connect(self._on_cross_bracing_layout_changed)
 
         bracing_section_type.currentTextChanged.connect(
             lambda label: (self._cross_update_designations_for(bracing_section_size, label), self._update_cross_previews())
@@ -1675,24 +1793,24 @@ class EndDiaphragmDetailsTab(QWidget):
         layout.setSpacing(12)
 
         left_column = QWidget()
+        left_column.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         left_layout = QVBoxLayout(left_column)
         left_layout.setContentsMargins(0, 0, 0, 0)
-        left_layout.setSpacing(8)
+        left_layout.setSpacing(6)
         left_layout.addWidget(self._create_selection_box("Rolled Beam"))
 
         inputs_box = self._create_inner_box()
         inputs_layout = QVBoxLayout(inputs_box)
-        inputs_layout.setContentsMargins(12, 4, 12, 8)
+        inputs_layout.setContentsMargins(12, 8, 12, 8)
         inputs_layout.setSpacing(6)
-        title = self._create_heading_label("Section Inputs")
-        title.setStyleSheet("font-size: 12px; font-weight: 600; color: #4b4b4b; border: none; margin-top: 0px; margin-bottom: 2px;")
-        inputs_layout.addWidget(title)
+        inputs_layout.addWidget(self._create_heading_label("Section Inputs:"))
 
         grid = QGridLayout()
         grid.setContentsMargins(0, 0, 0, 0)
         grid.setHorizontalSpacing(12)
         grid.setVerticalSpacing(8)
-        grid.setColumnMinimumWidth(0, 130)
+        grid.setColumnMinimumWidth(0, int(getattr(self, "_label_col_width", 260)))
+        grid.setColumnMinimumWidth(1, int(getattr(self, "_combo_width", 190)))
         grid.setColumnStretch(0, 0)
         grid.setColumnStretch(1, 1)
 
@@ -1722,12 +1840,13 @@ class EndDiaphragmDetailsTab(QWidget):
         self._rolled_inputs = [is_section_combo]
 
         inputs_layout.addLayout(grid)
-        inputs_box.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        inputs_box.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         left_layout.addWidget(inputs_box)
-        left_layout.addStretch()
+        left_layout.addStretch(1)
         layout.addWidget(left_column)
 
         right_column = QWidget()
+        right_column.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         right_layout = QVBoxLayout(right_column)
         right_layout.setContentsMargins(0, 0, 0, 0)
         right_layout.setSpacing(10)
@@ -1756,6 +1875,8 @@ class EndDiaphragmDetailsTab(QWidget):
         right_layout.addStretch()
 
         layout.addWidget(right_column)
+        layout.setStretch(0, 1)
+        layout.setStretch(1, 1)
 
         design_combo.currentTextChanged.connect(self._on_rolled_design_changed)
         is_section_combo.currentTextChanged.connect(self._update_rolled_preview_and_props)
@@ -1770,22 +1891,24 @@ class EndDiaphragmDetailsTab(QWidget):
         layout.setSpacing(12)
 
         left_column = QWidget()
+        left_column.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         left_layout = QVBoxLayout(left_column)
         left_layout.setContentsMargins(0, 0, 0, 0)
-        left_layout.setSpacing(8)
+        left_layout.setSpacing(6)
         left_layout.addWidget(self._create_selection_box("Welded Beam"))
 
         inputs_box = self._create_inner_box()
         inputs_layout = QVBoxLayout(inputs_box)
-        inputs_layout.setContentsMargins(12, 8, 12, 10)
-        inputs_layout.setSpacing(8)
+        inputs_layout.setContentsMargins(12, 8, 12, 8)
+        inputs_layout.setSpacing(6)
         inputs_layout.addWidget(self._create_heading_label("Section Inputs:"))
 
         grid = QGridLayout()
         grid.setContentsMargins(0, 0, 0, 0)
         grid.setHorizontalSpacing(12)
-        grid.setVerticalSpacing(10)
-        grid.setColumnMinimumWidth(0, 150)
+        grid.setVerticalSpacing(8)
+        grid.setColumnMinimumWidth(0, int(getattr(self, "_label_col_width", 260)))
+        grid.setColumnMinimumWidth(1, int(getattr(self, "_combo_width", 190)))
         grid.setColumnStretch(0, 0)
         grid.setColumnStretch(1, 1)
 
@@ -1904,12 +2027,13 @@ class EndDiaphragmDetailsTab(QWidget):
         ]
 
         inputs_layout.addLayout(grid)
-        inputs_box.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        inputs_box.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         left_layout.addWidget(inputs_box)
-        left_layout.addStretch()
+        left_layout.addStretch(1)
         layout.addWidget(left_column)
 
         right_column = QWidget()
+        right_column.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         right_layout = QVBoxLayout(right_column)
         right_layout.setContentsMargins(0, 0, 0, 0)
         right_layout.setSpacing(10)
@@ -1938,6 +2062,8 @@ class EndDiaphragmDetailsTab(QWidget):
         right_layout.addStretch()
 
         layout.addWidget(right_column)
+        layout.setStretch(0, 1)
+        layout.setStretch(1, 1)
 
         design_combo.currentTextChanged.connect(self._on_welded_design_changed)
         for watcher in (total_depth, top_width, bottom_width):
