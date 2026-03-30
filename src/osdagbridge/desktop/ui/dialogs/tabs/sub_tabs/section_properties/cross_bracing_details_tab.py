@@ -25,8 +25,8 @@ class BracingLayoutCadWidget(QWidget):
     def __init__(self, min_height: int = 170, parent=None):
         super().__init__(parent)
         self._bracing_type = "K-Bracing"
-        self._top_bracket = False
-        self._bottom_bracket = True
+        self._top_chord = False
+        self._bottom_chord = True
         self._member_label = ""
         self._girder_pair = ""
         self.setMinimumHeight(int(min_height))
@@ -35,14 +35,14 @@ class BracingLayoutCadWidget(QWidget):
     def set_layout(
         self,
         bracing_type: str,
-        top_bracket: bool,
-        bottom_bracket: bool,
+        top_chord: bool,
+        bottom_chord: bool,
         member_label: str = "",
         girder_pair: str = "",
     ) -> None:
         self._bracing_type = (bracing_type or "K-Bracing").strip() or "K-Bracing"
-        self._top_bracket = bool(top_bracket)
-        self._bottom_bracket = bool(bottom_bracket)
+        self._top_chord = bool(top_chord)
+        self._bottom_chord = bool(bottom_chord)
         self._member_label = (member_label or "").strip()
         self._girder_pair = (girder_pair or "").strip()
         self.update()
@@ -75,8 +75,8 @@ class BracingLayoutCadWidget(QWidget):
         x_r_conn = x_right - wt // 2
 
         strut_offset = 12
-        y_T_WP = y_top + strut_offset if self._top_bracket else y_top + 15
-        y_B_WP = y_bottom - strut_offset if self._bottom_bracket else y_bottom - 15
+        y_T_WP = y_top + strut_offset if self._top_chord else y_top + 15
+        y_B_WP = y_bottom - strut_offset if self._bottom_chord else y_bottom - 15
 
         wp_tl = QPointF(x_l_conn, y_T_WP)
         wp_tr = QPointF(x_r_conn, y_T_WP)
@@ -88,9 +88,9 @@ class BracingLayoutCadWidget(QWidget):
 
         # 1. Draw top/bottom bracing lines based on current selection.
         painter.setPen(QPen(line_color, 2))
-        if self._top_bracket:
+        if self._top_chord:
             painter.drawLine(wp_tl, wp_tr)
-        if self._bottom_bracket:
+        if self._bottom_chord:
             painter.drawLine(wp_bl, wp_br)
 
         # 2. Draw Bracing Members
@@ -100,7 +100,7 @@ class BracingLayoutCadWidget(QWidget):
         painter.setPen(brace_pen)
         
         if self._bracing_type == "K-Bracing":
-            if self._top_bracket and not self._bottom_bracket:
+            if self._top_chord and not self._bottom_chord:
                 apex = QPointF((x_l_conn + x_r_conn) / 2.0, y_T_WP)
                 painter.drawLine(wp_bl, apex)
                 painter.drawLine(wp_br, apex)
@@ -205,7 +205,7 @@ class CrossBracingDetailsTab(QWidget):
         self._state_by_member_key: dict[str, dict] = {}
         self._active_member_key: str | None = None
         self._selection_sync_guard = False
-        self._updating_bracket_rules = False
+        self._updating_chord_rules = False
         self.init_ui()
 
     def init_ui(self):
@@ -339,37 +339,37 @@ class CrossBracingDetailsTab(QWidget):
         self.bracing_section_combo = QComboBox()
         self._configure_combo_box(self.bracing_section_combo)
         apply_field_style(self.bracing_section_combo)
-        row = self._add_grid_row(inputs_grid, row, "Bracing Section:", self.bracing_section_combo)
+        row = self._add_grid_row(inputs_grid, row, "Bracing Section Designation:", self.bracing_section_combo)
 
-        self.top_bracket_checkbox = QCheckBox()
-        self.top_bracket_checkbox.setChecked(False)
-        row = self._add_grid_row(inputs_grid, row, "Top Bracket:", self.top_bracket_checkbox)
+        self.top_chord_checkbox = QCheckBox()
+        self.top_chord_checkbox.setChecked(False)
+        row = self._add_grid_row(inputs_grid, row, "Top Chord:", self.top_chord_checkbox)
 
-        self.top_bracket_type_combo = QComboBox()
-        self.top_bracket_type_combo.addItems(section_type_options)
-        self._configure_combo_box(self.top_bracket_type_combo)
-        apply_field_style(self.top_bracket_type_combo)
-        row = self._add_grid_row(inputs_grid, row, "Top Bracket Section Type:", self.top_bracket_type_combo)
+        self.top_chord_type_combo = QComboBox()
+        self.top_chord_type_combo.addItems(section_type_options)
+        self._configure_combo_box(self.top_chord_type_combo)
+        apply_field_style(self.top_chord_type_combo)
+        row = self._add_grid_row(inputs_grid, row, "Top Chord Section Type:", self.top_chord_type_combo)
 
-        self.top_bracket_size_combo = QComboBox()
-        self._configure_combo_box(self.top_bracket_size_combo)
-        apply_field_style(self.top_bracket_size_combo)
-        row = self._add_grid_row(inputs_grid, row, "Top Bracket Section:", self.top_bracket_size_combo)
+        self.top_chord_size_combo = QComboBox()
+        self._configure_combo_box(self.top_chord_size_combo)
+        apply_field_style(self.top_chord_size_combo)
+        row = self._add_grid_row(inputs_grid, row, "Top Chord Section Designation:", self.top_chord_size_combo)
 
-        self.bottom_bracket_checkbox = QCheckBox()
-        self.bottom_bracket_checkbox.setChecked(True)
-        row = self._add_grid_row(inputs_grid, row, "Bottom Bracket:", self.bottom_bracket_checkbox)
+        self.bottom_chord_checkbox = QCheckBox()
+        self.bottom_chord_checkbox.setChecked(True)
+        row = self._add_grid_row(inputs_grid, row, "Bottom Chord:", self.bottom_chord_checkbox)
 
-        self.bottom_bracket_type_combo = QComboBox()
-        self.bottom_bracket_type_combo.addItems(section_type_options)
-        self._configure_combo_box(self.bottom_bracket_type_combo)
-        apply_field_style(self.bottom_bracket_type_combo)
-        row = self._add_grid_row(inputs_grid, row, "Bottom Bracket Section Type:", self.bottom_bracket_type_combo)
+        self.bottom_chord_type_combo = QComboBox()
+        self.bottom_chord_type_combo.addItems(section_type_options)
+        self._configure_combo_box(self.bottom_chord_type_combo)
+        apply_field_style(self.bottom_chord_type_combo)
+        row = self._add_grid_row(inputs_grid, row, "Bottom Chord Section Type:", self.bottom_chord_type_combo)
 
-        self.bottom_bracket_size_combo = QComboBox()
-        self._configure_combo_box(self.bottom_bracket_size_combo)
-        apply_field_style(self.bottom_bracket_size_combo)
-        row = self._add_grid_row(inputs_grid, row, "Bottom Bracket Section:", self.bottom_bracket_size_combo)
+        self.bottom_chord_size_combo = QComboBox()
+        self._configure_combo_box(self.bottom_chord_size_combo)
+        apply_field_style(self.bottom_chord_size_combo)
+        row = self._add_grid_row(inputs_grid, row, "Bottom Chord Section Designation:", self.bottom_chord_size_combo)
 
         self.spacing_input = QLineEdit()
         self.spacing_input.setValidator(QDoubleValidator(0, 100000, 2))
@@ -407,11 +407,11 @@ class CrossBracingDetailsTab(QWidget):
         self.bracing_preview_box, self.bracing_preview_label = self._create_preview_box("Bracing")
         right_layout.addWidget(self.bracing_preview_box)
 
-        self.top_bracket_preview_box, self.top_bracket_preview_label = self._create_preview_box("Top Bracket")
-        right_layout.addWidget(self.top_bracket_preview_box)
+        self.top_chord_preview_box, self.top_chord_preview_label = self._create_preview_box("Top Chord")
+        right_layout.addWidget(self.top_chord_preview_box)
 
-        self.bottom_bracket_preview_box, self.bottom_bracket_preview_label = self._create_preview_box("Bottom Bracket")
-        right_layout.addWidget(self.bottom_bracket_preview_box)
+        self.bottom_chord_preview_box, self.bottom_chord_preview_label = self._create_preview_box("Bottom Chord")
+        right_layout.addWidget(self.bottom_chord_preview_box)
 
         right_layout.addStretch()
 
@@ -426,12 +426,12 @@ class CrossBracingDetailsTab(QWidget):
         self.bracing_type_combo.currentTextChanged.connect(self._on_bracing_layout_changed)
         self.bracing_section_type_combo.currentTextChanged.connect(self._on_bracing_type_changed)
         self.bracing_section_combo.currentTextChanged.connect(self._update_previews)
-        self.top_bracket_checkbox.toggled.connect(self._on_bracing_layout_changed)
-        self.top_bracket_type_combo.currentTextChanged.connect(self._on_top_bracket_type_changed)
-        self.top_bracket_size_combo.currentTextChanged.connect(self._update_previews)
-        self.bottom_bracket_checkbox.toggled.connect(self._on_bracing_layout_changed)
-        self.bottom_bracket_type_combo.currentTextChanged.connect(self._on_bottom_bracket_type_changed)
-        self.bottom_bracket_size_combo.currentTextChanged.connect(self._update_previews)
+        self.top_chord_checkbox.toggled.connect(self._on_bracing_layout_changed)
+        self.top_chord_type_combo.currentTextChanged.connect(self._on_top_chord_type_changed)
+        self.top_chord_size_combo.currentTextChanged.connect(self._update_previews)
+        self.bottom_chord_checkbox.toggled.connect(self._on_bracing_layout_changed)
+        self.bottom_chord_type_combo.currentTextChanged.connect(self._on_bottom_chord_type_changed)
+        self.bottom_chord_size_combo.currentTextChanged.connect(self._update_previews)
         self.design_combo.currentTextChanged.connect(self._on_design_changed)
         self.spacing_input.textChanged.connect(self._on_span_or_spacing_changed)
         self._populate_designations()
@@ -615,14 +615,14 @@ class CrossBracingDetailsTab(QWidget):
             "bracing_section_type": "Angle",
             "bracing_section_data": None,
             "bracing_section_text": "",
-            "top_bracket_enabled": False,
-            "top_bracket_type": "Angle",
-            "top_bracket_data": None,
-            "top_bracket_text": "",
-            "bottom_bracket_enabled": True,
-            "bottom_bracket_type": "Angle",
-            "bottom_bracket_data": None,
-            "bottom_bracket_text": "",
+            "top_chord_enabled": False,
+            "top_chord_type": "Angle",
+            "top_chord_data": None,
+            "top_chord_text": "",
+            "bottom_chord_enabled": True,
+            "bottom_chord_type": "Angle",
+            "bottom_chord_data": None,
+            "bottom_chord_text": "",
             "spacing": "3",
         }
 
@@ -633,14 +633,14 @@ class CrossBracingDetailsTab(QWidget):
             "bracing_section_type": self.bracing_section_type_combo.currentText(),
             "bracing_section_data": self.bracing_section_combo.currentData(),
             "bracing_section_text": self.bracing_section_combo.currentText(),
-            "top_bracket_enabled": self.top_bracket_checkbox.isChecked(),
-            "top_bracket_type": self.top_bracket_type_combo.currentText(),
-            "top_bracket_data": self.top_bracket_size_combo.currentData(),
-            "top_bracket_text": self.top_bracket_size_combo.currentText(),
-            "bottom_bracket_enabled": self.bottom_bracket_checkbox.isChecked(),
-            "bottom_bracket_type": self.bottom_bracket_type_combo.currentText(),
-            "bottom_bracket_data": self.bottom_bracket_size_combo.currentData(),
-            "bottom_bracket_text": self.bottom_bracket_size_combo.currentText(),
+            "top_chord_enabled": self.top_chord_checkbox.isChecked(),
+            "top_chord_type": self.top_chord_type_combo.currentText(),
+            "top_chord_data": self.top_chord_size_combo.currentData(),
+            "top_chord_text": self.top_chord_size_combo.currentText(),
+            "bottom_chord_enabled": self.bottom_chord_checkbox.isChecked(),
+            "bottom_chord_type": self.bottom_chord_type_combo.currentText(),
+            "bottom_chord_data": self.bottom_chord_size_combo.currentData(),
+            "bottom_chord_text": self.bottom_chord_size_combo.currentText(),
             "spacing": self.spacing_input.text(),
         }
 
@@ -678,29 +678,29 @@ class CrossBracingDetailsTab(QWidget):
             state.get("bracing_section_text") or "",
         )
 
-        self.top_bracket_checkbox.setChecked(bool(state.get("top_bracket_enabled", False)))
+        self.top_chord_checkbox.setChecked(bool(state.get("top_chord_enabled", False)))
 
-        self.top_bracket_type_combo.setCurrentText(state.get("top_bracket_type") or self.top_bracket_type_combo.currentText())
-        self._update_designations_for(self.top_bracket_size_combo, self.top_bracket_type_combo.currentText())
+        self.top_chord_type_combo.setCurrentText(state.get("top_chord_type") or self.top_chord_type_combo.currentText())
+        self._update_designations_for(self.top_chord_size_combo, self.top_chord_type_combo.currentText())
         self._set_combo_to_data_or_text(
-            self.top_bracket_size_combo,
-            state.get("top_bracket_data"),
-            state.get("top_bracket_text") or "",
+            self.top_chord_size_combo,
+            state.get("top_chord_data"),
+            state.get("top_chord_text") or "",
         )
 
-        # For K-bracing, bottom bracket is mandatory.
+        # For K-bracing, bottom chord is mandatory.
         effective_bracing = (state.get("bracing_type") or self.bracing_type_combo.currentText() or "").strip()
         if effective_bracing == "K-Bracing":
-            self.bottom_bracket_checkbox.setChecked(True)
+            self.bottom_chord_checkbox.setChecked(True)
         else:
-            self.bottom_bracket_checkbox.setChecked(bool(state.get("bottom_bracket_enabled", True)))
+            self.bottom_chord_checkbox.setChecked(bool(state.get("bottom_chord_enabled", True)))
 
-        self.bottom_bracket_type_combo.setCurrentText(state.get("bottom_bracket_type") or self.bottom_bracket_type_combo.currentText())
-        self._update_designations_for(self.bottom_bracket_size_combo, self.bottom_bracket_type_combo.currentText())
+        self.bottom_chord_type_combo.setCurrentText(state.get("bottom_chord_type") or self.bottom_chord_type_combo.currentText())
+        self._update_designations_for(self.bottom_chord_size_combo, self.bottom_chord_type_combo.currentText())
         self._set_combo_to_data_or_text(
-            self.bottom_bracket_size_combo,
-            state.get("bottom_bracket_data"),
-            state.get("bottom_bracket_text") or "",
+            self.bottom_chord_size_combo,
+            state.get("bottom_chord_data"),
+            state.get("bottom_chord_text") or "",
         )
 
         self.spacing_input.setText(state.get("spacing") or "")
@@ -721,12 +721,12 @@ class CrossBracingDetailsTab(QWidget):
         guard_b = self.bracing_type_combo.blockSignals(True)
         guard_c = self.bracing_section_type_combo.blockSignals(True)
         guard_d = self.bracing_section_combo.blockSignals(True)
-        guard_d2 = self.top_bracket_checkbox.blockSignals(True)
-        guard_e = self.top_bracket_type_combo.blockSignals(True)
-        guard_f = self.top_bracket_size_combo.blockSignals(True)
-        guard_g2 = self.bottom_bracket_checkbox.blockSignals(True)
-        guard_g = self.bottom_bracket_type_combo.blockSignals(True)
-        guard_h = self.bottom_bracket_size_combo.blockSignals(True)
+        guard_d2 = self.top_chord_checkbox.blockSignals(True)
+        guard_e = self.top_chord_type_combo.blockSignals(True)
+        guard_f = self.top_chord_size_combo.blockSignals(True)
+        guard_g2 = self.bottom_chord_checkbox.blockSignals(True)
+        guard_g = self.bottom_chord_type_combo.blockSignals(True)
+        guard_h = self.bottom_chord_size_combo.blockSignals(True)
         try:
             self._apply_state(state)
         finally:
@@ -734,12 +734,12 @@ class CrossBracingDetailsTab(QWidget):
             self.bracing_type_combo.blockSignals(guard_b)
             self.bracing_section_type_combo.blockSignals(guard_c)
             self.bracing_section_combo.blockSignals(guard_d)
-            self.top_bracket_checkbox.blockSignals(guard_d2)
-            self.top_bracket_type_combo.blockSignals(guard_e)
-            self.top_bracket_size_combo.blockSignals(guard_f)
-            self.bottom_bracket_checkbox.blockSignals(guard_g2)
-            self.bottom_bracket_type_combo.blockSignals(guard_g)
-            self.bottom_bracket_size_combo.blockSignals(guard_h)
+            self.top_chord_checkbox.blockSignals(guard_d2)
+            self.top_chord_type_combo.blockSignals(guard_e)
+            self.top_chord_size_combo.blockSignals(guard_f)
+            self.bottom_chord_checkbox.blockSignals(guard_g2)
+            self.bottom_chord_type_combo.blockSignals(guard_g)
+            self.bottom_chord_size_combo.blockSignals(guard_h)
 
         # After restoring, refresh previews explicitly.
         self._update_previews()
@@ -898,20 +898,20 @@ class CrossBracingDetailsTab(QWidget):
             # Hide geometry when optimization controls the section selection.
             for widget in [
                 self.bracing_preview_label,
-                self.top_bracket_preview_label,
-                self.bottom_bracket_preview_label,
+                self.top_chord_preview_label,
+                self.bottom_chord_preview_label,
             ]:
                 widget.set_section("", "")
             return
         self._set_preview(self.bracing_preview_label, self.bracing_section_type_combo, self.bracing_section_combo)
-        if self.top_bracket_checkbox.isChecked():
-            self._set_preview(self.top_bracket_preview_label, self.top_bracket_type_combo, self.top_bracket_size_combo)
+        if self.top_chord_checkbox.isChecked():
+            self._set_preview(self.top_chord_preview_label, self.top_chord_type_combo, self.top_chord_size_combo)
         else:
-            self.top_bracket_preview_label.set_section("", "")
-        if self.bottom_bracket_checkbox.isChecked():
-            self._set_preview(self.bottom_bracket_preview_label, self.bottom_bracket_type_combo, self.bottom_bracket_size_combo)
+            self.top_chord_preview_label.set_section("", "")
+        if self.bottom_chord_checkbox.isChecked():
+            self._set_preview(self.bottom_chord_preview_label, self.bottom_chord_type_combo, self.bottom_chord_size_combo)
         else:
-            self.bottom_bracket_preview_label.set_section("", "")
+            self.bottom_chord_preview_label.set_section("", "")
 
     def _apply_custom_mode(self, is_custom: bool):
         # Only allow manual section selection in Customized mode.
@@ -920,10 +920,10 @@ class CrossBracingDetailsTab(QWidget):
         for widget in [
             self.bracing_section_type_combo,
             self.bracing_section_combo,
-            self.top_bracket_type_combo,
-            self.top_bracket_size_combo,
-            self.bottom_bracket_type_combo,
-            self.bottom_bracket_size_combo,
+            self.top_chord_type_combo,
+            self.top_chord_size_combo,
+            self.bottom_chord_type_combo,
+            self.bottom_chord_size_combo,
         ]:
             widget.setEnabled(is_custom)
         self._on_bracing_layout_changed()
@@ -972,8 +972,8 @@ class CrossBracingDetailsTab(QWidget):
         angles = self.catalog.list_angles()
 
         self._fill_combo(self.bracing_section_combo, angles, "angle")
-        self._fill_combo(self.top_bracket_size_combo, angles, "angle")
-        self._fill_combo(self.bottom_bracket_size_combo, angles, "angle")
+        self._fill_combo(self.top_chord_size_combo, angles, "angle")
+        self._fill_combo(self.bottom_chord_size_combo, angles, "angle")
 
     def _map_section_type(self, label: str) -> str:
         mapping = {
@@ -989,55 +989,55 @@ class CrossBracingDetailsTab(QWidget):
         self._update_designations_for(self.bracing_section_combo, label)
         self._update_previews()
 
-    def _on_top_bracket_type_changed(self, label: str):
-        self._update_designations_for(self.top_bracket_size_combo, label)
+    def _on_top_chord_type_changed(self, label: str):
+        self._update_designations_for(self.top_chord_size_combo, label)
         self._update_previews()
 
-    def _on_bottom_bracket_type_changed(self, label: str):
-        self._update_designations_for(self.bottom_bracket_size_combo, label)
+    def _on_bottom_chord_type_changed(self, label: str):
+        self._update_designations_for(self.bottom_chord_size_combo, label)
         self._update_previews()
 
     def _on_bracing_layout_changed(self, *_args):
-        if self._updating_bracket_rules:
+        if self._updating_chord_rules:
             return
-        self._updating_bracket_rules = True
+        self._updating_chord_rules = True
         try:
             bracing = (self.bracing_type_combo.currentText() or "").strip()
             is_custom = self.design_combo.currentText() == "Customized"
 
             if bracing == "K-Bracing":
-                self.bottom_bracket_checkbox.setChecked(True)
+                self.bottom_chord_checkbox.setChecked(True)
                 # Keep enabled so the checked state is always visually clear.
-                self.bottom_bracket_checkbox.setEnabled(True)
-                self.top_bracket_checkbox.setEnabled(True)
+                self.bottom_chord_checkbox.setEnabled(True)
+                self.top_chord_checkbox.setEnabled(True)
             else:
-                self.bottom_bracket_checkbox.setEnabled(True)
-                self.top_bracket_checkbox.setEnabled(True)
+                self.bottom_chord_checkbox.setEnabled(True)
+                self.top_chord_checkbox.setEnabled(True)
 
-            top_enabled = is_custom and self.top_bracket_checkbox.isChecked()
-            bottom_enabled = is_custom and self.bottom_bracket_checkbox.isChecked()
+            top_enabled = is_custom and self.top_chord_checkbox.isChecked()
+            bottom_enabled = is_custom and self.bottom_chord_checkbox.isChecked()
 
-            self.top_bracket_type_combo.setEnabled(top_enabled)
-            self.top_bracket_size_combo.setEnabled(top_enabled)
-            self.bottom_bracket_type_combo.setEnabled(bottom_enabled)
-            self.bottom_bracket_size_combo.setEnabled(bottom_enabled)
+            self.top_chord_type_combo.setEnabled(top_enabled)
+            self.top_chord_size_combo.setEnabled(top_enabled)
+            self.bottom_chord_type_combo.setEnabled(bottom_enabled)
+            self.bottom_chord_size_combo.setEnabled(bottom_enabled)
 
-            self.top_bracket_preview_box.setVisible(self.top_bracket_checkbox.isChecked())
-            show_bottom = self.bottom_bracket_checkbox.isChecked() or bracing == "K-Bracing"
-            if show_bottom and not self.bottom_bracket_checkbox.isChecked():
-                self.bottom_bracket_checkbox.setChecked(True)
-            self.bottom_bracket_preview_box.setVisible(show_bottom)
+            self.top_chord_preview_box.setVisible(self.top_chord_checkbox.isChecked())
+            show_bottom = self.bottom_chord_checkbox.isChecked() or bracing == "K-Bracing"
+            if show_bottom and not self.bottom_chord_checkbox.isChecked():
+                self.bottom_chord_checkbox.setChecked(True)
+            self.bottom_chord_preview_box.setVisible(show_bottom)
 
             if hasattr(self, "bracing_layout_widget") and self.bracing_layout_widget is not None:
                 self.bracing_layout_widget.set_layout(
                     bracing,
-                    self.top_bracket_checkbox.isChecked(),
-                    self.bottom_bracket_checkbox.isChecked(),
+                    self.top_chord_checkbox.isChecked(),
+                    self.bottom_chord_checkbox.isChecked(),
                     self.member_id_display.text() if hasattr(self, "member_id_display") else "",
                     self.select_girders_combo.currentText() if hasattr(self, "select_girders_combo") else "",
                 )
         finally:
-            self._updating_bracket_rules = False
+            self._updating_chord_rules = False
 
         self._update_previews()
 
@@ -1112,12 +1112,12 @@ class CrossBracingDetailsTab(QWidget):
             "bracing_type": self.bracing_type_combo.currentText(),
             "bracing_section_type": self.bracing_section_type_combo.currentText(),
             "bracing_section": self.bracing_section_combo.currentText(),
-            "top_bracket_enabled": self.top_bracket_checkbox.isChecked(),
-            "top_bracket_type": self.top_bracket_type_combo.currentText(),
-            "top_bracket_size": self.top_bracket_size_combo.currentText(),
-            "bottom_bracket_enabled": self.bottom_bracket_checkbox.isChecked(),
-            "bottom_bracket_type": self.bottom_bracket_type_combo.currentText(),
-            "bottom_bracket_size": self.bottom_bracket_size_combo.currentText(),
+            "top_chord_enabled": self.top_chord_checkbox.isChecked(),
+            "top_chord_type": self.top_chord_type_combo.currentText(),
+            "top_chord_size": self.top_chord_size_combo.currentText(),
+            "bottom_chord_enabled": self.bottom_chord_checkbox.isChecked(),
+            "bottom_chord_type": self.bottom_chord_type_combo.currentText(),
+            "bottom_chord_size": self.bottom_chord_size_combo.currentText(),
             "spacing": self.spacing_input.text(),
             "cross_bracing_by_member": by_member,
         }

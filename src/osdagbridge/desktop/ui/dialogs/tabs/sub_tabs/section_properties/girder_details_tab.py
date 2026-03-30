@@ -442,7 +442,7 @@ class _GirderCad2DView(QWidget):
             self.update()
 
     def _paint_cross_section(self, painter: QPainter, drawing_rect: QRectF) -> None:
-        clear_pen = QPen(QColor("#2f2f2f"))
+        clear_pen = QPen(QColor("#7a7a7a"))
         clear_pen.setWidth(1)
         painter.setPen(clear_pen)
         painter.setBrush(QColor("#ffffff"))
@@ -465,11 +465,11 @@ class _GirderCad2DView(QWidget):
         web = QRectF(center_x - (web_thickness / 2.0), web_top, web_thickness, max(2.0, web_bottom - web_top))
 
         painter.setPen(Qt.NoPen)
-        painter.setBrush(QColor("#ebebeb"))
+        painter.setBrush(QColor("#c9c9c9"))
         painter.drawRect(top_flange)
-        painter.setBrush(QColor("#cecece"))
+        painter.setBrush(QColor("#dcdcdc"))
         painter.drawRect(web)
-        painter.setBrush(QColor("#ebebeb"))
+        painter.setBrush(QColor("#c9c9c9"))
         painter.drawRect(bottom_flange)
 
         outline = QPen(QColor("#5e5e5e"))
@@ -495,7 +495,7 @@ class _GirderCad2DView(QWidget):
             return
 
         outer_fill = QColor("#ffffff")
-        outer_border = QPen(QColor("#222222"))
+        outer_border = QPen(QColor("#777777"))
         outer_border.setWidth(1)
         painter.setPen(outer_border)
         painter.setBrush(outer_fill)
@@ -547,9 +547,9 @@ class _GirderCad2DView(QWidget):
             member_id = str(segment.get("id") or "")
             is_selected = bool(self._selected_member_id) and member_id == self._selected_member_id
 
-            top_fill = QColor("#f0f0f0") if not is_selected else QColor("#e4e4e4")
-            web_fill = QColor("#cfcfcf") if not is_selected else QColor("#c2c2c2")
-            bottom_fill = QColor("#f0f0f0") if not is_selected else QColor("#e4e4e4")
+            top_fill = QColor("#c9c9c9")
+            web_fill = QColor("#dcdcdc")
+            bottom_fill = QColor("#c9c9c9")
 
             painter.setPen(Qt.NoPen)
             painter.setBrush(top_fill)
@@ -566,7 +566,11 @@ class _GirderCad2DView(QWidget):
             painter.drawLine(bottom_flange_rect.topLeft(), bottom_flange_rect.topRight())
 
             if is_selected:
-                selected_pen = QPen(QColor("#111111"))
+                painter.setPen(Qt.NoPen)
+                painter.setBrush(QColor(144, 175, 19, 42))
+                painter.drawRect(segment_rect.adjusted(2.0, 2.0, -2.0, -2.0))
+
+                selected_pen = QPen(QColor("#6f850f"))
                 selected_pen.setWidth(2)
                 painter.setPen(selected_pen)
                 painter.setBrush(Qt.NoBrush)

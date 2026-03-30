@@ -67,10 +67,10 @@ class EndDiaphragmDetailsTab(QWidget):
         self.cross_design_combo = None
         self.cross_bracing_section_type_combo = None
         self.cross_bracing_section_combo = None
-        self.cross_top_bracket_type_combo = None
-        self.cross_top_bracket_size_combo = None
-        self.cross_bottom_bracket_type_combo = None
-        self.cross_bottom_bracket_size_combo = None
+        self.cross_top_chord_type_combo = None
+        self.cross_top_chord_size_combo = None
+        self.cross_bottom_chord_type_combo = None
+        self.cross_bottom_chord_size_combo = None
         self.cross_bracing_type_combo = None
 
         self._rolled_property_inputs = {}
@@ -236,12 +236,12 @@ class EndDiaphragmDetailsTab(QWidget):
                 "bracing_section_type": "Angle",
                 "bracing_section_data": first_angle,
                 "bracing_section_text": "",
-                "top_bracket_type": "Angle",
-                "top_bracket_data": first_angle,
-                "top_bracket_text": "",
-                "bottom_bracket_type": "Angle",
-                "bottom_bracket_data": first_angle,
-                "bottom_bracket_text": "",
+                "top_chord_type": "Angle",
+                "top_chord_data": first_angle,
+                "top_chord_text": "",
+                "bottom_chord_type": "Angle",
+                "bottom_chord_data": first_angle,
+                "bottom_chord_text": "",
             }
         if key == "Rolled Beam":
             first = ""
@@ -270,12 +270,12 @@ class EndDiaphragmDetailsTab(QWidget):
                 "bracing_section_type": self.cross_bracing_section_type_combo.currentText() if self.cross_bracing_section_type_combo is not None else "",
                 "bracing_section_data": self.cross_bracing_section_combo.currentData() if self.cross_bracing_section_combo is not None else None,
                 "bracing_section_text": self.cross_bracing_section_combo.currentText() if self.cross_bracing_section_combo is not None else "",
-                "top_bracket_type": self.cross_top_bracket_type_combo.currentText() if self.cross_top_bracket_type_combo is not None else "",
-                "top_bracket_data": self.cross_top_bracket_size_combo.currentData() if self.cross_top_bracket_size_combo is not None else None,
-                "top_bracket_text": self.cross_top_bracket_size_combo.currentText() if self.cross_top_bracket_size_combo is not None else "",
-                "bottom_bracket_type": self.cross_bottom_bracket_type_combo.currentText() if self.cross_bottom_bracket_type_combo is not None else "",
-                "bottom_bracket_data": self.cross_bottom_bracket_size_combo.currentData() if self.cross_bottom_bracket_size_combo is not None else None,
-                "bottom_bracket_text": self.cross_bottom_bracket_size_combo.currentText() if self.cross_bottom_bracket_size_combo is not None else "",
+                "top_chord_type": self.cross_top_chord_type_combo.currentText() if self.cross_top_chord_type_combo is not None else "",
+                "top_chord_data": self.cross_top_chord_size_combo.currentData() if self.cross_top_chord_size_combo is not None else None,
+                "top_chord_text": self.cross_top_chord_size_combo.currentText() if self.cross_top_chord_size_combo is not None else "",
+                "bottom_chord_type": self.cross_bottom_chord_type_combo.currentText() if self.cross_bottom_chord_type_combo is not None else "",
+                "bottom_chord_data": self.cross_bottom_chord_size_combo.currentData() if self.cross_bottom_chord_size_combo is not None else None,
+                "bottom_chord_text": self.cross_bottom_chord_size_combo.currentText() if self.cross_bottom_chord_size_combo is not None else "",
             }
         if key == "Rolled Beam":
             return {
@@ -338,22 +338,22 @@ class EndDiaphragmDetailsTab(QWidget):
                     state.get("bracing_section_text") or "",
                 )
 
-            if self.cross_top_bracket_type_combo is not None:
-                self.cross_top_bracket_type_combo.setCurrentText(state.get("top_bracket_type") or self.cross_top_bracket_type_combo.currentText())
-                self._cross_update_designations_for(self.cross_top_bracket_size_combo, self.cross_top_bracket_type_combo.currentText())
+            if self.cross_top_chord_type_combo is not None:
+                self.cross_top_chord_type_combo.setCurrentText(state.get("top_chord_type") or self.cross_top_chord_type_combo.currentText())
+                self._cross_update_designations_for(self.cross_top_chord_size_combo, self.cross_top_chord_type_combo.currentText())
                 self._set_combo_to_data_or_text(
-                    self.cross_top_bracket_size_combo,
-                    state.get("top_bracket_data"),
-                    state.get("top_bracket_text") or "",
+                    self.cross_top_chord_size_combo,
+                    state.get("top_chord_data"),
+                    state.get("top_chord_text") or "",
                 )
 
-            if self.cross_bottom_bracket_type_combo is not None:
-                self.cross_bottom_bracket_type_combo.setCurrentText(state.get("bottom_bracket_type") or self.cross_bottom_bracket_type_combo.currentText())
-                self._cross_update_designations_for(self.cross_bottom_bracket_size_combo, self.cross_bottom_bracket_type_combo.currentText())
+            if self.cross_bottom_chord_type_combo is not None:
+                self.cross_bottom_chord_type_combo.setCurrentText(state.get("bottom_chord_type") or self.cross_bottom_chord_type_combo.currentText())
+                self._cross_update_designations_for(self.cross_bottom_chord_size_combo, self.cross_bottom_chord_type_combo.currentText())
                 self._set_combo_to_data_or_text(
-                    self.cross_bottom_bracket_size_combo,
-                    state.get("bottom_bracket_data"),
-                    state.get("bottom_bracket_text") or "",
+                    self.cross_bottom_chord_size_combo,
+                    state.get("bottom_chord_data"),
+                    state.get("bottom_chord_text") or "",
                 )
 
             self._on_cross_design_changed(self._global_design_mode)
@@ -1444,8 +1444,8 @@ class EndDiaphragmDetailsTab(QWidget):
     def _cross_populate_designations(self) -> None:
         angles = self._cross_catalog.list_angles()
         self._cross_fill_combo(self.cross_bracing_section_combo, angles, "angle")
-        self._cross_fill_combo(self.cross_top_bracket_size_combo, angles, "angle")
-        self._cross_fill_combo(self.cross_bottom_bracket_size_combo, angles, "angle")
+        self._cross_fill_combo(self.cross_top_chord_size_combo, angles, "angle")
+        self._cross_fill_combo(self.cross_bottom_chord_size_combo, angles, "angle")
 
     def _cross_set_preview(self, key: str, type_combo: QComboBox, size_combo: QComboBox) -> None:
         widget = self._cross_previews.get(key)
@@ -1474,13 +1474,13 @@ class EndDiaphragmDetailsTab(QWidget):
         )
         self._cross_set_preview(
             "top",
-            self.cross_top_bracket_type_combo,
-            self.cross_top_bracket_size_combo,
+            self.cross_top_chord_type_combo,
+            self.cross_top_chord_size_combo,
         )
         self._cross_set_preview(
             "bottom",
-            self.cross_bottom_bracket_type_combo,
-            self.cross_bottom_bracket_size_combo,
+            self.cross_bottom_chord_type_combo,
+            self.cross_bottom_chord_size_combo,
         )
 
     def _apply_cross_custom_mode(self, is_custom: bool) -> None:
@@ -1490,10 +1490,10 @@ class EndDiaphragmDetailsTab(QWidget):
         for widget in (
             self.cross_bracing_section_type_combo,
             self.cross_bracing_section_combo,
-            self.cross_top_bracket_type_combo,
-            self.cross_top_bracket_size_combo,
-            self.cross_bottom_bracket_type_combo,
-            self.cross_bottom_bracket_size_combo,
+            self.cross_top_chord_type_combo,
+            self.cross_top_chord_size_combo,
+            self.cross_bottom_chord_type_combo,
+            self.cross_bottom_chord_size_combo,
         ):
             if widget is not None:
                 widget.setEnabled(is_custom)
@@ -1578,31 +1578,31 @@ class EndDiaphragmDetailsTab(QWidget):
         row = self._add_grid_row(grid, row, "Bracing Section:", bracing_section_size)
         self.cross_bracing_section_combo = bracing_section_size
 
-        top_bracket_type = QComboBox()
-        top_bracket_type.addItems(section_type_options)
-        self._configure_combo_box(top_bracket_type)
-        apply_field_style(top_bracket_type)
-        row = self._add_grid_row(grid, row, "Top Bracket Section:", top_bracket_type)
-        self.cross_top_bracket_type_combo = top_bracket_type
+        top_chord_type = QComboBox()
+        top_chord_type.addItems(section_type_options)
+        self._configure_combo_box(top_chord_type)
+        apply_field_style(top_chord_type)
+        row = self._add_grid_row(grid, row, "Top Chord Section:", top_chord_type)
+        self.cross_top_chord_type_combo = top_chord_type
 
-        top_bracket_size = QComboBox()
-        self._configure_combo_box(top_bracket_size)
-        apply_field_style(top_bracket_size)
-        row = self._add_grid_row(grid, row, "Top Bracket Size:", top_bracket_size)
-        self.cross_top_bracket_size_combo = top_bracket_size
+        top_chord_size = QComboBox()
+        self._configure_combo_box(top_chord_size)
+        apply_field_style(top_chord_size)
+        row = self._add_grid_row(grid, row, "Top Chord Size:", top_chord_size)
+        self.cross_top_chord_size_combo = top_chord_size
 
-        bottom_bracket_type = QComboBox()
-        bottom_bracket_type.addItems(section_type_options)
-        self._configure_combo_box(bottom_bracket_type)
-        apply_field_style(bottom_bracket_type)
-        row = self._add_grid_row(grid, row, "Bottom Bracket Section:", bottom_bracket_type)
-        self.cross_bottom_bracket_type_combo = bottom_bracket_type
+        bottom_chord_type = QComboBox()
+        bottom_chord_type.addItems(section_type_options)
+        self._configure_combo_box(bottom_chord_type)
+        apply_field_style(bottom_chord_type)
+        row = self._add_grid_row(grid, row, "Bottom Chord Section:", bottom_chord_type)
+        self.cross_bottom_chord_type_combo = bottom_chord_type
 
-        bottom_bracket_size = QComboBox()
-        self._configure_combo_box(bottom_bracket_size)
-        apply_field_style(bottom_bracket_size)
-        row = self._add_grid_row(grid, row, "Bottom Bracket Size:", bottom_bracket_size)
-        self.cross_bottom_bracket_size_combo = bottom_bracket_size
+        bottom_chord_size = QComboBox()
+        self._configure_combo_box(bottom_chord_size)
+        apply_field_style(bottom_chord_size)
+        row = self._add_grid_row(grid, row, "Bottom Chord Size:", bottom_chord_size)
+        self.cross_bottom_chord_size_combo = bottom_chord_size
 
         inputs_layout.addLayout(grid)
         inputs_box.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
@@ -1626,7 +1626,7 @@ class EndDiaphragmDetailsTab(QWidget):
         type_layout.addWidget(self._create_image_placeholder("Bracing Layout", 170))
         right_layout.addWidget(type_box)
 
-        for key, title in [("bracing", "Bracing"), ("top", "Top Bracket"), ("bottom", "Bottom Bracket")]:
+        for key, title in [("bracing", "Bracing"), ("top", "Top Chord"), ("bottom", "Bottom Chord")]:
             preview_box = self._create_inner_box()
             preview_box.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
             preview_layout = QVBoxLayout(preview_box)
@@ -1654,15 +1654,15 @@ class EndDiaphragmDetailsTab(QWidget):
         )
         bracing_section_size.currentTextChanged.connect(self._update_cross_previews)
 
-        top_bracket_type.currentTextChanged.connect(
-            lambda label: (self._cross_update_designations_for(top_bracket_size, label), self._update_cross_previews())
+        top_chord_type.currentTextChanged.connect(
+            lambda label: (self._cross_update_designations_for(top_chord_size, label), self._update_cross_previews())
         )
-        top_bracket_size.currentTextChanged.connect(self._update_cross_previews)
+        top_chord_size.currentTextChanged.connect(self._update_cross_previews)
 
-        bottom_bracket_type.currentTextChanged.connect(
-            lambda label: (self._cross_update_designations_for(bottom_bracket_size, label), self._update_cross_previews())
+        bottom_chord_type.currentTextChanged.connect(
+            lambda label: (self._cross_update_designations_for(bottom_chord_size, label), self._update_cross_previews())
         )
-        bottom_bracket_size.currentTextChanged.connect(self._update_cross_previews)
+        bottom_chord_size.currentTextChanged.connect(self._update_cross_previews)
 
         self._cross_populate_designations()
         self._on_cross_design_changed(design_combo.currentText())

@@ -11,7 +11,7 @@ class PlaceholderSectionPreviewWidget(QWidget):
 
     The underlying SectionPreviewWidget renders nothing when no section is set,
     which can look like a blank/disabled UI. This wrapper keeps a consistent
-    placeholder text (e.g. "Bracing", "Top Bracket") until a section is set.
+    placeholder text (e.g. "Bracing", "Top Chord") until a section is set.
     """
 
     def __init__(self, placeholder_text: str, min_height: int = 110, parent: QWidget | None = None):

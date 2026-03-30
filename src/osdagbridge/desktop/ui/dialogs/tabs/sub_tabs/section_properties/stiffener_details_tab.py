@@ -468,18 +468,11 @@ class StiffenerDetailsTab(QWidget):
         self._bearing_thick_label_widget = inputs_grid.itemAtPosition(bearing_thick_row, 0).widget()
         self._bearing_thick_field_widget = self.bearing_thick_combo
 
-        self.bearing_outstand_input = QTextEdit()
-        self.bearing_outstand_input.setReadOnly(True)
-        self.bearing_outstand_input.setText(OUTSTAND_DEFAULT_TEXT)
-        self.bearing_outstand_input.setFixedHeight(28)
+        self.bearing_outstand_input = QLineEdit()
+        self.bearing_outstand_input.setText("")
+        apply_field_style(self.bearing_outstand_input)
         self.bearing_outstand_input.setFixedWidth(combo_width)
-        self.bearing_outstand_input.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        self.bearing_outstand_input.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.bearing_outstand_input.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
-        self.bearing_outstand_input.setStyleSheet(
-            "QTextEdit { border: 1px solid #d0d0d0; border-radius: 6px; background: #ffffff; "
-            "color: #5b5b5b; font-size: 11px; }"
-        )
         bearing_outstand_row = row
         row = self._add_form_row(inputs_grid, row, "Outstand of Bearing Stiffener (mm):", self.bearing_outstand_input)
         self._bearing_outstand_label_widget = inputs_grid.itemAtPosition(bearing_outstand_row, 0).widget()
@@ -514,18 +507,11 @@ class StiffenerDetailsTab(QWidget):
         self.intermediate_thick_combo.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
         row = self._add_form_row(inputs_grid, row, "Intermediate Stiffener Thickness (mm):", self.intermediate_thick_combo)
 
-        self.intermediate_outstand_input = QTextEdit()
-        self.intermediate_outstand_input.setReadOnly(True)
-        self.intermediate_outstand_input.setText(OUTSTAND_DEFAULT_TEXT)
-        self.intermediate_outstand_input.setFixedHeight(28)
+        self.intermediate_outstand_input = QLineEdit()
+        self.intermediate_outstand_input.setText("")
+        apply_field_style(self.intermediate_outstand_input)
         self.intermediate_outstand_input.setFixedWidth(combo_width)
-        self.intermediate_outstand_input.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        self.intermediate_outstand_input.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.intermediate_outstand_input.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
-        self.intermediate_outstand_input.setStyleSheet(
-            "QTextEdit { border: 1px solid #d0d0d0; border-radius: 6px; background: #ffffff; "
-            "color: #5b5b5b; font-size: 11px; }"
-        )
         row = self._add_form_row(inputs_grid, row, "Outstand of Intermediate Stiffener (mm):", self.intermediate_outstand_input)
 
         self.longitudinal_combo = QComboBox()
@@ -628,6 +614,8 @@ class StiffenerDetailsTab(QWidget):
         self.intermediate_thick_combo.currentTextChanged.connect(self._on_any_input_changed)
         self.long_thick_combo.currentTextChanged.connect(self._on_any_input_changed)
         self.method_combo.currentTextChanged.connect(self._on_any_input_changed)
+        self.bearing_outstand_input.textChanged.connect(self._on_any_input_changed)
+        self.intermediate_outstand_input.textChanged.connect(self._on_any_input_changed)
         self.apply_to_all_btn.clicked.connect(self._apply_current_to_all_members)
 
         # Defaults
@@ -758,6 +746,7 @@ class StiffenerDetailsTab(QWidget):
         for member_id, state in self._state_by_member.items():
             if self._is_member_optimized(member_id):
                 continue
+            self._validate_outstand_values(member_id, state)
             if state.get("intermediate_stiffener") == "Yes":
                 spacing = str(state.get("intermediate_spacing_mm") or "").strip()
                 if not spacing.isdigit() or int(spacing) <= 0:
@@ -830,11 +819,11 @@ class StiffenerDetailsTab(QWidget):
             "bearing_stiffeners_each_end": "2",
             "bearing_spacing_mm": "",
             "bearing_thickness_mode": "All",
-            "bearing_outstand_mm": OUTSTAND_DEFAULT_TEXT,
+            "bearing_outstand_mm": "",
             "intermediate_stiffener": "No",
             "intermediate_spacing_mm": "NA",
-            "intermediate_outstand_mm": OUTSTAND_DEFAULT_TEXT,
-            "longitudinal_stiffener": "Yes and 1 stiffener",
+            "intermediate_outstand_mm": "",
+            "longitudinal_stiffener": "No",
             "intermediate_thickness_mode": "All",
             "longitudinal_thickness_mode": "All",
             "shear_buckling_method": VALUES_STIFFENER_DESIGN[0] if VALUES_STIFFENER_DESIGN else "",
@@ -849,15 +838,16 @@ class StiffenerDetailsTab(QWidget):
             "bearing_stiffeners_each_end": self.bearing_count_combo.currentText(),
             "bearing_spacing_mm": self.bearing_spacing_input.text().strip(),
             "bearing_thickness_mode": self.bearing_thick_combo.currentText(),
-            "bearing_outstand_mm": self.bearing_outstand_input.toPlainText().strip(),
+            "bearing_outstand_mm": self.bearing_outstand_input.text().strip(),
             "intermediate_stiffener": self.intermediate_combo.currentText(),
             "intermediate_spacing_mm": self.intermediate_spacing_input.text().strip(),
-            "intermediate_outstand_mm": self.intermediate_outstand_input.toPlainText().strip(),
+            "intermediate_outstand_mm": self.intermediate_outstand_input.text().strip(),
             "longitudinal_stiffener": self.longitudinal_combo.currentText(),
             "intermediate_thickness_mode": self.intermediate_thick_combo.currentText(),
             "longitudinal_thickness_mode": self.long_thick_combo.currentText(),
             "shear_buckling_method": self.method_combo.currentText(),
         }
+        self._sync_bearing_inputs_for_girder(self._active_member_id)
         self._update_dynamic_cad_preview()
 
     def _load_member_state(self, member_id: str) -> None:
@@ -873,7 +863,7 @@ class StiffenerDetailsTab(QWidget):
         block_c = self.method_combo.blockSignals(True)
         try:
             self.intermediate_combo.setCurrentText(state.get("intermediate_stiffener", "No"))
-            self.longitudinal_combo.setCurrentText(state.get("longitudinal_stiffener", "Yes and 1 stiffener"))
+            self.longitudinal_combo.setCurrentText(state.get("longitudinal_stiffener", "No"))
             self.intermediate_thick_combo.setCurrentText(state.get("intermediate_thickness_mode", "All"))
             self.long_thick_combo.setCurrentText(state.get("longitudinal_thickness_mode", "All"))
             self.method_combo.setCurrentText(state.get("shear_buckling_method", self.method_combo.itemText(0)))
@@ -881,8 +871,8 @@ class StiffenerDetailsTab(QWidget):
             self.bearing_count_combo.setCurrentText(state.get("bearing_stiffeners_each_end", "2"))
             self.bearing_spacing_input.setText(str(state.get("bearing_spacing_mm", "")))
             self.bearing_thick_combo.setCurrentText(state.get("bearing_thickness_mode", "All"))
-            self.bearing_outstand_input.setText(state.get("bearing_outstand_mm", OUTSTAND_DEFAULT_TEXT))
-            self.intermediate_outstand_input.setText(state.get("intermediate_outstand_mm", OUTSTAND_DEFAULT_TEXT))
+            self.bearing_outstand_input.setText(state.get("bearing_outstand_mm", ""))
+            self.intermediate_outstand_input.setText(state.get("intermediate_outstand_mm", ""))
 
             # spacing text is managed by _on_intermediate_changed
             self.intermediate_spacing_input.setText(str(state.get("intermediate_spacing_mm", "NA")))
@@ -917,15 +907,96 @@ class StiffenerDetailsTab(QWidget):
 
     def _update_outstand_fields(self, member_id: str) -> None:
         computed = self._compute_outstand_value(member_id)
-        value = computed if computed is not None else OUTSTAND_DEFAULT_TEXT
+        value = computed if computed is not None else ""
+
+        bearing_current = self.bearing_outstand_input.text().strip()
+        inter_current = self.intermediate_outstand_input.text().strip()
+        bearing_value = value if bearing_current == "" else bearing_current
+        inter_value = value if inter_current == "" else inter_current
+
         prev_a = self.bearing_outstand_input.blockSignals(True)
         prev_b = self.intermediate_outstand_input.blockSignals(True)
         try:
-            self.bearing_outstand_input.setText(value)
-            self.intermediate_outstand_input.setText(value)
+            self.bearing_outstand_input.setText(bearing_value)
+            self.intermediate_outstand_input.setText(inter_value)
         finally:
             self.bearing_outstand_input.blockSignals(prev_a)
             self.intermediate_outstand_input.blockSignals(prev_b)
+
+        if computed is not None:
+            state = dict(self._state_by_member.get(member_id) or self._default_member_state())
+            if not str(state.get("bearing_outstand_mm") or "").strip():
+                state["bearing_outstand_mm"] = computed
+            if not str(state.get("intermediate_outstand_mm") or "").strip():
+                state["intermediate_outstand_mm"] = computed
+            self._state_by_member[member_id] = state
+
+    def _parse_non_negative_float(self, value: str) -> Optional[float]:
+        try:
+            text = str(value or "").strip()
+            if text == "":
+                return None
+            parsed = float(text)
+            return parsed if parsed >= 0.0 else None
+        except Exception:
+            return None
+
+    def _validate_outstand_values(self, member_id: str, state: dict) -> None:
+        computed = self._compute_outstand_value(member_id)
+        max_value = None
+        if computed is not None:
+            try:
+                max_value = float(computed)
+            except (TypeError, ValueError):
+                max_value = None
+
+        for key, label in (
+            ("bearing_outstand_mm", "Outstand of Bearing Stiffener (mm)"),
+            ("intermediate_outstand_mm", "Outstand of Intermediate Stiffener (mm)"),
+        ):
+            raw = str(state.get(key) or "").strip()
+            parsed = self._parse_non_negative_float(raw)
+            if parsed is None:
+                if max_value is not None:
+                    state[key] = f"{max_value:.3f}".rstrip("0").rstrip(".")
+                continue
+            if max_value is not None and parsed > max_value:
+                raise ValueError(f"{label} must be between 0 and {max_value:.3f} for member '{member_id}'.")
+
+    def _sync_bearing_inputs_for_girder(self, member_id: str) -> None:
+        if not self._is_exterior_member(member_id):
+            return
+
+        current_girder, _ = self._parse_member_indices(member_id)
+        if current_girder is None:
+            return
+
+        bearing_snapshot = {
+            "bearing_stiffeners_each_end": self.bearing_count_combo.currentText(),
+            "bearing_spacing_mm": self.bearing_spacing_input.text().strip(),
+            "bearing_thickness_mode": self.bearing_thick_combo.currentText(),
+            "bearing_outstand_mm": self.bearing_outstand_input.text().strip(),
+        }
+
+        exterior_members = self._list_exterior_members_in_girder(current_girder)
+        for ext_member in exterior_members:
+            state = dict(self._state_by_member.get(ext_member) or self._default_member_state())
+            state.update(bearing_snapshot)
+            self._state_by_member[ext_member] = state
+
+    def _list_exterior_members_in_girder(self, girder_index: int) -> list[str]:
+        members_in_same_girder: List[tuple[int, str]] = []
+        for mid in self._list_current_member_ids():
+            g_idx, m_idx = self._parse_member_indices(mid)
+            if g_idx == girder_index and m_idx is not None:
+                members_in_same_girder.append((m_idx, mid))
+
+        if not members_in_same_girder:
+            return []
+
+        min_m = min(members_in_same_girder, key=lambda item: item[0])[0]
+        max_m = max(members_in_same_girder, key=lambda item: item[0])[0]
+        return [mid for m_idx, mid in members_in_same_girder if m_idx in {min_m, max_m}]
 
     def _compute_outstand_value(self, member_id: str) -> Optional[str]:
         if self._girder_details_tab is None:
@@ -1165,6 +1236,8 @@ class StiffenerDetailsTab(QWidget):
             active_member_id=self._active_member_id or self.girder_member_combo.currentText(),
             section_dims_by_member=dims_by_member,
         )
+        if self._active_member_id:
+            self._update_outstand_fields(self._active_member_id)
 
 
 
