@@ -224,7 +224,8 @@ class CrossSectionLayout:
         )
 
 
-@warnings.deprecated("This function is deprecated, use CrossSectionLayout.total_width instead.")   
+'''
+# @warnings.deprecated("This function is deprecated, use CrossSectionLayout.total_width instead.")   
 def calculate_bridge_width(
     carriageway_width: float,
     crash_barrier_width: float,
@@ -249,3 +250,4 @@ def calculate_bridge_width(
         + no_of_footpaths * footpath_width
         + no_of_footpaths * railing_width
     )
+'''
