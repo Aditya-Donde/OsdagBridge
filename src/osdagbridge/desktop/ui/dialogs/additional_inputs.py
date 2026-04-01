@@ -23,10 +23,6 @@ from osdagbridge.desktop.ui.dialogs.tabs.support_conditions_tab import SupportCo
 from osdagbridge.desktop.ui.dialogs.tabs.design_options_tab import DesignOptionsTab
 from osdagbridge.desktop.ui.dialogs.tabs.design_options_cont_tab import DesignOptionsContTab
 from osdagbridge.desktop.ui.utils.combobox_utils import SmartCursorComboBoxView
-from osdagbridge.core.bridge_types.plate_girder.ui_fields_additional_input import (
-    DESIGN_OPTIONS_SCHEMA,
-    DESIGN_OPTIONS_CONT_SCHEMA,
-)
 
 
 
@@ -339,6 +335,30 @@ class AdditionalInputs(QDialog):
         elif field_type == "label":
             widget = QLabel(field_def.get("default", ""))
             widget.setFixedWidth(field_width)
+
+        elif field_type == "button":
+            widget = QPushButton(field_def.get("text", "Set Bounds"))
+
+            widget.setFixedHeight(28)   
+            widget.setFixedWidth(field_width)  
+
+            widget.setCursor(Qt.PointingHandCursor)
+
+            widget.setStyleSheet("""
+                QPushButton {
+                    background-color: #ffffff;
+                    border: 1px solid #b2b2b2;
+                    border-radius: 6px;
+                    padding: 4px;
+                }
+                QPushButton:hover {
+                    background-color: #e6e6e6;
+                    color: #2b2b2b;
+                }
+                QPushButton:pressed {
+                    background-color: #d0d0d0;
+                }
+            """)     
 
         elif field_type in ["line", "number"]:
             widget = QLineEdit()

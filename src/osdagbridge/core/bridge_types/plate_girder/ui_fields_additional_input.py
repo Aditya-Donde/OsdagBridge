@@ -1116,13 +1116,11 @@ DESIGN_OPTIONS_SCHEMA = {
                 {
                     "fields": [
                         {
-                            "id": "reinforcement_size",
+                            "id": "reinforcement_bounds",
                             "label": "Reinforcement Size",
-                            "type": "combo",
-                            "choices": [ "4 mm", "5 mm", "6 mm", "8 mm","10 mm","12 mm", "16 mm","20 mm","25 mm","28 mm","32 mm","36 mm","40 mm"],
-                            "default": "12 mm",
-                            "bind": "reinforcement_size_combo",
-                            
+                            "type": "button",
+                            "text": "Set Bounds",
+                            "bind": "reinforcement_bounds_btn"
                         },
                         {
                             "id": "reinforcement_material",

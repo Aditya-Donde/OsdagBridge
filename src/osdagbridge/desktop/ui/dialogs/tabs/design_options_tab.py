@@ -1,6 +1,7 @@
 from PySide6.QtWidgets import (
     QWidget,
     QVBoxLayout,
+    QHBoxLayout,
     QFrame,
     QLabel,
     QScrollArea,
@@ -17,6 +18,7 @@ from osdagbridge.core.bridge_types.plate_girder.ui_fields_additional_input impor
     DESIGN_OPTIONS_SCHEMA,
 )
 from osdagbridge.desktop.ui.dialogs.tabs.sub_tabs.section_properties.girder_details_tab import _BoundsDialog
+from osdagbridge.desktop.ui.dialogs.custom_messagebox import CustomMessageBox, MessageBoxType
 
 class DesignOptionsTab(QWidget):
     """
@@ -59,7 +61,7 @@ class DesignOptionsTab(QWidget):
             self._reinforcement_bounds = {
                    "lower": float(bounds.get("lower", 8.0)),
                    "upper": float(bounds.get("upper", 40.0)),
-                   "increment": float(bounds.get("increment", 1.0))  # safe default
+                   "increment": float(bounds.get("increment", 1.0))
             }
 
             STANDARD = [8, 10, 12, 16, 20, 25, 28, 32, 36, 40]
@@ -68,6 +70,12 @@ class DesignOptionsTab(QWidget):
                 s for s in STANDARD
                 if self._reinforcement_bounds["lower"] <= s <= self._reinforcement_bounds["upper"]
             ] 
+
+        combo = getattr(self.parent_dialog, "reinforcement_size_combo", None)
+        if combo:
+            combo.clear()
+            for val in self._reinforcement_values:
+                combo.addItem(f"{val} mm")    
             
 
     def reset_defaults(self):
@@ -87,6 +95,14 @@ class DesignOptionsTab(QWidget):
                             widget.setText(str(default_value))
                         elif isinstance(widget, QComboBox):
                             widget.setCurrentText(str(default_value))
+
+        self._reinforcement_bounds = {
+            "lower": 8.0,
+            "upper": 40.0,
+            "increment": 1.0
+        }
+
+        self._reinforcement_values = [8, 10, 12, 16, 20, 25, 28, 32, 36, 40]                 
 
     def validate_tab(self):
         errors = []
@@ -136,30 +152,45 @@ class DesignOptionsTab(QWidget):
         return list(set(errors))
 
     def init_ui(self):
-        # Changed Bg color
         self.setStyleSheet("background-color: #f5f5f5;")
 
-        # Scroll Area Setup
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setFrameShape(QFrame.NoFrame)
-        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        main_layout = QVBoxLayout(self)
+        main_layout.setContentsMargins(0, 0, 0, 0)
 
-        scroll.setStyleSheet("""
-            QScrollArea {
-                border: none;
-                background-color: #f5f5f5;
+        scroll_area = QScrollArea()
+        scroll_area.setWidgetResizable(True)
+        scroll_area.setFrameShape(QFrame.NoFrame)
+        scroll_area.setStyleSheet("QScrollArea { background-color: #f5f5f5; border: none; }")
+
+        scroll_content = QWidget()
+        scroll_content.setStyleSheet("background-color: #f5f5f5;")
+
+        page_layout = QVBoxLayout(scroll_content)
+        page_layout.setContentsMargins(12, 12, 12, 12)
+        page_layout.setSpacing(12)
+
+
+        content_row = QHBoxLayout()
+        content_row.setSpacing(16)
+
+        left_card = QFrame()
+        left_card.setStyleSheet("""
+            QFrame {
+                border: 1px solid #b2b2b2;
+                border-radius: 10px;
+                background-color: #ffffff;
             }
         """)
 
-        # Scroll content container
-        scroll_content = QWidget()
-        scroll_content.setStyleSheet("background-color: #ffffff;")
+        left_card_layout = QVBoxLayout(left_card)
+        left_card_layout.setContentsMargins(0, 0, 0, 0)
 
-        main_layout = QVBoxLayout(scroll_content)
-        main_layout.setContentsMargins(12, 12, 12, 12)
-        main_layout.setSpacing(12)
+        content_wrapper = QWidget()
+        content_wrapper.setStyleSheet("background-color: #ffffff;")
+
+        left_layout = QVBoxLayout(content_wrapper)
+        left_layout.setContentsMargins(14, 14, 14, 14)
+        left_layout.setSpacing(12)
 
         card_style = """
             QFrame {
@@ -173,21 +204,17 @@ class DesignOptionsTab(QWidget):
             font-size: 12px;
             font-weight: 700;
             color: #2b2b2b;
-            background: transparent;
             border: none;
         """
 
         label_style = """
             font-size: 11px;
             color: #3a3a3a;
-            background: transparent;
             border: none;
         """
 
         default_field_width = 150
 
-       
-        # Built Cards from Schema 
         for card_schema in DESIGN_OPTIONS_SCHEMA.get("cards", []):
 
             card = QFrame()
@@ -199,7 +226,7 @@ class DesignOptionsTab(QWidget):
 
             card_title = card_schema.get("title")
             if card_title:
-                title_lbl = QLabel(f"{card_title}")
+                title_lbl = QLabel(card_title)
                 title_lbl.setStyleSheet(heading_style)
                 card_layout.addWidget(title_lbl)
 
@@ -212,17 +239,60 @@ class DesignOptionsTab(QWidget):
                 card_schema.get("field_width", default_field_width),
             )
 
-            main_layout.addWidget(card)
+            left_layout.addWidget(card)
 
-        # Push everything up
-        main_layout.addStretch()
+        left_layout.addStretch()
+        left_card_layout.addWidget(content_wrapper)
 
-        # Final scroll wiring
-        scroll.setWidget(scroll_content)
+        right_card = QFrame()
+        right_card.setStyleSheet("""
+            QFrame {
+                border: 1px solid #9c9c9c;
+                border-radius: 10px;
+                background-color: #d4d4d4;
+            }
+        """)
+        right_card.setMinimumWidth(260)
 
-        outer_layout = QVBoxLayout(self)
-        outer_layout.setContentsMargins(0, 0, 0, 0)
-        outer_layout.addWidget(scroll)
+        right_layout = QVBoxLayout(right_card)
+        right_layout.setContentsMargins(16, 16, 16, 16)
+        right_layout.setSpacing(10)
+
+        desc = DESIGN_OPTIONS_SCHEMA.get("description", {})
+
+        desc_title = QLabel(desc.get("title", "Description Box"))
+        desc_title.setAlignment(Qt.AlignCenter)
+        desc_title.setStyleSheet("""
+            font-size: 12px;
+            font-weight: 700;
+            color: #000;
+            border: none;
+        """)
+
+        desc_text = QLabel(desc.get("text", " "))
+        desc_text.setWordWrap(True)
+        desc_text.setStyleSheet("""
+            font-size: 11px;
+            color: #4b4b4b;
+            border: none;
+        """)
+
+        right_layout.addWidget(desc_title)
+        right_layout.addWidget(desc_text)
+        right_layout.addStretch()
+
+        content_row.addWidget(left_card, 3)
+        content_row.addWidget(right_card, 2)
+
+        page_layout.addLayout(content_row)
+
+        scroll_area.setWidget(scroll_content)
+        main_layout.addWidget(scroll_area)
+
+        if hasattr(self.parent_dialog, "reinforcement_bounds_btn"):
+            self.parent_dialog.reinforcement_bounds_btn.clicked.connect(
+                self._open_reinforcement_bounds
+            )
 
         self._connect_validations()
 
@@ -277,8 +347,11 @@ class DesignOptionsTab(QWidget):
         if dialog.exec():
             result = dialog.result_bounds()
             if result:
-                result.pop("increment", None)
-                self._reinforcement_bounds = result
+                self._reinforcement_bounds = {
+                    "lower": result["lower"],
+                    "upper": result["upper"],
+                    "increment": 1.0
+                }
 
                 STANDARD = [8, 10, 12, 16, 20, 25, 28, 32, 36, 40]
 
@@ -287,7 +360,11 @@ class DesignOptionsTab(QWidget):
                     if result["lower"] <= s <= result["upper"]
                 ]
 
-                print("Reinforcement:", self._reinforcement_values) 
+                combo = getattr(self.parent_dialog, "reinforcement_size_combo", None)
+                if combo:
+                    combo.clear()
+                    for val in self._reinforcement_values:
+                        combo.addItem(f"{val} mm")
 
         
 
@@ -305,22 +382,41 @@ class BoundsDialogNoIncrement(_BoundsDialog):
                 item.widget().hide()
 
     def _on_accept(self):
+        errors = []
+
         lower = self._parse_positive(self.lower_input.text())
         upper = self._parse_positive(self.upper_input.text())
 
         if lower is None or upper is None:
-            QMessageBox.warning(self, "Invalid Bounds", "Please enter valid numbers.")
-            return
+            errors.append("Please enter valid numeric values.")
 
-        if upper <= lower:
-            QMessageBox.warning(self, "Invalid Bounds", "Upper must be greater than lower.")
+        else:
+            if lower < 8:
+                errors.append("Lower bound cannot be less than 8 mm.")
+
+            if upper > 40:
+                errors.append("Upper bound cannot be greater than 40 mm.")
+
+            if upper <= lower:
+                errors.append("Upper bound must be greater than lower bound.")
+
+        if errors:
+            message = "\n\n".join(f"• {err}" for err in errors)
+
+            CustomMessageBox(
+                title="Validation Errors",
+                text=message,
+                buttons=["OK"],
+                dialogType=MessageBoxType.Warning,
+            ).exec()
             return
 
         self._result = {
             "lower": float(lower),
             "upper": float(upper),
-            "increment": None
+            "increment": 1.0
         }
+
         self.accept()
    
 
