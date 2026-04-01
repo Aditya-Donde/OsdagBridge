@@ -190,14 +190,15 @@ class CustomWindow(QWidget):
         )
         self.cad_log_splitter.addWidget(self.cad_comp_widget)
 
-        from osdagbridge.desktop.ui.cad_3d import CAD3DWindow
+        # from osdagbridge.desktop.ui.cad_3d import CAD3DWindow
         # 3D CAD placeholder (mutually exclusive with dual view + plots)
         self.cad_3d_widget = CentralPlaceholderWidget("3D CAD Here")
         self.cad_3d_widget.setVisible(False)
         self.cad_log_splitter.addWidget(self.cad_3d_widget)
 
         # Plots placeholder (mutually exclusive with dual view + 3d cad)
-        self.plots_widget = CentralPlaceholderWidget("Analysis Plots Here")
+        from osdagbridge.desktop.ui.plots_UI import PlotWidget
+        self.plots_widget = PlotWidget()
         self.plots_widget.setVisible(False)
         self.cad_log_splitter.addWidget(self.plots_widget)
 
@@ -261,6 +262,16 @@ class CustomWindow(QWidget):
             self.backend.set_input(self.input_dict)
             print(f"@@input_dictionary: {self.input_dict}")
             self.backend.design()
+
+            # Lock the input dock after design is triggered
+            if self.input_dock and not self.input_dock.is_locked:
+                self.input_dock.toggle_lock()
+
+            # Wire up the plots widget with results from the completed analysis
+            ds_all = self.backend.get_results_dataset()
+            loadcases = self.backend.get_available_loadcases()
+            nodes, members = self.backend.get_nodes_members()
+            self.plots_widget.setup(ds_all, loadcases, nodes, members)
         elif trigger == "Save":
             # Collect all the values from input Dock and save to osi/csv
             pass
