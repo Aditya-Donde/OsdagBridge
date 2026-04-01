@@ -5,12 +5,13 @@ import copy
 import sqlite3
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Callable, Dict, List, Optional
 
-from PySide6.QtCore import Qt
-from PySide6.QtGui import QDoubleValidator, QColor, QPalette, QPen
+from PySide6.QtCore import Qt, QRectF, QSize
+from PySide6.QtGui import QDoubleValidator, QColor, QPalette, QPen, QPainter, QIntValidator, QIcon, QPixmap
 from PySide6.QtWidgets import (
     QAbstractItemView,
+    QCheckBox,
     QComboBox,
     QDialog,
     QFrame,
@@ -33,32 +34,12 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from osdagbridge.core.utils.common import (
-    VALUES_GIRDER_DESIGN_MODE,
-    VALUES_GIRDER_SPAN_MODE,
-    VALUES_GIRDER_SYMMETRY,
-    VALUES_GIRDER_SUPPORT_TYPE,
-    VALUES_GIRDER_TYPE,
-    VALUES_PROFILE_SCOPE,
-    VALUES_TORSIONAL_RESTRAINT,
-    VALUES_WARPING_RESTRAINT,
-    VALUES_WEB_TYPE,
-)
+from osdagbridge.core.bridge_types.plate_girder.ui_fields_additional_input import GIRDER_DETAILS_SCHEMA
 from osdagbridge.desktop.ui.dialogs.tabs.common import apply_field_style
 from osdagbridge.desktop.ui.utils.custom_titlebar import CustomTitleBar
 from osdagbridge.desktop.ui.utils.rolled_section_preview import RolledSectionPreview
 
 
-DEFAULT_MEMBER_LENGTH_M = 30.0
-DEFAULT_DISTANCE_START_M = 0.0
-# Upper bound for girder-specific UI controls (dropdowns/tables).
-# This is a UI safety cap; actual girder count is driven by the "No. of Girders" input.
-MAX_GIRDER_COUNT = 20
-
-SAIL_APPROVED_THICKNESS_VALUES = [
-    "8", "10", "12", "14", "16", "18", "20", "22", "25", "28", "32", "36",
-    "40", "45", "50", "56", "63", "75", "80", "90", "100", "110", "120",
-]
 def _locate_database() -> Path:
     current = Path(__file__).resolve()
     for parent in current.parents:
@@ -257,6 +238,147 @@ class _EndDistanceDelegate(QStyledItemDelegate):
         model.setData(index, editor.text())
 
 
+class _GirderDetailsSchemaBuilder:
+    """Local schema-driven widget builder for Girder Details tab."""
+
+    def __init__(self, owner: QWidget):
+        self.owner = owner
+
+    def create_widget(self, field_def: dict) -> QWidget:
+        field_type = str(field_def.get("type") or "line").strip().lower()
+
+        if field_type in {"combo", "combo_dynamic"}:
+            widget = QComboBox()
+            for choice in field_def.get("choices") or []:
+                widget.addItem(str(choice))
+            default = field_def.get("default")
+            if default is not None:
+                widget.setCurrentText(str(default))
+
+        elif field_type == "mode_line":
+            mode_combo = QComboBox()
+            for choice in field_def.get("mode_choices") or []:
+                mode_combo.addItem(str(choice))
+            default_mode = field_def.get("default_mode")
+            if default_mode is not None:
+                mode_combo.setCurrentText(str(default_mode))
+
+            value_input = QLineEdit()
+            default_value = field_def.get("default_value")
+            if default_value is not None:
+                value_input.setText(str(default_value))
+            self._apply_validator(value_input, field_def.get("validator"))
+
+            apply_field_style(mode_combo)
+            apply_field_style(value_input)
+
+            layout_widget = QWidget()
+            layout = QHBoxLayout(layout_widget)
+            layout.setContentsMargins(0, 0, 0, 0)
+            layout.setSpacing(6)
+            layout.addWidget(mode_combo)
+            layout.addWidget(value_input)
+
+            bind_mode = field_def.get("bind_mode")
+            if bind_mode:
+                setattr(self.owner, str(bind_mode), mode_combo)
+            bind_value = field_def.get("bind_value")
+            if bind_value:
+                setattr(self.owner, str(bind_value), value_input)
+
+            self._connect_handlers(mode_combo, {"on_change": field_def.get("on_mode_change")})
+            self._connect_handlers(value_input, {
+                "on_text_changed": field_def.get("on_text_changed"),
+                "on_editing_finished": field_def.get("on_editing_finished"),
+            })
+
+            widget = layout_widget
+
+        elif field_type == "checkbox":
+            widget = QCheckBox(str(field_def.get("label") or ""))
+            widget.setChecked(bool(field_def.get("default", False)))
+
+        else:
+            widget = QLineEdit()
+            default = field_def.get("default")
+            if default is not None:
+                widget.setText(str(default))
+            self._apply_validator(widget, field_def.get("validator"))
+            if field_def.get("placeholder"):
+                widget.setPlaceholderText(str(field_def["placeholder"]))
+            if field_def.get("read_only"):
+                widget.setReadOnly(True)
+
+        if field_type not in {"checkbox", "mode_line"}:
+            apply_field_style(widget)
+
+        field_id = field_def.get("id")
+        if field_id:
+            widget.setObjectName(str(field_id))
+
+        width = field_def.get("width")
+        if width:
+            try:
+                widget.setFixedWidth(int(width))
+            except Exception:
+                pass
+
+        enabled = field_def.get("enabled")
+        if enabled is not None:
+            widget.setEnabled(bool(enabled))
+
+        bind_name = field_def.get("bind")
+        if bind_name:
+            setattr(self.owner, str(bind_name), widget)
+
+        self._connect_handlers(widget, field_def)
+        return widget
+
+    def _apply_validator(self, widget: QLineEdit, validator_def: dict | None) -> None:
+        if not validator_def:
+            return
+
+        vtype = str(validator_def.get("type") or "").strip().lower()
+        if vtype == "double_range":
+            bottom = float(validator_def.get("bottom", 0.0))
+            top = float(validator_def.get("top", 1e12))
+            decimals = int(validator_def.get("decimals", 3))
+            widget.setValidator(QDoubleValidator(bottom, top, decimals, widget))
+            return
+
+        if vtype == "int_range":
+            bottom = int(validator_def.get("bottom", 0))
+            top = int(validator_def.get("top", 1_000_000_000))
+            widget.setValidator(QIntValidator(bottom, top, widget))
+
+    def _connect_handlers(self, widget: QWidget, field_def: dict) -> None:
+        owner = self.owner
+
+        on_change = field_def.get("on_change")
+        if on_change and isinstance(widget, QComboBox):
+            handler = getattr(owner, str(on_change), None)
+            if callable(handler):
+                widget.currentTextChanged.connect(handler)
+
+        on_text_changed = field_def.get("on_text_changed")
+        if on_text_changed and isinstance(widget, QLineEdit):
+            handler = getattr(owner, str(on_text_changed), None)
+            if callable(handler):
+                widget.textChanged.connect(handler)
+
+        on_editing_finished = field_def.get("on_editing_finished")
+        if on_editing_finished and isinstance(widget, QLineEdit):
+            handler = getattr(owner, str(on_editing_finished), None)
+            if callable(handler):
+                widget.editingFinished.connect(handler)
+
+        on_toggled = field_def.get("on_toggled")
+        if on_toggled and isinstance(widget, QCheckBox):
+            handler = getattr(owner, str(on_toggled), None)
+            if callable(handler):
+                widget.toggled.connect(handler)
+
+
 class _BoundsDialog(QDialog):
     def __init__(self, title: str, bounds: dict, parent=None):
         super().__init__(parent)
@@ -394,9 +516,221 @@ class _BoundsDialog(QDialog):
         return self._result
 
 
-class _ThicknessSelectionDialog(QDialog):
-    def __init__(self, title: str, selected_values: List[str], parent=None):
+class _GirderCad2DView(QWidget):
+    """Simple 2D segmented girder view driven by member lengths."""
+
+    def __init__(self, parent=None):
         super().__init__(parent)
+        self.setFixedHeight(160)
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self.setStyleSheet("QWidget { background: #f8f8f8; border: 1px solid #d8d8d8; border-radius: 8px; }")
+        self._segments: List[dict] = []
+        self._selected_member_id: str = ""
+        self._flange_thickness: float = 15.0
+        self._view_mode: str = "side"
+
+    @staticmethod
+    def _fmt_length(length_m: float) -> str:
+        text = f"{float(length_m):.3f}".rstrip("0").rstrip(".")
+        return text if text else "0"
+
+    def set_segments(self, segments: List[Dict[str, float]]) -> None:
+        cleaned: List[dict] = []
+        for segment in segments or []:
+            start = float(segment.get("start", 0.0))
+            end = float(segment.get("end", 0.0))
+            length = max(0.0, end - start)
+            if length <= 0.0:
+                continue
+            cleaned.append(
+                {
+                    "id": str(segment.get("id") or ""),
+                    "length": float(length),
+                }
+            )
+        self._segments = cleaned
+        self.update()
+
+    def set_selected_member(self, member_id: str) -> None:
+        self._selected_member_id = str(member_id or "").strip()
+        self.update()
+
+    def set_view_mode(self, mode: str) -> None:
+        normalized = str(mode or "").strip().lower()
+        if normalized not in {"cross", "side"}:
+            normalized = "side"
+        if self._view_mode != normalized:
+            self._view_mode = normalized
+            self.update()
+
+    def _paint_cross_section(self, painter: QPainter, drawing_rect: QRectF) -> None:
+        clear_pen = QPen(QColor("#d0d0d0"))
+        clear_pen.setWidth(1)
+        painter.setPen(clear_pen)
+        painter.setBrush(QColor("#ffffff"))
+        painter.drawRect(drawing_rect)
+
+        usable = drawing_rect.adjusted(drawing_rect.width() * 0.18, 12.0, -drawing_rect.width() * 0.18, -22.0)
+        if usable.width() <= 0.0 or usable.height() <= 0.0:
+            return
+
+        top_width = usable.width() * 0.82
+        bottom_width = usable.width() * 0.74
+        flange_thickness = max(10.0, min(self._flange_thickness, usable.height() * 0.20))
+        web_thickness = max(8.0, min(20.0, usable.width() * 0.10))
+
+        center_x = usable.center().x()
+        top_flange = QRectF(center_x - (top_width / 2.0), usable.top(), top_width, flange_thickness)
+        bottom_flange = QRectF(center_x - (bottom_width / 2.0), usable.bottom() - flange_thickness, bottom_width, flange_thickness)
+        web_top = top_flange.bottom()
+        web_bottom = bottom_flange.top()
+        web = QRectF(center_x - (web_thickness / 2.0), web_top, web_thickness, max(2.0, web_bottom - web_top))
+
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(QColor("#c9c9c9"))
+        painter.drawRect(top_flange)
+        painter.setBrush(QColor("#dcdcdc"))
+        painter.drawRect(web)
+        painter.setBrush(QColor("#c9c9c9"))
+        painter.drawRect(bottom_flange)
+
+        outline = QPen(QColor("#5e5e5e"))
+        outline.setWidth(1)
+        painter.setPen(outline)
+        painter.setBrush(Qt.NoBrush)
+        painter.drawRect(top_flange)
+        painter.drawRect(web)
+        painter.drawRect(bottom_flange)
+
+        label_member = self._selected_member_id or (str(self._segments[0].get("id") or "") if self._segments else "")
+        label = f"Cross Section • {label_member}" if label_member else "Cross Section"
+        painter.setPen(QPen(QColor("#2a2a2a")))
+        painter.drawText(drawing_rect.adjusted(8.0, 0.0, -8.0, -2.0), Qt.AlignHCenter | Qt.AlignBottom, label)
+
+    def paintEvent(self, event):  # noqa: N802 (Qt naming)
+        super().paintEvent(event)
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing, True)
+
+        drawing_rect = QRectF(self.rect()).adjusted(10.0, 24.0, -10.0, -18.0)
+        if drawing_rect.width() <= 0 or drawing_rect.height() <= 0:
+            return
+
+        outer_fill = QColor("#f4f4f4")
+        outer_border = QPen(QColor("#d0d0d0"))
+        outer_border.setWidth(1)
+        painter.setPen(outer_border)
+        painter.setBrush(outer_fill)
+        painter.drawRect(drawing_rect)
+
+        if not self._segments:
+            painter.setPen(QPen(QColor("#5a5a5a")))
+            painter.drawText(drawing_rect, Qt.AlignCenter, "No member segments")
+            return
+
+        total_length = sum(float(segment["length"]) for segment in self._segments)
+        if total_length <= 0.0:
+            return
+
+        if self._view_mode == "cross":
+            self._paint_cross_section(painter, drawing_rect)
+            return
+
+        # Monochrome palette for a clean technical look.
+        fill_palette = [QColor("#f5f5f5"), QColor("#eeeeee"), QColor("#e7e7e7")]
+        partition_pen = QPen(QColor("#888888"))
+        partition_pen.setWidth(1)
+        partition_pen.setStyle(Qt.SolidLine)
+
+        # Keep flanges visually meaningful even for compact/tall drawing areas.
+        flange_thickness = max(10.0, min(self._flange_thickness, drawing_rect.height() * 0.24))
+        web_top = drawing_rect.top() + flange_thickness
+        web_bottom = drawing_rect.bottom() - flange_thickness
+        web_height = max(2.0, web_bottom - web_top)
+
+        # Flange-web boundary lines improve structural readability in grayscale.
+        flange_boundary_pen = QPen(QColor("#3a3a3a"))
+        flange_boundary_pen.setWidth(1)
+        girder_outline_pen = QPen(QColor("#3a3a3a"))
+        girder_outline_pen.setWidth(1)
+
+        x = drawing_rect.left()
+        partition_xs: List[float] = []
+        for index, segment in enumerate(self._segments):
+            ratio = float(segment["length"]) / total_length
+            segment_width = drawing_rect.width() * ratio
+            if index == len(self._segments) - 1:
+                segment_width = max(1.0, drawing_rect.right() - x)
+
+            segment_rect = QRectF(x, drawing_rect.top(), segment_width, drawing_rect.height())
+            top_flange_rect = QRectF(segment_rect.left(), segment_rect.top(), segment_rect.width(), flange_thickness)
+            web_rect = QRectF(segment_rect.left(), web_top, segment_rect.width(), web_height)
+            bottom_flange_rect = QRectF(segment_rect.left(), web_bottom, segment_rect.width(), flange_thickness)
+            base_fill = fill_palette[index % len(fill_palette)]
+            member_id = str(segment.get("id") or "")
+            is_selected = bool(self._selected_member_id) and member_id == self._selected_member_id
+
+            top_fill = QColor("#c9c9c9")
+            web_fill = QColor("#dcdcdc")
+            bottom_fill = QColor("#c9c9c9")
+
+            painter.setPen(Qt.NoPen)
+            painter.setBrush(top_fill)
+            painter.drawRect(top_flange_rect)
+            painter.setBrush(web_fill)
+            painter.drawRect(web_rect)
+            painter.setBrush(bottom_fill)
+            painter.drawRect(bottom_flange_rect)
+
+            # Draw flange boundaries explicitly so thickness is always visible.
+            painter.setPen(flange_boundary_pen)
+            painter.setBrush(Qt.NoBrush)
+            painter.drawLine(top_flange_rect.bottomLeft(), top_flange_rect.bottomRight())
+            painter.drawLine(bottom_flange_rect.topLeft(), bottom_flange_rect.topRight())
+
+            if is_selected:
+                painter.setPen(Qt.NoPen)
+                painter.setBrush(QColor(144, 175, 19, 42))
+                painter.drawRect(segment_rect.adjusted(2.0, 2.0, -2.0, -2.0))
+
+                selected_pen = QPen(QColor("#6f850f"))
+                selected_pen.setWidth(2)
+                painter.setPen(selected_pen)
+                painter.setBrush(Qt.NoBrush)
+                painter.drawRect(segment_rect.adjusted(1.5, 1.5, -1.5, -1.5))
+
+            label = f"{segment['id']} ({self._fmt_length(segment['length'])} m)"
+            painter.setPen(QPen(QColor("#121212")))
+            text_margin = 6
+            text_rect = segment_rect.adjusted(text_margin, 0, -text_margin, 0)
+            if text_rect.width() > 18:
+                elided = painter.fontMetrics().elidedText(label, Qt.ElideRight, int(text_rect.width()))
+                painter.drawText(text_rect, Qt.AlignCenter, elided)
+
+            if index < len(self._segments) - 1:
+                partition_xs.append(segment_rect.right())
+
+            x = segment_rect.right()
+
+        # Draw partitions in a final pass so fills/selection cannot hide them.
+        painter.setPen(girder_outline_pen)
+        painter.setBrush(Qt.NoBrush)
+        painter.drawRect(drawing_rect)
+        painter.drawLine(drawing_rect.left(), web_top, drawing_rect.right(), web_top)
+        painter.drawLine(drawing_rect.left(), web_bottom, drawing_rect.right(), web_bottom)
+
+        painter.setPen(partition_pen)
+        for px in partition_xs:
+            painter.drawLine(
+                QRectF(px, drawing_rect.top(), 0.0, drawing_rect.height()).topLeft(),
+                QRectF(px, drawing_rect.top(), 0.0, drawing_rect.height()).bottomLeft(),
+            )
+
+
+class _ThicknessSelectionDialog(QDialog):
+    def __init__(self, title: str, selected_values: List[str], allowed_values: List[str], parent=None):
+        super().__init__(parent)
+        self._allowed_values = [str(v).strip() for v in allowed_values if str(v).strip()]
         self.setWindowTitle(title)
         self.setWindowFlags(Qt.Dialog | Qt.FramelessWindowHint | Qt.WindowSystemMenuHint)
         self.setWindowModality(Qt.ApplicationModal)
@@ -425,7 +759,7 @@ class _ThicknessSelectionDialog(QDialog):
 
         left_col = QVBoxLayout()
         left_col.setSpacing(8)
-        left_lbl = QLabel("Available:")
+        left_lbl = QLabel("Available")
         left_lbl.setStyleSheet("font-size: 12px; font-weight: 600; color: #1f1f1f;")
         self.available_list = QListWidget()
         self.available_list.setSelectionMode(QAbstractItemView.ExtendedSelection)
@@ -451,7 +785,7 @@ class _ThicknessSelectionDialog(QDialog):
 
         right_col = QVBoxLayout()
         right_col.setSpacing(8)
-        right_lbl = QLabel("Selected:")
+        right_lbl = QLabel("Selected")
         right_lbl.setStyleSheet("font-size: 12px; font-weight: 600; color: #1f1f1f;")
         self.selected_list = QListWidget()
         self.selected_list.setSelectionMode(QAbstractItemView.ExtendedSelection)
@@ -486,10 +820,10 @@ class _ThicknessSelectionDialog(QDialog):
         submit_row.addStretch(1)
         layout.addLayout(submit_row)
 
-        selected = [v for v in selected_values if v in SAIL_APPROVED_THICKNESS_VALUES]
+        selected = [v for v in selected_values if v in self._allowed_values]
         if not selected:
-            selected = list(SAIL_APPROVED_THICKNESS_VALUES)
-        available = [v for v in SAIL_APPROVED_THICKNESS_VALUES if v not in selected]
+            selected = list(self._allowed_values)
+        available = [v for v in self._allowed_values if v not in selected]
 
         self.available_list.addItems(available)
         self.selected_list.addItems(selected)
@@ -557,7 +891,7 @@ class _ThicknessSelectionDialog(QDialog):
         values = []
         for i in range(widget.count()):
             values.append(widget.item(i).text())
-        values = sorted(values, key=lambda v: SAIL_APPROVED_THICKNESS_VALUES.index(v) if v in SAIL_APPROVED_THICKNESS_VALUES else 9999)
+        values = sorted(values, key=lambda v: self._allowed_values.index(v) if v in self._allowed_values else 9999)
         widget.clear()
         widget.addItems(values)
 
@@ -572,10 +906,24 @@ class _ThicknessSelectionDialog(QDialog):
 
 
 class GirderDetailsTab(QWidget):
-    """Tab for Girder Details styled to match the provided reference."""
+    """Tab for Girder Details styled to match the provided reference.
+
+    Flow summary:
+    1. Read schema defaults/options (span, girder count cap, thickness values).
+    2. Build overview + section-input widgets from GIRDER_DETAILS_SCHEMA.
+    3. Initialize/maintain per-girder segment chains (GxMy continuity).
+    4. Persist per-member UI state and refresh CAD/preview on edits.
+    """
 
     def __init__(self, parent=None):
         super().__init__(parent)
+        # Centralized schema-driven bootstrap for all runtime defaults/options.
+        self._schema_builder = _GirderDetailsSchemaBuilder(self)
+        defaults_cfg = self._schema_config("defaults")
+        self._default_member_length_m = float(defaults_cfg.get("member_length_m", 25))
+        self._default_distance_start_m = float(defaults_cfg.get("distance_start_m", 0.0))
+        self._max_girder_count = max(1, int(defaults_cfg.get("max_girder_count", 20)))
+        self._thickness_values = self._schema_thickness_values()
         self.welded_rows = []
         self.rolled_rows = []
         self.symmetry_row = []
@@ -586,8 +934,8 @@ class GirderDetailsTab(QWidget):
         self.segment_chain: Dict[str, List[Dict[str, float]]] = {}
         self._suppress_distance_updates = False
         self._suppress_member_state_updates = False
-        # Always expose up to MAX_GIRDER_COUNT main girders in the UI.
-        self.available_girders = [f"G{i}" for i in range(1, MAX_GIRDER_COUNT + 1)]
+        # Always expose up to schema-configured main girders in the UI.
+        self.available_girders = [f"G{i}" for i in range(1, self._max_girder_count + 1)]
         self._girder_combo_connected = False
 
         # Master-Detail UI state
@@ -609,6 +957,10 @@ class GirderDetailsTab(QWidget):
         # Segment Manager widgets (right column)
         self.girder_dropdown: Optional[QComboBox] = None
         self.segment_table: Optional[QTableWidget] = None
+        self.girder_cad_view: Optional[_GirderCad2DView] = None
+        self.cross_section_view_btn: Optional[QPushButton] = None
+        self.side_view_btn: Optional[QPushButton] = None
+        self._girder_view_mode: str = "side"
         self.split_add_button: Optional[QPushButton] = None
         self.split_remove_button: Optional[QPushButton] = None
 
@@ -617,16 +969,290 @@ class GirderDetailsTab(QWidget):
 
         # Section Inputs widgets
         self.member_id_combo: Optional[QComboBox] = None
-        self._dimension_bounds = {
-            "total_depth": {"lower": 200.0, "upper": 2000.0, "increment": 25.0},
-            "top_width": {"lower": 100.0, "upper": 1000.0, "increment": 10.0},
-            "bottom_width": {"lower": 100.0, "upper": 1000.0, "increment": 10.0},
-        }
+        self._dimension_bounds = self._default_dimension_bounds()
+        self._member_state_bindings_cache: Optional[list[dict]] = None
+        self._member_state_aliases_cache: Optional[dict[str, list[str]]] = None
+        self._legacy_payload_maps_cache: Optional[dict[str, dict[str, str]]] = None
         self.init_ui()
 
     def set_design_mode(self, mode_str: str):
-        if hasattr(self, "design_combo"):
-             self.design_combo.setCurrentText(mode_str)
+        combo = getattr(self, "design_combo", None)
+        if isinstance(combo, QComboBox):
+            combo.setCurrentText(mode_str)
+
+    def _schema_field(self, field_id: str, section: str = "section_inputs") -> dict:
+        for field in GIRDER_DETAILS_SCHEMA.get(section, []):
+            if str(field.get("id")) == field_id:
+                return dict(field)
+        return {}
+
+    def _schema_choices(self, field_id: str, section: str = "section_inputs") -> list[str]:
+        field = self._schema_field(field_id, section)
+        return [str(choice) for choice in field.get("choices") or []]
+
+    def _schema_config(self, key: str) -> dict:
+        """Return a top-level schema config block as a dict (or empty dict)."""
+        value = GIRDER_DETAILS_SCHEMA.get(key)
+        return dict(value) if isinstance(value, dict) else {}
+
+    def _schema_section_inputs(self) -> list[dict]:
+        """Return normalized section-input field definitions from schema."""
+        return [dict(field) for field in GIRDER_DETAILS_SCHEMA.get("section_inputs", []) if isinstance(field, dict)]
+
+    def _schema_thickness_values(self) -> list[str]:
+        """Return allowed thickness values from schema with a safe fallback."""
+        values = (
+            GIRDER_DETAILS_SCHEMA.get("thickness_values_mm")
+            or GIRDER_DETAILS_SCHEMA.get("SAIL_APPROVED_THICKNESS_VALUES")
+            or []
+        )
+        cleaned = [str(v).strip() for v in values if str(v).strip()]
+        return cleaned or ["8"]
+
+    def _default_dimension_bounds(self) -> dict[str, dict[str, float]]:
+        bounds: dict[str, dict[str, float]] = {}
+        for field in self._schema_section_inputs():
+            if str(field.get("type") or "").strip().lower() != "line_with_bounds":
+                continue
+            bounds_key = str(field.get("bounds_key") or "").strip()
+            if not bounds_key:
+                continue
+            defaults = field.get("bounds_default") or {}
+            if not isinstance(defaults, dict):
+                defaults = {}
+            bounds[bounds_key] = {
+                "lower": float(defaults.get("lower", 0.0)),
+                "upper": float(defaults.get("upper", 0.0)),
+                "increment": float(defaults.get("increment", 0.0)),
+            }
+        return bounds
+
+    def _member_state_aliases(self) -> dict[str, list[str]]:
+        if self._member_state_aliases_cache is not None:
+            return dict(self._member_state_aliases_cache)
+
+        aliases: dict[str, set[str]] = {}
+        for field in self._schema_section_inputs():
+            state_key = str(field.get("thickness_key") or field.get("bounds_key") or field.get("id") or "").strip()
+            if not state_key:
+                continue
+            raw_aliases = field.get("aliases") or []
+            if not isinstance(raw_aliases, list):
+                continue
+            for alias in raw_aliases:
+                alias_key = str(alias or "").strip()
+                if not alias_key:
+                    continue
+                aliases.setdefault(state_key, set()).add(alias_key)
+                aliases.setdefault(alias_key, set()).add(state_key)
+
+        self._member_state_aliases_cache = {key: sorted(values) for key, values in aliases.items()}
+        return dict(self._member_state_aliases_cache)
+
+    def _legacy_payload_maps(self) -> dict[str, dict[str, str]]:
+        if self._legacy_payload_maps_cache is not None:
+            return {k: dict(v) for k, v in self._legacy_payload_maps_cache.items()}
+
+        current_member: dict[str, str] = {}
+        welded: dict[str, str] = {}
+        welded_bounds: dict[str, str] = {}
+
+        # Generalization flow: build compatibility maps from schema metadata
+        # rather than hardcoded payload key translations in code.
+        for field in self._schema_section_inputs():
+            field_type = str(field.get("type") or "").strip().lower()
+            field_id = str(field.get("id") or "").strip()
+            bounds_key = str(field.get("bounds_key") or "").strip()
+            thickness_key = str(field.get("thickness_key") or field_id).strip()
+
+            payload_key = str(field.get("legacy_payload_key") or "").strip()
+            if payload_key:
+                current_member[payload_key] = thickness_key if field_type == "mode_line" else (bounds_key or field_id)
+
+            welded_key = str(field.get("legacy_welded_key") or "").strip()
+            if welded_key:
+                welded[welded_key] = thickness_key if field_type == "mode_line" else (bounds_key or field_id)
+
+            welded_mode_key = str(field.get("legacy_welded_mode_key") or "").strip()
+            if welded_mode_key:
+                welded[welded_mode_key] = thickness_key
+
+            welded_value_key = str(field.get("legacy_welded_value_key") or "").strip()
+            if welded_value_key:
+                welded[welded_value_key] = f"{thickness_key}_value"
+
+            welded_bounds_key = str(field.get("legacy_welded_bounds_key") or "").strip()
+            if welded_bounds_key and bounds_key:
+                welded_bounds[welded_bounds_key] = bounds_key
+
+        self._legacy_payload_maps_cache = {
+            "current_member": current_member,
+            "welded": welded,
+            "welded_bounds": welded_bounds,
+        }
+        return {k: dict(v) for k, v in self._legacy_payload_maps_cache.items()}
+
+    def _schema_visibility_bucket(self, field_def: dict, *, field_id: str) -> Optional[list]:
+        bucket_attr = str(field_def.get("row_bucket") or "").strip()
+        if bucket_attr:
+            bucket = getattr(self, bucket_attr, None)
+            if isinstance(bucket, list):
+                return bucket
+
+        visible_for = {str(v).strip().lower() for v in (field_def.get("visible_for") or [])}
+        mode_rows = {
+            "welded": self.welded_rows,
+            "rolled": self.rolled_rows,
+        }
+        for mode, rows in mode_rows.items():
+            if mode in visible_for:
+                return rows
+        return None
+
+    def _add_schema_field_row(self, grid: QGridLayout, row: int, field_def: dict, widget: QWidget) -> int:
+        field_id = str(field_def.get("id") or "")
+        label_text = str(field_def.get("label") or "")
+        return self._add_box_row(
+            grid,
+            row,
+            label_text,
+            widget,
+            self._schema_visibility_bucket(field_def, field_id=field_id),
+        )
+
+    def _build_overview_span_field(self, details_layout: QGridLayout, row: int, field_def: dict, widget: QWidget) -> int:
+        label_text = str(field_def.get("label") or "")
+        self.span_combo = widget
+        self._set_field_width(self.span_combo)
+        self.span_combo.currentTextChanged.connect(self._on_span_changed)
+        label = self._create_label(label_text)
+        label.setVisible(False)
+        self.span_combo.setVisible(False)
+        details_layout.addWidget(label, row, 0, Qt.AlignLeft | Qt.AlignVCenter)
+        details_layout.addWidget(self.span_combo, row, 1)
+        return row + 1
+
+    def _build_overview_girder_field(self, details_layout: QGridLayout, row: int, field_def: dict, widget: QWidget) -> int:
+        label_text = str(field_def.get("label") or "")
+        self.girder_dropdown = widget
+        for girder in self.available_girders:
+            display = f"Girder {girder[1:]}" if girder.startswith("G") and girder[1:].isdigit() else girder
+            self.girder_dropdown.addItem(display, girder)
+        self._set_field_width(self.girder_dropdown)
+        self.girder_dropdown.currentIndexChanged.connect(lambda _idx: self._on_girder_changed(self.girder_dropdown.currentData()))
+        details_layout.addWidget(self._create_label(label_text), row, 0, Qt.AlignLeft | Qt.AlignVCenter)
+        details_layout.addWidget(self.girder_dropdown, row, 1)
+        return row + 1
+
+    def _build_overview_total_span_field(self, details_layout: QGridLayout, row: int, field_def: dict, widget: QWidget) -> int:
+        label_text = str(field_def.get("label") or "")
+        self.length_input = widget
+        self._set_field_width(self.length_input)
+        self.length_input.setToolTip("Total Span is auto-controlled and cannot be edited here")
+        self.length_input.textChanged.connect(self._on_length_changed)
+        details_layout.addWidget(self._create_label(label_text), row, 0, Qt.AlignLeft | Qt.AlignVCenter)
+        details_layout.addWidget(self.length_input, row, 1)
+        return row + 1
+
+    def _overview_schema_handlers(self) -> dict[tuple[str, str], Callable[[QGridLayout, int, dict, QWidget], int]]:
+        # Generalization flow: schema field id/type -> dedicated builder.
+        # New field variants are added by extending this map, not branching.
+        return {
+            ("id", "span"): self._build_overview_span_field,
+            ("id", "total_span"): self._build_overview_total_span_field,
+            ("id", "select_girder"): self._build_overview_girder_field,
+        }
+
+    def _build_overview_field_from_schema(self, details_layout: QGridLayout, row: int, field_def: dict) -> int:
+        field_id = str(field_def.get("id") or "")
+        field_type = str(field_def.get("type") or "").strip().lower()
+        widget = self._schema_builder.create_widget(field_def)
+
+        # Generalization flow: resolve handler from dispatch table first,
+        # keep fallback as no-op for unknown/unsupported schema fields.
+        handlers = self._overview_schema_handlers()
+        handler = handlers.get(("id", field_id)) or handlers.get(("type", field_type))
+        if handler is not None:
+            return handler(details_layout, row, field_def, widget)
+
+        return row
+
+    def _build_hidden_design_field(self, _grid: QGridLayout, row: int, field_def: dict) -> int:
+        # Hidden compatibility field: still used by existing behavior and persistence.
+        self.design_combo = self._schema_builder.create_widget(field_def)
+        self.design_combo.hide()
+        return row
+
+    def _build_section_combo_field(self, inputs_grid: QGridLayout, row: int, field_def: dict) -> int:
+        field_id = str(field_def.get("id") or "")
+        widget = self._schema_builder.create_widget(field_def)
+        self._set_field_width(widget)
+        post_create_hooks = {
+            "is_section": self._populate_rolled_section_combo,
+        }
+        hook = post_create_hooks.get(field_id)
+        if hook is not None:
+            hook()
+        return self._add_schema_field_row(inputs_grid, row, field_def, widget)
+
+    def _build_section_line_field(self, inputs_grid: QGridLayout, row: int, field_def: dict) -> int:
+        widget = self._schema_builder.create_widget(field_def)
+        self._set_field_width(widget)
+        return self._add_schema_field_row(inputs_grid, row, field_def, widget)
+
+    def _build_section_line_with_bounds_field(self, inputs_grid: QGridLayout, row: int, field_def: dict) -> int:
+        bounds_key = str(field_def.get("bounds_key") or "")
+        widget, input_widget, bounds_button = self._create_dimension_input_widget(bounds_key)
+        bind_input = str(field_def.get("bind") or "")
+        bind_widget = str(field_def.get("bind_widget") or "")
+        bind_bounds = str(field_def.get("bind_bounds_button") or "")
+        if bind_input:
+            setattr(self, bind_input, input_widget)
+        if bind_widget:
+            setattr(self, bind_widget, widget)
+        if bind_bounds:
+            setattr(self, bind_bounds, bounds_button)
+        return self._add_schema_field_row(inputs_grid, row, field_def, widget)
+
+    def _build_section_mode_line_field(self, inputs_grid: QGridLayout, row: int, field_def: dict) -> int:
+        wrapper = self._schema_builder.create_widget(field_def)
+        self._set_field_width(wrapper, 180)
+        bind_wrapper = str(field_def.get("bind_wrapper") or "")
+        if bind_wrapper:
+            setattr(self, bind_wrapper, wrapper)
+
+        thickness_key = str(field_def.get("thickness_key") or "")
+        value_input_name = str(field_def.get("bind_value") or "")
+        value_input = getattr(self, value_input_name, None) if value_input_name else None
+        if thickness_key and value_input is not None:
+            self._set_field_width(value_input, 78)
+            value_combo = self._attach_thickness_value_dropdown(wrapper, value_input, thickness_key)
+            setattr(self, f"{thickness_key}_value_combo", value_combo)
+
+        return self._add_schema_field_row(inputs_grid, row, field_def, wrapper)
+
+    def _section_schema_handlers(self) -> dict[tuple[str, str], Callable[[QGridLayout, int, dict], int]]:
+        # Generalization flow: section-input rendering is also dispatch-driven
+        # so schema additions avoid if/else growth.
+        return {
+            ("id", "design"): self._build_hidden_design_field,
+            ("type", "combo"): self._build_section_combo_field,
+            ("type", "line"): self._build_section_line_field,
+            ("type", "line_with_bounds"): self._build_section_line_with_bounds_field,
+            ("type", "mode_line"): self._build_section_mode_line_field,
+        }
+
+    def _build_section_input_from_schema(self, inputs_grid: QGridLayout, row: int, field_def: dict) -> int:
+        field_id = str(field_def.get("id") or "")
+        field_type = str(field_def.get("type") or "").strip().lower()
+
+        # Generalization flow: id-specific handlers take precedence, then type handlers.
+        handlers = self._section_schema_handlers()
+        handler = handlers.get(("id", field_id)) or handlers.get(("type", field_type))
+        if handler is not None:
+            return handler(inputs_grid, row, field_def)
+
+        return row
 
     def init_ui(self):
         main_layout = QVBoxLayout(self)
@@ -659,31 +1285,12 @@ class GirderDetailsTab(QWidget):
         outer.setHorizontalSpacing(16)
         outer.setVerticalSpacing(16)
 
-        def _cad_placeholder(label: str) -> QFrame:
-            frame = QFrame()
-            frame.setFixedHeight(160)
-            frame.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-            frame.setStyleSheet(
-                "QFrame { border: 2px dashed #b7b7b7; border-radius: 8px; background: #ffffff; }"
-            )
-            layout = QVBoxLayout(frame)
-            layout.setContentsMargins(10, 10, 10, 10)
-            layout.setSpacing(0)
-            text = QLabel(label)
-            text.setAlignment(Qt.AlignCenter)
-            text.setStyleSheet("font-size: 12px; font-weight: 700; color: #6f6f6f;")
-            layout.addWidget(text)
-            return frame
-
-        # LEFT: Select Girder + Total Span (matches reference layout)
+        # LEFT: Girder selection and span details.
         left_panel = self._create_inner_box()
         left_panel.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         left_layout = QVBoxLayout(left_panel)
         left_layout.setContentsMargins(12, 10, 12, 10)
         left_layout.setSpacing(10)
-
-        # Placeholder area for CAD diagram (left)
-        left_layout.addWidget(_cad_placeholder("CAD Diagram Placeholder"))
 
         details_box = QWidget()
         details_layout = QGridLayout(details_box)
@@ -694,37 +1301,9 @@ class GirderDetailsTab(QWidget):
         details_layout.setColumnStretch(0, 0)
         details_layout.setColumnStretch(1, 1)
 
-        # Keep span mode internally (for existing behavior) but hide it to match the reference UI.
-        self.span_combo = QComboBox()
-        self.span_combo.addItems(VALUES_GIRDER_SPAN_MODE)
-        apply_field_style(self.span_combo)
-        self._set_field_width(self.span_combo)
-        self.span_combo.currentTextChanged.connect(self._on_span_changed)
-        span_label = self._create_label("Span:")
-        span_label.setVisible(False)
-        self.span_combo.setVisible(False)
-        details_layout.addWidget(span_label, 0, 0, Qt.AlignLeft | Qt.AlignVCenter)
-        details_layout.addWidget(self.span_combo, 0, 1)
-
-        details_layout.addWidget(self._create_label("Select Girder:"), 1, 0, Qt.AlignLeft | Qt.AlignVCenter)
-        self.girder_dropdown = QComboBox()
-        # Display-friendly names while keeping stable internal IDs.
-        for girder in self.available_girders:
-            label = f"Girder {girder[1:]}" if girder.startswith("G") and girder[1:].isdigit() else girder
-            self.girder_dropdown.addItem(label, girder)
-        apply_field_style(self.girder_dropdown)
-        self._set_field_width(self.girder_dropdown)
-        self.girder_dropdown.currentIndexChanged.connect(lambda _idx: self._on_girder_changed(self.girder_dropdown.currentData()))
-        details_layout.addWidget(self.girder_dropdown, 1, 1)
-
-        self.length_input = QLineEdit("30")
-        apply_field_style(self.length_input)
-        self._set_field_width(self.length_input)
-        self.length_input.setReadOnly(True)
-        self.length_input.setToolTip("Total Span is auto-controlled and cannot be edited here")
-        self.length_input.textChanged.connect(self._on_length_changed)
-        details_layout.addWidget(self._create_label("Total Span (m):"), 2, 0, Qt.AlignLeft | Qt.AlignVCenter)
-        details_layout.addWidget(self.length_input, 2, 1)
+        overview_row = 0
+        for field_def in GIRDER_DETAILS_SCHEMA.get("overview", []):
+            overview_row = self._build_overview_field_from_schema(details_layout, overview_row, field_def)
 
         # Exterior/Interior copy buttons layout (Row 3, spans 2 columns)
         copy_buttons_layout = QHBoxLayout()
@@ -766,17 +1345,17 @@ class GirderDetailsTab(QWidget):
         self.member_id_input.setReadOnly(True)
         self.member_id_input.setVisible(False)
 
-        self.distance_start_input = QLineEdit("0")
+        self.distance_start_input = QLineEdit(str(self._default_distance_start_m))
         apply_field_style(self.distance_start_input)
         self.distance_start_input.setReadOnly(True)
         self.distance_start_input.setVisible(False)
 
-        self.distance_end_input = QLineEdit("30")
+        self.distance_end_input = QLineEdit(str(self._default_member_length_m))
         apply_field_style(self.distance_end_input)
         self.distance_end_input.editingFinished.connect(self._on_distance_end_changed)
         self.distance_end_input.setVisible(False)
 
-        self.segment_length_input = QLineEdit("30")
+        self.segment_length_input = QLineEdit(str(self._default_member_length_m))
         apply_field_style(self.segment_length_input)
         self.segment_length_input.setReadOnly(True)
         self.segment_length_input.setVisible(False)
@@ -796,16 +1375,15 @@ class GirderDetailsTab(QWidget):
         manager_layout.setContentsMargins(12, 10, 12, 10)
         manager_layout.setSpacing(10)
 
-        # Placeholder area for CAD diagram (right)
-        manager_layout.addWidget(_cad_placeholder("CAD Diagram Placeholder"))
-
         table_row = QWidget()
         table_row_layout = QHBoxLayout(table_row)
         table_row_layout.setContentsMargins(0, 0, 0, 0)
         table_row_layout.setSpacing(0)
 
-        self.segment_table = QTableWidget(0, 5)
-        self.segment_table.setHorizontalHeaderLabels(["Member ID", "Start (m)", "End (m)", "Length (m)", "Action"])
+        manager_cfg = self._schema_config("segment_manager")
+        table_headers = manager_cfg.get("table_headers") or ["Member ID", "Start (m)", "End (m)", "Length (m)", "Action"]
+        self.segment_table = QTableWidget(0, len(table_headers))
+        self.segment_table.setHorizontalHeaderLabels([str(v) for v in table_headers])
         self.segment_table.horizontalHeader().setVisible(True)
         self.segment_table.verticalHeader().setVisible(False)
         self.segment_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
@@ -813,7 +1391,7 @@ class GirderDetailsTab(QWidget):
         self.segment_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.Stretch)
         self.segment_table.horizontalHeader().setSectionResizeMode(3, QHeaderView.Stretch)
         self.segment_table.horizontalHeader().setSectionResizeMode(4, QHeaderView.Fixed)
-        self.segment_table.setColumnWidth(4, 132)
+        self.segment_table.setColumnWidth(4, int(manager_cfg.get("action_column_width", 132)))
         self.segment_table.horizontalHeader().setMinimumHeight(34)
         self.segment_table.verticalHeader().setDefaultSectionSize(38)
         self.segment_table.verticalHeader().setMinimumSectionSize(34)
@@ -851,6 +1429,44 @@ class GirderDetailsTab(QWidget):
 
         manager_layout.addWidget(table_row)
 
+        # Top dedicated CAD section with view switch buttons.
+        top_cad_box = self._create_inner_box()
+        top_cad_layout = QHBoxLayout(top_cad_box)
+        top_cad_layout.setContentsMargins(12, 10, 12, 10)
+        top_cad_layout.setSpacing(12)
+
+        self.girder_cad_view = _GirderCad2DView()
+        top_cad_layout.addWidget(self.girder_cad_view, 1)
+
+        view_switch_col = QVBoxLayout()
+        view_switch_col.setContentsMargins(0, 0, 0, 0)
+        view_switch_col.setSpacing(8)
+
+        cad_cfg = self._schema_config("cad_view")
+        button_defs = cad_cfg.get("buttons") or []
+        cross_def = next((b for b in button_defs if str(b.get("mode")) == "cross"), {})
+        side_def = next((b for b in button_defs if str(b.get("mode")) == "side"), {})
+
+        self.cross_section_view_btn = QPushButton(str(cross_def.get("label") or "Cross Section"))
+        self.cross_section_view_btn.setCheckable(True)
+        self.cross_section_view_btn.setFixedWidth(int(cross_def.get("width", 130)))
+        self.cross_section_view_btn.setFixedHeight(int(cross_def.get("height", 32)))
+
+        self.side_view_btn = QPushButton(str(side_def.get("label") or "Side View"))
+        self.side_view_btn.setCheckable(True)
+        self.side_view_btn.setFixedWidth(int(side_def.get("width", 130)))
+        self.side_view_btn.setFixedHeight(int(side_def.get("height", 32)))
+
+        self.cross_section_view_btn.clicked.connect(lambda _checked: self._set_girder_cad_view_mode("cross"))
+        self.side_view_btn.clicked.connect(lambda _checked: self._set_girder_cad_view_mode("side"))
+
+        view_switch_col.addWidget(self.cross_section_view_btn)
+        view_switch_col.addWidget(self.side_view_btn)
+        view_switch_col.addStretch(1)
+        top_cad_layout.addLayout(view_switch_col)
+
+        self._set_girder_cad_view_mode("side")
+
         # Remove local add to layout, we will build the grid at the end
         # outer.addWidget(left_panel, 1)
         # outer.addWidget(manager_box, 1)
@@ -863,8 +1479,12 @@ class GirderDetailsTab(QWidget):
         self._on_span_changed(self.span_combo.currentText())
         self._on_girder_changed(self._current_girder)
 
-        outer.addWidget(left_panel, 0, 0)
-        outer.addWidget(manager_box, 0, 1)
+        # Row 0: CAD + view switching controls (spans full width).
+        outer.addWidget(top_cad_box, 0, 0, 1, 2)
+
+        # Row 1: details and member table.
+        outer.addWidget(left_panel, 1, 0)
+        outer.addWidget(manager_box, 1, 1)
 
         # Build Section Properties (Inputs + Preview) inline with the grid layout
         # for perfect vertical alignment of left/right columns.
@@ -880,8 +1500,8 @@ class GirderDetailsTab(QWidget):
             right_col_widget = section_layout.itemAt(1).widget()
             
             # Re-parent them to the main card just in case, though adding to layout handles it.
-            outer.addWidget(left_col_widget, 1, 0)
-            outer.addWidget(right_col_widget, 1, 1)
+            outer.addWidget(left_col_widget, 2, 0)
+            outer.addWidget(right_col_widget, 2, 1)
 
         # Set column stretch to match left/right panels (equal width usually)
         outer.setColumnStretch(0, 1)
@@ -906,19 +1526,20 @@ class GirderDetailsTab(QWidget):
             self._dirty_members.add((girder, new_id))
 
     def _initialize_segment_chain_if_needed(self) -> None:
-        """Ensure each available girder has at least one segment spanning the total span."""
-        total_span = self._get_total_span() or DEFAULT_MEMBER_LENGTH_M
+        """Seed one full-span segment per girder when no chain exists yet."""
+        total_span = self._get_total_span() or self._default_member_length_m
         if not self.segment_chain:
             for girder in self.available_girders:
                 self.segment_chain[girder] = [
-                    {"id": self._make_segment_id(girder, 1), "start": 0.0, "end": float(total_span)},
+                    {"id": self._make_segment_id(girder, 1), "start": self._default_distance_start_m, "end": float(total_span)},
                 ]
 
     def _ensure_girder_segments(self, girder: str) -> List[Dict[str, float]]:
-        total_span = self._get_total_span() or DEFAULT_MEMBER_LENGTH_M
+        """Return canonical segment list for a girder and repair legacy/missing fields."""
+        total_span = self._get_total_span() or self._default_member_length_m
         segments = self.segment_chain.get(girder)
         if not segments:
-            segments = [{"id": self._make_segment_id(girder, 1), "start": 0.0, "end": float(total_span)}]
+            segments = [{"id": self._make_segment_id(girder, 1), "start": self._default_distance_start_m, "end": float(total_span)}]
             self.segment_chain[girder] = segments
 
         # Normalize ids to the requested GxMy format, migrating any stored member-state.
@@ -942,7 +1563,7 @@ class GirderDetailsTab(QWidget):
 
         # Keep explicit user-entered starts/ends as-is; only fill missing values.
         if "start" not in segments[0] or segments[0]["start"] is None:
-            segments[0]["start"] = 0.0
+            segments[0]["start"] = self._default_distance_start_m
         for i in range(1, len(segments)):
             if "start" not in segments[i] or segments[i]["start"] is None:
                 segments[i]["start"] = float(segments[i - 1].get("end", 0.0))
@@ -955,10 +1576,62 @@ class GirderDetailsTab(QWidget):
         text = f"{value:.3f}".rstrip("0").rstrip(".")
         return text if text else "0"
 
+    def _update_girder_cad_view(self, girder: str, segments: Optional[List[Dict[str, float]]] = None, selected_index: Optional[int] = None) -> None:
+        if not self.girder_cad_view:
+            return
+        cad_segments = segments if segments is not None else self._ensure_girder_segments(girder)
+        self.girder_cad_view.set_view_mode(self._girder_view_mode)
+        self.girder_cad_view.set_segments(cad_segments)
+        if not cad_segments:
+            self.girder_cad_view.set_selected_member("")
+            return
+
+        idx = self._current_segment_index if selected_index is None else int(selected_index)
+        idx = max(0, min(idx, len(cad_segments) - 1))
+        selected_member_id = str(cad_segments[idx].get("id") or "")
+        self.girder_cad_view.set_selected_member(selected_member_id)
+
+    def _set_girder_cad_view_mode(self, mode: str) -> None:
+        normalized = str(mode or "").strip().lower()
+        if normalized not in {"cross", "side"}:
+            normalized = "side"
+        self._girder_view_mode = normalized
+
+        if self.girder_cad_view is not None:
+            self.girder_cad_view.set_view_mode(normalized)
+
+        is_cross = normalized == "cross"
+        if self.cross_section_view_btn is not None:
+            block = self.cross_section_view_btn.blockSignals(True)
+            self.cross_section_view_btn.setChecked(is_cross)
+            self.cross_section_view_btn.blockSignals(block)
+        if self.side_view_btn is not None:
+            block = self.side_view_btn.blockSignals(True)
+            self.side_view_btn.setChecked(not is_cross)
+            self.side_view_btn.blockSignals(block)
+
+        active_style = (
+            "QPushButton { background: #f2f2f2; border: 1px solid #4a4a4a; border-radius: 2px; "
+            "color: #1f1f1f; font-size: 12px; font-weight: 600; }"
+            "QPushButton:hover { background: #f2f2f2; }"
+            "QPushButton:pressed { background: #e7e7e7; }"
+        )
+        inactive_style = (
+            "QPushButton { background: #ffffff; border: 1px solid #8f8f8f; border-radius: 2px; "
+            "color: #2f2f2f; font-size: 12px; font-weight: 500; }"
+            "QPushButton:hover { background: #f5f5f5; }"
+            "QPushButton:pressed { background: #ececec; }"
+        )
+        if self.cross_section_view_btn is not None:
+            self.cross_section_view_btn.setStyleSheet(active_style if is_cross else inactive_style)
+        if self.side_view_btn is not None:
+            self.side_view_btn.setStyleSheet(active_style if not is_cross else inactive_style)
+
     def _refresh_segment_list(self, girder: str) -> None:
+        segments = self._ensure_girder_segments(girder)
+        self._update_girder_cad_view(girder, segments, self._current_segment_index)
         if not self.segment_table:
             return
-        segments = self._ensure_girder_segments(girder)
         self.segment_table.blockSignals(True)
         try:
             # Hard reset row widgets/items each refresh to avoid stale cell-widgets
@@ -1054,49 +1727,83 @@ class GirderDetailsTab(QWidget):
     def _create_segment_action_widget(self, row: int, can_remove: bool) -> QWidget:
         container = QWidget()
         container.setObjectName("segmentActionCell")
-        container.setFixedWidth(118)
+        container.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         container.setMinimumHeight(28)
         container.setMaximumHeight(34)
         layout = QHBoxLayout(container)
-        layout.setContentsMargins(0, 2, 0, 2)
-        layout.setSpacing(6)
+        layout.setContentsMargins(6, 2, 6, 2)
+        layout.setSpacing(8)
         layout.setAlignment(Qt.AlignCenter)
         container.setStyleSheet("QWidget#segmentActionCell { background: transparent; border: none; }")
 
-        add_btn = QPushButton("+")
+        add_btn = QPushButton("")
         add_btn.setObjectName("segmentAddBtn")
-        add_btn.setFixedSize(34, 24)
+        add_btn.setFixedSize(36, 24)
+        add_btn.setIcon(self._segment_action_icon("add"))
+        add_btn.setIconSize(QSize(12, 12))
         add_btn.setFocusPolicy(Qt.NoFocus)
         add_btn.setCursor(Qt.PointingHandCursor)
         add_btn.setToolTip("Split/Add segment")
         add_btn.setStyleSheet(
-            "QPushButton { background-color: #90AF13; color: #111111; border: 1px solid #6f850f; border-radius: 7px; font-weight: 900; font-size: 17px; }"
+            "QPushButton { background-color: #90AF13; border: 1px solid #6f850f; border-radius: 8px; }"
             "QPushButton:hover { background-color: #7a9410; }"
             "QPushButton:pressed { background-color: #6a840d; }"
         )
         add_btn.clicked.connect(lambda _checked=False, r=row: self._on_add_segment_for_row(r))
 
-        remove_btn = QPushButton("−")
+        remove_btn = QPushButton("")
         remove_btn.setObjectName("segmentRemoveBtn")
-        remove_btn.setFixedSize(34, 24)
+        remove_btn.setFixedSize(36, 24)
+        remove_btn.setIcon(self._segment_action_icon("remove"))
+        remove_btn.setIconSize(QSize(12, 12))
         remove_btn.setFocusPolicy(Qt.NoFocus)
         remove_btn.setCursor(Qt.PointingHandCursor)
         remove_btn.setEnabled(can_remove)
         remove_btn.setToolTip("Remove this segment" if can_remove else "At least one segment is required")
         remove_btn.setStyleSheet(
-            "QPushButton { background-color: #c72626; color: #ffffff; border: 1px solid #8f1c1c; border-radius: 7px; font-weight: 900; font-size: 17px; }"
+            "QPushButton { background-color: #c72626; border: 1px solid #8f1c1c; border-radius: 8px; }"
             "QPushButton:hover { background-color: #ae1f1f; }"
             "QPushButton:pressed { background-color: #991a1a; }"
             "QPushButton:disabled { background-color: #d6d6d6; color: #8c8c8c; border-color: #d6d6d6; }"
         )
         remove_btn.clicked.connect(lambda _checked=False, r=row: self._on_remove_segment_for_row(r))
 
-        layout.addStretch(1)
         layout.addWidget(add_btn)
-        if can_remove:
-            layout.addWidget(remove_btn)
-        layout.addStretch(1)
+        layout.addWidget(remove_btn)
         return container
+
+    def _segment_action_icon(self, kind: str) -> QIcon:
+        """Return cached crisp +/- icons so button visuals don't depend on font rendering."""
+        cache = getattr(self, "_segment_action_icon_cache", None)
+        if cache is None:
+            cache = {}
+            self._segment_action_icon_cache = cache
+
+        key = str(kind or "").strip().lower()
+        if key in cache:
+            return cache[key]
+
+        pixmap = QPixmap(12, 12)
+        pixmap.fill(Qt.transparent)
+
+        painter = QPainter(pixmap)
+        try:
+            painter.setRenderHint(QPainter.Antialiasing, False)
+            painter.setPen(Qt.NoPen)
+            painter.setBrush(QColor("#ffffff"))
+
+            # Horizontal stroke (common for both plus/minus).
+            painter.drawRect(1, 5, 10, 2)
+
+            # Vertical stroke only for plus icon.
+            if key == "add":
+                painter.drawRect(5, 1, 2, 10)
+        finally:
+            painter.end()
+
+        icon = QIcon(pixmap)
+        cache[key] = icon
+        return icon
 
     def _on_add_segment_for_row(self, row: int) -> None:
         if self.segment_table is None:
@@ -1142,15 +1849,15 @@ class GirderDetailsTab(QWidget):
             return
         girder, member_id = self._current_member_key()
         self._dirty_members.add((girder, member_id))
+        # Autosave immediately on each state change.
+        self._commit_current_member_state()
 
     def _is_current_member_dirty(self) -> bool:
         return self._current_member_key() in self._dirty_members
 
     def has_unsaved_changes(self) -> bool:
-        # Show unsaved-warning popups only for the active member the user is
-        # currently editing. Other member-level dirty flags are handled when
-        # switching member/girder and should not block unrelated tab switches.
-        return self._is_current_member_dirty()
+        # Member state is auto-committed on change.
+        return False
 
     def _commit_current_member_state(self) -> None:
         girder, member_id = self._current_member_key()
@@ -1159,33 +1866,133 @@ class GirderDetailsTab(QWidget):
         self._member_state[girder][member_id] = self._capture_member_state()
         self._dirty_members.discard((girder, member_id))
 
+    def _member_state_bindings(self) -> list[dict]:
+        if self._member_state_bindings_cache is not None:
+            return list(self._member_state_bindings_cache)
+
+        # Generalization flow: derive state capture/apply wiring from schema once,
+        # then reuse cached bindings for capture, apply, and dirty tracking.
+        bindings: list[dict] = []
+        for field_def in GIRDER_DETAILS_SCHEMA.get("section_inputs", []):
+            field_id = str(field_def.get("id") or "").strip()
+            if not field_id:
+                continue
+
+            field_type = str(field_def.get("type") or "").strip().lower()
+            if field_type == "combo":
+                bind_name = str(field_def.get("bind") or "").strip()
+                if bind_name:
+                    bindings.append({
+                        "state_key": field_id,
+                        "widget_attr": bind_name,
+                        "widget_type": "combo",
+                    })
+                continue
+
+            if field_type == "line":
+                bind_name = str(field_def.get("bind") or "").strip()
+                if bind_name:
+                    bindings.append({
+                        "state_key": field_id,
+                        "widget_attr": bind_name,
+                        "widget_type": "line",
+                    })
+                continue
+
+            if field_type == "line_with_bounds":
+                bind_name = str(field_def.get("bind") or "").strip()
+                bounds_key = str(field_def.get("bounds_key") or "").strip()
+                if bind_name:
+                    bindings.append({
+                        "state_key": bounds_key or field_id,
+                        "widget_attr": bind_name,
+                        "widget_type": "line",
+                        "bounds_key": bounds_key or field_id,
+                    })
+                continue
+
+            if field_type == "mode_line":
+                thickness_key = str(field_def.get("thickness_key") or field_id).strip()
+                bind_mode = str(field_def.get("bind_mode") or "").strip()
+                bind_value = str(field_def.get("bind_value") or "").strip()
+                if bind_mode:
+                    bindings.append({
+                        "state_key": thickness_key,
+                        "widget_attr": bind_mode,
+                        "widget_type": "combo",
+                    })
+                if bind_value:
+                    bindings.append({
+                        "state_key": f"{thickness_key}_value",
+                        "widget_attr": bind_value,
+                        "widget_type": "line",
+                    })
+
+        self._member_state_bindings_cache = list(bindings)
+        return list(bindings)
+
+    def _iter_member_state_widgets(self):
+        for binding in self._member_state_bindings():
+            widget = getattr(self, str(binding.get("widget_attr") or ""), None)
+            if widget is None:
+                continue
+            yield binding, widget
+
+    def _read_member_state_input(self, inputs: dict, key: str, default: str = "") -> str:
+        if not isinstance(inputs, dict):
+            return default
+        aliases = self._member_state_aliases().get(key, [])
+        for candidate in [key, *aliases]:
+            value = inputs.get(candidate)
+            if value is None:
+                continue
+            if isinstance(value, str):
+                return value
+            return str(value)
+        return default
+
+    def _set_dimension_bounds_from_state(self, inputs: dict, bounds_key: str) -> None:
+        bounds_value = inputs.get(f"{bounds_key}_bounds") if isinstance(inputs, dict) else None
+        if not isinstance(bounds_value, dict):
+            return
+
+        defaults = self._default_dimension_bounds().get(
+            bounds_key,
+            {"lower": 0.0, "upper": 0.0, "increment": 0.0},
+        )
+        self._dimension_bounds[bounds_key] = {
+            "lower": float(bounds_value.get("lower", defaults.get("lower", 0.0))),
+            "upper": float(bounds_value.get("upper", defaults.get("upper", 0.0))),
+            "increment": float(bounds_value.get("increment", defaults.get("increment", 0.0))),
+        }
+
     def _capture_member_state(self) -> dict:
         """Capture Section Inputs for the current member (properties are derived)."""
-        return {
-            "inputs": {
-                "design": self.design_combo.currentText() if hasattr(self, "design_combo") else "",
-                "type": self.type_combo.currentText() if hasattr(self, "type_combo") else "",
-                "support_type": self.support_type_combo.currentText() if hasattr(self, "support_type_combo") else "",
-                "symmetry": self.symmetry_combo.currentText() if hasattr(self, "symmetry_combo") else "",
-                "total_depth": self.total_depth_input.text() if hasattr(self, "total_depth_input") else "",
-                "top_width": self.top_width_input.text() if hasattr(self, "top_width_input") else "",
-                "bottom_width": self.bottom_width_input.text() if hasattr(self, "bottom_width_input") else "",
-                "total_depth_bounds": dict(self._dimension_bounds.get("total_depth") or {}),
-                "top_width_bounds": dict(self._dimension_bounds.get("top_width") or {}),
-                "bottom_width_bounds": dict(self._dimension_bounds.get("bottom_width") or {}),
-                "web_thickness": self.web_thickness_combo.currentText() if hasattr(self, "web_thickness_combo") else "",
-                "top_thickness": self.top_thickness_combo.currentText() if hasattr(self, "top_thickness_combo") else "",
-                "bottom_thickness": self.bottom_thickness_combo.currentText() if hasattr(self, "bottom_thickness_combo") else "",
-                "web_thickness_value": self.web_thickness_value_input.text() if hasattr(self, "web_thickness_value_input") else "",
-                "top_thickness_value": self.top_thickness_value_input.text() if hasattr(self, "top_thickness_value_input") else "",
-                "bottom_thickness_value": self.bottom_thickness_value_input.text() if hasattr(self, "bottom_thickness_value_input") else "",
-                "support_width": self.support_width_input.text() if hasattr(self, "support_width_input") else "",
-                "is_section": self.is_section_combo.currentText() if hasattr(self, "is_section_combo") else "",
-                "torsion": self.torsion_combo.currentText() if hasattr(self, "torsion_combo") else "",
-                "warping": self.warping_combo.currentText() if hasattr(self, "warping_combo") else "",
-                "web_type": self.web_type_combo.currentText() if hasattr(self, "web_type_combo") else "",
-            }
-        }
+        inputs: dict[str, str | dict] = {}
+        # Generalization flow: iterate schema-derived bindings instead of
+        # manually enumerating widgets.
+        for binding, widget in self._iter_member_state_widgets():
+            state_key = str(binding.get("state_key") or "")
+            if not state_key:
+                continue
+            widget_type = str(binding.get("widget_type") or "")
+            if widget_type == "combo" and isinstance(widget, QComboBox):
+                inputs[state_key] = widget.currentText()
+            elif widget_type == "line" and isinstance(widget, QLineEdit):
+                inputs[state_key] = widget.text()
+
+            bounds_key = str(binding.get("bounds_key") or "").strip()
+            if bounds_key:
+                inputs[f"{bounds_key}_bounds"] = dict(self._dimension_bounds.get(bounds_key) or {})
+
+        # Keep alias keys for backward compatibility payloads.
+        for state_key, aliases in self._member_state_aliases().items():
+            if state_key not in inputs:
+                continue
+            for alias in aliases:
+                inputs.setdefault(alias, inputs[state_key])
+
+        return {"inputs": inputs}
 
     def _apply_member_state(self, state: dict) -> None:
         # During early init, the overview card triggers segment selection before
@@ -1195,63 +2002,25 @@ class GirderDetailsTab(QWidget):
         inputs = (state or {}).get("inputs", {})
         self._suppress_member_state_updates = True
         try:
-            if inputs.get("design"):
-                self.design_combo.setCurrentText(inputs["design"])
-            if inputs.get("type"):
-                self.type_combo.setCurrentText(inputs["type"])
-            if inputs.get("support_type"):
-                self.support_type_combo.setCurrentText(inputs["support_type"])
-            if inputs.get("symmetry"):
-                self.symmetry_combo.setCurrentText(inputs["symmetry"])
+            # Generalization flow: apply saved values via the same schema-derived
+            # bindings used during capture to keep the two paths symmetric.
+            for binding, widget in self._iter_member_state_widgets():
+                state_key = str(binding.get("state_key") or "")
+                if not state_key:
+                    continue
 
-            self.total_depth_input.setText(inputs.get("total_depth", ""))
-            self.top_width_input.setText(inputs.get("top_width", ""))
-            self.bottom_width_input.setText(inputs.get("bottom_width", ""))
+                widget_type = str(binding.get("widget_type") or "")
+                value = self._read_member_state_input(inputs, state_key, default="")
 
-            total_depth_bounds = inputs.get("total_depth_bounds")
-            if isinstance(total_depth_bounds, dict):
-                self._dimension_bounds["total_depth"] = {
-                    "lower": float(total_depth_bounds.get("lower", 200.0)),
-                    "upper": float(total_depth_bounds.get("upper", 2000.0)),
-                    "increment": float(total_depth_bounds.get("increment", 25.0)),
-                }
+                if widget_type == "combo" and isinstance(widget, QComboBox):
+                    if value:
+                        widget.setCurrentText(value)
+                elif widget_type == "line" and isinstance(widget, QLineEdit):
+                    widget.setText(value)
 
-            top_width_bounds = inputs.get("top_width_bounds")
-            if isinstance(top_width_bounds, dict):
-                self._dimension_bounds["top_width"] = {
-                    "lower": float(top_width_bounds.get("lower", 100.0)),
-                    "upper": float(top_width_bounds.get("upper", 1000.0)),
-                    "increment": float(top_width_bounds.get("increment", 10.0)),
-                }
-
-            bottom_width_bounds = inputs.get("bottom_width_bounds")
-            if isinstance(bottom_width_bounds, dict):
-                self._dimension_bounds["bottom_width"] = {
-                    "lower": float(bottom_width_bounds.get("lower", 100.0)),
-                    "upper": float(bottom_width_bounds.get("upper", 1000.0)),
-                    "increment": float(bottom_width_bounds.get("increment", 10.0)),
-                }
-
-            if inputs.get("web_thickness"):
-                self.web_thickness_combo.setCurrentText(inputs["web_thickness"])
-            if inputs.get("top_thickness"):
-                self.top_thickness_combo.setCurrentText(inputs["top_thickness"])
-            if inputs.get("bottom_thickness"):
-                self.bottom_thickness_combo.setCurrentText(inputs["bottom_thickness"])
-
-            self.web_thickness_value_input.setText(inputs.get("web_thickness_value", ""))
-            self.top_thickness_value_input.setText(inputs.get("top_thickness_value", ""))
-            self.bottom_thickness_value_input.setText(inputs.get("bottom_thickness_value", ""))
-            self.support_width_input.setText(inputs.get("support_width", ""))
-
-            if inputs.get("is_section"):
-                self.is_section_combo.setCurrentText(inputs["is_section"])
-            if inputs.get("torsion"):
-                self.torsion_combo.setCurrentText(inputs["torsion"])
-            if inputs.get("warping"):
-                self.warping_combo.setCurrentText(inputs["warping"])
-            if inputs.get("web_type"):
-                self.web_type_combo.setCurrentText(inputs["web_type"])
+                bounds_key = str(binding.get("bounds_key") or "").strip()
+                if bounds_key:
+                    self._set_dimension_bounds_from_state(inputs, bounds_key)
         finally:
             self._suppress_member_state_updates = False
 
@@ -1262,50 +2031,21 @@ class GirderDetailsTab(QWidget):
 
     def _wire_member_dirty_tracking(self) -> None:
         """Mark current member dirty when Section Inputs change."""
-        def connect_combo(combo: QComboBox) -> None:
-            combo.currentTextChanged.connect(lambda _t: self._mark_current_member_dirty())
-
-        def connect_line(line: QLineEdit) -> None:
-            line.textChanged.connect(lambda _t: self._mark_current_member_dirty())
-
-        connect_combo(self.design_combo)
-        connect_combo(self.type_combo)
-        connect_combo(self.support_type_combo)
-        connect_combo(self.symmetry_combo)
-        connect_combo(self.web_thickness_combo)
-        connect_combo(self.top_thickness_combo)
-        connect_combo(self.bottom_thickness_combo)
-        connect_combo(self.is_section_combo)
-        connect_combo(self.torsion_combo)
-        connect_combo(self.warping_combo)
-        connect_combo(self.web_type_combo)
-
-        connect_line(self.total_depth_input)
-        connect_line(self.top_width_input)
-        connect_line(self.bottom_width_input)
-        connect_line(self.web_thickness_value_input)
-        connect_line(self.top_thickness_value_input)
-        connect_line(self.bottom_thickness_value_input)
-        connect_line(self.support_width_input)
+        # Generalization flow: register change listeners from schema bindings,
+        # so new fields are auto-tracked without extra wiring code.
+        for binding, widget in self._iter_member_state_widgets():
+            widget_type = str(binding.get("widget_type") or "")
+            if widget_type == "combo" and isinstance(widget, QComboBox):
+                widget.currentTextChanged.connect(lambda _t: self._mark_current_member_dirty())
+            elif widget_type == "line" and isinstance(widget, QLineEdit):
+                widget.textChanged.connect(lambda _t: self._mark_current_member_dirty())
 
     def _confirm_switch_if_dirty(self) -> str:
-        """Return 'save'|'discard'|'cancel' before switching member."""
+        """Autosave dirty state and allow switch without prompting."""
         if not self._is_current_member_dirty():
             return "discard"
-        _, member_id = self._current_member_key()
-        box = QMessageBox(self)
-        box.setIcon(QMessageBox.Warning)
-        box.setWindowTitle("Unsaved Changes")
-        box.setText(f"You have unsaved changes for {member_id}. Save before switching?")
-        box.setStandardButtons(QMessageBox.Save | QMessageBox.Discard | QMessageBox.Cancel)
-        box.setDefaultButton(QMessageBox.Save)
-        result = box.exec()
-        if result == QMessageBox.Save:
-            return "save"
-        if result == QMessageBox.Discard:
-            self._dirty_members.discard(self._current_member_key())
-            return "discard"
-        return "cancel"
+        self._commit_current_member_state()
+        return "save"
 
     def _refresh_member_id_combo(self) -> None:
         """Keep the Member ID dropdown in sync with the current girder's segments."""
@@ -1332,28 +2072,9 @@ class GirderDetailsTab(QWidget):
             self._select_segment_index(int(index))
             self._last_member_combo_index = int(index)
             return
-        # Prompt if user is leaving a dirty member without saving.
         if int(index) != int(self._current_segment_index):
-            decision = self._confirm_switch_if_dirty()
-            if decision == "cancel":
-                prev = self.member_id_combo.blockSignals(True)
-                try:
-                    self.member_id_combo.setCurrentIndex(self._last_member_combo_index)
-                finally:
-                    self.member_id_combo.blockSignals(prev)
-                return
-            if decision == "save":
+            if self._is_current_member_dirty():
                 self._commit_current_member_state()
-                # Confirm member-level save immediately (requested UX).
-                try:
-                    box = QMessageBox(self)
-                    box.setIcon(QMessageBox.Information)
-                    box.setWindowTitle("Saved")
-                    box.setText("Member inputs saved successfully.")
-                    box.setStandardButtons(QMessageBox.Ok)
-                    box.exec()
-                except Exception:
-                    pass
 
         self._select_segment_index(int(index))
         self._last_member_combo_index = int(index)
@@ -1413,7 +2134,7 @@ class GirderDetailsTab(QWidget):
         segments.pop(idx)
 
         # Renormalize starts, enforce last end == total span, and re-id sequentially.
-        total_span = float(self._get_total_span() or DEFAULT_MEMBER_LENGTH_M)
+        total_span = float(self._get_total_span() or self._default_member_length_m)
         segments[0]["start"] = 0.0
         for i in range(1, len(segments)):
             segments[i]["start"] = float(segments[i - 1].get("end", 0.0))
@@ -1436,6 +2157,7 @@ class GirderDetailsTab(QWidget):
             return
         index = max(0, min(index, len(segments) - 1))
         self._current_segment_index = index
+        self._update_girder_cad_view(self._current_girder, segments, index)
         if self.segment_table and self.segment_table.rowCount() > index:
             self.segment_table.blockSignals(True)
             try:
@@ -1571,37 +2293,9 @@ class GirderDetailsTab(QWidget):
         if not girder or girder == getattr(self, "_current_girder", ""):
             return
 
-        # If user is leaving a dirty member, confirm save/discard/cancel.
-        # This mirrors Member ID switching behavior and ensures dependent tabs
-        # (e.g., Stiffener Details) see the correct per-member design mode.
+        # Autosave dirty member state before switching girder.
         if self._is_current_member_dirty():
-            decision = self._confirm_switch_if_dirty()
-            if decision == "cancel":
-                # Revert the dropdown selection back to the previous girder.
-                try:
-                    if self.girder_dropdown is not None:
-                        prev = self.girder_dropdown.blockSignals(True)
-                        try:
-                            old = getattr(self, "_current_girder", "")
-                            idx = self.girder_dropdown.findData(old)
-                            if idx >= 0:
-                                self.girder_dropdown.setCurrentIndex(idx)
-                        finally:
-                            self.girder_dropdown.blockSignals(prev)
-                except Exception:
-                    pass
-                return
-            if decision == "save":
-                self._commit_current_member_state()
-                try:
-                    box = QMessageBox(self)
-                    box.setIcon(QMessageBox.Information)
-                    box.setWindowTitle("Saved")
-                    box.setText("Member inputs saved successfully.")
-                    box.setStandardButtons(QMessageBox.Ok)
-                    box.exec()
-                except Exception:
-                    pass
+            self._commit_current_member_state()
 
         self._current_girder = girder
         self._refresh_segment_list(girder)
@@ -1769,7 +2463,7 @@ class GirderDetailsTab(QWidget):
             self._load_segment_details(girder, idx)
             return
 
-        total_span = float(self._get_total_span() or DEFAULT_MEMBER_LENGTH_M)
+        total_span = float(self._get_total_span() or self._default_member_length_m)
         start = float(current.get("start", 0.0))
         old_end = float(current.get("end", start))
 
@@ -1857,162 +2551,8 @@ class GirderDetailsTab(QWidget):
         self.member_id_combo.currentIndexChanged.connect(self._on_member_id_combo_changed)
         row = self._add_box_row(inputs_grid, 0, "Member ID:", self.member_id_combo)
 
-        # Hidden design combo to maintain compatibility with existing logic
-        self.design_combo = QComboBox()
-        self.design_combo.addItems(VALUES_GIRDER_DESIGN_MODE)
-        self.design_combo.hide()
-        
-        self.type_combo = QComboBox()
-        self.type_combo.addItems(VALUES_GIRDER_TYPE)
-        apply_field_style(self.type_combo)
-        self._set_field_width(self.type_combo)
-        row = self._add_box_row(inputs_grid, row, "Type:", self.type_combo)
-
-        self.symmetry_combo = QComboBox()
-        self.symmetry_combo.addItems(VALUES_GIRDER_SYMMETRY)
-        apply_field_style(self.symmetry_combo)
-        self._set_field_width(self.symmetry_combo)
-        row = self._add_box_row(inputs_grid, row, "Symmetry:", self.symmetry_combo, self.symmetry_row)
-
-        self.support_type_combo = QComboBox()
-        self.support_type_combo.addItems(VALUES_GIRDER_SUPPORT_TYPE)
-        apply_field_style(self.support_type_combo)
-        self._set_field_width(self.support_type_combo)
-
-        self.total_depth_widget, self.total_depth_input, self.total_depth_bounds_button = self._create_dimension_input_widget("total_depth")
-        row = self._add_box_row(
-            inputs_grid,
-            row,
-            "Total Depth (d, mm):",
-            self.total_depth_widget,
-            self.welded_rows,
-        )
-
-        self.web_thickness_combo = QComboBox()
-        self.web_thickness_combo.addItems(VALUES_PROFILE_SCOPE)
-        apply_field_style(self.web_thickness_combo)
-        self._set_field_width(self.web_thickness_combo, 180)
-
-        self.web_thickness_value_input = self._create_line_edit()
-        self._set_field_width(self.web_thickness_value_input, 78)
-        self.web_thickness_value_input.setValidator(QDoubleValidator(0.0, 1e12, 3, self.web_thickness_value_input))
-
-        self.web_thickness_widget = self._create_mode_value_widget(self.web_thickness_combo, self.web_thickness_value_input)
-        self.web_thickness_value_combo = self._attach_thickness_value_dropdown(
-            self.web_thickness_widget,
-            self.web_thickness_value_input,
-            "web_thickness",
-        )
-        row = self._add_box_row(
-            inputs_grid,
-            row,
-            "Web Thickness (w<sub>t</sub>, mm):",
-            self.web_thickness_widget,
-            self.welded_rows,
-        )
-
-        self.top_width_widget, self.top_width_input, self.top_width_bounds_button = self._create_dimension_input_widget("top_width")
-        row = self._add_box_row(
-            inputs_grid,
-            row,
-            "Width of Top Flange (t<sub>fw</sub>, mm):",
-            self.top_width_widget,
-            self.welded_rows,
-        )
-
-        self.top_thickness_combo = QComboBox()
-        self.top_thickness_combo.addItems(VALUES_PROFILE_SCOPE)
-        apply_field_style(self.top_thickness_combo)
-        self._set_field_width(self.top_thickness_combo, 180)
-
-        self.top_thickness_value_input = self._create_line_edit()
-        self._set_field_width(self.top_thickness_value_input, 78)
-        self.top_thickness_value_input.setValidator(QDoubleValidator(0.0, 1e12, 3, self.top_thickness_value_input))
-
-        self.top_thickness_widget = self._create_mode_value_widget(self.top_thickness_combo, self.top_thickness_value_input)
-        self.top_thickness_value_combo = self._attach_thickness_value_dropdown(
-            self.top_thickness_widget,
-            self.top_thickness_value_input,
-            "top_thickness",
-        )
-        row = self._add_box_row(
-            inputs_grid,
-            row,
-            "Top Flange Thickness (t<sub>ft</sub>, mm):",
-            self.top_thickness_widget,
-            self.welded_rows,
-        )
-
-        self.bottom_width_widget, self.bottom_width_input, self.bottom_width_bounds_button = self._create_dimension_input_widget("bottom_width")
-        row = self._add_box_row(
-            inputs_grid,
-            row,
-            "Width of Bottom Flange (b<sub>fw</sub>, mm):",
-            self.bottom_width_widget,
-            self.welded_rows,
-        )
-
-        self.bottom_thickness_combo = QComboBox()
-        self.bottom_thickness_combo.addItems(VALUES_PROFILE_SCOPE)
-        apply_field_style(self.bottom_thickness_combo)
-        self._set_field_width(self.bottom_thickness_combo, 180)
-
-        self.bottom_thickness_value_input = self._create_line_edit()
-        self._set_field_width(self.bottom_thickness_value_input, 78)
-        self.bottom_thickness_value_input.setValidator(QDoubleValidator(0.0, 1e12, 3, self.bottom_thickness_value_input))
-
-        self.bottom_thickness_widget = self._create_mode_value_widget(self.bottom_thickness_combo, self.bottom_thickness_value_input)
-        self.bottom_thickness_value_combo = self._attach_thickness_value_dropdown(
-            self.bottom_thickness_widget,
-            self.bottom_thickness_value_input,
-            "bottom_thickness",
-        )
-        row = self._add_box_row(
-            inputs_grid,
-            row,
-            "Bottom Flange Thickness (b<sub>ft</sub>, mm):",
-            self.bottom_thickness_widget,
-            self.welded_rows,
-        )
-
-        self.support_width_input = self._create_line_edit()
-        self.support_width_input.setValidator(QDoubleValidator(0.0, 1e12, 3, self.support_width_input))
-        row = self._add_box_row(
-            inputs_grid,
-            row,
-            "Support Type:",
-            self.support_type_combo,
-            self.welded_rows,
-        )
-        row = self._add_box_row(
-            inputs_grid,
-            row,
-            "Support Width (mm):",
-            self.support_width_input,
-            self.welded_rows,
-        )
-
-        self.is_section_combo = QComboBox()
-        self._populate_rolled_section_combo()
-        apply_field_style(self.is_section_combo)
-        self._set_field_width(self.is_section_combo)
-        self._add_box_row(inputs_grid, row, "IS Section:", self.is_section_combo, self.rolled_rows)
-
-        # Append restraint/web fields into the same Section Inputs box (no extra frame / spacing).
-        self.torsion_combo = QComboBox()
-        apply_field_style(self.torsion_combo)
-        self._set_field_width(self.torsion_combo)
-        row = self._add_box_row(inputs_grid, row + 1, "Torsional Restraint:", self.torsion_combo)
-
-        self.warping_combo = QComboBox()
-        apply_field_style(self.warping_combo)
-        self._set_field_width(self.warping_combo)
-        row = self._add_box_row(inputs_grid, row, "Warping Restraint:", self.warping_combo)
-
-        self.web_type_combo = QComboBox()
-        apply_field_style(self.web_type_combo)
-        self._set_field_width(self.web_type_combo)
-        self._add_box_row(inputs_grid, row, "Web Type*:", self.web_type_combo, self.web_type_row)
+        for field_def in GIRDER_DETAILS_SCHEMA.get("section_inputs", []):
+            row = self._build_section_input_from_schema(inputs_grid, row, field_def)
 
         section_inputs_layout.addLayout(inputs_grid)
         # Prevent the grid rows from stretching vertically (which creates large blank bands
@@ -2029,6 +2569,7 @@ class GirderDetailsTab(QWidget):
         right_column_layout = QVBoxLayout(right_column)
         right_column_layout.setContentsMargins(0, 0, 0, 0)
         right_column_layout.setSpacing(10)
+        self._right_details_column = right_column
 
         # Dynamic image box
         image_box = self._create_inner_box()
@@ -2138,14 +2679,17 @@ class GirderDetailsTab(QWidget):
         frame.setStyleSheet("QFrame#girderCard { background-color: white; border: 1px solid #cfcfcf; border-radius: 10px; }")
         return frame
 
+    def _normalize_label_text(self, text: str) -> str:
+        return str(text or "").rstrip(": ")
+
     def _create_label(self, text):
-        label = QLabel(text)
+        label = QLabel(self._normalize_label_text(text))
         label.setStyleSheet("font-size: 12px; color: #2f2f2f; font-weight: 600; background: transparent;")
         label.setAutoFillBackground(False)
         return label
 
     def _create_small_label(self, text):
-        label = QLabel(text)
+        label = QLabel(self._normalize_label_text(text))
         label.setStyleSheet("font-size: 10px; color: #5a5a5a; background: transparent;")
         label.setAutoFillBackground(False)
         return label
@@ -2169,8 +2713,9 @@ class GirderDetailsTab(QWidget):
         return widget
 
     def _attach_thickness_value_dropdown(self, wrapper: QWidget, value_input: QLineEdit, field_key: str) -> QComboBox:
+        """Attach hidden schema-backed thickness dropdown used in custom mode."""
         combo = QComboBox()
-        combo.addItems(SAIL_APPROVED_THICKNESS_VALUES)
+        combo.addItems(self._thickness_values)
         apply_field_style(combo)
         combo.setVisible(False)
         self._set_field_width(combo, 180)
@@ -2185,6 +2730,7 @@ class GirderDetailsTab(QWidget):
         return combo
 
     def _sync_thickness_value_dropdown(self, field_key: str) -> None:
+        """Sync dropdown selection from text input and enforce valid first value."""
         value_input = getattr(self, f"{field_key}_value_input", None)
         value_combo = getattr(self, f"{field_key}_value_combo", None)
         if value_input is None or value_combo is None:
@@ -2195,11 +2741,15 @@ class GirderDetailsTab(QWidget):
             first = selected[0]
         else:
             parsed = str(value_input.text() or "").strip()
-            if parsed in SAIL_APPROVED_THICKNESS_VALUES:
+            if parsed in self._thickness_values:
                 first = parsed
-        if not first:
-            first = SAIL_APPROVED_THICKNESS_VALUES[0]
+
+        if not first and self._thickness_values:
+            first = self._thickness_values[0]
             value_input.setText(first)
+
+        if not self._thickness_values:
+            return
 
         prev = value_combo.blockSignals(True)
         try:
@@ -2209,8 +2759,9 @@ class GirderDetailsTab(QWidget):
             value_combo.blockSignals(prev)
 
     def _parse_selected_thickness_values(self, text: str) -> List[str]:
+        """Parse comma-separated thickness text and keep only allowed schema values."""
         chunks = [c.strip() for c in str(text or "").split(",") if str(c).strip()]
-        return [v for v in chunks if v in SAIL_APPROVED_THICKNESS_VALUES]
+        return [v for v in chunks if v in self._thickness_values]
 
     def _on_thickness_mode_changed(self, field_key: str, _text: str) -> None:
         self._update_thickness_value_enabled_state()
@@ -2227,11 +2778,12 @@ class GirderDetailsTab(QWidget):
             return
 
         is_welded = (self.type_combo.currentText() or "").strip().lower() == "welded"
-        is_custom_design = (self.design_combo.currentText() or "").strip().lower() == "customized"
+        is_custom_design = (self.design_combo.currentText() or "").strip().lower() in {"custom", "customized"}
         if is_welded and (not is_custom_design):
             self._open_thickness_values_dialog(field_key)
 
     def _open_thickness_values_dialog(self, field_key: str) -> None:
+        """Open the picker dialog and persist selected thickness values for a field."""
         value_input = getattr(self, f"{field_key}_value_input", None)
         if value_input is None:
             return
@@ -2242,7 +2794,7 @@ class GirderDetailsTab(QWidget):
             "top_thickness": "Select Values: Top Flange Thickness",
             "bottom_thickness": "Select Values: Bottom Flange Thickness",
         }
-        dialog = _ThicknessSelectionDialog(titles.get(field_key, "Select Values"), selected, self)
+        dialog = _ThicknessSelectionDialog(titles.get(field_key, "Select Values"), selected, self._thickness_values, self)
         if dialog.exec() != QDialog.Accepted:
             return
 
@@ -2283,7 +2835,7 @@ class GirderDetailsTab(QWidget):
         return widget, value_input, bounds_button
 
     def _update_dimension_field_mode(self) -> None:
-        is_custom = (self.design_combo.currentText() or "").strip().lower() == "customized"
+        is_custom = (self.design_combo.currentText() or "").strip().lower() in {"custom", "customized"}
         is_welded = (self.type_combo.currentText() or "").strip().lower() == "welded"
 
         for field_key in ("total_depth", "top_width", "bottom_width"):
@@ -2298,7 +2850,7 @@ class GirderDetailsTab(QWidget):
             bounds_button.setVisible((not show_line_edit) and is_welded)
             bounds_button.setEnabled((not show_line_edit) and is_welded)
 
-    def _default_dimension_bounds(self, field_key: str) -> dict:
+    def _default_dimension_bounds_for_field(self, field_key: str) -> dict:
         defaults = {
             "total_depth": {"lower": 200.0, "upper": 2000.0, "increment": 25.0},
             "top_width": {"lower": 100.0, "upper": 1000.0, "increment": 10.0},
@@ -2307,7 +2859,7 @@ class GirderDetailsTab(QWidget):
         return dict(defaults.get(field_key, {"lower": 0.0, "upper": 0.0, "increment": 0.0}))
 
     def _normalized_dimension_bounds(self, field_key: str) -> dict:
-        defaults = self._default_dimension_bounds(field_key)
+        defaults = self._default_dimension_bounds_for_field(field_key)
         current = self._dimension_bounds.get(field_key) or {}
         out = {}
         for key in ("lower", "upper", "increment"):
@@ -2365,7 +2917,7 @@ class GirderDetailsTab(QWidget):
 
     def _update_thickness_value_enabled_state(self) -> None:
         is_welded = self.type_combo.currentText().lower() == "welded"
-        is_custom_design = self.design_combo.currentText().lower() == "customized"
+        is_custom_design = self.design_combo.currentText().lower() in {"custom", "customized"}
         allow_inputs = is_welded and is_custom_design
 
         for field_key, mode_combo, value_input, value_combo, wrapper in (
@@ -2396,7 +2948,7 @@ class GirderDetailsTab(QWidget):
 
             is_custom_mode = self._is_custom_thickness_mode(mode_combo)
 
-            # Customized mode: one-box dropdown only (SAIL values).
+            # Custom mode: one-box dropdown only (SAIL values).
             if allow_inputs:
                 if mode_combo.currentText().strip().lower() != "custom":
                     prev = mode_combo.blockSignals(True)
@@ -2446,8 +2998,9 @@ class GirderDetailsTab(QWidget):
         return row + 1
 
     def _set_field_width(self, widget, width=180):
-        widget.setMaximumWidth(width)
-        widget.setMinimumWidth(min(width, 140))
+        effective_width = max(int(width), 220)
+        widget.setMaximumWidth(effective_width)
+        widget.setMinimumWidth(min(effective_width, 180))
         widget.setMinimumHeight(28)
         widget.setMaximumHeight(40)
 
@@ -2571,13 +3124,15 @@ class GirderDetailsTab(QWidget):
         self._update_distance_field_states()
 
     def _on_design_changed(self, text):
-        is_custom = text.lower() == "customized"
+        is_custom = (text or "").strip().lower() in {"custom", "customized"}
         toggle_targets = (
             self.type_combo,
             self.symmetry_combo,
         )
         for widget in toggle_targets:
             widget.setEnabled(is_custom)
+        if hasattr(self, "_right_details_column"):
+            self._right_details_column.setVisible(is_custom)
         if not is_custom:
             self._lock_type_to_welded()
             self._reset_section_state()
@@ -2594,7 +3149,7 @@ class GirderDetailsTab(QWidget):
 
     def _apply_type_state(self):
         is_welded = self.type_combo.currentText().lower() == "welded"
-        is_custom = self.design_combo.currentText().lower() == "customized"
+        is_custom = self.design_combo.currentText().lower() in {"custom", "customized"}
 
         self._set_row_visibility(self.welded_rows, is_welded)
         self._set_row_visibility(self.rolled_rows, not is_welded)
@@ -2734,8 +3289,56 @@ class GirderDetailsTab(QWidget):
         line_edit.setText(text)
         line_edit.blockSignals(previous_state)
 
+    def _legacy_welded_inputs_from_state_inputs(self, inputs: dict) -> dict:
+        payload: dict[str, object] = {}
+        if not isinstance(inputs, dict):
+            return payload
+
+        maps = self._legacy_payload_maps()
+        for payload_key, input_key in maps.get("welded", {}).items():
+            payload[payload_key] = self._read_member_state_input(inputs, input_key, default="")
+
+        for payload_key, bounds_key in maps.get("welded_bounds", {}).items():
+            bounds = inputs.get(f"{bounds_key}_bounds")
+            payload[payload_key] = dict(bounds) if isinstance(bounds, dict) else {}
+        return payload
+
+    def _legacy_current_member_payload_from_state_inputs(self, inputs: dict) -> dict:
+        payload: dict[str, str] = {}
+        if not isinstance(inputs, dict):
+            return payload
+        for payload_key, input_key in self._legacy_payload_maps().get("current_member", {}).items():
+            payload[payload_key] = self._read_member_state_input(inputs, input_key, default="")
+        return payload
+
+    def _state_inputs_from_legacy_payload(self, data: dict) -> dict:
+        if not isinstance(data, dict):
+            return {}
+
+        inputs: dict[str, object] = {}
+        maps = self._legacy_payload_maps()
+        for payload_key, input_key in maps.get("current_member", {}).items():
+            value = data.get(payload_key)
+            if value in (None, ""):
+                continue
+            inputs[input_key] = str(value)
+
+        welded_inputs = data.get("welded_inputs")
+        if isinstance(welded_inputs, dict):
+            for payload_key, input_key in maps.get("welded", {}).items():
+                value = welded_inputs.get(payload_key)
+                if value in (None, ""):
+                    continue
+                inputs[input_key] = str(value)
+            for payload_key, bounds_key in maps.get("welded_bounds", {}).items():
+                bounds = welded_inputs.get(payload_key)
+                if isinstance(bounds, dict):
+                    inputs[f"{bounds_key}_bounds"] = dict(bounds)
+
+        return inputs
+
     def validate_member_properties(self) -> bool:
-        if self.design_combo.currentText() != "Customized":
+        if self.design_combo.currentText() != "Custom":
             return True
         required_fields = [
             (self.total_depth_input, "Total Depth (d, mm)"),
@@ -2795,7 +3398,7 @@ class GirderDetailsTab(QWidget):
 
     def _create_small_label(self, text):
         """Create a smaller label for compact layouts"""
-        label = QLabel(text)
+        label = QLabel(self._normalize_label_text(text))
         label.setTextFormat(Qt.RichText)
         label.setStyleSheet("""
             QLabel {
@@ -2836,9 +3439,9 @@ class GirderDetailsTab(QWidget):
         self.is_section_combo.addItems(designations)
 
     def _configure_restraint_fields(self):
-        torsion_items = self._constant_items("VALUES_TORSIONAL_RESTRAINT")
-        warping_items = self._constant_items("VALUES_WARPING_RESTRAINT")
-        web_type_items = self._constant_items("VALUES_WEB_TYPE")
+        torsion_items = self._schema_choices("torsional_restraint")
+        warping_items = self._schema_choices("warping_restraint")
+        web_type_items = self._schema_choices("web_type")
 
         self._reload_combo_items(self.torsion_combo, torsion_items)
         self._reload_combo_items(self.warping_combo, warping_items)
@@ -2851,10 +3454,6 @@ class GirderDetailsTab(QWidget):
         combo.addItems(items)
         combo.setCurrentIndex(0 if items else -1)
         combo.blockSignals(block)
-
-    @staticmethod
-    def _constant_items(constant_name):
-        return list(globals().get(constant_name, []))
 
     def _update_preview(self):
         if not hasattr(self, "section_preview"):
@@ -3083,19 +3682,20 @@ class GirderDetailsTab(QWidget):
             return None
 
     def set_girder_count(self, count: Optional[int]) -> None:
+        """Apply external girder-count updates with schema cap and chain reconciliation."""
         try:
             total = int(count) if count is not None else len(self.available_girders)
         except (TypeError, ValueError):
             total = len(self.available_girders)
-        total = max(1, min(MAX_GIRDER_COUNT, total))
+        total = max(1, min(self._max_girder_count, total))
         self.available_girders = [f"G{i}" for i in range(1, total + 1)]
 
         # Prune segment chains for removed girders and initialize new ones.
         self.segment_chain = {g: segs for g, segs in self.segment_chain.items() if g in self.available_girders}
-        total_span = float(self._get_total_span() or DEFAULT_MEMBER_LENGTH_M)
+        total_span = float(self._get_total_span() or self._default_member_length_m)
         for girder in self.available_girders:
             if girder not in self.segment_chain:
-                self.segment_chain[girder] = [{"id": self._make_segment_id(girder, 1), "start": 0.0, "end": total_span}]
+                self.segment_chain[girder] = [{"id": self._make_segment_id(girder, 1), "start": self._default_distance_start_m, "end": total_span}]
 
         # Refresh dropdown
         if self.girder_dropdown:
@@ -3177,14 +3777,14 @@ class GirderDetailsTab(QWidget):
             _reset_combo(self.is_section_combo)
 
         # Total span default
-        self._set_line_edit_value(self.length_input, DEFAULT_MEMBER_LENGTH_M)
+        self._set_line_edit_value(self.length_input, self._default_member_length_m)
 
         # Segment chain defaults: one segment per girder spanning the full span
         # (only when not preserving segments, or if preserving but chain is empty).
         if (not preserve_segments) or (not getattr(self, "segment_chain", None)):
-            total_span = float(self._get_total_span() or DEFAULT_MEMBER_LENGTH_M)
+            total_span = float(self._get_total_span() or self._default_member_length_m)
             for girder in self.available_girders:
-                self.segment_chain[girder] = [{"id": self._make_segment_id(girder, 1), "start": 0.0, "end": total_span}]
+                self.segment_chain[girder] = [{"id": self._make_segment_id(girder, 1), "start": self._default_distance_start_m, "end": total_span}]
         elif preserved_segment_chain:
             # Restore preserved segments after any internal recomputation.
             self.segment_chain = preserved_segment_chain
@@ -3202,11 +3802,7 @@ class GirderDetailsTab(QWidget):
             field.clear()
             field.blockSignals(previous)
 
-        self._dimension_bounds = {
-            "total_depth": {"lower": 200.0, "upper": 2000.0, "increment": 25.0},
-            "top_width": {"lower": 100.0, "upper": 1000.0, "increment": 10.0},
-            "bottom_width": {"lower": 100.0, "upper": 1000.0, "increment": 10.0},
-        }
+        self._dimension_bounds = self._default_dimension_bounds()
         self._refresh_bounds_tooltips()
 
         self._on_design_changed(self.design_combo.currentText())
@@ -3258,21 +3854,10 @@ class GirderDetailsTab(QWidget):
         # Save action marks member edits clean for this session.
         self._dirty_members.clear()
 
-        welded_inputs = {
-            "total_depth_mm": self.total_depth_input.text().strip(),
-            "top_flange_width_mm": self.top_width_input.text().strip(),
-            "bottom_flange_width_mm": self.bottom_width_input.text().strip(),
-            "total_depth_bounds": dict(self._dimension_bounds.get("total_depth") or {}),
-            "top_flange_width_bounds": dict(self._dimension_bounds.get("top_width") or {}),
-            "bottom_flange_width_bounds": dict(self._dimension_bounds.get("bottom_width") or {}),
-            "web_thickness_mode": self.web_thickness_combo.currentText(),
-            "top_thickness_mode": self.top_thickness_combo.currentText(),
-            "bottom_thickness_mode": self.bottom_thickness_combo.currentText(),
-            "web_thickness_value_mm": self.web_thickness_value_input.text().strip(),
-            "top_thickness_value_mm": self.top_thickness_value_input.text().strip(),
-            "bottom_thickness_value_mm": self.bottom_thickness_value_input.text().strip(),
-            "support_width_mm": self.support_width_input.text().strip(),
-        }
+        current_state = self._capture_member_state()
+        current_inputs = (current_state or {}).get("inputs", {})
+        welded_inputs = self._legacy_welded_inputs_from_state_inputs(current_inputs)
+        current_payload = self._legacy_current_member_payload_from_state_inputs(current_inputs)
         properties_snapshot = {
             label: field.text().strip()
             for label, field in self.section_property_inputs.items()
@@ -3291,13 +3876,7 @@ class GirderDetailsTab(QWidget):
             "distance_end_m": self._parse_float(self.distance_end_input.text()),
             "total_span_m": self._parse_float(self.length_input.text()),
             "current_segment": current_segment,
-            "design_mode": self.design_combo.currentText(),
-            "girder_type": self.type_combo.currentText(),
-            "symmetry": self.symmetry_combo.currentText(),
-            "torsional_restraint": self.torsion_combo.currentText(),
-            "warping_restraint": self.warping_combo.currentText(),
-            "web_type": self.web_type_combo.currentText(),
-            "rolled_section": self.is_section_combo.currentText(),
+            **current_payload,
             "welded_inputs": welded_inputs,
             "segment_chain": {
                 girder: [
@@ -3373,10 +3952,25 @@ class GirderDetailsTab(QWidget):
         if self.girder_dropdown is not None:
             prev = self.girder_dropdown.blockSignals(True)
             try:
-                if self.girder_dropdown.findText(self._current_girder) >= 0:
-                    self.girder_dropdown.setCurrentText(self._current_girder)
+                idx = self.girder_dropdown.findData(self._current_girder)
+                if idx >= 0:
+                    self.girder_dropdown.setCurrentIndex(idx)
             finally:
                 self.girder_dropdown.blockSignals(prev)
+
+        if not isinstance(member_states, dict):
+            legacy_inputs = self._state_inputs_from_legacy_payload(data)
+            if legacy_inputs:
+                fallback_state = {"inputs": legacy_inputs}
+                fallback_member_id = ""
+                current_segment = data.get("current_segment")
+                if isinstance(current_segment, dict):
+                    fallback_member_id = str(current_segment.get("id") or "").strip()
+                if not fallback_member_id:
+                    fallback_member_id = str(data.get("member_id") or "").strip()
+                if not fallback_member_id:
+                    fallback_member_id = self._make_segment_id(self._current_girder, 1)
+                self._member_state.setdefault(self._current_girder, {})[fallback_member_id] = fallback_state
 
         self._refresh_segment_list(self._current_girder)
         self._refresh_member_id_combo()
@@ -3419,7 +4013,8 @@ class GirderDetailsTab(QWidget):
         try:
             current_girder, current_member_id = self._current_member_key()
             if current_girder == girder and current_member_id == member_id:
-                return (self.design_combo.currentText() if hasattr(self, "design_combo") else "") == "Optimized"
+                combo = getattr(self, "design_combo", None)
+                return isinstance(combo, QComboBox) and combo.currentText() == "Optimized"
         except Exception:
             pass
 
@@ -3427,6 +4022,16 @@ class GirderDetailsTab(QWidget):
         design = ((stored.get("inputs") or {}).get("design") or "").strip()
         if design:
             return design == "Optimized"
+
+        # Fallback for members not explicitly visited/saved yet.
+        try:
+            template = getattr(self, "_default_member_state", None) or {}
+            default_design = str(((template.get("inputs") or {}).get("design") or "")).strip()
+            if default_design:
+                return default_design == "Optimized"
+        except Exception:
+            pass
+        return True
 
     def get_member_section_dimensions(self, member_id: str) -> Optional[dict]:
         """Return basic section dimensions for the given member.
@@ -3498,15 +4103,3 @@ class GirderDetailsTab(QWidget):
                 "web_thickness_mm": float(outline.get("web_thickness_mm") or 0.0),
             }
         return None
-
-        # Fallback: if the member hasn't been visited/saved yet, do NOT inherit
-        # whatever the currently active member is set to. New/unvisited members
-        # should behave like the UI default (Optimized) until explicitly changed.
-        try:
-            template = getattr(self, "_default_member_state", None) or {}
-            default_design = str(((template.get("inputs") or {}).get("design") or "")).strip()
-            if default_design:
-                return default_design == "Optimized"
-        except Exception:
-            pass
-        return True

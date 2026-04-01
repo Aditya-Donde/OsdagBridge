@@ -116,20 +116,8 @@ class SectionPropertiesTab(QWidget):
         if previous != index:
             try:
                 leaving_girder_tab = previous == self.section_tabs.indexOf(getattr(self, "girder_details_tab", None))
-                if leaving_girder_tab and hasattr(self, "girder_details_tab") and hasattr(self.girder_details_tab, "has_unsaved_changes"):
-                    if self.girder_details_tab.has_unsaved_changes():
-                        box = QMessageBox(self)
-                        box.setIcon(QMessageBox.Warning)
-                        box.setWindowTitle("Unsaved Inputs")
-                        box.setText("Please save Member Properties before switching tabs.")
-                        box.setStandardButtons(QMessageBox.Ok)
-                        box.setDefaultButton(QMessageBox.Ok)
-                        box.setWindowModality(Qt.ApplicationModal)
-                        box.exec()
-                        prev = self.section_tabs.blockSignals(True)
-                        self.section_tabs.setCurrentIndex(previous)
-                        self.section_tabs.blockSignals(prev)
-                        return
+                if leaving_girder_tab and hasattr(self, "girder_details_tab") and hasattr(self.girder_details_tab, "_commit_current_member_state"):
+                    self.girder_details_tab._commit_current_member_state()
             except Exception:
                 pass
 

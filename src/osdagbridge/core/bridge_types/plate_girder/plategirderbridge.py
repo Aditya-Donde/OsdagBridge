@@ -37,9 +37,12 @@ from .report_generator import section_report
 from .ui_fields import FrontendData
 from .ui_fields_additional_input import (
     CRASH_BARRIER_TAB_SCHEMA,
+    CROSS_BRACING_DETAILS_SCHEMA,
     DESIGN_OPTIONS_CONT_SCHEMA,
     DESIGN_OPTIONS_SCHEMA,
+    END_DIAPHRAGM_DETAILS_SCHEMA,
     GIRDER_DETAILS_SCHEMA,
+    STIFFENER_DETAILS_SCHEMA,
     LANE_DETAILS_TAB_SCHEMA,
     LAYOUT_TAB_SCHEMA,
     MEDIAN_TAB_SCHEMA,
@@ -146,6 +149,9 @@ class PlateGirderBridge:
             "design_options": DESIGN_OPTIONS_SCHEMA,
             "design_options_cont": DESIGN_OPTIONS_CONT_SCHEMA,
             "girder_details": GIRDER_DETAILS_SCHEMA,
+            "stiffener_details": STIFFENER_DETAILS_SCHEMA,
+            "cross_bracing_details": CROSS_BRACING_DETAILS_SCHEMA,
+            "end_diaphragm_details": END_DIAPHRAGM_DETAILS_SCHEMA,
         }
 
     def _footpath_count(self) -> int:

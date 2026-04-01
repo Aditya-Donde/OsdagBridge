@@ -217,10 +217,10 @@ VALUES_GIRDER_SUPPORT_TYPE = [
     "Minor Laterally Unsupported",
     "Major Laterally Unsupported",
 ]
-VALUES_GIRDER_DESIGN_MODE = ["Optimized", "Customized"]
+VALUES_GIRDER_DESIGN_MODE = ["Optimized", "Custom"]
 VALUES_GIRDER_SPAN_MODE = ["Full Length", "Custom"]
 VALUES_PROFILE_SCOPE = ["All", "Custom"]
-VALUES_OPTIMIZATION_MODE = ["Optimized", "Customized", "All"]
+VALUES_OPTIMIZATION_MODE = ["Optimized", "Custom", "All"]
 VALUES_TORSIONAL_RESTRAINT = [
     "Fully Restrained",
     "Partially Restrained - Support Connection",
@@ -229,6 +229,8 @@ VALUES_TORSIONAL_RESTRAINT = [
 VALUES_WARPING_RESTRAINT = ["Both Flanges Restrained", "No Restraint"]
 VALUES_WEB_TYPE = ["Thin Web with ITS", "Thick Web without ITS"]
 VALUES_STIFFENER_DESIGN = ["Simple Post Critical", "Tension Field"]
+VALUES_BEARING_STIFFENER_COUNT = ["1", "2", "3", "4"]
+VALUES_LONGITUDINAL_STIFFENER = ["No", "Yes and 1 stiffener", "Yes and 2 stiffeners"]
 VALUES_CROSS_BRACING_TYPE = [
     "K-bracing",
     "K-bracing with top bracket",
@@ -242,6 +244,33 @@ VALUES_RAILING_TYPE = ["IRC 5 - RCC Railing", "IRC 5 - Steel Railing", "Custom"]
 VALUES_CUSTOM_AXLE_TYPE = ["Single", "Bogie"]
 VALUES_FOOTPATH_PRESSURE_MODE = ["Automatic", "User-defined"]
 VALUES_SUPPORT_TYPE = ["Fixed", "Pinned"]
+
+#Sail thic
+SAIL_APPROVED_THICKNESS_VALUES=[
+        "8", "10", "12", "14", "16", "18", "20", "22", "25", "28", "32", "36",
+        "40", "45", "50", "56", "63", "75", "80", "90", "100", "110", "120",
+    ]
+MIN_BEARING_STIFFENER_SPACING_MM = 50
+STIFFENER_DETAILS_DEFAULTS = {
+    "form_label_width": 245,
+    "combo_width": 190,
+    "outstand_default_text": "NA",
+    "min_bearing_spacing_mm": MIN_BEARING_STIFFENER_SPACING_MM,
+    "bearing_stiffeners_each_end": VALUES_BEARING_STIFFENER_COUNT[1],
+    "bearing_spacing_mm": "",
+    "bearing_thickness_mode": VALUES_PROFILE_SCOPE[0],
+    "bearing_thickness_value": SAIL_APPROVED_THICKNESS_VALUES[0],
+    "bearing_outstand_mm": "",
+    "intermediate_stiffener": VALUES_YES_NO[0],
+    "intermediate_spacing_mm": "NA",
+    "intermediate_outstand_mm": "",
+    "longitudinal_stiffener": VALUES_LONGITUDINAL_STIFFENER[0],
+    "intermediate_thickness_mode": VALUES_PROFILE_SCOPE[0],
+    "intermediate_thickness_value": SAIL_APPROVED_THICKNESS_VALUES[0],
+    "longitudinal_thickness_mode": VALUES_PROFILE_SCOPE[0],
+    "longitudinal_thickness_value": SAIL_APPROVED_THICKNESS_VALUES[0],
+    "shear_buckling_method": VALUES_STIFFENER_DESIGN[0] if VALUES_STIFFENER_DESIGN else "",
+}
 
 # Defaults + validation helpers
 DEFAULT_SELF_WEIGHT_FACTOR = 1.0
@@ -275,4 +304,3 @@ def connectdb(table_name, popup=None):
     if table_name == "Material":
         return VALUES_MATERIAL
     return []
-

@@ -236,6 +236,7 @@ class AdditionalInputs(QDialog):
         # Keep girder count in sync across tabs
         try:
             self.typical_section_tab.girder_count_changed.connect(self.section_properties_tab.set_girder_count)
+            self._sync_member_properties_girder_count()
         except Exception:
             pass
         
@@ -298,6 +299,29 @@ class AdditionalInputs(QDialog):
                 line_edit.setText(fmt.format(val))
             except ValueError:
                 continue
+
+    def _normalize_member_properties_design_mode(self, mode_str: str) -> str:
+        """Map upstream design labels to Member Properties supported values."""
+        value = str(mode_str or "").strip().lower()
+        if value in {"custom", "customized"}:
+            return "Custom"
+        if value in {"optimized", "optimised"}:
+            return "Optimized"
+        return "Optimized"
+
+    def _sync_member_properties_girder_count(self) -> None:
+        """Push current girder count from Typical Section to Member Properties."""
+        try:
+            count_text = ""
+            if hasattr(self, "typical_section_tab") and hasattr(self.typical_section_tab, "no_of_girders"):
+                count_text = str(self.typical_section_tab.no_of_girders.text() or "").strip()
+            if not count_text:
+                return
+            count = int(float(count_text))
+            if hasattr(self, "section_properties_tab") and hasattr(self.section_properties_tab, "set_girder_count"):
+                self.section_properties_tab.set_girder_count(count)
+        except Exception:
+            pass
 
     def _create_schema_widget(self, field_def, field_width):
         field_type = field_def.get("type")
@@ -408,8 +432,9 @@ class AdditionalInputs(QDialog):
         return widget
 
     def set_member_properties_design_mode(self, mode_str: str):
+        normalized_mode = self._normalize_member_properties_design_mode(mode_str)
         if hasattr(self, "section_properties_tab") and hasattr(self.section_properties_tab, "set_design_mode"):
-            self.section_properties_tab.set_design_mode(mode_str)
+            self.section_properties_tab.set_design_mode(normalized_mode)
 
     def _apply_defaults(self):
         """Apply defaults only to the currently visible top-level tab.
@@ -443,17 +468,17 @@ class AdditionalInputs(QDialog):
                 if hasattr(tab, "reset_defaults"):
                     tab.reset_defaults()
             return
-        
+
         if current_widget is getattr(self, "support_tab", None):
             if hasattr(self.support_tab, "reset_defaults"):
                 self.support_tab.reset_defaults()
             return
-        
+
         if current_widget is getattr(self, "design_options_tab", None):
             if hasattr(self.design_options_tab, "reset_defaults"):
                 self.design_options_tab.reset_defaults()
             return
-        
+
         if current_widget is getattr(self, "design_options_cont_tab", None):
             if hasattr(self.design_options_cont_tab, "reset_defaults"):
                 self.design_options_cont_tab.reset_defaults()
@@ -595,6 +620,9 @@ class AdditionalInputs(QDialog):
             
         except Exception:
             pass
+
+        # Keep Member Properties member/pair dropdowns aligned with restored girder count.
+        self._sync_member_properties_girder_count()
 
         return values
 
@@ -826,6 +854,9 @@ class AdditionalInputs(QDialog):
                         self.tabs.setCurrentIndex(previous)
                         self.tabs.blockSignals(prev)
                         return
+
+                if hasattr(self, "section_properties_tab") and hasattr(self.section_properties_tab, "save_properties"):
+                    self._last_saved_data = self.section_properties_tab.save_properties() or {}
             except Exception:
                 pass
 

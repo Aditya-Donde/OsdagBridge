@@ -16,7 +16,7 @@ from osdagbridge.desktop.ui.utils.custom_titlebar import CustomTitleBar
 from osdagbridge.desktop.ui.dialogs.tabs.common import apply_field_style
 
 class OptimizableField(QWidget):
-    """Widget that allows selection between Optimized/Customized/All modes with input field"""
+    """Widget that allows selection between Optimized/Custom/All modes with input field"""
 
     def __init__(self, label_text, parent=None):
         super().__init__(parent)
