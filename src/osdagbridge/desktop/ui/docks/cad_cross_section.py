@@ -1034,11 +1034,11 @@ class CrossSectionCADWidget(QWidget):
         bottom_w = bottom_w_mm * scale
         median_width_px = median_end_x - median_start_x
         
-        # Shape offsets proportional to standard HC barrier (350mm bottom)
-        shape_scale = bottom_w_mm / 350.0
+        # Shape offsets proportional to standard HC barrier (525mm bottom)
+        shape_scale = bottom_w_mm / 525.0
         base_v = 100.0 * scale
         mid_y_off = 350.0 * scale
-        right_at_mid = 250.0 * scale * shape_scale
+        right_at_mid = 300.0 * scale * shape_scale
         left_at_top = 50.0 * scale * shape_scale
         right_at_top = 225.0 * scale * shape_scale
         

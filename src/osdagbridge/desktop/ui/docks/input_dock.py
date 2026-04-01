@@ -760,11 +760,7 @@ class InputDock(QWidget):
         except Exception:
             pass
 
-        self.additional_inputs = AdditionalInputs(footpath_value, carriageway_width, initial_cad_state=initial_cad_state)
-        self.additional_inputs_widget = self.additional_inputs
-
         dialog = AdditionalInputs(footpath_value, carriageway_width, initial_cad_state=initial_cad_state)
-        
         self.additional_inputs = dialog
         self.additional_inputs_widget = dialog
         
@@ -802,23 +798,31 @@ class InputDock(QWidget):
             except Exception:
                 pass
 
-        # Capture state when dialog closes.
+        # Capture state when dialog closes or Save is clicked.
         try:
             dialog.finished.connect(self._handle_additional_inputs_closed)
+            if hasattr(dialog, "save_button"):
+                dialog.save_button.clicked.connect(lambda: self._update_cad_from_additional_inputs(dialog))
         except Exception:
             pass
 
         # Connect to accept signal to handle save
         result = dialog.exec_()
         
-        # If user clicked Save (accepted), get values and trigger update
+        # If user clicked Save (accepted) or closed, trigger final update
         if result == AdditionalInputs.Accepted:
-            values = dialog.get_all_values()
-            if values:
-                # Merge with existing input values
-                self.additional_input_values = values
-                # Emit signal to trigger CAD update
-                self.input_value_changed.emit()
+            self._update_cad_from_additional_inputs(dialog)
+
+    def _update_cad_from_additional_inputs(self, dialog):
+        """Update homepage CAD using values from the Additional Inputs dialog."""
+        if not dialog:
+            return
+        values = dialog.get_all_values()
+        if values:
+            # Merge with existing input values
+            self.additional_input_values = values
+            # Emit signal to trigger homepage CAD update
+            self.input_value_changed.emit()
 
     def show_additional_inputs(self):
         """Show Additional Inputs dialog with its default initial tab."""
