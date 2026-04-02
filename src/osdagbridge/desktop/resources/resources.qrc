@@ -40,6 +40,7 @@
         <file>vectors/msg_warning.svg</file>
         <file>vectors/msg_critical.svg</file>
         <file>vectors/msg_about.svg</file>
+        <file>vectors/fit_to_screen.svg</file>
 
     </qresource>
 </RCC>

@@ -102,7 +102,7 @@ class TypicalSectionDetailsTab(QWidget):
         self._last_girders_value: int | None = None
         self.crash_barrier_count = 2  # Assume two crash barriers at carriageway edges
         self.overall_bridge_width_formula = (
-            "OverallBridgeWidth = CrossSectionLayout.total_width = CarriagewayWidth + "
+            "OverallBridgeWidth = CrossSectionLayout.total_width = (2 x CarriagewayWidth if Median else CarriagewayWidth) + "
             "2 x CrashBarrierWidth + MedianWidth + (NoOfFootpaths x FootpathWidth) + "
             "(NoOfFootpaths x RailingWidth)"
         )
@@ -326,6 +326,19 @@ class TypicalSectionDetailsTab(QWidget):
 
         params = {}
 
+        # Carriageway Width (always needed for overall width calculation in CAD)
+        if hasattr(self, "carriageway_width"):
+            params['carriageway_width'] = float(self.carriageway_width) * 1000
+
+        # Footpath Config
+        if hasattr(self, "footpath_value"):
+            fp_map = {
+                "Both Sides": "both",
+                "Single Side": "left",
+                "None": "none"
+            }
+            params['footpath_config'] = fp_map.get(self.footpath_value, "none")
+
         if hasattr(self, "no_of_girders") and self.no_of_girders.text():
             params['num_girders'] = int(float(self.no_of_girders.text()))
 
@@ -381,7 +394,7 @@ class TypicalSectionDetailsTab(QWidget):
             params["railing_type"] = self.railing_type.currentText()
 
         if hasattr(self, "railing_width") and self.railing_width.text():
-            params["railing_width"] = float(self.railing_width.text()) * 1000
+            params["railing_width"] = float(self.railing_width.text())
 
         if hasattr(self, "railing_height") and self.railing_height.text():
             params["railing_height"] = float(self.railing_height.text()) * 1000
@@ -440,9 +453,9 @@ class TypicalSectionDetailsTab(QWidget):
         return params
 
     def _get_footpath_count(self):
-        if self.footpath_value == "Both":
+        if self.footpath_value == "Both Sides":
             return 2
-        if self.footpath_value == "Single Sided":
+        if self.footpath_value == "Single Side":
             return 1
         return 0
 

@@ -6,8 +6,8 @@ Author: Arushi
 
 import math
 from PySide6.QtWidgets import QWidget, QPushButton, QScrollArea
-from PySide6.QtCore import Qt, QRectF, QPointF, QTimer
-from PySide6.QtGui import QPainter, QPen, QColor, QFont, QBrush, QPolygonF
+from PySide6.QtCore import Qt, QRectF, QPointF, QTimer, QSize
+from PySide6.QtGui import QPainter, QPen, QColor, QFont, QBrush, QPolygonF, QIcon
 from .cad_cross_section import CrossSectionCADWidget
 
 # ---- CAD Grey Palette ----
@@ -146,21 +146,24 @@ class TopViewCADWidget(QWidget):
         """)
         self.zoom_out_btn.clicked.connect(self.zoom_out)
         
-        self.zoom_reset_btn = QPushButton("Reset", self)
-        self.zoom_reset_btn.setFixedSize(45, 25)
+        self.zoom_reset_btn = QPushButton(self)
+        self.zoom_reset_btn.setFixedSize(25, 25)
+        self.zoom_reset_btn.setIcon(QIcon(":/vectors/fit_to_screen.svg"))
+        self.zoom_reset_btn.setIconSize(QSize(25, 25))
+        self.zoom_reset_btn.setToolTip("Fit to screen")
         self.zoom_reset_btn.setStyleSheet("""
             QPushButton {
                 background-color: rgba(255, 255, 255, 200);
-                border: 1px solid #999;
-                border-radius: 3px;
-                font-size: 9px;
+                font-size: 14px;
+                font-weight: bold;
+                border: None;
             }
             QPushButton:hover {
-                background-color: rgba(144, 175, 19, 200);
+                background-color: rgba(55, 55, 55, 50);
                 color: white;
             }
         """)
-        self.zoom_reset_btn.clicked.connect(self.zoom_reset)
+        self.zoom_reset_btn.clicked.connect(self.fit_to_screen)
         
         # Set minimum size for visibility (reduced for better shrinking)
         self.setMinimumSize(400, 300)
@@ -168,10 +171,10 @@ class TopViewCADWidget(QWidget):
     def showEvent(self, event):
         """Standardize size and center after widget is shown"""
         super().showEvent(event)
+        # DEFAULT: Fit to Screen on startup
+        QTimer.singleShot(200, self.fit_to_screen)
         # Position zoom buttons
         self._position_zoom_buttons()
-        # Single-shot timer to center after layout is complete
-        QTimer.singleShot(200, self.zoom_reset)
     
     def zoom_in(self):
         """Zoom in while keeping view centered"""
@@ -199,19 +202,78 @@ class TopViewCADWidget(QWidget):
         # Restore center position after zoom
         self._set_scroll_center(old_center, 1/1.1)
 
-    def zoom_reset(self):
-        """Reset zoom to 1.0 while keeping view centered"""
-        # Store old center position before zoom
-        old_center = self._get_scroll_center()
-        zoom_ratio = 1.0 / self.zoom_level
+    def compute_fit_zoom(self, mode="full"):
+        """
+        Compute zoom level. 
+        mode="full" -> content fits both width and height (min(scale_x, scale_y))
+        mode="height" -> content fits only height (unconstrained width)
+        """
+        span_length = max(self.params.get('span_length', 35000), 1.0)
+        n = self.params.get('num_girders', 4)
+        if n > 1:
+            total_model_width = (n - 1) * self.params.get('girder_spacing', 2750) + 2 * self.params.get('deck_overhang', 1000)
+        else:
+            total_model_width = 2 * self.params.get('deck_overhang', 1000)
+        total_model_width = max(total_model_width, 1.0)
+
+        # Base dimensions from draw_top_view
+        base_w, base_h = 900, 750
+        margin = 60
+        avail_base_w = base_w - 2 * margin
+        avail_base_h = base_h - 2 * margin - 60
         
-        # Apply zoom
-        self.zoom_level = 1.0
+        base_scale_x = avail_base_w / span_length
+        base_scale_y = avail_base_h / total_model_width
+        base_scale = min(base_scale_x, base_scale_y)
+
+        if base_scale <= 0:
+            return 1.0
+
+        # Viewport dimensions
+        if self.scroll_area and self.scroll_area.viewport():
+            vp = self.scroll_area.viewport()
+            vp_w, vp_h = max(vp.width(), 200), max(vp.height(), 150)
+        else:
+            vp_w, vp_h = max(self.width(), 400), max(self.height(), 300)
+
+        # Apply padding (~8%)
+        PADDING = 0.15
+        avail_vp_w = vp_w * (1.0 - 2 * PADDING)
+        avail_vp_h = vp_h * (1.0 - 2 * PADDING)
+
+        target_scale_x = avail_vp_w / span_length
+        target_scale_y = avail_vp_h / total_model_width
+        
+        if mode == "height":
+            target_scale = target_scale_y
+        else:
+            target_scale = min(target_scale_x, target_scale_y)
+        
+        fit_zoom = target_scale / base_scale
+        return max(0.1, min(fit_zoom, 10.0))
+
+    def fit_to_screen(self):
+        """Scale the diagram so it fits perfectly inside the visible viewport and center it."""
+        self.zoom_level = self.compute_fit_zoom(mode="full")
         self._update_widget_size()
         self.update()
-        
-        # Restore center position after zoom
-        self._set_scroll_center(old_center, zoom_ratio)
+        self._center_scroll_bars()
+
+    def zoom_reset(self):
+        """Standard behavior: Fit to height only."""
+        self.zoom_level = self.compute_fit_zoom(mode="height")
+        self._update_widget_size()
+        self.update()
+        # Center the scrollbars after size update
+        QTimer.singleShot(50, self._center_scroll_bars)
+
+    def _center_scroll_bars(self):
+        """Center the scrollbars of the parent scroll area."""
+        if self.scroll_area:
+            h_bar = self.scroll_area.horizontalScrollBar()
+            v_bar = self.scroll_area.verticalScrollBar()
+            h_bar.setValue((h_bar.minimum() + h_bar.maximum()) // 2)
+            v_bar.setValue((v_bar.minimum() + v_bar.maximum()) // 2)
 
     def _get_scroll_center(self):
         """Get the current center point of the visible viewport in widget coordinates"""
@@ -280,10 +342,38 @@ class TopViewCADWidget(QWidget):
         """Update widget size based on zoom level for proper scrolling"""
         base_width = 800
         base_height = 600
-        # Add extra padding (20%) to ensure scrollbar reaches beyond content
-        padding_factor = 1.2
-        new_width = int(base_width * self.zoom_level * padding_factor)
-        new_height = int(base_height * self.zoom_level)
+        
+        # Calculate content width at current zoom level to allow horizontal scrolling
+        span_length = max(self.params.get('span_length', 35000), 1.0)
+        n = self.params.get('num_girders', 4)
+        if n > 1:
+            total_model_width = (n - 1) * self.params.get('girder_spacing', 2750) + 2 * self.params.get('deck_overhang', 1000)
+        else:
+            total_model_width = 2 * self.params.get('deck_overhang', 1000)
+        total_model_width = max(total_model_width, 1.0)
+
+        base_w_internal, base_h_internal = 900, 750
+        margin = 60
+        avail_base_w = base_w_internal - 2 * margin
+        avail_base_h = base_h_internal - 2 * margin - 60
+        
+        base_scale_x = avail_base_w / span_length
+        base_scale_y = avail_base_h / total_model_width
+        base_scale = min(base_scale_x, base_scale_y)
+        
+        current_scale = self.zoom_level * base_scale
+        content_width_px = span_length * current_scale + 2 * margin
+        
+        # The widget should be at least as wide/high as its viewport OR content dimensions
+        if self.scroll_area and self.scroll_area.viewport():
+            vp = self.scroll_area.viewport()
+            vp_w, vp_h = vp.width(), vp.height()
+        else:
+            vp_w, vp_h = base_width, base_height
+            
+        new_width = int(max(vp_w, content_width_px + 50))
+        new_height = int(max(vp_h, base_height * self.zoom_level))
+        
         self.setMinimumSize(new_width, new_height)
         self.resize(new_width, new_height)
     
@@ -332,7 +422,7 @@ class TopViewCADWidget(QWidget):
         
         self.zoom_in_btn.move(int(x + 10), int(y))
         self.zoom_out_btn.move(int(x + 10), int(y + 30))
-        self.zoom_reset_btn.move(int(x), int(y + 60))
+        self.zoom_reset_btn.move(int(x + 10), int(y + 60))
         
         # Ensure buttons are visible on top
         self.zoom_in_btn.show()
@@ -362,6 +452,7 @@ class TopViewCADWidget(QWidget):
             self.show_carriageway_values = True
 
         self.show_dimensions = True
+        self.zoom_reset() # Auto-fit height on parameter change
         self.update()
     
     def mouseMoveEvent(self, event):

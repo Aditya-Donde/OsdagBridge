@@ -7,7 +7,8 @@ Author: Arushi
 import math
 from PySide6.QtWidgets import QWidget, QPushButton, QScrollArea
 from PySide6.QtCore import Qt, QRectF, QPointF, QTimer
-from PySide6.QtGui import QPainter, QPen, QColor, QFont, QBrush, QPolygonF
+from PySide6.QtGui import QPainter, QPen, QColor, QFont, QBrush, QPolygonF, QIcon
+from PySide6.QtCore import Qt, QRectF, QPointF, QTimer, QSize
 from PySide6.QtGui import QPixmap
 from osdagbridge.desktop.cad.irc5_geometry import (
     CrashBarrierGeometry,
@@ -171,21 +172,24 @@ class CrossSectionCADWidget(QWidget):
         self.zoom_out_btn.clicked.connect(self.zoom_out)
         self.zoom_out_btn.hide()  # Hide initially
         
-        self.zoom_reset_btn = QPushButton("Reset", self)
-        self.zoom_reset_btn.setFixedSize(45, 25)
+        self.zoom_reset_btn = QPushButton(self)
+        self.zoom_reset_btn.setFixedSize(25, 25)
+        self.zoom_reset_btn.setIcon(QIcon(":/vectors/fit_to_screen.svg"))
+        self.zoom_reset_btn.setIconSize(QSize(25, 25))
+        self.zoom_reset_btn.setToolTip("Fit to screen")
         self.zoom_reset_btn.setStyleSheet("""
             QPushButton {
                 background-color: rgba(255, 255, 255, 200);
-                border: 1px solid #999;
-                border-radius: 3px;
-                font-size: 9px;
+                font-size: 14px;
+                font-weight: bold;
+                border: None;
             }
             QPushButton:hover {
-                background-color: rgba(144, 175, 19, 200);
+                background-color: rgba(55, 55, 55, 50);
                 color: white;
             }
         """)
-        self.zoom_reset_btn.clicked.connect(self.zoom_reset)
+        self.zoom_reset_btn.clicked.connect(self.fit_to_screen)
         self.zoom_reset_btn.hide()  # Hide initially
         
         # Set minimum size for visibility
@@ -231,7 +235,7 @@ class CrossSectionCADWidget(QWidget):
 
         self.zoom_in_btn.move(x + 10, y)
         self.zoom_out_btn.move(x + 10, y + 30)
-        self.zoom_reset_btn.move(x, y + 60)
+        self.zoom_reset_btn.move(x+10, y + 60)
 
         # Ensure buttons are visible and on top
         self.zoom_in_btn.show()
@@ -260,8 +264,8 @@ class CrossSectionCADWidget(QWidget):
         if not is_preview:
             # Position zoom buttons
             self._position_zoom_buttons()
-            # Single-shot timer to center after layout is complete
-            QTimer.singleShot(200, self.zoom_reset)
+            # DEFAULT: Fit to Screen on startup
+            QTimer.singleShot(200, self.fit_to_screen)
     
     def zoom_in(self):
         """Zoom in while keeping view centered"""
@@ -289,19 +293,75 @@ class CrossSectionCADWidget(QWidget):
         # Restore center position after zoom
         self._set_scroll_center(old_center, 1/1.1)
 
-    def zoom_reset(self):
-        """Reset zoom to 1.0 while keeping view centered"""
-        # Store old center position before zoom
-        old_center = self._get_scroll_center()
-        zoom_ratio = 1.0 / self.zoom_level
+    def compute_fit_zoom(self, mode="full"):
+        """
+        Compute zoom level. 
+        mode="full" -> content fits both width and height (min(scale_x, scale_y))
+        mode="height" -> content fits only height (unconstrained width)
+        """
+        total_deck_width, _ = self.compute_deck_total_width()
         
-        # Apply zoom
-        self.zoom_level = 1.0
+        # Denominator for height fit (matches draw_cross_section logic)
+        model_h = (self.girder['depth'] * self.girder_visual_scale['depth'] +
+                   self.params['deck_thickness'] +
+                   self.params['footpath_thickness'] + 800)
+        
+        # Base dimensions Used in draw_cross_section when zoom=1.0
+        base_w, base_h = 1000, 600
+        margin_x, margin_y = 80, 80
+        avail_base_w = base_w - 2 * margin_x
+        avail_base_h = base_h - 2 * margin_y - 80
+        
+        base_scale_x = avail_base_w / total_deck_width
+        base_scale_y = avail_base_h / model_h
+        base_scale = min(base_scale_x, base_scale_y)
+        
+        if base_scale <= 0: return 1.0
+
+        # Viewport dimensions
+        if self.scroll_area and self.scroll_area.viewport():
+            vp = self.scroll_area.viewport()
+            vp_w, vp_h = max(vp.width(), 200), max(vp.height(), 150)
+        else:
+            vp_w, vp_h = max(self.width(), 400), max(self.height(), 300)
+
+        # Apply padding (15%)
+        PADDING = 0.15
+        avail_vp_w = vp_w * (1.0 - 2 * PADDING)
+        avail_vp_h = vp_h * (1.0 - 2 * PADDING)
+
+        target_scale_x = avail_vp_w / total_deck_width
+        target_scale_y = avail_vp_h / model_h
+        
+        if mode == "height":
+            target_scale = target_scale_y
+        else:
+            target_scale = min(target_scale_x, target_scale_y)
+            
+        return target_scale / base_scale
+
+    def fit_to_screen(self):
+        """Scale the diagram so it fits perfectly inside the visible viewport and center it."""
+        self.zoom_level = self.compute_fit_zoom(mode="full")
         self._update_widget_size()
         self.update()
-        
-        # Restore center position after zoom
-        self._set_scroll_center(old_center, zoom_ratio)
+        self._center_scroll_bars()
+
+    def zoom_reset(self):
+        """Standard behavior: Fit to height only."""
+        self.zoom_level = self.compute_fit_zoom(mode="height")
+        self._update_widget_size()
+        self.update()
+        # Center the scrollbars after size update
+        QTimer.singleShot(50, self._center_scroll_bars)
+
+    def _center_scroll_bars(self):
+        """Center the scrollbars of the parent scroll area."""
+        if self.scroll_area:
+            h_bar = self.scroll_area.horizontalScrollBar()
+            v_bar = self.scroll_area.verticalScrollBar()
+            h_bar.setValue((h_bar.minimum() + h_bar.maximum()) // 2)
+            v_bar.setValue((v_bar.minimum() + v_bar.maximum()) // 2)
 
     def _get_scroll_center(self):
         """Get the current center point of the visible viewport in widget coordinates"""
@@ -376,12 +436,43 @@ class CrossSectionCADWidget(QWidget):
             # The preview widget will conform to the dialog's layout
             return
 
-        base_width = 1200
-        base_height = 800
-        # Add extra padding (20%) to ensure scrollbar reaches beyond content
-        padding_factor = 1.2
-        new_width = int(base_width * self.zoom_level * padding_factor)
-        new_height = int(base_height * self.zoom_level)
+        base_width = 1000
+        base_height = 600
+        
+        # For height-only zoom, we need to ensure the widget is wide enough to contain the content
+        total_deck_width, _ = self.compute_deck_total_width()
+        
+        # Calculate content width at current zoom level
+        # Scale logic: width = base_width * zoom_level, scale_x = (width - 160) / total_deck_width
+        # scale_y = (height - 240) / model_h
+        # So content_width_px = total_deck_width * scale = total_deck_width * (target_scale)
+        # target_scale = zoom_level * base_scale
+        
+        model_h = (self.girder['depth'] * self.girder_visual_scale['depth'] +
+                   self.params['deck_thickness'] +
+                   self.params['footpath_thickness'] + 800)
+        
+        margin_x, margin_y = 80, 80
+        avail_base_w = base_width - 2 * margin_x
+        avail_base_h = base_height - 2 * margin_y - 80
+        
+        base_scale_x = avail_base_w / total_deck_width
+        base_scale_y = avail_base_h / model_h
+        base_scale = min(base_scale_x, base_scale_y)
+        
+        current_scale = self.zoom_level * base_scale
+        content_width_px = total_deck_width * current_scale + 2 * margin_x
+        
+        # The widget should be at least as wide/high as its viewport OR content dimensions
+        if self.scroll_area and self.scroll_area.viewport():
+            vp = self.scroll_area.viewport()
+            vp_w, vp_h = vp.width(), vp.height()
+        else:
+            vp_w, vp_h = base_width, base_height
+
+        new_width = int(max(vp_w, content_width_px + 50))
+        new_height = int(max(vp_h, base_height * self.zoom_level))
+        
         self.setMinimumSize(new_width, new_height)
         self.resize(new_width, new_height)
     
@@ -409,6 +500,7 @@ class CrossSectionCADWidget(QWidget):
             self.median_type = params["median_type"]
 
         self.show_dimensions = True
+        self.zoom_reset() # Auto-fit height on parameter change
         self.update()
     
     def mouseMoveEvent(self, event):
@@ -1268,8 +1360,8 @@ class CrossSectionCADWidget(QWidget):
             width = self.width()
             height = self.height()
         else:
-            base_width = 1200
-            base_height = 800
+            base_width = 1000
+            base_height = 600
             width = base_width * self.zoom_level
             height = base_height * self.zoom_level
 
@@ -1286,7 +1378,7 @@ class CrossSectionCADWidget(QWidget):
         scale_x = (width - 2 * margin_x) / total_deck_width
         scale_y = (height - 2 * margin_y - (40 if is_preview else 80)) / (self.girder['depth'] * self.girder_visual_scale['depth'] +
                                                 self.params['deck_thickness'] +
-                                                self.params['footpath_thickness'] + 1500)
+                                                self.params['footpath_thickness'] + 800)
         
         scale = min(scale_x, scale_y)
         
@@ -2648,4 +2740,3 @@ class CrossSectionCADWidget(QWidget):
             hover_rect = QRectF(x - assembly_width, assembly_top_y, abs(assembly_width), assembly_bottom_y - assembly_top_y)
             
         self.cross_section_hover_zones.append((hover_rect, 'crash_barrier'))
-

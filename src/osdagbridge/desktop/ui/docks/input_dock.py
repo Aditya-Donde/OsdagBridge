@@ -1570,8 +1570,6 @@ class InputDock(QWidget):
             except ValueError:
                 width = min_width
         width = max(min_width, min(width, max_width))
-        if self._is_median_included():
-            return width * 2.0  # Two carriageways, one on each side of the median
         return width
 
     def _is_median_included(self):
