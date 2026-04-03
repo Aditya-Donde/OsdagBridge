@@ -446,11 +446,18 @@ class AdditionalInputs(QDialog):
         Data will be collected by template_page via get_all_values().
         """
         self.accept()
-  
+    
+    
     def get_all_values(self):
         """
-        Return CAD-relevant numeric values from Additional Inputs.
-        This is consumed by InputDock / template_page.
+        @author: Faizan
+        Collect and return all CAD-relevant numeric parameters from the
+        Typical Section Details tab.
+
+        Includes values such as girder spacing, deck thickness, crash barrier,
+        railing, median, wearing course, and cross bracing spacing.
+
+        Used by InputDock to update and redraw the CAD cross-section.
         """
 
         from osdagbridge.core.utils.common import (
@@ -685,26 +692,26 @@ class AdditionalInputs(QDialog):
 
 
 
-    # 2D CAD functions for tab enabling and disabling inside the addition inputs dialog    ---> starts here 
-    # Tab visibility helpers
     def _find_inner_tab_index(self, tab_widget, tab_name: str) -> int:
-        """Return the index of an inner tab by its label, or -1 if not found."""
+        """
+        @author: Faizan
+        Return the index of an inner tab by its label, or -1 if not found.
+        """
         for i in range(tab_widget.count()):
             if tab_widget.tabText(i).strip().lower() == tab_name.strip().lower():
                 return i
         return -1
 
     def apply_tab_visibility(self, footpath_value: str, include_median: str) -> None:
-        """Disable inner sub-tabs based on the current Input Dock selections.
+        """
+        @author: Faizan
+        Enable or disable Railing and Median sub-tabs based on user selections.
 
-        Rules:
-        - Railing tab  → disabled when footpath_value == "None"
-          (no footpath means no railing is needed)
-        - Median tab   → disabled when include_median == "No"
-          (median excluded by the user)
+        - Railing tab is enabled only if footpath is present.
+        - Median tab is enabled only if median is included.
 
-        This method is called once right after the dialog is created, so the
-        disabled state is visible from the moment the user opens the dialog.
+        After updating tab visibility, the CAD cross-section preview is
+        refreshed to reflect the changes immediately.
         """
         inner_tabs = self.typical_section_tab.input_tabs
 
@@ -724,14 +731,20 @@ class AdditionalInputs(QDialog):
         if hasattr(self.typical_section_tab, "_update_cad_preview"):
             self.typical_section_tab._update_cad_preview()
             
-    # 2D CAD functions for tab enabling and disabling inside the addition inputs dialog    ---> ends here 
 
-       
 
     def update_footpath_value(self, footpath_value):
-        """Update footpath value across all tabs"""
+        """
+        @author: Faizan
+        Update the footpath configuration across UI and CAD preview.
+
+        Propagates the selected footpath value from the Input Dock to the
+        Typical Section tab, ensuring the CAD cross-section preview updates
+        accordingly (e.g., both sides, left only, or none).
+        """
         self.footpath_value = footpath_value
         self.typical_section_tab.update_footpath_value(footpath_value)
+
 
     def update_project_location(self, location_data):
         """Update dependent tabs when project location changes"""
@@ -800,10 +813,13 @@ class AdditionalInputs(QDialog):
         return self._last_saved_data.copy()
     
     def set_properties_data(self, data: dict) -> None:
-        """Restore properties data from a previous save.
-        
-        Args:
-            data: Dictionary containing properties to restore.
+        """
+        @author: Faizan
+        Restore previously saved UI and CAD properties across all tabs.
+
+        This method repopulates dialog fields (e.g., girder spacing, deck
+        thickness, barrier/railing/median settings) using saved data so that
+        the UI and CAD preview resume from the last known state.
         """
 
         tabs = [

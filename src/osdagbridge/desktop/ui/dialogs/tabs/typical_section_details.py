@@ -321,6 +321,15 @@ class TypicalSectionDetailsTab(QWidget):
             pass
         
     def _update_cad_preview(self):
+        """
+        @author: Faizan
+        Collect all current UI field values — girder count, girder spacing,
+        deck overhang, deck thickness etc.
+        — convert units to millimetres where required, and push the assembled
+        params dict to CrossSectionCADWidget.update_params() to trigger an
+        immediate redraw of the 2D cross-section.
+        """
+
         if not hasattr(self, 'cad_preview'):
             return
 
@@ -415,6 +424,17 @@ class TypicalSectionDetailsTab(QWidget):
         print(f"params: {params}")
             
     def get_typical_section_params(self) -> dict:
+
+        """
+        @author: Faizan
+
+        Reads and returns the current Typical Section parameters from the UI,
+        including crash barrier, median, and railing properties, as a dictionary
+        (dimensions in mm).
+
+        The returned values are consistent with those used in
+        _update_cad_preview().
+        """
         params = {}
 
         # ---- Crash Barrier ----

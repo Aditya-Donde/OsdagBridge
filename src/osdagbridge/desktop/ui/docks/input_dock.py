@@ -210,7 +210,13 @@ class InputDock(QWidget):
     
     # Collect all the input dock data to update 2D Cad
     def get_all_input_values(self):
-        """Collect all input values from the input dock"""
+
+        """
+        @author: Faizan
+        Collect all input dock values needed by the homepage CAD cross-section.
+        Merges basic inputs with Additional Inputs dialog values and seeds
+        safe defaults for any CAD parameter not yet entered by the user.
+        """
         input_values = {}
         
         # Helper function to safely get numeric value
@@ -295,7 +301,12 @@ class InputDock(QWidget):
         return input_values
     
     def emit_value_changed(self):
-        """Emit signal to notify that input values have changed"""
+        """
+        @author: Faizan
+        Emit input_value_changed to trigger a homepage CAD redraw.
+        Connected to every basic input field's change signal so the
+        cross-section updates instantly on every user edit.
+        """
         self.input_value_changed.emit()
 
     def toggle_input_dock(self):
@@ -743,7 +754,15 @@ class InputDock(QWidget):
         self._debug_dump_final_inputs(self._final_inputs_saved_list)
     
     def _show_additional_inputs_dialog(self, target_tab_name=None):
-        """Show Additional Inputs dialog and optionally focus a specific top-level tab."""
+        """
+        @author: Faizan
+        Create the AdditionalInputs dialog, passing current footpath,
+        carriageway width, and live homepage CAD state as initial_cad_state
+        so the dialog preview starts in sync with the homepage cross-section.
+        Restores previously saved dialog state and connects save_button to
+        _update_cad_from_additional_inputs.
+        """
+
         footpath_value = self.footpath_combo.currentText() if self.footpath_combo else "None"
         
         carriageway_width = self._get_effective_carriageway_width()
@@ -814,7 +833,12 @@ class InputDock(QWidget):
             self._update_cad_from_additional_inputs(dialog)
 
     def _update_cad_from_additional_inputs(self, dialog):
-        """Update homepage CAD using values from the Additional Inputs dialog."""
+        """
+        @author: Faizan
+        Read all values from the Additional Inputs dialog after save, merge
+        them into additional_input_values, and emit input_value_changed to
+        trigger a homepage CAD redraw with the updated parameters.
+        """
         if not dialog:
             return
         values = dialog.get_all_values()
