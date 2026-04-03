@@ -445,7 +445,7 @@ class TypicalSectionDetailsTab(QWidget):
             params["railing_type"] = self.railing_type.currentText()
 
         if hasattr(self, "railing_width") and self.railing_width.text():
-            params["railing_width"] = float(self.railing_width.text()) * 1000
+            params["railing_width"] = float(self.railing_width.text())
 
         if hasattr(self, "railing_height") and self.railing_height.text():
             params["railing_height"] = float(self.railing_height.text()) * 1000
@@ -1336,7 +1336,7 @@ class TypicalSectionDetailsTab(QWidget):
 
         if geom:
             if "width" in geom:
-                _set(self.railing_width, f"{geom['width'] / 1000:.2f}")
+                _set(self.railing_width, f"{geom['width']:.0f}")
 
             if "height" in geom:
                 _set(self.railing_height, f"{geom['height'] / 1000:.2f}")

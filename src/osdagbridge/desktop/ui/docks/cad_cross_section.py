@@ -470,12 +470,14 @@ class CrossSectionCADWidget(QWidget):
         else:
             vp_w, vp_h = base_width, base_height
 
-        new_width = int(max(vp_w, content_width_px + 50))
+        content_width_px = base_width * self.zoom_level
+
+        new_width = int(max(vp_w, content_width_px * 1.2))  # extra buffer
         new_height = int(max(vp_h, base_height * self.zoom_level))
-        
+
         self.setMinimumSize(new_width, new_height)
         self.resize(new_width, new_height)
-    
+
     def resizeEvent(self, event):
         """Position zoom controls in top-right corner"""
         super().resizeEvent(event)
@@ -1755,7 +1757,11 @@ class CrossSectionCADWidget(QWidget):
 
             # Geometry vector (true bracing direction)
             dx = x2 - x1
-            thickness = 3.5 * (self.zoom_level / 1.2)
+            if is_preview:
+                # scale for preview to stay proportional to bridge size
+                thickness = max(1.2, (10 * scale * self.girder_visual_scale['web_thickness'])) * (self.zoom_level / 1.2)
+            else:
+                thickness = 3.5 * (self.zoom_level / 1.2)
 
             # ===== CROSS BRACING (\) =====
             dy_bs = bottom_R - top_L
