@@ -296,7 +296,6 @@ class InputDock(QWidget):
         if hasattr(self, 'additional_input_values') and self.additional_input_values:
             input_values.update(self.additional_input_values)
 
-        print(f"input_values: {input_values}")
         
         return input_values
     

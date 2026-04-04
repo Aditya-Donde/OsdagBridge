@@ -117,10 +117,12 @@ class TopViewCADWidget(QWidget):
         self.zoom_in_btn.setStyleSheet("""
             QPushButton {
                 background-color: rgba(255, 255, 255, 200);
+                color: #333333;
                 border: 1px solid #999;
                 border-radius: 3px;
                 font-size: 14px;
                 font-weight: bold;
+                padding: 0;
             }
             QPushButton:hover {
                 background-color: rgba(144, 175, 19, 200);
@@ -134,10 +136,12 @@ class TopViewCADWidget(QWidget):
         self.zoom_out_btn.setStyleSheet("""
             QPushButton {
                 background-color: rgba(255, 255, 255, 200);
+                color: #333333;
                 border: 1px solid #999;
                 border-radius: 3px;
                 font-size: 14px;
                 font-weight: bold;
+                padding: 0;
             }
             QPushButton:hover {
                 background-color: rgba(144, 175, 19, 200);
@@ -154,9 +158,11 @@ class TopViewCADWidget(QWidget):
         self.zoom_reset_btn.setStyleSheet("""
             QPushButton {
                 background-color: rgba(255, 255, 255, 200);
+                color: #333333;
                 font-size: 14px;
                 font-weight: bold;
                 border: None;
+                padding: 0;
             }
             QPushButton:hover {
                 background-color: rgba(55, 55, 55, 50);
@@ -484,6 +490,8 @@ class TopViewCADWidget(QWidget):
                               bg_color=QColor(255, 255, 255, 230), 
                               text_color=QColor(0, 0, 0), font_size=9, bold=False):
 
+        # defensive check: font size must be > 0
+        font_size = max(1, font_size)
         font_weight = QFont.Bold if bold else QFont.Normal
         font = QFont('Arial', font_size, font_weight)
         painter.setFont(font)

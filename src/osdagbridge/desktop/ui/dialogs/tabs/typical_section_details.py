@@ -421,7 +421,6 @@ class TypicalSectionDetailsTab(QWidget):
 
         
 
-        print(f"params: {params}")
             
     def get_typical_section_params(self) -> dict:
 

@@ -141,10 +141,12 @@ class CrossSectionCADWidget(QWidget):
         self.zoom_in_btn.setStyleSheet("""
             QPushButton {
                 background-color: rgba(255, 255, 255, 200);
+                color: #333333;
                 border: 1px solid #999;
                 border-radius: 3px;
                 font-size: 14px;
                 font-weight: bold;
+                padding: 0;
             }
             QPushButton:hover {
                 background-color: rgba(144, 175, 19, 200);
@@ -159,10 +161,12 @@ class CrossSectionCADWidget(QWidget):
         self.zoom_out_btn.setStyleSheet("""
             QPushButton {
                 background-color: rgba(255, 255, 255, 200);
+                color: #333333;
                 border: 1px solid #999;
                 border-radius: 3px;
                 font-size: 14px;
                 font-weight: bold;
+                padding: 0;
             }
             QPushButton:hover {
                 background-color: rgba(144, 175, 19, 200);
@@ -180,9 +184,11 @@ class CrossSectionCADWidget(QWidget):
         self.zoom_reset_btn.setStyleSheet("""
             QPushButton {
                 background-color: rgba(255, 255, 255, 200);
+                color: #333333;
                 font-size: 14px;
                 font-weight: bold;
                 border: None;
+                padding: 0;
             }
             QPushButton:hover {
                 background-color: rgba(55, 55, 55, 50);
@@ -260,8 +266,8 @@ class CrossSectionCADWidget(QWidget):
         super().showEvent(event)
         # Check if this is a preview
         is_preview = self.scale_factor < 1.0 if hasattr(self, 'scale_factor') else False
-        # Only show zoom buttons and center if NOT a preview
-        if not is_preview:
+        # Enable zoom buttons in regular view OR if it's the Additional Inputs preview (0.65)
+        if not is_preview or self.scale_factor == 0.65:
             # Position zoom buttons
             self._position_zoom_buttons()
             # DEFAULT: Fit to Screen on startup
@@ -431,9 +437,9 @@ class CrossSectionCADWidget(QWidget):
         # Check if this is a preview
         is_preview = self.scale_factor < 1.0 if hasattr(self, 'scale_factor') else False
         
-        if is_preview:
-            # For dialog previews, don't force a large minimum size
-            # The preview widget will conform to the dialog's layout
+        if is_preview and self.scale_factor != 0.65:
+            # For other previews (if any), don't force a large minimum size
+            # But for the 0.65 dialog preview, we allow resizing for zoom/scroll
             return
 
         base_width = 1000
@@ -533,6 +539,7 @@ class CrossSectionCADWidget(QWidget):
 
     def register_hover_label(self, x, y, text, bg_color, text_color, font_size=9):
         """lables for catching hover hovering"""
+        font_size = max(1, font_size)
         font = QFont('Arial', font_size, QFont.Bold)
         metrics = self.fontMetrics()
         text_rect = metrics.boundingRect(text)
@@ -568,9 +575,11 @@ class CrossSectionCADWidget(QWidget):
         finally:
             painter.end() 
     def draw_text_with_background(self, painter, x, y, text,
-                              bg_color=QColor(255, 255, 255, 230), 
-                              text_color=QColor(0, 0, 0), font_size=9, bold=False):
+                               bg_color=QColor(255, 255, 255, 230), 
+                               text_color=QColor(0, 0, 0), font_size=9, bold=False):
 
+        # defensive check: font size must be > 0
+        font_size = max(1, font_size)
         font_weight = QFont.Bold if bold else QFont.Normal
         font = QFont('Arial', font_size, font_weight)
         painter.setFont(font)
