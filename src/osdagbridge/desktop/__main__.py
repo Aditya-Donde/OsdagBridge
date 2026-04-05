@@ -1,4 +1,17 @@
 import sys
+import os
+
+os.environ["QT_OPENGL"] = "software"
+os.environ["QTWEBENGINE_CHROMIUM_FLAGS"] = (
+    "--ignore-gpu-blocklist "
+    "--enable-gpu-rasterization "
+    "--enable-webgl "
+    "--enable-transparent-visuals "
+    "--disable-software-rasterizer "
+    "--disable-gpu-driver-bug-workarounds "
+    "--use-angle=d3d11 "
+)
+
 from PySide6.QtWidgets import QApplication
 from PySide6.QtCore import QFile, QTextStream
 from osdagbridge.desktop.resources import resources_rc

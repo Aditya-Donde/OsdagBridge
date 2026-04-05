@@ -17,10 +17,11 @@ os.environ["QTWEBENGINE_CHROMIUM_FLAGS"] = (
 from PySide6.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QHBoxLayout,
     QLabel, QComboBox, QCheckBox, QTableWidget, QTableWidgetItem, 
-    QHeaderView, QPushButton, QDialog
+    QHeaderView, QPushButton, QDialog, QDoubleSpinBox
 )
+from PySide6.QtGui import QPalette
 from PySide6.QtWebEngineWidgets import QWebEngineView
-from PySide6.QtWebEngineCore import QWebEngineSettings
+from PySide6.QtWebEngineCore import QWebEngineSettings, QWebEnginePage
 from PySide6.QtCore import QUrl, Qt, QPoint, QObject, Slot, Signal
 from PySide6.QtWebChannel import QWebChannel
 
@@ -93,6 +94,11 @@ HTML_TEMPLATE = """
 </html>
 """
 
+class DebugWebPage(QWebEnginePage):
+    """Intercepts hidden browser errors and prints them to the Python terminal."""
+    def javaScriptConsoleMessage(self, level, message, lineNumber, sourceID):
+        print(f"[BROWSER ERROR] Line {lineNumber}: {message}")
+
 class BridgeBackend(QObject):
     """The QWebChannel translator between Python and JavaScript."""
     
@@ -161,14 +167,24 @@ class PlotWidget(QWidget):
         top = QHBoxLayout()
 
         # ---------- LOADCASE ----------
-        top.addWidget(QLabel("Load case:"))
+        lbl_load = QLabel("Load case:")
+        lbl_load.setStyleSheet("color: black; font-weight: bold; font-size: 12px;") # Force visibility!
+        top.addWidget(lbl_load)
+        
         self.combo = QComboBox()
+        self.combo.setMinimumWidth(150) # Stop it from vanishing when empty
+        self.combo.setStyleSheet("color: black; background-color: white; border: 1px solid gray;")
         self.combo.currentTextChanged.connect(self.update_plot)
         top.addWidget(self.combo)
 
         # ---------- FORCE ----------
-        top.addWidget(QLabel("Force:"))
+        lbl_force = QLabel("Force:")
+        lbl_force.setStyleSheet("color: black; font-weight: bold; font-size: 12px;") 
+        top.addWidget(lbl_force)
+        
         self.force_combo = QComboBox()
+        self.force_combo.setMinimumWidth(80) 
+        self.force_combo.setStyleSheet("color: black; background-color: white; border: 1px solid gray;")
         self.force_combo.addItems(list(FORCE_MAP.keys()))
         self.force_combo.setCurrentText("Vy")
         self.force_combo.currentTextChanged.connect(self.update_plot)
@@ -176,18 +192,47 @@ class PlotWidget(QWidget):
 
         # ---------- CONTOUR CHECKBOX ----------
         self.contour = QCheckBox("Contour (Moments only)")
+        self.contour.setStyleSheet("color: black; font-weight: bold;")
         self.contour.stateChanged.connect(self.update_plot)
         top.addWidget(self.contour)
+
+       # ---------- NEW: SCALE FACTOR ----------
+        lbl_scale = QLabel("Scale:")
+        lbl_scale.setStyleSheet("color: black; font-weight: bold; font-size: 12px;")
+        top.addWidget(lbl_scale)
+
+        self.scale_spinbox = QDoubleSpinBox()
+        self.scale_spinbox.setMinimumWidth(80)
+        self.scale_spinbox.setMinimumHeight(30)
         
+        # --- THE FIX: Use QPalette instead of setStyleSheet ---
+        # This keeps the text black but completely bypasses the CSS engine bug!
+        palette = self.scale_spinbox.palette()
+        palette.setColor(QPalette.Text, Qt.black)
+        palette.setColor(QPalette.ButtonText, Qt.black)
+        self.scale_spinbox.setPalette(palette)
+        # ------------------------------------------------------
+        
+        self.scale_spinbox.setRange(0.1, 50.0)    
+        self.scale_spinbox.setValue(1.0)          
+        self.scale_spinbox.setSingleStep(0.5)     
+        
+        self.scale_spinbox.valueChanged.connect(lambda _: self.update_plot())
+        top.addWidget(self.scale_spinbox)
+        # ---------------------------------------
+
         top.addStretch()
         layout.addLayout(top)
 
         # ---------- MAIN BROWSER AREA ----------
         self.web = QWebEngineView()
+        # debug page
+        self.debug_page = DebugWebPage(self.web)
+        self.web.setPage(self.debug_page)
         
         # Stops Qt from painting a blank background behind the web viewer
-        self.web.setAttribute(Qt.WA_OpaquePaintEvent)
-        self.web.setAttribute(Qt.WA_NoSystemBackground)
+        # self.web.setAttribute(Qt.WA_OpaquePaintEvent)
+        # self.web.setAttribute(Qt.WA_NoSystemBackground)
         self.web.page().setBackgroundColor(Qt.white)
 
         settings = self.web.settings()
@@ -218,6 +263,8 @@ class PlotWidget(QWidget):
         self.combo.addItems(loadcases)
         self.combo.blockSignals(False)
 
+        self.update_plot()
+
     def show_summary_dialog(self):
         """Pops up the dialog perfectly in the top-left corner of the web view."""
         if not self.stats_dict:
@@ -240,6 +287,8 @@ class PlotWidget(QWidget):
         force_key = self.force_combo.currentText()
         ds = self._ds_all.sel(Loadcase=loadcase)
 
+        scale_val = self.scale_spinbox.value()
+
         is_force = force_key.startswith("F") 
         is_moment = force_key.startswith("M") 
 
@@ -250,17 +299,17 @@ class PlotWidget(QWidget):
             self.contour.blockSignals(False)
             
             self.stats_dict = {}
-            plot_json = build_figure_sfd(ds, force_key, self._nodes, self._members)
+            plot_json = build_figure_sfd(ds, force_key, self._nodes, self._members, scale_val)
 
         elif is_moment:
             self.contour.setEnabled(True)
 
             if self.contour.isChecked():
-                plot_json = build_figure_bmd_contour(ds, force_key, self._nodes, self._members)
+                plot_json = build_figure_bmd_contour(ds, force_key, self._nodes, self._members, scale_val)
                 self.stats_dict = {}
             else:
-                plot_json, self.stats_dict = build_figure_bmd(ds, force_key, self._nodes, self._members)
-                
+                plot_json, self.stats_dict = build_figure_bmd(ds, force_key, self._nodes, self._members, scale_val)
+
                 if self.summary_dialog.isVisible():
                     self.summary_dialog.update_data(self.stats_dict)
 

@@ -111,7 +111,7 @@ def add_coordinate_triad(fig, nodes, scale=0.10):
 # ============================================================
 # SFD
 # ============================================================
-def build_figure_sfd(ds, force_key, nodes, members):
+def build_figure_sfd(ds, force_key, nodes, members, user_scale=1.0):
     def find_component(name):
         for c in ds["Component"].values:
             if c.lower() == name.lower():
@@ -178,6 +178,7 @@ def build_figure_sfd(ds, force_key, nodes, members):
             shear_scale = 1.0 if max(Vy) == 0 else 0.25 * abs((max(xs) - min(xs)) / max(Vy))
         else:
             shear_scale = 0.25 * abs((max(xs) - min(xs)) / (max(Vy) - min(Vy)))
+        shear_scale *= user_scale
 
         x_step = np.repeat(xs, 2)[1:-1]
         Vy_step = np.repeat(Vy[:-1], 2)
@@ -243,7 +244,7 @@ def build_figure_sfd(ds, force_key, nodes, members):
 # ============================================================
 # BMD
 # ============================================================
-def build_figure_bmd(ds, force_key, nodes, members):
+def build_figure_bmd(ds, force_key, nodes, members, user_scale=1.0):
     def find_component(name):
         for c in ds["Component"].values:
             if c.lower() == name.lower():
@@ -310,6 +311,7 @@ def build_figure_bmd(ds, force_key, nodes, members):
             factormz = 1.0 if max(mz) == 0 else 0.1 * abs((max(xs) - min(xs)) / max(mz))
         else:
             factormz = 0.1 * abs((max(xs) - min(xs)) / (max(mz) - min(mz)))
+        factormz *= user_scale
 
         y_plot = mz * factormz
 
@@ -418,7 +420,7 @@ def build_figure_bmd(ds, force_key, nodes, members):
 # ============================================================
 # BMD CONTOUR
 # ============================================================
-def build_figure_bmd_contour(ds, force_key, nodes, members):
+def build_figure_bmd_contour(ds, force_key, nodes, members, user_scale=1.0):
     def find_component(name):
         for c in ds["Component"].values:
             if c.lower() == name.lower():
@@ -486,6 +488,7 @@ def build_figure_bmd_contour(ds, force_key, nodes, members):
             moment_scale = 1.0 if max(mz) == 0 else 0.1 * abs((max(xs) - min(xs)) / max(mz))
         else:
             moment_scale = 0.1 * abs((max(xs) - min(xs)) / (max(mz) - min(mz)))
+        moment_scale *= user_scale
 
         y_plot = mz * moment_scale
 
