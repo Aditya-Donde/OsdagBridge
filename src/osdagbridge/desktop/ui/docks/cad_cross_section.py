@@ -984,6 +984,7 @@ class CrossSectionCADWidget(QWidget):
 
     def draw_rcc_railing(self, painter, x_start, y_base, scale, side='left', geo=None):
         """Draw standard RCC railing based on IRC diagrams"""
+        border_color = QColor(120, 120, 120)
         # Dimensions for RCC railing (mm)
         OUTER_WIDTH_MM = self.params.get('railing_width', 375)
         RAILING_HEIGHT_MM = self.params.get('railing_height', 1000)
@@ -1007,12 +1008,12 @@ class CrossSectionCADWidget(QWidget):
         corner_radius = min(outer_w * 0.05, 4)
         
         painter.setBrush(QBrush(QColor(220, 220, 220))) # Light grey base
-        painter.setPen(QPen(QColor(34, 34, 34), max(1.5, scale * 2)))
+        painter.setPen(QPen(border_color, max(1.5, scale * 2)))
         base_rect = QRectF(rect_x, base_top_y, outer_w, base_h)
         painter.drawRect(base_rect)
         
         painter.setBrush(QBrush(QColor(220, 220, 220))) # Light grey post body
-        painter.setPen(QPen(QColor(34, 34, 34), max(1.5, scale * 2)))
+        painter.setPen(QPen(border_color, max(1.5, scale * 2)))
         post_rect = QRectF(rect_x, post_top_y, outer_w, post_h)
         painter.drawRoundedRect(post_rect, corner_radius, corner_radius)
         
@@ -1032,7 +1033,7 @@ class CrossSectionCADWidget(QWidget):
             void_spacing = (inner_height - n_voids * void_h) / (n_voids + 1)
             
             painter.setBrush(QBrush(QColor(170, 170, 170))) # Dark grey
-            painter.setPen(QPen(QColor(30, 30, 30), max(1, scale)))
+            painter.setPen(QPen(QColor(130, 130, 130), max(1, scale)))
             
             for i in range(n_voids):
                 v_y = post_top_y + inner_top_margin + (i + 1) * void_spacing + i * void_h
@@ -1051,6 +1052,7 @@ class CrossSectionCADWidget(QWidget):
         - Steel posts: 150mm x 150mm
         - Steel rails: 40mm x 40mm (Top and Mid)
         """
+        border_color = QColor(120, 120, 120)
         RAILING_HEIGHT_MM = geo.get("height", 1100)
         BASE_HEIGHT_MM = geo.get("base_height", 100)
         BASE_WIDTH_MM = geo.get("base_width", 375)
@@ -1069,7 +1071,7 @@ class CrossSectionCADWidget(QWidget):
         
         # 1. Concrete Base
         painter.setBrush(QBrush(QColor(126, 126, 126)))
-        painter.setPen(QPen(QColor(34, 34, 34), max(1.5, scale * 2)))
+        painter.setPen(QPen(border_color, max(1.5, scale * 2)))
         base_rect = QRectF(rect_x, base_top_y, base_w, base_h)
         painter.drawRect(base_rect)
         
@@ -1079,7 +1081,7 @@ class CrossSectionCADWidget(QWidget):
         
         # Draw post outline only (no fill) so areas between rails are transparent
         painter.setBrush(Qt.NoBrush)
-        painter.setPen(QPen(QColor(30, 30, 30), max(1.5, scale * 2)))
+        painter.setPen(QPen(border_color, max(1.5, scale * 2)))
         post_rect = QRectF(post_x, railing_top_y, post_size, post_h)
         painter.drawRect(post_rect)
         
@@ -1099,6 +1101,7 @@ class CrossSectionCADWidget(QWidget):
 
     def draw_raised_kerb_median(self, painter, median_start_x, median_end_x, deck_top_y, scale, median_color, geo):
         """Draw Raised Kerb median (trapezoid shape)"""
+        border_color = QColor(120, 120, 120)
         h = geo.get("kerb_height", 225) * scale
         top_w = geo.get("kerb_top_width", 1200) * scale
         bottom_w = geo.get("kerb_bottom_width", 1200) * scale
@@ -1119,9 +1122,9 @@ class CrossSectionCADWidget(QWidget):
         if self.hovered_element == 'median':
             painter.setBrush(QBrush(QColor(255, 250, 220)))
         else:
-            painter.setBrush(QBrush(median_color))
+            painter.setBrush(self.concrete_brush)
             
-        painter.setPen(QPen(QColor(0, 0, 0), max(1.5, scale * 1.5)))
+        painter.setPen(QPen(border_color, max(1.5, scale * 1.5)))
         painter.drawPolygon(QPolygonF(points))
         
         hover_rect = QRectF(median_start_x, y_top, median_width_px, h)
@@ -1129,6 +1132,7 @@ class CrossSectionCADWidget(QWidget):
 
     def draw_rcc_barrier_median(self, painter, median_start_x, median_end_x, deck_top_y, scale, median_color, geo):
         """Draw two RCC crash barriers for median following standard shape"""
+        border_color = QColor(120, 120, 120)
         barrier_h_mm = geo.get("barrier_height", 900.0)
         bottom_w_mm = geo.get("bottom_width", 450.0)
         top_w_mm = geo.get("top_width", 175.0)
@@ -1150,9 +1154,9 @@ class CrossSectionCADWidget(QWidget):
         y_mid = y_bottom - mid_y_off
         y_top = y_bottom - h
         
-        barrier_brush = QBrush(QColor(255, 250, 220)) if self.hovered_element == 'median' else QBrush(QColor(220, 220, 220))
+        barrier_brush = QBrush(QColor(255, 250, 220)) if self.hovered_element == 'median' else self.concrete_brush
         painter.setBrush(barrier_brush)
-        painter.setPen(QPen(Qt.black, max(1.5, scale * 1.5)))
+        painter.setPen(QPen(border_color, max(1.5, scale * 1.5)))
         
         # LEFT assembly (faces LEFT)
         x_l = median_start_x + bottom_w
@@ -1177,6 +1181,7 @@ class CrossSectionCADWidget(QWidget):
 
     def draw_metallic_median(self, painter, median_start_x, median_end_x, deck_top_y, scale, median_color, geo):
         """Draw Metallic median with a common kerb base and beams on both sides"""
+        border_color = QColor(120, 120, 120)
         post_h_mm = geo.get("post_height", 950)
         n_beams = geo.get("w_beams", 1)
         median_width_mm = geo.get("median_width", 1200)
@@ -1195,7 +1200,7 @@ class CrossSectionCADWidget(QWidget):
         x_tr = x_tl + top_w
         
         painter.setBrush(QBrush(QColor(220, 220, 220)))
-        painter.setPen(QPen(Qt.black, max(1.0, scale)))
+        painter.setPen(QPen(border_color, max(1.0, scale)))
         painter.drawPolygon(QPolygonF([QPointF(x_bl, y_bottom), QPointF(x_br, y_bottom), QPointF(x_tr, y_top_kerb), QPointF(x_tl, y_top_kerb)]))
         
         post_w, post_offset = 150.0 * scale, 75.0 * scale
@@ -1220,7 +1225,7 @@ class CrossSectionCADWidget(QWidget):
 
             # Draw Post
             painter.setBrush(QBrush(post_color))
-            painter.setPen(QPen(Qt.black, 1))
+            painter.setPen(QPen(border_color, 1))
             painter.drawRect(QRectF(p_x, y_top_kerb - post_h, post_w, post_h))
             
             h_centers = [post_h_mm - 165] if n_beams == 1 else [post_h_mm - 165, post_h_mm - 165 - 145 - 330]
@@ -1434,6 +1439,17 @@ class CrossSectionCADWidget(QWidget):
         deck_start_x = center_x - (total_deck_width * scale) / 2
         deck_left_x = deck_start_x
         deck_right_x = deck_start_x + total_deck_width * scale
+
+       
+        deck_width_px = deck_right_x - deck_left_x
+        mid_x = (deck_left_x + deck_right_x) / 2
+
+        # 2% of half width
+        slope_height = 0.005 * (deck_width_px/2)
+
+        def slope_offset(x):
+            xi = (x - mid_x) / (deck_width_px / 2)   # normalize [-1,1]
+            return -slope_height * (1 - xi**2)      # parabola
         
         # Calculate all widths in pixels
         railing_width_px = self.params['railing_width'] * scale
@@ -1516,33 +1532,29 @@ class CrossSectionCADWidget(QWidget):
         deck_hovered = (self.hovered_element == 'deck')
         deck_color = QColor(240, 240, 240) if deck_hovered else CONCRETE_COLOR
         
-        painter.setPen(QPen(QColor(0, 0, 0), 2))
-        painter.setBrush(Qt.NoBrush)
-        painter.drawRect(QRectF(deck_slab_left, deck_top_y,
-                            deck_slab_right - deck_slab_left, deck_thick_px))
+      
         
-        # ---- DRAW FULL DECK SLAB (ONCE) ----
+        # ===== CURVED DECK SLAB =====
+        num_points = 50
+        top_pts = []
+        bottom_pts = []
+
+        for i in range(num_points + 1):
+            x = deck_slab_left + i * (deck_slab_right - deck_slab_left) / num_points
+            
+            y_top = deck_top_y + slope_offset(x)
+            y_bottom = deck_bottom_y
+
+            top_pts.append(QPointF(x, y_top))
+            bottom_pts.insert(0, QPointF(x, y_bottom))
+
+        deck_polygon = QPolygonF(top_pts + bottom_pts)
+
         painter.setBrush(self.concrete_brush)
         painter.setPen(Qt.NoPen)
-        painter.drawRect(QRectF(
-            deck_slab_left,
-            deck_top_y,
-            deck_slab_right - deck_slab_left,
-            deck_thick_px
-        ))
+        painter.drawPolygon(deck_polygon)
 
 
-        if median_present:
-            painter.setPen(QPen(QColor(0, 0, 0), 2))
-            painter.setBrush(Qt.NoBrush)
-            painter.drawRect(QRectF(deck_slab_left, deck_top_y,
-                                    deck_slab_right - deck_slab_left, deck_thick_px))
-
-        else:
-            painter.setBrush(self.concrete_brush)
-            painter.setPen(Qt.NoPen)
-            painter.drawRect(QRectF(carriageway_start_x, deck_top_y,
-                                carriageway_end_x - carriageway_start_x, deck_thick_px))
             
         '''if wc_thickness_px > 0 and not median_present:
             painter.setBrush(QBrush(QColor(90, 90, 90)))
@@ -1585,22 +1597,44 @@ class CrossSectionCADWidget(QWidget):
             self.cross_section_hover_zones.append((wc_hover_rect, 'wearing_course'))'''
         
         # Register hover zone for deck - full width
-        deck_hover_rect = QRectF(deck_slab_left, deck_top_y,
-                                deck_slab_right - deck_slab_left, deck_thick_px)
+        # approximate bounding box for curved deck
+        deck_hover_rect = QRectF(
+            deck_slab_left,
+            deck_top_y - slope_height,
+            deck_slab_right - deck_slab_left,
+            deck_thick_px + slope_height
+        )
         self.cross_section_hover_zones.append((deck_hover_rect, 'deck'))
 
         # Crash barrier deck zones
         painter.setBrush(self.concrete_brush)
 
 
-        painter.drawRect(QRectF(left_barrier_x, deck_top_y,
-                                crash_barrier_width_px, deck_thick_px))
-        painter.drawRect(QRectF(right_barrier_x, deck_top_y,
-                                crash_barrier_width_px, deck_thick_px))
+        # LEFT barrier
+        x_center = left_barrier_x + crash_barrier_width_px / 2
+        y_local = deck_top_y + slope_offset(x_center)
+
+        painter.drawRect(QRectF(
+            left_barrier_x,
+            y_local,
+            crash_barrier_width_px,
+            deck_thick_px
+        ))
+        
+        x_center = right_barrier_x + crash_barrier_width_px / 2
+        y_local = deck_top_y + slope_offset(x_center)
+
+        painter.drawRect(QRectF(
+            right_barrier_x,
+            y_local,
+            crash_barrier_width_px,
+            deck_thick_px
+        ))
 
         # footpath to deck connecting line
         dashed_pen = QPen(QColor(0, 0, 0), 1.5, Qt.DashLine)
         dashed_pen.setDashPattern([2, 2])  # Tiny dashes
+        deck_outline_pen = QPen(QColor(120, 120, 120), 1.0)
 
         # making the line dashed
         if fp_config in ['left', 'both'] and left_fp_width > 0:
@@ -1608,12 +1642,15 @@ class CrossSectionCADWidget(QWidget):
             painter.setBrush(self.concrete_brush)
 
             painter.setPen(Qt.NoPen)
-            # sit one pixel higher or precisely on top y edge
-            painter.drawRect(QRectF(left_fp_x, fp_top_y,
-                                left_fp_width_px, fp_thick_px))
+            painter.drawRect(QRectF(
+                left_fp_x,
+                fp_top_y,
+                left_fp_width_px,
+                fp_thick_px
+            ))
             
             # Draw horizontal edges as solid
-            painter.setPen(QPen(QColor(0, 0, 0), 2))
+            painter.setPen(deck_outline_pen)
             painter.setBrush(Qt.NoBrush)
             # Top edge
             painter.drawLine(QPointF(left_fp_x, fp_top_y), 
@@ -1623,14 +1660,9 @@ class CrossSectionCADWidget(QWidget):
                             QPointF(left_fp_x + left_fp_width_px, fp_top_y + fp_thick_px))
             
             # Left edge 
-            painter.setPen(QPen(QColor(0, 0, 0), 2))
+            painter.setPen(deck_outline_pen)
             painter.drawLine(QPointF(left_fp_x, fp_top_y), 
                             QPointF(left_fp_x, fp_top_y + fp_thick_px))
-            
-            # Right edge
-            painter.setPen(dashed_pen)
-            painter.drawLine(QPointF(left_fp_x + left_fp_width_px, fp_top_y), 
-                            QPointF(left_fp_x + left_fp_width_px, fp_top_y + fp_thick_px))
 
         if fp_config in ['right', 'both'] and right_fp_width > 0:
             # Draw footpath fill
@@ -1640,7 +1672,7 @@ class CrossSectionCADWidget(QWidget):
                                 right_fp_width_px, fp_thick_px))
             
             # Draw horizontal edges as solid
-            painter.setPen(QPen(QColor(0, 0, 0), 2))
+            painter.setPen(deck_outline_pen)
             painter.setBrush(Qt.NoBrush)
             # Top edge
             painter.drawLine(QPointF(right_fp_x, fp_top_y), 
@@ -1649,13 +1681,8 @@ class CrossSectionCADWidget(QWidget):
             painter.drawLine(QPointF(right_fp_x, fp_top_y + fp_thick_px), 
                             QPointF(right_fp_x + right_fp_width_px, fp_top_y + fp_thick_px))
             
-            # Left edge (inner edge connecting to deck) - DASHED
-            painter.setPen(dashed_pen)
-            painter.drawLine(QPointF(right_fp_x, fp_top_y), 
-                            QPointF(right_fp_x, fp_top_y + fp_thick_px))
-            
             # Right edge (outer edge where railing sits) - SOLID
-            painter.setPen(QPen(QColor(0, 0, 0), 2))
+            painter.setPen(deck_outline_pen)
             painter.drawLine(QPointF(right_fp_x + right_fp_width_px, fp_top_y), 
                             QPointF(right_fp_x + right_fp_width_px, fp_top_y + fp_thick_px))
         # Draw crash barriers
@@ -1666,33 +1693,17 @@ class CrossSectionCADWidget(QWidget):
         #self.draw_crash_barrier(painter, right_barrier_end_x, cb_y, scale, side='right')
         
         if median_present:
-            self.draw_median(painter, median_start_x, median_end_x, deck_top_y, scale, MEDIAN_GREY)
+            median_center_x = (median_start_x + median_end_x) / 2
+            median_y = deck_top_y + slope_offset(median_center_x)
+
+            self.draw_median(painter, median_start_x, median_end_x, median_y, scale, MEDIAN_GREY)
 
         # Draw the main deck bottom line solid (only the deck slab portion)
-        painter.setPen(QPen(QColor(0, 0, 0), 1.5))
+        painter.setPen(deck_outline_pen)
         painter.drawLine(QPointF(deck_slab_left, deck_bottom_y), 
                         QPointF(deck_slab_right, deck_bottom_y))
 
-        # Draw dashed lines for footpath area bottom and vertical connections
-        # Left footpath area
-        if fp_config in ['left', 'both'] and left_fp_width > 0:
-            painter.setPen(dashed_pen)
-            # Bottom line under footpath area (dashed)
-            painter.drawLine(QPointF(deck_left_x, deck_bottom_y), 
-                            QPointF(deck_slab_left, deck_bottom_y))
-            # Outer vertical line from footpath bottom to deck bottom level (dashed)
-            painter.drawLine(QPointF(deck_left_x, fp_top_y + fp_thick_px), 
-                            QPointF(deck_left_x, deck_bottom_y))
-
-        # Right footpath area
-        if fp_config in ['right', 'both'] and right_fp_width > 0:
-            painter.setPen(dashed_pen)
-            # Bottom line under footpath area (dashed)
-            painter.drawLine(QPointF(deck_slab_right, deck_bottom_y), 
-                            QPointF(deck_right_x, deck_bottom_y))
-            # Outer vertical line from footpath bottom to deck bottom level (dashed)
-            painter.drawLine(QPointF(deck_right_x, fp_top_y + fp_thick_px), 
-                            QPointF(deck_right_x, deck_bottom_y))
+        # Divider lines between deck and footpaths are intentionally omitted
 
         # Draw girders and stiffeners
         for girder_x in positions:
@@ -1961,7 +1972,7 @@ class CrossSectionCADWidget(QWidget):
             cw_m = self.params['carriageway_width'] / 1000
             
             # Left carriageway - starts exactly at left barrier visual end
-            label_cw = "Carriageway"
+            label_cw = "Carriageway Width"
             if self.show_carriageway_values:
                 label_cw += f" = {cw_m:.2f} m"
             
@@ -2539,6 +2550,7 @@ class CrossSectionCADWidget(QWidget):
     def draw_crash_barrier(self, painter, x, y, scale, side='left'):
         """Draw crash barrier cross-section using IRC 5 geometry spec.
         """
+        border_color = QColor(120, 120, 120)
         cb_type = self.crash_barrier_type
         geo = CrashBarrierGeometry.get_geometry(cb_type)
 
@@ -2573,8 +2585,8 @@ class CrossSectionCADWidget(QWidget):
             left_at_top  = 50  * scale * shape_scale   # inner wall x at top (lean)
             right_at_top = 225 * scale * shape_scale   # outer wall x at top
 
-            painter.setBrush(QBrush(barrier_color))
-            painter.setPen(QPen(QColor(0, 0, 0), max(1.5, scale * 1.5)))
+            painter.setBrush(QBrush(QColor(255, 250, 220)) if self.hovered_element == 'crash_barrier' else self.concrete_brush)
+            painter.setPen(QPen(border_color, max(1.5, scale * 1.5)))
 
             if side == 'left':
                 # Same as median RIGHT barrier (carriageway-facing curve on the right)
@@ -2681,7 +2693,7 @@ class CrossSectionCADWidget(QWidget):
             
         # Draw Kerb
         painter.setBrush(QBrush(QColor(180, 180, 180)))
-        painter.setPen(QPen(Qt.black, max(1.0, scale)))
+        painter.setPen(QPen(border_color, max(1.0, scale)))
         painter.drawPolygon(QPolygonF(kerb_points))
         
         # Draw Post
