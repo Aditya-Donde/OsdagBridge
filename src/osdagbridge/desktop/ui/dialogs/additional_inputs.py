@@ -153,15 +153,6 @@ class AdditionalInputs(QDialog):
             elif isinstance(widget, QCheckBox):
                 self.saved_values[widget_name] = widget.isChecked()
     
-    def get_saved_values(self):
-        """Return the dictionary of saved values."""
-        return self.saved_values.copy()
-
-    # compatibility helper used elsewhere in codebase
-    def get_all_values(self):
-        """Alias to get_saved_values for older callers."""
-        return self.get_saved_values()
-    
     def setupWrapper(self):
         self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowSystemMenuHint)
 

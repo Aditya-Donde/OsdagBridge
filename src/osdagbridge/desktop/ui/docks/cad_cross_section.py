@@ -1340,7 +1340,7 @@ class CrossSectionCADWidget(QWidget):
             QPointF(x_right, y_base_top),                  # left after base
         ]
         
-        painter.setBrush(QBrush(MEDIAN_GREY))
+        painter.setBrush(QBrush(QColor(221, 221, 221)))
         painter.setPen(QPen(QColor(0, 0, 0), max(1.5, scale * 1.5)))
         painter.drawPolygon(QPolygonF(points_right))
         # ---- Register hover zone for median ----
@@ -1351,6 +1351,20 @@ class CrossSectionCADWidget(QWidget):
             h
         )
         self.cross_section_hover_zones.append((hover_rect, 'median'))
+
+    def _get_crash_barrier_rendered_width_mm(self):
+        """Return the actual crash barrier footprint width used by draw_crash_barrier."""
+        geo = CrashBarrierGeometry.get_geometry(self.crash_barrier_type)
+        default_width = float(self.params.get('crash_barrier_width', 500))
+
+        if not geo:
+            return default_width
+
+        if geo.get("type") == "rcc":
+            return float(geo.get("bottom_width", default_width))
+
+        # Metallic crash barrier in draw_crash_barrier currently uses a 550 mm kerb base.
+        return float(geo.get("kerb_bottom_width", 550.0))
 
     def draw_cross_section(self, painter):
         """Draw cross-section with median support and hover highlighting"""
@@ -1655,9 +1669,6 @@ class CrossSectionCADWidget(QWidget):
             # Top edge
             painter.drawLine(QPointF(left_fp_x, fp_top_y), 
                             QPointF(left_fp_x + left_fp_width_px, fp_top_y))
-            # Bottom edge
-            painter.drawLine(QPointF(left_fp_x, fp_top_y + fp_thick_px), 
-                            QPointF(left_fp_x + left_fp_width_px, fp_top_y + fp_thick_px))
             
             # Left edge 
             painter.setPen(deck_outline_pen)
@@ -1677,9 +1688,6 @@ class CrossSectionCADWidget(QWidget):
             # Top edge
             painter.drawLine(QPointF(right_fp_x, fp_top_y), 
                             QPointF(right_fp_x + right_fp_width_px, fp_top_y))
-            # Bottom edge
-            painter.drawLine(QPointF(right_fp_x, fp_top_y + fp_thick_px), 
-                            QPointF(right_fp_x + right_fp_width_px, fp_top_y + fp_thick_px))
             
             # Right edge (outer edge where railing sits) - SOLID
             painter.setPen(deck_outline_pen)
@@ -1891,12 +1899,15 @@ class CrossSectionCADWidget(QWidget):
             left_barrier_end_x = left_barrier_x + crash_barrier_width_px
         if right_barrier_end_x is None:
             right_barrier_end_x = right_barrier_x + crash_barrier_width_px
-        
-        # Left barrier starts at left_barrier_x and extends RIGHT by crash_barrier_width_px
-        left_barrier_visual_end = left_barrier_x + crash_barrier_width_px
-        
-        # Right barrier ENDS at right_barrier_end_x and extends LEFT by crash_barrier_width_px
-        right_barrier_visual_start = right_barrier_end_x - crash_barrier_width_px
+
+        # Use rendered barrier footprint (geometry-based) so extensions touch barrier ends.
+        rendered_cb_width_px = self._get_crash_barrier_rendered_width_mm() * scale
+
+        # Left barrier starts at left_barrier_x and extends RIGHT by rendered width.
+        left_barrier_visual_end = left_barrier_x + rendered_cb_width_px
+
+        # Right barrier ENDS at right_barrier_end_x and extends LEFT by rendered width.
+        right_barrier_visual_start = right_barrier_end_x - rendered_cb_width_px
 
         
         # DIMENSION LEVELS (Bottom)
@@ -2097,8 +2108,15 @@ class CrossSectionCADWidget(QWidget):
             deck_center_x = (deck_slab_left + deck_slab_right) / 2
 
         if deck_thick_px > 5:
+            # Use local curved deck top so the arrow spans the full visible thickness.
+            deck_width_px = deck_right_x - deck_left_x
+            mid_x = (deck_left_x + deck_right_x) / 2
+            slope_height = 0.005 * (deck_width_px / 2)
+            xi = (deck_center_x - mid_x) / (deck_width_px / 2) if deck_width_px != 0 else 0.0
+            local_deck_top_y = deck_top_y - slope_height * (1 - xi ** 2)
+
             painter.setPen(QPen(QColor(0, 0, 0), 0.8))
-            painter.drawLine(QPointF(deck_center_x, deck_top_y), QPointF(deck_center_x, deck_bottom_y))
+            painter.drawLine(QPointF(deck_center_x, local_deck_top_y), QPointF(deck_center_x, deck_bottom_y))
             
             arrow_size = 3.5
             arrow_gap = 2
@@ -2106,9 +2124,9 @@ class CrossSectionCADWidget(QWidget):
             painter.setBrush(QBrush(QColor(0, 0, 0)))
             
             top_arrow = [
-                QPointF(deck_center_x, deck_top_y - arrow_gap),
-                QPointF(deck_center_x - half_w, deck_top_y - arrow_gap - arrow_size),
-                QPointF(deck_center_x + half_w, deck_top_y - arrow_gap - arrow_size),
+                QPointF(deck_center_x, local_deck_top_y - arrow_gap),
+                QPointF(deck_center_x - half_w, local_deck_top_y - arrow_gap - arrow_size),
+                QPointF(deck_center_x + half_w, local_deck_top_y - arrow_gap - arrow_size),
             ]
             painter.drawPolygon(QPolygonF(top_arrow))
             
@@ -2120,8 +2138,8 @@ class CrossSectionCADWidget(QWidget):
             painter.drawPolygon(QPolygonF(bottom_arrow))
             
             tick_len = 4
-            painter.drawLine(QPointF(deck_center_x - tick_len, deck_top_y), 
-                            QPointF(deck_center_x + tick_len, deck_top_y))
+            painter.drawLine(QPointF(deck_center_x - tick_len, local_deck_top_y), 
+                            QPointF(deck_center_x + tick_len, local_deck_top_y))
             painter.drawLine(QPointF(deck_center_x - tick_len, deck_bottom_y), 
                             QPointF(deck_center_x + tick_len, deck_bottom_y))
             
@@ -2134,7 +2152,7 @@ class CrossSectionCADWidget(QWidget):
             metrics = painter.fontMetrics()
             text_width = metrics.boundingRect(text).width()
             text_x = deck_center_x - text_width / 2
-            text_y = deck_top_y - 8
+            text_y = local_deck_top_y - 8
             
             self.draw_text_with_background(painter, text_x, text_y, text,
                                         QColor(255, 255, 255, 255), QColor(0, 0, 0), 9, False)

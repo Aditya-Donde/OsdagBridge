@@ -419,57 +419,7 @@ class TypicalSectionDetailsTab(QWidget):
         if params:
             self.cad_preview.update_params(params)
 
-        
-
-            
-    def get_typical_section_params(self) -> dict:
-
-        """
-        @author: Faizan
-
-        Reads and returns the current Typical Section parameters from the UI,
-        including crash barrier, median, and railing properties, as a dictionary
-        (dimensions in mm).
-
-        The returned values are consistent with those used in
-        _update_cad_preview().
-        """
-        params = {}
-
-        # ---- Crash Barrier ----
-        if hasattr(self, "crash_barrier_type"):
-            params["crash_barrier_type"] = self.crash_barrier_type.currentText()
-
-        if hasattr(self, "crash_barrier_width") and self.crash_barrier_width.text():
-            params["crash_barrier_width"] = float(self.crash_barrier_width.text()) * 1000
-
-        if hasattr(self, "crash_barrier_height") and self.crash_barrier_height.text():
-            params["crash_barrier_height"] = float(self.crash_barrier_height.text()) * 1000
-
-        # ---- Median (ADD THIS) ----
-        if hasattr(self, "median_type"):
-            params["median_type"] = self.median_type.currentText()
-            
-        if hasattr(self, "median_present"):
-            params["median_present"] = self.median_present.isChecked()
-
-        if hasattr(self, "median_width") and self.median_width.text():
-            params["median_width"] = float(self.median_width.text()) * 1000
-
-        if hasattr(self, "median_height") and self.median_height.text():
-            params["median_height"] = float(self.median_height.text()) * 1000
-
-        # ---- Railing (ADD THIS) ----
-        if hasattr(self, "railing_type"):
-            params["railing_type"] = self.railing_type.currentText()
-
-        if hasattr(self, "railing_width") and self.railing_width.text():
-            params["railing_width"] = float(self.railing_width.text())
-
-        if hasattr(self, "railing_height") and self.railing_height.text():
-            params["railing_height"] = float(self.railing_height.text()) * 1000
-
-        return params
+    
 
     def _get_footpath_count(self):
         if self.footpath_value == "Both Sides":
