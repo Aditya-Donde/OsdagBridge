@@ -15,12 +15,7 @@ from osdagbridge.desktop.cad.irc5_geometry import (
     RailingGeometry,
     MedianGeometry,
 )
-from osdagbridge.core.utils.common import (
-    KEY_WEARING_COAT_THICKNESS,
-    KEY_WEARING_COAT_DENSITY,
-    KEY_WEARING_COAT_MATERIAL,
-)
-import random
+
 
 class CrossSectionCADWidget(QWidget):
     """Widget for drawing bridge cross-section view"""
@@ -85,6 +80,7 @@ class CrossSectionCADWidget(QWidget):
             'railing_width': 375,
             'median_present': False,
             'median_width': 1200,
+            'wearing_course_thickness': 50,
         }
         
         # girder dimensions (mm)
@@ -1440,12 +1436,9 @@ class CrossSectionCADWidget(QWidget):
         deck_bottom_y = girder_top_y
         deck_top_y = deck_bottom_y - deck_thick_px
         
-        '''# ===== WEARING COURSE =====
-        wc_thickness_mm = self.params.get(KEY_WEARING_COAT_THICKNESS, 0)
+        # ------ WEARING COURSE ---------
+        wc_thickness_mm = self.params.get('wearing_course_thickness', 50)
         wc_thickness_px = wc_thickness_mm * scale
-
-        wc_bottom_y = deck_top_y
-        wc_top_y = wc_bottom_y - wc_thickness_px'''
         
         fp_bottom_y = deck_bottom_y
         fp_top_y = fp_bottom_y - fp_thick_px
@@ -1570,45 +1563,49 @@ class CrossSectionCADWidget(QWidget):
 
 
             
-        '''if wc_thickness_px > 0 and not median_present:
-            painter.setBrush(QBrush(QColor(90, 90, 90)))
-            painter.setPen(Qt.NoPen)
-
-            painter.drawRect(QRectF(
-                carriageway_start_x,
-                wc_top_y,
-                carriageway_end_x - carriageway_start_x,
-                wc_thickness_px
-            ))
-            
-        if wc_thickness_px > 0 and median_present:
-            painter.setBrush(QBrush(QColor(90, 90, 90)))
-            painter.setPen(Qt.NoPen)
-
-            # Left carriageway wearing course
-            painter.drawRect(QRectF(
-                carriageway_start_x,
-                wc_top_y,
-                median_start_x - carriageway_start_x,
-                wc_thickness_px
-            ))
-
-            # Right carriageway wearing course
-            painter.drawRect(QRectF(
-                median_end_x,
-                wc_top_y,
-                carriageway_end_x - median_end_x,
-                wc_thickness_px
-            ))
-            
+        # ===== WEARING COURSE (CURVED) =====
         if wc_thickness_px > 0:
-            wc_hover_rect = QRectF(
-                carriageway_start_x,
-                wc_top_y,
-                carriageway_end_x - carriageway_start_x,
-                wc_thickness_px
-            )
-            self.cross_section_hover_zones.append((wc_hover_rect, 'wearing_course'))'''
+
+            painter.setBrush(QBrush(QColor(40, 40, 40)))  # asphalt black
+            painter.setPen(Qt.NoPen)
+
+            num_points = 50
+            top_pts = []
+            bottom_pts = []
+
+            # Function to restrict to carriageway only
+            def is_in_carriageway(x):
+                if median_present:
+                    return ((carriageway_start_x <= x <= median_start_x) or
+                            (median_end_x <= x <= carriageway_end_x))
+                else:
+                    return (carriageway_start_x <= x <= carriageway_end_x)
+
+            for i in range(num_points + 1):
+                x = deck_left_x + i * (deck_right_x - deck_left_x) / num_points
+
+                if not (left_barrier_x <= x <= right_barrier_end_x):
+                    continue
+
+                y_bottom = deck_top_y + slope_offset(x)
+                y_top = y_bottom - wc_thickness_px
+
+                top_pts.append(QPointF(x, y_top))
+                bottom_pts.insert(0, QPointF(x, y_bottom))
+
+            if top_pts and bottom_pts:
+                wc_polygon = QPolygonF(top_pts + bottom_pts)
+                painter.drawPolygon(wc_polygon)
+
+        wc_hover_rect = QRectF(
+            carriageway_start_x,
+            deck_top_y - slope_height,
+            carriageway_end_x - carriageway_start_x,
+            wc_thickness_px + slope_height
+        )
+        self.cross_section_hover_zones.append((wc_hover_rect, 'wearing_course'))
+
+
         
         # Register hover zone for deck - full width
         # approximate bounding box for curved deck
@@ -1620,30 +1617,6 @@ class CrossSectionCADWidget(QWidget):
         )
         self.cross_section_hover_zones.append((deck_hover_rect, 'deck'))
 
-        # Crash barrier deck zones
-        painter.setBrush(self.concrete_brush)
-
-
-        # LEFT barrier
-        x_center = left_barrier_x + crash_barrier_width_px / 2
-        y_local = deck_top_y + slope_offset(x_center)
-
-        painter.drawRect(QRectF(
-            left_barrier_x,
-            y_local,
-            crash_barrier_width_px,
-            deck_thick_px
-        ))
-        
-        x_center = right_barrier_x + crash_barrier_width_px / 2
-        y_local = deck_top_y + slope_offset(x_center)
-
-        painter.drawRect(QRectF(
-            right_barrier_x,
-            y_local,
-            crash_barrier_width_px,
-            deck_thick_px
-        ))
 
         # footpath to deck connecting line
         dashed_pen = QPen(QColor(0, 0, 0), 1.5, Qt.DashLine)
@@ -1663,17 +1636,10 @@ class CrossSectionCADWidget(QWidget):
                 fp_thick_px
             ))
             
-            # Draw horizontal edges as solid
-            painter.setPen(deck_outline_pen)
-            painter.setBrush(Qt.NoBrush)
+            
             # Top edge
             painter.drawLine(QPointF(left_fp_x, fp_top_y), 
                             QPointF(left_fp_x + left_fp_width_px, fp_top_y))
-            
-            # Left edge 
-            painter.setPen(deck_outline_pen)
-            painter.drawLine(QPointF(left_fp_x, fp_top_y), 
-                            QPointF(left_fp_x, fp_top_y + fp_thick_px))
 
         if fp_config in ['right', 'both'] and right_fp_width > 0:
             # Draw footpath fill
@@ -1688,11 +1654,6 @@ class CrossSectionCADWidget(QWidget):
             # Top edge
             painter.drawLine(QPointF(right_fp_x, fp_top_y), 
                             QPointF(right_fp_x + right_fp_width_px, fp_top_y))
-            
-            # Right edge (outer edge where railing sits) - SOLID
-            painter.setPen(deck_outline_pen)
-            painter.drawLine(QPointF(right_fp_x + right_fp_width_px, fp_top_y), 
-                            QPointF(right_fp_x + right_fp_width_px, fp_top_y + fp_thick_px))
         # Draw crash barriers
         #cb_y = deck_top_y - 1
         # Left barrier: x is where it STARTS (left edge)
@@ -1711,7 +1672,7 @@ class CrossSectionCADWidget(QWidget):
         painter.drawLine(QPointF(deck_slab_left, deck_bottom_y), 
                         QPointF(deck_slab_right, deck_bottom_y))
 
-        # Divider lines between deck and footpaths are intentionally omitted
+
 
         # Draw girders and stiffeners
         for girder_x in positions:
@@ -1842,11 +1803,11 @@ class CrossSectionCADWidget(QWidget):
 
         if fp_config in ['left', 'both'] and left_fp_width > 0:
             railing_x = deck_left_x
-            left_railing_rect = self.draw_railing(painter, railing_x, fp_top_y, scale, "left")
+            left_railing_rect = self.draw_railing(painter, railing_x, deck_top_y, scale, "left")
             
         if fp_config in ['right', 'both'] and right_fp_width > 0:
             railing_x = deck_right_x - railing_outer_width_px
-            right_railing_rect = self.draw_railing(painter, railing_x, fp_top_y, scale, "right")
+            right_railing_rect = self.draw_railing(painter, railing_x, deck_top_y, scale, "right")
         # Draw crash barriers
         cb_y = deck_top_y
         # Left barrier: x is where it STARTS (left edge)
