@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (
 )
 from osdagbridge.desktop.ui.dialogs.tabs.common import apply_field_style
 from osdagbridge.desktop.ui.utils.custom_titlebar import CustomTitleBar
+from osdagbridge.desktop.ui.dialogs.tabs.custom_vehicle_diagrams import TrackedBogieDiagram, WheeledAxlesDiagram, ClearCarriagewayWidthDiagram
 
 class CustomVehicleDialog(QDialog):
     """Dialog for adding or editing custom live load vehicles"""
@@ -201,21 +202,9 @@ class CustomVehicleDialog(QDialog):
         self.axle_table.setMaximumHeight(118)
         table_diagram_row.addWidget(self.axle_table, 1)
 
-        # Axle diagram placeholder
-        self.axle_diagram = QLabel("Axle Layout Diagram")
-        self.axle_diagram.setAlignment(Qt.AlignCenter)
-        self.axle_diagram.setMinimumHeight(118)
-        self.axle_diagram.setMaximumHeight(118)
-        self.axle_diagram.setStyleSheet("""
-            QLabel {
-                border: 1px solid #8a8a8a;
-                border-radius: 4px;
-                background: #ffffff;
-                color: #6a6a6a;
-                font-size: 10px;
-            }
-        """)
-        table_diagram_row.addWidget(self.axle_diagram, 1)
+        self.wheeled_diagram = WheeledAxlesDiagram()
+        self.wheeled_diagram.setMinimumHeight(118)
+        table_diagram_row.addWidget(self.wheeled_diagram, 1)
 
         wheeled_layout.addLayout(table_diagram_row)
         self.stacked_widget.addWidget(self.wheeled_page)
@@ -270,21 +259,14 @@ class CustomVehicleDialog(QDialog):
         left_widget.setLayout(tb_inputs_layout)
         tb_bottom_row.addWidget(left_widget, 1)
 
-        # Right side diagram
-        self.tb_axle_diagram = QLabel("Tracked Layout Diagram")
-        self.tb_axle_diagram.setAlignment(Qt.AlignCenter)
-        self.tb_axle_diagram.setMinimumHeight(118)
-        self.tb_axle_diagram.setMaximumHeight(118)
-        self.tb_axle_diagram.setStyleSheet("""
-            QLabel {
-                border: 1px solid #8a8a8a;
-                border-radius: 4px;
-                background: #ffffff;
-                color: #6a6a6a;
-                font-size: 10px;
-            }
-        """)
-        tb_bottom_row.addWidget(self.tb_axle_diagram, 1)
+        self.tb_diagram_stack = QStackedWidget()
+        self.tracked_diagram = TrackedBogieDiagram("P", "D")
+        self.bogie_diagram = TrackedBogieDiagram("Pb", "Db")
+        self.tb_diagram_stack.addWidget(self.tracked_diagram)
+        self.tb_diagram_stack.addWidget(self.bogie_diagram)
+        self.tb_diagram_stack.setMinimumHeight(118)
+        self.tb_diagram_stack.setMaximumHeight(118)
+        tb_bottom_row.addWidget(self.tb_diagram_stack, 1)
         
         tb_layout.addLayout(tb_bottom_row)
         
@@ -329,17 +311,13 @@ class CustomVehicleDialog(QDialog):
         # Keep heading clear from the last input row.
         layout.addSpacing(16)
 
-        bottom_diagram = QLabel("")
-        bottom_diagram.setAlignment(Qt.AlignCenter)
-        bottom_diagram.setMinimumHeight(62)
-        bottom_diagram.setStyleSheet("""
-            QLabel {
-                border: 1px solid #8a8a8a;
-                border-radius: 4px;
-                background: #ffffff;
-            }
-        """)
-        layout.addWidget(bottom_diagram)
+        carr_layout = QHBoxLayout()
+        self.carr_diagram = ClearCarriagewayWidthDiagram()
+        self.carr_diagram.setFixedSize(380, 160)
+        carr_layout.addStretch()
+        carr_layout.addWidget(self.carr_diagram)
+        carr_layout.addStretch()
+        layout.addLayout(carr_layout)
 
         button_row = QHBoxLayout()
         button_row.addStretch()
@@ -385,7 +363,10 @@ class CustomVehicleDialog(QDialog):
             is_bogie = text == "Bogie"
             self.tb_p_label.setText("P<sub>b</sub> (kN)" if is_bogie else "P (kN)")
             self.tb_d_label.setText("D<sub>b</sub> (m)" if is_bogie else "D (m)")
-            self.tb_axle_diagram.setText("Bogie Layout Diagram" if is_bogie else "Tracked Layout Diagram")
+            if is_bogie:
+                self.tb_diagram_stack.setCurrentWidget(self.bogie_diagram)
+            else:
+                self.tb_diagram_stack.setCurrentWidget(self.tracked_diagram)
 
     def _refresh_axle_buttons_state(self):
         enabled = self._selected_axle_row is not None
