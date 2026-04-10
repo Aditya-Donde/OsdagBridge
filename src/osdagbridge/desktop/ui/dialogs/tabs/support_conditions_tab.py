@@ -1,7 +1,7 @@
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QFrame, QHBoxLayout, QSizePolicy
 from osdagbridge.core.bridge_types.plate_girder.ui_fields_additional_input import SUPPORT_CONDITIONS_SCHEMA
-from osdagbridge.desktop.ui.docks.support__conditions_cad import SupportCADWidget
-from osdagbridge.desktop.ui.docks.support_detail_cad import SupportDetailCADWidget
+from osdagbridge.desktop.ui.dialogs.tabs.drawings.support_conditions_cad import SupportCADWidget
+from osdagbridge.desktop.ui.dialogs.tabs.drawings.support_detail_cad import SupportDetailCADWidget
 
 class SupportConditionsTab(QWidget):
 

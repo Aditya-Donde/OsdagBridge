@@ -8,7 +8,7 @@ import math
 from PySide6.QtWidgets import QWidget, QPushButton, QScrollArea
 from PySide6.QtCore import Qt, QRectF, QPointF
 from PySide6.QtGui import QPainter, QPen, QColor, QFont, QBrush, QPolygonF
-from .cad_cross_section import CrossSectionCADWidget
+from ....docks.cad_cross_section import CrossSectionCADWidget
 
 
 class SupportCADWidget(QWidget):
