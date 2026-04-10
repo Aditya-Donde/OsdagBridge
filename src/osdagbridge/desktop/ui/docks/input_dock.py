@@ -42,10 +42,12 @@ GROUPBOX_STYLE = (
     "  left:8px; padding:0 4px; margin-top:4px; background-color:white; color:#333; }"
 )
 ACTION_BTN_STYLE = (
-    "QPushButton { background-color:#90AF13; color:white; font-weight:bold; border:none;"
+    "QPushButton { background-color:#90AF13; border: 1px solid #90AF13; color:white; font-weight:bold; border:none;"
     "  border-radius:4px; padding:8px 20px; font-size:11px; min-width:80px; }"
-    "QPushButton:hover { background-color:#7a9a12; }"
-    "QPushButton:disabled { background:#D0D0D0; color:#666; }"
+    "QPushButton:hover { background-color:#7a9a12; border: 1px solid #7a9a12;}"
+    "QPushButton:disabled { background:#D0D0D0; color:#666; border: 1px solid #D0D0D0;}"
+    "QPushButton[error='true'] { background:#FF0000; color:#FFFFFF; border: 1px solid #FF0000;}"
+    "QPushButton[error='true']:disabled { background:#D0D0D0; color:#666; border: 1px solid #FF0000; }"
 )
 LABEL_STYLE = "QLabel { color:#000; font-size:12px; background:transparent; }"
 
@@ -178,7 +180,7 @@ class InputDock(QWidget):
         self.lock_btn.clicked.connect(self.toggle_lock)
         top_bar.addWidget(self.lock_btn)
 
-        self.lock_btn_tooltip = QLabel("Unlock to Edit")
+        self.lock_btn_tooltip = QLabel("🔒 Unlock to Edit")
         self.lock_btn_tooltip.setStyleSheet("""
             QLabel { background-color:#f1f1f1; color:#000; border:1px solid #90AF13;
                      padding:4px; font-size:15px; border-radius:0px; }
@@ -262,6 +264,14 @@ class InputDock(QWidget):
             )
             meta = meta or {}
 
+            # If "required": True, add '*' to Label
+            if meta.get("required", False):
+                if '\n' in label: # for case like Carriageway Width\n(Each way)
+                    idx = label.index('\n')
+                    label = label[:idx] + '*' + label[idx:]
+                else:
+                    label = label + '*'
+
             if ftype == TYPE_MODULE:
                 continue
 
@@ -288,7 +298,7 @@ class InputDock(QWidget):
                 glayout.addLayout(self._field_row(label, self._make_textbox(key, validator, meta), meta))
 
             elif ftype == TYPE_BUTTON:
-                glayout.addLayout(self._make_button_row(label, meta))
+                glayout.addLayout(self._make_button_row(key, label, meta))
 
             elif ftype == TYPE_NOTE:
                 note = QLabel(label or "")
@@ -339,9 +349,9 @@ class InputDock(QWidget):
             if idx >= 0:
                 widget.setCurrentIndex(idx)
 
-        # Signal the change in value so to update the input_dictionary
+        # Signal that change in value so to update the input_dictionary
         widget.currentTextChanged.connect(
-            lambda text, k=key: self._on_field_changed(k, text)
+            lambda text, k=key: self._on_field_edited(k, text)
         )
 
         # Wire generic on_changed callbacks declared in schema.
@@ -392,15 +402,15 @@ class InputDock(QWidget):
         if default is not None:
             widget.setText(str(default))
 
-        # Signal when value changed to update input_dictionary 
-        widget.textChanged.connect(
-            lambda text, k=key: self._on_field_changed(k, text)
-        )
-
         # Validation on focus-out — mandatory for all textbox fields
         # This will validate the input, either it say nothing or popup warning and set specific valid value
         widget.editingFinished.connect(
-            lambda k=key, w=widget: self._validate_field(k, w)
+            lambda k=key, w=widget: self._on_field_edited(k, w)
+        )
+
+        # For soft-validation while value is being edited in the textbox
+        widget.textChanged.connect(
+            lambda text, k=key: self._on_field_editing(text, k)
         )
 
         # Extra callbacks declared in schema
@@ -411,7 +421,7 @@ class InputDock(QWidget):
 
         return widget
 
-    def _make_button_row(self, label: str, meta: dict) -> QHBoxLayout:
+    def _make_button_row(self, key: str, label: str, meta: dict) -> QHBoxLayout:
         """
         [Label | Action Button] row.
         label    → tuple[1]
@@ -429,6 +439,7 @@ class InputDock(QWidget):
 
         btn_text = meta.get("button_label")
         btn = QPushButton(btn_text)
+        btn.setObjectName(key)
         btn.setCursor(Qt.CursorShape.PointingHandCursor)
         btn.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         btn.setStyleSheet(ACTION_BTN_STYLE)
@@ -437,6 +448,8 @@ class InputDock(QWidget):
             btn.clicked.connect(cb)
         else:
             btn.setEnabled(False)
+        # Reset required-validation error-state (red)
+        btn.clicked.connect(lambda _, widget=btn: self.reset_error_state(widget))
         row.addWidget(btn, 1)
         return row
 
@@ -690,7 +703,7 @@ class InputDock(QWidget):
     def show_project_location_dialog(self):
         dialog = ProjectLocationDialog()
         if dialog.exec() == QDialog.Accepted:
-            self._on_field_changed(KEY_PROJECT_LOCATION, dialog.get_selected_location())
+            self._update_input_dict(KEY_PROJECT_LOCATION, dialog.get_selected_location())
 
     def show_additional_inputs(self):
         self._open_additional_inputs()
@@ -742,6 +755,11 @@ class InputDock(QWidget):
 
     def toggle_lock(self):
         self.is_locked = not self.is_locked
+
+        if not self.is_locked:
+            # Clear 3D-Cad
+            self.parent.cad_3d_widget.clear_3d_cad()
+
         self.lock_btn.setChecked(self.is_locked)
         self.scroll_area.setDisabled(self.is_locked)
         self._sync_lock_icon()
@@ -792,37 +810,94 @@ class InputDock(QWidget):
         if self.parent and hasattr(self.parent, "update_docking_icons"):
             self.parent.update_docking_icons(input_is_active=self.width() > 0)
 
-    # Validate the value of text box and show warning and set valid value
-    def _validate_field(self, key: str, widget: QLineEdit):
-        """
-        Called on editingFinished for validated textbox fields.
-        Reads widget value, validates against current input_dict,
-        corrects the widget and input_dict if needed, shows message.
-        """
-        result = self.validator.validate_basic_inputs(key, self.parent.input_dict)
-        if result is None:
-            return
-        corrected, message = result
-        widget.setText(str(corrected))
-        # Update value in input_dict
-        self._on_field_changed(key, str(corrected))
-        CustomMessageBox(
-            title="Input Error", 
-            text=message, 
-            dialogType=MessageBoxType.Warning
-        ).exec()
+    def reset_error_state(self, widget: QWidget):
+        """Reset error='true' property to remove red highlight."""
+        if widget and widget.property("error"):
+            widget.setProperty("error", False)
+            widget.style().unpolish(widget)
+            widget.style().polish(widget)
 
+    def _on_field_edited(self, key: str, widget: QLineEdit | str):
+        """
+        Called on editingFinished (QLineEdit) or currentTextChanged (QComboBox).
+        - QComboBox: always valid, skip validation, update dict + CAD.
+        - QLineEdit: hard validation — corrects widget + input_dict if invalid, shows popup.
+        """
+        # QComboBox passes str directly via currentTextChanged
+        if isinstance(widget, str):
+            self._update_input_dict(key, widget)
+            self.input_value_changed.emit()
+            return
+
+        current_text = widget.text().strip()
+
+        # Update dict first so validator reads the latest value
+        self._update_input_dict(key, current_text)
+
+        # hard-validation start ----------------------
+        result = self.validator.validate_basic_inputs(key, self.parent.input_dict)
+        if result is not None:
+            corrected, message = result
+            CustomMessageBox(
+                title="Input Error",
+                text=message,
+                dialogType=MessageBoxType.Warning
+            ).exec()
+            # update to valid text
+            widget.blockSignals(True)
+            widget.setText(str(corrected))
+            widget.blockSignals(False)
+            self._update_input_dict(key, str(corrected))
+        # hard-validation end ----------------------
+
+        # Always update CAD after hard validation
+        self.input_value_changed.emit()
+
+
+    def _on_field_editing(self, current_text: str, key: str):
+        """
+        Soft validation — called on textChanged (while typing).
+        No popups, no corrections. Updates dict + CAD only when valid.
+        """
+
+        # Always reset error state while typing
+        widget = self.input_widget.findChild(QWidget, key)
+        if widget and widget.property("error"):
+            widget.setProperty("error", False)
+            widget.style().unpolish(widget)
+            widget.style().polish(widget)
+
+        if not current_text.strip():
+            # Empty — fall back to default silently
+            self._update_input_dict(key, "")
+            self.input_value_changed.emit()
+            return
+
+        # Update dict first so validator reads the latest value
+        self._update_input_dict(key, current_text)
+
+        # soft-validation start ----------------------
+        result = self.validator.validate_basic_inputs(key, self.parent.input_dict)
+        if result is not None:
+            # Still typing, value not valid yet — skip CAD update
+            return
+        # soft-validation end ----------------------
+
+        # Valid - update CAD
+        self.input_value_changed.emit()
+        
     # ══════════════════════════════════════════════════════════════════════════
     # Inputs Saving using input_dictionary
     # ══════════════════════════════════════════════════════════════════════════
     
     # Update input_dictionary on value changed
-    def _on_field_changed(self, key: str, value: str):
+    def _update_input_dict(self, key: str, value: str):
         """
         Called on every widget value change.
         If value is empty/None, falls back to DEFAULTS_DICT.
         Updates parent input_dict and notifies listeners.
         """
+
         if hasattr(self.parent, "input_dict"):
             # If Empty or None Value then set the default
             # print(f"@Change: {value}, default: {DEFAULTS_DICT.get(key)}")
@@ -834,8 +909,6 @@ class InputDock(QWidget):
             
         else:
             print("[ERROR]: template_page.input_dictionary Not Found")
-        
-        self.input_value_changed.emit()
 
     def _collect_basic_inputs(self) -> list[dict]:
         out = []

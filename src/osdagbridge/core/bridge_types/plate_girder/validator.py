@@ -45,7 +45,8 @@ class BridgeInputValidator:
                 min_w = CARRIAGEWAY_WIDTH_MIN_WITH_MEDIAN if median else CARRIAGEWAY_WIDTH_MIN
                 return min_w, "Carriageway width must be specified."
             
-            assumed_lanes = 2 if median else 1
+            assumed_lanes = 2 if median == 'Yes' else 1
+
             required_width = IRC5_2015.cl_104_3_1_carriageway_width(carriageway_width, assumed_lanes)
             
             if carriageway_width < required_width:

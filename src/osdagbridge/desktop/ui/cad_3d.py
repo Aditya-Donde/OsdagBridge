@@ -30,7 +30,6 @@ from osdagbridge.core.bridge_types.plate_girder.cad_generator import (
 # Custom 3D Viewer 
 from osdagbridge.desktop.ui.utils.custom_3dviewer import CustomViewer3d
 
-
 class CAD3DWindow(QWidget):
     """
     Main 3D CAD window for OsdagBridge.
@@ -39,13 +38,8 @@ class CAD3DWindow(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
 
-        self.setWindowTitle("OsdagBridge 3D CAD Viewer")
-        self.resize(1200, 800)
-
         # CAD generator
         self.generator = PlateGirderCADGenerator()
-
-        self.generator.model_data = self.generator.generate()
 
         # Internal CAD state
         self.viewer = None
@@ -54,31 +48,27 @@ class CAD3DWindow(QWidget):
 
         # UI + CAD setup
         self.setup_ui()
-        self.init_display()
+        self.init_display()  # Only initializes the viewer, does NOT render
 
-    # UI SETUP 
+    # ── UI SETUP ──────────────────────────────────────────────────────────────
 
     def setup_ui(self):
-
         self.layout = QVBoxLayout(self)
         self.layout.setContentsMargins(0, 0, 0, 0)
 
-        # Component selector 
+        # Component selector — hidden until render_3d_cad() is called
         self.component_selector = BridgeComponentCheckbox(self)
         self.component_selector.hide()
         self.layout.addWidget(self.component_selector)
 
-
-    # CAD INITIALIZATION 
+    # ── CAD INITIALIZATION (viewer only, no render) ───────────────────────────
 
     def init_display(self):
         """
-        CAD initialization.
-
-        - Creates CustomViewer3d
-        - Defers InitDriver for safety
+        Initialize the 3D viewer widget only.
+        Does NOT generate or render any geometry.
+        Call render_3d_cad() to render the model.
         """
-
         load_backend("pyside6")
 
         self.viewer = CustomViewer3d(self)
@@ -93,36 +83,75 @@ class CAD3DWindow(QWidget):
 
         self.viewer.InitDriver()
         self._cad_init_pending = False
-
         self._complete_cad_init()
-        self.load_bridge()
 
     def _complete_cad_init(self):
         """
         Complete CAD setup after InitDriver.
         REQUIRED for hover, selection, view cube.
         """
-
         self.display = self.viewer._display
 
         self.viewer.context = self.display.Context
         self.viewer.view = self.display.View
 
         self.display.set_bg_gradient_color([255, 255, 255], [126, 126, 126])
-
-
         self.viewer.context.SetAutomaticHilight(False)
 
         if hasattr(self.viewer, "display_view_cube"):
             self.viewer.display_view_cube()
 
-        # ADD ZOOM BUTTONS
         self.create_cad_view_controls()
 
     def _is_display_ready(self):
         return self.display is not None and not self._cad_init_pending
 
-    # CAD DISPLAY 
+    # ── RENDER / CLEAR ────────────────────────────────────────────────────────
+
+    def render_3d_cad(self):
+        """
+        Generate and render the 3D bridge model on the display.
+        Shows the component selector checkboxes after rendering.
+        Safe to call multiple times — clears previous model first.
+        """
+        if not self._is_display_ready():
+            return
+
+        # Generate fresh model data
+        self.generator.model_data = self.generator.generate()
+
+        # Render on display
+        self.load_bridge()
+
+        # Show component selector
+        self.component_selector.show()
+
+    def clear_3d_cad(self):
+        """
+        Clear the 3D model from the display and hide the component selector.
+        """
+        if not self._is_display_ready():
+            return
+
+        # Clear all AIS objects from context
+        if hasattr(self.viewer, "cleanup_for_new_model"):
+            self.viewer.cleanup_for_new_model()
+        self.display.EraseAll()
+        self.display.Repaint()
+
+        # Reset tracked objects
+        self.viewer.model_ais_objects = {}
+        self.viewer.model_hover_labels = {}
+        if hasattr(self.viewer, "deck_texture_ais"):
+            self.viewer.deck_texture_ais = []
+
+        # Hide component selector
+        self.component_selector.hide()
+
+        # Reset checkboxes to default state (Model checked)
+        self.component_selector.reset()
+
+    # ── CAD DISPLAY ───────────────────────────────────────────────────────────
     def load_bridge(self):
         if not self._is_display_ready():
             return
@@ -527,6 +556,18 @@ class BridgeComponentCheckbox(QWidget):
                 model_cb.setChecked(True)
                 model_cb.blockSignals(False)
                 self.parent.show_full_model()
+    
+    def reset(self):
+        """Reset all checkboxes to default state (Model selected, others unchecked)."""
+        for cb in self.checkboxes:
+            cb.blockSignals(True)
+            cb.setChecked(False)
+            cb.blockSignals(False)
+
+        # Re-check "Model" as default
+        self.checkboxes[0].blockSignals(True)
+        self.checkboxes[0].setChecked(True)
+        self.checkboxes[0].blockSignals(False)
 
 # Standalone Testing----------------------------
 def main():

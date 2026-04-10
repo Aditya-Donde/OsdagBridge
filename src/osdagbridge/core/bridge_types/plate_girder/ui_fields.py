@@ -54,6 +54,11 @@ ui_config_dict recognised keys:
     # TYPE_NOTE
     attr                : str  — attribute name to set on InputDock so domain
                           logic can call .setVisible() on the label
+    
+    # For requied field, tupple[6]["required"] = True, InputDock will check 
+      if the value is filled before design, if not, show error and prevent design.
+
+    # Required field also automatically adds the '*' symbol after the display label, e.g. "Project Location*"
 """
 
 
@@ -111,12 +116,16 @@ class FrontendData:
 
             # ── Project Location ──────────────────────────────────────────────
             (KEY_SECTION_PROJECT, DISP_TITLE_PROJECT, TYPE_TITLE, None, True, "No Validator",
-                {"container": "main", "show_group_title": False}),
+                {
+                    "container": "main",
+                    "show_group_title": False
+                }),
 
-            (KEY_PROJECT_LOCATION, "Project Location*", TYPE_BUTTON, None, True, "No Validator",
+            (KEY_PROJECT_LOCATION, "Project Location", TYPE_BUTTON, None, True, "No Validator",
                 {
                     "action":       "show_project_location_dialog",
                     "button_label": "Select Location",
+                    "required":      True,
                 }),
 
             # ── Geometric Details ─────────────────────────────────────────────
@@ -126,12 +135,14 @@ class FrontendData:
             (KEY_SPAN, KEY_DISP_SPAN, TYPE_TEXTBOX, None, True, "Double Validator",
                 {
                     "placeholder": f"{SPAN_MIN}–{SPAN_MAX} m",
+                    "required":    True,
                 }),
 
             (KEY_CARRIAGEWAY_WIDTH, KEY_DISP_CARRIAGEWAY_WIDTH, TYPE_TEXTBOX, None,
                 True, "Double Validator",
                 {
-                    "placeholder_dynamic": "_carriageway_placeholder_text"
+                    "placeholder_dynamic": "_carriageway_placeholder_text",
+                    "required":            True,
                 }),
 
             (KEY_INCLUDE_MEDIAN, "Include Median", TYPE_COMBOBOX, VALUES_NO_YES,

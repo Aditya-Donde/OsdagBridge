@@ -163,40 +163,55 @@ class BridgeDualCADWidget(QWidget):
         
         # Map span (meters to mm)
         if KEY_SPAN in input_dict:
-            params['span_length'] = float(input_dict[KEY_SPAN]) * 1000
+            if input_dict[KEY_SPAN] is not None:
+                params['span_length'] = float(input_dict[KEY_SPAN]) * 1000
         
         # Map carriageway width (meters to mm)
         if KEY_CARRIAGEWAY_WIDTH in input_dict:
-            params['carriageway_width'] = float(input_dict[KEY_CARRIAGEWAY_WIDTH]) * 1000
+            if input_dict[KEY_CARRIAGEWAY_WIDTH] is not None:
+                params['carriageway_width'] = float(input_dict[KEY_CARRIAGEWAY_WIDTH]) * 1000
         
         # Map skew angle (degrees)
         if KEY_SKEW_ANGLE in input_dict:
-            params['skew_angle'] = float(input_dict[KEY_SKEW_ANGLE])
+            if input_dict[KEY_SKEW_ANGLE] is not None:
+                params['skew_angle'] = float(input_dict[KEY_SKEW_ANGLE])
         
         # Map number of girders
         if KEY_NO_OF_GIRDERS in input_dict:
             params['num_girders'] = int(input_dict[KEY_NO_OF_GIRDERS])
-        
+        else:
+            params['num_girders'] = 4 # Add default values if not present
+
         # Map girder spacing (meters to mm)
         if KEY_GIRDER_SPACING in input_dict:
             params['girder_spacing'] = float(input_dict[KEY_GIRDER_SPACING]) * 1000
-        
+        else:
+            params['girder_spacing'] = 2.75 * 1000 # Add default values if not present
+
         # Map deck overhang (meters to mm)
         if KEY_DECK_OVERHANG in input_dict:
             params['deck_overhang'] = float(input_dict[KEY_DECK_OVERHANG]) * 1000
-        
+        else:
+            params['deck_overhang'] = 1.0 * 1000 # Add default values if not present
+
         # Map deck thickness (mm)
         if KEY_DECK_THICKNESS in input_dict:
             params['deck_thickness'] = float(input_dict[KEY_DECK_THICKNESS])
-        
+        else:
+            params['deck_thickness'] = 200 # Add default values if not present
+
         # Map footpath width (meters to mm)
         if KEY_FOOTPATH_WIDTH in input_dict:
             params['footpath_width'] = float(input_dict[KEY_FOOTPATH_WIDTH]) * 1000
-        
+        else:
+            params['footpath_width'] = 1.5 * 1000 # Add default values if not present
+
         # Map footpath thickness (mm)
         if KEY_FOOTPATH_THICKNESS in input_dict:
             params['footpath_thickness'] = float(input_dict[KEY_FOOTPATH_THICKNESS])
-            
+        else:
+            params['footpath_thickness'] = 200 # Add default values if not present
+
         if "crash_barrier_type" in input_dict:
             params['crash_barrier_type'] = input_dict["crash_barrier_type"]
             
@@ -265,10 +280,12 @@ class BridgeDualCADWidget(QWidget):
         # Map cross bracing spacing (meters to mm)
         if KEY_CROSS_BRACING_SPACING in input_dict:
             params['cross_bracing_spacing'] = float(input_dict[KEY_CROSS_BRACING_SPACING]) * 1000
-        
+        else:
+            params['cross_bracing_spacing'] = 3.5 * 1000 # Add default values if not present
+
         # Map median present
         if KEY_INCLUDE_MEDIAN in input_dict:
-            params['median_present'] = bool(input_dict[KEY_INCLUDE_MEDIAN])
+            params['median_present'] = bool(input_dict[KEY_INCLUDE_MEDIAN] == "Yes")
             # When enabling median from homepage and no median_type was set yet,
             # provide a sensible default so the CAD can draw a shape.
             if params['median_present'] and 'median_type' not in input_dict:
@@ -282,8 +299,6 @@ class BridgeDualCADWidget(QWidget):
                         params["median_height"] = geom["kerb_height"]
                     elif "barrier_height" in geom:
                         params["median_height"] = geom["barrier_height"]
-
-        print(f"@@{params}")
         
         # Update both widgets with same parameters
         self.cross_section_widget.update_params(params)
