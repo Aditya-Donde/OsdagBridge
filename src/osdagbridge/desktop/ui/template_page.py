@@ -1,7 +1,7 @@
 import sys
 from PySide6.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QHBoxLayout, QLabel,
-    QMenuBar, QSplitter, QSizePolicy, QPushButton, QScrollArea, QFrame,
+    QMenuBar, QSplitter, QSizePolicy, QPushButton, QLineEdit, QComboBox,
 )
 from PySide6.QtSvgWidgets import QSvgWidget
 from PySide6.QtCore import Qt, QFile, QTextStream, Signal,QTimer
@@ -12,6 +12,9 @@ from osdagbridge.desktop.ui.docks.output_dock import OutputDock
 from osdagbridge.desktop.ui.docks.log_dock import LogDock
 from osdagbridge.desktop.ui.docks.cad_dual_view import BridgeDualCADWidget
 from osdagbridge.desktop.ui.dialogs.additional_inputs import AdditionalInputs
+from osdagbridge.desktop.ui.dialogs.custom_messagebox import CustomMessageBox, MessageBoxType
+from osdagbridge.desktop.ui.dialogs.loading_popup import LoadingDialogManager
+from osdagbridge.desktop.ui.cad_3d import CAD3DWindow
 
 from osdagbridge.core.bridge_types.plate_girder.ui_fields import FrontendData
 from osdagbridge.core.bridge_types.plate_girder.defaults import DEFAULTS_DICT
@@ -97,6 +100,8 @@ class CustomWindow(QWidget):
         # Central CAD state (single source of truth)
         # Must be initialized BEFORE init_ui because init_ui calls update_cad_from_inputs
         self.cad_state = {}
+
+        self.init_ui()
 
     def init_ui(self):
         # Docking icons Parent class
@@ -234,12 +239,12 @@ class CustomWindow(QWidget):
 
         # from osdagbridge.desktop.ui.cad_3d import CAD3DWindow
         # 3D CAD placeholder (mutually exclusive with dual view + plots)
-        self.cad_3d_widget = CentralPlaceholderWidget("3D CAD Here")
+        self.cad_3d_widget = CAD3DWindow()
         self.cad_3d_widget.setVisible(False)
         self.cad_log_splitter.addWidget(self.cad_3d_widget)
 
         # Plots placeholder (mutually exclusive with dual view + 3d cad)
-        from osdagbridge.desktop.ui.plots_UI import PlotWidget
+        from osdagbridge.desktop.ui.plots_ui import PlotWidget
         self.plots_widget = PlotWidget()
         self.plots_widget.setVisible(False)
         self.cad_log_splitter.addWidget(self.plots_widget)
@@ -294,18 +299,96 @@ class CustomWindow(QWidget):
     
     #-------Common-Design-Save-Additional-Inputs-Functionality-START-------
 
+    def validate_required_inputs(self):
+        """Check that all required fields have values before allowing design to proceed."""
+        required_field_keys = []
+
+        # Collect empty field keys
+        for tupple in self.backend.input_values():
+            key, label, _, _, _, _, meta_data = tupple
+            if meta_data.get("required", False):
+                required_field_keys.append((key, label))
+
+        empty_widgets = []
+        # collect empty required widgets
+        for key, label in required_field_keys:
+            widget = self.input_dock.input_widget.findChild(QWidget, key)
+            # print(f"[DEBUG] Validating required field '{key}' with widget: {widget}")
+            # Do check for QLineEdit
+            # Since QComboBox always has a value (the first option)
+            if isinstance(widget, QLineEdit):
+                if widget.text().strip() == "":
+                    empty_widgets.append((widget, label))
+            # This is for other options like Project Locations which is to be checked in self.input_dict
+            elif not isinstance(widget, QComboBox):
+                value = self.input_dict.get(key)
+                if value in [None, "", [], {}]:  # Check for empty values
+                    empty_widgets.append((widget, label))
+        
+        # If empty widgets, show error popup and color the fields red
+        message = "Please fill in the required(*) fields before proceeding:\n"
+        if empty_widgets:
+            for widget, label in empty_widgets:
+                # Collecting label name to show in popup message
+                message += f" - {label.replace('\n', ' ')}\n" # Replace \n with space for better readability
+                # Highlight widget with red color
+                widget.setProperty("error", True)
+                widget.style().unpolish(widget)
+                widget.style().polish(widget)
+            
+            # Show error popup
+            CustomMessageBox(
+                title="Empty Required Fields",
+                text=message,
+                dialogType=MessageBoxType.Critical
+            ).exec()
+            return False  # Validation failed
+        return True  # Validation passed
+    
+    def _start_loading(self):
+        """Start loading popup"""
+        import time
+        self.loading = LoadingDialogManager()
+        self.loading.show()
+        self.setEnabled(False)
+        time.sleep(1)
+    
+    def _finish_loading(self):
+        """Close the loading dialog box"""
+        import time
+        time.sleep(1)
+        if hasattr(self, 'loading') and self.loading is not None:
+            self.loading.hide()
+        self.setEnabled(True)
+            
     def common_design_func(self, trigger: str):
         """
         Trigger belongs to one of ["Design", "Save", "Additional Inputs"]
         """
-        print(f"@plot:{self.plots_view_active}")
-        print(f"@3d:{self.cad_3d_view_active}")
-        print(f"@top:{self.top_view_active}")
-        print(f"@c/s:{self.cross_section_active}")
+        # print(f"[DEBUG]plot:{self.plots_view_active}")
+        # print(f"[DEBUG]3d:{self.cad_3d_view_active}")
+        # print(f"[DEBUG]top:{self.top_view_active}")
+        # print(f"[DEBUG]c/s:{self.cross_section_active}")
+        from pprint import pprint
+        print("\n@@input_dictionary:\n")
+        pprint(self.input_dict)
+
+        # Check required fields
+        required_widget_validated = self.validate_required_inputs()
+        if not required_widget_validated:
+            return                 # Stop design process if validation fails
+
+        # Call Additional Input Defaults
+        additional_inputs_dict = {}
+        self.input_dict.update(additional_inputs_dict)
+
         if trigger == "Design":
+            
+            # Start-Loading-popup---------------------------------------------
+            self._start_loading()
+            
             # Collect all the values from input Dock and pass to backend
             self.backend.set_input(self.input_dict)
-            print(f"@@input_dictionary: {self.input_dict}")
             self.backend.design()
 
             # Lock the input dock after design is triggered
@@ -317,9 +400,20 @@ class CustomWindow(QWidget):
             loadcases = self.backend.get_available_loadcases()
             nodes, members = self.backend.get_nodes_members()
             self.plots_widget.setup(ds_all, loadcases, nodes, members)
+
+            # Render 3D cad using the parameters from Backend
+            self.cad_3d_widget.render_3d_cad()
+
+            # Close-loading-popup---------------------------------------------
+            self._finish_loading()
+
+            # Focus 3D-Cad widget
+            self.cad_3d_view_toggle(force_show=True)
+
         elif trigger == "Save":
             # Collect all the values from input Dock and save to osi/csv
             pass
+
         elif trigger == "Additional Inputs":
             # Show Additional Inputs
             pass
@@ -331,53 +425,23 @@ class CustomWindow(QWidget):
         # Connect to input dock's value changed signals
         # This will update the CAD whenever any input field changes
         if hasattr(self.input_dock, 'input_value_changed'):
-            self.input_dock.input_value_changed.connect(self.update_cad_from_inputs)
-            
-    def open_additional_inputs(self):
-        """
-        Open Additional Inputs dialog and route values through CAD interface
-        """
-        dialog = AdditionalInputs(parent=self)
-
-        if dialog.exec():
-            # Get values ONLY (do not update CAD directly)
-            values = dialog.get_all_values()
-
-            if values:
-                self.update_cad_state("additional_inputs", values)
-                
-    def update_cad_state(self, source: str, values: dict):
-        """
-        Central CAD interface (single source of truth)
-        source: 'input_dock' | 'additional_inputs'
-        """
-        if not values:
-            return
-
-        # 1. Store state
-        self.cad_state.update(values)
-
-        # 2. Apply state to CAD UI ONLY
-        if hasattr(self, 'cad_comp_widget'):
-            self.cad_comp_widget.update_from_osdag_inputs(self.cad_state)
+            self.input_dock.input_value_changed.connect(self.update_cad_from_inputs)        
             
     def update_cad_from_inputs(self):
         """
-        Collect inputs from InputDock and send to CAD interface
+        Collect inputs from InputDock and update 2D-CAD
         """
         if not self.input_dock:
             return
 
-        input_values = self.input_dock.get_all_input_values()
-
         # print("[DEBUG] Collected input values from InputDock:", input_values)
-        
-        if not input_values:
-            return
 
-        # IMPORTANT: send ONLY to interface
-        # self.update_cad_state("input_dock", input_values)
+        # 1. Store state
+        self.cad_state.update(self.input_dict)
 
+        # 2. Apply state to CAD UI
+        if hasattr(self, 'cad_comp_widget'):
+            self.cad_comp_widget.update_from_osdag_inputs(self.cad_state)
 
     #---------------------------------Docking-Icons-Functionality-START----------------------------------------------
 
@@ -451,10 +515,10 @@ class CustomWindow(QWidget):
         self.cad_comp_widget.set_top_view_visible(self.top_view_active)
 
 
-    def cad_3d_view_toggle(self):
+    def cad_3d_view_toggle(self, force_show=False):
         self.cad_3d_view_active = not self.cad_3d_view_active
 
-        if self.cad_3d_view_active:
+        if self.cad_3d_view_active or force_show:
             # 3D CAD is mutually exclusive — deactivate Plots & update icon
             self.plots_view_active = False
             self.plots_control.load(":/vectors/view_btn/plots_inactive.svg")
@@ -840,7 +904,7 @@ class CustomWindow(QWidget):
         design_prefs_action = QAction("Additional Inputs", self)
         design_prefs_action.setShortcut(QKeySequence("Alt+P"))
         edit_menu.addAction(design_prefs_action)
-        design_prefs_action.triggered.connect(self.open_additional_inputs)
+        design_prefs_action.triggered.connect(lambda _: print("Open Additional Input"))
 
 
         graphics_menu = self.menu_bar.addMenu("Graphics")

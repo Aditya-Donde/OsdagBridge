@@ -512,9 +512,9 @@ concrete_properies = connectdb("Concrete_Grade_Properties")
 DEFAULTS_DICT = {
     # Input Dock Defaults
     KEY_STRUCTURE_TYPE: "Highway Bridge",
-    KEY_PROJECT_LOCATION: None,
-    KEY_SPAN: DEFAULT_SPAN_M,
-    KEY_CARRIAGEWAY_WIDTH: DEFAULT_CARRIAGEWAY_WIDTH_M,
+    KEY_PROJECT_LOCATION: None, # Required field will be none by default
+    KEY_SPAN: None,
+    KEY_CARRIAGEWAY_WIDTH: None,
     KEY_INCLUDE_MEDIAN: "No",
     KEY_FOOTPATH: "None",
     KEY_SKEW_ANGLE: DEFAULT_SKEW_ANGLE_DEG,
