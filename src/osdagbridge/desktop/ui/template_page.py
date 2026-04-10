@@ -1,4 +1,6 @@
 import sys
+import os
+
 from PySide6.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QHBoxLayout, QLabel,
     QMenuBar, QSplitter, QSizePolicy, QPushButton, QScrollArea, QFrame,
@@ -261,17 +263,21 @@ class CustomWindow(QWidget):
             # Collect all the values from input Dock and pass to backend
             self.backend.set_input(self.input_dict)
             print(f"@@input_dictionary: {self.input_dict}")
+            
+            # 1. Run the design and analysis
             self.backend.design()
 
             # Lock the input dock after design is triggered
             if self.input_dock and not self.input_dock.is_locked:
                 self.input_dock.toggle_lock()
 
-            # Wire up the plots widget with results from the completed analysis
-            ds_all = self.backend.get_results_dataset()
+            # 2. Get the master results handler and the loadcases
+            results_handler = self.backend.get_results_handler()
             loadcases = self.backend.get_available_loadcases()
-            nodes, members = self.backend.get_nodes_members()
-            self.plots_widget.setup(ds_all, loadcases, nodes, members)
+            
+            # 3. Pass them directly into the plotting UI!
+            self.plots_widget.setup(results_handler, loadcases)
+            
         elif trigger == "Save":
             # Collect all the values from input Dock and save to osi/csv
             pass

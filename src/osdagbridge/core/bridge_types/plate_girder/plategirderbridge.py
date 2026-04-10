@@ -14,12 +14,6 @@ from .defaults import (
 from .initial_sizing import BridgeConfigurationSolver, DEFAULT_FOOTPATH_WIDTH
 from .analyser import BridgeGrillageModel
 from .analysis_results import PlateGirderAnalysisResults
-from .plots_widget import (
-    build_figure_sfd,
-    build_figure_bmd,
-    build_figure_bmd_contour,
-    build_nodes_members,
-)
 
 from osdagbridge.core.utils.common import (
     KEY_STRUCTURE_TYPE,
@@ -170,7 +164,7 @@ class PlateGirderBridge:
             n_footpaths    = 2
             footpath_width = DEFAULT_FOOTPATH_WIDTH
             railing_width  = DEFAULT_RAILING_WIDTH
-        else:                                        # Single Side
+        else:                                            # Single Side
             n_footpaths    = 1
             footpath_width = DEFAULT_FOOTPATH_WIDTH
             railing_width  = DEFAULT_RAILING_WIDTH
@@ -569,37 +563,33 @@ class PlateGirderBridge:
         
     
     # ─────────────────────────────────────────────────────────────────────────
-    # Plotting
+    # Plotting Integration (Single Source of Truth)
     # ─────────────────────────────────────────────────────────────────────────
 
     def get_results_dataset(self):
-        """Return the xarray Dataset of analysis results."""
+        """Return the raw xarray Dataset of analysis results."""
         return self.grillage_model.model.get_results()
 
+    def get_results_handler(self) -> PlateGirderAnalysisResults:
+        """
+        Creates and returns the Single Source of Truth results handler.
+        This bundles the dataset, grillage model, and geometry properties 
+        so the plotting widgets and terminal tools are perfectly synced.
+        """
+        ds_all = self.get_results_dataset()
+        # Retrieve edge_dist directly from the initialized GrillageGeometry DTO
+        edge_dist = self.grillage_geometry.edge_dist if self.grillage_geometry else 0.0
+        
+        return PlateGirderAnalysisResults(
+            dataset=ds_all, 
+            bridge=self.grillage_model, 
+            edge_dist=edge_dist
+        )
+
     def get_available_loadcases(self) -> list[str]:
-        """Return sorted list of loadcase name strings from the results dataset."""
-        results = self.get_results_dataset()
-        handler = PlateGirderAnalysisResults(dataset=results, bridge=self.grillage_model)
+        """Return sorted list of loadcase name strings from the results handler."""
+        handler = self.get_results_handler()
         return [str(lc) for lc in handler.get_available_loadcases()]
-
-    def get_nodes_members(self) -> tuple[dict, dict]:
-        """Return (nodes, members) dicts built from the active openseespy model."""
-        return build_nodes_members()
-
-    def build_figure_sfd(self, ds, force_key: str) -> str:
-        """Build and return Plotly SFD figure JSON for the given dataset slice and force key."""
-        nodes, members = self.get_nodes_members()
-        return build_figure_sfd(ds, force_key, nodes, members)
-
-    def build_figure_bmd(self, ds, force_key: str) -> tuple[str, dict]:
-        """Build and return (Plotly BMD figure JSON, summary_data) for the given dataset slice."""
-        nodes, members = self.get_nodes_members()
-        return build_figure_bmd(ds, force_key, nodes, members)
-
-    def build_figure_bmd_contour(self, ds, force_key: str) -> str:
-        """Build and return Plotly BMD contour figure JSON for the given dataset slice."""
-        nodes, members = self.get_nodes_members()
-        return build_figure_bmd_contour(ds, force_key, nodes, members)
 
     # ─────────────────────────────────────────────────────────────────────────
     # Helpers

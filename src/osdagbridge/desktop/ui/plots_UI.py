@@ -158,10 +158,9 @@ class PlotWidget(QWidget):
         super().__init__()
         self.setWindowTitle("Plate Girder Results")
 
-        # Populated by setup() after bridge analysis completes
-        self._ds_all = None
-        self._nodes = {}
-        self._members = {}
+        # --- THE FIX: We now store the Handler, not raw data arrays ---
+        self.results_handler = None
+        # --------------------------------------------------------------
 
         layout = QVBoxLayout(self)
         top = QHBoxLayout()
@@ -205,13 +204,10 @@ class PlotWidget(QWidget):
         self.scale_spinbox.setMinimumWidth(80)
         self.scale_spinbox.setMinimumHeight(30)
         
-        # --- THE FIX: Use QPalette instead of setStyleSheet ---
-        # This keeps the text black but completely bypasses the CSS engine bug!
         palette = self.scale_spinbox.palette()
         palette.setColor(QPalette.Text, Qt.black)
         palette.setColor(QPalette.ButtonText, Qt.black)
         self.scale_spinbox.setPalette(palette)
-        # ------------------------------------------------------
         
         self.scale_spinbox.setRange(0.1, 50.0)    
         self.scale_spinbox.setValue(1.0)          
@@ -230,9 +226,6 @@ class PlotWidget(QWidget):
         self.debug_page = DebugWebPage(self.web)
         self.web.setPage(self.debug_page)
         
-        # Stops Qt from painting a blank background behind the web viewer
-        # self.web.setAttribute(Qt.WA_OpaquePaintEvent)
-        # self.web.setAttribute(Qt.WA_NoSystemBackground)
         self.web.page().setBackgroundColor(Qt.white)
 
         settings = self.web.settings()
@@ -252,11 +245,10 @@ class PlotWidget(QWidget):
         # Inject HTML directly into memory
         self.web.setHtml(HTML_TEMPLATE, QUrl("qrc:/"))
 
-    def setup(self, ds_all, loadcases, nodes, members):
-        """Populate the widget with bridge analysis results. Call after design() completes."""
-        self._ds_all = ds_all
-        self._nodes = nodes
-        self._members = members
+    # --- THE FIX: We now accept the results_handler instead of raw data ---
+    def setup(self, results_handler, loadcases):
+        """Populate the widget using the backend Analysis Results handler."""
+        self.results_handler = results_handler
 
         self.combo.blockSignals(True)
         self.combo.clear()
@@ -264,6 +256,7 @@ class PlotWidget(QWidget):
         self.combo.blockSignals(False)
 
         self.update_plot()
+    # ----------------------------------------------------------------------
 
     def show_summary_dialog(self):
         """Pops up the dialog perfectly in the top-left corner of the web view."""
@@ -280,13 +273,12 @@ class PlotWidget(QWidget):
         self.summary_dialog.move(top_left_corner)
 
     def update_plot(self):
-        if self._ds_all is None:
+        # --- THE FIX: Check for handler existence ---
+        if self.results_handler is None:
             return
 
         loadcase = self.combo.currentText()
         force_key = self.force_combo.currentText()
-        ds = self._ds_all.sel(Loadcase=loadcase)
-
         scale_val = self.scale_spinbox.value()
 
         is_force = force_key.startswith("F") 
@@ -299,16 +291,19 @@ class PlotWidget(QWidget):
             self.contour.blockSignals(False)
             
             self.stats_dict = {}
-            plot_json = build_figure_sfd(ds, force_key, self._nodes, self._members, scale_val)
+            # --- THE FIX: Pass the handler and the loadcase name ---
+            plot_json = build_figure_sfd(self.results_handler, loadcase, force_key, scale_val)
 
         elif is_moment:
             self.contour.setEnabled(True)
 
             if self.contour.isChecked():
-                plot_json = build_figure_bmd_contour(ds, force_key, self._nodes, self._members, scale_val)
+                # --- THE FIX: Pass the handler and the loadcase name ---
+                plot_json = build_figure_bmd_contour(self.results_handler, loadcase, force_key, scale_val)
                 self.stats_dict = {}
             else:
-                plot_json, self.stats_dict = build_figure_bmd(ds, force_key, self._nodes, self._members, scale_val)
+                # --- THE FIX: Pass the handler and the loadcase name ---
+                plot_json, self.stats_dict = build_figure_bmd(self.results_handler, loadcase, force_key, scale_val)
 
                 if self.summary_dialog.isVisible():
                     self.summary_dialog.update_data(self.stats_dict)
