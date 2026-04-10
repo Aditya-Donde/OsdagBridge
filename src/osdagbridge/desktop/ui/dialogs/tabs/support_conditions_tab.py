@@ -36,6 +36,8 @@ class SupportConditionsTab(QWidget):
                     value = float(text)
                     if value <= 0:
                         errors.append("Bearing Length must be greater than 0.")
+                    elif value > 600:
+                        errors.append("Bearing Length should not be greater than 600.")    
                 except ValueError:
                     errors.append("Bearing Length must be a valid number.")
 
