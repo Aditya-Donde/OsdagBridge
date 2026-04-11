@@ -48,6 +48,10 @@ from osdagbridge.core.bridge_components.super_structure.cross_bracing.builder im
     build_cross_bracings
 )
 
+from osdagbridge.core.bridge_types.plate_girder.dto import (
+    BridgeParametersDTO,
+)
+
 # Component keys for CAD organization
 KEY_CAD_GIRDER = "Girder"
 KEY_CAD_STIFFENER = "Stiffener"
@@ -127,154 +131,130 @@ class PlateGirderCADGenerator:
     """
 
     def __init__(self, bridge_type=KEY_MODULE_PG):
-        """
-        Initialize the CAD generator with default parameters.
-        
-        Args:
-            bridge_type: Type of bridge module (default: Plate Girder)
-        """
+
         self.bridge_type = bridge_type
+        self.model_data = {}
+        self.display = None
+        self.cad_widget = None
+        self.component = None
 
+    def _set_parameters(self, design_params: BridgeParametersDTO):
         # GIRDER PARAMETERS
-        self.span_length_L = 25000           # Total span length (mm)
-
-        self.girder_section_d = 900          # Clear web depth (mm)
-        self.girder_section_bf = 500         # Top flange width (mm)
-        self.girder_section_bf_b = 500       # Bottom flange width (mm)
-        self.girder_section_tf = 260         # Top flange thickness (mm)
-        self.girder_section_tf_b = 260       # Bottom flange thickness (mm)
-        self.girder_section_tw = 100         # Web thickness (mm)
-
-        self.num_girders = 5                 # Number of girders
-        self.girder_spacing = 2750           # Center-to-center spacing (mm)
+        self.span_length_L = design_params.span_length_L
+        self.girder_section_d = design_params.girder_section_d
+        self.girder_section_bf = design_params.girder_section_bf
+        self.girder_section_bf_b = design_params.girder_section_bf_b
+        self.girder_section_tf = design_params.girder_section_tf
+        self.girder_section_tf_b = design_params.girder_section_tf_b
+        self.girder_section_tw = design_params.girder_section_tw
+        self.num_girders = design_params.num_girders
+        self.girder_spacing = design_params.girder_spacing
 
         # GEOMETRY PARAMETERS
-        self.skew_angle = 0                  # Skew angle in degrees (0 = no skew)
+        self.skew_angle = design_params.skew_angle
 
         # DECK PARAMETERS
-        self.carriageway_width = 12000       # Width of traffic lanes (mm)
-        self.deck_thickness = 400            # Deck slab thickness (mm)
-
-        self.footpath_config = "BOTH"        # "NONE" / "LEFT" / "RIGHT" / "BOTH"
-        self.footpath_width = 1500           # Footpath width (mm)
-        self.railing_width = 300             # Railing width (mm)
+        self.carriageway_width = design_params.carriageway_width
+        self.deck_thickness = design_params.deck_thickness
+        self.footpath_config = design_params.footpath_config
+        self.footpath_width = design_params.footpath_width
+        self.railing_width = design_params.railing_width
 
         # CRASH BARRIER PARAMETERS
-        self.barrier_type = "Semi-Rigid"          # "Rigid", "Semi-Rigid", or "Flexible"
-        self.crash_barrier_subtype = "Double W-beam"  # Specific barrier design
-        
-        # Options:
-        # - Rigid: "IRC-5R", "High Containment"
-        # - Semi-Rigid/Metallic: "Single W-beam", "Double W-beam"
+        self.barrier_type = design_params.barrier_type
+        self.crash_barrier_subtype = design_params.crash_barrier_subtype
 
         # MEDIAN PARAMETERS
-        self.enable_median = True            # Include median barrier
-        self.median_type = "Metallic Crash Barrier"  
-        # Options: "Raised Kerb", "RCC Crash Barrier", "Metallic Crash Barrier"
+        self.enable_median = design_params.enable_median
+        self.median_type = design_params.median_type
 
         # RAILING PARAMETERS
-        self.rail_count = 3                  # Number of rails
-        self.railing_type = "rcc"            # "rcc" or "steel"
+        self.rail_count = design_params.rail_count
+        self.railing_type = design_params.railing_type
 
         # STIFFENER PARAMETERS
-        
-        # Intermediate stiffener configuration
-        self.include_intermediate_stiffeners = True  # Include intermediate stiffeners
-        self.intermediate_stiffener_spacing = 2000    # Spacing between intermediate stiffeners (mm)
-        self.intermediate_stiffener_thickness = 20   # Intermediate stiffener thickness (mm)
-        self.intermediate_stiffener_outstand = None  # outstand for intermediate stiffeners
-        
-        # End stiffener configuration 
-        self.num_end_stiffener_pairs = 4     # Number of end stiffener pairs on each end
-        self.end_stiffener_thickness = 30    # End stiffener thickness (mm)
-        self.end_stiffener_outstand = None   # outstand for end stiffeners
-        
-        # Longitudinal stiffener configuration
-        self.include_longitudinal_stiffeners = True # Whether to include longitudinal stiffeners
-        self.num_longitudinal_stiffeners = 2        # Number of longitudinal stiffeners (1 or 2)
-        self.longitudinal_stiffener_thickness = 20  # Thickness of longitudinal stiffeners (mm)
-        self.longitudinal_stiffener_outstand = None # outstand for longitudinal stiffeners
+        self.include_intermediate_stiffeners = design_params.include_intermediate_stiffeners
+        self.intermediate_stiffener_spacing = design_params.intermediate_stiffener_spacing
+        self.intermediate_stiffener_thickness = design_params.intermediate_stiffener_thickness
+        self.intermediate_stiffener_outstand = design_params.intermediate_stiffener_outstand
+
+        self.num_end_stiffener_pairs = design_params.num_end_stiffener_pairs
+        self.end_stiffener_thickness = design_params.end_stiffener_thickness
+        self.end_stiffener_outstand = design_params.end_stiffener_outstand
+
+        self.include_longitudinal_stiffeners = design_params.include_longitudinal_stiffeners
+        self.num_longitudinal_stiffeners = design_params.num_longitudinal_stiffeners
+        self.longitudinal_stiffener_thickness = design_params.longitudinal_stiffener_thickness
+        self.longitudinal_stiffener_outstand = design_params.longitudinal_stiffener_outstand
 
         # CROSS BRACING PARAMETERS
-        self.cross_bracing_spacing = 4000    # Spacing between bracing frames (mm)
+        self.cross_bracing_spacing = design_params.cross_bracing_spacing
+        self.bracing_type = design_params.bracing_type
+        self.x_bracket_option = design_params.x_bracket_option
+        self.k_top_bracket = design_params.k_top_bracket
 
-        self.bracing_type = "X"              # "X" or "K"
-        self.x_bracket_option = "BOTH"       # For X-bracing: "NONE", "UPPER", "LOWER", "BOTH"
-        self.k_top_bracket = True            # For K-bracing: include top bracket
-
-        # Diagonal members section configuration
-        self.diagonal_section_type = "ANGLE"
+        self.diagonal_section_type = design_params.diagonal_section_type
         self.diagonal_section_dims = {
-            "leg_h": 100,                    # Vertical leg height (longer leg)
-            "leg_w": 50,                     # Horizontal leg width (shorter leg)
-            "connection_type": "LONGER_LEG"  # "LONGER_LEG" or "SHORTER_LEG"
+            "leg_h": design_params.diagonal_section_dims.leg_h,
+            "leg_w": design_params.diagonal_section_dims.leg_w,
+            "connection_type": design_params.diagonal_section_dims.connection_type,
         }
-        self.diagonal_thickness = 5          # Diagonal member thickness (mm)
+        self.diagonal_thickness = design_params.diagonal_thickness
 
-        # Top chord/bracket section configuration
-        self.top_chord_section_type = "DOUBLE_CHANNEL"
+        self.top_chord_section_type = design_params.top_chord_section_type
         self.top_chord_section_dims = {
-            "leg_h": 80,
-            "leg_w": 40,
-            "connection_type": "LONGER_LEG"
+            "leg_h": design_params.top_chord_section_dims.leg_h,
+            "leg_w": design_params.top_chord_section_dims.leg_w,
+            "connection_type": design_params.top_chord_section_dims.connection_type,
         }
-        self.top_chord_thickness = 5         # Top chord thickness (mm)
+        self.top_chord_thickness = design_params.top_chord_thickness
 
-        # Bottom chord/bracket section configuration
-        self.bottom_chord_section_type = "ANGLE"
+        self.bottom_chord_section_type = design_params.bottom_chord_section_type
         self.bottom_chord_section_dims = {
-            "leg_h": 80,
-            "leg_w": 40,
-            "connection_type": "LONGER_LEG"
+            "leg_h": design_params.bottom_chord_section_dims.leg_h,
+            "leg_w": design_params.bottom_chord_section_dims.leg_w,
+            "connection_type": design_params.bottom_chord_section_dims.connection_type,
         }
-        self.bottom_chord_thickness = 5      # Bottom chord thickness (mm)
+        self.bottom_chord_thickness = design_params.bottom_chord_thickness
 
         # END DIAPHRAGM PARAMETERS
-        self.end_diaphragm_type = "Cross Bracing"   # Options: "Cross Bracing", "Rolled Beam", "Welded Beam"
-        self.end_diaphragm_spacing = 100     # Longitudinal offset from bridge ends (mm)
-        
-        # For "Cross Bracing" type end diaphragms - separate section configuration
-        self.end_diaphragm_bracing_type = "K"  # "X" or "K"
-        
-        # End diaphragm diagonal members
-        self.end_diaphragm_diagonal_section_type = "ANGLE"
+        self.end_diaphragm_type = design_params.end_diaphragm_type
+        self.end_diaphragm_spacing = design_params.end_diaphragm_spacing
+        self.end_diaphragm_bracing_type = design_params.end_diaphragm_bracing_type
+
+        self.end_diaphragm_diagonal_section_type = design_params.end_diaphragm_diagonal_section_type
         self.end_diaphragm_diagonal_section_dims = {
-            "leg_h": 100,
-            "leg_w": 50,
-            "connection_type": "LONGER_LEG"
+            "leg_h": design_params.end_diaphragm_diagonal_section_dims.leg_h,
+            "leg_w": design_params.end_diaphragm_diagonal_section_dims.leg_w,
+            "connection_type": design_params.end_diaphragm_diagonal_section_dims.connection_type,
         }
-        self.end_diaphragm_diagonal_thickness = 5
-        
-        # End diaphragm top chord
-        self.end_diaphragm_top_chord_section_type = "CHANNEL"
+        self.end_diaphragm_diagonal_thickness = design_params.end_diaphragm_diagonal_thickness
+
+        self.end_diaphragm_top_chord_section_type = design_params.end_diaphragm_top_chord_section_type
         self.end_diaphragm_top_chord_section_dims = {
-            "leg_h": 80,
-            "leg_w": 40,
-            "connection_type": "LONGER_LEG"
+            "leg_h": design_params.end_diaphragm_top_chord_section_dims.leg_h,
+            "leg_w": design_params.end_diaphragm_top_chord_section_dims.leg_w,
+            "connection_type": design_params.end_diaphragm_top_chord_section_dims.connection_type,
         }
-        self.end_diaphragm_top_chord_thickness = 5
-        
-        # End diaphragm bottom chord
-        self.end_diaphragm_bottom_chord_section_type = "ANGLE"
+        self.end_diaphragm_top_chord_thickness = design_params.end_diaphragm_top_chord_thickness
+
+        self.end_diaphragm_bottom_chord_section_type = design_params.end_diaphragm_bottom_chord_section_type
         self.end_diaphragm_bottom_chord_section_dims = {
-            "leg_h": 80,
-            "leg_w": 40,
-            "connection_type": "LONGER_LEG"
+            "leg_h": design_params.end_diaphragm_bottom_chord_section_dims.leg_h,
+            "leg_w": design_params.end_diaphragm_bottom_chord_section_dims.leg_w,
+            "connection_type": design_params.end_diaphragm_bottom_chord_section_dims.connection_type,
         }
-        self.end_diaphragm_bottom_chord_thickness = 5
-        
-        # For "Rolled Beam" or "Welded Beam" types (unchanged)
-        self.end_diaphragm_section = "I_SECTION"
+        self.end_diaphragm_bottom_chord_thickness = design_params.end_diaphragm_bottom_chord_thickness
+
+        self.end_diaphragm_section = design_params.end_diaphragm_section
         self.end_diaphragm_dims = {
-            "depth": 800,
-            "flange_width": 250,
-            "web_thickness": 12,
-            "flange_thickness": 100
-        }       
+            "depth": design_params.end_diaphragm_dims.depth,
+            "flange_width": design_params.end_diaphragm_dims.flange_width,
+            "web_thickness": design_params.end_diaphragm_dims.web_thickness,
+            "flange_thickness": design_params.end_diaphragm_dims.flange_thickness,
+        }   
 
-    # MAIN CAD GENERATION
-
-    def generate(self):
+    def generate(self, design_params: BridgeParametersDTO):
         """
         Generate complete bridge CAD geometry.
         
@@ -307,6 +287,8 @@ class PlateGirderCADGenerator:
                 - median_w_beams: Median W-beams (if metallic)
                 - railings: Railing components
         """
+
+        self._set_parameters(design_params)
         
         # HELPER FUNCTIONS
         

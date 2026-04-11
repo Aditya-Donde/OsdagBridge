@@ -30,6 +30,12 @@ from osdagbridge.core.bridge_types.plate_girder.cad_generator import (
 # Custom 3D Viewer 
 from osdagbridge.desktop.ui.utils.custom_3dviewer import CustomViewer3d
 
+from osdagbridge.core.bridge_types.plate_girder.dto import (
+    BridgeParametersDTO,
+    SectionDimsDTO,
+    ISectionDimsDTO
+)
+
 class CAD3DWindow(QWidget):
     """
     Main 3D CAD window for OsdagBridge.
@@ -108,7 +114,7 @@ class CAD3DWindow(QWidget):
 
     # ── RENDER / CLEAR ────────────────────────────────────────────────────────
 
-    def render_3d_cad(self):
+    def render_3d_cad(self, design_params: BridgeParametersDTO):
         """
         Generate and render the 3D bridge model on the display.
         Shows the component selector checkboxes after rendering.
@@ -118,7 +124,7 @@ class CAD3DWindow(QWidget):
             return
 
         # Generate fresh model data
-        self.generator.model_data = self.generator.generate()
+        self.generator.model_data = self.generator.generate(design_params)
 
         # Render on display
         self.load_bridge()
@@ -572,9 +578,105 @@ class BridgeComponentCheckbox(QWidget):
 # Standalone Testing----------------------------
 def main():
     app = QApplication(sys.argv)
+
+    bridge_parameters = BridgeParametersDTO(
+        # --- Girder ---
+        span_length_L=25_000,
+        girder_section_d=900,
+        girder_section_bf=500,
+        girder_section_bf_b=500,
+        girder_section_tf=260,
+        girder_section_tf_b=260,
+        girder_section_tw=100,
+        num_girders=5,
+        girder_spacing=2_750,
+
+        # --- Geometry ---
+        skew_angle=0,
+
+        # --- Deck ---
+        carriageway_width=12_000,
+        deck_thickness=400,
+        footpath_config="BOTH",
+        footpath_width=1_500,
+        railing_width=300,
+
+        # --- Crash Barrier ---
+        barrier_type="Semi-Rigid",
+        crash_barrier_subtype="Double W-beam",
+
+        # --- Median ---
+        enable_median=True,
+        median_type="Metallic Crash Barrier",
+
+        # --- Railing ---
+        rail_count=3,
+        railing_type="rcc",
+
+        # --- Intermediate Stiffeners ---
+        include_intermediate_stiffeners=True,
+        intermediate_stiffener_spacing=2_000,
+        intermediate_stiffener_thickness=20,
+        intermediate_stiffener_outstand=None,
+
+        # --- End Stiffeners ---
+        num_end_stiffener_pairs=4,
+        end_stiffener_thickness=30,
+        end_stiffener_outstand=None,
+
+        # --- Longitudinal Stiffeners ---
+        include_longitudinal_stiffeners=True,
+        num_longitudinal_stiffeners=2,
+        longitudinal_stiffener_thickness=20,
+        longitudinal_stiffener_outstand=None,
+
+        # --- Cross Bracing ---
+        cross_bracing_spacing=4_000,
+        bracing_type="X",
+        x_bracket_option="BOTH",
+        k_top_bracket=True,
+
+        diagonal_section_type="ANGLE",
+        diagonal_section_dims=SectionDimsDTO(leg_h=100, leg_w=50, connection_type="LONGER_LEG"),
+        diagonal_thickness=5,
+
+        top_chord_section_type="DOUBLE_CHANNEL",
+        top_chord_section_dims=SectionDimsDTO(leg_h=80, leg_w=40, connection_type="LONGER_LEG"),
+        top_chord_thickness=5,
+
+        bottom_chord_section_type="ANGLE",
+        bottom_chord_section_dims=SectionDimsDTO(leg_h=80, leg_w=40, connection_type="LONGER_LEG"),
+        bottom_chord_thickness=5,
+
+        # --- End Diaphragm ---
+        end_diaphragm_type="Cross Bracing",
+        end_diaphragm_spacing=100,
+        end_diaphragm_bracing_type="K",
+
+        end_diaphragm_diagonal_section_type="ANGLE",
+        end_diaphragm_diagonal_section_dims=SectionDimsDTO(leg_h=100, leg_w=50, connection_type="LONGER_LEG"),
+        end_diaphragm_diagonal_thickness=5,
+
+        end_diaphragm_top_chord_section_type="CHANNEL",
+        end_diaphragm_top_chord_section_dims=SectionDimsDTO(leg_h=80, leg_w=40, connection_type="LONGER_LEG"),
+        end_diaphragm_top_chord_thickness=5,
+
+        end_diaphragm_bottom_chord_section_type="ANGLE",
+        end_diaphragm_bottom_chord_section_dims=SectionDimsDTO(leg_h=80, leg_w=40, connection_type="LONGER_LEG"),
+        end_diaphragm_bottom_chord_thickness=5,
+
+        end_diaphragm_section="I_SECTION",
+        end_diaphragm_dims=ISectionDimsDTO(depth=800, flange_width=250, web_thickness=12, flange_thickness=100),
+    )
+
     win = CAD3DWindow()
     win.show()
+
+    # Delay render until after the display is fully initialized
+    QTimer.singleShot(200, lambda: win.render_3d_cad(bridge_parameters))
+
     sys.exit(app.exec())
+
 
 if __name__ == "__main__":
     main()
