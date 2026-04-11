@@ -231,12 +231,10 @@ class FrontendData:
             (KEY_ANALYSIS_LOAD_COMBINATION, "Load Combination:",
                 TYPE_COMBOBOX, ["Envelope"], True, "No Validator", {}),
 
-            (KEY_ANALYSIS_FORCES, None,           # None = no label
-                TYPE_CHECKBOX_GRID,
-                [["F<sub>x</sub>","V<sub>y</sub>","V<sub>z</sub>"], 
-                 ["T<sub>x</sub>","M<sub>y</sub>","M<sub>z</sub>"], 
-                 ["D<sub>x</sub>","D<sub>y</sub>","D<sub>z</sub>"]],
-                True, "No Validator", {"exclusive": True}),
+            # --- MODIFIED: Swapped Checkbox Grid for a Combobox ---
+            (KEY_ANALYSIS_FORCES, "Force:", 
+                TYPE_COMBOBOX, ["Fx", "Fy", "Fz", "Mx", "My", "Mz"], 
+                True, "No Validator", {"default": "Vy"}),
 
             (KEY_ANALYSIS_DISPLAY_OPTIONS, None,  # label goes on the groupbox title instead
                 TYPE_CHECKBOX_ROW, ["Max", "Min"],

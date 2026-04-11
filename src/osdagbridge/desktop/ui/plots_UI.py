@@ -158,44 +158,27 @@ class PlotWidget(QWidget):
         super().__init__()
         self.setWindowTitle("Plate Girder Results")
 
-        # --- THE FIX: We now store the Handler, not raw data arrays ---
+        # --- THE FIX: We now store the Handler and the current state ---
         self.results_handler = None
+        self._current_loadcase = None
+        self._current_force = None
         # --------------------------------------------------------------
 
         layout = QVBoxLayout(self)
         top = QHBoxLayout()
 
-        # ---------- LOADCASE ----------
-        lbl_load = QLabel("Load case:")
-        lbl_load.setStyleSheet("color: black; font-weight: bold; font-size: 12px;") # Force visibility!
-        top.addWidget(lbl_load)
-        
-        self.combo = QComboBox()
-        self.combo.setMinimumWidth(150) # Stop it from vanishing when empty
-        self.combo.setStyleSheet("color: black; background-color: white; border: 1px solid gray;")
-        self.combo.currentTextChanged.connect(self.update_plot)
-        top.addWidget(self.combo)
-
-        # ---------- FORCE ----------
-        lbl_force = QLabel("Force:")
-        lbl_force.setStyleSheet("color: black; font-weight: bold; font-size: 12px;") 
-        top.addWidget(lbl_force)
-        
-        self.force_combo = QComboBox()
-        self.force_combo.setMinimumWidth(80) 
-        self.force_combo.setStyleSheet("color: black; background-color: white; border: 1px solid gray;")
-        self.force_combo.addItems(list(FORCE_MAP.keys()))
-        self.force_combo.setCurrentText("Vy")
-        self.force_combo.currentTextChanged.connect(self.update_plot)
-        top.addWidget(self.force_combo)
+        # 1. ADD STRETCH FIRST! 
+        # This acts like a giant invisible spring that pushes everything after it to the right.
+        top.addStretch()
 
         # ---------- CONTOUR CHECKBOX ----------
         self.contour = QCheckBox("Contour (Moments only)")
         self.contour.setStyleSheet("color: black; font-weight: bold;")
-        self.contour.stateChanged.connect(self.update_plot)
+        self.contour.setEnabled(False) # Disabled by default until a moment is loaded
+        self.contour.toggled.connect(lambda _: self.update_plot()) # lambda ignores the checked boolean argument
         top.addWidget(self.contour)
 
-       # ---------- NEW: SCALE FACTOR ----------
+        # ---------- SCALE FACTOR ----------
         lbl_scale = QLabel("Scale:")
         lbl_scale.setStyleSheet("color: black; font-weight: bold; font-size: 12px;")
         top.addWidget(lbl_scale)
@@ -217,7 +200,6 @@ class PlotWidget(QWidget):
         top.addWidget(self.scale_spinbox)
         # ---------------------------------------
 
-        top.addStretch()
         layout.addLayout(top)
 
         # ---------- MAIN BROWSER AREA ----------
@@ -245,18 +227,11 @@ class PlotWidget(QWidget):
         # Inject HTML directly into memory
         self.web.setHtml(HTML_TEMPLATE, QUrl("qrc:/"))
 
-    # --- THE FIX: We now accept the results_handler instead of raw data ---
     def setup(self, results_handler, loadcases):
         """Populate the widget using the backend Analysis Results handler."""
         self.results_handler = results_handler
-
-        self.combo.blockSignals(True)
-        self.combo.clear()
-        self.combo.addItems(loadcases)
-        self.combo.blockSignals(False)
-
-        self.update_plot()
-    # ----------------------------------------------------------------------
+        # We NO LONGER call self.update_plot() here!
+        # We wait for the Output Dock to pass us the selected values.
 
     def show_summary_dialog(self):
         """Pops up the dialog perfectly in the top-left corner of the web view."""
@@ -272,17 +247,29 @@ class PlotWidget(QWidget):
         top_left_corner = self.web.mapToGlobal(QPoint(15, 15))
         self.summary_dialog.move(top_left_corner)
 
-    def update_plot(self):
-        # --- THE FIX: Check for handler existence ---
+    def update_plot(self, loadcase: str = None, force_key: str = None):
+        """Generates the plot. Caches the loadcase and force_key for UI interactions."""
         if self.results_handler is None:
             return
 
-        loadcase = self.combo.currentText()
-        force_key = self.force_combo.currentText()
+        # Cache the values! If the OutputDock sends new ones, save them.
+        # If the user just clicks "Scale" or "Contour", reuse the saved ones.
+        if loadcase is not None:
+            self._current_loadcase = loadcase
+        if force_key is not None:
+            self._current_force = force_key
+
+        # Safety check: if we haven't received a loadcase/force yet, do nothing.
+        if not self._current_loadcase or not self._current_force:
+            return
+
+        # Use the cached values for the rest of the function
+        active_lc = self._current_loadcase
+        active_force = self._current_force
         scale_val = self.scale_spinbox.value()
 
-        is_force = force_key.startswith("F") 
-        is_moment = force_key.startswith("M") 
+        is_force = active_force.startswith("F") or active_force.startswith("V")
+        is_moment = active_force.startswith("M") 
 
         if is_force:
             self.contour.blockSignals(True)
@@ -291,28 +278,23 @@ class PlotWidget(QWidget):
             self.contour.blockSignals(False)
             
             self.stats_dict = {}
-            # --- THE FIX: Pass the handler and the loadcase name ---
-            plot_json = build_figure_sfd(self.results_handler, loadcase, force_key, scale_val)
+            plot_json = build_figure_sfd(self.results_handler, active_lc, active_force, scale_val)
 
         elif is_moment:
             self.contour.setEnabled(True)
 
             if self.contour.isChecked():
-                # --- THE FIX: Pass the handler and the loadcase name ---
-                plot_json = build_figure_bmd_contour(self.results_handler, loadcase, force_key, scale_val)
+                plot_json = build_figure_bmd_contour(self.results_handler, active_lc, active_force, scale_val)
                 self.stats_dict = {}
             else:
-                # --- THE FIX: Pass the handler and the loadcase name ---
-                plot_json, self.stats_dict = build_figure_bmd(self.results_handler, loadcase, force_key, scale_val)
+                plot_json, self.stats_dict = build_figure_bmd(self.results_handler, active_lc, active_force, scale_val)
 
                 if self.summary_dialog.isVisible():
                     self.summary_dialog.update_data(self.stats_dict)
-
         else:
-            raise ValueError(f"Unsupported force: {force_key}")
+            raise ValueError(f"Unsupported force: {active_force}")
 
         # -------- INJECT PLOT VIA QWEBCHANNEL --------
-        # Emits the raw JSON string perfectly without double-encoding it
         self.backend.newPlotData.emit(plot_json)
 
 

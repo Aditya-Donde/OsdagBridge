@@ -390,12 +390,6 @@ class OutputDock(QWidget):
         return row
 
     def _make_checkbox_grid(self, key: str, label: str, values, meta: dict) -> QVBoxLayout:
-        """
-        N-column grid of checkboxes, aligned in rows using QGridLayout.
-        values    = [["Fx","Mx","Dx"], ["Fy","My","Dy"], ...]
-        label     = None means no label row is added.
-        exclusive : bool — if True only one checkbox can be checked at a time.
-        """
         from PySide6.QtWidgets import QGridLayout
 
         outer = QVBoxLayout()
@@ -416,11 +410,9 @@ class OutputDock(QWidget):
         grid.setHorizontalSpacing(8)
         grid.setVerticalSpacing(4)
 
-        # Set equal stretch on every column so they fill the width evenly
         for c in range(num_cols):
             grid.setColumnStretch(c, 1)
 
-        # Fill row by row: row index = position within column
         num_rows = max((len(col) for col in columns), default=0)
         for row in range(num_rows):
             for col, col_items in enumerate(columns):
@@ -437,11 +429,6 @@ class OutputDock(QWidget):
         return outer
 
     def _make_checkbox_row(self, key: str, label: str, values, meta: dict) -> QHBoxLayout:
-        """
-        Horizontal row of checkboxes.
-        values    = ["Max", "Min", ...]
-        exclusive : bool — if True only one checkbox can be checked at a time.
-        """
         row = QHBoxLayout()
         row.setContentsMargins(0, 0, 0, 0)
         row.setSpacing(12)
@@ -507,3 +494,27 @@ class OutputDock(QWidget):
     def open_deck_design(self):
         from osdagbridge.desktop.ui.dialogs.deck_design import DeckDesign
         DeckDesign(parent=self.parent).exec()
+
+    # ── NEW: Dynamic Dropdown Interfaces ──────────────────────────────────────
+
+    def populate_dropdown(self, key: str, items: list[str]):
+        """Safely updates a dropdown without triggering its generic signals."""
+        combo = self._w(key)
+        if isinstance(combo, QComboBox):
+            combo.blockSignals(True)
+            combo.clear()
+            combo.addItems(items)
+            combo.blockSignals(False)
+
+    def get_dropdown_value(self, key: str) -> str:
+        """Retrieves the current string value of a combobox by key."""
+        combo = self._w(key)
+        if isinstance(combo, QComboBox):
+            return combo.currentText()
+        return ""
+
+    def connect_dropdown_signal(self, key: str, callback):
+        """Connects a function to fire when the combobox selection changes."""
+        combo = self._w(key)
+        if isinstance(combo, QComboBox):
+            combo.currentTextChanged.connect(lambda _: callback())

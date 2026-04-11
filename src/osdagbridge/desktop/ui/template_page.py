@@ -262,28 +262,37 @@ class CustomWindow(QWidget):
         if trigger == "Design":
             # Collect all the values from input Dock and pass to backend
             self.backend.set_input(self.input_dict)
-            print(f"@@input_dictionary: {self.input_dict}")
-            
-            # 1. Run the design and analysis
             self.backend.design()
 
             # Lock the input dock after design is triggered
             if self.input_dock and not self.input_dock.is_locked:
                 self.input_dock.toggle_lock()
 
-            # 2. Get the master results handler and the loadcases
+            # 1. Fetch Results
             results_handler = self.backend.get_results_handler()
             loadcases = self.backend.get_available_loadcases()
             
-            # 3. Pass them directly into the plotting UI!
-            self.plots_widget.setup(results_handler, loadcases)
+            # 2. Populate the Output Dock's Dropdown dynamically
+            self.output_dock.populate_dropdown(KEY_ANALYSIS_LOAD_COMBINATION, loadcases)
             
-        elif trigger == "Save":
-            # Collect all the values from input Dock and save to osi/csv
-            pass
-        elif trigger == "Additional Inputs":
-            # Show Additional Inputs
-            pass
+            # 3. Setup the plot widget ONCE
+            self.plots_widget.setup(results_handler, loadcases) 
+            
+            # 4. Define the bridge function to pass Output Dock states -> Plot Widget
+            def refresh_3d_plot():
+                current_lc = self.output_dock.get_dropdown_value(KEY_ANALYSIS_LOAD_COMBINATION)
+                current_force = self.output_dock.get_dropdown_value(KEY_ANALYSIS_FORCES)
+                
+                # Update the plot with the new selections!
+                if current_lc and current_force:
+                    self.plots_widget.update_plot(current_lc, current_force)
+
+            # 5. Connect the Output Dock dropdowns to trigger the refresh
+            self.output_dock.connect_dropdown_signal(KEY_ANALYSIS_LOAD_COMBINATION, refresh_3d_plot)
+            self.output_dock.connect_dropdown_signal(KEY_ANALYSIS_FORCES, refresh_3d_plot)
+
+            # 6. Trigger the first render
+            refresh_3d_plot()
 
     #-------Common-Design-Save-Additional-Inputs-Functionality-END---------
     
