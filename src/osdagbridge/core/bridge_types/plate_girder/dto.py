@@ -12,6 +12,9 @@ __all__ = [
     "MaterialProperties",
     "GrillageGeometry",
     "DeckLayoutProperties",
+    "SectionDimsDTO"
+    "ISectionDimsDTO"
+    "BridgeParametersDTO"
 ]
 
 # ------------------------------------------------------------------
@@ -223,3 +226,127 @@ class DeckLayoutProperties:
     railing_width: float
     median_width: float
     n_footpaths: int
+
+
+
+
+
+from dataclasses import dataclass
+from typing import Optional
+
+
+# ---------------------------------------------------------------------------
+# Nested DTOs — only for fields that were dicts in the original config
+# ---------------------------------------------------------------------------
+
+@dataclass
+class SectionDimsDTO:
+    leg_h: float
+    leg_w: float
+    connection_type: str    # "LONGER_LEG" / "SHORTER_LEG"
+
+
+@dataclass
+class ISectionDimsDTO:
+    depth: float
+    flange_width: float
+    web_thickness: float
+    flange_thickness: float
+
+
+# ---------------------------------------------------------------------------
+# Main DTO
+# ---------------------------------------------------------------------------
+
+@dataclass
+class BridgeParametersDTO:
+
+    # --- Girder ---
+    span_length_L: float
+    girder_section_d: float
+    girder_section_bf: float
+    girder_section_bf_b: float
+    girder_section_tf: float
+    girder_section_tf_b: float
+    girder_section_tw: float
+    num_girders: int
+    girder_spacing: float
+
+    # --- Geometry ---
+    skew_angle: float
+
+    # --- Deck ---
+    carriageway_width: float
+    deck_thickness: float
+    footpath_config: str        # "NONE" / "LEFT" / "RIGHT" / "BOTH"
+    footpath_width: float
+    railing_width: float
+
+    # --- Crash Barrier ---
+    barrier_type: str           # "Rigid" / "Semi-Rigid" / "Flexible"
+    crash_barrier_subtype: str
+
+    # --- Median ---
+    enable_median: bool
+    median_type: str
+
+    # --- Railing ---
+    rail_count: int
+    railing_type: str           # "rcc" / "steel"
+
+    # --- Intermediate Stiffeners ---
+    include_intermediate_stiffeners: bool
+    intermediate_stiffener_spacing: float
+    intermediate_stiffener_thickness: float
+    intermediate_stiffener_outstand: Optional[float]
+
+    # --- End Stiffeners ---
+    num_end_stiffener_pairs: int
+    end_stiffener_thickness: float
+    end_stiffener_outstand: Optional[float]
+
+    # --- Longitudinal Stiffeners ---
+    include_longitudinal_stiffeners: bool
+    num_longitudinal_stiffeners: int
+    longitudinal_stiffener_thickness: float
+    longitudinal_stiffener_outstand: Optional[float]
+
+    # --- Cross Bracing ---
+    cross_bracing_spacing: float
+    bracing_type: str           # "X" / "K"
+    x_bracket_option: str       # "NONE" / "UPPER" / "LOWER" / "BOTH"
+    k_top_bracket: bool
+
+    diagonal_section_type: str
+    diagonal_section_dims: SectionDimsDTO
+    diagonal_thickness: float
+
+    top_chord_section_type: str
+    top_chord_section_dims: SectionDimsDTO
+    top_chord_thickness: float
+
+    bottom_chord_section_type: str
+    bottom_chord_section_dims: SectionDimsDTO
+    bottom_chord_thickness: float
+
+    # --- End Diaphragm ---
+    end_diaphragm_type: str     # "Cross Bracing" / "Rolled Beam" / "Welded Beam"
+    end_diaphragm_spacing: float
+    end_diaphragm_bracing_type: str     # "X" / "K"
+
+    end_diaphragm_diagonal_section_type: str
+    end_diaphragm_diagonal_section_dims: SectionDimsDTO
+    end_diaphragm_diagonal_thickness: float
+
+    end_diaphragm_top_chord_section_type: str
+    end_diaphragm_top_chord_section_dims: SectionDimsDTO
+    end_diaphragm_top_chord_thickness: float
+
+    end_diaphragm_bottom_chord_section_type: str
+    end_diaphragm_bottom_chord_section_dims: SectionDimsDTO
+    end_diaphragm_bottom_chord_thickness: float
+
+    end_diaphragm_section: str
+    end_diaphragm_dims: ISectionDimsDTO
+
+
