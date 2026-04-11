@@ -708,6 +708,7 @@ class BridgeGrillageModel:
 
         # Get lane coordinates
         lane_coords = []  # [(x, z), (x, z), ...]
+        carriageway_width = None
 
         # ---------- Single carriageway ----------
         if layout.has_component("carriageway"):
@@ -723,8 +724,11 @@ class BridgeGrillageModel:
 
         # ---------- Split carriageway (with median) ----------
         else:
+            cw_left_width = 0.0
+            cw_right_width = 0.0
             if layout.has_component("carriageway_left"):
                 cw_left = layout.get_component("carriageway_left")
+                cw_left_width = cw_left.width
 
                 n_lanes = IRC6_2017.table_6(cw_left.width)
                 lane_width = cw_left.width / n_lanes
@@ -735,6 +739,7 @@ class BridgeGrillageModel:
 
             if layout.has_component("carriageway_right"):
                 cw_right = layout.get_component("carriageway_right")
+                cw_right_width = cw_right.width
 
                 n_lanes = IRC6_2017.table_6(cw_right.width)
                 lane_width = cw_right.width / n_lanes
@@ -742,6 +747,8 @@ class BridgeGrillageModel:
                 for i in range(n_lanes):
                     z = cw_right.z_start + (i + 0.5) * lane_width
                     lane_coords.append((x_coord, z))
+
+            carriageway_width = cw_left_width + cw_right_width
 
         if carriageway_width is None:
             raise ValueError("carriageway_width must be provided or derivable from layout")
@@ -1178,7 +1185,7 @@ if __name__ == "__main__":
         crash_barrier_width=0.45 * m,
         footpath_width=1.50 * m,
         railing_width=0.30 * m,
-        median_width=0.0 * m,
+        median_width=1.0 * m,
         n_footpaths=2,
     ))
 
