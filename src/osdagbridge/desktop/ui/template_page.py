@@ -498,7 +498,8 @@ class CustomWindow(QWidget):
             ds_all = self.backend.get_results_dataset()
             loadcases = self.backend.get_available_loadcases()
             nodes, members = self.backend.get_nodes_members()
-            self.plots_widget.setup(ds_all, loadcases, nodes, members)
+            edge_dist = self.backend.get_edge_dist()
+            self.plots_widget.setup(ds_all, loadcases, nodes, members, edge_dist=edge_dist)
 
             # Render 3D cad using the parameters from Backend
             self.cad_3d_widget.render_3d_cad(bridge_parameters)

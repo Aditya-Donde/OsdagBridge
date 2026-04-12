@@ -35,6 +35,7 @@ class MplPlotWidget(QWidget):
         self._ds_all = None
         self._nodes = {}
         self._members = {}
+        self._edge_dist = 0.0
 
         # Top control bar
         top = QHBoxLayout()
@@ -73,7 +74,7 @@ class MplPlotWidget(QWidget):
 
     # Public API
 
-    def setup(self, ds_all, loadcases: list, nodes: dict, members: dict):
+    def setup(self, ds_all, loadcases: list, nodes: dict, members: dict, edge_dist: float = 0.0):
         """
         Populate the widget after bridge analysis is complete.
 
@@ -83,10 +84,12 @@ class MplPlotWidget(QWidget):
         loadcases : list[str]       — load case names for the combo box
         nodes     : dict            — {tag: [x, y, z]}
         members   : dict            — {tag: [n1, n2]}
+        edge_dist : float           — deck overhang; > 0 means edge beams are present
         """
         self._ds_all = ds_all
         self._nodes = nodes
         self._members = members
+        self._edge_dist = edge_dist
 
         self.combo_lc.blockSignals(True)
         self.combo_lc.clear()
@@ -108,9 +111,9 @@ class MplPlotWidget(QWidget):
         plt.close(self._fig)
 
         if force_key in _SFD_KEYS:
-            self._fig = build_figure_sfd(ds, force_key, self._nodes, self._members)
+            self._fig = build_figure_sfd(ds, force_key, self._nodes, self._members, edge_dist=self._edge_dist)
         else:
-            self._fig, _ = build_figure_bmd(ds, force_key, self._nodes, self._members)
+            self._fig, _ = build_figure_bmd(ds, force_key, self._nodes, self._members, edge_dist=self._edge_dist)
 
         self._canvas.figure = self._fig
         self._fig.set_canvas(self._canvas)

@@ -225,11 +225,16 @@ class PlateGirderBridge:
         # n_t: transverse grid lines — approx one division every 2 × girder spacings
         n_t = max(3, int(round(span / (DEFAULT_GIRDER_SPACING * 2))))
 
+        deck_overhang = self.sizing_result.deck_overhang
+        # When there is an overhang, the two edge beams add 2 extra longitudinal
+        # grid lines on top of the structural girder count.
+        n_l = self.sizing_result.no_of_girders + (2 if deck_overhang > 0 else 0)
+
         self.grillage_geometry = GrillageGeometry(
             L=span,
-            n_l=self.sizing_result.no_of_girders,
+            n_l=n_l,
             n_t=n_t,
-            edge_dist=self.sizing_result.deck_overhang,
+            edge_dist=deck_overhang,
             ext_to_int_dist=self.sizing_result.girder_spacing,
             angle=parsed["skew_angle"],
         )
@@ -586,20 +591,26 @@ class PlateGirderBridge:
         """Return (nodes, members) dicts built from the active openseespy model."""
         return build_nodes_members()
 
+    def get_edge_dist(self) -> float:
+        """Return the deck overhang distance (0.0 when no overhang)."""
+        if self.sizing_result is None:
+            return 0.0
+        return self.sizing_result.deck_overhang or 0.0
+
     def build_figure_sfd(self, ds, force_key: str):
         """Build and return a matplotlib Figure for the SFD of the given dataset slice."""
         nodes, members = self.get_nodes_members()
-        return build_figure_sfd(ds, force_key, nodes, members)
+        return build_figure_sfd(ds, force_key, nodes, members, edge_dist=self.get_edge_dist())
 
     def build_figure_bmd(self, ds, force_key: str):
         """Build and return a matplotlib Figure for the BMD of the given dataset slice."""
         nodes, members = self.get_nodes_members()
-        return build_figure_bmd(ds, force_key, nodes, members)
+        return build_figure_bmd(ds, force_key, nodes, members, edge_dist=self.get_edge_dist())
 
     def build_figure_bmd_contour(self, ds, force_key: str):
         """Build and return a matplotlib Figure for the BMD contour plot of the given dataset slice."""
         nodes, members = self.get_nodes_members()
-        return build_figure_bmd_contour(ds, force_key, nodes, members)
+        return build_figure_bmd_contour(ds, force_key, nodes, members, edge_dist=self.get_edge_dist())
 
     # ─────────────────────────────────────────────────────────────────────────
     # Helpers

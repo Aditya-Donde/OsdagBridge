@@ -89,14 +89,14 @@ def _build_polyline(elems, members, nodes, force_i, force_j, ds):
         n1, n2 = members[e]
         x1, y1, z1 = nodes[n1]
         xs.append(x1); ys.append(y1); zs.append(z1)
-        vals.append(round(get_force(e, comp_i), 3))
+        vals.append(round(get_force(e, comp_i) / 1000, 3))   # N → kN
         node_ids.append(n1)
 
     last_e = elems[-1]
     n1, n2 = members[last_e]
     x2, y2, z2 = nodes[n2]
     xs.append(x2); ys.append(y2); zs.append(z2)
-    vals.append(round(get_force(last_e, comp_j), 3))
+    vals.append(round(get_force(last_e, comp_j) / 1000, 3))   # N → kN
     node_ids.append(n2)
 
     return np.array(xs), np.array(ys), np.array(zs), np.array(vals), node_ids
@@ -106,13 +106,42 @@ def _build_polyline(elems, members, nodes, force_i, force_j, ds):
 # DRAWING HELPERS (matplotlib 3-D)
 # =============================================================================
 
-def _add_grillage_background(ax, nodes, members):
-    """Draw all elements as thin dark-grey lines (structural grid)."""
-    for ele, (n1, n2) in members.items():
-        x1, _, z1 = nodes[n1]
-        x2, _, z2 = nodes[n2]
-        ax.plot([x1, x2], [z1, z2], [0, 0],
-                color="darkgrey", linewidth=0.8, alpha=0.6, zorder=1)
+def _add_grillage_background(ax, nodes, members, x_tol=3, z_tol=3):
+    """
+    Draw the structural grid by grouping nodes rather than tracing element tags.
+
+    • Longitudinal lines  — nodes sharing the same z-position connected in x-order.
+    • Transverse lines    — nodes sharing the same x-position connected in z-order.
+
+    This guarantees that transverse connections are visible regardless of how
+    ospgrillage numbers its elements or the current camera angle.
+    """
+    from collections import defaultdict
+
+    # round keys to avoid floating-point scatter
+    by_z = defaultdict(list)   # z_key → [x, ...]
+    by_x = defaultdict(list)   # x_key → [z, ...]
+
+    for coord in nodes.values():
+        rx = round(coord[0], x_tol)
+        rz = round(coord[2], z_tol)
+        by_z[rz].append(coord[0])
+        by_x[rx].append(coord[2])
+
+    long_kw  = dict(color="darkgrey", linewidth=0.8, alpha=0.5, zorder=1)
+    trans_kw = dict(color="slategrey", linewidth=1.8, alpha=0.8, zorder=1)
+
+    # longitudinal lines (along span)
+    for z_val, x_vals in by_z.items():
+        x_sorted = sorted(set(x_vals))
+        if len(x_sorted) > 1:
+            ax.plot(x_sorted, [z_val] * len(x_sorted), [0] * len(x_sorted), **long_kw)
+
+    # transverse lines (across width)
+    for x_val, z_vals in by_x.items():
+        z_sorted = sorted(set(z_vals))
+        if len(z_sorted) > 1:
+            ax.plot([x_val] * len(z_sorted), z_sorted, [0] * len(z_sorted), **trans_kw)
 
 
 def _add_coordinate_triad(ax, nodes, scale=0.10):
@@ -151,7 +180,7 @@ def _add_coordinate_triad(ax, nodes, scale=0.10):
 # SFD PLOT
 # =============================================================================
 
-def build_figure_sfd(ds, force_key, nodes, members):
+def build_figure_sfd(ds, force_key, nodes, members, edge_dist=0.0):
     """
     Build a 3-D matplotlib figure showing the Shear Force Diagram.
 
@@ -161,6 +190,10 @@ def build_figure_sfd(ds, force_key, nodes, members):
     force_key  : str             — one of FORCE_MAP keys, e.g. "Fy"
     nodes      : dict            — {tag: [x, y, z]}
     members    : dict            — {tag: [n1, n2]}
+    edge_dist  : float           — overhang distance; when > 0 the outermost two
+                                   girders are edge beams and are skipped in the
+                                   force diagram (their lines remain visible via
+                                   the grillage background).
 
     Returns
     -------
@@ -188,18 +221,44 @@ def build_figure_sfd(ds, force_key, nodes, members):
     base_color  = "#388E3C"
 
     girder_items  = list(girders.items())
+    n_girders     = len(girder_items)
     _scatter_objs = []
     _scatter_data = {}
 
     for i, (z_val, elems) in enumerate(girder_items):
-        girder_name = f"G{i + 1}"
+        is_edge_beam = edge_dist > 0 and (i == 0 or i == n_girders - 1)
+        girder_name  = f"G{i}" if edge_dist > 0 else f"G{i + 1}"
 
         xs, ys, zs, Vy, node_ids = _build_polyline(
             elems, members, nodes, comp_i_name, comp_j_name, ds
         )
 
+        # The j-end force from OpenSees uses the opposite sign convention.
+        # Negate the last value so the rightmost node shows the correct shear.
+        Vy = Vy.copy()
+        Vy[-1] = -Vy[-1]
+
         z_base = float(np.mean(zs))
         z_arr  = np.full_like(xs, z_base)
+
+        # baseline (solid) - grey for edge beams, green for structural
+        ax.plot([xs[0], xs[-1]], [z_base, z_base], [0, 0],
+                color="slategrey" if is_edge_beam else base_color,
+                linewidth=1.5, zorder=3)
+
+        # edge beams: baseline only, no markers / label / force diagram
+        if is_edge_beam:
+            continue
+
+        ax.scatter(xs, z_arr, np.zeros_like(xs),
+                   color=base_color, s=18, zorder=4, depthshade=False)
+
+        # girder label
+        ax.text(xs[0], z_base, 0, f" {girder_name}",
+                color="black", fontsize=11, fontweight="bold",
+                ha="left", va="bottom", zorder=6,
+                bbox=dict(boxstyle="round,pad=0.2", facecolor="white",
+                          alpha=0.8, edgecolor="none"))
 
         val_range = max(Vy) - min(Vy)
         if val_range == 0:
@@ -219,13 +278,10 @@ def build_figure_sfd(ds, force_key, nodes, members):
             color=fill_color, alpha=0.25, linewidth=0, antialiased=False, zorder=2
         )
 
+        # shear step line
         ax.plot(x_step, z_step, y_step, color=shear_color, linewidth=2.0, zorder=4)
 
-        ax.plot([xs[0], xs[-1]], [z_base, z_base], [0, 0],
-                color=base_color, linewidth=1.5, zorder=3)
-        ax.scatter(xs, z_arr, np.zeros_like(xs),
-                   color=base_color, s=18, zorder=4, depthshade=False)
-
+        # vertical cliff lines
         for xi, vyi in zip(xs, Vy):
             ax.plot([xi, xi], [z_base, z_base], [0, vyi * shear_scale],
                     color=shear_color, linewidth=1.2, alpha=0.7, zorder=3)
@@ -235,10 +291,7 @@ def build_figure_sfd(ds, force_key, nodes, members):
         _scatter_objs.append(sc)
         _scatter_data[id(sc)] = (node_ids, xs, Vy)
 
-        ax.text(xs[0], z_base, 0, f" {girder_name}",
-                color="black", fontsize=8, fontweight="bold",
-                ha="left", va="bottom", zorder=6)
-
+    # hover annotations
     if _MPLCURSORS and _scatter_objs:
         cursor = mplcursors.cursor(_scatter_objs, hover=True)
 
@@ -247,13 +300,13 @@ def build_figure_sfd(ds, force_key, nodes, members):
             nids, xs_g, vals_g = _data[id(sel.artist)]
             idx = sel.index
             sel.annotation.set_text(
-                f"Node {nids[idx]}\nX: {xs_g[idx]:.2f}\n{_fk}: {vals_g[idx]:.3f}"
+                f"Node {nids[idx]}\nX: {xs_g[idx]:.2f}\n{_fk}: {vals_g[idx]:.3f} kN"
             )
             sel.annotation.get_bbox_patch().set(fc="white", alpha=0.9)
 
     ax.set_xlabel("Span Length", fontsize=10, labelpad=8)
     ax.set_ylabel("Bridge Width", fontsize=10, labelpad=8)
-    ax.set_zlabel(f"{force_key} (scaled)", fontsize=10, labelpad=8)
+    ax.set_zlabel(f"{force_key} (kN, scaled)", fontsize=10, labelpad=8)
     ax.set_title(f"Shear Force Diagram  —  {force_key}", fontsize=12, fontweight="bold", pad=12)
     ax.view_init(elev=DEFAULT_ELEV, azim=DEFAULT_AZIM)
     ax.xaxis.pane.fill = False
@@ -272,7 +325,7 @@ def build_figure_sfd(ds, force_key, nodes, members):
 # BMD PLOT
 # =============================================================================
 
-def build_figure_bmd(ds, force_key, nodes, members):
+def build_figure_bmd(ds, force_key, nodes, members, edge_dist=0.0):
     """
     Build a 3-D matplotlib figure showing the Bending Moment Diagram.
 
@@ -282,6 +335,10 @@ def build_figure_bmd(ds, force_key, nodes, members):
     force_key  : str             — one of FORCE_MAP keys, e.g. "Mz"
     nodes      : dict            — {tag: [x, y, z]}
     members    : dict            — {tag: [n1, n2]}
+    edge_dist  : float           — overhang distance; when > 0 the outermost two
+                                   girders are edge beams and are skipped in the
+                                   force diagram (their lines remain visible via
+                                   the grillage background).
 
     Returns
     -------
@@ -309,12 +366,15 @@ def build_figure_bmd(ds, force_key, nodes, members):
     fill_color   = "#EF9A9A"
     base_color   = "#388E3C"
 
+    girder_items_bmd = list(girders.items())
+    n_girders_bmd    = len(girder_items_bmd)
     summary_data  = {}
     _scatter_objs = []
     _scatter_data = {}
 
-    for i, (z_val, elems) in enumerate(girders.items()):
-        girder_name = f"G{i + 1}"
+    for i, (z_val, elems) in enumerate(girder_items_bmd):
+        is_edge_beam = edge_dist > 0 and (i == 0 or i == n_girders_bmd - 1)
+        girder_name  = f"G{i}" if edge_dist > 0 else f"G{i + 1}"
 
         xs, ys, zs, Mz, node_ids = _build_polyline(
             elems, members, nodes, comp_i_name, comp_j_name, ds
@@ -322,6 +382,25 @@ def build_figure_bmd(ds, force_key, nodes, members):
 
         z_base = float(np.mean(zs))
         z_arr  = np.full_like(xs, z_base)
+
+        # baseline (solid) - grey for edge beams, green for structural
+        ax.plot([xs[0], xs[-1]], [z_base, z_base], [0, 0],
+                color="slategrey" if is_edge_beam else base_color,
+                linewidth=1.5, zorder=3)
+
+        # edge beams: baseline only, no markers / label / force diagram
+        if is_edge_beam:
+            continue
+
+        ax.scatter(xs, z_arr, np.zeros_like(xs),
+                   color=base_color, s=18, zorder=4, depthshade=False)
+
+        # girder label
+        ax.text(xs[0], z_base, 0, f" {girder_name}",
+                color="black", fontsize=11, fontweight="bold",
+                ha="left", va="bottom", zorder=6,
+                bbox=dict(boxstyle="round,pad=0.2", facecolor="white",
+                          alpha=0.8, edgecolor="none"))
 
         val_range = max(Mz) - min(Mz)
         if val_range == 0:
@@ -340,27 +419,18 @@ def build_figure_bmd(ds, force_key, nodes, members):
 
         ax.plot(xs, z_arr, y_plot, color=moment_color, linewidth=2.0, zorder=4)
 
-        ax.plot([xs[0], xs[-1]], [z_base, z_base], [0, 0],
-                color=base_color, linewidth=1.5, zorder=3)
-        ax.scatter(xs, z_arr, np.zeros_like(xs),
-                   color=base_color, s=18, zorder=4, depthshade=False)
-
         idx_max = int(np.argmax(Mz))
         idx_min = int(np.argmin(Mz))
         for idx, clr in ((idx_max, "#FF4136"), (idx_min, "#0074D9")):
             ax.plot([xs[idx], xs[idx]], [z_base, z_base], [0, y_plot[idx]],
                     color=clr, linewidth=1.5, zorder=3)
             ax.text(xs[idx], z_base, y_plot[idx],
-                    f" {Mz[idx]:.2f}", color=clr, fontsize=7, zorder=6)
+                    f" {Mz[idx]:.2f} kN", color=clr, fontsize=7, zorder=6)
 
         sc = ax.scatter(xs, z_arr, y_plot,
                         color=moment_color, s=30, zorder=5, depthshade=False)
         _scatter_objs.append(sc)
         _scatter_data[id(sc)] = (node_ids, xs, Mz)
-
-        ax.text(xs[0], z_base, 0, f" {girder_name}",
-                color="black", fontsize=8, fontweight="bold",
-                ha="left", va="bottom", zorder=6)
 
         summary_data[girder_name] = {"max": float(max(Mz)), "min": float(min(Mz))}
 
@@ -372,13 +442,13 @@ def build_figure_bmd(ds, force_key, nodes, members):
             nids, xs_g, vals_g = _data[id(sel.artist)]
             idx = sel.index
             sel.annotation.set_text(
-                f"Node {nids[idx]}\nX: {xs_g[idx]:.2f}\n{_fk}: {vals_g[idx]:.3f}"
+                f"Node {nids[idx]}\nX: {xs_g[idx]:.2f}\n{_fk}: {vals_g[idx]:.3f} kN"
             )
             sel.annotation.get_bbox_patch().set(fc="white", alpha=0.9)
 
     ax.set_xlabel("Span Length", fontsize=10, labelpad=8)
     ax.set_ylabel("Bridge Width", fontsize=10, labelpad=8)
-    ax.set_zlabel(f"{force_key} (scaled)", fontsize=10, labelpad=8)
+    ax.set_zlabel(f"{force_key} (kN, scaled)", fontsize=10, labelpad=8)
     ax.set_title(f"Bending Moment Diagram  —  {force_key}", fontsize=12, fontweight="bold", pad=12)
     ax.view_init(elev=DEFAULT_ELEV, azim=DEFAULT_AZIM)
     ax.xaxis.pane.fill = False
@@ -397,7 +467,7 @@ def build_figure_bmd(ds, force_key, nodes, members):
 # BMD CONTOUR PLOT
 # =============================================================================
 
-def build_figure_bmd_contour(ds, force_key, nodes, members):
+def build_figure_bmd_contour(ds, force_key, nodes, members, edge_dist=0.0):
     """
     Build a 3-D matplotlib figure showing the BMD with a Jet colour-map
     scaled to the global moment range across all girders.
@@ -408,6 +478,10 @@ def build_figure_bmd_contour(ds, force_key, nodes, members):
     force_key  : str
     nodes      : dict
     members    : dict
+    edge_dist  : float  — overhang distance; when > 0 the outermost two
+                          girders are edge beams and are skipped in the
+                          force diagram (their lines remain visible via
+                          the grillage background).
 
     Returns
     -------
@@ -416,9 +490,14 @@ def build_figure_bmd_contour(ds, force_key, nodes, members):
     comp_i_name, comp_j_name = FORCE_MAP[force_key]
     girders = _find_girders(nodes, members)
 
-    # Global moment range for a consistent colour scale
+    girder_items_cnt = list(girders.items())
+    n_girders_cnt    = len(girder_items_cnt)
+
+    # Global moment range - exclude edge beams from colour scale
     all_vals = []
-    for elems in girders.values():
+    for i, (_, elems) in enumerate(girder_items_cnt):
+        if edge_dist > 0 and (i == 0 or i == n_girders_cnt - 1):
+            continue
         _, _, _, mz, _ = _build_polyline(elems, members, nodes, comp_i_name, comp_j_name, ds)
         all_vals.extend(mz.tolist())
     vmin, vmax = min(all_vals), max(all_vals)
@@ -444,8 +523,9 @@ def build_figure_bmd_contour(ds, force_key, nodes, members):
 
     base_color = "#388E3C"
 
-    for i, (z_val, elems) in enumerate(girders.items()):
-        girder_name = f"G{i + 1}"
+    for i, (z_val, elems) in enumerate(girder_items_cnt):
+        is_edge_beam = edge_dist > 0 and (i == 0 or i == n_girders_cnt - 1)
+        girder_name  = f"G{i}" if edge_dist > 0 else f"G{i + 1}"
 
         xs, ys, zs, Mz, node_ids = _build_polyline(
             elems, members, nodes, comp_i_name, comp_j_name, ds
@@ -453,6 +533,22 @@ def build_figure_bmd_contour(ds, force_key, nodes, members):
 
         z_base = float(np.mean(zs))
         z_arr  = np.full_like(xs, z_base)
+
+        # baseline - grey for edge beams, green for structural
+        ax.plot([xs[0], xs[-1]], [z_base, z_base], [0, 0],
+                color="slategrey" if is_edge_beam else base_color,
+                linewidth=1.5, linestyle="--", zorder=3)
+
+        # edge beams: baseline only, no label or force diagram
+        if is_edge_beam:
+            continue
+
+        # girder label
+        ax.text(xs[0], z_base, 0, f" {girder_name}",
+                color="black", fontsize=11, fontweight="bold",
+                ha="left", va="bottom", zorder=6,
+                bbox=dict(boxstyle="round,pad=0.2", facecolor="white",
+                          alpha=0.8, edgecolor="none"))
 
         val_range = max(Mz) - min(Mz)
         if val_range == 0:
@@ -477,16 +573,10 @@ def build_figure_bmd_contour(ds, force_key, nodes, members):
         lc = Line3DCollection(segs, colors=seg_colors, linewidths=3, zorder=4)
         ax.add_collection3d(lc)
 
-        ax.plot([xs[0], xs[-1]], [z_base, z_base], [0, 0],
-                color=base_color, linewidth=1.5, linestyle="--", zorder=3)
-
+        # coloured drop lines at each node
         for xi, zi, mzi, ypi in zip(xs, z_arr, Mz, y_plot):
             ax.plot([xi, xi], [zi, zi], [0, ypi],
                     color=cmap(norm(mzi)), linewidth=1.0, alpha=0.7, zorder=3)
-
-        ax.text(xs[0], z_base, 0, f" {girder_name}",
-                color="black", fontsize=8, fontweight="bold",
-                ha="left", va="bottom", zorder=6)
 
     sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
     sm.set_array([])
@@ -495,7 +585,7 @@ def build_figure_bmd_contour(ds, force_key, nodes, members):
 
     ax.set_xlabel("Span Length", fontsize=10, labelpad=8)
     ax.set_ylabel("Bridge Width", fontsize=10, labelpad=8)
-    ax.set_zlabel(f"{force_key} (scaled)", fontsize=10, labelpad=8)
+    ax.set_zlabel(f"{force_key} (kN, scaled)", fontsize=10, labelpad=8)
     ax.set_title(f"BMD Contour  —  {force_key}", fontsize=12, fontweight="bold", pad=12)
     ax.view_init(elev=DEFAULT_ELEV, azim=DEFAULT_AZIM)
     ax.xaxis.pane.fill = False
