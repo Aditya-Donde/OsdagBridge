@@ -14,7 +14,7 @@ from .defaults import (
 from .initial_sizing import BridgeConfigurationSolver, DEFAULT_FOOTPATH_WIDTH
 from .analyser import BridgeGrillageModel
 from .analysis_results import PlateGirderAnalysisResults
-from .plots_widget import (
+from .plot_generator import (
     build_figure_sfd,
     build_figure_bmd,
     build_figure_bmd_contour,
@@ -586,18 +586,18 @@ class PlateGirderBridge:
         """Return (nodes, members) dicts built from the active openseespy model."""
         return build_nodes_members()
 
-    def build_figure_sfd(self, ds, force_key: str) -> str:
-        """Build and return Plotly SFD figure JSON for the given dataset slice and force key."""
+    def build_figure_sfd(self, ds, force_key: str):
+        """Build and return a matplotlib Figure for the SFD of the given dataset slice."""
         nodes, members = self.get_nodes_members()
         return build_figure_sfd(ds, force_key, nodes, members)
 
-    def build_figure_bmd(self, ds, force_key: str) -> tuple[str, dict]:
-        """Build and return (Plotly BMD figure JSON, summary_data) for the given dataset slice."""
+    def build_figure_bmd(self, ds, force_key: str):
+        """Build and return a matplotlib Figure for the BMD of the given dataset slice."""
         nodes, members = self.get_nodes_members()
         return build_figure_bmd(ds, force_key, nodes, members)
 
-    def build_figure_bmd_contour(self, ds, force_key: str) -> str:
-        """Build and return Plotly BMD contour figure JSON for the given dataset slice."""
+    def build_figure_bmd_contour(self, ds, force_key: str):
+        """Build and return a matplotlib Figure for the BMD contour plot of the given dataset slice."""
         nodes, members = self.get_nodes_members()
         return build_figure_bmd_contour(ds, force_key, nodes, members)
 

@@ -343,8 +343,8 @@ class CustomWindow(QWidget):
         self.cad_log_splitter.addWidget(self.cad_3d_widget)
 
         # Plots placeholder (mutually exclusive with dual view + 3d cad)
-        # from osdagbridge.desktop.ui.plots_ui import PlotWidget
-        self.plots_widget = CentralPlaceholderWidget("PlotWidget")
+        from osdagbridge.desktop.ui.mpl_plot_widget import MplPlotWidget
+        self.plots_widget = MplPlotWidget()
         self.plots_widget.setVisible(False)
         self.cad_log_splitter.addWidget(self.plots_widget)
 
@@ -488,17 +488,17 @@ class CustomWindow(QWidget):
             
             # Collect all the values from input Dock and pass to backend
             self.backend.set_input(self.input_dict)
-            # self.backend.design()
+            self.backend.design()
 
             # Lock the input dock after design is triggered
             if self.input_dock and not self.input_dock.is_locked:
                 self.input_dock.toggle_lock()
 
             # Wire up the plots widget with results from the completed analysis
-            # ds_all = self.backend.get_results_dataset()
-            # loadcases = self.backend.get_available_loadcases()
-            # nodes, members = self.backend.get_nodes_members()
-            # self.plots_widget.setup(ds_all, loadcases, nodes, members)
+            ds_all = self.backend.get_results_dataset()
+            loadcases = self.backend.get_available_loadcases()
+            nodes, members = self.backend.get_nodes_members()
+            self.plots_widget.setup(ds_all, loadcases, nodes, members)
 
             # Render 3D cad using the parameters from Backend
             self.cad_3d_widget.render_3d_cad(bridge_parameters)
