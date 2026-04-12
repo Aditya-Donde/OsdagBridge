@@ -24,6 +24,12 @@ FORCE_MAP = {
     "Mz": ("Mz_i", "Mz_j"),
 }
 
+# Human-readable labels shown in plot titles / axis labels
+FORCE_DISPLAY = {
+    "Fx": "Vx", "Fy": "Vy", "Fz": "Vz",
+    "Mx": "Mx", "My": "My", "Mz": "Mz",
+}
+
 # View settings (elevation/azimuth for a near-front-elevation look)
 DEFAULT_ELEV = 10
 DEFAULT_AZIM = -90
@@ -200,6 +206,7 @@ def build_figure_sfd(ds, force_key, nodes, members, edge_dist=0.0):
     fig : matplotlib.figure.Figure
     """
     comp_i_name, comp_j_name = FORCE_MAP[force_key]
+    disp_key = FORCE_DISPLAY.get(force_key, force_key)
     girders = _find_girders(nodes, members)
 
     fig = plt.figure(figsize=(14, 6), dpi=110, facecolor="white")
@@ -296,7 +303,7 @@ def build_figure_sfd(ds, force_key, nodes, members, edge_dist=0.0):
         cursor = mplcursors.cursor(_scatter_objs, hover=True)
 
         @cursor.connect("add")
-        def on_add(sel, _data=_scatter_data, _fk=force_key):
+        def on_add(sel, _data=_scatter_data, _fk=disp_key):
             nids, xs_g, vals_g = _data[id(sel.artist)]
             idx = sel.index
             sel.annotation.set_text(
@@ -306,8 +313,8 @@ def build_figure_sfd(ds, force_key, nodes, members, edge_dist=0.0):
 
     ax.set_xlabel("Span Length", fontsize=10, labelpad=8)
     ax.set_ylabel("Bridge Width", fontsize=10, labelpad=8)
-    ax.set_zlabel(f"{force_key} (kN, scaled)", fontsize=10, labelpad=8)
-    ax.set_title(f"Shear Force Diagram  —  {force_key}", fontsize=12, fontweight="bold", pad=12)
+    ax.set_zlabel(f"{disp_key} (kN, scaled)", fontsize=10, labelpad=8)
+    ax.set_title(f"Shear Force Diagram  —  {disp_key}", fontsize=12, fontweight="bold", pad=12)
     ax.view_init(elev=DEFAULT_ELEV, azim=DEFAULT_AZIM)
     ax.xaxis.pane.fill = False
     ax.yaxis.pane.fill = False
@@ -346,6 +353,7 @@ def build_figure_bmd(ds, force_key, nodes, members, edge_dist=0.0):
     summary_data : dict  — {girder_name: {"max": float, "min": float}}
     """
     comp_i_name, comp_j_name = FORCE_MAP[force_key]
+    disp_key = FORCE_DISPLAY.get(force_key, force_key)
     girders = _find_girders(nodes, members)
 
     fig = plt.figure(figsize=(14, 6), dpi=110, facecolor="white")
@@ -438,7 +446,7 @@ def build_figure_bmd(ds, force_key, nodes, members, edge_dist=0.0):
         cursor = mplcursors.cursor(_scatter_objs, hover=True)
 
         @cursor.connect("add")
-        def on_add(sel, _data=_scatter_data, _fk=force_key):
+        def on_add(sel, _data=_scatter_data, _fk=disp_key):
             nids, xs_g, vals_g = _data[id(sel.artist)]
             idx = sel.index
             sel.annotation.set_text(
@@ -448,8 +456,8 @@ def build_figure_bmd(ds, force_key, nodes, members, edge_dist=0.0):
 
     ax.set_xlabel("Span Length", fontsize=10, labelpad=8)
     ax.set_ylabel("Bridge Width", fontsize=10, labelpad=8)
-    ax.set_zlabel(f"{force_key} (kN, scaled)", fontsize=10, labelpad=8)
-    ax.set_title(f"Bending Moment Diagram  —  {force_key}", fontsize=12, fontweight="bold", pad=12)
+    ax.set_zlabel(f"{disp_key} (kN, scaled)", fontsize=10, labelpad=8)
+    ax.set_title(f"Bending Moment Diagram  —  {disp_key}", fontsize=12, fontweight="bold", pad=12)
     ax.view_init(elev=DEFAULT_ELEV, azim=DEFAULT_AZIM)
     ax.xaxis.pane.fill = False
     ax.yaxis.pane.fill = False
@@ -488,6 +496,7 @@ def build_figure_bmd_contour(ds, force_key, nodes, members, edge_dist=0.0):
     fig : matplotlib.figure.Figure
     """
     comp_i_name, comp_j_name = FORCE_MAP[force_key]
+    disp_key = FORCE_DISPLAY.get(force_key, force_key)
     girders = _find_girders(nodes, members)
 
     girder_items_cnt = list(girders.items())
@@ -581,12 +590,12 @@ def build_figure_bmd_contour(ds, force_key, nodes, members, edge_dist=0.0):
     sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
     sm.set_array([])
     cbar = fig.colorbar(sm, ax=ax, shrink=0.5, pad=0.1, aspect=20)
-    cbar.set_label(f"{force_key}", fontsize=10)
+    cbar.set_label(f"{disp_key}", fontsize=10)
 
     ax.set_xlabel("Span Length", fontsize=10, labelpad=8)
     ax.set_ylabel("Bridge Width", fontsize=10, labelpad=8)
-    ax.set_zlabel(f"{force_key} (kN, scaled)", fontsize=10, labelpad=8)
-    ax.set_title(f"BMD Contour  —  {force_key}", fontsize=12, fontweight="bold", pad=12)
+    ax.set_zlabel(f"{disp_key} (kN, scaled)", fontsize=10, labelpad=8)
+    ax.set_title(f"BMD Contour  —  {disp_key}", fontsize=12, fontweight="bold", pad=12)
     ax.view_init(elev=DEFAULT_ELEV, azim=DEFAULT_AZIM)
     ax.xaxis.pane.fill = False
     ax.yaxis.pane.fill = False
