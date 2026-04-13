@@ -931,9 +931,115 @@ class CustomWindow(QWidget):
 
         file_menu.addSeparator()
 
+        export_ifc_action = QAction("Export IFC", self)
+        export_ifc_action.setShortcut(QKeySequence("Ctrl+E"))
+        file_menu.addAction(export_ifc_action)
+        export_ifc_action.triggered.connect(self.trigger_ifc_export)
+        
+        file_menu.addSeparator()
+
         quit_action = QAction("Quit", self)
         quit_action.setShortcut(QKeySequence("Shift+Q"))
         file_menu.addAction(quit_action)
+
+    def trigger_ifc_export(self):
+        from PySide6.QtWidgets import QFileDialog, QMessageBox
+        from osdagbridge.core.ifc_export_bridge.export_ifc_handler import PlateGirderIfcExportHandler
+        
+        # Bypass strict type check as CustomWindow instantiates FrontendData
+        file_path, _ = QFileDialog.getSaveFileName(self, "Export IFC Model", "PlateGirderBridge.ifc", "IFC Files (*.ifc)")
+        if not file_path: return
+        
+        # Map Live UI State to our standalone Exporter
+        class MockCAD: pass
+        cad = MockCAD()
+        inputs = self.cad_state
+        
+        # Layout & Main Dimensions
+        cad.span_length_L = float(inputs.get(KEY_SPAN, 25)) * 1000
+        cad.num_girders = int(float(inputs.get(KEY_NO_OF_GIRDERS, 4)))
+        cad.girder_spacing = float(inputs.get(KEY_GIRDER_SPACING, 2.75)) * 1000
+        cad.skew_angle = float(inputs.get(KEY_SKEW_ANGLE, 0))
+        cad.carriageway_width = float(inputs.get(KEY_CARRIAGEWAY_WIDTH, 12)) * 1000
+        cad.deck_thickness = float(inputs.get(KEY_DECK_THICKNESS, 0.4)) * 1000
+        
+        # Girder Variables
+        cad.girder_section_d = float(inputs.get(KEY_GIRDER_DEPTH, 900))
+        cad.girder_section_tw = float(inputs.get(KEY_GIRDER_WEB_THICKNESS, 100))
+        cad.girder_section_bf = float(inputs.get(KEY_GIRDER_TOP_FLANGE_WIDTH, 500))
+        cad.girder_section_tf = float(inputs.get(KEY_GIRDER_TOP_FLANGE_THICKNESS, 260))
+        cad.girder_section_bf_b = float(inputs.get(KEY_GIRDER_BOTTOM_FLANGE_WIDTH, 500))
+        # Default symmetric 
+        cad.girder_section_tf_b = float(inputs.get(KEY_GIRDER_TOP_FLANGE_THICKNESS, 260))
+        
+        # Footpaths & Median
+        footpath_val = inputs.get(KEY_FOOTPATH, "None")
+        if footpath_val == "Single Side": cad.footpath_config = "LEFT"
+        elif footpath_val == "Both Sides": cad.footpath_config = "BOTH"
+        else: cad.footpath_config = "NONE"
+        
+        cad.footpath_width = float(inputs.get(KEY_FOOTPATH_WIDTH, 1.5)) * 1000
+        cad.railing_width = float(inputs.get(KEY_RAILING_WIDTH, 0.3)) * 1000
+        cad.enable_median = inputs.get(KEY_INCLUDE_MEDIAN, False)
+        
+        # Standard Parametric Defaults to populate Bracing loops
+        cad.barrier_type = inputs.get("crash_barrier_type", "Rigid")
+        cad.crash_barrier_subtype = "IRC-5R"
+        cad.median_type = inputs.get("median_type", "Metallic Crash Barrier")
+        cad.rail_count = 3
+        cad.railing_type = inputs.get("railing_type", "rcc")
+        
+        # Stiffener toggles
+        cad.include_intermediate_stiffeners = True
+        cad.intermediate_stiffener_spacing = 2000
+        cad.intermediate_stiffener_thickness = 20
+        cad.intermediate_stiffener_outstand = None
+        cad.num_end_stiffener_pairs = 4
+        cad.end_stiffener_thickness = 30
+        cad.end_stiffener_outstand = None
+        cad.include_longitudinal_stiffeners = True
+        cad.num_longitudinal_stiffeners = 2
+        cad.longitudinal_stiffener_thickness = 20
+        cad.longitudinal_stiffener_outstand = None
+        
+        # Cross Bracing Config
+        cad.cross_bracing_spacing = 4000
+        cad.bracing_type = "X"
+        cad.x_bracket_option = "BOTH"
+        cad.k_top_bracket = True
+        cad.diagonal_section_type = "ANGLE"
+        cad.diagonal_section_dims = {"leg_h": 100, "leg_w": 50, "connection_type": "LONGER_LEG"}
+        cad.diagonal_thickness = 5
+        cad.top_chord_section_type = "DOUBLE_CHANNEL"
+        cad.top_chord_section_dims = {"depth": 100, "flange_width": 50, "web_thickness":5, "flange_thickness":5}
+        cad.top_chord_thickness = 5
+        cad.bottom_chord_section_type = "I_SECTION"
+        cad.bottom_chord_section_dims = {"depth": 100, "flange_width": 50, "web_thickness":5, "flange_thickness":5}
+        cad.bottom_chord_thickness = 5
+        
+        # Diaphragm Default Config
+        cad.end_diaphragm_type = "Cross Bracing"
+        cad.end_diaphragm_spacing = 100
+        cad.end_diaphragm_bracing_type = "K"
+        cad.end_diaphragm_diagonal_section_type = "ANGLE"
+        cad.end_diaphragm_diagonal_section_dims = {"leg_h": 100}
+        cad.end_diaphragm_diagonal_thickness = 5
+        cad.end_diaphragm_top_chord_section_type = "CHANNEL"
+        cad.end_diaphragm_top_chord_section_dims = {}
+        cad.end_diaphragm_top_chord_thickness = 5
+        cad.end_diaphragm_bottom_chord_section_type = "DOUBLE_ANGLE"
+        cad.end_diaphragm_bottom_chord_section_dims = {"connection_type": "SHORTER_LEG"}
+        cad.end_diaphragm_bottom_chord_thickness = 5
+        
+        def completion_callback(success, msg):
+            if success:
+                QMessageBox.information(self, "Export Complete", msg)
+            else:
+                QMessageBox.critical(self, "Export Failed", msg)
+                
+        # Fire
+        handler = PlateGirderIfcExportHandler(cad, file_path, completion_callback)
+        handler.export_async()
 
         # Edit Menus
         edit_menu = self.menu_bar.addMenu("Edit")

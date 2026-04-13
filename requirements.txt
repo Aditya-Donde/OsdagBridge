@@ -1,2 +1,4 @@
-# Primary GUI dependency
+# Primary GUI and calculation dependencies
 PySide6>=6.5.0
+numpy>=1.21.0
+ifcopenshell
