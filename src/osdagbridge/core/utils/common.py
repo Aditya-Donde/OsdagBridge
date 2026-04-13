@@ -27,6 +27,7 @@ TYPE_CHECKBOX       = "checkbox"
 TYPE_CHECKBOX_ROW   = "checkbox_row"
 TYPE_CHECKBOX_GRID  = "checkbox_grid"
 TYPE_PERCENT_BAR = "percent_bar"
+TYPE_ONLY_BUTTON = "only_button"
 
 # Keys for inputs (consistent dot notation for object names)
 KEY_MODULE = "Module"
@@ -49,6 +50,7 @@ KEY_DECK_CONCRETE_GRADE_BASIC = "material.deck_concrete_grade"
 KEY_SECTION_OUTPUT_ANALYSIS       = "section.output.analysis"
 KEY_SECTION_OUTPUT_SUPERSTRUCTURE = "section.output.superstructure"
 KEY_SECTION_OUTPUT_SUBSTRUCTURE   = "section.output.substructure"
+KEY_SECTION_OUTPUT_STEELDESIGN = "section.output.superstructure.steeldesign"
 
 # ── Output field keys ─────────────────────────────────────────────────────────
 KEY_ANALYSIS_MEMBER           = "analysis.member"
@@ -56,6 +58,9 @@ KEY_ANALYSIS_LOAD_COMBINATION = "analysis.load_combination"
 KEY_ANALYSIS_FORCES           = "analysis.forces"
 KEY_ANALYSIS_DISPLAY_OPTIONS  = "analysis.display_options"
 KEY_ANALYSIS_UTILIZATION      = "analysis.utilization"
+
+KEY_STEELDESIGN_MEMBER_ID = "steeldesign.member_id"
+KEY_STEELDESIGN_LOAD_COMBINATION = "steeldesign.load_combination"
 
 KEY_BTN_STEEL_DESIGN          = "btn.steel_design"
 KEY_BTN_DECK_DESIGN           = "btn.deck_design"

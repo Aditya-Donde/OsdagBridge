@@ -192,9 +192,9 @@ COLOR_GREEN      = QColor("#90AF13")   # matches dock accent
 COLOR_RED        = QColor("#CC2222")
 COLOR_TRACK      = QColor("#D8D8D8")   # unfilled portion
 
-BAR_HEIGHT       = 8          # px — height of the progress track
+BAR_HEIGHT       = 6           # px — height of the progress track
 PCT_LABEL_WIDTH  = 46          # px — fixed width reserved for "120%" text
-LABEL_STYLE      = "QLabel { font-size:13px; font-weight:bold; color:#222; background:transparent; }"
+LABEL_STYLE      = "QLabel { font-size:13px; color:#222; background:transparent; }"
 PCT_LABEL_STYLE  = "QLabel { font-size:12px; font-weight:bold; color:#444; background:transparent; }"
 
 
@@ -258,7 +258,7 @@ class PercentBarWidget(QWidget):
         self.setStyleSheet("background: transparent;")
 
         root = QVBoxLayout(self)
-        root.setContentsMargins(0, 0, 0, 0)
+        root.setContentsMargins(0, 5, 0, 0)
         root.setSpacing(4)
 
         # ── Label — max-width kept in sync with bar via resizeEvent ───────────
@@ -281,7 +281,7 @@ class PercentBarWidget(QWidget):
         self._pct_label = QLabel(self._fmt(value))
         self._pct_label.setStyleSheet(PCT_LABEL_STYLE)
         self._pct_label.setFixedWidth(PCT_LABEL_WIDTH)
-        self._pct_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+        self._pct_label.setAlignment(Qt.AlignCenter)
         bar_row.addWidget(self._pct_label)
 
         root.addLayout(bar_row)

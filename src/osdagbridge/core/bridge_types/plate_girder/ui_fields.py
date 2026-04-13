@@ -236,10 +236,10 @@ class FrontendData:
                 TYPE_TITLE, None, True, "No Validator",
                 {"kind": "analysis"}),
 
-            (KEY_ANALYSIS_MEMBER, "Member:",
+            (KEY_ANALYSIS_MEMBER, "Member",
                 TYPE_COMBOBOX, ["All"], True, "No Validator", {}),
 
-            (KEY_ANALYSIS_LOAD_COMBINATION, "Load Combination:",
+            (KEY_ANALYSIS_LOAD_COMBINATION, "Load Combination",
                 TYPE_COMBOBOX, ["Envelope"], True, "No Validator", {}),
 
             (KEY_ANALYSIS_FORCES, None,           # None = no label
@@ -263,15 +263,14 @@ class FrontendData:
                 TYPE_TITLE, None, True, "No Validator",
                 {"kind": "design"}),
 
-            (KEY_BTN_STEEL_DESIGN, "Steel Design",
-                TYPE_BUTTON, None, True, "No Validator",
-                {"action": "open_steel_design", "button_label": "Here"}),
-
-            (KEY_BTN_DECK_DESIGN, "Deck Design",
-                TYPE_BUTTON, None, True, "No Validator",
-                {"action": "open_deck_design", "button_label": "Here"}),
-
             # ─── Percentage Bars ─────────────────────────────────────────────────────────
+
+            (KEY_STEELDESIGN_MEMBER_ID, "Member ID",
+                TYPE_COMBOBOX, ["All"], True, "No Validator", 
+                {"group_title": "Steel Design"}),
+
+            (KEY_STEELDESIGN_LOAD_COMBINATION, "Load Case",
+                TYPE_COMBOBOX, ["Envelope"], True, "No Validator", {}),
 
             (KEY_UTIL_FLEXURE, "Strength Limit State (Flexure)",
                 TYPE_PERCENT_BAR, 0.0, True, "No Validator", {}),
@@ -296,6 +295,22 @@ class FrontendData:
 
             (KEY_UTIL_DEFLECTION_CRACK, "Deflection and Crack Control",
                 TYPE_PERCENT_BAR, 0.0, True, "No Validator", {}),
+
+            (KEY_BTN_STEEL_DESIGN, "Analysis & Design Results Summary",
+                TYPE_ONLY_BUTTON, None, True, "No Validator",
+                {
+                    "action": "open_steel_design"
+                }),
+            
+            # ─── Deck Design ─────────────────────────────────────────────────────────
+
+            (KEY_BTN_DECK_DESIGN, "Design Summary",
+                TYPE_ONLY_BUTTON, None, True, "No Validator",
+                {
+                    "action": "open_deck_design",
+                    "group_title": "Deck Design",
+                    "group_end": True
+                }),
 
             # ── Substructure ──────────────────────────────────────────────────
             (KEY_SECTION_OUTPUT_SUBSTRUCTURE, "Substructure",

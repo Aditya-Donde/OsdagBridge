@@ -30,7 +30,7 @@ from PySide6.QtGui import QIcon
 
 from osdagbridge.core.utils.common import (
     TYPE_TITLE, TYPE_BUTTON, TYPE_COMBOBOX, TYPE_PERCENT_BAR,
-    TYPE_CHECKBOX, TYPE_CHECKBOX_ROW, TYPE_CHECKBOX_GRID,
+    TYPE_CHECKBOX, TYPE_CHECKBOX_ROW, TYPE_CHECKBOX_GRID, TYPE_ONLY_BUTTON
 )
 from osdagbridge.desktop.ui.utils.custom_buttons import DockCustomButton
 from osdagbridge.desktop.ui.docks.dock_utils import apply_field_style
@@ -276,6 +276,9 @@ class OutputDock(QWidget):
                 bar = PercentBarWidget(label=label or "", value=0.0)
                 bar.setObjectName(key)
                 target.addWidget(bar)
+            
+            elif ftype == TYPE_ONLY_BUTTON:
+                target.addLayout(self._make_only_button_row(label, meta))
 
             # ── Close nested subgroup if group_end declared ────────────────
             if meta.get("group_end"):
@@ -362,6 +365,24 @@ class OutputDock(QWidget):
         row.addWidget(lbl)
 
         btn = QPushButton(meta.get("button_label", "Here"))
+        btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        btn.setStyleSheet(ACTION_BTN_STYLE)
+        cb = getattr(self, meta.get("action", ""), None)
+        if callable(cb):
+            btn.clicked.connect(cb)
+        else:
+            btn.setEnabled(False)
+        row.addWidget(btn, 1)
+        return row
+
+    def _make_only_button_row(self, label: str, meta: dict) -> QHBoxLayout:
+        """Single button with no label."""
+        row = QHBoxLayout()
+        row.setContentsMargins(0, 8, 0, 0)
+        row.setSpacing(8)
+
+        btn = QPushButton(label)
         btn.setCursor(Qt.CursorShape.PointingHandCursor)
         btn.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         btn.setStyleSheet(ACTION_BTN_STYLE)
