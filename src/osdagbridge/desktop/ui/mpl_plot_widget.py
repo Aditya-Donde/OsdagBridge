@@ -102,7 +102,7 @@ class MplPlotWidget(QWidget):
             combo_lc.currentTextChanged.connect(self.update_plot)
 
         # pre-check default force + connect all force checkboxes
-        from osdagbridge.desktop.ui.utils.combobox_utils import RichCheckBox
+        from osdagbridge.desktop.ui.utils.custom_widgets import RichCheckBox
         force_cbs = [
             cb for cb in output_dock.output_widget.findChildren(RichCheckBox)
             if cb.text() in _RICH_LABEL_TO_FORCE
@@ -167,7 +167,7 @@ class MplPlotWidget(QWidget):
 
     def _current_force_key(self) -> str:
         """Return the FORCE_MAP key for the currently checked force checkbox."""
-        from osdagbridge.desktop.ui.utils.combobox_utils import RichCheckBox
+        from osdagbridge.desktop.ui.utils.custom_widgets import RichCheckBox
         for cb in self._output_dock.output_widget.findChildren(RichCheckBox):
             if cb.isChecked() and cb.text() in _RICH_LABEL_TO_FORCE:
                 return _RICH_LABEL_TO_FORCE[cb.text()]

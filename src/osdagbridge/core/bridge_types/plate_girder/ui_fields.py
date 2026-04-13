@@ -271,6 +271,32 @@ class FrontendData:
                 TYPE_BUTTON, None, True, "No Validator",
                 {"action": "open_deck_design", "button_label": "Here"}),
 
+            # ─── Percentage Bars ─────────────────────────────────────────────────────────
+
+            (KEY_UTIL_FLEXURE, "Strength Limit State (Flexure)",
+                TYPE_PERCENT_BAR, 0.0, True, "No Validator", {}),
+
+            (KEY_UTIL_SHEAR, "Strength Limit State (Shear)",
+                TYPE_PERCENT_BAR, 0.0, True, "No Validator", {}),
+
+            (KEY_UTIL_INTERACTION, "Interaction",
+                TYPE_PERCENT_BAR, 0.0, True, "No Validator", {}),
+
+            (KEY_UTIL_LTB, "Lateral Torsional Buckling",
+                TYPE_PERCENT_BAR, 0.0, True, "No Validator", {}),
+
+            (KEY_UTIL_LONG_TRANS_SHEAR, "Resistance to Longitudinal and Transverse Shear",
+                TYPE_PERCENT_BAR, 0.0, True, "No Validator", {}),
+
+            (KEY_UTIL_FATIGUE, "Resistance to Fatigue",
+                TYPE_PERCENT_BAR, 0.0, True, "No Validator", {}),
+
+            (KEY_UTIL_STRESS_LIMITATION, "Stress Limitation",
+                TYPE_PERCENT_BAR, 0.0, True, "No Validator", {}),
+
+            (KEY_UTIL_DEFLECTION_CRACK, "Deflection and Crack Control",
+                TYPE_PERCENT_BAR, 0.0, True, "No Validator", {}),
+
             # ── Substructure ──────────────────────────────────────────────────
             (KEY_SECTION_OUTPUT_SUBSTRUCTURE, "Substructure",
                 TYPE_TITLE, None, True, "No Validator",

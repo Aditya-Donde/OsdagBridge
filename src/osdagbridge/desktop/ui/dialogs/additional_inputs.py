@@ -27,11 +27,11 @@ from osdagbridge.desktop.ui.dialogs.tabs.loading_tab import LoadingTab
 from osdagbridge.desktop.ui.dialogs.tabs.support_conditions_tab import SupportConditionsTab
 from osdagbridge.desktop.ui.dialogs.tabs.design_options_tab import DesignOptionsTab
 from osdagbridge.desktop.ui.dialogs.tabs.design_options_cont_tab import DesignOptionsContTab
-from osdagbridge.desktop.ui.utils.combobox_utils import SmartCursorComboBoxView
-
-
-
-
+from osdagbridge.desktop.ui.utils.custom_widgets import SmartCursorComboBoxView
+from osdagbridge.core.bridge_types.plate_girder.ui_fields_additional_input import (
+    DESIGN_OPTIONS_SCHEMA,
+    DESIGN_OPTIONS_CONT_SCHEMA,
+)
 
 # =================================================================================
 #   MAIN IMPLEMENTATION

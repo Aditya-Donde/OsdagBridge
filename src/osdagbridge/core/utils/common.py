@@ -26,6 +26,7 @@ TYPE_NOTE   = "note"
 TYPE_CHECKBOX       = "checkbox"
 TYPE_CHECKBOX_ROW   = "checkbox_row"
 TYPE_CHECKBOX_GRID  = "checkbox_grid"
+TYPE_PERCENT_BAR = "percent_bar"
 
 # Keys for inputs (consistent dot notation for object names)
 KEY_MODULE = "Module"
@@ -58,6 +59,15 @@ KEY_ANALYSIS_UTILIZATION      = "analysis.utilization"
 
 KEY_BTN_STEEL_DESIGN          = "btn.steel_design"
 KEY_BTN_DECK_DESIGN           = "btn.deck_design"
+
+KEY_UTIL_FLEXURE             = "util.flexure"
+KEY_UTIL_SHEAR               = "util.shear"
+KEY_UTIL_INTERACTION         = "util.interaction"
+KEY_UTIL_LTB                 = "util.ltb"
+KEY_UTIL_LONG_TRANS_SHEAR    = "util.long_trans_shear"
+KEY_UTIL_FATIGUE             = "util.fatigue"
+KEY_UTIL_STRESS_LIMITATION   = "util.stress_limitation"
+KEY_UTIL_DEFLECTION_CRACK    = "util.deflection_crack"
 
 # Module + section identifiers (also used as UI keys)
 KEY_MODULE_PLATE_GIRDER = "module.plate_girder"

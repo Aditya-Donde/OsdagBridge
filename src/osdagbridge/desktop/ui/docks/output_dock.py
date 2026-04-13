@@ -29,12 +29,13 @@ from PySide6.QtCore import Qt, QSize
 from PySide6.QtGui import QIcon
 
 from osdagbridge.core.utils.common import (
-    TYPE_TITLE, TYPE_BUTTON, TYPE_COMBOBOX,
+    TYPE_TITLE, TYPE_BUTTON, TYPE_COMBOBOX, TYPE_PERCENT_BAR,
     TYPE_CHECKBOX, TYPE_CHECKBOX_ROW, TYPE_CHECKBOX_GRID,
 )
 from osdagbridge.desktop.ui.utils.custom_buttons import DockCustomButton
 from osdagbridge.desktop.ui.docks.dock_utils import apply_field_style
-from osdagbridge.desktop.ui.utils.combobox_utils import RichCheckBox
+from osdagbridge.desktop.ui.utils.custom_widgets import RichCheckBox, PercentBarWidget
+
 
 # ── Styles ────────────────────────────────────────────────────────────────────
 
@@ -270,6 +271,11 @@ class OutputDock(QWidget):
                 cb = QCheckBox(label or "")
                 cb.setObjectName(key)
                 target.addWidget(cb)
+            
+            elif ftype == TYPE_PERCENT_BAR:
+                bar = PercentBarWidget(label=label or "", value=0.0)
+                bar.setObjectName(key)
+                target.addWidget(bar)
 
             # ── Close nested subgroup if group_end declared ────────────────
             if meta.get("group_end"):
