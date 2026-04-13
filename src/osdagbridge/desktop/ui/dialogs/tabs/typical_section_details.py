@@ -275,6 +275,9 @@ class TypicalSectionDetailsTab(QWidget):
         if hasattr(self, "wearing_thickness"):
             self.wearing_thickness.editingFinished.connect(self._update_cad_preview)
 
+        if hasattr(self, "wearing_density"):
+            self.wearing_density.editingFinished.connect(self._update_cad_preview)
+
         if hasattr(self, "wearing_material"):
             self.wearing_material.currentTextChanged.connect(self._update_cad_preview)
             
@@ -371,14 +374,20 @@ class TypicalSectionDetailsTab(QWidget):
             params["crash_barrier_type"] = ui_cb_type
             
         # ---- Wearing Course ----
-        if hasattr(self, "wearing_coat_thickness") and self.wearing_coat_thickness.text():
-            params[KEY_WEARING_COAT_THICKNESS] = float(self.wearing_coat_thickness.text())
+        if hasattr(self, "wearing_thickness") and self.wearing_thickness.text():
+            wearing_thickness = float(self.wearing_thickness.text())
+            params[KEY_WEARING_COAT_THICKNESS] = wearing_thickness
+            params["wearing_course_thickness"] = wearing_thickness
 
-        if hasattr(self, "wearing_coat_density") and self.wearing_coat_density.text():
-            params[KEY_WEARING_COAT_DENSITY] = float(self.wearing_coat_density.text())
+        if hasattr(self, "wearing_density") and self.wearing_density.text():
+            wearing_density = float(self.wearing_density.text())
+            params[KEY_WEARING_COAT_DENSITY] = wearing_density
+            params["wearing_course_density"] = wearing_density
 
-        if hasattr(self, "wearing_coat_material"):
-            params[KEY_WEARING_COAT_MATERIAL] = self.wearing_coat_material.currentText()
+        if hasattr(self, "wearing_material"):
+            wearing_material = self.wearing_material.currentText()
+            params[KEY_WEARING_COAT_MATERIAL] = wearing_material
+            params["wearing_course_material"] = wearing_material
         
         # ---- Median ----
         if hasattr(self, "median_type"):

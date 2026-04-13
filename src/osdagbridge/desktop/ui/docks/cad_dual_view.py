@@ -237,19 +237,19 @@ class BridgeDualCADWidget(QWidget):
                     
         # ---- Wearing Coat ----
         if KEY_WEARING_COAT_THICKNESS in input_dict:
-            params[KEY_WEARING_COAT_THICKNESS] = float(
-                input_dict[KEY_WEARING_COAT_THICKNESS]
-            )
+            wearing_thickness = float(input_dict[KEY_WEARING_COAT_THICKNESS])
+            params[KEY_WEARING_COAT_THICKNESS] = wearing_thickness
+            params["wearing_course_thickness"] = wearing_thickness
 
         if KEY_WEARING_COAT_DENSITY in input_dict:
-            params[KEY_WEARING_COAT_DENSITY] = float(
-                input_dict[KEY_WEARING_COAT_DENSITY]
-            )
+            wearing_density = float(input_dict[KEY_WEARING_COAT_DENSITY])
+            params[KEY_WEARING_COAT_DENSITY] = wearing_density
+            params["wearing_course_density"] = wearing_density
 
         if KEY_WEARING_COAT_MATERIAL in input_dict:
-            params[KEY_WEARING_COAT_MATERIAL] = input_dict[
-                KEY_WEARING_COAT_MATERIAL
-            ]
+            wearing_material = input_dict[KEY_WEARING_COAT_MATERIAL]
+            params[KEY_WEARING_COAT_MATERIAL] = wearing_material
+            params["wearing_course_material"] = wearing_material
 
         
         # Map footpath configuration
