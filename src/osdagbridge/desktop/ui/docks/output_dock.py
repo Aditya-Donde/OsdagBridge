@@ -29,12 +29,12 @@ from PySide6.QtCore import Qt, QSize
 from PySide6.QtGui import QIcon
 
 from osdagbridge.core.utils.common import (
-    TYPE_TITLE, TYPE_BUTTON, TYPE_COMBOBOX, TYPE_PERCENT_BAR,
+    TYPE_TITLE, TYPE_BUTTON, TYPE_COMBOBOX, TYPE_PERCENT_BAR, TYPE_RADIO_GRID,
     TYPE_CHECKBOX, TYPE_CHECKBOX_ROW, TYPE_CHECKBOX_GRID, TYPE_ONLY_BUTTON
 )
 from osdagbridge.desktop.ui.utils.custom_buttons import DockCustomButton
 from osdagbridge.desktop.ui.docks.dock_utils import apply_field_style
-from osdagbridge.desktop.ui.utils.custom_widgets import RichCheckBox, PercentBarWidget
+from osdagbridge.desktop.ui.utils.custom_widgets import RichCheckBox, PercentBarWidget, CustomRadioButton
 
 
 # ── Styles ────────────────────────────────────────────────────────────────────
@@ -264,6 +264,9 @@ class OutputDock(QWidget):
             elif ftype == TYPE_CHECKBOX_GRID:
                 target.addLayout(self._make_checkbox_grid(key, label, values, meta))
 
+            elif ftype == TYPE_RADIO_GRID:
+                target.addLayout(self._make_radio_grid(key, label, values, meta))
+
             elif ftype == TYPE_CHECKBOX_ROW:
                 target.addLayout(self._make_checkbox_row(key, label, values, meta))
 
@@ -421,7 +424,6 @@ class OutputDock(QWidget):
         N-column grid of checkboxes, aligned in rows using QGridLayout.
         values    = [["Fx","Mx","Dx"], ["Fy","My","Dy"], ...]
         label     = None means no label row is added.
-        exclusive : bool — if True only one checkbox can be checked at a time.
         """
         from PySide6.QtWidgets import QGridLayout
 
@@ -461,6 +463,49 @@ class OutputDock(QWidget):
         if meta.get("exclusive", False):
             self._wire_exclusive(all_cbs)
 
+        return outer
+
+    def _make_radio_grid(self, key: str, label: str, values, meta: dict):
+        """
+        N-column grid of CustomRadioButtons, aligned in rows using QGridLayout.
+    
+        values    = [["Fx","Mx","Dx"], ["Fy","My","Dy"], ...]   (column-first list)
+        label     = section label string, or None to skip the label row.
+        exclusive : bool (in meta) — when True, selecting one button unchecks all
+                    others in the grid (standard radio behaviour).  Defaults True.
+        """
+        from PySide6.QtWidgets import QVBoxLayout, QGridLayout, QLabel
+    
+        outer = QVBoxLayout()
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(4)
+    
+        if label:
+            lbl = QLabel(label)
+            lbl.setStyleSheet(LABEL_STYLE)
+            outer.addWidget(lbl)
+    
+        columns  = values if isinstance(values, list) else []
+        all_rbs: list[CustomRadioButton] = []
+        num_cols = len(columns)
+    
+        grid = QGridLayout()
+        grid.setContentsMargins(0, 0, 0, 0)
+        grid.setHorizontalSpacing(8)
+        grid.setVerticalSpacing(4)
+    
+        for c in range(num_cols):
+            grid.setColumnStretch(c, 1)
+    
+        num_rows = max((len(col) for col in columns), default=0)
+        for row in range(num_rows):
+            for col, col_items in enumerate(columns):
+                if row < len(col_items):
+                    rb = CustomRadioButton(str(col_items[row]))
+                    all_rbs.append(rb)
+                    grid.addWidget(rb, row, col, alignment=Qt.AlignCenter)
+    
+        outer.addLayout(grid)    
         return outer
 
     def _make_checkbox_row(self, key: str, label: str, values, meta: dict) -> QHBoxLayout:

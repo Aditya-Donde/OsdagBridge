@@ -28,6 +28,7 @@ TYPE_CHECKBOX_ROW   = "checkbox_row"
 TYPE_CHECKBOX_GRID  = "checkbox_grid"
 TYPE_PERCENT_BAR = "percent_bar"
 TYPE_ONLY_BUTTON = "only_button"
+TYPE_RADIO_GRID = "radio_button_grid"
 
 # Keys for inputs (consistent dot notation for object names)
 KEY_MODULE = "Module"

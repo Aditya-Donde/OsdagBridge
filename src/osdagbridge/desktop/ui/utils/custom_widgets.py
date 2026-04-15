@@ -7,9 +7,12 @@ Provides enhanced combobox views with:
 - Better UX feedback for selectable vs non-selectable items
 """
 
-from PySide6.QtWidgets import QListView, QStyledItemDelegate, QWidget, QVBoxLayout, QSizePolicy
-from PySide6.QtCore import Qt, QRectF
-from PySide6.QtGui import QColor, QPainterPath
+from PySide6.QtWidgets import (
+    QListView, QStyledItemDelegate, QWidget, QVBoxLayout,
+    QSizePolicy, QRadioButton
+)
+from PySide6.QtCore import Qt, QRectF, QRect
+from PySide6.QtGui import QColor, QPainterPath, QPen, QFontMetrics
 
 # =================================================================================
 #   ITEM DELEGATE FOR DISABLED ITEMS
@@ -187,7 +190,7 @@ Visual behaviour
   value >= 100 →  red   fill, full  width,         "XX%" text to the right
 """
 
-# ── Colours ───────────────────────────────────────────────────────────────────
+# -- Colours -------------------------------------------------------------------
 COLOR_GREEN      = QColor("#90AF13")   # matches dock accent
 COLOR_RED        = QColor("#CC2222")
 COLOR_TRACK      = QColor("#D8D8D8")   # unfilled portion
@@ -198,7 +201,7 @@ LABEL_STYLE      = "QLabel { font-size:13px; color:#222; background:transparent;
 PCT_LABEL_STYLE  = "QLabel { font-size:12px; font-weight:bold; color:#444; background:transparent; }"
 
 
-# ── Inner bar widget ──────────────────────────────────────────────────────────
+# -- Inner bar widget ----------------------------------------------------------
 
 class _BarPainter(QWidget):
     """Custom-painted progress track."""
@@ -227,13 +230,13 @@ class _BarPainter(QWidget):
 
         painter.setPen(Qt.NoPen)
 
-        # ── Full rounded track pill ───────────────────────────────────────────
+        # -- Full rounded track pill -------------------------------------------
         track_path = QPainterPath()
         track_path.addRoundedRect(QRectF(0, 0, w, h), radius, radius)
         painter.setBrush(COLOR_TRACK)
         painter.drawPath(track_path)
 
-        # ── Fill clipped to track shape ───────────────────────────────────────
+        # -- Fill clipped to track shape ---------------------------------------
         if fill_w > 0:
             fill_color = COLOR_RED if exceeded else COLOR_GREEN
             fill_rect_path = QPainterPath()
@@ -245,12 +248,13 @@ class _BarPainter(QWidget):
         painter.end()
 
 
-# ── Public widget ─────────────────────────────────────────────────────────────
+# -- Public widget -------------------------------------------------------------
 
+#----Percentage Bar Widget with label-------------------------------------------
 class PercentBarWidget(QWidget):
     """
     [Label (wraps, constrained to bar width)]
-    [bar ────────────────────────────────── ] XX%
+    [bar ---------------------------------- ] XX%
     """
 
     def __init__(self, label: str = "", value: float = 0.0, parent=None):
@@ -261,7 +265,7 @@ class PercentBarWidget(QWidget):
         root.setContentsMargins(0, 5, 0, 0)
         root.setSpacing(4)
 
-        # ── Label — max-width kept in sync with bar via resizeEvent ───────────
+        # -- Label — max-width kept in sync with bar via resizeEvent -----------
         lbl = QLabel(label)
         lbl.setStyleSheet(LABEL_STYLE)
         lbl.setTextFormat(Qt.RichText)
@@ -270,7 +274,7 @@ class PercentBarWidget(QWidget):
         self._lbl = lbl
         root.addWidget(lbl)
 
-        # ── Bar row ───────────────────────────────────────────────────────────
+        # -- Bar row -----------------------------------------------------------
         bar_row = QHBoxLayout()
         bar_row.setContentsMargins(0, 0, 0, 0)
         bar_row.setSpacing(8)
@@ -293,7 +297,7 @@ class PercentBarWidget(QWidget):
         if bar_w > 0:
             self._lbl.setMaximumWidth(bar_w)
 
-    # ── Public API ────────────────────────────────────────────────────────────
+    # -- Public API ------------------------------------------------------------
 
     def set_value(self, value: float):
         self._bar.set_value(value)
@@ -302,7 +306,135 @@ class PercentBarWidget(QWidget):
     @staticmethod
     def _fmt(value: float) -> str:
         return f"{int(round(value))}%"
-    
+
+# -- Custom Green Radio Button -----------------------------------------------
+class CustomRadioButton(QRadioButton):
+ 
+    INDICATOR_SIZE = 15
+    DOT_SIZE       = 9
+    SPACING        = 8
+    PEN_WIDTH      = 2
+    V_PADDING      = 6
+ 
+    def __init__(self, text="", parent=None):
+        super().__init__("", parent)   # always pass empty string to Qt
+        self._rich_text = text         # store our own text (may contain HTML)
+        self.setStyleSheet("""
+            QRadioButton::indicator {
+                width: 0px;
+                height: 0px;
+                image: none;
+                border: none;
+                background: none;
+            }
+        """)
+ 
+    # ── Public text API (mirrors QAbstractButton) ────────────────────────────
+ 
+    def setText(self, text: str):
+        self._rich_text = text
+        self.updateGeometry()
+        self.update()
+ 
+    def text(self) -> str:
+        return self._rich_text
+ 
+    # ── Rich-text document helper ────────────────────────────────────────────
+ 
+    def _is_rich(self) -> bool:
+        """True when the stored text contains HTML tags."""
+        return "<" in self._rich_text and ">" in self._rich_text
+ 
+    def _doc(self) -> QTextDocument:
+        doc = QTextDocument()
+        doc.setDefaultFont(self.font())
+        doc.setHtml(self._rich_text)
+        return doc
+ 
+    # ── Paint ────────────────────────────────────────────────────────────────
+ 
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+ 
+        s      = self.INDICATOR_SIZE
+        pw     = self.PEN_WIDTH
+        offset = pw // 2 + 1
+        cy     = self.height() // 2
+ 
+        circle_rect = QRect(offset, cy - s // 2, s, s)
+ 
+        # ── Circle ───────────────────────────────────────────────────────────
+        if self.isChecked():
+            painter.setBrush(QColor("#2e7d32"))
+            painter.setPen(QPen(QColor("#2e7d32"), pw))
+            painter.drawEllipse(circle_rect)
+ 
+            d = self.DOT_SIZE
+            dot_rect = QRect(
+                circle_rect.x() + (s - d) // 2,
+                circle_rect.y() + (s - d) // 2,
+                d, d
+            )
+            painter.setBrush(QColor("#ffffff"))
+            painter.setPen(Qt.NoPen)
+            painter.drawEllipse(dot_rect)
+ 
+        else:
+            painter.setBrush(QColor("#ffffff"))
+            border = QColor("#2e7d32") if self.underMouse() else QColor("#9e9e9e")
+            painter.setPen(QPen(border, pw))
+            painter.drawEllipse(circle_rect)
+ 
+        # ── Text ─────────────────────────────────────────────────────────────
+        text_x = offset + s + self.SPACING
+ 
+        if self._is_rich():
+            doc = self._doc()
+            doc.setTextWidth(self.width() - text_x)
+            text_h = int(doc.size().height())
+            text_y = (self.height() - text_h) // 2
+ 
+            painter.save()
+            painter.translate(QPoint(text_x, text_y))
+            if not self.isEnabled():
+                painter.setOpacity(0.4)
+            doc.drawContents(painter)
+            painter.restore()
+ 
+        else:
+            text_rect = QRect(text_x, 0, self.width() - text_x, self.height())
+            painter.setPen(QColor("#1a1a1a") if self.isEnabled() else QColor("#9e9e9e"))
+            painter.setFont(self.font())
+            painter.drawText(text_rect, Qt.AlignVCenter | Qt.AlignLeft, self._rich_text)
+ 
+        painter.end()
+ 
+    # ── Size ─────────────────────────────────────────────────────────────────
+ 
+    def sizeHint(self) -> QSize:
+        s      = self.INDICATOR_SIZE
+        pw     = self.PEN_WIDTH
+        offset = pw // 2 + 1
+ 
+        if self._is_rich():
+            doc = self._doc()
+            doc.setTextWidth(-1)
+            text_size = doc.size()
+            text_w = int(text_size.width())
+            text_h = int(text_size.height())
+        else:
+            fm     = QFontMetrics(self.font())
+            text_w = fm.horizontalAdvance(self._rich_text)
+            text_h = fm.height()
+ 
+        total_width  = offset + s + self.SPACING + text_w + offset
+        total_height = max(s + pw * 2, text_h) + self.V_PADDING
+        return QSize(total_width, total_height)
+ 
+    def minimumSizeHint(self) -> QSize:
+        return self.sizeHint()
+ 
 
 #---------Standalone-Testing------------------------------------
 import sys
@@ -329,9 +461,21 @@ if __name__ == "__main__":
     )),
     layout.addWidget(PercentBarWidget("Strength Limit State (Flexure)", 99.9))
     layout.addWidget(PercentBarWidget("Strength Limit State (Flexure)", 99.4))
+
+    rb1 = CustomRadioButton("Option A", parent=win)
+    rb1.setChecked(True)
+    rb1.adjustSize()
+    rb1.move(20, 25)
+    layout.addWidget(rb1)
+
+    rb2 = CustomRadioButton("Option A very long label here", parent=win)
+    rb2.adjustSize()
+    rb2.move(20, 65)
+    layout.addWidget(rb2)
+
     layout.addStretch()
  
     win.show()
     sys.exit(app.exec())
 
-#-------------
+#--------------------------------------------------------------------
