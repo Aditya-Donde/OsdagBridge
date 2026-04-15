@@ -993,6 +993,10 @@ class CustomWindow(QWidget):
         save_cad_action.setShortcut(QKeySequence("Alt+I"))
         file_menu.addAction(save_cad_action)
 
+        export_ifc_action = QAction("Export IFC", self)
+        export_ifc_action.setShortcut(QKeySequence("Ctrl+E"))
+        file_menu.addAction(export_ifc_action)
+
         file_menu.addSeparator()
 
         quit_action = QAction("Quit", self)

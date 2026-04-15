@@ -265,11 +265,11 @@ class FrontendData:
 
             # ─── Percentage Bars ─────────────────────────────────────────────────────────
 
-            (KEY_STEELDESIGN_MEMBER_ID, "Member ID",
+            (KEY_STEELDESIGN_MEMBER_ID, "Member",
                 TYPE_COMBOBOX, ["All"], True, "No Validator", 
                 {"group_title": "Steel Design"}),
 
-            (KEY_STEELDESIGN_LOAD_COMBINATION, "Load Case",
+            (KEY_STEELDESIGN_LOAD_COMBINATION, "Load Combination",
                 TYPE_COMBOBOX, ["Envelope"], True, "No Validator", {}),
 
             (KEY_UTIL_FLEXURE, "Strength Limit State (Flexure)",

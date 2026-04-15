@@ -175,10 +175,11 @@ def _add_coordinate_triad(ax, nodes, scale=0.10):
     ax.text(ox, oz + L * 1.25, oy, "Z", color=colors["Z"],
             fontsize=9, fontweight="bold", zorder=5)
 
-    # Y arrow (upward = force direction)
-    ax.quiver(ox, oz, oy, 0, 0, L,
+    # Y arrow (upward = force direction) — scaled by 0.30 to match box_aspect
+    Ly = L * 0.30
+    ax.quiver(ox, oz, oy, 0, 0, Ly,
               color=colors["Y"], linewidth=2, arrow_length_ratio=0.25, zorder=5)
-    ax.text(ox, oz, oy + L * 1.25, "Y", color=colors["Y"],
+    ax.text(ox, oz, oy + Ly * 1.25, "Y", color=colors["Y"],
             fontsize=9, fontweight="bold", zorder=5)
 
 
@@ -262,7 +263,7 @@ def build_figure_sfd(ds, force_key, nodes, members, edge_dist=0.0):
 
         # girder label
         ax.text(xs[0], z_base, 0, f" {girder_name}",
-                color="black", fontsize=11, fontweight="bold",
+                color="black", fontsize=11, fontweight="normal",
                 ha="left", va="bottom", zorder=6,
                 bbox=dict(boxstyle="round,pad=0.2", facecolor="white",
                           alpha=0.8, edgecolor="none"))
@@ -405,7 +406,7 @@ def build_figure_bmd(ds, force_key, nodes, members, edge_dist=0.0):
 
         # girder label
         ax.text(xs[0], z_base, 0, f" {girder_name}",
-                color="black", fontsize=11, fontweight="bold",
+                color="black", fontsize=11, fontweight="normal",
                 ha="left", va="bottom", zorder=6,
                 bbox=dict(boxstyle="round,pad=0.2", facecolor="white",
                           alpha=0.8, edgecolor="none"))
@@ -428,12 +429,10 @@ def build_figure_bmd(ds, force_key, nodes, members, edge_dist=0.0):
         ax.plot(xs, z_arr, y_plot, color=moment_color, linewidth=2.0, zorder=4)
 
         idx_max = int(np.argmax(Mz))
-        idx_min = int(np.argmin(Mz))
-        for idx, clr in ((idx_max, "#FF4136"), (idx_min, "#0074D9")):
-            ax.plot([xs[idx], xs[idx]], [z_base, z_base], [0, y_plot[idx]],
-                    color=clr, linewidth=1.5, zorder=3)
-            ax.text(xs[idx], z_base, y_plot[idx],
-                    f" {Mz[idx]:.2f} kN", color=clr, fontsize=7, zorder=6)
+        ax.plot([xs[idx_max], xs[idx_max]], [z_base, z_base], [0, y_plot[idx_max]],
+                color="#FF4136", linewidth=1.5, zorder=3)
+        ax.text(xs[idx_max], z_base, y_plot[idx_max],
+                f" {Mz[idx_max]:.2f} kNm", color="#FF4136", fontsize=7, zorder=6)
 
         sc = ax.scatter(xs, z_arr, y_plot,
                         color=moment_color, s=30, zorder=5, depthshade=False)
@@ -450,13 +449,13 @@ def build_figure_bmd(ds, force_key, nodes, members, edge_dist=0.0):
             nids, xs_g, vals_g = _data[id(sel.artist)]
             idx = sel.index
             sel.annotation.set_text(
-                f"Node {nids[idx]}\nX: {xs_g[idx]:.2f}\n{_fk}: {vals_g[idx]:.3f} kN"
+                f"Node {nids[idx]}\nX: {xs_g[idx]:.2f}\n{_fk}: {vals_g[idx]:.3f} kNm"
             )
             sel.annotation.get_bbox_patch().set(fc="white", alpha=0.9)
 
-    ax.set_xlabel("Span Length", fontsize=10, labelpad=8)
-    ax.set_ylabel("Bridge Width", fontsize=10, labelpad=8)
-    ax.set_zlabel(f"{disp_key} (kN, scaled)", fontsize=10, labelpad=8)
+    ax.set_xlabel("Span Length (m)", fontsize=10, labelpad=8)
+    ax.set_ylabel("Bridge Width (m)", fontsize=10, labelpad=8)
+    ax.set_zlabel(f"{disp_key} (kNm, scaled)", fontsize=10, labelpad=8)
     ax.set_title(f"Bending Moment Diagram  —  {disp_key}", fontsize=12, fontweight="bold", pad=12)
     ax.view_init(elev=DEFAULT_ELEV, azim=DEFAULT_AZIM)
     ax.xaxis.pane.fill = False
@@ -554,7 +553,7 @@ def build_figure_bmd_contour(ds, force_key, nodes, members, edge_dist=0.0):
 
         # girder label
         ax.text(xs[0], z_base, 0, f" {girder_name}",
-                color="black", fontsize=11, fontweight="bold",
+                color="black", fontsize=11, fontweight="normal",
                 ha="left", va="bottom", zorder=6,
                 bbox=dict(boxstyle="round,pad=0.2", facecolor="white",
                           alpha=0.8, edgecolor="none"))
@@ -592,9 +591,9 @@ def build_figure_bmd_contour(ds, force_key, nodes, members, edge_dist=0.0):
     cbar = fig.colorbar(sm, ax=ax, shrink=0.5, pad=0.1, aspect=20)
     cbar.set_label(f"{disp_key}", fontsize=10)
 
-    ax.set_xlabel("Span Length", fontsize=10, labelpad=8)
-    ax.set_ylabel("Bridge Width", fontsize=10, labelpad=8)
-    ax.set_zlabel(f"{disp_key} (kN, scaled)", fontsize=10, labelpad=8)
+    ax.set_xlabel("Span Length (m)", fontsize=10, labelpad=8)
+    ax.set_ylabel("Bridge Width (m)", fontsize=10, labelpad=8)
+    ax.set_zlabel(f"{disp_key} (kNm, scaled)", fontsize=10, labelpad=8)
     ax.set_title(f"BMD Contour  —  {disp_key}", fontsize=12, fontweight="bold", pad=12)
     ax.view_init(elev=DEFAULT_ELEV, azim=DEFAULT_AZIM)
     ax.xaxis.pane.fill = False
