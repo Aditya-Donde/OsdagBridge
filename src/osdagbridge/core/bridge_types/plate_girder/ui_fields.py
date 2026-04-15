@@ -239,7 +239,7 @@ class FrontendData:
             (KEY_ANALYSIS_MEMBER, "Member",
                 TYPE_COMBOBOX, ["All"], True, "No Validator", {}),
 
-            (KEY_ANALYSIS_LOAD_COMBINATION, "Load Combination",
+            (KEY_ANALYSIS_LOAD_COMBINATION, "Load Case /\nCombination",
                 TYPE_COMBOBOX, ["Envelope"], True, "No Validator", {}),
 
             (KEY_ANALYSIS_FORCES, None,           # None = no label
@@ -269,7 +269,7 @@ class FrontendData:
                 TYPE_COMBOBOX, ["All"], True, "No Validator", 
                 {"group_title": "Steel Design"}),
 
-            (KEY_STEELDESIGN_LOAD_COMBINATION, "Load Combination",
+            (KEY_STEELDESIGN_LOAD_COMBINATION, "Load Case /\nCombination",
                 TYPE_COMBOBOX, ["Envelope"], True, "No Validator", {}),
 
             (KEY_UTIL_FLEXURE, "Strength Limit State (Flexure)",
@@ -296,7 +296,7 @@ class FrontendData:
             (KEY_UTIL_DEFLECTION_CRACK, "Deflection and Crack Control",
                 TYPE_PERCENT_BAR, 0.0, True, "No Validator", {}),
 
-            (KEY_BTN_STEEL_DESIGN, "Analysis & Design Results Summary",
+            (KEY_BTN_STEEL_DESIGN, "Analysis and Design Results Summary",
                 TYPE_ONLY_BUTTON, None, True, "No Validator",
                 {
                     "action": "open_steel_design"
