@@ -9,10 +9,10 @@ Provides enhanced combobox views with:
 
 from PySide6.QtWidgets import (
     QListView, QStyledItemDelegate, QWidget, QVBoxLayout,
-    QSizePolicy, QRadioButton
+    QSizePolicy, QRadioButton, QSpinBox, QPushButton, QScrollArea, QFrame
 )
 from PySide6.QtCore import Qt, QRectF, QRect
-from PySide6.QtGui import QColor, QPainterPath, QPen, QFontMetrics
+from PySide6.QtGui import QColor, QPainterPath, QPen, QFontMetrics, QIcon, QCursor
 
 # =================================================================================
 #   ITEM DELEGATE FOR DISABLED ITEMS
@@ -434,6 +434,185 @@ class CustomRadioButton(QRadioButton):
  
     def minimumSizeHint(self) -> QSize:
         return self.sizeHint()
+ 
+#---Custom toolbar widget with scroll area (for main screen)--------------------------------------
+class ToolBarWidget(QWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+
+        main_layout = QHBoxLayout(self)
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        main_layout.setSpacing(0)
+
+        # Scroll Area
+        self.scroll_area = QScrollArea()
+        self.scroll_area.setWidgetResizable(True)
+        self.scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        self.scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.scroll_area.setFrameShape(QScrollArea.NoFrame)
+
+        # Your QSS
+        self.scroll_area.setStyleSheet("""
+            QScrollArea { background:transparent; padding:0px 0px;
+                          border-top:1px solid #909090; border-bottom:1px solid #909090; }
+            QScrollArea QScrollBar:vertical { border:none; background:#f0f0f0; width:8px; }
+            QScrollArea QScrollBar::handle:vertical { background:#c0c0c0; border-radius:4px; min-height:20px; }
+            QScrollArea QScrollBar::handle:vertical:hover { background:#a0a0a0; }
+            QScrollArea QScrollBar::add-line:vertical,
+            QScrollArea QScrollBar::sub-line:vertical { border:none; background:none; }
+        """)
+
+        container = QWidget()
+        self.layout = QHBoxLayout(container)
+        self.layout.setContentsMargins(5, 0, 5, 0)
+        self.layout.setSpacing(6)
+
+        icon_size = QSize(29, 29)
+
+        # Button style with subtle hover
+        button_qss = """
+            QPushButton {
+                border: none;
+                background: transparent;
+                border-radius: 4px;
+            }
+            QPushButton:hover {
+                background-color: rgba(150, 150, 150, 60);
+            }
+        """
+
+        def create_button(icon_path, tooltip):
+            btn = QPushButton()
+            btn.setIcon(QIcon(icon_path))
+            btn.setIconSize(icon_size)
+            btn.setToolTip(tooltip)
+            btn.setFixedSize(32, 32)
+            btn.setCursor(QCursor(Qt.PointingHandCursor))
+            btn.setStyleSheet(button_qss)
+            btn.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+            return btn
+
+        def add_separator():
+            sep = QFrame()
+            sep.setFrameShape(QFrame.VLine)
+            sep.setFrameShadow(QFrame.Plain)
+            sep.setFixedHeight(32)
+            sep.setStyleSheet("""
+                QFrame {
+                    color: #999999;
+                    margin-left: 10px;
+                    margin-right: 10px;
+                }
+            """)
+            return sep
+
+        # ---- Buttons ----
+        # Zoom group
+        self.layout.addWidget(create_button(":/vectors/tool_bar/zoom_fit_light.svg", "Zoom Fit"))
+        self.layout.addWidget(create_button(":/vectors/tool_bar/zoom_window_light.svg", "Zoom Window"))
+        self.layout.addWidget(create_button(":/vectors/tool_bar/zoom_in_light.svg", "Zoom In"))
+        self.layout.addWidget(create_button(":/vectors/tool_bar/zoom_out_light.svg", "Zoom Out"))
+
+        self.layout.addWidget(add_separator())  # after zoom
+
+        # Navigation group
+        self.layout.addWidget(create_button(":/vectors/tool_bar/pan_light.svg", "Pan"))
+        self.layout.addWidget(create_button(":/vectors/tool_bar/rotate_light.svg", "Rotate"))
+
+        self.layout.addWidget(add_separator())  # after rotate
+
+        # Node group
+        self.layout.addWidget(create_button(":/vectors/tool_bar/node_light.svg", "Node"))
+        self.layout.addWidget(create_button(":/vectors/tool_bar/node_element_light.svg", "Node Element"))
+
+        self.layout.addWidget(add_separator())  # after node element
+
+        # Model display group
+        self.layout.addWidget(create_button(":/vectors/tool_bar/grillage_view_light.svg", "Grillage View"))
+        self.layout.addWidget(create_button(":/vectors/tool_bar/show_contour_light.svg", "Contour Plot"))
+        self.layout.addWidget(create_button(":/vectors/tool_bar/show_axis_light.svg", "Axis"))
+        self.layout.addWidget(create_button(":/vectors/tool_bar/show_grid_lines_light.svg", "Grid Lines"))
+        self.layout.addWidget(create_button(":/vectors/tool_bar/show_support_light.svg", "Supports"))
+        self.layout.addWidget(create_button(":/vectors/tool_bar/show_load_light.svg", "Loads"))
+
+        self.layout.addWidget(add_separator())  # after load
+
+        # Scale
+        scale_label = QLabel("Scale:")
+        scale_spin = QSpinBox()
+        scale_spin.setRange(1, 1000)
+        scale_spin.setValue(100)
+        scale_spin.setFixedWidth(70)
+        scale_spin.setStyleSheet("""
+            QSpinBox {
+                border: 1px solid #aaa;
+                border-radius: 4px;
+                padding-right: 10px; /* space for BOTH buttons */
+                background: #f8f8f8;
+            }
+
+            QSpinBox:hover {
+                border: 1px solid #888;
+                background: #ffffff;
+            }
+
+            QSpinBox:focus {
+                border: 1px solid #555;
+                background: #ffffff;
+            }
+
+            /* UP BUTTON (right-top → shifted left) */
+            QSpinBox::up-button {
+                subcontrol-origin: border;
+                subcontrol-position: top right;
+                width: 15px;
+                right: 18px;   /* move LEFT */
+                height: 20px;
+                border: none;
+                background: transparent;
+            }
+
+            /* DOWN BUTTON (right-most) */
+            QSpinBox::down-button {
+                subcontrol-origin: border;
+                subcontrol-position: top right;
+                width: 15px;
+                right: 3px;
+                height: 20px;
+                border: none;
+                background: transparent;
+            }
+
+            QSpinBox::up-arrow {
+                image: url(:/vectors/arrow_up_light.svg);
+                width: 15px;
+                height: 15px;
+            }
+
+            QSpinBox::down-arrow {
+                image: url(:/vectors/arrow_down_light.svg);
+                width: 15px;
+                height: 15px;
+            }
+
+            QSpinBox::up-button:hover,
+            QSpinBox::down-button:hover {
+                background: rgba(150,150,150,60);
+                border-radius: 3px;
+            }
+        """)
+
+        self.layout.addWidget(scale_label)
+        self.layout.addWidget(scale_spin)
+
+        self.layout.addStretch()
+
+        container.setLayout(self.layout)
+        self.scroll_area.setWidget(container)
+
+        main_layout.addWidget(self.scroll_area)
  
 
 #---------Standalone-Testing------------------------------------

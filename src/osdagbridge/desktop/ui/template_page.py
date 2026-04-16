@@ -24,6 +24,7 @@ from osdagbridge.core.bridge_types.plate_girder.dto import(
     SectionDimsDTO,
     ISectionDimsDTO
 )
+from osdagbridge.desktop.ui.utils.custom_widgets import ToolBarWidget
 
 '''
 Temporary DTO and will be removed once the backend is connected
@@ -242,6 +243,7 @@ class CustomWindow(QWidget):
         self.input_dock_control = ClickableSvgWidget()
         self.input_dock_control.setFixedSize(18, 18)
         self.input_dock_control.load(":/vectors/view_btn/input_dock_active.svg")
+        self.input_dock_control.setToolTip("Toggle Input Dock")
         self.input_dock_control.clicked.connect(self.input_dock_toggle)
         self.input_dock_active = True
         control_button_layout.addWidget(self.input_dock_control)
@@ -250,6 +252,7 @@ class CustomWindow(QWidget):
         self.cross_section_control = ClickableSvgWidget()
         self.cross_section_control.setFixedSize(18, 18)
         self.cross_section_control.load(":/vectors/view_btn/cross_section_active.svg")
+        self.cross_section_control.setToolTip("Toggle Cross-Section View")
         self.cross_section_control.clicked.connect(self.cross_section_toggle)
         self.cross_section_active = True
         control_button_layout.addWidget(self.cross_section_control)
@@ -258,6 +261,7 @@ class CustomWindow(QWidget):
         self.top_view_control = ClickableSvgWidget()
         self.top_view_control.setFixedSize(18, 18)
         self.top_view_control.load(":/vectors/view_btn/top_view_active.svg")
+        self.top_view_control.setToolTip("Toggle Top View")
         self.top_view_control.clicked.connect(self.top_view_toggle)
         self.top_view_active = True
         control_button_layout.addWidget(self.top_view_control)
@@ -266,6 +270,7 @@ class CustomWindow(QWidget):
         self.log_dock_control = ClickableSvgWidget()
         self.log_dock_control.load(":/vectors/view_btn/logs_dock_inactive.svg")
         self.log_dock_control.setFixedSize(18, 18)
+        self.log_dock_control.setToolTip("Toggle Logs Dock")
         self.log_dock_control.clicked.connect(self.logs_dock_toggle)
         self.log_dock_active = False
         control_button_layout.addWidget(self.log_dock_control)
@@ -274,6 +279,7 @@ class CustomWindow(QWidget):
         self.cad_3d_control = ClickableSvgWidget()
         self.cad_3d_control.load(":/vectors/view_btn/3d_cad_inactive.svg")
         self.cad_3d_control.setFixedSize(18, 18)
+        self.cad_3d_control.setToolTip("Toggle 3D CAD View")
         self.cad_3d_control.clicked.connect(self.cad_3d_view_toggle)
         self.cad_3d_view_active = False
         control_button_layout.addWidget(self.cad_3d_control)
@@ -282,6 +288,7 @@ class CustomWindow(QWidget):
         self.plots_control = ClickableSvgWidget()
         self.plots_control.load(":/vectors/view_btn/plots_inactive.svg")
         self.plots_control.setFixedSize(18, 18)
+        self.plots_control.setToolTip("Toggle 3D Plots View")
         self.plots_control.clicked.connect(self.plots_view_toggle)
         self.plots_view_active = False
         control_button_layout.addWidget(self.plots_control)
@@ -289,6 +296,7 @@ class CustomWindow(QWidget):
         self.output_dock_control = ClickableSvgWidget()
         self.output_dock_control.load(":/vectors/view_btn/output_dock_inactive.svg")
         self.output_dock_control.setFixedSize(18, 18)
+        self.output_dock_control.setToolTip("Toggle Output Dock")
         self.output_dock_control.clicked.connect(self.output_dock_toggle)
         self.output_dock_active = False
         control_button_layout.addWidget(self.output_dock_control)
@@ -323,11 +331,15 @@ class CustomWindow(QWidget):
         central_V_layout.setContentsMargins(0, 0, 0, 0)
         central_V_layout.setSpacing(0)
 
+        # Add Tool bar
+        self.tool_bar = ToolBarWidget()
+        central_V_layout.addWidget(self.tool_bar)
+
         # ----------------- CAD + LOG SPLITTER (ADDED) -----------------
 
         self.cad_log_splitter = QSplitter(Qt.Vertical)
         self.cad_log_splitter.setHandleWidth(4)
-        self.cad_log_splitter.setChildrenCollapsible(False)  
+        self.cad_log_splitter.setChildrenCollapsible(False)
 
         # CAD widget
         self.cad_comp_widget = BridgeDualCADWidget(self)
