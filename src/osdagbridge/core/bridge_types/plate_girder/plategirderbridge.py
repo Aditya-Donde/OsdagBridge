@@ -145,7 +145,7 @@ class PlateGirderBridge:
         self.setup_grillage()
         self.add_dead_loads()
         self.add_live_loads()
-        self.analyze()
+        dataset = self.analyze()
 
         print(
             f"[PlateGirderBridge.design] "
@@ -154,6 +154,18 @@ class PlateGirderBridge:
             f"spacing={self.sizing_result.girder_spacing} m | "
             f"overhang={self.sizing_result.deck_overhang} m | "
             f"girder_depth={self.section_props['D']:.3f} m"
+        )
+
+        # Automatically run structural capacity pipeline after analysis completes
+        from .analysis_results import PlateGirderAnalysisResults
+        from .designer import run_design_check
+
+        results = PlateGirderAnalysisResults(dataset=dataset, bridge=self.grillage_model)
+
+        run_design_check(
+            plate_girder_bridge=self,
+            analysis_results=results,
+            print_report=True,
         )
 
     def _parse_basic_inputs(self) -> dict:
@@ -309,6 +321,8 @@ class PlateGirderBridge:
                     return float(row[0]) * N / m ** 3
                 elif property == "Yield Strength":          # Yield strength (Pa)
                     return float(row[0]) * MPa              # DB stores MPa as integer → convert to Pa
+                elif property == "Ultimate Tensile Strength":
+                    return float(row[0]) * MPa
                 elif property in ("fck", "fctm", "Ecm"):  # Concrete properties (MPa or GPa depending on property)
                     return float(row[0])
                 else:
@@ -326,13 +340,15 @@ class PlateGirderBridge:
         v = self._lookup_material(steel_grade, "Poisson's Ratio")
         rho = self._lookup_material(steel_grade, "Density")
         fy = self._lookup_material(steel_grade, "Yield Strength")
-        # print(f"grade: {steel_grade}, e: {e}, v: {v}, rho: {rho}, fy: {fy}")
+        fu = self._lookup_material(steel_grade, "Ultimate Tensile Strength")
+        # print(f"grade: {steel_grade}, e: {e}, v: {v}, rho: {rho}, fy: {fy}, fu: {fu}")
         steel_prop = SteelProperties(
                         grade=steel_grade,
                         E=e,
                         v=v,
                         rho=rho,
                         Fy=fy,
+                        Fu=fu,
                         E0=_STEEL_E0,
                         b=_STEEL_B,
                     )

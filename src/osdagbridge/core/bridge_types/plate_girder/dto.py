@@ -116,6 +116,7 @@ class SteelProperties:
     v: float
     rho: float
     Fy: Optional[float] = None
+    Fu: Optional[float] = None
     E0: Optional[float] = None
     b: Optional[float] = None
 
