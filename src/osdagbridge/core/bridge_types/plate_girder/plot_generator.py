@@ -30,6 +30,17 @@ FORCE_DISPLAY = {
     "Mx": "Mx", "My": "My", "Mz": "Mz",
 }
 
+# Displacement component map  key → component name in ds["displacements"]
+DISP_MAP = {
+    "Dx": "dx",
+    "Dy": "dy",
+    "Dz": "dz",
+}
+
+DISP_DISPLAY = {
+    "Dx": "Dx", "Dy": "Dy", "Dz": "Dz",
+}
+
 # View settings (elevation/azimuth for a near-front-elevation look)
 DEFAULT_ELEV = 10
 DEFAULT_AZIM = -90
@@ -181,6 +192,61 @@ def _add_coordinate_triad(ax, nodes, scale=0.10):
               color=colors["Y"], linewidth=2, arrow_length_ratio=0.25, zorder=5)
     ax.text(ox, oz, oy + Ly * 1.25, "Y", color=colors["Y"],
             fontsize=9, fontweight="bold", zorder=5)
+
+
+# =============================================================================
+# GRILLAGE PLOT
+# =============================================================================
+
+def build_figure_grillage(nodes, members):
+    """
+    Build a 3-D matplotlib figure showing only the bridge grillage mesh.
+
+    Parameters
+    ----------
+    nodes   : dict  — {tag: [x, y, z]}
+    members : dict  — {tag: [n1, n2]}
+
+    Returns
+    -------
+    fig : matplotlib.figure.Figure
+    """
+    fig = plt.figure(figsize=(14, 6), dpi=110, facecolor="white")
+    ax  = fig.add_subplot(111, projection="3d", facecolor="white")
+
+    all_xs = [coord[0] for coord in nodes.values()]
+    all_zs = [coord[2] for coord in nodes.values()]
+    x_range = max(all_xs) - min(all_xs) or 1.0
+    z_range = max(all_zs) - min(all_zs) or 1.0
+    ax.set_xlim(min(all_xs), max(all_xs))
+    ax.set_ylim(min(all_zs), max(all_zs))
+    ax.set_zlim(-x_range * 0.05, x_range * 0.15)
+    ax.set_box_aspect([x_range, z_range, x_range * 0.30])
+
+    _add_grillage_background(ax, nodes, members)
+    _add_coordinate_triad(ax, nodes)
+
+    # Draw node markers
+    xs = [coord[0] for coord in nodes.values()]
+    ys = [coord[2] for coord in nodes.values()]
+    ax.scatter(xs, ys, [0] * len(xs),
+               color="#388E3C", s=14, zorder=4, depthshade=False)
+
+    ax.set_xlabel("Span Length (m)", fontsize=10, labelpad=8)
+    ax.set_ylabel("Bridge Width (m)", fontsize=10, labelpad=8)
+    ax.set_zlabel("", fontsize=10, labelpad=8)
+    ax.set_title("Bridge Grillage", fontsize=12, fontweight="bold", pad=12)
+    ax.view_init(elev=DEFAULT_ELEV, azim=DEFAULT_AZIM)
+    ax.xaxis.pane.fill = False
+    ax.yaxis.pane.fill = False
+    ax.zaxis.pane.fill = False
+    ax.xaxis.pane.set_edgecolor("lightgrey")
+    ax.yaxis.pane.set_edgecolor("lightgrey")
+    ax.zaxis.pane.set_edgecolor("lightgrey")
+    ax.grid(True, linestyle="--", linewidth=0.4, alpha=0.5)
+
+    plt.tight_layout()
+    return fig
 
 
 # =============================================================================
@@ -432,7 +498,7 @@ def build_figure_bmd(ds, force_key, nodes, members, edge_dist=0.0):
         ax.plot([xs[idx_max], xs[idx_max]], [z_base, z_base], [0, y_plot[idx_max]],
                 color="#FF4136", linewidth=1.5, zorder=3)
         ax.text(xs[idx_max], z_base, y_plot[idx_max],
-                f" {Mz[idx_max]:.2f} kNm", color="#FF4136", fontsize=7, zorder=6)
+                f" {-Mz[idx_max]:.2f} kNm", color="#FF4136", fontsize=7, zorder=6)
 
         sc = ax.scatter(xs, z_arr, y_plot,
                         color=moment_color, s=30, zorder=5, depthshade=False)
@@ -449,7 +515,7 @@ def build_figure_bmd(ds, force_key, nodes, members, edge_dist=0.0):
             nids, xs_g, vals_g = _data[id(sel.artist)]
             idx = sel.index
             sel.annotation.set_text(
-                f"Node {nids[idx]}\nX: {xs_g[idx]:.2f}\n{_fk}: {vals_g[idx]:.3f} kNm"
+                f"Node {nids[idx]}\nX: {xs_g[idx]:.2f}\n{_fk}: {-vals_g[idx]:.3f} kNm"
             )
             sel.annotation.get_bbox_patch().set(fc="white", alpha=0.9)
 
@@ -608,10 +674,173 @@ def build_figure_bmd_contour(ds, force_key, nodes, members, edge_dist=0.0):
     return fig
 
 
+# =============================================================================
+# DEFLECTION PLOT
+# =============================================================================
+
+def build_figure_deflection(ds, disp_key, nodes, members, edge_dist=0.0):
+    """
+    Build a 3-D matplotlib figure showing the Deflection Diagram.
+
+    Parameters
+    ----------
+    ds         : xarray.Dataset  — analysis results for one load case
+                                   (must have 'displacements' DataArray keyed
+                                    by Node and Component)
+    disp_key   : str             — one of DISP_MAP keys: "Dx", "Dy", "Dz"
+    nodes      : dict            — {tag: [x, y, z]}
+    members    : dict            — {tag: [n1, n2]}
+    edge_dist  : float           — overhang distance; outermost girders are
+                                   shown as baselines only (no diagram).
+
+    Returns
+    -------
+    fig : matplotlib.figure.Figure
+    """
+    comp_name  = DISP_MAP[disp_key]
+    disp_label = DISP_DISPLAY.get(disp_key, disp_key)
+    girders    = _find_girders(nodes, members)
+
+    fig = plt.figure(figsize=(14, 6), dpi=110, facecolor="white")
+    ax  = fig.add_subplot(111, projection="3d", facecolor="white")
+
+    all_xs = [coord[0] for coord in nodes.values()]
+    all_zs = [coord[2] for coord in nodes.values()]
+    x_range = max(all_xs) - min(all_xs) or 1.0
+    z_range = max(all_zs) - min(all_zs) or 1.0
+    ax.set_xlim(min(all_xs), max(all_xs))
+    ax.set_ylim(min(all_zs), max(all_zs))
+    ax.set_box_aspect([x_range, z_range, x_range * 0.30])
+
+    _add_grillage_background(ax, nodes, members)
+    _add_coordinate_triad(ax, nodes)
+
+    defl_color = "#6A1B9A"   # deep purple
+    fill_color = "#CE93D8"   # light purple
+    base_color = "#388E3C"
+
+    # Resolve the actual component string in the dataset (case-insensitive)
+    actual_comp = None
+    try:
+        for c in ds["displacements"].coords["Component"].values:
+            if c.lower() == comp_name.lower():
+                actual_comp = c
+                break
+    except Exception:
+        pass
+
+    girder_items = list(girders.items())
+    n_girders    = len(girder_items)
+    _scatter_objs = []
+    _scatter_data = {}
+
+    for i, (z_val, elems) in enumerate(girder_items):
+        is_edge_beam = edge_dist > 0 and (i == 0 or i == n_girders - 1)
+        girder_name  = f"G{i}" if edge_dist > 0 else f"G{i + 1}"
+
+        # Node list in span order (mirrors _build_polyline ordering)
+        node_list = [members[e][0] for e in elems] + [members[elems[-1]][1]]
+        xs = np.array([nodes[n][0] for n in node_list])
+        zs = np.array([nodes[n][2] for n in node_list])
+
+        # Fetch nodal displacement (m → mm); fall back to 0 on missing data
+        def _get(n, _comp=actual_comp):
+            if _comp is None:
+                return 0.0
+            try:
+                return float(
+                    ds["displacements"].sel(Node=n, Component=_comp).values
+                ) * 1000.0
+            except Exception:
+                return 0.0
+
+        vals  = np.array([_get(n) for n in node_list])
+        z_base = float(np.mean(zs))
+        z_arr  = np.full_like(xs, z_base)
+
+        # baseline
+        ax.plot([xs[0], xs[-1]], [z_base, z_base], [0, 0],
+                color="slategrey" if is_edge_beam else base_color,
+                linewidth=1.5, zorder=3)
+
+        if is_edge_beam:
+            continue
+
+        ax.scatter(xs, z_arr, np.zeros_like(xs),
+                   color=base_color, s=18, zorder=4, depthshade=False)
+
+        # girder label
+        ax.text(xs[0], z_base, 0, f" {girder_name}",
+                color="black", fontsize=11, fontweight="normal",
+                ha="left", va="bottom", zorder=6,
+                bbox=dict(boxstyle="round,pad=0.2", facecolor="white",
+                          alpha=0.8, edgecolor="none"))
+
+        val_range = max(vals) - min(vals)
+        if val_range == 0:
+            defl_scale = (
+                1.0 if np.max(np.abs(vals)) == 0
+                else 0.1 * abs((max(xs) - min(xs)) / np.max(np.abs(vals)))
+            )
+        else:
+            defl_scale = 0.1 * abs((max(xs) - min(xs)) / val_range)
+
+        y_plot = vals * defl_scale
+
+        ax.plot_surface(
+            np.vstack([xs, xs]),
+            np.vstack([z_arr, z_arr]),
+            np.vstack([np.zeros_like(y_plot), y_plot]),
+            color=fill_color, alpha=0.25, linewidth=0, antialiased=False, zorder=2
+        )
+
+        ax.plot(xs, z_arr, y_plot, color=defl_color, linewidth=2.0, zorder=4)
+
+        # annotate the node with maximum absolute deflection
+        idx_max = int(np.argmax(np.abs(vals)))
+        ax.plot([xs[idx_max], xs[idx_max]], [z_base, z_base], [0, y_plot[idx_max]],
+                color=defl_color, linewidth=1.5, zorder=3)
+        ax.text(xs[idx_max], z_base, y_plot[idx_max],
+                f" {vals[idx_max]:.3f} mm", color=defl_color, fontsize=7, zorder=6)
+
+        sc = ax.scatter(xs, z_arr, y_plot,
+                        color=defl_color, s=30, zorder=5, depthshade=False)
+        _scatter_objs.append(sc)
+        _scatter_data[id(sc)] = (node_list, xs, vals)
+
+    if _MPLCURSORS and _scatter_objs:
+        cursor = mplcursors.cursor(_scatter_objs, hover=True)
+
+        @cursor.connect("add")
+        def on_add(sel, _data=_scatter_data, _lbl=disp_label):
+            nids, xs_g, vals_g = _data[id(sel.artist)]
+            idx = sel.index
+            sel.annotation.set_text(
+                f"Node {nids[idx]}\nX: {xs_g[idx]:.2f}\n{_lbl}: {vals_g[idx]:.4f} mm"
+            )
+            sel.annotation.get_bbox_patch().set(fc="white", alpha=0.9)
+
+    ax.set_xlabel("Span Length (m)", fontsize=10, labelpad=8)
+    ax.set_ylabel("Bridge Width (m)", fontsize=10, labelpad=8)
+    ax.set_zlabel(f"{disp_label} (mm, scaled)", fontsize=10, labelpad=8)
+    ax.set_title(f"Deflection Diagram  —  {disp_label}", fontsize=12, fontweight="bold", pad=12)
+    ax.view_init(elev=DEFAULT_ELEV, azim=DEFAULT_AZIM)
+    ax.xaxis.pane.fill = False
+    ax.yaxis.pane.fill = False
+    ax.zaxis.pane.fill = False
+    ax.xaxis.pane.set_edgecolor("lightgrey")
+    ax.yaxis.pane.set_edgecolor("lightgrey")
+    ax.zaxis.pane.set_edgecolor("lightgrey")
+    ax.grid(True, linestyle="--", linewidth=0.4, alpha=0.5)
+
+    plt.tight_layout()
+    return fig
+
+
 def figure_to_bytes(fig, fmt="png", dpi=150):
     """Convenience helper — render a matplotlib figure to raw bytes."""
     buf = io.BytesIO()
-    fig.savefig(buf, format=fmt, dpi=dpi, bbox_inches="tight", facecolor="white")
+    fig.savefig(buf, format=fmt, dpi=dpi, bbox_inches=None, facecolor="white")
     buf.seek(0)
     plt.close(fig)
     return buf.read()

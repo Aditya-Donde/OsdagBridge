@@ -924,7 +924,7 @@ class BridgeGrillageModel:
                     # Add to load case
                     # -----------------------------
                     lc.add_load(
-                        load_obj=vehicle,
+                        load=vehicle,
                         load_factor=lane_factor
                     )
 

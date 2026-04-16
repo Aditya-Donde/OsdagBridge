@@ -18,7 +18,10 @@ from .plot_generator import (
     build_figure_sfd,
     build_figure_bmd,
     build_figure_bmd_contour,
+    build_figure_deflection,
+    build_figure_grillage,
     build_nodes_members,
+    figure_to_bytes,
 )
 
 from osdagbridge.core.utils.common import (
@@ -37,6 +40,7 @@ from osdagbridge.core.utils.common import (
     DEFAULT_CRASH_BARRIER_WIDTH,
     DEFAULT_RAILING_WIDTH,
     DEFAULT_GIRDER_SPACING,
+    DEFAULT_CROSS_BRACING_SPACING,
     MPa,
     GPa,
     N,
@@ -222,8 +226,8 @@ class PlateGirderBridge:
     def _build_dtos(self, parsed: dict) -> None:
         """Construct GrillageGeometry and DeckLayoutProperties DTOs from solved results."""
         span = parsed["span"]
-        # n_t: transverse grid lines — approx one division every 2 × girder spacings
-        n_t = max(3, int(round(span / (DEFAULT_GIRDER_SPACING * 2))))
+        # n_t: transverse grid lines — span divided by cross-bracing spacing, rounded to nearest odd integer with minimum of 3 (1 at each end + at least 1 internal for bracing)
+        n_t = max(3, (int(round(span / (DEFAULT_CROSS_BRACING_SPACING)*2) + 1)))
 
         deck_overhang = self.sizing_result.deck_overhang
         # When there is an overhang, the two edge beams add 2 extra longitudinal
@@ -611,6 +615,20 @@ class PlateGirderBridge:
         """Build and return a matplotlib Figure for the BMD contour plot of the given dataset slice."""
         nodes, members = self.get_nodes_members()
         return build_figure_bmd_contour(ds, force_key, nodes, members, edge_dist=self.get_edge_dist())
+
+    def build_figure_deflection(self, ds, disp_key: str):
+        """Build and return a matplotlib Figure for the deflection diagram of the given dataset slice."""
+        nodes, members = self.get_nodes_members()
+        return build_figure_deflection(ds, disp_key, nodes, members, edge_dist=self.get_edge_dist())
+
+    def build_figure_grillage(self):
+        """Build and return a matplotlib Figure showing only the bridge grillage mesh."""
+        nodes, members = self.get_nodes_members()
+        return build_figure_grillage(nodes, members)
+
+    def figure_to_bytes(self, fig, fmt: str = "png", dpi: int = 150) -> bytes:
+        """Render a matplotlib Figure to raw bytes (PNG by default)."""
+        return figure_to_bytes(fig, fmt=fmt, dpi=dpi)
 
     # ─────────────────────────────────────────────────────────────────────────
     # Helpers
