@@ -21,7 +21,7 @@ class CrossSectionCADWidget(QWidget):
     """Widget for drawing bridge cross-section view"""
     # ===== SHARED CAD COLORS =====
     GIRDER_COLOR = QColor(179, 180, 160) 
-    STIFFENER_COLOR = QColor(79, 78, 70) 
+    # STIFFENER_COLOR = QColor(79, 78, 70) 
     CROSS_BRACING_COLOR = QColor(235, 236, 211)
     RAILING_COLOR = QColor(210, 210, 210)
     BARRIER_COLOR = QColor(220, 220, 220)
@@ -953,19 +953,43 @@ class CrossSectionCADWidget(QWidget):
 
     def draw_median(self, painter, median_start_x, median_end_x, deck_top_y, scale, median_color):
         """Dispatcher for different median types based on IRC 5 geometry"""
-        geo = MedianGeometry.get_geometry(self.median_type)
+        is_custom = self.median_type == "Custom"
+        median_type = self._effective_median_type()
+        geo = MedianGeometry.get_geometry(median_type)
         if not geo:
             return
 
         if geo["type"] == "kerb":
-            self.draw_raised_kerb_median(painter, median_start_x, median_end_x, deck_top_y, scale, median_color, geo)
+            self.draw_raised_kerb_median(
+                painter,
+                median_start_x,
+                median_end_x,
+                deck_top_y,
+                scale,
+                median_color,
+                geo,
+                dashed_border=is_custom,
+            )
         elif geo["type"] == "rcc_barrier":
-            self.draw_rcc_barrier_median(painter, median_start_x, median_end_x, deck_top_y, scale, median_color, geo)
+            self.draw_rcc_barrier_median(
+                painter,
+                median_start_x,
+                median_end_x,
+                deck_top_y,
+                scale,
+                median_color,
+                geo,
+                dashed_border=is_custom,
+            )
         elif geo["type"] == "metallic":
             self.draw_metallic_median(painter, median_start_x, median_end_x, deck_top_y, scale, median_color, geo)
 
     def draw_railing(self, painter, x, y, scale, side):
         """Dispatcher for different railing types based on IRC 5 geometry"""
+        if self.railing_type == "Custom":
+            custom_geo = RailingGeometry.get_geometry("IRC 5 - RCC Railing")
+            return self.draw_rcc_railing(painter, x, y, scale, side, custom_geo, dashed_border=True)
+
         geo = RailingGeometry.get_geometry(self.railing_type)
         if not geo:
             # Fallback to existing RCC railing if type is not recognized
@@ -978,7 +1002,7 @@ class CrossSectionCADWidget(QWidget):
         
         return self.draw_rcc_railing(painter, x, y, scale, side)
 
-    def draw_rcc_railing(self, painter, x_start, y_base, scale, side='left', geo=None):
+    def draw_rcc_railing(self, painter, x_start, y_base, scale, side='left', geo=None, dashed_border=False):
         """Draw standard RCC railing based on IRC diagrams"""
         border_color = QColor(120, 120, 120)
         # Dimensions for RCC railing (mm)
@@ -1002,14 +1026,22 @@ class CrossSectionCADWidget(QWidget):
         post_top_y = y_base - total_h
         
         corner_radius = min(outer_w * 0.05, 4)
+
+        border_pen = QPen(
+            border_color,
+            max(1.5, scale * 2),
+            Qt.DashLine if dashed_border else Qt.SolidLine,
+        )
+        if dashed_border:
+            border_pen.setDashPattern([6, 4])
         
-        painter.setBrush(QBrush(QColor(220, 220, 220))) # Light grey base
-        painter.setPen(QPen(border_color, max(1.5, scale * 2)))
+        painter.setBrush(QBrush(QColor(255, 250, 220)) if self.hovered_element == 'railing' else self.concrete_brush)
+        painter.setPen(border_pen)
         base_rect = QRectF(rect_x, base_top_y, outer_w, base_h)
         painter.drawRect(base_rect)
         
         painter.setBrush(QBrush(QColor(220, 220, 220))) # Light grey post body
-        painter.setPen(QPen(border_color, max(1.5, scale * 2)))
+        painter.setPen(border_pen)
         post_rect = QRectF(rect_x, post_top_y, outer_w, post_h)
         painter.drawRoundedRect(post_rect, corner_radius, corner_radius)
         
@@ -1066,7 +1098,7 @@ class CrossSectionCADWidget(QWidget):
         railing_top_y = y - total_h
         
         # 1. Concrete Base
-        painter.setBrush(QBrush(QColor(126, 126, 126)))
+        painter.setBrush(QBrush(QColor(255, 250, 220)) if self.hovered_element == 'railing' else self.concrete_brush)
         painter.setPen(QPen(border_color, max(1.5, scale * 2)))
         base_rect = QRectF(rect_x, base_top_y, base_w, base_h)
         painter.drawRect(base_rect)
@@ -1095,7 +1127,7 @@ class CrossSectionCADWidget(QWidget):
         
         return (rect_x, railing_top_y, rect_x + base_w, y, base_w)
 
-    def draw_raised_kerb_median(self, painter, median_start_x, median_end_x, deck_top_y, scale, median_color, geo):
+    def draw_raised_kerb_median(self, painter, median_start_x, median_end_x, deck_top_y, scale, median_color, geo, dashed_border=False):
         """Draw Raised Kerb median (trapezoid shape)"""
         border_color = QColor(120, 120, 120)
         h = geo.get("kerb_height", 225) * scale
@@ -1119,14 +1151,22 @@ class CrossSectionCADWidget(QWidget):
             painter.setBrush(QBrush(QColor(255, 250, 220)))
         else:
             painter.setBrush(self.concrete_brush)
-            
-        painter.setPen(QPen(border_color, max(1.5, scale * 1.5)))
+
+        border_pen = QPen(
+            border_color,
+            max(1.5, scale * 1.5),
+            Qt.DashLine if dashed_border else Qt.SolidLine,
+        )
+        if dashed_border:
+            border_pen.setDashPattern([6, 4])
+
+        painter.setPen(border_pen)
         painter.drawPolygon(QPolygonF(points))
         
         hover_rect = QRectF(median_start_x, y_top, median_width_px, h)
         self.cross_section_hover_zones.append((hover_rect, 'median'))
 
-    def draw_rcc_barrier_median(self, painter, median_start_x, median_end_x, deck_top_y, scale, median_color, geo):
+    def draw_rcc_barrier_median(self, painter, median_start_x, median_end_x, deck_top_y, scale, median_color, geo, dashed_border=False):
         """Draw two RCC crash barriers for median following standard shape"""
         border_color = QColor(120, 120, 120)
         barrier_h_mm = geo.get("barrier_height", 900.0)
@@ -1152,7 +1192,14 @@ class CrossSectionCADWidget(QWidget):
         
         barrier_brush = QBrush(QColor(255, 250, 220)) if self.hovered_element == 'median' else self.concrete_brush
         painter.setBrush(barrier_brush)
-        painter.setPen(QPen(border_color, max(1.5, scale * 1.5)))
+        border_pen = QPen(
+            border_color,
+            max(1.5, scale * 1.5),
+            Qt.DashLine if dashed_border else Qt.SolidLine,
+        )
+        if dashed_border:
+            border_pen.setDashPattern([6, 4])
+        painter.setPen(border_pen)
         
         # LEFT assembly (faces LEFT)
         x_l = median_start_x + bottom_w
@@ -1195,14 +1242,15 @@ class CrossSectionCADWidget(QWidget):
         x_tl = x_bl + (bottom_w - top_w) / 2
         x_tr = x_tl + top_w
         
-        painter.setBrush(QBrush(QColor(220, 220, 220)))
+        painter.setBrush(QBrush(QColor(255, 250, 220)) if self.hovered_element == 'median' else self.concrete_brush)
         painter.setPen(QPen(border_color, max(1.0, scale)))
         painter.drawPolygon(QPolygonF([QPointF(x_bl, y_bottom), QPointF(x_br, y_bottom), QPointF(x_tr, y_top_kerb), QPointF(x_tl, y_top_kerb)]))
         
         post_w, post_offset = 150.0 * scale, 75.0 * scale
         spacer_w, spacer_h = 200.0 * scale, 330.0 * scale
         w_beam_h, w_beam_depth, w_beam_thk = 330.0 * scale, 83.0 * scale, 3.0 * scale
-        post_color = QColor(255, 250, 220) if self.hovered_element == 'median' else QColor(220, 220, 220)
+        # Match metallic post fill with stiffener color used in cross-section rendering.
+        post_color = QColor(210, 210, 205) if self.hovered_element == 'median' else QColor(210, 210, 205)
         
         def draw_side_assembly(is_left):
             # Assembly on Left side of median (near x_tl): [Beam] [Spacer] [Post] -> Facing left carriageway
@@ -1318,7 +1366,7 @@ class CrossSectionCADWidget(QWidget):
             QPointF(x_left, y_base_top),                             # left after base
         ]
         
-        painter.setBrush(QBrush(MEDIAN_GREY))
+        painter.setBrush(QBrush(self.MEDIAN_COLOR))
         painter.setPen(QPen(QColor(0, 0, 0), max(1.5, scale * 1.5)))
         painter.drawPolygon(QPolygonF(points_left))
         
@@ -1350,7 +1398,7 @@ class CrossSectionCADWidget(QWidget):
 
     def _get_crash_barrier_rendered_width_mm(self):
         """Return the actual crash barrier footprint width used by draw_crash_barrier."""
-        geo = CrashBarrierGeometry.get_geometry(self.crash_barrier_type)
+        geo = CrashBarrierGeometry.get_geometry(self._effective_crash_barrier_type())
         default_width = float(self.params.get('crash_barrier_width', 500))
 
         if not geo:
@@ -1372,7 +1420,7 @@ class CrossSectionCADWidget(QWidget):
         BARRIER_COLOR = QColor(220, 220, 220)
 
 
-        MEDIAN_GREY = QColor(221, 221, 221) 
+        MEDIAN_GREY = QColor(210, 210, 205) 
         CONCRETE_COLOR = QColor(225, 225, 225)
 
         END_DIAPHRAGM_COLOR = QColor(134, 134, 100)
@@ -1696,6 +1744,12 @@ class CrossSectionCADWidget(QWidget):
         painter.setPen(deck_outline_pen)
         painter.drawLine(QPointF(deck_slab_left, deck_bottom_y), 
                         QPointF(deck_slab_right, deck_bottom_y))
+
+        # Draw side borders of the deck slab (left and right edges)
+        left_top_y = deck_top_y + slope_offset(deck_slab_left)
+        right_top_y = deck_top_y + slope_offset(deck_slab_right)
+        painter.drawLine(QPointF(deck_slab_left, left_top_y), QPointF(deck_slab_left, deck_bottom_y))
+        painter.drawLine(QPointF(deck_slab_right, right_top_y), QPointF(deck_slab_right, deck_bottom_y))
 
 
 
@@ -2557,7 +2611,8 @@ class CrossSectionCADWidget(QWidget):
         """Draw crash barrier cross-section using IRC 5 geometry spec.
         """
         border_color = QColor(120, 120, 120)
-        cb_type = self.crash_barrier_type
+        is_custom = self.crash_barrier_type == "Custom"
+        cb_type = self._effective_crash_barrier_type()
         geo = CrashBarrierGeometry.get_geometry(cb_type)
 
         if not geo:
@@ -2592,7 +2647,14 @@ class CrossSectionCADWidget(QWidget):
             right_at_top = 225 * scale * shape_scale   # outer wall x at top
 
             painter.setBrush(QBrush(QColor(255, 250, 220)) if self.hovered_element == 'crash_barrier' else self.concrete_brush)
-            painter.setPen(QPen(border_color, max(1.5, scale * 1.5)))
+            border_pen = QPen(
+                border_color,
+                max(1.5, scale * 1.5),
+                Qt.DashLine if is_custom else Qt.SolidLine,
+            )
+            if is_custom:
+                border_pen.setDashPattern([6, 4])
+            painter.setPen(border_pen)
 
             if side == 'left':
                 # Same as median RIGHT barrier (carriageway-facing curve on the right)
@@ -2696,14 +2758,15 @@ class CrossSectionCADWidget(QWidget):
             
             # W-Beam starts at spacer left edge (which is spacer_x_start - spacer_w)
             beam_root_x = post_rect_x - spacer_w
-            
+
         # Draw Kerb
-        painter.setBrush(QBrush(QColor(180, 180, 180)))
+        painter.setBrush(QBrush(QColor(255, 250, 220)) if self.hovered_element == 'crash_barrier' else self.concrete_brush)
         painter.setPen(QPen(border_color, max(1.0, scale)))
         painter.drawPolygon(QPolygonF(kerb_points))
         
         # Draw Post
-        post_color = QColor(80, 80, 80) # Steel color
+        # Match metallic post fill with stiffener color used in cross-section rendering.
+        post_color = QColor(210, 210, 205)
         if self.hovered_element == 'crash_barrier':
             post_color = QColor(255, 250, 220)
         painter.setBrush(QBrush(post_color))
@@ -2773,3 +2836,13 @@ class CrossSectionCADWidget(QWidget):
             hover_rect = QRectF(x - assembly_width, assembly_top_y, abs(assembly_width), assembly_bottom_y - assembly_top_y)
             
         self.cross_section_hover_zones.append((hover_rect, 'crash_barrier'))
+
+    def _effective_crash_barrier_type(self):
+        if self.crash_barrier_type == "Custom":
+            return "IRC 5 - RCC Crash Barrier"
+        return self.crash_barrier_type
+
+    def _effective_median_type(self):
+        if self.median_type == "Custom":
+            return "IRC 5 - Raised Kerb"
+        return self.median_type

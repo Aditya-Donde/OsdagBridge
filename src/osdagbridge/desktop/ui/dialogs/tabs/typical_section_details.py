@@ -1171,7 +1171,8 @@ class TypicalSectionDetailsTab(QWidget):
         is_metallic = self._is_metallic_barrier(barrier_type)
         is_custom = barrier_type == "Custom"
 
-        geom = CrashBarrierGeometry.get_geometry(barrier_type)
+        effective_barrier_type = self._effective_crash_barrier_type(barrier_type)
+        geom = CrashBarrierGeometry.get_geometry(effective_barrier_type)
      
 
         def _set(widget, value: str):
@@ -1204,6 +1205,11 @@ class TypicalSectionDetailsTab(QWidget):
             if force and self.crash_barrier_load:
                 self.crash_barrier_load.clear()
         elif is_custom:
+            if geom:
+                if "bottom_width" in geom:
+                    _set(self.crash_barrier_width, f"{geom['bottom_width'] / 1000:.2f}")
+                if "total_height" in geom:
+                    _set(self.crash_barrier_height, f"{geom['total_height'] / 1000:.2f}")
             if force and self.crash_barrier_load:
                 self.crash_barrier_load.clear()
 
@@ -1230,7 +1236,8 @@ class TypicalSectionDetailsTab(QWidget):
         is_metallic = self._is_metallic_median(median_type)
         is_custom = median_type == "Custom"
 
-        geom = MedianGeometry.get_geometry(median_type)
+        effective_median_type = self._effective_median_type(median_type)
+        geom = MedianGeometry.get_geometry(effective_median_type)
 
         def _set(widget, value: str):
             if widget is None:
@@ -1263,12 +1270,19 @@ class TypicalSectionDetailsTab(QWidget):
             if force and self.median_load:
                 self.median_load.clear()
         elif is_custom:
+            if geom:
+                if "median_width" in geom:
+                    _set(self.median_width, f"{geom['median_width'] / 1000:.2f}")
+                if "barrier_height" in geom:
+                    _set(self.median_height, f"{geom['barrier_height'] / 1000:.2f}")
+                elif "kerb_height" in geom:
+                    _set(self.median_height, f"{geom['kerb_height'] / 1000:.2f}")
             if force and self.median_load:
                 self.median_load.clear()
 
         self._update_median_visibility(median_type, include_median=True)
 
-        geom = MedianGeometry.get_geometry(median_type)
+        geom = MedianGeometry.get_geometry(effective_median_type)
 
         params = {
             "median_type": median_type,
@@ -1304,7 +1318,8 @@ class TypicalSectionDetailsTab(QWidget):
             return
 
         railing_type = self.railing_type.currentText()
-        geom = RailingGeometry.get_geometry(railing_type)
+        effective_railing_type = self._effective_railing_type(railing_type)
+        geom = RailingGeometry.get_geometry(effective_railing_type)
 
         def _set(widget, value: str):
             if widget is None:
@@ -1327,7 +1342,7 @@ class TypicalSectionDetailsTab(QWidget):
             # Manually apply once
             self.on_railing_load_mode_changed("Automatic (IRC 6)")
 
-        geom = RailingGeometry.get_geometry(railing_type)
+        geom = RailingGeometry.get_geometry(effective_railing_type)
 
         params = {
             "railing_type": railing_type,
@@ -1344,6 +1359,15 @@ class TypicalSectionDetailsTab(QWidget):
 
     def _is_metallic_barrier(self, barrier_type):
         return barrier_type.startswith("IRC 5 - Metallic Crash Barrier")
+
+    def _effective_crash_barrier_type(self, barrier_type):
+        return "IRC 5 - RCC Crash Barrier" if barrier_type == "Custom" else barrier_type
+
+    def _effective_median_type(self, median_type):
+        return "IRC 5 - Raised Kerb" if median_type == "Custom" else median_type
+
+    def _effective_railing_type(self, railing_type):
+        return "IRC 5 - RCC Railing" if railing_type == "Custom" else railing_type
 
     def _is_rcc_barrier(self, barrier_type):
         return (
