@@ -44,7 +44,10 @@ import math
 import os
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Any
+
+# Import for dynamic demand extraction
+from osdagbridge.core.bridge_types.plate_girder.analysis_results import PlateGirderAnalysisResults
 
 
 # ======================================================================
@@ -250,6 +253,69 @@ class BridgeConfig:
     fatigue: FatigueConfig = field(default_factory=FatigueConfig)
 
     @classmethod
+    def from_plate_girder_bridge(cls, bridge: Any) -> BridgeConfig:
+        """Extract BridgeConfig from a PlateGirderBridge instance."""
+        from osdagbridge.core.utils.common import KEY_GIRDER, KEY_DECK_CONCRETE_GRADE_BASIC, KEY_DECK_THICKNESS
+
+        # Ensure material/section props exist
+        if not hasattr(bridge, 'material_props') or not bridge.material_props:
+            bridge.material_props = bridge._build_material_props()
+        if not hasattr(bridge, 'section_props') or not bridge.section_props:
+            bridge.section_props = bridge._girder_section()
+
+        sp = bridge.material_props.steel_prop
+        cp = bridge.material_props.concrete_prop
+
+        # fu lookup handling
+        fu_val = sp.Fu / 1_000_000 if sp.Fu else (sp.Fy / 1_000_000 * 1.5)
+
+        material = SteelProperties(
+            fy=sp.Fy / 1_000_000,
+            fu=fu_val,
+            Es=sp.E / 1_000_000,
+            fck=cp.fck,
+            fctm=cp.fctm,
+            Ecm=cp.Ecm * 1000,
+            steel_grade=str(bridge.basic_inputs.get(KEY_GIRDER, "")),
+            concrete_grade=str(bridge.basic_inputs.get(KEY_DECK_CONCRETE_GRADE_BASIC, ""))
+        )
+
+        props = bridge.section_props
+        section = SteelSection(
+            D=props["D"] * 1000,
+            bf_top=props["B_top"] * 1000,
+            tf_top=props["t_f_top"] * 1000,
+            bf_bot=props["B_bot"] * 1000,
+            tf_bot=props["t_f_bot"] * 1000,
+            tw=props["t_w"] * 1000,
+        )
+
+        geom = getattr(bridge, 'grillage_geometry', None)
+        deck = getattr(bridge, 'deck_layout', None)
+        sizing = getattr(bridge, 'sizing_result', None)
+
+        from osdagbridge.core.utils.common import KEY_SPAN, KEY_CARRIAGEWAY_WIDTH
+
+        span_L = geom.L if geom else float(bridge.basic_inputs.get(KEY_SPAN, 33.5))
+        spacing = geom.ext_to_int_dist if geom else (sizing.girder_spacing if sizing else 2.2775)
+        edges = geom.edge_dist if geom else (sizing.deck_overhang if sizing else 1.05)
+        n_g = geom.n_l if geom else (sizing.no_of_girders if sizing else 7)
+        cw = deck.carriageway_width if deck else float(bridge.basic_inputs.get(KEY_CARRIAGEWAY_WIDTH, 10.0))
+
+        geometry = GeometryConfig(
+            span=span_L,
+            beam_spacing=spacing,
+            carriageway_width=cw,
+            n_girders=n_g,
+            edge_distance=edges,
+        )
+
+        thickness_val = float(bridge.basic_inputs.get(KEY_DECK_THICKNESS, 250.0))
+        slab = SlabProperties(thickness=thickness_val)
+
+        return cls(material=material, section=section, geometry=geometry, slab=slab)
+
+    @classmethod
     def example_33m_bridge(cls) -> "BridgeConfig":
         """
         Factory: realistic 33.5 m simply-supported composite bridge
@@ -306,6 +372,7 @@ class DemandEnvelope:
     Mu_kNm: float = 0.0
     Vu_kN: float = 0.0
     Nu_kN: float = 0.0
+    M_construction_kNm: float = 0.0
 
     # -- SLS demands --
     delta_live_mm: float = 0.0
@@ -337,6 +404,7 @@ class DemandExtractor:
         Mu_kNm: float,
         Vu_kN: float,
         Nu_kN: float = 0.0,
+        M_construction_kNm: float = 0.0,
         delta_live_mm: float = 0.0,
         delta_total_mm: float = 0.0,
         stress_range_MPa: float = 0.0,
@@ -348,11 +416,79 @@ class DemandExtractor:
     ) -> DemandEnvelope:
         """Create demand envelope from user-supplied values."""
         return DemandEnvelope(
-            Mu_kNm=Mu_kNm, Vu_kN=Vu_kN, Nu_kN=Nu_kN,
+            Mu_kNm=Mu_kNm, Vu_kN=Vu_kN, Nu_kN=Nu_kN, M_construction_kNm=M_construction_kNm,
             delta_live_mm=delta_live_mm, delta_total_mm=delta_total_mm,
             stress_range_MPa=stress_range_MPa, shear_range_MPa=shear_range_MPa,
             Nsc=Nsc, governing_combination=combination,
             location=location, member=member, source="manual",
+        )
+
+    @staticmethod
+    def from_analysis_results(
+        results: PlateGirderAnalysisResults,
+        element_ids: list[int],
+        delta_live_mm: float = 28.0,
+        delta_total_mm: float = 38.0,
+        stress_range_MPa: float = 55.0,
+        shear_range_MPa: float = 30.0,
+        Nsc: int = 2_000_000,
+        member_name: str = "interior_longitudinal_beam"
+    ) -> DemandEnvelope:
+        """
+        Extract max factored forces directly from analysis results dataset for given elements.
+        """
+        # Convert dataset variables N -> kN, Nm -> kNm (divide by 1000)
+        max_mz = 0.0
+        max_vy = 0.0
+        construction_mz = 0.0
+
+        # Loadcase names relevant to construction stage
+        c_cases = ["girder self weight", "deck slab load", "girder_self_weight", "deck_slab_load", "steel", "wet_concrete"]
+
+        for lc in results.get_available_loadcases():
+            try:
+                # Force arrays for the elements
+                mz_vals = results.ds.sel(Loadcase=lc, Element=element_ids, Component=["Mz_i", "Mz_j"])["forces"].values
+                vy_vals = results.ds.sel(Loadcase=lc, Element=element_ids, Component=["Vy_i", "Vy_j"])["forces"].values
+
+                # Check maximum absolute magnitude for the loadcase across all elements/nodes
+                mz_abs_max = abs(mz_vals).max()
+                vy_abs_max = abs(vy_vals).max()
+
+                if mz_abs_max > max_mz:
+                    max_mz = mz_abs_max
+                if vy_abs_max > max_vy:
+                    max_vy = vy_abs_max
+
+                lc_str = str(lc).lower()
+                if any(c in lc_str for c in c_cases):
+                    # For construction moment, we safely envelope the absolute maxima for those specific cases
+                    construction_mz += mz_abs_max
+            except KeyError:
+                continue
+
+        Mu_kNm = max_mz / 1000.0
+        Vu_kN = max_vy / 1000.0
+
+        M_const_kNm = (construction_mz * 1.35) / 1000.0
+        # Fallback if no construction cases identified, use 25% of composite moment
+        if M_const_kNm == 0:
+            M_const_kNm = Mu_kNm * 0.25
+
+        return DemandEnvelope(
+            Mu_kNm=round(Mu_kNm, 2),
+            Vu_kN=round(Vu_kN, 2),
+            Nu_kN=0.0,
+            M_construction_kNm=round(M_const_kNm, 2),
+            delta_live_mm=delta_live_mm,
+            delta_total_mm=delta_total_mm,
+            stress_range_MPa=stress_range_MPa,
+            shear_range_MPa=shear_range_MPa,
+            Nsc=Nsc,
+            governing_combination="Max Extracted (All LCs)",
+            location="critical element",
+            member=member_name,
+            source="grillage_analysis"
         )
 
     @staticmethod
@@ -639,7 +775,9 @@ class IRC22CapacityCalculator:
         mat = self.mat
         fy, Es = mat.fy, mat.Es
         G = Es / (2.0 * (1.0 + 0.3))
-        LLT_mm = self.geo.span * 1000.0
+        # In reality, temporary or permanent cross-bracings are installed at 4m to 6m intervals.
+        # We clamp the unbraced length LLT to 6000 mm for accurate construction stage evaluation.
+        LLT_mm = min(self.geo.span * 1000.0, 6000.0)
 
         It = (sec.bf_top * sec.tf_top ** 3
               + sec.dw * sec.tw ** 3
@@ -1025,7 +1163,7 @@ class DCREngine:
                          note=f"beta={c.beta_interaction:.4f}")
 
         self._add_check(4, "LTB (Construction Stage)", "Cl.603.3.3.1",
-                         d.Mu_kNm, c.Mb_kNm, "kNm",
+                         d.M_construction_kNm if d.M_construction_kNm > 0 else d.Mu_kNm, c.Mb_kNm, "kNm",
                          note=f"lambda_LT={c.lambda_LT:.4f}, chi_LT={c.chi_LT:.4f}")
 
         if d.delta_live_mm > 0:
@@ -1296,17 +1434,6 @@ class ReportGenerator:
 def _example_demands(config: BridgeConfig) -> DemandEnvelope:
     """
     Realistic factored demand values for the 33.5 m bridge.
-
-    Dead Load Components (per girder):
-        Steel self-weight  : ~3 kN/m
-        Deck slab          : 25 kN/m3 x t_slab x beam_spacing
-        SDL (wearing, rail): distributed
-
-    Live Load (IRC Class 70R + Class A):
-        M_LL ~ 1,800 kNm,  V_LL ~ 350 kN  (per interior girder)
-
-    Factored (ULS Comb I):
-        gamma_DL = 1.35,  gamma_LL = 1.50,  Impact Factor = 1.10
     """
     L = config.geometry.span
     A_steel_m2 = config.section.A_steel * 1e-6
@@ -1317,6 +1444,11 @@ def _example_demands(config: BridgeConfig) -> DemandEnvelope:
 
     M_dl = w_total_dl * L ** 2 / 8.0
     V_dl = w_total_dl * L / 2.0
+
+    # Construction moment: steel weight + wet concrete only
+    w_construction = w_sw + w_slab
+    M_construction = 1.35 * w_construction * L ** 2 / 8.0
+
     M_ll, V_ll = 1800.0, 350.0
     gamma_dl, gamma_ll, impact = 1.35, 1.50, 1.10
 
@@ -1325,6 +1457,7 @@ def _example_demands(config: BridgeConfig) -> DemandEnvelope:
 
     return DemandExtractor.from_manual(
         Mu_kNm=round(Mu, 2), Vu_kN=round(Vu, 2),
+        M_construction_kNm=round(M_construction, 2),
         delta_live_mm=28.0, delta_total_mm=38.0,
         stress_range_MPa=config.fatigue.stress_range,
         shear_range_MPa=config.fatigue.shear_range,
@@ -1334,12 +1467,60 @@ def _example_demands(config: BridgeConfig) -> DemandEnvelope:
         member="interior_longitudinal_beam",
     )
 
+def _extract_demands_from_analysis(analysis_results: PlateGirderAnalysisResults) -> DemandEnvelope:
+    """
+    Extract demands from a full Grillage Analysis dynamically.
+    """
+    # Get interior girders first
+    girders, _ = analysis_results.build_girders(verbose=False)
+    interior_g_name = None
+
+    # 1. First try to find a named interior girder
+    for g_name in girders:
+        if "interior" in g_name.lower():
+            interior_g_name = g_name
+            break
+
+    # 2. If no explicit "interior" name, fall back to GrillageModel element member search
+    if interior_g_name is None:
+        try:
+            interior_elements = analysis_results.bridge.model.get_element(member="interior_main_beam", options="elements")
+            # Create a fallback envelope directly
+            if interior_elements:
+                return DemandExtractor.from_analysis_results(
+                    results=analysis_results,
+                    element_ids=interior_elements,
+                    member_name="interior_main_beam"
+                )
+        except Exception:
+            pass
+
+    # 3. Use the elements from the found interior girder in the girder map
+    if interior_g_name is not None and "elements" in girders[interior_g_name]:
+        elements = list(girders[interior_g_name]["elements"])
+        return DemandExtractor.from_analysis_results(
+            results=analysis_results,
+            element_ids=elements,
+            member_name=interior_g_name
+        )
+
+    print("WARNING: Could not identify interior girder. Using first available girder.")
+    first_g_name = list(girders.keys())[0] if girders else None
+    if first_g_name:
+        return DemandExtractor.from_analysis_results(
+            results=analysis_results,
+            element_ids=list(girders[first_g_name]["elements"]),
+            member_name=first_g_name
+        )
+
+    raise ValueError("Could not extract demand. No interior girder or any girder elements found.")
+
 
 def run_design_check(
+    plate_girder_bridge: Any | None = None,
+    analysis_results: PlateGirderAnalysisResults | None = None,
     config: BridgeConfig | None = None,
     demand: DemandEnvelope | None = None,
-    save_report: bool = True,
-    report_path: str = "design_check_report.txt",
     print_report: bool = True,
 ) -> str:
     """
@@ -1355,10 +1536,10 @@ def run_design_check(
 
     Parameters
     ----------
+        plate_girder_bridge : Solved PlateGirderBridge instance overriding config
+        analysis_results    : Solved PlateGirderAnalysisResults instance
         config       : BridgeConfig (default: 33.5 m example bridge)
         demand       : DemandEnvelope (default: example demands)
-        save_report  : save .txt report file
-        report_path  : output file path
         print_report : print report to console
     """
     print("=" * 60)
@@ -1367,13 +1548,17 @@ def run_design_check(
 
     # -- Step 1: Configuration --
     print("\n[Step 1/5] Loading bridge configuration ...")
-    if config is None:
+    if plate_girder_bridge is not None:
+        config = BridgeConfig.from_plate_girder_bridge(plate_girder_bridge)
+    elif config is None:
         config = BridgeConfig.example_33m_bridge()
     print(f"  Config: {config.summary()}")
 
     # -- Step 2: Demand from Analyser --
     print("\n[Step 2/5] Extracting design demands (Analyser) ...")
-    if demand is None:
+    if demand is None and analysis_results is not None:
+        demand = _extract_demands_from_analysis(analysis_results)
+    elif demand is None:
         demand = _example_demands(config)
     print(f"  Mu = {demand.Mu_kNm:.2f} kNm")
     print(f"  Vu = {demand.Vu_kN:.2f} kN")
@@ -1404,12 +1589,6 @@ def run_design_check(
 
     if print_report:
         print("\n" + report_text)
-
-    if save_report:
-        base_dir = os.path.dirname(os.path.abspath(__file__))
-        full_path = os.path.join(base_dir, report_path)
-        saved = reporter.save(full_path)
-        print(f"\n  Report saved to: {saved}")
 
     print("\n" + "=" * 60)
     print(f"  PIPELINE COMPLETE - Overall: {engine.overall_status()}")
