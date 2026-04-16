@@ -22,7 +22,9 @@ from osdagbridge.core.utils.common import *
 from osdagbridge.core.bridge_types.plate_girder.dto import(
     BridgeParametersDTO,
     SectionDimsDTO,
-    ISectionDimsDTO
+    ISectionDimsDTO,
+    ShearStudParamsDTO,
+    GirderSegmentDTO,
 )
 
 '''
@@ -116,6 +118,28 @@ bridge_parameters = BridgeParametersDTO(
 
         end_diaphragm_section="I_SECTION",
         end_diaphragm_dims=ISectionDimsDTO(depth=800, flange_width=250, web_thickness=12, flange_thickness=100),
+
+        shear_stud_params=ShearStudParamsDTO(
+            base_diameter=50,
+            top_diameter=70,
+            base_height=150,
+            top_height=50,
+            num_per_section=4,
+            transverse_spacing=305,
+            pitch=500,
+        ),
+        girder_segments=[
+            GirderSegmentDTO(
+                length=25_000,
+                D=900,
+                tw=100,
+                T_ft=260,
+                T_fb=260,
+                B_ft=500,
+                B_fb=500,
+            )
+        ],
+        girder_segments_dict=None,
     )
 
 

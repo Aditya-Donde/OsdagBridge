@@ -161,20 +161,39 @@ class PlateGirderCADGenerator:
                 B_fb=self.girder_section_bf_b
             )
         ]
-        
-        # Example: Girder 1 (index 0) and Girder 2 (index 1) split into 3 segments
-        self.girder_segments_dict = {
-            0: [
-                GirderSegment(length=3000, D=500, tw=100, T_ft=260, T_fb=260, B_ft=500, B_fb=500),
-                GirderSegment(length=4000, D=1400, tw=100, T_ft=260, T_fb=260, B_ft=700, B_fb=700),
-                GirderSegment(length=3000, D=700, tw=100, T_ft=260, T_fb=260, B_ft=500, B_fb=500)
-            ],
-            1: [
-                GirderSegment(length=2000, D=900, tw=100, T_ft=260, T_fb=260, B_ft=500, B_fb=500),
-                GirderSegment(length=5000, D=300, tw=100, T_ft=260, T_fb=260, B_ft=700, B_fb=700),
-                GirderSegment(length=3000, D=600, tw=100, T_ft=260, T_fb=260, B_ft=500, B_fb=500)
+
+        # Optional segmented girder definitions from DTO
+        self.girder_segments_dict = {}
+        if design_params.girder_segments:
+            self.girder_segments = [
+                GirderSegment(
+                    length=s.length,
+                    D=s.D,
+                    tw=s.tw,
+                    T_ft=s.T_ft,
+                    T_fb=s.T_fb,
+                    B_ft=s.B_ft,
+                    B_fb=s.B_fb,
+                )
+                for s in design_params.girder_segments
             ]
-        }
+
+        if design_params.girder_segments_dict:
+            self.girder_segments_dict = {
+                idx: [
+                    GirderSegment(
+                        length=s.length,
+                        D=s.D,
+                        tw=s.tw,
+                        T_ft=s.T_ft,
+                        T_fb=s.T_fb,
+                        B_ft=s.B_ft,
+                        B_fb=s.B_fb,
+                    )
+                    for s in segs
+                ]
+                for idx, segs in design_params.girder_segments_dict.items()
+            }
 
 
         # GEOMETRY PARAMETERS
@@ -215,13 +234,14 @@ class PlateGirderCADGenerator:
         self.longitudinal_stiffener_outstand = design_params.longitudinal_stiffener_outstand
 
         # SHEAR STUD PARAMETERS
-        self.shear_stud_base_diameter = 50
-        self.shear_stud_top_diameter = 70
-        self.shear_stud_base_height = 150
-        self.shear_stud_top_height = 50
-        self.num_shear_studs_per_section = 4
-        self.shear_stud_transverse_spacing = 305
-        self.shear_stud_pitch = 500
+        ss = design_params.shear_stud_params
+        self.shear_stud_base_diameter = ss.base_diameter
+        self.shear_stud_top_diameter = ss.top_diameter
+        self.shear_stud_base_height = ss.base_height
+        self.shear_stud_top_height = ss.top_height
+        self.num_shear_studs_per_section = ss.num_per_section
+        self.shear_stud_transverse_spacing = ss.transverse_spacing
+        self.shear_stud_pitch = ss.pitch
 
         # CROSS BRACING PARAMETERS
         self.cross_bracing_spacing = design_params.cross_bracing_spacing
@@ -289,6 +309,34 @@ class PlateGirderCADGenerator:
             "web_thickness": design_params.end_diaphragm_dims.web_thickness,
             "flange_thickness": design_params.end_diaphragm_dims.flange_thickness,
         }   
+
+    def get_girder_depth_at(self, girder_idx, x):
+        """
+        Calculate the clear web depth of a specific girder at a longitudinal position.
+
+        Args:
+            girder_idx: Index of the girder (0 to num_girders-1)
+            x: Longitudinal position (0 to span_length_L)
+
+        Returns:
+            float: Web depth D at that position
+        """
+        # Fetch segments for this girder if available, else use default segments.
+        if self.girder_segments_dict and girder_idx in self.girder_segments_dict:
+            segments = self.girder_segments_dict[girder_idx]
+        else:
+            segments = self.girder_segments
+
+        if not segments:
+            return self.girder_section_d
+
+        curr_x = 0.0
+        for seg in segments:
+            if x <= curr_x + seg.length + 1e-6:
+                return seg.D
+            curr_x += seg.length
+
+        return segments[-1].D
 
     def generate(self, design_params: BridgeParametersDTO):
         """

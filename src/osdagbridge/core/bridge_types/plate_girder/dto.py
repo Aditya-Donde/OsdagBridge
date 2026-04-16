@@ -12,9 +12,11 @@ __all__ = [
     "MaterialProperties",
     "GrillageGeometry",
     "DeckLayoutProperties",
-    "SectionDimsDTO"
-    "ISectionDimsDTO"
-    "BridgeParametersDTO"
+    "SectionDimsDTO",
+    "ISectionDimsDTO",
+    "ShearStudParamsDTO",
+    "GirderSegmentDTO",
+    "BridgeParametersDTO",
 ]
 
 # ------------------------------------------------------------------
@@ -231,7 +233,7 @@ class DeckLayoutProperties:
 
 
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Optional
 
 
@@ -252,6 +254,28 @@ class ISectionDimsDTO:
     flange_width: float
     web_thickness: float
     flange_thickness: float
+
+
+@dataclass
+class ShearStudParamsDTO:
+    base_diameter: float
+    top_diameter: float
+    base_height: float
+    top_height: float
+    num_per_section: int
+    transverse_spacing: float
+    pitch: float
+
+
+@dataclass
+class GirderSegmentDTO:
+    length: float
+    D: float
+    tw: float
+    T_ft: float
+    T_fb: float
+    B_ft: float
+    B_fb: float
 
 
 # ---------------------------------------------------------------------------
@@ -348,5 +372,23 @@ class BridgeParametersDTO:
 
     end_diaphragm_section: str
     end_diaphragm_dims: ISectionDimsDTO
+
+    
+    shear_stud_params: ShearStudParamsDTO = field(
+        default_factory=lambda: ShearStudParamsDTO(
+            base_diameter=50,
+            top_diameter=70,
+            base_height=150,
+            top_height=50,
+            num_per_section=4,
+            transverse_spacing=305,
+            pitch=500,
+        )
+    )
+
+    #while segment lists can
+    # remain empty to use the base girder section values.
+    girder_segments: list[GirderSegmentDTO] = field(default_factory=list)
+    girder_segments_dict: dict[int, list[GirderSegmentDTO]] = field(default_factory=dict)
 
 
