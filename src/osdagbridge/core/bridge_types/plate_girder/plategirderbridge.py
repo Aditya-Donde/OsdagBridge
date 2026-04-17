@@ -601,6 +601,117 @@ class PlateGirderBridge:
         """Return the xarray Dataset of analysis results."""
         return self.grillage_model.model.get_results()
 
+    # ─────────────────────────────────────────────────────────────────────────
+    # 2-D analysis result factory
+    # ─────────────────────────────────────────────────────────────────────────
+
+    def get_result_handler(self) -> PlateGirderAnalysisResults:
+        """
+        Build and return a PlateGirderAnalysisResults bound to the current
+        analysis dataset and grillage model.
+
+        This is the **canonical factory** for PlateGirderAnalysisResults in
+        the entire application.  All callers — dialogs, widgets, scripts —
+        must obtain their handler from this method, never construct one
+        themselves.
+
+        Returns
+        -------
+        PlateGirderAnalysisResults
+            A fully initialised result handler ready to be injected into a
+            GirderGraphEngine.
+
+        Raises
+        ------
+        RuntimeError
+            Propagated from get_results_dataset() when analyze() has not yet
+            been called and no dataset is available.
+
+        Notes
+        -----
+        This method is safe to call multiple times; each call constructs a
+        fresh handler bound to the current dataset snapshot.  If you need to
+        share one handler across several components (e.g. to avoid duplicate
+        construction), call this once, hold the reference, and pass it
+        explicitly to build_graph_engine().
+        """
+        results = self.get_results_dataset()
+        return PlateGirderAnalysisResults(
+            dataset=results,
+            bridge=self.grillage_model,
+        )
+
+    def build_graph_engine(
+        self,
+        figure,
+        ax_scheme,
+        ax_bmd,
+        ax_sfd,
+        ax_defl,
+        result_handler: PlateGirderAnalysisResults | None = None,
+    ):
+        """
+        Construct and return a GirderGraphEngine wired to this bridge's
+        result handler.
+
+        This keeps GirderGraphEngine construction out of dialogs and widgets.
+        The caller owns the matplotlib Figure and axes; this method assembles
+        the engine and injects the data source.
+
+        Parameters
+        ----------
+        figure : matplotlib.figure.Figure
+            Shared matplotlib Figure owned by the calling dialog or widget.
+        ax_scheme : matplotlib.axes.Axes
+            Top panel — girder support schematic.
+        ax_bmd : matplotlib.axes.Axes
+            Bending moment diagram panel.
+        ax_sfd : matplotlib.axes.Axes
+            Shear force diagram panel.
+        ax_defl : matplotlib.axes.Axes
+            Deflection diagram panel.
+        result_handler : PlateGirderAnalysisResults, optional
+            If provided, this handler is injected directly.  If None,
+            ``get_result_handler()`` is called automatically.  Pass an
+            explicit handler when you have already called
+            ``get_result_handler()`` and want to reuse the same instance
+            across multiple engines.
+
+        Returns
+        -------
+        GirderGraphEngine
+            Fully initialised engine, ready to call ``get_girder_keys()``,
+            ``extract_member_results()``, and ``render_plots()``.
+
+        Raises
+        ------
+        RuntimeError
+            Propagated from ``get_result_handler()`` if ``design()`` /
+            ``analyze()`` has not yet been called.
+
+        Notes
+        -----
+        GirderGraphEngine is imported inside this method body (deferred
+        import) to keep plategirderbridge.py's top-level import cost low.
+        The import only executes when a dialog actually requests a 2-D plot.
+        """
+        from osdagbridge.core.bridge_types.plate_girder.graph_engine import (
+            GirderGraphEngine,
+        )
+        handler = (
+            result_handler
+            if result_handler is not None
+            else self.get_result_handler()
+        )
+        return GirderGraphEngine(
+            figure=figure,
+            ax_scheme=ax_scheme,
+            ax_bmd=ax_bmd,
+            ax_sfd=ax_sfd,
+            ax_defl=ax_defl,
+            result_handler=handler,
+        )
+
     def get_available_loadcases(self) -> list[str]:
         """Return sorted list of loadcase name strings from the results dataset."""
         results = self.get_results_dataset()

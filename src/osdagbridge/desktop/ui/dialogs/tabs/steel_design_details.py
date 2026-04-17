@@ -1,3 +1,4 @@
+from __future__ import annotations
 from PySide6.QtWidgets import (
     QWidget,
     QVBoxLayout,
@@ -18,8 +19,6 @@ from osdagbridge.desktop.ui.docks.output_dock import (
 )
 
 from osdagbridge.desktop.ui.dialogs.tabs.common import apply_field_style
-
-
 from osdagbridge.desktop.ui.utils.styled_scroll_area import StyledScrollArea
 
 
@@ -30,13 +29,26 @@ class NoScrollTable(QTableWidget):
 
 
 class SteelDesignDetailsTab(QWidget):
+    """
+    Scrollable details tab for the Steel Design dialog.
+
+    Displays four read-only information cards:
+      - Member Info        : member ID combo, material grade, section type
+      - Dimensional Details: full cross-section geometry
+      - Shear Connector    : connector material, geometry, and spacing
+      - Section Properties : mass, moments of area, moduli, torsion/warping
+
+    Additionally renders a stiffener summary table and two CAD view placeholders
+    (populated at runtime when a model is mounted).
+    """
 
     def __init__(self, parent=None):
-        self.member_fields    = {}
-        self.dim_fields       = {}
-        self.shear_fields     = {}
-        self.section_fields   = {}
-        self.stiffener_fields = {}
+        # Initialise field dicts before super().__init__ so slots set during
+        # construction can reference them safely.
+        self.member_fields  = {}
+        self.dim_fields     = {}
+        self.shear_fields   = {}
+        self.section_fields = {}
 
         super().__init__(parent)
 
@@ -56,15 +68,15 @@ class SteelDesignDetailsTab(QWidget):
         container_layout.setContentsMargins(10, 10, 10, 10)
         container_layout.setSpacing(12)
 
-        # ── TOP ROW: Member Info card (left) + CAD placeholder (right) ───────
+        # ── TOP ROW: Member Info card (left) + CAD placeholder (right) 
         top_row = QHBoxLayout()
         top_row.setSpacing(12)
         top_row.setContentsMargins(0, 0, 0, 0)
-        top_row.addWidget(self._build_member_section(), 2)
-        top_row.addWidget(self._build_top_cad_placeholder(), 0)
+        top_row.addWidget(self._build_member_section(), 1)
+        top_row.addWidget(self._build_top_cad_placeholder(), 1)
         container_layout.addLayout(top_row)
 
-        # ── BODY: Dimensional + Shear (left) | Section Properties (right) ────
+        # ── BODY: Dimensional + Shear (left) | Section Properties (right) 
         body_row = QHBoxLayout()
         body_row.setSpacing(12)
         body_row.setContentsMargins(0, 0, 0, 0)
@@ -82,14 +94,14 @@ class SteelDesignDetailsTab(QWidget):
         right_col.addWidget(self._build_section_properties_section())
         right_col.addStretch()
 
-        body_row.addLayout(left_col, 2)
+        body_row.addLayout(left_col, 1)
         body_row.addLayout(right_col, 1)
         container_layout.addLayout(body_row)
 
-        # ── STIFFENER TABLE ───────────────────────────────────────────────────
+        # ── STIFFENER TABLE ───────────────────────────────────────────
         container_layout.addWidget(self._build_stiffener_section())
 
-        # ── BOTTOM CAD placeholder ────────────────────────────────────────────
+        # ── BOTTOM CAD placeholder ────────────────────────────────────
         container_layout.addWidget(self._build_bottom_cad_section())
 
         container_layout.addStretch()
@@ -97,14 +109,16 @@ class SteelDesignDetailsTab(QWidget):
         scroll_area.setWidget(container)
         main_layout.addWidget(scroll_area)
 
-    # ── HELPERS: exact girder_details_tab pattern ─────────────────────────────
+    # ─────────────────────────────────────────────────────────────────────────
+    # HELPERS: exact girder_details_tab pattern
+    # ─────────────────────────────────────────────────────────────────────────
 
     def _create_card_frame(self):
         """Outer card — same as GirderDetailsTab._create_card_frame."""
         frame = QFrame()
         frame.setObjectName("girderCard")
         frame.setStyleSheet(
-            "QFrame#girderCard { background-color: white; border: 1px solid #cfcfcf; border-radius: 10px; }"
+            "QFrame#girderCard { background-color: white; border: 1px solid #b0b0b0; border-radius: 6px; }"
         )
         return frame
 
@@ -112,25 +126,26 @@ class SteelDesignDetailsTab(QWidget):
         """Section title label — same as GirderDetailsTab._create_label."""
         label = QLabel(text)
         label.setStyleSheet(
-            "font-size: 12px; color: #2f2f2f; font-weight: 600; background: transparent;"
+            "font-size: 13px; color: #2B2B2B; font-weight: bold; background: transparent; border: none;"
         )
         label.setAutoFillBackground(False)
         return label
 
     def _create_small_label(self, text):
-        """Row field label — same as GirderDetailsTab._create_small_label."""
+        """Row field label — supports HTML rich text for subscripts/superscripts."""
         label = QLabel(text)
-        label.setStyleSheet("font-size: 10px; color: #5a5a5a; background: transparent;")
+        label.setTextFormat(Qt.RichText)
+        label.setStyleSheet("font-size: 11px; color: #333333; background: transparent;")
         label.setAutoFillBackground(False)
         return label
 
     def _readonly_field(self):
-        """Readonly output field matching inner_box min-height."""
+        """Readonly output field — expands to fill its grid column."""
         field = QLineEdit()
         field.setReadOnly(True)
-        field.setFixedWidth(150)
+        field.setMinimumWidth(80)
         field.setMinimumHeight(28)
-        field.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+        field.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         apply_field_style(field)
         return field
 
@@ -140,18 +155,19 @@ class SteelDesignDetailsTab(QWidget):
         grid.setContentsMargins(0, 0, 0, 0)
         grid.setHorizontalSpacing(16)
         grid.setVerticalSpacing(12)
-        grid.setColumnMinimumWidth(0, 180)
-        grid.setColumnStretch(0, 0)
-        grid.setColumnStretch(1, 0)
-        grid.setColumnStretch(2, 1)
+        grid.setColumnMinimumWidth(0, 230)
+        grid.setColumnStretch(0, 0)   # label: fits content, doesn't stretch
+        grid.setColumnStretch(1, 1)   # field: fills all remaining width
         return grid
 
     def _add_row(self, grid, row, text, widget):
         grid.addWidget(self._create_small_label(text), row, 0, Qt.AlignLeft | Qt.AlignVCenter)
-        grid.addWidget(widget,                         row, 1, Qt.AlignLeft | Qt.AlignVCenter)
+        grid.addWidget(widget,                         row, 1)
         return row + 1
 
-    # ── SECTIONS ──────────────────────────────────────────────────────────────
+    # ─────────────────────────────────────────────────────────────────────────
+    # SECTIONS
+    # ─────────────────────────────────────────────────────────────────────────
 
     def _build_member_section(self):
         card = self._create_card_frame()
@@ -164,9 +180,9 @@ class SteelDesignDetailsTab(QWidget):
 
         self.member_combo = NoScrollComboBox()
         apply_field_style(self.member_combo)
-        self.member_combo.setFixedWidth(150)
+        self.member_combo.setMinimumWidth(80)
         self.member_combo.setMinimumHeight(28)
-        self.member_combo.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+        self.member_combo.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
 
         self.grade_field = self._readonly_field()
         self.type_field  = self._readonly_field()
@@ -247,42 +263,48 @@ class SteelDesignDetailsTab(QWidget):
         card_layout.setSpacing(10)
         card_layout.addWidget(self._create_label("Section Properties:"))
 
+        # Reuse the shared grid + row helper so fields behave identically
+        # to Dimensional Details (left-aligned, same width, no fill-column expansion).
         grid = self._make_grid()
-        labels = {
-            "mass":  "Mass, M (Kg/m)",
-            "area":  "Sectional Area (cm\u00b2)",
-            "iz":    "2nd Moment of Area, Iz (cm\u2074)",
-            "iv":    "2nd Moment of Area, Iv (cm\u2074)",
-            "rz":    "Radius of Gyration, rz (cm)",
-            "rv":    "Radius of Gyration, rv (cm)",
-            "zz":    "Elastic Modulus, Zz (cm\u00b3)",
-            "zv":    "Elastic Modulus, Zv (cm\u00b3)",
-            "zuz":   "Plastic Modulus, Zuz (cm\u00b3)",
-            "zuv":   "Plastic Modulus, Zuv (cm\u00b3)",
-            "it":    "Torsion Constant, It (cm\u2074)",
-            "iw":    "Warping Constant, Iw (cm\u2076)",
-        }
+        section_prop_labels = [
+            ("mass",  "Mass, M (Kg/m)"),
+            ("area",  "Sectional Area, a (cm<sup>2</sup>)"),
+            ("iz",    "2nd Moment of Area, I<sub>z</sub> (cm<sup>4</sup>)"),
+            ("iv",    "2nd Moment of Area, I<sub>y</sub> (cm<sup>4</sup>)"),
+            ("rz",    "Radius of Gyration, r<sub>z</sub> (cm)"),
+            ("rv",    "Radius of Gyration, r<sub>y</sub> (cm)"),
+            ("zz",    "Elastic Modulus, Z<sub>z</sub> (cm<sup>3</sup>)"),
+            ("zv",    "Elastic Modulus, Z<sub>y</sub> (cm<sup>3</sup>)"),
+            ("zuz",   "Plastic Modulus, Z<sub>pz</sub> (cm<sup>3</sup>)"),
+            ("zuv",   "Plastic Modulus, Z<sub>py</sub> (cm<sup>3</sup>)"),
+            ("it",    "Torsion Constant, I<sub>t</sub> (cm<sup>4</sup>)"),
+            ("iw",    "Warping Constant, I<sub>w</sub> (cm<sup>6</sup>)"),
+        ]
         r = 0
-        for key, text in labels.items():
+        for key, html_label in section_prop_labels:
             field = self._readonly_field()
-            r = self._add_row(grid, r, text, field)
+            # _add_row creates labels with Qt.RichText enabled (via _create_small_label)
+            # and adds the field left-aligned — consistent with Dimensional Details.
+            r = self._add_row(grid, r, html_label, field)
             self.section_fields[key] = field
 
         card_layout.addLayout(grid)
         return card
 
-    # ── CAD PLACEHOLDERS ──────────────────────────────────────────────────────
+    # ─────────────────────────────────────────────────────────────────────────
+    # CAD PLACEHOLDERS
+    # ─────────────────────────────────────────────────────────────────────────
 
     def _build_top_cad_placeholder(self):
         self.cad_placeholder = QLabel()
-        self.cad_placeholder.setFixedSize(385, 160)
+        self.cad_placeholder.setMinimumHeight(160)
         self.cad_placeholder.setAlignment(Qt.AlignCenter)
-        self.cad_placeholder.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+        self.cad_placeholder.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         self.cad_placeholder.setStyleSheet("""
             QLabel {
-                border: 1px solid #cfcfcf;
+                border: 1px solid #b0b0b0;
                 background-color: #F5F5F5;
-                border-radius: 10px;
+                border-radius: 6px;
             }
         """)
         return self.cad_placeholder
@@ -298,7 +320,7 @@ class SteelDesignDetailsTab(QWidget):
         bottom_cad.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
         bottom_cad.setStyleSheet("""
             QLabel {
-                border: 1px solid #cfcfcf;
+                border: 1px solid #b0b0b0;
                 background-color: #F5F5F5;
                 border-radius: 6px;
             }
@@ -306,7 +328,9 @@ class SteelDesignDetailsTab(QWidget):
         layout.addWidget(bottom_cad, alignment=Qt.AlignCenter)
         return card
 
-    # ── STIFFENER TABLE ───────────────────────────────────────────────────────
+    # ─────────────────────────────────────────────────────────────────────────
+    # STIFFENER TABLE
+    # ─────────────────────────────────────────────────────────────────────────
 
     def _build_stiffener_section(self):
         card = self._create_card_frame()
@@ -316,7 +340,7 @@ class SteelDesignDetailsTab(QWidget):
 
         card_layout.addWidget(self._create_label("Stiffener Details:"))
 
-        # ── Wrap table in a QFrame so the border is drawn by the frame,
+        # ── Wrap table in a QFrame so the border is drawn by the frame, 
         # not QAbstractScrollArea's viewport (which clips the left edge).
         table_frame = QFrame()
         table_frame.setStyleSheet("""
@@ -356,25 +380,25 @@ class SteelDesignDetailsTab(QWidget):
         self.stiffener_table.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.stiffener_table.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         # Use sizeHint-based height after headers/rows are configured
-        # header ~30px + 3 rows * 26px + 1px bottom = 109px; frame adds 2px
-        self.stiffener_table.setMinimumHeight(109)
-        self.stiffener_table.setMaximumHeight(109)
+        # header ~30px + 3 rows * 26px + 1px bottom = 109px; frame adds 2px. Plus OS scaling safety margin
+        self.stiffener_table.setMinimumHeight(120)
+        self.stiffener_table.setMaximumHeight(120)
 
         self.stiffener_table.setStyleSheet("""
             QTableWidget {
                 background-color: white;
-                gridline-color: #cfcfcf;
+                gridline-color: #e0e0e0;
                 color: black;
                 font-size: 10px;
                 border: none;
             }
             QHeaderView::section {
-                background-color: #EAEAEA;
+                background-color: #f5f5f5;
                 color: black;
                 font-weight: bold;
                 border: none;
-                border-right: 1px solid #cfcfcf;
-                border-bottom: 1px solid #cfcfcf;
+                border-right: 1px solid #b0b0b0;
+                border-bottom: 1px solid #b0b0b0;
                 padding: 3px;
                 font-size: 10px;
             }
@@ -389,14 +413,17 @@ class SteelDesignDetailsTab(QWidget):
         # Pull right edge of viewport 1px left so last gridline sits under frame border
         self.stiffener_table.setViewportMargins(0, 0, -1, 0)
         table_frame_layout.addWidget(self.stiffener_table)
-        table_frame.setMinimumHeight(111)
-        table_frame.setMaximumHeight(111)
+        table_frame.setMinimumHeight(122)
+        table_frame.setMaximumHeight(122)
         card_layout.addWidget(table_frame)
         return card
 
-    # ── LOAD DATA (unchanged logic) ───────────────────────────────────────────
+    # ─────────────────────────────────────────────────────────────────────────
+    # LOAD DATA (unchanged logic)
+    # ─────────────────────────────────────────────────────────────────────────
 
     def load_data(self, cad_state: dict):
+        """Populate all field widgets from a cad_state snapshot; silently ignores missing or invalid keys."""
         if not cad_state:
             return
 
