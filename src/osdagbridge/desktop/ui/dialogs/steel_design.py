@@ -16,6 +16,8 @@ from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 
 from osdagbridge.core.bridge_types.plate_girder.graph_engine import GirderGraphEngine
 
+# Prefix used to identify non-selectable category header items in combo boxes.
+_COMBO_HEADER_PREFIX = "──"
 
 # =============================================================================
 #   DIALOG: Steel Design
@@ -47,7 +49,7 @@ class SteelDesign(QDialog):
         if result_handler is None and hasattr(self._main_window, "backend"):
             try:
                 result_handler = self._main_window.backend.get_result_handler()
-            except Exception:
+            except (RuntimeError, AttributeError):
                 pass
                 
         self._result_handler = result_handler  # PlateGirderAnalysisResults or None
@@ -283,34 +285,6 @@ class SteelDesign(QDialog):
                 result_handler=self._result_handler,
             )
             
-        # Legacy compatibility shim for upstream output_dock._inject_and_plot
-        self.graph_engine._cached_model = None
-        self.graph_engine._cached_results = None
-        if not hasattr(self.graph_engine, "build_girder_map"):
-            self.graph_engine.build_girder_map = lambda: None
-
-        # Schematic: frameless
-        self.ax_scheme.set_facecolor('#ffffff')
-        self.ax_scheme.grid(False)
-        for spine in self.ax_scheme.spines.values():
-            spine.set_visible(False)
-        self.ax_scheme.set_yticks([])
-        self.ax_scheme.set_ylabel("")
-        
-        # Data axes: show all four spines as a visible frame
-        for ax in (self.ax_bmd, self.ax_sfd, self.ax_defl):
-            ax.set_facecolor('#ffffff')
-            ax.grid(False)
-            for spine in ax.spines.values():
-                spine.set_visible(True)
-                spine.set_linewidth(0.8)
-                spine.set_color('#cccccc')
-            ax.set_yticks([])
-            ax.set_ylabel("")
-            ax.axhline(0, color='black', linewidth=0, clip_on=True)
-
-        self.ax_defl.invert_yaxis()
-
         # ── Side-fields: swap QLineEdit → QLabel for multi-line HTML display ──
         # Spacers are now baked as fixed addSpacing() in steel_design_analysis.py —
         # this loop only performs the widget swap; no spacer manipulation needed.
@@ -379,6 +353,7 @@ class SteelDesign(QDialog):
         self._current_defl = None
         self._cursor_lines = []
         self._cursor_x     = None   # exact x position (may be between nodes)
+        self._cursor_idx   = 0      # nearest node index for arrow-key navigation
 
         # ── UI initialisation state ───────────────────────────────────────────
         self._data_initialized = False
@@ -622,7 +597,7 @@ class SteelDesign(QDialog):
 
         # ── Dead Loads ────────────────────────────────────────────────────────
         if dead_lcs:
-            self._add_combo_header(combo, "── Dead Loads ──")
+            self._add_combo_header(combo, f"{_COMBO_HEADER_PREFIX} Dead Loads {_COMBO_HEADER_PREFIX}")
             for lc in dead_lcs:
                 combo.addItem(lc)
                 if first_selectable_idx is None:
@@ -630,7 +605,7 @@ class SteelDesign(QDialog):
 
         # ── Static Vehicle Loads ──────────────────────────────────────────────
         if static_lcs:
-            self._add_combo_header(combo, "── Static Vehicle Loads ──")
+            self._add_combo_header(combo, f"{_COMBO_HEADER_PREFIX} Static Vehicle Loads {_COMBO_HEADER_PREFIX}")
             for lc in static_lcs:
                 combo.addItem(lc)
                 if first_selectable_idx is None:
@@ -638,7 +613,7 @@ class SteelDesign(QDialog):
 
         # ── Moving Vehicle Loads ──────────────────────────────────────────────
         if moving_lcs:
-            self._add_combo_header(combo, "── Moving Vehicle Loads ──")
+            self._add_combo_header(combo, f"{_COMBO_HEADER_PREFIX} Moving Vehicle Loads {_COMBO_HEADER_PREFIX}")
             for lc in moving_lcs:
                 combo.addItem(lc)
                 if first_selectable_idx is None:
@@ -673,7 +648,7 @@ class SteelDesign(QDialog):
         loadcase   = self.analysis_tab.load_combo.currentText()
 
         # Reject header/separator items (they start with '──')
-        if not loadcase or loadcase.startswith("──"):
+        if not loadcase or loadcase.startswith(_COMBO_HEADER_PREFIX):
             return
 
         if not member_key or not self.graph_engine.get_girder_keys():
