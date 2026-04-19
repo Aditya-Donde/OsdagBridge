@@ -230,12 +230,26 @@ class LoadingDialogManager:
                 self.process = None
                 self.stop_event = None
         else:
-            # Linux - close in-process dialog
+            # Linux - close in-process dialog; tolerate already-deleted Qt C++ object.
             if self._dialog is not None:
-                self._dialog.hide()
-                self._dialog.circular_progress.stop_animation()
+                try:
+                    self._dialog.hide()
+                    self._dialog.circular_progress.stop_animation()
+                except RuntimeError:
+                    pass
                 self._dialog = None
-    
+
     def __del__(self):
-        """Cleanup when manager is destroyed"""
-        self.hide()
+        # Only tear down the multiprocessing side here. Qt widgets are owned by
+        # the Qt parent/child tree and may already be destroyed during GC/shutdown;
+        # touching them from __del__ causes shiboken errors and native heap corruption.
+        if self._use_process and self.process is not None:
+            try:
+                if self.process.is_alive():
+                    if self.stop_event is not None:
+                        self.stop_event.set()
+                    self.process.join(timeout=2)
+                    if self.process.is_alive():
+                        self.process.terminate()
+            except Exception:
+                pass

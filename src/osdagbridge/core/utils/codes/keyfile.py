@@ -110,3 +110,18 @@ MAX_STUD_DIAMETER_FACTOR = 2      # d ≤ 2tf
 MIN_EDGE_DISTANCE_MM = 25
 MIN_STUD_HEAD_FACTOR = 1.5
 
+# IS 875 Pt 1 / IRC 6:2017 Cl.203 — material densities (kN/m³) for dead-load calculation.
+DEFAULT_STEEL_DENSITY = 78.5         # structural steel (rolled / welded plate)
+DEFAULT_CONCRETE_DENSITY = 25.0      # reinforced / wet concrete
+DEFAULT_BITUMINOUS_DENSITY = 24.0    # bituminous wearing course
+
+# IRC 6:2017 Cl.204.4 Table 6A — multi-lane live-load reduction factors (1st, 2nd, 3rd+ lanes).
+LANE_REDUCTION_FACTORS = [1.0, 0.8, 0.4]
+
+# IRC 22:2015 Cl.605 Table 3 — partial safety factor for fatigue strength.
+GAMMA_MFT_FATIGUE = 1.35
+
+# Design Capacity Ratio thresholds (PASS < DCR_PASS_THRESHOLD ≤ WARN < DCR_FAIL_THRESHOLD ≤ FAIL).
+DCR_PASS_THRESHOLD = 0.90
+DCR_FAIL_THRESHOLD = 1.00
+

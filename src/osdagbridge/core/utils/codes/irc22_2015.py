@@ -5,7 +5,10 @@ Module for IRC 22:2014 bridge design clauses.
 
 """
 
-from osdag_core.utils.common.is800_2007 import IS800_2007 
+try:
+    from osdag_core.utils.common.is800_2007 import IS800_2007
+except ModuleNotFoundError:
+    from osdagbridge.core.utils.codes.is800_2007 import IS800_2007
 from osdagbridge.core.utils.codes.keyfile import *
 import math
 

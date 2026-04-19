@@ -38,6 +38,9 @@ from osdagbridge.core.utils.common import (
     KEY_CROSS_BRACING,
     KEY_END_DIAPHRAGM,
     KEY_DECK_CONCRETE_GRADE_BASIC,
+    KEY_DECK_THICKNESS,
+    KEY_WEARING_COAT_THICKNESS,
+    KEY_WEARING_COAT_DENSITY,
     DEFAULT_CRASH_BARRIER_WIDTH,
     DEFAULT_RAILING_WIDTH,
     DEFAULT_GIRDER_SPACING,
@@ -430,13 +433,47 @@ class PlateGirderBridge:
 
         Must be called after setup_grillage() has built and registered the model.
         """
+        from osdagbridge.core.bridge_types.plate_girder.initial_sizing import (
+            DEFAULT_DECK_THICKNESS as _DEFAULT_DECK_THICKNESS_MM,
+        )
+        from osdagbridge.core.bridge_types.plate_girder.defaults import (
+            DEFAULT_AI_WEARING_THICKNESS_MM as _DEFAULT_WC_THICKNESS_MM,
+            DEFAULT_AI_WEARING_DENSITY_KN_PER_M3 as _DEFAULT_WC_DENSITY_KN_M3,
+        )
+
+        # Deck thickness is a user input (mm); fall back to the initial-sizing
+        # default so the analysis can still run without the Additional Inputs
+        # dialog having been opened.
+        deck_t_mm = float(self.additional_inputs.get(
+            KEY_DECK_THICKNESS, _DEFAULT_DECK_THICKNESS_MM
+        ))
+        deck_t_m = deck_t_mm / 1000.0
+
+        # Wearing-course thickness + density from Additional Inputs, with
+        # sensible fallbacks (50 mm / 24 kN/m³ bituminous per AI_DEFAULTS).
+        wc_t_mm = float(self.additional_inputs.get(
+            KEY_WEARING_COAT_THICKNESS, _DEFAULT_WC_THICKNESS_MM
+        ))
+        wc_rho = float(self.additional_inputs.get(
+            KEY_WEARING_COAT_DENSITY, _DEFAULT_WC_DENSITY_KN_M3
+        ))
+        wc_t_m = wc_t_mm / 1000.0
+
+        # Crash barrier and railing loads: use value from Additional Inputs when
+        # the user has explicitly set it; otherwise the analyser falls back to the
+        # IRC 5 code defaults stored as class constants.
+        _cb = self.additional_inputs.get("crash_barrier_load")
+        barrier_load_kN_m = float(_cb) if _cb is not None else None
+        _rl = self.additional_inputs.get("railing_load_value")
+        railing_load_kN_m = float(_rl) if _rl is not None else None
+
         m = self.grillage_model
         m.create_self_weight_load()
-        m.create_deck_load()
-        m.create_wearing_course_load()
+        m.create_deck_load(slab_thickness_m=deck_t_m)
+        m.create_wearing_course_load(thickness_m=wc_t_m, density_kN_m3=wc_rho)
         m.create_footpath_load()
-        m.create_crash_barrier_load()
-        m.create_railing_load()
+        m.create_crash_barrier_load(barrier_load_kN_per_m=barrier_load_kN_m)
+        m.create_railing_load(railing_load_kN_per_m=railing_load_kN_m)
 
     # ─────────────────────────────────────────────────────────────────────────
     # Live loads — vehicle and moving loads applied after the grillage model

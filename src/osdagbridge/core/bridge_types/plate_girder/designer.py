@@ -18,7 +18,11 @@ from osdagbridge.core.utils.codes.keyfile import (
     GAMMA_M1_STEEL_ULTIMATE,
     GAMMA_M_REINFORCEMENT,
     KEY_VEHICLE,
+    GAMMA_MFT_FATIGUE,
+    DCR_PASS_THRESHOLD,
+    DCR_FAIL_THRESHOLD,
 )
+from osdagbridge.core.utils.codes.is800_2007 import IS800_2007
 
 
 # IRC 22:2015 Cl.601.4 Table 1 — partial safety factors (pulled once at import).
@@ -26,12 +30,14 @@ _GAMMA_M = IRC22_2014.cl_601_4_material_safety_factors()
 GAMMA_M0 = _GAMMA_M["structural_steel_yield"]["ULS"]              # yielding / instability
 GAMMA_M1 = _GAMMA_M["structural_steel_ultimate"]["ULS"]           # ultimate stress
 GAMMA_V = _GAMMA_M["bolts_rivets_shear_tension"]["ULS"]           # shear connectors
-GAMMA_MFT_FATIGUE = 1.35                                          # IRC 22:2015 Cl.605 Table 3
+# GAMMA_MFT_FATIGUE imported from keyfile (IRC 22:2015 Cl.605 Table 3).
 
-# IRC 22:2015 Cl.605.3 — fatigue strength at 5×10^6 cycles (rolled vs welded).
-FATIGUE_STRENGTH_ROLLED_MPA = 118.0
-FATIGUE_STRENGTH_WELDED_MPA = 92.0
-FATIGUE_SHEAR_STRENGTH_MPA = 59.0
+# IRC 22:2015 Cl.605.3 — fatigue strength at 5×10^6 cycles derived from IRC module defaults.
+_fat_r = IRC22_2014.cl_605_3_fatigue_strength(5_000_000, "rolled")
+_fat_w = IRC22_2014.cl_605_3_fatigue_strength(5_000_000, "welded")
+FATIGUE_STRENGTH_ROLLED_MPA = _fat_r["ffn_MPa_used"]   # 118.0
+FATIGUE_STRENGTH_WELDED_MPA = _fat_w["ffn_MPa_used"]   # 92.0
+FATIGUE_SHEAR_STRENGTH_MPA  = _fat_r["tfn_MPa_used"]   # 59.0
 
 
 # ======================================================================
@@ -206,6 +212,9 @@ class GeometryConfig:
     edge_distance: float
     beam_type: str = "inner"
     support_type: str = "simply_supported"
+    # Lateral unbraced length for LTB — equals the cross-bracing spacing (m).
+    # Defaults to 3.0 m (DEFAULT_CROSS_BRACING_SPACING); wired from Additional Inputs.
+    cross_bracing_spacing_m: float = 3.0
 
 
 @dataclass
@@ -242,7 +251,7 @@ class BridgeConfig:
         # (which mirrors IS 2062 / IRC 22 Annex III), concrete/rebar resolved via IRC 22 Annex III.
         from osdagbridge.core.utils.common import (
             KEY_GIRDER, KEY_DECK_CONCRETE_GRADE_BASIC, KEY_DECK_THICKNESS,
-            KEY_SPAN, KEY_CARRIAGEWAY_WIDTH,
+            KEY_SPAN, KEY_CARRIAGEWAY_WIDTH, KEY_CROSS_BRACING_SPACING,
         )
 
         if not getattr(bridge, "material_props", None):
@@ -275,16 +284,51 @@ class BridgeConfig:
         deck = getattr(bridge, "deck_layout", None)
         sizing = getattr(bridge, "sizing_result", None)
 
+        def _req(value, key: str, source: str):
+            if value is None:
+                raise ValueError(
+                    f"{key!r} required for design but not found in {source}; "
+                    "populate the input dock and run initial sizing before design check."
+                )
+            return value
+
+        span = geom.L if geom else _req(bridge.basic_inputs.get(KEY_SPAN), KEY_SPAN, "basic_inputs")
+        beam_spacing = geom.ext_to_int_dist if geom else _req(
+            getattr(sizing, "girder_spacing", None), "girder_spacing", "sizing_result")
+        carriageway = deck.carriageway_width if deck else _req(
+            bridge.basic_inputs.get(KEY_CARRIAGEWAY_WIDTH), KEY_CARRIAGEWAY_WIDTH, "basic_inputs")
+        n_girders = geom.n_l if geom else _req(
+            getattr(sizing, "no_of_girders", None), "no_of_girders", "sizing_result")
+        edge_dist = geom.edge_dist if geom else _req(
+            getattr(sizing, "deck_overhang", None), "deck_overhang", "sizing_result")
+
+        # Cross-bracing spacing drives the lateral unbraced length for LTB.
+        from osdagbridge.core.utils.common import DEFAULT_CROSS_BRACING_SPACING as _DEFAULT_CB_SPACING
+        cb_spacing = float(bridge.additional_inputs.get(KEY_CROSS_BRACING_SPACING, _DEFAULT_CB_SPACING))
+
         geometry = GeometryConfig(
-            span=geom.L if geom else float(bridge.basic_inputs[KEY_SPAN]),
-            beam_spacing=geom.ext_to_int_dist if geom else sizing.girder_spacing,
-            carriageway_width=deck.carriageway_width if deck else float(bridge.basic_inputs[KEY_CARRIAGEWAY_WIDTH]),
-            n_girders=geom.n_l if geom else sizing.no_of_girders,
-            edge_distance=geom.edge_dist if geom else sizing.deck_overhang,
+            span=float(span),
+            beam_spacing=float(beam_spacing),
+            carriageway_width=float(carriageway),
+            n_girders=int(n_girders),
+            edge_distance=float(edge_dist),
+            cross_bracing_spacing_m=cb_spacing,
         )
 
-        slab = SlabProperties(thickness=float(bridge.basic_inputs[KEY_DECK_THICKNESS]))
-        return cls(material=material, section=section, geometry=geometry, slab=slab)
+        # Deck thickness lives in the Additional Inputs dialog; fall back to the initial-sizing
+        # default when the user has not opened that dialog.
+        from osdagbridge.core.bridge_types.plate_girder.initial_sizing import DEFAULT_DECK_THICKNESS
+        deck_t = bridge.additional_inputs.get(KEY_DECK_THICKNESS, DEFAULT_DECK_THICKNESS)
+        slab = SlabProperties(thickness=float(deck_t))
+
+        # Shear stud parameters from Additional Inputs; defaults match the UI field defaults.
+        stud_d   = float(bridge.additional_inputs.get("shear_stud_diameter",         20.0))
+        stud_h   = float(bridge.additional_inputs.get("shear_stud_height",           100.0))
+        stud_fu  = float(bridge.additional_inputs.get("shear_stud_ultimate_strength", 495.0))
+        stud_n   = int(float(bridge.additional_inputs.get("shear_stud_count",          2)))
+        studs = ShearStudConfig(diameter=stud_d, height=stud_h, fu=stud_fu, n_per_section=stud_n)
+
+        return cls(material=material, section=section, geometry=geometry, slab=slab, studs=studs)
 
     @classmethod
     def example_33m_bridge(cls) -> "BridgeConfig":
@@ -371,9 +415,12 @@ class DemandExtractor:
         Aw_mm2: float,
         Nsc: int = 2_000_000,
         member_name: str = "interior_longitudinal_beam",
+        stiffness_ratio: float = 1.0,
     ) -> DemandEnvelope:
         # Extract ULS Mu/Vu envelopes, construction moment, deflections, and fatigue ranges
         # directly from the grillage xarray dataset. forces→N/Nm, displacements→m.
+        # stiffness_ratio = I_composite / I_bare_steel: deflections for SDL and live loads
+        # (applied after composite action) are divided by this ratio before checking limits.
         import warnings
         import numpy as np
 
@@ -462,13 +509,42 @@ class DemandExtractor:
 
         # ------------------------------------------------------------------
         # (3) Deflections from `displacements.Component="y"`
-        #     live  : max |y-disp| over live LCs × girder nodes
-        #     total : max |Σ dead-LC y-disp  +  live-LC y-disp| per node
+        #
+        # The grillage model uses bare-steel section properties throughout.
+        # For loads applied after composite action is established (SDL + live),
+        # deflections must be scaled by I_bare / I_composite = 1 / stiffness_ratio.
+        # Construction-stage loads (girder SW + wet concrete) correctly use the
+        # bare-steel stiffness and require no correction.
+        #
+        # Split dead LCs into:
+        #   construction_lcs — girder self-weight + wet deck concrete (bare steel ✓)
+        #   sdl_lcs          — wearing course, barriers, railings, etc. (composite)
         # ------------------------------------------------------------------
+        _const_patterns = ("girder self weight", "deck slab load",
+                           "girder_self_weight", "deck_slab_load",
+                           "steel", "wet_concrete")
+        construction_lcs = [lc for lc in dead_lcs
+                            if any(p in str(lc).lower() for p in _const_patterns)]
+        sdl_lcs = [lc for lc in dead_lcs if lc not in set(construction_lcs)]
+
+        delta_construction_m = 0.0
+        delta_sdl_m = 0.0
         delta_live_m = 0.0
-        delta_dead_m = 0.0
+
         try:
             disp_y = ds.displacements.sel(Component="y", Node=node_ids)
+
+            def _sum_defl(lcs: list) -> float:
+                """Sum deflections across additive LCs; return |max| across nodes."""
+                if not lcs:
+                    return 0.0
+                vals = _as_float(disp_y.sel(Loadcase=lcs).values)
+                vals = np.nan_to_num(vals, nan=0.0)
+                per_node = vals.sum(axis=0) if vals.ndim > 1 else vals
+                return float(np.abs(per_node).max()) if per_node.size else 0.0
+
+            delta_construction_m = _sum_defl(construction_lcs)
+            delta_sdl_m         = _sum_defl(sdl_lcs)
 
             if all_live_lcs:
                 live_vals = _as_float(disp_y.sel(Loadcase=all_live_lcs).values)
@@ -476,16 +552,6 @@ class DemandExtractor:
                 if live_finite.size:
                     delta_live_m = float(np.abs(live_finite).max())
 
-            if dead_lcs:
-                dead_vals = _as_float(disp_y.sel(Loadcase=dead_lcs).values)
-                dead_vals = np.nan_to_num(dead_vals, nan=0.0)
-                # sum across LCs for each node, then take |·|max
-                if dead_vals.ndim > 1:
-                    per_node = dead_vals.sum(axis=0)
-                else:
-                    per_node = dead_vals
-                if per_node.size:
-                    delta_dead_m = float(np.abs(per_node).max())
         except (KeyError, ValueError) as e:
             warnings.warn(
                 f"Could not extract vertical deflections from dataset: {e}. "
@@ -493,8 +559,11 @@ class DemandExtractor:
                 stacklevel=2,
             )
 
-        delta_live_mm = delta_live_m * 1000.0
-        delta_total_mm = (delta_dead_m + delta_live_m) * 1000.0
+        # Apply composite stiffness correction to post-composite loads (SDL + live).
+        # IRC 22:2015 Cl.604.3.2: deflection limits checked at SLS after composite action.
+        delta_live_mm  = delta_live_m / stiffness_ratio * 1000.0
+        delta_total_mm = (delta_construction_m
+                          + (delta_sdl_m + delta_live_m) / stiffness_ratio) * 1000.0
 
         # ------------------------------------------------------------------
         # (4) Fatigue ranges from moving-load envelope
@@ -673,22 +742,27 @@ class IRC22CapacityCalculator:
 
     @staticmethod
     def _classify_web(d_tw: float, epsilon: float) -> str:
-        if d_tw <= 84.0 * epsilon:
+        # Limits from IS 800:2007 Table 2 (IS800_2007 class constants).
+        if d_tw <= IS800_2007.WEB_LIMIT_PLASTIC * epsilon:
             return "Plastic"
-        elif d_tw <= 105.0 * epsilon:
+        elif d_tw <= IS800_2007.WEB_LIMIT_COMPACT * epsilon:
             return "Compact"
-        elif d_tw <= 126.0 * epsilon:
+        elif d_tw <= IS800_2007.WEB_LIMIT_SEMI_COMPACT * epsilon:
             return "Semi-Compact"
         return "Slender"
 
     @staticmethod
     def _classify_flange(b_tf: float, epsilon: float, fab: str) -> str:
-        limits = [9.4, 13.6] if fab == "welded" else [10.5, 15.7]
-        if b_tf <= 8.4 * epsilon:
+        # Limits from IS 800:2007 Table 2 row (i) — outstanding flange element (IS800_2007 constants).
+        c_lim  = (IS800_2007.FLANGE_OUTSTAND_COMPACT_WELDED if fab == "welded"
+                  else IS800_2007.FLANGE_OUTSTAND_COMPACT_ROLLED)
+        sc_lim = (IS800_2007.FLANGE_OUTSTAND_SEMI_COMPACT_WELDED if fab == "welded"
+                  else IS800_2007.FLANGE_OUTSTAND_SEMI_COMPACT_ROLLED)
+        if b_tf <= IS800_2007.FLANGE_OUTSTAND_PLASTIC * epsilon:
             return "Plastic"
-        elif b_tf <= limits[0] * epsilon:
+        elif b_tf <= c_lim * epsilon:
             return "Compact"
-        elif b_tf <= limits[1] * epsilon:
+        elif b_tf <= sc_lim * epsilon:
             return "Semi-Compact"
         return "Slender"
 
@@ -794,8 +868,8 @@ class IRC22CapacityCalculator:
         mat = self.mat
         fy, Es = mat.fy, mat.Es
         G = mat.Gs                                      # IRC 22 Annex III — shear modulus.
-        # Cross-bracing at 4–6 m intervals in practice — clamp LLT to 6000 mm for the construction stage.
-        LLT_mm = min(self.geo.span * 1000.0, 6000.0)
+        # Lateral unbraced length = cross-bracing spacing, capped at the full span.
+        LLT_mm = min(self.geo.cross_bracing_spacing_m * 1000.0, self.geo.span * 1000.0)
 
         It = (sec.bf_top * sec.tf_top ** 3
               + sec.dw * sec.tw ** 3
@@ -1091,10 +1165,10 @@ class CheckResult:
 
 
 class DCREngine:
-    # Demand/Capacity ratio engine — PASS < 0.90, WARN 0.90–1.00, FAIL ≥ 1.00.
-
-    PASS_THRESHOLD = 0.90
-    FAIL_THRESHOLD = 1.00
+    # Demand/Capacity ratio engine — PASS < DCR_PASS_THRESHOLD, WARN to DCR_FAIL_THRESHOLD, FAIL ≥.
+    # Thresholds sourced from keyfile to avoid duplication.
+    PASS_THRESHOLD = DCR_PASS_THRESHOLD
+    FAIL_THRESHOLD = DCR_FAIL_THRESHOLD
 
     def __init__(self, demand: DemandEnvelope, capacity: CapacityResults):
         self.demand = demand
@@ -1456,6 +1530,63 @@ def _example_demands(config: BridgeConfig) -> DemandEnvelope:
         member="interior_longitudinal_beam",
     )
 
+def _composite_stiffness_ratio(config: BridgeConfig) -> float:
+    """
+    Compute I_composite_transformed / I_bare_steel (short-term modular ratio basis).
+
+    The grillage model uses bare-steel section properties for all load cases.
+    Loads applied after composite action is established (SDL and live loads)
+    should deflect on the stiffer composite section.  Dividing bare-steel-model
+    deflections by this ratio gives the physically correct SLS deflection.
+
+    Formula per IRC 22:2015 Cl.603.2.1 (effective width) and Cl.604.3 (modular
+    ratio).  Returns a value ≥ 1.0; if the composite section cannot be
+    computed (e.g. missing slab data) the ratio defaults to 1.0 (conservative).
+    """
+    try:
+        sec  = config.section   # mm
+        mat  = config.material
+        slab = config.slab      # mm
+        geo  = config.geometry  # m (span, beam_spacing)
+
+        # IRC 22:2015 Cl.604.3 — short-term modular ratio (Kc=1.0 for live loads);
+        # lower bound 7.5 as required by the clause.
+        n = mat.Es / mat.Ecm
+        n = max(n, 7.5)
+
+        # Effective width (inner beam, simply supported) — IRC 22:2015 Cl.603.2.1.
+        Lo_mm   = geo.span * 1000.0
+        B_mm    = geo.beam_spacing * 1000.0
+        beff_mm = min(Lo_mm / 4.0, B_mm)
+
+        t_slab   = slab.thickness      # mm
+        h_haunch = slab.haunch_depth   # mm
+
+        # Transformed concrete area (steel-equivalent).
+        Ac_trans = beff_mm * t_slab / n  # mm²
+
+        # Steel centroid and concrete slab centroid, both measured from bottom of steel.
+        y_steel = sec.y_cg_from_bot
+        y_conc  = sec.D + h_haunch + t_slab / 2.0
+
+        # Composite neutral axis from bottom of steel.
+        A_total   = sec.A_steel + Ac_trans
+        y_comp_na = (sec.A_steel * y_steel + Ac_trans * y_conc) / A_total
+
+        # Composite Iz about the composite NA (all expressed in steel terms).
+        I_steel_shifted = (sec.Iz_steel
+                           + sec.A_steel * (y_comp_na - y_steel) ** 2)
+        I_conc_trans    = (beff_mm * t_slab ** 3 / (12.0 * n)
+                           + Ac_trans * (y_comp_na - y_conc) ** 2)
+        I_composite = I_steel_shifted + I_conc_trans
+
+        ratio = I_composite / sec.Iz_steel
+        return max(ratio, 1.0)
+
+    except Exception:
+        return 1.0  # conservative fallback: no composite correction applied
+
+
 def _extract_demands_from_analysis(
     analysis_results: PlateGirderAnalysisResults,
     config: BridgeConfig,
@@ -1470,6 +1601,9 @@ def _extract_demands_from_analysis(
     Ze_steel_mm3 = float(config.section.Ze_steel)
     Aw_mm2 = float(config.section.Aw)
     Nsc = int(config.fatigue.Nsc)
+
+    # Composite-to-bare stiffness ratio for SLS deflection correction.
+    ratio = _composite_stiffness_ratio(config)
 
     # Build girder topology and pick an interior girder
     girders, _ = analysis_results.build_girders(verbose=False)
@@ -1501,6 +1635,7 @@ def _extract_demands_from_analysis(
                     Aw_mm2=Aw_mm2,
                     Nsc=Nsc,
                     member_name="interior_main_beam",
+                    stiffness_ratio=ratio,
                 )
         except Exception:
             pass
@@ -1516,6 +1651,7 @@ def _extract_demands_from_analysis(
                 Aw_mm2=Aw_mm2,
                 Nsc=Nsc,
                 member_name=name,
+                stiffness_ratio=ratio,
             )
 
     # Last-resort: first available girder
@@ -1538,6 +1674,7 @@ def _extract_demands_from_analysis(
         Aw_mm2=Aw_mm2,
         Nsc=Nsc,
         member_name=name,
+        stiffness_ratio=ratio,
     )
 
 

@@ -1,7 +1,13 @@
 import ospgrillage as og
-# from math import sqrt, pi 
+# from math import sqrt, pi
 # import openseespy.opensees as ops
 from osdagbridge.core.utils.codes.irc6_2017 import IRC6_2017
+from osdagbridge.core.utils.codes.keyfile import (
+    DEFAULT_STEEL_DENSITY,
+    DEFAULT_CONCRETE_DENSITY,
+    DEFAULT_BITUMINOUS_DENSITY,
+    LANE_REDUCTION_FACTORS,
+)
 from osdagbridge.core.utils.common import *
 from osdagbridge.core.bridge_types.plate_girder.bridge_geometry import BridgeGeometry, CrossSectionLayout
 from osdagbridge.core.bridge_types.plate_girder.load_placement import LoadPlacementManager
@@ -24,6 +30,12 @@ class BridgeGrillageModel:
         self.longitudinal_section = None
         self.transverse_section = None
         self.end_transverse_section = None
+
+        # Cross-section properties (DTO), stashed by create_sections() so that
+        # load magnitudes can be derived from actual geometry instead of
+        # hard-coded placeholder values.
+        self.longitudinal_props: SectionProperties | None = None
+        self.edge_longitudinal_props: SectionProperties | None = None
 
         # -------------------- GRILLAGE MEMBERS --------------------
         # Members are set via create_material() once sections and material are ready
@@ -123,6 +135,9 @@ class BridgeGrillageModel:
         end_transverse : SectionProperties
             Properties for the end transverse slab.
         """
+        self.longitudinal_props = longitudinal
+        self.edge_longitudinal_props = edge_longitudinal
+
         self.longitudinal_section = og.create_section(
             A=longitudinal.A,
             J=longitudinal.J,
@@ -268,17 +283,32 @@ class BridgeGrillageModel:
     #   Dead Load
     # ============================================================
 
+    # IS 875 (Part 1) / keyfile.DEFAULT_STEEL_DENSITY — structural steel unit weight (kN/m³).
+    STEEL_UNIT_WEIGHT_kN_m3 = DEFAULT_STEEL_DENSITY
+
     def create_self_weight_load(self, model=None, L=None):
-        """Creates beam self weight distributed along length."""
+        """Creates beam self weight distributed along length.
+
+        Magnitude is derived from the interior longitudinal girder section
+        area (m²) × 78.5 kN/m³, so it tracks the actual section chosen by
+        initial sizing rather than a hard-coded placeholder.
+        """
         model = model or self.model
         if model is None:
             raise ValueError("Model is not available. Create model before adding loads.")
+
+        if self.longitudinal_props is None:
+            raise ValueError(
+                "create_sections() must be called before create_self_weight_load(): "
+                "girder cross-section area is required to compute self weight."
+            )
 
         L = L or self.L
 
         start_beam = 0
         end_beam = L
-        beam_mag = 22.4 * kN / 1.0  # kN/m
+        A_girder_m2 = self.longitudinal_props.A
+        beam_mag = A_girder_m2 * self.STEEL_UNIT_WEIGHT_kN_m3 * kN / 1.0  # kN/m
 
         DL_self_weight = og.create_load_case(name="girder self weight")
 
@@ -301,9 +331,26 @@ class BridgeGrillageModel:
         model.add_load_case(DL_self_weight)
         return DL_self_weight
 
-    def create_deck_load(self, model=None):
+    # IRC 6:2017 / IS 875 Pt 1 — reinforced (wet) concrete unit weight (keyfile.DEFAULT_CONCRETE_DENSITY).
+    WET_CONCRETE_DENSITY_kN_m3 = DEFAULT_CONCRETE_DENSITY
+
+    def create_deck_load(self, model=None, slab_thickness_m: float | None = None,
+                         concrete_density_kN_m3: float | None = None):
         """
-        Creates deck slab patch load over the full bridge deck.
+        Creates the wet-concrete deck slab patch load over the full bridge deck.
+
+        This is the construction-stage slab load applied to the bare steel
+        girder (composite action has not developed yet). The magnitude is
+        computed as ``slab_thickness × ρ_concrete``; wearing-course and any
+        other superimposed dead loads are NOT included here — they belong to
+        separate load cases applied after hardening.
+
+        Parameters
+        ----------
+        slab_thickness_m : float
+            Deck slab thickness in metres (required).
+        concrete_density_kN_m3 : float, optional
+            Wet concrete density (defaults to 25 kN/m³).
 
         Geometry is obtained from load_manager.
         The created load case is stored on `self.deck_load_case`.
@@ -312,10 +359,18 @@ class BridgeGrillageModel:
         if model is None:
             raise ValueError("Model is not available. Create model before adding loads.")
 
+        if slab_thickness_m is None:
+            raise ValueError(
+                "create_deck_load requires slab_thickness_m (in metres) so the "
+                "wet-concrete load magnitude can be derived from t × ρ_concrete."
+            )
+
+        rho_c = self.WET_CONCRETE_DENSITY_kN_m3 if concrete_density_kN_m3 is None else concrete_density_kN_m3
+
         # -------------------------------------------------
-        # Load magnitude (UDL over area)
+        # Load magnitude (UDL over area): t × ρ_concrete  [kN/m²]
         # -------------------------------------------------
-        deck_mag = 25.0 * kN / (1.0 ** 2)  # <-- update as per slab + wearing course if needed
+        deck_mag = slab_thickness_m * rho_c * kN / (1.0 ** 2)
 
         # -------------------------------------------------
         # Get geometry from load manager
@@ -362,8 +417,21 @@ class BridgeGrillageModel:
 
         return DL_deck
 
-    def create_wearing_course_load(self, model=None, edge_clearance=0.0):
+    def create_wearing_course_load(self, model=None, edge_clearance=0.0,
+                                   thickness_m: float | None = None,
+                                   density_kN_m3: float | None = None):
         """Creates wearing course load (patch).
+
+        The magnitude is computed as ``thickness × ρ``. Typical bituminous
+        wearing course: 50 mm at 24 kN/m³ → 1.20 kN/m².
+
+        Parameters
+        ----------
+        thickness_m : float
+            Wearing-course thickness in metres (required).
+        density_kN_m3 : float, optional
+            Unit weight of the wearing-course material. Defaults to
+            24 kN/m³ (bituminous). Use 25 kN/m³ for concrete overlays.
 
         If `model`, `L` or `w` are not provided they default to the
         instance values `self.model`, `self.L`, `self.w`.
@@ -373,10 +441,17 @@ class BridgeGrillageModel:
         if model is None:
             raise ValueError("Model is not available. Create model before adding loads.")
 
+        if thickness_m is None:
+            raise ValueError(
+                "create_wearing_course_load requires thickness_m (in metres) "
+                "so the overlay load magnitude can be derived from t × ρ."
+            )
+        rho_wc = DEFAULT_BITUMINOUS_DENSITY if density_kN_m3 is None else density_kN_m3
+
         # L = L or self.L
         # w = w or self.w
 
-        overlay_mag = 4.32 * kN / (1.0 ** 2)
+        overlay_mag = thickness_m * rho_wc * kN / (1.0 ** 2)
 
         # --------------------------------
         # Get geometry from geometry module
@@ -419,6 +494,11 @@ class BridgeGrillageModel:
 
         return DL_overlay
 
+    # IRC 5:2015 / IS 875 Pt 2 — standard SIDL intensities used when the user
+    # has not provided explicit load inputs via the Additional Inputs dialog.
+    RCC_CRASH_BARRIER_LOAD_kN_per_m = 6.54   # typical RCC crash barrier (IRC 5 Type P3/P4)
+    MEDIAN_LOAD_kN_per_m = 4.00               # raised-kerb / RCC median (nominal weight)
+
     def create_footpath_load(self, model=None):
         """
         Creates footpath patch loads on both sides of the bridge.
@@ -436,9 +516,9 @@ class BridgeGrillageModel:
             self.footpath_load_case = None
             return None
         # -------------------------------------------------
-        # Load magnitude (UDL over area)
+        # Load magnitude — IRC 6:2017 Cl.206.1 (footway load)
         # -------------------------------------------------
-        footpath_mag = 5.00 * kN / (1.0 ** 2)  # <-- update as per IRC value
+        footpath_mag = IRC6_2017.cl_206_1_footway_load() * kN / (1.0 ** 2)
 
         # -------------------------------------------------
         # Create load case
@@ -488,9 +568,17 @@ class BridgeGrillageModel:
 
         return DL_footpath
 
-    def create_crash_barrier_load(self, model=None):
+    def create_crash_barrier_load(self, model=None, barrier_load_kN_per_m: float | None = None):
         """
         Creates crash (edge) barrier line loads on both sides of the bridge.
+
+        Parameters
+        ----------
+        barrier_load_kN_per_m : float, optional
+            Barrier self-weight per unit length (kN/m). When provided (typically
+            from the Additional Inputs dialog), this value is used directly.
+            Defaults to ``RCC_CRASH_BARRIER_LOAD_kN_per_m`` (6.54 kN/m) when
+            not specified.
 
         Geometry is obtained from load_manager.
         The created load case is stored on `self.crash_barrier_load_case`.
@@ -505,9 +593,10 @@ class BridgeGrillageModel:
             self.crash_barrier_load_case = None
             return None
         # -------------------------------------------------
-        # Load magnitude (UDL along length)
+        # Load magnitude — from input or code default
         # -------------------------------------------------
-        barrier_load = 6.54 * kN / m
+        _mag = barrier_load_kN_per_m if barrier_load_kN_per_m is not None else self.RCC_CRASH_BARRIER_LOAD_kN_per_m
+        barrier_load = _mag * kN / m
 
         # -------------------------------------------------
         # Create load case
@@ -549,9 +638,17 @@ class BridgeGrillageModel:
 
         return DL_barrier
 
-    def create_railing_load(self, model=None):
+    def create_railing_load(self, model=None, railing_load_kN_per_m: float | None = None):
         """
         Creates railing line loads on both sides of the bridge.
+
+        Parameters
+        ----------
+        railing_load_kN_per_m : float, optional
+            Railing self-weight per unit length (kN/m). When provided (typically
+            from the Additional Inputs dialog), this value is used directly.
+            Defaults to ``IRC6_2017.cl_206_5_railing_load()`` (kg/m → kN/m)
+            per IRC 6:2017 Cl.206.5 when not specified.
 
         Geometry is obtained from load_manager.
         The created load case is stored on `self.railing_load_case`.
@@ -567,9 +664,14 @@ class BridgeGrillageModel:
             return None
 
         # -------------------------------------------------
-        # Load magnitude (UDL along length)
+        # Load magnitude — from user input or IRC 6:2017 Cl.206.5 code value.
+        # cl_206_5_railing_load() returns kg/m; convert to kN/m via × 9.81/1000.
         # -------------------------------------------------
-        railing_udl = 1.50 * kN / m  # <-- update if code value differs
+        if railing_load_kN_per_m is not None:
+            _mag = railing_load_kN_per_m
+        else:
+            _mag = IRC6_2017.cl_206_5_railing_load() * 9.81 / 1000.0
+        railing_udl = _mag * kN / m
 
         # -------------------------------------------------
         # Create load case
@@ -611,9 +713,17 @@ class BridgeGrillageModel:
 
         return DL_railing
 
-    def create_median_load(self, model=None):
+    def create_median_load(self, model=None, median_load_kN_per_m: float | None = None):
         """
         Creates median line load acting along the centerline of the median.
+
+        Parameters
+        ----------
+        median_load_kN_per_m : float, optional
+            Median self-weight per unit length (kN/m). When provided (typically
+            from the Additional Inputs dialog), this value is used directly.
+            Defaults to ``MEDIAN_LOAD_kN_per_m`` (4.00 kN/m) when not
+            specified.
 
         Geometry is obtained from load_manager.
         The created load case is stored on `self.median_load_case`.
@@ -623,9 +733,10 @@ class BridgeGrillageModel:
             raise ValueError("Model is not available. Create model before adding loads.")
 
         # -------------------------------------------------
-        # Load magnitude (UDL along length)
+        # Load magnitude — from input or code default
         # -------------------------------------------------
-        median_udl = 4.00 * kN / m  # <-- update as per IRC / project data
+        _mag = median_load_kN_per_m if median_load_kN_per_m is not None else self.MEDIAN_LOAD_kN_per_m
+        median_udl = _mag * kN / m
 
         # If there is no median component in the layout, skip creating median load
         if not self.layout.has_component("median"):
@@ -872,8 +983,10 @@ class BridgeGrillageModel:
 
         vehicle_cases = self.vehicle_lane_coordinates()
 
-        alf = [1.0, 0.8, 0.4]
-        dla = 1.3
+        # IRC 6:2017 Cl.204.4 Table 6A — multi-lane live-load reduction factors (keyfile.LANE_REDUCTION_FACTORS).
+        alf = list(LANE_REDUCTION_FACTORS)
+        # IRC 6:2017 Cl.208.3 — dynamic load allowance computed from actual span.
+        dla = 1.0 + IRC6_2017.cl_208_3_impact_factor(self.L)
         # -------------------------------------------------
         # Empty lists
         # -------------------------------------------------
@@ -1242,8 +1355,8 @@ if __name__ == "__main__":
     # bridge.plot_model()
     # bridge.add_dead_loads()
     bridge.create_self_weight_load()
-    bridge.create_deck_load()
-    bridge.create_wearing_course_load()
+    bridge.create_deck_load(slab_thickness_m=0.200)  # 200 mm RC slab
+    bridge.create_wearing_course_load(thickness_m=0.050)  # 50 mm bituminous
     bridge.create_footpath_load()
     bridge.create_crash_barrier_load()
     bridge.create_railing_load()
