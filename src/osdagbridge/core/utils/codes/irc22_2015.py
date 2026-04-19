@@ -1413,33 +1413,25 @@ class IRC22_2014:
             (b) explicitly give fck_cu_MPa and Ecm_MPa
         """
 
-        # Fetch concrete properties from IRC Table III.1 
+        # Fetch concrete properties from IRC Table III.1 only if not supplied directly.
         if (fck_cu_MPa is None or Ecm_MPa is None):
             if grade is None:
                 raise ValueError("Provide either grade='Mxx' OR provide fck_cu_MPa and Ecm_MPa")
 
-            # Example expected function: cl_602_annexIII_concrete_properties()
+            row = IRC22_2014.cl_602_annexIII_concrete_properties(grade=grade)
 
-            table = IRC22_2014.cl_602_annexIII_concrete_properties()
+            if "fck_cu" in row:
+                fck_cu_MPa = row["fck_cu"]
+            elif "fck" in row:
+                fck_cu_MPa = row["fck"]   # cube strength from Annex III
+            else:
+                raise KeyError("Concrete table must provide fck or fck_cu")
 
-            if grade not in table:
-                raise ValueError(f"{grade} not found in IRC22 Table III.1 concrete properties")
-
-        row = table[grade]
-
-        # Handles different possible keys safely
-        if "fck_cu" in row:
-            fck_cu_MPa = row["fck_cu"]
-        elif "fck" in row:
-            fck_cu_MPa = row["fck"]   # cube strength from Annex III
-        else:
-            raise KeyError("Concrete table must provide fck or fck_cu")
-
-        # Modulus of elasticity (usually stored in GPa)
-        if "Ec" in row:
-            Ecm_MPa = row["Ec"] * 1000 if row["Ec"] < 1000 else row["Ec"]
-        else:
-            raise KeyError("Concrete table must provide Ec")
+            # Modulus of elasticity (usually stored in GPa)
+            if "Ec" in row:
+                Ecm_MPa = row["Ec"] * 1000 if row["Ec"] < 1000 else row["Ec"]
+            else:
+                raise KeyError("Concrete table must provide Ec")
 
         if d_mm <= 0 or hs_mm <= 0:
             raise ValueError("Stud diameter and height must be positive")

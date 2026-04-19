@@ -1,53 +1,37 @@
-"""
-IRC 22:2015 Composite Bridge Design Checker — Single-File Pipeline
-===================================================================
-
-Automated limit-state verification of steel-concrete composite bridge
-girders per IRC:22-2015 (Limit State Method for Composite Construction).
-
-Pipeline Flow
--------------
-    Step 1 - BridgeConfig       : Material, section, geometry parameters
-    Step 2 - DemandExtractor    : Factored force demands (Mu, Vu, deflections)
-    Step 3 - IRC22Capacity      : Clause-by-clause capacity computation
-    Step 4 - DCREngine          : Demand / Capacity ratios & PASS/WARN/FAIL
-    Step 5 - ReportGenerator    : Formatted engineering report
-
-Clause Coverage (IRC 22:2015)
------------------------------
-    Cl. 603.2.1   - Effective width of concrete flange
-    Cl. 603       - Section classification (web + flange)
-    Cl. 603.3.1   - Positive moment capacity (plastic)
-    Cl. 603.3.3.1 - Lateral-torsional buckling resistance
-    Cl. 603.3.3.2 - Plastic shear resistance
-    Cl. 603.3.3.3 - Combined bending + high shear
-    Cl. 604.3     - Modular ratio
-    Cl. 604.3.1   - SLS limiting stresses
-    Cl. 604.3.2   - Deflection limits
-    Cl. 605       - Fatigue assessment
-    Cl. 606.3.1   - Shear stud connector strength
-    Cl. 606.4.1   - Longitudinal shear & stud spacing
-
-Author      : Karn Agarwal
-Affiliation : Dayalbagh Educational Institute, Agra
-License     : MIT
-Version     : 1.0.0
-
-Usage
------
-    python main.py
-"""
+# IRC 22:2015 composite plate-girder design pipeline: Config -> Demand -> Capacity -> DCR -> Report.
 
 from __future__ import annotations
 
 import math
-import os
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Dict, List, Optional, Any
 
-# Import for dynamic demand extraction
 from osdagbridge.core.bridge_types.plate_girder.analysis_results import PlateGirderAnalysisResults
+from osdagbridge.core.utils.codes.irc22_2015 import IRC22_2014
+from osdagbridge.core.utils.codes.irc6_2017 import IRC6_2017
+from osdagbridge.core.utils.codes.keyfile import (
+    E_STEEL_MPA,
+    G_STEEL_MPA,
+    POISSON_RATIO_STEEL,
+    GAMMA_M0_STEEL,
+    GAMMA_M1_STEEL_ULTIMATE,
+    GAMMA_M_REINFORCEMENT,
+    KEY_VEHICLE,
+)
+
+
+# IRC 22:2015 Cl.601.4 Table 1 — partial safety factors (pulled once at import).
+_GAMMA_M = IRC22_2014.cl_601_4_material_safety_factors()
+GAMMA_M0 = _GAMMA_M["structural_steel_yield"]["ULS"]              # yielding / instability
+GAMMA_M1 = _GAMMA_M["structural_steel_ultimate"]["ULS"]           # ultimate stress
+GAMMA_V = _GAMMA_M["bolts_rivets_shear_tension"]["ULS"]           # shear connectors
+GAMMA_MFT_FATIGUE = 1.35                                          # IRC 22:2015 Cl.605 Table 3
+
+# IRC 22:2015 Cl.605.3 — fatigue strength at 5×10^6 cycles (rolled vs welded).
+FATIGUE_STRENGTH_ROLLED_MPA = 118.0
+FATIGUE_STRENGTH_WELDED_MPA = 92.0
+FATIGUE_SHEAR_STRENGTH_MPA = 59.0
 
 
 # ======================================================================
@@ -57,52 +41,66 @@ from osdagbridge.core.bridge_types.plate_girder.analysis_results import PlateGir
 
 @dataclass
 class SteelProperties:
-    """
-    Material strengths and partial safety factors.
+    # Material lookup — structural steel (IRC 22:2015 Annex III + IS 2062), concrete (Annex III
+    # Table III.1), reinforcement (IS 1786 / Annex III), partial factors (Cl.601.4 Table 1).
+    steel_grade: str
+    fy: float                                           # MPa — IS 2062 yield strength
+    fu: float                                           # MPa — IS 2062 ultimate strength
+    concrete_grade: str
+    fck: float                                          # MPa — IRC 22 Annex III cube strength
+    fctm: float                                         # MPa — Annex III mean tensile strength
+    Ecm: float                                          # MPa — Annex III 28-day secant modulus
+    rebar_grade: str = "Fe500"                          # default per common Indian practice
+    fy_rebar: float = 500.0                             # MPa — looked up from IRC 22 Annex III
 
-    References
-    ----------
-    IRC 22:2015 Annexure III - Steel, Concrete, Reinforcement properties
-    IRC 22:2015 Table 1 (Cl.601.4) - Partial safety factors
-    """
-    # -- Structural steel (IS 2062 / IRC 22 Annex III) --
-    steel_grade: str = "E350"
-    fy: float = 350.0           # MPa - characteristic yield strength
-    fu: float = 490.0           # MPa - ultimate tensile strength
-    Es: float = 200_000.0      # MPa - modulus of elasticity (Cl.602)
+    # IRC 22:2015 Cl.602 Annex III — structural-steel elastic constants (grade-independent).
+    Es: float = E_STEEL_MPA
+    Gs: float = G_STEEL_MPA
+    nu: float = POISSON_RATIO_STEEL
 
-    # -- Concrete (IRC 22 Annex III Table III.1) --
-    concrete_grade: str = "M65"
-    fck: float = 65.0           # MPa - cube compressive strength
-    fctm: float = 4.1           # MPa - mean tensile strength
-    Ecm: float = 38_000.0      # MPa - secant modulus at 28 days
+    # IRC 22:2015 Cl.601.4 Table 1 — partial safety factors.
+    gamma_m0: float = GAMMA_M0
+    gamma_m1: float = GAMMA_M1
+    gamma_v: float = GAMMA_V
+    gamma_mft: float = GAMMA_MFT_FATIGUE
 
-    # -- Reinforcement (IS 1786 / IRC 22 Annex III) --
-    rebar_grade: str = "Fe500"
-    fy_rebar: float = 500.0     # MPa - characteristic yield strength
-
-    # -- Partial safety factors (IRC 22 Table 1, Cl.601.4) --
-    gamma_m0: float = 1.10      # yielding / instability
-    gamma_m1: float = 1.25      # ultimate stress
-    gamma_v: float = 1.25       # shear connectors
-    gamma_mft: float = 1.35     # fatigue strength
+    @classmethod
+    def from_grades(
+        cls,
+        steel_grade: str,
+        fy_struct_MPa: float,
+        fu_struct_MPa: float,
+        concrete_grade: str,
+        rebar_grade: str = "Fe500",
+    ) -> "SteelProperties":
+        # IRC 22:2015 Cl.602 Annex III — concrete properties by grade.
+        conc = IRC22_2014.cl_602_annexIII_concrete_properties(grade=concrete_grade)
+        # IRC 22:2015 Cl.602 Annex III — reinforcement properties by grade (IS 1786 Table 3).
+        rebar_table = IRC22_2014.cl_602_annexIII_reinforcement_steel_properties()
+        rebar_row = rebar_table.get(rebar_grade, rebar_table["Fe500"])
+        return cls(
+            steel_grade=steel_grade,
+            fy=fy_struct_MPa,
+            fu=fu_struct_MPa,
+            concrete_grade=concrete_grade,
+            fck=float(conc["fck"]),
+            fctm=float(conc["fctm"]),
+            Ecm=float(conc["Ec"]) * 1000.0,             # Annex III stores Ec in GPa
+            rebar_grade=rebar_grade,
+            fy_rebar=float(rebar_row["fy"]),
+        )
 
 
 @dataclass
 class SteelSection:
-    """
-    Plate girder / rolled I-section dimensions (all in mm).
-
-    Depth relation : D = tf_top + dw + tf_bot
-    Shear area Av  = dw x tw
-    """
-    D: float            # overall depth
-    bf_top: float       # top flange width
-    tf_top: float       # top flange thickness
-    bf_bot: float       # bottom flange width
-    tf_bot: float       # bottom flange thickness
-    tw: float           # web thickness
-    fabrication: str = "welded"   # "welded" or "rolled"
+    # Plate-girder I-section dimensions in mm. D = tf_top + dw + tf_bot; shear area = dw × tw.
+    D: float
+    bf_top: float
+    tf_top: float
+    bf_bot: float
+    tf_bot: float
+    tw: float
+    fabrication: str = "welded"
 
     @property
     def dw(self) -> float:
@@ -126,7 +124,7 @@ class SteelSection:
 
     @property
     def y_cg_from_bot(self) -> float:
-        """Steel centroid measured from bottom fibre (mm)."""
+        # Steel centroid measured from bottom fibre (mm).
         y_b = self.tf_bot / 2.0
         y_w = self.tf_bot + self.dw / 2.0
         y_t = self.tf_bot + self.dw + self.tf_top / 2.0
@@ -136,7 +134,7 @@ class SteelSection:
 
     @property
     def Iz_steel(self) -> float:
-        """Second moment of area about centroidal strong axis (mm^4)."""
+        # Second moment of area about centroidal strong axis (mm^4).
         yc = self.y_cg_from_bot
         y_b = self.tf_bot / 2.0
         y_w = self.tf_bot + self.dw / 2.0
@@ -152,7 +150,7 @@ class SteelSection:
 
     @property
     def Zp_steel(self) -> float:
-        """Plastic section modulus about strong axis (mm^3)."""
+        # Plastic section modulus about strong axis (mm^3).
         half_area = self.A_steel / 2.0
         if self.Af_bot >= half_area:
             y_pna = half_area / self.bf_bot
@@ -181,7 +179,7 @@ class SteelSection:
 
     @property
     def Ze_steel(self) -> float:
-        """Elastic section modulus about strong axis (mm^3)."""
+        # Elastic section modulus about strong axis (mm^3).
         yc = self.y_cg_from_bot
         y_top = self.D - yc
         return self.Iz_steel / max(yc, y_top)
@@ -189,7 +187,7 @@ class SteelSection:
 
 @dataclass
 class SlabProperties:
-    """Concrete slab dimensions and reinforcement (all mm)."""
+    # Concrete deck slab dimensions and reinforcement (all in mm). Covers per IRC 112-2020 durability table.
     thickness: float
     haunch_depth: float = 0.0
     rebar_area_top: float = 0.0
@@ -200,19 +198,19 @@ class SlabProperties:
 
 @dataclass
 class GeometryConfig:
-    """Bridge-level geometry parameters (lengths in m)."""
+    # Bridge-level geometry (lengths in m). beam_type: "inner" or "outer" per IRC 22 Cl.603.2.1.
     span: float
     beam_spacing: float
     carriageway_width: float
+    n_girders: int
+    edge_distance: float
     beam_type: str = "inner"
-    n_girders: int = 7
-    edge_distance: float = 1.05
     support_type: str = "simply_supported"
 
 
 @dataclass
 class ShearStudConfig:
-    """Headed stud connector properties (Cl.606)."""
+    # Headed stud connector (IRC 22:2015 Cl.606). fu ≤ 500 MPa per Cl.606.3.1 recommendation.
     diameter: float = 22.0
     height: float = 150.0
     fu: float = 500.0
@@ -221,63 +219,46 @@ class ShearStudConfig:
 
 @dataclass
 class FatigueConfig:
-    """Fatigue design parameters (Cl.605)."""
+    # IRC 22:2015 Cl.605 — fatigue design parameters. Nsc defaults to Table 5 reference life 2×10^6.
     Nsc: int = 2_000_000
-    stress_range: float = 55.0
-    shear_range: float = 30.0
     detail_category: str = "welded"
-    ffn: float = 92.0
-    tfn: float = 59.0
+    ffn: float = FATIGUE_STRENGTH_WELDED_MPA            # Cl.605.3 — normal fatigue strength at 5e6 cycles
+    tfn: float = FATIGUE_SHEAR_STRENGTH_MPA             # Cl.605.3 — shear fatigue strength at 5e6 cycles
 
 
 @dataclass
 class BridgeConfig:
-    """
-    Master bridge configuration - single input to the entire pipeline.
-
-        BridgeConfig
-            |-- DemandExtractor
-            |-- IRC22CapacityCalculator
-            |-- DCREngine
-            +-- ReportGenerator
-    """
-    material: SteelProperties = field(default_factory=SteelProperties)
-    section: SteelSection = field(default_factory=lambda: SteelSection(
-        D=1500, bf_top=400, tf_top=20, bf_bot=500, tf_bot=25, tw=12,
-    ))
-    slab: SlabProperties = field(default_factory=lambda: SlabProperties(thickness=250))
-    geometry: GeometryConfig = field(default_factory=lambda: GeometryConfig(
-        span=33.5, beam_spacing=2.2775, carriageway_width=10.0,
-    ))
+    # Single aggregate input consumed by DemandExtractor / IRC22CapacityCalculator / DCREngine / Report.
+    material: SteelProperties
+    section: SteelSection
+    slab: SlabProperties
+    geometry: GeometryConfig
     studs: ShearStudConfig = field(default_factory=ShearStudConfig)
     fatigue: FatigueConfig = field(default_factory=FatigueConfig)
 
     @classmethod
-    def from_plate_girder_bridge(cls, bridge: Any) -> BridgeConfig:
-        """Extract BridgeConfig from a PlateGirderBridge instance."""
-        from osdagbridge.core.utils.common import KEY_GIRDER, KEY_DECK_CONCRETE_GRADE_BASIC, KEY_DECK_THICKNESS
+    def from_plate_girder_bridge(cls, bridge: Any) -> "BridgeConfig":
+        # Build a BridgeConfig from a solved PlateGirderBridge: materials from the project DB
+        # (which mirrors IS 2062 / IRC 22 Annex III), concrete/rebar resolved via IRC 22 Annex III.
+        from osdagbridge.core.utils.common import (
+            KEY_GIRDER, KEY_DECK_CONCRETE_GRADE_BASIC, KEY_DECK_THICKNESS,
+            KEY_SPAN, KEY_CARRIAGEWAY_WIDTH,
+        )
 
-        # Ensure material/section props exist
-        if not hasattr(bridge, 'material_props') or not bridge.material_props:
+        if not getattr(bridge, "material_props", None):
             bridge.material_props = bridge._build_material_props()
-        if not hasattr(bridge, 'section_props') or not bridge.section_props:
+        if not getattr(bridge, "section_props", None):
             bridge.section_props = bridge._girder_section()
 
-        sp = bridge.material_props.steel_prop
-        cp = bridge.material_props.concrete_prop
+        steel_prop = bridge.material_props.steel_prop
+        fy_struct = steel_prop.Fy / 1_000_000.0
+        fu_struct = (steel_prop.Fu / 1_000_000.0) if steel_prop.Fu else fy_struct * 1.5
 
-        # fu lookup handling
-        fu_val = sp.Fu / 1_000_000 if sp.Fu else (sp.Fy / 1_000_000 * 1.5)
-
-        material = SteelProperties(
-            fy=sp.Fy / 1_000_000,
-            fu=fu_val,
-            Es=sp.E / 1_000_000,
-            fck=cp.fck,
-            fctm=cp.fctm,
-            Ecm=cp.Ecm * 1000,
+        material = SteelProperties.from_grades(
             steel_grade=str(bridge.basic_inputs.get(KEY_GIRDER, "")),
-            concrete_grade=str(bridge.basic_inputs.get(KEY_DECK_CONCRETE_GRADE_BASIC, ""))
+            fy_struct_MPa=fy_struct,
+            fu_struct_MPa=fu_struct,
+            concrete_grade=str(bridge.basic_inputs.get(KEY_DECK_CONCRETE_GRADE_BASIC, "")),
         )
 
         props = bridge.section_props
@@ -290,71 +271,45 @@ class BridgeConfig:
             tw=props["t_w"] * 1000,
         )
 
-        geom = getattr(bridge, 'grillage_geometry', None)
-        deck = getattr(bridge, 'deck_layout', None)
-        sizing = getattr(bridge, 'sizing_result', None)
-
-        from osdagbridge.core.utils.common import KEY_SPAN, KEY_CARRIAGEWAY_WIDTH
-
-        span_L = geom.L if geom else float(bridge.basic_inputs.get(KEY_SPAN, 33.5))
-        spacing = geom.ext_to_int_dist if geom else (sizing.girder_spacing if sizing else 2.2775)
-        edges = geom.edge_dist if geom else (sizing.deck_overhang if sizing else 1.05)
-        n_g = geom.n_l if geom else (sizing.no_of_girders if sizing else 7)
-        cw = deck.carriageway_width if deck else float(bridge.basic_inputs.get(KEY_CARRIAGEWAY_WIDTH, 10.0))
+        geom = getattr(bridge, "grillage_geometry", None)
+        deck = getattr(bridge, "deck_layout", None)
+        sizing = getattr(bridge, "sizing_result", None)
 
         geometry = GeometryConfig(
-            span=span_L,
-            beam_spacing=spacing,
-            carriageway_width=cw,
-            n_girders=n_g,
-            edge_distance=edges,
+            span=geom.L if geom else float(bridge.basic_inputs[KEY_SPAN]),
+            beam_spacing=geom.ext_to_int_dist if geom else sizing.girder_spacing,
+            carriageway_width=deck.carriageway_width if deck else float(bridge.basic_inputs[KEY_CARRIAGEWAY_WIDTH]),
+            n_girders=geom.n_l if geom else sizing.no_of_girders,
+            edge_distance=geom.edge_dist if geom else sizing.deck_overhang,
         )
 
-        thickness_val = float(bridge.basic_inputs.get(KEY_DECK_THICKNESS, 250.0))
-        slab = SlabProperties(thickness=thickness_val)
-
+        slab = SlabProperties(thickness=float(bridge.basic_inputs[KEY_DECK_THICKNESS]))
         return cls(material=material, section=section, geometry=geometry, slab=slab)
 
     @classmethod
     def example_33m_bridge(cls) -> "BridgeConfig":
-        """
-        Factory: realistic 33.5 m simply-supported composite bridge
-        matching the ospgrillage analyser model.
-        """
+        # Reference 33.5 m simply-supported composite bridge matching the ospgrillage analyser model.
+        # All material properties routed through IRC 22:2015 Annex III lookups.
         return cls(
-            material=SteelProperties(
-                steel_grade="E350", fy=350.0, fu=490.0, Es=200_000.0,
-                concrete_grade="M65", fck=65.0, fctm=4.1, Ecm=38_000.0,
-                rebar_grade="Fe500", fy_rebar=500.0,
+            material=SteelProperties.from_grades(
+                steel_grade="E350",
+                fy_struct_MPa=350.0,                    # IS 2062 — E350 yield strength
+                fu_struct_MPa=490.0,                    # IS 2062 — E350 ultimate strength
+                concrete_grade="M65",
+                rebar_grade="Fe500",
             ),
-            section=SteelSection(
-                D=1500, bf_top=400, tf_top=20,
-                bf_bot=500, tf_bot=25, tw=12, fabrication="welded",
-            ),
-            slab=SlabProperties(
-                thickness=250, haunch_depth=0,
-                rebar_area_top=1257.0, rebar_area_bot=1257.0,
-            ),
+            section=SteelSection(D=1500, bf_top=400, tf_top=20, bf_bot=500, tf_bot=25, tw=12),
+            slab=SlabProperties(thickness=250, rebar_area_top=1257.0, rebar_area_bot=1257.0),
             geometry=GeometryConfig(
-                span=33.5, beam_spacing=2.2775,
-                carriageway_width=10.0, beam_type="inner",
+                span=33.5, beam_spacing=2.2775, carriageway_width=10.0,
                 n_girders=7, edge_distance=1.05,
-            ),
-            studs=ShearStudConfig(diameter=22, height=150, fu=500, n_per_section=2),
-            fatigue=FatigueConfig(
-                Nsc=2_000_000, stress_range=55.0, shear_range=30.0,
-                detail_category="welded", ffn=92.0, tfn=59.0,
             ),
         )
 
     def summary(self) -> str:
-        s = self.section
-        g = self.geometry
-        m = self.material
-        return (
-            f"L={g.span}m | {m.steel_grade}/{m.concrete_grade} | "
-            f"D={s.D}mm | {g.n_girders} girders @ {g.beam_spacing}m"
-        )
+        s, g, m = self.section, self.geometry, self.material
+        return (f"L={g.span}m | {m.steel_grade}/{m.concrete_grade} | "
+                f"D={s.D}mm | {g.n_girders} girders @ {g.beam_spacing}m")
 
 
 # ======================================================================
@@ -364,26 +319,16 @@ class BridgeConfig:
 
 @dataclass
 class DemandEnvelope:
-    """
-    Factored force demands at the critical section.
-    Every field carries its unit in the name suffix for clarity.
-    """
-    # -- ULS demands --
+    # Factored force demands at the critical section. Unit suffix is part of each name for clarity.
     Mu_kNm: float = 0.0
     Vu_kN: float = 0.0
     Nu_kN: float = 0.0
     M_construction_kNm: float = 0.0
-
-    # -- SLS demands --
     delta_live_mm: float = 0.0
     delta_total_mm: float = 0.0
-
-    # -- Fatigue demands --
     stress_range_MPa: float = 0.0
     shear_range_MPa: float = 0.0
     Nsc: int = 2_000_000
-
-    # -- Metadata --
     governing_combination: str = "ULS Combination I"
     location: str = "midspan"
     member: str = ""
@@ -391,13 +336,7 @@ class DemandEnvelope:
 
 
 class DemandExtractor:
-    """
-    Factory for DemandEnvelope objects.
-
-    Two entry-points:
-        1. from_manual(...)           - user supplies demand values directly
-        2. apply_load_factors(...)    - builds envelope from unfactored DL/LL
-    """
+    # Factory for DemandEnvelope: from_manual / from_analysis_results / apply_load_factors.
 
     @staticmethod
     def from_manual(
@@ -414,7 +353,7 @@ class DemandExtractor:
         location: str = "midspan",
         member: str = "interior_girder",
     ) -> DemandEnvelope:
-        """Create demand envelope from user-supplied values."""
+        # Build a DemandEnvelope from directly supplied factored quantities.
         return DemandEnvelope(
             Mu_kNm=Mu_kNm, Vu_kN=Vu_kN, Nu_kN=Nu_kN, M_construction_kNm=M_construction_kNm,
             delta_live_mm=delta_live_mm, delta_total_mm=delta_total_mm,
@@ -427,91 +366,220 @@ class DemandExtractor:
     def from_analysis_results(
         results: PlateGirderAnalysisResults,
         element_ids: list[int],
-        delta_live_mm: float = 28.0,
-        delta_total_mm: float = 38.0,
-        stress_range_MPa: float = 55.0,
-        shear_range_MPa: float = 30.0,
+        node_ids: list[int],
+        Ze_steel_mm3: float,
+        Aw_mm2: float,
         Nsc: int = 2_000_000,
-        member_name: str = "interior_longitudinal_beam"
+        member_name: str = "interior_longitudinal_beam",
     ) -> DemandEnvelope:
-        """
-        Extract max factored forces directly from analysis results dataset for given elements.
-        """
-        # Convert dataset variables N -> kN, Nm -> kNm (divide by 1000)
+        # Extract ULS Mu/Vu envelopes, construction moment, deflections, and fatigue ranges
+        # directly from the grillage xarray dataset. forces→N/Nm, displacements→m.
+        import warnings
+        import numpy as np
+
+        ds = results.ds
+        lc_groups = results.classify_loadcases()
+        dead_lcs = lc_groups["dead"]
+        live_static = lc_groups["vehicle_static"]
+        live_moving = lc_groups["vehicle_moving"]
+        all_live_lcs = live_static + live_moving
+
+        def _as_float(arr):
+            """Cast xarray/object array to float, coercing non-numeric to NaN."""
+            a = np.asarray(arr)
+            if a.dtype == object:
+                flat = np.empty(a.size, dtype=float)
+                for i, v in enumerate(a.flat):
+                    try:
+                        flat[i] = float(v)
+                    except (TypeError, ValueError):
+                        flat[i] = np.nan
+                return flat.reshape(a.shape)
+            return a.astype(float)
+
+        # ------------------------------------------------------------------
+        # (1) ULS Mu, Vu  — absolute envelope across every LC
+        # ------------------------------------------------------------------
         max_mz = 0.0
         max_vy = 0.0
-        construction_mz = 0.0
-
-        # Loadcase names relevant to construction stage
-        c_cases = ["girder self weight", "deck slab load", "girder_self_weight", "deck_slab_load", "steel", "wet_concrete"]
-
         for lc in results.get_available_loadcases():
             try:
-                # Force arrays for the elements
-                mz_vals = results.ds.sel(Loadcase=lc, Element=element_ids, Component=["Mz_i", "Mz_j"])["forces"].values
-                vy_vals = results.ds.sel(Loadcase=lc, Element=element_ids, Component=["Vy_i", "Vy_j"])["forces"].values
-
-                # Check maximum absolute magnitude for the loadcase across all elements/nodes
-                mz_abs_max = abs(mz_vals).max()
-                vy_abs_max = abs(vy_vals).max()
-
-                if mz_abs_max > max_mz:
-                    max_mz = mz_abs_max
-                if vy_abs_max > max_vy:
-                    max_vy = vy_abs_max
-
-                lc_str = str(lc).lower()
-                if any(c in lc_str for c in c_cases):
-                    # For construction moment, we safely envelope the absolute maxima for those specific cases
-                    construction_mz += mz_abs_max
+                mz = _as_float(
+                    ds.sel(Loadcase=lc, Element=element_ids,
+                           Component=["Mz_i", "Mz_j"])["forces"].values
+                )
+                vy = _as_float(
+                    ds.sel(Loadcase=lc, Element=element_ids,
+                           Component=["Vy_i", "Vy_j"])["forces"].values
+                )
+                mz_finite = mz[~np.isnan(mz)]
+                vy_finite = vy[~np.isnan(vy)]
+                if mz_finite.size:
+                    max_mz = max(max_mz, float(np.abs(mz_finite).max()))
+                if vy_finite.size:
+                    max_vy = max(max_vy, float(np.abs(vy_finite).max()))
             except KeyError:
                 continue
 
         Mu_kNm = max_mz / 1000.0
         Vu_kN = max_vy / 1000.0
 
-        M_const_kNm = (construction_mz * 1.35) / 1000.0
-        # Fallback if no construction cases identified, use 25% of composite moment
-        if M_const_kNm == 0:
-            M_const_kNm = Mu_kNm * 0.25
+        # ------------------------------------------------------------------
+        # (2) Construction moment  — steel self-wt + wet concrete only
+        # ------------------------------------------------------------------
+        c_patterns = ("girder self weight", "deck slab load",
+                      "girder_self_weight", "deck_slab_load",
+                      "steel", "wet_concrete")
+        construction_mz = 0.0
+        matched = 0
+        for lc in dead_lcs:
+            lc_str = str(lc).lower()
+            if any(p in lc_str for p in c_patterns):
+                try:
+                    mz = _as_float(
+                        ds.sel(Loadcase=lc, Element=element_ids,
+                               Component=["Mz_i", "Mz_j"])["forces"].values
+                    )
+                    mz_finite = mz[~np.isnan(mz)]
+                    if mz_finite.size:
+                        construction_mz += float(np.abs(mz_finite).max())
+                        matched += 1
+                except KeyError:
+                    continue
+
+        if matched == 0:
+            warnings.warn(
+                "No construction-stage load cases (girder SW / wet concrete) "
+                "identified in analysis results. M_construction = 0; the LTB "
+                "construction-stage check will be skipped.",
+                stacklevel=2,
+            )
+            M_const_kNm = 0.0
+        else:
+            # IRC 6:2017 Table B.2 — ULS partial factor for dead load (adding, basic combination).
+            gamma_dl = IRC6_2017.table_B2(load_type="dead_load", effect="adding", combination="basic")
+            M_const_kNm = (construction_mz * gamma_dl) / 1000.0
+
+        # ------------------------------------------------------------------
+        # (3) Deflections from `displacements.Component="y"`
+        #     live  : max |y-disp| over live LCs × girder nodes
+        #     total : max |Σ dead-LC y-disp  +  live-LC y-disp| per node
+        # ------------------------------------------------------------------
+        delta_live_m = 0.0
+        delta_dead_m = 0.0
+        try:
+            disp_y = ds.displacements.sel(Component="y", Node=node_ids)
+
+            if all_live_lcs:
+                live_vals = _as_float(disp_y.sel(Loadcase=all_live_lcs).values)
+                live_finite = live_vals[~np.isnan(live_vals)]
+                if live_finite.size:
+                    delta_live_m = float(np.abs(live_finite).max())
+
+            if dead_lcs:
+                dead_vals = _as_float(disp_y.sel(Loadcase=dead_lcs).values)
+                dead_vals = np.nan_to_num(dead_vals, nan=0.0)
+                # sum across LCs for each node, then take |·|max
+                if dead_vals.ndim > 1:
+                    per_node = dead_vals.sum(axis=0)
+                else:
+                    per_node = dead_vals
+                if per_node.size:
+                    delta_dead_m = float(np.abs(per_node).max())
+        except (KeyError, ValueError) as e:
+            warnings.warn(
+                f"Could not extract vertical deflections from dataset: {e}. "
+                "delta_live / delta_total set to 0.",
+                stacklevel=2,
+            )
+
+        delta_live_mm = delta_live_m * 1000.0
+        delta_total_mm = (delta_dead_m + delta_live_m) * 1000.0
+
+        # ------------------------------------------------------------------
+        # (4) Fatigue ranges from moving-load envelope
+        #     stress_range = (Mz_max - Mz_min) / Ze_steel    [MPa]
+        #     shear_range  = (Vy_max - Vy_min) / Aw           [MPa]
+        # ------------------------------------------------------------------
+        stress_range_MPa = 0.0
+        shear_range_MPa = 0.0
+
+        if live_moving and Ze_steel_mm3 > 0:
+            try:
+                mz_i = _as_float(
+                    ds.forces.sel(Loadcase=live_moving, Element=element_ids,
+                                  Component="Mz_i").values
+                ).flatten()
+                mz_j = _as_float(
+                    ds.forces.sel(Loadcase=live_moving, Element=element_ids,
+                                  Component="Mz_j").values
+                ).flatten()
+                mz_all = np.concatenate([mz_i, mz_j])
+                mz_all = mz_all[~np.isnan(mz_all)]
+                if mz_all.size:
+                    # Nm → Nmm : ×1000   ;   σ = M/Ze
+                    mz_range_Nmm = (mz_all.max() - mz_all.min()) * 1000.0
+                    stress_range_MPa = float(mz_range_Nmm / Ze_steel_mm3)
+            except (KeyError, ValueError):
+                pass
+
+        if live_moving and Aw_mm2 > 0:
+            try:
+                vy_i = _as_float(
+                    ds.forces.sel(Loadcase=live_moving, Element=element_ids,
+                                  Component="Vy_i").values
+                ).flatten()
+                vy_j = _as_float(
+                    ds.forces.sel(Loadcase=live_moving, Element=element_ids,
+                                  Component="Vy_j").values
+                ).flatten()
+                vy_all = np.concatenate([vy_i, vy_j])
+                vy_all = vy_all[~np.isnan(vy_all)]
+                if vy_all.size:
+                    vy_range_N = vy_all.max() - vy_all.min()
+                    shear_range_MPa = float(vy_range_N / Aw_mm2)
+            except (KeyError, ValueError):
+                pass
 
         return DemandEnvelope(
             Mu_kNm=round(Mu_kNm, 2),
             Vu_kN=round(Vu_kN, 2),
             Nu_kN=0.0,
             M_construction_kNm=round(M_const_kNm, 2),
-            delta_live_mm=delta_live_mm,
-            delta_total_mm=delta_total_mm,
-            stress_range_MPa=stress_range_MPa,
-            shear_range_MPa=shear_range_MPa,
+            delta_live_mm=round(delta_live_mm, 3),
+            delta_total_mm=round(delta_total_mm, 3),
+            stress_range_MPa=round(stress_range_MPa, 3),
+            shear_range_MPa=round(shear_range_MPa, 3),
             Nsc=Nsc,
             governing_combination="Max Extracted (All LCs)",
             location="critical element",
             member=member_name,
-            source="grillage_analysis"
+            source="grillage_analysis",
         )
-
+        
     @staticmethod
     def apply_load_factors(
         M_dead_kNm: float,
         M_live_kNm: float,
         V_dead_kN: float,
         V_live_kN: float,
-        gamma_dead: float = 1.35,
-        gamma_live: float = 1.50,
-        impact_factor: float = 1.10,
+        span_m: float,
+        vehicle_class: str = KEY_VEHICLE[0],            # default Class 70R(W)
     ) -> DemandEnvelope:
-        """
-        Build demand envelope from unfactored dead/live force components.
-        IRC:6-2017 load combination factors applied.
-        """
-        Mu = gamma_dead * M_dead_kNm + gamma_live * impact_factor * M_live_kNm
-        Vu = gamma_dead * V_dead_kN + gamma_live * impact_factor * V_live_kN
+        # IRC 6:2017 Table B.2 (ULS basic) — γDL = 1.35, γLL(leading) = 1.50.
+        gamma_dl = IRC6_2017.table_B2(load_type="dead_load", effect="adding", combination="basic")
+        gamma_ll = IRC6_2017.table_B2(load_type="live_load", load_category="leading", combination="basic")
+        # IRC 6:2017 Cl.208.2 / 208.3 — impact factor by vehicle class.
+        if vehicle_class in (KEY_VEHICLE[0], KEY_VEHICLE[1]):       # Class 70R(W) / 70R(T)
+            impact = 1.0 + IRC6_2017.cl_208_3_impact_factor(span_m)
+        else:                                                       # Class A / Class B
+            impact = 1.0 + IRC6_2017.cl_208_2_impact_factor(span_m)
+
+        Mu = gamma_dl * M_dead_kNm + gamma_ll * impact * M_live_kNm
+        Vu = gamma_dl * V_dead_kN + gamma_ll * impact * V_live_kN
         return DemandEnvelope(
             Mu_kNm=round(Mu, 3), Vu_kN=round(Vu, 3),
-            governing_combination=(
-                f"gDL={gamma_dead} x DL + gLL={gamma_live} x IF={impact_factor} x LL"
-            ),
+            governing_combination=f"γDL={gamma_dl}·DL + γLL={gamma_ll}·IF={impact:.3f}·LL",
             location="midspan", source="factored_components",
         )
 
@@ -523,64 +591,35 @@ class DemandExtractor:
 
 @dataclass
 class CapacityResults:
-    """Aggregated capacity values from all IRC 22 checks."""
-
-    # Cl.603.2.1 - Effective width
-    beff_mm: float = 0.0
-
-    # Cl.603.3.1 - Positive moment capacity
-    xu_mm: float = 0.0
+    # Aggregated IRC 22:2015 capacity values keyed by the clause that produced them.
+    beff_mm: float = 0.0                                # Cl.603.2.1
+    xu_mm: float = 0.0                                  # Cl.603.3.1
     pna_location: str = ""
     Mp_kNm: float = 0.0
     Md_kNm: float = 0.0
-
-    # Cl.603.3.3.1 - Buckling resistance moment
-    Mcr_kNm: float = 0.0
+    Mcr_kNm: float = 0.0                                # Cl.603.3.3.1
     lambda_LT: float = 0.0
     chi_LT: float = 0.0
     Mb_kNm: float = 0.0
-
-    # Cl.603.3.3.2 - Shear
-    Av_mm2: float = 0.0
+    Av_mm2: float = 0.0                                 # Cl.603.3.3.2
     Vn_kN: float = 0.0
     Vd_kN: float = 0.0
-
-    # Cl.603.3.3.3 - Combined bending + shear
-    Mdv_kNm: float = 0.0
+    Mdv_kNm: float = 0.0                                # Cl.603.3.3.3
     beta_interaction: float = 0.0
-
-    # Cl.604.3.2 - Deflection limits
-    defl_limit_live_mm: float = 0.0
+    defl_limit_live_mm: float = 0.0                     # Cl.604.3.2
     defl_limit_total_mm: float = 0.0
-
-    # Cl.604.3.1 - SLS stress limits
-    sigma_c_limit_MPa: float = 0.0
+    sigma_c_limit_MPa: float = 0.0                      # Cl.604.3.1
     sigma_s_limit_MPa: float = 0.0
-
-    # Cl.605 - Fatigue
-    f_fd_MPa: float = 0.0
+    f_fd_MPa: float = 0.0                               # Cl.605
     tau_fd_MPa: float = 0.0
-
-    # Cl.606 - Shear connectors
-    Qu_kN: float = 0.0
+    Qu_kN: float = 0.0                                  # Cl.606
     stud_spacing_mm: float = 0.0
-
-    # Meta
     source: str = "built-in"
     details: Dict[str, dict] = field(default_factory=dict)
 
 
 class IRC22CapacityCalculator:
-    """
-    Clause-by-clause IRC 22:2015 capacity calculator.
-    Uses built-in formulas for all clause computations.
-
-    Usage
-    -----
-        config  = BridgeConfig.example_33m_bridge()
-        calc    = IRC22CapacityCalculator(config)
-        results = calc.compute_all(Vu_kN=850.0)
-    """
+    # Clause-by-clause IRC 22:2015 capacity calculator driven by a single BridgeConfig.
 
     def __init__(self, config: BridgeConfig):
         self.cfg = config
@@ -591,12 +630,8 @@ class IRC22CapacityCalculator:
         self.studs = config.studs
         self.fatigue = config.fatigue
 
-    # ---------------------------------------------------------
-    #  Cl.603.2.1 - Effective Width (Simply Supported)
-    # ---------------------------------------------------------
-
+    # IRC 22:2015 Cl.603.2.1 — effective width of concrete flange for simply-supported girder.
     def compute_effective_width(self) -> dict:
-        """IRC 22:2015 Cl.603.2.1 - Effective width of concrete flange."""
         Lo_mm = self.geo.span * 1000.0
         B_mm = self.geo.beam_spacing * 1000.0
 
@@ -615,12 +650,8 @@ class IRC22CapacityCalculator:
             "clause": "IRC 22:2015 - Cl.603.2.1", "source": "built-in",
         }
 
-    # ---------------------------------------------------------
-    #  Cl.603 - Section Classification
-    # ---------------------------------------------------------
-
+    # IRC 22:2015 Cl.603 — section classification (web + flange governed by d/tw and b/tf ratios).
     def classify_section(self) -> dict:
-        """IRC 22:2015 Cl.603 - web & flange classification."""
         fy = self.mat.fy
         epsilon = math.sqrt(250.0 / fy)
         sec = self.sec
@@ -661,12 +692,8 @@ class IRC22CapacityCalculator:
             return "Semi-Compact"
         return "Slender"
 
-    # ---------------------------------------------------------
-    #  Cl.603.3.1 - Positive Moment Capacity (Plastic)
-    # ---------------------------------------------------------
-
+    # IRC 22:2015 Cl.603.3.1 — plastic positive moment capacity (sagging, full shear interaction).
     def compute_moment_capacity(self, beff_mm: float) -> dict:
-        """IRC 22:2015 Cl.603.3.1 - Plastic moment capacity (sagging)."""
         sec = self.sec
         mat = self.mat
         slab = self.slab
@@ -746,12 +773,8 @@ class IRC22CapacityCalculator:
             (base + sec.tf_top + sec.dw, sec.tf_bot, sec.bf_bot),
         ]
 
-    # ---------------------------------------------------------
-    #  Cl.603.3.3.2 - Plastic Shear Resistance
-    # ---------------------------------------------------------
-
+    # IRC 22:2015 Cl.603.3.3.2 — plastic shear resistance of the web (Vd = Av·fy / (√3·γm0)).
     def compute_shear_capacity(self) -> dict:
-        """IRC 22:2015 Cl.603.3.3.2 - Plastic shear resistance."""
         sec = self.sec
         fyw, gm0 = self.mat.fy, self.mat.gamma_m0
         Av = sec.dw * sec.tw
@@ -765,18 +788,13 @@ class IRC22CapacityCalculator:
             "clause": "IRC 22:2015 - Cl.603.3.3.2", "source": "built-in",
         }
 
-    # ---------------------------------------------------------
-    #  Cl.603.3.3.1 - Lateral-Torsional Buckling Resistance
-    # ---------------------------------------------------------
-
+    # IRC 22:2015 Cl.603.3.3.1 — lateral-torsional buckling resistance at construction stage.
     def compute_buckling_resistance(self, beff_mm: float) -> dict:
-        """IRC 22:2015 Cl.603.3.3.1 - Buckling resistance moment."""
         sec = self.sec
         mat = self.mat
         fy, Es = mat.fy, mat.Es
-        G = Es / (2.0 * (1.0 + 0.3))
-        # In reality, temporary or permanent cross-bracings are installed at 4m to 6m intervals.
-        # We clamp the unbraced length LLT to 6000 mm for accurate construction stage evaluation.
+        G = mat.Gs                                      # IRC 22 Annex III — shear modulus.
+        # Cross-bracing at 4–6 m intervals in practice — clamp LLT to 6000 mm for the construction stage.
         LLT_mm = min(self.geo.span * 1000.0, 6000.0)
 
         It = (sec.bf_top * sec.tf_top ** 3
@@ -817,12 +835,8 @@ class IRC22CapacityCalculator:
             "clause": "IRC 22:2015 - Cl.603.3.3.1", "source": "built-in",
         }
 
-    # ---------------------------------------------------------
-    #  Cl.603.3.3.3 - Combined Bending + High Shear
-    # ---------------------------------------------------------
-
+    # IRC 22:2015 Cl.603.3.3.3 — reduced bending resistance under high shear (V > 0.6·Vd).
     def compute_combined_bending_shear(self, Md_kNm: float, V_kN: float, Vd_kN: float) -> dict:
-        """IRC 22:2015 Cl.603.3.3.3 - Reduced bending under high shear."""
         sec = self.sec
         fy, gm0 = self.mat.fy, self.mat.gamma_m0
         hw = sec.dw + sec.tf_top / 2.0 + sec.tf_bot / 2.0
@@ -844,121 +858,110 @@ class IRC22CapacityCalculator:
             "clause": "IRC 22:2015 - Cl.603.3.3.3", "source": "built-in",
         }
 
-    # ---------------------------------------------------------
-    #  Cl.604.3 - Modular Ratio
-    # ---------------------------------------------------------
-
+    # IRC 22:2015 Cl.604.3 — short- and long-term modular ratio (min bounds 7.5 / 15.0).
     def compute_modular_ratio(self) -> dict:
-        """IRC 22:2015 Cl.604.3 - Short- and long-term modular ratio."""
-        Es, Ecm = self.mat.Es, self.mat.Ecm
-        Kc = 0.5
-        m_short = max(Es / Ecm, 7.5)
-        m_long = max(Es / (Kc * Ecm), 15.0)
+        res = IRC22_2014.cl_604_3_modular_ratio(Ecm=self.mat.Ecm, Kc=0.5)
         return {
-            "Es_MPa": Es, "Ecm_MPa": Ecm, "Kc": Kc,
-            "m_short": round(m_short, 3), "m_long": round(m_long, 3),
-            "clause": "IRC 22:2015 - Cl.604.3", "source": "built-in",
+            "Es_MPa": res["Es_MPa"], "Ecm_MPa": res["Ecm_MPa"], "Kc": res["Kc"],
+            "m_short": res["m_short_term"], "m_long": res["m_long_term"],
+            "clause": res["clause"], "source": "IRC22_2014",
         }
 
-    # ---------------------------------------------------------
-    #  Cl.604.3.1 - SLS Limiting Stresses
-    # ---------------------------------------------------------
-
+    # IRC 22:2015 Cl.604.3.1 — SLS allowable stresses (concrete k1·fck, rebar k3·fyk, steel 0.9·fy).
     def compute_sls_stress_limits(self) -> dict:
-        """IRC 22:2015 Cl.604.3.1 - Allowable stresses for serviceability."""
+        res = IRC22_2014.cl_604_3_1_limiting_stresses(
+            f_ck_cu=self.mat.fck,
+            f_yk_reinf=self.mat.fy_rebar,
+            f_y_struct=self.mat.fy,
+        )
         return {
-            "sigma_c_allow_MPa": round(0.48 * self.mat.fck, 2),
-            "sigma_rebar_allow_MPa": round(0.80 * self.mat.fy_rebar, 2),
-            "sigma_steel_allow_MPa": round(0.9 * self.mat.fy, 2),
-            "clause": "IRC 22:2015 - Cl.604.3.1", "source": "built-in",
+            "sigma_c_allow_MPa": res["concrete_allowable_stress_MPa"],
+            "sigma_rebar_allow_MPa": res["reinforcement_allowable_stress_MPa"],
+            "sigma_steel_allow_MPa": res["steel_equivalent_limit_0.9fy_MPa"],
+            "clause": res["clause"], "source": "IRC22_2014",
         }
 
-    # ---------------------------------------------------------
-    #  Cl.604.3.2 - Deflection Limits
-    # ---------------------------------------------------------
-
+    # IRC 22:2015 Cl.604.3.2 — deflection limits (live+impact ≤ L/800, total ≤ L/600).
     def compute_deflection_limits(self) -> dict:
-        """IRC 22:2015 Cl.604.3.2 - Deflection limits."""
-        span_mm = self.geo.span * 1000.0
+        res = IRC22_2014.cl_604_3_2_deflection_limits(span_m=self.geo.span)
+        main = res["main_girder_limits"]
         return {
-            "span_mm": span_mm,
-            "defl_limit_live_mm": round(span_mm / 800.0, 3),
-            "defl_limit_total_mm": round(span_mm / 600.0, 3),
-            "clause": "IRC 22:2015 - Cl.604.3.2", "source": "built-in",
+            "span_mm": res["span_mm"],
+            "defl_limit_live_mm": main["allow_live_impact_mm"],
+            "defl_limit_total_mm": main["allow_total_mm"],
+            "clause": res["clause"], "source": "IRC22_2014",
         }
 
-    # ---------------------------------------------------------
-    #  Cl.605 - Fatigue Assessment
-    # ---------------------------------------------------------
-
-    def compute_fatigue(self) -> dict:
-        """IRC 22:2015 Cl.605 - Fatigue design strength."""
+    # IRC 22:2015 Cl.605.2 / 605.3 / 605.4 — thickness correction μr, f_f, τ_f, f_fd, τ_fd.
+    def compute_fatigue(self, stress_range_MPa: float = 0.0) -> dict:
         fat = self.fatigue
         mat = self.mat
-        Nsc, ffn, tfn = fat.Nsc, fat.ffn, fat.tfn
-        gamma_mft = mat.gamma_mft
         tp = max(self.sec.tf_top, self.sec.tf_bot)
 
-        if self.sec.fabrication == "welded" and tp > 25.0:
-            mu_r = min((25.0 / tp) ** 0.25, 1.0)
-        else:
-            mu_r = 1.0
+        # Cl.605.2 — thickness correction factor μr (welded + tp>25 mm only).
+        design = IRC22_2014.cl_605_2_fatigue_design(
+            tp_mm=tp,
+            f_MPa=max(stress_range_MPa, 1e-6),
+            Nsc=fat.Nsc,
+            section_type=self.sec.fabrication,
+            gamma_mft=mat.gamma_mft,
+        )
+        mu_r = design["mu_r"]
 
-        exponent = 1.0 / 3.0 if Nsc <= 5e6 else 1.0 / 5.0
-        f_f = ffn * (5e6 / Nsc) ** exponent
-        tau_f = tfn * (5e6 / Nsc) ** (1.0 / 5.0)
-        f_fd = mu_r * f_f / gamma_mft
-        tau_fd = mu_r * tau_f / gamma_mft
+        # Cl.605.3 — design fatigue stress ranges f_f and τ_f for Nsc cycles.
+        strength = IRC22_2014.cl_605_3_fatigue_strength(
+            Nsc=fat.Nsc, section_type=self.sec.fabrication, ffn=fat.ffn, tfn=fat.tfn,
+        )
+
+        # Cl.605.4 — design fatigue strengths after μr and γmft.
+        assessment = IRC22_2014.cl_605_4_fatigue_assessment(
+            ff=strength["f_f_normal_MPa"],
+            tf=strength["tau_f_shear_MPa"],
+            mu_r=mu_r,
+            gamma_mft=mat.gamma_mft,
+            fy=mat.fy,
+        )
 
         return {
-            "mu_r": round(mu_r, 4),
-            "f_f_MPa": round(f_f, 3), "tau_f_MPa": round(tau_f, 3),
-            "f_fd_MPa": round(f_fd, 3), "tau_fd_MPa": round(tau_fd, 3),
-            "Nsc": Nsc,
-            "exempt_stress_check": fat.stress_range < 27.0 / gamma_mft,
+            "mu_r": mu_r,
+            "f_f_MPa": strength["f_f_normal_MPa"],
+            "tau_f_MPa": strength["tau_f_shear_MPa"],
+            "f_fd_MPa": assessment["f_fd_MPa"],
+            "tau_fd_MPa": assessment["tau_fd_MPa"],
+            "Nsc": fat.Nsc,
+            "exempt_stress_check": design["stress_condition_ok"],
             "clause": "IRC 22:2015 - Cl.605.2 / 605.3 / 605.4",
-            "source": "built-in",
+            "source": "IRC22_2014",
         }
 
-    # ---------------------------------------------------------
-    #  Cl.606.3.1 - Shear Stud Connector Strength
-    # ---------------------------------------------------------
-
+    # IRC 22:2015 Cl.606.3.1 — headed-stud design strength Qu (Eq 6.1: min of steel and concrete modes).
     def compute_stud_capacity(self) -> dict:
-        """IRC 22:2015 Cl.606.3.1 - Design strength of headed stud."""
         stud = self.studs
         mat = self.mat
-        gv = mat.gamma_v
-        d, hs, fu = stud.diameter, stud.height, stud.fu
-        fck_cu, Ecm = mat.fck, mat.Ecm
-
-        fck_cyl = 0.8 * fck_cu
-        hd = hs / d
-        alpha = 1.0 if hd >= 4.0 else 0.2 * (hd + 1.0)
-        A_stud = math.pi * d ** 2 / 4.0
-
-        Qu_steel = 0.8 * fu * A_stud / gv
-        Qu_conc = 0.29 * alpha * d ** 2 * math.sqrt(fck_cyl * Ecm) / gv
-        Qu = min(Qu_steel, Qu_conc)
-        governs = "steel" if Qu_steel <= Qu_conc else "concrete"
-
+        res = IRC22_2014.cl_606_3_1_stud_connector_strength(
+            d_mm=stud.diameter,
+            hs_mm=stud.height,
+            fu_MPa=stud.fu,
+            fck_cu_MPa=mat.fck,
+            Ecm_MPa=mat.Ecm,
+            gamma_v=mat.gamma_v,
+            use_table7_reference=False,
+            debug=True,
+        )
         return {
-            "Qu_kN": round(Qu / 1e3, 3),
-            "Qu_steel_kN": round(Qu_steel / 1e3, 3),
-            "Qu_conc_kN": round(Qu_conc / 1e3, 3),
-            "governs": governs, "alpha": round(alpha, 4),
-            "fck_cyl_MPa": round(fck_cyl, 2),
-            "clause": "IRC 22:2015 - Cl.606.3.1 (Eq 6.1)",
-            "source": "built-in",
+            "Qu_kN": res["Qu_kN"],
+            "Qu_steel_kN": res["Qu_steel_kN"],
+            "Qu_conc_kN": res["Qu_concrete_kN"],
+            "governs": res["governing_mode"],
+            "alpha": res["alpha"],
+            "fck_cyl_MPa": res["fck_cyl_MPa"],
+            "clause": res["clause"],
+            "source": "IRC22_2014",
         }
 
-    # ---------------------------------------------------------
-    #  Cl.606.4.1 - Longitudinal Shear & Stud Spacing
-    # ---------------------------------------------------------
-
+    # IRC 22:2015 Cl.606.4.1 — required headed-stud spacing at ULS (longitudinal shear).
     def compute_stud_spacing(self, Vu_kN: float, beff_mm: float,
                               xu_mm: float, Qu_kN: float) -> dict:
-        """IRC 22:2015 Cl.606.4.1 - Required stud spacing at ULS."""
         sec, mat, slab = self.sec, self.mat, self.slab
         ds, h_haunch = slab.thickness, slab.haunch_depth
         n_studs = self.studs.n_per_section
@@ -985,14 +988,10 @@ class IRC22CapacityCalculator:
             "clause": "IRC 22:2015 - Cl.606.4.1", "source": "built-in",
         }
 
-    # ---------------------------------------------------------
-    #  Master: compute_all()
-    # ---------------------------------------------------------
-
-    def compute_all(self, Vu_kN: float = 0.0) -> CapacityResults:
-        """Run every IRC 22 capacity computation and return aggregated results."""
+    # Orchestrator — runs every IRC 22:2015 clause computation into one CapacityResults.
+    def compute_all(self, Vu_kN: float = 0.0, stress_range_MPa: float = 0.0) -> CapacityResults:
         results = CapacityResults()
-        results.source = "built-in"
+        results.source = "IRC22_2014"
 
         # 1. Effective width
         eff_w = self.compute_effective_width()
@@ -1050,7 +1049,7 @@ class IRC22CapacityCalculator:
         results.details["deflection_limits"] = defl
 
         # 10. Fatigue
-        fatigue = self.compute_fatigue()
+        fatigue = self.compute_fatigue(stress_range_MPa=stress_range_MPa)
         results.f_fd_MPa = fatigue["f_fd_MPa"]
         results.tau_fd_MPa = fatigue["tau_fd_MPa"]
         results.details["fatigue"] = fatigue
@@ -1078,7 +1077,7 @@ class IRC22CapacityCalculator:
 
 @dataclass
 class CheckResult:
-    """Single design-check output row."""
+    # Single row of the design-check table (one IRC clause evaluated).
     check_id: int
     name: str
     clause: str
@@ -1087,19 +1086,12 @@ class CheckResult:
     capacity: float
     capacity_unit: str
     dcr: float
-    status: str             # "PASS" | "WARN" | "FAIL" | "INFO"
+    status: str                                         # PASS | WARN | FAIL | INFO
     note: str = ""
 
 
 class DCREngine:
-    """
-    Demand-to-Capacity Ratio engine.
-
-    Classification:
-        PASS : DCR < 0.90
-        WARN : 0.90 <= DCR < 1.00
-        FAIL : DCR >= 1.00
-    """
+    # Demand/Capacity ratio engine — PASS < 0.90, WARN 0.90–1.00, FAIL ≥ 1.00.
 
     PASS_THRESHOLD = 0.90
     FAIL_THRESHOLD = 1.00
@@ -1134,18 +1126,8 @@ class DCREngine:
         self.checks.append(result)
         return result
 
+    # Run all eight IRC 22:2015 design checks (flexure, shear, interaction, LTB, deflections, fatigue).
     def run_all_checks(self) -> List[CheckResult]:
-        """
-        Execute all IRC 22 design checks:
-            1. ULS Flexure           (Cl.603.3.1)
-            2. ULS Shear             (Cl.603.3.3.2)
-            3. Bending-Shear         (Cl.603.3.3.3)
-            4. LTB Construction      (Cl.603.3.3.1)
-            5. SLS Deflection Live   (Cl.604.3.2)
-            6. SLS Deflection Total  (Cl.604.3.2)
-            7. Fatigue Normal        (Cl.605)
-            8. Fatigue Shear         (Cl.605)
-        """
         self.checks.clear()
         d, c = self.demand, self.capacity
 
@@ -1219,7 +1201,7 @@ class DCREngine:
 
 
 class ReportGenerator:
-    """Generates formatted design-check reports."""
+    # Text-report formatter for BridgeConfig + DemandEnvelope + CapacityResults + DCREngine.
 
     LINE_WIDTH = 78
     BAR_WIDTH = 45
@@ -1409,21 +1391,13 @@ class ReportGenerator:
         lines.append("")
         return "\n".join(lines)
 
+    # Assemble the full formatted report string.
     def generate(self) -> str:
-        """Build the complete formatted report string."""
         return "\n".join([
             self._build_header(), self._build_config(), self._build_demands(),
             self._build_capacity_summary(), self._build_dcr_table(),
             self._build_bar_chart(), self._build_verdict(),
         ])
-
-    def save(self, filepath: str) -> str:
-        """Write the report to a text file."""
-        report_text = self.generate()
-        os.makedirs(os.path.dirname(filepath) or ".", exist_ok=True)
-        with open(filepath, "w", encoding="utf-8") as f:
-            f.write(report_text)
-        return os.path.abspath(filepath)
 
 
 # ======================================================================
@@ -1432,88 +1406,139 @@ class ReportGenerator:
 
 
 def _example_demands(config: BridgeConfig) -> DemandEnvelope:
-    """
-    Realistic factored demand values for the 33.5 m bridge.
-    """
-    L = config.geometry.span
+    # Reference factored demands for the 33.5 m example bridge. Dead loads computed from material
+    # unit weights (IRC 6:2017 Cl.203), partial factors from IRC 6:2017 Table B.2 (ULS basic),
+    # impact factor from IRC 6:2017 Cl.208.3 (Class 70R). Deflection placeholders are illustrative
+    # only — real runs should come from the grillage analyser via from_analysis_results().
+    L_m = config.geometry.span
+
+    # IRC 6:2017 Cl.203 — steel density = 7.8 t/m³ = 76.518 kN/m³.
+    unit_wts = IRC6_2017.cl_203_dead_load()
+    gamma_steel_kN_m3 = unit_wts["steel"] * 9.81                # 7.8 t/m³ → kN/m³
+    gamma_concrete_kN_m3 = unit_wts["concrete_cement_reinforced"] * 9.81
+
     A_steel_m2 = config.section.A_steel * 1e-6
-    w_sw = A_steel_m2 * 78.5
-    w_slab = 25.0 * (config.slab.thickness / 1000.0) * config.geometry.beam_spacing
-    w_sdl = (4.32 * config.geometry.beam_spacing + 1.5 + 4.0 / config.geometry.n_girders)
-    w_total_dl = w_sw + w_slab + w_sdl
+    w_self_weight = A_steel_m2 * gamma_steel_kN_m3
+    w_wet_slab = gamma_concrete_kN_m3 * (config.slab.thickness / 1000.0) * config.geometry.beam_spacing
+    # Illustrative SIDL (surfacing + railing share) — real bridges compute this from deck layout.
+    w_sidl = (4.32 * config.geometry.beam_spacing + 1.5 + 4.0 / config.geometry.n_girders)
+    w_dead_total = w_self_weight + w_wet_slab + w_sidl
 
-    M_dl = w_total_dl * L ** 2 / 8.0
-    V_dl = w_total_dl * L / 2.0
+    M_dead_kNm = w_dead_total * L_m ** 2 / 8.0
+    V_dead_kN = w_dead_total * L_m / 2.0
 
-    # Construction moment: steel weight + wet concrete only
-    w_construction = w_sw + w_slab
-    M_construction = 1.35 * w_construction * L ** 2 / 8.0
+    # IRC 6:2017 Table B.2 (ULS basic) — partial safety factors.
+    gamma_dl = IRC6_2017.table_B2(load_type="dead_load", effect="adding", combination="basic")
+    gamma_ll = IRC6_2017.table_B2(load_type="live_load", load_category="leading", combination="basic")
+    # IRC 6:2017 Cl.208.3 — impact factor for Class 70R(W) wheel loading.
+    impact_fraction = IRC6_2017.cl_208_3_impact_factor(L_m)
+    impact_multiplier = 1.0 + impact_fraction
 
-    M_ll, V_ll = 1800.0, 350.0
-    gamma_dl, gamma_ll, impact = 1.35, 1.50, 1.10
+    # Construction stage — steel self-weight + wet concrete only; no SIDL, no live load.
+    w_construction = w_self_weight + w_wet_slab
+    M_construction_kNm = gamma_dl * w_construction * L_m ** 2 / 8.0
 
-    Mu = gamma_dl * M_dl + gamma_ll * impact * M_ll
-    Vu = gamma_dl * V_dl + gamma_ll * impact * V_ll
+    # Placeholder unfactored live-load responses (typical Class 70R on 33.5 m span).
+    M_live_kNm, V_live_kN = 1800.0, 350.0
+
+    Mu_kNm = gamma_dl * M_dead_kNm + gamma_ll * impact_multiplier * M_live_kNm
+    Vu_kN = gamma_dl * V_dead_kN + gamma_ll * impact_multiplier * V_live_kN
 
     return DemandExtractor.from_manual(
-        Mu_kNm=round(Mu, 2), Vu_kN=round(Vu, 2),
-        M_construction_kNm=round(M_construction, 2),
-        delta_live_mm=28.0, delta_total_mm=38.0,
-        stress_range_MPa=config.fatigue.stress_range,
-        shear_range_MPa=config.fatigue.shear_range,
+        Mu_kNm=round(Mu_kNm, 2),
+        Vu_kN=round(Vu_kN, 2),
+        M_construction_kNm=round(M_construction_kNm, 2),
         Nsc=config.fatigue.Nsc,
-        combination=f"ULS Comb I: {gamma_dl}*DL + {gamma_ll}*{impact}*LL",
+        combination=(
+            f"ULS Basic: γDL={gamma_dl}·DL + γLL={gamma_ll}·IF={impact_multiplier:.3f}·LL"
+        ),
         location="midspan (interior girder)",
         member="interior_longitudinal_beam",
     )
 
-def _extract_demands_from_analysis(analysis_results: PlateGirderAnalysisResults) -> DemandEnvelope:
+def _extract_demands_from_analysis(
+    analysis_results: PlateGirderAnalysisResults,
+    config: BridgeConfig,
+) -> DemandEnvelope:
     """
-    Extract demands from a full Grillage Analysis dynamically.
+    Extract every demand quantity from a solved grillage analysis.
+    Section properties (Ze_steel, Aw) come from the BridgeConfig so that
+    fatigue stress ranges are driven by the same section the capacity
+    calculator sees.
     """
-    # Get interior girders first
+    # Section properties needed for stress-range conversions (mm units)
+    Ze_steel_mm3 = float(config.section.Ze_steel)
+    Aw_mm2 = float(config.section.Aw)
+    Nsc = int(config.fatigue.Nsc)
+
+    # Build girder topology and pick an interior girder
     girders, _ = analysis_results.build_girders(verbose=False)
-    interior_g_name = None
 
-    # 1. First try to find a named interior girder
-    for g_name in girders:
-        if "interior" in g_name.lower():
-            interior_g_name = g_name
-            break
+    def _pick_girder_info(name):
+        info = girders.get(name, {})
+        return (
+            list(info.get("elements", [])),
+            list(info.get("path", [])),
+            name,
+        )
 
-    # 2. If no explicit "interior" name, fall back to GrillageModel element member search
+    interior_g_name = next(
+        (g for g in girders if "interior" in g.lower()), None
+    )
+
     if interior_g_name is None:
+        # Try the analyser's model-side tag lookup as a second option
         try:
-            interior_elements = analysis_results.bridge.model.get_element(member="interior_main_beam", options="elements")
-            # Create a fallback envelope directly
-            if interior_elements:
+            mdl = analysis_results.bridge.model
+            els = mdl.get_element(member="interior_main_beam", options="elements")
+            nodes = mdl.get_element(member="interior_main_beam", options="nodes")
+            if els:
                 return DemandExtractor.from_analysis_results(
                     results=analysis_results,
-                    element_ids=interior_elements,
-                    member_name="interior_main_beam"
+                    element_ids=list(els),
+                    node_ids=list(nodes) if nodes else [],
+                    Ze_steel_mm3=Ze_steel_mm3,
+                    Aw_mm2=Aw_mm2,
+                    Nsc=Nsc,
+                    member_name="interior_main_beam",
                 )
         except Exception:
             pass
 
-    # 3. Use the elements from the found interior girder in the girder map
-    if interior_g_name is not None and "elements" in girders[interior_g_name]:
-        elements = list(girders[interior_g_name]["elements"])
-        return DemandExtractor.from_analysis_results(
-            results=analysis_results,
-            element_ids=elements,
-            member_name=interior_g_name
-        )
+    if interior_g_name is not None:
+        elements, nodes, name = _pick_girder_info(interior_g_name)
+        if elements:
+            return DemandExtractor.from_analysis_results(
+                results=analysis_results,
+                element_ids=elements,
+                node_ids=nodes,
+                Ze_steel_mm3=Ze_steel_mm3,
+                Aw_mm2=Aw_mm2,
+                Nsc=Nsc,
+                member_name=name,
+            )
 
-    print("WARNING: Could not identify interior girder. Using first available girder.")
-    first_g_name = list(girders.keys())[0] if girders else None
-    if first_g_name:
-        return DemandExtractor.from_analysis_results(
-            results=analysis_results,
-            element_ids=list(girders[first_g_name]["elements"]),
-            member_name=first_g_name
+    # Last-resort: first available girder
+    import warnings
+    warnings.warn(
+        "No interior girder identified — falling back to first available girder.",
+        stacklevel=2,
+    )
+    first = next(iter(girders), None)
+    if first is None:
+        raise ValueError(
+            "Demand extraction failed: grillage analysis produced no girders."
         )
-
-    raise ValueError("Could not extract demand. No interior girder or any girder elements found.")
+    elements, nodes, name = _pick_girder_info(first)
+    return DemandExtractor.from_analysis_results(
+        results=analysis_results,
+        element_ids=elements,
+        node_ids=nodes,
+        Ze_steel_mm3=Ze_steel_mm3,
+        Aw_mm2=Aw_mm2,
+        Nsc=Nsc,
+        member_name=name,
+    )
 
 
 def run_design_check(
@@ -1557,17 +1582,22 @@ def run_design_check(
     # -- Step 2: Demand from Analyser --
     print("\n[Step 2/5] Extracting design demands (Analyser) ...")
     if demand is None and analysis_results is not None:
-        demand = _extract_demands_from_analysis(analysis_results)
+        demand = _extract_demands_from_analysis(analysis_results, config)
     elif demand is None:
         demand = _example_demands(config)
-    print(f"  Mu = {demand.Mu_kNm:.2f} kNm")
-    print(f"  Vu = {demand.Vu_kN:.2f} kN")
+    print(f"  Mu              = {demand.Mu_kNm:.2f} kNm")
+    print(f"  Vu              = {demand.Vu_kN:.2f} kN")
+    print(f"  M_construction  = {demand.M_construction_kNm:.2f} kNm")
+    print(f"  delta_live      = {demand.delta_live_mm:.3f} mm")
+    print(f"  delta_total     = {demand.delta_total_mm:.3f} mm")
+    print(f"  stress_range    = {demand.stress_range_MPa:.3f} MPa")
+    print(f"  shear_range     = {demand.shear_range_MPa:.3f} MPa")
     print(f"  Source: {demand.source}")
 
     # -- Step 3: IRC 22 Capacity --
     print("\n[Step 3/5] Computing IRC 22:2015 capacities ...")
     calculator = IRC22CapacityCalculator(config)
-    capacity = calculator.compute_all(Vu_kN=demand.Vu_kN)
+    capacity = calculator.compute_all(Vu_kN=demand.Vu_kN, stress_range_MPa=demand.stress_range_MPa)
     print(f"  beff  = {capacity.beff_mm:.1f} mm    (Cl.603.2.1)")
     print(f"  Md    = {capacity.Md_kNm:,.2f} kNm  (Cl.603.3.1)")
     print(f"  Vd    = {capacity.Vd_kN:,.2f} kN   (Cl.603.3.3.2)")
