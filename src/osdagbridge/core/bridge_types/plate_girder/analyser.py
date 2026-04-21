@@ -308,7 +308,7 @@ class BridgeGrillageModel:
         start_beam = 0
         end_beam = L
         A_girder_m2 = self.longitudinal_props.A
-        beam_mag = A_girder_m2 * self.STEEL_UNIT_WEIGHT_kN_m3 * kN / 1.0  # kN/m
+        beam_mag = A_girder_m2 * self.STEEL_UNIT_WEIGHT_kN_m3 * kN / m  # N/m
 
         DL_self_weight = og.create_load_case(name="girder self weight")
 
@@ -370,7 +370,7 @@ class BridgeGrillageModel:
         # -------------------------------------------------
         # Load magnitude (UDL over area): t × ρ_concrete  [kN/m²]
         # -------------------------------------------------
-        deck_mag = slab_thickness_m * rho_c * kN / (1.0 ** 2)
+        deck_mag = slab_thickness_m * rho_c * kN / m**2  # N/m²
 
         # -------------------------------------------------
         # Get geometry from load manager
@@ -451,7 +451,7 @@ class BridgeGrillageModel:
         # L = L or self.L
         # w = w or self.w
 
-        overlay_mag = thickness_m * rho_wc * kN / (1.0 ** 2)
+        overlay_mag = thickness_m * rho_wc * kN / m**2  # N/m²
 
         # --------------------------------
         # Get geometry from geometry module
@@ -518,7 +518,7 @@ class BridgeGrillageModel:
         # -------------------------------------------------
         # Load magnitude — IRC 6:2017 Cl.206.1 (footway load)
         # -------------------------------------------------
-        footpath_mag = IRC6_2017.cl_206_1_footway_load() * kN / (1.0 ** 2)
+        footpath_mag = IRC6_2017.cl_206_1_footway_load() * kN / m**2  # N/m²
 
         # -------------------------------------------------
         # Create load case
@@ -671,7 +671,7 @@ class BridgeGrillageModel:
             _mag = railing_load_kN_per_m
         else:
             _mag = IRC6_2017.cl_206_5_railing_load() * 9.81 / 1000.0
-        railing_udl = _mag * kN / m
+        railing_udl = _mag * kN / m  # N/m
 
         # -------------------------------------------------
         # Create load case
