@@ -44,7 +44,7 @@ class AdditionalInputs(QDialog):
         self._initial_cad_state = initial_cad_state or {}
         super().__init__(parent)
         self.setObjectName("AdditionalInputs")
-        self.resize(1024, 720)
+        self.resize(1024, 850)
         self.setMinimumSize(900, 520)
         self.setSizeGripEnabled(True)
         self.footpath_value = footpath_value
