@@ -1,7 +1,7 @@
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QWidget,
     QFrame, QPushButton, QComboBox, QSizePolicy, QSizeGrip,
-    QRadioButton, QButtonGroup, QStackedWidget, QSpacerItem
+    QRadioButton, QButtonGroup, QStackedWidget, QSpacerItem, QCheckBox
 )
 from PySide6.QtCore import Qt
 from osdagbridge.desktop.ui.utils.custom_titlebar import CustomTitleBar
@@ -393,6 +393,17 @@ class ProjectLocationDialog(QDialog):
         self.zone_overlay_combo = NoScrollComboBox()
         self.zone_overlay_combo.addItems(["None", "Seismic Zone", "Wind Zone"])
 
+        controls_row = QHBoxLayout()
+        controls_row.setContentsMargins(8, 4, 8, 0)
+        controls_row.setSpacing(10)
+        controls_row.addWidget(QLabel("Map Options:"))
+
+        self.boundary_overlay_checkbox = QCheckBox("Show India boundary overlay")
+        self.boundary_overlay_checkbox.setChecked(True)
+        controls_row.addWidget(self.boundary_overlay_checkbox)
+        controls_row.addStretch(1)
+        vbox.addLayout(controls_row)
+
         self.map_view = NativeMapWidget()
         vbox.addWidget(self.map_view, 1)
 
@@ -617,6 +628,7 @@ class ProjectLocationDialog(QDialog):
         
         # Zone overlay dropdown
         self.zone_overlay_combo.currentTextChanged.connect(self._on_zone_overlay_changed)
+        self.boundary_overlay_checkbox.toggled.connect(self._on_boundary_overlay_toggled)
 
     def _set_active_method(self, method):
         if method == "location_name" and self.method_radio_location.isChecked():
@@ -781,6 +793,10 @@ class ProjectLocationDialog(QDialog):
         
         # Update legend
         self._update_zone_legend(overlay_type)
+
+    def _on_boundary_overlay_toggled(self, enabled: bool):
+        """Toggle GeoJSON boundary drawing for map performance."""
+        self.map_view.set_geojson_overlay_visible(enabled)
     
     def _update_zone_legend(self, overlay_type: str):
         """Update the legend display based on overlay type."""

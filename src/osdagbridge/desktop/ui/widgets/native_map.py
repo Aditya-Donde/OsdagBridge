@@ -1,5 +1,6 @@
 
 import math
+import json
 from pathlib import Path
 from functools import lru_cache
 from PySide6.QtWidgets import QWidget
@@ -55,6 +56,11 @@ class NativeMapWidget(QWidget):
         
         # In-memory image cache (url -> QPixmap)
         self.pixmap_cache = {}
+        self._pending_tile_requests = set()
+
+        # GeoJSON boundary overlay cache
+        self._geojson_shapes = []  # list[tuple[list[(lon, lat)], closed]]
+        self._geojson_visible = True
         
         # Interaction state
         self._last_mouse_pos = QPoint()
@@ -68,6 +74,7 @@ class NativeMapWidget(QWidget):
 
         # Initialize
         self.setMinimumSize(400, 300)
+        self.load_geojson(_DATA_DIR / "india-osm.geojson")
 
     def paintEvent(self, event):
         painter = QPainter(self)
@@ -104,10 +111,14 @@ class NativeMapWidget(QWidget):
                 
                 # Logic to draw the specific tile
                 self.draw_tile(painter, tile_x, tile_y, col, row, view_x, view_y)
-        
+
         # 3.5. Draw zone overlay if active
         if self._overlay_type != "none" and self._overlay_pixmap:
             self._draw_zone_overlay(painter, view_x, view_y)
+
+        # Draw GeoJSON administrative boundary on top of raster layers.
+        if self._geojson_visible:
+            self.draw_geojson(painter, view_x, view_y)
         
         # 4. Draw Marker (Pin) if it exists
         if self.marker_lat is not None and self.marker_lon is not None:
@@ -131,30 +142,41 @@ class NativeMapWidget(QWidget):
         painter.end()
 
     def draw_tile(self, painter, tile_x, tile_y, col, row, view_x, view_y):
-        url = f"https://tile.openstreetmap.org/{self.zoom}/{tile_x}/{tile_y}.png"
+        base_url = f"https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{self.zoom}/{tile_y}/{tile_x}"
+        labels_url = f"https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{self.zoom}/{tile_y}/{tile_x}"
         
         # Calculate screen position
         screen_x = (col * self.tile_size) - view_x
         screen_y = (row * self.tile_size) - view_y
         
-        if url in self.pixmap_cache:
-            painter.drawPixmap(int(screen_x), int(screen_y), self.pixmap_cache[url])
+        if base_url in self.pixmap_cache:
+            painter.drawPixmap(int(screen_x), int(screen_y), self.pixmap_cache[base_url])
         else:
             # Draw placeholder
             painter.setBrush(QColor(240, 240, 240))
             painter.drawRect(int(screen_x), int(screen_y), self.tile_size, self.tile_size)
-            self.fetch_tile(url)
+            self.fetch_tile(base_url)
+
+        if labels_url in self.pixmap_cache:
+            painter.drawPixmap(int(screen_x), int(screen_y), self.pixmap_cache[labels_url])
+        else:
+            self.fetch_tile(labels_url)
 
     def fetch_tile(self, url):
+        if url in self.pixmap_cache or url in self._pending_tile_requests:
+            return
+
         request = QNetworkRequest(QUrl(url))
         request.setAttribute(QNetworkRequest.CacheLoadControlAttribute, QNetworkRequest.PreferCache)
         # Identify user agent as polite usage policy requires
         request.setHeader(QNetworkRequest.UserAgentHeader, "OsdagBridge/1.0 (Garvit)")
-        
+
+        self._pending_tile_requests.add(url)
         reply = self.manager.get(request)
         reply.finished.connect(lambda: self.on_tile_loaded(reply, url))
 
     def on_tile_loaded(self, reply, url):
+        self._pending_tile_requests.discard(url)
         if reply.error() == QNetworkReply.NoError:
             data = reply.readAll()
             pixmap = QPixmap()
@@ -162,6 +184,76 @@ class NativeMapWidget(QWidget):
             self.pixmap_cache[url] = pixmap
             self.update() # Trigger repaint
         reply.deleteLater()
+
+    def load_geojson(self, path):
+        """Load GeoJSON boundaries (FeatureCollection) for rendering."""
+        self._geojson_shapes = []
+        geojson_path = Path(path)
+        if not geojson_path.exists():
+            return
+
+        try:
+            with geojson_path.open("r", encoding="utf-8") as file_obj:
+                data = json.load(file_obj)
+        except (OSError, json.JSONDecodeError):
+            return
+
+        for feature in data.get("features", []):
+            geometry = feature.get("geometry") or {}
+            geom_type = geometry.get("type")
+            coords = geometry.get("coordinates", [])
+
+            if geom_type == "Polygon":
+                for ring in coords:
+                    self._geojson_shapes.append((ring, True))
+            elif geom_type == "MultiPolygon":
+                for polygon in coords:
+                    for ring in polygon:
+                        self._geojson_shapes.append((ring, True))
+            elif geom_type == "LineString":
+                self._geojson_shapes.append((coords, False))
+            elif geom_type == "MultiLineString":
+                for line in coords:
+                    self._geojson_shapes.append((line, False))
+
+        self.update()
+
+    def draw_geojson(self, painter: QPainter, view_x: float, view_y: float):
+        """Draw loaded GeoJSON boundary using map pixel projection."""
+        if not self._geojson_shapes:
+            return
+
+        painter.save()
+        pen = QPen(QColor("#092133"))
+        pen.setWidth(3)
+        pen.setCosmetic(True)
+        painter.setPen(pen)
+        painter.setBrush(Qt.NoBrush)
+
+        for points, is_closed in self._geojson_shapes:
+            if len(points) < 2:
+                continue
+
+            path = QPainterPath()
+            first_lon, first_lat = points[0]
+            first_px_x, first_px_y = self.lat_lon_to_pixel(first_lat, first_lon, self.zoom)
+            path.moveTo(first_px_x - view_x, first_px_y - view_y)
+
+            for lon, lat in points[1:]:
+                px_x, px_y = self.lat_lon_to_pixel(lat, lon, self.zoom)
+                path.lineTo(px_x - view_x, px_y - view_y)
+
+            if is_closed:
+                path.closeSubpath()
+
+            painter.drawPath(path)
+
+        painter.restore()
+
+    def set_geojson_overlay_visible(self, visible: bool):
+        """Toggle GeoJSON boundary rendering for performance."""
+        self._geojson_visible = bool(visible)
+        self.update()
 
     # --- Interaction ---
     def mousePressEvent(self, event: QMouseEvent):
