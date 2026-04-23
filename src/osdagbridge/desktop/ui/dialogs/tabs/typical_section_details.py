@@ -153,6 +153,16 @@ class TypicalSectionDetailsTab(QWidget):
 
         return card, card_layout
 
+    def _wrap_subtab_with_scroll(self, tab_widget: QWidget) -> QScrollArea:
+        """Wrap an inner subtab page so long forms can scroll vertically."""
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.NoFrame)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        scroll.setWidget(tab_widget)
+        return scroll
+
     def init_ui(self):
         main_layout = QVBoxLayout(self)
         main_layout.setContentsMargins(10, 10, 10, 10)
@@ -197,6 +207,16 @@ class TypicalSectionDetailsTab(QWidget):
         input_layout.setContentsMargins(0, 0, 0, 0)
         input_layout.setSpacing(0)
 
+        # Keep bridge geometry inputs above the sub-tabs.
+        self.layout_primary_fields = LayoutTab(
+            self,
+            row_indices=[0, 1, 2],
+            show_title=True,
+            add_bottom_stretch=False,
+        )
+        input_layout.addWidget(self.layout_primary_fields)
+        input_layout.addSpacing(12)
+
         self.input_tabs = QTabWidget()
         self.input_tabs.setStyleSheet("""
             QTabWidget::pane {
@@ -235,23 +255,27 @@ class TypicalSectionDetailsTab(QWidget):
             }
         """)
 
-        self.layout_tab = LayoutTab(self)
-        self.input_tabs.addTab(self.layout_tab, "Layout")
+        self.layout_tab = LayoutTab(
+            self,
+            row_indices=[3, 4],
+            show_title=False,
+        )
+        self.input_tabs.addTab(self._wrap_subtab_with_scroll(self.layout_tab), "Deck Details")
 
         self.crash_barrier_tab = CrashBarrierTab(self)
-        self.input_tabs.addTab(self.crash_barrier_tab, "Crash Barrier")
+        self.input_tabs.addTab(self._wrap_subtab_with_scroll(self.crash_barrier_tab), "Crash Barrier")
 
         self.median_tab = MedianTab(self)
-        self.input_tabs.addTab(self.median_tab, "Median")
+        self.input_tabs.addTab(self._wrap_subtab_with_scroll(self.median_tab), "Median")
 
         self.railing_tab = RailingTab(self)
-        self.input_tabs.addTab(self.railing_tab, "Railing")
+        self.input_tabs.addTab(self._wrap_subtab_with_scroll(self.railing_tab), "Railing")
 
         self.wearing_course_tab = WearingCourseTab(self)
-        self.input_tabs.addTab(self.wearing_course_tab, "Wearing Course")
+        self.input_tabs.addTab(self._wrap_subtab_with_scroll(self.wearing_course_tab), "Wearing Course")
 
         self.lane_details_tab = LaneDetailsTab(self)
-        self.input_tabs.addTab(self.lane_details_tab, "Lane Details")
+        self.input_tabs.addTab(self._wrap_subtab_with_scroll(self.lane_details_tab), "Lane Details")
         
         # CONNECT COMBO BOXES TO IRC DEFAULT HANDLERS
 
@@ -419,8 +443,13 @@ class TypicalSectionDetailsTab(QWidget):
             
         # ---- Median presence ----
         if hasattr(self, "median_tab"):
-            median_idx = self.input_tabs.indexOf(self.median_tab)
-            is_median_enabled = self.input_tabs.isTabEnabled(median_idx)
+            median_idx = -1
+            for i in range(self.input_tabs.count()):
+                if self.input_tabs.tabText(i).strip().lower() == "median":
+                    median_idx = i
+                    break
+
+            is_median_enabled = self.input_tabs.isTabEnabled(median_idx) if median_idx >= 0 else False
             params["median_present"] = is_median_enabled
         elif hasattr(self, "median_type"):
             params["median_present"] = self.median_type.currentText() != "None"
@@ -748,7 +777,7 @@ class TypicalSectionDetailsTab(QWidget):
     def _show_adjust_notice(self, reason, warning=None):
         any_visible = bool(reason) or bool(warning)
         if hasattr(self, "layout_adjust_notice"):
-            if reason:
+            if reason and not warning:
                 self.layout_adjust_notice.setText(f"Values adjusted: {reason}")
                 self.layout_adjust_notice.show()
             else:
@@ -756,7 +785,7 @@ class TypicalSectionDetailsTab(QWidget):
                 self.layout_adjust_notice.setText("")
         if hasattr(self, "layout_warning_notice"):
             if warning:
-                self.layout_warning_notice.setText(f"⚠ Warning: {warning}")
+                self.layout_warning_notice.setText(f"Warning: {warning}")
                 self.layout_warning_notice.show()
             else:
                 self.layout_warning_notice.hide()
