@@ -3,6 +3,7 @@ matplotlib.use("QtAgg")
 
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
 import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d.art3d import Path3DCollection # Added for Node toggling
 
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QComboBox, QSizePolicy, QPushButton
@@ -60,8 +61,9 @@ class MplPlotWidget(QWidget):
         # Set by link_output_dock()
         self._output_dock = None
 
-        # Grillage-only mode
+        # Display States
         self._grillage_mode = False
+        self._show_nodes = True # Track node visibility state
 
         # Zoom state
         self._zoom_scale  = 1.0
@@ -110,10 +112,28 @@ class MplPlotWidget(QWidget):
         )
         self._btn_grillage.toggled.connect(self._on_grillage_toggled)
 
+        # NEW: nodes toggle button
+        self._btn_nodes = QPushButton("Nodes")
+        self._btn_nodes.setCheckable(True)
+        self._btn_nodes.setChecked(True) # On by default
+        self._btn_nodes.setFixedHeight(28)
+        self._btn_nodes.setFocusPolicy(Qt.NoFocus)
+        self._btn_nodes.setToolTip("Show or hide node markers")
+        self._btn_nodes.setStyleSheet(
+            "QPushButton { font-size: 12px; border: 1px solid #bbb; border-radius: 4px;"
+            " background: #f5f5f5; padding: 0 8px; }"
+            "QPushButton:hover { background: #e0e0e0; }"
+            "QPushButton:pressed { background: #bdbdbd; }"
+            "QPushButton:checked { background: #1565C0; color: white;"
+            " border: 1px solid #0D47A1; }"
+        )
+        self._btn_nodes.toggled.connect(self._on_nodes_toggled)
+
         toolbar_row = QHBoxLayout()
         toolbar_row.setContentsMargins(4, 2, 4, 2)
         toolbar_row.setSpacing(4)
         toolbar_row.addWidget(self._btn_grillage)
+        toolbar_row.addWidget(self._btn_nodes) # Added next to Grillage
         toolbar_row.addStretch()
         toolbar_row.addWidget(self._btn_zoom_out)
         toolbar_row.addWidget(self._btn_zoom_in)
@@ -212,6 +232,10 @@ class MplPlotWidget(QWidget):
 
         self._canvas.figure = self._fig
         self._fig.set_canvas(self._canvas)
+        
+        # Ensure node visibility matches the toggle state on new plots
+        self._apply_node_visibility()
+        
         self._fit_figure_to_canvas()
         self._canvas.draw()
 
@@ -229,6 +253,10 @@ class MplPlotWidget(QWidget):
             self._fig = build_figure_grillage(self._nodes, self._members)
             self._canvas.figure = self._fig
             self._fig.set_canvas(self._canvas)
+            
+            # Ensure node visibility matches the toggle state
+            self._apply_node_visibility()
+            
             self._fit_figure_to_canvas()
             self._canvas.draw()
             self._zoom_scale = 1.0
@@ -236,12 +264,25 @@ class MplPlotWidget(QWidget):
         else:
             self.update_plot()
 
+    def _on_nodes_toggled(self, checked: bool):
+        """Instantly toggle the visibility of scatter plot nodes without rebuilding the figure."""
+        self._show_nodes = checked
+        self._apply_node_visibility()
+        self._canvas.draw_idle() # Updates the canvas instantly
+
     def resizeEvent(self, event):
         super().resizeEvent(event)
         self._fit_figure_to_canvas()
         self._canvas.draw_idle()
 
     # private helpers
+
+    def _apply_node_visibility(self):
+        """Finds all scatter point collections (Path3DCollection) and toggles their visibility."""
+        for ax in self._fig.axes:
+            for collection in ax.collections:
+                if isinstance(collection, Path3DCollection):
+                    collection.set_visible(self._show_nodes)
 
     def _fit_figure_to_canvas(self):
         """Resize the matplotlib figure to match the current canvas widget size."""

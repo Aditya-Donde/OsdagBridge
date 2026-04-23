@@ -430,7 +430,7 @@ class CustomViewer3d(qtViewer3d):
     def _show_navcube_when_ready(self):
         self._resize_navcube()
         self._position_navcube()
-        self.navcube.mark_ready()
+        # self.navcube.mark_ready()
         self.navcube.update()
 
     # ------------------------------------------------------------------
