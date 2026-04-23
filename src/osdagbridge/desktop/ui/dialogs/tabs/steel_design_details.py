@@ -21,6 +21,21 @@ from osdagbridge.desktop.ui.docks.output_dock import (
 from osdagbridge.desktop.ui.dialogs.tabs.common import apply_field_style
 from osdagbridge.desktop.ui.utils.styled_scroll_area import StyledScrollArea
 
+# Greyed-out read-only style for combos mirroring the Output Dock selection.
+_DISABLED_COMBO_STYLE = (
+    "QComboBox {"
+    "  background-color: #f0f0f0;"
+    "  color: #888888;"
+    "  border: 1px solid #cccccc;"
+    "  border-radius: 5px;"
+    "  padding: 1px 7px;"
+    "  font-size: 11px;"
+    "  min-height: 28px;"
+    "}"
+    "QComboBox::drop-down { border: none; width: 0px; }"
+    "QComboBox::down-arrow { width: 0px; height: 0px; }"
+)
+
 
 class NoScrollTable(QTableWidget):
     """QTableWidget that passes wheel events up to the parent scroll area."""
@@ -179,10 +194,14 @@ class SteelDesignDetailsTab(QWidget):
         grid = self._make_grid()
 
         self.member_combo = NoScrollComboBox()
-        apply_field_style(self.member_combo)
         self.member_combo.setMinimumWidth(80)
         self.member_combo.setMinimumHeight(28)
         self.member_combo.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self.member_combo.setEnabled(False)
+        self.member_combo.setStyleSheet(_DISABLED_COMBO_STYLE)
+        self.member_combo.setToolTip(
+            "Change the member in the Output Dock \u2014 this field mirrors that selection."
+        )
 
         self.grade_field = self._readonly_field()
         self.type_field  = self._readonly_field()

@@ -53,6 +53,8 @@ class SteelDesign(QDialog):
                 pass
                 
         self._result_handler = result_handler  # PlateGirderAnalysisResults or None
+        self._checks_ran   = False
+        self._last_handler = None
         self.setObjectName("SteelDesign")
         self.resize(1024, 720)
         self.setMinimumSize(900, 520)
@@ -335,8 +337,9 @@ class SteelDesign(QDialog):
 
         # ── Signal wiring ─────────────────────────────────────────────────────
         self.tabs.currentChanged.connect(self._on_tab_changed)
-        self.analysis_tab.member_combo.currentIndexChanged.connect(self._update_analysis_plots)
-        self.analysis_tab.load_combo.currentIndexChanged.connect(self._on_load_combo_changed)
+        # NOTE: member_combo and load_combo in analysis_tab are disabled (read-only
+        # mirrors of the Output Dock).  Their signals are NOT connected here —
+        # selections are pushed programmatically via sync_from_output_dock().
         if hasattr(self.analysis_tab, "component_combo"):
             self.analysis_tab.component_combo.currentIndexChanged.connect(self._update_analysis_plots)
             self.analysis_tab.component_combo.currentIndexChanged.connect(
@@ -359,15 +362,72 @@ class SteelDesign(QDialog):
         self._data_initialized = False
 
     # =========================================================================
+    #   OUTPUT DOCK SYNC
+    # =========================================================================
+
+    def sync_from_output_dock(
+        self,
+        member_display: str | None = None,
+        load_case: str | None = None,
+    ) -> None:
+        """
+        Called by the Output Dock to push the currently active member and load
+        combination into all three tabs.
+
+        The combos in every tab are disabled (not user-editable). This is the
+        single authoritative write path — it temporarily bypasses the disabled
+        state, writes the value, then re-disables the widget so the next
+        mouse-click cannot change it.
+        """
+        def _set_combo(combo, text: str) -> None:
+            """Write *text* into a possibly-disabled QComboBox without enabling it."""
+            combo.blockSignals(True)
+            combo.setEnabled(True)
+            idx = combo.findText(text)
+            if idx >= 0:
+                combo.setCurrentIndex(idx)
+            else:
+                # Value not in list — add it transiently so it is visible.
+                combo.insertItem(0, text)
+                combo.setCurrentIndex(0)
+            combo.setEnabled(False)
+            combo.blockSignals(False)
+
+        # ── Analysis tab ──────────────────────────────────────────────────────
+        if member_display is not None:
+            _set_combo(self.analysis_tab.member_combo, member_display)
+        if load_case is not None:
+            _set_combo(self.analysis_tab.load_combo, load_case)
+
+        # ── Design Check tab ──────────────────────────────────────────────────
+        if member_display is not None:
+            _set_combo(self.check_tab.member_combo, member_display)
+        if load_case is not None:
+            _set_combo(self.check_tab.load_combo, load_case)
+
+        # ── Details tab (member only, no load combo) ──────────────────────────
+        if member_display is not None:
+            _set_combo(self.details_tab.member_combo, member_display)
+
+        # Refresh analysis plot for the newly selected member / load case
+        self._update_analysis_plots()
+
+    # =========================================================================
     #   EVENT HANDLERS
     # =========================================================================
 
     def _on_tab_changed(self, index):
         """
-        Entry point for the Analysis Results tab (index 1).
+        Entry point for the Analysis Results tab (index 1) and
+        the Design Check tab (index 2).
         Populates dropdowns on first visit, then triggers a plot render.
         All data comes from the injected PlateGirderAnalysisResults instance.
         """
+        if index == 2:
+            # Design Check tab
+            self._run_design_checks()
+            return
+
         if index != 1:
             return
 
@@ -384,6 +444,56 @@ class SteelDesign(QDialog):
             self._data_initialized = True
 
         self._update_analysis_plots()
+
+    def _run_design_checks(self) -> None:
+        """
+        Run the IRC 22:2015 pipeline and populate the Design Check tab.
+
+        Uses live model data when available; falls back to a built-in
+        example bridge so the tab is never left blank.
+
+        Guard: no-op when result_handler identity is unchanged.
+        """
+        if self._checks_ran and (self._result_handler is self._last_handler):
+            return
+
+        from osdagbridge.core.bridge_types.plate_girder.designer import (
+            BridgeConfig, IRC22CapacityCalculator, DCREngine,
+            _example_demands, _extract_demands_from_analysis,
+        )
+
+        try:
+            bridge = getattr(self._main_window, "bridge", None)
+            config = (
+                BridgeConfig.from_plate_girder_bridge(bridge)
+                if bridge is not None
+                else BridgeConfig.example_33m_bridge()
+            )
+
+            demand = (
+                _extract_demands_from_analysis(self._result_handler)
+                if self._result_handler is not None
+                else _example_demands(config)
+            )
+
+            calculator = IRC22CapacityCalculator(config)
+            capacity   = calculator.compute_all(Vu_kN=demand.Vu_kN)
+
+            engine = DCREngine(demand, capacity)
+            engine.run_all_checks()
+
+            self.check_tab.populate_from_results(demand, capacity, engine)
+            self.check_tab.set_girder_count(config.geometry.n_girders)
+
+            self._checks_ran   = True
+            self._last_handler = self._result_handler
+
+        except Exception:
+            import traceback
+            err = f"Design check error:\n{traceback.format_exc()}"
+            for key in ("flexure", "shear", "interaction", "ltb",
+                        "shear_long_trans", "fatigue", "stress", "deflection"):
+                self.check_tab.set_check_result(key, err)
 
     @property
     def _interaction_mode(self) -> str:
@@ -533,9 +643,11 @@ class SteelDesign(QDialog):
 
         combo = self.analysis_tab.member_combo
         combo.blockSignals(True)
+        combo.setEnabled(True)   # temporarily enable to allow writes
         combo.clear()
         for idx, key in enumerate(self.graph_engine.get_girder_keys()):
             combo.addItem(_girder_display_name(key, idx), userData=key)
+        combo.setEnabled(False)  # restore disabled/read-only state
         combo.blockSignals(False)
 
     # ── Category-header helper ────────────────────────────────────────────────
@@ -591,6 +703,7 @@ class SteelDesign(QDialog):
             dead_lcs = [preferred] + dead_lcs
 
         combo.blockSignals(True)
+        combo.setEnabled(True)   # temporarily enable to allow writes
         combo.clear()
 
         first_selectable_idx = None
@@ -625,6 +738,7 @@ class SteelDesign(QDialog):
         elif combo.count() > 0:
             combo.setCurrentIndex(0)
 
+        combo.setEnabled(False)  # restore disabled/read-only state
         combo.blockSignals(False)
 
     # =========================================================================

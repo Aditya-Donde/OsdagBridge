@@ -26,6 +26,22 @@ LOAD_COMBINATIONS = [
     "WL", "EL", "IMF", "TL",
 ]
 
+# Greyed-out read-only style for combos mirroring the Output Dock selection.
+# Drop-down arrow is hidden to make clear the field is not interactive.
+_DISABLED_COMBO_STYLE = (
+    "QComboBox {"
+    "  background-color: #f0f0f0;"
+    "  color: #888888;"
+    "  border: 1px solid #cccccc;"
+    "  border-radius: 5px;"
+    "  padding: 1px 7px;"
+    "  font-size: 11px;"
+    "  min-height: 28px;"
+    "}"
+    "QComboBox::drop-down { border: none; width: 0px; }"
+    "QComboBox::down-arrow { width: 0px; height: 0px; }"
+)
+
 #  Design tokens — copied verbatim from output_dock.apply_field_style()
 #  so every control matches the rest of the OsdagBridge application.
 
@@ -314,9 +330,19 @@ class SteelDesignAnalysisTab(QWidget):
 
         self.member_combo = self._styled_combo()
         self.member_combo.addItems(["All", "Girder 1", "Girder 2"])
+        self.member_combo.setEnabled(False)
+        self.member_combo.setStyleSheet(_DISABLED_COMBO_STYLE)
+        self.member_combo.setToolTip(
+            "Change the member in the Output Dock \u2014 this field mirrors that selection."
+        )
 
         self.load_combo = self._styled_combo()
         self.load_combo.addItems(LOAD_COMBINATIONS)
+        self.load_combo.setEnabled(False)
+        self.load_combo.setStyleSheet(_DISABLED_COMBO_STYLE)
+        self.load_combo.setToolTip(
+            "Change the load combination in the Output Dock \u2014 this field mirrors that selection."
+        )
 
         self._form_row("Member ID:", self.member_combo, sel_layout)
         self._form_row("Load Combination:", self.load_combo, sel_layout)

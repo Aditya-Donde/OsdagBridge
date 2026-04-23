@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 from PySide6.QtWidgets import (
     QWidget,
     QVBoxLayout,
@@ -8,7 +9,6 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QFrame,
     QSizePolicy,
-    QTextEdit,
 )
 from PySide6.QtCore import Qt
 
@@ -29,7 +29,7 @@ LOAD_COMBINATIONS = [
     "WL", "EL", "IMF", "TL",
 ]
 
-# 8 design checks from the screenshot — 2 columns ├ù 4 rows
+# 8 design checks from the screenshot â 2 columns Ã 4 rows
 DESIGN_CHECKS = [
     ("flexure",          "Strength Limit State (Flexure)"),
     ("shear_long_trans", "Resistance to Longitudinal and Transverse Shear"),
@@ -41,38 +41,205 @@ DESIGN_CHECKS = [
     ("deflection",       "Deflection and Crack Control"),
 ]
 
+# HTML equation strings for each card (rendered via Qt.RichText)
+_RENDER_MAP = {
+    "flexure": {
+        "eq": (
+            "<i>M<sub>d</sub></i> &le; <i>M<sub>r</sub></i><br>"
+            "<i>M<sub>r</sub></i> = <i>&beta;<sub>b</sub></i> &middot; "
+            "<i>Z<sub>p</sub></i> &middot; <i>f<sub>y</sub></i> / <i>&gamma;<sub>m</sub></i>"
+        ),
+        "dem_pfx": "<i>M<sub>d</sub></i>",
+        "cap_pfx": "<i>M<sub>r</sub></i>",
+        "unit": "kN&middot;m",
+    },
+    "shear": {
+        "eq": (
+            "<i>V<sub>d</sub></i> &le; <i>V<sub>r</sub></i><br>"
+            "<i>V<sub>r</sub></i> = <i>A<sub>v</sub></i> &middot; <i>f<sub>y</sub></i> / "
+            "(&radic;3 &middot; <i>&gamma;<sub>m</sub></i>)"
+        ),
+        "dem_pfx": "<i>V<sub>d</sub></i>",
+        "cap_pfx": "<i>V<sub>r</sub></i>",
+        "unit": "kN",
+    },
+    "interaction": {
+        "eq": (
+            "<i>M<sub>d</sub></i> / (<i>&beta;<sub>b</sub></i> &middot; <i>Z<sub>p</sub></i> &middot; "
+            "<i>f<sub>y</sub></i> / <i>&gamma;<sub>m</sub></i>) + "
+            "<i>V<sub>d</sub></i> / (<i>A<sub>v</sub></i> &middot; <i>f<sub>y</sub></i> / "
+            "(&radic;3 &middot; <i>&gamma;<sub>m</sub></i>)) &le; 1.0"
+        ),
+        "unit": "",
+    },
+    "ltb": {
+        "eq": (
+            "<i>M<sub>d</sub></i> &le; <i>M<sub>cr</sub></i><br>"
+            "<i>M<sub>cr</sub></i> &approx; (&pi;&sup2; &middot; <i>E</i> &middot; "
+            "<i>I<sub>y</sub></i>) / <i>L<sub>LTB</sub></i>&sup2;"
+        ),
+        "dem_pfx": "<i>M<sub>d</sub></i>",
+        "cap_pfx": "<i>M<sub>cr</sub></i>",
+        "unit": "kN&middot;m",
+    },
+    "shear_long_trans": {
+        "eq": (
+            "<i>V<sub>d</sub></i> &le; <i>V<sub>rd</sub></i><br>"
+            "<i>V<sub>rd</sub></i> = <i>V<sub>rd,c</sub></i> + <i>V<sub>rd,s</sub></i><br>"
+            "<i>V<sub>rd,c</sub></i> = 0.18 &middot; <i>k</i> &middot; "
+            "(100<i>f<sub>ck</sub></i>)<sup>1/3</sup> &middot; <i>b</i> &middot; <i>d</i><br>"
+            "<i>V<sub>rd,s</sub></i> = (<i>A<sub>sv</sub></i> &middot; <i>f<sub>y</sub></i> "
+            "&middot; <i>d</i>) / <i>s</i>"
+        ),
+        "dem_pfx": "<i>V<sub>d</sub></i>",
+        "cap_pfx": "<i>V<sub>rd</sub></i>",
+        "unit": "kN",
+    },
+    "fatigue": {
+        "eq": (
+            "&Delta;<i>&sigma;</i> &le; &Delta;<i>&sigma;<sub>allowable</sub></i><br>"
+            "&Delta;<i>&sigma;<sub>allowable</sub></i> = &Delta;<i>&sigma;<sub>c</sub></i> / "
+            "<i>&gamma;<sub>mf</sub></i>"
+        ),
+        "dem_pfx": "&Delta;<i>&sigma;</i>",
+        "cap_pfx": "&Delta;<i>&sigma;<sub>allowable</sub></i>",
+        "unit": "MPa",
+    },
+    "stress": {
+        "eq": (
+            "<i>&sigma;</i> = <i>M<sub>d</sub></i> / <i>Z</i><br>"
+            "<i>&sigma;</i> &le; <i>f<sub>y</sub></i> / <i>&gamma;<sub>m</sub></i>"
+        ),
+        "dem_pfx": "<i>&sigma;</i>",
+        "cap_pfx": "<i>f<sub>y</sub> / &gamma;<sub>m</sub></i>",
+        "unit": "MPa",
+    },
+    "deflection": {
+        "eq": (
+            "<i>&delta;</i> &le; <i>L</i> / <i>x</i><br>"
+            "(Default <i>x</i> = 600)"
+        ),
+        "dem_pfx": "<i>&delta;</i>",
+        "cap_pfx": "<i>L / x</i>",
+        "unit": "mm",
+    },
+}
+
+
+# âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+# Badge style definitions
+# âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+
+_BADGE_STYLES = {
+    "pass":    ("PASS", "#1a7a4a", "#d4edda"),
+    "fail":    ("FAIL", "#8b0000", "#f8d7da"),
+    "neutral": ("",     "#444444", "#eeeeee"),
+}
+
+
+# âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+# Inline widgets â UtilizationBar and StatusBadge
+# âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+
+class UtilizationBar(QWidget):
+    """Horizontal fill-bar showing demand/capacity ratio (0â1+)."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setFixedHeight(10)
+        self.setStyleSheet("background: #e0e0e0; border-radius: 5px;")
+        self._fill = QWidget(self)
+        self._fill.setFixedHeight(10)
+        self._ratio = 0.0
+        self._fill.resize(0, 10)
+        self._update()
+
+    def set_ratio(self, ratio: float):
+        self._ratio = ratio
+        self._update()
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._update()
+
+    def _update(self):
+        fill_w = int(min(self._ratio, 1.0) * self.width())
+        color = "#28a745" if self._ratio <= 1.0 else "#dc3545"
+        self._fill.setFixedWidth(max(0, fill_w))
+        self._fill.setStyleSheet(f"background: {color}; border-radius: 5px;")
+
+
+class StatusBadge(QLabel):
+    """Small PASS / FAIL label badge with coloured background."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setFixedSize(60, 22)
+        self.setAlignment(Qt.AlignCenter)
+        self.set_neutral()
+
+    def _apply(self, state):
+        text, fg, bg = _BADGE_STYLES[state]
+        self.setText(text)
+        self.setStyleSheet(
+            f"color: {fg}; background: {bg};"
+            "font-weight: bold; font-size: 10px; border-radius: 6px;"
+        )
+
+    def set_pass(self):
+        self._apply("pass")
+
+    def set_fail(self):
+        self._apply("fail")
+
+    def set_neutral(self):
+        self._apply("neutral")
+
+
+# âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+# Main tab widget
+# âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 
 class SteelDesignCheckTab(QWidget):
     """
     Design Check tab for the Steel Design dialog.
 
     Displays eight IRC code compliance check cards in a two-column grid.
-    Each card shows a check title and a read-only output area that is
-    populated at runtime when design results are available.
+    Each card shows: bold title, styled equation box, computed demand/capacity
+    values, coloured DCR label, utilization progress bar, and PASS/FAIL badge.
+
+    A summary bar at the top shows aggregate pass/fail counts.
 
     Public API
     ----------
+    populate_from_results(demand, capacity, engine)
+        Populate all 8 cards from the IRC 22:2015 pipeline output.
     set_check_result(key, text)
-        Write a result string into the named check card output area.
+        Write a result string into the named check card.
     clear_results()
         Clear all check output areas.
     set_girder_count(count)
-        Repopulate the Member ID combo with the correct girder count.
+        Repopulate the Member ID combo.
     load_data(cad_state)
         Restore check results from a cad_state snapshot.
-
-    Check keys (used by set_check_result / load_data)
-    --------------------------------------------------
-    ``flexure``, ``shear_long_trans``, ``shear``, ``fatigue``,
-    ``interaction``, ``stress``, ``ltb``, ``deflection``
     """
 
     def __init__(self, parent=None):
-        self.check_outputs = {}   # key → QTextEdit
+        # Widget tracking dicts â one entry per card key
+        self.check_eq_labels  = {}   # key â equation QLabel
+        self.check_val_labels = {}   # key â demand/capacity QLabel
+        self.check_dcr_labels = {}   # key â DCR QLabel
+        self.check_bars       = {}   # key â UtilizationBar
+        self.check_badges     = {}   # key â StatusBadge
+
+        self.summary_passed_label = None
+        self.summary_failed_label = None
+        self.summary_badge        = None
+        self.design_results       = []
 
         super().__init__(parent)
 
-        # White background — consistent with SteelDesignDetailsTab and SteelDesignAnalysisTab.
+        # White background â consistent with other tabs.
         self.setStyleSheet("background-color: white;")
 
         main_layout = QVBoxLayout(self)
@@ -88,10 +255,13 @@ class SteelDesignCheckTab(QWidget):
         container_layout.setContentsMargins(18, 6, 18, 12)
         container_layout.setSpacing(16)
 
-        # ── TOP BAR: Member ID (left) + Load Combination (right) ──────
-        container_layout.addLayout(self._build_top_bar())
+        # ââ TOP BAR: Member ID + Load Combination in a bordered card âââââââ
+        container_layout.addWidget(self._build_top_bar())
 
-        # ── CHECK CARDS GRID: 2 columns ───────────────────────────────
+        # ââ SUMMARY BAR: pass/fail counts + overall badge âââââââââââââ
+        container_layout.addWidget(self._build_summary_bar())
+
+        # ââ CHECK CARDS GRID: 2 columns âââââââââââââââââââââââââââââââ
         container_layout.addLayout(self._build_checks_grid())
 
         container_layout.addStretch()
@@ -99,9 +269,51 @@ class SteelDesignCheckTab(QWidget):
         scroll_area.setWidget(container)
         main_layout.addWidget(scroll_area)
 
-    # ─────────────────────────────────────────────────────────────────────────
+    # âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+    # SUMMARY BAR
+    # âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+
+    def _build_summary_bar(self):
+        """Build the Checks / Passed / Failed summary row with an overall badge."""
+        frame = QFrame()
+        frame.setObjectName("summaryFrame")
+        frame.setStyleSheet(
+            "QFrame#summaryFrame {"
+            "background: #f0f4e8; border: 1px solid #90AF13;"
+            "border-radius: 6px; padding: 4px;"
+            "}"
+        )
+        layout = QHBoxLayout(frame)
+        layout.setContentsMargins(12, 6, 12, 6)
+        layout.setSpacing(16)
+
+        _SUMMARY_STYLE = (
+            "font-size: 11px; font-weight: 600; color: #2b2b2b; "
+            "background: transparent; border: none;"
+        )
+
+        label = QLabel("Checks: 8")
+        label.setStyleSheet(_SUMMARY_STYLE)
+        layout.addWidget(label)
+
+        self.summary_passed_label = QLabel("Passed: \u2014")
+        self.summary_passed_label.setStyleSheet(_SUMMARY_STYLE)
+        layout.addWidget(self.summary_passed_label)
+
+        self.summary_failed_label = QLabel("Failed: \u2014")
+        self.summary_failed_label.setStyleSheet(_SUMMARY_STYLE)
+        layout.addWidget(self.summary_failed_label)
+
+        layout.addStretch()
+
+        self.summary_badge = StatusBadge()
+        layout.addWidget(self.summary_badge)
+
+        return frame
+
+    # ——————————————————————————————————————————————————————————————————————————
     # HELPERS — exact copy from steel_design_details.py
-    # ─────────────────────────────────────────────────────────────────────────
+    # ——————————————————————————————————————————————————————————————————————————
 
     def _section_card(self, title):
         """Return a borderless card QFrame with a bold title label and a QVBoxLayout."""
@@ -141,68 +353,119 @@ class SteelDesignCheckTab(QWidget):
         grid.setColumnStretch(2, 1)
         return grid
 
-    def _readonly_field(self):
-        """Return a fixed 150×22 px read-only QLineEdit."""
-        field = QLineEdit()
-        field.setReadOnly(True)
-        field.setFixedWidth(150)
-        field.setFixedHeight(22)
-        field.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
-        apply_field_style(field)
-        return field
-
-    def _add_row(self, grid, row, text, widget):
-        """Append a (label, widget) row to grid at the given row index; return the next row index."""
-        grid.addWidget(self._row_label(text), row, 0, Qt.AlignLeft | Qt.AlignVCenter)
-        grid.addWidget(widget,                row, 1, Qt.AlignLeft | Qt.AlignVCenter)
-        return row + 1
-
-    # ─────────────────────────────────────────────────────────────────────────
-    # TOP BAR
-    # ─────────────────────────────────────────────────────────────────────────
-
     def _build_top_bar(self):
-        """Build the Member ID and Load Combination selector row."""
-        bar = QHBoxLayout()
-        bar.setSpacing(24)
-        bar.setContentsMargins(0, 0, 0, 0)
+        """
+        Build the Member ID and Load Combination read-only mirror row.
 
-        # Member ID
-        member_lbl = QLabel("Member ID")
-        member_lbl.setStyleSheet(f"{_UI_FONT} color: #000;")
+        Returns a transparent container widget holding two equal-width individual
+        card frames â one per combo â matching the 'Component' / 'Display Location'
+        card layout used in the Analysis Results tab:
+          - each card: white bg, 1 px solid #b0b0b0, border-radius 6 px
+          - bold section title at the top, combo below
+          - equal horizontal stretch so both cards share the full width
+
+        The combos are intentionally disabled. The Output Dock is the only place
+        where the user changes member / load combination; sync_from_output_dock()
+        writes new selections in here programmatically.
+        """
+        # Shared card stylesheet â identical to comp_card / disp_card in Analysis tab.
+        _CARD_STYLE = (
+            "QFrame#controlCard {"
+            "  background-color: white;"
+            "  border: 1px solid #b0b0b0;"
+            "  border-radius: 6px;"
+            "}"
+            "QLabel {"
+            "  border: none;"
+            "  background: transparent;"
+            "}"
+        )
+        _TITLE_STYLE = (
+            "font-size: 13px; color: #2B2B2B; font-weight: bold;"
+            " background: transparent; border: none;"
+        )
+
+        # Disabled combo: black border / #f4f4f4 bg, no arrow — non-interactive read-only.
+        self._DISABLED_COMBO_STYLE = (
+            "QComboBox {"
+            "  padding: 1px 7px;"
+            "  border: 1px solid black;"
+            "  border-radius: 5px;"
+            "  background-color: #f4f4f4;"
+            "  color: #555555;"
+            "  font-size: 11px;"
+            "  min-height: 28px;"
+            "}"
+            "QComboBox::drop-down { border: none; width: 0px; }"
+            "QComboBox::down-arrow { width: 0px; height: 0px; image: none; }"
+        )
+
+        # Transparent row container â no border of its own.
+        container = QWidget()
+        container.setStyleSheet("background: transparent;")
+        container.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        row = QHBoxLayout(container)
+        row.setContentsMargins(0, 0, 0, 0)
+        row.setSpacing(16)   # gap between the two cards (matches controls_row spacing)
+
+        # ââ Member ID card âââââââââââââââââââââââââââââââââââââââââââââââââââââ
+        member_card = QFrame()
+        member_card.setObjectName("controlCard")
+        member_card.setStyleSheet(_CARD_STYLE)
+        member_card.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+
+        mc_layout = QVBoxLayout(member_card)
+        mc_layout.setContentsMargins(23, 10, 14, 12)
+        mc_layout.setSpacing(4)
+
+        member_title = QLabel("Member ID")
+        member_title.setStyleSheet(_TITLE_STYLE)
+        mc_layout.addWidget(member_title)
 
         self.member_combo = NoScrollComboBox()
-        apply_field_style(self.member_combo)
-        self.member_combo.setFixedWidth(150)
-        self.member_combo.setFixedHeight(22)
-        self.member_combo.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+        self.member_combo.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self.member_combo.setFixedHeight(28)
         self.member_combo.addItems(["All", "Girder 1", "Girder 2"])
+        self.member_combo.setEnabled(False)
+        self.member_combo.setStyleSheet(self._DISABLED_COMBO_STYLE)
+        self.member_combo.setToolTip(
+            "Change the member in the Output Dock \u2014 this field mirrors that selection."
+        )
+        mc_layout.addWidget(self.member_combo)
 
-        bar.addWidget(member_lbl)
-        bar.addWidget(self.member_combo)
+        # ââ Load Combination card ââââââââââââââââââââââââââââââââââââââââââââââ
+        load_card = QFrame()
+        load_card.setObjectName("controlCard")
+        load_card.setStyleSheet(_CARD_STYLE)
+        load_card.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
 
-        bar.addSpacing(40)
+        lc_layout = QVBoxLayout(load_card)
+        lc_layout.setContentsMargins(23, 10, 14, 12)
+        lc_layout.setSpacing(4)
 
-        # Load Combination
-        load_lbl = QLabel("Load Combination:")
-        load_lbl.setStyleSheet(f"{_UI_FONT} color: #000;")
+        load_title = QLabel("Load Combination")
+        load_title.setStyleSheet(_TITLE_STYLE)
+        lc_layout.addWidget(load_title)
 
         self.load_combo = NoScrollComboBox()
-        apply_field_style(self.load_combo)
-        self.load_combo.setFixedWidth(150)
-        self.load_combo.setFixedHeight(22)
-        self.load_combo.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+        self.load_combo.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self.load_combo.setFixedHeight(28)
         self.load_combo.addItems(LOAD_COMBINATIONS)
+        self.load_combo.setEnabled(False)
+        self.load_combo.setStyleSheet(self._DISABLED_COMBO_STYLE)
+        self.load_combo.setToolTip(
+            "Change the load combination in the Output Dock \u2014 this field mirrors that selection."
+        )
+        lc_layout.addWidget(self.load_combo)
 
-        bar.addWidget(load_lbl)
-        bar.addWidget(self.load_combo)
-        bar.addStretch()
+        row.addWidget(member_card, 1)   # stretch=1: both cards share width equally
+        row.addWidget(load_card,   1)
 
-        return bar
+        return container
 
-    # ─────────────────────────────────────────────────────────────────────────
+    # âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
     # CHECK CARDS GRID
-    # ─────────────────────────────────────────────────────────────────────────
+    # âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 
     def _build_checks_grid(self):
         """
@@ -225,55 +488,89 @@ class SteelDesignCheckTab(QWidget):
 
         return grid
 
-    def _build_check_card(self, key, title):
+    def _build_check_card(self, key: str, title: str) -> QFrame:
         """
-        Single check card:
-          - Rounded border matching the screenshot style
-          - Bold title at top
-          - Expanding QTextEdit output area below (readonly)
+        Single check card with five layers:
+          1. Bold title
+          2. Styled equation box (HTML rich text)
+          3. Computed demand / capacity value lines
+          4. Coloured DCR label + utilization progress bar
+          5. PASS / FAIL status badge
         """
         card = QFrame()
         card.setObjectName("checkCard")
         card.setStyleSheet("""
             QFrame#checkCard {
                 background-color: white;
-                border: 1px solid #b0b0b0;
-                border-radius: 6px;
+                border: 1px solid #CFCFCF;
+                border-radius: 8px;
             }
         """)
         card.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
 
         card_layout = QVBoxLayout(card)
-        card_layout.setContentsMargins(12, 10, 12, 10)
+        card_layout.setContentsMargins(14, 12, 14, 12)
         card_layout.setSpacing(8)
 
-        # Title
+        # ââ 1. Title ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
         title_lbl = QLabel(title)
-        title_lbl.setStyleSheet(f"{_UI_FONT.replace('11px','12px')} font-weight: bold; color: #2B2B2B; background: transparent; border: none;")
+        title_lbl.setStyleSheet(
+            "font-size: 13px; font-weight: bold; color: #000; "
+            "background: transparent; border: none;"
+        )
         title_lbl.setWordWrap(True)
         card_layout.addWidget(title_lbl)
 
-        # Output area — readonly, expandable, shows check results
-        output = QTextEdit()
-        output.setReadOnly(True)
-        output.setFixedHeight(60)
-        output.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-        output.setStyleSheet(f"""
-            QTextEdit {{
-                background-color: white;
-                border: none;
-                {_UI_FONT}
-                color: #333;
-            }}
-        """)
-        card_layout.addWidget(output)
+        # ââ 2. Equation box (rich text) âââââââââââââââââââââââââââââââââââââââ
+        eq_lbl = QLabel()
+        eq_lbl.setTextFormat(Qt.RichText)
+        eq_lbl.setWordWrap(True)
+        eq_lbl.setStyleSheet(
+            "font-family: 'Cambria Math', 'Times New Roman', serif; "
+            "font-size: 13px; color: #2E3B4E; "
+            "background-color: #F8F9FA; border: 1px solid #E4E7EB; "
+            "border-radius: 4px; padding: 6px;"
+        )
+        eq_text = _RENDER_MAP.get(key, {}).get("eq", "")
+        eq_lbl.setText(eq_text)
+        card_layout.addWidget(eq_lbl)
+        self.check_eq_labels[key] = eq_lbl
 
-        self.check_outputs[key] = output
+        # ââ 3. Value lines (demand / capacity) âââââââââââââââââââââââââââââââ
+        val_lbl = QLabel()
+        val_lbl.setTextFormat(Qt.RichText)
+        val_lbl.setWordWrap(True)
+        val_lbl.setStyleSheet(
+            "font-size: 13px; color: #222; "
+            "background: transparent; border: none; padding-top: 2px;"
+        )
+        card_layout.addWidget(val_lbl)
+        self.check_val_labels[key] = val_lbl
+
+        # ââ 4. DCR label âââââââââââââââââââââââââââââââââââââââââââââââââââââ
+        dcr_lbl = QLabel()
+        dcr_lbl.setStyleSheet(
+            "font-size: 14px; font-weight: bold; color: #555; "
+            "background: transparent; border: none;"
+        )
+        card_layout.addWidget(dcr_lbl)
+        self.check_dcr_labels[key] = dcr_lbl
+
+        # ââ 5. Utilization bar ââââââââââââââââââââââââââââââââââââââââââââââââ
+        bar = UtilizationBar()
+        card_layout.addWidget(bar)
+        self.check_bars[key] = bar
+
+        # ââ 6. Status badge âââââââââââââââââââââââââââââââââââââââââââââââââââ
+        badge = StatusBadge()
+        card_layout.addWidget(badge, alignment=Qt.AlignLeft)
+        self.check_badges[key] = badge
+
         return card
 
-    # ─────────────────────────────────────────────────────────────────────────
+    # âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
     # PUBLIC API
-    # ─────────────────────────────────────────────────────────────────────────
+    # âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 
     def set_girder_count(self, count):
         """Repopulate the Member ID combo with 'All' plus one entry per girder."""
@@ -289,17 +586,251 @@ class SteelDesignCheckTab(QWidget):
         except (ValueError, TypeError):
             pass
 
-        # Populate check output areas if results are in cad_state
-        for key, output in self.check_outputs.items():
-            result = cad_state.get(f"check_{key}", "")
-            output.setPlainText(str(result) if result else "")
+    def set_check_result(self, key: str, text: str) -> None:
+        """Write plain-text result into the value label of the named card."""
+        lbl = self.check_val_labels.get(key)
+        if lbl is not None:
+            lbl.setTextFormat(Qt.PlainText)
+            lbl.setText(text)
 
-    def set_check_result(self, key: str, text: str):
-        """Write result text into the named check card output area; silently ignores unknown keys."""
-        if key in self.check_outputs:
-            self.check_outputs[key].setPlainText(text)
+    def clear_results(self) -> None:
+        """Reset all eight cards to their initial empty state."""
+        for key in self.check_badges:
+            lbl = self.check_val_labels.get(key)
+            if lbl:
+                lbl.setText("")
+            dcr = self.check_dcr_labels.get(key)
+            if dcr:
+                dcr.setText("")
+                dcr.setStyleSheet(
+                    "font-size: 14px; font-weight: bold; color: #555; "
+                    "background: transparent; border: none;"
+                )
+            bar = self.check_bars.get(key)
+            if bar:
+                bar.set_ratio(0)
+            badge = self.check_badges.get(key)
+            if badge:
+                badge.set_neutral()
+        self.design_results = []
+        self._refresh_summary()
 
-    def clear_results(self):
-        """Clear all eight check output areas."""
-        for output in self.check_outputs.values():
-            output.clear()
+    def populate_from_results(
+        self,
+        demand: object,
+        capacity: object,
+        engine: object,
+    ) -> None:
+        """
+        Populate all 8 design-check cards from IRC 22:2015 pipeline output.
+
+        Called by steel_design.py ``_run_design_checks()``.
+        Each card is populated independently â a failure in one card never
+        prevents the others from rendering.
+
+        Parameters
+        ----------
+        demand   : DemandEnvelope
+        capacity : CapacityResults  (from IRC22CapacityCalculator.compute_all())
+        engine   : DCREngine        (run_all_checks() already called)
+        """
+        self.clear_results()
+
+        by_id: dict[int, object] = {chk.check_id: chk for chk in engine.checks}
+
+        def _classify(dcr: float) -> bool:
+            return dcr < 1.0
+
+        # Build a result dict for each card via the DCREngine checks
+        results_by_key: dict[str, dict] = {}
+
+        # ââ 1. Flexure (check_id=1) ââââââââââââââââââââââââââââââââââââââââââ
+        try:
+            c = by_id[1]
+            results_by_key["flexure"] = {
+                "demand": c.demand, "capacity": c.capacity,
+                "ratio": c.dcr, "passed": c.status != "FAIL",
+            }
+        except Exception:
+            pass
+
+        # ââ 2. Shear (check_id=2) ââââââââââââââââââââââââââââââââââââââââââââ
+        try:
+            c = by_id[2]
+            results_by_key["shear"] = {
+                "demand": c.demand, "capacity": c.capacity,
+                "ratio": c.dcr, "passed": c.status != "FAIL",
+            }
+        except Exception:
+            pass
+
+        # ââ 3. Interaction (check_id=3) ââââââââââââââââââââââââââââââââââââââ
+        try:
+            c = by_id[3]
+            results_by_key["interaction"] = {
+                "demand": c.demand, "capacity": c.capacity,
+                "ratio": c.dcr, "passed": c.status != "FAIL",
+            }
+        except Exception:
+            pass
+
+        # ââ 4. LTB (check_id=4) ââââââââââââââââââââââââââââââââââââââââââââââ
+        try:
+            c = by_id[4]
+            results_by_key["ltb"] = {
+                "demand": c.demand, "capacity": c.capacity,
+                "ratio": c.dcr, "passed": c.status != "FAIL",
+            }
+        except Exception:
+            pass
+
+        # ââ 5. Deflection â worst of Live (id=5) and Total (id=6) ââââââââââââ
+        try:
+            worst = None
+            for cid in (5, 6):
+                c = by_id.get(cid)
+                if c and (worst is None or c.dcr > worst.dcr):
+                    worst = c
+            if worst:
+                results_by_key["deflection"] = {
+                    "demand": worst.demand, "capacity": worst.capacity,
+                    "ratio": worst.dcr, "passed": worst.status != "FAIL",
+                }
+        except Exception:
+            pass
+
+        # ââ 6. Fatigue â worst of Normal (id=7) and Shear (id=8) âââââââââââââ
+        try:
+            worst = None
+            for cid in (7, 8):
+                c = by_id.get(cid)
+                if c and (worst is None or c.dcr > worst.dcr):
+                    worst = c
+            if worst:
+                results_by_key["fatigue"] = {
+                    "demand": worst.demand, "capacity": worst.capacity,
+                    "ratio": worst.dcr, "passed": worst.status != "FAIL",
+                }
+        except Exception:
+            pass
+
+        # ââ 7. Stress Limitation (Cl.604.3.1) â computed inline ââââââââââââââ
+        try:
+            Ze_mm3 = (
+                capacity.details.get("section_modulus", {}).get("Ze_mm3")
+                or capacity.details.get("sls_stress", {}).get("Ze_mm3")
+                or getattr(capacity, "Ze_mm3", None)
+            )
+            if not Ze_mm3:
+                Ze_mm3 = getattr(capacity, "Zp_mm3", 1) or 1
+            sigma_actual = demand.Mu_kNm * 1e6 / max(Ze_mm3, 1)
+            cap_stress = capacity.sigma_s_limit_MPa
+            if cap_stress > 0:
+                dcr = sigma_actual / cap_stress
+                results_by_key["stress"] = {
+                    "demand": round(sigma_actual, 2),
+                    "capacity": round(cap_stress, 2),
+                    "ratio": round(dcr, 2),
+                    "passed": _classify(dcr),
+                }
+        except Exception:
+            pass
+
+        # ââ 8. Longitudinal/Transverse Shear (Cl.606) â computed inline ââââââ
+        try:
+            n_studs = getattr(capacity, "n_studs_per_section", None) or 2
+            demand_per_stud = demand.Vu_kN / n_studs
+            cap_stud = capacity.Qu_kN
+            if cap_stud > 0:
+                dcr = demand_per_stud / cap_stud
+                results_by_key["shear_long_trans"] = {
+                    "demand": round(demand_per_stud, 2),
+                    "capacity": round(cap_stud, 2),
+                    "ratio": round(dcr, 2),
+                    "passed": _classify(dcr),
+                }
+        except Exception:
+            pass
+
+        # ââ Apply results to card widgets âââââââââââââââââââââââââââââââââââââ
+        self.design_results = list(results_by_key.values())
+
+        for key, res in results_by_key.items():
+            self._apply_card_result(key, res)
+
+        self._refresh_summary()
+
+    # âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+    # CARD RENDERING HELPERS
+    # âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+
+    def _apply_card_result(self, key: str, res: dict) -> None:
+        """Populate a single card's value/DCR/bar/badge widgets from a result dict."""
+        if key not in self.check_val_labels:
+            return
+
+        demand   = res.get("demand",   0.0)
+        capacity = res.get("capacity", 0.0)
+        ratio    = res.get("ratio",    0.0)
+        passed   = res.get("passed",   False)
+
+        rm       = _RENDER_MAP.get(key, {})
+        unit     = rm.get("unit", "")
+        unit_str = f" {unit}" if unit else ""
+
+        # Build value text (demand / capacity lines)
+        if key == "interaction":
+            val_text = (
+                f"<i>M<sub>d</sub></i> / <i>M<sub>r</sub></i> + "
+                f"<i>V<sub>d</sub></i> / <i>V<sub>r</sub></i> = {demand:.2f}"
+            )
+        else:
+            dem_pfx = rm.get("dem_pfx", "Demand")
+            cap_pfx = rm.get("cap_pfx", "Capacity")
+            val_text = (
+                f"{dem_pfx} = {demand:.2f}{unit_str}<br>"
+                f"{cap_pfx} = {capacity:.2f}{unit_str}"
+            )
+
+        dcr_text  = f"DCR = {ratio:.2f}"
+        dcr_color = "#388E3C" if passed else "#D32F2F"
+
+        # Set value label
+        val_lbl = self.check_val_labels[key]
+        val_lbl.setTextFormat(Qt.RichText)
+        val_lbl.setText(val_text)
+
+        # Set DCR label
+        dcr_lbl = self.check_dcr_labels.get(key)
+        if dcr_lbl:
+            dcr_lbl.setText(dcr_text)
+            dcr_lbl.setStyleSheet(
+                f"font-size: 14px; font-weight: bold; color: {dcr_color}; "
+                "background: transparent; border: none;"
+            )
+
+        # Set utilization bar
+        bar = self.check_bars.get(key)
+        if bar:
+            bar.set_ratio(ratio)
+
+        # Set badge
+        badge = self.check_badges.get(key)
+        if badge:
+            badge.set_pass() if passed else badge.set_fail()
+
+    def _refresh_summary(self) -> None:
+        """Update the summary bar pass/fail counts and overall badge."""
+        passed = sum(1 for r in self.design_results if r.get("passed"))
+        failed = len(self.design_results) - passed
+        if self.summary_passed_label:
+            self.summary_passed_label.setText(f"Passed: {passed}")
+        if self.summary_failed_label:
+            self.summary_failed_label.setText(f"Failed: {failed}")
+        if self.summary_badge:
+            if not self.design_results:
+                self.summary_badge.set_neutral()
+            elif failed == 0:
+                self.summary_badge.set_pass()
+            else:
+                self.summary_badge.set_fail()
