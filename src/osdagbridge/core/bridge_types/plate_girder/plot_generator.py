@@ -25,9 +25,10 @@ FORCE_MAP = {
 }
 
 # Human-readable labels shown in plot titles / axis labels
+# Human-readable labels shown in plot titles / axis labels
 FORCE_DISPLAY = {
-    "Fx": "Vx", "Fy": "Vy", "Fz": "Vz",
-    "Mx": "Mx", "My": "My", "Mz": "Mz",
+    "Fx": "V$_x$", "Fy": "V$_y$", "Fz": "V$_z$",
+    "Mx": "M$_x$", "My": "M$_y$", "Mz": "M$_z$",
 }
 
 # Displacement component map  key → component name in ds["displacements"]
@@ -38,7 +39,7 @@ DISP_MAP = {
 }
 
 DISP_DISPLAY = {
-    "Dx": "Dx", "Dy": "Dy", "Dz": "Dz",
+    "Dx": "D$_x$", "Dy": "D$_y$", "Dz": "D$_z$",
 }
 
 # View settings (elevation/azimuth for a near-front-elevation look)
@@ -410,8 +411,8 @@ def build_figure_sfd(ds, force_key, nodes, members, edge_dist=0.0):
             )
             sel.annotation.get_bbox_patch().set(fc="white", alpha=0.9)
 
-    ax.set_xlabel("Span Length", fontsize=10, labelpad=8)
-    ax.set_ylabel("Bridge Width", fontsize=10, labelpad=8)
+    ax.set_xlabel("Span Length (m)", fontsize=10, labelpad=8)
+    ax.set_ylabel("Bridge Width (m)", fontsize=10, labelpad=8)
     ax.set_zlabel(f"{disp_key} (kN, scaled)", fontsize=10, labelpad=8)
     ax.set_title(f"Shear Force Diagram  —  {disp_key}", fontsize=12, fontweight="bold", pad=12)
     ax.view_init(elev=DEFAULT_ELEV, azim=DEFAULT_AZIM)
