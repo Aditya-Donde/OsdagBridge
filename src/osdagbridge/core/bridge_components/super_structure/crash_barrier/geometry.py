@@ -285,3 +285,39 @@ def high_containment_barrier_area():
         "type": "High Containment Crash Barrier (Fig 3)",
         "barrier_area": round(total, 3)
     }
+
+
+# ─── Dead load ───────────────────────────────────────────────────────────────
+
+# IRC 5:2015 / IS 875 Pt 2 — typical RCC edge barrier self-weight (Type P3/P4).
+DEFAULT_CRASH_BARRIER_LOAD_kN_m = 6.54
+
+
+def crash_barrier_dead_load_kN_m(load_kN_per_m: float | None = None) -> float:
+    """Dead load intensity for a crash barrier (kN/m).
+
+    Parameters
+    ----------
+    load_kN_per_m : float, optional
+        User-specified barrier self-weight per unit length (kN/m). When
+        ``None`` the IRC 5:2015 default for an RCC edge barrier is used.
+
+    Returns
+    -------
+    float
+        Line load in kN/m.
+    """
+    return load_kN_per_m if load_kN_per_m is not None else DEFAULT_CRASH_BARRIER_LOAD_kN_m
+
+
+_KEY_CRASH_BARRIER_LOAD = "crash_barrier_load"
+
+
+def crash_barrier_load_from_inputs(additional_inputs: dict) -> float | None:
+    """Extract user-specified crash barrier load (kN/m) from additional-inputs dict.
+
+    Returns ``None`` when the key is absent, in which case
+    ``crash_barrier_dead_load_kN_m()`` will apply the IRC 5 default.
+    """
+    val = additional_inputs.get(_KEY_CRASH_BARRIER_LOAD)
+    return float(val) if val is not None else None

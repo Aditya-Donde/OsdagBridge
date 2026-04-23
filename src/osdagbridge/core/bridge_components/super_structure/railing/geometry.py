@@ -115,3 +115,40 @@ def rigid_barrier_with_railing_area(railing):
         "barrier_area": round(total_area, 3)
     }
 
+
+# ─── Dead load ───────────────────────────────────────────────────────────────
+
+from osdagbridge.core.utils.codes.irc6_2017 import IRC6_2017  # noqa: E402
+
+
+def railing_dead_load_kN_m(load_kN_per_m: float | None = None) -> float:
+    """Dead load intensity for a railing (kN/m).
+
+    Parameters
+    ----------
+    load_kN_per_m : float, optional
+        User-specified railing self-weight per unit length (kN/m). When
+        ``None`` the IRC 6:2017 Cl.206.5 default is used
+        (cl_206_5_railing_load() returns kg/m, converted here to kN/m).
+
+    Returns
+    -------
+    float
+        Line load in kN/m.
+    """
+    if load_kN_per_m is not None:
+        return load_kN_per_m
+    return IRC6_2017.cl_206_5_railing_load() * 9.81 / 1000.0
+
+
+_KEY_RAILING_LOAD = "railing_load_value"
+
+
+def railing_load_from_inputs(additional_inputs: dict) -> float | None:
+    """Extract user-specified railing load (kN/m) from the additional-inputs dict.
+
+    Returns ``None`` when the key is absent, in which case
+    ``railing_dead_load_kN_m()`` will apply the IRC 6:2017 Cl.206.5 default.
+    """
+    val = additional_inputs.get(_KEY_RAILING_LOAD)
+    return float(val) if val is not None else None

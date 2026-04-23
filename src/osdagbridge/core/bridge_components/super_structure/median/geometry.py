@@ -180,3 +180,26 @@ def median_metallic_barrier_area(barrier_type):
         "steel_area": post_area + beam_area,
         "kerb_area": kerb_area
     }
+
+
+# ─── Dead load ───────────────────────────────────────────────────────────────
+
+# Nominal self-weight for a raised-kerb / RCC median (IRC 5 / IS 875 Pt 2).
+DEFAULT_MEDIAN_LOAD_kN_m = 4.00
+
+
+def median_dead_load_kN_m(load_kN_per_m: float | None = None) -> float:
+    """Dead load intensity for the median barrier (kN/m).
+
+    Parameters
+    ----------
+    load_kN_per_m : float, optional
+        User-specified median self-weight per unit length (kN/m). When
+        ``None`` the nominal default of 4.00 kN/m is used.
+
+    Returns
+    -------
+    float
+        Line load in kN/m.
+    """
+    return load_kN_per_m if load_kN_per_m is not None else DEFAULT_MEDIAN_LOAD_kN_m

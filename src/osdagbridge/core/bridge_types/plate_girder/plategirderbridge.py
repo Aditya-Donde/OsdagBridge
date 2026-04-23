@@ -38,9 +38,6 @@ from osdagbridge.core.utils.common import (
     KEY_CROSS_BRACING,
     KEY_END_DIAPHRAGM,
     KEY_DECK_CONCRETE_GRADE_BASIC,
-    KEY_DECK_THICKNESS,
-    KEY_WEARING_COAT_THICKNESS,
-    KEY_WEARING_COAT_DENSITY,
     DEFAULT_CRASH_BARRIER_WIDTH,
     DEFAULT_RAILING_WIDTH,
     DEFAULT_GIRDER_SPACING,
@@ -440,32 +437,23 @@ class PlateGirderBridge:
             DEFAULT_AI_WEARING_THICKNESS_MM as _DEFAULT_WC_THICKNESS_MM,
             DEFAULT_AI_WEARING_DENSITY_KN_PER_M3 as _DEFAULT_WC_DENSITY_KN_M3,
         )
+        from osdagbridge.core.bridge_components.super_structure.deck.geometry import (
+            deck_thickness_from_inputs,
+            wearing_course_params_from_inputs,
+        )
+        from osdagbridge.core.bridge_components.super_structure.crash_barrier.geometry import (
+            crash_barrier_load_from_inputs,
+        )
+        from osdagbridge.core.bridge_components.super_structure.railing.geometry import (
+            railing_load_from_inputs,
+        )
 
-        # Deck thickness is a user input (mm); fall back to the initial-sizing
-        # default so the analysis can still run without the Additional Inputs
-        # dialog having been opened.
-        deck_t_mm = float(self.additional_inputs.get(
-            KEY_DECK_THICKNESS, _DEFAULT_DECK_THICKNESS_MM
-        ))
-        deck_t_m = deck_t_mm / 1000.0
-
-        # Wearing-course thickness + density from Additional Inputs, with
-        # sensible fallbacks (50 mm / 24 kN/m³ bituminous per AI_DEFAULTS).
-        wc_t_mm = float(self.additional_inputs.get(
-            KEY_WEARING_COAT_THICKNESS, _DEFAULT_WC_THICKNESS_MM
-        ))
-        wc_rho = float(self.additional_inputs.get(
-            KEY_WEARING_COAT_DENSITY, _DEFAULT_WC_DENSITY_KN_M3
-        ))
-        wc_t_m = wc_t_mm / 1000.0
-
-        # Crash barrier and railing loads: use value from Additional Inputs when
-        # the user has explicitly set it; otherwise the analyser falls back to the
-        # IRC 5 code defaults stored as class constants.
-        _cb = self.additional_inputs.get("crash_barrier_load")
-        barrier_load_kN_m = float(_cb) if _cb is not None else None
-        _rl = self.additional_inputs.get("railing_load_value")
-        railing_load_kN_m = float(_rl) if _rl is not None else None
+        deck_t_m = deck_thickness_from_inputs(self.additional_inputs, _DEFAULT_DECK_THICKNESS_MM)
+        wc_t_m, wc_rho = wearing_course_params_from_inputs(
+            self.additional_inputs, _DEFAULT_WC_THICKNESS_MM, _DEFAULT_WC_DENSITY_KN_M3
+        )
+        barrier_load_kN_m = crash_barrier_load_from_inputs(self.additional_inputs)
+        railing_load_kN_m = railing_load_from_inputs(self.additional_inputs)
 
         m = self.grillage_model
         m.create_self_weight_load()
