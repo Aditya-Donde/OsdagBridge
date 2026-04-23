@@ -360,9 +360,9 @@ def build_figure_sfd(ds, force_key, nodes, members, edge_dist=0.0):
                    color=base_color, s=18, zorder=4, depthshade=False)
 
         # girder label
-        ax.text(xs[0], z_base, 0, f" {girder_name}",
+        ax.text(xs[0] - (x_range * 0.02), z_base, 0, f"{girder_name}",
                 color="black", fontsize=11, fontweight="normal",
-                ha="left", va="bottom", zorder=6,
+                ha="right", va="center", zorder=6,
                 bbox=dict(boxstyle="round,pad=0.2", facecolor="white",
                           alpha=0.8, edgecolor="none"))
 
@@ -504,9 +504,9 @@ def build_figure_bmd(ds, force_key, nodes, members, edge_dist=0.0):
                    color=base_color, s=18, zorder=4, depthshade=False)
 
         # girder label
-        ax.text(xs[0], z_base, 0, f" {girder_name}",
+        ax.text(xs[0] - (x_range * 0.02), z_base, 0, f"{girder_name}",
                 color="black", fontsize=11, fontweight="normal",
-                ha="left", va="bottom", zorder=6,
+                ha="right", va="center", zorder=6,
                 bbox=dict(boxstyle="round,pad=0.2", facecolor="white",
                           alpha=0.8, edgecolor="none"))
 
@@ -652,9 +652,9 @@ def build_figure_bmd_contour(ds, force_key, nodes, members, edge_dist=0.0):
             continue
 
         # girder label
-        ax.text(xs[0], z_base, 0, f" {girder_name}",
+        ax.text(xs[0] - (x_range * 0.02), z_base, 0, f"{girder_name}",
                 color="black", fontsize=11, fontweight="normal",
-                ha="left", va="bottom", zorder=6,
+                ha="right", va="center", zorder=6,
                 bbox=dict(boxstyle="round,pad=0.2", facecolor="white",
                           alpha=0.8, edgecolor="none"))
 
@@ -805,9 +805,9 @@ def build_figure_deflection(ds, disp_key, nodes, members, edge_dist=0.0):
                    color=base_color, s=18, zorder=4, depthshade=False)
 
         # girder label
-        ax.text(xs[0], z_base, 0, f" {girder_name}",
+        ax.text(xs[0] - (x_range * 0.02), z_base, 0, f"{girder_name}",
                 color="black", fontsize=11, fontweight="normal",
-                ha="left", va="bottom", zorder=6,
+                ha="right", va="center", zorder=6,
                 bbox=dict(boxstyle="round,pad=0.2", facecolor="white",
                           alpha=0.8, edgecolor="none"))
 
