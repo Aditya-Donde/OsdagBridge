@@ -42,10 +42,7 @@ _DEFAULT_FORCE_LABEL = "V<sub>y</sub>"   # pre-checked on first link
 class MplPlotWidget(QWidget):
     """
     PySide6 widget that renders matplotlib analysis plots.
-
-    Controls (load-case combo + force radio buttons) live in the OutputDock.
-    Call setup() after bridge.design() completes, then link_output_dock() to
-    wire the dock controls to this widget.
+    Controls live in the OutputDock.
     """
 
     def __init__(self, parent=None):
@@ -57,14 +54,13 @@ class MplPlotWidget(QWidget):
         self._nodes     = {}
         self._members   = {}
         self._edge_dist = 0.0
-
-        # Set by link_output_dock()
         self._output_dock = None
 
         # Display States
         self._grillage_mode = False
         self._show_nodes = True 
-        self._show_axis = True  # Track axis visibility state
+        self._show_axis = True  
+        self._show_supports = True # NEW: Track support visibility
 
         # Zoom state
         self._zoom_scale  = 1.0
@@ -90,20 +86,12 @@ class MplPlotWidget(QWidget):
                 "QPushButton:hover { background: #e0e0e0; }"
                 "QPushButton:pressed { background: #bdbdbd; }"
             )
-        self._btn_zoom_in.setToolTip("Zoom In")
-        self._btn_zoom_out.setToolTip("Zoom Out")
-        self._btn_zoom_reset.setToolTip("Reset Zoom")
         self._btn_zoom_in.clicked.connect(self._zoom_in)
         self._btn_zoom_out.clicked.connect(self._zoom_out)
         self._btn_zoom_reset.clicked.connect(self._zoom_reset)
 
-        # grillage toggle button
-        self._btn_grillage = QPushButton("Grillage")
-        self._btn_grillage.setCheckable(True)
-        self._btn_grillage.setFixedHeight(28)
-        self._btn_grillage.setFocusPolicy(Qt.NoFocus)
-        self._btn_grillage.setToolTip("Show bridge grillage only")
-        self._btn_grillage.setStyleSheet(
+        # TOOBAR BUTTONS
+        btn_style = (
             "QPushButton { font-size: 12px; border: 1px solid #bbb; border-radius: 4px;"
             " background: #f5f5f5; padding: 0 8px; }"
             "QPushButton:hover { background: #e0e0e0; }"
@@ -111,48 +99,46 @@ class MplPlotWidget(QWidget):
             "QPushButton:checked { background: #1565C0; color: white;"
             " border: 1px solid #0D47A1; }"
         )
+
+        self._btn_grillage = QPushButton("Grillage")
+        self._btn_grillage.setCheckable(True)
+        self._btn_grillage.setFixedHeight(28)
+        self._btn_grillage.setFocusPolicy(Qt.NoFocus)
+        self._btn_grillage.setStyleSheet(btn_style)
         self._btn_grillage.toggled.connect(self._on_grillage_toggled)
 
-        # nodes toggle button
         self._btn_nodes = QPushButton("Nodes")
         self._btn_nodes.setCheckable(True)
         self._btn_nodes.setChecked(True) 
         self._btn_nodes.setFixedHeight(28)
         self._btn_nodes.setFocusPolicy(Qt.NoFocus)
-        self._btn_nodes.setToolTip("Show or hide node markers")
-        self._btn_nodes.setStyleSheet(
-            "QPushButton { font-size: 12px; border: 1px solid #bbb; border-radius: 4px;"
-            " background: #f5f5f5; padding: 0 8px; }"
-            "QPushButton:hover { background: #e0e0e0; }"
-            "QPushButton:pressed { background: #bdbdbd; }"
-            "QPushButton:checked { background: #1565C0; color: white;"
-            " border: 1px solid #0D47A1; }"
-        )
+        self._btn_nodes.setStyleSheet(btn_style)
         self._btn_nodes.toggled.connect(self._on_nodes_toggled)
 
-        # NEW: axis toggle button
         self._btn_axis = QPushButton("Axis")
         self._btn_axis.setCheckable(True)
         self._btn_axis.setChecked(True) 
         self._btn_axis.setFixedHeight(28)
         self._btn_axis.setFocusPolicy(Qt.NoFocus)
-        self._btn_axis.setToolTip("Show or hide coordinate axis")
-        self._btn_axis.setStyleSheet(
-            "QPushButton { font-size: 12px; border: 1px solid #bbb; border-radius: 4px;"
-            " background: #f5f5f5; padding: 0 8px; }"
-            "QPushButton:hover { background: #e0e0e0; }"
-            "QPushButton:pressed { background: #bdbdbd; }"
-            "QPushButton:checked { background: #1565C0; color: white;"
-            " border: 1px solid #0D47A1; }"
-        )
+        self._btn_axis.setStyleSheet(btn_style)
         self._btn_axis.toggled.connect(self._on_axis_toggled)
+
+        # NEW: supports toggle button
+        self._btn_supports = QPushButton("Supports")
+        self._btn_supports.setCheckable(True)
+        self._btn_supports.setChecked(True) 
+        self._btn_supports.setFixedHeight(28)
+        self._btn_supports.setFocusPolicy(Qt.NoFocus)
+        self._btn_supports.setStyleSheet(btn_style)
+        self._btn_supports.toggled.connect(self._on_supports_toggled)
 
         toolbar_row = QHBoxLayout()
         toolbar_row.setContentsMargins(4, 2, 4, 2)
         toolbar_row.setSpacing(4)
         toolbar_row.addWidget(self._btn_grillage)
         toolbar_row.addWidget(self._btn_nodes)
-        toolbar_row.addWidget(self._btn_axis) # Added next to Nodes
+        toolbar_row.addWidget(self._btn_supports) # Added Supports
+        toolbar_row.addWidget(self._btn_axis) 
         toolbar_row.addStretch()
         toolbar_row.addWidget(self._btn_zoom_out)
         toolbar_row.addWidget(self._btn_zoom_in)
@@ -169,10 +155,6 @@ class MplPlotWidget(QWidget):
 
     def setup(self, ds_all, loadcases: list, nodes: dict, members: dict,
               edge_dist: float = 0.0):
-        """
-        Store analysis results.  Does NOT redraw - call link_output_dock()
-        (or update_plot() directly) after this.
-        """
         self._ds_all    = ds_all
         self._loadcases = list(loadcases)
         self._nodes     = nodes
@@ -180,15 +162,8 @@ class MplPlotWidget(QWidget):
         self._edge_dist = edge_dist
 
     def link_output_dock(self, output_dock):
-        """
-        Wire the OutputDock's load-combination combobox and force checkboxes
-        to this widget, populate them with live data, and draw the first plot.
-
-        Call once after setup() completes.
-        """
         self._output_dock = output_dock
 
-        # populate & connect load-combination combobox
         combo_lc = output_dock.output_widget.findChild(
             QComboBox, "analysis.load_combination"
         )
@@ -197,14 +172,10 @@ class MplPlotWidget(QWidget):
             combo_lc.clear()
             combo_lc.addItems(self._loadcases)
             combo_lc.blockSignals(False)
-            # Prevent long item text from widening the dock
-            combo_lc.setSizeAdjustPolicy(
-                QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon
-            )
+            combo_lc.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
             combo_lc.setMinimumContentsLength(12)
             combo_lc.currentTextChanged.connect(self.update_plot)
 
-        # pre-check default force + connect all force radio buttons
         from osdagbridge.desktop.ui.utils.custom_widgets import CustomRadioButton
         force_rbs = [
             rb for rb in output_dock.output_widget.findChildren(CustomRadioButton)
@@ -217,7 +188,6 @@ class MplPlotWidget(QWidget):
         self.update_plot()
 
     def update_plot(self, *_args):
-        """Rebuild and redraw the current figure from the OutputDock controls."""
         if self._grillage_mode:
             return
 
@@ -234,20 +204,11 @@ class MplPlotWidget(QWidget):
         plt.close(self._fig)
 
         if force_key in _SFD_KEYS:
-            self._fig = build_figure_sfd(
-                ds, force_key, self._nodes, self._members,
-                edge_dist=self._edge_dist
-            )
+            self._fig = build_figure_sfd(ds, force_key, self._nodes, self._members, edge_dist=self._edge_dist)
         elif force_key in _DEFL_KEYS:
-            self._fig = build_figure_deflection(
-                ds, force_key, self._nodes, self._members,
-                edge_dist=self._edge_dist
-            )
+            self._fig = build_figure_deflection(ds, force_key, self._nodes, self._members, edge_dist=self._edge_dist)
         else:
-            self._fig, _ = build_figure_bmd(
-                ds, force_key, self._nodes, self._members,
-                edge_dist=self._edge_dist
-            )
+            self._fig, _ = build_figure_bmd(ds, force_key, self._nodes, self._members, edge_dist=self._edge_dist)
 
         self._canvas.figure = self._fig
         self._fig.set_canvas(self._canvas)
@@ -255,16 +216,15 @@ class MplPlotWidget(QWidget):
         # Ensure toggles match their current state
         self._apply_node_visibility()
         self._apply_axis_visibility()
+        self._apply_supports_visibility()
         
         self._fit_figure_to_canvas()
         self._canvas.draw()
 
-        # reset zoom and capture fresh axis limits
         self._zoom_scale = 1.0
         self._store_orig_limits()
 
     def _on_grillage_toggled(self, checked: bool):
-        """Show grillage-only plot when checked; restore force diagram when unchecked."""
         self._grillage_mode = checked
         if checked:
             if not self._nodes:
@@ -274,9 +234,9 @@ class MplPlotWidget(QWidget):
             self._canvas.figure = self._fig
             self._fig.set_canvas(self._canvas)
             
-            # Ensure toggles match their current state
             self._apply_node_visibility()
             self._apply_axis_visibility()
+            self._apply_supports_visibility()
             
             self._fit_figure_to_canvas()
             self._canvas.draw()
@@ -286,15 +246,19 @@ class MplPlotWidget(QWidget):
             self.update_plot()
 
     def _on_nodes_toggled(self, checked: bool):
-        """Instantly toggle the visibility of scatter plot nodes without rebuilding the figure."""
         self._show_nodes = checked
         self._apply_node_visibility()
         self._canvas.draw_idle() 
 
     def _on_axis_toggled(self, checked: bool):
-        """Instantly toggle the visibility of the XYZ coordinate triad."""
         self._show_axis = checked
         self._apply_axis_visibility()
+        self._canvas.draw_idle()
+
+    def _on_supports_toggled(self, checked: bool):
+        """Instantly toggle the visibility of the structural supports."""
+        self._show_supports = checked
+        self._apply_supports_visibility()
         self._canvas.draw_idle()
 
     def resizeEvent(self, event):
@@ -305,14 +269,22 @@ class MplPlotWidget(QWidget):
     # private helpers
 
     def _apply_node_visibility(self):
-        """Finds all scatter point collections (Path3DCollection) and toggles their visibility."""
+        """Finds all scatter point collections and toggles them, EXCLUDING supports."""
         for ax in self._fig.axes:
             for collection in ax.collections:
                 if isinstance(collection, Path3DCollection):
-                    collection.set_visible(self._show_nodes)
+                    # Do not touch the supports here!
+                    if collection.get_gid() != "supports":
+                        collection.set_visible(self._show_nodes)
+
+    def _apply_supports_visibility(self):
+        """Finds all collections tagged as 'supports' and toggles them."""
+        for ax in self._fig.axes:
+            for collection in ax.collections:
+                if collection.get_gid() == "supports":
+                    collection.set_visible(self._show_supports)
 
     def _apply_axis_visibility(self):
-        """Finds all collections and text tagged as 'coord_triad' and toggles them."""
         for ax in self._fig.axes:
             for collection in ax.collections:
                 if collection.get_gid() == "coord_triad":
@@ -322,7 +294,6 @@ class MplPlotWidget(QWidget):
                     text.set_visible(self._show_axis)
 
     def _fit_figure_to_canvas(self):
-        """Resize the matplotlib figure to match the current canvas widget size."""
         w_px = self._canvas.width()
         h_px = self._canvas.height()
         if w_px > 10 and h_px > 10:
@@ -330,7 +301,6 @@ class MplPlotWidget(QWidget):
             self._fig.set_size_inches(w_px / dpi, h_px / dpi, forward=False)
 
     def _store_orig_limits(self):
-        """Snapshot current 3-D axis limits so zoom can scale relative to them."""
         self._orig_limits = {}
         for i, ax in enumerate(self._fig.axes):
             if hasattr(ax, "get_zlim"):
@@ -341,7 +311,6 @@ class MplPlotWidget(QWidget):
                 }
 
     def _apply_zoom(self):
-        """Scale each 3-D axis uniformly around its centre by _zoom_scale."""
         if not self._orig_limits:
             return
         for i, ax in enumerate(self._fig.axes):
@@ -360,7 +329,6 @@ class MplPlotWidget(QWidget):
         self._canvas.draw_idle()
 
     def eventFilter(self, obj, event):
-        """Intercept scroll wheel on the canvas to zoom."""
         if obj is self._canvas and event.type() == QEvent.Type.Wheel:
             delta = event.angleDelta().y()
             if delta > 0:
@@ -368,7 +336,7 @@ class MplPlotWidget(QWidget):
             else:
                 self._zoom_scale = min(self._zoom_scale * 1.25, 20.0)
             self._apply_zoom()
-            return True   # consume — prevent parent scroll area from scrolling
+            return True   
         return super().eventFilter(obj, event)
 
     def _zoom_in(self):
@@ -384,16 +352,14 @@ class MplPlotWidget(QWidget):
         self._apply_zoom()
 
     def _current_loadcase(self) -> str:
-        """Read the selected load case from the OutputDock combobox."""
         combo = self._output_dock.output_widget.findChild(
             QComboBox, "analysis.load_combination"
         )
         return combo.currentText() if combo else (self._loadcases[0] if self._loadcases else "")
 
     def _current_force_key(self) -> str:
-        """Return the FORCE_MAP key for the currently checked force radio button."""
         from osdagbridge.desktop.ui.utils.custom_widgets import CustomRadioButton
         for rb in self._output_dock.output_widget.findChildren(CustomRadioButton):
             if rb.isChecked() and rb.text() in _RICH_LABEL_TO_FORCE:
                 return _RICH_LABEL_TO_FORCE[rb.text()]
-        return "Fy"   # fallback
+        return "Fy"

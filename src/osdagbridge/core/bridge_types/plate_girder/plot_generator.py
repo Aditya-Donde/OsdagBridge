@@ -195,6 +195,33 @@ def _add_coordinate_triad(ax, nodes, scale=0.10):
               color=colors["Y"], linewidth=2, arrow_length_ratio=0.25, zorder=5, gid=tag)
     ax.text(ox, oz, oy + Ly * 1.25, "Y", color=colors["Y"],
             fontsize=9, fontweight="bold", zorder=5, gid=tag)
+    
+def _add_supports(ax, nodes, members):
+    """Draw pin (diamond) and roller (circle) supports at the ends of girders."""
+    girders = _find_girders(nodes, members)
+    pin_x, pin_z = [], []
+    rol_x, rol_z = [], []
+
+    for z_val, elems in girders.items():
+        if not elems: continue
+        n_left = members[elems[0]][0]
+        n_right = members[elems[-1]][1]
+
+        pin_x.append(nodes[n_left][0])
+        pin_z.append(nodes[n_left][2])
+
+        rol_x.append(nodes[n_right][0])
+        rol_z.append(nodes[n_right][2])
+
+    # Pinned supports (Left side) -> Green Diamond (Matches Plotly!)
+    ax.scatter(pin_x, pin_z, np.zeros_like(pin_x), marker='D', s=70,
+               color='#7CB342', edgecolors='black', linewidths=1.5,
+               zorder=6, depthshade=False, gid="supports")
+
+    # Roller supports (Right side) -> Yellow Circle (Matches Plotly!)
+    ax.scatter(rol_x, rol_z, np.zeros_like(rol_x), marker='o', s=70,
+               color='#FBC02D', edgecolors='black', linewidths=1.5,
+               zorder=6, depthshade=False, gid="supports")
 
 
 # =============================================================================
@@ -228,6 +255,7 @@ def build_figure_grillage(nodes, members):
 
     _add_grillage_background(ax, nodes, members)
     _add_coordinate_triad(ax, nodes)
+    _add_supports(ax, nodes, members)
 
     # Draw node markers
     xs = [coord[0] for coord in nodes.values()]
@@ -292,6 +320,7 @@ def build_figure_sfd(ds, force_key, nodes, members, edge_dist=0.0):
 
     _add_grillage_background(ax, nodes, members)
     _add_coordinate_triad(ax, nodes)
+    _add_supports(ax, nodes, members)
 
     shear_color = "#1565C0"
     fill_color  = "#90CAF9"
@@ -439,6 +468,7 @@ def build_figure_bmd(ds, force_key, nodes, members, edge_dist=0.0):
 
     _add_grillage_background(ax, nodes, members)
     _add_coordinate_triad(ax, nodes)
+    _add_supports(ax, nodes, members)
 
     moment_color = "#C62828"
     fill_color   = "#EF9A9A"
@@ -597,6 +627,7 @@ def build_figure_bmd_contour(ds, force_key, nodes, members, edge_dist=0.0):
 
     _add_grillage_background(ax, nodes, members)
     _add_coordinate_triad(ax, nodes)
+    _add_supports(ax, nodes, members)
 
     base_color = "#388E3C"
 
@@ -717,6 +748,7 @@ def build_figure_deflection(ds, disp_key, nodes, members, edge_dist=0.0):
 
     _add_grillage_background(ax, nodes, members)
     _add_coordinate_triad(ax, nodes)
+    _add_supports(ax, nodes, members)
 
     defl_color = "#6A1B9A"   # deep purple
     fill_color = "#CE93D8"   # light purple
