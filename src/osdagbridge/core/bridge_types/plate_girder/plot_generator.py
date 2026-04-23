@@ -173,25 +173,28 @@ def _add_coordinate_triad(ax, nodes, scale=0.10):
     ox, oy, oz = min(xs), 0, min(zs)          # triad origin
 
     colors = {"X": "#FF4136", "Y": "#2ECC40", "Z": "#0074D9"}
+    
+    # We tag these elements so the UI toggle button can easily find and hide them!
+    tag = "coord_triad" 
 
     # X arrow (along span)
     ax.quiver(ox, oz, oy, L, 0, 0,
-              color=colors["X"], linewidth=2, arrow_length_ratio=0.25, zorder=5)
+              color=colors["X"], linewidth=2, arrow_length_ratio=0.25, zorder=5, gid=tag)
     ax.text(ox + L * 1.25, oz, oy, "X", color=colors["X"],
-            fontsize=9, fontweight="bold", zorder=5)
+            fontsize=9, fontweight="bold", zorder=5, gid=tag)
 
     # Z arrow (along width) — note ax.plot uses (x=span, y=width, z=force)
     ax.quiver(ox, oz, oy, 0, L, 0,
-              color=colors["Z"], linewidth=2, arrow_length_ratio=0.25, zorder=5)
+              color=colors["Z"], linewidth=2, arrow_length_ratio=0.25, zorder=5, gid=tag)
     ax.text(ox, oz + L * 1.25, oy, "Z", color=colors["Z"],
-            fontsize=9, fontweight="bold", zorder=5)
+            fontsize=9, fontweight="bold", zorder=5, gid=tag)
 
     # Y arrow (upward = force direction) — scaled by 0.30 to match box_aspect
     Ly = L * 0.30
     ax.quiver(ox, oz, oy, 0, 0, Ly,
-              color=colors["Y"], linewidth=2, arrow_length_ratio=0.25, zorder=5)
+              color=colors["Y"], linewidth=2, arrow_length_ratio=0.25, zorder=5, gid=tag)
     ax.text(ox, oz, oy + Ly * 1.25, "Y", color=colors["Y"],
-            fontsize=9, fontweight="bold", zorder=5)
+            fontsize=9, fontweight="bold", zorder=5, gid=tag)
 
 
 # =============================================================================

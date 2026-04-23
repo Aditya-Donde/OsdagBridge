@@ -3,7 +3,7 @@ matplotlib.use("QtAgg")
 
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
 import matplotlib.pyplot as plt
-from mpl_toolkits.mplot3d.art3d import Path3DCollection # Added for Node toggling
+from mpl_toolkits.mplot3d.art3d import Path3DCollection 
 
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QComboBox, QSizePolicy, QPushButton
@@ -63,11 +63,12 @@ class MplPlotWidget(QWidget):
 
         # Display States
         self._grillage_mode = False
-        self._show_nodes = True # Track node visibility state
+        self._show_nodes = True 
+        self._show_axis = True  # Track axis visibility state
 
         # Zoom state
         self._zoom_scale  = 1.0
-        self._orig_limits = None   # {ax_index: {"x": (lo,hi), "y": ..., "z": ...}}
+        self._orig_limits = None   
 
         # matplotlib canvas
         self._fig    = plt.figure(figsize=(14, 6), facecolor="white")
@@ -112,10 +113,10 @@ class MplPlotWidget(QWidget):
         )
         self._btn_grillage.toggled.connect(self._on_grillage_toggled)
 
-        # NEW: nodes toggle button
+        # nodes toggle button
         self._btn_nodes = QPushButton("Nodes")
         self._btn_nodes.setCheckable(True)
-        self._btn_nodes.setChecked(True) # On by default
+        self._btn_nodes.setChecked(True) 
         self._btn_nodes.setFixedHeight(28)
         self._btn_nodes.setFocusPolicy(Qt.NoFocus)
         self._btn_nodes.setToolTip("Show or hide node markers")
@@ -129,11 +130,29 @@ class MplPlotWidget(QWidget):
         )
         self._btn_nodes.toggled.connect(self._on_nodes_toggled)
 
+        # NEW: axis toggle button
+        self._btn_axis = QPushButton("Axis")
+        self._btn_axis.setCheckable(True)
+        self._btn_axis.setChecked(True) 
+        self._btn_axis.setFixedHeight(28)
+        self._btn_axis.setFocusPolicy(Qt.NoFocus)
+        self._btn_axis.setToolTip("Show or hide coordinate axis")
+        self._btn_axis.setStyleSheet(
+            "QPushButton { font-size: 12px; border: 1px solid #bbb; border-radius: 4px;"
+            " background: #f5f5f5; padding: 0 8px; }"
+            "QPushButton:hover { background: #e0e0e0; }"
+            "QPushButton:pressed { background: #bdbdbd; }"
+            "QPushButton:checked { background: #1565C0; color: white;"
+            " border: 1px solid #0D47A1; }"
+        )
+        self._btn_axis.toggled.connect(self._on_axis_toggled)
+
         toolbar_row = QHBoxLayout()
         toolbar_row.setContentsMargins(4, 2, 4, 2)
         toolbar_row.setSpacing(4)
         toolbar_row.addWidget(self._btn_grillage)
-        toolbar_row.addWidget(self._btn_nodes) # Added next to Grillage
+        toolbar_row.addWidget(self._btn_nodes)
+        toolbar_row.addWidget(self._btn_axis) # Added next to Nodes
         toolbar_row.addStretch()
         toolbar_row.addWidget(self._btn_zoom_out)
         toolbar_row.addWidget(self._btn_zoom_in)
@@ -233,8 +252,9 @@ class MplPlotWidget(QWidget):
         self._canvas.figure = self._fig
         self._fig.set_canvas(self._canvas)
         
-        # Ensure node visibility matches the toggle state on new plots
+        # Ensure toggles match their current state
         self._apply_node_visibility()
+        self._apply_axis_visibility()
         
         self._fit_figure_to_canvas()
         self._canvas.draw()
@@ -254,8 +274,9 @@ class MplPlotWidget(QWidget):
             self._canvas.figure = self._fig
             self._fig.set_canvas(self._canvas)
             
-            # Ensure node visibility matches the toggle state
+            # Ensure toggles match their current state
             self._apply_node_visibility()
+            self._apply_axis_visibility()
             
             self._fit_figure_to_canvas()
             self._canvas.draw()
@@ -268,7 +289,13 @@ class MplPlotWidget(QWidget):
         """Instantly toggle the visibility of scatter plot nodes without rebuilding the figure."""
         self._show_nodes = checked
         self._apply_node_visibility()
-        self._canvas.draw_idle() # Updates the canvas instantly
+        self._canvas.draw_idle() 
+
+    def _on_axis_toggled(self, checked: bool):
+        """Instantly toggle the visibility of the XYZ coordinate triad."""
+        self._show_axis = checked
+        self._apply_axis_visibility()
+        self._canvas.draw_idle()
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
@@ -283,6 +310,16 @@ class MplPlotWidget(QWidget):
             for collection in ax.collections:
                 if isinstance(collection, Path3DCollection):
                     collection.set_visible(self._show_nodes)
+
+    def _apply_axis_visibility(self):
+        """Finds all collections and text tagged as 'coord_triad' and toggles them."""
+        for ax in self._fig.axes:
+            for collection in ax.collections:
+                if collection.get_gid() == "coord_triad":
+                    collection.set_visible(self._show_axis)
+            for text in ax.texts:
+                if text.get_gid() == "coord_triad":
+                    text.set_visible(self._show_axis)
 
     def _fit_figure_to_canvas(self):
         """Resize the matplotlib figure to match the current canvas widget size."""
