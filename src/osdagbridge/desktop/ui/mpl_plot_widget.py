@@ -6,7 +6,8 @@ import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d.art3d import Path3DCollection 
 
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QComboBox, QSizePolicy, QPushButton
+    QWidget, QVBoxLayout, QHBoxLayout, QComboBox, QSizePolicy, QPushButton,
+    QFrame, QLabel, QCheckBox
 )
 from PySide6.QtCore import Qt, QEvent
 
@@ -39,12 +40,65 @@ _RICH_LABEL_TO_FORCE = {
 _DEFAULT_FORCE_LABEL = "V<sub>y</sub>"   # pre-checked on first link
 
 
-class MplPlotWidget(QWidget):
-    """
-    PySide6 widget that renders matplotlib analysis plots.
-    Controls live in the OutputDock.
-    """
+# =============================================================================
+# PROFESSIONAL SUMMARY OVERLAY WIDGET (HTML/RichText based)
+# =============================================================================
+class SummaryOverlay(QFrame):
+    """A floating HUD that sits on top of the Matplotlib canvas."""
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setStyleSheet("""
+            SummaryOverlay {
+                background-color: rgba(33, 37, 43, 215);
+                border: 1px solid rgba(255, 255, 255, 50);
+                border-radius: 6px;
+            }
+            QLabel {
+                color: white;
+                font-size: 13px;
+                font-family: Consolas, 'Courier New', monospace;
+                padding: 12px;
+                background: transparent;
+            }
+        """)
+        
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
 
+        # Use a single RichText label exactly like the Plotly HUD!
+        self.text_label = QLabel()
+        self.text_label.setTextFormat(Qt.RichText)
+        self.text_label.setAlignment(Qt.AlignLeft | Qt.AlignTop)
+        layout.addWidget(self.text_label)
+
+    def update_data(self, summary_data):
+        """Populates the HUD using precise HTML monospace formatting."""
+        # Header setup
+        hud_text = "<b>Extreme Values Summary</b><br>" + "-" * 38 + "<br>"
+        
+        h_girder = "Girder".ljust(8).replace(" ", "&nbsp;")
+        h_max = "Max".rjust(10).replace(" ", "&nbsp;")
+        h_min = "Min".rjust(12).replace(" ", "&nbsp;")
+        
+        # Red for Max, Cyan for Min
+        hud_text += f"<b>{h_girder}</b> | <span style='color: #FF4136;'><b>{h_max}</b></span> | <span style='color: #00E5FF;'><b>{h_min}</b></span><br>" + "-" * 38 + "<br>"
+
+        # Data rows
+        for girder, vals in summary_data.items():
+            g_str = girder.ljust(8).replace(" ", "&nbsp;")
+            max_str = f"{vals['max']:.2f}".rjust(10).replace(" ", "&nbsp;")
+            min_str = f"{vals['min']:.2f}".rjust(12).replace(" ", "&nbsp;")
+            
+            hud_text += f"<b>{g_str}</b> | <span style='color: #FF4136;'>{max_str}</span> | <span style='color: #00E5FF;'>{min_str}</span><br>"
+
+        self.text_label.setText(hud_text)
+        self.adjustSize()
+
+
+# =============================================================================
+# MAIN PLOT WIDGET
+# =============================================================================
+class MplPlotWidget(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
 
@@ -55,12 +109,15 @@ class MplPlotWidget(QWidget):
         self._members   = {}
         self._edge_dist = 0.0
         self._output_dock = None
+        self._summary_data = {}
 
         # Display States
         self._grillage_mode = False
         self._show_nodes = True 
         self._show_axis = True  
-        self._show_supports = True # NEW: Track support visibility
+        self._show_supports = True 
+        self._show_grid = True  # NEW: Track grid visibility
+        self._is_summary_checked = False
 
         # Zoom state
         self._zoom_scale  = 1.0
@@ -72,6 +129,10 @@ class MplPlotWidget(QWidget):
         self._canvas.setMinimumHeight(300)
         self._canvas.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self._canvas.installEventFilter(self)
+
+        # Initialize the Summary Overlay (Hidden by default)
+        self._summary_overlay = SummaryOverlay(self._canvas)
+        self._summary_overlay.hide()
 
         # zoom toolbar
         self._btn_zoom_in  = QPushButton("+")
@@ -115,15 +176,6 @@ class MplPlotWidget(QWidget):
         self._btn_nodes.setStyleSheet(btn_style)
         self._btn_nodes.toggled.connect(self._on_nodes_toggled)
 
-        self._btn_axis = QPushButton("Axis")
-        self._btn_axis.setCheckable(True)
-        self._btn_axis.setChecked(True) 
-        self._btn_axis.setFixedHeight(28)
-        self._btn_axis.setFocusPolicy(Qt.NoFocus)
-        self._btn_axis.setStyleSheet(btn_style)
-        self._btn_axis.toggled.connect(self._on_axis_toggled)
-
-        # NEW: supports toggle button
         self._btn_supports = QPushButton("Supports")
         self._btn_supports.setCheckable(True)
         self._btn_supports.setChecked(True) 
@@ -132,13 +184,31 @@ class MplPlotWidget(QWidget):
         self._btn_supports.setStyleSheet(btn_style)
         self._btn_supports.toggled.connect(self._on_supports_toggled)
 
+        self._btn_axis = QPushButton("Axis")
+        self._btn_axis.setCheckable(True)
+        self._btn_axis.setChecked(True) 
+        self._btn_axis.setFixedHeight(28)
+        self._btn_axis.setFocusPolicy(Qt.NoFocus)
+        self._btn_axis.setStyleSheet(btn_style)
+        self._btn_axis.toggled.connect(self._on_axis_toggled)
+
+        # NEW: Grid toggle button
+        self._btn_grid = QPushButton("Grid")
+        self._btn_grid.setCheckable(True)
+        self._btn_grid.setChecked(True) 
+        self._btn_grid.setFixedHeight(28)
+        self._btn_grid.setFocusPolicy(Qt.NoFocus)
+        self._btn_grid.setStyleSheet(btn_style)
+        self._btn_grid.toggled.connect(self._on_grid_toggled)
+
         toolbar_row = QHBoxLayout()
         toolbar_row.setContentsMargins(4, 2, 4, 2)
         toolbar_row.setSpacing(4)
         toolbar_row.addWidget(self._btn_grillage)
         toolbar_row.addWidget(self._btn_nodes)
-        toolbar_row.addWidget(self._btn_supports) # Added Supports
+        toolbar_row.addWidget(self._btn_supports) 
         toolbar_row.addWidget(self._btn_axis) 
+        toolbar_row.addWidget(self._btn_grid) # Added Grid button
         toolbar_row.addStretch()
         toolbar_row.addWidget(self._btn_zoom_out)
         toolbar_row.addWidget(self._btn_zoom_in)
@@ -164,9 +234,8 @@ class MplPlotWidget(QWidget):
     def link_output_dock(self, output_dock):
         self._output_dock = output_dock
 
-        combo_lc = output_dock.output_widget.findChild(
-            QComboBox, "analysis.load_combination"
-        )
+        # 1. Connect Load Combinations
+        combo_lc = output_dock.output_widget.findChild(QComboBox, "analysis.load_combination")
         if combo_lc is not None:
             combo_lc.blockSignals(True)
             combo_lc.clear()
@@ -176,6 +245,7 @@ class MplPlotWidget(QWidget):
             combo_lc.setMinimumContentsLength(12)
             combo_lc.currentTextChanged.connect(self.update_plot)
 
+        # 2. Connect Force Radios
         from osdagbridge.desktop.ui.utils.custom_widgets import CustomRadioButton
         force_rbs = [
             rb for rb in output_dock.output_widget.findChildren(CustomRadioButton)
@@ -184,6 +254,10 @@ class MplPlotWidget(QWidget):
         for rb in force_rbs:
             rb.setChecked(rb.text() == _DEFAULT_FORCE_LABEL)
             rb.toggled.connect(self.update_plot)
+
+        # 3. Connect Display Options (Summary HUD)
+        output_dock.connect_checkbox_signal("Summary", self._on_summary_toggled)
+        self._is_summary_checked = output_dock.get_checkbox_state("Summary")
 
         self.update_plot()
 
@@ -202,27 +276,51 @@ class MplPlotWidget(QWidget):
 
         ds = self._ds_all.sel(Loadcase=loadcase)
         plt.close(self._fig)
+        
+        self._summary_data = {} 
 
         if force_key in _SFD_KEYS:
             self._fig = build_figure_sfd(ds, force_key, self._nodes, self._members, edge_dist=self._edge_dist)
         elif force_key in _DEFL_KEYS:
             self._fig = build_figure_deflection(ds, force_key, self._nodes, self._members, edge_dist=self._edge_dist)
         else:
-            self._fig, _ = build_figure_bmd(ds, force_key, self._nodes, self._members, edge_dist=self._edge_dist)
+            self._fig, self._summary_data = build_figure_bmd(ds, force_key, self._nodes, self._members, edge_dist=self._edge_dist)
 
         self._canvas.figure = self._fig
         self._fig.set_canvas(self._canvas)
         
-        # Ensure toggles match their current state
+        # Apply visual states
         self._apply_node_visibility()
         self._apply_axis_visibility()
         self._apply_supports_visibility()
+        self._apply_grid_visibility() # Ensure grid matches toggle state
+        
+        # Update HUD
+        if self._summary_data:
+            self._summary_overlay.update_data(self._summary_data)
+            if self._is_summary_checked:
+                self._summary_overlay.show()
+                self._summary_overlay.raise_()
+        else:
+            self._summary_overlay.hide()
         
         self._fit_figure_to_canvas()
         self._canvas.draw()
 
         self._zoom_scale = 1.0
         self._store_orig_limits()
+
+    def _on_summary_toggled(self):
+        if self._output_dock is None:
+            return
+            
+        self._is_summary_checked = self._output_dock.get_checkbox_state("Summary")
+        
+        if self._is_summary_checked and self._summary_data:
+            self._summary_overlay.show()
+            self._summary_overlay.raise_()
+        else:
+            self._summary_overlay.hide()
 
     def _on_grillage_toggled(self, checked: bool):
         self._grillage_mode = checked
@@ -237,6 +335,8 @@ class MplPlotWidget(QWidget):
             self._apply_node_visibility()
             self._apply_axis_visibility()
             self._apply_supports_visibility()
+            self._apply_grid_visibility()
+            self._summary_overlay.hide() 
             
             self._fit_figure_to_canvas()
             self._canvas.draw()
@@ -256,29 +356,33 @@ class MplPlotWidget(QWidget):
         self._canvas.draw_idle()
 
     def _on_supports_toggled(self, checked: bool):
-        """Instantly toggle the visibility of the structural supports."""
         self._show_supports = checked
         self._apply_supports_visibility()
+        self._canvas.draw_idle()
+
+    def _on_grid_toggled(self, checked: bool):
+        """Instantly toggle the visibility of the Matplotlib grid lines."""
+        self._show_grid = checked
+        self._apply_grid_visibility()
         self._canvas.draw_idle()
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
         self._fit_figure_to_canvas()
         self._canvas.draw_idle()
+        if self._summary_overlay:
+            self._summary_overlay.move(15, 15)
 
     # private helpers
 
     def _apply_node_visibility(self):
-        """Finds all scatter point collections and toggles them, EXCLUDING supports."""
         for ax in self._fig.axes:
             for collection in ax.collections:
                 if isinstance(collection, Path3DCollection):
-                    # Do not touch the supports here!
                     if collection.get_gid() != "supports":
                         collection.set_visible(self._show_nodes)
 
     def _apply_supports_visibility(self):
-        """Finds all collections tagged as 'supports' and toggles them."""
         for ax in self._fig.axes:
             for collection in ax.collections:
                 if collection.get_gid() == "supports":
@@ -292,6 +396,16 @@ class MplPlotWidget(QWidget):
             for text in ax.texts:
                 if text.get_gid() == "coord_triad":
                     text.set_visible(self._show_axis)
+
+    def _apply_grid_visibility(self):
+        """Applies the grid visibility state to all 3D axes."""
+        for ax in self._fig.axes:
+            if self._show_grid:
+                # Turn on and restore the custom styling
+                ax.grid(True, linestyle="--", linewidth=0.4, alpha=0.5)
+            else:
+                # Turn off the grid lines
+                ax.grid(False)
 
     def _fit_figure_to_canvas(self):
         w_px = self._canvas.width()

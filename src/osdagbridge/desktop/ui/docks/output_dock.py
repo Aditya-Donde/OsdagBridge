@@ -597,3 +597,19 @@ class OutputDock(QWidget):
     def open_deck_design(self):
         from osdagbridge.desktop.ui.dialogs.deck_design import DeckDesign
         DeckDesign(parent=self.parent).exec()
+
+    # ── Checkbox Interfaces ──────────────────────────────────────────────
+
+    def get_checkbox_state(self, label: str) -> bool:
+        """Returns True if the checkbox with the exact label is checked."""
+        for cb in self.output_widget.findChildren(QCheckBox):
+            if cb.text() == label:
+                return cb.isChecked()
+        return False
+
+    def connect_checkbox_signal(self, label: str, callback):
+        """Connects a callback function to a checkbox toggle event."""
+        for cb in self.output_widget.findChildren(QCheckBox):
+            if cb.text() == label:
+                # Use a lambda to absorb the boolean argument and call the callback
+                cb.toggled.connect(lambda _: callback())
