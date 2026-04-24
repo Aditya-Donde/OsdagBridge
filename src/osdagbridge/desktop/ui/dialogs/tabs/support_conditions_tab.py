@@ -1,7 +1,11 @@
-from PySide6.QtWidgets import QWidget, QVBoxLayout, QFrame, QHBoxLayout, QSizePolicy
-from osdagbridge.core.bridge_types.plate_girder.ui_fields_additional_input import SUPPORT_CONDITIONS_SCHEMA
-from osdagbridge.desktop.ui.dialogs.tabs.drawings.support_conditions_cad import SupportCADWidget
-from osdagbridge.desktop.ui.dialogs.tabs.drawings.support_detail_cad import SupportDetailCADWidget
+from PySide6.QtWidgets import QWidget
+
+from osdagbridge.core.bridge_types.plate_girder.ui_fields_additional_input import (
+    SUPPORT_CONDITIONS_SCHEMA,
+)
+from osdagbridge.desktop.ui.dialogs.tabs import schema_io
+from osdagbridge.desktop.ui.dialogs.tabs.ui_builder import UIBuilder
+
 
 class SupportConditionsTab(QWidget):
 
@@ -9,159 +13,61 @@ class SupportConditionsTab(QWidget):
         super().__init__()
         self.setObjectName("support_tab_widget")
         self.parent_dialog = parent_dialog
-        self.init_ui()
+        self.setStyleSheet(
+            """
+            #support_tab_widget QLabel {
+                border: none;
+                background: transparent;
+                padding: 0;
+                border-radius: 0;
+            }
+            #support_tab_widget {
+                background-color: #f5f5f5;
+            }
+            """
+        )
+        UIBuilder(owner=self, schema=SUPPORT_CONDITIONS_SCHEMA).build_tab(self)
 
     def save_values(self):
-        """Save support conditions values."""
-        values = {}
-        if hasattr(self.parent_dialog, "left_support_combo"):
-            values["left_support"] = self.parent_dialog.left_support_combo.currentText()
-        if hasattr(self.parent_dialog, "right_support_combo"):
-            values["right_support"] = self.parent_dialog.right_support_combo.currentText()
-        if hasattr(self.parent_dialog, "bearing_length_input"):
-            values["bearing_length"] = self.parent_dialog.bearing_length_input.text()
-        return values
+        return schema_io.collect_values(self, SUPPORT_CONDITIONS_SCHEMA)
 
-    def validate_tab(self):
-        errors = []
+    def restore_values(self, data: dict):
+        if not isinstance(data, dict):
+            return
 
-        if hasattr(self.parent_dialog, "bearing_length_input"):
-            widget = self.parent_dialog.bearing_length_input
-            text = widget.text().strip()
-
-            if not text:
-                errors.append("Bearing Length cannot be empty.")
-            else:
-                try:
-                    value = float(text)
-                    if value <= 0:
-                        errors.append("Bearing Length must be greater than 0.")
-                    elif value > 600:
-                        errors.append("Bearing Length should not be greater than 600.")    
-                except ValueError:
-                    errors.append("Bearing Length must be a valid number.")
-
-        return errors
-
-    def init_ui(self):
-        
-        self.setStyleSheet("""
-    
-
-        #support_tab_widget QLabel {
-            border: none;
-            background: transparent;
-            padding: 0;
-            border-radius: 0;                
+        restored = dict(data)
+        legacy_map = {
+            "left_support": "left_support_combo",
+            "right_support": "right_support_combo",
+            "bearing_length": "bearing_length_input",
         }
-        #support_tab_widget {
-            background-color: #f5f5f5;
-        }                   
+        for old_key, bind_name in legacy_map.items():
+            if old_key in restored and bind_name not in restored:
+                restored[bind_name] = restored[old_key]
 
-    """)
-
-        main_layout = QVBoxLayout()
-        self.setLayout(main_layout)
-        main_layout.setContentsMargins(12, 12, 12, 12)
-        main_layout.setSpacing(12)
-
-        # create a separate card for each section defined in the schema
-        for section in SUPPORT_CONDITIONS_SCHEMA["sections"]:
-            card = QFrame()
-            card.setObjectName("support_card")
-            card.setStyleSheet("""
-                QFrame#support_card {
-                    border: 1px solid #b2b2b2;
-                    border-radius: 8px;
-                    background-color: #ffffff;
-                }
-                /* this selector is even more specific than the app stylesheet */
-                QFrame#support_card QLabel {
-                    background: transparent;
-                    border: none;
-                    border-radius: 0;
-                    padding: 0;
-                }
-            """)
-
-            card_layout = QVBoxLayout(card)
-            card_layout.setContentsMargins(16, 16, 16, 16)
-            card_layout.setSpacing(12)
-
-            # build only the current section inside its own frame
-            self.parent_dialog._build_sections_from_schema(
-                card_layout,
-                [section],
-                "font-size: 12px; font-weight: 700; color: #2b2b2b;",
-                "font-size: 11px; color: #3a3a3a;",
-                160,
-            )
-
-            main_layout.addWidget(card)
-
-
-        cad_card = QFrame()
-        cad_card.setObjectName("support_card")
-        cad_card.setStyleSheet("""
-            QFrame#support_card {
-                border: 1px solid #b2b2b2;
-                border-radius: 8px;
-                background-color: #ffffff;
-            }
-        """)
-
-        cad_layout = QVBoxLayout(cad_card)
-        cad_layout.setContentsMargins(10, 10, 10, 10)
-
-        cad_row = QHBoxLayout()
-        cad_row.setSpacing(12)
-
-        self.left_cad = SupportCADWidget()
-        self.left_cad.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        self.left_cad.setMinimumSize(300, 250)
-        cad_row.addWidget(self.left_cad, 1)
-
-        self.right_cad = SupportDetailCADWidget()
-        self.right_cad.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        self.right_cad.setMinimumSize(150, 200)
-        cad_row.addWidget(self.right_cad, 1)
-
-        if hasattr(self.parent_dialog, "bearing_length_input"):
-            self.parent_dialog.bearing_length_input.textChanged.connect(
-                self.update_cad
-            )
-
-        cad_layout.addLayout(cad_row)
-
-        main_layout.addWidget(cad_card)
-        
-        main_layout.addStretch()
+        schema_io.restore_values(self, SUPPORT_CONDITIONS_SCHEMA, restored)
 
     def reset_defaults(self):
-        """Reset support conditions to default values."""
-        if hasattr(self.parent_dialog, "left_support_combo"):
-            self.parent_dialog.left_support_combo.setCurrentText("Pinned")
+        schema_io.reset_defaults(self, SUPPORT_CONDITIONS_SCHEMA)
 
-        if hasattr(self.parent_dialog, "right_support_combo"):
-            self.parent_dialog.right_support_combo.setCurrentText("Roller")
+    def validate_tab(self):
+        errors = schema_io.validate(self, SUPPORT_CONDITIONS_SCHEMA)
+        errors.extend(self._extra_validation())
+        return list(dict.fromkeys(errors))
 
-        if hasattr(self.parent_dialog, "bearing_length_input"):
-            self.parent_dialog.bearing_length_input.setText("400")
+    def _extra_validation(self):
+        widget = getattr(self, "bearing_length_input", None)
+        if widget is None:
+            return []
 
+        text = widget.text().strip()
+        if not text:
+            return []
 
-    def update_cad(self):
-        if hasattr(self.parent_dialog, "bearing_length_input"):
-            text = self.parent_dialog.bearing_length_input.text()
+        try:
+            if float(text) <= 0:
+                return ["Bearing Length must be greater than 0."]
+        except ValueError:
+            return []
 
-            try:
-                value = float(text)
-            except:
-                value = 400
-
-            if hasattr(self, "right_cad"):
-                self.right_cad.update_params({
-                    "bearing_length": value
-                })   
-                
-    
-                     
+        return []
