@@ -55,6 +55,23 @@ from osdagbridge.core.utils.common import (
     KEY_UTIL_LONG_TRANS_SHEAR,
     KEY_UTIL_STRESS_LIMITATION,
 )
+from osdagbridge.core.bridge_types.plate_girder.initial_sizing import (
+    DEFAULT_DECK_THICKNESS as _DEFAULT_DECK_THICKNESS_MM,
+)
+from osdagbridge.core.bridge_types.plate_girder.defaults import (
+    DEFAULT_AI_WEARING_THICKNESS_MM as _DEFAULT_WC_THICKNESS_MM,
+    DEFAULT_AI_WEARING_DENSITY_KN_PER_M3 as _DEFAULT_WC_DENSITY_KN_M3,
+)
+from osdagbridge.core.bridge_components.super_structure.deck.geometry import (
+    deck_thickness_from_inputs,
+    wearing_course_params_from_inputs,
+)
+from osdagbridge.core.bridge_components.super_structure.crash_barrier.geometry import (
+    crash_barrier_load_from_inputs,
+)
+from osdagbridge.core.bridge_components.super_structure.railing.geometry import (
+    railing_load_from_inputs,
+)
 
 # Default median width (m) used when user enables median but no additional-input
 # width has been supplied yet.
@@ -430,24 +447,6 @@ class PlateGirderBridge:
 
         Must be called after setup_grillage() has built and registered the model.
         """
-        from osdagbridge.core.bridge_types.plate_girder.initial_sizing import (
-            DEFAULT_DECK_THICKNESS as _DEFAULT_DECK_THICKNESS_MM,
-        )
-        from osdagbridge.core.bridge_types.plate_girder.defaults import (
-            DEFAULT_AI_WEARING_THICKNESS_MM as _DEFAULT_WC_THICKNESS_MM,
-            DEFAULT_AI_WEARING_DENSITY_KN_PER_M3 as _DEFAULT_WC_DENSITY_KN_M3,
-        )
-        from osdagbridge.core.bridge_components.super_structure.deck.geometry import (
-            deck_thickness_from_inputs,
-            wearing_course_params_from_inputs,
-        )
-        from osdagbridge.core.bridge_components.super_structure.crash_barrier.geometry import (
-            crash_barrier_load_from_inputs,
-        )
-        from osdagbridge.core.bridge_components.super_structure.railing.geometry import (
-            railing_load_from_inputs,
-        )
-
         deck_t_m = deck_thickness_from_inputs(self.additional_inputs, _DEFAULT_DECK_THICKNESS_MM)
         wc_t_m, wc_rho = wearing_course_params_from_inputs(
             self.additional_inputs, _DEFAULT_WC_THICKNESS_MM, _DEFAULT_WC_DENSITY_KN_M3

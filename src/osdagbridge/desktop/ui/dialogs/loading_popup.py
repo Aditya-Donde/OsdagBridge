@@ -235,7 +235,7 @@ class LoadingDialogManager:
                 self._dialog.hide()
                 self._dialog.circular_progress.stop_animation()
                 self._dialog = None
-
+    
     def __del__(self):
         """Cleanup when manager is destroyed"""
         self.hide()
