@@ -134,6 +134,9 @@ CRASH_BARRIER_TAB_SCHEMA = {
                         "IRC 5 - Metallic Crash Barrier with Double W-Beam",
                         "Custom",
                     ],
+                    "adjust_to_contents": True,
+                    "minimum_contents_length": 42,
+                    "popup_min_width": 320,
                     "bind": "crash_barrier_type",
                     "on_change": "on_crash_barrier_type_changed",
                 }
@@ -147,6 +150,7 @@ CRASH_BARRIER_TAB_SCHEMA = {
                     "type": "line",
                     "validator": {"type": "double_range", "bottom": 0.0, "top": 100.0, "decimals": 2},
                     "bind": "crash_barrier_density",
+                    "label_bind": "crash_barrier_density_label",
                     "on_editing_finished": "_auto_compute_crash_barrier_load",
                 }
             ]
@@ -183,6 +187,7 @@ CRASH_BARRIER_TAB_SCHEMA = {
                     "type": "line",
                     "validator": {"type": "double_range", "bottom": 0.0, "top": 10.0, "decimals": 4},
                     "bind": "crash_barrier_area",
+                    "label_bind": "crash_barrier_area_label",
                     "on_editing_finished": "_auto_compute_crash_barrier_load",
                 }
             ]
@@ -207,6 +212,7 @@ CRASH_BARRIER_TAB_SCHEMA = {
                     "default": "1",
                     "validator": {"type": "double_range", "bottom": 0.0, "top": 10.0, "decimals": 3},
                     "bind": "crash_barrier_post_spacing",
+                    "label_bind": "crash_barrier_post_spacing_label",
                 }
             ]
         },
@@ -230,6 +236,9 @@ MEDIAN_TAB_SCHEMA = {
                         "IRC 5 - Metallic Crash Barrier with Double W-Beam",
                         "Custom",
                     ],
+                    "adjust_to_contents": True,
+                    "minimum_contents_length": 42,
+                    "popup_min_width": 320,
                     "bind": "median_type",
                     "on_change": "on_median_type_changed",
                 }
@@ -243,6 +252,7 @@ MEDIAN_TAB_SCHEMA = {
                     "type": "line",
                     "validator": {"type": "double_range", "bottom": 0.0, "top": 100.0, "decimals": 2},
                     "bind": "median_density",
+                    "label_bind": "median_density_label",
                 }
             ]
         },
@@ -276,6 +286,7 @@ MEDIAN_TAB_SCHEMA = {
                     "type": "line",
                     "validator": {"type": "double_range", "bottom": 0.0, "top": 10.0, "decimals": 4},
                     "bind": "median_area",
+                    "label_bind": "median_area_label",
                 }
             ]
         },
@@ -298,6 +309,7 @@ MEDIAN_TAB_SCHEMA = {
                     "type": "line",
                     "validator": {"type": "double_range", "bottom": 0.0, "top": 10.0, "decimals": 3},
                     "bind": "median_post_spacing",
+                    "label_bind": "median_post_spacing_label",
                     "default": "1",
                 }
             ]

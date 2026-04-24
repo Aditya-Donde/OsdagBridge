@@ -259,6 +259,23 @@ class UIBuilder:
         for choice in field_def.get("choices") or []:
             widget.addItem(str(choice))
 
+        if field_def.get("adjust_to_contents"):
+            widget.setSizeAdjustPolicy(QComboBox.AdjustToContents)
+
+        minimum_contents_length = field_def.get("minimum_contents_length")
+        if minimum_contents_length is not None:
+            try:
+                widget.setMinimumContentsLength(int(minimum_contents_length))
+            except (TypeError, ValueError):
+                pass
+
+        popup_min_width = field_def.get("popup_min_width")
+        if popup_min_width is not None:
+            try:
+                widget.view().setMinimumWidth(int(popup_min_width))
+            except (TypeError, ValueError, AttributeError):
+                pass
+
         enabled_choices = field_def.get("enabled_choices")
         if enabled_choices is not None:
             for idx in range(widget.count()):
@@ -538,6 +555,19 @@ class UIBuilder:
         self._build_sections(box_layout, [section], sec_label_width, sec_field_width)
         return box
 
+    def _make_field_label(self, field_def: dict, label_width: int) -> QLabel:
+        """Create a QLabel for a field row and bind it when requested."""
+        label = QLabel(field_def.get("label", ""))
+        label.setTextFormat(Qt.RichText)
+        label.setStyleSheet(_LABEL_STYLE)
+        label.setMinimumWidth(label_width)
+
+        label_bind = field_def.get("label_bind")
+        if label_bind:
+            setattr(self.owner, str(label_bind), label)
+
+        return label
+
     # ── Field-level layout helpers ──────────────────────────────────────
 
     def _build_sections(
@@ -598,9 +628,7 @@ class UIBuilder:
                     row_idx += 1
                     continue
 
-                lbl = QLabel(field_def.get("label", ""))
-                lbl.setTextFormat(Qt.RichText)
-                lbl.setStyleSheet(_LABEL_STYLE)
+                lbl = self._make_field_label(field_def, sec_label_width)
                 grid.addWidget(lbl, row_idx, 0, Qt.AlignLeft | Qt.AlignVCenter)
 
                 widget = self.build_field(field_def, sec_field_width)
@@ -618,22 +646,27 @@ class UIBuilder:
     ) -> None:
         grid = QGridLayout()
         grid.setHorizontalSpacing(24)
-        grid.setVerticalSpacing(10)
+        grid.setVerticalSpacing(int(self.schema.get("row_vertical_spacing", 10)))
         grid.setColumnMinimumWidth(0, label_width)
         grid.setContentsMargins(0, 0, 0, 0)
+
+        max_columns = max((len(row.get("fields", [])) * 2 for row in rows), default=0)
+        for col in range(max_columns):
+            grid.setColumnStretch(col, 0)
+        if max_columns > 0:
+            # Let a trailing empty column absorb extra space so fields stay grouped.
+            grid.setColumnStretch(max_columns, 1)
 
         row_idx = 0
         for row in rows:
             col = 0
             for field_def in row.get("fields", []):
-                lbl = QLabel(field_def.get("label", ""))
-                lbl.setStyleSheet(_LABEL_STYLE)
-                lbl.setMinimumWidth(label_width)
-                grid.addWidget(lbl, row_idx, col, Qt.AlignLeft)
+                lbl = self._make_field_label(field_def, label_width)
+                grid.addWidget(lbl, row_idx, col, Qt.AlignLeft | Qt.AlignVCenter)
                 col += 1
 
                 widget = self.build_field(field_def, field_width)
-                grid.addWidget(widget, row_idx, col)
+                grid.addWidget(widget, row_idx, col, Qt.AlignLeft | Qt.AlignVCenter)
                 col += 1
             row_idx += 1
 
@@ -988,10 +1021,7 @@ class UIBuilder:
         row.setContentsMargins(0, 0, 0, 0)
         row.setSpacing(10)
 
-        lbl = QLabel(str(section.get("label", "")))
-        lbl.setTextFormat(Qt.RichText)
-        lbl.setStyleSheet(_LABEL_STYLE)
-        lbl.setMinimumWidth(label_width)
+        lbl = self._make_field_label(section, label_width)
         row.addWidget(lbl)
 
         widget = self.build_field(section, field_width)

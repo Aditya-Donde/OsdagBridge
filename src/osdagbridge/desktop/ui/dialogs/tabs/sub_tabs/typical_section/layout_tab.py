@@ -1,6 +1,6 @@
 """Layout sub-tab for Typical Section Details (schema-driven)."""
 import copy
-from PySide6.QtWidgets import QWidget, QVBoxLayout, QGridLayout, QLabel, QLineEdit, QSizePolicy
+from PySide6.QtWidgets import QWidget, QVBoxLayout, QGridLayout, QLabel, QLineEdit, QSizePolicy, QScrollArea, QFrame
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QDoubleValidator, QIntValidator
 
@@ -72,18 +72,30 @@ class LayoutTab(QWidget):
     def _build_ui(self):
         owner = self.owner
 
-        layout_layout = QVBoxLayout(self)
-        layout_layout.setContentsMargins(18, 6, 18, 12)
-        layout_layout.setSpacing(0)
+        root = QVBoxLayout(self)
+        root.setContentsMargins(0, 0, 0, 0)
+        root.setSpacing(0)
+
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.NoFrame)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        scroll.setStyleSheet("QScrollArea { background-color: white; border: none; }")
+
+        page = QWidget()
+        page.setStyleSheet("background-color: white;")
+        layout_layout = QVBoxLayout(page)
+        layout_layout.setContentsMargins(18, 12, 18, 18)
+        layout_layout.setSpacing(8)
 
         title_label = QLabel("Inputs:")
         title_label.setStyleSheet("font-size: 12px; font-weight: bold; color: #000;")
         layout_layout.addWidget(title_label)
-        layout_layout.addSpacing(8)
+        layout_layout.addSpacing(12)
 
         grid = QGridLayout()
         grid.setHorizontalSpacing(24)
-        grid.setVerticalSpacing(10)
+        grid.setVerticalSpacing(18)
         grid.setColumnStretch(1, 1)
         grid.setColumnStretch(3, 1)
         grid.setContentsMargins(0, 0, 0, 0)
@@ -154,6 +166,6 @@ class LayoutTab(QWidget):
         grid.addWidget(owner.layout_notice_container, 1, 2, 1, 1, Qt.AlignLeft | Qt.AlignTop)
 
         layout_layout.addLayout(grid)
-
         layout_layout.addStretch()
-
+        scroll.setWidget(page)
+        root.addWidget(scroll)

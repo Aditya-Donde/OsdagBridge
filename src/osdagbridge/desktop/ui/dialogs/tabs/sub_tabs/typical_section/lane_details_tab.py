@@ -7,6 +7,8 @@ from PySide6.QtWidgets import (
     QTableWidget,
     QHeaderView,
     QHBoxLayout,
+    QScrollArea,
+    QFrame,
 )
 from PySide6.QtCore import Qt
 
@@ -55,9 +57,21 @@ class LaneDetailsTab(QWidget):
     def _build_ui(self):
         owner = self.owner
 
-        lane_layout = QVBoxLayout(self)
-        lane_layout.setContentsMargins(18, 6, 18, 12)
-        lane_layout.setSpacing(0)
+        root = QVBoxLayout(self)
+        root.setContentsMargins(0, 0, 0, 0)
+        root.setSpacing(0)
+
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.NoFrame)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        scroll.setStyleSheet("QScrollArea { background-color: white; border: none; }")
+
+        page = QWidget()
+        page.setStyleSheet("background-color: white;")
+        lane_layout = QVBoxLayout(page)
+        lane_layout.setContentsMargins(18, 12, 18, 18)
+        lane_layout.setSpacing(8)
 
         card, card_layout = owner._create_section_card("Inputs:")
 
@@ -127,5 +141,6 @@ class LaneDetailsTab(QWidget):
         card_layout.addWidget(owner.lane_table)
         lane_layout.addWidget(card)
         lane_layout.addStretch()
+        scroll.setWidget(page)
+        root.addWidget(scroll)
         # Note: Lane table population is handled by owner._initialize_lane_defaults()
-

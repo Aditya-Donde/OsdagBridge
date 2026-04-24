@@ -13,8 +13,17 @@ from PySide6.QtCore import Qt, Signal, QSize
 from PySide6.QtGui import QDoubleValidator, QIntValidator
 
 from osdagbridge.core.bridge_types.plate_girder.bridge_geometry import CrossSectionLayout
+from osdagbridge.core.bridge_types.plate_girder.ui_fields_additional_input import (
+    CRASH_BARRIER_TAB_SCHEMA,
+    LANE_DETAILS_TAB_SCHEMA,
+    LAYOUT_TAB_SCHEMA,
+    MEDIAN_TAB_SCHEMA,
+    RAILING_TAB_SCHEMA,
+    WEARING_COURSE_TAB_SCHEMA,
+)
 from osdagbridge.core.utils.common import *
 from osdagbridge.desktop.ui.utils.custom_titlebar import CustomTitleBar
+from osdagbridge.desktop.ui.dialogs.tabs import schema_io
 from osdagbridge.desktop.ui.dialogs.tabs.common import apply_field_style
 from osdagbridge.desktop.ui.dialogs.tabs.sub_tabs.typical_section.layout_tab import LayoutTab
 from osdagbridge.desktop.ui.dialogs.tabs.sub_tabs.typical_section.crash_barrier_tab import CrashBarrierTab
@@ -133,6 +142,82 @@ class TypicalSectionDetailsTab(QWidget):
                 color: #4a7ba7;
             }
         """)
+
+    def _schema_chunks(self):
+        return (
+            LAYOUT_TAB_SCHEMA,
+            CRASH_BARRIER_TAB_SCHEMA,
+            MEDIAN_TAB_SCHEMA,
+            RAILING_TAB_SCHEMA,
+            WEARING_COURSE_TAB_SCHEMA,
+            LANE_DETAILS_TAB_SCHEMA,
+        )
+
+    def _lane_table_state(self):
+        rows = []
+        if not hasattr(self, "lane_table"):
+            return {"lane_table_data": rows}
+
+        for row in range(self.lane_table.rowCount()):
+            rows.append(
+                {
+                    "lane_number": self.lane_table.item(row, 0).text() if self.lane_table.item(row, 0) else "",
+                    "start": self.lane_table.item(row, 1).text() if self.lane_table.item(row, 1) else "",
+                    "width": self.lane_table.item(row, 2).text() if self.lane_table.item(row, 2) else "",
+                }
+            )
+        return {"lane_table_data": rows}
+
+    def _restore_lane_table_state(self, data: dict) -> None:
+        if not hasattr(self, "lane_table"):
+            return
+
+        lane_rows = data.get("lane_table_data")
+        if not isinstance(lane_rows, list):
+            lane_count = getattr(self, "lane_count_combo", None)
+            if lane_count is not None:
+                self.on_lane_count_changed(lane_count.currentText())
+            return
+
+        was_updating = self._updating_lane_table
+        self._updating_lane_table = True
+        try:
+            self._update_lane_details_rows(len(lane_rows))
+            for row, row_data in enumerate(lane_rows):
+                if not isinstance(row_data, dict):
+                    continue
+                self._set_lane_value(row, 0, str(row_data.get("lane_number", row + 1)))
+                self._set_lane_value(row, 1, str(row_data.get("start", "")))
+                self._set_lane_value(row, 2, str(row_data.get("width", "")))
+        finally:
+            self._updating_lane_table = was_updating
+
+    def _sync_restored_state(self) -> None:
+        if hasattr(self, "footpath_width"):
+            enabled = self.footpath_value != "None"
+            self.footpath_width.setEnabled(enabled)
+            self.footpath_thickness.setEnabled(enabled)
+
+        if hasattr(self, "crash_barrier_type"):
+            barrier_type = self.crash_barrier_type.currentText()
+            self._update_crash_barrier_visibility(barrier_type)
+            self._apply_crash_barrier_defaults(barrier_type, force=False)
+
+        if hasattr(self, "median_type"):
+            median_type = self.median_type.currentText()
+            median_index = self.input_tabs.indexOf(self.median_tab) if hasattr(self, "median_tab") else -1
+            include_median = median_index < 0 or self.input_tabs.isTabEnabled(median_index)
+            self._update_median_visibility(median_type, include_median=include_median)
+            self._apply_median_defaults(median_type, force=False)
+
+        if hasattr(self, "railing_type"):
+            self._apply_railing_defaults(force=False)
+
+        if hasattr(self, "wearing_material"):
+            self.on_wearing_material_changed(self.wearing_material.currentText())
+
+        self._update_overall_bridge_width_display()
+        self._update_cad_preview()
 
     def _create_section_card(self, title):
         card = QFrame()
@@ -1114,6 +1199,105 @@ class TypicalSectionDetailsTab(QWidget):
             barrier_type = self.crash_barrier_type.currentText()
             self._update_crash_barrier_visibility(barrier_type)
             self._apply_crash_barrier_defaults(barrier_type, force=True)
+
+    def save_values(self):
+        values = {}
+        for schema in self._schema_chunks():
+            values.update(schema_io.collect_values(self, schema))
+        values.update(self._lane_table_state())
+        return values
+
+    def restore_values(self, data: dict):
+        if not isinstance(data, dict):
+            return
+
+        for schema in self._schema_chunks():
+            schema_io.restore_values(self, schema, data)
+
+        self._restore_lane_table_state(data)
+        self._sync_restored_state()
+
+    def validate_tab(self):
+        errors = []
+        seen = set()
+
+        for schema in self._schema_chunks():
+            for message in schema_io.validate(self, schema):
+                if message and message not in seen:
+                    seen.add(message)
+                    errors.append(message)
+
+        if hasattr(self, "lane_table"):
+            design_width = self._design_lane_width_m()
+            total_width = 0.0
+            expected_start = 0.0
+
+            for row in range(self.lane_table.rowCount()):
+                start_item = self.lane_table.item(row, 1)
+                width_item = self.lane_table.item(row, 2)
+                start_text = start_item.text().strip() if start_item else ""
+                width_text = width_item.text().strip() if width_item else ""
+
+                if not start_text:
+                    msg = f"Lane {row + 1} start cannot be empty."
+                    if msg not in seen:
+                        seen.add(msg)
+                        errors.append(msg)
+                    continue
+                if not width_text:
+                    msg = f"Lane {row + 1} width cannot be empty."
+                    if msg not in seen:
+                        seen.add(msg)
+                        errors.append(msg)
+                    continue
+
+                try:
+                    start_value = float(start_text)
+                except ValueError:
+                    msg = f"Lane {row + 1} start must be a valid number."
+                    if msg not in seen:
+                        seen.add(msg)
+                        errors.append(msg)
+                    continue
+
+                try:
+                    width_value = float(width_text)
+                except ValueError:
+                    msg = f"Lane {row + 1} width must be a valid number."
+                    if msg not in seen:
+                        seen.add(msg)
+                        errors.append(msg)
+                    continue
+
+                if width_value + 1e-6 < design_width:
+                    msg = f"Lane {row + 1} width must be at least {design_width:.2f} m."
+                    if msg not in seen:
+                        seen.add(msg)
+                        errors.append(msg)
+
+                if abs(start_value - expected_start) > 1e-3:
+                    msg = f"Lane {row + 1} start must be {expected_start:.2f} m."
+                    if msg not in seen:
+                        seen.add(msg)
+                        errors.append(msg)
+
+                expected_start = start_value + width_value
+                total_width += width_value
+
+            try:
+                carriageway = float(self.carriageway_width) if self.carriageway_width else 0.0
+            except Exception:
+                carriageway = 0.0
+
+            if carriageway and total_width - carriageway > 1e-6:
+                msg = (
+                    f"Sum of lane widths ({total_width:.2f} m) exceeds carriageway width "
+                    f"({carriageway:.2f} m)."
+                )
+                if msg not in seen:
+                    errors.append(msg)
+
+        return errors
 
     def reset_defaults(self):
         # Layout defaults
