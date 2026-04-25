@@ -107,6 +107,46 @@ class SchemaTab(QWidget):
     def get_widget(self, bind_name: str, default=None):
         return getattr(self, str(bind_name), default)
 
+    def widget_text(self, bind_name: str, default: str = "") -> str:
+        widget = self.get_widget(bind_name)
+        if widget is None:
+            return default
+        if hasattr(widget, "text"):
+            try:
+                return str(widget.text())
+            except Exception:
+                return default
+        return default
+
+    def widget_current_text(self, bind_name: str, default: str = "") -> str:
+        widget = self.get_widget(bind_name)
+        if widget is None:
+            return default
+        if hasattr(widget, "currentText"):
+            try:
+                return str(widget.currentText())
+            except Exception:
+                return default
+        return default
+
+    def widget_float(self, bind_name: str, default=None):
+        text = self.widget_text(bind_name, "")
+        try:
+            text = text.strip()
+            return float(text) if text else default
+        except Exception:
+            return default
+
+    def set_widget_text(self, bind_name: str, value) -> None:
+        widget = self.get_widget(bind_name)
+        if widget is not None and hasattr(widget, "setText"):
+            widget.setText("" if value is None else str(value))
+
+    def set_widget_current_text(self, bind_name: str, value) -> None:
+        widget = self.get_widget(bind_name)
+        if widget is not None and hasattr(widget, "setCurrentText"):
+            widget.setCurrentText("" if value is None else str(value))
+
     def export_dependency_state(self) -> dict:
         return {}
 
