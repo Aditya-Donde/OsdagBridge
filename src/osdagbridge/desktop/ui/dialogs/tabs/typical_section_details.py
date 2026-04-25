@@ -28,13 +28,6 @@ from osdagbridge.desktop.ui.dialogs.tabs import schema_io
 from osdagbridge.desktop.ui.dialogs.tabs.ui_builder import UIBuilder
 from osdagbridge.desktop.ui.dialogs.tabs.common import apply_field_style
 from osdagbridge.desktop.ui.docks.cad_cross_section import CrossSectionCADWidget
-from osdagbridge.desktop.cad.irc5_geometry import (
-    CrashBarrierGeometry,
-    MedianGeometry,
-    RailingGeometry,
-)
-
-
 
 def _styled_message_box(icon, title, text, parent=None):
     """Create a QMessageBox with explicit styling to ensure visibility."""
@@ -747,7 +740,6 @@ class TypicalSectionDetailsTab(QWidget):
             self.crash_barrier_type.setCurrentText("IRC 5 - RCC Crash Barrier")
         if hasattr(self, "crash_barrier_type"):
             barrier_type = self.crash_barrier_type.currentText()
-            self._update_crash_barrier_visibility(barrier_type)
             self._apply_crash_barrier_defaults(barrier_type, force=True)
 
     def save_values(self):
@@ -839,158 +831,27 @@ class TypicalSectionDetailsTab(QWidget):
         crash_tab = getattr(self, "crash_barrier_tab", None)
         if crash_tab is None:
             return
-        effective_barrier_type = self._effective_crash_barrier_type(barrier_type)
-        geom = CrashBarrierGeometry.get_geometry(effective_barrier_type)
-        crash_tab.apply_defaults(barrier_type, geom, force=force)
-        # ----  CAD UPDATE AFTER DEFAULTS CHANGE ----
-        if hasattr(self, "cad_preview"):
-            params = {
-                "crash_barrier_type": barrier_type,
-            }
-
-            crash_state = self._crash_barrier_state()
-            if crash_state.get("width_m") is not None:
-                params["crash_barrier_width"] = float(crash_state["width_m"]) * 1000
-
-            if crash_state.get("height_m") is not None:
-                params["crash_barrier_height"] = float(crash_state["height_m"]) * 1000
-
-            self.cad_preview.update_params(params)
+        sync = getattr(crash_tab, "sync_from_parent_state", None)
+        params = sync(force=force) if callable(sync) else {}
+        self._push_cad_params(params)
 
     def _apply_median_defaults(self, median_type: str, force: bool = False):
         median_tab = getattr(self, "median_tab", None)
         if median_tab is None:
             return
-        effective_median_type = self._effective_median_type(median_type)
-        geom = MedianGeometry.get_geometry(effective_median_type)
-        median_tab.apply_defaults(median_type, geom, force=force, include_median=True)
-
-        geom = MedianGeometry.get_geometry(effective_median_type)
-
-        params = {
-            "median_type": median_type,
-        }
-
-        if geom:
-            if "median_width" in geom:
-                params["median_width"] = geom["median_width"]
-
-            if "barrier_height" in geom:
-                params["median_height"] = geom["barrier_height"]
-            elif "kerb_height" in geom:
-                params["median_height"] = geom["kerb_height"]
-
-            self.cad_preview.update_params(params)
-            
-        if hasattr(self, "cad_preview"):
-            params = {
-                "median_present": True,
-                "median_type": median_type,
-            }
-
-            median_state = self._median_state()
-            if median_state.get("width_m") is not None:
-                params["median_width"] = float(median_state["width_m"]) * 1000
-
-            if median_state.get("height_m") is not None:
-                params["median_height"] = float(median_state["height_m"]) * 1000
-
-            self.cad_preview.update_params(params)
+        sync = getattr(median_tab, "sync_from_parent_state", None)
+        params = sync(force=force, include_median=True) if callable(sync) else {}
+        self._push_cad_params(params)
 
     def _apply_railing_defaults(self, force: bool = False):
-        if not hasattr(self, "railing_type"):
-            return
-
-        railing_type = self._railing_state().get("type") or self.railing_type.currentText()
-        effective_railing_type = self._effective_railing_type(railing_type)
-        geom = RailingGeometry.get_geometry(effective_railing_type)
         railing_tab = getattr(self, "railing_tab", None)
-        apply_defaults = getattr(railing_tab, "apply_defaults", None) if railing_tab is not None else None
-        apply_load_mode = getattr(railing_tab, "apply_load_mode", None) if railing_tab is not None else None
-
-        if callable(apply_defaults) and geom:
-            apply_defaults(
-                width_mm=geom.get("width"),
-                height_m=(geom.get("height") / 1000.0) if geom.get("height") is not None else None,
-                force=force,
-            )
-
-        if callable(apply_load_mode):
-            apply_load_mode("Automatic (IRC 6)")
-
-        geom = RailingGeometry.get_geometry(effective_railing_type)
-
-        params = {
-            "railing_type": railing_type,
-        }
-
-        if geom:
-            if "height" in geom:
-                params["railing_height"] = geom["height"]
-
-            if "width" in geom:
-                params["railing_width"] = geom["width"]
-
-            self.cad_preview.update_params(params)
-
-    def _is_metallic_barrier(self, barrier_type):
-        crash_tab = getattr(self, "crash_barrier_tab", None)
-        checker = getattr(crash_tab, "is_metallic", None) if crash_tab is not None else None
-        return checker(barrier_type) if callable(checker) else barrier_type.startswith("IRC 5 - Metallic Crash Barrier")
-
-    def _effective_crash_barrier_type(self, barrier_type):
-        crash_tab = getattr(self, "crash_barrier_tab", None)
-        helper = getattr(crash_tab, "effective_type", None) if crash_tab is not None else None
-        return helper(barrier_type) if callable(helper) else ("IRC 5 - RCC Crash Barrier" if barrier_type == "Custom" else barrier_type)
-
-    def _effective_median_type(self, median_type):
-        median_tab = getattr(self, "median_tab", None)
-        helper = getattr(median_tab, "effective_type", None) if median_tab is not None else None
-        return helper(median_type) if callable(helper) else ("IRC 5 - Raised Kerb" if median_type == "Custom" else median_type)
-
-    def _effective_railing_type(self, railing_type):
-        return "IRC 5 - RCC Railing" if railing_type == "Custom" else railing_type
-
-    def _is_rcc_barrier(self, barrier_type):
-        crash_tab = getattr(self, "crash_barrier_tab", None)
-        checker = getattr(crash_tab, "is_rcc", None) if crash_tab is not None else None
-        if callable(checker):
-            return checker(barrier_type)
-        return (
-            barrier_type.startswith("IRC 5 - RCC Crash Barrier")
-            or barrier_type.startswith("IRC 5 - High Containment RCC Crash Barrier")
-        )
-
-    def _update_crash_barrier_visibility(self, barrier_type):
-        crash_tab = getattr(self, "crash_barrier_tab", None)
-        updater = getattr(crash_tab, "update_visibility", None) if crash_tab is not None else None
-        if callable(updater):
-            updater(barrier_type)
-
-    def _is_metallic_median(self, median_type):
-        median_tab = getattr(self, "median_tab", None)
-        checker = getattr(median_tab, "is_metallic", None) if median_tab is not None else None
-        return checker(median_type) if callable(checker) else median_type.startswith("IRC 5 - Metallic Crash Barrier")
-
-    def _is_rcc_median(self, median_type):
-        median_tab = getattr(self, "median_tab", None)
-        checker = getattr(median_tab, "is_rcc", None) if median_tab is not None else None
-        return checker(median_type) if callable(checker) else (median_type.startswith("IRC 5 - RCC Crash Barrier") or median_type.startswith("IRC 5 - Raised Kerb"))
-
-    def _auto_compute_median_load(self):
-        median_type = self._median_state().get("type", "")
-        median_tab = getattr(self, "median_tab", None)
-        compute = getattr(median_tab, "auto_compute_load", None) if median_tab is not None else None
-        if callable(compute):
-            compute(median_type)
+        sync = getattr(railing_tab, "sync_from_parent_state", None) if railing_tab is not None else None
+        params = sync(force=force) if callable(sync) else {}
+        self._push_cad_params(params)
 
     def on_median_type_changed(self, median_type):
         print(f"Median type changed to: {median_type}")
         self._apply_median_defaults(median_type, force=True)
-
-        if hasattr(self, "cad_preview"):
-            params = {"median_type": median_type}
-            self.cad_preview.update_params(params)
 
         self.recalculate_girders()
         
@@ -998,17 +859,7 @@ class TypicalSectionDetailsTab(QWidget):
         print(f"Railing type changed to: {railing_type}")
         self._apply_railing_defaults(force=True)
 
-        if hasattr(self, "cad_preview"):
-            params = {"railing_type": railing_type}
-            self.cad_preview.update_params(params)
-
         self.recalculate_girders()
-
-    def _update_median_visibility(self, median_type, include_median=True):
-        median_tab = getattr(self, "median_tab", None)
-        updater = getattr(median_tab, "update_visibility", None) if median_tab is not None else None
-        if callable(updater):
-            updater(median_type, include_median=include_median)
 
     def get_overall_bridge_width(self):
         try:
@@ -1173,7 +1024,6 @@ class TypicalSectionDetailsTab(QWidget):
             )
 
         # IMPORTANT: force=True so layout recalculation cannot override geometry
-        self._update_crash_barrier_visibility(barrier_type)
         self._apply_crash_barrier_defaults(barrier_type, force=True)
 
         # Recalculate AFTER geometry is locked
