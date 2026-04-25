@@ -101,13 +101,20 @@ class SectionPropertiesTab(QWidget):
                 data.update(tab.collect_data())
         return data
 
+    def save_properties(self) -> dict:
+        """Compatibility wrapper used by the dock while the migration is in flight."""
+        return self.collect_data()
+
     def restore_data(self, data: dict) -> None:
         """Unified data restoration to all section sub-tabs."""
         for spec in _TAB_SPECS:
             tab = getattr(self, spec["attr"], None)
             if hasattr(tab, "restore_data"):
                 tab.restore_data(data)
-        self._bind_dependents()
+        self._refresh_dependency_state()
+
+    def restore_properties(self, data: dict) -> None:
+        self.restore_data(data)
 
     def reset_defaults(self):
         """Unified reset for all section sub-tabs."""
@@ -115,6 +122,11 @@ class SectionPropertiesTab(QWidget):
             tab = getattr(self, spec["attr"], None)
             if hasattr(tab, "reset_defaults"):
                 tab.reset_defaults()
+        self._refresh_dependency_state()
+        try:
+            self.section_tabs.setCurrentIndex(0)
+        except Exception:
+            pass
 
     def validate_tab(self):
         """Unified validation for all section sub-tabs."""
@@ -124,7 +136,15 @@ class SectionPropertiesTab(QWidget):
             validate_method = spec.get("validate_method", "validate_tab")
             method = getattr(tab, validate_method, None)
             if callable(method):
-                errors.extend(method())
+                try:
+                    result = method()
+                except Exception as exc:
+                    errors.append(str(exc))
+                    continue
+                if isinstance(result, (list, tuple, set)):
+                    errors.extend(str(item) for item in result if item)
+                elif result:
+                    errors.append(str(result))
         return list(dict.fromkeys(errors))
 
     def _bind_dependents(self) -> None:
@@ -147,11 +167,39 @@ class SectionPropertiesTab(QWidget):
                 setattr(cross_bracing, "bracing_spacing", cross_bracing.spacing_input)
             except Exception:
                 pass
+        self._refresh_dependency_state()
+
+    def _refresh_dependency_state(self) -> None:
+        girder = getattr(self, "girder_details_tab", None)
+        if girder is None:
+            return
+
+        export_state = getattr(girder, "export_dependency_state", None)
+        state = export_state() if callable(export_state) else {}
+
+        for attr in ("stiffener_details_tab", "cross_bracing_tab", "end_diaphragm_tab"):
+            tab = getattr(self, attr, None)
+            if tab is None:
+                continue
+            refresh = getattr(tab, "refresh_from_girder_state", None)
+            if callable(refresh):
+                try:
+                    refresh(dict(state))
+                    continue
+                except Exception:
+                    pass
+            bind_method = getattr(tab, "bind_girder_details_tab", None)
+            if callable(bind_method):
+                try:
+                    bind_method(girder)
+                except Exception:
+                    pass
 
     def _dependent_specs(self):
         return [spec for spec in _TAB_SPECS if spec["key"] != "girder_details"]
 
     def _refresh_from_girder(self, *keys: str) -> None:
+        self._refresh_dependency_state()
         refresh_keys = set(keys) if keys else {spec["key"] for spec in self._dependent_specs()}
         for spec in self._dependent_specs():
             if spec["key"] not in refresh_keys:
@@ -235,28 +283,6 @@ class SectionPropertiesTab(QWidget):
         if callable(setter):
             setter(count)
         self._refresh_from_girder()
-
-    def reset_defaults(self):
-        girder = getattr(self, "girder_details_tab", None)
-        reset = getattr(girder, "reset_defaults", None) if girder is not None else None
-        if callable(reset):
-            reset()
-
-        self._refresh_from_girder()
-
-        for spec in self._dependent_specs():
-            widget = getattr(self, spec["attr"], None)
-            reset = getattr(widget, "reset_defaults", None) if widget is not None else None
-            if callable(reset):
-                try:
-                    reset()
-                except Exception:
-                    pass
-
-        try:
-            self.section_tabs.setCurrentIndex(0)
-        except Exception:
-            pass
 
     def reset_active_tab_defaults(self) -> None:
         try:
