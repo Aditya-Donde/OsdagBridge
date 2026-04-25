@@ -1,6 +1,6 @@
 """Layout sub-tab for Typical Section Details (schema-driven)."""
 import copy
-from PySide6.QtWidgets import QWidget, QVBoxLayout, QGridLayout, QLabel, QLineEdit, QSizePolicy
+from PySide6.QtWidgets import QWidget, QVBoxLayout, QGridLayout, QLabel, QLineEdit, QSizePolicy, QFrame
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QDoubleValidator, QIntValidator
 
@@ -9,7 +9,7 @@ from osdagbridge.core.utils.common import DEFAULT_GIRDER_SPACING
 from osdagbridge.desktop.ui.dialogs.tabs.common import apply_field_style
 
 
-class LayoutTab(QWidget):
+class LayoutTab(QFrame):
     """Constructs the Layout tab UI and attaches widgets onto the owner."""
 
     def __init__(self, owner, row_indices=None, show_title=True, add_bottom_stretch=True):
@@ -18,7 +18,7 @@ class LayoutTab(QWidget):
         self.row_indices = row_indices
         self.show_title = show_title
         self.add_bottom_stretch = add_bottom_stretch
-        self.setStyleSheet("background-color: white;")
+        # self.setStyleSheet("background-color: white;")
         self._build_ui()
 
     def _create_field(self, field_def, default_width=180):
@@ -76,7 +76,7 @@ class LayoutTab(QWidget):
         owner = self.owner
 
         layout_layout = QVBoxLayout(self)
-        layout_layout.setContentsMargins(18, 6, 18, 12)
+        layout_layout.setContentsMargins(18, 30, 18, 30)
         layout_layout.setSpacing(0)
 
         if self.show_title:
