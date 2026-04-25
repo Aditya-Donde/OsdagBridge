@@ -39,6 +39,7 @@ LAYOUT_TAB_SCHEMA = {
                     "label": "Deck Overhang Width (m):",
                     "type": "line",
                     "validator": {"type": "double_range", "bottom": 0.0, "top": 100.0, "decimals": 3},
+                    "default": f"{0.35 * DEFAULT_GIRDER_SPACING:.3f}",
                     "bind": "deck_overhang",
                     "on_text_changed": "on_deck_overhang_changed",
                 }
@@ -49,8 +50,8 @@ LAYOUT_TAB_SCHEMA = {
                 {
                     "id": "overall_bridge_width_display",
                     "label": "Overall Bridge Width (m):",
-                    "type": "line",
-                    "read_only": True,
+                    "type": "computed",
+                    "enabled": False,
                     "bind": "overall_bridge_width_display",
                     "on_text_changed": "_reject_overall_width_override",
                 }

@@ -1,171 +1,50 @@
-"""Layout sub-tab for Typical Section Details (schema-driven)."""
-import copy
-from PySide6.QtWidgets import QWidget, QVBoxLayout, QGridLayout, QLabel, QLineEdit, QSizePolicy, QScrollArea, QFrame
-from PySide6.QtCore import Qt
-from PySide6.QtGui import QDoubleValidator, QIntValidator
+from PySide6.QtWidgets import QLabel, QSizePolicy, QVBoxLayout, QWidget
 
-from osdagbridge.core.bridge_types.plate_girder.ui_fields_additional_input import LAYOUT_TAB_SCHEMA
-from osdagbridge.core.utils.common import DEFAULT_GIRDER_SPACING
-from osdagbridge.desktop.ui.dialogs.tabs.common import apply_field_style
+from osdagbridge.core.bridge_types.plate_girder.schemas import LAYOUT_TAB_SCHEMA
+from osdagbridge.desktop.ui.dialogs.tabs import schema_io
+from osdagbridge.desktop.ui.dialogs.tabs.ui_builder import UIBuilder
 
 
 class LayoutTab(QWidget):
-    """Constructs the Layout tab UI and attaches widgets onto the owner."""
 
     def __init__(self, owner):
         super().__init__(owner)
         self.owner = owner
-        self.setStyleSheet("background-color: white;")
-        self._build_ui()
+        builder = UIBuilder(owner=owner, schema=LAYOUT_TAB_SCHEMA)
+        builder.build_tab(self)
 
-    def _create_field(self, field_def, default_width=180):
-        owner = self.owner
-        ftype = field_def.get("type")
-        field = QLineEdit()
+        if hasattr(owner, "overall_bridge_width_display") and hasattr(owner, "overall_bridge_width_formula"):
+            owner.overall_bridge_width_display.setToolTip(owner.overall_bridge_width_formula)
 
-        validator_def = field_def.get("validator")
-        if validator_def:
-            vtype = validator_def.get("type")
-            if vtype == "double_range":
-                bottom = validator_def.get("bottom", 0.0)
-                top = validator_def.get("top", 1e9)
-                decimals = validator_def.get("decimals", 3)
-                field.setValidator(QDoubleValidator(bottom, top, decimals))
-            elif vtype == "int_range":
-                bottom = validator_def.get("bottom", 0)
-                top = validator_def.get("top", 1e9)
-                field.setValidator(QIntValidator(bottom, top))
+        self._create_notice_labels(owner, builder.page_layout)
 
-        default = field_def.get("default")
-        if default is not None:
-            field.setText(str(default))
+    def reset_defaults(self):
+        schema_io.reset_defaults(self.owner, LAYOUT_TAB_SCHEMA)
 
-        if field_def.get("read_only"):
-            field.setReadOnly(True)
+    def _create_notice_labels(self, owner, page_layout):
+        owner.layout_adjust_notice = self._make_notice_label("#000000")
+        owner.layout_warning_notice = self._make_notice_label("#cc6600")
 
-        apply_field_style(field)
-        field.setFixedWidth(default_width)
-        field.setObjectName(field_def.get("id", ""))
+        container = QWidget()
+        container.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Preferred)
+        container.setFixedWidth(180)
+        vlayout = QVBoxLayout(container)
+        vlayout.setContentsMargins(0, 0, 0, 0)
+        vlayout.setSpacing(4)
+        vlayout.addWidget(owner.layout_adjust_notice)
+        vlayout.addWidget(owner.layout_warning_notice)
+        container.hide()
+        owner.layout_notice_container = container
+        page_layout.insertWidget(page_layout.count() - 1, container)
 
-        # Make read-only displays visually disabled without breaking styling
-        if field_def.get("id") == "overall_bridge_width_display":
-            field.setEnabled(False)
-            field.setStyleSheet(
-                "QLineEdit { background-color: #f2f2f2; color: #666;"
-                " border: 1px solid #c0c0c0; border-radius: 4px; padding: 4px 6px; }"
-            )
-
-        bind_name = field_def.get("bind")
-        if bind_name:
-            setattr(owner, bind_name, field)
-
-        on_text_changed = field_def.get("on_text_changed")
-        if on_text_changed and hasattr(owner, on_text_changed):
-            field.textChanged.connect(getattr(owner, on_text_changed))
-
-        on_editing_finished = field_def.get("on_editing_finished")
-        if on_editing_finished and hasattr(owner, on_editing_finished):
-            field.editingFinished.connect(getattr(owner, on_editing_finished))
-
-        return field
-
-    def _build_ui(self):
-        owner = self.owner
-
-        root = QVBoxLayout(self)
-        root.setContentsMargins(0, 0, 0, 0)
-        root.setSpacing(0)
-
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setFrameShape(QFrame.NoFrame)
-        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        scroll.setStyleSheet("QScrollArea { background-color: white; border: none; }")
-
-        page = QWidget()
-        page.setStyleSheet("background-color: white;")
-        layout_layout = QVBoxLayout(page)
-        layout_layout.setContentsMargins(18, 12, 18, 18)
-        layout_layout.setSpacing(8)
-
-        title_label = QLabel("Inputs:")
-        title_label.setStyleSheet("font-size: 12px; font-weight: bold; color: #000;")
-        layout_layout.addWidget(title_label)
-        layout_layout.addSpacing(12)
-
-        grid = QGridLayout()
-        grid.setHorizontalSpacing(24)
-        grid.setVerticalSpacing(18)
-        grid.setColumnStretch(1, 1)
-        grid.setColumnStretch(3, 1)
-        grid.setContentsMargins(0, 0, 0, 0)
-
-        def _label(text):
-            lbl = QLabel(text)
-            lbl.setStyleSheet("font-size: 11px; color: #000;")
-            lbl.setMinimumWidth(180)
-            return lbl
-
-        schema_rows = copy.deepcopy(LAYOUT_TAB_SCHEMA.get("rows", []))
-        for row in schema_rows:
-            for field_def in row.get("fields", []):
-                if field_def.get("id") == "deck_overhang" and field_def.get("default") is None:
-                    field_def["default"] = f"{0.35 * DEFAULT_GIRDER_SPACING:.3f}"
-
-        # Create adjustment notice label (shown when values are auto-adjusted)
-        owner.layout_adjust_notice = QLabel()
-        owner.layout_adjust_notice.setStyleSheet(
-            "font-size: 10px; font-style: italic; color: #000000; background-color: transparent;"
+    @staticmethod
+    def _make_notice_label(color: str) -> QLabel:
+        lbl = QLabel()
+        lbl.setStyleSheet(
+            f"font-size: 10px; font-style: italic; color: {color}; background-color: transparent;"
         )
-        owner.layout_adjust_notice.setWordWrap(True)
-        owner.layout_adjust_notice.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Preferred)
-        owner.layout_adjust_notice.setFixedWidth(180)
-        owner.layout_adjust_notice.hide()
-        
-        # Create warning notice label (shown when overhang exceeds spacing)
-        owner.layout_warning_notice = QLabel()
-        owner.layout_warning_notice.setStyleSheet(
-            "font-size: 10px; font-style: italic; color: #cc6600; background-color: transparent;"
-        )
-        owner.layout_warning_notice.setWordWrap(True)
-        owner.layout_warning_notice.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Preferred)
-        owner.layout_warning_notice.setFixedWidth(180)
-        owner.layout_warning_notice.hide()
-
-        # Container so notices don't resize grid columns (prevents UI shifting)
-        owner.layout_notice_container = QWidget()
-        owner.layout_notice_container.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Preferred)
-        owner.layout_notice_container.setFixedWidth(180)
-        notice_layout = QVBoxLayout(owner.layout_notice_container)
-        notice_layout.setContentsMargins(0, 0, 0, 0)
-        notice_layout.setSpacing(4)
-        notice_layout.addWidget(owner.layout_adjust_notice)
-        notice_layout.addWidget(owner.layout_warning_notice)
-        owner.layout_notice_container.hide()
-
-        row_idx = 0
-        for row_num, row in enumerate(schema_rows):
-            col = 0
-            for field_def in row.get("fields", []):
-                lbl = _label(field_def.get("label", ""))
-                grid.addWidget(lbl, row_idx, col, Qt.AlignLeft)
-                col += 1
-
-                field = self._create_field(field_def, default_width=180)
-                grid.addWidget(field, row_idx, col)
-                col += 1
-
-                # Special tooltip for overall width
-                if field_def.get("id") == "overall_bridge_width_display":
-                    field.setToolTip(owner.overall_bridge_width_formula)
-
-            row_idx += 1
-
-        # Place notices under the "No. of Girders" LABEL (row 0, col 2)
-        # Row 1 col 2 is empty in the schema (only left-side field), so it's the ideal anchor.
-        grid.addWidget(owner.layout_notice_container, 1, 2, 1, 1, Qt.AlignLeft | Qt.AlignTop)
-
-        layout_layout.addLayout(grid)
-        layout_layout.addStretch()
-        scroll.setWidget(page)
-        root.addWidget(scroll)
+        lbl.setWordWrap(True)
+        lbl.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Preferred)
+        lbl.setFixedWidth(180)
+        lbl.hide()
+        return lbl

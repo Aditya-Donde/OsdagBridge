@@ -173,6 +173,7 @@ class UIBuilder:
         page_layout = QVBoxLayout(scroll_content)
         page_layout.setContentsMargins(12, 12, 12, 12)
         page_layout.setSpacing(12)
+        self.page_layout = page_layout
 
         schema = self.schema
         has_description = "description" in schema
