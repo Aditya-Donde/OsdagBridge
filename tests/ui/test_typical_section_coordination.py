@@ -66,6 +66,26 @@ def test_lane_details_child_api_round_trip(qapp):
     assert tab.lane_details_tab.export_lane_table_state()["lane_table_data"] == rows
 
 
+def test_lane_details_child_owns_defaults_and_selection(qapp):
+    tab = TypicalSectionDetailsTab(carriageway_width=7.5)
+    qapp.processEvents()
+
+    lane_tab = tab.lane_details_tab
+    assert lane_tab.lane_count_combo.count() == 2
+    assert lane_tab.lane_count_combo.currentText() == "2"
+    assert lane_tab.get_lane_rows() == [
+        {"lane_number": "1", "start": "0.00", "width": "3.50"},
+        {"lane_number": "2", "start": "3.50", "width": "3.50"},
+    ]
+
+    lane_tab.lane_count_combo.setCurrentText("1")
+    qapp.processEvents()
+
+    assert lane_tab.get_lane_rows() == [
+        {"lane_number": "1", "start": "0.00", "width": "3.50"},
+    ]
+
+
 def test_typical_section_subtab_state_exports(qapp):
     tab = TypicalSectionDetailsTab()
     qapp.processEvents()
@@ -158,3 +178,17 @@ def test_typical_section_child_sync_helpers_return_cad_payloads(qapp):
     assert "median_present" in median_state_params
     assert "railing_type" in railing_state_params
     assert "wearing_course_material" in wearing_state_params
+
+
+def test_typical_section_validation_aggregates_lane_child_validation(qapp):
+    tab = TypicalSectionDetailsTab()
+    qapp.processEvents()
+
+    tab.lane_details_tab.set_lane_rows(
+        [{"lane_number": "1", "start": "1.00", "width": "3.00"}]
+    )
+
+    errors = tab.validate_tab()
+
+    assert "Lane 1 width must be at least 3.50 m." in errors
+    assert "Lane 1 start must be 0.00 m." in errors
