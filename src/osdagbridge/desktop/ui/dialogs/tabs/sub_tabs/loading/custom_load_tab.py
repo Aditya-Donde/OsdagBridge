@@ -1,5 +1,5 @@
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QTableWidgetItem, QWidget
+from PySide6.QtWidgets import QTableWidgetItem
 
 from osdagbridge.desktop.ui.dialogs.tabs.schemas.plate_girder import (
     CUSTOM_LOAD_TAB_SCHEMA,
@@ -27,20 +27,25 @@ class CustomLoadTab(SchemaTab):
 
         self.reset_defaults()
 
-    def collect_data(self) -> dict:
-        data = super().collect_data()
-        data["loading.custom_load_items"] = copy.deepcopy(self.custom_load_items)
-        return data
+    def reset_defaults(self):
+        schema_io.reset_defaults(self, self.schema, before=self._before_reset, after=self._after_reset)
 
-    def restore_data(self, data: dict) -> None:
-        super().restore_data(data)
+    def _extra_state(self):
+        return {
+            "loading.custom_load_items": copy.deepcopy(self.custom_load_items),
+        }
+
+    def _restore_extra_state(self, data: dict):
         items = data.get("loading.custom_load_items")
         if isinstance(items, list):
             self.custom_load_items = copy.deepcopy(items)
-            self._refresh_custom_load_table()
+        self._editing_load_data = None
+        self._refresh_custom_load_table()
 
-    def reset_defaults(self):
-        schema_io.reset_defaults(self, self.schema, before=self._before_reset, after=self._after_reset)
+    def _extra_validation(self):
+        if self._editing_load_data:
+            return ["Please save or clear the Custom Load currently being edited."]
+        return []
 
     def _before_reset(self):
         self.custom_load_items.clear()

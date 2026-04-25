@@ -48,6 +48,50 @@ class LiveLoadTab(SchemaTab):
         self.owner.braking_vehicle_checkboxes = list(getattr(self, "braking_vehicle_checkboxes", []))
         self.owner.braking_vehicle_labels = list(getattr(self, "braking_vehicle_labels", []))
 
+    def _extra_state(self):
+        return {
+            "loading.live_custom_vehicles": dict(self.custom_vehicles),
+            "loading.live_has_real_custom_vehicle": bool(self.has_real_custom_vehicle),
+            "loading.irc_vehicle_checks": {
+                label.text(): checkbox.isChecked()
+                for label, checkbox in zip(
+                    getattr(self, "irc_vehicle_labels", []),
+                    getattr(self, "irc_vehicle_checkboxes", []),
+                )
+            },
+            "loading.braking_vehicle_checks": {
+                label.text(): checkbox.isChecked()
+                for label, checkbox in zip(
+                    getattr(self, "braking_vehicle_labels", []),
+                    getattr(self, "braking_vehicle_checkboxes", []),
+                )
+            },
+        }
+
+    def _restore_extra_state(self, data: dict):
+        custom_vehicles = data.get("loading.live_custom_vehicles")
+        if isinstance(custom_vehicles, dict):
+            self.custom_vehicles = dict(custom_vehicles)
+            self.has_real_custom_vehicle = bool(
+                data.get("loading.live_has_real_custom_vehicle", bool(custom_vehicles))
+            )
+            if hasattr(self, "custom_vehicle_table"):
+                self.custom_vehicle_table.setRowCount(0)
+                for vehicle_name, vehicle_data in self.custom_vehicles.items():
+                    merged = dict(vehicle_data)
+                    merged["name"] = vehicle_name
+                    self._add_custom_vehicle(merged)
+
+        for state_key, labels_name, boxes_name in (
+            ("loading.irc_vehicle_checks", "irc_vehicle_labels", "irc_vehicle_checkboxes"),
+            ("loading.braking_vehicle_checks", "braking_vehicle_labels", "braking_vehicle_checkboxes"),
+        ):
+            states = data.get(state_key)
+            if not isinstance(states, dict):
+                continue
+            for label, checkbox in zip(getattr(self, labels_name, []), getattr(self, boxes_name, [])):
+                checkbox.setChecked(bool(states.get(label.text(), checkbox.isChecked())))
+
     def _on_footpath_mode_changed(self, mode):
         if mode != "User-defined" and hasattr(self, "footpath_value_input"):
             self.footpath_value_input.clear()

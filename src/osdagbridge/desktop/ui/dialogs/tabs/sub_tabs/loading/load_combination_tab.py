@@ -7,6 +7,7 @@ from osdagbridge.desktop.ui.dialogs.tabs.schemas.plate_girder import (
 from osdagbridge.desktop.ui.dialogs.tabs import schema_io
 from osdagbridge.desktop.ui.dialogs.tabs.sub_tabs.loading.load_combo_dialog import LoadComboDialog
 from osdagbridge.desktop.ui.dialogs.tabs.base import SchemaTab
+from osdagbridge.desktop.ui.dialogs.tabs.ui_builder import UIBuilder
 import copy
 
 
@@ -60,6 +61,18 @@ class LoadCombinationTab(SchemaTab):
         self.load_combo_table.setColumnWidth(0, 80)
         self.load_combo_table.setColumnWidth(2, 100)
         self.load_combo_table.verticalHeader().setDefaultSectionSize(40)
+
+    def _sync_load_combo_included_flags(self):
+        for row_idx in range(self.load_combo_table.rowCount()):
+            if row_idx >= len(self.load_combo_items):
+                break
+            included = False
+            checkbox_widget = self.load_combo_table.cellWidget(row_idx, 2)
+            if checkbox_widget is not None:
+                checkbox = checkbox_widget.findChild(QCheckBox)
+                if checkbox is not None:
+                    included = checkbox.isChecked()
+            self.load_combo_items[row_idx]["included"] = included
 
     def _refresh_load_combo_table(self):
         has_items = bool(self.load_combo_items)

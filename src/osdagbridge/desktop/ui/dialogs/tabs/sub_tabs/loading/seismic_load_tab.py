@@ -1,5 +1,3 @@
-from PySide6.QtWidgets import QComboBox, QLineEdit
-
 from osdagbridge.desktop.ui.dialogs.tabs.schemas.plate_girder import SEISMIC_LOAD_TAB_SCHEMA
 from osdagbridge.desktop.ui.dialogs.tabs.base import SchemaTab
 
@@ -17,17 +15,13 @@ class SeismicLoadTab(SchemaTab):
             if section.get("type") == "computed_group":
                 for field in section.get("fields", []):
                     bind_name = field.get("bind")
-                    if bind_name and hasattr(owner, bind_name):
-                        self.seismic_computed_fields[bind_name] = getattr(owner, bind_name)
+                    if bind_name and hasattr(self, bind_name):
+                        self.seismic_computed_fields[bind_name] = getattr(self, bind_name)
 
         # Sync seismic zone from project output if already available
-        if hasattr(owner, "project_seismic_zone") and hasattr(owner, "seismic_zone_combo"):
+        if hasattr(owner, "project_seismic_zone") and hasattr(self, "seismic_zone_combo"):
             zone_val = str(owner.project_seismic_zone)
-            widget = owner.seismic_zone_combo
-            if isinstance(widget, QComboBox):
-                widget.setCurrentText(zone_val)
-            elif isinstance(widget, QLineEdit):
-                widget.setText(zone_val)
+            self._set_text_like_value(self.seismic_zone_combo, zone_val)
 
     def update_project_location(self, location_data):
         if not location_data:
@@ -37,13 +31,22 @@ class SeismicLoadTab(SchemaTab):
             return
         zone = weather.get("zone")
         z_val = weather.get("z_value")
-        if zone is not None and hasattr(self.owner, "seismic_zone_combo"):
-            widget = self.owner.seismic_zone_combo
-            if isinstance(widget, QComboBox):
-                idx = widget.findText(str(zone))
-                if idx >= 0:
-                    widget.setCurrentIndex(idx)
-            elif isinstance(widget, QLineEdit):
-                widget.setText(str(zone))
+        if zone is not None and hasattr(self, "seismic_zone_combo"):
+            self._set_text_like_value(self.seismic_zone_combo, str(zone))
         if z_val is not None and "zone_factor" in self.seismic_computed_fields:
             self.seismic_computed_fields["zone_factor"].setText(str(z_val))
+
+    @staticmethod
+    def _set_text_like_value(widget, value) -> None:
+        if widget is None:
+            return
+        if hasattr(widget, "findText") and hasattr(widget, "setCurrentIndex"):
+            idx = widget.findText(str(value))
+            if idx >= 0:
+                widget.setCurrentIndex(idx)
+                return
+        if hasattr(widget, "setCurrentText"):
+            widget.setCurrentText(str(value))
+            return
+        if hasattr(widget, "setText"):
+            widget.setText(str(value))
