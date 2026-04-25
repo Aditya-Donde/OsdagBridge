@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
-from PySide6.QtWidgets import QTabWidget, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QTabWidget, QWidget
 
 from osdagbridge.desktop.ui.dialogs.tabs.schemas.plate_girder import (
-    MEMBER_PROPERTIES_SCHEMA_V1,
     SECTION_PROPERTIES_ORCHESTRATOR_SCHEMA,
 )
 from osdagbridge.desktop.ui.dialogs.tabs.ui_builder import UIBuilder
@@ -152,6 +151,13 @@ class SectionPropertiesTab(QWidget):
         if girder is None:
             return
 
+        signal = getattr(girder, "dependency_state_changed", None)
+        if signal is not None and hasattr(signal, "connect"):
+            try:
+                signal.connect(self._refresh_dependents_from_state)
+            except Exception:
+                pass
+
         for attr in ("stiffener_details_tab", "cross_bracing_tab", "end_diaphragm_tab"):
             tab = getattr(self, attr, None)
             bind_method = getattr(tab, "bind_girder_details_tab", None) if tab is not None else None
@@ -169,14 +175,8 @@ class SectionPropertiesTab(QWidget):
                 pass
         self._refresh_dependency_state()
 
-    def _refresh_dependency_state(self) -> None:
-        girder = getattr(self, "girder_details_tab", None)
-        if girder is None:
-            return
-
-        export_state = getattr(girder, "export_dependency_state", None)
-        state = export_state() if callable(export_state) else {}
-
+    def _refresh_dependents_from_state(self, state: dict) -> None:
+        state = dict(state or {})
         for attr in ("stiffener_details_tab", "cross_bracing_tab", "end_diaphragm_tab"):
             tab = getattr(self, attr, None)
             if tab is None:
@@ -185,21 +185,22 @@ class SectionPropertiesTab(QWidget):
             if callable(refresh):
                 try:
                     refresh(dict(state))
-                    continue
                 except Exception:
                     pass
-            bind_method = getattr(tab, "bind_girder_details_tab", None)
-            if callable(bind_method):
-                try:
-                    bind_method(girder)
-                except Exception:
-                    pass
+
+    def _refresh_dependency_state(self) -> None:
+        girder = getattr(self, "girder_details_tab", None)
+        if girder is None:
+            return
+
+        export_state = getattr(girder, "export_dependency_state", None)
+        state = export_state() if callable(export_state) else {}
+        self._refresh_dependents_from_state(state)
 
     def _dependent_specs(self):
         return [spec for spec in _TAB_SPECS if spec["key"] != "girder_details"]
 
-    def _refresh_from_girder(self, *keys: str) -> None:
-        self._refresh_dependency_state()
+    def _refresh_dependent_tabs(self, *keys: str) -> None:
         refresh_keys = set(keys) if keys else {spec["key"] for spec in self._dependent_specs()}
         for spec in self._dependent_specs():
             if spec["key"] not in refresh_keys:
@@ -211,6 +212,10 @@ class SectionPropertiesTab(QWidget):
                     refresh()
                 except Exception:
                     pass
+
+    def _refresh_from_girder(self, *keys: str) -> None:
+        self._refresh_dependency_state()
+        self._refresh_dependent_tabs(*keys)
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
@@ -259,7 +264,7 @@ class SectionPropertiesTab(QWidget):
         if previous != index and girder_tab is not None:
             try:
                 leaving_girder = previous == self.section_tabs.indexOf(girder_tab)
-                commit = getattr(girder_tab, "_commit_current_member_state", None)
+                commit = getattr(girder_tab, "commit_active_state", None)
                 if leaving_girder and callable(commit):
                     commit()
             except Exception:
@@ -274,7 +279,7 @@ class SectionPropertiesTab(QWidget):
 
         for spec in self._dependent_specs():
             if widget is getattr(self, spec["attr"], None):
-                self._refresh_from_girder(spec["key"])
+                self._refresh_dependent_tabs(spec["key"])
                 break
 
     def set_girder_count(self, count):
@@ -282,7 +287,6 @@ class SectionPropertiesTab(QWidget):
         setter = getattr(girder, "set_girder_count", None) if girder is not None else None
         if callable(setter):
             setter(count)
-        self._refresh_from_girder()
 
     def reset_active_tab_defaults(self) -> None:
         try:
@@ -303,7 +307,7 @@ class SectionPropertiesTab(QWidget):
 
         for spec in self._dependent_specs():
             if active_widget is getattr(self, spec["attr"], None):
-                self._refresh_from_girder(spec["key"])
+                self._refresh_dependent_tabs(spec["key"])
                 break
 
         reset = getattr(active_widget, "reset_defaults", None)
