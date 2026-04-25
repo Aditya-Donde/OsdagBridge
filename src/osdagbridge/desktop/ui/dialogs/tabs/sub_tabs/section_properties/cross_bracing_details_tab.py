@@ -108,10 +108,13 @@ class CrossBracingDetailsTab(SchemaTab):
             except Exception:
                 pass
         if not self._girder_details_tab: return None
-        try:
-            return float(self._girder_details_tab._get_total_span())
-        except Exception:
-            return None
+        getter = getattr(self._girder_details_tab, "get_total_span", None)
+        if callable(getter):
+            try:
+                return float(getter())
+            except Exception:
+                return None
+        return None
 
     def _get_cross_bracing_spacing_m(self) -> Optional[float]:
         try:
@@ -212,8 +215,13 @@ class CrossBracingDetailsTab(SchemaTab):
         girders = ["G1", "G2"]
         if isinstance(self._girder_state.get("available_girders"), list):
             girders = list(self._girder_state.get("available_girders") or girders)
-        elif self._girder_details_tab and hasattr(self._girder_details_tab, "available_girders"):
-            girders = list(self._girder_details_tab.available_girders or girders)
+        elif self._girder_details_tab:
+            getter = getattr(self._girder_details_tab, "list_available_girders", None)
+            if callable(getter):
+                try:
+                    girders = list(getter() or girders)
+                except Exception:
+                    girders = girders
         return [f"{girders[i]} to {girders[i+1]}" for i in range(len(girders)-1)] or ["G1 to G2"]
 
     def _on_design_changed(self, label: str):

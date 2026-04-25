@@ -146,8 +146,13 @@ class EndDiaphragmDetailsTab(SchemaTab):
         girders = ["G1", "G2"]
         if isinstance(self._girder_state.get("available_girders"), list):
             girders = list(self._girder_state.get("available_girders") or girders)
-        elif self._girder_details_tab and hasattr(self._girder_details_tab, "available_girders"):
-            girders = list(self._girder_details_tab.available_girders or girders)
+        elif self._girder_details_tab:
+            getter = getattr(self._girder_details_tab, "list_available_girders", None)
+            if callable(getter):
+                try:
+                    girders = list(getter() or girders)
+                except Exception:
+                    girders = girders
         return [f"{girders[i]} to {girders[i+1]}" for i in range(len(girders)-1)] or ["G1 to G2"]
 
     def _on_design_changed(self, label: str):

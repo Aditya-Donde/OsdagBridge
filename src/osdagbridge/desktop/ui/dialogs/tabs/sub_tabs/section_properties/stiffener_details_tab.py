@@ -310,6 +310,23 @@ class StiffenerDetailsTab(SchemaTab):
     def _list_current_member_ids(self) -> list[str]:
         return [self.girder_member_combo.itemText(i) for i in range(self.girder_member_combo.count())]
 
+    def _segments_for_girder(self, girder: str) -> list[dict]:
+        segment_chain = self._girder_state.get("segment_chain")
+        if isinstance(segment_chain, dict):
+            segments = segment_chain.get(girder)
+            if isinstance(segments, list):
+                return list(segments)
+
+        if self._girder_details_tab is None:
+            return []
+        getter = getattr(self._girder_details_tab, "segments_for_girder", None)
+        if callable(getter):
+            try:
+                return list(getter(girder) or [])
+            except Exception:
+                return []
+        return []
+
     def _apply_current_to_all_members(self) -> None:
         self._store_current_member_state()
         if not self._active_member_id: return
@@ -327,9 +344,7 @@ class StiffenerDetailsTab(SchemaTab):
         girder = m.group(1) if m else ""
         if not girder: return
         
-        segments = []
-        if hasattr(self._girder_details_tab, "_ensure_girder_segments"):
-            segments = self._girder_details_tab._ensure_girder_segments(girder)
+        segments = self._segments_for_girder(girder)
         
         dims = {}
         dims_by_member = self._girder_state.get("section_dimensions_by_member")
