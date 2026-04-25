@@ -172,32 +172,7 @@ class TypicalSectionDetailsTab(QWidget):
                 self._updating_lane_table = was_updating
 
     def _sync_restored_state(self) -> None:
-        if hasattr(self, "footpath_width"):
-            enabled = self.footpath_value != "None"
-            self.footpath_width.setEnabled(enabled)
-            self.footpath_thickness.setEnabled(enabled)
-
-        crash_state = self._crash_barrier_state()
-        barrier_type = crash_state.get("type")
-        if barrier_type:
-            self._update_crash_barrier_visibility(barrier_type)
-            self._apply_crash_barrier_defaults(barrier_type, force=False)
-
-        median_state = self._median_state()
-        median_type = median_state.get("type")
-        if median_type:
-            median_index = self.input_tabs.indexOf(self.median_tab) if hasattr(self, "median_tab") else -1
-            include_median = median_index < 0 or self.input_tabs.isTabEnabled(median_index)
-            self._update_median_visibility(median_type, include_median=include_median)
-            self._apply_median_defaults(median_type, force=False)
-
-        if self._railing_state().get("type"):
-            self._apply_railing_defaults(force=False)
-
-        wearing_state = self._wearing_state()
-        if wearing_state.get("material"):
-            self.on_wearing_material_changed(wearing_state["material"])
-
+        self._sync_child_tabs_from_parent_state(force=False)
         self._update_overall_bridge_width_display()
         self._update_cad_preview()
 
@@ -278,18 +253,8 @@ class TypicalSectionDetailsTab(QWidget):
         if hasattr(self, "footpath_thickness"):
             self.footpath_thickness.editingFinished.connect(self._update_cad_preview)
 
-        # Initialize crash barrier visibility/load state
-        if hasattr(self, "crash_barrier_type"):
-            barrier_type = self.crash_barrier_type.currentText()
-            self._update_crash_barrier_visibility(barrier_type)
-            self._apply_crash_barrier_defaults(barrier_type, force=False)
-        if hasattr(self, "median_type"):
-            median_type = self.median_type.currentText()
-            self._apply_median_defaults(median_type, force=False)
-        if hasattr(self, "railing_load_mode"):
-            self._apply_railing_defaults(force=False)
-        if hasattr(self, "wearing_material"):
-            self.on_wearing_material_changed(self.wearing_material.currentText())
+        # Initialize child tabs from current parent bridge state.
+        self._sync_child_tabs_from_parent_state(force=False)
         # Propagate initial girder count to other tabs
         try:
             if hasattr(self, "no_of_girders") and self.no_of_girders.text():
@@ -521,7 +486,11 @@ class TypicalSectionDetailsTab(QWidget):
 
     def update_footpath_value(self, footpath_value):
         self.footpath_value = footpath_value
-        if hasattr(self, "footpath_width"):
+        layout_tab = getattr(self, "layout_tab", None)
+        sync = getattr(layout_tab, "sync_from_bridge_context", None) if layout_tab is not None else None
+        if callable(sync):
+            sync(footpath_value)
+        elif hasattr(self, "footpath_width"):
             self.footpath_width.setEnabled(footpath_value != "None")
             self.footpath_thickness.setEnabled(footpath_value != "None")
         self.recalculate_girders()
@@ -569,14 +538,7 @@ class TypicalSectionDetailsTab(QWidget):
     def _median_state(self) -> dict:
         tab = getattr(self, "median_tab", None)
         exporter = getattr(tab, "export_median_state", None) if tab is not None else None
-        include_median = True
-        if hasattr(self, "median_tab") and hasattr(self, "input_tabs"):
-            try:
-                median_index = self.input_tabs.indexOf(self.median_tab)
-                include_median = median_index < 0 or self.input_tabs.isTabEnabled(median_index)
-            except Exception:
-                include_median = True
-        return exporter(include_median=include_median) if callable(exporter) else {}
+        return exporter(include_median=self._median_is_included()) if callable(exporter) else {}
 
     def _railing_state(self) -> dict:
         tab = getattr(self, "railing_tab", None)

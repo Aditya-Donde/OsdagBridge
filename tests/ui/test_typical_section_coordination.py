@@ -74,3 +74,87 @@ def test_typical_section_subtab_state_exports(qapp):
     assert isinstance(tab.median_tab.export_median_state(include_median=True), dict)
     assert isinstance(tab.railing_tab.export_railing_state(), dict)
     assert isinstance(tab.wearing_course_tab.export_wearing_state(), dict)
+
+
+def test_typical_section_subtab_cad_exports(qapp):
+    tab = TypicalSectionDetailsTab()
+    qapp.processEvents()
+
+    bridge_params = tab.layout_tab.export_bridge_context_cad_params(
+        tab.carriageway_width,
+        tab.footpath_value,
+    )
+    layout_params = tab.layout_tab.export_cad_params()
+    crash_params = tab.crash_barrier_tab.export_cad_params()
+    median_params = tab.median_tab.export_cad_params(include_median=True)
+    railing_params = tab.railing_tab.export_cad_params()
+    wearing_params = tab.wearing_course_tab.export_cad_params()
+
+    assert isinstance(bridge_params, dict)
+    assert isinstance(layout_params, dict)
+    assert isinstance(crash_params, dict)
+    assert isinstance(median_params, dict)
+    assert isinstance(railing_params, dict)
+    assert isinstance(wearing_params, dict)
+    assert "footpath_config" in bridge_params
+    assert "num_girders" in layout_params
+    assert "median_present" in median_params
+
+
+def test_layout_tab_solver_plan(qapp):
+    tab = TypicalSectionDetailsTab()
+    qapp.processEvents()
+
+    overall_width = tab.get_overall_bridge_width()
+    spacing_bounds = tab._spacing_bounds(overall_width)
+    plan = tab.layout_tab.solve_layout_plan(
+        overall_width=overall_width,
+        changed_field="width",
+        spacing_bounds=spacing_bounds,
+        default_spacing=2.5,
+    )
+
+    assert plan["ok"] is True
+    assert isinstance(plan["solution"], dict)
+    assert set(plan["solution"]) == {"spacing", "overhang", "girders"}
+
+
+def test_typical_section_child_sync_helpers_return_cad_payloads(qapp):
+    tab = TypicalSectionDetailsTab()
+    qapp.processEvents()
+
+    crash_geom = {"bottom_width": 450.0, "total_height": 900.0}
+    crash_params = tab.crash_barrier_tab.sync_from_parent_geometry(
+        "IRC 5 - RCC Crash Barrier",
+        crash_geom,
+        force=True,
+    )
+    median_geom = {"median_width": 1200.0, "kerb_height": 450.0}
+    median_params = tab.median_tab.sync_from_parent_geometry(
+        "IRC 5 - Raised Kerb",
+        median_geom,
+        force=True,
+        include_median=True,
+    )
+    railing_params = tab.railing_tab.sync_from_parent_geometry(
+        "IRC 5 - RCC Railing",
+        width_mm=300.0,
+        height_m=1.1,
+        force=True,
+    )
+    wearing_params = tab.wearing_course_tab.sync_from_parent_material("Concrete")
+    tab.layout_tab.sync_from_bridge_context("None")
+    crash_state_params = tab.crash_barrier_tab.sync_from_parent_state(force=False)
+    median_state_params = tab.median_tab.sync_from_parent_state(include_median=True, force=False)
+    railing_state_params = tab.railing_tab.sync_from_parent_state(force=False)
+    wearing_state_params = tab.wearing_course_tab.sync_from_parent_state()
+
+    assert "crash_barrier_type" in crash_params
+    assert "median_present" in median_params
+    assert "railing_type" in railing_params
+    assert "wearing_course_material" in wearing_params
+    assert tab.footpath_width.isEnabled() is False
+    assert "crash_barrier_type" in crash_state_params
+    assert "median_present" in median_state_params
+    assert "railing_type" in railing_state_params
+    assert "wearing_course_material" in wearing_state_params
