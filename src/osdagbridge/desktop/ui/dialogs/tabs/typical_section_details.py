@@ -311,98 +311,14 @@ class TypicalSectionDetailsTab(QWidget):
             return
 
         params = {}
+        params.update(self._layout_bridge_context_cad_params())
+        params.update(self._layout_cad_params())
+        params.update(self._wearing_cad_params())
+        params.update(self._median_cad_params())
+        params.update(self._crash_barrier_cad_params())
+        params.update(self._railing_cad_params())
 
-        # Carriageway Width (always needed for overall width calculation in CAD)
-        if hasattr(self, "carriageway_width"):
-            params['carriageway_width'] = float(self.carriageway_width) * 1000
-
-        # Footpath Config
-        if hasattr(self, "footpath_value"):
-            fp_map = {
-                "Both Sides": "both",
-                "Single Side": "left",
-                "None": "none"
-            }
-            params['footpath_config'] = fp_map.get(self.footpath_value, "none")
-
-        if hasattr(self, "no_of_girders") and self.no_of_girders.text():
-            params['num_girders'] = int(float(self.no_of_girders.text()))
-
-        if hasattr(self, "girder_spacing") and self.girder_spacing.text():
-            params['girder_spacing'] = float(self.girder_spacing.text()) * 1000
-
-        if hasattr(self, "deck_overhang") and self.deck_overhang.text():
-            params['deck_overhang'] = float(self.deck_overhang.text()) * 1000
-
-        if hasattr(self, "deck_thickness") and self.deck_thickness.text():
-            params['deck_thickness'] = float(self.deck_thickness.text())
-
-        if hasattr(self, "footpath_width") and self.footpath_width.text():
-            params['footpath_width'] = float(self.footpath_width.text()) * 1000
-
-        if hasattr(self, "footpath_thickness") and self.footpath_thickness.text():
-            params['footpath_thickness'] = float(self.footpath_thickness.text())
-            
-        crash_state = self._crash_barrier_state()
-        if crash_state.get("type"):
-            params["crash_barrier_type"] = crash_state["type"]
-            
-        # ---- Wearing Course ----
-        wearing_state = self._wearing_state()
-        if wearing_state.get("thickness_mm") is not None:
-            wearing_thickness = float(wearing_state["thickness_mm"])
-            params[KEY_WEARING_COAT_THICKNESS] = wearing_thickness
-            params["wearing_course_thickness"] = wearing_thickness
-
-        if wearing_state.get("density") is not None:
-            wearing_density = float(wearing_state["density"])
-            params[KEY_WEARING_COAT_DENSITY] = wearing_density
-            params["wearing_course_density"] = wearing_density
-
-        if wearing_state.get("material"):
-            wearing_material = wearing_state["material"]
-            params[KEY_WEARING_COAT_MATERIAL] = wearing_material
-            params["wearing_course_material"] = wearing_material
-        
-        # ---- Median ----
-        median_state = self._median_state()
-        if median_state.get("type"):
-            params["median_type"] = median_state["type"]
-
-        if median_state.get("width_m") is not None:
-            params["median_width"] = float(median_state["width_m"]) * 1000
-
-        if median_state.get("height_m") is not None:
-            params["median_height"] = float(median_state["height_m"]) * 1000
-            
-        # ---- Crash Barrier ----
-        if crash_state.get("width_m") is not None:
-            params["crash_barrier_width"] = float(crash_state["width_m"]) * 1000
-
-        if crash_state.get("height_m") is not None:
-            params["crash_barrier_height"] = float(crash_state["height_m"]) * 1000
-
-        # ---- Railing ----
-        railing_state = self._railing_state()
-        if railing_state.get("type"):
-            params["railing_type"] = railing_state["type"]
-
-        if railing_state.get("width_mm") is not None:
-            params["railing_width"] = float(railing_state["width_mm"])
-
-        if railing_state.get("height_m") is not None:
-            params["railing_height"] = float(railing_state["height_m"]) * 1000
-            
-        # ---- Median presence ----
-        if hasattr(self, "median_tab"):
-            median_idx = self.input_tabs.indexOf(self.median_tab)
-            is_median_enabled = self.input_tabs.isTabEnabled(median_idx)
-            params["median_present"] = is_median_enabled
-        elif median_state.get("type"):
-            params["median_present"] = median_state["type"] != "None"
-
-        if params:
-            self.cad_preview.update_params(params)
+        self._push_cad_params(params)
 
     
 
@@ -672,11 +588,79 @@ class TypicalSectionDetailsTab(QWidget):
         exporter = getattr(tab, "export_wearing_state", None) if tab is not None else None
         return exporter() if callable(exporter) else {}
 
-    def _format_spacing(self, spacing):
-        return f"{spacing:.2f}"
+    def _layout_cad_params(self) -> dict:
+        tab = getattr(self, "layout_tab", None)
+        exporter = getattr(tab, "export_cad_params", None) if tab is not None else None
+        return exporter() if callable(exporter) else {}
 
-    def _format_overhang(self, overhang):
-        return f"{overhang:.2f}"
+    def _layout_bridge_context_cad_params(self) -> dict:
+        tab = getattr(self, "layout_tab", None)
+        exporter = getattr(tab, "export_bridge_context_cad_params", None) if tab is not None else None
+        if not callable(exporter):
+            return {}
+        return exporter(self.carriageway_width, self.footpath_value)
+
+    def _crash_barrier_cad_params(self) -> dict:
+        tab = getattr(self, "crash_barrier_tab", None)
+        exporter = getattr(tab, "export_cad_params", None) if tab is not None else None
+        return exporter() if callable(exporter) else {}
+
+    def _median_cad_params(self) -> dict:
+        tab = getattr(self, "median_tab", None)
+        exporter = getattr(tab, "export_cad_params", None) if tab is not None else None
+        if not callable(exporter):
+            return {}
+        return exporter(include_median=self._median_is_included())
+
+    def _railing_cad_params(self) -> dict:
+        tab = getattr(self, "railing_tab", None)
+        exporter = getattr(tab, "export_cad_params", None) if tab is not None else None
+        return exporter() if callable(exporter) else {}
+
+    def _wearing_cad_params(self) -> dict:
+        tab = getattr(self, "wearing_course_tab", None)
+        exporter = getattr(tab, "export_cad_params", None) if tab is not None else None
+        return exporter() if callable(exporter) else {}
+
+    def _push_cad_params(self, params: dict) -> None:
+        if hasattr(self, "cad_preview") and params:
+            self.cad_preview.update_params(params)
+
+    def _median_is_included(self) -> bool:
+        include_median = True
+        if hasattr(self, "median_tab") and hasattr(self, "input_tabs"):
+            try:
+                median_index = self.input_tabs.indexOf(self.median_tab)
+                include_median = median_index < 0 or self.input_tabs.isTabEnabled(median_index)
+            except Exception:
+                include_median = True
+        return include_median
+
+    def _sync_child_tabs_from_parent_state(self, *, force: bool = False) -> None:
+        layout_tab = getattr(self, "layout_tab", None)
+        layout_sync = getattr(layout_tab, "sync_from_bridge_context", None) if layout_tab is not None else None
+        if callable(layout_sync):
+            layout_sync(self.footpath_value)
+
+        crash_tab = getattr(self, "crash_barrier_tab", None)
+        crash_sync = getattr(crash_tab, "sync_from_parent_state", None) if crash_tab is not None else None
+        if callable(crash_sync):
+            crash_sync(force=force)
+
+        median_tab = getattr(self, "median_tab", None)
+        median_sync = getattr(median_tab, "sync_from_parent_state", None) if median_tab is not None else None
+        if callable(median_sync):
+            median_sync(include_median=self._median_is_included(), force=force)
+
+        railing_tab = getattr(self, "railing_tab", None)
+        railing_sync = getattr(railing_tab, "sync_from_parent_state", None) if railing_tab is not None else None
+        if callable(railing_sync):
+            railing_sync(force=force)
+
+        wearing_tab = getattr(self, "wearing_course_tab", None)
+        wearing_sync = getattr(wearing_tab, "sync_from_parent_state", None) if wearing_tab is not None else None
+        if callable(wearing_sync):
+            wearing_sync()
 
     def _clear_adjust_notice(self):
         layout_tab = getattr(self, "layout_tab", None)
@@ -1257,9 +1241,9 @@ class TypicalSectionDetailsTab(QWidget):
 
     def on_wearing_material_changed(self, material):
         wearing_tab = getattr(self, "wearing_course_tab", None)
-        apply_defaults = getattr(wearing_tab, "apply_material_defaults", None) if wearing_tab is not None else None
-        if callable(apply_defaults):
-            apply_defaults(material)
+        sync = getattr(wearing_tab, "sync_from_parent_material", None) if wearing_tab is not None else None
+        params = sync(material) if callable(sync) else {}
+        self._push_cad_params(params)
 
     def _show_placeholder_message(self, action_name):
         show_info(self, action_name, "This action will be available in an upcoming update.")

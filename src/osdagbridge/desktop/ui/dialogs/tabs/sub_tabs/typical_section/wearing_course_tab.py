@@ -1,5 +1,10 @@
 """Wearing Course sub-tab for Typical Section Details."""
 
+from osdagbridge.core.utils.common import (
+    KEY_WEARING_COAT_DENSITY,
+    KEY_WEARING_COAT_MATERIAL,
+    KEY_WEARING_COAT_THICKNESS,
+)
 from osdagbridge.desktop.ui.dialogs.tabs.schemas.plate_girder import (
     WEARING_COURSE_TAB_SCHEMA,
 )
@@ -34,6 +39,22 @@ class WearingCourseTab(SchemaTab):
             "density": self.widget_float("wearing_density"),
         }
 
+    def export_cad_params(self) -> dict:
+        state = self.export_wearing_state()
+        params = {}
+        if state.get("thickness_mm") is not None:
+            thickness = float(state["thickness_mm"])
+            params[KEY_WEARING_COAT_THICKNESS] = thickness
+            params["wearing_course_thickness"] = thickness
+        if state.get("density") is not None:
+            density = float(state["density"])
+            params[KEY_WEARING_COAT_DENSITY] = density
+            params["wearing_course_density"] = density
+        if state.get("material"):
+            params[KEY_WEARING_COAT_MATERIAL] = state["material"]
+            params["wearing_course_material"] = state["material"]
+        return params
+
     def apply_material_defaults(self, material: str) -> None:
         if material == "Concrete":
             self.set_widget_text("wearing_density", "24.0")
@@ -44,3 +65,11 @@ class WearingCourseTab(SchemaTab):
 
         if not self.widget_text("wearing_thickness").strip():
             self.set_widget_text("wearing_thickness", "50")
+
+    def sync_from_parent_material(self, material: str) -> dict:
+        self.apply_material_defaults(material)
+        return self.export_cad_params()
+
+    def sync_from_parent_state(self) -> dict:
+        material = self.export_wearing_state().get("material") or ""
+        return self.sync_from_parent_material(material)
