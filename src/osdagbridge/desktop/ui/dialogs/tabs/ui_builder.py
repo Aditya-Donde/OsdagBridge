@@ -39,6 +39,7 @@ from PySide6.QtWidgets import (
     QScrollArea,
     QSizePolicy,
     QStackedWidget,
+    QTabWidget,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
@@ -46,6 +47,7 @@ from PySide6.QtWidgets import (
 )
 
 from osdagbridge.desktop.ui.dialogs.tabs.common import apply_field_style
+from osdagbridge.desktop.ui.dialogs.tabs.tab_registry import get_tab_class
 
 _log = logging.getLogger(__name__)
 _MISSING = object()  # sentinel for bind-overwrite detection
@@ -80,6 +82,7 @@ _SPECIAL_SECTION_TYPES = {
     "legend",
     "stacked",
     "diagram",
+    "tab_container",
 }
 
 # Section types where the section dict IS the field definition
@@ -569,6 +572,8 @@ class UIBuilder:
             parent_layout.addWidget(self._build_legend_widget(section))
         elif stype == "stacked":
             self._build_stacked_section(parent_layout, section, label_width, field_width)
+        elif stype == "tab_container":
+            parent_layout.addWidget(self._build_tab_container(section))
         elif stype == "diagram":
             parent_layout.addWidget(self._build_diagram_section(section))
         elif stype in _FIELD_AS_SECTION_TYPES:
@@ -1128,6 +1133,51 @@ class UIBuilder:
 
         return frame
 
+    def _build_tab_container(self, section: dict) -> QWidget:
+        """Build a QTabWidget and populate it with registered sub-tabs."""
+        tabs = QTabWidget()
+        tabs.setObjectName(str(section.get("id", "")))
+        
+        # Styling to match the desktop application theme
+        tabs.setStyleSheet(
+            "QTabWidget::pane { border: 1px solid #d0d0d0; border-radius: 4px; background: white; }"
+            "QTabBar::tab { padding: 8px 16px; }"
+        )
+
+        for tab_def in section.get("tabs", []):
+            label = str(tab_def.get("label", "Tab"))
+            class_name = tab_def.get("widget_class")
+            bind_name = tab_def.get("bind")
+
+            if not class_name:
+                _log.warning("UIBuilder[%s]: Tab definition missing 'widget_class'", type(self.owner).__name__)
+                continue
+
+            try:
+                tab_cls = get_tab_class(class_name)
+                # Instantiate sub-tab with self.owner as parent.
+                # Many tabs expect 'owner' but we pass it as 'parent'.
+                # We'll try to detect if it accepts 'owner'.
+                import inspect
+                sig = inspect.signature(tab_cls.__init__)
+                kwargs = {}
+                if "owner" in sig.parameters:
+                    # In this project 'owner' is usually the top-level dialog.
+                    # We might need to pass the dialog owner if we have it.
+                    # For now, pass self.owner (which is likely the parent tab).
+                    kwargs["owner"] = self.owner
+                
+                tab_widget = tab_cls(parent=self.owner, **kwargs)
+                
+                if bind_name:
+                    setattr(self.owner, str(bind_name), tab_widget)
+                
+                tabs.addTab(tab_widget, label)
+            except Exception as e:
+                _log.error("UIBuilder[%s]: Failed to build tab %r: %s", type(self.owner).__name__, class_name, e)
+
+        return tabs
+
     def _build_stacked_section(
         self,
         parent_layout: QLayout,
@@ -1269,6 +1319,15 @@ class UIBuilder:
             return None
 
         cad_widget = widget_cls()
+
+        # Apply static properties (e.g. scale_factor)
+        for prop, val in (section.get("properties") or {}).items():
+            try:
+                setattr(cad_widget, prop, val)
+            except Exception as e:
+                _log.warning("UIBuilder[%s]: Failed to set property %r=%r on %s: %s",
+                             type(self.owner).__name__, prop, val, type(cad_widget).__name__, e)
+
         self._apply_cad_sizing(cad_widget, section)
 
         bind = section.get("bind")
@@ -1323,11 +1382,24 @@ class UIBuilder:
         if reactive_sources or params_map:
             refresh()
 
+        display_widget = cad_widget
+        if section.get("scrollable"):
+            scroll = QScrollArea()
+            scroll.setWidgetResizable(True)
+            scroll.setFrameShape(QFrame.NoFrame)
+            scroll.setStyleSheet("QScrollArea { background: transparent; border: none; }")
+            scroll.setWidget(cad_widget)
+            display_widget = scroll
+            # If scrollable, min_height should apply to the scroll area
+            min_h = section.get("min_height")
+            if min_h:
+                display_widget.setMinimumHeight(int(min_h))
+
         stretch = int(section.get("stretch", 0))
         if isinstance(parent_layout, QHBoxLayout) and stretch > 0:
-            parent_layout.addWidget(cad_widget, stretch)
+            parent_layout.addWidget(display_widget, stretch)
         else:
-            parent_layout.addWidget(cad_widget)
+            parent_layout.addWidget(display_widget)
         return cad_widget
 
     def _build_cad_row_section(self, parent_layout: QLayout, section: dict) -> None:
