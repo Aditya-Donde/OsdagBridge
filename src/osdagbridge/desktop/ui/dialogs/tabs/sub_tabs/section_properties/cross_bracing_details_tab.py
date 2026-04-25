@@ -32,6 +32,7 @@ class CrossBracingDetailsTab(SchemaTab):
         super().__init__(owner, parent)
         self.catalog = SectionCatalog()
         self._girder_details_tab = None
+        self._girder_state: Dict[str, object] = {}
         self._global_design_mode = "Optimized"
         
         # State persistence per (girder-pair, member-id)
@@ -101,6 +102,11 @@ class CrossBracingDetailsTab(SchemaTab):
         return max(1, int(math.floor(raw + 1e-9)))
 
     def _get_total_span_m(self) -> Optional[float]:
+        if self._girder_state.get("total_span_m") is not None:
+            try:
+                return float(self._girder_state.get("total_span_m"))
+            except Exception:
+                pass
         if not self._girder_details_tab: return None
         try:
             return float(self._girder_details_tab._get_total_span())
@@ -141,7 +147,8 @@ class CrossBracingDetailsTab(SchemaTab):
         self._active_member_key = key
         state = self._state_by_member_key.get(key) or self._get_default_state()
         
-        blocked = [w.blockSignals(True) for w in self.findChildren((QComboBox, QCheckBox, QLineEdit))]
+        widgets = self.findChildren(QComboBox) + self.findChildren(QCheckBox) + self.findChildren(QLineEdit)
+        blocked = [w.blockSignals(True) for w in widgets]
         try:
             schema_io.restore_values(self, CROSS_BRACING_DETAILS_SCHEMA, state)
             self._update_designations_for(self.bracing_section_combo, self.bracing_section_type_combo.currentText())
@@ -155,7 +162,7 @@ class CrossBracingDetailsTab(SchemaTab):
             ]:
                 self._set_combo_to_data_or_text(combo, state.get(data_key), state.get(text_key, ""))
         finally:
-            for w, prev in zip(self.findChildren((QComboBox, QCheckBox, QLineEdit)), blocked):
+            for w, prev in zip(widgets, blocked):
                 w.blockSignals(prev)
         
         self._on_bracing_layout_changed()
@@ -175,6 +182,16 @@ class CrossBracingDetailsTab(SchemaTab):
 
     def bind_girder_details_tab(self, girder_details_tab) -> None:
         self._girder_details_tab = girder_details_tab
+        export_state = getattr(girder_details_tab, "export_dependency_state", None)
+        if callable(export_state):
+            try:
+                self._girder_state = dict(export_state() or {})
+            except Exception:
+                self._girder_state = {}
+        self.refresh_girder_options()
+
+    def refresh_from_girder_state(self, state: dict) -> None:
+        self._girder_state = dict(state or {})
         self.refresh_girder_options()
 
     def refresh_girder_options(self) -> None:
@@ -193,7 +210,9 @@ class CrossBracingDetailsTab(SchemaTab):
 
     def _girder_pairs(self) -> list[str]:
         girders = ["G1", "G2"]
-        if self._girder_details_tab and hasattr(self._girder_details_tab, "available_girders"):
+        if isinstance(self._girder_state.get("available_girders"), list):
+            girders = list(self._girder_state.get("available_girders") or girders)
+        elif self._girder_details_tab and hasattr(self._girder_details_tab, "available_girders"):
             girders = list(self._girder_details_tab.available_girders or girders)
         return [f"{girders[i]} to {girders[i+1]}" for i in range(len(girders)-1)] or ["G1 to G2"]
 

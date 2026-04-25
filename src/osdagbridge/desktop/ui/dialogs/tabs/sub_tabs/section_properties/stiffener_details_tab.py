@@ -28,6 +28,7 @@ class StiffenerDetailsTab(SchemaTab):
     def __init__(self, owner, parent=None):
         super().__init__(owner, parent)
         self._girder_details_tab = None
+        self._girder_state: Dict[str, object] = {}
         self._state_by_member: Dict[str, dict] = {}
         self._active_member_id: Optional[str] = None
         self._is_loading_ui: bool = False
@@ -38,6 +39,17 @@ class StiffenerDetailsTab(SchemaTab):
     def bind_girder_details_tab(self, girder_details_tab) -> None:
         """Bind to the Girder Details tab to populate members and detect optimized members."""
         self._girder_details_tab = girder_details_tab
+        export_state = getattr(girder_details_tab, "export_dependency_state", None)
+        if callable(export_state):
+            try:
+                self._girder_state = dict(export_state() or {})
+            except Exception:
+                self._girder_state = {}
+        self.refresh_girder_members()
+        self._update_dynamic_cad_preview()
+
+    def refresh_from_girder_state(self, state: dict) -> None:
+        self._girder_state = dict(state or {})
         self.refresh_girder_members()
         self._update_dynamic_cad_preview()
 
@@ -46,7 +58,9 @@ class StiffenerDetailsTab(SchemaTab):
         self._store_current_member_state()
 
         members = []
-        if self._girder_details_tab is not None and hasattr(self._girder_details_tab, "list_all_member_ids"):
+        if isinstance(self._girder_state.get("member_ids"), list):
+            members = [str(member_id) for member_id in self._girder_state.get("member_ids", []) if member_id]
+        elif self._girder_details_tab is not None and hasattr(self._girder_details_tab, "list_all_member_ids"):
             try:
                 members = list(self._girder_details_tab.list_all_member_ids() or [])
             except Exception:
@@ -191,9 +205,13 @@ class StiffenerDetailsTab(SchemaTab):
                 raise ValueError(f"{label} must be <= {max_val:.3f} for member '{member_id}'.")
 
     def _compute_outstand_value(self, member_id: str) -> Optional[str]:
-        if not self._girder_details_tab or not hasattr(self._girder_details_tab, "get_member_section_dimensions"):
-            return None
-        dims = self._girder_details_tab.get_member_section_dimensions(member_id)
+        dims_by_member = self._girder_state.get("section_dimensions_by_member")
+        if isinstance(dims_by_member, dict):
+            dims = dims_by_member.get(member_id)
+        elif self._girder_details_tab and hasattr(self._girder_details_tab, "get_member_section_dimensions"):
+            dims = self._girder_details_tab.get_member_section_dimensions(member_id)
+        else:
+            dims = None
         if not isinstance(dims, dict): return None
         try:
             tw = float(dims.get("web_thickness_mm") or 0.0)
@@ -246,6 +264,11 @@ class StiffenerDetailsTab(SchemaTab):
                 value_combo.setEnabled(base_enabled and applicable and is_custom)
 
     def _is_member_optimized(self, member_id: str) -> bool:
+        optimized = self._girder_state.get("optimized_members")
+        if isinstance(optimized, set):
+            return member_id in optimized
+        if isinstance(optimized, (list, tuple)):
+            return member_id in optimized
         if not self._girder_details_tab or not hasattr(self._girder_details_tab, "is_member_optimized"):
             return False
         return bool(self._girder_details_tab.is_member_optimized(member_id))
@@ -309,7 +332,10 @@ class StiffenerDetailsTab(SchemaTab):
             segments = self._girder_details_tab._ensure_girder_segments(girder)
         
         dims = {}
-        if hasattr(self._girder_details_tab, "get_member_section_dimensions"):
+        dims_by_member = self._girder_state.get("section_dimensions_by_member")
+        if isinstance(dims_by_member, dict):
+            dims.update({str(key): value for key, value in dims_by_member.items()})
+        elif hasattr(self._girder_details_tab, "get_member_section_dimensions"):
             for seg in segments:
                 mid = seg.get("id")
                 dims[mid] = self._girder_details_tab.get_member_section_dimensions(mid)

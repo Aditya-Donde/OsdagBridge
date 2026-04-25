@@ -32,6 +32,7 @@ class EndDiaphragmDetailsTab(SchemaTab):
         super().__init__(owner, parent)
         self.catalog = SectionCatalog()
         self._girder_details_tab = None
+        self._girder_state: Dict[str, object] = {}
         self._global_design_mode = "Optimized"
         
         # State persistence per (view_type, girder-pair)
@@ -87,7 +88,8 @@ class EndDiaphragmDetailsTab(SchemaTab):
         self._active_key = key
         state = self._state_by_key.get(key) or self._get_default_state()
         
-        blocked = [w.blockSignals(True) for w in self.findChildren((QComboBox, QCheckBox, QLineEdit))]
+        widgets = self.findChildren(QComboBox) + self.findChildren(QCheckBox) + self.findChildren(QLineEdit)
+        blocked = [w.blockSignals(True) for w in widgets]
         try:
             schema_io.restore_values(self, END_DIAPHRAGM_DETAILS_SCHEMA, state)
             # Update dynamic designations
@@ -98,7 +100,7 @@ class EndDiaphragmDetailsTab(SchemaTab):
             self._set_combo_to_data(self.cross_bottom_chord_size_combo, state.get("cross_bottom_chord_size_data"))
             self._set_combo_to_data(self.rolled_is_section_combo, state.get("rolled_is_section_data"))
         finally:
-            for w, prev in zip(self.findChildren((QComboBox, QCheckBox, QLineEdit)), blocked):
+            for w, prev in zip(widgets, blocked):
                 w.blockSignals(prev)
         
         self._on_cross_layout_changed()
@@ -115,6 +117,16 @@ class EndDiaphragmDetailsTab(SchemaTab):
 
     def bind_girder_details_tab(self, girder_details_tab) -> None:
         self._girder_details_tab = girder_details_tab
+        export_state = getattr(girder_details_tab, "export_dependency_state", None)
+        if callable(export_state):
+            try:
+                self._girder_state = dict(export_state() or {})
+            except Exception:
+                self._girder_state = {}
+        self.refresh_girder_options()
+
+    def refresh_from_girder_state(self, state: dict) -> None:
+        self._girder_state = dict(state or {})
         self.refresh_girder_options()
 
     def refresh_girder_options(self) -> None:
@@ -132,7 +144,9 @@ class EndDiaphragmDetailsTab(SchemaTab):
 
     def _girder_pairs(self) -> list[str]:
         girders = ["G1", "G2"]
-        if self._girder_details_tab and hasattr(self._girder_details_tab, "available_girders"):
+        if isinstance(self._girder_state.get("available_girders"), list):
+            girders = list(self._girder_state.get("available_girders") or girders)
+        elif self._girder_details_tab and hasattr(self._girder_details_tab, "available_girders"):
             girders = list(self._girder_details_tab.available_girders or girders)
         return [f"{girders[i]} to {girders[i+1]}" for i in range(len(girders)-1)] or ["G1 to G2"]
 
