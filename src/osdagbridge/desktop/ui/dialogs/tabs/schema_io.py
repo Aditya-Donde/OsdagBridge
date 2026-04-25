@@ -8,6 +8,8 @@ import re
 
 from PySide6.QtWidgets import QCheckBox, QComboBox, QLineEdit, QWidget
 
+from osdagbridge.desktop.ui.dialogs.tabs.ui_builder import _SPECIAL_SECTION_TYPES, _FIELD_AS_SECTION_TYPES
+
 _log = logging.getLogger(__name__)
 
 
@@ -138,7 +140,16 @@ def restore_values(owner, schema: dict, data: dict) -> None:
 
 
 def _walk_schema(schema, on_section=None, on_group=None, on_field=None) -> None:
+    if isinstance(schema, list):
+        for item in schema:
+            _walk_schema(item, on_section, on_group, on_field)
+        return
+
     if isinstance(schema, dict):
+        stype = _section_type(schema)
+        if stype in _SPECIAL_SECTION_TYPES or stype in _FIELD_AS_SECTION_TYPES or "fields" in schema or "rows" in schema:
+            _walk_section(schema, on_section=on_section, on_group=on_group, on_field=on_field)
+            return
         for card in schema.get("cards", []) or []:
             _walk_schema(card, on_section=on_section, on_group=on_group, on_field=on_field)
 

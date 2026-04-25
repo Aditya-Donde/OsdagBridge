@@ -7,18 +7,16 @@ from osdagbridge.desktop.ui.dialogs.custom_messagebox import CustomMessageBox, M
 from osdagbridge.desktop.ui.dialogs.tabs import schema_io
 from osdagbridge.desktop.ui.dialogs.tabs.custom_vehicle_dialog import CustomVehicleDialog
 from osdagbridge.desktop.ui.dialogs.tabs.ui_builder import UIBuilder
+from osdagbridge.desktop.ui.dialogs.tabs.base import SchemaTab
 
 
-class LiveLoadTab(QWidget):
+class LiveLoadTab(SchemaTab):
+    schema = LIVE_LOAD_TAB_SCHEMA
 
-    def __init__(self, owner):
-        super().__init__(owner)
-        self.owner = owner
-        self.schema = LIVE_LOAD_TAB_SCHEMA
+    def __init__(self, owner, parent=None):
+        super().__init__(owner, parent)
         self.custom_vehicles = {}
         self.has_real_custom_vehicle = False
-
-        UIBuilder(owner=self, schema=self.schema).build_tab(self)
 
         if hasattr(self, "custom_vehicle_add_button"):
             self.custom_vehicle_add_button.clicked.connect(self.show_custom_vehicle_dialog)

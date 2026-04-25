@@ -18,20 +18,19 @@ from PySide6.QtWidgets import (
 from osdagbridge.desktop.ui.dialogs.tabs.schemas.plate_girder import STIFFENER_DETAILS_SCHEMA
 from osdagbridge.desktop.ui.dialogs.tabs import schema_io
 from osdagbridge.desktop.ui.dialogs.tabs.ui_builder import UIBuilder
+from osdagbridge.desktop.ui.dialogs.tabs.base import SchemaTab
 
 
-class StiffenerDetailsTab(QWidget):
+class StiffenerDetailsTab(SchemaTab):
     """Tab for Stiffener Details driven by schema."""
+    schema = STIFFENER_DETAILS_SCHEMA
 
-    def __init__(self, parent=None):
-        super().__init__(parent)
+    def __init__(self, owner, parent=None):
+        super().__init__(owner, parent)
         self._girder_details_tab = None
         self._state_by_member: Dict[str, dict] = {}
         self._active_member_id: Optional[str] = None
         self._is_loading_ui: bool = False
-        
-        # Build UI from schema
-        UIBuilder(owner=self, schema=STIFFENER_DETAILS_SCHEMA).build_tab(self)
         
         # Initial state
         self.refresh_girder_members()

@@ -207,7 +207,7 @@ SECTION_NAV_BUTTON_STYLE = """
 """
 
 
-def create_action_button_bar(parent=None):
+def create_action_button_bar(parent=None, on_save=None, on_reset=None, on_cancel=None):
     """Create a standardized Defaults/Save bar with gray backing."""
     frame = QFrame(parent)
     frame.setObjectName("actionButtonBar")
@@ -224,8 +224,8 @@ def create_action_button_bar(parent=None):
             font-weight: 600;
             border: 1px solid #8c8c8c;
             border-radius: 4px;
-            padding: 6px 24px;
-            min-width: 120px;
+            padding: 6px 18px;
+            min-width: 90px;
         }
         QFrame#actionButtonBar QPushButton:hover {
             background-color: #f6f6f6;
@@ -240,10 +240,21 @@ def create_action_button_bar(parent=None):
     layout.setSpacing(12)
     layout.addStretch()
 
-    defaults_button = QPushButton("Defaults", frame)
-    save_button = QPushButton("Save", frame)
-    layout.addWidget(defaults_button)
-    layout.addWidget(save_button)
-    layout.addStretch()
+    if on_reset:
+        reset_btn = QPushButton("Reset Defaults", frame)
+        reset_btn.clicked.connect(on_reset)
+        layout.addWidget(reset_btn)
 
-    return frame, defaults_button, save_button
+    if on_cancel:
+        cancel_btn = QPushButton("Cancel", frame)
+        cancel_btn.clicked.connect(on_cancel)
+        layout.addWidget(cancel_btn)
+
+    if on_save:
+        save_btn = QPushButton("Save", frame)
+        save_btn.setStyleSheet("background-color: #90AF13; color: white; border: 1px solid #7da523;")
+        save_btn.clicked.connect(on_save)
+        layout.addWidget(save_btn)
+
+    layout.addStretch()
+    return layout

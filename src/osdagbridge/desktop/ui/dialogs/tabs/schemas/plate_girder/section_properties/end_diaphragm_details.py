@@ -42,6 +42,7 @@ END_DIAPHRAGM_DETAILS_SCHEMA = {
                             "type": "cad",
                             "widget": "BracingLayoutCadWidget",
                             "bind": "cross_bracing_cad_preview",
+                            "update_method": "set_layout",
                             "min_height": 200,
                         },
                         {

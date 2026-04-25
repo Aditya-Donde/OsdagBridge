@@ -13,23 +13,25 @@ class SchemaTab(QWidget):
         self.owner = owner
         self.builder = None
         if self.schema:
+            # We use the passed owner (parent tab/dialog) so widgets are bound to it
+            # and signal handlers are looked up on it.
             self.builder = UIBuilder(owner=owner, schema=self.schema)
             self.builder.build_tab(self)
 
     def collect_data(self) -> dict:
         if self.schema:
-            return schema_io.collect_values(self.owner, self.schema)
+            return schema_io.collect_values(self, self.schema)
         return {}
 
     def restore_data(self, data: dict) -> None:
         if self.schema and isinstance(data, dict):
-            schema_io.restore_values(self.owner, self.schema, data)
+            schema_io.restore_values(self, self.schema, data)
 
     def reset_defaults(self) -> None:
         if self.schema:
-            schema_io.reset_defaults(self.owner, self.schema)
+            schema_io.reset_defaults(self, self.schema)
 
     def validate_tab(self) -> list[str]:
         if self.schema:
-            return schema_io.validate(self.owner, self.schema)
+            return schema_io.validate(self, self.schema)
         return []

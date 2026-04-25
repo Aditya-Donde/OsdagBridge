@@ -20,14 +20,16 @@ from PySide6.QtWidgets import (
 from osdagbridge.desktop.ui.dialogs.tabs.schemas.plate_girder import CROSS_BRACING_DETAILS_SCHEMA
 from osdagbridge.desktop.ui.dialogs.tabs import schema_io
 from osdagbridge.desktop.ui.dialogs.tabs.ui_builder import UIBuilder
+from osdagbridge.desktop.ui.dialogs.tabs.base import SchemaTab
 from osdagbridge.desktop.ui.widgets.section_viewer import SectionPreviewWidget, SectionCatalog
 
 
-class CrossBracingDetailsTab(QWidget):
+class CrossBracingDetailsTab(SchemaTab):
     """Tab for Cross-Bracing Details with visual previews."""
+    schema = CROSS_BRACING_DETAILS_SCHEMA
 
-    def __init__(self, parent=None):
-        super().__init__(parent)
+    def __init__(self, owner, parent=None):
+        super().__init__(owner, parent)
         self.catalog = SectionCatalog()
         self._girder_details_tab = None
         self._global_design_mode = "Optimized"
@@ -37,9 +39,6 @@ class CrossBracingDetailsTab(QWidget):
         self._active_member_key: Optional[str] = None
         self._selection_sync_guard = False
         self._updating_chord_rules = False
-
-        # Build UI from schema
-        UIBuilder(owner=self, schema=CROSS_BRACING_DETAILS_SCHEMA).build_tab(self)
 
         # Previews manually created or wired
         self._setup_custom_previews()

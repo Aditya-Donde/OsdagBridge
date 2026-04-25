@@ -20,14 +20,16 @@ from PySide6.QtWidgets import (
 from osdagbridge.desktop.ui.dialogs.tabs.schemas.plate_girder import END_DIAPHRAGM_DETAILS_SCHEMA
 from osdagbridge.desktop.ui.dialogs.tabs import schema_io
 from osdagbridge.desktop.ui.dialogs.tabs.ui_builder import UIBuilder
+from osdagbridge.desktop.ui.dialogs.tabs.base import SchemaTab
 from osdagbridge.desktop.ui.widgets.section_viewer import SectionCatalog
 
 
-class EndDiaphragmDetailsTab(QWidget):
+class EndDiaphragmDetailsTab(SchemaTab):
     """Tab for End Diaphragm Details with visual previews and stacked views."""
+    schema = END_DIAPHRAGM_DETAILS_SCHEMA
 
-    def __init__(self, parent=None):
-        super().__init__(parent)
+    def __init__(self, owner, parent=None):
+        super().__init__(owner, parent)
         self.catalog = SectionCatalog()
         self._girder_details_tab = None
         self._global_design_mode = "Optimized"
@@ -38,9 +40,6 @@ class EndDiaphragmDetailsTab(QWidget):
         self._active_key: Optional[str] = None
         self._selection_sync_guard = False
         self._updating_chord_rules = False
-
-        # Build UI from schema
-        UIBuilder(owner=self, schema=END_DIAPHRAGM_DETAILS_SCHEMA).build_tab(self)
 
         # Signals
         self.type_selector_combo.currentTextChanged.connect(self._on_view_type_changed)

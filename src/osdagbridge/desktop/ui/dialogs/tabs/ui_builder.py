@@ -83,6 +83,10 @@ _SPECIAL_SECTION_TYPES = {
     "stacked",
     "diagram",
     "tab_container",
+    "input_group",
+    "computed_group",
+    "output_group",
+    "section_box",
 }
 
 # Section types where the section dict IS the field definition
@@ -576,6 +580,8 @@ class UIBuilder:
             parent_layout.addWidget(self._build_tab_container(section))
         elif stype == "diagram":
             parent_layout.addWidget(self._build_diagram_section(section))
+        elif stype in {"input_group", "computed_group", "output_group", "section_box"}:
+            parent_layout.addWidget(self._make_section_box(section, label_width, field_width))
         elif stype in _FIELD_AS_SECTION_TYPES:
             parent_layout.addWidget(
                 self._build_single_field_section(section, label_width, field_width)
@@ -1161,12 +1167,11 @@ class UIBuilder:
                 import inspect
                 sig = inspect.signature(tab_cls.__init__)
                 kwargs = {}
+                # Always pass owner=self.owner so sub-tabs use the top dialog for globals if needed
                 if "owner" in sig.parameters:
-                    # In this project 'owner' is usually the top-level dialog.
-                    # We might need to pass the dialog owner if we have it.
-                    # For now, pass self.owner (which is likely the parent tab).
                     kwargs["owner"] = self.owner
                 
+                # Use self.owner as parent for most, or let it be None
                 tab_widget = tab_cls(parent=self.owner, **kwargs)
                 
                 if bind_name:
