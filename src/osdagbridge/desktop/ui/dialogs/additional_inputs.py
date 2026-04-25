@@ -16,18 +16,10 @@ from osdagbridge.core.utils.common import *
 from osdagbridge.desktop.ui.utils.custom_titlebar import CustomTitleBar
 from osdagbridge.desktop.ui.dialogs.tabs.common import apply_field_style, create_action_button_bar
 from osdagbridge.desktop.ui.dialogs.custom_messagebox import CustomMessageBox, MessageBoxType
-from osdagbridge.desktop.ui.dialogs.tabs.typical_section_details import TypicalSectionDetailsTab, show_warning
-from osdagbridge.desktop.ui.dialogs.tabs.section_properties_tab import SectionPropertiesTab
-from osdagbridge.desktop.ui.dialogs.tabs.loading_tab import LoadingTab
-from osdagbridge.desktop.ui.dialogs.tabs.support_conditions_tab import SupportConditionsTab
-from osdagbridge.desktop.ui.dialogs.tabs.design_options_tab import DesignOptionsTab
-from osdagbridge.desktop.ui.dialogs.tabs.design_options_cont_tab import DesignOptionsContTab
+from osdagbridge.desktop.ui.dialogs.tabs.typical_section_details import show_warning
+from osdagbridge.desktop.ui.dialogs.tabs.top_level_config import ADDITIONAL_INPUTS_TAB_CONFIG
 from osdagbridge.desktop.ui.utils.custom_widgets import SmartCursorComboBoxView
 from osdagbridge.desktop.ui.dialogs.tabs import schema_io
-from osdagbridge.desktop.ui.dialogs.tabs.schemas.plate_girder import (
-    DESIGN_OPTIONS_SCHEMA,
-    DESIGN_OPTIONS_CONT_SCHEMA,
-)
 
 # =================================================================================
 #   MAIN IMPLEMENTATION
@@ -106,15 +98,8 @@ class AdditionalInputs(QDialog):
         self.saved_values = dict(values)
 
     def _iter_top_tabs(self):
-        for attr in (
-            "typical_section_tab",
-            "section_properties_tab",
-            "loading_tab",
-            "support_tab",
-            "design_options_tab",
-            "design_options_cont_tab",
-        ):
-            tab = getattr(self, attr, None)
+        for entry in ADDITIONAL_INPUTS_TAB_CONFIG:
+            tab = getattr(self, entry["attr"], None)
             if tab is not None:
                 yield tab
     
@@ -143,25 +128,11 @@ class AdditionalInputs(QDialog):
             QTabBar::tab:selected { background: #ffffff; border-bottom-color: #ffffff; }
         """)
 
-        # Tab instances
-        self.typical_section_tab = TypicalSectionDetailsTab(
-            footpath_value=self.footpath_value,
-            carriageway_width=self.carriageway_width,
-            parent=self,
-            initial_cad_state=self._initial_cad_state
-        )
-        self.section_properties_tab = SectionPropertiesTab(parent=self)
-        self.loading_tab = LoadingTab(parent=self)
-        self.support_tab = SupportConditionsTab(parent_dialog=self)
-        self.design_options_tab = DesignOptionsTab(parent_dialog=self)
-        self.design_options_cont_tab = DesignOptionsContTab(parent_dialog=self)
-
-        self.tab_widget.addTab(self.typical_section_tab, "Typical Section Details")
-        self.tab_widget.addTab(self.section_properties_tab, "Member Properties")
-        self.tab_widget.addTab(self.loading_tab, "Loading")
-        self.tab_widget.addTab(self.support_tab, "Support Conditions")
-        self.tab_widget.addTab(self.design_options_tab, "Design Options")
-        self.tab_widget.addTab(self.design_options_cont_tab, "Design Options (Cont.)")
+        # Build top-level tabs from config
+        for entry in ADDITIONAL_INPUTS_TAB_CONFIG:
+            widget = entry["factory"](self)
+            setattr(self, entry["attr"], widget)
+            self.tab_widget.addTab(widget, entry["title"])
 
         content_layout.addWidget(self.tab_widget)
 
@@ -205,3 +176,20 @@ class AdditionalInputs(QDialog):
         for tab in self._iter_top_tabs():
             if hasattr(tab, "restore_data"):
                 tab.restore_data(data)
+
+    def update_footpath_value(self, value) -> None:
+        tab = getattr(self, "typical_section_tab", None)
+        if tab is not None:
+            fn = getattr(tab, "update_footpath_value", None)
+            if callable(fn):
+                fn(value)
+
+    def set_member_properties_design_mode(self, mode: str) -> None:
+        tab = getattr(self, "section_properties_tab", None)
+        if tab is not None:
+            fn = getattr(tab, "set_design_mode", None)
+            if callable(fn):
+                fn(mode)
+
+    def get_all_values(self) -> dict:
+        return dict(self.saved_values)

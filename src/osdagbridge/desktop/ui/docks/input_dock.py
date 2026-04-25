@@ -725,9 +725,9 @@ class InputDock(QWidget):
             pass
         if target_tab:
             try:
-                for i in range(self.additional_inputs.tabs.count()):
-                    if self.additional_inputs.tabs.tabText(i).strip().lower() == target_tab.lower():
-                        self.additional_inputs.tabs.setCurrentIndex(i)
+                for i in range(self.additional_inputs.tab_widget.count()):
+                    if self.additional_inputs.tab_widget.tabText(i).strip().lower() == target_tab.lower():
+                        self.additional_inputs.tab_widget.setCurrentIndex(i)
                         break
             except Exception:
                 pass
