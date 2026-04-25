@@ -11,6 +11,11 @@ from PySide6.QtWidgets import (
     QSizePolicy,
 )
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QPixmap, QImage
+
+import io
+from matplotlib.figure import Figure
+from matplotlib.backends.backend_agg import FigureCanvasAgg
 
 from osdagbridge.desktop.ui.docks.output_dock import (
     NoScrollComboBox,
@@ -127,6 +132,138 @@ _RENDER_MAP = {
         "unit": "mm",
     },
 }
+
+
+# ---------------------------------------------------------------------------
+# Matplotlib mathtext strings — one list per check key.
+# Each string in the list becomes one rendered line in the equation box.
+# Syntax: matplotlib mathtext (large subset of AMS LaTeX).
+# ---------------------------------------------------------------------------
+_MATHTEXT_MAP: dict[str, list[str]] = {
+    "flexure": [
+        r"$M_d \leq M_r$",
+        r"$M_r = \beta_b \cdot Z_p \cdot f_y \;/\; \gamma_m$",
+    ],
+    "shear": [
+        r"$V_d \leq V_r$",
+        r"$V_r = \dfrac{A_v \cdot f_y}{\sqrt{3} \cdot \gamma_m}$",
+    ],
+    "interaction": [
+        r"$\dfrac{M_d}{\beta_b Z_p f_y / \gamma_m}"
+        r" + \dfrac{V_d}{A_v f_y / (\sqrt{3}\,\gamma_m)} \leq 1.0$",
+    ],
+    "ltb": [
+        r"$M_d \leq M_{cr}$",
+        r"$M_{cr} \approx \dfrac{\pi^2 E \, I_y}{L_{LTB}^{\,2}}$",
+    ],
+    "shear_long_trans": [
+        r"$V_L \leq n \cdot Q_u \;/\; s$",
+        r"$V_L = V_d \cdot A_{ec} \cdot Y \;/\; I_c$",
+        r"$Q_u = \min\!\left(0.8\,f_u A,\;"
+        r"0.29\,\alpha\,d^2\sqrt{f_{ck}\,E_{cm}}\right)/\gamma_v$",
+    ],
+    "fatigue": [
+        r"$\Delta\sigma \leq \Delta\sigma_{allowable}$",
+        r"$\Delta\sigma_{allowable} = \Delta\sigma_C \;/\; \gamma_{mf}$",
+    ],
+    "stress": [
+        r"$\sigma = M_d \;/\; Z$",
+        r"$\sigma \leq f_y \;/\; \gamma_m$",
+    ],
+    "deflection": [
+        r"$\delta \leq L \;/\; x$",
+        r"$(\mathrm{Default}\; x = 600)$",
+    ],
+}
+
+def _render_mathtext_pixmap(
+    lines: list[str],
+    *,
+    font_size: float = 9,
+    dpi: int = 110,
+    text_color: str = "#2E3B4E",
+    bg_color: str = "#F8F9FA",
+    h_pad_in: float = 0.12,
+    v_pad_in: float = 0.10,
+    line_gap_in: float = 0.32,
+) -> QPixmap:
+    """
+    Render a list of matplotlib mathtext strings into a single QPixmap.
+
+    Lines are stacked vertically with even spacing. The figure is sized to
+    fit the content tightly; the caller is responsible for placing the pixmap
+    inside a QLabel that provides the grey background frame.
+
+    Parameters
+    ----------
+    lines       : list of mathtext strings, each wrapped in ``$...$``
+    font_size   : points; 11.5 matches the surrounding 13 px UI font at 96 dpi
+    dpi         : dots per inch for rasterisation
+    text_color  : hex colour string matching the existing equation box style
+    bg_color    : figure background; should match the QLabel background colour
+    h_pad_in    : left/right margin in inches
+    v_pad_in    : top/bottom margin in inches
+    line_gap_in : vertical gap between lines in inches
+
+    Returns
+    -------
+    QPixmap — transparent if rendering fails (caller falls back to HTML).
+
+    Raises
+    ------
+    Never raises. Returns an empty QPixmap on any error.
+    """
+    if not lines:
+        return QPixmap()
+
+    n = len(lines)
+    # Estimate figure height: n lines + (n-1) gaps + top/bottom padding
+    fig_h = n * line_gap_in + (n - 1) * (line_gap_in * 0.15) + 2 * v_pad_in
+    # Width will be determined by bbox_inches="tight"; start with a sensible default
+    fig_w = 4.8
+
+    fig = Figure(figsize=(fig_w, fig_h), dpi=dpi, facecolor=bg_color)
+    fig.patch.set_facecolor(bg_color)
+
+    try:
+        for i, expr in enumerate(lines):
+            # y position: distribute evenly from top (1.0) to bottom (0.0)
+            y = 1.0 - (i + 0.5) / n
+            fig.text(
+                0.5, y,
+                expr,
+                ha="center",
+                va="center",
+                fontsize=font_size,
+                color=text_color,
+                usetex=False,          # matplotlib mathtext, NOT system LaTeX
+            )
+
+        canvas = FigureCanvasAgg(fig)
+        canvas.draw()
+
+        buf = io.BytesIO()
+        fig.savefig(
+            buf,
+            format="png",
+            dpi=dpi,
+            bbox_inches="tight",
+            facecolor=bg_color,
+            pad_inches=v_pad_in,
+        )
+        buf.seek(0)
+        data = buf.read()
+
+    except Exception:
+        return QPixmap()
+    finally:
+        import matplotlib.pyplot as _plt
+        _plt.close(fig)       # prevent memory accumulation across 8 cards
+
+    pixmap = QPixmap()
+    if not pixmap.loadFromData(data, "PNG"):
+        return QPixmap()
+    return pixmap
 
 
 # ---------------------------------------------------------------------------
@@ -522,18 +659,39 @@ class SteelDesignCheckTab(QWidget):
         title_lbl.setWordWrap(True)
         card_layout.addWidget(title_lbl)
 
-        # - 2. Equation box (rich text) -
+        # - 2. Equation box (mathtext pixmap or HTML fallback) -
         eq_lbl = QLabel()
-        eq_lbl.setTextFormat(Qt.RichText)
-        eq_lbl.setWordWrap(True)
+        eq_lbl.setAlignment(Qt.AlignCenter)
         eq_lbl.setStyleSheet(
-            "font-family: 'Cambria Math', 'Times New Roman', serif; "
-            "font-size: 13px; color: #2E3B4E; "
             "background-color: #F8F9FA; border: 1px solid #E4E7EB; "
             "border-radius: 4px; padding: 6px;"
         )
-        eq_text = _RENDER_MAP.get(key, {}).get("eq", "")
-        eq_lbl.setText(eq_text)
+
+        math_lines = _MATHTEXT_MAP.get(key, [])
+        _pixmap_set = False
+
+        if math_lines:
+            try:
+                pixmap = _render_mathtext_pixmap(math_lines)
+                if not pixmap.isNull():
+                    eq_lbl.setPixmap(pixmap)
+                    _pixmap_set = True
+            except Exception:
+                pass
+
+        if not _pixmap_set:
+            # Graceful fallback: render using original HTML if mathtext fails
+            eq_lbl.setTextFormat(Qt.RichText)
+            eq_lbl.setWordWrap(True)
+            eq_lbl.setStyleSheet(
+                "font-family: 'Cambria Math', 'Times New Roman', serif; "
+                "font-size: 13px; color: #2E3B4E; "
+                "background-color: #F8F9FA; border: 1px solid #E4E7EB; "
+                "border-radius: 4px; padding: 6px;"
+            )
+            eq_text = _RENDER_MAP.get(key, {}).get("eq", "")
+            eq_lbl.setText(eq_text)
+
         card_layout.addWidget(eq_lbl)
         self.check_eq_labels[key] = eq_lbl
 

@@ -432,10 +432,7 @@ class SteelDesign(QDialog):
             return
 
         if self._result_handler is None:
-            self.graph_engine.show_blank_state(
-                self.canvas,
-                "Run Design first to see analysis results."
-            )
+            self.graph_engine.show_blank_state(self.canvas)
             return
 
         if not self._data_initialized:

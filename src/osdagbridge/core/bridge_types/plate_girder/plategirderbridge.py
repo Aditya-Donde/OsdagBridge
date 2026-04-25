@@ -699,13 +699,15 @@ class PlateGirderBridge:
 
     def get_results_dataset(self):
         """Return the xarray Dataset of analysis results."""
+        if self.grillage_model.model is None:
+            return None
         return self.grillage_model.model.get_results()
 
     # ─────────────────────────────────────────────────────────────────────────
     # 2-D analysis result factory
     # ─────────────────────────────────────────────────────────────────────────
 
-    def get_result_handler(self) -> PlateGirderAnalysisResults:
+    def get_result_handler(self) -> PlateGirderAnalysisResults | None:
         """
         Build and return a PlateGirderAnalysisResults bound to the current
         analysis dataset and grillage model.
@@ -717,15 +719,9 @@ class PlateGirderBridge:
 
         Returns
         -------
-        PlateGirderAnalysisResults
+        PlateGirderAnalysisResults or None
             A fully initialised result handler ready to be injected into a
-            GirderGraphEngine.
-
-        Raises
-        ------
-        RuntimeError
-            Propagated from get_results_dataset() when analyze() has not yet
-            been called and no dataset is available.
+            GirderGraphEngine, or None if analysis has not been run.
 
         Notes
         -----
@@ -736,6 +732,8 @@ class PlateGirderBridge:
         explicitly to build_graph_engine().
         """
         results = self.get_results_dataset()
+        if results is None:
+            return None
         return PlateGirderAnalysisResults(
             dataset=results,
             bridge=self.grillage_model,

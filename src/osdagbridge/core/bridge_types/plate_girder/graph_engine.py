@@ -1626,52 +1626,41 @@ class GirderGraphEngine:
 
     def _render_x_scale(self, ax, xs: np.ndarray) -> None:
         """
-        Place x-axis ticks at human-friendly round-number intervals.
-        Selects the interval from [1, 2, 5, 10, 20, 25, 50] m such that
-        4–6 ticks appear for any span.  First and last span positions are
-        always shown.  Tick labels: '0 m', '10 m', etc.
+        Place x-axis ticks at exactly 4 equal intervals across the span.
+        First and last span positions are always shown.
         """
         if len(xs) == 0:
             return
-
-        import math
 
         span      = float(xs[-1] - xs[0])
         x_start   = float(xs[0])
         x_end     = float(xs[-1])
 
-        # Pick smallest "nice" step that produces at most 6 intervals
-        nice_steps = [1, 2, 5, 10, 20, 25, 50]
-        step = nice_steps[-1]                       # safe default
-        for s in nice_steps:
-            if span / s <= 6:
-                step = s
-                break
+        # Divide whole length into 4 equal parts
+        step = span / 4.0
+        
+        ticks = [
+            x_start,
+            x_start + step,
+            x_start + 2.0 * step,
+            x_start + 3.0 * step,
+            x_end
+        ]
 
-        # Build ticks from the first multiple of step >= x_start
-        first = math.ceil(x_start / step) * step
-        ticks = []
-        t = first
-        while t <= x_end + 1e-9:
-            ticks.append(round(t, 9))
-            t += step
-
-        # Always include span endpoints
-        if not ticks or abs(ticks[0] - x_start) > 1e-6:
-            ticks.insert(0, x_start)
-        if not ticks or abs(ticks[-1] - x_end) > 1e-6:
-            ticks.append(x_end)
-
-        # Deduplicate and sort
+        # Deduplicate and sort (in case span is zero)
         ticks = sorted(set(round(v, 6) for v in ticks))
 
         # Format labels
-        all_int = all(abs(v - round(v)) < 1e-6 for v in ticks)
-        fmt     = "{:.0f} m" if all_int else "{:.1f} m"
+        labels = []
+        for t in ticks:
+            val_str = f"{t:.3f}".rstrip("0").rstrip(".")
+            if not val_str:
+                val_str = "0"
+            labels.append(f"{val_str} m")
 
         ax.set_xticks(ticks)
         ax.set_xticklabels(
-            [fmt.format(t) for t in ticks],
+            labels,
             fontsize=_STYLE["scale_fontsize"],
             color=_STYLE["label_color"],
             fontfamily=_STYLE.get("fontfamily", "sans-serif"),
@@ -1760,7 +1749,7 @@ class GirderGraphEngine:
         display_message = (
             message
             if message is not None
-            else "Run the analysis first to see results."
+            else "Please run the design analysis to view results."
         )
 
         for ax in (self.ax_scheme, self.ax_bmd, self.ax_sfd, self.ax_defl):
