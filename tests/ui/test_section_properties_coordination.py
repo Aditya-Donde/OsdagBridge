@@ -41,3 +41,35 @@ def test_girder_dependency_state_refreshes_dependents(qapp):
     assert tab.girder_details_tab.segment_table.rowCount() >= 1
     assert tab.girder_details_tab.girder_cad_view._selected_member_id == "G1M1"
     assert [segment["id"] for segment in tab.girder_details_tab.girder_cad_view._segments] == ["G1M1"]
+
+
+def test_direct_girder_child_updates_dependents_via_parent_subscription(qapp):
+    tab = SectionPropertiesTab()
+    qapp.processEvents()
+
+    tab.girder_details_tab.set_girder_count(3)
+    qapp.processEvents()
+
+    pair_items = [
+        tab.cross_bracing_tab.select_girders_combo.itemText(i)
+        for i in range(tab.cross_bracing_tab.select_girders_combo.count())
+    ]
+    assert pair_items == ["G1 to G2", "G2 to G3"]
+    assert [
+        tab.end_diaphragm_tab.select_girders_combo.itemText(i)
+        for i in range(tab.end_diaphragm_tab.select_girders_combo.count())
+    ] == ["G1 to G2", "G2 to G3"]
+
+
+def test_leaving_girder_tab_commits_public_state_for_dependents(qapp):
+    tab = SectionPropertiesTab()
+    qapp.processEvents()
+
+    tab.girder_details_tab.top_width_input.setText("450")
+    qapp.processEvents()
+
+    tab.section_tabs.setCurrentWidget(tab.stiffener_details_tab)
+    qapp.processEvents()
+
+    dims = tab.stiffener_details_tab._girder_state.get("section_dimensions_by_member", {})
+    assert dims["G1M1"]["top_flange_width_mm"] == 450.0
