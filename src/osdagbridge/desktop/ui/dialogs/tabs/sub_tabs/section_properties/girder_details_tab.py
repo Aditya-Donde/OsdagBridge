@@ -27,9 +27,9 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtGui import QDoubleValidator
 
-from osdagbridge.desktop.ui.dialogs.tabs.schemas.plate_girder import GIRDER_DETAILS_SCHEMA
+from osdagbridge.core.bridge_types.plate_girder.schemas.section_properties import GIRDER_DETAILS_SCHEMA
 from osdagbridge.desktop.ui.dialogs.tabs import schema_io
-from osdagbridge.desktop.ui.dialogs.tabs.ui_builder import UIBuilder
+from osdagbridge.desktop.ui.dialogs.tabs.base import SchemaTab
 from osdagbridge.desktop.ui.widgets.section_viewer import SectionCatalog
 from osdagbridge.desktop.ui.dialogs.tabs.sub_tabs.section_properties.girder_helpers import BoundsDialog, ThicknessSelectionDialog
 
@@ -43,12 +43,14 @@ class _EndDistanceDelegate(QStyledItemDelegate):
         editor.setValidator(QDoubleValidator(0.0, 1000.0, 3, editor))
         return editor
 
-class GirderDetailsTab(QWidget):
+class GirderDetailsTab(SchemaTab):
     """Tab for Girder Details - Geometry and Section Properties."""
+    schema = GIRDER_DETAILS_SCHEMA
 
-    def __init__(self, parent=None):
-        super().__init__(parent)
+    def __init__(self, owner, parent=None):
+        super().__init__(owner, parent)
         self.catalog = SectionCatalog()
+
         self._thickness_values = GIRDER_DETAILS_SCHEMA.get("thickness_values_mm", [])
         
         # Geometry state
@@ -206,14 +208,17 @@ class GirderDetailsTab(QWidget):
 
     def collect_data(self) -> dict:
         self._commit_current_member_state()
-        return {
+        data = super().collect_data()
+        data.update({
             "available_girders": self.available_girders,
             "segment_chain": self.segment_chain,
             "member_state": self._member_state,
-        }
+        })
+        return data
 
     def restore_data(self, data: dict):
         if not data: return
+        super().restore_data(data)
         self.available_girders = data.get("available_girders", ["G1"])
         self.segment_chain = data.get("segment_chain", {})
         self._member_state = data.get("member_state", {})

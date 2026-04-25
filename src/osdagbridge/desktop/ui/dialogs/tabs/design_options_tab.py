@@ -3,38 +3,24 @@ from PySide6.QtWidgets import QGridLayout, QWidget
 from osdagbridge.desktop.ui.dialogs.tabs.schemas.plate_girder import (
     DESIGN_OPTIONS_SCHEMA,
 )
-from osdagbridge.desktop.ui.dialogs.custom_messagebox import CustomMessageBox, MessageBoxType
-from osdagbridge.desktop.ui.dialogs.tabs import schema_io
-from osdagbridge.desktop.ui.dialogs.tabs.sub_tabs.section_properties.girder_details_tab import (
-    _BoundsDialog,
-)
-from osdagbridge.desktop.ui.dialogs.tabs.ui_builder import UIBuilder
+from osdagbridge.desktop.ui.dialogs.tabs.base import SchemaTab
+from osdagbridge.desktop.ui.dialogs.tabs.sub_tabs.section_properties.girder_helpers import BoundsDialog
 
 
-class DesignOptionsTab(QWidget):
+class DesignOptionsTab(SchemaTab):
     """Analysis/Design Options tab rendered from DESIGN_OPTIONS_SCHEMA."""
+    schema = DESIGN_OPTIONS_SCHEMA
 
     def __init__(self, parent_dialog):
-        super().__init__()
-        self.parent_dialog = parent_dialog
         self._reset_reinforcement_bounds()
-        UIBuilder(owner=self, schema=DESIGN_OPTIONS_SCHEMA).build_tab(self)
+        super().__init__(owner=self, parent=parent_dialog)
         self._sync_reinforcement_combo()
-
-    def save_values(self):
-        return schema_io.collect_values(self, DESIGN_OPTIONS_SCHEMA)
-
-    def restore_values(self, data: dict):
-        schema_io.restore_values(self, DESIGN_OPTIONS_SCHEMA, data)
 
     def restore_properties(self, data: dict):
         self._restore_extra_state(data)
 
-    def reset_defaults(self):
-        schema_io.reset_defaults(self, DESIGN_OPTIONS_SCHEMA, after=self._after_reset)
-
     def validate_tab(self):
-        errors = schema_io.validate(self, DESIGN_OPTIONS_SCHEMA)
+        errors = super().validate_tab()
         errors.extend(self._extra_validation())
         return list(dict.fromkeys(errors))
 

@@ -1,25 +1,19 @@
 from PySide6.QtWidgets import QLabel, QSizePolicy, QVBoxLayout, QWidget
 
 from osdagbridge.desktop.ui.dialogs.tabs.schemas.plate_girder import LAYOUT_TAB_SCHEMA
-from osdagbridge.desktop.ui.dialogs.tabs import schema_io
-from osdagbridge.desktop.ui.dialogs.tabs.ui_builder import UIBuilder
+from osdagbridge.desktop.ui.dialogs.tabs.base import SchemaTab
 
 
-class LayoutTab(QWidget):
+class LayoutTab(SchemaTab):
+    schema = LAYOUT_TAB_SCHEMA
 
-    def __init__(self, owner):
-        super().__init__(owner)
-        self.owner = owner
-        builder = UIBuilder(owner=owner, schema=LAYOUT_TAB_SCHEMA)
-        builder.build_tab(self)
+    def __init__(self, owner, parent=None):
+        super().__init__(owner, parent)
 
         if hasattr(owner, "overall_bridge_width_display") and hasattr(owner, "overall_bridge_width_formula"):
             owner.overall_bridge_width_display.setToolTip(owner.overall_bridge_width_formula)
 
-        self._create_notice_labels(owner, builder.page_layout)
-
-    def reset_defaults(self):
-        schema_io.reset_defaults(self.owner, LAYOUT_TAB_SCHEMA)
+        self._create_notice_labels(owner, self.builder.page_layout)
 
     def _create_notice_labels(self, owner, page_layout):
         owner.layout_adjust_notice = self._make_notice_label("#000000")

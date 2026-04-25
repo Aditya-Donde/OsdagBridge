@@ -6,20 +6,17 @@ from osdagbridge.desktop.ui.dialogs.tabs.schemas.plate_girder import (
 )
 from osdagbridge.desktop.ui.dialogs.custom_messagebox import CustomMessageBox, MessageBoxType
 from osdagbridge.desktop.ui.dialogs.tabs import schema_io
-from osdagbridge.desktop.ui.dialogs.tabs.ui_builder import UIBuilder
+from osdagbridge.desktop.ui.dialogs.tabs.base import SchemaTab
+import copy
 
 
-class CustomLoadTab(QWidget):
+class CustomLoadTab(SchemaTab):
+    schema = CUSTOM_LOAD_TAB_SCHEMA
 
-    def __init__(self, owner):
-        super().__init__(owner)
-        self.owner = owner
-        self.custom_load_items = getattr(owner, "custom_load_items", [])
-        owner.custom_load_items = self.custom_load_items
-        self.schema = CUSTOM_LOAD_TAB_SCHEMA
+    def __init__(self, owner, parent=None):
+        super().__init__(owner, parent)
+        self.custom_load_items = []
         self._editing_load_data = None
-
-        UIBuilder(owner=self, schema=self.schema).build_tab(self)
 
         if hasattr(self, "custom_load_table_add_btn"):
             self.custom_load_table_add_btn.hide()
@@ -29,6 +26,18 @@ class CustomLoadTab(QWidget):
             self.custom_delete_btn.clicked.connect(self._on_delete_custom_load)
 
         self.reset_defaults()
+
+    def collect_data(self) -> dict:
+        data = super().collect_data()
+        data["loading.custom_load_items"] = copy.deepcopy(self.custom_load_items)
+        return data
+
+    def restore_data(self, data: dict) -> None:
+        super().restore_data(data)
+        items = data.get("loading.custom_load_items")
+        if isinstance(items, list):
+            self.custom_load_items = copy.deepcopy(items)
+            self._refresh_custom_load_table()
 
     def reset_defaults(self):
         schema_io.reset_defaults(self, self.schema, before=self._before_reset, after=self._after_reset)

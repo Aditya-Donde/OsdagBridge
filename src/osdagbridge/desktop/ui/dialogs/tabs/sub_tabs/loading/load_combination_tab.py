@@ -1,23 +1,21 @@
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QDialog, QHeaderView, QWidget
+from PySide6.QtWidgets import QDialog, QHeaderView, QWidget, QCheckBox
 
 from osdagbridge.desktop.ui.dialogs.tabs.schemas.plate_girder import (
     LOAD_COMBINATION_TAB_SCHEMA,
 )
 from osdagbridge.desktop.ui.dialogs.tabs import schema_io
 from osdagbridge.desktop.ui.dialogs.tabs.sub_tabs.loading.load_combo_dialog import LoadComboDialog
-from osdagbridge.desktop.ui.dialogs.tabs.ui_builder import UIBuilder
+from osdagbridge.desktop.ui.dialogs.tabs.base import SchemaTab
+import copy
 
 
-class LoadCombinationTab(QWidget):
+class LoadCombinationTab(SchemaTab):
+    schema = LOAD_COMBINATION_TAB_SCHEMA
 
-    def __init__(self, owner):
-        super().__init__(owner)
-        self.owner = owner
-        self.load_combo_items = getattr(owner, "load_combo_items", [])
-        owner.load_combo_items = self.load_combo_items
-
-        UIBuilder(owner=self, schema=LOAD_COMBINATION_TAB_SCHEMA).build_tab(self)
+    def __init__(self, owner, parent=None):
+        super().__init__(owner, parent)
+        self.load_combo_items = []
 
         self.load_combo_table = self.custom_load_combo_table
         self._configure_table()
@@ -28,6 +26,19 @@ class LoadCombinationTab(QWidget):
         self.load_combo_table.itemSelectionChanged.connect(self._on_table_selection_changed)
 
         self.reset_defaults()
+
+    def collect_data(self) -> dict:
+        data = super().collect_data()
+        self._sync_load_combo_included_flags()
+        data["loading.load_combo_items"] = copy.deepcopy(self.load_combo_items)
+        return data
+
+    def restore_data(self, data: dict) -> None:
+        super().restore_data(data)
+        items = data.get("loading.load_combo_items")
+        if isinstance(items, list):
+            self.load_combo_items = copy.deepcopy(items)
+            self._refresh_load_combo_table()
 
     def reset_defaults(self):
         schema_io.reset_defaults(self, LOAD_COMBINATION_TAB_SCHEMA, before=self._before_reset, after=self._after_reset)

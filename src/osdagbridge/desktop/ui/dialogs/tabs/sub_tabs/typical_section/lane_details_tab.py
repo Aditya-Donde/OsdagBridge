@@ -1,21 +1,46 @@
 from PySide6.QtWidgets import QHeaderView, QTableWidget, QWidget
 
 from osdagbridge.desktop.ui.dialogs.tabs.schemas.plate_girder import LANE_DETAILS_TAB_SCHEMA
-from osdagbridge.desktop.ui.dialogs.tabs import schema_io
-from osdagbridge.desktop.ui.dialogs.tabs.ui_builder import UIBuilder
+from osdagbridge.desktop.ui.dialogs.tabs.base import SchemaTab
 
 
-class LaneDetailsTab(QWidget):
+class LaneDetailsTab(SchemaTab):
+    schema = LANE_DETAILS_TAB_SCHEMA
 
-    def __init__(self, owner):
-        super().__init__(owner)
-        self.owner = owner
-        builder = UIBuilder(owner=owner, schema=LANE_DETAILS_TAB_SCHEMA)
-        builder.build_tab(self)
-        self._inject_lane_table(owner, builder.page_layout)
+    def __init__(self, owner, parent=None):
+        super().__init__(owner, parent)
+        self._inject_lane_table(owner, self.builder.page_layout)
 
-    def reset_defaults(self):
-        schema_io.reset_defaults(self.owner, LANE_DETAILS_TAB_SCHEMA)
+    def collect_data(self) -> dict:
+        data = super().collect_data()
+        rows = []
+        if hasattr(self.owner, "lane_table"):
+            table = self.owner.lane_table
+            for row in range(table.rowCount()):
+                rows.append({
+                    "lane_number": table.item(row, 0).text() if table.item(row, 0) else "",
+                    "start": table.item(row, 1).text() if table.item(row, 1) else "",
+                    "width": table.item(row, 2).text() if table.item(row, 2) else "",
+                })
+        data["lane_table_data"] = rows
+        return data
+
+    def restore_data(self, data: dict) -> None:
+        super().restore_data(data)
+        if not hasattr(self.owner, "lane_table"):
+            return
+            
+        lane_rows = data.get("lane_table_data")
+        if not isinstance(lane_rows, list):
+            return
+
+        table = self.owner.lane_table
+        table.setRowCount(len(lane_rows))
+        for row, row_data in enumerate(lane_rows):
+            for col, key in enumerate(["lane_number", "start", "width"]):
+                from PySide6.QtWidgets import QTableWidgetItem
+                val = str(row_data.get(key, ""))
+                table.setItem(row, col, QTableWidgetItem(val))
 
     def _inject_lane_table(self, owner, page_layout):
         table = QTableWidget()

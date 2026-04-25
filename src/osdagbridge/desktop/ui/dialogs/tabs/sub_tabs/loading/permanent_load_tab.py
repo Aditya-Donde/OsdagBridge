@@ -1,17 +1,10 @@
-from PySide6.QtWidgets import QWidget
-
 from osdagbridge.desktop.ui.dialogs.tabs.schemas.plate_girder import PERMANENT_LOAD_TAB_SCHEMA
-from osdagbridge.desktop.ui.dialogs.tabs import schema_io
-from osdagbridge.desktop.ui.dialogs.tabs.ui_builder import UIBuilder
+from osdagbridge.desktop.ui.dialogs.tabs.base import SchemaTab
 
 
-class PermanentLoadTab(QWidget):
+class PermanentLoadTab(SchemaTab):
     """Permanent Load tab — fully rendered from PERMANENT_LOAD_TAB_SCHEMA."""
+    schema = PERMANENT_LOAD_TAB_SCHEMA
 
-    def __init__(self, owner):
-        super().__init__()
-        self.owner = owner
-        UIBuilder(owner=self, schema=PERMANENT_LOAD_TAB_SCHEMA).build_tab(self)
-
-    def reset_defaults(self):
-        schema_io.reset_defaults(self, PERMANENT_LOAD_TAB_SCHEMA)
+    def __init__(self, owner, parent=None):
+        super().__init__(owner, parent)

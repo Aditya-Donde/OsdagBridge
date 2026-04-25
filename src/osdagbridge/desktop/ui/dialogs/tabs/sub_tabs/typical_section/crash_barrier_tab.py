@@ -1,12 +1,9 @@
 """Crash Barrier sub-tab for Typical Section Details."""
 
-from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QScrollArea, QVBoxLayout, QWidget
-
 from osdagbridge.desktop.ui.dialogs.tabs.schemas.plate_girder import (
     CRASH_BARRIER_TAB_SCHEMA,
 )
-from osdagbridge.desktop.ui.dialogs.tabs.ui_builder import UIBuilder
+from osdagbridge.desktop.ui.dialogs.tabs.base import SchemaTab
 
 
 _CRASH_BARRIER_VIEW_SCHEMA = {
@@ -22,32 +19,10 @@ _CRASH_BARRIER_VIEW_SCHEMA = {
 }
 
 
-class CrashBarrierTab(QWidget):
+class CrashBarrierTab(SchemaTab):
     """Schema-driven crash barrier page bound onto the Typical Section owner."""
+    schema = _CRASH_BARRIER_VIEW_SCHEMA
 
-    def __init__(self, owner):
-        super().__init__(owner)
-        self.owner = owner
+    def __init__(self, owner, parent=None):
+        super().__init__(owner, parent)
         self.setStyleSheet("background-color: white;")
-
-        root = QVBoxLayout(self)
-        root.setContentsMargins(0, 0, 0, 0)
-        root.setSpacing(0)
-
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setFrameShape(QScrollArea.NoFrame)
-        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        scroll.setStyleSheet("QScrollArea { background-color: white; border: none; }")
-
-        page = QWidget()
-        page.setStyleSheet("background-color: white;")
-        layout = QVBoxLayout(page)
-        layout.setContentsMargins(18, 12, 18, 18)
-        layout.setSpacing(8)
-
-        UIBuilder(owner=owner, schema=_CRASH_BARRIER_VIEW_SCHEMA).build(layout)
-        layout.addStretch()
-
-        scroll.setWidget(page)
-        root.addWidget(scroll)

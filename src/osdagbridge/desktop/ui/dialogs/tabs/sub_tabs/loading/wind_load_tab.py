@@ -1,20 +1,15 @@
-from PySide6.QtWidgets import QWidget
-
 from osdagbridge.desktop.ui.dialogs.tabs.schemas.plate_girder import (
     WIND_LOAD_TAB_SCHEMA,
 )
-from osdagbridge.desktop.ui.dialogs.tabs import schema_io
-from osdagbridge.desktop.ui.dialogs.tabs.ui_builder import UIBuilder
+from osdagbridge.desktop.ui.dialogs.tabs.base import SchemaTab
 
 
-class WindLoadTab(QWidget):
+class WindLoadTab(SchemaTab):
     """Wind Load tab rendered from WIND_LOAD_TAB_SCHEMA."""
+    schema = WIND_LOAD_TAB_SCHEMA
 
-    def __init__(self, owner):
-        super().__init__(owner)
-        self.owner = owner
-        self.schema = WIND_LOAD_TAB_SCHEMA
-        UIBuilder(owner=self, schema=self.schema).build_tab(self)
+    def __init__(self, owner, parent=None):
+        super().__init__(owner, parent)
 
         self.wind_computed_fields = {}
         for section in self.schema.get("sections", []):
@@ -22,13 +17,8 @@ class WindLoadTab(QWidget):
                 continue
             for field in section.get("fields", []):
                 bind_name = field.get("bind")
-                if bind_name and hasattr(self, bind_name):
-                    self.wind_computed_fields[bind_name] = getattr(self, bind_name)
-
-        self.reset_defaults()
-
-    def reset_defaults(self):
-        schema_io.reset_defaults(self, self.schema)
+                if bind_name and hasattr(owner, bind_name):
+                    self.wind_computed_fields[bind_name] = getattr(owner, bind_name)
 
     def update_project_location(self, location_data):
         if not location_data:
@@ -37,5 +27,5 @@ class WindLoadTab(QWidget):
         weather = location_data.get("weather_data")
         if weather:
             wind = weather.get("wind_speed")
-            if wind is not None and hasattr(self, "basic_wind_speed_input"):
-                self.basic_wind_speed_input.setText(str(wind))
+            if wind is not None and hasattr(self.owner, "basic_wind_speed_input"):
+                self.owner.basic_wind_speed_input.setText(str(wind))
