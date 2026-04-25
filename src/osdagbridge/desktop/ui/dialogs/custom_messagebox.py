@@ -12,6 +12,7 @@ from osdagbridge.desktop.resources.resources_rc import *
 
 class MessageBoxType:
     Information = "Information"
+    Question = "Question"
     Warning = "Warning"
     Critical = "Critical"
     Success = "Success"
@@ -110,6 +111,7 @@ class CustomMessageBox(QDialog):
         # Use Qt's standard icons (replace with custom paths if needed)
         icon_map = {
             MessageBoxType.Information: ":/vectors/msg_info.svg",
+            MessageBoxType.Question: ":/vectors/msg_info.svg",
             MessageBoxType.Warning: ":/vectors/msg_warning.svg",
             MessageBoxType.Success: ":/vectors/msg_success.svg",
             MessageBoxType.Critical: ":/vectors/msg_critical.svg",
@@ -124,6 +126,22 @@ class CustomMessageBox(QDialog):
         # Define button styles based on dialog type
         style_map = {
             MessageBoxType.Information: """
+                QPushButton {
+                    background-color: #2196F3;
+                    color: white;
+                    border: none;
+                    border-radius: 5px;
+                    padding: 5px 15px;
+                    font-size: 12px;
+                }
+                QPushButton:hover {
+                    background-color: #1E88E5;
+                }
+                QPushButton:pressed {
+                    background-color: #1976D2;
+                }
+            """,
+            MessageBoxType.Question: """
                 QPushButton {
                     background-color: #2196F3;
                     color: white;

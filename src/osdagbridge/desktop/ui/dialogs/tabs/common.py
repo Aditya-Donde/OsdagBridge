@@ -257,4 +257,4 @@ def create_action_button_bar(parent=None, on_save=None, on_reset=None, on_cancel
         layout.addWidget(save_btn)
 
     layout.addStretch()
-    return layout
+    return frame
