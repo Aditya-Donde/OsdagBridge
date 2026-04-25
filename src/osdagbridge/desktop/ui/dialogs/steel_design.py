@@ -447,43 +447,36 @@ class SteelDesign(QDialog):
 
     def _run_design_checks(self) -> None:
         """
-        Run the IRC 22:2015 pipeline and populate the Design Check tab.
+        Populate the Design Check tab from the already-computed DCR pipeline.
 
-        Uses live model data when available; falls back to a built-in
-        example bridge so the tab is never left blank.
+        Data sources (no re-computation):
+          - demand values  → engine.demand   (extracted from analysis_results.py)
+          - capacity / DCR → engine.capacity / engine.checks  (computed in designer.py)
 
-        Guard: no-op when result_handler identity is unchanged.
+        The pipeline is executed once by PlateGirderBridge._run_dcr_checks()
+        during design(); this method simply reads the stored results.
         """
         if self._checks_ran and (self._result_handler is self._last_handler):
             return
 
-        from osdagbridge.core.bridge_types.plate_girder.designer import (
-            BridgeConfig, IRC22CapacityCalculator, DCREngine,
-            _example_demands, _extract_demands_from_analysis,
-        )
-
         try:
-            bridge = getattr(self._main_window, "bridge", None)
-            config = (
-                BridgeConfig.from_plate_girder_bridge(bridge)
-                if bridge is not None
-                else BridgeConfig.example_33m_bridge()
+            backend = getattr(self._main_window, "backend", None)
+            engine  = getattr(backend, "_dcr_engine", None) if backend else None
+            if engine is None:
+                return
+
+            self.check_tab.populate_from_results(
+                engine.demand, engine.capacity, engine,
             )
 
-            demand = (
-                _extract_demands_from_analysis(self._result_handler)
-                if self._result_handler is not None
-                else _example_demands(config)
+            from osdagbridge.core.bridge_types.plate_girder.designer import BridgeConfig
+            bridge_cfg = (
+                BridgeConfig.from_plate_girder_bridge(backend)
+                if backend is not None
+                else None
             )
-
-            calculator = IRC22CapacityCalculator(config)
-            capacity   = calculator.compute_all(Vu_kN=demand.Vu_kN)
-
-            engine = DCREngine(demand, capacity)
-            engine.run_all_checks()
-
-            self.check_tab.populate_from_results(demand, capacity, engine)
-            self.check_tab.set_girder_count(config.geometry.n_girders)
+            if bridge_cfg is not None:
+                self.check_tab.set_girder_count(bridge_cfg.geometry.n_girders)
 
             self._checks_ran   = True
             self._last_handler = self._result_handler

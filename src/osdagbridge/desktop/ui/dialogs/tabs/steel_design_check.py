@@ -51,7 +51,7 @@ _RENDER_MAP = {
         ),
         "dem_pfx": "<i>M<sub>d</sub></i>",
         "cap_pfx": "<i>M<sub>r</sub></i>",
-        "unit": "kN&middot;m",
+        "unit": "kNm",
     },
     "shear": {
         "eq": (
@@ -80,20 +80,23 @@ _RENDER_MAP = {
         ),
         "dem_pfx": "<i>M<sub>d</sub></i>",
         "cap_pfx": "<i>M<sub>cr</sub></i>",
-        "unit": "kN&middot;m",
+        "unit": "kNm",
     },
     "shear_long_trans": {
+        # IRC 22:2015 Cl.606.4.1 — Longitudinal shear flow at steel-concrete interface.
+        # Demand  : VL (N/mm) — longitudinal shear flow
+        # Capacity: n_studs * Qu / spacing (N/mm) — stud resistance per unit length
         "eq": (
-            "<i>V<sub>d</sub></i> &le; <i>V<sub>rd</sub></i><br>"
-            "<i>V<sub>rd</sub></i> = <i>V<sub>rd,c</sub></i> + <i>V<sub>rd,s</sub></i><br>"
-            "<i>V<sub>rd,c</sub></i> = 0.18 &middot; <i>k</i> &middot; "
-            "(100<i>f<sub>ck</sub></i>)<sup>1/3</sup> &middot; <i>b</i> &middot; <i>d</i><br>"
-            "<i>V<sub>rd,s</sub></i> = (<i>A<sub>sv</sub></i> &middot; <i>f<sub>y</sub></i> "
-            "&middot; <i>d</i>) / <i>s</i>"
+            "<i>V<sub>L</sub></i> &le; <i>n</i> &middot; <i>Q<sub>u</sub></i> / <i>s</i><br>"
+            "<i>V<sub>L</sub></i> = <i>V<sub>d</sub></i> &middot; <i>A<sub>ec</sub></i>"
+            " &middot; <i>Y</i> / <i>I<sub>c</sub></i><br>"
+            "<i>Q<sub>u</sub></i> = min(0.8<i>f<sub>u</sub>A</i>, "
+            "0.29&alpha;<i>d</i>&sup2;"
+            "&radic;(<i>f<sub>ck</sub>E<sub>cm</sub></i>)) / <i>&gamma;<sub>v</sub></i>"
         ),
-        "dem_pfx": "<i>V<sub>d</sub></i>",
-        "cap_pfx": "<i>V<sub>rd</sub></i>",
-        "unit": "kN",
+        "dem_pfx": "<i>V<sub>L</sub></i>",
+        "cap_pfx": "<i>nQ<sub>u</sub>/s</i>",
+        "unit": "N/mm",
     },
     "fatigue": {
         "eq": (
@@ -553,6 +556,7 @@ class SteelDesignCheckTab(QWidget):
             "font-size: 14px; font-weight: bold; color: #555; "
             "background: transparent; border: none;"
         )
+        dcr_lbl.setToolTip("Utilization Ratio = Demand / Capacity  (UR < 1.0 → PASS)")
         card_layout.addWidget(dcr_lbl)
         self.check_dcr_labels[key] = dcr_lbl
 
@@ -714,43 +718,13 @@ class SteelDesignCheckTab(QWidget):
         except Exception:
             pass
 
-        # ââ 7. Stress Limitation (Cl.604.3.1) â computed inline ââââââââââââââ
-        try:
-            Ze_mm3 = (
-                capacity.details.get("section_modulus", {}).get("Ze_mm3")
-                or capacity.details.get("sls_stress", {}).get("Ze_mm3")
-                or getattr(capacity, "Ze_mm3", None)
-            )
-            if not Ze_mm3:
-                Ze_mm3 = getattr(capacity, "Zp_mm3", 1) or 1
-            sigma_actual = demand.Mu_kNm * 1e6 / max(Ze_mm3, 1)
-            cap_stress = capacity.sigma_s_limit_MPa
-            if cap_stress > 0:
-                dcr = sigma_actual / cap_stress
-                results_by_key["stress"] = {
-                    "demand": round(sigma_actual, 2),
-                    "capacity": round(cap_stress, 2),
-                    "ratio": round(dcr, 2),
-                    "passed": _classify(dcr),
-                }
-        except Exception:
-            pass
-
-        # ââ 8. Longitudinal/Transverse Shear (Cl.606) â computed inline ââââââ
-        try:
-            n_studs = getattr(capacity, "n_studs_per_section", None) or 2
-            demand_per_stud = demand.Vu_kN / n_studs
-            cap_stud = capacity.Qu_kN
-            if cap_stud > 0:
-                dcr = demand_per_stud / cap_stud
-                results_by_key["shear_long_trans"] = {
-                    "demand": round(demand_per_stud, 2),
-                    "capacity": round(cap_stud, 2),
-                    "ratio": round(dcr, 2),
-                    "passed": _classify(dcr),
-                }
-        except Exception:
-            pass
+        # ── 7. Stress Limitation (Cl.604.3.1) ─────────────────────────────────
+        # ── 8. Resistance to Longitudinal and Transverse Shear (Cl.606.4.1) ──
+        #
+        # Neither check has a corresponding check_id in DCREngine (only IDs
+        # 1–8 are emitted).  These cards intentionally remain blank — showing
+        # their governing equation only — until the engine adds the checks.
+        # This matches the Output Dock which shows 0 % for both.
 
         # ââ Apply results to card widgets âââââââââââââââââââââââââââââââââââââ
         self.design_results = list(results_by_key.values())
@@ -792,7 +766,7 @@ class SteelDesignCheckTab(QWidget):
                 f"{cap_pfx} = {capacity:.2f}{unit_str}"
             )
 
-        dcr_text  = f"DCR = {ratio:.2f}"
+        dcr_text  = f"Utilization Ratio = {ratio:.2f}"
         dcr_color = "#388E3C" if passed else "#D32F2F"
 
         # Set value label
