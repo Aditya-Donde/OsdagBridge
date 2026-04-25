@@ -91,7 +91,8 @@ _SPECIAL_SECTION_TYPES = {
 
 # Section types where the section dict IS the field definition
 # (e.g. eccentricity / footpath_pressure in LIVE_LOAD_TAB_SCHEMA).
-_FIELD_AS_SECTION_TYPES = {"line", "number", "combo", "mode_line"}
+_FIELD_AS_SECTION_TYPES = set(_TYPE_TO_METHOD)
+_LEGACY_FIELD_LIST_KEYS = ("section_inputs", "stiffener_inputs", "web_buckling_inputs")
 
 _DEFAULT_LABEL_WIDTH = 180
 _DEFAULT_FIELD_WIDTH = 180
@@ -189,6 +190,7 @@ class UIBuilder:
         has_description = "description" in schema
         has_cards       = "cards" in schema
         has_sections    = "sections" in schema
+        has_legacy_groups = self._has_legacy_groups(schema)
 
         if has_description:
             # Two-panel: inputs left (3 parts) + description right (2 parts)
@@ -199,6 +201,8 @@ class UIBuilder:
         elif has_sections:
             # One bordered card per section
             self._build_section_cards(page_layout, schema["sections"])
+        elif has_legacy_groups:
+            self._build_legacy_groups(page_layout)
         else:
             # Fallback: flat rows/grid
             self.build(page_layout)
@@ -223,6 +227,8 @@ class UIBuilder:
             self._build_cards_column(parent_layout, schema["cards"])
         elif "sections" in schema:
             self._build_sections(parent_layout, schema["sections"], label_width, field_width)
+        elif self._has_legacy_groups(schema):
+            self._build_legacy_groups(parent_layout)
         elif "rows" in schema:
             self._build_rows(parent_layout, schema["rows"], label_width, field_width)
         elif "columns" in schema:
@@ -345,6 +351,14 @@ class UIBuilder:
 
         input_widget = QLineEdit()
         input_widget.setObjectName(str(field_def.get("id", "")))
+        default = field_def.get("default")
+        if default is not None:
+            input_widget.setText(str(default))
+        if field_def.get("placeholder"):
+            input_widget.setPlaceholderText(str(field_def["placeholder"]))
+        if field_def.get("read_only"):
+            input_widget.setReadOnly(True)
+        self._apply_validator(input_widget, field_def.get("validator"))
         apply_field_style(input_widget)
         layout.addWidget(input_widget)
 
@@ -438,7 +452,7 @@ class UIBuilder:
         builder = getattr(self, method_name)
         widget = builder(field_def)
 
-        if ftype != "mode_line":
+        if ftype not in {"mode_line", "line_with_bounds"}:
             self._bind_widget(widget, field_def)
             self._connect_signals(widget, field_def)
 
@@ -488,6 +502,8 @@ class UIBuilder:
         elif "sections" in schema:
             for section in schema["sections"]:
                 self._dispatch_section(left_layout, section, label_width, field_width)
+        elif self._has_legacy_groups(schema):
+            self._build_legacy_groups(left_layout)
 
         left_layout.addStretch()
         left_outer_layout.addWidget(left_content)
@@ -519,6 +535,39 @@ class UIBuilder:
         content_row.addWidget(left_outer, 3)
         content_row.addWidget(right_card, 2)
         page_layout.addLayout(content_row)
+
+    def _has_legacy_groups(self, schema: dict) -> bool:
+        return bool(schema.get("overview")) or any(schema.get(key) for key in _LEGACY_FIELD_LIST_KEYS)
+
+    def _build_legacy_groups(self, parent_layout: QLayout) -> None:
+        """Render older tab schemas that split inputs into overview/input lists."""
+        schema = self.schema
+        label_width = int(schema.get("label_width", _DEFAULT_LABEL_WIDTH))
+        field_width = int(schema.get("field_width", _DEFAULT_FIELD_WIDTH))
+
+        for section in schema.get("overview") or []:
+            self._dispatch_section(parent_layout, section, label_width, field_width)
+
+        titles = {
+            "section_inputs": "Section Inputs:",
+            "stiffener_inputs": "Stiffener Inputs:",
+            "web_buckling_inputs": "Web Buckling Inputs:",
+        }
+        for key in _LEGACY_FIELD_LIST_KEYS:
+            fields = schema.get(key) or []
+            if not fields:
+                continue
+            self._dispatch_section(
+                parent_layout,
+                {
+                    "id": key,
+                    "type": "section_box",
+                    "title": titles.get(key, key.replace("_", " ").title()),
+                    "fields": fields,
+                },
+                label_width,
+                field_width,
+            )
 
     def _build_section_cards(self, page_layout: QLayout, sections: list) -> None:
         """One bordered QFrame card per section — used when there is no description panel.
@@ -669,6 +718,11 @@ class UIBuilder:
                 heading.setStyleSheet(_HEADING_STYLE)
                 parent_layout.addWidget(heading)
 
+            rows = section.get("rows")
+            if rows:
+                self._build_rows(parent_layout, rows, sec_label_width, sec_field_width)
+                continue
+
             grid = QGridLayout()
             grid.setContentsMargins(0, 8, 0, 0)
             grid.setHorizontalSpacing(12)
@@ -721,13 +775,20 @@ class UIBuilder:
         label_width: int = _DEFAULT_LABEL_WIDTH,
         field_width: int = _DEFAULT_FIELD_WIDTH,
     ) -> None:
+        def row_fields(row):
+            if isinstance(row, dict):
+                return row.get("fields", []) or []
+            if isinstance(row, list):
+                return row
+            return []
+
         grid = QGridLayout()
         grid.setHorizontalSpacing(24)
         grid.setVerticalSpacing(int(self.schema.get("row_vertical_spacing", 10)))
         grid.setColumnMinimumWidth(0, label_width)
         grid.setContentsMargins(0, 0, 0, 0)
 
-        max_columns = max((len(row.get("fields", [])) * 2 for row in rows), default=0)
+        max_columns = max((len(row_fields(row)) * 2 for row in rows), default=0)
         for col in range(max_columns):
             grid.setColumnStretch(col, 0)
         if max_columns > 0:
@@ -737,7 +798,22 @@ class UIBuilder:
         row_idx = 0
         for row in rows:
             col = 0
-            for field_def in row.get("fields", []):
+            for field_def in row_fields(row):
+                if not isinstance(field_def, dict):
+                    continue
+                ftype = str(field_def.get("type") or "line").strip().lower()
+                if ftype == "button":
+                    widget = self.build_field(field_def, field_def.get("width", field_width))
+                    grid.addWidget(widget, row_idx, col, 1, 2, Qt.AlignLeft | Qt.AlignVCenter)
+                    col += 2
+                    continue
+
+                if ftype == "checkbox":
+                    widget = self.build_field(field_def, field_width)
+                    grid.addWidget(widget, row_idx, col, 1, 2, Qt.AlignLeft | Qt.AlignVCenter)
+                    col += 2
+                    continue
+
                 lbl = self._make_field_label(field_def, label_width)
                 grid.addWidget(lbl, row_idx, col, Qt.AlignLeft | Qt.AlignVCenter)
                 col += 1
@@ -1344,7 +1420,8 @@ class UIBuilder:
         params_map = section.get("params_map") or {}
         reactive_sources = section.get("reactive_sources") or []
 
-        if not hasattr(cad_widget, update_method_name):
+        should_wire_cad_update = bool(params_map or reactive_sources or section.get("update_method"))
+        if should_wire_cad_update and not hasattr(cad_widget, update_method_name):
             _log.warning(
                 "UIBuilder[%s]: CAD widget %s has no method %r",
                 type(self.owner).__name__, type(cad_widget).__name__, update_method_name,
@@ -1374,7 +1451,7 @@ class UIBuilder:
             signal_name = src.get("signal", "textChanged") if isinstance(src, dict) else "textChanged"
             source = getattr(self.owner, str(source_name), None)
             if source is None:
-                _log.warning(
+                _log.debug(
                     "UIBuilder[%s]: reactive source %r not on owner (bind it before CAD section)",
                     type(self.owner).__name__, source_name,
                 )
@@ -1429,6 +1506,8 @@ class UIBuilder:
                     row.addWidget(legend, stretch)
                 else:
                     row.addWidget(legend)
+            else:
+                self._dispatch_section(row, item, _DEFAULT_LABEL_WIDTH, _DEFAULT_FIELD_WIDTH)
 
         parent_layout.addWidget(wrap)
 
@@ -1524,7 +1603,13 @@ class UIBuilder:
                             yield from UIBuilder._iter_fields_with_conditions(rf)
                     yield from UIBuilder._iter_fields_with_conditions(f)
         for row in (node.get("rows") or []):
-            for f in (row.get("fields") or []):
+            if isinstance(row, dict):
+                fields = row.get("fields") or []
+            elif isinstance(row, list):
+                fields = row
+            else:
+                fields = []
+            for f in fields:
                 if isinstance(f, dict):
                     yield from UIBuilder._iter_fields_with_conditions(f)
         for key in ("sections", "cards", "pages"):
@@ -1597,44 +1682,52 @@ class UIBuilder:
     def _connect_signals(self, widget: QWidget, field_def: dict) -> None:
         owner = self.owner
 
+        def find_handler(name):
+            handler = getattr(owner, str(name), None)
+            if callable(handler):
+                return handler
+            parent_owner = getattr(owner, "owner", None)
+            handler = getattr(parent_owner, str(name), None) if parent_owner is not None else None
+            return handler if callable(handler) else None
+
         on_change = field_def.get("on_change")
         if on_change and isinstance(widget, QComboBox):
-            handler = getattr(owner, str(on_change), None)
+            handler = find_handler(on_change)
             if handler is None:
                 _log.warning("UIBuilder[%s]: on_change=%r not found on owner", type(owner).__name__, on_change)
-            elif callable(handler):
+            else:
                 widget.currentTextChanged.connect(handler)
 
         on_text_changed = field_def.get("on_text_changed")
         if on_text_changed and isinstance(widget, QLineEdit):
-            handler = getattr(owner, str(on_text_changed), None)
+            handler = find_handler(on_text_changed)
             if handler is None:
                 _log.warning("UIBuilder[%s]: on_text_changed=%r not found on owner", type(owner).__name__, on_text_changed)
-            elif callable(handler):
+            else:
                 widget.textChanged.connect(handler)
 
         on_editing_finished = field_def.get("on_editing_finished")
         if on_editing_finished and isinstance(widget, QLineEdit):
-            handler = getattr(owner, str(on_editing_finished), None)
+            handler = find_handler(on_editing_finished)
             if handler is None:
                 _log.warning("UIBuilder[%s]: on_editing_finished=%r not found on owner", type(owner).__name__, on_editing_finished)
-            elif callable(handler):
+            else:
                 widget.editingFinished.connect(handler)
 
         on_toggled = field_def.get("on_toggled")
         if on_toggled and isinstance(widget, QCheckBox):
-            handler = getattr(owner, str(on_toggled), None)
+            handler = find_handler(on_toggled)
             if handler is None:
                 _log.warning("UIBuilder[%s]: on_toggled=%r not found on owner", type(owner).__name__, on_toggled)
-            elif callable(handler):
+            else:
                 widget.toggled.connect(handler)
 
         on_click = field_def.get("on_click")
         if on_click and isinstance(widget, QPushButton):
-            handler = getattr(owner, str(on_click), None)
+            handler = find_handler(on_click)
             if handler is None:
                 _log.warning("UIBuilder[%s]: on_click=%r not found on owner", type(owner).__name__, on_click)
-            elif callable(handler):
+            else:
                 widget.clicked.connect(handler)
 
     def _bind_widget(self, widget: QWidget, field_def: dict) -> None:
@@ -1646,7 +1739,7 @@ class UIBuilder:
         if bind_name:
             existing = getattr(self.owner, str(bind_name), _MISSING)
             if existing is not _MISSING and existing is not widget:
-                _log.warning(
+                _log.debug(
                     "UIBuilder[%s]: bind %r already set (%s) — overwriting with %s",
                     type(self.owner).__name__, bind_name,
                     type(existing).__name__, type(widget).__name__,

@@ -13,8 +13,21 @@ from osdagbridge.desktop.ui.dialogs.tabs.ui_builder import _SPECIAL_SECTION_TYPE
 _log = logging.getLogger(__name__)
 
 
-_FIELD_SECTION_TYPES = {"line", "number", "combo", "mode_line", "mode_value", "checkbox", "computed", "button", "label"}
+_FIELD_SECTION_TYPES = {
+    "line",
+    "number",
+    "computed",
+    "combo",
+    "combo_dynamic",
+    "checkbox",
+    "label",
+    "button",
+    "mode_line",
+    "mode_value",
+    "line_with_bounds",
+}
 _NON_INPUT_FIELD_TYPES = {"button", "label"}
+_LEGACY_FIELD_LIST_KEYS = ("section_inputs", "stiffener_inputs", "web_buckling_inputs")
 
 
 def reset_defaults(owner, schema: dict, before=None, after=None) -> None:
@@ -159,8 +172,14 @@ def _walk_schema(schema, on_section=None, on_group=None, on_field=None) -> None:
         for section in schema.get("sections", []) or []:
             _walk_section(section, on_section=on_section, on_group=on_group, on_field=on_field)
 
+        for section in schema.get("overview", []) or []:
+            _walk_section(section, on_section=on_section, on_group=on_group, on_field=on_field)
+
+        for key in _LEGACY_FIELD_LIST_KEYS:
+            _walk_field_list(schema.get(key), None, on_field)
+
         for row in schema.get("rows", []) or []:
-            _walk_field_list(row.get("fields"), None, on_field)
+            _walk_field_list(_row_fields(row), None, on_field)
 
         fields = schema.get("fields")
         if isinstance(fields, dict):
@@ -191,7 +210,18 @@ def _walk_section(section: dict, on_section=None, on_group=None, on_field=None) 
             on_field(section, None)
         return
 
+    for row in section.get("rows", []) or []:
+        _walk_field_list(_row_fields(row), section, on_field)
+
     _walk_field_list(section.get("fields"), section, on_field)
+
+
+def _row_fields(row):
+    if isinstance(row, dict):
+        return row.get("fields")
+    if isinstance(row, list):
+        return row
+    return []
 
 
 def _walk_field_list(fields, section: dict | None, on_field) -> None:
