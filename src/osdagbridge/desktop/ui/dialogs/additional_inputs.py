@@ -9,8 +9,8 @@ from PySide6.QtWidgets import (
     QFrame, QGridLayout, QTableWidget, QTableWidgetItem, QHeaderView,
     QTextEdit, QDialog, QSizeGrip, QListView, QStyledItemDelegate
 )
-from PySide6.QtCore import Qt, Signal, QSize, QValidator
-from PySide6.QtGui import QDoubleValidator, QIntValidator, QColor
+from PySide6.QtCore import Qt, Signal, QSize
+from PySide6.QtGui import QDoubleValidator, QIntValidator, QColor, QValidator
 
 from osdagbridge.core.utils.common import *
 from osdagbridge.desktop.ui.utils.custom_titlebar import CustomTitleBar
