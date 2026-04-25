@@ -20,6 +20,8 @@ Layout is inferred from schema keys:
 * ``"rows"`` only             →  flat grid, no cards, no right panel
 """
 
+import logging
+
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QDoubleValidator, QIntValidator
 from PySide6.QtWidgets import (
@@ -44,6 +46,9 @@ from PySide6.QtWidgets import (
 )
 
 from osdagbridge.desktop.ui.dialogs.tabs.common import apply_field_style
+
+_log = logging.getLogger(__name__)
+_MISSING = object()  # sentinel for bind-overwrite detection
 
 # ---------------------------------------------------------------------------
 # Dispatch table — map schema "type" → builder method name.
@@ -369,7 +374,14 @@ class UIBuilder:
     def build_field(self, field_def: dict, field_width: int = _DEFAULT_FIELD_WIDTH) -> QWidget:
         """Create, style, bind and wire a single field widget."""
         ftype = str(field_def.get("type") or "line").strip().lower()
-        builder = getattr(self, _TYPE_TO_METHOD.get(ftype, "build_line_edit"))
+        method_name = _TYPE_TO_METHOD.get(ftype)
+        if method_name is None:
+            _log.warning(
+                "UIBuilder[%s]: unknown field type=%r (bind=%r) — rendered as QLineEdit",
+                type(self.owner).__name__, ftype, field_def.get("bind"),
+            )
+            method_name = "build_line_edit"
+        builder = getattr(self, method_name)
         widget = builder(field_def)
 
         if ftype != "mode_line":
@@ -515,6 +527,11 @@ class UIBuilder:
                 self._build_single_field_section(section, label_width, field_width)
             )
         else:
+            if stype:
+                _log.warning(
+                    "UIBuilder[%s]: unknown section type=%r (id=%r) — using section_box fallback",
+                    type(self.owner).__name__, stype, section.get("id"),
+                )
             parent_layout.addWidget(self._make_section_box(section, label_width, field_width))
 
     def _build_cards_column(self, parent_layout: QLayout, cards: list) -> None:
@@ -1194,10 +1211,12 @@ class UIBuilder:
         try:
             from osdagbridge.desktop.ui.dialogs.tabs.cad_registry import CAD_WIDGETS
         except ImportError:
-            return None  # registry not present yet (Phase 1 tolerates absence)
+            _log.warning("UIBuilder[%s]: cad_registry not importable — CAD widget %r skipped", type(self.owner).__name__, widget_name)
+            return None
 
         widget_cls = CAD_WIDGETS.get(str(widget_name))
         if widget_cls is None:
+            _log.warning("UIBuilder[%s]: CAD widget %r not in cad_registry.CAD_WIDGETS", type(self.owner).__name__, widget_name)
             return None
 
         cad_widget = widget_cls()
@@ -1211,6 +1230,12 @@ class UIBuilder:
         update_method_name = str(section.get("update_method", "update_params"))
         params_map = section.get("params_map") or {}
         reactive_sources = section.get("reactive_sources") or []
+
+        if not hasattr(cad_widget, update_method_name):
+            _log.warning(
+                "UIBuilder[%s]: CAD widget %s has no method %r",
+                type(self.owner).__name__, type(cad_widget).__name__, update_method_name,
+            )
 
         def refresh(*_args) -> None:
             method = getattr(cad_widget, update_method_name, None)
@@ -1236,6 +1261,10 @@ class UIBuilder:
             signal_name = src.get("signal", "textChanged") if isinstance(src, dict) else "textChanged"
             source = getattr(self.owner, str(source_name), None)
             if source is None:
+                _log.warning(
+                    "UIBuilder[%s]: reactive source %r not on owner (bind it before CAD section)",
+                    type(self.owner).__name__, source_name,
+                )
                 continue
             signal = getattr(source, str(signal_name), None)
             if signal is None:
@@ -1303,31 +1332,41 @@ class UIBuilder:
         on_change = field_def.get("on_change")
         if on_change and isinstance(widget, QComboBox):
             handler = getattr(owner, str(on_change), None)
-            if callable(handler):
+            if handler is None:
+                _log.warning("UIBuilder[%s]: on_change=%r not found on owner", type(owner).__name__, on_change)
+            elif callable(handler):
                 widget.currentTextChanged.connect(handler)
 
         on_text_changed = field_def.get("on_text_changed")
         if on_text_changed and isinstance(widget, QLineEdit):
             handler = getattr(owner, str(on_text_changed), None)
-            if callable(handler):
+            if handler is None:
+                _log.warning("UIBuilder[%s]: on_text_changed=%r not found on owner", type(owner).__name__, on_text_changed)
+            elif callable(handler):
                 widget.textChanged.connect(handler)
 
         on_editing_finished = field_def.get("on_editing_finished")
         if on_editing_finished and isinstance(widget, QLineEdit):
             handler = getattr(owner, str(on_editing_finished), None)
-            if callable(handler):
+            if handler is None:
+                _log.warning("UIBuilder[%s]: on_editing_finished=%r not found on owner", type(owner).__name__, on_editing_finished)
+            elif callable(handler):
                 widget.editingFinished.connect(handler)
 
         on_toggled = field_def.get("on_toggled")
         if on_toggled and isinstance(widget, QCheckBox):
             handler = getattr(owner, str(on_toggled), None)
-            if callable(handler):
+            if handler is None:
+                _log.warning("UIBuilder[%s]: on_toggled=%r not found on owner", type(owner).__name__, on_toggled)
+            elif callable(handler):
                 widget.toggled.connect(handler)
 
         on_click = field_def.get("on_click")
         if on_click and isinstance(widget, QPushButton):
             handler = getattr(owner, str(on_click), None)
-            if callable(handler):
+            if handler is None:
+                _log.warning("UIBuilder[%s]: on_click=%r not found on owner", type(owner).__name__, on_click)
+            elif callable(handler):
                 widget.clicked.connect(handler)
 
     def _bind_widget(self, widget: QWidget, field_def: dict) -> None:
@@ -1337,4 +1376,11 @@ class UIBuilder:
 
         bind_name = field_def.get("bind")
         if bind_name:
+            existing = getattr(self.owner, str(bind_name), _MISSING)
+            if existing is not _MISSING and existing is not widget:
+                _log.warning(
+                    "UIBuilder[%s]: bind %r already set (%s) — overwriting with %s",
+                    type(self.owner).__name__, bind_name,
+                    type(existing).__name__, type(widget).__name__,
+                )
             setattr(self.owner, str(bind_name), widget)

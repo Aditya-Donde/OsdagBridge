@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import html
+import logging
 import re
 
 from PySide6.QtWidgets import QCheckBox, QComboBox, QLineEdit, QWidget
+
+_log = logging.getLogger(__name__)
 
 
 _FIELD_SECTION_TYPES = {"line", "number", "combo", "mode_line", "checkbox", "computed", "button", "label"}
@@ -205,17 +208,30 @@ def _reset_field(owner, field: dict) -> None:
         return
 
     if ftype == "mode_line":
-        _set_widget_value(getattr(owner, str(field.get("bind_mode")), None), field.get("default_mode"))
-        _set_widget_value(getattr(owner, str(field.get("bind_value")), None), field.get("default_value"))
+        for bind_key, default_key in (("bind_mode", "default_mode"), ("bind_value", "default_value")):
+            bind = field.get(bind_key)
+            if bind:
+                widget = getattr(owner, str(bind), None)
+                if widget is None:
+                    _log.warning("schema_io[%s]: bind %r declared in schema but not set on owner", type(owner).__name__, bind)
+                _set_widget_value(widget, field.get(default_key))
         return
 
     if ftype == "checkbox":
-        _set_widget_value(getattr(owner, str(field.get("bind")), None), field.get("default", False))
+        bind = field.get("bind")
+        if bind:
+            widget = getattr(owner, str(bind), None)
+            if widget is None:
+                _log.warning("schema_io[%s]: bind %r declared in schema but not set on owner", type(owner).__name__, bind)
+            _set_widget_value(widget, field.get("default", False))
         return
 
     bind = field.get("bind")
     if bind is not None:
-        _set_widget_value(getattr(owner, str(bind), None), field.get("default"))
+        widget = getattr(owner, str(bind), None)
+        if widget is None:
+            _log.warning("schema_io[%s]: bind %r declared in schema but not set on owner", type(owner).__name__, bind)
+        _set_widget_value(widget, field.get("default"))
 
 
 def _collect_field_values(owner, field: dict) -> dict:
@@ -239,6 +255,7 @@ def _collect_field_values(owner, field: dict) -> dict:
 
     widget = getattr(owner, str(bind), None)
     if widget is None:
+        _log.warning("schema_io[%s]: bind %r declared in schema but not set on owner", type(owner).__name__, bind)
         return {}
     return {str(bind): _widget_value(widget)}
 
@@ -394,3 +411,61 @@ def _run_hook(owner, explicit_hook, attr_name: str) -> None:
     hook = explicit_hook if callable(explicit_hook) else getattr(owner, attr_name, None)
     if callable(hook):
         hook()
+
+
+def describe_binds(owner, schema: dict) -> str:
+    """Diagnostic dump of bind state — call from REPL or a debug button.
+
+    Example output::
+
+        Schema binds for WindLoadTab (12 fields):
+          BOUND   basic_wind_speed_input    QLineEdit   text=''
+          BOUND   terrain_type_combo        QComboBox   current='Plain Terrain'
+          MISSING footpath_value_input      (not set on owner)
+          SKIP    save_button               (non-input: button)
+    """
+    lines: list[str] = []
+    count = 0
+
+    def on_field(field: dict, _section) -> None:
+        nonlocal count
+        ftype = _field_type(field)
+        binds: list[tuple[str, str]] = []  # (bind_name, role)
+
+        if ftype in _NON_INPUT_FIELD_TYPES:
+            bind = field.get("bind")
+            if bind:
+                lines.append(f"  SKIP    {bind:<40} (non-input: {ftype})")
+            return
+
+        if ftype == "mode_line":
+            for bkey in ("bind_mode", "bind_value"):
+                b = field.get(bkey)
+                if b:
+                    binds.append((str(b), bkey))
+        else:
+            b = field.get("bind")
+            if b:
+                binds.append((str(b), "bind"))
+
+        for bind_name, _role in binds:
+            count += 1
+            widget = getattr(owner, bind_name, None)
+            if widget is None:
+                lines.append(f"  MISSING {bind_name:<40} (not set on owner)")
+            else:
+                wtype = type(widget).__name__
+                if isinstance(widget, QLineEdit):
+                    detail = f"text={widget.text()!r}"
+                elif isinstance(widget, QComboBox):
+                    detail = f"current={widget.currentText()!r}"
+                elif isinstance(widget, QCheckBox):
+                    detail = f"checked={widget.isChecked()}"
+                else:
+                    detail = ""
+                lines.append(f"  BOUND   {bind_name:<40} {wtype:<20} {detail}")
+
+    _walk_schema(schema, on_field=on_field)
+
+    header = f"Schema binds for {type(owner).__name__} ({count} fields):"
+    return "\n".join([header] + lines)
