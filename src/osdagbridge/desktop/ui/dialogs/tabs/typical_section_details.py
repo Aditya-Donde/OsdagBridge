@@ -1,7 +1,6 @@
 """Auto-generated tab module extracted from additional_inputs."""
 import sys
 import os
-import math
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QTabWidget, QTabBar, QLabel, QLineEdit,
     QComboBox, QGroupBox, QFormLayout, QPushButton, QScrollArea,
@@ -14,17 +13,10 @@ from PySide6.QtGui import QDoubleValidator, QIntValidator
 
 from osdagbridge.core.bridge_types.plate_girder.bridge_geometry import CrossSectionLayout
 from osdagbridge.desktop.ui.dialogs.tabs.schemas.plate_girder import (
-    CRASH_BARRIER_TAB_SCHEMA,
-    LANE_DETAILS_TAB_SCHEMA,
-    LAYOUT_TAB_SCHEMA,
-    MEDIAN_TAB_SCHEMA,
-    RAILING_TAB_SCHEMA,
     TYPICAL_SECTION_ORCHESTRATOR_SCHEMA,
-    WEARING_COURSE_TAB_SCHEMA,
 )
 from osdagbridge.core.utils.common import *
 from osdagbridge.desktop.ui.utils.custom_titlebar import CustomTitleBar
-from osdagbridge.desktop.ui.dialogs.tabs import schema_io
 from osdagbridge.desktop.ui.dialogs.tabs.ui_builder import UIBuilder
 from osdagbridge.desktop.ui.dialogs.tabs.common import apply_field_style
 from osdagbridge.desktop.ui.docks.cad_cross_section import CrossSectionCADWidget
@@ -92,8 +84,6 @@ class TypicalSectionDetailsTab(QWidget):
         self.carriageway_width = carriageway_width
         self.updating_fields = False
         self._updating_overall_width_display = False
-        self._updating_lane_table = False
-        self._lane_cell_signal_connected = False
         self._expose_child_schema_binds = True
         self.crash_barrier_count = 2  # Assume two crash barriers at carriageway edges
         self.overall_bridge_width_formula = (
@@ -129,40 +119,26 @@ class TypicalSectionDetailsTab(QWidget):
             }
         """)
 
-    def _schema_chunks(self):
-        return (
-            LAYOUT_TAB_SCHEMA,
-            CRASH_BARRIER_TAB_SCHEMA,
-            MEDIAN_TAB_SCHEMA,
-            RAILING_TAB_SCHEMA,
-            WEARING_COURSE_TAB_SCHEMA,
-            LANE_DETAILS_TAB_SCHEMA,
+    def show_warning_message(self, title: str, text: str) -> None:
+        show_warning(self, title, text)
+
+    def show_critical_message(self, title: str, text: str) -> None:
+        show_critical(self, title, text)
+
+    def show_info_message(self, title: str, text: str) -> None:
+        show_info(self, title, text)
+
+    def _child_tabs(self):
+        return tuple(
+            tab for tab in (
+                getattr(self, "layout_tab", None),
+                getattr(self, "crash_barrier_tab", None),
+                getattr(self, "median_tab", None),
+                getattr(self, "railing_tab", None),
+                getattr(self, "wearing_course_tab", None),
+                getattr(self, "lane_details_tab", None),
+            ) if tab is not None
         )
-
-    def _lane_table_state(self):
-        lane_tab = getattr(self, "lane_details_tab", None)
-        export_state = getattr(lane_tab, "export_lane_table_state", None) if lane_tab is not None else None
-        if callable(export_state):
-            return export_state()
-        return {"lane_table_data": []}
-
-    def _restore_lane_table_state(self, data: dict) -> None:
-        lane_rows = data.get("lane_table_data")
-        if not isinstance(lane_rows, list):
-            lane_count = getattr(self, "lane_count_combo", None)
-            if lane_count is not None:
-                self.on_lane_count_changed(lane_count.currentText())
-            return
-
-        lane_tab = getattr(self, "lane_details_tab", None)
-        restore_rows = getattr(lane_tab, "set_lane_rows", None) if lane_tab is not None else None
-        if callable(restore_rows):
-            was_updating = self._updating_lane_table
-            self._updating_lane_table = True
-            try:
-                restore_rows(lane_rows)
-            finally:
-                self._updating_lane_table = was_updating
 
     def _sync_restored_state(self) -> None:
         self._sync_child_tabs_from_parent_state(force=False)
@@ -198,56 +174,9 @@ class TypicalSectionDetailsTab(QWidget):
         # Let's find it.
         self.input_tabs = self.findChild(QTabWidget, "typical_section_tabs")
 
-        # CONNECT COMBO BOXES TO IRC DEFAULT HANDLERS
-
-        if hasattr(self, "crash_barrier_type"):
-            self.crash_barrier_type.currentTextChanged.connect(
-                self.on_crash_barrier_type_changed
-            )
-
-        # CONNECT MEDIAN TAB DROPDOWN
-        if hasattr(self.median_tab, "median_type"):
-            self.median_tab.median_type.currentTextChanged.connect(
-                self.on_median_type_changed
-            )
-
-        # CONNECT RAILING TAB DROPDOWN
-        if hasattr(self.railing_tab, "railing_type"):
-            self.railing_tab.railing_type.currentTextChanged.connect(
-                self.on_railing_type_changed
-            )
-
-        if hasattr(self, "wearing_thickness"):
-            self.wearing_thickness.editingFinished.connect(self._update_cad_preview)
-
-        if hasattr(self, "wearing_density"):
-            self.wearing_density.editingFinished.connect(self._update_cad_preview)
-
-        if hasattr(self, "wearing_material"):
-            self.wearing_material.currentTextChanged.connect(self._update_cad_preview)
-            
-        # Initialize lane defaults per IRC 5 Clause 104.3.1
-        self._initialize_lane_defaults()
-
-        self.deck_thickness.textChanged.connect(self.update_footpath_thickness)
-        self.recalculate_girders()
-        
-        # Update CAD when fields change
-        if hasattr(self, "girder_spacing"):
-            self.girder_spacing.editingFinished.connect(self._update_cad_preview)
-        if hasattr(self, "no_of_girders"):
-            self.no_of_girders.editingFinished.connect(self._update_cad_preview)
-        if hasattr(self, "deck_overhang"):
-            self.deck_overhang.editingFinished.connect(self._update_cad_preview)
-        if hasattr(self, "deck_thickness"):
-            self.deck_thickness.editingFinished.connect(self._update_cad_preview)
-        if hasattr(self, "footpath_width"):
-            self.footpath_width.editingFinished.connect(self._update_cad_preview)
-        if hasattr(self, "footpath_thickness"):
-            self.footpath_thickness.editingFinished.connect(self._update_cad_preview)
-
         # Initialize child tabs from current parent bridge state.
         self._sync_child_tabs_from_parent_state(force=False)
+        self.recalculate_girders()
         # Propagate initial girder count to other tabs
         try:
             if hasattr(self, "no_of_girders") and self.no_of_girders.text():
@@ -309,173 +238,6 @@ class TypicalSectionDetailsTab(QWidget):
         except (ValueError, AttributeError):
             pass
         return default
-
-    def _update_lane_details_rows(self, count):
-        lane_tab = getattr(self, "lane_details_tab", None)
-        setter = getattr(lane_tab, "set_lane_count", None) if lane_tab is not None else None
-        if not callable(setter):
-            return
-        was_updating = self._updating_lane_table
-        self._updating_lane_table = True
-        try:
-            setter(count)
-        finally:
-            self._updating_lane_table = was_updating
-
-    def _renumber_lanes(self):
-        if not hasattr(self, "lane_table"):
-            return
-        rows = self.lane_table.rowCount()
-        for i in range(rows):
-            lane_num_item = QTableWidgetItem(str(i + 1))
-            lane_num_item.setFlags(lane_num_item.flags() & ~Qt.ItemIsEditable)
-            lane_num_item.setTextAlignment(Qt.AlignCenter)
-            self.lane_table.setItem(i, 0, lane_num_item)
-
-    def _design_lane_width_m(self):
-        """IRC 5 Clause 104.3.1 design lane width (m)."""
-        return 3.5
-
-    def _max_lane_count_allowed(self):
-        try:
-            width = float(self.carriageway_width) if self.carriageway_width else 0.0
-            max_lanes = int(math.floor(width / self._design_lane_width_m()))
-            return max(1, min(6, max_lanes if max_lanes > 0 else 1))
-        except Exception:
-            return 1
-
-    def _initialize_lane_defaults(self):
-        """Initialize lane table with IRC 5 Clause 104.3.1 defaults."""
-        if not hasattr(self, "lane_count_combo") or not hasattr(self, "lane_table"):
-            return
-        
-        max_allowed = self._max_lane_count_allowed()
-        
-        # Update combo choices to only show valid options
-        self._updating_lane_table = True
-        try:
-            self.lane_count_combo.blockSignals(True)
-            self.lane_count_combo.clear()
-            for i in range(1, max_allowed + 1):
-                self.lane_count_combo.addItem(str(i))
-            self.lane_count_combo.setCurrentText(str(max_allowed))
-            self.lane_count_combo.blockSignals(False)
-            
-            lane_tab = getattr(self, "lane_details_tab", None)
-            populate = getattr(lane_tab, "populate_defaults", None) if lane_tab is not None else None
-            if callable(populate):
-                populate(max_allowed, self._design_lane_width_m())
-        finally:
-            self._updating_lane_table = False
-        
-        # Connect cell change signal for validation
-        if not self._lane_cell_signal_connected:
-            try:
-                self.lane_table.cellChanged.connect(self._on_lane_cell_changed)
-                self._lane_cell_signal_connected = True
-            except Exception:
-                pass
-
-    def _set_lane_value(self, row, column, text):
-        lane_tab = getattr(self, "lane_details_tab", None)
-        setter = getattr(lane_tab, "_set_cell", None) if lane_tab is not None else None
-        if callable(setter):
-            setter(row, column, text)
-
-    def _parse_lane_float(self, row, column):
-        lane_tab = getattr(self, "lane_details_tab", None)
-        parser = getattr(lane_tab, "_parse_float", None) if lane_tab is not None else None
-        if callable(parser):
-            return parser(row, column)
-        return None
-
-    def _populate_lane_defaults(self, lane_count):
-        lane_tab = getattr(self, "lane_details_tab", None)
-        populate = getattr(lane_tab, "populate_defaults", None) if lane_tab is not None else None
-        if not callable(populate) or lane_count <= 0:
-            return
-        was_updating = self._updating_lane_table
-        self._updating_lane_table = True
-        try:
-            populate(lane_count, self._design_lane_width_m())
-        finally:
-            self._updating_lane_table = was_updating
-
-    def _recompute_lane_starts(self):
-        lane_tab = getattr(self, "lane_details_tab", None)
-        recompute = getattr(lane_tab, "recompute_lane_starts", None) if lane_tab is not None else None
-        if not callable(recompute):
-            return
-        was_updating = self._updating_lane_table
-        self._updating_lane_table = True
-        try:
-            total_width = recompute(self._design_lane_width_m())
-        finally:
-            self._updating_lane_table = was_updating
-
-        try:
-            carriageway = float(self.carriageway_width) if self.carriageway_width else None
-        except Exception:
-            carriageway = None
-        if carriageway and total_width - carriageway > 1e-6:
-            show_warning(
-                self,
-                "Lane Width Exceeds Carriageway",
-                f"Sum of lane widths ({total_width:.2f} m) exceeds carriageway width provided ({carriageway:.2f} m).\n"
-                "Adjust lane count or widths per IRC 5 Clause 104.3.1.",
-            )
-
-    def _validate_lane_width(self, row):
-        design_width = self._design_lane_width_m()
-        width = self._parse_lane_float(row, 2)
-        if width is None:
-            self._set_lane_value(row, 2, f"{design_width:.2f}")
-            return
-        if width + 1e-6 < design_width:
-            show_critical(
-                self,
-                "Lane Width Below IRC Minimum",
-                f"IRC 5 Clause 104.3.1 requires a lane width of at least {design_width:.2f} m.",
-            )
-            self._set_lane_value(row, 2, f"{design_width:.2f}")
-
-    def _validate_lane_start(self, row):
-        design_width = self._design_lane_width_m()
-        start = self._parse_lane_float(row, 1)
-        if start is None:
-            self._recompute_lane_starts()
-            return
-
-        if row == 0:
-            if abs(start) > 1e-6:
-                show_warning(
-                    self,
-                    "Lane Start Offset",
-                    "First lane must start at 0 m from inner edge of crash barrier by default.",
-                )
-                self._recompute_lane_starts()
-            return
-
-        prev_start = self._parse_lane_float(row - 1, 1) or 0.0
-        prev_width = self._parse_lane_float(row - 1, 2) or design_width
-        expected = prev_start + prev_width
-        if abs(start - expected) > 1e-3:
-            show_warning(
-                self,
-                "Lane Start Sequence",
-                "Each lane start must equal previous lane start plus previous lane width per IRC guidance.",
-            )
-            self._recompute_lane_starts()
-
-    def _on_lane_cell_changed(self, row, column):
-        if self._updating_lane_table:
-            return
-        if column == 2:
-            self._validate_lane_width(row)
-            self._recompute_lane_starts()
-        elif column == 1:
-            self._validate_lane_start(row)
-            self._recompute_lane_starts()
 
     def update_footpath_value(self, footpath_value):
         self.footpath_value = footpath_value
@@ -744,9 +506,10 @@ class TypicalSectionDetailsTab(QWidget):
 
     def save_values(self):
         values = {}
-        for schema in self._schema_chunks():
-            values.update(schema_io.collect_values(self, schema))
-        values.update(self._lane_table_state())
+        for tab in self._child_tabs():
+            collector = getattr(tab, "collect_data", None)
+            if callable(collector):
+                values.update(collector())
         return values
 
     def collect_data(self) -> dict:
@@ -756,10 +519,10 @@ class TypicalSectionDetailsTab(QWidget):
         if not isinstance(data, dict):
             return
 
-        for schema in self._schema_chunks():
-            schema_io.restore_values(self, schema, data)
-
-        self._restore_lane_table_state(data)
+        for tab in self._child_tabs():
+            restorer = getattr(tab, "restore_data", None)
+            if callable(restorer):
+                restorer(data)
         self._sync_restored_state()
 
     def restore_data(self, data: dict) -> None:
@@ -769,20 +532,11 @@ class TypicalSectionDetailsTab(QWidget):
         errors = []
         seen = set()
 
-        for schema in self._schema_chunks():
-            for message in schema_io.validate(self, schema):
-                if message and message not in seen:
-                    seen.add(message)
-                    errors.append(message)
-
-        lane_tab = getattr(self, "lane_details_tab", None)
-        validate_lanes = getattr(lane_tab, "validate_lane_rows", None) if lane_tab is not None else None
-        if callable(validate_lanes):
-            try:
-                carriageway = float(self.carriageway_width) if self.carriageway_width else 0.0
-            except Exception:
-                carriageway = 0.0
-            for msg in validate_lanes(self._design_lane_width_m(), carriageway):
+        for tab in self._child_tabs():
+            validator = getattr(tab, "validate_tab", None)
+            if not callable(validator):
+                continue
+            for msg in validator():
                 if msg not in seen:
                     seen.add(msg)
                     errors.append(msg)
@@ -812,16 +566,17 @@ class TypicalSectionDetailsTab(QWidget):
         # Wearing course defaults
         if hasattr(self, "wearing_material"):
             self.wearing_material.setCurrentText("Concrete")
-            self.on_wearing_material_changed(self.wearing_material.currentText())
+            wearing_tab = getattr(self, "wearing_course_tab", None)
+            sync = getattr(wearing_tab, "sync_from_parent_material", None) if wearing_tab is not None else None
+            params = sync(self.wearing_material.currentText()) if callable(sync) else {}
+            self._push_cad_params(params)
         if hasattr(self, "wearing_thickness") and not self.wearing_thickness.text():
             self.wearing_thickness.setText("50")
 
-    def _auto_compute_crash_barrier_load(self):
-        barrier_type = self._crash_barrier_state().get("type", "")
-        crash_tab = getattr(self, "crash_barrier_tab", None)
-        compute = getattr(crash_tab, "auto_compute_load", None) if crash_tab is not None else None
-        if callable(compute):
-            compute(barrier_type)
+        lane_tab = getattr(self, "lane_details_tab", None)
+        reset_lanes = getattr(lane_tab, "reset_defaults", None) if lane_tab is not None else None
+        if callable(reset_lanes):
+            reset_lanes()
 
     def _apply_crash_barrier_defaults(self, barrier_type: str, force: bool = False):
         """Populate recommended defaults per IRC 5 selections.
@@ -849,18 +604,6 @@ class TypicalSectionDetailsTab(QWidget):
         params = sync(force=force) if callable(sync) else {}
         self._push_cad_params(params)
 
-    def on_median_type_changed(self, median_type):
-        print(f"Median type changed to: {median_type}")
-        self._apply_median_defaults(median_type, force=True)
-
-        self.recalculate_girders()
-        
-    def on_railing_type_changed(self, railing_type):
-        print(f"Railing type changed to: {railing_type}")
-        self._apply_railing_defaults(force=True)
-
-        self.recalculate_girders()
-
     def get_overall_bridge_width(self):
         try:
             return self._calculate_overall_bridge_width()
@@ -878,82 +621,10 @@ class TypicalSectionDetailsTab(QWidget):
                 self._updating_overall_width_display = False
                 self.overall_bridge_width_display.clear()
 
-    def _reject_overall_width_override(self, text):
-        if self._updating_overall_width_display:
-            return
-        try:
-            entered_value = float(text) if text else None
-        except ValueError:
-            entered_value = None
-
-        expected_value = self._calculate_overall_bridge_width()
-        if entered_value is None or abs(expected_value - entered_value) > 1e-6:
-            if self.overall_bridge_width_display.hasFocus():
-                show_warning(
-                    self,
-                    "Overall Bridge Width Locked",
-                    "Overall Bridge Width is auto-calculated using:\n"
-                    f"{self.overall_bridge_width_formula}",
-                )
-            self._update_overall_bridge_width_display()
-
     def recalculate_girders(self):
         self._update_overall_bridge_width_display()
         self._solve_layout("width")
         self._update_cad_preview()
-
-
-    def on_girder_spacing_changed(self):
-        layout_tab = getattr(self, "layout_tab", None)
-        if self.updating_fields or (layout_tab is not None and layout_tab.is_layout_updating()):
-            return
-        handler = getattr(layout_tab, "handle_layout_field_change", None) if layout_tab is not None else None
-        if not callable(handler):
-            return
-        result = handler(changed_field="spacing")
-        if result.get("error"):
-            self._clear_adjust_notice()
-            show_warning(self, "Layout", result["error"])
-            return
-        if not result.get("ok"):
-            return
-        self._solve_layout("spacing")
-
-    def on_deck_overhang_changed(self):
-        layout_tab = getattr(self, "layout_tab", None)
-        if self.updating_fields or (layout_tab is not None and layout_tab.is_layout_updating()):
-            return
-        handler = getattr(layout_tab, "handle_layout_field_change", None) if layout_tab is not None else None
-        if not callable(handler):
-            return
-        result = handler(changed_field="overhang")
-        if result.get("error"):
-            self._clear_adjust_notice()
-            show_warning(self, "Layout", result["error"])
-            return
-        if not result.get("ok"):
-            return
-        self._solve_layout("overhang")
-
-    def on_no_of_girders_changed(self):
-        layout_tab = getattr(self, "layout_tab", None)
-        if self.updating_fields or (layout_tab is not None and layout_tab.is_layout_updating()):
-            return
-        handler = getattr(layout_tab, "handle_layout_field_change", None) if layout_tab is not None else None
-        if not callable(handler):
-            return
-        result = handler(changed_field="girders")
-        if result.get("error"):
-            self._clear_adjust_notice()
-            show_warning(self, "Layout", result["error"])
-            return
-        if not result.get("ok"):
-            return
-        self._solve_layout("girders")
-
-    def on_footpath_width_changed(self):
-        if not self.updating_fields:
-            self.recalculate_girders()
 
     def validate_footpath_width(self):
         try:
@@ -964,98 +635,6 @@ class TypicalSectionDetailsTab(QWidget):
                                          f"Footpath width must be at least {MIN_FOOTPATH_WIDTH} m as per IRC 5 Clause 104.3.6.")
         except:
             pass
-
-    def _validate_thickness_field(self, field, min_val, max_val, default_val, too_small_msg, too_large_msg):
-        try:
-            text = field.text().strip()
-            if not text:
-                field.setText(str(int(default_val)))
-                return
-            value = float(text)
-            if value < min_val:
-                show_critical(self, "Thickness Error", too_small_msg)
-                field.setText(str(int(min_val)))
-            elif value > max_val:
-                show_critical(self, "Thickness Error", too_large_msg)
-                field.setText(str(int(max_val)))
-        except:
-            field.setText(str(int(default_val)))
-
-    def validate_deck_thickness(self):
-        self._validate_thickness_field(
-            self.deck_thickness,
-            100,
-            500,
-            200,
-            "Deck thickness too small",
-            "Deck thickness too large",
-        )
-
-    def validate_footpath_thickness(self):
-        self._validate_thickness_field(
-            self.footpath_thickness,
-            100,
-            500,
-            200,
-            "Footpath thickness too small",
-            "Footpath thickness too large",
-        )
-
-    def validate_railing_height(self):
-        try:
-            if self.railing_height.text():
-                height = float(self.railing_height.text())
-                if height < MIN_RAILING_HEIGHT:
-                    show_critical(self, "Railing Height Error",
-                                         f"Railing height must be at least {MIN_RAILING_HEIGHT} m as per IRC 5 Clauses 109.7.2.3 and 109.7.2.4.")
-        except:
-            pass
-
-    def update_footpath_thickness(self):
-        if self.deck_thickness.text() and not self.footpath_thickness.text():
-            self.footpath_thickness.setText(self.deck_thickness.text())
-
-    def on_crash_barrier_type_changed(self, barrier_type):
-        if (barrier_type in ["Flexible", "Semi-Rigid"]) and (self.footpath_value == "None"):
-            show_critical(
-                self,
-                "Crash Barrier Type Not Permitted",
-                f"{barrier_type} crash barriers are not permitted on bridges without an outer footpath per IRC 5 Clause 109.6.4.",
-            )
-
-        # IMPORTANT: force=True so layout recalculation cannot override geometry
-        self._apply_crash_barrier_defaults(barrier_type, force=True)
-
-        # Recalculate AFTER geometry is locked
-        self.recalculate_girders()
-
-        # Refresh CAD preview to show the newly selected barrier shape
-        self._update_cad_preview()
-
-
-    def on_railing_load_mode_changed(self, mode):
-        railing_tab = getattr(self, "railing_tab", None)
-        apply_load_mode = getattr(railing_tab, "apply_load_mode", None) if railing_tab is not None else None
-        if callable(apply_load_mode):
-            apply_load_mode(mode)
-
-    def on_lane_count_changed(self, text):
-        """Handle lane count selection change."""
-        if self._updating_lane_table:
-            return
-        try:
-            num_lanes = int(text)
-        except (TypeError, ValueError):
-            return
-
-        self._update_lane_details_rows(num_lanes)
-        self._populate_lane_defaults(num_lanes)
-
-    def on_wearing_material_changed(self, material):
-        wearing_tab = getattr(self, "wearing_course_tab", None)
-        sync = getattr(wearing_tab, "sync_from_parent_material", None) if wearing_tab is not None else None
-        params = sync(material) if callable(sync) else {}
-        self._push_cad_params(params)
 
     def _show_placeholder_message(self, action_name):
         show_info(self, action_name, "This action will be available in an upcoming update.")
