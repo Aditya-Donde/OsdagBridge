@@ -19,6 +19,7 @@ class LayoutTab(SchemaTab):
             owner.overall_bridge_width_display.setToolTip(owner.overall_bridge_width_formula)
 
         self._create_notice_labels(owner, self.builder.page_layout)
+        self._wire_owner_side_effects()
 
     def _create_notice_labels(self, owner, page_layout):
         self.layout_adjust_notice = self._make_notice_label("#000000")
@@ -56,6 +57,71 @@ class LayoutTab(SchemaTab):
             "footpath_thickness_mm": self.widget_float("footpath_thickness"),
         }
 
+    def on_girder_spacing_changed(self) -> None:
+        self._handle_owner_layout_change("spacing")
+
+    def on_deck_overhang_changed(self) -> None:
+        self._handle_owner_layout_change("overhang")
+
+    def on_no_of_girders_changed(self) -> None:
+        self._handle_owner_layout_change("girders")
+
+    def on_footpath_width_changed(self) -> None:
+        owner = getattr(self, "owner", None)
+        if owner is not None and not getattr(owner, "updating_fields", False):
+            recalculate = getattr(owner, "recalculate_girders", None)
+            if callable(recalculate):
+                recalculate()
+
+    def validate_deck_thickness(self) -> None:
+        self._validate_thickness_field(
+            "deck_thickness",
+            100,
+            500,
+            200,
+            "Deck thickness too small",
+            "Deck thickness too large",
+        )
+
+    def validate_footpath_thickness(self) -> None:
+        self._validate_thickness_field(
+            "footpath_thickness",
+            100,
+            500,
+            200,
+            "Footpath thickness too small",
+            "Footpath thickness too large",
+        )
+
+    def _reject_overall_width_override(self, text) -> None:
+        owner = getattr(self, "owner", None)
+        if owner is None or getattr(owner, "_updating_overall_width_display", False):
+            return
+
+        try:
+            entered_value = float(text) if text else None
+        except ValueError:
+            entered_value = None
+
+        try:
+            expected_value = float(owner._calculate_overall_bridge_width())
+        except Exception:
+            expected_value = None
+
+        display = self.get_widget("overall_bridge_width_display")
+        if expected_value is None:
+            return
+        if entered_value is None or abs(expected_value - entered_value) > 1e-6:
+            if display is not None and display.hasFocus():
+                self._show_owner_warning(
+                    "Overall Bridge Width Locked",
+                    "Overall Bridge Width is auto-calculated using:\n"
+                    f"{owner.overall_bridge_width_formula}",
+                )
+            updater = getattr(owner, "_update_overall_bridge_width_display", None)
+            if callable(updater):
+                updater()
+
     def sync_from_bridge_context(self, footpath_value: str) -> None:
         enabled = footpath_value != "None"
         for bind_name in ("footpath_width", "footpath_thickness"):
@@ -80,8 +146,12 @@ class LayoutTab(SchemaTab):
         return params
 
     def clear_layout_fields(self) -> None:
-        for bind_name in ("girder_spacing", "deck_overhang", "no_of_girders"):
-            self.set_widget_text(bind_name, "")
+        self._layout_updating = True
+        try:
+            for bind_name in ("girder_spacing", "deck_overhang", "no_of_girders"):
+                self.set_widget_text(bind_name, "")
+        finally:
+            self._layout_updating = False
 
     def clear_linked_inputs(self) -> None:
         self.clear_layout_fields()
@@ -339,6 +409,89 @@ class LayoutTab(SchemaTab):
             self.layout_warning_notice.setText("")
 
         self.layout_notice_container.setVisible(any_visible)
+
+    def _handle_owner_layout_change(self, changed_field: str) -> None:
+        owner = getattr(self, "owner", None)
+        if owner is None or getattr(owner, "updating_fields", False) or self.is_layout_updating():
+            return
+
+        result = self.handle_layout_field_change(changed_field=changed_field)
+        if result.get("error"):
+            clear = getattr(owner, "_clear_adjust_notice", None)
+            if callable(clear):
+                clear()
+            self._show_owner_warning("Layout", result["error"])
+            return
+        if not result.get("ok"):
+            return
+
+        solver = getattr(owner, "_solve_layout", None)
+        if callable(solver):
+            solver(changed_field)
+
+    def _validate_thickness_field(
+        self,
+        bind_name: str,
+        min_value: float,
+        max_value: float,
+        default_value: float,
+        too_small_msg: str,
+        too_large_msg: str,
+    ) -> None:
+        widget = self.get_widget(bind_name)
+        if widget is None:
+            return
+        try:
+            text = widget.text().strip()
+            if not text:
+                widget.setText(str(int(default_value)))
+                return
+            value = float(text)
+            if value < min_value:
+                self._show_owner_critical("Thickness Error", too_small_msg)
+                widget.setText(str(int(min_value)))
+            elif value > max_value:
+                self._show_owner_critical("Thickness Error", too_large_msg)
+                widget.setText(str(int(max_value)))
+        except Exception:
+            widget.setText(str(int(default_value)))
+
+    def _sync_footpath_thickness_from_deck(self, text: str) -> None:
+        footpath_widget = self.get_widget("footpath_thickness")
+        if footpath_widget is not None and text and not footpath_widget.text():
+            footpath_widget.setText(text)
+
+    def _wire_owner_side_effects(self) -> None:
+        owner = getattr(self, "owner", None)
+        update_preview = getattr(owner, "_update_cad_preview", None) if owner is not None else None
+        if callable(update_preview):
+            for bind_name in (
+                "girder_spacing",
+                "no_of_girders",
+                "deck_overhang",
+                "deck_thickness",
+                "footpath_width",
+                "footpath_thickness",
+            ):
+                widget = self.get_widget(bind_name)
+                if widget is not None and hasattr(widget, "editingFinished"):
+                    widget.editingFinished.connect(update_preview)
+
+        deck_widget = self.get_widget("deck_thickness")
+        if deck_widget is not None and hasattr(deck_widget, "textChanged"):
+            deck_widget.textChanged.connect(self._sync_footpath_thickness_from_deck)
+
+    def _show_owner_warning(self, title: str, text: str) -> None:
+        owner = getattr(self, "owner", None)
+        callback = getattr(owner, "show_warning_message", None) if owner is not None else None
+        if callable(callback):
+            callback(title, text)
+
+    def _show_owner_critical(self, title: str, text: str) -> None:
+        owner = getattr(self, "owner", None)
+        callback = getattr(owner, "show_critical_message", None) if owner is not None else None
+        if callable(callback):
+            callback(title, text)
 
     @staticmethod
     def _make_notice_label(color: str) -> QLabel:
