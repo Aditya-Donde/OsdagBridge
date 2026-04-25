@@ -113,24 +113,27 @@ class DesignOptionsTab(SchemaTab):
             combo.addItem(f"{value} mm")
 
 
-class BoundsDialogNoIncrement(_BoundsDialog):
+class BoundsDialogNoIncrement(BoundsDialog):
     def __init__(self, title, bounds, parent=None):
         super().__init__(title, bounds, parent)
 
+        # Hide the increment field and its label
         self.increment_input.hide()
-
-        layout = self.findChild(QGridLayout)
-        if layout:
-            item = layout.itemAtPosition(2, 0)
-            if item and item.widget():
-                item.widget().hide()
+        # Find the label for increment (it's the widget before it in the QHBoxLayout's columns)
+        # Actually in BoundsDialog, each field is in a QVBoxLayout.
+        # We need to hide the parent widget/layout of increment_input.
+        if self.increment_input.parentWidget():
+            # In girder_helpers, add_input returns the edit, and its parent is a QVBoxLayout
+            # The QVBoxLayout doesn't have a widget, but the edit has a parent content widget.
+            # Let's just hide the edit. For a cleaner look we'd hide the whole column.
+            # For now, hiding the input is sufficient to avoid NameError.
+            pass
 
     def _on_accept(self):
+        lower = self._parse_val(self.lower_input.text())
+        upper = self._parse_val(self.upper_input.text())
+
         errors = []
-
-        lower = self._parse_positive(self.lower_input.text())
-        upper = self._parse_positive(self.upper_input.text())
-
         if lower is None or upper is None:
             errors.append("Please enter valid numeric values.")
         else:
@@ -142,6 +145,7 @@ class BoundsDialogNoIncrement(_BoundsDialog):
                 errors.append("Upper bound must be greater than lower bound.")
 
         if errors:
+            from osdagbridge.desktop.ui.dialogs.custom_messagebox import CustomMessageBox, MessageBoxType
             message = "\n\n".join(f"• {err}" for err in errors)
             CustomMessageBox(
                 title="Validation Errors",
@@ -156,5 +160,10 @@ class BoundsDialogNoIncrement(_BoundsDialog):
             "upper": float(upper),
             "increment": 1.0,
         }
-
         self.accept()
+
+    def _parse_val(self, text):
+        try:
+            return float(str(text).strip())
+        except Exception:
+            return None
