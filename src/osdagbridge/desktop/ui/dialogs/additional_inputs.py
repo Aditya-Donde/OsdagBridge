@@ -1,4 +1,4 @@
-﻿"""
+"""
 Additional Inputs Widget for Highway Bridge Design
 Provides detailed input fields for manual bridge parameter definition
 """
@@ -7,10 +7,10 @@ from PySide6.QtWidgets import (
     QComboBox, QGroupBox, QFormLayout, QPushButton, QScrollArea,
     QCheckBox, QMessageBox, QSizePolicy, QSpacerItem, QStackedWidget,
     QFrame, QGridLayout, QTableWidget, QTableWidgetItem, QHeaderView,
-    QTextEdit, QDialog, QSizePolicy, QSizeGrip, QListView, QStyledItemDelegate
+    QTextEdit, QDialog, QSizeGrip, QListView, QStyledItemDelegate
 )
-from PySide6.QtCore import Qt, Signal, QSize
-from PySide6.QtGui import QDoubleValidator, QIntValidator, QColor, QValidator
+from PySide6.QtCore import Qt, Signal, QSize, QValidator
+from PySide6.QtGui import QDoubleValidator, QIntValidator, QColor
 
 from osdagbridge.core.utils.common import *
 from osdagbridge.desktop.ui.utils.custom_titlebar import CustomTitleBar
@@ -18,32 +18,13 @@ from osdagbridge.desktop.ui.dialogs.tabs.common import apply_field_style, create
 from osdagbridge.desktop.ui.dialogs.custom_messagebox import CustomMessageBox, MessageBoxType
 from osdagbridge.desktop.ui.dialogs.tabs.typical_section_details import TypicalSectionDetailsTab, show_warning
 from osdagbridge.desktop.ui.dialogs.tabs.section_properties_tab import SectionPropertiesTab
-from osdagbridge.desktop.ui.dialogs.tabs.sub_tabs.section_properties.girder_details_tab import GirderDetailsTab
-from osdagbridge.desktop.ui.dialogs.tabs.sub_tabs.section_properties.stiffener_details_tab import StiffenerDetailsTab
-from osdagbridge.desktop.ui.dialogs.tabs.sub_tabs.section_properties.cross_bracing_details_tab import CrossBracingDetailsTab
-from osdagbridge.desktop.ui.dialogs.tabs.sub_tabs.section_properties.end_diaphragm_details_tab import EndDiaphragmDetailsTab
-from osdagbridge.desktop.ui.dialogs.tabs.custom_vehicle_dialog import CustomVehicleDialog
 from osdagbridge.desktop.ui.dialogs.tabs.loading_tab import LoadingTab
 from osdagbridge.desktop.ui.dialogs.tabs.support_conditions_tab import SupportConditionsTab
 from osdagbridge.desktop.ui.dialogs.tabs.design_options_tab import DesignOptionsTab
 from osdagbridge.desktop.ui.dialogs.tabs.design_options_cont_tab import DesignOptionsContTab
 from osdagbridge.desktop.ui.utils.custom_widgets import SmartCursorComboBoxView
 from osdagbridge.desktop.ui.dialogs.tabs import schema_io
-from osdagbridge.desktop.ui.dialogs.tabs.schemas.plate_girder import (
-    LAYOUT_TAB_SCHEMA,
-    CRASH_BARRIER_TAB_SCHEMA,
-    RAILING_TAB_SCHEMA,
-    MEDIAN_TAB_SCHEMA,
-    WEARING_COURSE_TAB_SCHEMA,
-    LANE_DETAILS_TAB_SCHEMA,
-    PERMANENT_LOAD_TAB_SCHEMA,
-    LIVE_LOAD_TAB_SCHEMA,
-    SEISMIC_LOAD_TAB_SCHEMA,
-    WIND_LOAD_TAB_SCHEMA,
-    TEMPERATURE_LOAD_TAB_SCHEMA,
-    CUSTOM_LOAD_TAB_SCHEMA,
-    LOAD_COMBINATION_TAB_SCHEMA,
-    SUPPORT_CONDITIONS_SCHEMA,
+from osdagbridge.core.bridge_types.plate_girder.schemas import (
     DESIGN_OPTIONS_SCHEMA,
     DESIGN_OPTIONS_CONT_SCHEMA,
 )
@@ -76,14 +57,11 @@ class AdditionalInputs(QDialog):
         """)
 
     def _save_inputs(self):
-        saved = {}
         """
         Save additional inputs.
         Validate all fields first.
         If errors exist -> show popup and DO NOT close dialog.
         """
-        #calls validate_widgets_in_tabs which validates all the fields in the following tabs
-        
         #this funciton now asks all tabs to validate themselves
         errors = []
         tabs = [
@@ -104,36 +82,10 @@ class AdditionalInputs(QDialog):
         if errors:
             self._show_validation_errors(errors)
             return
-        # If everything is valid → continue saving
 
-        #clears dictionary before saving new values
-        self.saved_values.clear()
-        #collects all inputs
         self._collect_all_values()
 
         saved = self.saved_values.copy()
-
-        tabs = [
-            getattr(self, "typical_section_tab", None),
-            getattr(self, "section_properties_tab", None),
-            getattr(self, "loading_tab", None),
-            getattr(self, "support_tab", None),
-            getattr(self, "design_options_tab", None),
-            getattr(self, "design_options_cont_tab", None),
-        ]
-
-        for tab in tabs:
-            if not tab:
-                continue
-
-            # save simple UI values
-            if hasattr(tab, "save_values"):
-                saved.update(tab.save_values() or {})
-
-            # save complex data structures
-            if hasattr(tab, "save_properties"):
-                saved.update(tab.save_properties() or {})
-
         self._last_saved_data = saved
 
         CustomMessageBox(
@@ -142,8 +94,6 @@ class AdditionalInputs(QDialog):
             buttons=["OK"],
             dialogType=MessageBoxType.Success,
         ).exec()
-
-        # self.accept() 
 
     def _show_validation_errors(self, errors):
         message = "\n\n".join(f"• {err}" for err in errors)
@@ -189,511 +139,114 @@ class AdditionalInputs(QDialog):
         main_layout = QVBoxLayout(self)
         main_layout.setContentsMargins(1, 1, 1, 1)
         main_layout.setSpacing(0)
-        
-        self.title_bar = CustomTitleBar()
+
+        # Title bar
+        self.title_bar = CustomTitleBar(parent=self)
         self.title_bar.setTitle("Additional Inputs")
         main_layout.addWidget(self.title_bar)
-        
-        self.content_widget = QWidget(self)
-        main_layout.addWidget(self.content_widget, 1)
 
-        size_grip = QSizeGrip(self)
-        size_grip.setFixedSize(16, 16)
+        # Content area
+        content = QWidget()
+        content_layout = QVBoxLayout(content)
+        content_layout.setContentsMargins(12, 12, 12, 12)
+        content_layout.setSpacing(10)
 
-        overlay = QHBoxLayout()
-        overlay.setContentsMargins(0, 0, 4, 4)
-        overlay.addStretch(1)
-        overlay.addWidget(size_grip, 0, Qt.AlignBottom | Qt.AlignRight)
-        main_layout.addLayout(overlay)
-    
-    def init_ui(self):
-        self.setupWrapper()
-        
-        main_layout = QVBoxLayout(self.content_widget)
-        main_layout.setContentsMargins(5, 5, 5, 5)
-        
-        # Main tab widget
-        self.tabs = QTabWidget()
-        self.tabs.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        self.stretching_tab_bar = QTabBar()
-        self.stretching_tab_bar.setElideMode(Qt.ElideRight)
-        self.tabs.setTabBar(self.stretching_tab_bar)
-        self.tabs.setStyleSheet("""
-            QTabWidget::pane {
-                border: 1px solid #d1d1d1;
-                background-color: #ffffff;
-                border-radius: 6px;
-            }
-            QTabBar::tab {
-                font-weight: bold;
-                font-size: 12px;
-                background: #ffffff;
-                color: #3a3a3a;
-                border: 1px solid #d1d1d1;
-                padding: 10px 22px;
-            }
-            QTabBar::tab:selected {
-                background: #90AF13;
-                color: #ffffff;
-                border: 1px solid #90AF13;
-            }
-            QTabBar::tab:hover {
-                background: #90AF13;
-                color: #ffffff;
-            }
+        self.tab_widget = QTabWidget()
+        self.tab_widget.setStyleSheet("""
+            QTabWidget::pane { border: 1px solid #C2C7CB; border-radius: 4px; }
+            QTabBar::tab { background: #f0f0f0; border: 1px solid #C2C7CB; padding: 8px 12px; }
+            QTabBar::tab:selected { background: #ffffff; border-bottom-color: #ffffff; }
         """)
 
-        self._last_top_tab_index = 0
-        
-        # Sub-Tab 1: Typical Section Details
-        self.typical_section_tab = TypicalSectionDetailsTab(self.footpath_value, self.carriageway_width, initial_cad_state=self._initial_cad_state)
-        self.tabs.addTab(self.typical_section_tab, "Typical Section Details")
-        
-        # Sub-Tab 2: Member Properties
-        self.section_properties_tab = SectionPropertiesTab()
-        self.tabs.addTab(self.section_properties_tab, "Member Properties")
-        self.section_properties_tab.set_editable_mode(self._member_properties_editable)
-
-        # Keep girder count in sync across tabs
-        try:
-            self.typical_section_tab.girder_count_changed.connect(self.section_properties_tab.set_girder_count)
-            self._sync_member_properties_girder_count()
-        except Exception:
-            pass
-        
-        # Sub-Tab 3: Loading
-        self.loading_tab = LoadingTab()
-        self.tabs.addTab(self.loading_tab, "Loading")
-        
-        # Sub-Tab 4: Support Conditions
-        self.support_tab = SupportConditionsTab(self)
-        self.tabs.addTab(self.support_tab, "Support Conditions")
-        
-        # Sub-Tab 5: Analysis/Design Options
-        self.design_options_tab = DesignOptionsTab(self)
-        self.tabs.addTab(self.design_options_tab, "Analysis/Design Options")
-        
-        # Sub-Tab 6: Design Options (Cont.)
-        self.design_options_cont_tab = DesignOptionsContTab(self)
-        self.tabs.addTab(self.design_options_cont_tab, "Design Options (Cont.)")
-
-
-        self.tabs.currentChanged.connect(self._on_top_tab_changed)        
-        main_layout.addWidget(self.tabs)
-        
-        action_bar, self.defaults_button, self.save_button = create_action_button_bar()
-        self.defaults_button.clicked.connect(self._apply_defaults)
-        self.save_button.clicked.connect(self._save_inputs)
-        main_layout.addSpacing(6)
-        main_layout.addWidget(action_bar)
-        
-        # Enforce max 2 decimal places for all double validators in the dialog
-        self._enforce_decimal_places(2)
-        # Normalize existing numeric text to 2 decimal places for consistent display
-        self._normalize_numeric_texts(2)
-
-
-    def _enforce_decimal_places(self, places=2):
-        """Force all QDoubleValidator instances in this dialog to the given decimal places."""
-        for line_edit in self.findChildren(QLineEdit):
-            validator = line_edit.validator()
-            if isinstance(validator, QDoubleValidator):
-                # Only enforce standard notation decimals if it's not explicitly scientific
-                if validator.notation() != QDoubleValidator.ScientificNotation:
-                    validator.setDecimals(places)
-                    validator.setNotation(QDoubleValidator.StandardNotation)
-
-    def _normalize_numeric_texts(self, places=2):
-        """Format any numeric QLineEdit text to the specified decimal places."""
-        fmt = f"{{:.{places}f}}"
-        for line_edit in self.findChildren(QLineEdit):
-            # Skip fields with scientific validators
-            validator = line_edit.validator()
-            if isinstance(validator, QDoubleValidator) and validator.notation() == QDoubleValidator.ScientificNotation:
-                continue
-                
-            text = line_edit.text().strip()
-            if not text:
-                continue
-            try:
-                val = float(text)
-                line_edit.setText(fmt.format(val))
-            except ValueError:
-                continue
-
-    def _normalize_member_properties_design_mode(self, mode_str: str) -> str:
-        """Map upstream design labels to Member Properties supported values."""
-        value = str(mode_str or "").strip().lower()
-        if value in {"custom", "customized"}:
-            return "Custom"
-        if value in {"optimized", "optimised"}:
-            return "Optimized"
-        return "Optimized"
-
-    def _sync_member_properties_girder_count(self) -> None:
-        """Push current girder count from Typical Section to Member Properties."""
-        try:
-            count_text = ""
-            if hasattr(self, "typical_section_tab") and hasattr(self.typical_section_tab, "no_of_girders"):
-                count_text = str(self.typical_section_tab.no_of_girders.text() or "").strip()
-            if not count_text:
-                return
-            count = int(float(count_text))
-            if hasattr(self, "section_properties_tab") and hasattr(self.section_properties_tab, "set_girder_count"):
-                self.section_properties_tab.set_girder_count(count)
-        except Exception:
-            pass
-
-    def set_member_properties_design_mode(self, mode_str: str):
-        normalized_mode = self._normalize_member_properties_design_mode(mode_str)
-        if hasattr(self, "section_properties_tab") and hasattr(self.section_properties_tab, "set_design_mode"):
-            self.section_properties_tab.set_design_mode(normalized_mode)
-
-    def _apply_defaults(self):
-        """Apply defaults only to the currently visible top-level tab.
-
-        Important UX: within Member Properties, Defaults should only reset the
-        currently active sub-tab (not the entire Member Properties area).
-        """
-
-        try:
-            current_widget = self.tabs.currentWidget()
-        except Exception:
-            current_widget = None
-
-        if current_widget is getattr(self, "typical_section_tab", None):
-            if hasattr(self.typical_section_tab, "reset_defaults"):
-                self.typical_section_tab.reset_defaults()
-            return
-
-        if current_widget is getattr(self, "section_properties_tab", None):
-            # Member Properties: reset only active sub-tab.
-            if hasattr(self.section_properties_tab, "reset_active_tab_defaults"):
-                self.section_properties_tab.reset_active_tab_defaults()
-            elif hasattr(self.section_properties_tab, "reset_defaults"):
-                # Fallback to legacy behavior.
-                self.section_properties_tab.reset_defaults()
-            return
-
-        if current_widget is getattr(self, "loading_tab", None):
-            for i in range(self.loading_tab.load_tabs.count()):
-                tab = self.loading_tab.load_tabs.widget(i)
-                if hasattr(tab, "reset_defaults"):
-                    tab.reset_defaults()
-            return
-
-        if current_widget is getattr(self, "support_tab", None):
-            if hasattr(self.support_tab, "reset_defaults"):
-                self.support_tab.reset_defaults()
-            return
-
-        if current_widget is getattr(self, "design_options_tab", None):
-            if hasattr(self.design_options_tab, "reset_defaults"):
-                self.design_options_tab.reset_defaults()
-            return
-
-        if current_widget is getattr(self, "design_options_cont_tab", None):
-            if hasattr(self.design_options_cont_tab, "reset_defaults"):
-                self.design_options_cont_tab.reset_defaults()
-            return 
-        # Confirm save to the user (requested behavior). Use an explicit message box
-        # instance so it stays on top of the frameless dialog.
-        box = QMessageBox(self)
-        box.setIcon(QMessageBox.Information)
-        box.setWindowTitle("Saved")
-        box.setText("Inputs saved successfully.")
-        box.setStandardButtons(QMessageBox.Ok)
-        box.setDefaultButton(QMessageBox.Ok)
-        box.setWindowModality(Qt.ApplicationModal)
-        box.exec()
-        """
-        Save additional inputs and close dialog.
-        Data will be collected by template_page via get_all_values().
-        """
-        self.accept()
-    
-    
-    def get_all_values(self):
-        """
-        @author: Faizan
-        Collect and return all CAD-relevant numeric parameters from the
-        Typical Section Details tab.
-
-        Includes values such as girder spacing, deck thickness, crash barrier,
-        railing, median, wearing course, and cross bracing spacing.
-
-        Used by InputDock to update and redraw the CAD cross-section.
-        """
-
-        from osdagbridge.core.utils.common import (
-            KEY_NO_OF_GIRDERS,
-            KEY_GIRDER_SPACING,
-            KEY_DECK_OVERHANG,
-            KEY_DECK_THICKNESS,
-            KEY_FOOTPATH_WIDTH,
-            KEY_FOOTPATH_THICKNESS,
-            KEY_CROSS_BRACING_SPACING,
-            KEY_WEARING_COAT_THICKNESS,
-            KEY_WEARING_COAT_DENSITY,
-            KEY_WEARING_COAT_MATERIAL,
+        # Tab instances
+        self.typical_section_tab = TypicalSectionDetailsTab(
+            footpath_value=self.footpath_value,
+            carriageway_width=self.carriageway_width,
+            parent=self,
+            initial_cad_state=self._initial_cad_state
         )
+        self.section_properties_tab = SectionPropertiesTab(parent=self)
+        self.loading_tab = LoadingTab(parent=self)
+        self.support_tab = SupportConditionsTab(parent_dialog=self)
+        self.design_options_tab = DesignOptionsTab(parent_dialog=self)
+        self.design_options_cont_tab = DesignOptionsContTab(parent_dialog=self)
 
-        values = {}
+        self.tab_widget.addTab(self.typical_section_tab, "Typical Section Details")
+        self.tab_widget.addTab(self.section_properties_tab, "Member Properties")
+        self.tab_widget.addTab(self.loading_tab, "Loading")
+        self.tab_widget.addTab(self.support_tab, "Support Conditions")
+        self.tab_widget.addTab(self.design_options_tab, "Design Options")
+        self.tab_widget.addTab(self.design_options_cont_tab, "Design Options (Cont.)")
 
-        # ---- Typical Section tab ----
-        ts = self.typical_section_tab
+        content_layout.addWidget(self.tab_widget)
 
-        if hasattr(ts, "no_of_girders") and ts.no_of_girders.text():
-            values[KEY_NO_OF_GIRDERS] = int(float(ts.no_of_girders.text()))
+        # Action buttons
+        buttons = create_action_button_bar(
+            self,
+            on_save=self._save_inputs,
+            on_reset=self._on_reset_clicked,
+            on_cancel=self.reject
+        )
+        content_layout.addLayout(buttons)
 
-        if hasattr(ts, "girder_spacing") and ts.girder_spacing.text():
-            values[KEY_GIRDER_SPACING] = float(ts.girder_spacing.text())
+        main_layout.addWidget(content)
 
-        if hasattr(ts, "deck_overhang") and ts.deck_overhang.text():
-            values[KEY_DECK_OVERHANG] = float(ts.deck_overhang.text())
+    def init_ui(self):
+        self.setupWrapper()
 
-        if hasattr(ts, "deck_thickness") and ts.deck_thickness.text():
-            values[KEY_DECK_THICKNESS] = float(ts.deck_thickness.text())
-
-        if hasattr(ts, "footpath_width") and ts.footpath_width.text():
-            values[KEY_FOOTPATH_WIDTH] = float(ts.footpath_width.text())
-
-        if hasattr(ts, "footpath_thickness") and ts.footpath_thickness.text():
-            values[KEY_FOOTPATH_THICKNESS] = float(ts.footpath_thickness.text())
-            
-        if hasattr(ts, "wearing_material"):
-            values[KEY_WEARING_COAT_MATERIAL] = ts.wearing_material.currentText()
-            
-        if hasattr(ts, "wearing_thickness") and ts.wearing_thickness.text():
-            values[KEY_WEARING_COAT_THICKNESS] = float(ts.wearing_thickness.text())
-
-        if hasattr(ts, "wearing_density") and ts.wearing_density.text():
-            values[KEY_WEARING_COAT_DENSITY] = float(ts.wearing_density.text())
-            
-         # ---- Crash Barrier ----
-        if hasattr(ts, "crash_barrier_type"):
-            values["crash_barrier_type"] = ts.crash_barrier_type.currentText()
-            
-        if hasattr(ts, "crash_barrier_width") and ts.crash_barrier_width.text():
-            values["crash_barrier_width"] = float(ts.crash_barrier_width.text())
-
-        if hasattr(ts, "crash_barrier_height") and ts.crash_barrier_height.text():
-            values["crash_barrier_height"] = float(ts.crash_barrier_height.text())
-            
-        # ---- Railing ----
-        if hasattr(ts, "railing_type"):
-            values["railing_type"] = ts.railing_type.currentText()
-            
-        if hasattr(ts, "railing_height") and ts.railing_height.text():
-            values["railing_height"] = float(ts.railing_height.text())
-            
-        if hasattr(ts, "railing_post_spacing") and ts.railing_post_spacing.text():
-            values["railing_post_spacing"] = float(ts.railing_post_spacing.text())
-            
-        if hasattr(ts, "railing_rail_count") and ts.railing_rail_count.text():
-            values["railing_rail_count"] = int(float(ts.railing_rail_count.text()))
-            
-        if hasattr(ts, "railing_post_dia") and ts.railing_post_dia.text():
-            values["railing_post_dia"] = float(ts.railing_post_dia.text())
-            
-        if hasattr(ts, "railing_top_width") and ts.railing_top_width.text():
-            values["railing_top_width"] = float(ts.railing_top_width.text())
-            
-        if hasattr(ts, "railing_bottom_width") and ts.railing_bottom_width.text():
-            values["railing_bottom_width"] = float(ts.railing_bottom_width.text())
-
-        # ---- Median ----
-        if hasattr(ts, "median_type"):
-            values["median_type"] = ts.median_type.currentText()
-            
-        if hasattr(ts, "median_width") and ts.median_width.text():
-            values["median_width"] = float(ts.median_width.text())
-        
-        if hasattr(ts, "median_kerb_height") and ts.median_kerb_height.text():
-            values["median_kerb_height"] = float(ts.median_kerb_height.text())
-            
-        if hasattr(ts, "median_top_width") and ts.median_top_width.text():
-            values["median_top_width"] = float(ts.median_top_width.text())
-            
-        if hasattr(ts, "median_bottom_width") and ts.median_bottom_width.text():
-            values["median_bottom_width"] = float(ts.median_bottom_width.text())
-            
-        if hasattr(ts, "median_barrier_height") and ts.median_barrier_height.text():
-            values["median_barrier_height"] = float(ts.median_barrier_height.text())
-            
-        if hasattr(ts, "median_post_height") and ts.median_post_height.text():
-            values["median_post_height"] = float(ts.median_post_height.text())
-        
-
-        # ---- Cross bracing spacing (Section Properties tab) ----
-        try:
-            bracing_tab = self.section_properties_tab.cross_bracing_details_tab
-            if hasattr(bracing_tab, "bracing_spacing") and bracing_tab.bracing_spacing.text():
-                values[KEY_CROSS_BRACING_SPACING] = float(bracing_tab.bracing_spacing.text())
-            
-        except Exception:
-            pass
-
-        # Keep Member Properties member/pair dropdowns aligned with restored girder count.
-        self._sync_member_properties_girder_count()
-
-        return values
-    def _find_inner_tab_index(self, tab_widget, tab_name: str) -> int:
-        """
-        @author: Faizan
-        Return the index of an inner tab by its label, or -1 if not found.
-        """
-        for i in range(tab_widget.count()):
-            if tab_widget.tabText(i).strip().lower() == tab_name.strip().lower():
-                return i
-        return -1
-
-    def apply_tab_visibility(self, footpath_value: str, include_median: str) -> None:
-        """
-        @author: Faizan
-        Enable or disable Railing and Median sub-tabs based on user selections.
-
-        - Railing tab is enabled only if footpath is present.
-        - Median tab is enabled only if median is included.
-
-        After updating tab visibility, the CAD cross-section preview is
-        refreshed to reflect the changes immediately.
-        """
-        inner_tabs = self.typical_section_tab.input_tabs
-
-        # Railing tab 
-        railing_index = self._find_inner_tab_index(inner_tabs, "Railing")
-        if railing_index >= 0:
-            railing_enabled = (footpath_value != "None")
-            inner_tabs.setTabEnabled(railing_index, railing_enabled)
-
-        #  Median tab 
-        median_index = self._find_inner_tab_index(inner_tabs, "Median")
-        if median_index >= 0:
-            median_enabled = (include_median != "No")
-            inner_tabs.setTabEnabled(median_index, median_enabled)
-        
-        # Trigger CAD update to reflect visibility changes
-        if hasattr(self.typical_section_tab, "_update_cad_preview"):
-            self.typical_section_tab._update_cad_preview()
-            
-
-
-    def update_footpath_value(self, footpath_value):
-        """
-        @author: Faizan
-        Update the footpath configuration across UI and CAD preview.
-
-        Propagates the selected footpath value from the Input Dock to the
-        Typical Section tab, ensuring the CAD cross-section preview updates
-        accordingly (e.g., both sides, left only, or none).
-        """
-        self.footpath_value = footpath_value
-        self.typical_section_tab.update_footpath_value(footpath_value)
-
-
-    def update_project_location(self, location_data):
-        """Update dependent tabs when project location changes"""
-        if hasattr(self, "loading_tab"):
-            if hasattr(self.loading_tab, "temperature_load_tab") and hasattr(self.loading_tab.temperature_load_tab, "update_project_location"):
-                self.loading_tab.temperature_load_tab.update_project_location(location_data)
-            
-            if hasattr(self.loading_tab, "seismic_load_tab") and hasattr(self.loading_tab.seismic_load_tab, "update_project_location"):
-                self.loading_tab.seismic_load_tab.update_project_location(location_data)
-                
-            if hasattr(self.loading_tab, "wind_load_tab") and hasattr(self.loading_tab.wind_load_tab, "update_project_location"):
-                self.loading_tab.wind_load_tab.update_project_location(location_data)
-
-    def set_member_properties_editable(self, editable: bool) -> None:
-        self._member_properties_editable = bool(editable)
-        if hasattr(self, "section_properties_tab") and self.section_properties_tab is not None:
-            try:
-                self.section_properties_tab.set_editable_mode(self._member_properties_editable)
-            except Exception:
-                pass
-
-    def _show_placeholder_message(self, action_name):
-        CustomMessageBox(
-            title="Coming soon",
-            text=f"{action_name} action not implemented yet.",
-            buttons=["OK"],
-            dialogType=MessageBoxType.Information,
+    def _on_reset_clicked(self):
+        res = CustomMessageBox(
+            title="Reset Defaults",
+            text="Are you sure you want to reset all fields to their default values?",
+            buttons=["Yes", "No"],
+            dialogType=MessageBoxType.Question
         ).exec()
 
-    def _on_top_tab_changed(self, index: int) -> None:
-        if index < 0:
-            return
+        if res == QMessageBox.Yes:
+            self.reset_defaults()
 
-        previous = getattr(self, "_last_top_tab_index", 0)
-        if previous == index:
-            return
+    def reset_defaults(self):
+        tabs = [
+            self.typical_section_tab,
+            self.section_properties_tab,
+            self.loading_tab,
+            self.support_tab,
+            self.design_options_tab,
+            self.design_options_cont_tab,
+        ]
+        for tab in tabs:
+            if hasattr(tab, "reset_defaults"):
+                tab.reset_defaults()
 
-        leaving_member_properties = (
-            previous == self.tabs.indexOf(getattr(self, "section_properties_tab", None))
-        )
-        if leaving_member_properties:
-            try:
-                if hasattr(self, "section_properties_tab") and hasattr(self.section_properties_tab, "has_unsaved_changes"):
-                    if self.section_properties_tab.has_unsaved_changes():
-                        CustomMessageBox(
-                            title="Unsaved Inputs",
-                            text="Please save Member Properties before switching tabs.",
-                            buttons=["OK"],
-                            dialogType=MessageBoxType.Warning,
-                        ).exec()
-                        prev = self.tabs.blockSignals(True)
-                        self.tabs.setCurrentIndex(previous)
-                        self.tabs.blockSignals(prev)
-                        return
-
-                if hasattr(self, "section_properties_tab") and hasattr(self.section_properties_tab, "save_properties"):
-                    self._last_saved_data = self.section_properties_tab.save_properties() or {}
-            except Exception:
-                pass
-
-        self._last_top_tab_index = index
-    
     def get_saved_data(self) -> dict:
-        """Get the last saved properties data.
-        
-        Returns:
-            Dictionary containing all saved properties including stiffener details.
-        """
         return self._last_saved_data.copy()
     
     def set_properties_data(self, data: dict) -> None:
-        """Restore previously saved UI and CAD properties across all tabs."""
         if not data:
             return
 
         tabs = [
-            getattr(self, "typical_section_tab", None),
-            getattr(self, "section_properties_tab", None),
-            getattr(self, "loading_tab", None),
-            getattr(self, "support_tab", None),
-            getattr(self, "design_options_tab", None),
-            getattr(self, "design_options_cont_tab", None),
+            self.typical_section_tab,
+            self.section_properties_tab,
+            self.loading_tab,
+            self.support_tab,
+            self.design_options_tab,
+            self.design_options_cont_tab,
         ]
 
         for tab in tabs:
             if not tab:
                 continue
 
-            # Unified restoration
             if hasattr(tab, "restore_data"):
                 tab.restore_data(data)
             
-            # Legacy restoration fallback
             if hasattr(tab, "restore_values"):
-                try:
-                    tab.restore_values(data)
-                except Exception:
-                    pass
+                try: tab.restore_values(data)
+                except Exception: pass
             if hasattr(tab, "restore_properties"):
-                try:
-                    tab.restore_properties(data)
-                except Exception:
-                    pass
+                try: tab.restore_properties(data)
+                except Exception: pass
 
         # Generic restore fallback for non-schema widgets
         try:

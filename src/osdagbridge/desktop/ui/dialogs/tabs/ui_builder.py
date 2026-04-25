@@ -23,7 +23,7 @@ Layout is inferred from schema keys:
 import logging
 
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QDoubleValidator, QIntValidator
+from PySide6.QtGui import QDoubleValidator, QIntValidator, QPainter, QPen, QColor, QRectF
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,

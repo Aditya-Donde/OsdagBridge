@@ -6,8 +6,8 @@ from PySide6.QtWidgets import (
     QComboBox,
     QCheckBox,
 )
-from PySide6.QtCore import Qt, QValidator
-from PySide6.QtGui import QDoubleValidator, QIntValidator
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QDoubleValidator, QIntValidator, QValidator
 import copy
 
 from osdagbridge.desktop.ui.dialogs.tabs.schemas.plate_girder import LOADING_ORCHESTRATOR_SCHEMA
