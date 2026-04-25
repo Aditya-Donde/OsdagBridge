@@ -86,13 +86,16 @@ class AdditionalInputs(QDialog):
         
         #this funciton now asks all tabs to validate themselves
         errors = []
+        tabs = [
+            getattr(self, "typical_section_tab", None),
+            getattr(self, "section_properties_tab", None),
+            getattr(self, "loading_tab", None),
+            getattr(self, "support_tab", None),
+            getattr(self, "design_options_tab", None),
+            getattr(self, "design_options_cont_tab", None),
+        ]
 
-        for tab in [
-            self.loading_tab,
-            self.support_tab,
-            self.design_options_tab,
-            self.design_options_cont_tab,
-        ]:
+        for tab in tabs:
             if hasattr(tab, "validate_tab"):
                 tab_errors = tab.validate_tab()
                 if tab_errors:
@@ -153,58 +156,30 @@ class AdditionalInputs(QDialog):
         ).exec()
     
     def _collect_all_values(self):
-        """Collect values from all schema-driven tabs."""
+        """Collect values from all top-level tabs."""
         values = {}
-        
-        # 1. Typical Section Tab
-        ts = self.typical_section_tab
-        if hasattr(ts, "layout_sub_tab"):
-            values.update(schema_io.collect_values(ts.layout_sub_tab, LAYOUT_TAB_SCHEMA))
-        if hasattr(ts, "crash_barrier_tab"):
-            values.update(schema_io.collect_values(ts.crash_barrier_tab, CRASH_BARRIER_TAB_SCHEMA))
-        if hasattr(ts, "railing_tab"):
-            values.update(schema_io.collect_values(ts.railing_tab, RAILING_TAB_SCHEMA))
-        if hasattr(ts, "median_tab"):
-            values.update(schema_io.collect_values(ts.median_tab, MEDIAN_TAB_SCHEMA))
-        if hasattr(ts, "wearing_course_tab"):
-            values.update(schema_io.collect_values(ts.wearing_course_tab, WEARING_COURSE_TAB_SCHEMA))
-        if hasattr(ts, "lane_details_tab"):
-            values.update(schema_io.collect_values(ts.lane_details_tab, LANE_DETAILS_TAB_SCHEMA))
+        tabs = [
+            getattr(self, "typical_section_tab", None),
+            getattr(self, "section_properties_tab", None),
+            getattr(self, "loading_tab", None),
+            getattr(self, "support_tab", None),
+            getattr(self, "design_options_tab", None),
+            getattr(self, "design_options_cont_tab", None),
+        ]
 
-        # 2. Loading Tab
-        lt = self.loading_tab
-        if hasattr(lt, "permanent_load_tab"):
-            values.update(schema_io.collect_values(lt.permanent_load_tab, PERMANENT_LOAD_TAB_SCHEMA))
-        if hasattr(lt, "live_load_tab"):
-            values.update(schema_io.collect_values(lt.live_load_tab, LIVE_LOAD_TAB_SCHEMA))
-            if hasattr(lt.live_load_tab, "collect_data"):
-                values.update(lt.live_load_tab.collect_data())
-        if hasattr(lt, "seismic_load_tab"):
-            values.update(schema_io.collect_values(lt.seismic_load_tab, SEISMIC_LOAD_TAB_SCHEMA))
-        if hasattr(lt, "wind_load_tab"):
-            values.update(schema_io.collect_values(lt.wind_load_tab, WIND_LOAD_TAB_SCHEMA))
-        if hasattr(lt, "temperature_load_tab"):
-            values.update(schema_io.collect_values(lt.temperature_load_tab, TEMPERATURE_LOAD_TAB_SCHEMA))
-        if hasattr(lt, "custom_load_tab"):
-            if hasattr(lt.custom_load_tab, "collect_data"):
-                values.update(lt.custom_load_tab.collect_data())
-        if hasattr(lt, "load_combination_tab"):
-            if hasattr(lt.load_combination_tab, "collect_data"):
-                values.update(lt.load_combination_tab.collect_data())
+        for tab in tabs:
+            if not tab:
+                continue
 
-        # 3. Support Conditions
-        if hasattr(self, "support_tab"):
-            values.update(schema_io.collect_values(self.support_tab, SUPPORT_CONDITIONS_SCHEMA))
-
-        # 4. Design Options
-        if hasattr(self, "design_options_tab"):
-            values.update(schema_io.collect_values(self.design_options_tab, DESIGN_OPTIONS_SCHEMA))
-        if hasattr(self, "design_options_cont_tab"):
-            values.update(schema_io.collect_values(self.design_options_cont_tab, DESIGN_OPTIONS_CONT_SCHEMA))
-
-        # 5. Section Properties (Handled separately via save_properties usually, but collect here for flat storage)
-        if hasattr(self, "section_properties_tab") and hasattr(self.section_properties_tab, "collect_data"):
-            values.update(self.section_properties_tab.collect_data())
+            # Unified collection
+            if hasattr(tab, "collect_data"):
+                values.update(tab.collect_data())
+            
+            # Legacy collection fallback
+            if hasattr(tab, "save_values"):
+                values.update(tab.save_values() or {})
+            if hasattr(tab, "save_properties"):
+                values.update(tab.save_properties() or {})
 
         self.saved_values.update(values)
     
@@ -691,55 +666,34 @@ class AdditionalInputs(QDialog):
         if not data:
             return
 
-        # 1. Typical Section Tab
-        ts = self.typical_section_tab
-        if hasattr(ts, "layout_sub_tab"):
-            schema_io.restore_values(ts.layout_sub_tab, LAYOUT_TAB_SCHEMA, data)
-        if hasattr(ts, "crash_barrier_tab"):
-            schema_io.restore_values(ts.crash_barrier_tab, CRASH_BARRIER_TAB_SCHEMA, data)
-        if hasattr(ts, "railing_tab"):
-            schema_io.restore_values(ts.railing_tab, RAILING_TAB_SCHEMA, data)
-        if hasattr(ts, "median_tab"):
-            schema_io.restore_values(ts.median_tab, MEDIAN_TAB_SCHEMA, data)
-        if hasattr(ts, "wearing_course_tab"):
-            schema_io.restore_values(ts.wearing_course_tab, WEARING_COURSE_TAB_SCHEMA, data)
-        if hasattr(ts, "lane_details_tab"):
-            schema_io.restore_values(ts.lane_details_tab, LANE_DETAILS_TAB_SCHEMA, data)
+        tabs = [
+            getattr(self, "typical_section_tab", None),
+            getattr(self, "section_properties_tab", None),
+            getattr(self, "loading_tab", None),
+            getattr(self, "support_tab", None),
+            getattr(self, "design_options_tab", None),
+            getattr(self, "design_options_cont_tab", None),
+        ]
 
-        # 2. Loading Tab
-        lt = self.loading_tab
-        if hasattr(lt, "permanent_load_tab"):
-            schema_io.restore_values(lt.permanent_load_tab, PERMANENT_LOAD_TAB_SCHEMA, data)
-        if hasattr(lt, "live_load_tab"):
-            schema_io.restore_values(lt.live_load_tab, LIVE_LOAD_TAB_SCHEMA, data)
-            if hasattr(lt.live_load_tab, "restore_data"):
-                lt.live_load_tab.restore_data(data)
-        if hasattr(lt, "seismic_load_tab"):
-            schema_io.restore_values(lt.seismic_load_tab, SEISMIC_LOAD_TAB_SCHEMA, data)
-        if hasattr(lt, "wind_load_tab"):
-            schema_io.restore_values(lt.wind_load_tab, WIND_LOAD_TAB_SCHEMA, data)
-        if hasattr(lt, "temperature_load_tab"):
-            schema_io.restore_values(lt.temperature_load_tab, TEMPERATURE_LOAD_TAB_SCHEMA, data)
-        if hasattr(lt, "custom_load_tab"):
-            if hasattr(lt.custom_load_tab, "restore_data"):
-                lt.custom_load_tab.restore_data(data)
-        if hasattr(lt, "load_combination_tab"):
-            if hasattr(lt.load_combination_tab, "restore_data"):
-                lt.load_combination_tab.restore_data(data)
+        for tab in tabs:
+            if not tab:
+                continue
 
-        # 3. Support Conditions
-        if hasattr(self, "support_tab"):
-            schema_io.restore_values(self.support_tab, SUPPORT_CONDITIONS_SCHEMA, data)
-
-        # 4. Design Options
-        if hasattr(self, "design_options_tab"):
-            schema_io.restore_values(self.design_options_tab, DESIGN_OPTIONS_SCHEMA, data)
-        if hasattr(self, "design_options_cont_tab"):
-            schema_io.restore_values(self.design_options_cont_tab, DESIGN_OPTIONS_CONT_SCHEMA, data)
-
-        # 5. Section Properties
-        if hasattr(self, "section_properties_tab") and hasattr(self.section_properties_tab, "restore_data"):
-            self.section_properties_tab.restore_data(data)
+            # Unified restoration
+            if hasattr(tab, "restore_data"):
+                tab.restore_data(data)
+            
+            # Legacy restoration fallback
+            if hasattr(tab, "restore_values"):
+                try:
+                    tab.restore_values(data)
+                except Exception:
+                    pass
+            if hasattr(tab, "restore_properties"):
+                try:
+                    tab.restore_properties(data)
+                except Exception:
+                    pass
 
         # Generic restore fallback for non-schema widgets
         try:
