@@ -75,9 +75,6 @@ class GirderDetailsTab(SchemaTab):
         self._suppress_distance_updates = False
         self._suppress_member_switch_prompt = False
 
-        # Build UI from schema
-        UIBuilder(owner=self, schema=GIRDER_DETAILS_SCHEMA).build_tab(self)
-        
         # Manual segment table construction (too custom for current UIBuilder)
         self._setup_segment_table()
         
@@ -203,7 +200,7 @@ class GirderDetailsTab(SchemaTab):
         
         self.available_girders = ["G1"]
         self.segment_chain["G1"] = [{"id": "G1M1", "start": 0.0, "end": 30.0}]
-        
+        self._refresh_girder_dropdown()
         self._on_girder_changed("G1")
 
     def collect_data(self) -> dict:
@@ -222,6 +219,7 @@ class GirderDetailsTab(SchemaTab):
         self.available_girders = data.get("available_girders", ["G1"])
         self.segment_chain = data.get("segment_chain", {})
         self._member_state = data.get("member_state", {})
+        self._refresh_girder_dropdown()
         self._on_girder_changed(self.available_girders[0])
 
     def _on_thickness_mode_changed(self, field_key: str, text: str):
@@ -231,7 +229,7 @@ class GirderDetailsTab(SchemaTab):
 
     def _wire_dirty_tracking(self):
         from PySide6.QtWidgets import QComboBox, QLineEdit, QCheckBox
-        for w in self.findChildren((QComboBox, QLineEdit, QCheckBox)):
+        for w in self.findChildren(QComboBox) + self.findChildren(QLineEdit) + self.findChildren(QCheckBox):
             if isinstance(w, QComboBox): w.currentTextChanged.connect(self._mark_current_member_dirty)
             elif isinstance(w, QLineEdit): w.textChanged.connect(self._mark_current_member_dirty)
             elif isinstance(w, QCheckBox): w.toggled.connect(self._mark_current_member_dirty)
@@ -239,3 +237,115 @@ class GirderDetailsTab(SchemaTab):
     def _on_apply_exterior_clicked(self): pass
     def _on_apply_interior_clicked(self): pass
     def _make_segment_id(self, girder: str, index: int) -> str: return f"{girder}M{index}"
+
+    def _refresh_girder_dropdown(self) -> None:
+        combo = getattr(self, "girder_dropdown", None)
+        if combo is None:
+            return
+        current = combo.currentData() or combo.currentText() or self._current_girder
+        previous = combo.blockSignals(True)
+        try:
+            combo.clear()
+            for girder in self.available_girders:
+                combo.addItem(girder.replace("G", "Girder "), girder)
+            index = combo.findData(current)
+            if index < 0 and self.available_girders:
+                index = combo.findData(self.available_girders[0])
+            if index >= 0:
+                combo.setCurrentIndex(index)
+        finally:
+            combo.blockSignals(previous)
+
+    def _ensure_girder_segments(self, girder: str) -> list[dict]:
+        segments = self.segment_chain.get(girder)
+        if isinstance(segments, list) and segments:
+            return segments
+        default_length = float(self._default_member_length_m)
+        segments = [{"id": f"{girder}M1", "start": 0.0, "end": default_length}]
+        self.segment_chain[girder] = segments
+        return segments
+
+    def list_all_member_ids(self) -> list[str]:
+        member_ids: list[str] = []
+        for girder in self.available_girders:
+            for segment in self._ensure_girder_segments(girder):
+                member_id = str(segment.get("id") or "").strip()
+                if member_id:
+                    member_ids.append(member_id)
+        return member_ids
+
+    def _member_inputs(self, member_id: str) -> dict:
+        current_girder, current_member = self._current_member_key()
+        if member_id == current_member:
+            return schema_io.collect_values(self, GIRDER_DETAILS_SCHEMA)
+
+        girder = str(member_id).split("M", 1)[0]
+        state = self._member_state.get(girder, {}).get(member_id, {})
+        inputs = state.get("inputs", {}) if isinstance(state, dict) else {}
+        return dict(inputs) if isinstance(inputs, dict) else {}
+
+    @staticmethod
+    def _as_float(value, default=0.0) -> float:
+        try:
+            text = str(value).strip()
+            return float(text) if text else float(default)
+        except Exception:
+            return float(default)
+
+    def get_member_section_dimensions(self, member_id: str) -> dict:
+        inputs = self._member_inputs(member_id)
+        top_width = self._as_float(inputs.get("top_width_input"), 0.0)
+        bottom_width = self._as_float(inputs.get("bottom_width_input"), 0.0)
+        web_thickness = self._as_float(inputs.get("web_thickness_value_input"), 0.0)
+        total_depth = self._as_float(inputs.get("total_depth_input"), 0.0)
+        return {
+            "top_flange_width_mm": top_width,
+            "bottom_flange_width_mm": bottom_width,
+            "web_thickness_mm": web_thickness,
+            "total_depth_mm": total_depth,
+        }
+
+    def is_member_optimized(self, member_id: str) -> bool:
+        inputs = self._member_inputs(member_id)
+        return str(inputs.get("design_combo", self.design_combo.currentText() if hasattr(self, "design_combo") else "")).strip() == "Optimized"
+
+    def _get_total_span(self) -> float:
+        segments = self._ensure_girder_segments(self._current_girder or self.available_girders[0])
+        if not segments:
+            return float(self._default_member_length_m)
+        start = self._as_float(segments[0].get("start"), 0.0)
+        end = self._as_float(segments[-1].get("end"), self._default_member_length_m)
+        return max(0.0, end - start)
+
+    def export_dependency_state(self) -> dict:
+        self._commit_current_member_state()
+        member_ids = self.list_all_member_ids()
+        return {
+            "available_girders": list(self.available_girders),
+            "segment_chain": copy.deepcopy(self.segment_chain),
+            "member_ids": member_ids,
+            "optimized_members": {member_id for member_id in member_ids if self.is_member_optimized(member_id)},
+            "section_dimensions_by_member": {
+                member_id: self.get_member_section_dimensions(member_id)
+                for member_id in member_ids
+            },
+            "total_span_m": self._get_total_span(),
+        }
+
+    def set_girder_count(self, count):
+        try:
+            requested = max(1, min(int(count), self._max_girder_count))
+        except Exception:
+            requested = 1
+        self.available_girders = [f"G{i}" for i in range(1, requested + 1)]
+        for girder in list(self.segment_chain):
+            if girder not in self.available_girders:
+                self.segment_chain.pop(girder, None)
+        for girder in self.available_girders:
+            self._ensure_girder_segments(girder)
+        self._current_girder = self.available_girders[0]
+        self._refresh_girder_dropdown()
+        self._on_girder_changed(self._current_girder)
+
+    def has_unsaved_changes(self) -> bool:
+        return bool(self._dirty_members)
