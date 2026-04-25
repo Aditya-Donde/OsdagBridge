@@ -14,7 +14,13 @@ from PySide6.QtGui import QDoubleValidator, QIntValidator
 
 from osdagbridge.core.bridge_types.plate_girder.bridge_geometry import CrossSectionLayout
 from osdagbridge.desktop.ui.dialogs.tabs.schemas.plate_girder import (
+    CRASH_BARRIER_TAB_SCHEMA,
+    LANE_DETAILS_TAB_SCHEMA,
+    LAYOUT_TAB_SCHEMA,
+    MEDIAN_TAB_SCHEMA,
+    RAILING_TAB_SCHEMA,
     TYPICAL_SECTION_ORCHESTRATOR_SCHEMA,
+    WEARING_COURSE_TAB_SCHEMA,
 )
 from osdagbridge.core.utils.common import *
 from osdagbridge.desktop.ui.utils.custom_titlebar import CustomTitleBar
@@ -95,6 +101,7 @@ class TypicalSectionDetailsTab(QWidget):
         self._updating_overall_width_display = False
         self._updating_lane_table = False
         self._lane_cell_signal_connected = False
+        self._expose_child_schema_binds = True
         # Track last known numeric values to avoid spurious recalculations on text-only edits
         self._last_spacing_value: float | None = None
         self._last_overhang_value: float | None = None
@@ -731,6 +738,11 @@ class TypicalSectionDetailsTab(QWidget):
         return f"{overhang:.2f}"
 
     def _clear_adjust_notice(self):
+        layout_tab = getattr(self, "layout_tab", None)
+        clear_notices = getattr(layout_tab, "clear_notices", None) if layout_tab is not None else None
+        if callable(clear_notices):
+            clear_notices()
+            return
         if hasattr(self, "layout_adjust_notice"):
             self.layout_adjust_notice.hide()
             self.layout_adjust_notice.setText("")
@@ -763,6 +775,11 @@ class TypicalSectionDetailsTab(QWidget):
         show_warning(self, "Layout", message)
 
     def _show_adjust_notice(self, reason, warning=None):
+        layout_tab = getattr(self, "layout_tab", None)
+        set_notices = getattr(layout_tab, "set_notices", None) if layout_tab is not None else None
+        if callable(set_notices):
+            set_notices(reason=reason, warning=warning)
+            return
         any_visible = bool(reason) or bool(warning)
         if hasattr(self, "layout_adjust_notice"):
             if reason:
