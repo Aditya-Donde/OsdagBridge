@@ -3,7 +3,7 @@
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QScrollArea, QVBoxLayout, QWidget
 
-from osdagbridge.core.bridge_types.plate_girder.ui_fields_additional_input import (
+from osdagbridge.desktop.ui.dialogs.tabs.schemas.plate_girder import (
     RAILING_TAB_SCHEMA,
 )
 from osdagbridge.desktop.ui.dialogs.tabs.ui_builder import UIBuilder

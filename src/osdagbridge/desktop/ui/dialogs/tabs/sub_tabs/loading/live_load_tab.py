@@ -1,6 +1,6 @@
 from PySide6.QtWidgets import QDialog, QWidget
 
-from osdagbridge.core.bridge_types.plate_girder.ui_fields_additional_input import (
+from osdagbridge.desktop.ui.dialogs.tabs.schemas.plate_girder import (
     LIVE_LOAD_TAB_SCHEMA,
 )
 from osdagbridge.desktop.ui.dialogs.custom_messagebox import CustomMessageBox, MessageBoxType

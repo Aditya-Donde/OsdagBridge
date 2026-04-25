@@ -64,6 +64,8 @@ _TYPE_TO_METHOD: dict[str, str] = {
     "label":         "build_label",
     "button":        "build_button",
     "mode_line":     "build_mode_line",
+    "mode_value":    "build_mode_line",
+    "line_with_bounds": "build_line_with_bounds",
 }
 
 # Section types that have their own dedicated builder (return a styled
@@ -75,6 +77,7 @@ _SPECIAL_SECTION_TYPES = {
     "custom_load_combo_table",
     "cad",
     "cad_row",
+    "legend",
     "stacked",
     "diagram",
 }
@@ -138,7 +141,7 @@ class UIBuilder:
         declares ``"bind": "my_combo"``, the builder does
         ``setattr(owner, "my_combo", widget)``.
     schema:
-        Schema dict (from ``ui_fields_additional_input.py``).
+        Schema dict (from the schemas/ directory).
     """
 
     def __init__(self, owner: QWidget, schema: dict) -> None:
@@ -324,6 +327,48 @@ class UIBuilder:
             QPushButton:hover  { background-color: #e6e6e6; color: #2b2b2b; }
             QPushButton:pressed { background-color: #d0d0d0; }
         """)
+        return widget
+
+    def build_line_with_bounds(self, field_def: dict) -> QWidget:
+        """QLineEdit with a side '...' button for dimension bounds."""
+        widget = QWidget()
+        layout = QHBoxLayout(widget)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(6)
+
+        input_widget = QLineEdit()
+        input_widget.setObjectName(str(field_def.get("id", "")))
+        apply_field_style(input_widget)
+        layout.addWidget(input_widget)
+
+        # Main bind usually goes to the input itself for IO
+        bind_name = field_def.get("bind")
+        if bind_name:
+            setattr(self.owner, str(bind_name), input_widget)
+
+        bounds_btn = QPushButton("...")
+        bounds_btn.setFixedSize(28, 28)
+        bounds_btn.setStyleSheet(
+            "QPushButton { background: #f8f8f8; border: 1px solid #d0d0d0; border-radius: 4px; color: #555; font-weight: bold; }"
+            "QPushButton:hover { background: #eeeeee; border-color: #b0b0b0; }"
+        )
+        layout.addWidget(bounds_btn)
+
+        bounds_key = field_def.get("bounds_key")
+        if bounds_key:
+            handler = getattr(self.owner, "_on_bounds_clicked", None)
+            if callable(handler):
+                bounds_btn.clicked.connect(lambda: handler(bounds_key))
+
+        # Secondary binds for the container or button if needed
+        bind_widget = field_def.get("bind_widget")
+        if bind_widget:
+            setattr(self.owner, str(bind_widget), widget)
+        bind_btn = field_def.get("bind_bounds_button")
+        if bind_btn:
+            setattr(self.owner, str(bind_btn), bounds_btn)
+
+        self._connect_signals(input_widget, field_def)
         return widget
 
     def build_mode_line(self, field_def: dict) -> QWidget:
@@ -520,6 +565,8 @@ class UIBuilder:
             self._build_cad_section(parent_layout, section)
         elif stype == "cad_row":
             self._build_cad_row_section(parent_layout, section)
+        elif stype == "legend":
+            parent_layout.addWidget(self._build_legend_widget(section))
         elif stype == "stacked":
             self._build_stacked_section(parent_layout, section, label_width, field_width)
         elif stype == "diagram":
@@ -1284,17 +1331,68 @@ class UIBuilder:
         return cad_widget
 
     def _build_cad_row_section(self, parent_layout: QLayout, section: dict) -> None:
-        """Horizontal row wrapper for multiple CAD widgets (e.g. Support left + detail)."""
+        """Horizontal row wrapper for multiple widgets (CAD, Legend, etc.)."""
         wrap = QFrame()
         wrap.setStyleSheet(_CARD_STYLE)
+        self._apply_cad_sizing(wrap, section)
+
         row = QHBoxLayout(wrap)
         row.setContentsMargins(10, 10, 10, 10)
         row.setSpacing(int(section.get("spacing", 12)))
 
-        for cad in section.get("cads") or []:
-            self._build_cad_section(row, cad)
+        items = section.get("widgets") or section.get("cads") or []
+        for item in items:
+            itype = str(item.get("type", "cad")).lower()
+            stretch = int(item.get("stretch", 0))
+            if itype == "cad":
+                self._build_cad_section(row, item)
+            elif itype == "legend":
+                legend = self._build_legend_widget(item)
+                if stretch > 0:
+                    row.addWidget(legend, stretch)
+                else:
+                    row.addWidget(legend)
 
         parent_layout.addWidget(wrap)
+
+    def _build_legend_widget(self, section: dict) -> QWidget:
+        """Build a small color-coded legend box."""
+        legend = QFrame()
+        legend.setStyleSheet(
+            "QFrame { border: 1px solid #d8d8d8; border-radius: 8px; background-color: #ffffff; }"
+        )
+        self._apply_cad_sizing(legend, section)
+
+        layout = QVBoxLayout(legend)
+        layout.setContentsMargins(10, 10, 10, 10)
+        layout.setSpacing(8)
+
+        title_text = section.get("title", "Legend")
+        if title_text:
+            title = QLabel(title_text)
+            title.setStyleSheet("font-size: 11px; font-weight: 700; color: #333333; border: none;")
+            layout.addWidget(title)
+
+        for item in section.get("items", []):
+            row = QHBoxLayout()
+            row.setSpacing(6)
+
+            color_box = QFrame()
+            color_box.setFixedSize(12, 12)
+            color = item.get("color", "#000000")
+            color_box.setStyleSheet(
+                f"background-color: {color}; border: 1px solid #999999; border-radius: 2px;"
+            )
+            row.addWidget(color_box)
+
+            label = QLabel(item.get("label", ""))
+            label.setStyleSheet("font-size: 11px; color: #444444; border: none;")
+            row.addWidget(label)
+            row.addStretch(1)
+            layout.addLayout(row)
+
+        layout.addStretch(1)
+        return legend
 
     def _apply_cad_sizing(self, widget: QWidget, section: dict) -> None:
         min_size = section.get("min_size")

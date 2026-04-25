@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from PySide6.QtWidgets import QFrame, QTabWidget, QVBoxLayout, QWidget
 
-from osdagbridge.core.bridge_types.plate_girder.ui_fields_additional_input import (
+from osdagbridge.desktop.ui.dialogs.tabs.schemas.plate_girder import (
     MEMBER_PROPERTIES_SCHEMA_V1,
 )
 from osdagbridge.desktop.ui.dialogs.tabs.sub_tabs.section_properties.cross_bracing_details_tab import (

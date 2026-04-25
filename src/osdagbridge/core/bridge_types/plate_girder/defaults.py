@@ -128,7 +128,7 @@ DEFAULT_CAD_END_DIAPHRAGM_FLANGE_WIDTH = 250
 DEFAULT_CAD_END_DIAPHRAGM_WEB_THICKNESS = 12
 DEFAULT_CAD_END_DIAPHRAGM_FLANGE_THICKNESS = 100
 
-# Dictionary-driven Additional-input defaults used by ui_fields_additional_input.py.
+# Dictionary-driven Additional-input defaults used by the schema files under schemas/.
 # Layout values are sourced from initial_sizing.py to keep UI/backend in sync.
 AI_LAYOUT_DEFAULTS = {
     "girder_spacing_m": float(DEFAULT_GIRDER_SPACING),

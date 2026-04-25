@@ -1,6 +1,6 @@
 from PySide6.QtWidgets import QLabel, QSizePolicy, QVBoxLayout, QWidget
 
-from osdagbridge.core.bridge_types.plate_girder.schemas import LAYOUT_TAB_SCHEMA
+from osdagbridge.desktop.ui.dialogs.tabs.schemas.plate_girder import LAYOUT_TAB_SCHEMA
 from osdagbridge.desktop.ui.dialogs.tabs import schema_io
 from osdagbridge.desktop.ui.dialogs.tabs.ui_builder import UIBuilder
 

@@ -13,7 +13,7 @@ from PySide6.QtCore import Qt, Signal, QSize
 from PySide6.QtGui import QDoubleValidator, QIntValidator
 
 from osdagbridge.core.bridge_types.plate_girder.bridge_geometry import CrossSectionLayout
-from osdagbridge.core.bridge_types.plate_girder.ui_fields_additional_input import (
+from osdagbridge.desktop.ui.dialogs.tabs.schemas.plate_girder import (
     CRASH_BARRIER_TAB_SCHEMA,
     LANE_DETAILS_TAB_SCHEMA,
     LAYOUT_TAB_SCHEMA,

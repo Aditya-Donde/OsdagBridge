@@ -1,6 +1,6 @@
 from PySide6.QtWidgets import QWidget
 
-from osdagbridge.core.bridge_types.plate_girder.ui_fields_additional_input import DESIGN_OPTIONS_CONT_SCHEMA
+from osdagbridge.desktop.ui.dialogs.tabs.schemas.plate_girder import DESIGN_OPTIONS_CONT_SCHEMA
 from osdagbridge.desktop.ui.dialogs.tabs import schema_io
 from osdagbridge.desktop.ui.dialogs.tabs.ui_builder import UIBuilder
 

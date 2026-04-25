@@ -1,0 +1,91 @@
+TEMPERATURE_LOAD_TAB_SCHEMA = {
+    "id": "temperature_load_tab",
+    "label_width": 240,
+    "field_width": 140,
+    "description": {"title": "Description Box", "text": ""},
+    "sections": [
+        {
+            "id": "temperature_inputs_section",
+            "title": "Temperature Load (TL) Inputs for Evaluation per IRC6",
+            "type": "input_group",
+            "fields": [
+                {
+                    "id": "highest_max_temp",
+                    "label": "Highest Maximum Air Temperature (°C)",
+                    "type": "line",
+                    "placeholder": "From Project Location",
+                    "bind": "highest_max_temp_input",
+                    "validator": {"type": "double_range", "bottom": -50.0, "top": 100.0, "decimals": 2},
+                    "enabled": False,
+                },
+                {
+                    "id": "lowest_min_temp",
+                    "label": "Lowest Minimum Air Temperature (°C)",
+                    "type": "line",
+                    "placeholder": "From Project Location",
+                    "bind": "lowest_min_temp_input",
+                    "validator": {"type": "double_range", "bottom": -50.0, "top": 100.0, "decimals": 2},
+                    "enabled": False,
+                },
+                {
+                    "id": "thermal_coeff_steel",
+                    "label": "Coefficient of Thermal Expansion for Steel (1/°C)",
+                    "type": "line",
+                    "default": "12.0e-6",
+                    "bind": "thermal_coeff_steel_input",
+                    "validator": {"type": "double_range", "bottom": 0.0, "top": 1.0, "decimals": 8, "notation": "scientific"},
+                },
+                {
+                    "id": "thermal_coeff_rcc",
+                    "label": "Coefficient of Thermal Expansion for RCC (1/°C)",
+                    "type": "line",
+                    "default": "12.0e-6",
+                    "bind": "thermal_coeff_rcc_input",
+                    "validator": {"type": "double_range", "bottom": 0.0, "top": 1.0, "decimals": 8, "notation": "scientific"},
+                },
+            ],
+        },
+        {
+            "id": "bridge_temp_range_section",
+            "title": "Range of Effective Bridge Temperature:",
+            "type": "output_group",
+            "fields": [
+                {
+                    "id": "bridge_temp_min",
+                    "label": "Minimum (°C)",
+                    "type": "line",
+                    "read_only": True,
+                    "bind": "bridge_temp_min_input",
+                },
+                {
+                    "id": "bridge_temp_max",
+                    "label": "Maximum (°C)",
+                    "type": "line",
+                    "read_only": True,
+                    "bind": "bridge_temp_max_input",
+                },
+            ],
+        },
+        {
+            "id": "temp_design_section",
+            "title": "Temperature for Design",
+            "type": "output_group",
+            "fields": [
+                {
+                    "id": "temp_rise",
+                    "label": "Rise (°C)",
+                    "type": "line",
+                    "read_only": True,
+                    "bind": "temp_rise_input",
+                },
+                {
+                    "id": "temp_fall",
+                    "label": "Fall (°C)",
+                    "type": "line",
+                    "read_only": True,
+                    "bind": "temp_fall_input",
+                },
+            ],
+        },
+    ],
+}

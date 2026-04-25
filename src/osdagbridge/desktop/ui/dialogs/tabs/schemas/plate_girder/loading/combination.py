@@ -1,0 +1,31 @@
+LOAD_COMBINATION_TAB_SCHEMA = {
+    "id": "load_combination_tab",
+    "label_width": 280,
+    "description": {"title": "Description Box", "text": ""},
+    "sections": [
+        {
+            "id": "irc_load_combos_section",
+            "title": "Load Combinations from IRC 6",
+            "type": "dynamic_checkbox_list",
+            "bind": "irc_load_combos_checkboxes",
+            "layout_bind": "irc_content_layout",
+            "title_bind": "irc_load_combos_title",
+            "default_checked": False,
+        },
+        {
+            "id": "custom_load_combo_section",
+            "title": "Custom Load Combination",
+            "type": "custom_load_combo_table",
+            "bind": "custom_load_combo_table",
+            "columns": ["S.No.", "Combination Name", "Include"],
+            "add_button_bind": "load_combo_add_btn",
+            "add_button_text": "Add Custom Combination",
+            "edit_button_bind": "load_combo_edit_btn",
+            "edit_button_text": "Modify",
+            "delete_button_bind": "load_combo_delete_btn",
+            "delete_button_text": "Delete",
+            "title_bind": "custom_combo_title",
+            "min_table_height": 180,
+        },
+    ],
+}

@@ -11,7 +11,7 @@ from PySide6.QtWidgets import QCheckBox, QComboBox, QLineEdit, QWidget
 _log = logging.getLogger(__name__)
 
 
-_FIELD_SECTION_TYPES = {"line", "number", "combo", "mode_line", "checkbox", "computed", "button", "label"}
+_FIELD_SECTION_TYPES = {"line", "number", "combo", "mode_line", "mode_value", "checkbox", "computed", "button", "label"}
 _NON_INPUT_FIELD_TYPES = {"button", "label"}
 
 
@@ -207,7 +207,7 @@ def _reset_field(owner, field: dict) -> None:
     if ftype in _NON_INPUT_FIELD_TYPES:
         return
 
-    if ftype == "mode_line":
+    if ftype in {"mode_line", "mode_value"}:
         for bind_key, default_key in (("bind_mode", "default_mode"), ("bind_value", "default_value")):
             bind = field.get(bind_key)
             if bind:
@@ -239,7 +239,7 @@ def _collect_field_values(owner, field: dict) -> dict:
     if ftype in _NON_INPUT_FIELD_TYPES:
         return {}
 
-    if ftype == "mode_line":
+    if ftype in {"mode_line", "mode_value"}:
         values = {}
         mode_bind = field.get("bind_mode")
         value_bind = field.get("bind_value")
@@ -265,7 +265,7 @@ def _restore_field(owner, field: dict, data: dict) -> None:
     if ftype in _NON_INPUT_FIELD_TYPES:
         return
 
-    if ftype == "mode_line":
+    if ftype in {"mode_line", "mode_value"}:
         mode_bind = field.get("bind_mode")
         value_bind = field.get("bind_value")
         if mode_bind and mode_bind in data:
@@ -284,7 +284,7 @@ def _validate_field(owner, field: dict) -> list[str]:
     if ftype in _NON_INPUT_FIELD_TYPES:
         return []
 
-    if ftype == "mode_line":
+    if ftype in {"mode_line", "mode_value"}:
         widget = getattr(owner, str(field.get("bind_value")), None)
     else:
         widget = getattr(owner, str(field.get("bind")), None)
@@ -438,7 +438,7 @@ def describe_binds(owner, schema: dict) -> str:
                 lines.append(f"  SKIP    {bind:<40} (non-input: {ftype})")
             return
 
-        if ftype == "mode_line":
+        if ftype in {"mode_line", "mode_value"}:
             for bkey in ("bind_mode", "bind_value"):
                 b = field.get(bkey)
                 if b:
