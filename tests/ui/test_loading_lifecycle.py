@@ -1,4 +1,4 @@
-from osdagbridge.desktop.ui.dialogs.tabs.loading_tab import LoadingTab
+from osdagbridge.desktop.ui.dialogs.tabs.additional_inputs.loading_tab import LoadingTab
 
 
 def test_loading_tab_round_trip(qapp):

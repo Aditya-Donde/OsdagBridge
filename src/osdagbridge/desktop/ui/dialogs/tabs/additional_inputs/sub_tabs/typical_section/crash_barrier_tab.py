@@ -4,7 +4,7 @@ from osdagbridge.desktop.ui.dialogs.tabs.schemas.plate_girder import (
     CRASH_BARRIER_TAB_SCHEMA,
 )
 from osdagbridge.desktop.ui.dialogs.tabs.base import SchemaTab
-from osdagbridge.desktop.ui.dialogs.tabs.sub_tabs.typical_section.barrier_form_helper import (
+from osdagbridge.desktop.ui.dialogs.tabs.additional_inputs.sub_tabs.typical_section.barrier_form_helper import (
     BarrierFormConfig,
     BarrierFormHelper,
 )

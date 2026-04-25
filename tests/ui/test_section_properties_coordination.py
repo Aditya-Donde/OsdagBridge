@@ -1,4 +1,4 @@
-from osdagbridge.desktop.ui.dialogs.tabs.section_properties_tab import SectionPropertiesTab
+from osdagbridge.desktop.ui.dialogs.tabs.additional_inputs.section_properties_tab import SectionPropertiesTab
 
 
 def test_section_properties_round_trip(qapp):

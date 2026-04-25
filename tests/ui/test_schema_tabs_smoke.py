@@ -1,11 +1,11 @@
 from osdagbridge.desktop.ui.dialogs.additional_inputs import AdditionalInputs
-from osdagbridge.desktop.ui.dialogs.tabs.loading_tab import LoadingTab
-from osdagbridge.desktop.ui.dialogs.tabs.section_properties_tab import SectionPropertiesTab
-from osdagbridge.desktop.ui.dialogs.tabs.support_conditions_tab import SupportConditionsTab
-from osdagbridge.desktop.ui.dialogs.tabs.design_options_tab import DesignOptionsTab
-from osdagbridge.desktop.ui.dialogs.tabs.design_options_cont_tab import DesignOptionsContTab
-from osdagbridge.desktop.ui.dialogs.tabs.tab_registry import _TAB_CLASSES, get_tab_class
-from osdagbridge.desktop.ui.dialogs.tabs.typical_section_details import TypicalSectionDetailsTab
+from osdagbridge.desktop.ui.dialogs.tabs.additional_inputs.loading_tab import LoadingTab
+from osdagbridge.desktop.ui.dialogs.tabs.additional_inputs.section_properties_tab import SectionPropertiesTab
+from osdagbridge.desktop.ui.dialogs.tabs.additional_inputs.support_conditions_tab import SupportConditionsTab
+from osdagbridge.desktop.ui.dialogs.tabs.additional_inputs.design_options_tab import DesignOptionsTab
+from osdagbridge.desktop.ui.dialogs.tabs.additional_inputs.design_options_cont_tab import DesignOptionsContTab
+from osdagbridge.desktop.ui.dialogs.tabs.additional_inputs.tab_registry import _TAB_CLASSES, get_tab_class
+from osdagbridge.desktop.ui.dialogs.tabs.additional_inputs.typical_section_details import TypicalSectionDetailsTab
 
 
 def test_additional_inputs_dialog_builds(qapp):

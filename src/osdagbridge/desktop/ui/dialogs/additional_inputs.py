@@ -16,8 +16,8 @@ from osdagbridge.core.utils.common import *
 from osdagbridge.desktop.ui.utils.custom_titlebar import CustomTitleBar
 from osdagbridge.desktop.ui.dialogs.tabs.common import apply_field_style, create_action_button_bar
 from osdagbridge.desktop.ui.dialogs.custom_messagebox import CustomMessageBox, MessageBoxType
-from osdagbridge.desktop.ui.dialogs.tabs.typical_section_details import show_warning
-from osdagbridge.desktop.ui.dialogs.tabs.top_level_config import ADDITIONAL_INPUTS_TAB_CONFIG
+from osdagbridge.desktop.ui.dialogs.tabs.additional_inputs.typical_section_details import show_warning
+from osdagbridge.desktop.ui.dialogs.tabs.additional_inputs.top_level_config import ADDITIONAL_INPUTS_TAB_CONFIG
 from osdagbridge.desktop.ui.utils.custom_widgets import SmartCursorComboBoxView
 from osdagbridge.desktop.ui.dialogs.tabs import schema_io
 

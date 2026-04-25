@@ -5,7 +5,7 @@ from osdagbridge.desktop.ui.dialogs.tabs.schemas.plate_girder import (
     LOAD_COMBINATION_TAB_SCHEMA,
 )
 from osdagbridge.desktop.ui.dialogs.tabs import schema_io
-from osdagbridge.desktop.ui.dialogs.tabs.sub_tabs.loading.load_combo_dialog import LoadComboDialog
+from osdagbridge.desktop.ui.dialogs.tabs.additional_inputs.sub_tabs.loading.load_combo_dialog import LoadComboDialog
 from osdagbridge.desktop.ui.dialogs.tabs.base import SchemaTab
 from osdagbridge.desktop.ui.dialogs.tabs.ui_builder import UIBuilder
 import copy

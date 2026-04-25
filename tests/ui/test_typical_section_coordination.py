@@ -1,4 +1,4 @@
-from osdagbridge.desktop.ui.dialogs.tabs.typical_section_details import TypicalSectionDetailsTab
+from osdagbridge.desktop.ui.dialogs.tabs.additional_inputs.typical_section_details import TypicalSectionDetailsTab
 
 
 def test_typical_section_round_trip(qapp):

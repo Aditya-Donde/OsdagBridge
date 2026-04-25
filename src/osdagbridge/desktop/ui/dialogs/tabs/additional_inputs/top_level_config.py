@@ -5,12 +5,12 @@ its tab bar; adding or reordering a top-level tab is a config edit, not a
 dialog edit.
 """
 
-from osdagbridge.desktop.ui.dialogs.tabs.typical_section_details import TypicalSectionDetailsTab
-from osdagbridge.desktop.ui.dialogs.tabs.section_properties_tab import SectionPropertiesTab
-from osdagbridge.desktop.ui.dialogs.tabs.loading_tab import LoadingTab
-from osdagbridge.desktop.ui.dialogs.tabs.support_conditions_tab import SupportConditionsTab
-from osdagbridge.desktop.ui.dialogs.tabs.design_options_tab import DesignOptionsTab
-from osdagbridge.desktop.ui.dialogs.tabs.design_options_cont_tab import DesignOptionsContTab
+from osdagbridge.desktop.ui.dialogs.tabs.additional_inputs.typical_section_details import TypicalSectionDetailsTab
+from osdagbridge.desktop.ui.dialogs.tabs.additional_inputs.section_properties_tab import SectionPropertiesTab
+from osdagbridge.desktop.ui.dialogs.tabs.additional_inputs.loading_tab import LoadingTab
+from osdagbridge.desktop.ui.dialogs.tabs.additional_inputs.support_conditions_tab import SupportConditionsTab
+from osdagbridge.desktop.ui.dialogs.tabs.additional_inputs.design_options_tab import DesignOptionsTab
+from osdagbridge.desktop.ui.dialogs.tabs.additional_inputs.design_options_cont_tab import DesignOptionsContTab
 
 
 def _typical_section_factory(dialog):

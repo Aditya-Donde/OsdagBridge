@@ -47,7 +47,7 @@ from PySide6.QtWidgets import (
 )
 
 from osdagbridge.desktop.ui.dialogs.tabs.common import apply_field_style
-from osdagbridge.desktop.ui.dialogs.tabs.tab_registry import get_tab_class
+from osdagbridge.desktop.ui.dialogs.tabs.additional_inputs.tab_registry import get_tab_class
 
 _log = logging.getLogger(__name__)
 _MISSING = object()  # sentinel for bind-overwrite detection

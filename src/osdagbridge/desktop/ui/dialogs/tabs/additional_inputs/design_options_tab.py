@@ -4,7 +4,7 @@ from osdagbridge.desktop.ui.dialogs.tabs.schemas.plate_girder import (
     DESIGN_OPTIONS_SCHEMA,
 )
 from osdagbridge.desktop.ui.dialogs.tabs.base import SchemaTab
-from osdagbridge.desktop.ui.dialogs.tabs.sub_tabs.section_properties.girder_helpers import BoundsDialog
+from osdagbridge.desktop.ui.dialogs.tabs.additional_inputs.sub_tabs.section_properties.girder_helpers import BoundsDialog
 
 
 class DesignOptionsTab(SchemaTab):
