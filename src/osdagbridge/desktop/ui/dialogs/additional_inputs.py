@@ -5,7 +5,7 @@ Provides detailed input fields for manual bridge parameter definition
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QTabWidget, QTabBar, QLabel, QLineEdit,
     QComboBox, QGroupBox, QFormLayout, QPushButton, QScrollArea,
-    QCheckBox, QMessageBox, QSizePolicy, QSpacerItem, QStackedWidget,
+    QCheckBox, QSizePolicy, QSpacerItem, QStackedWidget,
     QFrame, QGridLayout, QTableWidget, QTableWidgetItem, QHeaderView,
     QTextEdit, QDialog, QSizeGrip, QListView, QStyledItemDelegate
 )
@@ -64,16 +64,7 @@ class AdditionalInputs(QDialog):
         """
         #this funciton now asks all tabs to validate themselves
         errors = []
-        tabs = [
-            getattr(self, "typical_section_tab", None),
-            getattr(self, "section_properties_tab", None),
-            getattr(self, "loading_tab", None),
-            getattr(self, "support_tab", None),
-            getattr(self, "design_options_tab", None),
-            getattr(self, "design_options_cont_tab", None),
-        ]
-
-        for tab in tabs:
+        for tab in self._iter_top_tabs():
             if hasattr(tab, "validate_tab"):
                 tab_errors = tab.validate_tab()
                 if tab_errors:
@@ -108,30 +99,24 @@ class AdditionalInputs(QDialog):
     def _collect_all_values(self):
         """Collect values from all top-level tabs."""
         values = {}
-        tabs = [
-            getattr(self, "typical_section_tab", None),
-            getattr(self, "section_properties_tab", None),
-            getattr(self, "loading_tab", None),
-            getattr(self, "support_tab", None),
-            getattr(self, "design_options_tab", None),
-            getattr(self, "design_options_cont_tab", None),
-        ]
-
-        for tab in tabs:
-            if not tab:
-                continue
-
-            # Unified collection
+        for tab in self._iter_top_tabs():
             if hasattr(tab, "collect_data"):
                 values.update(tab.collect_data())
-            
-            # Legacy collection fallback
-            if hasattr(tab, "save_values"):
-                values.update(tab.save_values() or {})
-            if hasattr(tab, "save_properties"):
-                values.update(tab.save_properties() or {})
 
-        self.saved_values.update(values)
+        self.saved_values = dict(values)
+
+    def _iter_top_tabs(self):
+        for attr in (
+            "typical_section_tab",
+            "section_properties_tab",
+            "loading_tab",
+            "support_tab",
+            "design_options_tab",
+            "design_options_cont_tab",
+        ):
+            tab = getattr(self, attr, None)
+            if tab is not None:
+                yield tab
     
     def setupWrapper(self):
         self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowSystemMenuHint)
@@ -187,7 +172,7 @@ class AdditionalInputs(QDialog):
             on_reset=self._on_reset_clicked,
             on_cancel=self.reject
         )
-        content_layout.addLayout(buttons)
+        content_layout.addWidget(buttons)
 
         main_layout.addWidget(content)
 
@@ -202,19 +187,11 @@ class AdditionalInputs(QDialog):
             dialogType=MessageBoxType.Question
         ).exec()
 
-        if res == QMessageBox.Yes:
+        if res == "Yes":
             self.reset_defaults()
 
     def reset_defaults(self):
-        tabs = [
-            self.typical_section_tab,
-            self.section_properties_tab,
-            self.loading_tab,
-            self.support_tab,
-            self.design_options_tab,
-            self.design_options_cont_tab,
-        ]
-        for tab in tabs:
+        for tab in self._iter_top_tabs():
             if hasattr(tab, "reset_defaults"):
                 tab.reset_defaults()
 
@@ -225,41 +202,6 @@ class AdditionalInputs(QDialog):
         if not data:
             return
 
-        tabs = [
-            self.typical_section_tab,
-            self.section_properties_tab,
-            self.loading_tab,
-            self.support_tab,
-            self.design_options_tab,
-            self.design_options_cont_tab,
-        ]
-
-        for tab in tabs:
-            if not tab:
-                continue
-
+        for tab in self._iter_top_tabs():
             if hasattr(tab, "restore_data"):
                 tab.restore_data(data)
-            
-            if hasattr(tab, "restore_values"):
-                try: tab.restore_values(data)
-                except Exception: pass
-            if hasattr(tab, "restore_properties"):
-                try: tab.restore_properties(data)
-                except Exception: pass
-
-        # Generic restore fallback for non-schema widgets
-        try:
-            for widget in self.findChildren(QWidget):
-                name = widget.objectName()
-                if not name or name not in data:
-                    continue
-                value = data[name]
-                if isinstance(widget, QLineEdit) and not widget.isReadOnly():
-                    widget.setText(str(value))
-                elif isinstance(widget, QComboBox):
-                    widget.setCurrentText(str(value))
-                elif isinstance(widget, QCheckBox):
-                    widget.setChecked(bool(value))
-        except Exception:
-            pass
