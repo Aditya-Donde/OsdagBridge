@@ -1,5 +1,6 @@
 """Railing sub-tab for Typical Section Details."""
 
+from osdagbridge.core.utils.common import MIN_RAILING_HEIGHT
 from osdagbridge.desktop.ui.dialogs.tabs.schemas.plate_girder import (
     RAILING_TAB_SCHEMA,
 )
@@ -118,3 +119,32 @@ class RailingTab(SchemaTab):
             force=force,
             load_mode="Automatic (IRC 6)",
         )
+
+    def on_railing_type_changed(self, railing_type) -> None:
+        owner = getattr(self, "owner", None)
+        params = self.sync_from_parent_state(force=True)
+        push = getattr(owner, "_push_cad_params", None) if owner is not None else None
+        if callable(push):
+            push(params)
+
+        recalculate = getattr(owner, "recalculate_girders", None) if owner is not None else None
+        if callable(recalculate):
+            recalculate()
+
+    def on_railing_load_mode_changed(self, mode) -> None:
+        self.apply_load_mode(mode)
+
+    def validate_railing_height(self) -> None:
+        try:
+            height = self.widget_float("railing_height")
+            if height is not None and height < MIN_RAILING_HEIGHT:
+                owner = getattr(self, "owner", None)
+                callback = getattr(owner, "show_critical_message", None) if owner is not None else None
+                if callable(callback):
+                    callback(
+                        "Railing Height Error",
+                        f"Railing height must be at least {MIN_RAILING_HEIGHT} m as per IRC 5 "
+                        "Clauses 109.7.2.3 and 109.7.2.4.",
+                    )
+        except Exception:
+            return
