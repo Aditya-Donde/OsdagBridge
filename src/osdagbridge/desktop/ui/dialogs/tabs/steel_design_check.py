@@ -29,7 +29,7 @@ LOAD_COMBINATIONS = [
     "WL", "EL", "IMF", "TL",
 ]
 
-# 8 design checks from the screenshot â 2 columns Ã 4 rows
+# 8 design checks from the screenshot - 2 columns - 4 rows
 DESIGN_CHECKS = [
     ("flexure",          "Strength Limit State (Flexure)"),
     ("shear_long_trans", "Resistance to Longitudinal and Transverse Shear"),
@@ -83,9 +83,9 @@ _RENDER_MAP = {
         "unit": "kNm",
     },
     "shear_long_trans": {
-        # IRC 22:2015 Cl.606.4.1 — Longitudinal shear flow at steel-concrete interface.
-        # Demand  : VL (N/mm) — longitudinal shear flow
-        # Capacity: n_studs * Qu / spacing (N/mm) — stud resistance per unit length
+        # IRC 22:2015 Cl.606.4.1 - Longitudinal shear flow at steel-concrete interface.
+        # Demand  : VL (N/mm) - longitudinal shear flow
+        # Capacity: n_studs * Qu / spacing (N/mm) - stud resistance per unit length
         "eq": (
             "<i>V<sub>L</sub></i> &le; <i>n</i> &middot; <i>Q<sub>u</sub></i> / <i>s</i><br>"
             "<i>V<sub>L</sub></i> = <i>V<sub>d</sub></i> &middot; <i>A<sub>ec</sub></i>"
@@ -129,9 +129,9 @@ _RENDER_MAP = {
 }
 
 
-# âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+# ---------------------------------------------------------------------------
 # Badge style definitions
-# âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+# ---------------------------------------------------------------------------
 
 _BADGE_STYLES = {
     "pass":    ("PASS", "#1a7a4a", "#d4edda"),
@@ -140,12 +140,12 @@ _BADGE_STYLES = {
 }
 
 
-# âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
-# Inline widgets â UtilizationBar and StatusBadge
-# âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+# ---------------------------------------------------------------------------
+# Inline widgets - UtilizationBar and StatusBadge
+# ---------------------------------------------------------------------------
 
 class UtilizationBar(QWidget):
-    """Horizontal fill-bar showing demand/capacity ratio (0â1+)."""
+    """Horizontal fill-bar showing demand/capacity ratio (0-1+)."""
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -199,9 +199,9 @@ class StatusBadge(QLabel):
         self._apply("neutral")
 
 
-# âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+# ---------------------------------------------------------------------------
 # Main tab widget
-# âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+# ---------------------------------------------------------------------------
 
 class SteelDesignCheckTab(QWidget):
     """
@@ -228,12 +228,12 @@ class SteelDesignCheckTab(QWidget):
     """
 
     def __init__(self, parent=None):
-        # Widget tracking dicts â one entry per card key
-        self.check_eq_labels  = {}   # key â equation QLabel
-        self.check_val_labels = {}   # key â demand/capacity QLabel
-        self.check_dcr_labels = {}   # key â DCR QLabel
-        self.check_bars       = {}   # key â UtilizationBar
-        self.check_badges     = {}   # key â StatusBadge
+        # Widget tracking dicts - one entry per card key
+        self.check_eq_labels  = {}   # key - equation QLabel
+        self.check_val_labels = {}   # key - demand/capacity QLabel
+        self.check_dcr_labels = {}   # key - DCR QLabel
+        self.check_bars       = {}   # key - UtilizationBar
+        self.check_badges     = {}   # key - StatusBadge
 
         self.summary_passed_label = None
         self.summary_failed_label = None
@@ -242,7 +242,7 @@ class SteelDesignCheckTab(QWidget):
 
         super().__init__(parent)
 
-        # White background â consistent with other tabs.
+        # White background - consistent with other tabs.
         self.setStyleSheet("background-color: white;")
 
         main_layout = QVBoxLayout(self)
@@ -258,13 +258,13 @@ class SteelDesignCheckTab(QWidget):
         container_layout.setContentsMargins(18, 6, 18, 12)
         container_layout.setSpacing(16)
 
-        # ââ TOP BAR: Member ID + Load Combination in a bordered card âââââââ
+        # - TOP BAR: Member ID + Load Combination in a bordered card -
         container_layout.addWidget(self._build_top_bar())
 
-        # ââ SUMMARY BAR: pass/fail counts + overall badge âââââââââââââ
+        # - SUMMARY BAR: pass/fail counts + overall badge -
         container_layout.addWidget(self._build_summary_bar())
 
-        # ââ CHECK CARDS GRID: 2 columns âââââââââââââââââââââââââââââââ
+        # - CHECK CARDS GRID: 2 columns -
         container_layout.addLayout(self._build_checks_grid())
 
         container_layout.addStretch()
@@ -272,10 +272,9 @@ class SteelDesignCheckTab(QWidget):
         scroll_area.setWidget(container)
         main_layout.addWidget(scroll_area)
 
-    # âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+    # ---------------------------------------------------------------------------
     # SUMMARY BAR
-    # âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
-
+    # ---------------------------------------------------------------------------
     def _build_summary_bar(self):
         """Build the Checks / Passed / Failed summary row with an overall badge."""
         frame = QFrame()
@@ -314,9 +313,9 @@ class SteelDesignCheckTab(QWidget):
 
         return frame
 
-    # ——————————————————————————————————————————————————————————————————————————
-    # HELPERS — exact copy from steel_design_details.py
-    # ——————————————————————————————————————————————————————————————————————————
+# ---------------------------------------------------------------------------
+    # HELPERS - exact copy from steel_design_details.py
+# ---------------------------------------------------------------------------
 
     def _section_card(self, title):
         """Return a borderless card QFrame with a bold title label and a QVBoxLayout."""
@@ -361,7 +360,7 @@ class SteelDesignCheckTab(QWidget):
         Build the Member ID and Load Combination read-only mirror row.
 
         Returns a transparent container widget holding two equal-width individual
-        card frames â one per combo â matching the 'Component' / 'Display Location'
+        card frames - one per combo - matching the 'Component' / 'Display Location'
         card layout used in the Analysis Results tab:
           - each card: white bg, 1 px solid #b0b0b0, border-radius 6 px
           - bold section title at the top, combo below
@@ -371,7 +370,7 @@ class SteelDesignCheckTab(QWidget):
         where the user changes member / load combination; sync_from_output_dock()
         writes new selections in here programmatically.
         """
-        # Shared card stylesheet â identical to comp_card / disp_card in Analysis tab.
+        # Shared card stylesheet - identical to comp_card / disp_card in Analysis tab.
         _CARD_STYLE = (
             "QFrame#controlCard {"
             "  background-color: white;"
@@ -388,7 +387,7 @@ class SteelDesignCheckTab(QWidget):
             " background: transparent; border: none;"
         )
 
-        # Disabled combo: black border / #f4f4f4 bg, no arrow — non-interactive read-only.
+        # Disabled combo: black border / #f4f4f4 bg, no arrow - non-interactive read-only.
         self._DISABLED_COMBO_STYLE = (
             "QComboBox {"
             "  padding: 1px 7px;"
@@ -403,7 +402,7 @@ class SteelDesignCheckTab(QWidget):
             "QComboBox::down-arrow { width: 0px; height: 0px; image: none; }"
         )
 
-        # Transparent row container â no border of its own.
+        # Transparent row container - no border of its own.
         container = QWidget()
         container.setStyleSheet("background: transparent;")
         container.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
@@ -411,7 +410,7 @@ class SteelDesignCheckTab(QWidget):
         row.setContentsMargins(0, 0, 0, 0)
         row.setSpacing(16)   # gap between the two cards (matches controls_row spacing)
 
-        # ââ Member ID card âââââââââââââââââââââââââââââââââââââââââââââââââââââ
+        # - Member ID card -
         member_card = QFrame()
         member_card.setObjectName("controlCard")
         member_card.setStyleSheet(_CARD_STYLE)
@@ -436,7 +435,7 @@ class SteelDesignCheckTab(QWidget):
         )
         mc_layout.addWidget(self.member_combo)
 
-        # ââ Load Combination card ââââââââââââââââââââââââââââââââââââââââââââââ
+        # - Load Combination card -
         load_card = QFrame()
         load_card.setObjectName("controlCard")
         load_card.setStyleSheet(_CARD_STYLE)
@@ -466,10 +465,9 @@ class SteelDesignCheckTab(QWidget):
 
         return container
 
-    # âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+    # ---------------------------------------------------------------------------
     # CHECK CARDS GRID
-    # âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
-
+    # ---------------------------------------------------------------------------
     def _build_checks_grid(self):
         """
         2-column grid of check cards.
@@ -515,7 +513,7 @@ class SteelDesignCheckTab(QWidget):
         card_layout.setContentsMargins(14, 12, 14, 12)
         card_layout.setSpacing(8)
 
-        # ââ 1. Title ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+        # - 1. Title -
         title_lbl = QLabel(title)
         title_lbl.setStyleSheet(
             "font-size: 13px; font-weight: bold; color: #000; "
@@ -524,7 +522,7 @@ class SteelDesignCheckTab(QWidget):
         title_lbl.setWordWrap(True)
         card_layout.addWidget(title_lbl)
 
-        # ââ 2. Equation box (rich text) âââââââââââââââââââââââââââââââââââââââ
+        # - 2. Equation box (rich text) -
         eq_lbl = QLabel()
         eq_lbl.setTextFormat(Qt.RichText)
         eq_lbl.setWordWrap(True)
@@ -539,7 +537,7 @@ class SteelDesignCheckTab(QWidget):
         card_layout.addWidget(eq_lbl)
         self.check_eq_labels[key] = eq_lbl
 
-        # ââ 3. Value lines (demand / capacity) âââââââââââââââââââââââââââââââ
+        # - 3. Value lines (demand / capacity) -
         val_lbl = QLabel()
         val_lbl.setTextFormat(Qt.RichText)
         val_lbl.setWordWrap(True)
@@ -550,32 +548,31 @@ class SteelDesignCheckTab(QWidget):
         card_layout.addWidget(val_lbl)
         self.check_val_labels[key] = val_lbl
 
-        # ââ 4. DCR label âââââââââââââââââââââââââââââââââââââââââââââââââââââ
+        # - 4. DCR label -
         dcr_lbl = QLabel()
         dcr_lbl.setStyleSheet(
             "font-size: 14px; font-weight: bold; color: #555; "
             "background: transparent; border: none;"
         )
-        dcr_lbl.setToolTip("Utilization Ratio = Demand / Capacity  (UR < 1.0 → PASS)")
+        dcr_lbl.setToolTip("Utilization Ratio = Demand / Capacity  (UR < 1.0 - PASS)")
         card_layout.addWidget(dcr_lbl)
         self.check_dcr_labels[key] = dcr_lbl
 
-        # ââ 5. Utilization bar ââââââââââââââââââââââââââââââââââââââââââââââââ
+        # - 5. Utilization bar -
         bar = UtilizationBar()
         card_layout.addWidget(bar)
         self.check_bars[key] = bar
 
-        # ââ 6. Status badge âââââââââââââââââââââââââââââââââââââââââââââââââââ
+        # - 6. Status badge -
         badge = StatusBadge()
         card_layout.addWidget(badge, alignment=Qt.AlignLeft)
         self.check_badges[key] = badge
 
         return card
 
-    # âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+    # ---------------------------------------------------------------------------
     # PUBLIC API
-    # âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
-
+    # ---------------------------------------------------------------------------
     def set_girder_count(self, count):
         """Repopulate the Member ID combo with 'All' plus one entry per girder."""
         self.member_combo.clear()
@@ -629,7 +626,7 @@ class SteelDesignCheckTab(QWidget):
         Populate all 8 design-check cards from IRC 22:2015 pipeline output.
 
         Called by steel_design.py ``_run_design_checks()``.
-        Each card is populated independently â a failure in one card never
+        Each card is populated independently - a failure in one card never
         prevents the others from rendering.
 
         Parameters
@@ -648,7 +645,7 @@ class SteelDesignCheckTab(QWidget):
         # Build a result dict for each card via the DCREngine checks
         results_by_key: dict[str, dict] = {}
 
-        # ââ 1. Flexure (check_id=1) ââââââââââââââââââââââââââââââââââââââââââ
+        # - 1. Flexure (check_id=1) -
         try:
             c = by_id[1]
             results_by_key["flexure"] = {
@@ -658,7 +655,7 @@ class SteelDesignCheckTab(QWidget):
         except Exception:
             pass
 
-        # ââ 2. Shear (check_id=2) ââââââââââââââââââââââââââââââââââââââââââââ
+        # - 2. Shear (check_id=2) -
         try:
             c = by_id[2]
             results_by_key["shear"] = {
@@ -668,7 +665,7 @@ class SteelDesignCheckTab(QWidget):
         except Exception:
             pass
 
-        # ââ 3. Interaction (check_id=3) ââââââââââââââââââââââââââââââââââââââ
+        # - 3. Interaction (check_id=3) -
         try:
             c = by_id[3]
             results_by_key["interaction"] = {
@@ -678,7 +675,7 @@ class SteelDesignCheckTab(QWidget):
         except Exception:
             pass
 
-        # ââ 4. LTB (check_id=4) ââââââââââââââââââââââââââââââââââââââââââââââ
+        # - 4. LTB (check_id=4) -
         try:
             c = by_id[4]
             results_by_key["ltb"] = {
@@ -688,7 +685,7 @@ class SteelDesignCheckTab(QWidget):
         except Exception:
             pass
 
-        # ââ 5. Deflection â worst of Live (id=5) and Total (id=6) ââââââââââââ
+        # - 5. Deflection - worst of Live (id=5) and Total (id=6) -
         try:
             worst = None
             for cid in (5, 6):
@@ -703,7 +700,7 @@ class SteelDesignCheckTab(QWidget):
         except Exception:
             pass
 
-        # ââ 6. Fatigue â worst of Normal (id=7) and Shear (id=8) âââââââââââââ
+        # - 6. Fatigue - worst of Normal (id=7) and Shear (id=8) -
         try:
             worst = None
             for cid in (7, 8):
@@ -718,15 +715,15 @@ class SteelDesignCheckTab(QWidget):
         except Exception:
             pass
 
-        # ── 7. Stress Limitation (Cl.604.3.1) ─────────────────────────────────
-        # ── 8. Resistance to Longitudinal and Transverse Shear (Cl.606.4.1) ──
+        # - 7. Stress Limitation (Cl.604.3.1) -
+        # - 8. Resistance to Longitudinal and Transverse Shear (Cl.606.4.1) -
         #
         # Neither check has a corresponding check_id in DCREngine (only IDs
-        # 1–8 are emitted).  These cards intentionally remain blank — showing
-        # their governing equation only — until the engine adds the checks.
+        # 1-8 are emitted).  These cards intentionally remain blank - showing
+        # their governing equation only - until the engine adds the checks.
         # This matches the Output Dock which shows 0 % for both.
 
-        # ââ Apply results to card widgets âââââââââââââââââââââââââââââââââââââ
+        # - Apply results to card widgets -
         self.design_results = list(results_by_key.values())
 
         for key, res in results_by_key.items():
@@ -734,10 +731,9 @@ class SteelDesignCheckTab(QWidget):
 
         self._refresh_summary()
 
-    # âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+    # ---------------------------------------------------------------------------
     # CARD RENDERING HELPERS
-    # âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
-
+    # ---------------------------------------------------------------------------
     def _apply_card_result(self, key: str, res: dict) -> None:
         """Populate a single card's value/DCR/bar/badge widgets from a result dict."""
         if key not in self.check_val_labels:
