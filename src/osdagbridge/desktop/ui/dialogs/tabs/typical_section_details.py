@@ -17,7 +17,7 @@ from osdagbridge.desktop.ui.dialogs.tabs.schemas.plate_girder import (
 )
 from osdagbridge.core.utils.common import *
 from osdagbridge.desktop.ui.utils.custom_titlebar import CustomTitleBar
-from osdagbridge.desktop.ui.dialogs.tabs.ui_builder import UIBuilder
+from osdagbridge.desktop.ui.dialogs.tabs.base import SchemaTab
 from osdagbridge.desktop.ui.dialogs.tabs.common import apply_field_style
 from osdagbridge.desktop.ui.docks.cad_cross_section import CrossSectionCADWidget
 
@@ -71,28 +71,41 @@ def show_info(parent, title, text):
     msg = _styled_message_box(QMessageBox.Information, title, text, parent)
     msg.exec()
 
-class TypicalSectionDetailsTab(QWidget):
+class TypicalSectionDetailsTab(SchemaTab):
     """Sub-tab for Typical Section Details inputs"""
+
+    schema = TYPICAL_SECTION_ORCHESTRATOR_SCHEMA
 
     footpath_changed = Signal(str)
     girder_count_changed = Signal(int)
 
     def __init__(self, footpath_value="None", carriageway_width=7.5, parent=None, initial_cad_state=None):
+        # State must exist before super().__init__() because the schema build
+        # triggered there constructs child tabs that read these attributes.
         self._initial_cad_state = initial_cad_state or {}
-        super().__init__(parent)
         self.footpath_value = footpath_value
         self.carriageway_width = carriageway_width
         self.updating_fields = False
         self._updating_overall_width_display = False
         self._expose_child_schema_binds = True
-        self.crash_barrier_count = 2  # Assume two crash barriers at carriageway edges
+        self.crash_barrier_count = 2
         self.overall_bridge_width_formula = (
             "OverallBridgeWidth = CrossSectionLayout.total_width = (2 x CarriagewayWidth if Median else CarriagewayWidth) + "
             "2 x CrashBarrierWidth + MedianWidth + (NoOfFootpaths x FootpathWidth) + "
             "(NoOfFootpaths x RailingWidth)"
         )
-        self.init_ui()
-        # Apply homepage CAD state so the preview starts in sync
+
+        super().__init__(parent=parent)
+
+        self.input_tabs = self.findChild(QTabWidget, "typical_section_tabs")
+        self._sync_child_tabs_from_parent_state(force=False)
+        self.recalculate_girders()
+        try:
+            if hasattr(self, "no_of_girders") and self.no_of_girders.text():
+                self.girder_count_changed.emit(int(self.no_of_girders.text()))
+        except Exception:
+            pass
+
         if self._initial_cad_state:
             self.cad_preview.update_params(self._initial_cad_state)
 
@@ -164,26 +177,6 @@ class TypicalSectionDetailsTab(QWidget):
 
         return card, card_layout
 
-    def init_ui(self):
-        # Build UI from orchestrator schema
-        UIBuilder(owner=self, schema=TYPICAL_SECTION_ORCHESTRATOR_SCHEMA).build_tab(self)
-
-        # The orchestrator schema binds cad_preview and the sub-tabs.
-        # We need to ensure input_tabs exists for some logic below.
-        # UIBuilder._build_tab_container sets the objectName to typical_section_tabs.
-        # Let's find it.
-        self.input_tabs = self.findChild(QTabWidget, "typical_section_tabs")
-
-        # Initialize child tabs from current parent bridge state.
-        self._sync_child_tabs_from_parent_state(force=False)
-        self.recalculate_girders()
-        # Propagate initial girder count to other tabs
-        try:
-            if hasattr(self, "no_of_girders") and self.no_of_girders.text():
-                self.girder_count_changed.emit(int(self.no_of_girders.text()))
-        except Exception:
-            pass
-        
     def _update_cad_preview(self):
         """
         @author: Faizan
