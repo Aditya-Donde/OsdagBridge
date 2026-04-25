@@ -27,9 +27,13 @@ class SchemaTab(QWidget):
     """Base class for tabs that are fully defined by a schema."""
     schema = None
 
-    def __init__(self, owner, parent=None):
-        super().__init__(parent or owner)
-        self.owner = owner
+    def __init__(self, owner=None, parent=None):
+        qt_parent = parent
+        if qt_parent is None and owner is not None and owner is not self:
+            qt_parent = owner
+
+        super().__init__(qt_parent)
+        self.owner = self if owner is None else owner
         self.builder = None
         if self.schema:
             # Bind schema widgets and signal handlers to the concrete tab. The
@@ -37,8 +41,8 @@ class SchemaTab(QWidget):
             # coordination.
             self.builder = UIBuilder(owner=self, schema=self.schema)
             self.builder.build_tab(self)
-            if getattr(owner, "_expose_child_schema_binds", False):
-                self._expose_schema_binds_to(owner)
+            if getattr(self.owner, "_expose_child_schema_binds", False):
+                self._expose_schema_binds_to(self.owner)
 
     def _expose_schema_binds_to(self, target) -> None:
         """Mirror schema-bound attributes to a parent controller when requested."""

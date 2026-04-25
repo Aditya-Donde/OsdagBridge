@@ -8,7 +8,7 @@ class SupportConditionsTab(SchemaTab):
     schema = SUPPORT_CONDITIONS_SCHEMA
 
     def __init__(self, parent_dialog):
-        super().__init__(owner=self, parent=parent_dialog)
+        super().__init__(parent=parent_dialog)
         self.setObjectName("support_tab_widget")
         self.setStyleSheet(
             """

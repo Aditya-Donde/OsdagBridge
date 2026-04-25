@@ -13,7 +13,7 @@ class DesignOptionsTab(SchemaTab):
 
     def __init__(self, parent_dialog):
         self._reset_reinforcement_bounds()
-        super().__init__(owner=self, parent=parent_dialog)
+        super().__init__(parent=parent_dialog)
         self._sync_reinforcement_combo()
 
     def restore_properties(self, data: dict):

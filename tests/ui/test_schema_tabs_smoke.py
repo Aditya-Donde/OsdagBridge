@@ -30,6 +30,7 @@ def test_top_level_tabs_build(qapp):
     qapp.processEvents()
 
     assert all(widget is not None for widget in widgets)
+    assert all(widget.owner is widget for widget in widgets[3:])
 
 
 def test_registered_tab_classes_import(qapp):

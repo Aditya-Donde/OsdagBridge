@@ -7,4 +7,4 @@ class DesignOptionsContTab(SchemaTab):
     schema = DESIGN_OPTIONS_CONT_SCHEMA
 
     def __init__(self, parent_dialog):
-        super().__init__(owner=self, parent=parent_dialog)
+        super().__init__(parent=parent_dialog)
