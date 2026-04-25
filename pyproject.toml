@@ -65,6 +65,7 @@ web-frontend = [
 # Developer tools
 dev = [
   "pytest",
+  "pytest-qt",
   "pytest-cov",
   "ruff",
   "mypy",
@@ -102,5 +103,4 @@ addopts = "-ra -q"
 testpaths = [
   "tests"
 ]
-
 
