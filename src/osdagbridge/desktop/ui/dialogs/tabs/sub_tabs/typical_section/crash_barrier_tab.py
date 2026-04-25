@@ -1,10 +1,14 @@
 """Crash Barrier sub-tab for Typical Section Details."""
 
-from osdagbridge.core.utils.common import DEFAULT_CONCRETE_DENSITY
 from osdagbridge.desktop.ui.dialogs.tabs.schemas.plate_girder import (
     CRASH_BARRIER_TAB_SCHEMA,
 )
 from osdagbridge.desktop.ui.dialogs.tabs.base import SchemaTab
+from osdagbridge.desktop.ui.dialogs.tabs.sub_tabs.typical_section.barrier_form_helper import (
+    BarrierFormConfig,
+    BarrierFormHelper,
+)
+from osdagbridge.desktop.cad.irc5_geometry import CrashBarrierGeometry
 
 
 _CRASH_BARRIER_VIEW_SCHEMA = {
@@ -19,6 +23,27 @@ _CRASH_BARRIER_VIEW_SCHEMA = {
     ]
 }
 
+_CRASH_BARRIER_CONFIG = BarrierFormConfig(
+    type_bind="crash_barrier_type",
+    width_bind="crash_barrier_width",
+    height_bind="crash_barrier_height",
+    density_bind="crash_barrier_density",
+    area_bind="crash_barrier_area",
+    load_bind="crash_barrier_load",
+    post_spacing_bind="crash_barrier_post_spacing",
+    density_label_bind="crash_barrier_density_label",
+    area_label_bind="crash_barrier_area_label",
+    post_spacing_label_bind="crash_barrier_post_spacing_label",
+    metallic_type_prefixes=("IRC 5 - Metallic Crash Barrier",),
+    rcc_type_prefixes=(
+        "IRC 5 - RCC Crash Barrier",
+        "IRC 5 - High Containment RCC Crash Barrier",
+    ),
+    custom_fallback_type="IRC 5 - RCC Crash Barrier",
+    width_geom_keys=("bottom_width",),
+    height_geom_keys=("total_height",),
+)
+
 
 class CrashBarrierTab(SchemaTab):
     """Schema-driven crash barrier page bound onto the Typical Section owner."""
@@ -29,99 +54,58 @@ class CrashBarrierTab(SchemaTab):
         self.setStyleSheet("background-color: white;")
 
     def export_barrier_state(self) -> dict:
-        return {
-            "type": self.widget_current_text("crash_barrier_type"),
-            "width_m": self.widget_float("crash_barrier_width"),
-            "height_m": self.widget_float("crash_barrier_height"),
-            "density": self.widget_float("crash_barrier_density"),
-            "area": self.widget_float("crash_barrier_area"),
-            "load": self.widget_float("crash_barrier_load"),
-            "post_spacing_m": self.widget_float("crash_barrier_post_spacing"),
-        }
+        return BarrierFormHelper.export_state(self, _CRASH_BARRIER_CONFIG)
+
+    def export_cad_params(self) -> dict:
+        state = self.export_barrier_state()
+        params = {}
+        if state.get("type"):
+            params["crash_barrier_type"] = state["type"]
+        if state.get("width_m") is not None:
+            params["crash_barrier_width"] = float(state["width_m"]) * 1000
+        if state.get("height_m") is not None:
+            params["crash_barrier_height"] = float(state["height_m"]) * 1000
+        return params
 
     def is_metallic(self, barrier_type: str) -> bool:
-        return str(barrier_type).startswith("IRC 5 - Metallic Crash Barrier")
+        return BarrierFormHelper.is_metallic(_CRASH_BARRIER_CONFIG, barrier_type)
 
     def is_rcc(self, barrier_type: str) -> bool:
-        barrier_type = str(barrier_type)
-        return (
-            barrier_type.startswith("IRC 5 - RCC Crash Barrier")
-            or barrier_type.startswith("IRC 5 - High Containment RCC Crash Barrier")
-        )
+        return BarrierFormHelper.is_rcc(_CRASH_BARRIER_CONFIG, barrier_type)
 
     def effective_type(self, barrier_type: str) -> str:
-        return "IRC 5 - RCC Crash Barrier" if barrier_type == "Custom" else str(barrier_type)
+        return BarrierFormHelper.effective_type(_CRASH_BARRIER_CONFIG, barrier_type)
 
     def auto_compute_load(self, barrier_type: str) -> None:
-        if not self.is_rcc(barrier_type):
-            return
-        try:
-            density = float(self.widget_text("crash_barrier_density").strip() or 0.0)
-            area = float(self.widget_text("crash_barrier_area").strip() or 0.0)
-            self.set_widget_text("crash_barrier_load", f"{density * area:.2f}")
-        except Exception:
-            self.set_widget_text("crash_barrier_load", "")
+        BarrierFormHelper.auto_compute_load(self, _CRASH_BARRIER_CONFIG, barrier_type)
 
     def apply_defaults(self, barrier_type: str, geom: dict | None, *, force: bool = False) -> None:
-        is_rcc = self.is_rcc(barrier_type)
-        is_metallic = self.is_metallic(barrier_type)
-        is_custom = barrier_type == "Custom"
-
-        def maybe_set(bind_name: str, value: str) -> None:
-            if force or not self.widget_text(bind_name).strip():
-                self.set_widget_text(bind_name, value)
-
-        if is_rcc and geom:
-            maybe_set("crash_barrier_density", f"{DEFAULT_CONCRETE_DENSITY:.1f}")
-            if geom.get("bottom_width") is not None:
-                maybe_set("crash_barrier_width", f"{geom['bottom_width'] / 1000:.2f}")
-            if geom.get("total_height") is not None:
-                maybe_set("crash_barrier_height", f"{geom['total_height'] / 1000:.2f}")
-            if self.widget_float("crash_barrier_width") is not None and self.widget_float("crash_barrier_height") is not None:
-                area = self.widget_float("crash_barrier_width", 0.0) * self.widget_float("crash_barrier_height", 0.0)
-                maybe_set("crash_barrier_area", f"{area:.2f}")
-            self.auto_compute_load(barrier_type)
-        elif is_metallic:
-            maybe_set("crash_barrier_post_spacing", "1")
-            if force:
-                self.set_widget_text("crash_barrier_load", "")
-        elif is_custom:
-            if geom and geom.get("bottom_width") is not None:
-                maybe_set("crash_barrier_width", f"{geom['bottom_width'] / 1000:.2f}")
-            if geom and geom.get("total_height") is not None:
-                maybe_set("crash_barrier_height", f"{geom['total_height'] / 1000:.2f}")
-            if force:
-                self.set_widget_text("crash_barrier_load", "")
-
-        self.update_visibility(barrier_type)
+        BarrierFormHelper.apply_defaults(
+            self,
+            _CRASH_BARRIER_CONFIG,
+            barrier_type,
+            geom,
+            force=force,
+        )
 
     def update_visibility(self, barrier_type: str) -> None:
-        is_metallic = self.is_metallic(barrier_type)
-        is_rcc = self.is_rcc(barrier_type)
-        is_custom = barrier_type == "Custom"
+        BarrierFormHelper.update_visibility(
+            self,
+            _CRASH_BARRIER_CONFIG,
+            barrier_type,
+        )
 
-        hide_density_area = is_metallic or is_custom
-        for bind_name in ("crash_barrier_density", "crash_barrier_density_label", "crash_barrier_area", "crash_barrier_area_label"):
-            widget = self.get_widget(bind_name)
-            if widget is not None:
-                widget.setVisible(not hide_density_area)
-        if hide_density_area:
-            self.set_widget_text("crash_barrier_density", "")
-            self.set_widget_text("crash_barrier_area", "")
+    def sync_from_parent_geometry(self, barrier_type: str, geom: dict | None, *, force: bool = False) -> dict:
+        self.apply_defaults(barrier_type, geom, force=force)
+        params = self.export_cad_params()
+        if barrier_type:
+            params["crash_barrier_type"] = barrier_type
+        return params
 
-        for bind_name in ("crash_barrier_post_spacing", "crash_barrier_post_spacing_label"):
-            widget = self.get_widget(bind_name)
-            if widget is not None:
-                widget.setVisible(is_metallic)
-        if is_metallic and not self.widget_text("crash_barrier_post_spacing").strip():
-            self.set_widget_text("crash_barrier_post_spacing", "1")
-        if not is_metallic:
-            self.set_widget_text("crash_barrier_post_spacing", "")
-
-        load_widget = self.get_widget("crash_barrier_load")
-        if load_widget is not None:
-            load_widget.setEnabled(True)
-            load_widget.setReadOnly(is_rcc)
-            load_widget.setPlaceholderText("" if not is_custom else "Enter custom load per IRC 6 guidance")
-        if is_rcc:
-            self.auto_compute_load(barrier_type)
+    def sync_from_parent_state(self, *, force: bool = False) -> dict:
+        barrier_type = self.export_barrier_state().get("type")
+        if not barrier_type:
+            return {}
+        effective_barrier_type = self.effective_type(barrier_type)
+        geom = CrashBarrierGeometry.get_geometry(effective_barrier_type)
+        return self.sync_from_parent_geometry(barrier_type, geom, force=force)
