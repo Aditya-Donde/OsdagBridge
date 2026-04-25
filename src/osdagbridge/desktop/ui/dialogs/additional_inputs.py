@@ -24,7 +24,7 @@ from osdagbridge.desktop.ui.dialogs.tabs.design_options_tab import DesignOptions
 from osdagbridge.desktop.ui.dialogs.tabs.design_options_cont_tab import DesignOptionsContTab
 from osdagbridge.desktop.ui.utils.custom_widgets import SmartCursorComboBoxView
 from osdagbridge.desktop.ui.dialogs.tabs import schema_io
-from osdagbridge.core.bridge_types.plate_girder.schemas import (
+from osdagbridge.desktop.ui.dialogs.tabs.schemas.plate_girder import (
     DESIGN_OPTIONS_SCHEMA,
     DESIGN_OPTIONS_CONT_SCHEMA,
 )
