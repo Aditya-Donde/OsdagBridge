@@ -82,6 +82,7 @@ LIVE_LOAD_TAB_SCHEMA = {
             "mode_width": 120,
             "value_width": 80,
             "on_mode_change": "_on_footpath_mode_changed",
+            "conditions": [{"when": "footpath_mode_combo", "equals": "User-defined", "action": "enable"}],
         },
     ],
     "description": {
@@ -165,7 +166,7 @@ SEISMIC_LOAD_TAB_SCHEMA = {
                     "bind_mode": "dead_load_seismic_combo",
                     "bind_value": "dead_load_custom_input",
                     "placeholder": "Custom Value",
-                    "on_mode_change": "_toggle_seismic_custom_inputs",
+                    "conditions": [{"when": "dead_load_seismic_combo", "equals": "Custom", "action": "enable"}],
                 },
                 {
                     "id": "live_load_seismic",
@@ -176,7 +177,7 @@ SEISMIC_LOAD_TAB_SCHEMA = {
                     "bind_mode": "live_load_seismic_combo",
                     "bind_value": "live_load_custom_input",
                     "placeholder": "Custom Value",
-                    "on_mode_change": "_toggle_seismic_custom_inputs",
+                    "conditions": [{"when": "live_load_seismic_combo", "equals": "Custom", "action": "enable"}],
                 },
             ],
         },
@@ -275,7 +276,7 @@ WIND_LOAD_TAB_SCHEMA = {
                     "bind_value": "gust_factor_value",
                     "default_value": "2",
                     "placeholder": "2",
-                    "on_mode_change": "_toggle_wind_custom_input",
+                    "conditions": [{"when": "gust_factor_combo", "equals": "Custom", "action": "enable"}],
                 },
                 {
                     "id": "drag_coeff",
@@ -287,7 +288,7 @@ WIND_LOAD_TAB_SCHEMA = {
                     "bind_value": "drag_coeff_value",
                     "default_value": "",
                     "placeholder": "Custom Value",
-                    "on_mode_change": "_toggle_wind_custom_input",
+                    "conditions": [{"when": "drag_coeff_combo", "equals": "Custom", "action": "enable"}],
                 },
                 {
                     "id": "drag_coeff_ll",
@@ -299,7 +300,7 @@ WIND_LOAD_TAB_SCHEMA = {
                     "bind_value": "drag_coeff_ll_value",
                     "default_value": "1.2",
                     "placeholder": "1.2",
-                    "on_mode_change": "_toggle_wind_custom_input",
+                    "conditions": [{"when": "drag_coeff_ll_combo", "equals": "Custom", "action": "enable"}],
                 },
                 {
                     "id": "lift_coeff",
@@ -311,7 +312,7 @@ WIND_LOAD_TAB_SCHEMA = {
                     "bind_value": "lift_coeff_value",
                     "default_value": "0.75",
                     "placeholder": "0.75",
-                    "on_mode_change": "_toggle_wind_custom_input",
+                    "conditions": [{"when": "lift_coeff_combo", "equals": "Custom", "action": "enable"}],
                 },
                 {
                     "id": "super_area_elev",
@@ -323,7 +324,7 @@ WIND_LOAD_TAB_SCHEMA = {
                     "bind_value": "super_area_elev_value",
                     "default_value": "",
                     "placeholder": "Custom Value",
-                    "on_mode_change": "_toggle_wind_custom_input",
+                    "conditions": [{"when": "super_area_elev_combo", "equals": "Custom", "action": "enable"}],
                 },
                 {
                     "id": "super_area_plain",
@@ -335,7 +336,7 @@ WIND_LOAD_TAB_SCHEMA = {
                     "bind_value": "super_area_plain_value",
                     "default_value": "",
                     "placeholder": "Custom Value",
-                    "on_mode_change": "_toggle_wind_custom_input",
+                    "conditions": [{"when": "super_area_plain_combo", "equals": "Custom", "action": "enable"}],
                 },
                 {
                     "id": "exposed_frontal_area",
@@ -347,7 +348,7 @@ WIND_LOAD_TAB_SCHEMA = {
                     "bind_value": "exposed_frontal_area_value",
                     "default_value": "",
                     "placeholder": "Custom Value",
-                    "on_mode_change": "_toggle_wind_custom_input",
+                    "conditions": [{"when": "exposed_frontal_area_combo", "equals": "Custom", "action": "enable"}],
                 },
                 {
                     "id": "wind_ecc_deck",
@@ -359,7 +360,7 @@ WIND_LOAD_TAB_SCHEMA = {
                     "bind_value": "wind_ecc_deck_value",
                     "default_value": "",
                     "placeholder": "Custom Value",
-                    "on_mode_change": "_toggle_wind_custom_input",
+                    "conditions": [{"when": "wind_ecc_deck_combo", "equals": "Custom", "action": "enable"}],
                 },
                 {
                     "id": "wind_ll_ecc",
@@ -371,7 +372,7 @@ WIND_LOAD_TAB_SCHEMA = {
                     "bind_value": "wind_ll_ecc_value",
                     "default_value": "",
                     "placeholder": "Custom Value",
-                    "on_mode_change": "_toggle_wind_custom_input",
+                    "conditions": [{"when": "wind_ll_ecc_combo", "equals": "Custom", "action": "enable"}],
                 },
             ],
         },
@@ -633,6 +634,7 @@ CUSTOM_LOAD_TAB_SCHEMA = {
                     "placeholder": "Custom",
                     "bind": "custom_load_case_name_input",
                     "enabled": False,
+                    "conditions": [{"when": "custom_load_case_combo", "equals": "Custom", "action": "enable"}],
                 },
                 {
                     "id": "custom_load_type",

@@ -33,18 +33,8 @@ class SeismicLoadTab(QWidget):
 
         self.reset_defaults()
 
-    def _toggle_seismic_custom_inputs(self):
-        if hasattr(self, "dead_load_seismic_combo") and hasattr(self, "dead_load_custom_input"):
-            self.dead_load_custom_input.setEnabled(
-                self.dead_load_seismic_combo.currentText() == "Custom"
-            )
-        if hasattr(self, "live_load_seismic_combo") and hasattr(self, "live_load_custom_input"):
-            self.live_load_custom_input.setEnabled(
-                self.live_load_seismic_combo.currentText() == "Custom"
-            )
-
     def reset_defaults(self):
-        schema_io.reset_defaults(self, SEISMIC_LOAD_TAB_SCHEMA, after=self._toggle_seismic_custom_inputs)
+        schema_io.reset_defaults(self, SEISMIC_LOAD_TAB_SCHEMA)
 
     def update_project_location(self, location_data):
         if not location_data:

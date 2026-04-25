@@ -68,9 +68,7 @@ class CustomLoadTab(QWidget):
         return
 
     def _on_load_case_changed(self, text):
-        is_custom = text == "Custom"
-        self.custom_load_case_name_input.setEnabled(is_custom)
-        if not is_custom:
+        if text != "Custom" and hasattr(self, "custom_load_case_name_input"):
             self.custom_load_case_name_input.clear()
 
     def _refresh_custom_load_table(self):

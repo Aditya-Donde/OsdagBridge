@@ -27,20 +27,8 @@ class WindLoadTab(QWidget):
 
         self.reset_defaults()
 
-    def _toggle_wind_custom_input(self, *_args):
-        for section in self.schema.get("sections", []):
-            if section.get("id") != "wind_inputs_section":
-                continue
-            for field in section.get("fields", []):
-                if field.get("type") != "mode_line":
-                    continue
-                mode_widget = getattr(self, str(field.get("bind_mode")), None)
-                value_widget = getattr(self, str(field.get("bind_value")), None)
-                if mode_widget is not None and value_widget is not None:
-                    value_widget.setEnabled(mode_widget.currentText() == "Custom")
-
     def reset_defaults(self):
-        schema_io.reset_defaults(self, self.schema, after=self._toggle_wind_custom_input)
+        schema_io.reset_defaults(self, self.schema)
 
     def update_project_location(self, location_data):
         if not location_data:

@@ -59,11 +59,8 @@ class LiveLoadTab(QWidget):
         self.owner.braking_vehicle_labels = list(getattr(self, "braking_vehicle_labels", []))
 
     def _on_footpath_mode_changed(self, mode):
-        is_custom = mode == "User-defined"
-        if hasattr(self, "footpath_value_input"):
-            self.footpath_value_input.setEnabled(is_custom)
-            if not is_custom:
-                self.footpath_value_input.clear()
+        if mode != "User-defined" and hasattr(self, "footpath_value_input"):
+            self.footpath_value_input.clear()
 
     def _update_braking_vehicles_section(self):
         layout = getattr(self, "braking_checkboxes_layout", None)

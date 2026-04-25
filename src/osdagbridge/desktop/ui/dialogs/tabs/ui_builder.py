@@ -196,6 +196,7 @@ class UIBuilder:
 
         scroll.setWidget(scroll_content)
         main_layout.addWidget(scroll)
+        self._wire_conditions()
 
     # ------------------------------------------------------------------ #
     # Public lower-level entry — populates an existing layout
@@ -1306,6 +1307,97 @@ class UIBuilder:
         widget.setSizePolicy(policy, policy)
 
     # ── Widget helpers ──────────────────────────────────────────────────
+
+    # ------------------------------------------------------------------ #
+    # Conditional visibility — wired from schema "conditions" key
+    # ------------------------------------------------------------------ #
+
+    def _wire_conditions(self) -> None:
+        """Post-build pass: wire every field with a 'conditions' key."""
+        for field in self._iter_fields_with_conditions(self.schema):
+            ftype = str(field.get("type") or "").strip().lower()
+            target_bind = field.get("bind_value") if ftype == "mode_line" else field.get("bind")
+            if not target_bind:
+                continue
+            target = getattr(self.owner, str(target_bind), None)
+            if target is None:
+                _log.warning(
+                    "UIBuilder[%s]: conditions target bind %r not on owner",
+                    type(self.owner).__name__, target_bind,
+                )
+                continue
+            for cond in (field.get("conditions") or []):
+                self._connect_condition(cond, target)
+
+    @staticmethod
+    def _iter_fields_with_conditions(node):
+        """Recursively yield field dicts that carry a 'conditions' key."""
+        if not isinstance(node, dict):
+            return
+        if node.get("conditions"):
+            yield node
+        fields = node.get("fields")
+        if isinstance(fields, dict):
+            for f in fields.values():
+                yield from UIBuilder._iter_fields_with_conditions(f)
+        elif isinstance(fields, list):
+            for f in fields:
+                if isinstance(f, dict):
+                    for rf in (f.get("row_fields") or []):
+                        if isinstance(rf, dict):
+                            yield from UIBuilder._iter_fields_with_conditions(rf)
+                    yield from UIBuilder._iter_fields_with_conditions(f)
+        for row in (node.get("rows") or []):
+            for f in (row.get("fields") or []):
+                if isinstance(f, dict):
+                    yield from UIBuilder._iter_fields_with_conditions(f)
+        for key in ("sections", "cards", "pages"):
+            for sub in (node.get(key) or []):
+                yield from UIBuilder._iter_fields_with_conditions(sub)
+
+    def _connect_condition(self, cond: dict, target: QWidget) -> None:
+        """Wire one condition dict to the source widget signal."""
+        source_bind = cond.get("when")
+        if not source_bind:
+            return
+        source = getattr(self.owner, str(source_bind), None)
+        if source is None:
+            _log.warning(
+                "UIBuilder[%s]: conditions source bind %r not on owner",
+                type(self.owner).__name__, source_bind,
+            )
+            return
+
+        equals_val = cond.get("equals")
+        action = str(cond.get("action", "enable")).lower()
+
+        def evaluate(*_args) -> None:
+            if isinstance(source, QComboBox):
+                val = source.currentText()
+            elif isinstance(source, QCheckBox):
+                val = source.isChecked()
+            elif isinstance(source, QLineEdit):
+                val = source.text()
+            else:
+                return
+            met = (val == equals_val)
+            if action == "enable":
+                target.setEnabled(met)
+            elif action == "disable":
+                target.setEnabled(not met)
+            elif action == "show":
+                target.setVisible(met)
+            elif action == "hide":
+                target.setVisible(not met)
+
+        if isinstance(source, QComboBox):
+            source.currentTextChanged.connect(evaluate)
+        elif isinstance(source, QCheckBox):
+            source.toggled.connect(evaluate)
+        elif isinstance(source, QLineEdit):
+            source.textChanged.connect(evaluate)
+
+        evaluate()  # set initial state immediately
 
     def _apply_validator(self, widget: QLineEdit, validator_def: dict | None) -> None:
         if not validator_def:
