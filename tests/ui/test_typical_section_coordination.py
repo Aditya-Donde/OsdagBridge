@@ -34,6 +34,22 @@ def test_layout_notice_api_and_lane_state(qapp):
     tab.layout_tab.clear_notices()
     assert tab.layout_tab.layout_notice_container.isHidden()
 
+    applied = tab.layout_tab.apply_layout_solution(2.5, 0.88, 2)
+    assert applied["girder_spacing_m"] == 2.5
+    assert tab.girder_spacing.text() == "2.50"
+    assert tab.deck_overhang.text() == "0.88"
+    assert tab.no_of_girders.text() == "2"
+
+    tab.layout_tab.clear_layout_fields()
+    assert tab.girder_spacing.text() == ""
+    assert tab.deck_overhang.text() == ""
+    assert tab.no_of_girders.text() == ""
+
+    tab.layout_tab.apply_layout_solution(2.5, 0.88, 2)
+    change = tab.layout_tab.handle_layout_field_change(changed_field="spacing")
+    assert change.get("ok") is False
+    assert change.get("unchanged") is True
+
 
 def test_lane_details_child_api_round_trip(qapp):
     tab = TypicalSectionDetailsTab()
