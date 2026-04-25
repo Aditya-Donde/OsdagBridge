@@ -26,3 +26,21 @@ class WearingCourseTab(SchemaTab):
     def __init__(self, owner, parent=None):
         super().__init__(owner, parent)
         self.setStyleSheet("background-color: white;")
+
+    def export_wearing_state(self) -> dict:
+        return {
+            "material": self.widget_current_text("wearing_material"),
+            "thickness_mm": self.widget_float("wearing_thickness"),
+            "density": self.widget_float("wearing_density"),
+        }
+
+    def apply_material_defaults(self, material: str) -> None:
+        if material == "Concrete":
+            self.set_widget_text("wearing_density", "24.0")
+        elif material == "Bituminous":
+            self.set_widget_text("wearing_density", "22.0")
+        else:
+            self.set_widget_text("wearing_density", "")
+
+        if not self.widget_text("wearing_thickness").strip():
+            self.set_widget_text("wearing_thickness", "50")
