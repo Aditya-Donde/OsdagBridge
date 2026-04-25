@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-from PySide6.QtWidgets import QTabWidget, QWidget
+from PySide6.QtWidgets import QTabWidget
 
 from osdagbridge.desktop.ui.dialogs.tabs.schemas.plate_girder import (
     SECTION_PROPERTIES_ORCHESTRATOR_SCHEMA,
 )
-from osdagbridge.desktop.ui.dialogs.tabs.ui_builder import UIBuilder
+from osdagbridge.desktop.ui.dialogs.tabs.base import SchemaTab
 
 
 _TAB_SPECS = (
@@ -52,20 +52,15 @@ _TAB_SPECS = (
 )
 
 
-class SectionPropertiesTab(QWidget):
+class SectionPropertiesTab(SchemaTab):
     """Sub-tab for Member Properties with schema-backed tab registration."""
 
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self._last_section_tab_index = 0
-        self._init_ui()
-        self._bind_dependents()
+    schema = SECTION_PROPERTIES_ORCHESTRATOR_SCHEMA
 
-    def _init_ui(self) -> None:
-        # Build UI from orchestrator schema
-        UIBuilder(owner=self, schema=SECTION_PROPERTIES_ORCHESTRATOR_SCHEMA).build_tab(self)
-        
-        # Find the QTabWidget built by UIBuilder
+    def __init__(self, parent=None):
+        self._last_section_tab_index = 0
+        super().__init__(parent=parent)
+
         self.section_tabs = self.findChild(QTabWidget, "section_properties_tabs")
         if self.section_tabs:
             self.section_tabs.setDocumentMode(True)
@@ -83,13 +78,14 @@ class SectionPropertiesTab(QWidget):
             except Exception:
                 self._last_section_tab_index = 0
 
-        # Handle legacy aliases if needed
         for spec in _TAB_SPECS:
             legacy_alias = spec.get("legacy_alias")
             if legacy_alias:
                 widget = getattr(self, spec["attr"], None)
                 if widget:
                     setattr(self, str(legacy_alias), widget)
+
+        self._bind_dependents()
 
     def collect_data(self) -> dict:
         """Unified data collection from all section sub-tabs."""

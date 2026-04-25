@@ -1,7 +1,7 @@
-from PySide6.QtWidgets import QWidget, QTabWidget
+from PySide6.QtWidgets import QTabWidget
 
+from osdagbridge.desktop.ui.dialogs.tabs.base import SchemaTab
 from osdagbridge.desktop.ui.dialogs.tabs.schemas.plate_girder import LOADING_ORCHESTRATOR_SCHEMA
-from osdagbridge.desktop.ui.dialogs.tabs.ui_builder import UIBuilder
 
 _LOADING_TAB_ATTRS = (
     "permanent_load_tab",
@@ -14,25 +14,21 @@ _LOADING_TAB_ATTRS = (
 )
 
 
-class LoadingTab(QWidget):
+class LoadingTab(SchemaTab):
     """Container for all load sub-tabs."""
 
-    def __init__(self, parent=None):
-        super().__init__(parent)
+    schema = LOADING_ORCHESTRATOR_SCHEMA
 
-        # REQUIRED for Live Load defaults (referenced by sub-tabs)
+    def __init__(self, parent=None):
+        # Vehicle lists must exist before super().__init__() because sub-tabs
+        # reference them during the schema build triggered by SchemaTab.__init__.
         self.irc_vehicle_checkboxes = []
         self.irc_vehicle_labels = []
         self.braking_vehicle_checkboxes = []
         self.braking_vehicle_labels = []
 
-        self._build_ui()
+        super().__init__(parent=parent)
 
-    def _build_ui(self):
-        # Build UI from orchestrator schema
-        UIBuilder(owner=self, schema=LOADING_ORCHESTRATOR_SCHEMA).build_tab(self)
-        
-        # UIBuilder sets objectName for the tab container
         self.load_tabs = self.findChild(QTabWidget, "loading_tabs")
         if self.load_tabs:
             self.load_tabs.setDocumentMode(True)
