@@ -56,7 +56,9 @@ class CADMixin:
                 ],
             }
         """
-        widget_name = section.get("widget")
+        # ``widget_class`` is preferred (matches tab_container's key name);
+        # ``widget`` is the older name, kept as alias.
+        widget_name = section.get("widget_class") or section.get("widget")
         if not widget_name:
             return None
 

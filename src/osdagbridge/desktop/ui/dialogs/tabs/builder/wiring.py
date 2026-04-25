@@ -139,6 +139,14 @@ class WiringMixin:
             widget.setValidator(QIntValidator(bottom, top, widget))
 
     def _connect_signals(self, widget: QWidget, field_def: dict) -> None:
+        """Wire schema-declared handlers to the widget's signals.
+
+        ``on_change`` is the universal hook: it fires on whatever change signal
+        is natural for the widget type. The specific verbs (``on_text_changed``,
+        ``on_editing_finished``, ``on_toggled``, ``on_click``) are escape hatches
+        for when you need a non-default signal (e.g. editingFinished instead of
+        textChanged on QLineEdit). Specifying both is fine; both connect.
+        """
         owner = self.owner
 
         def find_handler(name):
@@ -149,45 +157,36 @@ class WiringMixin:
             handler = getattr(parent_owner, str(name), None) if parent_owner is not None else None
             return handler if callable(handler) else None
 
+        def connect_if(handler_name, signal_attr):
+            if not handler_name:
+                return
+            handler = find_handler(handler_name)
+            if handler is None:
+                _log.warning("UIBuilder[%s]: handler %r not found on owner", type(owner).__name__, handler_name)
+                return
+            signal = getattr(widget, signal_attr, None)
+            if signal is not None:
+                signal.connect(handler)
+
+        # on_change: pick the natural signal per widget type
         on_change = field_def.get("on_change")
-        if on_change and isinstance(widget, QComboBox):
-            handler = find_handler(on_change)
-            if handler is None:
-                _log.warning("UIBuilder[%s]: on_change=%r not found on owner", type(owner).__name__, on_change)
-            else:
-                widget.currentTextChanged.connect(handler)
+        if isinstance(widget, QComboBox):
+            connect_if(on_change, "currentTextChanged")
+        elif isinstance(widget, QLineEdit):
+            connect_if(on_change, "textChanged")
+        elif isinstance(widget, QCheckBox):
+            connect_if(on_change, "toggled")
+        elif isinstance(widget, QPushButton):
+            connect_if(on_change, "clicked")
 
-        on_text_changed = field_def.get("on_text_changed")
-        if on_text_changed and isinstance(widget, QLineEdit):
-            handler = find_handler(on_text_changed)
-            if handler is None:
-                _log.warning("UIBuilder[%s]: on_text_changed=%r not found on owner", type(owner).__name__, on_text_changed)
-            else:
-                widget.textChanged.connect(handler)
-
-        on_editing_finished = field_def.get("on_editing_finished")
-        if on_editing_finished and isinstance(widget, QLineEdit):
-            handler = find_handler(on_editing_finished)
-            if handler is None:
-                _log.warning("UIBuilder[%s]: on_editing_finished=%r not found on owner", type(owner).__name__, on_editing_finished)
-            else:
-                widget.editingFinished.connect(handler)
-
-        on_toggled = field_def.get("on_toggled")
-        if on_toggled and isinstance(widget, QCheckBox):
-            handler = find_handler(on_toggled)
-            if handler is None:
-                _log.warning("UIBuilder[%s]: on_toggled=%r not found on owner", type(owner).__name__, on_toggled)
-            else:
-                widget.toggled.connect(handler)
-
-        on_click = field_def.get("on_click")
-        if on_click and isinstance(widget, QPushButton):
-            handler = find_handler(on_click)
-            if handler is None:
-                _log.warning("UIBuilder[%s]: on_click=%r not found on owner", type(owner).__name__, on_click)
-            else:
-                widget.clicked.connect(handler)
+        # Specific verbs (back-compat + escape hatches for non-default signals)
+        if isinstance(widget, QLineEdit):
+            connect_if(field_def.get("on_text_changed"),     "textChanged")
+            connect_if(field_def.get("on_editing_finished"), "editingFinished")
+        if isinstance(widget, QCheckBox):
+            connect_if(field_def.get("on_toggled"), "toggled")
+        if isinstance(widget, QPushButton):
+            connect_if(field_def.get("on_click"), "clicked")
 
     def _bind_widget(self, widget: QWidget, field_def: dict) -> None:
         field_id = field_def.get("id")

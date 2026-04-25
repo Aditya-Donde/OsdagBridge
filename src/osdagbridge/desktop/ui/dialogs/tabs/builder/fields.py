@@ -184,7 +184,12 @@ class FieldBuildersMixin:
         return widget
 
     def build_mode_line(self, field_def: dict) -> QWidget:
-        """QComboBox + QLineEdit wrapped in a horizontal QWidget."""
+        """QComboBox + QLineEdit wrapped in a horizontal QWidget.
+
+        ``default_mode`` defaults the combo (e.g. "Auto"). ``default_value``
+        defaults the line edit; for consistency with simpler field types it
+        falls back to ``default`` when not set explicitly.
+        """
         mode_combo = QComboBox()
         for choice in field_def.get("mode_choices") or []:
             mode_combo.addItem(str(choice))
@@ -194,7 +199,7 @@ class FieldBuildersMixin:
         apply_field_style(mode_combo)
 
         value_input = QLineEdit()
-        default_value = field_def.get("default_value")
+        default_value = field_def.get("default_value", field_def.get("default"))
         if default_value is not None:
             value_input.setText(str(default_value))
         if field_def.get("placeholder"):
