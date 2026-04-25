@@ -1,3 +1,5 @@
+import math
+
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QHeaderView, QTableWidget, QTableWidgetItem, QWidget
 
@@ -10,7 +12,9 @@ class LaneDetailsTab(SchemaTab):
 
     def __init__(self, owner, parent=None):
         super().__init__(owner, parent)
+        self._updating_lane_table = False
         self._inject_lane_table(owner, self.builder.page_layout)
+        self.initialize_defaults(self._carriageway_width())
         self.table.cellChanged.connect(self._on_table_cell_changed)
 
     @property
@@ -28,9 +32,14 @@ class LaneDetailsTab(SchemaTab):
     def restore_data(self, data: dict) -> None:
         super().restore_data(data)
         lane_rows = data.get("lane_table_data")
-        if not isinstance(lane_rows, list):
+        if isinstance(lane_rows, list):
+            self._configure_lane_count_combo(
+                self.max_lane_count_allowed(self._carriageway_width()),
+                selected_count=len(lane_rows),
+            )
+            self.set_lane_rows(lane_rows)
             return
-        self.set_lane_rows(lane_rows)
+        self.initialize_defaults(self._carriageway_width())
 
     def get_lane_rows(self) -> list[dict]:
         rows = []
@@ -64,6 +73,8 @@ class LaneDetailsTab(SchemaTab):
                     self.table.setItem(row, column, item)
 
     def set_lane_rows(self, lane_rows: list[dict]) -> None:
+        was_updating = self._updating_lane_table
+        self._updating_lane_table = True
         previous = self.table.blockSignals(True)
         try:
             self.set_lane_count(len(lane_rows))
@@ -75,8 +86,12 @@ class LaneDetailsTab(SchemaTab):
                 self._set_cell(row, 2, str(row_data.get("width", "")))
         finally:
             self.table.blockSignals(previous)
+            self._updating_lane_table = was_updating
 
-    def populate_defaults(self, lane_count: int, design_width: float) -> None:
+    def populate_defaults(self, lane_count: int, design_width: float | None = None) -> None:
+        design_width = self.design_lane_width_m() if design_width is None else float(design_width)
+        was_updating = self._updating_lane_table
+        self._updating_lane_table = True
         previous = self.table.blockSignals(True)
         try:
             self.set_lane_count(lane_count)
@@ -87,8 +102,12 @@ class LaneDetailsTab(SchemaTab):
                 start += design_width
         finally:
             self.table.blockSignals(previous)
+            self._updating_lane_table = was_updating
 
-    def recompute_lane_starts(self, design_width: float) -> float:
+    def recompute_lane_starts(self, design_width: float | None = None) -> float:
+        design_width = self.design_lane_width_m() if design_width is None else float(design_width)
+        was_updating = self._updating_lane_table
+        self._updating_lane_table = True
         previous = self.table.blockSignals(True)
         total_width = 0.0
         try:
@@ -102,9 +121,25 @@ class LaneDetailsTab(SchemaTab):
                 start += width
         finally:
             self.table.blockSignals(previous)
+            self._updating_lane_table = was_updating
+
+        carriageway_width = self._carriageway_width()
+        if carriageway_width and total_width - carriageway_width > 1e-6:
+            self._show_owner_warning(
+                "Lane Width Exceeds Carriageway",
+                f"Sum of lane widths ({total_width:.2f} m) exceeds carriageway width provided "
+                f"({carriageway_width:.2f} m).\nAdjust lane count or widths per IRC 5 Clause 104.3.1.",
+            )
         return total_width
 
-    def validate_lane_rows(self, design_width: float, carriageway_width: float | None = None) -> list[str]:
+    def validate_lane_rows(
+        self,
+        design_width: float | None = None,
+        carriageway_width: float | None = None,
+    ) -> list[str]:
+        design_width = self.design_lane_width_m() if design_width is None else float(design_width)
+        if carriageway_width is None:
+            carriageway_width = self._carriageway_width()
         errors = []
         expected_start = 0.0
         total_width = 0.0
@@ -146,6 +181,41 @@ class LaneDetailsTab(SchemaTab):
 
         return list(dict.fromkeys(errors))
 
+    def reset_defaults(self) -> None:
+        super().reset_defaults()
+        self.initialize_defaults(self._carriageway_width())
+
+    def validate_tab(self) -> list[str]:
+        errors = list(super().validate_tab())
+        errors.extend(self.validate_lane_rows())
+        return list(dict.fromkeys(errors))
+
+    @staticmethod
+    def design_lane_width_m() -> float:
+        return 3.5
+
+    def max_lane_count_allowed(self, carriageway_width: float | None = None) -> int:
+        try:
+            width = float(self._carriageway_width() if carriageway_width is None else carriageway_width)
+            max_lanes = int(math.floor(width / self.design_lane_width_m()))
+            return max(1, min(6, max_lanes if max_lanes > 0 else 1))
+        except Exception:
+            return 1
+
+    def initialize_defaults(self, carriageway_width: float | None = None) -> None:
+        max_allowed = self.max_lane_count_allowed(carriageway_width)
+        self._configure_lane_count_combo(max_allowed, selected_count=max_allowed)
+        self.populate_defaults(max_allowed)
+
+    def on_lane_count_changed(self, text) -> None:
+        if self._updating_lane_table:
+            return
+        try:
+            lane_count = int(text)
+        except (TypeError, ValueError):
+            return
+        self.populate_defaults(lane_count)
+
     def _set_cell(self, row: int, column: int, value: str) -> None:
         item = self.table.item(row, column)
         if item is None:
@@ -166,10 +236,84 @@ class LaneDetailsTab(SchemaTab):
         return None
 
     def _on_table_cell_changed(self, row: int, column: int) -> None:
+        if self._updating_lane_table:
+            return
+        if column == 2:
+            self._validate_lane_width(row)
+            self.recompute_lane_starts()
+        elif column == 1:
+            self._validate_lane_start(row)
+            self.recompute_lane_starts()
+
+    def _configure_lane_count_combo(self, max_allowed: int, *, selected_count: int) -> None:
+        upper_bound = max(1, min(6, max(max_allowed, int(selected_count))))
+        previous = self.lane_count_combo.blockSignals(True)
+        try:
+            self.lane_count_combo.clear()
+            for count in range(1, upper_bound + 1):
+                self.lane_count_combo.addItem(str(count))
+            self.lane_count_combo.setCurrentText(str(max(1, min(upper_bound, int(selected_count)))))
+        finally:
+            self.lane_count_combo.blockSignals(previous)
+
+    def _validate_lane_width(self, row: int) -> None:
+        design_width = self.design_lane_width_m()
+        width = self._parse_float(row, 2)
+        if width is None:
+            self._set_cell(row, 2, f"{design_width:.2f}")
+            return
+        if width + 1e-6 < design_width:
+            self._show_owner_critical(
+                "Lane Width Below IRC Minimum",
+                f"IRC 5 Clause 104.3.1 requires a lane width of at least {design_width:.2f} m.",
+            )
+            self._set_cell(row, 2, f"{design_width:.2f}")
+
+    def _validate_lane_start(self, row: int) -> None:
+        design_width = self.design_lane_width_m()
+        start = self._parse_float(row, 1)
+        if start is None:
+            self.recompute_lane_starts()
+            return
+
+        if row == 0:
+            if abs(start) > 1e-6:
+                self._show_owner_warning(
+                    "Lane Start Offset",
+                    "First lane must start at 0 m from inner edge of crash barrier by default.",
+                )
+                self.recompute_lane_starts()
+            return
+
+        prev_start = self._parse_float(row - 1, 1) or 0.0
+        prev_width = self._parse_float(row - 1, 2) or design_width
+        expected = prev_start + prev_width
+        if abs(start - expected) > 1e-3:
+            self._show_owner_warning(
+                "Lane Start Sequence",
+                "Each lane start must equal previous lane start plus previous lane width per IRC guidance.",
+            )
+            self.recompute_lane_starts()
+
+    def _carriageway_width(self) -> float | None:
         owner = getattr(self, "owner", None)
-        callback = getattr(owner, "_on_lane_cell_changed", None) if owner is not None else None
+        try:
+            value = getattr(owner, "carriageway_width", None)
+            return float(value) if value is not None else None
+        except Exception:
+            return None
+
+    def _show_owner_warning(self, title: str, text: str) -> None:
+        owner = getattr(self, "owner", None)
+        callback = getattr(owner, "show_warning_message", None) if owner is not None else None
         if callable(callback):
-            callback(row, column)
+            callback(title, text)
+
+    def _show_owner_critical(self, title: str, text: str) -> None:
+        owner = getattr(self, "owner", None)
+        callback = getattr(owner, "show_critical_message", None) if owner is not None else None
+        if callable(callback):
+            callback(title, text)
 
     def _inject_lane_table(self, owner, page_layout):
         table = QTableWidget()
