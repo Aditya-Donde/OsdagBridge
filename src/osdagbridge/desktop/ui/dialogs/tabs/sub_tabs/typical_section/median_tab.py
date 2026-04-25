@@ -131,3 +131,17 @@ class MedianTab(SchemaTab):
             force=force,
             include_median=include_median,
         )
+
+    def on_median_type_changed(self, median_type) -> None:
+        owner = getattr(self, "owner", None)
+        params = self.sync_from_parent_state(
+            include_median=True,
+            force=True,
+        )
+        push = getattr(owner, "_push_cad_params", None) if owner is not None else None
+        if callable(push):
+            push(params)
+
+        recalculate = getattr(owner, "recalculate_girders", None) if owner is not None else None
+        if callable(recalculate):
+            recalculate()
