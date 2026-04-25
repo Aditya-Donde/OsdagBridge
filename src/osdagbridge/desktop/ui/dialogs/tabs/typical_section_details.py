@@ -266,9 +266,6 @@ class TypicalSectionDetailsTab(QWidget):
         if hasattr(self, "wearing_material"):
             self.wearing_material.currentTextChanged.connect(self._update_cad_preview)
             
-        input_layout.addWidget(self.input_tabs)
-        main_layout.addWidget(input_container)
-
         # Initialize lane defaults per IRC 5 Clause 104.3.1
         self._initialize_lane_defaults()
 
