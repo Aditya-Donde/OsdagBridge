@@ -31,6 +31,7 @@ class WearingCourseTab(SchemaTab):
     def __init__(self, owner, parent=None):
         super().__init__(owner, parent)
         self.setStyleSheet("background-color: white;")
+        self._wire_owner_preview_updates()
 
     def export_wearing_state(self) -> dict:
         return {
@@ -73,3 +74,20 @@ class WearingCourseTab(SchemaTab):
     def sync_from_parent_state(self) -> dict:
         material = self.export_wearing_state().get("material") or ""
         return self.sync_from_parent_material(material)
+
+    def on_wearing_material_changed(self, material) -> None:
+        owner = getattr(self, "owner", None)
+        params = self.sync_from_parent_material(material)
+        push = getattr(owner, "_push_cad_params", None) if owner is not None else None
+        if callable(push):
+            push(params)
+
+    def _wire_owner_preview_updates(self) -> None:
+        owner = getattr(self, "owner", None)
+        update_preview = getattr(owner, "_update_cad_preview", None) if owner is not None else None
+        if not callable(update_preview):
+            return
+        for bind_name in ("wearing_thickness", "wearing_density"):
+            widget = self.get_widget(bind_name)
+            if widget is not None and hasattr(widget, "editingFinished"):
+                widget.editingFinished.connect(update_preview)
