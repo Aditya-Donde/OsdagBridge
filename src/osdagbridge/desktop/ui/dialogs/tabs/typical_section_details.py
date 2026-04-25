@@ -14,23 +14,13 @@ from PySide6.QtGui import QDoubleValidator, QIntValidator
 
 from osdagbridge.core.bridge_types.plate_girder.bridge_geometry import CrossSectionLayout
 from osdagbridge.desktop.ui.dialogs.tabs.schemas.plate_girder import (
-    CRASH_BARRIER_TAB_SCHEMA,
-    LANE_DETAILS_TAB_SCHEMA,
-    LAYOUT_TAB_SCHEMA,
-    MEDIAN_TAB_SCHEMA,
-    RAILING_TAB_SCHEMA,
-    WEARING_COURSE_TAB_SCHEMA,
+    TYPICAL_SECTION_ORCHESTRATOR_SCHEMA,
 )
 from osdagbridge.core.utils.common import *
 from osdagbridge.desktop.ui.utils.custom_titlebar import CustomTitleBar
 from osdagbridge.desktop.ui.dialogs.tabs import schema_io
+from osdagbridge.desktop.ui.dialogs.tabs.ui_builder import UIBuilder
 from osdagbridge.desktop.ui.dialogs.tabs.common import apply_field_style
-from osdagbridge.desktop.ui.dialogs.tabs.sub_tabs.typical_section.layout_tab import LayoutTab
-from osdagbridge.desktop.ui.dialogs.tabs.sub_tabs.typical_section.crash_barrier_tab import CrashBarrierTab
-from osdagbridge.desktop.ui.dialogs.tabs.sub_tabs.typical_section.median_tab import MedianTab
-from osdagbridge.desktop.ui.dialogs.tabs.sub_tabs.typical_section.railing_tab import RailingTab
-from osdagbridge.desktop.ui.dialogs.tabs.sub_tabs.typical_section.wearing_course_tab import WearingCourseTab
-from osdagbridge.desktop.ui.dialogs.tabs.sub_tabs.typical_section.lane_details_tab import LaneDetailsTab
 from osdagbridge.desktop.ui.docks.cad_cross_section import CrossSectionCADWidget
 from osdagbridge.desktop.cad.irc5_geometry import (
     CrashBarrierGeometry,
@@ -239,105 +229,15 @@ class TypicalSectionDetailsTab(QWidget):
         return card, card_layout
 
     def init_ui(self):
-        main_layout = QVBoxLayout(self)
-        main_layout.setContentsMargins(10, 10, 10, 10)
-        main_layout.setSpacing(0)
+        # Build UI from orchestrator schema
+        UIBuilder(owner=self, schema=TYPICAL_SECTION_ORCHESTRATOR_SCHEMA).build_tab(self)
 
-        diagram_widget = QWidget()
-        diagram_widget.setStyleSheet("""
-            QWidget {
-                background: transparent;
-                border: 1px solid #b0b0b0;
-                border-radius: 8px;
-            }
-        """)
-        diagram_widget.setMinimumHeight(280)
-        diagram_widget.setMaximumHeight(380)
+        # The orchestrator schema binds cad_preview and the sub-tabs.
+        # We need to ensure input_tabs exists for some logic below.
+        # UIBuilder._build_tab_container sets the objectName to typical_section_tabs.
+        # Let's find it.
+        self.input_tabs = self.findChild(QTabWidget, "typical_section_tabs")
 
-        diagram_layout = QVBoxLayout(diagram_widget)
-        diagram_layout.setContentsMargins(5, 5, 5, 5)
-
-        # --- Cross Section CAD Preview ---
-        from osdagbridge.desktop.ui.docks.cad_cross_section import CrossSectionCADWidget
-
-        cad_scroll = QScrollArea()
-        cad_scroll.setWidgetResizable(True)
-        cad_scroll.setFrameShape(QFrame.NoFrame)
-        cad_scroll.setStyleSheet("QScrollArea { background: transparent; border: none; }")
-
-        self.cad_preview = CrossSectionCADWidget()
-        self.cad_preview.scale_factor = 0.65
-        self.cad_preview.setMinimumHeight(200) 
-
-        cad_scroll.setWidget(self.cad_preview)
-        diagram_layout.addWidget(cad_scroll)
-
-        main_layout.addWidget(diagram_widget)
-        main_layout.addSpacing(10)
-
-
-        input_container = QWidget()
-        input_container.setStyleSheet("QWidget { background-color: white; }")
-        input_layout = QVBoxLayout(input_container)
-        input_layout.setContentsMargins(0, 0, 0, 0)
-        input_layout.setSpacing(0)
-
-        self.input_tabs = QTabWidget()
-        self.input_tabs.setStyleSheet("""
-            QTabWidget::pane {
-                border: 1px solid #b0b0b0;
-                border-top: none;
-                background-color: #f5f5f5;
-                border-radius: 0px 0px 8px 8px;
-            }
-            QTabBar::tab {
-                background-color: #e8e8e8;
-                color: #555;
-                padding: 10px 20px;
-                border: 1px solid #b0b0b0;
-                border-bottom: none;
-                border-right: none;
-                font-size: 11px;
-                min-width: 80px;
-            }
-            QTabBar::tab:disabled {
-                color: #bfbfbf;
-                background: #e6e6e6;
-            }
-
-            QTabBar::tab:last {
-                border-right: 1px solid #b0b0b0;
-            }
-            QTabBar::tab:selected {
-                background-color: #90AF13;
-                color: white;
-                font-weight: bold;
-                border: 1px solid #90AF13;
-                border-bottom: none;
-            }
-            QTabBar::tab:hover:!selected {
-                background-color: #d0d0d0;
-            }
-        """)
-
-        self.layout_tab = LayoutTab(self)
-        self.input_tabs.addTab(self.layout_tab, "Layout")
-
-        self.crash_barrier_tab = CrashBarrierTab(self)
-        self.input_tabs.addTab(self.crash_barrier_tab, "Crash Barrier")
-
-        self.median_tab = MedianTab(self)
-        self.input_tabs.addTab(self.median_tab, "Median")
-
-        self.railing_tab = RailingTab(self)
-        self.input_tabs.addTab(self.railing_tab, "Railing")
-
-        self.wearing_course_tab = WearingCourseTab(self)
-        self.input_tabs.addTab(self.wearing_course_tab, "Wearing Course")
-
-        self.lane_details_tab = LaneDetailsTab(self)
-        self.input_tabs.addTab(self.lane_details_tab, "Lane Details")
-        
         # CONNECT COMBO BOXES TO IRC DEFAULT HANDLERS
 
         if hasattr(self, "crash_barrier_type"):
@@ -408,6 +308,41 @@ class TypicalSectionDetailsTab(QWidget):
         except Exception:
             pass
         
+    def collect_data(self) -> dict:
+        """Unified data collection from all sub-tabs."""
+        data = {}
+        for attr in ["layout_tab", "crash_barrier_tab", "railing_tab", "median_tab", "wearing_course_tab", "lane_details_tab"]:
+            tab = getattr(self, attr, None)
+            if hasattr(tab, "collect_data"):
+                data.update(tab.collect_data())
+        return data
+
+    def restore_data(self, data: dict) -> None:
+        """Unified data restoration to all sub-tabs."""
+        for attr in ["layout_tab", "crash_barrier_tab", "railing_tab", "median_tab", "wearing_course_tab", "lane_details_tab"]:
+            tab = getattr(self, attr, None)
+            if hasattr(tab, "restore_data"):
+                tab.restore_data(data)
+        
+        self._sync_restored_state()
+
+    def reset_defaults(self):
+        """Unified reset for all sub-tabs."""
+        for attr in ["layout_tab", "crash_barrier_tab", "railing_tab", "median_tab", "wearing_course_tab", "lane_details_tab"]:
+            tab = getattr(self, attr, None)
+            if hasattr(tab, "reset_defaults"):
+                tab.reset_defaults()
+        self._update_overall_bridge_width_display()
+
+    def validate_tab(self):
+        """Unified validation for all sub-tabs."""
+        errors = []
+        for attr in ["layout_tab", "crash_barrier_tab", "railing_tab", "median_tab", "wearing_course_tab", "lane_details_tab"]:
+            tab = getattr(self, attr, None)
+            if hasattr(tab, "validate_tab"):
+                errors.extend(tab.validate_tab())
+        return list(dict.fromkeys(errors))
+
     def _update_cad_preview(self):
         """
         @author: Faizan

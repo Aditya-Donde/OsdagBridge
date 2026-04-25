@@ -2,31 +2,14 @@
 
 from __future__ import annotations
 
-from PySide6.QtWidgets import QFrame, QTabWidget, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QTabWidget, QVBoxLayout, QWidget
 
 from osdagbridge.desktop.ui.dialogs.tabs.schemas.plate_girder import (
     MEMBER_PROPERTIES_SCHEMA_V1,
+    SECTION_PROPERTIES_ORCHESTRATOR_SCHEMA,
 )
-from osdagbridge.desktop.ui.dialogs.tabs.sub_tabs.section_properties.cross_bracing_details_tab import (
-    CrossBracingDetailsTab,
-)
-from osdagbridge.desktop.ui.dialogs.tabs.sub_tabs.section_properties.end_diaphragm_details_tab import (
-    EndDiaphragmDetailsTab,
-)
-from osdagbridge.desktop.ui.dialogs.tabs.sub_tabs.section_properties.girder_details_tab import (
-    GirderDetailsTab,
-)
-from osdagbridge.desktop.ui.dialogs.tabs.sub_tabs.section_properties.stiffener_details_tab import (
-    StiffenerDetailsTab,
-)
+from osdagbridge.desktop.ui.dialogs.tabs.ui_builder import UIBuilder
 
-
-_TAB_CLASS_REGISTRY = {
-    "girder_details": GirderDetailsTab,
-    "stiffener_details": StiffenerDetailsTab,
-    "cross_bracing_details": CrossBracingDetailsTab,
-    "end_diaphragm_details": EndDiaphragmDetailsTab,
-}
 
 _TAB_SPECS = (
     {
@@ -80,50 +63,69 @@ class SectionPropertiesTab(QWidget):
         self._bind_dependents()
 
     def _init_ui(self) -> None:
-        main_layout = QVBoxLayout(self)
-        main_layout.setContentsMargins(0, 0, 0, 0)
-        main_layout.setSpacing(0)
+        # Build UI from orchestrator schema
+        UIBuilder(owner=self, schema=SECTION_PROPERTIES_ORCHESTRATOR_SCHEMA).build_tab(self)
+        
+        # Find the QTabWidget built by UIBuilder
+        self.section_tabs = self.findChild(QTabWidget, "section_properties_tabs")
+        if self.section_tabs:
+            self.section_tabs.setDocumentMode(True)
+            self.section_tabs.setStyleSheet(
+                "QTabWidget::pane { border: none; background: #f5f5f5; }"
+                "QTabBar::tab { background: #e8e8e8; color: #4b4b4b; border: 1px solid #cfcfcf;"
+                " border-bottom: none; padding: 8px 20px; margin-right: 2px; min-width: 120px;"
+                " font-size: 11px; }"
+                "QTabBar::tab:selected { background: #90AF13; color: #ffffff; font-weight: bold; }"
+                "QTabBar::tab:!selected { margin-top: 2px; }"
+            )
+            try:
+                self.section_tabs.currentChanged.connect(self._on_section_tab_changed)
+                self._last_section_tab_index = self.section_tabs.currentIndex()
+            except Exception:
+                self._last_section_tab_index = 0
 
-        self._content_frame = QFrame()
-        self._content_frame.setFrameShape(QFrame.NoFrame)
-        content_layout = QVBoxLayout(self._content_frame)
-        content_layout.setContentsMargins(0, 0, 0, 0)
-        content_layout.setSpacing(0)
-
-        self.section_tabs = QTabWidget()
-        self.section_tabs.setDocumentMode(True)
-        self.section_tabs.setStyleSheet(
-            "QTabWidget::pane { border: none; background: #f5f5f5; }"
-            "QTabBar::tab { background: #e8e8e8; color: #4b4b4b; border: 1px solid #cfcfcf;"
-            " border-bottom: none; padding: 8px 20px; margin-right: 2px; min-width: 120px;"
-            " font-size: 11px; }"
-            "QTabBar::tab:selected { background: #90AF13; color: #ffffff; font-weight: bold; }"
-            "QTabBar::tab:!selected { margin-top: 2px; }"
-        )
-
-        tabs_schema = (MEMBER_PROPERTIES_SCHEMA_V1.get("tabs") or {})
+        # Handle legacy aliases if needed
         for spec in _TAB_SPECS:
-            key = spec["key"]
-            tab_schema = tabs_schema.get(key, {})
-            tab_cls = _TAB_CLASS_REGISTRY[key]
-            widget = tab_cls()
-            setattr(self, spec["attr"], widget)
-
             legacy_alias = spec.get("legacy_alias")
             if legacy_alias:
-                setattr(self, str(legacy_alias), widget)
+                widget = getattr(self, spec["attr"], None)
+                if widget:
+                    setattr(self, str(legacy_alias), widget)
 
-            title = tab_schema.get("title") or spec["title"]
-            self.section_tabs.addTab(widget, title)
+    def collect_data(self) -> dict:
+        """Unified data collection from all section sub-tabs."""
+        data = {}
+        for spec in _TAB_SPECS:
+            tab = getattr(self, spec["attr"], None)
+            if hasattr(tab, "collect_data"):
+                data.update(tab.collect_data())
+        return data
 
-        content_layout.addWidget(self.section_tabs)
-        main_layout.addWidget(self._content_frame)
+    def restore_data(self, data: dict) -> None:
+        """Unified data restoration to all section sub-tabs."""
+        for spec in _TAB_SPECS:
+            tab = getattr(self, spec["attr"], None)
+            if hasattr(tab, "restore_data"):
+                tab.restore_data(data)
+        self._bind_dependents()
 
-        try:
-            self.section_tabs.currentChanged.connect(self._on_section_tab_changed)
-            self._last_section_tab_index = self.section_tabs.currentIndex()
-        except Exception:
-            self._last_section_tab_index = 0
+    def reset_defaults(self):
+        """Unified reset for all section sub-tabs."""
+        for spec in _TAB_SPECS:
+            tab = getattr(self, spec["attr"], None)
+            if hasattr(tab, "reset_defaults"):
+                tab.reset_defaults()
+
+    def validate_tab(self):
+        """Unified validation for all section sub-tabs."""
+        errors = []
+        for spec in _TAB_SPECS:
+            tab = getattr(self, spec["attr"], None)
+            validate_method = spec.get("validate_method", "validate_tab")
+            method = getattr(tab, validate_method, None)
+            if callable(method):
+                errors.extend(method())
+        return list(dict.fromkeys(errors))
 
     def _bind_dependents(self) -> None:
         girder = getattr(self, "girder_details_tab", None)
@@ -284,53 +286,3 @@ class SectionPropertiesTab(QWidget):
                 reset()
             except Exception:
                 pass
-
-    def save_properties(self):
-        data = {}
-        for spec in _TAB_SPECS:
-            widget = getattr(self, spec["attr"], None)
-            if widget is None:
-                continue
-
-            validate = getattr(widget, spec.get("validate_method", ""), None)
-            if callable(validate):
-                try:
-                    validate()
-                except Exception:
-                    pass
-
-            collect = getattr(widget, spec.get("collect_method", ""), None)
-            if callable(collect):
-                try:
-                    data[spec["save_key"]] = collect()
-                except Exception:
-                    pass
-
-        return data
-
-    def restore_properties(self, data: dict) -> None:
-        if not isinstance(data, dict):
-            return
-
-        girder = getattr(self, "girder_details_tab", None)
-        girder_restore = getattr(girder, "restore_data", None) if girder is not None else None
-        girder_data = data.get("girder_details")
-        if isinstance(girder_data, dict) and callable(girder_restore):
-            try:
-                girder_restore(girder_data)
-            except Exception:
-                pass
-
-        self._refresh_from_girder()
-
-        for spec in self._dependent_specs():
-            widget = getattr(self, spec["attr"], None)
-            restore = getattr(widget, spec.get("restore_method", ""), None) if widget is not None else None
-            payload = data.get(spec["save_key"])
-            if isinstance(payload, dict) and callable(restore):
-                try:
-                    restore(payload)
-                except Exception:
-                    pass
-
-        self._refresh_from_girder()
