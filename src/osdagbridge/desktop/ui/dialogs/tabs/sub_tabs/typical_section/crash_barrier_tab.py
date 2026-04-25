@@ -109,3 +109,27 @@ class CrashBarrierTab(SchemaTab):
         effective_barrier_type = self.effective_type(barrier_type)
         geom = CrashBarrierGeometry.get_geometry(effective_barrier_type)
         return self.sync_from_parent_geometry(barrier_type, geom, force=force)
+
+    def _auto_compute_crash_barrier_load(self) -> None:
+        barrier_type = self.export_barrier_state().get("type", "")
+        self.auto_compute_load(barrier_type)
+
+    def on_crash_barrier_type_changed(self, barrier_type) -> None:
+        owner = getattr(self, "owner", None)
+        if barrier_type in ["Flexible", "Semi-Rigid"] and getattr(owner, "footpath_value", None) == "None":
+            callback = getattr(owner, "show_critical_message", None) if owner is not None else None
+            if callable(callback):
+                callback(
+                    "Crash Barrier Type Not Permitted",
+                    f"{barrier_type} crash barriers are not permitted on bridges without an outer "
+                    "footpath per IRC 5 Clause 109.6.4.",
+                )
+
+        params = self.sync_from_parent_state(force=True)
+        push = getattr(owner, "_push_cad_params", None) if owner is not None else None
+        if callable(push):
+            push(params)
+
+        recalculate = getattr(owner, "recalculate_girders", None) if owner is not None else None
+        if callable(recalculate):
+            recalculate()
