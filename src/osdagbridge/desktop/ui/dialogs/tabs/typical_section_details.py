@@ -3,13 +3,13 @@ import sys
 import os
 import math
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QTabWidget, QTabBar, QLabel, QLineEdit,
+    QWidget, QVBoxLayout, QHBoxLayout, QTabWidget, QLabel, QLineEdit,
     QComboBox, QGroupBox, QFormLayout, QPushButton, QScrollArea,
     QCheckBox, QMessageBox, QSizePolicy, QSpacerItem, QStackedWidget,
     QFrame, QGridLayout, QTableWidget, QTableWidgetItem, QHeaderView,
-    QTextEdit, QDialog, QSizePolicy, QSizeGrip
+    QTextEdit, QDialog, QSizePolicy, QSizeGrip, QTabBar
 )
-from PySide6.QtCore import Qt, Signal, QSize
+from PySide6.QtCore import Qt, Signal, QTimer
 from PySide6.QtGui import QDoubleValidator, QIntValidator
 
 from osdagbridge.core.bridge_types.plate_girder.bridge_geometry import CrossSectionLayout
@@ -29,6 +29,15 @@ from osdagbridge.desktop.cad.irc5_geometry import (
     RailingGeometry,
 )
 
+
+ADDITIONAL_INPUTS_SCROLL_STYLE = """
+    QScrollArea { background:transparent; padding:0px 5px; border:none}
+    QScrollArea QScrollBar:vertical { border:none; background:#f0f0f0; width:8px; }
+    QScrollArea QScrollBar::handle:vertical { background:#c0c0c0; border-radius:4px; min-height:20px; }
+    QScrollArea QScrollBar::handle:vertical:hover { background:#a0a0a0; }
+    QScrollArea QScrollBar::add-line:vertical,
+    QScrollArea QScrollBar::sub-line:vertical { border:none; background:none; }
+"""
 
 
 def _styled_message_box(icon, title, text, parent=None):
@@ -153,16 +162,6 @@ class TypicalSectionDetailsTab(QWidget):
 
         return card, card_layout
 
-    def _wrap_subtab_with_scroll(self, tab_widget: QWidget) -> QScrollArea:
-        """Wrap an inner subtab page so long forms can scroll vertically."""
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setFrameShape(QFrame.NoFrame)
-        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
-        scroll.setWidget(tab_widget)
-        return scroll
-
     def init_ui(self):
         main_layout = QVBoxLayout(self)
         main_layout.setContentsMargins(10, 10, 10, 10)
@@ -188,7 +187,9 @@ class TypicalSectionDetailsTab(QWidget):
         cad_scroll = QScrollArea()
         cad_scroll.setWidgetResizable(True)
         cad_scroll.setFrameShape(QFrame.NoFrame)
-        cad_scroll.setStyleSheet("QScrollArea { background: transparent; border: none; }")
+        cad_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        cad_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        cad_scroll.setStyleSheet(ADDITIONAL_INPUTS_SCROLL_STYLE)
 
         self.cad_preview = CrossSectionCADWidget()
         self.cad_preview.scale_factor = 0.65
@@ -214,11 +215,26 @@ class TypicalSectionDetailsTab(QWidget):
             show_title=True,
             add_bottom_stretch=False,
         )
+        self.layout_primary_fields.setAutoFillBackground(True)
+        self.layout_primary_fields.setObjectName("layout_primary_fields")
+        self.layout_primary_fields.setStyleSheet("""
+            QWidget#layout_primary_fields {
+                border-top: 1px solid #b0b0b0;
+                border-left: 1px solid #b0b0b0;
+                border-right: 1px solid #b0b0b0;
+                border-bottom: none;
+            }
+        """)
         input_layout.addWidget(self.layout_primary_fields)
-        input_layout.addSpacing(12)
+        input_layout.addSpacing(0)
 
         self.input_tabs = QTabWidget()
+        self.input_tabs.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self.input_tabs.setTabBarAutoHide(False)
         self.input_tabs.setStyleSheet("""
+            QTabBar {
+                background-color: #e8e8e8;
+            }
             QTabWidget::pane {
                 border: 1px solid #b0b0b0;
                 border-top: none;
@@ -254,28 +270,33 @@ class TypicalSectionDetailsTab(QWidget):
                 background-color: #d0d0d0;
             }
         """)
+        self.input_tabs.tabBar().setElideMode(Qt.ElideRight)
+        self.input_tabs.tabBar().setExpanding(True)
+        self.input_tabs.tabBar().setUsesScrollButtons(False)
+        self.input_tabs.tabBar().setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
 
         self.layout_tab = LayoutTab(
             self,
             row_indices=[3, 4],
             show_title=False,
         )
-        self.input_tabs.addTab(self._wrap_subtab_with_scroll(self.layout_tab), "Deck Details")
+        self.input_tabs.addTab(self.layout_tab, "Deck Details")
 
         self.crash_barrier_tab = CrashBarrierTab(self)
-        self.input_tabs.addTab(self._wrap_subtab_with_scroll(self.crash_barrier_tab), "Crash Barrier")
+        self.input_tabs.addTab(self.crash_barrier_tab, "Crash Barrier")
 
         self.median_tab = MedianTab(self)
-        self.input_tabs.addTab(self._wrap_subtab_with_scroll(self.median_tab), "Median")
+        self.input_tabs.addTab(self.median_tab, "Median")
 
         self.railing_tab = RailingTab(self)
-        self.input_tabs.addTab(self._wrap_subtab_with_scroll(self.railing_tab), "Railing")
+        self.input_tabs.addTab(self.railing_tab, "Railing")
 
         self.wearing_course_tab = WearingCourseTab(self)
-        self.input_tabs.addTab(self._wrap_subtab_with_scroll(self.wearing_course_tab), "Wearing Course")
+        self.input_tabs.addTab(self.wearing_course_tab, "Wearing Course")
 
         self.lane_details_tab = LaneDetailsTab(self)
-        self.input_tabs.addTab(self._wrap_subtab_with_scroll(self.lane_details_tab), "Lane Details")
+        self.input_tabs.addTab(self.lane_details_tab, "Lane Details")
+        QTimer.singleShot(0, self._sync_subtab_bar_width)
         
         # CONNECT COMBO BOXES TO IRC DEFAULT HANDLERS
 
@@ -306,7 +327,16 @@ class TypicalSectionDetailsTab(QWidget):
             self.wearing_material.currentTextChanged.connect(self._update_cad_preview)
             
         input_layout.addWidget(self.input_tabs)
-        main_layout.addWidget(input_container)
+
+        self.lower_scroll = QScrollArea()
+        self.lower_scroll.setWidgetResizable(True)
+        self.lower_scroll.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self.lower_scroll.setFrameShape(QFrame.NoFrame)
+        self.lower_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.lower_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        self.lower_scroll.setStyleSheet(ADDITIONAL_INPUTS_SCROLL_STYLE)
+        self.lower_scroll.setWidget(input_container)
+        main_layout.addWidget(self.lower_scroll)
 
         # Initialize lane defaults per IRC 5 Clause 104.3.1
         self._initialize_lane_defaults()
@@ -456,6 +486,20 @@ class TypicalSectionDetailsTab(QWidget):
 
         if params:
             self.cad_preview.update_params(params)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._sync_subtab_bar_width()
+
+    def _sync_subtab_bar_width(self):
+        if not hasattr(self, "input_tabs") or self.input_tabs is None:
+            return
+        tab_bar = self.input_tabs.tabBar()
+        if tab_bar is None:
+            return
+        target_width = max(0, self.input_tabs.width() - 1)
+        if target_width > 0 and tab_bar.width() != target_width:
+            tab_bar.setFixedWidth(target_width)
 
     
 
