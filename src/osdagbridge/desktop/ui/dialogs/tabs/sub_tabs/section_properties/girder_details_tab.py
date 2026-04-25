@@ -11,7 +11,7 @@ import math
 import re
 from typing import Dict, List, Optional, Set, Any
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QComboBox,
     QLineEdit,
@@ -61,6 +61,7 @@ WELDED_ONLY_BINDS = (
 class GirderDetailsTab(SchemaTab):
     """Tab for Girder Details - Geometry and Section Properties."""
     schema = GIRDER_DETAILS_SCHEMA
+    dependency_state_changed = Signal(dict)
 
     def __init__(self, owner, parent=None):
         super().__init__(owner, parent)
@@ -184,7 +185,7 @@ class GirderDetailsTab(SchemaTab):
 
     def _on_girder_changed(self, girder: str):
         if self._is_current_member_dirty():
-            self._commit_current_member_state()
+            self.commit_active_state()
         self._current_girder = girder
         self._refresh_segment_list(girder)
         self._select_segment_index(0)
@@ -238,6 +239,13 @@ class GirderDetailsTab(SchemaTab):
         self._member_state.setdefault(girder, {})[member_id] = self._current_member_state_snapshot()
         self._dirty_members.discard(member_id)
 
+    def commit_active_state(self, *, emit_signal: bool = True) -> dict:
+        self._commit_current_member_state()
+        state = self._dependency_state_snapshot()
+        if emit_signal:
+            self.dependency_state_changed.emit(copy.deepcopy(state))
+        return state
+
     def _refresh_segment_list(self, girder: str):
         table = getattr(self, "segment_table", None)
         if table is None:
@@ -287,9 +295,10 @@ class GirderDetailsTab(SchemaTab):
         self._refresh_girder_dropdown()
         self._on_girder_changed("G1")
         self._sync_cad_view()
+        self.commit_active_state()
 
     def collect_data(self) -> dict:
-        self._commit_current_member_state()
+        self.commit_active_state(emit_signal=False)
         data = super().collect_data()
         data.update({
             "available_girders": self.available_girders,
@@ -304,9 +313,11 @@ class GirderDetailsTab(SchemaTab):
         self.available_girders = data.get("available_girders", ["G1"])
         self.segment_chain = data.get("segment_chain", {})
         self._member_state = data.get("member_state", {})
+        self._dirty_members.clear()
         self._refresh_girder_dropdown()
         self._on_girder_changed(self.available_girders[0])
         self._sync_cad_view()
+        self.commit_active_state()
 
     def _on_thickness_mode_changed(self, field_key: str, text: str):
         if text == "Custom":
@@ -356,6 +367,8 @@ class GirderDetailsTab(SchemaTab):
             return
         row = table.currentRow()
         if row >= 0:
+            if row != self._current_segment_index and self._is_current_member_dirty():
+                self.commit_active_state()
             self._select_segment_index(row)
 
     def _refresh_girder_dropdown(self) -> None:
@@ -441,6 +454,9 @@ class GirderDetailsTab(SchemaTab):
         cad._flange_thickness = flange_thickness
         cad.update()
 
+    def list_available_girders(self) -> list[str]:
+        return list(self.available_girders)
+
     def list_all_member_ids(self) -> list[str]:
         member_ids: list[str] = []
         for girder in self.available_girders:
@@ -478,6 +494,12 @@ class GirderDetailsTab(SchemaTab):
         inputs = self._member_inputs(member_id)
         return str(inputs.get("design_combo", self.design_combo.currentText() if hasattr(self, "design_combo") else "")).strip() == "Optimized"
 
+    def get_total_span(self) -> float:
+        return self._get_total_span()
+
+    def segments_for_girder(self, girder: str) -> list[dict]:
+        return copy.deepcopy(self._ensure_girder_segments(girder))
+
     def _get_total_span(self) -> float:
         current_girder = self._current_girder or self.available_girders[0]
         segments = self._ensure_girder_segments(current_girder)
@@ -487,8 +509,7 @@ class GirderDetailsTab(SchemaTab):
         end = self._as_float(segments[-1].get("end"), self._default_member_length_m)
         return max(0.0, end - start)
 
-    def export_dependency_state(self) -> dict:
-        self._commit_current_member_state()
+    def _dependency_state_snapshot(self) -> dict:
         member_ids = self.list_all_member_ids()
         return {
             "available_girders": list(self.available_girders),
@@ -502,26 +523,39 @@ class GirderDetailsTab(SchemaTab):
             "total_span_m": self._get_total_span(),
         }
 
+    def export_dependency_state(self) -> dict:
+        return self.commit_active_state(emit_signal=False)
+
     def set_girder_count(self, count):
+        self.commit_active_state(emit_signal=False)
         try:
             requested = max(1, min(int(count), self._max_girder_count))
         except Exception:
             requested = 1
-        self.available_girders = [f"G{i}" for i in range(1, requested + 1)]
+        next_girders = [f"G{i}" for i in range(1, requested + 1)]
         for girder in list(self.segment_chain):
-            if girder not in self.available_girders:
+            if girder not in next_girders:
                 self.segment_chain.pop(girder, None)
+                self._member_state.pop(girder, None)
+        self.available_girders = next_girders
+        valid_member_ids = {
+            str(segment.get("id") or "")
+            for girder in self.available_girders
+            for segment in self._ensure_girder_segments(girder)
+        }
+        self._dirty_members.intersection_update({member_id for member_id in valid_member_ids if member_id})
         for girder in self.available_girders:
             self._ensure_girder_segments(girder)
         self._current_girder = self.available_girders[0]
         self._refresh_girder_dropdown()
         self._on_girder_changed(self._current_girder)
+        self.commit_active_state()
 
     def has_unsaved_changes(self) -> bool:
         return bool(self._dirty_members)
 
     def _apply_current_state_to_girders(self, *, exterior_only: bool) -> None:
-        self._commit_current_member_state()
+        self.commit_active_state(emit_signal=False)
         source_girder, source_member = self._current_member_key()
         source_state = copy.deepcopy(self._member_state_for(source_girder, source_member))
         if not source_state:
@@ -540,3 +574,4 @@ class GirderDetailsTab(SchemaTab):
                 self._member_state.setdefault(girder, {})[member_id] = copy.deepcopy(source_state)
 
         self._refresh_segment_list(self._current_girder)
+        self.commit_active_state()
