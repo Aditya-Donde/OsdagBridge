@@ -1477,3 +1477,131 @@ class UIBuilder:
                     type(existing).__name__, type(widget).__name__,
                 )
             setattr(self.owner, str(bind_name), widget)
+
+    # ------------------------------------------------------------------ #
+    # CRUD helpers — static utilities for dynamic table / checkbox lists  #
+    # ------------------------------------------------------------------ #
+
+    @staticmethod
+    def rebuild_dynamic_checkbox_list(
+        layout: QLayout,
+        items: list,
+        *,
+        default_checked: bool = True,
+        label_width: int = 220,
+        field_height: int = 28,
+    ) -> tuple:
+        """Clear *layout* and rebuild one label+checkbox row per item.
+
+        Returns (checkboxes, labels).
+        """
+        while layout.count():
+            child = layout.takeAt(0)
+            if child.widget():
+                child.widget().deleteLater()
+            elif child.layout():
+                while child.layout().count():
+                    sub = child.layout().takeAt(0)
+                    if sub.widget():
+                        sub.widget().deleteLater()
+
+        checkboxes: list[QCheckBox] = []
+        labels: list[QLabel] = []
+        for text in items:
+            row = QHBoxLayout()
+            row.setSpacing(10)
+
+            lbl = QLabel(str(text))
+            lbl.setStyleSheet(
+                "font-size: 11px; font-weight: 600; color: #3a3a3a;"
+                " background: transparent; border: none;"
+            )
+            lbl.setMinimumWidth(label_width)
+
+            cb = QCheckBox()
+            cb.setChecked(default_checked)
+            cb.setFixedHeight(field_height)
+
+            row.addWidget(lbl)
+            row.addWidget(cb)
+            row.addStretch()
+            layout.addLayout(row)
+
+            checkboxes.append(cb)
+            labels.append(lbl)
+
+        return checkboxes, labels
+
+    @staticmethod
+    def build_table_row(
+        table: QTableWidget,
+        columns: list,
+        row_height: int = 32,
+    ) -> int:
+        """Append a row to *table* and return its index.
+
+        Each column dict supports:
+          type        "text" | "checkbox" | "button"
+          value       str — cell text (type=text)
+          alignment   Qt.AlignmentFlag — text cell alignment
+          checked     bool — initial state (type=checkbox)
+          text        str — button label (type=button)
+          width       int — button fixed width (type=button)
+          on_click    callable — button clicked handler (type=button)
+          align       Qt.AlignmentFlag — cell-wrapper alignment (checkbox/button)
+        """
+        row_idx = table.rowCount()
+        table.insertRow(row_idx)
+
+        for col_idx, col in enumerate(columns):
+            col_type = str(col.get("type", "text")).lower()
+
+            if col_type == "text":
+                item = QTableWidgetItem(str(col.get("value", "")))
+                item.setTextAlignment(int(col.get("alignment", Qt.AlignLeft | Qt.AlignVCenter)))
+                item.setFlags(Qt.ItemIsEnabled)
+                table.setItem(row_idx, col_idx, item)
+
+            elif col_type == "checkbox":
+                cb = QCheckBox()
+                cb.setChecked(bool(col.get("checked", True)))
+                align = col.get("align", Qt.AlignCenter)
+                table.setCellWidget(row_idx, col_idx, UIBuilder._wrap_cell(cb, align))
+
+            elif col_type == "button":
+                btn = QPushButton(str(col.get("text", "")))
+                w = int(col.get("width", 60))
+                btn.setFixedSize(w, max(row_height - 4, 20))
+                btn.setStyleSheet(UIBuilder._table_button_style())
+                on_click = col.get("on_click")
+                if callable(on_click):
+                    btn.clicked.connect(on_click)
+                align = col.get("align", Qt.AlignVCenter)
+                table.setCellWidget(row_idx, col_idx, UIBuilder._wrap_cell(btn, align))
+
+        table.setRowHeight(row_idx, row_height)
+        return row_idx
+
+    @staticmethod
+    def _wrap_cell(widget: QWidget, alignment=Qt.AlignCenter) -> QWidget:
+        """Wrap *widget* in a centred cell container."""
+        container = QWidget()
+        lay = QHBoxLayout(container)
+        lay.setContentsMargins(0, 0, 0, 0)
+        lay.setSpacing(0)
+        if alignment == Qt.AlignCenter:
+            lay.setAlignment(Qt.AlignCenter)
+            lay.addWidget(widget)
+        else:
+            lay.addWidget(widget, 0, alignment)
+            lay.addStretch()
+        return container
+
+    @staticmethod
+    def _table_button_style() -> str:
+        return (
+            "QPushButton { background-color: white; border: 1px solid #3a3a3a;"
+            " border-radius: 3px; font-size: 10px; font-weight: 600;"
+            " color: #3a3a3a; padding: 0px; }"
+            " QPushButton:hover { background-color: #f8f8f8; }"
+        )
