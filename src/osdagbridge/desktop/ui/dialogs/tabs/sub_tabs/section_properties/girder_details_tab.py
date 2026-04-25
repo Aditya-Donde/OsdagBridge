@@ -15,15 +15,10 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QComboBox,
     QLineEdit,
-    QPushButton,
     QTableWidget,
     QTableWidgetItem,
     QHeaderView,
-    QMessageBox,
-    QWidget,
-    QVBoxLayout,
     QStyledItemDelegate,
-    QDialog,
 )
 from PySide6.QtGui import QDoubleValidator
 
@@ -42,6 +37,26 @@ class _EndDistanceDelegate(QStyledItemDelegate):
         editor = QLineEdit(parent)
         editor.setValidator(QDoubleValidator(0.0, 1000.0, 3, editor))
         return editor
+
+
+ROLLED_ONLY_BINDS = ("is_section_combo",)
+WELDED_ONLY_BINDS = (
+    "design_combo",
+    "symmetry_combo",
+    "total_depth_widget",
+    "top_width_widget",
+    "top_thickness_combo",
+    "top_thickness_value_input",
+    "bottom_width_widget",
+    "bottom_thickness_combo",
+    "bottom_thickness_value_input",
+    "support_type_combo",
+    "support_width_input",
+    "web_thickness_combo",
+    "web_thickness_value_input",
+    "web_type_combo",
+)
+
 
 class GirderDetailsTab(SchemaTab):
     """Tab for Girder Details - Geometry and Section Properties."""
@@ -88,13 +103,37 @@ class GirderDetailsTab(SchemaTab):
         self.top_thickness_combo.currentTextChanged.connect(lambda t: self._on_thickness_mode_changed("top_thickness", t))
         self.bottom_thickness_combo.currentTextChanged.connect(lambda t: self._on_thickness_mode_changed("bottom_thickness", t))
 
+        self._wire_dirty_tracking()
         self.reset_defaults()
 
     def _setup_segment_table(self):
-        # We find where to put the table. In GIRDER_DETAILS_SCHEMA overview, it's a gap.
-        # Actually, let's just create it and add to a known layout if possible, 
-        # or find it if UIBuilder created a placeholder.
-        pass
+        headers = GIRDER_DETAILS_SCHEMA.get("segment_manager", {}).get(
+            "table_headers",
+            ["Member ID", "Start (m)", "End (m)", "Length (m)", "Action"],
+        )
+        table = QTableWidget(self)
+        table.setObjectName("girder_segment_table")
+        table.setColumnCount(len(headers))
+        table.setHorizontalHeaderLabels(headers)
+        table.setSelectionBehavior(QTableWidget.SelectRows)
+        table.setSelectionMode(QTableWidget.SingleSelection)
+        table.verticalHeader().setVisible(False)
+        table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeToContents)
+        table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeToContents)
+        table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeToContents)
+        table.horizontalHeader().setSectionResizeMode(3, QHeaderView.Stretch)
+        if table.columnCount() > 4:
+            table.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeToContents)
+        table.setItemDelegateForColumn(0, _ReadOnlyCellDelegate(table))
+        table.setItemDelegateForColumn(1, _ReadOnlyCellDelegate(table))
+        table.setItemDelegateForColumn(2, _ReadOnlyCellDelegate(table))
+        table.setItemDelegateForColumn(3, _ReadOnlyCellDelegate(table))
+        table.itemSelectionChanged.connect(self._on_segment_selection_changed)
+        self.segment_table = table
+
+        page_layout = getattr(self.builder, "page_layout", None)
+        if page_layout is not None:
+            page_layout.addWidget(table)
 
     def _on_girder_dropdown_changed(self, text: str):
         girder = self.girder_dropdown.currentData() or str(text).replace("Girder ", "G")
@@ -117,6 +156,7 @@ class GirderDetailsTab(SchemaTab):
             if res:
                 self._dimension_bounds[key] = res
                 self._mark_current_member_dirty()
+                self._sync_cad_view()
 
     def _default_dimension_bounds(self) -> dict:
         return {
@@ -126,17 +166,18 @@ class GirderDetailsTab(SchemaTab):
         }
 
     def _on_type_changed(self, text: str):
-        is_rolled = (text == "Rolled Beam")
-        # In schema-driven, we use conditions or manual toggles if complex
         self._refresh_visibility()
+        self._mark_current_member_dirty()
+        self._sync_cad_view()
 
     def _refresh_visibility(self):
         is_rolled = (self.type_combo.currentText() == "Rolled Beam")
-        # Find which widgets belong to which view
-        pass
+        self._set_widgets_active(ROLLED_ONLY_BINDS, is_rolled)
+        self._set_widgets_active(WELDED_ONLY_BINDS, not is_rolled)
 
     def _on_rolled_section_changed(self, *_args):
-        pass
+        self._mark_current_member_dirty()
+        self._sync_cad_view()
 
     def _on_span_changed(self, text: str):
         self.length_input.setReadOnly(text != "Custom")
@@ -147,49 +188,92 @@ class GirderDetailsTab(SchemaTab):
         self._current_girder = girder
         self._refresh_segment_list(girder)
         self._select_segment_index(0)
+        self._sync_length_field()
 
     def _is_current_member_dirty(self) -> bool:
         _, mid = self._current_member_key()
         return mid in self._dirty_members
 
     def _mark_current_member_dirty(self):
+        if self._suppress_member_state_updates:
+            return
         _, mid = self._current_member_key()
         if mid: self._dirty_members.add(mid)
 
     def _current_member_key(self) -> tuple[str, str]:
         segments = self.segment_chain.get(self._current_girder, [])
-        if not segments: return self._current_girder, ""
-        idx = max(0, min(self._current_segment_index, len(segments)-1))
+        if not segments:
+            return self._current_girder, ""
+        idx = max(0, min(self._current_segment_index, len(segments) - 1))
         return self._current_girder, segments[idx]["id"]
 
+    def _current_member_id(self) -> str:
+        return self._current_member_key()[1]
+
+    def _current_segment(self) -> Optional[dict]:
+        segments = self.segment_chain.get(self._current_girder, [])
+        if not segments:
+            return None
+        index = max(0, min(self._current_segment_index, len(segments) - 1))
+        return segments[index]
+
+    def _member_state_for(self, girder: str, member_id: str) -> dict:
+        state = self._member_state.get(girder, {}).get(member_id, {})
+        return state if isinstance(state, dict) else {}
+
+    def _member_input_values(self, member_id: str) -> dict:
+        current_girder, current_member = self._current_member_key()
+        if member_id == current_member:
+            return schema_io.collect_values(self, GIRDER_DETAILS_SCHEMA)
+
+        girder = str(member_id).split("M", 1)[0]
+        state = self._member_state_for(girder, member_id)
+        inputs = state.get("inputs", {})
+        return dict(inputs) if isinstance(inputs, dict) else {}
+
     def _commit_current_member_state(self):
-        girder, mid = self._current_member_key()
-        if not mid: return
-        state = {
-            "inputs": schema_io.collect_values(self, GIRDER_DETAILS_SCHEMA),
-            "bounds": copy.deepcopy(self._dimension_bounds)
-        }
-        self._member_state.setdefault(girder, {})[mid] = state
-        self._dirty_members.discard(mid)
+        girder, member_id = self._current_member_key()
+        if not member_id:
+            return
+        self._member_state.setdefault(girder, {})[member_id] = self._current_member_state_snapshot()
+        self._dirty_members.discard(member_id)
 
     def _refresh_segment_list(self, girder: str):
-        # Implementation omitted for brevity in this step, but would populate table
-        pass
+        table = getattr(self, "segment_table", None)
+        if table is None:
+            return
+        segments = self._ensure_girder_segments(girder)
+        previous = table.blockSignals(True)
+        try:
+            table.setRowCount(len(segments))
+            for row, segment in enumerate(segments):
+                start = self._as_float(segment.get("start"), 0.0)
+                end = self._as_float(segment.get("end"), self._default_member_length_m)
+                length = max(0.0, end - start)
+                values = (
+                    str(segment.get("id", self._make_segment_id(girder, row + 1))),
+                    f"{start:.2f}",
+                    f"{end:.2f}",
+                    f"{length:.2f}",
+                    "Configured",
+                )
+                for column, value in enumerate(values):
+                    item = QTableWidgetItem(value)
+                    item.setFlags(item.flags() & ~Qt.ItemIsEditable)
+                    table.setItem(row, column, item)
+            if segments:
+                row = max(0, min(self._current_segment_index, len(segments) - 1))
+                table.selectRow(row)
+        finally:
+            table.blockSignals(previous)
+        self._sync_cad_view()
 
     def _select_segment_index(self, index: int):
         self._current_segment_index = index
-        # Load state for this segment
-        girder, mid = self._current_member_key()
-        stored = self._member_state.get(girder, {}).get(mid)
-        if stored:
-            self._suppress_member_state_updates = True
-            try:
-                schema_io.restore_values(self, GIRDER_DETAILS_SCHEMA, stored.get("inputs", {}))
-                self._dimension_bounds = copy.deepcopy(stored.get("bounds", self._default_dimension_bounds()))
-            finally:
-                self._suppress_member_state_updates = False
-        else:
-            schema_io.reset_defaults(self, GIRDER_DETAILS_SCHEMA)
+        girder, member_id = self._current_member_key()
+        self._restore_member_state(self._member_state_for(girder, member_id))
+        self._sync_length_field()
+        self._sync_cad_view()
 
     def reset_defaults(self):
         self._member_state.clear()
@@ -202,6 +286,7 @@ class GirderDetailsTab(SchemaTab):
         self.segment_chain["G1"] = [{"id": "G1M1", "start": 0.0, "end": 30.0}]
         self._refresh_girder_dropdown()
         self._on_girder_changed("G1")
+        self._sync_cad_view()
 
     def collect_data(self) -> dict:
         self._commit_current_member_state()
@@ -221,22 +306,57 @@ class GirderDetailsTab(SchemaTab):
         self._member_state = data.get("member_state", {})
         self._refresh_girder_dropdown()
         self._on_girder_changed(self.available_girders[0])
+        self._sync_cad_view()
 
     def _on_thickness_mode_changed(self, field_key: str, text: str):
         if text == "Custom":
-            # Open dialog
-            pass
+            bind_map = {
+                "web_thickness": "web_thickness_value_input",
+                "top_thickness": "top_thickness_value_input",
+                "bottom_thickness": "bottom_thickness_value_input",
+            }
+            value_widget = getattr(self, bind_map.get(field_key, ""), None)
+            current = self._as_float(value_widget.text() if value_widget is not None else "", 0.0)
+            dialog = ThicknessSelectionDialog(
+                f"Select {field_key.replace('_', ' ').title()}",
+                list(self._thickness_values),
+                current,
+                self,
+            )
+            if dialog.exec():
+                selected = dialog.selected_value()
+                if selected is not None and value_widget is not None:
+                    value_widget.setText(f"{selected:.1f}".rstrip("0").rstrip("."))
+        self._mark_current_member_dirty()
+        self._sync_cad_view()
 
     def _wire_dirty_tracking(self):
         from PySide6.QtWidgets import QComboBox, QLineEdit, QCheckBox
         for w in self.findChildren(QComboBox) + self.findChildren(QLineEdit) + self.findChildren(QCheckBox):
-            if isinstance(w, QComboBox): w.currentTextChanged.connect(self._mark_current_member_dirty)
-            elif isinstance(w, QLineEdit): w.textChanged.connect(self._mark_current_member_dirty)
-            elif isinstance(w, QCheckBox): w.toggled.connect(self._mark_current_member_dirty)
+            if isinstance(w, QComboBox):
+                w.currentTextChanged.connect(self._mark_current_member_dirty)
+                w.currentTextChanged.connect(lambda *_args: self._sync_cad_view())
+            elif isinstance(w, QLineEdit):
+                w.textChanged.connect(self._mark_current_member_dirty)
+                w.textChanged.connect(lambda *_args: self._sync_cad_view())
+            elif isinstance(w, QCheckBox):
+                w.toggled.connect(self._mark_current_member_dirty)
+                w.toggled.connect(lambda *_args: self._sync_cad_view())
 
-    def _on_apply_exterior_clicked(self): pass
-    def _on_apply_interior_clicked(self): pass
+    def _on_apply_exterior_clicked(self):
+        self._apply_current_state_to_girders(exterior_only=True)
+
+    def _on_apply_interior_clicked(self):
+        self._apply_current_state_to_girders(exterior_only=False)
     def _make_segment_id(self, girder: str, index: int) -> str: return f"{girder}M{index}"
+
+    def _on_segment_selection_changed(self) -> None:
+        table = getattr(self, "segment_table", None)
+        if table is None:
+            return
+        row = table.currentRow()
+        if row >= 0:
+            self._select_segment_index(row)
 
     def _refresh_girder_dropdown(self) -> None:
         combo = getattr(self, "girder_dropdown", None)
@@ -265,6 +385,62 @@ class GirderDetailsTab(SchemaTab):
         self.segment_chain[girder] = segments
         return segments
 
+    def _sync_length_field(self) -> None:
+        widget = getattr(self, "length_input", None)
+        if widget is None:
+            return
+        if self.widget_current_text("span_combo") == "Custom":
+            widget.setReadOnly(False)
+            return
+        widget.setReadOnly(True)
+        widget.setText(f"{self._get_total_span():.2f}".rstrip("0").rstrip("."))
+
+    def _current_member_state_snapshot(self) -> dict:
+        return {
+            "inputs": self._member_input_values(self._current_member_id()),
+            "bounds": copy.deepcopy(self._dimension_bounds),
+        }
+
+    def _restore_member_state(self, stored: Optional[dict]) -> None:
+        self._suppress_member_state_updates = True
+        try:
+            if stored:
+                schema_io.restore_values(self, GIRDER_DETAILS_SCHEMA, stored.get("inputs", {}))
+                self._dimension_bounds = copy.deepcopy(stored.get("bounds", self._default_dimension_bounds()))
+            else:
+                schema_io.reset_defaults(self, GIRDER_DETAILS_SCHEMA)
+                self._dimension_bounds = self._default_dimension_bounds()
+        finally:
+            self._suppress_member_state_updates = False
+        self._refresh_visibility()
+
+    def _set_widgets_active(self, bind_names, enabled: bool) -> None:
+        for name in bind_names:
+            widget = getattr(self, name, None)
+            if widget is not None:
+                widget.setVisible(enabled)
+                widget.setEnabled(enabled)
+
+    def _current_member_dimensions(self) -> dict:
+        member_id = self._current_member_id()
+        return self.get_member_section_dimensions(member_id) if member_id else {}
+
+    def _sync_cad_view(self) -> None:
+        cad = getattr(self, "girder_cad_view", None)
+        if cad is None:
+            return
+        dims = self._current_member_dimensions()
+        flange_thickness = max(
+            10.0,
+            self._as_float(self.widget_text("top_thickness_value_input"), 0.0) or 0.0,
+            self._as_float(self.widget_text("bottom_thickness_value_input"), 0.0) or 0.0,
+            dims.get("web_thickness_mm") or 15.0,
+        )
+        cad.set_segments(self._ensure_girder_segments(self._current_girder))
+        cad.set_selected_member(self._current_member_id())
+        cad._flange_thickness = flange_thickness
+        cad.update()
+
     def list_all_member_ids(self) -> list[str]:
         member_ids: list[str] = []
         for girder in self.available_girders:
@@ -275,14 +451,7 @@ class GirderDetailsTab(SchemaTab):
         return member_ids
 
     def _member_inputs(self, member_id: str) -> dict:
-        current_girder, current_member = self._current_member_key()
-        if member_id == current_member:
-            return schema_io.collect_values(self, GIRDER_DETAILS_SCHEMA)
-
-        girder = str(member_id).split("M", 1)[0]
-        state = self._member_state.get(girder, {}).get(member_id, {})
-        inputs = state.get("inputs", {}) if isinstance(state, dict) else {}
-        return dict(inputs) if isinstance(inputs, dict) else {}
+        return self._member_input_values(member_id)
 
     @staticmethod
     def _as_float(value, default=0.0) -> float:
@@ -310,7 +479,8 @@ class GirderDetailsTab(SchemaTab):
         return str(inputs.get("design_combo", self.design_combo.currentText() if hasattr(self, "design_combo") else "")).strip() == "Optimized"
 
     def _get_total_span(self) -> float:
-        segments = self._ensure_girder_segments(self._current_girder or self.available_girders[0])
+        current_girder = self._current_girder or self.available_girders[0]
+        segments = self._ensure_girder_segments(current_girder)
         if not segments:
             return float(self._default_member_length_m)
         start = self._as_float(segments[0].get("start"), 0.0)
@@ -349,3 +519,24 @@ class GirderDetailsTab(SchemaTab):
 
     def has_unsaved_changes(self) -> bool:
         return bool(self._dirty_members)
+
+    def _apply_current_state_to_girders(self, *, exterior_only: bool) -> None:
+        self._commit_current_member_state()
+        source_girder, source_member = self._current_member_key()
+        source_state = copy.deepcopy(self._member_state_for(source_girder, source_member))
+        if not source_state:
+            return
+
+        if exterior_only:
+            targets = {self.available_girders[0], self.available_girders[-1]}
+        else:
+            targets = set(self.available_girders[1:-1]) or set(self.available_girders)
+
+        for girder in targets:
+            for segment in self._ensure_girder_segments(girder):
+                member_id = str(segment.get("id") or "")
+                if not member_id or member_id == source_member:
+                    continue
+                self._member_state.setdefault(girder, {})[member_id] = copy.deepcopy(source_state)
+
+        self._refresh_segment_list(self._current_girder)
