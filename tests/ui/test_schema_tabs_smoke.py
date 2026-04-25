@@ -23,9 +23,9 @@ def test_top_level_tabs_build(qapp):
         TypicalSectionDetailsTab(),
         SectionPropertiesTab(),
         LoadingTab(),
-        SupportConditionsTab(parent_dialog=None),
-        DesignOptionsTab(parent_dialog=None),
-        DesignOptionsContTab(parent_dialog=None),
+        SupportConditionsTab(),
+        DesignOptionsTab(),
+        DesignOptionsContTab(),
     ]
     qapp.processEvents()
 

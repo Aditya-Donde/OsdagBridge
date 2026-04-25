@@ -11,9 +11,10 @@ class DesignOptionsTab(SchemaTab):
     """Analysis/Design Options tab rendered from DESIGN_OPTIONS_SCHEMA."""
     schema = DESIGN_OPTIONS_SCHEMA
 
-    def __init__(self, parent_dialog):
+    def __init__(self, parent=None, owner=None):
+        # owner accepted for tab_container signature inspection; not forwarded.
         self._reset_reinforcement_bounds()
-        super().__init__(parent=parent_dialog)
+        super().__init__(parent=parent)
         self._sync_reinforcement_combo()
 
     def restore_properties(self, data: dict):

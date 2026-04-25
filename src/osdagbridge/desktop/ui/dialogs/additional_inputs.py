@@ -17,17 +17,35 @@ from osdagbridge.desktop.ui.utils.custom_titlebar import CustomTitleBar
 from osdagbridge.desktop.ui.dialogs.tabs.common import apply_field_style, create_action_button_bar
 from osdagbridge.desktop.ui.dialogs.custom_messagebox import CustomMessageBox, MessageBoxType
 from osdagbridge.desktop.ui.dialogs.tabs.additional_inputs.typical_section_details import show_warning
-from osdagbridge.desktop.ui.dialogs.tabs.additional_inputs.top_level_config import ADDITIONAL_INPUTS_TAB_CONFIG
+from osdagbridge.desktop.ui.dialogs.tabs.builder import UIBuilder
+from osdagbridge.desktop.ui.dialogs.tabs.schemas.plate_girder import (
+    ADDITIONAL_INPUTS_ORCHESTRATOR_SCHEMA,
+)
 from osdagbridge.desktop.ui.utils.custom_widgets import SmartCursorComboBoxView
 from osdagbridge.desktop.ui.dialogs.tabs import schema_io
 
-# =================================================================================
-#   MAIN IMPLEMENTATION
-# =================================================================================
+
+# Top-level tab attribute names, derived once from the orchestrator schema.
+# Iterating these is how the dialog reaches each top-level tab without knowing
+# their classes.
+_TOP_TAB_ATTRS = tuple(
+    entry["bind"]
+    for section in ADDITIONAL_INPUTS_ORCHESTRATOR_SCHEMA["sections"]
+    if section.get("type") == "tab_container"
+    for entry in section.get("tabs", [])
+    if entry.get("bind")
+)
+
+_TAB_BAR_STYLE = """
+    QTabWidget::pane { border: 1px solid #C2C7CB; border-radius: 4px; }
+    QTabBar::tab { background: #f0f0f0; border: 1px solid #C2C7CB; padding: 8px 12px; }
+    QTabBar::tab:selected { background: #ffffff; border-bottom-color: #ffffff; }
+"""
+
 
 class AdditionalInputs(QDialog):
     """Main dialog for Additional Inputs with tabbed interface"""
-    
+
     def __init__(self, footpath_value="None", carriageway_width=7.5, parent=None, initial_cad_state=None):
         self._initial_cad_state = initial_cad_state or {}
         super().__init__(parent)
@@ -39,7 +57,7 @@ class AdditionalInputs(QDialog):
         self.carriageway_width = carriageway_width
         self._member_properties_editable = True
         self._last_saved_data = {}
-        self.saved_values = {}  # Store all input values here
+        self.saved_values = {}
         self.init_ui()
         self.setStyleSheet("""
             QDialog {
@@ -54,7 +72,6 @@ class AdditionalInputs(QDialog):
         Validate all fields first.
         If errors exist -> show popup and DO NOT close dialog.
         """
-        #this funciton now asks all tabs to validate themselves
         errors = []
         for tab in self._iter_top_tabs():
             if hasattr(tab, "validate_tab"):
@@ -87,7 +104,7 @@ class AdditionalInputs(QDialog):
             buttons=["OK"],
             dialogType=MessageBoxType.Warning,
         ).exec()
-    
+
     def _collect_all_values(self):
         """Collect values from all top-level tabs."""
         values = {}
@@ -98,11 +115,11 @@ class AdditionalInputs(QDialog):
         self.saved_values = dict(values)
 
     def _iter_top_tabs(self):
-        for entry in ADDITIONAL_INPUTS_TAB_CONFIG:
-            tab = getattr(self, entry["attr"], None)
+        for attr in _TOP_TAB_ATTRS:
+            tab = getattr(self, attr, None)
             if tab is not None:
                 yield tab
-    
+
     def setupWrapper(self):
         self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowSystemMenuHint)
 
@@ -110,33 +127,36 @@ class AdditionalInputs(QDialog):
         main_layout.setContentsMargins(1, 1, 1, 1)
         main_layout.setSpacing(0)
 
-        # Title bar
         self.title_bar = CustomTitleBar(parent=self)
         self.title_bar.setTitle("Additional Inputs")
         main_layout.addWidget(self.title_bar)
 
-        # Content area
         content = QWidget()
         content_layout = QVBoxLayout(content)
         content_layout.setContentsMargins(12, 12, 12, 12)
         content_layout.setSpacing(10)
 
-        self.tab_widget = QTabWidget()
-        self.tab_widget.setStyleSheet("""
-            QTabWidget::pane { border: 1px solid #C2C7CB; border-radius: 4px; }
-            QTabBar::tab { background: #f0f0f0; border: 1px solid #C2C7CB; padding: 8px 12px; }
-            QTabBar::tab:selected { background: #ffffff; border-bottom-color: #ffffff; }
-        """)
+        # The orchestrator schema describes the tab bar; UIBuilder constructs
+        # every top-level tab via tab_registry and binds each one onto self.
+        tab_host = QWidget()
+        UIBuilder(owner=self, schema=ADDITIONAL_INPUTS_ORCHESTRATOR_SCHEMA).build_tab(tab_host)
+        content_layout.addWidget(tab_host)
 
-        # Build top-level tabs from config
-        for entry in ADDITIONAL_INPUTS_TAB_CONFIG:
-            widget = entry["factory"](self)
-            setattr(self, entry["attr"], widget)
-            self.tab_widget.addTab(widget, entry["title"])
+        self.tab_widget = tab_host.findChild(QTabWidget, "additional_inputs_tabs")
+        if self.tab_widget is not None:
+            self.tab_widget.setStyleSheet(_TAB_BAR_STYLE)
 
-        content_layout.addWidget(self.tab_widget)
+        # Push bridge context that used to be a constructor argument; this
+        # keeps tab construction uniform (parent-only) so they all flow through
+        # tab_container the same way.
+        ts = getattr(self, "typical_section_tab", None)
+        if ts is not None and hasattr(ts, "set_bridge_context"):
+            ts.set_bridge_context(
+                footpath_value=self.footpath_value,
+                carriageway_width=self.carriageway_width,
+                initial_cad_state=self._initial_cad_state,
+            )
 
-        # Action buttons
         buttons = create_action_button_bar(
             self,
             on_save=self._save_inputs,
@@ -168,7 +188,7 @@ class AdditionalInputs(QDialog):
 
     def get_saved_data(self) -> dict:
         return self._last_saved_data.copy()
-    
+
     def set_properties_data(self, data: dict) -> None:
         if not data:
             return
@@ -178,6 +198,7 @@ class AdditionalInputs(QDialog):
                 tab.restore_data(data)
 
     def update_footpath_value(self, value) -> None:
+        self.footpath_value = value
         tab = getattr(self, "typical_section_tab", None)
         if tab is not None:
             fn = getattr(tab, "update_footpath_value", None)

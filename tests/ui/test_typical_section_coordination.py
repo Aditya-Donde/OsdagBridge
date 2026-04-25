@@ -67,7 +67,8 @@ def test_lane_details_child_api_round_trip(qapp):
 
 
 def test_lane_details_child_owns_defaults_and_selection(qapp):
-    tab = TypicalSectionDetailsTab(carriageway_width=7.5)
+    tab = TypicalSectionDetailsTab()
+    tab.set_bridge_context(carriageway_width=7.5)
     qapp.processEvents()
 
     lane_tab = tab.lane_details_tab

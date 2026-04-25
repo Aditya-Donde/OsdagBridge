@@ -79,12 +79,14 @@ class TypicalSectionDetailsTab(SchemaTab):
     footpath_changed = Signal(str)
     girder_count_changed = Signal(int)
 
-    def __init__(self, footpath_value="None", carriageway_width=7.5, parent=None, initial_cad_state=None):
+    def __init__(self, parent=None, owner=None):
+        # owner accepted for tab_container signature inspection; not forwarded to
+        # super so SchemaTab uses self as owner (needed for child-bind mirroring).
         # State must exist before super().__init__() because the schema build
         # triggered there constructs child tabs that read these attributes.
-        self._initial_cad_state = initial_cad_state or {}
-        self.footpath_value = footpath_value
-        self.carriageway_width = carriageway_width
+        self._initial_cad_state = {}
+        self.footpath_value = "None"
+        self.carriageway_width = 7.5
         self.updating_fields = False
         self._updating_overall_width_display = False
         self._expose_child_schema_binds = True
@@ -98,14 +100,36 @@ class TypicalSectionDetailsTab(SchemaTab):
         super().__init__(parent=parent)
 
         self.input_tabs = self.findChild(QTabWidget, "typical_section_tabs")
-        self._sync_child_tabs_from_parent_state(force=False)
+        self._apply_bridge_context()
+
+    def set_bridge_context(
+        self,
+        *,
+        footpath_value: str = "None",
+        carriageway_width: float = 7.5,
+        initial_cad_state: dict | None = None,
+    ) -> None:
+        """Push bridge-level state from the dialog after construction.
+
+        Construction is uniform (parent-only) so all top-level tabs can be
+        instantiated by the orchestrator's tab_container. Bridge context that
+        used to be constructor args lands here instead.
+        """
+        self.footpath_value = footpath_value
+        self.carriageway_width = carriageway_width
+        self._initial_cad_state = initial_cad_state or {}
+        self._apply_bridge_context()
+
+    def _apply_bridge_context(self) -> None:
+        """Run the post-context-update sync; safe to call from __init__ or
+        set_bridge_context."""
+        self._sync_child_tabs_from_parent_state(force=True)
         self.recalculate_girders()
         try:
             if hasattr(self, "no_of_girders") and self.no_of_girders.text():
                 self.girder_count_changed.emit(int(self.no_of_girders.text()))
         except Exception:
             pass
-
         if self._initial_cad_state:
             self.cad_preview.update_params(self._initial_cad_state)
 

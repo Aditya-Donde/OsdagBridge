@@ -27,6 +27,14 @@ _TAB_CLASSES = {
     "StiffenerDetailsTab": "osdagbridge.desktop.ui.dialogs.tabs.additional_inputs.sub_tabs.section_properties.stiffener_details_tab.StiffenerDetailsTab",
     "CrossBracingDetailsTab": "osdagbridge.desktop.ui.dialogs.tabs.additional_inputs.sub_tabs.section_properties.cross_bracing_details_tab.CrossBracingDetailsTab",
     "EndDiaphragmDetailsTab": "osdagbridge.desktop.ui.dialogs.tabs.additional_inputs.sub_tabs.section_properties.end_diaphragm_details_tab.EndDiaphragmDetailsTab",
+
+    # Top-level container tabs (built directly by the dialog's orchestrator)
+    "TypicalSectionDetailsTab": "osdagbridge.desktop.ui.dialogs.tabs.additional_inputs.typical_section_details.TypicalSectionDetailsTab",
+    "SectionPropertiesTab": "osdagbridge.desktop.ui.dialogs.tabs.additional_inputs.section_properties_tab.SectionPropertiesTab",
+    "LoadingTab": "osdagbridge.desktop.ui.dialogs.tabs.additional_inputs.loading_tab.LoadingTab",
+    "SupportConditionsTab": "osdagbridge.desktop.ui.dialogs.tabs.additional_inputs.support_conditions_tab.SupportConditionsTab",
+    "DesignOptionsTab": "osdagbridge.desktop.ui.dialogs.tabs.additional_inputs.design_options_tab.DesignOptionsTab",
+    "DesignOptionsContTab": "osdagbridge.desktop.ui.dialogs.tabs.additional_inputs.design_options_cont_tab.DesignOptionsContTab",
 }
 
 def get_tab_class(class_name: str) -> Type:

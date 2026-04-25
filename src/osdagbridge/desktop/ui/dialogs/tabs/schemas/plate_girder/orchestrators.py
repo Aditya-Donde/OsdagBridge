@@ -1,5 +1,23 @@
 """Orchestrator schemas for parent tab containers."""
 
+ADDITIONAL_INPUTS_ORCHESTRATOR_SCHEMA = {
+    "id": "additional_inputs_orchestrator",
+    "sections": [
+        {
+            "id": "additional_inputs_tabs",
+            "type": "tab_container",
+            "tabs": [
+                {"label": "Typical Section Details", "widget_class": "TypicalSectionDetailsTab", "bind": "typical_section_tab"},
+                {"label": "Member Properties",       "widget_class": "SectionPropertiesTab",     "bind": "section_properties_tab"},
+                {"label": "Loading",                 "widget_class": "LoadingTab",               "bind": "loading_tab"},
+                {"label": "Support Conditions",      "widget_class": "SupportConditionsTab",     "bind": "support_tab"},
+                {"label": "Design Options",          "widget_class": "DesignOptionsTab",         "bind": "design_options_tab"},
+                {"label": "Design Options (Cont.)",  "widget_class": "DesignOptionsContTab",     "bind": "design_options_cont_tab"},
+            ],
+        }
+    ],
+}
+
 TYPICAL_SECTION_ORCHESTRATOR_SCHEMA = {
     "id": "typical_section_orchestrator",
     "sections": [

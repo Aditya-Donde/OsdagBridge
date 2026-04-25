@@ -6,5 +6,6 @@ class DesignOptionsContTab(SchemaTab):
     """Design Options (Cont.) Tab — fully rendered from DESIGN_OPTIONS_CONT_SCHEMA."""
     schema = DESIGN_OPTIONS_CONT_SCHEMA
 
-    def __init__(self, parent_dialog):
-        super().__init__(parent=parent_dialog)
+    def __init__(self, parent=None, owner=None):
+        # owner accepted for tab_container signature inspection; not forwarded.
+        super().__init__(parent=parent)

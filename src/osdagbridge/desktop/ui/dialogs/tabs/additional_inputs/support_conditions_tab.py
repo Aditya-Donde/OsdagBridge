@@ -7,8 +7,10 @@ from osdagbridge.desktop.ui.dialogs.tabs.base import SchemaTab
 class SupportConditionsTab(SchemaTab):
     schema = SUPPORT_CONDITIONS_SCHEMA
 
-    def __init__(self, parent_dialog):
-        super().__init__(parent=parent_dialog)
+    def __init__(self, parent=None, owner=None):
+        # owner is accepted for the tab_container builder's signature inspection
+        # but intentionally not forwarded to super so SchemaTab uses self as owner.
+        super().__init__(parent=parent)
         self.setObjectName("support_tab_widget")
         self.setStyleSheet(
             """
