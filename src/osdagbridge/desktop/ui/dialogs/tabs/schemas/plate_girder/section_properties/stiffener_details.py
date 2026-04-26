@@ -71,7 +71,7 @@ STIFFENER_DETAILS_SCHEMA = {
             "id": "bearing_spacing_mm",
             "label": "Bearing Stiffener Spacing (mm):",
             "type": "line",
-            "validator": {"type": "int_range", "bottom": 1, "top": 1000000000},
+            "validator": {"type": "int_range", "bottom": 1, "top": 10000},
             "bind": "bearing_spacing_input",
         },
         {
@@ -87,6 +87,7 @@ STIFFENER_DETAILS_SCHEMA = {
             "id": "bearing_outstand_mm",
             "label": "Outstand of Bearing Stiffener (mm):",
             "type": "line",
+            "validator": {"type": "double_range", "bottom": 1.0, "top": 1000.0, "decimals": 2},
             "bind": "bearing_outstand_input",
         },
         {
@@ -100,7 +101,7 @@ STIFFENER_DETAILS_SCHEMA = {
             "id": "intermediate_spacing_mm",
             "label": "Intermediate Stiffener Spacing:",
             "type": "line",
-            "validator": {"type": "int_range", "bottom": 1, "top": 1000000000},
+            "validator": {"type": "int_range", "bottom": 1, "top": 10000},
             "default": "NA",
             "bind": "intermediate_spacing_input",
         },
@@ -117,6 +118,7 @@ STIFFENER_DETAILS_SCHEMA = {
             "id": "intermediate_outstand_mm",
             "label": "Outstand of Intermediate Stiffener (mm):",
             "type": "line",
+            "validator": {"type": "double_range", "bottom": 1.0, "top": 1000.0, "decimals": 2},
             "bind": "intermediate_outstand_input",
         },
         {
