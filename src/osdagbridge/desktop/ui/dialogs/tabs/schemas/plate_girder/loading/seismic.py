@@ -20,6 +20,7 @@ SEISMIC_LOAD_TAB_SCHEMA = {
                     "label": "Importance Factor, I",
                     "type": "line",
                     "default": "1.0",
+                    "validator": {"type": "double_range", "bottom": 0.1, "top": 10.0, "decimals": 2},
                     "bind": "importance_factor_input",
                 },
                 {
@@ -38,6 +39,7 @@ SEISMIC_LOAD_TAB_SCHEMA = {
                     "id": "time_period",
                     "label": "Fundamental Time Period, T (sec)",
                     "type": "line",
+                    "validator": {"type": "double_range", "bottom": 0.01, "top": 100.0, "decimals": 3},
                     "bind": "time_period_input",
                 },
                 {
@@ -45,6 +47,7 @@ SEISMIC_LOAD_TAB_SCHEMA = {
                     "label": "Damping Percentage",
                     "type": "line",
                     "default": "2",
+                    "validator": {"type": "double_range", "bottom": 0.0, "top": 100.0, "decimals": 2},
                     "bind": "damping_input",
                 },
                 {
@@ -64,6 +67,7 @@ SEISMIC_LOAD_TAB_SCHEMA = {
                     "bind_mode": "dead_load_seismic_combo",
                     "bind_value": "dead_load_custom_input",
                     "placeholder": "Custom Value",
+                    "validator": {"type": "double_range", "bottom": 0.0, "top": 1.0e9, "decimals": 3},
                     "conditions": [{"when": "dead_load_seismic_combo", "equals": "Custom", "action": "enable"}],
                 },
                 {
@@ -75,6 +79,7 @@ SEISMIC_LOAD_TAB_SCHEMA = {
                     "bind_mode": "live_load_seismic_combo",
                     "bind_value": "live_load_custom_input",
                     "placeholder": "Custom Value",
+                    "validator": {"type": "double_range", "bottom": 0.0, "top": 1.0e9, "decimals": 3},
                     "conditions": [{"when": "live_load_seismic_combo", "equals": "Custom", "action": "enable"}],
                 },
             ],
