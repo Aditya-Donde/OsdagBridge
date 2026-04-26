@@ -23,6 +23,8 @@ class BridgeDualCADWidget(QWidget):
         self.top_zoom_level = 1.0
         self.cross_visible = True
         self.top_visible = True
+        # Last mapped params from input dock; used to push only real changes.
+        self._last_mapped_params = {}
         self.setup_ui()
         
     def setup_ui(self):
@@ -300,17 +302,35 @@ class BridgeDualCADWidget(QWidget):
                     elif "barrier_height" in geom:
                         params["median_height"] = geom["barrier_height"]
         
-        # Update both widgets with same parameters
-        self.cross_section_widget.update_params(params)
-        self.top_view_widget.update_params(params)
+        # Propagate only keys that actually changed to avoid unnecessary redraw/zoom resets.
+        changed_params = {
+            k: v for k, v in params.items()
+            if self._last_mapped_params.get(k) != v
+        }
+        if not changed_params:
+            return
+
+        self._last_mapped_params.update(changed_params)
+
+        # Span length only affects the top view plan geometry; avoid cross-section retriggers.
+        cross_section_params = {k: v for k, v in changed_params.items() if k != 'span_length'}
+
+        if cross_section_params:
+            self.cross_section_widget.update_params(cross_section_params)
+        self.top_view_widget.update_params(changed_params)
 
 
     
-    def update_specific_param(self, param_key, value):
-        """
-        Update a specific parameter without re-updating everything
-        Optimized for real-time updates
-        """
-        params = {param_key: value}
-        self.cross_section_widget.update_params(params)
-        self.top_view_widget.update_params(params)
+    # def update_specific_param(self, param_key, value):
+    #     """
+    #     Update a specific parameter without re-updating everything
+    #     Optimized for real-time updates
+    #     """
+    #     if self._last_mapped_params.get(param_key) == value:
+    #         return
+
+    #     params = {param_key: value}
+    #     self._last_mapped_params[param_key] = value
+    #     if param_key != 'span_length':
+    #         self.cross_section_widget.update_params(params)
+    #     self.top_view_widget.update_params(params)

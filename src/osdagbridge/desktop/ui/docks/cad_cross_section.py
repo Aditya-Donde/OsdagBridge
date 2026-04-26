@@ -6,10 +6,8 @@ Author: Arushi
 
 import math
 from PySide6.QtWidgets import QWidget, QPushButton, QScrollArea
-from PySide6.QtCore import Qt, QRectF, QPointF, QTimer
-from PySide6.QtGui import QPainter, QPen, QColor, QFont, QBrush, QPolygonF, QIcon
 from PySide6.QtCore import Qt, QRectF, QPointF, QTimer, QSize
-from PySide6.QtGui import QPixmap
+from PySide6.QtGui import QPainter, QPen, QColor, QFont, QBrush, QPolygonF, QIcon, QPixmap
 from osdagbridge.desktop.cad.irc5_geometry import (
     CrashBarrierGeometry,
     RailingGeometry,
@@ -21,7 +19,7 @@ class CrossSectionCADWidget(QWidget):
     """Widget for drawing bridge cross-section view"""
     # ===== SHARED CAD COLORS =====
     GIRDER_COLOR = QColor(179, 180, 160) 
-    # STIFFENER_COLOR = QColor(79, 78, 70) 
+    STIFFENER_COLOR = QColor(210, 210, 205)
     CROSS_BRACING_COLOR = QColor(235, 236, 211)
     RAILING_COLOR = QColor(210, 210, 210)
     BARRIER_COLOR = QColor(220, 220, 220)
@@ -56,10 +54,9 @@ class CrossSectionCADWidget(QWidget):
         
         # Zoom level for this widget
         self.zoom_level = 1.0
-        
-        # Setup zoom controls inside this widget (but not for previews inside scroll areas)
-        # Will be called after widget is fully initialized
-        self._zoom_controls_setup = False
+
+        # Preserve rendered CAD height between parameter updates for non-preview mode.
+        self._saved_cad_height_px = None
         
         # bridge parameters with default values (all in mm)
         # These are the CAD state variables
@@ -91,9 +88,7 @@ class CrossSectionCADWidget(QWidget):
             'bottom_flange_width': 180,
             'bottom_flange_thickness': 22,
             'web_thickness': 15,
-            # Legacy support for symmetric sections
-            'flange_width': 180,
-            'flange_thickness': 22,
+            
         }
         
         # stiffener dimensions
@@ -172,12 +167,12 @@ class CrossSectionCADWidget(QWidget):
         self.zoom_out_btn.clicked.connect(self.zoom_out)
         self.zoom_out_btn.hide()  # Hide initially
         
-        self.zoom_reset_btn = QPushButton(self)
-        self.zoom_reset_btn.setFixedSize(25, 25)
-        self.zoom_reset_btn.setIcon(QIcon(":/vectors/fit_to_screen.svg"))
-        self.zoom_reset_btn.setIconSize(QSize(25, 25))
-        self.zoom_reset_btn.setToolTip("Fit to screen")
-        self.zoom_reset_btn.setStyleSheet("""
+        self.fit_to_screen_btn = QPushButton(self)
+        self.fit_to_screen_btn.setFixedSize(25, 25)
+        self.fit_to_screen_btn.setIcon(QIcon(":/vectors/fit_to_screen.svg"))
+        self.fit_to_screen_btn.setIconSize(QSize(25, 25))
+        self.fit_to_screen_btn.setToolTip("Fit to screen")
+        self.fit_to_screen_btn.setStyleSheet("""
             QPushButton {
                 background-color: rgba(255, 255, 255, 200);
                 color: #333333;
@@ -191,8 +186,8 @@ class CrossSectionCADWidget(QWidget):
                 color: white;
             }
         """)
-        self.zoom_reset_btn.clicked.connect(self.fit_to_screen)
-        self.zoom_reset_btn.hide()  # Hide initially
+        self.fit_to_screen_btn.clicked.connect(self.fit_to_screen)
+        self.fit_to_screen_btn.hide()  # Hide initially
         
         # Set minimum size for visibility
         self.setMinimumSize(400, 300)
@@ -228,7 +223,7 @@ class CrossSectionCADWidget(QWidget):
         if self.zoom_in_btn.parent() != viewport:
             self.zoom_in_btn.setParent(viewport)
             self.zoom_out_btn.setParent(viewport)
-            self.zoom_reset_btn.setParent(viewport)
+            self.fit_to_screen_btn.setParent(viewport)
 
         # Position in top-right corner of VIEWPORT
         margin = 10
@@ -237,15 +232,15 @@ class CrossSectionCADWidget(QWidget):
 
         self.zoom_in_btn.move(x + 10, y)
         self.zoom_out_btn.move(x + 10, y + 30)
-        self.zoom_reset_btn.move(x+10, y + 60)
+        self.fit_to_screen_btn.move(x+10, y + 60)
 
         # Ensure buttons are visible and on top
         self.zoom_in_btn.show()
         self.zoom_out_btn.show()
-        self.zoom_reset_btn.show()
+        self.fit_to_screen_btn.show()
         self.zoom_in_btn.raise_()
         self.zoom_out_btn.raise_()
-        self.zoom_reset_btn.raise_()
+        self.fit_to_screen_btn.raise_()
 
 
     def eventFilter(self, obj, event):
@@ -276,11 +271,13 @@ class CrossSectionCADWidget(QWidget):
         
         # Apply zoom
         self.zoom_level *= 1.1
+        if self._saved_cad_height_px is not None:
+            self._saved_cad_height_px *= 1.1
         self._update_widget_size()
         self.update()
         
         # Restore center position after zoom
-        self._set_scroll_center(old_center, 1.1)
+        self._set_scroll_center(old_center)
 
     def zoom_out(self):
         """Zoom out while keeping view centered"""
@@ -289,24 +286,22 @@ class CrossSectionCADWidget(QWidget):
         
         # Apply zoom
         self.zoom_level /= 1.1
+        if self._saved_cad_height_px is not None:
+            self._saved_cad_height_px /= 1.1
         self._update_widget_size()
         self.update()
         
         # Restore center position after zoom
-        self._set_scroll_center(old_center, 1/1.1)
+        self._set_scroll_center(old_center)
 
-    def compute_fit_zoom(self, mode="full"):
+    def compute_fit_zoom(self):
         """
-        Compute zoom level. 
-        mode="full" -> content fits both width and height (min(scale_x, scale_y))
-        mode="height" -> content fits only height (unconstrained width)
+        Compute zoom level so content fits both width and height.
         """
         total_deck_width, _ = self.compute_deck_total_width()
         
         # Denominator for height fit (matches draw_cross_section logic)
-        model_h = (self.girder['depth'] * self.girder_visual_scale['depth'] +
-                   self.params['deck_thickness'] +
-                   self.params['footpath_thickness'] + 800)
+        model_h = self._compute_model_height_mm()
         
         # Base dimensions Used in draw_cross_section when zoom=1.0
         base_w, base_h = 1000, 600
@@ -334,28 +329,52 @@ class CrossSectionCADWidget(QWidget):
 
         target_scale_x = avail_vp_w / total_deck_width
         target_scale_y = avail_vp_h / model_h
-        
-        if mode == "height":
-            target_scale = target_scale_y
-        else:
-            target_scale = min(target_scale_x, target_scale_y)
+        target_scale = min(target_scale_x, target_scale_y)
             
         return target_scale / base_scale
 
     def fit_to_screen(self):
         """Scale the diagram so it fits perfectly inside the visible viewport and center it."""
-        self.zoom_level = self.compute_fit_zoom(mode="full")
+        self.zoom_level = self.compute_fit_zoom()
+        self._saved_cad_height_px = self._compute_effective_model_height_px(use_full_fit=True)
         self._update_widget_size()
         self.update()
         self._center_scroll_bars()
 
-    def zoom_reset(self):
-        """Standard behavior: Fit to height only."""
-        self.zoom_level = self.compute_fit_zoom(mode="height")
-        self._update_widget_size()
-        self.update()
-        # Center the scrollbars after size update
-        QTimer.singleShot(50, self._center_scroll_bars)
+    def _compute_model_height_mm(self):
+        """Return model height in mm used for cross-section scaling."""
+        return (
+            self.girder['depth'] * self.girder_visual_scale['depth']
+            + self.params['deck_thickness']
+            + self.params['footpath_thickness']
+            + 800
+        )
+
+    def _compute_non_preview_canvas(self):
+        """Return non-preview canvas dimensions and margins."""
+        base_width = 1000
+        base_height = 600
+        width = base_width * self.zoom_level
+        height = base_height * self.zoom_level
+        margin_x = 80
+        margin_y = 80
+        bottom_margin = 80  # extra clearance for dimension labels
+        return width, height, margin_x, margin_y, bottom_margin
+
+    def _compute_effective_model_height_px(self, use_full_fit=False):
+        """Compute rendered model height in pixels for the current non-preview state."""
+        width, height, margin_x, margin_y, bottom_margin = self._compute_non_preview_canvas()
+        total_deck_width, _ = self.compute_deck_total_width()
+        model_h = self._compute_model_height_mm()
+
+        avail_w = max(1.0, width - 2 * margin_x)
+        avail_h = max(1.0, height - 2 * margin_y - bottom_margin)
+
+        scale_x = avail_w / max(total_deck_width, 1e-9)
+        scale_y = avail_h / max(model_h, 1e-9)
+        scale = min(scale_x, scale_y) if use_full_fit else scale_y
+        scale *= self.scale_factor
+        return model_h * scale
 
     def _center_scroll_bars(self):
         """Center the scrollbars of the parent scroll area."""
@@ -364,6 +383,15 @@ class CrossSectionCADWidget(QWidget):
             v_bar = self.scroll_area.verticalScrollBar()
             h_bar.setValue((h_bar.minimum() + h_bar.maximum()) // 2)
             v_bar.setValue((v_bar.minimum() + v_bar.maximum()) // 2)
+
+    def _center_horizontal_scroll(self):
+        """Center only horizontal scrollbar (used after input-driven redraw)."""
+        if self.scroll_area is None:
+            self._position_zoom_buttons()
+
+        if self.scroll_area:
+            h_bar = self.scroll_area.horizontalScrollBar()
+            h_bar.setValue((h_bar.minimum() + h_bar.maximum()) // 2)
 
     def _get_scroll_center(self):
         """Get the current center point of the visible viewport in widget coordinates"""
@@ -396,7 +424,7 @@ class CrossSectionCADWidget(QWidget):
         else:
             return (0.5, 0.5)
 
-    def _set_scroll_center(self, old_center, zoom_ratio):
+    def _set_scroll_center(self, old_center):
         """Set scroll position to keep the same center point visible after zoom"""
         if not self.scroll_area:
             return
@@ -440,30 +468,15 @@ class CrossSectionCADWidget(QWidget):
 
         base_width = 1000
         base_height = 600
-        
-        # For height-only zoom, we need to ensure the widget is wide enough to contain the content
+
         total_deck_width, _ = self.compute_deck_total_width()
-        
-        # Calculate content width at current zoom level
-        # Scale logic: width = base_width * zoom_level, scale_x = (width - 160) / total_deck_width
-        # scale_y = (height - 240) / model_h
-        # So content_width_px = total_deck_width * scale = total_deck_width * (target_scale)
-        # target_scale = zoom_level * base_scale
-        
-        model_h = (self.girder['depth'] * self.girder_visual_scale['depth'] +
-                   self.params['deck_thickness'] +
-                   self.params['footpath_thickness'] + 800)
-        
-        margin_x, margin_y = 80, 80
-        avail_base_w = base_width - 2 * margin_x
-        avail_base_h = base_height - 2 * margin_y - 80
-        
-        base_scale_x = avail_base_w / total_deck_width
-        base_scale_y = avail_base_h / model_h
-        base_scale = min(base_scale_x, base_scale_y)
-        
-        current_scale = self.zoom_level * base_scale
-        content_width_px = total_deck_width * current_scale + 2 * margin_x
+        model_h = self._compute_model_height_mm()
+
+        if self._saved_cad_height_px is None:
+            self._saved_cad_height_px = self._compute_effective_model_height_px(use_full_fit=False)
+
+        scale_from_saved_height = self._saved_cad_height_px / max(model_h, 1e-9)
+        content_width_px = total_deck_width * scale_from_saved_height + 2 * 80
         
         # The widget should be at least as wide/high as its viewport OR content dimensions
         if self.scroll_area and self.scroll_area.viewport():
@@ -471,8 +484,6 @@ class CrossSectionCADWidget(QWidget):
             vp_w, vp_h = vp.width(), vp.height()
         else:
             vp_w, vp_h = base_width, base_height
-
-        content_width_px = base_width * self.zoom_level
 
         new_width = int(max(vp_w, content_width_px * 1.2))  # extra buffer
         new_height = int(max(vp_h, base_height * self.zoom_level))
@@ -504,8 +515,10 @@ class CrossSectionCADWidget(QWidget):
             self.median_type = params["median_type"]
 
         self.show_dimensions = True
-        self.zoom_reset() # Auto-fit height on parameter change
+        # Keep last saved CAD height; do not auto-fit on parameter change.
+        self._update_widget_size()
         self.update()
+        QTimer.singleShot(0, self._center_horizontal_scroll)
     
     def mouseMoveEvent(self, event):
         """Handle mouse hover for both labels and structural elements"""
@@ -533,24 +546,6 @@ class CrossSectionCADWidget(QWidget):
             self.hovered_element = new_hovered_element
             self.update()
 
-    def register_hover_label(self, x, y, text, bg_color, text_color, font_size=9):
-        """lables for catching hover hovering"""
-        font_size = max(1, font_size)
-        font = QFont('Arial', font_size, QFont.Bold)
-        metrics = self.fontMetrics()
-        text_rect = metrics.boundingRect(text)
-        
-        padding = 5
-        hover_rect = QRectF(x - padding, y - text_rect.height() - padding,
-                            text_rect.width() + 2*padding + 20, text_rect.height() + 2*padding + 10)
-        
-        self.hover_labels.append((hover_rect, text, bg_color, text_color))
-        return len(self.hover_labels) - 1
-
-    def draw_hover_label_if_active(self, painter, label_index, x, y, text, bg_color, text_color, font_size=9):
-        """label only if its being hovered"""
-        if self.hovered_label_index == label_index:
-            self.draw_text_with_background(painter, x, y, text, bg_color, text_color, font_size, True)
         
     def paintEvent(self, event):
         # Position buttons on first paint if not done yet
@@ -1305,96 +1300,6 @@ class CrossSectionCADWidget(QWidget):
         hover_rect = QRectF(median_start_x, y_top_kerb - post_h, median_width_px, post_h + h_kerb)
         self.cross_section_hover_zones.append((hover_rect, 'median'))
 
-    def draw_median_crash_barriers(self, painter, median_start_x, median_end_x, deck_top_y, scale, median_color):
-        """DEPRECATED: Use draw_rcc_barrier_median or dispatcher instead."""
-        pass
-        CONCRETE_COLOR = QColor(225, 225, 225)
-
-        
-        # Dimensions
-        TOTAL_HEIGHT = 900.0
-        TOP_WIDTH = 175.0
-        BOTTOM_WIDTH = 350.0
-        BASE_VERTICAL = 100.0
-        
-        h = TOTAL_HEIGHT * scale
-        top_w = TOP_WIDTH * scale
-        bottom_w = BOTTOM_WIDTH * scale
-        base_v = BASE_VERTICAL * scale
-        
-        median_width_px = median_end_x - median_start_x
-        
-        # Check if barriers fit
-        if bottom_w * 2 > median_width_px:
-            fit_scale = median_width_px / (bottom_w * 2) * 0.9
-            h *= fit_scale
-            top_w *= fit_scale
-            bottom_w *= fit_scale
-            base_v *= fit_scale
-        
-        gap = median_width_px - 2 * bottom_w
-        if gap < 5:
-            gap = 5
-            bottom_w = (median_width_px - gap) / 2
-            ratio = bottom_w / (BOTTOM_WIDTH * scale)
-            h *= ratio
-            top_w *= ratio
-            base_v *= ratio
-        
-        y = deck_top_y
-        y_base_top = y - base_v
-        y_mid = y - (350 * scale * (h / (TOTAL_HEIGHT * scale)))  # proportional
-        y_top = y - h
-        
-        # Offsets 
-        scale_ratio = bottom_w / (BOTTOM_WIDTH * scale) if BOTTOM_WIDTH * scale > 0 else 1
-        right_at_mid = 250 * scale * scale_ratio
-        left_at_top = 50 * scale * scale_ratio
-        right_at_top = 225 * scale * scale_ratio
-        
-        # LEFT barrier - front faces LEFT (toward left carriageway)
-        # This is the mirrored version
-        x_left = median_start_x
-        
-        points_left = [
-            QPointF(x_left, y),                                      # bottom-left
-            QPointF(x_left + bottom_w, y),                           # bottom-right
-            QPointF(x_left + bottom_w, y_base_top),                  # right after base
-            QPointF(x_left + bottom_w - left_at_top, y_top),         # top-right
-            QPointF(x_left + bottom_w - right_at_top, y_top),        # top-left
-            QPointF(x_left + bottom_w - right_at_mid, y_mid),        # left at middle
-            QPointF(x_left, y_base_top),                             # left after base
-        ]
-        
-        painter.setBrush(QBrush(self.MEDIAN_COLOR))
-        painter.setPen(QPen(QColor(0, 0, 0), max(1.5, scale * 1.5)))
-        painter.drawPolygon(QPolygonF(points_left))
-        
-        # RIGHT barrier - front faces RIGHT (toward right carriageway)
-        # This is the original orientation
-        x_right = median_end_x - bottom_w
-        
-        points_right = [
-            QPointF(x_right, y),                           # bottom-left
-            QPointF(x_right + bottom_w, y),                # bottom-right
-            QPointF(x_right + bottom_w, y_base_top),       # right after base
-            QPointF(x_right + right_at_mid, y_mid),        # right at middle
-            QPointF(x_right + right_at_top, y_top),        # top-right
-            QPointF(x_right + left_at_top, y_top),         # top-left
-            QPointF(x_right, y_base_top),                  # left after base
-        ]
-        
-        painter.setBrush(QBrush(QColor(221, 221, 221)))
-        painter.setPen(QPen(QColor(0, 0, 0), max(1.5, scale * 1.5)))
-        painter.drawPolygon(QPolygonF(points_right))
-        # ---- Register hover zone for median ----
-        hover_rect = QRectF(
-            median_start_x,
-            y_top,
-            median_end_x - median_start_x,
-            h
-        )
-        self.cross_section_hover_zones.append((hover_rect, 'median'))
 
     def _get_crash_barrier_rendered_width_mm(self):
         """Return the actual crash barrier footprint width used by draw_crash_barrier."""
@@ -1409,23 +1314,20 @@ class CrossSectionCADWidget(QWidget):
 
         # Metallic crash barrier in draw_crash_barrier currently uses a 550 mm kerb base.
         return float(geo.get("kerb_bottom_width", 550.0))
+    
+    def _compute_slope_offset(self, x, slope_start_x, slope_end_x):
+        """Compute parabolic camber offset at position x (0.5% cross slope)."""
+        if x < slope_start_x or x > slope_end_x:
+            return 0.0
+        slope_mid_x = (slope_start_x + slope_end_x) / 2.0
+        slope_span = max(1.0, slope_end_x - slope_start_x)
+        xi = (x - slope_mid_x) / (slope_span / 2.0)
+        slope_height = 0.005 * (slope_span / 2.0)
+        return -slope_height * (1.0 - xi ** 2)
 
     def draw_cross_section(self, painter):
         """Draw cross-section with median support and hover highlighting"""
         
-        GIRDER_COLOR = QColor(130, 130, 130)
-        STIFFENER_COLOR = QColor(210, 210, 205)
-        CROSS_BRACING_COLOR = QColor(250, 240, 211)
-        RAILING_COLOR = QColor(225, 225, 225)
-        BARRIER_COLOR = QColor(220, 220, 220)
-
-
-        MEDIAN_GREY = QColor(210, 210, 205) 
-        CONCRETE_COLOR = QColor(225, 225, 225)
-
-        END_DIAPHRAGM_COLOR = QColor(134, 134, 100)
-        BARRIER_GREY = QColor(221, 221, 221)  # slightly dark grey
-        RAILING_GREY = QColor(221, 221, 221)
         
         is_preview = self.scale_factor < 1.0 if hasattr(self, 'scale_factor') else False
 
@@ -1443,7 +1345,7 @@ class CrossSectionCADWidget(QWidget):
         left_fp_width = self.params['footpath_width'] if fp_config in ['left', 'both'] else 0
         right_fp_width = self.params['footpath_width'] if fp_config in ['right', 'both'] else 0
 
-        total_deck_width, num_fp = self.compute_deck_total_width()
+        total_deck_width, _ = self.compute_deck_total_width()
 
         # Reduced margins for better space utilization
         margin_x = 10 if is_preview else 80
@@ -1454,7 +1356,13 @@ class CrossSectionCADWidget(QWidget):
                                                 self.params['deck_thickness'] +
                                                 self.params['footpath_thickness'] + 800)
         
-        scale = min(scale_x, scale_y)
+        if is_preview:
+            scale = min(scale_x, scale_y)
+        else:
+            model_h = self._compute_model_height_mm()
+            if self._saved_cad_height_px is None:
+                self._saved_cad_height_px = max(1.0, model_h * scale_y * self.scale_factor)
+            scale = (self._saved_cad_height_px / max(model_h, 1e-9)) / max(self.scale_factor, 1e-9)
         
         # Apply scale factor for size adjustment (zoom_level already applied to width/height)
         scale = scale * self.scale_factor
@@ -1551,17 +1459,9 @@ class CrossSectionCADWidget(QWidget):
         # start after left crash barrier and end before right crash barrier.
         slope_start_x = carriageway_start_x
         slope_end_x = carriageway_end_x
-        slope_span = max(1.0, slope_end_x - slope_start_x)
-        slope_mid_x = (slope_start_x + slope_end_x) / 2.0
-
-        # 0.5% of half carriageway width (parabolic camber)
-        slope_height = 0.005 * (slope_span / 2.0)
-
-        def slope_offset(x):
-            if x < slope_start_x or x > slope_end_x:
-                return 0.0
-            xi = (x - slope_mid_x) / (slope_span / 2.0)  # normalize [-1,1]
-            return -slope_height * (1.0 - xi**2)
+        slope_height = 0.005 * (max(1.0, slope_end_x - slope_start_x) / 2.0)  # for hover zone bounding boxes
+       
+       
 
         n = max(1, int(self.params['num_girders']))
         deck_overhang_px = self.params.get('deck_overhang', 1000) * scale
@@ -1575,7 +1475,7 @@ class CrossSectionCADWidget(QWidget):
         else:
             positions = [center_x]
 
-        flange_half_px = (self.girder['flange_width'] * scale * self.girder_visual_scale['flange_width']) / 2.0
+        flange_half_px = (self.girder['top_flange_width'] * scale * self.girder_visual_scale['flange_width']) / 2.0
         min_allowed_x = deck_left_x + flange_half_px + 1
         max_allowed_x = deck_right_x - flange_half_px - 1
         positions = [max(min_allowed_x, min(max_allowed_x, p)) for p in positions]
@@ -1590,7 +1490,7 @@ class CrossSectionCADWidget(QWidget):
         
         # Check if deck is hovered (visible brightness)
         deck_hovered = (self.hovered_element == 'deck')
-        deck_color = QColor(240, 240, 240) if deck_hovered else CONCRETE_COLOR
+        deck_color = QColor(240, 240, 240) if deck_hovered else self.CONCRETE_COLOR
         
       
         
@@ -1602,7 +1502,7 @@ class CrossSectionCADWidget(QWidget):
         for i in range(num_points + 1):
             x = deck_slab_left + i * (deck_slab_right - deck_slab_left) / num_points
             
-            y_top = deck_top_y + slope_offset(x)
+            y_top = deck_top_y + self._compute_slope_offset(x, slope_start_x, slope_end_x)
             y_bottom = deck_bottom_y
 
             top_pts.append(QPointF(x, y_top))
@@ -1634,7 +1534,7 @@ class CrossSectionCADWidget(QWidget):
                 seg_bottom_pts = []
                 for i in range(num_points + 1):
                     x = x_start + i * (x_end - x_start) / num_points
-                    y_bottom = deck_top_y + slope_offset(x)
+                    y_bottom = deck_top_y + self._compute_slope_offset(x, slope_start_x, slope_end_x)
                     y_top = y_bottom - wc_thickness_px
                     seg_top_pts.append(QPointF(x, y_top))
                     seg_bottom_pts.insert(0, QPointF(x, y_bottom))
@@ -1736,9 +1636,9 @@ class CrossSectionCADWidget(QWidget):
         
         if median_present:
             median_center_x = (median_start_x + median_end_x) / 2
-            median_y = deck_top_y + slope_offset(median_center_x)
+            median_y = deck_top_y + self._compute_slope_offset(median_center_x, slope_start_x, slope_end_x)
 
-            self.draw_median(painter, median_start_x, median_end_x, median_y, scale, MEDIAN_GREY)
+            self.draw_median(painter, median_start_x, median_end_x, median_y, scale, self.GIRDER_COLOR)
 
         # Draw the main deck bottom line solid (only the deck slab portion)
         painter.setPen(deck_outline_pen)
@@ -1746,34 +1646,24 @@ class CrossSectionCADWidget(QWidget):
                         QPointF(deck_slab_right, deck_bottom_y))
 
         # Draw side borders of the deck slab (left and right edges)
-        left_top_y = deck_top_y + slope_offset(deck_slab_left)
-        right_top_y = deck_top_y + slope_offset(deck_slab_right)
+        left_top_y = deck_top_y + self._compute_slope_offset(deck_slab_left, slope_start_x, slope_end_x)
+        right_top_y = deck_top_y + self._compute_slope_offset(deck_slab_right, slope_start_x, slope_end_x)
         painter.drawLine(QPointF(deck_slab_left, left_top_y), QPointF(deck_slab_left, deck_bottom_y))
         painter.drawLine(QPointF(deck_slab_right, right_top_y), QPointF(deck_slab_right, deck_bottom_y))
 
 
 
-        # Draw girders and stiffeners
-        for girder_x in positions:
-            self.draw_i_section(painter, girder_x, base_y, scale, GIRDER_COLOR)
-            self.draw_stiffeners(painter, girder_x, base_y, scale, STIFFENER_COLOR)
-            
-        # -------- 4.d CL OF BEARING (DASHED BLACK) --------
-        # painter.setPen(QPen(QColor(0, 0, 0), 1.0, Qt.DashLine))
-        # painter.setBrush(Qt.NoBrush)
-
-        # for girder_x in positions:
-        #     painter.drawLine(
-        #         QPointF(girder_x, base_y),
-        #         QPointF(girder_x, deck_bottom_y)
-        #     )
-            
-            # ---- Flange thickness (same as I-section) ----
-            if 'top_flange_thickness' in self.girder and 'bottom_flange_thickness' in self.girder:
+        if 'top_flange_thickness' in self.girder and 'bottom_flange_thickness' in self.girder:
                 tf_top = self.girder['top_flange_thickness'] * scale * self.girder_visual_scale['flange_thickness']
                 tf_bottom = self.girder['bottom_flange_thickness'] * scale * self.girder_visual_scale['flange_thickness']
-            else:
-                tf_top = tf_bottom = self.girder['flange_thickness'] * scale * self.girder_visual_scale['flange_thickness']
+        else:
+            tf_top = tf_bottom = self.girder['flange_thickness'] * scale * self.girder_visual_scale['flange_thickness']
+        # Draw girders and stiffeners
+        for girder_x in positions:
+            self.draw_i_section(painter, girder_x, base_y, scale, self.GIRDER_COLOR)
+            self.draw_stiffeners(painter, girder_x, base_y, scale, self.STIFFENER_COLOR)
+            
+    
 
 
 
@@ -1847,10 +1737,10 @@ class CrossSectionCADWidget(QWidget):
                 p4 = QPointF(x1 - off_x_bs, top_L    - off_y_bs)
 
                 painter.setPen(Qt.NoPen)
-                painter.setBrush(QBrush(CROSS_BRACING_COLOR))
+                painter.setBrush(QBrush(self.CROSS_BRACING_COLOR))
                 painter.drawPolygon(QPolygonF([p1, p2, p3, p4]))
 
-                painter.setPen(QPen(CROSS_BRACING_COLOR.darker(220), 1.5))
+                painter.setPen(QPen(self.CROSS_BRACING_COLOR.darker(220), 1.5))
                 painter.drawLine(p1, p2)
                 painter.drawLine(p4, p3)
 
@@ -1870,10 +1760,10 @@ class CrossSectionCADWidget(QWidget):
                 p4 = QPointF(x1 - off_x_sl, bottom_L - off_y_sl)
 
                 painter.setPen(Qt.NoPen)
-                painter.setBrush(QBrush(CROSS_BRACING_COLOR))
+                painter.setBrush(QBrush(self.CROSS_BRACING_COLOR))
                 painter.drawPolygon(QPolygonF([p1, p2, p3, p4]))
 
-                painter.setPen(QPen(CROSS_BRACING_COLOR.darker(220), 1.5))
+                painter.setPen(QPen(self.CROSS_BRACING_COLOR.darker(220), 1.5))
                 painter.drawLine(p1, p2)
                 painter.drawLine(p4, p3)
         # Draw railings
@@ -2150,12 +2040,9 @@ class CrossSectionCADWidget(QWidget):
             deck_center_x = (deck_slab_left + deck_slab_right) / 2
 
         if deck_thick_px > 5:
-            # Use local curved deck top so the arrow spans the full visible thickness.
-            deck_width_px = deck_right_x - deck_left_x
-            mid_x = (deck_left_x + deck_right_x) / 2
-            slope_height = 0.005 * (deck_width_px / 2)
-            xi = (deck_center_x - mid_x) / (deck_width_px / 2) if deck_width_px != 0 else 0.0
-            local_deck_top_y = deck_top_y - slope_height * (1 - xi ** 2)
+            local_deck_top_y = deck_top_y + self._compute_slope_offset(
+                deck_center_x, carriageway_start_x, carriageway_end_x
+            )
 
             painter.setPen(QPen(QColor(0, 0, 0), 0.8))
             painter.drawLine(QPointF(deck_center_x, local_deck_top_y), QPointF(deck_center_x, deck_bottom_y))
@@ -2220,7 +2107,7 @@ class CrossSectionCADWidget(QWidget):
         cb_height = self.crash_barrier['height'] * scale
         visual = self.girder_visual_scale
         girder_depth_visual = self.girder['depth'] * scale * visual['depth']
-        bf = self.girder['flange_width'] * scale * visual['flange_width']
+        bf = self.girder['top_flange_width'] * scale * visual['flange_width']
         
         # Common label line Y position (below girders)
         label_line_y = base_y + 25
@@ -2488,16 +2375,10 @@ class CrossSectionCADWidget(QWidget):
         visual = self.girder_visual_scale
         d = self.girder['depth'] * scale * visual['depth']
         
-        # Use top/bottom flange dimensions if available, else fall back to symmetric
-        if 'top_flange_width' in self.girder and 'bottom_flange_width' in self.girder:
-            bf_top = self.girder['top_flange_width'] * scale * visual['flange_width']
-            tf_top = self.girder['top_flange_thickness'] * scale * visual['flange_thickness'] 
-            bf_bottom = self.girder['bottom_flange_width'] * scale * visual['flange_width']
-            tf_bottom = self.girder['bottom_flange_thickness'] * scale * visual['flange_thickness'] 
-        else:
-            # Legacy symmetric section
-            bf_top = bf_bottom = self.girder['flange_width'] * scale * visual['flange_width']
-            tf_top = tf_bottom = self.girder['flange_thickness'] * scale * visual['flange_thickness']
+        bf_top = self.girder['top_flange_width'] * scale * visual['flange_width']
+        tf_top = self.girder['top_flange_thickness'] * scale * visual['flange_thickness']
+        bf_bottom = self.girder['bottom_flange_width'] * scale * visual['flange_width']
+        tf_bottom = self.girder['bottom_flange_thickness'] * scale * visual['flange_thickness']
         
         tw = self.girder['web_thickness'] * scale * visual['web_thickness']
         
@@ -2550,11 +2431,7 @@ class CrossSectionCADWidget(QWidget):
 
         tw = self.girder['web_thickness'] * scale * visual['web_thickness']
 
-        # Flange thickness (top) — MUST match depth scaling
-        if 'top_flange_thickness' in self.girder:
-            flange_thick = self.girder['top_flange_thickness'] * scale * visual['depth']
-        else:
-            flange_thick = self.girder['flange_thickness'] * scale * visual['depth']
+        flange_thick = self.girder['top_flange_thickness'] * scale * visual['depth']
 
         girder_depth_visual = self.girder['depth'] * scale * visual['depth']
 
