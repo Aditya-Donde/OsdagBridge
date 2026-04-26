@@ -23,6 +23,7 @@ WIND_LOAD_TAB_SCHEMA = {
                     "type": "line",
                     "default": "10",
                     "placeholder": "10",
+                    "validator": {"type": "double_range", "bottom": 0.0, "top": 1000.0, "decimals": 2},
                     "bind": "avg_exposed_height_input",
                 },
                 {
@@ -51,6 +52,7 @@ WIND_LOAD_TAB_SCHEMA = {
                     "bind_value": "gust_factor_value",
                     "default_value": "2",
                     "placeholder": "2",
+                    "validator": {"type": "double_range", "bottom": 0.0, "top": 100.0, "decimals": 3},
                     "conditions": [{"when": "gust_factor_combo", "equals": "Custom", "action": "enable"}],
                 },
                 {
@@ -63,6 +65,7 @@ WIND_LOAD_TAB_SCHEMA = {
                     "bind_value": "drag_coeff_value",
                     "default_value": "",
                     "placeholder": "Custom Value",
+                    "validator": {"type": "double_range", "bottom": 0.0, "top": 100.0, "decimals": 3},
                     "conditions": [{"when": "drag_coeff_combo", "equals": "Custom", "action": "enable"}],
                 },
                 {
@@ -75,6 +78,7 @@ WIND_LOAD_TAB_SCHEMA = {
                     "bind_value": "drag_coeff_ll_value",
                     "default_value": "1.2",
                     "placeholder": "1.2",
+                    "validator": {"type": "double_range", "bottom": 0.0, "top": 100.0, "decimals": 3},
                     "conditions": [{"when": "drag_coeff_ll_combo", "equals": "Custom", "action": "enable"}],
                 },
                 {
@@ -87,6 +91,7 @@ WIND_LOAD_TAB_SCHEMA = {
                     "bind_value": "lift_coeff_value",
                     "default_value": "0.75",
                     "placeholder": "0.75",
+                    "validator": {"type": "double_range", "bottom": 0.0, "top": 100.0, "decimals": 3},
                     "conditions": [{"when": "lift_coeff_combo", "equals": "Custom", "action": "enable"}],
                 },
                 {
@@ -99,6 +104,7 @@ WIND_LOAD_TAB_SCHEMA = {
                     "bind_value": "super_area_elev_value",
                     "default_value": "",
                     "placeholder": "Custom Value",
+                    "validator": {"type": "double_range", "bottom": 0.0, "top": 1.0e6, "decimals": 3},
                     "conditions": [{"when": "super_area_elev_combo", "equals": "Custom", "action": "enable"}],
                 },
                 {
@@ -111,6 +117,7 @@ WIND_LOAD_TAB_SCHEMA = {
                     "bind_value": "super_area_plain_value",
                     "default_value": "",
                     "placeholder": "Custom Value",
+                    "validator": {"type": "double_range", "bottom": 0.0, "top": 1.0e6, "decimals": 3},
                     "conditions": [{"when": "super_area_plain_combo", "equals": "Custom", "action": "enable"}],
                 },
                 {
@@ -123,6 +130,7 @@ WIND_LOAD_TAB_SCHEMA = {
                     "bind_value": "exposed_frontal_area_value",
                     "default_value": "",
                     "placeholder": "Custom Value",
+                    "validator": {"type": "double_range", "bottom": 0.0, "top": 1.0e6, "decimals": 3},
                     "conditions": [{"when": "exposed_frontal_area_combo", "equals": "Custom", "action": "enable"}],
                 },
                 {
@@ -135,6 +143,7 @@ WIND_LOAD_TAB_SCHEMA = {
                     "bind_value": "wind_ecc_deck_value",
                     "default_value": "",
                     "placeholder": "Custom Value",
+                    "validator": {"type": "double_range", "bottom": 0.0, "top": 1000.0, "decimals": 3},
                     "conditions": [{"when": "wind_ecc_deck_combo", "equals": "Custom", "action": "enable"}],
                 },
                 {
@@ -147,6 +156,7 @@ WIND_LOAD_TAB_SCHEMA = {
                     "bind_value": "wind_ll_ecc_value",
                     "default_value": "",
                     "placeholder": "Custom Value",
+                    "validator": {"type": "double_range", "bottom": 0.0, "top": 1000.0, "decimals": 3},
                     "conditions": [{"when": "wind_ll_ecc_combo", "equals": "Custom", "action": "enable"}],
                 },
             ],
