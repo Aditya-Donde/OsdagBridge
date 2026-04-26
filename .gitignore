@@ -258,3 +258,11 @@ src/osdag_map_cache/
 ospgrillage/
 temp_plot.html
 *.html
+
+# LaTeX build artifacts (docs/)
+*.aux
+*.log
+*.out
+*.toc
+docs/*.pdf
+docs/*.tex
