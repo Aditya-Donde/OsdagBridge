@@ -739,6 +739,35 @@ class InputDock(QWidget):
             if values:
                 self.additional_input_values = values
                 self.input_value_changed.emit()
+                self._run_cross_cutting_validation()
+
+    def _run_cross_cutting_validation(self) -> None:
+        """Run BridgeInputValidator against the merged basic+additional dict.
+
+        Surfaces violations as a non-blocking warning. Saved values are kept
+        regardless so the user does not lose work — they can re-open the dialog
+        to fix issues.
+        """
+        try:
+            merged = self.get_all_input_values()
+        except Exception:
+            return
+        try:
+            result = self.validator.validate_additional_inputs(merged)
+        except Exception:
+            return
+        if result.get("status"):
+            return
+        errors = result.get("errors") or {}
+        if not errors:
+            return
+        message = "\n\n".join(f"• {msg}" for msg in errors.values())
+        CustomMessageBox(
+            title="Cross-Cutting Validation Warnings",
+            text=message,
+            buttons=["OK"],
+            dialogType=MessageBoxType.Warning,
+        ).exec()
 
     def _on_additional_inputs_closed(self):
         try:
