@@ -26,12 +26,17 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from osdagbridge.desktop.ui.dialogs.tabs.additional_inputs.tab_registry import get_tab_class
 from osdagbridge.desktop.ui.dialogs.tabs.builder.constants import (
     _HEADING_STYLE,
     _LABEL_STYLE,
     _SECTION_BOX_STYLE,
 )
+
+
+def _default_tab_class_resolver(class_name: str):
+    """Lazy fallback resolver — preserves the original additional-inputs registry."""
+    from osdagbridge.desktop.ui.dialogs.tabs.additional_inputs.tab_registry import get_tab_class
+    return get_tab_class(class_name)
 
 _log = logging.getLogger(__name__)
 
@@ -370,7 +375,8 @@ class SpecialSectionsMixin:
                 continue
 
             try:
-                tab_cls = get_tab_class(class_name)
+                resolver = getattr(self, "tab_class_resolver", None) or _default_tab_class_resolver
+                tab_cls = resolver(class_name)
                 sig = inspect.signature(tab_cls.__init__)
                 kwargs = {}
                 if "owner" in sig.parameters:

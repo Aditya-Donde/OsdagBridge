@@ -43,11 +43,18 @@ class UIBuilder(
         ``setattr(owner, "my_combo", widget)``.
     schema:
         Schema dict (from the schemas/ directory).
+    tab_class_resolver:
+        Optional callable ``(class_name: str) -> Type`` used by the
+        ``tab_container`` section to look up sub-tab classes. Defaults to the
+        plate-girder Additional Inputs registry. Pass a different resolver to
+        plug in another bridge type's tab catalogue without touching the
+        builder.
     """
 
-    def __init__(self, owner: QWidget, schema: dict) -> None:
+    def __init__(self, owner: QWidget, schema: dict, tab_class_resolver=None) -> None:
         self.owner  = owner
         self.schema = schema
+        self.tab_class_resolver = tab_class_resolver
 
     def build_tab(self, tab_widget: QWidget) -> None:
         """Build the full tab UI into *tab_widget*.
