@@ -19,7 +19,7 @@ from PySide6.QtWidgets import (
 
 from osdagbridge.desktop.ui.dialogs.tabs.schemas.plate_girder import END_DIAPHRAGM_DETAILS_SCHEMA
 from osdagbridge.desktop.ui.dialogs.tabs import schema_io
-from osdagbridge.desktop.ui.dialogs.tabs.ui_builder import UIBuilder
+from osdagbridge.desktop.ui.dialogs.tabs.builder import UIBuilder
 from osdagbridge.desktop.ui.dialogs.tabs.base import SchemaTab
 from osdagbridge.desktop.ui.widgets.section_viewer import SectionCatalog
 

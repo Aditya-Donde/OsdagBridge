@@ -6,7 +6,7 @@ from osdagbridge.desktop.ui.dialogs.tabs.schemas.plate_girder import (
 from osdagbridge.desktop.ui.dialogs.custom_messagebox import CustomMessageBox, MessageBoxType
 from osdagbridge.desktop.ui.dialogs.tabs import schema_io
 from osdagbridge.desktop.ui.dialogs.tabs.custom_vehicle_dialog import CustomVehicleDialog
-from osdagbridge.desktop.ui.dialogs.tabs.ui_builder import UIBuilder
+from osdagbridge.desktop.ui.dialogs.tabs.builder import UIBuilder
 from osdagbridge.desktop.ui.dialogs.tabs.base import SchemaTab
 
 

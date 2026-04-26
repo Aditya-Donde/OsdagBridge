@@ -2,7 +2,7 @@
 
 from PySide6.QtWidgets import QWidget
 from osdagbridge.desktop.ui.dialogs.tabs import schema_io
-from osdagbridge.desktop.ui.dialogs.tabs.ui_builder import UIBuilder
+from osdagbridge.desktop.ui.dialogs.tabs.builder import UIBuilder
 
 _BIND_KEYS = (
     "bind",

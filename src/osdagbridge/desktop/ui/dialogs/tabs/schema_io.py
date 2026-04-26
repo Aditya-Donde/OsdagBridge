@@ -8,7 +8,7 @@ import re
 
 from PySide6.QtWidgets import QCheckBox, QComboBox, QLineEdit, QWidget
 
-from osdagbridge.desktop.ui.dialogs.tabs.ui_builder import _SPECIAL_SECTION_TYPES, _FIELD_AS_SECTION_TYPES
+from osdagbridge.desktop.ui.dialogs.tabs.builder import _SPECIAL_SECTION_TYPES, _FIELD_AS_SECTION_TYPES
 
 _log = logging.getLogger(__name__)
 
