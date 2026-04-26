@@ -25,16 +25,20 @@ from osdagbridge.desktop.ui.utils.custom_widgets import SmartCursorComboBoxView
 from osdagbridge.desktop.ui.dialogs.tabs import schema_io
 
 
-# Top-level tab attribute names, derived once from the orchestrator schema.
-# Iterating these is how the dialog reaches each top-level tab without knowing
-# their classes.
-_TOP_TAB_ATTRS = tuple(
-    entry["bind"]
-    for section in ADDITIONAL_INPUTS_ORCHESTRATOR_SCHEMA["sections"]
-    if section.get("type") == "tab_container"
-    for entry in section.get("tabs", [])
-    if entry.get("bind")
-)
+def _top_tab_attrs(schema: dict) -> tuple:
+    """Extract bind-attribute names for every top-level tab in an orchestrator schema."""
+    return tuple(
+        entry["bind"]
+        for section in schema.get("sections", [])
+        if section.get("type") == "tab_container"
+        for entry in section.get("tabs", [])
+        if entry.get("bind")
+    )
+
+
+# Default top-level tab attribute names for the plate-girder dialog. Used when
+# no orchestrator schema override is supplied.
+_TOP_TAB_ATTRS = _top_tab_attrs(ADDITIONAL_INPUTS_ORCHESTRATOR_SCHEMA)
 
 _TAB_BAR_STYLE = """
     QTabWidget::pane { border: 1px solid #C2C7CB; border-radius: 4px; }
@@ -46,8 +50,13 @@ _TAB_BAR_STYLE = """
 class AdditionalInputs(QDialog):
     """Main dialog for Additional Inputs with tabbed interface"""
 
-    def __init__(self, footpath_value="None", carriageway_width=7.5, parent=None, initial_cad_state=None):
+    def __init__(self, footpath_value="None", carriageway_width=7.5, parent=None,
+                 initial_cad_state=None, orchestrator_schema=None,
+                 tab_class_resolver=None):
         self._initial_cad_state = initial_cad_state or {}
+        self._orchestrator_schema = orchestrator_schema or ADDITIONAL_INPUTS_ORCHESTRATOR_SCHEMA
+        self._tab_class_resolver = tab_class_resolver
+        self._top_tab_attrs = _top_tab_attrs(self._orchestrator_schema) or _TOP_TAB_ATTRS
         super().__init__(parent)
         self.setObjectName("AdditionalInputs")
         self.resize(1024, 720)
@@ -115,7 +124,7 @@ class AdditionalInputs(QDialog):
         self.saved_values = dict(values)
 
     def _iter_top_tabs(self):
-        for attr in _TOP_TAB_ATTRS:
+        for attr in self._top_tab_attrs:
             tab = getattr(self, attr, None)
             if tab is not None:
                 yield tab
@@ -137,9 +146,14 @@ class AdditionalInputs(QDialog):
         content_layout.setSpacing(10)
 
         # The orchestrator schema describes the tab bar; UIBuilder constructs
-        # every top-level tab via tab_registry and binds each one onto self.
+        # every top-level tab via the configured tab-class resolver and binds
+        # each one onto self.
         tab_host = QWidget()
-        UIBuilder(owner=self, schema=ADDITIONAL_INPUTS_ORCHESTRATOR_SCHEMA).build_tab(tab_host)
+        UIBuilder(
+            owner=self,
+            schema=self._orchestrator_schema,
+            tab_class_resolver=self._tab_class_resolver,
+        ).build_tab(tab_host)
         content_layout.addWidget(tab_host)
 
         self.tab_widget = tab_host.findChild(QTabWidget, "additional_inputs_tabs")
