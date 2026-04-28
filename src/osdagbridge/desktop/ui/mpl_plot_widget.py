@@ -452,50 +452,40 @@ class MplPlotWidget(QWidget):
             self._fig.set_size_inches(w_px / dpi, h_px / dpi, forward=False)
 
     def _store_orig_limits(self):
-        self._orig_limits = {}
-        for i, ax in enumerate(self._fig.axes):
-            if hasattr(ax, "get_zlim"):
-                self._orig_limits[i] = {
-                    "x": ax.get_xlim(),
-                    "y": ax.get_ylim(),
-                    "z": ax.get_zlim(),
-                }
+        """No longer needed since we are using native camera zoom instead of axis clipping!"""
+        pass
 
     def _apply_zoom(self):
-        if not self._orig_limits:
-            return
-        for i, ax in enumerate(self._fig.axes):
-            if i not in self._orig_limits:
-                continue
-            lims = self._orig_limits[i]
-            for axis_key, set_lim in [
-                ("x", ax.set_xlim),
-                ("y", ax.set_ylim),
-                ("z", ax.set_zlim),
-            ]:
-                lo, hi = lims[axis_key]
-                centre = (lo + hi) / 2.0
-                half   = (hi - lo) / 2.0 * self._zoom_scale
-                set_lim(centre - half, centre + half)
+        """Zoom the 3D camera optically to completely prevent canvas clipping."""
+        for ax in self._fig.axes:
+            try:
+                # Modern Matplotlib: Zooms the camera lens natively.
+                # The 3D box stays safely inside the widget window, no clipping!
+                ax.set_proj_type('persp', focal_length=self._zoom_scale)
+            except Exception:
+                # Fallback for older Matplotlib versions
+                ax.dist = 10 / self._zoom_scale
         self._canvas.draw_idle()
 
     def eventFilter(self, obj, event):
         if obj is self._canvas and event.type() == QEvent.Type.Wheel:
             delta = event.angleDelta().y()
             if delta > 0:
-                self._zoom_scale = max(self._zoom_scale * 0.8, 0.05)
+                # Zoom IN (increase focal length)
+                self._zoom_scale = min(self._zoom_scale * 1.1, 10.0)
             else:
-                self._zoom_scale = min(self._zoom_scale * 1.25, 20.0)
+                # Zoom OUT (decrease focal length)
+                self._zoom_scale = max(self._zoom_scale * 0.9, 0.1)
             self._apply_zoom()
             return True   
         return super().eventFilter(obj, event)
 
     def _zoom_in(self):
-        self._zoom_scale = max(self._zoom_scale * 0.8, 0.05)
+        self._zoom_scale = min(self._zoom_scale * 1.1, 10.0)
         self._apply_zoom()
 
     def _zoom_out(self):
-        self._zoom_scale = min(self._zoom_scale * 1.25, 20.0)
+        self._zoom_scale = max(self._zoom_scale * 0.9, 0.1)
         self._apply_zoom()
 
     def _zoom_reset(self):

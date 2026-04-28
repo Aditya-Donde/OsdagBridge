@@ -286,7 +286,8 @@ def build_figure_grillage(nodes, members):
     ax.zaxis.pane.set_edgecolor("lightgrey")
     ax.grid(True, linestyle="--", linewidth=0.4, alpha=0.5)
 
-    plt.tight_layout()
+    # Force the 3D plot to use the maximum available canvas space
+    fig.subplots_adjust(left=0.05, right=0.95, bottom=0.05, top=0.88)
     return fig
 
 
@@ -376,15 +377,15 @@ def build_figure_sfd(ds, force_key, nodes, members, edge_dist=0.0):
                 bbox=dict(boxstyle="round,pad=0.2", facecolor="white",
                           alpha=0.8, edgecolor="none"))
 
-        val_range = max(Vy) - min(Vy)
-        if val_range == 0:
-            shear_scale = 1.0 if max(Vy) == 0 else 0.25 * abs((max(xs) - min(xs)) / max(Vy))
-        else:
-            shear_scale = 0.25 * abs((max(xs) - min(xs)) / val_range)
+        # val_range = max(Vy) - min(Vy)
+        # if val_range == 0:
+        #     shear_scale = 1.0 if max(Vy) == 0 else 0.25 * abs((max(xs) - min(xs)) / max(Vy))
+        # else:
+        #     shear_scale = 0.25 * abs((max(xs) - min(xs)) / val_range)
 
         x_step  = np.repeat(xs, 2)[1:-1]
         Vy_step = np.repeat(Vy[:-1], 2)
-        y_step  = Vy_step * shear_scale
+        y_step  = Vy_step 
         z_step  = np.full_like(x_step, z_base)
 
         ax.plot_surface(
@@ -399,12 +400,12 @@ def build_figure_sfd(ds, force_key, nodes, members, edge_dist=0.0):
 
         # vertical cliff lines
         for xi, vyi in zip(xs, Vy):
-            ax.plot([xi, xi], [z_base, z_base], [0, vyi * shear_scale],
+            ax.plot([xi, xi], [z_base, z_base], [0, vyi],
                     color=shear_color, linewidth=1.2, alpha=0.7, zorder=3)
         for xi, vyi in zip(xs, Vy):
-            ax.text(xi, z_base, vyi * shear_scale, f" {vyi:.2f}", color="#666666", fontsize=6, zorder=5, gid="all_vals")
+            ax.text(xi, z_base, vyi, f" {vyi:.2f}", color="#666666", fontsize=6, zorder=5, gid="all_vals")
 
-        sc = ax.scatter(xs, z_arr, Vy * shear_scale,
+        sc = ax.scatter(xs, z_arr, Vy,
                         color=shear_color, s=30, zorder=5, depthshade=False)
         _scatter_objs.append(sc)
         _scatter_data[id(sc)] = (node_ids, xs, Vy)
@@ -424,7 +425,7 @@ def build_figure_sfd(ds, force_key, nodes, members, edge_dist=0.0):
 
     ax.set_xlabel("Span Length (m)", fontsize=10, labelpad=8)
     ax.set_ylabel("Bridge Width (m)", fontsize=10, labelpad=8)
-    ax.set_zlabel(f"{disp_key} (kN, scaled)", fontsize=10, labelpad=8)
+    ax.set_zlabel(f"{disp_key} (kN)", fontsize=10, labelpad=8)
     ax.set_title(f"Shear Force Diagram  —  {disp_key}", fontsize=12, fontweight="bold", pad=12)
     ax.view_init(elev=DEFAULT_ELEV, azim=DEFAULT_AZIM)
     ax.xaxis.pane.fill = False
@@ -435,7 +436,8 @@ def build_figure_sfd(ds, force_key, nodes, members, edge_dist=0.0):
     ax.zaxis.pane.set_edgecolor("lightgrey")
     ax.grid(True, linestyle="--", linewidth=0.4, alpha=0.5)
 
-    plt.tight_layout()
+    # Force the 3D plot to use the maximum available canvas space
+    fig.subplots_adjust(left=0.05, right=0.95, bottom=0.05, top=0.88)
     return fig
 
 
@@ -522,13 +524,13 @@ def build_figure_bmd(ds, force_key, nodes, members, edge_dist=0.0):
                 bbox=dict(boxstyle="round,pad=0.2", facecolor="white",
                           alpha=0.8, edgecolor="none"))
 
-        val_range = max(Mz) - min(Mz)
-        if val_range == 0:
-            moment_scale = 1.0 if max(Mz) == 0 else 0.1 * abs((max(xs) - min(xs)) / max(Mz))
-        else:
-            moment_scale = 0.1 * abs((max(xs) - min(xs)) / val_range)
+        # val_range = max(Mz) - min(Mz)
+        # if val_range == 0:
+        #     moment_scale = 1.0 if max(Mz) == 0 else 0.1 * abs((max(xs) - min(xs)) / max(Mz))
+        # else:
+        #     moment_scale = 0.1 * abs((max(xs) - min(xs)) / val_range)
 
-        y_plot = -Mz * moment_scale   # negate: positive moment plots downward
+        y_plot = -Mz   # negate: positive moment plots downward
 
         ax.plot_surface(
             np.vstack([xs, xs]),
@@ -579,7 +581,7 @@ def build_figure_bmd(ds, force_key, nodes, members, edge_dist=0.0):
 
     ax.set_xlabel("Span Length (m)", fontsize=10, labelpad=8)
     ax.set_ylabel("Bridge Width (m)", fontsize=10, labelpad=8)
-    ax.set_zlabel(f"{disp_key} (kNm, scaled)", fontsize=10, labelpad=8)
+    ax.set_zlabel(f"{disp_key} (kNm)", fontsize=10, labelpad=8)
     ax.set_title(f"Bending Moment Diagram  —  {disp_key}", fontsize=12, fontweight="bold", pad=12)
     ax.view_init(elev=DEFAULT_ELEV, azim=DEFAULT_AZIM)
     ax.xaxis.pane.fill = False
@@ -590,7 +592,8 @@ def build_figure_bmd(ds, force_key, nodes, members, edge_dist=0.0):
     ax.zaxis.pane.set_edgecolor("lightgrey")
     ax.grid(True, linestyle="--", linewidth=0.4, alpha=0.5)
 
-    plt.tight_layout()
+    # Force the 3D plot to use the maximum available canvas space
+    fig.subplots_adjust(left=0.05, right=0.95, bottom=0.05, top=0.88)
     return fig, summary_data
 
 
@@ -683,13 +686,13 @@ def build_figure_bmd_contour(ds, force_key, nodes, members, edge_dist=0.0):
                 bbox=dict(boxstyle="round,pad=0.2", facecolor="white",
                           alpha=0.8, edgecolor="none"))
 
-        val_range = max(Mz) - min(Mz)
-        if val_range == 0:
-            moment_scale = 1.0 if max(Mz) == 0 else 0.1 * abs((max(xs) - min(xs)) / max(Mz))
-        else:
-            moment_scale = 0.1 * abs((max(xs) - min(xs)) / val_range)
+        # val_range = max(Mz) - min(Mz)
+        # if val_range == 0:
+        #     moment_scale = 1.0 if max(Mz) == 0 else 0.1 * abs((max(xs) - min(xs)) / max(Mz))
+        # else:
+        #     moment_scale = 0.1 * abs((max(xs) - min(xs)) / val_range)
 
-        y_plot = Mz * moment_scale
+        y_plot = Mz 
 
         face_colors = cmap(norm(np.vstack([Mz, Mz])))
         ax.plot_surface(
@@ -718,7 +721,7 @@ def build_figure_bmd_contour(ds, force_key, nodes, members, edge_dist=0.0):
 
     ax.set_xlabel("Span Length (m)", fontsize=10, labelpad=8)
     ax.set_ylabel("Bridge Width (m)", fontsize=10, labelpad=8)
-    ax.set_zlabel(f"{disp_key} (kNm, scaled)", fontsize=10, labelpad=8)
+    ax.set_zlabel(f"{disp_key} (kNm)", fontsize=10, labelpad=8)
     ax.set_title(f"BMD Contour  —  {disp_key}", fontsize=12, fontweight="bold", pad=12)
     ax.view_init(elev=DEFAULT_ELEV, azim=DEFAULT_AZIM)
     ax.xaxis.pane.fill = False
@@ -729,7 +732,8 @@ def build_figure_bmd_contour(ds, force_key, nodes, members, edge_dist=0.0):
     ax.zaxis.pane.set_edgecolor("lightgrey")
     ax.grid(True, linestyle="--", linewidth=0.4, alpha=0.5)
 
-    plt.tight_layout()
+    # Force the 3D plot to use the maximum available canvas space
+    fig.subplots_adjust(left=0.05, right=0.95, bottom=0.05, top=0.88)
     return fig
 
 
@@ -836,16 +840,16 @@ def build_figure_deflection(ds, disp_key, nodes, members, edge_dist=0.0):
                 bbox=dict(boxstyle="round,pad=0.2", facecolor="white",
                           alpha=0.8, edgecolor="none"))
 
-        val_range = max(vals) - min(vals)
-        if val_range == 0:
-            defl_scale = (
-                1.0 if np.max(np.abs(vals)) == 0
-                else 0.1 * abs((max(xs) - min(xs)) / np.max(np.abs(vals)))
-            )
-        else:
-            defl_scale = 0.1 * abs((max(xs) - min(xs)) / val_range)
+        # val_range = max(vals) - min(vals)
+        # if val_range == 0:
+        #     defl_scale = (
+        #         1.0 if np.max(np.abs(vals)) == 0
+        #         else 0.1 * abs((max(xs) - min(xs)) / np.max(np.abs(vals)))
+        #     )
+        # else:
+        #     defl_scale = 0.1 * abs((max(xs) - min(xs)) / val_range)
 
-        y_plot = vals * defl_scale
+        y_plot = vals 
 
         ax.plot_surface(
             np.vstack([xs, xs]),
@@ -886,7 +890,7 @@ def build_figure_deflection(ds, disp_key, nodes, members, edge_dist=0.0):
 
     ax.set_xlabel("Span Length (m)", fontsize=10, labelpad=8)
     ax.set_ylabel("Bridge Width (m)", fontsize=10, labelpad=8)
-    ax.set_zlabel(f"{disp_label} (mm, scaled)", fontsize=10, labelpad=8)
+    ax.set_zlabel(f"{disp_label} (mm)", fontsize=10, labelpad=8)
     ax.set_title(f"Deflection Diagram  —  {disp_label}", fontsize=12, fontweight="bold", pad=12)
     ax.view_init(elev=DEFAULT_ELEV, azim=DEFAULT_AZIM)
     ax.xaxis.pane.fill = False
@@ -897,7 +901,8 @@ def build_figure_deflection(ds, disp_key, nodes, members, edge_dist=0.0):
     ax.zaxis.pane.set_edgecolor("lightgrey")
     ax.grid(True, linestyle="--", linewidth=0.4, alpha=0.5)
 
-    plt.tight_layout()
+    # Force the 3D plot to use the maximum available canvas space
+    fig.subplots_adjust(left=0.05, right=0.95, bottom=0.05, top=0.88)
     return fig
 
 
