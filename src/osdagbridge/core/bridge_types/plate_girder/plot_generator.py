@@ -197,14 +197,23 @@ def _add_coordinate_triad(ax, nodes, scale=0.10):
     ax.text(ox, oz, oy + Ly * 1.25, "Y", color=colors["Y"],
             fontsize=9, fontweight="bold", zorder=5, gid=tag)
     
-def _add_supports(ax, nodes, members):
+def _add_supports(ax, nodes, members, edge_dist=0.0):
     """Draw pin (diamond) and roller (circle) supports at the ends of girders."""
     girders = _find_girders(nodes, members)
+    girder_items = list(girders.items())
+    n_girders = len(girder_items)
+
     pin_x, pin_z = [], []
     rol_x, rol_z = [], []
 
-    for z_val, elems in girders.items():
+    for i, (z_val, elems) in enumerate(girder_items):
         if not elems: continue
+        
+        # Skip placing supports on edge beams if an overhang exists!
+        is_edge_beam = edge_dist > 0 and (i == 0 or i == n_girders - 1)
+        if is_edge_beam:
+            continue
+
         n_left = members[elems[0]][0]
         n_right = members[elems[-1]][1]
 
@@ -214,12 +223,12 @@ def _add_supports(ax, nodes, members):
         rol_x.append(nodes[n_right][0])
         rol_z.append(nodes[n_right][2])
 
-    # Pinned supports (Left side) -> Green Diamond (Matches Plotly!)
+    # Pinned supports (Left side) -> Green Diamond
     ax.scatter(pin_x, pin_z, np.zeros_like(pin_x), marker='D', s=70,
                color='#7CB342', edgecolors='black', linewidths=1.5,
                zorder=6, depthshade=False, gid="supports")
 
-    # Roller supports (Right side) -> Yellow Circle (Matches Plotly!)
+    # Roller supports (Right side) -> Yellow Circle
     ax.scatter(rol_x, rol_z, np.zeros_like(rol_x), marker='o', s=70,
                color='#FBC02D', edgecolors='black', linewidths=1.5,
                zorder=6, depthshade=False, gid="supports")
@@ -321,7 +330,7 @@ def build_figure_sfd(ds, force_key, nodes, members, edge_dist=0.0):
 
     _add_grillage_background(ax, nodes, members)
     _add_coordinate_triad(ax, nodes)
-    _add_supports(ax, nodes, members)
+    _add_supports(ax, nodes, members, edge_dist=edge_dist)
 
     shear_color = "#1565C0"
     fill_color  = "#90CAF9"
@@ -392,6 +401,8 @@ def build_figure_sfd(ds, force_key, nodes, members, edge_dist=0.0):
         for xi, vyi in zip(xs, Vy):
             ax.plot([xi, xi], [z_base, z_base], [0, vyi * shear_scale],
                     color=shear_color, linewidth=1.2, alpha=0.7, zorder=3)
+        for xi, vyi in zip(xs, Vy):
+            ax.text(xi, z_base, vyi * shear_scale, f" {vyi:.2f}", color="#666666", fontsize=6, zorder=5, gid="all_vals")
 
         sc = ax.scatter(xs, z_arr, Vy * shear_scale,
                         color=shear_color, s=30, zorder=5, depthshade=False)
@@ -469,7 +480,7 @@ def build_figure_bmd(ds, force_key, nodes, members, edge_dist=0.0):
 
     _add_grillage_background(ax, nodes, members)
     _add_coordinate_triad(ax, nodes)
-    _add_supports(ax, nodes, members)
+    _add_supports(ax, nodes, members, edge_dist=edge_dist)
 
     moment_color = "#C62828"
     fill_color   = "#EF9A9A"
@@ -528,11 +539,24 @@ def build_figure_bmd(ds, force_key, nodes, members, edge_dist=0.0):
 
         ax.plot(xs, z_arr, y_plot, color=moment_color, linewidth=2.0, zorder=4)
 
+        # Max line (Dashed, Tagged for toggling)
         idx_max = int(np.argmax(Mz))
         ax.plot([xs[idx_max], xs[idx_max]], [z_base, z_base], [0, y_plot[idx_max]],
-                color="#FF4136", linewidth=1.5, zorder=3)
+                color="#FF4136", linewidth=1.5, linestyle="--", zorder=3, gid="max_line")
+        # Bold Dark Grey Text
         ax.text(xs[idx_max], z_base, y_plot[idx_max],
-                f" {-Mz[idx_max]:.2f} kNm", color="#FF4136", fontsize=7, zorder=6)
+                f" {-Mz[idx_max]:.2f}", color="#333333", fontsize=8, fontweight="bold", zorder=6, gid="max_line")
+
+        # Min line (Dashed, Tagged for toggling)
+        idx_min = int(np.argmin(Mz))
+        ax.plot([xs[idx_min], xs[idx_min]], [z_base, z_base], [0, y_plot[idx_min]],
+                color="#0074D9", linewidth=1.5, linestyle="--", zorder=3, gid="min_line")
+        ax.text(xs[idx_min], z_base, y_plot[idx_min],
+                f" {-Mz[idx_min]:.2f}", color="#333333", fontsize=8, fontweight="bold", zorder=6, gid="min_line")
+
+        # 'All' values annotations (Slightly lighter grey, Tagged for toggling)
+        for xi, yi, mzi in zip(xs, y_plot, Mz):
+            ax.text(xi, z_base, yi, f" {-mzi:.2f}", color="#555555", fontsize=7, zorder=5, gid="all_vals")
 
         sc = ax.scatter(xs, z_arr, y_plot,
                         color=moment_color, s=30, zorder=5, depthshade=False)
@@ -628,7 +652,7 @@ def build_figure_bmd_contour(ds, force_key, nodes, members, edge_dist=0.0):
 
     _add_grillage_background(ax, nodes, members)
     _add_coordinate_triad(ax, nodes)
-    _add_supports(ax, nodes, members)
+    _add_supports(ax, nodes, members, edge_dist=edge_dist)
 
     base_color = "#388E3C"
 
@@ -749,7 +773,7 @@ def build_figure_deflection(ds, disp_key, nodes, members, edge_dist=0.0):
 
     _add_grillage_background(ax, nodes, members)
     _add_coordinate_triad(ax, nodes)
-    _add_supports(ax, nodes, members)
+    _add_supports(ax, nodes, members, edge_dist=edge_dist)
 
     defl_color = "#6A1B9A"   # deep purple
     fill_color = "#CE93D8"   # light purple
@@ -835,9 +859,13 @@ def build_figure_deflection(ds, disp_key, nodes, members, edge_dist=0.0):
         # annotate the node with maximum absolute deflection
         idx_max = int(np.argmax(np.abs(vals)))
         ax.plot([xs[idx_max], xs[idx_max]], [z_base, z_base], [0, y_plot[idx_max]],
-                color=defl_color, linewidth=1.5, zorder=3)
+                color=defl_color, linewidth=1.5, linestyle="--", zorder=3, gid="max_line")
         ax.text(xs[idx_max], z_base, y_plot[idx_max],
-                f" {vals[idx_max]:.3f} mm", color=defl_color, fontsize=7, zorder=6)
+                f" {vals[idx_max]:.3f} mm", color="#4A4A4A", fontsize=7, fontweight="bold", zorder=6, gid="max_line")
+
+        # 'All' values annotations (Tagged for toggling)
+        for xi, yi, val in zip(xs, y_plot, vals):
+            ax.text(xi, z_base, yi, f" {val:.3f}", color="#666666", fontsize=6, zorder=5, gid="all_vals")
 
         sc = ax.scatter(xs, z_arr, y_plot,
                         color=defl_color, s=30, zorder=5, depthshade=False)

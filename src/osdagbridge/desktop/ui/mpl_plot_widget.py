@@ -65,25 +65,20 @@ class SummaryOverlay(QFrame):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
 
-        # Use a single RichText label exactly like the Plotly HUD!
         self.text_label = QLabel()
         self.text_label.setTextFormat(Qt.RichText)
         self.text_label.setAlignment(Qt.AlignLeft | Qt.AlignTop)
         layout.addWidget(self.text_label)
 
     def update_data(self, summary_data):
-        """Populates the HUD using precise HTML monospace formatting."""
-        # Header setup
         hud_text = "<b>Extreme Values Summary</b><br>" + "-" * 38 + "<br>"
         
         h_girder = "Girder".ljust(8).replace(" ", "&nbsp;")
         h_max = "Max".rjust(10).replace(" ", "&nbsp;")
         h_min = "Min".rjust(12).replace(" ", "&nbsp;")
         
-        # Red for Max, Cyan for Min
         hud_text += f"<b>{h_girder}</b> | <span style='color: #FF4136;'><b>{h_max}</b></span> | <span style='color: #00E5FF;'><b>{h_min}</b></span><br>" + "-" * 38 + "<br>"
 
-        # Data rows
         for girder, vals in summary_data.items():
             g_str = girder.ljust(8).replace(" ", "&nbsp;")
             max_str = f"{vals['max']:.2f}".rjust(10).replace(" ", "&nbsp;")
@@ -116,8 +111,11 @@ class MplPlotWidget(QWidget):
         self._show_nodes = True 
         self._show_axis = True  
         self._show_supports = True 
-        self._show_grid = True  # NEW: Track grid visibility
+        self._show_grid = True  
         self._is_summary_checked = False
+        self._show_max = False  
+        self._show_min = False  
+        self._show_all_vals = False 
 
         # Zoom state
         self._zoom_scale  = 1.0
@@ -130,7 +128,7 @@ class MplPlotWidget(QWidget):
         self._canvas.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self._canvas.installEventFilter(self)
 
-        # Initialize the Summary Overlay (Hidden by default)
+        # Initialize the Summary Overlay
         self._summary_overlay = SummaryOverlay(self._canvas)
         self._summary_overlay.hide()
 
@@ -192,7 +190,6 @@ class MplPlotWidget(QWidget):
         self._btn_axis.setStyleSheet(btn_style)
         self._btn_axis.toggled.connect(self._on_axis_toggled)
 
-        # NEW: Grid toggle button
         self._btn_grid = QPushButton("Grid")
         self._btn_grid.setCheckable(True)
         self._btn_grid.setChecked(True) 
@@ -208,7 +205,7 @@ class MplPlotWidget(QWidget):
         toolbar_row.addWidget(self._btn_nodes)
         toolbar_row.addWidget(self._btn_supports) 
         toolbar_row.addWidget(self._btn_axis) 
-        toolbar_row.addWidget(self._btn_grid) # Added Grid button
+        toolbar_row.addWidget(self._btn_grid) 
         toolbar_row.addStretch()
         toolbar_row.addWidget(self._btn_zoom_out)
         toolbar_row.addWidget(self._btn_zoom_in)
@@ -255,9 +252,25 @@ class MplPlotWidget(QWidget):
             rb.setChecked(rb.text() == _DEFAULT_FORCE_LABEL)
             rb.toggled.connect(self.update_plot)
 
-        # 3. Connect Display Options (Summary HUD)
-        output_dock.connect_checkbox_signal("Summary", self._on_summary_toggled)
-        self._is_summary_checked = output_dock.get_checkbox_state("Summary")
+        # 3. BULLETPROOF NATIVE QT CONNECTION FOR CHECKBOXES
+        for cb in output_dock.output_widget.findChildren(QCheckBox):
+            text = cb.text().strip().lower()
+            
+            if "summary" in text:
+                cb.toggled.connect(self._on_summary_toggled)
+                self._is_summary_checked = cb.isChecked()
+                
+            elif "max" in text:
+                cb.toggled.connect(self._on_max_toggled)
+                self._show_max = cb.isChecked()
+                
+            elif "min" in text:
+                cb.toggled.connect(self._on_min_toggled)
+                self._show_min = cb.isChecked()
+                
+            elif "all" in text:
+                cb.toggled.connect(self._on_all_vals_toggled)
+                self._show_all_vals = cb.isChecked()
 
         self.update_plot()
 
@@ -293,7 +306,8 @@ class MplPlotWidget(QWidget):
         self._apply_node_visibility()
         self._apply_axis_visibility()
         self._apply_supports_visibility()
-        self._apply_grid_visibility() # Ensure grid matches toggle state
+        self._apply_grid_visibility() 
+        self._apply_annotation_visibility() 
         
         # Update HUD
         if self._summary_data:
@@ -310,23 +324,35 @@ class MplPlotWidget(QWidget):
         self._zoom_scale = 1.0
         self._store_orig_limits()
 
-    def _on_summary_toggled(self):
-        if self._output_dock is None:
-            return
-            
-        self._is_summary_checked = self._output_dock.get_checkbox_state("Summary")
-        
+    # NATIVE SLOTS: The 'checked' variable is now passed instantly by Qt!
+    def _on_summary_toggled(self, checked):
+        self._is_summary_checked = checked
         if self._is_summary_checked and self._summary_data:
             self._summary_overlay.show()
             self._summary_overlay.raise_()
         else:
             self._summary_overlay.hide()
 
+    def _on_max_toggled(self, checked):
+        self._show_max = checked
+        self._apply_annotation_visibility()
+        self._canvas.draw_idle()
+
+    def _on_min_toggled(self, checked):
+        self._show_min = checked
+        self._apply_annotation_visibility()
+        self._canvas.draw_idle()
+
+    def _on_all_vals_toggled(self, checked):
+        self._show_all_vals = checked
+        self._apply_annotation_visibility()
+        self._canvas.draw_idle()
+
+    # Toolbar Slots
     def _on_grillage_toggled(self, checked: bool):
         self._grillage_mode = checked
         if checked:
-            if not self._nodes:
-                return
+            if not self._nodes: return
             plt.close(self._fig)
             self._fig = build_figure_grillage(self._nodes, self._members)
             self._canvas.figure = self._fig
@@ -361,7 +387,6 @@ class MplPlotWidget(QWidget):
         self._canvas.draw_idle()
 
     def _on_grid_toggled(self, checked: bool):
-        """Instantly toggle the visibility of the Matplotlib grid lines."""
         self._show_grid = checked
         self._apply_grid_visibility()
         self._canvas.draw_idle()
@@ -374,7 +399,6 @@ class MplPlotWidget(QWidget):
             self._summary_overlay.move(15, 15)
 
     # private helpers
-
     def _apply_node_visibility(self):
         for ax in self._fig.axes:
             for collection in ax.collections:
@@ -397,14 +421,27 @@ class MplPlotWidget(QWidget):
                 if text.get_gid() == "coord_triad":
                     text.set_visible(self._show_axis)
 
+    def _apply_annotation_visibility(self):
+        """Toggles the visibility of Max, Min, and All lines and text annotations."""
+        for ax in self._fig.axes:
+            for line in ax.lines:
+                if line.get_gid() == "max_line":
+                    line.set_visible(self._show_max)
+                elif line.get_gid() == "min_line":
+                    line.set_visible(self._show_min)
+            for text in ax.texts:
+                if text.get_gid() == "max_line":
+                    text.set_visible(self._show_max)
+                elif text.get_gid() == "min_line":
+                    text.set_visible(self._show_min)
+                elif text.get_gid() == "all_vals":
+                    text.set_visible(self._show_all_vals)
+
     def _apply_grid_visibility(self):
-        """Applies the grid visibility state to all 3D axes."""
         for ax in self._fig.axes:
             if self._show_grid:
-                # Turn on and restore the custom styling
                 ax.grid(True, linestyle="--", linewidth=0.4, alpha=0.5)
             else:
-                # Turn off the grid lines
                 ax.grid(False)
 
     def _fit_figure_to_canvas(self):
