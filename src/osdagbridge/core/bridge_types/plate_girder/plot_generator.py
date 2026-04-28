@@ -267,11 +267,28 @@ def build_figure_grillage(nodes, members):
     _add_coordinate_triad(ax, nodes)
     _add_supports(ax, nodes, members)
 
-    # Draw node markers
-    xs = [coord[0] for coord in nodes.values()]
-    ys = [coord[2] for coord in nodes.values()]
-    ax.scatter(xs, ys, [0] * len(xs),
-               color="#388E3C", s=14, zorder=4, depthshade=False)
+    # Extract node IDs and coordinates properly for tracking
+    node_ids = list(nodes.keys())
+    xs = [nodes[n][0] for n in node_ids]
+    ys = [nodes[n][2] for n in node_ids] # The physical Z-coordinate is plotted on the Y-axis here
+    
+    # Capture the scatter object
+    sc = ax.scatter(xs, ys, [0] * len(xs),
+                    color="#388E3C", s=14, zorder=4, depthshade=False)
+
+    # Attach the hover cursor specifically for the Grillage view
+    if _MPLCURSORS:
+        cursor = mplcursors.cursor(sc, hover=True)
+        @cursor.connect("add")
+        def on_add(sel):
+            idx = sel.index
+            nid = node_ids[idx]
+            nx = xs[idx]
+            nz = ys[idx]
+            sel.annotation.set_text(
+                f"Node {nid}\nX: {nx:.2f} m\nZ: {nz:.2f} m"
+            )
+            sel.annotation.get_bbox_patch().set(fc="white", alpha=0.9)
 
     ax.set_xlabel("Span Length (m)", fontsize=10, labelpad=8)
     ax.set_ylabel("Bridge Width (m)", fontsize=10, labelpad=8)
