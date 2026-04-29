@@ -1,17 +1,17 @@
 [build-system]
-requires = ["setuptools>=61.0", "wheel"]
+requires = ["setuptools>=61", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "osdagbridge"
-version = "0.1.0"
+version = "1.0.0"
 description = "OsdagBridge - Shared core for analysis and design of steel bridges (CLI, Desktop, Web)"
 readme = "README.md"
 license = { file = "LICENSE" }
 authors = [
   { name = "Osdag", email = "contact-osdag@efossee.in" }
 ]
-requires-python = ">=3.9"
+requires-python = ">=3.10,<3.13"
 
 keywords = ["bridge", "steel", "structural engineering", "analysis", "IRC", "IS 800", "Osdag"]
 
@@ -27,6 +27,17 @@ classifiers = [
 ]
 
 # ------------------------------
+# Package data (non-code files to be included in the distribution)
+# ------------------------------
+[tool.setuptools.package-data]
+osdagbridge = [
+    "core/data/**/*",
+    "core/reports/templates/**/*",
+    "desktop/resources/**/*",
+
+]
+
+# ------------------------------
 # Core runtime dependencies
 # ------------------------------
 dependencies = [
@@ -36,71 +47,37 @@ dependencies = [
   "pydantic>=2.0",
   "matplotlib>=3.5",
   "ifcopenshell",
+  "openseespy>=3.2.2.6",
+  "opsvis>=1.0",
+  "xarray",
+  "openpyxl",
 ]
 
-# ------------------------------
-# Optional extras
-# ------------------------------
 [project.optional-dependencies]
-# Advanced analysis engines
-opensees = ["openseespy>=3.5"]
-ospgrillage = ["ospgrillage>=1.1"]
-
-# CAD / Geometry (optional heavy dependency)
-cad = ["pythonocc-core>=7.6.0"]
-
-# Report generation
-report = ["pylatex>=1.4"]
-
-# Web backend (Django + DRF)
-web-backend = [
-  "Django>=4.2",
-  "djangorestframework>=3.14"
-]
-
-# Web frontend dev tools (not required for backend runtime)
-web-frontend = [
-  "nodejs-bin>=18.0",     # Optional if you want version-pinning
-]
-
-# Developer tools
-dev = [
-  "pytest",
-  "pytest-cov",
-  "ruff",
-  "mypy",
-]
+test = ["pytest >= 6.2.2"]
+gui = ["PySide6<=6.9",]
+occ = ["pythonocc-core"]
+latex = ["pylatex>=1.4"]
+legacy-viz = ["vfo>=0.0.6"]
 
 # ------------------------------
 # setuptools config
 # ------------------------------
 [tool.setuptools]
-package-dir = { "" = "src" }
+package-dir = {"" = "src"}
 
 [tool.setuptools.packages.find]
 where = ["src"]
-exclude = ["tests*", "examples*"]
 
-[tool.setuptools.dynamic]
-readme = { file = "README.md" }
+#  ------------------------------
+# Console scripts for CLI and Desktop entry points
+#  ------------------------------
+[project.scripts]
+osdagbridge-cli = "osdagbridge.cli.__main__:main"
 
-# ------------------------------
-# Tools: Ruff, Black, Mypy, Pytest
-# ------------------------------
+[project.gui-scripts]
+osdagbridge = "osdagbridge.desktop.__main__:main"
 
-[tool.ruff]
-line-length = 100
-target-version = "py39"
 
-[tool.mypy]
-python_version = "3.9"
-ignore_missing_imports = true
-strict = false
 
-[tool.pytest.ini_options]
-minversion = "7.0"
-addopts = "-ra -q"
-testpaths = [
-  "tests"
-]
 

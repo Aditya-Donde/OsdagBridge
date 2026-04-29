@@ -1,0 +1,1995 @@
+# -*- coding: utf-8 -*-
+"""
+Load module consist of class/methods which wraps ```OpenSeesPy``` to create and run load analysis. First part of the module
+comprise the user interface functions. Following are the classes of various load types, compound load, load case,
+moving load and moving load path.
+"""
+
+import numpy as np
+import pprint
+from collections import namedtuple
+from collections.abc import Iterable
+from copy import deepcopy
+from typing import Union
+
+from scipy import interpolate
+
+from ospgrillage.mesh import Point, Mesh, create_point
+from ospgrillage.utils import (
+    find_circle,
+    get_distance,
+    get_slope,
+    get_y_intcp,
+    inv_line_func,
+    line_func,
+    sort_vertices,
+)
+
+__all__ = [
+    "LoadCase",
+    "LoadModel",
+    "Loads",
+    "MovingLoad",
+    "NodalLoad",
+    "NodeForces",
+    "PatchLoading",
+    "Path",
+    "PointLoad",
+    "LineLoading",
+    "LoadVertex",
+    "LoadPoint",  # deprecated alias for LoadVertex
+    "CompoundLoad",
+    "Line",
+    "ShapeFunction",
+    "create_load_vertex",
+    "create_load",
+    "create_load_case",
+    "create_load_model",
+    "create_moving_load",
+    "create_moving_path",
+    "create_compound_load",
+    "create_point",  # re-exported for convenience
+]
+
+
+def create_load_vertex(**kwargs):
+    """
+    Create a :class:`LoadVertex` — a spatial coordinate with load magnitude.
+
+    Load vertices are the building blocks of every load type.  A point load
+    needs one vertex, a line load two, and a patch load four (or more).
+
+    :param x: x coordinate of the load vertex.
+    :type x: float or int
+    :param y: y coordinate. Defaults to model plane ``y = 0``.
+    :type y: float or int
+    :param z: z coordinate of the load vertex.
+    :type z: float or int
+    :param p: Magnitude of vertical load in the y direction.
+    :type p: float or int
+    :returns: :class:`LoadVertex` ``(x, y, z, p)`` namedtuple.
+    :raises ValueError: If one or more of ``x``, ``z``, or ``p`` are missing.
+    """
+    x = kwargs.get("x", None)
+    y = kwargs.get("y", 0)
+    z = kwargs.get("z", None)
+    p = kwargs.get("p", None)
+
+    if not any([x is None, y is None, z is None, p is None]):
+        return LoadVertex(x, y, z, p)
+    else:
+        raise ValueError("Missing one or more keyword arguments for x=, y=, z=, or p=")
+
+
+def create_point(**kwargs):
+    """
+    User interface function to create a Point namedTuple.
+
+    :param x: x coordinate.
+    :type x: float or int
+    :param y: y coordinate. Defaults to ``0``.
+    :type y: float or int
+    :param z: z coordinate.
+    :type z: float or int
+    :returns: ``Point(x, y, z)`` namedTuple.
+    """
+    x = kwargs.get("x", None)
+    y = kwargs.get("y", 0)
+    z = kwargs.get("z", None)
+
+    if not any(
+        [
+            x is None,
+            z is None,
+        ]
+    ):
+        return Point(x, y, z)
+    else:
+        raise ValueError("Missing one or more keyword arguments for x=, z=, ")
+
+
+def create_load_case(**kwargs):
+    """
+    Create a load case container for loads to apply in a grillage analysis.
+
+    Use :func:`~ospgrillage.load.LoadCase.add_load` to populate the load case.
+
+    :param name: Name string for the load case.
+    :type name: str
+    :returns: :class:`~ospgrillage.load.LoadCase` object.
+    """
+    return LoadCase(**kwargs)
+
+
+def create_compound_load(**kwargs):
+    """
+    Create a compound load group that combines multiple individual loads.
+
+    Use :func:`~ospgrillage.load.CompoundLoad.add_load` to add loads to the group.
+
+    :returns: :class:`~ospgrillage.load.CompoundLoad`
+    """
+    return CompoundLoad(**kwargs)
+
+
+def create_load(**kwargs):
+    """
+    User interface function to create load types.
+
+    :param loadtype: Type of load to create. One of ``"point"``, ``"line"``, ``"patch"``, or ``"nodal"``.
+    :type loadtype: str
+    :param point1: First load vertex in global coordinates (required for all load types).
+    :type point1: LoadVertex
+    :param point2: Second load vertex in global coordinates (required for line and patch loads).
+    :type point2: LoadVertex, optional
+    :param point3: Third load vertex (patch loads only).
+    :type point3: LoadVertex, optional
+    :param point4: Fourth load vertex (patch loads only).
+    :type point4: LoadVertex, optional
+    :returns: :class:`~ospgrillage.load.PointLoad`, :class:`~ospgrillage.load.LineLoading`,
+        :class:`~ospgrillage.load.PatchLoading`, or :class:`~ospgrillage.load.NodalForces`
+        depending on ``loadtype``.
+    """
+    type = kwargs.get("loadtype", None)
+
+    vertice_list = []
+    for i in range(4):
+        vertice_string = f"point{i + 1}"
+        vertice_list.append(kwargs.get(vertice_string, None))
+
+    vertice_count = sum([1 for vertex in vertice_list if vertex])
+
+    if vertice_count == 1:
+        return PointLoad(**kwargs)
+    elif vertice_count == 2:
+        return LineLoading(**kwargs)
+    elif vertice_count >= 4:
+        return PatchLoading(**kwargs)
+    elif type == "nodal":
+        fx = kwargs.get("Fx", 0)
+        fy = kwargs.get("Fy", 0)
+        fz = kwargs.get("Fz", 0)
+        mx = kwargs.get("Mx", 0)
+        my = kwargs.get("My", 0)
+        mz = kwargs.get("Mz", 0)
+        tag = kwargs.get("node_tag", None)
+        name = kwargs.get("name", None)
+        if any(
+            [fx is None, fy is None, fz is None, mx is None, my is None, mz is None]
+        ):
+            raise ValueError(
+                "Missing arguments for nodal force definition : Hint check if all required keywords are given"
+            )
+        force = NodeForces(fx, fy, fz, mx, my, mz)
+        return NodalLoad(name=name, node_tag=tag, node_force=force)
+    else:
+        raise TypeError(
+            'load_type must either be "nodal" or number of load points is incorrect. hint:'
+            " number of load points must either be 1 (point), 2 (line) or 4 (patch)"
+        )
+
+
+def create_moving_load(**kwargs):
+    """
+    User interface function to create Moving Load object. Following this function, users are required to:
+
+    #. Set a common path via :func:`~ospgrillage.load.MovingLoad.set_path`.
+    #. Add loads via :func:`~ospgrillage.load.MovingLoad.add_load`.
+
+    :param common_path: Path object that all load groups will traverse.
+    :type common_path: Path
+    :param global_increment: Number of increments for discretizing the Path object.
+        Used in advanced cases where a MovingLoad has multiple load groups each with a unique path.
+    :type global_increment: float or int, optional
+    :returns: :class:`~ospgrillage.load.MovingLoad` object.
+
+    """
+    return MovingLoad(**kwargs)
+
+
+def create_moving_path(**kwargs):
+    """
+    User interface function to create Path object for moving load.
+
+    :param start_point: Starting point of the path.
+    :type start_point: Point
+    :param end_point: End point of the path.
+    :type end_point: Point
+    :param increments: Number of incremental steps along the path. Defaults to ``50``.
+    :type increments: int
+    :param mid_point: Optional intermediate point to define a curved path. Defaults to ``None``.
+    :type mid_point: Point, optional
+    :returns: :class:`~ospgrillage.load.Path` object.
+    """
+    return Path(**kwargs)
+
+
+# named tuple definitions
+LoadVertex = namedtuple("LoadVertex", ["x", "y", "z", "p"])
+"""A spatial coordinate with load magnitude — the building block of all loads.
+
+``LoadVertex(x, y, z, p)`` where *x*, *y*, *z* are global coordinates and
+*p* is the load magnitude (force, force/length, or force/area depending on
+the load type).
+
+.. versionadded:: 0.5.0
+"""
+
+#: Deprecated alias for :class:`LoadVertex`.  Prefer ``LoadVertex`` in new code.
+LoadPoint = LoadVertex
+
+NodeForces = namedtuple("node_forces", ["Fx", "Fy", "Fz", "Mx", "My", "Mz"])
+Line = namedtuple("line", ["m", "c", "phi"])
+
+
+# ----------------------------------------------------------------------------------------------------------------
+# Loading classes
+# ---------------------------------------------------------------------------------------------------------------
+class Loads:
+    """
+    Base class for Point, Line, and Patch loads.
+
+    This class provides the common interface and functionality for all load types
+    applied to grillage structures. It manages load point definitions (up to 8 points),
+    shape function options, and provides methods for load transformations such as
+    movement and factor application.
+
+    Attributes
+    ----------
+    name : str
+        Name identifier for the load
+    load_point_1 to load_point_8 : LoadVertex
+        LoadVertex namedtuples defining spatial coordinates and force magnitudes
+    shape_function : str, default 'linear'
+        Shape function type used for load interpolation
+    point_list : list
+        List of all defined load points in order
+    compound_dist_x : float
+        X-distance offset for compound load grouping (local coordinates)
+    compound_dist_z : float
+        Z-distance offset for compound load grouping (local coordinates)
+    ref_point : Point or None
+        Reference point for compound load positioning (local coordinates)
+    compound_group : int or None
+        Group number for accessing compound load groups in LoadCase
+    spec : dict
+        Load specification dictionary containing points and metadata
+    load_counter : int
+        Counter for tracking compound load instances
+    """
+
+    load_point_1: LoadVertex
+    load_point_2: LoadVertex
+    load_point_3: LoadVertex
+    load_point_4: LoadVertex
+    load_point_5: LoadVertex
+    load_point_6: LoadVertex
+    load_point_7: LoadVertex
+    load_point_8: LoadVertex
+
+    def __init__(self, **kwargs):
+        """
+
+        :param name: Name of load
+        :param Fx: Axis force in x axis
+        :param Fy: Axis force in y axis
+        :param Fz: Axis force in z axis
+        :param Mx: Moment about x axis
+        :param My: Moment about y axis
+        :param Mz: Moment about z axis
+        :param point1: First load vertex in global coordinates.
+        :type point1: LoadVertex, optional
+        :param point2: Second load vertex in global coordinates.
+        :type point2: LoadVertex, optional
+        :param point3: Third load vertex in global coordinates.
+        :type point3: LoadVertex, optional
+        :param point4: Fourth load vertex in global coordinates (required for patch loads).
+        :type point4: LoadVertex, optional
+        :param localpoint1: First load vertex in local coordinates.
+        :type localpoint1: LoadVertex, optional
+        :param localpoint2: Second load vertex in local coordinates.
+        :type localpoint2: LoadVertex, optional
+
+
+        """
+        #
+        self.name = kwargs.get("name", None)
+
+        # Initialise dict for key load points of line UDL and patch load definitions
+        self.load_point_data = dict()
+        # parse namedtuple of global coordinates
+        self.load_point_1 = kwargs.get("point1", None)
+        self.load_point_2 = kwargs.get("point2", None)
+        self.load_point_3 = kwargs.get("point3", None)
+        self.load_point_4 = kwargs.get("point4", None)
+        self.load_point_5 = kwargs.get("point5", None)
+        self.load_point_6 = kwargs.get("point6", None)
+        self.load_point_7 = kwargs.get("point7", None)
+        self.load_point_8 = kwargs.get("point8", None)
+
+        # shape function
+        self.shape_function = kwargs.get("shape_function", "linear")
+        # check if user skipped point 1 and defined point1 as point 2 instead
+        if all([self.load_point_1 is None, self.load_point_2 is not None]):
+            raise ValueError("Load point 1 is not defined")
+
+        # list of load points tuple
+        self.point_list = [
+            self.load_point_1,
+            self.load_point_2,
+            self.load_point_3,
+            self.load_point_4,
+            self.load_point_5,
+            self.load_point_6,
+            self.load_point_7,
+            self.load_point_8,
+        ]
+        # self.local_point_list = [self.local_load_point_1, self.local_load_point_2, self.local_load_point_3,
+        #                          self.local_load_point_4, self.local_load_point_5, self.local_load_point_6,
+        #                          self.local_load_point_7, self.local_load_point_8]
+        # var for compound load group (handled by LoadCase class when creating compound groups)
+        self.compound_dist_x = 0  # local coordinate system
+        self.compound_dist_z = 0  # local coordinate system
+        self.ref_point = None  # local coordinate system
+        self.compound_group = None  # group number access by LoadCase class to move load group if any path is defined
+        # spec dict
+        self.spec = dict(
+            name=self.name, global_points=self.point_list, ref_point=self.ref_point
+        )  # dict {node number: {Fx:val, Fy:val, Fz:val, Mx:val, My:val, Mz:val}}
+        self.load_counter = 0  # counter for compound load
+
+    # function called by Moving load module to move the load group
+    def move_load(self, ref_point: Point):
+        """
+        Function to move each load point of load type by a reference coordinate. This function is handled by OpsGrillage
+        :param ref_point: coordinate to be moved
+        :type ref_point: namedTuple Point(x,y,z)
+        :returns: None. Modifies load points in-place by translating each by ``(+x, +y, +z)`` from ``ref_point``.
+        """
+        if any(self.point_list):
+            self.load_point_1 = (
+                self.load_point_1._replace(
+                    x=self.load_point_1.x + ref_point.x,
+                    z=self.load_point_1.z + ref_point.z,
+                )
+                if self.load_point_1 is not None
+                else self.load_point_1
+            )
+            self.load_point_2 = (
+                self.load_point_2._replace(
+                    x=self.load_point_2.x + ref_point.x,
+                    z=self.load_point_2.z + ref_point.z,
+                )
+                if self.load_point_2 is not None
+                else self.load_point_2
+            )
+            self.load_point_3 = (
+                self.load_point_3._replace(
+                    x=self.load_point_3.x + ref_point.x,
+                    z=self.load_point_3.z + ref_point.z,
+                )
+                if self.load_point_3 is not None
+                else self.load_point_3
+            )
+            self.load_point_4 = (
+                self.load_point_4._replace(
+                    x=self.load_point_4.x + ref_point.x,
+                    z=self.load_point_4.z + ref_point.z,
+                )
+                if self.load_point_4 is not None
+                else self.load_point_4
+            )
+            self.load_point_5 = (
+                self.load_point_5._replace(
+                    x=self.load_point_5.x + ref_point.x,
+                    z=self.load_point_5.z + ref_point.z,
+                )
+                if self.load_point_5 is not None
+                else self.load_point_5
+            )
+            self.load_point_6 = (
+                self.load_point_6._replace(
+                    x=self.load_point_6.x + ref_point.x,
+                    z=self.load_point_6.z + ref_point.z,
+                )
+                if self.load_point_6 is not None
+                else self.load_point_6
+            )
+            self.load_point_7 = (
+                self.load_point_7._replace(
+                    x=self.load_point_7.x + ref_point.x,
+                    z=self.load_point_7.z + ref_point.z,
+                )
+                if self.load_point_7 is not None
+                else self.load_point_7
+            )
+            self.load_point_8 = (
+                self.load_point_8._replace(
+                    x=self.load_point_8.x + ref_point.x,
+                    z=self.load_point_8.z + ref_point.z,
+                )
+                if self.load_point_8 is not None
+                else self.load_point_8
+            )
+
+    def apply_load_factor(self, factor=1):
+        """
+        Apply a load factor to all load point magnitudes.
+
+        Multiplies the vertical force component (p value) of each defined load point
+        by the given factor. Commonly used for load combination analyses and sensitivity
+        studies.
+
+        Parameters
+        ----------
+        factor : float, default 1
+            Multiplicative factor to apply to all load point magnitudes
+
+        Returns
+        -------
+        None
+            Modifies load points in-place
+        """
+        self.load_point_1 = (
+            self.load_point_1._replace(p=factor * self.load_point_1.p)
+            if self.load_point_1 is not None
+            else self.load_point_1
+        )
+        self.load_point_2 = (
+            self.load_point_2._replace(p=factor * self.load_point_2.p)
+            if self.load_point_2 is not None
+            else self.load_point_2
+        )
+        self.load_point_3 = (
+            self.load_point_3._replace(p=factor * self.load_point_3.p)
+            if self.load_point_3 is not None
+            else self.load_point_3
+        )
+        self.load_point_4 = (
+            self.load_point_4._replace(p=factor * self.load_point_4.p)
+            if self.load_point_4 is not None
+            else self.load_point_4
+        )
+        self.load_point_5 = (
+            self.load_point_5._replace(p=factor * self.load_point_5.p)
+            if self.load_point_5 is not None
+            else self.load_point_5
+        )
+        self.load_point_6 = (
+            self.load_point_6._replace(p=factor * self.load_point_6.p)
+            if self.load_point_6 is not None
+            else self.load_point_6
+        )
+        self.load_point_7 = (
+            self.load_point_7._replace(p=factor * self.load_point_7.p)
+            if self.load_point_7 is not None
+            else self.load_point_7
+        )
+        self.load_point_8 = (
+            self.load_point_8._replace(p=factor * self.load_point_8.p)
+            if self.load_point_8 is not None
+            else self.load_point_8
+        )
+
+    def get_magnitude(self):
+        """
+        Return the force magnitudes of all defined load points.
+
+        Extracts the vertical force component (p value) from each load point
+        defined in the load object.
+
+        Returns
+        -------
+        list
+            List of force magnitudes in order of load_point_1 through load_point_8,
+            with None values where load points are undefined
+        """
+        magnitude = []
+        for load_point in self.point_list:
+            if load_point is not None:
+                magnitude.append(load_point.p)
+
+        return magnitude
+
+    def __str__(self):
+        return "Load object {} \n".format(self.name) + pprint.pformat(self.spec)
+
+
+class NodalLoad(Loads):
+    """
+    Class for Nodal loads.
+    """
+
+    def __init__(self, node_tag: int, node_force, name=None):
+        """
+        Inits the Nodal load class. NodalLoad requires a NodalForce(Fx,Fy,Fz,Mx,My,Mz) as input.
+
+        :param name: Name of load
+        :type name: str
+        :param node_tag: Node tag of grillage model for nodal load to be applied
+        :type node_tag: int
+        :param node_force: Named tuple of node forces
+        :type node_force: NodalForces(Fx,Fy,Fz,Mx,My,Mz)
+        """
+        super().__init__(name=name, node_tag=node_tag)
+        self.Fx = node_force.Fx
+        self.Fy = node_force.Fy
+        self.Fz = node_force.Fz
+        self.Mx = node_force.Mx
+        self.My = node_force.My
+        self.Mz = node_force.Mz
+        self.node_tag = node_tag
+        if not isinstance(node_tag, Iterable):
+            node_list = [node_tag]
+        else:
+            node_list = node_tag
+        for nodes in node_list:
+            self.spec[nodes] = {
+                "Fx": self.Fx,
+                "Fy": self.Fy,
+                "Fz": self.Fz,
+                "Mx": self.Mx,
+                "My": self.My,
+                "Mz": self.Mz,
+            }
+
+    def get_nodal_load_call(self):
+        """
+        Returns a ``(func_name, args, kwargs)`` tuple for ``ops.load()``.
+
+        This is the preferred form; it lets the caller dispatch via
+        ``_OpsProxy._dispatch()`` without any string building or ``eval``.
+        """
+        load_value = [self.Fx, self.Fy, self.Fz, self.Mx, self.My, self.Mz]
+        return ("load", (self.node_tag, *load_value), {})
+
+    def get_nodal_load_str(self):
+        """
+        Returns an ops.load() command string for the NodalLoad.
+
+        .. deprecated::
+            Use :meth:`get_nodal_load_call` instead.  This method is retained
+            for backward compatibility only.
+        """
+        load_value = [self.Fx, self.Fy, self.Fz, self.Mx, self.My, self.Mz]
+        load_str = "ops.load({pt}, *{val})\n".format(pt=self.node_tag, val=load_value)
+        return load_str
+
+
+class PointLoad(Loads):
+    """
+    Class for concentrated point loads.
+
+    Represents a single concentrated force applied at a point on the grillage
+    structure. Inherits all attributes and methods from the Loads base class.
+    """
+
+    def __init__(self, **kwargs):
+        """
+        Initialize a PointLoad instance.
+
+        :param name: Name identifier for the point load.
+        :type name: str, optional
+        :param point1: Location and magnitude of the concentrated load.
+        :type point1: LoadVertex
+        :param Fx: Force in the global x direction.
+        :type Fx: float, optional
+        :param Fy: Force in the global y direction.
+        :type Fy: float, optional
+        :param Fz: Force in the global z direction.
+        :type Fz: float, optional
+        :param Mx: Moment about the global x axis.
+        :type Mx: float, optional
+        :param My: Moment about the global y axis.
+        :type My: float, optional
+        :param Mz: Moment about the global z axis.
+        :type Mz: float, optional
+        """
+        super().__init__(**kwargs)
+
+
+class LineLoading(Loads):
+    """
+    Class for distributed line loads (UDL and non-uniform).
+
+    Represents a load distributed along a line on the grillage. Supports both
+    straight lines (defined by two endpoints) and curved lines (defined by three
+    points forming a circular arc). Provides interpolation methods for computing
+    load magnitudes at arbitrary points along the line.
+    """
+
+    def __init__(self, **kwargs):
+        """
+        Initialize a LineLoading instance.
+
+        :param name: Name identifier for the line load.
+        :type name: str, optional
+        :param point1: Start point of the line load.
+        :type point1: LoadVertex
+        :param point2: End point of the line load.
+        :type point2: LoadVertex
+        :param point3: If provided, defines a curved (circular arc) line load through
+            point1, point2, and point3. If ``None``, the load follows a straight line.
+        :type point3: LoadVertex, optional
+        :param long_beam_element_load: Apply load to longitudinal beam elements. Defaults to ``False``.
+        :type long_beam_element_load: bool
+        :param trans_beam_element_load: Apply load to transverse beam elements. Defaults to ``False``.
+        :type trans_beam_element_load: bool
+        """
+        super().__init__(**kwargs)
+
+        self.long_beam_ele_load_flag = kwargs.get("long_beam_element_load", False)
+        self.trans_beam_ele_load_flag = kwargs.get("trans_beam_element_load", False)
+
+        # if three points are defined, set line as curved circular line with point 2 (x2,y2,z2) in the centre of
+        # curve
+        if self.load_point_3 is not None:  # curve
+            # findCircle assumes model plane is y = 0, ignores y input, y in this case is a 2D view of x z plane
+            self.d = find_circle(
+                x1=self.load_point_1.x,
+                y1=self.load_point_1.z,
+                x2=self.load_point_2.x,
+                y2=self.load_point_2.z,
+                x3=self.load_point_3.x,
+                y3=self.load_point_3.z,
+            )
+            # return a function variable
+            self.line_end_point = self.load_point_3
+        else:  # straight line with 2 points
+            self.m, self.phi = get_slope(
+                [self.load_point_1.x, self.load_point_1.y, self.load_point_1.z],
+                [self.load_point_2.x, self.load_point_2.y, self.load_point_2.z],
+            )
+            self.c = get_y_intcp(m=self.m, x=self.load_point_1.x, y=self.load_point_1.z)
+            self.angle = (
+                np.arctan(self.m) if self.m is not None else np.pi / 2
+            )  # in radian
+            self.line_end_point = self.load_point_2
+            # namedTuple Line
+            self.line_equation = Line(self.m, self.c, self.phi)
+        # else:
+        #     raise ValueError("Invalid load points for line load {}".format(self.name))
+
+    def interpolate_udl_magnitude(self, point_coordinate):
+        """
+        Interpolate load magnitude at a point along the line load.
+
+        Computes the force magnitude at a specified coordinate by linearly
+        interpolating between load_point_1 and load_point_2. Uses parametric
+        equations for both straight and curved line segments.
+
+        Parameters
+        ----------
+        point_coordinate : list
+            Coordinate [x, y, z] at which to compute the load magnitude
+
+        Returns
+        -------
+        float
+            Interpolated force magnitude (p value) at the given point coordinate
+
+        Notes
+        -----
+        For straight lines, interpolation uses the parametric equation:
+        p(x) = p1 + (x - x1) / (x2 - x1) * (p2 - p1)
+        If the line is vertical (x1 == x2), z-coordinate is used instead.
+        For curved lines (point3 defined), interpolation logic is not yet implemented.
+
+        Example
+        -------
+        Line load from point1 (0, 0, 0, p=100) to point2 (10, 0, 0, p=200).
+        Magnitude at x=5 would return 150.
+        """
+        # input: point_coordinate list of [x,y,z]
+        pp = None
+        # check if line is straight or curve
+        if self.load_point_3 is None:  # straight line
+            # x[0],z[0] and p[0] shall be reference point for interpolate
+            xp = point_coordinate[0]
+            yp = point_coordinate[0]  # not used but generated here
+            zp = point_coordinate[0]
+
+            # use parametric equation of line in 3D
+            v = [
+                self.load_point_2.x - self.load_point_1.x,
+                self.load_point_2.p - self.load_point_1.p,
+                self.load_point_2.z - self.load_point_1.z,
+            ]
+            if v[0] == 0 and self.load_point_2.x == self.load_point_1.x:
+                pp = (zp - self.load_point_1.z) / v[2] * v[1] + self.load_point_1.p
+            else:
+                pp = (xp - self.load_point_1.x) / v[0] * v[1] + self.load_point_1.p
+
+        elif self.load_point_3 is not None:  # curve
+            # TODO for curved line load
+            pass
+        return pp
+
+    def get_point_given_distance(self, xbar, point_coordinate):
+        """
+        Compute a shifted point coordinate given a distance offset perpendicular to the line.
+
+        Translates a reference point along the perpendicular direction to the line load
+        by a specified distance. Useful for computing load distribution centroids and
+        moment calculations.
+
+        Parameters
+        ----------
+        xbar : float
+            Perpendicular distance offset from the line
+        point_coordinate : list
+            Reference coordinate [x, y, z] on or near the line load
+
+        Returns
+        -------
+        list
+            Shifted coordinate [x', y', z'] after applying the perpendicular offset.
+            The y-component is unchanged (model plane assumption).
+
+        .. note::
+
+            Computation uses the line angle ``self.angle`` to decompose the offset into
+            x and z components: ``x' = x - xbar*cos(angle)``, ``z' = z - xbar*sin(angle)``.
+        """
+        # function to return centroid of line load given reference point coordinate (point2) and xbar calculated based
+        # on
+        z_dis = xbar * np.sin(self.angle)
+        x_dis = xbar * np.cos(self.angle)
+        # y dis = 0 due to model plane
+        new_point = [
+            point_coordinate[0] - x_dis,
+            point_coordinate[1],
+            point_coordinate[2] - z_dis,
+        ]
+        return new_point
+
+    def get_line_segment_given_x(self, x):
+        """
+        Compute the z-coordinate on the line for a given x-coordinate.
+
+        Evaluates the line equation z = mx + c at a specified x-value,
+        provided x falls within the bounds of the line segment endpoints.
+
+        Parameters
+        ----------
+        x : float
+            X-coordinate at which to compute the corresponding z-coordinate
+
+        Returns
+        -------
+        float or None
+            The z-coordinate (z = mx + c) on the line at the given x-value.
+            Returns None if x is outside the line segment bounds or if the
+            line is vertical (m is None).
+
+        Notes
+        -----
+        Valid only for x values between load_point_1.x and line_end_point.x
+        (in either direction).
+        For vertical lines (infinite slope), this method returns None.
+        """
+        if self.line_equation.m is None:  # if vertical line
+            pass
+        else:
+            if (
+                self.load_point_1.x <= x <= self.line_end_point.x
+                or self.load_point_1.x >= x >= self.line_end_point.x
+            ):
+                return line_func(self.line_equation.m, self.line_equation.c, x)
+
+    def get_line_segment_given_z(self, z):
+        """
+        Compute the x-coordinate on the line for a given z-coordinate.
+
+        Evaluates the inverse line equation x = (z - c) / m at a specified z-value,
+        provided z falls within the bounds of the line segment endpoints.
+        Handles vertical lines (infinite slope) as a special case.
+
+        Parameters
+        ----------
+        z : float
+            Z-coordinate at which to compute the corresponding x-coordinate
+
+        Returns
+        -------
+        float or None
+            The x-coordinate on the line at the given z-value.
+            For vertical lines, returns the constant x-value (load_point_1.x).
+            Returns None if z is outside the line segment bounds.
+
+        Notes
+        -----
+        Valid only for z values between load_point_1.z and line_end_point.z
+        (in either direction).
+        """
+        if self.line_equation.m is None:  # if vertical line
+            if (
+                self.load_point_1.z <= z <= self.line_end_point.z
+                or self.load_point_1.z >= z >= self.line_end_point.z
+            ):
+                return self.load_point_1.x
+        else:
+            if (
+                self.load_point_1.z <= z <= self.line_end_point.z
+                or self.load_point_1.z >= z >= self.line_end_point.z
+            ):
+                return inv_line_func(self.line_equation.m, self.line_equation.c, z)
+
+
+class PatchLoading(Loads):
+    """
+    Class for Patch loads.
+
+    By default requires at least 4 load point for patch (quadrilateral). Can take up to 8 load points.
+    """
+
+    def __init__(self, **kwargs):
+        """
+        Initialize a PatchLoading instance.
+
+        Requires exactly 4 load points (``point1``–``point4``) supplied in
+        counter-clockwise order to define the patch boundary. Up to 8 points
+        may be provided for higher-order patches.
+
+        :param point1: First vertex of the patch boundary (CCW order). Required.
+        :type point1: LoadVertex
+        :param point2: Second vertex of the patch boundary (CCW order). Required.
+        :type point2: LoadVertex
+        :param point3: Third vertex of the patch boundary (CCW order). Required.
+        :type point3: LoadVertex
+        :param point4: Fourth vertex of the patch boundary (CCW order). Required.
+        :type point4: LoadVertex
+        :param point5: Fifth vertex for 8-point (higher-order) patches.
+        :type point5: LoadVertex, optional
+        :param point6: Sixth vertex for 8-point patches.
+        :type point6: LoadVertex, optional
+        :param point7: Seventh vertex for 8-point patches.
+        :type point7: LoadVertex, optional
+        :param point8: Eighth vertex for 8-point patches.
+        :type point8: LoadVertex, optional
+        :param name: Name identifier for this load.
+        :type name: str, optional
+        :raises ValueError: If fewer than 4 vertices are supplied, or if the
+            vertices do not form a valid counter-clockwise polygon.
+        """
+        super().__init__(**kwargs)
+        if not all(v is None for v in self.point_list):
+            a, _ = sort_vertices(
+                [
+                    self.load_point_2,
+                    self.load_point_3,
+                    self.load_point_1,
+                    self.load_point_4,
+                ]
+            )
+            match = [
+                self.load_point_1,
+                self.load_point_2,
+                self.load_point_3,
+                self.load_point_4,
+            ]
+        else:
+            raise ValueError(
+                "vertices missing. hint: patch load must have either 4 or 8 vertices"
+            )
+
+        # The CCW sort in sort_vertices() starts from the vertex with the
+        # smallest positive angle from the centroid, which is not necessarily
+        # load_point_1.  We therefore accept any cyclic rotation of the sorted
+        # sequence — the points are valid as long as they form a CCW polygon.
+        def _is_cyclic_rotation(seq, candidate):
+            """Return True if *candidate* is a cyclic rotation of *seq*."""
+            n = len(seq)
+            if len(candidate) != n:
+                return False
+            doubled = seq + seq
+            return any(doubled[i : i + n] == candidate for i in range(n))
+
+        if not _is_cyclic_rotation(a, match):
+            raise ValueError(
+                "vertices of patch load give an invalid patch layout: "
+                "make sure the four vertices are supplied in counter-clockwise order"
+            )
+        # get patch min dimension
+        self.patch_min_dim = None  # instantiate
+        # procedure to define lines of patch
+        self._define_patch_edge_lines()
+
+    def _define_patch_edge_lines(self):
+        # create each line
+        self.line_1 = LineLoading(point1=self.load_point_1, point2=self.load_point_2)
+        self.line_2 = LineLoading(point1=self.load_point_2, point2=self.load_point_3)
+        self.line_3 = LineLoading(point1=self.load_point_3, point2=self.load_point_4)
+
+        # if only four point is define , patch load is a four point straight line quadrilateral
+        if self.load_point_5 is None:
+            # create fourth line
+            self.line_4 = LineLoading(
+                point1=self.load_point_4, point2=self.load_point_1
+            )
+
+            # create equation of plane from four straight lines
+
+            # create interpolate object f
+
+            x = np.array(
+                [
+                    self.load_point_1.x,
+                    self.load_point_2.x,
+                    self.load_point_3.x,
+                    self.load_point_4.x,
+                ]
+            )
+            z = np.array(
+                [
+                    self.load_point_1.z,
+                    self.load_point_2.z,
+                    self.load_point_3.z,
+                    self.load_point_4.z,
+                ]
+            )
+            p = np.array(
+                [
+                    self.load_point_1.p,
+                    self.load_point_2.p,
+                    self.load_point_3.p,
+                    self.load_point_4.p,
+                ]
+            )
+
+        elif self.load_point_4 is None:
+            # update line 3
+            self.line_3 = LineLoading(
+                point1=self.load_point_3, point2=self.load_point_1
+            )
+
+            # TODO create equation of plane from 3 points
+            # create interpolate object f
+            x = np.array(
+                [
+                    self.load_point_1.x,
+                    self.load_point_2.x,
+                    self.load_point_3.x,
+                ]
+            )
+            z = np.array(
+                [
+                    self.load_point_1.z,
+                    self.load_point_2.z,
+                    self.load_point_3.z,
+                ]
+            )
+            p = np.array(
+                [
+                    self.load_point_1.p,
+                    self.load_point_2.p,
+                    self.load_point_3.p,
+                ]
+            )
+
+        elif self.load_point_8 is not None:
+            # TODO
+            # point 1 2 3
+            # point 3 4 5
+            # point 5 6 7
+            # point 7 8 1
+            pass
+
+        else:
+            raise ValueError(
+                "Patch load points for patch load {} not valid".format(self.name)
+            )
+        # create function to get interpolation of p
+        self.patch_mag_interpolate = interpolate.LinearNDInterpolator(
+            list(zip(x, z)), p
+        )
+        mod_list = [ls for ls in self.point_list if ls is not None]
+        self.patch_min_dim = min(
+            [
+                get_distance(p1, p2)
+                for (p1, p2) in zip(mod_list, mod_list[1:] + [mod_list[0]])
+                if all([p1 is not None, p2 is not None])
+            ]
+        )
+
+
+# ---------------------------------------------------------------------------------------------------------------
+class CompoundLoad:
+    """
+    Class for Compound load. Used to group different Load objects into a Compound load group.
+
+    When a Load object is pass as an input, CompoundLoad treats the initial positions (load_points) of the Load classes
+    as local coordinates. Then CompoundLoad sets the loads "in-place" of the local coordinate. If class input local_coord
+    is given, CompoundLoad replaces the coordinates of the initial load points (retaining the magnitude of load points)
+
+    When set_global_coord() function is called, CompoundLoad sets the input global coordinate as the new centroid of the
+    compounded load groups. This is done by shifting each local coordinate load point in all load groups under
+    CompoundLoad by x (global) and z (global).
+
+    Here are a few relationships between CompoundLoad and other classes
+
+    * CompoundLoad object can have Loads class and its inheritances (Line, Point, Patch)
+    * CompoundLoad handles functions of Load classes (e.g. move_load)
+
+    """
+
+    def __init__(self, name: str):
+        """
+        Initialize a CompoundLoad instance.
+
+        :param name: Name identifier for this compound load group.
+        :type name: str
+        """
+        self.name = name
+        self.compound_load_obj_list = []
+        self.local_coord_list = []
+        self.centroid = Point(0, 0, 0)  # named tuple Point
+        self.global_coord = self.centroid
+
+    def add_load(self, load: Loads):
+        """
+        Adds a :class:`~ospgrillage.load.Load` to compound load group.
+        If a local_coord parameter is given, this new local_coord overwrites the coordinates (either local or global) of the load object.
+
+        .. note::
+            If load object is defined using local coordinate and local_coord is None, its default local coord precedes.
+
+        :param load: Load object.
+        :type load: PointLoad, LineLoading, PatchLoading
+        :param local_coord: Local coordinate of load object
+        :type local_coord: Point namedTuple
+
+        """
+        # update the load obj to be part of compound load by first
+        # shifting all load points relative to centroid of defined load class
+        # then shifting centroid and load_points relative to A Local Coordinate system
+        load_obj_copy = deepcopy(load)
+        # check if input load object is valid (local vs global coordinate) system.
+        # If local load + local_coord input, raise ValueError
+        # if local_coord is not None and any(load_obj_copy.local_point_list):
+        #     raise ValueError("{} was defined in local coordinate space. However a `load_coord=` parameter"
+        #                      "exist for this load when creating compound load "
+        #                      "Hint: Loads defined in local coordinate space does not "
+        #                      "need another "
+        #                      "`local_coord=` parameter".format(load_obj_copy.name))
+        # if global load + local_coord input, raise Value error
+        # if local_coord is not None and not any(load_obj_copy.local_point_list):
+        #    raise ValueError("{} was defined in global coordinate. However a local_coord= parameter exist for this load"
+        #                     ".Hint: Load defined in global coordinate space does not need `local_coord=` "
+        #                     "parameter".format(load_obj_copy.name))
+        #    pass
+        # inputs for compound load are valid, proceed to set compound load
+        # if local coord is passed in,
+        # if local_coord is not None:  # else points defined as global already
+        #     load_obj_copy.form_compound_load(compound_dist_x=local_coord.x, compound_dist_z=local_coord.z)
+        #     # then shift load obj relative to global coord (this is the coord of the model) default is 0,0,0 if not set
+        #     # by user
+        #     load_obj_copy.move_load(self.global_coord)
+
+        self.compound_load_obj_list.append(
+            load_obj_copy
+        )  # after update, append to list
+        # self.local_coord_list.append(local_coord)
+
+    def set_global_coord(self, global_coord: Point):
+        """
+        Set global coordinate of the compound load with respect to global coordinate system of grillage model.
+        The global coordinate is set to all local load points (i.e. it adds the global coord x y z to each local coord)
+
+        :param global_coord: Value of x y z (global coord) to offset the basic coordinate system
+        :type global_coord: Point namedTuple
+        """
+        # overwrite global coordinate
+        if global_coord != self.global_coord:
+            self.global_coord = global_coord
+            # loop each load type in compound load and shift by global_coord
+            append_load_list = []
+            # once overwritten, update loadpoints in each load obj of compound load by global_coord
+            for loads in self.compound_load_obj_list:
+                loads.move_load(
+                    global_coord
+                )  # shift load objs using Load class method move_load()
+                append_load_list.append(
+                    loads
+                )  # append loads which have been moved to new list and
+            self.compound_load_obj_list = (
+                append_load_list  # overwrite it to class variable
+            )
+
+
+# ---------------------------------------------------------------------------------------------------------------
+class LoadCase:
+    """
+    Container for a named analysis scenario.
+
+    A LoadCase holds one or more :class:`~ospgrillage.load.Loads` or
+    :class:`~ospgrillage.load.CompoundLoad` objects that are applied together
+    in a single analysis run. Load factors can be assigned per load object
+    via :meth:`add_load`.
+
+    A :class:`~ospgrillage.load.MovingLoad` produces a series of LoadCase
+    instances, one per increment, representing the load at each position along
+    the path.
+    """
+
+    def __init__(self, name: str):
+        """
+        Initialize a LoadCase instance.
+
+        :param name: Name identifier for this load case (e.g. ``"Dead Load"``).
+        :type name: str
+        """
+        self.name = name
+        self.load_groups = []  # list of loads
+        self.position = None  # init position list
+        self.load_command_list = []  # list of openseespy load commands
+
+    def add_load(self, load: Union[Loads, CompoundLoad], **kwargs):
+        """
+        Add a load or compound load to this load case.
+
+        :param load: The load to add.
+        :type load: Loads or CompoundLoad
+        :param global_coord_of_load_obj: Required when the load is defined in
+            local coordinates. Sets the origin of the local coordinate system
+            onto the global coordinate of the grillage.
+        :type global_coord_of_load_obj: Point namedtuple, optional
+        :param load_factor: Scale factor applied to this load object within
+            the load case. Defaults to ``1``.
+        :type load_factor: float, optional
+        """
+        load_dict = dict()
+        load_dict.setdefault("load", deepcopy(load))  # create copy of object instance
+        # check if load's load points are local points, if True, check if kwargs global coord is provided
+        global_coord_of_load_obj: Point = kwargs.get("global_coord_of_load_obj", None)
+
+        load_factor = kwargs.get("load_factor", 1)
+        load_dict.setdefault("factor", load_factor)
+        self.load_groups.append(load_dict)
+
+    # function for if load groups are to change its ref position due to movement / traversing loads
+    # warning : this function is only to be handled by MovingLoad class
+    def move_load_group(self, ref_point: Point):
+        """
+        Translate all load objects in this load case to a new position.
+
+        Repositions all individual and compound loads by moving them to the specified
+        reference point. Used by the MovingLoad class to incrementally move load groups
+        along a defined path.
+
+        Parameters
+        ----------
+        ref_point : Point
+            Target position (x, y, z) to move the load group's local reference coordinate.
+            Loads are translated to this position.
+
+        Returns
+        -------
+        None
+            Modifies load positions in-place for all load_groups in this LoadCase.
+
+        Notes
+        -----
+        This method is internal to the MovingLoad analysis workflow and should not
+        be called directly by users.
+        """
+        self.position = ref_point
+        for load_dict in self.load_groups:
+            load_obj = load_dict.get("load")
+            if isinstance(load_obj, CompoundLoad):
+                for ind_load_obj in load_obj.compound_load_obj_list:
+                    ind_load_obj.move_load(self.position)
+            else:
+                load_obj.move_load(self.position)
+
+
+# ---------------------------------------------------------------------------------------------------------------
+class MovingLoad:
+    """
+    Main class of moving load case. MovingLoad class parses and creates multiple loadcase object corresponding to
+    traversing the input load groups - be it compound or single. Moving load is able to set various path (defined by
+    Path class object) to individual load groups.
+
+    """
+
+    def __init__(self, name, **kwargs):
+        """
+
+        :param name: Name string of moving load.
+        :type name: str
+        :param common_path: Path object specifying the common path for all loads to traverse.
+        :type common_path: Path, optional
+        :param global_increment: Number of increments for discretizing the Path object.
+        :type global_increment: int, optional
+
+        .. note::
+            ``global_increment`` is used in advanced moving load analysis where a moving load object
+            assigns each load type a corresponding unique Path object (which may differ between load groups).
+        """
+        self.name = name
+        self.load_list = []
+        self.load_case_dict_list = []  # Variable to access
+        self.moving_load_case = (
+            []
+        )  # Variable recording all created load case for all load group's respective path
+        self.static_load_case = []
+        # get kwargs
+        self.common_path = kwargs.get("common_path", None)
+        self.global_increment = kwargs.get("global_increment", None)  # for advance use
+        self.parse = False  # flag for if query option is available
+        self.incremental_name = None  # init variable of query method
+
+    def set_path(self, path_obj):
+        """
+        Function to assign/modify the common path variable with a new Path object.
+        All loads added later to Moving load object will traverse the same common path object.
+
+        :param path_obj: Path object to specify common path variable.
+        :type path_obj: Path
+
+        """
+        if self.global_increment is not None:
+            raise ValueError(
+                "Option for Basic use - common path defined for all added loads in MovingLoad however"
+                "a global increment parameter was defined. Hint: Remove global_increment= on creating"
+                "moving load object"
+            )
+        # else, valid input for setting a basic moving load - proceed setting common path variable
+        self.common_path = path_obj
+
+    def add_load(self, load: Union[Loads, CompoundLoad], path_obj=None):
+        """
+        Set a load type with its path.  Accepts compound load objects,
+        which in turn sets the path object to all loads within the compound
+        load group.
+
+        :param load: Load or compound-load object.
+        :type load: Loads or CompoundLoad
+        :param path_obj: Path class object — for advanced use, where users
+            specify a unique path object for each load within the moving load.
+
+        """
+        # if no path object is added, set empty list to path_obj. The load group will be treated as a static load
+        # present throughout the movement of other load groups (added to the series of moving load case)
+
+        load_pair_path = dict()
+        load_pair_path.setdefault("load", load)
+        # check if basic moving load case
+        if self.common_path and self.global_increment is None:
+            load_pair_path.setdefault(
+                "path", self.common_path.get_path_points()
+            )  # .get_path_points() class method of Path class
+        elif (
+            self.global_increment
+        ):  # advance use - where each object has individual path
+            load_pair_path.setdefault(
+                "path", path_obj.get_custom_path_points(self.global_increment)
+            )
+        else:  # error, no global statement was provided,
+            raise ValueError(
+                "No set_path() for moving load {}: Hint run set_path() before add_loads()".format(
+                    self.name
+                )
+            )
+        self.load_case_dict_list.append(load_pair_path)
+
+    # function to create incremental load cases for each step of the moving loads. Function handled by OspGrillage
+    def parse_moving_load_cases(self):
+        """
+        Generate individual LoadCase objects for each position along the moving load path.
+
+        Processes all load-path pairs added to this MovingLoad object and creates
+        a series of LoadCase instances, one for each increment in the path(s).
+        Static loads (with empty paths) are identified and added to all incremental
+        load cases. Moving loads are repositioned at each path increment.
+
+        Returns
+        -------
+        None
+            Populates self.moving_load_case list with LoadCase objects corresponding
+            to each path increment.
+
+        Notes
+        -----
+        This method is called internally during the analysis setup and creates all
+        the incremental load cases necessary for a moving load analysis. The load cases
+        are accessible via self.moving_load_case attribute.
+        Static loads (loads without a path) are included in every incremental load case.
+        """
+        # loop through all load-path pairs and identify static loads
+        for load_pair_dict in self.load_case_dict_list:
+            if not load_pair_dict["path"]:  # empty path, load is static
+                self.static_load_case.append(load_pair_dict["load"])
+
+        # create load case obj for each step in the move
+        for load_pair_dict in self.load_case_dict_list:
+            path_list = load_pair_dict["path"]  # extract path_list of load object
+            load_obj = load_pair_dict["load"]
+            # loop to create a load case for each increment of the path obj
+            load_case_list = []
+            for steps in path_list:
+                load_step_lc = LoadCase(
+                    name="{} at global position [{:.2f},{:.2f},{:.2f}]".format(
+                        self.name, steps[0], steps[1], steps[2]
+                    )
+                )  # _lc in name stands for load case
+                load_obj_copy = deepcopy(
+                    load_obj
+                )  # Use deepcopy module to copy instance of load
+                load_step_lc.add_load(
+                    load_obj_copy
+                )  # and add load to newly created load case
+                # add entries of static load to load groups
+                step_point = Point(
+                    steps[0], steps[1], steps[2]
+                )  # convert increment position into Point tuple
+                load_step_lc.move_load_group(
+                    step_point
+                )  # increment the load groups by step point
+                # static load not used
+                for (
+                    static_load
+                ) in (
+                    self.static_load_case
+                ):  # add static load portions to each incremental load case
+                    static_load_copy = deepcopy(static_load)
+                    load_step_lc.add_load(static_load_copy)
+                load_case_list.append(load_step_lc)
+            self.moving_load_case.append(load_case_list)
+            self.parse = True
+        return self.moving_load_case
+
+    def query(self, incremental_lc_name, **kwargs):
+        """
+        Function to query properties of moving load
+
+        :param incremental_lc_name: Name string of the incremental load case to query.
+        :type incremental_lc_name: str
+        :param load_group_name: Name of the load group to query. Defaults to all groups.
+        :type load_group_name: list, optional
+        :param index: Index of the result entry to return. Defaults to ``0``.
+        :type index: int, optional
+        :param option: Query option — e.g. ``"position"``. Defaults to ``"position"``.
+        :type option: str, optional
+        """
+        # get query options
+        if not self.parse:
+            raise ValueError(
+                "Moving load is not yet set to a grillage model - no information ready for query. hint"
+                "add moving load to a grillage model via add_load_case()"
+            )
+        # specific incremental load case name
+        self.incremental_name = incremental_lc_name
+        # specific load group name
+        load_group_name = kwargs.get("load_group_name", [])
+        index = kwargs.get("index", 0)
+        option = kwargs.get("option", "position")
+
+        # instantiate variables
+        query_load_case = []
+        # get incremental load cases based on incremental names provided by users
+        for ml in self.moving_load_case:
+            for incremental_lc in ml:
+                if self.incremental_name == incremental_lc.name:
+                    query_load_case = incremental_lc
+                    break
+            break
+        # get load groups within moving load and its respective path
+        if load_group_name:
+            selected_load_groups = [
+                load
+                for load in query_load_case.load_groups
+                if load["load"].name in load_group_name
+            ]
+            selected_lc_list = [
+                a for a in self.load_case_dict_list if a["load"].name in load_group_name
+            ]
+        else:  # select all load groups in
+            selected_load_groups = query_load_case.load_groups
+            selected_lc_list = self.load_case_dict_list
+
+        # TODO add more options* and check if compound or basic
+        if option == "position":
+            return [a["load"].point_list for a in selected_load_groups]
+        elif option == "offset":
+            return [
+                a["load"].point_list - b
+                for (a, b) in zip(selected_load_groups, selected_lc_list)
+            ]
+        elif option == "original":
+            return selected_lc_list
+        elif option == "path":
+            return [load["path"] for load in selected_lc_list]
+
+
+class Path:
+    """
+    Class for defining and managing moving load paths.
+
+    Represents a trajectory along which loads traverse during a moving load analysis.
+    Supports linear paths between start and end points with configurable discretization.
+    Provides methods to generate path points with different levels of refinement.
+    """
+
+    def __init__(
+        self,
+        start_point: Point,
+        end_point: Point,
+        increments: int = 50,
+    ):
+        """
+        Initialize a Path instance.
+
+        Parameters
+        ----------
+        start_point : Point
+            Starting position (x, y, z) of the path
+        end_point : Point
+            Ending position (x, y, z) of the path
+        increments : int, default 50
+            Number of discrete steps to divide the path into.
+            Higher values give finer resolution for load positioning.
+
+        Notes
+        -----
+        The path is created as a straight line in 3D space from start_point to end_point.
+        Each coordinate is linearly interpolated using numpy.linspace.
+        """
+        self.start_point = start_point
+        self.end_point = end_point
+        # here create a straight path
+        self.path_points_x = np.linspace(start_point.x, end_point.x, increments)
+        self.path_points_y = np.linspace(start_point.y, end_point.y, increments)
+        self.path_points_z = np.linspace(start_point.z, end_point.z, increments)
+        self.path_points_list = []
+
+    def get_path_points(self) -> list:
+        """
+        Get the discretized path points for the defined path.
+
+        Generates a list of [x, y, z] coordinates along the straight line path
+        from start_point to end_point, using the number of increments specified
+        during initialization.
+
+        Returns
+        -------
+        list of list
+            List of path position coordinates [[x0, y0, z0], [x1, y1, z1], ...].
+            Length equals the number of increments specified at initialization.
+        """
+        self.path_points_list = [
+            [x, y, z]
+            for (x, y, z) in zip(
+                self.path_points_x, self.path_points_y, self.path_points_z
+            )
+        ]
+        return self.path_points_list
+
+    def get_custom_path_points(self, new_increment):
+        """
+        Get path points with a custom number of increments.
+
+        Generates a new set of discretized path points using a different number of
+        increments than specified during Path initialization. Useful for refinement
+        or coarsening of the path discretization for advanced moving load analyses.
+
+        Parameters
+        ----------
+        new_increment : int
+            New number of increments to discretize the path with.
+            Overrides the increments value from initialization.
+
+        Returns
+        -------
+        list of list
+            List of path position coordinates [[x0, y0, z0], [x1, y1, z1], ...].
+            Length equals new_increment.
+
+        Notes
+        -----
+        This method recalculates path points without modifying the Path object's
+        internal state. The original increments value remains unchanged.
+        """
+        path_points_x = np.linspace(self.start_point.x, self.end_point.x, new_increment)
+        path_points_y = np.linspace(self.start_point.x, self.end_point.x, new_increment)
+        path_points_z = np.linspace(self.start_point.x, self.end_point.x, new_increment)
+        path_point_list = [
+            [x, y, z] for (x, y, z) in zip(path_points_x, path_points_y, path_points_z)
+        ]
+        return path_point_list
+
+
+# ---------------------------------------------------------------------------------------------------------------
+def create_load_model(**kwargs):
+    """
+    Create a load model object representing a vehicle load model.
+
+    :returns: LoadModel object
+    """
+    return LoadModel(**kwargs)
+
+
+class LoadModel:
+    """
+    Class to handle load model generator. This contains library of load models and creates load model using
+    `CompoundLoad` class.
+
+    For users wishing to contribute/add load models, do so herein by adding the load model as a function to
+    this class.
+
+    """
+
+    def __init__(self, gap=0, **kwargs):
+        """
+        Init the class.
+
+        :param gap: Gap between axles (specific to M1600 load model). Defaults to ``0``.
+        :type gap: float or int
+        :param model_type: Load model type identifier.
+        :type model_type: str, optional
+        :param units: Unit system to use. Defaults to ``"SI"``.
+        :type units: str, optional
+        :param origin: Origin point for the load model in global coordinates. Defaults to ``Point(0, 0, 0)``.
+        :type origin: Point namedTuple, optional
+        """
+        self.gap = gap
+        self.model_type = kwargs.get("model_type", None)
+        self.units = kwargs.get("units", "SI")
+        self.origin = kwargs.get("origin", Point(0, 0, 0))
+        # create unit dict
+        self.unit_dict = {"m": 1, "kN": 1e3}
+        # create variables
+        self.x_offset = self.origin.x
+        self.z_offset = self.origin.z
+        # default y offset is zero
+
+        # checks
+        if self.origin is None:
+            self.x_offset = 0
+
+    def create(self):
+        """
+        Generate a CompoundLoad object for the specified load model type.
+
+        Creates a ready-to-use compound load representing a standard vehicle load model
+        with proper axle spacing and weight distribution according to the specified
+        standard (e.g., AS5100 M1600).
+
+        Returns
+        -------
+        CompoundLoad
+            A CompoundLoad object representing the vehicle load model with all axles,
+            spacing, and load magnitudes configured according to the model_type and
+            parameters set during initialization.
+
+        Raises
+        ------
+        ValueError
+            If model_type is not recognized or not implemented.
+
+        Notes
+        -----
+        Currently supports "M1600" (Australian Standard AS5100).
+        Additional load models can be added by implementing new create_* methods.
+        """
+        if self.model_type == "M1600":
+            return self.create_m1600_vehicle(self.gap)
+        elif self.model_type == "CLASSA":
+            return self.create_classA_vehicle()
+        elif self.model_type == "CLASS70R":
+            return self.create_class70r_vehicle()
+
+    def create_m1600_vehicle(self, gap):
+        """
+        AS5100 Australian load model.
+
+        :param gap: Gap between axle group
+        :returns: :class:`~ospgrillage.load.CompoundLoad` object of a M1600 vehicle in local coordinate.
+        """
+        # default SI units
+        m = 1
+        kN = 1e3
+        if self.units == "SI":  # if SI, de-activate converter variables
+            ft_convert = 1
+            ton_convert = 1
+        else:  # Imperial units
+            ft_convert = 3.28084
+            ton_convert = 0.10036113565668
+
+        axle_dist = 1.25 * m * ft_convert
+        left_group_dist = 3.75 * m * ft_convert
+        right_group_dist = 5 * m * ft_convert
+        wheel_load = 60 * kN * ton_convert
+        load_positions_x = [
+            0,
+            axle_dist,
+            axle_dist * 2,
+            left_group_dist + axle_dist * 2,
+            left_group_dist + axle_dist * 2 + axle_dist,
+            left_group_dist + axle_dist * 2 + 2 * axle_dist,
+            gap + left_group_dist + axle_dist * 2,
+            gap + left_group_dist + axle_dist * 2 + axle_dist,
+            gap + left_group_dist + axle_dist * 2 + 2 * axle_dist,
+            right_group_dist + gap + left_group_dist + axle_dist * 2,
+            right_group_dist + gap + left_group_dist + axle_dist * 2 + axle_dist,
+            right_group_dist + gap + left_group_dist + axle_dist * 2 + 2 * axle_dist,
+        ]
+        load_positions_x = [point + self.x_offset for point in load_positions_x]
+
+        load_positions_z = [-1, 1]
+        load_positions_z = [point + self.z_offset for point in load_positions_z]
+
+        M1600_vehicle = create_compound_load(name="M1600 Vehicle")
+        for z in load_positions_z:
+            for x in load_positions_x:
+                vert = create_load_vertex(x=x, z=z, p=wheel_load)
+                point = create_load(loadtype="point", name="M1600 point", point1=vert)
+                M1600_vehicle.add_load(point)
+
+        return M1600_vehicle
+
+    def create_class70r_vehicle(self):
+        """
+        IRC Class 70R wheeled vehicle (Clause 204.1)
+        Returns a CompoundLoad in local coordinates
+        """
+
+        # Units
+        m = 1
+        kN = 1e3
+        g = 9.81  # m/s^2
+
+        # Geometry (as provided by you)
+        front_gap = 0.81 * m
+        axle_dist1 = 3.960 * m
+        axle_dist2 = 1.520 * m
+        gap_bogie = 2.130 * m
+        bogie_axle_dist1 = 1.370 * m
+        bogie_axle_dist2 = 3.050 * m
+        rear_gap = 0.91 * m
+
+        # Wheel loads per axle (tonnes ?? g ??? N)
+        wheel_loads = [
+            8 * kN * g,
+            12 * kN * g,
+            12 * kN * g,
+            17 * kN * g,
+            17 * kN * g,
+            17 * kN * g,
+            17 * kN * g,
+        ]
+
+        # Longitudinal axle positions
+        load_positions_x = [
+            front_gap,
+            front_gap + axle_dist1,
+            front_gap + axle_dist1 + axle_dist2,
+            front_gap + axle_dist1 + axle_dist2 + gap_bogie,
+            front_gap + axle_dist1 + axle_dist2 + gap_bogie + bogie_axle_dist1,
+            front_gap + axle_dist1 + axle_dist2 + gap_bogie + bogie_axle_dist1 + bogie_axle_dist2,
+            front_gap + axle_dist1 + axle_dist2 + gap_bogie + bogie_axle_dist1 + bogie_axle_dist2 + rear_gap,
+        ]
+
+        # Apply global offsets
+        load_positions_x = [x + self.x_offset for x in load_positions_x]
+
+        # Wheel track width
+        load_positions_z = [-0.965, 0.965]
+        load_positions_z = [z + self.z_offset for z in load_positions_z]
+
+        # Create compound load
+        Class70R_vehicle = create_compound_load(name="Class 70R Vehicle")
+
+        # Create point loads
+        for axle_index, x in enumerate(load_positions_x):
+            for z in load_positions_z:
+                vert = create_load_vertex(
+                    x=x,
+                    z=z,
+                    p=wheel_loads[axle_index] / 2  # split axle load into two wheels
+                )
+                point = create_load(
+                    loadtype="point",
+                    name="Class70R wheel",
+                    point1=vert
+                )
+                Class70R_vehicle.add_load(load=point)
+
+        return Class70R_vehicle
+
+    def create_classA_vehicle(self):
+        """
+        IRC Class A wheeled vehicle (Clause 204.1)
+        Returns a CompoundLoad in local coordinates
+        """
+
+        # Units
+        m = 1
+        kN = 1e3
+        g = 9.81  # m/s^2
+
+        # Geometry
+        front_gap = 0.6 * m
+        axle_dist1 = 1.100 * m
+        axle_dist2 = 3.200 * m
+        axle_dist3 = 1.200 * m
+        gap_bogie = 4.300 * m
+        bogie_axle_dist = 3.000 * m
+        rear_gap = 0.900 * m
+
+        # Wheel loads per axle (tonnes ?? g ??? N)
+        wheel_loads = [
+            2.7 * kN * g,
+            2.7 * kN * g,
+            11.4 * kN * g,
+            11.4 * kN * g,
+            6.8 * kN * g,
+            6.8 * kN * g,
+            6.8 * kN * g,
+            6.8 * kN * g,
+        ]
+
+        # Longitudinal axle positions
+        load_positions_x = [
+            front_gap,
+            front_gap + axle_dist1,
+            front_gap + axle_dist1 + axle_dist2,
+            front_gap + axle_dist1 + axle_dist2 + axle_dist3,
+            front_gap + axle_dist1 + axle_dist2 + axle_dist3 + gap_bogie,
+            front_gap + axle_dist1 + axle_dist2 + axle_dist3 + gap_bogie + bogie_axle_dist,
+            front_gap + axle_dist1 + axle_dist2 + axle_dist3 + gap_bogie + 2 * bogie_axle_dist,
+            front_gap + axle_dist1 + axle_dist2 + axle_dist3 + gap_bogie + 3 * bogie_axle_dist + rear_gap,
+        ]
+
+        # Apply global offsets
+        load_positions_x = [x + self.x_offset for x in load_positions_x]
+
+        # Wheel track width
+        load_positions_z = [-0.9, 0.9]
+        load_positions_z = [z + self.z_offset for z in load_positions_z]
+
+        # Create compound load
+        ClassA_vehicle = create_compound_load(name="Class A Vehicle")
+
+        # Create point loads
+        for axle_index, x in enumerate(load_positions_x):
+            for z in load_positions_z:
+                vert = create_load_vertex(
+                    x=x,
+                    z=z,
+                    p=wheel_loads[axle_index] / 2  # split axle load into two wheels
+                )
+                point = create_load(
+                    loadtype="point",
+                    name="ClassA wheel",
+                    point1=vert
+                )
+                ClassA_vehicle.add_load(load=point)
+
+        return ClassA_vehicle
+    
+# ---------------------------------------------------------------------------------------------------------------
+class ShapeFunction:
+    """
+    Class for shape functions.
+
+    To add more shape functions:
+    * add the string options get_shape_function()
+    * defining the shape function as a class function which takes eta and zeta as inputs
+
+    """
+
+    def __init__(
+        self, option_three_node: str = "triangle_linear", option_four_node="hermite"
+    ):
+        """Init the ShapeFunction class. Each shape function can either be triangular or quadrilateral"""
+        self.option_three_node = option_three_node
+        self.option_four_node = option_four_node
+
+    def get_shape_function(self, option: str, eta: float = 0, zeta: float = 0):
+        """
+        Get a shape function evaluator for the specified interpolation type.
+
+        Returns a callable that computes shape function values at a given parametric
+        location (eta, zeta) within an element. Supports hermite (cubic), linear, and
+        triangular linear shape functions.
+
+        Parameters
+        ----------
+        option : str
+            Type of shape function. Options are:
+            - 'hermite': 2D cubic Hermite shape functions (4-node quad)
+            - 'linear': 2D bilinear shape functions (4-node quad)
+            - 'triangle_linear': Linear triangular shape functions (3-node triangle)
+        eta : float, default 0
+            Parametric coordinate in the first direction (range typically [-1, 1])
+        zeta : float, default 0
+            Parametric coordinate in the second direction (range typically [-1, 1])
+
+        Returns
+        -------
+        callable
+            Lambda function that evaluates the selected shape function at (eta, zeta).
+            Call the returned function with no arguments to get shape function values.
+
+        Notes
+        -----
+        For hermite and linear options, eta and zeta range from -1 to 1 and represent
+        normalized coordinates within the element.
+        """
+        if option == "hermite":
+            return lambda: self.hermite_shape_function_2d(eta, zeta)
+        elif option == "linear":
+            return lambda: self.linear_shape_function(eta, zeta)
+        elif option == "triangle_linear":
+            return lambda: self.linear_triangular
+
+    @staticmethod
+    def hermite_shape_function_1d(
+        zeta: float, a: float
+    ):  # using zeta and a as placeholders for normal coor + length of edge element
+        # hermite shape functions
+        """
+        1D hermite shape function
+
+        :param zeta: Normalised position along the element (0 to 1).
+        :type zeta: float
+        :param a: Element length.
+        :type a: float
+        :returns: Four Hermite shape function values ``[N1, N2, N3, N4]``.
+        """
+        N1 = 1 - 3 * zeta**2 + 2 * zeta**3
+        N2 = (zeta - 2 * zeta**2 + zeta**3) * a
+        N3 = 3 * zeta**2 - 2 * zeta**3
+        N4 = (-(zeta**2) + zeta**3) * a
+        return [N1, N2, N3, N4]
+
+    @staticmethod
+    def hermite_shape_function_2d(eta: float, zeta: float):
+        """
+        Compute 2D Hermite cubic shape functions and their derivatives.
+
+        Calculates Hermite shape functions for a 4-node quadrilateral element.
+        Returns shape function values and derivatives needed for element-level
+        load distribution in finite element analysis.
+
+        Parameters
+        ----------
+        eta : float
+            Parametric coordinate in the x-direction (range [-1, 1]).
+            eta = -1 at left edge, eta = 1 at right edge.
+        zeta : float
+            Parametric coordinate in the z-direction (range [-1, 1]).
+            zeta = -1 at bottom edge, zeta = 1 at top edge.
+
+        Returns
+        -------
+        tuple of list
+            Three lists:
+            - Nv : Vertical shape functions [N1, N2, N3, N4] for displacement/force
+            - Nmx : Shape functions [N1, N2, N3, N4] for moment about x-axis (derivative w.r.t. zeta)
+            - Nmz : Shape functions [N1, N2, N3, N4] for moment about z-axis (derivative w.r.t. eta)
+
+        .. note::
+
+            Node ordering (counter-clockwise from bottom-left)::
+
+                4 o-----o 3
+                  |     |
+                  |     |
+                1 o-----o 2
+
+            Each shape function Ni equals 1 at node i and 0 at other nodes.
+            Hermite functions are cubic polynomials providing C1 continuity across elements.
+        """
+        # nodes are ordered counter clockwise such that node 1 (n1), is left bottom of relative grid
+        # 4 o - - - o 3
+        #   |       |
+        #   |       |
+        # 1 o - - - o 2
+        h1 = 0.25 * (2 - 3 * eta + eta**3)
+        h2 = 0.25 * (1 - eta - eta**2 + eta**3)
+        h3 = 0.25 * (2 + 3 * eta - eta**3)
+        h4 = 0.25 * (-1 - eta + eta**2 + eta**3)
+        z1 = 0.25 * (2 - 3 * zeta + zeta**3)
+        z2 = 0.25 * (1 - zeta - zeta**2 + zeta**3)
+        z3 = 0.25 * (2 + 3 * zeta - zeta**3)
+        z4 = 0.25 * (-1 - zeta + zeta**2 + zeta**3)
+        Nv = [h1 * z1, h3 * z1, h3 * z3, h1 * z3]
+        Nmz = [h2 * z1, h4 * z1, h4 * z3, h2 * z3]
+        Nmx = [h1 * z2, h3 * z2, h3 * z4, h1 * z4]
+        return Nv, Nmx, Nmz
+
+    @staticmethod
+    def linear_shape_function(eta, zeta):
+        """
+        2D linear beam shape function
+
+        :param zeta: Normalised position in the x-direction.
+        :type zeta: float
+        :param eta: Normalised position in the z-direction.
+        :type eta: float
+        :returns: Four linear shape function values ``[N1, N2, N3, N4]``.
+
+        .. note::
+
+            Further validation needed — trial on different bridge models.
+        """
+        N1 = 0.25 * (1 - eta) * (1 - zeta)
+        N2 = 0.25 * (1 + eta) * (1 - zeta)
+        N3 = 0.25 * (1 + eta) * (1 + zeta)
+        N4 = 0.25 * (1 - eta) * (1 + zeta)
+        return [N1, N2, N3, N4]
+
+    @staticmethod
+    def linear_triangular(x, z, x1, z1, x2, z2, x3, z3):
+        """
+        Compute 2D linear triangular shape functions.
+
+        Calculates linear (first-order) shape functions for a 3-node triangular element.
+        Uses barycentric coordinate formulation to interpolate values within the triangle.
+
+        Parameters
+        ----------
+        x : float
+            X-coordinate of the evaluation point
+        z : float
+            Z-coordinate of the evaluation point
+        x1, z1 : float
+            X, Z coordinates of node 1
+        x2, z2 : float
+            X, Z coordinates of node 2
+        x3, z3 : float
+            X, Z coordinates of node 3
+
+        Returns
+        -------
+        list
+            Three shape function values [N1, N2, N3] representing the interpolated
+            contribution of each node. Sum(N_i) = 1.0 for points inside the triangle.
+
+        .. note::
+
+            The linear triangular element uses the formulation
+            ``N_i = (a_i + b_i*x + c_i*z) / (2*A)``
+            where ``A`` is the triangle area and ``(a_i, b_i, c_i)`` are computed from node coordinates.
+            Points outside the triangle will have negative shape function values.
+            The modelling plane is y = constant (XZ plane).
+        """
+        # modelling plane = y plane
+        ae = 0.5 * ((x2 * z3 - x3 * z2) + (z2 - z3) * x1 + (x3 - x2) * z1)
+        a1 = (x2 * z3 - x3 * z2) / (2 * ae)
+        b1 = (z2 - z3) / (2 * ae)
+        c1 = (x3 - x2) / (2 * ae)
+
+        a2 = (x3 * z1 - x1 * z3) / (2 * ae)
+        b2 = (z3 - z1) / (2 * ae)
+        c2 = (x1 - x3) / (2 * ae)
+
+        a3 = (x1 * z2 - x2 * z1) / (2 * ae)
+        b3 = (z1 - z2) / (2 * ae)
+        c3 = (x2 - x1) / (2 * ae)
+        N1 = a1 + b1 * x + c1 * z
+        N2 = a2 + b2 * x + c2 * z
+        N3 = a3 + b3 * x + c3 * z
+        return [N1, N2, N3]

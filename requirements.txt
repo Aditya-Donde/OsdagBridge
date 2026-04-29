@@ -1,4 +1,5 @@
 # Primary GUI and calculation dependencies
-PySide6>=6.5.0
+PySide6>=6.5.0,<=6.9.3
 numpy>=1.21.0
 ifcopenshell
+openpyxl
