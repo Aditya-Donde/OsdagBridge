@@ -12,6 +12,7 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QMessageBox,
     QPushButton,
+    QScrollArea,
     QStackedWidget,
     QTableWidget,
     QTableWidgetItem,
@@ -107,9 +108,16 @@ class CustomVehicleDialog(QDialog):
         self.title_bar.setTitle("Live Load Custom Vehicle Add/Edit")
         main_layout.addWidget(self.title_bar)
 
+        self.scroll_area = QScrollArea(self)
+        self.scroll_area.setWidgetResizable(True)
+        self.scroll_area.setFrameShape(QScrollArea.NoFrame)
+        self.scroll_area.setStyleSheet("QScrollArea { background-color: #ffffff; border: none; } QScrollBar { width: 12px; }")
+
         self.content_widget = QWidget(self)
         self.content_widget.setStyleSheet("background-color: #ffffff;")
-        main_layout.addWidget(self.content_widget, 1)
+        
+        self.scroll_area.setWidget(self.content_widget)
+        main_layout.addWidget(self.scroll_area, 1)
 
     def init_ui(self):
         layout = QVBoxLayout(self.content_widget)
@@ -313,7 +321,6 @@ class CustomVehicleDialog(QDialog):
 
         carr_layout = QHBoxLayout()
         self.carr_diagram = ClearCarriagewayWidthDiagram()
-        self.carr_diagram.setFixedSize(380, 160)
         carr_layout.addStretch()
         carr_layout.addWidget(self.carr_diagram)
         carr_layout.addStretch()
