@@ -1,0 +1,69 @@
+{% set name = "osdagbridge" %}
+{% set version = "1.0.0" %}
+
+
+package:
+  name: {{ name|lower }}
+  version: {{ version }}
+
+source:
+  path: ..
+
+build:
+  number: 0
+  noarch: python
+
+  script: |
+    {{ PYTHON }} -m pip install . --no-deps --ignore-installed -vv
+
+  entry_points:
+    - osdagbridge=osdagbridge.desktop.__main__:main
+    - osdagbridge-cli=osdagbridge.cli.__main__:main
+
+  post-link: post-link.bat
+  pre-unlink: pre-unlink.bat
+
+
+channels: 
+  - conda-forge
+  - geompy
+  - defaults
+
+requirements:
+  host:
+    - python >=3.10,<3.13
+    - pip
+    - numpy
+    - setuptools
+    - wheel
+  build:
+    - python >=3.10,<3.13
+    - pip
+    - numpy
+    - setuptools
+    - wheel
+  run:
+    - python >=3.10,<3.13
+    - pip
+    - PySide6<=6.9.3
+    - matplotlib
+    - pythonocc-core>=7.6
+    - pylatex>=1.4
+    - fiona
+    - shapely
+    - navcube
+    - numpy>=1.26
+    - pandas
+    - scipy>=1.10.1
+    - pyyaml
+    - pydantic
+    - xarray
+    - openpyxl
+
+
+test:
+  commands:
+    - python -c "import osdagbridge"
+    - python -c "import PySide6"
+about:
+  summary: "Osdag bridge environment with PySide6 via pip"
