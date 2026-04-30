@@ -193,27 +193,15 @@ class SteelDesignDetailsTab(QWidget):
 
         grid = self._make_grid()
 
-        self.member_combo = NoScrollComboBox()
-        self.member_combo.setMinimumWidth(80)
-        self.member_combo.setMinimumHeight(28)
-        self.member_combo.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-        self.member_combo.setEnabled(False)
-        self.member_combo.setStyleSheet(_DISABLED_COMBO_STYLE)
-        self.member_combo.setToolTip(
-            "Change the member in the Output Dock \u2014 this field mirrors that selection."
-        )
-
         self.grade_field = self._readonly_field()
         self.type_field  = self._readonly_field()
 
         r = 0
-        r = self._add_row(grid, r, "Member ID:",         self.member_combo)
         r = self._add_row(grid, r, "Grade of Material:", self.grade_field)
         r = self._add_row(grid, r, "Type:",              self.type_field)
 
         card_layout.addLayout(grid)
 
-        self.member_fields["member_id"]         = self.member_combo
         self.member_fields["grade_of_material"] = self.grade_field
         self.member_fields["section_type"]      = self.type_field
 
@@ -448,11 +436,7 @@ class SteelDesignDetailsTab(QWidget):
 
         for key, field in self.member_fields.items():
             value = cad_state.get(key, "")
-            if isinstance(field, NoScrollComboBox):
-                field.clear()
-                field.addItem(str(value))
-            else:
-                field.setText(str(value))
+            field.setText(str(value))
 
         for key, field in self.dim_fields.items():
             field.setText(str(cad_state.get(key, "")))

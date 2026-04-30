@@ -319,35 +319,6 @@ class SteelDesignAnalysisTab(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(10)
 
-        # ── Selection card ────────────────────────────────────────────
-        sel_card = self._card_frame()
-        sel_layout = QVBoxLayout(sel_card)
-        # Left margin = 23 to match effective indent of Results group box fields:
-        # Results: card_L(12) + groupbox_border(1) + groupbox_margin_L(10) = 23px
-        sel_layout.setContentsMargins(23, 10, 14, 12)
-        sel_layout.setSpacing(8)
-        sel_layout.addWidget(self._section_title("Select Member"))
-
-        self.member_combo = self._styled_combo()
-        self.member_combo.addItems(["All", "Girder 1", "Girder 2"])
-        self.member_combo.setEnabled(False)
-        self.member_combo.setStyleSheet(_DISABLED_COMBO_STYLE)
-        self.member_combo.setToolTip(
-            "Change the member in the Output Dock \u2014 this field mirrors that selection."
-        )
-
-        self.load_combo = self._styled_combo()
-        self.load_combo.addItems(LOAD_COMBINATIONS)
-        self.load_combo.setEnabled(False)
-        self.load_combo.setStyleSheet(_DISABLED_COMBO_STYLE)
-        self.load_combo.setToolTip(
-            "Change the load combination in the Output Dock \u2014 this field mirrors that selection."
-        )
-
-        self._form_row("Member ID:", self.member_combo, sel_layout)
-        self._form_row("Load Combination:", self.load_combo, sel_layout)
-
-        layout.addWidget(sel_card)
 
         # ── Results card ──────────────────────────────────────────────
         res_card = self._card_frame()
@@ -596,10 +567,7 @@ class SteelDesignAnalysisTab(QWidget):
             self.lbl_v.setText("F<sub>x</sub> (kN)")
             self.lbl_d.setText("D<sub>x</sub> (mm)")
 
-    def set_girder_count(self, count):
-        """Repopulate member_combo with 'Girder 1' … 'Girder N' entries."""
-        self.member_combo.clear()
-        self.member_combo.addItems(["All"] + [f"Girder {i}" for i in range(1, count + 1)])
+
 
     def load_data(self, cad_state: dict):
         """
@@ -608,10 +576,6 @@ class SteelDesignAnalysisTab(QWidget):
         """
         if not cad_state:
             return
-        try:
-            self.set_girder_count(int(cad_state.get("no_of_girders", 2)))
-        except (ValueError, TypeError):
-            pass
         for key, field in self.result_fields.items():
             field.setText(str(cad_state.get(key, "")))
         for key, field in self.x_fields.items():

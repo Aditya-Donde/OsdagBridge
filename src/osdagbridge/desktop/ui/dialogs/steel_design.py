@@ -9,6 +9,7 @@ from osdagbridge.desktop.ui.utils.custom_titlebar import CustomTitleBar
 from osdagbridge.desktop.ui.dialogs.tabs.steel_design_details import SteelDesignDetailsTab
 from osdagbridge.desktop.ui.dialogs.tabs.steel_design_analysis import SteelDesignAnalysisTab
 from osdagbridge.desktop.ui.dialogs.tabs.steel_design_check import SteelDesignCheckTab
+from osdagbridge.desktop.ui.docks.output_dock import NoScrollComboBox
 
 import numpy as np
 from matplotlib.figure import Figure
@@ -144,6 +145,7 @@ class SteelDesign(QDialog):
         self.tabs.addTab(self.analysis_tab, "Analysis Results")
         self.tabs.addTab(self.check_tab,    "Design Check")
 
+        main_layout.addWidget(self._build_global_selection_bar())
         main_layout.addWidget(self.tabs)
 
         if hasattr(self._main_window, "cad_state"):
@@ -151,6 +153,127 @@ class SteelDesign(QDialog):
 
         # Inject the matplotlib canvas into the Analysis Results tab
         self._setup_analysis_plots()
+
+    def _build_global_selection_bar(self):
+        """Build the global Member ID and Load Combination bar."""
+        # Shared card stylesheet
+        _CARD_STYLE = (
+            "QFrame#controlCard {"
+            "  background-color: white;"
+            "  border: 1px solid #b0b0b0;"
+            "  border-radius: 6px;"
+            "}"
+            "QFrame#controlCard > QLabel {"
+            "  border: none;"
+            "  background: transparent;"
+            "}"
+        )
+        _TITLE_STYLE = (
+            "font-size: 13px; color: #2B2B2B; font-weight: bold;"
+            " background: transparent; border: none;"
+        )
+        _COMBO_STYLE = """
+            QComboBox {
+                padding: 1px 7px;
+                border: 1px solid black;
+                border-radius: 5px;
+                background-color: white;
+                color: black;
+                font-size: 11px;
+                min-height: 28px;
+            }
+            QComboBox::drop-down {
+                subcontrol-origin: padding;
+                subcontrol-position: top right;
+                border-left: 0px;
+            }
+            QComboBox::down-arrow {
+                image: url(:/vectors/arrow_down_light.svg);
+                width: 20px;
+                height: 20px;
+                margin-right: 8px;
+            }
+            QComboBox::down-arrow:on {
+                image: url(:/vectors/arrow_up_light.svg);
+                width: 20px;
+                height: 20px;
+                margin-right: 8px;
+            }
+            QComboBox QAbstractItemView {
+                background-color: white;
+                border: 1px solid black;
+                outline: none;
+            }
+            QComboBox QAbstractItemView::item {
+                color: black;
+                background-color: white;
+                border: 1px solid white;
+                border-radius: 0;
+                padding: 2px;
+            }
+            QComboBox QAbstractItemView::item:hover {
+                border: 1px solid #90AF13;
+                background-color: #90AF13;
+                color: black;
+            }
+            QComboBox QAbstractItemView::item:selected {
+                background-color: #90AF13;
+                color: black;
+                border: 1px solid #90AF13;
+            }
+        """
+
+        container = QWidget()
+        container.setStyleSheet("background: transparent;")
+        container.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        row = QHBoxLayout(container)
+        row.setContentsMargins(0, 0, 0, 6)
+        row.setSpacing(16)
+
+        # - Member ID card -
+        member_card = QFrame()
+        member_card.setObjectName("controlCard")
+        member_card.setStyleSheet(_CARD_STYLE)
+        member_card.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+
+        mc_layout = QVBoxLayout(member_card)
+        mc_layout.setContentsMargins(23, 10, 14, 12)
+        mc_layout.setSpacing(4)
+
+        member_title = QLabel("Member ID")
+        member_title.setStyleSheet(_TITLE_STYLE)
+        mc_layout.addWidget(member_title)
+
+        self.member_combo = NoScrollComboBox()
+        self.member_combo.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self.member_combo.setFixedHeight(28)
+        self.member_combo.setStyleSheet(_COMBO_STYLE)
+        mc_layout.addWidget(self.member_combo)
+
+        # - Load Combination card -
+        load_card = QFrame()
+        load_card.setObjectName("controlCard")
+        load_card.setStyleSheet(_CARD_STYLE)
+        load_card.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+
+        lc_layout = QVBoxLayout(load_card)
+        lc_layout.setContentsMargins(23, 10, 14, 12)
+        lc_layout.setSpacing(4)
+
+        load_title = QLabel("Load Combination")
+        load_title.setStyleSheet(_TITLE_STYLE)
+        lc_layout.addWidget(load_title)
+
+        self.load_combo = NoScrollComboBox()
+        self.load_combo.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self.load_combo.setFixedHeight(28)
+        self.load_combo.setStyleSheet(_COMBO_STYLE)
+        lc_layout.addWidget(self.load_combo)
+
+        row.addWidget(member_card, 1)
+        row.addWidget(load_card, 1)
+
+        return container
 
     def _setup_analysis_plots(self):
         """
@@ -337,9 +460,9 @@ class SteelDesign(QDialog):
 
         # ── Signal wiring ─────────────────────────────────────────────────────
         self.tabs.currentChanged.connect(self._on_tab_changed)
-        # NOTE: member_combo and load_combo in analysis_tab are disabled (read-only
-        # mirrors of the Output Dock).  Their signals are NOT connected here —
-        # selections are pushed programmatically via sync_from_output_dock().
+        # NOTE: member_combo and load_combo are now fully interactive
+        self.member_combo.currentIndexChanged.connect(self._update_analysis_plots)
+        self.load_combo.currentIndexChanged.connect(self._on_load_combo_changed)
         if hasattr(self.analysis_tab, "component_combo"):
             self.analysis_tab.component_combo.currentIndexChanged.connect(self._update_analysis_plots)
             self.analysis_tab.component_combo.currentIndexChanged.connect(
@@ -361,60 +484,7 @@ class SteelDesign(QDialog):
         # ── UI initialisation state ───────────────────────────────────────────
         self._data_initialized = False
 
-    # =========================================================================
-    #   OUTPUT DOCK SYNC
-    # =========================================================================
 
-    def sync_from_output_dock(
-        self,
-        member_display: str | None = None,
-        load_case: str | None = None,
-    ) -> None:
-        """
-        Called by the Output Dock to push the currently active member and load
-        combination into all three tabs.
-
-        The combos in every tab are disabled (not user-editable). This is the
-        single authoritative write path — it temporarily bypasses the disabled
-        state, writes the value, then re-disables the widget so the next
-        mouse-click cannot change it.
-        """
-        def _set_combo(combo, text: str) -> None:
-            """Write *text* into a possibly-disabled QComboBox without enabling it."""
-            combo.blockSignals(True)
-            combo.setEnabled(True)
-            idx = combo.findText(text)
-            if idx >= 0:
-                combo.setCurrentIndex(idx)
-            else:
-                # Value not in list — add it transiently so it is visible.
-                combo.insertItem(0, text)
-                combo.setCurrentIndex(0)
-            combo.setEnabled(False)
-            combo.blockSignals(False)
-
-        # ── Analysis tab ──────────────────────────────────────────────────────
-        if member_display is not None:
-            _set_combo(self.analysis_tab.member_combo, member_display)
-        if load_case is not None:
-            _set_combo(self.analysis_tab.load_combo, load_case)
-
-        # ── Design Check tab ──────────────────────────────────────────────────
-        if member_display is not None:
-            _set_combo(self.check_tab.member_combo, member_display)
-        if load_case is not None:
-            _set_combo(self.check_tab.load_combo, load_case)
-
-        # ── Details tab (member only, no load combo) ──────────────────────────
-        if member_display is not None:
-            _set_combo(self.details_tab.member_combo, member_display)
-
-        # Refresh analysis plot for the newly selected member / load case
-        self._update_analysis_plots()
-
-    # =========================================================================
-    #   EVENT HANDLERS
-    # =========================================================================
 
     def _on_tab_changed(self, index):
         """
@@ -444,15 +514,20 @@ class SteelDesign(QDialog):
 
     def _run_design_checks(self) -> None:
         """
-        Populate the Design Check tab from the already-computed DCR pipeline.
+        Populate the Design Check tab.
 
-        Data sources (no re-computation):
-          - demand values  → engine.demand   (extracted from analysis_results.py)
-          - capacity / DCR → engine.capacity / engine.checks  (computed in designer.py)
-
-        The pipeline is executed once by PlateGirderBridge._run_dcr_checks()
-        during design(); this method simply reads the stored results.
+        On the first visit the stored engine from PlateGirderBridge._run_dcr_checks()
+        is used.  On subsequent visits (after member/LC changes) the dynamically
+        re-computed engine from _update_design_checks_for_member() is preferred.
         """
+        # If a dynamic engine was already computed for the current selection, use it.
+        if getattr(self, "_dynamic_dcr_engine", None) is not None:
+            engine = self._dynamic_dcr_engine
+            self.check_tab.populate_from_results(
+                engine.demand, engine.capacity, engine,
+            )
+            return
+
         if self._checks_ran and (self._result_handler is self._last_handler):
             return
 
@@ -466,15 +541,6 @@ class SteelDesign(QDialog):
                 engine.demand, engine.capacity, engine,
             )
 
-            from osdagbridge.core.bridge_types.plate_girder.designer import BridgeConfig
-            bridge_cfg = (
-                BridgeConfig.from_plate_girder_bridge(backend)
-                if backend is not None
-                else None
-            )
-            if bridge_cfg is not None:
-                self.check_tab.set_girder_count(bridge_cfg.geometry.n_girders)
-
             self._checks_ran   = True
             self._last_handler = self._result_handler
 
@@ -484,6 +550,86 @@ class SteelDesign(QDialog):
             for key in ("flexure", "shear", "interaction", "ltb",
                         "shear_long_trans", "fatigue", "stress", "deflection"):
                 self.check_tab.set_check_result(key, err)
+
+    def _update_design_checks_for_member(self, member_key: str) -> None:
+        """
+        Re-run the DCR pipeline for the selected girder member.
+
+        Imports and calls classes from designer.py (read-only — no modifications
+        to that module).  The pipeline is:
+            1. BridgeConfig from backend
+            2. DemandExtractor.from_analysis_results() for the specific girder
+            3. IRC22CapacityCalculator.compute_all()
+            4. DCREngine.run_all_checks()
+            5. check_tab.populate_from_results()
+        """
+        try:
+            backend = getattr(self._main_window, "backend", None)
+            if backend is None or self._result_handler is None:
+                return
+
+            from osdagbridge.core.bridge_types.plate_girder.designer import (
+                BridgeConfig,
+                DemandExtractor,
+                IRC22CapacityCalculator,
+                DCREngine,
+                _composite_stiffness_ratio,
+            )
+
+            # Step 1: BridgeConfig
+            config = BridgeConfig.from_plate_girder_bridge(backend)
+
+            # Step 2: Resolve girder elements/nodes for the selected member
+            girders, _ = self._result_handler.build_girders(verbose=False)
+            girder_info = girders.get(member_key)
+            if girder_info is None:
+                # member_key not found — keep the existing checks
+                return
+
+            element_ids = list(girder_info.get("elements", []))
+            node_ids    = list(girder_info.get("path", []))
+            if not element_ids:
+                return
+
+            # Step 3: Extract demands for this specific girder
+            Ze_steel_mm3 = float(config.section.Ze_steel)
+            Aw_mm2       = float(config.section.Aw)
+            Nsc          = int(config.fatigue.Nsc)
+            ratio        = _composite_stiffness_ratio(config)
+
+            demand = DemandExtractor.from_analysis_results(
+                results=self._result_handler,
+                element_ids=element_ids,
+                node_ids=node_ids,
+                Ze_steel_mm3=Ze_steel_mm3,
+                Aw_mm2=Aw_mm2,
+                Nsc=Nsc,
+                member_name=member_key,
+                stiffness_ratio=ratio,
+            )
+
+            # Step 4: Compute capacity
+            calculator = IRC22CapacityCalculator(config)
+            capacity = calculator.compute_all(
+                Vu_kN=demand.Vu_kN,
+                stress_range_MPa=demand.stress_range_MPa,
+            )
+
+            # Step 5: Run DCR checks
+            engine = DCREngine(demand, capacity)
+            engine.run_all_checks()
+
+            # Store the dynamic engine so _run_design_checks uses it
+            self._dynamic_dcr_engine = engine
+
+            # Step 6: Update the Design Check tab
+            self.check_tab.populate_from_results(
+                engine.demand, engine.capacity, engine,
+            )
+
+        except Exception:
+            import traceback
+            traceback.print_exc()
 
     @property
     def _interaction_mode(self) -> str:
@@ -582,7 +728,7 @@ class SteelDesign(QDialog):
         the selection to the next real load case in the appropriate
         direction, then delegates to ``_update_analysis_plots``.
         """
-        combo = self.analysis_tab.load_combo
+        combo = self.load_combo
         model = combo.model()
         n     = combo.count()
 
@@ -631,13 +777,11 @@ class SteelDesign(QDialog):
                 return f"Girder {key[1:]}"
             return key   # fallback: show raw key
 
-        combo = self.analysis_tab.member_combo
+        combo = self.member_combo
         combo.blockSignals(True)
-        combo.setEnabled(True)   # temporarily enable to allow writes
         combo.clear()
         for idx, key in enumerate(self.graph_engine.get_girder_keys()):
             combo.addItem(_girder_display_name(key, idx), userData=key)
-        combo.setEnabled(False)  # restore disabled/read-only state
         combo.blockSignals(False)
 
     # ── Category-header helper ────────────────────────────────────────────────
@@ -679,7 +823,7 @@ class SteelDesign(QDialog):
         added when it contains at least one item.  The first real (selectable)
         load case is selected after population.
         """
-        combo    = self.analysis_tab.load_combo
+        combo    = self.load_combo
         classified = self.graph_engine.get_classified_loadcases()
 
         dead_lcs    = classified.get("dead", [])
@@ -693,7 +837,6 @@ class SteelDesign(QDialog):
             dead_lcs = [preferred] + dead_lcs
 
         combo.blockSignals(True)
-        combo.setEnabled(True)   # temporarily enable to allow writes
         combo.clear()
 
         first_selectable_idx = None
@@ -728,8 +871,9 @@ class SteelDesign(QDialog):
         elif combo.count() > 0:
             combo.setCurrentIndex(0)
 
-        combo.setEnabled(False)  # restore disabled/read-only state
         combo.blockSignals(False)
+
+
 
     # =========================================================================
     #   PLOT RENDERING
@@ -747,9 +891,9 @@ class SteelDesign(QDialog):
             engine.show_blank_state(self.canvas)
             return
 
-        combo      = self.analysis_tab.member_combo
+        combo      = self.member_combo
         member_key = combo.currentData() or combo.currentText()
-        loadcase   = self.analysis_tab.load_combo.currentText()
+        loadcase   = self.load_combo.currentText()
 
         # Reject header/separator items (they start with '──')
         if not loadcase or loadcase.startswith(_COMBO_HEADER_PREFIX):
@@ -852,6 +996,9 @@ class SteelDesign(QDialog):
         )
         self._update_value_fields(self._current_max_dict, max_keys)
         self._on_interaction_mode_changed()
+
+        # Re-run design checks for the newly selected member / loadcase
+        self._update_design_checks_for_member(member_key)
 
     # =========================================================================
     #   UI UPDATE HELPERS

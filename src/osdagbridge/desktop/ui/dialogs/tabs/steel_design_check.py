@@ -395,8 +395,7 @@ class SteelDesignCheckTab(QWidget):
         container_layout.setContentsMargins(18, 6, 18, 12)
         container_layout.setSpacing(16)
 
-        # - TOP BAR: Member ID + Load Combination in a bordered card -
-        container_layout.addWidget(self._build_top_bar())
+
 
         # - SUMMARY BAR: pass/fail counts + overall badge -
         container_layout.addWidget(self._build_summary_bar())
@@ -492,115 +491,6 @@ class SteelDesignCheckTab(QWidget):
         grid.setColumnStretch(2, 1)
         return grid
 
-    def _build_top_bar(self):
-        """
-        Build the Member ID and Load Combination read-only mirror row.
-
-        Returns a transparent container widget holding two equal-width individual
-        card frames - one per combo - matching the 'Component' / 'Display Location'
-        card layout used in the Analysis Results tab:
-          - each card: white bg, 1 px solid #b0b0b0, border-radius 6 px
-          - bold section title at the top, combo below
-          - equal horizontal stretch so both cards share the full width
-
-        The combos are intentionally disabled. The Output Dock is the only place
-        where the user changes member / load combination; sync_from_output_dock()
-        writes new selections in here programmatically.
-        """
-        # Shared card stylesheet - identical to comp_card / disp_card in Analysis tab.
-        _CARD_STYLE = (
-            "QFrame#controlCard {"
-            "  background-color: white;"
-            "  border: 1px solid #b0b0b0;"
-            "  border-radius: 6px;"
-            "}"
-            "QLabel {"
-            "  border: none;"
-            "  background: transparent;"
-            "}"
-        )
-        _TITLE_STYLE = (
-            "font-size: 13px; color: #2B2B2B; font-weight: bold;"
-            " background: transparent; border: none;"
-        )
-
-        # Disabled combo: black border / #f4f4f4 bg, no arrow - non-interactive read-only.
-        self._DISABLED_COMBO_STYLE = (
-            "QComboBox {"
-            "  padding: 1px 7px;"
-            "  border: 1px solid black;"
-            "  border-radius: 5px;"
-            "  background-color: #f4f4f4;"
-            "  color: #555555;"
-            "  font-size: 11px;"
-            "  min-height: 28px;"
-            "}"
-            "QComboBox::drop-down { border: none; width: 0px; }"
-            "QComboBox::down-arrow { width: 0px; height: 0px; image: none; }"
-        )
-
-        # Transparent row container - no border of its own.
-        container = QWidget()
-        container.setStyleSheet("background: transparent;")
-        container.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-        row = QHBoxLayout(container)
-        row.setContentsMargins(0, 0, 0, 0)
-        row.setSpacing(16)   # gap between the two cards (matches controls_row spacing)
-
-        # - Member ID card -
-        member_card = QFrame()
-        member_card.setObjectName("controlCard")
-        member_card.setStyleSheet(_CARD_STYLE)
-        member_card.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-
-        mc_layout = QVBoxLayout(member_card)
-        mc_layout.setContentsMargins(23, 10, 14, 12)
-        mc_layout.setSpacing(4)
-
-        member_title = QLabel("Member ID")
-        member_title.setStyleSheet(_TITLE_STYLE)
-        mc_layout.addWidget(member_title)
-
-        self.member_combo = NoScrollComboBox()
-        self.member_combo.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-        self.member_combo.setFixedHeight(28)
-        self.member_combo.addItems(["All", "Girder 1", "Girder 2"])
-        self.member_combo.setEnabled(False)
-        self.member_combo.setStyleSheet(self._DISABLED_COMBO_STYLE)
-        self.member_combo.setToolTip(
-            "Change the member in the Output Dock \u2014 this field mirrors that selection."
-        )
-        mc_layout.addWidget(self.member_combo)
-
-        # - Load Combination card -
-        load_card = QFrame()
-        load_card.setObjectName("controlCard")
-        load_card.setStyleSheet(_CARD_STYLE)
-        load_card.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-
-        lc_layout = QVBoxLayout(load_card)
-        lc_layout.setContentsMargins(23, 10, 14, 12)
-        lc_layout.setSpacing(4)
-
-        load_title = QLabel("Load Combination")
-        load_title.setStyleSheet(_TITLE_STYLE)
-        lc_layout.addWidget(load_title)
-
-        self.load_combo = NoScrollComboBox()
-        self.load_combo.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-        self.load_combo.setFixedHeight(28)
-        self.load_combo.addItems(LOAD_COMBINATIONS)
-        self.load_combo.setEnabled(False)
-        self.load_combo.setStyleSheet(self._DISABLED_COMBO_STYLE)
-        self.load_combo.setToolTip(
-            "Change the load combination in the Output Dock \u2014 this field mirrors that selection."
-        )
-        lc_layout.addWidget(self.load_combo)
-
-        row.addWidget(member_card, 1)   # stretch=1: both cards share width equally
-        row.addWidget(load_card,   1)
-
-        return container
 
     # ---------------------------------------------------------------------------
     # CHECK CARDS GRID
@@ -731,19 +621,12 @@ class SteelDesignCheckTab(QWidget):
     # ---------------------------------------------------------------------------
     # PUBLIC API
     # ---------------------------------------------------------------------------
-    def set_girder_count(self, count):
-        """Repopulate the Member ID combo with 'All' plus one entry per girder."""
-        self.member_combo.clear()
-        self.member_combo.addItems(["All"] + [f"Girder {i}" for i in range(1, count + 1)])
+
 
     def load_data(self, cad_state: dict):
-        """Populate check output areas and member combo from a cad_state snapshot."""
+        """Populate check output areas from a cad_state snapshot."""
         if not cad_state:
             return
-        try:
-            self.set_girder_count(int(cad_state.get("no_of_girders", 2)))
-        except (ValueError, TypeError):
-            pass
 
     def set_check_result(self, key: str, text: str) -> None:
         """Write plain-text result into the value label of the named card."""
