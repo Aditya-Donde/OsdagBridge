@@ -47,9 +47,8 @@ class SteelDesignDetailsTab(QWidget):
     """
     Scrollable details tab for the Steel Design dialog.
 
-    Displays four read-only information cards:
-      - Member Info        : member ID combo, material grade, section type
-      - Dimensional Details: full cross-section geometry
+    Displays read-only information cards:
+      - Dimensional Details: material grade, section type, and full cross-section geometry
       - Shear Connector    : connector material, geometry, and spacing
       - Section Properties : mass, moments of area, moduli, torsion/warping
 
@@ -83,13 +82,8 @@ class SteelDesignDetailsTab(QWidget):
         container_layout.setContentsMargins(10, 10, 10, 10)
         container_layout.setSpacing(12)
 
-        # ── TOP ROW: Member Info card (left) + CAD placeholder (right) 
-        top_row = QHBoxLayout()
-        top_row.setSpacing(12)
-        top_row.setContentsMargins(0, 0, 0, 0)
-        top_row.addWidget(self._build_member_section(), 1)
-        top_row.addWidget(self._build_top_cad_placeholder(), 1)
-        container_layout.addLayout(top_row)
+        # ── TOP ROW: CAD placeholder (right only; Member Info removed) 
+        container_layout.addWidget(self._build_top_cad_placeholder())
 
         # ── BODY: Dimensional + Shear (left) | Section Properties (right) 
         body_row = QHBoxLayout()
@@ -184,28 +178,7 @@ class SteelDesignDetailsTab(QWidget):
     # SECTIONS
     # ─────────────────────────────────────────────────────────────────────────
 
-    def _build_member_section(self):
-        card = self._create_card_frame()
-        card_layout = QVBoxLayout(card)
-        card_layout.setContentsMargins(18, 16, 18, 16)
-        card_layout.setSpacing(10)
-        card_layout.addWidget(self._create_label("Member Info:"))
-
-        grid = self._make_grid()
-
-        self.grade_field = self._readonly_field()
-        self.type_field  = self._readonly_field()
-
-        r = 0
-        r = self._add_row(grid, r, "Grade of Material:", self.grade_field)
-        r = self._add_row(grid, r, "Type:",              self.type_field)
-
-        card_layout.addLayout(grid)
-
-        self.member_fields["grade_of_material"] = self.grade_field
-        self.member_fields["section_type"]      = self.type_field
-
-        return card
+    # _build_member_section removed — Grade & Type are now in Dimensional Details.
 
     def _build_dimensional_section(self):
         card = self._create_card_frame()
@@ -215,6 +188,17 @@ class SteelDesignDetailsTab(QWidget):
         card_layout.addWidget(self._create_label("Dimensional Details:"))
 
         grid = self._make_grid()
+
+        # Grade of Material and Type (previously in Member Info)
+        self.grade_field = self._readonly_field()
+        self.type_field  = self._readonly_field()
+        self.member_fields["grade_of_material"] = self.grade_field
+        self.member_fields["section_type"]      = self.type_field
+
+        r = 0
+        r = self._add_row(grid, r, "Grade of Material:", self.grade_field)
+        r = self._add_row(grid, r, "Type:",              self.type_field)
+
         labels = {
             "section_designation":     "Section Designation",
             "section_class":           "Section Class",
@@ -229,7 +213,6 @@ class SteelDesignDetailsTab(QWidget):
             "web_type":                "Web Type",
             "effective_slab_width":    "Effective Width of Slab (mm)",
         }
-        r = 0
         for key, text in labels.items():
             field = self._readonly_field()
             r = self._add_row(grid, r, text, field)
@@ -339,90 +322,101 @@ class SteelDesignDetailsTab(QWidget):
     # STIFFENER TABLE
     # ─────────────────────────────────────────────────────────────────────────
 
-    def _build_stiffener_section(self):
+    # Row height for stiffener data rows (matches Lane Details table padding).
+    _STIFFENER_ROW_HEIGHT = 40
+
+    # Column headers for the stiffener summary table.
+    _STIFFENER_HEADERS = [
+        "Type", "Grade of Material", "Thickness (mm)", "Width (mm)", "Spacing (mm)",
+    ]
+
+    # Stiffener type labels shown in the first column.
+    _STIFFENER_TYPES = ["Intermediate", "Longitudinal", "Bearing"]
+
+    def _build_stiffener_section(self) -> QFrame:
+        """Build the Stiffener Details card with a styled table.
+
+        The table style mirrors the Inputs table in the Lane Details sub-tab
+        of Typical Section Details (Additional Inputs dialog) — same font,
+        padding, alternating-row colours, and header treatment.
+        """
         card = self._create_card_frame()
         card_layout = QVBoxLayout(card)
         card_layout.setContentsMargins(18, 16, 18, 16)
-        card_layout.setSpacing(10)
+        card_layout.setSpacing(12)
 
         card_layout.addWidget(self._create_label("Stiffener Details:"))
 
-        # ── Wrap table in a QFrame so the border is drawn by the frame, 
-        # not QAbstractScrollArea's viewport (which clips the left edge).
-        table_frame = QFrame()
-        table_frame.setStyleSheet("""
-            QFrame {
-                border: 1px solid #b0b0b0;
-                border-radius: 0px;
-                background: white;
-            }
-        """)
-        table_frame.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-        table_frame_layout = QVBoxLayout(table_frame)
-        # right margin -1 pulls table 1px under the frame border, hiding the last gridline
-        table_frame_layout.setContentsMargins(0, 0, 0, 0)
-        table_frame_layout.setSpacing(0)
+        # ── Table widget ──────────────────────────────────────────────
+        num_rows = len(self._STIFFENER_TYPES)
+        num_cols = len(self._STIFFENER_HEADERS)
 
         self.stiffener_table = NoScrollTable()
-        self.stiffener_table.setRowCount(3)
-        self.stiffener_table.setColumnCount(5)
-        self.stiffener_table.setHorizontalHeaderLabels([
-            "Type", "Grade of Material", "Thickness (mm)", "Width (mm)", "Spacing (mm)"
-        ])
+        self.stiffener_table.setRowCount(num_rows)
+        self.stiffener_table.setColumnCount(num_cols)
+        self.stiffener_table.setHorizontalHeaderLabels(self._STIFFENER_HEADERS)
 
-        for row, name in enumerate(["Intermediate", "Longitudinal", "Bearing"]):
-            item = QTableWidgetItem(name)
-            item.setFlags(Qt.ItemIsEnabled)
-            self.stiffener_table.setItem(row, 0, item)
-            for col in range(1, 5):
-                empty = QTableWidgetItem("")
-                empty.setFlags(Qt.ItemIsEnabled)
-                self.stiffener_table.setItem(row, col, empty)
+        # Populate rows — all cells are read-only and center-aligned.
+        for row, type_name in enumerate(self._STIFFENER_TYPES):
+            type_item = QTableWidgetItem(type_name)
+            type_item.setFlags(Qt.ItemIsEnabled)
+            type_item.setTextAlignment(Qt.AlignCenter)
+            self.stiffener_table.setItem(row, 0, type_item)
 
-        self.stiffener_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
-        self.stiffener_table.verticalHeader().setVisible(False)
-        self.stiffener_table.verticalHeader().setDefaultSectionSize(26)
+            for col in range(1, num_cols):
+                cell = QTableWidgetItem("")
+                cell.setFlags(Qt.ItemIsEnabled)
+                cell.setTextAlignment(Qt.AlignCenter)
+                self.stiffener_table.setItem(row, col, cell)
+
+        # ── Header behaviour ──────────────────────────────────────────
+        h_header = self.stiffener_table.horizontalHeader()
+        h_header.setSectionResizeMode(QHeaderView.Stretch)
+        h_header.setDefaultAlignment(Qt.AlignCenter)
+
+        v_header = self.stiffener_table.verticalHeader()
+        v_header.setVisible(False)
+        v_header.setDefaultSectionSize(self._STIFFENER_ROW_HEIGHT)
+
+        # ── General table properties ──────────────────────────────────
         self.stiffener_table.setEditTriggers(QTableWidget.NoEditTriggers)
+        self.stiffener_table.setSelectionMode(QTableWidget.NoSelection)
+        self.stiffener_table.setFocusPolicy(Qt.NoFocus)
         self.stiffener_table.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         self.stiffener_table.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.stiffener_table.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        # Use sizeHint-based height after headers/rows are configured
-        # header ~30px + 3 rows * 26px + 1px bottom = 109px; frame adds 2px. Plus OS scaling safety margin
-        self.stiffener_table.setMinimumHeight(120)
-        self.stiffener_table.setMaximumHeight(120)
+        self.stiffener_table.setAlternatingRowColors(True)
 
+        # Fixed height: header (~36 px) + rows * row_height + 2 px border.
+        table_height = 36 + num_rows * self._STIFFENER_ROW_HEIGHT + 2
+        self.stiffener_table.setFixedHeight(table_height)
+
+        # ── Stylesheet — mirrors Lane Details Inputs table ────────────
         self.stiffener_table.setStyleSheet("""
             QTableWidget {
-                background-color: white;
+                background-color: #ffffff;
+                alternate-background-color: #f9f9f9;
                 gridline-color: #e0e0e0;
-                color: black;
-                font-size: 10px;
-                border: none;
+                border: 1px solid #e0e0e0;
+                color: #333333;
+                font-size: 11px;
+            }
+            QTableWidget::item {
+                padding: 8px;
+                border-bottom: 1px solid #e0e0e0;
+                color: #333333;
             }
             QHeaderView::section {
                 background-color: #f5f5f5;
-                color: black;
+                color: #333333;
+                padding: 8px;
+                border: 1px solid #e0e0e0;
                 font-weight: bold;
-                border: none;
-                border-right: 1px solid #b0b0b0;
-                border-bottom: 1px solid #b0b0b0;
-                padding: 3px;
-                font-size: 10px;
-            }
-            QHeaderView::section:last {
-                border-right: none;
-            }
-            QTableWidget::item {
-                color: black;
+                font-size: 11px;
             }
         """)
 
-        # Pull right edge of viewport 1px left so last gridline sits under frame border
-        self.stiffener_table.setViewportMargins(0, 0, -1, 0)
-        table_frame_layout.addWidget(self.stiffener_table)
-        table_frame.setMinimumHeight(122)
-        table_frame.setMaximumHeight(122)
-        card_layout.addWidget(table_frame)
+        card_layout.addWidget(self.stiffener_table)
         return card
 
     # ─────────────────────────────────────────────────────────────────────────
@@ -455,7 +449,10 @@ class SteelDesignDetailsTab(QWidget):
                 width     = cad_state.get(f"stiff_{prefix}_width",     "")
                 spacing   = cad_state.get(f"stiff_{prefix}_spacing",   "")
 
-                self.stiffener_table.setItem(row, 1, QTableWidgetItem(str(grade)))
-                self.stiffener_table.setItem(row, 2, QTableWidgetItem(str(thickness)))
-                self.stiffener_table.setItem(row, 3, QTableWidgetItem(str(width)))
-                self.stiffener_table.setItem(row, 4, QTableWidgetItem(str(spacing)))
+                for col, value in enumerate(
+                    [grade, thickness, width, spacing], start=1
+                ):
+                    item = QTableWidgetItem(str(value))
+                    item.setFlags(Qt.ItemIsEnabled)
+                    item.setTextAlignment(Qt.AlignCenter)
+                    self.stiffener_table.setItem(row, col, item)

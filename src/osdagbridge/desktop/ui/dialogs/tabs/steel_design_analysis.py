@@ -8,8 +8,14 @@ from PySide6.QtWidgets import (
     QFrame,
     QSizePolicy,
     QGroupBox,
+    QStyledItemDelegate,
+    QStylePainter,
+    QStyleOptionComboBox,
+    QStyle,
+    QApplication,
 )
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QSize
+from PySide6.QtGui import QTextDocument
 
 from osdagbridge.desktop.ui.docks.output_dock import (
     NoScrollComboBox,
@@ -156,6 +162,87 @@ _GROUP_STYLE = """
 # Fixed width for form-row labels — keeps all input fields left-aligned at the same x offset.
 _LABEL_MIN_W = 130
 
+
+class _HTMLDelegate(QStyledItemDelegate):
+    """
+    Custom delegate to render HTML-formatted text within a QComboBox dropdown.
+    Allows for rich text features like subscripts (e.g., M<sub>z</sub>).
+    """
+    def paint(self, painter, option, index):
+        options = option
+        self.initStyleOption(options, index)
+        painter.save()
+        doc = QTextDocument()
+        doc.setDefaultFont(options.font)
+        doc.setHtml(options.text)
+        options.text = ""
+        style = options.widget.style() if options.widget else QApplication.style()
+        style.drawControl(QStyle.CE_ItemViewItem, options, painter)
+        painter.translate(options.rect.left(), options.rect.top())
+        clip = options.rect.translated(-options.rect.left(), -options.rect.top())
+        y_offset = (options.rect.height() - doc.size().height()) / 2
+        painter.translate(0, max(0, y_offset))
+        doc.drawContents(painter, clip)
+        painter.restore()
+
+    def sizeHint(self, option, index):
+        options = option
+        self.initStyleOption(options, index)
+        doc = QTextDocument()
+        doc.setDefaultFont(options.font)
+        doc.setHtml(options.text)
+        return QSize(int(doc.idealWidth()) + 16, int(doc.size().height()))
+
+
+class RichTextComboBox(NoScrollComboBox):
+    """
+    A QComboBox subclass that supports HTML rendering for its items.
+    Overrides paintEvent and sizeHint to ensure the selected item and the 
+    dropdown list are correctly rendered and sized based on HTML content.
+    """
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setItemDelegate(_HTMLDelegate(self))
+
+    def _get_ideal_size(self):
+        max_w = 0
+        h = 28
+        doc = QTextDocument()
+        doc.setDefaultFont(self.font())
+        for i in range(self.count()):
+            doc.setHtml(self.itemText(i))
+            max_w = max(max_w, int(doc.idealWidth()))
+        # Add padding for border and drop-down arrow
+        return QSize(max_w + 36, h)
+
+    def sizeHint(self):
+        return self._get_ideal_size()
+
+    def minimumSizeHint(self):
+        return self._get_ideal_size()
+
+    def paintEvent(self, event):
+        painter = QStylePainter(self)
+        opt = QStyleOptionComboBox()
+        self.initStyleOption(opt)
+
+        text = opt.currentText
+        opt.currentText = ""  # Hide text so default painting doesn't draw it
+        painter.drawComplexControl(QStyle.CC_ComboBox, opt)
+        painter.drawControl(QStyle.CE_ComboBoxLabel, opt)
+
+        text_rect = self.style().subControlRect(QStyle.CC_ComboBox, opt, QStyle.SC_ComboBoxEditField, self)
+        
+        doc = QTextDocument()
+        doc.setDefaultFont(self.font())
+        doc.setHtml(text)
+        
+        painter.save()
+        painter.translate(text_rect.topLeft())
+        y_offset = (text_rect.height() - doc.size().height()) / 2
+        painter.translate(0, max(0, y_offset))
+        doc.drawContents(painter)
+        painter.restore()
 
 class SteelDesignAnalysisTab(QWidget):
     """
@@ -428,13 +515,13 @@ class SteelDesignAnalysisTab(QWidget):
         )
         comp_card_layout.addWidget(comp_title)
 
-        self.component_combo = NoScrollComboBox()
+        self.component_combo = RichTextComboBox()
         self.component_combo.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         self.component_combo.setStyleSheet(_COMBO_STYLE)
         self.component_combo.addItems([
-            "Major (Mz, Vy, Dy)",
-            "Minor (My, Vz, Dz)",
-            "Axial (Tx, Fx, Dx)",
+            "Major (M<sub>z</sub>, V<sub>y</sub>, D<sub>y</sub>)",
+            "Minor (M<sub>y</sub>, V<sub>z</sub>, D<sub>z</sub>)",
+            "Axial (T<sub>x</sub>, F<sub>x</sub>, D<sub>x</sub>)",
         ])
         comp_card_layout.addWidget(self.component_combo)
 

@@ -1749,7 +1749,7 @@ class GirderGraphEngine:
         display_message = (
             message
             if message is not None
-            else "Please run the design analysis to view results."
+            else "Create a design first to see analysis results."
         )
 
         for ax in (self.ax_scheme, self.ax_bmd, self.ax_sfd, self.ax_defl):

@@ -176,13 +176,19 @@ _MATHTEXT_MAP: dict[str, list[str]] = {
     ],
 }
 
+# Module-level cache: maps a frozen tuple of mathtext lines to the rendered
+# QPixmap.  Since the 8 equation sets are static, each is rendered exactly once
+# per application session, eliminating repeated matplotlib Figure creation.
+_PIXMAP_CACHE: dict[tuple[str, ...], QPixmap] = {}
+
+
 def _render_mathtext_pixmap(
     lines: list[str],
     *,
     font_size: float = 9,
     dpi: int = 110,
     text_color: str = "#2E3B4E",
-    bg_color: str = "#F8F9FA",
+    bg_color: str = "#FFFFFF",
     h_pad_in: float = 0.12,
     v_pad_in: float = 0.10,
     line_gap_in: float = 0.32,
@@ -190,9 +196,8 @@ def _render_mathtext_pixmap(
     """
     Render a list of matplotlib mathtext strings into a single QPixmap.
 
-    Lines are stacked vertically with even spacing. The figure is sized to
-    fit the content tightly; the caller is responsible for placing the pixmap
-    inside a QLabel that provides the grey background frame.
+    Results are cached by the tuple of *lines* so that each unique equation
+    set is rasterised at most once per application session.
 
     Parameters
     ----------
@@ -215,6 +220,11 @@ def _render_mathtext_pixmap(
     """
     if not lines:
         return QPixmap()
+
+    cache_key = tuple(lines)
+    cached = _PIXMAP_CACHE.get(cache_key)
+    if cached is not None:
+        return cached
 
     n = len(lines)
     # Estimate figure height: n lines + (n-1) gaps + top/bottom padding
@@ -263,6 +273,8 @@ def _render_mathtext_pixmap(
     pixmap = QPixmap()
     if not pixmap.loadFromData(data, "PNG"):
         return QPixmap()
+
+    _PIXMAP_CACHE[cache_key] = pixmap
     return pixmap
 
 
@@ -530,7 +542,7 @@ class SteelDesignCheckTab(QWidget):
         card.setStyleSheet("""
             QFrame#checkCard {
                 background-color: white;
-                border: 1px solid #CFCFCF;
+                border: 1px solid #222222;
                 border-radius: 8px;
             }
         """)
@@ -553,8 +565,7 @@ class SteelDesignCheckTab(QWidget):
         eq_lbl = QLabel()
         eq_lbl.setAlignment(Qt.AlignCenter)
         eq_lbl.setStyleSheet(
-            "background-color: #F8F9FA; border: 1px solid #E4E7EB; "
-            "border-radius: 4px; padding: 6px;"
+            "background-color: white; border: none; padding: 6px;"
         )
 
         math_lines = _MATHTEXT_MAP.get(key, [])
@@ -576,8 +587,7 @@ class SteelDesignCheckTab(QWidget):
             eq_lbl.setStyleSheet(
                 "font-family: 'Cambria Math', 'Times New Roman', serif; "
                 "font-size: 13px; color: #2E3B4E; "
-                "background-color: #F8F9FA; border: 1px solid #E4E7EB; "
-                "border-radius: 4px; padding: 6px;"
+                "background-color: white; border: none; padding: 6px;"
             )
             eq_text = _RENDER_MAP.get(key, {}).get("eq", "")
             eq_lbl.setText(eq_text)

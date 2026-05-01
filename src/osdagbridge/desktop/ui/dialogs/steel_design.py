@@ -151,8 +151,11 @@ class SteelDesign(QDialog):
         if hasattr(self._main_window, "cad_state"):
             self.details_tab.load_data(self._main_window.cad_state)
 
-        # Inject the matplotlib canvas into the Analysis Results tab
-        self._setup_analysis_plots()
+        if self._result_handler is not None:
+            # Inject the matplotlib canvas into the Analysis Results tab
+            self._setup_analysis_plots()
+        else:
+            self.analysis_tab.diagram_placeholder.setText("Create a design first to see analysis results.")
 
     def _build_global_selection_bar(self):
         """Build the global Member ID and Load Combination bar."""
@@ -484,6 +487,29 @@ class SteelDesign(QDialog):
         # ── UI initialisation state ───────────────────────────────────────────
         self._data_initialized = False
 
+        # ── Performance: skip redundant re-renders ────────────────────────────
+        # Track the last plotted (member, loadcase, component) to avoid
+        # expensive matplotlib re-renders when nothing has changed.
+        self._last_plot_key: tuple | None = None
+
+        # Track the last member key for which DCR was computed so the
+        # Design Check tab can skip re-running the full pipeline.
+        self._last_dcr_member_key: str | None = None
+
+        # Flag set when member/LC selection changes — tells the Design Check
+        # tab that cached DCR values are stale and need recomputation.
+        self._dcr_dirty = True
+
+        # ── Populate dropdowns immediately so they show values on launch ──────
+        if self._result_handler is not None:
+            self._populate_member_combo()
+            self._populate_load_combo()
+            self._data_initialized = True
+
+            # Pre-populate Design Check tab with the default girder's DCR values
+            # so results are visible without switching tabs first.
+            self._run_design_checks()
+
 
 
     def _on_tab_changed(self, index):
@@ -494,17 +520,23 @@ class SteelDesign(QDialog):
         All data comes from the injected PlateGirderAnalysisResults instance.
         """
         if index == 2:
-            # Design Check tab
-            self._run_design_checks()
+            # Design Check tab — only recompute if selection changed.
+            if self._dcr_dirty:
+                self._run_design_checks()
             return
 
         if index != 1:
             return
 
         if self._result_handler is None:
-            self.graph_engine.show_blank_state(self.canvas)
+            if hasattr(self, 'canvas'):
+                self.graph_engine.show_blank_state(self.canvas, message="Create a design first to see analysis results.")
+            else:
+                self.analysis_tab.diagram_placeholder.setText("Create a design first to see analysis results.")
             return
 
+        # Combos are populated at launch; guard prevents double-population
+        # if the dialog was opened without a result handler initially.
         if not self._data_initialized:
             self._populate_member_combo()
             self._populate_load_combo()
@@ -514,20 +546,27 @@ class SteelDesign(QDialog):
 
     def _run_design_checks(self) -> None:
         """
-        Populate the Design Check tab.
+        Populate the Design Check tab for the currently selected member.
 
-        On the first visit the stored engine from PlateGirderBridge._run_dcr_checks()
-        is used.  On subsequent visits (after member/LC changes) the dynamically
-        re-computed engine from _update_design_checks_for_member() is preferred.
+        Uses a dirty-flag + member-key cache to avoid re-running the full
+        DCR pipeline when nothing has changed.  The first call falls back
+        to the pre-computed engine stored on the backend; subsequent calls
+        dynamically recompute for the selected member.
         """
-        # If a dynamic engine was already computed for the current selection, use it.
-        if getattr(self, "_dynamic_dcr_engine", None) is not None:
-            engine = self._dynamic_dcr_engine
-            self.check_tab.populate_from_results(
-                engine.demand, engine.capacity, engine,
-            )
+        combo      = self.member_combo
+        member_key = combo.currentData() or combo.currentText() or ""
+
+        # Fast path: nothing changed since the last computation.
+        if not self._dcr_dirty and member_key == self._last_dcr_member_key:
             return
 
+        # If a member is selected, compute DCR dynamically for that girder.
+        if member_key:
+            self._update_design_checks_for_member(member_key)
+            return
+
+        # Fallback for first launch: use the backend's pre-computed engine
+        # (produced during design() → _run_dcr_checks()).
         if self._checks_ran and (self._result_handler is self._last_handler):
             return
 
@@ -541,8 +580,10 @@ class SteelDesign(QDialog):
                 engine.demand, engine.capacity, engine,
             )
 
-            self._checks_ran   = True
-            self._last_handler = self._result_handler
+            self._checks_ran          = True
+            self._last_handler        = self._result_handler
+            self._dcr_dirty           = False
+            self._last_dcr_member_key = member_key
 
         except Exception:
             import traceback
@@ -555,6 +596,9 @@ class SteelDesign(QDialog):
         """
         Re-run the DCR pipeline for the selected girder member.
 
+        Skips if *member_key* matches the last-computed key and the dirty
+        flag is not set, providing O(1) repeated tab visits.
+
         Imports and calls classes from designer.py (read-only — no modifications
         to that module).  The pipeline is:
             1. BridgeConfig from backend
@@ -563,6 +607,10 @@ class SteelDesign(QDialog):
             4. DCREngine.run_all_checks()
             5. check_tab.populate_from_results()
         """
+        # Skip if already computed for this exact selection.
+        if member_key == self._last_dcr_member_key and not self._dcr_dirty:
+            return
+
         try:
             backend = getattr(self._main_window, "backend", None)
             if backend is None or self._result_handler is None:
@@ -626,6 +674,10 @@ class SteelDesign(QDialog):
             self.check_tab.populate_from_results(
                 engine.demand, engine.capacity, engine,
             )
+
+            # Mark as clean for this member.
+            self._dcr_dirty           = False
+            self._last_dcr_member_key = member_key
 
         except Exception:
             import traceback
@@ -884,6 +936,10 @@ class SteelDesign(QDialog):
         Master orchestrator called when the girder, load combination, or component
         selection changes. Delegates data extraction and peak computation to the
         graph engine, then renders all plots and refreshes the right-hand panel.
+
+        Includes a state-change guard: if the (member, loadcase, component)
+        triple is identical to the last render, the expensive matplotlib
+        redraw is skipped entirely.
         """
         engine = self.graph_engine
 
@@ -906,6 +962,15 @@ class SteelDesign(QDialog):
         comp_idx = 0
         if hasattr(self.analysis_tab, "component_combo"):
             comp_idx = self.analysis_tab.component_combo.currentIndex()
+
+        # ── Skip redundant re-renders ─────────────────────────────────────────
+        plot_key = (member_key, loadcase, comp_idx)
+        if plot_key == self._last_plot_key and self._current_x is not None:
+            return
+        self._last_plot_key = plot_key
+
+        # Mark DCR as stale whenever the analysis inputs change.
+        self._dcr_dirty = True
 
         # Maps: (bmd_force_key, sfd_force_key, defl_disp_key, rhs_labels, max_field_keys)
         # rhs_labels use HTML subscripts for the side-row label text
@@ -996,9 +1061,6 @@ class SteelDesign(QDialog):
         )
         self._update_value_fields(self._current_max_dict, max_keys)
         self._on_interaction_mode_changed()
-
-        # Re-run design checks for the newly selected member / loadcase
-        self._update_design_checks_for_member(member_key)
 
     # =========================================================================
     #   UI UPDATE HELPERS
