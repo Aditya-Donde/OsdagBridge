@@ -7,7 +7,7 @@ from mpl_toolkits.mplot3d.art3d import Path3DCollection
 
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QComboBox, QSizePolicy, QPushButton,
-    QFrame, QLabel, QCheckBox
+    QFrame, QLabel, QCheckBox, QScrollArea
 )
 from PySide6.QtCore import Qt, QEvent
 
@@ -128,6 +128,11 @@ class MplPlotWidget(QWidget):
         self._canvas.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self._canvas.installEventFilter(self)
 
+        self._scroll_area = QScrollArea()
+        self._scroll_area.setWidgetResizable(True)
+        self._scroll_area.setWidget(self._canvas)
+        self._scroll_area.setFrameShape(QFrame.NoFrame)
+
         # Initialize the Summary Overlay
         self._summary_overlay = SummaryOverlay(self._canvas)
         self._summary_overlay.hide()
@@ -216,7 +221,7 @@ class MplPlotWidget(QWidget):
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(0)
         root.addLayout(toolbar_row)
-        root.addWidget(self._canvas, stretch=1)
+        root.addWidget(self._scroll_area, stretch=1)
 
     # public API
 
@@ -354,7 +359,7 @@ class MplPlotWidget(QWidget):
         if checked:
             if not self._nodes: return
             plt.close(self._fig)
-            self._fig = build_figure_grillage(self._nodes, self._members)
+            self._fig = build_figure_grillage(self._nodes, self._members, edge_dist=self._edge_dist)
             self._canvas.figure = self._fig
             self._fig.set_canvas(self._canvas)
             
@@ -393,10 +398,8 @@ class MplPlotWidget(QWidget):
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
-        self._fit_figure_to_canvas()
-        self._canvas.draw_idle()
         if self._summary_overlay:
-            self._summary_overlay.move(15, 15)
+            self._summary_overlay.move(15, 45) # Keep HUD floating safely under the toolbar
 
     # private helpers
     def _apply_node_visibility(self):
@@ -452,40 +455,45 @@ class MplPlotWidget(QWidget):
             self._fig.set_size_inches(w_px / dpi, h_px / dpi, forward=False)
 
     def _store_orig_limits(self):
-        """No longer needed since we are using native camera zoom instead of axis clipping!"""
-        pass
+        pass # Not needed for Uniform Render Zoom
 
     def _apply_zoom(self):
-        """Zoom the 3D camera optically to completely prevent canvas clipping."""
-        for ax in self._fig.axes:
-            try:
-                # Modern Matplotlib: Zooms the camera lens natively.
-                # The 3D box stays safely inside the widget window, no clipping!
-                ax.set_proj_type('persp', focal_length=self._zoom_scale)
-            except Exception:
-                # Fallback for older Matplotlib versions
-                ax.dist = 10 / self._zoom_scale
+        """Zooms the 2D canvas dynamically, creating scrollbars for perfect panning!"""
+        if self._zoom_scale <= 1.0:
+            self._zoom_scale = 1.0
+            self._scroll_area.setWidgetResizable(True)
+            self._canvas.setMinimumSize(0, 0)
+            self._canvas.setMaximumSize(16777215, 16777215)
+        else:
+            self._scroll_area.setWidgetResizable(False)
+            base_w = self._scroll_area.width() - 2
+            base_h = self._scroll_area.height() - 2
+            # Physically resize the canvas like zooming a photo
+            self._canvas.setFixedSize(int(base_w * self._zoom_scale), int(base_h * self._zoom_scale))
         self._canvas.draw_idle()
 
     def eventFilter(self, obj, event):
         if obj is self._canvas and event.type() == QEvent.Type.Wheel:
+            event.accept() 
             delta = event.angleDelta().y()
             if delta > 0:
-                # Zoom IN (increase focal length)
-                self._zoom_scale = min(self._zoom_scale * 1.1, 10.0)
+                # Zoom IN: Changed from 1.15 to 1.05 for smoother scrolling
+                self._zoom_scale = min(self._zoom_scale * 1.05, 8.0) 
             else:
-                # Zoom OUT (decrease focal length)
-                self._zoom_scale = max(self._zoom_scale * 0.9, 0.1)
+                # Zoom OUT: Changed from 0.85 to 0.95 for smoother scrolling
+                self._zoom_scale = max(self._zoom_scale * 0.95, 1.0) 
             self._apply_zoom()
             return True   
         return super().eventFilter(obj, event)
 
     def _zoom_in(self):
-        self._zoom_scale = min(self._zoom_scale * 1.1, 10.0)
+        # You can keep the buttons at 1.15 if you want faster clicking, 
+        # or change them to 1.05 to match the smooth scroll wheel!
+        self._zoom_scale = min(self._zoom_scale * 1.05, 8.0)
         self._apply_zoom()
 
     def _zoom_out(self):
-        self._zoom_scale = max(self._zoom_scale * 0.9, 0.1)
+        self._zoom_scale = max(self._zoom_scale * 0.95, 1.0)
         self._apply_zoom()
 
     def _zoom_reset(self):

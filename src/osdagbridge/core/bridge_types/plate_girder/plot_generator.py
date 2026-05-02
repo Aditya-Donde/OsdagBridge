@@ -238,7 +238,7 @@ def _add_supports(ax, nodes, members, edge_dist=0.0):
 # GRILLAGE PLOT
 # =============================================================================
 
-def build_figure_grillage(nodes, members):
+def build_figure_grillage(nodes, members, edge_dist=0.0):
     """
     Build a 3-D matplotlib figure showing only the bridge grillage mesh.
 
@@ -265,7 +265,37 @@ def build_figure_grillage(nodes, members):
 
     _add_grillage_background(ax, nodes, members)
     _add_coordinate_triad(ax, nodes)
-    _add_supports(ax, nodes, members)
+    _add_supports(ax, nodes, members, edge_dist=edge_dist)
+
+    girders = _find_girders(nodes, members)
+    girder_items = list(girders.items())
+    n_girders = len(girder_items)
+    base_color = "#388E3C"
+
+    for i, (z_val, elems) in enumerate(girder_items):
+        if not elems: continue
+        is_edge_beam = edge_dist > 0 and (i == 0 or i == n_girders - 1)
+        girder_name  = f"G{i}" if edge_dist > 0 else f"G{i + 1}"
+
+        n_first = members[elems[0]][0]
+        n_last  = members[elems[-1]][1]
+
+        x_start = nodes[n_first][0]
+        x_end   = nodes[n_last][0]
+        z_base  = nodes[n_first][2]
+
+        # Draw the solid longitudinal line (Grey for edge, Green for inner)
+        ax.plot([x_start, x_end], [z_base, z_base], [0, 0],
+                color="slategrey" if is_edge_beam else base_color,
+                linewidth=1.5, zorder=3)
+
+        # Add the Girder labels (G1, G2, etc.) to the inner beams
+        if not is_edge_beam:
+            ax.text(x_start - (x_range * 0.02), z_base, 0, f"{girder_name}",
+                    color="black", fontsize=11, fontweight="normal",
+                    ha="right", va="center", zorder=6,
+                    bbox=dict(boxstyle="round,pad=0.2", facecolor="white",
+                              alpha=0.8, edgecolor="none"))
 
     # Extract node IDs and coordinates properly for tracking
     node_ids = list(nodes.keys())
@@ -277,18 +307,46 @@ def build_figure_grillage(nodes, members):
                     color="#388E3C", s=14, zorder=4, depthshade=False)
 
     # Attach the hover cursor specifically for the Grillage view
+    # Attach the hover cursor directly to the single Grillage scatter object 'sc'
     if _MPLCURSORS:
         cursor = mplcursors.cursor(sc, hover=True)
+        cursor._timers = {}  # A safe dictionary to store active timers
+
         @cursor.connect("add")
         def on_add(sel):
+            # Extract data directly from the lists we built earlier in the function
             idx = sel.index
             nid = node_ids[idx]
             nx = xs[idx]
-            nz = ys[idx]
+            nz = ys[idx]  # Remember, physical Z is plotted on the Y-axis here
+            
             sel.annotation.set_text(
                 f"Node {nid}\nX: {nx:.2f} m\nZ: {nz:.2f} m"
             )
             sel.annotation.get_bbox_patch().set(fc="white", alpha=0.9)
+
+            # ================= TIMER LOGIC =================
+            fig = sel.annotation.figure
+            timer = fig.canvas.new_timer(interval=6500) 
+            timer.single_shot = True
+            
+            # Store the timer safely in our dictionary using the selection's unique ID
+            sel_id = id(sel)
+            cursor._timers[sel_id] = timer 
+            
+            def auto_hide():
+                try:
+                    if sel in cursor.selections:
+                        cursor.remove_selection(sel)
+                        fig.canvas.draw_idle()
+                except Exception:
+                    pass
+                finally:
+                    # Clean up the dictionary reference to free memory
+                    cursor._timers.pop(sel_id, None)
+                    
+            timer.add_callback(auto_hide)
+            timer.start()
 
     ax.set_xlabel("Span Length (m)", fontsize=10, labelpad=8)
     ax.set_ylabel("Bridge Width (m)", fontsize=10, labelpad=8)
@@ -304,7 +362,9 @@ def build_figure_grillage(nodes, members):
     ax.grid(True, linestyle="--", linewidth=0.4, alpha=0.5)
 
     # Force the 3D plot to use the maximum available canvas space
-    fig.subplots_adjust(left=0.05, right=0.95, bottom=0.05, top=0.88)
+    # Dedicate 18% of the right side purely to the massive axis labels.
+    # This naturally shoves the 3D bridge perfectly into the center of the screen!
+    fig.subplots_adjust(left=0.05, right=0.88, bottom=0.05, top=0.90)
     return fig
 
 
@@ -430,6 +490,7 @@ def build_figure_sfd(ds, force_key, nodes, members, edge_dist=0.0):
     # hover annotations
     if _MPLCURSORS and _scatter_objs:
         cursor = mplcursors.cursor(_scatter_objs, hover=True)
+        cursor._timers = {}  # THE FIX: A safe dictionary to store active timers
 
         @cursor.connect("add")
         def on_add(sel, _data=_scatter_data, _fk=disp_key):
@@ -439,6 +500,28 @@ def build_figure_sfd(ds, force_key, nodes, members, edge_dist=0.0):
                 f"Node {nids[idx]}\nX: {xs_g[idx]:.2f}\n{_fk}: {vals_g[idx]:.3f} kN"
             )
             sel.annotation.get_bbox_patch().set(fc="white", alpha=0.9)
+
+            fig = sel.annotation.figure
+            timer = fig.canvas.new_timer(interval=6500) 
+            timer.single_shot = True
+            
+            # Store the timer safely in our dictionary using the selection's unique ID
+            sel_id = id(sel)
+            cursor._timers[sel_id] = timer 
+            
+            def auto_hide():
+                try:
+                    if sel in cursor.selections:
+                        cursor.remove_selection(sel)
+                        fig.canvas.draw_idle()
+                except Exception:
+                    pass
+                finally:
+                    # Clean up the dictionary reference to free memory
+                    cursor._timers.pop(sel_id, None)
+                    
+            timer.add_callback(auto_hide)
+            timer.start()
 
     ax.set_xlabel("Span Length (m)", fontsize=10, labelpad=8)
     ax.set_ylabel("Bridge Width (m)", fontsize=10, labelpad=8)
@@ -454,7 +537,9 @@ def build_figure_sfd(ds, force_key, nodes, members, edge_dist=0.0):
     ax.grid(True, linestyle="--", linewidth=0.4, alpha=0.5)
 
     # Force the 3D plot to use the maximum available canvas space
-    fig.subplots_adjust(left=0.05, right=0.95, bottom=0.05, top=0.88)
+    # Dedicate 18% of the right side purely to the massive axis labels.
+    # This naturally shoves the 3D bridge perfectly into the center of the screen!
+    fig.subplots_adjust(left=0.05, right=0.88, bottom=0.05, top=0.90)
     return fig
 
 
@@ -586,15 +671,38 @@ def build_figure_bmd(ds, force_key, nodes, members, edge_dist=0.0):
 
     if _MPLCURSORS and _scatter_objs:
         cursor = mplcursors.cursor(_scatter_objs, hover=True)
+        cursor._timers = {}  # THE FIX: A safe dictionary to store active timers
 
         @cursor.connect("add")
         def on_add(sel, _data=_scatter_data, _fk=disp_key):
             nids, xs_g, vals_g = _data[id(sel.artist)]
             idx = sel.index
             sel.annotation.set_text(
-                f"Node {nids[idx]}\nX: {xs_g[idx]:.2f}\n{_fk}: {-vals_g[idx]:.3f} kNm"
+                f"Node {nids[idx]}\nX: {xs_g[idx]:.2f}\n{_fk}: {vals_g[idx]:.3f} kN"
             )
             sel.annotation.get_bbox_patch().set(fc="white", alpha=0.9)
+
+            fig = sel.annotation.figure
+            timer = fig.canvas.new_timer(interval=6500) 
+            timer.single_shot = True
+            
+            # Store the timer safely in our dictionary using the selection's unique ID
+            sel_id = id(sel)
+            cursor._timers[sel_id] = timer 
+            
+            def auto_hide():
+                try:
+                    if sel in cursor.selections:
+                        cursor.remove_selection(sel)
+                        fig.canvas.draw_idle()
+                except Exception:
+                    pass
+                finally:
+                    # Clean up the dictionary reference to free memory
+                    cursor._timers.pop(sel_id, None)
+                    
+            timer.add_callback(auto_hide)
+            timer.start()
 
     ax.set_xlabel("Span Length (m)", fontsize=10, labelpad=8)
     ax.set_ylabel("Bridge Width (m)", fontsize=10, labelpad=8)
@@ -610,7 +718,9 @@ def build_figure_bmd(ds, force_key, nodes, members, edge_dist=0.0):
     ax.grid(True, linestyle="--", linewidth=0.4, alpha=0.5)
 
     # Force the 3D plot to use the maximum available canvas space
-    fig.subplots_adjust(left=0.05, right=0.95, bottom=0.05, top=0.88)
+    # Dedicate 18% of the right side purely to the massive axis labels.
+    # This naturally shoves the 3D bridge perfectly into the center of the screen!
+    fig.subplots_adjust(left=0.05, right=0.88, bottom=0.05, top=0.90)
     return fig, summary_data
 
 
@@ -750,7 +860,9 @@ def build_figure_bmd_contour(ds, force_key, nodes, members, edge_dist=0.0):
     ax.grid(True, linestyle="--", linewidth=0.4, alpha=0.5)
 
     # Force the 3D plot to use the maximum available canvas space
-    fig.subplots_adjust(left=0.05, right=0.95, bottom=0.05, top=0.88)
+    # Dedicate 18% of the right side purely to the massive axis labels.
+    # This naturally shoves the 3D bridge perfectly into the center of the screen!
+    fig.subplots_adjust(left=0.05, right=0.88, bottom=0.05, top=0.90)
     return fig
 
 
@@ -895,15 +1007,38 @@ def build_figure_deflection(ds, disp_key, nodes, members, edge_dist=0.0):
 
     if _MPLCURSORS and _scatter_objs:
         cursor = mplcursors.cursor(_scatter_objs, hover=True)
+        cursor._timers = {}  # THE FIX: A safe dictionary to store active timers
 
         @cursor.connect("add")
-        def on_add(sel, _data=_scatter_data, _lbl=disp_label):
+        def on_add(sel, _data=_scatter_data, _fk=disp_key):
             nids, xs_g, vals_g = _data[id(sel.artist)]
             idx = sel.index
             sel.annotation.set_text(
-                f"Node {nids[idx]}\nX: {xs_g[idx]:.2f}\n{_lbl}: {vals_g[idx]:.4f} mm"
+                f"Node {nids[idx]}\nX: {xs_g[idx]:.2f}\n{_fk}: {vals_g[idx]:.3f} kN"
             )
             sel.annotation.get_bbox_patch().set(fc="white", alpha=0.9)
+
+            fig = sel.annotation.figure
+            timer = fig.canvas.new_timer(interval=6500) 
+            timer.single_shot = True
+            
+            # Store the timer safely in our dictionary using the selection's unique ID
+            sel_id = id(sel)
+            cursor._timers[sel_id] = timer 
+            
+            def auto_hide():
+                try:
+                    if sel in cursor.selections:
+                        cursor.remove_selection(sel)
+                        fig.canvas.draw_idle()
+                except Exception:
+                    pass
+                finally:
+                    # Clean up the dictionary reference to free memory
+                    cursor._timers.pop(sel_id, None)
+                    
+            timer.add_callback(auto_hide)
+            timer.start()
 
     ax.set_xlabel("Span Length (m)", fontsize=10, labelpad=8)
     ax.set_ylabel("Bridge Width (m)", fontsize=10, labelpad=8)
@@ -919,7 +1054,9 @@ def build_figure_deflection(ds, disp_key, nodes, members, edge_dist=0.0):
     ax.grid(True, linestyle="--", linewidth=0.4, alpha=0.5)
 
     # Force the 3D plot to use the maximum available canvas space
-    fig.subplots_adjust(left=0.05, right=0.95, bottom=0.05, top=0.88)
+    # Dedicate 18% of the right side purely to the massive axis labels.
+    # This naturally shoves the 3D bridge perfectly into the center of the screen!
+    fig.subplots_adjust(left=0.05, right=0.88, bottom=0.05, top=0.90)
     return fig
 
 
