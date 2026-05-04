@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QLayout,
     QPushButton,
+    QSizePolicy,
     QStackedWidget,
     QTabWidget,
     QTableWidget,
@@ -359,10 +360,29 @@ class SpecialSectionsMixin:
         """Build a QTabWidget and populate it with registered sub-tabs."""
         tabs = QTabWidget()
         tabs.setObjectName(str(section.get("id", "")))
+        tabs.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+
+        min_height = section.get("min_height")
+        if min_height:
+            tabs.setMinimumHeight(int(min_height))
+        max_height = section.get("max_height")
+        if max_height:
+            tabs.setMaximumHeight(int(max_height))
+        min_width = section.get("min_width")
+        if min_width:
+            tabs.setMinimumWidth(int(min_width))
+        max_width = section.get("max_width")
+        if max_width:
+            tabs.setMaximumWidth(int(max_width))
 
         tabs.setStyleSheet(
-            "QTabWidget::pane { border: 1px solid #d0d0d0; border-radius: 4px; background: white; }"
-            "QTabBar::tab { padding: 8px 16px; }"
+            "QTabWidget::pane { border: 1px solid #b0b0b0; background: #f5f5f5; }"
+            "QTabBar::tab { background: #e8e8e8; color: #555555; padding: 8px 16px; "
+            "border: 1px solid #b0b0b0; border-bottom: none; font-size: 11px; }"
+            "QTabBar::tab:selected { background: #90AF13; color: #ffffff; "
+            "font-weight: 700; border-color: #90AF13; }"
+            "QTabBar::tab:disabled { color: #bfbfbf; background: #e6e6e6; }"
+            "QTabBar::tab:hover:!selected { background: #d0d0d0; }"
         )
 
         for tab_def in section.get("tabs", []):

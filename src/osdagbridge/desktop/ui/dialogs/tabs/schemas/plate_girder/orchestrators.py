@@ -2,10 +2,15 @@
 
 ADDITIONAL_INPUTS_ORCHESTRATOR_SCHEMA = {
     "id": "additional_inputs_orchestrator",
+    "scrollable": False,
+    "margins": [0, 0, 0, 0],
+    "spacing": 0,
+    "add_stretch": False,
     "sections": [
         {
             "id": "additional_inputs_tabs",
             "type": "tab_container",
+            "stretch": 1,
             "tabs": [
                 {"label": "Typical Section Details", "widget_class": "TypicalSectionDetailsTab", "bind": "typical_section_tab"},
                 {"label": "Member Properties",       "widget_class": "SectionPropertiesTab",     "bind": "section_properties_tab"},
@@ -20,20 +25,26 @@ ADDITIONAL_INPUTS_ORCHESTRATOR_SCHEMA = {
 
 TYPICAL_SECTION_ORCHESTRATOR_SCHEMA = {
     "id": "typical_section_orchestrator",
+    "scrollable": False,
+    "margins": [10, 10, 10, 10],
+    "spacing": 10,
+    "add_stretch": False,
     "sections": [
         {
             "id": "cad_preview_group",
             "type": "cad",
             "widget": "CrossSectionCADWidget",
             "bind": "cad_preview",
-            "min_height": 280,
-            "max_height": 380,
+            "min_height": 220,
+            "max_height": 300,
             "scrollable": True,
             "properties": {"scale_factor": 0.65},
         },
         {
             "id": "typical_section_tabs",
             "type": "tab_container",
+            "stretch": 1,
+            "min_height": 220,
             "tabs": [
                 {"label": "Layout", "widget_class": "LayoutTab", "bind": "layout_tab"},
                 {"label": "Crash Barrier", "widget_class": "CrashBarrierTab", "bind": "crash_barrier_tab"},

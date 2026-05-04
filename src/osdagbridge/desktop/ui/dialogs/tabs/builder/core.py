@@ -65,23 +65,50 @@ class UIBuilder(
         """
         tab_widget.setStyleSheet("background-color: #f5f5f5;")
 
+        schema = self.schema
+        margins = schema.get("margins", [12, 12, 12, 12])
+        if not isinstance(margins, (list, tuple)) or len(margins) != 4:
+            margins = [12, 12, 12, 12]
+        spacing = int(schema.get("spacing", 12))
+        add_stretch = bool(schema.get("add_stretch", True))
+        scrollable = bool(schema.get("scrollable", True))
+
         main_layout = QVBoxLayout(tab_widget)
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(0)
 
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setFrameShape(QFrame.NoFrame)
-        scroll.setStyleSheet("QScrollArea { background-color: #f5f5f5; border: none; }")
+        if scrollable:
+            scroll = QScrollArea()
+            scroll.setWidgetResizable(True)
+            scroll.setFrameShape(QFrame.NoFrame)
+            scroll.setStyleSheet("QScrollArea { background-color: #f5f5f5; border: none; }")
 
-        scroll_content = QWidget()
-        scroll_content.setStyleSheet("background-color: #f5f5f5;")
+            scroll_content = QWidget()
+            scroll_content.setStyleSheet("background-color: #f5f5f5;")
 
-        page_layout = QVBoxLayout(scroll_content)
-        page_layout.setContentsMargins(12, 12, 12, 12)
-        page_layout.setSpacing(12)
-        self.page_layout = page_layout
+            page_layout = QVBoxLayout(scroll_content)
+            page_layout.setContentsMargins(*[int(v) for v in margins])
+            page_layout.setSpacing(spacing)
+            self.page_layout = page_layout
 
+            self._build_schema_content(page_layout)
+            if add_stretch:
+                page_layout.addStretch()
+
+            scroll.setWidget(scroll_content)
+            main_layout.addWidget(scroll)
+        else:
+            main_layout.setContentsMargins(*[int(v) for v in margins])
+            main_layout.setSpacing(spacing)
+            self.page_layout = main_layout
+
+            self._build_schema_content(main_layout)
+            if add_stretch:
+                main_layout.addStretch()
+
+        self._wire_conditions()
+
+    def _build_schema_content(self, page_layout: QLayout) -> None:
         schema = self.schema
         has_description = "description" in schema
         has_cards       = "cards" in schema
@@ -98,12 +125,6 @@ class UIBuilder(
             self._build_legacy_groups(page_layout)
         else:
             self.build(page_layout)
-
-        page_layout.addStretch()
-
-        scroll.setWidget(scroll_content)
-        main_layout.addWidget(scroll)
-        self._wire_conditions()
 
     def build(self, parent_layout: QLayout) -> None:
         """Populate *parent_layout* from the schema's top-level structure."""

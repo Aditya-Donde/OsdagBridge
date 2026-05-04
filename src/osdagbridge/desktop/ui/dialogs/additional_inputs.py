@@ -41,9 +41,27 @@ def _top_tab_attrs(schema: dict) -> tuple:
 _TOP_TAB_ATTRS = _top_tab_attrs(ADDITIONAL_INPUTS_ORCHESTRATOR_SCHEMA)
 
 _TAB_BAR_STYLE = """
-    QTabWidget::pane { border: 1px solid #C2C7CB; border-radius: 4px; }
-    QTabBar::tab { background: #f0f0f0; border: 1px solid #C2C7CB; padding: 8px 12px; }
-    QTabBar::tab:selected { background: #ffffff; border-bottom-color: #ffffff; }
+    QTabWidget::pane {
+        border: 1px solid #d1d1d1;
+        background-color: #ffffff;
+        border-radius: 4px;
+    }
+    QTabBar::tab {
+        font-weight: 600;
+        font-size: 11px;
+        background: #ffffff;
+        color: #3a3a3a;
+        border: 1px solid #d1d1d1;
+        padding: 8px 14px;
+    }
+    QTabBar::tab:selected {
+        background: #90AF13;
+        color: #ffffff;
+        border: 1px solid #90AF13;
+    }
+    QTabBar::tab:hover:!selected {
+        background: #e8efcf;
+    }
 """
 
 
@@ -149,12 +167,13 @@ class AdditionalInputs(QDialog):
         # every top-level tab via the configured tab-class resolver and binds
         # each one onto self.
         tab_host = QWidget()
+        tab_host.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         UIBuilder(
             owner=self,
             schema=self._orchestrator_schema,
             tab_class_resolver=self._tab_class_resolver,
         ).build_tab(tab_host)
-        content_layout.addWidget(tab_host)
+        content_layout.addWidget(tab_host, 1)
 
         self.tab_widget = tab_host.findChild(QTabWidget, "additional_inputs_tabs")
         if self.tab_widget is not None:

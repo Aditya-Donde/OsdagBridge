@@ -10,6 +10,7 @@ import logging
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
+    QBoxLayout,
     QFrame,
     QGridLayout,
     QGroupBox,
@@ -39,6 +40,13 @@ _log = logging.getLogger(__name__)
 
 class LayoutBuildersMixin:
     """Layout-level builders: panels, cards, sections, rows, columns."""
+
+    def _add_section_widget(self, parent_layout: QLayout, widget: QWidget, section: dict) -> None:
+        stretch = int(section.get("stretch", 0))
+        if isinstance(parent_layout, QBoxLayout):
+            parent_layout.addWidget(widget, stretch)
+        else:
+            parent_layout.addWidget(widget)
 
     def _build_two_panel(self, page_layout: QLayout) -> None:
         """Left input card (3 parts) + right description card (2 parts)."""
@@ -173,30 +181,46 @@ class LayoutBuildersMixin:
         stype = str(section.get("type") or "").strip().lower()
 
         if stype == "checkbox_list":
-            parent_layout.addWidget(self._build_checkbox_list_section(section, label_width))
+            self._add_section_widget(
+                parent_layout, self._build_checkbox_list_section(section, label_width), section
+            )
         elif stype == "custom_vehicle_table":
-            parent_layout.addWidget(self._build_custom_vehicle_table_section(section, label_width))
+            self._add_section_widget(
+                parent_layout,
+                self._build_custom_vehicle_table_section(section, label_width),
+                section,
+            )
         elif stype == "dynamic_checkbox_list":
-            parent_layout.addWidget(self._build_dynamic_checkbox_list_section(section, label_width))
+            self._add_section_widget(
+                parent_layout,
+                self._build_dynamic_checkbox_list_section(section, label_width),
+                section,
+            )
         elif stype == "custom_load_combo_table":
-            parent_layout.addWidget(self._build_custom_load_combo_table_section(section))
+            self._add_section_widget(
+                parent_layout, self._build_custom_load_combo_table_section(section), section
+            )
         elif stype == "cad":
             self._build_cad_section(parent_layout, section)
         elif stype == "cad_row":
             self._build_cad_row_section(parent_layout, section)
         elif stype == "legend":
-            parent_layout.addWidget(self._build_legend_widget(section))
+            self._add_section_widget(parent_layout, self._build_legend_widget(section), section)
         elif stype == "stacked":
             self._build_stacked_section(parent_layout, section, label_width, field_width)
         elif stype == "tab_container":
-            parent_layout.addWidget(self._build_tab_container(section))
+            self._add_section_widget(parent_layout, self._build_tab_container(section), section)
         elif stype == "diagram":
-            parent_layout.addWidget(self._build_diagram_section(section))
+            self._add_section_widget(parent_layout, self._build_diagram_section(section), section)
         elif stype in {"input_group", "computed_group", "output_group", "section_box"}:
-            parent_layout.addWidget(self._make_section_box(section, label_width, field_width))
+            self._add_section_widget(
+                parent_layout, self._make_section_box(section, label_width, field_width), section
+            )
         elif stype in _FIELD_AS_SECTION_TYPES:
-            parent_layout.addWidget(
-                self._build_single_field_section(section, label_width, field_width)
+            self._add_section_widget(
+                parent_layout,
+                self._build_single_field_section(section, label_width, field_width),
+                section,
             )
         else:
             if stype:
@@ -204,7 +228,9 @@ class LayoutBuildersMixin:
                     "UIBuilder[%s]: unknown section type=%r (id=%r) — using section_box fallback",
                     type(self.owner).__name__, stype, section.get("id"),
                 )
-            parent_layout.addWidget(self._make_section_box(section, label_width, field_width))
+            self._add_section_widget(
+                parent_layout, self._make_section_box(section, label_width, field_width), section
+            )
 
     def _build_cards_column(self, parent_layout: QLayout, cards: list) -> None:
         """Stacked card QFrames, each with its own sections."""

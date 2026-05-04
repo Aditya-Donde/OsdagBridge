@@ -6,6 +6,7 @@ out CAD rows / legends.
 import logging
 
 from PySide6.QtWidgets import (
+    QBoxLayout,
     QFrame,
     QHBoxLayout,
     QLabel,
@@ -82,7 +83,11 @@ class CADMixin:
                 _log.warning("UIBuilder[%s]: Failed to set property %r=%r on %s: %s",
                              type(self.owner).__name__, prop, val, type(cad_widget).__name__, e)
 
-        self._apply_cad_sizing(cad_widget, section)
+        cad_sizing = dict(section)
+        if section.get("scrollable"):
+            cad_sizing.pop("max_width", None)
+            cad_sizing.pop("max_height", None)
+        self._apply_cad_sizing(cad_widget, cad_sizing)
 
         bind = section.get("bind")
         if bind:
@@ -144,13 +149,26 @@ class CADMixin:
             scroll.setFrameShape(QFrame.NoFrame)
             scroll.setStyleSheet("QScrollArea { background: transparent; border: none; }")
             scroll.setWidget(cad_widget)
+            try:
+                cad_widget.scroll_area = scroll
+            except Exception:
+                pass
             display_widget = scroll
             min_h = section.get("min_height")
             if min_h:
                 display_widget.setMinimumHeight(int(min_h))
+            max_h = section.get("max_height")
+            if max_h:
+                display_widget.setMaximumHeight(int(max_h))
+            min_w = section.get("min_width")
+            if min_w:
+                display_widget.setMinimumWidth(int(min_w))
+            max_w = section.get("max_width")
+            if max_w:
+                display_widget.setMaximumWidth(int(max_w))
 
         stretch = int(section.get("stretch", 0))
-        if isinstance(parent_layout, QHBoxLayout) and stretch > 0:
+        if isinstance(parent_layout, QBoxLayout):
             parent_layout.addWidget(display_widget, stretch)
         else:
             parent_layout.addWidget(display_widget)
@@ -181,7 +199,11 @@ class CADMixin:
             else:
                 self._dispatch_section(row, item, _DEFAULT_LABEL_WIDTH, _DEFAULT_FIELD_WIDTH)
 
-        parent_layout.addWidget(wrap)
+        stretch = int(section.get("stretch", 0))
+        if isinstance(parent_layout, QBoxLayout):
+            parent_layout.addWidget(wrap, stretch)
+        else:
+            parent_layout.addWidget(wrap)
 
     def _build_legend_widget(self, section: dict) -> QWidget:
         """Build a small color-coded legend box."""
@@ -226,9 +248,24 @@ class CADMixin:
         min_size = section.get("min_size")
         if min_size:
             widget.setMinimumSize(int(min_size[0]), int(min_size[1]))
+        else:
+            min_width = section.get("min_width")
+            min_height = section.get("min_height")
+            if min_width is not None or min_height is not None:
+                widget.setMinimumSize(
+                    int(min_width) if min_width is not None else widget.minimumWidth(),
+                    int(min_height) if min_height is not None else widget.minimumHeight(),
+                )
         max_size = section.get("max_size")
         if max_size:
             widget.setMaximumSize(int(max_size[0]), int(max_size[1]))
+        else:
+            max_width = section.get("max_width")
+            max_height = section.get("max_height")
+            if max_width is not None:
+                widget.setMaximumWidth(int(max_width))
+            if max_height is not None:
+                widget.setMaximumHeight(int(max_height))
         policy_name = str(section.get("size_policy", "expanding")).lower()
         policy = self._SIZE_POLICY_MAP.get(policy_name, QSizePolicy.Expanding)
         widget.setSizePolicy(policy, policy)
