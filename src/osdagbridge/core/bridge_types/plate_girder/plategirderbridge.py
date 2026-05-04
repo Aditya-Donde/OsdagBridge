@@ -2,7 +2,19 @@ from __future__ import annotations
 import sqlite3
 from pathlib import Path
 from .ui_fields import FrontendData
-from .dto import ConcreteProperties, DeckLayoutProperties, GrillageGeometry, SectionProperties, SteelProperties, MaterialProperties, ConcreteProperties
+from .dto import (
+    ConcreteProperties,
+    DeckLayoutProperties,
+    GrillageGeometry,
+    SectionProperties,
+    SteelProperties,
+    MaterialProperties,
+    BridgeParametersDTO,
+    SectionDimsDTO,
+    ISectionDimsDTO,
+    ShearStudParamsDTO,
+    GirderSegmentDTO,
+)
 from .defaults import (
     DEFAULTS_DICT,
     DEFAULT_SPAN_M,
@@ -151,6 +163,9 @@ class PlateGirderBridge:
             if k not in self._BASIC_INPUT_KEYS
         }
 
+        from pprint import pprint
+        pprint(input_dict)
+
     # ─────────────────────────────────────────────────────────────────────────
     # Design pipeline
     # ─────────────────────────────────────────────────────────────────────────
@@ -173,13 +188,35 @@ class PlateGirderBridge:
         self.add_live_loads()
         dataset = self.analyze()
 
+        sp = self.section_props
+        sr = self.sizing_result
         print(
-            f"[PlateGirderBridge.design] "
-            f"span={parsed['span']} m | overall_width={self.sizing_result.overall_width} m | "
-            f"girders={self.sizing_result.no_of_girders} | "
-            f"spacing={self.sizing_result.girder_spacing} m | "
-            f"overhang={self.sizing_result.deck_overhang} m | "
-            f"girder_depth={self.section_props['D']:.3f} m"
+            f"\n{'─'*60}\n"
+            f"  PLATE GIRDER BRIDGE — DESIGN SUMMARY\n"
+            f"{'─'*60}\n"
+            f"  Span                  : {parsed['span']:.1f} m\n"
+            f"  Overall width         : {sr.overall_width:.3f} m\n"
+            f"  No. of girders        : {sr.no_of_girders}\n"
+            f"  Girder spacing        : {sr.girder_spacing * 1e3:.1f} mm\n"
+            f"  Deck overhang         : {sr.deck_overhang * 1e3:.1f} mm\n"
+            f"{'─'*60}\n"
+            f"  GIRDER CROSS-SECTION (all dimensions in mm)\n"
+            f"{'─'*60}\n"
+            f"  Total depth      D    : {sp['D']     * 1e3:.1f}\n"
+            f"  Web depth        d_w  : {sp['d_web'] * 1e3:.1f}\n"
+            f"  Web thickness    t_w  : {sp['t_w']   * 1e3:.1f}\n"
+            f"  Top flange width B_ft : {sp['B_top']   * 1e3:.1f}\n"
+            f"  Top flange thk   T_ft : {sp['t_f_top'] * 1e3:.1f}\n"
+            f"  Bot flange width B_fb : {sp.get('B_bot',   sp['B_top'])   * 1e3:.1f}\n"
+            f"  Bot flange thk   T_fb : {sp.get('t_f_bot', sp['t_f_top']) * 1e3:.1f}\n"
+            f"{'─'*60}\n"
+            f"  SECTION PROPERTIES (SI units)\n"
+            f"{'─'*60}\n"
+            f"  Area   A  : {sp['Area']:.6f} m²\n"
+            f"  I_z       : {sp['I_z']:.6f} m⁴\n"
+            f"  I_y       : {sp['I_y']:.6f} m⁴\n"
+            f"  I_t (J)   : {sp['I_t']:.6f} m³\n"
+            f"{'─'*60}\n"
         )
 
         self._run_dcr_checks(dataset)
@@ -237,6 +274,13 @@ class PlateGirderBridge:
             no_of_girders=DEFAULT_NO_OF_GIRDERS,
             changed_field="girders",
         )
+
+        # Debug print for sizing result
+        print("[DEBUG] Bridge Layout Sizing Result:")
+        print(f"  overall_width = {sizing_result.overall_width} m")
+        print(f"  no_of_girders = {sizing_result.no_of_girders}")
+        print(f"  girder_spacing = {sizing_result.girder_spacing} m")
+        print(f"  deck_overhang = {sizing_result.deck_overhang} m")
 
         symmetry = (
             DEFAULT_GIRDER_SYMMETRY
@@ -687,6 +731,161 @@ class PlateGirderBridge:
         return PlateGirderAnalysisResults(
             dataset=results,
             bridge=self.grillage_model,
+        )
+
+    def get_3d_cad_parameters(self) -> BridgeParametersDTO:
+        """
+        Build a BridgeParametersDTO for 3D CAD rendering.
+
+        Values sourced from:
+        - section_props / sizing_result — girder geometry (populated after design())
+        - basic_inputs  — span, carriageway width, footpath, median, skew angle
+        - additional_inputs — deck thickness
+        Fields not yet exposed through additional inputs default to sensible values.
+
+        Must be called after design() has fully run.
+        """
+        sp = self.section_props
+        sr = self.sizing_result
+
+        # section_props are in SI metres; BridgeParametersDTO expects mm
+        D       = sp["D"]       * 1e3
+        tw      = sp["t_w"]     * 1e3
+        B_top   = sp["B_top"]   * 1e3
+        t_f_top = sp["t_f_top"] * 1e3
+        B_bot   = sp.get("B_bot",   sp["B_top"])   * 1e3   # fallback: symmetric
+        t_f_bot = sp.get("t_f_bot", sp["t_f_top"]) * 1e3   # fallback: symmetric
+
+        span_mm = self._to_float(KEY_SPAN,             DEFAULT_SPAN_M) * 1e3
+        cw_each_way_m = self._to_float(KEY_CARRIAGEWAY_WIDTH, DEFAULT_CARRIAGEWAY_WIDTH_M)
+        skew = self._to_float(KEY_SKEW_ANGLE, 0.0)
+
+        footpath_str   = str(self.basic_inputs.get(KEY_FOOTPATH,       "None")).strip()
+        include_median = str(self.basic_inputs.get(KEY_INCLUDE_MEDIAN, "No")).strip().lower() == "yes"
+
+        if footpath_str in ("None", ""):
+            footpath_config   = "NONE"
+            footpath_width_mm = 0.0
+            railing_width_mm  = 0.0
+        elif "Both" in footpath_str:
+            footpath_config   = "BOTH"
+            footpath_width_mm = DEFAULT_FOOTPATH_WIDTH * 1e3
+            railing_width_mm  = DEFAULT_RAILING_WIDTH  * 1e3
+        else:
+            footpath_config   = "LEFT"
+            footpath_width_mm = DEFAULT_FOOTPATH_WIDTH * 1e3
+            railing_width_mm  = DEFAULT_RAILING_WIDTH  * 1e3
+
+        # geometry.carriageway_width is entered as "Each way" in UI.
+        # For divided carriageway with median, CAD expects total traffic width.
+        cw_m = (2.0 * cw_each_way_m) if include_median else cw_each_way_m
+        cw_mm = cw_m * 1e3
+
+        deck_t_mm = deck_thickness_from_inputs(self.additional_inputs, _DEFAULT_DECK_THICKNESS_MM) * 1e3
+        cross_bracing_mm = DEFAULT_CROSS_BRACING_SPACING * 1e3
+
+        girder_segment = GirderSegmentDTO(
+            length=span_mm,
+            D=D,
+            tw=tw,
+            T_ft=t_f_top,
+            T_fb=t_f_bot,
+            B_ft=B_top,
+            B_fb=B_bot,
+        )
+
+        _angle_dims = SectionDimsDTO(leg_h=100, leg_w=50, connection_type="LONGER_LEG")
+        _small_dims = SectionDimsDTO(leg_h=80,  leg_w=40, connection_type="LONGER_LEG")
+
+        return BridgeParametersDTO(
+            # --- Girder ---
+            span_length_L=span_mm,
+            girder_section_d=D,
+            girder_section_bf=B_top,
+            girder_section_bf_b=B_bot,
+            girder_section_tf=t_f_top,
+            girder_section_tf_b=t_f_bot,
+            girder_section_tw=tw,
+            num_girders=sr.no_of_girders,
+            girder_spacing=sr.girder_spacing * 1e3,
+            # --- Geometry ---
+            skew_angle=skew,
+            # --- Deck ---
+            carriageway_width=cw_mm,
+            deck_thickness=deck_t_mm,
+            footpath_config=footpath_config,
+            footpath_width=footpath_width_mm,
+            railing_width=railing_width_mm,
+            # --- Crash barrier (defaults until additional inputs wired) ---
+            barrier_type="Rigid",
+            crash_barrier_subtype="IRC-5R",
+            # --- Median ---
+            enable_median=include_median,
+            median_type="Metallic Crash Barrier",
+            # --- Railing (defaults) ---
+            rail_count=3,
+            railing_type="rcc",
+            # --- Intermediate stiffeners (defaults) ---
+            include_intermediate_stiffeners=True,
+            intermediate_stiffener_spacing=cross_bracing_mm / 2,
+            intermediate_stiffener_thickness=20.0,
+            intermediate_stiffener_outstand=None,
+            # --- End stiffeners (defaults) ---
+            num_end_stiffener_pairs=4,
+            end_stiffener_thickness=30.0,
+            end_stiffener_outstand=None,
+            # --- Longitudinal stiffeners (defaults) ---
+            include_longitudinal_stiffeners=False,
+            num_longitudinal_stiffeners=0,
+            longitudinal_stiffener_thickness=20.0,
+            longitudinal_stiffener_outstand=None,
+            # --- Cross bracing ---
+            cross_bracing_spacing=cross_bracing_mm,
+            bracing_type="X",
+            x_bracket_option="BOTH",
+            k_top_bracket=True,
+            diagonal_section_type="ANGLE",
+            diagonal_section_dims=_angle_dims,
+            diagonal_thickness=8.0,
+            top_chord_section_type="DOUBLE_CHANNEL",
+            top_chord_section_dims=_small_dims,
+            top_chord_thickness=8.0,
+            bottom_chord_section_type="ANGLE",
+            bottom_chord_section_dims=_small_dims,
+            bottom_chord_thickness=8.0,
+            # --- End diaphragm ---
+            end_diaphragm_type="Cross Bracing",
+            end_diaphragm_spacing=200,
+            end_diaphragm_bracing_type="X",
+            end_diaphragm_diagonal_section_type="ANGLE",
+            end_diaphragm_diagonal_section_dims=_angle_dims,
+            end_diaphragm_diagonal_thickness=8.0,
+            end_diaphragm_top_chord_section_type="CHANNEL",
+            end_diaphragm_top_chord_section_dims=_small_dims,
+            end_diaphragm_top_chord_thickness=8.0,
+            end_diaphragm_bottom_chord_section_type="ANGLE",
+            end_diaphragm_bottom_chord_section_dims=_small_dims,
+            end_diaphragm_bottom_chord_thickness=8.0,
+            end_diaphragm_section="I_SECTION",
+            end_diaphragm_dims=ISectionDimsDTO(
+                depth=D * 0.6,
+                flange_width=B_top,
+                web_thickness=tw,
+                flange_thickness=t_f_top,
+            ),
+            # --- Shear studs (defaults) ---
+            shear_stud_params=ShearStudParamsDTO(
+                base_diameter=50,
+                top_diameter=70,
+                base_height=100,
+                top_height=20,
+                num_per_section=3,
+                transverse_spacing=305,
+                pitch=500,
+            ),
+            # --- Girder segments (single uniform segment) ---
+            girder_segments=[girder_segment],
+            girder_segments_dict={},
         )
 
     def build_graph_engine(

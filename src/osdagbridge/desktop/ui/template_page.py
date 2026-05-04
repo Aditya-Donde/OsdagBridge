@@ -19,129 +19,7 @@ from osdagbridge.desktop.ui.cad_3d import CAD3DWindow
 from osdagbridge.core.bridge_types.plate_girder.ui_fields import FrontendData
 from osdagbridge.core.bridge_types.plate_girder.defaults import DEFAULTS_DICT
 from osdagbridge.core.utils.common import *
-from osdagbridge.core.bridge_types.plate_girder.dto import(
-    BridgeParametersDTO,
-    SectionDimsDTO,
-    ISectionDimsDTO,
-    ShearStudParamsDTO,
-    GirderSegmentDTO,
-)
 from osdagbridge.desktop.ui.utils.custom_widgets import ToolBarWidget
-
-'''
-Temporary DTO and will be removed once the backend is connected
-'''
-bridge_parameters = BridgeParametersDTO(
-        # --- Girder ---
-        span_length_L=25_000,
-        girder_section_d=900,
-        girder_section_bf=500,
-        girder_section_bf_b=500,
-        girder_section_tf=260,
-        girder_section_tf_b=260,
-        girder_section_tw=100,
-        num_girders=5,
-        girder_spacing=2_750,
-
-        # --- Geometry ---
-        skew_angle=0,
-
-        # --- Deck ---
-        carriageway_width=12_000,
-        deck_thickness=400,
-        footpath_config="BOTH",
-        footpath_width=1_500,
-        railing_width=300,
-
-        # --- Crash Barrier ---
-        barrier_type="Semi-Rigid",
-        crash_barrier_subtype="Double W-beam",
-
-        # --- Median ---
-        enable_median=True,
-        median_type="Metallic Crash Barrier",
-
-        # --- Railing ---
-        rail_count=3,
-        railing_type="rcc",
-
-        # --- Intermediate Stiffeners ---
-        include_intermediate_stiffeners=True,
-        intermediate_stiffener_spacing=2_000,
-        intermediate_stiffener_thickness=20,
-        intermediate_stiffener_outstand=None,
-
-        # --- End Stiffeners ---
-        num_end_stiffener_pairs=4,
-        end_stiffener_thickness=30,
-        end_stiffener_outstand=None,
-
-        # --- Longitudinal Stiffeners ---
-        include_longitudinal_stiffeners=True,
-        num_longitudinal_stiffeners=2,
-        longitudinal_stiffener_thickness=20,
-        longitudinal_stiffener_outstand=None,
-
-        # --- Cross Bracing ---
-        cross_bracing_spacing=4_000,
-        bracing_type="X",
-        x_bracket_option="BOTH",
-        k_top_bracket=True,
-
-        diagonal_section_type="ANGLE",
-        diagonal_section_dims=SectionDimsDTO(leg_h=100, leg_w=50, connection_type="LONGER_LEG"),
-        diagonal_thickness=5,
-
-        top_chord_section_type="DOUBLE_CHANNEL",
-        top_chord_section_dims=SectionDimsDTO(leg_h=80, leg_w=40, connection_type="LONGER_LEG"),
-        top_chord_thickness=5,
-
-        bottom_chord_section_type="ANGLE",
-        bottom_chord_section_dims=SectionDimsDTO(leg_h=80, leg_w=40, connection_type="LONGER_LEG"),
-        bottom_chord_thickness=5,
-
-        # --- End Diaphragm ---
-        end_diaphragm_type="Cross Bracing",
-        end_diaphragm_spacing=100,
-        end_diaphragm_bracing_type="K",
-
-        end_diaphragm_diagonal_section_type="ANGLE",
-        end_diaphragm_diagonal_section_dims=SectionDimsDTO(leg_h=100, leg_w=50, connection_type="LONGER_LEG"),
-        end_diaphragm_diagonal_thickness=5,
-
-        end_diaphragm_top_chord_section_type="CHANNEL",
-        end_diaphragm_top_chord_section_dims=SectionDimsDTO(leg_h=80, leg_w=40, connection_type="LONGER_LEG"),
-        end_diaphragm_top_chord_thickness=5,
-
-        end_diaphragm_bottom_chord_section_type="ANGLE",
-        end_diaphragm_bottom_chord_section_dims=SectionDimsDTO(leg_h=80, leg_w=40, connection_type="LONGER_LEG"),
-        end_diaphragm_bottom_chord_thickness=5,
-
-        end_diaphragm_section="I_SECTION",
-        end_diaphragm_dims=ISectionDimsDTO(depth=800, flange_width=250, web_thickness=12, flange_thickness=100),
-
-        shear_stud_params=ShearStudParamsDTO(
-            base_diameter=50,
-            top_diameter=70,
-            base_height=150,
-            top_height=50,
-            num_per_section=4,
-            transverse_spacing=305,
-            pitch=500,
-        ),
-        girder_segments=[
-            GirderSegmentDTO(
-                length=25_000,
-                D=900,
-                tw=100,
-                T_ft=260,
-                T_fb=260,
-                B_ft=500,
-                B_fb=500,
-            )
-        ],
-        girder_segments_dict=None,
-    )
 
 
 class CustomWindow(QWidget):
@@ -554,7 +432,7 @@ class CustomWindow(QWidget):
             self.plots_widget.link_output_dock(self.output_dock)
 
             # Render 3D cad using the parameters from Backend
-            self.cad_3d_widget.render_3d_cad(bridge_parameters)
+            self.cad_3d_widget.render_3d_cad(self.backend.get_3d_cad_parameters())
 
             # Close-loading-popup---------------------------------------------
             self._finish_loading()
