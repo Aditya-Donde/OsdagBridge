@@ -38,7 +38,7 @@ from osdagbridge.core.utils.common import (
 from osdagbridge.desktop.ui.utils.custom_buttons import DockCustomButton
 from osdagbridge.desktop.ui.docks.dock_utils import apply_field_style
 from osdagbridge.desktop.ui.utils.custom_widgets import RichCheckBox, PercentBarWidget, CustomRadioButton
-
+from osdagbridge.desktop.ui.dialogs.generate_results_dialog import GenerateResultsDialog
 
 # ── Styles ────────────────────────────────────────────────────────────────────
 
@@ -182,6 +182,7 @@ class OutputDock(QWidget):
 
         results_btn = DockCustomButton("Generate Results Table", ":/vectors/design_report.svg")
         results_btn.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        results_btn.clicked.connect(self.open_generate_results_dialog)
         btn_layout.addWidget(results_btn)
 
         report_btn = DockCustomButton("Generate Report", ":/vectors/design_report.svg")
@@ -613,3 +614,9 @@ class OutputDock(QWidget):
             if cb.text() == label:
                 # Use a lambda to absorb the boolean argument and call the callback
                 cb.toggled.connect(lambda _: callback())
+    def open_generate_results_dialog(self):
+        """
+        Open Generate Results Table dialog
+        """
+        dlg = GenerateResultsDialog()
+        dlg.exec()
