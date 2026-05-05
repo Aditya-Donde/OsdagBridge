@@ -480,26 +480,75 @@ class MplPlotWidget(QWidget):
     def eventFilter(self, obj, event):
         if obj is self._canvas and event.type() == QEvent.Type.Wheel:
             event.accept() 
+            
+            # 1. Capture the exact mouse position BEFORE zooming
+            pos = event.position()
+            mouse_x, mouse_y = pos.x(), pos.y()
+            
+            old_width = self._canvas.width()
+            old_height = self._canvas.height()
+
+            # 2. Calculate the zoom
             delta = event.angleDelta().y()
             if delta > 0:
-                # Zoom IN: Changed from 1.15 to 1.05 for smoother scrolling
-                self._zoom_scale = min(self._zoom_scale * 1.05, 8.0) 
+                self._zoom_scale = min(self._zoom_scale * 1.05, 8.0) # Zoom IN
             else:
-                # Zoom OUT: Changed from 0.85 to 0.95 for smoother scrolling
-                self._zoom_scale = max(self._zoom_scale * 0.95, 1.0) 
+                self._zoom_scale = max(self._zoom_scale * 0.95, 1.0) # Zoom OUT
+                
             self._apply_zoom()
+
+            # 3. Calculate how much the canvas grew/shrank
+            new_width = self._canvas.width()
+            new_height = self._canvas.height()
+
+            if old_width == 0 or old_height == 0: return True
+
+            # 4. Smart Scrollbar Math: Shift the view to keep the mouse anchored!
+            h_bar = self._scroll_area.horizontalScrollBar()
+            v_bar = self._scroll_area.verticalScrollBar()
+
+            new_x = (mouse_x / old_width) * new_width
+            new_y = (mouse_y / old_height) * new_height
+
+            h_bar.setValue(int(h_bar.value() + (new_x - mouse_x)))
+            v_bar.setValue(int(v_bar.value() + (new_y - mouse_y)))
+
             return True   
         return super().eventFilter(obj, event)
 
-    def _zoom_in(self):
-        # You can keep the buttons at 1.15 if you want faster clicking, 
-        # or change them to 1.05 to match the smooth scroll wheel!
-        self._zoom_scale = min(self._zoom_scale * 1.05, 8.0)
+    def _zoom_step(self, factor):
+        """Helper to keep zoom centered on the screen when clicking +/- buttons."""
+        viewport = self._scroll_area.viewport()
+        h_bar = self._scroll_area.horizontalScrollBar()
+        v_bar = self._scroll_area.verticalScrollBar()
+
+        # Find the center of the visible screen
+        center_x = h_bar.value() + viewport.width() / 2.0
+        center_y = v_bar.value() + viewport.height() / 2.0
+
+        old_width = self._canvas.width()
+        old_height = self._canvas.height()
+
+        self._zoom_scale = max(1.0, min(self._zoom_scale * factor, 8.0))
         self._apply_zoom()
 
+        new_width = self._canvas.width()
+        new_height = self._canvas.height()
+        
+        if old_width == 0 or old_height == 0: return
+
+        # Push the scrollbars to keep the screen perfectly centered
+        new_center_x = (center_x / old_width) * new_width
+        new_center_y = (center_y / old_height) * new_height
+
+        h_bar.setValue(int(new_center_x - viewport.width() / 2.0))
+        v_bar.setValue(int(new_center_y - viewport.height() / 2.0))
+
+    def _zoom_in(self):
+        self._zoom_step(1.15) # Click zooms are slightly faster than scroll wheel
+
     def _zoom_out(self):
-        self._zoom_scale = max(self._zoom_scale * 0.95, 1.0)
-        self._apply_zoom()
+        self._zoom_step(0.85)
 
     def _zoom_reset(self):
         self._zoom_scale = 1.0
