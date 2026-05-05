@@ -1,10 +1,9 @@
-
 import math
 import json
 from pathlib import Path
 from functools import lru_cache
 from PySide6.QtWidgets import QWidget
-from PySide6.QtCore import Qt, Signal, QPoint, QPointF, QRect, QRectF, QUrl
+from PySide6.QtCore import Qt, Signal, QPoint, QPointF, QRect, QRectF, QUrl, QStandardPaths
 from PySide6.QtGui import QPainter, QPixmap, QImage, QBrush, QColor, QPen, QMouseEvent, QWheelEvent, QPainterPath
 from PySide6.QtNetwork import QNetworkAccessManager, QNetworkRequest, QNetworkDiskCache, QNetworkReply
 
@@ -12,6 +11,10 @@ from PySide6.QtNetwork import QNetworkAccessManager, QNetworkRequest, QNetworkDi
 _DATA_DIR = Path(__file__).resolve().parent.parent.parent.parent / "core" / "data" / "project_location"
 SEISMIC_ZONE_IMAGE = _DATA_DIR / "seismic.png"
 WIND_ZONE_IMAGE = _DATA_DIR / "wind.png"
+
+# Proper temp folder for cache handling
+temp_dir = Path(QStandardPaths.writableLocation(QStandardPaths.TempLocation)) / "osdag_map_cache"
+temp_dir.mkdir(parents=True, exist_ok=True)
 
 # India bounding box (approximate) for overlay alignment
 # These are the geographic bounds the overlay images represent
@@ -50,7 +53,7 @@ class NativeMapWidget(QWidget):
         # Network Manager for fetching tiles
         self.manager = QNetworkAccessManager(self)
         self.cache = QNetworkDiskCache(self)
-        self.cache.setCacheDirectory("osdag_map_cache")
+        self.cache.setCacheDirectory(str(temp_dir))
         self.cache.setMaximumCacheSize(50 * 1024 * 1024) # 50 MB
         self.manager.setCache(self.cache)
         

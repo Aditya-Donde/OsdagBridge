@@ -649,6 +649,7 @@ class ProjectLocationDialog(QDialog):
             self.district_combo.setEnabled(False)
             self.map_view.setEnabled(True)
             self.irc_title_label.setText("IRC 6 (2017) Values:")
+            self.boundary_overlay_checkbox.setChecked(False)
         elif method == "custom_data" and self.method_custom_data.isChecked():
             self.method_stack.setCurrentIndex(2)
             self.code_widget.setVisible(False)
