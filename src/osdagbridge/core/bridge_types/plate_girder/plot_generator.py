@@ -394,7 +394,7 @@ def build_figure_grillage(nodes, members, edge_dist=0.0):
     # Force the 3D plot to use the maximum available canvas space
     # Dedicate 18% of the right side purely to the massive axis labels.
     # This naturally shoves the 3D bridge perfectly into the center of the screen!
-    fig.subplots_adjust(left=0.05, right=0.88, bottom=0.05, top=0.90)
+    # fig.subplots_adjust(left=0.05, right=0.88, bottom=0.05, top=0.90)
     return fig
 
 
@@ -577,7 +577,7 @@ def build_figure_sfd(ds, force_key, nodes, members, edge_dist=0.0):
     # Force the 3D plot to use the maximum available canvas space
     # Dedicate 18% of the right side purely to the massive axis labels.
     # This naturally shoves the 3D bridge perfectly into the center of the screen!
-    fig.subplots_adjust(left=0.05, right=0.88, bottom=0.05, top=0.90)
+    # fig.subplots_adjust(left=0.05, right=0.88, bottom=0.05, top=0.90)
     _add_coordinate_triad(ax, nodes)
     return fig
 
@@ -770,7 +770,6 @@ def build_figure_bmd(ds, force_key, nodes, members, edge_dist=0.0):
     # Force the 3D plot to use the maximum available canvas space
     # Dedicate 18% of the right side purely to the massive axis labels.
     # This naturally shoves the 3D bridge perfectly into the center of the screen!
-    fig.subplots_adjust(left=0.05, right=0.88, bottom=0.05, top=0.90)
     _add_coordinate_triad(ax, nodes)
     return fig, summary_data
 
@@ -920,7 +919,7 @@ def build_figure_bmd_contour(ds, force_key, nodes, members, edge_dist=0.0):
     # Force the 3D plot to use the maximum available canvas space
     # Dedicate 18% of the right side purely to the massive axis labels.
     # This naturally shoves the 3D bridge perfectly into the center of the screen!
-    fig.subplots_adjust(left=0.05, right=0.88, bottom=0.05, top=0.90)
+    # fig.subplots_adjust(left=0.05, right=0.88, bottom=0.05, top=0.90)
     return fig
 
 
@@ -1122,7 +1121,7 @@ def build_figure_deflection(ds, disp_key, nodes, members, edge_dist=0.0):
     # Force the 3D plot to use the maximum available canvas space
     # Dedicate 18% of the right side purely to the massive axis labels.
     # This naturally shoves the 3D bridge perfectly into the center of the screen!
-    fig.subplots_adjust(left=0.05, right=0.88, bottom=0.05, top=0.90)
+    # fig.subplots_adjust(left=0.05, right=0.88, bottom=0.05, top=0.90)
     _add_coordinate_triad(ax, nodes)
     return fig
 

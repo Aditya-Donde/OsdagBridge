@@ -202,6 +202,7 @@ class MplPlotWidget(QWidget):
         self._btn_grid.setFocusPolicy(Qt.NoFocus)
         self._btn_grid.setStyleSheet(btn_style)
         self._btn_grid.toggled.connect(self._on_grid_toggled)
+        self._canvas.mpl_connect('scroll_event', self._on_scroll)
 
         toolbar_row = QHBoxLayout()
         toolbar_row.setContentsMargins(4, 2, 4, 2)
@@ -323,6 +324,10 @@ class MplPlotWidget(QWidget):
                 self._summary_overlay.raise_()
         else:
             self._summary_overlay.hide()
+        
+        if self._fig:
+            # Strip margins globally before handing the figure to the canvas
+            self._fig.subplots_adjust(left=0.0, right=1.0, bottom=0.0, top=1.0)
         
         self._fit_figure_to_canvas()
         self._canvas.draw()
@@ -484,82 +489,87 @@ class MplPlotWidget(QWidget):
             self._canvas.setFixedSize(int(base_w * self._zoom_scale), int(base_h * self._zoom_scale))
         self._canvas.draw_idle()
 
-    def eventFilter(self, obj, event):
-        if obj is self._canvas and event.type() == QEvent.Type.Wheel:
-            event.accept() 
+    # def eventFilter(self, obj, event):
+    #     if obj is self._canvas and event.type() == QEvent.Type.Wheel:
+    #         event.accept() 
             
-            # 1. Capture the exact mouse position BEFORE zooming
-            pos = event.position()
-            mouse_x, mouse_y = pos.x(), pos.y()
+    #         # 1. Capture the exact mouse position BEFORE zooming
+    #         pos = event.position()
+    #         mouse_x, mouse_y = pos.x(), pos.y()
             
-            old_width = self._canvas.width()
-            old_height = self._canvas.height()
+    #         old_width = self._canvas.width()
+    #         old_height = self._canvas.height()
 
-            # 2. Calculate the zoom
-            delta = event.angleDelta().y()
-            if delta > 0:
-                self._zoom_scale = min(self._zoom_scale * 1.05, 8.0) # Zoom IN
-            else:
-                self._zoom_scale = max(self._zoom_scale * 0.95, 1.0) # Zoom OUT
+    #         # 2. Calculate the zoom
+    #         delta = event.angleDelta().y()
+    #         if delta > 0:
+    #             self._zoom_scale = min(self._zoom_scale * 1.05, 8.0) # Zoom IN
+    #         else:
+    #             self._zoom_scale = max(self._zoom_scale * 0.95, 1.0) # Zoom OUT
                 
-            self._apply_zoom()
+    #         self._apply_zoom()
 
-            # 3. Calculate how much the canvas grew/shrank
-            new_width = self._canvas.width()
-            new_height = self._canvas.height()
+    #         # 3. Calculate how much the canvas grew/shrank
+    #         new_width = self._canvas.width()
+    #         new_height = self._canvas.height()
 
-            if old_width == 0 or old_height == 0: return True
+    #         if old_width == 0 or old_height == 0: return True
 
-            # 4. Smart Scrollbar Math: Shift the view to keep the mouse anchored!
-            h_bar = self._scroll_area.horizontalScrollBar()
-            v_bar = self._scroll_area.verticalScrollBar()
+    #         # 4. Smart Scrollbar Math: Shift the view to keep the mouse anchored!
+    #         h_bar = self._scroll_area.horizontalScrollBar()
+    #         v_bar = self._scroll_area.verticalScrollBar()
 
-            new_x = (mouse_x / old_width) * new_width
-            new_y = (mouse_y / old_height) * new_height
+    #         new_x = (mouse_x / old_width) * new_width
+    #         new_y = (mouse_y / old_height) * new_height
 
-            h_bar.setValue(int(h_bar.value() + (new_x - mouse_x)))
-            v_bar.setValue(int(v_bar.value() + (new_y - mouse_y)))
+    #         h_bar.setValue(int(h_bar.value() + (new_x - mouse_x)))
+    #         v_bar.setValue(int(v_bar.value() + (new_y - mouse_y)))
 
-            return True   
-        return super().eventFilter(obj, event)
+    #         return True   
+    #     return super().eventFilter(obj, event)
 
     def _zoom_step(self, factor):
-        """Helper to keep zoom centered on the screen when clicking +/- buttons."""
-        viewport = self._scroll_area.viewport()
-        h_bar = self._scroll_area.horizontalScrollBar()
-        v_bar = self._scroll_area.verticalScrollBar()
-
-        # Find the center of the visible screen
-        center_x = h_bar.value() + viewport.width() / 2.0
-        center_y = v_bar.value() + viewport.height() / 2.0
-
-        old_width = self._canvas.width()
-        old_height = self._canvas.height()
-
-        self._zoom_scale = max(1.0, min(self._zoom_scale * factor, 8.0))
-        self._apply_zoom()
-
-        new_width = self._canvas.width()
-        new_height = self._canvas.height()
+        """Natively zooms the Matplotlib 3D camera by scaling the axis limits."""
+        if not hasattr(self, '_fig') or not self._fig or not self._fig.axes:
+            return
+            
+        ax = self._fig.axes[0]
         
-        if old_width == 0 or old_height == 0: return
-
-        # Push the scrollbars to keep the screen perfectly centered
-        new_center_x = (center_x / old_width) * new_width
-        new_center_y = (center_y / old_height) * new_height
-
-        h_bar.setValue(int(new_center_x - viewport.width() / 2.0))
-        v_bar.setValue(int(new_center_y - viewport.height() / 2.0))
+        # 1. Get current boundaries
+        x0, x1 = ax.get_xlim()
+        y0, y1 = ax.get_ylim()
+        z0, z1 = ax.get_zlim()
+        
+        # 2. Find the exact center of the current view
+        xc, yc, zc = (x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2
+        
+        # 3. Scale the ranges by the zoom factor
+        xr, yr, zr = (x1 - x0) * factor, (y1 - y0) * factor, (z1 - z0) * factor
+        
+        # 4. Apply the new narrowed/widened limits
+        ax.set_xlim(xc - xr / 2, xc + xr / 2)
+        ax.set_ylim(yc - yr / 2, yc + yr / 2)
+        ax.set_zlim(zc - zr / 2, zc + zr / 2)
+        
+        self._canvas.draw_idle()
 
     def _zoom_in(self):
-        self._zoom_step(1.15) # Click zooms are slightly faster than scroll wheel
+        # 85% of current view size (zooms in)
+        self._zoom_step(0.85) 
 
     def _zoom_out(self):
-        self._zoom_step(0.85)
-
+        # 115% of current view size (zooms out)
+        self._zoom_step(1.15) 
+    def _on_scroll(self, event):
+        """Native Matplotlib scroll wheel support."""
+        if event.button == 'up':
+            self._zoom_step(0.85)  # Scroll wheel up = Zoom in
+        elif event.button == 'down':
+            self._zoom_step(1.15)  # Scroll wheel down = Zoom out
+        
     def _zoom_reset(self):
-        self._zoom_scale = 1.0
-        self._apply_zoom()
+        # The safest and cleanest way to reset is just to re-trigger the plot update!
+        self.update_plot()
 
     def _current_loadcase(self) -> str:
         combo = self._output_dock.output_widget.findChild(
