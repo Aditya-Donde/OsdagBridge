@@ -5,6 +5,7 @@ import matplotlib
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
 from matplotlib.ticker import FuncFormatter
+from matplotlib.ticker import MaxNLocator
 import numpy as np
 import openseespy.opensees as ops
 from mpl_toolkits.mplot3d.art3d import Line3DCollection
@@ -555,6 +556,7 @@ def build_figure_sfd(ds, force_key, nodes, members, edge_dist=0.0):
     ax.set_xlabel("Span Length (m)", fontsize=10, labelpad=8)
     ax.set_ylabel("Bridge Width (m)", fontsize=10, labelpad=8)
     ax.set_zlabel(f"{disp_key} (kN)", fontsize=10, labelpad=8)
+    ax.yaxis.set_major_locator(MaxNLocator(nbins=4, steps=[1, 2, 2.5, 5, 10]))
     ax.set_title(f"Shear Force Diagram  —  {disp_key}", fontsize=12, fontweight="bold", pad=12)
     ax.view_init(elev=DEFAULT_ELEV, azim=DEFAULT_AZIM)
     ax.xaxis.pane.fill = False
@@ -747,6 +749,7 @@ def build_figure_bmd(ds, force_key, nodes, members, edge_dist=0.0):
     ax.set_ylabel("Bridge Width (m)", fontsize=10, labelpad=8)
     ax.set_zlabel(f"{disp_key} (kNm)", fontsize=10, labelpad=8)
     ax.zaxis.set_major_formatter(FuncFormatter(lambda val, pos: f"{abs(val):g}"))
+    ax.yaxis.set_major_locator(MaxNLocator(nbins=4, steps=[1, 2, 2.5, 5, 10]))
     ax.set_title(f"Bending Moment Diagram  —  {disp_key}", fontsize=12, fontweight="bold", pad=12)
     ax.view_init(elev=DEFAULT_ELEV, azim=DEFAULT_AZIM)
     ax.xaxis.pane.fill = False
@@ -1098,6 +1101,7 @@ def build_figure_deflection(ds, disp_key, nodes, members, edge_dist=0.0):
     ax.set_xlabel("Span Length (m)", fontsize=10, labelpad=8)
     ax.set_ylabel("Bridge Width (m)", fontsize=10, labelpad=8)
     ax.set_zlabel(f"{disp_label} (mm)", fontsize=10, labelpad=8)
+    ax.yaxis.set_major_locator(MaxNLocator(nbins=4, steps=[1, 2, 2.5, 5, 10]))
     ax.set_title(f"Deflection Diagram  —  {disp_label}", fontsize=12, fontweight="bold", pad=12)
     ax.view_init(elev=DEFAULT_ELEV, azim=DEFAULT_AZIM)
     ax.xaxis.pane.fill = False
