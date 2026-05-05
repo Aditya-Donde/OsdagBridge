@@ -657,14 +657,16 @@ def build_figure_bmd(ds, force_key, nodes, members, edge_dist=0.0):
                 color="#FF4136", linewidth=1.5, linestyle="--", zorder=3, gid="max_line")
         # Bold Dark Grey Text
         ax.text(xs[idx_max], z_base, y_plot[idx_max],
-                f" {-Mz[idx_max]:.2f}", color="#333333", fontsize=8, fontweight="bold", zorder=6, gid="max_line")
+                f" {-Mz[idx_max]:.2f}", color="#333333", fontsize=8, fontweight="bold", zorder=6, gid="max_line", 
+                bbox=dict(facecolor='white', edgecolor='none', alpha=0.85, pad=1.0))
 
         # Min line (Dashed, Tagged for toggling)
         idx_min = int(np.argmin(Mz))
         ax.plot([xs[idx_min], xs[idx_min]], [z_base, z_base], [0, y_plot[idx_min]],
                 color="#0074D9", linewidth=1.5, linestyle="--", zorder=3, gid="min_line")
         ax.text(xs[idx_min], z_base, y_plot[idx_min],
-                f" {-Mz[idx_min]:.2f}", color="#333333", fontsize=8, fontweight="bold", zorder=6, gid="min_line")
+                f" {-Mz[idx_min]:.2f}", color="#333333", fontsize=8, fontweight="bold", zorder=6, gid="min_line",
+                bbox=dict(facecolor='white', edgecolor='none', alpha=0.85, pad=1.0))
 
         # 'All' values annotations (Slightly lighter grey, Tagged for toggling)
         for xi, yi, mzi in zip(xs, y_plot, Mz):

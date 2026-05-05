@@ -257,22 +257,23 @@ class MplPlotWidget(QWidget):
             rb.setChecked(rb.text() == _DEFAULT_FORCE_LABEL)
             rb.toggled.connect(self.update_plot)
 
-        # 3. BULLETPROOF NATIVE QT CONNECTION FOR CHECKBOXES
+        # Create placeholders to store the checkboxes
+        self._cb_max = None
+        self._cb_min = None
+
         for cb in output_dock.output_widget.findChildren(QCheckBox):
             text = cb.text().strip().lower()
-            
             if "summary" in text:
                 cb.toggled.connect(self._on_summary_toggled)
                 self._is_summary_checked = cb.isChecked()
-                
             elif "max" in text:
+                self._cb_max = cb  # Store the reference
                 cb.toggled.connect(self._on_max_toggled)
                 self._show_max = cb.isChecked()
-                
             elif "min" in text:
+                self._cb_min = cb  # Store the reference
                 cb.toggled.connect(self._on_min_toggled)
                 self._show_min = cb.isChecked()
-                
             elif "all" in text:
                 cb.toggled.connect(self._on_all_vals_toggled)
                 self._show_all_vals = cb.isChecked()
@@ -350,6 +351,13 @@ class MplPlotWidget(QWidget):
 
     def _on_all_vals_toggled(self, checked):
         self._show_all_vals = checked
+        
+        # Disable the Max and Min checkboxes when "All" is active
+        if self._cb_max:
+            self._cb_max.setEnabled(not checked)
+        if self._cb_min:
+            self._cb_min.setEnabled(not checked)
+            
         self._apply_annotation_visibility()
         self._canvas.draw_idle()
 
@@ -430,19 +438,18 @@ class MplPlotWidget(QWidget):
                     text.set_visible(self._show_axis)
 
     def _apply_annotation_visibility(self):
-        """Toggles the visibility of Max, Min, and All lines and text annotations."""
         for ax in self._fig.axes:
             for line in ax.lines:
-                if line.get_gid() == "max_line":
-                    line.set_visible(self._show_max)
-                elif line.get_gid() == "min_line":
-                    line.set_visible(self._show_min)
+                if line.get_gid() == "max_line": 
+                    line.set_visible(self._show_max or self._show_all_vals)
+                elif line.get_gid() == "min_line": 
+                    line.set_visible(self._show_min or self._show_all_vals)
             for text in ax.texts:
-                if text.get_gid() == "max_line":
-                    text.set_visible(self._show_max)
-                elif text.get_gid() == "min_line":
-                    text.set_visible(self._show_min)
-                elif text.get_gid() == "all_vals":
+                if text.get_gid() == "max_line": 
+                    text.set_visible(self._show_max or self._show_all_vals)
+                elif text.get_gid() == "min_line": 
+                    text.set_visible(self._show_min or self._show_all_vals)
+                elif text.get_gid() == "all_vals": 
                     text.set_visible(self._show_all_vals)
 
     def _apply_grid_visibility(self):
