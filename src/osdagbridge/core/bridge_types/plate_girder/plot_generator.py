@@ -164,39 +164,67 @@ def _add_grillage_background(ax, nodes, members, x_tol=3, z_tol=3):
 
 
 def _add_coordinate_triad(ax, nodes, scale=0.12):
-    """Draw X / Y / Z arrows and labels with professional, distortion-free CAD aesthetics."""
+    """Draw X/Y/Z axes with 3D pyramid arrowheads and locked boundaries."""
     xs = [c[0] for c in nodes.values()]
-    ys = [c[1] for c in nodes.values()]
     zs = [c[2] for c in nodes.values()]
-
-    span = max(max(xs) - min(xs), max(zs) - min(zs)) or 5000
-    L = span * scale
-
+    
     ox, oy, oz = min(xs), 0, min(zs)
-
-    # Deeper, high-contrast CAD colors
-    # Professional Non-Clashing Palette: Deep Orange (X), Purple (Y), Teal (Z)
-    colors = {"X": "#E65100", "Y": "#0097A7", "Z": "#6A1B9A"}
+    colors = {"X": "#E65100", "Y": "#6A1B9A", "Z": "#0097A7"}
     tag = "coord_triad" 
 
-    # Add a bold origin anchor dot
     ax.scatter([ox], [oz], [oy], color="#333333", s=40, zorder=6, gid=tag)
 
-    # X-Axis (Span)
-    ax.plot([ox, ox + L], [oz, oz], [oy, oy], color=colors["X"], linewidth=2.5, zorder=5, gid=tag)
-    ax.scatter([ox + L], [oz], [oy], color=colors["X"], marker='>', s=50, zorder=6, gid=tag, depthshade=False)
-    ax.text(ox + L * 1.25, oz, oy, "X", color=colors["X"], fontsize=10, fontweight="bold", zorder=6, gid=tag)
+    # 1. Capture exact current limits to lock the visual screen space
+    xlim = ax.get_xlim()
+    ylim = ax.get_ylim()
+    zlim = ax.get_zlim()
+    
+    xr = abs(xlim[1] - xlim[0])
+    yr = abs(ylim[1] - ylim[0])
+    zr = abs(zlim[1] - zlim[0])
 
-    # Z-Axis (Transverse width)
-    ax.plot([ox, ox], [oz, oz + L], [oy, oy], color=colors["Z"], linewidth=2.5, zorder=5, gid=tag)
-    ax.scatter([ox], [oz + L], [oy], color=colors["Z"], marker='^', s=50, zorder=6, gid=tag, depthshade=False)
-    ax.text(ox, oz + L * 1.25, oy, "Z", color=colors["Z"], fontsize=10, fontweight="bold", zorder=6, gid=tag)
+    # Provide safe fallbacks if the graph is completely empty
+    if xr < 1e-3: xr = 25.0
+    if yr < 1e-3: yr = 10.0
+    if zr < 1e-3: zr = 10.0
 
-    # Y-Axis (Vertical)
-    Ly = L * 3.0 
+    # 2. Fixed Screen Proportions (Stems are 12%, widths are 2.5% of visual space)
+    Lx, Lz, Ly = xr * scale, yr * scale, zr * scale
+    hl_x, hl_z, hl_y = Lx * 0.30, Lz * 0.30, Ly * 0.30
+    w_frac = 0.025 
+
+    # --- X-Axis (Span) ---
+    ax.plot([ox, ox + Lx], [oz, oz], [oy, oy], color=colors["X"], linewidth=2.5, zorder=5, gid=tag)
+    # Draw 4 lines to form a 3D pyramid arrowhead (immune to camera rotation)
+    tx, bx = ox + Lx, ox + Lx - hl_x
+    ax.plot([tx, bx], [oz, oz + (yr * w_frac)], [oy, oy], color=colors["X"], linewidth=2.0, zorder=5, gid=tag)
+    ax.plot([tx, bx], [oz, oz - (yr * w_frac)], [oy, oy], color=colors["X"], linewidth=2.0, zorder=5, gid=tag)
+    ax.plot([tx, bx], [oz, oz], [oy, oy + (zr * w_frac)], color=colors["X"], linewidth=2.0, zorder=5, gid=tag)
+    ax.plot([tx, bx], [oz, oz], [oy, oy - (zr * w_frac)], color=colors["X"], linewidth=2.0, zorder=5, gid=tag)
+    ax.text(tx + (xr * 0.03), oz, oy, "X", color=colors["X"], fontsize=10, fontweight="bold", zorder=6, gid=tag)
+
+    # --- Z-Axis (Transverse width, mapped to Matplotlib Y) ---
+    ax.plot([ox, ox], [oz, oz + Lz], [oy, oy], color=colors["Z"], linewidth=2.5, zorder=5, gid=tag)
+    tz, bz = oz + Lz, oz + Lz - hl_z
+    ax.plot([ox, ox + (xr * w_frac)], [tz, bz], [oy, oy], color=colors["Z"], linewidth=2.0, zorder=5, gid=tag)
+    ax.plot([ox, ox - (xr * w_frac)], [tz, bz], [oy, oy], color=colors["Z"], linewidth=2.0, zorder=5, gid=tag)
+    ax.plot([ox, ox], [tz, bz], [oy, oy + (zr * w_frac)], color=colors["Z"], linewidth=2.0, zorder=5, gid=tag)
+    ax.plot([ox, ox], [tz, bz], [oy, oy - (zr * w_frac)], color=colors["Z"], linewidth=2.0, zorder=5, gid=tag)
+    ax.text(ox, tz + (yr * 0.04), oy, "Z", color=colors["Z"], fontsize=10, fontweight="bold", zorder=6, gid=tag)
+
+    # --- Y-Axis (Vertical Forces, mapped to Matplotlib Z) ---
     ax.plot([ox, ox], [oz, oz], [oy, oy + Ly], color=colors["Y"], linewidth=2.5, zorder=5, gid=tag)
-    ax.scatter([ox], [oz], [oy + Ly], color=colors["Y"], marker='^', s=50, zorder=6, gid=tag, depthshade=False)
-    ax.text(ox, oz, oy + Ly * 1.15, "Y", color=colors["Y"], fontsize=10, fontweight="bold", zorder=6, gid=tag)
+    ty, by = oy + Ly, oy + Ly - hl_y
+    ax.plot([ox, ox + (xr * w_frac)], [oz, oz], [ty, by], color=colors["Y"], linewidth=2.0, zorder=5, gid=tag)
+    ax.plot([ox, ox - (xr * w_frac)], [oz, oz], [ty, by], color=colors["Y"], linewidth=2.0, zorder=5, gid=tag)
+    ax.plot([ox, ox], [oz + (yr * w_frac), oz], [ty, by], color=colors["Y"], linewidth=2.0, zorder=5, gid=tag)
+    ax.plot([ox, ox], [oz - (yr * w_frac), oz], [ty, by], color=colors["Y"], linewidth=2.0, zorder=5, gid=tag)
+    ax.text(ox, oz, ty + (zr * 0.04), "Y", color=colors["Y"], fontsize=10, fontweight="bold", zorder=6, gid=tag)
+
+    # 3. CRITICAL FIX: Lock limits so drawing the triad doesn't stretch empty charts!
+    ax.set_xlim(xlim)
+    ax.set_ylim(ylim)
+    ax.set_zlim(zlim)
     
 def _add_supports(ax, nodes, members, edge_dist=0.0):
     """Draw pin (diamond) and roller (circle) supports at the ends of girders."""
@@ -408,7 +436,7 @@ def build_figure_sfd(ds, force_key, nodes, members, edge_dist=0.0):
     ax.set_box_aspect([x_range, z_range, x_range * 0.30])
 
     _add_grillage_background(ax, nodes, members)
-    _add_coordinate_triad(ax, nodes)
+    
     _add_supports(ax, nodes, members, edge_dist=edge_dist)
 
     shear_color = "#1565C0"
@@ -548,6 +576,7 @@ def build_figure_sfd(ds, force_key, nodes, members, edge_dist=0.0):
     # Dedicate 18% of the right side purely to the massive axis labels.
     # This naturally shoves the 3D bridge perfectly into the center of the screen!
     fig.subplots_adjust(left=0.05, right=0.88, bottom=0.05, top=0.90)
+    _add_coordinate_triad(ax, nodes)
     return fig
 
 
@@ -591,7 +620,7 @@ def build_figure_bmd(ds, force_key, nodes, members, edge_dist=0.0):
     ax.set_box_aspect([x_range, z_range, x_range * 0.30])
 
     _add_grillage_background(ax, nodes, members)
-    _add_coordinate_triad(ax, nodes)
+    
     _add_supports(ax, nodes, members, edge_dist=edge_dist)
 
     moment_color = "#C62828"
@@ -739,6 +768,7 @@ def build_figure_bmd(ds, force_key, nodes, members, edge_dist=0.0):
     # Dedicate 18% of the right side purely to the massive axis labels.
     # This naturally shoves the 3D bridge perfectly into the center of the screen!
     fig.subplots_adjust(left=0.05, right=0.88, bottom=0.05, top=0.90)
+    _add_coordinate_triad(ax, nodes)
     return fig, summary_data
 
 
@@ -930,7 +960,7 @@ def build_figure_deflection(ds, disp_key, nodes, members, edge_dist=0.0):
     ax.set_box_aspect([x_range, z_range, x_range * 0.30])
 
     _add_grillage_background(ax, nodes, members)
-    _add_coordinate_triad(ax, nodes)
+    
     _add_supports(ax, nodes, members, edge_dist=edge_dist)
 
     defl_color = "#6A1B9A"   # deep purple
@@ -1089,6 +1119,7 @@ def build_figure_deflection(ds, disp_key, nodes, members, edge_dist=0.0):
     # Dedicate 18% of the right side purely to the massive axis labels.
     # This naturally shoves the 3D bridge perfectly into the center of the screen!
     fig.subplots_adjust(left=0.05, right=0.88, bottom=0.05, top=0.90)
+    _add_coordinate_triad(ax, nodes)
     return fig
 
 
