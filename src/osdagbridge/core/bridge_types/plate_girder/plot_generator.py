@@ -4,6 +4,7 @@ from collections import defaultdict
 import matplotlib
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
+from matplotlib.ticker import FuncFormatter
 import numpy as np
 import openseespy.opensees as ops
 from mpl_toolkits.mplot3d.art3d import Line3DCollection
@@ -162,8 +163,8 @@ def _add_grillage_background(ax, nodes, members, x_tol=3, z_tol=3):
             ax.plot([x_val] * len(z_sorted), z_sorted, [0] * len(z_sorted), **trans_kw)
 
 
-def _add_coordinate_triad(ax, nodes, scale=0.10):
-    """Draw X / Y / Z arrows and labels at the minimum-corner of the model."""
+def _add_coordinate_triad(ax, nodes, scale=0.12):
+    """Draw X / Y / Z arrows and labels with professional, distortion-free CAD aesthetics."""
     xs = [c[0] for c in nodes.values()]
     ys = [c[1] for c in nodes.values()]
     zs = [c[2] for c in nodes.values()]
@@ -171,31 +172,31 @@ def _add_coordinate_triad(ax, nodes, scale=0.10):
     span = max(max(xs) - min(xs), max(zs) - min(zs)) or 5000
     L = span * scale
 
-    ox, oy, oz = min(xs), 0, min(zs)          # triad origin
+    ox, oy, oz = min(xs), 0, min(zs)
 
-    colors = {"X": "#FF4136", "Y": "#2ECC40", "Z": "#0074D9"}
-    
-    # We tag these elements so the UI toggle button can easily find and hide them!
+    # Deeper, high-contrast CAD colors
+    # Professional Non-Clashing Palette: Deep Orange (X), Purple (Y), Teal (Z)
+    colors = {"X": "#E65100", "Y": "#0097A7", "Z": "#6A1B9A"}
     tag = "coord_triad" 
 
-    # X arrow (along span)
-    ax.quiver(ox, oz, oy, L, 0, 0,
-              color=colors["X"], linewidth=2, arrow_length_ratio=0.25, zorder=5, gid=tag)
-    ax.text(ox + L * 1.25, oz, oy, "X", color=colors["X"],
-            fontsize=9, fontweight="bold", zorder=5, gid=tag)
+    # Add a bold origin anchor dot
+    ax.scatter([ox], [oz], [oy], color="#333333", s=40, zorder=6, gid=tag)
 
-    # Z arrow (along width) — note ax.plot uses (x=span, y=width, z=force)
-    ax.quiver(ox, oz, oy, 0, L, 0,
-              color=colors["Z"], linewidth=2, arrow_length_ratio=0.25, zorder=5, gid=tag)
-    ax.text(ox, oz + L * 1.25, oy, "Z", color=colors["Z"],
-            fontsize=9, fontweight="bold", zorder=5, gid=tag)
+    # X-Axis (Span)
+    ax.plot([ox, ox + L], [oz, oz], [oy, oy], color=colors["X"], linewidth=2.5, zorder=5, gid=tag)
+    ax.scatter([ox + L], [oz], [oy], color=colors["X"], marker='>', s=50, zorder=6, gid=tag, depthshade=False)
+    ax.text(ox + L * 1.25, oz, oy, "X", color=colors["X"], fontsize=10, fontweight="bold", zorder=6, gid=tag)
 
-    # Y arrow (upward = force direction) — scaled by 0.30 to match box_aspect
-    Ly = L * 0.30
-    ax.quiver(ox, oz, oy, 0, 0, Ly,
-              color=colors["Y"], linewidth=2, arrow_length_ratio=0.25, zorder=5, gid=tag)
-    ax.text(ox, oz, oy + Ly * 1.25, "Y", color=colors["Y"],
-            fontsize=9, fontweight="bold", zorder=5, gid=tag)
+    # Z-Axis (Transverse width)
+    ax.plot([ox, ox], [oz, oz + L], [oy, oy], color=colors["Z"], linewidth=2.5, zorder=5, gid=tag)
+    ax.scatter([ox], [oz + L], [oy], color=colors["Z"], marker='^', s=50, zorder=6, gid=tag, depthshade=False)
+    ax.text(ox, oz + L * 1.25, oy, "Z", color=colors["Z"], fontsize=10, fontweight="bold", zorder=6, gid=tag)
+
+    # Y-Axis (Vertical)
+    Ly = L * 3.0 
+    ax.plot([ox, ox], [oz, oz], [oy, oy + Ly], color=colors["Y"], linewidth=2.5, zorder=5, gid=tag)
+    ax.scatter([ox], [oz], [oy + Ly], color=colors["Y"], marker='^', s=50, zorder=6, gid=tag, depthshade=False)
+    ax.text(ox, oz, oy + Ly * 1.15, "Y", color=colors["Y"], fontsize=10, fontweight="bold", zorder=6, gid=tag)
     
 def _add_supports(ax, nodes, members, edge_dist=0.0):
     """Draw pin (diamond) and roller (circle) supports at the ends of girders."""
@@ -531,9 +532,16 @@ def build_figure_sfd(ds, force_key, nodes, members, edge_dist=0.0):
     ax.xaxis.pane.fill = False
     ax.yaxis.pane.fill = False
     ax.zaxis.pane.fill = False
-    ax.xaxis.pane.set_edgecolor("lightgrey")
-    ax.yaxis.pane.set_edgecolor("lightgrey")
-    ax.zaxis.pane.set_edgecolor("lightgrey")
+    # Professional, high-contrast bounding box borders
+    ax.xaxis.pane.set_edgecolor("#555555")
+    ax.yaxis.pane.set_edgecolor("#555555")
+    ax.zaxis.pane.set_edgecolor("#555555")
+    ax.xaxis.pane.set_linewidth(1.5)
+    ax.yaxis.pane.set_linewidth(1.5)
+    ax.zaxis.pane.set_linewidth(1.5)
+    ax.xaxis.pane.set_alpha(1.0)
+    ax.yaxis.pane.set_alpha(1.0)
+    ax.zaxis.pane.set_alpha(1.0)
     ax.grid(True, linestyle="--", linewidth=0.4, alpha=0.5)
 
     # Force the 3D plot to use the maximum available canvas space
@@ -707,14 +715,22 @@ def build_figure_bmd(ds, force_key, nodes, members, edge_dist=0.0):
     ax.set_xlabel("Span Length (m)", fontsize=10, labelpad=8)
     ax.set_ylabel("Bridge Width (m)", fontsize=10, labelpad=8)
     ax.set_zlabel(f"{disp_key} (kNm)", fontsize=10, labelpad=8)
+    ax.zaxis.set_major_formatter(FuncFormatter(lambda val, pos: f"{abs(val):g}"))
     ax.set_title(f"Bending Moment Diagram  —  {disp_key}", fontsize=12, fontweight="bold", pad=12)
     ax.view_init(elev=DEFAULT_ELEV, azim=DEFAULT_AZIM)
     ax.xaxis.pane.fill = False
     ax.yaxis.pane.fill = False
     ax.zaxis.pane.fill = False
-    ax.xaxis.pane.set_edgecolor("lightgrey")
-    ax.yaxis.pane.set_edgecolor("lightgrey")
-    ax.zaxis.pane.set_edgecolor("lightgrey")
+    # Professional, high-contrast bounding box borders
+    ax.xaxis.pane.set_edgecolor("#555555")
+    ax.yaxis.pane.set_edgecolor("#555555")
+    ax.zaxis.pane.set_edgecolor("#555555")
+    ax.xaxis.pane.set_linewidth(1.5)
+    ax.yaxis.pane.set_linewidth(1.5)
+    ax.zaxis.pane.set_linewidth(1.5)
+    ax.xaxis.pane.set_alpha(1.0)
+    ax.yaxis.pane.set_alpha(1.0)
+    ax.zaxis.pane.set_alpha(1.0)
     ax.grid(True, linestyle="--", linewidth=0.4, alpha=0.5)
 
     # Force the 3D plot to use the maximum available canvas space
@@ -854,9 +870,16 @@ def build_figure_bmd_contour(ds, force_key, nodes, members, edge_dist=0.0):
     ax.xaxis.pane.fill = False
     ax.yaxis.pane.fill = False
     ax.zaxis.pane.fill = False
-    ax.xaxis.pane.set_edgecolor("lightgrey")
-    ax.yaxis.pane.set_edgecolor("lightgrey")
-    ax.zaxis.pane.set_edgecolor("lightgrey")
+    # Professional, high-contrast bounding box borders
+    ax.xaxis.pane.set_edgecolor("#555555")
+    ax.yaxis.pane.set_edgecolor("#555555")
+    ax.zaxis.pane.set_edgecolor("#555555")
+    ax.xaxis.pane.set_linewidth(1.5)
+    ax.yaxis.pane.set_linewidth(1.5)
+    ax.zaxis.pane.set_linewidth(1.5)
+    ax.xaxis.pane.set_alpha(1.0)
+    ax.yaxis.pane.set_alpha(1.0)
+    ax.zaxis.pane.set_alpha(1.0)
     ax.grid(True, linestyle="--", linewidth=0.4, alpha=0.5)
 
     # Force the 3D plot to use the maximum available canvas space
@@ -1048,9 +1071,16 @@ def build_figure_deflection(ds, disp_key, nodes, members, edge_dist=0.0):
     ax.xaxis.pane.fill = False
     ax.yaxis.pane.fill = False
     ax.zaxis.pane.fill = False
-    ax.xaxis.pane.set_edgecolor("lightgrey")
-    ax.yaxis.pane.set_edgecolor("lightgrey")
-    ax.zaxis.pane.set_edgecolor("lightgrey")
+    # Professional, high-contrast bounding box borders
+    ax.xaxis.pane.set_edgecolor("#555555")
+    ax.yaxis.pane.set_edgecolor("#555555")
+    ax.zaxis.pane.set_edgecolor("#555555")
+    ax.xaxis.pane.set_linewidth(1.5)
+    ax.yaxis.pane.set_linewidth(1.5)
+    ax.zaxis.pane.set_linewidth(1.5)
+    ax.xaxis.pane.set_alpha(1.0)
+    ax.yaxis.pane.set_alpha(1.0)
+    ax.zaxis.pane.set_alpha(1.0)
     ax.grid(True, linestyle="--", linewidth=0.4, alpha=0.5)
 
     # Force the 3D plot to use the maximum available canvas space

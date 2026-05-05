@@ -420,6 +420,11 @@ class MplPlotWidget(QWidget):
             for collection in ax.collections:
                 if collection.get_gid() == "coord_triad":
                     collection.set_visible(self._show_axis)
+            
+            for line in ax.lines:
+                if line.get_gid() == "coord_triad":
+                    line.set_visible(self._show_axis)
+
             for text in ax.texts:
                 if text.get_gid() == "coord_triad":
                     text.set_visible(self._show_axis)
