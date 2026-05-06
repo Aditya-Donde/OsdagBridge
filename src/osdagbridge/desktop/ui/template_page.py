@@ -18,7 +18,7 @@ from osdagbridge.desktop.ui.dialogs.loading_popup import LoadingDialogManager
 from osdagbridge.desktop.ui.cad_3d import CAD3DWindow
 
 from osdagbridge.core.bridge_types.plate_girder.ui_fields import FrontendData
-from osdagbridge.core.bridge_types.plate_girder.defaults import DEFAULTS_DICT
+from osdagbridge.core.bridge_types.plate_girder.defaults import BASIC_INPUT_DICT
 from osdagbridge.core.utils.common import *
 from osdagbridge.desktop.ui.utils.custom_widgets import ToolBarWidget
 
@@ -35,8 +35,8 @@ class CustomWindow(QWidget):
         self.export_finished.connect(self.on_export_finished)
 
         # Source for all input values.
-        # Initialised from DEFAULTS_DICT; updated live as the user edits fields.
-        self.input_dict = dict(DEFAULTS_DICT)
+        # Initialised from BASIC_INPUT_DICT; updated live as the user edits fields.
+        self.input_dict = dict(BASIC_INPUT_DICT)
 
         self.setWindowTitle(title)
         self.setStyleSheet(

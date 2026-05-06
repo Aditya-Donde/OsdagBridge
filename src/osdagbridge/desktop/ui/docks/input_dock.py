@@ -29,7 +29,7 @@ from osdagbridge.desktop.ui.dialogs.material_properties import (
     MaterialPropertiesDialog, sync_custom_materials_across_steel_members,
 )
 from osdagbridge.desktop.ui.dialogs.custom_messagebox import CustomMessageBox, MessageBoxType
-from osdagbridge.core.bridge_types.plate_girder.defaults import DEFAULTS_DICT
+from osdagbridge.core.bridge_types.plate_girder.defaults import BASIC_INPUT_DICT
 from osdagbridge.core.bridge_types.plate_girder.validator import BridgeInputValidator
 
 
@@ -906,78 +906,21 @@ class InputDock(QWidget):
     def _update_input_dict(self, key: str, value: str):
         """
         Called on every widget value change.
-        If value is empty/None, falls back to DEFAULTS_DICT.
+        If value is empty/None, falls back to BASIC_INPUT_DICT.
         Updates parent input_dict and notifies listeners.
         """
 
         if hasattr(self.parent, "input_dict"):
             # If Empty or None Value then set the default
-            # print(f"@Change: {value}, default: {DEFAULTS_DICT.get(key)}")
+            # print(f"@Change: {value}, default: {BASIC_INPUT_DICT.get(key)}")
             if value is None or value == "":
-                self.parent.input_dict[key] = DEFAULTS_DICT.get(key)
+                self.parent.input_dict[key] = BASIC_INPUT_DICT.get(key)
             else:
                 self.parent.input_dict[key] = value
             # print(f"@Final: {self.parent.input_dict[key]}")
             
         else:
             print("[ERROR]: template_page.input_dictionary Not Found")
-
-    def _collect_basic_inputs(self) -> list[dict]:
-        out = []
-        for defn in self.backend.input_values():
-            key, _, ftype = defn[0], defn[1], defn[2]
-            if ftype in (TYPE_MODULE, TYPE_TITLE, TYPE_BUTTON, TYPE_NOTE):
-                continue
-            if not isinstance(key, str):
-                continue
-            w = self._w(key)
-            if isinstance(w, QLineEdit):
-                val = w.text().strip()
-            elif isinstance(w, QComboBox):
-                val = w.currentText()
-            else:
-                continue
-            if val:
-                out.append({key: val})
-                # if hasattr(self.backend, "set_input_value"):
-                #     self.backend.set_input_value(key, val)
-        return out
-
-    def _collect_additional_inputs(self) -> list[dict]:
-        snapshot = {}
-        try:
-            if self.additional_inputs and hasattr(self.additional_inputs, "section_properties_tab"):
-                tab = self.additional_inputs.section_properties_tab
-                if tab and hasattr(tab, "save_properties"):
-                    snapshot = tab.save_properties() or {}
-        except Exception:
-            pass
-        if not snapshot:
-            snapshot = self._additional_inputs_saved_data or {}
-        ordered = ("girder_details", "stiffener_details", "cross_bracing", "end_diaphragm")
-        out  = [{k: snapshot[k]} for k in ordered if k in snapshot]
-        out += [{k: v} for k, v in snapshot.items() if k not in ordered]
-        return out
-
-    # ══════════════════════════════════════════════════════════════════════════
-    # CAD update helper
-    # ══════════════════════════════════════════════════════════════════════════
-
-    def get_all_input_values(self) -> dict:
-        values = {
-            KEY_SPAN:              self._float(KEY_SPAN),
-            KEY_CARRIAGEWAY_WIDTH: self._float(KEY_CARRIAGEWAY_WIDTH),
-            KEY_SKEW_ANGLE:        self._float(KEY_SKEW_ANGLE, 0.0),
-            KEY_FOOTPATH:          self._text(KEY_FOOTPATH),
-            KEY_INCLUDE_MEDIAN:    self._is_median_included(),
-        }
-        # Fill remaining defaults from DEFAULTS_DICT — single source of truth.
-        for key, val in DEFAULTS_DICT.items():
-            values.setdefault(key, val)
-        # Overlay any values captured from the Additional Inputs dialog.
-        if self.additional_input_values:
-            values.update(self.additional_input_values)
-        return values
 
     # ══════════════════════════════════════════════════════════════════════════
     # Utilities

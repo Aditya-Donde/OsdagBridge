@@ -1,5 +1,5 @@
 from osdagbridge.core.utils.common import *
-from osdagbridge.core.bridge_types.plate_girder.defaults import DEFAULTS_DICT
+from osdagbridge.core.bridge_types.plate_girder.defaults import BASIC_INPUT_DICT
 
 """
 Field definition tuple schema:
@@ -110,7 +110,7 @@ class FrontendData:
             (KEY_STRUCTURE_TYPE, KEY_DISP_STRUCTURE_TYPE, TYPE_COMBOBOX, VALUES_STRUCTURE_TYPE,
                 True, "No Validator",
                 {
-                    "default":          DEFAULTS_DICT.get(KEY_STRUCTURE_TYPE),
+                    "default":          BASIC_INPUT_DICT.get(KEY_STRUCTURE_TYPE),
                     "disabled_options": ["Other"],
                 }),
 
@@ -148,7 +148,7 @@ class FrontendData:
             (KEY_INCLUDE_MEDIAN, "Include Median", TYPE_COMBOBOX, VALUES_NO_YES,
                 True, "No Validator",
                 {
-                    "default":         DEFAULTS_DICT.get(KEY_INCLUDE_MEDIAN),
+                    "default":         BASIC_INPUT_DICT.get(KEY_INCLUDE_MEDIAN),
                     "add_stretch":     True,
                     # When median toggle changes, refresh the carriageway placeholder
                     # and silently re-validate the carriageway width.
@@ -161,7 +161,7 @@ class FrontendData:
             (KEY_FOOTPATH, KEY_DISP_FOOTPATH, TYPE_COMBOBOX, VALUES_FOOTPATH,
                 True, "No Validator",
                 {
-                    "default":    DEFAULTS_DICT.get(KEY_FOOTPATH),
+                    "default":    BASIC_INPUT_DICT.get(KEY_FOOTPATH),
                     "on_changed": "_on_footpath_changed",
                 }),
 
@@ -188,7 +188,7 @@ class FrontendData:
             (KEY_DESIGN_MODE, "Design Type", TYPE_COMBOBOX, ["Optimized", "Custom"],
                 True, "No Validator",
                 {
-                    "default":        DEFAULTS_DICT.get(KEY_DESIGN_MODE),
+                    "default":        BASIC_INPUT_DICT.get(KEY_DESIGN_MODE),
                     "on_changed":     "_on_design_mode_changed",
                     "trigger_on_init": True,
                 }),
@@ -221,7 +221,7 @@ class FrontendData:
             (KEY_DECK_CONCRETE_GRADE_BASIC, KEY_DISP_DECK_CONCRETE_GRADE, TYPE_COMBOBOX,
                 concrete_properies, True, "No Validator",
                 {
-                    "default":           DEFAULTS_DICT.get(KEY_DECK_CONCRETE_GRADE_BASIC),
+                    "default":           BASIC_INPUT_DICT.get(KEY_DECK_CONCRETE_GRADE_BASIC),
                     "is_material_field": True,
                     "member_type":       "Deck",
                 }),
