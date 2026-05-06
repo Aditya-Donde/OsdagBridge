@@ -122,6 +122,7 @@ class CADMixin:
                 params[param_name] = self._cast_value(raw, cast, default)
             method(params)
 
+        missing_sources = []
         for src in reactive_sources:
             source_name = src.get("widget") if isinstance(src, dict) else src
             if not source_name:
@@ -129,15 +130,19 @@ class CADMixin:
             signal_name = src.get("signal", "textChanged") if isinstance(src, dict) else "textChanged"
             source = getattr(self.owner, str(source_name), None)
             if source is None:
-                _log.debug(
-                    "UIBuilder[%s]: reactive source %r not on owner (bind it before CAD section)",
-                    type(self.owner).__name__, source_name,
-                )
+                missing_sources.append(src)
                 continue
             signal = getattr(source, str(signal_name), None)
             if signal is None:
                 continue
             signal.connect(refresh)
+
+        if missing_sources:
+            bindings = getattr(self, "_deferred_cad_bindings", None)
+            if bindings is None:
+                bindings = []
+                setattr(self, "_deferred_cad_bindings", bindings)
+            bindings.append((missing_sources, refresh))
 
         if reactive_sources or params_map:
             refresh()
@@ -173,6 +178,32 @@ class CADMixin:
         else:
             parent_layout.addWidget(display_widget)
         return cad_widget
+
+    def _wire_deferred_cad_bindings(self) -> None:
+        """Second-pass wiring for CAD sources declared before their widgets."""
+        bindings = getattr(self, "_deferred_cad_bindings", None)
+        if not bindings:
+            return
+
+        for reactive_sources, refresh in list(bindings):
+            for src in reactive_sources:
+                source_name = src.get("widget") if isinstance(src, dict) else src
+                if not source_name:
+                    continue
+                signal_name = src.get("signal", "textChanged") if isinstance(src, dict) else "textChanged"
+                source = getattr(self.owner, str(source_name), None)
+                if source is None:
+                    _log.debug(
+                        "UIBuilder[%s]: deferred CAD source %r still not on owner",
+                        type(self.owner).__name__, source_name,
+                    )
+                    continue
+                signal = getattr(source, str(signal_name), None)
+                if signal is not None:
+                    signal.connect(refresh)
+            refresh()
+
+        bindings.clear()
 
     def _build_cad_row_section(self, parent_layout: QLayout, section: dict) -> None:
         """Horizontal row wrapper for multiple widgets (CAD, Legend, etc.)."""

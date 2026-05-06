@@ -24,6 +24,7 @@ from osdagbridge.desktop.ui.dialogs.tabs.builder.constants import (
     _LABEL_STYLE,
     _TYPE_TO_METHOD,
 )
+from osdagbridge.desktop.ui.utils.custom_widgets import SmartCursorComboBoxView
 
 _log = logging.getLogger(__name__)
 
@@ -94,6 +95,7 @@ class FieldBuildersMixin:
 
         enabled_choices = field_def.get("enabled_choices")
         if enabled_choices is not None:
+            widget.setView(SmartCursorComboBoxView(widget))
             for idx in range(widget.count()):
                 text = widget.itemText(idx)
                 if text not in enabled_choices:
@@ -196,6 +198,9 @@ class FieldBuildersMixin:
         default_mode = field_def.get("default_mode")
         if default_mode is not None:
             mode_combo.setCurrentText(str(default_mode))
+        mode_width = field_def.get("mode_width")
+        if mode_width:
+            mode_combo.setFixedWidth(int(mode_width))
         apply_field_style(mode_combo)
 
         value_input = QLineEdit()
@@ -204,6 +209,9 @@ class FieldBuildersMixin:
             value_input.setText(str(default_value))
         if field_def.get("placeholder"):
             value_input.setPlaceholderText(str(field_def["placeholder"]))
+        value_width = field_def.get("value_width")
+        if value_width:
+            value_input.setFixedWidth(int(value_width))
         self._apply_validator(value_input, field_def.get("validator"))
         apply_field_style(value_input)
 
@@ -249,7 +257,7 @@ class FieldBuildersMixin:
             self._connect_signals(widget, field_def)
 
         if ftype not in {"mode_line", "checkbox"}:
-            width = field_def.get("width", field_width)
+            width = field_def.get("width", field_def.get("field_width", field_width))
             if width:
                 try:
                     widget.setFixedWidth(int(width))

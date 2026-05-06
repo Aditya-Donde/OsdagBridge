@@ -50,6 +50,10 @@ class WiringMixin:
             return
         if node.get("conditions"):
             yield node
+        layout = node.get("layout")
+        if isinstance(layout, dict):
+            yield from WiringMixin._iter_fields_with_conditions(layout)
+            return
         fields = node.get("fields")
         if isinstance(fields, dict):
             for f in fields.values():
@@ -71,6 +75,12 @@ class WiringMixin:
             for f in fields:
                 if isinstance(f, dict):
                     yield from WiringMixin._iter_fields_with_conditions(f)
+        for child in (node.get("children") or []):
+            yield from WiringMixin._iter_fields_with_conditions(child)
+        for key in ("left", "center", "right", "content", "body"):
+            child = node.get(key)
+            if isinstance(child, dict):
+                yield from WiringMixin._iter_fields_with_conditions(child)
         for key in ("sections", "cards", "pages"):
             for sub in (node.get(key) or []):
                 yield from WiringMixin._iter_fields_with_conditions(sub)
