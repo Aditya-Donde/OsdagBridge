@@ -1,7 +1,7 @@
 PERMANENT_LOAD_TAB_SCHEMA = {
     "id": "permanent_load_tab",
     "label_width": 220,
-    "description": {"title": "Description Box", "text": ""},
+    "description": {"title": "Description Box", "text": "", "hide_when_empty": False, "min_height": 420},
     "sections": [
         {
             "title": "Dead Load (DL)",

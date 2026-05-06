@@ -2,7 +2,7 @@ TEMPERATURE_LOAD_TAB_SCHEMA = {
     "id": "temperature_load_tab",
     "label_width": 240,
     "field_width": 140,
-    "description": {"title": "Description Box", "text": ""},
+    "description": {"title": "Description Box", "text": "", "hide_when_empty": False, "min_height": 520},
     "sections": [
         {
             "id": "temperature_inputs_section",

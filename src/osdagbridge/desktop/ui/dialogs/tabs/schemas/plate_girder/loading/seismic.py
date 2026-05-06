@@ -32,7 +32,7 @@ SEISMIC_LOAD_TAB_SCHEMA = {
                         "Type II – Medium Soil",
                         "Type III – Soft Soil",
                     ],
-                    "default": "Type I – Rocky or Hard Soil",
+                    "default": "Type I – Rocky or Hard",
                     "bind": "soil_type_combo",
                 },
                 {
