@@ -16,7 +16,7 @@ class TemperatureLoadTab(SchemaTab):
         if weather:
             max_t = weather.get("max_temp")
             min_t = weather.get("min_temp")
-            if max_t is not None and hasattr(self.owner, "highest_max_temp_input"):
-                self.owner.highest_max_temp_input.setText(str(max_t))
-            if min_t is not None and hasattr(self.owner, "lowest_min_temp_input"):
-                self.owner.lowest_min_temp_input.setText(str(min_t))
+            if max_t is not None and hasattr(self, "highest_max_temp_input"):
+                self.highest_max_temp_input.setText(str(max_t))
+            if min_t is not None and hasattr(self, "lowest_min_temp_input"):
+                self.lowest_min_temp_input.setText(str(min_t))

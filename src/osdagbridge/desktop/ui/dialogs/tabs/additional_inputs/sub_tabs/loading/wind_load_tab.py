@@ -17,8 +17,8 @@ class WindLoadTab(SchemaTab):
                 continue
             for field in section.get("fields", []):
                 bind_name = field.get("bind")
-                if bind_name and hasattr(owner, bind_name):
-                    self.wind_computed_fields[bind_name] = getattr(owner, bind_name)
+                if bind_name and hasattr(self, bind_name):
+                    self.wind_computed_fields[bind_name] = getattr(self, bind_name)
 
     def update_project_location(self, location_data):
         if not location_data:
@@ -27,5 +27,5 @@ class WindLoadTab(SchemaTab):
         weather = location_data.get("weather_data")
         if weather:
             wind = weather.get("wind_speed")
-            if wind is not None and hasattr(self.owner, "basic_wind_speed_input"):
-                self.owner.basic_wind_speed_input.setText(str(wind))
+            if wind is not None and hasattr(self, "basic_wind_speed_input"):
+                self.basic_wind_speed_input.setText(str(wind))

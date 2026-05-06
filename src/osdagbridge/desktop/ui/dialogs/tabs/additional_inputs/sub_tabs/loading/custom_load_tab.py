@@ -72,6 +72,12 @@ class CustomLoadTab(SchemaTab):
         # The Add/Edit form is transient and is validated by its own Save button.
         return self._extra_validation()
 
+    def collect_data(self):
+        # Only persisted rows should leave this tab. The add/edit form is
+        # transient and may contain partial values while the user is composing a
+        # load entry.
+        return self._extra_state()
+
     def _before_reset(self):
         self.custom_load_items.clear()
         self._sync_owner_items()
