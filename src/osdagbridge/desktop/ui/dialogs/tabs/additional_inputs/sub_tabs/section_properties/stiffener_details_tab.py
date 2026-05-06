@@ -108,9 +108,9 @@ class StiffenerDetailsTab(SchemaTab):
         for member_id in self._list_current_member_ids():
             if member_id not in self._state_by_member:
                 self._state_by_member[member_id] = self._get_default_state()
-        return {
-            "stiffener_by_member": dict(self._state_by_member),
-        }
+        data = schema_io.collect_values(self, STIFFENER_DETAILS_SCHEMA)
+        data.update({"stiffener_by_member": dict(self._state_by_member)})
+        return data
 
     def reset_defaults(self) -> None:
         """Reset UI + per-member stored values to the initial defaults."""

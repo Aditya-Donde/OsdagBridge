@@ -1,4 +1,9 @@
 from osdagbridge.core.utils.common import (
+    KEY_LONGITUDINAL_STIFFENER,
+    KEY_LONGITUDINAL_STIFFENER_THICKNESS,
+    KEY_STIFFENER_DESIGN_METHOD,
+    KEY_STIFFENER_PLATE_THICKNESS,
+    KEY_STIFFENER_SPACING,
     VALUES_BEARING_STIFFENER_COUNT,
     VALUES_LONGITUDINAL_STIFFENER,
     VALUES_PROFILE_SCOPE,
@@ -82,6 +87,7 @@ STIFFENER_DETAILS_SCHEMA = {
             "default_mode": VALUES_PROFILE_SCOPE[0],
             "bind_mode": "bearing_thick_combo",
             "bind_value": "bearing_thick_value_combo",
+            "input_key": KEY_STIFFENER_PLATE_THICKNESS,
         },
         {
             "id": "bearing_outstand_mm",
@@ -104,6 +110,7 @@ STIFFENER_DETAILS_SCHEMA = {
             "validator": {"type": "int_range", "bottom": 1, "top": 10000},
             "default": "NA",
             "bind": "intermediate_spacing_input",
+            "input_key": KEY_STIFFENER_SPACING,
         },
         {
             "id": "intermediate_thickness",
@@ -127,6 +134,7 @@ STIFFENER_DETAILS_SCHEMA = {
             "type": "combo",
             "choices": VALUES_LONGITUDINAL_STIFFENER,
             "bind": "longitudinal_combo",
+            "input_key": KEY_LONGITUDINAL_STIFFENER,
         },
         {
             "id": "longitudinal_thickness",
@@ -136,6 +144,7 @@ STIFFENER_DETAILS_SCHEMA = {
             "default_mode": VALUES_PROFILE_SCOPE[0],
             "bind_mode": "long_thick_combo",
             "bind_value": "long_thick_value_combo",
+            "input_key": KEY_LONGITUDINAL_STIFFENER_THICKNESS,
         },
     ],
     "web_buckling_inputs": [
@@ -145,6 +154,7 @@ STIFFENER_DETAILS_SCHEMA = {
             "type": "combo",
             "choices": VALUES_STIFFENER_DESIGN,
             "bind": "method_combo",
+            "input_key": KEY_STIFFENER_DESIGN_METHOD,
         },
     ],
 }

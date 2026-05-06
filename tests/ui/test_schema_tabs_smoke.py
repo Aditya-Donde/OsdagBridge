@@ -1,3 +1,5 @@
+import pytest
+
 from osdagbridge.desktop.ui.dialogs.additional_inputs import AdditionalInputs
 from osdagbridge.desktop.ui.dialogs.tabs.additional_inputs.loading_tab import LoadingTab
 from osdagbridge.desktop.ui.dialogs.tabs.additional_inputs.section_properties_tab import SectionPropertiesTab
@@ -38,3 +40,22 @@ def test_registered_tab_classes_import(qapp):
     qapp.processEvents()
 
     assert set(imported) == set(_TAB_CLASSES)
+
+
+def test_additional_inputs_tab_build_failure_is_not_silent(qapp):
+    bad_schema = {
+        "id": "bad_orchestrator",
+        "scrollable": False,
+        "sections": [
+            {
+                "id": "additional_inputs_tabs",
+                "type": "tab_container",
+                "tabs": [
+                    {"label": "Broken", "widget_class": "MissingTabClass", "bind": "broken_tab"},
+                ],
+            }
+        ],
+    }
+
+    with pytest.raises(ValueError):
+        AdditionalInputs(orchestrator_schema=bad_schema)
