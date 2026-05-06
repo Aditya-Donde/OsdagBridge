@@ -33,11 +33,13 @@ class LaneDetailsTab(SchemaTab):
         super().restore_data(data)
         lane_rows = data.get("lane_table_data")
         if isinstance(lane_rows, list):
+            max_allowed = self.max_lane_count_allowed(self._carriageway_width())
+            restored_count = min(len(lane_rows), max_allowed)
             self._configure_lane_count_combo(
-                self.max_lane_count_allowed(self._carriageway_width()),
-                selected_count=len(lane_rows),
+                max_allowed,
+                selected_count=restored_count,
             )
-            self.set_lane_rows(lane_rows)
+            self.set_lane_rows(lane_rows[:restored_count])
             return
         self.initialize_defaults(self._carriageway_width())
 
@@ -207,13 +209,34 @@ class LaneDetailsTab(SchemaTab):
         self._configure_lane_count_combo(max_allowed, selected_count=max_allowed)
         self.populate_defaults(max_allowed)
 
+    def sync_from_bridge_context(self, carriageway_width: float | None, *, force: bool = False) -> None:
+        """Refresh lane choices when the parent bridge width changes.
+
+        The tab is constructed before AdditionalInputs pushes the actual
+        carriageway width into its parent. Without this sync, Lane Details keeps
+        the constructor default width and can offer too many lanes.
+        """
+        max_allowed = self.max_lane_count_allowed(carriageway_width)
+        current_count = self.table.rowCount() or self._selected_lane_count()
+        selected_count = max_allowed if force else min(max(1, current_count), max_allowed)
+        items_before = self._lane_count_items()
+        self._configure_lane_count_combo(max_allowed, selected_count=selected_count)
+        items_after = self._lane_count_items()
+
+        if force or current_count != selected_count or items_before != items_after:
+            self.populate_defaults(selected_count)
+        else:
+            self.recompute_lane_starts()
+
     def on_lane_count_changed(self, text) -> None:
         if self._updating_lane_table:
             return
         try:
-            lane_count = int(text)
+            lane_count = min(max(1, int(text)), self.max_lane_count_allowed(self._carriageway_width()))
         except (TypeError, ValueError):
             return
+        if str(lane_count) != str(text):
+            self._configure_lane_count_combo(self.max_lane_count_allowed(self._carriageway_width()), selected_count=lane_count)
         self.populate_defaults(lane_count)
 
     def _set_cell(self, row: int, column: int, value: str) -> None:
@@ -246,7 +269,7 @@ class LaneDetailsTab(SchemaTab):
             self.recompute_lane_starts()
 
     def _configure_lane_count_combo(self, max_allowed: int, *, selected_count: int) -> None:
-        upper_bound = max(1, min(6, max(max_allowed, int(selected_count))))
+        upper_bound = max(1, min(6, int(max_allowed)))
         previous = self.lane_count_combo.blockSignals(True)
         try:
             self.lane_count_combo.clear()
@@ -255,6 +278,15 @@ class LaneDetailsTab(SchemaTab):
             self.lane_count_combo.setCurrentText(str(max(1, min(upper_bound, int(selected_count)))))
         finally:
             self.lane_count_combo.blockSignals(previous)
+
+    def _selected_lane_count(self) -> int:
+        try:
+            return int(self.lane_count_combo.currentText())
+        except (TypeError, ValueError):
+            return 1
+
+    def _lane_count_items(self) -> list[str]:
+        return [self.lane_count_combo.itemText(index) for index in range(self.lane_count_combo.count())]
 
     def _validate_lane_width(self, row: int) -> None:
         design_width = self.design_lane_width_m()

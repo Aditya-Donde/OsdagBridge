@@ -396,6 +396,11 @@ class TypicalSectionDetailsTab(SchemaTab):
         if callable(wearing_sync):
             wearing_sync()
 
+        lane_tab = getattr(self, "lane_details_tab", None)
+        lane_sync = getattr(lane_tab, "sync_from_bridge_context", None) if lane_tab is not None else None
+        if callable(lane_sync):
+            lane_sync(self.carriageway_width, force=force)
+
     def _clear_adjust_notice(self):
         layout_tab = getattr(self, "layout_tab", None)
         clear_notices = getattr(layout_tab, "clear_notices", None) if layout_tab is not None else None

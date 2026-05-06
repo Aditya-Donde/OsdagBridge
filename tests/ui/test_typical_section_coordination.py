@@ -105,6 +105,66 @@ def test_lane_details_child_owns_defaults_and_selection(qapp):
     ]
 
 
+def test_lane_details_syncs_to_actual_carriageway_width(qapp):
+    tab = TypicalSectionDetailsTab()
+    tab.set_bridge_context(carriageway_width=4.25)
+    qapp.processEvents()
+
+    lane_tab = tab.lane_details_tab
+
+    assert lane_tab.lane_count_combo.count() == 1
+    assert lane_tab.lane_count_combo.currentText() == "1"
+    assert lane_tab.get_lane_rows() == [
+        {"lane_number": "1", "start": "0.00", "width": "3.50"},
+    ]
+    assert lane_tab.validate_tab() == []
+
+    lane_tab.lane_count_combo.setCurrentText("2")
+    qapp.processEvents()
+
+    assert lane_tab.lane_count_combo.currentText() == "1"
+    assert lane_tab.table.rowCount() == 1
+
+
+def test_lane_details_rebuilds_choices_when_bridge_width_changes(qapp):
+    tab = TypicalSectionDetailsTab()
+    qapp.processEvents()
+
+    lane_tab = tab.lane_details_tab
+    assert lane_tab.lane_count_combo.count() == 2
+
+    tab.set_bridge_context(carriageway_width=14.0)
+    qapp.processEvents()
+
+    assert [lane_tab.lane_count_combo.itemText(i) for i in range(lane_tab.lane_count_combo.count())] == [
+        "1",
+        "2",
+        "3",
+        "4",
+    ]
+    assert lane_tab.lane_count_combo.currentText() == "4"
+    assert lane_tab.table.rowCount() == 4
+
+
+def test_lane_details_restore_clamps_rows_to_bridge_width(qapp):
+    tab = TypicalSectionDetailsTab()
+    tab.set_bridge_context(carriageway_width=4.25)
+    qapp.processEvents()
+
+    tab.lane_details_tab.restore_data({
+        "lane_table_data": [
+            {"lane_number": "1", "start": "0.00", "width": "3.50"},
+            {"lane_number": "2", "start": "3.50", "width": "3.50"},
+        ]
+    })
+    qapp.processEvents()
+
+    assert tab.lane_details_tab.lane_count_combo.currentText() == "1"
+    assert tab.lane_details_tab.get_lane_rows() == [
+        {"lane_number": "1", "start": "0.00", "width": "3.50"},
+    ]
+
+
 def test_typical_section_subtab_state_exports(qapp):
     tab = TypicalSectionDetailsTab()
     qapp.processEvents()
