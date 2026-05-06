@@ -1,4 +1,6 @@
 from osdagbridge.core.utils.common import (
+    KEY_END_DIAPHRAGM_SECTION,
+    KEY_END_DIAPHRAGM_TYPE,
     VALUES_END_DIAPHRAGM_TYPE,
     VALUES_GIRDER_DESIGN_MODE,
     VALUES_GIRDER_SYMMETRY,
@@ -18,6 +20,7 @@ END_DIAPHRAGM_DETAILS_SCHEMA = {
                         "choices": VALUES_END_DIAPHRAGM_TYPE,
                         "default": "Cross Bracing",
                         "bind": "type_selector_combo",
+                        "input_key": KEY_END_DIAPHRAGM_TYPE,
                     },
                     {
                         "id": "select_girders",
@@ -82,6 +85,7 @@ END_DIAPHRAGM_DETAILS_SCHEMA = {
                                     "label": "Bracing Section Designation:",
                                     "type": "combo_dynamic",
                                     "bind": "cross_bracing_section_combo",
+                                    "input_key": KEY_END_DIAPHRAGM_SECTION,
                                 },
                                 {
                                     "id": "top_chord_enabled",
@@ -158,6 +162,7 @@ END_DIAPHRAGM_DETAILS_SCHEMA = {
                                     "label": "IS Section:",
                                     "type": "combo_dynamic",
                                     "bind": "rolled_is_section_combo",
+                                    "input_key": KEY_END_DIAPHRAGM_SECTION,
                                 },
                             ]
                         }

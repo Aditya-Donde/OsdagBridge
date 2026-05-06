@@ -156,6 +156,23 @@ class EndDiaphragmDetailsTab(SchemaTab):
         return [f"{girders[i]} to {girders[i+1]}" for i in range(len(girders)-1)] or ["G1 to G2"]
 
     def _on_design_changed(self, label: str):
+        self._global_design_mode = "Custom" if str(label or "").strip() == "Custom" else "Optimized"
+        self._refresh_enabled_states()
+
+    def set_design_mode(self, mode_str: str) -> None:
+        mode = "Custom" if str(mode_str or "").strip().lower() in {"custom", "customized"} else "Optimized"
+        self._global_design_mode = mode
+        for combo in (
+            getattr(self, "cross_design_combo", None),
+            getattr(self, "rolled_design_combo", None),
+            getattr(self, "welded_design_combo", None),
+        ):
+            if isinstance(combo, QComboBox):
+                previous = combo.blockSignals(True)
+                try:
+                    combo.setCurrentText(mode)
+                finally:
+                    combo.blockSignals(previous)
         self._refresh_enabled_states()
 
     def _refresh_enabled_states(self):
@@ -238,6 +255,13 @@ class EndDiaphragmDetailsTab(SchemaTab):
 
     def restore_data(self, data: dict):
         if not isinstance(data, dict): return
+        widgets = self.findChildren(QComboBox) + self.findChildren(QCheckBox) + self.findChildren(QLineEdit)
+        blocked = [widget.blockSignals(True) for widget in widgets]
+        try:
+            schema_io.restore_values(self, END_DIAPHRAGM_DETAILS_SCHEMA, data)
+        finally:
+            for widget, previous in zip(widgets, blocked):
+                widget.blockSignals(previous)
         restored = data.get("end_diaphragm_by_member", {})
         rebuilt = {}
         for mid, payload in restored.items():
@@ -245,7 +269,14 @@ class EndDiaphragmDetailsTab(SchemaTab):
                 view = payload.get("type_selector") or "Cross Bracing"
                 pair = payload.get("select_girders")
                 if pair: rebuilt[f"{view}::{pair}"] = payload
-        self._state_by_key = rebuilt
+        if rebuilt:
+            self._state_by_key = rebuilt
+        else:
+            key = self._current_key()
+            if key:
+                self._state_by_key = {
+                    key: schema_io.collect_values(self, END_DIAPHRAGM_DETAILS_SCHEMA)
+                }
         self.refresh_girder_options()
 
     def showEvent(self, event):  # noqa: N802
