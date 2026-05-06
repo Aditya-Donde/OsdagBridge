@@ -719,18 +719,18 @@ def build_figure_bmd(ds, force_key, nodes, members, edge_dist=0.0):
             nids, xs_g, vals_g = _data[id(sel.artist)]
             idx = sel.index
             sel.annotation.set_text(
-                f"Node {nids[idx]}\nX: {xs_g[idx]:.2f}\n{_fk}: {vals_g[idx]:.3f} kN"
+                f"Node {nids[idx]}\nX: {xs_g[idx]:.2f}\n{_fk}: {vals_g[idx]:.3f} kNm"
             )
             sel.annotation.get_bbox_patch().set(fc="white", alpha=0.9)
 
             fig = sel.annotation.figure
-            timer = fig.canvas.new_timer(interval=6500) 
+            timer = fig.canvas.new_timer(interval=6500)
             timer.single_shot = True
-            
+
             # Store the timer safely in our dictionary using the selection's unique ID
             sel_id = id(sel)
-            cursor._timers[sel_id] = timer 
-            
+            cursor._timers[sel_id] = timer
+
             def auto_hide():
                 try:
                     if sel in cursor.selections:
@@ -741,7 +741,7 @@ def build_figure_bmd(ds, force_key, nodes, members, edge_dist=0.0):
                 finally:
                     # Clean up the dictionary reference to free memory
                     cursor._timers.pop(sel_id, None)
-                    
+
             timer.add_callback(auto_hide)
             timer.start()
 
@@ -1071,18 +1071,18 @@ def build_figure_deflection(ds, disp_key, nodes, members, edge_dist=0.0):
             nids, xs_g, vals_g = _data[id(sel.artist)]
             idx = sel.index
             sel.annotation.set_text(
-                f"Node {nids[idx]}\nX: {xs_g[idx]:.2f}\n{_fk}: {vals_g[idx]:.3f} kN"
+                f"Node {nids[idx]}\nX: {xs_g[idx]:.2f}\n{_fk}: {vals_g[idx]:.3f} mm"
             )
             sel.annotation.get_bbox_patch().set(fc="white", alpha=0.9)
 
             fig = sel.annotation.figure
-            timer = fig.canvas.new_timer(interval=6500) 
+            timer = fig.canvas.new_timer(interval=6500)
             timer.single_shot = True
-            
+
             # Store the timer safely in our dictionary using the selection's unique ID
             sel_id = id(sel)
-            cursor._timers[sel_id] = timer 
-            
+            cursor._timers[sel_id] = timer
+
             def auto_hide():
                 try:
                     if sel in cursor.selections:
@@ -1093,7 +1093,7 @@ def build_figure_deflection(ds, disp_key, nodes, members, edge_dist=0.0):
                 finally:
                     # Clean up the dictionary reference to free memory
                     cursor._timers.pop(sel_id, None)
-                    
+
             timer.add_callback(auto_hide)
             timer.start()
 
