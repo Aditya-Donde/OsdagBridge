@@ -73,3 +73,28 @@ def test_leaving_girder_tab_commits_public_state_for_dependents(qapp):
 
     dims = tab.stiffener_details_tab._girder_state.get("section_dimensions_by_member", {})
     assert dims["G1M1"]["top_flange_width_mm"] == 450.0
+
+
+def test_section_properties_design_mode_propagates_to_child_tabs(qapp):
+    tab = SectionPropertiesTab()
+    qapp.processEvents()
+
+    tab.set_design_mode("customized")
+    qapp.processEvents()
+
+    assert tab.girder_details_tab.design_combo.currentText() == "Custom"
+    assert tab.cross_bracing_tab.design_combo.currentText() == "Custom"
+    assert tab.cross_bracing_tab.bracing_section_combo.isEnabled()
+    assert tab.end_diaphragm_tab.cross_design_combo.currentText() == "Custom"
+    assert tab.end_diaphragm_tab.rolled_design_combo.currentText() == "Custom"
+    assert tab.end_diaphragm_tab.welded_design_combo.currentText() == "Custom"
+
+    tab.set_design_mode("optimised")
+    qapp.processEvents()
+
+    assert tab.girder_details_tab.design_combo.currentText() == "Optimized"
+    assert tab.cross_bracing_tab.design_combo.currentText() == "Optimized"
+    assert not tab.cross_bracing_tab.bracing_section_combo.isEnabled()
+    assert tab.end_diaphragm_tab.cross_design_combo.currentText() == "Optimized"
+    assert tab.end_diaphragm_tab.rolled_design_combo.currentText() == "Optimized"
+    assert tab.end_diaphragm_tab.welded_design_combo.currentText() == "Optimized"

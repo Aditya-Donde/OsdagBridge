@@ -225,12 +225,25 @@ class CrossBracingDetailsTab(SchemaTab):
         return [f"{girders[i]} to {girders[i+1]}" for i in range(len(girders)-1)] or ["G1 to G2"]
 
     def _on_design_changed(self, label: str):
+        self._global_design_mode = "Custom" if str(label or "").strip() == "Custom" else "Optimized"
         is_custom = (label == "Custom")
         for w in [self.bracing_section_type_combo, self.bracing_section_combo,
                   self.top_chord_type_combo, self.top_chord_size_combo,
                   self.bottom_chord_type_combo, self.bottom_chord_size_combo]:
             w.setEnabled(is_custom)
         self._on_bracing_layout_changed()
+
+    def set_design_mode(self, mode_str: str) -> None:
+        mode = "Custom" if str(mode_str or "").strip().lower() in {"custom", "customized"} else "Optimized"
+        self._global_design_mode = mode
+        combo = getattr(self, "design_combo", None)
+        if isinstance(combo, QComboBox):
+            previous = combo.blockSignals(True)
+            try:
+                combo.setCurrentText(mode)
+            finally:
+                combo.blockSignals(previous)
+        self._on_design_changed(mode)
 
     def _on_bracing_type_changed(self, label: str):
         self._update_designations_for(self.bracing_section_combo, label)
@@ -318,13 +331,27 @@ class CrossBracingDetailsTab(SchemaTab):
 
     def restore_data(self, data: dict):
         if not isinstance(data, dict): return
+        widgets = self.findChildren(QComboBox) + self.findChildren(QCheckBox) + self.findChildren(QLineEdit)
+        blocked = [widget.blockSignals(True) for widget in widgets]
+        try:
+            schema_io.restore_values(self, CROSS_BRACING_DETAILS_SCHEMA, data)
+        finally:
+            for widget, previous in zip(widgets, blocked):
+                widget.blockSignals(previous)
         restored = data.get("cross_bracing_by_member", {})
         rebuilt = {}
         for mid, payload in restored.items():
             if mid.endswith("M1"):
                 pair = payload.get("select_girders")
                 if pair: rebuilt[f"{pair}::{mid}"] = payload
-        self._state_by_member_key = rebuilt
+        if rebuilt:
+            self._state_by_member_key = rebuilt
+        else:
+            key = self._current_member_key()
+            if key:
+                self._state_by_member_key = {
+                    key: schema_io.collect_values(self, CROSS_BRACING_DETAILS_SCHEMA)
+                }
         self.refresh_girder_options()
 
     def showEvent(self, event):  # noqa: N802

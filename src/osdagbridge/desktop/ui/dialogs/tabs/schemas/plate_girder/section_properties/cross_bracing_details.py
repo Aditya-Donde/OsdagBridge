@@ -1,4 +1,9 @@
-from osdagbridge.core.utils.common import VALUES_GIRDER_DESIGN_MODE
+from osdagbridge.core.utils.common import (
+    KEY_CROSS_BRACING_SECTION,
+    KEY_CROSS_BRACING_SPACING,
+    KEY_CROSS_BRACING_TYPE,
+    VALUES_GIRDER_DESIGN_MODE,
+)
 
 CROSS_BRACING_DETAILS_SCHEMA = {
     "id": "cross_bracing_details_tab",
@@ -40,6 +45,7 @@ CROSS_BRACING_DETAILS_SCHEMA = {
             "type": "combo",
             "choices": ["K-Bracing", "X-Bracing"],
             "bind": "bracing_type_combo",
+            "input_key": KEY_CROSS_BRACING_TYPE,
         },
         {
             "id": "bracing_section_type",
@@ -59,6 +65,7 @@ CROSS_BRACING_DETAILS_SCHEMA = {
             "label": "Bracing Section Designation:",
             "type": "combo_dynamic",
             "bind": "bracing_section_combo",
+            "input_key": KEY_CROSS_BRACING_SECTION,
         },
         {
             "id": "top_chord_enabled",
@@ -119,6 +126,7 @@ CROSS_BRACING_DETAILS_SCHEMA = {
             "default": "3",
             "validator": {"type": "double_range", "bottom": 0.01, "top": 100000.0, "decimals": 2},
             "bind": "spacing_input",
+            "input_key": KEY_CROSS_BRACING_SPACING,
         },
     ],
 }
