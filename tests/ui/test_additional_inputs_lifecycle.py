@@ -12,6 +12,7 @@ from osdagbridge.core.utils.common import (
     KEY_GIRDER_IS_SECTION,
     KEY_GIRDER_TYPE,
     KEY_LONGITUDINAL_STIFFENER,
+    KEY_PROJECT_LOCATION,
     KEY_SELF_WEIGHT_FACTOR,
     KEY_STIFFENER_DESIGN_METHOD,
 )
@@ -213,6 +214,20 @@ def test_additional_inputs_apply_tab_visibility_controls_inner_tabs(qapp):
     assert dialog.typical_section_tab.layout_tab.footpath_width.isEnabled()
 
 
+def test_additional_inputs_initial_visibility_uses_basic_context(qapp):
+    dialog = AdditionalInputs("None", 7.5, include_median="No")
+    qapp.processEvents()
+
+    inner_tabs = dialog.typical_section_tab.input_tabs
+    railing_idx = dialog._find_inner_tab_index(inner_tabs, "Railing")
+    median_idx = dialog._find_inner_tab_index(inner_tabs, "Median")
+
+    assert not inner_tabs.isTabEnabled(railing_idx)
+    assert not inner_tabs.isTabEnabled(median_idx)
+    assert dialog.typical_section_tab.footpath_value == "None"
+    assert not dialog.typical_section_tab.layout_tab.footpath_width.isEnabled()
+
+
 def test_additional_inputs_update_project_location_forwards_to_loading_tabs(qapp, monkeypatch):
     dialog = AdditionalInputs()
     qapp.processEvents()
@@ -234,6 +249,43 @@ def test_additional_inputs_update_project_location_forwards_to_loading_tabs(qapp
         ("seismic_load_tab", location),
         ("wind_load_tab", location),
     ]
+
+
+def test_input_dock_open_additional_inputs_applies_project_location(qapp, monkeypatch):
+    class Backend:
+        def input_values(self):
+            return []
+
+    class Parent:
+        def __init__(self):
+            self.input_dict = {
+                KEY_PROJECT_LOCATION: {
+                    "weather_data": {
+                        "wind_speed": 44,
+                        "max_temp": 48,
+                        "min_temp": 6,
+                        "zone": "Zone IV",
+                        "z_value": 0.24,
+                    }
+                }
+            }
+
+        def common_design_func(self, trigger):
+            self.trigger = trigger
+
+    def fake_exec(dialog):
+        assert dialog.loading_tab.wind_load_tab.basic_wind_speed_input.text() == "44"
+        assert dialog.loading_tab.temperature_load_tab.highest_max_temp_input.text() == "48"
+        assert dialog.loading_tab.temperature_load_tab.lowest_min_temp_input.text() == "6"
+        assert dialog.loading_tab.seismic_load_tab.zone_factor.text() == "0.24"
+        return AdditionalInputs.Rejected
+
+    parent = Parent()
+    dock = InputDock(backend=Backend(), parent=parent)
+    monkeypatch.setattr(dock, "_get_effective_carriageway_width", lambda: 7.5)
+    monkeypatch.setattr(AdditionalInputs, "exec_", fake_exec)
+
+    dock._open_additional_inputs()
 
 
 def test_input_dock_applies_additional_values_to_parent_input_dict(qapp, monkeypatch):

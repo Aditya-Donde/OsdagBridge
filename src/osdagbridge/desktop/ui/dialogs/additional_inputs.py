@@ -115,7 +115,7 @@ class AdditionalInputs(QDialog):
 
     def __init__(self, footpath_value="None", carriageway_width=7.5, parent=None,
                  initial_cad_state=None, orchestrator_schema=None,
-                 tab_class_resolver=None):
+                 tab_class_resolver=None, include_median="Yes"):
         self._initial_cad_state = initial_cad_state or {}
         self._orchestrator_schema = orchestrator_schema or ADDITIONAL_INPUTS_ORCHESTRATOR_SCHEMA
         self._tab_class_resolver = tab_class_resolver
@@ -127,6 +127,7 @@ class AdditionalInputs(QDialog):
         self.setSizeGripEnabled(True)
         self.footpath_value = footpath_value
         self.carriageway_width = carriageway_width
+        self.include_median = include_median
         self._member_properties_editable = True
         self._last_saved_data = {}
         self.saved_values = {}
@@ -245,6 +246,7 @@ class AdditionalInputs(QDialog):
                 self._sync_member_properties_girder_count()
             except Exception:
                 pass
+        self.apply_tab_visibility(self.footpath_value, self.include_median)
 
         buttons = create_action_button_bar(
             self,
@@ -372,6 +374,7 @@ class AdditionalInputs(QDialog):
             return
 
         self.footpath_value = footpath_value
+        self.include_median = include_median
         if typical is not None:
             typical.footpath_value = footpath_value
 

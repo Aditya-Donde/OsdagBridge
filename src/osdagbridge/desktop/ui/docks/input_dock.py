@@ -706,7 +706,13 @@ class InputDock(QWidget):
     def show_project_location_dialog(self):
         dialog = ProjectLocationDialog()
         if dialog.exec() == QDialog.Accepted:
-            self._update_input_dict(KEY_PROJECT_LOCATION, dialog.get_selected_location())
+            location_data = dialog.get_selected_location()
+            self._update_input_dict(KEY_PROJECT_LOCATION, location_data)
+            if self.additional_inputs and self.additional_inputs.isVisible():
+                try:
+                    self.additional_inputs.update_project_location(location_data)
+                except Exception:
+                    pass
 
     def show_additional_inputs(self):
         self._open_additional_inputs()
@@ -714,8 +720,9 @@ class InputDock(QWidget):
     def _open_additional_inputs(self, target_tab=None):
         footpath_value    = self._text(KEY_FOOTPATH) or "None"
         carriageway_width = self._get_effective_carriageway_width()
+        include_median    = self._text(KEY_INCLUDE_MEDIAN) or ("Yes" if self._is_median_included() else "No")
 
-        dialog = AdditionalInputs(footpath_value, carriageway_width)
+        dialog = AdditionalInputs(footpath_value, carriageway_width, include_median=include_median)
         self.additional_inputs = dialog
 
         if self._additional_inputs_saved_data:
@@ -723,6 +730,12 @@ class InputDock(QWidget):
                 dialog.set_properties_data(self._additional_inputs_saved_data)
             except Exception:
                 pass
+        try:
+            location_data = getattr(self.parent, "input_dict", {}).get(KEY_PROJECT_LOCATION)
+            if location_data:
+                dialog.update_project_location(location_data)
+        except Exception:
+            pass
         try:
             dialog.set_member_properties_design_mode(self._current_design_mode)
         except Exception:
