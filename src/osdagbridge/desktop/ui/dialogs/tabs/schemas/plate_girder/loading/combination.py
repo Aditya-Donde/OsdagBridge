@@ -1,7 +1,7 @@
 LOAD_COMBINATION_TAB_SCHEMA = {
     "id": "load_combination_tab",
     "label_width": 280,
-    "description": {"title": "Description Box", "text": ""},
+    "description": {"title": "Description Box", "text": "", "hide_when_empty": False, "min_height": 360},
     "sections": [
         {
             "id": "irc_load_combos_section",
@@ -24,6 +24,7 @@ LOAD_COMBINATION_TAB_SCHEMA = {
             "edit_button_text": "Modify",
             "delete_button_bind": "load_combo_delete_btn",
             "delete_button_text": "Delete",
+            "button_order": ["add", "edit", "delete"],
             "title_bind": "custom_combo_title",
             "min_table_height": 180,
         },
