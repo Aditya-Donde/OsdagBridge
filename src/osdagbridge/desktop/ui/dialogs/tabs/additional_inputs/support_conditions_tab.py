@@ -27,9 +27,7 @@ class SupportConditionsTab(SchemaTab):
         )
 
     def validate_tab(self):
-        errors = super().validate_tab()
-        errors.extend(self._extra_validation())
-        return list(dict.fromkeys(errors))
+        return super().validate_tab()
 
     def _extra_validation(self):
         widget = getattr(self, "bearing_length_input", None)

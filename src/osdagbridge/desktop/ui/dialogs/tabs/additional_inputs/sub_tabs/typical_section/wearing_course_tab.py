@@ -11,14 +11,26 @@ from osdagbridge.desktop.ui.dialogs.tabs.schemas.plate_girder import (
 from osdagbridge.desktop.ui.dialogs.tabs.base import SchemaTab
 
 
+def _compact_rows(schema: dict) -> list[dict]:
+    fields = [
+        field
+        for row in schema.get("rows", []) or []
+        for field in row.get("fields", []) or []
+    ]
+    return [
+        {"fields": fields[0:2]},
+        {"fields": fields[2:3]},
+    ]
+
+
 _WEARING_COURSE_VIEW_SCHEMA = {
     "row_vertical_spacing": 20,
     "cards": [
         {
             "title": "Wearing Course Inputs:",
-            "label_width": WEARING_COURSE_TAB_SCHEMA.get("label_width", 200),
+            "label_width": 170,
             "field_width": 200,
-            "rows": WEARING_COURSE_TAB_SCHEMA.get("rows", []),
+            "rows": _compact_rows(WEARING_COURSE_TAB_SCHEMA),
         }
     ]
 }
@@ -56,7 +68,7 @@ class WearingCourseTab(SchemaTab):
             params["wearing_course_material"] = state["material"]
         return params
 
-    def apply_material_defaults(self, material: str) -> None:
+    def apply_material_defaults(self, material: str, *, force: bool = False) -> None:
         if material == "Concrete":
             self.set_widget_text("wearing_density", "24.0")
         elif material == "Bituminous":
@@ -64,11 +76,11 @@ class WearingCourseTab(SchemaTab):
         else:
             self.set_widget_text("wearing_density", "")
 
-        if not self.widget_text("wearing_thickness").strip():
+        if force or not self.widget_text("wearing_thickness").strip():
             self.set_widget_text("wearing_thickness", "50")
 
-    def sync_from_parent_material(self, material: str) -> dict:
-        self.apply_material_defaults(material)
+    def sync_from_parent_material(self, material: str, *, force: bool = False) -> dict:
+        self.apply_material_defaults(material, force=force)
         return self.export_cad_params()
 
     def sync_from_parent_state(self) -> dict:
