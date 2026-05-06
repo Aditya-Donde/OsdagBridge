@@ -11,14 +11,33 @@ from osdagbridge.desktop.ui.dialogs.tabs.additional_inputs.sub_tabs.typical_sect
 from osdagbridge.desktop.cad.irc5_geometry import MedianGeometry
 
 
+def _compact_rows(schema: dict, groups: tuple[tuple[int, ...], ...]) -> list[dict]:
+    fields = [
+        field
+        for row in schema.get("rows", []) or []
+        for field in row.get("fields", []) or []
+    ]
+    fields = [
+        {**field, "width": 240} if index == 0 else field
+        for index, field in enumerate(fields)
+    ]
+    return [
+        {"fields": [fields[index] for index in group if index < len(fields)]}
+        for group in groups
+    ]
+
+
 _MEDIAN_VIEW_SCHEMA = {
     "row_vertical_spacing": 20,
     "cards": [
         {
             "title": "Median Inputs:",
-            "label_width": MEDIAN_TAB_SCHEMA.get("label_width", 210),
+            "label_width": 185,
             "field_width": 200,
-            "rows": MEDIAN_TAB_SCHEMA.get("rows", []),
+            "rows": _compact_rows(
+                MEDIAN_TAB_SCHEMA,
+                ((0,), (2, 3), (1, 4), (5, 6)),
+            ),
         }
     ]
 }

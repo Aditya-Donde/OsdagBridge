@@ -8,14 +8,27 @@ from osdagbridge.desktop.ui.dialogs.tabs.base import SchemaTab
 from osdagbridge.desktop.cad.irc5_geometry import RailingGeometry
 
 
+def _compact_rows(schema: dict) -> list[dict]:
+    fields = [
+        field
+        for row in schema.get("rows", []) or []
+        for field in row.get("fields", []) or []
+    ]
+    return [
+        {"fields": fields[0:2]},
+        {"fields": fields[2:4]},
+        {"fields": fields[4:5]},
+    ]
+
+
 _RAILING_VIEW_SCHEMA = {
     "row_vertical_spacing": 20,
     "cards": [
         {
             "title": "Railing Inputs:",
-            "label_width": RAILING_TAB_SCHEMA.get("label_width", 180),
+            "label_width": 170,
             "field_width": 200,
-            "rows": RAILING_TAB_SCHEMA.get("rows", []),
+            "rows": _compact_rows(RAILING_TAB_SCHEMA),
         }
     ]
 }
