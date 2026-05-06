@@ -81,7 +81,14 @@ def collect_values(owner, schema: dict) -> dict:
     def on_field(field: dict, _section: dict | None) -> None:
         values.update(_collect_field_values(owner, field))
 
-    _walk_schema(schema, on_section=on_section, on_group=on_group, on_field=on_field)
+    _walk_schema(
+        schema,
+        on_section=on_section,
+        on_group=on_group,
+        on_field=on_field,
+        owner=owner,
+        active_stacks_only=True,
+    )
 
     extra_state = getattr(owner, "_extra_state", None)
     if callable(extra_state):
@@ -104,7 +111,12 @@ def validate(owner, schema: dict) -> list[str]:
         for message in _validate_field(owner, field):
             add_error(message)
 
-    _walk_schema(schema, on_field=on_field)
+    _walk_schema(
+        schema,
+        on_field=on_field,
+        owner=owner,
+        active_stacks_only=True,
+    )
 
     extra_validate = getattr(owner, "_extra_validation", None)
     if callable(extra_validate):
@@ -152,28 +164,71 @@ def restore_values(owner, schema: dict, data: dict) -> None:
         restore_extra(data)
 
 
-def _walk_schema(schema, on_section=None, on_group=None, on_field=None) -> None:
+def _walk_schema(
+    schema,
+    on_section=None,
+    on_group=None,
+    on_field=None,
+    *,
+    owner=None,
+    active_stacks_only: bool = False,
+) -> None:
     if isinstance(schema, list):
         for item in schema:
-            _walk_schema(item, on_section, on_group, on_field)
+            _walk_schema(
+                item,
+                on_section,
+                on_group,
+                on_field,
+                owner=owner,
+                active_stacks_only=active_stacks_only,
+            )
         return
 
     if isinstance(schema, dict):
         stype = _section_type(schema)
-        if stype in _SPECIAL_SECTION_TYPES or stype in _FIELD_AS_SECTION_TYPES or "fields" in schema or "rows" in schema:
-            _walk_section(schema, on_section=on_section, on_group=on_group, on_field=on_field)
+        layout = schema.get("layout")
+        if layout is not None:
+            _walk_schema(
+                layout,
+                on_section=on_section,
+                on_group=on_group,
+                on_field=on_field,
+                owner=owner,
+                active_stacks_only=active_stacks_only,
+            )
             return
+
+        if stype in _SPECIAL_SECTION_TYPES or stype in _FIELD_AS_SECTION_TYPES or "fields" in schema or "rows" in schema:
+            _walk_section(
+                schema,
+                on_section=on_section,
+                on_group=on_group,
+                on_field=on_field,
+                owner=owner,
+                active_stacks_only=active_stacks_only,
+            )
+            return
+
         for card in schema.get("cards", []) or []:
-            _walk_schema(card, on_section=on_section, on_group=on_group, on_field=on_field)
+            _walk_schema(card, on_section=on_section, on_group=on_group, on_field=on_field, owner=owner, active_stacks_only=active_stacks_only)
 
         for column in schema.get("columns", []) or []:
-            _walk_schema(column, on_section=on_section, on_group=on_group, on_field=on_field)
+            _walk_schema(column, on_section=on_section, on_group=on_group, on_field=on_field, owner=owner, active_stacks_only=active_stacks_only)
+
+        for child in schema.get("children", []) or []:
+            _walk_schema(child, on_section=on_section, on_group=on_group, on_field=on_field, owner=owner, active_stacks_only=active_stacks_only)
+
+        for key in ("left", "center", "right", "content", "body"):
+            child = schema.get(key)
+            if child is not None:
+                _walk_schema(child, on_section=on_section, on_group=on_group, on_field=on_field, owner=owner, active_stacks_only=active_stacks_only)
 
         for section in schema.get("sections", []) or []:
-            _walk_section(section, on_section=on_section, on_group=on_group, on_field=on_field)
+            _walk_section(section, on_section=on_section, on_group=on_group, on_field=on_field, owner=owner, active_stacks_only=active_stacks_only)
 
         for section in schema.get("overview", []) or []:
-            _walk_section(section, on_section=on_section, on_group=on_group, on_field=on_field)
+            _walk_section(section, on_section=on_section, on_group=on_group, on_field=on_field, owner=owner, active_stacks_only=active_stacks_only)
 
         for key in _LEGACY_FIELD_LIST_KEYS:
             _walk_field_list(schema.get(key), None, on_field)
@@ -188,7 +243,15 @@ def _walk_schema(schema, on_section=None, on_group=None, on_field=None) -> None:
             _walk_field_list(fields, None, on_field)
 
 
-def _walk_section(section: dict, on_section=None, on_group=None, on_field=None) -> None:
+def _walk_section(
+    section: dict,
+    on_section=None,
+    on_group=None,
+    on_field=None,
+    *,
+    owner=None,
+    active_stacks_only: bool = False,
+) -> None:
     if not isinstance(section, dict):
         return
 
@@ -197,8 +260,31 @@ def _walk_section(section: dict, on_section=None, on_group=None, on_field=None) 
 
     stype = _section_type(section)
     if stype == "stacked":
-        for page in section.get("pages", []) or []:
-            _walk_schema(page, on_section=on_section, on_group=on_group, on_field=on_field)
+        pages = section.get("pages", []) or []
+        if active_stacks_only and owner is not None:
+            source = getattr(owner, str(section.get("switch_source") or ""), None)
+            if isinstance(source, QComboBox):
+                current_text = source.currentText()
+                for page in pages:
+                    if str(page.get("match")) == current_text:
+                        _walk_schema(
+                            page,
+                            on_section=on_section,
+                            on_group=on_group,
+                            on_field=on_field,
+                            owner=owner,
+                            active_stacks_only=active_stacks_only,
+                        )
+                        return
+        for page in pages:
+            _walk_schema(
+                page,
+                on_section=on_section,
+                on_group=on_group,
+                on_field=on_field,
+                owner=owner,
+                active_stacks_only=active_stacks_only,
+            )
         return
 
     for group in section.get("checkbox_groups", []) or []:
@@ -285,9 +371,15 @@ def _collect_field_values(owner, field: dict) -> dict:
         mode_bind = field.get("bind_mode")
         value_bind = field.get("bind_value")
         if mode_bind:
-            values[str(mode_bind)] = _widget_value(getattr(owner, str(mode_bind), None))
+            value = _widget_value(getattr(owner, str(mode_bind), None))
+            values[str(mode_bind)] = value
+            for key in _field_export_keys(field, role="mode"):
+                values[key] = value
         if value_bind:
-            values[str(value_bind)] = _widget_value(getattr(owner, str(value_bind), None))
+            value = _widget_value(getattr(owner, str(value_bind), None))
+            values[str(value_bind)] = value
+            for key in _field_export_keys(field, role="value"):
+                values[key] = value
         return values
 
     bind = field.get("bind")
@@ -298,7 +390,11 @@ def _collect_field_values(owner, field: dict) -> dict:
     if widget is None:
         _log.warning("schema_io[%s]: bind %r declared in schema but not set on owner", type(owner).__name__, bind)
         return {}
-    return {str(bind): _widget_value(widget)}
+    value = _widget_value(widget)
+    values = {str(bind): value}
+    for key in _field_export_keys(field):
+        values[key] = value
+    return values
 
 
 def _restore_field(owner, field: dict, data: dict) -> None:
@@ -309,15 +405,21 @@ def _restore_field(owner, field: dict, data: dict) -> None:
     if ftype in {"mode_line", "mode_value"}:
         mode_bind = field.get("bind_mode")
         value_bind = field.get("bind_value")
-        if mode_bind and mode_bind in data:
-            _set_widget_value(getattr(owner, str(mode_bind), None), data.get(mode_bind))
-        if value_bind and value_bind in data:
-            _set_widget_value(getattr(owner, str(value_bind), None), data.get(value_bind))
+        if mode_bind:
+            found, value = _first_present(data, _field_restore_keys(field, role="mode"))
+            if found:
+                _set_widget_value(getattr(owner, str(mode_bind), None), value)
+        if value_bind:
+            found, value = _first_present(data, _field_restore_keys(field, role="value"))
+            if found:
+                _set_widget_value(getattr(owner, str(value_bind), None), value)
         return
 
     bind = field.get("bind")
-    if bind and bind in data:
-        _set_widget_value(getattr(owner, str(bind), None), data.get(bind))
+    if bind:
+        found, value = _first_present(data, _field_restore_keys(field))
+        if found:
+            _set_widget_value(getattr(owner, str(bind), None), value)
 
 
 def _validate_field(owner, field: dict) -> list[str]:
@@ -424,6 +526,59 @@ def _section_state_key(section: dict) -> str | None:
         if value:
             return str(value)
     return None
+
+
+def _field_export_keys(field: dict, role: str = "value") -> list[str]:
+    keys: list[str] = []
+    if role == "mode":
+        raw_keys = (
+            field.get("mode_key"),
+            field.get("mode_value_key"),
+            field.get("mode_input_key"),
+        )
+    else:
+        raw_keys = (
+            field.get("value_key"),
+            field.get("input_key"),
+            field.get("id"),
+        )
+
+    for key in raw_keys:
+        if key:
+            text = str(key)
+            if text not in keys:
+                keys.append(text)
+    return keys
+
+
+def _field_restore_keys(field: dict, role: str = "value") -> list[str]:
+    keys: list[str] = []
+    restore_key = "mode_restore_keys" if role == "mode" else "restore_keys"
+    raw_restore = field.get(restore_key)
+    if isinstance(raw_restore, (list, tuple)):
+        keys.extend(str(key) for key in raw_restore if key)
+    elif raw_restore:
+        keys.append(str(raw_restore))
+
+    keys.extend(_field_export_keys(field, role=role))
+
+    bind_key = "bind_mode" if role == "mode" else "bind_value" if _field_type(field) in {"mode_line", "mode_value"} else "bind"
+    bind = field.get(bind_key)
+    if bind:
+        keys.append(str(bind))
+
+    deduped: list[str] = []
+    for key in keys:
+        if key and key not in deduped:
+            deduped.append(key)
+    return deduped
+
+
+def _first_present(data: dict, keys: list[str]) -> tuple[bool, object]:
+    for key in keys:
+        if key in data:
+            return True, data.get(key)
+    return False, None
 
 
 def _field_type(field: dict) -> str:

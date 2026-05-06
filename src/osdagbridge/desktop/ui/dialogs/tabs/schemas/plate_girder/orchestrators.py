@@ -16,7 +16,7 @@ ADDITIONAL_INPUTS_ORCHESTRATOR_SCHEMA = {
                 {"label": "Member Properties",       "widget_class": "SectionPropertiesTab",     "bind": "section_properties_tab"},
                 {"label": "Loading",                 "widget_class": "LoadingTab",               "bind": "loading_tab"},
                 {"label": "Support Conditions",      "widget_class": "SupportConditionsTab",     "bind": "support_tab"},
-                {"label": "Design Options",          "widget_class": "DesignOptionsTab",         "bind": "design_options_tab"},
+                {"label": "Analysis/Design Options", "widget_class": "DesignOptionsTab",         "bind": "design_options_tab"},
                 {"label": "Design Options (Cont.)",  "widget_class": "DesignOptionsContTab",     "bind": "design_options_cont_tab"},
             ],
         }
@@ -59,10 +59,15 @@ TYPICAL_SECTION_ORCHESTRATOR_SCHEMA = {
 
 LOADING_ORCHESTRATOR_SCHEMA = {
     "id": "loading_orchestrator",
+    "scrollable": False,
+    "margins": [0, 0, 0, 0],
+    "spacing": 0,
+    "add_stretch": False,
     "sections": [
         {
             "id": "loading_tabs",
             "type": "tab_container",
+            "stretch": 1,
             "tabs": [
                 {"label": "Permanent Load", "widget_class": "PermanentLoadTab", "bind": "permanent_load_tab"},
                 {"label": "Live Load", "widget_class": "LiveLoadTab", "bind": "live_load_tab"},

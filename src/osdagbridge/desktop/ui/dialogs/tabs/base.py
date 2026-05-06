@@ -75,6 +75,19 @@ class SchemaTab(QWidget):
         for field in node.get("row_fields", []) or []:
             yield from cls._iter_schema_bind_names(field)
 
+        layout = node.get("layout")
+        if layout is not None:
+            yield from cls._iter_schema_bind_names(layout)
+            return
+
+        for child in node.get("children", []) or []:
+            yield from cls._iter_schema_bind_names(child)
+
+        for key in ("left", "center", "right", "content", "body"):
+            child = node.get(key)
+            if child is not None:
+                yield from cls._iter_schema_bind_names(child)
+
         for key in ("cards", "sections", "columns", "pages", "overview"):
             for child in node.get(key, []) or []:
                 yield from cls._iter_schema_bind_names(child)
