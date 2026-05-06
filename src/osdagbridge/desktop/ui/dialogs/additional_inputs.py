@@ -264,7 +264,7 @@ class AdditionalInputs(QDialog):
     def _on_reset_clicked(self):
         res = CustomMessageBox(
             title="Reset Defaults",
-            text="Are you sure you want to reset all fields to their default values?",
+            text="Are you sure you want to reset the current tab to its default values?",
             buttons=["Yes", "No"],
             dialogType=MessageBoxType.Question
         ).exec()

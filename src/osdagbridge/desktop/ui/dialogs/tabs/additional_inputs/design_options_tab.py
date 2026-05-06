@@ -18,7 +18,7 @@ class DesignOptionsTab(SchemaTab):
         self._sync_reinforcement_combo()
 
     def restore_properties(self, data: dict):
-        self._restore_extra_state(data)
+        self.restore_data(data)
 
     def validate_tab(self):
         return super().validate_tab()

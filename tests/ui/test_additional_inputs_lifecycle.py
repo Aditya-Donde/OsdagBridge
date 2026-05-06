@@ -99,6 +99,27 @@ def test_additional_inputs_exports_and_restores_non_typical_keys(qapp):
     assert dialog.design_options_tab.reinforcement_size_combo.currentText() == "16 mm"
 
 
+def test_design_options_restore_properties_restores_schema_fields(qapp):
+    dialog = AdditionalInputs()
+    qapp.processEvents()
+
+    dialog.design_options_tab.restore_properties({
+        "construction_stage": "No",
+        "reinforcement_size": "16 mm",
+        "shear_stud_diameter": "22",
+        "shear_stud_height": "125.00",
+        "shear_stud_spacing": "120.00",
+    })
+    qapp.processEvents()
+
+    tab = dialog.design_options_tab
+    assert tab.construction_stage_combo.currentText() == "No"
+    assert tab.reinforcement_size_combo.currentText() == "16 mm"
+    assert tab.shear_stud_diameter_combo.currentText() == "22"
+    assert tab.shear_stud_height_input.text() == "125.00"
+    assert tab.shear_stud_spacing_input.text() == "120.00"
+
+
 def test_member_properties_exports_common_keys_and_legacy_groups(qapp):
     dialog = AdditionalInputs()
     qapp.processEvents()
