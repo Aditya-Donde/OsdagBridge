@@ -561,7 +561,17 @@ class TypicalSectionDetailsTab(SchemaTab):
         return errors
 
     def reset_defaults(self):
-        # Layout defaults
+        # Let the Layout child restore every schema-owned field first, then run
+        # the coupled spacing/overhang/girder solver just like the old UI.
+        layout_tab = getattr(self, "layout_tab", None)
+        reset_layout = getattr(layout_tab, "reset_defaults", None) if layout_tab is not None else None
+        if callable(reset_layout):
+            self.updating_fields = True
+            try:
+                reset_layout()
+            finally:
+                self.updating_fields = False
+
         self._set_layout_fields(DEFAULT_GIRDER_SPACING, 0.35 * DEFAULT_GIRDER_SPACING, 2)
         self._clear_adjust_notice()
         self._solve_layout("spacing")
@@ -585,7 +595,7 @@ class TypicalSectionDetailsTab(SchemaTab):
             self.wearing_material.setCurrentText("Concrete")
             wearing_tab = getattr(self, "wearing_course_tab", None)
             sync = getattr(wearing_tab, "sync_from_parent_material", None) if wearing_tab is not None else None
-            params = sync(self.wearing_material.currentText()) if callable(sync) else {}
+            params = sync(self.wearing_material.currentText(), force=True) if callable(sync) else {}
             self._push_cad_params(params)
         if hasattr(self, "wearing_thickness") and not self.wearing_thickness.text():
             self.wearing_thickness.setText("50")

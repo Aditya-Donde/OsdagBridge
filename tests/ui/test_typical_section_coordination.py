@@ -18,6 +18,24 @@ def test_typical_section_round_trip(qapp):
     assert isinstance(errors, list)
 
 
+def test_typical_section_reset_restores_schema_owned_fields(qapp):
+    tab = TypicalSectionDetailsTab()
+    qapp.processEvents()
+
+    tab.deck_thickness.setText("275")
+    tab.footpath_width.setText("2.25")
+    tab.footpath_thickness.setText("250")
+    tab.wearing_thickness.setText("90")
+
+    tab.reset_defaults()
+    qapp.processEvents()
+
+    assert tab.deck_thickness.text() == "200"
+    assert tab.footpath_width.text() == "1.50"
+    assert tab.footpath_thickness.text() == "200"
+    assert tab.wearing_thickness.text() == "50"
+
+
 def test_layout_notice_api_and_lane_state(qapp):
     tab = TypicalSectionDetailsTab()
     qapp.processEvents()

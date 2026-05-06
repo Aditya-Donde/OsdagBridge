@@ -2,6 +2,9 @@ from osdagbridge.core.utils.common import DEFAULT_GIRDER_SPACING
 
 LAYOUT_TAB_SCHEMA = {
     "id": "layout_tab",
+    "label_width": 190,
+    "field_width": 180,
+    "row_vertical_spacing": 14,
     "rows": [
         {
             "fields": [
@@ -34,11 +37,7 @@ LAYOUT_TAB_SCHEMA = {
                     "default": f"{0.35 * DEFAULT_GIRDER_SPACING:.3f}",
                     "bind": "deck_overhang",
                     "on_text_changed": "on_deck_overhang_changed",
-                }
-            ]
-        },
-        {
-            "fields": [
+                },
                 {
                     "id": "overall_bridge_width_display",
                     "label": "Overall Bridge Width (m):",
@@ -46,7 +45,7 @@ LAYOUT_TAB_SCHEMA = {
                     "enabled": False,
                     "bind": "overall_bridge_width_display",
                     "on_text_changed": "_reject_overall_width_override",
-                }
+                },
             ]
         },
         {
