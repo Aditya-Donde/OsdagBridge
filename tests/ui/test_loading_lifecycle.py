@@ -45,6 +45,24 @@ def test_loading_tab_uses_child_lifecycle_only(qapp):
     assert tab.collect_data() == child_data
 
 
+def test_loading_project_location_updates_saved_wind_and_temperature(qapp):
+    tab = LoadingTab()
+    qapp.processEvents()
+
+    tab.wind_load_tab.update_project_location({"weather_data": {"wind_speed": 44}})
+    tab.temperature_load_tab.update_project_location({"weather_data": {"max_temp": 48, "min_temp": 6}})
+    qapp.processEvents()
+
+    data = tab.collect_data()
+
+    assert tab.wind_load_tab.basic_wind_speed_input.text() == "44"
+    assert tab.temperature_load_tab.highest_max_temp_input.text() == "48"
+    assert tab.temperature_load_tab.lowest_min_temp_input.text() == "6"
+    assert data["basic_wind_speed"] == "44"
+    assert data["highest_max_temp"] == "48"
+    assert data["lowest_min_temp"] == "6"
+
+
 def test_loading_reset_restores_seismic_combo_default(qapp):
     tab = LoadingTab()
     qapp.processEvents()
@@ -109,6 +127,27 @@ def test_loading_custom_load_line_and_area_widgets_are_distinct(qapp):
 
     assert custom.custom_line_left_start.text() == "1.0"
     assert custom.custom_area_left_start.text() == "2.0"
+
+
+def test_loading_custom_load_collects_only_persisted_rows(qapp):
+    tab = LoadingTab()
+    qapp.processEvents()
+
+    custom = tab.custom_load_tab
+    custom.custom_load_type_combo.setCurrentText("Area")
+    custom.custom_area_left_start.setText("99.0")
+    custom.custom_load_items.append({
+        "load_case": "DL",
+        "load_type": "Point",
+        "point_left": "1.0",
+        "point_bearing": "0.0",
+    })
+
+    data = custom.collect_data()
+
+    assert data == {"loading.custom_load_items": custom.custom_load_items}
+    assert "custom_area_left_start" not in data
+    assert "custom_load_type" not in data
 
 
 def test_loading_custom_load_area_save_uses_area_widgets_and_legacy_keys(qapp, monkeypatch):
