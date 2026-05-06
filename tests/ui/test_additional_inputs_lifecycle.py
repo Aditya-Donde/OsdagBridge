@@ -200,12 +200,17 @@ def test_additional_inputs_apply_tab_visibility_controls_inner_tabs(qapp):
 
     assert not inner_tabs.isTabEnabled(railing_idx)
     assert not inner_tabs.isTabEnabled(median_idx)
+    assert dialog.typical_section_tab.footpath_value == "None"
+    assert not dialog.typical_section_tab.layout_tab.footpath_width.isEnabled()
 
     dialog.apply_tab_visibility("Both Sides", "Yes")
     qapp.processEvents()
 
     assert inner_tabs.isTabEnabled(railing_idx)
     assert inner_tabs.isTabEnabled(median_idx)
+    assert dialog.footpath_value == "Both Sides"
+    assert dialog.typical_section_tab.footpath_value == "Both Sides"
+    assert dialog.typical_section_tab.layout_tab.footpath_width.isEnabled()
 
 
 def test_additional_inputs_update_project_location_forwards_to_loading_tabs(qapp, monkeypatch):

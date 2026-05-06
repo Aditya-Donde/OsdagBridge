@@ -371,6 +371,10 @@ class AdditionalInputs(QDialog):
         if inner_tabs is None:
             return
 
+        self.footpath_value = footpath_value
+        if typical is not None:
+            typical.footpath_value = footpath_value
+
         railing_index = self._find_inner_tab_index(inner_tabs, "Railing")
         if railing_index >= 0:
             inner_tabs.setTabEnabled(railing_index, str(footpath_value) != "None")
@@ -389,9 +393,13 @@ class AdditionalInputs(QDialog):
         sync = getattr(typical, "_sync_child_tabs_from_parent_state", None)
         if callable(sync):
             sync(force=False)
-        refresh = getattr(typical, "_update_cad_preview", None)
-        if callable(refresh):
-            refresh()
+        recalculate = getattr(typical, "recalculate_girders", None)
+        if callable(recalculate):
+            recalculate()
+        else:
+            refresh = getattr(typical, "_update_cad_preview", None)
+            if callable(refresh):
+                refresh()
 
     def update_project_location(self, location_data) -> None:
         loading = getattr(self, "loading_tab", None)
