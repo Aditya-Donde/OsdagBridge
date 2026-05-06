@@ -17,13 +17,15 @@ from .dto import (
 )
 from .defaults import (
     BASIC_INPUT_DICT,
+    ADDITIONAL_INPUT_DICT,
     DEFAULT_SPAN_M,
     DEFAULT_CARRIAGEWAY_WIDTH_M,
     DEFAULT_NO_OF_GIRDERS,
     DEFAULT_GIRDER_SYMMETRY,
     DEFAULT_MEDIAN_WIDTH_M,
+    solve_basic_input,
 )
-from .initial_sizing import BridgeConfigurationSolver, DEFAULT_FOOTPATH_WIDTH
+from .initial_sizing import DEFAULT_FOOTPATH_WIDTH
 from .analyser import BridgeGrillageModel
 from .analysis_results import PlateGirderAnalysisResults
 from .designer import run_design_check
@@ -85,9 +87,6 @@ from osdagbridge.core.bridge_components.super_structure.railing.geometry import 
     railing_load_from_inputs,
 )
 
-# Default median width (m) used when user enables median but no additional-input
-# width has been supplied yet.
-_DEFAULT_MEDIAN_WIDTH_M = 1.2
 
 _DB_PATH = Path(__file__).resolve().parents[2] / "data" / "ResourceFiles" / "Intg_osdag.sqlite"
 
@@ -180,9 +179,8 @@ class PlateGirderBridge:
           5. Apply dead loads
           6. Apply live loads
         """
-        parsed = self._parse_basic_inputs()
-        self._solve_bridge_layout(parsed)
-        self._build_dtos(parsed)
+        combined, self.sizing_result, self.section_props = solve_basic_input(self.basic_inputs)
+        self._build_dtos(combined)
         self.setup_grillage()
         self.add_dead_loads()
         self.add_live_loads()
@@ -194,7 +192,7 @@ class PlateGirderBridge:
             f"\n{'-'*60}\n"
             f"  PLATE GIRDER BRIDGE - DESIGN SUMMARY\n"
             f"{'-'*60}\n"
-            f"  Span                  : {parsed['span']:.1f} m\n"
+            f"  Span                  : {combined['span']:.1f} m\n"
             f"  Overall width         : {sr.overall_width:.3f} m\n"
             f"  No. of girders        : {sr.no_of_girders}\n"
             f"  Girder spacing        : {sr.girder_spacing * 1e3:.1f} mm\n"
@@ -221,107 +219,33 @@ class PlateGirderBridge:
 
         self._run_dcr_checks(dataset)
 
-    def _parse_basic_inputs(self) -> dict:
-        """Extract and normalise scalar values from ``self.basic_inputs``."""
-        span       = self._to_float(KEY_SPAN,             DEFAULT_SPAN_M)
-        cw_width   = self._to_float(KEY_CARRIAGEWAY_WIDTH, DEFAULT_CARRIAGEWAY_WIDTH_M)
-        skew_angle = self._to_float(KEY_SKEW_ANGLE,        0.0)
-
-        include_median = str(self.basic_inputs.get(KEY_INCLUDE_MEDIAN, "No")).strip()
-        footpath_str   = str(self.basic_inputs.get(KEY_FOOTPATH,       "None")).strip()
-        design_mode    = str(self.basic_inputs.get(KEY_DESIGN_MODE,    "Optimized")).strip()
-
-        if footpath_str in ("None", ""):
-            n_footpaths    = 0
-            footpath_width = 0.0
-            railing_width  = 0.0
-        elif "Both" in footpath_str:
-            n_footpaths    = 2
-            footpath_width = DEFAULT_FOOTPATH_WIDTH
-            railing_width  = DEFAULT_RAILING_WIDTH
-        else:                                        # Single Side
-            n_footpaths    = 1
-            footpath_width = DEFAULT_FOOTPATH_WIDTH
-            railing_width  = DEFAULT_RAILING_WIDTH
-
-        median_width = (
-            _DEFAULT_MEDIAN_WIDTH_M if include_median.lower() == "yes" else 0.0
-        )
-
-        return dict(
-            span=span,
-            cw_width=cw_width,
-            skew_angle=skew_angle,
-            design_mode=design_mode,
-            n_footpaths=n_footpaths,
-            footpath_width=footpath_width,
-            railing_width=railing_width,
-            median_width=median_width,
-        )
-
-    def _solve_bridge_layout(self, parsed: dict) -> None:
-        """Run BridgeConfigurationSolver and store sizing + section results."""
-        solver = BridgeConfigurationSolver(
-            carriageway_width=parsed["cw_width"],
-            crash_barrier_width=DEFAULT_CRASH_BARRIER_WIDTH,
-            footpath_width=parsed["footpath_width"],
-            railing_width=parsed["railing_width"],
-            median_width=parsed["median_width"],
-            n_footpaths=parsed["n_footpaths"],
-        )
-
-        sizing_result = solver._solve_layout(
-            no_of_girders=DEFAULT_NO_OF_GIRDERS,
-            changed_field="girders",
-        )
-
-        # Debug print for sizing result
-        print("[DEBUG] Bridge Layout Sizing Result:")
-        print(f"  overall_width = {sizing_result.overall_width} m")
-        print(f"  no_of_girders = {sizing_result.no_of_girders}")
-        print(f"  girder_spacing = {sizing_result.girder_spacing} m")
-        print(f"  deck_overhang = {sizing_result.deck_overhang} m")
-
-        symmetry = (
-            DEFAULT_GIRDER_SYMMETRY
-            if parsed["design_mode"] == "Optimized"
-            else "Girder Unsymmetric"
-        )
-        section_props = solver.compute_section_properties(
-            span=parsed["span"],
-            symmetry=symmetry,
-        )
-
-        self.sizing_result = sizing_result
-        self.section_props = section_props
-
-    def _build_dtos(self, parsed: dict) -> None:
+    def _build_dtos(self, combined: dict) -> None:
         """Construct GrillageGeometry and DeckLayoutProperties DTOs from solved results."""
-        span = parsed["span"]
+        span = combined["span"]
         # n_t: transverse grid lines — span divided by cross-bracing spacing, rounded to nearest odd integer with minimum of 3 (1 at each end + at least 1 internal for bracing)
         n_t = max(3, (int(round(span / (DEFAULT_CROSS_BRACING_SPACING)*2) + 1)))
 
-        deck_overhang = self.sizing_result.deck_overhang
+        deck_overhang = combined["deck_overhang"]
         # When there is an overhang, the two edge beams add 2 extra longitudinal
         # grid lines on top of the structural girder count.
-        n_l = self.sizing_result.no_of_girders + (2 if deck_overhang > 0 else 0)
+        n_l = combined["no_of_girders"] + (2 if deck_overhang > 0 else 0)
 
         self.grillage_geometry = GrillageGeometry(
             L=span,
             n_l=n_l,
             n_t=n_t,
             edge_dist=deck_overhang,
-            ext_to_int_dist=self.sizing_result.girder_spacing,
-            angle=parsed["skew_angle"],
+            ext_to_int_dist=combined["girder_spacing"],
+            angle=combined["skew_angle"],
         )
 
         self.deck_layout = DeckLayoutProperties(
-            carriageway_width=parsed["cw_width"],
+            carriageway_width=combined["cw_width"],
             crash_barrier_width=DEFAULT_CRASH_BARRIER_WIDTH,
-            footpath_width=parsed["footpath_width"],
-            railing_width=parsed["railing_width"],
-            median_width=parsed["median_width"],
-            n_footpaths=parsed["n_footpaths"],
+            footpath_width=combined["footpath_width"],
+            railing_width=combined["railing_width"],
+            median_width=combined["median_width"],
+            n_footpaths=combined["n_footpaths"],
         )
 
     # ─────────────────────────────────────────────────────────────────────────

@@ -30,6 +30,7 @@ DEFAULT_STRUCTURE_NAME = "plate_girder_bridge"
 DEFAULT_SPAN_M = 33.5
 DEFAULT_CARRIAGEWAY_WIDTH_M = 10.0
 DEFAULT_MEDIAN_WIDTH_M = 0.0
+DEFAULT_FALLBACK_MEDIAN_WIDTH_M = 1.2   # used when user enables median but supplies no width
 DEFAULT_NO_OF_GIRDERS   = 4
 DEFAULT_DECK_THICKNESS_MM = float(IS_DEFAULT_DECK_THICKNESS_MM)
 DEFAULT_GIRDER_SYMMETRY = "Girder Symmetric"
@@ -531,3 +532,101 @@ BASIC_INPUT_DICT = {
 
 }
 #--------------Inp-dict-End----------------
+
+ADDITIONAL_INPUT_DICT = {
+    # Derived from BASIC_INPUT_DICT by solve_basic_input()
+    'span':           DEFAULT_SPAN_M,
+    'cw_width':       DEFAULT_CARRIAGEWAY_WIDTH_M,
+    'skew_angle':     DEFAULT_SKEW_ANGLE_DEG,
+    'design_mode':    'Optimized',
+    'n_footpaths':    0,
+    'footpath_width': 0.0,
+    'railing_width':  0.0,
+    'median_width':   0.0,
+    # Layout solver results (populated by solve_basic_input)
+    'overall_width':  None,
+    'no_of_girders':  DEFAULT_NO_OF_GIRDERS,
+    'girder_spacing': float(DEFAULT_GIRDER_SPACING),
+    'deck_overhang':  None,
+}
+
+
+def solve_basic_input(basic_input_dict: dict):
+    """Parse basic inputs and solve bridge layout.
+
+    Returns
+    -------
+    tuple[dict, BridgeLayoutResult, dict]
+        (combined_dict, sizing_result, section_props)
+
+        combined_dict merges ADDITIONAL_INPUT_DICT defaults with solved values,
+        then basic_input_dict appended on top.
+    """
+    from .initial_sizing import BridgeConfigurationSolver
+
+    def _to_float(val, fallback):
+        if val is None or str(val).strip().lower() in ('', 'none'):
+            return fallback
+        try:
+            return float(val)
+        except (TypeError, ValueError):
+            return fallback
+
+    span       = _to_float(basic_input_dict.get(KEY_SPAN),             DEFAULT_SPAN_M)
+    cw_width   = _to_float(basic_input_dict.get(KEY_CARRIAGEWAY_WIDTH), DEFAULT_CARRIAGEWAY_WIDTH_M)
+    skew_angle = _to_float(basic_input_dict.get(KEY_SKEW_ANGLE),        DEFAULT_SKEW_ANGLE_DEG)
+
+    include_median = str(basic_input_dict.get(KEY_INCLUDE_MEDIAN, 'No')).strip()
+    footpath_str   = str(basic_input_dict.get(KEY_FOOTPATH,       'None')).strip()
+    design_mode    = str(basic_input_dict.get(KEY_DESIGN_MODE,    'Optimized')).strip()
+
+    if footpath_str in ('None', ''):
+        n_footpaths, footpath_width, railing_width = 0, 0.0, 0.0
+    elif 'Both' in footpath_str:
+        n_footpaths = 2
+        footpath_width = float(IS_DEFAULT_FOOTPATH_WIDTH_M)
+        railing_width  = float(DEFAULT_RAILING_WIDTH)
+    else:
+        n_footpaths = 1
+        footpath_width = float(IS_DEFAULT_FOOTPATH_WIDTH_M)
+        railing_width  = float(DEFAULT_RAILING_WIDTH)
+
+    median_width = DEFAULT_FALLBACK_MEDIAN_WIDTH_M if include_median.lower() == 'yes' else 0.0
+
+    solver = BridgeConfigurationSolver(
+        carriageway_width=cw_width,
+        crash_barrier_width=DEFAULT_CRASH_BARRIER_WIDTH,
+        footpath_width=footpath_width,
+        railing_width=railing_width,
+        median_width=median_width,
+        n_footpaths=n_footpaths,
+    )
+    sizing_result = solver._solve_layout(no_of_girders=DEFAULT_NO_OF_GIRDERS, changed_field='girders')
+
+    print("[DEBUG] Bridge Layout Sizing Result:")
+    print(f"  overall_width = {sizing_result.overall_width} m")
+    print(f"  no_of_girders = {sizing_result.no_of_girders}")
+    print(f"  girder_spacing = {sizing_result.girder_spacing} m")
+    print(f"  deck_overhang = {sizing_result.deck_overhang} m")
+
+    symmetry = DEFAULT_GIRDER_SYMMETRY if design_mode == 'Optimized' else 'Girder Unsymmetric'
+    section_props = solver.compute_section_properties(span=span, symmetry=symmetry)
+
+    combined = deepcopy(ADDITIONAL_INPUT_DICT)
+    combined.update({
+        'span':           span,
+        'cw_width':       cw_width,
+        'skew_angle':     skew_angle,
+        'design_mode':    design_mode,
+        'n_footpaths':    n_footpaths,
+        'footpath_width': footpath_width,
+        'railing_width':  railing_width,
+        'median_width':   median_width,
+        'overall_width':  sizing_result.overall_width,
+        'no_of_girders':  sizing_result.no_of_girders,
+        'girder_spacing': sizing_result.girder_spacing,
+        'deck_overhang':  sizing_result.deck_overhang,
+    })
+    combined.update(basic_input_dict)
+    print(f"[DEBUG] Combined Input Dictionary: {combined}")
+    return combined, sizing_result, section_props
