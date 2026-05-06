@@ -13,10 +13,30 @@ import copy
 class CustomLoadTab(SchemaTab):
     schema = CUSTOM_LOAD_TAB_SCHEMA
 
+    _LINE_RANGE_WIDGETS = (
+        "custom_line_left_start",
+        "custom_line_left_end",
+        "custom_line_bearing_start",
+        "custom_line_bearing_end",
+    )
+    _AREA_RANGE_WIDGETS = (
+        "custom_area_left_start",
+        "custom_area_left_end",
+        "custom_area_bearing_start",
+        "custom_area_bearing_end",
+    )
+    _RANGE_DATA_KEYS = (
+        "line_left_start",
+        "line_left_end",
+        "line_bearing_start",
+        "line_bearing_end",
+    )
+
     def __init__(self, owner, parent=None):
         super().__init__(owner, parent)
         self.custom_load_items = []
         self._editing_load_data = None
+        self._sync_owner_items()
 
         if hasattr(self, "custom_load_table_add_btn"):
             self.custom_load_table_add_btn.hide()
@@ -39,6 +59,7 @@ class CustomLoadTab(SchemaTab):
         items = data.get("loading.custom_load_items")
         if isinstance(items, list):
             self.custom_load_items = copy.deepcopy(items)
+            self._sync_owner_items()
         self._editing_load_data = None
         self._refresh_custom_load_table()
 
@@ -47,15 +68,26 @@ class CustomLoadTab(SchemaTab):
             return ["Please save or clear the Custom Load currently being edited."]
         return []
 
+    def validate_tab(self):
+        # The Add/Edit form is transient and is validated by its own Save button.
+        return self._extra_validation()
+
     def _before_reset(self):
         self.custom_load_items.clear()
+        self._sync_owner_items()
         self._editing_load_data = None
         if hasattr(self, "custom_load_table"):
             self.custom_load_table.setRowCount(0)
 
     def _after_reset(self):
         self._reset_form_fields()
+        self._sync_owner_items()
         self._refresh_custom_load_table()
+
+    def _sync_owner_items(self):
+        owner = getattr(self, "owner", None)
+        if owner is not None:
+            owner.custom_load_items = self.custom_load_items
 
     def _reset_form_fields(self):
         if hasattr(self, "custom_load_case_combo"):
@@ -68,14 +100,35 @@ class CustomLoadTab(SchemaTab):
         for bind_name in (
             "custom_point_left_input",
             "custom_point_bearing_input",
-            "custom_line_left_start",
-            "custom_line_left_end",
-            "custom_line_bearing_start",
-            "custom_line_bearing_end",
+            *self._LINE_RANGE_WIDGETS,
+            *self._AREA_RANGE_WIDGETS,
         ):
             widget = getattr(self, bind_name, None)
             if widget is not None:
                 widget.clear()
+
+    def _range_widgets_for_type(self, load_type: str):
+        if load_type == "Area":
+            return self._AREA_RANGE_WIDGETS
+        return self._LINE_RANGE_WIDGETS
+
+    def _range_values_from_widgets(self, bind_names):
+        values = []
+        for bind_name in bind_names:
+            widget = getattr(self, bind_name, None)
+            values.append(widget.text().strip() if widget is not None else "")
+        return values
+
+    def _set_range_widgets(self, bind_names, values):
+        for bind_name, value in zip(bind_names, values):
+            widget = getattr(self, bind_name, None)
+            if widget is not None:
+                widget.setText(value)
+
+    def _apply_saved_range_values(self, load_data):
+        values = [load_data.get(key, "") for key in self._RANGE_DATA_KEYS]
+        self._set_range_widgets(self._LINE_RANGE_WIDGETS, values)
+        self._set_range_widgets(self._AREA_RANGE_WIDGETS, values)
 
     def _on_custom_load_type_changed(self, _text):
         # The stacked section switches pages automatically via schema switch_source.
@@ -154,10 +207,8 @@ class CustomLoadTab(SchemaTab):
             load_data["point_left"] = point_l
             load_data["point_bearing"] = point_b
         else:
-            line_l_start = self.custom_line_left_start.text().strip()
-            line_l_end = self.custom_line_left_end.text().strip()
-            line_b_start = self.custom_line_bearing_start.text().strip()
-            line_b_end = self.custom_line_bearing_end.text().strip()
+            range_widget_names = self._range_widgets_for_type(load_data["load_type"])
+            line_l_start, line_l_end, line_b_start, line_b_end = self._range_values_from_widgets(range_widget_names)
 
             if not line_l_start or not line_l_end or not line_b_start or not line_b_end:
                 CustomMessageBox(
@@ -209,6 +260,7 @@ class CustomLoadTab(SchemaTab):
             self.custom_load_items.append(load_data)
 
         self._reset_form_fields()
+        self._sync_owner_items()
         self._refresh_custom_load_table()
 
         CustomMessageBox(
@@ -258,10 +310,7 @@ class CustomLoadTab(SchemaTab):
             self.custom_point_left_input.setText(load_data.get("point_left", ""))
             self.custom_point_bearing_input.setText(load_data.get("point_bearing", ""))
         else:
-            self.custom_line_left_start.setText(load_data.get("line_left_start", ""))
-            self.custom_line_left_end.setText(load_data.get("line_left_end", ""))
-            self.custom_line_bearing_start.setText(load_data.get("line_bearing_start", ""))
-            self.custom_line_bearing_end.setText(load_data.get("line_bearing_end", ""))
+            self._apply_saved_range_values(load_data)
 
     def _on_delete_custom_load(self):
         selected_rows = self.custom_load_table.selectionModel().selectedRows()
@@ -280,6 +329,7 @@ class CustomLoadTab(SchemaTab):
                 del self.custom_load_items[row_idx]
 
         self._editing_load_data = None
+        self._sync_owner_items()
         self._refresh_custom_load_table()
 
         CustomMessageBox(
