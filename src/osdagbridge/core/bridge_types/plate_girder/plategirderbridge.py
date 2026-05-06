@@ -18,8 +18,6 @@ from .dto import (
 from .defaults import (
     BASIC_INPUT_DICT,
     ADDITIONAL_INPUT_DICT,
-    DEFAULT_SPAN_M,
-    DEFAULT_CARRIAGEWAY_WIDTH_M,
     DEFAULT_NO_OF_GIRDERS,
     DEFAULT_GIRDER_SYMMETRY,
     DEFAULT_MEDIAN_WIDTH_M,
@@ -196,7 +194,7 @@ class PlateGirderBridge:
             f"\n{'-'*60}\n"
             f"  PLATE GIRDER BRIDGE - DESIGN SUMMARY\n"
             f"{'-'*60}\n"
-            f"  Span                  : {combined['span']:.1f} m\n"
+            f"  Span                  : {float(self.basic_inputs[KEY_SPAN]):.1f} m\n"
             f"  Overall width         : {sr.overall_width:.3f} m\n"
             f"  No. of girders        : {sr.no_of_girders}\n"
             f"  Girder spacing        : {sr.girder_spacing * 1e3:.1f} mm\n"
@@ -225,7 +223,7 @@ class PlateGirderBridge:
 
     def _build_dtos(self, combined: dict) -> None:
         """Construct GrillageGeometry and DeckLayoutProperties DTOs from solved results."""
-        span = combined["span"]
+        span = float(self.basic_inputs[KEY_SPAN])
         # n_t: transverse grid lines — span divided by cross-bracing spacing, rounded to nearest odd integer with minimum of 3 (1 at each end + at least 1 internal for bracing)
         n_t = max(3, (int(round(span / (DEFAULT_CROSS_BRACING_SPACING)*2) + 1)))
 
@@ -240,11 +238,11 @@ class PlateGirderBridge:
             n_t=n_t,
             edge_dist=deck_overhang,
             ext_to_int_dist=combined["girder_spacing"],
-            angle=combined["skew_angle"],
+            angle=self._to_float(KEY_SKEW_ANGLE, 0.0),
         )
 
         self.deck_layout = DeckLayoutProperties(
-            carriageway_width=combined["cw_width"],
+            carriageway_width=float(self.basic_inputs[KEY_CARRIAGEWAY_WIDTH]),
             crash_barrier_width=DEFAULT_CRASH_BARRIER_WIDTH,
             footpath_width=combined["footpath_width"],
             railing_width=combined["railing_width"],
@@ -725,8 +723,8 @@ class PlateGirderBridge:
         B_bot   = sp.get("B_bot",   sp["B_top"])   * 1e3   # fallback: symmetric
         t_f_bot = sp.get("t_f_bot", sp["t_f_top"]) * 1e3   # fallback: symmetric
 
-        span_mm = self._to_float(KEY_SPAN,             DEFAULT_SPAN_M) * 1e3
-        cw_each_way_m = self._to_float(KEY_CARRIAGEWAY_WIDTH, DEFAULT_CARRIAGEWAY_WIDTH_M)
+        span_mm = float(self.basic_inputs[KEY_SPAN]) * 1e3
+        cw_each_way_m = float(self.basic_inputs[KEY_CARRIAGEWAY_WIDTH])
         skew = self._to_float(KEY_SKEW_ANGLE, 0.0)
 
         footpath_str   = str(self.basic_inputs.get(KEY_FOOTPATH,       "None")).strip()
