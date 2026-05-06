@@ -301,21 +301,36 @@ class GirderDetailsTab(SchemaTab):
         self.commit_active_state(emit_signal=False)
         data = super().collect_data()
         data.update({
-            "available_girders": self.available_girders,
-            "segment_chain": self.segment_chain,
-            "member_state": self._member_state,
+            "available_girders": list(self.available_girders),
+            "segment_chain": copy.deepcopy(self.segment_chain),
+            "member_state": copy.deepcopy(self._member_state),
         })
         return data
 
     def restore_data(self, data: dict):
         if not data: return
-        super().restore_data(data)
-        self.available_girders = data.get("available_girders", ["G1"])
-        self.segment_chain = data.get("segment_chain", {})
-        self._member_state = data.get("member_state", {})
+        self._suppress_member_state_updates = True
+        try:
+            super().restore_data(data)
+        finally:
+            self._suppress_member_state_updates = False
+        self.available_girders = list(data.get("available_girders", ["G1"]) or ["G1"])
+        self.segment_chain = copy.deepcopy(data.get("segment_chain", {}) or {})
+        self._member_state = copy.deepcopy(data.get("member_state", {}) or {})
         self._dirty_members.clear()
+        target_girder = self.available_girders[0]
+        self._current_girder = target_girder
         self._refresh_girder_dropdown()
-        self._on_girder_changed(self.available_girders[0])
+        combo = getattr(self, "girder_dropdown", None)
+        if combo is not None:
+            blocked = combo.blockSignals(True)
+            try:
+                index = combo.findData(target_girder)
+                if index >= 0:
+                    combo.setCurrentIndex(index)
+            finally:
+                combo.blockSignals(blocked)
+        self._on_girder_changed(target_girder)
         self._sync_cad_view()
         self.commit_active_state()
 
@@ -416,6 +431,8 @@ class GirderDetailsTab(SchemaTab):
 
     def _restore_member_state(self, stored: Optional[dict]) -> None:
         self._suppress_member_state_updates = True
+        widgets = self.findChildren(QComboBox) + self.findChildren(QLineEdit)
+        blocked = [widget.blockSignals(True) for widget in widgets]
         try:
             if stored:
                 schema_io.restore_values(self, GIRDER_DETAILS_SCHEMA, stored.get("inputs", {}))
@@ -424,6 +441,8 @@ class GirderDetailsTab(SchemaTab):
                 schema_io.reset_defaults(self, GIRDER_DETAILS_SCHEMA)
                 self._dimension_bounds = self._default_dimension_bounds()
         finally:
+            for widget, previous in zip(widgets, blocked):
+                widget.blockSignals(previous)
             self._suppress_member_state_updates = False
         self._refresh_visibility()
 
@@ -435,24 +454,34 @@ class GirderDetailsTab(SchemaTab):
                 widget.setEnabled(enabled)
 
     def _current_member_dimensions(self) -> dict:
-        member_id = self._current_member_id()
-        return self.get_member_section_dimensions(member_id) if member_id else {}
+        return {
+            "top_flange_width_mm": self._as_float(self.widget_text("top_width_input"), 0.0),
+            "bottom_flange_width_mm": self._as_float(self.widget_text("bottom_width_input"), 0.0),
+            "web_thickness_mm": self._as_float(self.widget_text("web_thickness_value_input"), 0.0),
+            "total_depth_mm": self._as_float(self.widget_text("total_depth_input"), 0.0),
+        }
 
     def _sync_cad_view(self) -> None:
+        if getattr(self, "_syncing_cad_view", False):
+            return
         cad = getattr(self, "girder_cad_view", None)
         if cad is None:
             return
-        dims = self._current_member_dimensions()
-        flange_thickness = max(
-            10.0,
-            self._as_float(self.widget_text("top_thickness_value_input"), 0.0) or 0.0,
-            self._as_float(self.widget_text("bottom_thickness_value_input"), 0.0) or 0.0,
-            dims.get("web_thickness_mm") or 15.0,
-        )
-        cad.set_segments(self._ensure_girder_segments(self._current_girder))
-        cad.set_selected_member(self._current_member_id())
-        cad._flange_thickness = flange_thickness
-        cad.update()
+        self._syncing_cad_view = True
+        try:
+            dims = self._current_member_dimensions()
+            flange_thickness = max(
+                10.0,
+                self._as_float(self.widget_text("top_thickness_value_input"), 0.0) or 0.0,
+                self._as_float(self.widget_text("bottom_thickness_value_input"), 0.0) or 0.0,
+                dims.get("web_thickness_mm") or 15.0,
+            )
+            cad.set_segments(self._ensure_girder_segments(self._current_girder))
+            cad.set_selected_member(self._current_member_id())
+            cad._flange_thickness = flange_thickness
+            cad.update()
+        finally:
+            self._syncing_cad_view = False
 
     def list_available_girders(self) -> list[str]:
         return list(self.available_girders)

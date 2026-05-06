@@ -136,13 +136,15 @@ class CrossBracingDetailsTab(SchemaTab):
     def _store_current_member_state(self) -> None:
         key = self._active_member_key or self._current_member_key()
         if not key: return
+        self._state_by_member_key[key] = self._current_state_snapshot()
+        self._active_member_key = key
+
+    def _current_state_snapshot(self) -> dict:
         state = schema_io.collect_values(self, CROSS_BRACING_DETAILS_SCHEMA)
-        # Extra metadata for combos
         state["bracing_section_data"] = self.bracing_section_combo.currentData()
         state["top_chord_data"] = self.top_chord_size_combo.currentData()
         state["bottom_chord_data"] = self.bottom_chord_size_combo.currentData()
-        self._state_by_member_key[key] = state
-        self._active_member_key = key
+        return state
 
     def _load_state_for_current_member(self) -> None:
         key = self._current_member_key()
@@ -313,16 +315,21 @@ class CrossBracingDetailsTab(SchemaTab):
 
     def collect_data(self):
         self._store_current_member_state()
+        current_key = self._current_member_key()
+        current_state = self._current_state_snapshot()
+        if current_key:
+            self._state_by_member_key[current_key] = dict(current_state)
+            self._active_member_key = current_key
         pairs = self._girder_pairs()
         by_member = {}
         for idx, pair in enumerate(pairs, 1):
-            base_state = self._state_by_member_key.get(f"{pair}::B{idx}M1") or self._default_member_state()
+            base_state = self._state_by_member_key.get(f"{pair}::B{idx}M1") or current_state
             for mid in [f"B{idx}M{i}" for i in range(1, self._cross_bracing_member_count() + 1)]:
                 s = dict(base_state)
                 s.update({"select_girders": pair, "member_id": mid})
                 by_member[mid] = s
         
-        data = schema_io.collect_values(self, CROSS_BRACING_DETAILS_SCHEMA)
+        data = dict(current_state)
         data.update({"cross_bracing_by_member": by_member})
         return data
 

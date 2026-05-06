@@ -73,14 +73,16 @@ class EndDiaphragmDetailsTab(SchemaTab):
     def _store_current_state(self) -> None:
         key = self._active_key or self._current_key()
         if not key: return
+        self._state_by_key[key] = self._current_state_snapshot()
+        self._active_key = key
+
+    def _current_state_snapshot(self) -> dict:
         state = schema_io.collect_values(self, END_DIAPHRAGM_DETAILS_SCHEMA)
-        # Store extra combo data
         state["cross_bracing_section_data"] = self.cross_bracing_section_combo.currentData()
         state["cross_top_chord_size_data"] = self.cross_top_chord_size_combo.currentData()
         state["cross_bottom_chord_size_data"] = self.cross_bottom_chord_size_combo.currentData()
         state["rolled_is_section_data"] = self.rolled_is_section_combo.currentData()
-        self._state_by_key[key] = state
-        self._active_key = key
+        return state
 
     def _load_state_for_current_selection(self) -> None:
         key = self._current_key()
@@ -235,6 +237,11 @@ class EndDiaphragmDetailsTab(SchemaTab):
 
     def collect_data(self):
         self._store_current_state()
+        current_key = self._current_key()
+        current_state = self._current_state_snapshot()
+        if current_key:
+            self._state_by_key[current_key] = dict(current_state)
+            self._active_key = current_key
         pairs = self._girder_pairs()
         by_member = {}
         for idx, pair in enumerate(pairs, 1):
@@ -244,12 +251,12 @@ class EndDiaphragmDetailsTab(SchemaTab):
                 # For simplicity, we use same state for all view types in collect, but 
                 # practically only one view type is active.
                 view = self.type_selector_combo.currentText()
-                state = self._state_by_key.get(f"{view}::{pair}") or self._get_default_state()
+                state = self._state_by_key.get(f"{view}::{pair}") or current_state
                 by_member[mid] = dict(state)
                 by_member[mid]["select_girders"] = pair
                 by_member[mid]["member_id"] = mid
         
-        data = schema_io.collect_values(self, END_DIAPHRAGM_DETAILS_SCHEMA)
+        data = dict(current_state)
         data.update({"end_diaphragm_by_member": by_member})
         return data
 
