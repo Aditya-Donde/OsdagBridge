@@ -16,7 +16,7 @@ from .dto import (
     GirderSegmentDTO,
 )
 from .defaults import (
-    DEFAULTS_DICT,
+    BASIC_INPUT_DICT,
     DEFAULT_SPAN_M,
     DEFAULT_CARRIAGEWAY_WIDTH_M,
     DEFAULT_NO_OF_GIRDERS,

@@ -509,7 +509,9 @@ from osdagbridge.core.utils.common import (
 steel_properties = connectdb("Steel_Grade_Properties")
 concrete_properies = connectdb("Concrete_Grade_Properties")
 
-DEFAULTS_DICT = {
+# This is default initial dictionary 
+BASIC_INPUT_DICT = {
+
     # Input Dock Defaults
     KEY_STRUCTURE_TYPE: "Highway Bridge",
     KEY_PROJECT_LOCATION: None, # Required field will be none by default
