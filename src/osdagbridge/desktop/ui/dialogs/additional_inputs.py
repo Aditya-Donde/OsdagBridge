@@ -64,6 +64,48 @@ _TAB_BAR_STYLE = """
     }
 """
 
+_INPUT_KEY_ALIASES = {
+    "girder_spacing": KEY_GIRDER_SPACING,
+    "deck_overhang": KEY_DECK_OVERHANG,
+    "no_of_girders": KEY_NO_OF_GIRDERS,
+    "deck_thickness": KEY_DECK_THICKNESS,
+    "footpath_width": KEY_FOOTPATH_WIDTH,
+    "footpath_thickness": KEY_FOOTPATH_THICKNESS,
+    "railing_width": KEY_RAILING_WIDTH,
+    "railing_height": KEY_RAILING_HEIGHT,
+    "crash_barrier_density": KEY_CRASH_BARRIER_DENSITY,
+    "crash_barrier_width": KEY_CRASH_BARRIER_WIDTH,
+    "crash_barrier_area": KEY_CRASH_BARRIER_AREA,
+    "wearing_material": KEY_WEARING_COAT_MATERIAL,
+    "wearing_density": KEY_WEARING_COAT_DENSITY,
+    "wearing_thickness": KEY_WEARING_COAT_THICKNESS,
+    "self_weight_factor": KEY_SELF_WEIGHT_FACTOR,
+    "footpath_pressure": KEY_FOOTPATH_PRESSURE_VALUE,
+    "left_support": KEY_LEFT_SUPPORT,
+    "right_support": KEY_RIGHT_SUPPORT,
+    "bearing_length": KEY_BEARING_LENGTH,
+    "reinforcement_size": KEY_DECK_REINF_SIZE,
+    "reinforcement_material": KEY_DECK_REINF_MATERIAL,
+}
+
+
+def with_additional_input_key_aliases(values: dict) -> dict:
+    """Add legacy/common input_dict keys alongside schema bind keys."""
+    enriched = dict(values or {})
+    for schema_key, input_key in _INPUT_KEY_ALIASES.items():
+        if schema_key in enriched and input_key not in enriched:
+            enriched[input_key] = enriched[schema_key]
+    return enriched
+
+
+def with_additional_input_restore_aliases(values: dict) -> dict:
+    """Add schema keys when restoring from legacy/common input_dict keys."""
+    enriched = dict(values or {})
+    for schema_key, input_key in _INPUT_KEY_ALIASES.items():
+        if input_key in enriched and schema_key not in enriched:
+            enriched[schema_key] = enriched[input_key]
+    return enriched
+
 
 class AdditionalInputs(QDialog):
     """Main dialog for Additional Inputs with tabbed interface"""
@@ -121,6 +163,7 @@ class AdditionalInputs(QDialog):
             buttons=["OK"],
             dialogType=MessageBoxType.Success,
         ).exec()
+        self.accept()
 
     def _show_validation_errors(self, errors):
         message = "\n\n".join(f"• {err}" for err in errors)
@@ -139,7 +182,7 @@ class AdditionalInputs(QDialog):
             if hasattr(tab, "collect_data"):
                 values.update(tab.collect_data())
 
-        self.saved_values = dict(values)
+        self.saved_values = with_additional_input_key_aliases(values)
 
     def _iter_top_tabs(self):
         for attr in self._top_tab_attrs:
@@ -177,6 +220,9 @@ class AdditionalInputs(QDialog):
 
         self.tab_widget = tab_host.findChild(QTabWidget, "additional_inputs_tabs")
         if self.tab_widget is not None:
+            self.tabs = self.tab_widget
+            self._last_top_tab_index = self.tab_widget.currentIndex()
+            self.tab_widget.currentChanged.connect(self._on_top_tab_changed)
             self.tab_widget.setStyleSheet(_TAB_BAR_STYLE)
 
         # Push bridge context that used to be a constructor argument; this
@@ -189,6 +235,13 @@ class AdditionalInputs(QDialog):
                 carriageway_width=self.carriageway_width,
                 initial_cad_state=self._initial_cad_state,
             )
+        section_tab = getattr(self, "section_properties_tab", None)
+        if ts is not None and section_tab is not None:
+            try:
+                ts.girder_count_changed.connect(section_tab.set_girder_count)
+                self._sync_member_properties_girder_count()
+            except Exception:
+                pass
 
         buttons = create_action_button_bar(
             self,
@@ -212,12 +265,33 @@ class AdditionalInputs(QDialog):
         ).exec()
 
         if res == "Yes":
-            self.reset_defaults()
+            self._apply_defaults()
 
     def reset_defaults(self):
         for tab in self._iter_top_tabs():
             if hasattr(tab, "reset_defaults"):
                 tab.reset_defaults()
+
+    def _apply_defaults(self):
+        """Apply defaults to the currently visible top-level tab."""
+        try:
+            current_widget = self.tab_widget.currentWidget()
+        except Exception:
+            current_widget = None
+
+        if current_widget is None:
+            self.reset_defaults()
+            return
+
+        if current_widget is getattr(self, "section_properties_tab", None):
+            reset_active = getattr(self.section_properties_tab, "reset_active_tab_defaults", None)
+            if callable(reset_active):
+                reset_active()
+                return
+
+        reset = getattr(current_widget, "reset_defaults", None)
+        if callable(reset):
+            reset()
 
     def get_saved_data(self) -> dict:
         return self._last_saved_data.copy()
@@ -226,6 +300,7 @@ class AdditionalInputs(QDialog):
         if not data:
             return
 
+        data = with_additional_input_restore_aliases(data)
         for tab in self._iter_top_tabs():
             if hasattr(tab, "restore_data"):
                 tab.restore_data(data)
@@ -239,11 +314,127 @@ class AdditionalInputs(QDialog):
                 fn(value)
 
     def set_member_properties_design_mode(self, mode: str) -> None:
+        mode = self._normalize_member_properties_design_mode(mode)
         tab = getattr(self, "section_properties_tab", None)
         if tab is not None:
             fn = getattr(tab, "set_design_mode", None)
             if callable(fn):
                 fn(mode)
+
+    def _normalize_member_properties_design_mode(self, mode: str) -> str:
+        value = str(mode or "").strip().lower()
+        if value in {"custom", "customized"}:
+            return "Custom"
+        if value in {"optimized", "optimised"}:
+            return "Optimized"
+        return "Optimized"
+
+    def set_member_properties_editable(self, editable: bool) -> None:
+        self._member_properties_editable = bool(editable)
+        tab = getattr(self, "section_properties_tab", None)
+        if tab is not None:
+            fn = getattr(tab, "set_editable_mode", None)
+            if callable(fn):
+                fn(self._member_properties_editable)
+
+    def _sync_member_properties_girder_count(self) -> None:
+        try:
+            count_text = ""
+            typical = getattr(self, "typical_section_tab", None)
+            if typical is not None and hasattr(typical, "no_of_girders"):
+                count_text = str(typical.no_of_girders.text() or "").strip()
+            if not count_text:
+                return
+            section = getattr(self, "section_properties_tab", None)
+            setter = getattr(section, "set_girder_count", None) if section is not None else None
+            if callable(setter):
+                setter(int(float(count_text)))
+        except Exception:
+            pass
+
+    @staticmethod
+    def _find_inner_tab_index(tab_widget, tab_name: str) -> int:
+        try:
+            for idx in range(tab_widget.count()):
+                if tab_widget.tabText(idx).strip().lower() == tab_name.strip().lower():
+                    return idx
+        except Exception:
+            return -1
+        return -1
+
+    def apply_tab_visibility(self, footpath_value: str, include_median) -> None:
+        typical = getattr(self, "typical_section_tab", None)
+        inner_tabs = getattr(typical, "input_tabs", None) if typical is not None else None
+        if inner_tabs is None:
+            return
+
+        railing_index = self._find_inner_tab_index(inner_tabs, "Railing")
+        if railing_index >= 0:
+            inner_tabs.setTabEnabled(railing_index, str(footpath_value) != "None")
+
+        median_index = self._find_inner_tab_index(inner_tabs, "Median")
+        if median_index >= 0:
+            median_enabled = str(include_median).strip().lower() not in {"no", "false", "0"}
+            inner_tabs.setTabEnabled(median_index, median_enabled)
+
+        if inner_tabs.currentIndex() >= 0 and not inner_tabs.isTabEnabled(inner_tabs.currentIndex()):
+            for idx in range(inner_tabs.count()):
+                if inner_tabs.isTabEnabled(idx):
+                    inner_tabs.setCurrentIndex(idx)
+                    break
+
+        sync = getattr(typical, "_sync_child_tabs_from_parent_state", None)
+        if callable(sync):
+            sync(force=False)
+        refresh = getattr(typical, "_update_cad_preview", None)
+        if callable(refresh):
+            refresh()
+
+    def update_project_location(self, location_data) -> None:
+        loading = getattr(self, "loading_tab", None)
+        for attr in ("temperature_load_tab", "seismic_load_tab", "wind_load_tab"):
+            tab = getattr(loading, attr, None) if loading is not None else None
+            fn = getattr(tab, "update_project_location", None) if tab is not None else None
+            if callable(fn):
+                fn(location_data)
+
+    def _on_top_tab_changed(self, index: int) -> None:
+        if index < 0:
+            return
+
+        previous = getattr(self, "_last_top_tab_index", 0)
+        if previous == index:
+            return
+
+        tab_widget = getattr(self, "tab_widget", None)
+        section_tab = getattr(self, "section_properties_tab", None)
+        leaving_member_properties = (
+            tab_widget is not None
+            and section_tab is not None
+            and previous == tab_widget.indexOf(section_tab)
+        )
+        if leaving_member_properties:
+            try:
+                has_unsaved = getattr(section_tab, "has_unsaved_changes", None)
+                if callable(has_unsaved) and has_unsaved():
+                    CustomMessageBox(
+                        title="Unsaved Inputs",
+                        text="Please save Member Properties before switching tabs.",
+                        buttons=["OK"],
+                        dialogType=MessageBoxType.Warning,
+                    ).exec()
+                    blocked = tab_widget.blockSignals(True)
+                    tab_widget.setCurrentIndex(previous)
+                    tab_widget.blockSignals(blocked)
+                    return
+
+                save_properties = getattr(section_tab, "save_properties", None)
+                if callable(save_properties):
+                    self._last_saved_data.update(save_properties() or {})
+            except Exception:
+                pass
+
+        self._last_top_tab_index = index
 
     def get_all_values(self) -> dict:
         return dict(self.saved_values)

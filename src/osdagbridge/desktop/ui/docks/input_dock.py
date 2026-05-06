@@ -21,7 +21,10 @@ from PySide6.QtCore import Qt, QRegularExpression, QSize, QTimer, QPoint, QEvent
 from PySide6.QtGui import QDoubleValidator, QRegularExpressionValidator, QIcon, QColor, QBrush
 
 from osdagbridge.core.utils.common import *
-from osdagbridge.desktop.ui.dialogs.additional_inputs import AdditionalInputs
+from osdagbridge.desktop.ui.dialogs.additional_inputs import (
+    AdditionalInputs,
+    with_additional_input_key_aliases,
+)
 from osdagbridge.desktop.ui.utils.custom_buttons import DockCustomButton
 from osdagbridge.desktop.ui.dialogs.project_location import ProjectLocationDialog
 from osdagbridge.desktop.ui.docks.dock_utils import apply_field_style
@@ -712,34 +715,43 @@ class InputDock(QWidget):
         footpath_value    = self._text(KEY_FOOTPATH) or "None"
         carriageway_width = self._get_effective_carriageway_width()
 
-        self.additional_inputs = AdditionalInputs(footpath_value, carriageway_width)
+        dialog = AdditionalInputs(footpath_value, carriageway_width)
+        self.additional_inputs = dialog
 
         if self._additional_inputs_saved_data:
             try:
-                self.additional_inputs.set_properties_data(self._additional_inputs_saved_data)
+                dialog.set_properties_data(self._additional_inputs_saved_data)
             except Exception:
                 pass
         try:
-            self.additional_inputs.set_member_properties_design_mode(self._current_design_mode)
+            dialog.set_member_properties_design_mode(self._current_design_mode)
         except Exception:
             pass
         if target_tab:
             try:
-                for i in range(self.additional_inputs.tab_widget.count()):
-                    if self.additional_inputs.tab_widget.tabText(i).strip().lower() == target_tab.lower():
-                        self.additional_inputs.tab_widget.setCurrentIndex(i)
+                for i in range(dialog.tab_widget.count()):
+                    if dialog.tab_widget.tabText(i).strip().lower() == target_tab.lower():
+                        dialog.tab_widget.setCurrentIndex(i)
                         break
             except Exception:
                 pass
 
-        self.additional_inputs.finished.connect(self._on_additional_inputs_closed)
+        dialog.finished.connect(lambda _result, dlg=dialog: self._on_additional_inputs_closed(dlg))
 
-        if self.additional_inputs.exec_() == AdditionalInputs.Accepted:
-            values = self.additional_inputs.get_all_values()
-            if values:
-                self.additional_input_values = values
-                self.input_value_changed.emit()
-                self._run_cross_cutting_validation()
+        if dialog.exec_() == AdditionalInputs.Accepted:
+            self._apply_additional_input_values(dialog.get_all_values())
+
+    def _apply_additional_input_values(self, values: dict) -> None:
+        values = with_additional_input_key_aliases(values)
+        if not values:
+            return
+
+        self._additional_inputs_saved_data = values
+        self.additional_input_values = values
+        if hasattr(self.parent, "input_dict"):
+            self.parent.input_dict.update(values)
+        self.input_value_changed.emit()
+        self._run_cross_cutting_validation()
 
     def _run_cross_cutting_validation(self) -> None:
         """Run BridgeInputValidator against the merged basic+additional dict.
@@ -769,14 +781,16 @@ class InputDock(QWidget):
             dialogType=MessageBoxType.Warning,
         ).exec()
 
-    def _on_additional_inputs_closed(self):
+    def _on_additional_inputs_closed(self, dialog=None):
+        dialog = dialog or self.additional_inputs
         try:
-            saved = self.additional_inputs.get_saved_data()
+            saved = dialog.get_saved_data() if dialog is not None else {}
             if isinstance(saved, dict) and saved:
                 self._additional_inputs_saved_data = saved
         except Exception:
             pass
-        self.additional_inputs = None
+        if self.additional_inputs is dialog:
+            self.additional_inputs = None
 
     # ══════════════════════════════════════════════════════════════════════════
     # Lock / unlock
