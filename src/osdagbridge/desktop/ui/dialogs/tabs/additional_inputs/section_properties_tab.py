@@ -88,12 +88,15 @@ class SectionPropertiesTab(SchemaTab):
         self._bind_dependents()
 
     def collect_data(self) -> dict:
-        """Unified data collection from all section sub-tabs."""
+        """Collect flat schema values and legacy nested member-property groups."""
         data = {}
         for spec in _TAB_SPECS:
             tab = getattr(self, spec["attr"], None)
             if hasattr(tab, "collect_data"):
-                data.update(tab.collect_data())
+                tab_data = tab.collect_data()
+                if isinstance(tab_data, dict):
+                    data.update(tab_data)
+                    data[spec["save_key"]] = tab_data
         return data
 
     def save_properties(self) -> dict:
@@ -102,10 +105,17 @@ class SectionPropertiesTab(SchemaTab):
 
     def restore_data(self, data: dict) -> None:
         """Unified data restoration to all section sub-tabs."""
+        if not isinstance(data, dict):
+            return
         for spec in _TAB_SPECS:
             tab = getattr(self, spec["attr"], None)
             if hasattr(tab, "restore_data"):
-                tab.restore_data(data)
+                payload = data.get(spec["save_key"])
+                if not isinstance(payload, dict):
+                    payload = data.get(spec["key"])
+                if not isinstance(payload, dict):
+                    payload = data
+                tab.restore_data(payload)
         self._refresh_dependency_state()
 
     def restore_properties(self, data: dict) -> None:

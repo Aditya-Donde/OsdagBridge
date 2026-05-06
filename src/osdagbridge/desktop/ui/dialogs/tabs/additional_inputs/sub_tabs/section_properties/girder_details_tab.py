@@ -526,6 +526,13 @@ class GirderDetailsTab(SchemaTab):
     def export_dependency_state(self) -> dict:
         return self.commit_active_state(emit_signal=False)
 
+    def set_design_mode(self, mode_str: str) -> None:
+        mode = "Custom" if str(mode_str or "").strip().lower() in {"custom", "customized"} else "Optimized"
+        combo = getattr(self, "design_combo", None)
+        if isinstance(combo, QComboBox):
+            combo.setCurrentText(mode)
+        self.commit_active_state()
+
     def set_girder_count(self, count):
         self.commit_active_state(emit_signal=False)
         try:
