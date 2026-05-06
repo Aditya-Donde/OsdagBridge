@@ -37,9 +37,8 @@ class LiveLoadTab(SchemaTab):
         self._update_custom_vehicle_box_height()
         self._update_custom_vehicle_header()
         self._update_braking_vehicles_section()
-        self._on_footpath_mode_changed(
-            self.footpath_mode_combo.currentText() if hasattr(self, "footpath_mode_combo") else ""
-        )
+        if hasattr(self, "footpath_mode_combo") and hasattr(self, "footpath_value_input"):
+            self.footpath_value_input.setEnabled(self.footpath_mode_combo.currentText() == "User-defined")
         self._sync_owner_refs()
 
     def _sync_owner_refs(self):
@@ -71,13 +70,15 @@ class LiveLoadTab(SchemaTab):
     def _restore_extra_state(self, data: dict):
         custom_vehicles = data.get("loading.live_custom_vehicles")
         if isinstance(custom_vehicles, dict):
-            self.custom_vehicles = dict(custom_vehicles)
+            saved_vehicles = dict(custom_vehicles)
+            self.custom_vehicles.clear()
             self.has_real_custom_vehicle = bool(
-                data.get("loading.live_has_real_custom_vehicle", bool(custom_vehicles))
+                data.get("loading.live_has_real_custom_vehicle", bool(saved_vehicles))
             )
             if hasattr(self, "custom_vehicle_table"):
                 self.custom_vehicle_table.setRowCount(0)
-                for vehicle_name, vehicle_data in self.custom_vehicles.items():
+                self.has_real_custom_vehicle = False
+                for vehicle_name, vehicle_data in saved_vehicles.items():
                     merged = dict(vehicle_data)
                     merged["name"] = vehicle_name
                     self._add_custom_vehicle(merged)

@@ -17,6 +17,7 @@ class LoadCombinationTab(SchemaTab):
     def __init__(self, owner, parent=None):
         super().__init__(owner, parent)
         self.load_combo_items = []
+        self._sync_owner_items()
 
         self.load_combo_table = self.custom_load_combo_table
         self._configure_table()
@@ -39,6 +40,7 @@ class LoadCombinationTab(SchemaTab):
         items = data.get("loading.load_combo_items")
         if isinstance(items, list):
             self.load_combo_items = copy.deepcopy(items)
+            self._sync_owner_items()
             self._refresh_load_combo_table()
 
     def reset_defaults(self):
@@ -46,12 +48,19 @@ class LoadCombinationTab(SchemaTab):
 
     def _before_reset(self):
         self.load_combo_items.clear()
+        self._sync_owner_items()
         if hasattr(self, "load_combo_table"):
             self.load_combo_table.setRowCount(0)
 
     def _after_reset(self):
+        self._sync_owner_items()
         self._refresh_load_combo_table()
         self._on_table_selection_changed()
+
+    def _sync_owner_items(self):
+        owner = getattr(self, "owner", None)
+        if owner is not None:
+            owner.load_combo_items = self.load_combo_items
 
     def _configure_table(self):
         header = self.load_combo_table.horizontalHeader()
@@ -111,6 +120,7 @@ class LoadCombinationTab(SchemaTab):
         data = self._open_load_combo_dialog()
         if data:
             self.load_combo_items.append(data)
+            self._sync_owner_items()
             self._refresh_load_combo_table()
             self._on_table_selection_changed()
 
@@ -121,6 +131,7 @@ class LoadCombinationTab(SchemaTab):
         data = self._open_load_combo_dialog(existing=self.load_combo_items[index])
         if data:
             self.load_combo_items[index] = data
+            self._sync_owner_items()
             self._refresh_load_combo_table()
             self._on_table_selection_changed()
 
@@ -129,7 +140,7 @@ class LoadCombinationTab(SchemaTab):
         if index is None:
             return
         self.load_combo_items.pop(index)
-        self.owner.load_combo_items = self.load_combo_items
+        self._sync_owner_items()
         self._refresh_load_combo_table()
         self._on_table_selection_changed()
 

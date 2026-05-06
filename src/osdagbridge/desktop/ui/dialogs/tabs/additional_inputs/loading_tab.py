@@ -26,6 +26,8 @@ class LoadingTab(SchemaTab):
         self.irc_vehicle_labels = []
         self.braking_vehicle_checkboxes = []
         self.braking_vehicle_labels = []
+        self.custom_load_items = []
+        self.load_combo_items = []
 
         super().__init__(parent=parent)
 
@@ -59,10 +61,24 @@ class LoadingTab(SchemaTab):
 
     def restore_data(self, data: dict) -> None:
         """Unified data restoration to all loading sub-tabs."""
-        for tab in self._iter_child_tabs():
+        for attr in _LOADING_TAB_ATTRS:
+            tab = getattr(self, attr, None)
+            if tab is None:
+                continue
             restore = getattr(tab, "restore_data", None)
             if callable(restore):
-                restore(data)
+                restore(self._with_legacy_prefixed_keys(data, attr))
+
+    @staticmethod
+    def _with_legacy_prefixed_keys(data: dict, tab_attr: str) -> dict:
+        if not isinstance(data, dict):
+            return {}
+        enriched = dict(data)
+        prefix = f"{tab_attr}."
+        for key, value in data.items():
+            if isinstance(key, str) and key.startswith(prefix):
+                enriched.setdefault(key[len(prefix):], value)
+        return enriched
 
     def update_permanent_load_dependencies(self, has_median: bool, has_footpath: bool):
         """Forward dependency updates to sub-tabs."""
