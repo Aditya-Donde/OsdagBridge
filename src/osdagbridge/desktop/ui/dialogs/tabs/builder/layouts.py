@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLayout,
+    QSizePolicy,
     QVBoxLayout,
     QWidget,
     QCheckBox,
@@ -41,12 +42,284 @@ _log = logging.getLogger(__name__)
 class LayoutBuildersMixin:
     """Layout-level builders: panels, cards, sections, rows, columns."""
 
+    def _description_has_content(self, desc: dict | None) -> bool:
+        if not isinstance(desc, dict):
+            return bool(desc)
+        if not bool(desc.get("hide_when_empty", True)):
+            return True
+        return bool(str(desc.get("text", "")).strip())
+
+    def _build_description_card(self, desc: dict | None = None) -> QFrame | None:
+        """Build an optional right-side description card.
+
+        Empty description panels are hidden by default. A schema can force the
+        old placeholder behavior with ``{"hide_when_empty": False}``.
+        """
+        if desc is None:
+            desc = self.schema.get("description", {})
+        if not self._description_has_content(desc):
+            return None
+
+        right_card = QFrame()
+        right_card.setStyleSheet(_RIGHT_CARD_STYLE)
+        right_card.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        right_card.setMinimumWidth(int(desc.get("min_width", 260)))
+        min_height = desc.get("min_height", 420)
+        if min_height:
+            right_card.setMinimumHeight(int(min_height))
+        max_width = desc.get("max_width")
+        if max_width:
+            right_card.setMaximumWidth(int(max_width))
+        max_height = desc.get("max_height")
+        if max_height:
+            right_card.setMaximumHeight(int(max_height))
+
+        right_layout = QVBoxLayout(right_card)
+        right_layout.setContentsMargins(16, 16, 16, 16)
+        right_layout.setSpacing(10)
+
+        title = str(desc.get("title", "Description Box"))
+        if title and bool(desc.get("show_title", True)):
+            desc_title = QLabel(title)
+            desc_title.setAlignment(Qt.AlignCenter)
+            desc_title.setStyleSheet(
+                "font-size: 12px; font-weight: 700; color: #000000; "
+                "background: transparent; border: none;"
+            )
+            right_layout.addWidget(desc_title)
+
+        text = str(desc.get("text", ""))
+        if text:
+            desc_text = QLabel(text)
+            desc_text.setWordWrap(True)
+            desc_text.setStyleSheet(
+                "font-size: 11px; color: #4b4b4b; background: transparent; border: none;"
+            )
+            right_layout.addWidget(desc_text)
+
+        right_layout.addStretch()
+        return right_card
+
     def _add_section_widget(self, parent_layout: QLayout, widget: QWidget, section: dict) -> None:
         stretch = int(section.get("stretch", 0))
         if isinstance(parent_layout, QBoxLayout):
             parent_layout.addWidget(widget, stretch)
         else:
             parent_layout.addWidget(widget)
+
+    def _build_layout_node(
+        self,
+        parent_layout: QLayout,
+        node,
+        label_width: int = _DEFAULT_LABEL_WIDTH,
+        field_width: int = _DEFAULT_FIELD_WIDTH,
+    ) -> None:
+        """Render schema composition nodes such as stack, split and card.
+
+        These nodes let schemas describe old hand-built tab composition without
+        tab-specific Python builders.
+        """
+        if isinstance(node, list):
+            for child in node:
+                self._build_layout_node(parent_layout, child, label_width, field_width)
+            return
+        if not isinstance(node, dict):
+            return
+
+        ntype = str(node.get("type") or "stack").strip().lower()
+        node_label_width = int(node.get("label_width", label_width))
+        node_field_width = int(node.get("field_width", field_width))
+
+        if ntype == "split":
+            self._build_split_layout(parent_layout, node, node_label_width, node_field_width)
+            return
+        if ntype == "stack":
+            self._build_stack_layout(parent_layout, node, node_label_width, node_field_width)
+            return
+        if ntype == "card":
+            parent_layout.addWidget(self._build_layout_card(node, node_label_width, node_field_width))
+            return
+        if ntype == "description":
+            card = self._build_description_card(node.get("description", self.schema.get("description", {})))
+            if card is not None:
+                parent_layout.addWidget(card)
+            return
+        if ntype == "spacer":
+            size = int(node.get("size", 0))
+            if size > 0:
+                if isinstance(parent_layout, QBoxLayout):
+                    parent_layout.addSpacing(size)
+            elif bool(node.get("stretch", True)) and isinstance(parent_layout, QBoxLayout):
+                parent_layout.addStretch()
+            return
+
+        if "children" in node:
+            self._build_stack_layout(parent_layout, node, node_label_width, node_field_width)
+        elif "cards" in node:
+            self._build_cards_column(parent_layout, node["cards"])
+        elif "sections" in node:
+            self._build_section_sequence(
+                parent_layout,
+                node["sections"],
+                node_label_width,
+                node_field_width,
+                boxed_fallback=bool(node.get("boxed_fallback", True)),
+            )
+        elif "rows" in node:
+            self._build_rows(parent_layout, node["rows"], node_label_width, node_field_width)
+        elif "columns" in node:
+            self._build_columns(parent_layout, node["columns"], node_label_width, node_field_width)
+
+    def _build_stack_layout(
+        self,
+        parent_layout: QLayout,
+        node: dict,
+        label_width: int,
+        field_width: int,
+    ) -> None:
+        children = node.get("children")
+        if children is not None:
+            for child in children:
+                self._build_layout_node(parent_layout, child, label_width, field_width)
+            return
+
+        if "sections" in node:
+            self._build_section_sequence(
+                parent_layout,
+                node["sections"],
+                label_width,
+                field_width,
+                boxed_fallback=bool(node.get("boxed_fallback", True)),
+            )
+        if "cards" in node:
+            self._build_cards_column(parent_layout, node["cards"])
+        if "rows" in node:
+            self._build_rows(parent_layout, node["rows"], label_width, field_width)
+        if "columns" in node:
+            self._build_columns(parent_layout, node["columns"], label_width, field_width)
+
+    def _build_split_layout(
+        self,
+        parent_layout: QLayout,
+        node: dict,
+        label_width: int,
+        field_width: int,
+    ) -> None:
+        content_row = QHBoxLayout()
+        content_row.setSpacing(int(node.get("spacing", 16)))
+        content_row.setContentsMargins(*[int(v) for v in node.get("margins", [0, 0, 0, 0])])
+
+        children = node.get("children")
+        if children is None:
+            children = []
+            for key in ("left", "center", "right"):
+                child = node.get(key)
+                if child is not None:
+                    children.append(child)
+
+        for child in children or []:
+            widget = self._layout_node_to_widget(child, label_width, field_width)
+            if widget is None:
+                continue
+            stretch = int(child.get("stretch", 1)) if isinstance(child, dict) else 1
+            content_row.addWidget(widget, stretch)
+
+        if content_row.count():
+            stretch = int(node.get("layout_stretch", 1 if bool(node.get("fill_height", False)) else 0))
+            if isinstance(parent_layout, QBoxLayout):
+                parent_layout.addLayout(content_row, stretch)
+            else:
+                parent_layout.addLayout(content_row)
+
+    def _layout_node_to_widget(self, node, label_width: int, field_width: int) -> QWidget | None:
+        if isinstance(node, dict) and str(node.get("type") or "").strip().lower() == "description":
+            widget = self._build_description_card(node.get("description", self.schema.get("description", {})))
+            if widget is not None:
+                self._apply_layout_sizing(widget, node)
+            return widget
+
+        container = QWidget()
+        container.setStyleSheet("background: transparent; border: none;")
+        layout = QVBoxLayout(container)
+        margins = node.get("margins", [0, 0, 0, 0]) if isinstance(node, dict) else [0, 0, 0, 0]
+        layout.setContentsMargins(*[int(v) for v in margins])
+        spacing = node.get("spacing", 8) if isinstance(node, dict) else 8
+        layout.setSpacing(int(spacing))
+
+        self._build_layout_node(layout, node, label_width, field_width)
+        if isinstance(node, dict) and bool(node.get("add_stretch", False)):
+            layout.addStretch()
+
+        if layout.count() == 0:
+            return None
+        self._apply_layout_sizing(container, node if isinstance(node, dict) else {})
+        return container
+
+    def _apply_layout_sizing(self, widget: QWidget, node: dict) -> None:
+        for key, setter in (
+            ("min_width", widget.setMinimumWidth),
+            ("max_width", widget.setMaximumWidth),
+            ("min_height", widget.setMinimumHeight),
+            ("max_height", widget.setMaximumHeight),
+        ):
+            value = node.get(key)
+            if value:
+                setter(int(value))
+
+        policy = str(node.get("size_policy", "")).strip().lower()
+        if policy == "expanding":
+            widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        elif policy == "horizontal_expanding":
+            widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        elif policy == "fixed":
+            widget.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+
+    def _build_layout_card(self, node: dict, label_width: int, field_width: int) -> QFrame:
+        card = QFrame()
+        card.setStyleSheet(_CARD_STYLE)
+        self._apply_layout_sizing(card, node)
+
+        card_layout = QVBoxLayout(card)
+        card_layout.setContentsMargins(*[int(v) for v in node.get("card_margins", [16, 14, 16, 14])])
+        card_layout.setSpacing(int(node.get("card_spacing", 10)))
+
+        title = node.get("title")
+        if title:
+            lbl = QLabel(str(title))
+            lbl.setStyleSheet(_HEADING_STYLE)
+            card_layout.addWidget(lbl)
+
+        self._build_stack_layout(card_layout, node, label_width, field_width)
+        if bool(node.get("add_stretch", False)):
+            card_layout.addStretch()
+        return card
+
+    def _build_section_sequence(
+        self,
+        parent_layout: QLayout,
+        sections: list,
+        label_width: int,
+        field_width: int,
+        *,
+        boxed_fallback: bool = True,
+    ) -> None:
+        for section in sections:
+            if not isinstance(section, dict):
+                continue
+            stype = str(section.get("type") or "").strip().lower()
+            sec_label_width = int(section.get("label_width", label_width))
+            sec_field_width = int(section.get("field_width", field_width))
+            if stype in _SPECIAL_SECTION_TYPES or stype in _FIELD_AS_SECTION_TYPES:
+                self._dispatch_section(parent_layout, section, sec_label_width, sec_field_width)
+                continue
+            if boxed_fallback:
+                self._add_section_widget(
+                    parent_layout,
+                    self._make_section_box(section, sec_label_width, sec_field_width),
+                    section,
+                )
+            else:
+                self._build_sections(parent_layout, [section], sec_label_width, sec_field_width)
 
     def _build_two_panel(self, page_layout: QLayout) -> None:
         """Left input card (3 parts) + right description card (2 parts)."""
@@ -58,6 +331,7 @@ class LayoutBuildersMixin:
         content_row.setSpacing(16)
 
         left_outer = QFrame()
+        left_outer.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         left_outer.setStyleSheet(
             "QFrame { border: 1px solid #b2b2b2; border-radius: 10px; background-color: #ffffff; }"
         )
@@ -65,6 +339,7 @@ class LayoutBuildersMixin:
         left_outer_layout.setContentsMargins(0, 0, 0, 0)
 
         left_content = QWidget()
+        left_content.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         left_content.setStyleSheet("background-color: #ffffff;")
         left_layout = QVBoxLayout(left_content)
         left_layout.setContentsMargins(14, 14, 14, 14)
@@ -79,34 +354,17 @@ class LayoutBuildersMixin:
             self._build_legacy_groups(left_layout)
 
         left_layout.addStretch()
-        left_outer_layout.addWidget(left_content)
+        left_outer_layout.addWidget(left_content, 1)
 
-        right_card = QFrame()
-        right_card.setStyleSheet(_RIGHT_CARD_STYLE)
-        right_card.setMinimumWidth(260)
-        right_card.setMinimumHeight(420)
-        right_layout = QVBoxLayout(right_card)
-        right_layout.setContentsMargins(16, 16, 16, 16)
-        right_layout.setSpacing(10)
-
-        desc = schema.get("description", {})
-        desc_title = QLabel(desc.get("title", "Description Box"))
-        desc_title.setAlignment(Qt.AlignCenter)
-        desc_title.setStyleSheet(
-            "font-size: 12px; font-weight: 700; color: #000000; background: transparent; border: none;"
-        )
-        desc_text = QLabel(desc.get("text", ""))
-        desc_text.setWordWrap(True)
-        desc_text.setStyleSheet(
-            "font-size: 11px; color: #4b4b4b; background: transparent; border: none;"
-        )
-        right_layout.addWidget(desc_title)
-        right_layout.addWidget(desc_text)
-        right_layout.addStretch()
+        right_card = self._build_description_card(schema.get("description", {}))
 
         content_row.addWidget(left_outer, 3)
-        content_row.addWidget(right_card, 2)
-        page_layout.addLayout(content_row)
+        if right_card is not None:
+            content_row.addWidget(right_card, 2)
+        if isinstance(page_layout, QBoxLayout):
+            page_layout.addLayout(content_row, 1)
+        else:
+            page_layout.addLayout(content_row)
 
     def _has_legacy_groups(self, schema: dict) -> bool:
         return bool(schema.get("overview")) or any(schema.get(key) for key in _LEGACY_FIELD_LIST_KEYS)
@@ -257,13 +515,18 @@ class LayoutBuildersMixin:
 
             parent_layout.addWidget(card)
 
-    def _make_section_box(self, section: dict, label_width: int, field_width: int) -> QFrame:
+    def _make_section_box(self, section: dict, label_width: int, field_width: int) -> QWidget:
         """Return a bordered QFrame for one section (used inside the two-panel left card)."""
-        box = QFrame()
-        box.setStyleSheet(_SECTION_BOX_STYLE)
+        boxed = bool(section.get("boxed", True))
+        box = QFrame() if boxed else QWidget()
+        if boxed:
+            box.setStyleSheet(_SECTION_BOX_STYLE)
+        else:
+            box.setStyleSheet("background: transparent; border: none;")
         box_layout = QVBoxLayout(box)
-        box_layout.setContentsMargins(12, 12, 12, 12)
-        box_layout.setSpacing(14)
+        margins = section.get("margins", [12, 12, 12, 12] if boxed else [0, 0, 0, 0])
+        box_layout.setContentsMargins(*[int(v) for v in margins])
+        box_layout.setSpacing(int(section.get("spacing", 14 if boxed else 8)))
 
         sec_label_width = int(section.get("label_width", label_width))
         sec_field_width = int(section.get("field_width", field_width))
@@ -327,6 +590,9 @@ class LayoutBuildersMixin:
                         if inline_def.get("type") == "label":
                             lbl = QLabel(inline_def.get("label", ""))
                             lbl.setStyleSheet(_LABEL_STYLE)
+                            label_width_override = inline_def.get("width")
+                            if label_width_override:
+                                lbl.setFixedWidth(int(label_width_override))
                             row_layout.addWidget(lbl)
                             after = inline_def.get("after_spacing")
                             if after:

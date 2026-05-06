@@ -236,10 +236,19 @@ class SpecialSectionsMixin:
         )
         row_height = int(section.get("field_height", 28))
 
-        edit_btn   = QPushButton(str(section.get("edit_button_text",   "Edit")))
+        edit_btn = QPushButton(str(section.get("edit_button_text", "Edit")))
         delete_btn = QPushButton(str(section.get("delete_button_text", "Delete")))
-        add_btn    = QPushButton(str(section.get("add_button_text",    "Add")))
-        for btn in (edit_btn, delete_btn, add_btn):
+        add_btn = QPushButton(str(section.get("add_button_text", "Add")))
+        buttons = {
+            "add": add_btn,
+            "edit": edit_btn,
+            "delete": delete_btn,
+        }
+        button_order = section.get("button_order") or ["edit", "delete", "add"]
+        for key in button_order:
+            btn = buttons.get(str(key).strip().lower())
+            if btn is None:
+                continue
             btn.setFixedHeight(row_height)
             btn.setStyleSheet(btn_style)
             header_row.addWidget(btn)
@@ -410,6 +419,7 @@ class SpecialSectionsMixin:
                 tabs.addTab(tab_widget, label)
             except Exception as e:
                 _log.error("UIBuilder[%s]: Failed to build tab %r: %s", type(self.owner).__name__, class_name, e)
+                raise
 
         return tabs
 
@@ -436,6 +446,15 @@ class SpecialSectionsMixin:
         """
         stack = QStackedWidget()
         stack.setStyleSheet("QStackedWidget { border: none; background: transparent; }")
+        if section.get("min_height"):
+            stack.setMinimumHeight(int(section["min_height"]))
+        if section.get("max_height"):
+            stack.setMaximumHeight(int(section["max_height"]))
+        policy = str(section.get("size_policy", "")).strip().lower()
+        if policy == "fixed":
+            stack.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        elif policy == "preferred":
+            stack.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
 
         pages = section.get("pages") or []
         matches: list[tuple[str, int]] = []

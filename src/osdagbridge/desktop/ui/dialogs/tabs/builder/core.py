@@ -81,6 +81,7 @@ class UIBuilder(
             scroll = QScrollArea()
             scroll.setWidgetResizable(True)
             scroll.setFrameShape(QFrame.NoFrame)
+            scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
             scroll.setStyleSheet("QScrollArea { background-color: #f5f5f5; border: none; }")
 
             scroll_content = QWidget()
@@ -107,15 +108,21 @@ class UIBuilder(
                 main_layout.addStretch()
 
         self._wire_conditions()
+        self._wire_deferred_cad_bindings()
 
     def _build_schema_content(self, page_layout: QLayout) -> None:
         schema = self.schema
+        label_width = int(schema.get("label_width", _DEFAULT_LABEL_WIDTH))
+        field_width = int(schema.get("field_width", _DEFAULT_FIELD_WIDTH))
+        has_layout = "layout" in schema
         has_description = "description" in schema
         has_cards       = "cards" in schema
         has_sections    = "sections" in schema
         has_legacy_groups = self._has_legacy_groups(schema)
 
-        if has_description:
+        if has_layout:
+            self._build_layout_node(page_layout, schema["layout"], label_width, field_width)
+        elif has_description and self._description_has_content(schema.get("description")):
             self._build_two_panel(page_layout)
         elif has_cards:
             self._build_cards_column(page_layout, schema["cards"])
