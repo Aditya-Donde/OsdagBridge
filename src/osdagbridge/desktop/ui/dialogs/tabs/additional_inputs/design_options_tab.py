@@ -21,9 +21,7 @@ class DesignOptionsTab(SchemaTab):
         self._restore_extra_state(data)
 
     def validate_tab(self):
-        errors = super().validate_tab()
-        errors.extend(self._extra_validation())
-        return list(dict.fromkeys(errors))
+        return super().validate_tab()
 
     def _extra_state(self):
         return {"reinforcement_bounds": dict(self._reinforcement_bounds)}
@@ -109,9 +107,14 @@ class DesignOptionsTab(SchemaTab):
         if combo is None:
             return
 
+        previous = combo.currentText() or "12 mm"
         combo.clear()
         for value in self._reinforcement_values:
             combo.addItem(f"{value} mm")
+        if combo.findText(previous) >= 0:
+            combo.setCurrentText(previous)
+        elif combo.findText("12 mm") >= 0:
+            combo.setCurrentText("12 mm")
 
 
 class BoundsDialogNoIncrement(BoundsDialog):
