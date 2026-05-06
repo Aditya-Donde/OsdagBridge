@@ -86,6 +86,9 @@ _INPUT_KEY_ALIASES = {
     "bearing_length": KEY_BEARING_LENGTH,
     "reinforcement_size": KEY_DECK_REINF_SIZE,
     "reinforcement_material": KEY_DECK_REINF_MATERIAL,
+    "overall_bridge_width_display": "overall_bridge_width",
+    "shear_stud_diameter": "stud_diameter",
+    "shear_stud_height": "stud_height",
 }
 
 

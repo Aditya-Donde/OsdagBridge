@@ -5,6 +5,7 @@ This tab is part of Member Properties (Section Properties) and stores inputs per
 
 from __future__ import annotations
 
+import copy
 import re
 from typing import Dict, List, Optional
 
@@ -83,13 +84,17 @@ class StiffenerDetailsTab(SchemaTab):
         self._on_member_changed(self.girder_member_combo.currentText())
         self._update_dynamic_cad_preview()
 
-    def validate(self) -> None:
+    def validate(self) -> list[str]:
         """Validate current stored inputs before saving the dialog."""
+        errors = schema_io.validate(self, STIFFENER_DETAILS_SCHEMA)
         self._store_current_member_state()
         for member_id, state in self._state_by_member.items():
             if self._is_member_optimized(member_id):
                 continue
-            self._validate_outstand_values(member_id, state)
+            try:
+                self._validate_outstand_values(member_id, state)
+            except ValueError as exc:
+                errors.append(str(exc))
             if state.get("intermediate_stiffener") == "Yes":
                 spacing = str(state.get("intermediate_spacing_mm") or "").strip()
                 if not spacing.isdigit() or int(spacing) <= 0:
@@ -99,17 +104,21 @@ class StiffenerDetailsTab(SchemaTab):
                         self.intermediate_spacing_input.selectAll()
                     except Exception:
                         pass
-                    raise ValueError(
+                    errors.append(
                         f"Intermediate Stiffener Spacing (mm) is required for member '{member_id}' when Intermediate Stiffener is Yes."
                     )
+        return list(dict.fromkeys(errors))
 
     def collect_data(self) -> dict:
         self._store_current_member_state()
+        current_state = schema_io.collect_values(self, STIFFENER_DETAILS_SCHEMA)
+        if self._active_member_id:
+            self._state_by_member[self._active_member_id] = dict(current_state)
         for member_id in self._list_current_member_ids():
             if member_id not in self._state_by_member:
-                self._state_by_member[member_id] = self._get_default_state()
-        data = schema_io.collect_values(self, STIFFENER_DETAILS_SCHEMA)
-        data.update({"stiffener_by_member": dict(self._state_by_member)})
+                self._state_by_member[member_id] = dict(current_state)
+        data = dict(current_state)
+        data.update({"stiffener_by_member": copy.deepcopy(self._state_by_member)})
         return data
 
     def reset_defaults(self) -> None:
@@ -123,8 +132,18 @@ class StiffenerDetailsTab(SchemaTab):
         if not isinstance(data, dict):
             return
         restored = data.get("stiffener_by_member", {})
-        self._state_by_member = dict(restored) if isinstance(restored, dict) else {}
+        has_nested_state = isinstance(restored, dict) and bool(restored)
+        self._state_by_member = copy.deepcopy(restored) if has_nested_state else {}
         self.refresh_girder_members()
+        if has_nested_state:
+            return
+
+        schema_io.restore_values(self, STIFFENER_DETAILS_SCHEMA, data)
+        current_state = schema_io.collect_values(self, STIFFENER_DETAILS_SCHEMA)
+        for member_id in self._list_current_member_ids():
+            self._state_by_member[member_id] = dict(current_state)
+        if self._active_member_id:
+            self._load_member_state(self._active_member_id)
 
     def showEvent(self, event):  # noqa: N802
         super().showEvent(event)
