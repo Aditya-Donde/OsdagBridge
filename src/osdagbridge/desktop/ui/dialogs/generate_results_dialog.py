@@ -112,14 +112,13 @@ class RoundedTableFrame(QFrame):
         )
 
     def paintEvent(self, event):
-        from PySide6.QtGui import QPen, QBrush
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
 
         r   = self.RADIUS
         w   = self.width()
         h   = self.height()
-        hh  = self.HEADER_H      # header strip height
+        hh  = self.HEADER_H 
 
         # Full rounded rect path (inset 0.5px so 1px border is fully visible)
         full_rect = self.rect().toRectF().adjusted(0.5, 0.5, -0.5, -0.5)
