@@ -38,6 +38,9 @@ class CustomWindow(QWidget):
         # Initialised from BASIC_INPUT_DICT; updated live as the user edits fields.
         self.input_dict = dict(BASIC_INPUT_DICT)
 
+        # AdditionalInputs dialog — created once, shown/hidden thereafter.
+        self._additional_inputs_dialog: AdditionalInputs | None = None
+
         self.setWindowTitle(title)
         self.setStyleSheet(
             """
@@ -340,6 +343,92 @@ class CustomWindow(QWidget):
     
     #-------Common-Design-Save-Additional-Inputs-Functionality-START-------
 
+    def _get_additional_inputs(self) -> AdditionalInputs:
+        """
+        The dialog is constructed exactly once and reused (To make the ui faster).
+        """
+        
+        if self._additional_inputs_dialog is None:
+            footpath_value    = self.input_dict.get(KEY_FOOTPATH) or "None"
+            carriageway_width = (
+                self.input_dock._get_effective_carriageway_width()
+                if self.input_dock else 0.0
+            )
+            self._additional_inputs_dialog = AdditionalInputs(
+                input_dict=self.input_dict,
+                footpath_value=footpath_value,
+                carriageway_width=carriageway_width
+            )
+            # Connect finished once; result is harvested inside the slot.
+            self._additional_inputs_dialog.finished.connect(
+                self._on_additional_inputs_closed
+            )
+
+        return self._additional_inputs_dialog
+
+    def _show_additional_inputs(self, target_tab: str | None = None):
+        """
+        Sync live state into the dialog, then show it.
+        Called from common_design_func and from input_dock._on_design_mode_changed.
+        """
+        dlg = self._get_additional_inputs()
+
+        # Sync footpath
+        try:
+            dlg.update_footpath_value(self.input_dict.get(KEY_FOOTPATH) or "None")
+        except Exception:
+            pass
+
+        # Sync design mode
+        if self.input_dock:
+            try:
+                dlg.set_member_properties_design_mode(self.input_dock._current_design_mode)
+            except Exception:
+                pass
+
+        # Optionally jump to a specific tab
+        if target_tab:
+            try:
+                for i in range(dlg.tabs.count()):
+                    if dlg.tabs.tabText(i).strip().lower() == target_tab.lower():
+                        dlg.tabs.setCurrentIndex(i)
+                        break
+            except Exception:
+                pass
+
+        dlg.show()
+        dlg.raise_()
+        dlg.activateWindow()
+
+    def _on_additional_inputs_closed(self, result: int):
+        """
+        Harvest values when the user clicks OK/Accept.
+        The dialog itself is NOT destroyed — it stays in memory for reuse.
+        """
+
+        if result != AdditionalInputs.Accepted:
+            return
+        dlg = self._additional_inputs_dialog
+        if dlg is None:
+            return
+        try:
+            values = dlg.get_all_values()
+            if values:
+                self.input_dict.update(values)
+        except Exception:
+            pass
+
+    def notify_additional_inputs_footpath(self, value: str):
+        """
+        Called by input_dock whenever the footpath field changes.
+        Forwards to the dialog only if it already exists (avoids premature creation).
+        """
+        if self._additional_inputs_dialog is not None:
+            try:
+                self._additional_inputs_dialog.update_footpath_value(value)
+            except Exception:
+                pass
+
     def validate_required_inputs(self):
         """Check that all required fields have values before allowing design to proceed."""
         required_field_keys = []
@@ -402,7 +491,7 @@ class CustomWindow(QWidget):
             self.loading.hide()
         self.setEnabled(True)
             
-    def common_design_func(self, trigger: str):
+    def common_design_func(self, trigger: str, target_tab:str = None):
         """
         Trigger belongs to one of ["Design", "Save", "Additional Inputs"]
         """
@@ -459,8 +548,7 @@ class CustomWindow(QWidget):
             pass
 
         elif trigger == "Additional Inputs":
-            # Show Additional Inputs
-            pass
+            self._show_additional_inputs(target_tab=target_tab)
 
     #-------Common-Design-Save-Additional-Inputs-Functionality-END---------
     

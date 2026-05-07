@@ -9,29 +9,20 @@ from PySide6.QtWidgets import (
     QFrame, QGridLayout, QTableWidget, QTableWidgetItem, QHeaderView,
     QTextEdit, QDialog, QSizePolicy, QSizeGrip, QListView, QStyledItemDelegate
 )
-from PySide6.QtCore import Qt, Signal, QSize
-from PySide6.QtGui import QDoubleValidator, QIntValidator, QColor, QValidator
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QDoubleValidator, QIntValidator
 
 from osdagbridge.core.utils.common import *
 from osdagbridge.desktop.ui.utils.custom_titlebar import CustomTitleBar
 from osdagbridge.desktop.ui.dialogs.tabs.common import apply_field_style, create_action_button_bar
 from osdagbridge.desktop.ui.dialogs.custom_messagebox import CustomMessageBox, MessageBoxType
-from osdagbridge.desktop.ui.dialogs.tabs.typical_section_details import TypicalSectionDetailsTab, show_warning
+from osdagbridge.desktop.ui.dialogs.tabs.typical_section_details import TypicalSectionDetailsTab
 from osdagbridge.desktop.ui.dialogs.tabs.section_properties_tab import SectionPropertiesTab
-from osdagbridge.desktop.ui.dialogs.tabs.sub_tabs.section_properties.girder_details_tab import GirderDetailsTab
-from osdagbridge.desktop.ui.dialogs.tabs.sub_tabs.section_properties.stiffener_details_tab import StiffenerDetailsTab
-from osdagbridge.desktop.ui.dialogs.tabs.sub_tabs.section_properties.cross_bracing_details_tab import CrossBracingDetailsTab
-from osdagbridge.desktop.ui.dialogs.tabs.sub_tabs.section_properties.end_diaphragm_details_tab import EndDiaphragmDetailsTab
-from osdagbridge.desktop.ui.dialogs.tabs.custom_vehicle_dialog import CustomVehicleDialog
 from osdagbridge.desktop.ui.dialogs.tabs.loading_tab import LoadingTab
 from osdagbridge.desktop.ui.dialogs.tabs.support_conditions_tab import SupportConditionsTab
 from osdagbridge.desktop.ui.dialogs.tabs.design_options_tab import DesignOptionsTab
 from osdagbridge.desktop.ui.dialogs.tabs.design_options_cont_tab import DesignOptionsContTab
 from osdagbridge.desktop.ui.utils.custom_widgets import SmartCursorComboBoxView
-from osdagbridge.core.bridge_types.plate_girder.ui_fields_additional_input import (
-    DESIGN_OPTIONS_SCHEMA,
-    DESIGN_OPTIONS_CONT_SCHEMA,
-)
 
 # =================================================================================
 #   MAIN IMPLEMENTATION
@@ -40,9 +31,23 @@ from osdagbridge.core.bridge_types.plate_girder.ui_fields_additional_input impor
 class AdditionalInputs(QDialog):
     """Main dialog for Additional Inputs with tabbed interface"""
     
-    def __init__(self, footpath_value="None", carriageway_width=7.5, parent=None, initial_cad_state=None):
+    def __init__(
+        self,
+        input_dict: dict,
+        footpath_value="None",
+        carriageway_width=7.5,
+        parent=None,
+        initial_cad_state=None
+    ):
         self._initial_cad_state = initial_cad_state or {}
         super().__init__(parent)
+
+        # -- Master input_dict reference (never mutated until Save) ------------------
+        self.input_dict = input_dict
+
+        # -- Working copy (mutated live; discarded on Cancel) ------------------------
+        self._working_dict: dict = {}
+
         self.setObjectName("AdditionalInputs")
         self.resize(1024, 850)
         self.setMinimumSize(900, 520)
@@ -246,7 +251,6 @@ class AdditionalInputs(QDialog):
         # Sub-Tab 6: Design Options (Cont.)
         self.design_options_cont_tab = DesignOptionsContTab(self)
         self.tabs.addTab(self.design_options_cont_tab, "Design Options (Cont.)")
-
 
         self.tabs.currentChanged.connect(self._on_top_tab_changed)        
         main_layout.addWidget(self.tabs)
@@ -777,7 +781,6 @@ class AdditionalInputs(QDialog):
         if hasattr(self.typical_section_tab, "_update_cad_preview"):
             self.typical_section_tab._update_cad_preview()
             
-
 
     def update_footpath_value(self, footpath_value):
         """

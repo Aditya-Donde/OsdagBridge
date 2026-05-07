@@ -21,7 +21,6 @@ from PySide6.QtCore import Qt, QRegularExpression, QSize, QTimer, QPoint, QEvent
 from PySide6.QtGui import QDoubleValidator, QRegularExpressionValidator, QIcon, QColor, QBrush
 
 from osdagbridge.core.utils.common import *
-from osdagbridge.desktop.ui.dialogs.additional_inputs import AdditionalInputs
 from osdagbridge.desktop.ui.utils.custom_buttons import DockCustomButton
 from osdagbridge.desktop.ui.dialogs.project_location import ProjectLocationDialog
 from osdagbridge.desktop.ui.docks.dock_utils import apply_field_style
@@ -70,9 +69,6 @@ class InputDock(QWidget):
 
         self.is_locked            = False
         self._current_design_mode = "Optimized"
-        self.additional_inputs    = None
-        self.additional_input_values       = {}
-        self._additional_inputs_saved_data = {}
         self._material_combo_map           = {}   # key → QComboBox  (is_material_field only)
         self._material_member_type         = {}   # key → "Girder"|"Deck"
         self._material_custom_fields       = {}
@@ -163,7 +159,8 @@ class InputDock(QWidget):
             QPushButton:pressed { color:black; background-color:white; border:1px solid black; }
         """)
         self.additional_inputs_btn.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-        self.additional_inputs_btn.clicked.connect(self.show_additional_inputs)
+        # Call from template_page
+        self.additional_inputs_btn.clicked.connect(lambda: self.parent.common_design_func("Additional Inputs"))
         top_bar.addWidget(self.additional_inputs_btn)
 
         self.lock_btn = QPushButton()
@@ -596,21 +593,12 @@ class InputDock(QWidget):
     def _on_footpath_changed(self, value=None):
         if value is None:
             value = self._text(KEY_FOOTPATH)
-        if self.additional_inputs and self.additional_inputs.isVisible():
-            try:
-                self.additional_inputs.update_footpath_value(value)
-            except Exception:
-                pass
+        self.parent.notify_additional_inputs_footpath(value)
 
     def _on_design_mode_changed(self, mode_text: str = ""):
         self._current_design_mode = str(mode_text or "Optimized").strip()
-        if self.additional_inputs:
-            try:
-                self.additional_inputs.set_member_properties_design_mode(self._current_design_mode)
-            except Exception:
-                pass
         if self._current_design_mode.lower() == "custom":
-            self._open_additional_inputs(target_tab="Member Properties")
+            self.parent.common_design_func("Additional Inputs", target_tab="Member Properties")
 
     # ══════════════════════════════════════════════════════════════════════════
     # Carriageway validation
@@ -705,61 +693,9 @@ class InputDock(QWidget):
         if dialog.exec() == QDialog.Accepted:
             self._update_input_dict(KEY_PROJECT_LOCATION, dialog.get_selected_location())
 
+    # To open additional input from additional geometry
     def show_additional_inputs(self):
-        self._open_additional_inputs()
-
-    def _open_additional_inputs(self, target_tab=None):
-        footpath_value    = self._text(KEY_FOOTPATH) or "None"
-        carriageway_width = self._get_effective_carriageway_width()
-
-        self.additional_inputs = AdditionalInputs(footpath_value, carriageway_width)
-
-        if self._additional_inputs_saved_data:
-            try:
-                self.additional_inputs.set_properties_data(self._additional_inputs_saved_data)
-            except Exception:
-                pass
-        try:
-            self.additional_inputs.set_member_properties_design_mode(self._current_design_mode)
-        except Exception:
-            pass
-        if target_tab:
-            try:
-                for i in range(self.additional_inputs.tabs.count()):
-                    if self.additional_inputs.tabs.tabText(i).strip().lower() == target_tab.lower():
-                        self.additional_inputs.tabs.setCurrentIndex(i)
-                        break
-            except Exception:
-                pass
-
-        self.additional_inputs.finished.connect(self._on_additional_inputs_closed)
-
-        if self.additional_inputs.exec_() == AdditionalInputs.Accepted:
-            values = self.additional_inputs.get_all_values()
-            if values:
-                self.additional_input_values = values
-                self.input_value_changed.emit()
-
-    def _on_additional_inputs_closed(self):
-        try:
-            # Capture the raw serialized state for dialog restoration
-            saved = self.additional_inputs.get_saved_data()
-            if isinstance(saved, dict) and saved:
-                self._additional_inputs_saved_data = saved
-            
-            # Capture the flattened/processed values for CAD mapping and IFC export
-            # This ensures keys like 'median_type' are populated even if the dialog
-            # was closed via 'Save' (which doesn't trigger the Accepted signal).
-            vals = self.additional_inputs.get_all_values()
-            if isinstance(vals, dict) and vals:
-                if not self.additional_input_values:
-                    self.additional_input_values = {}
-                self.additional_input_values.update(vals)
-                # Notify template page that inputs have changed to refresh 2D CAD
-                self.input_value_changed.emit()
-        except Exception:
-            pass
-        self.additional_inputs = None
+        self.parent.common_design_func("Additional Inputs")
 
     # ══════════════════════════════════════════════════════════════════════════
     # Lock / unlock
