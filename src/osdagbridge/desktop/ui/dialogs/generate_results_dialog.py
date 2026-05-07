@@ -1156,62 +1156,58 @@ class ExportTablePage(QWidget):
         alt_fill     = PatternFill("solid", fgColor=ALT_HEX)
         white_fill   = PatternFill("solid", fgColor=WHITE_HEX)
         header_font  = Font(bold=True, color="FFFFFFFF", name="Calibri", size=11)
-        param_font   = Font(bold=True, color="FF2d2d2d", name="Calibri", size=10)
-        value_font   = Font(bold=False, color="FF2d2d2d", name="Calibri", size=10)
+        data_font    = Font(bold=False, color="FF2d2d2d", name="Calibri", size=10)
         center_align = Alignment(horizontal="center", vertical="center", wrap_text=True)
-        left_align   = Alignment(horizontal="left",   vertical="center", wrap_text=True)
 
-        thin_side    = Side(style="thin", color=BORDER_HEX)
-        cell_border  = Border(
+        thin_side   = Side(style="thin", color=BORDER_HEX)
+        cell_border = Border(
             left=thin_side, right=thin_side,
             top=thin_side,  bottom=thin_side
         )
 
         wb = openpyxl.Workbook()
-        default_sheet = wb.active
-        wb.remove(default_sheet)
+        wb.remove(wb.active)
 
         for table_name, data in selected_tables:
             columns = data.get("columns", [])
-            rows    = data.get("rows",    [])
+            rows    = data.get("rows", [])
 
             if not columns or not rows:
                 continue
 
-            sheet_name = table_name[:31]
-            ws = wb.create_sheet(title=sheet_name)
+            ws = wb.create_sheet(title=table_name[:31])
 
-            ws.column_dimensions["A"].width = 38
-            ws.column_dimensions["B"].width = 28
+            # Auto-size columns based on header + data content
+            col_widths = [len(str(col)) for col in columns]
+            for row in rows:
+                for c_idx, val in enumerate(row):
+                    if c_idx < len(col_widths):
+                        col_widths[c_idx] = max(col_widths[c_idx], len(str(val)))
 
-            for col_idx, label in enumerate(["Parameter", "Value"], start=1):
-                cell = ws.cell(row=1, column=col_idx, value=label)
-                cell.fill      = header_fill
-                cell.font      = header_font
-                cell.alignment = center_align
-                cell.border    = cell_border
+            for c_idx, width in enumerate(col_widths):
+                ws.column_dimensions[
+                    openpyxl.utils.get_column_letter(c_idx + 1)
+                ].width = min(max(width + 4, 14), 50)
 
-            ws.row_dimensions[1].height = 22
+            # Header row
+            for c_idx, label in enumerate(columns, start=1):
+                cell            = ws.cell(row=1, column=c_idx, value=str(label))
+                cell.fill       = header_fill
+                cell.font       = header_font
+                cell.alignment  = center_align
+                cell.border     = cell_border
+            ws.row_dimensions[1].height = 28
 
-            row_data = rows[0]
-
-            for i, param_name in enumerate(columns):
-                excel_row  = i + 2
-                fill_style = alt_fill if i % 2 == 0 else white_fill
-                val = row_data[i] if i < len(row_data) else ""
-
-                p_cell = ws.cell(row=excel_row, column=1, value=str(param_name))
-                p_cell.fill      = fill_style
-                p_cell.font      = param_font
-                p_cell.alignment = left_align
-                p_cell.border    = cell_border
-
-                v_cell = ws.cell(row=excel_row, column=2, value=str(val))
-                v_cell.fill      = fill_style
-                v_cell.font      = value_font
-                v_cell.alignment = center_align
-                v_cell.border    = cell_border
-
+            # Data rows
+            for r_idx, row in enumerate(rows):
+                excel_row  = r_idx + 2
+                fill_style = alt_fill if r_idx % 2 == 0 else white_fill
+                for c_idx, val in enumerate(row, start=1):
+                    cell            = ws.cell(row=excel_row, column=c_idx, value=val)
+                    cell.fill       = fill_style
+                    cell.font       = data_font
+                    cell.alignment  = center_align
+                    cell.border     = cell_border
                 ws.row_dimensions[excel_row].height = 18
 
         wb.save(path)
