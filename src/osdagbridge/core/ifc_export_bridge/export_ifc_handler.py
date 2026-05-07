@@ -30,6 +30,10 @@ class PlateGirderIfcExportHandler:
             if self.callback:
                 self.callback(True, f"Model successfully exported to {self.filepath}")
         except Exception as e:
+            import traceback
+            error_msg = traceback.format_exc()
+            with open(r"c:\Users\Pyramid\Desktop\OsdagBridgeDev\OsdagBridge\src\osdagbridge\core\ifc_export_bridge\ifc_export_error.txt", "w") as f:
+                f.write(error_msg)
             if self.callback:
                 self.callback(False, str(e))
                 

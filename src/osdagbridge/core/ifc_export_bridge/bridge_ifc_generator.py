@@ -66,6 +66,7 @@ class BridgeIfcGenerator:
         """Consume extracted dictionary logic and bind to schema."""
         self.initialize_file()
         s = 0.001 # Global Scale Factor (Meters)
+        shared = {"deck_top_m": 0.0}  # Shared state: deck top surface in meters
         
         def _process_plate(item):
             prof = self.mapper.create_rectangular_profile(item.T * s, item.L * s)
@@ -123,11 +124,12 @@ class BridgeIfcGenerator:
             self.bind_element_to_storey(elem)
 
         def _process_deck(item):
-            # Force the thickness to 0.4 meters as requested for the viewer override
-            deck_height_override = 0.2
-            
-            # Anchor at the girder top level (now scaled to Meters)
+            # Use extracted thickness
+            deck_thickness = getattr(item, 'thickness', 200)
             z_base = item.points[0][2] * s
+            
+            # Store the deck top surface for barrier alignment
+            shared["deck_top_m"] = z_base + deck_thickness * s
             
             # Map the globally extracted 3D corners to a pure 2D footprint profile
             pts_2d = [(p[0] * s, p[1] * s) for p in item.points]
@@ -137,8 +139,7 @@ class BridgeIfcGenerator:
             place = self.mapper.create_axis2placement_3d((0, 0, z_base), z_dir=(0, 0, 1), x_dir=(1, 0, 0))
             local_identity = self.mapper.create_axis2placement_3d((0, 0, 0), z_dir=(0, 0, 1), x_dir=(1, 0, 0))
             
-            # SweptSolid uses the explicit 0.4m override
-            solid = self.mapper.create_extruded_solid(prof, deck_height_override, local_identity)
+            solid = self.mapper.create_extruded_solid(prof, deck_thickness * s, local_identity)
             
             shape = self.file.createIfcShapeRepresentation(self.mapper._context3d, "Body", "SweptSolid", [solid])
             prod_def = self.file.createIfcProductDefinitionShape(None, None, [shape])
@@ -148,24 +149,86 @@ class BridgeIfcGenerator:
             self.bind_element_to_storey(elem)
             
         def _process_barrier(item):
-             # Force dimensions and placement to Meters
-             prof = self.mapper.create_rectangular_profile(450 * s, 1100 * s)
+             geo = getattr(item, 'geo', {})
              import math
+             
+             # 1. Define 2D Profile Points and Reference Width
+             if geo.get("type") == "rcc":
+                 total_h = geo["total_height"]
+                 bottom_w = geo["bottom_width"]
+                 base_v = geo["base_vertical"]
+                 mid_off = geo["mid_offset"]
+                 shape_scale = bottom_w / 525.0
+                 right_at_mid = 300 * shape_scale
+                 left_at_top = 50 * shape_scale
+                 right_at_top = 225 * shape_scale
+
+                 pts_2d = [
+                     (0, 0), (bottom_w, 0), (bottom_w, base_v),
+                     (right_at_mid, mid_off), (right_at_top, total_h),
+                     (left_at_top, total_h), (0, base_v),
+                 ]
+             elif geo.get("type") == "metallic":
+                 kerb_h = geo.get("kerb_height", 150.0)
+                 bottom_w = geo.get("median_width", geo.get("kerb_bottom_width", 550))
+                 kerb_top = geo.get("kerb_top_width", 500)
+                 offset = (bottom_w - kerb_top) / 2
+                 pts_2d = [
+                     (0, 0), (bottom_w, 0),
+                     (bottom_w - offset, kerb_h),
+                     (offset, kerb_h),
+                 ]
+             else: 
+                 # Median / Others fallback
+                 total_h = geo.get("total_height", geo.get("kerb_height", 1100))
+                 bottom_w = geo.get("median_width", geo.get("bottom_width", geo.get("kerb_bottom_width", 1200)))
+                 pts_2d = [(0, 0), (bottom_w, 0), (bottom_w, total_h), (0, total_h)]
+
+             # 2. Apply Mirroring for Right Side (Orientation Fix)
+             is_right_side = item.y_offset > 0.5 
+             if is_right_side:
+                 pts_2d = [(bottom_w - x, y) for x, y in pts_2d]
+
+             # 3. Scaling and Transformation
+             pts_2d_m = [(x * s, y * s) for x, y in pts_2d]
+             
              x_start = item.y_offset * math.tan(math.radians(item.skew)) if hasattr(item, 'skew') else 0
+             deck_top = shared["deck_top_m"]
              
-             # Hardcoded override to sit on top of the 0.4 scaled deck
-             # girder_top = 710mm -> 0.71m
-             girder_top = (item.z_base - 400.0) * s
-             z_fixed = girder_top + 0.4
+             y_origin = item.y_offset * s - (bottom_w * s / 2.0)
+             scaled_origin = [x_start * s, y_origin, deck_top]
              
-             # Force Barrier Sweep along Global X-axis (span line)
-             place = self.mapper.create_axis2placement_3d((x_start * s, item.y_offset * s, z_fixed), z_dir=[1,0,0], x_dir=[0,1,0])
+             prof = self.mapper.create_polygonal_profile(pts_2d_m, "BarrierProfile")
+             place = self.mapper.create_axis2placement_3d(scaled_origin, z_dir=[1,0,0], x_dir=[0,1,0])
              local_identity = self.mapper.create_axis2placement_3d((0,0,0), z_dir=(0,0,1), x_dir=(1,0,0))
              solid = self.mapper.create_extruded_solid(prof, item.span * s, local_identity)
              
              shape = self.file.createIfcShapeRepresentation(self.mapper._context3d, "Body", "SweptSolid", [solid])
              prod_def = self.file.createIfcProductDefinitionShape(None, None, [shape])
-             elem = self.file.createIfcWallElementedCase(create_ifc_guid(), self._owner_history, Name=item.ifc_name, ObjectPlacement=self.file.createIfcLocalPlacement(self.storey.ObjectPlacement, place), Representation=prod_def)
+             # Map Median to IfcWall if it's high, otherwise IfcBuildingElementProxy
+             elem_type = self.file.createIfcWall if item._class_name == "BarrierSweep" else self.file.createIfcBuildingElementProxy
+             elem = elem_type(create_ifc_guid(), self._owner_history, Name=item.ifc_name, ObjectPlacement=self.file.createIfcLocalPlacement(self.storey.ObjectPlacement, place), Representation=prod_def)
+             self.bind_element_to_storey(elem)
+
+        def _process_railing(item):
+             geo = getattr(item, 'geo', {})
+             import math
+             
+             rail_w = geo.get("width", 375)
+             rail_h = geo.get("height", 1100)
+             prof = self.mapper.create_rectangular_profile(rail_w * s, rail_h * s)
+             
+             x_start = item.y_offset * math.tan(math.radians(item.skew)) if hasattr(item, 'skew') else 0
+             deck_top = shared["deck_top_m"]
+             
+             scaled_origin = [x_start * s, item.y_offset * s, deck_top + rail_h * s / 2.0]
+             place = self.mapper.create_axis2placement_3d(scaled_origin, z_dir=[1,0,0], x_dir=[0,1,0])
+             local_identity = self.mapper.create_axis2placement_3d((0,0,0), z_dir=(0,0,1), x_dir=(1,0,0))
+             solid = self.mapper.create_extruded_solid(prof, item.span * s, local_identity)
+             
+             shape = self.file.createIfcShapeRepresentation(self.mapper._context3d, "Body", "SweptSolid", [solid])
+             prod_def = self.file.createIfcProductDefinitionShape(None, None, [shape])
+             elem = self.file.createIfcRailing(create_ifc_guid(), self._owner_history, Name=item.ifc_name, ObjectPlacement=self.file.createIfcLocalPlacement(self.storey.ObjectPlacement, place), Representation=prod_def)
              self.bind_element_to_storey(elem)
 
         # Iterate over extraction dictionary explicitly
@@ -183,9 +246,12 @@ class BridgeIfcGenerator:
                  if item._class_name == "SlabPolygon":
                      _process_deck(item)
                      
-        # for key in ["crash_barriers"]: # Safeties mapping covers crash barriers, median, railings
-        #      for item in extracted_dict.get(key, []):
-        #          _process_barrier(item)
+        for key in ["crash_barriers"]: 
+             for item in extracted_dict.get(key, []):
+                 if item._class_name == "BarrierSweep":
+                     _process_barrier(item)
+                 elif item._class_name == "RailingSweep":
+                     _process_railing(item)
                  
         # Intentionally ignore "deck_textures"
         print("Model assembly complete. Saving...")

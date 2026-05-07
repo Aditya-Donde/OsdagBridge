@@ -1,9 +1,33 @@
-"""
-Plate Girder Bridge - CAD to IFC Data Extraction Pipeline
-Translates PlateGirderCADGenerator UI configurations into parametric dicts/objects.
-"""
 import math
 import numpy as np
+
+# Osdag Core Imports
+from osdagbridge.core.utils.codes.irc5_2015 import IRC5_2015
+from osdagbridge.core.utils.common import (
+    KEY_SPAN, KEY_NO_OF_GIRDERS, KEY_GIRDER_SPACING, KEY_SKEW_ANGLE,
+    KEY_CARRIAGEWAY_WIDTH, KEY_DECK_THICKNESS, KEY_FOOTPATH, KEY_FOOTPATH_WIDTH,
+    KEY_RAILING_WIDTH, KEY_INCLUDE_MEDIAN, KEY_CRASH_BARRIER_TYPE,
+    KEY_RIGID_CRASH_BARRIER_TYPE, KEY_METALLIC_CRASH_BARRIER_TYPE,
+    KEY_MEDIAN_TYPE, KEY_RAILING_TYPE, VALUES_FOOTPATH, VALUES_RAILING_TYPE
+)
+from osdagbridge.core.bridge_components.super_structure.deck.builder import (
+    calculate_deck_width,
+    calculate_carriageway_center_y
+)
+from osdagbridge.core.utils.common import (
+    DEFAULT_GIRDER_SPACING
+)
+from osdagbridge.core.bridge_components.super_structure.crash_barrier.builder import (
+    calculate_carriageway_offset
+)
+from osdagbridge.core.bridge_components.super_structure.plate_girder.builder import (
+    END_STIFFENER_SPACING
+)
+from osdagbridge.desktop.cad.irc5_geometry import (
+    CrashBarrierGeometry,
+    MedianGeometry,
+    RailingGeometry
+)
 
 class ExtractedObject:
     """A generic mock object to hold geometric parameters for the GeometryMapper."""
@@ -25,26 +49,101 @@ class PlateGirderIFCExtractor:
             return 0.0
         skew_rad = math.radians(self.cad.skew_angle)
         return (lateral_position - reference_position) * math.tan(skew_rad)
+
+    def _build_design_dict(self):
+        """Replicates Osdag Step 6 mapping to get exact IRC 5 dimensions."""
+        barrier_type_map = {"Flexible": 0, "Semi-Rigid": 1, "Rigid": 2}
+        barrier_idx = barrier_type_map.get(self.cad.barrier_type, 2)
         
+        rigid_subtype_map = {"IRC-5R": 0, "High Containment": 1}
+        metallic_subtype_map = {"Single W-beam": 0, "Double W-beam": 1}
+
+        railing_map = {
+            VALUES_RAILING_TYPE[0]: KEY_RAILING_TYPE[0],  # RCC
+            VALUES_RAILING_TYPE[1]: KEY_RAILING_TYPE[1],  # Steel
+        }
+        
+        selected_railing_key = railing_map.get(self.cad.railing_type)
+        if selected_railing_key is None:
+            selected_railing_key = KEY_RAILING_TYPE[1] if "steel" in str(self.cad.railing_type).lower() else KEY_RAILING_TYPE[0]
+
+        if self.cad.barrier_type != "Rigid":
+            selected_railing_key = KEY_RAILING_TYPE[0]
+
+        if self.cad.barrier_type == "Rigid":
+            rigid_subtype_idx = rigid_subtype_map.get(self.cad.crash_barrier_subtype, 0)
+            design_dict = IRC5_2015.cl_109_6_3_shapes(
+                barrier_type=KEY_CRASH_BARRIER_TYPE[barrier_idx],
+                footpath=VALUES_FOOTPATH[0] if self.cad.footpath_config == "NONE" else VALUES_FOOTPATH[1],
+                railing_type=selected_railing_key,
+                design_dict={},
+                crash_barrier_type=KEY_RIGID_CRASH_BARRIER_TYPE[rigid_subtype_idx]
+            )
+            actual_base_width = design_dict.get("crash_barrier_width", 500)
+        else:
+            metallic_subtype_idx = metallic_subtype_map.get(self.cad.crash_barrier_subtype, 0)
+            design_dict = IRC5_2015.cl_109_6_3_shapes(
+                barrier_type=KEY_CRASH_BARRIER_TYPE[1],
+                footpath=VALUES_FOOTPATH[0] if self.cad.footpath_config == "NONE" else VALUES_FOOTPATH[1],
+                railing_type=selected_railing_key,
+                design_dict={},
+                crash_barrier_type=KEY_METALLIC_CRASH_BARRIER_TYPE[metallic_subtype_idx]
+            )
+            # Standard Osdag reserved width for crash barriers is 500mm (0.5m)
+            actual_base_width = design_dict.get("kerb_bottom_width", 500)
+        
+        # Standard Osdag Railing width is 375mm (0.375m)
+        actual_railing_width = 375
+        return design_dict, actual_base_width, actual_railing_width
     def extract(self):
+        design_dict, actual_base_width, actual_railing_width = self._build_design_dict()
+        
+        # Step 1: Calculate dynamic deck width
+        total_width = self._calculate_total_deck_width(actual_base_width, actual_railing_width)
+        
+        # Step 2: Solve for structural girder layout
+        n_girders, spacing, overhang = self._solve_girder_layout(total_width)
+        
         return {
-            "girders": self._extract_girders(),
-            "stiffeners": self._extract_stiffeners(),
-            "cross_bracings": self._extract_cross_bracings(),
-            "deck_slab": self._extract_deck_slab(),
-            "crash_barriers": self._extract_safety_components(),
-            "supports": self._extract_supports()
+            "girders": self._extract_girders(n_girders, spacing),
+            "stiffeners": self._extract_stiffeners(n_girders, spacing),
+            "cross_bracings": self._extract_cross_bracings(n_girders, spacing),
+            "deck_slab": self._extract_deck_slab(total_width),
+            "crash_barriers": self._extract_safety_components(total_width, actual_base_width, actual_railing_width),
+            "supports": self._extract_supports(n_girders, spacing)
         }
 
-    def _extract_girders(self):
+    def _solve_girder_layout(self, total_width):
+        """
+        Dynamically solves for n, spacing, and overhang based on Osdag's structural sizing rules.
+        OverallBridgeWidth = (n - 1) * spacing + 2 * overhang
+        """
+        target_s = getattr(self.cad, 'girder_spacing', DEFAULT_GIRDER_SPACING * 1000)
+        target_o = getattr(self.cad, 'deck_overhang', target_s / 2.0)
+        
+        # Rule: n = Width / TargetSpacing (assuming overhang = spacing/2)
+        n = max(2, int(round(total_width / target_s)))
+        
+        # Adjust spacing and overhang to fit width exactly
+        # We keep overhang at target_o if possible, and solve for s
+        if n > 1:
+            actual_s = (total_width - 2 * target_o) / (n - 1)
+            actual_o = target_o
+        else:
+            actual_s = 0
+            actual_o = total_width / 2.0
+            
+        return n, actual_s, actual_o
+
+    def _extract_girders(self, n_girders, spacing):
         girders = []
-        total_width = (self.cad.num_girders - 1) * self.cad.girder_spacing
+        total_structural_width = (n_girders - 1) * spacing
         d = self.cad.girder_section_d
         tw = self.cad.girder_section_tw
         L = self.cad.span_length_L
         
-        for i in range(self.cad.num_girders):
-            y_offset = (i * self.cad.girder_spacing) - (total_width / 2)
+        for i in range(n_girders):
+            y_offset = (i * spacing) - (total_structural_width / 2.0)
             x_offset = self._calculate_skew_offset(y_offset)
             
             # Girders span along +X global vector
@@ -76,7 +175,7 @@ class PlateGirderIFCExtractor:
             
         return girders
 
-    def _extract_stiffeners(self):
+    def _extract_stiffeners(self, n_girders, spacing):
         stiffeners = []
         D = self.cad.girder_section_d
         tw = self.cad.girder_section_tw
@@ -89,10 +188,9 @@ class PlateGirderIFCExtractor:
         int_stiff_width = self.cad.intermediate_stiffener_outstand if self.cad.intermediate_stiffener_outstand else default_stiff_width
         end_stiff_width = self.cad.end_stiffener_outstand if self.cad.end_stiffener_outstand else default_stiff_width
         
-        END_STIFFENER_SPACING = 50.0
         end_stiffener_gap = (T_es / 2.0)
         
-        total_width = (self.cad.num_girders - 1) * self.cad.girder_spacing
+        total_width = (n_girders - 1) * spacing
         
         # Stiffeners Extrude UP (global Z) alongside the web depth
         # For Vertical Stiffeners: T (Profile Width) maps to local X (global X -> Thickness)
@@ -101,17 +199,17 @@ class PlateGirderIFCExtractor:
         uDir_vert = [0, 0, 1] 
         wDir_vert = [1, 0, 0]
         
-        for i in range(self.cad.num_girders):
-            y_offset = (i * self.cad.girder_spacing) - (total_width / 2)
+        for i in range(n_girders):
+            y_offset = (i * spacing) - (total_width / 2)
             
             # Intermediate Stiffeners
             if self.cad.include_intermediate_stiffeners:
-                spacing = self.cad.intermediate_stiffener_spacing
-                num_panels = max(1, int(L // spacing))
+                spacing_stiff = self.cad.intermediate_stiffener_spacing
+                num_panels = max(1, int(L // spacing_stiff))
                 end_zone = end_stiffener_gap + (self.cad.num_end_stiffener_pairs - 1) * END_STIFFENER_SPACING + END_STIFFENER_SPACING
                 
                 for j in range(1, num_panels):
-                    x_dist = j * spacing
+                    x_dist = j * spacing_stiff
                     if x_dist <= end_zone or x_dist >= (L - end_zone): continue
                     
                     x_shift = self._calculate_skew_offset(y_offset)
@@ -157,13 +255,13 @@ class PlateGirderIFCExtractor:
                         
         return stiffeners
 
-    def _extract_cross_bracings(self):
+    def _extract_cross_bracings(self, n_girders, spacing):
         braces = []
         n_internal = int(self.cad.span_length_L / self.cad.cross_bracing_spacing) - 1
         n_total = n_internal + 2
-        spacing = self.cad.span_length_L / (n_total - 1) if n_total > 1 else 0
-        x_positions = [i * spacing for i in range(n_total)]
-        total_width = (self.cad.num_girders - 1) * self.cad.girder_spacing
+        spacing_x = self.cad.span_length_L / (n_total - 1) if n_total > 1 else 0
+        x_positions = [i * spacing_x for i in range(n_total)]
+        total_width = (n_girders - 1) * spacing
         
         depth = self.cad.girder_section_d
         z_bot = -depth / 2
@@ -215,95 +313,135 @@ class PlateGirderIFCExtractor:
         for idx, x in enumerate(x_positions):
             is_end = (idx == 0 or idx == len(x_positions)-1)
             is_first = (idx == 0)
-            for i in range(self.cad.num_girders - 1):
-                yL = (i * self.cad.girder_spacing) - total_width / 2
-                extract_bay(x, yL, yL + self.cad.girder_spacing, is_end, is_first)
+            for i in range(n_girders - 1):
+                yL = (i * spacing) - total_width / 2
+                extract_bay(x, yL, yL + spacing, is_end, is_first)
                 
         return braces
 
-    def _extract_deck_slab(self):
+    def _calculate_total_deck_width(self, actual_base_width, actual_railing_width):
+        """Replicates Osdag's CrossSectionLayout logic for total width."""
+        cw = self.cad.carriageway_width
+        cb = actual_base_width
+        fp = self.cad.footpath_width
+        rl = actual_railing_width
+        
+        # Base road width
+        if self.cad.enable_median:
+            # Get median width (standard 1200mm)
+            median_label = "IRC 5 - Raised Kerb" # Default to fetch standard width
+            median_geo = MedianGeometry.get_geometry(median_label)
+            mw = median_geo.get("median_width", 1200)
+            road_width = (2 * cw) + mw
+        else:
+            road_width = cw
+            
+        # Total width = 2 * crash barriers + road_width + footpaths/railings
+        total = road_width + (2 * cb)
+        
+        if self.cad.footpath_config == "LEFT":
+            total += fp + rl
+        elif self.cad.footpath_config == "RIGHT":
+            total += fp + rl
+        elif self.cad.footpath_config == "BOTH":
+            total += 2 * (fp + rl)
+            
+        return total
+
+    def _extract_deck_slab(self, total_width):
+        """Extract deck slab geometry with synchronized structural width."""
         L = self.cad.span_length_L
-        W_carriageway = self.cad.carriageway_width
         T = self.cad.deck_thickness
-        foot_w = self.cad.footpath_width if self.cad.footpath_config != "NONE" else 0
-        rail_w = self.cad.railing_width if self.cad.footpath_config != "NONE" else 0
-        barrier_w = 450.0 # Approximate width of crash barrier base
-        
-        left_add = (foot_w + rail_w + barrier_w) if self.cad.footpath_config in ("LEFT", "BOTH") else barrier_w
-        right_add = (foot_w + rail_w + barrier_w) if self.cad.footpath_config in ("RIGHT", "BOTH") else barrier_w
-        
-        total_width = W_carriageway + left_add + right_add
         
         y_min = -total_width / 2
         y_max = total_width / 2
-        
         z_top = self.cad.girder_section_d / 2 + self.cad.girder_section_tf
-        z_surface = z_top + T
         
-        # Calculate skew polygon (CCW Winding Order for solid topology)
-        # These points define the BOTTOM footprint of the slab (aligning with girder top flanges)
         pts = [
-            [self._calculate_skew_offset(y_min), y_min, z_top],            # Bottom Left
-            [L + self._calculate_skew_offset(y_min), y_min, z_top],        # Bottom Right
-            [L + self._calculate_skew_offset(y_max), y_max, z_top],        # Top Right
-            [self._calculate_skew_offset(y_max), y_max, z_top]             # Top Left
+            [self._calculate_skew_offset(y_min), y_min, z_top],
+            [L + self._calculate_skew_offset(y_min), y_min, z_top],
+            [L + self._calculate_skew_offset(y_max), y_max, z_top],
+            [self._calculate_skew_offset(y_max), y_max, z_top]
         ]
         
-        return [ExtractedObject("SlabPolygon", points=pts, thickness=T, ifc_name="Deck Slab")]
+        return [ExtractedObject("SlabPolygon", points=pts, thickness=T*0.001, ifc_name="Deck Slab")]
 
-    def _extract_safety_components(self):
+    def _extract_safety_components(self, design_dict, actual_base_width, actual_railing_width):
         components = []
-        W_carriageway = self.cad.carriageway_width
         L = self.cad.span_length_L
         z_base = self.cad.girder_section_d / 2 + self.cad.girder_section_tf + self.cad.deck_thickness
         
-        foot_w = self.cad.footpath_width if self.cad.footpath_config != "NONE" else 0
-        rail_w = self.cad.railing_width if self.cad.footpath_config != "NONE" else 0
-        barrier_w = 450.0 
+        total_deck_width = self._calculate_total_deck_width(actual_base_width, actual_railing_width)
         
-        left_add = (foot_w + rail_w + barrier_w) if self.cad.footpath_config in ("LEFT", "BOTH") else barrier_w
-        right_add = (foot_w + rail_w + barrier_w) if self.cad.footpath_config in ("RIGHT", "BOTH") else barrier_w
+        # Calculate road assembly offset (same as calculate_carriageway_offset in Osdag)
+        carriageway_offset = 0.0
+        if self.cad.footpath_config == "LEFT":
+            carriageway_offset = (self.cad.footpath_width + actual_railing_width) / 2.0
+        elif self.cad.footpath_config == "RIGHT":
+            carriageway_offset = -(self.cad.footpath_width + actual_railing_width) / 2.0
+            
+        # Internal widths
+        cw = self.cad.carriageway_width
+        cb = actual_base_width
         
-        y_left_edge = -(W_carriageway/2 + left_add)
-        y_right_edge = (W_carriageway/2 + right_add)
-        
-        # Guard rails / Barriers
-        b_type = self.cad.barrier_type
-        sub_type = self.cad.crash_barrier_subtype
-        
-        barrier_offsets = []
+        # Define Y positions for barriers (positioned at the edge of the road assembly)
+        y_l = -total_deck_width / 2.0 + cb / 2.0
         if self.cad.footpath_config in ("LEFT", "BOTH"):
-            barrier_offsets.append(y_left_edge + rail_w + foot_w + barrier_w/2)
-        else:
-            barrier_offsets.append(y_left_edge + barrier_w/2)
-            
+            y_l += (self.cad.footpath_width + actual_railing_width)
+
+        y_r = total_deck_width / 2.0 - cb / 2.0
         if self.cad.footpath_config in ("RIGHT", "BOTH"):
-            barrier_offsets.append(y_right_edge - rail_w - foot_w - barrier_w/2)
-        else:
-            barrier_offsets.append(y_right_edge - barrier_w/2)
+            y_r -= (self.cad.footpath_width + actual_railing_width)
             
-        for y_off in barrier_offsets:
-            components.append(ExtractedObject("BarrierSweep", type=b_type, subtype=sub_type, span=L, 
-                z_base=z_base, y_offset=y_off, skew=self.cad.skew_angle, ifc_name="Crash Barrier"))
+        # Map barrier types to labels for Geometry Retrieval
+        if self.cad.barrier_type == "Rigid":
+            barrier_label = "IRC 5 - High Containment RCC Crash Barrier" if self.cad.crash_barrier_subtype == "High Containment" else "IRC 5 - RCC Crash Barrier"
+        else:
+            barrier_label = "IRC 5 - Metallic Crash Barrier with Double W-Beam" if self.cad.crash_barrier_subtype == "Double W-beam" else "IRC 5 - Metallic Crash Barrier with Single W-Beam"
+
+        barrier_geo = CrashBarrierGeometry.get_geometry(barrier_label)
+        
+        # Left barrier
+        components.append(ExtractedObject("BarrierSweep", type=self.cad.barrier_type, subtype=self.cad.crash_barrier_subtype, 
+            span=L, z_base=z_base, y_offset=y_l, skew=self.cad.skew_angle, geo=barrier_geo, ifc_name="Crash Barrier L"))
+        # Right barrier
+        components.append(ExtractedObject("BarrierSweep", type=self.cad.barrier_type, subtype=self.cad.crash_barrier_subtype, 
+            span=L, z_base=z_base, y_offset=y_r, skew=self.cad.skew_angle, geo=barrier_geo, ifc_name="Crash Barrier R"))
                 
         # Median
         if self.cad.enable_median:
+            # Median is centered in the road assembly
+            median_y = carriageway_offset
+            
+            # Map median type to labels
+            if self.cad.median_type == "Raised Kerb":
+                median_label = "IRC 5 - Raised Kerb"
+            elif self.cad.median_type == "RCC Crash Barrier":
+                median_label = "IRC 5 - RCC Crash Barrier"
+            else:
+                median_label = "IRC 5 - Metallic Crash Barrier with Double W-Beam" if "Double" in str(self.cad.median_type) else "IRC 5 - Metallic Crash Barrier with Single W-Beam"
+
+            median_geo = MedianGeometry.get_geometry(median_label)
             components.append(ExtractedObject("BarrierSweep", type="Median", subtype=self.cad.median_type, span=L, 
-                z_base=z_base, y_offset=0, skew=self.cad.skew_angle, ifc_name="Median Barrier"))
+                z_base=z_base, y_offset=median_y, skew=self.cad.skew_angle, geo=median_geo, ifc_name="Median Barrier"))
                 
         # Railings
+        railing_label = "IRC 5 - RCC Railing" if "rcc" in str(self.cad.railing_type).lower() else "IRC 5 - Steel Railing"
+        railing_geo = RailingGeometry.get_geometry(railing_label)
         if self.cad.footpath_config in ("LEFT", "BOTH"):
+            y_railing_left = -total_deck_width / 2.0 + actual_railing_width / 2.0
             components.append(ExtractedObject("RailingSweep", type=self.cad.railing_type, count=self.cad.rail_count, span=L, 
-                z_base=z_base, y_offset=y_left_edge + rail_w/2, skew=self.cad.skew_angle, ifc_name="Footpath Railing"))
+                z_base=z_base, y_offset=y_railing_left, skew=self.cad.skew_angle, geo=railing_geo, ifc_name="Footpath Railing L"))
         if self.cad.footpath_config in ("RIGHT", "BOTH"):
+            y_railing_right = total_deck_width / 2.0 - actual_railing_width / 2.0
             components.append(ExtractedObject("RailingSweep", type=self.cad.railing_type, count=self.cad.rail_count, span=L, 
-                z_base=z_base, y_offset=y_right_edge - rail_w/2, skew=self.cad.skew_angle, ifc_name="Footpath Railing"))
+                z_base=z_base, y_offset=y_railing_right, skew=self.cad.skew_angle, geo=railing_geo, ifc_name="Footpath Railing R"))
                 
         return components
 
-    def _extract_supports(self):
+    def _extract_supports(self, n_girders, spacing):
         supports = []
-        total_width = (self.cad.num_girders - 1) * self.cad.girder_spacing
+        total_width = (n_girders - 1) * spacing
         D = self.cad.girder_section_d
         z_contact = -(D / 2.0 + self.cad.girder_section_tf_b)
         support_width = max(self.cad.girder_section_bf, self.cad.girder_section_bf_b)
@@ -312,8 +450,8 @@ class PlateGirderIFCExtractor:
         w_supp = base_dim / 2.0
         r_cyl = h_supp / 2.0
         
-        for i in range(self.cad.num_girders):
-            y_offset = (i * self.cad.girder_spacing) - (total_width / 2)
+        for i in range(n_girders):
+            y_offset = (i * spacing) - (total_width / 2)
             x_offset = self._calculate_skew_offset(y_offset)
             
             # Left Triangular Support
