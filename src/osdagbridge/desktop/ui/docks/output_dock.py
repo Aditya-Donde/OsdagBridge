@@ -184,9 +184,10 @@ class OutputDock(QWidget):
         results_btn.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         btn_layout.addWidget(results_btn)
 
-        report_btn = DockCustomButton("Generate Report", ":/vectors/design_report.svg")
-        report_btn.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-        btn_layout.addWidget(report_btn)
+        self.report_btn = DockCustomButton("Generate Report", ":/vectors/design_report.svg")
+        self.report_btn.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self.report_btn.clicked.connect(self._on_report_clicked)
+        btn_layout.addWidget(self.report_btn)
 
         return btn_layout
 
@@ -574,6 +575,16 @@ class OutputDock(QWidget):
             self.parent.update_docking_icons(output_is_active=self.width() > 0)
 
     # ── Action handlers (called by name from schema) ──────────────────────────
+
+    def _on_report_clicked(self):
+        """Walk up the parent chain to find the page/window with open_report_dialog."""
+        main_window = self.parent
+        while main_window and not hasattr(main_window, 'open_report_dialog'):
+            main_window = getattr(main_window, 'parent', None)
+            if callable(main_window):
+                break
+        if main_window and hasattr(main_window, 'open_report_dialog'):
+            main_window.open_report_dialog()
 
     def refresh_utilization(self):
         """Read utilization ratios from backend and update all PercentBarWidgets."""
