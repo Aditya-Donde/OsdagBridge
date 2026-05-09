@@ -14,6 +14,7 @@ from osdagbridge.core.reports.report_generator import (
 
 
 from osdagbridge.desktop.ui.utils.custom_titlebar import CustomTitleBar
+from osdagbridge.desktop.ui.dialogs.custom_messagebox import CustomMessageBox, MessageBoxType
 
 class ReportOptionsDialog(QDialog):
     """Design Report options dialog — Page 1 collects project metadata
@@ -179,22 +180,6 @@ class ReportOptionsDialog(QDialog):
         self.reviewer = QLineEdit()
         form1.addRow("Reviewer :", self.reviewer)
 
-        self.group_name = QLineEdit()
-        form1.addRow("Organisation / Design Team Name :", self.group_name)
-
-        # Organisation Logo (with Browse)
-        self.org_logo = QLineEdit()
-        browse_btn = QPushButton("Browse")
-        browse_btn.setObjectName("ghost")
-        browse_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        browse_btn.clicked.connect(self.browse_logo)
-        logo_layout = QHBoxLayout()
-        logo_layout.setContentsMargins(0, 0, 0, 0)
-        logo_layout.setSpacing(8)
-        logo_layout.addWidget(self.org_logo, 1)
-        logo_layout.addWidget(browse_btn)
-        form1.addRow("Organisation Logo :", logo_layout)
-
         # Use / Save Profile buttons
         profile_layout = QHBoxLayout()
         profile_layout.setSpacing(8)
@@ -210,6 +195,22 @@ class ReportOptionsDialog(QDialog):
         profile_layout.addWidget(save_profile_btn)
         profile_layout.addStretch()
         form1.addRow("", profile_layout)
+
+        self.group_name = QLineEdit()
+        form1.addRow("Organisation / Design Team Name :", self.group_name)
+
+        # Organisation Logo (with Browse)
+        self.org_logo = QLineEdit()
+        browse_btn = QPushButton("Browse")
+        browse_btn.setObjectName("ghost")
+        browse_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        browse_btn.clicked.connect(self.browse_logo)
+        logo_layout = QHBoxLayout()
+        logo_layout.setContentsMargins(0, 0, 0, 0)
+        logo_layout.setSpacing(8)
+        logo_layout.addWidget(self.org_logo, 1)
+        logo_layout.addWidget(browse_btn)
+        form1.addRow("Organisation Logo :", logo_layout)
 
         box1.setLayout(form1)
         layout.addWidget(box1)
@@ -372,10 +373,12 @@ class ReportOptionsDialog(QDialog):
 
         # Guard: require at least one field to be filled
         if not any(data.values()):
-            QMessageBox.warning(
-                self, "Empty Profile",
-                "Please fill in at least one field before saving a profile."
-            )
+            CustomMessageBox(
+                title="Empty Profile",
+                text="Please fill in at least one field before saving a profile.",
+                buttons=["OK"],
+                dialogType=MessageBoxType.Critical
+            ).exec()
             return
 
         path, _ = QFileDialog.getSaveFileName(
@@ -406,15 +409,19 @@ class ReportOptionsDialog(QDialog):
                         f"\\ProfileField{{{key}}}{{{data.get(key, '')}}}  "
                         f"% {label}\n"
                     )
-            QMessageBox.information(
-                self, "Profile Saved",
-                f"Profile saved successfully.\n\n{path}"
-            )
+            CustomMessageBox(
+                title="Profile Saved",
+                text=f"Profile saved successfully.\n\n{path}",
+                buttons=["OK"],
+                dialogType=MessageBoxType.Success
+            ).exec()
         except OSError as exc:
-            QMessageBox.critical(
-                self, "Save Error",
-                f"Could not write profile file:\n{exc}"
-            )
+            CustomMessageBox(
+                title="Save Error",
+                text=f"Could not write profile file:\n{exc}",
+                buttons=["OK"],
+                dialogType=MessageBoxType.Critical
+            ).exec()
 
     def load_profile(self):
         """Browse for a previously saved `.tex` profile and auto-fill
@@ -432,10 +439,12 @@ class ReportOptionsDialog(QDialog):
             with open(path, "r", encoding="utf-8") as fh:
                 content = fh.read()
         except OSError as exc:
-            QMessageBox.critical(
-                self, "Read Error",
-                f"Could not read profile file:\n{exc}"
-            )
+            CustomMessageBox(
+                title="Read Error",
+                text=f"Could not read profile file:\n{exc}",
+                buttons=["OK"],
+                dialogType=MessageBoxType.Critical
+            ).exec()
             return
 
         parsed: dict[str, str] = {}
@@ -443,11 +452,12 @@ class ReportOptionsDialog(QDialog):
             parsed[match.group("key")] = match.group("value")
 
         if not parsed:
-            QMessageBox.warning(
-                self, "Invalid Profile",
-                "The selected file does not contain any valid "
-                "OsdagBridge profile data."
-            )
+            CustomMessageBox(
+                title="Invalid Profile",
+                text="The selected file does not contain any valid OsdagBridge profile data.",
+                buttons=["OK"],
+                dialogType=MessageBoxType.Warning
+            ).exec()
             return
 
         # Populate Box 1 fields
