@@ -7,10 +7,8 @@ Member Properties.
 
 from osdagbridge.core.utils.common import (
     DEFAULT_CRASH_BARRIER_WIDTH,
-    DEFAULT_GIRDER_SPACING,
     DEFAULT_RAILING_WIDTH,
-    MIN_FOOTPATH_WIDTH,
-    MIN_RAILING_HEIGHT,
+    KEY_INCLUDE_MEDIAN,
     SAIL_APPROVED_THICKNESS_VALUES,
     VALUES_BEARING_STIFFENER_COUNT,
     VALUES_END_DIAPHRAGM_TYPE,
@@ -29,64 +27,61 @@ from osdagbridge.core.utils.common import (
     VALUES_WEARING_COAT_MATERIAL,
     VALUES_NO_YES,
     STIFFENER_DETAILS_DEFAULTS,
+    TYPE_COMBOBOX,
+    TYPE_TEXTBOX,
+    KEY_CB_TYPE,
+    KEY_CB_DENSITY,
+    KEY_CB_WIDTH,
+    KEY_CB_HEIGHT,
+    KEY_CB_AREA,
+    KEY_CB_LOAD,
+    KEY_CB_POST_SPACING,
+    KEY_CB_TAB,
+    KEY_MD_TYPE,
+    KEY_MD_DENSITY,
+    KEY_MD_WIDTH,
+    KEY_MD_HEIGHT,
+    KEY_MD_AREA,
+    KEY_MD_LOAD,
+    KEY_MD_POST_SPACING,
+    KEY_MD_TAB,
+    KEY_RL_TYPE,
+    KEY_RL_WIDTH,
+    KEY_RL_HEIGHT,
+    KEY_RL_LOAD_MODE,
+    KEY_RL_LOAD_VALUE,
+    KEY_RL_TAB,
+    KEY_WC_MATERIAL,
+    KEY_WC_DENSITY,
+    KEY_WC_THICKNESS,
+    KEY_WC_TAB,
+    KEY_WC_LD_TAB,
+    KEY_WC_LD_LANE_TABLE,
+    KEY_WC_LD_LANE_TABLE_COUNT,
+    KEY_TS_TAB,
+    KEY_TS_DECK_TAB,
+    KEY_TS_GIRDER_SPACING,
+    KEY_TS_NO_OF_GIRDERS,
+    KEY_TS_DECK_OVERHANG,
+    KEY_TS_OVERALL_WIDTH,
+    KEY_TS_DECK_THICKNESS,
+    KEY_TS_FOOTPATH_WIDTH,
+    KEY_TS_FOOTPATH_THICKNESS,
+    KEY_FOOTPATH,
+    VALUES_FOOTPATH,
 )
 
-LAYOUT_TAB_SCHEMA = {
-    "id": "layout_tab",
+_DECK_DETAILS_TAB_SCHEMA = {
+    "id": KEY_TS_DECK_TAB,
+    "label": "Deck Details",
+    "label_width": 200,
     "rows": [
         {
             "fields": [
                 {
-                    "id": "girder_spacing",
-                    "label": "Girder Spacing (m):",
-                    "type": "line",
-                    "validator": {"type": "double_range", "bottom": 0.01, "top": 50.0, "decimals": 3},
-                    "default": DEFAULT_GIRDER_SPACING,
-                    "bind": "girder_spacing",
-                    "on_text_changed": "on_girder_spacing_changed",
-                },
-                {
-                    "id": "no_of_girders",
-                    "label": "No. of Girders:",
-                    "type": "line",
-                    "validator": {"type": "int_range", "bottom": 1, "top": 100},
-                    "bind": "no_of_girders",
-                    "on_editing_finished": "on_no_of_girders_changed",
-                },
-            ]
-        },
-        {
-            "fields": [
-                {
-                    "id": "deck_overhang",
-                    "label": "Deck Overhang Width (m):",
-                    "type": "line",
-                    "validator": {"type": "double_range", "bottom": 0.0, "top": 100.0, "decimals": 3},
-                    "bind": "deck_overhang",
-                    "on_text_changed": "on_deck_overhang_changed",
-                }
-            ]
-        },
-        {
-            "fields": [
-                {
-                    "id": "overall_bridge_width_display",
-                    "label": "Overall Bridge Width (m):",
-                    "type": "line",
-                    "read_only": True,
-                    "bind": "overall_bridge_width_display",
-                    "on_text_changed": "_reject_overall_width_override",
-                }
-            ]
-        },
-        {
-            "fields": [
-                {
-                    "id": "deck_thickness",
+                    "id": KEY_TS_DECK_THICKNESS,
                     "label": "Deck Thickness (mm):",
-                    "type": "line",
-                    "validator": {"type": "double_range", "bottom": 100.0, "top": 500.0, "decimals": 0},
-                    "default": "200",
+                    "type": TYPE_TEXTBOX,
                     "bind": "deck_thickness",
                     "on_editing_finished": "validate_deck_thickness",
                 },
@@ -95,20 +90,16 @@ LAYOUT_TAB_SCHEMA = {
         {
             "fields": [
                 {
-                    "id": "footpath_width",
+                    "id": KEY_TS_FOOTPATH_WIDTH,
                     "label": "Footpath Width (m):",
-                    "type": "line",
-                    "validator": {"type": "double_range", "bottom": MIN_FOOTPATH_WIDTH, "top": 5.0, "decimals": 3},
-                    "default": f"{MIN_FOOTPATH_WIDTH:.2f}",
+                    "type": TYPE_TEXTBOX,
                     "bind": "footpath_width",
                     "on_text_changed": "on_footpath_width_changed",
                 },
                 {
-                    "id": "footpath_thickness",
+                    "id": KEY_TS_FOOTPATH_THICKNESS,
                     "label": "Footpath Thickness (mm):",
-                    "type": "line",
-                    "validator": {"type": "double_range", "bottom": 100.0, "top": 500.0, "decimals": 0},
-                    "default": "200",
+                    "type": TYPE_TEXTBOX,
                     "bind": "footpath_thickness",
                     "on_editing_finished": "validate_footpath_thickness",
                 },
@@ -117,16 +108,17 @@ LAYOUT_TAB_SCHEMA = {
     ],
 }
 
-CRASH_BARRIER_TAB_SCHEMA = {
-    "id": "crash_barrier_tab",
+_CRASH_BARRIER_TAB_SCHEMA = {
+    "id": KEY_CB_TAB,
+    "label": "Crash Barrier",
     "label_width": 210,
     "rows": [
         {
             "fields": [
                 {
-                    "id": "crash_barrier_type",
+                    "id": KEY_CB_TYPE,
                     "label": "Type:",
-                    "type": "combo",
+                    "type": TYPE_COMBOBOX,
                     "choices": [
                         "IRC 5 - RCC Crash Barrier",
                         "IRC 5 - High Containment RCC Crash Barrier",
@@ -134,7 +126,6 @@ CRASH_BARRIER_TAB_SCHEMA = {
                         "IRC 5 - Metallic Crash Barrier with Double W-Beam",
                         "Custom",
                     ],
-                    "bind": "crash_barrier_type",
                     "on_change": "on_crash_barrier_type_changed",
                 }
             ]
@@ -142,11 +133,9 @@ CRASH_BARRIER_TAB_SCHEMA = {
         {
             "fields": [
                 {
-                    "id": "crash_barrier_density",
+                    "id": KEY_CB_DENSITY,
                     "label": "Material Density (kN/m³):",
-                    "type": "line",
-                    "validator": {"type": "double_range", "bottom": 0.0, "top": 100.0, "decimals": 2},
-                    "bind": "crash_barrier_density",
+                    "type": TYPE_TEXTBOX,
                     "on_editing_finished": "_auto_compute_crash_barrier_load",
                 }
             ]
@@ -154,12 +143,10 @@ CRASH_BARRIER_TAB_SCHEMA = {
         {
             "fields": [
                 {
-                    "id": "crash_barrier_width",
+                    "id": KEY_CB_WIDTH,
                     "label": "Width (m):",
-                    "type": "line",
+                    "type": TYPE_TEXTBOX,
                     "default": DEFAULT_CRASH_BARRIER_WIDTH,
-                    "validator": {"type": "double_range", "bottom": 0.0, "top": 2.0, "decimals": 3},
-                    "bind": "crash_barrier_width",
                     "on_text_changed": "recalculate_girders",
                 }
             ]
@@ -167,22 +154,18 @@ CRASH_BARRIER_TAB_SCHEMA = {
         {
             "fields": [
                 {
-                    "id": "crash_barrier_height",
+                    "id": KEY_CB_HEIGHT,
                     "label": "Height (m):",
-                    "type": "line",
-                    "validator": {"type": "double_range", "bottom": 0.0, "top": 3.0, "decimals": 3},
-                    "bind": "crash_barrier_height",
+                    "type": TYPE_TEXTBOX,
                 }
             ]
         },
         {
             "fields": [
                 {
-                    "id": "crash_barrier_area",
+                    "id": KEY_CB_AREA,
                     "label": "Area (m²):",
-                    "type": "line",
-                    "validator": {"type": "double_range", "bottom": 0.0, "top": 10.0, "decimals": 4},
-                    "bind": "crash_barrier_area",
+                    "type": TYPE_TEXTBOX,
                     "on_editing_finished": "_auto_compute_crash_barrier_load",
                 }
             ]
@@ -190,39 +173,44 @@ CRASH_BARRIER_TAB_SCHEMA = {
         {
             "fields": [
                 {
-                    "id": "crash_barrier_load",
+                    "id": KEY_CB_LOAD,
                     "label": "Load (kN/m):",
-                    "type": "line",
-                    "validator": {"type": "double_range", "bottom": 0.0, "top": 500.0, "decimals": 3},
-                    "bind": "crash_barrier_load",
+                    "type": TYPE_TEXTBOX,
                 }
             ]
         },
         {
             "fields": [
                 {
-                    "id": "crash_barrier_post_spacing",
+                    "id": KEY_CB_POST_SPACING,
                     "label": "Spacing between Posts (m):",
-                    "type": "line",
+                    "type": TYPE_TEXTBOX,
                     "default": "1",
-                    "validator": {"type": "double_range", "bottom": 0.0, "top": 10.0, "decimals": 3},
-                    "bind": "crash_barrier_post_spacing",
                 }
             ]
         },
     ],
 }
 
-MEDIAN_TAB_SCHEMA = {
-    "id": "median_tab",
+_MEDIAN_TAB_SCHEMA = {
+    "id": KEY_MD_TAB,
+    "label": "Median",
     "label_width": 210,
+    "active": 
+        {
+            "id": KEY_INCLUDE_MEDIAN, # key to check in working_input_dict
+            "values":                 # tab enabled when current value is IN this list
+            [
+                VALUES_NO_YES[1]
+            ],
+        },
     "rows": [
         {
             "fields": [
                 {
-                    "id": "median_type",
+                    "id": KEY_MD_TYPE,
                     "label": "Type:",
-                    "type": "combo",
+                    "type": TYPE_COMBOBOX,
                     "choices": [
                         "IRC 5 - Raised Kerb",
                         "IRC 5 - RCC Crash Barrier",
@@ -230,7 +218,6 @@ MEDIAN_TAB_SCHEMA = {
                         "IRC 5 - Metallic Crash Barrier with Double W-Beam",
                         "Custom",
                     ],
-                    "bind": "median_type",
                     "on_change": "on_median_type_changed",
                 }
             ]
@@ -238,66 +225,54 @@ MEDIAN_TAB_SCHEMA = {
         {
             "fields": [
                 {
-                    "id": "median_density",
+                    "id": KEY_MD_DENSITY,
                     "label": "Material Density (kN/m³):",
-                    "type": "line",
-                    "validator": {"type": "double_range", "bottom": 0.0, "top": 100.0, "decimals": 2},
-                    "bind": "median_density",
+                    "type": TYPE_TEXTBOX,
                 }
             ]
         },
         {
             "fields": [
                 {
-                    "id": "median_width",
+                    "id": KEY_MD_WIDTH,
                     "label": "Width (m):",
-                    "type": "line",
-                    "validator": {"type": "double_range", "bottom": 0.0, "top": 3.0, "decimals": 3},
-                    "bind": "median_width",
+                    "type": TYPE_TEXTBOX,
                 }
             ]
         },
         {
             "fields": [
                 {
-                    "id": "median_height",
+                    "id": KEY_MD_HEIGHT,
                     "label": "Height (m):",
-                    "type": "line",
-                    "validator": {"type": "double_range", "bottom": 0.0, "top": 3.0, "decimals": 3},
-                    "bind": "median_height",
+                    "type": TYPE_TEXTBOX,
                 }
             ]
         },
         {
             "fields": [
                 {
-                    "id": "median_area",
+                    "id": KEY_MD_AREA,
                     "label": "Area (m²):",
-                    "type": "line",
-                    "validator": {"type": "double_range", "bottom": 0.0, "top": 10.0, "decimals": 4},
-                    "bind": "median_area",
+                    "type": TYPE_TEXTBOX,
                 }
             ]
         },
         {
             "fields": [
                 {
-                    "id": "median_load",
+                    "id": KEY_MD_LOAD,
                     "label": "Load (kN/m):",
-                    "type": "line",
-                    "validator": {"type": "double_range", "bottom": 0.0, "top": 500.0, "decimals": 3},
-                    "bind": "median_load",
+                    "type": TYPE_TEXTBOX,
                 }
             ]
         },
         {
             "fields": [
                 {
-                    "id": "median_post_spacing",
+                    "id": KEY_MD_POST_SPACING,
                     "label": "Spacing between Posts (m):",
-                    "type": "line",
-                    "validator": {"type": "double_range", "bottom": 0.0, "top": 10.0, "decimals": 3},
-                    "bind": "median_post_spacing",
+                    "type": TYPE_TEXTBOX,
                     "default": "1",
                 }
             ]
@@ -305,18 +280,27 @@ MEDIAN_TAB_SCHEMA = {
     ],
 }
 
-RAILING_TAB_SCHEMA = {
-    "id": "railing_tab",
+_RAILING_TAB_SCHEMA = {
+    "id": KEY_RL_TAB,
+    "label": "Railing",
     "label_width": 180,
+    "active": 
+        {
+            "id": KEY_FOOTPATH,
+            "values": 
+            [
+                VALUES_FOOTPATH[1],
+                VALUES_FOOTPATH[2],
+            ],
+        },
     "rows": [
         {
             "fields": [
                 {
-                    "id": "railing_type",
+                    "id": KEY_RL_TYPE,
                     "label": "Type:",
-                    "type": "combo",
+                    "type": TYPE_COMBOBOX,
                     "choices": VALUES_RAILING_TYPE,
-                    "bind": "railing_type",
                     "on_change": "on_railing_type_changed",
                 }
             ]
@@ -324,12 +308,10 @@ RAILING_TAB_SCHEMA = {
         {
             "fields": [
                 {
-                    "id": "railing_width",
+                    "id": KEY_RL_WIDTH,
                     "label": "Width (mm):",
-                    "type": "line",
+                    "type": TYPE_TEXTBOX,
                     "default": f"{DEFAULT_RAILING_WIDTH * 1000:.0f}",
-                    "validator": {"type": "double_range", "bottom": 0.0, "top": 2000.0, "decimals": 1},
-                    "bind": "railing_width",
                     "on_text_changed": "recalculate_girders",
                 }
             ]
@@ -337,11 +319,9 @@ RAILING_TAB_SCHEMA = {
         {
             "fields": [
                 {
-                    "id": "railing_height",
+                    "id": KEY_RL_HEIGHT,
                     "label": "Height (m):",
-                    "type": "line",
-                    "validator": {"type": "double_range", "bottom": MIN_RAILING_HEIGHT, "top": 3.0, "decimals": 3},
-                    "bind": "railing_height",
+                    "type": TYPE_TEXTBOX,
                     "on_editing_finished": "validate_railing_height",
                 }
             ]
@@ -349,20 +329,17 @@ RAILING_TAB_SCHEMA = {
         {
             "fields": [
                 {
-                    "id": "railing_load_mode",
+                    "id": KEY_RL_LOAD_MODE,
                     "label": "Load Mode:",
-                    "type": "combo",
+                    "type": TYPE_COMBOBOX,
                     "choices": ["Automatic (IRC 6)", "User-defined"],
-                    "bind": "railing_load_mode",
                     "on_change": "on_railing_load_mode_changed",
                 },
                 {
-                    "id": "railing_load_value",
+                    "id": KEY_RL_LOAD_VALUE,
                     "label": "Load (kN/m):",
-                    "type": "line",
-                    "validator": {"type": "double_range", "bottom": 0.0, "top": 50.0, "decimals": 2},
+                    "type": TYPE_TEXTBOX,
                     "placeholder": "Value",
-                    "bind": "railing_load_value",
                     "enabled": False,
                 },
             ]
@@ -370,18 +347,18 @@ RAILING_TAB_SCHEMA = {
     ],
 }
 
-WEARING_COURSE_TAB_SCHEMA = {
-    "id": "wearing_course_tab",
+_WEARING_COURSE_TAB_SCHEMA = {
+    "id": KEY_WC_TAB,
+    "label": "Wearing Course",
     "label_width": 200,
     "rows": [
         {
             "fields": [
                 {
-                    "id": "wearing_material",
+                    "id": KEY_WC_MATERIAL,
                     "label": "Material:",
-                    "type": "combo",
+                    "type": TYPE_COMBOBOX,
                     "choices": VALUES_WEARING_COAT_MATERIAL,
-                    "bind": "wearing_material",
                     "on_change": "on_wearing_material_changed",
                 }
             ]
@@ -389,11 +366,9 @@ WEARING_COURSE_TAB_SCHEMA = {
         {
             "fields": [
                 {
-                    "id": "wearing_density",
+                    "id": KEY_WC_DENSITY,
                     "label": "Density (kN/m³):",
-                    "type": "line",
-                    "validator": {"type": "double_range", "bottom": 0.0, "top": 40.0, "decimals": 2},
-                    "bind": "wearing_density",
+                    "type": TYPE_TEXTBOX,
                     "default": "24.0",
                 }
             ]
@@ -401,11 +376,9 @@ WEARING_COURSE_TAB_SCHEMA = {
         {
             "fields": [
                 {
-                    "id": "wearing_thickness",
+                    "id": KEY_WC_THICKNESS,
                     "label": "Thickness (mm):",
-                    "type": "line",
-                    "validator": {"type": "double_range", "bottom": 0.0, "top": 200.0, "decimals": 1},
-                    "bind": "wearing_thickness",
+                    "type": TYPE_TEXTBOX,
                     "default": "50",
                 }
             ]
@@ -413,23 +386,92 @@ WEARING_COURSE_TAB_SCHEMA = {
     ],
 }
 
-LANE_DETAILS_TAB_SCHEMA = {
-    "id": "lane_details_tab",
+_LANE_DETAILS_TAB_SCHEMA = {
+    "id": KEY_WC_LD_TAB,
+    "label": "Lane Details",
     "rows": [
         {
             "fields": [
                 {
-                    "id": "lane_count",
+                    "id": KEY_WC_LD_LANE_TABLE,
                     "label": "No. of Traffic Lanes:",
-                    "type": "combo",
-                    "choices": [str(i) for i in range(1, 7)],
-                    "bind": "lane_count_combo",
-                    "on_change": "on_lane_count_changed",
+                    "type": "table_with_count",
+                    "count_id": KEY_WC_LD_LANE_TABLE_COUNT,
+                    "count_choices": [str(i) for i in range(1, 7)],
+                    "on_count_change": "on_lane_count_changed",
+                    "columns": [
+                        {"header": "Traffic Lane Number",                                                "resize": "contents"},
+                        {"header": "Distance from inner edge of crash barrier to left edge of lane (m)", "resize": "stretch"},
+                        {"header": "Lane Width (m)",                                                     "resize": "contents"},
+                    ],
+                    "alternating_rows": True,
+                    "show_vertical_header": False,
                 }
             ]
-        }
+        },
     ],
 }
+
+TYPICAL_SECTION_SCHEMA = {
+    "id": KEY_TS_TAB,
+
+    # ── Rendered ABOVE the subtab bar ─────────────────────────────────────────
+    # Two rows of two fields each, in a 2-column grid.
+    "primary_fields": {
+        "label_width": 200,
+        "rows": [
+            {
+                "fields": [
+                    {
+                        "id": KEY_TS_GIRDER_SPACING,
+                        "label": "Girder Spacing (m):",
+                        "type": TYPE_TEXTBOX,
+                        "bind": "girder_spacing",
+                        "on_text_changed": "on_girder_spacing_changed",
+                    },
+                    {
+                        "id": KEY_TS_NO_OF_GIRDERS,
+                        "label": "No. of Girders:",
+                        "type": TYPE_TEXTBOX,
+                        "bind": "no_of_girders",
+                        "on_editing_finished": "on_no_of_girders_changed",
+                    },
+                ]
+            },
+            {
+                "fields": [
+                    {
+                        "id": KEY_TS_DECK_OVERHANG,
+                        "label": "Deck Overhang Width (m):",
+                        "type": TYPE_TEXTBOX,
+                        "bind": "deck_overhang",
+                        "on_text_changed": "on_deck_overhang_changed",
+                    },
+                    {
+                        "id": KEY_TS_OVERALL_WIDTH,
+                        "label": "Overall Bridge Width (m):",
+                        "type": TYPE_TEXTBOX,
+                        "read_only": True,
+                        "bind": "overall_bridge_width_display",
+                        "on_text_changed": "_reject_overall_width_override",
+                    },
+                ]
+            },
+        ],
+    },
+
+    # ── Subtabs ────────────────────────────────────────────────────────────────
+    "tabs": [
+        _DECK_DETAILS_TAB_SCHEMA,
+        _CRASH_BARRIER_TAB_SCHEMA,
+        _MEDIAN_TAB_SCHEMA,
+        _RAILING_TAB_SCHEMA,
+        _WEARING_COURSE_TAB_SCHEMA,
+        _LANE_DETAILS_TAB_SCHEMA,
+    ],
+}
+
+
 PERMANENT_LOAD_TAB_SCHEMA = {
     "id": "permanent_load_tab",
     "label_width": 220,

@@ -18,7 +18,7 @@ from osdagbridge.desktop.ui.dialogs.loading_popup import LoadingDialogManager
 from osdagbridge.desktop.ui.cad_3d import CAD3DWindow
 
 from osdagbridge.core.bridge_types.plate_girder.ui_fields import FrontendData
-from osdagbridge.core.bridge_types.plate_girder.defaults import BASIC_INPUT_DICT
+from osdagbridge.core.bridge_types.plate_girder.defaults import BASIC_INPUT_DICT, extend_basic_input_dict
 from osdagbridge.core.utils.common import *
 from osdagbridge.desktop.ui.utils.custom_widgets import ToolBarWidget
 
@@ -107,10 +107,6 @@ class CustomWindow(QWidget):
         )
         self.input_dock = None
         self.output_dock = None
-
-        # Central CAD state (single source of truth)
-        # Must be initialized BEFORE init_ui because init_ui calls update_cad_from_inputs
-        self.cad_state = {}
 
         self.init_ui()
         
@@ -355,16 +351,31 @@ class CustomWindow(QWidget):
                 if self.input_dock else 0.0
             )
             self._additional_inputs_dialog = AdditionalInputs(
-                input_dict=self.input_dict,
                 footpath_value=footpath_value,
                 carriageway_width=carriageway_width
             )
+            # This make the dialog modal to the main window,
+            # so that user can not interact with the main window when the dialog is open
+            self._additional_inputs_dialog.setWindowModality(Qt.ApplicationModal)
             # Connect finished once; result is harvested inside the slot.
             self._additional_inputs_dialog.finished.connect(
                 self._on_additional_inputs_closed
             )
 
+            self._additional_inputs_dialog.update_template_page_2d_cad.connect(self.update_2d_cad)
+
         return self._additional_inputs_dialog
+    
+    def update_2d_cad(self, cad_state: dict):
+        """
+        This Function is the connector to the Signal from Additional Inputs when clicked on Save Button
+        This updates the 2D CAD using cad state of Typical section cad
+        """
+        if self._additional_inputs_dialog is not None:
+
+            # This is updated directly because 
+            # there is some mapping that takes place in BridgeDualCADWidget which can worst the things
+            self.cad_comp_widget.cross_section_widget.update_params(cad_state)
 
     def _show_additional_inputs(self, target_tab: str | None = None):
         """
@@ -372,12 +383,6 @@ class CustomWindow(QWidget):
         Called from common_design_func and from input_dock._on_design_mode_changed.
         """
         dlg = self._get_additional_inputs()
-
-        # Sync footpath
-        try:
-            dlg.update_footpath_value(self.input_dict.get(KEY_FOOTPATH) or "None")
-        except Exception:
-            pass
 
         # Sync design mode
         if self.input_dock:
@@ -395,6 +400,17 @@ class CustomWindow(QWidget):
                         break
             except Exception:
                 pass
+        
+        # To Update the Input Dictionary before opening it
+        dlg.set_input_dictionary(self.input_dict)
+
+        from pprint import pprint
+        print("\n@@input_dictionary-before_additional_inputs:\n")
+        pprint(self.input_dict)
+
+        # Update Internal 2D CAD State
+        # Single Source of Truth = _last_mapped_params dict in BridgeDualCADWidget
+        dlg.typical_section_tab.update_internal_cad_state(self.cad_comp_widget._last_mapped_params)
 
         dlg.show()
         dlg.raise_()
@@ -508,9 +524,13 @@ class CustomWindow(QWidget):
         if not required_widget_validated:
             return                 # Stop design process if validation fails
 
-        # Call Additional Input Defaults
-        additional_inputs_dict = {}
-        self.input_dict.update(additional_inputs_dict)
+        # Recalculate defaults of additonalInputs only if required
+        if self.input_dock.is_require_field_changed:
+            print("\n@@ Recalculating Additional Input Defaults based on changed fields...\n")
+            # Extend with Additional Input Defaults
+            extend_basic_input_dict(self.input_dict)
+            # Reset the flag to False
+            self.input_dock.is_require_field_changed = False
 
         if trigger == "Design":
             
@@ -566,14 +586,8 @@ class CustomWindow(QWidget):
         if not self.input_dock:
             return
 
-        # print("[DEBUG] Collected input values from InputDock:", input_values)
-
-        # 1. Store state
-        self.cad_state.update(self.input_dict)
-
-        # 2. Apply state to CAD UI
-        if hasattr(self, 'cad_comp_widget'):
-            self.cad_comp_widget.update_from_osdag_inputs(self.cad_state)
+        # Apply state to CAD UI & Update Cad-State
+        self.cad_comp_widget.update_from_osdag_inputs(self.input_dict)
 
     #---------------------------------Docking-Icons-Functionality-START----------------------------------------------
 

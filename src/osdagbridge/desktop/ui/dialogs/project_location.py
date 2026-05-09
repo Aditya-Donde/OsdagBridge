@@ -1,10 +1,11 @@
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QWidget,
     QFrame, QPushButton, QComboBox, QSizePolicy, QSizeGrip,
-    QRadioButton, QButtonGroup, QStackedWidget, QSpacerItem, QCheckBox
+    QButtonGroup, QStackedWidget, QSpacerItem, QCheckBox
 )
 from PySide6.QtCore import Qt
 from osdagbridge.desktop.ui.utils.custom_titlebar import CustomTitleBar
+from osdagbridge.desktop.ui.utils.custom_widgets import CustomRadioButton
 from osdagbridge.desktop.ui.dialogs.custom_messagebox import CustomMessageBox, MessageBoxType
 from osdagbridge.core.bridge_types.plate_girder.ui_fields_project_location import (
     get_state_list,
@@ -123,10 +124,6 @@ class ProjectLocationDialog(QDialog):
             QLabel#headline { font-size: 15px; font-weight: 700; color: #2d2d2d; }
             QLabel#hint { color: #4a4a4a; }
             QLabel { color: #1f1f1f; }
-            QRadioButton { font-size: 12px; color: #1f1f1f; }
-            QRadioButton::indicator { width: 16px; height: 16px; }
-            QRadioButton::indicator::unchecked { border: 2px solid #90AF13; border-radius: 9px; background: transparent; }
-            QRadioButton::indicator::checked { border: 2px solid #90AF13; background: #90AF13; border-radius: 9px; }
             QCheckBox { font-size: 12px; color: #1f1f1f; }
             QPushButton#primary {
                 background-color: #ffffff;
@@ -243,9 +240,9 @@ class ProjectLocationDialog(QDialog):
         bar.setSpacing(18)
 
         self.method_group = QButtonGroup(self)
-        self.method_radio_location = QRadioButton("Enter Location Name")
-        self.method_radio_map = QRadioButton("Select on Map") 
-        self.method_custom_data = QRadioButton("Input Custom Data")
+        self.method_radio_location = CustomRadioButton(text="Enter Location Name")
+        self.method_radio_map = CustomRadioButton(text="Select on Map") 
+        self.method_custom_data = CustomRadioButton(text="Input Custom Data")
 
         for radio in (self.method_radio_location, self.method_radio_map, self.method_custom_data):
             radio.setCursor(Qt.PointingHandCursor)

@@ -318,19 +318,4 @@ class BridgeDualCADWidget(QWidget):
         if cross_section_params:
             self.cross_section_widget.update_params(cross_section_params)
         self.top_view_widget.update_params(changed_params)
-
-
-    
-    # def update_specific_param(self, param_key, value):
-    #     """
-    #     Update a specific parameter without re-updating everything
-    #     Optimized for real-time updates
-    #     """
-    #     if self._last_mapped_params.get(param_key) == value:
-    #         return
-
-    #     params = {param_key: value}
-    #     self._last_mapped_params[param_key] = value
-    #     if param_key != 'span_length':
-    #         self.cross_section_widget.update_params(params)
-    #     self.top_view_widget.update_params(params)
+        

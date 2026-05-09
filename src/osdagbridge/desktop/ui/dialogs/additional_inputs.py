@@ -2,16 +2,17 @@
 Additional Inputs Widget for Highway Bridge Design
 Provides detailed input fields for manual bridge parameter definition
 """
+from copy import deepcopy
+
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QTabWidget, QTabBar, QLabel, QLineEdit,
-    QComboBox, QGroupBox, QFormLayout, QPushButton, QScrollArea,
-    QCheckBox, QMessageBox, QSizePolicy, QSpacerItem, QStackedWidget,
-    QFrame, QGridLayout, QTableWidget, QTableWidgetItem, QHeaderView,
-    QTextEdit, QDialog, QSizePolicy, QSizeGrip, QListView, QStyledItemDelegate
+    QComboBox, QGroupBox, QPushButton, QCheckBox, QMessageBox, QSizePolicy,
+    QGridLayout, QDialog, QSizePolicy, QSizeGrip,
 )
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QDoubleValidator, QIntValidator
 
+from osdagbridge.core.bridge_types.plate_girder.validator import BridgeInputValidator
 from osdagbridge.core.utils.common import *
 from osdagbridge.desktop.ui.utils.custom_titlebar import CustomTitleBar
 from osdagbridge.desktop.ui.dialogs.tabs.common import apply_field_style, create_action_button_bar
@@ -31,22 +32,24 @@ from osdagbridge.desktop.ui.utils.custom_widgets import SmartCursorComboBoxView
 class AdditionalInputs(QDialog):
     """Main dialog for Additional Inputs with tabbed interface"""
     
+    update_template_page_2d_cad = Signal(dict)
+    
     def __init__(
         self,
-        input_dict: dict,
         footpath_value="None",
         carriageway_width=7.5,
         parent=None,
-        initial_cad_state=None
     ):
-        self._initial_cad_state = initial_cad_state or {}
         super().__init__(parent)
+        
+        # For on spot validation of input fields when changed
+        self.validator = BridgeInputValidator()
 
-        # -- Master input_dict reference (never mutated until Save) ------------------
-        self.input_dict = input_dict
-
-        # -- Working copy (mutated live; discarded on Cancel) ------------------------
-        self._working_dict: dict = {}
+        # Just initializing for intial refernce
+        # Input dictionary treated as defaults for current scenario
+        self.default_input_dict = {}
+        # Work temporarily on a copy of default dictionary
+        self.working_input_dict = {}
 
         self.setObjectName("AdditionalInputs")
         self.resize(1024, 850)
@@ -64,7 +67,109 @@ class AdditionalInputs(QDialog):
                 border: 1px solid #90AF13;
             }
         """)
+    
+    def set_input_dictionary(self, input_dict: dict):
+        # -- Master input_dict reference (never mutated until Save) ------------------
 
+        # Input dictionary treated as defaults for current scenario
+        self.default_input_dict = input_dict
+        # Work temporarily on a copy of default dictionary
+        self.working_input_dict = deepcopy(input_dict)
+
+        # Update Typical-section sub-tab activate/deactivate state
+        self.typical_section_tab._sync_tab_active_states()
+        
+    #-------------Field Change Handling and Validation Logic-Start-------------------------
+    def _on_field_edited(self, key: str, widget: QLineEdit | str):
+        """
+        Called on editingFinished (QLineEdit) or currentTextChanged (QComboBox).
+        - QComboBox: always valid, skip validation, update dict + CAD.
+        - QLineEdit: hard validation — corrects widget + input_dict if invalid, shows popup.
+        """
+        # QComboBox passes str directly via currentTextChanged
+        if isinstance(widget, str):
+            self._update_input_dict(key, widget)
+            self._update_additional_input_cad()
+            return
+
+        current_text = widget.text().strip()
+
+        # Update dict first so validator reads the latest value
+        self._update_input_dict(key, current_text)
+
+        # hard-validation start ----------------------
+        result = self.validator.validate_additional_inputs(key, self.working_input_dict)
+        print(f"@@: Validation result for {key} = {result}")
+        if result is not None:
+            corrected, message = result
+            CustomMessageBox(
+                title="Input Error",
+                text=message,
+                dialogType=MessageBoxType.Warning
+            ).exec()
+            # update to valid text
+            widget.blockSignals(True)
+            widget.setText(str(corrected))
+            widget.blockSignals(False)
+            self._update_input_dict(key, str(corrected))
+        # hard-validation end ----------------------
+
+        # Always update CAD after hard validation
+        self._update_additional_input_cad()
+
+    def _on_field_editing(self, current_text: str, key: str):
+        """
+        Soft validation — called on textChanged (while typing).
+        No popups, no corrections. Updates dict + CAD only when valid.
+        """
+
+        if not current_text.strip():
+            # Empty — fall back to default silently
+            self._update_input_dict(key, "")
+            self._update_additional_input_cad()
+            return
+
+        # Update dict first so validator reads the latest value
+        self._update_input_dict(key, current_text)
+
+        # soft-validation start ----------------------
+        result = self.validator.validate_additional_inputs(key, self.working_input_dict)
+        if result is not None:
+            # Still typing, value not valid yet — skip CAD update
+            return
+        # soft-validation end ------------------------
+
+        # Valid - update CAD
+        self._update_additional_input_cad()
+
+    # Update input_dictionary on value changed
+    def _update_input_dict(self, key: str, value: str):
+        """
+        Called on every widget value change.
+        If value is empty/None, falls back to default_input_dict which is the initial dictionary.
+        Updates working_input_dict and notifies listeners.
+        """
+
+        # If Empty or None Value then set the default
+        print(f"@Change: {value}, default: {self.default_input_dict.get(key)}")
+        if value is None or value == "":
+            self.working_input_dict[key] = self.default_input_dict.get(key)
+        else:
+            self.working_input_dict[key] = value
+        print(f"@Final: {self.working_input_dict[key]}")
+
+    def _update_additional_input_cad(self):
+        """
+        Collect inputs from InputDock and update 2D-CAD
+        """
+        print(f"@@: Updating 2D-CAD")
+        # Apply state to CAD UI & Update Cad-State
+        if hasattr(self, "typical_section_tab"):
+            if hasattr(self.typical_section_tab, "cad_preview"):
+                self.typical_section_tab.cad_preview.update_from_bridge_inputs(self.working_input_dict)
+
+    #-------------Field Change Handling and Validation Logic-End-------------------------
+    
     def _save_inputs(self):
         saved = {}
         """
@@ -130,7 +235,11 @@ class AdditionalInputs(QDialog):
             dialogType=MessageBoxType.Success,
         ).exec()
 
-        # self.accept() 
+        # Update Main Dictionary with Working Dictionary
+        self.default_input_dict.update(self.working_input_dict)
+
+        # Send Signal to Update 2D-CAD in Template Page
+        self.update_template_page_2d_cad.emit(self.typical_section_tab.cad_preview.params)
 
     def _show_validation_errors(self, errors):
         message = "\n\n".join(f"• {err}" for err in errors)
@@ -221,7 +330,9 @@ class AdditionalInputs(QDialog):
         self._last_top_tab_index = 0
         
         # Sub-Tab 1: Typical Section Details
-        self.typical_section_tab = TypicalSectionDetailsTab(self.footpath_value, self.carriageway_width, initial_cad_state=self._initial_cad_state)
+        self.typical_section_tab = TypicalSectionDetailsTab(
+            self.carriageway_width,
+            additional_input_instance=self)
         self.tabs.addTab(self.typical_section_tab, "Typical Section Details")
         
         # Sub-Tab 2: Member Properties
@@ -543,31 +654,39 @@ class AdditionalInputs(QDialog):
         if hasattr(ts, "footpath_thickness") and ts.footpath_thickness.text():
             values[KEY_FOOTPATH_THICKNESS] = float(ts.footpath_thickness.text())
             
-        if hasattr(ts, "wearing_material"):
-            values[KEY_WEARING_COAT_MATERIAL] = ts.wearing_material.currentText()
-            
-        if hasattr(ts, "wearing_thickness") and ts.wearing_thickness.text():
-            values[KEY_WEARING_COAT_THICKNESS] = float(ts.wearing_thickness.text())
+        wearing_material = ts._find_wearing_widget(KEY_WC_MATERIAL)
+        if wearing_material:
+            values[KEY_WEARING_COAT_MATERIAL] = wearing_material.currentText()
 
-        if hasattr(ts, "wearing_density") and ts.wearing_density.text():
-            values[KEY_WEARING_COAT_DENSITY] = float(ts.wearing_density.text())
+        wearing_thickness = ts._find_wearing_widget(KEY_WC_THICKNESS)
+        if wearing_thickness and wearing_thickness.text():
+            values[KEY_WEARING_COAT_THICKNESS] = float(wearing_thickness.text())
+
+        wearing_density = ts._find_wearing_widget(KEY_WC_DENSITY)
+        if wearing_density and wearing_density.text():
+            values[KEY_WEARING_COAT_DENSITY] = float(wearing_density.text())
             
          # ---- Crash Barrier ----
-        if hasattr(ts, "crash_barrier_type"):
-            values["crash_barrier_type"] = ts.crash_barrier_type.currentText()
-            
-        if hasattr(ts, "crash_barrier_width") and ts.crash_barrier_width.text():
-            values["crash_barrier_width"] = float(ts.crash_barrier_width.text())
+        crash_barrier_type = ts._find_crash_barrier_widget(KEY_CB_TYPE)
+        if crash_barrier_type:
+            values["crash_barrier_type"] = crash_barrier_type.currentText()
 
-        if hasattr(ts, "crash_barrier_height") and ts.crash_barrier_height.text():
-            values["crash_barrier_height"] = float(ts.crash_barrier_height.text())
+        crash_barrier_width = ts._find_crash_barrier_widget(KEY_CB_WIDTH)
+        if crash_barrier_width and crash_barrier_width.text():
+            values["crash_barrier_width"] = float(crash_barrier_width.text())
+
+        crash_barrier_height = ts._find_crash_barrier_widget(KEY_CB_HEIGHT)
+        if crash_barrier_height and crash_barrier_height.text():
+            values["crash_barrier_height"] = float(crash_barrier_height.text())
             
         # ---- Railing ----
-        if hasattr(ts, "railing_type"):
-            values["railing_type"] = ts.railing_type.currentText()
-            
-        if hasattr(ts, "railing_height") and ts.railing_height.text():
-            values["railing_height"] = float(ts.railing_height.text())
+        railing_type = ts._find_railing_widget(KEY_RL_TYPE)
+        if railing_type:
+            values["railing_type"] = railing_type.currentText()
+
+        railing_height = ts._find_railing_widget(KEY_RL_HEIGHT)
+        if railing_height and railing_height.text():
+            values["railing_height"] = float(railing_height.text())
             
         if hasattr(ts, "railing_post_spacing") and ts.railing_post_spacing.text():
             values["railing_post_spacing"] = float(ts.railing_post_spacing.text())
@@ -585,11 +704,13 @@ class AdditionalInputs(QDialog):
             values["railing_bottom_width"] = float(ts.railing_bottom_width.text())
 
         # ---- Median ----
-        if hasattr(ts, "median_type"):
-            values["median_type"] = ts.median_type.currentText()
-            
-        if hasattr(ts, "median_width") and ts.median_width.text():
-            values["median_width"] = float(ts.median_width.text())
+        median_type = ts._find_median_widget(KEY_MD_TYPE)
+        if median_type:
+            values["median_type"] = median_type.currentText()
+
+        median_width = ts._find_median_widget(KEY_MD_WIDTH)
+        if median_width and median_width.text():
+            values["median_width"] = float(median_width.text())
         
         if hasattr(ts, "median_kerb_height") and ts.median_kerb_height.text():
             values["median_kerb_height"] = float(ts.median_kerb_height.text())
@@ -620,8 +741,6 @@ class AdditionalInputs(QDialog):
         self._sync_member_properties_girder_count()
 
         return values
-
-
 
     def _build_sections_from_schema(self, parent_layout, sections, heading_style, label_style, field_width):
         for section in sections:
@@ -740,8 +859,6 @@ class AdditionalInputs(QDialog):
 
             parent_layout.addLayout(grid)
 
-
-
     def _find_inner_tab_index(self, tab_widget, tab_name: str) -> int:
         """
         @author: Faizan
@@ -814,14 +931,6 @@ class AdditionalInputs(QDialog):
                 self.section_properties_tab.set_editable_mode(self._member_properties_editable)
             except Exception:
                 pass
-
-    def _show_placeholder_message(self, action_name):
-        CustomMessageBox(
-            title="Coming soon",
-            text=f"{action_name} action not implemented yet.",
-            buttons=["OK"],
-            dialogType=MessageBoxType.Information,
-        ).exec()
 
     def _on_top_tab_changed(self, index: int) -> None:
         if index < 0:

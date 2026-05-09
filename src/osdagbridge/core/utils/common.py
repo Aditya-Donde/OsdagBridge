@@ -153,6 +153,56 @@ KEY_CRASH_BARRIER_DENSITY = "Crash Barrier Material Density"
 KEY_CRASH_BARRIER_WIDTH = "Crash Barrier Width"
 KEY_CRASH_BARRIER_AREA = "Crash Barrier Area"
 
+# Typical Section - Crash Barrier Type Keys
+KEY_CB_TAB = "typical_section.crash_barrier.tab"
+KEY_CB_TYPE = "typical_section.crash_barrier.type"
+KEY_CB_DENSITY = "typical_section.crash_barrier.density"
+KEY_CB_WIDTH = "typical_section.crash_barrier.width"
+KEY_CB_HEIGHT = "typical_section.crash_barrier.height"
+KEY_CB_AREA = "typical_section.crash_barrier.area"
+KEY_CB_LOAD = "typical_section.crash_barrier.load"
+KEY_CB_POST_SPACING = "typical_section.crash_barrier.post_spacing"
+
+# Typical Section - Median (UI object names / schema ids)
+KEY_MD_TAB = "typical_section.median.tab"
+KEY_MD_TYPE = "typical_section.median.type"
+KEY_MD_DENSITY = "typical_section.median.density"
+KEY_MD_WIDTH = "typical_section.median.width"
+KEY_MD_HEIGHT = "typical_section.median.height"
+KEY_MD_AREA = "typical_section.median.area"
+KEY_MD_LOAD = "typical_section.median.load"
+KEY_MD_POST_SPACING = "typical_section.median.post_spacing"
+
+# Typical Section - Railing
+KEY_RL_TAB = "typical_section.railing.tab"
+KEY_RL_TYPE = "typical_section.railing.type"
+KEY_RL_WIDTH = "typical_section.railing.width"
+KEY_RL_HEIGHT = "typical_section.railing.height"
+KEY_RL_LOAD_MODE = "typical_section.railing.load_mode"
+KEY_RL_LOAD_VALUE = "typical_section.railing.load_value"
+
+# Typical Section - Wearing course
+KEY_WC_TAB = "typical_section.wearing_course.tab"
+KEY_WC_MATERIAL = "typical_section.wearing_course.material"
+KEY_WC_DENSITY = "typical_section.wearing_course.density"
+KEY_WC_THICKNESS = "typical_section.wearing_course.thickness"
+
+# Typical Section - primary fields (above subtab bar)
+KEY_TS_TAB                = "typical_section.tab"
+KEY_TS_DECK_TAB           = "typical_section.deck_details.tab"
+KEY_TS_GIRDER_SPACING     = "typical_section.girder_spacing"
+KEY_TS_NO_OF_GIRDERS      = "typical_section.no_of_girders"
+KEY_TS_DECK_OVERHANG      = "typical_section.deck_overhang"
+KEY_TS_OVERALL_WIDTH      = "typical_section.overall_bridge_width"
+KEY_TS_DECK_THICKNESS     = "typical_section.deck_thickness"
+KEY_TS_FOOTPATH_WIDTH     = "typical_section.footpath_width"
+KEY_TS_FOOTPATH_THICKNESS = "typical_section.footpath_thickness"
+
+# Typical Section - Lane Deatils
+KEY_WC_LD_TAB = "typical_section.lane_details.tab"
+KEY_WC_LD_LANE_TABLE = "typical_section.lane_details.lane_table"
+KEY_WC_LD_LANE_TABLE_COUNT = "typical_section.lane_details.lane_table_count"
+
 KEY_METALLIC_CRASH_BARRIER_TYPE = ["Single W-beam", "Double W-beam"]
 KEY_RIGID_CRASH_BARRIER_TYPE = ["IRC-5R", "High Containment"]
 KEY_CRASH_BARRIER_TYPE = ["Flexible", "Semi-Rigid", "Rigid"]
@@ -369,7 +419,7 @@ import os
 
 def get_documents_folder():
     system = platform.system()
-    
+
     if system == "Windows":
         # Windows: typically C:\Users\Username\Documents
         docs_path = Path.home() / "Documents"
@@ -389,7 +439,7 @@ def get_documents_folder():
     else:
         # Fallback to home directory for unknown systems
         docs_path = Path.home()
-    
+
     # Ensure the directory exists, otherwise fall back to home
     if not docs_path.exists():
         docs_path = Path.home()

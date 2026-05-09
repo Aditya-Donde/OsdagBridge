@@ -183,7 +183,10 @@ class FrontendData:
 
             # ── Design Type ───────────────────────────────────────────────────
             (KEY_SECTION_DESIGN_TYPE, "Design Type", TYPE_TITLE, None, True, "No Validator",
-                {"container": "superstructure", "show_group_title": False}),
+                {
+                    "container": "superstructure",
+                    "show_group_title": False,
+                }),
 
             (KEY_DESIGN_MODE, "Design Type", TYPE_COMBOBOX, ["Optimized", "Custom"],
                 True, "No Validator",
@@ -191,6 +194,7 @@ class FrontendData:
                     "default":        BASIC_INPUT_DICT.get(KEY_DESIGN_MODE),
                     "on_changed":     "_on_design_mode_changed",
                     "trigger_on_init": True,
+                    "required":      True,
                 }),
 
             # ── Material Inputs ───────────────────────────────────────────────
