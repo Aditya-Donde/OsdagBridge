@@ -18,6 +18,12 @@ from osdagbridge.core.utils.common import (
     DEFAULT_CRASH_BARRIER_WIDTH,
     DEFAULT_GIRDER_SPACING,
     DEFAULT_RAILING_WIDTH,
+    KEY_TS_GIRDER_SPACING, KEY_TS_NO_OF_GIRDERS, KEY_TS_DECK_OVERHANG, KEY_TS_OVERALL_WIDTH,
+    KEY_TS_DECK_THICKNESS, KEY_TS_FOOTPATH_WIDTH, KEY_TS_FOOTPATH_THICKNESS,
+    KEY_CB_TYPE, KEY_CB_DENSITY, KEY_CB_WIDTH, KEY_CB_HEIGHT, KEY_CB_AREA, KEY_CB_LOAD, KEY_CB_POST_SPACING,
+    KEY_MD_TYPE, KEY_MD_DENSITY, KEY_MD_WIDTH, KEY_MD_HEIGHT, KEY_MD_AREA, KEY_MD_LOAD, KEY_MD_POST_SPACING,
+    KEY_RL_TYPE, KEY_RL_WIDTH, KEY_RL_HEIGHT, KEY_RL_LOAD_MODE, KEY_RL_LOAD_VALUE,
+    KEY_WC_MATERIAL, KEY_WC_DENSITY, KEY_WC_THICKNESS,
 )
 from .initial_sizing import (
     DEFAULT_DECK_OVERHANG_RATIO as IS_DEFAULT_DECK_OVERHANG_RATIO,
@@ -543,6 +549,61 @@ ADDITIONAL_INPUT_DICT = {
     'girder_spacing': float(DEFAULT_GIRDER_SPACING),
     'deck_overhang':  None,
 }
+
+def extend_basic_input_dict(basic_input_dict: dict) -> None:
+    """
+    Returns the combined default dict of Input Dock && Additonal Inputs.
+    Some additional input defaults are dependant on input dictionary values, 
+        so this function is useful
+    """
+    additonal_inputs_defaults = {}
+
+    # Primary Typical section Fields
+    additonal_inputs_defaults[KEY_TS_GIRDER_SPACING] = None
+    additonal_inputs_defaults[KEY_TS_NO_OF_GIRDERS] = None
+    additonal_inputs_defaults[KEY_TS_DECK_OVERHANG] = None
+    additonal_inputs_defaults[KEY_TS_OVERALL_WIDTH] = None
+
+    # Typical Section (tab) -> Deck Detail (sub-tab)
+    additonal_inputs_defaults[KEY_TS_DECK_THICKNESS] = None
+    additonal_inputs_defaults[KEY_TS_FOOTPATH_WIDTH] = None
+    additonal_inputs_defaults[KEY_TS_FOOTPATH_THICKNESS] = None
+
+    # Typical Section (tab) -> Crash Barrier (sub-tab)
+    additonal_inputs_defaults[KEY_CB_TYPE] = None
+    additonal_inputs_defaults[KEY_CB_DENSITY] = None
+    additonal_inputs_defaults[KEY_CB_WIDTH] = None
+    additonal_inputs_defaults[KEY_CB_HEIGHT] = None
+    additonal_inputs_defaults[KEY_CB_AREA] = None
+    additonal_inputs_defaults[KEY_CB_LOAD] = None
+    additonal_inputs_defaults[KEY_CB_POST_SPACING] = None
+
+    # Typical Section (tab) -> Median (sub-tab)
+    additonal_inputs_defaults[KEY_MD_TYPE] = None
+    additonal_inputs_defaults[KEY_MD_DENSITY] = None
+    additonal_inputs_defaults[KEY_MD_WIDTH] = None
+    additonal_inputs_defaults[KEY_MD_HEIGHT] = None
+    additonal_inputs_defaults[KEY_MD_AREA] = None
+    additonal_inputs_defaults[KEY_MD_LOAD] = None
+    additonal_inputs_defaults[KEY_MD_POST_SPACING] = None
+
+    # Typical Section (tab) -> Railing (sub-tab)
+    additonal_inputs_defaults[KEY_RL_TYPE] = None
+    additonal_inputs_defaults[KEY_RL_WIDTH] = None
+    additonal_inputs_defaults[KEY_RL_HEIGHT] = None
+    additonal_inputs_defaults[KEY_RL_LOAD_MODE] = None
+    additonal_inputs_defaults[KEY_RL_LOAD_VALUE] = None
+
+    # Typical Section (tab) -> Wearing Course (sub-tab)
+    additonal_inputs_defaults[KEY_WC_MATERIAL] = None
+    additonal_inputs_defaults[KEY_WC_DENSITY] = None
+    additonal_inputs_defaults[KEY_WC_THICKNESS] = None
+
+    # Typical Section (tab) -> Wearing Course (sub-tab)
+
+    # Typical Section (tab) -> Lane Details (sub-tab)
+        
+    basic_input_dict.update(additonal_inputs_defaults)
 
 
 def solve_basic_input(basic_input_dict: dict):

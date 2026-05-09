@@ -67,6 +67,10 @@ class InputDock(QWidget):
         # For on spot validation of input fields when changed
         self.validator = BridgeInputValidator()
 
+        # Flag to track if any required field was changed
+        # Use to reset the additonal input defaults from common design function
+        self.is_require_field_changed = False
+
         self.is_locked            = False
         self._current_design_mode = "Optimized"
         self._material_combo_map           = {}   # key → QComboBox  (is_material_field only)
@@ -765,12 +769,31 @@ class InputDock(QWidget):
             widget.style().unpolish(widget)
             widget.style().polish(widget)
 
+    def _is_require_field(self, key_required: str) -> bool:
+        """
+        Check if a field is required field of Input dock
+        Useful to track change in any required field in Input dock
+        To reset the additional Input Defaults
+        """
+        for tupple in self.backend.input_values():
+            key, label, _, _, _, _, meta_data = tupple
+            if key == key_required:
+                if meta_data.get("required", False):
+                    return True
+        
+        # by default return False
+        return False
+
     def _on_field_edited(self, key: str, widget: QLineEdit | str):
         """
         Called on editingFinished (QLineEdit) or currentTextChanged (QComboBox).
         - QComboBox: always valid, skip validation, update dict + CAD.
         - QLineEdit: hard validation — corrects widget + input_dict if invalid, shows popup.
         """
+
+        if self._is_require_field(key):
+            self.is_require_field_changed = True
+
         # QComboBox passes str directly via currentTextChanged
         if isinstance(widget, str):
             self._update_input_dict(key, widget)

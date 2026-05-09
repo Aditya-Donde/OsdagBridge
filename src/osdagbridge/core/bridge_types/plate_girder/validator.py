@@ -73,103 +73,138 @@ class BridgeInputValidator:
     # ADDITIONAL INPUT VALIDATION (DDCL 2.1.3)
     # ==========================================================
 
-    def validate_additional_inputs(self, inputs: dict) -> dict:
+    def validate_additional_inputs(self, key: str, inputs: dict):
+        """
+        Per-field validation for additional inputs.
+        Returns (corrected_value, message) or None if valid.
+        """
 
-        errors = {}
+        # ── Deck Details ───────────────────────────────────────────────────────
+        if key == KEY_TS_DECK_THICKNESS:
+            v = self._to_float(inputs.get(key))
+            if v is None: return 200, "Deck thickness must be a numeric value."
+            if v < 100:   return 100, "Deck thickness must be at least 100 mm."
+            if v > 500:   return 500, "Deck thickness must not exceed 500 mm."
 
-        overall_width = self._to_float(inputs.get("overall_bridge_width"))
-        girder_spacing = self._to_float(inputs.get("girder_spacing"))
-        overhang = self._to_float(inputs.get("deck_overhang"))
-        no_girders = self._to_int(inputs.get("no_of_girders"))
+        elif key == KEY_TS_FOOTPATH_WIDTH:
+            v = self._to_float(inputs.get(key))
+            footpath = inputs.get(KEY_FOOTPATH)
+            result = IRC5_2015.cl_104_3_6_footpath_width(footpath, v)
+            if result["applicable"] and not result["is_compliant"]:
+                return MIN_FOOTPATH_WIDTH, result["remarks"]
 
-        # ----------------------------
-        # Layout Equation Check
-        # ----------------------------
-        if all(v is not None for v in
-               [overall_width, girder_spacing, overhang, no_girders]):
+        elif key == KEY_TS_FOOTPATH_THICKNESS:
+            v = self._to_float(inputs.get(key))
+            if v is None: return 200, "Footpath thickness must be a numeric value."
+            if v < 100:   return 100, "Footpath thickness must be at least 100 mm."
+            if v > 500:   return 500, "Footpath thickness must not exceed 500 mm."
 
-            lhs = (no_girders - 1) * girder_spacing + 2 * overhang
+        # ── Railing ────────────────────────────────────────────────────────────
+        elif key == KEY_RL_HEIGHT:
+            v = self._to_float(inputs.get(key))
+            if v is None:              return MIN_RAILING_HEIGHT, "Railing height must be a numeric value."
+            if v < MIN_RAILING_HEIGHT: return MIN_RAILING_HEIGHT, f"Minimum railing height is {MIN_RAILING_HEIGHT} m as per IRC 5 Cl.109.7.2."
+            if v > 3.0:                return 3.0, "Railing height must not exceed 3.0 m."
 
-            if not isclose(lhs, overall_width, rel_tol=1e-2):
-                errors["layout_equation"] = (
-                    "Layout must satisfy: "
-                    "Overall Width = (No. of Girders − 1) × Spacing + 2 × Overhang."
-                )
+        return None
+    
+    # def validate_additional_inputs(self, inputs: dict) -> dict:
 
-        # ----------------------------
-        # Safety Kerb Check (IRC 5 Cl.101.41)
-        # ----------------------------
-        kerb_width = self._to_float(inputs.get("kerb_width"))
-        footpath = inputs.get(KEY_FOOTPATH)
+    #     errors = {}
 
-        if kerb_width is not None:
+    #     overall_width = self._to_float(inputs.get("overall_bridge_width"))
+    #     girder_spacing = self._to_float(inputs.get("girder_spacing"))
+    #     overhang = self._to_float(inputs.get("deck_overhang"))
+    #     no_girders = self._to_int(inputs.get("no_of_girders"))
 
-            kerb_result = IRC5_2015.cl_101_41_safety_kerb_width(
-                kerb_width,
-                footpath
-            )
+    #     # ----------------------------
+    #     # Layout Equation Check
+    #     # ----------------------------
+    #     if all(v is not None for v in
+    #            [overall_width, girder_spacing, overhang, no_girders]):
 
-            if kerb_result["applicable"] and not kerb_result["is_compliant"]:
-                errors["kerb_width"] = kerb_result["remarks"]
+    #         lhs = (no_girders - 1) * girder_spacing + 2 * overhang
+
+    #         if not isclose(lhs, overall_width, rel_tol=1e-2):
+    #             errors["layout_equation"] = (
+    #                 "Layout must satisfy: "
+    #                 "Overall Width = (No. of Girders − 1) × Spacing + 2 × Overhang."
+    #             )
+
+    #     # ----------------------------
+    #     # Safety Kerb Check (IRC 5 Cl.101.41)
+    #     # ----------------------------
+    #     kerb_width = self._to_float(inputs.get("kerb_width"))
+    #     footpath = inputs.get(KEY_FOOTPATH)
+
+    #     if kerb_width is not None:
+
+    #         kerb_result = IRC5_2015.cl_101_41_safety_kerb_width(
+    #             kerb_width,
+    #             footpath
+    #         )
+
+    #         if kerb_result["applicable"] and not kerb_result["is_compliant"]:
+    #             errors["kerb_width"] = kerb_result["remarks"]
 		
-		# ----------------------------
-        # Footpath Width (IRC 5 Cl.104.3.6)
-        # ----------------------------
-        footpath_width = self._to_float(inputs.get("footpath_width"))
+	# 	# ----------------------------
+    #     # Footpath Width (IRC 5 Cl.104.3.6)
+    #     # ----------------------------
+    #     footpath_width = self._to_float(inputs.get("footpath_width"))
 
-        result = IRC5_2015.cl_104_3_6_footpath_width(
-            footpath,
-            footpath_width
-        )
+    #     result = IRC5_2015.cl_104_3_6_footpath_width(
+    #         footpath,
+    #         footpath_width
+    #     )
 
-        if result["applicable"] and not result["is_compliant"]:
-            errors["footpath_width"] = result["remarks"]
+    #     if result["applicable"] and not result["is_compliant"]:
+    #         errors["footpath_width"] = result["remarks"]
 		
-        # ----------------------------
-        # Railing Height (IRC 5 Cl.109.7.2)
-        # ----------------------------
-        railing_height = self._to_float(inputs.get("railing_height"))
+    #     # ----------------------------
+    #     # Railing Height (IRC 5 Cl.109.7.2)
+    #     # ----------------------------
+    #     railing_height = self._to_float(inputs.get("railing_height"))
 
-        if railing_height is not None and footpath in KEY_FOOTPATH:
-            if railing_height < KEY_RAILING_MIN_HEIGHT[0]:
-                errors["railing_height"] = (
-                    f"Minimum railing height is "
-                    f"{KEY_RAILING_MIN_HEIGHT[0]} mm."
-                )
+    #     if railing_height is not None and footpath in KEY_FOOTPATH:
+    #         if railing_height < KEY_RAILING_MIN_HEIGHT[0]:
+    #             errors["railing_height"] = (
+    #                 f"Minimum railing height is "
+    #                 f"{KEY_RAILING_MIN_HEIGHT[0]} mm."
+    #             )
 
-        # ----------------------------
-        # Stud Detailing (Keyfile constants)
-        # ----------------------------
-        stud_height = self._to_float(inputs.get("stud_height"))
-        stud_diameter = self._to_float(inputs.get("stud_diameter"))
-        flange_thickness = self._to_float(inputs.get("top_flange_thickness"))
+    #     # ----------------------------
+    #     # Stud Detailing (Keyfile constants)
+    #     # ----------------------------
+    #     stud_height = self._to_float(inputs.get("stud_height"))
+    #     stud_diameter = self._to_float(inputs.get("stud_diameter"))
+    #     flange_thickness = self._to_float(inputs.get("top_flange_thickness"))
 
-        if stud_height is not None:
-            if stud_height < MIN_STUD_HEIGHT_MM:
-                errors["stud_height"] = (
-                    f"Minimum stud height must be "
-                    f"{MIN_STUD_HEIGHT_MM} mm."
-                )
+    #     if stud_height is not None:
+    #         if stud_height < MIN_STUD_HEIGHT_MM:
+    #             errors["stud_height"] = (
+    #                 f"Minimum stud height must be "
+    #                 f"{MIN_STUD_HEIGHT_MM} mm."
+    #             )
 
-        if stud_diameter and flange_thickness:
-            if stud_diameter > MAX_STUD_DIAMETER_FACTOR * flange_thickness:
-                errors["stud_diameter"] = (
-                    "Stud diameter exceeds permitted proportion of flange thickness."
-                )
+    #     if stud_diameter and flange_thickness:
+    #         if stud_diameter > MAX_STUD_DIAMETER_FACTOR * flange_thickness:
+    #             errors["stud_diameter"] = (
+    #                 "Stud diameter exceeds permitted proportion of flange thickness."
+    #             )
 
-        # ----------------------------
-        # Edge Distance
-        # ----------------------------
-        edge_distance = self._to_float(inputs.get("stud_edge_distance"))
+    #     # ----------------------------
+    #     # Edge Distance
+    #     # ----------------------------
+    #     edge_distance = self._to_float(inputs.get("stud_edge_distance"))
 
-        if edge_distance is not None:
-            if edge_distance < MIN_EDGE_DISTANCE_MM:
-                errors["stud_edge_distance"] = (
-                    f"Minimum edge distance must be "
-                    f"{MIN_EDGE_DISTANCE_MM} mm."
-                )
+    #     if edge_distance is not None:
+    #         if edge_distance < MIN_EDGE_DISTANCE_MM:
+    #             errors["stud_edge_distance"] = (
+    #                 f"Minimum edge distance must be "
+    #                 f"{MIN_EDGE_DISTANCE_MM} mm."
+    #             )
 
-        return self._format_response(errors)
+    #     return self._format_response(errors)
 
     # ==========================================================
     # INTERNAL HELPERS
