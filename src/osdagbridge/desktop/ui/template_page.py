@@ -1,10 +1,11 @@
 import sys
+import os
 from PySide6.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QHBoxLayout, QLabel,
-    QMenuBar, QSplitter, QSizePolicy, QPushButton, QLineEdit, QComboBox,
+    QMenuBar, QSplitter, QSizePolicy, QPushButton, QLineEdit, QComboBox, QFileDialog,
 )
 from PySide6.QtSvgWidgets import QSvgWidget
-from PySide6.QtCore import Qt, QFile, QTextStream, Signal,QTimer
+from PySide6.QtCore import Qt, QFile, QTextStream, Signal, QTimer
 from PySide6.QtGui import QIcon, QAction, QKeySequence
 
 from osdagbridge.desktop.ui.docks.input_dock import InputDock
@@ -893,6 +894,121 @@ class CustomWindow(QWidget):
             # Being deleted, ignore
             return
 
+    def save3DcadImages(self, backend):
+        """
+        Save 3D Model in various formats: IGS, STEP, STL, BREP
+        """
+        # Prefer the 3D CAD widget's generator as the source of shapes
+        from OCC.Core.STEPControl import STEPControl_Writer, STEPControl_AsIs
+        from OCC.Core.Interface import Interface_Static_SetCVal
+        from OCC.Core.IFSelect import IFSelect_RetDone
+        from OCC.Core.StlAPI import StlAPI_Writer
+        from OCC.Core import BRepTools
+        from OCC.Core import IGESControl
+        
+
+        # Ensure 3D CAD view is currently active / rendered
+        if not getattr(self, 'cad_3d_view_active', False):
+            CustomMessageBox(
+                title="Warning",
+                text="3D CAD view is not active. Show the 3D CAD view before exporting.",
+                dialogType=MessageBoxType.Warning
+            ).exec()
+            return
+
+        # Prefer shapes from the CAD widget generator if available
+        fuse_model = None
+        try:
+            if hasattr(self, 'cad_3d_widget') and getattr(self.cad_3d_widget, 'generator', None):
+                fuse_model = self.cad_3d_widget.generator.create3Dcad()
+               
+        except Exception:
+            fuse_model = None
+
+        # Fallback: try backend.create3Dcad() if widget didn't provide one
+        if fuse_model is None:
+            try:
+                fuse_model = backend.create3Dcad() if hasattr(backend, 'create3Dcad') else None
+            except Exception:
+                fuse_model = None
+
+        if fuse_model is None:
+            CustomMessageBox(
+                title="Warning",
+                text="Could not generate 3D model. Please run Design and render the 3D CAD view first.",
+                dialogType=MessageBoxType.Warning
+            ).exec()
+            return
+
+        # Open save dialog
+        files_types = "IGS (*.igs);;STEP (*.stp);;STL (*.stl);;BREP (*.brep)"
+        default_path = get_documents_folder()
+        
+        filePath, _ = QFileDialog.getSaveFileName(self, 'Export', os.path.join(default_path, "untitled.igs"),
+                                                      files_types)
+        
+        fName = str(filePath)
+
+        if not fName:
+            CustomMessageBox(
+                title="Warning",
+                text="File not saved",
+                dialogType=MessageBoxType.Warning
+            ).exec()
+            return
+
+        try:
+            file_extension = fName.split(".")[-1].lower()
+
+            if file_extension == 'igs' or file_extension == 'iges':
+                IGESControl.IGESControl_Controller().Init()
+                iges_writer = IGESControl.IGESControl_Writer()
+                iges_writer.AddShape(fuse_model)
+                iges_writer.Write(fName)
+
+            elif file_extension == 'brep':
+                # BRepTools can write TopoDS shapes directly
+                try:
+                    BRepTools.Write(fuse_model, fName)
+                except Exception:
+                    # fallback to breptools namespace if available
+                    try:
+                        BRepTools.breptools.Write(fuse_model, fName)
+                    except Exception as e:
+                        raise
+
+            elif file_extension == 'stp' or file_extension == 'step':
+                # Initialize the STEP exporter
+                step_writer = STEPControl_Writer()
+                Interface_Static_SetCVal("write.step.schema", "AP203")
+                
+                # Transfer shapes and write file
+                step_writer.Transfer(fuse_model, STEPControl_AsIs)
+                status = step_writer.Write(fName)
+                
+                if status != IFSelect_RetDone:
+                    raise Exception("STEP export failed")
+
+            elif file_extension == 'stl':
+                stl_writer = StlAPI_Writer()
+                stl_writer.SetASCIIMode(True)
+                stl_writer.Write(fuse_model, fName)
+
+            else:
+                raise ValueError(f"Unsupported file format: {file_extension}")
+
+            CustomMessageBox(
+                title="Success",
+                text=f"File Saved Successfully: {fName}",
+                dialogType=MessageBoxType.Success
+            ).exec()
+            
+        except Exception as e:
+            CustomMessageBox(
+                title="Error",
+                text=f"Failed to save file: {str(e)}",
+                dialogType=MessageBoxType.Critical
+            ).exec()
     def create_menu_bar_items(self):
         # File Menus
         file_menu = self.menu_bar.addMenu("File")
@@ -919,6 +1035,7 @@ class CustomWindow(QWidget):
 
         save_3d_action = QAction("Save 3D Model", self)
         save_3d_action.setShortcut(QKeySequence("Alt+3"))
+        save_3d_action.triggered.connect(lambda: self.save3DcadImages(self.backend))
         file_menu.addAction(save_3d_action)
 
         save_cad_action = QAction("Save CAD Image", self)
@@ -1129,6 +1246,7 @@ class OutputDockIndicator(QWidget):
         self.output_label = QSvgWidget(":/vectors/outputs_label_light.svg")
         output_layout.addWidget(self.output_label)
         self.output_label.setFixedWidth(28)
+
 
 class CentralPlaceholderWidget(QWidget):
     """

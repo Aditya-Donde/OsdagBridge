@@ -816,6 +816,90 @@ class PlateGirderCADGenerator:
             "railings": railings
         }
 
+    def create3Dcad(self):
+        """
+        Collect generated model parts from `self.model_data`, normalize and fuse
+        them into a single TopoDS_Shape suitable for export (STEP/IGS/STL/BREP).
+
+        Returns:
+            TopoDS_Shape or None
+        """
+
+
+        if not getattr(self, 'model_data', None):
+            return None
+
+   
+
+        # Local imports to avoid heavy deps at module import time
+        from OCC.Core.TopoDS import TopoDS_Shape
+        from OCC.Core.BRepAlgoAPI import BRepAlgoAPI_Fuse
+        from OCC.Core.TopExp import TopExp_Explorer
+        from OCC.Core.TopAbs import TopAbs_SOLID
+
+        def _flatten(obj):
+            """Flatten nested containers/dicts into a list of elements."""
+            if obj is None:
+                return []
+            if isinstance(obj, dict):
+                out = []
+                for v in obj.values():
+                    out.extend(_flatten(v))
+                return out
+            if isinstance(obj, (list, tuple)):
+                out = []
+                for i in obj:
+                    out.extend(_flatten(i))
+                return out
+            return [obj]
+
+        def _explode_compound(shape):
+            """If a compound contains many solids, return the contained solids."""
+            solids = []
+            try:
+                exp = TopExp_Explorer(shape, TopAbs_SOLID)
+                while exp.More():
+                    solids.append(exp.Current())
+                    exp.Next()
+            except Exception:
+                # Not a compound or explorer failed; return original
+                return [shape]
+
+            return solids if solids else [shape]
+
+        # Collect shapes from model_data
+        shapes = []
+        for v in self.model_data.values():
+            shapes.extend(_flatten(v))
+
+        # Keep only TopoDS_Shape instances
+        shapes = [s for s in shapes if isinstance(s, TopoDS_Shape)]
+
+        if not shapes:
+            return None
+
+        # Explode compounds into solids
+        normalized = []
+        for s in shapes:
+            normalized.extend(_explode_compound(s))
+
+        shapes = normalized
+
+        from OCC.Core.BRep import BRep_Builder
+        from OCC.Core.TopoDS import TopoDS_Compound
+
+
+        builder = BRep_Builder()
+        compound = TopoDS_Compound()
+
+        builder.MakeCompound(compound)
+
+        for shp in shapes:
+            builder.Add(compound, shp)
+
+        return compound
+
+
     def display_3dModel(self, component):
 
         hover_dict = {
