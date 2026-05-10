@@ -618,5 +618,10 @@ class OutputDock(QWidget):
         """
         Open Generate Results Table dialog
         """
+
+        # Validate required fields first
+        if not self.parent.validate_required_inputs():
+            return
+
         dlg = GenerateResultsDialog()
         dlg.exec()

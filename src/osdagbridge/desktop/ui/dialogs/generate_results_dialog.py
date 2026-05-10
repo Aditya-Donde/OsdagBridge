@@ -21,31 +21,31 @@ class CheckboxDelegate(QStyledItemDelegate):
 
     def paint(self, painter, option, index):
         super().paint(painter, option, index)
- 
+
         tree = self.parent()
         if not isinstance(tree, QTreeWidget):
             return
- 
+
         item = tree.itemFromIndex(index)
         if not item:
             return
- 
+
         check_state = item.checkState(0)
- 
+
         if check_state == Qt.Checked:
             symbol = "✓"
         elif check_state == Qt.PartiallyChecked:
             symbol = "−"
         else:
             return
- 
+
         checkbox_rect = QRect(
             option.rect.left() + 4,
             option.rect.top(),
             20,
             option.rect.height()
         )
- 
+
         painter.setPen(QColor("#90AF13"))
         painter.setFont(QFont("Arial", 10))
         painter.drawText(checkbox_rect, Qt.AlignCenter, symbol)
@@ -61,51 +61,48 @@ def apply_field_style(widget):
 
     if isinstance(widget, QComboBox):
         widget.setStyleSheet("""
-            QComboBox {
-                padding: 1px 8px;
+            QComboBox{
+                padding: 1px 7px;
                 border: 1px solid black;
-                border-radius: 6px;
-                background: white;
+                border-radius: 5px;
+                background-color: white;
                 color: black;
             }
-            QComboBox::drop-down {
-                border: none;
-                width: 26px;
+            QComboBox::drop-down{
+                subcontrol-origin: padding;
+                subcontrol-position: top right;
+                border-left: 0px;
             }
-            QComboBox QAbstractItemView {
-                background: white;
-                border: 1px solid #d0d0d0;
-                outline: 0px;
-                selection-background-color: rgba(144,175,19,45);
-                selection-color: black;
+            QComboBox::down-arrow{
+                image: url(:/vectors/arrow_down_light.svg);
+                width: 20px;
+                height: 20px;
+                margin-right: 8px;
+            }
+            QComboBox QAbstractItemView{
+                background-color: white;
+                border: 1px solid black;
                 color: black;
             }
-            QComboBox QAbstractItemView::item {
-                padding: 5px;
-                margin: 0px;
-                border-bottom: 1px solid #ebebeb;
-            }
-            QComboBox QAbstractItemView::item:hover {
-                background: rgba(144,175,19,45);
-                border-bottom: 1px solid #ebebeb;
-                outline: none;
-            }
-            QComboBox QAbstractItemView::item:selected {
-                background: rgba(144,175,19,65);
-                border-bottom: 1px solid #ebebeb;
-                outline: none;
+            QComboBox:disabled{
+                padding: 1px 7px;
+                border: 1px solid #666;
+                border-radius: 5px;
+                background-color: #f1f1f1;
+                color: #666;
             }
         """)
 
 class RoundedTableFrame(QFrame):
 
-    RADIUS = 12
+    RADIUS       = 12
     BORDER_COLOR = QColor("#90AF13")
     HEADER_COLOR = QColor("#90AF13")
     HEADER_H     = 34          # must match the header height set on the widget
 
     def __init__(self, parent=None):
         super().__init__(parent)
+        self._greyed = True
         self.setObjectName("roundedTableFrame")
         self.setStyleSheet(
             "QFrame#roundedTableFrame { border: none; background: transparent; }"
@@ -115,31 +112,33 @@ class RoundedTableFrame(QFrame):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
 
-        r   = self.RADIUS
-        w   = self.width()
-        h   = self.height()
-        hh  = self.HEADER_H 
+        r  = self.RADIUS
+        w  = self.width()
+        h  = self.height()
+        hh = self.HEADER_H
 
-        # Full rounded rect path (inset 0.5px so 1px border is fully visible)
+        # Full rounded rect path (inset 0.5 px so 1 px border is fully visible)
         full_rect = self.rect().toRectF().adjusted(0.5, 0.5, -0.5, -0.5)
         full_path = QPainterPath()
         full_path.addRoundedRect(full_rect, r, r)
 
-        # ── White body fill (whole frame)
+        # White body fill (whole frame)
         painter.fillPath(full_path, QColor("white"))
 
-        # ── Green header strip — rounded only at top-left and top-right
-        #    We draw it as: full rounded rect clipped to top hh px height
+        # Green header strip — rounded only at top-left / top-right
         header_rect = full_rect.adjusted(0, 0, 0, -(h - hh - 1))
         header_path = QPainterPath()
         header_path.addRoundedRect(header_rect, r, r)
-        # Extend bottom of header path downward so bottom corners are square
         square_bottom = QPainterPath()
         square_bottom.addRect(full_rect.adjusted(0, r, 0, -(h - hh - 1)))
         header_path = header_path.united(square_bottom)
-        painter.fillPath(header_path, self.HEADER_COLOR)
 
-        # ── Green border on top of everything
+        active_color = QColor("#cccccc") if self._greyed else self.HEADER_COLOR
+        border_color = QColor("#cccccc") if self._greyed else self.BORDER_COLOR
+        painter.fillPath(header_path, active_color)
+        pen = QPen(border_color, 1.0)
+
+        # Green border on top of everything
         pen = QPen(self.BORDER_COLOR, 1.0)
         pen.setJoinStyle(Qt.RoundJoin)
         painter.setPen(pen)
@@ -148,15 +147,19 @@ class RoundedTableFrame(QFrame):
 
         painter.end()
 
+    # Add this method inside RoundedTableFrame:
+    def set_greyed(self, greyed: bool):
+        self._greyed = greyed
+        self.update()    
 
 class VerticalLabel(QWidget):
     """Paints text rotated 90° counter-clockwise, centered in the widget."""
 
     def __init__(self, text="", color="#90AF13", font_size=13, font_weight=700, parent=None):
         super().__init__(parent)
-        self._text = text
-        self._color = QColor(color)
-        self._font_size = font_size
+        self._text        = text
+        self._color       = QColor(color)
+        self._font_size   = font_size
         self._font_weight = font_weight
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
 
@@ -175,7 +178,6 @@ class VerticalLabel(QWidget):
         painter.setFont(font)
         painter.setPen(self._color)
 
-        # Rotate around center, draw text bottom-to-top (counter-clockwise)
         painter.translate(self.width() / 2, self.height() / 2)
         painter.rotate(-90)
         painter.drawText(
@@ -185,8 +187,6 @@ class VerticalLabel(QWidget):
         )
         painter.end()
 
-
-#Generate Results Widget
 class GenerateResultsPage(QWidget):
     """Page 1 — table selection + load case/member combos."""
 
@@ -203,7 +203,6 @@ class GenerateResultsPage(QWidget):
         body = QHBoxLayout()
         body.setSpacing(14)
 
-        #LEFT CARD
         left_card = QFrame()
         left_card.setObjectName("leftCard")
         left_card.setStyleSheet("""
@@ -218,7 +217,6 @@ class GenerateResultsPage(QWidget):
         left_layout.setContentsMargins(14, 12, 14, 12)
         left_layout.setSpacing(12)
 
-        #Top bar
         top_bar = QHBoxLayout()
 
         title = QLabel("Select Tables")
@@ -343,8 +341,8 @@ class GenerateResultsPage(QWidget):
                 border-radius: 6px;
             }
             QScrollBar::handle {
-                background: transparent;
-                border-radius: 3px;
+                background: #90af13;
+                border-radius: 2px;
             }
             QScrollBar::handle:hover,
             QScrollBar::handle:pressed {
@@ -360,6 +358,11 @@ class GenerateResultsPage(QWidget):
                 background: transparent;
             }
         """)
+        self.tree.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        self.tree.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+
+        self.tree.setVerticalScrollMode(QTreeWidget.ScrollPerPixel)
+        self.tree.setHorizontalScrollMode(QTreeWidget.ScrollPerPixel)
         self.tree.setItemDelegate(CheckboxDelegate(self.tree))
         self.tree.itemClicked.connect(self._on_tree_item_clicked)
         self.tree.setFocusPolicy(Qt.NoFocus)
@@ -373,7 +376,7 @@ class GenerateResultsPage(QWidget):
 
         body.addWidget(left_card, 2)
 
-        #RIGHT CARD
+        # ── RIGHT CARD ─────────────────────────────────────────────────────
         right_card = QFrame()
         right_card.setObjectName("rightCard")
         right_card.setStyleSheet("""
@@ -396,16 +399,6 @@ class GenerateResultsPage(QWidget):
                 color: #2d2d2d;
             }
         """)
-        right_layout.addWidget(lc_label)
-
-        self.load_case_combo = NoScrollComboBox()
-        self.load_case_combo.addItems([
-            "DL", "DW", "SIDL", "LL",
-            "Wind", "Seismic", "Temperature",
-            "ULS Combo", "SLS Combo"
-        ])
-        apply_field_style(self.load_case_combo)
-        right_layout.addWidget(self.load_case_combo)
 
         member_label = QLabel("Member Case")
         member_label.setStyleSheet(lc_label.styleSheet())
@@ -422,13 +415,24 @@ class GenerateResultsPage(QWidget):
         apply_field_style(self.member_combo)
         right_layout.addWidget(self.member_combo)
 
+        right_layout.addWidget(lc_label)
+
+        self.load_case_combo = NoScrollComboBox()
+        self.load_case_combo.addItems([
+            "Dead Load", "Wering Surface Load", "Secondary impact Dead Load", "Live Load",
+            "Wind Load", "Seismic Load", "Temperature Load",
+            "ULS Combo", "SLS Combo"
+        ])
+        apply_field_style(self.load_case_combo)
+        right_layout.addWidget(self.load_case_combo)
+
         right_layout.addStretch()
 
         body.addWidget(right_card, 1)
 
         main_layout.addLayout(body)
 
-        #FOOTER
+        # ── FOOTER ─────────────────────────────────────────────────────────
         footer = QHBoxLayout()
         footer.addStretch()
 
@@ -451,7 +455,6 @@ class GenerateResultsPage(QWidget):
 
         cancel_btn = QPushButton("Cancel")
         cancel_btn.setStyleSheet(btn_style)
-        # Wire cancel to parent dialog via lambda — set externally after construction
         self._cancel_btn = cancel_btn
 
         self.show_btn = QPushButton("Show Selections")
@@ -465,7 +468,7 @@ class GenerateResultsPage(QWidget):
 
         self._build_tree()
 
-    #Tree Build
+    # ── Tree Build ──────────────────────────────────────────────────────────
     def _build_tree(self):
         self.tree.blockSignals(True)
 
@@ -490,7 +493,7 @@ class GenerateResultsPage(QWidget):
         self.tree.expandToDepth(1)
         self.tree.blockSignals(False)
 
-    #Checkbox Logic
+    # ── Checkbox Logic ──────────────────────────────────────────────────────
     def _handle_item_changed(self, item, column):
         state = item.checkState(0)
         self.tree.blockSignals(True)
@@ -510,7 +513,7 @@ class GenerateResultsPage(QWidget):
     def _update_parents(self, item):
         parent = item.parent()
         while parent:
-            checked = 0
+            checked   = 0
             unchecked = 0
             for i in range(parent.childCount()):
                 st = parent.child(i).checkState(0)
@@ -526,7 +529,7 @@ class GenerateResultsPage(QWidget):
                 parent.setCheckState(0, Qt.PartiallyChecked)
             parent = parent.parent()
 
-    #Select / Clear All
+    # ── Select / Clear All ──────────────────────────────────────────────────
     def select_all_items(self):
         self.tree.blockSignals(True)
         root = self.tree.invisibleRootItem()
@@ -545,7 +548,7 @@ class GenerateResultsPage(QWidget):
             self._update_children(item, Qt.Unchecked)
         self.tree.blockSignals(False)
 
-    #Selection
+    # ── Selection ───────────────────────────────────────────────────────────
     def get_selected_tables(self):
         selected = []
         root = self.tree.invisibleRootItem()
@@ -559,12 +562,12 @@ class GenerateResultsPage(QWidget):
                         selected.append(leaf.text(0))
         return selected
 
-    #Tree Click Toggle 
+    # ── Tree Click Toggle ───────────────────────────────────────────────────
     def _on_tree_item_clicked(self, item, column):
         pos = self.tree.viewport().mapFromGlobal(
             self.tree.viewport().cursor().pos()
         )
-        index = self.tree.indexAt(pos)
+        index        = self.tree.indexAt(pos)
         checkbox_rect = self.tree.visualRect(index)
         checkbox_rect.setWidth(20)
 
@@ -578,32 +581,89 @@ class GenerateResultsPage(QWidget):
             item.setCheckState(0, Qt.Checked)
 
 
-#Export Table Widget
 class ExportTablePage(QWidget):
     """Page 2 — tree of selected tables + preview + Excel export."""
 
+    # Minimum pixel width a column should ever be (avoids collapsed columns)
+    _COL_MIN_WIDTH = 60
+    # Maximum pixel width a content-fitted column can reach before capping
+    _COL_MAX_WIDTH = 320
+
     def __init__(self, on_back, on_cancel, parent=None):
         super().__init__(parent)
-        self._on_back = on_back
-        self._on_cancel = on_cancel
+        self._on_back    = on_back
+        self._on_cancel  = on_cancel
         self._is_expanded = True
         self._setup_ui()
 
+    # ── resizeEvent ─────────────────────────────────────────────────────────
+    def resizeEvent(self, event):
+        """
+        Called whenever the widget (and therefore its viewport) changes size —
+        triggered by dialog resize OR panel collapse/expand.
+        We re-run the proportional fill so columns always use the available space.
+        """
+        super().resizeEvent(event)
+        self._fit_columns()
+
+    # ── _fit_columns ────────────────────────────────────────────────────────
+    def _fit_columns(self):
+        """
+        Proportionally scale column widths to fill the full viewport width
+        while preserving the relative width ratios set by content or by the
+        user when they manually drag a column divider.
+
+        Design decisions
+        ────────────────
+        • We never stamp every column to the same fixed pixel value.
+        • We never divide viewport_w equally across columns.
+        • We only *scale up* when there is leftover space; we never shrink
+          below the natural content width (that would hide data).
+        • If total content width already exceeds the viewport the horizontal
+          scrollbar appears naturally — we do not force-shrink anything.
+        • The per-column minimum (_COL_MIN_WIDTH) prevents a column from
+          becoming invisible after extreme scaling.
+        """
+        table     = self.preview
+        col_count = table.columnCount()
+        if col_count == 0:
+            return
+
+        viewport_w = table.viewport().width()
+        if viewport_w <= 0:
+            return
+
+        current_total = sum(table.columnWidth(i) for i in range(col_count))
+        if current_total <= 0:
+            return
+
+        if current_total < viewport_w:
+            # There is leftover space → scale every column proportionally
+            # so they collectively fill the viewport exactly.
+            scale = viewport_w / current_total
+            for i in range(col_count):
+                new_w = int(table.columnWidth(i) * scale)
+                table.setColumnWidth(i, max(self._COL_MIN_WIDTH, new_w))
+
+        # If current_total >= viewport_w we leave widths alone; Qt will show
+        # the horizontal scrollbar via ScrollBarAsNeeded.
+
+    # ── _setup_ui ───────────────────────────────────────────────────────────
     def _setup_ui(self):
         main_layout = QVBoxLayout(self)
         main_layout.setContentsMargins(18, 18, 18, 14)
         main_layout.setSpacing(14)
 
-        card = QFrame()
+        card        = QFrame()
         card_layout = QVBoxLayout(card)
         card_layout.setSpacing(10)
 
-        #MAIN SPLIT 
+        # ── MAIN SPLIT ─────────────────────────────────────────────────────
         main_split = QHBoxLayout()
         main_split.setSpacing(0)
         main_split.setContentsMargins(0, 0, 0, 0)
 
-        # LEFT PANEL
+        # ── LEFT PANEL ─────────────────────────────────────────────────────
         self.left_box = QFrame()
         self.left_box.setObjectName("leftBox")
         self.left_box.setMinimumWidth(320)
@@ -642,10 +702,6 @@ class ExportTablePage(QWidget):
             }
         """
 
-        # Top bar with Back button
-        top_bar = QHBoxLayout()
-        top_bar.setSpacing(6)
-
         back_btn_style = """
             QPushButton {
                 background: white;
@@ -667,6 +723,9 @@ class ExportTablePage(QWidget):
                 color: white;
             }
         """
+
+        top_bar = QHBoxLayout()
+        top_bar.setSpacing(6)
 
         self.back_btn = QPushButton("← Back")
         self.back_btn.setStyleSheet(back_btn_style)
@@ -741,8 +800,8 @@ class ExportTablePage(QWidget):
                 border-radius: 6px;
             }
             QScrollBar::handle {
-                background: transparent;
-                border-radius: 3px;
+                background: #90AF13;
+                border-radius: 2px;
             }
             QScrollBar::handle:hover,
             QScrollBar::handle:pressed {
@@ -770,12 +829,12 @@ class ExportTablePage(QWidget):
 
         left_layout.addWidget(self.tree, 1)
 
-        # Vertical "EXPORT" label — visible only when panel is collapsed
+        # Vertical label — visible only when panel is collapsed
         self.vertical_label = VerticalLabel(
-            text="EXPORT TABLES",
+            text="SELECT TABLES",
             color="#000000",
-            font_size=13,
-            font_weight=400
+            font_size=8,
+            font_weight=200
         )
         self.vertical_label.hide()
         left_layout.addWidget(self.vertical_label, 1)
@@ -829,29 +888,26 @@ class ExportTablePage(QWidget):
 
         main_split.addWidget(self.left_container)
 
-        # RIGHT PANEL (preview table) — uses RoundedTableFrame for clean clipping
+        # ── RIGHT PANEL (preview table) ─────────────────────────────────────
         self.right_box = RoundedTableFrame()
 
         right_layout = QVBoxLayout(self.right_box)
-        # 1px side/bottom inset keeps table inside border; 0 top so header flush
         right_layout.setContentsMargins(1, 0, 1, 1)
         right_layout.setSpacing(0)
 
         self.preview = QTableWidget()
         self.preview.setColumnCount(2)
         self.preview.setHorizontalHeaderLabels(["Parameter", "Value"])
-        
-        header = self.preview.horizontalHeader()
 
-        header.setSectionResizeMode(QHeaderView.Interactive)   # allow control
-        header.setMinimumSectionSize(120)    
-        
-        self.preview.horizontalHeader().setMinimumSectionSize(80)
-        self.preview.horizontalHeader().setSectionsClickable(False)
-        self.preview.horizontalHeader().setStretchLastSection(True)
-        self.preview.horizontalHeader().setFixedHeight(34)
-        self.preview.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        header = self.preview.horizontalHeader()
+        header.setSectionResizeMode(QHeaderView.Interactive)
+        header.setMinimumSectionSize(self._COL_MIN_WIDTH)
+        header.setSectionsClickable(False)
+        header.setStretchLastSection(False)          # must be False — see above
+        header.setFixedHeight(34)
+
         self.preview.verticalHeader().setVisible(False)
+        self.preview.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)   # fix
         self.preview.setFrameShape(QFrame.NoFrame)
         self.preview.setShowGrid(True)
         self.preview.setStyleSheet("""
@@ -920,14 +976,45 @@ class ExportTablePage(QWidget):
             }
         """)
 
-        right_layout.addWidget(self.preview, 1)
+# AFTER
+        # ── Placeholder (shown when no table is selected) ───────────────────
+        self.placeholder = QWidget()
+        self.placeholder.setObjectName("previewPlaceholder")
+        self.placeholder.setStyleSheet(
+            "QWidget#previewPlaceholder { background: transparent; }"
+        )
+        ph_layout = QVBoxLayout(self.placeholder)
+        ph_layout.setAlignment(Qt.AlignCenter)
+        ph_layout.setSpacing(8)
+
+        ph_text = QLabel("Select a table to preview values")
+        ph_text.setAlignment(Qt.AlignCenter)
+        ph_text.setStyleSheet("""
+            QLabel {
+                color: #aaaaaa;
+                font-size: 13px;
+                font-weight: 500;
+                background: transparent;
+                border: none;
+            }
+        """)
+
+        ph_layout.addWidget(ph_text)
+
+        # Stack: index 0 = placeholder, index 1 = live table
+        self.preview_stack = QStackedWidget()
+        self.preview_stack.addWidget(self.placeholder)
+        self.preview_stack.addWidget(self.preview)
+        self.preview_stack.setCurrentIndex(0)
+
+        right_layout.addWidget(self.preview_stack, 1)
 
         main_split.addWidget(self.right_box, 1)
 
         card_layout.addLayout(main_split)
         main_layout.addWidget(card, 1)
 
-        #FOOTER
+        # ── FOOTER ─────────────────────────────────────────────────────────
         footer = QHBoxLayout()
         footer.addStretch()
 
@@ -961,7 +1048,7 @@ class ExportTablePage(QWidget):
 
         main_layout.addLayout(footer)
 
-    #Load Data into Page
+    # ── Load Data into Page ─────────────────────────────────────────────────
     def load_data(self, selected_tables: dict):
         """Populate tree with the export_data dict passed from page 1."""
         self.tree.blockSignals(True)
@@ -993,8 +1080,9 @@ class ExportTablePage(QWidget):
         self.preview.setColumnCount(2)
         self.preview.setHorizontalHeaderLabels(["Parameter", "Value"])
         self.preview.setRowCount(0)
+        self._set_preview_empty()
 
-    #Left Panel Toggle
+    # ── Left Panel Toggle ───────────────────────────────────────────────────
     def _toggle_tree_panel(self):
         if self._is_expanded:
             self._is_expanded = False
@@ -1003,12 +1091,10 @@ class ExportTablePage(QWidget):
             self.left_box.setFixedWidth(30)
             self.toggle_btn.setText("›")
             self.toggle_btn.setStyleSheet(self._toggle_btn_style_collapsed)
-            # Hide expanded-state widgets
             self.select_btn.hide()
             self.clear_btn.hide()
             self.back_btn.hide()
             self.tree.hide()
-            # Show vertical label
             self.vertical_label.show()
         else:
             self._is_expanded = True
@@ -1016,15 +1102,19 @@ class ExportTablePage(QWidget):
             self.left_box.setMaximumWidth(400)
             self.toggle_btn.setText("‹")
             self.toggle_btn.setStyleSheet(self._toggle_btn_style_expanded)
-            # Hide vertical label
             self.vertical_label.hide()
-            # Show expanded-state widgets
             self.tree.show()
             self.select_btn.show()
             self.clear_btn.show()
             self.back_btn.show()
 
-    #Select / Clear All
+        # Re-fit columns after panel geometry has settled
+        # processEvents() lets Qt finish updating widths before we measure
+        from PySide6.QtWidgets import QApplication
+        QApplication.processEvents()
+        self._fit_columns()
+
+    # ── Select / Clear All ──────────────────────────────────────────────────
     def select_all_items(self):
         self.tree.blockSignals(True)
         root = self.tree.invisibleRootItem()
@@ -1043,18 +1133,24 @@ class ExportTablePage(QWidget):
             self._update_children(item, Qt.Unchecked)
         self.tree.blockSignals(False)
 
-    #Table Preview
+    # ── Table Preview ───────────────────────────────────────────────────────
+# AFTER
     def _load_selected_table(self, item, column):
         data = item.data(0, Qt.UserRole)
-
         if not isinstance(data, dict):
+            # Non-leaf clicked — keep/show placeholder, grey panel
+            self._set_preview_empty()
             return
 
         columns = data.get("columns", [])
-        rows = data.get("rows", [])
-
+        rows    = data.get("rows",    [])
         if not columns or not rows:
+            self._set_preview_empty()
             return
+
+        # Switch to live table
+        self.right_box.set_greyed(False)
+        self.preview_stack.setCurrentIndex(1)
 
         self.preview.clear()
         self.preview.setColumnCount(len(columns))
@@ -1070,16 +1166,22 @@ class ExportTablePage(QWidget):
                 self.preview.setItem(r_idx, c_idx, cell)
 
         self.preview.verticalHeader().setVisible(False)
+        self.preview.resizeColumnsToContents()
 
-        available_width = self.preview.viewport().width()
-        min_col_width = 220
-        max_col_width = 280
-        col_width = max(min_col_width, min(max_col_width, available_width // len(columns)))
+        for i in range(self.preview.columnCount()):
+            w = self.preview.columnWidth(i)
+            self.preview.setColumnWidth(
+                i, max(self._COL_MIN_WIDTH, min(w, self._COL_MAX_WIDTH))
+            )
 
-        for i in range(len(columns)):
-            self.preview.setColumnWidth(i, col_width)
+        self._fit_columns()
 
-    #Checkbox Logic
+    def _set_preview_empty(self):
+        """Show the placeholder and grey out the right panel."""
+        self.right_box.set_greyed(True)
+        self.preview_stack.setCurrentIndex(0)
+
+    # ── Checkbox Logic ──────────────────────────────────────────────────────
     def _handle_item_changed(self, item, column):
         state = item.checkState(0)
         self.tree.blockSignals(True)
@@ -1099,7 +1201,7 @@ class ExportTablePage(QWidget):
     def _update_parents(self, item):
         parent = item.parent()
         while parent:
-            checked = 0
+            checked   = 0
             unchecked = 0
             for i in range(parent.childCount()):
                 st = parent.child(i).checkState(0)
@@ -1115,7 +1217,7 @@ class ExportTablePage(QWidget):
                 parent.setCheckState(0, Qt.PartiallyChecked)
             parent = parent.parent()
 
-    #Get Checked Tables
+    # ── Get Checked Tables ──────────────────────────────────────────────────
     def get_checked_tables(self):
         checked_items = []
         root = self.tree.invisibleRootItem()
@@ -1130,7 +1232,7 @@ class ExportTablePage(QWidget):
                         checked_items.append((lvl3.text(0), data))
         return checked_items
 
-    #Export
+    # ── Export ──────────────────────────────────────────────────────────────
     def _export_excel(self):
         path, _ = QFileDialog.getSaveFileName(
             self,
@@ -1154,7 +1256,7 @@ class ExportTablePage(QWidget):
         header_fill  = PatternFill("solid", fgColor=GREEN_HEX)
         alt_fill     = PatternFill("solid", fgColor=ALT_HEX)
         white_fill   = PatternFill("solid", fgColor=WHITE_HEX)
-        header_font  = Font(bold=True, color="FFFFFFFF", name="Calibri", size=11)
+        header_font  = Font(bold=True,  color="FFFFFFFF", name="Calibri", size=11)
         data_font    = Font(bold=False, color="FF2d2d2d", name="Calibri", size=10)
         center_align = Alignment(horizontal="center", vertical="center", wrap_text=True)
 
@@ -1169,14 +1271,13 @@ class ExportTablePage(QWidget):
 
         for table_name, data in selected_tables:
             columns = data.get("columns", [])
-            rows    = data.get("rows", [])
+            rows    = data.get("rows",    [])
 
             if not columns or not rows:
                 continue
 
             ws = wb.create_sheet(title=table_name[:31])
 
-            # Auto-size columns based on header + data content
             col_widths = [len(str(col)) for col in columns]
             for row in rows:
                 for c_idx, val in enumerate(row):
@@ -1190,11 +1291,11 @@ class ExportTablePage(QWidget):
 
             # Header row
             for c_idx, label in enumerate(columns, start=1):
-                cell            = ws.cell(row=1, column=c_idx, value=str(label))
-                cell.fill       = header_fill
-                cell.font       = header_font
-                cell.alignment  = center_align
-                cell.border     = cell_border
+                cell           = ws.cell(row=1, column=c_idx, value=str(label))
+                cell.fill      = header_fill
+                cell.font      = header_font
+                cell.alignment = center_align
+                cell.border    = cell_border
             ws.row_dimensions[1].height = 28
 
             # Data rows
@@ -1202,17 +1303,16 @@ class ExportTablePage(QWidget):
                 excel_row  = r_idx + 2
                 fill_style = alt_fill if r_idx % 2 == 0 else white_fill
                 for c_idx, val in enumerate(row, start=1):
-                    cell            = ws.cell(row=excel_row, column=c_idx, value=val)
-                    cell.fill       = fill_style
-                    cell.font       = data_font
-                    cell.alignment  = center_align
-                    cell.border     = cell_border
+                    cell           = ws.cell(row=excel_row, column=c_idx, value=val)
+                    cell.fill      = fill_style
+                    cell.font      = data_font
+                    cell.alignment = center_align
+                    cell.border    = cell_border
                 ws.row_dimensions[excel_row].height = 18
 
         wb.save(path)
 
 
-# MAIN DIALOG: GenerateResultsDialog
 class GenerateResultsDialog(QDialog):
     """
     Single frameless dialog with two views:
@@ -1237,7 +1337,7 @@ class GenerateResultsDialog(QDialog):
 
         self._setup_ui()
 
-    #Wrapper
+    # ── Wrapper ─────────────────────────────────────────────────────────────
     def _setup_wrapper(self):
         self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowSystemMenuHint)
 
@@ -1262,11 +1362,10 @@ class GenerateResultsDialog(QDialog):
 
         main_layout.addLayout(overlay)
 
-    #Main UI
+    # ── Main UI ─────────────────────────────────────────────────────────────
     def _setup_ui(self):
         self._setup_wrapper()
 
-        # QStackedWidget lives inside content_widget
         content_layout = QVBoxLayout(self.content_widget)
         content_layout.setContentsMargins(0, 0, 0, 0)
         content_layout.setSpacing(0)
@@ -1274,14 +1373,11 @@ class GenerateResultsDialog(QDialog):
         self.stack = QStackedWidget()
         content_layout.addWidget(self.stack)
 
-        # Page 1 — Generate Results
         self.page_generate = GenerateResultsPage(
             on_show_selections=self._handle_show_selections
         )
-        # Wire cancel button from page 1 to dialog reject
         self.page_generate._cancel_btn.clicked.connect(self.reject)
 
-        # Page 2 — Export Table
         self.page_export = ExportTablePage(
             on_back=self._handle_back,
             on_cancel=self.reject
@@ -1292,7 +1388,7 @@ class GenerateResultsDialog(QDialog):
 
         self.stack.setCurrentIndex(0)
 
-    #Navigation
+    # ── Navigation ──────────────────────────────────────────────────────────
     def _handle_show_selections(self):
         selected_names = self.page_generate.get_selected_tables()
 
@@ -1304,7 +1400,6 @@ class GenerateResultsDialog(QDialog):
             ).exec()
             return
 
-        # Build export_data dict
         export_data = {}
 
         for main_key, groups in GENERATE_RESULTS_DEFAULTS.items():
@@ -1324,7 +1419,6 @@ class GenerateResultsDialog(QDialog):
                 export_data[main_key.replace("_", " ").title()] = main_bucket
 
         self.title_bar.setTitle("Export Results")
-
         self.page_export.load_data(export_data)
         self.stack.setCurrentIndex(1)
 
