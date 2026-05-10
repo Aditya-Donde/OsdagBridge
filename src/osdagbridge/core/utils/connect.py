@@ -15,10 +15,8 @@ from typing import Any, Dict, List
 _original_print = print
 
 def safe_print(*args, **kwargs):
-
     try:
         _original_print(*args, **kwargs)
-
     except UnicodeEncodeError:
         pass
 
@@ -26,7 +24,6 @@ builtins.print = safe_print
 
 # Reconfigure Windows terminal encoding
 if sys.platform.startswith("win"):
-
     sys.stdout.reconfigure(encoding="utf-8", errors="ignore")
     sys.stderr.reconfigure(encoding="utf-8", errors="ignore")
 
@@ -38,7 +35,6 @@ from osdag_core.design_type.tension_member.tension_bolted import Tension_bolted
 from osdag_core.design_type.tension_member.tension_welded import Tension_welded
 
 MODULE_CLASS_MAP = {
-
     "Tension Member Design - Bolted to End Gusset": Tension_bolted,
     "Tension Member Design - Welded to End Gusset": Tension_welded,
     "Struts Bolted to End Gusset": Compression_bolted,
@@ -46,21 +42,15 @@ MODULE_CLASS_MAP = {
 }
 
 # OUTPUT SUPPRESSION
-
 @contextlib.contextmanager
 def suppress_output(enabled: bool = True):
-
     if not enabled:
         yield
         return
 
     logging.disable(logging.CRITICAL)
 
-    with open(
-        os.devnull,
-        "w",
-        encoding="utf-8",
-    ) as devnull:
+    with open(os.devnull, "w", encoding="utf-8") as devnull:
         with contextlib.redirect_stdout(devnull):
             with contextlib.redirect_stderr(devnull):
                 yield
@@ -68,16 +58,12 @@ def suppress_output(enabled: bool = True):
     logging.disable(logging.NOTSET)
 
 def run_calculation(design_dict: Dict[str, Any], quiet: bool = True) -> Dict[str, Any]:
-
     # Every subprocess needs UTF-8 again
-
     if sys.platform.startswith("win"):
-
         sys.stdout.reconfigure(encoding="utf-8", errors="ignore")
         sys.stderr.reconfigure(encoding="utf-8", errors="ignore")
 
     with suppress_output(quiet):
-
         module_name = design_dict.get("Module")
         module_class = MODULE_CLASS_MAP.get(module_name)
 
@@ -87,9 +73,7 @@ def run_calculation(design_dict: Dict[str, Any], quiet: bool = True) -> Dict[str
         module_instance = module_class()
         module_instance.set_osdaglogger(None, None)
 
-        validation_errors = (
-            module_instance.func_for_validation(design_dict)
-        )
+        validation_errors = module_instance.func_for_validation(design_dict)
 
         if validation_errors:
             raise RuntimeError("Validation errors occurred during execution.")
@@ -98,30 +82,20 @@ def run_calculation(design_dict: Dict[str, Any], quiet: bool = True) -> Dict[str
 
         return output_dict
 
-def run_parallel_designs(design_dicts: List[Dict[str, Any]],quiet: bool = True) -> List[Dict[str, Any]]:
-
+def run_parallel_designs(design_dicts: List[Dict[str, Any]], quiet: bool = True) -> List[Dict[str, Any]]:
     cpu_count = os.cpu_count() or 4
-    max_workers = min(
-        cpu_count,
-        len(design_dicts),
-    )
+    max_workers = min(cpu_count, len(design_dicts))
 
     with ProcessPoolExecutor(max_workers=max_workers) as executor:
-
         futures = [
-            executor.submit(
-                run_calculation,
-                design_dict,
-                quiet,
-            ) for design_dict in design_dicts
+            executor.submit(run_calculation, design_dict, quiet) 
+            for design_dict in design_dicts
         ]
-
         results = [future.result() for future in futures]
 
     return results
 
 # TENSION BOLTED
-
 design_dict_tension_bolted = {
     "Bolt.Bolt_Hole_Type": "Standard",
     "Bolt.Diameter": ["8", "10", "12", "16"],
@@ -150,7 +124,6 @@ design_dict_tension_bolted = {
 }
 
 # TENSION WELDED
-
 design_dict_tension_welded = {
     "Conn_Location": "Long Leg",
     "Connector.Material": "E 165 (Fe 290)",
@@ -172,7 +145,6 @@ design_dict_tension_welded = {
 }
 
 # STRUTS BOLTED
-
 design_dict_struts_bolted = {
     "Bolt.Bolt_Hole_Type": "Standard",
     "Bolt.Diameter": ["8", "10", "12"],
@@ -203,7 +175,6 @@ design_dict_struts_bolted = {
 }
 
 # STRUTS WELDED
-
 design_dict_struts_welded = {
     " In_Plane": "1.0",
     " Out_of_Plane": "1.0",
@@ -232,7 +203,6 @@ design_dict_struts_welded = {
 }
 
 # STANDALONE TESTING
-
 if __name__ == "__main__":
     """
     Standalone testing:
@@ -259,18 +229,11 @@ if __name__ == "__main__":
     total_time = end_time - start_time
 
     print("\nParallel execution completed\n")
-
     print(f"Total designs : {len(results)}")
-
     print(f"Execution time: {total_time:.4f} seconds")
-
-    print(f"Average/design: "
-          f"{total_time / len(results):.4f} seconds")
-
+    print(f"Average/design: {total_time / len(results):.4f} seconds")
     print("\nSample outputs:\n")
 
     for index, result in enumerate(results):
-
         print(f"\nDesign {index + 1}:\n")
-
         print(result)
