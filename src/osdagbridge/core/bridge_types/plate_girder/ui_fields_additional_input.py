@@ -2086,4 +2086,41 @@ MEMBER_PROPERTIES_SCHEMA_V1 = {
     },
 }
 
+# Mapping from saved Additional Inputs keys -> Steel Design Details tab keys.
+# Keeps the backend mapping aligned with UI schema identifiers.
+STEEL_DESIGN_DETAILS_MAPPING = {
+    "section_properties": {
+        "Mass, M (Kg/m)": "mass",
+        "Sectional Area, a (cm2)": "area",
+        "2nd Moment of Area, Iz (cm4)": "iz",
+        "2nd Moment of Area, Iy (cm4)": "iv",
+        "Radius of Gyration, rz (cm)": "rz",
+        "Radius of Gyration, ry (cm)": "rv",
+        "Elastic Modulus, Zz (cm3)": "zz",
+        "Elastic Modulus, Zy (cm3)": "zv",
+        "Plastic Modulus, Zuz (cm3)": "zuz",
+        "Plastic Modulus, Zuy (cm3)": "zuv",
+        "Torsion Constant, It (cm4)": "it",
+        "Warping Constant, Iw (cm6)": "iw",
+    },
+    "shear_studs": {
+        "shear_stud_yield_strength": "shear_material",
+        "shear_stud_diameter": "shear_diameter",
+        "shear_stud_height": "shear_height",
+        "shear_stud_transverse_spacing": ["shear_transverse_spacing", "shear_longitudinal_spacing"],
+        "shear_stud_count": "shear_studs_per_section",
+    },
+    "stiffener_member": {
+        "intermediate_thickness_value": "stiff_intermediate_thickness",
+        "intermediate_outstand_mm": "stiff_intermediate_width",
+        "intermediate_spacing_mm": "stiff_intermediate_spacing",
+        "longitudinal_thickness_value": "stiff_longitudinal_thickness",
+        "longitudinal_outstand_mm": "stiff_longitudinal_width",
+        "longitudinal_spacing_mm": "stiff_longitudinal_spacing",
+        "bearing_thickness_value": "stiff_bearing_thickness",
+        "bearing_outstand_mm": "stiff_bearing_width",
+        "bearing_spacing_mm": "stiff_bearing_spacing",
+    },
+}
+
 #function -> store in dict design dict

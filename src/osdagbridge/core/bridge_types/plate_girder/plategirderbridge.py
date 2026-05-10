@@ -23,6 +23,7 @@ from .defaults import (
     DEFAULT_GIRDER_SYMMETRY,
     DEFAULT_MEDIAN_WIDTH_M,
 )
+from .ui_fields_additional_input import STEEL_DESIGN_DETAILS_MAPPING
 from .initial_sizing import BridgeConfigurationSolver, DEFAULT_FOOTPATH_WIDTH
 from .analyser import BridgeGrillageModel
 from .analysis_results import PlateGirderAnalysisResults
@@ -893,6 +894,147 @@ class PlateGirderBridge:
             girder_segments=[girder_segment],
             girder_segments_dict={},
         )
+
+    def get_steel_design_state(self) -> dict:
+        """Build a flat dict of values for the Steel Design dialog details tab."""
+        state: dict[str, object] = {}
+
+        sp = getattr(self, "section_props", {}) or {}
+        sr = getattr(self, "sizing_result", None)
+        add_inputs = getattr(self, "additional_inputs", {}) or {}
+
+        girder_details = add_inputs.get("girder_details", {})
+        stiffener_details = add_inputs.get("stiffener_details", {})
+
+        if isinstance(girder_details, dict):
+            state["girder_details"] = girder_details
+        if isinstance(stiffener_details, dict):
+            state["stiffener_details"] = stiffener_details
+
+        # Member header fields
+        member_id = ""
+        if isinstance(girder_details, dict):
+            member_id = str(
+                girder_details.get("member_id")
+                or girder_details.get("selected_girder")
+                or ""
+            ).strip()
+        state["member_id"] = member_id
+
+        state["grade_of_material"] = str(self.basic_inputs.get(KEY_GIRDER, "")).strip()
+        state["span_m"] = self.basic_inputs.get(KEY_SPAN)
+
+        section_type = ""
+        if isinstance(girder_details, dict):
+            section_type = str(
+                girder_details.get("girder_type")
+                or girder_details.get("section_type")
+                or ""
+            ).strip()
+        state["section_type"] = section_type
+
+        section_designation = ""
+        if isinstance(girder_details, dict):
+            section_designation = str(
+                girder_details.get("rolled_section")
+                or girder_details.get("section_designation")
+                or ""
+            ).strip()
+        if not section_designation and section_type:
+            section_designation = "Built-up Plate Girder" if section_type.lower() == "welded" else section_type
+        state["section_designation"] = section_designation
+
+        # Geometry from section props (m -> mm)
+        def _fmt_mm(value: object) -> str:
+            try:
+                return f"{float(value) * 1e3:.3f}".rstrip("0").rstrip(".")
+            except (TypeError, ValueError):
+                return ""
+
+        if sp:
+            state.setdefault("total_depth", _fmt_mm(sp.get("D")))
+            state.setdefault("web_thickness", _fmt_mm(sp.get("t_w")))
+            state.setdefault("top_flange_width", _fmt_mm(sp.get("B_top")))
+            state.setdefault("top_flange_thickness", _fmt_mm(sp.get("t_f_top")))
+            state.setdefault("bottom_flange_width", _fmt_mm(sp.get("B_bot", sp.get("B_top"))))
+            state.setdefault("bottom_flange_thickness", _fmt_mm(sp.get("t_f_bot", sp.get("t_f_top"))))
+
+        # Restraints from additional inputs (if available).
+        if isinstance(girder_details, dict):
+            for key, target in (
+                ("torsional_restraint", "torsional_restraint"),
+                ("warping_restraint", "warping_restraint"),
+                ("web_type", "web_type"),
+            ):
+                value = str(girder_details.get(key, "")).strip()
+                if value:
+                    state[target] = value
+
+        # Section properties (prefer explicit section_properties snapshot).
+        section_props_snapshot = {}
+        if isinstance(girder_details, dict):
+            section_props_snapshot = girder_details.get("section_properties", {}) or {}
+
+        prop_map = STEEL_DESIGN_DETAILS_MAPPING.get("section_properties", {})
+        for label, key in prop_map.items():
+            value = section_props_snapshot.get(label)
+            if value not in (None, ""):
+                state[key] = value
+
+        # Fall back to computed section props if no snapshot values were found.
+        def _fmt_cm(value: object, factor: float) -> str:
+            try:
+                return f"{float(value) * factor:.3f}".rstrip("0").rstrip(".")
+            except (TypeError, ValueError):
+                return ""
+
+        if sp:
+            state.setdefault("area", _fmt_cm(sp.get("Area"), 1e4))
+            state.setdefault("iz", _fmt_cm(sp.get("I_z"), 1e8))
+            state.setdefault("iv", _fmt_cm(sp.get("I_y"), 1e8))
+            state.setdefault("it", _fmt_cm(sp.get("I_t"), 1e8))
+            state.setdefault("iw", _fmt_cm(sp.get("I_w"), 1e12))
+
+        # Shear stud inputs (if provided in additional inputs).
+        def _get_add_value(key: str) -> str:
+            value = add_inputs.get(key)
+            return str(value).strip() if value is not None else ""
+
+        shear_map = STEEL_DESIGN_DETAILS_MAPPING.get("shear_studs", {})
+        for add_key, target_key in shear_map.items():
+            value = _get_add_value(add_key)
+            if isinstance(target_key, list):
+                for key in target_key:
+                    state[key] = value
+            else:
+                state[target_key] = value
+
+        # Stiffener table (best-effort mapping from first member in state).
+        def _stiff_value(member_state: dict, key: str) -> str:
+            value = member_state.get(key)
+            return str(value).strip() if value is not None else ""
+
+        if isinstance(stiffener_details, dict):
+            stiff_by_member = stiffener_details.get("stiffener_by_member", {}) or {}
+            selected_member = member_id or next(iter(stiff_by_member.keys()), "")
+            member_state = stiff_by_member.get(selected_member, {}) if selected_member else {}
+
+            state.setdefault("stiff_intermediate_grade", state.get("grade_of_material", ""))
+            state.setdefault("stiff_longitudinal_grade", state.get("grade_of_material", ""))
+            state.setdefault("stiff_bearing_grade", state.get("grade_of_material", ""))
+
+            stiffener_map = STEEL_DESIGN_DETAILS_MAPPING.get("stiffener_member", {})
+            for source_key, target_key in stiffener_map.items():
+                state[target_key] = _stiff_value(member_state, source_key)
+
+        # Keep girder count available for analysis/check tabs.
+        try:
+            if sr is not None and getattr(sr, "no_of_girders", None) is not None:
+                state["no_of_girders"] = int(sr.no_of_girders)
+        except Exception:
+            pass
+
+        return state
 
     def build_graph_engine(
         self,

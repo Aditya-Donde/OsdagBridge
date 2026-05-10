@@ -405,9 +405,17 @@ class CustomWindow(QWidget):
         if not required_widget_validated:
             return                 # Stop design process if validation fails
 
-        # Call Additional Input Defaults
+        # Merge additional inputs captured from the dialog (if any).
         additional_inputs_dict = {}
-        self.input_dict.update(additional_inputs_dict)
+        if hasattr(self, "input_dock") and self.input_dock is not None:
+            try:
+                if hasattr(self.input_dock, "get_all_input_values"):
+                    additional_inputs_dict.update(self.input_dock.get_all_input_values() or {})
+                saved = getattr(self.input_dock, "_additional_inputs_saved_data", {})
+                if isinstance(saved, dict):
+                    additional_inputs_dict.update(saved)
+            except Exception:
+                pass
 
         if trigger == "Design":
             
@@ -415,9 +423,19 @@ class CustomWindow(QWidget):
             self._start_loading()
             
             # Collect all the values from input Dock and pass to backend
-            self.backend.set_input(self.input_dict)
+            design_inputs = dict(additional_inputs_dict)
+            design_inputs.update(self.input_dict)
+            self.backend.set_input(design_inputs)
             self.backend.design()
             self.output_dock.refresh_utilization()
+
+            # Cache design outputs for the Steel Design dialog details tab.
+            try:
+                if hasattr(self.backend, "get_steel_design_state"):
+                    self.cad_state.update(self.backend.get_steel_design_state() or {})
+                self.cad_state.update(design_inputs)
+            except Exception:
+                pass
 
             # Lock the input dock after design is triggered
             if self.input_dock and not self.input_dock.is_locked:
