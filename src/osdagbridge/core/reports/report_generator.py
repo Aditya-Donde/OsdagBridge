@@ -294,7 +294,7 @@ This section provides a concise summary of the bridge design, key inputs, govern
 \hline
 \textbf{Design Standard} & IRC 5, IRC 6, IRC 22, IRC 24, IS 800 \\
 \hline
-\textbf{Span} & """ + (_v(inp, 'span', ' m') or _ph('Span Length')) + r""" m \\
+\textbf{Span} & """ + (_v(inp, 'span', ' m') or _ph('Span Length')) + r""" \\
 \hline
 \textbf{Carriageway Width} & """ + (_v(inp, 'carriageway_width', ' m') or _ph('Carriageway Width')) + r""" \\
 \hline
@@ -306,7 +306,7 @@ This section provides a concise summary of the bridge design, key inputs, govern
 \hline
 \textbf{Deck Thickness} & """ + (_v(inp, 'deck_thickness') or _ph('Deck Thickness')) + r""" \\
 \hline
-\textbf{Overall Design Status} & PASS / FAIL \\
+\textbf{Overall Design Status} & """ + (_v(inp, 'overall_design_status') or _ph('PASS / FAIL')) + r""" \\
 \hline
 \textbf{Governing Check} & """ + (_v(inp, 'governing_check') or _ph('e.g. Deflection --- L/600')) + r""" \\
 \hline
@@ -2110,7 +2110,7 @@ def ch9_references():
 
 
 # ---------------------------------------------------------------------------
-# Public data-classes (API unchanged)
+# Public data-classes 
 # ---------------------------------------------------------------------------
 
 @dataclass
@@ -2315,18 +2315,47 @@ class ReportDataBridge:
         Falls back to _ph() for any missing value.
         """
         try:
+            section_str = self.input_dict.get("section_designation", "")
+            if not section_str and hasattr(self.backend, 'section_props'):
+                sp = self.backend.section_props
+                if sp and 'D' in sp and 'B_top' in sp:
+                    D_mm = int(sp['D'] * 1000)
+                    B_mm = int(sp['B_top'] * 1000)
+                    section_str = f"Built-up {D_mm}x{B_mm}"
+            
+            # Start by trying to find the checks for this specific girder
             sources = self.payload.design_checks or []
             if not sources and hasattr(self.backend, "get_design_checks"):
                 sources = self.backend.get_design_checks() or []
-            girder_checks = [c for c in sources if isinstance(c, dict) and c.get("girder_id") == girder_id]
+            
+            # Map report girder IDs to analysis girder IDs
+            search_ids = [girder_id, girder_id.replace("Girder ", "G")]
+            if "5A" in girder_id:
+                search_ids.extend(["EB1", "Girder 5"])
+            elif "5B" in girder_id:
+                search_ids.extend(["EB2", "Girder 6"])
+
+            gov_check = ""
+            ur = ""
+            
+            girder_checks = [c for c in sources if isinstance(c, dict) and c.get("girder_id") in search_ids]
             if girder_checks:
                 governing = max(girder_checks, key=lambda c: float(c.get("utilisation_ratio", 0.0)))
-                ur = float(governing.get("utilisation_ratio", 0.0))
-                return {
-                    "section":         _tex(governing.get("section_designation", self.input_dict.get("section_designation", ""))),
-                    "governing_check": _tex(governing.get("check", "")),
-                    "max_ur":          f"{ur:.3f}",
-                }
+                ur = f"{float(governing.get('utilisation_ratio', 0.0)):.3f}"
+                gov_check = governing.get("check", "")
+                if not section_str:
+                    section_str = governing.get("section_designation", "")
+            
+            # If we still don't have them, fall back to the global maximums (only as a last resort)
+            if not gov_check or not ur:
+                gov_check = self.input_dict.get('governing_check', "")
+                ur = self.input_dict.get('max_ur', "")
+
+            return {
+                "section":         _tex(section_str) or _ph("Section"),
+                "governing_check": _tex(gov_check) or _ph("Check"),
+                "max_ur":          _tex(ur) or _ph("UR"),
+            }
         except Exception as exc:
             logger.warning(f"get_girder_summary error: {exc}")
         return {"section": _ph("Section"), "governing_check": _ph("Check"), "max_ur": _ph("UR")}
@@ -2458,6 +2487,52 @@ class ReportDataBridge:
 
 
 
+def _format_project_location(pl_data):
+    if not pl_data:
+        return ''
+    if isinstance(pl_data, str):
+        try:
+            import ast
+            pl_dict = ast.literal_eval(pl_data)
+        except Exception:
+            return pl_data
+    elif isinstance(pl_data, dict):
+        pl_dict = pl_data
+    else:
+        return str(pl_data)
+    
+    method = pl_dict.get('method')
+    data = pl_dict.get('data', {})
+    
+    if method == 'location_name':
+        dist = data.get('district', '')
+        state = data.get('state', '')
+        if dist and state:
+            return f"{dist}, {state}"
+        return dist or state or 'Unknown Location'
+    elif method == 'map':
+        lat = data.get('latitude', '')
+        lon = data.get('longitude', '')
+        if lat and lon:
+            try:
+                from osdagbridge.core.bridge_types.plate_girder.ui_fields_project_location import DB_PATH
+                from osdagbridge.core.data.project_location.database import Database
+                db = Database(DB_PATH)
+                db.connect()
+                nearest = db.get_nearest_station_temperature(float(lat), float(lon))
+                db.close()
+                if nearest:
+                    return f"{nearest['station']}, {nearest['state']}"
+            except Exception as e:
+                logger.warning(f"Reverse geocode error: {e}")
+            return f"Lat: {lat}°, Lon: {lon}°"
+        return 'Map Location'
+    elif method == 'custom_data':
+        return 'Custom Location Data'
+    
+    return str(pl_data)
+
+
 # ---------------------------------------------------------------------------
 # Public builder helper (unchanged signature)
 # ---------------------------------------------------------------------------
@@ -2466,7 +2541,8 @@ def build_report_payload(request, input_dict, backend_results, backend):
     try:
         rd  = request.metadata.report_date or datetime.date.today().isoformat()
         lp  = request.metadata.logo_path
-        pl  = request.metadata.project_location or input_dict.get('project_location', '')
+        raw_pl = request.metadata.project_location or input_dict.get('project.location') or ''
+        pl = _format_project_location(raw_pl)
 
         md = ReportMetadata(
             project_name  = request.metadata.project_name,
@@ -2482,31 +2558,155 @@ def build_report_payload(request, input_dict, backend_results, backend):
             report_date   = rd,
             reviewer      = getattr(request.metadata, 'reviewer', ''))
 
-        _all_keys = [
-            'span', 'carriageway_width', 'skew_angle', 'bridge_type', 'material',
-            'dead_load', 'live_load', 'seismic_zone', 'wind_speed', 'girder_spacing',
-            'num_girders', 'deck_thickness', 'num_lanes', 'girder_steel_grade',
-            'deck_concrete_grade', 'governing_check', 'max_ur', 'latitude', 'longitude',
-            'include_median', 'footpath', 'overall_design_status',
-            'deck_overhang', 'footpath_width', 'crash_barrier_type',
-            'crash_barrier_load', 'median_type', 'railing_type', 'railing_load',
-            'wearing_course_material', 'wearing_course_thickness',
-            'stud_diameter', 'stud_height', 'stud_fy', 'stud_fu', 'num_studs',
-            'shade_temp_max', 'shade_temp_min',
-            'cross_bracing_grade', 'end_diaphragm_grade',
-            'gamma_m0', 'gamma_m1', 'gamma_c', 'gamma_s', 'gamma_v',
-            'gamma_fft', 'gamma_mft', 'impact_factor', 'braking_load',
-            'footpath_live_load', 'terrain_type', 'avg_exposed_height',
-            'soil_type', 'importance_factor',
-        ]
-        inp = {k: input_dict.get(k, '') for k in _all_keys}
+        inp = {}
+        # Flatten input_dict keys (e.g., 'geometry.span' -> 'span')
+        for full_key, val in input_dict.items():
+            if val is not None:
+                short_key = full_key.split('.')[-1]
+                inp[short_key] = val
+                
+        # Map aliases for template compatibility
+        if 'girder' in inp and 'girder_steel_grade' not in inp:
+            inp['girder_steel_grade'] = inp['girder']
+            
+        if 'cross_bracing' in inp and 'cross_bracing_grade' not in inp:
+            inp['cross_bracing_grade'] = inp['cross_bracing']
+            
+        if 'end_diaphragm' in inp and 'end_diaphragm_grade' not in inp:
+            inp['end_diaphragm_grade'] = inp['end_diaphragm']
+            
+        if 'no_of_lanes' in inp and 'num_lanes' not in inp:
+            inp['num_lanes'] = inp['no_of_lanes']
+            
+        if 'no_of_girders' in inp and 'num_girders' not in inp:
+            inp['num_girders'] = inp['no_of_girders']
+
+        # Inject detailed project location and weather data into inp dict
+        try:
+            import ast
+            if isinstance(raw_pl, str) and '{' in raw_pl:
+                pl_dict = ast.literal_eval(raw_pl)
+            elif isinstance(raw_pl, dict):
+                pl_dict = raw_pl
+            else:
+                pl_dict = {}
+                
+            if pl_dict and isinstance(pl_dict, dict):
+                data = pl_dict.get('data', {})
+                weather = pl_dict.get('weather_data', {})
+                
+                # We prioritize manual inputs if they exist, else we use the DB/map coordinates
+                lat_val = data.get('latitude') or weather.get('latitude')
+                lon_val = data.get('longitude') or weather.get('longitude')
+                
+                if 'latitude' not in inp and lat_val:
+                    inp['latitude'] = lat_val
+                if 'longitude' not in inp and lon_val:
+                    inp['longitude'] = lon_val
+                    
+                if 'seismic_zone' not in inp and weather.get('zone'):
+                    inp['seismic_zone'] = weather.get('zone')
+                if 'wind_speed' not in inp and weather.get('wind_speed'):
+                    inp['wind_speed'] = weather.get('wind_speed')
+                if 'shade_temp_max' not in inp and weather.get('max_temp'):
+                    inp['shade_temp_max'] = weather.get('max_temp')
+                if 'shade_temp_min' not in inp and weather.get('min_temp'):
+                    inp['shade_temp_min'] = weather.get('min_temp')
+        except Exception as e:
+            logger.warning(f"Failed to parse project location data: {e}")
 
         asum = {}
         try:
             if backend_results:
                 asum = backend_results.get('analysis_summary', {})
+                for k, v in asum.items():
+                    if k not in inp or not inp[k]:
+                        inp[k] = v
+                
+                if 'overall_design_status' in backend_results:
+                    inp['overall_design_status'] = backend_results['overall_design_status']
+                if 'overall_utilization_ratio' in backend_results:
+                    inp['max_ur'] = backend_results['overall_utilization_ratio']
+                if 'governing_check' in backend_results:
+                    inp['governing_check'] = backend_results['governing_check']
+                
+                if 'design_parameters' in backend_results:
+                    for k, v in backend_results['design_parameters'].items():
+                        if k not in inp or not inp[k]:
+                            inp[k] = v
         except Exception:
             pass
+
+        # Fallback: extract missing data directly from PlateGirderBridge if available
+        if backend and backend.__class__.__name__ == 'PlateGirderBridge':
+            try:
+                # Sizing Result
+                if hasattr(backend, 'sizing_result') and backend.sizing_result:
+                    sr = backend.sizing_result
+                    if 'num_girders' not in inp or not inp['num_girders']:
+                        inp['num_girders'] = sr.no_of_girders
+                    if 'girder_spacing' not in inp or not inp['girder_spacing']:
+                        inp['girder_spacing'] = f"{sr.girder_spacing * 1e3:.0f} mm"
+                    if 'deck_overhang' not in inp or not inp['deck_overhang']:
+                        inp['deck_overhang'] = f"{sr.deck_overhang * 1e3:.0f} mm"
+                
+                # Deck thickness
+                if hasattr(backend, 'additional_inputs') and ('deck_thickness' not in inp or not inp['deck_thickness']):
+                    from osdagbridge.core.bridge_types.plate_girder.initial_sizing import DEFAULT_DECK_THICKNESS as _DEFAULT_DECK_THICKNESS_MM
+                    from osdagbridge.core.bridge_components.super_structure.deck.geometry import deck_thickness_from_inputs
+                    deck_t_m = deck_thickness_from_inputs(backend.additional_inputs, _DEFAULT_DECK_THICKNESS_MM)
+                    inp['deck_thickness'] = f"{deck_t_m * 1e3:.0f} mm"
+                
+                # Lanes
+                if hasattr(backend, 'basic_inputs') and ('num_lanes' not in inp or not inp['num_lanes']):
+                    from osdagbridge.core.utils.common import KEY_CARRIAGEWAY_WIDTH
+                    from osdagbridge.core.bridge_types.plate_girder.defaults import DEFAULT_CARRIAGEWAY_WIDTH_M
+                    from osdagbridge.core.utils.codes.irc6_2017 import IRC6_2017
+                    cw = backend.basic_inputs.get(KEY_CARRIAGEWAY_WIDTH, DEFAULT_CARRIAGEWAY_WIDTH_M)
+                    try:
+                        inp['num_lanes'] = IRC6_2017.table_6(float(cw))
+                    except Exception:
+                        pass
+                
+                # DCR checks
+                if hasattr(backend, '_frontend') and backend._frontend:
+                    from osdagbridge.core.utils.common import (
+                        KEY_UTIL_FLEXURE, KEY_UTIL_SHEAR, KEY_UTIL_INTERACTION,
+                        KEY_UTIL_LTB, KEY_UTIL_DEFLECTION_CRACK, KEY_UTIL_FATIGUE,
+                        KEY_UTIL_LONG_TRANS_SHEAR, KEY_UTIL_STRESS_LIMITATION
+                    )
+                    frontend = backend._frontend
+                    
+                    name_map = {
+                        KEY_UTIL_FLEXURE: "Flexure",
+                        KEY_UTIL_SHEAR: "Shear",
+                        KEY_UTIL_INTERACTION: "Flexure/Shear Interaction",
+                        KEY_UTIL_LTB: "Lateral Torsional Buckling",
+                        KEY_UTIL_DEFLECTION_CRACK: "Deflection / Crack Control",
+                        KEY_UTIL_FATIGUE: "Fatigue",
+                        KEY_UTIL_LONG_TRANS_SHEAR: "Transverse Shear",
+                        KEY_UTIL_STRESS_LIMITATION: "Stress Limitation",
+                    }
+                    
+                    max_ur_percent = -1
+                    gov_key = ""
+                    for key in name_map.keys():
+                        val = frontend.get_output_value(key)
+                        if val is not None:
+                            try:
+                                v = float(val)
+                                if v > max_ur_percent:
+                                    max_ur_percent = v
+                                    gov_key = key
+                            except Exception:
+                                pass
+                    
+                    if max_ur_percent >= 0 and ('max_ur' not in inp or not inp['max_ur']):
+                        inp['max_ur'] = f"{(max_ur_percent / 100.0):.3f}"
+                        inp['overall_design_status'] = "FAIL" if max_ur_percent > 100 else "PASS"
+                        inp['governing_check'] = name_map.get(gov_key, gov_key)
+            except Exception as e:
+                logger.warning("Error extracting data from PlateGirderBridge for report: %s", e)
 
         dc = []
         try:

@@ -700,15 +700,54 @@ class PlateGirderBridge:
     def _run_dcr_checks(self, dataset) -> None:
         """Run structural capacity checks and push DCR percentages to the output dock."""
         results = PlateGirderAnalysisResults(dataset=dataset, bridge=self.grillage_model)
-        _, engine = run_design_check(
-            plate_girder_bridge=self,
-            analysis_results=results,
-            print_report=True,
-        )
+        
+        girders, _ = results.build_girders(verbose=False)
+        self.design_checks_list = []
+        overall_dcr_by_id: dict[int, float] = {}
 
-        dcr_by_id: dict[int, float] = {}
-        for c in engine.checks:
-            dcr_by_id[c.check_id] = max(dcr_by_id.get(c.check_id, 0.0), c.dcr)
+        for g_name in girders.keys():
+            # Standardize name for report generator (e.g. "G1" -> "Girder 1")
+            report_name = g_name
+            if g_name.startswith("G") and g_name[1:].isdigit():
+                report_name = f"Girder {g_name[1:]}"
+                
+            try:
+                _, engine = run_design_check(
+                    plate_girder_bridge=self,
+                    analysis_results=results,
+                    print_report=False,
+                    girder_name=g_name,
+                )
+                
+                if engine and engine.checks:
+                    max_chk = max(engine.checks, key=lambda c: c.dcr)
+                    self.design_checks_list.append({
+                        "girder_id": report_name,
+                        "check": max_chk.name,
+                        "utilisation_ratio": max_chk.dcr,
+                        "section_designation": ""
+                    })
+                    
+                    for c in engine.checks:
+                        overall_dcr_by_id[c.check_id] = max(overall_dcr_by_id.get(c.check_id, 0.0), c.dcr)
+            except Exception as e:
+                import logging
+                logging.getLogger(__name__).warning(f"Failed to run design check for {g_name}: {e}")
+
+        # Fallback if no girders processed
+        if not overall_dcr_by_id:
+            try:
+                _, engine = run_design_check(
+                    plate_girder_bridge=self,
+                    analysis_results=results,
+                    print_report=True,
+                )
+                for c in engine.checks:
+                    overall_dcr_by_id[c.check_id] = max(overall_dcr_by_id.get(c.check_id, 0.0), c.dcr)
+            except Exception:
+                pass
+
+        dcr_by_id = overall_dcr_by_id
         self._frontend.set_output_value(KEY_UTIL_FLEXURE,          dcr_by_id.get(1,  0.0) * 100)
         self._frontend.set_output_value(KEY_UTIL_SHEAR,            dcr_by_id.get(2,  0.0) * 100)
         self._frontend.set_output_value(KEY_UTIL_INTERACTION,      dcr_by_id.get(3,  0.0) * 100)
@@ -721,6 +760,10 @@ class PlateGirderBridge:
         self._frontend.set_output_value(KEY_UTIL_LONG_TRANS_SHEAR,  trans_shear_dcr * 100)
         stress_dcr = max(dcr_by_id.get(10, 0.0), dcr_by_id.get(11, 0.0), dcr_by_id.get(12, 0.0))
         self._frontend.set_output_value(KEY_UTIL_STRESS_LIMITATION, stress_dcr * 100)
+
+    def get_design_checks(self) -> list:
+        """Return the per-girder design checks list for report generation."""
+        return getattr(self, 'design_checks_list', [])
 
     # ─────────────────────────────────────────────────────────────────────────
     # Plotting
