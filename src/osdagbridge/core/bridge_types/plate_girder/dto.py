@@ -286,6 +286,10 @@ class GirderSegmentDTO:
 @dataclass
 class BridgeParametersDTO:
 
+    # --- Material Grades ---
+    steel_grade: str
+    concrete_grade: str
+
     # --- Girder ---
     span_length_L: float
     girder_section_d: float

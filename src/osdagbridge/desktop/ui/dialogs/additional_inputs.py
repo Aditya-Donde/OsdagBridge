@@ -1,4 +1,4 @@
-﻿"""
+"""
 Additional Inputs Widget for Highway Bridge Design
 Provides detailed input fields for manual bridge parameter definition
 """

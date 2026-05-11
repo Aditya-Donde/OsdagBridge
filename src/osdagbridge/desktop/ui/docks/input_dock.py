@@ -742,9 +742,21 @@ class InputDock(QWidget):
 
     def _on_additional_inputs_closed(self):
         try:
+            # Capture the raw serialized state for dialog restoration
             saved = self.additional_inputs.get_saved_data()
             if isinstance(saved, dict) and saved:
                 self._additional_inputs_saved_data = saved
+            
+            # Capture the flattened/processed values for CAD mapping and IFC export
+            # This ensures keys like 'median_type' are populated even if the dialog
+            # was closed via 'Save' (which doesn't trigger the Accepted signal).
+            vals = self.additional_inputs.get_all_values()
+            if isinstance(vals, dict) and vals:
+                if not self.additional_input_values:
+                    self.additional_input_values = {}
+                self.additional_input_values.update(vals)
+                # Notify template page that inputs have changed to refresh 2D CAD
+                self.input_value_changed.emit()
         except Exception:
             pass
         self.additional_inputs = None

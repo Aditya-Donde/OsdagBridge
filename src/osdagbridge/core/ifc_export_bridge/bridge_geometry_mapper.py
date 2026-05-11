@@ -48,6 +48,14 @@ class BridgeGeometryMapper:
         xdr = self.file.createIfcDirection([float(v) for v in x_dir])
         return self.file.createIfcAxis2Placement2D(pt, xdr)
 
+    def apply_color(self, shape_rep, rgb_tuple):
+        """Applies an RGB color to an IfcShapeRepresentation."""
+        rgb = self.file.createIfcColourRgb(None, float(rgb_tuple[0]), float(rgb_tuple[1]), float(rgb_tuple[2]))
+        surf_style = self.file.createIfcSurfaceStyleRendering(SurfaceColour=rgb)
+        surface_style = self.file.createIfcSurfaceStyle(None, "BOTH", [surf_style])
+        for item in shape_rep.Items:
+            self.file.createIfcStyledItem(item, [surface_style], None)
+
     # --- NATIVE PROFILE TRANSLATORS ---
     
     def create_rectangular_profile(self, width, height):
@@ -74,49 +82,100 @@ class BridgeGeometryMapper:
             WallThickness=float(web_thickness), Girth=float(flange_thickness), InternalFilletRadius=None
         )
 
+    def create_i_shape_profile(self, depth, width, web_thickness, flange_thickness):
+        return self.file.createIfcIShapeProfileDef(
+            ProfileType="AREA", ProfileName=None,
+            Position=self.create_axis2placement_2d(),
+            OverallWidth=float(width),
+            OverallDepth=float(depth),
+            WebThickness=float(web_thickness),
+            FlangeThickness=float(flange_thickness),
+            FilletRadius=None, FlangeEdgeRadius=None, FlangeSlope=None
+        )
+
     def create_double_angle_profile(self, leg_h, leg_w, thickness, connection_type):
-        """Builds a composite polygonal profile for two back-to-back angles."""
-        # Using a polygonal profile definition explicitly mapped from coordinates
-        pts = []
-        if connection_type == "SHORTER_LEG":
-            # Mirrors around X-axis
-            pts = [
-                (-leg_h, -thickness), (0, -thickness), (0, -leg_w),
-                (thickness, -leg_w), (thickness, -thickness), (thickness+leg_h, -thickness),
-                (thickness+leg_h, 0), (thickness, 0), (thickness, leg_w-thickness),
-                (0, leg_w-thickness), (0, 0), (-leg_h, 0)
-            ]
-        else: # LONGER_LEG
-            pts = [
-                (-leg_w, -thickness), (0, -thickness), (0, -leg_h),
-                (thickness, -leg_h), (thickness, -thickness), (thickness+leg_w, -thickness),
-                (thickness+leg_w, 0), (thickness, 0), (thickness, leg_h-thickness),
-                (0, leg_h-thickness), (0, 0), (-leg_w, 0)
-            ]
-        
-        ifc_pts = [self.create_cartesian_point_2d(p[0], p[1]) for p in pts]
-        polyline = self.file.createIfcPolyline(ifc_pts + [ifc_pts[0]]) # Close loop
-        return self.file.createIfcArbitraryClosedProfileDef("AREA", "DoubleAngle", polyline)
+        """Builds a composite profile for two back-to-back angles separated by a gap."""
+        gap = thickness
+        v_leg = leg_w if connection_type == "SHORTER_LEG" else leg_h
+        h_leg = leg_h if connection_type == "SHORTER_LEG" else leg_w
+
+        right_pts = [
+            (gap/2, -v_leg/2), 
+            (gap/2 + h_leg, -v_leg/2), 
+            (gap/2 + h_leg, -v_leg/2 + thickness), 
+            (gap/2 + thickness, -v_leg/2 + thickness), 
+            (gap/2 + thickness, v_leg/2), 
+            (gap/2, v_leg/2)
+        ]
+        left_pts = [
+            (-gap/2, -v_leg/2), 
+            (-gap/2, v_leg/2), 
+            (-gap/2 - thickness, v_leg/2), 
+            (-gap/2 - thickness, -v_leg/2 + thickness), 
+            (-gap/2 - h_leg, -v_leg/2 + thickness), 
+            (-gap/2 - h_leg, -v_leg/2)
+        ]
+
+        def _make_prof(pts, name):
+            ifc_pts = [self.create_cartesian_point_2d(p[0], p[1]) for p in pts]
+            polyline = self.file.createIfcPolyline(ifc_pts + [ifc_pts[0]])
+            return self.file.createIfcArbitraryClosedProfileDef("AREA", name, polyline)
+
+        right_prof = _make_prof(right_pts, "RightAngle")
+        left_prof = _make_prof(left_pts, "LeftAngle")
+        return self.file.createIfcCompositeProfileDef("AREA", "DoubleAngle", [left_prof, right_prof], None)
 
     def create_double_channel_profile(self, depth, width, tw, tf):
-        """Builds a composite polygonal profile for two back-to-back channels."""
+        """Builds a composite profile for two back-to-back channels separated by a gap."""
         gap = width # standard gap 
-        pts = [
-            (-width, depth/2), (0, depth/2), (0, -depth/2), (-width, -depth/2),
-            (-width, -depth/2+tf), (-tw, -depth/2+tf), (-tw, depth/2-tf), (-width, depth/2-tf),
-            # Transition to second channel via gap
-            (gap, depth/2-tf), (gap+tw, depth/2-tf), (gap+tw, -depth/2+tf), (gap, -depth/2+tf),
-            (gap, -depth/2), (gap+width, -depth/2), (gap+width, depth/2), (gap, depth/2)
+
+        right_pts = [
+            (gap/2, -depth/2),
+            (gap/2 + width, -depth/2),
+            (gap/2 + width, -depth/2 + tf),
+            (gap/2 + tw, -depth/2 + tf),
+            (gap/2 + tw, depth/2 - tf),
+            (gap/2 + width, depth/2 - tf),
+            (gap/2 + width, depth/2),
+            (gap/2, depth/2)
         ]
-        ifc_pts = [self.create_cartesian_point_2d(p[0], p[1]) for p in pts]
-        polyline = self.file.createIfcPolyline(ifc_pts + [ifc_pts[0]])
-        return self.file.createIfcArbitraryClosedProfileDef("AREA", "DoubleChannel", polyline)
+        left_pts = [
+            (-gap/2, -depth/2),
+            (-gap/2, depth/2),
+            (-gap/2 - width, depth/2),
+            (-gap/2 - width, depth/2 - tf),
+            (-gap/2 - tw, depth/2 - tf),
+            (-gap/2 - tw, -depth/2 + tf),
+            (-gap/2 - width, -depth/2 + tf),
+            (-gap/2 - width, -depth/2)
+        ]
+
+        def _make_prof(pts, name):
+            ifc_pts = [self.create_cartesian_point_2d(p[0], p[1]) for p in pts]
+            polyline = self.file.createIfcPolyline(ifc_pts + [ifc_pts[0]])
+            return self.file.createIfcArbitraryClosedProfileDef("AREA", name, polyline)
+
+        right_prof = _make_prof(right_pts, "RightChannel")
+        left_prof = _make_prof(left_pts, "LeftChannel")
+        return self.file.createIfcCompositeProfileDef("AREA", "DoubleChannel", [left_prof, right_prof], None)
         
     def create_polygonal_profile(self, points, name="Polygon"):
         """Used for custom skewed deck slabs and continuous crash barriers."""
         ifc_pts = [self.create_cartesian_point_2d(p[0], p[1]) for p in points]
         polyline = self.file.createIfcPolyline(ifc_pts + [ifc_pts[0]])
         return self.file.createIfcArbitraryClosedProfileDef("AREA", name, polyline)
+
+    def create_polygonal_profile_with_voids(self, outer_points, inner_points_list, name="PolygonWithVoids"):
+        """Creates an arbitrary profile with one outer boundary and multiple inner voids."""
+        outer_ifc_pts = [self.create_cartesian_point_2d(p[0], p[1]) for p in outer_points]
+        outer_polyline = self.file.createIfcPolyline(outer_ifc_pts + [outer_ifc_pts[0]])
+        
+        inner_polylines = []
+        for inner_points in inner_points_list:
+            inner_ifc_pts = [self.create_cartesian_point_2d(p[0], p[1]) for p in inner_points]
+            inner_polylines.append(self.file.createIfcPolyline(inner_ifc_pts + [inner_ifc_pts[0]]))
+            
+        return self.file.createIfcArbitraryProfileDefWithVoids("AREA", name, outer_polyline, inner_polylines)
 
     # --- GEOMETRIC SOLID EXTRUSION ---
     

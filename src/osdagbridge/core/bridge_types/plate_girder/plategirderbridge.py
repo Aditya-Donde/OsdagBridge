@@ -840,7 +840,14 @@ class PlateGirderBridge:
         _angle_dims = SectionDimsDTO(leg_h=100, leg_w=50, connection_type="LONGER_LEG")
         _small_dims = SectionDimsDTO(leg_h=80,  leg_w=40, connection_type="LONGER_LEG")
 
+        steel_grade = str(self.basic_inputs.get(KEY_GIRDER, "E 250A")).strip()
+        concrete_grade = str(self.basic_inputs.get(KEY_DECK_CONCRETE_GRADE_BASIC, "M30")).strip()
+
         return BridgeParametersDTO(
+            # --- Material Grades ---
+            steel_grade=steel_grade,
+            concrete_grade=concrete_grade,
+            
             # --- Girder ---
             span_length_L=span_mm,
             girder_section_d=D,

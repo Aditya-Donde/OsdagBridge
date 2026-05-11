@@ -139,6 +139,10 @@ class PlateGirderCADGenerator:
         self.component = None
 
     def _set_parameters(self, design_params: BridgeParametersDTO):
+        # MATERIAL GRADES
+        self.steel_grade = design_params.steel_grade
+        self.concrete_grade = design_params.concrete_grade
+        
         # GIRDER PARAMETERS
         self.span_length_L = design_params.span_length_L
         self.girder_section_d = design_params.girder_section_d

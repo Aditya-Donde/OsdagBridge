@@ -19,13 +19,11 @@ class PlateGirderIfcExportHandler:
     def export(self):
         """Extracts and Maps synchronously."""
         try:
-            print("Starting Data Bridging Extraction...")
             extractor = PlateGirderIFCExtractor(self.cad_generator)
             extracted_dict = extractor.extract()
             
-            print("Beginning Geometric Translation and IFC Schema Construction...")
             generator = BridgeIfcGenerator(self.filepath)
-            generator.generate_from_extracted_data(extracted_dict)
+            generator.generate_from_extracted_data(extracted_dict, self.cad_generator)
             
             if self.callback:
                 self.callback(True, f"Model successfully exported to {self.filepath}")

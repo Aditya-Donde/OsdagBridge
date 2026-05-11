@@ -364,7 +364,7 @@ class PlateGirderIFCExtractor:
             [self._calculate_skew_offset(y_max), y_max, z_top]
         ]
         
-        return [ExtractedObject("SlabPolygon", points=pts, thickness=T*0.001, ifc_name="Deck Slab")]
+        return [ExtractedObject("SlabPolygon", points=pts, thickness=T, ifc_name="Deck Slab")]
 
     def _extract_safety_components(self, design_dict, actual_base_width, actual_railing_width):
         components = []
@@ -394,9 +394,14 @@ class PlateGirderIFCExtractor:
             y_r -= (self.cad.footpath_width + actual_railing_width)
             
         # Map barrier types to labels for Geometry Retrieval
-        if self.cad.barrier_type == "Rigid":
+        # UI stores the full IRC label directly (e.g., "IRC 5 - RCC Crash Barrier")
+        # Support both full IRC labels (new) and legacy short names (old)
+        bt = str(self.cad.barrier_type)
+        if bt.startswith("IRC 5"):
+            barrier_label = bt  # Already a full IRC label from the UI
+        elif bt == "Rigid":
             barrier_label = "IRC 5 - High Containment RCC Crash Barrier" if self.cad.crash_barrier_subtype == "High Containment" else "IRC 5 - RCC Crash Barrier"
-        else:
+        else:  # Legacy "Flexible" / "Semi-Rigid" / "Metallic"
             barrier_label = "IRC 5 - Metallic Crash Barrier with Double W-Beam" if self.cad.crash_barrier_subtype == "Double W-beam" else "IRC 5 - Metallic Crash Barrier with Single W-Beam"
 
         barrier_geo = CrashBarrierGeometry.get_geometry(barrier_label)
@@ -414,12 +419,19 @@ class PlateGirderIFCExtractor:
             median_y = carriageway_offset
             
             # Map median type to labels
-            if self.cad.median_type == "Raised Kerb":
+            # UI stores the full IRC label directly (e.g., "IRC 5 - Raised Kerb")
+            # Support both full IRC labels (new) and legacy short names (old)
+            mt = str(self.cad.median_type)
+            if mt.startswith("IRC 5"):
+                median_label = mt  # Already a full IRC label from the UI
+            elif mt == "Raised Kerb":
                 median_label = "IRC 5 - Raised Kerb"
-            elif self.cad.median_type == "RCC Crash Barrier":
+            elif mt == "RCC Crash Barrier":
                 median_label = "IRC 5 - RCC Crash Barrier"
+            elif "Double" in mt:
+                median_label = "IRC 5 - Metallic Crash Barrier with Double W-Beam"
             else:
-                median_label = "IRC 5 - Metallic Crash Barrier with Double W-Beam" if "Double" in str(self.cad.median_type) else "IRC 5 - Metallic Crash Barrier with Single W-Beam"
+                median_label = "IRC 5 - Metallic Crash Barrier with Single W-Beam"
 
             median_geo = MedianGeometry.get_geometry(median_label)
             components.append(ExtractedObject("BarrierSweep", type="Median", subtype=self.cad.median_type, span=L, 
