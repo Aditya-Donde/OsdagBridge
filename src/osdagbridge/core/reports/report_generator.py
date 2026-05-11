@@ -3588,6 +3588,7 @@ def _format_project_location(pl_data):
     
     return str(pl_data)
 
+
 # ---------------------------------------------------------------------------
 # Public builder helper (unchanged signature)
 # ---------------------------------------------------------------------------
