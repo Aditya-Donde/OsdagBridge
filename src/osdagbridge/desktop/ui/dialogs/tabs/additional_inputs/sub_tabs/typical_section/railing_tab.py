@@ -1,7 +1,7 @@
 """Railing sub-tab for Typical Section Details."""
 
 from osdagbridge.core.utils.common import MIN_RAILING_HEIGHT
-from osdagbridge.desktop.ui.dialogs.tabs.schemas.plate_girder import (
+from osdagbridge.core.bridge_types.plate_girder.schemas import (
     RAILING_TAB_SCHEMA,
 )
 from osdagbridge.desktop.ui.dialogs.tabs.base import SchemaTab

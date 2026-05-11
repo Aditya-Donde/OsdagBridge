@@ -36,6 +36,16 @@ def test_typical_section_reset_restores_schema_owned_fields(qapp):
     assert tab.wearing_thickness.text() == "50"
 
 
+def test_typical_section_overall_width_uses_component_widths(qapp):
+    tab = TypicalSectionDetailsTab()
+    tab.set_bridge_context(footpath_value="None", carriageway_width=7.5)
+    median_idx = tab.input_tabs.indexOf(tab.median_tab)
+    tab.input_tabs.setTabEnabled(median_idx, False)
+    qapp.processEvents()
+
+    assert tab.get_overall_bridge_width() == 8.5
+
+
 def test_layout_notice_api_and_lane_state(qapp):
     tab = TypicalSectionDetailsTab()
     qapp.processEvents()
@@ -134,6 +144,17 @@ def test_lane_details_rebuilds_choices_when_bridge_width_changes(qapp):
     assert lane_tab.lane_count_combo.count() == 2
 
     tab.set_bridge_context(carriageway_width=14.0)
+    qapp.processEvents()
+
+    assert [lane_tab.lane_count_combo.itemText(i) for i in range(lane_tab.lane_count_combo.count())] == [
+        "1",
+        "2",
+        "3",
+    ]
+    assert lane_tab.lane_count_combo.currentText() == "3"
+    assert lane_tab.table.rowCount() == 3
+
+    tab.set_bridge_context(carriageway_width=14.5)
     qapp.processEvents()
 
     assert [lane_tab.lane_count_combo.itemText(i) for i in range(lane_tab.lane_count_combo.count())] == [

@@ -18,7 +18,7 @@ from osdagbridge.desktop.ui.dialogs.tabs.common import apply_field_style, create
 from osdagbridge.desktop.ui.dialogs.custom_messagebox import CustomMessageBox, MessageBoxType
 from osdagbridge.desktop.ui.dialogs.tabs.additional_inputs.typical_section_details import show_warning
 from osdagbridge.desktop.ui.dialogs.tabs.builder import UIBuilder
-from osdagbridge.desktop.ui.dialogs.tabs.schemas.plate_girder import (
+from osdagbridge.core.bridge_types.plate_girder.schemas import (
     ADDITIONAL_INPUTS_ORCHESTRATOR_SCHEMA,
 )
 from osdagbridge.desktop.ui.utils.custom_widgets import SmartCursorComboBoxView
@@ -122,7 +122,7 @@ class AdditionalInputs(QDialog):
         self._top_tab_attrs = _top_tab_attrs(self._orchestrator_schema) or _TOP_TAB_ATTRS
         super().__init__(parent)
         self.setObjectName("AdditionalInputs")
-        self.resize(1024, 720)
+        self.resize(1024, 850)
         self.setMinimumSize(900, 520)
         self.setSizeGripEnabled(True)
         self.footpath_value = footpath_value

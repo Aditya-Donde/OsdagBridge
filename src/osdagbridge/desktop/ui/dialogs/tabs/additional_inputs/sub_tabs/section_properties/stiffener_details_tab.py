@@ -16,7 +16,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from osdagbridge.desktop.ui.dialogs.tabs.schemas.plate_girder import STIFFENER_DETAILS_SCHEMA
+from osdagbridge.core.bridge_types.plate_girder.schemas import STIFFENER_DETAILS_SCHEMA
 from osdagbridge.desktop.ui.dialogs.tabs import schema_io
 from osdagbridge.desktop.ui.dialogs.tabs.builder import UIBuilder
 from osdagbridge.desktop.ui.dialogs.tabs.base import SchemaTab

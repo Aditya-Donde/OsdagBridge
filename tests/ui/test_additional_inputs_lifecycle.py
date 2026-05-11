@@ -1,6 +1,8 @@
 import osdagbridge.desktop.ui.dialogs.additional_inputs as additional_inputs_module
+import osdagbridge.desktop.ui.docks.input_dock as input_dock_module
 from osdagbridge.core.utils.common import (
     KEY_BEARING_LENGTH,
+    KEY_CARRIAGEWAY_WIDTH,
     KEY_CROSS_BRACING_SECTION,
     KEY_CROSS_BRACING_SPACING,
     KEY_CROSS_BRACING_TYPE,
@@ -11,10 +13,17 @@ from osdagbridge.core.utils.common import (
     KEY_FOOTPATH_PRESSURE_VALUE,
     KEY_GIRDER_IS_SECTION,
     KEY_GIRDER_TYPE,
+    KEY_INCLUDE_MEDIAN,
     KEY_LONGITUDINAL_STIFFENER,
     KEY_PROJECT_LOCATION,
     KEY_SELF_WEIGHT_FACTOR,
+    KEY_SPAN,
     KEY_STIFFENER_DESIGN_METHOD,
+    TYPE_BUTTON,
+    TYPE_COMBOBOX,
+    TYPE_MODULE,
+    TYPE_TEXTBOX,
+    TYPE_TITLE,
 )
 from osdagbridge.desktop.ui.dialogs.additional_inputs import AdditionalInputs
 from osdagbridge.desktop.ui.docks.input_dock import InputDock
@@ -307,6 +316,108 @@ def test_input_dock_open_additional_inputs_applies_project_location(qapp, monkey
     monkeypatch.setattr(AdditionalInputs, "exec_", fake_exec)
 
     dock._open_additional_inputs()
+
+
+def test_input_dock_blocks_additional_inputs_until_basic_inputs_are_complete(qapp, monkeypatch):
+    class DummyMessageBox:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def exec(self):
+            return "OK"
+
+    class Backend:
+        def input_values(self):
+            return [
+                ("module", None, TYPE_MODULE, None, True, "No Validator", {}),
+                ("basic", "Basic", TYPE_TITLE, None, True, "No Validator", {}),
+                (KEY_SPAN, "Span", TYPE_TEXTBOX, None, True, "Double Validator", {"required": True}),
+                (
+                    KEY_CARRIAGEWAY_WIDTH,
+                    "Carriageway Width",
+                    TYPE_TEXTBOX,
+                    None,
+                    True,
+                    "Double Validator",
+                    {"required": True},
+                ),
+                (
+                    KEY_PROJECT_LOCATION,
+                    "Project Location",
+                    TYPE_BUTTON,
+                    None,
+                    True,
+                    "No Validator",
+                    {
+                        "action": "show_project_location_dialog",
+                        "button_label": "Select Location",
+                        "required": True,
+                    },
+                ),
+            ]
+
+    class Parent:
+        def __init__(self):
+            self.input_dict = {}
+
+        def common_design_func(self, trigger):
+            self.trigger = trigger
+
+    monkeypatch.setattr(input_dock_module, "CustomMessageBox", DummyMessageBox)
+
+    parent = Parent()
+    dock = InputDock(backend=Backend(), parent=parent)
+    monkeypatch.setattr(AdditionalInputs, "exec_", lambda dialog: AdditionalInputs.Rejected)
+
+    dock._open_additional_inputs()
+    assert dock.additional_inputs is None
+
+    dock._w(KEY_SPAN).setText("30")
+    dock._w(KEY_CARRIAGEWAY_WIDTH).setText("7.5")
+    parent.input_dict[KEY_PROJECT_LOCATION] = {"city": "Pune"}
+
+    dock._open_additional_inputs()
+    assert dock.additional_inputs is not None
+
+
+def test_input_dock_uses_per_carriageway_width_with_median(qapp):
+    class Backend:
+        def input_values(self):
+            return [
+                ("module", None, TYPE_MODULE, None, True, "No Validator", {}),
+                ("basic", "Basic", TYPE_TITLE, None, True, "No Validator", {}),
+                (
+                    KEY_INCLUDE_MEDIAN,
+                    "Include Median",
+                    TYPE_COMBOBOX,
+                    ["No", "Yes"],
+                    True,
+                    "No Validator",
+                    {"default": "Yes"},
+                ),
+                (
+                    KEY_CARRIAGEWAY_WIDTH,
+                    "Carriageway Width",
+                    TYPE_TEXTBOX,
+                    None,
+                    True,
+                    "Double Validator",
+                    {"required": True},
+                ),
+            ]
+
+    class Parent:
+        def __init__(self):
+            self.input_dict = {}
+
+        def common_design_func(self, trigger):
+            self.trigger = trigger
+
+    dock = InputDock(backend=Backend(), parent=Parent())
+    dock._w(KEY_CARRIAGEWAY_WIDTH).setText("8.0")
+
+    assert dock._is_median_included() is True
+    assert dock._get_effective_carriageway_width() == 8.0
 
 
 def test_input_dock_applies_additional_values_to_parent_input_dict(qapp, monkeypatch):

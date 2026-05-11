@@ -1,6 +1,6 @@
 """Crash Barrier sub-tab for Typical Section Details."""
 
-from osdagbridge.desktop.ui.dialogs.tabs.schemas.plate_girder import (
+from osdagbridge.core.bridge_types.plate_girder.schemas import (
     CRASH_BARRIER_TAB_SCHEMA,
 )
 from osdagbridge.desktop.ui.dialogs.tabs.base import SchemaTab

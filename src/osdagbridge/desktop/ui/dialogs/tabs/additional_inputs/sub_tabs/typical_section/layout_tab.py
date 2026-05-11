@@ -1,14 +1,27 @@
-from PySide6.QtWidgets import QLabel, QSizePolicy, QVBoxLayout, QWidget
+import copy
 import math
 
-from osdagbridge.desktop.ui.dialogs.tabs.schemas.plate_girder import LAYOUT_TAB_SCHEMA
+from PySide6.QtWidgets import QLabel, QSizePolicy, QVBoxLayout, QWidget
+
+from osdagbridge.core.bridge_types.plate_girder.schemas import LAYOUT_TAB_SCHEMA
 from osdagbridge.desktop.ui.dialogs.tabs.base import SchemaTab
 
 
 class LayoutTab(SchemaTab):
     schema = LAYOUT_TAB_SCHEMA
 
-    def __init__(self, owner, parent=None):
+    def __init__(
+        self,
+        owner,
+        parent=None,
+        row_indices: list[int] | tuple[int, ...] | None = None,
+        show_title: bool = True,
+        add_bottom_stretch: bool = True,
+    ):
+        self.row_indices = tuple(row_indices) if row_indices is not None else None
+        self.show_title = bool(show_title)
+        self.add_bottom_stretch = bool(add_bottom_stretch)
+        self.schema = self._schema_for_rows(self.row_indices, self.add_bottom_stretch)
         super().__init__(owner, parent)
         self._layout_updating = False
         self._last_spacing_value: float | None = None
@@ -18,19 +31,40 @@ class LayoutTab(SchemaTab):
         if hasattr(owner, "overall_bridge_width_display") and hasattr(owner, "overall_bridge_width_formula"):
             owner.overall_bridge_width_display.setToolTip(owner.overall_bridge_width_formula)
 
-        self._create_notice_labels(owner, self.builder.page_layout)
+        if self._has_layout_solver_fields():
+            self._create_notice_labels(owner, self.builder.page_layout)
         self._wire_owner_side_effects()
+
+    @staticmethod
+    def _schema_for_rows(row_indices, add_bottom_stretch: bool) -> dict:
+        schema = copy.deepcopy(LAYOUT_TAB_SCHEMA)
+        schema["add_stretch"] = bool(add_bottom_stretch)
+        if row_indices is not None:
+            selected = set(int(idx) for idx in row_indices)
+            schema["rows"] = [
+                row
+                for idx, row in enumerate(schema.get("rows", []))
+                if idx in selected
+            ]
+        return schema
+
+    def _has_layout_solver_fields(self) -> bool:
+        return all(
+            self.get_widget(bind_name) is not None
+            for bind_name in ("girder_spacing", "deck_overhang", "no_of_girders")
+        )
 
     def _create_notice_labels(self, owner, page_layout):
         self.layout_adjust_notice = self._make_notice_label("#000000")
         self.layout_warning_notice = self._make_notice_label("#cc6600")
 
         container = QWidget()
-        container.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Preferred)
+        container.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
         container.setFixedWidth(180)
+        container.setFixedHeight(18)
         vlayout = QVBoxLayout(container)
         vlayout.setContentsMargins(0, 0, 0, 0)
-        vlayout.setSpacing(4)
+        vlayout.setSpacing(0)
         vlayout.addWidget(self.layout_adjust_notice)
         vlayout.addWidget(self.layout_warning_notice)
         container.hide()
@@ -38,9 +72,14 @@ class LayoutTab(SchemaTab):
         owner.layout_adjust_notice = self.layout_adjust_notice
         owner.layout_warning_notice = self.layout_warning_notice
         owner.layout_notice_container = container
-        page_layout.insertWidget(page_layout.count() - 1, container)
+        insert_index = page_layout.count()
+        if self.add_bottom_stretch and insert_index > 0:
+            insert_index -= 1
+        page_layout.insertWidget(insert_index, container)
 
     def clear_notices(self) -> None:
+        if not hasattr(self, "layout_notice_container"):
+            return
         self.layout_adjust_notice.hide()
         self.layout_adjust_notice.setText("")
         self.layout_warning_notice.hide()
@@ -393,6 +432,8 @@ class LayoutTab(SchemaTab):
         return params
 
     def set_notices(self, reason: str | None = None, warning: str | None = None) -> None:
+        if not hasattr(self, "layout_notice_container"):
+            return
         any_visible = bool(reason) or bool(warning)
         if reason:
             self.layout_adjust_notice.setText(f"Values adjusted: {reason}")
@@ -499,8 +540,9 @@ class LayoutTab(SchemaTab):
         lbl.setStyleSheet(
             f"font-size: 10px; font-style: italic; color: {color}; background-color: transparent;"
         )
-        lbl.setWordWrap(True)
-        lbl.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Preferred)
+        lbl.setWordWrap(False)
+        lbl.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
         lbl.setFixedWidth(180)
+        lbl.setFixedHeight(16)
         lbl.hide()
         return lbl

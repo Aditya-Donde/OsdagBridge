@@ -46,7 +46,6 @@ TYPICAL_SECTION_ORCHESTRATOR_SCHEMA = {
             "stretch": 1,
             "min_height": 220,
             "tabs": [
-                {"label": "Layout", "widget_class": "LayoutTab", "bind": "layout_tab"},
                 {"label": "Crash Barrier", "widget_class": "CrashBarrierTab", "bind": "crash_barrier_tab"},
                 {"label": "Railing", "widget_class": "RailingTab", "bind": "railing_tab"},
                 {"label": "Median", "widget_class": "MedianTab", "bind": "median_tab"},

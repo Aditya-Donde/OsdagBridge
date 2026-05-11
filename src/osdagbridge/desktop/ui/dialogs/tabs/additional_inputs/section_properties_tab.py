@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from PySide6.QtWidgets import QTabWidget
 
-from osdagbridge.desktop.ui.dialogs.tabs.schemas.plate_girder import (
+from osdagbridge.core.bridge_types.plate_girder.schemas import (
     SECTION_PROPERTIES_ORCHESTRATOR_SCHEMA,
 )
 from osdagbridge.desktop.ui.dialogs.tabs.base import SchemaTab

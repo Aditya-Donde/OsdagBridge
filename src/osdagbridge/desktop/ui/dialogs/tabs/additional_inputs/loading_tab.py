@@ -1,7 +1,7 @@
 from PySide6.QtWidgets import QTabWidget
 
 from osdagbridge.desktop.ui.dialogs.tabs.base import SchemaTab
-from osdagbridge.desktop.ui.dialogs.tabs.schemas.plate_girder import LOADING_ORCHESTRATOR_SCHEMA
+from osdagbridge.core.bridge_types.plate_girder.schemas import LOADING_ORCHESTRATOR_SCHEMA
 
 _LOADING_TAB_ATTRS = (
     "permanent_load_tab",

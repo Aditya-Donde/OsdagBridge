@@ -1,4 +1,4 @@
-from osdagbridge.desktop.ui.dialogs.tabs.schemas.plate_girder import TEMPERATURE_LOAD_TAB_SCHEMA
+from osdagbridge.core.bridge_types.plate_girder.schemas import TEMPERATURE_LOAD_TAB_SCHEMA
 from osdagbridge.desktop.ui.dialogs.tabs.base import SchemaTab
 
 

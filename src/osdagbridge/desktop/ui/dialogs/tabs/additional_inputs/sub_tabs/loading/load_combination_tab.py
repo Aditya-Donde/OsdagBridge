@@ -1,7 +1,7 @@
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QDialog, QHeaderView, QWidget, QCheckBox
 
-from osdagbridge.desktop.ui.dialogs.tabs.schemas.plate_girder import (
+from osdagbridge.core.bridge_types.plate_girder.schemas import (
     LOAD_COMBINATION_TAB_SCHEMA,
 )
 from osdagbridge.desktop.ui.dialogs.tabs import schema_io

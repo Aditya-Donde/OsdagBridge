@@ -1,6 +1,6 @@
 from PySide6.QtWidgets import QGridLayout, QWidget
 
-from osdagbridge.desktop.ui.dialogs.tabs.schemas.plate_girder import (
+from osdagbridge.core.bridge_types.plate_girder.schemas import (
     DESIGN_OPTIONS_SCHEMA,
 )
 from osdagbridge.desktop.ui.dialogs.tabs.base import SchemaTab

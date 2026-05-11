@@ -615,6 +615,80 @@ class InputDock(QWidget):
         if self._current_design_mode.lower() == "custom":
             self._open_additional_inputs(target_tab="Member Properties")
 
+    def _basic_inputs_ready_for_additional_inputs(self) -> bool:
+        """Gate Additional Inputs behind the same required Basic Inputs rules as Design."""
+        parent_validator = getattr(self.parent, "validate_required_inputs", None)
+        if callable(parent_validator):
+            if not parent_validator():
+                return False
+        elif not self._validate_required_basic_inputs_locally():
+            return False
+
+        return self._validate_basic_values_before_additional_inputs()
+
+    def _validate_required_basic_inputs_locally(self) -> bool:
+        required_fields = []
+        for defn in self.backend.input_values():
+            if len(defn) < 7:
+                continue
+            key, label, _ftype, _values, _visible, _validator, meta = defn
+            if (meta or {}).get("required", False):
+                required_fields.append((key, str(label or key)))
+
+        empty_widgets = []
+        for key, label in required_fields:
+            widget = self._w(key)
+            if isinstance(widget, QLineEdit):
+                if not widget.text().strip():
+                    empty_widgets.append((widget, label))
+            elif not isinstance(widget, QComboBox):
+                value = getattr(self.parent, "input_dict", {}).get(key)
+                if value in (None, "", [], {}):
+                    empty_widgets.append((widget, label))
+
+        if not empty_widgets:
+            return True
+
+        message = "Please fill in the required(*) Basic Inputs before opening Additional Inputs:\n"
+        for widget, label in empty_widgets:
+            message += f" - {label.replace(chr(10), ' ')}\n"
+            if widget is not None:
+                widget.setProperty("error", True)
+                widget.style().unpolish(widget)
+                widget.style().polish(widget)
+
+        CustomMessageBox(
+            title="Empty Required Fields",
+            text=message,
+            dialogType=MessageBoxType.Critical,
+        ).exec()
+        return False
+
+    def _validate_basic_values_before_additional_inputs(self) -> bool:
+        if self._w(KEY_INCLUDE_MEDIAN) is not None:
+            self._update_input_dict(KEY_INCLUDE_MEDIAN, self._text(KEY_INCLUDE_MEDIAN))
+
+        for key in (KEY_SPAN, KEY_CARRIAGEWAY_WIDTH):
+            widget = self._w(key)
+            if not isinstance(widget, QLineEdit):
+                continue
+            self._update_input_dict(key, widget.text().strip())
+            result = self.validator.validate_basic_inputs(key, getattr(self.parent, "input_dict", {}))
+            if result is None:
+                continue
+            corrected, message = result
+            CustomMessageBox(
+                title="Input Error",
+                text=message,
+                dialogType=MessageBoxType.Warning,
+            ).exec()
+            widget.blockSignals(True)
+            widget.setText(str(corrected))
+            widget.blockSignals(False)
+            self._update_input_dict(key, str(corrected))
+            return False
+        return True
+
     # ══════════════════════════════════════════════════════════════════════════
     # Carriageway validation
     # ══════════════════════════════════════════════════════════════════════════
@@ -629,7 +703,7 @@ class InputDock(QWidget):
     def _get_effective_carriageway_width(self) -> float:
         min_w, max_w = self._carriageway_limits()
         width = max(min_w, min(self._float(KEY_CARRIAGEWAY_WIDTH, min_w), max_w))
-        return width * 2.0 if self._is_median_included() else width
+        return width
 
     # ══════════════════════════════════════════════════════════════════════════
     # Material helpers
@@ -718,6 +792,9 @@ class InputDock(QWidget):
         self._open_additional_inputs()
 
     def _open_additional_inputs(self, target_tab=None):
+        if not self._basic_inputs_ready_for_additional_inputs():
+            return
+
         footpath_value    = self._text(KEY_FOOTPATH) or "None"
         carriageway_width = self._get_effective_carriageway_width()
         include_median    = self._text(KEY_INCLUDE_MEDIAN) or ("Yes" if self._is_median_included() else "No")

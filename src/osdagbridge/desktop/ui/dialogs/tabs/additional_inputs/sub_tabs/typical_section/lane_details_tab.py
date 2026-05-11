@@ -1,9 +1,8 @@
-import math
-
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QHeaderView, QTableWidget, QTableWidgetItem, QWidget
 
-from osdagbridge.desktop.ui.dialogs.tabs.schemas.plate_girder import LANE_DETAILS_TAB_SCHEMA
+from osdagbridge.core.bridge_types.plate_girder.schemas import LANE_DETAILS_TAB_SCHEMA
+from osdagbridge.core.utils.codes.irc5_2015 import IRC5_2015
 from osdagbridge.desktop.ui.dialogs.tabs.base import SchemaTab
 
 
@@ -199,8 +198,7 @@ class LaneDetailsTab(SchemaTab):
     def max_lane_count_allowed(self, carriageway_width: float | None = None) -> int:
         try:
             width = float(self._carriageway_width() if carriageway_width is None else carriageway_width)
-            max_lanes = int(math.floor(width / self.design_lane_width_m()))
-            return max(1, min(6, max_lanes if max_lanes > 0 else 1))
+            return IRC5_2015.cl_104_3_1_lanes_from_width(width, max_lanes=6)
         except Exception:
             return 1
 

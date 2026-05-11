@@ -162,6 +162,36 @@ class IRC5_2015(object):
             result["remarks"].append("Carriageway width satisfies Clause 104.3.1.")
 
         return result
+
+    @staticmethod
+    def cl_104_3_1_required_width_for_lanes(num_lanes):
+        """Return IRC 5:2015 Cl. 104.3.1 minimum carriageway width in metres."""
+        lanes = max(1, int(num_lanes))
+        if lanes == 1:
+            return KEY_MIN_SINGLE_LANE
+        if lanes == 2:
+            return KEY_MIN_DOUBLE_LANE
+        return KEY_MIN_DOUBLE_LANE + KEY_ADDITIONAL_LANE * (lanes - 2)
+
+    @staticmethod
+    def cl_104_3_1_lanes_from_width(carriageway_width, max_lanes=6):
+        """Infer physical traffic-lane count from carriageway width.
+
+        IRC 5 uses 4.25 m for single-lane carriageways, 7.5 m for two lanes,
+        then adds 3.5 m per additional lane. This is distinct from IRC 6 live
+        load design-lane combinations.
+        """
+        try:
+            width = float(carriageway_width)
+        except (TypeError, ValueError):
+            return 1
+
+        if width < KEY_MIN_DOUBLE_LANE:
+            lanes = 1
+        else:
+            lanes = 2 + int(math.floor((width - KEY_MIN_DOUBLE_LANE) / KEY_ADDITIONAL_LANE + 1e-9))
+
+        return max(1, min(int(max_lanes), lanes))
     
 
     @staticmethod

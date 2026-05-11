@@ -8,11 +8,11 @@ from PySide6.QtWidgets import (
     QFrame, QGridLayout, QTableWidget, QTableWidgetItem, QHeaderView,
     QTextEdit, QDialog, QSizePolicy, QSizeGrip
 )
-from PySide6.QtCore import Qt, Signal, QSize
+from PySide6.QtCore import Qt, Signal, QSize, QTimer
 from PySide6.QtGui import QDoubleValidator, QIntValidator
 
 from osdagbridge.core.bridge_types.plate_girder.bridge_geometry import CrossSectionLayout
-from osdagbridge.desktop.ui.dialogs.tabs.schemas.plate_girder import (
+from osdagbridge.core.bridge_types.plate_girder.schemas import (
     TYPICAL_SECTION_ORCHESTRATOR_SCHEMA,
 )
 from osdagbridge.core.utils.common import *
@@ -20,6 +20,7 @@ from osdagbridge.desktop.ui.utils.custom_titlebar import CustomTitleBar
 from osdagbridge.desktop.ui.dialogs.tabs.base import SchemaTab
 from osdagbridge.desktop.ui.dialogs.tabs.common import apply_field_style
 from osdagbridge.desktop.ui.docks.cad_cross_section import CrossSectionCADWidget
+from osdagbridge.desktop.ui.dialogs.tabs.additional_inputs.sub_tabs.typical_section.layout_tab import LayoutTab
 
 def _styled_message_box(icon, title, text, parent=None):
     """Create a QMessageBox with explicit styling to ensure visibility."""
@@ -100,7 +101,95 @@ class TypicalSectionDetailsTab(SchemaTab):
         super().__init__(parent=parent)
 
         self.input_tabs = self.findChild(QTabWidget, "typical_section_tabs")
+        self._install_layout_sections()
+        self._configure_input_tabs()
         self._apply_bridge_context()
+
+    def _install_layout_sections(self) -> None:
+        """Place bridge layout controls above the sub-tabs and deck fields inside them."""
+        if self.input_tabs is None:
+            return
+
+        self.layout_tab = LayoutTab(
+            self,
+            row_indices=(0, 1),
+            show_title=True,
+            add_bottom_stretch=False,
+        )
+        self.layout_tab.setObjectName("layout_primary_fields")
+        self.layout_tab.setStyleSheet("""
+            QWidget#layout_primary_fields {
+                background-color: #f5f5f5;
+                border-top: 1px solid #b0b0b0;
+                border-left: 1px solid #b0b0b0;
+                border-right: 1px solid #b0b0b0;
+                border-bottom: none;
+            }
+        """)
+
+        main_layout = self.layout()
+        if main_layout is not None:
+            tab_index = main_layout.indexOf(self.input_tabs)
+            main_layout.insertWidget(max(0, tab_index), self.layout_tab)
+
+        self.deck_details_tab = LayoutTab(
+            self,
+            row_indices=(2, 3),
+            show_title=False,
+        )
+        self._mirror_deck_fields_to_layout_tab()
+        self.input_tabs.insertTab(0, self.deck_details_tab, "Deck Details")
+        self.input_tabs.setCurrentIndex(0)
+
+    def _mirror_deck_fields_to_layout_tab(self) -> None:
+        layout_tab = getattr(self, "layout_tab", None)
+        if layout_tab is None:
+            return
+        for bind_name in ("deck_thickness", "footpath_width", "footpath_thickness"):
+            if hasattr(self, bind_name):
+                setattr(layout_tab, bind_name, getattr(self, bind_name))
+
+    def _configure_input_tabs(self) -> None:
+        if self.input_tabs is None:
+            return
+        self.input_tabs.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self.input_tabs.setTabBarAutoHide(False)
+        self.input_tabs.setStyleSheet("""
+            QTabBar {
+                background-color: #e8e8e8;
+            }
+            QTabWidget::pane {
+                border: 1px solid #b0b0b0;
+                border-top: none;
+                background-color: #f5f5f5;
+            }
+            QTabBar::tab {
+                background-color: #e8e8e8;
+                color: #555555;
+                padding: 8px 16px;
+                border: 1px solid #b0b0b0;
+                border-bottom: none;
+                font-size: 11px;
+            }
+            QTabBar::tab:selected {
+                background-color: #90AF13;
+                color: #ffffff;
+                font-weight: 700;
+                border-color: #90AF13;
+            }
+            QTabBar::tab:disabled {
+                color: #bfbfbf;
+                background: #e6e6e6;
+            }
+            QTabBar::tab:hover:!selected {
+                background-color: #d0d0d0;
+            }
+        """)
+        self.input_tabs.tabBar().setElideMode(Qt.ElideRight)
+        self.input_tabs.tabBar().setExpanding(True)
+        self.input_tabs.tabBar().setUsesScrollButtons(False)
+        self.input_tabs.tabBar().setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        QTimer.singleShot(0, self._sync_subtab_bar_width)
 
     def set_bridge_context(
         self,
@@ -169,6 +258,7 @@ class TypicalSectionDetailsTab(SchemaTab):
         return tuple(
             tab for tab in (
                 getattr(self, "layout_tab", None),
+                getattr(self, "deck_details_tab", None),
                 getattr(self, "crash_barrier_tab", None),
                 getattr(self, "median_tab", None),
                 getattr(self, "railing_tab", None),
@@ -258,11 +348,11 @@ class TypicalSectionDetailsTab(SchemaTab):
 
     def update_footpath_value(self, footpath_value):
         self.footpath_value = footpath_value
-        layout_tab = getattr(self, "layout_tab", None)
-        sync = getattr(layout_tab, "sync_from_bridge_context", None) if layout_tab is not None else None
-        if callable(sync):
-            sync(footpath_value)
-        elif hasattr(self, "footpath_width"):
+        for layout_tab in (getattr(self, "layout_tab", None), getattr(self, "deck_details_tab", None)):
+            sync = getattr(layout_tab, "sync_from_bridge_context", None) if layout_tab is not None else None
+            if callable(sync):
+                sync(footpath_value)
+        if hasattr(self, "footpath_width"):
             self.footpath_width.setEnabled(footpath_value != "None")
             self.footpath_thickness.setEnabled(footpath_value != "None")
         self.recalculate_girders()
@@ -298,7 +388,7 @@ class TypicalSectionDetailsTab(SchemaTab):
             railing_width=railing_width,
             footpath_width=footpath_width,
             median_width=median_width,
-            no_of_footpaths=footpath_count,
+            n_footpaths=footpath_count,
         )
         return layout.total_width
 
@@ -323,9 +413,12 @@ class TypicalSectionDetailsTab(SchemaTab):
         return exporter() if callable(exporter) else {}
 
     def _layout_cad_params(self) -> dict:
-        tab = getattr(self, "layout_tab", None)
-        exporter = getattr(tab, "export_cad_params", None) if tab is not None else None
-        return exporter() if callable(exporter) else {}
+        params = {}
+        for tab in (getattr(self, "layout_tab", None), getattr(self, "deck_details_tab", None)):
+            exporter = getattr(tab, "export_cad_params", None) if tab is not None else None
+            if callable(exporter):
+                params.update(exporter())
+        return params
 
     def _layout_bridge_context_cad_params(self) -> dict:
         tab = getattr(self, "layout_tab", None)
@@ -371,10 +464,10 @@ class TypicalSectionDetailsTab(SchemaTab):
         return include_median
 
     def _sync_child_tabs_from_parent_state(self, *, force: bool = False) -> None:
-        layout_tab = getattr(self, "layout_tab", None)
-        layout_sync = getattr(layout_tab, "sync_from_bridge_context", None) if layout_tab is not None else None
-        if callable(layout_sync):
-            layout_sync(self.footpath_value)
+        for layout_tab in (getattr(self, "layout_tab", None), getattr(self, "deck_details_tab", None)):
+            layout_sync = getattr(layout_tab, "sync_from_bridge_context", None) if layout_tab is not None else None
+            if callable(layout_sync):
+                layout_sync(self.footpath_value)
 
         crash_tab = getattr(self, "crash_barrier_tab", None)
         crash_sync = getattr(crash_tab, "sync_from_parent_state", None) if crash_tab is not None else None
@@ -568,14 +661,14 @@ class TypicalSectionDetailsTab(SchemaTab):
     def reset_defaults(self):
         # Let the Layout child restore every schema-owned field first, then run
         # the coupled spacing/overhang/girder solver just like the old UI.
-        layout_tab = getattr(self, "layout_tab", None)
-        reset_layout = getattr(layout_tab, "reset_defaults", None) if layout_tab is not None else None
-        if callable(reset_layout):
-            self.updating_fields = True
-            try:
-                reset_layout()
-            finally:
-                self.updating_fields = False
+        for layout_tab in (getattr(self, "layout_tab", None), getattr(self, "deck_details_tab", None)):
+            reset_layout = getattr(layout_tab, "reset_defaults", None) if layout_tab is not None else None
+            if callable(reset_layout):
+                self.updating_fields = True
+                try:
+                    reset_layout()
+                finally:
+                    self.updating_fields = False
 
         self._set_layout_fields(DEFAULT_GIRDER_SPACING, 0.35 * DEFAULT_GIRDER_SPACING, 2)
         self._clear_adjust_notice()
@@ -670,3 +763,17 @@ class TypicalSectionDetailsTab(SchemaTab):
 
     def _show_placeholder_message(self, action_name):
         show_info(self, action_name, "This action will be available in an upcoming update.")
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._sync_subtab_bar_width()
+
+    def _sync_subtab_bar_width(self):
+        if not hasattr(self, "input_tabs") or self.input_tabs is None:
+            return
+        tab_bar = self.input_tabs.tabBar()
+        if tab_bar is None:
+            return
+        target_width = max(0, self.input_tabs.width() - 1)
+        if target_width > 0 and tab_bar.width() != target_width:
+            tab_bar.setFixedWidth(target_width)

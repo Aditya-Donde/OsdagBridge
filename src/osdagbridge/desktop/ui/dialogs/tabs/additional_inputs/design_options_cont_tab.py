@@ -1,4 +1,4 @@
-from osdagbridge.desktop.ui.dialogs.tabs.schemas.plate_girder import DESIGN_OPTIONS_CONT_SCHEMA
+from osdagbridge.core.bridge_types.plate_girder.schemas import DESIGN_OPTIONS_CONT_SCHEMA
 from osdagbridge.desktop.ui.dialogs.tabs.base import SchemaTab
 
 
