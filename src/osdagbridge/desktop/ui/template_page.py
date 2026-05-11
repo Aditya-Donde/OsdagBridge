@@ -1047,136 +1047,189 @@ class CustomWindow(QWidget):
 
     # ── Report Generation ─────────────────────────────────────────────────────
 
-    def open_report_dialog(self):
-        from osdagbridge.desktop.ui.dialogs.report_options import ReportOptionsDialog
-        from osdagbridge.core.reports.report_generator import (
-            build_report_payload, export_grillage_figure, generate_report
-        )
-        from osdagbridge.desktop.ui.dialogs.custom_messagebox import CustomMessageBox, MessageBoxType
-        import subprocess, sys, os, traceback
+    def open_report_dialog(self, cad_generator=None):
+        """
+        Show the report options dialog and trigger report
+        generation via the backend. All business logic
+        is owned by self.backend.generate_design_report().
+        This method owns only: dialog, wait cursor, feedback.
+        """
+        from osdagbridge.desktop.ui.dialogs.report_options \
+            import ReportOptionsDialog
+        from osdagbridge.desktop.ui.dialogs.custom_messagebox \
+            import CustomMessageBox, MessageBoxType
+        from PySide6.QtCore import QThread, Signal, QObject
+        from PySide6.QtWidgets import QDialog, QApplication
+        from PySide6.QtCore import Qt
+        import sys, os, traceback
 
         try:
             dialog = ReportOptionsDialog(parent=self)
 
-            # Pre-fill project title from cached metadata if available
-            if hasattr(self, '_report_metadata') and self._report_metadata:
+            if hasattr(self, '_report_metadata') \
+                    and self._report_metadata:
                 dialog.project_name.setText(
-                    self._report_metadata.get('project_name', '')
-                )
+                    self._report_metadata.get(
+                        'project_name', ''))
 
-            from PySide6.QtWidgets import QDialog
             if dialog.exec() != QDialog.DialogCode.Accepted:
                 return
             if not dialog.request:
                 return
 
             request = dialog.request
-            print(f"[Report] output_dir={request.output_dir}, file_stem={request.file_stem}")
 
-            # Gather inputs
-            report_inputs = dict(self.input_dict) if hasattr(self, 'input_dict') else {}
-
-            # Build payload
-            output_dict = None
-            try:
-                if hasattr(self, 'backend') and hasattr(self.backend, 'get_results'):
-                    output_dict = self.backend.get_results()
-            except Exception:
-                pass
-
-            payload = build_report_payload(
-                request=request,
-                input_dict=report_inputs,
-                output_dict=output_dict,
-            )
-
-            # Export grillage figure if figures are enabled
-            if request.options.include_figures:
-                try:
-                    grillage_image = None
-                    if hasattr(self, 'backend') and hasattr(self.backend, 'get_grillage_figure'):
-                        grillage_image = self.backend.get_grillage_figure()
-                        
-                    if grillage_image:
-                        grillage_path = export_grillage_figure(
-                            grillage_image=grillage_image,
-                            output_dir=request.output_dir,
-                            file_stem=request.file_stem,
-                        )
-                        if grillage_path:
-                            payload.figures.grillage = grillage_path
-                except Exception:
-                    pass
-
-            # Generate report
-            print("[Report] Calling generate_report...")
-            result = generate_report(payload=payload, request=request)
-            print(f"[Report] result.pdf_path={result.pdf_path}, result.tex_path={result.tex_path}")
-
-            # Persist metadata for next dialog open
-            self._report_metadata = {
-                'project_name': request.metadata.project_name,
-            }
-
-            # ── Always show feedback to the user ──
-            if result.pdf_path and os.path.exists(result.pdf_path):
-                # ── Preview mode: open silently, no save dialog ──
-                if dialog.is_preview:
-                    opened = False
-                    try:
-                        if sys.platform == 'win32':
-                            os.startfile(result.pdf_path)
-                            opened = True
-                        elif sys.platform == 'darwin':
-                            subprocess.Popen(['open', result.pdf_path])
-                            opened = True
-                        else:
-                            for viewer in ['evince', 'okular', 'xdg-open', 'mupdf']:
-                                try:
-                                    subprocess.Popen([viewer, result.pdf_path])
-                                    opened = True
-                                    break
-                                except FileNotFoundError:
-                                    continue
-                    except Exception:
-                        pass
-                    if not opened:
-                        CustomMessageBox(
-                            title="PDF Ready",
-                            text=f"Could not auto-open PDF.\nOpen manually:\n{result.pdf_path}",
-                            dialogType=MessageBoxType.Information,
-                        ).exec()
-                else:
-                    # ── Save mode: show success confirmation ──
-                    CustomMessageBox(
-                        title="Report Generated Successfully",
-                        text=f"PDF report saved to:\n{result.pdf_path}",
-                        informativeText=f"TeX source: {result.tex_path or 'N/A'}",
-                        dialogType=MessageBoxType.Success,
-                    ).exec()
-            else:
-                # FAILURE: PDF was not generated
-                tex_info = result.tex_path if result.tex_path and os.path.exists(result.tex_path) else 'Not generated'
+            if not hasattr(self, 'backend') \
+                    or self.backend is None:
                 CustomMessageBox(
-                    title="Report Generation Failed",
-                    text=(
-                        "PDF could not be generated.\n\n"
-                        "Possible causes:\n"
-                        "• pdflatex (from osdag_latex_env) is not installed or not in PATH\n"
-                        "• LaTeX compilation errors in the generated .tex file\n\n"
-                        f"TeX source saved to:\n{tex_info}"
-                    ),
+                    title="Report Error",
+                    text="No design backend available. "
+                         "Run design first.",
                     dialogType=MessageBoxType.Critical,
                 ).exec()
+                return
+
+            backend = self.backend
+
+            # ── Run in background thread ──────────────────
+            class _ReportWorker(QObject):
+                finished = Signal(object)
+
+                def __init__(self, backend, request,
+                             cad_generator, is_preview):
+                    super().__init__()
+                    self._backend      = backend
+                    self._request      = request
+                    self._cad_gen      = cad_generator
+                    self._is_preview   = is_preview
+
+                def run(self):
+                    print("[REPORT-DEBUG] Worker.run() ENTERED")
+                    print(f"[REPORT-DEBUG]   backend type = {type(self._backend).__name__}")
+                    print(f"[REPORT-DEBUG]   has generate_design_report = {hasattr(self._backend, 'generate_design_report')}")
+                    try:
+                        result = \
+                            self._backend \
+                            .generate_design_report(
+                                self._request,
+                                self._cad_gen,
+                                is_preview=self._is_preview,
+                            )
+                        print(f"[REPORT-DEBUG] generate_design_report returned: {type(result).__name__}")
+                    except Exception as exc:
+                        import traceback as _tb
+                        print(f"[REPORT-DEBUG] EXCEPTION in worker: {exc}")
+                        _tb.print_exc()
+                        result = exc
+                    self.finished.emit(result)
+
+            QApplication.setOverrideCursor(Qt.WaitCursor)
+
+            class SignalCatcher(QObject):
+                catch = Signal(object)
+            
+            self._report_catcher = SignalCatcher()
+
+            def _on_done(result):
+                print(f"[REPORT-DEBUG] _on_done called, result type = {type(result).__name__}")
+                QApplication.restoreOverrideCursor()
+
+                if isinstance(result, Exception):
+                    err = ''.join(
+                        traceback.format_exception(
+                            type(result), result,
+                            result.__traceback__))
+                    CustomMessageBox(
+                        title="Report Error",
+                        text=f"Report generation failed:"
+                             f"\n\n{err[:500]}",
+                        dialogType=MessageBoxType.Critical,
+                    ).exec()
+                    return
+
+                self._report_metadata = {
+                    'project_name':
+                        request.metadata.project_name,
+                }
+
+                if result.pdf_path and \
+                        os.path.exists(result.pdf_path):
+                    if dialog.is_preview:
+                        # Attempt to auto-open the PDF
+                        try:
+                            if sys.platform == "win32":
+                                os.startfile(result.pdf_path)
+                            elif sys.platform == "darwin":
+                                import subprocess
+                                subprocess.run(["open", result.pdf_path], check=False)
+                            else:
+                                import subprocess
+                                subprocess.run(["xdg-open", result.pdf_path], check=False)
+                            result.opened = True
+                        except Exception as e:
+                            print(f"[REPORT-DEBUG] Failed to auto-open PDF: {e}")
+                            result.opened = False
+
+                        if not getattr(result, 'opened', False):
+                            CustomMessageBox(
+                                title="PDF Ready",
+                                text=f"Could not auto-open PDF."
+                                     f"\nOpen manually:\n"
+                                     f"{result.pdf_path}",
+                                dialogType=
+                                    MessageBoxType.Information,
+                            ).exec()
+                    else:
+                        CustomMessageBox(
+                            title="Report Generated "
+                                  "Successfully",
+                            text=f"PDF report saved to:\n"
+                                 f"{result.pdf_path}",
+                            informativeText=
+                                f"TeX source: "
+                                f"{result.tex_path or 'N/A'}",
+                            dialogType=MessageBoxType.Success,
+                        ).exec()
+                else:
+                    tex_info = (
+                        result.tex_path
+                        if result.tex_path and
+                        os.path.exists(result.tex_path)
+                        else 'Not generated'
+                    )
+                    CustomMessageBox(
+                        title="Report Generation Failed",
+                        text=(
+                            "PDF could not be generated.\n\n"
+                            "Possible causes:\n"
+                            "• pdflatex not installed\n"
+                            "• LaTeX compilation errors\n\n"
+                            f"TeX source:\n{tex_info}"
+                        ),
+                        dialogType=MessageBoxType.Critical,
+                    ).exec()
+
+            self._report_thread = QThread()
+            self._report_worker = _ReportWorker(
+                backend, request, cad_generator, dialog.is_preview)
+            self._report_worker.moveToThread(
+                self._report_thread)
+            
+            self._report_catcher.catch.connect(_on_done)
+            self._report_worker.finished.connect(self._report_catcher.catch)
+            self._report_worker.finished.connect(self._report_thread.quit)
+            
+            self._report_thread.started.connect(
+                self._report_worker.run)
+            self._report_thread.start()
 
         except Exception:
-            # Catch-all: something crashed before we could show a dialog
+            QApplication.restoreOverrideCursor()
             err = traceback.format_exc()
-            print(f"[Report] CRASH:\n{err}")
             try:
                 CustomMessageBox(
                     title="Report Error",
-                    text=f"An unexpected error occurred during report generation:\n\n{err[:500]}",
+                    text=f"Unexpected error:\n\n{err[:500]}",
                     dialogType=MessageBoxType.Critical,
                 ).exec()
             except Exception:

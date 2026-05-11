@@ -19,7 +19,11 @@ ui_config_dict extra keys for analysis fields:
                          all following fields land inside it until group_end.
     group_end   : bool — closes the current nested group after this field.
     exclusive   : bool — for checkbox types; only one can be checked at a time.
-"""
+    """
+import os
+import logging
+
+logger = logging.getLogger(__name__)
 
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QSizePolicy,
@@ -580,14 +584,35 @@ class OutputDock(QWidget):
     # ── Action handlers (called by name from schema) ──────────────────────────
 
     def _on_report_clicked(self):
-        """Walk up the parent chain to find the page/window with open_report_dialog."""
+        """
+        Resolve Qt-side objects then delegate entirely to
+        template_page.open_report_dialog(). OutputDock owns
+        no report logic — it only resolves cad_generator
+        (a Qt widget attribute) which cannot be done from
+        a background thread or from the backend.
+        """
+        # Resolve cad_generator on main thread (Qt-safe)
+        cad_generator = None
         main_window = self.parent
-        while main_window and not hasattr(main_window, 'open_report_dialog'):
+        while main_window and not hasattr(main_window,
+                                          'cad_3d_widget'):
             main_window = getattr(main_window, 'parent', None)
-            if callable(main_window):
-                break
-        if main_window and hasattr(main_window, 'open_report_dialog'):
-            main_window.open_report_dialog()
+        if main_window and hasattr(main_window, 'cad_3d_widget'):
+            try:
+                cad_generator = \
+                    main_window.cad_3d_widget.generator
+            except Exception:
+                pass
+
+        # Find dialog host and trigger
+        main_window = self.parent
+        while main_window and not hasattr(main_window,
+                                          'open_report_dialog'):
+            main_window = getattr(main_window, 'parent', None)
+        if main_window and hasattr(main_window,
+                                   'open_report_dialog'):
+            main_window.open_report_dialog(
+                cad_generator=cad_generator)
 
 
     def refresh_loadcase_dropdowns(self):
