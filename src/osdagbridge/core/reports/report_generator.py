@@ -2372,6 +2372,52 @@ def _format_project_location(pl_data):
     return str(pl_data)
 
 
+def _format_project_location(pl_data):
+    if not pl_data:
+        return ''
+    if isinstance(pl_data, str):
+        try:
+            import ast
+            pl_dict = ast.literal_eval(pl_data)
+        except Exception:
+            return pl_data
+    elif isinstance(pl_data, dict):
+        pl_dict = pl_data
+    else:
+        return str(pl_data)
+    
+    method = pl_dict.get('method')
+    data = pl_dict.get('data', {})
+    
+    if method == 'location_name':
+        dist = data.get('district', '')
+        state = data.get('state', '')
+        if dist and state:
+            return f"{dist}, {state}"
+        return dist or state or 'Unknown Location'
+    elif method == 'map':
+        lat = data.get('latitude', '')
+        lon = data.get('longitude', '')
+        if lat and lon:
+            try:
+                from osdagbridge.core.bridge_types.plate_girder.ui_fields_project_location import DB_PATH
+                from osdagbridge.core.data.project_location.database import Database
+                db = Database(DB_PATH)
+                db.connect()
+                nearest = db.get_nearest_station_temperature(float(lat), float(lon))
+                db.close()
+                if nearest:
+                    return f"{nearest['station']}, {nearest['state']}"
+            except Exception as e:
+                logger.warning(f"Reverse geocode error: {e}")
+            return f"Lat: {lat}°, Lon: {lon}°"
+        return 'Map Location'
+    elif method == 'custom_data':
+        return 'Custom Location Data'
+    
+    return str(pl_data)
+
+
 # ---------------------------------------------------------------------------
 # Public builder helper (unchanged signature)
 # ---------------------------------------------------------------------------
