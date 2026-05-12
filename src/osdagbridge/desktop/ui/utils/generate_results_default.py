@@ -17,8 +17,12 @@ rows = table["rows"]
 GENERATE_RESULTS_DEFAULTS = {
 
     "model_definition": {
+        "id": "model_definition",
+        "label": "Model Definition",
 
         "bridge_configuration": {
+            "id": "bridge_configuration",
+            "label": "Bridge Configuration",
 
             "bridge_configuration_summary": {
                 "id": "bridge_configuration_summary",
@@ -32,6 +36,7 @@ GENERATE_RESULTS_DEFAULTS = {
                     "Skew Angle (deg)",
                 ],
                 "rows": [
+                    [12.50, 30.00, 4, 3.00, 0.75, 0],
                     [12.50, 30.00, 4, 3.00, 0.75, 0],
                 ],
             },

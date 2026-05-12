@@ -9,8 +9,6 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCore import Qt, QRect
 from PySide6.QtGui import QColor, QFont, QPainter, QPainterPath, QPen
-
-from osdagbridge.desktop.ui.utils.generate_results_schema import GENERATE_RESULTS_SCHEMA
 from osdagbridge.desktop.ui.utils.generate_results_default import GENERATE_RESULTS_DEFAULTS
 from osdagbridge.desktop.ui.utils.custom_titlebar import CustomTitleBar
 from osdagbridge.desktop.ui.dialogs.custom_messagebox import CustomMessageBox, MessageBoxType
@@ -400,7 +398,7 @@ class GenerateResultsPage(QWidget):
             }
         """)
 
-        member_label = QLabel("Member Case")
+        member_label = QLabel("Member")
         member_label.setStyleSheet(lc_label.styleSheet())
         right_layout.addWidget(member_label)
 
@@ -472,7 +470,7 @@ class GenerateResultsPage(QWidget):
     def _build_tree(self):
         self.tree.blockSignals(True)
 
-        for main_group, sub_groups in GENERATE_RESULTS_SCHEMA.items():
+        for main_group, sub_groups in GENERATE_RESULTS_DEFAULTS.items():
             parent = QTreeWidgetItem(self.tree)
             parent.setText(0, main_group)
             parent.setFlags(parent.flags() | Qt.ItemIsUserCheckable)
@@ -484,9 +482,9 @@ class GenerateResultsPage(QWidget):
                 child.setFlags(child.flags() | Qt.ItemIsUserCheckable)
                 child.setCheckState(0, Qt.Unchecked)
 
-                for table in tables:
+                for table_key, table_data in tables.items():          # ← unpack key AND value
                     leaf = QTreeWidgetItem(child)
-                    leaf.setText(0, table)
+                    leaf.setText(0, table_data["label"])              # ← use label, not key
                     leaf.setFlags(leaf.flags() | Qt.ItemIsUserCheckable)
                     leaf.setCheckState(0, Qt.Unchecked)
 
