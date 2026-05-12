@@ -120,17 +120,11 @@ SKEW_ANGLE_DEFAULT = 0.0
 # ===== Additional Inputs Constants =====
 
 # Typical Section Details Keys
-KEY_GIRDER_SPACING = "Girder Spacing"
-KEY_DECK_OVERHANG = "Deck Overhang Width"
-KEY_NO_OF_GIRDERS = "No. of Girders"
-KEY_DECK_THICKNESS = "Deck Thickness"
 KEY_DECK_CONCRETE_GRADE = "Deck Concrete Grade"
 KEY_DECK_REINF_MATERIAL = "Deck Reinforcement Material"
 KEY_DECK_REINF_SIZE = "Deck Reinforcement Size"
 KEY_DECK_REINF_SPACING_LONG = "Deck Reinforcement Spacing Longitudinal"
 KEY_DECK_REINF_SPACING_TRANS = "Deck Reinforcement Spacing Transverse"
-KEY_FOOTPATH_WIDTH = "Footpath Width"
-KEY_FOOTPATH_THICKNESS = "Footpath Thickness"
 KEY_RAILING_PRESENT = "Railing Present"
 KEY_RAILING_WIDTH = "Railing Width"
 KEY_RAILING_HEIGHT = "Railing Height"
@@ -243,9 +237,6 @@ KEY_END_DIAPHRAGM_SPACING = "End Diaphragm Spacing"
 KEY_SELF_WEIGHT = "Self Weight"
 KEY_SELF_WEIGHT_FACTOR = "Self Weight Factor"
 KEY_WEARING_COAT = ["bituminous", "concrete"]
-KEY_WEARING_COAT_MATERIAL = "Wearing Coat Material"
-KEY_WEARING_COAT_DENSITY = "Wearing Coat Density"
-KEY_WEARING_COAT_THICKNESS = "Wearing Coat Thickness"
 KEY_RAILING_TYPE = ["IRC 5 RCC railing", "IRC 5 steel railing"]
 KEY_RAILING_LOAD_COUNT = "No. of Railings"
 KEY_RAILING_LOAD = "Railing Load"

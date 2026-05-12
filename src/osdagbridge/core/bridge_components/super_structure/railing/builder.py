@@ -1,4 +1,4 @@
-
+from osdagbridge.core.utils.common import *
 from OCC.Core.BRepPrimAPI import BRepPrimAPI_MakeBox, BRepPrimAPI_MakeCylinder, BRepPrimAPI_MakePrism
 from OCC.Core.gp import gp_Trsf, gp_Vec, gp_Ax2, gp_Pnt, gp_Dir
 from OCC.Core.BRepBuilderAPI import BRepBuilderAPI_Transform, BRepBuilderAPI_MakePolygon, BRepBuilderAPI_MakeFace
@@ -243,7 +243,7 @@ def build_railings(
 
     # Extract railing type from design_dict (populated by IRC5 logic)
     # Default to RCC if not found
-    railing_type = design_dict.get("railing_type", "RCC")
+    railing_type = design_dict.get(KEY_RL_TYPE, "RCC")
     
     # Use the actual base width for positioning
     if railing_type == "steel":

@@ -78,7 +78,7 @@ class AdditionalInputs(QDialog):
 
         # Update Typical-section sub-tab activate/deactivate state
         self.typical_section_tab._sync_tab_active_states()
-        
+
     #-------------Field Change Handling and Validation Logic-Start-------------------------
     def _on_field_edited(self, key: str, widget: QLineEdit | str):
         """
@@ -99,7 +99,7 @@ class AdditionalInputs(QDialog):
 
         # hard-validation start ----------------------
         result = self.validator.validate_additional_inputs(key, self.working_input_dict)
-        print(f"@@: Validation result for {key} = {result}")
+        print(f"@@: After Edited Validation result for {key} = {result}")
         if result is not None:
             corrected, message = result
             CustomMessageBox(
@@ -151,12 +151,12 @@ class AdditionalInputs(QDialog):
         """
 
         # If Empty or None Value then set the default
-        print(f"@Change: {value}, default: {self.default_input_dict.get(key)}")
+        print(f"@@Update Dict: key={key}, value={value}, default: {self.default_input_dict.get(key)}")
         if value is None or value == "":
             self.working_input_dict[key] = self.default_input_dict.get(key)
         else:
             self.working_input_dict[key] = value
-        print(f"@Final: {self.working_input_dict[key]}")
+        print(f"@@Final: {self.working_input_dict[key]}")
 
     def _update_additional_input_cad(self):
         """
@@ -619,16 +619,16 @@ class AdditionalInputs(QDialog):
         """
 
         from osdagbridge.core.utils.common import (
-            KEY_NO_OF_GIRDERS,
-            KEY_GIRDER_SPACING,
-            KEY_DECK_OVERHANG,
-            KEY_DECK_THICKNESS,
-            KEY_FOOTPATH_WIDTH,
-            KEY_FOOTPATH_THICKNESS,
+            KEY_TS_NO_OF_GIRDERS,
+            KEY_TS_GIRDER_SPACING,
+            KEY_TS_DECK_OVERHANG,
+            KEY_TS_DECK_THICKNESS,
+            KEY_TS_FOOTPATH_WIDTH,
+            KEY_TS_FOOTPATH_THICKNESS,
             KEY_CROSS_BRACING_SPACING,
-            KEY_WEARING_COAT_THICKNESS,
-            KEY_WEARING_COAT_DENSITY,
-            KEY_WEARING_COAT_MATERIAL,
+            KEY_WC_THICKNESS,
+            KEY_WC_DENSITY,
+            KEY_WC_MATERIAL,
         )
 
         values = {}
@@ -637,34 +637,34 @@ class AdditionalInputs(QDialog):
         ts = self.typical_section_tab
 
         if hasattr(ts, "no_of_girders") and ts.no_of_girders.text():
-            values[KEY_NO_OF_GIRDERS] = int(float(ts.no_of_girders.text()))
+            values[KEY_TS_NO_OF_GIRDERS] = int(float(ts.no_of_girders.text()))
 
         if hasattr(ts, "girder_spacing") and ts.girder_spacing.text():
-            values[KEY_GIRDER_SPACING] = float(ts.girder_spacing.text())
+            values[KEY_TS_GIRDER_SPACING] = float(ts.girder_spacing.text())
 
         if hasattr(ts, "deck_overhang") and ts.deck_overhang.text():
-            values[KEY_DECK_OVERHANG] = float(ts.deck_overhang.text())
+            values[KEY_TS_DECK_OVERHANG] = float(ts.deck_overhang.text())
 
         if hasattr(ts, "deck_thickness") and ts.deck_thickness.text():
-            values[KEY_DECK_THICKNESS] = float(ts.deck_thickness.text())
+            values[KEY_TS_DECK_THICKNESS] = float(ts.deck_thickness.text())
 
         if hasattr(ts, "footpath_width") and ts.footpath_width.text():
-            values[KEY_FOOTPATH_WIDTH] = float(ts.footpath_width.text())
+            values[KEY_TS_FOOTPATH_WIDTH] = float(ts.footpath_width.text())
 
         if hasattr(ts, "footpath_thickness") and ts.footpath_thickness.text():
-            values[KEY_FOOTPATH_THICKNESS] = float(ts.footpath_thickness.text())
+            values[KEY_TS_FOOTPATH_THICKNESS] = float(ts.footpath_thickness.text())
             
         wearing_material = ts._find_wearing_widget(KEY_WC_MATERIAL)
         if wearing_material:
-            values[KEY_WEARING_COAT_MATERIAL] = wearing_material.currentText()
+            values[KEY_WC_MATERIAL] = wearing_material.currentText()
 
         wearing_thickness = ts._find_wearing_widget(KEY_WC_THICKNESS)
         if wearing_thickness and wearing_thickness.text():
-            values[KEY_WEARING_COAT_THICKNESS] = float(wearing_thickness.text())
+            values[KEY_WC_THICKNESS] = float(wearing_thickness.text())
 
         wearing_density = ts._find_wearing_widget(KEY_WC_DENSITY)
         if wearing_density and wearing_density.text():
-            values[KEY_WEARING_COAT_DENSITY] = float(wearing_density.text())
+            values[KEY_WC_DENSITY] = float(wearing_density.text())
             
          # ---- Crash Barrier ----
         crash_barrier_type = ts._find_crash_barrier_widget(KEY_CB_TYPE)
@@ -673,7 +673,7 @@ class AdditionalInputs(QDialog):
 
         crash_barrier_width = ts._find_crash_barrier_widget(KEY_CB_WIDTH)
         if crash_barrier_width and crash_barrier_width.text():
-            values["crash_barrier_width"] = float(crash_barrier_width.text())
+            values[KEY_CB_WIDTH] = float(crash_barrier_width.text())
 
         crash_barrier_height = ts._find_crash_barrier_widget(KEY_CB_HEIGHT)
         if crash_barrier_height and crash_barrier_height.text():
@@ -682,7 +682,7 @@ class AdditionalInputs(QDialog):
         # ---- Railing ----
         railing_type = ts._find_railing_widget(KEY_RL_TYPE)
         if railing_type:
-            values["railing_type"] = railing_type.currentText()
+            values[KEY_RL_TYPE] = railing_type.currentText()
 
         railing_height = ts._find_railing_widget(KEY_RL_HEIGHT)
         if railing_height and railing_height.text():
@@ -706,11 +706,11 @@ class AdditionalInputs(QDialog):
         # ---- Median ----
         median_type = ts._find_median_widget(KEY_MD_TYPE)
         if median_type:
-            values["median_type"] = median_type.currentText()
+            values[KEY_MD_TYPE] = median_type.currentText()
 
         median_width = ts._find_median_widget(KEY_MD_WIDTH)
         if median_width and median_width.text():
-            values["median_width"] = float(median_width.text())
+            values[KEY_MD_WIDTH] = float(median_width.text())
         
         if hasattr(ts, "median_kerb_height") and ts.median_kerb_height.text():
             values["median_kerb_height"] = float(ts.median_kerb_height.text())
@@ -867,37 +867,7 @@ class AdditionalInputs(QDialog):
         for i in range(tab_widget.count()):
             if tab_widget.tabText(i).strip().lower() == tab_name.strip().lower():
                 return i
-        return -1
-
-    def apply_tab_visibility(self, footpath_value: str, include_median: str) -> None:
-        """
-        @author: Faizan
-        Enable or disable Railing and Median sub-tabs based on user selections.
-
-        - Railing tab is enabled only if footpath is present.
-        - Median tab is enabled only if median is included.
-
-        After updating tab visibility, the CAD cross-section preview is
-        refreshed to reflect the changes immediately.
-        """
-        inner_tabs = self.typical_section_tab.input_tabs
-
-        # Railing tab 
-        railing_index = self._find_inner_tab_index(inner_tabs, "Railing")
-        if railing_index >= 0:
-            railing_enabled = (footpath_value != "None")
-            inner_tabs.setTabEnabled(railing_index, railing_enabled)
-
-        #  Median tab 
-        median_index = self._find_inner_tab_index(inner_tabs, "Median")
-        if median_index >= 0:
-            median_enabled = (include_median != "No")
-            inner_tabs.setTabEnabled(median_index, median_enabled)
-        
-        # Trigger CAD update to reflect visibility changes
-        if hasattr(self.typical_section_tab, "_update_cad_preview"):
-            self.typical_section_tab._update_cad_preview()
-            
+        return -1            
 
     def update_footpath_value(self, footpath_value):
         """

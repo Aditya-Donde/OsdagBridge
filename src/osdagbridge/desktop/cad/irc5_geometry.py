@@ -1,3 +1,5 @@
+from osdagbridge.core.utils.common import *
+
 class CrashBarrierGeometry:
 
     @staticmethod
@@ -76,7 +78,7 @@ class MedianGeometry:
         if median_type == "IRC 5 - Raised Kerb":
             return {
                 "type": "kerb",
-                "median_width": 1200,
+                KEY_MD_WIDTH: 1200,
                 "kerb_height": 225,
                 "kerb_top_width": 1150,
                 "kerb_bottom_width": 1200,
@@ -85,7 +87,7 @@ class MedianGeometry:
         elif median_type == "IRC 5 - RCC Crash Barrier":
             return {
                 "type": "rcc_barrier",
-                "median_width": 1200,
+                KEY_MD_WIDTH: 1200,
                 "barrier_height": 900,
                 "top_width": 175,
                 "bottom_width": 450,
@@ -94,7 +96,7 @@ class MedianGeometry:
         elif median_type == "IRC 5 - Metallic Crash Barrier with Single W-Beam":
             return {
                 "type": "metallic",
-                "median_width": 1200,
+                KEY_MD_WIDTH: 1200,
                 "post_height": 950,
                 "w_beams": 1,
             }
@@ -102,7 +104,7 @@ class MedianGeometry:
         elif median_type == "IRC 5 - Metallic Crash Barrier with Double W-Beam":
             return {
                 "type": "metallic",
-                "median_width": 1200,
+                KEY_MD_WIDTH: 1200,
                 "post_height": 950,
                 "w_beams": 2,
             }

@@ -66,6 +66,7 @@ from osdagbridge.core.utils.common import (
     KEY_UTIL_FATIGUE,
     KEY_UTIL_LONG_TRANS_SHEAR,
     KEY_UTIL_STRESS_LIMITATION,
+    KEY_MD_WIDTH,
 )
 from osdagbridge.core.bridge_types.plate_girder.initial_sizing import (
     DEFAULT_DECK_THICKNESS as _DEFAULT_DECK_THICKNESS_MM,
@@ -112,6 +113,7 @@ class PlateGirderBridge:
         KEY_CROSS_BRACING,
         KEY_END_DIAPHRAGM,
         KEY_DECK_CONCRETE_GRADE_BASIC,
+        KEY_MD_WIDTH,
     })
 
     def __init__(self) -> None:
@@ -159,9 +161,6 @@ class PlateGirderBridge:
             k: v for k, v in self.input_dict.items()
             if k not in self._BASIC_INPUT_KEYS
         }
-
-        from pprint import pprint
-        pprint(input_dict)
 
     # ─────────────────────────────────────────────────────────────────────────
     # Design pipeline
@@ -242,7 +241,7 @@ class PlateGirderBridge:
             crash_barrier_width=DEFAULT_CRASH_BARRIER_WIDTH,
             footpath_width=combined["footpath_width"],
             railing_width=combined["railing_width"],
-            median_width=combined["median_width"],
+            median_width=combined[KEY_MD_WIDTH],
             n_footpaths=combined["n_footpaths"],
         )
 

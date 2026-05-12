@@ -392,10 +392,10 @@ def get_ai_crash_barrier_defaults(
 
     if is_rcc:
         width_m = _mm_to_m(
-            design_dict.get("crash_barrier_width"),
+            design_dict.get(KEY_CB_WIDTH),
             float(DEFAULT_AI_CRASH_BARRIER_WIDTH_M),
         )
-        height_m = _mm_to_m(design_dict.get("crash_barrier_height"), 0.75)
+        height_m = _mm_to_m(design_dict.get(KEY_CB_HEIGHT), 0.75)
         density = float(DEFAULT_CONCRETE_DENSITY)
         area_m2 = width_m * height_m
         defaults.update(
@@ -410,10 +410,10 @@ def get_ai_crash_barrier_defaults(
         return defaults
 
     width_m = _mm_to_m(
-        design_dict.get("crash_barrier_width"),
+        design_dict.get(KEY_CB_WIDTH),
         DEFAULT_IRC_METALLIC_BARRIER_BASE_WIDTH_MM / 1000.0,
     )
-    height_m = _mm_to_m(design_dict.get("crash_barrier_height"), 1.05)
+    height_m = _mm_to_m(design_dict.get(KEY_CB_HEIGHT), 1.05)
     post_spacing_m = _mm_to_m(
         design_dict.get("post_spacing"),
         float(DEFAULT_AI_CRASH_BARRIER_POST_SPACING_M),
@@ -472,7 +472,7 @@ def get_ai_median_defaults(median_type: str) -> dict[str, float | None]:
     except Exception:
         design_dict = {}
 
-    width_m = _mm_to_m(design_dict.get("median_width"), 1.2)
+    width_m = _mm_to_m(design_dict.get(KEY_MD_WIDTH), 1.2)
 
     if median_type == AI_MEDIAN_RAISED_KERB:
         height_m = _mm_to_m(design_dict.get("kerb_height"), 0.225)
@@ -542,7 +542,7 @@ ADDITIONAL_INPUT_DICT = {
     'n_footpaths':    0,
     'footpath_width': 0.0,
     'railing_width':  0.0,
-    'median_width':   0.0,
+    KEY_MD_WIDTH:   0.0,
     # Layout solver results (populated by solve_basic_input)
     'overall_width':  None,
     'no_of_girders':  DEFAULT_NO_OF_GIRDERS,
@@ -672,7 +672,7 @@ def solve_basic_input(basic_input_dict: dict):
         'n_footpaths':    n_footpaths,
         'footpath_width': footpath_width,
         'railing_width':  railing_width,
-        'median_width':   median_width,
+        KEY_MD_WIDTH:   median_width,
         'overall_width':  sizing_result.overall_width,
         'no_of_girders':  sizing_result.no_of_girders,
         'girder_spacing': sizing_result.girder_spacing,

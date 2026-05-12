@@ -6,11 +6,7 @@ Takes dimensions from IRC5_2015 and computes areas only.
 """
 
 from osdagbridge.core.utils.codes.irc5_2015 import IRC5_2015
-from osdagbridge.core.utils.codes.keyfile import (
-    KEY_CRASH_BARRIER_TYPE,
-    KEY_FOOTPATH,
-    KEY_RAILING_TYPE
-)
+from osdagbridge.core.utils.common import *
 
 #  BASIC AREA UTILITIES
 
@@ -57,14 +53,14 @@ def rigid_barrier_with_railing_area(railing):
         crash_barrier_type=None
     )
 
-    W   = geom["crash_barrier_width"]             # 450
+    W   = geom[KEY_CB_WIDTH]             # 450
     T   = geom["crash_barrier_top_notch"]         # 175
     M   = geom["crash_barrier_middle_length"]     # 550
     B   = geom["crash_barrier_base_notch"]        # 100
     R1  = geom["crash_barrier_radius1"]           # 50
     R2  = geom["crash_barrier_radius2"]           # 250
 
-    wearing = geom["wearing_course_thickness"]    # 50
+    wearing = geom[KEY_WC_THICKNESS]    # 50
     base_effective = B + wearing                  # 150  (same as manual)
 
     # TRAPEZOID CALCULATIONS (EXACTLY LIKE YOUR NOTEBOOK)

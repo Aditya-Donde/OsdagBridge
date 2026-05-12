@@ -4,7 +4,7 @@ Takes dimensions from IRC5_2015 and computes areas only.
 
 @author: Sweta Pal
 """
-
+from osdagbridge.core.utils.common import *
 from osdagbridge.core.utils.codes.irc5_2015 import IRC5_2015
 from osdagbridge.core.utils.codes.keyfile import (
     KEY_CRASH_BARRIER_TYPE,
@@ -114,14 +114,14 @@ def rigid_barrier_with_railing_area(railing):
         crash_barrier_type=None
     )
 
-    W   = geom["crash_barrier_width"]             # 450
+    W   = geom[KEY_CB_WIDTH]             # 450
     T   = geom["crash_barrier_top_notch"]         # 175
     M   = geom["crash_barrier_middle_length"]     # 550
     B   = geom["crash_barrier_base_notch"]        # 100
     R1  = geom["crash_barrier_radius1"]           # 50
     R2  = geom["crash_barrier_radius2"]           # 250
 
-    wearing = geom["wearing_course_thickness"]    # 50
+    wearing = geom[KEY_WC_THICKNESS]    # 50
     base_effective = B + wearing                  # 150  (same as manual)
 
     # TRAPEZOID CALCULATIONS (EXACTLY LIKE YOUR NOTEBOOK)
@@ -191,10 +191,10 @@ def rigid_barrier_no_footpath_area():
     H_top  = geom["crash_barrier_middle_length"]      # 750
     H_mid  = 250
     H_bot  = geom["crash_barrier_base_notch"]         # 100
-    wearing = geom.get("wearing_course_thickness", 50)
+    wearing = geom.get(KEY_WC_THICKNESS, 50)
     H_bot_eff = H_bot + wearing                       # 150
 
-    W_tot  = geom["crash_barrier_width"]              # 450
+    W_tot  = geom[KEY_CB_WIDTH]              # 450
     W_top  = geom["crash_barrier_top_notch"]          # 175
     W_mid  = 225
 
@@ -248,10 +248,10 @@ def high_containment_barrier_area():
     H_top  = geom["crash_barrier_middle_length"]      # 1200
     H_mid  = 250
     H_bot  = geom["crash_barrier_base_notch"]         # 100
-    wearing = geom.get("wearing_course_thickness", 50)
+    wearing = geom.get(KEY_WC_THICKNESS, 50)
     H_bot_eff = H_bot + wearing                       # 150
 
-    W_tot  = geom["crash_barrier_width"]              # 525
+    W_tot  = geom[KEY_CB_WIDTH]              # 525
     W_top  = geom["crash_barrier_top_notch"]          # 250
     W_mid  = 225
 

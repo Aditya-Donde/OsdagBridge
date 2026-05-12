@@ -248,12 +248,6 @@ class TypicalSectionDetailsTab(QWidget):
             self.deck_thickness.textChanged.connect(self.update_footpath_thickness)
         self.recalculate_girders()
 
-        for attr in ("girder_spacing", "no_of_girders", "deck_overhang",
-                    "deck_thickness", "footpath_width", "footpath_thickness"):
-            field = getattr(self, attr, None)
-            if field:
-                field.editingFinished.connect(self._update_cad_preview)
-
         crash_barrier_type = self._find_crash_barrier_widget(KEY_CB_TYPE)
         if crash_barrier_type:
             barrier_type = crash_barrier_type.currentText()
@@ -265,25 +259,16 @@ class TypicalSectionDetailsTab(QWidget):
         if self._find_railing_widget(KEY_RL_LOAD_MODE):
             self._apply_railing_defaults(force=False)
         wearing_material_w = self._find_wearing_widget(KEY_WC_MATERIAL)
+
         if wearing_material_w:
             self.on_wearing_material_changed(wearing_material_w.currentText())
-
-        # Connect wearing course CAD signals
-        for key, signal, handler in [
-            (KEY_WC_THICKNESS, "editingFinished",    self._update_cad_preview),
-            (KEY_WC_DENSITY,   "editingFinished",    self._update_cad_preview),
-            (KEY_WC_MATERIAL,  "currentTextChanged", self._update_cad_preview),
-        ]:
-            widget = self._find_wearing_widget(key)
-            if widget:
-                getattr(widget, signal).connect(handler)
 
         try:
             if self.no_of_girders and self.no_of_girders.text():
                 self.girder_count_changed.emit(int(self.no_of_girders.text()))
         except Exception:
             pass
-        
+
     def _sync_tab_active_states(self):
         """Enable/disable subtabs based on their 'active' condition in schema.
         
@@ -305,123 +290,6 @@ class TypicalSectionDetailsTab(QWidget):
             # Enable tab only if current dict value is in the allowed values list
             enabled = d.get(active_def["id"]) in active_def["values"]
             self.input_tabs.setTabEnabled(self.input_tabs.indexOf(tab_widget), enabled)
-
-    def _update_cad_preview(self):
-        """
-        @author: Faizan
-        Collect all current UI field values — girder count, girder spacing,
-        deck overhang, deck thickness etc.
-        — convert units to millimetres where required, and push the assembled
-        params dict to CrossSectionCADWidget.update_params() to trigger an
-        immediate redraw of the 2D cross-section.
-        """
-
-        if not hasattr(self, 'cad_preview'):
-            return
-
-        params = {}
-
-        # Carriageway Width (always needed for overall width calculation in CAD)
-        if hasattr(self, "carriageway_width"):
-            params['carriageway_width'] = float(self.carriageway_width) * 1000
-
-        # Footpath Config
-        params['footpath_config'] = self._initial_cad_state.get("footpath_config")
-
-        if hasattr(self, "no_of_girders") and self.no_of_girders.text():
-            params['num_girders'] = int(float(self.no_of_girders.text()))
-
-        if hasattr(self, "girder_spacing") and self.girder_spacing.text():
-            params['girder_spacing'] = float(self.girder_spacing.text()) * 1000
-
-        if hasattr(self, "deck_overhang") and self.deck_overhang.text():
-            params['deck_overhang'] = float(self.deck_overhang.text()) * 1000
-
-        if hasattr(self, "deck_thickness") and self.deck_thickness.text():
-            params['deck_thickness'] = float(self.deck_thickness.text())
-
-        if hasattr(self, "footpath_width") and self.footpath_width.text():
-            params['footpath_width'] = float(self.footpath_width.text()) * 1000
-
-        if hasattr(self, "footpath_thickness") and self.footpath_thickness.text():
-            params['footpath_thickness'] = float(self.footpath_thickness.text())
-            
-        crash_barrier_type = self._find_crash_barrier_widget(KEY_CB_TYPE)
-        if crash_barrier_type:
-            ui_cb_type = crash_barrier_type.currentText()
-            params["crash_barrier_type"] = ui_cb_type
-            
-        # ---- Wearing Course ----
-        wearing_thickness = self._find_wearing_widget(KEY_WC_THICKNESS)
-        if wearing_thickness and wearing_thickness.text():
-            wt_val = float(wearing_thickness.text())
-            params[KEY_WEARING_COAT_THICKNESS] = wt_val
-            params["wearing_course_thickness"] = wt_val
-
-        wearing_density = self._find_wearing_widget(KEY_WC_DENSITY)
-        if wearing_density and wearing_density.text():
-            wd_val = float(wearing_density.text())
-            params[KEY_WEARING_COAT_DENSITY] = wd_val
-            params["wearing_course_density"] = wd_val
-
-        wearing_material = self._find_wearing_widget(KEY_WC_MATERIAL)
-        if wearing_material:
-            wm_text = wearing_material.currentText()
-            params[KEY_WEARING_COAT_MATERIAL] = wm_text
-            params["wearing_course_material"] = wm_text
-        
-        # ---- Median ----
-        median_type_w = self._find_median_widget(KEY_MD_TYPE)
-        if median_type_w:
-            params["median_type"] = median_type_w.currentText()
-
-        median_width = self._find_median_widget(KEY_MD_WIDTH)
-        if median_width and median_width.text():
-            params["median_width"] = float(median_width.text()) * 1000
-
-        median_height = self._find_median_widget(KEY_MD_HEIGHT)
-        if median_height and median_height.text():
-            params["median_height"] = float(median_height.text()) * 1000
-            
-        # ---- Crash Barrier ----
-        crash_barrier_width = self._find_crash_barrier_widget(KEY_CB_WIDTH)
-        if crash_barrier_width and crash_barrier_width.text():
-            params["crash_barrier_width"] = float(crash_barrier_width.text()) * 1000
-
-        crash_barrier_height = self._find_crash_barrier_widget(KEY_CB_HEIGHT)
-        if crash_barrier_height and crash_barrier_height.text():
-            params["crash_barrier_height"] = float(crash_barrier_height.text()) * 1000
-
-        # ---- Railing ----
-        railing_type_w = self._find_railing_widget(KEY_RL_TYPE)
-        if railing_type_w:
-            params["railing_type"] = railing_type_w.currentText()
-
-        railing_width = self._find_railing_widget(KEY_RL_WIDTH)
-        if railing_width and railing_width.text():
-            params["railing_width"] = float(railing_width.text())
-
-        railing_height = self._find_railing_widget(KEY_RL_HEIGHT)
-        if railing_height and railing_height.text():
-            params["railing_height"] = float(railing_height.text()) * 1000
-            
-        # ---- Median presence ----
-        if hasattr(self, "median_tab"):
-            median_idx = -1
-            for i in range(self.input_tabs.count()):
-                if self.input_tabs.tabText(i).strip().lower() == "median":
-                    median_idx = i
-                    break
-
-            is_median_enabled = self.input_tabs.isTabEnabled(median_idx) if median_idx >= 0 else False
-            params["median_present"] = is_median_enabled
-        else:
-            mt = self._find_median_widget(KEY_MD_TYPE)
-            if mt:
-                params["median_present"] = mt.currentText() != "None"
-
-        if params:
-            self.cad_preview.update_params(params)
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
@@ -957,7 +825,6 @@ class TypicalSectionDetailsTab(QWidget):
     def recalculate_girders(self):
         self._update_overall_bridge_width_display()
         self._solve_layout("width")
-        self._update_cad_preview()
 
     def on_girder_spacing_changed(self):
         if self.updating_fields:
@@ -1219,14 +1086,14 @@ class TypicalSectionDetailsTab(QWidget):
         # ----  CAD UPDATE AFTER DEFAULTS CHANGE ----
         if hasattr(self, "cad_preview"):
             params = {
-                "crash_barrier_type": barrier_type,
+                KEY_CB_TYPE: barrier_type,
             }
 
             if crash_barrier_width and crash_barrier_width.text():
-                params["crash_barrier_width"] = float(crash_barrier_width.text()) * 1000
+                params[KEY_CB_WIDTH] = float(crash_barrier_width.text()) * 1000
 
             if crash_barrier_height and crash_barrier_height.text():
-                params["crash_barrier_height"] = float(crash_barrier_height.text()) * 1000
+                params[KEY_CB_HEIGHT] = float(crash_barrier_height.text()) * 1000
 
             self.cad_preview.update_params(params)
 
@@ -1249,10 +1116,6 @@ class TypicalSectionDetailsTab(QWidget):
 
         # Recalculate AFTER geometry is locked
         self.recalculate_girders()
-
-        # Refresh CAD preview to show the newly selected barrier shape
-        self._update_cad_preview()
-
 
     # ----- Median sub-tab ------------------------------------------------------
 
@@ -1374,8 +1237,8 @@ class TypicalSectionDetailsTab(QWidget):
         if is_rcc and geom:
             _set(median_density, f"{DEFAULT_CONCRETE_DENSITY:.1f}")
 
-            if "median_width" in geom:
-                _set(median_width, f"{geom['median_width'] / 1000:.2f}")
+            if KEY_MD_WIDTH in geom:
+                _set(median_width, f"{geom[KEY_MD_WIDTH] / 1000:.2f}")
 
             if "barrier_height" in geom:
                 _set(median_height, f"{geom['barrier_height'] / 1000:.2f}")
@@ -1397,8 +1260,8 @@ class TypicalSectionDetailsTab(QWidget):
                 median_load.clear()
         elif is_custom:
             if geom:
-                if "median_width" in geom:
-                    _set(median_width, f"{geom['median_width'] / 1000:.2f}")
+                if KEY_MD_WIDTH in geom:
+                    _set(median_width, f"{geom[KEY_MD_WIDTH] / 1000:.2f}")
                 if "barrier_height" in geom:
                     _set(median_height, f"{geom['barrier_height'] / 1000:.2f}")
                 elif "kerb_height" in geom:
@@ -1411,31 +1274,31 @@ class TypicalSectionDetailsTab(QWidget):
         geom = MedianGeometry.get_geometry(effective_median_type)
 
         params = {
-            "median_type": median_type,
+            KEY_MD_TYPE: median_type,
         }
 
         if geom:
-            if "median_width" in geom:
-                params["median_width"] = geom["median_width"]
+            if KEY_MD_WIDTH in geom:
+                params[KEY_MD_WIDTH] = geom[KEY_MD_WIDTH]
 
             if "barrier_height" in geom:
-                params["median_height"] = geom["barrier_height"]
+                params[KEY_MD_HEIGHT] = geom["barrier_height"]
             elif "kerb_height" in geom:
-                params["median_height"] = geom["kerb_height"]
+                params[KEY_MD_HEIGHT] = geom["kerb_height"]
 
             self.cad_preview.update_params(params)
             
         if hasattr(self, "cad_preview"):
             params = {
                 "median_present": True,
-                "median_type": median_type,
+                KEY_MD_TYPE: median_type,
             }
 
             if median_width and median_width.text():
-                params["median_width"] = float(median_width.text()) * 1000
+                params[KEY_MD_WIDTH] = float(median_width.text()) * 1000
 
             if median_height and median_height.text():
-                params["median_height"] = float(median_height.text()) * 1000
+                params[KEY_MD_HEIGHT] = float(median_height.text()) * 1000
 
             self.cad_preview.update_params(params)
 
@@ -1444,7 +1307,7 @@ class TypicalSectionDetailsTab(QWidget):
         self._apply_median_defaults(median_type, force=True)
 
         if hasattr(self, "cad_preview"):
-            params = {"median_type": median_type}
+            params = {KEY_MD_TYPE: median_type}
             self.cad_preview.update_params(params)
 
         self.recalculate_girders()
@@ -1492,7 +1355,7 @@ class TypicalSectionDetailsTab(QWidget):
         geom = RailingGeometry.get_geometry(effective_railing_type)
 
         params = {
-            "railing_type": railing_type,
+            KEY_RL_TYPE: railing_type,
         }
 
         if geom:
@@ -1509,7 +1372,7 @@ class TypicalSectionDetailsTab(QWidget):
         self._apply_railing_defaults(force=True)
 
         if hasattr(self, "cad_preview"):
-            params = {"railing_type": railing_type}
+            params = {KEY_RL_TYPE: railing_type}
             self.cad_preview.update_params(params)
 
         self.recalculate_girders()

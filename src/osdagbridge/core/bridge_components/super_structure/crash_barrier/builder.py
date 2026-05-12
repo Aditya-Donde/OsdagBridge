@@ -4,7 +4,7 @@
 - Contains placement logic
 - Contains footpath-based positioning logic
 """
-
+from osdagbridge.core.utils.common import *
 from OCC.Core.gp import gp_Pnt, gp_Vec, gp_Trsf, gp_Dir, gp_Ax2, gp_Ax1,gp_Pnt2d, gp_Ax2d, gp_Dir2d
 from OCC.Core.BRepBuilderAPI import (
     BRepBuilderAPI_MakePolygon,
@@ -54,13 +54,13 @@ def create_rigid_rcc_crash_barrier(
     
 
     # READ IRC DESIGN DATA
-    H_total = design_dict.get("crash_barrier_height")
-    W_base = design_dict.get("crash_barrier_width")
+    H_total = design_dict.get(KEY_CB_HEIGHT)
+    W_base = design_dict.get(KEY_CB_WIDTH)
     W_top = design_dict.get("crash_barrier_top_notch")
     
     H_base = design_dict.get("crash_barrier_base_notch")
     H_mid = design_dict.get("crash_barrier_middle_length")
-    wearing = design_dict.get("wearing_course_thickness")
+    wearing = design_dict.get(KEY_WC_THICKNESS)
 
  
    
@@ -498,13 +498,13 @@ def build_crash_barriers(
     # For rigid barriers, use crash_barrier dimensions
     # For semi-rigid, use kerb dimensions
     if barrier_type == "Rigid":
-        crash_barrier_height = design_dict.get("crash_barrier_height")
+        crash_barrier_height = design_dict.get(KEY_CB_HEIGHT)
         crash_barrier_width = design_dict.get("crash_barrier_top_notch")
-        crash_barrier_base_width = design_dict.get("crash_barrier_width")
+        crash_barrier_base_width = design_dict.get(KEY_CB_WIDTH)
         
     else:
         # Semi-rigid uses kerb as base
-        crash_barrier_height = design_dict.get("crash_barrier_height", 1050)
+        crash_barrier_height = design_dict.get(KEY_CB_HEIGHT, 1050)
         crash_barrier_base_width = design_dict.get("kerb_bottom_width", 550)
         crash_barrier_width = design_dict.get("kerb_top_width", 500)
 

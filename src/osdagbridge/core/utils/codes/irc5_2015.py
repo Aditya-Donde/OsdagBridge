@@ -6,6 +6,7 @@ Module for IRC 5:2015 bridge design clauses.
 
 import math
 from osdagbridge.core.utils.codes.keyfile import *
+from osdagbridge.core.utils.common import *
 
 
 class IRC5_2015(object):
@@ -318,29 +319,29 @@ class IRC5_2015(object):
         if barrier_type == KEY_CRASH_BARRIER_TYPE[2]:  # Rigid
             if crash_barrier_type == KEY_RIGID_CRASH_BARRIER_TYPE[1]:  # High containment
                 design_dict.update({
-                        'crash_barrier_height': 1550,
-                        'crash_barrier_width': 525,
+                        KEY_CB_HEIGHT: 1550,
+                        KEY_CB_WIDTH: 525,
                         'crash_barrier_radius1': 50,
                         'crash_barrier_radius2': 250,
                         'crash_barrier_top_notch': 250,
                         'crash_barrier_base_notch': 100,
                         'crash_barrier_middle_length': 1200,
-                        'wearing_course_thickness': 50
+                        KEY_WC_THICKNESS: 50
                     })
             elif footpath == KEY_FOOTPATH[1] or footpath == KEY_FOOTPATH[2]:
                 if railing_type == KEY_RAILING_TYPE[0]:  # RCC
                     railing_dims = {
                         'railing_height': None,
                         'railing_width': 275,
-                        'railing_type': 'RCC',
-                        'crash_barrier_height': 900,
-                        'crash_barrier_width': 450,
+                        KEY_RL_TYPE: 'RCC',
+                        KEY_CB_HEIGHT: 900,
+                        KEY_CB_WIDTH: 450,
                         'crash_barrier_radius1': 50,
                         'crash_barrier_radius2': 250,
                         'crash_barrier_top_notch': 175,
                         'crash_barrier_base_notch': 100,
                         'crash_barrier_middle_length': 550,        
-                        'wearing_course_thickness': 50,            
+                        KEY_WC_THICKNESS: 50,            
 
                     }
                     # IRC5_2015.cl_109_7_2_3_railing_height(railing_dims['railing_height'])
@@ -350,29 +351,29 @@ class IRC5_2015(object):
                     railing_dims = {
                         'railing_height': None,
                         'railing_width': 200,
-                        'railing_type': 'steel',
-                        'crash_barrier_height': 900,
-                        'crash_barrier_width': 450,
+                        KEY_RL_TYPE: 'steel',
+                        KEY_CB_HEIGHT: 900,
+                        KEY_CB_WIDTH: 450,
                         'crash_barrier_radius1': 50,
                         'crash_barrier_radius2': 250,
                         'crash_barrier_top_notch': 175,
                         'crash_barrier_base_notch': 100,
                         'crash_barrier_middle_length': 550,
-                        'wearing_course_thickness': 50
+                        KEY_WC_THICKNESS: 50
                     }
                     # IRC5_2015.cl_109_7_2_railing_height(railing_dims['railing_height'])
                     design_dict.update(railing_dims)
 
             elif footpath == KEY_FOOTPATH[0]:
                 design_dict.update({
-                    'crash_barrier_height': 1100,
-                    'crash_barrier_width': 450,
+                    KEY_CB_HEIGHT: 1100,
+                    KEY_CB_WIDTH: 450,
                     'crash_barrier_radius1': 50,
                     'crash_barrier_radius2': 250,
                     'crash_barrier_top_notch': 175,
                     'crash_barrier_base_notch': 100,
                     'crash_barrier_middle_length': 750,
-                    'wearing_course_thickness': 50
+                    KEY_WC_THICKNESS: 50
                         
                 })
 
@@ -381,8 +382,8 @@ class IRC5_2015(object):
 
             design_dict.update({
                 # Overall geometry
-                'crash_barrier_width': 550,
-                'crash_barrier_height': 950 + 100,
+                KEY_CB_WIDTH: 550,
+                KEY_CB_HEIGHT: 950 + 100,
 
                 # RCC kerb
                 'kerb_height': 100,
@@ -407,7 +408,7 @@ class IRC5_2015(object):
         elif barrier_type == KEY_MEDIAN_TYPE[0]:
 
             design_dict.update({
-                'median_width': 1200,
+                KEY_MD_WIDTH: 1200,
                 'kerb_height': 225,
                 'kerb_top_width': 1150,
                 'kerb_bottom_width': 1200
@@ -419,7 +420,7 @@ class IRC5_2015(object):
         elif barrier_type == KEY_MEDIAN_TYPE[1]:
 
                 design_dict.update({
-                'median_width': 1200,
+                KEY_MD_WIDTH: 1200,
 
                 # RCC barrier (overall)
                 'barrier_height': 900,
@@ -432,7 +433,7 @@ class IRC5_2015(object):
                 'barrier_split_h3': 100,   # base portion height
                 'barrier_radius_small': 50,
                 'barrier_radius_big': 250,
-                'wearing_course_thickness': 50,
+                KEY_WC_THICKNESS: 50,
                 'barrier_curve_offset': 50,
 
                 # RCC kerb (median kerb)
@@ -446,7 +447,7 @@ class IRC5_2015(object):
         elif barrier_type == KEY_MEDIAN_TYPE[2]:
 
             design_dict.update({
-                'median_width': 1200,
+                KEY_MD_WIDTH: 1200,
 
                 # Same as edge metallic barrier
                 'kerb_height': 100,
