@@ -69,6 +69,7 @@ from osdagbridge.core.utils.common import (
     KEY_TS_FOOTPATH_THICKNESS,
     KEY_FOOTPATH,
     VALUES_FOOTPATH,
+    TYPE_NOTICE
 )
 
 _DECK_DETAILS_TAB_SCHEMA = {
@@ -454,6 +455,18 @@ TYPICAL_SECTION_SCHEMA = {
                         "read_only": True,
                         "bind": "overall_bridge_width_display",
                         "on_text_changed": "_reject_overall_width_override",
+                    },
+                ],
+            },
+            {
+                "fields": [
+                    {},  # empty first field — placeholder for left column
+                    {
+                        "type": TYPE_NOTICE,
+                        "id": "layout_notice",
+                        "bind_adjust":    "layout_adjust_notice",
+                        "bind_warning":   "layout_warning_notice",
+                        "bind_container": "layout_notice_container",
                     },
                 ]
             },

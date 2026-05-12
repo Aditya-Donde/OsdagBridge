@@ -73,10 +73,6 @@ class TypicalSectionDetailsTab(QWidget):
         tab = self._tab_widgets.get(tab_id)
         return tab.main_widget.findChild(widget_type, widget_id) if tab else None
 
-    def _find_primary_widget(self, widget_id, widget_type=QWidget):
-        """Find a widget in the primary fields bar (above subtabs)."""
-        return self.primary_widget.findChild(widget_type, widget_id) if hasattr(self, 'primary_widget') else None
-
     def _find_crash_barrier_widget(self, widget_id, widget_type=QWidget):
         return self._find_tab_widget(KEY_CB_TAB, widget_id, widget_type)
 
@@ -140,132 +136,100 @@ class TypicalSectionDetailsTab(QWidget):
         main_layout.setContentsMargins(10, 10, 10, 10)
         main_layout.setSpacing(0)
 
-        # ── CAD Preview (hardcoded — not schema-driven) ───────────────────────
+        # ── CAD Preview ───────────────────────────────────────────────────────────
         from osdagbridge.desktop.ui.docks.cad_cross_section import CrossSectionCADWidget
-
         diagram_widget = QWidget()
         diagram_widget.setStyleSheet("""
-            QWidget {
-                background: transparent;
-                border: 1px solid #b0b0b0;
-                border-radius: 8px;
-            }
+            QWidget { background: transparent; border: 1px solid #b0b0b0; border-radius: 8px; }
         """)
         diagram_widget.setMinimumHeight(280)
         diagram_widget.setMaximumHeight(380)
         diagram_layout = QVBoxLayout(diagram_widget)
         diagram_layout.setContentsMargins(5, 5, 5, 5)
-
         cad_scroll = QScrollArea()
         cad_scroll.setWidgetResizable(True)
         cad_scroll.setFrameShape(QFrame.NoFrame)
         cad_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         cad_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         cad_scroll.setStyleSheet(ADDITIONAL_INPUTS_SCROLL_STYLE)
-
         self.cad_preview = CrossSectionCADWidget()
         self.cad_preview.scale_factor = 0.65
         self.cad_preview.setMinimumHeight(200)
-
         cad_scroll.setWidget(self.cad_preview)
         diagram_layout.addWidget(cad_scroll)
         main_layout.addWidget(diagram_widget)
-        main_layout.addSpacing(20)
+        main_layout.addSpacing(5)
 
-        # ── Input container (schema-driven below) ─────────────────────────────
+        # ── Input container ───────────────────────────────────────────────────────
         input_container = QWidget()
         input_container.setStyleSheet("QWidget { background-color: white; border: none;}")
         input_layout = QVBoxLayout(input_container)
-        input_layout.setContentsMargins(0, 0, 0, 0)
-        input_layout.setSpacing(0)
+        input_layout.setContentsMargins(0, 10, 0, 0)
+        input_layout.setSpacing(10)
 
-        # ── Primary fields bar (above subtabs) ────────────────────────────────
-        self.primary_widget = self._build_primary_fields(schema["primary_fields"])
-        self.primary_widget.setAutoFillBackground(True)
-        self.primary_widget.setObjectName("layout_primary_fields")
-        self.primary_widget.setStyleSheet("""
-            QWidget#layout_primary_fields {
-                border: none;
-            }
-        """)
-        input_layout.addWidget(self.primary_widget)
+        # ── Primary fields (optional — only if schema has "primary_fields") ───────
+        self._tab_widgets = {}
+        self.primary_widget = None
 
-        # ── Subtabs (one UIBuilder per tab_def) ───────────────────────────────
-        self._tab_widgets = {}   # tab_id -> UIBuilder instance
-
-        self.input_tabs = QTabWidget()
-        self.input_tabs.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        self.input_tabs.setTabBarAutoHide(False)
-        self.input_tabs.setStyleSheet("""
-            QTabBar {
-                background-color: #e8e8e8;
-                border: 1px solid red;
-            }
-            QTabWidget::pane {
-                border: none;
-                background-color: #f5f5f5;
-            }
-            QTabBar::tab {
-                background-color: #e8e8e8;
-                color: #555;
-                padding: 10px 20px;
-                border: 1px solid #b0b0b0;
-                border-bottom: none;
-                border-right: none;
-                font-size: 11px;
-                min-width: 80px;
-            }
-            QTabBar::tab:disabled {
-                color: #bfbfbf;
-                background: #e6e6e6;
-            }
-            QTabBar::tab:last {
-                border-right: 1px solid #b0b0b0;
-            }
-            QTabBar::tab:selected {
-                background-color: #90AF13;
-                color: white;
-                font-weight: bold;
-                border: 1px solid #90AF13;
-                border-bottom: none;
-            }
-            QTabBar::tab:hover:!selected {
-                background-color: #d0d0d0;
-            }
-        """)
-        self.input_tabs.tabBar().setElideMode(Qt.ElideRight)
-        self.input_tabs.tabBar().setExpanding(True)
-        self.input_tabs.tabBar().setUsesScrollButtons(False)
-        self.input_tabs.tabBar().setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-
-        for tab_def in schema["tabs"]:
-            tab_id = tab_def["id"]
-            tab_widget = UIBuilder(
+        if "primary_fields" in schema:
+            self.primary_widget = UIBuilder(
                 owner=self,
-                schema=tab_def,
+                schema=schema["primary_fields"],
                 card_title="Inputs:",
-                main_widget_object_name=tab_id + ".main",
+                main_widget_object_name="primary_fields.main",
                 additional_input_instance=self.additional_input_instance,
-                filler_column_index=2,
+                filler_column_index=None,
             )
-            self._tab_widgets[tab_id] = tab_widget
-            self.input_tabs.addTab(tab_widget, tab_def["label"])
+            self.primary_widget.setAutoFillBackground(True)
+            self.primary_widget.setObjectName("layout_primary_fields")
+            self.primary_widget.setStyleSheet("QWidget#layout_primary_fields { border: none; }")
+            input_layout.addWidget(self.primary_widget)
 
-        QTimer.singleShot(0, self._sync_subtab_bar_width)
+        # ── Subtabs (optional — only if schema has "tabs") ────────────────────────
+        self.input_tabs = None
 
-        # Connect wearing course CAD signals
-        wearing_thickness = self._find_wearing_widget(KEY_WC_THICKNESS)
-        if wearing_thickness:
-            wearing_thickness.editingFinished.connect(self._update_cad_preview)
-        wearing_density = self._find_wearing_widget(KEY_WC_DENSITY)
-        if wearing_density:
-            wearing_density.editingFinished.connect(self._update_cad_preview)
-        wearing_material = self._find_wearing_widget(KEY_WC_MATERIAL)
-        if wearing_material:
-            wearing_material.currentTextChanged.connect(self._update_cad_preview)
+        if "tabs" in schema:
+            self.input_tabs = QTabWidget()
+            self.input_tabs.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+            self.input_tabs.setTabBarAutoHide(False)
+            self.input_tabs.setStyleSheet("""
+                QTabBar { background-color: #e8e8e8; border: 1px solid red; }
+                QTabWidget::pane { border: none; background-color: #f5f5f5; }
+                QTabBar::tab {
+                    background-color: #e8e8e8; color: #555; padding: 10px 20px;
+                    border: 1px solid #b0b0b0; border-bottom: none; border-right: none;
+                    font-size: 11px; min-width: 80px;
+                }
+                QTabBar::tab:disabled { color: #bfbfbf; background: #e6e6e6; }
+                QTabBar::tab:last { border-right: 1px solid #b0b0b0; }
+                QTabBar::tab:selected {
+                    background-color: #90AF13; color: white; font-weight: bold;
+                    border: 1px solid #90AF13; border-bottom: none;
+                }
+                QTabBar::tab:hover:!selected { background-color: #d0d0d0; }
+            """)
+            self.input_tabs.tabBar().setElideMode(Qt.ElideRight)
+            self.input_tabs.tabBar().setExpanding(True)
+            self.input_tabs.tabBar().setUsesScrollButtons(False)
+            self.input_tabs.tabBar().setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
 
-        input_layout.addWidget(self.input_tabs)
+            for tab_def in schema["tabs"]:
+                tab_id = tab_def["id"]
+                tab_widget = UIBuilder(
+                    owner=self,
+                    schema=tab_def,
+                    card_title="Inputs:",
+                    main_widget_object_name=tab_id + ".main",
+                    additional_input_instance=self.additional_input_instance,
+                    filler_column_index=2,
+                )
+                self._tab_widgets[tab_id] = tab_widget
+                self.input_tabs.addTab(tab_widget, tab_def["label"])
 
+            QTimer.singleShot(0, self._sync_subtab_bar_width)
+            input_layout.addWidget(self.input_tabs)
+
+        # ── Scroll wrapper ────────────────────────────────────────────────────────
         self.lower_scroll = QScrollArea()
         self.lower_scroll.setWidgetResizable(True)
         self.lower_scroll.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
@@ -273,28 +237,23 @@ class TypicalSectionDetailsTab(QWidget):
         self.lower_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.lower_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         self.lower_scroll.setStyleSheet(ADDITIONAL_INPUTS_SCROLL_STYLE + """
-            QScrollArea {
-                border: 1px solid #b0b0b0;
-                border-radius: 0px 0px 8px 8px;
-                background: white;
-            }
+            QScrollArea { border: 1px solid #b0b0b0; border-radius: 0px 0px 8px 8px; background: white; }
         """)
         self.lower_scroll.setWidget(input_container)
         main_layout.addWidget(self.lower_scroll)
 
-        # Post-build wiring
+        # ── Post-build wiring ─────────────────────────────────────────────────────
         self._initialize_lane_defaults()
-        self.deck_thickness.textChanged.connect(self.update_footpath_thickness)
+        if self.deck_thickness:
+            self.deck_thickness.textChanged.connect(self.update_footpath_thickness)
         self.recalculate_girders()
 
-        # Connect layout field CAD signals
         for attr in ("girder_spacing", "no_of_girders", "deck_overhang",
-                     "deck_thickness", "footpath_width", "footpath_thickness"):
+                    "deck_thickness", "footpath_width", "footpath_thickness"):
             field = getattr(self, attr, None)
             if field:
                 field.editingFinished.connect(self._update_cad_preview)
 
-        # Initialise per-subtab visibility / defaults
         crash_barrier_type = self._find_crash_barrier_widget(KEY_CB_TYPE)
         if crash_barrier_type:
             barrier_type = crash_barrier_type.currentText()
@@ -308,132 +267,23 @@ class TypicalSectionDetailsTab(QWidget):
         wearing_material_w = self._find_wearing_widget(KEY_WC_MATERIAL)
         if wearing_material_w:
             self.on_wearing_material_changed(wearing_material_w.currentText())
+
+        # Connect wearing course CAD signals
+        for key, signal, handler in [
+            (KEY_WC_THICKNESS, "editingFinished",    self._update_cad_preview),
+            (KEY_WC_DENSITY,   "editingFinished",    self._update_cad_preview),
+            (KEY_WC_MATERIAL,  "currentTextChanged", self._update_cad_preview),
+        ]:
+            widget = self._find_wearing_widget(key)
+            if widget:
+                getattr(widget, signal).connect(handler)
+
         try:
-            if hasattr(self, "no_of_girders") and self.no_of_girders.text():
+            if self.no_of_girders and self.no_of_girders.text():
                 self.girder_count_changed.emit(int(self.no_of_girders.text()))
         except Exception:
             pass
-
-    def _build_primary_fields(self, primary_schema: dict) -> QWidget:
-        """Build the 2-column primary fields bar above the subtab bar from schema."""
-        from PySide6.QtWidgets import QGridLayout, QLineEdit
-        from PySide6.QtGui import QDoubleValidator, QIntValidator
-
-        widget = QFrame(self)
-        layout = QVBoxLayout(widget)
-        layout.setContentsMargins(18, 12, 18, 12)
-        layout.setSpacing(0)
-
-        title = QLabel("Inputs:")
-        title.setStyleSheet("font-size: 12px; font-weight: bold; color: #000;")
-        layout.addWidget(title)
-        layout.addSpacing(8)
-
-        grid = QGridLayout()
-        grid.setHorizontalSpacing(24)
-        grid.setVerticalSpacing(10)
-        grid.setContentsMargins(0, 0, 0, 0)
-        # Two pairs of (label, field) side by side — 4 columns, stretch cols 1 and 3
-        grid.setColumnStretch(1, 1)
-        grid.setColumnStretch(3, 1)
-
-        label_width = primary_schema.get("label_width", 200)
-
-        for row_idx, row in enumerate(primary_schema.get("rows", [])):
-            col = 0
-            for field_def in row.get("fields", []):
-                lbl = QLabel(field_def.get("label", ""))
-                lbl.setStyleSheet("font-size: 11px; color: #000;")
-                lbl.setMinimumWidth(label_width)
-                lbl.setObjectName(field_def["id"] + "_label")
-                grid.addWidget(lbl, row_idx, col, Qt.AlignLeft)
-                col += 1
-
-                # Build field
-                field = QLineEdit()
-                validator_def = field_def.get("validator")
-                if validator_def:
-                    vtype = validator_def["type"]
-                    if vtype == "double_range":
-                        field.setValidator(QDoubleValidator(
-                            validator_def.get("bottom", 0.0),
-                            validator_def.get("top", 1e9),
-                            validator_def.get("decimals", 3),
-                        ))
-                    elif vtype == "int_range":
-                        field.setValidator(QIntValidator(
-                            validator_def.get("bottom", 0),
-                            validator_def.get("top", 999999),
-                        ))
-                if field_def.get("read_only"):
-                    field.setReadOnly(True)
-                    field.setEnabled(False)
-                    field.setStyleSheet(
-                        "QLineEdit { background-color: #f2f2f2; color: #666;"
-                        " border: 1px solid #c0c0c0; border-radius: 4px; padding: 4px 6px; }"
-                    )
-
-                field.setObjectName(field_def["id"])
-                field.setFixedWidth(180)
-                apply_field_style(field)
-
-                # bind onto owner so rest of code can do self.girder_spacing etc.
-                bind_name = field_def.get("bind")
-                if bind_name:
-                    setattr(self, bind_name, field)
-
-                # Wire signals
-                on_text = field_def.get("on_text_changed")
-                if on_text and hasattr(self, on_text):
-                    field.textChanged.connect(getattr(self, on_text))
-                on_finished = field_def.get("on_editing_finished")
-                if on_finished and hasattr(self, on_finished):
-                    field.editingFinished.connect(getattr(self, on_finished))
-
-                if field_def["id"] == KEY_TS_OVERALL_WIDTH:
-                    field.setToolTip(self.overall_bridge_width_formula)
-
-                grid.addWidget(field, row_idx, col)
-                col += 1
-
-        # Adjustment notice labels (used by _show_adjust_notice)
-        if not hasattr(self, "layout_notice_container"):
-            self.layout_adjust_notice = QLabel()
-            self.layout_adjust_notice.setStyleSheet(
-                "font-size: 10px; font-style: italic; color: #000000; background-color: transparent;"
-            )
-            self.layout_adjust_notice.setWordWrap(False)
-            self.layout_adjust_notice.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
-            self.layout_adjust_notice.setFixedWidth(180)
-            self.layout_adjust_notice.setFixedHeight(16)
-            self.layout_adjust_notice.hide()
-
-            self.layout_warning_notice = QLabel()
-            self.layout_warning_notice.setStyleSheet(
-                "font-size: 10px; font-style: italic; color: #cc6600; background-color: transparent;"
-            )
-            self.layout_warning_notice.setWordWrap(False)
-            self.layout_warning_notice.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
-            self.layout_warning_notice.setFixedWidth(180)
-            self.layout_warning_notice.setFixedHeight(16)
-            self.layout_warning_notice.hide()
-
-            self.layout_notice_container = QWidget()
-            self.layout_notice_container.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
-            self.layout_notice_container.setFixedWidth(180)
-            self.layout_notice_container.setFixedHeight(16)
-            notice_layout = QVBoxLayout(self.layout_notice_container)
-            notice_layout.setContentsMargins(0, 0, 0, 0)
-            notice_layout.setSpacing(0)
-            notice_layout.addWidget(self.layout_adjust_notice)
-            notice_layout.addWidget(self.layout_warning_notice)
-            self.layout_notice_container.hide()
-            # Place notice under "No. of Girders" (row 0, col 3)
-            grid.addWidget(self.layout_notice_container, 1, 2, 1, 1, Qt.AlignLeft | Qt.AlignTop)
-
-        layout.addLayout(grid)
-        return widget
-    
+        
     def _sync_tab_active_states(self):
         """Enable/disable subtabs based on their 'active' condition in schema.
         

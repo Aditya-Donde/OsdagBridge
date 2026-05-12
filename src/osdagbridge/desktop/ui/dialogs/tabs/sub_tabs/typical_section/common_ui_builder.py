@@ -8,7 +8,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QDoubleValidator
 
-from osdagbridge.core.utils.common import TYPE_COMBOBOX, TYPE_TEXTBOX
+from osdagbridge.core.utils.common import TYPE_COMBOBOX, TYPE_NOTICE, TYPE_TEXTBOX
 
 
 class UIBuilder(QWidget):
@@ -78,6 +78,12 @@ class UIBuilder(QWidget):
             for field_def in fields:
                 ftype = field_def.get("type")
 
+                if not ftype:  # empty placeholder — skip label, add empty spacer
+                    grid.addWidget(QWidget(), row_idx, col)      # empty label col
+                    grid.addWidget(QWidget(), row_idx, col + 1)  # empty field col
+                    col += 2
+                    continue
+
                 if ftype == "table_with_count":
                     container = self._build_table_with_count(field_def, label_width)
                     grid.addWidget(container, row_idx, 0, 1, -1)
@@ -119,12 +125,30 @@ class UIBuilder(QWidget):
                 field.setPlaceholderText(placeholder)
             if field_def.get("enabled") is False:
                 field.setEnabled(False)
+            
+            if field_def.get("read_only"):
+                field.setReadOnly(True)
+                field.setEnabled(False)
+                field.setStyleSheet(
+                    "QLineEdit { background-color: #f2f2f2; color: #666;"
+                    " border: 1px solid #c0c0c0; border-radius: 4px; padding: 4px 6px; }"
+                )
+        elif ftype == TYPE_NOTICE:
+            notice_container, adjust_lbl, warning_lbl = self._build_notice_container()
+            setattr(owner, field_def["bind_adjust"],    adjust_lbl)
+            setattr(owner, field_def["bind_warning"],   warning_lbl)
+            setattr(owner, field_def["bind_container"], notice_container)
+            return notice_container
         else:
             return QWidget()
 
         field.setObjectName(field_def["id"])
         field.setFixedWidth(field_width)
         owner.style_input_field(field)
+
+        tooltip_attr = field_def.get("tooltip")
+        if tooltip_attr and hasattr(owner, tooltip_attr):
+            field.setToolTip(getattr(owner, tooltip_attr))
 
         bind_name = field_def.get("bind")
         if bind_name:
@@ -237,3 +261,37 @@ class UIBuilder(QWidget):
             combo.currentTextChanged.connect(getattr(owner, on_count_change))
 
         return container
+
+    def _build_notice_container(self, field_width=280):
+        from PySide6.QtWidgets import QVBoxLayout
+
+        adjust_lbl = QLabel()
+        adjust_lbl.setStyleSheet(
+            "font-size: 10px; font-style: italic; color: #000000; background-color: transparent;"
+        )
+        adjust_lbl.setWordWrap(True)
+        adjust_lbl.setFixedWidth(field_width)
+        adjust_lbl.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Preferred)
+        adjust_lbl.hide()
+
+        warning_lbl = QLabel()
+        warning_lbl.setStyleSheet(
+            "font-size: 10px; font-style: italic; color: #cc6600; background-color: transparent;"
+        )
+        warning_lbl.setWordWrap(True)
+        warning_lbl.setFixedWidth(field_width)
+        warning_lbl.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Preferred)
+        warning_lbl.hide()
+
+        container = QWidget()
+        container.setFixedWidth(field_width)
+        container.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Preferred)
+        container.hide()
+
+        vbox = QVBoxLayout(container)
+        vbox.setContentsMargins(0, 0, 0, 0)
+        vbox.setSpacing(2)
+        vbox.addWidget(adjust_lbl)
+        vbox.addWidget(warning_lbl)
+
+        return container, adjust_lbl, warning_lbl

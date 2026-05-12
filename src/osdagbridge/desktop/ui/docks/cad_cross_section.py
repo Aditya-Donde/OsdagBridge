@@ -670,6 +670,10 @@ class CrossSectionCADWidget(QWidget):
                         params["median_height"] = geom["kerb_height"]
                     elif "barrier_height" in geom:
                         params["median_height"] = geom["barrier_height"]
+        
+        from pprint import pprint
+        print("Updated CAD params:")
+        pprint(params)
 
         self.update_params(params)
 
