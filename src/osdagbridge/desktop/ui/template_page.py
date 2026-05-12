@@ -18,7 +18,7 @@ from osdagbridge.desktop.ui.dialogs.loading_popup import LoadingDialogManager
 from osdagbridge.desktop.ui.cad_3d import CAD3DWindow
 
 from osdagbridge.core.bridge_types.plate_girder.ui_fields import FrontendData
-from osdagbridge.core.bridge_types.plate_girder.defaults import BASIC_INPUT_DICT, extend_basic_input_dict
+from osdagbridge.core.bridge_types.plate_girder.defaults import BASIC_INPUT_DICT
 from osdagbridge.core.utils.common import *
 from osdagbridge.desktop.ui.utils.custom_widgets import ToolBarWidget
 
@@ -400,13 +400,9 @@ class CustomWindow(QWidget):
                         break
             except Exception:
                 pass
-        
+
         # To Update the Input Dictionary before opening it
         dlg.set_input_dictionary(self.input_dict)
-
-        from pprint import pprint
-        print("\n@@input_dictionary-before_additional_inputs:\n")
-        pprint(self.input_dict)
 
         # Update Internal 2D CAD State
         # Single Source of Truth = _last_mapped_params dict in BridgeDualCADWidget
@@ -524,13 +520,9 @@ class CustomWindow(QWidget):
         if not required_widget_validated:
             return                 # Stop design process if validation fails
 
-        # Recalculate defaults of additonalInputs only if required
-        if self.input_dock.is_require_field_changed:
-            print("\n@@ Recalculating Additional Input Defaults based on changed fields...\n")
-            # Extend with Additional Input Defaults
-            extend_basic_input_dict(self.input_dict)
-            # Reset the flag to False
-            self.input_dock.is_require_field_changed = False
+        # Call Additional Input Defaults
+        additional_inputs_dict = {}
+        self.input_dict.update(additional_inputs_dict)
 
         if trigger == "Design":
             
