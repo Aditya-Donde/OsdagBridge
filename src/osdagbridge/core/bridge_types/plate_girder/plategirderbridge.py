@@ -1065,6 +1065,49 @@ class PlateGirderBridge:
             pass
 
         return state
+    def get_ifc_export_parameters(self, additional_inputs: dict | None = None) -> BridgeParametersDTO:
+        """
+        Build a BridgeParametersDTO for IFC export.
+
+        Identical to get_3d_cad_parameters() but overrides crash-barrier,
+        median, railing, footpath-width and railing-width fields from the
+        supplied additional_inputs dict (values from the Additional Inputs
+        dialog that are not part of the basic input set).
+
+        Must be called after design() has fully run.
+        """
+        params = self.get_3d_cad_parameters()
+        ai = additional_inputs or {}
+
+        # --- Crash Barrier ---
+        barrier_label = str(ai.get("crash_barrier_type", params.barrier_type))
+        params.barrier_type = barrier_label
+        if "High Containment" in barrier_label:
+            params.crash_barrier_subtype = "High Containment"
+        elif "Double W-Beam" in barrier_label or "Double W-beam" in barrier_label:
+            params.crash_barrier_subtype = "Double W-beam"
+        elif "Single W-Beam" in barrier_label or "Single W-beam" in barrier_label:
+            params.crash_barrier_subtype = "Single W-beam"
+        else:
+            params.crash_barrier_subtype = "IRC-5R"
+
+        # --- Median ---
+        params.median_type = str(ai.get("median_type", params.median_type))
+
+        # --- Railing ---
+        railing_raw = str(ai.get("railing_type", params.railing_type))
+        params.railing_type = (
+            "IRC 5 - Steel Railing" if "steel" in railing_raw.lower() else "IRC 5 - RCC Railing"
+        )
+        params.rail_count = int(ai.get("railing_rail_count", params.rail_count))
+
+        # --- Footpath / railing widths (additional input may override default) ---
+        if KEY_FOOTPATH_WIDTH in ai:
+            params.footpath_width = float(ai[KEY_FOOTPATH_WIDTH]) * 1000
+        if KEY_RAILING_WIDTH in ai:
+            params.railing_width = float(ai[KEY_RAILING_WIDTH]) * 1000
+
+        return params
 
     def build_graph_engine(
         self,
