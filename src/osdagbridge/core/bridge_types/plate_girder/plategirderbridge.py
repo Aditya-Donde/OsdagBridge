@@ -983,6 +983,88 @@ class PlateGirderBridge:
             params.railing_width = float(ai[KEY_RAILING_WIDTH]) * 1000
 
         return params
+    def get_steel_design_state(self) -> dict:
+        """Build a flat dict of values for the Steel Design dialog details tab."""
+        state: dict[str, object] = {}
+
+        sp = getattr(self, "section_props", {}) or {}
+        sr = getattr(self, "sizing_result", None)
+        add_inputs = getattr(self, "additional_inputs", {}) or {}
+
+        girder_details = add_inputs.get("girder_details", {})
+        stiffener_details = add_inputs.get("stiffener_details", {})
+
+        if isinstance(girder_details, dict):
+            state["girder_details"] = girder_details
+        if isinstance(stiffener_details, dict):
+            state["stiffener_details"] = stiffener_details
+
+        member_id = ""
+        if isinstance(girder_details, dict):
+            member_id = str(
+                girder_details.get("member_id")
+                or girder_details.get("selected_girder")
+                or ""
+            ).strip()
+        state["member_id"] = member_id
+
+        state["grade_of_material"] = str(self.basic_inputs.get(KEY_GIRDER, "")).strip()
+        state["span_m"] = self.basic_inputs.get(KEY_SPAN)
+
+        section_type = ""
+        if isinstance(girder_details, dict):
+            section_type = str(
+                girder_details.get("girder_type")
+                or girder_details.get("section_type")
+                or ""
+            ).strip()
+        state["section_type"] = section_type
+
+        section_designation = ""
+        if isinstance(girder_details, dict):
+            section_designation = str(
+                girder_details.get("rolled_section")
+                or girder_details.get("section_designation")
+                or ""
+            ).strip()
+        if not section_designation and section_type:
+            section_designation = "Built-up Plate Girder" if section_type.lower() == "welded" else section_type
+        state["section_designation"] = section_designation
+
+        def _fmt_mm(value: object) -> str:
+            try:
+                return f"{float(value) * 1e3:.3f}".rstrip("0").rstrip(".")
+            except (TypeError, ValueError):
+                return ""
+
+        if sp:
+            state.setdefault("total_depth", _fmt_mm(sp.get("D")))
+            state.setdefault("web_thickness", _fmt_mm(sp.get("t_w")))
+            state.setdefault("top_flange_width", _fmt_mm(sp.get("B_top")))
+            state.setdefault("top_flange_thickness", _fmt_mm(sp.get("t_f_top")))
+            state.setdefault("bottom_flange_width", _fmt_mm(sp.get("B_bot", sp.get("B_top"))))
+            state.setdefault("bottom_flange_thickness", _fmt_mm(sp.get("t_f_bot", sp.get("t_f_top"))))
+
+        def _fmt_cm(value: object, factor: float) -> str:
+            try:
+                return f"{float(value) * factor:.3f}".rstrip("0").rstrip(".")
+            except (TypeError, ValueError):
+                return ""
+
+        if sp:
+            state.setdefault("area", _fmt_cm(sp.get("Area"), 1e4))
+            state.setdefault("iz", _fmt_cm(sp.get("I_z"), 1e8))
+            state.setdefault("iv", _fmt_cm(sp.get("I_y"), 1e8))
+            state.setdefault("it", _fmt_cm(sp.get("I_t"), 1e8))
+            state.setdefault("iw", _fmt_cm(sp.get("I_w"), 1e12))
+
+        try:
+            if sr is not None and getattr(sr, "no_of_girders", None) is not None:
+                state["no_of_girders"] = int(sr.no_of_girders)
+        except Exception:
+            pass
+
+        return state
 
     def build_graph_engine(
         self,

@@ -433,6 +433,11 @@ class CustomWindow(QWidget):
             self.backend.design()
             self.output_dock.refresh_utilization()
 
+            # Cache design outputs for the Steel Design dialog details tab.
+            self.cad_state.update(self.input_dict)
+            if hasattr(self.backend, "get_steel_design_state"):
+                self.cad_state.update(self.backend.get_steel_design_state() or {})
+
             # Lock the input dock after design is triggered
             if self.input_dock and not self.input_dock.is_locked:
                 self.input_dock.toggle_lock()
