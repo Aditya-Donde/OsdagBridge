@@ -3,7 +3,7 @@ Top View CAD Widget for OsdagBridge
 Handles top/plan view rendering of bridge structures
 Author: Arushi
 """
-
+from osdagbridge.core.utils.common import *
 import math
 from PySide6.QtWidgets import QWidget, QPushButton, QScrollArea
 from PySide6.QtCore import Qt, QRectF, QPointF, QTimer, QSize
@@ -60,13 +60,13 @@ class TopViewCADWidget(QWidget):
             'deck_thickness': 200,
             'footpath_width': 1500,
             'footpath_thickness': 200,
-            'crash_barrier_width': 500,
+            KEY_CB_WIDTH: 500,
             'railing_height': 1000,
             'footpath_config': 'both',
             'deck_overhang': 1000,
             'railing_width': 375,
             'median_present': False,
-            'median_width': 1200,
+            KEY_MD_WIDTH: 1200,
         }
         
         # girder dimensions (mm)
@@ -763,11 +763,11 @@ class TopViewCADWidget(QWidget):
     def compute_deck_total_width(self):
         """Compute total deck width including median if present"""
         carriageway = self.params.get('carriageway_width', 10500)
-        crash_barrier = self.params.get('crash_barrier_width', 500)
+        crash_barrier = self.params.get(KEY_CB_WIDTH, 500)
         footpath_width = self.params.get('footpath_width', 1500)
         fp_config = self.params.get('footpath_config', 'both')
         median_present = self.params.get('median_present', False)
-        median_width = self.params.get('median_width', 1200)
+        median_width = self.params.get(KEY_MD_WIDTH, 1200)
         RAILING_WIDTH = 375 # Standard outer width of RCC railing in mm
         
         if fp_config == 'both':

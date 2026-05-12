@@ -22,7 +22,7 @@ Features:
 
 
 """
-
+from osdagbridge.core.utils.common import *
 from OCC.Core.Quantity import Quantity_Color, Quantity_TOC_RGB, Quantity_NOC_BLACK
 from OCC.Core.TopoDS import TopoDS_Shape
 from OCC.Core.AIS import AIS_Shape
@@ -602,15 +602,6 @@ class PlateGirderCADGenerator:
         # STEP 6: CONFIGURE CRASH BARRIER SPECIFICATIONS (IRC 5:2015)
         
         from osdagbridge.core.utils.codes.irc5_2015 import IRC5_2015
-        from osdagbridge.core.utils.common import (
-            KEY_CRASH_BARRIER_TYPE,
-            VALUES_FOOTPATH,
-            KEY_RAILING_TYPE,
-            KEY_RIGID_CRASH_BARRIER_TYPE,
-            KEY_METALLIC_CRASH_BARRIER_TYPE,
-            KEY_MEDIAN_TYPE,
-            VALUES_RAILING_TYPE
-        )
 
         # Map barrier types to indices
         barrier_type_map = {"Flexible": 0, "Semi-Rigid": 1, "Rigid": 2}
@@ -653,7 +644,7 @@ class PlateGirderCADGenerator:
                 design_dict={},
                 crash_barrier_type=KEY_RIGID_CRASH_BARRIER_TYPE[rigid_subtype_idx]
             )
-            actual_base_width = design_dict.get("crash_barrier_width", 450)
+            actual_base_width = design_dict.get(KEY_CB_WIDTH, 450)
         else:
             # Semi-Rigid / Metallic barrier
             metallic_subtype_idx = metallic_subtype_map.get(self.crash_barrier_subtype, 0)
@@ -668,10 +659,10 @@ class PlateGirderCADGenerator:
         
         # Ensure railing parameters are in design dictionary
         if selected_railing_key == KEY_RAILING_TYPE[1]:
-            design_dict["railing_type"] = "steel"
+            design_dict[KEY_RL_TYPE] = "steel"
             design_dict["railing_width"] = 200
         else:
-            design_dict["railing_type"] = "RCC"
+            design_dict[KEY_RL_TYPE] = "RCC"
             design_dict["railing_width"] = 275
 
         # STEP 7: BUILD DECK SYSTEM

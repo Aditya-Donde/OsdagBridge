@@ -279,7 +279,7 @@ class BridgeConfig:
         # Build a BridgeConfig from a solved PlateGirderBridge: materials from the project DB
         # (which mirrors IS 2062 / IRC 22 Annex III), concrete/rebar resolved via IRC 22 Annex III.
         from osdagbridge.core.utils.common import (
-            KEY_GIRDER, KEY_DECK_CONCRETE_GRADE_BASIC, KEY_DECK_THICKNESS,
+            KEY_GIRDER, KEY_DECK_CONCRETE_GRADE_BASIC, KEY_TS_DECK_THICKNESS,
             KEY_SPAN, KEY_CARRIAGEWAY_WIDTH, KEY_CROSS_BRACING_SPACING,
         )
 
@@ -347,7 +347,7 @@ class BridgeConfig:
         # Deck thickness lives in the Additional Inputs dialog; fall back to the initial-sizing
         # default when the user has not opened that dialog.
         from osdagbridge.core.bridge_types.plate_girder.initial_sizing import DEFAULT_DECK_THICKNESS
-        deck_t = bridge.additional_inputs.get(KEY_DECK_THICKNESS, DEFAULT_DECK_THICKNESS)
+        deck_t = bridge.additional_inputs.get(KEY_TS_DECK_THICKNESS, DEFAULT_DECK_THICKNESS)
         slab = SlabProperties(thickness=float(deck_t))
 
         # Shear stud parameters from Additional Inputs; defaults match the UI field defaults.

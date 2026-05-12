@@ -69,7 +69,7 @@ class InputDock(QWidget):
 
         # Flag to track if any required field was changed
         # Use to reset the additonal input defaults from common design function
-        self.is_require_field_changed = False
+        self.is_require_field_changed = True
 
         self.is_locked            = False
         self._current_design_mode = "Optimized"

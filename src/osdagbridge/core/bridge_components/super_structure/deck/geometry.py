@@ -1,10 +1,6 @@
 """Deck slab and wearing course dead load calculations."""
 from osdagbridge.core.utils.codes.keyfile import DEFAULT_CONCRETE_DENSITY, DEFAULT_BITUMINOUS_DENSITY
-from osdagbridge.core.utils.common import (
-    KEY_DECK_THICKNESS,
-    KEY_WEARING_COAT_THICKNESS,
-    KEY_WEARING_COAT_DENSITY,
-)
+from osdagbridge.core.utils.common import *
 
 
 # IRC 6:2017 / IS 875 Pt 1 — wet reinforced concrete unit weight.
@@ -65,7 +61,7 @@ def deck_thickness_from_inputs(additional_inputs: dict, default_mm: float) -> fl
     Parameters
     ----------
     additional_inputs : dict
-        The bridge's additional-inputs dictionary (keyed by KEY_DECK_THICKNESS).
+        The bridge's additional-inputs dictionary (keyed by KEY_TS_DECK_THICKNESS).
     default_mm : float
         Fallback thickness in mm when the key is absent.
 
@@ -74,7 +70,7 @@ def deck_thickness_from_inputs(additional_inputs: dict, default_mm: float) -> fl
     float
         Deck slab thickness in metres.
     """
-    t_mm = float(additional_inputs.get(KEY_DECK_THICKNESS, default_mm))
+    t_mm = float(additional_inputs.get(KEY_TS_DECK_THICKNESS, default_mm))
     return t_mm / 1000.0
 
 
@@ -100,6 +96,6 @@ def wearing_course_params_from_inputs(
         ``(thickness_m, density_kN_m3)`` ready to pass to
         ``create_wearing_course_load()``.
     """
-    t_mm = float(additional_inputs.get(KEY_WEARING_COAT_THICKNESS, default_t_mm))
-    rho = float(additional_inputs.get(KEY_WEARING_COAT_DENSITY, default_rho_kN_m3))
+    t_mm = float(additional_inputs.get(KEY_WC_THICKNESS, default_t_mm))
+    rho = float(additional_inputs.get(KEY_WC_DENSITY, default_rho_kN_m3))
     return t_mm / 1000.0, rho

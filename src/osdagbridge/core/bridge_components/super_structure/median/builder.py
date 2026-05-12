@@ -6,7 +6,7 @@ Supports three types per IRC 5:2015:
   - RCC Crash Barrier (Fig 5b)
   - Metallic Crash Barrier (Fig 5c)
 """
-
+from osdagbridge.core.utils.common import *
 from OCC.Core.gp import gp_Trsf, gp_Vec, gp_Pnt, gp_Dir, gp_Ax2, gp_Ax1
 from OCC.Core.BRepBuilderAPI import (
     BRepBuilderAPI_Transform,
@@ -121,7 +121,7 @@ def create_rcc_crash_barrier_median(length, design_dict, skew_angle=0):
     barrier_base_h = design_dict.get("barrier_split_h3", 100)
     barrier_mid_h = design_dict.get("barrier_split_h2", 250) + design_dict.get("barrier_split_h1", 500)
     
-    wearing = design_dict.get("wearing_course_thickness", 50)
+    wearing = design_dict.get(KEY_WC_THICKNESS, 50)
     
     # Calculate intermediate width at transition point
     H_transition = 250  # Height of transition section
@@ -500,7 +500,7 @@ def build_median(
     median_barriers = []
     
     # Get median width from design_dict (default 1200)
-    median_total_width = design_dict.get("median_width", 1200)
+    median_total_width = design_dict.get(KEY_MD_WIDTH, 1200)
     
     # CASE 1: RAISED KERB (Single Central)
     if median_type == "Raised Kerb":

@@ -7,10 +7,7 @@ Takes dimensions from IRC5_2015 and computes areas only.
 
 import math
 from osdagbridge.core.utils.codes.irc5_2015 import IRC5_2015
-from osdagbridge.core.utils.codes.keyfile import (
-    KEY_METALLIC_CRASH_BARRIER_TYPE,
-    KEY_MEDIAN_TYPE,
-)
+from osdagbridge.core.utils.common import *
 
 #  BASIC AREA UTILITIES
 
@@ -82,7 +79,7 @@ def median_rcc_crash_barrier_area():
     H1 = geom["barrier_split_h1"]
     H2 = geom["barrier_split_h2"]
 
-    wearing = geom["wearing_course_thickness"]
+    wearing = geom[KEY_WC_THICKNESS]
     H3 = geom["barrier_split_h3"] + wearing
 
     R_small = geom["barrier_radius_small"]

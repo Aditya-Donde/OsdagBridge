@@ -18,7 +18,7 @@ from osdagbridge.desktop.ui.dialogs.loading_popup import LoadingDialogManager
 from osdagbridge.desktop.ui.cad_3d import CAD3DWindow
 
 from osdagbridge.core.bridge_types.plate_girder.ui_fields import FrontendData
-from osdagbridge.core.bridge_types.plate_girder.defaults import BASIC_INPUT_DICT
+from osdagbridge.core.bridge_types.plate_girder.defaults import BASIC_INPUT_DICT, extend_basic_input_dict
 from osdagbridge.core.utils.common import *
 from osdagbridge.desktop.ui.utils.custom_widgets import ToolBarWidget
 
@@ -512,7 +512,7 @@ class CustomWindow(QWidget):
         # print(f"[DEBUG]top:{self.top_view_active}")
         # print(f"[DEBUG]c/s:{self.cross_section_active}")
         from pprint import pprint
-        print("\n@@input_dictionary:\n")
+        print("\n@@input_dictionary_before (common_design_func):\n")
         pprint(self.input_dict)
 
         # Check required fields
@@ -520,9 +520,13 @@ class CustomWindow(QWidget):
         if not required_widget_validated:
             return                 # Stop design process if validation fails
 
-        # Call Additional Input Defaults
-        additional_inputs_dict = {}
-        self.input_dict.update(additional_inputs_dict)
+        # Redefine additional input defaults of some required fields are changed
+        if self.input_dock.is_require_field_changed:
+            extend_basic_input_dict(self.input_dict)
+            self.input_dock.is_require_field_changed = False
+        
+        print("\n@@input_dictionary_after (common_design_func):\n")
+        pprint(self.input_dict)
 
         if trigger == "Design":
             
