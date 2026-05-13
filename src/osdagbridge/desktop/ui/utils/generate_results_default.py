@@ -55,9 +55,9 @@ GENERATE_RESULTS_DEFAULTS = {
                     "Thermal Expansion Coefficient (×10⁻⁶/°C)",
                 ],
                 "rows": [
-                    ["Girder",    "E350", 490, 350, 200000, 76900, 0.30, 12e-6],
-                    ["Cross Bracing",       "E350", 490, 350, 200000, 76900, 0.30, 12e-6],
-                    ["End Diagram",       "E350", 490, 350, 200000, 76900, 0.30, 12e-6],
+                    ["Girder",         "E350", 490, 350, 200000, 76900, 0.30, 12e-6],
+                    ["Cross Bracing",  "E350", 490, 350, 200000, 76900, 0.30, 12e-6],
+                    ["End Diagram",    "E350", 490, 350, 200000, 76900, 0.30, 12e-6],
                 ],
             },
 
@@ -75,14 +75,16 @@ GENERATE_RESULTS_DEFAULTS = {
                     "Poisson's Ratio, ν",
                 ],
                 "rows": [
-                    ["Girder",    "M40", 40, 3.5, 34000, 6.0, 25.0, 0.20],
-                    ["Cross Bracing",     "M35", 35, 3.2, 32000, 6.5, 25.0, 0.20],
-                    ["End Diaphram",     "M30", 30, 2.9, 30000, 7.0, 25.0, 0.20],
+                    ["Girder",        "M40", 40, 3.5, 34000, 6.0, 25.0, 0.20],
+                    ["Cross Bracing", "M35", 35, 3.2, 32000, 6.5, 25.0, 0.20],
+                    ["End Diaphram",  "M30", 30, 2.9, 30000, 7.0, 25.0, 0.20],
                 ],
             },
         },
 
         "load_definitions": {
+            "id": "load_definitions",
+            "label": "Load Definitions",
 
             "permanent_load_summary": {
                 "id": "permanent_load_summary",
@@ -172,6 +174,8 @@ GENERATE_RESULTS_DEFAULTS = {
         },
 
         "member_definitions": {
+            "id": "member_definitions",
+            "label": "Member Definitions",
 
             "girder_section_properties": {
                 "id": "girder_section_properties",
@@ -254,8 +258,12 @@ GENERATE_RESULTS_DEFAULTS = {
     },
 
     "analysis_results": {
+        "id": "analysis_results",
+        "label": "Analysis Results",
 
         "load_effects_girder": {
+            "id": "load_effects_girder",
+            "label": "Load Effects - Girder",
 
             "bending_moment_envelope": {
                 "id": "bending_moment_envelope",
@@ -333,6 +341,8 @@ GENERATE_RESULTS_DEFAULTS = {
         },
 
         "deflections": {
+            "id": "deflections",
+            "label": "Deflections",
 
             "deflection_live_load": {
                 "id": "deflection_live_load",
@@ -370,6 +380,8 @@ GENERATE_RESULTS_DEFAULTS = {
         },
 
         "stress_results": {
+            "id": "stress_results",
+            "label": "Stress Results",
 
             "stress_steel_service": {
                 "id": "stress_steel_service",
@@ -418,8 +430,12 @@ GENERATE_RESULTS_DEFAULTS = {
     },
 
     "design_results": {
+        "id": "design_results",
+        "label": "Design Results",
 
         "uls_checks": {
+            "id": "uls_checks",
+            "label": "ULS Checks",
 
             "flexural_resistance_check": {
                 "id": "flexural_resistance_check",
@@ -452,6 +468,7 @@ GENERATE_RESULTS_DEFAULTS = {
                     ["Girder 2", 1395, 1850, 0.75, "PASS"],
                 ],
             },
+
             "bending_shear_interaction_check": {
                 "id": "bending_shear_interaction_check",
                 "label": "Bending-Shear Interaction Check",
@@ -494,6 +511,8 @@ GENERATE_RESULTS_DEFAULTS = {
         },
 
         "sls_checks": {
+            "id": "sls_checks",
+            "label": "SLS Checks",
 
             "deflection_control_live": {
                 "id": "deflection_control_live",
@@ -508,6 +527,7 @@ GENERATE_RESULTS_DEFAULTS = {
                     ["Girder 1", 28, "L/800", "PASS"],
                 ],
             },
+
             "deflection_control_total": {
                 "id": "deflection_control_total",
                 "label": "Deflection Control - Total Load",
@@ -584,6 +604,8 @@ GENERATE_RESULTS_DEFAULTS = {
         },
 
         "fatigue_checks": {
+            "id": "fatigue_checks",
+            "label": "Fatigue Checks",
 
             "fatigue_assessment_girder": {
                 "id": "fatigue_assessment_girder",
@@ -613,7 +635,10 @@ GENERATE_RESULTS_DEFAULTS = {
                 ],
             },
         },
+
         "shear_connector_design": {
+            "id": "shear_connector_design",
+            "label": "Shear Connector Design",
 
             "shear_connector_capacity": {
                 "id": "shear_connector_capacity",
@@ -726,7 +751,10 @@ GENERATE_RESULTS_DEFAULTS = {
                 ],
             },
         },
+
         "transverse_and_crack_checks": {
+            "id": "transverse_and_crack_checks",
+            "label": "Transverse And Crack Checks",
 
             "transverse_shear_check": {
                 "id": "transverse_shear_check",
@@ -773,6 +801,8 @@ GENERATE_RESULTS_DEFAULTS = {
         },
 
         "design_summary": {
+            "id": "design_summary",
+            "label": "Design Summary",
 
             "design_results_summary": {
                 "id": "design_results_summary",
@@ -786,9 +816,9 @@ GENERATE_RESULTS_DEFAULTS = {
                     "Status",
                 ],
                 "rows": [
-                    ["Girder 1", "Flexural Resistance", 9250, 12800, 0.72, "PASS"],
-                    ["Girder 1", "Shear Resistance",    1420, 1850,  0.77, "PASS"],
-                    ["Girder 1", "Live Load Deflection", 28, "L/800", "-", "PASS"],
+                    ["Girder 1", "Flexural Resistance",  9250, 12800,   0.72, "PASS"],
+                    ["Girder 1", "Shear Resistance",     1420, 1850,    0.77, "PASS"],
+                    ["Girder 1", "Live Load Deflection",   28, "L/800", "-",  "PASS"],
                 ],
             },
         },

@@ -1,11 +1,16 @@
 import openpyxl
 from openpyxl.styles import PatternFill, Font, Alignment, Border, Side
 
+import copy
+from osdagbridge.core.utils.generate_results_values_builder import (
+    resolve_bridge_config_summary,
+)
+
 from PySide6.QtWidgets import (
     QDialog, QWidget, QLabel, QPushButton, QVBoxLayout, QHBoxLayout,
     QTreeWidget, QTreeWidgetItem, QComboBox, QSizeGrip, QFileDialog,
     QFrame, QTableWidget, QTableWidgetItem, QHeaderView,
-    QSizePolicy, QStackedWidget, QStyledItemDelegate, QStyle
+    QSizePolicy, QStackedWidget, QStyledItemDelegate, QApplication
 )
 from PySide6.QtCore import Qt, QRect
 from PySide6.QtGui import QColor, QFont, QPainter, QPainterPath, QPen
@@ -96,7 +101,7 @@ class RoundedTableFrame(QFrame):
     RADIUS       = 12
     BORDER_COLOR = QColor("#90AF13")
     HEADER_COLOR = QColor("#90AF13")
-    HEADER_H     = 34          # must match the header height set on the widget
+    HEADER_H     = 34
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -115,15 +120,12 @@ class RoundedTableFrame(QFrame):
         h  = self.height()
         hh = self.HEADER_H
 
-        # Full rounded rect path (inset 0.5 px so 1 px border is fully visible)
         full_rect = self.rect().toRectF().adjusted(0.5, 0.5, -0.5, -0.5)
         full_path = QPainterPath()
         full_path.addRoundedRect(full_rect, r, r)
 
-        # White body fill (whole frame)
         painter.fillPath(full_path, QColor("white"))
 
-        # Green header strip — rounded only at top-left / top-right
         header_rect = full_rect.adjusted(0, 0, 0, -(h - hh - 1))
         header_path = QPainterPath()
         header_path.addRoundedRect(header_rect, r, r)
@@ -136,7 +138,6 @@ class RoundedTableFrame(QFrame):
         painter.fillPath(header_path, active_color)
         pen = QPen(border_color, 1.0)
 
-        # Green border on top of everything
         pen = QPen(self.BORDER_COLOR, 1.0)
         pen.setJoinStyle(Qt.RoundJoin)
         painter.setPen(pen)
@@ -145,7 +146,6 @@ class RoundedTableFrame(QFrame):
 
         painter.end()
 
-    # Add this method inside RoundedTableFrame:
     def set_greyed(self, greyed: bool):
         self._greyed = greyed
         self.update()    
@@ -328,33 +328,62 @@ class GenerateResultsPage(QWidget):
                 border-image: none;
                 image: none;
             }
-            QScrollBar:vertical {
-                width: 2px;
+            QScrollArea {
                 background: transparent;
-                border-radius: 6px;
             }
+
             QScrollBar:horizontal {
-                height: 2px;
-                background: transparent;
-                border-radius: 6px;
+                background: #E0E0E0;
+                height: 8px;
+                border-radius: 12px;
             }
-            QScrollBar::handle {
-                background: #90af13;
-                border-radius: 2px;
+
+            QScrollBar::handle:horizontal {
+                background: #A0A0A0;
+                min-width: 30px;
+                border-radius: 12px;
             }
-            QScrollBar::handle:hover,
-            QScrollBar::handle:pressed {
-                background: #90AF13;
+
+            QScrollBar::handle:horizontal:hover {
+                background: #707070;
             }
-            QScrollBar::add-line,
-            QScrollBar::sub-line {
+
+            QScrollBar::add-line:horizontal,
+            QScrollBar::sub-line:horizontal {
                 width: 0px;
+            }
+
+            QScrollBar::add-page:horizontal,
+            QScrollBar::sub-page:horizontal {
+                background: transparent;
+            }
+
+            QScrollBar:vertical {
+                background: #E0E0E0;
+                width: 8px;
+                border-radius: 12px;
+            }
+
+            QScrollBar::handle:vertical {
+                background: #A0A0A0;
+                min-height: 30px;
+                border-radius: 12px;
+            }
+
+            QScrollBar::handle:vertical:hover {
+                background: #707070;
+            }
+
+            QScrollBar::add-line:vertical,
+            QScrollBar::sub-line:vertical {
                 height: 0px;
             }
-            QScrollBar::add-page,
-            QScrollBar::sub-page {
+
+            QScrollBar::add-page:vertical,
+            QScrollBar::sub-page:vertical {
                 background: transparent;
             }
+
         """)
         self.tree.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         self.tree.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
@@ -470,21 +499,27 @@ class GenerateResultsPage(QWidget):
     def _build_tree(self):
         self.tree.blockSignals(True)
 
-        for main_group, sub_groups in GENERATE_RESULTS_DEFAULTS.items():
+        for main_key, main_val in GENERATE_RESULTS_DEFAULTS.items():
             parent = QTreeWidgetItem(self.tree)
-            parent.setText(0, main_group)
+            parent.setText(0, main_val["label"])
             parent.setFlags(parent.flags() | Qt.ItemIsUserCheckable)
             parent.setCheckState(0, Qt.Unchecked)
 
-            for sub_group, tables in sub_groups.items():
+            for sub_key, sub_val in main_val.items():
+                if sub_key in ("id", "label"):
+                    continue
+
                 child = QTreeWidgetItem(parent)
-                child.setText(0, sub_group)
+                child.setText(0, sub_val["label"])
                 child.setFlags(child.flags() | Qt.ItemIsUserCheckable)
                 child.setCheckState(0, Qt.Unchecked)
 
-                for table_key, table_data in tables.items():          # ← unpack key AND value
+                for table_key, table_data in sub_val.items():
+                    if table_key in ("id", "label"):
+                        continue
+
                     leaf = QTreeWidgetItem(child)
-                    leaf.setText(0, table_data["label"])              # ← use label, not key
+                    leaf.setText(0, table_data["label"])
                     leaf.setFlags(leaf.flags() | Qt.ItemIsUserCheckable)
                     leaf.setCheckState(0, Qt.Unchecked)
 
@@ -582,9 +617,7 @@ class GenerateResultsPage(QWidget):
 class ExportTablePage(QWidget):
     """Page 2 — tree of selected tables + preview + Excel export."""
 
-    # Minimum pixel width a column should ever be (avoids collapsed columns)
-    _COL_MIN_WIDTH = 60
-    # Maximum pixel width a content-fitted column can reach before capping
+    _COL_MIN_WIDTH = 120
     _COL_MAX_WIDTH = 320
 
     def __init__(self, on_back, on_cancel, parent=None):
@@ -636,15 +669,10 @@ class ExportTablePage(QWidget):
             return
 
         if current_total < viewport_w:
-            # There is leftover space → scale every column proportionally
-            # so they collectively fill the viewport exactly.
             scale = viewport_w / current_total
             for i in range(col_count):
                 new_w = int(table.columnWidth(i) * scale)
                 table.setColumnWidth(i, max(self._COL_MIN_WIDTH, new_w))
-
-        # If current_total >= viewport_w we leave widths alone; Qt will show
-        # the horizontal scrollbar via ScrollBarAsNeeded.
 
     # ── _setup_ui ───────────────────────────────────────────────────────────
     def _setup_ui(self):
@@ -787,31 +815,57 @@ class ExportTablePage(QWidget):
                 border: 1px solid #90AF13;
                 border-radius: 3px;
             }
-            QScrollBar:vertical {
-                width: 2px;
+            QScrollArea {
                 background: transparent;
-                border-radius: 6px;
             }
             QScrollBar:horizontal {
-                height: 2px;
-                background: transparent;
-                border-radius: 6px;
+                background: #E0E0E0;
+                height: 8px;
+                border-radius: 12px;
             }
-            QScrollBar::handle {
-                background: #90AF13;
-                border-radius: 2px;
+
+            QScrollBar::handle:horizontal {
+                background: #A0A0A0;
+                min-width: 30px;
+                border-radius: 12px;
             }
-            QScrollBar::handle:hover,
-            QScrollBar::handle:pressed {
-                background: #90AF13;
+
+            QScrollBar::handle:horizontal:hover {
+                background: #707070;
             }
-            QScrollBar::add-line,
-            QScrollBar::sub-line {
+
+            QScrollBar::add-line:horizontal,
+            QScrollBar::sub-line:horizontal {
                 width: 0px;
+            }
+
+            QScrollBar::add-page:horizontal,
+            QScrollBar::sub-page:horizontal {
+                background: transparent;
+            }
+            QScrollBar:vertical {
+                background: #E0E0E0;
+                width: 8px;
+                border-radius: 12px;
+            }
+
+            QScrollBar::handle:vertical {
+                background: #A0A0A0;
+                min-height: 30px;
+                border-radius: 12px;
+            }
+
+            QScrollBar::handle:vertical:hover {
+                background: #707070;
+            }
+
+            QScrollBar::add-line:vertical,
+            QScrollBar::sub-line:vertical {
                 height: 0px;
             }
-            QScrollBar::add-page,
-            QScrollBar::sub-page {
+
+            QScrollBar::add-page:vertical,
+            QScrollBar::sub-page:vertical {
                 background: transparent;
             }
         """)
@@ -827,7 +881,6 @@ class ExportTablePage(QWidget):
 
         left_layout.addWidget(self.tree, 1)
 
-        # Vertical label — visible only when panel is collapsed
         self.vertical_label = VerticalLabel(
             text="SELECT TABLES",
             color="#000000",
@@ -837,7 +890,6 @@ class ExportTablePage(QWidget):
         self.vertical_label.hide()
         left_layout.addWidget(self.vertical_label, 1)
 
-        # Left container (box + toggle button)
         self.left_container = QWidget()
         self.left_container.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Expanding)
         left_container_layout = QHBoxLayout(self.left_container)
@@ -886,7 +938,7 @@ class ExportTablePage(QWidget):
 
         main_split.addWidget(self.left_container)
 
-        # ── RIGHT PANEL (preview table) ─────────────────────────────────────
+        # ── RIGHT PANEL ─────────────────────────────────────
         self.right_box = RoundedTableFrame()
 
         right_layout = QVBoxLayout(self.right_box)
@@ -901,11 +953,11 @@ class ExportTablePage(QWidget):
         header.setSectionResizeMode(QHeaderView.Interactive)
         header.setMinimumSectionSize(self._COL_MIN_WIDTH)
         header.setSectionsClickable(False)
-        header.setStretchLastSection(False)          # must be False — see above
+        header.setStretchLastSection(False)         
         header.setFixedHeight(34)
 
         self.preview.verticalHeader().setVisible(False)
-        self.preview.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)   # fix
+        self.preview.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)   
         self.preview.setFrameShape(QFrame.NoFrame)
         self.preview.setShowGrid(True)
         self.preview.setStyleSheet("""
@@ -942,40 +994,64 @@ class ExportTablePage(QWidget):
                 border: none;
                 background: transparent;
             }
-            QScrollBar:vertical {
-                width: 4px;
-                background: transparent;
-            }
-            QScrollBar::handle:vertical {
-                background: #90AF13;
-                min-height: 20px;
-                border-radius: 2px;
-            }
-            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
-                height: 0px;
-            }
-            QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {
+            QScrollArea {
                 background: transparent;
             }
             QScrollBar:horizontal {
-                height: 4px;
-                background: transparent;
+                background: #E0E0E0;
+                height: 8px;
+                border-radius: 12px;
+                margin: 0px 20px 0px 20px;
             }
+
             QScrollBar::handle:horizontal {
-                background: #90AF13;
-                min-width: 20px;
-                border-radius: 2px;
+                background: #A0A0A0;
+                min-width: 30px;
+                border-radius: 12px;
             }
-            QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {
+
+            QScrollBar::handle:horizontal:hover {
+                background: #707070;
+            }
+
+            QScrollBar::add-line:horizontal,
+            QScrollBar::sub-line:horizontal {
                 width: 0px;
             }
-            QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal {
+
+            QScrollBar::add-page:horizontal,
+            QScrollBar::sub-page:horizontal {
                 background: transparent;
             }
-        """)
 
-# AFTER
-        # ── Placeholder (shown when no table is selected) ───────────────────
+            QScrollBar:vertical {
+                background: #E0E0E0;
+                width: 8px;
+                border-radius: 12px;
+            }
+
+            QScrollBar::handle:vertical {
+                background: #A0A0A0;
+                min-height: 30px;
+                border-radius: 12px;
+            }
+
+            QScrollBar::handle:vertical:hover {
+                background: #707070;
+            }
+
+            QScrollBar::add-line:vertical,
+            QScrollBar::sub-line:vertical {
+                height: 0px;
+            }
+
+            QScrollBar::add-page:vertical,
+            QScrollBar::sub-page:vertical {
+                background: transparent;
+            }
+            """)
+
+        # ── Placeholder───────────────────
         self.placeholder = QWidget()
         self.placeholder.setObjectName("previewPlaceholder")
         self.placeholder.setStyleSheet(
@@ -999,7 +1075,6 @@ class ExportTablePage(QWidget):
 
         ph_layout.addWidget(ph_text)
 
-        # Stack: index 0 = placeholder, index 1 = live table
         self.preview_stack = QStackedWidget()
         self.preview_stack.addWidget(self.placeholder)
         self.preview_stack.addWidget(self.preview)
@@ -1106,9 +1181,6 @@ class ExportTablePage(QWidget):
             self.clear_btn.show()
             self.back_btn.show()
 
-        # Re-fit columns after panel geometry has settled
-        # processEvents() lets Qt finish updating widths before we measure
-        from PySide6.QtWidgets import QApplication
         QApplication.processEvents()
         self._fit_columns()
 
@@ -1132,11 +1204,9 @@ class ExportTablePage(QWidget):
         self.tree.blockSignals(False)
 
     # ── Table Preview ───────────────────────────────────────────────────────
-# AFTER
     def _load_selected_table(self, item, column):
         data = item.data(0, Qt.UserRole)
         if not isinstance(data, dict):
-            # Non-leaf clicked — keep/show placeholder, grey panel
             self._set_preview_empty()
             return
 
@@ -1146,7 +1216,6 @@ class ExportTablePage(QWidget):
             self._set_preview_empty()
             return
 
-        # Switch to live table
         self.right_box.set_greyed(False)
         self.preview_stack.setCurrentIndex(1)
 
@@ -1232,6 +1301,16 @@ class ExportTablePage(QWidget):
 
     # ── Export ──────────────────────────────────────────────────────────────
     def _export_excel(self):
+
+        selected_tables = self.get_checked_tables()
+        if not selected_tables:
+            CustomMessageBox(
+                title="No Table Selected",
+                text="Please select at least one table to export.",
+                dialogType=MessageBoxType.Warning
+            ).exec()
+            return
+    
         path, _ = QFileDialog.getSaveFileName(
             self,
             "Save Excel File",
@@ -1240,10 +1319,6 @@ class ExportTablePage(QWidget):
         )
 
         if not path:
-            return
-
-        selected_tables = self.get_checked_tables()
-        if not selected_tables:
             return
 
         GREEN_HEX  = "FF90AF13"
@@ -1287,7 +1362,7 @@ class ExportTablePage(QWidget):
                     openpyxl.utils.get_column_letter(c_idx + 1)
                 ].width = min(max(width + 4, 14), 50)
 
-            # Header row
+
             for c_idx, label in enumerate(columns, start=1):
                 cell           = ws.cell(row=1, column=c_idx, value=str(label))
                 cell.fill      = header_fill
@@ -1296,7 +1371,6 @@ class ExportTablePage(QWidget):
                 cell.border    = cell_border
             ws.row_dimensions[1].height = 28
 
-            # Data rows
             for r_idx, row in enumerate(rows):
                 excel_row  = r_idx + 2
                 fill_style = alt_fill if r_idx % 2 == 0 else white_fill
@@ -1319,8 +1393,9 @@ class GenerateResultsDialog(QDialog):
     Navigation is handled by a QStackedWidget.
     """
 
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, input_dict: dict = None):
         super().__init__(parent)
+        self._input_dict = input_dict or {}
 
         self.setMinimumWidth(1080)
         self.setMinimumHeight(720)
@@ -1386,6 +1461,20 @@ class GenerateResultsDialog(QDialog):
 
         self.stack.setCurrentIndex(0)
 
+    def _get_live_defaults(self) -> dict:
+        """
+        Deep-copies GENERATE_RESULTS_DEFAULTS and overlays resolved
+        (live) table data for any tables that have a resolver.
+        Tables without a resolver keep their placeholder data.
+        """
+        data = copy.deepcopy(GENERATE_RESULTS_DEFAULTS)
+        data["model_definition"]["bridge_configuration"][
+            "bridge_configuration_summary"
+        ] = resolve_bridge_config_summary(self._input_dict)
+
+        # more lines for other tables, e.g.:
+        return data
+
     # ── Navigation ──────────────────────────────────────────────────────────
     def _handle_show_selections(self):
         selected_names = self.page_generate.get_selected_tables()
@@ -1398,23 +1487,29 @@ class GenerateResultsDialog(QDialog):
             ).exec()
             return
 
+        live_defaults = self._get_live_defaults()
         export_data = {}
 
-        for main_key, groups in GENERATE_RESULTS_DEFAULTS.items():
+        for main_key, main_val in live_defaults .items():
             main_bucket = {}
 
-            for group_key, tables in groups.items():
+            for sub_key, sub_val in main_val.items():
+                if sub_key in ("id", "label"):
+                    continue
+
                 group_bucket = {}
 
-                for table_key, table_data in tables.items():
+                for table_key, table_data in sub_val.items():
+                    if table_key in ("id", "label"):
+                        continue
                     if table_data["label"] in selected_names:
                         group_bucket[table_data["label"]] = table_data
 
                 if group_bucket:
-                    main_bucket[group_key.replace("_", " ").title()] = group_bucket
+                    main_bucket[sub_val["label"]] = group_bucket
 
             if main_bucket:
-                export_data[main_key.replace("_", " ").title()] = main_bucket
+                export_data[main_val["label"]] = main_bucket
 
         self.title_bar.setTitle("Export Results")
         self.page_export.load_data(export_data)
