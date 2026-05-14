@@ -986,7 +986,7 @@ class CustomWindow(QWidget):
                     text=(
                         "PDF could not be generated.\n\n"
                         "Possible causes:\n"
-                        "• pdflatex is not installed or not in PATH\n"
+                        "• pdflatex (from osdag_latex_env) is not installed or not in PATH\n"
                         "• LaTeX compilation errors in the generated .tex file\n\n"
                         f"TeX source saved to:\n{tex_info}"
                     ),

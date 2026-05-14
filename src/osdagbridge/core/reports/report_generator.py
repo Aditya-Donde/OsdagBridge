@@ -2771,14 +2771,18 @@ def _find_pdflatex():
     if sys.platform == 'win32':
         local = os.environ.get('LOCALAPPDATA', '')
         home  = os.path.expanduser('~')
-        candidates = [
+        # Add osdag_latex_env specific paths
+        conda_prefix = os.environ.get('CONDA_PREFIX', sys.prefix)
+        candidates.extend([
+            os.path.join(conda_prefix, 'Library', 'share', 'osdag_latex_env', 'bin', 'x86_64-windows'),
+            os.path.join(conda_prefix, 'share', 'osdag_latex_env', 'bin', 'x86_64-windows'),
             os.path.join(local, 'Programs', 'MiKTeX', 'miktex', 'bin', 'x64'),
             os.path.join(home, 'AppData', 'Local', 'Programs', 'MiKTeX', 'miktex', 'bin', 'x64'),
             r'C:\Program Files\MiKTeX\miktex\bin\x64',
             r'C:\Program Files (x86)\MiKTeX\miktex\bin\x64',
             r'C:\texlive\2024\bin\windows',
             r'C:\texlive\2025\bin\windows',
-        ]
+        ])
     for d in candidates:
         exe = (os.path.join(d, 'pdflatex.exe')
                if sys.platform == 'win32'
