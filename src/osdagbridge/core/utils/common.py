@@ -190,6 +190,7 @@ KEY_TS_NO_OF_GIRDERS      = "typical_section.no_of_girders"
 KEY_TS_DECK_OVERHANG      = "typical_section.deck_overhang"
 KEY_TS_OVERALL_WIDTH      = "typical_section.overall_bridge_width"
 KEY_TS_DECK_THICKNESS     = "typical_section.deck_thickness"
+KEY_TS_NO_OF_FOOTPATHS    = "typical_section.no_of_footpaths"
 KEY_TS_FOOTPATH_WIDTH     = "typical_section.footpath_width"
 KEY_TS_FOOTPATH_THICKNESS = "typical_section.footpath_thickness"
 
