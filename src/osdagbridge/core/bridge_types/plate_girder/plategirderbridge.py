@@ -17,11 +17,6 @@ from .dto import (
 )
 from .defaults import (
     BASIC_INPUT_DICT,
-    ADDITIONAL_INPUT_DICT,
-    DEFAULT_NO_OF_GIRDERS,
-    DEFAULT_GIRDER_SYMMETRY,
-    DEFAULT_MEDIAN_WIDTH_M,
-    solve_basic_input,
 )
 from .initial_sizing import DEFAULT_FOOTPATH_WIDTH
 from .analyser import BridgeGrillageModel
@@ -69,17 +64,21 @@ from osdagbridge.core.utils.common import (
     KEY_UTIL_LONG_TRANS_SHEAR,
     KEY_UTIL_STRESS_LIMITATION,
     KEY_MD_WIDTH,
+    KEY_RL_WIDTH,
+    KEY_TS_DECK_OVERHANG,
+    KEY_TS_NO_OF_GIRDERS,
+    KEY_TS_GIRDER_SPACING,
+    KEY_TS_OVERALL_WIDTH,
+    KEY_TS_FOOTPATH_WIDTH,
+    KEY_TS_NO_OF_FOOTPATHS,
+    KEY_WC_THICKNESS,
+    KEY_WC_DENSITY,
 )
 from osdagbridge.core.bridge_types.plate_girder.initial_sizing import (
     DEFAULT_DECK_THICKNESS as _DEFAULT_DECK_THICKNESS_MM,
 )
-from osdagbridge.core.bridge_types.plate_girder.defaults import (
-    DEFAULT_AI_WEARING_THICKNESS_MM as _DEFAULT_WC_THICKNESS_MM,
-    DEFAULT_AI_WEARING_DENSITY_KN_PER_M3 as _DEFAULT_WC_DENSITY_KN_M3,
-)
 from osdagbridge.core.bridge_components.super_structure.deck.geometry import (
     deck_thickness_from_inputs,
-    wearing_course_params_from_inputs,
 )
 from osdagbridge.core.bridge_components.super_structure.crash_barrier.geometry import (
     crash_barrier_load_from_inputs,
@@ -125,7 +124,6 @@ class PlateGirderBridge:
         self._frontend = FrontendData()
 
         # Results populated by design()
-        self.sizing_result = None
         self.section_props: dict = {}
         self.grillage_geometry: GrillageGeometry | None = None
         self.deck_layout: DeckLayoutProperties | None = None
@@ -178,8 +176,8 @@ class PlateGirderBridge:
           5. Apply dead loads
           6. Apply live loads
         """
-        combined, self.sizing_result, self.section_props = solve_basic_input(self.basic_inputs)
-        self._build_dtos(combined)
+        self.section_props = self.input_dict['section_props']
+        self._build_dtos()
         self.setup_grillage()
         self.add_dead_loads()
         self.add_live_loads()
@@ -188,16 +186,15 @@ class PlateGirderBridge:
         dataset = self.create_governing_ll_load_case(dataset, partial_safety_factor=1.0)
 
         sp = self.section_props
-        sr = self.sizing_result
         print(
             f"\n{'-'*60}\n"
             f"  PLATE GIRDER BRIDGE - DESIGN SUMMARY\n"
             f"{'-'*60}\n"
-            f"  Span                  : {float(self.basic_inputs[KEY_SPAN]):.1f} m\n"
-            f"  Overall width         : {sr.overall_width:.3f} m\n"
-            f"  No. of girders        : {sr.no_of_girders}\n"
-            f"  Girder spacing        : {sr.girder_spacing * 1e3:.1f} mm\n"
-            f"  Deck overhang         : {sr.deck_overhang * 1e3:.1f} mm\n"
+            f"  Span                  : {float(self.input_dict[KEY_SPAN]):.1f} m\n"
+            f"  Overall width         : {self.input_dict[KEY_TS_OVERALL_WIDTH]:.3f} m\n"
+            f"  No. of girders        : {self.input_dict[KEY_TS_NO_OF_GIRDERS]}\n"
+            f"  Girder spacing        : {self.input_dict[KEY_TS_GIRDER_SPACING] * 1e3:.1f} mm\n"
+            f"  Deck overhang         : {self.input_dict[KEY_TS_DECK_OVERHANG] * 1e3:.1f} mm\n"
             f"{'-'*60}\n"
             f"  GIRDER CROSS-SECTION (all dimensions in mm)\n"
             f"{'-'*60}\n"
@@ -220,33 +217,34 @@ class PlateGirderBridge:
 
         self._run_dcr_checks(dataset)
 
-    def _build_dtos(self, combined: dict) -> None:
+    def _build_dtos(self) -> None:
         """Construct GrillageGeometry and DeckLayoutProperties DTOs from solved results."""
-        span = float(self.basic_inputs[KEY_SPAN])
+        inp = self.input_dict
+        span = float(inp[KEY_SPAN])
         # n_t: transverse grid lines — span divided by cross-bracing spacing, rounded to nearest odd integer with minimum of 3 (1 at each end + at least 1 internal for bracing)
         n_t = max(3, (int(round(span / (DEFAULT_CROSS_BRACING_SPACING)*2) + 1)))
 
-        deck_overhang = combined["deck_overhang"]
+        deck_overhang = inp[KEY_TS_DECK_OVERHANG]
         # When there is an overhang, the two edge beams add 2 extra longitudinal
         # grid lines on top of the structural girder count.
-        n_l = combined["no_of_girders"] + (2 if deck_overhang > 0 else 0)
+        n_l = inp[KEY_TS_NO_OF_GIRDERS] + (2 if deck_overhang > 0 else 0)
 
         self.grillage_geometry = GrillageGeometry(
             L=span,
             n_l=n_l,
             n_t=n_t,
             edge_dist=deck_overhang,
-            ext_to_int_dist=combined["girder_spacing"],
+            ext_to_int_dist=inp[KEY_TS_GIRDER_SPACING],
             angle=self._to_float(KEY_SKEW_ANGLE, 0.0),
         )
 
         self.deck_layout = DeckLayoutProperties(
-            carriageway_width=float(self.basic_inputs[KEY_CARRIAGEWAY_WIDTH]),
+            carriageway_width=float(inp[KEY_CARRIAGEWAY_WIDTH]),
             crash_barrier_width=DEFAULT_CRASH_BARRIER_WIDTH,
-            footpath_width=combined["footpath_width"],
-            railing_width=combined["railing_width"],
-            median_width=combined[KEY_MD_WIDTH],
-            n_footpaths=combined["n_footpaths"],
+            footpath_width=inp[KEY_TS_FOOTPATH_WIDTH],
+            railing_width=inp[KEY_RL_WIDTH],
+            median_width=inp[KEY_MD_WIDTH],
+            n_footpaths=inp[KEY_TS_NO_OF_FOOTPATHS],
         )
 
     # ─────────────────────────────────────────────────────────────────────────
@@ -419,9 +417,8 @@ class PlateGirderBridge:
         Must be called after setup_grillage() has built and registered the model.
         """
         deck_t_m = deck_thickness_from_inputs(self.additional_inputs, _DEFAULT_DECK_THICKNESS_MM)
-        wc_t_m, wc_rho = wearing_course_params_from_inputs(
-            self.additional_inputs, _DEFAULT_WC_THICKNESS_MM, _DEFAULT_WC_DENSITY_KN_M3
-        )
+        wc_t_m = float(self.input_dict[KEY_WC_THICKNESS]) / 1000.0
+        wc_rho  = float(self.input_dict[KEY_WC_DENSITY])
         barrier_load_kN_m = crash_barrier_load_from_inputs(self.additional_inputs)
         railing_load_kN_m = railing_load_from_inputs(self.additional_inputs)
 
@@ -704,7 +701,7 @@ class PlateGirderBridge:
         Build a BridgeParametersDTO for 3D CAD rendering.
 
         Values sourced from:
-        - section_props / sizing_result — girder geometry (populated after design())
+        - section_props / input_dict — girder geometry (populated after design())
         - basic_inputs  — span, carriageway width, footpath, median, skew angle
         - additional_inputs — deck thickness
         Fields not yet exposed through additional inputs default to sensible values.
@@ -712,7 +709,6 @@ class PlateGirderBridge:
         Must be called after design() has fully run.
         """
         sp = self.section_props
-        sr = self.sizing_result
 
         # section_props are in SI metres; BridgeParametersDTO expects mm
         D       = sp["D"]       * 1e3
@@ -779,8 +775,8 @@ class PlateGirderBridge:
             girder_section_tf=t_f_top,
             girder_section_tf_b=t_f_bot,
             girder_section_tw=tw,
-            num_girders=sr.no_of_girders,
-            girder_spacing=sr.girder_spacing * 1e3,
+            num_girders=self.input_dict[KEY_TS_NO_OF_GIRDERS],
+            girder_spacing=self.input_dict[KEY_TS_GIRDER_SPACING] * 1e3,
             # --- Geometry ---
             skew_angle=skew,
             # --- Deck ---
@@ -988,9 +984,7 @@ class PlateGirderBridge:
 
     def get_edge_dist(self) -> float:
         """Return the deck overhang distance (0.0 when no overhang)."""
-        if self.sizing_result is None:
-            return 0.0
-        return self.sizing_result.deck_overhang or 0.0
+        return self.input_dict.get(KEY_TS_DECK_OVERHANG) or 0.0
 
     def build_figure_sfd(self, ds, force_key: str):
         """Build and return a matplotlib Figure for the SFD of the given dataset slice."""
