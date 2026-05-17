@@ -79,6 +79,26 @@ class AdditionalInputs(QDialog):
         # Update Typical-section sub-tab activate/deactivate state
         self.typical_section_tab._sync_tab_active_states()
 
+        # Populate defaults for deck-details text fields from the dict (widgets start empty)
+        self._populate_deck_detail_fields(input_dict)
+
+    def _populate_deck_detail_fields(self, input_dict: dict) -> None:
+        """Push deck-detail values from input_dict into the Deck Details widgets."""
+        ts = self.typical_section_tab
+
+        def _set_text(key, fmt):
+            val = input_dict.get(key)
+            widget = ts.findChild(QWidget, key)
+            if widget is not None and val is not None:
+                widget.blockSignals(True)
+                if isinstance(widget, QLineEdit):
+                    widget.setText(fmt.format(float(val)))
+                widget.blockSignals(False)
+
+        _set_text(KEY_TS_DECK_THICKNESS,     "{:.0f}")
+        _set_text(KEY_TS_FOOTPATH_WIDTH,     "{:.2f}")
+        _set_text(KEY_TS_FOOTPATH_THICKNESS, "{:.0f}")
+
     #-------------Field Change Handling and Validation Logic-Start-------------------------
     def _on_field_edited(self, key: str, widget: QLineEdit | str):
         """

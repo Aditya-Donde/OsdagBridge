@@ -63,63 +63,6 @@ BASIC_INPUT_DICT = {
 }
 #--------------Inp-dict-End----------------
 
-
-def extend_basic_input_dict(basic_input_dict: dict) -> None:
-    """
-    Returns the combined default dict of Input Dock && Additonal Inputs.
-    Some additional input defaults are dependant on input dictionary values, 
-        so this function is useful
-    """
-    additonal_inputs_defaults = {}
-
-    # Primary Typical section Fields
-    additonal_inputs_defaults[KEY_TS_GIRDER_SPACING] = None
-    additonal_inputs_defaults[KEY_TS_NO_OF_GIRDERS] = None
-    additonal_inputs_defaults[KEY_TS_DECK_OVERHANG] = None
-    additonal_inputs_defaults[KEY_TS_OVERALL_WIDTH] = None
-
-    # Typical Section (tab) -> Deck Detail (sub-tab)
-    additonal_inputs_defaults[KEY_TS_DECK_THICKNESS] = None
-    additonal_inputs_defaults[KEY_TS_FOOTPATH_WIDTH] = None
-    additonal_inputs_defaults[KEY_TS_FOOTPATH_THICKNESS] = None
-
-    # Typical Section (tab) -> Crash Barrier (sub-tab)
-    additonal_inputs_defaults[KEY_CB_TYPE] = None
-    additonal_inputs_defaults[KEY_CB_DENSITY] = None
-    additonal_inputs_defaults[KEY_CB_WIDTH] = None
-    additonal_inputs_defaults[KEY_CB_HEIGHT] = None
-    additonal_inputs_defaults[KEY_CB_AREA] = None
-    additonal_inputs_defaults[KEY_CB_LOAD] = None
-    additonal_inputs_defaults[KEY_CB_POST_SPACING] = None
-
-    # Typical Section (tab) -> Median (sub-tab)
-    additonal_inputs_defaults[KEY_MD_TYPE] = None
-    additonal_inputs_defaults[KEY_MD_DENSITY] = None
-    additonal_inputs_defaults[KEY_MD_WIDTH] = None
-    additonal_inputs_defaults[KEY_MD_HEIGHT] = None
-    additonal_inputs_defaults[KEY_MD_AREA] = None
-    additonal_inputs_defaults[KEY_MD_LOAD] = None
-    additonal_inputs_defaults[KEY_MD_POST_SPACING] = None
-
-    # Typical Section (tab) -> Railing (sub-tab)
-    additonal_inputs_defaults[KEY_RL_TYPE] = None
-    additonal_inputs_defaults[KEY_RL_WIDTH] = None
-    additonal_inputs_defaults[KEY_RL_HEIGHT] = None
-    additonal_inputs_defaults[KEY_RL_LOAD_MODE] = None
-    additonal_inputs_defaults[KEY_RL_LOAD_VALUE] = None
-
-    # Typical Section (tab) -> Wearing Course (sub-tab)
-    additonal_inputs_defaults[KEY_WC_MATERIAL] = None
-    additonal_inputs_defaults[KEY_WC_DENSITY] = None
-    additonal_inputs_defaults[KEY_WC_THICKNESS] = None
-
-    # Typical Section (tab) -> Wearing Course (sub-tab)
-
-    # Typical Section (tab) -> Lane Details (sub-tab)
-        
-    basic_input_dict.update(additonal_inputs_defaults)
-
-
 def _update_typical_section_defaults(input_dict: dict) -> None:
     """Fill Typical Section tab keys that are None with computed/standard defaults."""
     from osdagbridge.core.utils.codes.keyfile import KEY_FOOTPATH as KF_FOOTPATH
@@ -131,14 +74,13 @@ def _update_typical_section_defaults(input_dict: dict) -> None:
         rigid_barrier_no_footpath_load,
     )
 
-    def _set(key, value):
-        if input_dict.get(key) is None:
-            input_dict[key] = value
+    def _update(key, value):
+        input_dict.update({key: value})
 
     # --- Deck Detail sub-tab ---
-    _set(KEY_TS_DECK_THICKNESS,     200.0)
-    _set(KEY_TS_FOOTPATH_WIDTH,     1500.0)
-    _set(KEY_TS_FOOTPATH_THICKNESS, 100.0)
+    _update(KEY_TS_DECK_THICKNESS,     200.0)                        # mm
+    _update(KEY_TS_FOOTPATH_WIDTH,     IS_DEFAULT_FOOTPATH_WIDTH_M)  # m
+    _update(KEY_TS_FOOTPATH_THICKNESS, 100.0)                        # mm
 
     # --- Crash Barrier sub-tab ---
     _cb_dims = IRC5_2015.cl_109_6_3_shapes(
@@ -151,37 +93,68 @@ def _update_typical_section_defaults(input_dict: dict) -> None:
     _cb_area = rigid_barrier_no_footpath_area()
     _cb_load = rigid_barrier_no_footpath_load()
 
-    _set(KEY_CB_TYPE,         "IRC 5 - RCC Crash Barrier")
-    _set(KEY_CB_DENSITY,      RCC_DENSITY)                          # kN/m³
-    _set(KEY_CB_WIDTH,        _cb_dims[KEY_CB_WIDTH]  / 1e3)        # mm → m
-    _set(KEY_CB_HEIGHT,       _cb_dims[KEY_CB_HEIGHT] / 1e3)        # mm → m
-    _set(KEY_CB_AREA,         _cb_area["barrier_area"])             # mm²
-    _set(KEY_CB_LOAD,         _cb_load["total_load_kN_per_m"])      # kN/m
-    _set(KEY_CB_POST_SPACING, 2)                                     # m
+    _update(KEY_CB_TYPE,         "IRC 5 - RCC Crash Barrier")
+    _update(KEY_CB_DENSITY,      RCC_DENSITY)                          # kN/m³
+    _update(KEY_CB_WIDTH,        _cb_dims[KEY_CB_WIDTH]  / 1e3)        # mm → m
+    _update(KEY_CB_HEIGHT,       _cb_dims[KEY_CB_HEIGHT] / 1e3)        # mm → m
+    _update(KEY_CB_AREA,         _cb_area["barrier_area"])             # mm²
+    _update(KEY_CB_LOAD,         _cb_load["total_load_kN_per_m"])      # kN/m
+    _update(KEY_CB_POST_SPACING, 2)                                    # m
 
     # --- Median sub-tab ---
-    _set(KEY_MD_TYPE,         None)   # TODO
-    _set(KEY_MD_DENSITY,      None)   # TODO
-    _set(KEY_MD_HEIGHT,       None)   # TODO
-    _set(KEY_MD_AREA,         None)   # TODO
-    _set(KEY_MD_LOAD,         None)   # TODO
-    _set(KEY_MD_POST_SPACING, None)   # TODO
-    # KEY_MD_WIDTH already resolved by solve_bridge_layout — not touched here
+    from osdagbridge.core.bridge_components.super_structure.median.geometry import (
+        median_rcc_crash_barrier_area,
+    )
+    include_median = str(input_dict.get(KEY_INCLUDE_MEDIAN, 'No')).strip().lower()
+    if include_median == 'yes':
+        _md_geom = IRC5_2015.cl_109_6_3_shapes(
+            barrier_type=KEY_MEDIAN_TYPE[1],
+            footpath=None,
+            railing_type=None,
+            design_dict={},
+            crash_barrier_type=None,
+        )
+        _md_area_result = median_rcc_crash_barrier_area()
+        _md_area    = _md_area_result["total_area"]              # mm²
+        _md_load    = (_md_area / 1e6) * RCC_DENSITY             # kN/m
+        _md_height  = (_md_geom["barrier_height"] + _md_geom["kerb_height"]) / 1e3  # mm → m
+        _update(KEY_MD_TYPE,         "IRC 5 - RCC Crash Barrier")
+        _update(KEY_MD_DENSITY,      RCC_DENSITY)                   # kN/m³
+        _update(KEY_MD_WIDTH,        _md_geom[KEY_MD_WIDTH] / 1e3)  # mm → m
+        _update(KEY_MD_HEIGHT,       _md_height)                    # m
+        _update(KEY_MD_AREA,         _md_area)                      # mm²
+        _update(KEY_MD_LOAD,         _md_load)                      # kN/m
+        _update(KEY_MD_POST_SPACING, 2)                             # m
+    else:
+        _update(KEY_MD_TYPE,         None)
+        _update(KEY_MD_DENSITY,      None)
+        _update(KEY_MD_WIDTH,        0.0)
+        _update(KEY_MD_HEIGHT,       None)
+        _update(KEY_MD_AREA,         None)
+        _update(KEY_MD_LOAD,         None)
+        _update(KEY_MD_POST_SPACING, None)
 
     # --- Railing sub-tab ---
-    _set(KEY_RL_TYPE,       None)   # TODO
-    _set(KEY_RL_HEIGHT,     None)   # TODO
-    _set(KEY_RL_LOAD_MODE,  None)   # TODO
-    _set(KEY_RL_LOAD_VALUE, None)   # TODO
-    _set(KEY_RL_WIDTH, DEFAULT_RAILING_WIDTH)
+    from osdagbridge.core.bridge_components.super_structure.railing.geometry import (
+        railing_dead_load_kN_m,
+    )
+    _rl_load      = railing_dead_load_kN_m()   # kN/m — IRC 6:2017 Cl.206.5 (150 kg/m)
+    _rl_height_m  = 1100 / 1e3                 # m    — IRC 5:2015 Cl.109.7.2.3 minimum
+
+    _update(KEY_RL_TYPE,       "IRC 5 - RCC Railing")
+    _update(KEY_RL_WIDTH,      DEFAULT_RAILING_WIDTH)  # m
+    _update(KEY_RL_HEIGHT,     _rl_height_m)           # m
+    _update(KEY_RL_LOAD_MODE,  "Automatic (IRC 6)")
+    _update(KEY_RL_LOAD_VALUE, _rl_load)               # kN/m
 
     # --- Wearing Course sub-tab ---
-    _set(KEY_WC_MATERIAL,  None)   # TODO
-    _set(KEY_WC_DENSITY,   None)   # TODO
-    _set(KEY_WC_THICKNESS, None)   # TODO
+    # Density and thickness match on_wearing_material_changed() in typical_section_details.py
+    _update(KEY_WC_MATERIAL,  "Concrete")  # VALUES_WEARING_COAT_MATERIAL[0]
+    _update(KEY_WC_DENSITY,   24.0)        # kN/m³
+    _update(KEY_WC_THICKNESS, 50.0)        # mm
 
 
-def solve_bridge_layout(basic_input_dict: dict) -> None:
+def solve_extend_basic_input_dict(basic_input_dict: dict) -> None:
     """Parse basic inputs and solve bridge layout. Updates basic_input_dict in-place."""
     from .initial_sizing import BridgeConfigurationSolver
 
@@ -235,5 +208,3 @@ def solve_bridge_layout(basic_input_dict: dict) -> None:
         KEY_TS_DECK_OVERHANG:   sizing_result.deck_overhang,
         'section_props':        section_props,
     })
-
-    print(f"[DEBUG] Basic Input Dictionary: {basic_input_dict}")
