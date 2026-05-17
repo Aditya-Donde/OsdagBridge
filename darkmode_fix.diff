@@ -1,0 +1,17 @@
+diff --git a/src/osdagbridge/desktop/ui/utils/custom_widgets.py b/src/osdagbridge/desktop/ui/utils/custom_widgets.py
+index e98cd02..6b93758 100644
+--- a/src/osdagbridge/desktop/ui/utils/custom_widgets.py
++++ b/src/osdagbridge/desktop/ui/utils/custom_widgets.py
+@@ -349,7 +349,11 @@ class CustomRadioButton(QRadioButton):
+     def _doc(self) -> QTextDocument:
+         doc = QTextDocument()
+         doc.setDefaultFont(self.font())
+-        doc.setHtml(self._rich_text)
++        doc.setHtml(
++            '<span style="color:#1a1a1a;">'
++            f"{self._rich_text}"
++            "</span>"
++        )
+         return doc
+  
+     # ── Paint ────────────────────────────────────────────────────────────────

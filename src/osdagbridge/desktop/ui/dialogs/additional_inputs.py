@@ -79,7 +79,7 @@ class AdditionalInputs(QDialog):
         # Update Typical-section sub-tab activate/deactivate state
         self.typical_section_tab._sync_tab_active_states()
 
-        # Populate defaults for deck-details text fields from the dict (widgets start empty)
+        # Populate deck-details text fields from the dict (widgets start empty)
         self._populate_deck_detail_fields(input_dict)
 
     def _populate_deck_detail_fields(self, input_dict: dict) -> None:

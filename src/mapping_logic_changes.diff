@@ -1,0 +1,70 @@
+diff --git a/src/osdagbridge/core/bridge_types/plate_girder/plategirderbridge.py b/src/osdagbridge/core/bridge_types/plate_girder/plategirderbridge.py
+index 2a04b4b..c09620f 100644
+--- a/src/osdagbridge/core/bridge_types/plate_girder/plategirderbridge.py
++++ b/src/osdagbridge/core/bridge_types/plate_girder/plategirderbridge.py
+@@ -71,6 +71,12 @@ from osdagbridge.core.utils.common import (
+     KEY_TS_NO_OF_FOOTPATHS,
+     KEY_WC_THICKNESS,
+     KEY_WC_DENSITY,
++    KEY_METALLIC_CRASH_BARRIER_TYPE,
++    KEY_RIGID_CRASH_BARRIER_TYPE,
++    KEY_CRASH_BARRIER_TYPE,
++    KEY_CB_TYPE,
++    KEY_RL_TYPE,
++    KEY_RAILING_TYPE
+ )
+ from osdagbridge.core.bridge_types.plate_girder.initial_sizing import (
+     DEFAULT_DECK_THICKNESS as _DEFAULT_DECK_THICKNESS_MM,
+@@ -720,6 +726,34 @@ class PlateGirderBridge:
+         _angle_dims = SectionDimsDTO(leg_h=100, leg_w=50, connection_type="LONGER_LEG")
+         _small_dims = SectionDimsDTO(leg_h=80,  leg_w=40, connection_type="LONGER_LEG")
+ 
++        raw_cb_value = self.input_dict.get(KEY_CB_TYPE, ["IRC 5 - RCC Crash Barrier"])
++        raw_cb_string = raw_cb_value[0] if isinstance(raw_cb_value, list) else raw_cb_value
++        if raw_cb_string == "IRC 5 - RCC Crash Barrier":
++            resolved_barrier_type = KEY_CRASH_BARRIER_TYPE[2]               # "Rigid"
++            resolved_cb_subtype = KEY_RIGID_CRASH_BARRIER_TYPE[0]           # "IRC-5R"
++        elif raw_cb_string == "IRC 5 - High Containment RCC Crash Barrier":
++            resolved_barrier_type = KEY_CRASH_BARRIER_TYPE[2]               # "Rigid"
++            resolved_cb_subtype = KEY_RIGID_CRASH_BARRIER_TYPE[1]           # "High Containment"
++        elif raw_cb_string == "IRC 5 - Metallic Crash Barrier with Single W-Beam":
++            resolved_barrier_type = KEY_CRASH_BARRIER_TYPE[1]               # "Semi-Rigid"
++            resolved_cb_subtype = KEY_METALLIC_CRASH_BARRIER_TYPE[0]        # "Single W-Beam"
++        elif raw_cb_string == "IRC 5 - Metallic Crash Barrier with Double W-Beam":
++            resolved_barrier_type = KEY_CRASH_BARRIER_TYPE[1]               # "Semi-Rigid"
++            resolved_cb_subtype = KEY_METALLIC_CRASH_BARRIER_TYPE[1]        # "Double W-Beam"
++        else:
++            # Fallback for "Custom" or empty values
++            resolved_barrier_type = "Rigid"
++            resolved_cb_subtype = "IRC-5R"
++
++        raw_rl_value = self.input_dict.get(KEY_RL_TYPE, ["IRC 5 RCC railing"])
++        raw_rl_string = raw_rl_value[0] if isinstance(raw_rl_value, list) else raw_rl_value
++        if raw_rl_string == "IRC 5 - RCC Railing":
++            resolved_railing_value = KEY_RAILING_TYPE[0]
++        elif raw_rl_string == "IRC 5- Steel Railing":
++            resolved_railing_value = KEY_RAILING_TYPE[1]
++        else:
++            resolved_railing_value = KEY_RAILING_TYPE[0]
++
+         return BridgeParametersDTO(
+             # --- Girder ---
+             span_length_L=span_mm,
+@@ -740,14 +774,14 @@ class PlateGirderBridge:
+             footpath_width=footpath_width_mm,
+             railing_width=railing_width_mm,
+             # --- Crash barrier (defaults until additional inputs wired) ---
+-            barrier_type="Rigid",
+-            crash_barrier_subtype="IRC-5R",
++            barrier_type=resolved_barrier_type,
++            crash_barrier_subtype=resolved_cb_subtype,
+             # --- Median ---
+             enable_median=include_median,
+             median_type="Metallic Crash Barrier",
+             # --- Railing (defaults) ---
+             rail_count=3,
+-            railing_type="rcc",
++            railing_type=resolved_railing_value,
+             # --- Intermediate stiffeners (defaults) ---
+             include_intermediate_stiffeners=True,
+             intermediate_stiffener_spacing=cross_bracing_mm / 2,
