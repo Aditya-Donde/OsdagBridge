@@ -18,7 +18,7 @@ from osdagbridge.desktop.ui.dialogs.loading_popup import LoadingDialogManager
 from osdagbridge.desktop.ui.cad_3d import CAD3DWindow
 
 from osdagbridge.core.bridge_types.plate_girder.ui_fields import FrontendData
-from osdagbridge.core.bridge_types.plate_girder.defaults import BASIC_INPUT_DICT, extend_basic_input_dict, solve_bridge_layout
+from osdagbridge.core.bridge_types.plate_girder.defaults import BASIC_INPUT_DICT, solve_extend_basic_input_dict
 from osdagbridge.core.utils.common import *
 from osdagbridge.desktop.ui.utils.custom_widgets import ToolBarWidget
 
@@ -521,12 +521,10 @@ class CustomWindow(QWidget):
             return                 # Stop design process if validation fails
 
         # Redefine additional input defaults if required fields changed
-        if self.input_dock.is_require_field_changed:
-            extend_basic_input_dict(self.input_dict)
-            self.input_dock.is_require_field_changed = False
-
         # Solve bridge layout so the dict has computed values before Design or Additional Inputs
-        solve_bridge_layout(self.input_dict)
+        if self.input_dock.is_require_field_changed:
+            solve_extend_basic_input_dict(self.input_dict)
+            self.input_dock.is_require_field_changed = False
 
         print("\n@@input_dictionary_after (common_design_func):\n")
         pprint(self.input_dict)

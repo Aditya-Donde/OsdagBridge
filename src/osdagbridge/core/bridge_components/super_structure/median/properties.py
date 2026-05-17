@@ -7,7 +7,7 @@ Takes area values from geometry.py and converts them to load.
 
 from .geometry import (
     median_raised_kerb_area,
-    median_rcc_barrier_area,
+    median_rcc_crash_barrier_area,
     median_metallic_barrier_area,
 )
 
@@ -44,7 +44,7 @@ def median_raised_kerb_load():
 # FIG 5(b): MEDIAN RCC CRASH BARRIER
 
 def median_rcc_barrier_load():
-    geom = median_rcc_barrier_area()
+    geom = median_rcc_crash_barrier_area()
 
     barrier_load_single = load_from_area(geom["rcc_barrier_area_single"], RCC_DENSITY)
     kerb_load_single = load_from_area(geom["kerb_area_single"], RCC_DENSITY)
