@@ -2760,41 +2760,6 @@ def export_grillage_figure(backend, output_dir, file_stem):
 
 
 # ===========================================================================
-# pdflatex auto-discovery
-# ===========================================================================
-
-def _find_pdflatex():
-    import sys
-    if shutil.which('pdflatex'):
-        return 'pdflatex'
-    candidates = []
-    if sys.platform == 'win32':
-        local = os.environ.get('LOCALAPPDATA', '')
-        home  = os.path.expanduser('~')
-        # Add osdag_latex_env specific paths
-        conda_prefix = os.environ.get('CONDA_PREFIX', sys.prefix)
-        candidates.extend([
-            os.path.join(conda_prefix, 'Library', 'share', 'osdag_latex_env', 'bin', 'x86_64-windows'),
-            os.path.join(conda_prefix, 'share', 'osdag_latex_env', 'bin', 'x86_64-windows'),
-            os.path.join(local, 'Programs', 'MiKTeX', 'miktex', 'bin', 'x64'),
-            os.path.join(home, 'AppData', 'Local', 'Programs', 'MiKTeX', 'miktex', 'bin', 'x64'),
-            r'C:\Program Files\MiKTeX\miktex\bin\x64',
-            r'C:\Program Files (x86)\MiKTeX\miktex\bin\x64',
-            r'C:\texlive\2024\bin\windows',
-            r'C:\texlive\2025\bin\windows',
-        ])
-    for d in candidates:
-        exe = (os.path.join(d, 'pdflatex.exe')
-               if sys.platform == 'win32'
-               else os.path.join(d, 'pdflatex'))
-        if os.path.isfile(exe):
-            os.environ['PATH'] = d + os.pathsep + os.environ.get('PATH', '')
-            logger.info("Found pdflatex at: %s", exe)
-            return exe
-    return 'pdflatex'
-
-
-# ===========================================================================
 # Public entry point
 # ===========================================================================
 
@@ -2818,7 +2783,9 @@ def generate_report(payload, request):
     """Compile the full OsdagBridge Design Report to PDF (+ .tex source)."""
     tex_path = None
     try:
-        compiler = _find_pdflatex()
+        # Just like Osdag's pylatex approach, we rely on pdflatex being in the system PATH
+        # when the conda environment is active. No need for custom path discovery.
+        compiler = 'pdflatex'
         logger.info("Compiler: %s", compiler)
 
         os.makedirs(request.output_dir, exist_ok=True)
