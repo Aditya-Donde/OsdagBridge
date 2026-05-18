@@ -20,6 +20,11 @@ from matplotlib.backends.backend_agg import FigureCanvasAgg
 from osdagbridge.desktop.ui.docks.output_dock import (
     NoScrollComboBox,
 )
+from osdagbridge.core.utils.common import (
+    KEY_UTIL_FLEXURE, KEY_UTIL_SHEAR, KEY_UTIL_INTERACTION, KEY_UTIL_LTB,
+    KEY_UTIL_LONG_TRANS_SHEAR, KEY_UTIL_FATIGUE, KEY_UTIL_STRESS_LIMITATION,
+    KEY_UTIL_DEFLECTION_CRACK,
+)
 from osdagbridge.desktop.ui.dialogs.tabs.common import apply_field_style
 from osdagbridge.desktop.ui.utils.styled_scroll_area import StyledScrollArea
 
@@ -285,7 +290,7 @@ def _render_mathtext_pixmap(
 _BADGE_STYLES = {
     "pass":    ("PASS", "#1a7a4a", "#d4edda"),
     "fail":    ("FAIL", "#8b0000", "#f8d7da"),
-    "neutral": ("",     "#444444", "#eeeeee"),
+    "neutral": ("N/A",  "#444444", "#eeeeee"),
 }
 
 
@@ -690,89 +695,90 @@ class SteelDesignCheckTab(QWidget):
 
         by_id: dict[int, object] = {chk.check_id: chk for chk in engine.checks}
 
-        def _classify(dcr: float) -> bool:
-            return dcr < 1.0
+        def _add_group_result(card_key: str, check_ids: tuple[int, ...]) -> None:
+            """Map one UI card to the worst DCR among a group of engine checks."""
+            checks = [by_id[cid] for cid in check_ids if cid in by_id]
+            if not checks:
+                return
+
+            worst = max(checks, key=lambda chk: chk.dcr)
+            results_by_key[card_key] = {
+                "demand": worst.demand,
+                "capacity": worst.capacity,
+                "ratio": worst.dcr,
+                "passed": worst.status != "FAIL",
+            }
 
         # Build a result dict for each card via the DCREngine checks
         results_by_key: dict[str, dict] = {}
 
         # - 1. Flexure (check_id=1) -
-        try:
-            c = by_id[1]
-            results_by_key["flexure"] = {
-                "demand": c.demand, "capacity": c.capacity,
-                "ratio": c.dcr, "passed": c.status != "FAIL",
-            }
-        except Exception:
-            pass
+        _add_group_result("flexure", (1,))
 
         # - 2. Shear (check_id=2) -
+        _add_group_result("shear", (2,))
+
+        # - 3. Interaction (check_id=3 and 4) -
+        _add_group_result("interaction", (3, 4))
+
+        # - 4. LTB (check_id=5) -
+        _add_group_result("ltb", (5,))
+
+        # - 5. Resistance to Longitudinal and Transverse Shear -
+        #   Check IDs 16 and 17 in DCREngine.
+        _add_group_result("shear_long_trans", (16, 17))
+
+        # - 6. Fatigue - worst of Normal (id=8) and Shear (id=9) -
+        _add_group_result("fatigue", (8, 9))
+
+        # - 7. Stress Limitation (worst of Cl.604.3.1 sub-checks) -
+        _add_group_result("stress", (10, 11, 12))
+
+        # - 8. Deflection and Crack Control -
+        _add_group_result("deflection", (13, 14, 15))
+
+        # If any card remained without an engine result, attempt to populate
+        # from the backend/frontend output state (percent util values).
+        fallback_map = {
+            "flexure": KEY_UTIL_FLEXURE,
+            "shear":   KEY_UTIL_SHEAR,
+            "interaction": KEY_UTIL_INTERACTION,
+            "ltb":     KEY_UTIL_LTB,
+            "shear_long_trans": KEY_UTIL_LONG_TRANS_SHEAR,
+            "fatigue": KEY_UTIL_FATIGUE,
+            "stress":  KEY_UTIL_STRESS_LIMITATION,
+            "deflection": KEY_UTIL_DEFLECTION_CRACK,
+        }
+
+        # Collect frontend output state from possible sources: dialog -> main window
+        output_state: dict = {}
         try:
-            c = by_id[2]
-            results_by_key["shear"] = {
-                "demand": c.demand, "capacity": c.capacity,
-                "ratio": c.dcr, "passed": c.status != "FAIL",
+            dlg = getattr(self, "parent", None) or getattr(self, "parentWidget", lambda: None)()
+            main_win = getattr(dlg, "_main_window", None)
+            if main_win is not None:
+                output_state = getattr(main_win, "output_dict", {}) or {}
+            # Fallback to backend outputs if available
+            if not output_state and main_win and getattr(main_win, "backend", None):
+                output_state = (main_win.backend.get_output_state() or {})
+        except Exception:
+            output_state = {}
+
+        for card_key, out_key in fallback_map.items():
+            if card_key in results_by_key:
+                continue
+            pct = output_state.get(out_key)
+            if pct is None:
+                # If no percent available, leave the card neutral
+                continue
+            try:
+                pct_val = float(pct)
+            except Exception:
+                continue
+            ratio = max(0.0, pct_val / 100.0)
+            results_by_key[card_key] = {
+                "demand": ratio, "capacity": 1.0,
+                "ratio": ratio, "passed": ratio < 1.0,
             }
-        except Exception:
-            pass
-
-        # - 3. Interaction (check_id=3) -
-        try:
-            c = by_id[3]
-            results_by_key["interaction"] = {
-                "demand": c.demand, "capacity": c.capacity,
-                "ratio": c.dcr, "passed": c.status != "FAIL",
-            }
-        except Exception:
-            pass
-
-        # - 4. LTB (check_id=4) -
-        try:
-            c = by_id[4]
-            results_by_key["ltb"] = {
-                "demand": c.demand, "capacity": c.capacity,
-                "ratio": c.dcr, "passed": c.status != "FAIL",
-            }
-        except Exception:
-            pass
-
-        # - 5. Deflection - worst of Live (id=5) and Total (id=6) -
-        try:
-            worst = None
-            for cid in (5, 6):
-                c = by_id.get(cid)
-                if c and (worst is None or c.dcr > worst.dcr):
-                    worst = c
-            if worst:
-                results_by_key["deflection"] = {
-                    "demand": worst.demand, "capacity": worst.capacity,
-                    "ratio": worst.dcr, "passed": worst.status != "FAIL",
-                }
-        except Exception:
-            pass
-
-        # - 6. Fatigue - worst of Normal (id=7) and Shear (id=8) -
-        try:
-            worst = None
-            for cid in (7, 8):
-                c = by_id.get(cid)
-                if c and (worst is None or c.dcr > worst.dcr):
-                    worst = c
-            if worst:
-                results_by_key["fatigue"] = {
-                    "demand": worst.demand, "capacity": worst.capacity,
-                    "ratio": worst.dcr, "passed": worst.status != "FAIL",
-                }
-        except Exception:
-            pass
-
-        # - 7. Stress Limitation (Cl.604.3.1) -
-        # - 8. Resistance to Longitudinal and Transverse Shear (Cl.606.4.1) -
-        #
-        # Neither check has a corresponding check_id in DCREngine (only IDs
-        # 1-8 are emitted).  These cards intentionally remain blank - showing
-        # their governing equation only - until the engine adds the checks.
-        # This matches the Output Dock which shows 0 % for both.
 
         # - Apply results to card widgets -
         self.design_results = list(results_by_key.values())

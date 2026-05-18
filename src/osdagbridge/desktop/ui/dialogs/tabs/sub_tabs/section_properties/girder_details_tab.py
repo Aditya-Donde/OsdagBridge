@@ -3868,6 +3868,7 @@ class GirderDetailsTab(QWidget):
             idx = max(0, min(self._current_segment_index, len(current_segments) - 1))
             current_segment = dict(current_segments[idx])
         return {
+            "active_member_id": (current_segment or {}).get("id", self.member_id_input.text().strip()),
             "selected_girders": [self._current_girder],
             "selected_girder": self._current_girder,
             "span_mode": self.span_combo.currentText(),
@@ -3977,9 +3978,12 @@ class GirderDetailsTab(QWidget):
 
         # Try to restore the previously active segment.
         target_index = 0
+        active_member_id = str(data.get("active_member_id") or "").strip()
         current_segment = data.get("current_segment")
-        if isinstance(current_segment, dict):
+        target_id = active_member_id
+        if not target_id and isinstance(current_segment, dict):
             target_id = str(current_segment.get("id") or "").strip()
+        if target_id:
             if target_id:
                 segments = self._ensure_girder_segments(self._current_girder)
                 for idx, seg in enumerate(segments):

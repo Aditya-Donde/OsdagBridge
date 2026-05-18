@@ -436,8 +436,9 @@ class SteelDesignDetailsTab(QWidget):
 
         if hasattr(self, "stiffener_table"):
             stiffener_map = {0: "intermediate", 1: "longitudinal", 2: "bearing"}
+            material_grade = str(cad_state.get("grade_of_material", "")).strip()
             for row, prefix in stiffener_map.items():
-                grade     = cad_state.get(f"stiff_{prefix}_grade",     "")
+                grade     = cad_state.get(f"stiff_{prefix}_grade",     "") or material_grade
                 thickness = cad_state.get(f"stiff_{prefix}_thickness", "")
                 width     = cad_state.get(f"stiff_{prefix}_width",     "")
                 spacing   = cad_state.get(f"stiff_{prefix}_spacing",   "")
@@ -522,7 +523,7 @@ class SteelDesignDetailsTab(QWidget):
         stiffener_details = cad_state.get("stiffener_details", {}) or {}
         stiff_by_member = stiffener_details.get("stiffener_by_member", {}) or {}
 
-        member_id = str(cad_state.get("member_id") or "").strip()
+        member_id = str(stiffener_details.get("active_member_id") or cad_state.get("member_id") or "").strip()
         if not member_id or (stiff_by_member and member_id not in stiff_by_member):
             member_id = next(iter(stiff_by_member.keys()), "")
 

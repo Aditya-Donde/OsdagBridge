@@ -931,6 +931,7 @@ class StiffenerDetailsTab(QWidget):
             if member_id not in self._state_by_member:
                 self._state_by_member[member_id] = dict(self._default_member_state())
         return {
+            "active_member_id": self._active_member_id,
             "stiffener_by_member": dict(self._state_by_member),
         }
 
@@ -964,6 +965,7 @@ class StiffenerDetailsTab(QWidget):
             restored = {}
         # Replace the per-member state and refresh UI.
         self._state_by_member = dict(restored)
+        self._active_member_id = str(data.get("active_member_id") or "").strip()
         try:
             self.refresh_girder_members()
         except Exception:
