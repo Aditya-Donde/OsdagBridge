@@ -281,12 +281,13 @@ class BridgeConfig:
         from osdagbridge.core.utils.common import (
             KEY_GIRDER, KEY_DECK_CONCRETE_GRADE_BASIC, KEY_TS_DECK_THICKNESS,
             KEY_SPAN, KEY_CARRIAGEWAY_WIDTH, KEY_CROSS_BRACING_SPACING,
+            KEY_GIRDER_DEPTH, KEY_GIRDER_TOP_FLANGE_WIDTH, KEY_GIRDER_TOP_FLANGE_THICKNESS,
+            KEY_GIRDER_BOTTOM_FLANGE_WIDTH, KEY_GIRDER_BOTTOM_FLANGE_THICKNESS,
+            KEY_GIRDER_WEB_THICKNESS,
         )
 
         if not getattr(bridge, "material_props", None):
             bridge.material_props = bridge._build_material_props()
-        if not getattr(bridge, "section_props", None):
-            bridge.section_props = bridge._girder_section()
 
         steel_prop = bridge.material_props.steel_prop
         fy_struct = steel_prop.Fy / 1_000_000.0
@@ -299,14 +300,14 @@ class BridgeConfig:
             concrete_grade=str(bridge.basic_inputs.get(KEY_DECK_CONCRETE_GRADE_BASIC, "")),
         )
 
-        props = bridge.section_props
+        inp = bridge.input_dict
         section = SteelSection(
-            D=props["D"] * 1000,
-            bf_top=props["B_top"] * 1000,
-            tf_top=props["t_f_top"] * 1000,
-            bf_bot=props["B_bot"] * 1000,
-            tf_bot=props["t_f_bot"] * 1000,
-            tw=props["t_w"] * 1000,
+            D=inp[KEY_GIRDER_DEPTH]                   * 1000,
+            bf_top=inp[KEY_GIRDER_TOP_FLANGE_WIDTH]        * 1000,
+            tf_top=inp[KEY_GIRDER_TOP_FLANGE_THICKNESS]    * 1000,
+            bf_bot=inp[KEY_GIRDER_BOTTOM_FLANGE_WIDTH]     * 1000,
+            tf_bot=inp[KEY_GIRDER_BOTTOM_FLANGE_THICKNESS] * 1000,
+            tw=inp[KEY_GIRDER_WEB_THICKNESS]               * 1000,
         )
 
         geom = getattr(bridge, "grillage_geometry", None)

@@ -125,6 +125,9 @@ from osdagbridge.core.utils.common import (
     DEFAULT_CROSS_BRACING_SPACING,
     KEY_CROSS_BRACING_SPACING,
     KEY_CROSS_BRACING_TYPE,
+    KEY_GIRDER_DEPTH,
+    KEY_GIRDER_TOP_FLANGE_THICKNESS,
+    KEY_GIRDER_BOTTOM_FLANGE_THICKNESS,
 )
 
 # ---------------------------------------------------------------------------
@@ -281,10 +284,10 @@ class CrossBracingForces:
             )
 
         # --- Girder section dimensions (metres) ---
-        sp = self.bridge.section_props
-        self.D      = float(sp["D"])
-        self.tf_top = float(sp.get("t_f_top", 0.0))
-        self.tf_bot = float(sp.get("t_f_bot", self.tf_top))
+        inp = self.bridge.input_dict
+        self.D      = float(inp[KEY_GIRDER_DEPTH])
+        self.tf_top = float(inp[KEY_GIRDER_TOP_FLANGE_THICKNESS])
+        self.tf_bot = float(inp[KEY_GIRDER_BOTTOM_FLANGE_THICKNESS])
 
         # --- Common geometry ---
         self.h = self.D * self.depth_ratio          # brace clear height (m)
