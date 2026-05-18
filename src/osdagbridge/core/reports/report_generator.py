@@ -112,6 +112,7 @@ def preamble(project_name, job_number, report_date, report_version='Rev 0'):
 \usepackage{colortbl}
 \usepackage{longtable}
 \usepackage{titlesec}
+\usepackage{titletoc}
 \usepackage{lastpage}
 \usepackage{makecell}
 
@@ -233,20 +234,27 @@ def toc_section():
   {\normalfont\Large\bfseries\centering}{\thechapter}{1em}{}
 \titlespacing*{\chapter}{0pt}{0pt}{10pt}
 \setcounter{tocdepth}{2}
-\renewcommand{\cftdot}{}
-\renewcommand{\cftchapleader}{\hfill}
-\renewcommand{\cftsecleader}{\hfill}
-\renewcommand{\cftsubsecleader}{\hfill}
-\renewcommand{\cftchappresnum}{}
-\renewcommand{\cftchapaftersnum}{}
-\renewcommand{\cftchapnumwidth}{1.5em}
-\renewcommand{\cftchapfont}{\normalfont}
-\renewcommand{\cftchappagefont}{\normalfont}
-\renewcommand{\cftbeforechapskip}{2pt}
+
+% TOC styling using titletoc
+\titlecontents{chapter}[1.5em]
+  {\normalfont\vspace{2pt}}
+  {\contentslabel{1.5em}}
+  {\hspace*{-1.5em}}
+  {\hfill\contentspage}
+
+\titlecontents{section}[3.8em]
+  {\normalfont}
+  {\contentslabel{2.3em}}
+  {\hspace*{-2.3em}}
+  {\hfill\contentspage}
+
+\titlecontents{subsection}[7.0em]
+  {\normalfont}
+  {\contentslabel{3.2em}}
+  {\hspace*{-3.2em}}
+  {\hfill\contentspage}
 
 \newpage
-\setlength{\cftbeforetoctitleskip}{0pt}
-\setlength{\cftaftertoctitleskip}{30pt}
 \renewcommand{\contentsname}{\centering\Large\bfseries Table of Contents}
 \tableofcontents
 """
