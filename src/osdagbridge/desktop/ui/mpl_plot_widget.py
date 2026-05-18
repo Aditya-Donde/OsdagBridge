@@ -112,9 +112,9 @@ class MplPlotWidget(QWidget):
         # Display States
         self._grillage_mode = False
         self._show_nodes = True 
-        self._show_axis = True  
+        self._show_axis = False 
         self._show_supports = True 
-        self._show_grid = True  
+        self._show_grid = False  
         self._is_summary_checked = False
         self._show_max = False  
         self._show_min = False  
@@ -216,7 +216,7 @@ class MplPlotWidget(QWidget):
 
         self._btn_axis = QPushButton("Axis")
         self._btn_axis.setCheckable(True)
-        self._btn_axis.setChecked(True) 
+        self._btn_axis.setChecked(False) 
         self._btn_axis.setFixedHeight(28)
         self._btn_axis.setFocusPolicy(Qt.NoFocus)
         self._btn_axis.setStyleSheet(btn_style)
@@ -224,12 +224,12 @@ class MplPlotWidget(QWidget):
 
         self._btn_grid = QPushButton("Grid")
         self._btn_grid.setCheckable(True)
-        self._btn_grid.setChecked(True) 
+        self._btn_grid.setChecked(False) 
         self._btn_grid.setFixedHeight(28)
         self._btn_grid.setFocusPolicy(Qt.NoFocus)
         self._btn_grid.setStyleSheet(btn_style)
         self._btn_grid.toggled.connect(self._on_grid_toggled)
-        self._canvas.mpl_connect('scroll_event', self._on_scroll)
+        # self._canvas.mpl_connect('scroll_event', self._on_scroll)
 
         toolbar_row = QHBoxLayout()
         toolbar_row.setContentsMargins(4, 2, 4, 2)
@@ -260,6 +260,17 @@ class MplPlotWidget(QWidget):
         self._nodes     = nodes
         self._members   = members
         self._edge_dist = edge_dist
+
+        if hasattr(self, '_fig') and self._fig.axes:
+            ax = self._fig.axes[0]
+            
+            # 1. Switch to Orthographic projection (NO MORE CLIPPING)
+            # ax.set_proj_type('ortho')
+            
+            # 2. Force the 3D box to stretch across the entire PySide6 widget
+            # We use slight negative values to push the invisible bounding box 
+            # off the edges of the screen, maximizing the bridge resolution.
+            self._fig.subplots_adjust(left=-0.05, right=1.05, bottom=-0.05, top=1.05)
 
     def link_output_dock(self, output_dock):
         self._output_dock = output_dock
@@ -322,28 +333,41 @@ class MplPlotWidget(QWidget):
             return
 
         ds = self._ds_all.sel(Loadcase=loadcase)
+        
+        # ==========================================
+        # 1. 🚨 CAPTURE CAMERA STATE BEFORE CLOSING
+        # ==========================================
+        old_elev, old_azim = None, None
+        if hasattr(self, '_fig') and self._fig and self._fig.axes:
+            old_ax = self._fig.axes[0]
+            if hasattr(old_ax, 'elev'):
+                old_elev = old_ax.elev
+                old_azim = old_ax.azim
+
+        # NOW we can safely destroy the old plot
         plt.close(self._fig)
         
         self._summary_data = {} 
 
+        # (Your existing if/elif/else block to build the new figures)
         if force_key in _SFD_KEYS:
-            self._fig = build_figure_sfd(ds, force_key, self._nodes, self._members, edge_dist=self._edge_dist)
+            self._fig, self._summary_data = build_figure_sfd(ds, force_key, self._nodes, self._members, edge_dist=self._edge_dist)
         elif force_key in _DEFL_KEYS:
-            self._fig = build_figure_deflection(ds, force_key, self._nodes, self._members, edge_dist=self._edge_dist)
+            self._fig, self._summary_data = build_figure_deflection(ds, force_key, self._nodes, self._members, edge_dist=self._edge_dist)
         else:
             self._fig, self._summary_data = build_figure_bmd(ds, force_key, self._nodes, self._members, edge_dist=self._edge_dist)
 
         self._canvas.figure = self._fig
         self._fig.set_canvas(self._canvas)
         
-        # Apply visual states
+        # (Your existing visibility toggles)
         self._apply_node_visibility()
         self._apply_axis_visibility()
         self._apply_supports_visibility()
         self._apply_grid_visibility() 
         self._apply_annotation_visibility() 
         
-        # Update HUD
+        # (Your existing HUD logic)
         if self._summary_data:
             self._summary_overlay.update_data(self._summary_data)
             if self._is_summary_checked:
@@ -353,14 +377,32 @@ class MplPlotWidget(QWidget):
             self._summary_overlay.hide()
         
         if self._fig:
-            # Strip margins globally before handing the figure to the canvas
-            self._fig.subplots_adjust(left=0.0, right=1.0, bottom=0.0, top=1.0)
-        
-        self._fit_figure_to_canvas()
-        self._canvas.draw()
+            self._fig.subplots_adjust(left=0.02, right=0.98, bottom=0.02, top=0.92)
+            
+            if not self._fig.axes:
+                return
 
-        self._zoom_scale = 1.0
-        self._store_orig_limits()
+            ax = self._fig.axes[0]
+
+            # ==========================================
+            # 2. 🚨 RESTORE CAMERA STATE TO NEW PLOT
+            # ==========================================
+            if old_elev is not None and old_azim is not None:
+                ax.view_init(elev=old_elev, azim=old_azim)
+
+            # (Keep your existing native zoom logic)
+            if hasattr(ax, 'set_box_aspect'):
+                ax.set_box_aspect(aspect=(2.5, 1.2, 1.0), zoom=self._zoom_scale)
+
+            # (Keep your existing anti-clipping loop here)
+            for line in ax.lines:
+                line.set_clip_on(False)
+            for collection in ax.collections:
+                collection.set_clip_on(False)
+            for text in ax.texts:
+                text.set_clip_on(False)
+
+            self._canvas.draw_idle()
 
         # Show NavCube for 3-D plots only, hide for 2-D.
         QTimer.singleShot(100, self._update_navcube_visibility)
@@ -545,9 +587,12 @@ class MplPlotWidget(QWidget):
     def _apply_grid_visibility(self):
         for ax in self._fig.axes:
             if self._show_grid:
+                # Turn everything ON and re-apply your custom dashed grid styling
+                ax.set_axis_on()
                 ax.grid(True, linestyle="--", linewidth=0.4, alpha=0.5)
             else:
-                ax.grid(False)
+                # Throw the invisibility cloak over the panes, cube, labels, and ticks!
+                ax.set_axis_off()
 
     def _fit_figure_to_canvas(self):
         w_px = self._canvas.width()
@@ -612,49 +657,78 @@ class MplPlotWidget(QWidget):
 
     #         return True   
     #     return super().eventFilter(obj, event)
+    def eventFilter(self, obj, event):
+        """Intercepts the mouse wheel at the OS level to guarantee zoom triggers."""
+        from PySide6.QtCore import QEvent
+        
+        if obj is self._canvas and event.type() == QEvent.Type.Wheel:
+            event.accept() # Tell PySide6 "I handled this, do not scroll the window!"
+            
+            delta = event.angleDelta().y()
+            if delta > 0:
+                self._zoom_in()
+            else:
+                self._zoom_out()
+                
+            return True   
+        return super().eventFilter(obj, event)
 
-    def _zoom_step(self, factor):
-        """Natively zooms the Matplotlib 3D camera by scaling the axis limits."""
+    # def _zoom_step(self, factor):
+    #     """Natively zooms the Matplotlib 3D camera without clipping the data."""
+    #     if not hasattr(self, '_fig') or not self._fig or not self._fig.axes:
+    #         return
+            
+    #     ax = self._fig.axes[0]
+        
+    #     # Multiply the current zoom scale
+    #     self._zoom_scale *= factor
+        
+    #     # Add safety limits so the user can't zoom in infinitely or zoom out to a dot
+    #     self._zoom_scale = max(0.5, min(self._zoom_scale, 5.0))
+        
+    #     # Apply the new optical zoom while preserving your rigid 3D bridge shape!
+    #     if hasattr(ax, 'set_box_aspect'):
+    #         ax.set_box_aspect(aspect=(2.5, 1.2, 1.0), zoom=self._zoom_scale)
+            
+    #     self._canvas.draw_idle()
+
+    # ==========================================
+    # BUTTERY SMOOTH CAMERA ZOOMING
+    # ==========================================
+
+    def _apply_camera_zoom(self):
+        """Applies zoom to the EXISTING figure without rebuilding it from scratch!"""
         if not hasattr(self, '_fig') or not self._fig or not self._fig.axes:
             return
             
         ax = self._fig.axes[0]
         
-        # 1. Get current boundaries
-        x0, x1 = ax.get_xlim()
-        y0, y1 = ax.get_ylim()
-        z0, z1 = ax.get_zlim()
-        
-        # 2. Find the exact center of the current view
-        xc, yc, zc = (x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2
-        
-        # 3. Scale the ranges by the zoom factor
-        xr, yr, zr = (x1 - x0) * factor, (y1 - y0) * factor, (z1 - z0) * factor
-        
-        # 4. Apply the new narrowed/widened limits
-        ax.set_xlim(xc - xr / 2, xc + xr / 2)
-        ax.set_ylim(yc - yr / 2, yc + yr / 2)
-        ax.set_zlim(zc - zr / 2, zc + zr / 2)
-        
+        # Change the optical zoom instantly without touching limits or layout
+        if hasattr(ax, 'set_box_aspect'):
+            ax.set_box_aspect(aspect=(2.5, 1.2, 1.0), zoom=self._zoom_scale)
+            
         self._canvas.draw_idle()
 
     def _zoom_in(self):
-        # 85% of current view size (zooms in)
-        self._zoom_step(0.85) 
+        """Zooms the camera strictly inward."""
+        self._zoom_scale *= 1.2  # Increase zoom parameter by 20%
+        self._apply_camera_zoom() # Call our lightweight function, NOT update_plot()
 
     def _zoom_out(self):
-        # 115% of current view size (zooms out)
-        self._zoom_step(1.15) 
-    def _on_scroll(self, event):
-        """Native Matplotlib scroll wheel support."""
-        if event.button == 'up':
-            self._zoom_step(0.85)  # Scroll wheel up = Zoom in
-        elif event.button == 'down':
-            self._zoom_step(1.15)  # Scroll wheel down = Zoom out
-        
+        """Zooms the camera strictly outward."""
+        self._zoom_scale /= 1.2  # Decrease zoom parameter by 20%
+        if self._zoom_scale < 0.1: 
+            self._zoom_scale = 0.1
+        self._apply_camera_zoom()
+
     def _zoom_reset(self):
-        # The safest and cleanest way to reset is just to re-trigger the plot update!
-        self.update_plot()
+        """Snaps back to 100% scale."""
+        self._zoom_scale = 1.0
+        self._apply_camera_zoom()
+
+    # ==========================================
+    # STATE HELPERS
+    # ==========================================
 
     def _current_loadcase(self) -> str:
         combo = self._output_dock.output_widget.findChild(

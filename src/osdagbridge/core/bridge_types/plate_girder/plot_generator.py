@@ -126,42 +126,66 @@ def _build_polyline(elems, members, nodes, force_i, force_j, ds):
 # DRAWING HELPERS (matplotlib 3-D)
 # =============================================================================
 
-def _add_grillage_background(ax, nodes, members, x_tol=3, z_tol=3):
-    """
-    Draw the structural grid by grouping nodes rather than tracing element tags.
+def _add_grillage_background(ax, nodes, members, x_tol=3, z_tol=3, show_transverse=False):
+        """
+        Draw the structural grid by grouping nodes rather than tracing element tags.
+        """
+        from collections import defaultdict
 
-    • Longitudinal lines  — nodes sharing the same z-position connected in x-order.
-    • Transverse lines    — nodes sharing the same x-position connected in z-order.
+        by_z = defaultdict(list)   # z_key → [x, ...]
+        by_x = defaultdict(list)   # x_key → [z, ...]
 
-    This guarantees that transverse connections are visible regardless of how
-    ospgrillage numbers its elements or the current camera angle.
-    """
-    from collections import defaultdict
+        for coord in nodes.values():
+            rx = round(coord[0], x_tol)
+            rz = round(coord[2], z_tol)
+            by_z[rz].append(coord[0])
+            by_x[rx].append(coord[2])
 
-    # round keys to avoid floating-point scatter
-    by_z = defaultdict(list)   # z_key → [x, ...]
-    by_x = defaultdict(list)   # x_key → [z, ...]
+        # ==========================================
+        # 1. THE LINES (Transparent Green & Grey)
+        # ==========================================
+        # Original structural green (#388E3C) but 70% transparent (alpha=0.3)
+        long_kw  = dict(color="#388E3C", linewidth=1.0, alpha=0.3, zorder=1)
+        
+        # Soft grey for the transverse cross-beams (alpha=0.4)
+        trans_kw = dict(color="slategrey", linewidth=1.2, alpha=0.4, zorder=1)
 
-    for coord in nodes.values():
-        rx = round(coord[0], x_tol)
-        rz = round(coord[2], z_tol)
-        by_z[rz].append(coord[0])
-        by_x[rx].append(coord[2])
+        # longitudinal lines (along span)
+        for z_val, x_vals in by_z.items():
+            x_sorted = sorted(set(x_vals))
+            if len(x_sorted) > 1:
+                ax.plot(x_sorted, [z_val] * len(x_sorted), [0] * len(x_sorted), **long_kw)
 
-    long_kw  = dict(color="darkgrey", linewidth=0.8, alpha=0.5, zorder=1)
-    trans_kw = dict(color="slategrey", linewidth=1.8, alpha=0.8, zorder=1)
+        if by_x:  # Quick safety check to ensure we have data
+            min_x = min(by_x.keys())
+            max_x = max(by_x.keys())
 
-    # longitudinal lines (along span)
-    for z_val, x_vals in by_z.items():
-        x_sorted = sorted(set(x_vals))
-        if len(x_sorted) > 1:
-            ax.plot(x_sorted, [z_val] * len(x_sorted), [0] * len(x_sorted), **long_kw)
+            for x_val, z_vals in by_x.items():
+                # Check if this specific line is at the absolute start or end of the bridge
+                is_end_line = (x_val == min_x or x_val == max_x)
 
-    # transverse lines (across width)
-    for x_val, z_vals in by_x.items():
-        z_sorted = sorted(set(z_vals))
-        if len(z_sorted) > 1:
-            ax.plot([x_val] * len(z_sorted), z_sorted, [0] * len(z_sorted), **trans_kw)
+                # Draw it if the Master Switch is ON, OR if it's an end line!
+                if show_transverse or is_end_line:
+                    z_sorted = sorted(set(z_vals))
+                    if len(z_sorted) > 1:
+                        ax.plot([x_val] * len(z_sorted), z_sorted, [0] * len(z_sorted), **trans_kw)
+        # ==========================================
+        # 3. THE DOTS (Sniper Fix for Z-Fighting)
+        # ==========================================
+        inner_xs, inner_zs, inner_ys = [], [], []
+        
+        if by_x:
+            min_x = min(by_x.keys())
+            max_x = max(by_x.keys())
+            
+            # Only collect dots that are NOT at the absolute ends of the bridge
+            for coord in nodes.values():
+                if coord[0] != min_x and coord[0] != max_x:
+                    inner_xs.append(coord[0])
+                    inner_zs.append(coord[2])
+                    inner_ys.append(0) # Base elevation
+                    
+            ax.scatter(inner_xs, inner_zs, inner_ys, color="#388E3C", alpha=0.4, s=5, zorder=2, depthshade=False)
 
 
 def _add_coordinate_triad(ax, nodes, scale=0.12):
@@ -254,14 +278,14 @@ def _add_supports(ax, nodes, members, edge_dist=0.0):
         rol_z.append(nodes[n_right][2])
 
     # Pinned supports (Left side) -> Green Diamond
-    ax.scatter(pin_x, pin_z, np.zeros_like(pin_x), marker='D', s=70,
+    ax.scatter(pin_x, pin_z, np.zeros_like(pin_x), marker='^', s=70,
                color='#7CB342', edgecolors='black', linewidths=1.5,
-               zorder=6, depthshade=False, gid="supports")
+               zorder=1000, depthshade=False, gid="supports")
 
     # Roller supports (Right side) -> Yellow Circle
     ax.scatter(rol_x, rol_z, np.zeros_like(rol_x), marker='o', s=70,
                color='#FBC02D', edgecolors='black', linewidths=1.5,
-               zorder=6, depthshade=False, gid="supports")
+               zorder=1000, depthshade=False, gid="supports")
 
 
 # =============================================================================
@@ -293,9 +317,9 @@ def build_figure_grillage(nodes, members, edge_dist=0.0):
     ax.set_zlim(-x_range * 0.05, x_range * 0.15)
     ax.set_box_aspect([x_range, z_range, x_range * 0.30])
 
-    _add_grillage_background(ax, nodes, members)
+    _add_grillage_background(ax, nodes, members, show_transverse=True)
     _add_coordinate_triad(ax, nodes)
-    _add_supports(ax, nodes, members, edge_dist=edge_dist)
+    
 
     girders = _find_girders(nodes, members)
     girder_items = list(girders.items())
@@ -377,7 +401,7 @@ def build_figure_grillage(nodes, members, edge_dist=0.0):
                     
             timer.add_callback(auto_hide)
             timer.start()
-
+    _add_supports(ax, nodes, members, edge_dist=edge_dist)
     ax.set_xlabel("Span Length (m)", fontsize=10, labelpad=8)
     ax.set_ylabel("Bridge Width (m)", fontsize=10, labelpad=8)
     ax.set_zlabel("", fontsize=10, labelpad=8)
@@ -405,25 +429,13 @@ def build_figure_grillage(nodes, members, edge_dist=0.0):
 def build_figure_sfd(ds, force_key, nodes, members, edge_dist=0.0):
     """
     Build a 3-D matplotlib figure showing the Shear Force Diagram.
-
-    Parameters
-    ----------
-    ds         : xarray.Dataset  — analysis results (must have 'forces' DataArray)
-    force_key  : str             — one of FORCE_MAP keys, e.g. "Fy"
-    nodes      : dict            — {tag: [x, y, z]}
-    members    : dict            — {tag: [n1, n2]}
-    edge_dist  : float           — overhang distance; when > 0 the outermost two
-                                   girders are edge beams and are skipped in the
-                                   force diagram (their lines remain visible via
-                                   the grillage background).
-
-    Returns
-    -------
-    fig : matplotlib.figure.Figure
     """
     comp_i_name, comp_j_name = FORCE_MAP[force_key]
     disp_key = FORCE_DISPLAY.get(force_key, force_key)
     girders = _find_girders(nodes, members)
+
+    # Use muted gray/slate for standard non-active node values
+    standard_gray = "#455A64"
 
     fig = plt.figure(figsize=(14, 6), dpi=110, facecolor="white")
     ax = fig.add_subplot(111, projection="3d", facecolor="white")
@@ -432,14 +444,19 @@ def build_figure_sfd(ds, force_key, nodes, members, edge_dist=0.0):
     all_zs = [coord[2] for coord in nodes.values()]
     x_range = max(all_xs) - min(all_xs) or 1.0
     z_range = max(all_zs) - min(all_zs) or 1.0
-    ax.set_xlim(min(all_xs), max(all_xs))
-    ax.set_ylim(min(all_zs), max(all_zs))
+    
+    x_min, x_max = min(all_xs), max(all_xs)
+    z_min, z_max = min(all_zs), max(all_zs)
+    
+    x_pad = (x_max - x_min) * 0.05 if (x_max - x_min) != 0 else 1.0
+    z_pad = (z_max - z_min) * 0.05 if (z_max - z_min) != 0 else 1.0
+    
+    ax.set_xlim(x_min - x_pad, x_max + x_pad)
+    ax.set_ylim(z_min - z_pad, z_max + z_pad)
     ax.set_box_aspect([x_range, z_range, x_range * 0.30])
 
-    _add_grillage_background(ax, nodes, members)
+    _add_grillage_background(ax, nodes, members, show_transverse=False)
     
-    _add_supports(ax, nodes, members, edge_dist=edge_dist)
-
     shear_color = "#1565C0"
     fill_color  = "#90CAF9"
     base_color  = "#388E3C"
@@ -449,6 +466,8 @@ def build_figure_sfd(ds, force_key, nodes, members, edge_dist=0.0):
     _scatter_objs = []
     _scatter_data = {}
 
+    summary_data = {}
+
     for i, (z_val, elems) in enumerate(girder_items):
         is_edge_beam = edge_dist > 0 and (i == 0 or i == n_girders - 1)
         girder_name  = f"G{i}" if edge_dist > 0 else f"G{i + 1}"
@@ -457,38 +476,23 @@ def build_figure_sfd(ds, force_key, nodes, members, edge_dist=0.0):
             elems, members, nodes, comp_i_name, comp_j_name, ds
         )
 
-        # The j-end force from OpenSees uses the opposite sign convention.
-        # Negate the last value so the rightmost node shows the correct shear.
         Vy = Vy.copy()
         Vy[-1] = -Vy[-1]
 
         z_base = float(np.mean(zs))
         z_arr  = np.full_like(xs, z_base)
 
-        # baseline (solid) - grey for edge beams, green for structural
-        ax.plot([xs[0], xs[-1]], [z_base, z_base], [0, 0],
-                color="slategrey" if is_edge_beam else base_color,
-                linewidth=1.5, zorder=3)
-
-        # edge beams: baseline only, no markers / label / force diagram
         if is_edge_beam:
             continue
 
         ax.scatter(xs, z_arr, np.zeros_like(xs),
-                   color=base_color, s=18, zorder=4, depthshade=False)
+                   color=base_color, s=5, zorder=4, depthshade=False, alpha=0.4)
 
-        # girder label
+        dynamic_zorder = 100 - i  
         ax.text(xs[0] - (x_range * 0.02), z_base, 0, f"{girder_name}",
-                color="black", fontsize=11, fontweight="normal",
-                ha="right", va="center", zorder=6,
-                bbox=dict(boxstyle="round,pad=0.2", facecolor="white",
-                          alpha=0.8, edgecolor="none"))
-
-        # val_range = max(Vy) - min(Vy)
-        # if val_range == 0:
-        #     shear_scale = 1.0 if max(Vy) == 0 else 0.25 * abs((max(xs) - min(xs)) / max(Vy))
-        # else:
-        #     shear_scale = 0.25 * abs((max(xs) - min(xs)) / val_range)
+                color="black", fontsize=11, ha="right", va="center", 
+                zorder=dynamic_zorder,
+                bbox=dict(boxstyle="round,pad=0.2", facecolor="white", alpha=0.8, edgecolor="none"))
 
         x_step  = np.repeat(xs, 2)[1:-1]
         Vy_step = np.repeat(Vy[:-1], 2)
@@ -502,25 +506,77 @@ def build_figure_sfd(ds, force_key, nodes, members, edge_dist=0.0):
             color=fill_color, alpha=0.25, linewidth=0, antialiased=False, zorder=2
         )
 
-        # shear step line
         ax.plot(x_step, z_step, y_step, color=shear_color, linewidth=2.0, zorder=4)
 
-        # vertical cliff lines
         for xi, vyi in zip(xs, Vy):
             ax.plot([xi, xi], [z_base, z_base], [0, vyi],
                     color=shear_color, linewidth=1.2, alpha=0.7, zorder=3)
-        for xi, vyi in zip(xs, Vy):
-            ax.text(xi, z_base, vyi, f" {vyi:.2f}", color="#666666", fontsize=6, zorder=5, gid="all_vals")
 
         sc = ax.scatter(xs, z_arr, Vy,
                         color=shear_color, s=30, zorder=5, depthshade=False)
         _scatter_objs.append(sc)
         _scatter_data[id(sc)] = (node_ids, xs, Vy)
 
-    # hover annotations
+        if len(Vy) > 0:
+            idx_max = int(np.argmax(Vy))
+            idx_min = int(np.argmin(Vy))
+
+            summary_data[girder_name] = {
+                "max": float(Vy[idx_max]),
+                "min": float(Vy[idx_min])
+            }
+
+            # ==========================================
+            # CLEANED Extreme Value Logic (Nodes and Text)
+            # ==========================================
+            
+            # Use Prominent BLACK (like BMD) for extreme node highlights and text
+            extreme_align_color = "black"
+
+            # Max Node Highlight and Text (Highest Positive)
+            ax.plot([xs[idx_max]], [z_base], [Vy[idx_max]],
+                    marker="o", markersize=9, color=extreme_align_color, markeredgecolor="white", markeredgewidth=1.5, 
+                    linestyle="None", zorder=10, gid="max_line")
+            
+            # CLEAN: Removed "Max:" prefix.
+            ax.text(xs[idx_max], z_base, Vy[idx_max], f" {Vy[idx_max]:.3f} kN",
+                    color=extreme_align_color, fontsize=7, fontweight="bold", ha="left", va="bottom", zorder=11,
+                    gid="max_line", bbox=dict(boxstyle="round,pad=0.2", facecolor="white", alpha=0.8, edgecolor="none"))
+
+            # Min Node Highlight and Text (Lowest Negative)
+            ax.plot([xs[idx_min]], [z_base], [Vy[idx_min]],
+                    marker="o", markersize=9, color=extreme_align_color, markeredgecolor="white", markeredgewidth=1.5, 
+                    linestyle="None", zorder=10, gid="min_line")
+            
+            # CLEAN: Removed "Min:" prefix.
+            ax.text(xs[idx_min], z_base, Vy[idx_min], f" {Vy[idx_min]:.3f} kN",
+                    color=extreme_align_color, fontsize=7, fontweight="bold", ha="right", va="top", zorder=11,
+                    gid="min_line", bbox=dict(boxstyle="round,pad=0.2", facecolor="white", alpha=0.8, edgecolor="none"))
+
+            # "All" Values Staggered Labels (Muted Gray)
+            for j in range(len(xs)):
+                if abs(Vy[j]) > 1e-4: 
+                    if j == idx_max or j == idx_min:
+                        continue
+                        
+                    v_align = "bottom" if j % 2 == 0 else "top"
+                    h_align = "left" if i % 2 == 0 else "right" 
+
+                    ax.text(xs[j], z_base, Vy[j], 
+                            f" {Vy[j]:.3f} kN", 
+                            color=standard_gray, fontsize=7, ha=h_align, va=v_align, zorder=6, 
+                            gid="all_vals", bbox=dict(boxstyle="round,pad=0.1", facecolor="white", alpha=0.7, edgecolor="none"))
+
+    # ==========================================
+    # Hover Annotations (With Garbage-Collection Fix)
+    # ==========================================
     if _MPLCURSORS and _scatter_objs:
         cursor = mplcursors.cursor(_scatter_objs, hover=True)
-        cursor._timers = {}  # THE FIX: A safe dictionary to store active timers
+        
+        # 🚨 THE FIX: Attach cursor and timers to the figure so Python's 
+        # Garbage Collector doesn't delete them the moment the function ends!
+        fig._custom_cursor = cursor
+        fig._hover_timers = {}
 
         @cursor.connect("add")
         def on_add(sel, _data=_scatter_data, _fk=disp_key):
@@ -529,30 +585,32 @@ def build_figure_sfd(ds, force_key, nodes, members, edge_dist=0.0):
             sel.annotation.set_text(
                 f"Node {nids[idx]}\nX: {xs_g[idx]:.2f}\n{_fk}: {vals_g[idx]:.3f} kN"
             )
-            sel.annotation.get_bbox_patch().set(fc="white", alpha=0.9)
+            sel.annotation.get_bbox_patch().set(fc="white", alpha=0.9, edgecolor="#BBBBBB")
 
-            fig = sel.annotation.figure
-            timer = fig.canvas.new_timer(interval=6500) 
-            timer.single_shot = True
-            
-            # Store the timer safely in our dictionary using the selection's unique ID
+            # 1. Stop any existing timer for this specific hover box to prevent glitching
             sel_id = id(sel)
-            cursor._timers[sel_id] = timer 
+            if sel_id in fig._hover_timers:
+                fig._hover_timers[sel_id].stop()
+
+            # 2. Create the new 6.5-second timer
+            timer = fig.canvas.new_timer(interval=3000) 
+            timer.single_shot = True
+            fig._hover_timers[sel_id] = timer 
             
             def auto_hide():
                 try:
-                    if sel in cursor.selections:
-                        cursor.remove_selection(sel)
-                        fig.canvas.draw_idle()
+                    # Safely hide the text box visually instead of fighting mplcursors internal arrays
+                    sel.annotation.set_visible(False)
+                    fig.canvas.draw_idle()
                 except Exception:
                     pass
                 finally:
-                    # Clean up the dictionary reference to free memory
-                    cursor._timers.pop(sel_id, None)
+                    fig._hover_timers.pop(sel_id, None)
                     
             timer.add_callback(auto_hide)
             timer.start()
 
+    _add_supports(ax, nodes, members, edge_dist=edge_dist)
     ax.set_xlabel("Span Length (m)", fontsize=10, labelpad=8)
     ax.set_ylabel("Bridge Width (m)", fontsize=10, labelpad=8)
     ax.set_zlabel(f"{disp_key} (kN)", fontsize=10, labelpad=8)
@@ -562,7 +620,6 @@ def build_figure_sfd(ds, force_key, nodes, members, edge_dist=0.0):
     ax.xaxis.pane.fill = False
     ax.yaxis.pane.fill = False
     ax.zaxis.pane.fill = False
-    # Professional, high-contrast bounding box borders
     ax.xaxis.pane.set_edgecolor("#555555")
     ax.yaxis.pane.set_edgecolor("#555555")
     ax.zaxis.pane.set_edgecolor("#555555")
@@ -574,13 +631,10 @@ def build_figure_sfd(ds, force_key, nodes, members, edge_dist=0.0):
     ax.zaxis.pane.set_alpha(1.0)
     ax.grid(True, linestyle="--", linewidth=0.4, alpha=0.5)
 
-    # Force the 3D plot to use the maximum available canvas space
-    # Dedicate 18% of the right side purely to the massive axis labels.
-    # This naturally shoves the 3D bridge perfectly into the center of the screen!
-    # fig.subplots_adjust(left=0.05, right=0.88, bottom=0.05, top=0.90)
     _add_coordinate_triad(ax, nodes)
-    return fig
+    ax.set_axis_off()
 
+    return fig, summary_data
 
 # =============================================================================
 # BMD PLOT
@@ -621,9 +675,9 @@ def build_figure_bmd(ds, force_key, nodes, members, edge_dist=0.0):
     ax.set_ylim(min(all_zs), max(all_zs))
     ax.set_box_aspect([x_range, z_range, x_range * 0.30])
 
-    _add_grillage_background(ax, nodes, members)
+    _add_grillage_background(ax, nodes, members, show_transverse=False)
     
-    _add_supports(ax, nodes, members, edge_dist=edge_dist)
+    
 
     moment_color = "#C62828"
     fill_color   = "#EF9A9A"
@@ -647,23 +701,31 @@ def build_figure_bmd(ds, force_key, nodes, members, edge_dist=0.0):
         z_arr  = np.full_like(xs, z_base)
 
         # baseline (solid) - grey for edge beams, green for structural
-        ax.plot([xs[0], xs[-1]], [z_base, z_base], [0, 0],
-                color="slategrey" if is_edge_beam else base_color,
-                linewidth=1.5, zorder=3)
+        # ax.plot([xs[0], xs[-1]], [z_base, z_base], [0, 0],
+        #         color="slategrey" if is_edge_beam else base_color,
+        #         linewidth=1.0, alpha=0.3, zorder=3)
 
         # edge beams: baseline only, no markers / label / force diagram
         if is_edge_beam:
             continue
 
         ax.scatter(xs, z_arr, np.zeros_like(xs),
-                   color=base_color, s=18, zorder=4, depthshade=False)
+                   color=base_color, s=5, zorder=4, depthshade=False, alpha=0.4)
 
         # girder label
+        # 1. Reverse the stack: G1 (i=0) gets zorder 100, G2 gets 99, etc.
+        dynamic_zorder = 100 - i  
+        
+
         ax.text(xs[0] - (x_range * 0.02), z_base, 0, f"{girder_name}",
-                color="black", fontsize=11, fontweight="normal",
-                ha="right", va="center", zorder=6,
-                bbox=dict(boxstyle="round,pad=0.2", facecolor="white",
-                          alpha=0.8, edgecolor="none"))
+                color="black", fontsize=11, ha="right", va="center", 
+                zorder=dynamic_zorder, 
+                bbox=dict(
+                    boxstyle="round,pad=0.2", 
+                    facecolor="white", 
+                    alpha=0.8, # Fades the white background box
+                    edgecolor="none"
+                ))
 
         # val_range = max(Mz) - min(Mz)
         # if val_range == 0:
@@ -703,10 +765,14 @@ def build_figure_bmd(ds, force_key, nodes, members, edge_dist=0.0):
         for xi, yi, mzi in zip(xs, y_plot, Mz):
             ax.text(xi, z_base, yi, f" {mzi:.2f}", color="#555555", fontsize=7, zorder=5, gid="all_vals")
 
-        sc = ax.scatter(xs, z_arr, y_plot,
+        # Slicing [1:-1] strips away the first and last dots so the supports stay clean!
+        sc = ax.scatter(xs[1:-1], z_arr[1:-1], -Mz[1:-1],
                         color=moment_color, s=30, zorder=5, depthshade=False)
+        
         _scatter_objs.append(sc)
-        _scatter_data[id(sc)] = (node_ids, xs, Mz)
+        
+        # CRITICAL: You must slice the hover data too, or the tooltip will show the wrong node!
+        _scatter_data[id(sc)] = (node_ids[1:-1], xs[1:-1], Mz[1:-1])
 
         summary_data[girder_name] = {"max": float(max(Mz)), "min": float(min(Mz))}
 
@@ -718,13 +784,24 @@ def build_figure_bmd(ds, force_key, nodes, members, edge_dist=0.0):
         def on_add(sel, _data=_scatter_data, _fk=disp_key):
             nids, xs_g, vals_g = _data[id(sel.artist)]
             idx = sel.index
+            
+            # 1. Dynamically assign the correct engineering unit
+            if _fk.startswith("M") or _fk.startswith("T"):
+                unit = "kNm"  # Moment and Torsion
+            elif _fk.startswith("D"):
+                unit = "mm"   # Deflection/Displacement
+            else:
+                unit = "kN"   # Shear and Axial Forces (F, V)
+
+            # 2. Apply the dynamic unit to the text
             sel.annotation.set_text(
-                f"Node {nids[idx]}\nX: {xs_g[idx]:.2f}\n{_fk}: {vals_g[idx]:.3f} kNm"
+                f"Node {nids[idx]}\nX: {xs_g[idx]:.2f}\n{_fk}: {vals_g[idx]:.3f} {unit}"
             )
+            
             sel.annotation.get_bbox_patch().set(fc="white", alpha=0.9)
 
             fig = sel.annotation.figure
-            timer = fig.canvas.new_timer(interval=6500)
+            timer = fig.canvas.new_timer(interval=3000)
             timer.single_shot = True
 
             # Store the timer safely in our dictionary using the selection's unique ID
@@ -744,7 +821,7 @@ def build_figure_bmd(ds, force_key, nodes, members, edge_dist=0.0):
 
             timer.add_callback(auto_hide)
             timer.start()
-
+    _add_supports(ax, nodes, members, edge_dist=edge_dist)
     ax.set_xlabel("Span Length (m)", fontsize=10, labelpad=8)
     ax.set_ylabel("Bridge Width (m)", fontsize=10, labelpad=8)
     ax.set_zlabel(f"{disp_key} (kNm)", fontsize=10, labelpad=8)
@@ -771,6 +848,7 @@ def build_figure_bmd(ds, force_key, nodes, members, edge_dist=0.0):
     # Dedicate 18% of the right side purely to the massive axis labels.
     # This naturally shoves the 3D bridge perfectly into the center of the screen!
     _add_coordinate_triad(ax, nodes)
+    ax.set_axis_off()
     return fig, summary_data
 
 
@@ -930,21 +1008,6 @@ def build_figure_bmd_contour(ds, force_key, nodes, members, edge_dist=0.0):
 def build_figure_deflection(ds, disp_key, nodes, members, edge_dist=0.0):
     """
     Build a 3-D matplotlib figure showing the Deflection Diagram.
-
-    Parameters
-    ----------
-    ds         : xarray.Dataset  — analysis results for one load case
-                                   (must have 'displacements' DataArray keyed
-                                    by Node and Component)
-    disp_key   : str             — one of DISP_MAP keys: "Dx", "Dy", "Dz"
-    nodes      : dict            — {tag: [x, y, z]}
-    members    : dict            — {tag: [n1, n2]}
-    edge_dist  : float           — overhang distance; outermost girders are
-                                   shown as baselines only (no diagram).
-
-    Returns
-    -------
-    fig : matplotlib.figure.Figure
     """
     comp_name  = DISP_MAP[disp_key]
     disp_label = DISP_DISPLAY.get(disp_key, disp_key)
@@ -957,114 +1020,172 @@ def build_figure_deflection(ds, disp_key, nodes, members, edge_dist=0.0):
     all_zs = [coord[2] for coord in nodes.values()]
     x_range = max(all_xs) - min(all_xs) or 1.0
     z_range = max(all_zs) - min(all_zs) or 1.0
-    ax.set_xlim(min(all_xs), max(all_xs))
-    ax.set_ylim(min(all_zs), max(all_zs))
-    ax.set_box_aspect([x_range, z_range, x_range * 0.30])
-
-    _add_grillage_background(ax, nodes, members)
     
-    _add_supports(ax, nodes, members, edge_dist=edge_dist)
+    # Rigid 3D bounding box (matches our UI zoom fix)
+    ax.set_box_aspect(aspect=(2.5, 1.2, 1.0))
+
+    _add_grillage_background(ax, nodes, members, show_transverse=False)
 
     defl_color = "#6A1B9A"   # deep purple
-    fill_color = "#CE93D8"   # light purple
-    base_color = "#388E3C"
+    base_color = "#388E3C"   # green baseline
 
-    # Resolve the actual component string in the dataset (case-insensitive)
+    # =========================================================
+    # PHASE 1: FOOLPROOF DATA EXTRACTION (ospgrillage Mapping)
+    # =========================================================
+    disp_dict = {}
     actual_comp = None
+    
+    # 1A. Map UI input (Dx, Dy) to the correct static displacement key (x, y)
+    # This prevents us from accidentally grabbing the 'velocity' components!
+    _DISP_COMPONENT_MAP = {
+        "dx": "x", "dy": "y", "dz": "z",
+        "Dx": "x", "Dy": "y", "Dz": "z"
+    }
+    target_ds_key = _DISP_COMPONENT_MAP.get(comp_name, comp_name)
+    
     try:
-        for c in ds["displacements"].coords["Component"].values:
-            if c.lower() == comp_name.lower():
+        available_comps = [str(c) for c in ds["displacements"].coords["Component"].values]
+        
+        for c in available_comps:
+            if str(c).lower() == target_ds_key.lower():
                 actual_comp = c
                 break
-    except Exception:
-        pass
+                
+    except Exception as e:
+        print(f"[DEBUG] Error reading components: {e}")
 
+    # 1B. Extract node values into the dictionary
+    if actual_comp is not None:
+        try:
+            for node_id in ds["displacements"].coords["Node"].values:
+                val = float(ds["displacements"].sel(Node=node_id, Component=actual_comp).values)
+                
+                # Apply the engineering sign flip for vertical sag (Y or Z axis)
+                if actual_comp.lower() in ["y", "z"]:
+                    val = -val 
+                    
+                disp_dict[str(int(node_id))] = val * 1000.0  # Convert to mm
+                
+        except Exception as e:
+            print(f"🚨 [CRITICAL ERROR] Extraction crashed: {e}")
+    else:
+        print(f"[DEBUG] 🚨 CRITICAL: Target '{target_ds_key}' not found in dataset!")
+
+    # =========================================================
+    # PHASE 2: PLOTTING THE DIAGRAM
+    # =========================================================
     girder_items = list(girders.items())
     n_girders    = len(girder_items)
     _scatter_objs = []
     _scatter_data = {}
+    summary_data = {}
 
     for i, (z_val, elems) in enumerate(girder_items):
         is_edge_beam = edge_dist > 0 and (i == 0 or i == n_girders - 1)
         girder_name  = f"G{i}" if edge_dist > 0 else f"G{i + 1}"
 
-        # Node list in span order (mirrors _build_polyline ordering)
         node_list = [members[e][0] for e in elems] + [members[elems[-1]][1]]
         xs = np.array([nodes[n][0] for n in node_list])
         zs = np.array([nodes[n][2] for n in node_list])
 
-        # Fetch nodal displacement (m → mm); fall back to 0 on missing data
-        def _get(n, _comp=actual_comp):
-            if _comp is None:
-                return 0.0
-            try:
-                return float(
-                    ds["displacements"].sel(Node=n, Component=_comp).values
-                ) * 1000.0
-            except Exception:
-                return 0.0
-
-        vals  = np.array([_get(n) for n in node_list])
+        # Fetch from our safe dictionary (defaults to 0.0 if missing)
+        vals  = np.array([disp_dict.get(str(int(n)), 0.0) for n in node_list])
         z_base = float(np.mean(zs))
         z_arr  = np.full_like(xs, z_base)
 
-        # baseline
-        ax.plot([xs[0], xs[-1]], [z_base, z_base], [0, 0],
-                color="slategrey" if is_edge_beam else base_color,
-                linewidth=1.5, zorder=3)
+        # Draw Baseline
+        # ax.plot([xs[0], xs[-1]], [z_base, z_base], [0, 0],
+        #         color="slategrey" if is_edge_beam else base_color,
+        #         linewidth=1.0, alpha=0.3, zorder=3)
 
         if is_edge_beam:
             continue
 
-        ax.scatter(xs, z_arr, np.zeros_like(xs),
-                   color=base_color, s=18, zorder=4, depthshade=False)
+        # Draw Girder Label
+        # 1. Reverse the stack: G1 (i=0) gets zorder 100, G2 gets 99, etc.
+        dynamic_zorder = 100 - i  
+        
 
-        # girder label
         ax.text(xs[0] - (x_range * 0.02), z_base, 0, f"{girder_name}",
-                color="black", fontsize=11, fontweight="normal",
-                ha="right", va="center", zorder=6,
-                bbox=dict(boxstyle="round,pad=0.2", facecolor="white",
-                          alpha=0.8, edgecolor="none"))
-
-        # val_range = max(vals) - min(vals)
-        # if val_range == 0:
-        #     defl_scale = (
-        #         1.0 if np.max(np.abs(vals)) == 0
-        #         else 0.1 * abs((max(xs) - min(xs)) / np.max(np.abs(vals)))
-        #     )
-        # else:
-        #     defl_scale = 0.1 * abs((max(xs) - min(xs)) / val_range)
+                color="black", fontsize=11, ha="right", va="center", 
+                zorder=dynamic_zorder, 
+                bbox=dict(
+                    boxstyle="round,pad=0.2", 
+                    facecolor="white", 
+                    alpha=0.8, # Fades the white background box
+                    edgecolor="none"
+                ))
 
         y_plot = vals 
 
-        ax.plot_surface(
-            np.vstack([xs, xs]),
-            np.vstack([z_arr, z_arr]),
-            np.vstack([np.zeros_like(y_plot), y_plot]),
-            color=fill_color, alpha=0.25, linewidth=0, antialiased=False, zorder=2
-        )
+        # Draw thick deflection line (NO plot_surface fill!)
+        ax.plot(xs, z_arr, y_plot, color=defl_color, linewidth=2.5, zorder=4)
 
-        ax.plot(xs, z_arr, y_plot, color=defl_color, linewidth=2.0, zorder=4)
-
-        # annotate the node with maximum absolute deflection
-        idx_max = int(np.argmax(np.abs(vals)))
-        ax.plot([xs[idx_max], xs[idx_max]], [z_base, z_base], [0, y_plot[idx_max]],
-                color=defl_color, linewidth=1.5, linestyle="--", zorder=3, gid="max_line")
-        ax.text(xs[idx_max], z_base, y_plot[idx_max],
-                f" {vals[idx_max]:.3f} mm", color="#4A4A4A", fontsize=7, fontweight="bold", zorder=6, gid="max_line")
-
-        # 'All' values annotations (Tagged for toggling)
-        for xi, yi, val in zip(xs, y_plot, vals):
-            ax.text(xi, z_base, yi, f" {val:.3f}", color="#666666", fontsize=6, zorder=5, gid="all_vals")
-
-        sc = ax.scatter(xs, z_arr, y_plot,
-                        color=defl_color, s=30, zorder=5, depthshade=False)
+        # Draw Nodes (Pure Black)
+        sc = ax.scatter(xs[1:-1], z_arr[1:-1], y_plot[1:-1], color="black", s=30, zorder=5, depthshade=False)
+        
         _scatter_objs.append(sc)
-        _scatter_data[id(sc)] = (node_list, xs, vals)
+        _scatter_data[id(sc)] = (node_list[1:-1], xs[1:-1], vals[1:-1])
+        if not is_edge_beam and len(vals) > 0:
+            summary_data[girder_name] = {
+                "max": float(np.max(vals)), # Uplift / Least sag
+                "min": float(np.min(vals))  # Maximum downward deflection
+            }
 
+        # Annotate maximum deflection
+        if len(vals) > 0 and np.max(np.abs(vals)) > 0:
+            idx_max = int(np.argmin(vals))  # Finds the most negative value (Maximum Sag)
+            idx_min = int(np.argmax(vals))
+
+            for j in range(len(xs)):
+                if abs(vals[j]) > 1e-4: 
+                    
+                    # 🚨 THE CRITICAL FIX: Skip the nodes that already get Bold Max/Min labels!
+                    if j == idx_max or j == idx_min:
+                        continue
+                        
+                    # 2. Staggering logic (Keeps regular nodes from touching each other)
+                    v_align = "bottom" if j % 2 == 0 else "top"
+                    h_align = "left" if i % 2 == 0 else "right" 
+
+                    ax.text(xs[j], z_base, y_plot[j], 
+                            f" {vals[j]:.3f} mm", 
+                            color="#455A64", 
+                            fontsize=7, 
+                            ha=h_align, 
+                            va=v_align, 
+                            zorder=6, 
+                            gid="all_vals",
+                            bbox=dict(boxstyle="round,pad=0.1", facecolor="white", alpha=0.7, edgecolor="none"))
+                    
+            # 1. Add gid="max_line" to the dotted line
+            ax.plot([xs[idx_max], xs[idx_max]], [z_base, z_base], [0, y_plot[idx_max]],
+                    color=defl_color, linewidth=1.5, linestyle="--", zorder=3, gid="max_line")
+            
+            # 2. Add gid="max_line" to the text label
+            ax.text(xs[idx_max], z_base, y_plot[idx_max],
+                    f" {vals[idx_max]:.3f} mm", color="#4A4A4A", fontsize=7, fontweight="bold", zorder=6, gid="max_line")
+            # 3. Add gid="min_line" to the dotted line
+            ax.plot([xs[idx_min], xs[idx_min]], [z_base, z_base], [0, y_plot[idx_min]],
+                    color=defl_color, linewidth=1.5, linestyle="--", zorder=3, gid="min_line")
+            ax.text(xs[idx_min], z_base, y_plot[idx_min],
+                    f" {vals[idx_min]:.3f} mm", color="#4A4A4A", fontsize=7, fontweight="bold", zorder=6, gid="min_line")
+        
+        
+
+    # =========================================================
+    # PHASE 3: FINISHING TOUCHES (Hover, Supports, Axes)
+    # =========================================================
+    # ==========================================
+    # Hover Annotations (With Garbage-Collection Fix)
+    # ==========================================
     if _MPLCURSORS and _scatter_objs:
         cursor = mplcursors.cursor(_scatter_objs, hover=True)
-        cursor._timers = {}  # THE FIX: A safe dictionary to store active timers
+        
+        # 🚨 THE FIX: Attach cursor and timers to the figure so Python's 
+        # Garbage Collector doesn't delete them the moment the function ends!
+        fig._custom_cursor = cursor
+        fig._hover_timers = {}
 
         @cursor.connect("add")
         def on_add(sel, _data=_scatter_data, _fk=disp_key):
@@ -1073,57 +1194,57 @@ def build_figure_deflection(ds, disp_key, nodes, members, edge_dist=0.0):
             sel.annotation.set_text(
                 f"Node {nids[idx]}\nX: {xs_g[idx]:.2f}\n{_fk}: {vals_g[idx]:.3f} mm"
             )
-            sel.annotation.get_bbox_patch().set(fc="white", alpha=0.9)
+            sel.annotation.get_bbox_patch().set(fc="white", alpha=0.9, edgecolor="#BBBBBB")
 
-            fig = sel.annotation.figure
-            timer = fig.canvas.new_timer(interval=6500)
-            timer.single_shot = True
-
-            # Store the timer safely in our dictionary using the selection's unique ID
+            # 1. Stop any existing timer for this specific hover box to prevent glitching
             sel_id = id(sel)
-            cursor._timers[sel_id] = timer
+            if sel_id in fig._hover_timers:
+                fig._hover_timers[sel_id].stop()
 
+            # 2. Create the new 3-second timer
+            timer = fig.canvas.new_timer(interval=3000) 
+            timer.single_shot = True
+            fig._hover_timers[sel_id] = timer 
+            
             def auto_hide():
                 try:
-                    if sel in cursor.selections:
-                        cursor.remove_selection(sel)
-                        fig.canvas.draw_idle()
+                    # Safely hide the text box visually instead of fighting mplcursors internal arrays
+                    sel.annotation.set_visible(False)
+                    fig.canvas.draw_idle()
                 except Exception:
                     pass
                 finally:
-                    # Clean up the dictionary reference to free memory
-                    cursor._timers.pop(sel_id, None)
-
+                    fig._hover_timers.pop(sel_id, None)
+                    
             timer.add_callback(auto_hide)
             timer.start()
 
-    ax.set_xlabel("Span Length (m)", fontsize=10, labelpad=8)
-    ax.set_ylabel("Bridge Width (m)", fontsize=10, labelpad=8)
-    ax.set_zlabel(f"{disp_label} (mm)", fontsize=10, labelpad=8)
-    ax.yaxis.set_major_locator(MaxNLocator(nbins=4, steps=[1, 2, 2.5, 5, 10]))
+    # CRITICAL: Draw supports absolute last so they sit on top of the black nodes
+    _add_supports(ax, nodes, members, edge_dist=edge_dist)
+
+    # Robust axes and labels
+    ax.set_xlabel("Span Length (m)", fontsize=10, fontweight="bold", labelpad=8)
+    ax.set_ylabel("Bridge Width (m)", fontsize=10, fontweight="bold", labelpad=8)
+    ax.set_zlabel(f"{disp_label} (mm)", fontsize=10, fontweight="bold", labelpad=8)
+    
+    from matplotlib.ticker import MaxNLocator
+    ax.yaxis.set_major_locator(MaxNLocator(nbins=4, integer=True, steps=[1, 2, 4, 5, 10]))
+    ax.zaxis.set_major_locator(MaxNLocator(nbins=4, steps=[1, 2, 2.5, 5, 10]))
+    
     ax.set_title(f"Deflection Diagram  —  {disp_label}", fontsize=12, fontweight="bold", pad=12)
     ax.view_init(elev=DEFAULT_ELEV, azim=DEFAULT_AZIM)
-    ax.xaxis.pane.fill = False
-    ax.yaxis.pane.fill = False
-    ax.zaxis.pane.fill = False
-    # Professional, high-contrast bounding box borders
-    ax.xaxis.pane.set_edgecolor("#555555")
-    ax.yaxis.pane.set_edgecolor("#555555")
-    ax.zaxis.pane.set_edgecolor("#555555")
-    ax.xaxis.pane.set_linewidth(1.5)
-    ax.yaxis.pane.set_linewidth(1.5)
-    ax.zaxis.pane.set_linewidth(1.5)
-    ax.xaxis.pane.set_alpha(1.0)
-    ax.yaxis.pane.set_alpha(1.0)
-    ax.zaxis.pane.set_alpha(1.0)
+    
+    # Pane styling
+    for pane in [ax.xaxis.pane, ax.yaxis.pane, ax.zaxis.pane]:
+        pane.fill = False
+        pane.set_edgecolor("#555555")
+        pane.set_linewidth(1.5)
+        pane.set_alpha(1.0)
+        
     ax.grid(True, linestyle="--", linewidth=0.4, alpha=0.5)
-
-    # Force the 3D plot to use the maximum available canvas space
-    # Dedicate 18% of the right side purely to the massive axis labels.
-    # This naturally shoves the 3D bridge perfectly into the center of the screen!
-    # fig.subplots_adjust(left=0.05, right=0.88, bottom=0.05, top=0.90)
     _add_coordinate_triad(ax, nodes)
-    return fig
+    ax.set_axis_off()
+    return fig, summary_data
 
 
 def figure_to_bytes(fig, fmt="png", dpi=150):
