@@ -2107,11 +2107,20 @@ class DCREngine:
             self._add_check(8, "Fatigue Normal Stress", "Cl.605",       
                              d.stress_range_MPa, c.f_fd_eff_MPa, "MPa",
                              note=f"Nsc={d.Nsc:,}")
+        else:
+            # Ensure engine emits a placeholder check so UI shows a result
+            self._add_check(8, "Fatigue Normal Stress", "Cl.605",
+                             0.0, 1.0, "MPa",
+                             note="Not computed (no stress range)")
 
         if d.shear_range_MPa > 0 and c.tau_fd_eff_MPa > 0:
             self._add_check(9, "Fatigue Shear Stress", "Cl.605",
                              d.shear_range_MPa, c.tau_fd_eff_MPa, "MPa",
                              note=f"Nsc={d.Nsc:,}")
+        else:
+            self._add_check(9, "Fatigue Shear Stress", "Cl.605",
+                             0.0, 1.0, "MPa",
+                             note="Not computed (no shear range)")
 
         # ── CATEGORY 7: Stress Limitation (SLS) ──────────────────────────────
         # 7a. Concrete compressive stress (Cl.604.3.1)
@@ -2120,29 +2129,49 @@ class DCREngine:
             self._add_check(10, "SLS Concrete Stress", "Cl.604.3.1",   
                              c.sigma_c_actual_MPa, c.sigma_c_limit_MPa, "MPa", 
                              note=f"Limit = 0.48 fck = {c.sigma_c_limit_MPa:.1f} MPa")  
+        else:
+            self._add_check(10, "SLS Concrete Stress", "Cl.604.3.1",
+                             0.0, c.sigma_c_limit_MPa if c.sigma_c_limit_MPa > 0 else 1.0,
+                             "MPa", note="Not computed (no concrete stress data)")
 
         # 7b. Structural steel equivalent stress (Cl.604.3.1)
         if not sls_act.get("skipped") and c.sigma_steel_equiv_MPa > 0.0:  
             self._add_check(11, "SLS Steel Equiv. Stress", "Cl.604.3.1",  
                              c.sigma_steel_equiv_MPa, c.sigma_s_limit_MPa, "MPa",  
                              note=f"fe = √(fbc²+fp²+fbc·fp+3τ²) ≤ 0.9fy = {c.sigma_s_limit_MPa:.1f} MPa")  
+        else:
+            self._add_check(11, "SLS Steel Equiv. Stress", "Cl.604.3.1",
+                             0.0, c.sigma_s_limit_MPa if c.sigma_s_limit_MPa > 0 else 1.0,
+                             "MPa", note="Not computed (no steel stress data)")
 
         # 7c. Rebar tensile stress (Cl.604.3.1 / IRC 112 Cl.12.2.2)
         if not sls_act.get("skipped") and c.sigma_rebar_actual_MPa > 0.0 and c.sigma_rebar_limit_MPa > 0.0:  
             self._add_check(12, "SLS Rebar Stress", "Cl.604.3.1",      
                              c.sigma_rebar_actual_MPa, c.sigma_rebar_limit_MPa, "MPa",  
                              note=f"Limit = 0.80 fyk = {c.sigma_rebar_limit_MPa:.1f} MPa")  
+        else:
+            self._add_check(12, "SLS Rebar Stress", "Cl.604.3.1",
+                             0.0, c.sigma_rebar_limit_MPa if c.sigma_rebar_limit_MPa > 0 else 1.0,
+                             "MPa", note="Not computed (no rebar stress data)")
 
         # ── CATEGORY 8: Deflection and Crack Control ──────────────────────────
         if d.delta_live_mm > 0:
             self._add_check(13, "SLS Deflection (Live)", "Cl.604.3.2", 
                              d.delta_live_mm, c.defl_limit_live_mm, "mm",
                              note="Limit = L/800")
+        else:
+            self._add_check(13, "SLS Deflection (Live)", "Cl.604.3.2",
+                             0.0, c.defl_limit_live_mm if c.defl_limit_live_mm > 0 else 1.0,
+                             "mm", note="Not computed (no live deflection)")
 
         if d.delta_total_mm > 0:
             self._add_check(14, "SLS Deflection (Total)", "Cl.604.3.2",
                              d.delta_total_mm, c.defl_limit_total_mm, "mm",
                              note="Limit = L/600")
+        else:
+            self._add_check(14, "SLS Deflection (Total)", "Cl.604.3.2",
+                             0.0, c.defl_limit_total_mm if c.defl_limit_total_mm > 0 else 1.0,
+                             "mm", note="Not computed (no total deflection)")
 
         # Crack control — minimum reinforcement check (Cl.604.4)
         if c.As_min_crack_mm2 > 0.0 and c.As_provided_crack_mm2 > 0.0:
@@ -2150,6 +2179,9 @@ class DCREngine:
                              c.As_min_crack_mm2, c.As_provided_crack_mm2, "mm²", 
                              note=(f"As_min={c.As_min_crack_mm2:.0f} mm², " 
                                    f"As_prov={c.As_provided_crack_mm2:.0f} mm²"))
+        else:
+            self._add_check(15, "Crack Control (As_min)", "Cl.604.4",
+                             0.0, 1.0, "mm²", note="Not computed (no crack control data)")
 
         # ── CATEGORY 5 (cont.): Transverse Shear (Cl.606.10)
         ts = c.details.get("transverse_shear", {})
@@ -2162,6 +2194,11 @@ class DCREngine:
                             c.Ast_required_cm2_per_m, c.Ast_provided_cm2_per_m, "cm²/m",
                             note=(f"Ast_req={c.Ast_required_cm2_per_m:.3f}, "
                                   f"Ast_prov={c.Ast_provided_cm2_per_m:.3f} cm²/m"))
+        else:
+            self._add_check(16, "Transverse Shear (VL vs Vcap)", "Cl.606.10",
+                            0.0, 1.0, "kN/m", note="Not computed (no transverse shear data)")
+            self._add_check(17, "Transverse Shear (Ast_min)", "Cl.606.10",
+                            0.0, 1.0, "cm²/m", note="Not computed (no transverse shear data)")
 
         # ── IRC 24-2010 STIFFENER CHECKS (Cl.509.7 / IS 800 Cl.8.7) ─────────────────
         # Intermediate transverse stiffener
