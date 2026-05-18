@@ -970,6 +970,7 @@ class InputDock(QWidget):
             KEY_SKEW_ANGLE:        self._float(KEY_SKEW_ANGLE, 0.0),
             KEY_FOOTPATH:          self._text(KEY_FOOTPATH),
             KEY_INCLUDE_MEDIAN:    self._is_median_included(),
+            KEY_PROJECT_LOCATION:  self.parent.input_dict[KEY_PROJECT_LOCATION],
         }
         # Fill remaining defaults from DEFAULTS_DICT — single source of truth.
         for key, val in DEFAULTS_DICT.items():
@@ -977,6 +978,9 @@ class InputDock(QWidget):
         # Overlay any values captured from the Additional Inputs dialog.
         if self.additional_input_values:
             values.update(self.additional_input_values)
+        # Also merge saved additional-inputs snapshot when available.
+        if self._additional_inputs_saved_data:
+            values.update(self._additional_inputs_saved_data)
         return values
 
     # ══════════════════════════════════════════════════════════════════════════

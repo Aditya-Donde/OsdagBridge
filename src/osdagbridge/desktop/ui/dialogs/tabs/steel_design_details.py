@@ -77,14 +77,15 @@ class SteelDesignDetailsTab(QWidget):
         left_col.setContentsMargins(0, 0, 0, 0)
         left_col.addWidget(self._build_dimensional_section())
         left_col.addWidget(self._build_shear_section())
-        left_col.addStretch()
+        # Let left_col dictate the natural height without pushing everything up.
 
         right_col = QVBoxLayout()
         right_col.setSpacing(12)
         right_col.setContentsMargins(0, 0, 0, 0)
-        right_col.addWidget(self._build_top_cad_placeholder())
+        # Add a stretch factor of 1 to top cad placeholder so it fills the gap 
+        # and pushes section properties down cleanly to match left_col bottom.
+        right_col.addWidget(self._build_top_cad_placeholder(), 1)
         right_col.addWidget(self._build_section_properties_section())
-        right_col.addStretch()
 
         main_row.addLayout(left_col, 1)
         main_row.addLayout(right_col, 1)
@@ -270,7 +271,9 @@ class SteelDesignDetailsTab(QWidget):
 
     def _build_top_cad_placeholder(self):
         card = self._create_card_frame()
-        card.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        # Ensure the CAD card can expand vertically.
+        # Its final size will be determined by the horizontal layout matching left/right columns.
+        card.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         layout = QVBoxLayout(card)
         layout.setContentsMargins(16, 16, 16, 16)
         layout.setSpacing(8)
@@ -436,9 +439,8 @@ class SteelDesignDetailsTab(QWidget):
 
         if hasattr(self, "stiffener_table"):
             stiffener_map = {0: "intermediate", 1: "longitudinal", 2: "bearing"}
-            material_grade = str(cad_state.get("grade_of_material", "")).strip()
             for row, prefix in stiffener_map.items():
-                grade     = cad_state.get(f"stiff_{prefix}_grade",     "") or material_grade
+                grade     = cad_state.get(f"stiff_{prefix}_grade",     "")
                 thickness = cad_state.get(f"stiff_{prefix}_thickness", "")
                 width     = cad_state.get(f"stiff_{prefix}_width",     "")
                 spacing   = cad_state.get(f"stiff_{prefix}_spacing",   "")

@@ -3979,17 +3979,16 @@ class GirderDetailsTab(QWidget):
         # Try to restore the previously active segment.
         target_index = 0
         active_member_id = str(data.get("active_member_id") or "").strip()
-        current_segment = data.get("current_segment")
-        target_id = active_member_id
-        if not target_id and isinstance(current_segment, dict):
-            target_id = str(current_segment.get("id") or "").strip()
-        if target_id:
-            if target_id:
-                segments = self._ensure_girder_segments(self._current_girder)
-                for idx, seg in enumerate(segments):
-                    if str(seg.get("id") or "").strip() == target_id:
-                        target_index = idx
-                        break
+        if not active_member_id:
+            current_segment = data.get("current_segment")
+            if isinstance(current_segment, dict):
+                active_member_id = str(current_segment.get("id") or "").strip()
+        if active_member_id:
+            segments = self._ensure_girder_segments(self._current_girder)
+            for idx, seg in enumerate(segments):
+                if str(seg.get("id") or "").strip() == active_member_id:
+                    target_index = idx
+                    break
         self._select_segment_index(int(target_index))
 
     # ===== Public helpers for other Member Properties tabs =====

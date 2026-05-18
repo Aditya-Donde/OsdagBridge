@@ -81,9 +81,8 @@ class DeckDesign(QDialog):
         self.setMinimumSize(900, 520)
         self.init_ui()
 
-        data_state = getattr(self._main_window, "output_dict", None) or getattr(self._main_window, "cad_state", None)
-        if data_state:
-            self.load_data(data_state)
+        if self._main_window.output_dict:
+            self.load_data(self._main_window.output_dict)
 
         self.setStyleSheet("""
             QDialog {

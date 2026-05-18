@@ -37,6 +37,7 @@ from osdagbridge.core.utils.common import (
 )
 from osdagbridge.desktop.ui.utils.custom_buttons import DockCustomButton
 from osdagbridge.desktop.ui.docks.dock_utils import apply_field_style
+from osdagbridge.desktop.ui.dialogs.custom_messagebox import CustomMessageBox, MessageBoxType
 from osdagbridge.desktop.ui.utils.custom_widgets import RichCheckBox, PercentBarWidget, CustomRadioButton
 
 
@@ -591,10 +592,26 @@ class OutputDock(QWidget):
                 bar.set_value(float(value))
 
     def open_steel_design(self):
+        if not self.backend._frontend.design_status:
+            CustomMessageBox(
+                title="Design Required",
+                text="Please generate the design before opening this summary.",
+                buttons=["OK"],
+                dialogType=MessageBoxType.Warning,
+            ).exec()
+            return
         from osdagbridge.desktop.ui.dialogs.steel_design import SteelDesign
         SteelDesign(parent=self.parent).exec()
 
     def open_deck_design(self):
+        if not self.backend._frontend.design_status:
+            CustomMessageBox(
+                title="Design Required",
+                text="Please generate the design before opening this summary.",
+                buttons=["OK"],
+                dialogType=MessageBoxType.Warning,
+            ).exec()
+            return
         from osdagbridge.desktop.ui.dialogs.deck_design import DeckDesign
         DeckDesign(parent=self.parent).exec()
 

@@ -108,7 +108,7 @@ _STYLE: dict = {
     "sfd_line_color":  "#0000FF",
     "line_width":      1.5,
     "fill_alpha":      0.25,
-    "deflection_line_color": "#000000",
+    "deflection_line_color": "#6A1B9A",
     "zero_line_color": "#B0BEC5",
     "zero_line_width": 1.0,
     "grid_color":      "#bfbfbf",
@@ -1256,19 +1256,30 @@ class GirderGraphEngine:
                 symmetric_ticks=True,
             )
             
+            # Deflection: invert sign so downward deflection plots below baseline
+            # and present the deflection diagram on a symmetric x-axis from -x..+x.
             if defl_values is not None:
+                span_mid = 0.5 * (xs[0] + xs[-1])
+                xs_defl = xs - span_mid
                 self._render_deflection_diagram(
-                    self.ax_defl, xs, defl_values, "Deflection (mm)", show_xaxis=True
+                    self.ax_defl, xs_defl, -defl_values, "Deflection (mm)", show_xaxis=True
                 )
             else:
                 _zero = np.zeros_like(xs)
+                span_mid = 0.5 * (xs[0] + xs[-1])
+                xs_defl = xs - span_mid
                 self._render_deflection_diagram(
-                    self.ax_defl, xs, _zero, "Deflection (mm) \u2014 unavailable", show_xaxis=True
+                    self.ax_defl, xs_defl, _zero, "Deflection (mm) \u2014 unavailable", show_xaxis=True
                 )
             
             # X-axis scale on all data panels — same nice intervals, aligned columns
-            for _ax in (self.ax_bmd, self.ax_sfd, self.ax_defl):
-                self._render_x_scale(_ax, xs)
+            # Use centered x-axis for deflection ticks
+            self._render_x_scale(self.ax_bmd, xs)
+            self._render_x_scale(self.ax_sfd, xs)
+            # xs_defl defined above in both branches; fall back to original xs if missing
+    
+            self._render_x_scale(self.ax_defl, xs_defl)
+        
                 
             canvas.draw()
         except Exception as exc:
