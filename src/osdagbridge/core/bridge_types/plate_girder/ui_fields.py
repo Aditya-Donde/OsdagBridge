@@ -81,6 +81,9 @@ class FrontendData:
     def get_output_value(self, key: str, default=None):
         return self._output_state.get(key, default) if key else default
 
+    def get_output_state(self) -> dict:
+        return dict(self._output_state)
+
     # ── UI field definitions ──────────────────────────────────────────────────
 
     def input_values(self):
