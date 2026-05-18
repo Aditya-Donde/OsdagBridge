@@ -876,7 +876,7 @@ class CustomWindow(QWidget):
 
             # Pre-fill project title from cached metadata if available
             if hasattr(self, '_report_metadata') and self._report_metadata:
-                dialog.project_title.setText(
+                dialog.project_name.setText(
                     self._report_metadata.get('project_name', '')
                 )
 

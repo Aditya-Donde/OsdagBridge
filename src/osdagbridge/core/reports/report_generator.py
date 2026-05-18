@@ -104,7 +104,6 @@ def preamble(project_name, job_number, report_date, report_version='Rev 0'):
 \usepackage{fancyhdr}
 \usepackage[hidelinks]{hyperref}
 \usepackage{xcolor}
-\usepackage{tocloft}
 \usepackage{setspace}
 \usepackage{enumitem}
 \usepackage{caption}
@@ -2783,9 +2782,20 @@ def generate_report(payload, request):
     """Compile the full OsdagBridge Design Report to PDF (+ .tex source)."""
     tex_path = None
     try:
-        # Just like Osdag's pylatex approach, we rely on pdflatex being in the system PATH
-        # when the conda environment is active. No need for custom path discovery.
+        # Use OsdagLatexEnv to discover the bundled pdflatex path
         compiler = 'pdflatex'
+        try:
+            from osdag_latex_env.__main__ import OsdagLatexEnv
+            latex_env = OsdagLatexEnv()
+            if latex_env.pdflatex:
+                compiler = str(latex_env.pdflatex)
+                # Ensure the bin directory is in PATH so subprocess can find DLLs if needed
+                if latex_env.bin_dir:
+                    import os
+                    os.environ['PATH'] = str(latex_env.bin_dir) + os.pathsep + os.environ.get('PATH', '')
+        except Exception as e:
+            logger.info("osdag_latex_env not found or failed to load. (%s)", e)
+            
         logger.info("Compiler: %s", compiler)
 
         os.makedirs(request.output_dir, exist_ok=True)
@@ -2878,8 +2888,8 @@ def generate_report(payload, request):
             # Compile twice for TOC and references
             for _ in range(2):
                 try:
-                    subprocess.run(
-                        [compiler, '-interaction=nonstopmode', '--enable-installer', request.file_stem + '.tex'],
+                    res = subprocess.run(
+                        [compiler, '-interaction=nonstopmode', request.file_stem + '.tex'],
                         cwd=tmp_dir,
                         stdout=subprocess.PIPE,
                         stderr=subprocess.PIPE,
@@ -2898,6 +2908,9 @@ def generate_report(payload, request):
             return ReportResult(pdf_path=pdf_path, tex_path=tex_path)
 
         logger.error("pdflatex ran but no PDF was produced.")
+        if 'res' in locals():
+            logger.error("pdflatex STDOUT:\n%s", res.stdout.decode('utf-8', 'ignore'))
+            logger.error("pdflatex STDERR:\n%s", res.stderr.decode('utf-8', 'ignore'))
         return ReportResult(pdf_path=None, tex_path=tex_path)
 
     except Exception as exc:
