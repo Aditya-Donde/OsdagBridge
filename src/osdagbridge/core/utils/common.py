@@ -205,36 +205,68 @@ KEY_CRASH_BARRIER_TYPE = ["Flexible", "Semi-Rigid", "Rigid"]
 KEY_MEDIAN_TYPE = ["Raised Kerb", "RCC Crash Barrier", "Metallic Crash Barrier"]
 KEY_FOOTPATH_CLEAR_MIN_WIDTH = 1500
 
-# Section Properties Keys
-KEY_GIRDER_TYPE = "Girder Type"
-KEY_GIRDER_IS_SECTION = "Girder IS Section"
-KEY_GIRDER_SYMMETRY = "Girder Symmetry"
-KEY_GIRDER_TOP_FLANGE_WIDTH = "Girder Top Flange Width"
-KEY_GIRDER_TOP_FLANGE_THICKNESS = "Girder Top Flange Thickness"
-KEY_GIRDER_BOTTOM_FLANGE_WIDTH = "Girder Bottom Flange Width"
-KEY_GIRDER_BOTTOM_FLANGE_THICKNESS = "Girder Bottom Flange Thickness"
-KEY_GIRDER_DEPTH = "Girder Depth"
-KEY_GIRDER_WEB_THICKNESS = "Girder Web Thickness"
-KEY_GIRDER_TORSIONAL_RESTRAINT = "Torsional Restraint"
-KEY_GIRDER_WARPING_RESTRAINT = "Warping Restraint"
-KEY_GIRDER_WEB_TYPE = "Web Type"
+# Member Properties - Girder Details
+KEY_GIRDER_TYPE = "member_properties.girder_details.section_input.type"
+KEY_GIRDER_IS_SECTION = "member_properties.girder_details.section_input.is_section"
+KEY_GIRDER_SYMMETRY = "member_properties.girder_details.section_input.symmetry"
+KEY_GIRDER_TOP_FLANGE_WIDTH = "member_properties.girder_details.section_input.top_flange_width"
+KEY_GIRDER_TOP_FLANGE_THICKNESS = "member_properties.girder_details.section_input.top_flange_thickness"
+KEY_GIRDER_BOTTOM_FLANGE_WIDTH = "member_properties.girder_details.section_input.bottom_flange_width"
+KEY_GIRDER_BOTTOM_FLANGE_THICKNESS = "member_properties.girder_details.section_input.bottom_flange_thickness"
+KEY_GIRDER_DEPTH = "member_properties.girder_details.section_input.depth"
+KEY_GIRDER_WEB_THICKNESS = "member_properties.girder_details.section_input.web_thickness"
+KEY_GIRDER_WEB_DEPTH = "member_properties.girder_details.section_input.web_depth"
+KEY_GIRDER_TORSIONAL_RESTRAINT = "member_properties.girder_details.section_input.torsional_restraint"
+KEY_GIRDER_WARPING_RESTRAINT = "member_properties.girder_details.section_input.warping_restraint"
+KEY_GIRDER_WEB_TYPE = "member_properties.girder_details.section_input.web_type"
 
-KEY_STIFFENER_DESIGN_METHOD = "Stiffener Design Method"
-KEY_STIFFENER_PLATE_THICKNESS = "Stiffener Plate Thickness"
-KEY_STIFFENER_SPACING = "Stiffener Spacing"
-KEY_LONGITUDINAL_STIFFENER = "Longitudinal Stiffener"
-KEY_LONGITUDINAL_STIFFENER_THICKNESS = "Longitudinal Stiffener Thickness"
+KEY_GIRDER_MASS = "member_properties.girder_details.section_properties.mass"
+KEY_GIRDER_SECTIONAL_AREA = "member_properties.girder_details.section_properties.area"
+KEY_GIRDER_SECTIONAL_IY = "member_properties.girder_details.section_properties.iy"
+KEY_GIRDER_SECTIONAL_IZ = "member_properties.girder_details.section_properties.iz"
+KEY_GIRDER_RADIUS_GYRATION_Y = "member_properties.girder_details.section_properties.radius_gyration_y"
+KEY_GIRDER_RADIUS_GYRATION_Z = "member_properties.girder_details.section_properties.radius_gyration_z"
+KEY_GIRDER_ELASTIC_MODULUS_ZZ = "member_properties.girder_details.material_properties.modulus_of_elasticity_zz"
+KEY_GIRDER_ELASTIC_MODULUS_ZY = "member_properties.girder_details.material_properties.modulus_of_elasticity_zy"
+KEY_GIRDER_PLASTIC_MODULUS_ZUZ = "member_properties.girder_details.material_properties.plastic_modulus_zuz"
+KEY_GIRDER_PLASTIC_MODULUS_ZUY = "member_properties.girder_details.material_properties.plastic_modulus_zuy"
+KEY_GIRDER_TORSION_CONSTANT_IT = "member_properties.girder_details.section_properties.torsion_constant_it"
+KEY_GIRDER_WARPING_CONSTANT_IW = "member_properties.girder_details.section_properties.warping_constant_iw"
 
-KEY_CROSS_BRACING_TYPE = "Cross Bracing Type"
-KEY_CROSS_BRACING_SECTION = "Cross Bracing Section"
-KEY_BRACKET_SECTION = "Bracket Section"
-KEY_CROSS_BRACING_SPACING = "Cross Bracing Spacing"
+# Member Properties - Stiffener Details
+KEY_STIFFENER_DESIGN_METHOD = "member_properties.stiffener_details.design_method"
+KEY_NO_BEARING_STIFFENERS = "member_properties.stiffener_details.no_bearing_stiffeners_each_end"
+KEY_BEARING_STIFFENER_PLATE_THICKNESS = "member_properties.stiffener_details.bearing_stiffener_plate_thickness"
+KEY_STIFFENER_SPACING = "member_properties.stiffener_details.bearing_stiffener_spacing"
+KEY_OUTSTAND_BEARING_STIFFENER = "member_properties.stiffener_details.bearing_stiffener_outstand"
+KEY_INTERMEDIATE_STIFFENER = "member_properties.stiffener_details.intermediate_stiffener"
+KEY_INTERMEDIATE_STIFFENER_SPACING = "member_properties.stiffener_details.intermediate_stiffener_spacing"
+KEY_INTERMEDIATE_STIFFENER_THICKNESS = "member_properties.stiffener_details.intermediate_stiffener_thickness"
+KEY_INTERMEDIATE_STIFFENER_OUTSTAND = "member_properties.stiffener_details.intermediate_stiffener_outstand"
+KEY_LONGITUDINAL_STIFFENER = "member_properties.stiffener_details.longitudinal_stiffener"
+KEY_LONGITUDINAL_STIFFENER_THICKNESS = "member_properties.stiffener_details.longitudinal_stiffener_thickness"
 
-KEY_END_DIAPHRAGM_TYPE = "End Diaphragm Type"
-KEY_END_DIAPHRAGM_SECTION = "End Diaphragm Section"
-KEY_END_DIAPHRAGM_SPACING = "End Diaphragm Spacing"
+# Member Properties - Cross Bracing Details
+KEY_CROSS_BRACING_TYPE = "member_properties.cross_bracing_details.type"
+KEY_CROSS_BRACING_SECTION = "member_properties.cross_bracing_details.section"
+KEY_TOP_CHORD_SECTION_TYPE = "member_properties.cross_bracing_details.top_chord_section_type"
+KEY_TOP_CHORD_SECTION_DESIGNATION = "member_properties.cross_bracing_details.top_chord_section_designation"
+KEY_BOTTOM_CHORD_SECTION_TYPE = "member_properties.cross_bracing_details.bottom_chord_section_type"
+KEY_BOTTOM_CHORD_SECTION_DESIGNATION = "member_properties.cross_bracing_details.bottom_chord_section_designation"
+KEY_CROSS_BRACING_SPACING = "member_properties.cross_bracing_details.spacing"
 
-# Dead Load Keys
+# Member Properties - End Diaphragm Details
+KEY_END_DIAPHRAGM_TYPE = "member_properties.end_diaphragm_details.type"
+KEY_END_DIAPHRAGM_BRACING_TYPE = "member_properties.end_diaphragm_details.bracing_type"
+KEY_END_DIAPHRAGM_BRACING_SECTION = "member_properties.end_diaphragm_details.bracing_section"
+KEY_END_DIAPHRAGM_BRACING_SECTION_DESIGNATION = "member_properties.end_diaphragm_details.bracing_section_designation"
+KEY_END_DIAPHRAGM_TOP_CHORD_SECTION_TYPE = "member_properties.end_diaphragm_details.top_chord_section_type" 
+KEY_END_DIAPHRAGM_TOP_CHORD_SECTION_DESIGNATION = "member_properties.end_diaphragm_details.top_chord_section_designation"
+KEY_END_DIAPHRAGM_BOTTOM_CHORD_SECTION_TYPE = "member_properties.end_diaphragm_details.bottom_chord_section_type"
+KEY_END_DIAPHRAGM_BOTTOM_CHORD_SECTION_DESIGNATION = "member_properties.end_diaphragm_details.bottom_chord_section_designation"
+KEY_END_DIAPHRAGM_SPACING = "member_properties.end_diaphragm_details.spacing"
+
+# Loading - Permanent Load
 KEY_SELF_WEIGHT = "Self Weight"
 KEY_SELF_WEIGHT_FACTOR = "Self Weight Factor"
 KEY_WEARING_COAT = ["bituminous", "concrete"]
@@ -246,7 +278,7 @@ KEY_CRASH_BARRIER_LOAD_COUNT = "No. of Crash Barriers"
 KEY_CRASH_BARRIER_LOAD = "Crash Barrier Load"
 KEY_CRASH_BARRIER_LOAD_LOCATION = "Crash Barrier Load Location"
 
-# Live Load Keys
+# Loading - Live Load
 KEY_IRC_CLASS_A = "IRC Class A"
 KEY_IRC_CLASS_70R = "IRC Class 70R"
 KEY_IRC_CLASS_AA = "IRC Class AA"
