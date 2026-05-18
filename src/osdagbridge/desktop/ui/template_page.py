@@ -30,13 +30,14 @@ class CustomWindow(QWidget):
         super().__init__()
         self.parent = parent
         self.backend = backend()
-        
+
         # Connect export signal to main-thread handler
         self.export_finished.connect(self.on_export_finished)
 
         # Source for all input values.
         # Initialised from DEFAULTS_DICT; updated live as the user edits fields.
         self.input_dict = dict(DEFAULTS_DICT)
+        self.output_dict = {}
 
         self.setWindowTitle(title)
         self.setStyleSheet(
@@ -110,7 +111,7 @@ class CustomWindow(QWidget):
         self.cad_state = {}
 
         self.init_ui()
-        
+
     def on_export_finished(self, success, msg):
         """Main-thread handler for export results."""
         from PySide6.QtWidgets import QMessageBox
@@ -429,14 +430,20 @@ class CustomWindow(QWidget):
             self._start_loading()
             
             # Collect all the values from input Dock and pass to backend
+            if self.input_dock:
+                self.input_dict.update(self.input_dock.get_all_input_values())
             self.backend.set_input(self.input_dict)
             self.backend.design()
             self.output_dock.refresh_utilization()
 
+            self.output_dict = {}
+            self.output_dict.update(self.input_dict)
+            self.output_dict.update(self.backend.get_steel_design_state() or {})
+            self.output_dict.update(self.backend.get_output_state() or {})
+
             # Cache design outputs for the Steel Design dialog details tab.
             self.cad_state.update(self.input_dict)
-            if hasattr(self.backend, "get_steel_design_state"):
-                self.cad_state.update(self.backend.get_steel_design_state() or {})
+            self.cad_state.update(self.backend.get_steel_design_state() or {})
 
             # Lock the input dock after design is triggered
             if self.input_dock and not self.input_dock.is_locked:
@@ -1028,6 +1035,7 @@ class CustomWindow(QWidget):
                 dialogType=MessageBoxType.Critical
             ).exec()
 
+<<<<<<< HEAD
     #Cad-image-export-Start
     def save_cadImages(self, main):
         """Save the rendered 3D CAD model as a raster image."""
@@ -1078,6 +1086,8 @@ class CustomWindow(QWidget):
             ).exec()
     #Cad-image-export-End
 
+=======
+>>>>>>> 78d71c9 (feat(ui): build output_dict after design, guard dialogs, fix deflection diagram)
     def create_menu_bar_items(self):
         # File Menus
         file_menu = self.menu_bar.addMenu("File")
@@ -1116,7 +1126,7 @@ class CustomWindow(QWidget):
         export_ifc_action.setShortcut(QKeySequence("Ctrl+E"))
         file_menu.addAction(export_ifc_action)
         export_ifc_action.triggered.connect(self.trigger_ifc_export)
-        
+
         file_menu.addSeparator()
 
         quit_action = QAction("Quit", self)
@@ -1236,7 +1246,7 @@ class CustomWindow(QWidget):
 
         handler = PlateGirderIfcExportHandler(cad, file_path, completion_callback)
         handler.export_async()
-   
+
 
 class InputDockIndicator(QWidget):
     def __init__(self, parent):
@@ -1337,7 +1347,6 @@ class OutputDockIndicator(QWidget):
         self.output_label = QSvgWidget(":/vectors/outputs_label_light.svg")
         output_layout.addWidget(self.output_label)
         self.output_label.setFixedWidth(28)
-
 
 class CentralPlaceholderWidget(QWidget):
     """

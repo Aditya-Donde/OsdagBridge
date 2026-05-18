@@ -977,6 +977,9 @@ class InputDock(QWidget):
         # Overlay any values captured from the Additional Inputs dialog.
         if self.additional_input_values:
             values.update(self.additional_input_values)
+        # Also merge saved additional-inputs snapshot when available.
+        if self._additional_inputs_saved_data:
+            values.update(self._additional_inputs_saved_data)
         return values
 
     # ══════════════════════════════════════════════════════════════════════════

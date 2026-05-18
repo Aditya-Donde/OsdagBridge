@@ -997,88 +997,7 @@ class PlateGirderBridge:
             params.railing_width = float(ai[KEY_RAILING_WIDTH]) * 1000
 
         return params
-    def get_steel_design_state(self) -> dict:
-        """Build a flat dict of values for the Steel Design dialog details tab."""
-        state: dict[str, object] = {}
 
-        sp = getattr(self, "section_props", {}) or {}
-        sr = getattr(self, "sizing_result", None)
-        add_inputs = getattr(self, "additional_inputs", {}) or {}
-
-        girder_details = add_inputs.get("girder_details", {})
-        stiffener_details = add_inputs.get("stiffener_details", {})
-
-        if isinstance(girder_details, dict):
-            state["girder_details"] = girder_details
-        if isinstance(stiffener_details, dict):
-            state["stiffener_details"] = stiffener_details
-
-        member_id = ""
-        if isinstance(girder_details, dict):
-            member_id = str(
-                girder_details.get("member_id")
-                or girder_details.get("selected_girder")
-                or ""
-            ).strip()
-        state["member_id"] = member_id
-
-        state["grade_of_material"] = str(self.basic_inputs.get(KEY_GIRDER, "")).strip()
-        state["span_m"] = self.basic_inputs.get(KEY_SPAN)
-
-        section_type = ""
-        if isinstance(girder_details, dict):
-            section_type = str(
-                girder_details.get("girder_type")
-                or girder_details.get("section_type")
-                or ""
-            ).strip()
-        state["section_type"] = section_type
-
-        section_designation = ""
-        if isinstance(girder_details, dict):
-            section_designation = str(
-                girder_details.get("rolled_section")
-                or girder_details.get("section_designation")
-                or ""
-            ).strip()
-        if not section_designation and section_type:
-            section_designation = "Built-up Plate Girder" if section_type.lower() == "welded" else section_type
-        state["section_designation"] = section_designation
-
-        def _fmt_mm(value: object) -> str:
-            try:
-                return f"{float(value) * 1e3:.3f}".rstrip("0").rstrip(".")
-            except (TypeError, ValueError):
-                return ""
-
-        if sp:
-            state.setdefault("total_depth", _fmt_mm(sp.get("D")))
-            state.setdefault("web_thickness", _fmt_mm(sp.get("t_w")))
-            state.setdefault("top_flange_width", _fmt_mm(sp.get("B_top")))
-            state.setdefault("top_flange_thickness", _fmt_mm(sp.get("t_f_top")))
-            state.setdefault("bottom_flange_width", _fmt_mm(sp.get("B_bot", sp.get("B_top"))))
-            state.setdefault("bottom_flange_thickness", _fmt_mm(sp.get("t_f_bot", sp.get("t_f_top"))))
-
-        def _fmt_cm(value: object, factor: float) -> str:
-            try:
-                return f"{float(value) * factor:.3f}".rstrip("0").rstrip(".")
-            except (TypeError, ValueError):
-                return ""
-
-        if sp:
-            state.setdefault("area", _fmt_cm(sp.get("Area"), 1e4))
-            state.setdefault("iz", _fmt_cm(sp.get("I_z"), 1e8))
-            state.setdefault("iv", _fmt_cm(sp.get("I_y"), 1e8))
-            state.setdefault("it", _fmt_cm(sp.get("I_t"), 1e8))
-            state.setdefault("iw", _fmt_cm(sp.get("I_w"), 1e12))
-
-        try:
-            if sr is not None and getattr(sr, "no_of_girders", None) is not None:
-                state["no_of_girders"] = int(sr.no_of_girders)
-        except Exception:
-            pass
-
-        return state
     def get_ifc_export_parameters(self, additional_inputs: dict | None = None) -> BridgeParametersDTO:
         """
         Build a BridgeParametersDTO for IFC export.
@@ -1132,13 +1051,9 @@ class PlateGirderBridge:
         add_inputs = getattr(self, "additional_inputs", {}) or {}
         capacity = getattr(self, "_design_capacity", None)
 
+        # Get girder and stiffener details from additional inputs
         girder_details = add_inputs.get("girder_details", {})
         stiffener_details = add_inputs.get("stiffener_details", {})
-
-        if isinstance(girder_details, dict):
-            state["girder_details"] = girder_details
-        if isinstance(stiffener_details, dict):
-            state["stiffener_details"] = stiffener_details
 
         member_id = ""
         if isinstance(girder_details, dict):
@@ -1184,6 +1099,47 @@ class PlateGirderBridge:
             except (TypeError, ValueError):
                 return ""
 
+        # Try to get dimensions from girder_details (user input) first, fallback to section_props (designed values)
+        # Note: welded_inputs values are already in mm (keys have _mm suffix), so use them directly
+        if isinstance(girder_details, dict) and girder_details:
+            # Extract welded_inputs which contains the actual user-entered dimensions
+            welded_inputs = girder_details.get("welded_inputs", {})
+            if isinstance(welded_inputs, dict) and welded_inputs:
+                # welded_inputs values are already in mm, format them consistently
+                def _fmt_welded_mm(value: object) -> str:
+                    """Format welded input values that are already in mm."""
+                    try:
+                        return f"{float(value):.3f}".rstrip("0").rstrip(".")
+                    except (TypeError, ValueError):
+                        return ""
+                
+                # Only set non-empty values from welded_inputs (already in mm)
+                total_depth_val = welded_inputs.get("total_depth_mm")
+                if total_depth_val:
+                    state["total_depth"] = _fmt_welded_mm(total_depth_val)
+                
+                web_thickness_val = welded_inputs.get("web_thickness_value_mm")
+                if web_thickness_val:
+                    state["web_thickness"] = _fmt_welded_mm(web_thickness_val)
+                
+                top_width_val = welded_inputs.get("top_flange_width_mm")
+                if top_width_val:
+                    state["top_flange_width"] = _fmt_welded_mm(top_width_val)
+                
+                top_thickness_val = welded_inputs.get("top_thickness_value_mm")
+                if top_thickness_val:
+                    state["top_flange_thickness"] = _fmt_welded_mm(top_thickness_val)
+                
+                bottom_width_val = welded_inputs.get("bottom_flange_width_mm")
+                if bottom_width_val:
+                    state["bottom_flange_width"] = _fmt_welded_mm(bottom_width_val)
+                
+                bottom_thickness_val = welded_inputs.get("bottom_thickness_value_mm")
+                if bottom_thickness_val:
+                    state["bottom_flange_thickness"] = _fmt_welded_mm(bottom_thickness_val)
+        
+        # Always populate from section_props if not already set (ensures values are always available)
+        # section_props values are in meters, so convert to mm
         if sp:
             state.setdefault("total_depth", _fmt_mm(sp.get("D")))
             state.setdefault("web_thickness", _fmt_mm(sp.get("t_w")))
@@ -1218,10 +1174,18 @@ class PlateGirderBridge:
         except Exception:
             pass
 
+        # Read restraint and web type from girder_details (user input) first, fallback to add_inputs
+        if isinstance(girder_details, dict):
+            state.setdefault("torsional_restraint", girder_details.get("torsional_restraint", ""))
+            state.setdefault("warping_restraint", girder_details.get("warping_restraint", ""))
+            state.setdefault("web_type", girder_details.get("web_type", ""))
+        
+        # Fallback to add_inputs if not in girder_details
         state.setdefault("torsional_restraint", add_inputs.get("torsional_restraint", ""))
         state.setdefault("warping_restraint", add_inputs.get("warping_restraint", ""))
         state.setdefault("web_type", add_inputs.get("web_type", ""))
 
+        # Shear stud properties come from Design Options tab (add_inputs), not girder_details
         stud_fy = add_inputs.get("shear_stud_yield_strength")
         stud_fu = add_inputs.get("shear_stud_ultimate_strength")
         if stud_fy:
@@ -1237,7 +1201,8 @@ class PlateGirderBridge:
         # Flatten girder details from additional_inputs.
         girder_details = add_inputs.get("girder_details", {})
         if isinstance(girder_details, dict):
-            state.setdefault("girder_details", girder_details)
+            # Ensure girder_details is included in state for CAD preview
+            state["girder_details"] = girder_details
             state.setdefault(
                 "member_id",
                 str(
@@ -1257,7 +1222,8 @@ class PlateGirderBridge:
         # Flatten stiffener details from nested structure.
         stiffener_details = add_inputs.get("stiffener_details", {})
         if isinstance(stiffener_details, dict):
-            state.setdefault("stiffener_details", stiffener_details)
+            # Ensure stiffener_details is included in state for CAD preview
+            state["stiffener_details"] = stiffener_details
 
             stiffener_by_member = stiffener_details.get("stiffener_by_member", {})
             if isinstance(stiffener_by_member, dict):
