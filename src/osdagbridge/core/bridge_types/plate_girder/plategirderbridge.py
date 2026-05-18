@@ -134,6 +134,9 @@ class PlateGirderBridge:
         # Analyser — populated by setup_grillage()
         self.grillage_model: BridgeGrillageModel = BridgeGrillageModel()
 
+        # Cached design-check capacity (populated in _run_dcr_checks)
+        self._design_capacity = None
+
     def input_values(self) -> list:
         """Return UI field definitions for the InputDock (delegated to FrontendData)."""
         return self._frontend.input_values()
@@ -141,6 +144,9 @@ class PlateGirderBridge:
     def output_values(self) -> list:
         """Return UI field definitions for the OutputDock (delegated to FrontendData)."""
         return self._frontend.output_values()
+
+    def get_output_state(self) -> dict:
+        return self._frontend.get_output_state()
 
     def set_input(self, input_dict: dict) -> None:
         """
@@ -164,6 +170,11 @@ class PlateGirderBridge:
             k: v for k, v in self.input_dict.items()
             if k not in self._BASIC_INPUT_KEYS
         }
+
+        # Any fresh input invalidates the previous design outputs until the
+        # design pipeline is run again.
+        self._frontend.design_status = False
+        self._frontend.design_button_status = False
 
         from pprint import pprint
         pprint(input_dict)
@@ -224,6 +235,8 @@ class PlateGirderBridge:
         )
 
         self._run_dcr_checks(dataset)
+        self._frontend.design_status = True
+        self._frontend.design_button_status = True
 
     def _parse_basic_inputs(self) -> dict:
         """Extract and normalise scalar values from ``self.basic_inputs``."""
@@ -705,6 +718,7 @@ class PlateGirderBridge:
             analysis_results=results,
             print_report=True,
         )
+        self._design_capacity = getattr(engine, "capacity", None)
 
         dcr_by_id: dict[int, float] = {}
         for c in engine.checks:
@@ -1108,6 +1122,182 @@ class PlateGirderBridge:
             params.railing_width = float(ai[KEY_RAILING_WIDTH]) * 1000
 
         return params
+
+    def get_steel_design_state(self) -> dict:
+        """Build a flat dict of values for the Steel Design dialog details tab."""
+        state: dict[str, object] = {}
+
+        sp = getattr(self, "section_props", {}) or {}
+        sr = getattr(self, "sizing_result", None)
+        add_inputs = getattr(self, "additional_inputs", {}) or {}
+        capacity = getattr(self, "_design_capacity", None)
+
+        girder_details = add_inputs.get("girder_details", {})
+        stiffener_details = add_inputs.get("stiffener_details", {})
+
+        if isinstance(girder_details, dict):
+            state["girder_details"] = girder_details
+        if isinstance(stiffener_details, dict):
+            state["stiffener_details"] = stiffener_details
+
+        member_id = ""
+        if isinstance(girder_details, dict):
+            member_id = str(
+                girder_details.get("member_id")
+                or girder_details.get("selected_girder")
+                or ""
+            ).strip()
+        state["member_id"] = member_id
+
+        state["grade_of_material"] = str(self.basic_inputs.get(KEY_GIRDER, "")).strip()
+        state["span_m"] = self.basic_inputs.get(KEY_SPAN)
+
+        section_type = ""
+        if isinstance(girder_details, dict):
+            section_type = str(
+                girder_details.get("girder_type")
+                or girder_details.get("section_type")
+                or ""
+            ).strip()
+        state["section_type"] = section_type
+
+        section_designation = ""
+        if isinstance(girder_details, dict):
+            section_designation = str(
+                girder_details.get("rolled_section")
+                or girder_details.get("section_designation")
+                or ""
+            ).strip()
+        if not section_designation and section_type:
+            section_designation = "Built-up Plate Girder" if section_type.lower() == "welded" else section_type
+        state["section_designation"] = section_designation
+
+        def _fmt_mm(value: object) -> str:
+            try:
+                return f"{float(value) * 1e3:.3f}".rstrip("0").rstrip(".")
+            except (TypeError, ValueError):
+                return ""
+
+        def _fmt_num(value: object, decimals: int = 3) -> str:
+            try:
+                return f"{float(value):.{decimals}f}".rstrip("0").rstrip(".")
+            except (TypeError, ValueError):
+                return ""
+
+        if sp:
+            state.setdefault("total_depth", _fmt_mm(sp.get("D")))
+            state.setdefault("web_thickness", _fmt_mm(sp.get("t_w")))
+            state.setdefault("top_flange_width", _fmt_mm(sp.get("B_top")))
+            state.setdefault("top_flange_thickness", _fmt_mm(sp.get("t_f_top")))
+            state.setdefault("bottom_flange_width", _fmt_mm(sp.get("B_bot", sp.get("B_top"))))
+            state.setdefault("bottom_flange_thickness", _fmt_mm(sp.get("t_f_bot", sp.get("t_f_top"))))
+
+        def _fmt_cm(value: object, factor: float) -> str:
+            try:
+                return f"{float(value) * factor:.3f}".rstrip("0").rstrip(".")
+            except (TypeError, ValueError):
+                return ""
+
+        if sp:
+            state.setdefault("mass", _fmt_num(sp.get("Mass"), 3))
+            state.setdefault("area", _fmt_cm(sp.get("Area"), 1e4))
+            state.setdefault("iz", _fmt_cm(sp.get("I_z"), 1e8))
+            state.setdefault("iv", _fmt_cm(sp.get("I_y"), 1e8))
+            state.setdefault("rz", _fmt_cm(sp.get("r_z"), 100.0))
+            state.setdefault("rv", _fmt_cm(sp.get("r_y"), 100.0))
+            state.setdefault("zz", _fmt_cm(sp.get("Z_ez"), 1e6))
+            state.setdefault("zv", _fmt_cm(sp.get("Z_ey"), 1e6))
+            state.setdefault("zuz", _fmt_cm(sp.get("Z_pz"), 1e6))
+            state.setdefault("zuv", _fmt_cm(sp.get("Z_py"), 1e6))
+            state.setdefault("it", _fmt_cm(sp.get("I_t"), 1e8))
+            state.setdefault("iw", _fmt_cm(sp.get("I_w"), 1e12))
+
+        try:
+            if sr is not None and getattr(sr, "no_of_girders", None) is not None:
+                state["no_of_girders"] = int(sr.no_of_girders)
+        except Exception:
+            pass
+
+        state.setdefault("torsional_restraint", add_inputs.get("torsional_restraint", ""))
+        state.setdefault("warping_restraint", add_inputs.get("warping_restraint", ""))
+        state.setdefault("web_type", add_inputs.get("web_type", ""))
+
+        stud_fy = add_inputs.get("shear_stud_yield_strength")
+        stud_fu = add_inputs.get("shear_stud_ultimate_strength")
+        if stud_fy:
+            state.setdefault("shear_material", f"Fy {stud_fy} MPa")
+        elif stud_fu:
+            state.setdefault("shear_material", f"Fu {stud_fu} MPa")
+
+        state.setdefault("shear_diameter", add_inputs.get("shear_stud_diameter", ""))
+        state.setdefault("shear_height", add_inputs.get("shear_stud_height", ""))
+        state.setdefault("shear_transverse_spacing", add_inputs.get("shear_stud_transverse_spacing", ""))
+        state.setdefault("shear_studs_per_section", add_inputs.get("shear_stud_count", ""))
+
+        # Flatten girder details from additional_inputs.
+        girder_details = add_inputs.get("girder_details", {})
+        if isinstance(girder_details, dict):
+            state.setdefault("girder_details", girder_details)
+            state.setdefault(
+                "member_id",
+                str(
+                    girder_details.get("active_member_id")
+                    or girder_details.get("member_id")
+                    or girder_details.get("selected_girder")
+                    or ""
+                ).strip(),
+            )
+            state.setdefault("grade_of_material", str(self.basic_inputs.get(KEY_GIRDER, "")).strip())
+            state.setdefault("section_type", str(girder_details.get("section_type") or girder_details.get("girder_type") or "").strip())
+            state.setdefault(
+                "section_designation",
+                str(girder_details.get("section_designation") or girder_details.get("rolled_section") or "").strip(),
+            )
+
+        # Flatten stiffener details from nested structure.
+        stiffener_details = add_inputs.get("stiffener_details", {})
+        if isinstance(stiffener_details, dict):
+            state.setdefault("stiffener_details", stiffener_details)
+
+            stiffener_by_member = stiffener_details.get("stiffener_by_member", {})
+            if isinstance(stiffener_by_member, dict):
+                selected_member_id = str(stiffener_details.get("active_member_id") or state.get("member_id") or "").strip()
+                member_data = stiffener_by_member.get(selected_member_id) if selected_member_id else None
+                if not isinstance(member_data, dict):
+                    member_data = next(iter(stiffener_by_member.values()), {}) if stiffener_by_member else {}
+
+                if isinstance(member_data, dict):
+                    for stiff_type in ("intermediate", "longitudinal", "bearing"):
+                        grade_value = member_data.get(f"{stiff_type}_grade", "") or state.get("grade_of_material", "")
+                        state.setdefault(f"stiff_{stiff_type}_grade", str(grade_value))
+
+                        thickness_value = member_data.get(f"{stiff_type}_thickness_value", "")
+                        if thickness_value in (None, ""):
+                            thickness_value = member_data.get(f"{stiff_type}_thickness", "")
+                        state.setdefault(f"stiff_{stiff_type}_thickness", str(thickness_value))
+
+                        width_value = member_data.get(f"{stiff_type}_outstand_mm", "")
+                        state.setdefault(f"stiff_{stiff_type}_width", str(width_value))
+
+                        spacing_value = member_data.get("bearing_spacing_mm", "") if stiff_type == "bearing" else member_data.get(f"{stiff_type}_spacing_mm", "")
+                        state.setdefault(f"stiff_{stiff_type}_spacing", str(spacing_value))
+
+        if capacity is not None:
+            details = getattr(capacity, "details", {}) or {}
+            sec_class = details.get("section_class", {}) or {}
+            eff_width = details.get("effective_width", {}) or {}
+            if sec_class:
+                state.setdefault("section_class", sec_class.get("governing_class", ""))
+            if eff_width:
+                state.setdefault("effective_slab_width", eff_width.get("beff_mm", ""))
+
+            spacing = getattr(capacity, "stud_spacing_provided_mm", 0.0) or 0.0
+            if spacing <= 0:
+                spacing = details.get("stud_spacing", {}).get("spacing_mm", 0.0) or 0.0
+            if spacing > 0:
+                state.setdefault("shear_longitudinal_spacing", _fmt_num(spacing, 1))
+
+        return state
 
     def build_graph_engine(
         self,
