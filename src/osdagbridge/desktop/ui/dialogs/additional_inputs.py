@@ -95,12 +95,8 @@ class AdditionalInputs(QDialog):
                 except (TypeError, ValueError):
                     text = str(val)
                 widget.blockSignals(True)
-<<<<<<< HEAD
                 if isinstance(widget, QLineEdit):
                     widget.setText(fmt.format(float(val)))
-=======
-                widget.setText(text)
->>>>>>> 4f8a0db (fix(inputs): map additional inputs; normalize railing width & deck details)
                 widget.blockSignals(False)
 
         _set_text(KEY_TS_DECK_THICKNESS,     "{:.0f}")
