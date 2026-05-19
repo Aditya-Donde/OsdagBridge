@@ -161,6 +161,10 @@ class SectionPropertiesTab(QWidget):
         except Exception:
             pass
 
+    def update_cad_params(self, params: dict):
+        if hasattr(self, "girder_details_tab") and hasattr(self.girder_details_tab, "update_cad_params"):
+            self.girder_details_tab.update_cad_params(params)
+
     def reset_defaults(self):
         """Reset the entire Member Properties area back to its initial/default state."""
 

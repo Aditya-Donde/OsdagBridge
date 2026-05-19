@@ -38,6 +38,7 @@ from osdagbridge.core.bridge_types.plate_girder.ui_fields_additional_input impor
 from osdagbridge.desktop.ui.dialogs.tabs.common import apply_field_style
 from osdagbridge.desktop.ui.utils.custom_titlebar import CustomTitleBar
 from osdagbridge.desktop.ui.utils.rolled_section_preview import RolledSectionPreview
+from osdagbridge.desktop.ui.docks.cad_cross_section import CrossSectionCADWidget
 
 
 def _locate_database() -> Path:
@@ -1275,6 +1276,7 @@ class GirderDetailsTab(QWidget):
         content_layout.setSpacing(12)
 
         content_layout.addWidget(self._build_overview_card())
+        self._setup_girder_selector()
         # content_layout.addWidget(self._build_section_card())
         content_layout.addStretch()
 
@@ -1435,8 +1437,21 @@ class GirderDetailsTab(QWidget):
         top_cad_layout.setContentsMargins(12, 10, 12, 10)
         top_cad_layout.setSpacing(12)
 
-        self.girder_cad_view = _GirderCad2DView()
-        top_cad_layout.addWidget(self.girder_cad_view, 1)
+        self.girder_cad_view = CrossSectionCADWidget()
+        self.girder_cad_view.scale_factor = 0.65
+        self.girder_cad_view.show_dimensions = False
+        self.girder_cad_view.show_minimal_dimensions = True
+        self.girder_cad_view.show_girder_labels = True
+        self.girder_cad_view.setMinimumHeight(0)
+        
+        cad_scroll = QScrollArea()
+        cad_scroll.setFixedHeight(160)
+        cad_scroll.setWidgetResizable(True)
+        cad_scroll.setFrameShape(QFrame.NoFrame)
+        cad_scroll.setStyleSheet("QScrollArea { background: transparent; border: none; }")
+        cad_scroll.setWidget(self.girder_cad_view)
+        
+        top_cad_layout.addWidget(cad_scroll, 1)
 
         view_switch_col = QVBoxLayout()
         view_switch_col.setContentsMargins(0, 0, 0, 0)
@@ -1580,16 +1595,20 @@ class GirderDetailsTab(QWidget):
         if not self.girder_cad_view:
             return
         cad_segments = segments if segments is not None else self._ensure_girder_segments(girder)
-        self.girder_cad_view.set_view_mode(self._girder_view_mode)
-        self.girder_cad_view.set_segments(cad_segments)
+        if hasattr(self.girder_cad_view, "set_view_mode"):
+            self.girder_cad_view.set_view_mode(self._girder_view_mode)
+        if hasattr(self.girder_cad_view, "set_segments"):
+            self.girder_cad_view.set_segments(cad_segments)
         if not cad_segments:
-            self.girder_cad_view.set_selected_member("")
+            if hasattr(self.girder_cad_view, "set_selected_member"):
+                self.girder_cad_view.set_selected_member("")
             return
 
         idx = self._current_segment_index if selected_index is None else int(selected_index)
         idx = max(0, min(idx, len(cad_segments) - 1))
         selected_member_id = str(cad_segments[idx].get("id") or "")
-        self.girder_cad_view.set_selected_member(selected_member_id)
+        if hasattr(self.girder_cad_view, "set_selected_member"):
+            self.girder_cad_view.set_selected_member(selected_member_id)
 
     def _set_girder_cad_view_mode(self, mode: str) -> None:
         normalized = str(mode or "").strip().lower()
@@ -1597,7 +1616,7 @@ class GirderDetailsTab(QWidget):
             normalized = "side"
         self._girder_view_mode = normalized
 
-        if self.girder_cad_view is not None:
+        if self.girder_cad_view is not None and hasattr(self.girder_cad_view, "set_view_mode"):
             self.girder_cad_view.set_view_mode(normalized)
 
         is_cross = normalized == "cross"
@@ -1626,6 +1645,15 @@ class GirderDetailsTab(QWidget):
             self.cross_section_view_btn.setStyleSheet(active_style if is_cross else inactive_style)
         if self.side_view_btn is not None:
             self.side_view_btn.setStyleSheet(active_style if not is_cross else inactive_style)
+
+    def update_cad_params(self, params: dict):
+        if hasattr(self, "girder_cad_view") and hasattr(self.girder_cad_view, "update_params"):
+            self.girder_cad_view.update_params(params)
+            self.girder_cad_view.show_dimensions = False
+            self.girder_cad_view.show_minimal_dimensions = True
+            self.girder_cad_view.show_girder_labels = True
+            self.girder_cad_view.show_span_values = False
+            self.girder_cad_view.show_carriageway_values = False
 
     def _refresh_segment_list(self, girder: str) -> None:
         segments = self._ensure_girder_segments(girder)
@@ -3065,6 +3093,11 @@ class GirderDetailsTab(QWidget):
             self.select_girder_combo.blockSignals(block)
 
     def _on_girders_selection_changed(self, *args):
+        if hasattr(self, "girder_cad_view"):
+            selected = self._get_selected_girders()
+            self.girder_cad_view.highlighted_girders = selected
+            self.girder_cad_view.update()
+            
         if self.span_combo.currentText() == "Full Length":
             self._update_member_id_edit_state()
             return

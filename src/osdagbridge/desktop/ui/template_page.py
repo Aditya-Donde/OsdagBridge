@@ -563,7 +563,7 @@ class CustomWindow(QWidget):
         self.cad_3d_view_active = not self.cad_3d_view_active
 
         if self.cad_3d_view_active or force_show:
-            # 3D CAD is mutually exclusive — deactivate Plots & update icon
+            # 3D CAD is mutually exclusive â€” deactivate Plots & update icon
             self.plots_view_active = False
             self.plots_control.load(":/vectors/view_btn/plots_inactive.svg")
             # Hide dual sub-views & update icons
@@ -576,7 +576,7 @@ class CustomWindow(QWidget):
             # Switch central area to 3D CAD widget
             self._set_central_view('3d')
         else:
-            # 3D CAD turned off — mark inactive & update icon
+            # 3D CAD turned off â€” mark inactive & update icon
             self.cad_3d_control.load(":/vectors/view_btn/3d_cad_inactive.svg")
             # Restore dual view button states & update icons
             self.cross_section_active = True
@@ -595,7 +595,7 @@ class CustomWindow(QWidget):
         self.plots_view_active = not self.plots_view_active
 
         if self.plots_view_active:
-            # Plots is mutually exclusive — deactivate 3D CAD & update icon
+            # Plots is mutually exclusive â€” deactivate 3D CAD & update icon
             self.cad_3d_view_active = False
             self.cad_3d_control.load(":/vectors/view_btn/3d_cad_inactive.svg")
             # Hide dual sub-views & update icons
@@ -608,7 +608,7 @@ class CustomWindow(QWidget):
             # Switch central area to Plots widget
             self._set_central_view('plots')
         else:
-            # Plots turned off — mark inactive & update icon
+            # Plots turned off â€” mark inactive & update icon
             self.plots_control.load(":/vectors/view_btn/plots_inactive.svg")
             # Restore dual view button states & update icons
             self.cross_section_active = True
@@ -1259,7 +1259,7 @@ class InputDockIndicator(QWidget):
         toggle_layout.setSpacing(0)
         toggle_layout.setAlignment(Qt.AlignVCenter | Qt.AlignRight)  # Align to right for input dock
 
-        self.toggle_btn = QPushButton("❯")  # Right-pointing chevron for input dock
+        self.toggle_btn = QPushButton("â¯")  # Right-pointing chevron for input dock
         self.toggle_btn.setFixedSize(6, 60)
         self.toggle_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.toggle_btn.clicked.connect(self.parent.input_dock_toggle)
@@ -1305,7 +1305,7 @@ class OutputDockIndicator(QWidget):
         toggle_layout.setSpacing(0)
         toggle_layout.setAlignment(Qt.AlignVCenter | Qt.AlignLeft)
 
-        self.toggle_btn = QPushButton("❮")  # Show state initially
+        self.toggle_btn = QPushButton("â®")  # Show state initially
         self.toggle_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.toggle_btn.setFixedSize(6, 60)
         self.toggle_btn.clicked.connect(self.parent.output_dock_toggle)
