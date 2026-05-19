@@ -71,6 +71,7 @@ from osdagbridge.core.utils.common import (
     KEY_TS_NO_OF_FOOTPATHS,
     KEY_WC_THICKNESS,
     KEY_WC_DENSITY,
+<<<<<<< HEAD
     KEY_GIRDER_SYMMETRY, KEY_GIRDER_DEPTH, KEY_GIRDER_WEB_DEPTH, KEY_GIRDER_WEB_THICKNESS,
     KEY_GIRDER_TOP_FLANGE_WIDTH, KEY_GIRDER_TOP_FLANGE_THICKNESS,
     KEY_GIRDER_BOTTOM_FLANGE_WIDTH, KEY_GIRDER_BOTTOM_FLANGE_THICKNESS,
@@ -80,6 +81,16 @@ from osdagbridge.core.utils.common import (
     KEY_GIRDER_ELASTIC_MODULUS_ZZ, KEY_GIRDER_ELASTIC_MODULUS_ZY,
     KEY_GIRDER_PLASTIC_MODULUS_ZUZ, KEY_GIRDER_PLASTIC_MODULUS_ZUY,
     KEY_GIRDER_TORSION_CONSTANT_IT, KEY_GIRDER_WARPING_CONSTANT_IW,
+=======
+    KEY_METALLIC_CRASH_BARRIER_TYPE,
+    KEY_RIGID_CRASH_BARRIER_TYPE,
+    KEY_CRASH_BARRIER_TYPE,
+    KEY_CB_TYPE,
+    KEY_RL_TYPE,
+    KEY_RAILING_TYPE,
+    KEY_MD_TYPE,
+    KEY_MEDIAN_TYPE
+>>>>>>> 4f8a0db (fix(inputs): map additional inputs; normalize railing width & deck details)
 )
 from osdagbridge.core.bridge_types.plate_girder.initial_sizing import (
     DEFAULT_DECK_THICKNESS as _DEFAULT_DECK_THICKNESS_MM,
@@ -726,6 +737,73 @@ class PlateGirderBridge:
         _angle_dims = SectionDimsDTO(leg_h=100, leg_w=50, connection_type="LONGER_LEG")
         _small_dims = SectionDimsDTO(leg_h=80,  leg_w=40, connection_type="LONGER_LEG")
 
+        raw_cb_value = self.input_dict.get(KEY_CB_TYPE, ["IRC 5 - RCC Crash Barrier"])
+        raw_cb_string = raw_cb_value[0] if isinstance(raw_cb_value, list) else raw_cb_value
+        if raw_cb_string == "IRC 5 - RCC Crash Barrier":
+            resolved_barrier_type = KEY_CRASH_BARRIER_TYPE[2]               # "Rigid"
+            resolved_cb_subtype = KEY_RIGID_CRASH_BARRIER_TYPE[0]           # "IRC-5R"
+        elif raw_cb_string == "IRC 5 - High Containment RCC Crash Barrier":
+            resolved_barrier_type = KEY_CRASH_BARRIER_TYPE[2]               # "Rigid"
+            resolved_cb_subtype = KEY_RIGID_CRASH_BARRIER_TYPE[1]           # "High Containment"
+        elif raw_cb_string == "IRC 5 - Metallic Crash Barrier with Single W-Beam":
+            resolved_barrier_type = KEY_CRASH_BARRIER_TYPE[1]               # "Semi-Rigid"
+            resolved_cb_subtype = KEY_METALLIC_CRASH_BARRIER_TYPE[0]        # "Single W-Beam"
+        elif raw_cb_string == "IRC 5 - Metallic Crash Barrier with Double W-Beam":
+            resolved_barrier_type = KEY_CRASH_BARRIER_TYPE[1]               # "Semi-Rigid"
+            resolved_cb_subtype = KEY_METALLIC_CRASH_BARRIER_TYPE[1]        # "Double W-Beam"
+        else:
+            # Fallback for "Custom" or empty values
+            resolved_barrier_type = "Rigid"
+            resolved_cb_subtype = "IRC-5R"
+
+        raw_rl_value = self.input_dict.get(KEY_RL_TYPE, ["IRC 5 RCC railing"])
+        raw_rl_string = raw_rl_value[0] if isinstance(raw_rl_value, list) else raw_rl_value
+        if raw_rl_string == "IRC 5 - RCC Railing":
+            resolved_railing_value = KEY_RAILING_TYPE[0]
+        elif raw_rl_string == "IRC 5 - Steel Railing":
+            resolved_railing_value = KEY_RAILING_TYPE[1]
+        else:
+            resolved_railing_value = KEY_RAILING_TYPE[0]
+
+        # Median type mapping:
+        # The Additional Inputs UI stores IRC-facing display labels, while the CAD
+        # generator currently accepts only the broad internal median categories from
+        # KEY_MEDIAN_TYPE:
+        #   - "Raised Kerb"
+        #   - "RCC Crash Barrier"
+        #   - "Metallic Crash Barrier"
+        #
+        # Because the current BridgeParametersDTO has only `median_type` and no separate
+        # `median_subtype`, both metallic UI options are intentionally collapsed to
+        # KEY_MEDIAN_TYPE[2] ("Metallic Crash Barrier"):
+        #   - "IRC 5 - Metallic Crash Barrier with Single W-Beam"
+        #   - "IRC 5 - Metallic Crash Barrier with Double W-Beam"
+        #
+        # TODO: Add a dedicated median_subtype field to BridgeParametersDTO and CAD
+        # generator so Single W-Beam and Double W-Beam median barriers can be preserved
+        # separately instead of being reduced to the broad metallic category.
+
+        raw_md_value = self.input_dict.get(KEY_MD_TYPE,["IRC 5 - RCC Crash Barrier"])
+        raw_md_string = raw_md_value[0] if isinstance(raw_md_value, list) else raw_md_value
+        raw_md_string == str(raw_md_string or "").strip()
+
+        if raw_md_string == "IRC 5 - Raised Kerb":
+            resolved_median_type = KEY_MEDIAN_TYPE[0]  # "Raised Kerb"
+        elif raw_md_string == "IRC 5 - RCC Crash Barrier":
+            resolved_median_type = KEY_MEDIAN_TYPE[1]  # "RCC Crash Barrier"
+        elif raw_md_string.startswith("IRC 5 - Metallic Crash Barrier"):
+            resolved_median_type = KEY_MEDIAN_TYPE[2]  # "Metallic Crash Barrier"
+        elif raw_md_string in KEY_MEDIAN_TYPE:
+            resolved_median_type = raw_md_string
+        else:
+            resolved_median_type = KEY_MEDIAN_TYPE[1]  # safe default: RCC
+
+        
+        print("DEBUG railing raw:", raw_rl_string)
+        print("DEBUG railing resolved:", resolved_railing_value)
+        print("DEBUG girder spacing input m:", self.input_dict[KEY_TS_GIRDER_SPACING])
+        print("DEBUG girder spacing dto mm:", self.input_dict[KEY_TS_GIRDER_SPACING] * 1e3)
+
         return BridgeParametersDTO(
             # --- Girder ---
             span_length_L=span_mm,
@@ -746,14 +824,14 @@ class PlateGirderBridge:
             footpath_width=footpath_width_mm,
             railing_width=railing_width_mm,
             # --- Crash barrier (defaults until additional inputs wired) ---
-            barrier_type="Rigid",
-            crash_barrier_subtype="IRC-5R",
+            barrier_type=resolved_barrier_type,
+            crash_barrier_subtype=resolved_cb_subtype,
             # --- Median ---
             enable_median=include_median,
-            median_type="Metallic Crash Barrier",
+            median_type=resolved_median_type,
             # --- Railing (defaults) ---
             rail_count=3,
-            railing_type="rcc",
+            railing_type=resolved_railing_value,
             # --- Intermediate stiffeners (defaults) ---
             include_intermediate_stiffeners=True,
             intermediate_stiffener_spacing=cross_bracing_mm / 2,

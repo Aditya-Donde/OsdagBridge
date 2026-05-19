@@ -167,6 +167,13 @@ def solve_extend_basic_input_dict(basic_input_dict: dict) -> None:
     """Parse basic inputs and solve bridge layout. Updates basic_input_dict in-place."""
     from .initial_sizing import BridgeConfigurationSolver
 
+    def _railing_width_m(value) -> float:
+        if value in (None, ""):
+            return 0.0
+        width = float(value)
+        # Railing width is edited in mm in Additional Inputs, while solver uses m.
+        return width / 1000.0 if width > 10 else width
+
     span = float(basic_input_dict.get(KEY_SPAN))
     footpath_str = str(basic_input_dict.get(KEY_FOOTPATH, 'None')).strip()
     design_mode  = str(basic_input_dict.get(KEY_DESIGN_MODE, 'Optimized')).strip()
@@ -179,11 +186,11 @@ def solve_extend_basic_input_dict(basic_input_dict: dict) -> None:
     elif 'Both' in footpath_str:
         n_footpaths    = 2
         footpath_width = float(basic_input_dict.get(KEY_TS_FOOTPATH_WIDTH))
-        railing_width  = float(basic_input_dict.get(KEY_RL_WIDTH))
+        railing_width  = _railing_width_m(basic_input_dict.get(KEY_RL_WIDTH))
     else:
         n_footpaths    = 1
         footpath_width = float(basic_input_dict.get(KEY_TS_FOOTPATH_WIDTH))
-        railing_width  = float(basic_input_dict.get(KEY_RL_WIDTH))
+        railing_width  = _railing_width_m(basic_input_dict.get(KEY_RL_WIDTH))
 
     median_width  = basic_input_dict.get(KEY_MD_WIDTH) or 0.0
     no_of_girders = int(basic_input_dict.get(KEY_TS_NO_OF_GIRDERS) or 4)
@@ -215,24 +222,7 @@ def solve_extend_basic_input_dict(basic_input_dict: dict) -> None:
         KEY_TS_NO_OF_GIRDERS:   sizing_result.no_of_girders,
         KEY_TS_GIRDER_SPACING:  sizing_result.girder_spacing,
         KEY_TS_DECK_OVERHANG:   sizing_result.deck_overhang,
-        KEY_GIRDER_SYMMETRY:                section_props['symmetry'],
-        KEY_GIRDER_DEPTH:                   section_props['D'],
-        KEY_GIRDER_WEB_DEPTH:               section_props['d_web'],
-        KEY_GIRDER_WEB_THICKNESS:           section_props['t_w'],
-        KEY_GIRDER_TOP_FLANGE_WIDTH:        section_props['B_top'],
-        KEY_GIRDER_TOP_FLANGE_THICKNESS:    section_props['t_f_top'],
-        KEY_GIRDER_BOTTOM_FLANGE_WIDTH:     section_props['B_bot'],
-        KEY_GIRDER_BOTTOM_FLANGE_THICKNESS: section_props['t_f_bot'],
-        KEY_GIRDER_SECTIONAL_AREA:          section_props['Area'],
-        KEY_GIRDER_MASS:                    section_props['Mass'],
-        KEY_GIRDER_SECTIONAL_IZ:            section_props['I_z'],
-        KEY_GIRDER_SECTIONAL_IY:            section_props['I_y'],
-        KEY_GIRDER_RADIUS_GYRATION_Z:       section_props['r_z'],
-        KEY_GIRDER_RADIUS_GYRATION_Y:       section_props['r_y'],
-        KEY_GIRDER_ELASTIC_MODULUS_ZZ:      section_props['Z_ez'],
-        KEY_GIRDER_ELASTIC_MODULUS_ZY:      section_props['Z_ey'],
-        KEY_GIRDER_PLASTIC_MODULUS_ZUZ:     section_props['Z_pz'],
-        KEY_GIRDER_PLASTIC_MODULUS_ZUY:     section_props['Z_py'],
-        KEY_GIRDER_TORSION_CONSTANT_IT:     section_props['I_t'],
-        KEY_GIRDER_WARPING_CONSTANT_IW:     section_props['I_w'],
+        'section_props':        section_props,
     })
+
+    print(f"[DEBUG] Basic Input Dictionary: {basic_input_dict}")
