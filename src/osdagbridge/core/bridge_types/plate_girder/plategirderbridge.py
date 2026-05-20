@@ -1015,39 +1015,29 @@ class PlateGirderBridge:
         girder_details = add_inputs.get("girder_details", {})
         stiffener_details = add_inputs.get("stiffener_details", {})
 
-        member_id = ""
-        if isinstance(girder_details, dict):
-            member_id = str(
-                girder_details.get("member_id")
-                or girder_details.get("selected_girder")
-                or ""
-            ).strip()
-        if not member_id:
-            member_id = "G1M1"
+        member_id = str(
+            girder_details.get("member_id")
+            or girder_details.get("selected_girder")
+            or "G1M1"
+        ).strip()
         state["member_id"] = member_id
 
         state["grade_of_material"] = str(self.basic_inputs.get(KEY_GIRDER, "")).strip()
         state["span_m"] = self.basic_inputs.get(KEY_SPAN)
 
-        section_type = ""
-        if isinstance(girder_details, dict):
-            section_type = str(
-                girder_details.get("girder_type")
-                or girder_details.get("section_type")
-                or ""
-            ).strip()
-        if not section_type:
-            section_type = "Welded"
+        section_type = str(
+            girder_details.get("girder_type")
+            or girder_details.get("section_type")
+            or "Welded"
+        ).strip()
         state["section_type"] = section_type
 
-        section_designation = ""
-        if isinstance(girder_details, dict):
-            section_designation = str(
-                girder_details.get("rolled_section")
-                or girder_details.get("section_designation")
-                or ""
-            ).strip()
-        if not section_designation and section_type:
+        section_designation = str(
+            girder_details.get("rolled_section")
+            or girder_details.get("section_designation")
+            or ""
+        ).strip()
+        if not section_designation:
             section_designation = "Built-up Plate Girder" if section_type.lower() == "welded" else section_type
         state["section_designation"] = section_designation
 
@@ -1065,10 +1055,10 @@ class PlateGirderBridge:
 
         # Try to get dimensions from girder_details (user input) first, fallback to section_props (designed values)
         # Note: welded_inputs values are already in mm (keys have _mm suffix), so use them directly
-        if isinstance(girder_details, dict) and girder_details:
+        if girder_details:
             # Extract welded_inputs which contains the actual user-entered dimensions
             welded_inputs = girder_details.get("welded_inputs", {})
-            if isinstance(welded_inputs, dict) and welded_inputs:
+            if welded_inputs:
                 # welded_inputs values are already in mm, format them consistently
                 def _fmt_welded_mm(value: object) -> str:
                     """Format welded input values that are already in mm."""
@@ -1101,6 +1091,12 @@ class PlateGirderBridge:
                 bottom_thickness_val = welded_inputs.get("bottom_thickness_value_mm")
                 if bottom_thickness_val:
                     state["bottom_flange_thickness"] = _fmt_welded_mm(bottom_thickness_val)
+
+                # If only top flange values are provided, mirror them for bottom flange.
+                if "top_flange_width" in state and "bottom_flange_width" not in state:
+                    state["bottom_flange_width"] = state["top_flange_width"]
+                if "top_flange_thickness" in state and "bottom_flange_thickness" not in state:
+                    state["bottom_flange_thickness"] = state["top_flange_thickness"]
         
         # Always populate from section_props if not already set (ensures values are always available)
         # section_props values are in meters, so convert to mm
@@ -1132,28 +1128,22 @@ class PlateGirderBridge:
             state.setdefault("it", _fmt_cm(sp.get("I_t"), 1e8))
             state.setdefault("iw", _fmt_cm(sp.get("I_w"), 1e12))
 
-        try:
-            if sr is not None and getattr(sr, "no_of_girders", None) is not None:
-                state["no_of_girders"] = int(sr.no_of_girders)
-        except Exception:
-            pass
+        if sr is not None and getattr(sr, "no_of_girders", None) is not None:
+            state["no_of_girders"] = int(sr.no_of_girders)
 
         # Read restraint and web type from girder_details (user input) first, fallback to add_inputs
-        if isinstance(girder_details, dict):
-            state.setdefault("torsional_restraint", girder_details.get("torsional_restraint", ""))
-            state.setdefault("warping_restraint", girder_details.get("warping_restraint", ""))
-            state.setdefault("web_type", girder_details.get("web_type", ""))
-        
-        # Fallback to add_inputs if not in girder_details
-        state.setdefault("torsional_restraint", add_inputs.get("torsional_restraint", ""))
-        state.setdefault("warping_restraint", add_inputs.get("warping_restraint", ""))
-        state.setdefault("web_type", add_inputs.get("web_type", ""))
-        if not state.get("torsional_restraint"):
-            state["torsional_restraint"] = VALUES_TORSIONAL_RESTRAINT[0] if VALUES_TORSIONAL_RESTRAINT else ""
-        if not state.get("warping_restraint"):
-            state["warping_restraint"] = VALUES_WARPING_RESTRAINT[0] if VALUES_WARPING_RESTRAINT else ""
-        if not state.get("web_type"):
-            state["web_type"] = VALUES_WEB_TYPE[0] if VALUES_WEB_TYPE else ""
+        torsional_restraint = girder_details.get("torsional_restraint") or add_inputs.get("torsional_restraint")
+        warping_restraint = girder_details.get("warping_restraint") or add_inputs.get("warping_restraint")
+        web_type = girder_details.get("web_type") or add_inputs.get("web_type")
+        state["torsional_restraint"] = (
+            torsional_restraint
+            or (VALUES_TORSIONAL_RESTRAINT[0] if VALUES_TORSIONAL_RESTRAINT else "")
+        )
+        state["warping_restraint"] = (
+            warping_restraint
+            or (VALUES_WARPING_RESTRAINT[0] if VALUES_WARPING_RESTRAINT else "")
+        )
+        state["web_type"] = web_type or (VALUES_WEB_TYPE[0] if VALUES_WEB_TYPE else "")
 
         # Shear stud properties come from Design Options tab (add_inputs), not girder_details
         stud_fy = add_inputs.get("shear_stud_yield_strength", "385.00")
@@ -1163,36 +1153,17 @@ class PlateGirderBridge:
         elif stud_fu:
             state.setdefault("shear_material", f"Fu {stud_fu} MPa")
 
-        state.setdefault("shear_diameter", add_inputs.get("shear_stud_diameter", "20"))
-        state.setdefault("shear_height", add_inputs.get("shear_stud_height", "100.00"))
-        state.setdefault("shear_transverse_spacing", add_inputs.get("shear_stud_transverse_spacing", "100.00"))
-        state.setdefault("shear_studs_per_section", add_inputs.get("shear_stud_count", "2"))
+        state["shear_diameter"] = add_inputs.get("shear_stud_diameter", "20")
+        state["shear_height"] = add_inputs.get("shear_stud_height", "100.00")
+        state["shear_transverse_spacing"] = add_inputs.get("shear_stud_transverse_spacing", "100.00")
+        state["shear_studs_per_section"] = add_inputs.get("shear_stud_count", "2")
 
-        # Flatten girder details from additional_inputs.
-        girder_details = add_inputs.get("girder_details", {})
-        if isinstance(girder_details, dict):
-            # Ensure girder_details is included in state for CAD preview
-            state["girder_details"] = girder_details
-            state.setdefault(
-                "member_id",
-                str(
-                    girder_details.get("active_member_id")
-                    or girder_details.get("member_id")
-                    or girder_details.get("selected_girder")
-                    or ""
-                ).strip(),
-            )
-            state.setdefault("grade_of_material", str(self.basic_inputs.get(KEY_GIRDER, "")).strip())
-            state.setdefault("section_type", str(girder_details.get("section_type") or girder_details.get("girder_type") or "").strip())
-            state.setdefault(
-                "section_designation",
-                str(girder_details.get("section_designation") or girder_details.get("rolled_section") or "").strip(),
-            )
+        # Ensure girder_details is included in state for CAD preview
+        state["girder_details"] = girder_details
 
         # Flatten stiffener details from nested structure.
-        stiffener_details = add_inputs.get("stiffener_details", {})
-        if not isinstance(stiffener_details, dict) or not stiffener_details.get("stiffener_by_member"):
-            default_member_id = str(state.get("member_id") or "G1M1").strip()
+        if not stiffener_details.get("stiffener_by_member"):
+            default_member_id = member_id or "G1M1"
             default_stiffener = {
                 "bearing_stiffeners_each_end": STIFFENER_DETAILS_DEFAULTS.get("bearing_stiffeners_each_end", "2"),
                 "bearing_spacing_mm": STIFFENER_DETAILS_DEFAULTS.get("bearing_spacing_mm", ""),
@@ -1215,32 +1186,31 @@ class PlateGirderBridge:
             }
             add_inputs = dict(add_inputs)
             add_inputs["stiffener_details"] = stiffener_details
-        if isinstance(stiffener_details, dict):
-            # Ensure stiffener_details is included in state for CAD preview
-            state["stiffener_details"] = stiffener_details
 
-            stiffener_by_member = stiffener_details.get("stiffener_by_member", {})
-            if isinstance(stiffener_by_member, dict):
-                selected_member_id = str(stiffener_details.get("active_member_id") or state.get("member_id") or "").strip()
-                member_data = stiffener_by_member.get(selected_member_id) if selected_member_id else None
-                if not isinstance(member_data, dict):
-                    member_data = next(iter(stiffener_by_member.values()), {}) if stiffener_by_member else {}
+        # Ensure stiffener_details is included in state for CAD preview
+        state["stiffener_details"] = stiffener_details
 
-                if isinstance(member_data, dict):
-                    for stiff_type in ("intermediate", "longitudinal", "bearing"):
-                        grade_value = member_data.get(f"{stiff_type}_grade", "") or state.get("grade_of_material", "")
-                        state.setdefault(f"stiff_{stiff_type}_grade", str(grade_value))
+        stiffener_by_member = stiffener_details.get("stiffener_by_member", {})
+        selected_member_id = str(stiffener_details.get("active_member_id") or member_id or "").strip()
+        member_data = stiffener_by_member.get(selected_member_id) if selected_member_id else None
+        if not isinstance(member_data, dict):
+            member_data = next(iter(stiffener_by_member.values()), {}) if stiffener_by_member else {}
 
-                        thickness_value = member_data.get(f"{stiff_type}_thickness_value", "")
-                        if thickness_value in (None, ""):
-                            thickness_value = member_data.get(f"{stiff_type}_thickness", "")
-                        state.setdefault(f"stiff_{stiff_type}_thickness", str(thickness_value))
+        if isinstance(member_data, dict):
+            for stiff_type in ("intermediate", "longitudinal", "bearing"):
+                grade_value = member_data.get(f"{stiff_type}_grade", "") or state.get("grade_of_material", "")
+                state.setdefault(f"stiff_{stiff_type}_grade", str(grade_value))
 
-                        width_value = member_data.get(f"{stiff_type}_outstand_mm", "")
-                        state.setdefault(f"stiff_{stiff_type}_width", str(width_value))
+                thickness_value = member_data.get(f"{stiff_type}_thickness_value", "")
+                if thickness_value in (None, ""):
+                    thickness_value = member_data.get(f"{stiff_type}_thickness", "")
+                state.setdefault(f"stiff_{stiff_type}_thickness", str(thickness_value))
 
-                        spacing_value = member_data.get("bearing_spacing_mm", "") if stiff_type == "bearing" else member_data.get(f"{stiff_type}_spacing_mm", "")
-                        state.setdefault(f"stiff_{stiff_type}_spacing", str(spacing_value))
+                width_value = member_data.get(f"{stiff_type}_outstand_mm", "")
+                state.setdefault(f"stiff_{stiff_type}_width", str(width_value))
+
+                spacing_value = member_data.get("bearing_spacing_mm", "") if stiff_type == "bearing" else member_data.get(f"{stiff_type}_spacing_mm", "")
+                state.setdefault(f"stiff_{stiff_type}_spacing", str(spacing_value))
 
         if capacity is not None:
             details = getattr(capacity, "details", {}) or {}
