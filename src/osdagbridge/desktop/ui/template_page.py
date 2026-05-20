@@ -1035,7 +1035,7 @@ class CustomWindow(QWidget):
                 dialogType=MessageBoxType.Critical
             ).exec()
 
-<<<<<<< HEAD
+
     #Cad-image-export-Start
     def save_cadImages(self, main):
         """Save the rendered 3D CAD model as a raster image."""
@@ -1086,8 +1086,6 @@ class CustomWindow(QWidget):
             ).exec()
     #Cad-image-export-End
 
-=======
->>>>>>> 78d71c9 (feat(ui): build output_dict after design, guard dialogs, fix deflection diagram)
     def create_menu_bar_items(self):
         # File Menus
         file_menu = self.menu_bar.addMenu("File")
