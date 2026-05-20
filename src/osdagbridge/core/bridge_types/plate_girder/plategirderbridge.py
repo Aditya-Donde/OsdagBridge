@@ -39,7 +39,7 @@ from osdagbridge.core.utils.common import (
     KEY_CARRIAGEWAY_WIDTH,
     KEY_INCLUDE_MEDIAN,
     KEY_FOOTPATH,
-    KEY_FOOTPATH_WIDTH,
+    KEY_TS_FOOTPATH_WIDTH,
     KEY_RAILING_WIDTH,
     KEY_SKEW_ANGLE,
     KEY_DESIGN_MODE,
@@ -472,9 +472,8 @@ class PlateGirderBridge:
           - ``"WL Uplift"``       — Pz × G × CL patch load (upward) on the deck
           - ``"1.0 WL"``          — combined load case with partial_safety_factor = 1.0
         """
-        ai = self.additional_inputs
-        sp = self.section_props
-        sr = self.sizing_result
+        ai  = self.additional_inputs
+        inp = self.input_dict
 
         # ── Wind speed / terrain ─────────────────────────────────────────
         basic_wind_speed = float(ai.get("basic_wind_speed") or 33.0)
@@ -488,9 +487,9 @@ class PlateGirderBridge:
         deck_t_m             = deck_thickness_from_inputs(ai, _DEFAULT_DECK_THICKNESS_MM)
 
         # ── Girder geometry for CD ───────────────────────────────────────
-        d_depth   = sp.get("D",              1.5)             if sp else 1.5
-        c_spacing = sr.girder_spacing                         if sr else DEFAULT_GIRDER_SPACING
-        n_girders = sr.no_of_girders                          if sr else None
+        d_depth   = inp[KEY_GIRDER_DEPTH]
+        c_spacing = inp[KEY_TS_GIRDER_SPACING]
+        n_girders = inp[KEY_TS_NO_OF_GIRDERS]
 
         self.grillage_model.create_wind_load(
             railing_height=railing_height,
@@ -900,8 +899,8 @@ class PlateGirderBridge:
         params.rail_count = int(ai.get("railing_rail_count", params.rail_count))
 
         # --- Footpath / railing widths (additional input may override default) ---
-        if KEY_FOOTPATH_WIDTH in ai:
-            params.footpath_width = float(ai[KEY_FOOTPATH_WIDTH]) * 1000
+        if KEY_TS_FOOTPATH_WIDTH in ai:
+            params.footpath_width = float(ai[KEY_TS_FOOTPATH_WIDTH]) * 1000
         if KEY_RAILING_WIDTH in ai:
             params.railing_width = float(ai[KEY_RAILING_WIDTH]) * 1000
 
