@@ -419,31 +419,31 @@ class SteelDesignDetailsTab(QWidget):
     # LOAD DATA (unchanged logic)
     # ─────────────────────────────────────────────────────────────────────────
 
-    def load_data(self, cad_state: dict):
-        """Populate all field widgets from a cad_state snapshot; silently ignores missing or invalid keys."""
-        if not cad_state:
+    def load_data(self, output_dict: dict):
+        """Populate all field widgets from an output snapshot; silently ignores missing or invalid keys."""
+        if not output_dict:
             return
 
         for key, field in self.member_fields.items():
-            value = cad_state.get(key, "")
+            value = output_dict.get(key, "")
             field.setText(str(value))
 
         for key, field in self.dim_fields.items():
-            field.setText(str(cad_state.get(key, "")))
+            field.setText(str(output_dict.get(key, "")))
 
         for key, field in self.shear_fields.items():
-            field.setText(str(cad_state.get(key, "")))
+            field.setText(str(output_dict.get(key, "")))
 
         for key, field in self.section_fields.items():
-            field.setText(str(cad_state.get(key, "")))
+            field.setText(str(output_dict.get(key, "")))
 
         if hasattr(self, "stiffener_table"):
             stiffener_map = {0: "intermediate", 1: "longitudinal", 2: "bearing"}
             for row, prefix in stiffener_map.items():
-                grade     = cad_state.get(f"stiff_{prefix}_grade",     "")
-                thickness = cad_state.get(f"stiff_{prefix}_thickness", "")
-                width     = cad_state.get(f"stiff_{prefix}_width",     "")
-                spacing   = cad_state.get(f"stiff_{prefix}_spacing",   "")
+                grade     = output_dict.get(f"stiff_{prefix}_grade",     "")
+                thickness = output_dict.get(f"stiff_{prefix}_thickness", "")
+                width     = output_dict.get(f"stiff_{prefix}_width",     "")
+                spacing   = output_dict.get(f"stiff_{prefix}_spacing",   "")
 
                 for col, value in enumerate(
                     [grade, thickness, width, spacing], start=1
@@ -453,8 +453,8 @@ class SteelDesignDetailsTab(QWidget):
                     item.setTextAlignment(Qt.AlignCenter)
                     self.stiffener_table.setItem(row, col, item)
 
-        self._update_section_preview(cad_state)
-        self._update_stiffener_preview(cad_state)
+        self._update_section_preview(output_dict)
+        self._update_stiffener_preview(output_dict)
         if hasattr(self, "stiffener_preview"):
             self.stiffener_preview.update()
 
@@ -469,24 +469,24 @@ class SteelDesignDetailsTab(QWidget):
         except (TypeError, ValueError):
             return None
 
-    def _update_section_preview(self, cad_state: dict) -> None:
+    def _update_section_preview(self, output_dict: dict) -> None:
         if not hasattr(self, "section_preview"):
             return
 
-        section_type = str(cad_state.get("section_type", "")).strip().lower()
+        section_type = str(output_dict.get("section_type", "")).strip().lower()
         if hasattr(self, "preview_caption"):
             caption = "Girder preview"
             if section_type:
                 caption = f"{section_type.capitalize()} girder preview"
             self.preview_caption.setText(caption)
-        depth = self._to_float(cad_state.get("total_depth"))
-        top_width = self._to_float(cad_state.get("top_flange_width"))
-        bottom_width = self._to_float(cad_state.get("bottom_flange_width"))
-        web_thickness = self._to_float(cad_state.get("web_thickness"))
-        top_thickness = self._to_float(cad_state.get("top_flange_thickness"))
-        bottom_thickness = self._to_float(cad_state.get("bottom_flange_thickness"))
+        depth = self._to_float(output_dict.get("total_depth"))
+        top_width = self._to_float(output_dict.get("top_flange_width"))
+        bottom_width = self._to_float(output_dict.get("bottom_flange_width"))
+        web_thickness = self._to_float(output_dict.get("web_thickness"))
+        top_thickness = self._to_float(output_dict.get("top_flange_thickness"))
+        bottom_thickness = self._to_float(output_dict.get("bottom_flange_thickness"))
 
-        # Fallback to the visible field values when cad_state lacks dimensions.
+        # Fallback to the visible field values when output_dict lacks dimensions.
         if not all([depth, top_width, web_thickness, top_thickness]):
             def _field_num(key: str) -> float | None:
                 field = self.dim_fields.get(key)
@@ -518,18 +518,18 @@ class SteelDesignDetailsTab(QWidget):
             show_welds=(section_type == "welded"),
         )
 
-    def _update_stiffener_preview(self, cad_state: dict) -> None:
+    def _update_stiffener_preview(self, output_dict: dict) -> None:
         if not hasattr(self, "stiffener_preview"):
             return
 
-        stiffener_details = cad_state.get("stiffener_details", {}) or {}
+        stiffener_details = output_dict.get("stiffener_details", {}) or {}
         stiff_by_member = stiffener_details.get("stiffener_by_member", {}) or {}
 
-        member_id = str(stiffener_details.get("active_member_id") or cad_state.get("member_id") or "").strip()
+        member_id = str(stiffener_details.get("active_member_id") or output_dict.get("member_id") or "").strip()
         if not member_id or (stiff_by_member and member_id not in stiff_by_member):
             member_id = next(iter(stiff_by_member.keys()), "")
 
-        girder_details = cad_state.get("girder_details", {}) or {}
+        girder_details = output_dict.get("girder_details", {}) or {}
         segments = []
         if isinstance(girder_details, dict):
             segments = girder_details.get("segment_chain", {})
@@ -543,17 +543,17 @@ class SteelDesignDetailsTab(QWidget):
             if isinstance(girder_details, dict):
                 total_span = girder_details.get("total_span_m")
             if total_span is None:
-                total_span = cad_state.get("span_m")
+                total_span = output_dict.get("span_m")
             try:
                 total_span = float(total_span)
             except (TypeError, ValueError):
                 total_span = 1.0
             segments = [{"id": member_id or "G1M1", "start": 0.0, "end": total_span}]
 
-        depth = self._to_float(cad_state.get("total_depth")) or 0.0
-        web_thickness = self._to_float(cad_state.get("web_thickness")) or 0.0
-        top_thickness = self._to_float(cad_state.get("top_flange_thickness")) or 0.0
-        bottom_thickness = self._to_float(cad_state.get("bottom_flange_thickness")) or top_thickness
+        depth = self._to_float(output_dict.get("total_depth")) or 0.0
+        web_thickness = self._to_float(output_dict.get("web_thickness")) or 0.0
+        top_thickness = self._to_float(output_dict.get("top_flange_thickness")) or 0.0
+        bottom_thickness = self._to_float(output_dict.get("bottom_flange_thickness")) or top_thickness
 
         section_dims = {}
         if member_id:
