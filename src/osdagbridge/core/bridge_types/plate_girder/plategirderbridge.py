@@ -68,6 +68,10 @@ from osdagbridge.core.utils.common import (
     KEY_UTIL_FATIGUE,
     KEY_UTIL_LONG_TRANS_SHEAR,
     KEY_UTIL_STRESS_LIMITATION,
+    STIFFENER_DETAILS_DEFAULTS,
+    VALUES_TORSIONAL_RESTRAINT,
+    VALUES_WARPING_RESTRAINT,
+    VALUES_WEB_TYPE,
 )
 from osdagbridge.core.bridge_types.plate_girder.initial_sizing import (
     DEFAULT_DECK_THICKNESS as _DEFAULT_DECK_THICKNESS_MM,
@@ -1062,6 +1066,8 @@ class PlateGirderBridge:
                 or girder_details.get("selected_girder")
                 or ""
             ).strip()
+        if not member_id:
+            member_id = "G1M1"
         state["member_id"] = member_id
 
         state["grade_of_material"] = str(self.basic_inputs.get(KEY_GIRDER, "")).strip()
@@ -1074,6 +1080,8 @@ class PlateGirderBridge:
                 or girder_details.get("section_type")
                 or ""
             ).strip()
+        if not section_type:
+            section_type = "Welded"
         state["section_type"] = section_type
 
         section_designation = ""
@@ -1184,19 +1192,25 @@ class PlateGirderBridge:
         state.setdefault("torsional_restraint", add_inputs.get("torsional_restraint", ""))
         state.setdefault("warping_restraint", add_inputs.get("warping_restraint", ""))
         state.setdefault("web_type", add_inputs.get("web_type", ""))
+        if not state.get("torsional_restraint"):
+            state["torsional_restraint"] = VALUES_TORSIONAL_RESTRAINT[0] if VALUES_TORSIONAL_RESTRAINT else ""
+        if not state.get("warping_restraint"):
+            state["warping_restraint"] = VALUES_WARPING_RESTRAINT[0] if VALUES_WARPING_RESTRAINT else ""
+        if not state.get("web_type"):
+            state["web_type"] = VALUES_WEB_TYPE[0] if VALUES_WEB_TYPE else ""
 
         # Shear stud properties come from Design Options tab (add_inputs), not girder_details
-        stud_fy = add_inputs.get("shear_stud_yield_strength")
-        stud_fu = add_inputs.get("shear_stud_ultimate_strength")
+        stud_fy = add_inputs.get("shear_stud_yield_strength", "385.00")
+        stud_fu = add_inputs.get("shear_stud_ultimate_strength", "495.00")
         if stud_fy:
             state.setdefault("shear_material", f"Fy {stud_fy} MPa")
         elif stud_fu:
             state.setdefault("shear_material", f"Fu {stud_fu} MPa")
 
-        state.setdefault("shear_diameter", add_inputs.get("shear_stud_diameter", ""))
-        state.setdefault("shear_height", add_inputs.get("shear_stud_height", ""))
-        state.setdefault("shear_transverse_spacing", add_inputs.get("shear_stud_transverse_spacing", ""))
-        state.setdefault("shear_studs_per_section", add_inputs.get("shear_stud_count", ""))
+        state.setdefault("shear_diameter", add_inputs.get("shear_stud_diameter", "20"))
+        state.setdefault("shear_height", add_inputs.get("shear_stud_height", "100.00"))
+        state.setdefault("shear_transverse_spacing", add_inputs.get("shear_stud_transverse_spacing", "100.00"))
+        state.setdefault("shear_studs_per_section", add_inputs.get("shear_stud_count", "2"))
 
         # Flatten girder details from additional_inputs.
         girder_details = add_inputs.get("girder_details", {})
@@ -1221,6 +1235,30 @@ class PlateGirderBridge:
 
         # Flatten stiffener details from nested structure.
         stiffener_details = add_inputs.get("stiffener_details", {})
+        if not isinstance(stiffener_details, dict) or not stiffener_details.get("stiffener_by_member"):
+            default_member_id = str(state.get("member_id") or "G1M1").strip()
+            default_stiffener = {
+                "bearing_stiffeners_each_end": STIFFENER_DETAILS_DEFAULTS.get("bearing_stiffeners_each_end", "2"),
+                "bearing_spacing_mm": STIFFENER_DETAILS_DEFAULTS.get("bearing_spacing_mm", ""),
+                "bearing_thickness_mode": STIFFENER_DETAILS_DEFAULTS.get("bearing_thickness_mode", "All"),
+                "bearing_thickness_value": STIFFENER_DETAILS_DEFAULTS.get("bearing_thickness_value", ""),
+                "bearing_outstand_mm": STIFFENER_DETAILS_DEFAULTS.get("bearing_outstand_mm", ""),
+                "intermediate_stiffener": STIFFENER_DETAILS_DEFAULTS.get("intermediate_stiffener", "No"),
+                "intermediate_spacing_mm": STIFFENER_DETAILS_DEFAULTS.get("intermediate_spacing_mm", "NA"),
+                "intermediate_thickness_mode": STIFFENER_DETAILS_DEFAULTS.get("intermediate_thickness_mode", "All"),
+                "intermediate_thickness_value": STIFFENER_DETAILS_DEFAULTS.get("intermediate_thickness_value", ""),
+                "intermediate_outstand_mm": STIFFENER_DETAILS_DEFAULTS.get("intermediate_outstand_mm", ""),
+                "longitudinal_stiffener": STIFFENER_DETAILS_DEFAULTS.get("longitudinal_stiffener", "No"),
+                "longitudinal_thickness_mode": STIFFENER_DETAILS_DEFAULTS.get("longitudinal_thickness_mode", "All"),
+                "longitudinal_thickness_value": STIFFENER_DETAILS_DEFAULTS.get("longitudinal_thickness_value", ""),
+                "shear_buckling_method": STIFFENER_DETAILS_DEFAULTS.get("shear_buckling_method", ""),
+            }
+            stiffener_details = {
+                "active_member_id": default_member_id,
+                "stiffener_by_member": {default_member_id: default_stiffener},
+            }
+            add_inputs = dict(add_inputs)
+            add_inputs["stiffener_details"] = stiffener_details
         if isinstance(stiffener_details, dict):
             # Ensure stiffener_details is included in state for CAD preview
             state["stiffener_details"] = stiffener_details

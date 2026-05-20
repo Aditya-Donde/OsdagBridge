@@ -970,6 +970,7 @@ class InputDock(QWidget):
             KEY_SKEW_ANGLE:        self._float(KEY_SKEW_ANGLE, 0.0),
             KEY_FOOTPATH:          self._text(KEY_FOOTPATH),
             KEY_INCLUDE_MEDIAN:    self._is_median_included(),
+            KEY_PROJECT_LOCATION:  self.parent.input_dict[KEY_PROJECT_LOCATION],
         }
         # Fill remaining defaults from DEFAULTS_DICT — single source of truth.
         for key, val in DEFAULTS_DICT.items():
