@@ -716,19 +716,24 @@ class SteelDesignCheckTab(QWidget):
         except Exception:
             pass
 
-        # - 3. Interaction (check_id=3) -
+        # - 3. Interaction - worst of M-V (id=3) and M-N (id=4) -
         try:
-            c = by_id[3]
-            results_by_key["interaction"] = {
-                "demand": c.demand, "capacity": c.capacity,
-                "ratio": c.dcr, "passed": c.status != "FAIL",
-            }
+            worst = None
+            for cid in (3, 4):
+                c = by_id.get(cid)
+                if c and (worst is None or c.dcr > worst.dcr):
+                    worst = c
+            if worst:
+                results_by_key["interaction"] = {
+                    "demand": worst.demand, "capacity": worst.capacity,
+                    "ratio": worst.dcr, "passed": worst.status != "FAIL",
+                }
         except Exception:
             pass
 
-        # - 4. LTB (check_id=4) -
+        # - 4. LTB (check_id=5) -
         try:
-            c = by_id[4]
+            c = by_id[5]
             results_by_key["ltb"] = {
                 "demand": c.demand, "capacity": c.capacity,
                 "ratio": c.dcr, "passed": c.status != "FAIL",
@@ -736,25 +741,25 @@ class SteelDesignCheckTab(QWidget):
         except Exception:
             pass
 
-        # - 5. Deflection - worst of Live (id=5) and Total (id=6) -
+        # - 5. Resistance to Longitudinal and Transverse Shear -
         try:
             worst = None
-            for cid in (5, 6):
+            for cid in (16, 17):
                 c = by_id.get(cid)
                 if c and (worst is None or c.dcr > worst.dcr):
                     worst = c
             if worst:
-                results_by_key["deflection"] = {
+                results_by_key["shear_long_trans"] = {
                     "demand": worst.demand, "capacity": worst.capacity,
                     "ratio": worst.dcr, "passed": worst.status != "FAIL",
                 }
         except Exception:
             pass
 
-        # - 6. Fatigue - worst of Normal (id=7) and Shear (id=8) -
+        # - 6. Fatigue - worst of Normal (id=8) and Shear (id=9) -
         try:
             worst = None
-            for cid in (7, 8):
+            for cid in (8, 9):
                 c = by_id.get(cid)
                 if c and (worst is None or c.dcr > worst.dcr):
                     worst = c
@@ -766,13 +771,35 @@ class SteelDesignCheckTab(QWidget):
         except Exception:
             pass
 
-        # - 7. Stress Limitation (Cl.604.3.1) -
-        # - 8. Resistance to Longitudinal and Transverse Shear (Cl.606.4.1) -
-        #
-        # Neither check has a corresponding check_id in DCREngine (only IDs
-        # 1-8 are emitted).  These cards intentionally remain blank - showing
-        # their governing equation only - until the engine adds the checks.
-        # This matches the Output Dock which shows 0 % for both.
+        # - 7. Stress Limitation - worst of concrete/steel/rebar (id=10/11/12) -
+        try:
+            worst = None
+            for cid in (10, 11, 12):
+                c = by_id.get(cid)
+                if c and (worst is None or c.dcr > worst.dcr):
+                    worst = c
+            if worst:
+                results_by_key["stress"] = {
+                    "demand": worst.demand, "capacity": worst.capacity,
+                    "ratio": worst.dcr, "passed": worst.status != "FAIL",
+                }
+        except Exception:
+            pass
+
+        # - 8. Deflection - worst of Live (id=13) and Total (id=14) -
+        try:
+            worst = None
+            for cid in (13, 14):
+                c = by_id.get(cid)
+                if c and (worst is None or c.dcr > worst.dcr):
+                    worst = c
+            if worst:
+                results_by_key["deflection"] = {
+                    "demand": worst.demand, "capacity": worst.capacity,
+                    "ratio": worst.dcr, "passed": worst.status != "FAIL",
+                }
+        except Exception:
+            pass
 
         # - Apply results to card widgets -
         self.design_results = list(results_by_key.values())
