@@ -148,8 +148,9 @@ class SteelDesign(QDialog):
         main_layout.addWidget(self._build_global_selection_bar())
         main_layout.addWidget(self.tabs)
 
-        if hasattr(self._main_window, "cad_state"):
-            self.details_tab.load_data(self._main_window.cad_state)
+        data_state = getattr(self._main_window, "output_dict", None) or getattr(self._main_window, "cad_state", None)
+        if data_state:
+            self.details_tab.load_data(data_state)
 
         if self._result_handler is not None:
             # Inject the matplotlib canvas into the Analysis Results tab
