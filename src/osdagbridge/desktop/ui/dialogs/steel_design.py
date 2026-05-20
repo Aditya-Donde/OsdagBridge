@@ -661,6 +661,8 @@ class SteelDesign(QDialog):
             capacity = calculator.compute_all(
                 Vu_kN=demand.Vu_kN,
                 stress_range_MPa=demand.stress_range_MPa,
+                M_sls_kNm=demand.M_sls_kNm,
+                V_sls_kN=demand.V_sls_kN,
             )
 
             # Step 5: Run DCR checks
