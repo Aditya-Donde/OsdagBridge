@@ -167,6 +167,13 @@ def solve_extend_basic_input_dict(basic_input_dict: dict) -> None:
     """Parse basic inputs and solve bridge layout. Updates basic_input_dict in-place."""
     from .initial_sizing import BridgeConfigurationSolver
 
+    def _railing_width_m(value) -> float:
+        if value in (None, ""):
+            return 0.0
+        width = float(value)
+        # Railing width is edited in mm in Additional Inputs, while solver uses m.
+        return width / 1000.0 if width > 10 else width
+
     span = float(basic_input_dict.get(KEY_SPAN))
     footpath_str = str(basic_input_dict.get(KEY_FOOTPATH, 'None')).strip()
     design_mode  = str(basic_input_dict.get(KEY_DESIGN_MODE, 'Optimized')).strip()
@@ -179,11 +186,11 @@ def solve_extend_basic_input_dict(basic_input_dict: dict) -> None:
     elif 'Both' in footpath_str:
         n_footpaths    = 2
         footpath_width = float(basic_input_dict.get(KEY_TS_FOOTPATH_WIDTH))
-        railing_width  = float(basic_input_dict.get(KEY_RL_WIDTH))
+        railing_width  = _railing_width_m(basic_input_dict.get(KEY_RL_WIDTH))
     else:
         n_footpaths    = 1
         footpath_width = float(basic_input_dict.get(KEY_TS_FOOTPATH_WIDTH))
-        railing_width  = float(basic_input_dict.get(KEY_RL_WIDTH))
+        railing_width  = _railing_width_m(basic_input_dict.get(KEY_RL_WIDTH))
 
     median_width  = basic_input_dict.get(KEY_MD_WIDTH) or 0.0
     no_of_girders = int(basic_input_dict.get(KEY_TS_NO_OF_GIRDERS) or 4)

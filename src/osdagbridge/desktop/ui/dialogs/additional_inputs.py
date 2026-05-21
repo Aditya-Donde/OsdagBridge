@@ -90,9 +90,12 @@ class AdditionalInputs(QDialog):
             val = input_dict.get(key)
             widget = ts.findChild(QWidget, key)
             if widget is not None and val is not None:
+                try:
+                    text = fmt.format(float(val))
+                except (TypeError, ValueError):
+                    text = str(val)
                 widget.blockSignals(True)
-                if isinstance(widget, QLineEdit):
-                    widget.setText(fmt.format(float(val)))
+                widget.setText(text)
                 widget.blockSignals(False)
 
         _set_text(KEY_TS_DECK_THICKNESS,     "{:.0f}")
