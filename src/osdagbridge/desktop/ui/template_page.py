@@ -524,6 +524,7 @@ class CustomWindow(QWidget):
         # print(f"[DEBUG]top:{self.top_view_active}")
         # print(f"[DEBUG]c/s:{self.cross_section_active}")
         from pprint import pprint
+        self.input_dock._prime_material_inputs()
         print("\n@@input_dictionary_before (common_design_func):\n")
         pprint(self.input_dict)
 

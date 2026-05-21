@@ -56,7 +56,50 @@ KEY_GIRDER = "material.girder"
 KEY_CROSS_BRACING = "material.cross_bracing"
 KEY_END_DIAPHRAGM = "material.end_diaphragm"
 KEY_DECK = "Deck"
-KEY_DECK_CONCRETE_GRADE_BASIC = "material.deck_concrete_grade"
+KEY_DECK_CONCRETE_GRADE_BASIC = "material.deck"
+
+# ===== Material property keys (populated from DB or user custom inputs) =====
+# Steel - girder / structural members
+KEY_MATERIAL_GIRDER_FY = "material.girder.fy"
+KEY_MATERIAL_GIRDER_FU = "material.girder.fu"
+KEY_MATERIAL_GIRDER_E = "material.girder.e"
+KEY_MATERIAL_GIRDER_G = "material.girder.g"
+KEY_MATERIAL_GIRDER_POISSON = "material.girder.poisson"
+KEY_MATERIAL_GIRDER_THERMAL = "material.girder.thermal"
+
+# Steel - other member-specific canonical keys (cross bracing, end diaphragm)
+KEY_MATERIAL_CROSS_BRACING_FY = "material.cross_bracing.fy"
+KEY_MATERIAL_CROSS_BRACING_FU = "material.cross_bracing.fu"
+KEY_MATERIAL_CROSS_BRACING_E = "material.cross_bracing.e"
+KEY_MATERIAL_CROSS_BRACING_G = "material.cross_bracing.g"
+KEY_MATERIAL_CROSS_BRACING_POISSON = "material.cross_bracing.poisson"
+KEY_MATERIAL_CROSS_BRACING_THERMAL = "material.cross_bracing.thermal"
+
+KEY_MATERIAL_END_DIAPHRAGM_FY = "material.end_diaphragm.fy"
+KEY_MATERIAL_END_DIAPHRAGM_FU = "material.end_diaphragm.fu"
+KEY_MATERIAL_END_DIAPHRAGM_E = "material.end_diaphragm.e"
+KEY_MATERIAL_END_DIAPHRAGM_G = "material.end_diaphragm.g"
+KEY_MATERIAL_END_DIAPHRAGM_POISSON = "material.end_diaphragm.poisson"
+KEY_MATERIAL_END_DIAPHRAGM_THERMAL = "material.end_diaphragm.thermal"
+
+# Concrete - deck
+KEY_MATERIAL_DECK_FCK = "material.deck.fck"
+KEY_MATERIAL_DECK_FCTM = "material.deck.fctm"
+KEY_MATERIAL_DECK_ECM = "material.deck.ecm"
+KEY_MATERIAL_DECK_THERMAL = "material.deck.thermal"
+
+# Display labels for material property fields (HTML-formatted for UI)
+DISP_MATERIAL_GIRDER_FY = "Yield Strength, F<sub>y</sub> (MPa)"
+DISP_MATERIAL_GIRDER_FU = "Ultimate Tensile Strength, F<sub>u</sub> (MPa)"
+DISP_MATERIAL_GIRDER_E = "Modulus of Elasticity, E (GPa)"
+DISP_MATERIAL_GIRDER_G = "Modulus of Rigidity, G (GPa)"
+DISP_MATERIAL_GIRDER_POISSON = "Poisson&apos;s Ratio, &nu;"
+DISP_MATERIAL_GIRDER_THERMAL = "Thermal Expansion Coefficient, (&times;10<sup>&minus;6</sup>/°C)"
+
+DISP_MATERIAL_DECK_FCK = "Characteristic Compressive (Cube) Strength of Concrete, f<sub>ck</sub> (MPa)"
+DISP_MATERIAL_DECK_FCTM = "Mean Tensile Strength of Concrete, f<sub>ctm</sub> (MPa)"
+DISP_MATERIAL_DECK_ECM = "Secant Modulus of Elasticity of Concrete, E<sub>cm</sub> (GPa)"
+DISP_MATERIAL_DECK_THERMAL = "Thermal Expansion Coefficient, (&times;10<sup>&minus;6</sup>/°C)"
 
 # ── Output section keys ───────────────────────────────────────────────────────
 KEY_SECTION_OUTPUT_ANALYSIS       = "section.output.analysis"

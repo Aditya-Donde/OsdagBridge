@@ -10,7 +10,15 @@ import re
 from osdagbridge.desktop.ui.utils.custom_titlebar import CustomTitleBar
 from osdagbridge.desktop.ui.dialogs.custom_messagebox import CustomMessageBox, MessageBoxType
 from osdagbridge.desktop.ui.docks.dock_utils import apply_field_style
-from osdagbridge.core.utils.common import connectdb, KEY_GIRDER, KEY_CROSS_BRACING, KEY_END_DIAPHRAGM
+from osdagbridge.core.utils.common import (
+    connectdb, KEY_GIRDER, KEY_CROSS_BRACING, KEY_END_DIAPHRAGM, KEY_DECK_CONCRETE_GRADE_BASIC,
+    KEY_MATERIAL_GIRDER_FY, KEY_MATERIAL_GIRDER_FU, KEY_MATERIAL_GIRDER_E,
+    KEY_MATERIAL_GIRDER_G, KEY_MATERIAL_GIRDER_POISSON, KEY_MATERIAL_GIRDER_THERMAL,
+    KEY_MATERIAL_DECK_FCK, KEY_MATERIAL_DECK_FCTM, KEY_MATERIAL_DECK_ECM, KEY_MATERIAL_DECK_THERMAL,
+    DISP_MATERIAL_GIRDER_FY, DISP_MATERIAL_GIRDER_FU, DISP_MATERIAL_GIRDER_E,
+    DISP_MATERIAL_GIRDER_G, DISP_MATERIAL_GIRDER_POISSON, DISP_MATERIAL_GIRDER_THERMAL,
+    DISP_MATERIAL_DECK_FCK, DISP_MATERIAL_DECK_FCTM, DISP_MATERIAL_DECK_ECM, DISP_MATERIAL_DECK_THERMAL,
+)
 
 concrete_properies = connectdb("Concrete_Grade_Properties")
 
@@ -36,10 +44,8 @@ ECM_FACTOR_OPTIONS = [
 ]
 DEFAULT_ECM_FACTOR_LABEL = ECM_FACTOR_OPTIONS[0][0]
 
-STEEL_MODULUS_E_GPA = 200.0
-STEEL_MODULUS_G_GPA = 77.0
-STEEL_POISSON_RATIO = 0.30
-STEEL_THERMAL_COEFF = 11.7
+# HARD CODED VALUES REMOVED AND COMPLETELY SWAPPED OUT
+STEEL_THERMAL_COEFF = 11.7      # COEFF is constant regardless, so not removed.
 
 def _locate_resource_file(file_name: str) -> Path:
     current = Path(__file__).resolve()
@@ -92,82 +98,59 @@ def _normalize_steel_material_name(name: str) -> str:
 
 
 def _load_steel_material_values_from_db():
-    values = {}
-    rows = _execute_resource_query(
-        '''
-        SELECT [Material Name], [Yield Strength], [Ultimate Tensile Strength]
-        FROM Material
-        '''
-    )
-    if rows is None:
-        # Backward-compatibility for older local DBs.
+        values = {}
         rows = _execute_resource_query(
-            '''
-            SELECT Grade, [Yield Stress (< 20)], [Ultimate Tensile Stress]
-            FROM Material
-            '''
-        )
+                """
+                SELECT Grade, [Yield Strength], [Ultimate Tensile Strength], [Modulus of Elasticity], [Poisson's Ratio]
+                FROM Steel_Grade_Properties
+                """
+            )
+        if rows is None:
+            return {}
 
-    if rows is None:
-        return {}
+        try:
+            for grade, fy, fu, e, poisson in rows:
+                key = _normalize_steel_material_name(grade)
+                if not key:
+                    continue
 
-    try:
-        for material_name, fy, fu in rows:
-            key = _normalize_steel_material_name(material_name)
-            if not key:
-                continue
+                e_value = float(e)
+                poisson_value = float(poisson)
+                values[key] = {
+                    "Fy": float(fy),
+                    "Fu": float(fu),
+                    "E": e_value,
+                    "Poisson": poisson_value,
+                    "G": round(e_value / (2 * (1 + poisson_value)), 1),
+                }
 
-            fy_val = float(fy)
-            fu_val = float(fu)
-            values[key] = {"Fy": fy_val, "Fu": fu_val}
+            return values
+        except (TypeError, ValueError):
+            return {}
 
-        return values
-    except (TypeError, ValueError):
-        return {}
-
-
+    
 STEEL_MATERIAL_BASE_VALUES = _load_steel_material_values_from_db()
 CONCRETE_GRADE_BASE_VALUES = _load_concrete_grade_values_from_db()
-
-KEY_CONCRETE_FCK = "Characteristic Compressive (Cube) Strength of Concrete, (fck)cu (MPa)"
-KEY_CONCRETE_FCTM = "Mean Tensile Strength of Concrete, fctm (MPa)"
-KEY_CONCRETE_ECM = "Secant Modulus of Elasticity of Concrete, Ecm (GPa)"
-KEY_THERMAL_EXPANSION = "Thermal Expansion Coefficient, (×10⁻⁶/°C)"
-KEY_STEEL_FU = "Ultimate Tensile Strength, Fu (MPa)"
-KEY_STEEL_FY = "Yield Strength, Fy (MPa)"
-KEY_STEEL_E = "Modulus of Elasticity, E (GPa)"
-KEY_STEEL_G = "Modulus of Rigidity, G (GPa)"
-KEY_STEEL_POISSON = "Poisson's Ratio, ν"
-
-DISP_CONCRETE_FCK = "Characteristic Compressive (Cube) Strength of Concrete, f<sub>ck</sub> (MPa)"
-DISP_CONCRETE_FCTM = "Mean Tensile Strength of Concrete, f<sub>ctm</sub> (MPa)"
-DISP_CONCRETE_ECM = "Secant Modulus of Elasticity of Concrete, E<sub>cm</sub> (GPa)"
-DISP_THERMAL_EXPANSION = "Thermal Expansion Coefficient, (&times;10<sup>&minus;6</sup>/°C)"
-DISP_STEEL_FU = "Ultimate Tensile Strength, F<sub>u</sub> (MPa)"
-DISP_STEEL_FY = "Yield Strength, F<sub>y</sub> (MPa)"
-DISP_STEEL_E = "Modulus of Elasticity, E (GPa)"
-DISP_STEEL_G = "Modulus of Rigidity, G (GPa)"
-DISP_STEEL_POISSON = "Poisson&apos;s Ratio, &nu;"
 
 
 TYPE_TEXTBOX = 'textbox'
 
 def steel_material_properties_values():
     return [
-        (KEY_STEEL_FY, DISP_STEEL_FY, TYPE_TEXTBOX, None, True, 'Double Validator'),
-        (KEY_STEEL_FU, DISP_STEEL_FU, TYPE_TEXTBOX, None, True, 'Double Validator'),
-        (KEY_STEEL_E, DISP_STEEL_E, TYPE_TEXTBOX, None, True, 'Double Validator'),
-        (KEY_STEEL_G, DISP_STEEL_G, TYPE_TEXTBOX, None, True, 'Double Validator'),
-        (KEY_STEEL_POISSON, DISP_STEEL_POISSON, TYPE_TEXTBOX, None, True, 'Double Validator'),
-        (KEY_THERMAL_EXPANSION, DISP_THERMAL_EXPANSION, TYPE_TEXTBOX, None, True, 'Double Validator'),
+        (KEY_MATERIAL_GIRDER_FY, DISP_MATERIAL_GIRDER_FY, TYPE_TEXTBOX, None, True, 'Double Validator'),
+        (KEY_MATERIAL_GIRDER_FU, DISP_MATERIAL_GIRDER_FU, TYPE_TEXTBOX, None, True, 'Double Validator'),
+        (KEY_MATERIAL_GIRDER_E, DISP_MATERIAL_GIRDER_E, TYPE_TEXTBOX, None, True, 'Double Validator'),
+        (KEY_MATERIAL_GIRDER_G, DISP_MATERIAL_GIRDER_G, TYPE_TEXTBOX, None, True, 'Double Validator'),
+        (KEY_MATERIAL_GIRDER_POISSON, DISP_MATERIAL_GIRDER_POISSON, TYPE_TEXTBOX, None, True, 'Double Validator'),
+        (KEY_MATERIAL_GIRDER_THERMAL, DISP_MATERIAL_GIRDER_THERMAL, TYPE_TEXTBOX, None, True, 'Double Validator'),
     ]
 
 def deck_material_properties_values():
     return [
-        (KEY_CONCRETE_FCK, DISP_CONCRETE_FCK, TYPE_TEXTBOX, None, True, 'Double Validator'),
-        (KEY_CONCRETE_FCTM, DISP_CONCRETE_FCTM, TYPE_TEXTBOX, None, True, 'Double Validator'),
-        (KEY_CONCRETE_ECM, DISP_CONCRETE_ECM, TYPE_TEXTBOX, None, True, 'Double Validator'),
-        (KEY_THERMAL_EXPANSION, DISP_THERMAL_EXPANSION, TYPE_TEXTBOX, None, True, 'Double Validator'),
+        (KEY_MATERIAL_DECK_FCK, DISP_MATERIAL_DECK_FCK, TYPE_TEXTBOX, None, True, 'Double Validator'),
+        (KEY_MATERIAL_DECK_FCTM, DISP_MATERIAL_DECK_FCTM, TYPE_TEXTBOX, None, True, 'Double Validator'),
+        (KEY_MATERIAL_DECK_ECM, DISP_MATERIAL_DECK_ECM, TYPE_TEXTBOX, None, True, 'Double Validator'),
+        (KEY_MATERIAL_DECK_THERMAL, DISP_MATERIAL_DECK_THERMAL, TYPE_TEXTBOX, None, True, 'Double Validator'),
     ]
 
 class MaterialPropertiesDialog(QDialog):
@@ -353,9 +336,9 @@ class MaterialPropertiesDialog(QDialog):
             apply_field_style(line_edit)
             line_edit.setValidator(QDoubleValidator(0.0, 99999.0, 1))
             line_edit.textEdited.connect(self._handle_user_override)
-            if self.is_deck_material and key in (KEY_CONCRETE_FCK, KEY_CONCRETE_FCTM):
+            if self.is_deck_material and key in (KEY_MATERIAL_DECK_FCK, KEY_MATERIAL_DECK_FCTM):
                 line_edit.textEdited.connect(self._update_custom_material_name)
-            elif (not self.is_deck_material) and key in (KEY_STEEL_FU, KEY_STEEL_FY):
+            elif (not self.is_deck_material) and key in (KEY_MATERIAL_GIRDER_FU, KEY_MATERIAL_GIRDER_FY):
                 line_edit.textEdited.connect(self._update_custom_material_name)
             self.field_inputs[key] = line_edit
             
@@ -369,12 +352,13 @@ class MaterialPropertiesDialog(QDialog):
 
     def _is_deck_material(self, material_name: str) -> bool:
         normalized = (material_name or "").strip()
-        return normalized in concrete_properies
+        return (normalized in concrete_properies or 
+                normalized.lower().startswith(CUSTOM_CONCRETE_PREFIX))
 
     def _defaults_for_material(self, material_name):
         if self.is_deck_material:
             grade = (material_name or "").strip()
-            if not grade or grade.lower().startswith(CUSTOM_CONCRETE_PREFIX) or self._get_concrete_from_code(grade) is None:
+            if self._get_concrete_from_code(grade) is None:
                 grade = DEFAULT_DECK_CUSTOM_GRADE
             return self._deck_defaults(grade, self._factor_value_from_label(DEFAULT_ECM_FACTOR_LABEL))
         return self._steel_defaults(material_name)
@@ -395,17 +379,18 @@ class MaterialPropertiesDialog(QDialog):
         result = {}
         for field_tuple in steel_material_properties_values():
             key = field_tuple[0]
-            if "Fu" in key:
+            if key == KEY_MATERIAL_GIRDER_FU:
                 result[key] = "{:.1f}".format(defaults.get("Fu", 0.0))
-            elif "Fy" in key:
+            elif key == KEY_MATERIAL_GIRDER_FY:
                 result[key] = "{:.1f}".format(defaults.get("Fy", 0.0))
-            elif "E (GPa)" in key and "Rigidity" not in key:
-                result[key] = "{:.1f}".format(STEEL_MODULUS_E_GPA)
-            elif "G (GPa)" in key:
-                result[key] = "{:.1f}".format(STEEL_MODULUS_G_GPA)
-            elif "Poisson" in key:
-                result[key] = "{:.1f}".format(STEEL_POISSON_RATIO)
-            elif "Thermal" in key:
+            elif key == KEY_MATERIAL_GIRDER_E:
+                result[key] = "{:.1f}".format(defaults.get("E", 0.0))
+            elif key == KEY_MATERIAL_GIRDER_G:
+                result[key] = "{:.1f}".format(defaults.get("G", 0.0))
+            elif key == KEY_MATERIAL_GIRDER_POISSON:
+                result[key] = "{:.2f}".format(defaults.get("Poisson", 0.0))
+            elif key == KEY_MATERIAL_GIRDER_THERMAL:
+                # DB does not include thermal expansion; use constant default for DB grades
                 result[key] = "{:.1f}".format(STEEL_THERMAL_COEFF)
         return result
 
@@ -417,18 +402,18 @@ class MaterialPropertiesDialog(QDialog):
         data = self._get_concrete_from_code(grade)
         if not data:
             return {
-                KEY_CONCRETE_FCK: "",
-                KEY_CONCRETE_FCTM: "",
-                KEY_CONCRETE_ECM: "",
-                KEY_THERMAL_EXPANSION: "{:.1f}".format(STEEL_THERMAL_COEFF),
+                KEY_MATERIAL_DECK_FCK: "",
+                KEY_MATERIAL_DECK_FCTM: "",
+                KEY_MATERIAL_DECK_ECM: "",
+                KEY_MATERIAL_DECK_THERMAL: "{:.1f}".format(STEEL_THERMAL_COEFF),
             }
 
         ecm = round(data["Ecm"] * factor_value, 1)
         return {
-            KEY_CONCRETE_FCK: "{:.1f}".format(data["fck"]),
-            KEY_CONCRETE_FCTM: "{:.1f}".format(data["fctm"]),
-            KEY_CONCRETE_ECM: "{:.1f}".format(ecm),
-            KEY_THERMAL_EXPANSION: "{:.1f}".format(STEEL_THERMAL_COEFF),
+            KEY_MATERIAL_DECK_FCK: "{:.1f}".format(data["fck"]),
+            KEY_MATERIAL_DECK_FCTM: "{:.1f}".format(data["fctm"]),
+            KEY_MATERIAL_DECK_ECM: "{:.1f}".format(ecm),
+            KEY_MATERIAL_DECK_THERMAL: "{:.1f}".format(STEEL_THERMAL_COEFF),
         }
 
     def _factor_value_from_label(self, label, custom_factor=None):
@@ -482,9 +467,109 @@ class MaterialPropertiesDialog(QDialog):
         for label, widget in self.field_inputs.items():
             self.form_data["fields"][label] = widget.text()
 
+    def _member_prefix(self):
+        """Return the member-specific material prefix, e.g. 'material.girder' or 'material.cross_bracing' or 'material.end_diaphragm' or 'material.deck'."""
+        # Accept a variety of member identifiers: input keys (e.g. KEY_GIRDER),
+        # schema member_type strings (e.g. "Girder"/"Deck"), or raw keys.
+        try:
+            m = str(self.member or "").strip()
+            if not m:
+                return "material.girder"
+            # Deck checks
+            if m == KEY_DECK_CONCRETE_GRADE_BASIC:
+                return "material.deck"
+            # Cross bracing checks
+            if m == KEY_CROSS_BRACING:
+                return "material.cross_bracing"
+            # End diaphragm checks
+            if m == KEY_END_DIAPHRAGM:
+                return "material.end_diaphragm"
+        except Exception:
+            pass
+        # Default to girder
+        return "material.girder"
+
+    def get_export_fields(self):
+        """Return a copy of form_data['fields'] remapped to member-prefixed canonical keys.
+
+        Internal form_data stores template keys (KEY_STEEL_*, KEY_CONCRETE_*). This method
+        translates steel template keys (which are based on girder) to the correct member
+        prefix (cross_bracing, end_diaphragm, or girder). Concrete keys are left as-is.
+        """
+        export = {}
+        prefix = self._member_prefix()
+        for k, v in self.form_data.get("fields", {}).items():
+            if k.startswith("material.girder"):
+                new_k = k.replace("material.girder", prefix)
+                export[new_k] = v
+            else:
+                # concrete keys / already-correct keys
+                export[k] = v
+        return export
+
     def _handle_user_override(self):
-        if self._loading:
+        # Called on textEdited for field widgets. Auto-update related fields
+        # (E, G, Poisson) while avoiding recursion using a suppression flag.
+        if self._loading or self._suppress_auto_update:
             return
+        sender = self.sender()
+        if not sender:
+            return
+        # Find which key this sender corresponds to
+        changed_key = None
+        for k, w in self.field_inputs.items():
+            if w is sender:
+                changed_key = k
+                break
+        if not changed_key:
+            return
+
+        # Helper to parse float safely
+        def _try_float(txt):
+            try:
+                return float(txt)
+            except Exception:
+                return None
+
+        # Only apply auto-updates for steel properties (E, G, Poisson)
+        if changed_key in (KEY_MATERIAL_GIRDER_E, KEY_MATERIAL_GIRDER_G, KEY_MATERIAL_GIRDER_POISSON):
+            e_widget = self.field_inputs.get(KEY_MATERIAL_GIRDER_E)
+            g_widget = self.field_inputs.get(KEY_MATERIAL_GIRDER_G)
+            nu_widget = self.field_inputs.get(KEY_MATERIAL_GIRDER_POISSON)
+
+            e_val = _try_float(e_widget.text() if e_widget else "")
+            g_val = _try_float(g_widget.text() if g_widget else "")
+            nu_val = _try_float(nu_widget.text() if nu_widget else "")
+
+            try:
+                self._suppress_auto_update = True
+                # If E changed and Poisson available, update G
+                if changed_key == KEY_MATERIAL_GIRDER_E and e_val is not None and nu_val is not None:
+                    # G = E / (2*(1+nu))
+                    g_calc = e_val / (2.0 * (1.0 + nu_val))
+                    if g_widget:
+                        g_widget.setText("{:.1f}".format(g_calc))
+
+                # If G changed and Poisson available, update E
+                elif changed_key == KEY_MATERIAL_GIRDER_G and g_val is not None and nu_val is not None:
+                    # E = 2*G*(1+nu)
+                    e_calc = 2.0 * g_val * (1.0 + nu_val)
+                    if e_widget:
+                        e_widget.setText("{:.1f}".format(e_calc))
+
+                # If Poisson changed, prefer to use existing E to compute G, else use G to compute E
+                elif changed_key == KEY_MATERIAL_GIRDER_POISSON and nu_val is not None:
+                    if e_val is not None:
+                        g_calc = e_val / (2.0 * (1.0 + nu_val))
+                        if g_widget:
+                            g_widget.setText("{:.1f}".format(g_calc))
+                    elif g_val is not None:
+                        e_calc = 2.0 * g_val * (1.0 + nu_val)
+                        if e_widget:
+                            e_widget.setText("{:.1f}".format(e_calc))
+            finally:
+                self._suppress_auto_update = False
+        # End of _handle_user_override
 
     def _normalize_material_token(self, text):
         value = (text or "").strip()
@@ -503,13 +588,13 @@ class MaterialPropertiesDialog(QDialog):
             return
             
         if self.is_deck_material:
-            fck_input = self.field_inputs.get(KEY_CONCRETE_FCK)
-            fctm_input = self.field_inputs.get(KEY_CONCRETE_FCTM)
+            fck_input = self.field_inputs.get(KEY_MATERIAL_DECK_FCK)
+            fctm_input = self.field_inputs.get(KEY_MATERIAL_DECK_FCTM)
             val1 = self._normalize_material_token(fck_input.text() if fck_input else "")
             val2 = self._normalize_material_token(fctm_input.text() if fctm_input else "")
         else:
-            fy_input = self.field_inputs.get(KEY_STEEL_FY)
-            fu_input = self.field_inputs.get(KEY_STEEL_FU)
+            fy_input = self.field_inputs.get(KEY_MATERIAL_GIRDER_FY)
+            fu_input = self.field_inputs.get(KEY_MATERIAL_GIRDER_FU)
             val1 = self._normalize_material_token(fy_input.text() if fy_input else "")
             val2 = self._normalize_material_token(fu_input.text() if fu_input else "")
 
@@ -574,12 +659,12 @@ class MaterialPropertiesDialog(QDialog):
                         fu_value = "{:.1f}".format(defaults["Fu"])
 
                 self.form_data["fields"] = {
-                    KEY_STEEL_FY: fy_value,
-                    KEY_STEEL_FU: fu_value,
-                    KEY_STEEL_E: "{:.1f}".format(STEEL_MODULUS_E_GPA),
-                    KEY_STEEL_G: "{:.1f}".format(STEEL_MODULUS_G_GPA),
-                    KEY_STEEL_POISSON: "{:.1f}".format(STEEL_POISSON_RATIO),
-                    KEY_THERMAL_EXPANSION: "{:.1f}".format(STEEL_THERMAL_COEFF),
+                    KEY_MATERIAL_GIRDER_FY: fy_value,
+                    KEY_MATERIAL_GIRDER_FU: fu_value,
+                    KEY_MATERIAL_GIRDER_E: "{:.1f}".format(defaults.get("E", 0.0)) if defaults else "",
+                    KEY_MATERIAL_GIRDER_G: "{:.1f}".format(defaults.get("G", 0.0)) if defaults else "",
+                    KEY_MATERIAL_GIRDER_POISSON: "{:.2f}".format(defaults.get("Poisson", 0.0)) if defaults else "",
+                    KEY_MATERIAL_GIRDER_THERMAL: "{:.1f}".format(STEEL_THERMAL_COEFF),
                 }
 
         self.material_input.setText(name)

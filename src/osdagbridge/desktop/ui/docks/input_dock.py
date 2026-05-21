@@ -314,8 +314,32 @@ class InputDock(QWidget):
         # Post-loop: sync custom materials across all Girder-type material combos.
         sync_custom_materials_across_steel_members(self._material_combo_map, self._ensure_material_option)
 
+        # Prime the shared input_dict with the default DB-backed material values so
+        # the canonical material keys exist even before the user changes anything.
+        self._prime_material_inputs()
+
         # Resolve all dynamic placeholders now that all widgets exist.
         self._refresh_all_dynamic_placeholders()
+
+    def _prime_material_inputs(self):
+        """Populate input_dict with the current material defaults from the dialog."""
+        for key, combo in self._material_combo_map.items():
+            selected = combo.currentText().strip()
+            if not selected or selected == MATERIAL_CUSTOM_OPTION:
+                continue
+
+            try:
+                # Pass the actual key (e.g. KEY_CROSS_BRACING) as member
+                # so the dialog's get_export_fields() uses the correct prefix.
+                custom_flds = self._material_custom_fields.get(selected)
+                dlg = MaterialPropertiesDialog(read_only=True, selected_material=selected, member=key, custom_fields=custom_flds)
+                # Use exported, member-prefixed keys
+                fields = dlg.get_export_fields() or {}
+                for fld_key, fld_val in fields.items():
+                    self._update_input_dict(fld_key, fld_val)
+                self._update_input_dict(key, selected)
+            except Exception as e:
+                print(f"[DEBUG] _prime_material_inputs error for {key}: {e}")
 
     # ── Widget factories ──────────────────────────────────────────────────────
 
@@ -385,7 +409,6 @@ class InputDock(QWidget):
         widget = QLineEdit()
         widget.setObjectName(key)
         apply_field_style(widget)
-
         # Validator
         if validator == "Int Validator":
             widget.setValidator(QRegularExpressionValidator(QRegularExpression(r"^(0|[1-9]\d*)(\.\d+)?$")))
@@ -641,20 +664,33 @@ class InputDock(QWidget):
 
     def _on_material_changed(self, key: str, combo: QComboBox, text: str):
         if not text or text == MATERIAL_CUSTOM_OPTION:
-            member   = self._material_member_type.get(key, "Girder")
+            # Always pass the input key (e.g. KEY_GIRDER, KEY_CROSS_BRACING)
+            # to the dialog so it can map exported fields to the correct
+            # member-specific canonical keys (material.girder.*, material.cross_bracing.*, ...)
+            member   = key
             previous = self._material_previous_selection.get(key, "")
             dialog   = MaterialPropertiesDialog(read_only=False, selected_material=previous, member=member)
             if dialog.exec() == QDialog.Accepted:
                 fd  = getattr(dialog, "form_data", {})
                 mat = str(fd.get("material", "") or "").strip()
                 if mat:
+                    # store BASE fields for this custom material
+                    # DO NOT store exported fields so they can be reused by other members
                     self._material_custom_fields[mat] = dict(fd.get("fields") or {})
                     self._ensure_material_option(combo, mat)
-                    if member == "Girder":
+                    if self._material_member_type.get(key) == "Girder":
                         sync_custom_materials_across_steel_members(
                             self._material_combo_map, self._ensure_material_option, mat)
                     self._set_combo_silently(combo, mat)
                     self._material_previous_selection[key] = mat
+                    # Apply custom fields into the shared input dictionary
+                    exported = dialog.get_export_fields()
+                    for fld_key, fld_val in (exported or {}).items():
+                        # Use update helper to ensure defaults handling
+                        self._update_input_dict(fld_key, fld_val)
+                    # Also update the material combo key itself
+                    self._update_input_dict(key, mat)
+                    self.input_value_changed.emit()
                     return
             fallback = self._material_previous_selection.get(key, "")
             if not fallback:
@@ -667,6 +703,25 @@ class InputDock(QWidget):
                 self._set_combo_silently(combo, fallback)
         else:
             self._material_previous_selection[key] = text
+            # Non-custom selection: populate input_dict with DB-sourced defaults
+            try:
+                # Pass the input key so exported fields are member-prefixed correctly
+                # Pass custom_fields so previously created custom materials can be correctly parsed
+                custom_flds = self._material_custom_fields.get(text)
+                dlg = MaterialPropertiesDialog(read_only=True, selected_material=text, member=key, custom_fields=custom_flds)
+                # dialog constructs form_data on init; request exported/member-prefixed fields
+                fields = dlg.get_export_fields() or {}
+                # Write each field into the input dictionary
+                for fld_key, fld_val in fields.items():
+                    self._update_input_dict(fld_key, fld_val)
+                # Also ensure the combo selection is recorded
+                self._update_input_dict(key, text)
+                self.input_value_changed.emit()
+                # Ensure material property widgets for these fields are read-only (DB sourced)
+                self._set_material_fields_editable(list(fields.keys()), False)
+            except Exception:
+                # Fail gracefully; do not block material selection
+                pass
 
     def _set_combo_silently(self, combo: QComboBox, text: str):
         idx = combo.findText(text)
@@ -690,9 +745,9 @@ class InputDock(QWidget):
                 dialogType=MessageBoxType.Warning
             ).exec()
             return
-        member = self._material_member_type.get(key, "Girder")
+        # pass the input key as member so dialog shows member-specific fields
         MaterialPropertiesDialog(
-            read_only=True, selected_material=selected, member=member,
+            read_only=True, selected_material=selected, member=key,
             custom_fields=self._material_custom_fields.get(selected),
         ).exec()
 

@@ -50,6 +50,9 @@ from osdagbridge.core.utils.common import (
     KEY_END_DIAPHRAGM,
     KEY_DECK_CONCRETE_GRADE_BASIC,
     KEY_DS_REINF_MATERIAL,
+    KEY_MATERIAL_GIRDER_E, KEY_MATERIAL_GIRDER_G, KEY_MATERIAL_GIRDER_POISSON,
+    KEY_MATERIAL_GIRDER_FY, KEY_MATERIAL_GIRDER_FU, KEY_MATERIAL_GIRDER_THERMAL,
+    KEY_MATERIAL_DECK_FCK, KEY_MATERIAL_DECK_FCTM, KEY_MATERIAL_DECK_ECM,
     DEFAULT_CRASH_BARRIER_WIDTH,
     DEFAULT_RAILING_WIDTH,
     DEFAULT_GIRDER_SPACING,
@@ -406,45 +409,81 @@ class PlateGirderBridge:
             raise LookupError(f"Error querying material database in PlateGirderBridge._lookup_material: {sqlite3.Error}")
 
     def _build_material_props(self) -> MaterialProperties:
-        """Build a MaterialProperties from the selected girder material in basic_inputs."""
+        """Build a MaterialProperties from the selected girder material in basic_inputs.
         
-        # Collecting Steel Grade Properties
-        steel_grade = str(self.basic_inputs.get(KEY_GIRDER)).strip()
+        For DB grades (e.g. 'E 250A') properties are looked up from the SQLite database.
+        For custom grades (those not found in the DB) the sub-values already stored in
+        input_dict (material.girder.e, .fy, .fu, .poisson, .g) are used directly.
+        This prevents a NoneType crash when the user has entered a custom material.
+        """
+        _DEFAULT_DENSITY = 78500.0  # N/m³ — fallback when not available in DB
+
+        # ── Steel (Girder) ────────────────────────────────────────────────────
+        steel_grade = str(self.basic_inputs.get(KEY_GIRDER, "")).strip()
         e = self._lookup_material(steel_grade, "Modulus of Elasticity")
+        if e is None:
+            # Custom grade — read from the material sub-keys populated by the UI
+            raw_e = self.input_dict.get(KEY_MATERIAL_GIRDER_E)
+            e = float(raw_e) * GPa if raw_e not in (None, "") else _STEEL_E0
+
         v = self._lookup_material(steel_grade, "Poisson's Ratio")
+        if v is None:
+            raw_v = self.input_dict.get(KEY_MATERIAL_GIRDER_POISSON)
+            v = float(raw_v) if raw_v not in (None, "") else 0.3
+
         rho = self._lookup_material(steel_grade, "Density")
+        if rho is None:
+            rho = _DEFAULT_DENSITY
+
         fy = self._lookup_material(steel_grade, "Yield Strength")
+        if fy is None:
+            raw_fy = self.input_dict.get(KEY_MATERIAL_GIRDER_FY)
+            fy = float(raw_fy) * MPa if raw_fy not in (None, "") else _STEEL_FY_DEFAULT
+
         fu = self._lookup_material(steel_grade, "Ultimate Tensile Strength")
-        # print(f"grade: {steel_grade}, e: {e}, v: {v}, rho: {rho}, fy: {fy}, fu: {fu}")
+        if fu is None:
+            raw_fu = self.input_dict.get(KEY_MATERIAL_GIRDER_FU)
+            fu = float(raw_fu) * MPa if raw_fu not in (None, "") else fy * 1.25
+
         steel_prop = SteelProperties(
-                        grade=steel_grade,
-                        E=e,
-                        v=v,
-                        rho=rho,
-                        Fy=fy,
-                        Fu=fu,
-                        E0=_STEEL_E0,
-                        b=_STEEL_B,
-                    )
-        
-        # Collecting Deck Concrete Properties
-        concrete_grade = str(self.basic_inputs.get(KEY_DECK_CONCRETE_GRADE_BASIC)).strip()
+            grade=steel_grade,
+            E=e,
+            v=v,
+            rho=rho,
+            Fy=fy,
+            Fu=fu,
+            E0=_STEEL_E0,
+            b=_STEEL_B,
+        )
+
+        # ── Concrete (Deck) ───────────────────────────────────────────────────
+        concrete_grade = str(self.basic_inputs.get(KEY_DECK_CONCRETE_GRADE_BASIC, "")).strip()
         fck = self._lookup_material(concrete_grade, "fck")
+        if fck is None:
+            raw_fck = self.input_dict.get(KEY_MATERIAL_DECK_FCK)
+            fck = float(raw_fck) if raw_fck not in (None, "") else 25.0
+
         fctm = self._lookup_material(concrete_grade, "fctm")
+        if fctm is None:
+            raw_fctm = self.input_dict.get(KEY_MATERIAL_DECK_FCTM)
+            fctm = float(raw_fctm) if raw_fctm not in (None, "") else 2.2
+
         Ecm = self._lookup_material(concrete_grade, "Ecm")
-        # print(f"grade: {concrete_grade}, fck: {fck}, fctm: {fctm}, Ecm: {Ecm}")
+        if Ecm is None:
+            raw_ecm = self.input_dict.get(KEY_MATERIAL_DECK_ECM)
+            Ecm = float(raw_ecm) if raw_ecm not in (None, "") else 30.0
+
         concrete_prop = ConcreteProperties(
-                        grade=concrete_grade,
-                        fck=fck,
-                        fctm=fctm,
-                        Ecm=Ecm,
-                    )
-        
-        # Return Material Properties DTO
+            grade=concrete_grade,
+            fck=fck,
+            fctm=fctm,
+            Ecm=Ecm,
+        )
+
         return MaterialProperties(
-                        steel_prop=steel_prop,
-                        concrete_prop=concrete_prop
-                    )
+            steel_prop=steel_prop,
+            concrete_prop=concrete_prop,
+        )
 
     def _girder_count(self) -> int:
         """Number of structural main girders (excludes overhang edge beams)."""

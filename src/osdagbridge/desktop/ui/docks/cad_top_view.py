@@ -922,8 +922,8 @@ class TopViewCADWidget(QWidget):
         center_x = self.width() / 2
         center_y = self.height() / 2
 
-        # FIX: Negate the skew angle
-        skew_rad = math.radians(-self.params['skew_angle'])  # CHANGED: Added negative sign
+        # Use the input sign convention directly for skew direction
+        skew_rad = math.radians(self.params['skew_angle'])
         
         girder_positions_y = []
         
@@ -1173,10 +1173,10 @@ class TopViewCADWidget(QWidget):
         span_angle_deg = skew_deg
         
         painter.setPen(QPen(QColor(0,0,0), 2.5))
-        painter.drawArc(arc_rect, int(start_angle_deg * 16), int(-span_angle_deg * 16))
+        painter.drawArc(arc_rect, int(start_angle_deg * 16), int(span_angle_deg * 16))
         
         # Draw arrow at end of arc
-        arrow_angle_rad = math.radians(90 - skew_deg)
+        arrow_angle_rad = math.radians(90 + skew_deg)
         arrow_x = ref_x + arc_radius * math.cos(arrow_angle_rad)
         arrow_y = ref_y - arc_radius * math.sin(arrow_angle_rad)
         
@@ -1221,7 +1221,7 @@ class TopViewCADWidget(QWidget):
         # Add angle label with proper sign - using ORIGINAL input value
         # Position label near the arc
         label_radius = arc_radius + 25
-        label_angle_rad = math.radians(90 - skew_deg/2)  # Middle of the arc
+        label_angle_rad = math.radians(90 + skew_deg/2)  # Middle of the arc
         label_x = ref_x + label_radius * math.cos(label_angle_rad)
         label_y = ref_y - label_radius * math.sin(label_angle_rad)
         
