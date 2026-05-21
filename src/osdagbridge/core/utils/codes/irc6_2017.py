@@ -884,8 +884,19 @@ class IRC6_2017:
     
     @staticmethod
     def cl_211_3_braking_force_location():
+        """
+        Returns braking force application height as per IRC:6-2017 Clause 211.3.
 
-        return
+        The force due to braking effect acts along a line parallel to the roadway
+        and 1.2 m above it. While transferring the force to the bearings, the change
+        in the vertical reaction at the bearings should be taken into account.
+
+        Returns:
+            dict: height_m (float) — height above roadway in metres
+        """
+        return {
+            'height_m': 1.2,
+        }
     
     
     @staticmethod
