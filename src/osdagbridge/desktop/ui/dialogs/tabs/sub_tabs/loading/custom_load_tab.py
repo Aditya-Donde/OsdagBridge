@@ -1,4 +1,4 @@
-from PySide6.QtCore import Qt, QSize
+from PySide6.QtCore import Qt, QSize, QTimer
 from PySide6.QtGui import QDoubleValidator
 from PySide6.QtWidgets import (
     QCheckBox,
@@ -17,11 +17,14 @@ from PySide6.QtWidgets import (
     QHeaderView,
     QVBoxLayout,
     QWidget,
+    QButtonGroup,
+    QSplitter,
 )
 
 from osdagbridge.desktop.ui.dialogs.tabs.common import apply_field_style
 from osdagbridge.desktop.ui.dialogs.custom_messagebox import CustomMessageBox, MessageBoxType
 from osdagbridge.core.bridge_types.plate_girder.ui_fields_additional_input import CUSTOM_LOAD_TAB_SCHEMA
+from osdagbridge.desktop.ui.widgets.custom_load_canvas import CustomLoadCanvas
 
 
 class CustomLoadTab(QWidget):
@@ -32,6 +35,7 @@ class CustomLoadTab(QWidget):
         self.custom_load_items = getattr(owner, "custom_load_items", [])
         owner.custom_load_items = self.custom_load_items
         self.schema = CUSTOM_LOAD_TAB_SCHEMA
+        self._editing_load_data = None
         self._build_ui()
 
     def _build_ui(self):
@@ -56,39 +60,210 @@ class CustomLoadTab(QWidget):
         page_layout.setContentsMargins(8, 8, 8, 8)
         page_layout.setSpacing(8)
 
-        content_row = QHBoxLayout()
-        content_row.setContentsMargins(0, 0, 0, 0)
-        content_row.setSpacing(12)
-
         label_style = "font-size: 11px; color: #2a2a2a; background: transparent; border: none;"
         heading_style = "font-size: 11px; font-weight: 700; color: #1a1a1a; background: transparent; border: none;"
         
         label_width = schema.get("label_width", 280)
         field_width = schema.get("field_width", 140)
+        
+        h_splitter = QSplitter(Qt.Horizontal)
+        h_splitter.setHandleWidth(8)
+        h_splitter.setChildrenCollapsible(False)
 
-        left_column = QVBoxLayout()
-        left_column.setContentsMargins(0, 0, 0, 0)
-        left_column.setSpacing(8)
+        left_pane = QWidget()
+        left_pane.setStyleSheet("background: transparent;")
+        left_layout = QVBoxLayout(left_pane)
+        left_layout.setContentsMargins(0, 0, 0, 0)
+        left_layout.setSpacing(10)
 
         diagram = QFrame()
-        diagram.setMinimumSize(QSize(380, 130))
-        diagram.setMaximumHeight(130)
+        diagram.setMinimumSize(QSize(400, 300))
         diagram.setStyleSheet(
-            "QFrame { border: 1px solid #a0a0a0; border-radius: 4px; background-color: #d0d0d0; }"
+            "QFrame { border: 1px solid #a0a0a0; border-radius: 3px; background-color: #f8f9fa; }"
         )
         diagram_layout = QVBoxLayout(diagram)
-        diagram_layout.setContentsMargins(8, 8, 8, 8)
-        diagram_label = QLabel("Bridge Geometry\nDiagram")
-        diagram_label.setAlignment(Qt.AlignCenter)
-        diagram_label.setStyleSheet(
-            "font-size: 11px; font-weight: 600; color: #2a2a2a; background: transparent; border: none;"
+        diagram_layout.setContentsMargins(0, 0, 0, 0)
+        
+        # View Toggle Buttons
+        toggle_layout = QHBoxLayout()
+        toggle_layout.setContentsMargins(10, 10, 10, 0)
+        
+        self.btn_cross_section = QPushButton("Cross-Section")
+        self.btn_elevation = QPushButton("Elevation")
+        
+        self.btn_cross_section.setCheckable(True)
+        self.btn_elevation.setCheckable(True)
+        self.btn_cross_section.setChecked(True)
+        
+        self.view_btn_group = QButtonGroup(self)
+        self.view_btn_group.addButton(self.btn_cross_section, 0)
+        self.view_btn_group.addButton(self.btn_elevation, 1)
+        
+        btn_style = """
+            QPushButton {
+                background: #ffffff;
+                border: 1px solid #a0a0a0;
+                border-radius: 4px;
+                padding: 6px 12px;
+                font-size: 11px;
+                font-weight: 600;
+                color: #2a2a2a;
+            }
+            QPushButton:checked {
+                background: #90AF13;
+                border: 1px solid #90AF13;
+                color: #ffffff;
+            }
+        """
+        self.btn_cross_section.setStyleSheet(btn_style)
+        self.btn_elevation.setStyleSheet(btn_style)
+        
+        toggle_layout.addWidget(self.btn_cross_section)
+        toggle_layout.addWidget(self.btn_elevation)
+        toggle_layout.addStretch()
+        
+        diagram_layout.addLayout(toggle_layout)
+        
+        # 2D view with zoom controls
+        canvas_container = QWidget()
+        canvas_container.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        canvas_container_layout = QGridLayout(canvas_container)
+        canvas_container_layout.setContentsMargins(0, 0, 0, 0)
+        canvas_container_layout.setSpacing(0)
+
+        self.canvas = CustomLoadCanvas()
+        canvas_container_layout.addWidget(self.canvas, 0, 0)
+    
+        self.zoom_overlay_2d = QWidget()
+        self.zoom_overlay_2d.setObjectName("zoomControls")
+        self.zoom_overlay_2d.setAttribute(Qt.WA_TranslucentBackground)
+        zoom_layout = QVBoxLayout(self.zoom_overlay_2d)
+        zoom_layout.setContentsMargins(0, 15, 15, 0) # Gap from top-right edge
+        zoom_layout.setSpacing(6)
+        zoom_layout.setAlignment(Qt.AlignTop | Qt.AlignRight)
+
+        self.btn_zoom_in = QPushButton("+")
+        self.btn_zoom_out = QPushButton("-")
+        self.btn_zoom_reset = QPushButton("Reset")
+
+        zoom_btn_style = """
+            QPushButton {
+                background: #ffffff;
+                border: 1px solid #c0c0c0;
+                border-radius: 4px;
+                min-width: 32px;
+                max-width: 60px;
+                padding: 6px;
+                font-size: 14px;
+                font-weight: bold;
+                color: #2a2a2a;
+            }
+            QPushButton:hover { background: #f8f9fa; border: 1px solid #90AF13; }
+            QPushButton:pressed { background: #e9ecef; }
+        """
+        self.btn_zoom_in.setStyleSheet(zoom_btn_style)
+        self.btn_zoom_out.setStyleSheet(zoom_btn_style)
+        self.btn_zoom_reset.setStyleSheet(zoom_btn_style.replace("14px", "11px"))
+
+        zoom_layout.addWidget(self.btn_zoom_in)
+        zoom_layout.addWidget(self.btn_zoom_out)
+        zoom_layout.addWidget(self.btn_zoom_reset)
+ 
+        canvas_container_layout.addWidget(self.zoom_overlay_2d, 0, 0, Qt.AlignTop | Qt.AlignRight)
+        
+        diagram_layout.addWidget(canvas_container, 1)
+        
+        # Save Diagram Button
+        save_diagram_layout = QHBoxLayout()
+        save_diagram_layout.setContentsMargins(10, 0, 10, 10)
+        self.btn_save_diagram = QPushButton("Save Diagram")
+        self.btn_save_diagram.setStyleSheet("""
+            QPushButton {
+                background: #ffffff;
+                border: 1px solid #a0a0a0;
+                border-radius: 3px;
+                padding: 4px 10px;
+                font-size: 11px;
+                color: #2a2a2a;
+            }
+            QPushButton:hover { background: #f0f0f0; }
+        """)
+        save_diagram_layout.addStretch()
+        save_diagram_layout.addWidget(self.btn_save_diagram)
+        
+        diagram_layout.addLayout(save_diagram_layout)
+        left_layout.addWidget(diagram)
+
+        # info box on the right
+        desc_box = QFrame()
+        desc_box.setMinimumWidth(260)
+        desc_box.setStyleSheet(
+            "QFrame { "
+            "   border: 1px solid #bcbcbc; "
+            "   border-radius: 4px; "
+            "   background-color: #ececec; "
+            "}"
         )
-        diagram_layout.addWidget(diagram_label, 1)
-        left_column.addWidget(diagram)
+        desc_box_layout = QVBoxLayout(desc_box)
+        desc_box_layout.setContentsMargins(15, 15, 15, 15)
+        desc_box_layout.setSpacing(12)
+
+        desc_title = QLabel("Custom Load View & Configuration")
+        desc_title.setStyleSheet(
+            "font-size: 13px; font-weight: 700; color: #1a1a1a; "
+            "background: transparent; border: none; padding-bottom: 5px;"
+        )
+        desc_box_layout.addWidget(desc_title)
+
+        # Separator line
+        line = QFrame()
+        line.setFrameShape(QFrame.HLine)
+        line.setFrameShadow(QFrame.Plain)
+        line.setStyleSheet("color: #bcbcbc; background: #bcbcbc; max-height: 1px; border: none;")
+        desc_box_layout.addWidget(line)
+
+        desc_text = QLabel(
+            "<div style='color: #2a2a2a; line-height: 1.5;'>"
+            "<p style='margin-bottom: 10px;'>This tab allows for the definition of user-specified loads. "
+            "The diagram updates instantly to show the correct load placement relative to the bridge geometry.</p>"
+            
+            "<b style='color: #90AF13;'>Available View Modes:</b>"
+            "<ul style='margin: 5px 0 12px 15px;'>"
+            "<li><b>Cross-Section:</b> Shows the transverse position of loads across the bridge width and girders.</li>"
+            "<li><b>Elevation:</b> Shows the longitudinal position of loads along the span length.</li>"
+            "</ul>"
+ 
+            "<b style='color: #444444;'>How to add a load:</b>"
+            "<ol style='margin: 5px 0 12px 15px;'>"
+            "<li>Select the <b>Load Case</b> (Dead, Live, etc.) and enter a name.</li>"
+            "<li>Choose a <b>Load Type</b> (Point, Line, or Area) from the dropdown.</li>"
+            "<li>Enter the <b>Magnitude</b> and <b>Distances</b> from the reference edges.</li>"
+            "<li>Click <b>Save</b> to add the current load to the table below.</li>"
+            "</ol>"
+            
+            "<p style='margin-top: 5px; color: #555;'>"
+            "Saved loads can be modified using the <b>Edit</b> button or removed using the <b>Delete</b> button.</p>"
+            "</div>"
+        )
+        desc_text.setWordWrap(True)
+        desc_text.setTextFormat(Qt.RichText)
+        desc_text.setStyleSheet("font-size: 11px; background: transparent; border: none;")
+        desc_box_layout.addWidget(desc_text)
+        desc_box_layout.addStretch()
+
+        # Assembly into splitters
+        h_splitter.addWidget(left_pane)
+        h_splitter.addWidget(desc_box)
+        h_splitter.setStretchFactor(0, 3)
+        h_splitter.setStretchFactor(1, 1)
 
         input_card = owner._create_card()
         input_card.setStyleSheet(
-            "QFrame { border: 1px solid #a0a0a0; border-radius: 4px; background-color: #ffffff; }"
+            "QFrame { "
+            "   border: 1px solid #bcbcbc; "
+            "   border-radius: 4px; "
+            "   background-color: #ececec; "
+            "}"
         )
         input_layout = QVBoxLayout(input_card)
         input_layout.setContentsMargins(10, 10, 10, 10)
@@ -146,6 +321,23 @@ class CustomLoadTab(QWidget):
         load_type_row.addWidget(owner.custom_load_type_combo)
         load_type_row.addStretch()
         all_fields_layout.addLayout(load_type_row)
+
+        magnitude_row = QHBoxLayout()
+        magnitude_row.setSpacing(8)
+        
+        self.magnitude_label = QLabel("Magnitude (kN):")
+        self.magnitude_label.setStyleSheet(label_style)
+        self.magnitude_label.setFixedWidth(label_width)
+        
+        owner.custom_load_magnitude_input = QLineEdit()
+        owner.custom_load_magnitude_input.setFixedWidth(field_width * 2 + 8)
+        apply_field_style(owner.custom_load_magnitude_input)
+        self._apply_validator(owner.custom_load_magnitude_input, {"type": "double_range", "bottom": 0.0, "top": 100000.0, "decimals": 2})
+        
+        magnitude_row.addWidget(self.magnitude_label)
+        magnitude_row.addWidget(owner.custom_load_magnitude_input)
+        magnitude_row.addStretch()
+        all_fields_layout.addLayout(magnitude_row)
 
         input_layout.addLayout(all_fields_layout)
 
@@ -306,7 +498,6 @@ class CustomLoadTab(QWidget):
             "QPushButton:pressed { background: #e0e0e0; }"
         )
 
-
         save_row = QHBoxLayout()
         save_row.setContentsMargins(0, 12, 0, 0)
 
@@ -316,12 +507,15 @@ class CustomLoadTab(QWidget):
 
         input_layout.addLayout(save_row)
 
-
-        left_column.addWidget(input_card)
+        left_layout.addWidget(input_card)
 
         list_card = owner._create_card()
         list_card.setStyleSheet(
-            "QFrame { border: 1px solid #a0a0a0; border-radius: 4px; background-color: #ffffff; }"
+            "QFrame { "
+            "   border: 1px solid #bcbcbc; "
+            "   border-radius: 4px; "
+            "   background-color: #ececec; "
+            "}"
         )
         list_card.setMinimumHeight(250)
         list_layout = QVBoxLayout(list_card)
@@ -346,6 +540,7 @@ class CustomLoadTab(QWidget):
             controls_row.addWidget(btn)
         controls_row.addStretch()
         list_layout.addLayout(controls_row)
+        
         # ---- Table wrapper to ensure visible borders ----
         table_frame = QFrame()
         table_frame.setStyleSheet(
@@ -361,7 +556,7 @@ class CustomLoadTab(QWidget):
         table_layout.setContentsMargins(0, 0, 0, 0)
         table_layout.setSpacing(0)
         
-        self.custom_load_table = QTableWidget(0, 4)
+        self.custom_load_table = QTableWidget(0, 5)
     
         self.custom_load_table.setFrameStyle(QFrame.NoFrame)
         self.custom_load_table.setContentsMargins(0, 0, 0, 0)
@@ -371,14 +566,12 @@ class CustomLoadTab(QWidget):
         self.custom_load_table.setHorizontalHeaderLabels([
             "Load Case",
             "Load Type", 
+            "Magnitude",
             "Distance from Left (m)",
             "Distance from Bearing (m)"
         ])
         
-        self.custom_load_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
-        self.custom_load_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
-        self.custom_load_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.Stretch)
-        self.custom_load_table.horizontalHeader().setSectionResizeMode(3, QHeaderView.Stretch)
+        self.custom_load_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
         self.custom_load_table.verticalHeader().setVisible(False)
         self.custom_load_table.setSelectionBehavior(QTableWidget.SelectRows)
         self.custom_load_table.setSelectionMode(QTableWidget.SingleSelection)
@@ -425,29 +618,10 @@ class CustomLoadTab(QWidget):
         table_layout.addWidget(self.custom_load_table)
         list_layout.addWidget(table_frame)
 
-        left_column.addWidget(list_card)
+        left_layout.addWidget(list_card)
+        left_layout.addStretch()
 
-        right_card = owner._create_card()
-        right_card.setStyleSheet(
-            "QFrame { border: 1px solid #a0a0a0; border-radius: 4px; background-color: #d8d8d8; }"
-        )
-        right_card.setMinimumWidth(260)
-        right_card.setMinimumHeight(480)
-        right_layout = QVBoxLayout(right_card)
-        right_layout.setContentsMargins(12, 12, 12, 12)
-        right_layout.setSpacing(8)
-
-        desc_title = QLabel("Description Box")
-        desc_title.setAlignment(Qt.AlignCenter)
-        desc_title.setStyleSheet(
-            "font-size: 11px; font-weight: 700; color: #1a1a1a; background: transparent; border: none;"
-        )
-        right_layout.addWidget(desc_title)
-        right_layout.addStretch()
-
-        content_row.addLayout(left_column, 3)
-        content_row.addWidget(right_card, 2)
-        page_layout.addLayout(content_row)
+        page_layout.addWidget(h_splitter)
 
         scroll_area.setWidget(scroll_content)
         main_layout.addWidget(scroll_area)
@@ -458,9 +632,11 @@ class CustomLoadTab(QWidget):
         save_btn.clicked.connect(self._on_save_custom_load)
         owner.custom_delete_btn.clicked.connect(self._on_delete_custom_load)
         owner.custom_edit_btn.clicked.connect(self._on_edit_custom_load)
-        owner.custom_load_case_combo.currentTextChanged.connect(
-            lambda t: self._on_load_case_changed(t)
-        )
+        owner.custom_load_case_combo.currentTextChanged.connect(self._on_load_case_changed)
+
+        self.btn_zoom_in.clicked.connect(self.canvas.zoom_in)
+        self.btn_zoom_out.clicked.connect(self.canvas.zoom_out)
+        self.btn_zoom_reset.clicked.connect(self.canvas.reset_view)
 
         self._refresh_custom_load_table()
 
@@ -478,11 +654,28 @@ class CustomLoadTab(QWidget):
             validator.setNotation(QDoubleValidator.StandardNotation)
             widget.setValidator(validator)
 
+    def _schedule_update(self, *args):
+        pass
+
+    def _update_visualization(self, *args):
+        pass
+
+    def _on_view_toggled(self, btn):
+        pass
+
+    def _on_save_diagram(self):
+        pass
+
     def _on_custom_load_type_changed(self, text):
         if text == "Point":
             self.custom_load_stack.setCurrentIndex(0)
-        else: 
+            self.magnitude_label.setText("Magnitude (kN):")
+        elif text == "Line":
             self.custom_load_stack.setCurrentIndex(1)
+            self.magnitude_label.setText("Magnitude (kN/m):")
+        elif text == "Area":
+            self.custom_load_stack.setCurrentIndex(1)
+            self.magnitude_label.setText("Magnitude (kN/m²):")
 
     def _on_load_case_changed(self, text):
         is_custom = (text == "Custom")
@@ -511,6 +704,9 @@ class CustomLoadTab(QWidget):
             item.setFlags(item.flags() & ~Qt.ItemIsEditable)
             self.custom_load_table.setItem(row_idx, 1, item)
             
+            item = QTableWidgetItem("")
+            self.custom_load_table.setItem(row_idx, 2, item)
+            
             if load_type == "Point":
                 dist_left = load_data.get("point_left", "")
             else:
@@ -520,7 +716,7 @@ class CustomLoadTab(QWidget):
             
             item = QTableWidgetItem(dist_left)
             item.setFlags(item.flags() & ~Qt.ItemIsEditable)
-            self.custom_load_table.setItem(row_idx, 2, item)
+            self.custom_load_table.setItem(row_idx, 3, item)
             
             if load_type == "Point":
                 dist_bearing = load_data.get("point_bearing", "")
@@ -531,7 +727,7 @@ class CustomLoadTab(QWidget):
             
             item = QTableWidgetItem(dist_bearing)
             item.setFlags(item.flags() & ~Qt.ItemIsEditable)
-            self.custom_load_table.setItem(row_idx, 3, item)
+            self.custom_load_table.setItem(row_idx, 4, item)
 
     def _on_save_custom_load(self):
         owner = self.owner
@@ -576,7 +772,7 @@ class CustomLoadTab(QWidget):
             except ValueError:
                 CustomMessageBox(title="Invalid Input", text="Distance fields must be numeric.", buttons=["OK"], dialogType=MessageBoxType.Warning).exec()
                 return
-
+            
             load_data["line_left_start"] = line_l_start
             load_data["line_left_end"] = line_l_end
             load_data["line_bearing_start"] = line_b_start
@@ -648,6 +844,7 @@ class CustomLoadTab(QWidget):
             if 0 <= row_idx < len(self.custom_load_items):
                 del self.custom_load_items[row_idx]
         
+        self.custom_load_table.clearSelection()
         self._refresh_custom_load_table()
         
         CustomMessageBox(title="Deleted", text=f"{len(rows_to_delete)} custom load(s) deleted.", buttons=["OK"], dialogType=MessageBoxType.Information).exec()
