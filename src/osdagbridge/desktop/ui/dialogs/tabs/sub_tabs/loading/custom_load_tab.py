@@ -629,16 +629,30 @@ class CustomLoadTab(QWidget):
         owner.custom_load_type_combo.currentTextChanged.connect(self._on_custom_load_type_changed)
         self._on_custom_load_type_changed(owner.custom_load_type_combo.currentText())
 
+        owner.custom_load_case_combo.currentTextChanged.connect(self._schedule_update)
+        owner.custom_load_case_name_input.textChanged.connect(self._schedule_update)
+        owner.custom_load_type_combo.currentTextChanged.connect(self._schedule_update)
+        owner.custom_load_magnitude_input.textChanged.connect(self._schedule_update)
+        owner.custom_point_left_input.textChanged.connect(self._schedule_update)
+        owner.custom_point_bearing_input.textChanged.connect(self._schedule_update)
+        owner.custom_line_left_start.textChanged.connect(self._schedule_update)
+        owner.custom_line_left_end.textChanged.connect(self._schedule_update)
+        owner.custom_line_bearing_start.textChanged.connect(self._schedule_update)
+        owner.custom_line_bearing_end.textChanged.connect(self._schedule_update)
+
         save_btn.clicked.connect(self._on_save_custom_load)
         owner.custom_delete_btn.clicked.connect(self._on_delete_custom_load)
         owner.custom_edit_btn.clicked.connect(self._on_edit_custom_load)
         owner.custom_load_case_combo.currentTextChanged.connect(self._on_load_case_changed)
+        self.view_btn_group.buttonClicked.connect(self._on_view_toggled)
+        self.btn_save_diagram.clicked.connect(self._on_save_diagram)
 
         self.btn_zoom_in.clicked.connect(self.canvas.zoom_in)
         self.btn_zoom_out.clicked.connect(self.canvas.zoom_out)
         self.btn_zoom_reset.clicked.connect(self.canvas.reset_view)
 
         self._refresh_custom_load_table()
+        self._update_visualization()
 
     def _apply_validator(self, widget, validator_config):
         if not validator_config:
@@ -655,16 +669,84 @@ class CustomLoadTab(QWidget):
             widget.setValidator(validator)
 
     def _schedule_update(self, *args):
-        pass
+        QTimer.singleShot(100, self._update_visualization)
 
     def _update_visualization(self, *args):
-        pass
+        owner = self.owner
+        load_type = owner.custom_load_type_combo.currentText().lower()
+        
+        load_case = owner.custom_load_case_combo.currentText()
+        if load_case == "Custom":
+            load_name = owner.custom_load_case_name_input.text().strip() or "Custom"
+        else:
+            load_name = load_case
+        
+        load_data = {
+            "type": load_type,
+            "dist_left_start": 0.0,
+            "dist_left_end": 0.0,
+            "dist_bear_start": 0.0,
+            "dist_bear_end": 0.0,
+            "name": load_name,
+            "magnitude": owner.custom_load_magnitude_input.text().strip()
+        }
+        
+        try:
+            if load_type == "point":
+                val_l = owner.custom_point_left_input.text().strip()
+                val_b = owner.custom_point_bearing_input.text().strip()
+                if val_l:
+                    load_data["dist_left_start"] = float(val_l)
+                    load_data["dist_left_end"] = float(val_l)
+                if val_b:
+                    load_data["dist_bear_start"] = float(val_b)
+                    load_data["dist_bear_end"] = float(val_b)
+            else:
+                ls = owner.custom_line_left_start.text().strip()
+                le = owner.custom_line_left_end.text().strip()
+                bs = owner.custom_line_bearing_start.text().strip()
+                be = owner.custom_line_bearing_end.text().strip()
+                
+                if ls: load_data["dist_left_start"] = float(ls)
+                if le: load_data["dist_left_end"] = float(le)
+                if not le and ls: load_data["dist_left_end"] = float(ls)
+                if not ls and le: load_data["dist_left_start"] = float(le)
+                
+                if bs: load_data["dist_bear_start"] = float(bs)
+                if be: load_data["dist_bear_end"] = float(be)
+                if not be and bs: load_data["dist_bear_end"] = float(bs)
+                if not bs and be: load_data["dist_bear_start"] = float(be)
+        except ValueError:
+            pass
+        
+        bridge_width = 10.0
+        span_length = 20.0
+        try:
+            if hasattr(owner, "cad_state") and isinstance(owner.cad_state, dict):
+                bw = owner.cad_state.get("overall_bridge_width_display")
+                if bw: bridge_width = float(bw)
+                sp = owner.cad_state.get("bridge_span")
+                if sp: span_length = float(sp)
+        except (ValueError, TypeError, KeyError):
+            pass
+        
+        self.canvas.set_load_data(load_data, bridge_width, span_length)
 
     def _on_view_toggled(self, btn):
-        pass
+        btn_id = self.view_btn_group.id(btn)
+        if btn_id == 0:
+            self.canvas.set_view("cross_section")
+        elif btn_id == 1:
+            self.canvas.set_view("elevation")
 
     def _on_save_diagram(self):
-        pass
+        from PySide6.QtWidgets import QFileDialog
+        import os
+        path, _ = QFileDialog.getSaveFileName(self, "Save Diagram", "load_diagram.png", "Images (*.png)")
+        if path:
+            pixmap = self.canvas.grab()
+            pixmap.save(path, "PNG")
+            CustomMessageBox(title="Success", text=f"Saved: {os.path.basename(path)}", buttons=["OK"], dialogType=MessageBoxType.Success).exec()
 
     def _on_custom_load_type_changed(self, text):
         if text == "Point":
