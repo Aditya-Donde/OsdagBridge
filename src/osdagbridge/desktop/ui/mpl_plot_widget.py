@@ -124,6 +124,18 @@ class MplPlotWidget(QWidget):
         self._zoom_scale  = 1.0
         self._orig_limits = None   
 
+        # CHANGE 1: interaction mode state for new view-control buttons
+        self._pan_active         = False
+        self._rotate_active      = False
+        self._zoom_window_active = False
+        self._pan_start          = None  # pixel (x,y) on press
+        self._zoom_rect_start    = None  # data coords for rubber-band
+        self._zoom_rect_patch    = None  # Rectangle drawn on canvas
+        self._cid_press          = None  # mpl event ids – disconnected when mode off
+        self._cid_release        = None
+        self._cid_motion         = None
+        # END CHANGE 1
+
         # matplotlib canvas
         self._fig    = plt.figure(figsize=(14, 6), facecolor="white")
         self._canvas = FigureCanvasQTAgg(self._fig)
@@ -159,9 +171,12 @@ class MplPlotWidget(QWidget):
         ))
         self._navcube.hide()
         self._navcube_sync = MatplotlibNavCubeSync(self._canvas, self._navcube)
-        self._canvas.mpl_connect("button_press_event",   lambda e: self._navcube_sync.set_interaction_active(True)  if e.button == 1 else None)
-        self._canvas.mpl_connect("button_release_event", lambda e: self._navcube_sync.set_interaction_active(False) if e.button == 1 else None)
-        self._canvas.mpl_connect("motion_notify_event",  lambda e: self._navcube_sync.force_sync() if e.button == 1 else None)
+        # CHANGE 2: added `not self._any_mode_active()` guard so navcube doesn't
+        # interfere when Pan / Rotate / Zoom Window mode is active
+        self._canvas.mpl_connect("button_press_event",   lambda e: self._navcube_sync.set_interaction_active(True)  if e.button == 1 and not self._any_mode_active() else None)
+        self._canvas.mpl_connect("button_release_event", lambda e: self._navcube_sync.set_interaction_active(False) if e.button == 1 and not self._any_mode_active() else None)
+        self._canvas.mpl_connect("motion_notify_event",  lambda e: self._navcube_sync.force_sync() if e.button == 1 and not self._any_mode_active() else None)
+        # END CHANGE 2
         # ──────────────────────────────────────────────────────────
 
         # zoom toolbar
@@ -229,8 +244,37 @@ class MplPlotWidget(QWidget):
         self._btn_grid.setFocusPolicy(Qt.NoFocus)
         self._btn_grid.setStyleSheet(btn_style)
         self._btn_grid.toggled.connect(self._on_grid_toggled)
+
+        # CHANGE 3: new view-control buttons (same style as above)
+        self._btn_zoom_fit    = QPushButton("Zoom Fit")
+        self._btn_zoom_window = QPushButton("Zoom Window")
+        self._btn_pan         = QPushButton("Pan")
+        self._btn_rotate      = QPushButton("Rotate")
+        self._btn_scale       = QPushButton("Scale")
+
+        for btn in (self._btn_zoom_fit, self._btn_zoom_window,
+                    self._btn_pan, self._btn_rotate, self._btn_scale):
+            btn.setFixedHeight(28)
+            btn.setFocusPolicy(Qt.NoFocus)
+            btn.setStyleSheet(btn_style)
+
+        # Zoom Window / Pan / Rotate are exclusive toggles; Zoom Fit & Scale are plain clicks
+        self._btn_zoom_window.setCheckable(True)
+        self._btn_pan.setCheckable(True)
+        self._btn_rotate.setCheckable(True)
+
+        self._btn_zoom_fit.clicked.connect(self._on_zoom_fit)
+        self._btn_zoom_window.toggled.connect(self._on_zoom_window_toggled)
+        self._btn_pan.toggled.connect(self._on_pan_toggled)
+        self._btn_rotate.toggled.connect(self._on_rotate_toggled)
+        self._btn_scale.clicked.connect(self._on_scale_reset)
+        # END CHANGE 3
         # self._canvas.mpl_connect('scroll_event', self._on_scroll)
 
+        # CHANGE 4: split into two rows so new buttons don't overflow the width.
+        # Row 1 = original buttons (unchanged); Row 2 = new view-control buttons.
+
+        # ── Row 1: original display-toggle buttons (UNCHANGED) ─────
         toolbar_row = QHBoxLayout()
         toolbar_row.setContentsMargins(4, 2, 4, 2)
         toolbar_row.setSpacing(4)
@@ -244,12 +288,25 @@ class MplPlotWidget(QWidget):
         toolbar_row.addWidget(self._btn_zoom_in)
         toolbar_row.addWidget(self._btn_zoom_reset)
 
+        # ── Row 2: new view-control buttons ────────────────────────
+        toolbar_row2 = QHBoxLayout()
+        toolbar_row2.setContentsMargins(4, 2, 4, 2)
+        toolbar_row2.setSpacing(4)
+        toolbar_row2.addWidget(self._btn_zoom_fit)
+        toolbar_row2.addWidget(self._btn_zoom_window)
+        toolbar_row2.addWidget(self._btn_pan)
+        toolbar_row2.addWidget(self._btn_rotate)
+        toolbar_row2.addWidget(self._btn_scale)
+        toolbar_row2.addStretch()
+
         # layout
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(0)
         root.addLayout(toolbar_row)
+        root.addLayout(toolbar_row2)   # second row added here
         root.addWidget(self._scroll_area, stretch=1)
+        # END CHANGE 4
 
     # public API
 
@@ -584,15 +641,28 @@ class MplPlotWidget(QWidget):
                 elif text.get_gid() == "all_vals": 
                     text.set_visible(self._show_all_vals)
 
+    # def _apply_grid_visibility(self):
+    #     for ax in self._fig.axes:
+    #         if self._show_grid:
+    #             # Turn everything ON and re-apply your custom dashed grid styling
+    #             ax.set_axis_on()
+    #             ax.grid(True, linestyle="--", linewidth=0.4, alpha=0.5)
+                
+    #         else:
+    #             # Throw the invisibility cloak over the panes, cube, labels, and ticks!
+    #             ax.set_axis_off()
+
     def _apply_grid_visibility(self):
         for ax in self._fig.axes:
             if self._show_grid:
-                # Turn everything ON and re-apply your custom dashed grid styling
                 ax.set_axis_on()
                 ax.grid(True, linestyle="--", linewidth=0.4, alpha=0.5)
+                if hasattr(ax, 'set_box_aspect'):
+                    ax.set_box_aspect(aspect=(2.5, 1.2, 1.0), zoom=self._zoom_scale * 0.82)
             else:
-                # Throw the invisibility cloak over the panes, cube, labels, and ticks!
                 ax.set_axis_off()
+                if hasattr(ax, 'set_box_aspect'):
+                    ax.set_box_aspect(aspect=(2.5, 1.2, 1.0), zoom=self._zoom_scale)
 
     def _fit_figure_to_canvas(self):
         w_px = self._canvas.width()
@@ -603,6 +673,216 @@ class MplPlotWidget(QWidget):
 
     def _store_orig_limits(self):
         pass # Not needed for Uniform Render Zoom
+
+    # ==========================================================================
+    # CHANGE 5: view-control button handlers
+    # All methods below are NEW – nothing above this block was modified.
+    # ==========================================================================
+
+    def _any_mode_active(self):
+        """Returns True when any exclusive mode (Pan/Rotate/ZoomWindow) is on."""
+        return self._pan_active or self._rotate_active or self._zoom_window_active
+
+    def _deactivate_all_modes(self, except_btn=None):
+        """Uncheck all exclusive toggle buttons and disconnect canvas events."""
+        for btn in (self._btn_zoom_window, self._btn_pan, self._btn_rotate):
+            if btn is not except_btn and btn.isChecked():
+                btn.blockSignals(True)
+                btn.setChecked(False)
+                btn.blockSignals(False)
+        self._pan_active         = False
+        self._rotate_active      = False
+        self._zoom_window_active = False
+        self._disconnect_canvas_events()
+
+    def _disconnect_canvas_events(self):
+        """Safely disconnect the three per-mode mpl event callbacks."""
+        for cid in (self._cid_press, self._cid_release, self._cid_motion):
+            if cid is not None:
+                try:
+                    self._canvas.mpl_disconnect(cid)
+                except Exception:
+                    pass
+        self._cid_press = self._cid_release = self._cid_motion = None
+        # Remove zoom-window rubber-band rect if still on canvas
+        if self._zoom_rect_patch is not None:
+            try:
+                self._zoom_rect_patch.remove()
+            except Exception:
+                pass
+            self._zoom_rect_patch = None
+            self._canvas.draw_idle()
+
+    # ── Zoom Fit ──────────────────────────────────────────────────────────────
+    def _on_zoom_fit(self):
+        """Reset zoom to 1.0 and restore auto-scale limits."""
+        self._deactivate_all_modes()
+        self._zoom_scale = 1.0
+        if not self._fig or not self._fig.axes:
+            return
+        ax = self._fig.axes[0]
+        if hasattr(ax, 'set_box_aspect'):   # 3-D axis
+            fit_zoom = 0.82 if self._show_grid else 1.0
+            ax.set_box_aspect(aspect=(2.5, 1.2, 1.0), zoom=fit_zoom)
+            # ax.set_box_aspect(aspect=(2.5, 1.2, 1.0), zoom=1.0)
+            ax.autoscale()
+        else:                               # 2-D axis
+            ax.relim()
+            ax.autoscale_view()
+        self._apply_zoom()                  # also resets QScrollArea
+    
+
+    # ── Zoom Window ───────────────────────────────────────────────────────────
+    def _on_zoom_window_toggled(self, checked: bool):
+        """Enable rubber-band rectangle zoom on the plot."""
+        if checked:
+            self._deactivate_all_modes(except_btn=self._btn_zoom_window)
+            self._zoom_window_active = True
+            self._cid_press   = self._canvas.mpl_connect("button_press_event",   self._zw_on_press)
+            self._cid_motion  = self._canvas.mpl_connect("motion_notify_event",  self._zw_on_motion)
+            self._cid_release = self._canvas.mpl_connect("button_release_event", self._zw_on_release)
+        else:
+            self._zoom_window_active = False
+            self._deactivate_all_modes()
+
+    def _zw_on_press(self, event):
+        if event.inaxes and event.button == 1:
+            self._zoom_rect_start = (event.xdata, event.ydata)
+
+    def _zw_on_motion(self, event):
+        if self._zoom_rect_start is None or not event.inaxes:
+            return
+        x0, y0 = self._zoom_rect_start
+        x1, y1 = event.xdata, event.ydata
+        if self._zoom_rect_patch is not None:
+            try:
+                self._zoom_rect_patch.remove()
+            except Exception:
+                pass
+        from matplotlib.patches import Rectangle
+        self._zoom_rect_patch = Rectangle(
+            (min(x0, x1), min(y0, y1)), abs(x1 - x0), abs(y1 - y0),
+            linewidth=1.2, edgecolor="#1565C0", facecolor="#1565C0",
+            alpha=0.15, zorder=10
+        )
+        event.inaxes.add_patch(self._zoom_rect_patch)
+        self._canvas.draw_idle()
+
+    def _zw_on_release(self, event):
+        if self._zoom_rect_start is None or event.button != 1:
+            return
+        x0, y0 = self._zoom_rect_start
+        self._zoom_rect_start = None
+        if self._zoom_rect_patch is not None:
+            try:
+                self._zoom_rect_patch.remove()
+            except Exception:
+                pass
+            self._zoom_rect_patch = None
+        if not event.inaxes or event.xdata is None:
+            self._canvas.draw_idle()
+            return
+        x1, y1 = event.xdata, event.ydata
+        if abs(x1 - x0) < 1e-9 or abs(y1 - y0) < 1e-9:
+            self._canvas.draw_idle()
+            return
+        event.inaxes.set_xlim(min(x0, x1), max(x0, x1))
+        event.inaxes.set_ylim(min(y0, y1), max(y0, y1))
+        self._canvas.draw_idle()
+        # Auto-deactivate after one zoom
+        self._btn_zoom_window.blockSignals(True)
+        self._btn_zoom_window.setChecked(False)
+        self._btn_zoom_window.blockSignals(False)
+        self._zoom_window_active = False
+        self._deactivate_all_modes()
+
+    # ── Pan ───────────────────────────────────────────────────────────────────
+    def _on_pan_toggled(self, checked: bool):
+        """Enable drag-to-pan on the plot axes."""
+        if checked:
+            self._deactivate_all_modes(except_btn=self._btn_pan)
+            self._pan_active = True
+            self._cid_press   = self._canvas.mpl_connect("button_press_event",   self._pan_on_press)
+            self._cid_motion  = self._canvas.mpl_connect("motion_notify_event",  self._pan_on_motion)
+            self._cid_release = self._canvas.mpl_connect("button_release_event", self._pan_on_release)
+        else:
+            self._pan_active = False
+            self._deactivate_all_modes()
+
+    def _pan_on_press(self, event):
+        if event.inaxes and event.button == 1:
+            self._pan_start = (event.xdata, event.ydata)
+
+    def _pan_on_motion(self, event):
+        if self._pan_start is None or not event.inaxes or event.xdata is None:
+            return
+        ax  = event.inaxes
+        dx  = self._pan_start[0] - event.xdata
+        dy  = self._pan_start[1] - event.ydata
+        xl  = ax.get_xlim()
+        yl  = ax.get_ylim()
+        ax.set_xlim(xl[0] + dx, xl[1] + dx)
+        ax.set_ylim(yl[0] + dy, yl[1] + dy)
+        self._canvas.draw_idle()
+
+    def _pan_on_release(self, event):
+        self._pan_start = None
+
+    # ── Rotate ────────────────────────────────────────────────────────────────
+    def _on_rotate_toggled(self, checked: bool):
+        """Enable drag-to-rotate for 3-D plots (no-op on 2-D)."""
+        if checked:
+            self._deactivate_all_modes(except_btn=self._btn_rotate)
+            self._rotate_active = True
+            self._cid_press   = self._canvas.mpl_connect("button_press_event",   self._rot_on_press)
+            self._cid_motion  = self._canvas.mpl_connect("motion_notify_event",  self._rot_on_motion)
+            self._cid_release = self._canvas.mpl_connect("button_release_event", self._rot_on_release)
+        else:
+            self._rotate_active = False
+            self._deactivate_all_modes()
+
+    def _rot_on_press(self, event):
+        if event.button == 1:
+            self._pan_start = (event.x, event.y)  # pixel coords
+
+    def _rot_on_motion(self, event):
+        if self._pan_start is None or event.button != 1:
+            return
+        if not self._fig or not self._fig.axes:
+            return
+        ax = self._fig.axes[0]
+        if not hasattr(ax, 'elev'):   # not a 3-D axis
+            return
+        dx = event.x - self._pan_start[0]
+        dy = event.y - self._pan_start[1]
+        self._pan_start = (event.x, event.y)
+        ax.view_init(elev=max(-90, min(90, ax.elev + dy * 0.5)),
+                     azim=ax.azim - dx * 0.5)
+        self._navcube_sync.force_sync()
+        self._canvas.draw_idle()
+
+    def _rot_on_release(self, event):
+        self._pan_start = None
+
+    # ── Scale ─────────────────────────────────────────────────────────────────
+    def _on_scale_reset(self):
+        """Toggle between equal aspect and the default bridge aspect ratio."""
+        self._deactivate_all_modes()
+        if not self._fig or not self._fig.axes:
+            return
+        ax = self._fig.axes[0]
+        self._scale_equal = not getattr(self, '_scale_equal', False)
+        if hasattr(ax, 'set_box_aspect'):   # 3-D
+            if self._scale_equal:
+                ax.set_box_aspect([1, 1, 1])
+            else:
+                ax.set_box_aspect(aspect=(2.5, 1.2, 1.0), zoom=self._zoom_scale)
+        else:                               # 2-D
+            ax.set_aspect('equal' if self._scale_equal else 'auto')
+        self._canvas.draw_idle()
+
+    # END CHANGE 5
+    # ==========================================================================
 
     def _apply_zoom(self):
         """Zooms the 2D canvas dynamically, creating scrollbars for perfect panning!"""
@@ -741,4 +1021,4 @@ class MplPlotWidget(QWidget):
         for rb in self._output_dock.output_widget.findChildren(CustomRadioButton):
             if rb.isChecked() and rb.text() in _RICH_LABEL_TO_FORCE:
                 return _RICH_LABEL_TO_FORCE[rb.text()]
-        return "Fy"
+        return "Fy"        
