@@ -264,23 +264,21 @@ def toc_section():
 # EXECUTIVE SUMMARY
 # ═══════════════════════════════════════════════════════════════════════════════
 
-def executive_summary(inp, fig_paths, bridge: "ReportDataBridge") -> str:
+def executive_summary(inp, fig_paths) -> str:
     plan_fig = _fig_or_placeholder(fig_paths.get('plan'), 'Figure 1 -- Overall Bridge Plan')
     cs_fig = _fig_or_placeholder(fig_paths.get('cross_section'),
                                   'Figure 2 -- Typical Cross-Section (with girder, deck, barriers, footpath)')
     geom_fig = _fig_or_placeholder(fig_paths.get('final_geometry'),
                                     'Figure 3 -- 3D View of Bridge Superstructure')
 
-    g1 = bridge.get_girder_summary("Girder 1")
-    g2 = bridge.get_girder_summary("Girder 2")
-    g3 = bridge.get_girder_summary("Girder 3")
-    g4 = bridge.get_girder_summary("Girder 4")
-    g5a = bridge.get_girder_summary("Girder 5A")
-    g5b = bridge.get_girder_summary("Girder 5B")
+    # All girders share the same section, governing check, and UR (from input_dict)
+    sec = _tex(str(inp.get('section_designation', ''))) or _ph('Section')
+    gov = _tex(str(inp.get('governing_check', ''))) or _ph('Check')
+    ur  = _tex(str(inp.get('max_ur', ''))) or _ph('UR')
 
-    sections = f"Section Designation & {g1['section']} & {g2['section']} & {g3['section']} & {g4['section']} & {g5a['section']} & {g5b['section']} \\\\"
-    gov_checks = f"Governing Check & {g1['governing_check']} & {g2['governing_check']} & {g3['governing_check']} & {g4['governing_check']} & {g5a['governing_check']} & {g5b['governing_check']} \\\\"
-    urs = f"Utilization Ratio & {g1['max_ur']} & {g2['max_ur']} & {g3['max_ur']} & {g4['max_ur']} & {g5a['max_ur']} & {g5b['max_ur']} \\\\"
+    sections = f"Section Designation & {sec} & {sec} & {sec} & {sec} & {sec} & {sec} \\\\"
+    gov_checks = f"Governing Check & {gov} & {gov} & {gov} & {gov} & {gov} & {gov} \\\\"
+    urs = f"Utilization Ratio & {ur} & {ur} & {ur} & {ur} & {ur} & {ur} \\\\"
 
     return r"""
 \newpage
@@ -752,7 +750,7 @@ def _safety_factors_table(inp):
 # Chapters 3-5: Loads, Analysis, Design Checks — exact LaTeX template
 
 
-def ch3_loads(inp, bridge: "ReportDataBridge"):
+def ch3_loads(inp):
     return r"""
 \chapter{Loads and Load Combinations}
 
@@ -821,15 +819,15 @@ This section summarizes all loads applied to the bridge and the load combination
 \hline
 \textbf{Average Exposed Height, H (m)} & """ + (_v(inp, "avg_exposed_height", " m") or "10 m [SOFTWARE DEFAULT]") + r""" \\[6pt]
 \hline
-\textbf{Hourly Mean Wind Speed, Vz} & """ + bridge.get_wind_value("Vz") + r""" m/s \\[6pt]
+\textbf{Hourly Mean Wind Speed, Vz} & """ + str(inp.get("wind_Vz", _ph("Vz"))) + r""" m/s \\[6pt]
 \hline
-\textbf{Hourly Wind Pressure, Pz} & """ + bridge.get_wind_value("Pz") + r""" N/m\textsuperscript{2} \\[6pt]
+\textbf{Hourly Wind Pressure, Pz} & """ + str(inp.get("wind_Pz", _ph("Pz"))) + r""" N/m\textsuperscript{2} \\[6pt]
 \hline
-\textbf{Transverse Wind Force} & """ + bridge.get_wind_value("Fw_T") + r""" kN \\[6pt]
+\textbf{Transverse Wind Force} & """ + str(inp.get("wind_Fw_T", _ph("Fw_T"))) + r""" kN \\[6pt]
 \hline
-\textbf{Longitudinal Wind Force} & """ + bridge.get_wind_value("Fw_L") + r""" kN \\[6pt]
+\textbf{Longitudinal Wind Force} & """ + str(inp.get("wind_Fw_L", _ph("Fw_L"))) + r""" kN \\[6pt]
 \hline
-\textbf{Vertical Wind Force} & """ + bridge.get_wind_value("Fw_V") + r""" kN \\[6pt]
+\textbf{Vertical Wind Force} & """ + str(inp.get("wind_Fw_V", _ph("Fw_V"))) + r""" kN \\[6pt]
 \hline
 \end{tabularx}
 \end{table}
@@ -843,19 +841,19 @@ This section summarizes all loads applied to the bridge and the load combination
 \hline
 \textbf{Seismic Zone} & """ + (_v(inp,'seismic_zone') or _ph('Zone')) + r""" [from Project Location] \\[6pt]
 \hline
-\textbf{Zone Factor, Z} & """ + bridge.get_seismic_value("Z") + r""" \\[6pt]
+\textbf{Zone Factor, Z} & """ + str(inp.get("seismic_Z", _ph("Z"))) + r""" \\[6pt]
 \hline
 \textbf{Importance Factor, I} & """ + (_v(inp, "importance_factor") or "1.0 [SOFTWARE DEFAULT]") + r""" \\[6pt]
 \hline
 \textbf{Type of Soil} & """ + (_v(inp, "soil_type") or "Type I -- Rocky [SOFTWARE DEFAULT]") + r""" \\[6pt]
 \hline
-\textbf{Sa/g} & """ + bridge.get_seismic_value("Sa_g") + r""" \\[6pt]
+\textbf{Sa/g} & """ + str(inp.get("seismic_Sa_g", _ph("Sa_g"))) + r""" \\[6pt]
 \hline
-\textbf{Horizontal Seismic Coefficient, Ah} & """ + bridge.get_seismic_value("Ah") + r""" \\[6pt]
+\textbf{Horizontal Seismic Coefficient, Ah} & """ + str(inp.get("seismic_Ah", _ph("Ah"))) + r""" \\[6pt]
 \hline
-\textbf{Vertical Seismic Coefficient, Av} & """ + bridge.get_seismic_value("Av") + r""" = 2/3 $\times$ Ah \\[6pt]
+\textbf{Vertical Seismic Coefficient, Av} & """ + str(inp.get("seismic_Av", _ph("Av"))) + r""" = 2/3 $\times$ Ah \\[6pt]
 \hline
-\textbf{Horizontal Seismic Force} & """ + bridge.get_seismic_value("Feq_L") + r""" kN (longitudinal), """ + bridge.get_seismic_value("Feq_T") + r""" kN (transverse) \\[6pt]
+\textbf{Horizontal Seismic Force} & """ + str(inp.get("seismic_Feq_L", _ph("Feq_L"))) + r""" kN (longitudinal), """ + str(inp.get("seismic_Feq_T", _ph("Feq_T"))) + r""" kN (transverse) \\[6pt]
 \hline
 \end{tabularx}
 \end{table}
@@ -871,9 +869,9 @@ This section summarizes all loads applied to the bridge and the load combination
 \hline
 \textbf{Minimum Shade Temperature} & """ + (_v(inp,'shade_temp_min') or _ph('$T_{min}$')) + r""" $^\circ$C \\[6pt]
 \hline
-\textbf{Effective Bridge Temp. Range} & """ + bridge.get_temperature_value("T_eff_min") + r""" to """ + bridge.get_temperature_value("T_eff_max") + r""" $^\circ$C \\[6pt]
+\textbf{Effective Bridge Temp. Range} & """ + str(inp.get("temp_T_eff_min", _ph("T_eff_min"))) + r""" to """ + str(inp.get("temp_T_eff_max", _ph("T_eff_max"))) + r""" $^\circ$C \\[6pt]
 \hline
-\textbf{Temperature Rise / Fall for Design} & +""" + bridge.get_temperature_value("dT_rise") + r""" $^\circ$C / -""" + bridge.get_temperature_value("dT_fall") + r""" $^\circ$C \\[6pt]
+\textbf{Temperature Rise / Fall for Design} & +""" + str(inp.get("temp_dT_rise", _ph("dT_rise"))) + r""" $^\circ$C / -""" + str(inp.get("temp_dT_fall", _ph("dT_fall"))) + r""" $^\circ$C \\[6pt]
 \hline
 \end{tabularx}
 \end{table}
@@ -1986,7 +1984,7 @@ This section presents CAD-generated views of the designed bridge and its compone
             + cbrc + '\n')
 
 
-def ch7_quantities(bridge: "ReportDataBridge"):
+def ch7_quantities(inp):
     return r"""
 \chapter{Material Take-off \& Quantity Summary}
 \label{ch:material-takeoff}
@@ -1998,15 +1996,15 @@ def ch7_quantities(bridge: "ReportDataBridge"):
 \hline
 \textbf{S.N.} & \textbf{Item Description} & \textbf{Unit} & \textbf{Quantity} & \textbf{Remarks} \\
 \hline
-1 & Structural Steel (IS 2062) for Girders & MT & """ + bridge.get_quantity("steel_girders_mt") + r""" & \\
+1 & Structural Steel (IS 2062) for Girders & MT & """ + str(inp.get("steel_girders_mt", _ph("steel_girders_mt"))) + r""" & \\
 \hline
-2 & Structural Steel for Cross Bracings & MT & """ + bridge.get_quantity("steel_bracing_mt") + r""" & \\
+2 & Structural Steel for Cross Bracings & MT & """ + str(inp.get("steel_bracing_mt", _ph("steel_bracing_mt"))) + r""" & \\
 \hline
-3 & Concrete (M40) for Deck Slab & Cu.m & """ + bridge.get_quantity("concrete_deck_cum") + r""" & \\
+3 & Concrete (M40) for Deck Slab & Cu.m & """ + str(inp.get("concrete_deck_cum", _ph("concrete_deck_cum"))) + r""" & \\
 \hline
-4 & Reinforcement Steel (Fe 500) & MT & """ + bridge.get_quantity("rebar_deck_mt") + r""" & \\
+4 & Reinforcement Steel (Fe 500) & MT & """ + str(inp.get("rebar_deck_mt", _ph("rebar_deck_mt"))) + r""" & \\
 \hline
-5 & Shear Stud Connectors & Nos & """ + bridge.get_quantity("shear_studs_nos") + r""" & \\
+5 & Shear Stud Connectors & Nos & """ + str(inp.get("shear_studs_nos", _ph("shear_studs_nos"))) + r""" & \\
 \hline
 \end{tabularx}
 \end{table}
@@ -2186,13 +2184,7 @@ class ReportResult:
 class ReportDataBridge:
     """Centralized data extraction for the OsdagBridge report."""
 
-    _QUANTITY_ALIASES = {
-        "steel_girders_mt":  ["steel_girders_mt", "girder_steel_mt", "steel_girder", "girder_steel"],
-        "steel_bracing_mt":  ["steel_bracing_mt", "bracing_steel_mt", "steel_bracing", "bracing_steel"],
-        "concrete_deck_cum": ["concrete_deck_cum", "concrete_m3", "deck_concrete_cum", "concrete_deck"],
-        "rebar_deck_mt":     ["rebar_deck_mt", "rebar_mt", "reinforcement_mt", "rebar"],
-        "shear_studs_nos":   ["shear_studs_nos", "stud_count", "num_studs", "shear_studs"],
-    }
+
 
     def __init__(self, backend, backend_results: dict, input_dict: dict, payload: "ReportPayload"):
         self.backend = backend
@@ -2200,8 +2192,15 @@ class ReportDataBridge:
         self.input_dict = input_dict
         self.payload = payload
 
+
+
+
+    # =======================================================================
+    # CHAPTER 4: ANALYSIS
+    # =======================================================================
+
     def get_max_bm(self, load_case: str) -> str:
-        """Extract max sagging BM for the given load case label."""
+        """Extract max sagging BM for the given load case label. Used in: Chapter 4 (Analysis)."""
         try:
             if self.backend_results and "analysis" in self.backend_results:
                 return f"{self.backend_results['analysis']['bmd'][load_case]['max']:.2f}"
@@ -2214,7 +2213,7 @@ class ReportDataBridge:
         return _ph(f"Max BM {load_case}")
 
     def get_max_sf(self, load_case: str) -> str:
-        """Extract max shear force for the given load case label."""
+        """Extract max shear force for the given load case label. Used in: Chapter 4 (Analysis)."""
         try:
             if self.backend_results and "analysis" in self.backend_results:
                 return f"{self.backend_results['analysis']['sfd'][load_case]['max']:.2f}"
@@ -2223,7 +2222,7 @@ class ReportDataBridge:
         return _ph(f"Max SF {load_case}")
 
     def get_bm_location(self, load_case: str) -> str:
-        """Extract X-location of max BM."""
+        """Extract X-location of max BM. Used in: Chapter 4 (Analysis)."""
         try:
             if self.backend_results and "analysis" in self.backend_results:
                 return f"{self.backend_results['analysis']['bmd'][load_case]['x_max']:.2f}"
@@ -2232,7 +2231,7 @@ class ReportDataBridge:
         return _ph(f"Loc {load_case}")
 
     def get_sf_location(self, load_case: str) -> str:
-        """Extract X-location of max SF."""
+        """Extract X-location of max SF. Used in: Chapter 4 (Analysis)."""
         try:
             if self.backend_results and "analysis" in self.backend_results:
                 return f"{self.backend_results['analysis']['sfd'][load_case]['x_max']:.2f}"
@@ -2241,7 +2240,7 @@ class ReportDataBridge:
         return _ph(f"Loc SF {load_case}")
 
     def get_reaction(self, support: Literal["left", "right"], load_case: str) -> str:
-        """Extract reaction at given support for the load case."""
+        """Extract reaction at given support for the load case. Used in: Chapter 4 (Analysis)."""
         try:
             if self.backend_results and "reactions" in self.backend_results:
                 return f"{self.backend_results['reactions'][load_case][support]:.2f}"
@@ -2250,7 +2249,7 @@ class ReportDataBridge:
         return _ph(f"Reaction {support} {load_case}")
 
     def get_deflection(self, kind: Literal["ll", "total"]) -> str:
-        """Extract maximum deflection."""
+        """Extract maximum deflection. Used in: Chapter 4 (Analysis)."""
         try:
             if self.backend_results and "deflections" in self.backend_results:
                 return f"{self.backend_results['deflections'][kind]['max']:.2f}"
@@ -2259,7 +2258,7 @@ class ReportDataBridge:
         return _ph(f"Deflection {kind}")
 
     def get_deflection_limit(self, kind: Literal["ll", "total"], span_m: float) -> str:
-        """Compute deflection limit (L/800 for ll, L/600 for total)."""
+        """Compute deflection limit (L/800 for ll, L/600 for total). Used in: Chapter 4 (Analysis)."""
         try:
             limit = (span_m * 1000) / 800 if kind == "ll" else (span_m * 1000) / 600
             return f"{limit:.2f}"
@@ -2268,7 +2267,7 @@ class ReportDataBridge:
         return _ph(f"Limit {kind}")
 
     def get_deflection_status(self, kind: Literal["ll", "total"], span_m: float) -> str:
-        """Return PASS/FAIL status based on deflection limit."""
+        """Return PASS/FAIL status based on deflection limit. Used in: Chapter 4 (Analysis)."""
         try:
             if self.backend_results and "deflections" in self.backend_results:
                 v = float(self.backend_results["deflections"][kind]["max"])
@@ -2279,220 +2278,6 @@ class ReportDataBridge:
         except Exception as exc:
             logger.warning(f"get_deflection_status error: {exc}")
         return _ph(f"Status {kind}")
-
-    def get_girder_check(self, girder_id: str, check_name: str) -> dict:
-        """Return specific design check dictionary for a girder."""
-        try:
-            sources = self.payload.design_checks or []
-            if not sources and hasattr(self.backend, "get_design_checks"):
-                sources = self.backend.get_design_checks() or []
-            for c in sources:
-                if isinstance(c, dict) and c.get("girder_id") == girder_id and c.get("check") == check_name:
-                    ur = float(c.get("utilisation_ratio", 0.0))
-                    st = str(c.get("status", "FAIL")).upper()
-                    st_tex = r"\textcolor{osdagGreen}{\textbf{PASS}}" if st == "PASS" else r"\textcolor{red}{\textbf{FAIL}}"
-                    return {"demand": _tex(c.get("demand", "")), "capacity": _tex(c.get("capacity", "")), "ur": f"{ur:.3f}", "status_tex": st_tex}
-        except Exception as exc:
-            logger.warning(f"get_girder_check error: {exc}")
-        return {"demand": _ph("demand"), "capacity": _ph("capacity"), "ur": _ph("ur"), "status_tex": _ph("status")}
-
-    def get_all_girder_checks(self, girder_id: str) -> list[dict]:
-        """Return all design checks for a given girder."""
-        try:
-            res = []
-            sources = self.payload.design_checks or []
-            if not sources and hasattr(self.backend, "get_design_checks"):
-                sources = self.backend.get_design_checks() or []
-            for c in sources:
-                if isinstance(c, dict) and c.get("girder_id") == girder_id:
-                    ur = float(c.get("utilisation_ratio", 0.0))
-                    st = str(c.get("status", "FAIL")).upper()
-                    st_tex = r"\textcolor{osdagGreen}{\textbf{PASS}}" if st == "PASS" else r"\textcolor{red}{\textbf{FAIL}}"
-                    res.append({"check": _tex(c.get("check", "")), "demand": _tex(c.get("demand", "")), "capacity": _tex(c.get("capacity", "")), "ur": f"{ur:.3f}", "status_tex": st_tex})
-            if res:
-                return res
-        except Exception as exc:
-            logger.warning(f"get_all_girder_checks error: {exc}")
-        return []
-
-    def get_girder_summary(self, girder_id: str) -> dict:
-        """Return governing check name, UR, and section designation for a girder.
-        
-        Returns dict with keys: 'section', 'governing_check', 'max_ur'.
-        Falls back to _ph() for any missing value.
-        """
-        try:
-            section_str = self.input_dict.get("section_designation", "")
-            if not section_str and hasattr(self.backend, 'section_props'):
-                sp = self.backend.section_props
-                if sp and 'D' in sp and 'B_top' in sp:
-                    D_mm = int(sp['D'] * 1000)
-                    B_mm = int(sp['B_top'] * 1000)
-                    section_str = f"Built-up {D_mm}x{B_mm}"
-            
-            # Start by trying to find the checks for this specific girder
-            sources = self.payload.design_checks or []
-            if not sources and hasattr(self.backend, "get_design_checks"):
-                sources = self.backend.get_design_checks() or []
-            
-            # Map report girder IDs to analysis girder IDs
-            search_ids = [girder_id, girder_id.replace("Girder ", "G")]
-            if "5A" in girder_id:
-                search_ids.extend(["EB1", "Girder 5"])
-            elif "5B" in girder_id:
-                search_ids.extend(["EB2", "Girder 6"])
-
-            gov_check = ""
-            ur = ""
-            
-            girder_checks = [c for c in sources if isinstance(c, dict) and c.get("girder_id") in search_ids]
-            if girder_checks:
-                governing = max(girder_checks, key=lambda c: float(c.get("utilisation_ratio", 0.0)))
-                ur = f"{float(governing.get('utilisation_ratio', 0.0)):.3f}"
-                gov_check = governing.get("check", "")
-                if not section_str:
-                    section_str = governing.get("section_designation", "")
-            
-            # If we still don't have them, fall back to the global maximums (only as a last resort)
-            if not gov_check or not ur:
-                gov_check = self.input_dict.get('governing_check', "")
-                ur = self.input_dict.get('max_ur', "")
-
-            return {
-                "section":         _tex(section_str) or _ph("Section"),
-                "governing_check": _tex(gov_check) or _ph("Check"),
-                "max_ur":          _tex(ur) or _ph("UR"),
-            }
-        except Exception as exc:
-            logger.warning(f"get_girder_summary error: {exc}")
-        return {"section": _ph("Section"), "governing_check": _ph("Check"), "max_ur": _ph("UR")}
-
-    def get_bracing_check(self, member_id: str, check_name: str) -> dict:
-        """Return bracing design check dictionary."""
-        try:
-            checks = []
-            if hasattr(self.backend, "get_bracing_checks"):
-                checks = self.backend.get_bracing_checks() or []
-            elif self.backend_results and "bracing_checks" in self.backend_results:
-                checks = self.backend_results["bracing_checks"] or []
-            for c in checks:
-                if isinstance(c, dict) and c.get("member_id") == member_id and c.get("check") == check_name:
-                    ur = float(c.get("utilisation_ratio", 0.0))
-                    st = str(c.get("status", "FAIL")).upper()
-                    st_tex = r"\textcolor{osdagGreen}{\textbf{PASS}}" if st == "PASS" else r"\textcolor{red}{\textbf{FAIL}}"
-                    return {"demand": _tex(c.get("demand", "")), "capacity": _tex(c.get("capacity", "")), "ur": f"{ur:.3f}", "status_tex": st_tex}
-        except Exception as exc:
-            logger.warning(f"get_bracing_check error: {exc}")
-        return {"demand": _ph("demand"), "capacity": _ph("capacity"), "ur": _ph("ur"), "status_tex": _ph("status")}
-
-    def get_shear_connector_check(self, check_name: str) -> dict:
-        """Return shear connector design check dictionary."""
-        try:
-            checks = []
-            if hasattr(self.backend, "get_shear_connector_checks"):
-                checks = self.backend.get_shear_connector_checks()
-            elif self.backend_results and "shear_connector_checks" in self.backend_results:
-                checks = self.backend_results["shear_connector_checks"]
-            for c in checks:
-                if isinstance(c, dict) and c.get("check") == check_name:
-                    ur = float(c.get("utilisation_ratio", 0.0))
-                    st = str(c.get("status", "FAIL")).upper()
-                    st_tex = r"\textcolor{osdagGreen}{\textbf{PASS}}" if st == "PASS" else r"\textcolor{red}{\textbf{FAIL}}"
-                    return {"demand": _tex(c.get("demand", "")), "capacity": _tex(c.get("capacity", "")), "ur": f"{ur:.3f}", "status_tex": st_tex}
-        except Exception as exc:
-            logger.warning(f"get_shear_connector_check error: {exc}")
-        return {"demand": _ph("demand"), "capacity": _ph("capacity"), "ur": _ph("ur"), "status_tex": _ph("status")}
-
-    def get_deck_check(self, check_name: str) -> dict:
-        """Return deck slab design check dictionary."""
-        try:
-            checks = []
-            if hasattr(self.backend, "get_deck_checks"):
-                checks = self.backend.get_deck_checks()
-            elif self.backend_results and "deck_checks" in self.backend_results:
-                checks = self.backend_results["deck_checks"]
-            for c in checks:
-                if isinstance(c, dict) and c.get("check") == check_name:
-                    ur = float(c.get("utilisation_ratio", 0.0))
-                    st = str(c.get("status", "FAIL")).upper()
-                    st_tex = r"\textcolor{osdagGreen}{\textbf{PASS}}" if st == "PASS" else r"\textcolor{red}{\textbf{FAIL}}"
-                    return {"demand": _tex(c.get("demand", "")), "capacity": _tex(c.get("capacity", "")), "ur": f"{ur:.3f}", "status_tex": st_tex}
-        except Exception as exc:
-            logger.warning(f"get_deck_check error: {exc}")
-        return {"demand": _ph("demand"), "capacity": _ph("capacity"), "ur": _ph("ur"), "status_tex": _ph("status")}
-
-    def get_quantity(self, item_key: str) -> str:
-        """Return material quantity."""
-        try:
-            aliases = self._QUANTITY_ALIASES.get(item_key, [item_key])
-            takeoff_dict = {}
-            if hasattr(self.backend, "get_material_takeoff"):
-                takeoff_dict = self.backend.get_material_takeoff() or {}
-            
-            # Try aliases
-            for alias in aliases:
-                # 1. Try backend material takeoff
-                if alias in takeoff_dict:
-                    val = takeoff_dict[alias]
-                    return f"{int(val)}" if isinstance(val, int) or "nos" in alias or "count" in alias else f"{float(val):.2f}"
-                
-                # 2. Try input dict
-                if alias in self.input_dict:
-                    val = self.input_dict[alias]
-                    try:
-                        return f"{int(float(val))}" if "nos" in alias or "count" in alias else f"{float(val):.2f}"
-                    except (ValueError, TypeError):
-                        return str(val)
-                
-                # 3. Try backend_results quantities
-                if self.backend_results and "quantities" in self.backend_results:
-                    if alias in self.backend_results["quantities"]:
-                        val = self.backend_results["quantities"][alias]
-                        return f"{int(val)}" if isinstance(val, int) or "nos" in alias or "count" in alias else f"{float(val):.2f}"
-        except Exception as exc:
-            logger.warning(f"get_quantity error: {exc}")
-        return _ph(item_key)
-
-    def get_wind_value(self, key: str) -> str:
-        """Return computed wind value."""
-        try:
-            if self.backend_results and "wind" in self.backend_results:
-                if key in self.backend_results["wind"]:
-                    return str(self.backend_results["wind"][key])
-            if hasattr(self.backend, "wind_results"):
-                if key in self.backend.wind_results:
-                    return str(self.backend.wind_results[key])
-        except Exception as exc:
-            logger.warning(f"get_wind_value error: {exc}")
-        return _ph(key)
-
-    def get_seismic_value(self, key: str) -> str:
-        """Return computed seismic value."""
-        try:
-            if self.backend_results and "seismic" in self.backend_results:
-                if key in self.backend_results["seismic"]:
-                    return str(self.backend_results["seismic"][key])
-            if hasattr(self.backend, "seismic_results"):
-                if key in self.backend.seismic_results:
-                    return str(self.backend.seismic_results[key])
-        except Exception as exc:
-            logger.warning(f"get_seismic_value error: {exc}")
-        return _ph(key)
-
-    def get_temperature_value(self, key: str) -> str:
-        """Return computed temperature value."""
-        try:
-            if self.backend_results and "temperature" in self.backend_results:
-                if key in self.backend_results["temperature"]:
-                    return str(self.backend_results["temperature"][key])
-            if hasattr(self.backend, "temperature_results"):
-                if key in self.backend.temperature_results:
-                    return str(self.backend.temperature_results[key])
-        except Exception as exc:
-            logger.warning(f"get_temperature_value error: {exc}")
-        return _ph(key)
-
-
 
 def _format_project_location(pl_data):
     if not pl_data:
@@ -2657,6 +2442,7 @@ def build_report_payload(request, input_dict, backend_results, backend):
                     if 'deck_overhang' not in inp or not inp['deck_overhang']:
                         inp['deck_overhang'] = f"{sr.deck_overhang * 1e3:.0f} mm"
                 
+
                 # Deck thickness
                 if hasattr(backend, 'additional_inputs') and ('deck_thickness' not in inp or not inp['deck_thickness']):
                     from osdagbridge.core.bridge_types.plate_girder.initial_sizing import DEFAULT_DECK_THICKNESS as _DEFAULT_DECK_THICKNESS_MM
@@ -2851,14 +2637,14 @@ def generate_report(payload, request):
         bridge = ReportDataBridge(payload.backend, payload.backend_results, payload.inputs, payload)
         span_m = float(payload.inputs.get("span", 0) or 0)
         
-        doc_parts.append(executive_summary(payload.inputs, fig_rel, bridge))
+        doc_parts.append(executive_summary(payload.inputs, fig_rel))
         doc_parts.append(ch1_project_info(payload.metadata))
         
         secs = payload.options.sections
         if 'Input Parameters' in secs:
             doc_parts.append(ch2_input_parameters(payload.metadata, payload.inputs))
             
-        doc_parts.append(ch3_loads(payload.inputs, bridge))
+        doc_parts.append(ch3_loads(payload.inputs))
         doc_parts.append(ch4_analysis(payload.analysis_summary, fig_rel, bridge, span_m))
         
         if 'Design Checks' in secs:
@@ -2867,7 +2653,7 @@ def generate_report(payload, request):
         if payload.options.include_figures:
             doc_parts.append(ch6_drawings(fig_rel))
             
-        doc_parts.append(ch7_quantities(bridge))
+        doc_parts.append(ch7_quantities(payload.inputs))
         
         if 'Design Log' in secs:
             doc_parts.append(ch8_design_log(payload.log_entries))
