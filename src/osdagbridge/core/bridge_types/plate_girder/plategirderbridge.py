@@ -712,7 +712,7 @@ class PlateGirderBridge:
 
     def _run_dcr_checks(self, dataset) -> None:
         """Run structural capacity checks and push DCR percentages to the output dock."""
-        from .designer import BridgeConfig, DemandExtractor, IRC22CapacityCalc, DCREngine
+        from .designer import BridgeConfig, _extract_demands_from_analysis, IRC22CapacityCalculator, DCREngine, StiffenerConfig
 
         results = PlateGirderAnalysisResults(dataset=dataset, bridge=self.grillage_model)
         run_design_check(
@@ -721,9 +721,21 @@ class PlateGirderBridge:
             print_report=True,
         )
 
-        config = BridgeConfig.from_bridge(self)
-        demand = DemandExtractor(results, config).extract()
-        capacity = IRC22CapacityCalc(config).calculate()
+        config = BridgeConfig.from_plate_girder_bridge(self)
+        if config.stiffener is None:
+            config.stiffener = StiffenerConfig()
+            
+        demand = _extract_demands_from_analysis(results, config)
+        
+        if config.stiffener.bs_R_kN <= 0.0 and demand.Vu_kN > 0.0:
+            config.stiffener.bs_R_kN = demand.Vu_kN
+            
+        capacity = IRC22CapacityCalculator(config).compute_all(
+            Vu_kN=demand.Vu_kN,
+            stress_range_MPa=demand.stress_range_MPa,
+            M_sls_kNm=demand.M_sls_kNm,
+            V_sls_kN=demand.V_sls_kN,
+        )
         engine = DCREngine(demand, capacity)
         engine.run_all_checks()
 

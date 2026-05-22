@@ -2442,6 +2442,19 @@ def build_report_payload(request, input_dict, backend_results, backend):
                     if 'deck_overhang' not in inp or not inp['deck_overhang']:
                         inp['deck_overhang'] = f"{sr.deck_overhang * 1e3:.0f} mm"
                 
+                if hasattr(backend, 'section_props') and backend.section_props and 'section_designation' not in inp:
+                    sp = backend.section_props
+                    D_mm     = sp.get('D', 0) * 1e3
+                    tw_mm    = sp.get('t_w', 0) * 1e3
+                    Bft_mm   = sp.get('B_top', 0) * 1e3
+                    Tft_mm   = sp.get('t_f_top', 0) * 1e3
+                    Bfb_mm   = sp.get('B_bot', sp.get('B_top', 0)) * 1e3
+                    Tfb_mm   = sp.get('t_f_bot', sp.get('t_f_top', 0)) * 1e3
+                    inp['section_designation'] = (
+                        f"PG {D_mm:.0f}x{tw_mm:.0f}"
+                        f" + {Bft_mm:.0f}x{Tft_mm:.0f}"
+                        f" + {Bfb_mm:.0f}x{Tfb_mm:.0f}"
+                    )
 
                 # Deck thickness
                 if hasattr(backend, 'additional_inputs') and ('deck_thickness' not in inp or not inp['deck_thickness']):
