@@ -43,6 +43,7 @@ _LINE_ARROW_DIST = 60.0
 
 class CustomLoadCanvas(QGraphicsView):
 
+    # initialize graphics scene, rendering properties, and default state attributes
     def __init__(self, parent=None):
         super().__init__(parent)
         self._scene = QGraphicsScene(self)
@@ -66,6 +67,7 @@ class CustomLoadCanvas(QGraphicsView):
         self.setAlignment(Qt.AlignCenter)
         self._updating = False
 
+    # receive new load inputs and trigger scene redraw
     def set_load_data(self, data, bridge_width=10.0, span_length=20.0):
         self._load_data = data
         self._bridge_width = bridge_width if bridge_width > 0 else 10.0
@@ -81,28 +83,35 @@ class CustomLoadCanvas(QGraphicsView):
         self._first_render = False
         self._last_bw = bw
 
+    # switch diagram view mode and redraw scene
     def set_view(self, view_mode):
         mode_changed = (self._view != view_mode)
         self._view = view_mode
         self.draw_scene(fit_view=mode_changed)
 
+    # trigger initial fit-in-view fitting after widget displays
     def showEvent(self, event):
         super().showEvent(event)
         QTimer.singleShot(50, lambda: self.draw_scene(fit_view=True))
 
+    # redraw diagram elements when widget size changes
     def resizeEvent(self, event):
         super().resizeEvent(event)
         self.draw_scene()
 
+    # scale viewport up to zoom in
     def zoom_in(self):
         self.scale(1.5, 1.5)
 
+    # scale viewport down to zoom out
     def zoom_out(self):
         self.scale(1 / 1.5, 1 / 1.5)
 
+    # restore zoom and fit full drawing to view bounds
     def reset_view(self):
         self.draw_scene(fit_view=True)
 
+    # capture mouse scroll wheel events to zoom viewport
     def wheelEvent(self, event):
         if event.angleDelta().y() > 0:
             self.zoom_in()
@@ -110,8 +119,8 @@ class CustomLoadCanvas(QGraphicsView):
             self.zoom_out()
         event.accept()
 
+    # draw dimension dash lines, ticks, and text labels at specified height
     def draw_dimension_line(self, px1, px2, text, y_pos):
-        # Draw dimension lines
         pen_dash = QPen(QColor(_PALETTE["text"]), 3, Qt.DashLine)
         pen_solid = QPen(QColor(_PALETTE["text"]), 3, Qt.SolidLine)
 
@@ -144,13 +153,13 @@ class CustomLoadCanvas(QGraphicsView):
             txt.setZValue(2)
             self._scene.addItem(txt)
 
+    # clear scene and draw bridge geometry, girder/support shapes, and load arrows
     def draw_scene(self, fit_view=False):
         if getattr(self, "_updating", False):
             return
         self._updating = True
 
         try:
-            # Clear scene
             self._scene.clear()
             self._scene.setBackgroundBrush(QColor(_PALETTE["background"]))
 
@@ -190,7 +199,6 @@ class CustomLoadCanvas(QGraphicsView):
             deck_thick = _DECK_THICK
             deck_bot = deck_top + deck_thick
 
-            # Scale factor
             margin = _MARGIN
             scale_x = (w - 2 * margin) / bw
 
@@ -213,7 +221,6 @@ class CustomLoadCanvas(QGraphicsView):
             deck_rect.setZValue(0)
             self._scene.addItem(deck_rect)
 
-            # Draw girders/supports
             if self._view == "cross_section":
                 g_w = max(20.0, deck_w * _GIRDER_WIDTH_FRAC)
                 g_h = deck_thick * _GIRDER_HEIGHT_FRAC
@@ -258,7 +265,6 @@ class CustomLoadCanvas(QGraphicsView):
             title_item.setPos(w / 2.0 - title_item.boundingRect().width() / 2.0, _TITLE_Y)
             self._scene.addItem(title_item)
 
-            # Draw load arrows
             y_end = deck_top
             y_start = y_end - _ARROW_LEN
 
@@ -350,8 +356,8 @@ class CustomLoadCanvas(QGraphicsView):
         finally:
             self._updating = False
 
+    # draw background vertical measurement lines and scale ruler
     def _draw_grid(self, logical_w, logical_h, bw, margin, scale_x, axis_y):
-        # Draw grid background
         grid_pen = QPen(QColor(_PALETTE["grid"]), 1, Qt.SolidLine)
         grid_step_m = bw / 10.0
         if grid_step_m < 0.1:
@@ -389,6 +395,7 @@ class CustomLoadCanvas(QGraphicsView):
             txt.setPos(px - txt.boundingRect().width() / 2, axis_y + 10)
             self._scene.addItem(txt)
 
+    # reset scene bounding box for empty state
     def _zoom_empty(self, logical_w, logical_h):
         rect = QRectF(0, 0, logical_w, logical_h)
         self._scene.setSceneRect(rect)

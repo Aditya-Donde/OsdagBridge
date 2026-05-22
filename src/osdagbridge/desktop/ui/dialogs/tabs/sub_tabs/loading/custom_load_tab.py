@@ -29,6 +29,7 @@ from osdagbridge.desktop.ui.widgets.custom_load_canvas import CustomLoadCanvas
 
 class CustomLoadTab(QWidget):
 
+    # initialize custom load tab widget and load saved load list items
     def __init__(self, owner):
         super().__init__(owner)
         self.owner = owner
@@ -38,6 +39,7 @@ class CustomLoadTab(QWidget):
         self._editing_load_data = None
         self._build_ui()
 
+    # build all layout components, scroll areas, tables, cards, and signals
     def _build_ui(self):
         owner = self.owner
         schema = self.schema
@@ -194,7 +196,6 @@ class CustomLoadTab(QWidget):
         diagram_layout.addLayout(save_diagram_layout)
         left_layout.addWidget(diagram)
 
-        # info box on the right
         desc_box = QFrame()
         desc_box.setMinimumWidth(260)
         desc_box.setStyleSheet(
@@ -654,6 +655,7 @@ class CustomLoadTab(QWidget):
         self._refresh_custom_load_table()
         self._update_visualization()
 
+    # apply numeric validator limits to line edit input fields
     def _apply_validator(self, widget, validator_config):
         if not validator_config:
             return
@@ -668,9 +670,11 @@ class CustomLoadTab(QWidget):
             validator.setNotation(QDoubleValidator.StandardNotation)
             widget.setValidator(validator)
 
+    # schedule canvas update with 100ms delay to prevent lag while typing
     def _schedule_update(self, *args):
         QTimer.singleShot(100, self._update_visualization)
 
+    # retrieve form input values and update 2D drawing canvas
     def _update_visualization(self, *args):
         owner = self.owner
         load_type = owner.custom_load_type_combo.currentText().lower()
@@ -732,6 +736,7 @@ class CustomLoadTab(QWidget):
         
         self.canvas.set_load_data(load_data, bridge_width, span_length)
 
+    # connect toggled buttons to switch canvas view mode
     def _on_view_toggled(self, btn):
         btn_id = self.view_btn_group.id(btn)
         if btn_id == 0:
@@ -739,6 +744,7 @@ class CustomLoadTab(QWidget):
         elif btn_id == 1:
             self.canvas.set_view("elevation")
 
+    # capture 2D graphics view scene and save as PNG image file
     def _on_save_diagram(self):
         from PySide6.QtWidgets import QFileDialog
         import os
@@ -748,6 +754,7 @@ class CustomLoadTab(QWidget):
             pixmap.save(path, "PNG")
             CustomMessageBox(title="Success", text=f"Saved: {os.path.basename(path)}", buttons=["OK"], dialogType=MessageBoxType.Success).exec()
 
+    # change active stacked widget page based on selected load type
     def _on_custom_load_type_changed(self, text):
         if text == "Point":
             self.custom_load_stack.setCurrentIndex(0)
@@ -759,12 +766,14 @@ class CustomLoadTab(QWidget):
             self.custom_load_stack.setCurrentIndex(1)
             self.magnitude_label.setText("Magnitude (kN/m²):")
 
+    # enable load case custom name input field only when case is Custom
     def _on_load_case_changed(self, text):
         is_custom = (text == "Custom")
         self.owner.custom_load_case_name_input.setEnabled(is_custom)
         if not is_custom:
             self.owner.custom_load_case_name_input.clear()
 
+    # clear and reload table rows from saved custom loads list
     def _refresh_custom_load_table(self):
         self.custom_load_table.setRowCount(0)
         
@@ -786,7 +795,11 @@ class CustomLoadTab(QWidget):
             item.setFlags(item.flags() & ~Qt.ItemIsEditable)
             self.custom_load_table.setItem(row_idx, 1, item)
             
-            item = QTableWidgetItem("")
+            mag = load_data.get("magnitude", "")
+            unit = "kN" if load_type == "Point" else ("kN/m²" if load_type == "Area" else "kN/m")
+            mag_display = f"{mag} {unit}" if mag else ""
+            item = QTableWidgetItem(mag_display)
+            item.setFlags(item.flags() & ~Qt.ItemIsEditable)
             self.custom_load_table.setItem(row_idx, 2, item)
             
             if load_type == "Point":
@@ -811,13 +824,19 @@ class CustomLoadTab(QWidget):
             item.setFlags(item.flags() & ~Qt.ItemIsEditable)
             self.custom_load_table.setItem(row_idx, 4, item)
 
+    # parse form fields and append or update current custom load dictionary
     def _on_save_custom_load(self):
         owner = self.owner
         
         load_data = {
             "load_case": owner.custom_load_case_combo.currentText(),
             "load_type": owner.custom_load_type_combo.currentText(),
+            "magnitude": owner.custom_load_magnitude_input.text().strip(),
         }
+        
+        if not load_data["magnitude"]:
+            CustomMessageBox(title="Invalid Input", text="Please provide a magnitude.", buttons=["OK"], dialogType=MessageBoxType.Warning).exec()
+            return
         
         if owner.custom_load_case_combo.currentText() == "Custom":
             custom_name = owner.custom_load_case_name_input.text().strip()
@@ -874,6 +893,7 @@ class CustomLoadTab(QWidget):
         
         CustomMessageBox(title="Saved", text="Custom load has been saved.", buttons=["OK"], dialogType=MessageBoxType.Success).exec()
 
+    # read selected table row parameters and load back into input fields
     def _on_edit_custom_load(self):
         selected_rows = self.custom_load_table.selectionModel().selectedRows()
         
@@ -904,6 +924,8 @@ class CustomLoadTab(QWidget):
         if index >= 0:
             owner.custom_load_type_combo.setCurrentIndex(index)
         
+        owner.custom_load_magnitude_input.setText(load_data.get("magnitude", ""))
+        
         if load_type == "Point":
             owner.custom_point_left_input.setText(load_data.get("point_left", ""))
             owner.custom_point_bearing_input.setText(load_data.get("point_bearing", ""))
@@ -913,6 +935,7 @@ class CustomLoadTab(QWidget):
             owner.custom_line_bearing_start.setText(load_data.get("line_bearing_start", ""))
             owner.custom_line_bearing_end.setText(load_data.get("line_bearing_end", ""))
 
+    # remove selected row entry from the items list and refresh table
     def _on_delete_custom_load(self):
         selected_rows = self.custom_load_table.selectionModel().selectedRows()
         
@@ -931,11 +954,13 @@ class CustomLoadTab(QWidget):
         
         CustomMessageBox(title="Deleted", text=f"{len(rows_to_delete)} custom load(s) deleted.", buttons=["OK"], dialogType=MessageBoxType.Information).exec()
 
+    # reset all form text entries and combos to blank states
     def _clear_inputs(self):
         owner = self.owner
         owner.custom_load_case_combo.setCurrentIndex(0)
         owner.custom_load_case_name_input.clear()
         owner.custom_load_type_combo.setCurrentIndex(0)
+        owner.custom_load_magnitude_input.clear()
         owner.custom_point_left_input.clear()
         owner.custom_point_bearing_input.clear()
         owner.custom_line_left_start.clear()
@@ -943,6 +968,7 @@ class CustomLoadTab(QWidget):
         owner.custom_line_bearing_start.clear()
         owner.custom_line_bearing_end.clear()
 
+    # clear saved list, reset form fields, and refresh preview table
     def reset_defaults(self):
         self._clear_inputs()
         self.owner.custom_load_case_name_input.setEnabled(False)
