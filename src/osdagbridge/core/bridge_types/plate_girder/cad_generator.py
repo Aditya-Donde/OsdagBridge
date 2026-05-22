@@ -442,6 +442,13 @@ class PlateGirderCADGenerator:
                 current_segments = self.girder_segments_dict[i]
             else:
                 current_segments = self.girder_segments
+            
+            # Guided rule: girder j (1-indexed) has a transverse-constrained right support when
+            # j's parity differs from N's parity and j is not the first or last girder.
+            N = self.num_girders
+            j = i + 1
+            right_guided = ((j % 2) != (N % 2)) and (1 < j < N)
+
                 
             pg = build_plate_girder_geometry(
                 D=self.girder_section_d,
@@ -470,7 +477,8 @@ class PlateGirderCADGenerator:
                 shear_stud_top_height=self.shear_stud_top_height,
                 num_shear_studs_per_section=self.num_shear_studs_per_section,
                 shear_stud_transverse_spacing=self.shear_stud_transverse_spacing,
-                shear_stud_pitch=self.shear_stud_pitch
+                shear_stud_pitch=self.shear_stud_pitch,
+                right_guided=right_guided
             )
             
             # Calculate transverse offset (Y-direction)

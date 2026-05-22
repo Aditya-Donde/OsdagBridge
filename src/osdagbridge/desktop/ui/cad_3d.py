@@ -240,12 +240,13 @@ class CAD3DWindow(QWidget):
             STIFFENER_COLOR
         )
 
+        SUPPORT_FRAME_COLOR = Quantity_Color(0.82, 0.35, 0.0, Quantity_TOC_RGB)
+
         display_and_register(
-            cad_data.get("supports", []),
+            cad_data.get("supports_tri", []),
             "Support",
             "Support",
-            SUPPORT_COLOR,
-            transparency=0.6
+            SUPPORT_FRAME_COLOR
         )
 
 

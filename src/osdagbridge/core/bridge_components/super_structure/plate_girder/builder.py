@@ -179,7 +179,8 @@ def build_plate_girder_geometry(
     shear_stud_top_height=15,              # Height of the shear stud top head (mm)
     num_shear_studs_per_section=2,         # Number of shear studs in the transverse direction
     shear_stud_transverse_spacing=100,     # Spacing between shear studs in the transverse direction
-    shear_stud_pitch=200                   # Pitch (longitudinal spacing) of shear stud rows
+    shear_stud_pitch=200,                   # Pitch (longitudinal spacing) of shear stud rows
+    right_guided=False                     # If True: add tansverse constraints plate at the right and left end (for guided support conditions)
 ):
     """
     Geometry-only Plate Girder builder for Osdag Bridge.
@@ -437,7 +438,24 @@ def build_plate_girder_geometry(
                 stud = BRepBuilderAPI_Transform(base_stud, trsf, True).Shape()
                 shear_studs.append(stud)
 
-    # SUPPORTS 
+    # SUPPORTS - wireframe rectangular frames, border only, no fill.
+    # supports_tri = all constraints frames (accent colour in viewer)
+    # supports_cyl : always empty – cylinders/pins removed
+    #
+    # Coordinate note (builder space, before -90° Z-rotation):
+    #   Builder X  = transverse   →  World Y  after rotation
+    #   Builder Y  = bridge span  →  World X  after rotation
+    #   Builder Z  = vertical     →  World Z  (unchanged)
+    #
+    # Rectangle layout per support end:
+    #   Vertical bar   (Y restraint, portrait)  : builder X-Z plane at y_end
+    #   Wide horiz bar (transverse restraint)   : same builder X-Z plane, landscape
+    #   Long horiz bar (longitudinal restraint) : builder Y-Z plane at x=0, landscape
+    #
+    # Present at:
+    #   Left  (pin)        : vertical + wide-horiz(only if right_guided) + long-horiz
+    #   Right guided roller: vertical + wide-horiz
+    #   Right free roller  : vertical only
 
     supports_tri = []
     supports_cyl = []
@@ -457,60 +475,81 @@ def build_plate_girder_geometry(
     support_width_left = max(seg_left.B_ft, seg_left.B_fb)
     support_width_right = max(seg_right.B_ft, seg_right.B_fb)
     
+    
+
     base_dim = min(0.10 * length, 0.75 * D)
+    h_supp   = base_dim / 1.5                       # full support height -> tall dimension of vertical bar
+    w_supp   = base_dim / 2.0                       # used for longitudinal bar depth and transverse bar width
+    h_tall   = h_supp                               # vertical bar height
+    h_short  = h_supp * 0.35                        # horizontal bar height
+    w_narrow = h_supp * 0.25                        # vertical bar width
 
-    # Triangle proportions
-    h_supp = base_dim / 1.5
-    w_supp = base_dim / 2.0
+    def _rect_wire(p0, p1, p2, p3):
+        """Closed rectangular wireframe through four corners (border only, no fill)."""
+        return BRepBuilderAPI_MakeWire(
+            BRepBuilderAPI_MakeEdge(p0, p1).Edge(),
+            BRepBuilderAPI_MakeEdge(p1, p2).Edge(),
+            BRepBuilderAPI_MakeEdge(p2, p3).Edge(),
+            BRepBuilderAPI_MakeEdge(p3, p0).Edge(),
+        ).Wire()
+    
+    # ── LEFT (PIN) SUPPORT at builder y = 0 ──────────────────────────────────
+    z_L  = z_contact_left
+    sw_L = support_width_left
 
-    # Cylinder radius
-    r_cyl = h_supp / 2.0
+    # 1. Vertical bar – Z restraint (portrait, builder X-Z plane)
+    supports_tri.append(_rect_wire(
+        gp_Pnt(-w_narrow/2, 0, z_L),
+        gp_Pnt( w_narrow/2, 0, z_L),
+        gp_Pnt( w_narrow/2, 0, z_L - h_tall),
+        gp_Pnt(-w_narrow/2, 0, z_L - h_tall),
+    ))
 
-    # TRIANGULAR SUPPORT (LEFT)
+    # 2. Wide horizontal bar – transverse restraint (guided girders only, same builder X-Z plane)
+    #if right_guided:
+    supports_tri.append(_rect_wire(
+        gp_Pnt(-sw_L/2, 0, z_L),
+        gp_Pnt( sw_L/2, 0, z_L),
+        gp_Pnt( sw_L/2, 0, z_L - h_short),
+        gp_Pnt(-sw_L/2, 0, z_L - h_short),
+    ))
 
-    y_apex = w_supp
-    z_apex = z_contact_left
-    x_face = -support_width_left / 2.0
+    # 3. Longitudinal bar – span-direction restraint (landscape, builder Y-Z plane at x=0)
+    supports_tri.append(_rect_wire(
+        gp_Pnt(0, 0,       z_L),
+        gp_Pnt(0, w_supp,  z_L),
+        gp_Pnt(0, w_supp,  z_L - h_short),
+        gp_Pnt(0, 0,       z_L - h_short),
+    ))
 
-    p1 = gp_Pnt(x_face, y_apex, z_apex)
-    p2 = gp_Pnt(x_face, y_apex - w_supp, z_apex - h_supp)
-    p3 = gp_Pnt(x_face, y_apex + w_supp, z_apex - h_supp)
+    # ── RIGHT (ROLLER) SUPPORT at builder y = length ──────────────────────────
+    z_R  = z_contact_right
+    sw_R = support_width_right
 
-    e1 = BRepBuilderAPI_MakeEdge(p1, p2).Edge()
-    e2 = BRepBuilderAPI_MakeEdge(p2, p3).Edge()
-    e3 = BRepBuilderAPI_MakeEdge(p3, p1).Edge()
+    # 1. Vertical bar – Z restraint (always)
+    supports_tri.append(_rect_wire(
+        gp_Pnt(-w_narrow/2, length, z_R),
+        gp_Pnt( w_narrow/2, length, z_R),
+        gp_Pnt( w_narrow/2, length, z_R - h_tall),
+        gp_Pnt(-w_narrow/2, length, z_R - h_tall),
+    ))
 
-    wire = BRepBuilderAPI_MakeWire()
-    wire.Add(e1)
-    wire.Add(e2)
-    wire.Add(e3)
+    # 2. Wide horizontal bar – transverse restraint (guided rollers only)
+    #if right_guided:
+    supports_tri.append(_rect_wire(
+        gp_Pnt(-sw_R/2, length, z_R),
+        gp_Pnt( sw_R/2, length, z_R),
+        gp_Pnt( sw_R/2, length, z_R - h_short),
+        gp_Pnt(-sw_R/2, length, z_R - h_short),
+    ))
 
-    face = BRepBuilderAPI_MakeFace(wire.Wire()).Face()
-
-    tri_support = BRepPrimAPI_MakePrism(
-        face,
-        gp_Vec(support_width_left, 0, 0)
-    ).Shape()
-
-    supports_tri.append(tri_support)
-
-    # CYLINDRICAL SUPPORT (RIGHT)
-
-    y_cyl = length - r_cyl
-    z_cyl_center = z_contact_right - r_cyl
-
-    pt_cyl = gp_Pnt(-support_width_right / 2.0, y_cyl, z_cyl_center)
-    axis = gp_Ax2(pt_cyl, gp_Dir(1, 0, 0))
-
-    cyl_support = BRepPrimAPI_MakeCylinder(
-        axis,
-        r_cyl,
-        support_width_right
-    ).Shape()
-
-    supports_cyl.append(cyl_support)
-
-
+    # 3. Longitudinal bar – span-direction restraint (landscape, builder Y-Z plane at x=0)
+    supports_tri.append(_rect_wire(
+        gp_Pnt(0, length,       z_L),
+        gp_Pnt(0, length - w_supp,  z_L),
+        gp_Pnt(0, length -w_supp,  z_L - h_short),
+        gp_Pnt(0, length,       z_L - h_short),
+    ))
 
     web_shapes = [ _rotate_about_z(w, -90) for w in web_shapes ]
     top_flange_shapes = [ _rotate_about_z(tf, -90) for tf in top_flange_shapes ]
