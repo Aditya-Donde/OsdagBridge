@@ -7,9 +7,13 @@ from mpl_toolkits.mplot3d.art3d import Path3DCollection
 
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QComboBox, QSizePolicy, QPushButton,
-    QFrame, QLabel, QCheckBox, QScrollArea, QApplication
+    QFrame, QLabel, QCheckBox, QScrollArea, QApplication, QLineEdit 
 )
 from PySide6.QtCore import Qt, QEvent, QTimer
+
+#CHANGE 9----------------------------------------
+from PySide6.QtGui import QDoubleValidator
+#   END CHANGE-------------------------------------
 
 from navcube import NavCubeOverlay, NavCubeStyle
 from osdagbridge.desktop.ui.utils.mpl_widget_navcube_sync import MatplotlibNavCubeSync
@@ -253,10 +257,10 @@ class MplPlotWidget(QWidget):
         self._btn_zoom_window = QPushButton("Zoom Window")
         self._btn_pan         = QPushButton("Pan")
         self._btn_rotate      = QPushButton("Rotate")
-        self._btn_scale       = QPushButton("Scale")
 
+        #CHANGE 11----------------------------------------------
         for btn in (self._btn_zoom_fit, self._btn_zoom_window,
-                    self._btn_pan, self._btn_rotate, self._btn_scale):
+            self._btn_pan, self._btn_rotate):            
             btn.setFixedHeight(28)
             btn.setFocusPolicy(Qt.NoFocus)
             btn.setStyleSheet(btn_style)
@@ -270,7 +274,66 @@ class MplPlotWidget(QWidget):
         self._btn_zoom_window.toggled.connect(self._on_zoom_window_toggled)
         self._btn_pan.toggled.connect(self._on_pan_toggled)
         self._btn_rotate.toggled.connect(self._on_rotate_toggled)
-        self._btn_scale.clicked.connect(self._on_scale_reset)
+
+        #CHANGE 13----------------------------------------------------
+        self._scale_value = 100.0
+
+        _spin_btn_style = (
+            "QPushButton { font-size: 9px; border: 1px solid #bbb; background: #f5f5f5;"
+            " padding: 0; min-width: 16px; max-width: 16px; }"
+            "QPushButton:hover { background: #e0e0e0; }"
+            "QPushButton:pressed { background: #bdbdbd; }"
+        )
+        _input_style = (
+            "QLineEdit { font-size: 11px; border: 1px solid #bbb; border-radius: 2px;"
+            " background: #fff; padding: 0 2px; }"
+        )
+
+        scale_label = QLabel("Scale")
+        scale_label.setStyleSheet("QLabel { font-size: 12px; color: #333; }")
+        scale_label.setAlignment(Qt.AlignVCenter | Qt.AlignRight)
+
+        self._scale_input = QLineEdit(f"{self._scale_value:.0f}")
+        self._scale_input.setFixedSize(52, 28)
+        self._scale_input.setAlignment(Qt.AlignCenter)
+        self._scale_input.setValidator(QDoubleValidator(1.0, 10000.0, 0, self._scale_input))
+        self._scale_input.setStyleSheet(_input_style)
+        self._scale_input.setFocusPolicy(Qt.ClickFocus)
+        self._scale_input.editingFinished.connect(self._on_scale_input_edited)
+
+        self._btn_scale_up   = QPushButton("▲")
+        self._btn_scale_down = QPushButton("▼")
+        for b in (self._btn_scale_up, self._btn_scale_down):
+            b.setFixedSize(16, 14)
+            b.setFocusPolicy(Qt.NoFocus)
+            b.setStyleSheet(_spin_btn_style)
+
+        self._scale_timer = QTimer(self)
+        self._scale_timer.setInterval(80)
+        self._scale_direction = 0
+
+        self._btn_scale_up.pressed.connect(lambda: self._start_scale_change(+1))
+        self._btn_scale_up.released.connect(self._stop_scale_change)
+        self._btn_scale_down.pressed.connect(lambda: self._start_scale_change(-1))
+        self._btn_scale_down.released.connect(self._stop_scale_change)
+        self._scale_timer.timeout.connect(self._tick_scale_change)
+
+        arrow_col = QVBoxLayout()
+        arrow_col.setContentsMargins(0, 0, 0, 0)
+        arrow_col.setSpacing(0)
+        arrow_col.addWidget(self._btn_scale_up)
+        arrow_col.addWidget(self._btn_scale_down)
+
+        self._scale_widget = QFrame()
+        self._scale_widget.setFixedHeight(28)
+        scale_inner = QHBoxLayout(self._scale_widget)
+        scale_inner.setContentsMargins(0, 0, 0, 0)
+        scale_inner.setSpacing(2)
+        scale_inner.addWidget(scale_label)
+        scale_inner.addWidget(self._scale_input)
+        scale_inner.addLayout(arrow_col)
+        #CHANGE 13 END-----------------------------------------------
+
         # END CHANGE 3--------------------------------------------
 
         
@@ -291,6 +354,7 @@ class MplPlotWidget(QWidget):
         toolbar_row.addWidget(self._btn_zoom_out)
         toolbar_row.addWidget(self._btn_zoom_in)
         toolbar_row.addWidget(self._btn_zoom_reset)
+        toolbar_row.addWidget(self._scale_widget)
 
 
         
@@ -302,7 +366,6 @@ class MplPlotWidget(QWidget):
         toolbar_row2.addWidget(self._btn_zoom_window)
         toolbar_row2.addWidget(self._btn_pan)
         toolbar_row2.addWidget(self._btn_rotate)
-        toolbar_row2.addWidget(self._btn_scale)
         toolbar_row2.addStretch()
 
         # layout
@@ -388,6 +451,11 @@ class MplPlotWidget(QWidget):
 
         if self._ds_all is None or self._output_dock is None:
             return
+        #CHANGE 15------------------------
+        self._scale_value = 100.0
+        self._scale_input.setText("100")
+        self._apply_scale_value() 
+        #END CHANGE 15-----------------------   
 
         loadcase  = self._current_loadcase()
         force_key = self._current_force_key()
@@ -671,18 +739,6 @@ class MplPlotWidget(QWidget):
                 elif text.get_gid() == "all_vals": 
                     text.set_visible(self._show_all_vals)
 
-    # def _apply_grid_visibility(self):
-    #     for ax in self._fig.axes:
-    #         if self._show_grid:
-    #             # Turn everything ON and re-apply your custom dashed grid styling
-    #             ax.set_axis_on()
-    #             ax.grid(True, linestyle="--", linewidth=0.4, alpha=0.5)
-                
-    #         else:
-    #             # Throw the invisibility cloak over the panes, cube, labels, and ticks!
-    #             ax.set_axis_off()
-
-
 
     # CHANGE 7------------------------------------------------
     def _apply_grid_visibility(self):
@@ -762,6 +818,14 @@ class MplPlotWidget(QWidget):
         """Reset zoom to 1.0 and restore auto-scale limits."""
         self._deactivate_all_modes()
         self._zoom_scale = 1.0
+
+
+        self._scale_value = 100.0                    # ← add this
+        self._scale_input.setText("100")             # ← add this
+
+
+
+
         if not self._fig or not self._fig.axes:
             return
         ax = self._fig.axes[0]
@@ -769,10 +833,16 @@ class MplPlotWidget(QWidget):
             fit_zoom = 0.82 if self._show_grid else 1.0
             ax.set_box_aspect(aspect=(2.5, 1.2, 1.0), zoom=fit_zoom)
             ax.autoscale()
-        else:                               # 2-D axis
+        else: 
+            ax.set_aspect('auto')        #added line                      # 2-D axis
             ax.relim()
             ax.autoscale_view()
-        self._apply_zoom()                  # also resets QScrollArea
+
+        self._scroll_area.setWidgetResizable(True)
+        self._canvas.setMinimumSize(0, 0)
+        self._canvas.setMaximumSize(16777215, 16777215)
+        self._canvas.draw_idle()    
+        # self._apply_zoom()                  # also resets QScrollArea
     
 
     # # ── Zoom Window ───────────────────────────────────────────────────────────
@@ -965,24 +1035,49 @@ class MplPlotWidget(QWidget):
         self._pan_start = None
 
     # ── Scale ─────────────────────────────────────────────────────────────────
+
+    #CHANGE 14-----------------------------------------------------
     def _on_scale_reset(self):
-        """Toggle between equal aspect and the default bridge aspect ratio."""
-        self._deactivate_all_modes()
+        pass  # replaced by spinbox
+
+    def _start_scale_change(self, direction: int):
+        self._scale_direction = direction
+        self._tick_scale_change()
+        self._scale_timer.start(300)
+
+    def _stop_scale_change(self):
+        self._scale_timer.stop()
+        self._scale_direction = 0
+
+    def _tick_scale_change(self):
+        step = 1.0 * self._scale_direction
+        self._scale_value = round(max(1.0, min(10000.0, self._scale_value + step)), 0)
+        self._scale_input.setText(f"{self._scale_value:.0f}")
+        self._apply_scale_value()
+
+    def _on_scale_input_edited(self):
+        try:
+            val = float(self._scale_input.text())
+            self._scale_value = round(max(1.0, min(10000.0, val)), 0)
+        except ValueError:
+            pass
+        self._scale_input.setText(f"{self._scale_value:.0f}")
+        self._apply_scale_value()
+
+    def _apply_scale_value(self):
         if not self._fig or not self._fig.axes:
             return
         ax = self._fig.axes[0]
-        self._scale_equal = not getattr(self, '_scale_equal', False)
+        factor = self._scale_value / 100.0
         if hasattr(ax, 'set_box_aspect'):   # 3-D
-            if self._scale_equal:
-                ax.set_box_aspect([1, 1, 1])
-            else:
-                ax.set_box_aspect(aspect=(2.5, 1.2, 1.0), zoom=self._zoom_scale)
+            ax.set_box_aspect(
+                aspect=(2.5 * factor, 1.2, 1.0),
+                zoom=self._zoom_scale
+            )
         else:                               # 2-D
-            ax.set_aspect('equal' if self._scale_equal else 'auto')
-        self._canvas.draw_idle()
+            ax.set_aspect('auto' if self._scale_value == 100.0 else factor)
+        self._canvas.draw_idle()    
 
-    # END CHANGE 8
-    # ==========================================================================
 
     def _apply_zoom(self):
         """Zooms the 2D canvas dynamically, creating scrollbars for perfect panning!"""
@@ -997,7 +1092,7 @@ class MplPlotWidget(QWidget):
             base_h = self._scroll_area.height() - 2
             # Physically resize the canvas like zooming a photo
             self._canvas.setFixedSize(int(base_w * self._zoom_scale), int(base_h * self._zoom_scale))
-        self._canvas.draw_idle()
+            self._canvas.draw_idle()
 
     # def eventFilter(self, obj, event):
     #     if obj is self._canvas and event.type() == QEvent.Type.Wheel:
