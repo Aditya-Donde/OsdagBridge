@@ -372,6 +372,19 @@ class PlateGirderBridge:
                 f"{'-'*60}"
             )
 
+        # Push section designation into input_dict so report generator can access it directly
+        D_mm     = sp['D']     * 1e3
+        tw_mm    = sp['t_w']   * 1e3
+        Bft_mm   = sp['B_top']   * 1e3
+        Tft_mm   = sp['t_f_top'] * 1e3
+        Bfb_mm   = sp.get('B_bot',   sp['B_top'])   * 1e3
+        Tfb_mm   = sp.get('t_f_bot', sp['t_f_top']) * 1e3
+        self.input_dict['section_designation'] = (
+            f"PG {D_mm:.0f}x{tw_mm:.0f}"
+            f" + {Bft_mm:.0f}x{Tft_mm:.0f}"
+            f" + {Bfb_mm:.0f}x{Tfb_mm:.0f}"
+        )
+
         self._run_dcr_checks(dataset)
         self.result_data = self.grillage_model.get_result_data()
 
@@ -1585,6 +1598,8 @@ class PlateGirderBridge:
 
     def _run_dcr_checks(self, dataset) -> None:
         """Run structural capacity checks and push DCR percentages to the output dock."""
+        from .designer import BridgeConfig, DemandExtractor, IRC22CapacityCalc, DCREngine
+
         results = PlateGirderAnalysisResults(dataset=dataset, bridge=self.grillage_model)
         _, engine, design_results = run_design_check(
             plate_girder_bridge=self,
