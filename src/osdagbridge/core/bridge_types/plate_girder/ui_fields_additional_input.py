@@ -268,7 +268,7 @@ _RAILING_TAB_SCHEMA = {
                     "id": KEY_RL_LOAD_MODE,
                     "label": "Load Mode:",
                     "type": TYPE_COMBOBOX,
-                    "choices": ["Automatic (IRC 6)", "User-defined"],
+                    "choices": ["As per IRC 6", "User-defined"],
                     "on_change": "on_railing_load_mode_changed",
                 },
                 {

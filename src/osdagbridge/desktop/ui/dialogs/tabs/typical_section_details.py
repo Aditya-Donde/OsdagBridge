@@ -190,7 +190,7 @@ class TypicalSectionDetailsTab(QWidget):
 
         if "tabs" in schema:
             self.input_tabs = QTabWidget()
-            self.input_tabs.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+            self.input_tabs.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
             self.input_tabs.setTabBarAutoHide(False)
             self.input_tabs.setStyleSheet("""
                 QTabBar { background-color: #e8e8e8; border: 1px solid red; }
@@ -208,9 +208,9 @@ class TypicalSectionDetailsTab(QWidget):
                 }
                 QTabBar::tab:hover:!selected { background-color: #d0d0d0; }
             """)
-            self.input_tabs.tabBar().setElideMode(Qt.ElideRight)
-            self.input_tabs.tabBar().setExpanding(True)
-            self.input_tabs.tabBar().setUsesScrollButtons(False)
+            self.input_tabs.tabBar().setElideMode(Qt.ElideNone)
+            self.input_tabs.tabBar().setExpanding(False)
+            self.input_tabs.tabBar().setUsesScrollButtons(True)
             self.input_tabs.tabBar().setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
 
             for tab_def in schema["tabs"]:
@@ -227,6 +227,8 @@ class TypicalSectionDetailsTab(QWidget):
                 self.input_tabs.addTab(tab_widget, tab_def["label"])
 
             QTimer.singleShot(0, self._sync_subtab_bar_width)
+            self.input_tabs.currentChanged.connect(self._on_subtab_changed)
+            self._on_subtab_changed(self.input_tabs.currentIndex())
             input_layout.addWidget(self.input_tabs)
 
         # ── Scroll wrapper ────────────────────────────────────────────────────────
@@ -295,15 +297,22 @@ class TypicalSectionDetailsTab(QWidget):
         super().resizeEvent(event)
         self._sync_subtab_bar_width()
 
-    def _sync_subtab_bar_width(self):
+    def _on_subtab_changed(self, index):
         if not hasattr(self, "input_tabs") or self.input_tabs is None:
             return
-        tab_bar = self.input_tabs.tabBar()
-        if tab_bar is None:
-            return
-        target_width = max(0, self.input_tabs.width() - 1)
-        if target_width > 0 and tab_bar.width() != target_width:
-            tab_bar.setFixedWidth(target_width)
+        for i in range(self.input_tabs.count()):
+            widget = self.input_tabs.widget(i)
+            if i == index:
+                widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+            else:
+                widget.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Ignored)
+        # Notify the layout system that the size hint has changed
+        self.input_tabs.updateGeometry()
+
+    def _sync_subtab_bar_width(self):
+        # Removed the forced fixed width constraint so the scroll buttons 
+        # can actually appear when the tabs overflow the widget area.
+        pass
 
 
     # ----- Layout / Deck Details sub-tab ---------------------------------------
@@ -972,6 +981,8 @@ class TypicalSectionDetailsTab(QWidget):
         crash_barrier_post_spacing = self._find_crash_barrier_widget(KEY_CB_POST_SPACING)
         crash_barrier_post_spacing_label = self._find_crash_barrier_widget(f"{KEY_CB_POST_SPACING}_label")
         crash_barrier_load = self._find_crash_barrier_widget(KEY_CB_LOAD)
+        crash_barrier_width = self._find_crash_barrier_widget(KEY_CB_WIDTH)
+        crash_barrier_height = self._find_crash_barrier_widget(KEY_CB_HEIGHT)
 
         # Density & Area hidden for metallic or custom options
         hide_density_area = is_metallic or is_custom
@@ -996,7 +1007,7 @@ class TypicalSectionDetailsTab(QWidget):
 
         # Load behavior
         if crash_barrier_load:
-            crash_barrier_load.setEnabled(True)
+            crash_barrier_load.setEnabled(is_custom)
             crash_barrier_load.setReadOnly(is_rcc)
             crash_barrier_load.setPlaceholderText("" if not is_custom else "Enter custom load per IRC 6 guidance")
         if is_rcc:
@@ -1004,6 +1015,11 @@ class TypicalSectionDetailsTab(QWidget):
         else:
             if crash_barrier_load:
                 crash_barrier_load.setReadOnly(False)
+
+        # Grey out fixed parameters per IRC 5
+        for widget in [crash_barrier_density, crash_barrier_width, crash_barrier_height, crash_barrier_area]:
+            if widget:
+                widget.setEnabled(is_custom)
 
     def _auto_compute_crash_barrier_load(self):
         crash_barrier_type = self._find_crash_barrier_widget(KEY_CB_TYPE)
@@ -1210,6 +1226,17 @@ class TypicalSectionDetailsTab(QWidget):
             median_load.setReadOnly(False)
             median_load.clear()
 
+        # Grey out fixed parameters per IRC 5
+        if active:
+            # RCC: density, width, height, area, load all fixed
+            # Metallic: density(hidden), width, height, area(hidden), load fixed - only spacing editable
+            # Custom: everything editable
+            for widget in [median_density, median_width, median_height, median_area, median_load]:
+                if widget:
+                    widget.setEnabled(is_custom)
+            if median_post_spacing:
+                median_post_spacing.setEnabled(is_custom or is_metallic)
+
     def _apply_median_defaults(self, median_type: str, force: bool = False):
         median_density = self._find_median_widget(KEY_MD_DENSITY)
         if not median_density:
@@ -1344,13 +1371,22 @@ class TypicalSectionDetailsTab(QWidget):
             if "height" in geom:
                 _set(railing_height, f"{geom['height'] / 1000:.2f}")
 
+        # Grey out fixed parameters per IRC 5
+        is_custom = railing_type == "Custom"
+        if railing_width:
+            railing_width.setEnabled(is_custom)
+        if railing_height:
+            railing_height.setEnabled(is_custom)
+        if railing_load_mode:
+            railing_load_mode.setEnabled(is_custom)
+
         if railing_load_mode:
             railing_load_mode.blockSignals(True)
-            railing_load_mode.setCurrentText("Automatic (IRC 6)")
+            railing_load_mode.setCurrentText("As per IRC 6")
             railing_load_mode.blockSignals(False)
 
             # Manually apply once
-            self.on_railing_load_mode_changed("Automatic (IRC 6)")
+            self.on_railing_load_mode_changed("As per IRC 6")
 
         geom = RailingGeometry.get_geometry(effective_railing_type)
 
@@ -1381,7 +1417,7 @@ class TypicalSectionDetailsTab(QWidget):
         railing_load_value = self._find_railing_widget(KEY_RL_LOAD_VALUE)
         if not railing_load_value:
             return
-        is_auto = mode.startswith("Automatic")
+        is_auto = mode.startswith("As per") or mode.startswith("Automatic")
         if is_auto:
             railing_load_value.setReadOnly(True)
             railing_load_value.setEnabled(True)
@@ -1434,11 +1470,21 @@ class TypicalSectionDetailsTab(QWidget):
             wearing_density.setText("22.0")
         else:
             wearing_density.clear()
+
+        # Grey out density for fixed-density materials; enable for Other and Custom
+        wearing_density.setEnabled(material not in ("Concrete", "Bituminous"))
+
         if not wearing_thickness.text():
             wearing_thickness.setText("50")
     # ----- Lane Details sub-tab ------------------------------------------------
 
     _LANE_WIDTH_M = 3.5  # IRC 5 Clause 104.3.1 minimum design lane width
+
+    def update_carriageway_width(self, carriageway_width):
+        """Called by the parent before showing the dialog when carriageway width has changed."""
+        if carriageway_width and carriageway_width != self.carriageway_width:
+            self.carriageway_width = carriageway_width
+            self._initialize_lane_defaults()
 
     def _initialize_lane_defaults(self):
         """Populate combo + table with IRC 5 Clause 104.3.1 defaults on first open."""

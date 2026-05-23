@@ -408,6 +408,14 @@ class CustomWindow(QWidget):
         # Single Source of Truth = _last_mapped_params dict in BridgeDualCADWidget
         dlg.typical_section_tab.update_internal_cad_state(self.cad_comp_widget._last_mapped_params)
 
+        # Sync carriageway width so Lane Details reflects the latest value
+        if self.input_dock:
+            try:
+                cw = self.input_dock._get_effective_carriageway_width()
+                dlg.typical_section_tab.update_carriageway_width(cw)
+            except Exception:
+                pass
+
         dlg.show()
         dlg.raise_()
         dlg.activateWindow()

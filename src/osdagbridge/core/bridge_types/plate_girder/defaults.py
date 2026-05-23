@@ -163,7 +163,7 @@ def _update_typical_section_defaults(input_dict: dict) -> None:
     _update(KEY_RL_TYPE,       "IRC 5 - RCC Railing")
     _update(KEY_RL_WIDTH,      DEFAULT_RAILING_WIDTH)  # m
     _update(KEY_RL_HEIGHT,     _rl_height_m)           # m
-    _update(KEY_RL_LOAD_MODE,  "Automatic (IRC 6)")
+    _update(KEY_RL_LOAD_MODE,  "As per IRC 6")
     _update(KEY_RL_LOAD_VALUE, _rl_load)               # kN/m
 
     # --- Wearing Course sub-tab ---

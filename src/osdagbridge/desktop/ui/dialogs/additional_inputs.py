@@ -401,6 +401,7 @@ class AdditionalInputs(QDialog):
         self.typical_section_tab = TypicalSectionDetailsTab(
             self.carriageway_width,
             additional_input_instance=self)
+        self.typical_section_tab.update_footpath_value(self.footpath_value)
         self.tabs.addTab(self.typical_section_tab, "Typical Section Details")
         
         # Sub-Tab 2: Member Properties
