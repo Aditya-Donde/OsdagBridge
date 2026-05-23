@@ -19,7 +19,6 @@
 
 # =============================================================================
 # GAPS REPORT — keys used in templates with no canonical KEY_ in common.py
-# Action required: mentor to review and decide canonical key names / sources
 # =============================================================================
 # GAP | Template location         | Literal key used        | Notes
 # ─────────────────────────────────────────────────────────────────────────────
@@ -310,7 +309,7 @@ def toc_section():
 # EXECUTIVE SUMMARY
 # ═══════════════════════════════════════════════════════════════════════════════
 
-def executive_summary(input_dict, fig_paths) -> str:
+def executive_summary(input_dict, output_dict, fig_paths) -> str:
     plan_fig = _fig_or_placeholder(fig_paths.get('plan'), 'Figure 1 -- Overall Bridge Plan')
     cs_fig = _fig_or_placeholder(fig_paths.get('cross_section'),
                                   'Figure 2 -- Typical Cross-Section (with girder, deck, barriers, footpath)')
@@ -318,9 +317,14 @@ def executive_summary(input_dict, fig_paths) -> str:
                                     'Figure 3 -- 3D View of Bridge Superstructure')
 
     # All girders share the same section, governing check, and UR (from input_dict)
-    sec = _tex(str(input_dict.get('section_designation', ''))) or _ph('Section')  # GAP: not in common.py (runtime-injected)
-    gov = _tex(str(output_dict.get('governing_check', ''))) or _ph('Check')
-    ur  = _tex(str(output_dict.get('overall_utilization_ratio', ''))) or _ph('UR')
+    sec_val = input_dict.get('section_designation', '')
+    sec = _tex(sec_val) if sec_val not in (None, '', 'None') else _ph('Section')
+    
+    gov_val = output_dict.get('governing_check', '')
+    gov = _tex(gov_val) if gov_val not in (None, '', 'None') else _ph('Check')
+    
+    ur_val = output_dict.get('overall_utilization_ratio', '')
+    ur = _tex(ur_val) if ur_val not in (None, '', 'None') else _ph('UR')
 
     sections = f"Section Designation & {sec} & {sec} & {sec} & {sec} & {sec} & {sec} \\\\"
     gov_checks = f"Governing Check & {gov} & {gov} & {gov} & {gov} & {gov} & {gov} \\\\"
@@ -2522,7 +2526,7 @@ def generate_report(payload, request):
         assets_dir = os.path.join(request.output_dir, 'assets')
         os.makedirs(assets_dir, exist_ok=True)
 
-        osdag_logo_src = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'assets', 'Osdag Logo.png')
+        osdag_logo_src = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'data', 'ResourceFiles', 'vectors', 'Osdag Logo.png')
         iit_logo_src = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'assets', 'IIT Bombay Logo.png')
 
         osdag_logo_latex = None
