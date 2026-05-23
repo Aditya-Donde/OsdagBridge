@@ -493,6 +493,7 @@ def build_plate_girder_geometry(
             BRepBuilderAPI_MakeEdge(p3, p0).Edge(),
         ).Wire()
     
+    '''
     # ── LEFT (PIN) SUPPORT at builder y = 0 ──────────────────────────────────
     z_L  = z_contact_left
     sw_L = support_width_left
@@ -545,11 +546,12 @@ def build_plate_girder_geometry(
 
     # 3. Longitudinal bar – span-direction restraint (landscape, builder Y-Z plane at x=0)
     supports_tri.append(_rect_wire(
-        gp_Pnt(0, length,       z_L),
-        gp_Pnt(0, length - w_supp,  z_L),
-        gp_Pnt(0, length -w_supp,  z_L - h_short),
-        gp_Pnt(0, length,       z_L - h_short),
+        gp_Pnt(0, length,           z_R),
+        gp_Pnt(0, length - w_supp,  z_R),
+        gp_Pnt(0, length - w_supp,  z_R - h_short),
+        gp_Pnt(0, length,           z_R - h_short),
     ))
+    '''
 
     web_shapes = [ _rotate_about_z(w, -90) for w in web_shapes ]
     top_flange_shapes = [ _rotate_about_z(tf, -90) for tf in top_flange_shapes ]
@@ -559,9 +561,9 @@ def build_plate_girder_geometry(
         _rotate_about_z(s, -90) for s in stiffeners
     ]
 
-    supports_tri = [
+    '''supports_tri = [
         _rotate_about_z(s, -90) for s in supports_tri
-    ]
+    ]'''
 
     supports_cyl = [
         _rotate_about_z(s, -90) for s in supports_cyl
@@ -570,7 +572,66 @@ def build_plate_girder_geometry(
     shear_studs = [
         _rotate_about_z(s, -90) for s in shear_studs
     ]
+    
 
+    supports_vertical = []
+    supports_wide_horiz = []
+    supports_long_horiz = []
+
+    # ── LEFT (PIN) SUPPORT at builder y = 0 ──────────────────────────────────
+    z_L  = z_contact_left
+    sw_L = support_width_left
+
+    # 1. Vertical bar
+    supports_vertical.append(_rect_wire(
+        gp_Pnt(-w_narrow/2, 0, z_L),
+        gp_Pnt( w_narrow/2, 0, z_L),
+        gp_Pnt( w_narrow/2, 0, z_L - h_tall),
+        gp_Pnt(-w_narrow/2, 0, z_L - h_tall),
+    ))
+
+    # 2. Wide horizontal bar
+    if right_guided:
+        supports_wide_horiz.append(_rect_wire(
+            gp_Pnt(-sw_L/2, 0, z_L),
+            gp_Pnt( sw_L/2, 0, z_L),
+            gp_Pnt( sw_L/2, 0, z_L - h_short),
+            gp_Pnt(-sw_L/2, 0, z_L - h_short),
+        ))
+
+    # 3. Longitudinal bar
+    supports_long_horiz.append(_rect_wire(
+        gp_Pnt(0, 0,      z_L),
+        gp_Pnt(0, w_supp, z_L),
+        gp_Pnt(0, w_supp, z_L - h_short),
+        gp_Pnt(0, 0,      z_L - h_short),
+    ))
+
+    # ── RIGHT (ROLLER) SUPPORT at builder y = length ─────────────────────────
+    z_R  = z_contact_right
+    sw_R = support_width_right
+
+    # 1. Vertical bar
+    supports_vertical.append(_rect_wire(
+        gp_Pnt(-w_narrow/2, length, z_R),
+        gp_Pnt( w_narrow/2, length, z_R),
+        gp_Pnt( w_narrow/2, length, z_R - h_tall),
+        gp_Pnt(-w_narrow/2, length, z_R - h_tall),
+    ))
+
+    # 2. Wide horizontal bar
+    if right_guided:
+        supports_wide_horiz.append(_rect_wire(
+            gp_Pnt(-sw_R/2, length, z_R),
+            gp_Pnt( sw_R/2, length, z_R),
+            gp_Pnt( sw_R/2, length, z_R - h_short),
+            gp_Pnt(-sw_R/2, length, z_R - h_short),
+        ))
+
+    # Rotate all three
+    supports_vertical   = [_rotate_about_z(s, -90) for s in supports_vertical]
+    supports_wide_horiz = [_rotate_about_z(s, -90) for s in supports_wide_horiz]
+    supports_long_horiz = [_rotate_about_z(s, -90) for s in supports_long_horiz]
 
 
     return {
@@ -578,7 +639,10 @@ def build_plate_girder_geometry(
         "top_flange": top_flange_shapes,
         "bottom_flange": bottom_flange_shapes,
         "stiffeners": stiffeners,
-        "supports_tri": supports_tri,
+        "supports_tri": supports_vertical + supports_wide_horiz + supports_long_horiz,  # backward compat
+        "supports_vertical": supports_vertical,
+        "supports_wide_horiz": supports_wide_horiz,
+        "supports_long_horiz": supports_long_horiz,
         "supports_cyl": supports_cyl,
         "shear_studs": shear_studs
     }
