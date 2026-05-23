@@ -430,6 +430,9 @@ class PlateGirderCADGenerator:
         girder_web = []
         girder_flanges = []
         supports_tri = []
+        supports_vertical = []
+        supports_wide_horiz = []
+        supports_long_horiz = []
         supports_cyl = []
 
         total_width = (self.num_girders - 1) * self.girder_spacing
@@ -481,11 +484,19 @@ class PlateGirderCADGenerator:
                 right_guided=right_guided
             )
             
+
             # Calculate transverse offset (Y-direction)
             y_offset = (i * self.girder_spacing) - (total_width / 2)
             
             # Calculate longitudinal offset due to skew (X-direction)
             x_offset = _calculate_skew_offset(y_offset, reference_position)
+
+            for s in pg.get("supports_vertical", []):
+                supports_vertical.append(_translate(s, dx=x_offset, dy=y_offset))
+            for s in pg.get("supports_wide_horiz", []):
+                supports_wide_horiz.append(_translate(s, dx=x_offset, dy=y_offset))
+            for s in pg.get("supports_long_horiz", []):
+                supports_long_horiz.append(_translate(s, dx=x_offset, dy=y_offset))
 
             # Place web
             for w in pg.get("web", []):
@@ -793,10 +804,16 @@ class PlateGirderCADGenerator:
             # Shear Studs
             "shear_studs": shear_studs,
             
+            
             # Support structures
             "supports": supports,
             "supports_tri": supports_tri,
             "supports_cyl": supports_cyl,
+            
+
+            "supports_vertical":   supports_vertical,
+            "supports_wide_horiz": supports_wide_horiz,
+            "supports_long_horiz": supports_long_horiz,
             
             # Cross bracing system
             "cross_bracings": cross_bracings,

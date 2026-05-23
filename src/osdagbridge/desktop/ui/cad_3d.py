@@ -186,7 +186,7 @@ class CAD3DWindow(QWidget):
 
 
         # HELPER 
-        def display_and_register(shapes, key, label, color, transparency=None):
+        def display_and_register(shapes, key, label, color, transparency=None, line_width=None):
             if not shapes:
                 return
 
@@ -198,6 +198,10 @@ class CAD3DWindow(QWidget):
             for shp in shapes:
                 ais = display.DisplayShape(shp, color=color, transparency=transparency, update=False)
                 ais = ais[0] if isinstance(ais, list) else ais
+
+                if line_width is not None:
+                    ais.SetWidth(line_width)
+                    context.RecomputePrsOnly(ais, False)
 
                 context.Activate(ais, 0)   # REQUIRED for hover
                 ais_list.append(ais)
@@ -240,14 +244,31 @@ class CAD3DWindow(QWidget):
             STIFFENER_COLOR
         )
 
-        SUPPORT_FRAME_COLOR = Quantity_Color(0.82, 0.35, 0.0, Quantity_TOC_RGB)
+        SUPPORT_VERTICAL_COLOR   = Quantity_Color(0.0, 0.35, 0.0,  Quantity_TOC_RGB)  # Green
+        SUPPORT_TRANSVERSE_COLOR = Quantity_Color(0.1,  0.1, 0.85, Quantity_TOC_RGB)  # Blue
+        SUPPORT_LONGIT_COLOR     = Quantity_Color(0.85, 0.1, 0.1, Quantity_TOC_RGB)  # Red
+
 
         display_and_register(
-            cad_data.get("supports_tri", []),
-            "Support",
-            "Support",
-            SUPPORT_FRAME_COLOR
-        )
+            cad_data.get("supports_vertical",   []), 
+            "Support Vertical",   
+            "Support - Vertical",      
+            SUPPORT_VERTICAL_COLOR,
+            line_width=2.0)
+        
+        display_and_register(
+            cad_data.get("supports_wide_horiz", []), 
+            "Support Transverse", 
+            "Support - Transverse",    
+            SUPPORT_TRANSVERSE_COLOR,
+            line_width=2.0)
+        
+        display_and_register(
+            cad_data.get("supports_long_horiz", []), 
+            "Support Longitudinal",
+            "Support - Longitudinal", 
+            SUPPORT_LONGIT_COLOR,
+            line_width=2.0)
 
 
         display_and_register(
@@ -433,7 +454,8 @@ class CAD3DWindow(QWidget):
         component_map = {
             "Crash Barrier": ["Crash Barrier", "Crash Barrier W-Beam"],
             "Median": ["Median", "Median W-Beam"],
-            "Girder": ["Girder Web", "Girder Flange", "Support", "Stiffener", "Shear Stud"],
+            #"Support"
+            "Girder": ["Girder Web", "Girder Flange", "Stiffener", "Shear Stud", "Support Vertical", "Support Transverse", "Support Longitudinal"],
             "Deck": ["Deck"],
             "Cross Bracing": ["Cross Bracing"],
             "Railing": ["Railing"],
