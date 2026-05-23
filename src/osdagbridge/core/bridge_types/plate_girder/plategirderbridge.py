@@ -223,19 +223,6 @@ class PlateGirderBridge:
             f"{'-'*60}\n"
         )
 
-        # Push section designation into input_dict so report generator can access it directly
-        D_mm     = sp['D']     * 1e3
-        tw_mm    = sp['t_w']   * 1e3
-        Bft_mm   = sp['B_top']   * 1e3
-        Tft_mm   = sp['t_f_top'] * 1e3
-        Bfb_mm   = sp.get('B_bot',   sp['B_top'])   * 1e3
-        Tfb_mm   = sp.get('t_f_bot', sp['t_f_top']) * 1e3
-        self.input_dict['section_designation'] = (
-            f"PG {D_mm:.0f}x{tw_mm:.0f}"
-            f" + {Bft_mm:.0f}x{Tft_mm:.0f}"
-            f" + {Bfb_mm:.0f}x{Tfb_mm:.0f}"
-        )
-
         self._run_dcr_checks(dataset)
 
     def _parse_basic_inputs(self) -> dict:
@@ -712,37 +699,16 @@ class PlateGirderBridge:
 
     def _run_dcr_checks(self, dataset) -> None:
         """Run structural capacity checks and push DCR percentages to the output dock."""
-        from .designer import BridgeConfig, _extract_demands_from_analysis, IRC22CapacityCalculator, DCREngine, StiffenerConfig
-
         results = PlateGirderAnalysisResults(dataset=dataset, bridge=self.grillage_model)
-        run_design_check(
+        _, engine = run_design_check(
             plate_girder_bridge=self,
             analysis_results=results,
             print_report=True,
         )
 
-        config = BridgeConfig.from_plate_girder_bridge(self)
-        if config.stiffener is None:
-            config.stiffener = StiffenerConfig()
-            
-        demand = _extract_demands_from_analysis(results, config)
-        
-        if config.stiffener.bs_R_kN <= 0.0 and demand.Vu_kN > 0.0:
-            config.stiffener.bs_R_kN = demand.Vu_kN
-            
-        capacity = IRC22CapacityCalculator(config).compute_all(
-            Vu_kN=demand.Vu_kN,
-            stress_range_MPa=demand.stress_range_MPa,
-            M_sls_kNm=demand.M_sls_kNm,
-            V_sls_kN=demand.V_sls_kN,
-        )
-        engine = DCREngine(demand, capacity)
-        engine.run_all_checks()
-
         dcr_by_id: dict[int, float] = {}
         for c in engine.checks:
             dcr_by_id[c.check_id] = max(dcr_by_id.get(c.check_id, 0.0), c.dcr)
-
         self._frontend.set_output_value(KEY_UTIL_FLEXURE,          dcr_by_id.get(1,  0.0) * 100)
         self._frontend.set_output_value(KEY_UTIL_SHEAR,            dcr_by_id.get(2,  0.0) * 100)
         self._frontend.set_output_value(KEY_UTIL_INTERACTION,      dcr_by_id.get(3,  0.0) * 100)

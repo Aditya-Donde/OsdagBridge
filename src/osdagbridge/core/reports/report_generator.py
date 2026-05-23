@@ -17,9 +17,55 @@
 #   • Chapter 9  References (13 entries)
 # =============================================================================
 
+# =============================================================================
+# GAPS REPORT — keys used in templates with no canonical KEY_ in common.py
+# Action required: mentor to review and decide canonical key names / sources
+# =============================================================================
+# GAP | Template location         | Literal key used        | Notes
+# ─────────────────────────────────────────────────────────────────────────────
+# 1   | Table 2.1                 | 'latitude'              | injected from weather_data
+# 2   | Table 2.1                 | 'longitude'             | injected from weather_data
+# 3   | Table 2.1                 | 'seismic_zone'          | injected from weather_data
+# 4   | Table 2.1                 | 'wind_speed'            | injected from weather_data
+# 5   | Table 2.1                 | 'shade_temp_max'        | injected from weather_data
+# 6   | Table 2.1                 | 'shade_temp_min'        | injected from weather_data
+# 7   | Table 2.2 / Exec Summary  | 'num_lanes'             | computed via IRC6 table_6()
+# 8   | Table 2.2                 | 'overall_bridge_width'  | computed by sizing engine
+# 9   | Exec Summary (Proj Ovw)   | 'overall_design_status' | runtime-injected by backend
+# 10  | Exec Summary (Proj Ovw)   | 'governing_check'       | runtime-injected by backend
+# 11  | Exec Summary (Proj Ovw)   | 'max_ur'                | runtime-injected by backend
+# 12  | Exec Summary (Table 1)    | 'section_designation'   | runtime-injected by backend
+# 13  | Table 2.5                 | 'crash_barrier_type'    | KEY_CRASH_BARRIER_TYPE is a list
+# 14  | Table 2.5                 | 'median_type'           | KEY_MEDIAN_TYPE is a list
+# 15  | Table 2.5                 | 'railing_type'          | KEY_RAILING_TYPE is a list
+# =============================================================================
+
 import os, shutil, logging, datetime, tempfile, subprocess
 from dataclasses import dataclass, field
 from typing import Optional, List, Dict, Any, Literal
+
+from osdagbridge.core.utils.common import (
+    KEY_SPAN,
+    KEY_CARRIAGEWAY_WIDTH,
+    KEY_INCLUDE_MEDIAN,
+    KEY_FOOTPATH,
+    KEY_SKEW_ANGLE,
+    KEY_GIRDER,
+    KEY_CROSS_BRACING,
+    KEY_END_DIAPHRAGM,
+    KEY_DECK_CONCRETE_GRADE_BASIC,
+    KEY_PROJECT_LOCATION,
+    KEY_STRUCTURE_TYPE,
+    KEY_GIRDER_SPACING,
+    KEY_NO_OF_GIRDERS,
+    KEY_DECK_THICKNESS,
+    KEY_FOOTPATH_WIDTH,
+    KEY_WEARING_COAT_MATERIAL,
+    KEY_WEARING_COAT_THICKNESS,
+    KEY_CRASH_BARRIER_LOAD,
+    KEY_RAILING_LOAD,
+    KEY_DECK_OVERHANG,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -272,7 +318,7 @@ def executive_summary(inp, fig_paths) -> str:
                                     'Figure 3 -- 3D View of Bridge Superstructure')
 
     # All girders share the same section, governing check, and UR (from input_dict)
-    sec = _tex(str(inp.get('section_designation', ''))) or _ph('Section')
+    sec = _tex(str(inp.get('section_designation', ''))) or _ph('Section')  # GAP: not in common.py (runtime-injected)
     gov = _tex(str(inp.get('governing_check', ''))) or _ph('Check')
     ur  = _tex(str(inp.get('max_ur', ''))) or _ph('UR')
 
@@ -299,17 +345,17 @@ This section provides a concise summary of the bridge design, key inputs, govern
 \hline
 \textbf{Design Standard} & IRC 5, IRC 6, IRC 22, IRC 24, IS 800 \\
 \hline
-\textbf{Span} & """ + (_v(inp, 'span', ' m') or _ph('Span Length')) + r""" \\
+\textbf{Span} & """ + (_v(inp, KEY_SPAN, ' m') or _ph('Span Length')) + r""" \\
 \hline
-\textbf{Carriageway Width} & """ + (_v(inp, 'carriageway_width', ' m') or _ph('Carriageway Width')) + r""" \\
+\textbf{Carriageway Width} & """ + (_v(inp, KEY_CARRIAGEWAY_WIDTH, ' m') or _ph('Carriageway Width')) + r""" \\
 \hline
 \textbf{No. of Traffic Lanes} & """ + (_v(inp, 'num_lanes') or _ph('No. of Lanes')) + r""" \\
 \hline
-\textbf{No. of Girders} & """ + (_v(inp, 'num_girders') or _ph('No. of Girders')) + r""" \\
+\textbf{No. of Girders} & """ + (_v(inp, KEY_NO_OF_GIRDERS) or _ph('No. of Girders')) + r""" \\
 \hline
-\textbf{Girder Spacing} & """ + (_v(inp, 'girder_spacing') or _ph('Girder Spacing')) + r""" \\
+\textbf{Girder Spacing} & """ + (_v(inp, KEY_GIRDER_SPACING) or _ph('Girder Spacing')) + r""" \\
 \hline
-\textbf{Deck Thickness} & """ + (_v(inp, 'deck_thickness') or _ph('Deck Thickness')) + r""" \\
+\textbf{Deck Thickness} & """ + (_v(inp, KEY_DECK_THICKNESS) or _ph('Deck Thickness')) + r""" \\
 \hline
 \textbf{Overall Design Status} & """ + (_v(inp, 'overall_design_status') or _ph('PASS / FAIL')) + r""" \\
 \hline
@@ -476,15 +522,15 @@ This section documents all inputs provided to OsdagBridge. User-provided inputs 
 \hline
 \textbf{Type of Structure} & Highway Bridge \\
 \hline
-\textbf{Span (m)} & """ + (_v(inp,'span',' m') or _ph('L') + ' m') + r""" \\
+\textbf{Span (m)} & """ + (_v(inp, KEY_SPAN,' m') or _ph('L') + ' m') + r""" \\
 \hline
-\textbf{Carriageway Width (m)} & """ + (_v(inp,'carriageway_width',' m') or _ph('CW') + ' m') + r""" \\
+\textbf{Carriageway Width (m)} & """ + (_v(inp, KEY_CARRIAGEWAY_WIDTH,' m') or _ph('CW') + ' m') + r""" \\
 \hline
-\textbf{Include Median} & """ + (_v(inp,'include_median') or 'Yes / No') + r""" \\
+\textbf{Include Median} & """ + (_v(inp, KEY_INCLUDE_MEDIAN) or 'Yes / No') + r""" \\
 \hline
-\textbf{Footpath} & """ + (_v(inp,'footpath') or 'None / Single / Both') + r""" \\
+\textbf{Footpath} & """ + (_v(inp, KEY_FOOTPATH) or 'None / Single / Both') + r""" \\
 \hline
-\textbf{Skew Angle (degrees)} & """ + (_v(inp,'skew_angle','°') or _ph('Angle') + '°') + r""" (IRC 24 Cl. 504.8 limit: $\pm$15°) \\
+\textbf{Skew Angle (degrees)} & """ + (_v(inp, KEY_SKEW_ANGLE,'°') or _ph('Angle') + '°') + r""" (IRC 24 Cl. 504.8 limit: $\pm$15°) \\
 \hline
 \end{tabular}
 \end{table}
@@ -496,13 +542,13 @@ This section documents all inputs provided to OsdagBridge. User-provided inputs 
 \vspace{-6pt}
 \begin{tabular}{|L{5.5cm}|L{8.5cm}|}
 \hline
-\textbf{Girder Steel Grade (IS 2062)} & """ + (_v(inp,'girder_steel_grade') or _ph('e.g. E 350')) + r""" \\
+\textbf{Girder Steel Grade (IS 2062)} & """ + (_v(inp, KEY_GIRDER) or _ph('e.g. E 350')) + r""" \\
 \hline
-\textbf{Cross Bracing Steel Grade} & """ + (_v(inp,'cross_bracing_grade') or _ph('e.g. E 350')) + r""" \\
+\textbf{Cross Bracing Steel Grade} & """ + (_v(inp, KEY_CROSS_BRACING) or _ph('e.g. E 350')) + r""" \\
 \hline
-\textbf{End Diaphragm Steel Grade} & """ + (_v(inp,'end_diaphragm_grade') or _ph('e.g. E 350')) + r""" \\
+\textbf{End Diaphragm Steel Grade} & """ + (_v(inp, KEY_END_DIAPHRAGM) or _ph('e.g. E 350')) + r""" \\
 \hline
-\textbf{Concrete Deck Grade (IRC 22)} & """ + (_v(inp,'deck_concrete_grade') or _ph('e.g. M 40')) + r""" \\
+\textbf{Concrete Deck Grade (IRC 22)} & """ + (_v(inp, KEY_DECK_CONCRETE_GRADE_BASIC) or _ph('e.g. M 40')) + r""" \\
 \hline
 \end{tabular}
 \end{table}
@@ -521,15 +567,15 @@ Where the user has modified additional inputs, those values are reported here. W
 \hline
 \textbf{Overall Bridge Width (m)} & """ + (_v(inp,'overall_bridge_width') or _ph('Calculated')) + r""" \\[6pt]
 \hline
-\textbf{No. of Girders} & """ + (_v(inp,'num_girders') or _ph('n')) + r""" [SOFTWARE DEFAULT / USER] \\[6pt]
+\textbf{No. of Girders} & """ + (_v(inp, KEY_NO_OF_GIRDERS) or _ph('n')) + r""" [SOFTWARE DEFAULT / USER] \\[6pt]
 \hline
-\textbf{Girder Spacing (m)} & """ + (_v(inp,'girder_spacing',' m') or _ph('s') + ' m') + r""" [SOFTWARE DEFAULT: 2.5 m] \\[6pt]
+\textbf{Girder Spacing (m)} & """ + (_v(inp, KEY_GIRDER_SPACING,' m') or _ph('s') + ' m') + r""" [SOFTWARE DEFAULT: 2.5 m] \\[6pt]
 \hline
-\textbf{Deck Overhang Width (m)} & """ + (_v(inp,'deck_overhang',' m') or _ph(r'd\_oh') + ' m') + r""" [SOFTWARE DEFAULT: 0.35 x spacing] \\[6pt]
+\textbf{Deck Overhang Width (m)} & """ + (_v(inp, KEY_DECK_OVERHANG,' m') or _ph(r'd\_oh') + ' m') + r""" [SOFTWARE DEFAULT: 0.35 x spacing] \\[6pt]
 \hline
-\textbf{Deck Thickness (mm)} & """ + (_v(inp,'deck_thickness',' mm') or _ph('dt') + ' mm') + r""" [SOFTWARE DEFAULT: 200 mm] \\[6pt]
+\textbf{Deck Thickness (mm)} & """ + (_v(inp, KEY_DECK_THICKNESS,' mm') or _ph('dt') + ' mm') + r""" [SOFTWARE DEFAULT: 200 mm] \\[6pt]
 \hline
-\textbf{Footpath Width (m)} & """ + (_v(inp,'footpath_width',' m') or _ph('$f_w$') + ' m') + r""" (IRC 5 Cl. 104.3.6 min: 1.5 m) \\[6pt]
+\textbf{Footpath Width (m)} & """ + (_v(inp, KEY_FOOTPATH_WIDTH,' m') or _ph('$f_w$') + ' m') + r""" (IRC 5 Cl. 104.3.6 min: 1.5 m) \\[6pt]
 \hline
 \textbf{No. of Traffic Lanes} & """ + (_v(inp,'num_lanes') or _ph(r'n\_lanes')) + r""" (per IRC 5 Cl. 104.3.1) \\[6pt]
 \hline
@@ -545,7 +591,7 @@ Where the user has modified additional inputs, those values are reported here. W
 \hline
 \textbf{Crash Barrier Type} & """ + (_v(inp,'crash_barrier_type') or _ph('IRC 5 RCC / Metallic / Custom')) + r""" \\[6pt]
 \hline
-\textbf{Crash Barrier Load (kN/m)} & """ + (_v(inp,'crash_barrier_load') or _ph('Load')) + r""" \\[6pt]
+\textbf{Crash Barrier Load (kN/m)} & """ + (_v(inp, KEY_CRASH_BARRIER_LOAD) or _ph('Load')) + r""" \\[6pt]
 \hline
 \textbf{Median Type} & """ + (_v(inp,'median_type') or _ph('IRC 5 Raised Kerb / N/A')) + r""" \\[6pt]
 \hline
@@ -553,9 +599,9 @@ Where the user has modified additional inputs, those values are reported here. W
 \hline
 \textbf{Railing Load (kN/m)} & 1.5 kN/m [SOFTWARE DEFAULT per IRC 6 Cl. 206.5] \\[6pt]
 \hline
-\textbf{Wearing Course Material} & """ + (_v(inp,'wearing_course_material') or _ph('Bituminous / Concrete')) + r""" \\[6pt]
+\textbf{Wearing Course Material} & """ + (_v(inp, KEY_WEARING_COAT_MATERIAL) or _ph('Bituminous / Concrete')) + r""" \\[6pt]
 \hline
-\textbf{Wearing Course Thickness (mm)} & """ + (_v(inp,'wearing_course_thickness',' mm') or _ph(r'wc\_t') + ' mm') + r""" [SOFTWARE DEFAULT: 80 mm] \\[6pt]
+\textbf{Wearing Course Thickness (mm)} & """ + (_v(inp, KEY_WEARING_COAT_THICKNESS,' mm') or _ph(r'wc\_t') + ' mm') + r""" [SOFTWARE DEFAULT: 80 mm] \\[6pt]
 \hline
 \end{tabularx}
 \end{table}
@@ -779,9 +825,9 @@ This section summarizes all loads applied to the bridge and the load combination
 \vspace{-6pt}
 \begin{tabularx}{\textwidth}{|L{5.5cm}|X|}
 \hline
-\textbf{Wearing Course Load} & """ + (_v(inp,'wearing_course_material') or _ph('Density')) + r""" x """ + (_v(inp,'wearing_course_thickness') or _ph('Thickness')) + r""" \\[6pt]
+\textbf{Wearing Course Load} & """ + (_v(inp, KEY_WEARING_COAT_MATERIAL) or _ph('Density')) + r""" x """ + (_v(inp, KEY_WEARING_COAT_THICKNESS) or _ph('Thickness')) + r""" \\[6pt]
 \hline
-\textbf{Additional SIDL (Crash Barrier)} & """ + (_v(inp,'crash_barrier_load') or _ph('Load')) + r""" kN/m per barrier \\[6pt]
+\textbf{Additional SIDL (Crash Barrier)} & """ + (_v(inp, KEY_CRASH_BARRIER_LOAD) or _ph('Load')) + r""" kN/m per barrier \\[6pt]
 \hline
 \textbf{Railing Load} & 1.5 kN/m per railing [IRC 6 Cl. 206.5] \\[6pt]
 \hline
@@ -2350,28 +2396,7 @@ def build_report_payload(request, input_dict, backend_results, backend):
             report_date   = rd,
             reviewer      = getattr(request.metadata, 'reviewer', ''))
 
-        inp = {}
-        # Flatten input_dict keys (e.g., 'geometry.span' -> 'span')
-        for full_key, val in input_dict.items():
-            if val is not None:
-                short_key = full_key.split('.')[-1]
-                inp[short_key] = val
-                
-        # Map aliases for template compatibility
-        if 'girder' in inp and 'girder_steel_grade' not in inp:
-            inp['girder_steel_grade'] = inp['girder']
-            
-        if 'cross_bracing' in inp and 'cross_bracing_grade' not in inp:
-            inp['cross_bracing_grade'] = inp['cross_bracing']
-            
-        if 'end_diaphragm' in inp and 'end_diaphragm_grade' not in inp:
-            inp['end_diaphragm_grade'] = inp['end_diaphragm']
-            
-        if 'no_of_lanes' in inp and 'num_lanes' not in inp:
-            inp['num_lanes'] = inp['no_of_lanes']
-            
-        if 'no_of_girders' in inp and 'num_girders' not in inp:
-            inp['num_girders'] = inp['no_of_girders']
+        inp = input_dict
 
         # Inject detailed project location and weather data into inp dict
         try:
@@ -2648,7 +2673,7 @@ def generate_report(payload, request):
             
         # Instantiate ReportDataBridge
         bridge = ReportDataBridge(payload.backend, payload.backend_results, payload.inputs, payload)
-        span_m = float(payload.inputs.get("span", 0) or 0)
+        span_m = float(payload.inputs.get(KEY_SPAN, 0) or 0)
         
         doc_parts.append(executive_summary(payload.inputs, fig_rel))
         doc_parts.append(ch1_project_info(payload.metadata))
