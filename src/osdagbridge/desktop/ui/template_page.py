@@ -891,44 +891,36 @@ class CustomWindow(QWidget):
 
             # Gather inputs
             report_inputs = dict(self.input_dict) if hasattr(self, 'input_dict') else {}
-            try:
-                if hasattr(self, '_additional_inputs_snapshot'):
-                    report_inputs.update(self._additional_inputs_snapshot or {})
-            except Exception:
-                pass
-
-            # Try to push inputs to backend
-            try:
-                if hasattr(self, 'backend'):
-                    self.backend.set_input(report_inputs)
-            except Exception:
-                pass
 
             # Build payload
-            backend_results = None
+            output_dict = None
             try:
                 if hasattr(self, 'backend') and hasattr(self.backend, 'get_results'):
-                    backend_results = self.backend.get_results()
+                    output_dict = self.backend.get_results()
             except Exception:
                 pass
 
             payload = build_report_payload(
                 request=request,
                 input_dict=report_inputs,
-                backend_results=backend_results,
-                backend=getattr(self, 'backend', None),
+                output_dict=output_dict,
             )
 
             # Export grillage figure if figures are enabled
             if request.options.include_figures:
                 try:
-                    grillage_path = export_grillage_figure(
-                        backend=getattr(self, 'backend', None),
-                        output_dir=request.output_dir,
-                        file_stem=request.file_stem,
-                    )
-                    if grillage_path:
-                        payload.figures.grillage = grillage_path
+                    grillage_image = None
+                    if hasattr(self, 'backend') and hasattr(self.backend, 'get_grillage_figure'):
+                        grillage_image = self.backend.get_grillage_figure()
+                        
+                    if grillage_image:
+                        grillage_path = export_grillage_figure(
+                            grillage_image=grillage_image,
+                            output_dir=request.output_dir,
+                            file_stem=request.file_stem,
+                        )
+                        if grillage_path:
+                            payload.figures.grillage = grillage_path
                 except Exception:
                     pass
 

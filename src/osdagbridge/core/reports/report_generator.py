@@ -91,9 +91,9 @@ def _tex(value):
     return s
 
 
-def _v(inp, key, suffix='', default=''):
+def _v(input_dict, key, suffix='', default=''):
     """Safely fetch an input value with optional unit suffix."""
-    val = inp.get(key, '')
+    val = input_dict.get(key, '')
     if val in ('', None):
         return default
     return f"{val}{suffix}"
@@ -310,7 +310,7 @@ def toc_section():
 # EXECUTIVE SUMMARY
 # ═══════════════════════════════════════════════════════════════════════════════
 
-def executive_summary(inp, fig_paths) -> str:
+def executive_summary(input_dict, fig_paths) -> str:
     plan_fig = _fig_or_placeholder(fig_paths.get('plan'), 'Figure 1 -- Overall Bridge Plan')
     cs_fig = _fig_or_placeholder(fig_paths.get('cross_section'),
                                   'Figure 2 -- Typical Cross-Section (with girder, deck, barriers, footpath)')
@@ -318,9 +318,9 @@ def executive_summary(inp, fig_paths) -> str:
                                     'Figure 3 -- 3D View of Bridge Superstructure')
 
     # All girders share the same section, governing check, and UR (from input_dict)
-    sec = _tex(str(inp.get('section_designation', ''))) or _ph('Section')  # GAP: not in common.py (runtime-injected)
-    gov = _tex(str(inp.get('governing_check', ''))) or _ph('Check')
-    ur  = _tex(str(inp.get('max_ur', ''))) or _ph('UR')
+    sec = _tex(str(input_dict.get('section_designation', ''))) or _ph('Section')  # GAP: not in common.py (runtime-injected)
+    gov = _tex(str(output_dict.get('governing_check', ''))) or _ph('Check')
+    ur  = _tex(str(output_dict.get('overall_utilization_ratio', ''))) or _ph('UR')
 
     sections = f"Section Designation & {sec} & {sec} & {sec} & {sec} & {sec} & {sec} \\\\"
     gov_checks = f"Governing Check & {gov} & {gov} & {gov} & {gov} & {gov} & {gov} \\\\"
@@ -345,23 +345,23 @@ This section provides a concise summary of the bridge design, key inputs, govern
 \hline
 \textbf{Design Standard} & IRC 5, IRC 6, IRC 22, IRC 24, IS 800 \\
 \hline
-\textbf{Span} & """ + (_v(inp, KEY_SPAN, ' m') or _ph('Span Length')) + r""" \\
+\textbf{Span} & """ + (_v(input_dict, KEY_SPAN, ' m') or _ph('Span Length')) + r""" \\
 \hline
-\textbf{Carriageway Width} & """ + (_v(inp, KEY_CARRIAGEWAY_WIDTH, ' m') or _ph('Carriageway Width')) + r""" \\
+\textbf{Carriageway Width} & """ + (_v(input_dict, KEY_CARRIAGEWAY_WIDTH, ' m') or _ph('Carriageway Width')) + r""" \\
 \hline
-\textbf{No. of Traffic Lanes} & """ + (_v(inp, 'num_lanes') or _ph('No. of Lanes')) + r""" \\
+\textbf{No. of Traffic Lanes} & """ + (_v(input_dict, 'num_lanes') or _ph('No. of Lanes')) + r""" \\
 \hline
-\textbf{No. of Girders} & """ + (_v(inp, KEY_NO_OF_GIRDERS) or _ph('No. of Girders')) + r""" \\
+\textbf{No. of Girders} & """ + (_v(input_dict, KEY_NO_OF_GIRDERS) or _ph('No. of Girders')) + r""" \\
 \hline
-\textbf{Girder Spacing} & """ + (_v(inp, KEY_GIRDER_SPACING) or _ph('Girder Spacing')) + r""" \\
+\textbf{Girder Spacing} & """ + (_v(input_dict, KEY_GIRDER_SPACING) or _ph('Girder Spacing')) + r""" \\
 \hline
-\textbf{Deck Thickness} & """ + (_v(inp, KEY_DECK_THICKNESS) or _ph('Deck Thickness')) + r""" \\
+\textbf{Deck Thickness} & """ + (_v(input_dict, KEY_DECK_THICKNESS) or _ph('Deck Thickness')) + r""" \\
 \hline
-\textbf{Overall Design Status} & """ + (_v(inp, 'overall_design_status') or _ph('PASS / FAIL')) + r""" \\
+\textbf{Overall Design Status} & """ + (_v(output_dict, 'overall_design_status') or _ph('PASS / FAIL')) + r""" \\
 \hline
-\textbf{Governing Check} & """ + (_v(inp, 'governing_check') or _ph('e.g. Deflection --- L/600')) + r""" \\
+\textbf{Governing Check} & """ + (_v(output_dict, 'governing_check') or _ph('e.g. Deflection --- L/600')) + r""" \\
 \hline
-\textbf{Overall Utilization Ratio (max)} & """ + (_v(inp, 'max_ur') or _ph('Value')) + r""" \\
+\textbf{Overall Utilization Ratio (max)} & """ + (_v(output_dict, 'overall_utilization_ratio') or _ph('Value')) + r""" \\
 \hline
 \end{tabular}
 \end{table}
@@ -479,7 +479,7 @@ This section records all project metadata as entered by the designer.
 # Chapter 2: Input Parameters — exact LaTeX template match
 
 
-def ch2_input_parameters(m, inp):
+def ch2_input_parameters(m, input_dict):
     return r"""
 \chapter{Input Parameters}
 
@@ -502,13 +502,13 @@ This section documents all inputs provided to OsdagBridge. User-provided inputs 
 \hline
 \textbf{Project Location} & """ + _tex(m.project_location) + r""" \\
 \hline
-\textbf{Latitude / Longitude} & """ + (_v(inp,'latitude') or _ph('lat')) + ', ' + (_v(inp,'longitude') or _ph('lon')) + r""" \\
+\textbf{Latitude / Longitude} & """ + (_v(input_dict,'latitude') or _ph('lat')) + ', ' + (_v(input_dict,'longitude') or _ph('lon')) + r""" \\
 \hline
-\textbf{Seismic Zone (IRC 6)} & """ + (_v(inp,'seismic_zone') or _ph('Zone II / III / IV / V')) + r""" \\
+\textbf{Seismic Zone (IRC 6)} & """ + (_v(input_dict,'seismic_zone') or _ph('Zone II / III / IV / V')) + r""" \\
 \hline
-\textbf{Basic Wind Speed (IRC 6)} & """ + (_v(inp,'wind_speed',' m/s') or _ph('Vb') + ' m/s') + r""" \\
+\textbf{Basic Wind Speed (IRC 6)} & """ + (_v(input_dict,'wind_speed',' m/s') or _ph('Vb') + ' m/s') + r""" \\
 \hline
-\textbf{Shade Temp. Max / Min (IRC 6)} & """ + (_v(inp,'shade_temp_max','') or _ph('Max')) + r""" °C / """ + (_v(inp,'shade_temp_min','') or _ph('Min')) + r""" °C \\
+\textbf{Shade Temp. Max / Min (IRC 6)} & """ + (_v(input_dict,'shade_temp_max','') or _ph('Max')) + r""" °C / """ + (_v(input_dict,'shade_temp_min','') or _ph('Min')) + r""" °C \\
 \hline
 \end{tabular}
 \end{table}
@@ -522,15 +522,15 @@ This section documents all inputs provided to OsdagBridge. User-provided inputs 
 \hline
 \textbf{Type of Structure} & Highway Bridge \\
 \hline
-\textbf{Span (m)} & """ + (_v(inp, KEY_SPAN,' m') or _ph('L') + ' m') + r""" \\
+\textbf{Span (m)} & """ + (_v(input_dict, KEY_SPAN,' m') or _ph('L') + ' m') + r""" \\
 \hline
-\textbf{Carriageway Width (m)} & """ + (_v(inp, KEY_CARRIAGEWAY_WIDTH,' m') or _ph('CW') + ' m') + r""" \\
+\textbf{Carriageway Width (m)} & """ + (_v(input_dict, KEY_CARRIAGEWAY_WIDTH,' m') or _ph('CW') + ' m') + r""" \\
 \hline
-\textbf{Include Median} & """ + (_v(inp, KEY_INCLUDE_MEDIAN) or 'Yes / No') + r""" \\
+\textbf{Include Median} & """ + (_v(input_dict, KEY_INCLUDE_MEDIAN) or 'Yes / No') + r""" \\
 \hline
-\textbf{Footpath} & """ + (_v(inp, KEY_FOOTPATH) or 'None / Single / Both') + r""" \\
+\textbf{Footpath} & """ + (_v(input_dict, KEY_FOOTPATH) or 'None / Single / Both') + r""" \\
 \hline
-\textbf{Skew Angle (degrees)} & """ + (_v(inp, KEY_SKEW_ANGLE,'°') or _ph('Angle') + '°') + r""" (IRC 24 Cl. 504.8 limit: $\pm$15°) \\
+\textbf{Skew Angle (degrees)} & """ + (_v(input_dict, KEY_SKEW_ANGLE,'°') or _ph('Angle') + '°') + r""" (IRC 24 Cl. 504.8 limit: $\pm$15°) \\
 \hline
 \end{tabular}
 \end{table}
@@ -542,13 +542,13 @@ This section documents all inputs provided to OsdagBridge. User-provided inputs 
 \vspace{-6pt}
 \begin{tabular}{|L{5.5cm}|L{8.5cm}|}
 \hline
-\textbf{Girder Steel Grade (IS 2062)} & """ + (_v(inp, KEY_GIRDER) or _ph('e.g. E 350')) + r""" \\
+\textbf{Girder Steel Grade (IS 2062)} & """ + (_v(input_dict, KEY_GIRDER) or _ph('e.g. E 350')) + r""" \\
 \hline
-\textbf{Cross Bracing Steel Grade} & """ + (_v(inp, KEY_CROSS_BRACING) or _ph('e.g. E 350')) + r""" \\
+\textbf{Cross Bracing Steel Grade} & """ + (_v(input_dict, KEY_CROSS_BRACING) or _ph('e.g. E 350')) + r""" \\
 \hline
-\textbf{End Diaphragm Steel Grade} & """ + (_v(inp, KEY_END_DIAPHRAGM) or _ph('e.g. E 350')) + r""" \\
+\textbf{End Diaphragm Steel Grade} & """ + (_v(input_dict, KEY_END_DIAPHRAGM) or _ph('e.g. E 350')) + r""" \\
 \hline
-\textbf{Concrete Deck Grade (IRC 22)} & """ + (_v(inp, KEY_DECK_CONCRETE_GRADE_BASIC) or _ph('e.g. M 40')) + r""" \\
+\textbf{Concrete Deck Grade (IRC 22)} & """ + (_v(input_dict, KEY_DECK_CONCRETE_GRADE_BASIC) or _ph('e.g. M 40')) + r""" \\
 \hline
 \end{tabular}
 \end{table}
@@ -565,19 +565,19 @@ Where the user has modified additional inputs, those values are reported here. W
 \vspace{-6pt}
 \begin{tabularx}{\textwidth}{|L{5.5cm}|X|}
 \hline
-\textbf{Overall Bridge Width (m)} & """ + (_v(inp,'overall_bridge_width') or _ph('Calculated')) + r""" \\[6pt]
+\textbf{Overall Bridge Width (m)} & """ + (_v(input_dict,'overall_bridge_width') or _ph('Calculated')) + r""" \\[6pt]
 \hline
-\textbf{No. of Girders} & """ + (_v(inp, KEY_NO_OF_GIRDERS) or _ph('n')) + r""" [SOFTWARE DEFAULT / USER] \\[6pt]
+\textbf{No. of Girders} & """ + (_v(input_dict, KEY_NO_OF_GIRDERS) or _ph('n')) + r""" [SOFTWARE DEFAULT / USER] \\[6pt]
 \hline
-\textbf{Girder Spacing (m)} & """ + (_v(inp, KEY_GIRDER_SPACING,' m') or _ph('s') + ' m') + r""" [SOFTWARE DEFAULT: 2.5 m] \\[6pt]
+\textbf{Girder Spacing (m)} & """ + (_v(input_dict, KEY_GIRDER_SPACING,' m') or _ph('s') + ' m') + r""" [SOFTWARE DEFAULT: 2.5 m] \\[6pt]
 \hline
-\textbf{Deck Overhang Width (m)} & """ + (_v(inp, KEY_DECK_OVERHANG,' m') or _ph(r'd\_oh') + ' m') + r""" [SOFTWARE DEFAULT: 0.35 x spacing] \\[6pt]
+\textbf{Deck Overhang Width (m)} & """ + (_v(input_dict, KEY_DECK_OVERHANG,' m') or _ph(r'd\_oh') + ' m') + r""" [SOFTWARE DEFAULT: 0.35 x spacing] \\[6pt]
 \hline
-\textbf{Deck Thickness (mm)} & """ + (_v(inp, KEY_DECK_THICKNESS,' mm') or _ph('dt') + ' mm') + r""" [SOFTWARE DEFAULT: 200 mm] \\[6pt]
+\textbf{Deck Thickness (mm)} & """ + (_v(input_dict, KEY_DECK_THICKNESS,' mm') or _ph('dt') + ' mm') + r""" [SOFTWARE DEFAULT: 200 mm] \\[6pt]
 \hline
-\textbf{Footpath Width (m)} & """ + (_v(inp, KEY_FOOTPATH_WIDTH,' m') or _ph('$f_w$') + ' m') + r""" (IRC 5 Cl. 104.3.6 min: 1.5 m) \\[6pt]
+\textbf{Footpath Width (m)} & """ + (_v(input_dict, KEY_FOOTPATH_WIDTH,' m') or _ph('$f_w$') + ' m') + r""" (IRC 5 Cl. 104.3.6 min: 1.5 m) \\[6pt]
 \hline
-\textbf{No. of Traffic Lanes} & """ + (_v(inp,'num_lanes') or _ph(r'n\_lanes')) + r""" (per IRC 5 Cl. 104.3.1) \\[6pt]
+\textbf{No. of Traffic Lanes} & """ + (_v(input_dict,'num_lanes') or _ph(r'n\_lanes')) + r""" (per IRC 5 Cl. 104.3.1) \\[6pt]
 \hline
 \end{tabularx}
 \end{table}
@@ -589,19 +589,19 @@ Where the user has modified additional inputs, those values are reported here. W
 \vspace{-6pt}
 \begin{tabularx}{\textwidth}{|L{5.5cm}|X|}
 \hline
-\textbf{Crash Barrier Type} & """ + (_v(inp,'crash_barrier_type') or _ph('IRC 5 RCC / Metallic / Custom')) + r""" \\[6pt]
+\textbf{Crash Barrier Type} & """ + (_v(input_dict,'crash_barrier_type') or _ph('IRC 5 RCC / Metallic / Custom')) + r""" \\[6pt]
 \hline
-\textbf{Crash Barrier Load (kN/m)} & """ + (_v(inp, KEY_CRASH_BARRIER_LOAD) or _ph('Load')) + r""" \\[6pt]
+\textbf{Crash Barrier Load (kN/m)} & """ + (_v(input_dict, KEY_CRASH_BARRIER_LOAD) or _ph('Load')) + r""" \\[6pt]
 \hline
-\textbf{Median Type} & """ + (_v(inp,'median_type') or _ph('IRC 5 Raised Kerb / N/A')) + r""" \\[6pt]
+\textbf{Median Type} & """ + (_v(input_dict,'median_type') or _ph('IRC 5 Raised Kerb / N/A')) + r""" \\[6pt]
 \hline
-\textbf{Railing Type} & """ + (_v(inp,'railing_type') or _ph('IRC 5 RCC / Steel / N/A')) + r""" \\[6pt]
+\textbf{Railing Type} & """ + (_v(input_dict,'railing_type') or _ph('IRC 5 RCC / Steel / N/A')) + r""" \\[6pt]
 \hline
 \textbf{Railing Load (kN/m)} & 1.5 kN/m [SOFTWARE DEFAULT per IRC 6 Cl. 206.5] \\[6pt]
 \hline
-\textbf{Wearing Course Material} & """ + (_v(inp, KEY_WEARING_COAT_MATERIAL) or _ph('Bituminous / Concrete')) + r""" \\[6pt]
+\textbf{Wearing Course Material} & """ + (_v(input_dict, KEY_WEARING_COAT_MATERIAL) or _ph('Bituminous / Concrete')) + r""" \\[6pt]
 \hline
-\textbf{Wearing Course Thickness (mm)} & """ + (_v(inp, KEY_WEARING_COAT_THICKNESS,' mm') or _ph(r'wc\_t') + ' mm') + r""" [SOFTWARE DEFAULT: 80 mm] \\[6pt]
+\textbf{Wearing Course Thickness (mm)} & """ + (_v(input_dict, KEY_WEARING_COAT_THICKNESS,' mm') or _ph(r'wc\_t') + ' mm') + r""" [SOFTWARE DEFAULT: 80 mm] \\[6pt]
 \hline
 \end{tabularx}
 \end{table}
@@ -610,9 +610,9 @@ Where the user has modified additional inputs, those values are reported here. W
 
 """ + _bracing_tables() + r"""
 
-""" + _shear_connector_table(inp) + r"""
+""" + _shear_connector_table(input_dict) + r"""
 
-""" + _safety_factors_table(inp)
+""" + _safety_factors_table(input_dict)
 
 
 def _girder_tables():
@@ -738,7 +738,7 @@ Between Girders 4 and 5 & E4M1, E4M2 & K-Bracing / X-Bracing [SOFTWARE DEFAULT] 
 """
 
 
-def _shear_connector_table(inp):
+def _shear_connector_table(input_dict):
     return r"""
 \label{subsec:shear-connectors}
 
@@ -748,21 +748,21 @@ def _shear_connector_table(inp):
 \vspace{0.4em}
 \begin{tabularx}{\textwidth}{|L{5.5cm}|X|}
 \hline
-\textbf{Stud Diameter (mm)} & """ + (_v(inp,'stud_diameter',' mm') or _ph('$d_{stud}$') + ' mm') + r""" [SOFTWARE DEFAULT: 22 mm] \\[6pt]
+\textbf{Stud Diameter (mm)} & """ + (_v(input_dict,'stud_diameter',' mm') or _ph('$d_{stud}$') + ' mm') + r""" [SOFTWARE DEFAULT: 22 mm] \\[6pt]
 \hline
-\textbf{Stud Height (mm)} & """ + (_v(inp,'stud_height',' mm') or _ph('$h_{stud}$') + ' mm') + r""" [SOFTWARE DEFAULT: 100 mm] \\[6pt]
+\textbf{Stud Height (mm)} & """ + (_v(input_dict,'stud_height',' mm') or _ph('$h_{stud}$') + ' mm') + r""" [SOFTWARE DEFAULT: 100 mm] \\[6pt]
 \hline
-\textbf{Stud fy (MPa)} & """ + (_v(inp,'stud_fy',' MPa') or _ph('$f_{ys}$') + ' MPa') + r""" [SOFTWARE DEFAULT: 385 MPa] \\[6pt]
+\textbf{Stud fy (MPa)} & """ + (_v(input_dict,'stud_fy',' MPa') or _ph('$f_{ys}$') + ' MPa') + r""" [SOFTWARE DEFAULT: 385 MPa] \\[6pt]
 \hline
-\textbf{Stud fu (MPa)} & """ + (_v(inp,'stud_fu',' MPa') or _ph('$f_{us}$') + ' MPa') + r""" [SOFTWARE DEFAULT: 495 MPa] \\[6pt]
+\textbf{Stud fu (MPa)} & """ + (_v(input_dict,'stud_fu',' MPa') or _ph('$f_{us}$') + ' MPa') + r""" [SOFTWARE DEFAULT: 495 MPa] \\[6pt]
 \hline
-\textbf{No. of Studs per Section} & """ + (_v(inp,'num_studs') or _ph('$n_s$')) + r""" [SOFTWARE DEFAULT: 2] \\[6pt]
+\textbf{No. of Studs per Section} & """ + (_v(input_dict,'num_studs') or _ph('$n_s$')) + r""" [SOFTWARE DEFAULT: 2] \\[6pt]
 \hline
 \end{tabularx}
 """
 
 
-def _safety_factors_table(inp):
+def _safety_factors_table(input_dict):
     return r"""
 \label{subsec:safety-factors}
 
@@ -775,19 +775,19 @@ def _safety_factors_table(inp):
 \vspace{0.4em}
 \begin{tabularx}{\textwidth}{|L{5.5cm}|X|}
 \hline
-\textbf{$\gamma_{M0}$ (Yielding / Buckling)} & """ + str(inp.get('gamma_m0', '1.10')) + r""" \\[6pt]
+\textbf{$\gamma_{M0}$ (Yielding / Buckling)} & """ + str(input_dict.get('gamma_m0', '1.10')) + r""" \\[6pt]
 \hline
-\textbf{$\gamma_{M1}$ (Ultimate Stress)} & """ + str(inp.get('gamma_m1', '1.25')) + r""" \\[6pt]
+\textbf{$\gamma_{M1}$ (Ultimate Stress)} & """ + str(input_dict.get('gamma_m1', '1.25')) + r""" \\[6pt]
 \hline
-\textbf{$\gamma_C$ (Concrete, Basic)} & """ + str(inp.get('gamma_c', '1.50')) + r""" \\[6pt]
+\textbf{$\gamma_C$ (Concrete, Basic)} & """ + str(input_dict.get('gamma_c', '1.50')) + r""" \\[6pt]
 \hline
-\textbf{$\gamma_s$ (Reinforcement)} & """ + str(inp.get('gamma_s', '1.15')) + r""" \\[6pt]
+\textbf{$\gamma_s$ (Reinforcement)} & """ + str(input_dict.get('gamma_s', '1.15')) + r""" \\[6pt]
 \hline
-\textbf{$\gamma_v$ (Shear Connectors)} & """ + str(inp.get('gamma_v', '1.25')) + r""" \\[6pt]
+\textbf{$\gamma_v$ (Shear Connectors)} & """ + str(input_dict.get('gamma_v', '1.25')) + r""" \\[6pt]
 \hline
-\textbf{$\gamma_{fft}$ (Fatigue Load)} & """ + str(inp.get('gamma_fft', '1.00')) + r""" \\[6pt]
+\textbf{$\gamma_{fft}$ (Fatigue Load)} & """ + str(input_dict.get('gamma_fft', '1.00')) + r""" \\[6pt]
 \hline
-\textbf{$\gamma_{Mft}$ (Fatigue Strength)} & """ + str(inp.get('gamma_mft', '1.35')) + r""" \\[6pt]
+\textbf{$\gamma_{Mft}$ (Fatigue Strength)} & """ + str(input_dict.get('gamma_mft', '1.35')) + r""" \\[6pt]
 \hline
 \end{tabularx}
 """
@@ -796,7 +796,7 @@ def _safety_factors_table(inp):
 # Chapters 3-5: Loads, Analysis, Design Checks — exact LaTeX template
 
 
-def ch3_loads(inp):
+def ch3_loads(input_dict):
     return r"""
 \chapter{Loads and Load Combinations}
 
@@ -825,9 +825,9 @@ This section summarizes all loads applied to the bridge and the load combination
 \vspace{-6pt}
 \begin{tabularx}{\textwidth}{|L{5.5cm}|X|}
 \hline
-\textbf{Wearing Course Load} & """ + (_v(inp, KEY_WEARING_COAT_MATERIAL) or _ph('Density')) + r""" x """ + (_v(inp, KEY_WEARING_COAT_THICKNESS) or _ph('Thickness')) + r""" \\[6pt]
+\textbf{Wearing Course Load} & """ + (_v(input_dict, KEY_WEARING_COAT_MATERIAL) or _ph('Density')) + r""" x """ + (_v(input_dict, KEY_WEARING_COAT_THICKNESS) or _ph('Thickness')) + r""" \\[6pt]
 \hline
-\textbf{Additional SIDL (Crash Barrier)} & """ + (_v(inp, KEY_CRASH_BARRIER_LOAD) or _ph('Load')) + r""" kN/m per barrier \\[6pt]
+\textbf{Additional SIDL (Crash Barrier)} & """ + (_v(input_dict, KEY_CRASH_BARRIER_LOAD) or _ph('Load')) + r""" kN/m per barrier \\[6pt]
 \hline
 \textbf{Railing Load} & 1.5 kN/m per railing [IRC 6 Cl. 206.5] \\[6pt]
 \hline
@@ -843,11 +843,11 @@ This section summarizes all loads applied to the bridge and the load combination
 \hline
 \textbf{Vehicles Considered} & Class A, Class 70R Wheeled/Tracked [IRC 6] \\[6pt]
 \hline
-\textbf{Impact Factor (IRC 6)} & """ + (_v(inp, "impact_factor") or _ph("Value")) + r""" \\[6pt]
+\textbf{Impact Factor (IRC 6)} & """ + (_v(input_dict, "impact_factor") or _ph("Value")) + r""" \\[6pt]
 \hline
-\textbf{Braking Load (IRC 6)} & Applied --- """ + (_v(inp, "braking_load", " kN") or _ph("Value")) + r""" \\[6pt]
+\textbf{Braking Load (IRC 6)} & Applied --- """ + (_v(input_dict, "braking_load", " kN") or _ph("Value")) + r""" \\[6pt]
 \hline
-\textbf{Footpath Live Load (if applicable)} & """ + (_v(inp, "footpath_live_load", " kN/m\\textsuperscript{2}") or "5 kN/m\\textsuperscript{2} [SOFTWARE DEFAULT per IRC 6]") + r""" \\[6pt]
+\textbf{Footpath Live Load (if applicable)} & """ + (_v(input_dict, "footpath_live_load", " kN/m\\textsuperscript{2}") or "5 kN/m\\textsuperscript{2} [SOFTWARE DEFAULT per IRC 6]") + r""" \\[6pt]
 \hline
 \end{tabularx}
 \end{table}
@@ -859,21 +859,21 @@ This section summarizes all loads applied to the bridge and the load combination
 \vspace{-6pt}
 \begin{tabularx}{\textwidth}{|L{5.5cm}|X|}
 \hline
-\textbf{Basic Wind Speed, Vb} & """ + (_v(inp,'wind_speed',' m/s') or _ph('Vb') + ' m/s') + r""" [from Project Location] \\[6pt]
+\textbf{Basic Wind Speed, Vb} & """ + (_v(input_dict,'wind_speed',' m/s') or _ph('Vb') + ' m/s') + r""" [from Project Location] \\[6pt]
 \hline
-\textbf{Terrain Type} & """ + (_v(inp, "terrain_type") or "Plain Terrain [SOFTWARE DEFAULT]") + r""" \\[6pt]
+\textbf{Terrain Type} & """ + (_v(input_dict, "terrain_type") or "Plain Terrain [SOFTWARE DEFAULT]") + r""" \\[6pt]
 \hline
-\textbf{Average Exposed Height, H (m)} & """ + (_v(inp, "avg_exposed_height", " m") or "10 m [SOFTWARE DEFAULT]") + r""" \\[6pt]
+\textbf{Average Exposed Height, H (m)} & """ + (_v(input_dict, "avg_exposed_height", " m") or "10 m [SOFTWARE DEFAULT]") + r""" \\[6pt]
 \hline
-\textbf{Hourly Mean Wind Speed, Vz} & """ + str(inp.get("wind_Vz", _ph("Vz"))) + r""" m/s \\[6pt]
+\textbf{Hourly Mean Wind Speed, Vz} & """ + str(input_dict.get("wind_Vz", _ph("Vz"))) + r""" m/s \\[6pt]
 \hline
-\textbf{Hourly Wind Pressure, Pz} & """ + str(inp.get("wind_Pz", _ph("Pz"))) + r""" N/m\textsuperscript{2} \\[6pt]
+\textbf{Hourly Wind Pressure, Pz} & """ + str(input_dict.get("wind_Pz", _ph("Pz"))) + r""" N/m\textsuperscript{2} \\[6pt]
 \hline
-\textbf{Transverse Wind Force} & """ + str(inp.get("wind_Fw_T", _ph("Fw_T"))) + r""" kN \\[6pt]
+\textbf{Transverse Wind Force} & """ + str(input_dict.get("wind_Fw_T", _ph("Fw_T"))) + r""" kN \\[6pt]
 \hline
-\textbf{Longitudinal Wind Force} & """ + str(inp.get("wind_Fw_L", _ph("Fw_L"))) + r""" kN \\[6pt]
+\textbf{Longitudinal Wind Force} & """ + str(input_dict.get("wind_Fw_L", _ph("Fw_L"))) + r""" kN \\[6pt]
 \hline
-\textbf{Vertical Wind Force} & """ + str(inp.get("wind_Fw_V", _ph("Fw_V"))) + r""" kN \\[6pt]
+\textbf{Vertical Wind Force} & """ + str(input_dict.get("wind_Fw_V", _ph("Fw_V"))) + r""" kN \\[6pt]
 \hline
 \end{tabularx}
 \end{table}
@@ -885,21 +885,21 @@ This section summarizes all loads applied to the bridge and the load combination
 \vspace{-6pt}
 \begin{tabularx}{\textwidth}{|L{5.5cm}|X|}
 \hline
-\textbf{Seismic Zone} & """ + (_v(inp,'seismic_zone') or _ph('Zone')) + r""" [from Project Location] \\[6pt]
+\textbf{Seismic Zone} & """ + (_v(input_dict,'seismic_zone') or _ph('Zone')) + r""" [from Project Location] \\[6pt]
 \hline
-\textbf{Zone Factor, Z} & """ + str(inp.get("seismic_Z", _ph("Z"))) + r""" \\[6pt]
+\textbf{Zone Factor, Z} & """ + str(input_dict.get("seismic_Z", _ph("Z"))) + r""" \\[6pt]
 \hline
-\textbf{Importance Factor, I} & """ + (_v(inp, "importance_factor") or "1.0 [SOFTWARE DEFAULT]") + r""" \\[6pt]
+\textbf{Importance Factor, I} & """ + (_v(input_dict, "importance_factor") or "1.0 [SOFTWARE DEFAULT]") + r""" \\[6pt]
 \hline
-\textbf{Type of Soil} & """ + (_v(inp, "soil_type") or "Type I -- Rocky [SOFTWARE DEFAULT]") + r""" \\[6pt]
+\textbf{Type of Soil} & """ + (_v(input_dict, "soil_type") or "Type I -- Rocky [SOFTWARE DEFAULT]") + r""" \\[6pt]
 \hline
-\textbf{Sa/g} & """ + str(inp.get("seismic_Sa_g", _ph("Sa_g"))) + r""" \\[6pt]
+\textbf{Sa/g} & """ + str(input_dict.get("seismic_Sa_g", _ph("Sa_g"))) + r""" \\[6pt]
 \hline
-\textbf{Horizontal Seismic Coefficient, Ah} & """ + str(inp.get("seismic_Ah", _ph("Ah"))) + r""" \\[6pt]
+\textbf{Horizontal Seismic Coefficient, Ah} & """ + str(input_dict.get("seismic_Ah", _ph("Ah"))) + r""" \\[6pt]
 \hline
-\textbf{Vertical Seismic Coefficient, Av} & """ + str(inp.get("seismic_Av", _ph("Av"))) + r""" = 2/3 $\times$ Ah \\[6pt]
+\textbf{Vertical Seismic Coefficient, Av} & """ + str(input_dict.get("seismic_Av", _ph("Av"))) + r""" = 2/3 $\times$ Ah \\[6pt]
 \hline
-\textbf{Horizontal Seismic Force} & """ + str(inp.get("seismic_Feq_L", _ph("Feq_L"))) + r""" kN (longitudinal), """ + str(inp.get("seismic_Feq_T", _ph("Feq_T"))) + r""" kN (transverse) \\[6pt]
+\textbf{Horizontal Seismic Force} & """ + str(input_dict.get("seismic_Feq_L", _ph("Feq_L"))) + r""" kN (longitudinal), """ + str(input_dict.get("seismic_Feq_T", _ph("Feq_T"))) + r""" kN (transverse) \\[6pt]
 \hline
 \end{tabularx}
 \end{table}
@@ -911,13 +911,13 @@ This section summarizes all loads applied to the bridge and the load combination
 \vspace{-6pt}
 \begin{tabularx}{\textwidth}{|L{5.5cm}|X|}
 \hline
-\textbf{Maximum Shade Temperature} & """ + (_v(inp,'shade_temp_max') or _ph(r'T\_max')) + r""" $^\circ$C \\[6pt]
+\textbf{Maximum Shade Temperature} & """ + (_v(input_dict,'shade_temp_max') or _ph(r'T\_max')) + r""" $^\circ$C \\[6pt]
 \hline
-\textbf{Minimum Shade Temperature} & """ + (_v(inp,'shade_temp_min') or _ph('$T_{min}$')) + r""" $^\circ$C \\[6pt]
+\textbf{Minimum Shade Temperature} & """ + (_v(input_dict,'shade_temp_min') or _ph('$T_{min}$')) + r""" $^\circ$C \\[6pt]
 \hline
-\textbf{Effective Bridge Temp. Range} & """ + str(inp.get("temp_T_eff_min", _ph("T_eff_min"))) + r""" to """ + str(inp.get("temp_T_eff_max", _ph("T_eff_max"))) + r""" $^\circ$C \\[6pt]
+\textbf{Effective Bridge Temp. Range} & """ + str(input_dict.get("temp_T_eff_min", _ph("T_eff_min"))) + r""" to """ + str(input_dict.get("temp_T_eff_max", _ph("T_eff_max"))) + r""" $^\circ$C \\[6pt]
 \hline
-\textbf{Temperature Rise / Fall for Design} & +""" + str(inp.get("temp_dT_rise", _ph("dT_rise"))) + r""" $^\circ$C / -""" + str(inp.get("temp_dT_fall", _ph("dT_fall"))) + r""" $^\circ$C \\[6pt]
+\textbf{Temperature Rise / Fall for Design} & +""" + str(input_dict.get("temp_dT_rise", _ph("dT_rise"))) + r""" $^\circ$C / -""" + str(input_dict.get("temp_dT_fall", _ph("dT_fall"))) + r""" $^\circ$C \\[6pt]
 \hline
 \end{tabularx}
 \end{table}
@@ -2030,7 +2030,7 @@ This section presents CAD-generated views of the designed bridge and its compone
             + cbrc + '\n')
 
 
-def ch7_quantities(inp):
+def ch7_quantities(input_dict):
     return r"""
 \chapter{Material Take-off \& Quantity Summary}
 \label{ch:material-takeoff}
@@ -2042,15 +2042,15 @@ def ch7_quantities(inp):
 \hline
 \textbf{S.N.} & \textbf{Item Description} & \textbf{Unit} & \textbf{Quantity} & \textbf{Remarks} \\
 \hline
-1 & Structural Steel (IS 2062) for Girders & MT & """ + str(inp.get("steel_girders_mt", _ph("steel_girders_mt"))) + r""" & \\
+1 & Structural Steel (IS 2062) for Girders & MT & """ + str(input_dict.get("steel_girders_mt", _ph("steel_girders_mt"))) + r""" & \\
 \hline
-2 & Structural Steel for Cross Bracings & MT & """ + str(inp.get("steel_bracing_mt", _ph("steel_bracing_mt"))) + r""" & \\
+2 & Structural Steel for Cross Bracings & MT & """ + str(input_dict.get("steel_bracing_mt", _ph("steel_bracing_mt"))) + r""" & \\
 \hline
-3 & Concrete (M40) for Deck Slab & Cu.m & """ + str(inp.get("concrete_deck_cum", _ph("concrete_deck_cum"))) + r""" & \\
+3 & Concrete (M40) for Deck Slab & Cu.m & """ + str(input_dict.get("concrete_deck_cum", _ph("concrete_deck_cum"))) + r""" & \\
 \hline
-4 & Reinforcement Steel (Fe 500) & MT & """ + str(inp.get("rebar_deck_mt", _ph("rebar_deck_mt"))) + r""" & \\
+4 & Reinforcement Steel (Fe 500) & MT & """ + str(input_dict.get("rebar_deck_mt", _ph("rebar_deck_mt"))) + r""" & \\
 \hline
-5 & Shear Stud Connectors & Nos & """ + str(inp.get("shear_studs_nos", _ph("shear_studs_nos"))) + r""" & \\
+5 & Shear Stud Connectors & Nos & """ + str(input_dict.get("shear_studs_nos", _ph("shear_studs_nos"))) + r""" & \\
 \hline
 \end{tabularx}
 \end{table}
@@ -2217,8 +2217,7 @@ class ReportPayload:
     design_checks:    list
     figures:          ReportFigures
     log_entries:      List[str] = field(default_factory=list)
-    backend:          Any = field(default=None)
-    backend_results:  dict = field(default_factory=dict)
+    output_dict:  dict = field(default_factory=dict)
 
 
 @dataclass
@@ -2232,9 +2231,8 @@ class ReportDataBridge:
 
 
 
-    def __init__(self, backend, backend_results: dict, input_dict: dict, payload: "ReportPayload"):
-        self.backend = backend
-        self.backend_results = backend_results
+    def __init__(self, output_dict: dict, input_dict: dict, payload: "ReportPayload"):
+        self.output_dict = output_dict
         self.input_dict = input_dict
         self.payload = payload
 
@@ -2248,12 +2246,12 @@ class ReportDataBridge:
     def get_max_bm(self, load_case: str) -> str:
         """Extract max sagging BM for the given load case label. Used in: Chapter 4 (Analysis)."""
         try:
-            if self.backend_results and "analysis" in self.backend_results:
-                return f"{self.backend_results['analysis']['bmd'][load_case]['max']:.2f}"
-            if hasattr(self.backend, "grillage_results"):
+            if self.output_dict and "analysis" in self.output_dict:
+                return f"{self.output_dict['analysis']['bmd'][load_case]['max']:.2f}"
+            if self.output_dict and "grillage_results" in self.output_dict:
                 pass
-            if self.backend_results and "bmd_envelope" in self.backend_results:
-                return f"{self.backend_results['bmd_envelope']['max_value']:.2f}"
+            if self.output_dict and "bmd_envelope" in self.output_dict:
+                return f"{self.output_dict['bmd_envelope']['max_value']:.2f}"
         except Exception as exc:
             logger.warning(f"get_max_bm error: {exc}")
         return _ph(f"Max BM {load_case}")
@@ -2261,8 +2259,8 @@ class ReportDataBridge:
     def get_max_sf(self, load_case: str) -> str:
         """Extract max shear force for the given load case label. Used in: Chapter 4 (Analysis)."""
         try:
-            if self.backend_results and "analysis" in self.backend_results:
-                return f"{self.backend_results['analysis']['sfd'][load_case]['max']:.2f}"
+            if self.output_dict and "analysis" in self.output_dict:
+                return f"{self.output_dict['analysis']['sfd'][load_case]['max']:.2f}"
         except Exception as exc:
             logger.warning(f"get_max_sf error: {exc}")
         return _ph(f"Max SF {load_case}")
@@ -2270,8 +2268,8 @@ class ReportDataBridge:
     def get_bm_location(self, load_case: str) -> str:
         """Extract X-location of max BM. Used in: Chapter 4 (Analysis)."""
         try:
-            if self.backend_results and "analysis" in self.backend_results:
-                return f"{self.backend_results['analysis']['bmd'][load_case]['x_max']:.2f}"
+            if self.output_dict and "analysis" in self.output_dict:
+                return f"{self.output_dict['analysis']['bmd'][load_case]['x_max']:.2f}"
         except Exception as exc:
             logger.warning(f"get_bm_location error: {exc}")
         return _ph(f"Loc {load_case}")
@@ -2279,8 +2277,8 @@ class ReportDataBridge:
     def get_sf_location(self, load_case: str) -> str:
         """Extract X-location of max SF. Used in: Chapter 4 (Analysis)."""
         try:
-            if self.backend_results and "analysis" in self.backend_results:
-                return f"{self.backend_results['analysis']['sfd'][load_case]['x_max']:.2f}"
+            if self.output_dict and "analysis" in self.output_dict:
+                return f"{self.output_dict['analysis']['sfd'][load_case]['x_max']:.2f}"
         except Exception as exc:
             logger.warning(f"get_sf_location error: {exc}")
         return _ph(f"Loc SF {load_case}")
@@ -2288,8 +2286,8 @@ class ReportDataBridge:
     def get_reaction(self, support: Literal["left", "right"], load_case: str) -> str:
         """Extract reaction at given support for the load case. Used in: Chapter 4 (Analysis)."""
         try:
-            if self.backend_results and "reactions" in self.backend_results:
-                return f"{self.backend_results['reactions'][load_case][support]:.2f}"
+            if self.output_dict and "reactions" in self.output_dict:
+                return f"{self.output_dict['reactions'][load_case][support]:.2f}"
         except Exception as exc:
             logger.warning(f"get_reaction error: {exc}")
         return _ph(f"Reaction {support} {load_case}")
@@ -2297,8 +2295,8 @@ class ReportDataBridge:
     def get_deflection(self, kind: Literal["ll", "total"]) -> str:
         """Extract maximum deflection. Used in: Chapter 4 (Analysis)."""
         try:
-            if self.backend_results and "deflections" in self.backend_results:
-                return f"{self.backend_results['deflections'][kind]['max']:.2f}"
+            if self.output_dict and "deflections" in self.output_dict:
+                return f"{self.output_dict['deflections'][kind]['max']:.2f}"
         except Exception as exc:
             logger.warning(f"get_deflection error: {exc}")
         return _ph(f"Deflection {kind}")
@@ -2315,8 +2313,8 @@ class ReportDataBridge:
     def get_deflection_status(self, kind: Literal["ll", "total"], span_m: float) -> str:
         """Return PASS/FAIL status based on deflection limit. Used in: Chapter 4 (Analysis)."""
         try:
-            if self.backend_results and "deflections" in self.backend_results:
-                v = float(self.backend_results["deflections"][kind]["max"])
+            if self.output_dict and "deflections" in self.output_dict:
+                v = float(self.output_dict["deflections"][kind]["max"])
                 limit = (span_m * 1000) / 800 if kind == "ll" else (span_m * 1000) / 600
                 if v <= limit:
                     return r"\textcolor{black}{PASS}"
@@ -2375,7 +2373,7 @@ def _format_project_location(pl_data):
 # Public builder helper (unchanged signature)
 # ---------------------------------------------------------------------------
 
-def build_report_payload(request, input_dict, backend_results, backend):
+def build_report_payload(request, input_dict, output_dict):
     try:
         rd  = request.metadata.report_date or datetime.date.today().isoformat()
         lp  = request.metadata.logo_path
@@ -2396,9 +2394,7 @@ def build_report_payload(request, input_dict, backend_results, backend):
             report_date   = rd,
             reviewer      = getattr(request.metadata, 'reviewer', ''))
 
-        inp = input_dict
-
-        # Inject detailed project location and weather data into inp dict
+        # Inject detailed project location and weather data into input_dict dict
         try:
             import ast
             if isinstance(raw_pl, str) and '{' in raw_pl:
@@ -2416,147 +2412,39 @@ def build_report_payload(request, input_dict, backend_results, backend):
                 lat_val = data.get('latitude') or weather.get('latitude')
                 lon_val = data.get('longitude') or weather.get('longitude')
                 
-                if 'latitude' not in inp and lat_val:
-                    inp['latitude'] = lat_val
-                if 'longitude' not in inp and lon_val:
-                    inp['longitude'] = lon_val
+                if 'latitude' not in input_dict and lat_val:
+                    input_dict['latitude'] = lat_val
+                if 'longitude' not in input_dict and lon_val:
+                    input_dict['longitude'] = lon_val
                     
-                if 'seismic_zone' not in inp and weather.get('zone'):
-                    inp['seismic_zone'] = weather.get('zone')
-                if 'wind_speed' not in inp and weather.get('wind_speed'):
-                    inp['wind_speed'] = weather.get('wind_speed')
-                if 'shade_temp_max' not in inp and weather.get('max_temp'):
-                    inp['shade_temp_max'] = weather.get('max_temp')
-                if 'shade_temp_min' not in inp and weather.get('min_temp'):
-                    inp['shade_temp_min'] = weather.get('min_temp')
+                if 'seismic_zone' not in input_dict and weather.get('zone'):
+                    input_dict['seismic_zone'] = weather.get('zone')
+                if 'wind_speed' not in input_dict and weather.get('wind_speed'):
+                    input_dict['wind_speed'] = weather.get('wind_speed')
+                if 'shade_temp_max' not in input_dict and weather.get('max_temp'):
+                    input_dict['shade_temp_max'] = weather.get('max_temp')
+                if 'shade_temp_min' not in input_dict and weather.get('min_temp'):
+                    input_dict['shade_temp_min'] = weather.get('min_temp')
         except Exception as e:
             logger.warning(f"Failed to parse project location data: {e}")
 
         asum = {}
-        try:
-            if backend_results:
-                asum = backend_results.get('analysis_summary', {})
-                for k, v in asum.items():
-                    if k not in inp or not inp[k]:
-                        inp[k] = v
-                
-                if 'overall_design_status' in backend_results:
-                    inp['overall_design_status'] = backend_results['overall_design_status']
-                if 'overall_utilization_ratio' in backend_results:
-                    inp['max_ur'] = backend_results['overall_utilization_ratio']
-                if 'governing_check' in backend_results:
-                    inp['governing_check'] = backend_results['governing_check']
-                
-                if 'design_parameters' in backend_results:
-                    for k, v in backend_results['design_parameters'].items():
-                        if k not in inp or not inp[k]:
-                            inp[k] = v
-        except Exception:
-            pass
+        if output_dict:
+            asum = output_dict.get('analysis_summary', {})
 
-        # Fallback: extract missing data directly from PlateGirderBridge if available
-        if backend and backend.__class__.__name__ == 'PlateGirderBridge':
-            try:
-                # Sizing Result
-                if hasattr(backend, 'sizing_result') and backend.sizing_result:
-                    sr = backend.sizing_result
-                    if 'num_girders' not in inp or not inp['num_girders']:
-                        inp['num_girders'] = sr.no_of_girders
-                    if 'girder_spacing' not in inp or not inp['girder_spacing']:
-                        inp['girder_spacing'] = f"{sr.girder_spacing * 1e3:.0f} mm"
-                    if 'deck_overhang' not in inp or not inp['deck_overhang']:
-                        inp['deck_overhang'] = f"{sr.deck_overhang * 1e3:.0f} mm"
-                
-                if hasattr(backend, 'section_props') and backend.section_props and 'section_designation' not in inp:
-                    sp = backend.section_props
-                    D_mm     = sp.get('D', 0) * 1e3
-                    tw_mm    = sp.get('t_w', 0) * 1e3
-                    Bft_mm   = sp.get('B_top', 0) * 1e3
-                    Tft_mm   = sp.get('t_f_top', 0) * 1e3
-                    Bfb_mm   = sp.get('B_bot', sp.get('B_top', 0)) * 1e3
-                    Tfb_mm   = sp.get('t_f_bot', sp.get('t_f_top', 0)) * 1e3
-                    inp['section_designation'] = (
-                        f"PG {D_mm:.0f}x{tw_mm:.0f}"
-                        f" + {Bft_mm:.0f}x{Tft_mm:.0f}"
-                        f" + {Bfb_mm:.0f}x{Tfb_mm:.0f}"
-                    )
-
-                # Deck thickness
-                if hasattr(backend, 'additional_inputs') and ('deck_thickness' not in inp or not inp['deck_thickness']):
-                    from osdagbridge.core.bridge_types.plate_girder.initial_sizing import DEFAULT_DECK_THICKNESS as _DEFAULT_DECK_THICKNESS_MM
-                    from osdagbridge.core.bridge_components.super_structure.deck.geometry import deck_thickness_from_inputs
-                    deck_t_m = deck_thickness_from_inputs(backend.additional_inputs, _DEFAULT_DECK_THICKNESS_MM)
-                    inp['deck_thickness'] = f"{deck_t_m * 1e3:.0f} mm"
-                
-                # Lanes
-                if hasattr(backend, 'basic_inputs') and ('num_lanes' not in inp or not inp['num_lanes']):
-                    from osdagbridge.core.utils.common import KEY_CARRIAGEWAY_WIDTH
-                    from osdagbridge.core.bridge_types.plate_girder.defaults import DEFAULT_CARRIAGEWAY_WIDTH_M
-                    from osdagbridge.core.utils.codes.irc6_2017 import IRC6_2017
-                    cw = backend.basic_inputs.get(KEY_CARRIAGEWAY_WIDTH, DEFAULT_CARRIAGEWAY_WIDTH_M)
-                    try:
-                        inp['num_lanes'] = IRC6_2017.table_6(float(cw))
-                    except Exception:
-                        pass
-                
-                # DCR checks
-                if hasattr(backend, '_frontend') and backend._frontend:
-                    from osdagbridge.core.utils.common import (
-                        KEY_UTIL_FLEXURE, KEY_UTIL_SHEAR, KEY_UTIL_INTERACTION,
-                        KEY_UTIL_LTB, KEY_UTIL_DEFLECTION_CRACK, KEY_UTIL_FATIGUE,
-                        KEY_UTIL_LONG_TRANS_SHEAR, KEY_UTIL_STRESS_LIMITATION
-                    )
-                    frontend = backend._frontend
-                    
-                    name_map = {
-                        KEY_UTIL_FLEXURE: "Flexure",
-                        KEY_UTIL_SHEAR: "Shear",
-                        KEY_UTIL_INTERACTION: "Flexure/Shear Interaction",
-                        KEY_UTIL_LTB: "Lateral Torsional Buckling",
-                        KEY_UTIL_DEFLECTION_CRACK: "Deflection / Crack Control",
-                        KEY_UTIL_FATIGUE: "Fatigue",
-                        KEY_UTIL_LONG_TRANS_SHEAR: "Transverse Shear",
-                        KEY_UTIL_STRESS_LIMITATION: "Stress Limitation",
-                    }
-                    
-                    max_ur_percent = -1
-                    gov_key = ""
-                    for key in name_map.keys():
-                        val = frontend.get_output_value(key)
-                        if val is not None:
-                            try:
-                                v = float(val)
-                                if v > max_ur_percent:
-                                    max_ur_percent = v
-                                    gov_key = key
-                            except Exception:
-                                pass
-                    
-                    if max_ur_percent >= 0 and ('max_ur' not in inp or not inp['max_ur']):
-                        inp['max_ur'] = f"{(max_ur_percent / 100.0):.3f}"
-                        inp['overall_design_status'] = "FAIL" if max_ur_percent > 100 else "PASS"
-                        inp['governing_check'] = name_map.get(gov_key, gov_key)
-            except Exception as e:
-                logger.warning("Error extracting data from PlateGirderBridge for report: %s", e)
-
+        # 4) Grab Design Checks and Log
         dc = []
-        try:
-            if backend and hasattr(backend, 'get_design_checks'):
-                dc = backend.get_design_checks()
-        except Exception:
-            pass
-
         le = []
-        try:
-            if backend and hasattr(backend, 'get_design_log'):
-                le = backend.get_design_log()
-        except Exception:
-            pass
+        if output_dict:
+            if 'design_checks' in output_dict:
+                dc = output_dict['design_checks']
+            if 'design_log' in output_dict:
+                le = output_dict['design_log']
 
-        return ReportPayload(metadata=md, options=request.options, inputs=inp,
+        return ReportPayload(metadata=md, options=request.options, inputs=input_dict,
                              analysis_summary=asum, design_checks=dc,
                              figures=ReportFigures(), log_entries=le,
-                             backend=backend, backend_results=backend_results or {})
+                             output_dict=output_dict or {})
 
     except Exception as exc:
         logger.warning("build_report_payload error: %s", exc)
@@ -2564,20 +2452,20 @@ def build_report_payload(request, input_dict, backend_results, backend):
             metadata=request.metadata, options=request.options,
             inputs={}, analysis_summary={}, design_checks=[],
             figures=ReportFigures(), log_entries=[],
-            backend=None, backend_results={})
+            output_dict={})
 
 
 # ---------------------------------------------------------------------------
 # Figure export helper (unchanged)
 # ---------------------------------------------------------------------------
 
-def export_grillage_figure(backend, output_dir, file_stem):
+def export_grillage_figure(grillage_image, output_dir, file_stem):
     try:
         ad = os.path.join(output_dir, f"{file_stem}_assets")
         os.makedirs(ad, exist_ok=True)
         op = os.path.join(ad, "grillage.png")
-        if hasattr(backend, 'get_grillage_figure'):
-            img = backend.get_grillage_figure()
+        if grillage_image:
+            img = grillage_image
             if hasattr(img, 'save'):
                 img.save(op)
             elif isinstance(img, bytes):
@@ -2672,10 +2560,10 @@ def generate_report(payload, request):
             doc_parts.append(toc_section())
             
         # Instantiate ReportDataBridge
-        bridge = ReportDataBridge(payload.backend, payload.backend_results, payload.inputs, payload)
+        bridge = ReportDataBridge(payload.output_dict, payload.inputs, payload)
         span_m = float(payload.inputs.get(KEY_SPAN, 0) or 0)
         
-        doc_parts.append(executive_summary(payload.inputs, fig_rel))
+        doc_parts.append(executive_summary(payload.inputs, payload.output_dict, fig_rel))
         doc_parts.append(ch1_project_info(payload.metadata))
         
         secs = payload.options.sections
