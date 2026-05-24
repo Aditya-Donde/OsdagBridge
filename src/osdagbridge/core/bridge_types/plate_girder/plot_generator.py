@@ -347,7 +347,7 @@ def build_figure_grillage(nodes, members, edge_dist=0.0):
         if not is_edge_beam:
             ax.text(x_start - (x_range * 0.02), z_base, 0, f"{girder_name}",
                     color="black", fontsize=11, fontweight="normal",
-                    ha="right", va="center", zorder=6,
+                    ha="right", va="center", zorder=6,gid="girder_label",
                     bbox=dict(boxstyle="round,pad=0.2", facecolor="white",
                               alpha=0.8, edgecolor="none"))
 
@@ -491,7 +491,7 @@ def build_figure_sfd(ds, force_key, nodes, members, edge_dist=0.0):
         dynamic_zorder = 100 - i  
         ax.text(xs[0] - (x_range * 0.02), z_base, 0, f"{girder_name}",
                 color="black", fontsize=11, ha="right", va="center", 
-                zorder=dynamic_zorder,
+                zorder=dynamic_zorder,gid="girder_label",
                 bbox=dict(boxstyle="round,pad=0.2", facecolor="white", alpha=0.8, edgecolor="none"))
 
         x_step  = np.repeat(xs, 2)[1:-1]
@@ -719,7 +719,7 @@ def build_figure_bmd(ds, force_key, nodes, members, edge_dist=0.0):
 
         ax.text(xs[0] - (x_range * 0.02), z_base, 0, f"{girder_name}",
                 color="black", fontsize=11, ha="right", va="center", 
-                zorder=dynamic_zorder, 
+                zorder=dynamic_zorder, gid="girder_label",
                 bbox=dict(
                     boxstyle="round,pad=0.2", 
                     facecolor="white", 
@@ -1108,7 +1108,7 @@ def build_figure_deflection(ds, disp_key, nodes, members, edge_dist=0.0):
 
         ax.text(xs[0] - (x_range * 0.02), z_base, 0, f"{girder_name}",
                 color="black", fontsize=11, ha="right", va="center", 
-                zorder=dynamic_zorder, 
+                zorder=dynamic_zorder, gid="girder_label",
                 bbox=dict(
                     boxstyle="round,pad=0.2", 
                     facecolor="white", 

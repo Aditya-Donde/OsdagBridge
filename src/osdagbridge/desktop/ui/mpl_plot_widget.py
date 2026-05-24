@@ -124,6 +124,7 @@ class MplPlotWidget(QWidget):
         self._show_max = False  
         self._show_min = False  
         self._show_all_vals = False 
+        self._show_girder_labels = False
 
         # Zoom state
         self._zoom_scale  = 1.0
@@ -266,6 +267,7 @@ class MplPlotWidget(QWidget):
         self._btn_zoom_window = QPushButton("Zoom Window")
         self._btn_pan         = QPushButton("Pan")
         self._btn_rotate      = QPushButton("Rotate")
+        self._btn_girder_labels = QPushButton("Girder Labels")
 
     
         # ══════════════════════════════════════════════
@@ -274,7 +276,7 @@ class MplPlotWidget(QWidget):
         # Rotate is a plain click (45° per click)
         # ══════════════════════════════════════════════
         for btn in (self._btn_zoom_fit, self._btn_zoom_window,
-            self._btn_pan, self._btn_rotate):            
+            self._btn_pan, self._btn_rotate, self._btn_girder_labels):            
             btn.setFixedHeight(28)
             btn.setFocusPolicy(Qt.NoFocus)
             btn.setStyleSheet(btn_style)
@@ -282,12 +284,15 @@ class MplPlotWidget(QWidget):
         
         self._btn_zoom_window.setCheckable(True)
         self._btn_pan.setCheckable(True)
+        self._btn_girder_labels.setCheckable(True)
         
 
         self._btn_zoom_fit.clicked.connect(self._on_zoom_fit)
         self._btn_zoom_window.toggled.connect(self._on_zoom_window_toggled)
         self._btn_pan.toggled.connect(self._on_pan_toggled)
         self._btn_rotate.clicked.connect(self._on_rotate_click)
+       
+        self._btn_girder_labels.toggled.connect(self._on_girder_labels_toggled)
 
         
         # ══════════════════════════════════════════════
@@ -385,6 +390,7 @@ class MplPlotWidget(QWidget):
         toolbar_row2.addWidget(self._btn_zoom_window)
         toolbar_row2.addWidget(self._btn_pan)
         toolbar_row2.addWidget(self._btn_rotate)
+        toolbar_row2.addWidget(self._btn_girder_labels)
         toolbar_row2.addStretch()
 
         # layout
@@ -518,6 +524,7 @@ class MplPlotWidget(QWidget):
         self._apply_supports_visibility()
         self._apply_grid_visibility() 
         self._apply_annotation_visibility() 
+        self._apply_girder_label_visibility()
         
         # (Your existing HUD logic)
         if self._summary_data:
@@ -687,6 +694,7 @@ class MplPlotWidget(QWidget):
             self._apply_axis_visibility()
             self._apply_supports_visibility()
             self._apply_grid_visibility()
+            self._apply_girder_label_visibility()
             self._summary_overlay.hide() 
             
             # self._fit_figure_to_canvas()
@@ -718,6 +726,17 @@ class MplPlotWidget(QWidget):
         self._apply_grid_visibility()
         self._canvas.draw_idle()
 
+    def _on_girder_labels_toggled(self, checked: bool):
+        self._show_girder_labels = checked
+        self._apply_girder_label_visibility()
+        self._canvas.draw_idle()
+
+    def _apply_girder_label_visibility(self):
+        """Show or hide all text artists tagged with gid='girder_label'."""
+        for ax in self._fig.axes:
+            for text in ax.texts:
+                if text.get_gid() == "girder_label":
+                    text.set_visible(self._show_girder_labels)
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
@@ -899,6 +918,17 @@ class MplPlotWidget(QWidget):
             ax.set_box_aspect(aspect=(2.5, 1.2, 1.0), zoom=fit_zoom)
             self._fig.subplots_adjust(left=-0.05, right=1.05, bottom=-0.05, top=1.05)
 
+
+        ##CHANGES FOR ZOOM WINDOW FIX--------------------------------------------------------
+        # if hasattr(ax, 'set_box_aspect'):                    # 3-D
+        #     fit_zoom = self._canvas_fit_zoom()
+        #     self._zoom_scale = fit_zoom
+        #     ax.set_box_aspect(aspect=(2.5, 1.2, 1.0), zoom=fit_zoom)
+        #     self._fig.subplots_adjust(left=-0.05, right=1.05, bottom=-0.05, top=1.05)
+        #     # Reset any data limit cropping done by zoom window
+        #     ax.autoscale()
+        ##CHANGES FOR ZOOM WINDOW FIX--------------------------------------------------------
+
         else:                                                 # 2-D
             ax.set_aspect('auto')
             ax.relim()
@@ -968,6 +998,53 @@ class MplPlotWidget(QWidget):
         self._fig.add_artist(self._zoom_rect_patch)
         self._canvas.draw_idle()
 
+    # def _zw_on_release(self, event):
+    #     if self._zoom_rect_start is None or event.button != 1:
+    #         return
+    #     x0_px, y0_px = self._zoom_rect_start
+    #     self._zoom_rect_start = None
+
+    #     # Remove rubber-band rect
+    #     if self._zoom_rect_patch is not None:
+    #         try:
+    #             self._zoom_rect_patch.remove()
+    #         except Exception:
+    #             pass
+    #         self._zoom_rect_patch = None
+
+    #     x1_px, y1_px = event.x, event.y
+
+    #     # Ignore accidental tiny drags (< 5 pixels)
+    #     if abs(x1_px - x0_px) < 5 or abs(y1_px - y0_px) < 5:
+    #         self._canvas.draw_idle()
+    #         return
+
+    #     ax = self._fig.axes[0]
+
+    #     if hasattr(ax, 'set_box_aspect'):
+    #         # 3D axis: compute how much of the figure the rectangle covers,
+    #         # then zoom the camera proportionally
+    #         fig_w = self._fig.get_figwidth()  * self._fig.dpi
+    #         fig_h = self._fig.get_figheight() * self._fig.dpi
+    #         frac_w = abs(x1_px - x0_px) / fig_w
+    #         frac_h = abs(y1_px - y0_px) / fig_h
+    #         # Zoom in by the inverse of the smaller fraction (tightest fit)
+    #         zoom_factor = 1.0 / max(min(frac_w, frac_h), 0.05)
+    #         self._zoom_scale *= zoom_factor
+    #         fit_zoom = self._zoom_scale * (0.82 if self._show_grid else 1.0)
+    #         ax.set_box_aspect(aspect=(2.5, 1.2, 1.0), zoom=fit_zoom)
+    #     else:
+    #         # 2D axis: convert pixel → data coords and set limits directly
+    #         inv = ax.transData.inverted()
+    #         # mpl pixel origin is bottom-left; Qt is top-left — no conversion needed
+    #         # since mpl event coords are already in mpl display space
+    #         x0_d, y0_d = inv.transform((min(x0_px, x1_px), min(y0_px, y1_px)))
+    #         x1_d, y1_d = inv.transform((max(x0_px, x1_px), max(y0_px, y1_px)))
+    #         ax.set_xlim(x0_d, x1_d)
+    #         ax.set_ylim(y0_d, y1_d)
+
+    #     self._canvas.draw_idle()
+
     def _zw_on_release(self, event):
         if self._zoom_rect_start is None or event.button != 1:
             return
@@ -992,22 +1069,45 @@ class MplPlotWidget(QWidget):
         ax = self._fig.axes[0]
 
         if hasattr(ax, 'set_box_aspect'):
-            # 3D axis: compute how much of the figure the rectangle covers,
-            # then zoom the camera proportionally
+            # ── 3D axis ───────────────────────────────────────────────
             fig_w = self._fig.get_figwidth()  * self._fig.dpi
             fig_h = self._fig.get_figheight() * self._fig.dpi
+
+            # Fraction of figure the rectangle covers
             frac_w = abs(x1_px - x0_px) / fig_w
             frac_h = abs(y1_px - y0_px) / fig_h
-            # Zoom in by the inverse of the smaller fraction (tightest fit)
+
+            # Zoom: inverse of rectangle size relative to full figure
             zoom_factor = 1.0 / max(min(frac_w, frac_h), 0.05)
             self._zoom_scale *= zoom_factor
             fit_zoom = self._zoom_scale * (0.82 if self._show_grid else 1.0)
             ax.set_box_aspect(aspect=(2.5, 1.2, 1.0), zoom=fit_zoom)
+
+            # ── Shift camera to center on the selected rectangle ──────
+            # Rectangle center in figure fraction (0=left/bottom, 1=right/top)
+            cx_f = (min(x0_px, x1_px) + abs(x1_px - x0_px) / 2.0) / fig_w
+            cy_f = (min(y0_px, y1_px) + abs(y1_px - y0_px) / 2.0) / fig_h
+
+            # Figure center is at (0.5, 0.5).
+            # Offset from center: positive cx_f-0.5 means rect is right of center
+            # Map this offset to azim/elev adjustment:
+            #   horizontal offset → azim shift (left/right rotation)
+            #   vertical offset   → elev shift (up/down tilt)
+            # Scale factor: larger zoom = finer angular correction needed
+            angular_scale = 60.0 / zoom_factor  # degrees, shrinks as zoom grows
+
+            dx_frac = cx_f - 0.5   # >0 = rect is right of center
+            dy_frac = cy_f - 0.5   # >0 = rect is above center
+
+            new_azim = ax.azim - dx_frac * angular_scale
+            new_elev = max(-90, min(90, ax.elev + dy_frac * angular_scale))
+            ax.view_init(elev=new_elev, azim=new_azim)
+            self._current_azim = new_azim
+            self._navcube_sync.force_sync()
+
         else:
-            # 2D axis: convert pixel → data coords and set limits directly
+            # ── 2D axis: exact pixel → data coords ───────────────────
             inv = ax.transData.inverted()
-            # mpl pixel origin is bottom-left; Qt is top-left — no conversion needed
-            # since mpl event coords are already in mpl display space
             x0_d, y0_d = inv.transform((min(x0_px, x1_px), min(y0_px, y1_px)))
             x1_d, y1_d = inv.transform((max(x0_px, x1_px), max(y0_px, y1_px)))
             ax.set_xlim(x0_d, x1_d)
@@ -1015,16 +1115,87 @@ class MplPlotWidget(QWidget):
 
         self._canvas.draw_idle()
 
-        # # Auto-deactivate after one zoom
-        # self._btn_zoom_window.blockSignals(True)
-        # self._btn_zoom_window.setChecked(False)
-        # self._btn_zoom_window.blockSignals(False)
-        # self._zoom_window_active = False
-        # self._deactivate_all_modes()
+        # Auto-deactivate after one zoom
+        self._btn_zoom_window.blockSignals(True)
+        self._btn_zoom_window.setChecked(False)
+        self._btn_zoom_window.blockSignals(False)
+        self._zoom_window_active = False
+        self._deactivate_all_modes()
 
         self._canvas.draw_idle()
-        # Mode stays active — user must click the button again to deactivate
-    
+        #Mode stays active — user must click the button again to deactivate
+        
+
+        ###CHANGES FOR ZOOM WINDOW______________________________________
+        # if hasattr(ax, 'set_box_aspect'):
+        #     # ── 3D: crop data limits to the selected screen rectangle ──
+        #     # Works because at DEFAULT_ELEV=10, AZIM=-90:
+        #     #   screen X → data X (span length)
+        #     #   screen Y → data Z (force/displacement)
+        #     #
+        #     # Get the axes bounding box in display pixels
+        #     bbox = ax.get_window_extent()
+        #     ax_w = bbox.x1 - bbox.x0
+        #     ax_h = bbox.y1 - bbox.y0
+
+        #     if ax_w < 1 or ax_h < 1:
+        #         self._canvas.draw_idle()
+        #         return
+
+        #     # Clamp rectangle coords to axes bbox
+        #     rx0 = max(min(x0_px, x1_px), bbox.x0)
+        #     rx1 = min(max(x0_px, x1_px), bbox.x1)
+        #     ry0 = max(min(y0_px, y1_px), bbox.y0)
+        #     ry1 = min(max(y0_px, y1_px), bbox.y1)
+
+        #     # Fraction within axes bbox (0=left/bottom, 1=right/top)
+        #     fx0 = (rx0 - bbox.x0) / ax_w
+        #     fx1 = (rx1 - bbox.x0) / ax_w
+        #     fy0 = (ry0 - bbox.y0) / ax_h
+        #     fy1 = (ry1 - bbox.y0) / ax_h
+
+        #     # Current data limits
+        #     xl = ax.get_xlim3d()
+        #     zl = ax.get_zlim3d()
+        #     x_span = xl[1] - xl[0]
+        #     z_span = zl[1] - zl[0]
+
+        #     # Map screen fractions → new data limits
+        #     new_x0 = xl[0] + fx0 * x_span
+        #     new_x1 = xl[0] + fx1 * x_span
+        #     new_z0 = zl[0] + fy0 * z_span
+        #     new_z1 = zl[0] + fy1 * z_span
+
+        #     ax.set_xlim3d(new_x0, new_x1)
+        #     ax.set_zlim3d(new_z0, new_z1)
+
+        #     # Update zoom scale to reflect new zoom level
+        #     zoom_factor = 1.0 / max(min(fx1 - fx0, fy1 - fy0), 0.05)
+        #     self._zoom_scale *= zoom_factor
+        #     fit_zoom = self._zoom_scale * (0.82 if self._show_grid else 1.0)
+        #     ax.set_box_aspect(aspect=(2.5, 1.2, 1.0), zoom=fit_zoom)
+        # else:
+        #     # 2D axis: convert pixel → data coords and set limits directly
+        #     inv = ax.transData.inverted()
+        #     # mpl pixel origin is bottom-left; Qt is top-left — no conversion needed
+        #     # since mpl event coords are already in mpl display space
+        #     x0_d, y0_d = inv.transform((min(x0_px, x1_px), min(y0_px, y1_px)))
+        #     x1_d, y1_d = inv.transform((max(x0_px, x1_px), max(y0_px, y1_px)))
+        #     ax.set_xlim(x0_d, x1_d)
+        #     ax.set_ylim(y0_d, y1_d)
+
+        # self._canvas.draw_idle()
+
+        # # # Auto-deactivate after one zoom
+        # # self._btn_zoom_window.blockSignals(True)
+        # # self._btn_zoom_window.setChecked(False)
+        # # self._btn_zoom_window.blockSignals(False)
+        # # self._zoom_window_active = False
+        # # self._deactivate_all_modes()
+
+        # self._canvas.draw_idle()
+        # # Mode stays active — user must click the button again to deactivate
+         ###CHANGES FOR ZOOM WINDOW______________________________________
     
     
     # ── Pan ───────────────────────────────────────────────────────────────────
