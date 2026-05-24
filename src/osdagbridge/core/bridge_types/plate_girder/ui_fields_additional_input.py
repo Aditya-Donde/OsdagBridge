@@ -420,513 +420,404 @@ TYPICAL_SECTION_SCHEMA = {
 
 
 PERMANENT_LOAD_TAB_SCHEMA = {
-    "id": "permanent_load_tab",
-    "label_width": 220,
+    "id":     KEY_PL_TAB,
+    "layout": {
+        "type":          "columns",
+        "columns":       2,
+        "column_widths": [3, 2],
+    },
     "sections": [
         {
-            "title": "Dead Load (DL)",
-            "fields": [
+            "column": 0,
+            "title":  "Dead Load (DL)",
+            "rows": [
                 {
-                    "id": "self_weight_factor",
-                    "label": "Self-weight modification factor",
-                    "type": "line",
-                    "validator": {"type": "double_range", "bottom": 0.0, "top": 10.0, "decimals": 2},
-                    "default": "1.00",
-                    "bind": "self_weight_factor_input",
+                    "fields": [{
+                        "id":          KEY_PL_SELF_WEIGHT_FACTOR,
+                        "label":       "Self-weight modification factor",
+                        "type":        TYPE_TEXTBOX,
+                        "placeholder": "0.0 - 10.0",
+                        "bind":        "self_weight_factor_input",
+                    }]
                 },
             ],
+        },
+        {
+            "column":  1,
+            "type":    TYPE_DESCRIPTION,
+            "title":   "Description Box",
+            "text":    "",
+            "stretch": True,
         },
     ],
 }
 
+from osdagbridge.desktop.ui.dialogs.tabs.custom_vehicle_dialog import CustomVehicleDialog
+
 LIVE_LOAD_TAB_SCHEMA = {
-    "id": "live_load_tab",
-    "label_width": 220,
-    "field_width": 180,
-    "field_height": 28,
+    "id":     KEY_LL_TAB,
+    "layout": {
+        "type":          "columns",
+        "columns":       2,
+        "column_widths": [3, 2],
+    },
     "sections": [
+
+        # ── Column 0: IRC Vehicles ──────────────────────────────────────────
         {
-            "id": "irc_vehicles_section",
-            "title": "Vehicles from IRC 6",
-            "type": "checkbox_list",
-            "items": [
-                "Class A",
-                "Class 70R Wheeled",
-                "Class 70R Tracked",
-                "Class AA Wheeled",
-                "Class AA Tracked",
-                "Class SV",
-                "Class 70R Bogie",
+            "column": 0,
+            "title":  "Vehicles from IRC 6",
+            "rows": [
+                {"fields": [{"id": KEY_LL_IRC_CLASS_A,     "label": "Class A",           "type": TYPE_CHECKBOX, "label_first": True}]},
+                {"fields": [{"id": KEY_LL_IRC_70R_WHEELED, "label": "Class 70R Wheeled", "type": TYPE_CHECKBOX, "label_first": True}]},
+                {"fields": [{"id": KEY_LL_IRC_70R_TRACKED, "label": "Class 70R Tracked", "type": TYPE_CHECKBOX, "label_first": True}]},
+                {"fields": [{"id": KEY_LL_IRC_AA_WHEELED,  "label": "Class AA Wheeled",  "type": TYPE_CHECKBOX, "label_first": True}]},
+                {"fields": [{"id": KEY_LL_IRC_AA_TRACKED,  "label": "Class AA Tracked",  "type": TYPE_CHECKBOX, "label_first": True}]},
+                {"fields": [{"id": KEY_LL_IRC_CLASS_SV,    "label": "Class SV",          "type": TYPE_CHECKBOX, "label_first": True}]},
+                {"fields": [{"id": KEY_LL_IRC_70R_BOGIE,   "label": "Class 70R Bogie",   "type": TYPE_CHECKBOX, "label_first": True}]},
             ],
-            "bind": "irc_vehicle_checkboxes",
-            "default_checked": True,
         },
+
+        # ── Column 0: Custom Vehicle ────────────────────────────────────────
         {
-            "id": "custom_vehicle_section",
-            "title": "Custom Vehicle",
-            "type": "custom_vehicle_table",
-            "bind": "custom_vehicle_table",
-            "add_button_bind": "custom_vehicle_add_button",
+            "column": 0,
+            "title":  "Custom Vehicle",
+            "rows": [
+                {
+                    "fields": [{
+                        "id":       KEY_LL_CUSTOM_VEHICLES,
+                        "type":     TYPE_CUSTOM_VEHICLE,
+                        "on_click": "_on_add_custom_vehicle",
+                    }]
+                },
+            ],
         },
+
+        # ── Column 0: Braking Load + Eccentricity ──────────────────────────────
         {
-            "id": "braking_section",
-            "title": "Braking Load from Vehicles",
-            "type": "dynamic_checkbox_list",
-            "bind": "braking_vehicle_checkboxes",
-            "default_checked": True,
+            "column": 0,
+            "title":  "Braking Load from Vehicles",
+            "rows": [
+                {
+                    "fields": [{
+                        "id":              KEY_LL_IRC_CLASS_SV,
+                        "label":           "Class SV",
+                        "type":            TYPE_CHECKBOX,
+                        "default_checked": True,
+                        "label_first":     True,
+                    }]
+                },
+                {
+                    "fields": [{
+                        "id":          KEY_LL_ECCENTRICITY,
+                        "label":       "Eccentricity from top of Deck (m)",
+                        "type":        TYPE_TEXTBOX,
+                        "placeholder": "0.0 - 100.0",
+                        "bind":        "eccentricity_input",
+                    }]
+                },
+            ],
         },
+
+        # ── Column 0: Footpath Pressure ────────────────────────────────────────
         {
-            "id": "eccentricity",
-            "label": "Eccentricity from top of Deck (m)",
-            "type": "line",
-            "validator": {"type": "double_range", "bottom": 0.0, "top": 100.0, "decimals": 2},
-            "default": "0.00",
-            "bind": "eccentricity_input",
+            "column": 0,
+            "title":  "",
+            "rows": [
+                {
+                    "fields": [{
+                        "id":             KEY_LL_FOOTPATH_PRESSURE_MODE,
+                        "label":          "Footpath Pressure (kN/mm²)",
+                        "type":           TYPE_MODE_LINE,
+                        "mode_choices":   ["Automatic", "User-defined"],
+                        "bind_mode":      "footpath_mode_combo",
+                        "bind_value":     "footpath_value_input",
+                        "on_mode_change": "_on_footpath_mode_changed",
+                    }]
+                },
+            ],
         },
+
+        # ── Column 1: Description ───────────────────────────────────────────
         {
-            "id": "footpath_pressure",
-            "label": "Footpath Pressure (kN/mm²)",
-            "type": "mode_line",
-            "mode_choices": ["Automatic", "User-defined"],
-            "default_mode": "Automatic",
-            "bind_mode": "footpath_mode_combo",
-            "bind_value": "footpath_value_input",
-            "default_value": "5.00",
-            "mode_width": 120,
-            "value_width": 80,
-            "on_mode_change": "_on_footpath_mode_changed",
+            "column":  1,
+            "type":    TYPE_DESCRIPTION,
+            "title":   "Description Box",
+            "text": (
+                "211.2 The braking effect on a simply supported span or a continuous unit of spans or on any other type of bridge unit shall be assumed to have the following value:\n\n"
+                "a) In the case of a single lane or a two lane bridge: twenty percent of the first train "
+                "load plus ten percent of the load of the succeeding trains or part thereof, the train "
+                "loads in one lane only being considered for the purpose of this subclause. Where the "
+                "entire first train is not on the full span, the braking force shall be taken as equal to "
+                "twenty percent of the loads actually on the span or continuous unit of spans.\n"
+                "b) In the case of bridges having more than two lanes: as in (a) above for the first two "
+                "lanes plus five percent of the loads on the lanes in excess of two."
+            ),
+            "stretch": True,
         },
     ],
-    "description": {
-        "title": "Description Box",
-        "text": (
-            "211.2 The braking effect on a simply supported span or a continuous unit of spans or on any other type of bridge unit shall be assumed to have the following value:\n\n"
-            "a) In the case of a single lane or a two lane bridge: twenty percent of the first train "
-            "load plus ten percent of the load of the succeeding trains or part thereof, the train "
-            "loads in one lane only being considered for the purpose of this subclause. Where the "
-            "entire first train is not on the full span, the braking force shall be taken as equal to "
-            "twenty percent of the loads actually on the span or continuous unit of spans.\n"
-            "b) In the case of bridges having more than two lanes: as in (a) above for the first two "
-            "lanes plus five percent of the loads on the lanes in excess of two."
-        ),
-    },
 }
 
 SEISMIC_LOAD_TAB_SCHEMA = {
-    "id": "seismic_load_tab",
-    "label_width": 220,
-    "field_width": 180,
-    "field_height": 28,
+    "id":     KEY_SL_TAB,
+    "layout": {
+        "type":          "columns",
+        "columns":       2,
+        "column_widths": [3, 2],
+    },
     "sections": [
+
+        # ── Column 0: Inputs ───────────────────────────────────────────────
         {
-            "id": "seismic_inputs_section",
-            "title": "Seismic/Earthquake Load (EL) Inputs",
-            "type": "input_group",
-            "fields": [
+            "column": 0,
+            "title":  "Seismic/Earthquake Load (EL) Inputs",
+            "rows": [
                 {
-                    "id": "seismic_zone",
-                    "label": "Seismic Zone",
-                    "type": "line",
-                    "bind": "seismic_zone_combo",
+                    "fields": [{
+                        "id":       KEY_SL_SEISMIC_ZONE,
+                        "label":    "Seismic Zone",
+                        "type":     TYPE_TEXTBOX,
+                        "bind":     "seismic_zone_input",
+                        "read_only": True,
+                    }]
                 },
                 {
-                    "id": "importance_factor",
-                    "label": "Importance Factor, I",
-                    "type": "line",
-                    "default": "1.0",
-                    "bind": "importance_factor_input",
+                    "fields": [{
+                        "id":          KEY_SL_IMPORTANCE_FACTOR,
+                        "label":       "Importance Factor, I",
+                        "type":        TYPE_TEXTBOX,
+                        "placeholder": "Enter value",
+                        "bind":        "importance_factor_input",
+                    }]
                 },
                 {
-                    "id": "soil_type",
-                    "label": "Type of Soil",
-                    "type": "combo",
-                    "choices": [
-                        "Type I – Rocky or Hard",
-                        "Type II – Medium Soil",
-                        "Type III – Soft Soil",
-                    ],
-                    "default": "Type I – Rocky or Hard Soil",
-                    "bind": "soil_type_combo",
+                    "fields": [{
+                        "id":      KEY_SL_SOIL_TYPE,
+                        "label":   "Type of Soil",
+                        "type":    TYPE_COMBOBOX,
+                        "choices": [
+                            "Type I \u2013 Rocky or Hard",
+                            "Type II \u2013 Medium Soil",
+                            "Type III \u2013 Soft Soil",
+                        ],
+                        "bind":    "soil_type_combo",
+                    }]
                 },
                 {
-                    "id": "time_period",
-                    "label": "Fundamental Time Period, T (sec)",
-                    "type": "line",
-                    "bind": "time_period_input",
+                    "fields": [{
+                        "id":          KEY_SL_TIME_PERIOD,
+                        "label":       "Fundamental Time Period, T (sec)",
+                        "type":        TYPE_TEXTBOX,
+                        "placeholder": "Enter value",
+                        "bind":        "time_period_input",
+                    }]
                 },
                 {
-                    "id": "damping",
-                    "label": "Damping Percentage",
-                    "type": "line",
-                    "default": "2",
-                    "bind": "damping_input",
+                    "fields": [{
+                        "id":          KEY_SL_DAMPING,
+                        "label":       "Damping Percentage",
+                        "type":        TYPE_TEXTBOX,
+                        "placeholder": "Enter value",
+                        "bind":        "damping_input",
+                    }]
                 },
                 {
-                    "id": "response_reduction_factor",
-                    "label": "Response Reduction Factor, R",
-                    "type": "combo",
-                    "choices": ["1", "2", "3", "4", "5"],
-                    "default": "1",
-                    "bind": "response_factor_combo",
+                    "fields": [{
+                        "id":      KEY_SL_RESPONSE_REDUCTION,
+                        "label":   "Response Reduction Factor, R",
+                        "type":    TYPE_COMBOBOX,
+                        "choices": ["1", "2", "3", "4", "5"],
+                        "bind":    "response_factor_combo",
+                    }]
                 },
                 {
-                    "id": "dead_load_seismic",
-                    "label": "Dead Load for Seismic Force (kN)",
-                    "type": "mode_line",
-                    "mode_choices": ["Automatic", "Custom"],
-                    "default_mode": "Automatic",
-                    "bind_mode": "dead_load_seismic_combo",
-                    "bind_value": "dead_load_custom_input",
-                    "placeholder": "Custom Value",
-                    "on_mode_change": "_toggle_seismic_custom_inputs",
+                    "fields": [{
+                        "id":             KEY_SL_DEAD_LOAD_MODE,
+                        "label":          "Dead Load for Seismic Force (kN)",
+                        "type":           TYPE_MODE_LINE,
+                        "mode_choices":   ["Automatic", "Custom"],
+                        "bind_mode":      "dead_load_seismic_combo",
+                        "bind_value":     "dead_load_custom_input",
+                        "on_mode_change": "_on_seismic_dead_load_mode_changed",
+                    }]
                 },
                 {
-                    "id": "live_load_seismic",
-                    "label": "Live Load for Seismic Force (kN)",
-                    "type": "mode_line",
-                    "mode_choices": ["Automatic", "Custom"],
-                    "default_mode": "Automatic",
-                    "bind_mode": "live_load_seismic_combo",
-                    "bind_value": "live_load_custom_input",
-                    "placeholder": "Custom Value",
-                    "on_mode_change": "_toggle_seismic_custom_inputs",
+                    "fields": [{
+                        "id":             KEY_SL_LIVE_LOAD_MODE,
+                        "label":          "Live Load for Seismic Force (kN)",
+                        "type":           TYPE_MODE_LINE,
+                        "mode_choices":   ["Automatic", "Custom"],
+                        "bind_mode":      "live_load_seismic_combo",
+                        "bind_value":     "live_load_custom_input",
+                        "on_mode_change": "_on_seismic_live_load_mode_changed",
+                    }]
                 },
             ],
         },
+
+        # ── Column 0: Computed Values ──────────────────────────────────────
         {
-            "id": "computed_values_section",
-            "title": "Computed Values",
-            "type": "computed_group",
-            "fields": [
+            "column": 0,
+            "title":  "Computed Values",
+            "rows": [
                 {
-                    "id": "zone_factor",
-                    "label": "Zone Factor, Z",
-                    "type": "computed",
-                    "bind": "zone_factor",
+                    "fields": [{
+                        "id":       KEY_SL_ZONE_FACTOR,
+                        "label":    "Zone Factor, Z",
+                        "type":     TYPE_TEXTBOX,
+                        "bind":     "zone_factor_input",
+                        "read_only": True,
+                    }]
                 },
                 {
-                    "id": "spectral_coeff",
-                    "label": "Spectral Acceleration Coefficient, S<sub>a</sub>/g",
-                    "type": "computed",
-                    "bind": "spectral_coeff",
+                    "fields": [{
+                        "id":       KEY_SL_SPECTRAL_COEFF,
+                        "label":    "Spectral Acceleration Coefficient, S&#x2090;/g",
+                        "type":     TYPE_TEXTBOX,
+                        "bind":     "spectral_coeff_input",
+                        "read_only": True,
+                    }]
                 },
                 {
-                    "id": "horizontal_coeff",
-                    "label": "Horizontal Seismic Coefficient, A<sub>h</sub>",
-                    "type": "computed",
-                    "bind": "horizontal_coeff",
+                    "fields": [{
+                        "id":       KEY_SL_HORIZONTAL_COEFF,
+                        "label":    "Horizontal Seismic Coefficient, A&#x2095;",
+                        "type":     TYPE_TEXTBOX,
+                        "bind":     "horizontal_coeff_input",
+                        "read_only": True,
+                    }]
                 },
                 {
-                    "id": "vertical_coeff",
-                    "label": "Vertical Seismic Coefficient, A<sub>v</sub>",
-                    "type": "computed",
-                    "bind": "vertical_coeff",
+                    "fields": [{
+                        "id":       KEY_SL_VERTICAL_COEFF,
+                        "label":    "Vertical Seismic Coefficient, A&#x1D65;",
+                        "type":     TYPE_TEXTBOX,
+                        "bind":     "vertical_coeff_input",
+                        "read_only": True,
+                    }]
                 },
             ],
+        },
+
+        # ── Column 1: Description ──────────────────────────────────────────
+        {
+            "column":  1,
+            "type":    TYPE_DESCRIPTION,
+            "title":   "Description Box",
+            "text":    (
+                "Seismic Zone is auto-filled from software output (project location).\n\n"
+                "The spectral acceleration coefficient depends on soil type and "
+                "fundamental time period, T."
+            ),
+            "stretch": True,
         },
     ],
-    "description": {
-        "title": "Description Box",
-        "text": (
-            "Seismic Zone is auto-filled from software output (project location).\n\n"
-            "The spectral acceleration coefficient depends on soil type and "
-            "fundamental time period, T.\n\n"
-        ),
-    },
 }
 
 WIND_LOAD_TAB_SCHEMA = {
-    "id": "wind_load_tab",
-    "label_width": 260,
-    "field_width": 140,
-    "field_height": 28,
+    "id":     KEY_WL_TAB,
+    "layout": {
+        "type":          "columns",
+        "columns":       2,
+        "column_widths": [3, 2],
+    },
     "sections": [
+
+        # ── Column 0: Wind Inputs ──────────────────────────────────────────
         {
-            "id": "wind_inputs_section",
-            "title": "Wind Load (WL) Inputs",
-            "type": "input_group",
-            "fields": [
-                {
-                    "id": "basic_wind_speed",
-                    "label": "Basic Wind Speed, V<sub>b</sub> (m/s)",
-                    "type": "line",
-                    "read_only": True,
-                    "enabled": False,
-                    "bind": "basic_wind_speed_input",
-                },
-                {
-                    "id": "avg_exposed_height",
-                    "label": "Average Exposed Height, H (m)",
-                    "type": "line",
-                    "default": "10",
-                    "placeholder": "10",
-                    "bind": "avg_exposed_height_input",
-                },
-                {
-                    "id": "terrain_type",
-                    "label": "Type of Terrain",
-                    "type": "combo",
-                    "choices": ["Plain Terrain", "Terrain with \nObstructions"],
-                    "default": "Plain Terrain",
-                    "bind": "terrain_type_combo",
-                },
-                {
-                    "id": "site_topography",
-                    "label": "Site Topography",
-                    "type": "combo",
-                    "choices": ["Flat", "Hill, ridge, escarpment or cliff"],
-                    "default": "Flat",
-                    "bind": "site_topography_combo",
-                },
-                {
-                    "id": "gust_factor",
-                    "label": "Gust Factor, G",
-                    "type": "mode_line",
-                    "mode_choices": ["As per Code", "Custom"],
-                    "default_mode": "As per Code",
-                    "bind_mode": "gust_factor_combo",
-                    "bind_value": "gust_factor_value",
-                    "default_value": "2",
-                    "placeholder": "2",
-                    "on_mode_change": "_toggle_wind_custom_input",
-                },
-                {
-                    "id": "drag_coeff",
-                    "label": "Drag Coefficient, C<sub>D</sub>",
-                    "type": "mode_line",
-                    "mode_choices": ["As per Code", "Custom"],
-                    "default_mode": "As per Code",
-                    "bind_mode": "drag_coeff_combo",
-                    "bind_value": "drag_coeff_value",
-                    "placeholder": "Custom Value",
-                    "on_mode_change": "_toggle_wind_custom_input",
-                },
-                {
-                    "id": "drag_coeff_ll",
-                    "label": "Drag Coefficient against Live Load, C<sub>DLL</sub>",
-                    "type": "mode_line",
-                    "mode_choices": ["As per Code", "Custom"],
-                    "default_mode": "As per Code",
-                    "bind_mode": "drag_coeff_ll_combo",
-                    "bind_value": "drag_coeff_ll_value",
-                    "default_value": "1.2",
-                    "placeholder": "1.2",
-                    "on_mode_change": "_toggle_wind_custom_input",
-                },
-                {
-                    "id": "lift_coeff",
-                    "label": "Lift Coefficient, C<sub>L</sub>",
-                    "type": "mode_line",
-                    "mode_choices": ["As per Code", "Custom"],
-                    "default_mode": "As per Code",
-                    "bind_mode": "lift_coeff_combo",
-                    "bind_value": "lift_coeff_value",
-                    "default_value": "0.75",
-                    "placeholder": "0.75",
-                    "on_mode_change": "_toggle_wind_custom_input",
-                },
-                {
-                    "id": "super_area_elev",
-                    "label": "Superstructure Area in Elevation, A<sub>1</sub> (m²)",
-                    "type": "mode_line",
-                    "mode_choices": ["Automatic", "Custom"],
-                    "default_mode": "Automatic",
-                    "bind_mode": "super_area_elev_combo",
-                    "bind_value": "super_area_elev_value",
-                    "placeholder": "Custom Value",
-                    "on_mode_change": "_toggle_wind_custom_input",
-                },
-                {
-                    "id": "super_area_plain",
-                    "label": "Superstructure Area in Plain, A<sub>3</sub> (m²)",
-                    "type": "mode_line",
-                    "mode_choices": ["Automatic", "Custom"],
-                    "default_mode": "Automatic",
-                    "bind_mode": "super_area_plain_combo",
-                    "bind_value": "super_area_plain_value",
-                    "placeholder": "Custom Value",
-                    "on_mode_change": "_toggle_wind_custom_input",
-                },
-                {
-                    "id": "exposed_frontal_area",
-                    "label": "Exposed Frontal Area of Live Load, A<sub>1LL</sub> (m²)",
-                    "type": "mode_line",
-                    "mode_choices": ["Automatic", "Custom"],
-                    "default_mode": "Automatic",
-                    "bind_mode": "exposed_frontal_area_combo",
-                    "bind_value": "exposed_frontal_area_value",
-                    "placeholder": "Custom Value",
-                    "on_mode_change": "_toggle_wind_custom_input",
-                },
-                {
-                    "id": "wind_ecc_deck",
-                    "label": "Wind Load Eccentricity from \nTop of Deck (m)",
-                    "type": "mode_line",
-                    "mode_choices": ["As per Code", "Custom"],
-                    "default_mode": "As per Code",
-                    "bind_mode": "wind_ecc_deck_combo",
-                    "bind_value": "wind_ecc_deck_value",
-                    "placeholder": "Custom Value",
-                    "on_mode_change": "_toggle_wind_custom_input",
-                },
-                {
-                    "id": "wind_ll_ecc",
-                    "label": "Wind on Live Load Eccentricity from \nTop of Deck (m)",
-                    "type": "mode_line",
-                    "mode_choices": ["As per Code", "Custom"],
-                    "default_mode": "As per Code",
-                    "bind_mode": "wind_ll_ecc_combo",
-                    "bind_value": "wind_ll_ecc_value",
-                    "placeholder": "Custom Value",
-                    "on_mode_change": "_toggle_wind_custom_input",
-                },
+            "column": 0,
+            "title":  "Wind Load (WL) Inputs",
+            "rows": [
+                {"fields": [{"id": KEY_WL_BASIC_WIND_SPEED,      "label": "Basic Wind Speed, V<sub>b</sub> (m/s)",                           "type": TYPE_TEXTBOX,  "read_only": True,  "bind": "basic_wind_speed_input"}]},
+                {"fields": [{"id": KEY_WL_AVG_EXPOSED_HEIGHT,     "label": "Average Exposed Height, H (m)",                                   "type": TYPE_TEXTBOX,  "placeholder": "10", "bind": "avg_exposed_height_input"}]},
+                {"fields": [{"id": KEY_WL_TERRAIN_TYPE,           "label": "Type of Terrain",                                                 "type": TYPE_COMBOBOX, "choices": ["Plain Terrain", "Terrain with Obstructions"], "bind": "terrain_type_combo"}]},
+                {"fields": [{"id": KEY_WL_SITE_TOPOGRAPHY,        "label": "Site Topography",                                                 "type": TYPE_COMBOBOX, "choices": ["Flat", "Hill, ridge, escarpment or cliff"], "bind": "site_topography_combo"}]},
+                {"fields": [{"id": KEY_WL_GUST_FACTOR_MODE,       "label": "Gust Factor, G",                                                  "type": TYPE_MODE_LINE, "mode_choices": ["As per Code", "Custom"], "bind_mode": "gust_factor_combo",       "bind_value": "gust_factor_value",       "on_mode_change": "_toggle_wind_custom_input"}]},
+                {"fields": [{"id": KEY_WL_DRAG_COEFF_MODE,        "label": "Drag Coefficient, C<sub>D</sub>",                                 "type": TYPE_MODE_LINE, "mode_choices": ["As per Code", "Custom"], "bind_mode": "drag_coeff_combo",         "bind_value": "drag_coeff_value",        "on_mode_change": "_toggle_wind_custom_input"}]},
+                {"fields": [{"id": KEY_WL_DRAG_COEFF_LL_MODE,     "label": "Drag Coefficient against Live Load, C<sub>DLL</sub>",             "type": TYPE_MODE_LINE, "mode_choices": ["As per Code", "Custom"], "bind_mode": "drag_coeff_ll_combo",      "bind_value": "drag_coeff_ll_value",     "on_mode_change": "_toggle_wind_custom_input"}]},
+                {"fields": [{"id": KEY_WL_LIFT_COEFF_MODE,        "label": "Lift Coefficient, C<sub>L</sub>",                                 "type": TYPE_MODE_LINE, "mode_choices": ["As per Code", "Custom"], "bind_mode": "lift_coeff_combo",         "bind_value": "lift_coeff_value",        "on_mode_change": "_toggle_wind_custom_input"}]},
+                {"fields": [{"id": KEY_WL_SUPER_AREA_ELEV_MODE,   "label": "Superstructure Area in Elevation, A<sub>1</sub> (m²)",            "type": TYPE_MODE_LINE, "mode_choices": ["Automatic", "Custom"],   "bind_mode": "super_area_elev_combo",    "bind_value": "super_area_elev_value",   "on_mode_change": "_toggle_wind_custom_input"}]},
+                {"fields": [{"id": KEY_WL_SUPER_AREA_PLAIN_MODE,  "label": "Superstructure Area in Plain, A<sub>3</sub> (m²)",                "type": TYPE_MODE_LINE, "mode_choices": ["Automatic", "Custom"],   "bind_mode": "super_area_plain_combo",   "bind_value": "super_area_plain_value",  "on_mode_change": "_toggle_wind_custom_input"}]},
+                {"fields": [{"id": KEY_WL_EXPOSED_FRONTAL_MODE,   "label": "Exposed Frontal Area of Live Load, A<sub>1LL</sub> (m²)",         "type": TYPE_MODE_LINE, "mode_choices": ["Automatic", "Custom"],   "bind_mode": "exposed_frontal_area_combo","bind_value": "exposed_frontal_area_value","on_mode_change": "_toggle_wind_custom_input"}]},
+                {"fields": [{"id": KEY_WL_WIND_ECC_DECK_MODE,     "label": "Wind Load Eccentricity from Top of Deck (m)",                     "type": TYPE_MODE_LINE, "mode_choices": ["As per Code", "Custom"], "bind_mode": "wind_ecc_deck_combo",      "bind_value": "wind_ecc_deck_value",     "on_mode_change": "_toggle_wind_custom_input"}]},
+                {"fields": [{"id": KEY_WL_WIND_LL_ECC_MODE,       "label": "Wind on Live Load Eccentricity from Top of Deck (m)",             "type": TYPE_MODE_LINE, "mode_choices": ["As per Code", "Custom"], "bind_mode": "wind_ll_ecc_combo",        "bind_value": "wind_ll_ecc_value",       "on_mode_change": "_toggle_wind_custom_input"}]},
             ],
         },
+
+        # ── Column 0: Computed Values ──────────────────────────────────────
         {
-            "id": "computed_values_section",
-            "title": "Computed Values",
-            "type": "computed_group",
-            "fields": [
-                {
-                    "id": "hourly_mean_wind",
-                    "label": "Hourly Mean Wind Speed, V<sub>z</sub> (m/s)",
-                    "type": "computed",
-                    "bind": "hourly_mean_wind",
-                },
-                {
-                    "id": "hourly_wind_pressure",
-                    "label": "Hourly Wind Pressure, P<sub>z</sub> (N/m²)",
-                    "type": "computed",
-                    "bind": "hourly_wind_pressure",
-                },
-                {
-                    "id": "transverse_wind_force",
-                    "label": "Transverse Wind Force, F<sub>T</sub> (N)",
-                    "type": "computed",
-                    "bind": "transverse_wind_force",
-                },
-                {
-                    "id": "longitudinal_wind_force",
-                    "label": "Longitudinal Wind Force, F<sub>L</sub> (N)",
-                    "type": "computed",
-                    "bind": "longitudinal_wind_force",
-                },
-                {
-                    "id": "vertical_wind_force",
-                    "label": "Vertical Wind Force, F<sub>V</sub> (N)",
-                    "type": "computed",
-                    "bind": "vertical_wind_force",
-                },
-                {
-                    "id": "transverse_wind_ll",
-                    "label": "Transverse Wind Force on Live Load, F<sub>TLL</sub> (N)",
-                    "type": "computed",
-                    "bind": "transverse_wind_ll",
-                },
-                {
-                    "id": "longitudinal_wind_ll",
-                    "label": "Longitudinal Wind Force on Live Load, F<sub>LLL</sub> (N)",
-                    "type": "computed",
-                    "bind": "longitudinal_wind_ll",
-                },
+            "column": 0,
+            "title":  "Computed Values",
+            "rows": [
+                {"fields": [{"id": KEY_WL_HOURLY_MEAN_WIND,        "label": "Hourly Mean Wind Speed, V<sub>z</sub> (m/s)",                    "type": TYPE_TEXTBOX, "read_only": True, "bind": "hourly_mean_wind_input"}]},
+                {"fields": [{"id": KEY_WL_HOURLY_WIND_PRESSURE,    "label": "Hourly Wind Pressure, P<sub>z</sub> (N/m²)",                     "type": TYPE_TEXTBOX, "read_only": True, "bind": "hourly_wind_pressure_input"}]},
+                {"fields": [{"id": KEY_WL_TRANSVERSE_WIND_FORCE,   "label": "Transverse Wind Force, F<sub>T</sub> (N)",                       "type": TYPE_TEXTBOX, "read_only": True, "bind": "transverse_wind_force_input"}]},
+                {"fields": [{"id": KEY_WL_LONGITUDINAL_WIND_FORCE, "label": "Longitudinal Wind Force, F<sub>L</sub> (N)",                     "type": TYPE_TEXTBOX, "read_only": True, "bind": "longitudinal_wind_force_input"}]},
+                {"fields": [{"id": KEY_WL_VERTICAL_WIND_FORCE,     "label": "Vertical Wind Force, F<sub>V</sub> (N)",                         "type": TYPE_TEXTBOX, "read_only": True, "bind": "vertical_wind_force_input"}]},
+                {"fields": [{"id": KEY_WL_TRANSVERSE_WIND_LL,      "label": "Transverse Wind Force on Live Load, F<sub>TLL</sub> (N)",        "type": TYPE_TEXTBOX, "read_only": True, "bind": "transverse_wind_ll_input"}]},
+                {"fields": [{"id": KEY_WL_LONGITUDINAL_WIND_LL,    "label": "Longitudinal Wind Force on Live Load, F<sub>LLL</sub> (N)",      "type": TYPE_TEXTBOX, "read_only": True, "bind": "longitudinal_wind_ll_input"}]},
             ],
+        },
+
+        # ── Column 1: Description ──────────────────────────────────────────
+        {
+            "column":  1,
+            "type":    TYPE_DESCRIPTION,
+            "title":   "Description Box",
+            "text":    "Basic Wind Speed is auto-filled from software output (project location).",
+            "stretch": True,
         },
     ],
-    "description": {
-        "title": "Description Box",
-        "text": (
-            "Basic Wind Speed is auto-filled from software output (project location).\n\n"
-        ),
-    },
 }
 
 TEMPERATURE_LOAD_TAB_SCHEMA = {
-    "id": "temperature_load_tab",
-    "label_width": 240,
-    "field_width": 140,
+    "id":     KEY_TL_TAB,
+    "layout": {
+        "type":          "columns",
+        "columns":       2,
+        "column_widths": [3, 2],
+    },
     "sections": [
+
+        # ── Column 0: Temperature Inputs ───────────────────────────────────
         {
-            "id": "temperature_inputs_section",
-            "title": "Temperature Load (TL) Inputs for Evaluation per IRC6",
-            "type": "input_group",
-            "fields": [
-                {
-                    "id": "highest_max_temp",
-                    "label": "Highest Maximum Air Temperature (°C)",
-                    "type": "line",
-                    "placeholder": "From Project Location",
-                    "bind": "highest_max_temp_input",
-                    "validator": {"type": "double_range", "bottom": -50.0, "top": 100.0, "decimals": 2},
-                    "enabled": False,
-                },
-                {
-                    "id": "lowest_min_temp",
-                    "label": "Lowest Minimum Air Temperature (°C)",
-                    "type": "line",
-                    "placeholder": "From Project Location",
-                    "bind": "lowest_min_temp_input",
-                    "validator": {"type": "double_range", "bottom": -50.0, "top": 100.0, "decimals": 2},
-                    "enabled": False,
-                },
-                {
-                    "id": "thermal_coeff_steel",
-                    "label": "Coefficient of Thermal Expansion for Steel (1/°C)",
-                    "type": "line",
-                    "default": "12.0e-6",
-                    "bind": "thermal_coeff_steel_input",
-                    "validator": {"type": "double_range", "bottom": 0.0, "top": 1.0, "decimals": 8, "notation": "scientific"},
-                },
-                {
-                    "id": "thermal_coeff_rcc",
-                    "label": "Coefficient of Thermal Expansion for RCC (1/°C)",
-                    "type": "line",
-                    "default": "12.0e-6",
-                    "bind": "thermal_coeff_rcc_input",
-                    "validator": {"type": "double_range", "bottom": 0.0, "top": 1.0, "decimals": 8, "notation": "scientific"},
-                },
+            "column": 0,
+            "title":  "Temperature Load (TL) Inputs for Evaluation per IRC6",
+            "rows": [
+                {"fields": [{"id": KEY_TL_HIGHEST_MAX_TEMP,    "label": "Highest Maximum Air Temperature (°C)",                    "type": TYPE_TEXTBOX, "placeholder": "From Project Location", "enabled": False, "bind": "highest_max_temp_input"}]},
+                {"fields": [{"id": KEY_TL_LOWEST_MIN_TEMP,     "label": "Lowest Minimum Air Temperature (°C)",                     "type": TYPE_TEXTBOX, "placeholder": "From Project Location", "enabled": False, "bind": "lowest_min_temp_input"}]},
+                {"fields": [{"id": KEY_TL_THERMAL_COEFF_STEEL, "label": "Coefficient of Thermal Expansion for Steel (1/°C)",       "type": TYPE_TEXTBOX, "placeholder": "e.g. 12.0e-6",        "bind": "thermal_coeff_steel_input"}]},
+                {"fields": [{"id": KEY_TL_THERMAL_COEFF_RCC,   "label": "Coefficient of Thermal Expansion for RCC (1/°C)",         "type": TYPE_TEXTBOX, "placeholder": "e.g. 12.0e-6",        "bind": "thermal_coeff_rcc_input"}]},
             ],
         },
+
+        # ── Column 0: Bridge Temperature Range ─────────────────────────────
         {
-            "id": "bridge_temp_range_section",
-            "title": "Range of Effective Bridge Temperature:",
-            "type": "output_group",
-            "fields": [
-                {
-                    "id": "bridge_temp_min",
-                    "label": "Minimum (°C)",
-                    "type": "line",
-                    "read_only": True,
-                    "bind": "bridge_temp_min_input",
-                },
-                {
-                    "id": "bridge_temp_max",
-                    "label": "Maximum (°C)",
-                    "type": "line",
-                    "read_only": True,
-                    "bind": "bridge_temp_max_input",
-                },
+            "column": 0,
+            "title":  "Range of Effective Bridge Temperature",
+            "rows": [
+                {"fields": [{"id": KEY_TL_BRIDGE_TEMP_MIN, "label": "Minimum (°C)", "type": TYPE_TEXTBOX, "read_only": True, "bind": "bridge_temp_min_input"}]},
+                {"fields": [{"id": KEY_TL_BRIDGE_TEMP_MAX, "label": "Maximum (°C)", "type": TYPE_TEXTBOX, "read_only": True, "bind": "bridge_temp_max_input"}]},
             ],
         },
+
+        # ── Column 0: Temperature for Design ───────────────────────────────
         {
-            "id": "temp_design_section",
-            "title": "Temperature for Design",
-            "type": "output_group",
-            "fields": [
-                {
-                    "id": "temp_rise",
-                    "label": "Rise (°C)",
-                    "type": "line",
-                    "read_only": True,
-                    "bind": "temp_rise_input",
-                },
-                {
-                    "id": "temp_fall",
-                    "label": "Fall (°C)",
-                    "type": "line",
-                    "read_only": True,
-                    "bind": "temp_fall_input",
-                },
+            "column": 0,
+            "title":  "Temperature for Design",
+            "rows": [
+                {"fields": [{"id": KEY_TL_TEMP_RISE, "label": "Rise (°C)", "type": TYPE_TEXTBOX, "read_only": True, "bind": "temp_rise_input"}]},
+                {"fields": [{"id": KEY_TL_TEMP_FALL, "label": "Fall (°C)", "type": TYPE_TEXTBOX, "read_only": True, "bind": "temp_fall_input"}]},
             ],
+        },
+
+        # ── Column 1: Description ──────────────────────────────────────────
+        {
+            "column":  1,
+            "type":    TYPE_DESCRIPTION,
+            "title":   "Description Box",
+            "text":    "",
+            "stretch": True,
         },
     ],
 }
@@ -1012,22 +903,43 @@ CUSTOM_LOAD_TAB_SCHEMA = {
 }
 
 LOAD_COMBINATION_TAB_SCHEMA = {
-    "id": "load_combination_tab",
-    "label_width": 280,
+    "id":     KEY_LC_TAB,
+    "layout": {
+        "type":          "columns",
+        "columns":       2,
+        "column_widths": [3, 2],
+    },
     "sections": [
+
+        # ── Column 0: IRC Load Combinations ────────────────────────────────
         {
-            "id": "irc_load_combos_section",
-            "title": "Load Combinations from IRC 6",
-            "type": "dynamic_checkbox_list",
-            "bind": "irc_load_combos_checkboxes",
-            "default_checked": False,
+            "column": 0,
+            "title":  "Load Combinations from IRC 6",
+            "rows":   [],
         },
+
+        # ── Column 0: Custom Load Combination ──────────────────────────────
         {
-            "id": "custom_load_combo_section",
-            "title": "Custom Load Combination",
-            "type": "custom_load_combo_table",
-            "bind": "custom_load_combo_table",
-            "add_button_bind": "load_combo_add_btn",
+            "column": 0,
+            "title":  "",
+            "rows": [
+                {
+                    "fields": [{
+                        "id":       KEY_LC_COMBINATIONS,
+                        "type":     TYPE_LOAD_COMBINATION,
+                        "on_click": "_on_add_custom_combination",
+                    }]
+                },
+            ],
+        },
+
+        # ── Column 1: Description ───────────────────────────────────────────
+        {
+            "column":  1,
+            "type":    TYPE_DESCRIPTION,
+            "title":   "Description Box",
+            "text":    "",
+            "stretch": True,
         },
     ],
 }
@@ -1253,7 +1165,7 @@ DESIGN_OPTIONS_SCHEMA = {
         # ──────────────── Column 1: Description ────────────────
         {
             "column": 1,
-            "type":   "description",
+            "type":   TYPE_DESCRIPTION,
             "title":  "Description Box",
             "text":   "",
             "stretch": True,
@@ -1390,33 +1302,25 @@ DESIGN_OPTIONS_CONT_SCHEMA = {
 
         # ──────────────────── Limit States ────────────────────
         {
-            "column": 0,
-            "title":  "Limit States",
-            "checkbox_groups": [
-                {
-                    "title":           "Ultimate Limit States",
-                    "bind":            "ultimate_checkboxes",
-                    "default_checked": True,
-                    "items": [
-                        {"id": KEY_DO_ULS_BENDING,    "label": "Bending Resistance",                       "type": TYPE_CHECKBOX},
-                        {"id": KEY_DO_ULS_SHEAR,      "label": "Resistance to Vertical Shear",             "type": TYPE_CHECKBOX},
-                        {"id": KEY_DO_ULS_LTB,        "label": "Resistance to Lateral-torsional Buckling", "type": TYPE_CHECKBOX},
-                        {"id": KEY_DO_ULS_TRANSVERSE,  "label": "Resistance to Transverse force",          "type": TYPE_CHECKBOX},
-                        {"id": KEY_DO_ULS_LONG_SHEAR,  "label": "Resistance to Longitudinal Shear",        "type": TYPE_CHECKBOX},
-                        {"id": KEY_DO_ULS_FATIGUE,     "label": "Resistance to Fatigue",                   "type": TYPE_CHECKBOX},
-                    ],
-                },
-                {
-                    "title":           "Serviceability Limit States",
-                    "bind":            "service_checkboxes",
-                    "default_checked": True,
-                    "items": [
-                        {"id": KEY_DO_SLS_STRESS,      "label": "Stress Limitation",        "type": TYPE_CHECKBOX},
-                        {"id": KEY_DO_SLS_LONG_SHEAR,  "label": "Longitudinal Shear (SLS)", "type": TYPE_CHECKBOX},
-                        {"id": KEY_DO_SLS_DEFLECTION,  "label": "Deflection Control",       "type": TYPE_CHECKBOX},
-                        {"id": KEY_DO_SLS_CRACK_WIDTH,  "label": "Crack Width Check",       "type": TYPE_CHECKBOX},
-                    ],
-                },
+            "column": 2,
+            "title":  "Ultimate Limit States",
+            "rows": [
+                {"fields": [{"id": KEY_DO_ULS_BENDING,    "label": "Bending Resistance",                    "type": TYPE_CHECKBOX}]},
+                {"fields": [{"id": KEY_DO_ULS_SHEAR,      "label": "Resistance to Vertical Shear",          "type": TYPE_CHECKBOX}]},
+                {"fields": [{"id": KEY_DO_ULS_LTB,        "label": "Resistance to Lateral-torsional Buckling", "type": TYPE_CHECKBOX}]},
+                {"fields": [{"id": KEY_DO_ULS_TRANSVERSE,  "label": "Resistance to Transverse force",       "type": TYPE_CHECKBOX}]},
+                {"fields": [{"id": KEY_DO_ULS_LONG_SHEAR,  "label": "Resistance to Longitudinal Shear",     "type": TYPE_CHECKBOX}]},
+                {"fields": [{"id": KEY_DO_ULS_FATIGUE,     "label": "Resistance to Fatigue",                "type": TYPE_CHECKBOX}]},
+            ],
+        },
+        {
+            "column": 2,
+            "title":  "Serviceability Limit States",
+            "rows": [
+                {"fields": [{"id": KEY_DO_SLS_STRESS,      "label": "Stress Limitation",        "type": TYPE_CHECKBOX}]},
+                {"fields": [{"id": KEY_DO_SLS_LONG_SHEAR,  "label": "Longitudinal Shear (SLS)", "type": TYPE_CHECKBOX}]},
+                {"fields": [{"id": KEY_DO_SLS_DEFLECTION,  "label": "Deflection Control",       "type": TYPE_CHECKBOX}]},
+                {"fields": [{"id": KEY_DO_SLS_CRACK_WIDTH,  "label": "Crack Width Check",       "type": TYPE_CHECKBOX}]},
             ],
         },
     ],

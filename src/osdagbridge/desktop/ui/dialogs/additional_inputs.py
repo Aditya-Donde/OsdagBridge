@@ -1,4 +1,4 @@
-"""
+﻿"""
 Additional Inputs Widget for Highway Bridge Design
 Provides detailed input fields for manual bridge parameter definition
 """
@@ -17,24 +17,20 @@ from osdagbridge.core.utils.common import *
 from osdagbridge.desktop.ui.utils.custom_titlebar import CustomTitleBar
 from osdagbridge.desktop.ui.dialogs.tabs.common import apply_field_style, create_action_button_bar
 from osdagbridge.desktop.ui.dialogs.custom_messagebox import CustomMessageBox, MessageBoxType
-from osdagbridge.desktop.ui.dialogs.tabs.typical_section_details import TypicalSectionDetailsTab
+from osdagbridge.desktop.ui.dialogs.tabs.sub_tabs.typical_section.typical_section_details import TypicalSectionDetailsTab
 from osdagbridge.desktop.ui.dialogs.tabs.section_properties_tab import SectionPropertiesTab
 from osdagbridge.desktop.ui.dialogs.tabs.loading_tab import LoadingTab
 from osdagbridge.desktop.ui.utils.custom_widgets import SmartCursorComboBoxView
-from osdagbridge.desktop.ui.dialogs.tabs.sub_tabs.typical_section.common_ui_builder import UIBuilder
+from osdagbridge.desktop.ui.dialogs.additional_input.common_ui_builder import UIBuilder
+from osdagbridge.core.bridge_types.plate_girder.ui_fields_additional_input import (
+    DESIGN_OPTIONS_SCHEMA,
+    DESIGN_OPTIONS_CONT_SCHEMA,
+    SUPPORT_CONDITIONS_SCHEMA,
+)
 
 # =================================================================================
 #   MAIN IMPLEMENTATION
 # =================================================================================
-
-ADDITIONAL_INPUTS_SCROLL_STYLE = """
-    QScrollArea { background:transparent; padding:0px 5px; border:none}
-    QScrollArea QScrollBar:vertical { border:none; background:#f0f0f0; width:8px; }
-    QScrollArea QScrollBar::handle:vertical { background:#c0c0c0; border-radius:4px; min-height:20px; }
-    QScrollArea QScrollBar::handle:vertical:hover { background:#a0a0a0; }
-    QScrollArea QScrollBar::add-line:vertical,
-    QScrollArea QScrollBar::sub-line:vertical { border:none; background:none; }
-"""
 
 class AdditionalInputs(QDialog):
     """Main dialog for Additional Inputs with tabbed interface"""
@@ -179,10 +175,21 @@ class AdditionalInputs(QDialog):
         
         # TYPE_BOUND_BTN passes dict result directly
         if isinstance(widget, dict):
-            print(f"@@Received dict from bound btn: {widget}")
             self._update_input_dict(key, widget)
             return
-
+        
+        # TYPE_CHECKBOX passes bool
+        if isinstance(widget, bool):
+            self._update_input_dict(key, widget)
+            self._update_additional_input_cad()
+            return
+        
+        # TYPE_LOAD_COMBINATION passes list of dicts
+        if isinstance(widget, list):
+            self._update_input_dict(key, widget)
+            return
+        
+        # Rest of code mainly triggers QLineEdit
         current_text = widget.text().strip()
 
         # Update dict first so validator reads the latest value
@@ -446,58 +453,42 @@ class AdditionalInputs(QDialog):
             pass
         
         # Sub-Tab 3: Loading
-        self.loading_tab = LoadingTab()
+        self.loading_tab = LoadingTab(
+            additional_input_instance=self
+        )
         self.tabs.addTab(self.loading_tab, "Loading")
-        
-        from osdagbridge.core.bridge_types.plate_girder.ui_fields_additional_input import SUPPORT_CONDITIONS_SCHEMA
-        self._support_scroll = QScrollArea()
-        self._support_scroll.setWidgetResizable(True)
-        self._support_scroll.setFrameShape(QFrame.NoFrame)
-        self._support_scroll.setStyleSheet(ADDITIONAL_INPUTS_SCROLL_STYLE)
 
         self.support_tab = UIBuilder(
             owner=self,
             schema=SUPPORT_CONDITIONS_SCHEMA,
             card_title="",
+            with_scroll=True,
             main_widget_object_name="support_conditions.main",
             additional_input_instance=self,
         )
-        self._support_scroll.setWidget(self.support_tab)
-        # self.tabs.addTab(self._support_scroll, "Support Conditions")
+        self.tabs.addTab(self.support_tab, "Support Conditions")
         
         # Sub-Tab 5: Analysis/Design Options
-        from osdagbridge.core.bridge_types.plate_girder.ui_fields_additional_input import (
-            DESIGN_OPTIONS_SCHEMA,
-            DESIGN_OPTIONS_CONT_SCHEMA,
-        )
-        self._design_options_scroll = QScrollArea()
-        self._design_options_scroll.setWidgetResizable(True)
-        self._design_options_scroll.setFrameShape(QFrame.NoFrame)
-        self._design_options_scroll.setStyleSheet(ADDITIONAL_INPUTS_SCROLL_STYLE)
         self.design_options_tab = UIBuilder(
             owner=self,
             schema=DESIGN_OPTIONS_SCHEMA,
             card_title="",
+            with_scroll=True,
             main_widget_object_name="design_options.main",
             additional_input_instance=self,
         )
-        self._design_options_scroll.setWidget(self.design_options_tab)
-        self.tabs.addTab(self._design_options_scroll, "Analysis/Design Options")
+        self.tabs.addTab(self.design_options_tab, "Analysis/Design Options")
 
         # Sub-Tab 6: Design Options (Cont.)
-        self._do_cont_scroll = QScrollArea()
-        self._do_cont_scroll.setWidgetResizable(True)
-        self._do_cont_scroll.setFrameShape(QFrame.NoFrame)
-        self._do_cont_scroll.setStyleSheet(ADDITIONAL_INPUTS_SCROLL_STYLE)
         self.design_options_cont_tab = UIBuilder(
             owner=self,
             schema=DESIGN_OPTIONS_CONT_SCHEMA,
             card_title="",
+            with_scroll=True,
             main_widget_object_name="design_options_cont.main",
             additional_input_instance=self,
         )
-        self._do_cont_scroll.setWidget(self.design_options_cont_tab)
-        self.tabs.addTab(self._do_cont_scroll, "Design Options (Cont.)")
+        self.tabs.addTab(self.design_options_cont_tab, "Design Options (Cont.)")
 
         self.tabs.currentChanged.connect(self._on_top_tab_changed)        
         main_layout.addWidget(self.tabs)
@@ -526,7 +517,49 @@ class AdditionalInputs(QDialog):
         except (ValueError, TypeError):
             value = 400.0
         widget.update_params({"bearing_length": value})
+    
+    # Click event for "Add Custom Vehicle" button in Live Load Sub-Tab in Loading Tab
+    def _on_add_custom_vehicle(self, existing=None, widget=None):
+        from osdagbridge.desktop.ui.dialogs.tabs.custom_vehicle_dialog import CustomVehicleDialog
+        from PySide6.QtWidgets import QDialog
+        current_list = self.working_input_dict.get(KEY_LL_CUSTOM_VEHICLES)
+        dlg = CustomVehicleDialog(self)
+        if existing:
+            dlg.load_vehicle_data(existing)
+        if dlg.exec() == QDialog.Accepted:
+            result  = dlg.vehicle_data
+            updated = list(current_list)
+            if existing and existing in updated:
+                updated[updated.index(existing)] = result
+            else:
+                updated.append(result)
+            self._on_field_edited(KEY_LL_CUSTOM_VEHICLES, updated)
+            if widget:
+                widget.update(updated)
 
+    # Click event for "Add Custom Combination" button in Load Combination Sub-Tab in Loading Tab
+    def _on_add_custom_combination(self, existing=None, widget=None):
+        from osdagbridge.desktop.ui.dialogs.tabs.load_combination_dialog import LoadCombinationDialog
+        from PySide6.QtWidgets import QDialog
+        current_list = self.working_input_dict.get(KEY_LC_COMBINATIONS)
+        dlg = LoadCombinationDialog(
+            owner=self,
+            existing=existing,
+            load_combo_items=current_list,
+            parent=self,
+        )
+        if dlg.exec() == QDialog.Accepted:
+            result  = dlg._collect()
+            updated = list(current_list)
+            if existing and existing in updated:
+                idx          = updated.index(existing)
+                updated[idx] = result
+            else:
+                updated.append(result)
+            self._on_field_edited(KEY_LC_COMBINATIONS, updated)
+            if widget:
+                widget.update(updated)
+        
     def _enforce_decimal_places(self, places=2):
         """Force all QDoubleValidator instances in this dialog to the given decimal places."""
         for line_edit in self.findChildren(QLineEdit):

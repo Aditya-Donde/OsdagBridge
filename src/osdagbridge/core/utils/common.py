@@ -33,6 +33,12 @@ TYPE_NOTICE = "notice"
 TYPE_BOUND_BTN = "bounds_dialog_btn"
 TYPE_TABLE_WITH_COUNTER = "table_with_count"
 TYPE_DIRECT_WIDGET = "direct_widget_classes"
+TYPE_MODE_LINE = "mode_line_edit"
+TYPE_DESCRIPTION = "description"
+
+TYPE_CUSTOM_VEHICLE    = "custom_vehicle"
+TYPE_LOAD_COMBINATION = "load_combination"
+
 # ========== Type of Fields End ==========================================================
 
 # Keys for inputs (consistent dot notation for object names)
@@ -260,7 +266,102 @@ KEY_WC_LD_LANE_TABLE_COUNT = "typical_section.lane_details.lane_table_count"
 
 #══════════════TYPICAL-SECTION-TAB-KEY-ENDS═══════════════════════════════════════════════════════
 
-#══════════════SUPPORT-CONDITIONS-KEY-START════════════════════════════════════
+#══════════════LOAD-TAB-KEY-START═════════════════════════════════════════════════════════════════
+
+#-------------- Permanent Load Sub-Tab --------------------------------------------
+KEY_PL_TAB                  = "permanent_load.tab"
+KEY_PL_SELF_WEIGHT_FACTOR   = "permanent_load.dead_load.self_weight_factor"
+
+#--------------- Live Load Sub-Tab -------------------------------------------------
+KEY_LL_TAB                      = "live_load.tab"
+
+# IRC Vehicles
+KEY_LL_IRC_CLASS_A              = "live_load.irc.class_a"
+KEY_LL_IRC_70R_WHEELED          = "live_load.irc.70r_wheeled"
+KEY_LL_IRC_70R_TRACKED          = "live_load.irc.70r_tracked"
+KEY_LL_IRC_AA_WHEELED           = "live_load.irc.aa_wheeled"
+KEY_LL_IRC_AA_TRACKED           = "live_load.irc.aa_tracked"
+KEY_LL_IRC_CLASS_SV             = "live_load.irc.class_sv"
+KEY_LL_IRC_70R_BOGIE            = "live_load.irc.70r_bogie"
+
+# Custom Vehicle
+KEY_LL_CUSTOM_VEHICLES = "live_load.custom_vehicles"
+
+# Eccentricity
+KEY_LL_ECCENTRICITY             = "live_load.eccentricity"
+
+# Footpath pressure
+KEY_LL_FOOTPATH_PRESSURE_MODE   = "live_load.footpath_pressure.mode"
+KEY_LL_FOOTPATH_PRESSURE_VALUE  = "live_load.footpath_pressure.value"
+
+#--------------- Seismic Load Sub-Tab -------------------------------------------------
+KEY_SL_TAB                      = "seismic_load.tab"
+KEY_SL_SEISMIC_ZONE             = "seismic_load.seismic_zone"
+KEY_SL_IMPORTANCE_FACTOR        = "seismic_load.importance_factor"
+KEY_SL_SOIL_TYPE                = "seismic_load.soil_type"
+KEY_SL_TIME_PERIOD              = "seismic_load.time_period"
+KEY_SL_DAMPING                  = "seismic_load.damping"
+KEY_SL_RESPONSE_REDUCTION       = "seismic_load.response_reduction_factor"
+KEY_SL_DEAD_LOAD_MODE           = "seismic_load.dead_load.mode"
+KEY_SL_DEAD_LOAD_VALUE          = "seismic_load.dead_load.value"
+KEY_SL_LIVE_LOAD_MODE           = "seismic_load.live_load.mode"
+KEY_SL_LIVE_LOAD_VALUE          = "seismic_load.live_load.value"
+KEY_SL_ZONE_FACTOR              = "seismic_load.computed.zone_factor"
+KEY_SL_SPECTRAL_COEFF           = "seismic_load.computed.spectral_coeff"
+KEY_SL_HORIZONTAL_COEFF         = "seismic_load.computed.horizontal_coeff"
+KEY_SL_VERTICAL_COEFF           = "seismic_load.computed.vertical_coeff"
+
+#--------------- Wind Load Sub-Tab -------------------------------------------------
+KEY_WL_TAB                      = "wind_load.tab"
+KEY_WL_BASIC_WIND_SPEED         = "wind_load.basic_wind_speed"
+KEY_WL_AVG_EXPOSED_HEIGHT       = "wind_load.avg_exposed_height"
+KEY_WL_TERRAIN_TYPE             = "wind_load.terrain_type"
+KEY_WL_SITE_TOPOGRAPHY          = "wind_load.site_topography"
+KEY_WL_GUST_FACTOR_MODE         = "wind_load.gust_factor.mode"
+KEY_WL_GUST_FACTOR_VALUE        = "wind_load.gust_factor.value"
+KEY_WL_DRAG_COEFF_MODE          = "wind_load.drag_coeff.mode"
+KEY_WL_DRAG_COEFF_VALUE         = "wind_load.drag_coeff.value"
+KEY_WL_DRAG_COEFF_LL_MODE       = "wind_load.drag_coeff_ll.mode"
+KEY_WL_DRAG_COEFF_LL_VALUE      = "wind_load.drag_coeff_ll.value"
+KEY_WL_LIFT_COEFF_MODE          = "wind_load.lift_coeff.mode"
+KEY_WL_LIFT_COEFF_VALUE         = "wind_load.lift_coeff.value"
+KEY_WL_SUPER_AREA_ELEV_MODE     = "wind_load.super_area_elev.mode"
+KEY_WL_SUPER_AREA_ELEV_VALUE    = "wind_load.super_area_elev.value"
+KEY_WL_SUPER_AREA_PLAIN_MODE    = "wind_load.super_area_plain.mode"
+KEY_WL_SUPER_AREA_PLAIN_VALUE   = "wind_load.super_area_plain.value"
+KEY_WL_EXPOSED_FRONTAL_MODE     = "wind_load.exposed_frontal_area.mode"
+KEY_WL_EXPOSED_FRONTAL_VALUE    = "wind_load.exposed_frontal_area.value"
+KEY_WL_WIND_ECC_DECK_MODE       = "wind_load.wind_ecc_deck.mode"
+KEY_WL_WIND_ECC_DECK_VALUE      = "wind_load.wind_ecc_deck.value"
+KEY_WL_WIND_LL_ECC_MODE         = "wind_load.wind_ll_ecc.mode"
+KEY_WL_WIND_LL_ECC_VALUE        = "wind_load.wind_ll_ecc.value"
+KEY_WL_HOURLY_MEAN_WIND         = "wind_load.computed.hourly_mean_wind"
+KEY_WL_HOURLY_WIND_PRESSURE     = "wind_load.computed.hourly_wind_pressure"
+KEY_WL_TRANSVERSE_WIND_FORCE    = "wind_load.computed.transverse_wind_force"
+KEY_WL_LONGITUDINAL_WIND_FORCE  = "wind_load.computed.longitudinal_wind_force"
+KEY_WL_VERTICAL_WIND_FORCE      = "wind_load.computed.vertical_wind_force"
+KEY_WL_TRANSVERSE_WIND_LL       = "wind_load.computed.transverse_wind_ll"
+KEY_WL_LONGITUDINAL_WIND_LL     = "wind_load.computed.longitudinal_wind_ll"
+
+#--------------- Temperature Load Sub-Tab -------------------------------------------------
+KEY_TL_TAB                      = "temperature_load.tab"
+KEY_TL_HIGHEST_MAX_TEMP         = "temperature_load.highest_max_temp"
+KEY_TL_LOWEST_MIN_TEMP          = "temperature_load.lowest_min_temp"
+KEY_TL_THERMAL_COEFF_STEEL      = "temperature_load.thermal_coeff_steel"
+KEY_TL_THERMAL_COEFF_RCC        = "temperature_load.thermal_coeff_rcc"
+KEY_TL_BRIDGE_TEMP_MIN          = "temperature_load.computed.bridge_temp_min"
+KEY_TL_BRIDGE_TEMP_MAX          = "temperature_load.computed.bridge_temp_max"
+KEY_TL_TEMP_RISE                = "temperature_load.computed.temp_rise"
+KEY_TL_TEMP_FALL                = "temperature_load.computed.temp_fall"
+
+#--------------- Load Combination Sub-Tab -------------------------------------------------
+
+KEY_LC_COMBINATIONS   = "load_combination.combinations"
+KEY_LC_TAB            = "load_combination.tab"
+
+#══════════════LOAD-TAB-KEY-ENDS═════════════════════════════════════════════════════════════════
+
+#══════════════SUPPORT-CONDITIONS-KEY-START══════════════════════════════════════════════════════
 
 KEY_SC_TAB              = "support_conditions.tab"
 KEY_SC_LEFT_SUPPORT     = "support_conditions.left_support"
@@ -269,9 +370,9 @@ KEY_SC_BEARING_LENGTH   = "support_conditions.bearing_length"
 KEY_SC_LEFT_CAD         = "support_conditions.left_cad"
 KEY_SC_RIGHT_CAD        = "support_conditions.right_cad"
 
-#══════════════SUPPORT-CONDITIONS-KEY-ENDS═════════════════════════════════════
+#══════════════SUPPORT-CONDITIONS-KEY-ENDS══════════════════════════════════════════════════════
 
-#══════════════DESIGN-OPTIONS-TAB-KEY-START════════════════════════════════════
+#══════════════DESIGN-OPTIONS-TAB-KEY-START═════════════════════════════════════════════════════
 
 KEY_DS_TAB                        = "design_options.tab"
 
@@ -293,9 +394,9 @@ KEY_DS_STUD_HEIGHT                = "design_options.shear_studs.height"
 KEY_DS_STUD_COUNT                 = "design_options.shear_studs.count"
 KEY_DS_STUD_TRANSVERSE_SPACING    = "design_options.shear_studs.transverse_spacing"
 
-#══════════════DESIGN-OPTIONS-TAB-KEY-ENDS═════════════════════════════════════
+#══════════════DESIGN-OPTIONS-TAB-KEY-ENDS═════════════════════════════════════════════════════
 
-#══════════════DESIGN-OPTIONS-CONT-TAB-KEY-START═══════════════════════════════
+#══════════════DESIGN-OPTIONS-CONT-TAB-KEY-START═══════════════════════════════════════════════
 
 KEY_DO_TAB                  = "design_options_cont.tab"
 
@@ -329,7 +430,7 @@ KEY_DO_SLS_LONG_SHEAR       = "design_options_cont.sls.longitudinal_shear"
 KEY_DO_SLS_DEFLECTION       = "design_options_cont.sls.deflection_control"
 KEY_DO_SLS_CRACK_WIDTH      = "design_options_cont.sls.crack_width"
 
-#══════════════DESIGN-OPTIONS-CONT-TAB-KEY-ENDS════════════════════════════════
+#══════════════DESIGN-OPTIONS-CONT-TAB-KEY-ENDS════════════════════════════════════════════════
 
 KEY_METALLIC_CRASH_BARRIER_TYPE = ["Single W-beam", "Double W-beam"]
 KEY_RIGID_CRASH_BARRIER_TYPE = ["IRC-5R", "High Containment"]

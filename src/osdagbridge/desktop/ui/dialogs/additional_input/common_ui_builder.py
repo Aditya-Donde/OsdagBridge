@@ -4,16 +4,27 @@ from __future__ import annotations
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QGridLayout, QLabel, QComboBox, QLineEdit,
     QTableWidget, QHeaderView, QSizePolicy, QCheckBox, QGroupBox,
-    QHBoxLayout, QFrame, QPushButton,
+    QHBoxLayout, QFrame, QPushButton, QScrollArea
 )
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QDoubleValidator, QIntValidator
 
-from osdagbridge.core.utils.common import (
-    TYPE_COMBOBOX, TYPE_TEXTBOX, TYPE_NOTICE, TYPE_CHECKBOX, TYPE_BOUND_BTN,
-    TYPE_BUTTON, TYPE_TABLE_WITH_COUNTER, TYPE_DIRECT_WIDGET
+from PySide6.QtWidgets import (
+    QWidget, QVBoxLayout, QGridLayout, QLabel, QComboBox, QLineEdit,
+    QTableWidget, QHeaderView, QSizePolicy, QCheckBox,
+    QHBoxLayout, QFrame, QPushButton, QScrollArea
 )
 
+from osdagbridge.core.utils.common import *
+
+ADDITIONAL_INPUTS_SCROLL_STYLE = """
+    QScrollArea { background:transparent; padding:0px 5px; border:none}
+    QScrollArea QScrollBar:vertical { border:none; background:#f0f0f0; width:8px; }
+    QScrollArea QScrollBar::handle:vertical { background:#c0c0c0; border-radius:4px; min-height:20px; }
+    QScrollArea QScrollBar::handle:vertical:hover { background:#a0a0a0; }
+    QScrollArea QScrollBar::add-line:vertical,
+    QScrollArea QScrollBar::sub-line:vertical { border:none; background:none; }
+"""
 
 class UIBuilder(QWidget):
     """Builds a card + grid from a tab schema dict."""
@@ -26,6 +37,7 @@ class UIBuilder(QWidget):
         main_widget_object_name: str,
         additional_input_instance,
         *,
+        with_scroll: bool = False,
         horizontal_spacing: int = 24,
         vertical_spacing: int = 10,
         filler_column_index: int | None = 2,
@@ -39,6 +51,7 @@ class UIBuilder(QWidget):
         self._horizontal_spacing = horizontal_spacing
         self._vertical_spacing = vertical_spacing
         self._filler_column_index = filler_column_index
+        self._with_scroll = with_scroll
         self.setStyleSheet("background-color: white;")
         self._build_ui()
 
@@ -82,8 +95,16 @@ class UIBuilder(QWidget):
             self._build_grid(self._schema, card_layout)
             main_layout.addWidget(card)
 
-        outer.addWidget(self.main_widget)
-        outer.addStretch()
+        if self._with_scroll:
+            scroll = QScrollArea()
+            scroll.setWidgetResizable(True)
+            scroll.setFrameShape(QFrame.NoFrame)
+            scroll.setStyleSheet(ADDITIONAL_INPUTS_SCROLL_STYLE)
+            scroll.setWidget(self.main_widget)
+            outer.addWidget(scroll)
+        else:
+            outer.addWidget(self.main_widget)
+            outer.addStretch()
 
     # ──────────────────────────────────────────────────────────────────────────
     # Layout strategies
@@ -114,7 +135,7 @@ class UIBuilder(QWidget):
             stype   = section.get("type")
             stretch = 1 if section.get("stretch") else 0
 
-            if stype == "description":
+            if stype == TYPE_DESCRIPTION:
                 self._build_description_box(section, col_layouts[col_idx], stretch=stretch)
             else:
                 self._build_section(section, col_layouts[col_idx])
@@ -160,56 +181,6 @@ class UIBuilder(QWidget):
 
     def _build_section(self, section: dict, parent_layout):
         """Build one section — checkbox groups or a normal card with grid."""
-
-        if section.get("checkbox_groups"):
-            # ── Checkbox groups (side-by-side QGroupBox) ──────────────────
-            title = section.get("title")
-            if title:
-                lbl = QLabel(title)
-                lbl.setStyleSheet("font-size: 12px; font-weight: bold; color: #000;")
-                parent_layout.addWidget(lbl)
-
-            groups_layout = QHBoxLayout()
-            groups_layout.setSpacing(20)
-
-            for group in section["checkbox_groups"]:
-                box = QGroupBox(group.get("title", ""))
-                box.setStyleSheet("""
-                    QGroupBox {
-                        border: 1px solid #000; border-radius: 8px;
-                        margin-top: 12px; padding: 8px; background-color: #fff;
-                    }
-                    QGroupBox::title {
-                        subcontrol-origin: margin; subcontrol-position: top left;
-                        left: 12px; padding: 0 6px; background-color: #fff;
-                        font-weight: 600; font-size: 11px; color: #000;
-                    }
-                """)
-                vbox = QVBoxLayout(box)
-                vbox.setContentsMargins(16, 20, 16, 16)
-                vbox.setSpacing(8)
-
-                checkboxes = []
-                default_checked = group.get("default_checked", False)
-                for item in group.get("items", []):
-                    label = item["label"] if isinstance(item, dict) else item
-                    cb_id = item.get("id")  if isinstance(item, dict) else None
-                    cb = QCheckBox(label)
-                    cb.setChecked(default_checked)
-                    if cb_id:
-                        cb.setObjectName(cb_id)
-                    cb.setStyleSheet("QCheckBox { font-size: 11px; color: #333; spacing: 6px; }")
-                    vbox.addWidget(cb)
-                    checkboxes.append(cb)
-                vbox.addStretch()
-
-                bind_name = group.get("bind")
-                if bind_name:
-                    setattr(self.owner, bind_name, checkboxes)
-                groups_layout.addWidget(box)
-
-            parent_layout.addLayout(groups_layout)
-            return
 
         # ── Normal card with grid ──────────────────────────────────────────
         card, card_layout = self._create_section_card(section.get("title", ""))
@@ -311,6 +282,36 @@ class UIBuilder(QWidget):
                     field.setMinimumSize(200, 200)
                     grid.addWidget(field, row_idx, col, 1, 2)
                     col += 2
+                elif ftype == TYPE_LOAD_COMBINATION:
+                    field = self._create_field(field_def)
+                    field.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+                    grid.addWidget(field, row_idx, col, 1, 2)
+                    col += 2
+                elif ftype == TYPE_CUSTOM_VEHICLE:
+                    from osdagbridge.desktop.ui.dialogs.additional_input._custom_vehicle_widget import CustomVehicleWidget
+                    field = CustomVehicleWidget(
+                        field_id=field_def.get("id", ""),
+                        on_click=field_def.get("on_click", ""),
+                        owner=self.additional_input_instance,
+                        ai=self.additional_input_instance,
+                    )
+                    grid.addWidget(field, row_idx, col, 1, 2)
+                    col += 2
+                elif ftype == TYPE_CHECKBOX:
+                    label_first = field_def.get("label_first", False)
+                    if label_first:
+                        # label on left, checkbox on right
+                        label = QLabel(field_def.get("label") or "")
+                        label.setStyleSheet("font-size: 11px; color: #000;")
+                        label.setMinimumWidth(label_width)
+                        grid.addWidget(label, row_idx, col, Qt.AlignLeft)
+                        field = self._create_field(field_def)
+                        grid.addWidget(field, row_idx, col + 1, Qt.AlignLeft)
+                    else:
+                        # checkbox with label built in — spans both cols
+                        field = self._create_field(field_def)
+                        grid.addWidget(field, row_idx, col, 1, 2)
+                    col += 2
                 else:
                     label = QLabel(field_def.get("label") or "")
                     label.setTextFormat(Qt.RichText)
@@ -362,6 +363,25 @@ class UIBuilder(QWidget):
                 from osdagbridge.desktop.ui.utils.custom_widgets import SmartCursorComboBoxView
                 field.setView(SmartCursorComboBoxView())
 
+        elif ftype == TYPE_CHECKBOX:
+            label_first = field_def.get("label_first", False)
+            label_text  = "" if label_first else field_def.get("label", "")
+            field = QCheckBox(label_text)
+            field.setObjectName(field_def.get("id", ""))
+            field.setChecked(field_def.get("default_checked", False))
+            field.setStyleSheet("QCheckBox { font-size: 11px; color: #333; spacing: 6px; }")
+            bind_name = field_def.get("bind")
+            if bind_name:
+                setattr(owner, bind_name, field)
+            if ai and field_def.get("id"):
+                field.stateChanged.connect(
+                    lambda state, k=field_def.get("id"): ai._on_field_edited(k, bool(state))
+                )
+            on_change = field_def.get("on_change") or ""
+            if on_change and hasattr(owner, on_change):
+                field.stateChanged.connect(getattr(owner, on_change))
+            return field
+
         elif ftype == TYPE_TEXTBOX:
             field = QLineEdit()
             placeholder = field_def.get("placeholder")
@@ -398,33 +418,28 @@ class UIBuilder(QWidget):
             setattr(owner, field_def["bind_container"], notice_container)
             return notice_container
 
-        elif ftype == TYPE_CHECKBOX:
-            field = QCheckBox(field_def.get("label"))
-            field.setObjectName(field_def.get("id"))
-            field.setStyleSheet("QCheckBox { font-size: 11px; color: #333; spacing: 6px; }")
-            bind_name = field_def.get("bind")
-            if bind_name:
-                setattr(owner, bind_name, field)
-            return field
-
         elif ftype == TYPE_BUTTON:
-            btn = QPushButton(field_def.get("text"))
-            btn.setObjectName(field_def.get("id"))
+            btn = QPushButton(field_def.get("text", ""))
+            btn.setObjectName(field_def.get("id", ""))
             btn.setCursor(Qt.CursorShape.PointingHandCursor)
             btn.setStyleSheet("""
                 QPushButton {
                     background-color: #ffffff;
                     border: 1px solid #b2b2b2;
                     border-radius: 6px;
-                    padding: 4px 8px;
+                    padding: 4px 12px;
                     font-size: 11px;
+                    font-weight: bold;
                 }
-                QPushButton:hover   { background-color: #e6e6e6; }
+                QPushButton:hover   { background-color: #e6e6e6; color: #2b2b2b; }
                 QPushButton:pressed { background-color: #d0d0d0; }
             """)
             bind_name = field_def.get("bind")
             if bind_name:
                 setattr(owner, bind_name, btn)
+            on_click = field_def.get("on_click") or ""
+            if on_click:
+                btn.clicked.connect(getattr(self.additional_input_instance, on_click))
             return btn
         
         elif ftype == TYPE_BOUND_BTN:
@@ -435,6 +450,27 @@ class UIBuilder(QWidget):
             widget = widget_class()
             widget.setObjectName(field_def.get("id"))
             return widget
+
+        elif ftype == TYPE_MODE_LINE:
+            return self._create_mode_line_field(field_def, owner, ai)
+        
+        elif ftype == TYPE_LOAD_COMBINATION:
+            from osdagbridge.desktop.ui.dialogs.additional_input._load_combination_widget import LoadCombinationWidget
+            return LoadCombinationWidget(
+                field_id=field_def.get("id", ""),
+                on_click=field_def.get("on_click", ""),
+                owner=self.additional_input_instance,
+                ai=self.additional_input_instance,
+            )
+        
+        elif ftype == TYPE_CUSTOM_VEHICLE:
+            from osdagbridge.desktop.ui.dialogs.additional_input._custom_vehicle_widget import CustomVehicleWidget
+            return CustomVehicleWidget(
+                field_id=field_def.get("id", ""),
+                on_click=field_def.get("on_click", ""),
+                owner=self.additional_input_instance,
+                ai=self.additional_input_instance,
+            )
 
         else:
             return QWidget()
@@ -672,3 +708,69 @@ class UIBuilder(QWidget):
 
         btn.clicked.connect(_open_bounds)
         return btn
+    
+    def _create_mode_line_field(self, field_def: dict, owner, ai) -> QWidget:
+        """Combo (mode) + QLineEdit (value) pair."""
+        field_id   = field_def.get("id", "")
+        bind_mode  = field_def.get("bind_mode")
+        bind_value = field_def.get("bind_value")
+        on_change  = field_def.get("on_mode_change") or ""
+        choices    = field_def.get("mode_choices", [])
+
+        wrapper = QWidget()
+        h = QHBoxLayout(wrapper)
+        h.setContentsMargins(0, 0, 0, 0)
+        h.setSpacing(8)
+
+        mode_combo = QComboBox()
+        mode_combo.addItems(choices)
+        mode_combo.setObjectName(field_id + ".mode")
+        mode_combo.setFixedWidth(96)
+        if hasattr(owner, "style_input_field"):
+            owner.style_input_field(mode_combo)
+        else:
+            from osdagbridge.desktop.ui.dialogs.tabs.common import apply_field_style
+            apply_field_style(mode_combo)
+
+        value_input = QLineEdit()
+        value_input.setObjectName(field_id + ".value")
+        value_input.setEnabled(False)
+        value_input.setFixedWidth(96)
+        if hasattr(owner, "style_input_field"):
+            owner.style_input_field(value_input)
+        else:
+            from osdagbridge.desktop.ui.dialogs.tabs.common import apply_field_style
+            apply_field_style(value_input)
+
+        if bind_mode:
+            setattr(owner, bind_mode, mode_combo)
+        if bind_value:
+            setattr(owner, bind_value, value_input)
+
+        def _on_mode_changed(text, _vi=value_input, _choices=choices):
+            if _choices and text == _choices[0]:  # first = auto → hide
+                _vi.hide()
+                _vi.setEnabled(False)
+            else:                                  # anything else → show
+                _vi.show()
+                _vi.setEnabled(True)
+
+        mode_combo.currentTextChanged.connect(_on_mode_changed)
+
+        # Set initial state
+        if choices:
+            value_input.hide()  # first choice is always selected initially → hide
+        else:
+            value_input.show()
+
+        if ai and field_id:
+            mode_combo.currentTextChanged.connect(
+                lambda text, k=field_id + ".mode": ai._on_field_edited(k, text)
+            )
+            value_input.editingFinished.connect(
+                lambda k=field_id + ".value", w=value_input: ai._on_field_edited(k, w)
+            )
+
+        h.addWidget(mode_combo, 1)
+        h.addWidget(value_input, 1)
+        return wrapper
