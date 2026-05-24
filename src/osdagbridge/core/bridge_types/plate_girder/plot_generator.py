@@ -188,68 +188,160 @@ def _add_grillage_background(ax, nodes, members, x_tol=3, z_tol=3, show_transver
             ax.scatter(inner_xs, inner_zs, inner_ys, color="#388E3C", alpha=0.4, s=5, zorder=2, depthshade=False)
 
 
+# def _add_coordinate_triad(ax, nodes, scale=0.12):
+#     """Draw X/Y/Z axes with 3D pyramid arrowheads and locked boundaries."""
+#     xs = [c[0] for c in nodes.values()]
+#     zs = [c[2] for c in nodes.values()]
+    
+#     ox, oy, oz = min(xs), 0, min(zs)
+#     colors = {"X": "#E65100", "Y": "#6A1B9A", "Z": "#0097A7"}
+#     tag = "coord_triad" 
+
+#     ax.scatter([ox], [oz], [oy], color="#333333", s=40, zorder=6, gid=tag)
+
+#     # 1. Capture exact current limits to lock the visual screen space
+#     xlim = ax.get_xlim()
+#     ylim = ax.get_ylim()
+#     zlim = ax.get_zlim()
+    
+#     xr = abs(xlim[1] - xlim[0])
+#     yr = abs(ylim[1] - ylim[0])
+#     zr = abs(zlim[1] - zlim[0])
+
+#     # Provide safe fallbacks if the graph is completely empty
+#     if xr < 1e-3: xr = 25.0
+#     if yr < 1e-3: yr = 10.0
+#     if zr < 1e-3: zr = 10.0
+
+#     # 2. Fixed Screen Proportions (Stems are 12%, widths are 2.5% of visual space)
+#     Lx, Lz, Ly = xr * scale, yr * scale, zr * scale
+#     hl_x, hl_z, hl_y = Lx * 0.30, Lz * 0.30, Ly * 0.30
+#     w_frac = 0.025 
+
+#     # --- X-Axis (Span) ---
+#     ax.plot([ox, ox + Lx], [oz, oz], [oy, oy], color=colors["X"], linewidth=2.5, zorder=5, gid=tag)
+#     # Draw 4 lines to form a 3D pyramid arrowhead (immune to camera rotation)
+#     tx, bx = ox + Lx, ox + Lx - hl_x
+#     ax.plot([tx, bx], [oz, oz + (yr * w_frac)], [oy, oy], color=colors["X"], linewidth=2.0, zorder=5, gid=tag)
+#     ax.plot([tx, bx], [oz, oz - (yr * w_frac)], [oy, oy], color=colors["X"], linewidth=2.0, zorder=5, gid=tag)
+#     ax.plot([tx, bx], [oz, oz], [oy, oy + (zr * w_frac)], color=colors["X"], linewidth=2.0, zorder=5, gid=tag)
+#     ax.plot([tx, bx], [oz, oz], [oy, oy - (zr * w_frac)], color=colors["X"], linewidth=2.0, zorder=5, gid=tag)
+#     ax.text(tx + (xr * 0.03), oz, oy, "X", color=colors["X"], fontsize=10, fontweight="bold", zorder=6, gid=tag)
+
+#     # --- Z-Axis (Transverse width, mapped to Matplotlib Y) ---
+#     ax.plot([ox, ox], [oz, oz + Lz], [oy, oy], color=colors["Z"], linewidth=2.5, zorder=5, gid=tag)
+#     tz, bz = oz + Lz, oz + Lz - hl_z
+#     ax.plot([ox, ox + (xr * w_frac)], [tz, bz], [oy, oy], color=colors["Z"], linewidth=2.0, zorder=5, gid=tag)
+#     ax.plot([ox, ox - (xr * w_frac)], [tz, bz], [oy, oy], color=colors["Z"], linewidth=2.0, zorder=5, gid=tag)
+#     ax.plot([ox, ox], [tz, bz], [oy, oy + (zr * w_frac)], color=colors["Z"], linewidth=2.0, zorder=5, gid=tag)
+#     ax.plot([ox, ox], [tz, bz], [oy, oy - (zr * w_frac)], color=colors["Z"], linewidth=2.0, zorder=5, gid=tag)
+#     ax.text(ox, tz + (yr * 0.04), oy, "Z", color=colors["Z"], fontsize=10, fontweight="bold", zorder=6, gid=tag)
+
+#     # --- Y-Axis (Vertical Forces, mapped to Matplotlib Z) ---
+#     ax.plot([ox, ox], [oz, oz], [oy, oy + Ly], color=colors["Y"], linewidth=2.5, zorder=5, gid=tag)
+#     ty, by = oy + Ly, oy + Ly - hl_y
+#     ax.plot([ox, ox + (xr * w_frac)], [oz, oz], [ty, by], color=colors["Y"], linewidth=2.0, zorder=5, gid=tag)
+#     ax.plot([ox, ox - (xr * w_frac)], [oz, oz], [ty, by], color=colors["Y"], linewidth=2.0, zorder=5, gid=tag)
+#     ax.plot([ox, ox], [oz + (yr * w_frac), oz], [ty, by], color=colors["Y"], linewidth=2.0, zorder=5, gid=tag)
+#     ax.plot([ox, ox], [oz - (yr * w_frac), oz], [ty, by], color=colors["Y"], linewidth=2.0, zorder=5, gid=tag)
+#     ax.text(ox, oz, ty + (zr * 0.04), "Y", color=colors["Y"], fontsize=10, fontweight="bold", zorder=6, gid=tag)
+
+#     # 3. CRITICAL FIX: Lock limits so drawing the triad doesn't stretch empty charts!
+#     ax.set_xlim(xlim)
+#     ax.set_ylim(ylim)
+#     ax.set_zlim(zlim)
+
+
 def _add_coordinate_triad(ax, nodes, scale=0.12):
-    """Draw X/Y/Z axes with 3D pyramid arrowheads and locked boundaries."""
+    """Draw X/Y/Z axes with 3D pyramid arrowheads, anchored below-left of bridge."""
     xs = [c[0] for c in nodes.values()]
     zs = [c[2] for c in nodes.values()]
-    
-    ox, oy, oz = min(xs), 0, min(zs)
-    colors = {"X": "#E65100", "Y": "#6A1B9A", "Z": "#0097A7"}
-    tag = "coord_triad" 
 
-    ax.scatter([ox], [oz], [oy], color="#333333", s=40, zorder=6, gid=tag)
+    # ── Colors matching reference image ──────────────────────────
+    colors = {
+        "X": "#D91A1A",   # rgb(217, 26, 26)  — red
+        "Y": "#005900",   # rgb(0, 89, 0)     — dark green
+        "Z": "#1A1AD9",   # rgb(26, 26, 217)  — blue
+    }
+    tag = "coord_triad"
 
-    # 1. Capture exact current limits to lock the visual screen space
+    # ── Capture current limits BEFORE drawing anything ────────────
     xlim = ax.get_xlim()
     ylim = ax.get_ylim()
     zlim = ax.get_zlim()
-    
-    xr = abs(xlim[1] - xlim[0])
-    yr = abs(ylim[1] - ylim[0])
-    zr = abs(zlim[1] - zlim[0])
 
-    # Provide safe fallbacks if the graph is completely empty
-    if xr < 1e-3: xr = 25.0
-    if yr < 1e-3: yr = 10.0
-    if zr < 1e-3: zr = 10.0
+    xr = abs(xlim[1] - xlim[0]) or 25.0
+    yr = abs(ylim[1] - ylim[0]) or 10.0
+    zr = abs(zlim[1] - zlim[0]) or 10.0
 
-    # 2. Fixed Screen Proportions (Stems are 12%, widths are 2.5% of visual space)
-    Lx, Lz, Ly = xr * scale, yr * scale, zr * scale
-    hl_x, hl_z, hl_y = Lx * 0.30, Lz * 0.30, Ly * 0.30
-    w_frac = 0.025 
+    # ── Place origin at bottom-left corner, offset outside the bridge ─
+    # X origin: left of bridge span, offset by 12% of x range
+    # Y (mpl) origin: front edge of bridge (min z), offset by 8% of y range
+    # Z (mpl) origin: at the base plane (0), slightly below by 5% of z range
+    # ox = xlim[0] - xr * 0.12   # left of bridge
+    # oy = ylim[0] - yr * 0.08   # in front of bridge (near edge)
+    # oz = zlim[0] - zr * 0.05   # just below the base plane
 
-    # --- X-Axis (Span) ---
-    ax.plot([ox, ox + Lx], [oz, oz], [oy, oy], color=colors["X"], linewidth=2.5, zorder=5, gid=tag)
-    # Draw 4 lines to form a 3D pyramid arrowhead (immune to camera rotation)
+    ox = xlim[0] + xr * 0.01
+    oy = ylim[0] + yr * 0.01
+    oz = zlim[0] + zr * 0.01
+
+    # ── Arm lengths: 12% of each axis range ──────────────────────
+    Lx = xr * scale
+    Ly = yr * scale
+    Lz = zr * scale
+
+    # Arrowhead length: 30% of arm
+    hl_x = Lx * 0.30
+    hl_y = Ly * 0.30
+    hl_z = Lz * 0.30
+
+    # Arrowhead width: 2.5% of each perpendicular range
+    w_frac = 0.025
+
+    # ── Origin dot ───────────────────────────────────────────────
+    ax.scatter([ox], [oy], [oz], color="#333333", s=40, zorder=6, gid=tag)
+
+    # ── X-Axis (Span direction → along bridge length) ─────────────
+    ax.plot([ox, ox + Lx], [oy, oy], [oz, oz],
+            color=colors["X"], linewidth=2.5, zorder=5, gid=tag)
     tx, bx = ox + Lx, ox + Lx - hl_x
-    ax.plot([tx, bx], [oz, oz + (yr * w_frac)], [oy, oy], color=colors["X"], linewidth=2.0, zorder=5, gid=tag)
-    ax.plot([tx, bx], [oz, oz - (yr * w_frac)], [oy, oy], color=colors["X"], linewidth=2.0, zorder=5, gid=tag)
-    ax.plot([tx, bx], [oz, oz], [oy, oy + (zr * w_frac)], color=colors["X"], linewidth=2.0, zorder=5, gid=tag)
-    ax.plot([tx, bx], [oz, oz], [oy, oy - (zr * w_frac)], color=colors["X"], linewidth=2.0, zorder=5, gid=tag)
-    ax.text(tx + (xr * 0.03), oz, oy, "X", color=colors["X"], fontsize=10, fontweight="bold", zorder=6, gid=tag)
+    ax.plot([tx, bx], [oy, oy + (yr * w_frac)], [oz, oz], color=colors["X"], linewidth=2.0, zorder=5, gid=tag)
+    ax.plot([tx, bx], [oy, oy - (yr * w_frac)], [oz, oz], color=colors["X"], linewidth=2.0, zorder=5, gid=tag)
+    ax.plot([tx, bx], [oy, oy], [oz, oz + (zr * w_frac)], color=colors["X"], linewidth=2.0, zorder=5, gid=tag)
+    ax.plot([tx, bx], [oy, oy], [oz, oz - (zr * w_frac)], color=colors["X"], linewidth=2.0, zorder=5, gid=tag)
+    ax.text(tx + (xr * 0.03), oy, oz, "X",
+            color=colors["X"], fontsize=10, fontweight="bold", zorder=6, gid=tag)
 
-    # --- Z-Axis (Transverse width, mapped to Matplotlib Y) ---
-    ax.plot([ox, ox], [oz, oz + Lz], [oy, oy], color=colors["Z"], linewidth=2.5, zorder=5, gid=tag)
-    tz, bz = oz + Lz, oz + Lz - hl_z
-    ax.plot([ox, ox + (xr * w_frac)], [tz, bz], [oy, oy], color=colors["Z"], linewidth=2.0, zorder=5, gid=tag)
-    ax.plot([ox, ox - (xr * w_frac)], [tz, bz], [oy, oy], color=colors["Z"], linewidth=2.0, zorder=5, gid=tag)
-    ax.plot([ox, ox], [tz, bz], [oy, oy + (zr * w_frac)], color=colors["Z"], linewidth=2.0, zorder=5, gid=tag)
-    ax.plot([ox, ox], [tz, bz], [oy, oy - (zr * w_frac)], color=colors["Z"], linewidth=2.0, zorder=5, gid=tag)
-    ax.text(ox, tz + (yr * 0.04), oy, "Z", color=colors["Z"], fontsize=10, fontweight="bold", zorder=6, gid=tag)
-
-    # --- Y-Axis (Vertical Forces, mapped to Matplotlib Z) ---
-    ax.plot([ox, ox], [oz, oz], [oy, oy + Ly], color=colors["Y"], linewidth=2.5, zorder=5, gid=tag)
+    # ── Y-Axis (Transverse width → across bridge, mpl Y axis) ─────
+    ax.plot([ox, ox], [oy, oy + Ly], [oz, oz],
+            color=colors["Y"], linewidth=2.5, zorder=5, gid=tag)
     ty, by = oy + Ly, oy + Ly - hl_y
-    ax.plot([ox, ox + (xr * w_frac)], [oz, oz], [ty, by], color=colors["Y"], linewidth=2.0, zorder=5, gid=tag)
-    ax.plot([ox, ox - (xr * w_frac)], [oz, oz], [ty, by], color=colors["Y"], linewidth=2.0, zorder=5, gid=tag)
-    ax.plot([ox, ox], [oz + (yr * w_frac), oz], [ty, by], color=colors["Y"], linewidth=2.0, zorder=5, gid=tag)
-    ax.plot([ox, ox], [oz - (yr * w_frac), oz], [ty, by], color=colors["Y"], linewidth=2.0, zorder=5, gid=tag)
-    ax.text(ox, oz, ty + (zr * 0.04), "Y", color=colors["Y"], fontsize=10, fontweight="bold", zorder=6, gid=tag)
+    ax.plot([ox, ox + (xr * w_frac)], [ty, by], [oz, oz], color=colors["Y"], linewidth=2.0, zorder=5, gid=tag)
+    ax.plot([ox, ox - (xr * w_frac)], [ty, by], [oz, oz], color=colors["Y"], linewidth=2.0, zorder=5, gid=tag)
+    ax.plot([ox, ox], [ty, by], [oz, oz + (zr * w_frac)], color=colors["Y"], linewidth=2.0, zorder=5, gid=tag)
+    ax.plot([ox, ox], [ty, by], [oz, oz - (zr * w_frac)], color=colors["Y"], linewidth=2.0, zorder=5, gid=tag)
+    ax.text(ox, ty + (yr * 0.04), oz, "Y",
+            color=colors["Y"], fontsize=10, fontweight="bold", zorder=6, gid=tag)
 
-    # 3. CRITICAL FIX: Lock limits so drawing the triad doesn't stretch empty charts!
-    ax.set_xlim(xlim)
-    ax.set_ylim(ylim)
-    ax.set_zlim(zlim)
+    # ── Z-Axis (Vertical forces → mpl Z axis, pointing up) ────────
+    ax.plot([ox, ox], [oy, oy], [oz, oz + Lz],
+            color=colors["Z"], linewidth=2.5, zorder=5, gid=tag)
+    tz, bz = oz + Lz, oz + Lz - hl_z
+    ax.plot([ox, ox + (xr * w_frac)], [oy, oy], [tz, bz], color=colors["Z"], linewidth=2.0, zorder=5, gid=tag)
+    ax.plot([ox, ox - (xr * w_frac)], [oy, oy], [tz, bz], color=colors["Z"], linewidth=2.0, zorder=5, gid=tag)
+    ax.plot([ox, ox], [oy, oy + (yr * w_frac)], [tz, bz], color=colors["Z"], linewidth=2.0, zorder=5, gid=tag)
+    ax.plot([ox, ox], [oy, oy - (yr * w_frac)], [tz, bz], color=colors["Z"], linewidth=2.0, zorder=5, gid=tag)
+    ax.text(ox, oy, tz + (zr * 0.04), "Z",
+            color=colors["Z"], fontsize=10, fontweight="bold", zorder=6, gid=tag)
+
+    # ── Lock limits so the triad doesn't stretch the plot ─────────
+    # ax.set_xlim(xlim)
+    # ax.set_ylim(ylim)
+    # ax.set_zlim(zlim)
+    ax.set_xlim(xlim[0] - xr * 0.15, xlim[1])
+    ax.set_ylim(ylim[0] - yr * 0.15, ylim[1])
+    ax.set_zlim(zlim[0], zlim[1])
     
 def _add_supports(ax, nodes, members, edge_dist=0.0):
     """Draw pin (diamond) and roller (circle) supports at the ends of girders."""
