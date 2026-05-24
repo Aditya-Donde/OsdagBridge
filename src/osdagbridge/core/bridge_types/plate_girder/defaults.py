@@ -41,6 +41,8 @@ from osdagbridge.core.utils.common import (
 
     KEY_SC_LEFT_SUPPORT, KEY_SC_RIGHT_SUPPORT, KEY_SC_BEARING_LENGTH,
 
+    KEY_LC_COMBINATIONS, KEY_LL_CUSTOM_VEHICLES,
+
 
 )
 from .initial_sizing import (
@@ -231,6 +233,10 @@ def _update_design_options_cont_defaults(input_dict: dict) -> None:
     _update(KEY_DO_SLS_LONG_SHEAR,     True)
     _update(KEY_DO_SLS_DEFLECTION,     True)
     _update(KEY_DO_SLS_CRACK_WIDTH,    True)
+
+    # Temporary
+    _update(KEY_LC_COMBINATIONS, [])
+    _update(KEY_LL_CUSTOM_VEHICLES, [])
 
 
 def solve_extend_basic_input_dict(basic_input_dict: dict) -> None:
