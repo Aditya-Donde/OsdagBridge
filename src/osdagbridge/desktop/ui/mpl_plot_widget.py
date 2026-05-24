@@ -528,8 +528,10 @@ class MplPlotWidget(QWidget):
         else:
             self._summary_overlay.hide()
         
+        # if self._fig:
+        #     self._fig.subplots_adjust(left=0.02, right=0.98, bottom=0.02, top=0.92)
         if self._fig:
-            self._fig.subplots_adjust(left=0.02, right=0.98, bottom=0.02, top=0.92)
+            self._fig.subplots_adjust(left=-0.05, right=1.05, bottom=-0.05, top=1.05)
             
             if not self._fig.axes:
                 return
@@ -551,12 +553,14 @@ class MplPlotWidget(QWidget):
             # Resets zoom if zoom window active; reconnects events so
             # zoom window works without re-toggling after plot switch
             # ══════════════════════════════════════════════
+
             if hasattr(ax, 'set_box_aspect'):
-                # Reset zoom scale when plot rebuilds so the new graph
-                # always starts at default view, even if Zoom Window is active
                 if self._zoom_window_active:
                     self._zoom_scale = 1.0
-                ax.set_box_aspect(aspect=(2.5, 1.2, 1.0), zoom=self._zoom_scale)
+                # Use canvas-proportional zoom so model fits whether dock is open or closed
+                display_zoom = self._canvas_fit_zoom()
+                self._zoom_scale = display_zoom
+                ax.set_box_aspect(aspect=(2.5, 1.2, 1.0), zoom=display_zoom)
 
             # If Zoom Window mode is active, reconnect events and disable
             # rotation on the new axis so it works without re-toggling
@@ -570,8 +574,6 @@ class MplPlotWidget(QWidget):
             # ══════════════════════════════════════════════ 
 
 
-
-
             # (Keep your existing anti-clipping loop here)
             for line in ax.lines:
                 line.set_clip_on(False)
@@ -580,6 +582,7 @@ class MplPlotWidget(QWidget):
             for text in ax.texts:
                 text.set_clip_on(False)
 
+            # self._fit_figure_to_canvas()
             self._canvas.draw_idle()
 
         # Show NavCube for 3-D plots only, hide for 2-D.
@@ -629,13 +632,13 @@ class MplPlotWidget(QWidget):
         x = max(0, self._canvas.width() - self._navcube.width() - padding)
         self._navcube.move(x, padding)
 
-    def eventFilter(self, obj, event):
-        if obj is self._canvas and event.type() == QEvent.Type.Resize:
-            self._resize_navcube()
-            self._position_navcube()
-            if self._navcube.isVisible():
-                self._navcube.raise_()
-        return super().eventFilter(obj, event)
+    # def eventFilter(self, obj, event):
+    #     if obj is self._canvas and event.type() == QEvent.Type.Resize:
+    #         self._resize_navcube()
+    #         self._position_navcube()
+    #         if self._navcube.isVisible():
+    #             self._navcube.raise_()
+    #     return super().eventFilter(obj, event)
 
     # ──────────────────────────────────────────────────────────────
 
@@ -686,7 +689,8 @@ class MplPlotWidget(QWidget):
             self._apply_grid_visibility()
             self._summary_overlay.hide() 
             
-            self._fit_figure_to_canvas()
+            # self._fit_figure_to_canvas()
+            self._fig.subplots_adjust(left=-0.05, right=1.05, bottom=-0.05, top=1.05)
             self._canvas.draw()
             self._zoom_scale = 1.0
             self._store_orig_limits()
@@ -714,10 +718,32 @@ class MplPlotWidget(QWidget):
         self._apply_grid_visibility()
         self._canvas.draw_idle()
 
+
     def resizeEvent(self, event):
         super().resizeEvent(event)
         if self._summary_overlay:
-            self._summary_overlay.move(15, 45) # Keep HUD floating safely under the toolbar
+            self._summary_overlay.move(15, 45)
+        # Debounce: refit the 3D view ~100ms after resize settles
+        # Covers dock open/close, window resize, and splitter drag
+        if not hasattr(self, '_refit_timer'):
+            self._refit_timer = QTimer(self)
+            self._refit_timer.setSingleShot(True)
+            self._refit_timer.timeout.connect(self._auto_refit)
+        self._refit_timer.start(120)   # 120ms debounce
+
+            
+    def _auto_refit(self):
+        """Called after dock/splitter resize. Scales zoom to current canvas width."""
+        if not self._fig or not self._fig.axes:
+            return
+        ax = self._fig.axes[0]
+        if not hasattr(ax, 'set_box_aspect'):
+            return
+        fit_zoom = self._canvas_fit_zoom()
+        self._zoom_scale = fit_zoom
+        ax.set_box_aspect(aspect=(2.5, 1.2, 1.0), zoom=fit_zoom)
+        self._fig.subplots_adjust(left=-0.05, right=1.05, bottom=-0.05, top=1.05)
+        self._canvas.draw_idle()
 
     # private helpers
     def _apply_node_visibility(self):
@@ -782,11 +808,11 @@ class MplPlotWidget(QWidget):
 
 
     def _fit_figure_to_canvas(self):
-        w_px = self._canvas.width()
-        h_px = self._canvas.height()
-        if w_px > 10 and h_px > 10:
-            dpi = self._fig.dpi
-            self._fig.set_size_inches(w_px / dpi, h_px / dpi, forward=False)
+        """Re-apply maximized margins so the 3D plot fills the canvas.
+        Never calls set_size_inches — Qt canvas handles its own pixel size."""
+        if not self._fig:
+            return
+        self._fig.subplots_adjust(left=-0.05, right=1.05, bottom=-0.05, top=1.05)
 
     def _store_orig_limits(self):
         pass # Not needed for Uniform Render Zoom
@@ -795,10 +821,20 @@ class MplPlotWidget(QWidget):
     # ══════════════════════════════════════════════
     # ADDED | View-control button handlers
     # ══════════════════════════════════════════════
+    
+    #---------NEW
+    def _canvas_fit_zoom(self) -> float:
+        """Compute zoom so the 3D model fills the canvas proportionally.
+        Reference: zoom=1.0 looks correct at ~990px wide (output dock closed).
+        When dock opens (~640px), zoom scales down so model still fits."""
+        canvas_w = max(self._canvas.width(), 100)
+        zoom = max(0.3, min(canvas_w / 750.0, 3.0))
+        if self._show_grid:
+            zoom *= 0.82
+        return zoom
 
     def _any_mode_active(self):
         """Returns True when any exclusive mode (Pan/Rotate/ZoomWindow) is on."""
-        # return self._pan_active or self._rotate_active or self._zoom_window_active
         return self._pan_active or self._zoom_window_active
 
 
@@ -843,29 +879,33 @@ class MplPlotWidget(QWidget):
 
     # ── Zoom Fit ──────────────────────────────────────────────────────────────
     def _on_zoom_fit(self):
-        """Reset zoom to 1.0 and restore auto-scale limits."""
+        """Refit the plot to fill the current canvas — dock-resize aware."""
         self._deactivate_all_modes()
         self._zoom_scale = 1.0
-        self._scale_value = 100.0                    
-        self._scale_input.setText("100")             
-
-        if not self._fig or not self._fig.axes:
-            return
-        ax = self._fig.axes[0]
-        if hasattr(ax, 'set_box_aspect'):   # 3-D axis
-            fit_zoom = 0.82 if self._show_grid else 1.0
-            ax.set_box_aspect(aspect=(2.5, 1.2, 1.0), zoom=fit_zoom)
-            ax.autoscale()
-        else: 
-            ax.set_aspect('auto')        #added line                      # 2-D axis
-            ax.relim()
-            ax.autoscale_view()
+        self._scale_value = 100.0
+        self._scale_input.setText("100")
 
         self._scroll_area.setWidgetResizable(True)
         self._canvas.setMinimumSize(0, 0)
         self._canvas.setMaximumSize(16777215, 16777215)
-        self._canvas.draw_idle()    
-        
+
+        if not self._fig or not self._fig.axes:
+            return
+
+        ax = self._fig.axes[0]
+        if hasattr(ax, 'set_box_aspect'):                    # 3-D
+            fit_zoom = self._canvas_fit_zoom()
+            self._zoom_scale = fit_zoom
+            ax.set_box_aspect(aspect=(2.5, 1.2, 1.0), zoom=fit_zoom)
+            self._fig.subplots_adjust(left=-0.05, right=1.05, bottom=-0.05, top=1.05)
+
+        else:                                                 # 2-D
+            ax.set_aspect('auto')
+            ax.relim()
+            ax.autoscale_view()
+            self._fig.subplots_adjust(left=0.05, right=0.98, bottom=0.05, top=0.95)
+
+        self._canvas.draw_idle()
 
     # # ── Zoom Window ───────────────────────────────────────────────────────────
 
@@ -1128,20 +1168,51 @@ class MplPlotWidget(QWidget):
 
     #         return True   
     #     return super().eventFilter(obj, event)
-    def eventFilter(self, obj, event):
-        """Intercepts the mouse wheel at the OS level to guarantee zoom triggers."""
-        from PySide6.QtCore import QEvent
+
+
+    # def eventFilter(self, obj, event):
+    #     """Intercepts the mouse wheel at the OS level to guarantee zoom triggers."""
+    #     from PySide6.QtCore import QEvent
         
-        if obj is self._canvas and event.type() == QEvent.Type.Wheel:
-            event.accept() # Tell PySide6 "I handled this, do not scroll the window!"
+    #     if obj is self._canvas and event.type() == QEvent.Type.Wheel:
+    #         event.accept() # Tell PySide6 "I handled this, do not scroll the window!"
             
-            delta = event.angleDelta().y()
-            if delta > 0:
-                self._zoom_in()
-            else:
-                self._zoom_out()
+    #         delta = event.angleDelta().y()
+    #         if delta > 0:
+    #             self._zoom_in()
+    #         else:
+    #             self._zoom_out()
                 
-            return True   
+    #         return True   
+    #     return super().eventFilter(obj, event)
+
+    def eventFilter(self, obj, event):
+        from PySide6.QtCore import QEvent
+        if obj is self._canvas:
+
+            # ── Canvas resize: reposition NavCube + debounced auto-refit ──
+            if event.type() == QEvent.Type.Resize:
+                self._resize_navcube()
+                self._position_navcube()
+                if self._navcube.isVisible():
+                    self._navcube.raise_()
+                # Auto-refit the 3D view after dock/splitter resize settles
+                if not hasattr(self, '_refit_timer'):
+                    self._refit_timer = QTimer(self)
+                    self._refit_timer.setSingleShot(True)
+                    self._refit_timer.timeout.connect(self._auto_refit)
+                self._refit_timer.start(120)
+
+            # ── Mouse wheel: zoom in/out ───────────────────────────────────
+            elif event.type() == QEvent.Type.Wheel:
+                event.accept()
+                delta = event.angleDelta().y()
+                if delta > 0:
+                    self._zoom_in()
+                else:
+                    self._zoom_out()
+                return True
+
         return super().eventFilter(obj, event)
 
     # def _zoom_step(self, factor):
@@ -1192,10 +1263,10 @@ class MplPlotWidget(QWidget):
             self._zoom_scale = 0.1
         self._apply_camera_zoom()
 
-    # def _zoom_reset(self):
-    #     """Snaps back to 100% scale."""
-    #     self._zoom_scale = 1.0
-    #     self._apply_camera_zoom()
+    def _zoom_reset(self):
+        """Snaps back to 100% scale."""
+        self._zoom_scale = 1.0
+        self._apply_camera_zoom()
 
     def _zoom_reset(self):
         """Snaps back to 100% scale."""
@@ -1211,8 +1282,8 @@ class MplPlotWidget(QWidget):
             ax.view_init(elev=self._default_elev,        # ← add
                         azim=self._default_azim)        # ← add
             self._navcube_sync.force_sync()              # ← add
-        self._apply_camera_zoom()                        # keep as-is 
-
+        self._apply_camera_zoom()  
+        
     # ==========================================
     # STATE HELPERS
     # ==========================================

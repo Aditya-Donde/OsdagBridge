@@ -665,6 +665,9 @@ class CustomWindow(QWidget):
         
         # Update tool bar visibility based on view rules
         self._update_tool_bar_visibility()
+
+
+    
         
     def _position_log_dock(self):
         """Position log dock at bottom of central widget as overlay (max 1/5 height)"""
