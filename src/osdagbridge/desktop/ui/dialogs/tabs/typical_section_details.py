@@ -51,12 +51,30 @@ class TypicalSectionDetailsTab(QWidget):
         self._updating_lane_table = False
         self._lane_cell_signal_connected = False
         self.crash_barrier_count = 2  # Assume two crash barriers at carriageway edges
+        self._initial_solve_done = False
         self.init_ui()
 
     def update_internal_cad_state(self, cad_state):
         # Apply homepage CAD state so that 2D-CAD is synced
         self._initial_cad_state = cad_state
         self.cad_preview.update_params(self._initial_cad_state)
+        if not getattr(self, "_initial_solve_done", False):
+            self._initial_solve_done = True
+            self.recalculate_girders()
+
+    def sync_layout_tracked_values(self):
+        """Re-read layout fields and sync CAD preview."""
+        try:
+            s = float(self.girder_spacing.text()) if self.girder_spacing.text() else None
+            o = float(self.deck_overhang.text()) if self.deck_overhang.text() else None
+            g = int(self.no_of_girders.text()) if self.no_of_girders.text() else None
+            self._last_spacing_value, self._last_overhang_value, self._last_girders_value = s, o, g
+            if hasattr(self, "cad_preview"):
+                params = {k: v * 1000 for k, v in [("girder_spacing", s), ("deck_overhang", o)] if v}
+                if g: params["num_girders"] = g
+                self.cad_preview.update_params(params)
+        except (ValueError, AttributeError):
+            pass
 
     def _find_tab_widget(self, tab_id, widget_id, widget_type=QWidget):
         """Generic findChild across any tab by its schema id."""
@@ -555,6 +573,8 @@ class TypicalSectionDetailsTab(QWidget):
             self.footpath_width.setEnabled(footpath_value != "None")
         if hasattr(self, "footpath_thickness"):
             self.footpath_thickness.setEnabled(footpath_value != "None")
+        if hasattr(self, "cad_preview"):
+            self.cad_preview.update_params({"footpath_config": self._initial_cad_state["footpath_config"]})
         self.recalculate_girders()
 
     def validate_footpath_width(self):
@@ -953,11 +973,14 @@ class TypicalSectionDetailsTab(QWidget):
             if force and median_load:
                 median_load.clear()
 
-        self._update_median_visibility(median_type, include_median=True)
+        d = getattr(self.additional_input_instance, 'working_input_dict', {})
+        median_present = (d[KEY_INCLUDE_MEDIAN] == "Yes") if KEY_INCLUDE_MEDIAN in d else self._initial_cad_state.get("median_present", False)
+        self._update_median_visibility(median_type, include_median=median_present)
 
         geom = MedianGeometry.get_geometry(effective_median_type)
 
         params = {
+            "median_present": median_present,
             KEY_MD_TYPE: median_type,
         }
 
@@ -970,11 +993,12 @@ class TypicalSectionDetailsTab(QWidget):
             elif "kerb_height" in geom:
                 params[KEY_MD_HEIGHT] = geom["kerb_height"]
 
-            self.cad_preview.update_params(params)
+            if hasattr(self, "cad_preview"):
+                self.cad_preview.update_params(params)
             
         if hasattr(self, "cad_preview"):
             params = {
-                "median_present": True,
+                "median_present": median_present,
                 KEY_MD_TYPE: median_type,
             }
 

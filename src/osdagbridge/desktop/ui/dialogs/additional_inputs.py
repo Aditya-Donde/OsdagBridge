@@ -1,4 +1,4 @@
-﻿"""
+"""
 Additional Inputs Widget for Highway Bridge Design
 Provides detailed input fields for manual bridge parameter definition
 """
@@ -83,6 +83,9 @@ class AdditionalInputs(QDialog):
         # Work temporarily on a copy of default dictionary
         self.working_input_dict = deepcopy(input_dict)
 
+        # Sync carriageway width into the tab so _calculate_overall_bridge_width is correct
+        self.typical_section_tab.carriageway_width = float(input_dict.get(KEY_CARRIAGEWAY_WIDTH, 7.5))
+
         # Update Typical-section sub-tab activate/deactivate state
         self.typical_section_tab._sync_tab_active_states()
 
@@ -137,9 +140,24 @@ class AdditionalInputs(QDialog):
                 widget.setText(text)
                 widget.blockSignals(False)
 
-        _set_text(KEY_TS_DECK_THICKNESS,     "{:.0f}")
-        _set_text(KEY_TS_FOOTPATH_WIDTH,     "{:.2f}")
-        _set_text(KEY_TS_FOOTPATH_THICKNESS, "{:.0f}")
+        # Populate all text fields including layout fields
+        for key, fmt in [
+            (KEY_TS_DECK_THICKNESS,     "{:.0f}"),
+            (KEY_TS_FOOTPATH_WIDTH,     "{:.2f}"),
+            (KEY_TS_FOOTPATH_THICKNESS, "{:.0f}"),
+            (KEY_TS_NO_OF_GIRDERS,      "{:.0f}"),
+            (KEY_TS_GIRDER_SPACING,     "{:.2f}"),
+            (KEY_TS_DECK_OVERHANG,      "{:.2f}"),
+        ]:
+            _set_text(key, fmt)
+
+        # Sync _initial_cad_state with basic inputs and refresh trackers/preview
+        ts._initial_cad_state = dict(getattr(ts, "_initial_cad_state", None) or {})
+        ts._initial_cad_state["footpath_config"] = {"Both Sides": "both", "Single Side": "left"}.get(input_dict.get(KEY_FOOTPATH), "none")
+        ts._initial_cad_state["median_present"] = (input_dict.get(KEY_INCLUDE_MEDIAN) == "Yes")
+        if hasattr(ts, "cad_preview"):
+            ts.cad_preview.update_params(ts._initial_cad_state)
+        ts.sync_layout_tracked_values()
 
         # Primary fields — initial values come from defaults.solve_extend_basic_input_dict
         _set_text(KEY_TS_GIRDER_SPACING, "{:.2f}")

@@ -159,7 +159,7 @@ class BridgeDualCADWidget(QWidget):
         params = {}
         
         # Map span (meters to mm)
-        if input_dict[KEY_SPAN] in input_dict:
+        if KEY_SPAN in input_dict:
             if input_dict[KEY_SPAN] is not None:
                 params['span_length'] = float(input_dict[KEY_SPAN]) * 1000
         
