@@ -1,4 +1,4 @@
-﻿"""
+"""
 Additional Inputs Widget for Highway Bridge Design
 Provides detailed input fields for manual bridge parameter definition
 """
@@ -92,13 +92,21 @@ class AdditionalInputs(QDialog):
         # Populate schema-driven tabs (Support Conditions, Design Options, etc.)
         self._populate_schema_tab_fields(input_dict)
 
+        self.typical_section_tab.apply_current_selection_defaults()
+        self.default_input_dict.update(self.working_input_dict)
+
     def _populate_schema_tab_fields(self, input_dict: dict) -> None:
         """Push input_dict values into schema-driven tabs (Support, Design Options, etc.)."""
-        for tab in [
+        tabs_to_populate = [
             getattr(self, "support_tab", None),
             getattr(self, "design_options_tab", None),
             getattr(self, "design_options_cont_tab", None),
-        ]:
+        ]
+
+        if hasattr(self, "typical_section_tab") and hasattr(self.typical_section_tab, "_tab_widgets"):
+            tabs_to_populate.extend(self.typical_section_tab._tab_widgets.values())
+
+        for tab in tabs_to_populate:
             if not tab:
                 continue
             for widget in tab.findChildren(QWidget):
@@ -448,7 +456,7 @@ class AdditionalInputs(QDialog):
             additional_input_instance=self,
         )
         self._support_scroll.setWidget(self.support_tab)
-        self.tabs.addTab(self._support_scroll, "Support Conditions")
+        # self.tabs.addTab(self._support_scroll, "Support Conditions")
         
         # Sub-Tab 5: Analysis/Design Options
         from osdagbridge.core.bridge_types.plate_girder.ui_fields_additional_input import (

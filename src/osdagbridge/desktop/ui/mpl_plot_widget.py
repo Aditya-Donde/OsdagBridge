@@ -359,6 +359,8 @@ class MplPlotWidget(QWidget):
 
         self._canvas.figure = self._fig
         self._fig.set_canvas(self._canvas)
+        # Ensure the figure size matches the current canvas (DPI-aware)
+        QTimer.singleShot(0, self._fit_figure_to_canvas)
         
         # (Your existing visibility toggles)
         self._apply_node_visibility()
@@ -540,6 +542,8 @@ class MplPlotWidget(QWidget):
         super().resizeEvent(event)
         if self._summary_overlay:
             self._summary_overlay.move(15, 45) # Keep HUD floating safely under the toolbar
+        # Debounced resize: adjust Matplotlib figure to match the canvas size
+        QTimer.singleShot(150, self._on_delayed_resize)
 
     # private helpers
     def _apply_node_visibility(self):
@@ -595,11 +599,34 @@ class MplPlotWidget(QWidget):
                 ax.set_axis_off()
 
     def _fit_figure_to_canvas(self):
+        # Resize the Matplotlib Figure to match the widget canvas in physical pixels
+        if not hasattr(self, '_fig') or not self._fig:
+            return
         w_px = self._canvas.width()
         h_px = self._canvas.height()
         if w_px > 10 and h_px > 10:
-            dpi = self._fig.dpi
-            self._fig.set_size_inches(w_px / dpi, h_px / dpi, forward=False)
+            # Prefer the canvas/device DPR when available to support HiDPI displays
+            try:
+                dpr = float(self._canvas.devicePixelRatioF())
+            except Exception:
+                app = QApplication.instance()
+                screen = app.primaryScreen() if app else None
+                dpr = float(screen.devicePixelRatio()) if screen else 1.0
+
+            physical_w = max(1, int(w_px * dpr))
+            physical_h = max(1, int(h_px * dpr))
+            dpi = float(getattr(self._fig, 'dpi', 100.0))
+            # Apply new size in inches and forward the change so Matplotlib updates internals
+            self._fig.set_size_inches(physical_w / dpi, physical_h / dpi, forward=True)
+
+    def _on_delayed_resize(self):
+        # Called via QTimer.singleShot to avoid rapid redraws while resizing
+        try:
+            self._fit_figure_to_canvas()
+            if hasattr(self, '_canvas') and self._canvas:
+                self._canvas.draw_idle()
+        except Exception:
+            pass
 
     def _store_orig_limits(self):
         pass # Not needed for Uniform Render Zoom

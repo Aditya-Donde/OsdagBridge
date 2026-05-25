@@ -17,6 +17,8 @@ from osdagbridge.desktop.cad.irc5_geometry import (
     MedianGeometry,
     RailingGeometry,
 )
+from osdagbridge.core.bridge_components.super_structure.crash_barrier.properties import metallic_edge_barrier_load
+from osdagbridge.core.bridge_components.super_structure.median.properties import median_metallic_barrier_load
 
 ADDITIONAL_INPUTS_SCROLL_STYLE = """
     QScrollArea { background:transparent; padding:0px 5px; border:none}
@@ -259,6 +261,28 @@ class TypicalSectionDetailsTab(QWidget):
                 self.girder_count_changed.emit(int(self.no_of_girders.text()))
         except Exception:
             pass
+
+    def apply_current_selection_defaults(self):
+        crash_barrier_type = self._find_crash_barrier_widget(KEY_CB_TYPE)
+        if crash_barrier_type and crash_barrier_type.currentText() != "Custom":
+            self._apply_crash_barrier_defaults(crash_barrier_type.currentText(), force=True)
+
+        include_median = "No"
+        footpath = "None"
+        if self.additional_input_instance is not None:
+            inputs = self.additional_input_instance.working_input_dict
+            include_median = str(inputs.get(KEY_INCLUDE_MEDIAN, "No")).strip()
+            footpath = str(inputs.get(KEY_FOOTPATH, "None")).strip()
+
+        if include_median == VALUES_NO_YES[1]:
+            median_type = self._find_median_widget(KEY_MD_TYPE)
+            if median_type and median_type.currentText() != "Custom":
+                self._apply_median_defaults(median_type.currentText(), force=True)
+
+        if footpath in (VALUES_FOOTPATH[1], VALUES_FOOTPATH[2]):
+            railing_type = self._find_railing_widget(KEY_RL_TYPE)
+            if railing_type and railing_type.currentText() != "Custom":
+                self._apply_railing_defaults(force=True)
 
     def _sync_tab_active_states(self):
         """Enable/disable subtabs based on their 'active' condition in schema.
@@ -664,14 +688,16 @@ class TypicalSectionDetailsTab(QWidget):
 
         # Load behavior
         if crash_barrier_load:
-            crash_barrier_load.setEnabled(is_custom)
-            crash_barrier_load.setReadOnly(is_rcc)
+            crash_barrier_load.setVisible(True)
+            crash_barrier_load.setEnabled(not is_custom)
+            crash_barrier_load.setReadOnly(True)
             crash_barrier_load.setPlaceholderText("" if not is_custom else "Enter custom load per IRC 6 guidance")
-        if is_rcc:
+        if is_rcc or is_metallic:
             self._auto_compute_crash_barrier_load()
         else:
             if crash_barrier_load:
                 crash_barrier_load.setReadOnly(False)
+                crash_barrier_load.setEnabled(True)
 
         # Grey out fixed parameters per IRC 5
         for widget in [crash_barrier_density, crash_barrier_width, crash_barrier_height, crash_barrier_area]:
@@ -684,6 +710,7 @@ class TypicalSectionDetailsTab(QWidget):
         crash_barrier_area = self._find_crash_barrier_widget(KEY_CB_AREA)
         crash_barrier_load = self._find_crash_barrier_widget(KEY_CB_LOAD)
         barrier_type = crash_barrier_type.currentText() if crash_barrier_type else ""
+
         if self._is_rcc_barrier(barrier_type):
             try:
                 density = float(crash_barrier_density.text()) if crash_barrier_density and crash_barrier_density.text() else 0.0
@@ -694,7 +721,15 @@ class TypicalSectionDetailsTab(QWidget):
             except:
                 if crash_barrier_load:
                     crash_barrier_load.clear()
-        # For other types load is user-entered; do not overwrite
+        elif self._is_metallic_barrier(barrier_type):
+            try:
+                metallic_variant = "Double" if "Double" in barrier_type else "Single"
+                load_data = metallic_edge_barrier_load(metallic_variant)
+                if crash_barrier_load:
+                    crash_barrier_load.setText(f"{load_data['total_load_kN_per_m']:.2f}")
+            except Exception:
+                if crash_barrier_load:
+                    crash_barrier_load.clear()
 
     def _apply_crash_barrier_defaults(self, barrier_type: str, force: bool = False):
         """Populate recommended defaults per IRC 5 selections.
@@ -729,7 +764,6 @@ class TypicalSectionDetailsTab(QWidget):
             if "bottom_width" in geom:
                 _set(crash_barrier_width, f"{geom['bottom_width'] / 1000:.2f}")
 
-
             if "total_height" in geom:
                 _set(crash_barrier_height, f"{geom['total_height'] / 1000:.2f}")
             if crash_barrier_width and crash_barrier_height:
@@ -744,8 +778,7 @@ class TypicalSectionDetailsTab(QWidget):
         elif is_metallic:
             if crash_barrier_post_spacing:
                 _set(crash_barrier_post_spacing, "1")
-            if force and crash_barrier_load:
-                crash_barrier_load.clear()
+            self._auto_compute_crash_barrier_load()
         elif is_custom:
             if geom:
                 if "bottom_width" in geom:
@@ -807,6 +840,7 @@ class TypicalSectionDetailsTab(QWidget):
         median_density = self._find_median_widget(KEY_MD_DENSITY)
         median_area = self._find_median_widget(KEY_MD_AREA)
         median_load = self._find_median_widget(KEY_MD_LOAD)
+
         if self._is_rcc_median(median_type):
             try:
                 density = float(median_density.text()) if median_density and median_density.text() else 0.0
@@ -815,6 +849,14 @@ class TypicalSectionDetailsTab(QWidget):
                 if median_load:
                     median_load.setText(f"{load:.2f}")
             except:
+                if median_load:
+                    median_load.clear()
+        elif self._is_metallic_median(median_type):
+            try:
+                load_data = median_metallic_barrier_load(median_type)
+                if median_load:
+                    median_load.setText(f"{load_data['total_load_kN_per_m']:.2f}")
+            except Exception:
                 if median_load:
                     median_load.clear()
 
@@ -873,15 +915,15 @@ class TypicalSectionDetailsTab(QWidget):
 
         # Load behavior
         if median_load:
+            median_load.setVisible(active)
             median_load.setEnabled(active)
             median_load.setReadOnly(active and is_rcc)
             if active:
                 median_load.setPlaceholderText("" if not is_custom else "Enter custom load per IRC 6 guidance")
-        if active and is_rcc:
+        if active and (is_rcc or is_metallic):
             self._auto_compute_median_load()
         elif active and median_load:
             median_load.setReadOnly(False)
-            median_load.clear()
 
         # Grey out fixed parameters per IRC 5
         if active:
@@ -940,8 +982,7 @@ class TypicalSectionDetailsTab(QWidget):
         elif is_metallic:
             if median_post_spacing:
                 _set(median_post_spacing, "1")
-            if force and median_load:
-                median_load.clear()
+            self._auto_compute_median_load()
         elif is_custom:
             if geom:
                 if KEY_MD_WIDTH in geom:
