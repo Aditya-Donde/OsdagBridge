@@ -180,7 +180,7 @@ class OutputDock(QWidget):
         btn_layout.setContentsMargins(0, 15, 0, 0)
         btn_layout.setSpacing(10)
 
-        results_btn = DockCustomButton("Generate Results Table", ":/vectors/design_report.svg")
+        results_btn = DockCustomButton("Generate Results Table", ":/vectors/design_result_table.svg")
         results_btn.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         btn_layout.addWidget(results_btn)
 
