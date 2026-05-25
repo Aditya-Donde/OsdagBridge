@@ -237,7 +237,13 @@ class AdditionalInputs(QDialog):
         if value is None or value == "":
             self.working_input_dict[key] = self.default_input_dict.get(key)
         else:
-            self.working_input_dict[key] = value
+            try:
+                self.working_input_dict[key] = int(value)
+            except (ValueError, TypeError):
+                try:
+                    self.working_input_dict[key] = float(value)
+                except (ValueError, TypeError):
+                    self.working_input_dict[key] = value
         print(f"@@Final: {self.working_input_dict[key]}")
 
     def _update_additional_input_cad(self):
