@@ -145,15 +145,16 @@ class AdditionalInputs(QDialog):
                 widget.setText(text)
                 widget.blockSignals(False)
 
-        _set_text(KEY_TS_DECK_THICKNESS,     "{:.0f}")
-        _set_text(KEY_TS_FOOTPATH_WIDTH,     "{:.2f}")
-        _set_text(KEY_TS_FOOTPATH_THICKNESS, "{:.0f}")
-
-        # Primary fields — initial values come from defaults.solve_extend_basic_input_dict
+        # Populate structural values first to ensure they are present before any signals activate
         _set_text(KEY_TS_GIRDER_SPACING, "{:.2f}")
         _set_text(KEY_TS_NO_OF_GIRDERS,  "{:.0f}")
         _set_text(KEY_TS_DECK_OVERHANG,  "{:.2f}")
         _set_text(KEY_TS_OVERALL_WIDTH,  "{:.2f}")
+
+        # Populate secondary deck values
+        _set_text(KEY_TS_DECK_THICKNESS,     "{:.0f}")
+        _set_text(KEY_TS_FOOTPATH_WIDTH,     "{:.2f}")
+        _set_text(KEY_TS_FOOTPATH_THICKNESS, "{:.0f}")
 
         # Sync downstream girder count after primary fields are populated
         try:
