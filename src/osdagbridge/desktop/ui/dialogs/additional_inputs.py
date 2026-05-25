@@ -22,7 +22,7 @@ from osdagbridge.desktop.ui.dialogs.tabs.section_properties_tab import SectionPr
 from osdagbridge.desktop.ui.dialogs.tabs.loading_tab import LoadingTab
 from osdagbridge.desktop.ui.utils.custom_widgets import SmartCursorComboBoxView
 from osdagbridge.desktop.ui.dialogs.tabs.sub_tabs.typical_section.common_ui_builder import UIBuilder
-
+from osdagbridge.core.bridge_types.plate_girder.defaults import _on_no_of_girders_changed
 # =================================================================================
 #   MAIN IMPLEMENTATION
 # =================================================================================
@@ -426,6 +426,12 @@ class AdditionalInputs(QDialog):
         # Keep girder count in sync across tabs
         try:
             self.typical_section_tab.girder_count_changed.connect(self.section_properties_tab.set_girder_count)
+
+            # Update working_input_dict when girder count changes
+            self.typical_section_tab.girder_count_changed.connect(
+                lambda count: _on_no_of_girders_changed(self.working_input_dict, count)
+            )
+            
             self._sync_member_properties_girder_count()
         except Exception:
             pass

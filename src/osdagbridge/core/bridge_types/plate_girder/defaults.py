@@ -20,15 +20,58 @@ from osdagbridge.core.utils.common import (
     KEY_MD_TYPE, KEY_MD_DENSITY, KEY_MD_WIDTH, KEY_MD_HEIGHT, KEY_MD_AREA, KEY_MD_LOAD, KEY_MD_POST_SPACING,
     KEY_RL_TYPE, KEY_RL_WIDTH, KEY_RL_HEIGHT, KEY_RL_LOAD_MODE, KEY_RL_LOAD_VALUE,
     KEY_WC_MATERIAL, KEY_WC_DENSITY, KEY_WC_THICKNESS,
-    KEY_GIRDER_SYMMETRY, KEY_GIRDER_DEPTH, KEY_GIRDER_WEB_DEPTH, KEY_GIRDER_WEB_THICKNESS,
-    KEY_GIRDER_TOP_FLANGE_WIDTH, KEY_GIRDER_TOP_FLANGE_THICKNESS,
-    KEY_GIRDER_BOTTOM_FLANGE_WIDTH, KEY_GIRDER_BOTTOM_FLANGE_THICKNESS,
-    KEY_GIRDER_SECTIONAL_AREA, KEY_GIRDER_MASS,
-    KEY_GIRDER_SECTIONAL_IZ, KEY_GIRDER_SECTIONAL_IY,
-    KEY_GIRDER_RADIUS_GYRATION_Z, KEY_GIRDER_RADIUS_GYRATION_Y,
-    KEY_GIRDER_ELASTIC_MODULUS_ZZ, KEY_GIRDER_ELASTIC_MODULUS_ZY,
-    KEY_GIRDER_PLASTIC_MODULUS_ZUZ, KEY_GIRDER_PLASTIC_MODULUS_ZUY,
-    KEY_GIRDER_TORSION_CONSTANT_IT, KEY_GIRDER_WARPING_CONSTANT_IW,
+
+    KEY_MP_GIRDER_SYMMETRY, KEY_MP_GIRDER_DEPTH, KEY_MP_GIRDER_WEB_DEPTH, KEY_MP_GIRDER_WEB_THICKNESS,
+    KEY_MP_GIRDER_TOP_FLANGE_WIDTH, KEY_MP_GIRDER_TOP_FLANGE_THICKNESS,
+    KEY_MP_GIRDER_BOTTOM_FLANGE_WIDTH, KEY_MP_GIRDER_BOTTOM_FLANGE_THICKNESS,
+    KEY_MP_GIRDER_SECTIONAL_AREA, KEY_MP_GIRDER_MASS,
+    KEY_MP_GIRDER_SECTIONAL_IZ, KEY_MP_GIRDER_SECTIONAL_IY,
+    KEY_MP_GIRDER_RADIUS_GYRATION_Z, KEY_MP_GIRDER_RADIUS_GYRATION_Y,
+    KEY_MP_GIRDER_ELASTIC_MODULUS_ZZ, KEY_MP_GIRDER_ELASTIC_MODULUS_ZY,
+    KEY_MP_GIRDER_PLASTIC_MODULUS_ZUZ, KEY_MP_GIRDER_PLASTIC_MODULUS_ZUY,
+    KEY_MP_GIRDER_TORSION_CONSTANT_IT, KEY_MP_GIRDER_WARPING_CONSTANT_IW,
+
+    KEY_MP_STIFFENER_NO_BEARING_STIFFENERS,
+    KEY_MP_STIFFENER_SPACING,
+    KEY_MP_STIFFENER_BEARING_THICKNESS,
+    KEY_MP_STIFFENER_BEARING_OUTSTAND,
+    KEY_MP_STIFFENER_INTERMEDIATE,
+    KEY_MP_STIFFENER_INTERMEDIATE_SPACING,
+    KEY_MP_STIFFENER_INTERMEDIATE_THICKNESS,
+    KEY_MP_STIFFENER_INTERMEDIATE_OUTSTAND,
+    KEY_MP_STIFFENER_LONGITUDINAL,
+    KEY_MP_STIFFENER_LONGITUDINAL_THICKNESS,
+    KEY_MP_STIFFENER_DESIGN_METHOD,
+    KEY_MP_STIFFENER_BEARING_THICKNESS_MODE,
+    STIFFENER_DETAILS_DEFAULTS,
+
+    KEY_MP_CB_SELECT_GIRDERS,
+    KEY_MP_CB_MEMBER_ID,
+    KEY_MP_CB_TYPE,
+    KEY_MP_CB_BRACING_SECTION_TYPE,
+    KEY_MP_CB_BRACING_SECTION_DESIGNATION,
+    KEY_MP_CB_TOP_CHORD,
+    KEY_MP_CB_TOP_CHORD_SECTION_TYPE,
+    KEY_MP_CB_TOP_CHORD_SECTION_DESIG,
+    KEY_MP_CB_BOTTOM_CHORD,
+    KEY_MP_CB_BOTTOM_CHORD_SECTION_TYPE,
+    KEY_MP_CB_BOTTOM_CHORD_SECTION_DESIG,
+    KEY_MP_CB_SPACING,
+    CROSS_BRACING_DEFAULTS,
+    DEFAULT_CROSS_BRACING_SPACING,
+
+    KEY_MP_ED_SELECT_GIRDERS,
+    KEY_MP_ED_MEMBER_ID,
+    KEY_MP_ED_TYPE,
+    KEY_MP_ED_BRACING_TYPE,
+    KEY_MP_ED_BRACING_SECTION,
+    KEY_MP_ED_BRACING_SECTION_DESIGNATION,
+    KEY_MP_ED_TOP_CHORD_SECTION_TYPE,
+    KEY_MP_ED_TOP_CHORD_SECTION_DESIG,
+    KEY_MP_ED_BOTTOM_CHORD_SECTION_TYPE,
+    KEY_MP_ED_BOTTOM_CHORD_SECTION_DESIG,
+    KEY_MP_ED_SPACING,
+    VALUES_END_DIAPHRAGM_TYPE,
 
     KEY_DO_GAMMA_C_BASIC, KEY_DO_GAMMA_C_ACCIDENTAL, KEY_DO_GAMMA_M0, KEY_DO_GAMMA_M1, KEY_DO_GAMMA_S,
     KEY_DO_GAMMA_V, KEY_DO_GAMMA_FLT, KEY_DO_GAMMA_MF, KEY_DO_LOAD_CYCLES, KEY_DO_DEFLECTION_LIMIT,
@@ -59,12 +102,12 @@ from osdagbridge.core.utils.common import (
 steel_properties = connectdb("Steel_Grade_Properties")
 concrete_properies = connectdb("Concrete_Grade_Properties")
 
-# This is default initial dictionary 
+# This is default initial dictionary
 BASIC_INPUT_DICT = {
 
     # Input Dock Defaults
     KEY_STRUCTURE_TYPE: "Highway Bridge",
-    KEY_PROJECT_LOCATION: None, # Required field will be none by default
+    KEY_PROJECT_LOCATION: None,  # Required field will be none by default
     KEY_SPAN: None,
     KEY_CARRIAGEWAY_WIDTH: None,
     KEY_INCLUDE_MEDIAN: "No",
@@ -233,6 +276,53 @@ def _update_design_options_cont_defaults(input_dict: dict) -> None:
     _update(KEY_DO_SLS_CRACK_WIDTH,    True)
 
 
+def _on_no_of_girders_changed(working_input_dict: dict, count: int) -> None:
+    from osdagbridge.core.bridge_types.plate_girder.defaults import solve_extend_basic_input_dict
+
+    working_input_dict[KEY_TS_NO_OF_GIRDERS] = count
+
+    try:
+        solve_extend_basic_input_dict(working_input_dict)
+    except Exception as e:
+        print(f"[DEBUG] _on_girder_count_changed: solve failed: {e}")
+        return
+
+    girder_keys = {
+        k: v for k, v in working_input_dict.items()
+        if k.startswith("member_properties.girder_details.") and "_G" in k
+    }
+    print(f"\n[DEBUG] Girder keys updated → {count} girder(s), total keys: {len(girder_keys)}")
+    for girder_idx in range(1, count + 1):
+        print(f"\n  --- Girder G{girder_idx} ---")
+        for k, v in girder_keys.items():
+            if f"_G{girder_idx}M" in k:
+                print(f"    {k} = {v}")
+
+    stiffener_keys = {
+        k: v for k, v in working_input_dict.items()
+        if k.startswith("member_properties.stiffener_details.") and "_G" in k
+    }
+    print(f"\n[DEBUG] Stiffener keys updated → {count} girder(s), total keys: {len(stiffener_keys)}")
+    for girder_idx in range(1, count + 1):
+        print(f"\n  --- Stiffener G{girder_idx} ---")
+        for k, v in stiffener_keys.items():
+            if f"_G{girder_idx}M" in k:
+                print(f"    {k} = {v}")  
+
+    # --- DEBUG: Print updated cross bracing keys grouped by girder pair ---
+    cb_keys = {
+        k: v for k, v in working_input_dict.items()
+        if k.startswith("member_properties.cross_bracing_details.") and "_G" in k
+    }
+    print(f"\n[DEBUG] Cross bracing keys updated → {count} girder(s), {count - 1} pair(s), total keys: {len(cb_keys)}")
+    for girder_idx in range(1, count):
+        g_pair = f"G{girder_idx}G{girder_idx + 1}"
+        print(f"\n  --- Cross Bracing {g_pair} ---")
+        for k, v in cb_keys.items():
+            if f"_{g_pair}_" in k:
+                print(f"    {k} = {v}")                         
+
+
 def solve_extend_basic_input_dict(basic_input_dict: dict) -> None:
     """Parse basic inputs and solve bridge layout. Updates basic_input_dict in-place."""
     from .initial_sizing import BridgeConfigurationSolver
@@ -298,24 +388,225 @@ def solve_extend_basic_input_dict(basic_input_dict: dict) -> None:
         KEY_TS_NO_OF_GIRDERS:   sizing_result.no_of_girders,
         KEY_TS_GIRDER_SPACING:  sizing_result.girder_spacing,
         KEY_TS_DECK_OVERHANG:   sizing_result.deck_overhang,
-        KEY_GIRDER_SYMMETRY:                section_props['symmetry'],
-        KEY_GIRDER_DEPTH:                   section_props['D'],
-        KEY_GIRDER_WEB_DEPTH:               section_props['d_web'],
-        KEY_GIRDER_WEB_THICKNESS:           section_props['t_w'],
-        KEY_GIRDER_TOP_FLANGE_WIDTH:        section_props['B_top'],
-        KEY_GIRDER_TOP_FLANGE_THICKNESS:    section_props['t_f_top'],
-        KEY_GIRDER_BOTTOM_FLANGE_WIDTH:     section_props['B_bot'],
-        KEY_GIRDER_BOTTOM_FLANGE_THICKNESS: section_props['t_f_bot'],
-        KEY_GIRDER_SECTIONAL_AREA:          section_props['Area'],
-        KEY_GIRDER_MASS:                    section_props['Mass'],
-        KEY_GIRDER_SECTIONAL_IZ:            section_props['I_z'],
-        KEY_GIRDER_SECTIONAL_IY:            section_props['I_y'],
-        KEY_GIRDER_RADIUS_GYRATION_Z:       section_props['r_z'],
-        KEY_GIRDER_RADIUS_GYRATION_Y:       section_props['r_y'],
-        KEY_GIRDER_ELASTIC_MODULUS_ZZ:      section_props['Z_ez'],
-        KEY_GIRDER_ELASTIC_MODULUS_ZY:      section_props['Z_ey'],
-        KEY_GIRDER_PLASTIC_MODULUS_ZUZ:     section_props['Z_pz'],
-        KEY_GIRDER_PLASTIC_MODULUS_ZUY:     section_props['Z_py'],
-        KEY_GIRDER_TORSION_CONSTANT_IT:     section_props['I_t'],
-        KEY_GIRDER_WARPING_CONSTANT_IW:     section_props['I_w'],
     })
+    print("\n--- Full basic_input_dict ---")
+    for k, v in basic_input_dict.items():
+        print(f"  {k} = {v}")
+    # --- Remove all stale dynamic girder keys first (handles girder count change) ---
+    # Match on the common prefix of all KEY_MP_GIRDER_* values from common.py
+    # which all start with "member_properties.girder_details." and contain "_G"
+    stale_keys = [
+        k for k in basic_input_dict
+        if k.startswith("member_properties.girder_details.") and "_G" in k
+    ]
+    for k in stale_keys:
+        del basic_input_dict[k]
+
+    # --- Mapping: imported constant value (from common.py) → section_props value ---
+    # To add a new property in future, just add one line here.
+    # The imported constant's string VALUE is used as the base key,
+    # e.g. KEY_MP_GIRDER_DEPTH = "member_properties.girder_details.section_input.depth"
+    # produces → "member_properties.girder_details.section_input.depth_G1M1"
+    MP_GIRDER_PROPS = [
+        (KEY_MP_GIRDER_SYMMETRY,                section_props['symmetry']),
+        (KEY_MP_GIRDER_DEPTH,                   section_props['D']),
+        (KEY_MP_GIRDER_WEB_DEPTH,               section_props['d_web']),
+        (KEY_MP_GIRDER_WEB_THICKNESS,           section_props['t_w']),
+        (KEY_MP_GIRDER_TOP_FLANGE_WIDTH,        section_props['B_top']),
+        (KEY_MP_GIRDER_TOP_FLANGE_THICKNESS,    section_props['t_f_top']),
+        (KEY_MP_GIRDER_BOTTOM_FLANGE_WIDTH,     section_props['B_bot']),
+        (KEY_MP_GIRDER_BOTTOM_FLANGE_THICKNESS, section_props['t_f_bot']),
+        (KEY_MP_GIRDER_SECTIONAL_AREA,          section_props['Area']),
+        (KEY_MP_GIRDER_MASS,                    section_props['Mass']),
+        (KEY_MP_GIRDER_SECTIONAL_IZ,            section_props['I_z']),
+        (KEY_MP_GIRDER_SECTIONAL_IY,            section_props['I_y']),
+        (KEY_MP_GIRDER_RADIUS_GYRATION_Z,       section_props['r_z']),
+        (KEY_MP_GIRDER_RADIUS_GYRATION_Y,       section_props['r_y']),
+        (KEY_MP_GIRDER_ELASTIC_MODULUS_ZZ,      section_props['Z_ez']),
+        (KEY_MP_GIRDER_ELASTIC_MODULUS_ZY,      section_props['Z_ey']),
+        (KEY_MP_GIRDER_PLASTIC_MODULUS_ZUZ,     section_props['Z_pz']),
+        (KEY_MP_GIRDER_PLASTIC_MODULUS_ZUY,     section_props['Z_py']),
+        (KEY_MP_GIRDER_TORSION_CONSTANT_IT,     section_props['I_t']),
+        (KEY_MP_GIRDER_WARPING_CONSTANT_IW,     section_props['I_w']),
+    ]
+
+    # --- Populate dynamic girder keys for each girder and member ---
+    # girder_idx : 1 to no_of_girders (driven by user input)
+    # member_id  : always 1 for now; extend the list below when multiple members needed
+    for girder_idx in range(1, no_of_girders + 1):
+        for member_id in [1]:  # extend to [1, 2, 3] for multiple members per girder
+            for base_key, value in MP_GIRDER_PROPS:
+                dynamic_key = f"{base_key}_G{girder_idx}M{member_id}"
+                basic_input_dict[dynamic_key] = value
+
+    # --- DEBUG: Print all dynamic girder keys grouped by girder ---
+    print(f"\n[DEBUG] Dynamic girder keys for {no_of_girders} girder(s):")
+    for girder_idx in range(1, no_of_girders + 1):
+        print(f"\n  --- Girder G{girder_idx} ---")
+        for member_id in [1]:
+            for base_key, _ in MP_GIRDER_PROPS:
+                dynamic_key = f"{base_key}_G{girder_idx}M{member_id}"
+                print(f"    {dynamic_key} = {basic_input_dict[dynamic_key]}") 
+
+    # --- Remove all stale dynamic stiffener keys (handles girder count change) ---
+    stale_stiffener_keys = [
+        k for k in basic_input_dict
+        if k.startswith("member_properties.stiffener_details.") and "_G" in k
+    ]
+    for k in stale_stiffener_keys:
+        del basic_input_dict[k]
+
+    MP_STIFFENER_PROPS = [
+        (KEY_MP_STIFFENER_NO_BEARING_STIFFENERS,  "bearing_stiffeners_each_end"),
+        (KEY_MP_STIFFENER_SPACING,                "bearing_spacing_mm"),
+        (KEY_MP_STIFFENER_BEARING_THICKNESS_MODE, "bearing_thickness_mode"),
+        (KEY_MP_STIFFENER_BEARING_THICKNESS,      "bearing_thickness_value"),
+        (KEY_MP_STIFFENER_BEARING_OUTSTAND,       "bearing_outstand_mm"),
+        (KEY_MP_STIFFENER_INTERMEDIATE,           "intermediate_stiffener"),
+        (KEY_MP_STIFFENER_INTERMEDIATE_SPACING,   "intermediate_spacing_mm"),
+        (KEY_MP_STIFFENER_INTERMEDIATE_THICKNESS, "intermediate_thickness_value"),
+        (KEY_MP_STIFFENER_INTERMEDIATE_OUTSTAND,  "intermediate_outstand_mm"),
+        (KEY_MP_STIFFENER_LONGITUDINAL,           "longitudinal_stiffener"),
+        (KEY_MP_STIFFENER_LONGITUDINAL_THICKNESS, "longitudinal_thickness_value"),
+        (KEY_MP_STIFFENER_DESIGN_METHOD,          "shear_buckling_method"),
+    ]
+
+    for girder_idx in range(1, no_of_girders + 1):
+        for member_id in [1]:
+            for base_key, defaults_key in MP_STIFFENER_PROPS:
+                dynamic_key = f"{base_key}_G{girder_idx}M{member_id}"
+                basic_input_dict[dynamic_key] = STIFFENER_DETAILS_DEFAULTS[defaults_key]
+
+    # --- DEBUG: Print all dynamic stiffener keys grouped by girder ---
+    print(f"\n[DEBUG] Dynamic stiffener keys for {no_of_girders} girder(s):")
+    for girder_idx in range(1, no_of_girders + 1):
+        print(f"\n  --- Stiffener G{girder_idx} ---")
+        for member_id in [1]:
+            for base_key, defaults_key, in MP_STIFFENER_PROPS:
+                dynamic_key = f"{base_key}_G{girder_idx}M{member_id}"
+                print(f"    {dynamic_key} = {basic_input_dict[dynamic_key]}")  
+
+    # --- Remove all stale dynamic cross bracing keys ---
+    stale_cb_keys = [
+        k for k in basic_input_dict
+        if k.startswith("member_properties.cross_bracing_details.") and "_G" in k
+    ]
+    for k in stale_cb_keys:
+        del basic_input_dict[k]
+
+    # --- Cross Bracing props map: (KEY_MP_CB_* constant, default value) ---
+    no_of_members = 9  # B1M1 to B1M9, extend here when needed
+
+    MP_CB_PROPS = [
+        (KEY_MP_CB_SELECT_GIRDERS,              "select_girders"),
+        (KEY_MP_CB_MEMBER_ID,                   "member_id"),
+        (KEY_MP_CB_TYPE,                        "type"),
+        (KEY_MP_CB_BRACING_SECTION_TYPE,        "bracing_section_type"),
+        (KEY_MP_CB_BRACING_SECTION_DESIGNATION, "bracing_section_designation"),
+        (KEY_MP_CB_TOP_CHORD,                   "top_chord"),
+        (KEY_MP_CB_TOP_CHORD_SECTION_TYPE,      "top_chord_section_type"),
+        (KEY_MP_CB_TOP_CHORD_SECTION_DESIG,     "top_chord_section_desig"),
+        (KEY_MP_CB_BOTTOM_CHORD,                "bottom_chord"),
+        (KEY_MP_CB_BOTTOM_CHORD_SECTION_TYPE,   "bottom_chord_section_type"),
+        (KEY_MP_CB_BOTTOM_CHORD_SECTION_DESIG,  "bottom_chord_section_desig"),
+        (KEY_MP_CB_SPACING,                     "spacing"),
+    ]
+
+    # --- Populate dynamic cross bracing keys ---
+    for girder_idx in range(1, no_of_girders):
+        g_pair = f"G{girder_idx}G{girder_idx + 1}"
+        for member_id in range(1, no_of_members + 1):
+            b_member = f"B1M{member_id}"
+            suffix = f"_{g_pair}_{b_member}"
+            select_girders_value = f"G{girder_idx} to G{girder_idx + 1}"
+            member_id_value      = f"B1M1 to B1M{no_of_members}"
+            for base_key, defaults_key in MP_CB_PROPS:
+                dynamic_key = f"{base_key}{suffix}"
+                if defaults_key == "select_girders":
+                    basic_input_dict[dynamic_key] = select_girders_value
+                elif defaults_key == "member_id":
+                    basic_input_dict[dynamic_key] = member_id_value
+                else:
+                    basic_input_dict[dynamic_key] = CROSS_BRACING_DEFAULTS[defaults_key]
+
+    # --- DEBUG: Print all dynamic cross bracing keys ---
+    print(f"\n[DEBUG] Dynamic cross bracing keys for {no_of_girders} girder(s), {no_of_girders - 1} pair(s):")
+    for girder_idx in range(1, no_of_girders):
+        g_pair = f"G{girder_idx}G{girder_idx + 1}"
+        print(f"\n  --- Cross Bracing {g_pair} ---")
+        for member_id in range(1, no_of_members + 1):
+            b_member = f"B1M{member_id}"
+            suffix = f"_{g_pair}_{b_member}"
+            print(f"\n    --- {b_member} ---")
+            for base_key, _ in MP_CB_PROPS:
+                dynamic_key = f"{base_key}{suffix}"
+                print(f"      {dynamic_key} = {basic_input_dict[dynamic_key]}") 
+
+    # --- Remove all stale dynamic end diaphragm keys ---
+    stale_ed_keys = [
+        k for k in basic_input_dict
+        if k.startswith("member_properties.end_diaphragm_details.") and "_G" in k
+    ]
+    for k in stale_ed_keys:
+        del basic_input_dict[k]
+
+    # --- End Diaphragm props map ---
+    no_of_ed_members = 2  # E1M1 and E1M2 per girder pair
+
+    _ED_DEFAULTS = {
+        "select_girders":               "",
+        "member_id":                    "",
+        "type":                         VALUES_END_DIAPHRAGM_TYPE[0],   # "Cross Bracing"
+        "bracing_type":                 "",
+        "bracing_section":              "",
+        "bracing_section_designation":  "",
+        "top_chord_section_type":       "",
+        "top_chord_section_desig":      "",
+        "bottom_chord_section_type":    "",
+        "bottom_chord_section_desig":   "",
+        "spacing":                      DEFAULT_CROSS_BRACING_SPACING,  # 3.0
+    }
+
+    MP_ED_PROPS = [
+        (KEY_MP_ED_SELECT_GIRDERS,              "select_girders"),
+        (KEY_MP_ED_MEMBER_ID,                   "member_id"),
+        (KEY_MP_ED_TYPE,                        "type"),
+        (KEY_MP_ED_BRACING_TYPE,                "bracing_type"),
+        (KEY_MP_ED_BRACING_SECTION,             "bracing_section"),
+        (KEY_MP_ED_BRACING_SECTION_DESIGNATION, "bracing_section_designation"),
+        (KEY_MP_ED_TOP_CHORD_SECTION_TYPE,      "top_chord_section_type"),
+        (KEY_MP_ED_TOP_CHORD_SECTION_DESIG,     "top_chord_section_desig"),
+        (KEY_MP_ED_BOTTOM_CHORD_SECTION_TYPE,   "bottom_chord_section_type"),
+        (KEY_MP_ED_BOTTOM_CHORD_SECTION_DESIG,  "bottom_chord_section_desig"),
+        (KEY_MP_ED_SPACING,                     "spacing"),
+    ]
+
+    # --- Populate dynamic end diaphragm keys ---
+    for girder_idx in range(1, no_of_girders):
+        g_pair = f"G{girder_idx}G{girder_idx + 1}"
+        for member_id in range(1, no_of_ed_members + 1):
+            e_member = f"E1M{member_id}"
+            suffix = f"_{g_pair}_{e_member}"
+            select_girders_value = f"G{girder_idx} to G{girder_idx + 1}"
+            member_id_value      = f"E1M1 to E1M{no_of_ed_members}"
+            for base_key, defaults_key in MP_ED_PROPS:
+                dynamic_key = f"{base_key}{suffix}"
+                if defaults_key == "select_girders":
+                    basic_input_dict[dynamic_key] = select_girders_value
+                elif defaults_key == "member_id":
+                    basic_input_dict[dynamic_key] = member_id_value
+                else:
+                    basic_input_dict[dynamic_key] = _ED_DEFAULTS[defaults_key]
+
+    # --- DEBUG: Print all dynamic end diaphragm keys ---
+    print(f"\n[DEBUG] Dynamic end diaphragm keys for {no_of_girders} girder(s), {no_of_girders - 1} pair(s):")
+    for girder_idx in range(1, no_of_girders):
+        g_pair = f"G{girder_idx}G{girder_idx + 1}"
+        print(f"\n  --- End Diaphragm {g_pair} ---")
+        for member_id in range(1, no_of_ed_members + 1):
+            e_member = f"E1M{member_id}"
+            suffix = f"_{g_pair}_{e_member}"
+            print(f"\n    --- {e_member} ---")
+            for base_key, _ in MP_ED_PROPS:
+                dynamic_key = f"{base_key}{suffix}"
+                print(f"      {dynamic_key} = {basic_input_dict[dynamic_key]}")                                               
