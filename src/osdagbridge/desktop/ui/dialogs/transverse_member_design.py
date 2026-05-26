@@ -1,0 +1,1075 @@
+from __future__ import annotations
+
+import re
+import sqlite3
+
+from PySide6.QtWidgets import (
+    QDialog, QWidget, QVBoxLayout, QHBoxLayout,
+    QTabWidget, QLabel, QLineEdit, QFrame,
+    QSizePolicy, QSizeGrip, QScrollArea,
+    QGridLayout, QCheckBox, QTableWidget,
+    QTableWidgetItem, QHeaderView, QTextEdit,
+)
+from PySide6.QtCore import Qt
+
+from osdagbridge.desktop.ui.utils.custom_titlebar import CustomTitleBar
+from osdagbridge.desktop.ui.dialogs.tabs.common import apply_field_style
+from osdagbridge.desktop.ui.docks.output_dock import NoScrollComboBox
+from osdagbridge.desktop.ui.widgets.placeholder_section_preview import PlaceholderSectionPreviewWidget
+from osdagbridge.desktop.ui.utils.styled_scroll_area import StyledScrollArea
+from osdagbridge.core.bridge_types.plate_girder.ui_fields_additional_input import (
+    TRANSVERSE_MEMBER_DESIGN_SCHEMA,
+)
+
+# ── Style constants ───────────────────────────────────────────────────────────
+
+_TAB_STYLE = """
+    QTabWidget::pane {
+        border: 1px solid #d1d1d1;
+        background-color: #ffffff;
+        border-radius: 6px;
+    }
+    QTabBar::tab {
+        font-weight: bold;
+        font-size: 12px;
+        background: #ffffff;
+        color: #3a3a3a;
+        border: 1px solid #d1d1d1;
+        padding: 10px 22px;
+    }
+    QTabBar::tab:selected {
+        background: #90AF13;
+        color: #ffffff;
+        border: 1px solid #90AF13;
+    }
+    QTabBar::tab:hover {
+        background: #90AF13;
+        color: #ffffff;
+    }
+"""
+
+_CARD_STYLE = (
+    "QFrame#controlCard {"
+    "  background-color: white;"
+    "  border: 1px solid #b0b0b0;"
+    "  border-radius: 6px;"
+    "}"
+    "QFrame#controlCard > QLabel { border: none; background: transparent; }"
+)
+
+_COMBO_STYLE = """
+    QComboBox {
+        padding: 1px 7px;
+        border: 1px solid #888;
+        border-radius: 5px;
+        background-color: white;
+        color: black;
+        font-size: 11px;
+        min-height: 28px;
+    }
+    QComboBox::drop-down {
+        subcontrol-origin: padding;
+        subcontrol-position: top right;
+        border-left: 0px;
+    }
+    QComboBox::down-arrow {
+        image: url(:/vectors/arrow_down_light.svg);
+        width: 20px;
+        height: 20px;
+        margin-right: 8px;
+    }
+    QComboBox QAbstractItemView {
+        background-color: white;
+        border: 1px solid #888;
+    }
+    QComboBox QAbstractItemView::item:hover {
+        background-color: #90AF13;
+        color: black;
+    }
+    QComboBox QAbstractItemView::item:selected {
+        background-color: #90AF13;
+        color: black;
+    }
+    QComboBox:disabled {
+        color: #333;
+        background-color: #f5f5f5;
+    }
+"""
+
+_INNER_BOX_STYLE = (
+    "QFrame { border: 1px solid #cfcfcf; border-radius: 8px; background-color: #ffffff; }"
+    "QFrame QLabel { border: none; }"
+)
+
+_TABLE_STYLE = """
+    QTableWidget {
+        background-color: #ffffff;
+        alternate-background-color: #f9f9f9;
+        gridline-color: #e0e0e0;
+        border: 1px solid #e0e0e0;
+        color: #333333;
+        font-size: 11px;
+    }
+    QTableWidget::item { padding: 6px; border-bottom: 1px solid #e0e0e0; color: #333333; }
+    QHeaderView::section {
+        background-color: #f5f5f5;
+        color: #333333;
+        padding: 6px;
+        border: 1px solid #e0e0e0;
+        font-weight: bold;
+        font-size: 11px;
+    }
+"""
+
+_TITLE_STYLE    = "font-size: 13px; color: #2B2B2B; font-weight: bold; background: transparent; border: none;"
+_HEADING_STYLE  = "font-size: 12px; font-weight: 700; color: #4b4b4b; border: none;"
+_LABEL_STYLE    = "font-size: 11px; font-weight: 400; color: #4b4b4b; border: none;"
+_SUBHEAD_STYLE  = "font-size: 11px; font-weight: 600; color: #4b4b4b; border: none;"
+_PROP_LBL_STYLE = "font-size: 10px; color: #555; border: none; background: transparent;"
+
+_SECTION_TYPE_MAP = {
+    "Double Angles":  "double_angle_long",
+    "Angle":          "angle",
+    "Channel":        "channel",
+    "Double Channel": "double_channel",
+}
+
+# ── Schema reference ──────────────────────────────────────────────────────────
+_SCHEMA = TRANSVERSE_MEMBER_DESIGN_SCHEMA
+
+
+class TransverseMemberDesign(QDialog):
+    """Schema-driven Transverse Member Design dialog."""
+
+    def __init__(self, parent=None):
+        super().__init__(None)
+        self._main_window = parent
+        self.setObjectName("TransverseMemberDesign")
+
+        win = _SCHEMA.get("window", {})
+        self.resize(win.get("width", 1100), win.get("height", 720))
+        self.setMinimumSize(win.get("min_width", 950), win.get("min_height", 550))
+
+        self._forces_dict:      dict          = {}
+        self._designs_dict:     dict          = {}
+        self._pair_keys:        list[str]     = []
+        self._members_per_pair: dict[str, int] = {}
+
+        # All schema-driven widgets keyed by their schema "id"
+        self._widgets: dict[str, QWidget] = {}
+
+        # Section property fields and previews keyed by card title
+        self._prop_fields:      dict[str, dict[str, QLineEdit]]            = {}
+        self._section_previews: dict[str, PlaceholderSectionPreviewWidget] = {}
+
+        self.init_ui()
+        self.setStyleSheet(
+            "QDialog { background-color: #ffffff; border: 1px solid #90AF13; }"
+        )
+        self._try_load_data()
+
+    # Convenience accessors for schema-driven widgets
+
+    def _w(self, schema_id: str) -> QWidget | None:
+        """Return the widget registered under *schema_id*, or None."""
+        return self._widgets.get(schema_id)
+
+    # Window chrome
+
+    def setupWrapper(self):
+        self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowSystemMenuHint | Qt.Window)
+
+        root = QVBoxLayout(self)
+        root.setContentsMargins(1, 1, 1, 1)
+        root.setSpacing(0)
+
+        self.title_bar = CustomTitleBar()
+        self.title_bar.setTitle(_SCHEMA.get("title", "Transverse Member Design"))
+        root.addWidget(self.title_bar)
+
+        self.content_widget = QWidget(self)
+        root.addWidget(self.content_widget, 1)
+
+        grip = QSizeGrip(self)
+        grip.setFixedSize(16, 16)
+        overlay = QHBoxLayout()
+        overlay.setContentsMargins(0, 0, 4, 4)
+        overlay.addStretch(1)
+        overlay.addWidget(grip, 0, Qt.AlignBottom | Qt.AlignRight)
+        root.addLayout(overlay)
+
+    def init_ui(self):
+        self.setupWrapper()
+
+        main = QVBoxLayout(self.content_widget)
+        main.setContentsMargins(5, 5, 5, 5)
+        main.setSpacing(6)
+        main.addWidget(self._build_global_bar())
+
+        self.tabs = QTabWidget()
+        self.tabs.setStyleSheet(_TAB_STYLE)
+
+        details_schema = _SCHEMA.get("details_tab", {})
+        dc_schema = _SCHEMA.get("design_check_tab", {})
+
+        self.tabs.addTab(
+            self._build_details_tab(details_schema),
+            details_schema.get("label", "Details"),
+        )
+        self.tabs.addTab(
+            self._build_design_check_tab(dc_schema),
+            dc_schema.get("label", "Design Check"),
+        )
+        main.addWidget(self.tabs)
+
+    def _build_global_bar(self) -> QWidget:
+        """Build the top control bar from ``schema["global_bar"]``."""
+        bar_schema = _SCHEMA.get("global_bar", [])
+
+        container = QWidget()
+        container.setStyleSheet("background: transparent;")
+        container.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        row = QHBoxLayout(container)
+        row.setContentsMargins(0, 0, 0, 6)
+        row.setSpacing(16)
+
+        for field_def in bar_schema:
+            fid   = field_def["id"]
+            title = field_def.get("label", "")
+
+            card = QFrame()
+            card.setObjectName("controlCard")
+            card.setStyleSheet(_CARD_STYLE)
+            card.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+            cl = QVBoxLayout(card)
+            cl.setContentsMargins(23, 10, 14, 12)
+            cl.setSpacing(4)
+
+            lbl = QLabel(title)
+            lbl.setStyleSheet(_TITLE_STYLE)
+            cl.addWidget(lbl)
+
+            combo = NoScrollComboBox()
+            combo.setObjectName(fid)
+            combo.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+            combo.setFixedHeight(28)
+            combo.setStyleSheet(_COMBO_STYLE)
+
+            # Seed default items
+            default = field_def.get("default")
+            if default:
+                combo.addItem(str(default))
+
+            cl.addWidget(combo)
+            self._widgets[fid] = combo
+            row.addWidget(card, 1)
+
+        # Wire Member ID change signal
+        member_combo = self._widgets.get("td_member_id")
+        if member_combo is not None:
+            member_combo.currentTextChanged.connect(self._on_member_id_changed)
+
+        return container
+
+    # Details tab
+
+    def _build_details_tab(self, schema: dict) -> QWidget:
+        tab = QWidget()
+        tab.setStyleSheet("background-color: white;")
+        outer = QVBoxLayout(tab)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(0)
+
+        scroll = StyledScrollArea()
+
+        content = QWidget()
+        content.setStyleSheet("background-color: white;")
+        cl = QHBoxLayout(content)
+        cl.setContentsMargins(10, 10, 10, 10)
+        cl.setSpacing(12)
+
+        cl.addWidget(self._build_left_panel(schema.get("left_panel", {})), 0)
+        cl.addWidget(self._build_right_panel(schema.get("right_panel", {})), 1)
+
+        scroll.setWidget(content)
+        outer.addWidget(scroll)
+        return tab
+
+    # Left panel
+
+    def _build_left_panel(self, schema: dict) -> QWidget:
+        panel = QWidget()
+        panel.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Preferred)
+        layout = QVBoxLayout(panel)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(8)
+
+        si = schema.get("section_inputs", {})
+        layout.addWidget(self._build_section_inputs_box(si))
+        layout.addStretch()
+        return panel
+
+    def _build_section_inputs_box(self, schema: dict) -> QFrame:
+        """Build section inputs from ``schema["fields"]`` list."""
+        box = self._inner_box()
+        box.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        vl = QVBoxLayout(box)
+        vl.setContentsMargins(14, 10, 14, 14)
+        vl.setSpacing(6)
+
+        heading_text = schema.get("label", "Section Inputs:")
+        vl.addWidget(self._heading(heading_text))
+
+        label_width = schema.get("label_width")
+        fields = schema.get("fields", [])
+
+        box.setMaximumWidth(350)
+
+        grid = QGridLayout()
+        grid.setContentsMargins(0, 1, 0, 0)
+        grid.setHorizontalSpacing(12)
+        grid.setVerticalSpacing(8)
+        grid.setColumnMinimumWidth(0, label_width)
+        grid.setColumnStretch(1, 1)
+        row = 0
+
+        for field_def in fields:
+            fid    = field_def["id"]
+            ftype  = field_def.get("type", "line")
+            flabel = field_def.get("label", "")
+
+            if ftype == "checkbox":
+                # Checkbox header row (Top Chord / Bottom Chord)
+                hdr = QHBoxLayout()
+                hdr.setContentsMargins(0, 4, 0, 0)
+                hdr.setSpacing(6)
+                hdr.addWidget(self._subhead(flabel))
+                cb = QCheckBox()
+                cb.setObjectName(fid)
+                cb.setEnabled(field_def.get("enabled", True))
+                cb.setChecked(field_def.get("default", False))
+                hdr.addWidget(cb)
+                hdr.addStretch()
+                grid.addLayout(hdr, row, 0, 1, 2)
+                self._widgets[fid] = cb
+                row += 1
+
+            elif ftype == "combo":
+                widget = self._ro_combo(field_def.get("choices", []))
+                widget.setObjectName(fid)
+                # Wire on_change callback if specified
+                callback_name = field_def.get("on_change")
+                if callback_name:
+                    cb_func = getattr(self, callback_name, None)
+                    if callable(cb_func):
+                        widget.currentTextChanged.connect(cb_func)
+                row = self._grid_row(grid, row, flabel, widget)
+                self._widgets[fid] = widget
+
+            else:  # "line"
+                widget = self._ro_line()
+                widget.setObjectName(fid)
+                row = self._grid_row(grid, row, flabel, widget)
+                self._widgets[fid] = widget
+
+        vl.addLayout(grid)
+        return box
+
+    # ── Right panel (schema-driven diagram + property cards) ──────────────
+
+    def _build_right_panel(self, schema: dict) -> QWidget:
+        panel = QWidget()
+        panel.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        layout = QVBoxLayout(panel)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(8)
+
+        # Bracing diagram
+        diag_schema = schema.get("bracing_diagram", {})
+        layout.addWidget(self._build_bracing_diagram_box(diag_schema))
+
+        # Section property cards from schema
+        for card_def in schema.get("section_cards", []):
+            card_title = card_def["title"]
+            col_lists  = [card_def.get("col1", []), card_def.get("col2", []), card_def.get("col3", [])]
+            card, fields = self._build_section_property_card(card_title, col_lists)
+            self._prop_fields[card_title] = fields
+            self._widgets[card_def["id"]] = card
+            layout.addWidget(card)
+
+        layout.addStretch()
+        return panel
+
+    def _build_bracing_diagram_box(self, schema: dict) -> QFrame:
+        box = self._inner_box()
+        box.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        bl = QVBoxLayout(box)
+        bl.setContentsMargins(10, 8, 10, 8)
+        bl.setSpacing(4)
+
+        diagram_height = schema.get("height")
+
+        try:
+            from osdagbridge.desktop.ui.dialogs.tabs.sub_tabs.section_properties.cross_bracing_details_tab import (
+                BracingLayoutCadWidget,
+            )
+            self.bracing_layout_widget = BracingLayoutCadWidget(diagram_height)
+            self.bracing_layout_widget.setFixedHeight(diagram_height)
+            bl.addWidget(self.bracing_layout_widget)
+        except Exception:
+            self.bracing_layout_widget = None
+            placeholder = QLabel("Bracing Layout Diagram")
+            placeholder.setAlignment(Qt.AlignCenter)
+            placeholder.setFixedHeight(diagram_height)
+            placeholder.setStyleSheet(
+                "QLabel { border: 1px dashed #aaa; border-radius: 6px; "
+                "color: #888; font-size: 11px; background: #f7f7f7; }"
+            )
+            bl.addWidget(placeholder)
+
+        fid = schema.get("id")
+        if fid:
+            self._widgets[fid] = box
+
+        return box
+
+    def _build_section_property_card(
+        self, title: str, col_lists: list[list[str]],
+    ) -> tuple[QFrame, dict[str, QLineEdit]]:
+        card = self._inner_box()
+        card.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        card_layout = QHBoxLayout(card)
+        card_layout.setContentsMargins(10, 8, 10, 8)
+        card_layout.setSpacing(12)
+
+        left = QVBoxLayout()
+        left.setContentsMargins(0, 0, 0, 0)
+        left.setSpacing(4)
+
+        title_lbl = QLabel(title)
+        title_lbl.setStyleSheet(_HEADING_STYLE)
+        left.addWidget(title_lbl)
+
+        preview = PlaceholderSectionPreviewWidget(placeholder_text=title, min_height=150)
+        preview.setFixedWidth(150)
+        self._section_previews[title] = preview
+        left.addWidget(preview)
+        left.addStretch()
+        card_layout.addLayout(left)
+
+        props_layout = QHBoxLayout()
+        props_layout.setContentsMargins(0, 0, 0, 0)
+        props_layout.setSpacing(10)
+
+        fields: dict[str, QLineEdit] = {}
+        for col_props in col_lists:
+            col = QGridLayout()
+            col.setContentsMargins(0, 0, 0, 0)
+            col.setHorizontalSpacing(4)
+            col.setVerticalSpacing(3)
+            for r, prop in enumerate(col_props):
+                lbl = QLabel(prop)
+                lbl.setStyleSheet(_PROP_LBL_STYLE)
+                field = QLineEdit()
+                field.setReadOnly(True)
+                field.setFixedWidth(58)
+                field.setFixedHeight(21)
+                field.setStyleSheet(
+                    "QLineEdit { border: 1px solid #d0d0d0; border-radius: 3px;"
+                    " background: #fafafa; font-size: 10px; color: #333;"
+                    " padding: 1px 4px; }"
+                )
+                col.addWidget(lbl,   r, 0, Qt.AlignLeft | Qt.AlignVCenter)
+                col.addWidget(field, r, 1, Qt.AlignLeft | Qt.AlignVCenter)
+                fields[prop] = field
+            props_layout.addLayout(col)
+
+        card_layout.addLayout(props_layout)
+        return card, fields
+
+    # ── Design Check tab (schema-driven, forces table always visible) ─────
+
+    def _build_design_check_tab(self, schema: dict) -> QWidget:
+        tab = QWidget()
+        tab.setStyleSheet("background-color: white;")
+        outer = QVBoxLayout(tab)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(0)
+
+        scroll = StyledScrollArea()
+
+        content = QWidget()
+        content.setStyleSheet("background-color: white;")
+        cl = QVBoxLayout(content)
+        cl.setContentsMargins(10, 10, 10, 10)
+        cl.setSpacing(12)
+
+        # Forces table — always visible
+        ft_schema = schema.get("forces_table", {})
+        cl.addWidget(self._build_forces_card(ft_schema))
+
+        # Result text
+        rt_schema = schema.get("result_text", {})
+        cl.addWidget(self._build_result_text_card(rt_schema))
+
+        cl.addStretch()
+
+        scroll.setWidget(content)
+        outer.addWidget(scroll)
+        return tab
+
+    def _build_forces_card(self, schema: dict) -> QFrame:
+        """Build the forces summary table from schema."""
+        card = self._inner_box()
+        vl = QVBoxLayout(card)
+        vl.setContentsMargins(14, 10, 14, 14)
+        vl.setSpacing(8)
+        vl.addWidget(self._heading(schema.get("title")))
+
+        columns = schema.get("columns")
+
+        self.forces_table = QTableWidget()
+        self.forces_table.setColumnCount(len(columns))
+        self.forces_table.setHorizontalHeaderLabels(columns)
+        self.forces_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        self.forces_table.verticalHeader().setVisible(False)
+        self.forces_table.setEditTriggers(QTableWidget.NoEditTriggers)
+        self.forces_table.setSelectionMode(QTableWidget.NoSelection)
+        self.forces_table.setAlternatingRowColors(True)
+        self.forces_table.setStyleSheet(_TABLE_STYLE)
+        # Always visible — start with 0 rows but the table frame is always shown
+        self.forces_table.setRowCount(0)
+        vl.addWidget(self.forces_table)
+
+        fid = schema.get("id")
+        if fid:
+            self._widgets[fid] = self.forces_table
+
+        return card
+
+    def _build_result_text_card(self, schema: dict) -> QFrame:
+        card = self._inner_box()
+        vl = QVBoxLayout(card)
+        vl.setContentsMargins(14, 10, 14, 14)
+        vl.setSpacing(8)
+        vl.addWidget(self._heading(schema.get("title", "Design Check Results:")))
+
+        self.design_check_text = QTextEdit()
+        self.design_check_text.setReadOnly(True)
+        self.design_check_text.setMinimumHeight(schema.get("min_height", 200))
+        self.design_check_text.setStyleSheet(
+            "QTextEdit { background-color: white; border: none;"
+            " font-size: 11px; color: #333333; padding: 0px; }"
+        )
+        self.design_check_text.setContentsMargins(0, 0, 0, 0)
+        self.design_check_text.setViewportMargins(0, 0, 0, 0)
+        self.design_check_text.document().setDocumentMargin(0)
+        self.design_check_text.setHtml(self._empty_design_check_html())
+        self._sync_design_check_width()
+        vl.addWidget(self.design_check_text)
+
+        fid = schema.get("id")
+        if fid:
+            self._widgets[fid] = self.design_check_text
+
+        return card
+
+    # ── Shared widget helpers ─────────────────────────────────────────────
+
+    def _inner_box(self) -> QFrame:
+        frame = QFrame()
+        frame.setStyleSheet(_INNER_BOX_STYLE)
+        return frame
+
+    def _sync_design_check_width(self) -> None:
+        if not hasattr(self, "design_check_text"):
+            return
+        self.design_check_text.document().setTextWidth(
+            self.design_check_text.viewport().width()
+        )
+
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        self._sync_design_check_width()
+
+    def _lbl(self, text: str) -> QLabel:
+        lbl = QLabel(text)
+        lbl.setStyleSheet(_LABEL_STYLE)
+        return lbl
+
+    def _heading(self, text: str) -> QLabel:
+        lbl = QLabel(text)
+        lbl.setStyleSheet(_HEADING_STYLE)
+        return lbl
+
+    def _subhead(self, text: str) -> QLabel:
+        lbl = QLabel(text)
+        lbl.setStyleSheet(_SUBHEAD_STYLE)
+        return lbl
+
+    def _ro_line(self) -> QLineEdit:
+        field = QLineEdit()
+        field.setReadOnly(True)
+        field.setFixedHeight(28)
+        field.setFixedWidth(150)
+        field.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        apply_field_style(field)
+        return field
+
+    def _ro_combo(self, items: list[str]) -> NoScrollComboBox:
+        combo = NoScrollComboBox()
+        combo.addItems(items)
+        combo.setEnabled(False)
+        combo.setFixedHeight(28)
+        combo.setFixedWidth(150)
+        combo.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        combo.setStyleSheet(_COMBO_STYLE)
+        return combo
+
+    def _grid_row(self, grid: QGridLayout, row: int, label: str, widget: QWidget) -> int:
+        grid.addWidget(self._lbl(label), row, 0, Qt.AlignLeft | Qt.AlignVCenter)
+        grid.addWidget(widget, row, 1)
+        return row + 1
+
+    # ── Signal handlers ───────────────────────────────────────────────────
+
+    def _on_member_id_changed(self, text: str):
+        """When member ID changes, refresh details for the corresponding pair."""
+        m = re.match(r"B(\d+)M\d+", text)
+        if not m:
+            return
+        pair_idx = int(m.group(1)) - 1
+        if 0 <= pair_idx < len(self._pair_keys):
+            self._on_pair_selected(pair_idx)
+
+    def _on_pair_selected(self, idx: int):
+        """Refresh details and bracing layout for the given pair index."""
+        pair_key = self._pair_keys[idx] if 0 <= idx < len(self._pair_keys) else None
+        self._refresh_bracing_layout()
+        if pair_key and self._designs_dict:
+            self._populate_pair_details(pair_key)
+
+    def _on_bracing_type_changed(self, _text: str):
+        self._refresh_bracing_layout()
+
+    def _refresh_bracing_layout(self):
+        if self.bracing_layout_widget is None:
+            return
+        bracing_w = self._widgets.get("td_bracing_type")
+        tc_w      = self._widgets.get("td_top_chord_enabled")
+        bc_w      = self._widgets.get("td_bottom_chord_enabled")
+
+        bracing = bracing_w.currentText() if bracing_w else "X-Bracing"
+        top     = tc_w.isChecked() if tc_w else True
+        bottom  = bc_w.isChecked() if bc_w else True
+
+        self.bracing_layout_widget.set_layout(bracing, top, bottom, "", "")
+
+    # ── Data loading ──────────────────────────────────────────────────────
+
+    def _try_load_data(self):
+        backend = getattr(self._main_window, "backend", None)
+        if backend is None or getattr(backend, "sizing_result", None) is None:
+            return
+
+        try:
+            from osdagbridge.core.bridge_types.plate_girder.crossbracingforces import CrossBracingForces
+            cb = CrossBracingForces(bridge=backend)
+            forces_dict = cb.get_design_forces_dict()
+            if not forces_dict or not forces_dict.get("pairs"):
+                return
+
+            designs_dict     = getattr(backend, "crossbracing_design_results", {}) or {}
+            members_per_pair = self._compute_members_per_pair(backend, forces_dict)
+            self.load_data(forces_dict, designs_dict, members_per_pair)
+        except Exception:
+            pass
+
+    def _compute_members_per_pair(self, backend, forces_dict: dict) -> dict[str, int]:
+        pairs = list(forces_dict.get("pairs", {}).keys())
+        if not pairs:
+            return {}
+
+        geom       = forces_dict.get("geometry", {})
+        cb_spacing = float(geom.get("cb_spacing_m") or 4.0)
+
+        span   = None
+        sizing = getattr(backend, "sizing_result", None)
+        if sizing is not None:
+            span = getattr(sizing, "span", None)
+        if span is None:
+            span = float(getattr(backend, "basic_inputs", {}).get("span", 30) or 30)
+
+        n = max(1, round(float(span) / cb_spacing) - 1)
+        return {p: n for p in pairs}
+
+    def load_data(
+        self,
+        forces_dict:      dict,
+        designs_dict:     dict | None = None,
+        members_per_pair: dict | None = None,
+    ) -> None:
+        if not forces_dict:
+            return
+
+        self._forces_dict  = forces_dict
+        self._designs_dict = designs_dict or {}
+
+        geom  = forces_dict.get("geometry", {})
+        pairs = forces_dict.get("pairs", {})
+
+        self._pair_keys = list(pairs.keys())
+
+        # Set bracing type
+        brace_raw   = forces_dict.get("brace_type", "X")
+        brace_label = "K-Bracing" if brace_raw == "K" else "X-Bracing"
+        bracing_w = self._widgets.get("td_bracing_type")
+        if bracing_w:
+            bracing_w.blockSignals(True)
+            idx = bracing_w.findText(brace_label)
+            if idx >= 0:
+                bracing_w.setCurrentIndex(idx)
+            bracing_w.blockSignals(False)
+
+        # Set chord checkboxes
+        tc_w = self._widgets.get("td_top_chord_enabled")
+        if tc_w:
+            tc_w.setChecked(bool(forces_dict.get("top_chord", True)))
+        bc_w = self._widgets.get("td_bottom_chord_enabled")
+        if bc_w:
+            bc_w.setChecked(bool(forces_dict.get("bottom_chord", True)))
+
+        # Set spacing
+        spacing = geom.get("cb_spacing_m")
+        spacing_w = self._widgets.get("td_spacing")
+        if spacing is not None and spacing_w:
+            spacing_w.setText(f"{spacing:.3f} m")
+
+        # Populate Member ID combo
+        self._members_per_pair = members_per_pair or {p: 1 for p in self._pair_keys}
+        member_combo = self._widgets.get("td_member_id")
+        if member_combo:
+            member_combo.blockSignals(True)
+            member_combo.clear()
+            for pair_idx, pk in enumerate(self._pair_keys, 1):
+                n = self._members_per_pair.get(pk, 1)
+                for mi in range(1, n + 1):
+                    member_combo.addItem(f"B{pair_idx}M{mi}")
+            member_combo.blockSignals(False)
+
+        # Populate Load Combination combo
+        lcs: set[str] = set()
+        for pdata in pairs.values():
+            for key in (
+                "diag_tension_gov_lc", "diag_compression_gov_lc",
+                "chord_tension_gov_lc", "chord_compression_gov_lc",
+            ):
+                lc = pdata.get(key)
+                if lc:
+                    lcs.add(str(lc))
+        load_combo = self._widgets.get("td_load_combination")
+        if load_combo:
+            load_combo.clear()
+            load_combo.addItem("Envelope")
+            for lc in sorted(lcs):
+                load_combo.addItem(lc)
+
+        self._refresh_bracing_layout()
+
+        # Populate forces table (no Girder Pair column)
+        rows: list[tuple] = []
+        for pk, pdata in pairs.items():
+            for member_type, t_key, c_key, t_lc_key, c_lc_key in (
+                ("Diagonal",
+                 "diag_tension_kN",  "diag_compression_kN",
+                 "diag_tension_gov_lc", "diag_compression_gov_lc"),
+                ("Chord",
+                 "chord_tension_kN", "chord_compression_kN",
+                 "chord_tension_gov_lc", "chord_compression_gov_lc"),
+            ):
+                t_val  = pdata.get(t_key)
+                c_val  = pdata.get(c_key)
+                t_lc   = pdata.get(t_lc_key) or ""
+                c_lc   = pdata.get(c_lc_key) or ""
+                gov_lc = t_lc or c_lc or "—"
+                rows.append((
+                    member_type,
+                    f"{t_val:.3f}" if t_val is not None else "—",
+                    f"{c_val:.3f}" if c_val is not None else "—",
+                    gov_lc,
+                ))
+
+        self.forces_table.setRowCount(len(rows))
+        for r, row_data in enumerate(rows):
+            for c, val in enumerate(row_data):
+                item = QTableWidgetItem(str(val))
+                item.setFlags(Qt.ItemIsEnabled)
+                item.setTextAlignment(Qt.AlignCenter)
+                self.forces_table.setItem(r, c, item)
+
+        if self._pair_keys:
+            self._populate_pair_details(self._pair_keys[0])
+
+        if self._designs_dict:
+            html = self._build_design_check_html(forces_dict, self._designs_dict)
+            self.design_check_text.setHtml(html)
+
+    def _populate_pair_details(self, pair_key: str) -> None:
+        if not self._designs_dict:
+            return
+
+        pair_designs = self._designs_dict.get(pair_key, {})
+        diag_des     = self._get_governing_section(pair_designs, "diagonal")
+        chord_des    = self._get_governing_section(pair_designs, "chord")
+
+        bracing_des_w = self._widgets.get("td_bracing_section_designation")
+        tc_des_w      = self._widgets.get("td_top_chord_section_designation")
+        bc_des_w      = self._widgets.get("td_bottom_chord_section_designation")
+
+        if bracing_des_w:
+            bracing_des_w.setText(diag_des or "")
+        if tc_des_w:
+            tc_des_w.setText(chord_des or "")
+        if bc_des_w:
+            bc_des_w.setText(chord_des or "")
+
+        for card_name, designation in (
+            ("Bracing",      diag_des),
+            ("Top Chord",    chord_des),
+            ("Bottom Chord", chord_des),
+        ):
+            self._fill_section_card(card_name, designation, "Double Angles")
+
+    def _get_governing_section(self, member_designs: dict, member_type: str) -> str:
+        from osdagbridge.core.bridge_types.plate_girder.results_data_2 import _extract_osdag_summary
+        type_data = member_designs.get(member_type, {})
+        for force_type in ("tension", "compression"):
+            res = _extract_osdag_summary(type_data.get(force_type) or {})
+            sec = res.get("section")
+            if sec:
+                return str(sec)
+        return ""
+
+    def _fill_section_card(
+        self,
+        card_name:          str,
+        designation:        str,
+        section_type_label: str,
+    ) -> None:
+        props   = self._query_section_db(designation) if designation else {}
+        preview = self._section_previews.get(card_name)
+
+        if preview is not None:
+            if designation and props:
+                db_des = props.get("_db_designation", designation)
+                family = props.get("_section_family", "angle")
+                if family == "channel":
+                    stype = _SECTION_TYPE_MAP.get(section_type_label, "channel")
+                    if stype not in ("channel", "double_channel"):
+                        stype = "channel"
+                else:
+                    stype = _SECTION_TYPE_MAP.get(section_type_label, "double_angle_long")
+                preview.set_section(stype, db_des)
+            else:
+                preview.clear()
+
+        fields = self._prop_fields.get(card_name, {})
+        for prop_label, field in fields.items():
+            val = props.get(prop_label)
+            field.setText(f"{val:.4g}") if val is not None else field.clear()
+
+    def _query_section_db(self, designation: str) -> dict:
+        if not designation:
+            return {}
+
+        try:
+            from osdagbridge.desktop.ui.widgets.section_viewer import DB_PATH
+        except ImportError:
+            return {}
+
+        nums = re.findall(r"\d+(?:\.\d+)?", designation)
+        if not nums:
+            return {}
+        like_pattern = "%" + "%".join(nums) + "%"
+
+        try:
+            con = sqlite3.connect(str(DB_PATH))
+            cur = con.cursor()
+
+            for table in ("EqualAngle", "UnequalAngle"):
+                cur.execute(
+                    f'SELECT Designation, Mass, Area, a, b, t, Iz, Iy, "Iv(min)", rz, ry, "rv(min)", '
+                    f'Zz, Zy, Zpz, Zpy FROM {table} WHERE Designation LIKE ?',
+                    (like_pattern,),
+                )
+                row = cur.fetchone()
+                if row:
+                    con.close()
+                    db_des, mass, area, a, b, t, iz, iy, iv_min, rz, ry, rv_min, zz, zy, zpz, zpy = row
+                    return {
+                        "_db_designation": db_des,
+                        "_section_family": "angle",
+                        "L (m)":     round(a / 1000, 4),
+                        "H (m)":     round(b / 1000, 4),
+                        "B (m)":     round(t / 1000, 4),
+                        "tw (m)":    round(t / 1000, 4),
+                        "tF (m)":    round(t / 1000, 4),
+                        "rz (cm)":   rz,
+                        "M (Kg/m)":  mass,
+                        "A (cm²)":   area,
+                        "Iz (cm⁴)":  iz,
+                        "Iv (cm⁴)":  iv_min,
+                        "rv (cm)":   rv_min,
+                        "Zz (cm³)":  zz,
+                        "Zv (cm³)":  zy,
+                        "Zuz (cm³)": zpz,
+                        "Zuv (cm³)": zpy,
+                    }
+
+            cur.execute(
+                'SELECT Designation, Mass, Area, D, B, tw, T, Iz, Iy, rz, ry, Zz, Zy, Zpz, Zpy '
+                'FROM Channels WHERE Designation LIKE ?',
+                (like_pattern,),
+            )
+            row = cur.fetchone()
+            if row:
+                con.close()
+                db_des, mass, area, d_val, b, tw, tf, iz, iy, rz, ry, zz, zy, zpz, zpy = row
+                return {
+                    "_db_designation": db_des,
+                    "_section_family": "channel",
+                    "L (m)":     round(d_val / 1000, 4),
+                    "H (m)":     round(b     / 1000, 4),
+                    "B (m)":     round(b     / 1000, 4),
+                    "tw (m)":    round(tw    / 1000, 4),
+                    "tF (m)":    round(tf    / 1000, 4),
+                    "rz (cm)":   rz,
+                    "M (Kg/m)":  mass,
+                    "A (cm²)":   area,
+                    "Iz (cm⁴)":  iz,
+                    "Iv (cm⁴)":  iy,
+                    "rv (cm)":   ry,
+                    "Zz (cm³)":  zz,
+                    "Zv (cm³)":  zy,
+                    "Zuz (cm³)": zpz,
+                    "Zuv (cm³)": zpy,
+                }
+
+            con.close()
+        except Exception:
+            pass
+        return {}
+
+    # ── Design check HTML (no Pair column) ────────────────────────────────
+
+    def _build_design_check_html(self, forces_dict: dict, designs_dict: dict) -> str:
+        from osdagbridge.core.bridge_types.plate_girder.results_data_2 import _extract_osdag_summary
+
+        rows_html = []
+        pairs     = forces_dict.get("pairs", {})
+
+        for pair, vals in pairs.items():
+            pair_designs = designs_dict.get(pair, {})
+
+            for label, member_type, t_key, c_key in (
+                ("Diagonal", "diagonal", "diag_tension_kN",  "diag_compression_kN"),
+                ("Chord",    "chord",    "chord_tension_kN", "chord_compression_kN"),
+            ):
+                member_data = pair_designs.get(member_type, {})
+
+                for force_type, force_key in (
+                    ("Tension",     t_key),
+                    ("Compression", c_key),
+                ):
+                    force_kn = vals.get(force_key)
+                    if force_kn is None:
+                        continue
+
+                    res     = _extract_osdag_summary(member_data.get(force_type.lower()) or {})
+                    section = res.get("section")  or "—"
+                    cap_kn  = res.get("capacity_kN")
+                    eff     = res.get("efficiency")
+                    slnd    = res.get("slenderness")
+                    conn    = res.get("connection") or "—"
+
+                    cap_str  = f"{cap_kn:.2f}" if cap_kn is not None else "—"
+                    eff_str  = f"{eff:.3f}"    if eff    is not None else "—"
+                    slnd_str = f"{slnd:.1f}"   if slnd   is not None else "—"
+
+                    if eff is None:
+                        status_color, status = "#888888", "N/A"
+                    elif eff <= 1.0:
+                        status_color, status = "#3a7d00", "PASS"
+                    else:
+                        status_color, status = "#c0392b", "FAIL"
+
+                    rows_html.append(
+                        f"<tr>"
+                        f"<td>{label}</td><td>{force_type}</td>"
+                        f"<td>{force_kn:.3f}</td><td>{section}</td><td>{cap_str}</td>"
+                        f"<td>{eff_str}</td><td>{slnd_str}</td><td>{conn}</td>"
+                        f"<td style='color:{status_color};font-weight:bold;'>{status}</td>"
+                        f"</tr>"
+                    )
+
+        if not rows_html:
+            return self._empty_design_check_html()
+
+        hdr_style = "background:#f0f0f0;font-weight:bold;padding:5px 8px;border-bottom:2px solid #ddd;"
+        td_style  = "padding:4px 8px;border-bottom:1px solid #e8e8e8;"
+
+        header = (
+            f"<tr>"
+            f"<th style='{hdr_style}'>Member</th>"
+            f"<th style='{hdr_style}'>Force Type</th>"
+            f"<th style='{hdr_style}'>Force (kN)</th>"
+            f"<th style='{hdr_style}'>Section</th>"
+            f"<th style='{hdr_style}'>Capacity (kN)</th>"
+            f"<th style='{hdr_style}'>Eff. Ratio</th>"
+            f"<th style='{hdr_style}'>λ (slend.)</th>"
+            f"<th style='{hdr_style}'>Connection</th>"
+            f"<th style='{hdr_style}'>Status</th>"
+            f"</tr>"
+        )
+
+        rows_styled = [r.replace("<td>", f"<td style='{td_style}'>") for r in rows_html]
+
+        return (
+            "<style>"
+            "body{margin:0;padding:0;}"
+            "table{border-collapse:collapse;width:100%;table-layout:fixed;font-size:11px;margin:0;border:1px solid black;}"
+            "tr:nth-child(even){background:#fafafa;}"
+            "</style>"
+            "<table width='100%'>" + header + "".join(rows_styled) + "</table>"
+        )
+
+    def _empty_design_check_html(self) -> str:
+        hdr_style = "background:#f0f0f0;font-weight:bold;padding:5px 8px;border-bottom:2px solid #ddd;"
+        td_style  = "padding:4px 8px;border-bottom:1px solid #e8e8e8;color:#888888;"
+        header = (
+            f"<tr>"
+            f"<th style='{hdr_style}'>Member</th>"
+            f"<th style='{hdr_style}'>Force Type</th>"
+            f"<th style='{hdr_style}'>Force (kN)</th>"
+            f"<th style='{hdr_style}'>Section</th>"
+            f"<th style='{hdr_style}'>Capacity (kN)</th>"
+            f"<th style='{hdr_style}'>Eff. Ratio</th>"
+            f"<th style='{hdr_style}'>λ (slend.)</th>"
+            f"<th style='{hdr_style}'>Connection</th>"
+            f"<th style='{hdr_style}'>Status</th>"
+            f"</tr>"
+        )
+        empty_row = (
+            f"<tr>" + f"<td style='{td_style}'>—</td>" * 9 + f"</tr>"
+        )
+        return (
+            "<style>"
+            "body{margin:0;padding:0;}"
+            "table{border-collapse:collapse;width:100%;table-layout:fixed;font-size:11px;margin:0;border:1px solid black;}"
+            "tr:nth-child(even){background:#fafafa;}"
+            "</style>"
+            "<table width='100%'>" + header + empty_row + "</table>"
+        )
+
+    def load_design_check_html(self, html: str) -> None:
+        self.design_check_text.setHtml(html)
