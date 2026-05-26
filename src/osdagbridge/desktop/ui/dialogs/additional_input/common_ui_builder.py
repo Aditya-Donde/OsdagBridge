@@ -73,7 +73,9 @@ class UIBuilder(QWidget):
         layout_def  = self._schema.get("layout", {})
         layout_type = layout_def.get("type", "rows")
 
-        if layout_type == "columns":
+        if layout_type == "tabs":
+            self._build_tabs_layout(main_layout)
+        elif layout_type == "columns":
             self._build_columns_layout(main_layout, layout_def)
         elif layout_type == "rows" and "sections" in self._schema:
             # Explicit rows layout with sections
@@ -104,7 +106,6 @@ class UIBuilder(QWidget):
             outer.addWidget(scroll)
         else:
             outer.addWidget(self.main_widget)
-            outer.addStretch()
 
     # ──────────────────────────────────────────────────────────────────────────
     # Layout strategies
@@ -774,3 +775,40 @@ class UIBuilder(QWidget):
         h.addWidget(mode_combo, 1)
         h.addWidget(value_input, 1)
         return wrapper
+    
+    def _build_tabs_layout(self, parent_layout):
+        from PySide6.QtWidgets import QTabWidget
+        tab_widget = QTabWidget()
+        tab_widget.setDocumentMode(True)
+        tab_widget.setUsesScrollButtons(True)
+        tab_widget.tabBar().setExpanding(False)
+        tab_widget.setMovable(False)
+        tab_widget.setStyleSheet(
+            "QTabBar::scroller { width: 24px; }"
+            "QTabBar::right-arrow { image:none; border:none; background:transparent; }"
+            "QTabBar::left-arrow  { image:none; border:none; background:transparent; }"
+            "QTabBar::left-arrow:!enabled { width: 0px; }"
+        )
+
+        for tab_def in self._schema.get("tabs", []):
+            title        = tab_def.get("title", "")
+            schema       = tab_def.get("schema")
+            widget_class = tab_def.get("widget_class")
+
+            if widget_class:
+                widget = widget_class(self.owner)
+            elif schema:
+                widget = UIBuilder(
+                    owner=self.owner,
+                    schema=schema,
+                    card_title="",
+                    with_scroll=True,
+                    main_widget_object_name=schema.get("id", title),
+                    additional_input_instance=self.additional_input_instance,
+                )
+            else:
+                continue
+
+            tab_widget.addTab(widget, title)
+
+        parent_layout.addWidget(tab_widget)
