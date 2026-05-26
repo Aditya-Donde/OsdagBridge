@@ -41,8 +41,16 @@ from osdagbridge.core.utils.common import (
 
     KEY_SC_LEFT_SUPPORT, KEY_SC_RIGHT_SUPPORT, KEY_SC_BEARING_LENGTH,
 
-    KEY_LC_COMBINATIONS, KEY_LL_CUSTOM_VEHICLES,
-
+    KEY_PL_SELF_WEIGHT_FACTOR, KEY_LL_IRC_CLASS_A, KEY_LL_IRC_70R_WHEELED, KEY_LL_IRC_70R_TRACKED, KEY_LL_IRC_AA_WHEELED,
+    KEY_LL_IRC_AA_TRACKED, KEY_LL_IRC_CLASS_SV, KEY_LL_IRC_70R_BOGIE, KEY_LL_IRC_CLASS_FATIGUE, KEY_LL_CUSTOM_VEHICLES,
+    KEY_LL_ECCENTRICITY, KEY_LL_FOOTPATH_PRESSURE_MODE, KEY_LL_FOOTPATH_PRESSURE_VALUE, KEY_SL_IMPORTANCE_FACTOR,
+    KEY_SL_SOIL_TYPE, KEY_SL_TIME_PERIOD, KEY_SL_DAMPING, KEY_SL_RESPONSE_REDUCTION, KEY_SL_DEAD_LOAD_MODE,
+    KEY_SL_DEAD_LOAD_VALUE, KEY_SL_LIVE_LOAD_MODE, KEY_SL_LIVE_LOAD_VALUE, KEY_WL_AVG_EXPOSED_HEIGHT, KEY_WL_TERRAIN_TYPE,
+    KEY_WL_SITE_TOPOGRAPHY, KEY_WL_GUST_FACTOR_MODE, KEY_WL_GUST_FACTOR_VALUE, KEY_WL_DRAG_COEFF_MODE, KEY_WL_DRAG_COEFF_VALUE,
+    KEY_WL_DRAG_COEFF_LL_MODE, KEY_WL_DRAG_COEFF_LL_VALUE, KEY_WL_LIFT_COEFF_MODE, KEY_WL_LIFT_COEFF_VALUE, KEY_WL_SUPER_AREA_ELEV_MODE, 
+    KEY_WL_SUPER_AREA_ELEV_VALUE, KEY_WL_SUPER_AREA_PLAIN_MODE, KEY_WL_SUPER_AREA_PLAIN_VALUE, KEY_WL_EXPOSED_FRONTAL_MODE, 
+    KEY_WL_EXPOSED_FRONTAL_VALUE, KEY_WL_WIND_ECC_DECK_MODE, KEY_WL_WIND_ECC_DECK_VALUE, KEY_WL_WIND_LL_ECC_MODE, KEY_WL_WIND_LL_ECC_VALUE,
+    KEY_TL_THERMAL_COEFF_STEEL, KEY_TL_THERMAL_COEFF_RCC, KEY_LC_COMBINATIONS,
 
 )
 from .initial_sizing import (
@@ -162,7 +170,7 @@ def _update_typical_section_defaults(input_dict: dict) -> None:
     _rl_load      = railing_dead_load_kN_m()   # kN/m — IRC 6:2017 Cl.206.5 (150 kg/m)
     _rl_height_m  = 1100 / 1e3                 # m    — IRC 5:2015 Cl.109.7.2.3 minimum
 
-    _update(KEY_RL_TYPE,       "IRC 5 - RCC Railing")
+    _update(KEY_RL_TYPE,       "As per IRC 6")
     _update(KEY_RL_WIDTH,      DEFAULT_RAILING_WIDTH)  # m
     _update(KEY_RL_HEIGHT,     _rl_height_m)           # m
     _update(KEY_RL_LOAD_MODE,  "As per IRC 6")
@@ -173,6 +181,71 @@ def _update_typical_section_defaults(input_dict: dict) -> None:
     _update(KEY_WC_MATERIAL,  "Concrete")  # VALUES_WEARING_COAT_MATERIAL[0]
     _update(KEY_WC_DENSITY,   24.0)        # kN/m³
     _update(KEY_WC_THICKNESS, 50.0)        # mm
+
+def _update_loading_tab_defaults(input_dict: dict) -> None:
+    """Fill Loading tab keys that are None with schema defaults."""
+
+    def _update(key, value):
+        if input_dict.get(key) is None:
+            input_dict[key] = value
+
+    # ── Permanent Load ─────────────────────────────────────────────────────
+    _update(KEY_PL_SELF_WEIGHT_FACTOR,      "1.00")
+
+    # ── Live Load ──────────────────────────────────────────────────────────
+    _update(KEY_LL_IRC_CLASS_A,             True)
+    _update(KEY_LL_IRC_AA_WHEELED,          True)
+    _update(KEY_LL_IRC_AA_TRACKED,          True)
+    _update(KEY_LL_IRC_70R_WHEELED,         True)
+    _update(KEY_LL_IRC_70R_TRACKED,         True)
+    _update(KEY_LL_IRC_70R_BOGIE,           True)
+    _update(KEY_LL_IRC_CLASS_SV,            True)
+    _update(KEY_LL_IRC_CLASS_FATIGUE,       True)
+    _update(KEY_LL_CUSTOM_VEHICLES,         [])
+    _update(KEY_LL_ECCENTRICITY,            "1.2")
+    _update(KEY_LL_FOOTPATH_PRESSURE_MODE,  "As per IRC 6")
+    _update(KEY_LL_FOOTPATH_PRESSURE_VALUE, "")
+
+    # ── Seismic Load ───────────────────────────────────────────────────────
+    _update(KEY_SL_IMPORTANCE_FACTOR,       "1.0")
+    _update(KEY_SL_SOIL_TYPE,               "Type I \u2013 Rocky or Hard")
+    _update(KEY_SL_TIME_PERIOD,             "0.5")
+    _update(KEY_SL_DAMPING,                 "2")
+    _update(KEY_SL_RESPONSE_REDUCTION,      "1")
+    _update(KEY_SL_DEAD_LOAD_MODE,          "Automatic")
+    _update(KEY_SL_DEAD_LOAD_VALUE,         "")
+    _update(KEY_SL_LIVE_LOAD_MODE,          "Automatic")
+    _update(KEY_SL_LIVE_LOAD_VALUE,         "")
+
+    # ── Wind Load ──────────────────────────────────────────────────────────
+    _update(KEY_WL_AVG_EXPOSED_HEIGHT,      "10")
+    _update(KEY_WL_TERRAIN_TYPE,            "Plain Terrain")
+    _update(KEY_WL_SITE_TOPOGRAPHY,         "Flat")
+    _update(KEY_WL_GUST_FACTOR_MODE,        "As per IRC 6")
+    _update(KEY_WL_GUST_FACTOR_VALUE,       "")
+    _update(KEY_WL_DRAG_COEFF_MODE,         "As per IRC 6")
+    _update(KEY_WL_DRAG_COEFF_VALUE,        "")
+    _update(KEY_WL_DRAG_COEFF_LL_MODE,      "As per IRC 6")
+    _update(KEY_WL_DRAG_COEFF_LL_VALUE,     "")
+    _update(KEY_WL_LIFT_COEFF_MODE,         "As per IRC 6")
+    _update(KEY_WL_LIFT_COEFF_VALUE,        "")
+    _update(KEY_WL_SUPER_AREA_ELEV_MODE,    "Automatic")
+    _update(KEY_WL_SUPER_AREA_ELEV_VALUE,   "")
+    _update(KEY_WL_SUPER_AREA_PLAIN_MODE,   "Automatic")
+    _update(KEY_WL_SUPER_AREA_PLAIN_VALUE,  "")
+    _update(KEY_WL_EXPOSED_FRONTAL_MODE,    "Automatic")
+    _update(KEY_WL_EXPOSED_FRONTAL_VALUE,   "")
+    _update(KEY_WL_WIND_ECC_DECK_MODE,      "As per IRC 6")
+    _update(KEY_WL_WIND_ECC_DECK_VALUE,     "")
+    _update(KEY_WL_WIND_LL_ECC_MODE,        "As per IRC 6")
+    _update(KEY_WL_WIND_LL_ECC_VALUE,       "")
+
+    # ── Temperature Load ───────────────────────────────────────────────────
+    _update(KEY_TL_THERMAL_COEFF_STEEL,     "12.0e-6")
+    _update(KEY_TL_THERMAL_COEFF_RCC,       "12.0e-6")
+
+    # ── Load Combination ───────────────────────────────────────────────────
+    _update(KEY_LC_COMBINATIONS,            [])
 
 def _update_support_conditions_defaults(input_dict: dict) -> None:
     """Fill Support Conditions tab keys that are None with schema defaults."""
@@ -234,10 +307,6 @@ def _update_design_options_cont_defaults(input_dict: dict) -> None:
     _update(KEY_DO_SLS_DEFLECTION,     True)
     _update(KEY_DO_SLS_CRACK_WIDTH,    True)
 
-    # Temporary
-    _update(KEY_LC_COMBINATIONS, [])
-    _update(KEY_LL_CUSTOM_VEHICLES, [])
-
 
 def solve_extend_basic_input_dict(basic_input_dict: dict) -> None:
     """Parse basic inputs and solve bridge layout. Updates basic_input_dict in-place."""
@@ -256,6 +325,8 @@ def solve_extend_basic_input_dict(basic_input_dict: dict) -> None:
 
     # Fill sub-tab defaults before reading any typical-section keys (e.g. footpath width)
     _update_typical_section_defaults(basic_input_dict)
+
+    _update_loading_tab_defaults(basic_input_dict)
 
     _update_support_conditions_defaults(basic_input_dict)
     

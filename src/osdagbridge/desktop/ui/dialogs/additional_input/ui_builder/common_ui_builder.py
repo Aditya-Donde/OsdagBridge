@@ -289,7 +289,7 @@ class UIBuilder(QWidget):
                     grid.addWidget(field, row_idx, col, 1, 2)
                     col += 2
                 elif ftype == TYPE_CUSTOM_VEHICLE:
-                    from osdagbridge.desktop.ui.dialogs.additional_input._custom_vehicle_widget import CustomVehicleWidget
+                    from osdagbridge.desktop.ui.dialogs.additional_input.ui_builder._custom_vehicle_widget import CustomVehicleWidget
                     field = CustomVehicleWidget(
                         field_id=field_def.get("id", ""),
                         on_click=field_def.get("on_click", ""),
@@ -456,7 +456,7 @@ class UIBuilder(QWidget):
             return self._create_mode_line_field(field_def, owner, ai)
         
         elif ftype == TYPE_LOAD_COMBINATION:
-            from osdagbridge.desktop.ui.dialogs.additional_input._load_combination_widget import LoadCombinationWidget
+            from osdagbridge.desktop.ui.dialogs.additional_input.ui_builder._load_combination_widget import LoadCombinationWidget
             return LoadCombinationWidget(
                 field_id=field_def.get("id", ""),
                 on_click=field_def.get("on_click", ""),
@@ -465,7 +465,7 @@ class UIBuilder(QWidget):
             )
         
         elif ftype == TYPE_CUSTOM_VEHICLE:
-            from osdagbridge.desktop.ui.dialogs.additional_input._custom_vehicle_widget import CustomVehicleWidget
+            from osdagbridge.desktop.ui.dialogs.additional_input.ui_builder._custom_vehicle_widget import CustomVehicleWidget
             return CustomVehicleWidget(
                 field_id=field_def.get("id", ""),
                 on_click=field_def.get("on_click", ""),
@@ -709,7 +709,7 @@ class UIBuilder(QWidget):
 
         btn.clicked.connect(_open_bounds)
         return btn
-    
+
     def _create_mode_line_field(self, field_def: dict, owner, ai) -> QWidget:
         """Combo (mode) + QLineEdit (value) pair."""
         field_id   = field_def.get("id", "")
@@ -719,14 +719,16 @@ class UIBuilder(QWidget):
         choices    = field_def.get("mode_choices", [])
 
         wrapper = QWidget()
+        wrapper.setFixedWidth(200)
+        wrapper.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         h = QHBoxLayout(wrapper)
         h.setContentsMargins(0, 0, 0, 0)
         h.setSpacing(8)
 
         mode_combo = QComboBox()
+        mode_combo.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         mode_combo.addItems(choices)
         mode_combo.setObjectName(field_id + ".mode")
-        mode_combo.setFixedWidth(96)
         if hasattr(owner, "style_input_field"):
             owner.style_input_field(mode_combo)
         else:
@@ -734,9 +736,9 @@ class UIBuilder(QWidget):
             apply_field_style(mode_combo)
 
         value_input = QLineEdit()
+        value_input.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         value_input.setObjectName(field_id + ".value")
         value_input.setEnabled(False)
-        value_input.setFixedWidth(96)
         if hasattr(owner, "style_input_field"):
             owner.style_input_field(value_input)
         else:
@@ -748,21 +750,20 @@ class UIBuilder(QWidget):
         if bind_value:
             setattr(owner, bind_value, value_input)
 
-        def _on_mode_changed(text, _vi=value_input, _choices=choices):
-            if _choices and text == _choices[0]:  # first = auto → hide
+        def _on_mode_changed(text, _vi=value_input, _choices=choices, _h=h):
+            if _choices and text == _choices[0]:
                 _vi.hide()
-                _vi.setEnabled(False)
-            else:                                  # anything else → show
+                _h.setStretch(0, 1)
+                _h.setStretch(1, 0)
+            else:
                 _vi.show()
-                _vi.setEnabled(True)
+                _h.setStretch(0, 1)
+                _h.setStretch(1, 1)
 
         mode_combo.currentTextChanged.connect(_on_mode_changed)
 
-        # Set initial state
-        if choices:
-            value_input.hide()  # first choice is always selected initially → hide
-        else:
-            value_input.show()
+        if on_change and hasattr(owner, on_change):
+            mode_combo.currentTextChanged.connect(getattr(owner, on_change))
 
         if ai and field_id:
             mode_combo.currentTextChanged.connect(
@@ -774,8 +775,19 @@ class UIBuilder(QWidget):
 
         h.addWidget(mode_combo, 1)
         h.addWidget(value_input, 1)
+
+        # Set initial state
+        if choices:
+            value_input.hide()
+            h.setStretch(0, 1)
+            h.setStretch(1, 0)
+        else:
+            value_input.show()
+            h.setStretch(0, 1)
+            h.setStretch(1, 1)
+
         return wrapper
-    
+
     def _build_tabs_layout(self, parent_layout):
         from PySide6.QtWidgets import QTabWidget
         tab_widget = QTabWidget()
@@ -788,12 +800,14 @@ class UIBuilder(QWidget):
             "QTabBar::right-arrow { image:none; border:none; background:transparent; }"
             "QTabBar::left-arrow  { image:none; border:none; background:transparent; }"
             "QTabBar::left-arrow:!enabled { width: 0px; }"
+            "QTabBar::tab:disabled { color: #a0a0a0; }"
         )
 
         for tab_def in self._schema.get("tabs", []):
             title        = tab_def.get("title", "")
             schema       = tab_def.get("schema")
             widget_class = tab_def.get("widget_class")
+            is_disbled   = tab_def.get("disable", False)
 
             if widget_class:
                 widget = widget_class(self.owner)
@@ -810,5 +824,7 @@ class UIBuilder(QWidget):
                 continue
 
             tab_widget.addTab(widget, title)
+            if is_disbled:
+                tab_widget.setTabEnabled(tab_widget.count() - 1, False)
 
         parent_layout.addWidget(tab_widget)

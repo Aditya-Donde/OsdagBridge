@@ -11,7 +11,7 @@ from osdagbridge.core.utils.common import *
 from osdagbridge.desktop.ui.dialogs.tabs.common import apply_field_style
 from osdagbridge.desktop.ui.dialogs.custom_messagebox import CustomMessageBox, MessageBoxType
 from osdagbridge.core.bridge_types.plate_girder.ui_fields_additional_input import TYPICAL_SECTION_SCHEMA
-from osdagbridge.desktop.ui.dialogs.additional_input.common_ui_builder import UIBuilder
+from osdagbridge.desktop.ui.dialogs.additional_input.ui_builder.common_ui_builder import UIBuilder
 from osdagbridge.desktop.cad.irc5_geometry import (
     CrashBarrierGeometry,
     MedianGeometry,

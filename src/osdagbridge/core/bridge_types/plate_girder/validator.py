@@ -264,6 +264,151 @@ class BridgeInputValidator:
 
         # ═══TYPICAL-SECTION-TAB-VALIDATORS-ENDS═══════════════════════════════════════════════════════════
 
+        # ═══LOADING-TAB-VALIDATORS-STARTS════════════════════════════════════════════════════════════════
+        # ── Permanent Load ─────────────────────────────────────────────────────
+        elif key == KEY_PL_SELF_WEIGHT_FACTOR:
+            v = self._to_float(inputs.get(key))
+            if v is None: return 1.0, "Self weight modification factor must be a numeric value."
+            if v < 0.0:   return 0.0, "Self weight modification factor is outside the practical range allowed in the software."
+            if v > 10.0:  return 10.0, "Self weight modification factor is outside the practical range allowed in the software."
+
+        # ── Live Load ──────────────────────────────────────────────────────────
+        elif key == KEY_LL_ECCENTRICITY:
+            v = self._to_float(inputs.get(key))
+            if v is None:  return 0.0, "Eccentricity from top of deck must be a numeric value."
+            if v < -10.0:  return -10.0, "Eccentricity from top of deck is outside the practical range allowed in the software."
+            if v > 10.0:   return 10.0, "Eccentricity from top of deck is outside the practical range allowed in the software."
+
+        elif key == KEY_LL_FOOTPATH_PRESSURE_VALUE:
+            mode = inputs.get(KEY_LL_FOOTPATH_PRESSURE_MODE)
+            if mode != "Custom":
+                return None
+            v = self._to_float(inputs.get(key))
+            if v is None:   return 0.0, "Footpath pressure must be a numeric value."
+            if v < 0.0:     return 0.0, "Footpath pressure is outside the practical range allowed in the software."
+            if v > 5000.0:  return 5000.0, "Footpath pressure is outside the practical range allowed in the software."
+
+        # Custom vehicle popup validators — placeholder
+
+        # ── Seismic Load ───────────────────────────────────────────────────────
+        elif key == KEY_SL_IMPORTANCE_FACTOR:
+            v = self._to_float(inputs.get(key))
+            if v is None: return 1.0, "Importance factor must be a numeric value."
+            if v < 0.0:   return 0.0, "Importance factor is outside the practical range allowed in the software."
+            if v > 10.0:  return 10.0, "Importance factor is outside the practical range allowed in the software."
+
+        elif key == KEY_SL_TIME_PERIOD:
+            v = self._to_float(inputs.get(key))
+            if v is None: return 0.0, "Fundamental time period must be a numeric value."
+            if v < 0.0:   return 0.0, "Fundamental time period must be between 0 and 4 seconds (outside IRC 6 range)."
+            if v > 4.0:   return 4.0, "Fundamental time period must be between 0 and 4 seconds (outside IRC 6 range)."
+
+        elif key == KEY_SL_DAMPING:
+            v = self._to_float(inputs.get(key))
+            if v is None: return 5.0, "Damping percentage must be a numeric value."
+            if v < 2.0:   return 2.0, "Damping percentage must be between 2% and 10% (outside IRC 6 range)."
+            if v > 10.0:  return 10.0, "Damping percentage must be between 2% and 10% (outside IRC 6 range)."
+
+        elif key == KEY_SL_DEAD_LOAD_VALUE:
+            mode = inputs.get(KEY_SL_DEAD_LOAD_MODE)
+            if mode != "Custom":
+                return None
+            v = self._to_float(inputs.get(key))
+            if v is None: return 0.0, "Dead load must be a numeric value."
+
+        elif key == KEY_SL_LIVE_LOAD_VALUE:
+            mode = inputs.get(KEY_SL_LIVE_LOAD_MODE)
+            if mode != "Custom":
+                return None
+            v = self._to_float(inputs.get(key))
+            if v is None: return 0.0, "Live load must be a numeric value."
+
+        # ── Wind Load ──────────────────────────────────────────────────────────
+        elif key == KEY_WL_AVG_EXPOSED_HEIGHT:
+            v = self._to_float(inputs.get(key))
+            if v is None: return 0.0, "Average exposed height must be a numeric value."
+            if v > 100.0: return 100.0, "Average exposed height must not exceed 100 m (outside IRC 6 range)."
+
+        elif key == KEY_WL_GUST_FACTOR_VALUE:
+            mode = inputs.get(KEY_WL_GUST_FACTOR_MODE)
+            if mode != "Custom":
+                return None
+            v = self._to_float(inputs.get(key))
+            if v is None: return 2.0, "Custom gust factor must be a numeric value."
+            if v < 2.0:   return 2.0, "Custom gust factor is outside the practical range allowed in the software."
+            if v > 10.0:  return 10.0, "Custom gust factor is outside the practical range allowed in the software."
+
+        elif key == KEY_WL_DRAG_COEFF_VALUE:
+            mode = inputs.get(KEY_WL_DRAG_COEFF_MODE)
+            if mode != "Custom":
+                return None
+            v = self._to_float(inputs.get(key))
+            if v is None: return 1.0, "Custom drag coefficient must be a numeric value."
+            if v < 1.0:   return 1.0, "Custom drag coefficient is outside the practical range allowed in the software."
+            if v > 10.0:  return 10.0, "Custom drag coefficient is outside the practical range allowed in the software."
+
+        elif key == KEY_WL_DRAG_COEFF_LL_VALUE:
+            mode = inputs.get(KEY_WL_DRAG_COEFF_LL_MODE)
+            if mode != "Custom":
+                return None
+            v = self._to_float(inputs.get(key))
+            if v is None: return 1.0, "Custom drag coefficient against live load must be a numeric value."
+            if v < 1.0:   return 1.0, "Custom drag coefficient against live load is outside the practical range allowed in the software."
+            if v > 10.0:  return 10.0, "Custom drag coefficient against live load is outside the practical range allowed in the software."
+
+        elif key == KEY_WL_LIFT_COEFF_VALUE:
+            mode = inputs.get(KEY_WL_LIFT_COEFF_MODE)
+            if mode != "Custom":
+                return None
+            v = self._to_float(inputs.get(key))
+            if v is None: return 1.0, "Custom lift coefficient must be a numeric value."
+            if v < 1.0:   return 1.0, "Custom lift coefficient is outside the practical range allowed in the software."
+            if v > 10.0:  return 10.0, "Custom lift coefficient is outside the practical range allowed in the software."
+
+        elif key == KEY_WL_SUPER_AREA_ELEV_VALUE:
+            mode = inputs.get(KEY_WL_SUPER_AREA_ELEV_MODE)
+            if mode != "Custom":
+                return None
+            v = self._to_float(inputs.get(key))
+            if v is None: return 0.0, "Superstructure area in elevation must be a numeric value."
+
+        elif key == KEY_WL_SUPER_AREA_PLAIN_VALUE:
+            mode = inputs.get(KEY_WL_SUPER_AREA_PLAIN_MODE)
+            if mode != "Custom":
+                return None
+            v = self._to_float(inputs.get(key))
+            if v is None: return 0.0, "Superstructure area in plan must be a numeric value."
+
+        elif key == KEY_WL_EXPOSED_FRONTAL_VALUE:
+            mode = inputs.get(KEY_WL_EXPOSED_FRONTAL_MODE)
+            if mode != "Custom":
+                return None
+            v = self._to_float(inputs.get(key))
+            if v is None: return 0.0, "Exposed frontal area of live load must be a numeric value."
+
+        elif key == KEY_WL_WIND_ECC_DECK_VALUE:
+            v = self._to_float(inputs.get(key))
+            if v is None:  return 0.0, "Wind load eccentricity from top of deck must be a numeric value."
+            if v < -10.0:  return -10.0, "Wind load eccentricity from top of deck is outside the practical range allowed in the software."
+            if v > 10.0:   return 10.0, "Wind load eccentricity from top of deck is outside the practical range allowed in the software."
+
+        elif key == KEY_WL_WIND_LL_ECC_VALUE:
+            v = self._to_float(inputs.get(key))
+            if v is None:  return 0.0, "Wind on live load eccentricity must be a numeric value."
+            if v < -10.0:  return -10.0, "Wind on live load eccentricity is outside the practical range allowed in the software."
+            if v > 10.0:   return 10.0, "Wind on live load eccentricity is outside the practical range allowed in the software."
+
+        # ── Temperature Load ───────────────────────────────────────────────────
+        elif key == KEY_TL_THERMAL_COEFF_STEEL:
+            v = self._to_float(inputs.get(key))
+            if v is None: return 0.0, "Coefficient of thermal expansion for steel must be a numeric value."
+
+        elif key == KEY_TL_THERMAL_COEFF_RCC:
+            v = self._to_float(inputs.get(key))
+            if v is None: return 0.0, "Coefficient of thermal expansion for RCC must be a numeric value."
+
+        # ═══LOADING-TAB-VALIDATORS-ENDS══════════════════════════════════════════════════════════════════
+
 
         # ═══SUPPORT-CONDITION-TAB-VALIDATORS-STARTS═════════════════════════════════════════════════════
         
