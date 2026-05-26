@@ -591,18 +591,14 @@ class CustomWindow(QWidget):
         if not self.input_dock:
             return
 
-        span = self.input_dict.get(KEY_SPAN)
-        cw = self.input_dict.get(KEY_CARRIAGEWAY_WIDTH)
-        
-        # If any field changed (is_require_field_changed) or if critical geometry 
-        # fields are present, always ensure the layout solver runs to sync
-        # girder spacing, overhang, etc. before drawing.
-        if span not in (None, "") and cw not in (None, ""):
+        # Keep CAD numeric labels in sync with homepage edits by re-solving
+        # derived layout values (girders/spacing/overhang/overall width) on-demand.
+        if self.input_dock.is_require_field_changed:
             try:
-                # This ensures mathematical consistency on every single click/change
                 solve_extend_basic_input_dict(self.input_dict)
                 self.input_dock.is_require_field_changed = False
             except Exception:
+                # If solver fails mid-edit, keep raw values for best-effort redraw.
                 pass
 
         # Apply state to CAD UI & Update Cad-State
