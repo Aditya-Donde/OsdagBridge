@@ -309,9 +309,20 @@ class FrontendData:
             (KEY_BTN_STEEL_DESIGN, "Analysis and Design Results Summary",
                 TYPE_ONLY_BUTTON, None, True, "No Validator",
                 {
-                    "action": "open_steel_design"
+                    "action": "open_steel_design",
+                    "group_end": True
                 }),
             
+            # ─── Transverse Design ─────────────────────────────────────────────────────────
+
+            (KEY_BTN_TRANSVERSE_DESIGN, "Design Summary",
+                TYPE_ONLY_BUTTON, None, True, "No Validator",
+                {
+                    "action": "open_transverse_design",
+                    "group_title": "Transverse Design",
+                    "group_end": True
+                }),
+
             # ─── Deck Design ─────────────────────────────────────────────────────────
 
             (KEY_BTN_DECK_DESIGN, "Design Summary",

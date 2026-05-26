@@ -605,6 +605,10 @@ class OutputDock(QWidget):
         from osdagbridge.desktop.ui.dialogs.steel_design import SteelDesign
         SteelDesign(parent=self.parent).exec()
 
+    def open_transverse_design(self):
+        from osdagbridge.desktop.ui.dialogs.transverse_member_design import TransverseMemberDesign
+        TransverseMemberDesign(parent=self.parent).exec()
+
     def open_deck_design(self):
         from osdagbridge.desktop.ui.dialogs.deck_design import DeckDesign
         DeckDesign(parent=self.parent).exec()
