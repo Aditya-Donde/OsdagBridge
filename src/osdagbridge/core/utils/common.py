@@ -285,6 +285,7 @@ KEY_LL_IRC_AA_WHEELED           = "loading.live_load.irc.aa_wheeled"
 KEY_LL_IRC_AA_TRACKED           = "loading.live_load.irc.aa_tracked"
 KEY_LL_IRC_CLASS_SV             = "loading.live_load.irc.class_sv"
 KEY_LL_IRC_70R_BOGIE            = "loading.live_load.irc.70r_bogie"
+KEY_LL_IRC_CLASS_FATIGUE        = "loading.live_load.irc.class_fatigue"
 
 # Custom Vehicle
 KEY_LL_CUSTOM_VEHICLES = "loading.live_load.custom_vehicles"
@@ -293,6 +294,7 @@ KEY_LL_CUSTOM_VEHICLES = "loading.live_load.custom_vehicles"
 KEY_LL_ECCENTRICITY             = "loading.live_load.eccentricity"
 
 # Footpath pressure
+KEY_LL_FOOTPATH_PRESSURE   = "loading.live_load.footpath_pressure"
 KEY_LL_FOOTPATH_PRESSURE_MODE   = "loading.live_load.footpath_pressure.mode"
 KEY_LL_FOOTPATH_PRESSURE_VALUE  = "loading.live_load.footpath_pressure.value"
 
@@ -304,10 +306,15 @@ KEY_SL_SOIL_TYPE                = "loading.seismic_load.soil_type"
 KEY_SL_TIME_PERIOD              = "loading.seismic_load.time_period"
 KEY_SL_DAMPING                  = "loading.seismic_load.damping"
 KEY_SL_RESPONSE_REDUCTION       = "loading.seismic_load.response_reduction_factor"
+
+KEY_SL_DEAD_LOAD                = "loading.seismic_load.dead_load"
 KEY_SL_DEAD_LOAD_MODE           = "loading.seismic_load.dead_load.mode"
 KEY_SL_DEAD_LOAD_VALUE          = "loading.seismic_load.dead_load.value"
+
+KEY_SL_LIVE_LOAD                = "loading.seismic_load.live_load"
 KEY_SL_LIVE_LOAD_MODE           = "loading.seismic_load.live_load.mode"
 KEY_SL_LIVE_LOAD_VALUE          = "loading.seismic_load.live_load.value"
+
 KEY_SL_ZONE_FACTOR              = "loading.seismic_load.computed.zone_factor"
 KEY_SL_SPECTRAL_COEFF           = "loading.seismic_load.computed.spectral_coeff"
 KEY_SL_HORIZONTAL_COEFF         = "loading.seismic_load.computed.horizontal_coeff"
@@ -319,24 +326,43 @@ KEY_WL_BASIC_WIND_SPEED         = "loading.wind_load.basic_wind_speed"
 KEY_WL_AVG_EXPOSED_HEIGHT       = "loading.wind_load.avg_exposed_height"
 KEY_WL_TERRAIN_TYPE             = "loading.wind_load.terrain_type"
 KEY_WL_SITE_TOPOGRAPHY          = "loading.wind_load.site_topography"
+
+KEY_WL_GUST_FACTOR              = "loading.wind_load.gust_factor"
 KEY_WL_GUST_FACTOR_MODE         = "loading.wind_load.gust_factor.mode"
 KEY_WL_GUST_FACTOR_VALUE        = "loading.wind_load.gust_factor.value"
+
+KEY_WL_DRAG_COEFF               = "loading.wind_load.drag_coeff"
 KEY_WL_DRAG_COEFF_MODE          = "loading.wind_load.drag_coeff.mode"
 KEY_WL_DRAG_COEFF_VALUE         = "loading.wind_load.drag_coeff.value"
+
+KEY_WL_DRAG_COEFF_LL            = "loading.wind_load.drag_coeff_ll"
 KEY_WL_DRAG_COEFF_LL_MODE       = "loading.wind_load.drag_coeff_ll.mode"
 KEY_WL_DRAG_COEFF_LL_VALUE      = "loading.wind_load.drag_coeff_ll.value"
+
+KEY_WL_LIFT_COEFF               = "loading.wind_load.lift_coeff"
 KEY_WL_LIFT_COEFF_MODE          = "loading.wind_load.lift_coeff.mode"
 KEY_WL_LIFT_COEFF_VALUE         = "loading.wind_load.lift_coeff.value"
+
+KEY_WL_SUPER_AREA_ELEV          = "loading.wind_load.super_area_elev"
 KEY_WL_SUPER_AREA_ELEV_MODE     = "loading.wind_load.super_area_elev.mode"
 KEY_WL_SUPER_AREA_ELEV_VALUE    = "loading.wind_load.super_area_elev.value"
+
+KEY_WL_SUPER_AREA_PLAIN         = "loading.wind_load.super_area_plain"
 KEY_WL_SUPER_AREA_PLAIN_MODE    = "loading.wind_load.super_area_plain.mode"
 KEY_WL_SUPER_AREA_PLAIN_VALUE   = "loading.wind_load.super_area_plain.value"
+
+KEY_WL_EXPOSED_FRONTAL          = "loading.wind_load.exposed_frontal_area"
 KEY_WL_EXPOSED_FRONTAL_MODE     = "loading.wind_load.exposed_frontal_area.mode"
 KEY_WL_EXPOSED_FRONTAL_VALUE    = "loading.wind_load.exposed_frontal_area.value"
+
+KEY_WL_WIND_ECC_DECK            = "loading.wind_load.wind_ecc_deck"
 KEY_WL_WIND_ECC_DECK_MODE       = "loading.wind_load.wind_ecc_deck.mode"
 KEY_WL_WIND_ECC_DECK_VALUE      = "loading.wind_load.wind_ecc_deck.value"
+
+KEY_WL_WIND_LL_ECC              = "loading.wind_load.wind_ll_ecc"
 KEY_WL_WIND_LL_ECC_MODE         = "loading.wind_load.wind_ll_ecc.mode"
 KEY_WL_WIND_LL_ECC_VALUE        = "loading.wind_load.wind_ll_ecc.value"
+
 KEY_WL_HOURLY_MEAN_WIND         = "loading.wind_load.computed.hourly_mean_wind"
 KEY_WL_HOURLY_WIND_PRESSURE     = "loading.wind_load.computed.hourly_wind_pressure"
 KEY_WL_TRANSVERSE_WIND_FORCE    = "loading.wind_load.computed.transverse_wind_force"

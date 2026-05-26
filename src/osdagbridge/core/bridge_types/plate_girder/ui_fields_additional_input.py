@@ -421,7 +421,6 @@ TYPICAL_SECTION_SCHEMA = {
 }
 
 
-
 # ── Loading Tab ───────────────────────────────────────────────────────────────
 
 _PERMANENT_LOAD_TAB_SCHEMA = {
@@ -441,7 +440,7 @@ _PERMANENT_LOAD_TAB_SCHEMA = {
                         "id":          KEY_PL_SELF_WEIGHT_FACTOR,
                         "label":       "Self-weight modification factor",
                         "type":        TYPE_TEXTBOX,
-                        "placeholder": "0.0 - 10.0",
+                        "placeholder": "",
                         "bind":        "self_weight_factor_input",
                     }]
                 },
@@ -471,30 +470,31 @@ _LIVE_LOAD_TAB_SCHEMA = {
             "column": 0,
             "title":  "Vehicles from IRC 6",
             "rows": [
-                {"fields": [{"id": KEY_LL_IRC_CLASS_A,     "label": "Class A",           "type": TYPE_CHECKBOX, "label_first": True}]},
-                {"fields": [{"id": KEY_LL_IRC_70R_WHEELED, "label": "Class 70R Wheeled", "type": TYPE_CHECKBOX, "label_first": True}]},
-                {"fields": [{"id": KEY_LL_IRC_70R_TRACKED, "label": "Class 70R Tracked", "type": TYPE_CHECKBOX, "label_first": True}]},
-                {"fields": [{"id": KEY_LL_IRC_AA_WHEELED,  "label": "Class AA Wheeled",  "type": TYPE_CHECKBOX, "label_first": True}]},
-                {"fields": [{"id": KEY_LL_IRC_AA_TRACKED,  "label": "Class AA Tracked",  "type": TYPE_CHECKBOX, "label_first": True}]},
-                {"fields": [{"id": KEY_LL_IRC_CLASS_SV,    "label": "Class SV",          "type": TYPE_CHECKBOX, "label_first": True}]},
-                {"fields": [{"id": KEY_LL_IRC_70R_BOGIE,   "label": "Class 70R Bogie",   "type": TYPE_CHECKBOX, "label_first": True}]},
+                {"fields": [{"id": KEY_LL_IRC_CLASS_A,       "label": "Class A",           "type": TYPE_CHECKBOX, "label_first": True}]},
+                {"fields": [{"id": KEY_LL_IRC_AA_WHEELED,    "label": "Class AA Wheeled",  "type": TYPE_CHECKBOX, "label_first": True}]},
+                {"fields": [{"id": KEY_LL_IRC_AA_TRACKED,    "label": "Class AA Tracked",  "type": TYPE_CHECKBOX, "label_first": True}]},
+                {"fields": [{"id": KEY_LL_IRC_70R_WHEELED,   "label": "Class 70R Wheeled", "type": TYPE_CHECKBOX, "label_first": True}]},
+                {"fields": [{"id": KEY_LL_IRC_70R_TRACKED,   "label": "Class 70R Tracked", "type": TYPE_CHECKBOX, "label_first": True}]},
+                {"fields": [{"id": KEY_LL_IRC_70R_BOGIE,     "label": "Class 70R Bogie",   "type": TYPE_CHECKBOX, "label_first": True}]},
+                {"fields": [{"id": KEY_LL_IRC_CLASS_SV,      "label": "Class SV",          "type": TYPE_CHECKBOX, "label_first": True}]},
+                {"fields": [{"id": KEY_LL_IRC_CLASS_FATIGUE, "label": "Class Fatigue",     "type": TYPE_CHECKBOX, "label_first": True}]},
             ],
         },
 
         # ── Column 0: Custom Vehicle ────────────────────────────────────────
-        {
-            "column": 0,
-            "title":  "Custom Vehicle",
-            "rows": [
-                {
-                    "fields": [{
-                        "id":       KEY_LL_CUSTOM_VEHICLES,
-                        "type":     TYPE_CUSTOM_VEHICLE,
-                        "on_click": "_on_add_custom_vehicle",
-                    }]
-                },
-            ],
-        },
+        # {
+        #     "column": 0,
+        #     "title":  "Custom Vehicle",
+        #     "rows": [
+        #         {
+        #             "fields": [{
+        #                 "id":       KEY_LL_CUSTOM_VEHICLES,
+        #                 "type":     TYPE_CUSTOM_VEHICLE,
+        #                 "on_click": "_on_add_custom_vehicle",
+        #             }]
+        #         },
+        #     ],
+        # },
 
         # ── Column 0: Braking Load + Eccentricity ──────────────────────────────
         {
@@ -515,7 +515,7 @@ _LIVE_LOAD_TAB_SCHEMA = {
                         "id":          KEY_LL_ECCENTRICITY,
                         "label":       "Eccentricity from top of Deck (m)",
                         "type":        TYPE_TEXTBOX,
-                        "placeholder": "0.0 - 100.0",
+                        "placeholder": "",
                         "bind":        "eccentricity_input",
                     }]
                 },
@@ -529,10 +529,10 @@ _LIVE_LOAD_TAB_SCHEMA = {
             "rows": [
                 {
                     "fields": [{
-                        "id":             KEY_LL_FOOTPATH_PRESSURE_MODE,
+                        "id":             KEY_LL_FOOTPATH_PRESSURE,
                         "label":          "Footpath Pressure (kN/mm²)",
                         "type":           TYPE_MODE_LINE,
-                        "mode_choices":   ["Automatic", "User-defined"],
+                        "mode_choices":   ["As per IRC 6", "Custom"],
                         "bind_mode":      "footpath_mode_combo",
                         "bind_value":     "footpath_value_input",
                         "on_mode_change": "_on_footpath_mode_changed",
@@ -580,8 +580,8 @@ _SEISMIC_LOAD_TAB_SCHEMA = {
                         "id":       KEY_SL_SEISMIC_ZONE,
                         "label":    "Seismic Zone",
                         "type":     TYPE_TEXTBOX,
-                        "bind":     "seismic_zone_input",
                         "read_only": True,
+                        
                     }]
                 },
                 {
@@ -590,7 +590,6 @@ _SEISMIC_LOAD_TAB_SCHEMA = {
                         "label":       "Importance Factor, I",
                         "type":        TYPE_TEXTBOX,
                         "placeholder": "Enter value",
-                        "bind":        "importance_factor_input",
                     }]
                 },
                 {
@@ -603,7 +602,6 @@ _SEISMIC_LOAD_TAB_SCHEMA = {
                             "Type II \u2013 Medium Soil",
                             "Type III \u2013 Soft Soil",
                         ],
-                        "bind":    "soil_type_combo",
                     }]
                 },
                 {
@@ -612,7 +610,6 @@ _SEISMIC_LOAD_TAB_SCHEMA = {
                         "label":       "Fundamental Time Period, T (sec)",
                         "type":        TYPE_TEXTBOX,
                         "placeholder": "Enter value",
-                        "bind":        "time_period_input",
                     }]
                 },
                 {
@@ -621,7 +618,6 @@ _SEISMIC_LOAD_TAB_SCHEMA = {
                         "label":       "Damping Percentage",
                         "type":        TYPE_TEXTBOX,
                         "placeholder": "Enter value",
-                        "bind":        "damping_input",
                     }]
                 },
                 {
@@ -635,7 +631,7 @@ _SEISMIC_LOAD_TAB_SCHEMA = {
                 },
                 {
                     "fields": [{
-                        "id":             KEY_SL_DEAD_LOAD_MODE,
+                        "id":             KEY_SL_DEAD_LOAD,
                         "label":          "Dead Load for Seismic Force (kN)",
                         "type":           TYPE_MODE_LINE,
                         "mode_choices":   ["Automatic", "Custom"],
@@ -646,7 +642,7 @@ _SEISMIC_LOAD_TAB_SCHEMA = {
                 },
                 {
                     "fields": [{
-                        "id":             KEY_SL_LIVE_LOAD_MODE,
+                        "id":             KEY_SL_LIVE_LOAD,
                         "label":          "Live Load for Seismic Force (kN)",
                         "type":           TYPE_MODE_LINE,
                         "mode_choices":   ["Automatic", "Custom"],
@@ -719,6 +715,7 @@ _SEISMIC_LOAD_TAB_SCHEMA = {
 
 _WIND_LOAD_TAB_SCHEMA = {
     "id":     KEY_WL_TAB,
+    "label_width": 270,
     "layout": {
         "type":          "columns",
         "columns":       2,
@@ -731,19 +728,19 @@ _WIND_LOAD_TAB_SCHEMA = {
             "column": 0,
             "title":  "Wind Load (WL) Inputs",
             "rows": [
-                {"fields": [{"id": KEY_WL_BASIC_WIND_SPEED,      "label": "Basic Wind Speed, V<sub>b</sub> (m/s)",                           "type": TYPE_TEXTBOX,  "read_only": True,  "bind": "basic_wind_speed_input"}]},
+                {"fields": [{"id": KEY_WL_BASIC_WIND_SPEED,       "label": "Basic Wind Speed, V<sub>b</sub> (m/s)",                           "type": TYPE_TEXTBOX,  "read_only": True,  "bind": "basic_wind_speed_input"}]},
                 {"fields": [{"id": KEY_WL_AVG_EXPOSED_HEIGHT,     "label": "Average Exposed Height, H (m)",                                   "type": TYPE_TEXTBOX,  "placeholder": "10", "bind": "avg_exposed_height_input"}]},
                 {"fields": [{"id": KEY_WL_TERRAIN_TYPE,           "label": "Type of Terrain",                                                 "type": TYPE_COMBOBOX, "choices": ["Plain Terrain", "Terrain with Obstructions"], "bind": "terrain_type_combo"}]},
                 {"fields": [{"id": KEY_WL_SITE_TOPOGRAPHY,        "label": "Site Topography",                                                 "type": TYPE_COMBOBOX, "choices": ["Flat", "Hill, ridge, escarpment or cliff"], "bind": "site_topography_combo"}]},
-                {"fields": [{"id": KEY_WL_GUST_FACTOR_MODE,       "label": "Gust Factor, G",                                                  "type": TYPE_MODE_LINE, "mode_choices": ["As per Code", "Custom"], "bind_mode": "gust_factor_combo",       "bind_value": "gust_factor_value",       "on_mode_change": "_toggle_wind_custom_input"}]},
-                {"fields": [{"id": KEY_WL_DRAG_COEFF_MODE,        "label": "Drag Coefficient, C<sub>D</sub>",                                 "type": TYPE_MODE_LINE, "mode_choices": ["As per Code", "Custom"], "bind_mode": "drag_coeff_combo",         "bind_value": "drag_coeff_value",        "on_mode_change": "_toggle_wind_custom_input"}]},
-                {"fields": [{"id": KEY_WL_DRAG_COEFF_LL_MODE,     "label": "Drag Coefficient against Live Load, C<sub>DLL</sub>",             "type": TYPE_MODE_LINE, "mode_choices": ["As per Code", "Custom"], "bind_mode": "drag_coeff_ll_combo",      "bind_value": "drag_coeff_ll_value",     "on_mode_change": "_toggle_wind_custom_input"}]},
-                {"fields": [{"id": KEY_WL_LIFT_COEFF_MODE,        "label": "Lift Coefficient, C<sub>L</sub>",                                 "type": TYPE_MODE_LINE, "mode_choices": ["As per Code", "Custom"], "bind_mode": "lift_coeff_combo",         "bind_value": "lift_coeff_value",        "on_mode_change": "_toggle_wind_custom_input"}]},
-                {"fields": [{"id": KEY_WL_SUPER_AREA_ELEV_MODE,   "label": "Superstructure Area in Elevation, A<sub>1</sub> (m²)",            "type": TYPE_MODE_LINE, "mode_choices": ["Automatic", "Custom"],   "bind_mode": "super_area_elev_combo",    "bind_value": "super_area_elev_value",   "on_mode_change": "_toggle_wind_custom_input"}]},
-                {"fields": [{"id": KEY_WL_SUPER_AREA_PLAIN_MODE,  "label": "Superstructure Area in Plain, A<sub>3</sub> (m²)",                "type": TYPE_MODE_LINE, "mode_choices": ["Automatic", "Custom"],   "bind_mode": "super_area_plain_combo",   "bind_value": "super_area_plain_value",  "on_mode_change": "_toggle_wind_custom_input"}]},
-                {"fields": [{"id": KEY_WL_EXPOSED_FRONTAL_MODE,   "label": "Exposed Frontal Area of Live Load, A<sub>1LL</sub> (m²)",         "type": TYPE_MODE_LINE, "mode_choices": ["Automatic", "Custom"],   "bind_mode": "exposed_frontal_area_combo","bind_value": "exposed_frontal_area_value","on_mode_change": "_toggle_wind_custom_input"}]},
-                {"fields": [{"id": KEY_WL_WIND_ECC_DECK_MODE,     "label": "Wind Load Eccentricity from Top of Deck (m)",                     "type": TYPE_MODE_LINE, "mode_choices": ["As per Code", "Custom"], "bind_mode": "wind_ecc_deck_combo",      "bind_value": "wind_ecc_deck_value",     "on_mode_change": "_toggle_wind_custom_input"}]},
-                {"fields": [{"id": KEY_WL_WIND_LL_ECC_MODE,       "label": "Wind on Live Load Eccentricity from Top of Deck (m)",             "type": TYPE_MODE_LINE, "mode_choices": ["As per Code", "Custom"], "bind_mode": "wind_ll_ecc_combo",        "bind_value": "wind_ll_ecc_value",       "on_mode_change": "_toggle_wind_custom_input"}]},
+                {"fields": [{"id": KEY_WL_GUST_FACTOR,            "label": "Gust Factor, G",                                                  "type": TYPE_MODE_LINE, "mode_choices": ["As per IRC 6", "Custom"], "bind_mode": "gust_factor_combo",       "bind_value": "gust_factor_value",       "on_mode_change": "_toggle_wind_custom_input"}]},
+                {"fields": [{"id": KEY_WL_DRAG_COEFF,             "label": "Drag Coefficient, C<sub>D</sub>",                                 "type": TYPE_MODE_LINE, "mode_choices": ["As per IRC 6", "Custom"], "bind_mode": "drag_coeff_combo",         "bind_value": "drag_coeff_value",        "on_mode_change": "_toggle_wind_custom_input"}]},
+                {"fields": [{"id": KEY_WL_DRAG_COEFF_LL,          "label": "Drag Coefficient against Live Load, C<sub>DLL</sub>",             "type": TYPE_MODE_LINE, "mode_choices": ["As per IRC 6", "Custom"], "bind_mode": "drag_coeff_ll_combo",      "bind_value": "drag_coeff_ll_value",     "on_mode_change": "_toggle_wind_custom_input"}]},
+                {"fields": [{"id": KEY_WL_LIFT_COEFF,             "label": "Lift Coefficient, C<sub>L</sub>",                                 "type": TYPE_MODE_LINE, "mode_choices": ["As per IRC 6", "Custom"], "bind_mode": "lift_coeff_combo",         "bind_value": "lift_coeff_value",        "on_mode_change": "_toggle_wind_custom_input"}]},
+                {"fields": [{"id": KEY_WL_SUPER_AREA_ELEV,        "label": "Superstructure Area in Elevation, A<sub>1</sub> (m²)",            "type": TYPE_MODE_LINE, "mode_choices": ["Automatic", "Custom"],   "bind_mode": "super_area_elev_combo",    "bind_value": "super_area_elev_value",   "on_mode_change": "_toggle_wind_custom_input"}]},
+                {"fields": [{"id": KEY_WL_SUPER_AREA_PLAIN,       "label": "Superstructure Area in Plain, A<sub>3</sub> (m²)",                "type": TYPE_MODE_LINE, "mode_choices": ["Automatic", "Custom"],   "bind_mode": "super_area_plain_combo",   "bind_value": "super_area_plain_value",  "on_mode_change": "_toggle_wind_custom_input"}]},
+                {"fields": [{"id": KEY_WL_EXPOSED_FRONTAL,        "label": "Exposed Frontal Area of Live Load, A<sub>1LL</sub> (m²)",         "type": TYPE_MODE_LINE, "mode_choices": ["Automatic", "Custom"],   "bind_mode": "exposed_frontal_area_combo","bind_value":"exposed_frontal_area_value","on_mode_change": "_toggle_wind_custom_input"}]},
+                {"fields": [{"id": KEY_WL_WIND_ECC_DECK,          "label": "Wind Load Eccentricity from Top of Deck (m)",                     "type": TYPE_MODE_LINE, "mode_choices": ["As per IRC 6","Custom"], "bind_mode":"wind_ecc_deck_combo",      "bind_value":"wind_ecc_deck_value",     "on_mode_change":"_toggle_wind_custom_input"}]},
+                {"fields": [{"id": KEY_WL_WIND_LL_ECC,            "label": "Wind on Live Load Eccentricity from Top of Deck (m)",             "type": TYPE_MODE_LINE, "mode_choices": ["As per IRC 6", "Custom"], "bind_mode": "wind_ll_ecc_combo",        "bind_value": "wind_ll_ecc_value",       "on_mode_change": "_toggle_wind_custom_input"}]},
             ],
         },
 
@@ -758,7 +755,7 @@ _WIND_LOAD_TAB_SCHEMA = {
                 {"fields": [{"id": KEY_WL_LONGITUDINAL_WIND_FORCE, "label": "Longitudinal Wind Force, F<sub>L</sub> (N)",                     "type": TYPE_TEXTBOX, "read_only": True, "bind": "longitudinal_wind_force_input"}]},
                 {"fields": [{"id": KEY_WL_VERTICAL_WIND_FORCE,     "label": "Vertical Wind Force, F<sub>V</sub> (N)",                         "type": TYPE_TEXTBOX, "read_only": True, "bind": "vertical_wind_force_input"}]},
                 {"fields": [{"id": KEY_WL_TRANSVERSE_WIND_LL,      "label": "Transverse Wind Force on Live Load, F<sub>TLL</sub> (N)",        "type": TYPE_TEXTBOX, "read_only": True, "bind": "transverse_wind_ll_input"}]},
-                {"fields": [{"id": KEY_WL_LONGITUDINAL_WIND_LL,    "label": "Longitudinal Wind Force on Live Load, F<sub>LLL</sub> (N)",      "type": TYPE_TEXTBOX, "read_only": True, "bind": "longitudinal_wind_ll_input"}]},
+                {"fields": [{"id": KEY_WL_LONGITUDINAL_WIND_LL,    "label": "Longitudinal Wind Force on Live Load, F<sub>LLL</sub> (N)", "type": TYPE_TEXTBOX, "read_only": True, "bind": "longitudinal_wind_ll_input"}]},
             ],
         },
 
@@ -951,13 +948,13 @@ LOADING_TAB_SCHEMA = {
     "id":     KEY_LOADING_TAB,
     "layout": {"type": "tabs"},
     "tabs": [
-        {"title": "Permanent Load",   "schema": _PERMANENT_LOAD_TAB_SCHEMA},
-        {"title": "Live Load",        "schema": _LIVE_LOAD_TAB_SCHEMA},
-        {"title": "Seismic Load",     "schema": _SEISMIC_LOAD_TAB_SCHEMA},
-        {"title": "Wind Load",        "schema": _WIND_LOAD_TAB_SCHEMA},
-        {"title": "Temperature Load", "schema": _TEMPERATURE_LOAD_TAB_SCHEMA},
-        # {"title": "Custom Load",      "schema": _CUSTOM_LOAD_TAB_SCHEMA},
-        {"title": "Load Combination", "schema": _LOAD_COMBINATION_TAB_SCHEMA},
+        {"title": "Permanent Load",   "schema": _PERMANENT_LOAD_TAB_SCHEMA                    },
+        {"title": "Live Load",        "schema": _LIVE_LOAD_TAB_SCHEMA                         },
+        {"title": "Seismic Load",     "schema": _SEISMIC_LOAD_TAB_SCHEMA                      },
+        {"title": "Wind Load",        "schema": _WIND_LOAD_TAB_SCHEMA                         },
+        {"title": "Temperature Load", "schema": _TEMPERATURE_LOAD_TAB_SCHEMA                  },
+        {"title": "Custom Load",      "schema": _CUSTOM_LOAD_TAB_SCHEMA,      "disable": True },
+        {"title": "Load Combination", "schema": _LOAD_COMBINATION_TAB_SCHEMA                  },
     ],
 }
 

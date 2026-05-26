@@ -12,7 +12,7 @@ from osdagbridge.desktop.ui.docks.input_dock import InputDock
 from osdagbridge.desktop.ui.docks.output_dock import OutputDock
 from osdagbridge.desktop.ui.docks.log_dock import LogDock
 from osdagbridge.desktop.ui.docks.cad_dual_view import BridgeDualCADWidget
-from osdagbridge.desktop.ui.dialogs.additional_inputs import AdditionalInputs
+from osdagbridge.desktop.ui.dialogs.additional_input.additional_inputs import AdditionalInputs
 from osdagbridge.desktop.ui.dialogs.custom_messagebox import CustomMessageBox, MessageBoxType
 from osdagbridge.desktop.ui.dialogs.loading_popup import LoadingDialogManager
 from osdagbridge.desktop.ui.cad_3d import CAD3DWindow
