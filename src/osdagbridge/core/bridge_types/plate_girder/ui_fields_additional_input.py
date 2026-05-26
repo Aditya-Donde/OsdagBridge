@@ -2041,4 +2041,95 @@ MEMBER_PROPERTIES_SCHEMA_V1 = {
     },
 }
 
-#function -> store in dict design dict
+# Transverse Member Design Dialog Schema
+
+TRANSVERSE_MEMBER_DESIGN_SCHEMA = {
+    "id": "transverse_member_design",
+    "title": "Transverse Member Design",
+    "window": {"width": 1100, "height": 720, "min_width": 950, "min_height": 550},
+
+    # Global bar - only Member ID + Load Combination
+    "global_bar": [
+        {"id": "td_member_id",        "label": "Member ID",        "type": "combo"},
+        {"id": "td_load_combination", "label": "Load Combination", "type": "combo", "default": "Envelope"},
+    ],
+
+    # Details Tab
+    "details_tab": {
+        "id": "td_details",
+        "label": "Details",
+        "left_panel": {
+            "section_inputs": {
+                "label": "Section Inputs:",
+                "label_width": 100,
+                "fields": [
+                    {"id": "td_design",                           "label": "Design:",                            "type": "line",     "read_only": True},
+                    {"id": "td_bracing_type",                     "label": "Type of Bracing:",                   "type": "line",     "read_only": True},
+                    {"id": "td_bracing_section_type",             "label": "Bracing Section Type:",              "type": "line",     "read_only": True},
+                    {"id": "td_bracing_section_designation",      "label": "Bracing Section Designation:",       "type": "line",     "read_only": True},
+                    {"id": "td_top_chord_enabled",                "label": "Top Chord",                          "type": "checkbox", "default": True, "enabled": False},
+                    {"id": "td_top_chord_section_type",           "label": "  Top Chord Section Type:",          "type": "line",     "read_only": True},
+                    {"id": "td_top_chord_section_designation",    "label": "  Top Chord Section Designation:",   "type": "line",     "read_only": True},
+                    {"id": "td_bottom_chord_enabled",             "label": "Bottom Chord",                       "type": "checkbox", "default": True, "enabled": False},
+                    {"id": "td_bottom_chord_section_type",        "label": "  Bottom Chord Section Type:",       "type": "line",     "read_only": True},
+                    {"id": "td_bottom_chord_section_designation", "label": "  Bottom Chord Section Designation:","type": "line",     "read_only": True},
+                    {"id": "td_spacing",                          "label": "Spacing:",                           "type": "line",     "read_only": True},
+                ],
+            },
+        },
+        "right_panel": {
+            "bracing_diagram": {"id": "td_bracing_diagram", "height": 170},
+            "section_cards": [
+                {
+                    "id":    "td_bracing_props",
+                    "title": "Bracing",
+                    "col1": ["L (m)", "H (m)", "B (m)", "tw (m)", "tF (m)", "rz (cm)"],
+                    "col2": ["M (Kg/m)", "A (cm²)", "Iz (cm⁴)", "Iv (cm⁴)", "rv (cm)"],
+                    "col3": ["Zz (cm³)", "Zv (cm³)", "Zuz (cm³)", "Zuv (cm³)"],
+                },
+                {
+                    "id":    "td_top_chord_props",
+                    "title": "Top Chord",
+                    "col1": ["L (m)", "H (m)", "B (m)", "tw (m)", "tF (m)", "rz (cm)"],
+                    "col2": ["M (Kg/m)", "A (cm²)", "Iz (cm⁴)", "Iv (cm⁴)", "rv (cm)"],
+                    "col3": ["Zz (cm³)", "Zv (cm³)", "Zuz (cm³)", "Zuv (cm³)"],
+                },
+                {
+                    "id":    "td_bottom_chord_props",
+                    "title": "Bottom Chord",
+                    "col1": ["L (m)", "H (m)", "B (m)", "tw (m)", "tF (m)", "rz (cm)"],
+                    "col2": ["M (Kg/m)", "A (cm²)", "Iz (cm⁴)", "Iv (cm⁴)", "rv (cm)"],
+                    "col3": ["Zz (cm³)", "Zv (cm³)", "Zuz (cm³)", "Zuv (cm³)"],
+                },
+            ],
+        },
+    },
+
+    # Design Check Tab
+    "design_check_tab": {
+        "id": "td_design_check",
+        "label": "Design Check",
+        "forces_table": {
+            "id":      "td_forces_table",
+            "title":   "Design Forces Summary:",
+            "columns": ["Member", "Tension (kN)", "Compression (kN)", "Gov. LC"],
+            "always_visible": True,
+        },
+        "results_table": {
+            "id": "td_design_check_results",
+            "title": "Design Check Results:",
+            "min_height": 200,
+            "columns": [
+                "Member",
+                "Force Type",
+                "Force (kN)",
+                "Section",
+                "Capacity (kN)",
+                "Eff. Ratio",
+                "λ (slend.)",
+                "Connection",
+                "Status",
+            ],
+        },
+    },
+}
