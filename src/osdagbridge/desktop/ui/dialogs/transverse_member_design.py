@@ -20,6 +20,17 @@ from osdagbridge.desktop.ui.utils.styled_scroll_area import StyledScrollArea
 from osdagbridge.core.bridge_types.plate_girder.ui_fields_additional_input import (
     TRANSVERSE_MEMBER_DESIGN_SCHEMA,
 )
+from osdagbridge.core.utils.common import (
+    KEY_TD_MEMBER_ID,
+    KEY_TD_LOAD_COMBINATION,
+    KEY_TD_SECTION_INPUTS_BRACING_TYPE,
+    KEY_TD_SECTION_INPUTS_TOP_CHORD_ENABLED,
+    KEY_TD_SECTION_INPUTS_BOTTOM_CHORD_ENABLED,
+    KEY_TD_SECTION_INPUTS_SPACING,
+    KEY_TD_SECTION_INPUTS_BRACING_SECTION_DESIGNATION,
+    KEY_TD_SECTION_INPUTS_TOP_CHORD_SECTION_DESIGNATION,
+    KEY_TD_SECTION_INPUTS_BOTTOM_CHORD_SECTION_DESIGNATION,
+)
 
 # ── Style constants ───────────────────────────────────────────────────────────
 
@@ -265,7 +276,7 @@ class TransverseMemberDesign(QDialog):
             row.addWidget(card, 1)
 
         # Wire Member ID change signal
-        member_combo = self._widgets.get("td_member_id")
+        member_combo = self._widgets.get(KEY_TD_MEMBER_ID)
         if member_combo is not None:
             member_combo.currentTextChanged.connect(self._on_member_id_changed)
 
@@ -655,9 +666,9 @@ class TransverseMemberDesign(QDialog):
     def _refresh_bracing_layout(self):
         if self.bracing_layout_widget is None:
             return
-        bracing_w = self._widgets.get("td_bracing_type")
-        tc_w      = self._widgets.get("td_top_chord_enabled")
-        bc_w      = self._widgets.get("td_bottom_chord_enabled")
+        bracing_w = self._widgets.get(KEY_TD_SECTION_INPUTS_BRACING_TYPE)
+        tc_w      = self._widgets.get(KEY_TD_SECTION_INPUTS_TOP_CHORD_ENABLED)
+        bc_w      = self._widgets.get(KEY_TD_SECTION_INPUTS_BOTTOM_CHORD_ENABLED)
 
         bracing = bracing_w.currentText() if bracing_w else "X-Bracing"
         top     = tc_w.isChecked() if tc_w else True
@@ -723,7 +734,7 @@ class TransverseMemberDesign(QDialog):
         # Set bracing type
         brace_raw   = forces_dict.get("brace_type", "X")
         brace_label = "K-Bracing" if brace_raw == "K" else "X-Bracing"
-        bracing_w = self._widgets.get("td_bracing_type")
+        bracing_w = self._widgets.get(KEY_TD_SECTION_INPUTS_BRACING_TYPE)
         if bracing_w:
             bracing_w.blockSignals(True)
             idx = bracing_w.findText(brace_label)
@@ -732,22 +743,22 @@ class TransverseMemberDesign(QDialog):
             bracing_w.blockSignals(False)
 
         # Set chord checkboxes
-        tc_w = self._widgets.get("td_top_chord_enabled")
+        tc_w = self._widgets.get(KEY_TD_SECTION_INPUTS_TOP_CHORD_ENABLED)
         if tc_w:
             tc_w.setChecked(bool(forces_dict.get("top_chord", True)))
-        bc_w = self._widgets.get("td_bottom_chord_enabled")
+        bc_w = self._widgets.get(KEY_TD_SECTION_INPUTS_BOTTOM_CHORD_ENABLED)
         if bc_w:
             bc_w.setChecked(bool(forces_dict.get("bottom_chord", True)))
 
         # Set spacing
         spacing = geom.get("cb_spacing_m")
-        spacing_w = self._widgets.get("td_spacing")
+        spacing_w = self._widgets.get(KEY_TD_SECTION_INPUTS_SPACING)
         if spacing is not None and spacing_w:
             spacing_w.setText(f"{spacing:.3f} m")
 
         # Populate Member ID combo
         self._members_per_pair = members_per_pair or {p: 1 for p in self._pair_keys}
-        member_combo = self._widgets.get("td_member_id")
+        member_combo = self._widgets.get(KEY_TD_MEMBER_ID)
         if member_combo:
             member_combo.blockSignals(True)
             member_combo.clear()
@@ -767,7 +778,7 @@ class TransverseMemberDesign(QDialog):
                 lc = pdata.get(key)
                 if lc:
                     lcs.add(str(lc))
-        load_combo = self._widgets.get("td_load_combination")
+        load_combo = self._widgets.get(KEY_TD_LOAD_COMBINATION)
         if load_combo:
             load_combo.clear()
             load_combo.addItem("Envelope")
@@ -822,9 +833,9 @@ class TransverseMemberDesign(QDialog):
         diag_des     = self._get_governing_section(pair_designs, "diagonal")
         chord_des    = self._get_governing_section(pair_designs, "chord")
 
-        bracing_des_w = self._widgets.get("td_bracing_section_designation")
-        tc_des_w      = self._widgets.get("td_top_chord_section_designation")
-        bc_des_w      = self._widgets.get("td_bottom_chord_section_designation")
+        bracing_des_w = self._widgets.get(KEY_TD_SECTION_INPUTS_BRACING_SECTION_DESIGNATION)
+        tc_des_w      = self._widgets.get(KEY_TD_SECTION_INPUTS_TOP_CHORD_SECTION_DESIGNATION)
+        bc_des_w      = self._widgets.get(KEY_TD_SECTION_INPUTS_BOTTOM_CHORD_SECTION_DESIGNATION)
 
         if bracing_des_w:
             bracing_des_w.setText(diag_des or "")

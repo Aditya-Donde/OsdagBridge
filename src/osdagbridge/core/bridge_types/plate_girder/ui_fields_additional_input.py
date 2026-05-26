@@ -1422,6 +1422,261 @@ DESIGN_OPTIONS_CONT_SCHEMA = {
     ],
 }
 
+
+STEEL_DESIGN_DETAILS_SCHEMA = {
+    "cad": {
+        "top": {
+            "id": KEY_SD_DETAILS_CAD_TOP,
+            "min_height": 160,
+        },
+        "bottom": {
+            "id": KEY_SD_DETAILS_CAD_BOTTOM,
+            "width": 400,
+            "height": 200,
+        },
+    },
+    "cards": [
+        {
+            "id": KEY_SD_DETAILS_DIMENSIONAL_CARD,
+            "title": "Dimensional Details:",
+            "fields": [
+                {
+                    "id": KEY_SD_GRADE_OF_MATERIAL,
+                    "label": "Grade of Material:",
+                    "data_key": "grade_of_material",
+                    "group": "member",
+                },
+                {
+                    "id": KEY_SD_SECTION_TYPE,
+                    "label": "Type:",
+                    "data_key": "section_type",
+                    "group": "member",
+                },
+                {
+                    "id": KEY_SD_SECTION_DESIGNATION,
+                    "label": "Section Designation",
+                    "data_key": "section_designation",
+                    "group": "dim",
+                },
+                {
+                    "id": KEY_SD_SECTION_CLASS,
+                    "label": "Section Class",
+                    "data_key": "section_class",
+                    "group": "dim",
+                },
+                {
+                    "id": KEY_SD_TOTAL_DEPTH,
+                    "label": "Total Depth (mm)",
+                    "data_key": "total_depth",
+                    "group": "dim",
+                },
+                {
+                    "id": KEY_SD_WEB_THICKNESS,
+                    "label": "Web Thickness (mm)",
+                    "data_key": "web_thickness",
+                    "group": "dim",
+                },
+                {
+                    "id": KEY_SD_TOP_FLANGE_WIDTH,
+                    "label": "Top Flange Width (mm)",
+                    "data_key": "top_flange_width",
+                    "group": "dim",
+                },
+                {
+                    "id": KEY_SD_TOP_FLANGE_THICKNESS,
+                    "label": "Top Flange Thickness (mm)",
+                    "data_key": "top_flange_thickness",
+                    "group": "dim",
+                },
+                {
+                    "id": KEY_SD_BOTTOM_FLANGE_WIDTH,
+                    "label": "Bottom Flange Width (mm)",
+                    "data_key": "bottom_flange_width",
+                    "group": "dim",
+                },
+                {
+                    "id": KEY_SD_BOTTOM_FLANGE_THICKNESS,
+                    "label": "Bottom Flange Thickness (mm)",
+                    "data_key": "bottom_flange_thickness",
+                    "group": "dim",
+                },
+                {
+                    "id": KEY_SD_TORSIONAL_RESTRAINT,
+                    "label": "Torsional Restraint",
+                    "data_key": "torsional_restraint",
+                    "group": "dim",
+                },
+                {
+                    "id": KEY_SD_WARPING_RESTRAINT,
+                    "label": "Warping Restraint",
+                    "data_key": "warping_restraint",
+                    "group": "dim",
+                },
+                {
+                    "id": KEY_SD_WEB_TYPE,
+                    "label": "Web Type",
+                    "data_key": "web_type",
+                    "group": "dim",
+                },
+                {
+                    "id": KEY_SD_EFFECTIVE_SLAB_WIDTH,
+                    "label": "Effective Width of Slab (mm)",
+                    "data_key": "effective_slab_width",
+                    "group": "dim",
+                },
+            ],
+        },
+        {
+            "id": KEY_SD_DETAILS_SHEAR_CARD,
+            "title": "Shear Connector Details:",
+            "fields": [
+                {
+                    "id": KEY_SD_SHEAR_MATERIAL,
+                    "label": "Material",
+                    "data_key": "shear_material",
+                    "group": "shear",
+                },
+                {
+                    "id": KEY_SD_SHEAR_DIAMETER,
+                    "label": "Diameter (mm)",
+                    "data_key": "shear_diameter",
+                    "group": "shear",
+                },
+                {
+                    "id": KEY_SD_SHEAR_HEIGHT,
+                    "label": "Height (mm)",
+                    "data_key": "shear_height",
+                    "group": "shear",
+                },
+                {
+                    "id": KEY_SD_SHEAR_TRANSVERSE_SPACING,
+                    "label": "Transverse Spacing (mm)",
+                    "data_key": "shear_transverse_spacing",
+                    "group": "shear",
+                },
+                {
+                    "id": KEY_SD_SHEAR_STUDS_PER_SECTION,
+                    "label": "No. of Shear Studs per Section",
+                    "data_key": "shear_studs_per_section",
+                    "group": "shear",
+                },
+                {
+                    "id": KEY_SD_SHEAR_LONGITUDINAL_SPACING,
+                    "label": "Average Longitudinal Spacing (mm)",
+                    "data_key": "shear_longitudinal_spacing",
+                    "group": "shear",
+                },
+            ],
+        },
+        {
+            "id": KEY_SD_DETAILS_SECTION_PROPERTIES_CARD,
+            "title": "Section Properties:",
+            "fields": [
+                {
+                    "id": KEY_SD_SECTION_PROP_MASS,
+                    "label": "Mass, M (Kg/m)",
+                    "data_key": "mass",
+                    "group": "section",
+                },
+                {
+                    "id": KEY_SD_SECTION_PROP_AREA,
+                    "label": "Sectional Area, a (cm<sup>2</sup>)",
+                    "data_key": "area",
+                    "group": "section",
+                },
+                {
+                    "id": KEY_SD_SECTION_PROP_IZ,
+                    "label": "2nd Moment of Area, I<sub>z</sub> (cm<sup>4</sup>)",
+                    "data_key": "iz",
+                    "group": "section",
+                },
+                {
+                    "id": KEY_SD_SECTION_PROP_IV,
+                    "label": "2nd Moment of Area, I<sub>y</sub> (cm<sup>4</sup>)",
+                    "data_key": "iv",
+                    "group": "section",
+                },
+                {
+                    "id": KEY_SD_SECTION_PROP_RZ,
+                    "label": "Radius of Gyration, r<sub>z</sub> (cm)",
+                    "data_key": "rz",
+                    "group": "section",
+                },
+                {
+                    "id": KEY_SD_SECTION_PROP_RV,
+                    "label": "Radius of Gyration, r<sub>y</sub> (cm)",
+                    "data_key": "rv",
+                    "group": "section",
+                },
+                {
+                    "id": KEY_SD_SECTION_PROP_ZZ,
+                    "label": "Elastic Modulus, Z<sub>z</sub> (cm<sup>3</sup>)",
+                    "data_key": "zz",
+                    "group": "section",
+                },
+                {
+                    "id": KEY_SD_SECTION_PROP_ZV,
+                    "label": "Elastic Modulus, Z<sub>y</sub> (cm<sup>3</sup>)",
+                    "data_key": "zv",
+                    "group": "section",
+                },
+                {
+                    "id": KEY_SD_SECTION_PROP_ZUZ,
+                    "label": "Plastic Modulus, Z<sub>pz</sub> (cm<sup>3</sup>)",
+                    "data_key": "zuz",
+                    "group": "section",
+                },
+                {
+                    "id": KEY_SD_SECTION_PROP_ZUV,
+                    "label": "Plastic Modulus, Z<sub>py</sub> (cm<sup>3</sup>)",
+                    "data_key": "zuv",
+                    "group": "section",
+                },
+                {
+                    "id": KEY_SD_SECTION_PROP_IT,
+                    "label": "Torsion Constant, I<sub>t</sub> (cm<sup>4</sup>)",
+                    "data_key": "it",
+                    "group": "section",
+                },
+                {
+                    "id": KEY_SD_SECTION_PROP_IW,
+                    "label": "Warping Constant, I<sub>w</sub> (cm<sup>6</sup>)",
+                    "data_key": "iw",
+                    "group": "section",
+                },
+            ],
+        },
+    ],
+    "stiffener": {
+        "id": KEY_SD_DETAILS_STIFFENER_TABLE,
+        "row_height": 40,
+        "columns": [
+            {"id": "stiffener_type", "label": "Type"},
+            {"id": KEY_SD_STIFFENER_COL_GRADE, "label": "Grade of Material", "suffix": "grade"},
+            {"id": KEY_SD_STIFFENER_COL_THICKNESS, "label": "Thickness (mm)", "suffix": "thickness"},
+            {"id": KEY_SD_STIFFENER_COL_WIDTH, "label": "Width (mm)", "suffix": "width"},
+            {"id": KEY_SD_STIFFENER_COL_SPACING, "label": "Spacing (mm)", "suffix": "spacing"},
+        ],
+        "rows": [
+            {
+                "id": KEY_SD_STIFFENER_ROW_INTERMEDIATE,
+                "label": "Intermediate",
+                "data_prefix": "stiff_intermediate",
+            },
+            {
+                "id": KEY_SD_STIFFENER_ROW_LONGITUDINAL,
+                "label": "Longitudinal",
+                "data_prefix": "stiff_longitudinal",
+            },
+            {
+                "id": KEY_SD_STIFFENER_ROW_BEARING,
+                "label": "Bearing",
+                "data_prefix": "stiff_bearing",
+            },
+        ],
+    },
+}
+
 GIRDER_DETAILS_SCHEMA = {
     "id": "girder_details_tab",
     "defaults": {
@@ -2044,58 +2299,58 @@ MEMBER_PROPERTIES_SCHEMA_V1 = {
 # Transverse Member Design Dialog Schema
 
 TRANSVERSE_MEMBER_DESIGN_SCHEMA = {
-    "id": "transverse_member_design",
+    "id": KEY_TD_DIALOG,
     "title": "Transverse Member Design",
     "window": {"width": 1100, "height": 720, "min_width": 950, "min_height": 550},
 
     # Global bar - only Member ID + Load Combination
     "global_bar": [
-        {"id": "td_member_id",        "label": "Member ID",        "type": "combo"},
-        {"id": "td_load_combination", "label": "Load Combination", "type": "combo", "default": "Envelope"},
+        {"id": KEY_TD_MEMBER_ID,        "label": "Member ID",        "type": "combo"},
+        {"id": KEY_TD_LOAD_COMBINATION, "label": "Load Combination", "type": "combo", "default": "Envelope"},
     ],
 
     # Details Tab
     "details_tab": {
-        "id": "td_details",
+        "id": KEY_TD_DETAILS_TAB,
         "label": "Details",
         "left_panel": {
             "section_inputs": {
                 "label": "Section Inputs:",
                 "label_width": 100,
                 "fields": [
-                    {"id": "td_design",                           "label": "Design:",                            "type": "line",     "read_only": True},
-                    {"id": "td_bracing_type",                     "label": "Type of Bracing:",                   "type": "line",     "read_only": True},
-                    {"id": "td_bracing_section_type",             "label": "Bracing Section Type:",              "type": "line",     "read_only": True},
-                    {"id": "td_bracing_section_designation",      "label": "Bracing Section Designation:",       "type": "line",     "read_only": True},
-                    {"id": "td_top_chord_enabled",                "label": "Top Chord",                          "type": "checkbox", "default": True, "enabled": False},
-                    {"id": "td_top_chord_section_type",           "label": "  Top Chord Section Type:",          "type": "line",     "read_only": True},
-                    {"id": "td_top_chord_section_designation",    "label": "  Top Chord Section Designation:",   "type": "line",     "read_only": True},
-                    {"id": "td_bottom_chord_enabled",             "label": "Bottom Chord",                       "type": "checkbox", "default": True, "enabled": False},
-                    {"id": "td_bottom_chord_section_type",        "label": "  Bottom Chord Section Type:",       "type": "line",     "read_only": True},
-                    {"id": "td_bottom_chord_section_designation", "label": "  Bottom Chord Section Designation:","type": "line",     "read_only": True},
-                    {"id": "td_spacing",                          "label": "Spacing:",                           "type": "line",     "read_only": True},
+                    {"id": KEY_TD_SECTION_INPUTS_DESIGN,                     "label": "Design:",                            "type": "line",     "read_only": True},
+                    {"id": KEY_TD_SECTION_INPUTS_BRACING_TYPE,               "label": "Type of Bracing:",                   "type": "line",     "read_only": True},
+                    {"id": KEY_TD_SECTION_INPUTS_BRACING_SECTION_TYPE,       "label": "Bracing Section Type:",              "type": "line",     "read_only": True},
+                    {"id": KEY_TD_SECTION_INPUTS_BRACING_SECTION_DESIGNATION,"label": "Bracing Section Designation:",       "type": "line",     "read_only": True},
+                    {"id": KEY_TD_SECTION_INPUTS_TOP_CHORD_ENABLED,          "label": "Top Chord",                          "type": "checkbox", "default": True, "enabled": False},
+                    {"id": KEY_TD_SECTION_INPUTS_TOP_CHORD_SECTION_TYPE,     "label": "  Top Chord Section Type:",          "type": "line",     "read_only": True},
+                    {"id": KEY_TD_SECTION_INPUTS_TOP_CHORD_SECTION_DESIGNATION,"label": "  Top Chord Section Designation:",   "type": "line",     "read_only": True},
+                    {"id": KEY_TD_SECTION_INPUTS_BOTTOM_CHORD_ENABLED,       "label": "Bottom Chord",                       "type": "checkbox", "default": True, "enabled": False},
+                    {"id": KEY_TD_SECTION_INPUTS_BOTTOM_CHORD_SECTION_TYPE,  "label": "  Bottom Chord Section Type:",       "type": "line",     "read_only": True},
+                    {"id": KEY_TD_SECTION_INPUTS_BOTTOM_CHORD_SECTION_DESIGNATION, "label": "  Bottom Chord Section Designation:","type": "line",     "read_only": True},
+                    {"id": KEY_TD_SECTION_INPUTS_SPACING,                    "label": "Spacing:",                           "type": "line",     "read_only": True},
                 ],
             },
         },
         "right_panel": {
-            "bracing_diagram": {"id": "td_bracing_diagram", "height": 170},
+            "bracing_diagram": {"id": KEY_TD_BRACING_DIAGRAM, "height": 170},
             "section_cards": [
                 {
-                    "id":    "td_bracing_props",
+                    "id":    KEY_TD_SECTION_PROPS_BRACING,
                     "title": "Bracing",
                     "col1": ["L (m)", "H (m)", "B (m)", "tw (m)", "tF (m)", "rz (cm)"],
                     "col2": ["M (Kg/m)", "A (cm²)", "Iz (cm⁴)", "Iv (cm⁴)", "rv (cm)"],
                     "col3": ["Zz (cm³)", "Zv (cm³)", "Zuz (cm³)", "Zuv (cm³)"],
                 },
                 {
-                    "id":    "td_top_chord_props",
+                    "id":    KEY_TD_SECTION_PROPS_TOP_CHORD,
                     "title": "Top Chord",
                     "col1": ["L (m)", "H (m)", "B (m)", "tw (m)", "tF (m)", "rz (cm)"],
                     "col2": ["M (Kg/m)", "A (cm²)", "Iz (cm⁴)", "Iv (cm⁴)", "rv (cm)"],
                     "col3": ["Zz (cm³)", "Zv (cm³)", "Zuz (cm³)", "Zuv (cm³)"],
                 },
                 {
-                    "id":    "td_bottom_chord_props",
+                    "id":    KEY_TD_SECTION_PROPS_BOTTOM_CHORD,
                     "title": "Bottom Chord",
                     "col1": ["L (m)", "H (m)", "B (m)", "tw (m)", "tF (m)", "rz (cm)"],
                     "col2": ["M (Kg/m)", "A (cm²)", "Iz (cm⁴)", "Iv (cm⁴)", "rv (cm)"],
@@ -2107,16 +2362,16 @@ TRANSVERSE_MEMBER_DESIGN_SCHEMA = {
 
     # Design Check Tab
     "design_check_tab": {
-        "id": "td_design_check",
+        "id": KEY_TD_DESIGN_CHECK_TAB,
         "label": "Design Check",
         "forces_table": {
-            "id":      "td_forces_table",
+            "id":      KEY_TD_DESIGN_CHECK_FORCES_TABLE,
             "title":   "Design Forces Summary:",
             "columns": ["Member", "Tension (kN)", "Compression (kN)", "Gov. LC"],
             "always_visible": True,
         },
         "results_table": {
-            "id": "td_design_check_results",
+            "id": KEY_TD_DESIGN_CHECK_RESULTS,
             "title": "Design Check Results:",
             "min_height": 200,
             "columns": [

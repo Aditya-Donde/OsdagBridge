@@ -224,6 +224,32 @@ class SteelDesign(QDialog):
                 color: black;
                 border: 1px solid #90AF13;
             }
+            QComboBox QAbstractItemView QScrollBar:vertical {
+                border: none;
+                background: #f0f0f0;
+                width: 8px;
+                margin-left: 2px;
+            }
+            QComboBox QAbstractItemView QScrollBar::handle:vertical {
+                background: #c0c0c0;
+                border-radius: 4px;
+                min-height: 20px;
+            }
+            QComboBox QAbstractItemView QScrollBar::handle:vertical:hover {
+                background: #a0a0a0;
+            }
+            QComboBox QAbstractItemView QScrollBar::handle:vertical:pressed {
+                background: #808080;
+            }
+            QComboBox QAbstractItemView QScrollBar::add-line:vertical,
+            QComboBox QAbstractItemView QScrollBar::sub-line:vertical {
+                border: none;
+                background: none;
+            }
+            QComboBox QAbstractItemView QScrollBar::add-page:vertical,
+            QComboBox QAbstractItemView QScrollBar::sub-page:vertical {
+                background: none;
+            }
         """
 
         container = QWidget()
