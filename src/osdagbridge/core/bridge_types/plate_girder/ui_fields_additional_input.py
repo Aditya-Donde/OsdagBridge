@@ -7,6 +7,8 @@ Member Properties.
 
 from osdagbridge.core.utils.common import *
 
+# ── Typical Section Details Tab ───────────────────────────────────────────────
+
 _DECK_DETAILS_TAB_SCHEMA = {
     "id": KEY_TS_DECK_TAB,
     "label": "Deck Details",
@@ -419,7 +421,10 @@ TYPICAL_SECTION_SCHEMA = {
 }
 
 
-PERMANENT_LOAD_TAB_SCHEMA = {
+
+# ── Loading Tab ───────────────────────────────────────────────────────────────
+
+_PERMANENT_LOAD_TAB_SCHEMA = {
     "id":     KEY_PL_TAB,
     "layout": {
         "type":          "columns",
@@ -452,9 +457,7 @@ PERMANENT_LOAD_TAB_SCHEMA = {
     ],
 }
 
-from osdagbridge.desktop.ui.dialogs.tabs.custom_vehicle_dialog import CustomVehicleDialog
-
-LIVE_LOAD_TAB_SCHEMA = {
+_LIVE_LOAD_TAB_SCHEMA = {
     "id":     KEY_LL_TAB,
     "layout": {
         "type":          "columns",
@@ -558,7 +561,7 @@ LIVE_LOAD_TAB_SCHEMA = {
     ],
 }
 
-SEISMIC_LOAD_TAB_SCHEMA = {
+_SEISMIC_LOAD_TAB_SCHEMA = {
     "id":     KEY_SL_TAB,
     "layout": {
         "type":          "columns",
@@ -714,7 +717,7 @@ SEISMIC_LOAD_TAB_SCHEMA = {
     ],
 }
 
-WIND_LOAD_TAB_SCHEMA = {
+_WIND_LOAD_TAB_SCHEMA = {
     "id":     KEY_WL_TAB,
     "layout": {
         "type":          "columns",
@@ -770,7 +773,7 @@ WIND_LOAD_TAB_SCHEMA = {
     ],
 }
 
-TEMPERATURE_LOAD_TAB_SCHEMA = {
+_TEMPERATURE_LOAD_TAB_SCHEMA = {
     "id":     KEY_TL_TAB,
     "layout": {
         "type":          "columns",
@@ -822,7 +825,7 @@ TEMPERATURE_LOAD_TAB_SCHEMA = {
     ],
 }
 
-CUSTOM_LOAD_TAB_SCHEMA = {
+_CUSTOM_LOAD_TAB_SCHEMA = {
     "id": "custom_load_tab",
     "label_width": 260,
     "field_width": 140,
@@ -902,7 +905,7 @@ CUSTOM_LOAD_TAB_SCHEMA = {
     },
 }
 
-LOAD_COMBINATION_TAB_SCHEMA = {
+_LOAD_COMBINATION_TAB_SCHEMA = {
     "id":     KEY_LC_TAB,
     "layout": {
         "type":          "columns",
@@ -941,6 +944,20 @@ LOAD_COMBINATION_TAB_SCHEMA = {
             "text":    "",
             "stretch": True,
         },
+    ],
+}
+
+LOADING_TAB_SCHEMA = {
+    "id":     KEY_LOADING_TAB,
+    "layout": {"type": "tabs"},
+    "tabs": [
+        {"title": "Permanent Load",   "schema": _PERMANENT_LOAD_TAB_SCHEMA},
+        {"title": "Live Load",        "schema": _LIVE_LOAD_TAB_SCHEMA},
+        {"title": "Seismic Load",     "schema": _SEISMIC_LOAD_TAB_SCHEMA},
+        {"title": "Wind Load",        "schema": _WIND_LOAD_TAB_SCHEMA},
+        {"title": "Temperature Load", "schema": _TEMPERATURE_LOAD_TAB_SCHEMA},
+        # {"title": "Custom Load",      "schema": _CUSTOM_LOAD_TAB_SCHEMA},
+        {"title": "Load Combination", "schema": _LOAD_COMBINATION_TAB_SCHEMA},
     ],
 }
 

@@ -19,7 +19,6 @@ from osdagbridge.desktop.ui.dialogs.tabs.common import apply_field_style, create
 from osdagbridge.desktop.ui.dialogs.custom_messagebox import CustomMessageBox, MessageBoxType
 from osdagbridge.desktop.ui.dialogs.tabs.sub_tabs.typical_section.typical_section_details import TypicalSectionDetailsTab
 from osdagbridge.desktop.ui.dialogs.tabs.section_properties_tab import SectionPropertiesTab
-from osdagbridge.desktop.ui.dialogs.tabs.loading_tab import LoadingTab
 from osdagbridge.desktop.ui.utils.custom_widgets import SmartCursorComboBoxView
 from osdagbridge.desktop.ui.dialogs.additional_input.common_ui_builder import UIBuilder
 from osdagbridge.core.bridge_types.plate_girder.ui_fields_additional_input import (
@@ -453,8 +452,14 @@ class AdditionalInputs(QDialog):
             pass
         
         # Sub-Tab 3: Loading
-        self.loading_tab = LoadingTab(
-            additional_input_instance=self
+        from osdagbridge.core.bridge_types.plate_girder.ui_fields_additional_input import LOADING_TAB_SCHEMA
+        self.loading_tab = UIBuilder(
+            owner=self,
+            schema=LOADING_TAB_SCHEMA,
+            card_title="",
+            with_scroll=False,
+            main_widget_object_name="loading.main",
+            additional_input_instance=self,
         )
         self.tabs.addTab(self.loading_tab, "Loading")
 
