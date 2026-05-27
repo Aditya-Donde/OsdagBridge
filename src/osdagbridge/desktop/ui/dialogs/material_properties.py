@@ -15,7 +15,8 @@ from osdagbridge.core.utils.common import connectdb, KEY_GIRDER, KEY_CROSS_BRACI
 concrete_properies = connectdb("Concrete_Grade_Properties")
 
 DIALOG_TITLE_MATERIAL_PROPERTIES = "Enter Custom Properties"
-CUSTOM_MATERIAL_PREFIX = "Cus_"
+CUSTOM_STEEL_PREFIX = "custom_steel_"
+CUSTOM_CONCRETE_PREFIX = "custom_concrete_"
 DEFAULT_DECK_CUSTOM_GRADE = "M 15"
 
 MATPROP_LABEL_MATERIAL = "Material"
@@ -207,10 +208,11 @@ class MaterialPropertiesDialog(QDialog):
 
         self.fields = deck_material_properties_values() if self.is_deck_material else steel_material_properties_values()
         self._loading = False
-        initial_material = self.selected_material.strip() if self.read_only else CUSTOM_MATERIAL_PREFIX
+        default_prefix = CUSTOM_CONCRETE_PREFIX if self.is_deck_material else CUSTOM_STEEL_PREFIX
+        initial_material = self.selected_material.strip() if self.read_only else default_prefix
         self.form_data = {
-            "material": initial_material or CUSTOM_MATERIAL_PREFIX,
-            "fields": self._defaults_for_material(initial_material or CUSTOM_MATERIAL_PREFIX),
+            "material": initial_material or default_prefix,
+            "fields": self._defaults_for_material(initial_material or default_prefix),
         }
 
         self.material_input = QLineEdit(self.form_data["material"])
@@ -372,7 +374,7 @@ class MaterialPropertiesDialog(QDialog):
     def _defaults_for_material(self, material_name):
         if self.is_deck_material:
             grade = (material_name or "").strip()
-            if not grade or grade.startswith(CUSTOM_MATERIAL_PREFIX) or self._get_concrete_from_code(grade) is None:
+            if not grade or grade.lower().startswith(CUSTOM_CONCRETE_PREFIX) or self._get_concrete_from_code(grade) is None:
                 grade = DEFAULT_DECK_CUSTOM_GRADE
             return self._deck_defaults(grade, self._factor_value_from_label(DEFAULT_ECM_FACTOR_LABEL))
         return self._steel_defaults(material_name)
@@ -475,7 +477,8 @@ class MaterialPropertiesDialog(QDialog):
                 widget.setText(value)
 
     def _save_form(self):
-        self.form_data["material"] = self.material_input.text().strip() or CUSTOM_MATERIAL_PREFIX
+        default_prefix = CUSTOM_CONCRETE_PREFIX if self.is_deck_material else CUSTOM_STEEL_PREFIX
+        self.form_data["material"] = self.material_input.text().strip() or default_prefix
         for label, widget in self.field_inputs.items():
             self.form_data["fields"][label] = widget.text()
 
@@ -511,7 +514,8 @@ class MaterialPropertiesDialog(QDialog):
             val2 = self._normalize_material_token(fu_input.text() if fu_input else "")
 
         parts = [part for part in (val1, val2) if part]
-        material_name = CUSTOM_MATERIAL_PREFIX + "_".join(parts) if parts else CUSTOM_MATERIAL_PREFIX
+        prefix = CUSTOM_CONCRETE_PREFIX if self.is_deck_material else CUSTOM_STEEL_PREFIX
+        material_name = prefix + "_".join(parts) if parts else prefix
         self.material_input.setText(material_name)
 
     def _set_read_only_fields(self, enabled: bool):
@@ -532,7 +536,7 @@ class MaterialPropertiesDialog(QDialog):
     def _load_material_info_for_view(self, material_name: str):
         name = (material_name or "").strip()
         if not name:
-            name = CUSTOM_MATERIAL_PREFIX
+            name = CUSTOM_CONCRETE_PREFIX if self.is_deck_material else CUSTOM_STEEL_PREFIX
 
         self.form_data["material"] = name
         
@@ -546,7 +550,11 @@ class MaterialPropertiesDialog(QDialog):
                 fy_value = ""
                 fu_value = ""
 
-                custom_match = re.match(r"^Cus_([0-9]+(?:\.[0-9]+)?)_([0-9]+(?:\.[0-9]+)?)$", name, re.IGNORECASE)
+                custom_match = re.match(
+                    r"^(?:Cus_|custom_steel_)([0-9]+(?:\.[0-9]+)?)_([0-9]+(?:\.[0-9]+)?)$",
+                    name,
+                    re.IGNORECASE,
+                )
                 if custom_match:
                     fy_value = custom_match.group(1)
                     fu_value = custom_match.group(2)
@@ -585,14 +593,15 @@ def sync_custom_materials_across_steel_members(combo_map, ensure_option_callback
     custom_materials = set()
     
     if material_name:
-        custom_materials.add(material_name)
+        if str(material_name).lower().startswith(CUSTOM_STEEL_PREFIX):
+            custom_materials.add(material_name)
     else:
         for key in steel_keys:
             if key in combo_map:
                 combo = combo_map[key]
                 for i in range(combo.count()):
                     text = combo.itemText(i)
-                    if text.startswith("Cus_"):
+                    if str(text).lower().startswith(CUSTOM_STEEL_PREFIX):
                         custom_materials.add(text)
                         
     for key in steel_keys:
