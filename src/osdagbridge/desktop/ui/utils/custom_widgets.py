@@ -245,7 +245,21 @@ class _BarPainter(QWidget):
             clipped = track_path.intersected(fill_rect_path)
             painter.setBrush(fill_color)
             painter.drawPath(clipped)
+        
+        # Marker line at 100% threshold
+        marker_x = w * (100.0 / 150.0)
 
+        pen = QPen(QColor("#222222"))
+        pen.setWidth(2)
+
+        painter.setPen(pen)
+
+        painter.drawLine(
+            int(marker_x),
+            -1,
+            int(marker_x),
+            h + 1
+        )
         painter.end()
 
 
