@@ -359,18 +359,18 @@ TYPICAL_SECTION_SCHEMA = {
             {
                 "fields": [
                     {
-                        "id": KEY_TS_GIRDER_SPACING,
-                        "label": "Girder Spacing (m):",
-                        "type": TYPE_TEXTBOX,
-                        "bind": "girder_spacing",
-                        "on_editing_finished": "on_girder_spacing_changed",
-                    },
-                    {
                         "id": KEY_TS_NO_OF_GIRDERS,
                         "label": "No. of Girders:",
                         "type": TYPE_TEXTBOX,
                         "bind": "no_of_girders",
                         "on_editing_finished": "on_no_of_girders_changed",
+                    },
+                    {
+                        "id": KEY_TS_GIRDER_SPACING,
+                        "label": "Girder Spacing (m):",
+                        "type": TYPE_TEXTBOX,
+                        "bind": "girder_spacing",
+                        "on_editing_finished": "on_girder_spacing_changed",
                     },
                 ]
             },
