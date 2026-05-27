@@ -589,6 +589,23 @@ class MplPlotWidget(QWidget):
             for text in ax.texts:
                 text.set_clip_on(False)
 
+             # ── Load case subtitle ────────────────────────────────────
+            for txt in self._fig.texts[:]:
+                if getattr(txt, "_lc_subtitle", False):
+                    txt.remove()
+
+            if loadcase:
+                subtitle = self._fig.text(
+                    0.5, 0.910,
+                    f"Load Combination:  {loadcase}",
+                    ha="center", va="top",
+                    fontsize=11, fontweight="bold",
+                    color="#000000",
+                    transform=self._fig.transFigure,
+                )
+                subtitle._lc_subtitle = True
+            # ── End load case subtitle ────────────────────────────────
+
             self._canvas.draw_idle()
 
         # Show NavCube for 3-D plots only, hide for 2-D.
