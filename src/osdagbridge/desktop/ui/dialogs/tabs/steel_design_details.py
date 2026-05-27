@@ -20,6 +20,10 @@ from osdagbridge.desktop.ui.docks.output_dock import (
 
 from osdagbridge.desktop.ui.dialogs.tabs.common import apply_field_style
 from osdagbridge.desktop.ui.utils.styled_scroll_area import StyledScrollArea
+from osdagbridge.desktop.ui.utils.rolled_section_preview import RolledSectionPreview
+from osdagbridge.desktop.ui.dialogs.tabs.sub_tabs.section_properties.stiffener_details_tab import (
+    StiffenerCadPreviewWidget,
+)
 from osdagbridge.core.bridge_types.plate_girder.ui_fields_additional_input import (
     STEEL_DESIGN_DETAILS_SCHEMA,
 )
@@ -90,36 +94,31 @@ class SteelDesignDetailsTab(QWidget):
         container_layout.setContentsMargins(10, 10, 10, 10)
         container_layout.setSpacing(12)
 
-        # ── TOP ROW: CAD placeholder (right only; Member Info removed) 
-        container_layout.addWidget(self._build_top_cad_placeholder())
+        # ── TOP ROW ───────────────────────────────────────────────────
+        top_row = QHBoxLayout()
+        top_row.setSpacing(12)
+        top_row.setContentsMargins(0, 0, 0, 0)
+        
+        top_left_col = QVBoxLayout()
+        top_left_col.setSpacing(12)
+        top_left_col.setContentsMargins(0, 0, 0, 0)
+        top_left_col.addWidget(self._build_dimensional_section())
+        top_left_col.addWidget(self._build_shear_section())
+        top_left_col.addStretch()
+        
+        top_right_col = QVBoxLayout()
+        top_right_col.setSpacing(12)
+        top_right_col.setContentsMargins(0, 0, 0, 0)
+        top_right_col.addWidget(self._build_top_cad_placeholder())
+        top_right_col.addWidget(self._build_section_properties_section())
+        top_right_col.addStretch()
+        
+        top_row.addLayout(top_left_col, 1)
+        top_row.addLayout(top_right_col, 1)
+        container_layout.addLayout(top_row)
 
-        # ── BODY: Dimensional + Shear (left) | Section Properties (right) 
-        body_row = QHBoxLayout()
-        body_row.setSpacing(12)
-        body_row.setContentsMargins(0, 0, 0, 0)
-
-        left_col = QVBoxLayout()
-        left_col.setSpacing(12)
-        left_col.setContentsMargins(0, 0, 0, 0)
-        left_col.addWidget(self._build_dimensional_section())
-        left_col.addWidget(self._build_shear_section())
-        left_col.addStretch()
-
-        right_col = QVBoxLayout()
-        right_col.setSpacing(12)
-        right_col.setContentsMargins(0, 0, 0, 0)
-        right_col.addWidget(self._build_section_properties_section())
-        right_col.addStretch()
-
-        body_row.addLayout(left_col, 1)
-        body_row.addLayout(right_col, 1)
-        container_layout.addLayout(body_row)
-
-        # ── STIFFENER TABLE ───────────────────────────────────────────
+        # ── BOTTOM ROW ────────────────────────────────────────────────
         container_layout.addWidget(self._build_stiffener_section())
-
-        # ── BOTTOM CAD placeholder ────────────────────────────────────
-        container_layout.addWidget(self._build_bottom_cad_section())
 
         container_layout.addStretch()
 
@@ -237,46 +236,24 @@ class SteelDesignDetailsTab(QWidget):
     # ─────────────────────────────────────────────────────────────────────────
 
     def _build_top_cad_placeholder(self):
-        cad_schema = self._cad_schema.get("top", {})
-        self.cad_placeholder = QLabel()
-        min_height = cad_schema.get("min_height", 160)
-        self.cad_placeholder.setMinimumHeight(min_height)
-        self.cad_placeholder.setAlignment(Qt.AlignCenter)
-        self.cad_placeholder.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
-        cad_id = cad_schema.get("id")
-        if cad_id:
-            self.cad_placeholder.setObjectName(cad_id)
-        self.cad_placeholder.setStyleSheet("""
-            QLabel {
-                border: 1px solid #b0b0b0;
-                background-color: #F5F5F5;
-                border-radius: 6px;
-            }
-        """)
-        return self.cad_placeholder
-
-    def _build_bottom_cad_section(self):
         card = self._create_card_frame()
         layout = QVBoxLayout(card)
-        layout.setContentsMargins(18, 16, 18, 16)
-        cad_schema = self._cad_schema.get("bottom", {})
-        bottom_cad = QLabel()
-        width = cad_schema.get("width", 400)
-        height = cad_schema.get("height", 200)
-        bottom_cad.setFixedSize(width, height)
-        bottom_cad.setAlignment(Qt.AlignCenter)
-        bottom_cad.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
-        cad_id = cad_schema.get("id")
-        if cad_id:
-            bottom_cad.setObjectName(cad_id)
-        bottom_cad.setStyleSheet("""
-            QLabel {
-                border: 1px solid #b0b0b0;
-                background-color: #F5F5F5;
-                border-radius: 6px;
-            }
-        """)
-        layout.addWidget(bottom_cad, alignment=Qt.AlignCenter)
+        layout.setContentsMargins(16, 16, 16, 16)
+        layout.setSpacing(8)
+
+        self.section_preview = RolledSectionPreview()
+        self.section_preview.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+
+        self.preview_caption = QLabel("Girder preview")
+        self.preview_caption.setAlignment(Qt.AlignCenter)
+        self.preview_caption.setStyleSheet(
+            "QLabel { font-size: 13px; font-weight: 700; color: #1e1e1e; border: none; "
+            "padding-top: 6px; font-family: 'Ubuntu Sans', 'Segoe UI', sans-serif; }"
+        )
+
+        layout.addWidget(self.section_preview, 1)
+        layout.addWidget(self.preview_caption)
+        
         return card
 
     # ─────────────────────────────────────────────────────────────────────────
@@ -374,20 +351,39 @@ class SteelDesignDetailsTab(QWidget):
         """)
 
         card_layout.addWidget(self.stiffener_table)
+
+        # Add CAD preview below the table
+        self.stiffener_preview = StiffenerCadPreviewWidget()
+        self.stiffener_preview.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self.stiffener_preview.setMinimumHeight(200)
+
+        self.stiffener_caption = QLabel("Stiffener preview")
+        self.stiffener_caption.setAlignment(Qt.AlignCenter)
+        self.stiffener_caption.setStyleSheet(
+            "QLabel { font-size: 13px; font-weight: 700; color: #1e1e1e; border: none; "
+            "padding-top: 6px; font-family: 'Ubuntu Sans', 'Segoe UI', sans-serif; background: transparent; }"
+        )
+
+        card_layout.addSpacing(10)
+        card_layout.addWidget(self.stiffener_preview, 1)
+        card_layout.addWidget(self.stiffener_caption)
+
         return card
 
     # ─────────────────────────────────────────────────────────────────────────
     # LOAD DATA (unchanged logic)
     # ─────────────────────────────────────────────────────────────────────────
 
-    def load_data(self, cad_state: dict):
-        """Populate all field widgets from a cad_state snapshot; silently ignores missing or invalid keys."""
-        if not cad_state:
+    def load_data(self, input_dict: dict):
+        """Populate all field widgets from an input_dict snapshot; normalizes schema keys to flat dict."""
+        if not input_dict:
             return
+            
+        normalized_state = self._normalize_cad_state(input_dict)
 
         for group_fields in self._field_groups.values():
             for key, field in group_fields.items():
-                field.setText(str(cad_state.get(key, "")))
+                field.setText(str(normalized_state.get(key, "")))
 
         if hasattr(self, "stiffener_table"):
             columns = self._stiffener_columns
@@ -397,8 +393,142 @@ class SteelDesignDetailsTab(QWidget):
                 for col_index, col_def in enumerate(columns[1:], start=1):
                     suffix = col_def.get("suffix", "")
                     value_key = f"{prefix}_{suffix}" if prefix and suffix else ""
-                    value = cad_state.get(value_key, "") if value_key else ""
+                    value = normalized_state.get(value_key, "") if value_key else ""
                     item = QTableWidgetItem(str(value))
                     item.setFlags(Qt.ItemIsEnabled)
                     item.setTextAlignment(Qt.AlignCenter)
                     self.stiffener_table.setItem(row_index, col_index, item)
+                    
+        self._update_cad_previews(normalized_state, input_dict)
+
+    def _normalize_cad_state(self, input_dict: dict) -> dict:
+        if "cad_state" in input_dict or not input_dict:
+            return input_dict
+            
+        out = {}
+        def to_mm(val):
+            try: return f"{float(val) * 1000:.1f}"
+            except: return val
+
+        def to_str(val):
+            if val is None: return ""
+            return str(val)
+
+        out["grade_of_material"] = input_dict.get("material.girder", "")
+        mode = str(input_dict.get("geometry.design_mode", ""))
+        out["section_type"] = "Welded" if "Optimized" in mode else "Rolled"
+        out["total_depth"] = to_mm(input_dict.get("member_properties.girder_details.section_input.depth", ""))
+        out["web_thickness"] = to_mm(input_dict.get("member_properties.girder_details.section_input.web_thickness", ""))
+        out["top_flange_width"] = to_mm(input_dict.get("member_properties.girder_details.section_input.top_flange_width", ""))
+        out["top_flange_thickness"] = to_mm(input_dict.get("member_properties.girder_details.section_input.top_flange_thickness", ""))
+        out["bottom_flange_width"] = to_mm(input_dict.get("member_properties.girder_details.section_input.bottom_flange_width", ""))
+        out["bottom_flange_thickness"] = to_mm(input_dict.get("member_properties.girder_details.section_input.bottom_flange_thickness", ""))
+        
+        # Shear
+        out["shear_diameter"] = to_str(input_dict.get("design_options.shear_studs.diameter", ""))
+        out["shear_height"] = to_str(input_dict.get("design_options.shear_studs.height", ""))
+        out["shear_transverse_spacing"] = to_str(input_dict.get("design_options.shear_studs.transverse_spacing", ""))
+        out["shear_studs_per_section"] = to_str(input_dict.get("design_options.shear_studs.count", ""))
+
+        def m2_to_cm2(val):
+            try: return f"{float(val) * 10000:.2f}"
+            except: return val
+        def m4_to_cm4(val):
+            try: return f"{float(val) * 1e8:.2f}"
+            except: return val
+        def m_to_cm(val):
+            try: return f"{float(val) * 100:.2f}"
+            except: return val
+        def m3_to_cm3(val):
+            try: return f"{float(val) * 1e6:.2f}"
+            except: return val
+
+        out["mass"] = to_str(input_dict.get("member_properties.girder_details.section_properties.mass", ""))
+        out["area"] = m2_to_cm2(input_dict.get("member_properties.girder_details.section_properties.area", ""))
+        out["iz"] = m4_to_cm4(input_dict.get("member_properties.girder_details.section_properties.iz", ""))
+        out["iv"] = m4_to_cm4(input_dict.get("member_properties.girder_details.section_properties.iy", ""))
+        out["rz"] = m_to_cm(input_dict.get("member_properties.girder_details.section_properties.radius_gyration_z", ""))
+        out["rv"] = m_to_cm(input_dict.get("member_properties.girder_details.section_properties.radius_gyration_y", ""))
+        out["zz"] = m3_to_cm3(input_dict.get("member_properties.girder_details.material_properties.modulus_of_elasticity_zz", ""))
+        out["zv"] = m3_to_cm3(input_dict.get("member_properties.girder_details.material_properties.modulus_of_elasticity_zy", ""))
+        out["zuz"] = m3_to_cm3(input_dict.get("member_properties.girder_details.material_properties.plastic_modulus_zuz", ""))
+        out["zuv"] = m3_to_cm3(input_dict.get("member_properties.girder_details.material_properties.plastic_modulus_zuy", ""))
+        out["it"] = m4_to_cm4(input_dict.get("member_properties.girder_details.section_properties.torsion_constant_it", ""))
+        out["iw"] = m4_to_cm4(input_dict.get("member_properties.girder_details.section_properties.warping_constant_iw", ""))
+        # Section designation fallback if rolled
+        out["section_designation"] = to_str(input_dict.get("member_properties.girder_details.section_input.is_section", ""))
+
+        return out
+
+    def _update_cad_previews(self, normalized_state: dict, input_dict: dict = None):
+        if not input_dict:
+            input_dict = {}
+
+        if hasattr(self, "section_preview"):
+            def to_f(v):
+                try: return float(v)
+                except: return None
+                
+            depth = to_f(normalized_state.get("total_depth"))
+            tf_w = to_f(normalized_state.get("top_flange_width"))
+            tf_t = to_f(normalized_state.get("top_flange_thickness"))
+            bf_w = to_f(normalized_state.get("bottom_flange_width"))
+            bf_t = to_f(normalized_state.get("bottom_flange_thickness"))
+            web_t = to_f(normalized_state.get("web_thickness"))
+            
+            bf_w = bf_w or tf_w
+            bf_t = bf_t or tf_t
+            
+            if all([depth, tf_w, tf_t, web_t]):
+                st = normalized_state.get("section_type", "").lower()
+                self.section_preview.set_dimensions(
+                    depth_mm=depth,
+                    flange_width_mm=tf_w,
+                    bottom_flange_width_mm=bf_w,
+                    web_thickness_mm=web_t,
+                    flange_thickness_mm=tf_t,
+                    bottom_flange_thickness_mm=bf_t,
+                    show_welds=(st == "welded")
+                )
+            else:
+                self.section_preview.clear()
+                
+        if hasattr(self, "stiffener_preview"):
+            # Prepare dummy structure for CAD rendering since input_dict doesn't contain segments
+            depth = to_f(normalized_state.get("total_depth")) or 0.0
+            tf_t = to_f(normalized_state.get("top_flange_thickness")) or 0.0
+            bf_t = to_f(normalized_state.get("bottom_flange_thickness")) or 0.0
+            
+            length_m = 30.0 # fallback
+            try:
+                length = input_dict.get("geometry.length")
+                if length: length_m = float(length)
+            except:
+                pass
+                
+            segments = [{"id": "G1M1", "start": 0.0, "end": length_m, "length": length_m}]
+            
+            stiff_state = {
+                "bearing_stiffeners_each_end": str(input_dict.get("member_properties.stiffener_details.no_bearing_stiffeners_each_end", "2")),
+                "bearing_spacing_mm": str(input_dict.get("member_properties.stiffener_details.bearing_stiffener_spacing", "200")),
+                "intermediate_stiffener": str(input_dict.get("member_properties.stiffener_details.intermediate_stiffener", "Yes")),
+                "intermediate_spacing_mm": str(input_dict.get("member_properties.stiffener_details.intermediate_stiffener_spacing", "1500")),
+                "longitudinal_stiffener": str(input_dict.get("member_properties.stiffener_details.longitudinal_stiffener", "None"))
+            }
+
+            stiffener_by_member = {"G1M1": stiff_state}
+            
+            section_dims = {
+                "G1M1": {
+                    "depth_mm": depth,
+                    "top_flange_thickness_mm": tf_t,
+                    "bottom_flange_thickness_mm": bf_t
+                }
+            }
+            
+            self.stiffener_preview.set_data(
+                segments=segments,
+                stiffener_by_member=stiffener_by_member,
+                active_member_id="G1M1",
+                section_dims_by_member=section_dims
+            )

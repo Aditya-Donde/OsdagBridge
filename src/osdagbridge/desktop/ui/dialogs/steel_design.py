@@ -148,7 +148,9 @@ class SteelDesign(QDialog):
         main_layout.addWidget(self._build_global_selection_bar())
         main_layout.addWidget(self.tabs)
 
-        if hasattr(self._main_window, "cad_state"):
+        if hasattr(self._main_window, "input_dict"):
+            self.details_tab.load_data(self._main_window.input_dict)
+        elif hasattr(self._main_window, "cad_state"):
             self.details_tab.load_data(self._main_window.cad_state)
 
         if self._result_handler is not None:
