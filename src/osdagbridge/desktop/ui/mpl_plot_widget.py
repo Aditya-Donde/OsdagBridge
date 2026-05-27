@@ -536,6 +536,12 @@ class MplPlotWidget(QWidget):
                 self._summary_overlay.raise_()
         else:
             self._summary_overlay.hide()
+
+        # (Your existing HUD logic)
+        # if self._summary_data:
+        #     self._summary_overlay.update_data(self._summary_data)
+        # else:
+        #     self._summary_overlay.hide()
         
         if self._fig:
             self._fig.subplots_adjust(left=0.02, right=0.98, bottom=0.02, top=0.92)
@@ -578,9 +584,6 @@ class MplPlotWidget(QWidget):
                 self._cid_release = self._canvas.mpl_connect("button_release_event", self._zw_on_release)   
             # ══════════════════════════════════════════════ 
 
-
-
-
             # (Keep your existing anti-clipping loop here)
             for line in ax.lines:
                 line.set_clip_on(False)
@@ -607,6 +610,13 @@ class MplPlotWidget(QWidget):
             # ── End load case subtitle ────────────────────────────────
 
             self._canvas.draw_idle()
+
+            # # Defer show()/raise_() to AFTER draw_idle() so the renderer
+            # # buffer is populated before Qt processes the canvas repaint.
+            # if self._summary_data and self._is_summary_checked:
+            #     self._summary_overlay.show()
+            #     self._summary_overlay.raise_()
+
 
         # Show NavCube for 3-D plots only, hide for 2-D.
         QTimer.singleShot(100, self._update_navcube_visibility)
