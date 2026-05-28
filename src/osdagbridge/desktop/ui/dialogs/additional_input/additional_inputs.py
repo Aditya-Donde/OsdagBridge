@@ -81,83 +81,46 @@ class AdditionalInputs(QDialog):
         # Update Typical-section sub-tab activate/deactivate state
         self.typical_section_tab._sync_tab_active_states()
 
-        # Populate defaults for deck-details text fields from the dict (widgets start empty)
-        self._populate_deck_detail_fields(input_dict)
+        self.set_defaults()
 
-        # Populate schema-driven tabs (Support Conditions, Design Options, etc.)
-        self._populate_schema_tab_fields(input_dict)
-
-        self.typical_section_tab.apply_current_selection_defaults()
+        # self.typical_section_tab.apply_current_selection_defaults()
         self.default_input_dict.update(self.working_input_dict)
 
-    def _populate_schema_tab_fields(self, input_dict: dict) -> None:
-        """Push input_dict values into schema-driven tabs (Support, Design Options, etc.)."""
-        tabs_to_populate = [
-            getattr(self, "support_tab", None),
-            getattr(self, "design_options_tab", None),
-            getattr(self, "design_options_cont_tab", None),
-        ]
-
-        if hasattr(self, "typical_section_tab") and hasattr(self.typical_section_tab, "_tab_widgets"):
-            tabs_to_populate.extend(self.typical_section_tab._tab_widgets.values())
-
-        for tab in tabs_to_populate:
-            if not tab:
+    def set_defaults(self) -> None:
+        """
+        Central function to populate all widgets in the dialog from working_input_dict.
+        Searches for all QLineEdit, QComboBox, QCheckBox by objectName across entire dialog.
+        If widget objectName matches a key in working_input_dict — sets value.
+        Numeric values formatted to 2 decimal places for QLineEdit.
+        If not found — leaves it.
+        """
+        for widget in self.findChildren(QWidget):
+            name = widget.objectName()
+            if not name or name not in self.working_input_dict:
                 continue
-            for widget in tab.findChildren(QWidget):
-                name = widget.objectName()
-                if not name or name not in input_dict:
-                    continue
-                value = input_dict[name]
-                if value is None:
-                    continue
-                if isinstance(widget, QLineEdit):
-                    widget.blockSignals(True)
-                    widget.setText(str(value))
-                    widget.blockSignals(False)
-                elif isinstance(widget, QComboBox):
-                    widget.blockSignals(True)
-                    widget.setCurrentText(str(value))
-                    widget.blockSignals(False)
-                elif isinstance(widget, QCheckBox):
-                    widget.blockSignals(True)
-                    widget.setChecked(bool(value))
-                    widget.blockSignals(False)
+            value = self.working_input_dict.get(name)
+            if value is None:
+                continue
 
-    def _populate_deck_detail_fields(self, input_dict: dict) -> None:
-        """Push deck-detail values from input_dict into the Deck Details widgets."""
-        ts = self.typical_section_tab
-
-        def _set_text(key, fmt):
-            val = input_dict.get(key)
-            widget = ts.findChild(QWidget, key)
-            if widget is not None and val is not None:
+            if isinstance(widget, QLineEdit):
+                # Format numeric values to 2 decimal places
                 try:
-                    text = fmt.format(float(val))
-                except (TypeError, ValueError):
-                    text = str(val)
+                    text = f"{float(value):.2f}"
+                except (ValueError, TypeError):
+                    text = str(value)
                 widget.blockSignals(True)
                 widget.setText(text)
                 widget.blockSignals(False)
 
-        # Populate structural values first to ensure they are present before any signals activate
-        _set_text(KEY_TS_GIRDER_SPACING, "{:.2f}")
-        _set_text(KEY_TS_NO_OF_GIRDERS,  "{:.0f}")
-        _set_text(KEY_TS_DECK_OVERHANG,  "{:.2f}")
-        _set_text(KEY_TS_OVERALL_WIDTH,  "{:.2f}")
+            elif isinstance(widget, QComboBox):
+                widget.blockSignals(True)
+                widget.setCurrentText(str(value))
+                widget.blockSignals(False)
 
-        # Populate secondary deck values
-        _set_text(KEY_TS_DECK_THICKNESS,     "{:.0f}")
-        _set_text(KEY_TS_FOOTPATH_WIDTH,     "{:.2f}")
-        _set_text(KEY_TS_FOOTPATH_THICKNESS, "{:.0f}")
-
-        # Sync downstream girder count after primary fields are populated
-        try:
-            n_text = ts.no_of_girders.text() if hasattr(ts, "no_of_girders") else ""
-            if n_text:
-                ts.girder_count_changed.emit(int(float(n_text)))
-        except (ValueError, TypeError):
-            pass
+            elif isinstance(widget, QCheckBox):
+                widget.blockSignals(True)
+                widget.setChecked(bool(value))
+                widget.blockSignals(False)
 
     # Compute func that return the value to be updated (field)
     # Calculation from Core IRC STARTS=======================================================================
@@ -579,7 +542,7 @@ class AdditionalInputs(QDialog):
         main_layout.addWidget(self.tabs)
         
         action_bar, self.defaults_button, self.save_button = create_action_button_bar()
-        self.defaults_button.clicked.connect(self._apply_defaults)
+        self.defaults_button.clicked.connect(self.set_defaults)
         self.save_button.clicked.connect(self._save_inputs)
         main_layout.addSpacing(6)
         main_layout.addWidget(action_bar)
@@ -809,70 +772,6 @@ class AdditionalInputs(QDialog):
         if hasattr(self, "section_properties_tab") and hasattr(self.section_properties_tab, "set_design_mode"):
             self.section_properties_tab.set_design_mode(normalized_mode)
 
-    def _apply_defaults(self):
-        """Apply defaults only to the currently visible top-level tab.
-
-        Important UX: within Member Properties, Defaults should only reset the
-        currently active sub-tab (not the entire Member Properties area).
-        """
-
-        try:
-            current_widget = self.tabs.currentWidget()
-        except Exception:
-            current_widget = None
-
-        if current_widget is getattr(self, "typical_section_tab", None):
-            if hasattr(self.typical_section_tab, "reset_defaults"):
-                self.typical_section_tab.reset_defaults()
-            return
-
-        if current_widget is getattr(self, "section_properties_tab", None):
-            # Member Properties: reset only active sub-tab.
-            if hasattr(self.section_properties_tab, "reset_active_tab_defaults"):
-                self.section_properties_tab.reset_active_tab_defaults()
-            elif hasattr(self.section_properties_tab, "reset_defaults"):
-                # Fallback to legacy behavior.
-                self.section_properties_tab.reset_defaults()
-            return
-
-        if current_widget is getattr(self, "loading_tab", None):
-            for i in range(self.loading_tab.load_tabs.count()):
-                tab = self.loading_tab.load_tabs.widget(i)
-                if hasattr(tab, "reset_defaults"):
-                    tab.reset_defaults()
-            return
-
-        if current_widget is getattr(self, "support_tab", None):
-            if hasattr(self.support_tab, "reset_defaults"):
-                self.support_tab.reset_defaults()
-            return
-
-        if current_widget is getattr(self, "design_options_tab", None):
-            if hasattr(self.design_options_tab, "reset_defaults"):
-                self.design_options_tab.reset_defaults()
-            return
-
-        if current_widget is getattr(self, "design_options_cont_tab", None):
-            if hasattr(self.design_options_cont_tab, "reset_defaults"):
-                self.design_options_cont_tab.reset_defaults()
-            return 
-        # Confirm save to the user (requested behavior). Use an explicit message box
-        # instance so it stays on top of the frameless dialog.
-        box = QMessageBox(self)
-        box.setIcon(QMessageBox.Information)
-        box.setWindowTitle("Saved")
-        box.setText("Inputs saved successfully.")
-        box.setStandardButtons(QMessageBox.Ok)
-        box.setDefaultButton(QMessageBox.Ok)
-        box.setWindowModality(Qt.ApplicationModal)
-        box.exec()
-        """
-        Save additional inputs and close dialog.
-        Data will be collected by template_page via get_all_values().
-        """
-        self.accept()
-    
-    
     def get_all_values(self):
         """
         @author: Faizan

@@ -668,7 +668,7 @@ class CrossSectionCADWidget(QWidget):
                         elif "barrier_height" in geom:
                             params[KEY_MD_HEIGHT] = geom["barrier_height"]
         
-        print("Updated CAD params:")
+        # print("Updated CAD params:")
 
         self.update_params(params)
 
