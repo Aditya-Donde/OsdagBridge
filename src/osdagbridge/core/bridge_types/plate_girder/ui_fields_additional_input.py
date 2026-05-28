@@ -7,6 +7,10 @@ Member Properties.
 
 from osdagbridge.core.utils.common import *
 
+# ── Value Refresh Schema ──────────────────────────────────────────────────────
+# These are mainly for populating the data in additional input that comes from Input Dictionary
+
+
 # ── Typical Section Details Tab ───────────────────────────────────────────────
 
 _DECK_DETAILS_TAB_SCHEMA = {
@@ -423,6 +427,8 @@ TYPICAL_SECTION_SCHEMA = {
 
 # ── Loading Tab ───────────────────────────────────────────────────────────────
 
+_COMPUTE_SEISMIC = {"function": "_compute_seismic_values"}
+
 _PERMANENT_LOAD_TAB_SCHEMA = {
     "id":     KEY_PL_TAB,
     "layout": {
@@ -470,14 +476,78 @@ _LIVE_LOAD_TAB_SCHEMA = {
             "column": 0,
             "title":  "Vehicles from IRC 6",
             "rows": [
-                {"fields": [{"id": KEY_LL_IRC_CLASS_A,       "label": "Class A",           "type": TYPE_CHECKBOX, "label_first": True}]},
-                {"fields": [{"id": KEY_LL_IRC_AA_WHEELED,    "label": "Class AA Wheeled",  "type": TYPE_CHECKBOX, "label_first": True}]},
-                {"fields": [{"id": KEY_LL_IRC_AA_TRACKED,    "label": "Class AA Tracked",  "type": TYPE_CHECKBOX, "label_first": True}]},
-                {"fields": [{"id": KEY_LL_IRC_70R_WHEELED,   "label": "Class 70R Wheeled", "type": TYPE_CHECKBOX, "label_first": True}]},
-                {"fields": [{"id": KEY_LL_IRC_70R_TRACKED,   "label": "Class 70R Tracked", "type": TYPE_CHECKBOX, "label_first": True}]},
-                {"fields": [{"id": KEY_LL_IRC_70R_BOGIE,     "label": "Class 70R Bogie",   "type": TYPE_CHECKBOX, "label_first": True}]},
-                {"fields": [{"id": KEY_LL_IRC_CLASS_SV,      "label": "Class SV",          "type": TYPE_CHECKBOX, "label_first": True}]},
-                {"fields": [{"id": KEY_LL_IRC_CLASS_FATIGUE, "label": "Class Fatigue",     "type": TYPE_CHECKBOX, "label_first": True}]},
+                {
+                    "fields": 
+                        [{
+                            "id": KEY_LL_IRC_CLASS_A,
+                            "label": "Class A",
+                            "type": TYPE_CHECKBOX,
+                            "label_first": True
+                        }]
+                },
+                {
+                    "fields": 
+                        [{
+                            "id": KEY_LL_IRC_AA_WHEELED,    
+                            "label": "Class AA Wheeled",  
+                            "type": TYPE_CHECKBOX, 
+                            "label_first": True
+                        }]
+                },
+                {
+                    "fields": 
+                        [{
+                            "id": KEY_LL_IRC_AA_TRACKED,    
+                            "label": "Class AA Tracked",  
+                            "type": TYPE_CHECKBOX, 
+                            "label_first": True
+                        }]
+                },
+                {
+                    "fields": 
+                        [{
+                            "id": KEY_LL_IRC_70R_WHEELED,   
+                            "label": "Class 70R Wheeled", 
+                            "type": TYPE_CHECKBOX, 
+                            "label_first": True
+                        }]
+                },
+                {
+                    "fields": 
+                        [{
+                            "id": KEY_LL_IRC_70R_TRACKED,   
+                            "label": "Class 70R Tracked", 
+                            "type": TYPE_CHECKBOX, 
+                            "label_first": True
+                        }]
+                },
+                {
+                    "fields": 
+                        [{
+                            "id": KEY_LL_IRC_70R_BOGIE,     
+                            "label": "Class 70R Bogie",   
+                            "type": TYPE_CHECKBOX, 
+                            "label_first": True
+                        }]
+                },
+                {
+                    "fields": 
+                        [{
+                            "id": KEY_LL_IRC_CLASS_SV,      
+                            "label": "Class SV",          
+                            "type": TYPE_CHECKBOX, 
+                            "label_first": True
+                        }]
+                },
+                {
+                    "fields": 
+                        [{
+                            "id": KEY_LL_IRC_CLASS_FATIGUE, 
+                            "label": "Class Fatigue",     
+                            "type": TYPE_CHECKBOX, 
+                            "label_first": True
+                        }]
+                },
             ],
         },
 
@@ -581,7 +651,7 @@ _SEISMIC_LOAD_TAB_SCHEMA = {
                         "label":    "Seismic Zone",
                         "type":     TYPE_TEXTBOX,
                         "read_only": True,
-                        
+                        "on_change_compute": _COMPUTE_SEISMIC,                        
                     }]
                 },
                 {
@@ -590,6 +660,7 @@ _SEISMIC_LOAD_TAB_SCHEMA = {
                         "label":       "Importance Factor, I",
                         "type":        TYPE_TEXTBOX,
                         "placeholder": "Enter value",
+                        "on_change_compute": _COMPUTE_SEISMIC,
                     }]
                 },
                 {
@@ -602,6 +673,7 @@ _SEISMIC_LOAD_TAB_SCHEMA = {
                             "Type II \u2013 Medium Soil",
                             "Type III \u2013 Soft Soil",
                         ],
+                        "on_change_compute": _COMPUTE_SEISMIC,
                     }]
                 },
                 {
@@ -610,6 +682,7 @@ _SEISMIC_LOAD_TAB_SCHEMA = {
                         "label":       "Fundamental Time Period, T (sec)",
                         "type":        TYPE_TEXTBOX,
                         "placeholder": "Enter value",
+                        "on_change_compute": _COMPUTE_SEISMIC,
                     }]
                 },
                 {
@@ -618,6 +691,7 @@ _SEISMIC_LOAD_TAB_SCHEMA = {
                         "label":       "Damping Percentage",
                         "type":        TYPE_TEXTBOX,
                         "placeholder": "Enter value",
+                        "on_change_compute": _COMPUTE_SEISMIC,
                     }]
                 },
                 {
@@ -627,6 +701,7 @@ _SEISMIC_LOAD_TAB_SCHEMA = {
                         "type":    TYPE_COMBOBOX,
                         "choices": ["1", "2", "3", "4", "5"],
                         "bind":    "response_factor_combo",
+                        "on_change_compute": _COMPUTE_SEISMIC,
                     }]
                 },
                 {
@@ -638,6 +713,7 @@ _SEISMIC_LOAD_TAB_SCHEMA = {
                         "bind_mode":      "dead_load_seismic_combo",
                         "bind_value":     "dead_load_custom_input",
                         "on_mode_change": "_on_seismic_dead_load_mode_changed",
+                        "on_change_compute": _COMPUTE_SEISMIC,
                     }]
                 },
                 {
@@ -649,6 +725,7 @@ _SEISMIC_LOAD_TAB_SCHEMA = {
                         "bind_mode":      "live_load_seismic_combo",
                         "bind_value":     "live_load_custom_input",
                         "on_mode_change": "_on_seismic_live_load_mode_changed",
+                        "on_change_compute": _COMPUTE_SEISMIC,
                     }]
                 },
             ],
@@ -950,9 +1027,34 @@ LOADING_TAB_SCHEMA = {
     "tabs": [
         {"title": "Permanent Load",   "schema": _PERMANENT_LOAD_TAB_SCHEMA                    },
         {"title": "Live Load",        "schema": _LIVE_LOAD_TAB_SCHEMA                         },
-        {"title": "Seismic Load",     "schema": _SEISMIC_LOAD_TAB_SCHEMA                      },
-        {"title": "Wind Load",        "schema": _WIND_LOAD_TAB_SCHEMA                         },
-        {"title": "Temperature Load", "schema": _TEMPERATURE_LOAD_TAB_SCHEMA                  },
+        {
+            "title": "Seismic Load",
+            "schema": _SEISMIC_LOAD_TAB_SCHEMA,
+            "refresh": [{
+                            "widget_id": KEY_SL_SEISMIC_ZONE,
+                            "path": ["project.location", "weather_data", "zone"],
+                        }],
+        },
+        {
+            "title": "Wind Load",
+            "schema": _WIND_LOAD_TAB_SCHEMA,
+            "refresh": [{
+                            "widget_id": KEY_WL_BASIC_WIND_SPEED,
+                            "path": ["project.location", "weather_data", "wind_speed"]
+                        }],
+        },
+        {
+            "title": "Temperature Load",
+            "schema": _TEMPERATURE_LOAD_TAB_SCHEMA,
+            "refresh": [{
+                            "widget_id": KEY_TL_HIGHEST_MAX_TEMP, 
+                            "path": ["project.location", "weather_data", "max_temp"]
+                        },
+                        {
+                            "widget_id": KEY_TL_LOWEST_MIN_TEMP,
+                            "path": ["project.location", "weather_data", "min_temp"]
+                        }],
+        },
         {"title": "Custom Load",      "schema": _CUSTOM_LOAD_TAB_SCHEMA,      "disable": True },
         {"title": "Load Combination", "schema": _LOAD_COMBINATION_TAB_SCHEMA                  },
     ],

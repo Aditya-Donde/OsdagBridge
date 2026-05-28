@@ -324,7 +324,6 @@ class UIBuilder(QWidget):
                     field = self._create_field(field_def, field_width=200)
                     grid.addWidget(field, row_idx, col + 1, Qt.AlignLeft)
                     col += 2
-
             row_idx += 1
 
         card_layout.addLayout(grid)
@@ -524,6 +523,25 @@ class UIBuilder(QWidget):
             if on_editing_finished and hasattr(owner, on_editing_finished):
                 field.editingFinished.connect(getattr(owner, on_editing_finished))
 
+        # ── on_change_compute wiring ───────────────────────────────────────
+        on_change_compute = field_def.get("on_change_compute")
+        if on_change_compute and ai:
+            func_name = on_change_compute.get("function", "")
+            if func_name and hasattr(ai, func_name):
+                def _trigger_compute(_val, _ai=ai, _fn=func_name, _root=self):
+                    result = getattr(_ai, _fn)(_ai.working_input_dict)
+                    print(f"@|Update Calculated Value|@: result={result}")
+                    if not isinstance(result, dict):
+                        return
+                    for widget_id, value in result.items():
+                        w = _root.findChild(QLineEdit, widget_id)
+                        if w:
+                            w.setText(str(value) if value is not None else "")
+                if ftype == TYPE_COMBOBOX:
+                    field.currentTextChanged.connect(_trigger_compute)
+                elif ftype == TYPE_TEXTBOX:
+                    field.textChanged.connect(_trigger_compute)
+
         return field
 
     # ──────────────────────────────────────────────────────────────────────────
@@ -696,12 +714,9 @@ class UIBuilder(QWidget):
             )
             if dlg.exec():
                 result = dlg.result_bounds()
-                print(f"@P0@: {result}")
                 if result:
-                    print(f"@P1@: {_ai}")
                     # Update working_input_dict via standard pipeline
                     if _ai:
-                        print(f"@P2@: {result}")
                         _ai._on_field_edited(_field_id, result)
                     # Domain callback on owner
                     if _on_accepted and hasattr(_owner, _on_accepted):
@@ -753,10 +768,12 @@ class UIBuilder(QWidget):
         def _on_mode_changed(text, _vi=value_input, _choices=choices, _h=h):
             if _choices and text == _choices[0]:
                 _vi.hide()
+                _vi.setEnabled(False)
                 _h.setStretch(0, 1)
                 _h.setStretch(1, 0)
             else:
                 _vi.show()
+                _vi.setEnabled(True)
                 _h.setStretch(0, 1)
                 _h.setStretch(1, 1)
 
@@ -772,6 +789,26 @@ class UIBuilder(QWidget):
             value_input.editingFinished.connect(
                 lambda k=field_id + ".value", w=value_input: ai._on_field_edited(k, w)
             )
+
+        # ── on_change_compute wiring ───────────────────────────────────────
+        on_change_compute = field_def.get("on_change_compute")
+        if on_change_compute and ai:
+            func_name = on_change_compute.get("function", "")
+            if func_name and hasattr(ai, func_name):
+                def _trigger_compute(_val, _ai=ai, _fn=func_name, _root=self, _vi=value_input, _fid=field_id):
+                    # Sync current value_input text into working_input_dict before computing
+                    if _vi.isVisible() and _vi.isEnabled():
+                        _ai._on_field_editing(_vi.text(), _fid + ".value")
+                    result = getattr(_ai, _fn)(_ai.working_input_dict)
+                    if not isinstance(result, dict):
+                        return
+                    for widget_id, value in result.items():
+                        w = _root.findChild(QLineEdit, widget_id)
+                        if w:
+                            w.setText(str(value) if value is not None else "")
+
+                mode_combo.currentTextChanged.connect(_trigger_compute)
+                value_input.editingFinished.connect(lambda: _trigger_compute(None))
 
         h.addWidget(mode_combo, 1)
         h.addWidget(value_input, 1)
@@ -803,7 +840,9 @@ class UIBuilder(QWidget):
             "QTabBar::tab:disabled { color: #a0a0a0; }"
         )
 
-        for tab_def in self._schema.get("tabs", []):
+        tabs_def = self._schema.get("tabs", [])
+
+        for tab_def in tabs_def:
             title        = tab_def.get("title", "")
             schema       = tab_def.get("schema")
             widget_class = tab_def.get("widget_class")
@@ -826,5 +865,58 @@ class UIBuilder(QWidget):
             tab_widget.addTab(widget, title)
             if is_disbled:
                 tab_widget.setTabEnabled(tab_widget.count() - 1, False)
+
+        def _refresh_tab(idx):
+            """
+            Refresh source fields for the active tab.
+            Called on tab change AND on dialog open (via refresh_active_tab()).
+            Reads 'refresh' list from tab schema definition — each entry has:
+                widget_id: objectName of the QLineEdit to update
+                path:      list of keys to traverse in working_input_dict
+            Does NOT write to working_input_dict — display only.
+            """
+            if idx >= len(tabs_def):
+                return
+            refresh_list = tabs_def[idx].get("refresh", [])
+            if not refresh_list:
+                return
+            ai = self.additional_input_instance
+            if not ai or not hasattr(ai, "working_input_dict"):
+                return
+            current_widget = tab_widget.currentWidget()
+            if not current_widget:
+                return
+            for entry in refresh_list:
+                widget_id = entry.get("widget_id")
+                path      = entry.get("path", [])
+                # traverse working_input_dict by path list
+                val = ai.working_input_dict
+                for key in path:
+                    if isinstance(val, dict):
+                        val = val.get(key)
+                    else:
+                        val = None
+                        break
+                if val is None:
+                    continue
+                # find widget by objectName and set value
+                w = current_widget.findChild(QLineEdit, widget_id)
+                if w:
+                    w.setText(str(val))
+
+        # ── Connect tab change signal ──────────────────────────────────────────
+        # Triggered whenever user switches tabs
+        tab_widget.currentChanged.connect(_refresh_tab)
+
+        # ── Expose refresh method for dialog open ─────────────────────────────
+        # Call tab_widget.refresh_active_tab() after dialog is shown to
+        # ensure the initially visible tab also gets refreshed.
+        # Usage in AdditionalInputs.showEvent or wherever dialog is opened:
+        #     self.findChild(QTabWidget).refresh_active_tab()  # or keep a reference
+        def _refresh_active_tab():
+            """Manually trigger refresh for currently active tab — call on dialog open."""
+            _refresh_tab(tab_widget.currentIndex())
+
+        tab_widget.refresh_active_tab = _refresh_active_tab
 
         parent_layout.addWidget(tab_widget)
