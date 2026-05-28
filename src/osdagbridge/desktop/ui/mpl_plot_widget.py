@@ -126,8 +126,11 @@ class MplPlotWidget(QWidget):
         self._show_all_vals = False 
         self._show_girder_labels = False
 
-        # Zoom state
         self._zoom_scale  = 1.0
+        self._base_box_x  = 2.5
+        self._base_box_y  = 1.2
+        self._base_box_z  = 1.0
+        self._base_zlim   = (-1.0, 1.0)
         
         # ══════════════════════════════════════════════
         # ADDED: Default orientation tracking for rotate + reset
@@ -258,7 +261,6 @@ class MplPlotWidget(QWidget):
         self._btn_grid.setFocusPolicy(Qt.NoFocus)
         self._btn_grid.setStyleSheet(btn_style)
         self._btn_grid.toggled.connect(self._on_grid_toggled)
-        # self._canvas.mpl_connect('scroll_event', self._on_scroll)
 
         # ══════════════════════════════════════════════
         # View-control buttons
@@ -294,13 +296,12 @@ class MplPlotWidget(QWidget):
        
         self._btn_girder_labels.toggled.connect(self._on_girder_labels_toggled)
 
-        
         # ══════════════════════════════════════════════
         # ADDED | Scale spinbox setup
         # Default: 100, Range: 1–10000
         # Replaces old plain Scale button with spinbox + arrow controls
         # ══════════════════════════════════════════════
-        self._scale_value = 100.0
+        self._scale_value = 1.0
 
         _spin_btn_style = (
             "QPushButton { font-size: 9px; border: 1px solid #bbb; background: #f5f5f5;"
@@ -317,10 +318,10 @@ class MplPlotWidget(QWidget):
         scale_label.setStyleSheet("QLabel { font-size: 12px; color: #333; }")
         scale_label.setAlignment(Qt.AlignVCenter | Qt.AlignRight)
 
-        self._scale_input = QLineEdit(f"{self._scale_value:.0f}")
+        self._scale_input = QLineEdit(f"{self._scale_value:.2f}")
         self._scale_input.setFixedSize(52, 28)
         self._scale_input.setAlignment(Qt.AlignCenter)
-        self._scale_input.setValidator(QDoubleValidator(1.0, 10000.0, 0, self._scale_input))
+        self._scale_input.setValidator(QDoubleValidator(0.5, 1.0, 2, self._scale_input))
         self._scale_input.setStyleSheet(_input_style)
         self._scale_input.setFocusPolicy(Qt.ClickFocus)
         self._scale_input.editingFinished.connect(self._on_scale_input_edited)
@@ -400,7 +401,6 @@ class MplPlotWidget(QWidget):
         root.addLayout(toolbar_row)
         root.addLayout(toolbar_row2)   # second row added here
         root.addWidget(self._scroll_area, stretch=1)
-        # END CHANGE 4-----------------------------------------------------------------------------
 
     # public API
 
@@ -476,14 +476,7 @@ class MplPlotWidget(QWidget):
 
         if self._ds_all is None or self._output_dock is None:
             return
-        
-        # ══════════════════════════════════════════════
-        # ADDED | Reset scale to default on plot switch
-        # ══════════════════════════════════════════════
-        self._scale_value = 100.0
-        self._scale_input.setText("100")
-        self._apply_scale_value() 
-        
+
         loadcase  = self._current_loadcase()
         force_key = self._current_force_key()
 
@@ -493,7 +486,7 @@ class MplPlotWidget(QWidget):
         ds = self._ds_all.sel(Loadcase=loadcase)
         
         # ==========================================
-        # 1. 🚨 CAPTURE CAMERA STATE BEFORE CLOSING
+        # 1. CAPTURE CAMERA STATE BEFORE CLOSING
         # ==========================================
         old_elev, old_azim = None, None
         if hasattr(self, '_fig') and self._fig and self._fig.axes:
@@ -502,12 +495,10 @@ class MplPlotWidget(QWidget):
                 old_elev = old_ax.elev
                 old_azim = old_ax.azim
 
-        # NOW we can safely destroy the old plot
         plt.close(self._fig)
         
-        self._summary_data = {} 
+        self._summary_data = {}
 
-        # (Your existing if/elif/else block to build the new figures)
         if force_key in _SFD_KEYS:
             self._fig, self._summary_data = build_figure_sfd(ds, force_key, self._nodes, self._members, edge_dist=self._edge_dist)
         elif force_key in _DEFL_KEYS:
@@ -517,31 +508,54 @@ class MplPlotWidget(QWidget):
 
         self._canvas.figure = self._fig
         self._fig.set_canvas(self._canvas)
-        # Ensure the figure size matches the current canvas (DPI-aware)
+
+        # ══════════════════════════════════════════════
+        # Capture the REAL base Z from plot_generator
+        # BEFORE any set_box_aspect override happens
+        # ══════════════════════════════════════════════
+
+        if self._fig.axes and hasattr(self._fig.axes[0], 'get_box_aspect'):
+            try:
+                base = self._fig.axes[0].get_box_aspect()
+                self._base_box_x = base[0]
+                self._base_box_y = base[1]
+                self._base_box_z = base[2]
+                self._base_zlim  = self._fig.axes[0].get_zlim()
+            except Exception:
+                self._base_box_x = 2.5
+                self._base_box_y = 1.2
+                self._base_box_z = 1.0
+                self._base_zlim  = (-1.0, 1.0)
+
+        # ══════════════════════════════════════════════
+        # Reset scale to 1.0 AFTER capturing base
+        # ══════════════════════════════════════════════
+        self._scale_value = 1.0
+        self._scale_input.setText("1.00")
+
         QTimer.singleShot(0, self._fit_figure_to_canvas)
         
-        # (Your existing visibility toggles)
         self._apply_node_visibility()
         self._apply_axis_visibility()
         self._apply_supports_visibility()
         self._apply_grid_visibility() 
         self._apply_annotation_visibility() 
         self._apply_girder_label_visibility()
-        
-        # (Your existing HUD logic)
-        if self._summary_data:
-            self._summary_overlay.update_data(self._summary_data)
-            if self._is_summary_checked:
-                self._summary_overlay.show()
-                self._summary_overlay.raise_()
-        else:
-            self._summary_overlay.hide()
 
         # (Your existing HUD logic)
         # if self._summary_data:
         #     self._summary_overlay.update_data(self._summary_data)
+        #     if self._is_summary_checked:
+        #         self._summary_overlay.show()
+        #         self._summary_overlay.raise_()
         # else:
         #     self._summary_overlay.hide()
+        
+        # HUD logic
+        if self._summary_data:
+            self._summary_overlay.update_data(self._summary_data)
+        else:
+            self._summary_overlay.hide()
         
         if self._fig:
             self._fig.subplots_adjust(left=0.02, right=0.98, bottom=0.02, top=0.92)
@@ -552,39 +566,33 @@ class MplPlotWidget(QWidget):
             ax = self._fig.axes[0]
 
             # ==========================================
-            # 2. 🚨 RESTORE CAMERA STATE TO NEW PLOT
+            # 2. RESTORE CAMERA STATE TO NEW PLOT
             # ==========================================
             if old_elev is not None and old_azim is not None:
                 ax.view_init(elev=old_elev, azim=old_azim)
 
-            # (Keep your existing native zoom logic)
-            # if hasattr(ax, 'set_box_aspect'):
-            #     ax.set_box_aspect(aspect=(2.5, 1.2, 1.0), zoom=self._zoom_scale)
+            # ══════════════════════════════════════════════
+            # Apply zoom window persistence
+            # ══════════════════════════════════════════════
 
-            # ══════════════════════════════════════════════
-            # MODIFIED | 3D box aspect + zoom window persistence on plot rebuild
-            # Resets zoom if zoom window active; reconnects events so
-            # zoom window works without re-toggling after plot switch
-            # ══════════════════════════════════════════════
             if hasattr(ax, 'set_box_aspect'):
-                # Reset zoom scale when plot rebuilds so the new graph
-                # always starts at default view, even if Zoom Window is active
                 if self._zoom_window_active:
                     self._zoom_scale = 1.0
-                ax.set_box_aspect(aspect=(2.5, 1.2, 1.0), zoom=self._zoom_scale)
+                    ax.set_box_aspect(
+                        # aspect=(self._base_box_x, self._base_box_y, self._base_box_z),
+                        # zoom=self._zoom_scale
+                        aspect=(1.0, self._base_box_y / self._base_box_x, self._base_box_z / self._base_box_x),
+                        zoom=self._zoom_scale
+                    )
 
-            # If Zoom Window mode is active, reconnect events and disable
-            # rotation on the new axis so it works without re-toggling
             if self._zoom_window_active:
                 if hasattr(ax, 'disable_mouse_rotation'):
                     ax.disable_mouse_rotation()
                 self._disconnect_canvas_events()
                 self._cid_press   = self._canvas.mpl_connect("button_press_event",   self._zw_on_press)
                 self._cid_motion  = self._canvas.mpl_connect("motion_notify_event",  self._zw_on_motion)
-                self._cid_release = self._canvas.mpl_connect("button_release_event", self._zw_on_release)   
-            # ══════════════════════════════════════════════ 
+                self._cid_release = self._canvas.mpl_connect("button_release_event", self._zw_on_release)
 
-            # (Keep your existing anti-clipping loop here)
             for line in ax.lines:
                 line.set_clip_on(False)
             for collection in ax.collections:
@@ -592,7 +600,7 @@ class MplPlotWidget(QWidget):
             for text in ax.texts:
                 text.set_clip_on(False)
 
-             # ── Load case subtitle ────────────────────────────────────
+            # ── Load case subtitle ──────────────────────────────────
             for txt in self._fig.texts[:]:
                 if getattr(txt, "_lc_subtitle", False):
                     txt.remove()
@@ -611,12 +619,10 @@ class MplPlotWidget(QWidget):
 
             self._canvas.draw_idle()
 
-            # # Defer show()/raise_() to AFTER draw_idle() so the renderer
-            # # buffer is populated before Qt processes the canvas repaint.
+            # # Show summary overlay after draw_idle
             # if self._summary_data and self._is_summary_checked:
             #     self._summary_overlay.show()
             #     self._summary_overlay.raise_()
-
 
         # Show NavCube for 3-D plots only, hide for 2-D.
         QTimer.singleShot(100, self._update_navcube_visibility)
@@ -895,8 +901,6 @@ class MplPlotWidget(QWidget):
             if hasattr(ax, 'mouse_init'):
                 ax.mouse_init()   
 
-
-
     def _disconnect_canvas_events(self):
         """Safely disconnect the three per-mode mpl event callbacks."""
         for cid in (self._cid_press, self._cid_release, self._cid_motion):
@@ -919,9 +923,9 @@ class MplPlotWidget(QWidget):
     def _on_zoom_fit(self):
         """Reset zoom to 1.0 and restore auto-scale limits."""
         self._deactivate_all_modes()
-        self._zoom_scale = 1.0
-        self._scale_value = 100.0                    
-        self._scale_input.setText("100")             
+        self._zoom_scale = 1.0  
+        self._scale_value = 1.0
+        self._scale_input.setText("1.00")         
 
         if not self._fig or not self._fig.axes:
             return
@@ -1259,36 +1263,40 @@ class MplPlotWidget(QWidget):
     def _stop_scale_change(self):
         self._scale_timer.stop()
         self._scale_direction = 0
-
+    
     def _tick_scale_change(self):
-        step = 1.0 * self._scale_direction
-        self._scale_value = round(max(1.0, min(10000.0, self._scale_value + step)), 0)
-        self._scale_input.setText(f"{self._scale_value:.0f}")
+        step = 0.05 * self._scale_direction
+        self._scale_value = round(max(0.5, min(1.0, self._scale_value + step)), 2)
+        self._scale_input.setText(f"{self._scale_value:.2f}")
         self._apply_scale_value()
 
     def _on_scale_input_edited(self):
         try:
             val = float(self._scale_input.text())
-            self._scale_value = round(max(1.0, min(10000.0, val)), 0)
+            self._scale_value = round(max(0.5, min(10.0, val)), 2)
         except ValueError:
             pass
-        self._scale_input.setText(f"{self._scale_value:.0f}")
+        self._scale_input.setText(f"{self._scale_value:.2f}")
         self._apply_scale_value()
 
     def _apply_scale_value(self):
         if not self._fig or not self._fig.axes:
             return
         ax = self._fig.axes[0]
-        factor = self._scale_value / 100.0
-        if hasattr(ax, 'set_box_aspect'):   # 3-D
-            ax.set_box_aspect(
-                aspect=(2.5 * factor, 1.2, 1.0),
-                zoom=self._zoom_scale
-            )
-        else:                               # 2-D
-            ax.set_aspect('auto' if self._scale_value == 100.0 else factor)
-        self._canvas.draw_idle()    
-
+        if hasattr(ax, 'get_zlim'):   # 3-D only
+            try:
+                zlo, zhi = self._base_zlim
+                # Expand or compress the Z axis range around its centre.
+                # scale=1.0 → original zlim (no change)
+                # scale=2.0 → zlim halved  → spikes look 2x taller
+                # scale=0.5 → zlim doubled → spikes look half as tall
+                zmid   = (zlo + zhi) / 2.0
+                zhalf  = (zhi - zlo) / 2.0
+                new_half = zhalf / self._scale_value
+                ax.set_zlim(zmid - new_half, zmid + new_half)
+            except Exception:
+                pass
+        self._canvas.draw_idle()
 
     def _apply_zoom(self):
         """Zooms the 2D canvas dynamically, creating scrollbars for perfect panning!"""
@@ -1407,17 +1415,13 @@ class MplPlotWidget(QWidget):
             self._zoom_scale = 0.1
         self._apply_camera_zoom()
 
-    # def _zoom_reset(self):
-    #     """Snaps back to 100% scale."""
-    #     self._zoom_scale = 1.0
-    #     self._apply_camera_zoom()
-
     def _zoom_reset(self):
         """Snaps back to 100% scale."""
         self._zoom_scale = 1.0
-        self._current_azim = self._default_azim          # ← add
-        self._scale_value = 100.0                        # ← add
-        self._scale_input.setText("100")                 # ← add
+        self._current_azim = self._default_azim          # ← add   
+        self._scale_value = 1.0
+        self._scale_input.setText("1.00")
+        
 
         if not self._fig or not self._fig.axes:
             return

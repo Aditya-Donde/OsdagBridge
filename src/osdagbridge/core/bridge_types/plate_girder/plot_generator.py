@@ -525,7 +525,8 @@ def build_figure_grillage(nodes, members, edge_dist=0.0):
     ax.set_xlim(min(all_xs), max(all_xs))
     ax.set_ylim(min(all_zs), max(all_zs))
     ax.set_zlim(-x_range * 0.05, x_range * 0.15)
-    ax.set_box_aspect([x_range, z_range, x_range * 0.30])
+    # ax.set_box_aspect([x_range, z_range, x_range * 0.30])
+    ax.set_box_aspect([2.5, 1.2, 1.0])
 
     _add_grillage_background(ax, nodes, members, show_transverse=True)
     _add_coordinate_triad(ax, nodes)
@@ -686,7 +687,8 @@ def build_figure_sfd(ds, force_key, nodes, members, edge_dist=0.0):
     
     ax.set_xlim(x_min - x_pad, x_max + x_pad)
     ax.set_ylim(z_min - z_pad, z_max + z_pad)
-    ax.set_box_aspect([x_range, z_range, x_range * 0.30])
+    # ax.set_box_aspect([x_range, z_range, x_range * 0.30])
+    ax.set_box_aspect([2.5, 1.2, 1.0])
 
     _add_grillage_background(ax, nodes, members, show_transverse=False)
     
@@ -906,7 +908,8 @@ def build_figure_bmd(ds, force_key, nodes, members, edge_dist=0.0):
     z_range = max(all_zs) - min(all_zs) or 1.0
     ax.set_xlim(min(all_xs), max(all_xs))
     ax.set_ylim(min(all_zs), max(all_zs))
-    ax.set_box_aspect([x_range, z_range, x_range * 0.30])
+    # ax.set_box_aspect([x_range, z_range, x_range * 0.30])
+    ax.set_box_aspect([2.5, 1.2, 1.0])
 
     _add_grillage_background(ax, nodes, members, show_transverse=False)
     
@@ -1140,7 +1143,8 @@ def build_figure_bmd_contour(ds, force_key, nodes, members, edge_dist=0.0):
     z_range = max(all_zs) - min(all_zs) or 1.0
     ax.set_xlim(min(all_xs), max(all_xs))
     ax.set_ylim(min(all_zs), max(all_zs))
-    ax.set_box_aspect([x_range, z_range, x_range * 0.30])
+    # ax.set_box_aspect([x_range, z_range, x_range * 0.30])
+    ax.set_box_aspect([2.5, 1.2, 1.0])
 
     _add_grillage_background(ax, nodes, members)
     _add_coordinate_triad(ax, nodes)
