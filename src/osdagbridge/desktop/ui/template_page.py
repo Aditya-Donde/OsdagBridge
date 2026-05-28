@@ -1105,6 +1105,17 @@ class CustomWindow(QWidget):
                 except Exception:
                     pass
 
+                # ── Wire CAD figures from output_dock ─────────────────────────
+                try:
+                    output_dock = getattr(self, 'output_dock', None)
+                    if output_dock is not None:
+                        cad_paths = getattr(output_dock, '_cad_figure_paths', {})
+                        for attr, path in cad_paths.items():
+                            if path and hasattr(payload.figures, attr):
+                                setattr(payload.figures, attr, path)
+                except Exception:
+                    pass
+
             # Generate report
             print("[Report] Calling generate_report...")
             result = generate_report(payload=payload, request=request)

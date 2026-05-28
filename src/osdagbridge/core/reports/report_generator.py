@@ -20,30 +20,131 @@
 # =============================================================================
 # GAPS REPORT — keys used in templates with no canonical KEY_ in common.py
 # =============================================================================
-# GAP | Template location         | Literal key used        | Notes
+# GAP | Template location         | Literal key used             | Notes
 # ─────────────────────────────────────────────────────────────────────────────
-# 1   | Table 2.1                 | 'latitude'              | injected from weather_data
-# 2   | Table 2.1                 | 'longitude'             | injected from weather_data
-# 3   | Table 2.1                 | 'seismic_zone'          | injected from weather_data
-# 4   | Table 2.1                 | 'wind_speed'            | injected from weather_data
-# 5   | Table 2.1                 | 'shade_temp_max'        | injected from weather_data
-# 6   | Table 2.1                 | 'shade_temp_min'        | injected from weather_data
-# 7   | Table 2.2 / Exec Summary  | 'num_lanes'             | computed via IRC6 table_6()
-# 8   | Table 2.2                 | 'overall_bridge_width'  | computed by sizing engine
-# 9   | Exec Summary (Proj Ovw)   | 'overall_design_status' | runtime-injected by backend
-# 10  | Exec Summary (Proj Ovw)   | 'governing_check'       | runtime-injected by backend
-# 11  | Exec Summary (Proj Ovw)   | 'max_ur'                | runtime-injected by backend
-# 12  | Exec Summary (Table 1)    | 'section_designation'   | runtime-injected by backend
-# 13  | Table 2.5                 | 'crash_barrier_type'    | KEY_CRASH_BARRIER_TYPE is a list
-# 14  | Table 2.5                 | 'median_type'           | KEY_MEDIAN_TYPE is a list
-# 15  | Table 2.5                 | 'railing_type'          | KEY_RAILING_TYPE is a list
+# 1   | Table 2.1                 | 'latitude'                   | injected from weather_data; no KEY_ yet
+# 2   | Table 2.1                 | 'longitude'                  | injected from weather_data; no KEY_ yet
+# 3   | Table 2.1                 | 'seismic_zone'               | injected from weather_data; no KEY_ yet
+# 4   | Table 2.1                 | 'wind_speed'                 | injected from weather_data; no KEY_ yet
+# 5   | Table 2.1                 | 'shade_temp_max'             | injected from weather_data; no KEY_ yet
+# 6   | Table 2.1                 | 'shade_temp_min'             | injected from weather_data; no KEY_ yet
+# 7   | Table 2.4 / Exec Summary  | 'num_lanes'                  | design lane count; NOT the UI counter
+#     |                           |                              | KEY_WC_LD_LANE_TABLE_COUNT; stays GAP
+# 8   | Exec Summary (Proj Ovw)   | 'overall_design_status'      | output_dict value; no KEY_ needed
+# 9   | Exec Summary (Proj Ovw)   | 'governing_check'            | output_dict value; no KEY_ needed
+# 10  | Exec Summary (Proj Ovw)   | 'overall_utilization_ratio'  | output_dict value; no KEY_ needed
+# 11  | Exec Summary (Table 1)    | 'section_designation'        | output_dict value; no KEY_ needed
+# 12  | Table 2.6(c)              | _ph('t_{s,end}')             | end panel stiffener thickness; no KEY_
+# 13  | Table 2.7 / 2.8           | _ph('$n_{br}$')              | no. of bracing panels; no KEY_ yet
 # =============================================================================
+
+# =============================================================================
+# MISSING DATA REPORT — values needed by templates but not yet confirmed
+# as provided by the backend in input_dict
+# =============================================================================
+# #  | KEY_ constant used                        | Template   | Backend action needed
+# ─────────────────────────────────────────────────────────────────────────────
+# 1  | KEY_TS_OVERALL_WIDTH                      | Table 2.4  | typical_section tab must write this key
+# 2  | KEY_CB_TYPE                               | Table 2.5  | crash_barrier subtab must write this key
+# 3  | KEY_MD_TYPE                               | Table 2.5  | median subtab must write this key
+# 4  | KEY_RL_TYPE                               | Table 2.5  | railing subtab must write this key
+# 5  | KEY_GIRDER_TYPE                           | Table 2.6a | member_properties girder tab must write
+# 6  | KEY_GIRDER_SYMMETRY                       | Table 2.6a | member_properties girder tab must write
+# 7  | KEY_GIRDER_DEPTH                          | Table 2.6b | section_input must populate before report
+# 8  | KEY_GIRDER_WEB_THICKNESS                  | Table 2.6b | section_input must populate before report
+# 9  | KEY_GIRDER_TOP_FLANGE_WIDTH               | Table 2.6b | section_input must populate before report
+# 10 | KEY_GIRDER_TOP_FLANGE_THICKNESS           | Table 2.6b | section_input must populate before report
+# 11 | KEY_GIRDER_BOTTOM_FLANGE_WIDTH            | Table 2.6b | section_input must populate before report
+# 12 | KEY_GIRDER_BOTTOM_FLANGE_THICKNESS        | Table 2.6b | section_input must populate before report
+# 13 | KEY_GIRDER_TORSIONAL_RESTRAINT            | Table 2.6c | section_input must populate before report
+# 14 | KEY_GIRDER_WARPING_RESTRAINT              | Table 2.6c | section_input must populate before report
+# 15 | KEY_GIRDER_WEB_TYPE                       | Table 2.6c | section_input must populate before report
+# 16 | KEY_INTERMEDIATE_STIFFENER                | Table 2.6c | stiffener_details must write this key
+# 17 | KEY_INTERMEDIATE_STIFFENER_SPACING        | Table 2.6c | stiffener_details must write this key
+# 18 | KEY_INTERMEDIATE_STIFFENER_THICKNESS      | Table 2.6c | stiffener_details must write this key
+# 19 | KEY_LONGITUDINAL_STIFFENER                | Table 2.6c | stiffener_details must write this key
+# 20 | KEY_CROSS_BRACING_TYPE                    | Table 2.7  | cross_bracing_details must write this key
+# 21 | KEY_CROSS_BRACING_SECTION                 | Table 2.7  | cross_bracing_details must write this key
+# 22 | KEY_CROSS_BRACING_SPACING                 | Table 2.7  | cross_bracing_details must write this key
+# 23 | KEY_END_DIAPHRAGM_TYPE                    | Table 2.8  | end_diaphragm_details must write this key
+# 24 | KEY_END_DIAPHRAGM_BRACING_SECTION_DESIGNATION | Table 2.8 | end_diaphragm_details must write
+# 25 | KEY_END_DIAPHRAGM_SPACING                 | Table 2.8  | end_diaphragm_details must write this key
+# 26 | KEY_DS_STUD_DIAMETER                      | Table 2.9  | design_options shear_studs tab must write
+# 27 | KEY_DS_STUD_HEIGHT                        | Table 2.9  | design_options shear_studs tab must write
+# 28 | KEY_DS_STUD_YIELD_STRENGTH                | Table 2.9  | design_options shear_studs tab must write
+# 29 | KEY_DS_STUD_ULTIMATE_STRENGTH             | Table 2.9  | design_options shear_studs tab must write
+# 30 | KEY_DS_STUD_COUNT                         | Table 2.9  | design_options shear_studs tab must write
+# 31 | KEY_DO_GAMMA_M0                           | Table 2.10 | design_options_cont partial_factor must write
+# 32 | KEY_DO_GAMMA_M1                           | Table 2.10 | design_options_cont partial_factor must write
+# 33 | KEY_DO_GAMMA_C_BASIC                      | Table 2.10 | design_options_cont partial_factor must write
+# 34 | KEY_DO_GAMMA_S                            | Table 2.10 | design_options_cont partial_factor must write
+# 35 | KEY_DO_GAMMA_V                            | Table 2.10 | design_options_cont partial_factor must write
+# 36 | KEY_DO_GAMMA_FLT                          | Table 2.10 | design_options_cont partial_factor must write
+# 37 | KEY_DO_GAMMA_MF                           | Table 2.10 | design_options_cont partial_factor must write
+# =============================================================================
+
+#==============================================================================
+#   FLOW OF REPORT GENERATION
+# ─────────────────────────────────────────────────────────────────────────────
+# USER CLICKS "Generate Report" button
+#        │
+#        ▼
+#[output_dock.py] OutputDock._build_bottom_buttons()
+#        │  QPushButton.clicked signal → connected to _on_report_clicked
+#        ▼
+#[output_dock.py] OutputDock._on_report_clicked()
+#        │
+#        ├──► [output_dock.py] OutputDock._export_cad_figures()
+#        │           │
+#        │           ├── init_display()            [OCC.Display.SimpleGui]
+#        │           ├── core.display_3dModel()    [cad_generator.py × 7 components]
+#        │           ├── off_display.ExportToImage() × 4 views
+#        │           └── returns dict of 4 PNG paths → stored on self._cad_figure_paths
+#        │
+#        └──► [template_page.py] CustomWindow.open_report_dialog()
+#                    │
+#                    ├── ReportOptionsDialog(parent=self).exec()
+#                    │         [report_options.py — user fills form]
+#                    │         └── returns request (ReportRequest dataclass)
+#                    │
+#                    ├── self.input_dict → report_inputs (dict copy)
+#                    ├── self.backend.get_results() → output_dict
+#                    │
+#                    ├──► [report_generator.py] build_report_payload(request, report_inputs, output_dict)
+#                    │           └── returns ReportPayload dataclass
+#                    │
+#                    ├── self.backend.get_grillage_figure() → grillage_image
+#                    ├──► [report_generator.py] export_grillage_figure(grillage_image, output_dir, file_stem)
+#                    │           └── writes grillage.png → returns absolute path
+#                    │           └── payload.figures.grillage = path
+#                    │
+#                    ├── self.output_dock._cad_figure_paths → wire 4 paths onto payload.figures
+#                    │
+#                    └──► [report_generator.py] generate_report(payload, request)
+#                                │
+#                                ├── OsdagLatexEnv() → discovers pdflatex binary
+#                                ├── Creates output_dir/assets/
+#                                ├── Copies logos → assets/
+#                                ├── Copies figure PNGs → assets/ (from _FIGURE_MAP)
+#                                ├── Calls 10 chapter functions → full_tex string
+#                                ├── Writes full_tex to tempdir/stem.tex
+#                                ├── shutil.copytree(assets_dir → tempdir/assets/)
+#                                ├── subprocess.run(pdflatex) × 2 passes
+#                                ├── shutil.copy2(tmp_pdf → output_dir/stem.pdf)
+#                                └── returns ReportResult(pdf_path, tex_path)
+#                                          │
+#                                          ▼
+#                              [template_page.py] open_report_dialog()
+#                                  if dialog.is_preview → os.startfile(pdf_path)
+#                                  else → CustomMessageBox("Report Saved")
+#==============================================================================
 
 import os, shutil, logging, datetime, tempfile, subprocess
 from dataclasses import dataclass, field
 from typing import Optional, List, Dict, Any, Literal
 
 from osdagbridge.core.utils.common import (
+    # Basic inputs
     KEY_SPAN,
     KEY_CARRIAGEWAY_WIDTH,
     KEY_INCLUDE_MEDIAN,
@@ -55,14 +156,62 @@ from osdagbridge.core.utils.common import (
     KEY_DECK_CONCRETE_GRADE_BASIC,
     KEY_PROJECT_LOCATION,
     KEY_STRUCTURE_TYPE,
+    KEY_DESIGN_MODE,
+    # Typical Section
     KEY_TS_GIRDER_SPACING,
     KEY_TS_NO_OF_GIRDERS,
     KEY_TS_DECK_THICKNESS,
     KEY_TS_FOOTPATH_WIDTH,
+    KEY_TS_DECK_OVERHANG,
+    KEY_TS_OVERALL_WIDTH,
     KEY_WC_MATERIAL,
     KEY_WC_THICKNESS,
     KEY_CB_LOAD,
-    KEY_TS_DECK_OVERHANG,
+    KEY_CB_TYPE,
+    KEY_MD_TYPE,
+    KEY_RL_TYPE,
+    # Design Options — Shear Studs
+    KEY_DS_STUD_DIAMETER,
+    KEY_DS_STUD_HEIGHT,
+    KEY_DS_STUD_YIELD_STRENGTH,
+    KEY_DS_STUD_ULTIMATE_STRENGTH,
+    KEY_DS_STUD_COUNT,
+    # Design Options Cont — Partial Safety Factors
+    KEY_DO_GAMMA_M0,
+    KEY_DO_GAMMA_M1,
+    KEY_DO_GAMMA_C_BASIC,
+    KEY_DO_GAMMA_S,
+    KEY_DO_GAMMA_V,
+    KEY_DO_GAMMA_FLT,
+    KEY_DO_GAMMA_MF,
+    # Girder geometry
+    KEY_GIRDER_TYPE,
+    KEY_GIRDER_SYMMETRY,
+    KEY_GIRDER_DEPTH,
+    KEY_GIRDER_WEB_THICKNESS,
+    KEY_GIRDER_TOP_FLANGE_WIDTH,
+    KEY_GIRDER_TOP_FLANGE_THICKNESS,
+    KEY_GIRDER_BOTTOM_FLANGE_WIDTH,
+    KEY_GIRDER_BOTTOM_FLANGE_THICKNESS,
+    KEY_GIRDER_TORSIONAL_RESTRAINT,
+    KEY_GIRDER_WARPING_RESTRAINT,
+    KEY_GIRDER_WEB_TYPE,
+    # Stiffener
+    KEY_INTERMEDIATE_STIFFENER,
+    KEY_INTERMEDIATE_STIFFENER_SPACING,
+    KEY_INTERMEDIATE_STIFFENER_THICKNESS,
+    KEY_LONGITUDINAL_STIFFENER,
+    # Cross Bracing
+    KEY_CROSS_BRACING_TYPE,   # string "member_properties.cross_bracing_details.type"
+                              # (line 329 of common.py); shadows the list at line 283
+    KEY_CROSS_BRACING_SECTION,
+    KEY_CROSS_BRACING_SPACING,
+    # End Diaphragm
+    KEY_END_DIAPHRAGM_TYPE,
+    KEY_END_DIAPHRAGM_BRACING_SECTION_DESIGNATION,
+    KEY_END_DIAPHRAGM_SPACING,
+    # Lane Details
+    KEY_WC_LD_LANE_TABLE_COUNT,
 )
 
 logger = logging.getLogger(__name__)
@@ -352,7 +501,7 @@ This section provides a concise summary of the bridge design, key inputs, govern
 \hline
 \textbf{Carriageway Width} & """ + (_v(input_dict, KEY_CARRIAGEWAY_WIDTH, ' m') or _ph('Carriageway Width')) + r""" \\
 \hline
-\textbf{No. of Traffic Lanes} & """ + (_v(input_dict, 'num_lanes') or _ph('No. of Lanes')) + r""" \\
+\textbf{No. of Traffic Lanes} & """ + (_v(input_dict, KEY_WC_LD_LANE_TABLE_COUNT) or _ph('No. of Lanes')) + r""" \\
 \hline
 \textbf{No. of Girders} & """ + (_v(input_dict, KEY_TS_NO_OF_GIRDERS) or _ph('No. of Girders')) + r""" \\
 \hline
@@ -360,11 +509,11 @@ This section provides a concise summary of the bridge design, key inputs, govern
 \hline
 \textbf{Deck Thickness} & """ + (_v(input_dict, KEY_TS_DECK_THICKNESS) or _ph('Deck Thickness')) + r""" \\
 \hline
-\textbf{Overall Design Status} & """ + (_v(output_dict, 'overall_design_status') or _ph('PASS / FAIL')) + r""" \\
+\textbf{Overall Design Status} & """ + (_tex(output_dict.get('overall_design_status', '')) or _ph('PASS / FAIL')) + r""" \\
 \hline
-\textbf{Governing Check} & """ + (_v(output_dict, 'governing_check') or _ph('e.g. Deflection --- L/600')) + r""" \\
+\textbf{Governing Check} & """ + (_tex(output_dict.get('governing_check', '')) or _ph('e.g. Deflection --- L/600')) + r""" \\
 \hline
-\textbf{Overall Utilization Ratio (max)} & """ + (_v(output_dict, 'overall_utilization_ratio') or _ph('Value')) + r""" \\
+\textbf{Overall Utilization Ratio (max)} & """ + (_tex(output_dict.get('overall_utilization_ratio', '')) or _ph('Value')) + r""" \\
 \hline
 \end{tabular}
 \end{table}
@@ -568,7 +717,7 @@ Where the user has modified additional inputs, those values are reported here. W
 \vspace{-6pt}
 \begin{tabularx}{\textwidth}{|L{5.5cm}|X|}
 \hline
-\textbf{Overall Bridge Width (m)} & """ + (_v(input_dict,'overall_bridge_width') or _ph('Calculated')) + r""" \\[6pt]
+\textbf{Overall Bridge Width (m)} & """ + (_v(input_dict, KEY_TS_OVERALL_WIDTH) or _ph('Calculated')) + r""" \\[6pt]
 \hline
 \textbf{No. of Girders} & """ + (_v(input_dict, KEY_TS_NO_OF_GIRDERS) or _ph('n')) + r""" [SOFTWARE DEFAULT / USER] \\[6pt]
 \hline
@@ -580,7 +729,7 @@ Where the user has modified additional inputs, those values are reported here. W
 \hline
 \textbf{Footpath Width (m)} & """ + (_v(input_dict, KEY_TS_FOOTPATH_WIDTH,' m') or _ph('$f_w$') + ' m') + r""" (IRC 5 Cl. 104.3.6 min: 1.5 m) \\[6pt]
 \hline
-\textbf{No. of Traffic Lanes} & """ + (_v(input_dict,'num_lanes') or _ph(r'n\_lanes')) + r""" (per IRC 5 Cl. 104.3.1) \\[6pt]
+\textbf{No. of Traffic Lanes} & """ + (_v(input_dict, KEY_WC_LD_LANE_TABLE_COUNT) or _ph(r'n\_lanes')) + r""" (per IRC 5 Cl. 104.3.1) \\[6pt]
 \hline
 \end{tabularx}
 \end{table}
@@ -592,13 +741,13 @@ Where the user has modified additional inputs, those values are reported here. W
 \vspace{-6pt}
 \begin{tabularx}{\textwidth}{|L{5.5cm}|X|}
 \hline
-\textbf{Crash Barrier Type} & """ + (_v(input_dict,'crash_barrier_type') or _ph('IRC 5 RCC / Metallic / Custom')) + r""" \\[6pt]
+\textbf{Crash Barrier Type} & """ + (_v(input_dict, KEY_CB_TYPE) or _ph('IRC 5 RCC / Metallic / Custom')) + r""" \\[6pt]
 \hline
 \textbf{Crash Barrier Load (kN/m)} & """ + (_v(input_dict, KEY_CB_LOAD) or _ph('Load')) + r""" \\[6pt]
 \hline
-\textbf{Median Type} & """ + (_v(input_dict,'median_type') or _ph('IRC 5 Raised Kerb / N/A')) + r""" \\[6pt]
+\textbf{Median Type} & """ + (_v(input_dict, KEY_MD_TYPE) or _ph('IRC 5 Raised Kerb / N/A')) + r""" \\[6pt]
 \hline
-\textbf{Railing Type} & """ + (_v(input_dict,'railing_type') or _ph('IRC 5 RCC / Steel / N/A')) + r""" \\[6pt]
+\textbf{Railing Type} & """ + (_v(input_dict, KEY_RL_TYPE) or _ph('IRC 5 RCC / Steel / N/A')) + r""" \\[6pt]
 \hline
 \textbf{Railing Load (kN/m)} & 1.5 kN/m [SOFTWARE DEFAULT per IRC 6 Cl. 206.5] \\[6pt]
 \hline
@@ -609,17 +758,69 @@ Where the user has modified additional inputs, those values are reported here. W
 \end{tabularx}
 \end{table}
 
-""" + _girder_tables() + r"""
+""" + _girder_tables(input_dict) + r"""
 
-""" + _bracing_tables() + r"""
+""" + _bracing_tables(input_dict) + r"""
 
 """ + _shear_connector_table(input_dict) + r"""
 
 """ + _safety_factors_table(input_dict)
 
 
-def _girder_tables():
-    return r"""
+def _girder_tables(input_dict):
+    # Helper: one girder-dimension row (all girders share same section)
+    def _dim_row(label):
+        return (label + r""" & """
+                + (_v(input_dict, KEY_GIRDER_DEPTH, ' mm') or _ph('D'))
+                + r""" & """
+                + (_v(input_dict, KEY_GIRDER_WEB_THICKNESS, ' mm') or _ph('tw'))
+                + r""" & """
+                + (_v(input_dict, KEY_GIRDER_TOP_FLANGE_WIDTH, ' mm') or _ph('btf'))
+                + ', '
+                + (_v(input_dict, KEY_GIRDER_TOP_FLANGE_THICKNESS, ' mm') or _ph('ttf'))
+                + r""" & """
+                + (_v(input_dict, KEY_GIRDER_BOTTOM_FLANGE_WIDTH, ' mm') or _ph('bbf'))
+                + ', '
+                + (_v(input_dict, KEY_GIRDER_BOTTOM_FLANGE_THICKNESS, ' mm') or _ph('tbf'))
+                + r""" \\[8pt]
+\hline
+""")
+
+    # Helper: one general-info row (all girders share same section)
+    def _gen_row(label, member_id):
+        return (label + r""" & """ + member_id + r""" & """
+                + (_v(input_dict, KEY_DESIGN_MODE) or 'Optimized / Customized')
+                + r""" & """
+                + (_v(input_dict, KEY_GIRDER_TYPE) or 'Welded Plate Girder / Rolled')
+                + r""" & """
+                + (_v(input_dict, KEY_GIRDER_SYMMETRY) or 'Symmetric / Unsymmetric')
+                + r""" \\[8pt]
+\hline
+""")
+
+    # Helper: one restraint/stiffener row (all girders share same section)
+    def _rst_row(label):
+        return (label + r""" & """
+                + (_v(input_dict, KEY_GIRDER_TORSIONAL_RESTRAINT) or _ph('Torsional Restraint'))
+                + ', '
+                + (_v(input_dict, KEY_GIRDER_WARPING_RESTRAINT) or _ph('Warping Restraint'))
+                + r""" & """
+                + (_v(input_dict, KEY_GIRDER_WEB_TYPE) or _ph('Web Type'))
+                + r""" & """
+                + (_v(input_dict, KEY_INTERMEDIATE_STIFFENER) or _ph('Yes / No'))
+                + '; Spacing: '
+                + (_v(input_dict, KEY_INTERMEDIATE_STIFFENER_SPACING, ' mm') or _ph('c') + ' mm')
+                + '; Thickness: '
+                + (_v(input_dict, KEY_INTERMEDIATE_STIFFENER_THICKNESS, ' mm') or _ph('ts') + ' mm')
+                + r""" & Longitudinal: """
+                + (_v(input_dict, KEY_LONGITUDINAL_STIFFENER) or _ph('Yes / No'))
+                + r"""; End Panel: Yes; """
+                + _ph('t_{s,end}')  # GAP — no KEY_ for end panel stiffener thickness
+                + r""" mm \\[8pt]
+\hline
+""")
+
+    return (r"""
 \newpage
 \noindent\textbf{Table 2.6  Member Properties: Girder Details}
 
@@ -633,19 +834,14 @@ def _girder_tables():
 \hline
 \textbf{Girder} & \textbf{Member ID} & \textbf{Design Mode} & \textbf{Girder Type} & \textbf{Girder Symmetry} \\[6pt]
 \hline
-Girder 1 & G1M1 & Optimized / Customized & Welded Plate Girder / Rolled & Symmetric / Unsymmetric \\[8pt]
-\hline
-Girder 2 & G2M1 & Optimized / Customized & Welded Plate Girder / Rolled & Symmetric / Unsymmetric \\[8pt]
-\hline
-Girder 3 & G3M1 & Optimized / Customized & Welded Plate Girder / Rolled & Symmetric / Unsymmetric \\[8pt]
-\hline
-Girder 4 & G4M1 & Optimized / Customized & Welded Plate Girder / Rolled & Symmetric / Unsymmetric \\[8pt]
-\hline
-Girder 5A & G5M1 & Optimized / Customized & Welded Plate Girder / Rolled & Symmetric / Unsymmetric \\[8pt]
-\hline
-Girder 5B & G5M2 & Optimized / Customized & Welded Plate Girder / Rolled & Symmetric / Unsymmetric \\[8pt]
-\hline
-\end{tabularx}
+"""
+            + _gen_row('Girder 1', 'G1M1')
+            + _gen_row('Girder 2', 'G2M1')
+            + _gen_row('Girder 3', 'G3M1')
+            + _gen_row('Girder 4', 'G4M1')
+            + _gen_row('Girder 5A', 'G5M1')
+            + _gen_row('Girder 5B', 'G5M2')
+            + r"""\end{tabularx}
 \end{table}
 
 \vspace{0.6em}
@@ -657,19 +853,14 @@ Girder 5B & G5M2 & Optimized / Customized & Welded Plate Girder / Rolled & Symme
 \hline
 \textbf{Girder} & \textbf{Total Depth, D (mm)} & \textbf{Web, tw (mm)} & \textbf{Top Flange (b\textsubscript{tf}, t\textsubscript{tf}) mm} & \textbf{Bottom Flange (b\textsubscript{bf}, t\textsubscript{bf}) mm} \\[6pt]
 \hline
-Girder 1 & \placeholder{D} & \placeholder{tw} & \placeholder{btf}, \placeholder{ttf} & \placeholder{bbf}, \placeholder{tbf} \\[8pt]
-\hline
-Girder 2 & \placeholder{D} & \placeholder{tw} & \placeholder{btf}, \placeholder{ttf} & \placeholder{bbf}, \placeholder{tbf} \\[8pt]
-\hline
-Girder 3 & \placeholder{D} & \placeholder{tw} & \placeholder{btf}, \placeholder{ttf} & \placeholder{bbf}, \placeholder{tbf} \\[8pt]
-\hline
-Girder 4 & \placeholder{D} & \placeholder{tw} & \placeholder{btf}, \placeholder{ttf} & \placeholder{bbf}, \placeholder{tbf} \\[8pt]
-\hline
-Girder 5A & \placeholder{D} & \placeholder{tw} & \placeholder{btf}, \placeholder{ttf} & \placeholder{bbf}, \placeholder{tbf} \\[8pt]
-\hline
-Girder 5B & \placeholder{D} & \placeholder{tw} & \placeholder{btf}, \placeholder{ttf} & \placeholder{bbf}, \placeholder{tbf} \\[8pt]
-\hline
-\end{tabularx}
+"""
+            + _dim_row('Girder 1')
+            + _dim_row('Girder 2')
+            + _dim_row('Girder 3')
+            + _dim_row('Girder 4')
+            + _dim_row('Girder 5A')
+            + _dim_row('Girder 5B')
+            + r"""\end{tabularx}
 \end{table}
 
 \vspace{0.6em}
@@ -681,25 +872,48 @@ Girder 5B & \placeholder{D} & \placeholder{tw} & \placeholder{btf}, \placeholder
 \hline
 \textbf{Girder} & \textbf{Torsional / Warping Restraint} & \textbf{Web Philosophy} & \textbf{Intermediate Stiffeners} & \textbf{Longitudinal / End Panel Stiffeners} \\[6pt]
 \hline
-Girder 1 & \placeholder{Fully / Partially}, \placeholder{Both Flange / No Restraint} & Simple Post Critical / Tension Field & Yes / No; Spacing: \placeholder{c} mm; Thickness: \placeholder{ts} mm & Longitudinal: Yes / No / N.R.; End Panel: Yes; \placeholder{$t_{s,end}$} mm \\[8pt]
-\hline
-Girder 2 & \placeholder{Fully / Partially}, \placeholder{Both Flange / No Restraint} & Simple Post Critical / Tension Field & Yes / No; Spacing: \placeholder{c} mm; Thickness: \placeholder{ts} mm & Longitudinal: Yes / No / N.R.; End Panel: Yes; \placeholder{$t_{s,end}$} mm \\[8pt]
-\hline
-Girder 3 & \placeholder{Fully / Partially}, \placeholder{Both Flange / No Restraint} & Simple Post Critical / Tension Field & Yes / No; Spacing: \placeholder{c} mm; Thickness: \placeholder{ts} mm & Longitudinal: Yes / No / N.R.; End Panel: Yes; \placeholder{$t_{s,end}$} mm \\[8pt]
-\hline
-Girder 4 & \placeholder{Fully / Partially}, \placeholder{Both Flange / No Restraint} & Simple Post Critical / Tension Field & Yes / No; Spacing: \placeholder{c} mm; Thickness: \placeholder{ts} mm & Longitudinal: Yes / No / N.R.; End Panel: Yes; \placeholder{$t_{s,end}$} mm \\[8pt]
-\hline
-Girder 5A & \placeholder{Fully / Partially}, \placeholder{Both Flange / No Restraint} & Simple Post Critical / Tension Field & Yes / No; Spacing: \placeholder{c} mm; Thickness: \placeholder{ts} mm & Longitudinal: Yes / No / N.R.; End Panel: Yes; \placeholder{$t_{s,end}$} mm \\[8pt]
-\hline
-Girder 5B & \placeholder{Fully / Partially}, \placeholder{Both Flange / No Restraint} & Simple Post Critical / Tension Field & Yes / No; Spacing: \placeholder{c} mm; Thickness: \placeholder{ts} mm & Longitudinal: Yes / No / N.R.; End Panel: Yes; \placeholder{$t_{s,end}$} mm \\[8pt]
-\hline
-\end{tabularx}
-\end{table}
 """
+            + _rst_row('Girder 1')
+            + _rst_row('Girder 2')
+            + _rst_row('Girder 3')
+            + _rst_row('Girder 4')
+            + _rst_row('Girder 5A')
+            + _rst_row('Girder 5B')
+            + r"""\end{tabularx}
+\end{table}
+""")
 
 
-def _bracing_tables():
-    return r"""
+def _bracing_tables(input_dict):
+    # Helper: one cross-bracing row (all locations share same bracing config)
+    def _cb_row(location, member_ids):
+        return (location + r""" & """ + member_ids + r""" & """
+                + (_v(input_dict, KEY_CROSS_BRACING_TYPE) or _ph('Bracing Type'))
+                + r""" & """
+                + (_v(input_dict, KEY_CROSS_BRACING_SECTION) or _ph('e.g. ISA 100x100x8'))
+                + r""" & """
+                + (_v(input_dict, KEY_CROSS_BRACING_SPACING, ' m') or _ph('$s_{br}$'))
+                + r""" & """
+                + _ph('$n_{br}$')  # GAP — no KEY_ for number of bracing panels
+                + r""" \\[6pt]
+\hline
+""")
+
+    # Helper: one end-diaphragm row (all locations share same config)
+    def _ed_row(location, member_ids):
+        return (location + r""" & """ + member_ids + r""" & """
+                + (_v(input_dict, KEY_END_DIAPHRAGM_TYPE) or _ph('End Diaphragm Type'))
+                + r""" & """
+                + (_v(input_dict, KEY_END_DIAPHRAGM_BRACING_SECTION_DESIGNATION) or _ph('e.g. ISA 100x100x8'))
+                + r""" & """
+                + (_v(input_dict, KEY_END_DIAPHRAGM_SPACING, ' m') or _ph('$s_{br}$'))
+                + r""" & """
+                + _ph('$n_{br}$')  # GAP — no KEY_ for number of bracing panels
+                + r""" \\[6pt]
+\hline
+""")
+
+    return (r"""
 \newpage
 \noindent\textbf{Table 2.7  Member Properties: Cross Bracing Details}
 
@@ -710,15 +924,12 @@ def _bracing_tables():
 \hline
 \textbf{Location} & \textbf{Member IDs} & \textbf{Type of Bracing} & \textbf{Bracing Section} & \textbf{Spacing (m)} & \textbf{No. of Panels} \\
 \hline
-Between Girders 1 and 2 & B1M1 -- B1M10 & K-Bracing / X-Bracing [SOFTWARE DEFAULT] & \placeholder{e.g. ISA 100x100x8} & \placeholder{$s_{br}$} & \placeholder{$n_{br}$} \\[6pt]
-\hline
-Between Girders 2 and 3 & B2M1 -- B2M10 & K-Bracing / X-Bracing [SOFTWARE DEFAULT] & \placeholder{e.g. ISA 100x100x8} & \placeholder{$s_{br}$} & \placeholder{$n_{br}$} \\[6pt]
-\hline
-Between Girders 3 and 4 & B3M1 -- B3M10 & K-Bracing / X-Bracing [SOFTWARE DEFAULT] & \placeholder{e.g. ISA 100x100x8} & \placeholder{$s_{br}$} & \placeholder{$n_{br}$} \\[6pt]
-\hline
-Between Girders 4 and 5 & B4M1 -- B4M10 & K-Bracing / X-Bracing [SOFTWARE DEFAULT] & \placeholder{e.g. ISA 100x100x8} & \placeholder{$s_{br}$} & \placeholder{$n_{br}$} \\[6pt]
-\hline
-\end{longtable}
+"""
+            + _cb_row('Between Girders 1 and 2', 'B1M1 -- B1M10')
+            + _cb_row('Between Girders 2 and 3', 'B2M1 -- B2M10')
+            + _cb_row('Between Girders 3 and 4', 'B3M1 -- B3M10')
+            + _cb_row('Between Girders 4 and 5', 'B4M1 -- B4M10')
+            + r"""\end{longtable}
 
 \noindent\textbf{Table 2.8  Member Properties: End Diaphragm Details}
 
@@ -729,16 +940,13 @@ Between Girders 4 and 5 & B4M1 -- B4M10 & K-Bracing / X-Bracing [SOFTWARE DEFAUL
 \hline
 \textbf{Location} & \textbf{Member IDs} & \textbf{Type of Bracing} & \textbf{Bracing Section} & \textbf{Spacing (m)} & \textbf{No. of Panels} \\
 \hline
-Between Girders 1 and 2 & E1M1, E1M2 & K-Bracing / X-Bracing [SOFTWARE DEFAULT] & \placeholder{e.g. ISA 100x100x8} & \placeholder{$s_{br}$} & \placeholder{$n_{br}$} \\[6pt]
-\hline
-Between Girders 2 and 3 & E2M1, E2M2 & K-Bracing / X-Bracing [SOFTWARE DEFAULT] & \placeholder{e.g. ISA 100x100x8} & \placeholder{$s_{br}$} & \placeholder{$n_{br}$} \\[6pt]
-\hline
-Between Girders 3 and 4 & E3M1, E3M2 & K-Bracing / X-Bracing [SOFTWARE DEFAULT] & \placeholder{e.g. ISA 100x100x8} & \placeholder{$s_{br}$} & \placeholder{$n_{br}$} \\[6pt]
-\hline
-Between Girders 4 and 5 & E4M1, E4M2 & K-Bracing / X-Bracing [SOFTWARE DEFAULT] & \placeholder{e.g. ISA 100x100x8} & \placeholder{$s_{br}$} & \placeholder{$n_{br}$} \\[6pt]
-\hline
-\end{longtable}
 """
+            + _ed_row('Between Girders 1 and 2', 'E1M1, E1M2')
+            + _ed_row('Between Girders 2 and 3', 'E2M1, E2M2')
+            + _ed_row('Between Girders 3 and 4', 'E3M1, E3M2')
+            + _ed_row('Between Girders 4 and 5', 'E4M1, E4M2')
+            + r"""\end{longtable}
+""")
 
 
 def _shear_connector_table(input_dict):
@@ -751,15 +959,15 @@ def _shear_connector_table(input_dict):
 \vspace{0.4em}
 \begin{tabularx}{\textwidth}{|L{5.5cm}|X|}
 \hline
-\textbf{Stud Diameter (mm)} & """ + (_v(input_dict,'stud_diameter',' mm') or _ph('$d_{stud}$') + ' mm') + r""" [SOFTWARE DEFAULT: 22 mm] \\[6pt]
+\textbf{Stud Diameter (mm)} & """ + (_v(input_dict, KEY_DS_STUD_DIAMETER, ' mm') or _ph('$d_{stud}$') + ' mm') + r""" [SOFTWARE DEFAULT: 22 mm] \\[6pt]
 \hline
-\textbf{Stud Height (mm)} & """ + (_v(input_dict,'stud_height',' mm') or _ph('$h_{stud}$') + ' mm') + r""" [SOFTWARE DEFAULT: 100 mm] \\[6pt]
+\textbf{Stud Height (mm)} & """ + (_v(input_dict, KEY_DS_STUD_HEIGHT, ' mm') or _ph('$h_{stud}$') + ' mm') + r""" [SOFTWARE DEFAULT: 100 mm] \\[6pt]
 \hline
-\textbf{Stud fy (MPa)} & """ + (_v(input_dict,'stud_fy',' MPa') or _ph('$f_{ys}$') + ' MPa') + r""" [SOFTWARE DEFAULT: 385 MPa] \\[6pt]
+\textbf{Stud fy (MPa)} & """ + (_v(input_dict, KEY_DS_STUD_YIELD_STRENGTH, ' MPa') or _ph('$f_{ys}$') + ' MPa') + r""" [SOFTWARE DEFAULT: 385 MPa] \\[6pt]
 \hline
-\textbf{Stud fu (MPa)} & """ + (_v(input_dict,'stud_fu',' MPa') or _ph('$f_{us}$') + ' MPa') + r""" [SOFTWARE DEFAULT: 495 MPa] \\[6pt]
+\textbf{Stud fu (MPa)} & """ + (_v(input_dict, KEY_DS_STUD_ULTIMATE_STRENGTH, ' MPa') or _ph('$f_{us}$') + ' MPa') + r""" [SOFTWARE DEFAULT: 495 MPa] \\[6pt]
 \hline
-\textbf{No. of Studs per Section} & """ + (_v(input_dict,'num_studs') or _ph('$n_s$')) + r""" [SOFTWARE DEFAULT: 2] \\[6pt]
+\textbf{No. of Studs per Section} & """ + (_v(input_dict, KEY_DS_STUD_COUNT) or _ph('$n_s$')) + r""" [SOFTWARE DEFAULT: 2] \\[6pt]
 \hline
 \end{tabularx}
 """
@@ -778,19 +986,19 @@ def _safety_factors_table(input_dict):
 \vspace{0.4em}
 \begin{tabularx}{\textwidth}{|L{5.5cm}|X|}
 \hline
-\textbf{$\gamma_{M0}$ (Yielding / Buckling)} & """ + str(input_dict.get('gamma_m0', '1.10')) + r""" \\[6pt]
+\textbf{$\gamma_{M0}$ (Yielding / Buckling)} & """ + (_v(input_dict, KEY_DO_GAMMA_M0) or '1.10 [IRC 22 default]') + r""" \\[6pt]
 \hline
-\textbf{$\gamma_{M1}$ (Ultimate Stress)} & """ + str(input_dict.get('gamma_m1', '1.25')) + r""" \\[6pt]
+\textbf{$\gamma_{M1}$ (Ultimate Stress)} & """ + (_v(input_dict, KEY_DO_GAMMA_M1) or '1.25 [IRC 22 default]') + r""" \\[6pt]
 \hline
-\textbf{$\gamma_C$ (Concrete, Basic)} & """ + str(input_dict.get('gamma_c', '1.50')) + r""" \\[6pt]
+\textbf{$\gamma_C$ (Concrete, Basic)} & """ + (_v(input_dict, KEY_DO_GAMMA_C_BASIC) or '1.50 [IRC 22 default]') + r""" \\[6pt]
 \hline
-\textbf{$\gamma_s$ (Reinforcement)} & """ + str(input_dict.get('gamma_s', '1.15')) + r""" \\[6pt]
+\textbf{$\gamma_s$ (Reinforcement)} & """ + (_v(input_dict, KEY_DO_GAMMA_S) or '1.15 [IRC 22 default]') + r""" \\[6pt]
 \hline
-\textbf{$\gamma_v$ (Shear Connectors)} & """ + str(input_dict.get('gamma_v', '1.25')) + r""" \\[6pt]
+\textbf{$\gamma_v$ (Shear Connectors)} & """ + (_v(input_dict, KEY_DO_GAMMA_V) or '1.25 [IRC 22 default]') + r""" \\[6pt]
 \hline
-\textbf{$\gamma_{fft}$ (Fatigue Load)} & """ + str(input_dict.get('gamma_fft', '1.00')) + r""" \\[6pt]
+\textbf{$\gamma_{fft}$ (Fatigue Load)} & """ + (_v(input_dict, KEY_DO_GAMMA_FLT) or '1.00 [IRC 22 default]') + r""" \\[6pt]
 \hline
-\textbf{$\gamma_{Mft}$ (Fatigue Strength)} & """ + str(input_dict.get('gamma_mft', '1.35')) + r""" \\[6pt]
+\textbf{$\gamma_{Mft}$ (Fatigue Strength)} & """ + (_v(input_dict, KEY_DO_GAMMA_MF) or '1.35 [IRC 22 default]') + r""" \\[6pt]
 \hline
 \end{tabularx}
 """
@@ -1927,6 +2135,14 @@ def ch6_drawings(fig_paths):
                     'studs on the top flange. Use OsdagBridge CAD output.',
                     'Figure 6.3 -- 3D View of Single Plate Girder')
 
+    gfront = _sec_fig(
+        fig_paths.get('girder_front'),
+        'FIGURE 6.3b --- Front elevation of plate girder: full '
+        'span, showing web, top and bottom flanges, intermediate '
+        'stiffener spacing and bearing stiffeners at supports.',
+        'Figure 6.3b -- Front Elevation of Plate Girder'
+    )
+
     gtop = _sec_fig(fig_paths.get('girder_top'),
                     'FIGURE 6.4 --- Plan (top) view of the girder showing: flange widths, '
                     'stiffener spacing pattern, shear stud layout zones (dense near supports, '
@@ -1991,6 +2207,14 @@ This section presents CAD-generated views of the designed bridge and its compone
 
 """
             + g3d + r"""
+
+\vspace{1em}
+
+\subsection{Front Elevation of Girder}
+\label{subsec:front-elevation}
+
+"""
+            + gfront + r"""
 
 \vspace{1em}
 
@@ -2204,6 +2428,7 @@ class ReportFigures:
     final_geometry:  Optional[str] = None
     longitudinal_elevation: Optional[str] = None
     girder_3d:       Optional[str] = None
+    girder_front:    Optional[str] = None
     girder_top:      Optional[str] = None
     girder_end:      Optional[str] = None
     bm_envelope:     Optional[str] = None
@@ -2371,53 +2596,6 @@ def _format_project_location(pl_data):
     
     return str(pl_data)
 
-
-def _format_project_location(pl_data):
-    if not pl_data:
-        return ''
-    if isinstance(pl_data, str):
-        try:
-            import ast
-            pl_dict = ast.literal_eval(pl_data)
-        except Exception:
-            return pl_data
-    elif isinstance(pl_data, dict):
-        pl_dict = pl_data
-    else:
-        return str(pl_data)
-    
-    method = pl_dict.get('method')
-    data = pl_dict.get('data', {})
-    
-    if method == 'location_name':
-        dist = data.get('district', '')
-        state = data.get('state', '')
-        if dist and state:
-            return f"{dist}, {state}"
-        return dist or state or 'Unknown Location'
-    elif method == 'map':
-        lat = data.get('latitude', '')
-        lon = data.get('longitude', '')
-        if lat and lon:
-            try:
-                from osdagbridge.core.bridge_types.plate_girder.ui_fields_project_location import DB_PATH
-                from osdagbridge.core.data.project_location.database import Database
-                db = Database(DB_PATH)
-                db.connect()
-                nearest = db.get_nearest_station_temperature(float(lat), float(lon))
-                db.close()
-                if nearest:
-                    return f"{nearest['station']}, {nearest['state']}"
-            except Exception as e:
-                logger.warning(f"Reverse geocode error: {e}")
-            return f"Lat: {lat}°, Lon: {lon}°"
-        return 'Map Location'
-    elif method == 'custom_data':
-        return 'Custom Location Data'
-    
-    return str(pl_data)
-
-
 # ---------------------------------------------------------------------------
 # Public builder helper (unchanged signature)
 # ---------------------------------------------------------------------------
@@ -2538,6 +2716,7 @@ _FIGURE_MAP = [
     ('grillage',              'grillage.png'),
     ('longitudinal_elevation','longitudinal_elevation.png'),
     ('girder_3d',             'girder_3d.png'),
+    ('girder_front',          'girder_front.png'),
     ('girder_top',            'girder_top.png'),
     ('girder_end',            'girder_end.png'),
     ('bm_envelope',           'bm_envelope.png'),

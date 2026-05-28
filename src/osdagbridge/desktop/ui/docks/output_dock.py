@@ -19,7 +19,11 @@ ui_config_dict extra keys for analysis fields:
                          all following fields land inside it until group_end.
     group_end   : bool — closes the current nested group after this field.
     exclusive   : bool — for checkbox types; only one can be checked at a time.
-"""
+    """
+import os
+import logging
+
+logger = logging.getLogger(__name__)
 
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QSizePolicy,
@@ -81,6 +85,7 @@ class OutputDock(QWidget):
         super().__init__()
         self.parent  = parent
         self.backend = backend
+        self._cad_figure_paths = {}
         self.setStyleSheet("background: transparent;")
 
         self.main_layout = QHBoxLayout(self)
@@ -578,14 +583,54 @@ class OutputDock(QWidget):
     # ── Action handlers (called by name from schema) ──────────────────────────
 
     def _on_report_clicked(self):
-        """Walk up the parent chain to find the page/window with open_report_dialog."""
+        """
+        Trigger report generation.
+        CAD export runs in a background QThread so the UI
+        never freezes. The report dialog opens immediately.
+        The report is generated only after export completes.
+        """
+        from PySide6.QtCore import QThread, Signal, QObject
+
+        class _ExportWorker(QObject):
+            finished = Signal(dict)
+
+            def __init__(self, fn):
+                super().__init__()
+                self._fn = fn
+
+            def run(self):
+                result = {}
+                try:
+                    result = self._fn()
+                except Exception:
+                    pass
+                self.finished.emit(result)
+
+        # Find main_window early — needed in the callback
         main_window = self.parent
         while main_window and not hasattr(main_window, 'open_report_dialog'):
             main_window = getattr(main_window, 'parent', None)
-            if callable(main_window):
-                break
-        if main_window and hasattr(main_window, 'open_report_dialog'):
-            main_window.open_report_dialog()
+        if not main_window or not hasattr(main_window, 'open_report_dialog'):
+            return
+
+        # Show dialog immediately — don't wait for export
+        main_window.open_report_dialog()
+
+        # Run CAD export in background thread
+        # Paths will be ready before generate_report() is called
+        # because template_page reads _cad_figure_paths inside
+        # generate_report(), not at dialog-open time.
+        self._export_thread = QThread()
+        self._export_worker = _ExportWorker(self._export_cad_figures)
+        self._export_worker.moveToThread(self._export_thread)
+        self._export_thread.started.connect(self._export_worker.run)
+        self._export_worker.finished.connect(self._on_export_done)
+        self._export_worker.finished.connect(self._export_thread.quit)
+        self._export_thread.start()
+
+    def _on_export_done(self, paths: dict):
+        """Called from QThread when CAD export completes."""
+        self._cad_figure_paths = paths
 
     def refresh_utilization(self):
         """Read utilization ratios from backend and update all PercentBarWidgets."""
@@ -613,6 +658,157 @@ class OutputDock(QWidget):
     def open_deck_design(self):
         from osdagbridge.desktop.ui.dialogs.deck_design import DeckDesign
         DeckDesign(parent=self.parent).exec()
+
+    # ── CAD figure export ─────────────────────────────────────────
+
+    def _export_cad_figures(self) -> dict:
+        """
+        Export 4 CAD views to the fixed internal Images folder.
+        Returns { ReportFigures_attr: absolute_path } for each view.
+        Returns {} on any failure. Never raises.
+        """
+        import os
+        import logging
+        _log = logging.getLogger(__name__)
+
+        # ── Resolve save path: core/data/ResourceFiles/Images/ ───────
+        resource_files_dir = os.path.normpath(os.path.join(
+            os.path.dirname(os.path.abspath(__file__)),
+            '..', '..', '..', 'core', 'data', 'ResourceFiles'
+        ))
+        figures_dir = os.path.join(resource_files_dir, 'Images')
+        if not os.path.exists(figures_dir):
+            os.makedirs(figures_dir)
+
+        # ── Find PlateGirderCADGenerator via parent chain ─────────
+        main_window = self.parent
+        while main_window and not hasattr(main_window, 'cad_3d_widget'):
+            main_window = getattr(main_window, 'parent', None)
+        if not main_window or not hasattr(main_window, 'cad_3d_widget'):
+            _log.warning(
+                "_export_cad_figures: cad_3d_widget not found — "
+                "CAD export skipped")
+            return {}
+
+        core = main_window.cad_3d_widget.generator
+
+        # ── Verify model has been generated ──────────────────────────────
+        if not getattr(core, 'model_data', None):
+            _log.warning(
+                "_export_cad_figures: model_data is empty — "
+                "run design first")
+            return {}
+
+        # ── Create headless Viewer3d — no window, no auto-export ─────
+        try:
+            from OCC.Display.OCCViewer import Viewer3d
+            off_display = Viewer3d()
+            off_display.Create()          # NO arguments — avoids TypeError
+            off_display.SetModeShaded()
+        except Exception as exc:
+            _log.warning(
+                "_export_cad_figures: Viewer3d init failed: "
+                "%s — export skipped", exc)
+            return {}
+
+        if not hasattr(off_display, 'ExportToImage'):
+            _log.warning(
+                "_export_cad_figures: off_display has no ExportToImage "
+                "— export skipped")
+            return {}
+
+        # ── Stub cad_widget for off-screen rendering ──────────────────────
+        # osdag_display_shape() calls canvas.model_ais_objects — provide it.
+        class _OffscreenCanvas:
+            def __init__(self):
+                self.model_ais_objects = {}
+        off_canvas = _OffscreenCanvas()
+
+        # ── Save originals BEFORE touching anything ───────────────────────
+        original_display    = core.display
+        original_cad_widget = core.cad_widget
+        original_component  = core.component
+
+        figure_paths = {}
+
+        try:
+            # ── Substitute + render all components onto off-screen display
+            core.display    = off_display
+            core.cad_widget = off_canvas
+
+            for component in ["Girder", "Stiffener", "Cross Bracing",
+                              "Deck", "Crash Barrier", "Railing", "Median"]:
+                try:
+                    core.display_3dModel(component)
+                except Exception as exc:
+                    _log.debug("component %s skipped: %s", component, exc)
+
+            off_display.FitAll()
+
+            # View 1 — Isometric / 3D
+            try:
+                off_display.set_bg_gradient_color(
+                    [235, 235, 235], [195, 195, 195])
+                p = os.path.join(figures_dir, 'girder_3d.png')
+                off_display.ExportToImage(p)
+                if os.path.exists(p):
+                    figure_paths['girder_3d'] = os.path.abspath(p)
+            except Exception as exc:
+                _log.warning("3D view export failed: %s", exc)
+
+            # View 2 — Front
+            try:
+                off_display.View_Front()
+                off_display.FitAll()
+                off_display.set_bg_gradient_color(
+                    [235, 235, 235], [195, 195, 195])
+                p = os.path.join(figures_dir, 'girder_front.png')
+                off_display.ExportToImage(p)
+                if os.path.exists(p):
+                    figure_paths['girder_front'] = os.path.abspath(p)
+            except Exception as exc:
+                _log.warning("Front view export failed: %s", exc)
+
+            # View 3 — Top
+            try:
+                off_display.View_Top()
+                off_display.FitAll()
+                off_display.set_bg_gradient_color(
+                    [235, 235, 235], [195, 195, 195])
+                p = os.path.join(figures_dir, 'girder_top.png')
+                off_display.ExportToImage(p)
+                if os.path.exists(p):
+                    figure_paths['girder_top'] = os.path.abspath(p)
+            except Exception as exc:
+                _log.warning("Top view export failed: %s", exc)
+
+            # View 4 — Side (Right)
+            try:
+                off_display.View_Right()
+                off_display.FitAll()
+                off_display.set_bg_gradient_color(
+                    [235, 235, 235], [195, 195, 195])
+                p = os.path.join(figures_dir, 'girder_end.png')
+                off_display.ExportToImage(p)
+                if os.path.exists(p):
+                    figure_paths['girder_end'] = os.path.abspath(p)
+            except Exception as exc:
+                _log.warning("Side view export failed: %s", exc)
+
+        finally:
+            # ── CRITICAL: isolation cleanup — ALWAYS runs ─────────────────
+            try:
+                off_display.EraseAll()
+            except Exception:
+                pass
+            core.display    = original_display
+            core.cad_widget = original_cad_widget
+            core.component  = original_component
+
+        _log.info(
+            "_export_cad_figures: exported %d view(s) to %s",
+            len(figure_paths), figures_dir)
+        return figure_paths
 
     # ── Checkbox Interfaces ──────────────────────────────────────────────
 
