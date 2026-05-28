@@ -159,6 +159,78 @@ class AdditionalInputs(QDialog):
         except (ValueError, TypeError):
             pass
 
+    # Compute func that return the value to be updated (field)
+    # Calculation from Core IRC STARTS=======================================================================
+    def _compute_seismic_values(self, working_input_dict: dict) -> dict:
+        from osdagbridge.core.utils.codes.irc6_2017 import IRC6_2017
+
+        zone     = working_input_dict.get(KEY_SL_SEISMIC_ZONE)
+        soil_str = working_input_dict.get(KEY_SL_SOIL_TYPE, "")
+        period   = working_input_dict.get(KEY_SL_TIME_PERIOD)
+        damping  = working_input_dict.get(KEY_SL_DAMPING, "5")
+
+        if not zone:
+            return {}
+        else:
+            # Map numeric zones to Roman numerals
+            zone_map = {
+                "1": "I",
+                "2": "II",
+                "3": "III",
+                "4": "IV",
+                "5": "V",
+            }
+
+            # Normalize input
+            zone = str(zone).strip().upper()
+
+            # Convert numeric to Roman if needed
+            if zone.isdigit():
+                zone = zone_map.get(zone)
+
+        # Map soil type string to int
+        soil_map = {
+            "Type I \u2013 Rocky or Hard":  1,
+            "Type II \u2013 Medium Soil":   2,
+            "Type III \u2013 Soft Soil":    3,
+        }
+        soil_type = soil_map.get(soil_str, 1)
+
+        # Dead load
+        dead_mode  = working_input_dict.get(KEY_SL_DEAD_LOAD_MODE, "Automatic")
+        dead_value = working_input_dict.get(KEY_SL_DEAD_LOAD_VALUE)
+        dead_load  = float(dead_value) if dead_mode == "Custom" and dead_value else 0.0
+
+        # Live load
+        live_mode  = working_input_dict.get(KEY_SL_LIVE_LOAD_MODE, "Automatic")
+        live_value = working_input_dict.get(KEY_SL_LIVE_LOAD_VALUE)
+        live_load  = float(live_value) if live_mode == "Custom" and live_value else 0.0
+
+        print(f"@@: zone={zone},\nsoil={soil_str},\nperiod={period},\ndamping={damping}")
+        print(f"@@: d_m={dead_mode},\nd_v={dead_value},\nd_l={dead_load}")
+
+        result = IRC6_2017.cl_218_5_1(
+            zone=f"Zone {zone}",
+            soil_type=soil_type,
+            dead_load_kN=dead_load,
+            live_load_kN=live_load,
+            period_T=float(period) if period else None,
+            damping_percent=float(damping) if damping else 5.0,
+        )
+
+        Ah = result.get("Ah", 0)
+        Av = round(Ah * 2 / 3, 4)  # Vertical = 2/3 horizontal per IRC 6
+
+        # These returned values will be updated on the following field
+        return {
+            KEY_SL_ZONE_FACTOR:       str(result.get("Z", "")),
+            KEY_SL_SPECTRAL_COEFF:    str(result.get("Sa_g_adjusted", "")),
+            KEY_SL_HORIZONTAL_COEFF:  str(Ah),
+            KEY_SL_VERTICAL_COEFF:    str(Av),
+        }
+    
+    # Calculation from Core IRC ENDS=======================================================================
+
     #-------------Field Change Handling and Validation Logic-Start-------------------------
     def _on_field_edited(self, key: str, widget: QLineEdit | str | dict):
         """
@@ -196,7 +268,7 @@ class AdditionalInputs(QDialog):
 
         # hard-validation start ----------------------
         result = self.validator.validate_additional_inputs(key, self.working_input_dict)
-        print(f"@@: After Edited Validation result for {key} = {result}")
+        # print(f"@@: After Edited Validation result for {key} = {result}")
         if result is not None:
             corrected, message = result
             CustomMessageBox(
@@ -248,7 +320,7 @@ class AdditionalInputs(QDialog):
         """
 
         # If Empty or None Value then set the default
-        print(f"@@Update Dict: key={key}, value={value}, default: {self.default_input_dict.get(key)}")
+        # print(f"@@Update Dict: key={key}, value={value}, default: {self.default_input_dict.get(key)}")
         if value is None or value == "":
             self.working_input_dict[key] = self.default_input_dict.get(key)
         else:
@@ -259,17 +331,25 @@ class AdditionalInputs(QDialog):
                     self.working_input_dict[key] = float(value)
                 except (ValueError, TypeError):
                     self.working_input_dict[key] = value
-        print(f"@@Final: {self.working_input_dict[key]}")
+        # print(f"@@Final: {self.working_input_dict[key]}")
 
     def _update_additional_input_cad(self):
         """
         Collect inputs from InputDock and update 2D-CAD
         """
-        print(f"@@: Updating 2D-CAD")
+        # print(f"@@: Updating 2D-CAD")
         # Apply state to CAD UI & Update Cad-State
         if hasattr(self, "typical_section_tab"):
             if hasattr(self.typical_section_tab, "cad_preview"):
                 self.typical_section_tab.cad_preview.update_from_bridge_inputs(self.working_input_dict)
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        # Refresh active tab source fields when dialog is shown/reopened
+        from PySide6.QtWidgets import QTabWidget
+        for tab_widget in self.findChildren(QTabWidget):
+            if hasattr(tab_widget, "refresh_active_tab"):
+                tab_widget.refresh_active_tab()
 
     #-------------Field Change Handling and Validation Logic-End-------------------------
     
