@@ -86,6 +86,36 @@ def _find_girders(nodes, members, z_tol=3):
     return dict(sorted(girders.items()))
 
 
+
+
+###--------------Added--------------------------------
+def _find_cross_beams(nodes, members, x_tol=3, z_tol=3):
+    """
+    Return two lists:
+      - cross_beams : elements where both end-nodes share the same x (purely transverse)
+      - diag_bracings: elements that are neither purely longitudinal nor purely transverse
+    Each list contains element tags (ints).
+    """
+    node_x = {n: round(coord[0], x_tol) for n, coord in nodes.items()}
+    node_z = {n: round(coord[2], z_tol) for n, coord in nodes.items()}
+
+    cross_beams   = []
+    diag_bracings = []
+
+    for ele, (n1, n2) in members.items():
+        same_x = node_x[n1] == node_x[n2]
+        same_z = node_z[n1] == node_z[n2]
+
+        if same_x and not same_z:
+            cross_beams.append(ele)
+        elif not same_x and not same_z:
+            diag_bracings.append(ele)
+        # same_z → longitudinal girder (handled by _find_girders)
+
+    return cross_beams, diag_bracings
+# ----------------------TILLHere---------------------------------------------
+
+
 def _build_polyline(elems, members, nodes, force_i, force_j, ds):
     """
     Build arrays (xs, ys, zs, vals, node_ids) for one girder.
@@ -270,8 +300,8 @@ def _add_grillage_background(ax, nodes, members, x_tol=3, z_tol=3, show_transver
 def _add_coordinate_triad(ax, nodes, scale=0.25):
     colors = {
         "X": "#D91A1A",
-        "Y": "#1A1AD9",
-        "Z": "#005900",
+        "Y": "#005900",
+        "Z": "#1A1AD9",
     }
     tag = "coord_triad"
 
@@ -332,14 +362,39 @@ def _add_coordinate_triad(ax, nodes, scale=0.25):
         ax.add_collection3d(poly)
 
     # --- Z dot ---
-    zdot, = ax.plot([ox], [oy], [oz],
-                    linestyle='none', marker='o',
-                    markersize=8, markerfacecolor=colors["Z"],
-                    markeredgecolor=colors["Z"],
-                    zorder=6)
-    zdot.set_gid(tag)
-    ax.text(ox - Lx * 0.50, oy, oz, "Z",
-            color=colors["Z"], fontsize=10, fontweight="bold", zorder=8, gid=tag)
+    # zdot, = ax.plot([ox], [oy], [oz],
+    #                 linestyle='none', marker='o',
+    #                 markersize=8, markerfacecolor=colors["Z"],
+    #                 markeredgecolor=colors["Z"],
+    #                 zorder=6)
+    # zdot.set_gid(tag)
+    # ax.text(ox - Lx * 0.50, oy, oz, "Z",
+    #         color=colors["Z"], fontsize=10, fontweight="bold", zorder=8, gid=tag)
+
+    # zdot, = ax.plot([ox], [oy], [oz],
+    #                 linestyle='none', marker='o',
+    #                 markersize=8, markerfacecolor=colors["Y"],
+    #                 markeredgecolor=colors["Y"],
+    #                 zorder=6)
+    # zdot.set_gid(tag)
+    # ax.text(ox - Lx * 0.50, oy, oz, "Y",
+    #         color=colors["Y"], fontsize=10, fontweight="bold", zorder=8, gid=tag)
+
+    ydot, = ax.plot([ox], [oy], [oz],
+                linestyle='none', marker='o',
+                markersize=10, markerfacecolor=colors["Y"],
+                markeredgecolor=colors["Y"],
+                zorder=6)
+    ydot.set_gid(tag)
+    ydot2, = ax.plot([ox], [oy], [oz],
+                    linestyle='none', marker='.',
+                    markersize=3, markerfacecolor='white',
+                    markeredgecolor='white',
+                    zorder=7)
+    ydot2.set_gid(tag)
+    ax.text(ox - Lx * 0.50, oy, oz, "Y",
+            color=colors["Y"], fontsize=10, fontweight="bold", zorder=8, gid=tag)
+
 
    
 
@@ -359,19 +414,46 @@ def _add_coordinate_triad(ax, nodes, scale=0.25):
     ax.text(tip_x + Lx * 0.08, oy, oz, "X",
             color=colors["X"], fontsize=10, fontweight="bold", zorder=6, gid=tag)
 
-    # --- Y-Axis ---
-    tip_z  = oz + Lz
-    base_z = tip_z - HL_z
-    ax.plot([ox, ox], [oy, oy], [oz, base_z],
-            color=colors["Y"], linewidth=2.5, zorder=5, gid=tag)
+    # # --- Y-Axis ---
+    # tip_z  = oz + Lz
+    # base_z = tip_z - HL_z
+    # ax.plot([ox, ox], [oy, oy], [oz, base_z],
+    #         color=colors["Y"], linewidth=2.5, zorder=5, gid=tag)
+    # _filled_head(
+    #     tip=(ox, oy, tip_z), base=(ox, oy, base_z),
+    #     perp1_half=(HW_x, 0, 0),
+    #     perp2_half=(0, HW_x, 0),
+    #     color=colors["Y"],
+    # )
+    # ax.text(ox, oy, tip_z + Lz * 0.08, "Y",
+    #         color=colors["Y"], fontsize=10, fontweight="bold", zorder=6, gid=tag)
+
+     # --- Y-Axis ---
+    # tip_z  = oz + Lz
+    # base_z = tip_z - HL_z
+    # ax.plot([ox, ox], [oy, oy], [oz, base_z],
+    #         color=colors["Z"], linewidth=2.5, zorder=5, gid=tag)
+    # _filled_head(
+    #     tip=(ox, oy, tip_z), base=(ox, oy, base_z),
+    #     perp1_half=(HW_x, 0, 0),
+    #     perp2_half=(0, HW_x, 0),
+    #     color=colors["Z"],
+    # )
+    # ax.text(ox, oy, tip_z + Lz * 0.08, "Z",
+    #         color=colors["Z"], fontsize=10, fontweight="bold", zorder=6, gid=tag)
+
+    tip_y  = oy + Lx
+    base_y = tip_y - HL_x
+    ax.plot([ox, ox], [oy, base_y], [oz, oz],
+            color=colors["Z"], linewidth=2.5, zorder=5, gid=tag)
     _filled_head(
-        tip=(ox, oy, tip_z), base=(ox, oy, base_z),
+        tip=(ox, tip_y, oz), base=(ox, base_y, oz),
         perp1_half=(HW_x, 0, 0),
-        perp2_half=(0, HW_x, 0),
-        color=colors["Y"],
+        perp2_half=(0, 0, HW_z),
+        color=colors["Z"],
     )
-    ax.text(ox, oy, tip_z + Lz * 0.08, "Y",
-            color=colors["Y"], fontsize=10, fontweight="bold", zorder=6, gid=tag)
+    ax.text(ox, tip_y + Lx * 0.08, oz, "Z",
+            color=colors["Z"], fontsize=10, fontweight="bold", zorder=6, gid=tag)
 
     ax.set_xlim(xlim[0] - xr * 0.15, xlim[1])
     ax.set_ylim(ylim[0] - yr * 0.15, ylim[1])
@@ -479,6 +561,29 @@ def build_figure_grillage(nodes, members, edge_dist=0.0):
                     bbox=dict(boxstyle="round,pad=0.2", facecolor="white",
                               alpha=0.8, edgecolor="none"))
 
+    # ── NEW: draw cross beams and diagonal bracings ──────────────────────────
+    cross_beams, diag_bracings = _find_cross_beams(nodes, members)
+
+    cross_beam_kw  = dict(color="#1565C0", linewidth=1.8, alpha=0.85, zorder=3)
+    diag_bracing_kw = dict(color="#388E3C", linewidth=1.4, alpha=0.75,
+                        zorder=3, linestyle="--")
+
+    for ele in cross_beams:
+        n1, n2 = members[ele]
+        x1, z1 = nodes[n1][0], nodes[n1][2]
+        x2, z2 = nodes[n2][0], nodes[n2][2]
+        line, = ax.plot([x1, x2], [z1, z2], [0, 0], **cross_beam_kw)
+        line.set_gid("cross_beam")
+
+    for ele in diag_bracings:
+        n1, n2 = members[ele]
+        x1, z1 = nodes[n1][0], nodes[n1][2]
+        x2, z2 = nodes[n2][0], nodes[n2][2]
+        line, = ax.plot([x1, x2], [z1, z2], [0, 0], **diag_bracing_kw)
+        line.set_gid("cross_beam")
+    # ──END cross beams──────────────────────────────────────────────────────
+    
+    
     # Extract node IDs and coordinates properly for tracking
     node_ids = list(nodes.keys())
     xs = [nodes[n][0] for n in node_ids]
