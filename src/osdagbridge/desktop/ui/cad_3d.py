@@ -19,16 +19,20 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCore import QTimer, Qt
 
-from OCC.Core.Quantity import Quantity_Color, Quantity_TOC_RGB
-from OCC.Display.backend import load_backend
+HAS_OCC = True
+try:
+    from OCC.Core.Quantity import Quantity_Color, Quantity_TOC_RGB
+    from OCC.Display.backend import load_backend
 
-# CAD generator
-from osdagbridge.core.bridge_types.plate_girder.cad_generator import (
-    PlateGirderCADGenerator
-)
+    # CAD generator
+    from osdagbridge.core.bridge_types.plate_girder.cad_generator import (
+        PlateGirderCADGenerator
+    )
 
-# Custom 3D Viewer 
-from osdagbridge.desktop.ui.utils.custom_3dviewer import CustomViewer3d
+    # Custom 3D Viewer 
+    from osdagbridge.desktop.ui.utils.custom_3dviewer import CustomViewer3d
+except (ImportError, ModuleNotFoundError) as e:
+    HAS_OCC = False
 
 from osdagbridge.core.bridge_types.plate_girder.dto import (
     BridgeParametersDTO,
@@ -45,6 +49,23 @@ class CAD3DWindow(QWidget):
 
     def __init__(self, parent=None):
         super().__init__(parent)
+
+        if not HAS_OCC:
+            from PySide6.QtWidgets import QLabel
+            self.layout = QVBoxLayout(self)
+            self.layout.setAlignment(Qt.AlignCenter)
+            
+            self.label = QLabel(
+                "<h3>3D CAD Viewer Unavailable</h3>"
+                "<p>The 3D viewer requires <b>pythonocc-core</b>, which is not installed in your Python environment.</p>"
+                "<p>To enable 3D viewing, please install it via conda:<br>"
+                "<code>conda install -c conda-forge pythonocc-core=7.6.2</code></p>"
+            )
+            self.label.setTextFormat(Qt.RichText)
+            self.label.setAlignment(Qt.AlignCenter)
+            self.label.setStyleSheet("color: #555555; font-size: 14px; padding: 20px; border: 1px solid #cccccc; border-radius: 8px; background-color: #fafafa;")
+            self.layout.addWidget(self.label)
+            return
 
         # CAD generator
         self.generator = PlateGirderCADGenerator()
@@ -77,6 +98,8 @@ class CAD3DWindow(QWidget):
         Does NOT generate or render any geometry.
         Call render_3d_cad() to render the model.
         """
+        if not HAS_OCC:
+            return
         load_backend("pyside6")
 
         self.viewer = CustomViewer3d(self)
@@ -112,6 +135,8 @@ class CAD3DWindow(QWidget):
         self.create_cad_view_controls()
 
     def _is_display_ready(self):
+        if not HAS_OCC:
+            return False
         return self.display is not None and not self._cad_init_pending
 
     # ── RENDER / CLEAR ────────────────────────────────────────────────────────

@@ -134,7 +134,13 @@ EXAMPLE USAGE
 
 import math
 from collections import defaultdict, deque
-import openseespy.opensees as ops
+
+HAS_OPENSEES = True
+try:
+    import openseespy.opensees as ops
+except (ImportError, ModuleNotFoundError):
+    HAS_OPENSEES = False
+
 import pandas as pd
 from osdagbridge.core.utils.common import kN, m, m2
 from osdagbridge.core.utils.codes.irc6_2017 import IRC6_2017

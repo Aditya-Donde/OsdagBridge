@@ -1,4 +1,9 @@
-import ospgrillage as og
+HAS_OSP_GRILLAGE = True
+try:
+    import ospgrillage as og
+except (ImportError, ModuleNotFoundError):
+    HAS_OSP_GRILLAGE = False
+
 # from math import sqrt, pi
 # import openseespy.opensees as ops
 from osdagbridge.core.utils.codes.irc6_2017 import IRC6_2017
