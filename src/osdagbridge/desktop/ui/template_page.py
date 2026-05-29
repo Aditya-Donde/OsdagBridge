@@ -1274,7 +1274,7 @@ class CustomWindow(QWidget):
             return
 
         # Open save dialog
-        files_types = "IGS (*.igs);;STEP (*.stp);;STL (*.stl);;BREP (*.brep)"
+        files_types = "IGS (*.igs);;STEP (*.stp);;STL (*.stl);;IFC (*.ifc);;BREP (*.brep)"
         default_path = get_documents_folder()
         
         filePath, _ = QFileDialog.getSaveFileName(self, 'Export', os.path.join(default_path, "untitled.igs"),
@@ -1289,6 +1289,7 @@ class CustomWindow(QWidget):
                 dialogType=MessageBoxType.Warning
             ).exec()
             return
+        
 
         try:
             file_extension = fName.split(".")[-1].lower()
@@ -1326,6 +1327,19 @@ class CustomWindow(QWidget):
                 stl_writer = StlAPI_Writer()
                 stl_writer.SetASCIIMode(True)
                 stl_writer.Write(fuse_model, fName)
+
+            elif file_extension == 'ifc':
+                
+                _additional = {}
+                if self.input_dock:
+                    ai_vals = getattr(self.input_dock, "additional_input_values", None) or {}
+                    saved_data = getattr(self.input_dock, "_additional_inputs_saved_data", None) or {}
+                    _additional = {**saved_data, **ai_vals}
+
+                cad = self.backend.get_ifc_export_parameters(_additional)
+                from osdagbridge.core.ifc_export_bridge.export_ifc_handler import PlateGirderIfcExportHandler
+                handler = PlateGirderIfcExportHandler(cad, fName)
+                handler.export()
 
             else:
                 raise ValueError(f"Unsupported file format: {file_extension}")
@@ -1428,11 +1442,6 @@ class CustomWindow(QWidget):
         save_cad_action.triggered.connect(lambda: self.save_cadImages(self))
         file_menu.addAction(save_cad_action)
 
-        export_ifc_action = QAction("Export IFC", self)
-        export_ifc_action.setShortcut(QKeySequence("Ctrl+E"))
-        file_menu.addAction(export_ifc_action)
-        export_ifc_action.triggered.connect(self.trigger_ifc_export)
-        
         file_menu.addSeparator()
 
         quit_action = QAction("Quit", self)
