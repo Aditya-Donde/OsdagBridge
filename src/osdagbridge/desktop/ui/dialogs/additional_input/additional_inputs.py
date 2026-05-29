@@ -103,9 +103,12 @@ class AdditionalInputs(QDialog):
                 continue
 
             if isinstance(widget, QLineEdit):
-                # Format numeric values to 2 decimal places
+                # Format numeric values to 2 decimal places (except integer fields)
                 try:
-                    text = f"{float(value):.2f}"
+                    if name == "design_options_cont.fatigue.load_cycles":
+                        text = str(int(value))
+                    else:
+                        text = f"{float(value):.2f}"
                 except (ValueError, TypeError):
                     text = str(value)
                 widget.blockSignals(True)
