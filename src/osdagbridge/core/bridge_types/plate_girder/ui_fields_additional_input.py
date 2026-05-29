@@ -420,7 +420,8 @@ TYPICAL_SECTION_SCHEMA = {
         _MEDIAN_TAB_SCHEMA,
         _RAILING_TAB_SCHEMA,
         _WEARING_COURSE_TAB_SCHEMA,
-        _LANE_DETAILS_TAB_SCHEMA,
+        # _LANE_DETAILS_TAB_SCHEMA, 
+        # Commented out lane details. Stop from rendering in UI.
     ],
 }
 
@@ -828,11 +829,12 @@ _WIND_LOAD_TAB_SCHEMA = {
             "rows": [
                 {"fields": [{"id": KEY_WL_HOURLY_MEAN_WIND,        "label": "Hourly Mean Wind Speed, V<sub>z</sub> (m/s)",                    "type": TYPE_TEXTBOX, "read_only": True, "bind": "hourly_mean_wind_input"}]},
                 {"fields": [{"id": KEY_WL_HOURLY_WIND_PRESSURE,    "label": "Hourly Wind Pressure, P<sub>z</sub> (N/m²)",                     "type": TYPE_TEXTBOX, "read_only": True, "bind": "hourly_wind_pressure_input"}]},
-                {"fields": [{"id": KEY_WL_TRANSVERSE_WIND_FORCE,   "label": "Transverse Wind Force, F<sub>T</sub> (N)",                       "type": TYPE_TEXTBOX, "read_only": True, "bind": "transverse_wind_force_input"}]},
-                {"fields": [{"id": KEY_WL_LONGITUDINAL_WIND_FORCE, "label": "Longitudinal Wind Force, F<sub>L</sub> (N)",                     "type": TYPE_TEXTBOX, "read_only": True, "bind": "longitudinal_wind_force_input"}]},
-                {"fields": [{"id": KEY_WL_VERTICAL_WIND_FORCE,     "label": "Vertical Wind Force, F<sub>V</sub> (N)",                         "type": TYPE_TEXTBOX, "read_only": True, "bind": "vertical_wind_force_input"}]},
-                {"fields": [{"id": KEY_WL_TRANSVERSE_WIND_LL,      "label": "Transverse Wind Force on Live Load, F<sub>TLL</sub> (N)",        "type": TYPE_TEXTBOX, "read_only": True, "bind": "transverse_wind_ll_input"}]},
-                {"fields": [{"id": KEY_WL_LONGITUDINAL_WIND_LL,    "label": "Longitudinal Wind Force on Live Load, F<sub>LLL</sub> (N)", "type": TYPE_TEXTBOX, "read_only": True, "bind": "longitudinal_wind_ll_input"}]},
+                # {"fields": [{"id": KEY_WL_TRANSVERSE_WIND_FORCE,   "label": "Transverse Wind Force, F<sub>T</sub> (N)",                       "type": TYPE_TEXTBOX, "read_only": True, "bind": "transverse_wind_force_input"}]},
+                # {"fields": [{"id": KEY_WL_LONGITUDINAL_WIND_FORCE, "label": "Longitudinal Wind Force, F<sub>L</sub> (N)",                     "type": TYPE_TEXTBOX, "read_only": True, "bind": "longitudinal_wind_force_input"}]},
+                # {"fields": [{"id": KEY_WL_VERTICAL_WIND_FORCE,     "label": "Vertical Wind Force, F<sub>V</sub> (N)",                         "type": TYPE_TEXTBOX, "read_only": True, "bind": "vertical_wind_force_input"}]},
+                # {"fields": [{"id": KEY_WL_TRANSVERSE_WIND_LL,      "label": "Transverse Wind Force on Live Load, F<sub>TLL</sub> (N)",        "type": TYPE_TEXTBOX, "read_only": True, "bind": "transverse_wind_ll_input"}]},
+                # {"fields": [{"id": KEY_WL_LONGITUDINAL_WIND_LL,    "label": "Longitudinal Wind Force on Live Load, F<sub>LLL</sub> (N)", "type": TYPE_TEXTBOX, "read_only": True, "bind": "longitudinal_wind_ll_input"}]},
+                # Commented the additional fields here to stop render in 'Computed Values' .
             ],
         },
 
@@ -1150,7 +1152,7 @@ DESIGN_OPTIONS_SCHEMA = {
                 {
                     "fields": [{
                         "id":      KEY_DS_CONSTRUCTION_STAGE,
-                        "label":   "Include automatic",
+                        "label":   "Include default",
                         "type":    TYPE_COMBOBOX,
                         "choices": ["Yes", "No"],
                         "bind":    "construction_stage_combo",

@@ -566,7 +566,7 @@ class BridgeInputValidator:
 
         # ── Fatigue ─────────────────────────────────────────────────────────────
         elif key == KEY_DO_LOAD_CYCLES:
-            v = self._to_float(inputs.get(key))
+            v = self._to_int(inputs.get(key))
             if v is None:       return 100000, "No. of load cycles must be a numeric value."
             if v < 100000:      return 100000, "No. of load cycles must be between 100,000 and 100,000,000."
             if v > 100000000:   return 100000000, "No. of load cycles must be between 100,000 and 100,000,000."
