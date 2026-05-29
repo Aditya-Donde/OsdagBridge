@@ -1403,3 +1403,20 @@ class TypicalSectionDetailsTab(QWidget):
         wearing_thickness_w = self._find_wearing_widget(KEY_WC_THICKNESS)
         if wearing_thickness_w and not wearing_thickness_w.text():
             wearing_thickness_w.setText("50")
+
+        # Deck Details defaults
+        defaults = {}
+        if self.additional_input_instance is not None:
+            defaults = getattr(self.additional_input_instance, "default_input_dict", {})
+        
+        if hasattr(self, "deck_thickness") and self.deck_thickness:
+            val = defaults.get(KEY_TS_DECK_THICKNESS, 200.0)
+            self.deck_thickness.setText(f"{val:.2f}" if isinstance(val, float) else str(val))
+            
+        if hasattr(self, "footpath_width") and self.footpath_width:
+            val = defaults.get(KEY_TS_FOOTPATH_WIDTH, 1.5)
+            self.footpath_width.setText(f"{val:.2f}" if isinstance(val, float) else str(val))
+            
+        if hasattr(self, "footpath_thickness") and self.footpath_thickness:
+            val = defaults.get(KEY_TS_FOOTPATH_THICKNESS, 200.0)
+            self.footpath_thickness.setText(f"{val:.2f}" if isinstance(val, float) else str(val))

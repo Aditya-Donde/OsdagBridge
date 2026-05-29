@@ -1,4 +1,4 @@
-﻿"""
+"""
 Additional Inputs Widget for Highway Bridge Design
 Provides detailed input fields for manual bridge parameter definition
 """
@@ -89,10 +89,8 @@ class AdditionalInputs(QDialog):
     def set_defaults(self) -> None:
         """
         Central function to populate all widgets in the dialog from working_input_dict.
-        Searches for all QLineEdit, QComboBox, QCheckBox by objectName across entire dialog.
-        If widget objectName matches a key in working_input_dict — sets value.
-        Numeric values formatted to 2 decimal places for QLineEdit.
-        If not found — leaves it.
+        Called at init time (from set_input_dictionary) when working_input_dict
+        is a fresh copy of the defaults. NOT used by the Defaults button.
         """
         for widget in self.findChildren(QWidget):
             name = widget.objectName()
@@ -124,6 +122,62 @@ class AdditionalInputs(QDialog):
                 widget.blockSignals(True)
                 widget.setChecked(bool(value))
                 widget.blockSignals(False)
+
+    def reset_active_tab_defaults(self) -> None:
+        """
+        Reset only the currently active tab's fields to their default values
+        sourced from default_input_dict (populated from defaults.py at startup).
+        Does NOT affect fields on other tabs.
+        """
+        active_tab = self.tabs.currentWidget()
+        if active_tab is None:
+            return
+
+        # # Explicitly ignore the Defaults button for these two tabs
+        # if active_tab in (getattr(self, "typical_section_tab", None), getattr(self, "section_properties_tab", None)):
+        #     return
+
+        # Special-case tabs that have their own reset logic
+        if hasattr(active_tab, "reset_active_tab_defaults"):
+            active_tab.reset_active_tab_defaults()
+            return
+        elif hasattr(active_tab, "reset_defaults"):
+            active_tab.reset_defaults()
+            return
+
+        # Generic reset: iterate only widgets within the active tab
+        for widget in active_tab.findChildren(QWidget):
+            name = widget.objectName()
+            if not name or name not in self.default_input_dict:
+                continue
+            value = self.default_input_dict.get(name)
+            if value is None:
+                continue
+
+            if isinstance(widget, QLineEdit):
+                try:
+                    if name == "design_options_cont.fatigue.load_cycles":
+                        text = str(int(value))
+                    else:
+                        text = f"{float(value):.2f}"
+                except (ValueError, TypeError):
+                    text = str(value)
+                widget.blockSignals(True)
+                widget.setText(text)
+                widget.blockSignals(False)
+
+            elif isinstance(widget, QComboBox):
+                widget.blockSignals(True)
+                widget.setCurrentText(str(value))
+                widget.blockSignals(False)
+
+            elif isinstance(widget, QCheckBox):
+                widget.blockSignals(True)
+                widget.setChecked(bool(value))
+                widget.blockSignals(False)
+
+            # Update only the reset key in working_input_dict
+            self.working_input_dict[name] = value
 
     # Compute func that return the value to be updated (field)
     # Calculation from Core IRC STARTS=======================================================================
@@ -545,7 +599,7 @@ class AdditionalInputs(QDialog):
         main_layout.addWidget(self.tabs)
         
         action_bar, self.defaults_button, self.save_button = create_action_button_bar()
-        self.defaults_button.clicked.connect(self.set_defaults)
+        self.defaults_button.clicked.connect(self.reset_active_tab_defaults)
         self.save_button.clicked.connect(self._save_inputs)
         main_layout.addSpacing(6)
         main_layout.addWidget(action_bar)
