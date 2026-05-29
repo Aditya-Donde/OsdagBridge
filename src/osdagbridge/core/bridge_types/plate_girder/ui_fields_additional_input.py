@@ -2394,3 +2394,52 @@ TRANSVERSE_MEMBER_DESIGN_SCHEMA = {
         },
     },
 }
+
+DECK_DESIGN_SUMMARY_SCHEMA = {
+    "properties_card": {
+        "title": "Deck Properties:",
+        "fields": [
+            {"label": "Grade of Material:", "data_key": "deck_grade"},
+            {"label": "Thickness (mm):", "data_key": "deck_thickness"},
+            {"label": "Deck Overhang (mm):", "data_key": "deck_overhang"},
+        ]
+    },
+    "reinforcement_table": {
+        "title": "Reinforcement Details:",
+        "columns": [
+            "Position",
+            "Material Yield\nStrength (MPa)",
+            "Diameter (mm)",
+            "Spacing (mm)",
+            "Clear Cover\n(mm)",
+            "Area (mm²)"
+        ],
+        "rows": [
+            {"label": "Top Layer", "prefix": "rebar_top"},
+            {"label": "Bottom Layer", "prefix": "rebar_bottom"},
+            {"label": "Overhang", "prefix": "rebar_overhang", "is_overhang": True}
+        ],
+        "data_suffixes": ["yield", "dia", "spacing", "cover", "area"]
+    },
+    "utilization_card": {
+        "title": "Utilization Summary:",
+        "checks": [
+            {"key": "ur_bot_uls",   "label": "ULS - Bottom (Sagging)",         "is_overhang": False},
+            {"key": "ur_top_uls",   "label": "ULS - Top (Hogging)",            "is_overhang": False},
+            {"key": "ur_oh_uls",    "label": "ULS - Overhang",                 "is_overhang": True},
+            {"key": "ur_bot_sls_c", "label": "SLS - Bottom Concrete Stress",   "is_overhang": False},
+            {"key": "ur_bot_sls_s", "label": "SLS - Bottom Steel Stress",      "is_overhang": False},
+            {"key": "ur_top_sls_c", "label": "SLS - Top Concrete Stress",      "is_overhang": False},
+            {"key": "ur_top_sls_s", "label": "SLS - Top Steel Stress",         "is_overhang": False},
+            {"key": "ur_bot_crack", "label": "SLS - Bottom Crack Width",       "is_overhang": False},
+            {"key": "ur_top_crack", "label": "SLS - Top Crack Width",          "is_overhang": False},
+            {"key": "ur_oh_sls_c",  "label": "SLS - Overhang Concrete Stress", "is_overhang": True},
+            {"key": "ur_oh_sls_s",  "label": "SLS - Overhang Steel Stress",    "is_overhang": True},
+            {"key": "ur_oh_crack",  "label": "SLS - Overhang Crack Width",     "is_overhang": True},
+        ]
+    },
+    "design_check_card": {
+        "title": "Design Check:",
+        "data_key": "deck_design_check"
+    }
+}
