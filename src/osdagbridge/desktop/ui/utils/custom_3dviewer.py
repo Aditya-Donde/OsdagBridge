@@ -272,9 +272,11 @@ class CustomViewer3d(qtViewer3d):
             and self.current_hovered_model in self.model_hover_labels
             and self.hover_position
         ):
+            raw = self.model_hover_labels[self.current_hovered_model]
+            html = "<br>".join(raw.split("\n"))
             QToolTip.showText(
                 self.hover_position,
-                self.model_hover_labels[self.current_hovered_model],
+                html,
                 self,
             )
 

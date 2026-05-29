@@ -125,6 +125,8 @@ class CAD3DWindow(QWidget):
         if not self._is_display_ready():
             return
 
+        self.design_params = design_params
+
         # Generate fresh model data
         self.generator.model_data = self.generator.generate(design_params)
 
@@ -164,6 +166,7 @@ class CAD3DWindow(QWidget):
         if not self._is_display_ready():
             return
 
+        params = self.design_params
         cad_data = self.generator.model_data
         display = self.display
         context = self.viewer.context
@@ -196,7 +199,11 @@ class CAD3DWindow(QWidget):
             ais_list = []
 
             for shp in shapes:
-                ais = display.DisplayShape(shp, color=color, transparency=transparency, update=False)
+                kwargs = {'color': color, 'update': False}
+                if transparency is not None:
+                    kwargs['transparency'] = float(transparency)
+                ais = display.DisplayShape(shp, **kwargs)
+
                 ais = ais[0] if isinstance(ais, list) else ais
 
                 if line_width is not None:
@@ -218,14 +225,14 @@ class CAD3DWindow(QWidget):
         display_and_register(
             cad_data.get("girder_web", []),
             "Girder Web",
-            "Girder Web",
+            f"Girder Web\nDepth: {params.girder_section_d:.2f} mm\nWeb Thickness: {params.girder_section_tw:.2f} mm\nSpan: {params.span_length_L / 1000:.2f} m\nSteel Grade: {params.steel_grade}",
             WEB_COLOR
         )
 
         display_and_register(
             cad_data.get("girder_flanges", []),
             "Girder Flange",
-            "Girder Flange",
+            f"Girder Flange\nTop Flange Width: {params.girder_section_bf:.2f} mm\nTop Flange Thickness: {params.girder_section_tf:.2f} mm\nBottom Flange Width: {params.girder_section_bf_b:.2f} mm\nBottom Flange Thickness: {params.girder_section_tf_b:.2f} mm",
             FLANGE_COLOR
         )
 
@@ -233,14 +240,14 @@ class CAD3DWindow(QWidget):
         display_and_register(
             cad_data.get("stiffeners", []),
             "Stiffener",
-            "Stiffener",
+            f"Stiffener\nSpacing: {params.intermediate_stiffener_spacing:.2f} mm\nThickness: {params.intermediate_stiffener_thickness:.2f} mm\nEnd Pairs: {params.num_end_stiffener_pairs}",
             STIFFENER_COLOR
         )
 
         display_and_register(
             cad_data.get("shear_studs", []),
             "Shear Stud",
-            "Shear Stud",
+            f"Shear Stud\nBase Dia: {params.shear_stud_params.base_diameter:.2f} mm\nHeight: {params.shear_stud_params.base_height + params.shear_stud_params.top_height:.2f} mm\nPitch: {params.shear_stud_params.pitch:.2f} mm\nPer Section: {params.shear_stud_params.num_per_section}",
             STIFFENER_COLOR
         )
 
@@ -274,14 +281,14 @@ class CAD3DWindow(QWidget):
         display_and_register(
             cad_data.get("cross_bracings", []),
             "Cross Bracing",
-            "Cross Bracing",
+            f"Cross Bracing\nType: {params.bracing_type}-Bracing\nSpacing: {params.cross_bracing_spacing:.2f} mm\nSection: {params.diagonal_section_type}\nLeg H: {params.diagonal_section_dims.leg_h:.2f} mm\nLeg W: {params.diagonal_section_dims.leg_w:.2f} mm",
             BRACING_COLOR
         )
 
         display_and_register(
             cad_data.get("deck_slab"),
             "Deck",
-            "Deck Slab",
+            f"Deck Slab\nThickness: {params.deck_thickness:.2f} mm\nCarriageway Width: {params.carriageway_width:.2f} mm\nConcrete Grade: {params.concrete_grade}\nFootpath: {params.footpath_config}",
             DECK_COLOR
         )
         # DECK TEXTURES (DISPLAY ONLY, NO HOVER)
@@ -316,7 +323,7 @@ class CAD3DWindow(QWidget):
         display_and_register(
             cad_data.get("crash_barriers", []),
             "Crash Barrier",
-            "Crash Barrier",
+            f"Crash Barrier\nType: {params.barrier_type}\nSubtype: {params.crash_barrier_subtype}",
             BARRIER_POST_COLOR
         )
 
@@ -324,14 +331,14 @@ class CAD3DWindow(QWidget):
         display_and_register(
             cad_data.get("median_barriers", []),
             "Median",
-            "Median Barrier",
+            f"Median Barrier\nType: {params.median_type}",
             BARRIER_COLOR
         )
 
         display_and_register(
             cad_data.get("railings", []),
             "Railing",
-            "Railing",
+            f"Railing\nType: {params.railing_type.upper()}\nRails: {params.rail_count}\nWidth: {params.railing_width:.2f} mm",
             BARRIER_COLOR
         )
 
@@ -515,7 +522,7 @@ class BridgeComponentCheckbox(QWidget):
 
         
         self.components = [
-            ("Model", None),  # Special: shows full model
+            ("Bridge", None),  # Special: shows full model
             ("Girder", "Girder"),
             ("Deck", "Deck"),
             ("Cross Bracing", "Cross Bracing"),
