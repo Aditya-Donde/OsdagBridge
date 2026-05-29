@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Dict, List, Optional
 
-from PySide6.QtCore import Qt, QRectF, QSize
+from PySide6.QtCore import Qt, QRectF, QSize, QPointF, QTimer
 from PySide6.QtGui import QDoubleValidator, QColor, QPalette, QPen, QPainter, QIntValidator, QIcon, QPixmap
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -25,6 +25,7 @@ from PySide6.QtWidgets import (
     QListWidget,
     QScrollArea,
     QSizePolicy,
+    QStackedLayout,
     QStyledItemDelegate,
     QStyle,
     QStyleOptionViewItem,
@@ -517,102 +518,17 @@ class _BoundsDialog(QDialog):
         return self._result
 
 
-class _GirderCad2DView(QWidget):
-    """Simple 2D segmented girder view driven by member lengths."""
+class _GirderSideViewWidget(QWidget):
+    def __init__(self, parent_view):
+        super().__init__()
+        self.parent_view = parent_view
+        self.setFixedHeight(140)
+        self.setStyleSheet("QWidget { background: #f8f8f8; border: none; }")
 
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.setFixedHeight(160)
-        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-        self.setStyleSheet("QWidget { background: #f8f8f8; border: 1px solid #d8d8d8; border-radius: 8px; }")
-        self._segments: List[dict] = []
-        self._selected_member_id: str = ""
-        self._flange_thickness: float = 15.0
-        self._view_mode: str = "side"
-
-    @staticmethod
-    def _fmt_length(length_m: float) -> str:
-        text = f"{float(length_m):.3f}".rstrip("0").rstrip(".")
-        return text if text else "0"
-
-    def set_segments(self, segments: List[Dict[str, float]]) -> None:
-        cleaned: List[dict] = []
-        for segment in segments or []:
-            start = float(segment.get("start", 0.0))
-            end = float(segment.get("end", 0.0))
-            length = max(0.0, end - start)
-            if length <= 0.0:
-                continue
-            cleaned.append(
-                {
-                    "id": str(segment.get("id") or ""),
-                    "length": float(length),
-                }
-            )
-        self._segments = cleaned
-        self.update()
-
-    def set_selected_member(self, member_id: str) -> None:
-        self._selected_member_id = str(member_id or "").strip()
-        self.update()
-
-    def set_view_mode(self, mode: str) -> None:
-        normalized = str(mode or "").strip().lower()
-        if normalized not in {"cross", "side"}:
-            normalized = "side"
-        if self._view_mode != normalized:
-            self._view_mode = normalized
-            self.update()
-
-    def _paint_cross_section(self, painter: QPainter, drawing_rect: QRectF) -> None:
-        clear_pen = QPen(QColor("#d0d0d0"))
-        clear_pen.setWidth(1)
-        painter.setPen(clear_pen)
-        painter.setBrush(QColor("#ffffff"))
-        painter.drawRect(drawing_rect)
-
-        usable = drawing_rect.adjusted(drawing_rect.width() * 0.18, 12.0, -drawing_rect.width() * 0.18, -22.0)
-        if usable.width() <= 0.0 or usable.height() <= 0.0:
-            return
-
-        top_width = usable.width() * 0.82
-        bottom_width = usable.width() * 0.74
-        flange_thickness = max(10.0, min(self._flange_thickness, usable.height() * 0.20))
-        web_thickness = max(8.0, min(20.0, usable.width() * 0.10))
-
-        center_x = usable.center().x()
-        top_flange = QRectF(center_x - (top_width / 2.0), usable.top(), top_width, flange_thickness)
-        bottom_flange = QRectF(center_x - (bottom_width / 2.0), usable.bottom() - flange_thickness, bottom_width, flange_thickness)
-        web_top = top_flange.bottom()
-        web_bottom = bottom_flange.top()
-        web = QRectF(center_x - (web_thickness / 2.0), web_top, web_thickness, max(2.0, web_bottom - web_top))
-
-        painter.setPen(Qt.NoPen)
-        painter.setBrush(QColor("#c9c9c9"))
-        painter.drawRect(top_flange)
-        painter.setBrush(QColor("#dcdcdc"))
-        painter.drawRect(web)
-        painter.setBrush(QColor("#c9c9c9"))
-        painter.drawRect(bottom_flange)
-
-        outline = QPen(QColor("#5e5e5e"))
-        outline.setWidth(1)
-        painter.setPen(outline)
-        painter.setBrush(Qt.NoBrush)
-        painter.drawRect(top_flange)
-        painter.drawRect(web)
-        painter.drawRect(bottom_flange)
-
-        label_member = self._selected_member_id or (str(self._segments[0].get("id") or "") if self._segments else "")
-        label = f"Cross Section • {label_member}" if label_member else "Cross Section"
-        painter.setPen(QPen(QColor("#2a2a2a")))
-        painter.drawText(drawing_rect.adjusted(8.0, 0.0, -8.0, -2.0), Qt.AlignHCenter | Qt.AlignBottom, label)
-
-    def paintEvent(self, event):  # noqa: N802 (Qt naming)
-        super().paintEvent(event)
+    def paintEvent(self, event):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing, True)
-
+        
         drawing_rect = QRectF(self.rect()).adjusted(10.0, 24.0, -10.0, -18.0)
         if drawing_rect.width() <= 0 or drawing_rect.height() <= 0:
             return
@@ -624,17 +540,13 @@ class _GirderCad2DView(QWidget):
         painter.setBrush(outer_fill)
         painter.drawRect(drawing_rect)
 
-        if not self._segments:
+        if not self.parent_view._segments:
             painter.setPen(QPen(QColor("#5a5a5a")))
             painter.drawText(drawing_rect, Qt.AlignCenter, "No member segments")
             return
 
-        total_length = sum(float(segment["length"]) for segment in self._segments)
+        total_length = sum(float(segment["length"]) for segment in self.parent_view._segments)
         if total_length <= 0.0:
-            return
-
-        if self._view_mode == "cross":
-            self._paint_cross_section(painter, drawing_rect)
             return
 
         # Monochrome palette for a clean technical look.
@@ -644,7 +556,7 @@ class _GirderCad2DView(QWidget):
         partition_pen.setStyle(Qt.SolidLine)
 
         # Keep flanges visually meaningful even for compact/tall drawing areas.
-        flange_thickness = max(10.0, min(self._flange_thickness, drawing_rect.height() * 0.24))
+        flange_thickness = max(10.0, min(self.parent_view._flange_thickness, drawing_rect.height() * 0.24))
         web_top = drawing_rect.top() + flange_thickness
         web_bottom = drawing_rect.bottom() - flange_thickness
         web_height = max(2.0, web_bottom - web_top)
@@ -657,10 +569,10 @@ class _GirderCad2DView(QWidget):
 
         x = drawing_rect.left()
         partition_xs: List[float] = []
-        for index, segment in enumerate(self._segments):
+        for index, segment in enumerate(self.parent_view._segments):
             ratio = float(segment["length"]) / total_length
             segment_width = drawing_rect.width() * ratio
-            if index == len(self._segments) - 1:
+            if index == len(self.parent_view._segments) - 1:
                 segment_width = max(1.0, drawing_rect.right() - x)
 
             segment_rect = QRectF(x, drawing_rect.top(), segment_width, drawing_rect.height())
@@ -669,7 +581,7 @@ class _GirderCad2DView(QWidget):
             bottom_flange_rect = QRectF(segment_rect.left(), web_bottom, segment_rect.width(), flange_thickness)
             base_fill = fill_palette[index % len(fill_palette)]
             member_id = str(segment.get("id") or "")
-            is_selected = bool(self._selected_member_id) and member_id == self._selected_member_id
+            is_selected = bool(self.parent_view._selected_member_id) and member_id == self.parent_view._selected_member_id
 
             top_fill = QColor("#c9c9c9")
             web_fill = QColor("#dcdcdc")
@@ -691,16 +603,16 @@ class _GirderCad2DView(QWidget):
 
             if is_selected:
                 painter.setPen(Qt.NoPen)
-                painter.setBrush(QColor(144, 175, 19, 42))
+                painter.setBrush(QColor(144, 175, 19, 120))
                 painter.drawRect(segment_rect.adjusted(2.0, 2.0, -2.0, -2.0))
 
-                selected_pen = QPen(QColor("#6f850f"))
-                selected_pen.setWidth(2)
+                selected_pen = QPen(QColor(144, 175, 19))
+                selected_pen.setWidth(3)
                 painter.setPen(selected_pen)
                 painter.setBrush(Qt.NoBrush)
                 painter.drawRect(segment_rect.adjusted(1.5, 1.5, -1.5, -1.5))
 
-            label = f"{segment['id']} ({self._fmt_length(segment['length'])} m)"
+            label = f"{segment['id']} ({self.parent_view._fmt_length(segment['length'])} m)"
             painter.setPen(QPen(QColor("#121212")))
             text_margin = 6
             text_rect = segment_rect.adjusted(text_margin, 0, -text_margin, 0)
@@ -708,7 +620,7 @@ class _GirderCad2DView(QWidget):
                 elided = painter.fontMetrics().elidedText(label, Qt.ElideRight, int(text_rect.width()))
                 painter.drawText(text_rect, Qt.AlignCenter, elided)
 
-            if index < len(self._segments) - 1:
+            if index < len(self.parent_view._segments) - 1:
                 partition_xs.append(segment_rect.right())
 
             x = segment_rect.right()
@@ -726,6 +638,168 @@ class _GirderCad2DView(QWidget):
                 QRectF(px, drawing_rect.top(), 0.0, drawing_rect.height()).topLeft(),
                 QRectF(px, drawing_rect.top(), 0.0, drawing_rect.height()).bottomLeft(),
             )
+
+
+class _GirderCad2DView(QWidget):
+    """Simple 2D segmented girder view driven by member lengths with an embedded CrossSectionCADWidget for full cross section view."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setFixedHeight(160)
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self.setStyleSheet("QWidget { background: transparent; border: none; }")
+        
+        self._segments: List[dict] = []
+        self._selected_member_id: str = ""
+        self._flange_thickness: float = 15.0
+        self._view_mode: str = "side"
+
+        self.stacked_layout = QStackedLayout(self)
+        self.stacked_layout.setContentsMargins(0, 0, 0, 0)
+        self.stacked_layout.setSpacing(0)
+
+        self.side_view_widget = _GirderSideViewWidget(self)
+        self.cross_section_widget = CrossSectionCADWidget(self)
+
+        # Configure CrossSectionCADWidget defaults
+        self.cross_section_widget.scale_factor = 0.65
+        self.cross_section_widget.show_dimensions = False
+        self.cross_section_widget.show_minimal_dimensions = True
+        self.cross_section_widget.show_girder_labels = True
+        self.cross_section_widget.show_span_values = False
+        self.cross_section_widget.show_carriageway_values = False
+
+        self.stacked_layout.addWidget(self.side_view_widget)
+        self.stacked_layout.addWidget(self.cross_section_widget)
+
+    def set_dimensions(self, dims: Optional[dict]) -> None:
+        pass
+
+    @staticmethod
+    def _fmt_length(length_m: float) -> str:
+        text = f"{float(length_m):.3f}".rstrip("0").rstrip(".")
+        return text if text else "0"
+
+    def set_segments(self, segments: List[Dict[str, float]]) -> None:
+        cleaned: List[dict] = []
+        for segment in segments or []:
+            start = float(segment.get("start", 0.0))
+            end = float(segment.get("end", 0.0))
+            length = max(0.0, end - start)
+            if length <= 0.0:
+                continue
+            cleaned.append(
+                {
+                    "id": str(segment.get("id") or ""),
+                    "length": float(length),
+                }
+            )
+        self._segments = cleaned
+        self.side_view_widget.update()
+
+    def _sync_highlighted_girders(self, highlighted: list) -> None:
+        """Push highlighted_girders to every visible CAD cross-section widget in the application."""
+        from PySide6.QtWidgets import QApplication
+        for top in QApplication.topLevelWidgets():
+            cls = top.__class__.__name__
+            if cls == "AdditionalInputs":
+                try:
+                    cad = top.typical_section_tab.cad_preview
+                    cad.highlighted_girders = highlighted
+                    cad.update()
+                except Exception:
+                    pass
+            elif cls == "CustomWindow":
+                try:
+                    cad = top.cad_comp_widget.cross_section_widget
+                    cad.highlighted_girders = highlighted
+                    cad.update()
+                except Exception:
+                    pass
+
+    def set_selected_member(self, member_id: str) -> None:
+        self._selected_member_id = str(member_id or "").strip()
+
+        # Auto highlight the selected girder in full cross section view (e.g. "G1M1" -> "G1" -> "Girder 1")
+        highlighted = []
+        if self._selected_member_id:
+            parts = self._selected_member_id.split('M')
+            if parts and parts[0].startswith('G'):
+                girder_num = parts[0][1:]
+                if girder_num.isdigit():
+                    highlighted = [f"Girder {girder_num}"]
+                    self.cross_section_widget.highlighted_girders = highlighted
+
+        self._sync_highlighted_girders(highlighted)
+        self.side_view_widget.update()
+        self.cross_section_widget.update()
+
+    def set_view_mode(self, mode: str) -> None:
+        normalized = str(mode or "").strip().lower()
+        if normalized not in {"cross", "side"}:
+            normalized = "side"
+        self._view_mode = normalized
+        
+        if normalized == "side":
+            self.stacked_layout.setCurrentWidget(self.side_view_widget)
+        else:
+            self.stacked_layout.setCurrentWidget(self.cross_section_widget)
+            QTimer.singleShot(100, self.cross_section_widget.fit_to_screen)
+        self.update()
+
+    def update_params(self, params: dict):
+        self.cross_section_widget.update_params(params)
+        QTimer.singleShot(100, self.cross_section_widget.fit_to_screen)
+
+    # Delegate all CrossSectionCADWidget properties for seamless integration
+    @property
+    def scale_factor(self):
+        return self.cross_section_widget.scale_factor
+    @scale_factor.setter
+    def scale_factor(self, val):
+        self.cross_section_widget.scale_factor = val
+
+    @property
+    def show_dimensions(self):
+        return self.cross_section_widget.show_dimensions
+    @show_dimensions.setter
+    def show_dimensions(self, val):
+        self.cross_section_widget.show_dimensions = val
+
+    @property
+    def show_minimal_dimensions(self):
+        return self.cross_section_widget.show_minimal_dimensions
+    @show_minimal_dimensions.setter
+    def show_minimal_dimensions(self, val):
+        self.cross_section_widget.show_minimal_dimensions = val
+
+    @property
+    def show_girder_labels(self):
+        return self.cross_section_widget.show_girder_labels
+    @show_girder_labels.setter
+    def show_girder_labels(self, val):
+        self.cross_section_widget.show_girder_labels = val
+
+    @property
+    def show_span_values(self):
+        return self.cross_section_widget.show_span_values
+    @show_span_values.setter
+    def show_span_values(self, val):
+        self.cross_section_widget.show_span_values = val
+
+    @property
+    def show_carriageway_values(self):
+        return self.cross_section_widget.show_carriageway_values
+    @show_carriageway_values.setter
+    def show_carriageway_values(self, val):
+        self.cross_section_widget.show_carriageway_values = val
+
+    @property
+    def highlighted_girders(self):
+        return self.cross_section_widget.highlighted_girders
+    @highlighted_girders.setter
+    def highlighted_girders(self, val):
+        self.cross_section_widget.highlighted_girders = val
 
 
 class _ThicknessSelectionDialog(QDialog):
@@ -1445,6 +1519,8 @@ class GirderDetailsTab(QWidget):
         cad_scroll.setWidgetResizable(True)
         cad_scroll.setFrameShape(QFrame.NoFrame)
         cad_scroll.setStyleSheet("QScrollArea { background: transparent; border: none; }")
+        cad_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        cad_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         cad_scroll.setWidget(self.girder_cad_view)
         
         top_cad_layout.addWidget(cad_scroll, 1)
@@ -1605,6 +1681,17 @@ class GirderDetailsTab(QWidget):
         selected_member_id = str(cad_segments[idx].get("id") or "")
         if hasattr(self.girder_cad_view, "set_selected_member"):
             self.girder_cad_view.set_selected_member(selected_member_id)
+
+        # Retrieve full dimensions of the selected member and set them on the CAD view
+        dims = None
+        if selected_member_id:
+            dims = self.get_member_full_dimensions(selected_member_id)
+        else:
+            if cad_segments:
+                dims = self.get_member_full_dimensions(cad_segments[0]["id"])
+        
+        if hasattr(self.girder_cad_view, "set_dimensions"):
+            self.girder_cad_view.set_dimensions(dims)
 
     def _set_girder_cad_view_mode(self, mode: str) -> None:
         normalized = str(mode or "").strip().lower()
@@ -2309,22 +2396,51 @@ class GirderDetailsTab(QWidget):
         finally:
             self._suppress_distance_updates = False
 
+    def _sync_highlighted_girders(self, highlighted: list) -> None:
+        """Push highlighted_girders to every visible CAD cross-section widget in the application."""
+        from PySide6.QtWidgets import QApplication
+        for top in QApplication.topLevelWidgets():
+            cls = top.__class__.__name__
+            if cls == "AdditionalInputs":
+                try:
+                    cad = top.typical_section_tab.cad_preview
+                    cad.highlighted_girders = highlighted
+                    cad.update()
+                except Exception:
+                    pass
+            elif cls == "CustomWindow":
+                try:
+                    cad = top.cad_comp_widget.cross_section_widget
+                    cad.highlighted_girders = highlighted
+                    cad.update()
+                except Exception:
+                    pass
+
     def _on_girder_changed(self, girder: str) -> None:
         if not girder:
             return
 
         girder = str(girder).strip()
-        if not girder or girder == getattr(self, "_current_girder", ""):
-            return
+        is_same = girder == getattr(self, "_current_girder", "")
 
         # Autosave dirty member state before switching girder.
-        if self._is_current_member_dirty():
+        if not is_same and self._is_current_member_dirty():
             self._commit_current_member_state()
 
         self._current_girder = girder
         self._refresh_segment_list(girder)
         self._select_segment_index(0)
         self._sync_remove_button_visibility()
+
+        # Highlight the selected girder in cross section view (e.g. "G1" -> "Girder 1")
+        girder_num = girder[1:] if girder.startswith("G") else girder
+        if girder_num.isdigit():
+            highlighted = [f"Girder {girder_num}"]
+            if hasattr(self, "girder_cad_view") and self.girder_cad_view is not None:
+                if hasattr(self.girder_cad_view, "cross_section_widget"):
+                    self.girder_cad_view.cross_section_widget.highlighted_girders = highlighted
+                    self.girder_cad_view.cross_section_widget.update()
+            self._sync_highlighted_girders(highlighted)
 
     def _on_segment_row_changed(self, current_row: int, _current_column: int, _previous_row: int, _previous_column: int) -> None:
         if current_row is None or current_row < 0:
@@ -3089,10 +3205,19 @@ class GirderDetailsTab(QWidget):
             self.select_girder_combo.blockSignals(block)
 
     def _on_girders_selection_changed(self, *args):
+        selected = self._get_selected_girders()
         if hasattr(self, "girder_cad_view"):
-            selected = self._get_selected_girders()
             self.girder_cad_view.highlighted_girders = selected
             self.girder_cad_view.update()
+        # Convert "G1" -> "Girder 1" for syncing across all CAD views
+        highlighted = []
+        for g in selected:
+            if g.startswith("G") and g[1:].isdigit():
+                highlighted.append(f"Girder {g[1:]}")
+            else:
+                highlighted.append(g)
+        if hasattr(self, "_sync_highlighted_girders"):
+            self._sync_highlighted_girders(highlighted)
             
         if self.span_combo.currentText() == "Full Length":
             self._update_member_id_edit_state()
@@ -3527,6 +3652,10 @@ class GirderDetailsTab(QWidget):
         if hasattr(self, "preview_caption"):
             self.preview_caption.setText(caption)
         self._update_section_properties()
+
+        # Dynamically refresh the girder 2D preview CAD (side view/cross section)
+        if hasattr(self, "girder_cad_view") and self.girder_cad_view is not None:
+            self._update_girder_cad_view(self._current_girder, None, self._current_segment_index)
 
     def _gather_welded_dimensions(self):
         depth = self._parse_float(self.total_depth_input.text())
@@ -4061,6 +4190,121 @@ class GirderDetailsTab(QWidget):
         except Exception:
             pass
         return True
+
+    def get_member_full_dimensions(self, member_id: str) -> Optional[dict]:
+        """Return full section dimensions for the given member."""
+        member_id = str(member_id or "").strip()
+        if not member_id:
+            return None
+
+        girder, _idx = self._split_member_id(member_id)
+
+        # Check if the member_id is the currently selected member in the UI
+        try:
+            current_girder, current_member_id = self._current_member_key()
+            if current_girder == girder and current_member_id == member_id:
+                is_welded = self.type_combo.currentText().lower() == "welded"
+                if is_welded:
+                    return self._gather_welded_dimensions()
+                else:
+                    designation = self.is_section_combo.currentText()
+                    beam = girder_properties.get_beam_profile(designation)
+                    outline = girder_properties.get_rolled_section(designation) if beam is None else None
+                    if beam:
+                        return {
+                            "section_type": "rolled",
+                            "depth_mm": float(beam.depth_mm),
+                            "top_flange_width_mm": float(beam.flange_width_mm),
+                            "bottom_flange_width_mm": float(beam.flange_width_mm),
+                            "top_flange_thickness_mm": float(beam.flange_thickness_mm),
+                            "bottom_flange_thickness_mm": float(beam.flange_thickness_mm),
+                            "web_thickness_mm": float(beam.web_thickness_mm),
+                        }
+                    if outline:
+                        return {
+                            "section_type": "rolled",
+                            "depth_mm": float(outline.get("depth_mm") or 0.0),
+                            "top_flange_width_mm": float(outline.get("top_flange_width_mm") or 0.0),
+                            "bottom_flange_width_mm": float(outline.get("bottom_flange_width_mm") or 0.0),
+                            "top_flange_thickness_mm": float(outline.get("top_flange_thickness_mm") or 0.0),
+                            "bottom_flange_thickness_mm": float(outline.get("bottom_flange_thickness_mm") or 0.0),
+                            "web_thickness_mm": float(outline.get("web_thickness_mm") or 0.0),
+                        }
+        except Exception:
+            pass
+
+        # Otherwise, fall back to the stored member state
+        stored = (self._member_state.get(girder) or {}).get(member_id) or {}
+        inputs = (stored.get("inputs") or {})
+        if not inputs:
+            # Fall back to default template
+            template = getattr(self, "_default_member_state", None) or {}
+            inputs = (template.get("inputs") or {})
+
+        if not isinstance(inputs, dict):
+            return None
+
+        section_type = str(inputs.get("type") or "").strip().lower()
+        if section_type == "welded":
+            depth = self._parse_float(inputs.get("total_depth")) or 1200.0
+            top_width = self._parse_float(inputs.get("top_width")) or 300.0
+            bottom_width = self._parse_float(inputs.get("bottom_width")) or top_width
+            
+            top_thickness = None
+            if str(inputs.get("top_thickness") or "").strip().lower() == "custom":
+                top_thickness = self._parse_float(inputs.get("top_thickness_value"))
+            if not top_thickness:
+                top_thickness = 25.0
+
+            bottom_thickness = None
+            if str(inputs.get("bottom_thickness") or "").strip().lower() == "custom":
+                bottom_thickness = self._parse_float(inputs.get("bottom_thickness_value"))
+            if not bottom_thickness:
+                bottom_thickness = 25.0
+
+            web_thickness = None
+            if str(inputs.get("web_thickness") or "").strip().lower() == "custom":
+                web_thickness = self._parse_float(inputs.get("web_thickness_value"))
+            if not web_thickness:
+                web_thickness = max(8.0, depth * 0.02)
+
+            return {
+                "section_type": "welded",
+                "depth_mm": depth,
+                "top_flange_width_mm": top_width,
+                "bottom_flange_width_mm": bottom_width,
+                "top_flange_thickness_mm": top_thickness,
+                "bottom_flange_thickness_mm": bottom_thickness,
+                "web_thickness_mm": web_thickness,
+            }
+
+        designation = str(inputs.get("is_section") or "").strip()
+        if not designation:
+            designation = "ISMB 500"
+
+        beam = girder_properties.get_beam_profile(designation)
+        outline = girder_properties.get_rolled_section(designation) if beam is None else None
+        if beam:
+            return {
+                "section_type": "rolled",
+                "depth_mm": float(beam.depth_mm),
+                "top_flange_width_mm": float(beam.flange_width_mm),
+                "bottom_flange_width_mm": float(beam.flange_width_mm),
+                "top_flange_thickness_mm": float(beam.flange_thickness_mm),
+                "bottom_flange_thickness_mm": float(beam.flange_thickness_mm),
+                "web_thickness_mm": float(beam.web_thickness_mm),
+            }
+        if outline:
+            return {
+                "section_type": "rolled",
+                "depth_mm": float(outline.get("depth_mm") or 0.0),
+                "top_flange_width_mm": float(outline.get("top_flange_width_mm") or 0.0),
+                "bottom_flange_width_mm": float(outline.get("bottom_flange_width_mm") or 0.0),
+                "top_flange_thickness_mm": float(outline.get("top_flange_thickness_mm") or 0.0),
+                "bottom_flange_thickness_mm": float(outline.get("bottom_flange_thickness_mm") or 0.0),
+                "web_thickness_mm": float(outline.get("web_thickness_mm") or 0.0),
+            }
+        return None
 
     def get_member_section_dimensions(self, member_id: str) -> Optional[dict]:
         """Return basic section dimensions for the given member.

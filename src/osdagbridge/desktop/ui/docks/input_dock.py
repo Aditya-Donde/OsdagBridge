@@ -712,7 +712,7 @@ class InputDock(QWidget):
         footpath_value    = self._text(KEY_FOOTPATH) or "None"
         carriageway_width = self._get_effective_carriageway_width()
 
-        self.additional_inputs = AdditionalInputs(footpath_value, carriageway_width)
+        self.additional_inputs = AdditionalInputs(footpath_value, carriageway_width, parent=self.parent)
 
         if self._additional_inputs_saved_data:
             try:

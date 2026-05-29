@@ -499,6 +499,11 @@ class CrossSectionCADWidget(QWidget):
         """Position zoom controls in top-right corner"""
         super().resizeEvent(event)
         self._position_zoom_buttons()
+
+    def showEvent(self, event):
+        """Fit diagram to viewport size once the widget becomes visible."""
+        super().showEvent(event)
+        QTimer.singleShot(120, self.fit_to_screen)
     
     def update_params(self, params: dict):
         self.params.update(params)
@@ -1662,10 +1667,14 @@ class CrossSectionCADWidget(QWidget):
                 tf_bottom = self.girder['bottom_flange_thickness'] * scale * self.girder_visual_scale['flange_thickness']
         else:
             tf_top = tf_bottom = self.girder['flange_thickness'] * scale * self.girder_visual_scale['flange_thickness']
-        # Draw girders and stiffeners
         for i, girder_x in enumerate(positions):
             girder_id = f"Girder {i+1}"
-            is_highlighted = girder_id in self.highlighted_girders or "All" in self.highlighted_girders
+            is_highlighted = (
+                girder_id in self.highlighted_girders 
+                or f"G{i+1}" in self.highlighted_girders 
+                or f"Girder {i+1}" in self.highlighted_girders 
+                or "All" in self.highlighted_girders
+            )
             color = QColor(144, 175, 19) if is_highlighted else self.GIRDER_COLOR
             self.draw_i_section(painter, girder_x, base_y, scale, color)
             self.draw_stiffeners(painter, girder_x, base_y, scale, self.STIFFENER_COLOR)
@@ -2430,7 +2439,11 @@ class CrossSectionCADWidget(QWidget):
         else:
             painter.setBrush(QBrush(girder_color))
         
-        painter.setPen(QPen(QColor(0, 0, 0), 1.5))
+        # High-contrast bold pen outline for highlighted girder
+        if girder_color == QColor(144, 175, 19):
+            painter.setPen(QPen(QColor(144, 175, 19), 3))
+        else:
+            painter.setPen(QPen(QColor(0, 0, 0), 1.5))
         
         # Draw bottom flange
         painter.drawRect(QRectF(x - bf_bottom/2, base_y - tf_bottom, bf_bottom, tf_bottom))
