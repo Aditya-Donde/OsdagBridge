@@ -423,7 +423,9 @@ class SteelDesignDetailsTab(QWidget):
         out["top_flange_thickness"] = to_mm(output_dict.get("member_properties.girder_details.section_input.top_flange_thickness", ""))
         out["bottom_flange_width"] = to_mm(output_dict.get("member_properties.girder_details.section_input.bottom_flange_width", ""))
         out["bottom_flange_thickness"] = to_mm(output_dict.get("member_properties.girder_details.section_input.bottom_flange_thickness", ""))
-
+        out["torsional_restraint"] = to_mm(output_dict.get("member_properties.girder_details.section_properties.torsion_constant_it", ""))
+        out["warping_restraint"] = to_mm(output_dict.get("member_properties.girder_details.section_properties.warping_constant_iw", ""))
+        
         # Shear
         out["shear_material_yield_strength"] = to_str(output_dict.get("design_options.shear_studs.yield_strength", ""))
         out["shear_material_ultimate_strength"] = to_str(output_dict.get("design_options.shear_studs.ultimate_strength", ""))

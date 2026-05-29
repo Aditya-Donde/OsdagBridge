@@ -19,8 +19,10 @@ from PySide6.QtCore import Qt
 from osdagbridge.desktop.ui.dialogs.tabs.common import apply_field_style
 from osdagbridge.desktop.ui.utils.styled_scroll_area import StyledScrollArea
 from osdagbridge.desktop.ui.utils.custom_titlebar import CustomTitleBar
-from osdagbridge.desktop.ui.dialogs.tabs.steel_design_check import UtilizationBar, StatusBadge
+from osdagbridge.desktop.ui.dialogs.tabs.steel_design_check import StatusBadge
+from osdagbridge.desktop.ui.utils.custom_widgets import PercentBarWidget
 
+# Import the schema
 from osdagbridge.core.bridge_types.plate_girder.ui_fields_additional_input import DECK_DESIGN_SUMMARY_SCHEMA
 
 
@@ -299,28 +301,8 @@ class DeckDesign(QDialog):
         card = self._create_card_frame()
         card_layout = QVBoxLayout(card)
         card_layout.setContentsMargins(18, 16, 18, 16)
-        card_layout.setSpacing(6)
+        card_layout.setSpacing(12)
         card_layout.addWidget(self._create_label(util_schema.get("title", "Utilization Summary:")))
-
-        hdr = QHBoxLayout()
-        hdr.setContentsMargins(0, 2, 0, 4)
-        hdr_lbl = QLabel("Check")
-        hdr_lbl.setStyleSheet("font-size: 10px; color: #888; font-weight: bold;")
-        hdr_lbl.setFixedWidth(230)
-        hdr.addWidget(hdr_lbl)
-        hdr.addStretch(1)
-        for txt in ("UR", "Status"):
-            w = QLabel(txt)
-            w.setStyleSheet("font-size: 10px; color: #888; font-weight: bold;")
-            w.setFixedWidth(52 if txt == "UR" else 64)
-            w.setAlignment(Qt.AlignCenter)
-            hdr.addWidget(w)
-        card_layout.addLayout(hdr)
-
-        sep = QFrame()
-        sep.setFrameShape(QFrame.HLine)
-        sep.setStyleSheet("color: #e0e0e0;")
-        card_layout.addWidget(sep)
 
         self._ur_widgets: dict = {}
 
@@ -329,37 +311,13 @@ class DeckDesign(QDialog):
             label = check_def.get("label", "")
             is_overhang = check_def.get("is_overhang", False)
             
-            row_w = QWidget(self)
-            row_l = QHBoxLayout(row_w)
-            row_l.setContentsMargins(0, 3, 0, 3)
-            row_l.setSpacing(8)
-
-            lbl = QLabel(label)
-            lbl.setStyleSheet("font-size: 11px; color: #333333;")
-            lbl.setFixedWidth(230)
-            row_l.addWidget(lbl)
-
-            bar = UtilizationBar()
-            bar.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-            row_l.addWidget(bar, 1)
-
-            val = QLabel("–")
-            val.setFixedWidth(52)
-            val.setAlignment(Qt.AlignCenter)
-            val.setStyleSheet("font-size: 11px; color: #333333; font-weight: bold;")
-            row_l.addWidget(val)
-
-            badge = StatusBadge()
-            row_l.addWidget(badge)
-
-            card_layout.addWidget(row_w)
-            row_w.setVisible(not is_overhang)
+            bar = PercentBarWidget(label=label, value=0.0, parent=self)
+            
+            card_layout.addWidget(bar)
+            bar.setVisible(not is_overhang)
 
             self._ur_widgets[key] = {
-                "row":   row_w,
                 "bar":   bar,
-                "val":   val,
-                "badge": badge,
                 "is_overhang": is_overhang,
             }
 
@@ -459,21 +417,14 @@ class DeckDesign(QDialog):
         # ── Utilization bars ──────────────────────────────────────────────────
         for key, widgets in self._ur_widgets.items():
             if widgets["is_overhang"]:
-                widgets["row"].setVisible(has_overhang)
+                widgets["bar"].setVisible(has_overhang)
 
-            raw = cad_state.get(key)
-            if raw is None:
-                widgets["val"].setText("–")
-                widgets["bar"].set_ratio(0.0)
-                widgets["badge"].set_neutral()
-            else:
-                ratio = float(raw)
-                widgets["val"].setText(f"{ratio:.3f}")
-                widgets["bar"].set_ratio(ratio)
-                if ratio <= 1.0:
-                    widgets["badge"].set_pass()
-                else:
-                    widgets["badge"].set_fail()
+            # raw = cad_state.get(key)
+            # if raw is None:
+            #     widgets["bar"].set_value(0.0)
+            # else:
+            #     ratio = float(raw)
+            #     widgets["bar"].set_value(ratio)
 
         # ── Design check text ─────────────────────────────────────────────────
         dc_schema = self.schema.get("design_check_card", {})
