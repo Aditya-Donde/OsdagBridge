@@ -1437,11 +1437,7 @@ class GirderDetailsTab(QWidget):
         top_cad_layout.setContentsMargins(12, 10, 12, 10)
         top_cad_layout.setSpacing(12)
 
-        self.girder_cad_view = CrossSectionCADWidget()
-        self.girder_cad_view.scale_factor = 0.65
-        self.girder_cad_view.show_dimensions = False
-        self.girder_cad_view.show_minimal_dimensions = True
-        self.girder_cad_view.show_girder_labels = True
+        self.girder_cad_view = _GirderCad2DView()
         self.girder_cad_view.setMinimumHeight(0)
         
         cad_scroll = QScrollArea()
