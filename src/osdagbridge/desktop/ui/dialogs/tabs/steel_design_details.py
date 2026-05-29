@@ -374,12 +374,12 @@ class SteelDesignDetailsTab(QWidget):
     # LOAD DATA (unchanged logic)
     # ─────────────────────────────────────────────────────────────────────────
 
-    def load_data(self, input_dict: dict):
-        """Populate all field widgets from an input_dict snapshot; normalizes schema keys to flat dict."""
-        if not input_dict:
+    def load_data(self, output_dict: dict):
+        """Populate all field widgets from an output_dict snapshot; normalizes schema keys to flat dict."""
+        if not output_dict:
             return
             
-        normalized_state = self._normalize_cad_state(input_dict)
+        normalized_state = self._normalize_cad_state(output_dict)
 
         for group_fields in self._field_groups.values():
             for key, field in group_fields.items():
@@ -399,11 +399,11 @@ class SteelDesignDetailsTab(QWidget):
                     item.setTextAlignment(Qt.AlignCenter)
                     self.stiffener_table.setItem(row_index, col_index, item)
                     
-        self._update_cad_previews(normalized_state, input_dict)
+        self._update_cad_previews(normalized_state, output_dict)
 
-    def _normalize_cad_state(self, input_dict: dict) -> dict:
-        if "cad_state" in input_dict or not input_dict:
-            return input_dict
+    def _normalize_cad_state(self, output_dict: dict) -> dict:
+        if "cad_state" in output_dict or not output_dict:
+            return output_dict
             
         out = {}
         def to_mm(val):
@@ -414,21 +414,23 @@ class SteelDesignDetailsTab(QWidget):
             if val is None: return ""
             return str(val)
 
-        out["grade_of_material"] = input_dict.get("material.girder", "")
-        mode = str(input_dict.get("geometry.design_mode", ""))
+        out["grade_of_material"] = output_dict.get("material.girder", "")
+        mode = str(output_dict.get("geometry.design_mode", ""))
         out["section_type"] = "Welded" if "Optimized" in mode else "Rolled"
-        out["total_depth"] = to_mm(input_dict.get("member_properties.girder_details.section_input.depth", ""))
-        out["web_thickness"] = to_mm(input_dict.get("member_properties.girder_details.section_input.web_thickness", ""))
-        out["top_flange_width"] = to_mm(input_dict.get("member_properties.girder_details.section_input.top_flange_width", ""))
-        out["top_flange_thickness"] = to_mm(input_dict.get("member_properties.girder_details.section_input.top_flange_thickness", ""))
-        out["bottom_flange_width"] = to_mm(input_dict.get("member_properties.girder_details.section_input.bottom_flange_width", ""))
-        out["bottom_flange_thickness"] = to_mm(input_dict.get("member_properties.girder_details.section_input.bottom_flange_thickness", ""))
-        
+        out["total_depth"] = to_mm(output_dict.get("member_properties.girder_details.section_input.depth", ""))
+        out["web_thickness"] = to_mm(output_dict.get("member_properties.girder_details.section_input.web_thickness", ""))
+        out["top_flange_width"] = to_mm(output_dict.get("member_properties.girder_details.section_input.top_flange_width", ""))
+        out["top_flange_thickness"] = to_mm(output_dict.get("member_properties.girder_details.section_input.top_flange_thickness", ""))
+        out["bottom_flange_width"] = to_mm(output_dict.get("member_properties.girder_details.section_input.bottom_flange_width", ""))
+        out["bottom_flange_thickness"] = to_mm(output_dict.get("member_properties.girder_details.section_input.bottom_flange_thickness", ""))
+
         # Shear
-        out["shear_diameter"] = to_str(input_dict.get("design_options.shear_studs.diameter", ""))
-        out["shear_height"] = to_str(input_dict.get("design_options.shear_studs.height", ""))
-        out["shear_transverse_spacing"] = to_str(input_dict.get("design_options.shear_studs.transverse_spacing", ""))
-        out["shear_studs_per_section"] = to_str(input_dict.get("design_options.shear_studs.count", ""))
+        out["shear_material_yield_strength"] = to_str(output_dict.get("design_options.shear_studs.yield_strength", ""))
+        out["shear_material_ultimate_strength"] = to_str(output_dict.get("design_options.shear_studs.ultimate_strength", ""))
+        out["shear_diameter"] = to_str(output_dict.get("design_options.shear_studs.diameter", ""))
+        out["shear_height"] = to_str(output_dict.get("design_options.shear_studs.height", ""))
+        out["shear_transverse_spacing"] = to_str(output_dict.get("design_options.shear_studs.transverse_spacing", ""))
+        out["shear_studs_per_section"] = to_str(output_dict.get("design_options.shear_studs.count", ""))
 
         def m2_to_cm2(val):
             try: return f"{float(val) * 10000:.2f}"
@@ -442,27 +444,30 @@ class SteelDesignDetailsTab(QWidget):
         def m3_to_cm3(val):
             try: return f"{float(val) * 1e6:.2f}"
             except: return val
+        def m6_to_cm6(val):
+            try: return f"{float(val) * 1e12:.2f}"
+            except: return val
 
-        out["mass"] = to_str(input_dict.get("member_properties.girder_details.section_properties.mass", ""))
-        out["area"] = m2_to_cm2(input_dict.get("member_properties.girder_details.section_properties.area", ""))
-        out["iz"] = m4_to_cm4(input_dict.get("member_properties.girder_details.section_properties.iz", ""))
-        out["iv"] = m4_to_cm4(input_dict.get("member_properties.girder_details.section_properties.iy", ""))
-        out["rz"] = m_to_cm(input_dict.get("member_properties.girder_details.section_properties.radius_gyration_z", ""))
-        out["rv"] = m_to_cm(input_dict.get("member_properties.girder_details.section_properties.radius_gyration_y", ""))
-        out["zz"] = m3_to_cm3(input_dict.get("member_properties.girder_details.material_properties.modulus_of_elasticity_zz", ""))
-        out["zv"] = m3_to_cm3(input_dict.get("member_properties.girder_details.material_properties.modulus_of_elasticity_zy", ""))
-        out["zuz"] = m3_to_cm3(input_dict.get("member_properties.girder_details.material_properties.plastic_modulus_zuz", ""))
-        out["zuv"] = m3_to_cm3(input_dict.get("member_properties.girder_details.material_properties.plastic_modulus_zuy", ""))
-        out["it"] = m4_to_cm4(input_dict.get("member_properties.girder_details.section_properties.torsion_constant_it", ""))
-        out["iw"] = m4_to_cm4(input_dict.get("member_properties.girder_details.section_properties.warping_constant_iw", ""))
+        out["mass"] = to_str(output_dict.get("member_properties.girder_details.section_properties.mass", ""))
+        out["area"] = m2_to_cm2(output_dict.get("member_properties.girder_details.section_properties.area", ""))
+        out["iz"] = m4_to_cm4(output_dict.get("member_properties.girder_details.section_properties.iz", ""))
+        out["iv"] = m4_to_cm4(output_dict.get("member_properties.girder_details.section_properties.iy", ""))
+        out["rz"] = m_to_cm(output_dict.get("member_properties.girder_details.section_properties.radius_gyration_z", ""))
+        out["rv"] = m_to_cm(output_dict.get("member_properties.girder_details.section_properties.radius_gyration_y", ""))
+        out["zz"] = m3_to_cm3(output_dict.get("member_properties.girder_details.material_properties.modulus_of_elasticity_zz", ""))
+        out["zv"] = m3_to_cm3(output_dict.get("member_properties.girder_details.material_properties.modulus_of_elasticity_zy", ""))
+        out["zuz"] = m3_to_cm3(output_dict.get("member_properties.girder_details.material_properties.plastic_modulus_zuz", ""))
+        out["zuv"] = m3_to_cm3(output_dict.get("member_properties.girder_details.material_properties.plastic_modulus_zuy", ""))
+        out["it"] = m4_to_cm4(output_dict.get("member_properties.girder_details.section_properties.torsion_constant_it", ""))
+        out["iw"] = m6_to_cm6(output_dict.get("member_properties.girder_details.section_properties.warping_constant_iw", ""))
         # Section designation fallback if rolled
-        out["section_designation"] = to_str(input_dict.get("member_properties.girder_details.section_input.is_section", ""))
+        out["section_designation"] = to_str(output_dict.get("member_properties.girder_details.section_input.is_section", ""))
 
         return out
 
-    def _update_cad_previews(self, normalized_state: dict, input_dict: dict = None):
-        if not input_dict:
-            input_dict = {}
+    def _update_cad_previews(self, normalized_state: dict, output_dict: dict = None):
+        if not output_dict:
+            output_dict = {}
 
         if hasattr(self, "section_preview"):
             def to_f(v):
@@ -494,14 +499,14 @@ class SteelDesignDetailsTab(QWidget):
                 self.section_preview.clear()
                 
         if hasattr(self, "stiffener_preview"):
-            # Prepare dummy structure for CAD rendering since input_dict doesn't contain segments
+            # Prepare dummy structure for CAD rendering since output_dict doesn't contain segments
             depth = to_f(normalized_state.get("total_depth")) or 0.0
             tf_t = to_f(normalized_state.get("top_flange_thickness")) or 0.0
             bf_t = to_f(normalized_state.get("bottom_flange_thickness")) or 0.0
             
             length_m = 30.0 # fallback
             try:
-                length = input_dict.get("geometry.length")
+                length = output_dict.get("geometry.length")
                 if length: length_m = float(length)
             except:
                 pass
@@ -509,11 +514,11 @@ class SteelDesignDetailsTab(QWidget):
             segments = [{"id": "G1M1", "start": 0.0, "end": length_m, "length": length_m}]
             
             stiff_state = {
-                "bearing_stiffeners_each_end": str(input_dict.get("member_properties.stiffener_details.no_bearing_stiffeners_each_end", "2")),
-                "bearing_spacing_mm": str(input_dict.get("member_properties.stiffener_details.bearing_stiffener_spacing", "200")),
-                "intermediate_stiffener": str(input_dict.get("member_properties.stiffener_details.intermediate_stiffener", "Yes")),
-                "intermediate_spacing_mm": str(input_dict.get("member_properties.stiffener_details.intermediate_stiffener_spacing", "1500")),
-                "longitudinal_stiffener": str(input_dict.get("member_properties.stiffener_details.longitudinal_stiffener", "None"))
+                "bearing_stiffeners_each_end": str(output_dict.get("member_properties.stiffener_details.no_bearing_stiffeners_each_end", "2")),
+                "bearing_spacing_mm": str(output_dict.get("member_properties.stiffener_details.bearing_stiffener_spacing", "200")),
+                "intermediate_stiffener": str(output_dict.get("member_properties.stiffener_details.intermediate_stiffener", "Yes")),
+                "intermediate_spacing_mm": str(output_dict.get("member_properties.stiffener_details.intermediate_stiffener_spacing", "1500")),
+                "longitudinal_stiffener": str(output_dict.get("member_properties.stiffener_details.longitudinal_stiffener", "None"))
             }
 
             stiffener_by_member = {"G1M1": stiff_state}

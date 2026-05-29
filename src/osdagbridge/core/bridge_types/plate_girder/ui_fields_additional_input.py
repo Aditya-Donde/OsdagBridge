@@ -1531,9 +1531,15 @@ STEEL_DESIGN_DETAILS_SCHEMA = {
             "title": "Shear Connector Details:",
             "fields": [
                 {
-                    "id": KEY_SD_SHEAR_MATERIAL,
-                    "label": "Material",
-                    "data_key": "shear_material",
+                    "id": KEY_SD_SHEAR_YIELD_STRENGTH,
+                    "label": "Material Yield Strength (MPa)",
+                    "data_key": "shear_material_yield_strength",
+                    "group": "shear",
+                },
+                {
+                    "id": KEY_SD_SHEAR_ULTIMATE_STRENGTH,
+                    "label": "Material Ultimate Strength (MPa)",
+                    "data_key": "shear_material_ultimate_strength",
                     "group": "shear",
                 },
                 {
