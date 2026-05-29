@@ -456,8 +456,16 @@ _PERMANENT_LOAD_TAB_SCHEMA = {
         {
             "column":  1,
             "type":    TYPE_DESCRIPTION,
-            "title":   "Description Box",
-            "text":    "",
+            "title":   "Permanent Loads",
+            "text":    (
+                "Dead loads are divided into the following categories:\n\n"
+                "SW — Self-weight of the girder. The self-weight modification factor entered by the user is multiplied with this case to account for connections and accessories not explicitly modelled.\n"
+                "DC — Weight of structural steel components other than the girder, including cross bracing and end diaphragms.\n"
+                "DD — Weight of the concrete deck slab.\n"
+                "DW — Weight of the wearing course (surfacing) applied on the deck.\n"
+                "SIDL — Superimposed Dead Load, comprising crash barriers, median, and railings.\n\n"
+                "All load magnitudes are computed internally from member dimensions and material densities. The self-weight modification factor (SW) is the only user-controlled parameter for this load group."
+            ),
             "stretch": True,
         },
     ],
@@ -616,16 +624,16 @@ _LIVE_LOAD_TAB_SCHEMA = {
         {
             "column":  1,
             "type":    TYPE_DESCRIPTION,
-            "title":   "Description Box",
+            "title":   "Live Load (LL)",
             "text": (
-                "211.2 The braking effect on a simply supported span or a continuous unit of spans or on any other type of bridge unit shall be assumed to have the following value:\n\n"
-                "a) In the case of a single lane or a two lane bridge: twenty percent of the first train "
-                "load plus ten percent of the load of the succeeding trains or part thereof, the train "
-                "loads in one lane only being considered for the purpose of this subclause. Where the "
-                "entire first train is not on the full span, the braking force shall be taken as equal to "
-                "twenty percent of the loads actually on the span or continuous unit of spans.\n"
-                "b) In the case of bridges having more than two lanes: as in (a) above for the first two "
-                "lanes plus five percent of the loads on the lanes in excess of two."
+                "IRC Vehicles:\n"
+                "Live load considers standard IRC 6 vehicle classes: Class A, Class 70R (Wheeled, Tracked, Bogie), Class AA (Wheeled, Tracked), Class SV (Special Vehicle), and Fatigue vehicle. Only checked vehicles are included in the analysis.\n\n"
+                "Braking Load (IRC 6 Cl. 211.2):\n"
+                "Braking forces are derived from the live load. For single- or two-lane bridges: 20% of the first train of load plus 10% of succeeding trains in one lane.\nFor bridges with more than two lanes: as above for the first two lanes, plus 5% for each additional lane.\nClass SV does not require a braking load by default, but a checkbox is provided if the user wishes to include it.\n\n"
+                "Braking Load Eccentricity:\n"
+                "As per IRC 6, braking load acts as a horizontal longitudinal force applied at 1.2 m above the top of the deck surface.\n\n"
+                "Footpath Pressure:\n"
+                "Footpath live load is applied as a uniform pressure per IRC 6. The default value follows the code; the user can switch to 'User-defined' to enter a custom value."
             ),
             "stretch": True,
         },
@@ -780,11 +788,14 @@ _SEISMIC_LOAD_TAB_SCHEMA = {
         {
             "column":  1,
             "type":    TYPE_DESCRIPTION,
-            "title":   "Description Box",
+            "title":   "Seismic / Earthquake Load (EL)",
             "text":    (
-                "Seismic Zone is auto-filled from software output (project location).\n\n"
-                "The spectral acceleration coefficient depends on soil type and "
-                "fundamental time period, T."
+                "Seismic zone is auto-filled from the project location and determines the zone factor (Z) per IRC 6.\n\n"
+                "Spectral acceleration coefficient (Sa/g) is taken from IRC 6 response spectra and depends on the soil type and the fundamental time period (T) of the structure.\n\n"
+                "Seismic coefficients:\n"
+                "Ah = (Z / 2) x (I / R) x (Sa/g)\n"
+                "Av = (2/3) x Ah\n"
+                "where Z = zone factor, I = importance factor, R = response reduction factor, and the damping percentage governs the Sa/g value. All calculations follow IRC 6 seismic provisions."
             ),
             "stretch": True,
         },
@@ -842,8 +853,17 @@ _WIND_LOAD_TAB_SCHEMA = {
         {
             "column":  1,
             "type":    TYPE_DESCRIPTION,
-            "title":   "Description Box",
-            "text":    "Basic Wind Speed is auto-filled from software output (project location).",
+            "title":   "Wind Load (WL)",
+            "text":    (
+                "Basic wind speed is auto-filled from the project location.\n\n"
+                "Hourly mean wind speed (Vz) and design wind pressure (Pz) are computed from the basic wind speed, average exposed height (H), terrain type, and site topography per IRC 6.\n\n"
+                "Wind forces computed per IRC 6 include:\n"
+                "- Transverse wind force on the structure\n"
+                "- Longitudinal wind force (typically 25% of transverse)\n"
+                "- Vertical (upward) wind force on the deck\n"
+                "- Transverse and longitudinal wind forces due to live load\n\n"
+                "These forces use the gust factor (G), drag coefficient (CD), lift coefficient (CL), superstructure elevation area, plan area, and exposed frontal area of live load. They are applied at the specified eccentricity or as required by IRC 6."
+            ),
             "stretch": True,
         },
     ],
@@ -1016,8 +1036,27 @@ _LOAD_COMBINATION_TAB_SCHEMA = {
         {
             "column":  1,
             "type":    TYPE_DESCRIPTION,
-            "title":   "Description Box",
-            "text":    "",
+            "title":   "Load Combinations (IRC 6)",
+            "text":    (
+                "Load combinations are formed per IRC 6 Table B.1. The following load cases are considered:\n"
+                "SW: Self-weight of steel girder\n"
+                "DC: Weight of structural steel components other than the girder, including cross bracing and end diaphragms\n"
+                "DD: Deck weight\n"
+                "DW: Wearing course\n"
+                "SIDL: Crash barriers, median, railing\n"
+                "LL: Live load\n"
+                "WL: Wind load\n"
+                "EL: Seismic / earthquake load\n"
+                "TL: Temperature load\n\n"
+                "IRC 6 combination types:\n"
+                "- Basic combination\n"
+                "- Accidental combination\n"
+                "- Seismic combination\n"
+                "- Frequent combination\n"
+                "- Rare combination\n"
+                "- Quasi-permanent combination\n\n"
+                "Custom load combinations with user-defined partial safety factors can also be added."
+            ),
             "stretch": True,
         },
     ],
@@ -1284,8 +1323,11 @@ DESIGN_OPTIONS_SCHEMA = {
         {
             "column": 1,
             "type":   TYPE_DESCRIPTION,
-            "title":  "Description Box",
-            "text":   "",
+            "title":  "Construction Stages",
+            "text":   (
+                "When included ('Yes'), the analysis accounts for three stages.\nIn Stage 1, the steel girder carries its self-weight alone.\nIn Stage 2, the wet concrete deck load (DD) and the weight of other structural steel components act on the bare steel section before composite action is activated.\nIn Stage 3, composite action is fully active, and all remaining loads (superimposed dead load, live load, wind load, seismic load, and temperature load) are applied to the composite section.\nStages 1 and 2 are critical for lateral-torsional buckling (LTB) checks, as the compression flange is unrestrained until the deck provides lateral support.\n\n"
+                "When 'No' is selected, only the final composite state is checked and no separate construction-stage verification is performed."
+            ),
             "stretch": True,
         },
     ],
