@@ -227,6 +227,10 @@ class AdditionalInputs(QDialog):
         # Keep girder count in sync across tabs
         try:
             self.typical_section_tab.girder_count_changed.connect(self.section_properties_tab.set_girder_count)
+            if hasattr(self.typical_section_tab, "cad_params_changed") and hasattr(self.section_properties_tab, "update_cad_params"):
+                self.typical_section_tab.cad_params_changed.connect(self.section_properties_tab.update_cad_params)
+                if hasattr(self, "_initial_cad_state") and self._initial_cad_state:
+                    self.typical_section_tab.cad_params_changed.emit(self._initial_cad_state)
             self._sync_member_properties_girder_count()
         except Exception:
             pass

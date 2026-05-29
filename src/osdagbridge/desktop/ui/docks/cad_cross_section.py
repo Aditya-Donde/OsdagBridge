@@ -37,6 +37,10 @@ class CrossSectionCADWidget(QWidget):
         self.show_dimensions = True
         self.show_span_values = False
         self.show_carriageway_values = False
+        self.show_girder_labels = False
+        self.show_minimal_dimensions = False
+        self.show_girder_spacing_only = False
+        self.highlighted_girders = []
         self.setMouseTracking(True)  # enable mouse tracking for hover
         self.concrete_brush = self.create_concrete_brush()
         self.crash_barrier_params = {}
@@ -495,6 +499,11 @@ class CrossSectionCADWidget(QWidget):
         """Position zoom controls in top-right corner"""
         super().resizeEvent(event)
         self._position_zoom_buttons()
+
+    def showEvent(self, event):
+        """Fit diagram to viewport size once the widget becomes visible."""
+        super().showEvent(event)
+        QTimer.singleShot(120, self.fit_to_screen)
     
     def update_params(self, params: dict):
         self.params.update(params)
@@ -1658,10 +1667,21 @@ class CrossSectionCADWidget(QWidget):
                 tf_bottom = self.girder['bottom_flange_thickness'] * scale * self.girder_visual_scale['flange_thickness']
         else:
             tf_top = tf_bottom = self.girder['flange_thickness'] * scale * self.girder_visual_scale['flange_thickness']
-        # Draw girders and stiffeners
-        for girder_x in positions:
-            self.draw_i_section(painter, girder_x, base_y, scale, self.GIRDER_COLOR)
+        for i, girder_x in enumerate(positions):
+            girder_id = f"Girder {i+1}"
+            is_highlighted = (
+                girder_id in self.highlighted_girders 
+                or f"G{i+1}" in self.highlighted_girders 
+                or f"Girder {i+1}" in self.highlighted_girders 
+                or "All" in self.highlighted_girders
+            )
+            color = QColor(144, 175, 19) if is_highlighted else self.GIRDER_COLOR
+            self.draw_i_section(painter, girder_x, base_y, scale, color)
             self.draw_stiffeners(painter, girder_x, base_y, scale, self.STIFFENER_COLOR)
+            
+            if getattr(self, "show_girder_labels", False):
+                label_y = base_y + 40
+                self.draw_text_with_background(painter, girder_x - 30, label_y, f"Girder {i+1}", bg_color=QColor(255, 255, 255, 200))
             
     
 
@@ -1796,6 +1816,33 @@ class CrossSectionCADWidget(QWidget):
                 crash_barrier_width_px, left_barrier_end_x, right_barrier_end_x,
                 DIM_OFFSET, DIM_OFFSET_SMALL
             )
+        elif getattr(self, "show_minimal_dimensions", False) and len(positions) > 0:
+            first_girder_x = positions[0]
+            Y_OVERHANG = base_y + 20
+            overhang_m = self.params.get('deck_overhang', 1000) / 1000
+            label_overhang = f"Overhang = {overhang_m:.2f} m"
+            self.draw_dimension_arrow(painter, deck_left_x, Y_OVERHANG, first_girder_x, Y_OVERHANG,
+                                    label_overhang, True, extension_direction='up',
+                                    extension_end_y=deck_bottom_y)
+                                    
+            if len(positions) >= 2 and "girder_spacing" in self.params:
+                girder_spacing = float(self.params.get('girder_spacing', 2500)) / 1000.0
+                # Draw only one girder spacing to avoid clutter
+                x_left = positions[0]
+                x_right = positions[1]
+                Y_GIRDER_SPACING = base_y + 70
+                self.draw_dimension_arrow(painter, x_left, Y_GIRDER_SPACING, x_right, Y_GIRDER_SPACING,
+                                        f"Girder Spacing = {girder_spacing:.2f} m", extension_direction='up',
+                                        extension_end_y=deck_bottom_y)
+        elif getattr(self, "show_girder_spacing_only", False) and "girder_spacing" in self.params and len(positions) > 1:
+            girder_spacing = float(self.params.get('girder_spacing', 2500))
+            for i in range(len(positions) - 1):
+                x_left = positions[i]
+                x_right = positions[i+1]
+                Y_GIRDER_SPACING = base_y + 80 * scale
+                self.draw_dimension_arrow(painter, x_left, Y_GIRDER_SPACING, x_right, Y_GIRDER_SPACING,
+                                          f"{girder_spacing:.0f}", extension_direction='down',
+                                          extension_end_y=Y_GIRDER_SPACING - 30 * scale)
 
         # Add hover labels
         self.add_cross_section_hover_labels(
@@ -2392,7 +2439,11 @@ class CrossSectionCADWidget(QWidget):
         else:
             painter.setBrush(QBrush(girder_color))
         
-        painter.setPen(QPen(QColor(0, 0, 0), 1.5))
+        # High-contrast bold pen outline for highlighted girder
+        if girder_color == QColor(144, 175, 19):
+            painter.setPen(QPen(QColor(144, 175, 19), 3))
+        else:
+            painter.setPen(QPen(QColor(0, 0, 0), 1.5))
         
         # Draw bottom flange
         painter.drawRect(QRectF(x - bf_bottom/2, base_y - tf_bottom, bf_bottom, tf_bottom))

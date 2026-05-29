@@ -11,8 +11,12 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCore import Qt, QEvent, QTimer
 
-from navcube import NavCubeOverlay, NavCubeStyle
-from osdagbridge.desktop.ui.utils.mpl_widget_navcube_sync import MatplotlibNavCubeSync
+HAS_NAVCUBE = True
+try:
+    from navcube import NavCubeOverlay, NavCubeStyle
+    from osdagbridge.desktop.ui.utils.mpl_widget_navcube_sync import MatplotlibNavCubeSync
+except (ImportError, ModuleNotFoundError):
+    HAS_NAVCUBE = False
 
 from osdagbridge.core.bridge_types.plate_girder.plot_generator import (
     build_figure_sfd,
@@ -141,27 +145,31 @@ class MplPlotWidget(QWidget):
         self._summary_overlay.hide()
 
         # ── NavCube: create overlay + sync bridge ──────────────────
-        self._navcube = NavCubeOverlay(self._canvas, overlay=False, style=NavCubeStyle(
-            size=65, theme="light",
-            face_color=(242, 244, 247), edge_color=(218, 224, 232),
-            corner_color=(228, 232, 238), text_color=(45, 55, 72),
-            border_color=(30, 30, 30), border_secondary_color=(80, 80, 80),
-            border_width_main=1.6, border_width_secondary=0.9,
-            hover_color=(145, 176, 20, 235), hover_text_color=(255, 255, 255),
-            dot_color=(60, 60, 60, 180), shadow_color=(20, 20, 20, 45),
-            shadow_offset_x=2.0, shadow_offset_y=2.5,
-            face_color_dark=(52, 62, 76), edge_color_dark=(42, 52, 65),
-            corner_color_dark=(47, 57, 70), text_color_dark=(210, 220, 232),
-            border_color_dark=(200, 200, 200), border_secondary_color_dark=(130, 130, 130),
-            hover_color_dark=(145, 176, 20, 235),
-            show_gizmo=False, inactive_opacity=0.70, animation_ms=300,
-            light_direction=(-0.5, -1.0, -1.5),
-        ))
-        self._navcube.hide()
-        self._navcube_sync = MatplotlibNavCubeSync(self._canvas, self._navcube)
-        self._canvas.mpl_connect("button_press_event",   lambda e: self._navcube_sync.set_interaction_active(True)  if e.button == 1 else None)
-        self._canvas.mpl_connect("button_release_event", lambda e: self._navcube_sync.set_interaction_active(False) if e.button == 1 else None)
-        self._canvas.mpl_connect("motion_notify_event",  lambda e: self._navcube_sync.force_sync() if e.button == 1 else None)
+        if HAS_NAVCUBE:
+            self._navcube = NavCubeOverlay(self._canvas, overlay=False, style=NavCubeStyle(
+                size=65, theme="light",
+                face_color=(242, 244, 247), edge_color=(218, 224, 232),
+                corner_color=(228, 232, 238), text_color=(45, 55, 72),
+                border_color=(30, 30, 30), border_secondary_color=(80, 80, 80),
+                border_width_main=1.6, border_width_secondary=0.9,
+                hover_color=(145, 176, 20, 235), hover_text_color=(255, 255, 255),
+                dot_color=(60, 60, 60, 180), shadow_color=(20, 20, 20, 45),
+                shadow_offset_x=2.0, shadow_offset_y=2.5,
+                face_color_dark=(52, 62, 76), edge_color_dark=(42, 52, 65),
+                corner_color_dark=(47, 57, 70), text_color_dark=(210, 220, 232),
+                border_color_dark=(200, 200, 200), border_secondary_color_dark=(130, 130, 130),
+                hover_color_dark=(145, 176, 20, 235),
+                show_gizmo=False, inactive_opacity=0.70, animation_ms=300,
+                light_direction=(-0.5, -1.0, -1.5),
+            ))
+            self._navcube.hide()
+            self._navcube_sync = MatplotlibNavCubeSync(self._canvas, self._navcube)
+            self._canvas.mpl_connect("button_press_event",   lambda e: self._navcube_sync.set_interaction_active(True)  if e.button == 1 else None)
+            self._canvas.mpl_connect("button_release_event", lambda e: self._navcube_sync.set_interaction_active(False) if e.button == 1 else None)
+            self._canvas.mpl_connect("motion_notify_event",  lambda e: self._navcube_sync.force_sync() if e.button == 1 else None)
+        else:
+            self._navcube = None
+            self._navcube_sync = None
         # ──────────────────────────────────────────────────────────
 
         # zoom toolbar
@@ -410,6 +418,8 @@ class MplPlotWidget(QWidget):
     # ── NavCube helpers ────────────────────────────────────────────
 
     def _update_navcube_visibility(self):
+        if not HAS_NAVCUBE:
+            return
         from mpl_toolkits.mplot3d import Axes3D
         has_3d = any(isinstance(ax, Axes3D) for ax in self._fig.axes)
         if has_3d:
@@ -424,6 +434,8 @@ class MplPlotWidget(QWidget):
 
     def _resize_navcube(self):
         """Scale NavCube to 8% of the shorter canvas edge, DPI-aware. (mirrors CustomViewer3d)"""
+        if not HAS_NAVCUBE:
+            return
         vp_logical = min(self._canvas.width(), self._canvas.height())
         if vp_logical < 10:
             return
@@ -447,17 +459,11 @@ class MplPlotWidget(QWidget):
         nc._update_dpi()
 
     def _position_navcube(self):
+        if not HAS_NAVCUBE:
+            return
         padding = 10
         x = max(0, self._canvas.width() - self._navcube.width() - padding)
         self._navcube.move(x, padding)
-
-    def eventFilter(self, obj, event):
-        if obj is self._canvas and event.type() == QEvent.Type.Resize:
-            self._resize_navcube()
-            self._position_navcube()
-            if self._navcube.isVisible():
-                self._navcube.raise_()
-        return super().eventFilter(obj, event)
 
     # ──────────────────────────────────────────────────────────────
 
@@ -658,7 +664,7 @@ class MplPlotWidget(QWidget):
     #         return True   
     #     return super().eventFilter(obj, event)
     def eventFilter(self, obj, event):
-        """Intercepts the mouse wheel at the OS level to guarantee zoom triggers."""
+        """Intercepts the mouse wheel at the OS level to guarantee zoom triggers and handles NavCube resizing."""
         from PySide6.QtCore import QEvent
         
         if obj is self._canvas and event.type() == QEvent.Type.Wheel:
@@ -671,6 +677,11 @@ class MplPlotWidget(QWidget):
                 self._zoom_out()
                 
             return True   
+        elif HAS_NAVCUBE and obj is self._canvas and event.type() == QEvent.Type.Resize:
+            self._resize_navcube()
+            self._position_navcube()
+            if self._navcube and self._navcube.isVisible():
+                self._navcube.raise_()
         return super().eventFilter(obj, event)
 
     # def _zoom_step(self, factor):

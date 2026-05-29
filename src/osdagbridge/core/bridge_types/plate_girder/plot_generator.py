@@ -7,7 +7,13 @@ import matplotlib.colors as mcolors
 from matplotlib.ticker import FuncFormatter
 from matplotlib.ticker import MaxNLocator
 import numpy as np
-import openseespy.opensees as ops
+
+HAS_OPENSEES = True
+try:
+    import openseespy.opensees as ops
+except (ImportError, ModuleNotFoundError):
+    HAS_OPENSEES = False
+
 from mpl_toolkits.mplot3d.art3d import Line3DCollection
 
 try:

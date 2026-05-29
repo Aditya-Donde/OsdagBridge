@@ -86,6 +86,7 @@ class TypicalSectionDetailsTab(QWidget):
 
     footpath_changed = Signal(str)
     girder_count_changed = Signal(int)
+    cad_params_changed = Signal(dict)
 
     def __init__(self, footpath_value="None", carriageway_width=7.5, parent=None, initial_cad_state=None):
         self._initial_cad_state = initial_cad_state or {}
@@ -427,6 +428,8 @@ class TypicalSectionDetailsTab(QWidget):
 
         if params:
             self.cad_preview.update_params(params)
+            if hasattr(self, "cad_params_changed"):
+                self.cad_params_changed.emit(params)
 
     
 
