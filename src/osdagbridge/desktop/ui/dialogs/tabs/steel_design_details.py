@@ -379,7 +379,7 @@ class SteelDesignDetailsTab(QWidget):
         if not output_dict:
             return
             
-        normalized_state = self._normalize_cad_state(output_dict)
+        normalized_state = self._normalize_output_dict(output_dict)
 
         for group_fields in self._field_groups.values():
             for key, field in group_fields.items():
@@ -401,8 +401,8 @@ class SteelDesignDetailsTab(QWidget):
                     
         self._update_cad_previews(normalized_state, output_dict)
 
-    def _normalize_cad_state(self, output_dict: dict) -> dict:
-        if "cad_state" in output_dict or not output_dict:
+    def _normalize_output_dict(self, output_dict: dict) -> dict:
+        if "output_dict" in output_dict or not output_dict:
             return output_dict
             
         out = {}

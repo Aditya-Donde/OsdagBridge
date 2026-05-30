@@ -372,8 +372,8 @@ class SteelDesignCheckTab(QWidget):
         Clear all check output areas.
     set_girder_count(count)
         Repopulate the Member ID combo.
-    load_data(cad_state)
-        Restore check results from a cad_state snapshot.
+    load_data(output_dict)
+        Restore check results from a output_dict snapshot.
     """
 
     def __init__(self, parent=None):
@@ -633,9 +633,9 @@ class SteelDesignCheckTab(QWidget):
     # ---------------------------------------------------------------------------
 
 
-    def load_data(self, cad_state: dict):
-        """Populate check output areas from a cad_state snapshot."""
-        if not cad_state:
+    def load_data(self, output_dict: dict):
+        """Populate check output areas from a output_dict snapshot."""
+        if not output_dict:
             return
 
     def set_check_result(self, key: str, text: str) -> None:

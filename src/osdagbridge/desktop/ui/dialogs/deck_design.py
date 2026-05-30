@@ -372,8 +372,8 @@ class DeckDesign(QDialog):
             + "</pre>"
         )
 
-    def load_data(self, cad_state: dict) -> None:
-        if not cad_state:
+    def load_data(self, output_dict: dict) -> None:
+        if not output_dict:
             return
 
         # ── Properties ───────────────────────────────────────────────────────
@@ -381,7 +381,7 @@ class DeckDesign(QDialog):
         for field_def in prop_schema.get("fields", []):
             data_key = field_def.get("data_key")
             if data_key and data_key in self._prop_fields:
-                self._prop_fields[data_key].setText(str(cad_state.get(data_key, "")))
+                self._prop_fields[data_key].setText(str(output_dict.get(data_key, "")))
 
         # ── Reinforcement table ───────────────────────────────────────────────
         reinf_schema = self.schema.get("reinforcement_table", {})
@@ -397,13 +397,13 @@ class DeckDesign(QDialog):
             if is_overhang:
                 # Check if we have overhang data (e.g. rebar_overhang_dia)
                 test_key = f"{prefix}_{data_suffixes[1]}" if len(data_suffixes) > 1 else f"{prefix}_dia"
-                has_overhang = bool(cad_state.get(test_key, ""))
+                has_overhang = bool(output_dict.get(test_key, ""))
                 self.rebar_table.setRowHidden(row, not has_overhang)
                 if not has_overhang:
                     continue
 
             for col, suffix in enumerate(data_suffixes, start=1):
-                value = cad_state.get(f"{prefix}_{suffix}", "")
+                value = output_dict.get(f"{prefix}_{suffix}", "")
                 item = QTableWidgetItem(str(value))
                 item.setFlags(Qt.ItemIsEnabled)
                 item.setTextAlignment(Qt.AlignCenter)
@@ -419,7 +419,7 @@ class DeckDesign(QDialog):
             if widgets["is_overhang"]:
                 widgets["bar"].setVisible(has_overhang)
 
-            # raw = cad_state.get(key)
+            # raw = output_dict.get(key)
             # if raw is None:
             #     widgets["bar"].set_value(0.0)
             # else:
@@ -429,7 +429,7 @@ class DeckDesign(QDialog):
         # ── Design check text ─────────────────────────────────────────────────
         dc_schema = self.schema.get("design_check_card", {})
         dc_key = dc_schema.get("data_key", "deck_design_check")
-        raw_text = str(cad_state.get(dc_key, ""))
+        raw_text = str(output_dict.get(dc_key, ""))
         
         if raw_text:
             self.design_check_text.setHtml(self._text_to_html(raw_text))
