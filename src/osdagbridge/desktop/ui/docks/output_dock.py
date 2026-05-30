@@ -38,8 +38,8 @@ from osdagbridge.core.utils.common import (
 from osdagbridge.desktop.ui.utils.custom_buttons import DockCustomButton
 from osdagbridge.desktop.ui.docks.dock_utils import apply_field_style
 from osdagbridge.desktop.ui.utils.custom_widgets import RichCheckBox, PercentBarWidget, CustomRadioButton
-
-
+from osdagbridge.desktop.ui.dialogs.generate_results_dialog import GenerateResultsDialog
+from osdagbridge.desktop.ui.dialogs.custom_messagebox import CustomMessageBox, MessageBoxType
 # ── Styles ────────────────────────────────────────────────────────────────────
 
 GROUPBOX_STYLE = (
@@ -182,6 +182,7 @@ class OutputDock(QWidget):
 
         results_btn = DockCustomButton("Generate Results Table", ":/vectors/design_result_table.svg")
         results_btn.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        results_btn.clicked.connect(self.open_generate_results_dialog)
         btn_layout.addWidget(results_btn)
 
         self.report_btn = DockCustomButton("Generate Report", ":/vectors/design_report.svg")
@@ -628,3 +629,24 @@ class OutputDock(QWidget):
             if cb.text() == label:
                 # Use a lambda to absorb the boolean argument and call the callback
                 cb.toggled.connect(lambda _: callback())
+
+    def open_generate_results_dialog(self):
+        if self.backend.get_results_dataset() is None:
+            CustomMessageBox(
+                title="Warning",
+                text="No design created!",
+                dialogType=MessageBoxType.Warning
+            ).exec()
+            return
+
+        input_dict = getattr(self.parent, "input_dict", {})
+
+        input_d_values = getattr(self.parent.input_dock, "input_dock_values", {})
+        merged = {**input_dict, **input_d_values}
+
+        dlg = GenerateResultsDialog(parent=None, input_dict=merged, bridge = self.backend)
+        dlg.exec()
+
+
+
+
