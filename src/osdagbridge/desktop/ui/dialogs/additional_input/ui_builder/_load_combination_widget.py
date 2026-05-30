@@ -9,8 +9,8 @@ from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QTableWidget, QTableWidgetItem, QHeaderView, QCheckBox, QSizePolicy,
 )
-
-
+from osdagbridge.core.utils.codes.irc6_2017 import IRC6_2017
+from osdagbridge.core.utils.common import *
 class LoadCombinationWidget(QWidget):
     """
     Self-contained widget — table + Add/Modify/Delete buttons.
@@ -21,10 +21,27 @@ class LoadCombinationWidget(QWidget):
     def __init__(self, field_id: str, on_click: str, owner, ai, parent=None):
         super().__init__(parent)
         self._field_id = field_id
+        self._is_irc6_widget = (
+            self._field_id == "irc6_default_combinations"
+        )
+
         self._on_click = on_click
         self._owner    = owner
         self._ai       = ai
         self._data: list = []
+
+        try:
+            self._irc6_data = IRC6_2017.uls_load_combinations()
+        except Exception as e:
+            print("Error loading IRC6 ULS combinations:", e)
+            self._irc6_data = []
+
+        try:
+            self._irc6_sls_data = IRC6_2017.sls_load_combinations()
+        except Exception as e:
+            print("Error loading IRC6 SLS combinations:", e)
+            self._irc6_sls_data = []    
+
         self.setObjectName(field_id)
         self._build_ui()
 
@@ -34,39 +51,43 @@ class LoadCombinationWidget(QWidget):
         layout.setSpacing(8)
 
         # ── Button row ─────────────────────────────────────────────────────
-        btn_row = QHBoxLayout()
-        btn_row.setSpacing(8)
+        if not self._is_irc6_widget:
+            btn_row = QHBoxLayout()
+            btn_row.setSpacing(8)
 
-        _btn_style = (
-            "QPushButton { background:#ffffff; border:1px solid #a0a0a0;"
-            " border-radius:3px; padding:4px 10px; font-size:11px; color:#2a2a2a; }"
-            "QPushButton:hover { background:#f0f0f0; }"
-            "QPushButton:pressed { background:#e0e0e0; }"
-        )
+            btn_style = (
+                "QPushButton { background:#ffffff; border:1px solid #a0a0a0;"
+                " border-radius:3px; padding:4px 10px; font-size:11px; color:#2a2a2a; }"
+                "QPushButton:hover { background:#f0f0f0; }"
+                "QPushButton:pressed { background:#e0e0e0; }"
+            )
 
-        self.add_btn    = QPushButton("Add Custom Combination")
-        self.modify_btn = QPushButton("Modify")
-        self.delete_btn = QPushButton("Delete")
+            self.add_btn    = QPushButton("Add Custom Combination")
+            self.modify_btn = QPushButton("Modify")
+            self.delete_btn = QPushButton("Delete")
 
-        self.modify_btn.setVisible(False)
-        self.delete_btn.setVisible(False)
+            self.modify_btn.setVisible(False)
+            self.delete_btn.setVisible(False)
 
-        for btn in (self.add_btn, self.modify_btn, self.delete_btn):
-            btn.setStyleSheet(_btn_style)
-            btn_row.addWidget(btn)
+            for btn in (self.add_btn, self.modify_btn, self.delete_btn):
+                btn.setStyleSheet(btn_style)
+                btn_row.addWidget(btn)
 
-        btn_row.addStretch()
-        layout.addLayout(btn_row)
+            btn_row.addStretch()
+            layout.addLayout(btn_row)
 
         # ── Table ─────────────────────────────────────────────────────────
         self.table = QTableWidget(0, 3)
         self.table.setObjectName(self._field_id + "_table")
         self.table.setHorizontalHeaderLabels(["S.No.", "Combination Name", "Include"])
+        self.table.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Fixed)
         self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
         self.table.horizontalHeader().setSectionResizeMode(2, QHeaderView.Fixed)
         self.table.setColumnWidth(0, 60)
+        self.table.setColumnWidth(1, 1200)
         self.table.setColumnWidth(2, 80)
+
         self.table.verticalHeader().setVisible(False)
         self.table.verticalHeader().setDefaultSectionSize(36)
         self.table.setSelectionBehavior(QTableWidget.SelectRows)
@@ -89,10 +110,13 @@ class LoadCombinationWidget(QWidget):
         layout.addWidget(self.table)
 
         # ── Signals ────────────────────────────────────────────────────────
-        self.add_btn.clicked.connect(self._on_add)
-        self.modify_btn.clicked.connect(self._on_modify)
-        self.delete_btn.clicked.connect(self._on_delete)
-        self.table.itemSelectionChanged.connect(self._on_selection_changed)
+        if not self._is_irc6_widget:
+            self.add_btn.clicked.connect(self._on_add)
+            self.modify_btn.clicked.connect(self._on_modify)
+            self.delete_btn.clicked.connect(self._on_delete)
+            self.table.itemSelectionChanged.connect(self._on_selection_changed)
+        else:
+            self._populate_default_combinations()
 
     # ── Public ─────────────────────────────────────────────────────────────
 
@@ -193,4 +217,232 @@ class LoadCombinationWidget(QWidget):
         data = self._current_data()
         if row < len(data):
             data.pop(row)
-            self._save_data(data)
+            self._save_data(data)  
+
+    # ── Load abbreviation map ───────────────────────────────────────────────
+    _ABBREV = {
+        'dead_load':          'DL',
+        'surfacing':          'DW',
+        'live_load':          'LL',
+        'wind_load':          'WL',
+        'thermal_load':       'TL',
+        'seismic':            'EL',
+        'vehicle_collision':  'VC',
+        'barge_impact':       'BI',
+        'floating_bodies':    'FB',
+    }
+
+    # ── Key map: (combination_type, leading_or_condition, accidental_load, direction)
+    #            → KEY string
+    _ULS_CASE_KEYS = {
+        ('basic',       'live_load',  None,                'adding'):    'loading.load_combination.basic.ll_leading.adding',
+        ('basic',       'wind_load',  None,                'adding'):    'loading.load_combination.basic.wl_leading.adding',
+        ('basic',       'thermal_load', None,              'adding'):    'loading.load_combination.basic.tl_leading.adding',
+        ('basic',       'live_load',  None,                'relieving'): 'loading.load_combination.basic.ll_leading.relieving',
+        ('basic',       'wind_load',  None,                'relieving'): 'loading.load_combination.basic.wl_leading.relieving',
+        ('basic',       'thermal_load', None,              'relieving'): 'loading.load_combination.basic.tl_leading.relieving',
+        ('accidental',  'live_load',  'vehicle_collision', 'adding'):    'loading.load_combination.accidental.vc.ll_leading.adding',
+        ('accidental',  'live_load',  'barge_impact',      'adding'):    'loading.load_combination.accidental.bi.ll_leading.adding',
+        ('accidental',  'live_load',  'floating_bodies',   'adding'):    'loading.load_combination.accidental.fb.ll_leading.adding',
+        ('accidental',  'live_load',  'vehicle_collision', 'relieving'): 'loading.load_combination.accidental.vc.ll_leading.relieving',
+        ('accidental',  'live_load',  'barge_impact',      'relieving'): 'loading.load_combination.accidental.bi.ll_leading.relieving',
+        ('accidental',  'live_load',  'floating_bodies',   'relieving'): 'loading.load_combination.accidental.fb.ll_leading.relieving',
+        ('seismic',     'service',    None,                'adding'):    'loading.load_combination.seismic.service.adding',
+        ('seismic',     'construction', None,              'adding'):    'loading.load_combination.seismic.construction.adding',
+        ('seismic',     'service',    None,                'relieving'): 'loading.load_combination.seismic.service.relieving',
+        ('seismic',     'construction', None,              'relieving'): 'loading.load_combination.seismic.construction.relieving',
+    }
+
+    _SLS_CASE_KEYS = {
+        ('rare',            'live_load',    'adding'):    'loading.load_combination.sls.rare.ll_leading.adding',
+        ('rare',            'wind_load',    'adding'):    'loading.load_combination.sls.rare.wl_leading.adding',
+        ('rare',            'thermal_load', 'adding'):    'loading.load_combination.sls.rare.tl_leading.adding',
+        ('rare',            'live_load',    'relieving'): 'loading.load_combination.sls.rare.ll_leading.relieving',
+        ('rare',            'wind_load',    'relieving'): 'loading.load_combination.sls.rare.wl_leading.relieving',
+        ('rare',            'thermal_load', 'relieving'): 'loading.load_combination.sls.rare.tl_leading.relieving',
+        ('frequent',        'live_load',    'adding'):    'loading.load_combination.sls.frequent.ll_leading.adding',
+        ('frequent',        'wind_load',    'adding'):    'loading.load_combination.sls.frequent.wl_leading.adding',
+        ('frequent',        'thermal_load', 'adding'):    'loading.load_combination.sls.frequent.tl_leading.adding',
+        ('frequent',        'live_load',    'relieving'): 'loading.load_combination.sls.frequent.ll_leading.relieving',
+        ('frequent',        'wind_load',    'relieving'): 'loading.load_combination.sls.frequent.wl_leading.relieving',
+        ('frequent',        'thermal_load', 'relieving'): 'loading.load_combination.sls.frequent.tl_leading.relieving',
+        ('quasi_permanent', None,           'adding'):    'loading.load_combination.sls.quasi_permanent.adding',
+        ('quasi_permanent', None,           'relieving'): 'loading.load_combination.sls.quasi_permanent.relieving',
+    }
+
+    def _populate_default_combinations(self):
+        """
+        Expand each IRC6 ULS combination into adding/relieving cases,
+        collapse to single case when adding == relieving for all permanent loads.
+        """
+        self.table.setRowCount(0)
+        self._data = []
+
+        #ULS Combination------------------------------------
+        for combo in self._irc6_data:
+            ctype   = combo['combination_type']
+            factors = combo['factors']
+            name    = combo['name']
+
+            dl  = factors.get('dead_load',  {})
+            dw  = factors.get('surfacing',  {})
+
+            dl_add = dl.get('adding',   dl) if isinstance(dl, dict) else dl
+            dl_rel = dl.get('relieving', dl) if isinstance(dl, dict) else dl
+            dw_add = dw.get('adding',   dw) if isinstance(dw, dict) else dw
+            dw_rel = dw.get('relieving', dw) if isinstance(dw, dict) else dw
+
+            same_permanent = (dl_add == dl_rel and dw_add == dw_rel)
+
+            # Determine leading load / condition for key lookup
+            if ctype == 'basic':
+                # name format: "Basic — live_load leading"
+                leading = name.split('—')[1].strip().replace(' leading', '')
+                acc_load = None
+            elif ctype == 'accidental':
+                # name format: "Accidental (vehicle_collision) — live_load leading"
+                import re
+                acc_load = re.search(r'\((.+?)\)', name).group(1)
+                leading  = name.split('—')[1].strip().replace(' leading', '')
+            else:  # seismic
+                # name format: "Seismic (service) — all variable loads accompanying"
+                import re
+                leading  = re.search(r'\((.+?)\)', name).group(1)
+                acc_load = None
+
+            directions = ['adding'] if same_permanent else ['adding', 'relieving']
+
+            for direction in directions:
+                dl_f = dl_add if direction == 'adding' else dl_rel
+                dw_f = dw_add if direction == 'adding' else dw_rel
+
+                # Build expression string
+                parts = [f"{dl_f}DL", f"{dw_f}DW"]
+                for load in ['live_load', 'wind_load', 'thermal_load',
+                            'seismic', 'vehicle_collision', 'barge_impact', 'floating_bodies']:
+                    val = factors.get(load)
+                    if val is not None:
+                        parts.append(f"{val}{self._ABBREV.get(load, load)}")
+
+                expr = ' + '.join(parts)
+
+                # Build display name
+                if same_permanent:
+                    display = f"{name}: {expr}"
+                else:
+                    label = 'Adding' if direction == 'adding' else 'Relieving'
+                    display = f"{name} ({label}): {expr}"
+
+                # Look up key
+                key = self._CASE_KEYS.get((ctype, leading, acc_load, direction), '')
+
+                entry = {
+                    'name':     display,
+                    'included': True,
+                    'key':      key,
+                    'expr':     expr,
+                }
+                self._data.append(entry)
+
+                row = self.table.rowCount()
+                self.table.insertRow(row)
+
+                sno = QTableWidgetItem(str(row + 1))
+                sno.setFlags(sno.flags() & ~Qt.ItemIsEditable)
+                sno.setTextAlignment(Qt.AlignCenter)
+                self.table.setItem(row, 0, sno)
+
+                name_item = QTableWidgetItem(display)
+                name_item.setFlags(name_item.flags() & ~Qt.ItemIsEditable)
+                self.table.setItem(row, 1, name_item)
+
+                cb_container = QWidget()
+                cb_layout = QHBoxLayout(cb_container)
+                cb_layout.setContentsMargins(0, 0, 0, 0)
+                cb_layout.setAlignment(Qt.AlignCenter)
+                cb = QCheckBox()
+                cb.setChecked(True)
+                cb.stateChanged.connect(
+                    lambda state, i=row: self._on_included_changed(i, bool(state))
+                )
+                cb_layout.addWidget(cb)
+                self.table.setCellWidget(row, 2, cb_container)
+
+
+        # ── SLS combinations ───────────────────────────────────────────────
+        for combo in self._irc6_sls_data:
+            ctype   = combo['combination_type']
+            factors = combo['factors']
+            name    = combo['name']
+
+            dl  = factors.get('dead_load', 1.0)
+            dw  = factors.get('surfacing', {})
+
+            dl_f   = dl if not isinstance(dl, dict) else dl.get('adding', 1.0)
+            dw_add = dw.get('adding',    dw) if isinstance(dw, dict) else dw
+            dw_rel = dw.get('relieving', dw) if isinstance(dw, dict) else dw
+
+            same_surf = (dw_add == dw_rel)
+
+            # Determine leading load for key lookup
+            if ctype == 'quasi_permanent':
+                leading  = None
+                directions = ['adding'] if same_surf else ['adding', 'relieving']
+            else:
+                # name format: "SLS Rare — live_load leading"
+                leading = name.split('—')[1].strip().replace(' leading', '')
+                directions = ['adding'] if same_surf else ['adding', 'relieving']
+
+            for direction in directions:
+                dw_f = dw_add if direction == 'adding' else dw_rel
+
+                parts = [f"{dl_f}DL", f"{dw_f}DW"]
+                for load in ['live_load', 'wind_load', 'thermal_load']:
+                    val = factors.get(load)
+                    if val is not None and val != 0:
+                        parts.append(f"{val}{self._ABBREV.get(load, load)}")
+
+                expr = ' + '.join(parts)
+
+                if same_surf:
+                    display = f"{name}: {expr}"
+                else:
+                    label = 'Adding' if direction == 'adding' else 'Relieving'
+                    display = f"{name} ({label}): {expr}"
+
+                key = self._SLS_CASE_KEYS.get((ctype, leading, direction), '')
+
+                entry = {
+                    'name':     display,
+                    'included': True,
+                    'key':      key,
+                    'expr':     expr,
+                }
+                self._data.append(entry)
+
+                row = self.table.rowCount()
+                self.table.insertRow(row)
+
+                sno = QTableWidgetItem(str(row + 1))
+                sno.setFlags(sno.flags() & ~Qt.ItemIsEditable)
+                sno.setTextAlignment(Qt.AlignCenter)
+                self.table.setItem(row, 0, sno)
+
+                name_item = QTableWidgetItem(display)
+                name_item.setFlags(name_item.flags() & ~Qt.ItemIsEditable)
+                self.table.setItem(row, 1, name_item)
+
+                cb_container = QWidget()
+                cb_layout = QHBoxLayout(cb_container)
+                cb_layout.setContentsMargins(0, 0, 0, 0)
+                cb_layout.setAlignment(Qt.AlignCenter)
+                cb = QCheckBox()
+                cb.setChecked(True)
+                cb.stateChanged.connect(
+                    lambda state, i=row: self._on_included_changed(i, bool(state))
+                )
+                cb_layout.addWidget(cb)
+                self.table.setCellWidget(row, 2, cb_container)
+
+        self.table.setVisible(True)
+        self._adjust_table_height()   

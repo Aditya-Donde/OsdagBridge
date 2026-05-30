@@ -1063,7 +1063,14 @@ _LOAD_COMBINATION_TAB_SCHEMA = {
         {
             "column": 0,
             "title":  "Load Combinations from IRC 6",
-            "rows":   [],
+            "rows": [
+                        {
+                            "fields": [{
+                                "id": "irc6_default_combinations",
+                                "type": TYPE_LOAD_COMBINATION,
+                            }]
+                        }
+                    ],
         },
 
         # ── Column 0: Custom Load Combination ──────────────────────────────

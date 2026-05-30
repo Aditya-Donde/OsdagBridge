@@ -387,6 +387,65 @@ KEY_TL_TEMP_FALL                = "loading.temperature_load.computed.temp_fall"
 KEY_LC_COMBINATIONS   = "loading.load_combination.combinations"
 KEY_LC_TAB            = "loading.load_combination.tab"
 
+# ── ULS Load Combination Case Keys ─────────────────────────────────────────
+
+# Basic — adding (DL=1.35, DW=1.75)
+KEY_BASIC_LL_ADD_CASE   = "loading.load_combination.basic.ll_leading.adding"
+KEY_BASIC_WL_ADD_CASE   = "loading.load_combination.basic.wl_leading.adding"
+KEY_BASIC_TL_ADD_CASE   = "loading.load_combination.basic.tl_leading.adding"
+
+# Basic — relieving (DL=1.0, DW=1.0)
+KEY_BASIC_LL_REL_CASE   = "loading.load_combination.basic.ll_leading.relieving"
+KEY_BASIC_WL_REL_CASE   = "loading.load_combination.basic.wl_leading.relieving"
+KEY_BASIC_TL_REL_CASE   = "loading.load_combination.basic.tl_leading.relieving"
+
+# Accidental — adding (DL=1.0 adding)
+KEY_ACCIDENTAL_VC_LL_ADD_CASE   = "loading.load_combination.accidental.vc.ll_leading.adding"
+KEY_ACCIDENTAL_BI_LL_ADD_CASE   = "loading.load_combination.accidental.bi.ll_leading.adding"
+KEY_ACCIDENTAL_FB_LL_ADD_CASE   = "loading.load_combination.accidental.fb.ll_leading.adding"
+
+# Accidental — relieving (DL=1.0 relieving)
+KEY_ACCIDENTAL_VC_LL_REL_CASE   = "loading.load_combination.accidental.vc.ll_leading.relieving"
+KEY_ACCIDENTAL_BI_LL_REL_CASE   = "loading.load_combination.accidental.bi.ll_leading.relieving"
+KEY_ACCIDENTAL_FB_LL_REL_CASE   = "loading.load_combination.accidental.fb.ll_leading.relieving"
+
+# Seismic — adding (DL=1.35)
+KEY_SEISMIC_SERVICE_ADD_CASE      = "loading.load_combination.seismic.service.adding"
+KEY_SEISMIC_CONSTRUCTION_ADD_CASE = "loading.load_combination.seismic.construction.adding"
+
+# Seismic — relieving (DL=1.0)
+KEY_SEISMIC_SERVICE_REL_CASE      = "loading.load_combination.seismic.service.relieving"
+KEY_SEISMIC_CONSTRUCTION_REL_CASE = "loading.load_combination.seismic.construction.relieving"
+
+
+# ── SLS Load Combination Case Keys ─────────────────────────────────────────
+
+# SLS Rare — adding (Surf=1.2)
+KEY_SLS_RARE_LL_ADD_CASE    = "loading.load_combination.sls.rare.ll_leading.adding"
+KEY_SLS_RARE_WL_ADD_CASE    = "loading.load_combination.sls.rare.wl_leading.adding"
+KEY_SLS_RARE_TL_ADD_CASE    = "loading.load_combination.sls.rare.tl_leading.adding"
+
+# SLS Rare — relieving (Surf=1.0)
+KEY_SLS_RARE_LL_REL_CASE    = "loading.load_combination.sls.rare.ll_leading.relieving"
+KEY_SLS_RARE_WL_REL_CASE    = "loading.load_combination.sls.rare.wl_leading.relieving"
+KEY_SLS_RARE_TL_REL_CASE    = "loading.load_combination.sls.rare.tl_leading.relieving"
+
+# SLS Frequent — adding (Surf=1.2)
+KEY_SLS_FREQ_LL_ADD_CASE    = "loading.load_combination.sls.frequent.ll_leading.adding"
+KEY_SLS_FREQ_WL_ADD_CASE    = "loading.load_combination.sls.frequent.wl_leading.adding"
+KEY_SLS_FREQ_TL_ADD_CASE    = "loading.load_combination.sls.frequent.tl_leading.adding"
+
+# SLS Frequent — relieving (Surf=1.0)
+KEY_SLS_FREQ_LL_REL_CASE    = "loading.load_combination.sls.frequent.ll_leading.relieving"
+KEY_SLS_FREQ_WL_REL_CASE    = "loading.load_combination.sls.frequent.wl_leading.relieving"
+KEY_SLS_FREQ_TL_REL_CASE    = "loading.load_combination.sls.frequent.tl_leading.relieving"
+
+# SLS Quasi-permanent — adding (Surf=1.2)
+KEY_SLS_QP_ADD_CASE         = "loading.load_combination.sls.quasi_permanent.adding"
+
+# SLS Quasi-permanent — relieving (Surf=1.0)
+KEY_SLS_QP_REL_CASE         = "loading.load_combination.sls.quasi_permanent.relieving"
+
 #══════════════LOAD-TAB-KEY-ENDS═════════════════════════════════════════════════════════════════
 
 #══════════════SUPPORT-CONDITIONS-KEY-START══════════════════════════════════════════════════════
