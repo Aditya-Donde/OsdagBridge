@@ -15,7 +15,10 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QHBoxLayout,
     QCheckBox,
-    QPushButton
+    QPushButton,
+    QFrame,
+    QLabel,
+    QGridLayout
 )
 from PySide6.QtCore import QTimer, Qt
 
@@ -135,6 +138,10 @@ class CAD3DWindow(QWidget):
 
         # Show component selector
         self.component_selector.show()
+
+        # Update info table
+        if hasattr(self, "update_info_table"):
+            self.update_info_table(design_params)
 
     def clear_3d_cad(self):
         """
@@ -379,6 +386,48 @@ class CAD3DWindow(QWidget):
 
         self.position_zoom_buttons()
 
+        # ── Info table overlay ──────────────────────────────────────────
+        self._info_table = QFrame(self.viewer)
+        self._info_table.setStyleSheet("""
+            QFrame {
+                background-color: rgba(255, 255, 255, 210);
+                border: 1px solid #bdbdbd;
+                border-radius: 4px;
+            }
+        """)
+        grid = QGridLayout(self._info_table)
+        grid.setContentsMargins(8, 6, 8, 6)
+        grid.setHorizontalSpacing(12)
+        grid.setVerticalSpacing(3)
+
+        label_style = "font-size: 11px; color: #444; font-weight: bold; background: transparent; border: none;"
+        value_style = "font-size: 11px; color: #111; background: transparent; border: none;"
+
+        rows = [
+            ("Overall Bridge Width", "—", "m"),
+            ("Span Length",          "—", "m"),
+            ("Girder Spacing",       "—", "m"),
+            ("Deck Thickness",       "—", "mm")
+        ]
+        self._info_value_labels = {}
+        keys = ["bridge_width", "span_length", "girder_spacing", "deck_thickness"]
+
+        for i, (name, default, unit) in enumerate(rows):
+            lbl = QLabel(name + ":")
+            lbl.setStyleSheet(label_style)
+            val = QLabel(default)
+            val.setStyleSheet(value_style)
+            unt = QLabel(unit)
+            unt.setStyleSheet(value_style)
+            grid.addWidget(lbl, i, 0)
+            grid.addWidget(val, i, 1)
+            grid.addWidget(unt, i, 2)
+            self._info_value_labels[keys[i]] = val
+
+        self._info_table.adjustSize()
+        self._info_table.show()
+        self._position_info_table()
+
         self._orig_resize_event = self.viewer.resizeEvent
         self.viewer.resizeEvent = self._cad_resize_proxy
 
@@ -422,6 +471,42 @@ class CAD3DWindow(QWidget):
         if self._orig_resize_event:
             self._orig_resize_event(event)
         self.position_zoom_buttons()
+        self._position_info_table()
+
+    def _position_info_table(self):
+        if not hasattr(self, "_info_table") or not self._info_table:
+            return
+        margin = 10
+        h = self.viewer.height()
+        tbl_h = self._info_table.height()
+        tbl_w = self._info_table.width()
+        self._info_table.move(margin, h - tbl_h - margin)
+
+    def update_info_table(self, params: "BridgeParametersDTO"):
+        """Populate the info table from design params."""
+        if not hasattr(self, "_info_value_labels"):
+            return
+
+        # Get total bridge width from generator model data (already computed)
+        model_data = getattr(self.generator, "model_data", None)
+        if model_data and "total_deck_width" in model_data:
+            bridge_width_mm = model_data["total_deck_width"]
+        else:
+            # Fallback: carriageway + footpaths
+            footpath_total = 0.0
+            if params.footpath_config in ("LEFT", "BOTH"):
+                footpath_total += params.footpath_width
+            if params.footpath_config in ("RIGHT", "BOTH"):
+                footpath_total += params.footpath_width
+            bridge_width_mm = params.carriageway_width + footpath_total
+
+        self._info_value_labels["bridge_width"].setText(f"{bridge_width_mm / 1000:.2f}")
+        self._info_value_labels["span_length"].setText(f"{params.span_length_L / 1000:.2f}")
+        self._info_value_labels["girder_spacing"].setText(f"{params.girder_spacing / 1000:.2f}")
+        self._info_value_labels["deck_thickness"].setText(f"{params.deck_thickness:.0f}")
+
+        self._info_table.adjustSize()
+        self._position_info_table()
 
     def show_full_model(self):
         """
