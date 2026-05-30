@@ -156,7 +156,8 @@ def _build_polyline(elems, members, nodes, force_i, force_j, ds):
 # DRAWING HELPERS (matplotlib 3-D)
 # =============================================================================
 
-def _add_grillage_background(ax, nodes, members, x_tol=3, z_tol=3, show_transverse=False):
+def _add_grillage_background(ax, nodes, members, x_tol=3, z_tol=3,
+                              show_transverse=False, hide_edge_longitudinals=False):
         """
         Draw the structural grid by grouping nodes rather than tracing element tags.
         """
@@ -181,7 +182,14 @@ def _add_grillage_background(ax, nodes, members, x_tol=3, z_tol=3, show_transver
         trans_kw = dict(color="slategrey", linewidth=1.2, alpha=0.4, zorder=1)
 
         # longitudinal lines (along span)
+        sorted_z_vals = sorted(by_z.keys())
+        edge_z_set = set()
+        if hide_edge_longitudinals and len(sorted_z_vals) >= 2:
+            edge_z_set = {sorted_z_vals[0], sorted_z_vals[-1]}
+
         for z_val, x_vals in by_z.items():
+            if z_val in edge_z_set:
+                continue  # Skip the two outermost longitudinal background lines in result views
             x_sorted = sorted(set(x_vals))
             if len(x_sorted) > 1:
                 ax.plot(x_sorted, [z_val] * len(x_sorted), [0] * len(x_sorted), **long_kw)
@@ -199,23 +207,35 @@ def _add_grillage_background(ax, nodes, members, x_tol=3, z_tol=3, show_transver
                     z_sorted = sorted(set(z_vals))
                     if len(z_sorted) > 1:
                         ax.plot([x_val] * len(z_sorted), z_sorted, [0] * len(z_sorted), **trans_kw)
+
         # ==========================================
         # 3. THE DOTS (Sniper Fix for Z-Fighting)
-        # ========================================== 
+        # ==========================================
         inner_xs, inner_zs, inner_ys = [], [], []
-        
+
         if by_x:
             min_x = min(by_x.keys())
             max_x = max(by_x.keys())
-            
-            # Only collect dots that are NOT at the absolute ends of the bridge
+
             for coord in nodes.values():
-                if coord[0] != min_x and coord[0] != max_x:
-                    inner_xs.append(coord[0])
-                    inner_zs.append(coord[2])
-                    inner_ys.append(0) # Base elevation
-                    
-            ax.scatter(inner_xs, inner_zs, inner_ys, color="#388E3C", alpha=0.4, s=5, zorder=2, depthshade=False)
+                rx = round(coord[0], x_tol)
+                rz = round(coord[2], z_tol)
+
+                # Skip start/end cross-section dots (existing behaviour)
+                if rx == min_x or rx == max_x:
+                    continue
+
+                # Skip edge longitudinal row dots in result views
+                if rz in edge_z_set:
+                    continue
+
+                inner_xs.append(coord[0])
+                inner_zs.append(coord[2])
+                inner_ys.append(0)
+
+            if inner_xs:
+                ax.scatter(inner_xs, inner_zs, inner_ys,
+                           color="#388E3C", alpha=0.4, s=5, zorder=2, depthshade=False)
 
 
 # def _add_coordinate_triad(ax, nodes, scale=0.20):
@@ -394,9 +414,6 @@ def _add_coordinate_triad(ax, nodes, scale=0.25):
     ydot2.set_gid(tag)
     ax.text(ox - Lx * 0.50, oy, oz, "Y",
             color=colors["Y"], fontsize=10, fontweight="bold", zorder=8, gid=tag)
-
-
-   
 
     # --- X-Axis ---
     tip_x  = ox + Lx
@@ -690,7 +707,8 @@ def build_figure_sfd(ds, force_key, nodes, members, edge_dist=0.0):
     # ax.set_box_aspect([x_range, z_range, x_range * 0.30])
     ax.set_box_aspect([2.5, 1.2, 1.0])
 
-    _add_grillage_background(ax, nodes, members, show_transverse=False)
+    _add_grillage_background(ax, nodes, members, show_transverse=False,
+                         hide_edge_longitudinals=(edge_dist > 0))
     
     shear_color = "#1565C0"
     fill_color  = "#90CAF9"
@@ -911,7 +929,8 @@ def build_figure_bmd(ds, force_key, nodes, members, edge_dist=0.0):
     # ax.set_box_aspect([x_range, z_range, x_range * 0.30])
     ax.set_box_aspect([2.5, 1.2, 1.0])
 
-    _add_grillage_background(ax, nodes, members, show_transverse=False)
+    _add_grillage_background(ax, nodes, members, show_transverse=False,
+                         hide_edge_longitudinals=(edge_dist > 0))
     
     
 
@@ -1146,7 +1165,8 @@ def build_figure_bmd_contour(ds, force_key, nodes, members, edge_dist=0.0):
     # ax.set_box_aspect([x_range, z_range, x_range * 0.30])
     ax.set_box_aspect([2.5, 1.2, 1.0])
 
-    _add_grillage_background(ax, nodes, members)
+    _add_grillage_background(ax, nodes, members, show_transverse=False,
+                         hide_edge_longitudinals=(edge_dist > 0))
     _add_coordinate_triad(ax, nodes)
 
     _add_supports(ax, nodes, members, edge_dist=edge_dist)
@@ -1165,13 +1185,20 @@ def build_figure_bmd_contour(ds, force_key, nodes, members, edge_dist=0.0):
         z_arr  = np.full_like(xs, z_base)
 
         # baseline - grey for edge beams, green for structural
-        ax.plot([xs[0], xs[-1]], [z_base, z_base], [0, 0],
-                color="slategrey" if is_edge_beam else base_color,
-                linewidth=1.5, linestyle="--", zorder=3)
+        # ax.plot([xs[0], xs[-1]], [z_base, z_base], [0, 0],
+        #         color="slategrey" if is_edge_beam else base_color,
+        #         linewidth=1.5, linestyle="--", zorder=3)
 
-        # edge beams: baseline only, no label or force diagram
+        # # edge beams: baseline only, no label or force diagram
+        # if is_edge_beam:
+        #     continue
+
         if is_edge_beam:
-            continue
+            continue  # Skip entirely - background handles the grillage view; edge beams have no results
+
+        ax.plot([xs[0], xs[-1]], [z_base, z_base], [0, 0],
+                color=base_color,
+                linewidth=1.5, linestyle="--", zorder=3)
 
         # girder label
         ax.text(xs[0] - (x_range * 0.02), z_base, 0, f"{girder_name}",
@@ -1263,7 +1290,8 @@ def build_figure_deflection(ds, disp_key, nodes, members, edge_dist=0.0):
     # Rigid 3D bounding box (matches our UI zoom fix)
     ax.set_box_aspect(aspect=(2.5, 1.2, 1.0))
 
-    _add_grillage_background(ax, nodes, members, show_transverse=False)
+    _add_grillage_background(ax, nodes, members, show_transverse=False,
+                         hide_edge_longitudinals=(edge_dist > 0))
 
     defl_color = "#6A1B9A"   # deep purple
     base_color = "#388E3C"   # green baseline
