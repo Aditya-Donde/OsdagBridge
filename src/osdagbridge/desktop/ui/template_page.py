@@ -4,7 +4,7 @@ from PySide6.QtWidgets import (
     QMenuBar, QSplitter, QSizePolicy, QPushButton, QLineEdit, QComboBox, QFileDialog,
 )
 from PySide6.QtSvgWidgets import QSvgWidget
-from PySide6.QtCore import Qt, QFile, QTextStream, Signal, QTimer
+from PySide6.QtCore import Qt, QFile, QTextStream, Signal, QTimer, QObject, QEvent
 from PySide6.QtGui import QIcon, QAction, QKeySequence
 
 from osdagbridge.desktop.ui.docks.input_dock import InputDock
@@ -20,7 +20,84 @@ from osdagbridge.core.bridge_types.plate_girder.ui_fields import FrontendData
 from osdagbridge.core.bridge_types.plate_girder.defaults import BASIC_INPUT_DICT, solve_extend_basic_input_dict
 from osdagbridge.core.utils.common import *
 from osdagbridge.core.utils.osi_validator import validate_osi_inputs
+from osdagbridge.core.utils.logger import bridge_logger
 from osdagbridge.desktop.ui.utils.custom_widgets import ToolBarWidget
+
+class LoggerStdoutRedirector:
+    def __init__(self, logger_func, original_stdout=None):
+        self.logger_func = logger_func
+        self.original_stdout = original_stdout
+        self._buffer = []
+
+    def write(self, string):
+        if self.original_stdout:
+            try:
+                self.original_stdout.write(string)
+                self.original_stdout.flush()
+            except Exception:
+                pass
+        if not string:
+            return
+        self._buffer.append(string)
+        if "\n" in string:
+            full_text = "".join(self._buffer)
+            self._buffer = []
+            lines = full_text.split("\n")
+            for line in lines[:-1]:
+                if line.strip():
+                    self.logger_func(line)
+            if lines[-1]:
+                self._buffer.append(lines[-1])
+
+    def flush(self):
+        if self.original_stdout:
+            try:
+                self.original_stdout.flush()
+            except Exception:
+                pass
+        if self._buffer:
+            full_text = "".join(self._buffer)
+            self._buffer = []
+            if full_text.strip():
+                self.logger_func(full_text)
+
+    def reconfigure(self, *args, **kwargs):
+        if self.original_stdout and hasattr(self.original_stdout, 'reconfigure'):
+            try:
+                self.original_stdout.reconfigure(*args, **kwargs)
+            except Exception:
+                pass
+
+    def isatty(self):
+        if self.original_stdout and hasattr(self.original_stdout, 'isatty'):
+            try:
+                return self.original_stdout.isatty()
+            except Exception:
+                pass
+        return False
+
+
+class InputBlockerFilter(QObject):
+    def __init__(self, target_widget):
+        super().__init__()
+        self.target = target_widget
+
+    def eventFilter(self, obj, event):
+        from PySide6.QtWidgets import QWidget
+        if self.target and isinstance(obj, QWidget) and (obj == self.target or self.target.isAncestorOf(obj)):
+            if event.type() in (
+                QEvent.Type.MouseButtonPress,
+                QEvent.Type.MouseButtonRelease,
+                QEvent.Type.MouseButtonDblClick,
+                QEvent.Type.KeyPress,
+                QEvent.Type.KeyRelease,
+                QEvent.Type.Wheel,
+                QEvent.Type.ContextMenu,
+                QEvent.Type.Close
+            ):
+                event.accept()
+                return True
+        return False
 
 
 class CustomWindow(QWidget):
@@ -503,33 +580,70 @@ class CustomWindow(QWidget):
     
     def _start_loading(self):
         """Start loading popup"""
-        import time
+        self._is_designing = True
+        
+        # Install global input blocker filter on QApplication instance to shield CustomWindow
+        self._blocker_filter = InputBlockerFilter(self)
+        QApplication.instance().installEventFilter(self._blocker_filter)
+        
         self.loading = LoadingDialogManager()
         self.loading.show()
-        self.setEnabled(False)
-        time.sleep(1)
+        QApplication.processEvents()
+        
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        if hasattr(self, 'input_dock') and self.input_dock is not None:
+            self.input_dock.setEnabled(False)
+        
+        def _loading_cb(msg: str, level: str) -> None:
+            # stdout_print goes to the log dock only; keep the loading popup clean
+            if level == "stdout_print":
+                return
+            self.loading.send_message(msg, level)
+            if self.loading.is_cancelled():
+                bridge_logger.cancel()
+                
+        self._loading_cb = _loading_cb
+        self._cancel_poller = self.loading.is_cancelled
+        bridge_logger.add_callback(self._loading_cb)
+        bridge_logger.add_cancel_poller(self._cancel_poller)
+      
     
     def _finish_loading(self):
         """Close the loading dialog box"""
-        import time
-        time.sleep(1)
-        if hasattr(self, 'loading') and self.loading is not None:
-            self.loading.hide()
-        self.setEnabled(True)
+        self._is_designing = False
+        
+        # Uninstall input blocker filter
+        if hasattr(self, '_blocker_filter') and self._blocker_filter is not None:
+            try:
+                QApplication.instance().removeEventFilter(self._blocker_filter)
+            except Exception:
+                pass
+            self._blocker_filter = None
             
-    def common_design_func(self, trigger: str, target_tab:str = None):
+        try:
+            if hasattr(self, 'loading') and self.loading is not None:
+                if hasattr(self, '_cancel_poller') and self._cancel_poller is not None:
+                    bridge_logger.remove_cancel_poller(self._cancel_poller)
+                    self._cancel_poller = None
+                self.loading.hide()
+            if hasattr(self, '_loading_cb') and self._loading_cb is not None:
+                bridge_logger.remove_callback(self._loading_cb)
+                self._loading_cb = None
+            if hasattr(self, 'logs_dock') and self.logs_dock is not None:
+                try:
+                    self.logs_dock.log_window_title.setText("Log Window")
+                except Exception:
+                    pass
+        finally:
+            QApplication.restoreOverrideCursor()
+            if hasattr(self, 'input_dock') and self.input_dock is not None:
+                self.input_dock.setEnabled(True)
+            
+    def common_design_func(self, trigger: str, target_tab: str = None):
         """
         Trigger belongs to one of ["Design", "Save", "Additional Inputs"]
         """
-        # print(f"[DEBUG]plot:{self.plots_view_active}")
-        # print(f"[DEBUG]3d:{self.cad_3d_view_active}")
-        # print(f"[DEBUG]top:{self.top_view_active}")
-        # print(f"[DEBUG]c/s:{self.cross_section_active}")
-        from pprint import pprint
         self.input_dock._prime_material_inputs()
-        print("\n@@input_dictionary_before (common_design_func):\n")
-        pprint(self.input_dict)
-
         # Check required fields
         required_widget_validated = self.validate_required_inputs()
         if not required_widget_validated:
@@ -541,30 +655,36 @@ class CustomWindow(QWidget):
             solve_extend_basic_input_dict(self.input_dict)
             self.input_dock.is_require_field_changed = False
 
-        print("\n@@input_dictionary_after (common_design_func):\n")
-        pprint(self.input_dict)
-
         if trigger == "Design":
             import traceback
 
             # Start-Loading-popup---------------------------------------------
             self._start_loading()
+            _cancelled = False
 
+            import sys
+            original_stdout = sys.stdout
+            sys.stdout = LoggerStdoutRedirector(
+                lambda msg: bridge_logger._emit(f"[{bridge_logger._ts()}]   {msg}", "stdout_print"),
+                original_stdout
+            )
+            
             try:
-                # Collect all the values from input Dock and pass to backend
                 self.backend.set_input(self.input_dict)
-                self.backend.design()
+                try:
+                    self.backend.design()
+                finally:
+                    sys.stdout = original_stdout
                 self.output_dock.refresh_loadcase_dropdowns()
                 self.output_dock.refresh_member_dropdown()
                 self.output_dock.connect_design_dropdowns()
                 self.output_dock._on_design_selection_changed()
-                
                 # Lock the input dock after design is triggered
                 if self.input_dock and not self.input_dock.is_locked:
                     self.input_dock.toggle_lock()
 
                 # Wire up the plots widget with results from the completed analysis
-                ds_all    = self.backend.get_results_dataset()
+                ds_all = self.backend.get_results_dataset()
                 loadcases = self.backend.get_available_loadcases()
                 nodes, members = self.backend.get_nodes_members()
                 edge_dist = self.backend.get_edge_dist()
@@ -573,30 +693,19 @@ class CustomWindow(QWidget):
 
                 # Render 3D cad using the parameters from Backend
                 self.cad_3d_widget.render_3d_cad(self.backend.get_3d_cad_parameters())
-
-                # Close-loading-popup-----------------------------------------
-                self._finish_loading()
-
-                # Focus 3D-Cad widget
-                self.cad_3d_view_toggle(force_show=True)
-
+            except RuntimeError as exc:
+                if "cancelled" in str(exc).lower():
+                    _cancelled = True
+                    bridge_logger.warning("Analysis was stopped by the user.")
+                else:
+                    bridge_logger.error(f"Analysis failed: {exc}")
             except Exception:
                 err_trace = traceback.format_exc()
                 print(f"[Design Error]\n{err_trace}")
-
-                # Close loading before showing the dialog, otherwise it stays
-                # on top and blocks the message box.
-                self._finish_loading()
-
-                # Graceful recovery — unlock inputs so the user can fix and retry
                 if self.input_dock and self.input_dock.is_locked:
                     self.input_dock.toggle_lock()
-
-                # Show the last two non-empty lines of the traceback as the
-                # short summary (the actual exception line + the error message).
                 lines = [l for l in err_trace.splitlines() if l.strip()]
                 short_summary = "\n".join(lines[-2:]) if len(lines) >= 2 else err_trace
-
                 CustomMessageBox(
                     title="Design Error",
                     text=(
@@ -606,6 +715,12 @@ class CustomWindow(QWidget):
                     informativeText=f"Full traceback:\n{err_trace}",
                     dialogType=MessageBoxType.Critical,
                 ).exec()
+            finally:
+                self._finish_loading()
+
+            if not _cancelled:
+                # Focus 3D-Cad widget
+                self.cad_3d_view_toggle(force_show=True)
 
         if trigger == "Save":
             self.saveOSI_inputs()

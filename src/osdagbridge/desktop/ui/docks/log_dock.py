@@ -5,15 +5,20 @@ Displays log messages and status updates.
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QTextEdit, QLabel
 from PySide6.QtCore import Qt, QDateTime
 
+from osdagbridge.core.utils.logger import bridge_logger
+
 class LogDock(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
-        # Ensures automatic deletion when closed
-        self.setAttribute(Qt.WA_DeleteOnClose, True)
-        self.is_visible = True
         self.setObjectName("logs_dock")
         self.init_ui()
-        self.adjust_size()
+        # Register with the singleton logger so log messages arrive in real time
+        bridge_logger.add_callback(self.append_log)
+
+    def closeEvent(self, event):
+        # Deregister callback when the dock is closed to prevent stale references
+        bridge_logger.remove_callback(self.append_log)
+        super().closeEvent(event)
 
     def init_ui(self):
         # Create layout for the log dock
@@ -41,48 +46,43 @@ class LogDock(QWidget):
 
     def append_log(self, message, log_level="info"):
         """Append a message to the log display with specified color."""
+        from PySide6.QtWidgets import QApplication
+
+        if log_level == "progress":
+            try:
+                pct = int(message.replace("__progress__", ""))
+                if pct == 0:
+                    self.log_window_title.setText("Log Window")
+                elif pct >= 100:
+                    self.log_window_title.setText("Log Window  –  Complete (100%)")
+                else:
+                    self.log_window_title.setText(f"Log Window  –  Analysing… {pct}%")
+            except ValueError:
+                pass
+            QApplication.processEvents()
+            return
+
         if log_level == "error":
             color = "#FF0000"  # Red for errors
-        elif log_level == "info":
-            color = "#A6A6A6"  # Black for info
+        elif log_level == "info" or log_level == "stdout_print":
+            color = "#A6A6A6"  # Black/Grey for info
         elif log_level == "success":
             color = "#008000"  # Green for success
-
-        formatted_message = f"<span style=\"color: {color};\">{message}</span>"
-        self.log_display.append(formatted_message)
-        self.log_display.ensureCursorVisible()
-
-    def toggle_log_dock(self):
-        """Toggle the visibility of the log dock."""
-        self.is_visible = not self.is_visible
-        if self.is_visible:
-            self.show()
-            self.adjust_size()
-            self.move(0, self.parent().height() - self.height())
+        elif log_level == "warning":
+            color = "#FFA500"  # Orange for warnings
         else:
-            self.hide()
+            color = "#A6A6A6"
 
-    def adjust_size(self):
-        """Adjust the size of the log dock based on input and output dock states."""
-        parent = self.parent()
-        if not parent:
-            return
-        if parent.input_dock is None or parent.output_dock is None:
-            return
+        # Smart scroll down only if the user was already at the bottom (with a 15px tolerance)
+        scrollbar = self.log_display.verticalScrollBar()
+        was_at_bottom = scrollbar.value() >= scrollbar.maximum() - 15
 
-        input_dock = parent.input_dock
-        output_dock = parent.output_dock
-
-        # Calculate available width
-        parent_width = parent.width()
-        input_dock_width = input_dock.width() if input_dock.isVisible() else 0
-        output_dock_width = output_dock.width() if output_dock.isVisible() else 0
-        available_width = parent_width - input_dock_width - output_dock_width
-
-        # Set log dock size
-        default_height = 150  # Fixed height for log dock
-        self.setFixedSize(available_width, default_height)
-
-        # Update position if visible
-        if self.is_visible:
-            self.move(0, parent.height() - default_height)
+        # Escape HTML symbols to avoid rendering issues
+        escaped_message = message.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+        formatted_message = f"<span style=\"color: {color}; white-space: pre;\">{escaped_message}</span>"
+        self.log_display.append(formatted_message)
+        
+        if was_at_bottom:
+            scrollbar.setValue(scrollbar.maximum())
+        QApplication.processEvents()
+
