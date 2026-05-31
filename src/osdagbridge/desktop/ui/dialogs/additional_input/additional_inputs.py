@@ -17,7 +17,7 @@ from osdagbridge.core.utils.common import *
 from osdagbridge.desktop.ui.utils.custom_titlebar import CustomTitleBar
 from osdagbridge.desktop.ui.dialogs.tabs.common import apply_field_style, create_action_button_bar
 from osdagbridge.desktop.ui.dialogs.custom_messagebox import CustomMessageBox, MessageBoxType
-from osdagbridge.desktop.ui.dialogs.additional_input.tabs.loading.typical_section.typical_section_details import TypicalSectionDetailsTab
+from osdagbridge.desktop.ui.dialogs.additional_input.tabs.typical_section.typical_section_details import TypicalSectionDetailsTab
 from osdagbridge.desktop.ui.dialogs.tabs.section_properties_tab import SectionPropertiesTab
 from osdagbridge.desktop.ui.utils.custom_widgets import SmartCursorComboBoxView
 from osdagbridge.desktop.ui.dialogs.additional_input.ui_builder.common_ui_builder import UIBuilder
@@ -555,7 +555,7 @@ class AdditionalInputs(QDialog):
     # Update CAD Method for Support Conditions Tab Drawing
     # This function is implicitly connected using Schema of the Tab
     def _update_support_detail_cad(self):
-        from osdagbridge.desktop.ui.dialogs.tabs.drawings.support_detail_cad import SupportDetailCADWidget
+        from osdagbridge.desktop.ui.dialogs.additional_input.drawings.support_detail_cad import SupportDetailCADWidget
         widget = self.findChild(SupportDetailCADWidget, KEY_SC_RIGHT_CAD)
         if widget is None:
             return
@@ -568,7 +568,7 @@ class AdditionalInputs(QDialog):
     
     # Click event for "Add Custom Vehicle" button in Live Load Sub-Tab in Loading Tab
     def _on_add_custom_vehicle(self, existing=None, widget=None):
-        from osdagbridge.desktop.ui.dialogs.tabs.custom_vehicle_dialog import CustomVehicleDialog
+        from osdagbridge.desktop.ui.dialogs.additional_input.dialogs.custom_vehicle_dialog import CustomVehicleDialog
         from PySide6.QtWidgets import QDialog
         current_list = self.working_input_dict.get(KEY_LL_CUSTOM_VEHICLES)
         dlg = CustomVehicleDialog(self)
@@ -587,7 +587,7 @@ class AdditionalInputs(QDialog):
 
     # Click event for "Add Custom Combination" button in Load Combination Sub-Tab in Loading Tab
     def _on_add_custom_combination(self, existing=None, widget=None):
-        from osdagbridge.desktop.ui.dialogs.tabs.load_combination_dialog import LoadCombinationDialog
+        from osdagbridge.desktop.ui.dialogs.additional_input.dialogs.load_combination_dialog import LoadCombinationDialog
         from PySide6.QtWidgets import QDialog
         current_list = self.working_input_dict.get(KEY_LC_COMBINATIONS)
         dlg = LoadCombinationDialog(

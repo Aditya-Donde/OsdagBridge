@@ -1060,8 +1060,8 @@ LOADING_TAB_SCHEMA = {
     ],
 }
 
-from osdagbridge.desktop.ui.dialogs.tabs.drawings.support_conditions_cad import SupportCADWidget
-from osdagbridge.desktop.ui.dialogs.tabs.drawings.support_detail_cad import SupportDetailCADWidget
+from osdagbridge.desktop.ui.dialogs.additional_input.drawings.support_conditions_cad import SupportCADWidget
+from osdagbridge.desktop.ui.dialogs.additional_input.drawings.support_detail_cad import SupportDetailCADWidget
 
 SUPPORT_CONDITIONS_SCHEMA = {
     "id":     KEY_SC_TAB,
