@@ -85,10 +85,6 @@ def _find_girders(nodes, members, z_tol=3):
 
     return dict(sorted(girders.items()))
 
-
-
-
-###--------------Added--------------------------------
 def _find_cross_beams(nodes, members, x_tol=3, z_tol=3):
     """
     Return two lists:
@@ -113,8 +109,6 @@ def _find_cross_beams(nodes, members, x_tol=3, z_tol=3):
         # same_z → longitudinal girder (handled by _find_girders)
 
     return cross_beams, diag_bracings
-# ----------------------TILLHere---------------------------------------------
-
 
 def _build_polyline(elems, members, nodes, force_i, force_j, ds):
     """
@@ -237,86 +231,6 @@ def _add_grillage_background(ax, nodes, members, x_tol=3, z_tol=3,
                 ax.scatter(inner_xs, inner_zs, inner_ys,
                            color="#388E3C", alpha=0.4, s=5, zorder=2, depthshade=False)
 
-
-# def _add_coordinate_triad(ax, nodes, scale=0.20):
-    # colors = {
-    #     "X": "#D91A1A",
-    #     "Y": "#1A1AD9",
-    #     "Z": "#005900",
-    # }
-    # tag = "coord_triad"
-
-    # xlim = ax.get_xlim()
-    # ylim = ax.get_ylim()
-    # zlim = ax.get_zlim()
-
-    # xr = abs(xlim[1] - xlim[0]) or 25.0
-    # yr = abs(ylim[1] - ylim[0]) or 10.0
-    # zr = abs(zlim[1] - zlim[0]) or 10.0
-
-    # ox, oy, oz = 0.0, 0.0, 0.0
-
-    # Lx = xr * scale * 0.8
-    # Lz = zr * scale * 1.0
-
-    # hl_frac = 0.30
-    # hw_frac = 0.025
-
-    # def _filled_head(tip, base, perp1_half, perp2_half, color):
-    #     t  = np.array(tip)
-    #     b  = np.array(base)
-    #     p1 = np.array(perp1_half)
-    #     p2 = np.array(perp2_half)
-    #     c0 = b + p1
-    #     c1 = b + p2
-    #     c2 = b - p1
-    #     c3 = b - p2
-    #     faces = [
-    #         [t, c0, c1],
-    #         [t, c1, c2],
-    #         [t, c2, c3],
-    #         [t, c3, c0],
-    #         [c0, c1, c2, c3],
-    #     ]
-    #     poly = Poly3DCollection(faces, closed=True,
-    #                             facecolor=color, edgecolor=color,
-    #                             linewidth=0.5, zorder=5)
-    #     poly.set_gid(tag)
-    #     ax.add_collection3d(poly)
-
-    # ax.scatter([ox], [oy], [oz], color=colors["Z"], s=55, zorder=7, gid=tag)
-    # ax.text(ox - Lx * 0.25, oy, oz, "Z",
-    #         color=colors["Z"], fontsize=10, fontweight="bold", zorder=6, gid=tag)
-
-    # tip_x = ox + Lx
-    # base_x = tip_x - Lx * hl_frac
-    # ax.plot([ox, base_x], [oy, oy], [oz, oz],
-    #         color=colors["X"], linewidth=2.5, zorder=5, gid=tag)
-    # _filled_head(
-    #     tip=(tip_x, oy, oz), base=(base_x, oy, oz),
-    #     perp1_half=(0, yr * hw_frac, 0), perp2_half=(0, 0, zr * hw_frac),
-    #     color=colors["X"],
-    # )
-    # ax.text(tip_x + Lx * 0.08, oy, oz, "X",
-    #         color=colors["X"], fontsize=10, fontweight="bold", zorder=6, gid=tag)
-
-    # tip_z = oz + Lz
-    # base_z = tip_z - Lz * hl_frac
-    # ax.plot([ox, ox], [oy, oy], [oz, base_z],
-    #         color=colors["Y"], linewidth=2.5, zorder=5, gid=tag)
-    # _filled_head(
-    #     tip=(ox, oy, tip_z), base=(ox, oy, base_z),
-    #     perp1_half=(xr * hw_frac, 0, 0), perp2_half=(0, yr * hw_frac, 0),
-    #     color=colors["Y"],
-    # )
-    # ax.text(ox, oy, tip_z + Lz * 0.08, "Y",
-    #         color=colors["Y"], fontsize=10, fontweight="bold", zorder=6, gid=tag)
-
-    # ax.set_xlim(xlim[0] - xr * 0.15, xlim[1])
-    # ax.set_ylim(ylim[0] - yr * 0.15, ylim[1])
-    # ax.set_zlim(zlim[0], zlim[1])
-
-
 def _add_coordinate_triad(ax, nodes, scale=0.25):
     colors = {
         "X": "#D91A1A",
@@ -381,25 +295,6 @@ def _add_coordinate_triad(ax, nodes, scale=0.25):
         poly.set_gid(tag)
         ax.add_collection3d(poly)
 
-    # --- Z dot ---
-    # zdot, = ax.plot([ox], [oy], [oz],
-    #                 linestyle='none', marker='o',
-    #                 markersize=8, markerfacecolor=colors["Z"],
-    #                 markeredgecolor=colors["Z"],
-    #                 zorder=6)
-    # zdot.set_gid(tag)
-    # ax.text(ox - Lx * 0.50, oy, oz, "Z",
-    #         color=colors["Z"], fontsize=10, fontweight="bold", zorder=8, gid=tag)
-
-    # zdot, = ax.plot([ox], [oy], [oz],
-    #                 linestyle='none', marker='o',
-    #                 markersize=8, markerfacecolor=colors["Y"],
-    #                 markeredgecolor=colors["Y"],
-    #                 zorder=6)
-    # zdot.set_gid(tag)
-    # ax.text(ox - Lx * 0.50, oy, oz, "Y",
-    #         color=colors["Y"], fontsize=10, fontweight="bold", zorder=8, gid=tag)
-
     ydot, = ax.plot([ox], [oy], [oz],
                 linestyle='none', marker='o',
                 markersize=10, markerfacecolor=colors["Y"],
@@ -415,7 +310,6 @@ def _add_coordinate_triad(ax, nodes, scale=0.25):
     ax.text(ox - Lx * 0.50, oy, oz, "Y",
             color=colors["Y"], fontsize=10, fontweight="bold", zorder=8, gid=tag)
 
-    # --- X-Axis ---
     tip_x  = ox + Lx
     base_x = tip_x - HL_x
     ax.plot([ox, base_x], [oy, oy], [oz, oz],
@@ -430,34 +324,6 @@ def _add_coordinate_triad(ax, nodes, scale=0.25):
     )
     ax.text(tip_x + Lx * 0.08, oy, oz, "X",
             color=colors["X"], fontsize=10, fontweight="bold", zorder=6, gid=tag)
-
-    # # --- Y-Axis ---
-    # tip_z  = oz + Lz
-    # base_z = tip_z - HL_z
-    # ax.plot([ox, ox], [oy, oy], [oz, base_z],
-    #         color=colors["Y"], linewidth=2.5, zorder=5, gid=tag)
-    # _filled_head(
-    #     tip=(ox, oy, tip_z), base=(ox, oy, base_z),
-    #     perp1_half=(HW_x, 0, 0),
-    #     perp2_half=(0, HW_x, 0),
-    #     color=colors["Y"],
-    # )
-    # ax.text(ox, oy, tip_z + Lz * 0.08, "Y",
-    #         color=colors["Y"], fontsize=10, fontweight="bold", zorder=6, gid=tag)
-
-     # --- Y-Axis ---
-    # tip_z  = oz + Lz
-    # base_z = tip_z - HL_z
-    # ax.plot([ox, ox], [oy, oy], [oz, base_z],
-    #         color=colors["Z"], linewidth=2.5, zorder=5, gid=tag)
-    # _filled_head(
-    #     tip=(ox, oy, tip_z), base=(ox, oy, base_z),
-    #     perp1_half=(HW_x, 0, 0),
-    #     perp2_half=(0, HW_x, 0),
-    #     color=colors["Z"],
-    # )
-    # ax.text(ox, oy, tip_z + Lz * 0.08, "Z",
-    #         color=colors["Z"], fontsize=10, fontweight="bold", zorder=6, gid=tag)
 
     tip_y  = oy + Lx
     base_y = tip_y - HL_x
