@@ -77,16 +77,14 @@ class LoadCombinationWidget(QWidget):
             layout.addLayout(btn_row)
 
         # ── Table ─────────────────────────────────────────────────────────
-        self.table = QTableWidget(0, 3)
+        self.table = QTableWidget(0, 2)
         self.table.setObjectName(self._field_id + "_table")
-        self.table.setHorizontalHeaderLabels(["S.No.", "Combination Name", "Include"])
+        self.table.setHorizontalHeaderLabels(["Combination Name", "Include"])
         self.table.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
-        self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Fixed)
-        self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
-        self.table.horizontalHeader().setSectionResizeMode(2, QHeaderView.Fixed)
-        self.table.setColumnWidth(0, 60)
-        self.table.setColumnWidth(1, 1200)
-        self.table.setColumnWidth(2, 80)
+        self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
+        self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Fixed)
+        self.table.setColumnWidth(0, 1200)
+        self.table.setColumnWidth(1, 80)
 
         self.table.verticalHeader().setVisible(False)
         self.table.verticalHeader().setDefaultSectionSize(36)
@@ -135,15 +133,10 @@ class LoadCombinationWidget(QWidget):
             row_idx = self.table.rowCount()
             self.table.insertRow(row_idx)
 
-            sno = QTableWidgetItem(str(idx + 1))
-            sno.setTextAlignment(Qt.AlignCenter)
-            sno.setFlags(sno.flags() & ~Qt.ItemIsEditable)
-            self.table.setItem(row_idx, 0, sno)
-
             name = QTableWidgetItem(combo.get("name", ""))
             name.setTextAlignment(Qt.AlignLeft | Qt.AlignVCenter)
             name.setFlags(name.flags() & ~Qt.ItemIsEditable)
-            self.table.setItem(row_idx, 1, name)
+            self.table.setItem(row_idx, 0, name)
 
             cb_container = QWidget()
             cb_container.setStyleSheet("background: transparent;")
@@ -157,7 +150,7 @@ class LoadCombinationWidget(QWidget):
                 lambda state, i=idx: self._on_included_changed(i, bool(state))
             )
             cb_layout.addWidget(cb)
-            self.table.setCellWidget(row_idx, 2, cb_container)
+            self.table.setCellWidget(row_idx, 1, cb_container)
 
         self._adjust_table_height()
 
@@ -278,6 +271,10 @@ class LoadCombinationWidget(QWidget):
         self.table.setRowCount(0)
         self._data = []
 
+        basic_count = 1
+        accidental_count = 1
+        seismic_count = 1
+
         #ULS Combination------------------------------------
         for combo in self._irc6_data:
             ctype   = combo['combination_type']
@@ -326,15 +323,22 @@ class LoadCombinationWidget(QWidget):
 
                 expr = ' + '.join(parts)
 
-                # Build display name
-                if same_permanent:
-                    display = f"{name}: {expr}"
-                else:
-                    label = 'Adding' if direction == 'adding' else 'Relieving'
-                    display = f"{name} ({label}): {expr}"
+                if ctype == "basic":
+                    combo_name = f"basic_{basic_count}"
+                    basic_count += 1
+
+                elif ctype == "accidental":
+                    combo_name = f"accidental_{accidental_count}"
+                    accidental_count += 1
+
+                elif ctype == "seismic":
+                    combo_name = f"seismic_{seismic_count}"
+                    seismic_count += 1
+
+                display = f"{combo_name} : {expr}"
 
                 # Look up key
-                key = self._CASE_KEYS.get((ctype, leading, acc_load, direction), '')
+                key = self._ULS_CASE_KEYS.get((ctype, leading, acc_load, direction), '')
 
                 entry = {
                     'name':     display,
@@ -347,14 +351,9 @@ class LoadCombinationWidget(QWidget):
                 row = self.table.rowCount()
                 self.table.insertRow(row)
 
-                sno = QTableWidgetItem(str(row + 1))
-                sno.setFlags(sno.flags() & ~Qt.ItemIsEditable)
-                sno.setTextAlignment(Qt.AlignCenter)
-                self.table.setItem(row, 0, sno)
-
                 name_item = QTableWidgetItem(display)
                 name_item.setFlags(name_item.flags() & ~Qt.ItemIsEditable)
-                self.table.setItem(row, 1, name_item)
+                self.table.setItem(row, 0, name_item)
 
                 cb_container = QWidget()
                 cb_layout = QHBoxLayout(cb_container)
@@ -366,8 +365,11 @@ class LoadCombinationWidget(QWidget):
                     lambda state, i=row: self._on_included_changed(i, bool(state))
                 )
                 cb_layout.addWidget(cb)
-                self.table.setCellWidget(row, 2, cb_container)
+                self.table.setCellWidget(row, 1, cb_container)
 
+        rare_count = 1
+        frequent_count = 1
+        qp_count = 1
 
         # ── SLS combinations ───────────────────────────────────────────────
         for combo in self._irc6_sls_data:
@@ -404,11 +406,19 @@ class LoadCombinationWidget(QWidget):
 
                 expr = ' + '.join(parts)
 
-                if same_surf:
-                    display = f"{name}: {expr}"
-                else:
-                    label = 'Adding' if direction == 'adding' else 'Relieving'
-                    display = f"{name} ({label}): {expr}"
+                if ctype == "rare":
+                    combo_name = f"rare_{rare_count}"
+                    rare_count += 1
+
+                elif ctype == "frequent":
+                    combo_name = f"frequent_{frequent_count}"
+                    frequent_count += 1
+
+                elif ctype == "quasi_permanent":
+                    combo_name = f"quasi_permanent_{qp_count}"
+                    qp_count += 1
+
+                display = f"{combo_name} : {expr}"
 
                 key = self._SLS_CASE_KEYS.get((ctype, leading, direction), '')
 
@@ -423,14 +433,9 @@ class LoadCombinationWidget(QWidget):
                 row = self.table.rowCount()
                 self.table.insertRow(row)
 
-                sno = QTableWidgetItem(str(row + 1))
-                sno.setFlags(sno.flags() & ~Qt.ItemIsEditable)
-                sno.setTextAlignment(Qt.AlignCenter)
-                self.table.setItem(row, 0, sno)
-
                 name_item = QTableWidgetItem(display)
                 name_item.setFlags(name_item.flags() & ~Qt.ItemIsEditable)
-                self.table.setItem(row, 1, name_item)
+                self.table.setItem(row, 0, name_item)
 
                 cb_container = QWidget()
                 cb_layout = QHBoxLayout(cb_container)
@@ -442,7 +447,10 @@ class LoadCombinationWidget(QWidget):
                     lambda state, i=row: self._on_included_changed(i, bool(state))
                 )
                 cb_layout.addWidget(cb)
-                self.table.setCellWidget(row, 2, cb_container)
+                self.table.setCellWidget(row, 1, cb_container)
 
         self.table.setVisible(True)
         self._adjust_table_height()   
+
+        if self._ai:
+            self._ai._on_field_edited(self._field_id, self._data)
