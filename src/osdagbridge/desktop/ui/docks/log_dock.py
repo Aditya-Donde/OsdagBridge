@@ -2,10 +2,12 @@
 Log dock widget for Osdag GUI.
 Displays log messages and status updates.
 """
+
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QTextEdit, QLabel
 from PySide6.QtCore import Qt, QDateTime
 
 from osdagbridge.core.utils.logger import bridge_logger
+
 
 class LogDock(QWidget):
     def __init__(self, parent=None):
@@ -39,7 +41,10 @@ class LogDock(QWidget):
         layout.addWidget(self.log_display)
 
         # Add init log text matching
-        self.append_log(f"[{QDateTime.currentDateTime().toString('yyyy-MM-dd hh:mm:ss')}] Log initialized", "info")
+        self.append_log(
+            f"[{QDateTime.currentDateTime().toString('yyyy-MM-dd hh:mm:ss')}] Log initialized",
+            "info",
+        )
 
         self.setLayout(layout)
         self.show()  # Show init text
@@ -78,11 +83,14 @@ class LogDock(QWidget):
         was_at_bottom = scrollbar.value() >= scrollbar.maximum() - 15
 
         # Escape HTML symbols to avoid rendering issues
-        escaped_message = message.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-        formatted_message = f"<span style=\"color: {color}; white-space: pre;\">{escaped_message}</span>"
+        escaped_message = (
+            message.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+        )
+        formatted_message = (
+            f'<span style="color: {color}; white-space: pre;">{escaped_message}</span>'
+        )
         self.log_display.append(formatted_message)
-        
+
         if was_at_bottom:
             scrollbar.setValue(scrollbar.maximum())
         QApplication.processEvents()
-
