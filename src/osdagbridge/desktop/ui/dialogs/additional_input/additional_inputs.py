@@ -27,6 +27,8 @@ from osdagbridge.core.bridge_types.plate_girder.ui_fields_additional_input impor
     SUPPORT_CONDITIONS_SCHEMA,
 )
 from osdagbridge.core.bridge_types.plate_girder.defaults import _on_no_of_girders_changed
+from osdagbridge.desktop.ui.dialogs.additional_input.ui_builder._load_combination_widget import LoadCombinationWidget
+            
 # =================================================================================
 #   MAIN IMPLEMENTATION
 # =================================================================================
@@ -523,6 +525,9 @@ class AdditionalInputs(QDialog):
                 self.saved_values[widget_name] = widget.currentText()
             elif isinstance(widget, QCheckBox):
                 self.saved_values[widget_name] = widget.isChecked()
+
+            elif isinstance(widget, LoadCombinationWidget):
+                self.saved_values[widget_name] = widget._data    
     
     def setupWrapper(self):
         self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowSystemMenuHint)
