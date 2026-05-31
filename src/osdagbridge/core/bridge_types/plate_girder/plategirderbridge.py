@@ -631,7 +631,6 @@ class PlateGirderBridge:
         
     def _stage_grillage_setup(self):
         self._build_dtos()
-        from osdagbridge.core.utils.logger import bridge_logger
         bridge_logger.check_cancel()
         self.setup_grillage()
 
