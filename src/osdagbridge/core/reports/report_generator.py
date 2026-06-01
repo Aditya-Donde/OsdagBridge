@@ -273,6 +273,54 @@ def _fig_or_placeholder(path, caption, width=r'0.9\textwidth'):
             r'\end{figure}')
 
 
+def _get_n_girders(input_dict, output_dict=None):
+    """Read number of girders from output_dict (frozen snapshot) or input_dict.
+
+    Returns int.  Falls back to 0 (single placeholder column) on any error.
+    A return of 0 signals the caller to render one wide placeholder column
+    labelled 'All Girders'.
+    """
+    for src in (output_dict, input_dict):
+        if src is not None:
+            val = src.get(KEY_TS_NO_OF_GIRDERS)
+            if val is not None:
+                try:
+                    n = int(val)
+                    if n >= 1:
+                        return n
+                except (TypeError, ValueError):
+                    pass
+    return 0  # fallback
+
+
+def _girder_labels(n):
+    """Return list of (display_label, member_id) tuples for *n* girders.
+
+    n=0 -> single placeholder: [('All Girders', '---')]
+    n=5 -> [('Girder 1','G1M1'), ..., ('Girder 5','G5M1')]
+    """
+    if n <= 0:
+        return [('All Girders', '---')]
+    return [(f'Girder {i+1}', f'G{i+1}M1') for i in range(n)]
+
+
+def _bracing_panel_labels(n):
+    """Return list of (location_text, cross_bracing_ids, end_diaphragm_ids)
+    for *n* girders  ->  n-1 panels.
+
+    n=0 or 1 -> single placeholder row.
+    """
+    if n <= 1:
+        return [('Between Girders', '---', '---')]
+    panels = []
+    for i in range(n - 1):
+        loc = f'Between Girders {i+1} and {i+2}'
+        cb_ids = f'B{i+1}M1 -- B{i+1}M10'
+        ed_ids = f'E{i+1}M1, E{i+1}M2'
+        panels.append((loc, cb_ids, ed_ids))
+    return panels
+
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # PREAMBLE
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -474,9 +522,49 @@ def executive_summary(input_dict, output_dict, fig_paths) -> str:
     ur_val = output_dict.get('overall_utilization_ratio', '')
     ur = _tex(ur_val) if ur_val not in (None, '', 'None') else _ph('UR')
 
-    sections = f"Section Designation & {sec} & {sec} & {sec} & {sec} & {sec} & {sec} \\\\"
-    gov_checks = f"Governing Check & {gov} & {gov} & {gov} & {gov} & {gov} & {gov} \\\\"
-    urs = f"Utilization Ratio & {ur} & {ur} & {ur} & {ur} & {ur} & {ur} \\\\"
+    # --- Dynamic Table 1 ---
+    n = _get_n_girders(input_dict, output_dict)
+    labels = _girder_labels(n)
+    n_cols = len(labels)
+
+    # Column widths: row-label column fixed at 2.8cm; girder columns share remainder
+    label_col_cm = 2.8
+    # Available width ≈ 15.0cm for A4 with 1in margins; each girder col gets equal share
+    girder_col_cm = round(max(1.5, (15.0 - label_col_cm) / n_cols), 1)
+    col_spec = '|C{' + str(label_col_cm) + 'cm}|' + '|'.join(['C{' + str(girder_col_cm) + 'cm}'] * n_cols) + '|'
+
+    # Header row
+    hdr_cells = ' &\n  '.join([r'\textbf{' + _tex(lbl) + '}' for lbl, _ in labels])
+    header_row = r'  \textbf{} &' + '\n  ' + hdr_cells + r' \\' + '\n'
+
+    # Member ID row
+    mid_cells = ' & '.join([_tex(mid) for _, mid in labels])
+    member_id_row = 'Member ID & ' + mid_cells + r' \\' + '\n'
+
+    # Section / Governing Check / UR rows
+    sec_cells = ' & '.join([sec] * n_cols)
+    sections = f"Section Designation & {sec_cells} \\\\"
+    gov_cells = ' & '.join([gov] * n_cols)
+    gov_checks = f"Governing Check & {gov_cells} \\\\"
+    ur_cells = ' & '.join([ur] * n_cols)
+    urs = f"Utilization Ratio & {ur_cells} \\\\"
+
+    table1 = (r'\noindent\textbf{Table 1 -- Final Bridge Geometry (after optimization)}' + '\n\n'
+              r'\vspace{0.4em}' + '\n'
+              r'\noindent' + '\n'
+              r'\begin{tabular}{' + col_spec + '}\n'
+              r'\hline' + '\n'
+              + header_row +
+              r'\hline' + '\n'
+              + member_id_row +
+              r'\hline' + '\n'
+              + sections + '\n'
+              r'\hline' + '\n'
+              + gov_checks + '\n'
+              r'\hline' + '\n'
+              + urs + '\n'
+              r'\hline' + '\n'
+              r'\end{tabular}')
 
     return r"""
 \newpage
@@ -522,30 +610,7 @@ This section provides a concise summary of the bridge design, key inputs, govern
 
 \newpage
 
-""" + cs_fig + '\n\n' + geom_fig + r"""
-
-\noindent\textbf{Table 1 -- Final Bridge Geometry (after optimization)}
-
-\vspace{0.4em}
-\noindent
-\begin{tabular}{|C{2.8cm}|C{1.8cm}|C{1.8cm}|C{1.8cm}|C{1.8cm}|C{1.8cm}|C{1.8cm}|}
-\hline
-  \textbf{} &
-  \textbf{Girder 1} &
-  \textbf{Girder 2} &
-  \textbf{Girder 3} &
-  \textbf{Girder 4} &
-  \multicolumn{2}{c|}{\textbf{Girder 5}} \\
-\hline
-Member ID & G1M1 & G2M1 & G3M1 & G4M1 & G5M1 & G5M2 \\
-\hline
-""" + sections + r"""
-\hline
-""" + gov_checks + r"""
-\hline
-""" + urs + r"""
-\hline
-\end{tabular}
+""" + cs_fig + '\n\n' + geom_fig + '\n\n' + table1 + r"""
 
 \vspace{0.4em}
 \noindent\textit{Note: Utilization ratio (UR) = demand / capacity. A value $< 1.0$ indicates a passing check.}
@@ -631,7 +696,8 @@ This section records all project metadata as entered by the designer.
 # Chapter 2: Input Parameters — exact LaTeX template match
 
 
-def ch2_input_parameters(m, input_dict):
+def ch2_input_parameters(m, input_dict, output_dict=None):
+    n_girders = _get_n_girders(input_dict, output_dict)
     return r"""
 \chapter{Input Parameters}
 
@@ -758,16 +824,16 @@ Where the user has modified additional inputs, those values are reported here. W
 \end{tabularx}
 \end{table}
 
-""" + _girder_tables(input_dict) + r"""
+""" + _girder_tables(input_dict, n_girders) + r"""
 
-""" + _bracing_tables(input_dict) + r"""
+""" + _bracing_tables(input_dict, n_girders) + r"""
 
 """ + _shear_connector_table(input_dict) + r"""
 
 """ + _safety_factors_table(input_dict)
 
 
-def _girder_tables(input_dict):
+def _girder_tables(input_dict, n_girders):
     # Helper: one girder-dimension row (all girders share same section)
     def _dim_row(label):
         return (label + r""" & """
@@ -820,6 +886,11 @@ def _girder_tables(input_dict):
 \hline
 """)
 
+    labels = _girder_labels(n_girders)
+    gen_rows = "".join([_gen_row(lbl, mid) for lbl, mid in labels])
+    dim_rows = "".join([_dim_row(lbl) for lbl, _ in labels])
+    rst_rows = "".join([_rst_row(lbl) for lbl, _ in labels])
+
     return (r"""
 \newpage
 \noindent\textbf{Table 2.6  Member Properties: Girder Details}
@@ -835,12 +906,7 @@ def _girder_tables(input_dict):
 \textbf{Girder} & \textbf{Member ID} & \textbf{Design Mode} & \textbf{Girder Type} & \textbf{Girder Symmetry} \\[6pt]
 \hline
 """
-            + _gen_row('Girder 1', 'G1M1')
-            + _gen_row('Girder 2', 'G2M1')
-            + _gen_row('Girder 3', 'G3M1')
-            + _gen_row('Girder 4', 'G4M1')
-            + _gen_row('Girder 5A', 'G5M1')
-            + _gen_row('Girder 5B', 'G5M2')
+            + gen_rows
             + r"""\end{tabularx}
 \end{table}
 
@@ -854,12 +920,7 @@ def _girder_tables(input_dict):
 \textbf{Girder} & \textbf{Total Depth, D (mm)} & \textbf{Web, tw (mm)} & \textbf{Top Flange (b\textsubscript{tf}, t\textsubscript{tf}) mm} & \textbf{Bottom Flange (b\textsubscript{bf}, t\textsubscript{bf}) mm} \\[6pt]
 \hline
 """
-            + _dim_row('Girder 1')
-            + _dim_row('Girder 2')
-            + _dim_row('Girder 3')
-            + _dim_row('Girder 4')
-            + _dim_row('Girder 5A')
-            + _dim_row('Girder 5B')
+            + dim_rows
             + r"""\end{tabularx}
 \end{table}
 
@@ -873,18 +934,13 @@ def _girder_tables(input_dict):
 \textbf{Girder} & \textbf{Torsional / Warping Restraint} & \textbf{Web Philosophy} & \textbf{Intermediate Stiffeners} & \textbf{Longitudinal / End Panel Stiffeners} \\[6pt]
 \hline
 """
-            + _rst_row('Girder 1')
-            + _rst_row('Girder 2')
-            + _rst_row('Girder 3')
-            + _rst_row('Girder 4')
-            + _rst_row('Girder 5A')
-            + _rst_row('Girder 5B')
+            + rst_rows
             + r"""\end{tabularx}
 \end{table}
 """)
 
 
-def _bracing_tables(input_dict):
+def _bracing_tables(input_dict, n_girders):
     # Helper: one cross-bracing row (all locations share same bracing config)
     def _cb_row(location, member_ids):
         return (location + r""" & """ + member_ids + r""" & """
@@ -913,6 +969,10 @@ def _bracing_tables(input_dict):
 \hline
 """)
 
+    panels = _bracing_panel_labels(n_girders)
+    cb_rows = "".join([_cb_row(loc, cb_ids) for loc, cb_ids, _ in panels])
+    ed_rows = "".join([_ed_row(loc, ed_ids) for loc, _, ed_ids in panels])
+
     return (r"""
 \newpage
 \noindent\textbf{Table 2.7  Member Properties: Cross Bracing Details}
@@ -925,10 +985,7 @@ def _bracing_tables(input_dict):
 \textbf{Location} & \textbf{Member IDs} & \textbf{Type of Bracing} & \textbf{Bracing Section} & \textbf{Spacing (m)} & \textbf{No. of Panels} \\
 \hline
 """
-            + _cb_row('Between Girders 1 and 2', 'B1M1 -- B1M10')
-            + _cb_row('Between Girders 2 and 3', 'B2M1 -- B2M10')
-            + _cb_row('Between Girders 3 and 4', 'B3M1 -- B3M10')
-            + _cb_row('Between Girders 4 and 5', 'B4M1 -- B4M10')
+            + cb_rows
             + r"""\end{longtable}
 
 \noindent\textbf{Table 2.8  Member Properties: End Diaphragm Details}
@@ -941,12 +998,10 @@ def _bracing_tables(input_dict):
 \textbf{Location} & \textbf{Member IDs} & \textbf{Type of Bracing} & \textbf{Bracing Section} & \textbf{Spacing (m)} & \textbf{No. of Panels} \\
 \hline
 """
-            + _ed_row('Between Girders 1 and 2', 'E1M1, E1M2')
-            + _ed_row('Between Girders 2 and 3', 'E2M1, E2M2')
-            + _ed_row('Between Girders 3 and 4', 'E3M1, E3M2')
-            + _ed_row('Between Girders 4 and 5', 'E4M1, E4M2')
+            + ed_rows
             + r"""\end{longtable}
 """)
+
 
 
 def _shear_connector_table(input_dict):
@@ -1257,6 +1312,240 @@ Figure 3 -- 3D Grillage Model with deformed shape
 # Chapter 5: Design Checks — exact LaTeX template match
 
 def ch5_design_checks(checks_data, bridge: "ReportDataBridge"):
+    n_girders = _get_n_girders(bridge.input_dict, bridge.output_dict)
+
+    # Generate Table 5.2 rows
+    t52_rows = []
+    for lbl, _ in _girder_labels(n_girders):
+        t52_rows.append(
+            r"\multirow{4}{*}{\centering " + lbl + r"""} & Top Flange & $(b_f - t_w) / 2t_f =$ \placeholder{val} & \placeholder{limit} & Plastic / Compact / Semi-Compact \\[6pt]
+\cline{2-5}
+ & Bottom Flange & $(b_f - t_w) / 2t_f =$ \placeholder{val} & \placeholder{limit} & \placeholder{class} \\[6pt]
+\cline{2-5}
+ & Web & d / tw = \placeholder{val} & \placeholder{limit} & \placeholder{class} \\[6pt]
+\cline{2-5}
+ & Overall Section & --- & --- & \placeholder{governing class} \\[6pt]
+\hline"""
+        )
+    t52_content = "\n".join(t52_rows)
+
+    # Generate Table 5.3 rows
+    t53_rows = []
+    for lbl, _ in _girder_labels(n_girders):
+        t53_rows.append(
+            r"\multirow{4}{*}{\centering " + lbl + r"""} & Applied Moment, $M_u$ & from LC-ULS-1 & \placeholder{$M_u$} kN-m & --- \\[6pt]
+\cline{2-5}
+ & Plastic Moment, Mp & Zp $\times$ fy / $\gamma_{M0}$ & \placeholder{Mp} kN-m & --- \\[6pt]
+\cline{2-5}
+ & Design Moment Capacity, Md & Mp / $\gamma_{M0}$ & \placeholder{$M_d$} kN-m & --- \\[6pt]
+\cline{2-5}
+ & Utilization Ratio, $M_u / M_d$ & --- & \placeholder{UR} & $\leq 1.0$ \\[6pt]
+\hline"""
+        )
+    t53_content = "\n".join(t53_rows)
+
+    # Generate Table 5.4 rows
+    t54_rows = []
+    for lbl, _ in _girder_labels(n_girders):
+        t54_rows.append(
+            r"\multirow{9}{*}{\centering " + lbl + r"""} & Applied Shear, $V_u$ & from LC-ULS-1 & \placeholder{$V_u$} kN & --- \\[6pt]
+\cline{2-5}
+ & Shear Area, Av & h $\times$ tw & \placeholder{$A_v$} mm² & --- \\[6pt]
+\cline{2-5}
+ & Panel Aspect Ratio, c/d & --- & \placeholder{c/d} & --- \\[6pt]
+\cline{2-5}
+ & Shear Buckling Coefficient, kv & 5.35 + 4 / (c/d)² & \placeholder{kv} & --- \\[6pt]
+\cline{2-5}
+ & Web Slenderness, $\lambda_w$ & $\sqrt{f_{yw} / (\sqrt{3} \times \tau_{cr,e})}$ & \placeholder{$\lambda_w$} & --- \\[6pt]
+\cline{2-5}
+ & Design Shear Stress, tau\_b & per IS 800 Cl. 8.4.2.2 & \placeholder{tb} MPa & --- \\[6pt]
+\cline{2-5}
+ & Shear Buckling Resistance, Vcr & Av $\times$ tau\_b & \placeholder{$V_{cr}$} kN & --- \\[6pt]
+\cline{2-5}
+ & Web Crippling Strength, Fg & (b1+n2) $\times$ tw $\times$ fy / $\gamma_{M0}$ & \placeholder{$F_g$} kN & PASS \\[6pt]
+\cline{2-5}
+ & Utilization Ratio, $V_u / V_d$ & --- & \placeholder{UR} & $\leq 1.0$ \\[6pt]
+\hline"""
+        )
+    t54_content = "\n".join(t54_rows)
+
+    # Generate Table 5.5 rows
+    t55_rows = []
+    for lbl, _ in _girder_labels(n_girders):
+        t55_rows.append(
+            r"\multirow{3}{*}{\centering " + lbl + r"""} & High Shear Condition? & V > 0.6 Vd & Yes / No & --- \\[6pt]
+\cline{2-5}
+ & Reduced Moment Capacity, $M_{dv}$ & $M_d - \beta(M_d - M_{fd})$ & \placeholder{$M_{dv Fluss}$} kN-m & --- \\[6pt]
+\cline{2-5}
+ & Interaction Check: $M_u \leq M_{dv}$ & --- & PASS / FAIL & --- \\[6pt]
+\hline"""
+        )
+    t55_content = "\n".join(t55_rows)
+
+    # Generate Table 5.6 rows
+    t56_rows = []
+    for lbl, _ in _girder_labels(n_girders):
+        t56_rows.append(
+            r"\multirow{5}{*}{\centering " + lbl + r"""} & Elastic Critical Moment, Mcr & pi²EIy/LLT² $\times$ (GIt + pi²EIw/LLT²)\textasciicircum 0.5 & \placeholder{$M_{cr}$} kN-m & --- \\[6pt]
+\cline{2-5}
+ & Non-dim. Slenderness, $\bar{\lambda}_{LT}$ & $\sqrt{M_p / M_{cr}}$ & \placeholder{$\bar{\lambda}_{LT}$} & --- \\[6pt]
+\cline{2-5}
+ & LTB Reduction Factor, chi\_LT & IS 800 Cl. 8.2.2 & \placeholder{$\chi_{LT}$} & --- \\[6pt]
+\cline{2-5}
+ & LTB Resistance, Mb & chi\_LT $\times$ Mp / $\gamma_{M0}$ & \placeholder{$M_b$} kN-m & --- \\[6pt]
+\cline{2-5}
+ & $M_u \leq M_b$ & --- & PASS / FAIL & --- \\[6pt]
+\hline"""
+        )
+    t56_content = "\n".join(t56_rows)
+
+    # Generate Table 5.7 rows
+    t57_rows = []
+    for lbl, _ in _girder_labels(n_girders):
+        t57_rows.append(
+            r"\multirow{6}{*}{\centering " + lbl + r"""} & \textbf{Shear Buckling Design Method} & Simple Post Critical / Tension Field \\[6pt]
+\cline{2-3}
+ & \textbf{Intermediate Stiffener Thickness (mm)} & \placeholder{ts\_i} mm \\[6pt]
+\cline{2-3}
+ & \textbf{Intermediate Stiffener Spacing (mm)} & \placeholder{c} mm \\[6pt]
+\cline{2-3}
+ & \textbf{End Panel Stiffener Thickness (mm)} & \placeholder{ts\_e} mm \\[6pt]
+\cline{2-3}
+ & \textbf{No. of End Panel Stiffeners} & 2 (Pair) \\[6pt]
+\cline{2-3}
+ & \textbf{Longitudinal Stiffeners} & Not Required / Required \\[6pt]
+\hline"""
+        )
+    t57_content = "\n".join(t57_rows)
+
+    # Generate Table 5.8 rows
+    t58_rows = []
+    for lbl, _ in _girder_labels(n_girders):
+        t58_rows.append(
+            r"\multirow{2}{*}{\centering " + lbl + r"""} & Min. Moment of Inertia, Is & $\geq$ 0.75 d tw³ = \placeholder{val} mm⁴ & \placeholder{Is\_prov} mm⁴ & PASS \\[6pt]
+\cline{2-5}
+ & Critical Buckling Stress, tau\_cr,e & per IS 800 Cl. 8.4.2.2 & \placeholder{tau\_cr} MPa & --- \\[6pt]
+\hline"""
+        )
+    t58_content = "\n".join(t58_rows)
+
+    # Generate Table 5.9 rows
+    t59_rows = []
+    for lbl, _ in _girder_labels(n_girders):
+        t59_rows.append(
+            r"\multirow{3}{*}{\centering " + lbl + r"""} & Vertical Anchor Force, $V_p$ & $d \times t_w \times f_y / \sqrt{3}$ & \placeholder{$V_p$} kN & --- \\[6pt]
+\cline{2-5}
+ & Tension Flange Reaction, $R_{tf}$ & $V_p / 2$ & \placeholder{$R_{tf}$} kN & --- \\[6pt]
+\cline{2-5}
+ & Tension Flange Moment, $M_{tf}$ & $V_p \times d / 10$ & \placeholder{$M_{tf}$} kN-m & --- \\[6pt]
+\hline"""
+        )
+    t59_content = "\n".join(t59_rows)
+
+    # Generate Table 5.10 rows
+    t510_rows = []
+    for lbl, _ in _girder_labels(n_girders):
+        t510_rows.append(
+            r"\multirow{2}{*}{\centering " + lbl + r"""} & Live Load Deflection (L/800) & \placeholder{δ\_allow\_LL} mm & \placeholder{δ\_LL} mm & PASS / FAIL \\[6pt]
+\cline{2-5}
+ & Total Load Deflection (L/600) & \placeholder{δ\_allow\_tot} mm & \placeholder{δ\_tot} mm & PASS / FAIL \\[6pt]
+\hline"""
+        )
+    t510_content = "\n".join(t510_rows)
+
+    # Generate Table 5.11 rows
+    t511_rows = []
+    for lbl, _ in _girder_labels(n_girders):
+        t511_rows.append(
+            r"\multirow{2}{*}{\centering " + lbl + r"""} & Concrete (0.48 fck) & \placeholder{allow\_c} MPa & \placeholder{actual\_c} MPa & PASS / FAIL \\[6pt]
+\cline{2-5}
+ & Steel (0.66 fy) & \placeholder{allow\_s} MPa & \placeholder{actual\_s} MPa & PASS / FAIL \\[6pt]
+\hline"""
+        )
+    t511_content = "\n".join(t511_rows)
+
+    # Generate Table 5.12 rows
+    t512_rows = []
+    for lbl, _ in _girder_labels(n_girders):
+        t512_rows.append(
+            r"\multirow{3}{*}{\centering " + lbl + r"""} & Welded Girder Web & IS 800 Table & \placeholder{ffd} MPa & \placeholder{f\_actual} MPa --- PASS \\[6pt]
+\cline{2-5}
+ & Welded Girder Flange & IS 800 Table & \placeholder{ffd} MPa & \placeholder{f\_actual} MPa --- PASS \\[6pt]
+\cline{2-5}
+ & Shear Connectors & tau\_fn = 67 MPa & \placeholder{tau\_fd} MPa & \placeholder{tau\_actual} MPa --- PASS \\[6pt]
+\hline"""
+        )
+    t512_content = "\n".join(t512_rows)
+
+    # Generate Table 5.13 rows
+    g_summary_rows = []
+    for lbl, _ in _girder_labels(n_girders):
+        g_summary_rows.append(
+            lbl + r""" & \placeholder{Check} & \placeholder{UR} & \placeholder{UR} & \placeholder{UR} & \placeholder{UR} & PASS / FAIL \\[6pt]
+\hline"""
+        )
+    g_summary_table_content = "\n".join(g_summary_rows)
+
+    # Generate Table 5.20(a) rows
+    cb_forces_rows = []
+    if n_girders <= 1:
+        cb_forces_rows.append(
+            r"""Between Girders & Diagonal & \placeholder{ISA} & \placeholder{$P_u$} & C / T & \placeholder{$A_g$} & \placeholder{$r$} \\[6pt]
+\hline"""
+        )
+    else:
+        for i in range(n_girders - 1):
+            lbl = f"G{i+1}--G{i+2}"
+            cb_forces_rows.append(
+                r"\multirow{3}{*}{\centering " + lbl + r"""} & Diagonal & \placeholder{ISA} & \placeholder{$P_u$} & C / T & \placeholder{$A_g$} & \placeholder{$r$} \\[6pt]
+\cline{2-7}
+ & Top chord & \placeholder{ISA} & \placeholder{$P_u$} & C / T & \placeholder{$A_g$} & \placeholder{$r$} \\[6pt]
+\cline{2-7}
+ & Bottom chord & \placeholder{ISA} & \placeholder{$P_u$} & C / T & \placeholder{$A_g$} & \placeholder{$r$} \\[6pt]
+\hline"""
+            )
+    cb_forces_content = "\n".join(cb_forces_rows)
+
+    # Generate Table 5.20(b) rows
+    cb_slenderness_rows = []
+    if n_girders <= 1:
+        cb_slenderness_rows.append(
+            r"""Between Girders & Diagonal & C & \placeholder{$KL$} & \placeholder{$KL/r$} & 250 --- PASS \\[6pt]
+\hline"""
+        )
+    else:
+        for i in range(n_girders - 1):
+            lbl = f"G{i+1}--G{i+2}"
+            cb_slenderness_rows.append(
+                r"\multirow{3}{*}{\centering " + lbl + r"""} & Diagonal & C & \placeholder{$KL$} & \placeholder{$KL/r$} & 250 --- PASS \\[6pt]
+\cline{2-6}
+ & Top chord & C & \placeholder{$KL$} & \placeholder{$KL/r$} & 250 --- PASS \\[6pt]
+\cline{2-6}
+ & Bottom chord & T & \placeholder{$KL$} & \placeholder{$KL/r$} & 400 --- PASS \\[6pt]
+\hline"""
+            )
+    cb_slenderness_content = "\n".join(cb_slenderness_rows)
+
+    # Generate Table 5.20(e) rows
+    cb_capacity_rows = []
+    if n_girders <= 1:
+        cb_capacity_rows.append(
+            r"""Between Girders & Brace diagonal (typical) & \placeholder{ISA section} & \placeholder{P\_u} & \placeholder{P\_d} --- PASS \\[6pt]
+\hline"""
+        )
+    else:
+        for i in range(n_girders - 1):
+            lbl = f"Girder {i+1} -- {i+2}"
+            cb_capacity_rows.append(
+                r"\multirow{3}{*}{\centering " + lbl + r"""} & Brace diagonal (typical) & \placeholder{ISA section} & \placeholder{P\_u} & \placeholder{P\_d} --- PASS \\[6pt]
+\cline{2-5}
+ & Top chord & \placeholder{ISA section} & \placeholder{P\_u} & \placeholder{P\_d} --- PASS \\[6pt]
+\cline{2-5}
+ & Bottom chord & \placeholder{ISA section} & \placeholder{P\_u} & \placeholder{P\_d} --- PASS \\[6pt]
+\hline"""
+            )
+    cb_capacity_content = "\n".join(cb_capacity_rows)
+
     return r"""
 \chapter{Design Checks}
 
@@ -1306,14 +1595,7 @@ This section presents all structural design checks performed by OsdagBridge. For
 \hline
 \textbf{} & \textbf{Element} & \textbf{Slenderness Ratio} & \textbf{Class Limit} & \textbf{Classification} \\[6pt]
 \hline
-\multirow{4}{*}{\centering Girder 1 - n} & Top Flange & $(b_f - t_w) / 2t_f =$ \placeholder{val} & \placeholder{limit} & Plastic / Compact / Semi-Compact \\[6pt]
-\cline{2-5}
- & Bottom Flange & $(b_f - t_w) / 2t_f =$ \placeholder{val} & \placeholder{limit} & \placeholder{class} \\[6pt]
-\cline{2-5}
- & Web & d / tw = \placeholder{val} & \placeholder{limit} & \placeholder{class} \\[6pt]
-\cline{2-5}
- & Overall Section & --- & --- & \placeholder{governing class} \\[6pt]
-\hline
+""" + t52_content + r"""
 \end{tabularx}
 \end{table}
 \noindent\textit{Note: IS 800:2007 Table 2}
@@ -1327,14 +1609,7 @@ This section presents all structural design checks performed by OsdagBridge. For
 \hline
 \textbf{} & \textbf{Parameter} & \textbf{Formula} & \textbf{Value} & \textbf{Status} \\[6pt]
 \hline
-\multirow{4}{*}{\centering Girder 1 - n} & Applied Moment, $M_u$ & from LC-ULS-1 & \placeholder{$M_u$} kN-m & --- \\[6pt]
-\cline{2-5}
- & Plastic Moment, Mp & Zp $\times$ fy / $\gamma_{M0}$ & \placeholder{Mp} kN-m & --- \\[6pt]
-\cline{2-5}
- & Design Moment Capacity, Md & Mp / $\gamma_{M0}$ & \placeholder{$M_d$} kN-m & --- \\[6pt]
-\cline{2-5}
- & Utilization Ratio, $M_u / M_d$ & --- & \placeholder{UR} & $\leq 1.0$ \\[6pt]
-\hline
+""" + t53_content + r"""
 \end{tabularx}
 \end{table}
 \noindent\textit{Note: IRC 22 Cl. 603.3.1, IS 800 Cl. 8.2.1}
@@ -1348,24 +1623,7 @@ This section presents all structural design checks performed by OsdagBridge. For
 \hline
 \textbf{} & \textbf{Parameter} & \textbf{Formula} & \textbf{Value} & \textbf{Status} \\[6pt]
 \hline
-\multirow{9}{*}{\centering Girder 1 - n} & Applied Shear, $V_u$ & from LC-ULS-1 & \placeholder{$V_u$} kN & --- \\[6pt]
-\cline{2-5}
- & Shear Area, Av & h $\times$ tw & \placeholder{$A_v$} mm² & --- \\[6pt]
-\cline{2-5}
- & Panel Aspect Ratio, c/d & --- & \placeholder{c/d} & --- \\[6pt]
-\cline{2-5}
- & Shear Buckling Coefficient, kv & 5.35 + 4 / (c/d)² & \placeholder{kv} & --- \\[6pt]
-\cline{2-5}
- & Web Slenderness, $\lambda_w$ & $\sqrt{f_{yw} / (\sqrt{3} \times \tau_{cr,e})}$ & \placeholder{$\lambda_w$} & --- \\[6pt]
-\cline{2-5}
- & Design Shear Stress, tau\_b & per IS 800 Cl. 8.4.2.2 & \placeholder{tb} MPa & --- \\[6pt]
-\cline{2-5}
- & Shear Buckling Resistance, Vcr & Av $\times$ tau\_b & \placeholder{$V_{cr}$} kN & --- \\[6pt]
-\cline{2-5}
- & Web Crippling Strength, Fg & (b1+n2) $\times$ tw $\times$ fy / $\gamma_{M0}$ & \placeholder{$F_g$} kN & PASS \\[6pt]
-\cline{2-5}
- & Utilization Ratio, $V_u / V_d$ & --- & \placeholder{UR} & $\leq 1.0$ \\[6pt]
-\hline
+""" + t54_content + r"""
 \end{tabularx}
 \end{table}
 \noindent\textit{Note: IS 800 Cl. 8.4, IRC 22 Cl. 603.3.3.2}
@@ -1379,12 +1637,7 @@ This section presents all structural design checks performed by OsdagBridge. For
 \hline
 \textbf{} & \textbf{Check} & \textbf{Condition} & \textbf{Value} & \textbf{Status} \\[6pt]
 \hline
-\multirow{3}{*}{\centering Girder 1 - n} & High Shear Condition? & V > 0.6 Vd & Yes / No & --- \\[6pt]
-\cline{2-5}
- & Reduced Moment Capacity, $M_{dv}$ & $M_d - \beta(M_d - M_{fd})$ & \placeholder{$M_{dv}$} kN-m & --- \\[6pt]
-\cline{2-5}
- & Interaction Check: $M_u \leq M_{dv}$ & --- & PASS / FAIL & --- \\[6pt]
-\hline
+""" + t55_content + r"""
 \end{tabularx}
 \end{table}
 \noindent\textit{Note: IS 800 Cl. 9.2.2}
@@ -1398,16 +1651,7 @@ This section presents all structural design checks performed by OsdagBridge. For
 \hline
 \textbf{} & \textbf{Parameter} & \textbf{Formula} & \textbf{Value} & \textbf{Status} \\[6pt]
 \hline
-\multirow{5}{*}{\centering Girder 1 - n} & Elastic Critical Moment, Mcr & pi²EIy/LLT² $\times$ (GIt + pi²EIw/LLT²)\textasciicircum 0.5 & \placeholder{$M_{cr}$} kN-m & --- \\[6pt]
-\cline{2-5}
- & Non-dim. Slenderness, $\bar{\lambda}_{LT}$ & $\sqrt{M_p / M_{cr}}$ & \placeholder{$\bar{\lambda}_{LT}$} & --- \\[6pt]
-\cline{2-5}
- & LTB Reduction Factor, chi\_LT & IS 800 Cl. 8.2.2 & \placeholder{$\chi_{LT}$} & --- \\[6pt]
-\cline{2-5}
- & LTB Resistance, Mb & chi\_LT $\times$ Mp / $\gamma_{M0}$ & \placeholder{$M_b$} kN-m & --- \\[6pt]
-\cline{2-5}
- & $M_u \leq M_b$ & --- & PASS / FAIL & --- \\[6pt]
-\hline
+""" + t56_content + r"""
 \end{tabularx}
 \end{table}
 \noindent\textit{Note: IRC 22 Cl. 603.3.3.1, IS 800 Cl. 8.2.2}
@@ -1420,18 +1664,7 @@ This section presents all structural design checks performed by OsdagBridge. For
 \vspace{-6pt}
 \begin{tabularx}{\textwidth}{|C{2.5cm}|L{6.5cm}|>{\arraybackslash}X|}
 \hline
-\multirow{6}{*}{\centering Girder 1 - n} & \textbf{Shear Buckling Design Method} & Simple Post Critical / Tension Field \\[6pt]
-\cline{2-3}
- & \textbf{Intermediate Stiffener Thickness (mm)} & \placeholder{ts\_i} mm \\[6pt]
-\cline{2-3}
- & \textbf{Intermediate Stiffener Spacing (mm)} & \placeholder{c} mm \\[6pt]
-\cline{2-3}
- & \textbf{End Panel Stiffener Thickness (mm)} & \placeholder{ts\_e} mm \\[6pt]
-\cline{2-3}
- & \textbf{No. of End Panel Stiffeners} & 2 (Pair) \\[6pt]
-\cline{2-3}
- & \textbf{Longitudinal Stiffeners} & Not Required / Required \\[6pt]
-\hline
+""" + t57_content + r"""
 \end{tabularx}
 \end{table}
 
@@ -1444,10 +1677,7 @@ This section presents all structural design checks performed by OsdagBridge. For
 \hline
 \textbf{} & \textbf{Check} & \textbf{Required} & \textbf{Provided} & \textbf{Status} \\[6pt]
 \hline
-\multirow{2}{*}{\centering Girder 1 - n} & Min. Moment of Inertia, Is & $\geq$ 0.75 d tw³ = \placeholder{val} mm⁴ & \placeholder{Is\_prov} mm⁴ & PASS \\[6pt]
-\cline{2-5}
- & Critical Buckling Stress, tau\_cr,e & per IS 800 Cl. 8.4.2.2 & \placeholder{tau\_cr} MPa & --- \\[6pt]
-\hline
+""" + t58_content + r"""
 \end{tabularx}
 \end{table}
 \noindent\textit{Note: IS 800 Cl. 8.7.1.2}
@@ -1461,12 +1691,7 @@ This section presents all structural design checks performed by OsdagBridge. For
 \hline
 \textbf{} & \textbf{Check} & \textbf{Required} & \textbf{Provided} & \textbf{Status} \\[6pt]
 \hline
-\multirow{3}{*}{\centering Girder 1 - n} & Vertical Anchor Force, $V_p$ & $d \times t_w \times f_y / \sqrt{3}$ & \placeholder{$V_p$} kN & --- \\[6pt]
-\cline{2-5}
- & Tension Flange Reaction, $R_{tf}$ & $V_p / 2$ & \placeholder{$R_{tf}$} kN & --- \\[6pt]
-\cline{2-5}
- & Tension Flange Moment, $M_{tf}$ & $V_p \times d / 10$ & \placeholder{$M_{tf}$} kN-m & --- \\[6pt]
-\hline
+""" + t59_content + r"""
 \end{tabularx}
 \end{table}
 \noindent\textit{Note: IS 800 Cl. 8.4.2.2}
@@ -1481,10 +1706,7 @@ This section presents all structural design checks performed by OsdagBridge. For
 \hline
 \textbf{} & \textbf{Check} & \textbf{Allowable} & \textbf{Actual} & \textbf{Status} \\[6pt]
 \hline
-\multirow{2}{*}{\centering Girder 1 - n} & Live Load Deflection (L/800) & \placeholder{δ\_allow\_LL} mm & \placeholder{δ\_LL} mm & PASS / FAIL \\[6pt]
-\cline{2-5}
- & Total Load Deflection (L/600) & \placeholder{δ\_allow\_tot} mm & \placeholder{δ\_tot} mm & PASS / FAIL \\[6pt]
-\hline
+""" + t510_content + r"""
 \end{tabularx}
 \end{table}
 \noindent\textit{Note: IRC 22 Cl. 604.3.2}
@@ -1498,10 +1720,7 @@ This section presents all structural design checks performed by OsdagBridge. For
 \hline
 \textbf{} & \textbf{Element} & \textbf{Allowable Stress} & \textbf{Actual Stress} & \textbf{Status} \\[6pt]
 \hline
-\multirow{2}{*}{\centering Girder 1 - n} & Concrete (0.48 fck) & \placeholder{allow\_c} MPa & \placeholder{actual\_c} MPa & PASS / FAIL \\[6pt]
-\cline{2-5}
- & Steel (0.66 fy) & \placeholder{allow\_s} MPa & \placeholder{actual\_s} MPa & PASS / FAIL \\[6pt]
-\hline
+""" + t511_content + r"""
 \end{tabularx}
 \end{table}
 
@@ -1514,12 +1733,7 @@ This section presents all structural design checks performed by OsdagBridge. For
 \hline
 \textbf{} & \textbf{Element} & \textbf{Detail Category} & \textbf{Allowable Stress Range (ffd)} & \textbf{Actual Stress Range ($\gamma_{fft}$ $\times$ f)} \\[6pt]
 \hline
-\multirow{3}{*}{\centering Girder 1 - n} & Welded Girder Web & IS 800 Table & \placeholder{ffd} MPa & \placeholder{f\_actual} MPa --- PASS \\[6pt]
-\cline{2-5}
- & Welded Girder Flange & IS 800 Table & \placeholder{ffd} MPa & \placeholder{f\_actual} MPa --- PASS \\[6pt]
-\cline{2-5}
- & Shear Connectors & tau\_fn = 67 MPa & \placeholder{tau\_fd} MPa & \placeholder{tau\_actual} MPa --- PASS \\[6pt]
-\hline
+""" + t512_content + r"""
 \end{tabularx}
 \end{table}
 \noindent\textit{Note: IRC 22 Cl. 605. NSC = \placeholder{n\_cycles} cycles. Capacity reduction factor mu\_r applied where plate thickness > 25 mm.}
@@ -1534,18 +1748,7 @@ This section presents all structural design checks performed by OsdagBridge. For
 \hline
 \textbf{Girder} & \textbf{Governing Check} & \textbf{Moment UR} & \textbf{Shear UR} & \textbf{LTB UR} & \textbf{Deflection UR} & \textbf{Status} \\[6pt]
 \hline
-Girder 1 & \placeholder{Check} & \placeholder{UR} & \placeholder{UR} & \placeholder{UR} & \placeholder{UR} & PASS / FAIL \\[6pt]
-\hline
-Girder 2 & \placeholder{Check} & \placeholder{UR} & \placeholder{UR} & \placeholder{UR} & \placeholder{UR} & PASS / FAIL \\[6pt]
-\hline
-Girder 3 & \placeholder{Check} & \placeholder{UR} & \placeholder{UR} & \placeholder{UR} & \placeholder{UR} & PASS / FAIL \\[6pt]
-\hline
-Girder 4 & \placeholder{Check} & \placeholder{UR} & \placeholder{UR} & \placeholder{UR} & \placeholder{UR} & PASS / FAIL \\[6pt]
-\hline
-Girder 5A & \placeholder{Check} & \placeholder{UR} & \placeholder{UR} & \placeholder{UR} & \placeholder{UR} & PASS / FAIL \\[6pt]
-\hline
-Girder 5B & \placeholder{Check} & \placeholder{UR} & \placeholder{UR} & \placeholder{UR} & \placeholder{UR} & PASS / FAIL \\[6pt]
-\hline
+""" + g_summary_table_content + r"""
 \end{tabularx}
 \end{table}
 \noindent\textit{Note: UR = Demand / Capacity. A value $\leq 1.0$ indicates a passing check. Governing check identifies the critical design criterion for each girder.}
@@ -1821,30 +2024,7 @@ Cross bracing between adjacent plate girders provides lateral stability during c
 \hline
 \textbf{Panel} & \textbf{Member} & \textbf{Section} & \textbf{$P_u$ (kN)} & \textbf{Nature} & \textbf{$A_g$ (mm²)} & \textbf{$r_{min}$ (mm)} \\[6pt]
 \hline
-\multirow{3}{*}{\centering G1--G2} & Diagonal & \placeholder{ISA} & \placeholder{$P_u$} & C / T & \placeholder{$A_g$} & \placeholder{$r$} \\[6pt]
-\cline{2-7}
- & Top chord & \placeholder{ISA} & \placeholder{$P_u$} & C / T & \placeholder{$A_g$} & \placeholder{$r$} \\[6pt]
-\cline{2-7}
- & Bottom chord & \placeholder{ISA} & \placeholder{$P_u$} & C / T & \placeholder{$A_g$} & \placeholder{$r$} \\[6pt]
-\hline
-\multirow{3}{*}{\centering G2--G3} & Diagonal & \placeholder{ISA} & \placeholder{$P_u$} & C / T & \placeholder{$A_g$} & \placeholder{$r$} \\[6pt]
-\cline{2-7}
- & Top chord & \placeholder{ISA} & \placeholder{$P_u$} & C / T & \placeholder{$A_g$} & \placeholder{$r$} \\[6pt]
-\cline{2-7}
- & Bottom chord & \placeholder{ISA} & \placeholder{$P_u$} & C / T & \placeholder{$A_g$} & \placeholder{$r$} \\[6pt]
-\hline
-\multirow{3}{*}{\centering G3--G4} & Diagonal & \placeholder{ISA} & \placeholder{$P_u$} & C / T & \placeholder{$A_g$} & \placeholder{$r$} \\[6pt]
-\cline{2-7}
- & Top chord & \placeholder{ISA} & \placeholder{$P_u$} & C / T & \placeholder{$A_g$} & \placeholder{$r$} \\[6pt]
-\cline{2-7}
- & Bottom chord & \placeholder{ISA} & \placeholder{$P_u$} & C / T & \placeholder{$A_g$} & \placeholder{$r$} \\[6pt]
-\hline
-\multirow{3}{*}{\centering G4--G5} & Diagonal & \placeholder{ISA} & \placeholder{$P_u$} & C / T & \placeholder{$A_g$} & \placeholder{$r$} \\[6pt]
-\cline{2-7}
- & Top chord & \placeholder{ISA} & \placeholder{$P_u$} & C / T & \placeholder{$A_g$} & \placeholder{$r$} \\[6pt]
-\cline{2-7}
- & Bottom chord & \placeholder{ISA} & \placeholder{$P_u$} & C / T & \placeholder{$A_g$} & \placeholder{$r$} \\[6pt]
-\hline
+""" + cb_forces_content + r"""
 \end{longtable}
 \noindent\textit{Note: C = Compression; T = Tension. Governing load combination: LC-ULS-2 (DL + LL + WL). $A_g$ = gross cross-sectional area; $r_{min}$ = minimum radius of gyration.}
 
@@ -1857,30 +2037,7 @@ Cross bracing between adjacent plate girders provides lateral stability during c
 \hline
 \textbf{Panel} & \textbf{Member} & \textbf{Nature} & \textbf{Eff.\ Length $KL$ (mm)} & \textbf{$KL/r$} & \textbf{Limit / Status} \\[6pt]
 \hline
-\multirow{3}{*}{\centering G1--G2} & Diagonal & C & \placeholder{$KL$} & \placeholder{$KL/r$} & 250 --- PASS \\[6pt]
-\cline{2-6}
- & Top chord & C & \placeholder{$KL$} & \placeholder{$KL/r$} & 250 --- PASS \\[6pt]
-\cline{2-6}
- & Bottom chord & T & \placeholder{$KL$} & \placeholder{$KL/r$} & 400 --- PASS \\[6pt]
-\hline
-\multirow{3}{*}{\centering G2--G3} & Diagonal & C & \placeholder{$KL$} & \placeholder{$KL/r$} & 250 --- PASS \\[6pt]
-\cline{2-6}
- & Top chord & C & \placeholder{$KL$} & \placeholder{$KL/r$} & 250 --- PASS \\[6pt]
-\cline{2-6}
- & Bottom chord & T & \placeholder{$KL$} & \placeholder{$KL/r$} & 400 --- PASS \\[6pt]
-\hline
-\multirow{3}{*}{\centering G3--G4} & Diagonal & C & \placeholder{$KL$} & \placeholder{$KL/r$} & 250 --- PASS \\[6pt]
-\cline{2-6}
- & Top chord & C & \placeholder{$KL$} & \placeholder{$KL/r$} & 250 --- PASS \\[6pt]
-\cline{2-6}
- & Bottom chord & T & \placeholder{$KL$} & \placeholder{$KL/r$} & 400 --- PASS \\[6pt]
-\hline
-\multirow{3}{*}{\centering G4--G5} & Diagonal & C & \placeholder{$KL$} & \placeholder{$KL/r$} & 250 --- PASS \\[6pt]
-\cline{2-6}
- & Top chord & C & \placeholder{$KL$} & \placeholder{$KL/r$} & 250 --- PASS \\[6pt]
-\cline{2-6}
- & Bottom chord & T & \placeholder{$KL$} & \placeholder{$KL/r$} & 400 --- PASS \\[6pt]
-\hline
+""" + cb_slenderness_content + r"""
 \end{tabularx}
 \end{table}
 \noindent\textit{Note: IS 800 Table 3. Limit = 250 for compression members, 400 for tension members. $K = 1.0$ for members with both ends pinned.}
@@ -1948,18 +2105,7 @@ Cross bracing between adjacent plate girders provides lateral stability during c
 \hline
 \textbf{} & \textbf{Member} & \textbf{Section} & \textbf{Demand (kN)} & \textbf{Capacity (kN)} \\[6pt]
 \hline
-\multirow{3}{*}{\centering Girder 1 -- 2} & Brace diagonal (typical) & \placeholder{ISA section} & \placeholder{P\_u} & \placeholder{P\_d} --- PASS \\[6pt]
-\cline{2-5}
- & Top chord & \placeholder{ISA section} & \placeholder{P\_u} & \placeholder{P\_d} --- PASS \\[6pt]
-\cline{2-5}
- & Bottom chord & \placeholder{ISA section} & \placeholder{P\_u} & \placeholder{P\_d} --- PASS \\[6pt]
-\hline
-\multirow{3}{*}{\centering \shortstack{Girder 2 -- 3\\and so on}} & Brace diagonal (typical) & \placeholder{ISA section} & \placeholder{P\_u} & \placeholder{P\_d} --- PASS \\[6pt]
-\cline{2-5}
- & Top chord & \placeholder{ISA section} & \placeholder{P\_u} & \placeholder{P\_d} --- PASS \\[6pt]
-\cline{2-5}
- & Bottom chord & \placeholder{ISA section} & \placeholder{P\_u} & \placeholder{P\_d} --- PASS \\[6pt]
-\hline
+""" + cb_capacity_content + r"""
 \end{tabularx}
 \end{table}
 \noindent\textit{Note: Designed per IS 800 Cl. 7 (compression) and Cl. 6 (tension). OsdagBridge cross-bracing module used.}
@@ -2796,7 +2942,7 @@ def generate_report(payload, request):
         
         secs = payload.options.sections
         if 'Input Parameters' in secs:
-            doc_parts.append(ch2_input_parameters(payload.metadata, payload.inputs))
+            doc_parts.append(ch2_input_parameters(payload.metadata, payload.inputs, payload.output_dict))
             
         doc_parts.append(ch3_loads(payload.inputs))
         doc_parts.append(ch4_analysis(payload.analysis_summary, fig_rel, bridge, span_m))
