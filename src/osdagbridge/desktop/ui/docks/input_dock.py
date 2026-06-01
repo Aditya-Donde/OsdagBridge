@@ -805,7 +805,9 @@ class InputDock(QWidget):
         # QComboBox passes str directly via currentTextChanged
         if isinstance(widget, str):
             self._update_input_dict(key, widget)
-            self.input_value_changed.emit()
+            # Defer CAD refresh so all other currentTextChanged handlers
+            # (e.g., median/footpath re-solve callbacks) finish first.
+            QTimer.singleShot(0, self.input_value_changed.emit)
             return
 
         current_text = widget.text().strip()

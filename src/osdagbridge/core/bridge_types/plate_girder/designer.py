@@ -410,6 +410,7 @@ class DemandEnvelope:
     M_sls_kNm: float = 0.0
     V_sls_kN: float = 0.0
     Vr_kN: float = 0.0                                    # Cl.606.4.2 — LL shear range (Vmax_LL - Vmin_LL)
+    M_girder_sw_kNm: float = 0.0                          # Construction stage 1: girder self-weight only (bare steel)
 
 
 class DemandExtractor:
@@ -432,6 +433,7 @@ class DemandExtractor:
         M_sls_kNm: float = 0.0,
         V_sls_kN: float = 0.0,
         Vr_kN: float = 0.0,
+        M_girder_sw_kNm: float = 0.0,
     ) -> DemandEnvelope:
         # Build a DemandEnvelope from directly supplied factored quantities.
         return DemandEnvelope(
@@ -441,6 +443,7 @@ class DemandExtractor:
             Nsc=Nsc, governing_combination=combination,
             location=location, member=member, source="manual",
             M_sls_kNm=M_sls_kNm, V_sls_kN=V_sls_kN, Vr_kN=Vr_kN,
+            M_girder_sw_kNm=M_girder_sw_kNm,
         )
 
     @staticmethod
@@ -545,6 +548,35 @@ class DemandExtractor:
             M_const_kNm = (construction_mz * gamma_dl) / 1000.0
 
         # ------------------------------------------------------------------
+        # (2b) Girder self-weight only moment — Construction Stage 1
+        #      Bare steel girder on its own before wet concrete is placed.
+        #      Matches only the girder/steel self-weight LC (excludes deck/wet-concrete).
+        # ------------------------------------------------------------------
+        _gsw_patterns = ("girder self weight", "girder_self_weight", "steel")
+        _deck_exclude = ("deck", "concrete", "wet", "slab")
+        girder_sw_mz = 0.0
+        for lc in dead_lcs:
+            lc_str = str(lc).lower()
+            if (any(p in lc_str for p in _gsw_patterns)
+                    and not any(p in lc_str for p in _deck_exclude)):
+                try:
+                    mz = _as_float(
+                        ds.sel(Loadcase=lc, Element=element_ids,
+                               Component=["Mz_i", "Mz_j"])["forces"].values
+                    )
+                    mz_finite = mz[~np.isnan(mz)]
+                    if mz_finite.size:
+                        girder_sw_mz = max(girder_sw_mz, float(np.abs(mz_finite).max()))
+                except KeyError:
+                    continue
+
+        if girder_sw_mz > 0.0:
+            gamma_dl = IRC6_2017.table_B2(load_type="dead_load", qualifier="adding", combination="basic")
+            M_girder_sw_kNm = (girder_sw_mz * gamma_dl) / 1000.0
+        else:
+            M_girder_sw_kNm = 0.0
+
+        # ------------------------------------------------------------------
         # (3) Deflections from `displacements.Component="y"`
         #
         # The grillage model uses bare-steel section properties throughout.
@@ -602,8 +634,9 @@ class DemandExtractor:
 
         # Apply composite stiffness correction to post-composite loads (SDL + live).
         # IRC 22:2015 Cl.604.3.2: deflection limits checked at SLS after composite action.
-        # Construction deflection (girder SW + wet concrete) is compensated by pre-camber
-        # and must NOT be added to the service deflection check (L/600 total).
+        # delta_live  = live-load-only deflection (L/800 limit); from vehicle LCs only.
+        # delta_total = SDL + live deflection (L/600 limit); SLS combinations excluded
+        # because they include pre-composite DL (resisted by bare steel, not composite section).
         delta_live_mm  = delta_live_m / stiffness_ratio * 1000.0
         delta_total_mm = (delta_sdl_m + delta_live_m) / stiffness_ratio * 1000.0
 
@@ -615,14 +648,20 @@ class DemandExtractor:
         stress_range_MPa = 0.0
         shear_range_MPa = 0.0
 
-        if live_moving and Ze_steel_mm3 > 0:
+        # Fatigue uses moving-load traces (Class A / 70R traversal as proxy for fatigue vehicle).
+        # SLS_Frequent combinations are NOT used here — they bundle DL + SDL + factored LL,
+        # which would overestimate the stress range. A dedicated IRC fatigue vehicle LC
+        # (Annex A of IRC 6) should replace live_moving when that LC is available in the model.
+        _fatigue_lcs = live_moving
+
+        if _fatigue_lcs and Ze_steel_mm3 > 0:
             try:
                 mz_i = _as_float(
-                    ds.forces.sel(Loadcase=live_moving, Element=element_ids,
+                    ds.forces.sel(Loadcase=_fatigue_lcs, Element=element_ids,
                                   Component="Mz_i").values
                 ).flatten()
                 mz_j = _as_float(
-                    ds.forces.sel(Loadcase=live_moving, Element=element_ids,
+                    ds.forces.sel(Loadcase=_fatigue_lcs, Element=element_ids,
                                   Component="Mz_j").values
                 ).flatten()
                 mz_all = np.concatenate([mz_i, mz_j])
@@ -636,14 +675,14 @@ class DemandExtractor:
             except (KeyError, ValueError):
                 pass
 
-        if live_moving and Aw_mm2 > 0:
+        if _fatigue_lcs and Aw_mm2 > 0:
             try:
                 vy_i = _as_float(
-                    ds.forces.sel(Loadcase=live_moving, Element=element_ids,
+                    ds.forces.sel(Loadcase=_fatigue_lcs, Element=element_ids,
                                   Component="Vy_i").values
                 ).flatten()
                 vy_j = _as_float(
-                    ds.forces.sel(Loadcase=live_moving, Element=element_ids,
+                    ds.forces.sel(Loadcase=_fatigue_lcs, Element=element_ids,
                                   Component="Vy_j").values
                 ).flatten()
                 vy_all = np.concatenate([vy_i, vy_j])
@@ -656,28 +695,49 @@ class DemandExtractor:
                 pass
 
         # ------------------------------------------------------------------
-        # (5) SLS moment and shear — max live load values (service, unfactored)
+        # (5) SLS moment and shear — post-composite loads only (SDL + live).
+        # SLS combinations are NOT used directly: they bundle pre-composite DL
+        # (γ=1.0) with SDL + LL. Pre-composite DL is resisted by bare steel alone
+        # and must not be applied to the composite section for stress checks.
+        # SDL (wearing course, barriers, etc.) IS post-composite and contributes
+        # to composite concrete stress, so it is summed with the live-load moment.
         # ------------------------------------------------------------------
-        M_sls_mz = 0.0
-        V_sls_vy = 0.0
-        for lc in all_live_lcs:
-            try:
-                mz = _as_float(
-                    ds.sel(Loadcase=lc, Element=element_ids,
-                           Component=["Mz_i", "Mz_j"])["forces"].values
-                )
-                vy = _as_float(
-                    ds.sel(Loadcase=lc, Element=element_ids,
-                           Component=["Vy_i", "Vy_j"])["forces"].values
-                )
-                mz_finite = mz[~np.isnan(mz)]
-                vy_finite = vy[~np.isnan(vy)]
-                if mz_finite.size:
-                    M_sls_mz = max(M_sls_mz, float(np.abs(mz_finite).max()))
-                if vy_finite.size:
-                    V_sls_vy = max(V_sls_vy, float(np.abs(vy_finite).max()))
-            except KeyError:
-                continue
+        def _peak_mz_vy(lcs):
+            mz_max, vy_max, gov = 0.0, 0.0, None
+            for lc in lcs:
+                try:
+                    mz = _as_float(
+                        ds.sel(Loadcase=lc, Element=element_ids,
+                               Component=["Mz_i", "Mz_j"])["forces"].values
+                    )
+                    vy = _as_float(
+                        ds.sel(Loadcase=lc, Element=element_ids,
+                               Component=["Vy_i", "Vy_j"])["forces"].values
+                    )
+                    mz_f = mz[~np.isnan(mz)]
+                    vy_f = vy[~np.isnan(vy)]
+                    if mz_f.size:
+                        v = float(np.abs(mz_f).max())
+                        if v > mz_max:
+                            mz_max = v
+                            gov = lc
+                    if vy_f.size:
+                        vy_max = max(vy_max, float(np.abs(vy_f).max()))
+                except KeyError:
+                    continue
+            return mz_max, vy_max, gov
+
+        M_sdl_mz, V_sdl_vy, _        = _peak_mz_vy(sdl_lcs)
+        M_ll_mz,  V_ll_vy,  _gov_lc  = _peak_mz_vy(all_live_lcs)
+
+        # SDL and live act simultaneously on the composite section — sum their peak values.
+        M_sls_mz = M_sdl_mz + M_ll_mz
+        V_sls_vy = V_sdl_vy + V_ll_vy
+
+        print(f"  [SLS stress] SDL LCs={len(sdl_lcs)}  "
+              f"M_SDL={M_sdl_mz/1e3:.1f} kNm | "
+              f"governing LL LC={_gov_lc}  M_LL={M_ll_mz/1e3:.1f} kNm | "
+              f"M_sls={M_sls_mz/1e3:.1f} kNm")
 
         M_sls_kNm = M_sls_mz / 1000.0
         V_sls_kN  = V_sls_vy / 1000.0
@@ -698,6 +758,7 @@ class DemandExtractor:
             source="grillage_analysis",
             M_sls_kNm=round(M_sls_kNm, 2),
             V_sls_kN=round(V_sls_kN, 2),
+            M_girder_sw_kNm=round(M_girder_sw_kNm, 2),
         )
         
     @staticmethod
@@ -744,6 +805,10 @@ class CapacityResults:
     lambda_LT: float = 0.0
     chi_LT: float = 0.0
     Mb_kNm: float = 0.0
+    # Stage 1 LTB (girder only, LLT = full span) — lower Mb, used for girder-SW check.
+    Mb_kNm_stage1: float = 0.0
+    lambda_LT_stage1: float = 0.0
+    chi_LT_stage1: float = 0.0
     Av_mm2: float = 0.0                                 # Cl.603.3.3.2
     Vn_kN: float = 0.0
     Vd_kN: float = 0.0
@@ -959,11 +1024,17 @@ class IRC22CapacityCalculator:
         }
 
     # IRC 22:2015 Cl.603.3.3.1 — lateral-torsional buckling resistance at construction stage.
-    def compute_buckling_resistance(self, beff_mm: float, section_class: str = "") -> dict:
+    def compute_buckling_resistance(self, beff_mm: float, section_class: str = "",
+                                    LLT_mm_override: float = None) -> dict:
         # Section properties required by the IRC22 clause method.
         sec = self.sec
         mat = self.mat
-        LLT_mm = min(self.geo.cross_bracing_spacing_m * 1000.0, self.geo.span * 1000.0)
+        # Stage 1 (girder only): caller passes full span as override.
+        # Stage 2 (cross-bracings in place): use cross-bracing spacing (default).
+        if LLT_mm_override is not None:
+            LLT_mm = LLT_mm_override
+        else:
+            LLT_mm = min(self.geo.cross_bracing_spacing_m * 1000.0, self.geo.span * 1000.0)
 
         It = (sec.bf_top * sec.tf_top ** 3
               + sec.dw  * sec.tw    ** 3
@@ -1786,7 +1857,7 @@ class IRC22CapacityCalculator:
         results.Vd_kN = shear["Vd_kN"]
         results.details["shear_capacity"] = shear
 
-        # 5. LTB buckling resistance — pass governing class from step 2 to avoid re-running classification.
+        # 5. LTB buckling resistance — Stage 2: cross-bracings in place, LLT = cross-bracing spacing.
         ltb = self.compute_buckling_resistance(results.beff_mm,
                                                section_class=sec_class["governing_class"])
         results.Mcr_kNm = ltb["Mcr_kNm"]
@@ -1794,6 +1865,17 @@ class IRC22CapacityCalculator:
         results.chi_LT = ltb["chi_LT"]
         results.Mb_kNm = ltb["Mb_kNm"]
         results.details["buckling_resistance"] = ltb
+
+        # 5b. LTB buckling resistance — Stage 1: girder only (no cross-bracings), LLT = full span.
+        ltb_s1 = self.compute_buckling_resistance(
+            results.beff_mm,
+            section_class=sec_class["governing_class"],
+            LLT_mm_override=self.geo.span * 1000.0,
+        )
+        results.Mb_kNm_stage1 = ltb_s1["Mb_kNm"]
+        results.lambda_LT_stage1 = ltb_s1["lambda_LT"]
+        results.chi_LT_stage1 = ltb_s1["chi_LT"]
+        results.details["buckling_resistance_stage1"] = ltb_s1
 
         # 6. Combined bending + shear
         combined = self.compute_combined_bending_shear(
@@ -2055,10 +2137,26 @@ class DCREngine:
                                  note=f"Nu/NRd + Mu/MRd = {interaction_ratio:.3f}")            
 
         # ── CATEGORY 4: Lateral Torsional Buckling ────────────────────────────
-        self._add_check(5, "LTB (Construction Stage)", "Cl.603.3.3.1",  # ←── CHANGED id was 4
+        # 4a. Construction Stage 1 — girder only, no cross-bracings, LLT = full span.
+        if d.M_girder_sw_kNm > 0:
+            Mb_s1 = c.Mb_kNm_stage1 if c.Mb_kNm_stage1 > 0 else c.Mb_kNm
+            ltb_s1 = c.details.get("buckling_resistance_stage1", {})
+            lLT_s1 = ltb_s1.get("lambda_LT", c.lambda_LT_stage1)
+            chi_s1 = ltb_s1.get("chi_LT", c.chi_LT_stage1)
+            LLT_s1 = ltb_s1.get("LLT_mm", 0.0)
+            self._add_check(5, "LTB (Girder SW Only)", "Cl.603.3.3.1",
+                             d.M_girder_sw_kNm, Mb_s1, "kNm",
+                             note=(f"Stage 1: girder self-weight only, LLT=span={LLT_s1/1000:.1f}m; "
+                                   f"λ_LT={lLT_s1:.4f}, χ_LT={chi_s1:.4f}"))
+
+        # 4b. Construction Stage 2 — steel + wet concrete, cross-bracings in place, LLT = cb spacing.
+        ltb_s2 = c.details.get("buckling_resistance", {})
+        LLT_s2 = ltb_s2.get("LLT_mm", 0.0)
+        self._add_check(5, "LTB (Construction Stage)", "Cl.603.3.3.1",
                          d.M_construction_kNm if d.M_construction_kNm > 0 else d.Mu_kNm,
                          c.Mb_kNm, "kNm",
-                         note=f"λ_LT={c.lambda_LT:.4f}, χ_LT={c.chi_LT:.4f}")
+                         note=(f"Stage 2: steel self-weight + wet concrete, LLT=cb_spacing={LLT_s2/1000:.1f}m; "
+                               f"λ_LT={c.lambda_LT:.4f}, χ_LT={c.chi_LT:.4f}"))
 
         # ── CATEGORY 5: Resistance to Longitudinal & Transverse Shear ─────────
         s_prov = c.stud_spacing_provided_mm
@@ -2544,7 +2642,10 @@ def _example_demands(config: BridgeConfig) -> DemandEnvelope:
     impact_fraction = IRC6_2017.cl_208_3_impact_factor(L_m)
     impact_multiplier = 1.0 + impact_fraction
 
-    # Construction stage — steel self-weight + wet concrete only; no SIDL, no live load.
+    # Construction stage 1 — girder self-weight only (bare steel, no wet concrete yet).
+    M_girder_sw_kNm = gamma_dl * w_self_weight * L_m ** 2 / 8.0
+
+    # Construction stage 2 — steel self-weight + wet concrete only; no SIDL, no live load.
     w_construction = w_self_weight + w_wet_slab
     M_construction_kNm = gamma_dl * w_construction * L_m ** 2 / 8.0
 
@@ -2558,6 +2659,7 @@ def _example_demands(config: BridgeConfig) -> DemandEnvelope:
         Mu_kNm=round(Mu_kNm, 2),
         Vu_kN=round(Vu_kN, 2),
         M_construction_kNm=round(M_construction_kNm, 2),
+        M_girder_sw_kNm=round(M_girder_sw_kNm, 2),
         Nsc=config.fatigue.Nsc,
         combination=(
             f"ULS Basic: γDL={gamma_dl}·DL + γLL={gamma_ll}·IF={impact_multiplier:.3f}·LL"
@@ -2734,7 +2836,8 @@ def run_design_check(
         demand = _example_demands(config)
     print(f"  Mu              = {demand.Mu_kNm:.2f} kNm")
     print(f"  Vu              = {demand.Vu_kN:.2f} kN")
-    print(f"  M_construction  = {demand.M_construction_kNm:.2f} kNm")
+    print(f"  M_girder_sw     = {demand.M_girder_sw_kNm:.2f} kNm  (Stage 1: girder SW only)")
+    print(f"  M_construction  = {demand.M_construction_kNm:.2f} kNm  (Stage 2: SW + wet concrete)")
     print(f"  delta_live      = {demand.delta_live_mm:.3f} mm")
     print(f"  delta_total     = {demand.delta_total_mm:.3f} mm")
     print(f"  stress_range    = {demand.stress_range_MPa:.3f} MPa")
@@ -2845,7 +2948,168 @@ def run_design_check(
     print(f"  PIPELINE COMPLETE - Overall: {engine.overall_status()}")
     print("=" * 60)
 
-    return report_text, engine
+    # -- Build structured results dict for output dock and report ──────────
+    _sec = config.section
+    _mat = config.material
+    _geo = config.geometry
+    design_results = {
+        # ── bridge configuration ────────────────────────────────────────────
+        "span_m"                    : _geo.span,
+        "support_type"              : _geo.support_type,
+        "n_girders"                 : _geo.n_girders,
+        "beam_spacing_m"            : _geo.beam_spacing,
+        "carriageway_width_m"       : _geo.carriageway_width,
+        "beam_type"                 : _geo.beam_type,
+        "cross_bracing_spacing_m"   : _geo.cross_bracing_spacing_m,
+        # ── material properties ─────────────────────────────────────────────
+        "steel_grade"               : _mat.steel_grade,
+        "fy_MPa"                    : _mat.fy,
+        "fu_MPa"                    : _mat.fu,
+        "concrete_grade"            : _mat.concrete_grade,
+        "fck_MPa"                   : _mat.fck,
+        "fctm_MPa"                  : _mat.fctm,
+        "Ecm_MPa"                   : _mat.Ecm,
+        "rebar_grade"               : _mat.rebar_grade,
+        "fy_rebar_MPa"              : _mat.fy_rebar,
+        "gamma_m0"                  : _mat.gamma_m0,
+        "gamma_m1"                  : _mat.gamma_m1,
+        "gamma_v"                   : _mat.gamma_v,
+        # ── steel section ───────────────────────────────────────────────────
+        "D_mm"                      : _sec.D,
+        "bf_top_mm"                 : _sec.bf_top,
+        "tf_top_mm"                 : _sec.tf_top,
+        "bf_bot_mm"                 : _sec.bf_bot,
+        "tf_bot_mm"                 : _sec.tf_bot,
+        "tw_mm"                     : _sec.tw,
+        "dw_mm"                     : round(_sec.dw, 1),
+        "A_steel_mm2"               : round(_sec.A_steel, 1),
+        "Iz_steel_mm4"              : round(_sec.Iz_steel, 0),
+        "Ze_steel_mm3"              : round(_sec.Ze_steel, 0),
+        "Zp_steel_mm3"              : round(_sec.Zp_steel, 0),
+        "y_cg_from_bot_mm"          : round(_sec.y_cg_from_bot, 2),
+        "fabrication"               : _sec.fabrication,
+        # ── slab ────────────────────────────────────────────────────────────
+        "slab_thickness_mm"         : config.slab.thickness,
+        "haunch_depth_mm"           : config.slab.haunch_depth,
+        # ── shear studs ─────────────────────────────────────────────────────
+        "stud_dia_mm"               : config.studs.diameter,
+        "stud_height_mm"            : config.studs.height,
+        "stud_fu_MPa"               : config.studs.fu,
+        "studs_per_section"         : config.studs.n_per_section,
+        # ── demands ─────────────────────────────────────────────────────────
+        "Mu_kNm"                    : demand.Mu_kNm,
+        "Vu_kN"                     : demand.Vu_kN,
+        "Nu_kN"                     : demand.Nu_kN,
+        "M_construction_kNm"        : demand.M_construction_kNm,
+        "delta_live_mm"             : demand.delta_live_mm,
+        "delta_total_mm"            : demand.delta_total_mm,
+        "stress_range_MPa"          : demand.stress_range_MPa,
+        "shear_range_MPa"           : demand.shear_range_MPa,
+        "Nsc"                       : demand.Nsc,
+        "M_sls_kNm"                 : demand.M_sls_kNm,
+        "V_sls_kN"                  : demand.V_sls_kN,
+        "Vr_kN"                     : demand.Vr_kN,
+        "governing_combination"     : demand.governing_combination,
+        "demand_location"           : demand.location,
+        "demand_member"             : demand.member,
+        "demand_source"             : demand.source,
+        # ── capacities — ULS flexure ────────────────────────────────────────
+        "beff_mm"                   : capacity.beff_mm,
+        "xu_mm"                     : capacity.xu_mm,
+        "pna_location"              : capacity.pna_location,
+        "Mp_kNm"                    : capacity.Mp_kNm,
+        "Md_kNm"                    : capacity.Md_kNm,
+        # ── capacities — LTB ────────────────────────────────────────────────
+        "Mcr_kNm"                   : capacity.Mcr_kNm,
+        "lambda_LT"                 : capacity.lambda_LT,
+        "chi_LT"                    : capacity.chi_LT,
+        "Mb_kNm"                    : capacity.Mb_kNm,
+        # ── capacities — shear ──────────────────────────────────────────────
+        "Av_mm2"                    : capacity.Av_mm2,
+        "Vn_kN"                     : capacity.Vn_kN,
+        "Vd_kN"                     : capacity.Vd_kN,
+        # ── capacities — M-V interaction ────────────────────────────────────
+        "Mdv_kNm"                   : capacity.Mdv_kNm,
+        "beta_interaction"          : capacity.beta_interaction,
+        # ── SLS limits ──────────────────────────────────────────────────────
+        "defl_limit_live_mm"        : capacity.defl_limit_live_mm,
+        "defl_limit_total_mm"       : capacity.defl_limit_total_mm,
+        "sigma_c_limit_MPa"         : capacity.sigma_c_limit_MPa,
+        "sigma_s_limit_MPa"         : capacity.sigma_s_limit_MPa,
+        "sigma_rebar_limit_MPa"     : capacity.sigma_rebar_limit_MPa,
+        # ── SLS actual stresses ──────────────────────────────────────────────
+        "sigma_c_actual_MPa"        : capacity.sigma_c_actual_MPa,
+        "sigma_rebar_actual_MPa"    : capacity.sigma_rebar_actual_MPa,
+        "sigma_steel_equiv_MPa"     : capacity.sigma_steel_equiv_MPa,
+        "tau_web_actual_MPa"        : capacity.tau_web_actual_MPa,
+        # ── composite section ───────────────────────────────────────────────
+        "I_comp_short_mm4"          : capacity.I_comp_short_mm4,
+        "y_top_comp_mm"             : capacity.y_top_comp_mm,
+        "y_bot_comp_mm"             : capacity.y_bot_comp_mm,
+        # ── fatigue ─────────────────────────────────────────────────────────
+        "f_fd_MPa"                  : capacity.f_fd_MPa,
+        "tau_fd_MPa"                : capacity.tau_fd_MPa,
+        "f_fd_eff_MPa"              : capacity.f_fd_eff_MPa,
+        "tau_fd_eff_MPa"            : capacity.tau_fd_eff_MPa,
+        # ── shear studs ─────────────────────────────────────────────────────
+        "Qu_kN"                     : capacity.Qu_kN,
+        "Qr_kN"                     : capacity.Qr_kN,
+        "VL_N_per_mm"               : capacity.VL_N_per_mm,
+        "stud_spacing_uls_mm"       : capacity.stud_spacing_mm,
+        "stud_spacing_full_shear_mm": capacity.stud_spacing_full_shear_mm,
+        "stud_spacing_fatigue_mm"   : capacity.stud_spacing_fatigue_mm,
+        "stud_spacing_governing_mm" : capacity.stud_spacing_governing_mm,
+        "stud_spacing_provided_mm"  : capacity.stud_spacing_provided_mm,
+        "stud_spacing_max_mm"       : capacity.stud_spacing_max_mm,
+        "stud_spacing_min_mm"       : capacity.stud_spacing_min_mm,
+        "stud_detailing_ok"         : capacity.stud_detailing_ok,
+        # ── transverse shear ────────────────────────────────────────────────
+        "transverse_shear_ok"       : capacity.transverse_shear_ok,
+        "Ast_required_cm2_per_m"    : capacity.Ast_required_cm2_per_m,
+        "Ast_provided_cm2_per_m"    : capacity.Ast_provided_cm2_per_m,
+        # ── crack control ───────────────────────────────────────────────────
+        "As_min_crack_mm2"          : capacity.As_min_crack_mm2,
+        "As_provided_crack_mm2"     : capacity.As_provided_crack_mm2,
+        # ── stiffener ───────────────────────────────────────────────────────
+        "is_H_limit_mm"             : capacity.is_H_limit_mm,
+        "is_Iys_min_mm4"            : capacity.is_Iys_min_mm4,
+        "is_Iys_prov_mm4"           : capacity.is_Iys_prov_mm4,
+        "is_Fqd_kN"                 : capacity.is_Fqd_kN,
+        "is_Fq_kN"                  : capacity.is_Fq_kN,
+        "bs_Fcdw_wb_kN"             : capacity.bs_Fcdw_wb_kN,
+        "bs_Fcdw_lc_kN"             : capacity.bs_Fcdw_lc_kN,
+        "bs_Fpsd_kN"                : capacity.bs_Fpsd_kN,
+        "bs_Fcd_kN"                 : capacity.bs_Fcd_kN,
+        "bs_R_kN"                   : capacity.bs_R_kN,
+        # ── DCR summary ─────────────────────────────────────────────────────
+        "overall_status"            : engine.overall_status(),
+        "max_dcr"                   : engine.max_dcr(),
+        "n_pass"                    : engine.n_pass(),
+        "n_warn"                    : engine.n_warn(),
+        "n_fail"                    : engine.n_fail(),
+        # ── DCR check rows (for output dock table) ──────────────────────────
+        "checks": [
+            {
+                "check_id"     : chk.check_id,
+                "name"         : chk.name,
+                "clause"       : chk.clause,
+                "demand"       : chk.demand,
+                "demand_unit"  : chk.demand_unit,
+                "capacity"     : chk.capacity,
+                "capacity_unit": chk.capacity_unit,
+                "dcr"          : chk.dcr,
+                "status"       : chk.status,
+                "note"         : chk.note,
+            }
+            for chk in engine.checks
+        ],
+        # ── clause-level detail dicts (for report / deep inspection) ────────
+        "capacity_details"          : capacity.details,
+        # ── formatted report text ────────────────────────────────────────────
+        "report_text"               : report_text,
+    }
+
+    return report_text, engine, design_results
 
 
 # ======================================================================

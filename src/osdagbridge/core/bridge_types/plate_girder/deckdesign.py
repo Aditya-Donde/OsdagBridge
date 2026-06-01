@@ -21,7 +21,6 @@ from osdagbridge.core.utils.codes.irc22_2015 import IRC22_2014
 from osdagbridge.core.utils.codes.keyfile import KEY_VEHICLE
 
 # ── constants ─────────────────────────────────────────────────────────────────
-_GAMMA_CONCRETE_KN_M3 = 25.0          # kN/m³ — IRC 6:2017 Cl.203
 _STANDARD_DIAS_MM = [8, 10, 12, 16, 20, 25, 32]
 _SPACING_MAX_MM = 300.0
 _SPACING_MIN_MM = 75.0
@@ -35,17 +34,17 @@ def _concrete_props(grade: str) -> dict:
     table = IRC22_2014.cl_602_annexIII_concrete_properties()
     key = grade.strip().upper()
     if key not in table:
-        key = "M30"                    # safe fallback
+        raise ValueError(f"Unknown concrete grade {grade!r} — not found in IRC 22:2015 Annex III table.")
     return {"fck": float(table[key]["fck"]), "fctm": float(table[key]["fctm"])}
 
 
 def _rebar_fy(grade: str) -> float:
-    """Return yield strength (MPa) for a rebar grade string (e.g. 'Fe 500')."""
+    """Return yield strength (MPa) for a rebar grade string (e.g. 'Fe 415')."""
     table = IRC22_2014.cl_602_annexIII_reinforcement_steel_properties()
-    normalized = grade.replace(" ", "")  # "Fe 500" → "Fe500"
-    if normalized in table:
-        return float(table[normalized]["fy"])
-    return 500.0                        # default Fe 500
+    normalized = grade.replace(" ", "")  # "Fe 415" → "Fe415"
+    if normalized not in table:
+        raise ValueError(f"Unknown rebar grade {grade!r} — not found in IRC 22:2015 Annex III table.")
+    return float(table[normalized]["fy"])
 
 
 # ── structural mechanics helpers ──────────────────────────────────────────────
@@ -88,13 +87,15 @@ def _min_steel_mm2(fctm_MPa: float, fy_MPa: float, d_mm: float,
     return max(As_min, 0.0013 * b_mm * d_mm)
 
 
-def _pick_rebar(As_req_mm2: float) -> tuple[float, float, float]:
+def _pick_rebar(As_req_mm2: float,
+                dias: list = _STANDARD_DIAS_MM) -> tuple[float, float, float]:
     """
-    Choose the smallest standard bar diameter and round-down spacing
+    Choose the smallest bar diameter from `dias` and round-down spacing
     such that As_provided ≥ As_req.
     Returns (dia_mm, spacing_mm, As_prov_mm2_per_m).
+    `dias` is pre-filtered by KEY_DS_REINF_BOUNDS before this call.
     """
-    for dia in _STANDARD_DIAS_MM:
+    for dia in dias:
         a_bar = math.pi * dia ** 2 / 4.0
         spacing = a_bar * 1000.0 / As_req_mm2
         spacing = min(spacing, _SPACING_MAX_MM)
@@ -105,8 +106,8 @@ def _pick_rebar(As_req_mm2: float) -> tuple[float, float, float]:
         As_prov = a_bar * 1000.0 / spacing
         if As_prov >= As_req_mm2:
             return dia, spacing, As_prov
-    # fallback: largest bar at minimum spacing
-    dia = _STANDARD_DIAS_MM[-1]
+    # largest allowed bar at minimum spacing
+    dia = dias[-1]
     a_bar = math.pi * dia ** 2 / 4.0
     spacing = _SPACING_MIN_MM
     return dia, spacing, a_bar * 1000.0 / spacing
@@ -239,14 +240,18 @@ def design_deck_slab(bridge) -> dict:
     Returns
     -------
     dict
-        Keys matching DeckDesign.load_data() expectations:
-        deck_grade, deck_thickness,
-        rebar_{top,bottom}_{yield,dia,spacing,cover,area},
+        Keys matching DeckDesign.load_data() / DECK_DESIGN_SUMMARY_SCHEMA:
+        deck_grade, deck_thickness, deck_overhang,
+        rebar_{top,bottom,overhang}_{yield,dia,spacing,cover,area},
+        ur_{bot,top,oh}_{uls,sls_c,sls_s,crack},
         deck_design_check.
     """
-    from osdagbridge.core.utils.common import KEY_SPAN, KEY_CARRIAGEWAY_WIDTH, KEY_DECK_CONCRETE_GRADE_BASIC
-    from osdagbridge.core.bridge_components.super_structure.deck.geometry import deck_thickness_from_inputs
-    from osdagbridge.core.bridge_types.plate_girder.initial_sizing import DEFAULT_DECK_THICKNESS
+    from osdagbridge.core.utils.common import (
+        KEY_SPAN, KEY_CARRIAGEWAY_WIDTH, KEY_DECK_CONCRETE_GRADE_BASIC,
+        KEY_TS_GIRDER_SPACING, KEY_TS_DECK_OVERHANG, KEY_TS_DECK_THICKNESS,
+        KEY_DS_REINF_MATERIAL, KEY_DS_TOP_CLEAR_COVER, KEY_DS_BOTTOM_CLEAR_COVER,
+        KEY_DS_REINF_BOUNDS, DEFAULT_GIRDER_SPACING,
+    )
 
     # ── 1. read bridge parameters ─────────────────────────────────────────────
     basic = getattr(bridge, "basic_inputs", {})
@@ -256,18 +261,18 @@ def design_deck_slab(bridge) -> dict:
     cw_m = float(basic.get(KEY_CARRIAGEWAY_WIDTH, 7.5))
     concrete_grade = str(basic.get(KEY_DECK_CONCRETE_GRADE_BASIC, "M30")).strip()
 
-    # girder spacing — from grillage_geometry or fallback
-    grillage_geom = getattr(bridge, "grillage_geometry", None)
-    if grillage_geom is not None and hasattr(grillage_geom, "ext_to_int_dist"):
-        beam_spacing_m = float(grillage_geom.ext_to_int_dist)
-    else:
-        beam_spacing_m = 2.5           # sensible default
+    beam_spacing_m = float(additional.get(KEY_TS_GIRDER_SPACING, DEFAULT_GIRDER_SPACING))
+    overhang_m = float(additional.get(KEY_TS_DECK_OVERHANG, 0.0))
+    deck_t_mm = float(additional.get(KEY_TS_DECK_THICKNESS, 200.0))
 
-    deck_t_mm = deck_thickness_from_inputs(additional, DEFAULT_DECK_THICKNESS) * 1000.0
+    rebar_grade = str(additional.get(KEY_DS_REINF_MATERIAL, "Fe 415")).strip()
+    cover_top_mm = float(additional.get(KEY_DS_TOP_CLEAR_COVER, 50.0))
+    cover_bot_mm = float(additional.get(KEY_DS_BOTTOM_CLEAR_COVER, 50.0))
 
-    rebar_grade = str(additional.get("reinforcement_material", "Fe 500")).strip()
-    cover_top_mm = float(additional.get("top_clear_cover", 50.0))
-    cover_bot_mm = float(additional.get("bottom_clear_cover", 40.0))
+    bounds = additional.get(KEY_DS_REINF_BOUNDS, {}) or {}
+    lower_dia = int(bounds.get("lower") or _STANDARD_DIAS_MM[0])
+    upper_dia = int(bounds.get("upper") or _STANDARD_DIAS_MM[-1])
+    allowed_dias = [d for d in _STANDARD_DIAS_MM if lower_dia <= d <= upper_dia] or _STANDARD_DIAS_MM
 
     # ── 2. material properties ────────────────────────────────────────────────
     conc = _concrete_props(concrete_grade)
@@ -293,7 +298,9 @@ def design_deck_slab(bridge) -> dict:
     P_wheel_kN = _max_wheel_load_kN(vehicle_class)
 
     # ── 4. dead load moment (continuous slab, per m width) ───────────────────
-    w_DL_kN_m2 = _GAMMA_CONCRETE_KN_M3 * (deck_t_mm / 1000.0)
+    # Unit weight from IRC 6:2017 Cl.203 (t/m³ × 9.81 → kN/m³)
+    gamma_concrete_kN_m3 = IRC6_2017.cl_203_dead_load()["concrete_cement_reinforced"] * 9.81
+    w_DL_kN_m2 = gamma_concrete_kN_m3 * (deck_t_mm / 1000.0)
     S = beam_spacing_m
     M_DL_kNm = w_DL_kN_m2 * S ** 2 / 10.0   # kNm/m — moment in a continuous slab
 
@@ -316,25 +323,25 @@ def design_deck_slab(bridge) -> dict:
     d_bot_mm = deck_t_mm - cover_bot_mm - 6.0    # initial estimate (6 mm = half 12 mm bar)
     As_req_bot = max(_required_steel_mm2(M_ULS_bot_kNm, fy, d_bot_mm, fck),
                      _min_steel_mm2(fctm, fy, d_bot_mm))
-    dia_bot, spc_bot, As_bot = _pick_rebar(As_req_bot)
+    dia_bot, spc_bot, As_bot = _pick_rebar(As_req_bot, allowed_dias)
     d_bot_mm = deck_t_mm - cover_bot_mm - dia_bot / 2.0   # refined with actual bar
     # Second pass — recheck with refined d to guard against d decreasing for larger bars
     As_req_bot2 = max(_required_steel_mm2(M_ULS_bot_kNm, fy, d_bot_mm, fck),
                       _min_steel_mm2(fctm, fy, d_bot_mm))
     if As_req_bot2 > As_bot:
-        dia_bot, spc_bot, As_bot = _pick_rebar(As_req_bot2)
+        dia_bot, spc_bot, As_bot = _pick_rebar(As_req_bot2, allowed_dias)
         d_bot_mm = deck_t_mm - cover_bot_mm - dia_bot / 2.0
 
     # ── 8. design top (hogging) reinforcement ────────────────────────────────
     d_top_mm = deck_t_mm - cover_top_mm - 6.0
     As_req_top = max(_required_steel_mm2(M_ULS_top_kNm, fy, d_top_mm, fck),
                      _min_steel_mm2(fctm, fy, d_top_mm))
-    dia_top, spc_top, As_top = _pick_rebar(As_req_top)
+    dia_top, spc_top, As_top = _pick_rebar(As_req_top, allowed_dias)
     d_top_mm = deck_t_mm - cover_top_mm - dia_top / 2.0
     As_req_top2 = max(_required_steel_mm2(M_ULS_top_kNm, fy, d_top_mm, fck),
                       _min_steel_mm2(fctm, fy, d_top_mm))
     if As_req_top2 > As_top:
-        dia_top, spc_top, As_top = _pick_rebar(As_req_top2)
+        dia_top, spc_top, As_top = _pick_rebar(As_req_top2, allowed_dias)
         d_top_mm = deck_t_mm - cover_top_mm - dia_top / 2.0
 
     # ── 9. moment capacity check ─────────────────────────────────────────────
@@ -344,10 +351,6 @@ def design_deck_slab(bridge) -> dict:
     top_ok = Mu_top >= M_ULS_top_kNm
 
     # ── 10. deck overhang design ─────────────────────────────────────────────
-    overhang_m = 0.0
-    if grillage_geom is not None and hasattr(grillage_geom, "edge_dist"):
-        overhang_m = float(grillage_geom.edge_dist or 0.0)
-
     if overhang_m > 0.01:
         # Minimum clearance from kerb face to wheel — IRC 6:2017 Table 3
         table3 = IRC6_2017.table_3(cw_m)
@@ -386,13 +389,13 @@ def design_deck_slab(bridge) -> dict:
         d_oh_mm = deck_t_mm - cover_top_mm - 6.0
         As_req_oh = max(_required_steel_mm2(M_ULS_oh, fy, d_oh_mm, fck),
                         _min_steel_mm2(fctm, fy, d_oh_mm))
-        dia_oh, spc_oh, As_oh = _pick_rebar(As_req_oh)
+        dia_oh, spc_oh, As_oh = _pick_rebar(As_req_oh, allowed_dias)
         d_oh_mm = deck_t_mm - cover_top_mm - dia_oh / 2.0
         # Second pass — recheck with refined d (larger bars reduce d below d_init)
         As_req_oh2 = max(_required_steel_mm2(M_ULS_oh, fy, d_oh_mm, fck),
                          _min_steel_mm2(fctm, fy, d_oh_mm))
         if As_req_oh2 > As_oh:
-            dia_oh, spc_oh, As_oh = _pick_rebar(As_req_oh2)
+            dia_oh, spc_oh, As_oh = _pick_rebar(As_req_oh2, allowed_dias)
             d_oh_mm = deck_t_mm - cover_top_mm - dia_oh / 2.0
 
         Mu_oh = _moment_capacity_kNm(fy, As_oh, d_oh_mm, fck)
@@ -565,45 +568,48 @@ def design_deck_slab(bridge) -> dict:
     ]
     design_check_text = "\n".join(lines)
 
-    # ── 13. return UI-compatible dict ─────────────────────────────────────────
+    # ── 13. return dict keyed to DECK_DESIGN_SUMMARY_SCHEMA ──────────────────
     result = {
-        "deck_grade"               : concrete_grade,
-        "deck_thickness"           : f"{deck_t_mm:.0f}",
-        "deck_overhang"            : f"{overhang_m * 1000:.0f}",
-        # top reinforcement (interior hogging)
-        "rebar_top_yield"          : f"{fy:.0f}",
-        "rebar_top_dia"            : f"{dia_top:.0f}",
-        "rebar_top_spacing"        : f"{spc_top:.0f}",
-        "rebar_top_cover"          : f"{cover_top_mm:.0f}",
-        "rebar_top_area"           : f"{As_top:.0f}",
-        # bottom reinforcement (interior sagging)
-        "rebar_bottom_yield"       : f"{fy:.0f}",
-        "rebar_bottom_dia"         : f"{dia_bot:.0f}",
-        "rebar_bottom_spacing"     : f"{spc_bot:.0f}",
-        "rebar_bottom_cover"       : f"{cover_bot_mm:.0f}",
-        "rebar_bottom_area"        : f"{As_bot:.0f}",
-        # design check
-        "deck_design_check"        : design_check_text,
-        # utilization ratios
-        "ur_bot_uls"   : round(ur_bot_uls, 3),
-        "ur_top_uls"   : round(ur_top_uls, 3),
-        "ur_bot_sls_c" : round(ur_bot_sls_c, 3),
-        "ur_bot_sls_s" : round(ur_bot_sls_s, 3),
-        "ur_top_sls_c" : round(ur_top_sls_c, 3),
-        "ur_top_sls_s" : round(ur_top_sls_s, 3),
-        "ur_bot_crack" : round(ur_bot_crack, 3),
-        "ur_top_crack" : round(ur_top_crack, 3),
+        # ── properties card ─────────────────────────────────────────────────
+        "deck_grade"             : concrete_grade,
+        "deck_thickness"         : f"{deck_t_mm:.0f}",
+        "deck_overhang"          : f"{overhang_m * 1000:.0f}",
+        # ── bottom reinforcement (interior sagging) ─────────────────────────
+        "rebar_bottom_yield"     : f"{fy:.0f}",
+        "rebar_bottom_dia"       : f"{dia_bot:.0f}",
+        "rebar_bottom_spacing"   : f"{spc_bot:.0f}",
+        "rebar_bottom_cover"     : f"{cover_bot_mm:.0f}",
+        "rebar_bottom_area"      : f"{As_bot:.0f}",
+        # ── top reinforcement (interior hogging) ────────────────────────────
+        "rebar_top_yield"        : f"{fy:.0f}",
+        "rebar_top_dia"          : f"{dia_top:.0f}",
+        "rebar_top_spacing"      : f"{spc_top:.0f}",
+        "rebar_top_cover"        : f"{cover_top_mm:.0f}",
+        "rebar_top_area"         : f"{As_top:.0f}",
+        # ── utilization ratios (interior) ────────────────────────────────────
+        "ur_bot_uls"             : round(ur_bot_uls, 3),
+        "ur_top_uls"             : round(ur_top_uls, 3),
+        "ur_bot_sls_c"           : round(ur_bot_sls_c, 3),
+        "ur_bot_sls_s"           : round(ur_bot_sls_s, 3),
+        "ur_top_sls_c"           : round(ur_top_sls_c, 3),
+        "ur_top_sls_s"           : round(ur_top_sls_s, 3),
+        "ur_bot_crack"           : round(ur_bot_crack, 3),
+        "ur_top_crack"           : round(ur_top_crack, 3),
+        # ── design check report text ────────────────────────────────────────
+        "deck_design_check"      : design_check_text,
     }
     if overhang_m > 0.01:
         result.update({
+            # ── overhang reinforcement ──────────────────────────────────────
             "rebar_overhang_yield"   : f"{fy:.0f}",
             "rebar_overhang_dia"     : f"{dia_oh:.0f}",
             "rebar_overhang_spacing" : f"{spc_oh:.0f}",
             "rebar_overhang_cover"   : f"{cover_top_mm:.0f}",
             "rebar_overhang_area"    : f"{As_oh:.0f}",
-            "ur_oh_uls"   : round(M_ULS_oh / Mu_oh if Mu_oh > 0 else 9.999, 3),
-            "ur_oh_sls_c" : round(sc_oh["sigma_c"] / sc_oh["sc_lim"], 3),
-            "ur_oh_sls_s" : round(sc_oh["sigma_s"] / sc_oh["ss_lim"], 3),
-            "ur_oh_crack" : round(cw_oh["wk"] / cw_oh["wk_lim"], 3),
+            # ── overhang utilization ratios ─────────────────────────────────
+            "ur_oh_uls"              : round(M_ULS_oh / Mu_oh if Mu_oh > 0 else 9.999, 3),
+            "ur_oh_sls_c"            : round(sc_oh["sigma_c"] / sc_oh["sc_lim"], 3),
+            "ur_oh_sls_s"            : round(sc_oh["sigma_s"] / sc_oh["ss_lim"], 3),
+            "ur_oh_crack"            : round(cw_oh["wk"] / cw_oh["wk_lim"], 3),
         })
     return result

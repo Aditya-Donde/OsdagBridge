@@ -1,5 +1,6 @@
 from __future__ import annotations
 import sqlite3
+import types
 from pathlib import Path
 from .ui_fields import FrontendData
 from .dto import (
@@ -139,6 +140,9 @@ class PlateGirderBridge:
         self.basic_inputs: dict = {}
         self.additional_inputs: dict = {}
         self._frontend = FrontendData()
+        # Immutable snapshot of input_dict captured at the start of design().
+        # All 3D CAD / IFC methods read from this instead of the live input_dict.
+        self.output_dict: types.MappingProxyType = types.MappingProxyType({})
 
         # Results populated by design()
         self.grillage_geometry: GrillageGeometry | None = None
@@ -193,6 +197,7 @@ class PlateGirderBridge:
           5. Apply dead loads
           6. Apply live loads
         """
+        self.output_dict = dict(self.input_dict)   # mutable until end of design()
         self._build_dtos()
         self.setup_grillage()
         self.add_dead_loads()
@@ -241,6 +246,20 @@ class PlateGirderBridge:
         self.result_data = self.grillage_model.get_result_data()
 
         self.crossbracing_design_results = self._design_cross_bracing_members()
+        self.output_dict["crossbracing_design_results"] = self.crossbracing_design_results
+
+        # Freeze output_dict — no further writes allowed after this point
+        self.output_dict = types.MappingProxyType(self.output_dict)
+        import pprint
+        sep = "=" * 60
+        print(f"\n{sep}\n  OUTPUT DICT (frozen) — {len(self.output_dict)} keys\n{sep}")
+        for k, v in self.output_dict.items():
+            if k == "crossbracing_design_results":
+                print(f"  {k!r} :")
+                pprint.pprint(v, indent=4, width=120)
+            else:
+                print(f"  {k!r:50s} : {v!r}")
+        print(sep)
 
     def _build_dtos(self) -> None:
         """Construct GrillageGeometry and DeckLayoutProperties DTOs from solved results."""
@@ -523,6 +542,442 @@ class PlateGirderBridge:
             partial_safety_factor=1.0,
         )
 
+    # ============================================================
+    #   Temperature Load Analysis  IRC:6-2017 Cl.215
+    # ============================================================
+
+    def analyse_uniform_temperature(
+        self,
+        max_shade_temp: float,
+        min_shade_temp: float,
+        girders: list[dict],
+        structural_type: str = 'metallic',
+        snowbound: bool = False,
+        k_fixed: float = 1_000_000.0,
+        k_free: float = 100.0,
+        s_girder: float | None = None,
+        h_diaphragm: float | None = None,
+    ) -> list[dict]:
+        """
+        Restrained axial force, bearing movement and end-diaphragm shear under
+        uniform temperature change per IRC:6-2017 Cl.215.2.
+
+        Analysis is performed per girder; girders may have different E_s and A_s.
+
+        Parameters
+        ----------
+        max_shade_temp : float
+            Maximum shade air temperature (°C) from IRC:6-2017 Annexure F / Table 15.
+        min_shade_temp : float
+            Minimum shade air temperature (°C).
+        girders : list of dict
+            One entry per girder, each containing:
+              'E_s' (float, MPa) — steel elastic modulus
+              'A_s' (float, m²)  — steel girder cross-section area
+        structural_type : str
+            'metallic' (default) or 'other' — controls effective temperature
+            derivation per IRC:6-2017 Cl.215.2.
+        snowbound : bool
+            True if the location is snowbound (metallic structures only).
+        k_fixed : float
+            Longitudinal stiffness of the fixed bearing (kN/m).
+            Default: 1 000 000 kN/m (virtually rigid pot bearing).
+        k_free : float
+            Longitudinal stiffness of the expansion bearing (kN/m).
+            Default: 100 kN/m.
+        s_girder : float, optional
+            Centre-to-centre girder spacing (m) — for end-diaphragm shear (Step 5).
+        h_diaphragm : float, optional
+            Height of the end diaphragm (m) — for end-diaphragm shear (Step 5).
+
+        Returns
+        -------
+        list of dict
+            One result dict per girder.  Key output quantities:
+
+            delta_free_rise_m   (m)    free thermal expansion
+            delta_free_fall_m   (m)    free thermal contraction
+            k_girder_kN_m       (kN/m) girder axial stiffness
+            N_temp_rise_kN      (kN)   restrained axial force (rise)
+            N_temp_fall_kN      (kN)   restrained axial force (fall)
+            bearing_movement_m  (m)    governing bearing design movement
+            V_diaphragm_rise_kN (kN)   end-diaphragm transverse shear (rise)
+            V_diaphragm_fall_kN (kN)   end-diaphragm transverse shear (fall)
+        """
+        L = self.L   # span length (m)
+
+        # ── IRC:6-2017 Cl.215.2 — effective bridge temperature range ──────────
+        temp_range = IRC6_2017.cl_215_2_effective_bridge_temperature(
+            max_temp=max_shade_temp,
+            min_temp=min_shade_temp,
+            structural_type=structural_type,
+            snowbound=snowbound,
+        )
+        T_max  = temp_range['T_max']            # effective max bridge temperature (°C)
+        T_min  = temp_range['T_min']            # effective min bridge temperature (°C)
+        T_mean = (T_max + T_min) / 2.0          # mean construction temperature (°C)
+
+        # ── IRC:6-2017 Cl.215.2 — thermal expansion coefficient ──────────────
+        alpha = IRC6_2017.cl_215_4_material_properties()['alpha']   # /°C
+
+        # Temperature differentials from mean construction temperature
+        delta_T_rise = T_max - T_mean   # °C  rise above mean
+        delta_T_fall = T_mean - T_min   # °C  fall below mean
+
+        print(
+            f"Uniform temperature (IRC:6-2017 Cl.215.2): "
+            f"T_max={T_max:.1f}°C  T_min={T_min:.1f}°C  T_mean={T_mean:.1f}°C  "
+            f"alpha={alpha:.2e}/°C  "
+            f"delta_T_rise={delta_T_rise:.1f}°C  delta_T_fall={delta_T_fall:.1f}°C"
+        )
+
+        results = []
+
+        for idx, girder in enumerate(girders):
+            E_s = girder['E_s']   # steel modulus (MPa)
+            A_s = girder['A_s']   # steel girder cross-section area (m²)
+
+            # Step 1 — Free thermal expansion / contraction  [m]  — IRC:6-2017 Cl.215.2
+            #   delta = alpha × delta_T × L
+            delta_free_rise = alpha * delta_T_rise * L   # m
+            delta_free_fall = alpha * delta_T_fall * L   # m
+
+            # Step 2 — Girder axial stiffness  [kN/m]
+            #   E_s [MPa] × 1000 → [kN/m²];  × A_s [m²] / L [m]  →  kN/m
+            k_girder = (E_s * 1000.0 * A_s) / L   # kN/m
+
+            # Step 3 — Restrained axial force via spring compatibility  [kN]
+            #   Girder (k_g) + fixed bearing (k_f) + expansion bearing (k_e) in series
+            #   k_eff = k_g × k_f × k_e / (k_g×k_f + k_g×k_e + k_f×k_e)
+            denom       = (k_girder * k_fixed
+                           + k_girder * k_free
+                           + k_fixed  * k_free)
+            k_eff       = (k_girder * k_fixed * k_free) / denom   # kN/m
+            N_temp_rise = k_eff * delta_free_rise   # kN  axial compression on rise
+            N_temp_fall = k_eff * delta_free_fall   # kN  axial tension on fall
+
+            # Step 4 — Bearing design movement  [m]
+            #   Expansion-end displacement u = N / k_free
+            u_free_end_rise  = N_temp_rise / k_free                     # m
+            u_free_end_fall  = N_temp_fall / k_free                     # m
+            bearing_movement = max(u_free_end_rise, u_free_end_fall)    # m  governing
+
+            # Step 5 — End-diaphragm transverse racking shear  [kN]  (approximate)
+            #   V ≈ N_temp × (s_girder / h_diaphragm)
+            #   NOTE: approximate 2D frame analogy; use 3D FEM for exact value.
+            V_rise = V_fall = None
+            if s_girder is not None and h_diaphragm is not None:
+                V_rise = N_temp_rise * (s_girder / h_diaphragm)   # kN
+                V_fall = N_temp_fall * (s_girder / h_diaphragm)   # kN
+
+            print(
+                f"  Girder {idx}: k_girder={k_girder:.0f} kN/m  "
+                f"N_rise={N_temp_rise:.2f} kN  N_fall={N_temp_fall:.2f} kN  "
+                f"bearing_mov={bearing_movement * 1000:.2f} mm"
+            )
+
+            results.append({
+                # Identification
+                'girder_index':        idx,
+                'E_s_MPa':             E_s,
+                'A_s_m2':              A_s,
+                'clause':              temp_range['clause'],
+                # Effective temperatures (°C)
+                'T_max':               T_max,
+                'T_min':               T_min,
+                'T_mean':              T_mean,
+                'delta_T_rise':        delta_T_rise,
+                'delta_T_fall':        delta_T_fall,
+                # Step 1 — free movement (m)
+                'delta_free_rise_m':   delta_free_rise,
+                'delta_free_fall_m':   delta_free_fall,
+                # Step 2 — stiffnesses (kN/m)
+                'k_girder_kN_m':       k_girder,
+                'k_fixed_kN_m':        k_fixed,
+                'k_free_kN_m':         k_free,
+                # Step 3 — axial forces (kN)
+                'N_temp_rise_kN':      N_temp_rise,
+                'N_temp_fall_kN':      N_temp_fall,
+                # Step 4 — bearing movement (m)
+                'u_free_end_rise_m':   u_free_end_rise,
+                'u_free_end_fall_m':   u_free_end_fall,
+                'bearing_movement_m':  bearing_movement,
+                # Step 5 — end-diaphragm shear (kN); None if geometry not supplied
+                'V_diaphragm_rise_kN': V_rise,
+                'V_diaphragm_fall_kN': V_fall,
+                'diaphragm_note': (
+                    'Approximate (3D FEM for exact). '
+                    'V = N_temp × (s_girder / h_diaphragm).'
+                ) if V_rise is not None else (
+                    'Not computed: s_girder or h_diaphragm not provided.'
+                ),
+            })
+
+        self.temp_uniform_results = results
+        return results
+
+    def analyse_temperature_gradient(
+        self,
+        parts: list[dict],
+        h_slab: float,
+        E_s: float,
+        T_profile_rise: list[tuple] | None = None,
+        T_profile_fall: list[tuple] | None = None,
+        dy: float = 0.001,
+    ) -> dict:
+        """
+        Eigen stresses in the composite cross-section under the IRC:6-2017 Cl.215.4
+        non-uniform temperature gradient.
+
+        Stresses are self-equilibrating and exist even in a simply supported beam.
+        For a simply supported span, secondary (hyperstatic) reactions are zero;
+        the gradient causes free curvature only.
+
+        Parameters
+        ----------
+        parts : list of dict
+            Rectangular section components from top to bottom, each containing:
+              'label'  (str)   : e.g. 'slab', 'top_flange', 'web', 'bot_flange'
+              'b'      (float) : width (m)
+              'h'      (float) : height / thickness (m)
+              'E'      (float) : elastic modulus (MPa) — E_c for slab, E_s for steel
+              'y_top'  (float) : depth of top face from top of composite section (m)
+        h_slab : float
+            Slab thickness (m) — controls the extent of the Cl.215.4 gradient.
+        E_s : float
+            Steel modulus (MPa) — reference for transformed-section properties.
+        T_profile_rise : list of (y, T), optional
+            Signed temperature (°C) at each depth y (m) for positive gradient
+            (top heating).  If None, derived from IRC:6-2017 Cl.215.4 'heating'.
+        T_profile_fall : list of (y, T), optional
+            Signed temperature (°C) for negative gradient (top cooling).
+            If None, derived from IRC:6-2017 Cl.215.4 'cooling' with negated values
+            so cooling → negative F_N (contraction) and correct bending sign.
+        dy : float
+            Integration strip height (m).  Default: 0.001 m.
+
+        Returns
+        -------
+        dict with keys:
+            y_NA_m, A_eq_m2, I_eq_m4,
+            F_N_rise_kN, M_N_rise_kNm, F_N_fall_kN, M_N_fall_kNm,
+            sigma_eigen_rise_MPa, sigma_eigen_fall_MPa,
+            kappa_rise_per_m, kappa_fall_per_m,
+            delta_mid_rise_m, delta_mid_fall_m,
+            clause, note_secondary
+        """
+        L = self.L
+
+        # ── IRC:6-2017 Cl.215.2 — thermal expansion coefficient ──────────────
+        alpha = IRC6_2017.cl_215_4_material_properties()['alpha']   # /°C
+
+        D_total = max(p['y_top'] + p['h'] for p in parts)   # total composite depth (m)
+
+        # ── Build IRC:6-2017 Cl.215.4 profiles when not supplied ─────────────
+        if T_profile_rise is None:
+            gr    = IRC6_2017.cl_215_4_temperature_gradient(h_slab, gradient_type='heating')
+            T_fn  = gr['T_at_y']
+            n_pts = max(int(D_total / 0.001) + 2, 3)
+            # T_fn returns 0 for y > h_slab; profile covers full composite depth
+            T_profile_rise = [(i * 0.001, T_fn(i * 0.001)) for i in range(n_pts)]
+            print(f"Gradient profile (heating): T1={gr['T1']:.1f}°C  h1={gr['h1']:.3f} m  [{gr['clause']}]")
+
+        if T_profile_fall is None:
+            gr    = IRC6_2017.cl_215_4_temperature_gradient(h_slab, gradient_type='cooling')
+            T_fn  = gr['T_at_y']
+            n_pts = max(int(D_total / 0.001) + 2, 3)
+            # Negate magnitudes: cooling → negative F_N and correct bending sign
+            T_profile_fall = [(i * 0.001, -T_fn(i * 0.001)) for i in range(n_pts)]
+            print(f"Gradient profile (cooling): T1={gr['T1']:.1f}°C  h1={gr['h1']:.3f} m  [{gr['clause']}]")
+
+        # ── Step 1 — Transformed section properties (reference modulus = E_s) ─
+        # Modular ratio n_i = E_i / E_s  (< 1 for concrete, = 1 for steel)
+        A_eq   = 0.0   # m²   total transformed area
+        Ay_sum = 0.0   # m³   first moment of transformed area from top face
+
+        for part in parts:
+            n_i    = part['E'] / E_s
+            y_c_i  = part['y_top'] + part['h'] / 2.0   # part centroid depth (m)
+            A_eq  += n_i * part['b'] * part['h']
+            Ay_sum += n_i * part['b'] * part['h'] * y_c_i
+
+        y_NA = Ay_sum / A_eq   # neutral axis depth from top (m)
+
+        # Transformed second moment of area about NA  (parallel-axis theorem)
+        I_eq = 0.0   # m⁴
+        for part in parts:
+            n_i   = part['E'] / E_s
+            b_i   = part['b']
+            h_i   = part['h']
+            y_c_i = part['y_top'] + h_i / 2.0
+            I_eq += n_i * (b_i * h_i**3 / 12.0
+                           + b_i * h_i * (y_c_i - y_NA)**2)
+
+        print(
+            f"Transformed section (IRC:6-2017 Cl.215.4): "
+            f"y_NA={y_NA:.4f} m  A_eq={A_eq:.5f} m²  I_eq={I_eq:.6f} m⁴"
+        )
+
+        # ── Helper: piecewise linear interpolation of (y, T) profile ─────────
+        def interp_profile(T_profile: list[tuple], y: float) -> float:
+            """Linearly interpolate; returns boundary value outside defined range."""
+            if not T_profile:
+                return 0.0
+            if y <= T_profile[0][0]:
+                return T_profile[0][1]
+            if y >= T_profile[-1][0]:
+                return T_profile[-1][1]
+            for i in range(len(T_profile) - 1):
+                y0, T0 = T_profile[i]
+                y1, T1 = T_profile[i + 1]
+                if y0 <= y <= y1:
+                    return T0 + (y - y0) / (y1 - y0) * (T1 - T0)
+            return 0.0
+
+        # ── Helper: fine-strip numerical integration of F_N and M_N ──────────
+        def integrate_profile(T_profile: list[tuple]) -> tuple[float, float]:
+            """
+            Axial (F_N, kN) and moment (M_N, kN·m) thermal resultants.
+
+            Unit path:
+              E_i [MPa] × 1000 → [kN/m²]
+              × alpha [/°C] × T(y) [°C] × b [m] × dy [m]  →  kN
+              × (y − y_NA) [m]                              →  kN·m
+
+            Each part uses its own E_i, so the concrete-to-steel interface at
+            the slab soffit is handled correctly.  Parts with T = 0 throughout
+            contribute zero without special-casing.
+            """
+            F_N = 0.0
+            M_N = 0.0
+            for part in parts:
+                y_top    = part['y_top']
+                b        = part['b']      # m
+                E_i      = part['E']      # MPa
+                n_strips = max(1, int(round(part['h'] / dy)))
+                dy_i     = part['h'] / n_strips
+                for k in range(n_strips):
+                    y_mid = y_top + (k + 0.5) * dy_i
+                    T_y   = interp_profile(T_profile, y_mid)
+                    dF    = E_i * 1000.0 * alpha * T_y * b * dy_i   # kN
+                    F_N  += dF
+                    M_N  += dF * (y_mid - y_NA)                      # kN·m
+            return F_N, M_N
+
+        # ── Step 2 — Piecewise integration of thermal resultants ──────────────
+        F_N_rise, M_N_rise = integrate_profile(T_profile_rise)
+        F_N_fall, M_N_fall = integrate_profile(T_profile_fall)
+
+        # ── Step 3 — Eigen stresses at key fibre locations ────────────────────
+        def E_at_y(y_check: float) -> float:
+            """E (MPa) of the part whose depth range contains y_check."""
+            for p in parts:
+                if p['y_top'] <= y_check <= p['y_top'] + p['h']:
+                    return p['E']
+            return E_s   # gap between parts — fall back to steel
+
+        def sigma_eigen(
+            y_f: float,
+            F_N: float,
+            M_N: float,
+            T_profile: list[tuple],
+        ) -> float:
+            """
+            Eigen stress (MPa) at fibre depth y_f from top of section.
+
+            sigma = E_f × alpha × T_f
+                    − F_N / (A_eq × 1000)
+                    − M_N × (y_f − y_NA) / (I_eq × 1000)
+
+            Unit check (all terms → MPa):
+              E_f [MPa] × alpha [/°C] × T_f [°C]             = MPa ✓
+              F_N [kN] / (A_eq [m²] × 1000)                  = MPa ✓
+              M_N [kN·m] × Δy [m] / (I_eq [m⁴] × 1000)      = MPa ✓
+            """
+            E_f = E_at_y(y_f)
+            T_f = interp_profile(T_profile, y_f)
+            return (
+                E_f * alpha * T_f
+                - F_N / (A_eq * 1000.0)
+                - M_N * (y_f - y_NA) / (I_eq * 1000.0)
+            )
+
+        # Standard fibre check depths — identified from parts labels
+        web_part = next(
+            (p for p in parts if 'web' in p.get('label', '').lower()), None
+        )
+        bot_fl = next(
+            (p for p in parts
+             if 'bot' in p.get('label', '').lower()
+             and 'flange' in p.get('label', '').lower()),
+            None,
+        )
+
+        fibre_locs: list[tuple[str, float]] = [
+            ('top_of_slab',         0.0),
+            ('bottom_of_slab',      h_slab),
+            ('top_of_steel_flange', h_slab),   # coincides with slab soffit
+        ]
+        if web_part:
+            fibre_locs.append(('top_of_web',    web_part['y_top']))
+            fibre_locs.append(('mid_depth_web', web_part['y_top'] + web_part['h'] / 2.0))
+        if bot_fl:
+            fibre_locs.append(('bottom_flange_top', bot_fl['y_top']))
+        fibre_locs.append(('bottom_fibre', D_total))
+
+        sigma_rise = {
+            lbl: sigma_eigen(y_f, F_N_rise, M_N_rise, T_profile_rise)
+            for lbl, y_f in fibre_locs
+        }
+        sigma_fall = {
+            lbl: sigma_eigen(y_f, F_N_fall, M_N_fall, T_profile_fall)
+            for lbl, y_f in fibre_locs
+        }
+
+        # ── Step 4 — Midspan deflection from gradient  (simply supported) ─────
+        # No secondary reactions — IRC:6-2017 Cl.215.4
+        # kappa = M_N / (E_s [kN/m²] × I_eq [m⁴])
+        # delta_mid = kappa × L² / 8
+        kappa_rise     = M_N_rise / (E_s * 1000.0 * I_eq)   # 1/m
+        kappa_fall     = M_N_fall / (E_s * 1000.0 * I_eq)   # 1/m
+        delta_mid_rise = kappa_rise * L**2 / 8.0             # m
+        delta_mid_fall = kappa_fall * L**2 / 8.0             # m
+
+        print(
+            f"Thermal resultants: "
+            f"F_N_rise={F_N_rise:.2f} kN  M_N_rise={M_N_rise:.2f} kN·m  "
+            f"delta_mid_rise={delta_mid_rise * 1000:.2f} mm"
+        )
+
+        result = {
+            # Transformed section properties
+            'y_NA_m':               y_NA,
+            'A_eq_m2':              A_eq,
+            'I_eq_m4':              I_eq,
+            # Thermal resultants
+            'F_N_rise_kN':          F_N_rise,
+            'M_N_rise_kNm':         M_N_rise,
+            'F_N_fall_kN':          F_N_fall,
+            'M_N_fall_kNm':         M_N_fall,
+            # Eigen stresses at standard fibre locations (MPa)
+            'sigma_eigen_rise_MPa': sigma_rise,
+            'sigma_eigen_fall_MPa': sigma_fall,
+            # Curvature and midspan deflection from gradient
+            'kappa_rise_per_m':     kappa_rise,
+            'kappa_fall_per_m':     kappa_fall,
+            'delta_mid_rise_m':     delta_mid_rise,
+            'delta_mid_fall_m':     delta_mid_fall,
+            # Metadata
+            'clause':               'IRC 6:2017 Cl.215.4',
+            'note_secondary': (
+                'Simply supported span: secondary (hyperstatic) reactions = 0. '
+                'Gradient causes free curvature only.'
+            ),
+        }
+
+        self.temp_gradient_results = result
+        return result
+
     # ─────────────────────────────────────────────────────────────────────────
     # Temperature and seismic loads
     # ─────────────────────────────────────────────────────────────────────────
@@ -759,11 +1214,12 @@ class PlateGirderBridge:
     def _run_dcr_checks(self, dataset) -> None:
         """Run structural capacity checks and push DCR percentages to the output dock."""
         results = PlateGirderAnalysisResults(dataset=dataset, bridge=self.grillage_model)
-        _, engine = run_design_check(
+        _, engine, design_results = run_design_check(
             plate_girder_bridge=self,
             analysis_results=results,
             print_report=True,
         )
+        self.design_results = design_results
 
         dcr_by_id: dict[int, float] = {}
         for c in engine.checks:
@@ -780,6 +1236,15 @@ class PlateGirderBridge:
         self._frontend.set_output_value(KEY_UTIL_LONG_TRANS_SHEAR,  trans_shear_dcr * 100)
         stress_dcr = max(dcr_by_id.get(10, 0.0), dcr_by_id.get(11, 0.0), dcr_by_id.get(12, 0.0))
         self._frontend.set_output_value(KEY_UTIL_STRESS_LIMITATION, stress_dcr * 100)
+
+        self.output_dict[KEY_UTIL_FLEXURE]           = dcr_by_id.get(1,  0.0) * 100
+        self.output_dict[KEY_UTIL_SHEAR]             = dcr_by_id.get(2,  0.0) * 100
+        self.output_dict[KEY_UTIL_INTERACTION]       = dcr_by_id.get(3,  0.0) * 100
+        self.output_dict[KEY_UTIL_LTB]               = dcr_by_id.get(5,  0.0) * 100
+        self.output_dict[KEY_UTIL_DEFLECTION_CRACK]  = defl_dcr * 100
+        self.output_dict[KEY_UTIL_FATIGUE]           = fatigue_dcr * 100
+        self.output_dict[KEY_UTIL_LONG_TRANS_SHEAR]  = trans_shear_dcr * 100
+        self.output_dict[KEY_UTIL_STRESS_LIMITATION] = stress_dcr * 100
 
     def _design_cross_bracing_members(self) -> dict:
         """
@@ -912,20 +1377,19 @@ class PlateGirderBridge:
         """
         Build a BridgeParametersDTO for 3D CAD rendering.
 
-        Values sourced from:
-        - section_props / input_dict — girder geometry (populated after design())
-        - basic_inputs  — span, carriageway width, footpath, median, skew angle
-        - additional_inputs — deck thickness
-        Fields not yet exposed through additional inputs default to sensible values.
+        All values are read from ``self.output_dict`` — the immutable snapshot of
+        ``input_dict`` captured at the start of ``design()``.  This includes girder
+        geometry, span, carriageway width, footpath/median/skew settings, and
+        additional-input keys such as deck thickness.
 
         Must be called after design() has fully run.
         """
-        inp = self.input_dict
+        inp = self.output_dict
 
-        steel_grade    = str(self.basic_inputs.get(KEY_GIRDER)).strip()
-        concrete_grade = str(self.basic_inputs.get(KEY_DECK_CONCRETE_GRADE_BASIC)).strip()
+        steel_grade    = str(self.output_dict.get(KEY_GIRDER)).strip()
+        concrete_grade = str(self.output_dict.get(KEY_DECK_CONCRETE_GRADE_BASIC)).strip()
 
-        # input_dict values are in SI metres; BridgeParametersDTO expects mm
+        # output_dict values are in SI metres; BridgeParametersDTO expects mm
         D       = inp[KEY_GIRDER_DEPTH]                   * 1e3
         tw      = inp[KEY_GIRDER_WEB_THICKNESS]           * 1e3
         B_top   = inp[KEY_GIRDER_TOP_FLANGE_WIDTH]        * 1e3
@@ -933,12 +1397,13 @@ class PlateGirderBridge:
         B_bot   = inp[KEY_GIRDER_BOTTOM_FLANGE_WIDTH]     * 1e3
         t_f_bot = inp[KEY_GIRDER_BOTTOM_FLANGE_THICKNESS] * 1e3
 
-        span_mm = float(self.basic_inputs[KEY_SPAN]) * 1e3
-        cw_each_way_m = float(self.basic_inputs[KEY_CARRIAGEWAY_WIDTH])
-        skew = self._to_float(KEY_SKEW_ANGLE, 0.0)
+        span_mm = float(self.output_dict[KEY_SPAN]) * 1e3
+        cw_each_way_m = float(self.output_dict[KEY_CARRIAGEWAY_WIDTH])
+        _skew_raw = self.output_dict.get(KEY_SKEW_ANGLE)
+        skew = 0.0 if (_skew_raw is None or str(_skew_raw).strip().lower() in ("", "none")) else float(_skew_raw)
 
-        footpath_str   = str(self.basic_inputs.get(KEY_FOOTPATH,       "None")).strip()
-        include_median = str(self.basic_inputs.get(KEY_INCLUDE_MEDIAN, "No")).strip().lower() == "yes"
+        footpath_str   = str(self.output_dict.get(KEY_FOOTPATH,       "None")).strip()
+        include_median = str(self.output_dict.get(KEY_INCLUDE_MEDIAN, "No")).strip().lower() == "yes"
 
         if footpath_str in ("None", ""):
             footpath_config   = "NONE"
@@ -958,7 +1423,7 @@ class PlateGirderBridge:
         cw_m = (2.0 * cw_each_way_m) if include_median else cw_each_way_m
         cw_mm = cw_m * 1e3
 
-        deck_t_mm = deck_thickness_from_inputs(self.additional_inputs, _DEFAULT_DECK_THICKNESS_MM) * 1e3
+        deck_t_mm = deck_thickness_from_inputs(self.output_dict, _DEFAULT_DECK_THICKNESS_MM) * 1e3
         cross_bracing_mm = DEFAULT_CROSS_BRACING_SPACING * 1e3
 
         girder_segment = GirderSegmentDTO(
@@ -974,7 +1439,7 @@ class PlateGirderBridge:
         _angle_dims = SectionDimsDTO(leg_h=100, leg_w=50, connection_type="LONGER_LEG")
         _small_dims = SectionDimsDTO(leg_h=80,  leg_w=40, connection_type="LONGER_LEG")
 
-        raw_cb_value = self.input_dict.get(KEY_CB_TYPE, ["IRC 5 - RCC Crash Barrier"])
+        raw_cb_value = self.output_dict.get(KEY_CB_TYPE, ["IRC 5 - RCC Crash Barrier"])
         raw_cb_string = raw_cb_value[0] if isinstance(raw_cb_value, list) else raw_cb_value
         if raw_cb_string == "IRC 5 - RCC Crash Barrier":
             resolved_barrier_type = KEY_CRASH_BARRIER_TYPE[2]               # "Rigid"
@@ -993,7 +1458,7 @@ class PlateGirderBridge:
             resolved_barrier_type = "Rigid"
             resolved_cb_subtype = "IRC-5R"
 
-        raw_rl_value = self.input_dict.get(KEY_RL_TYPE, ["IRC 5 RCC railing"])
+        raw_rl_value = self.output_dict.get(KEY_RL_TYPE, ["IRC 5 RCC railing"])
         raw_rl_string = raw_rl_value[0] if isinstance(raw_rl_value, list) else raw_rl_value
         if raw_rl_string == "IRC 5 - RCC Railing":
             resolved_railing_value = KEY_RAILING_TYPE[0]
@@ -1020,7 +1485,7 @@ class PlateGirderBridge:
         # generator so Single W-Beam and Double W-Beam median barriers can be preserved
         # separately instead of being reduced to the broad metallic category.
 
-        raw_md_value = self.input_dict.get(KEY_MD_TYPE,["IRC 5 - RCC Crash Barrier"])
+        raw_md_value = self.output_dict.get(KEY_MD_TYPE, ["IRC 5 - RCC Crash Barrier"])
         raw_md_string = raw_md_value[0] if isinstance(raw_md_value, list) else raw_md_value
         raw_md_string = str(raw_md_string or "").strip()
 
@@ -1038,8 +1503,8 @@ class PlateGirderBridge:
         
         print("DEBUG railing raw:", raw_rl_string)
         print("DEBUG railing resolved:", resolved_railing_value)
-        print("DEBUG girder spacing input m:", self.input_dict[KEY_TS_GIRDER_SPACING])
-        print("DEBUG girder spacing dto mm:", self.input_dict[KEY_TS_GIRDER_SPACING] * 1e3)
+        print("DEBUG girder spacing input m:", self.output_dict[KEY_TS_GIRDER_SPACING])
+        print("DEBUG girder spacing dto mm:", self.output_dict[KEY_TS_GIRDER_SPACING] * 1e3)
 
         return BridgeParametersDTO(
             # --- Material Grades ---
@@ -1054,8 +1519,8 @@ class PlateGirderBridge:
             girder_section_tf=t_f_top,
             girder_section_tf_b=t_f_bot,
             girder_section_tw=tw,
-            num_girders=self.input_dict[KEY_TS_NO_OF_GIRDERS],
-            girder_spacing=self.input_dict[KEY_TS_GIRDER_SPACING] * 1e3,
+            num_girders=self.output_dict[KEY_TS_NO_OF_GIRDERS],
+            girder_spacing=self.output_dict[KEY_TS_GIRDER_SPACING] * 1e3,
             # --- Geometry ---
             skew_angle=skew,
             # --- Deck ---
@@ -1263,7 +1728,7 @@ class PlateGirderBridge:
 
     def get_edge_dist(self) -> float:
         """Return the deck overhang distance (0.0 when no overhang)."""
-        return self.input_dict.get(KEY_TS_DECK_OVERHANG) or 0.0
+        return self.output_dict.get(KEY_TS_DECK_OVERHANG) or 0.0
 
     def build_figure_sfd(self, ds, force_key: str):
         """Build and return a matplotlib Figure for the SFD of the given dataset slice."""

@@ -19,7 +19,11 @@ from PySide6.QtCore import Qt
 from osdagbridge.desktop.ui.dialogs.tabs.common import apply_field_style
 from osdagbridge.desktop.ui.utils.styled_scroll_area import StyledScrollArea
 from osdagbridge.desktop.ui.utils.custom_titlebar import CustomTitleBar
-from osdagbridge.desktop.ui.dialogs.tabs.steel_design_check import UtilizationBar, StatusBadge
+from osdagbridge.desktop.ui.dialogs.tabs.steel_design_check import StatusBadge
+from osdagbridge.desktop.ui.utils.custom_widgets import PercentBarWidget
+
+# Import the schema
+from osdagbridge.core.bridge_types.plate_girder.ui_fields_additional_input import DECK_DESIGN_SUMMARY_SCHEMA
 
 
 class NoScrollTable(QTableWidget):
@@ -28,50 +32,14 @@ class NoScrollTable(QTableWidget):
         event.ignore()
 
 
-# =============================================================================
-#   DIALOG: Deck Design
-# =============================================================================
-
 class DeckDesign(QDialog):
     """
-    Deck Design dialog — displays deck properties, reinforcement details,
-    utilization ratios, and design check results.
-
-    Styling mirrors the Steel Design dialog's Details tab for visual
-    consistency across the application.
+    Deck Design dialog — schema-driven dialog that displays deck properties, 
+    reinforcement details, utilization ratios, and design check results.
     """
 
     _REBAR_ROW_HEIGHT  = 50
     _REBAR_HEADER_HEIGHT = 48
-    _REBAR_HEADERS = [
-        "Position",
-        "Material Yield\nStrength (MPa)",
-        "Diameter (mm)",
-        "Spacing (mm)",
-        "Clear Cover\n(mm)",
-        "Area (mm²)",
-    ]
-    _REBAR_TYPES = ["Top Layer", "Bottom Layer", "Overhang"]
-
-    # (dict key, display label, is_overhang_row)
-    _UR_CHECKS = [
-        ("ur_bot_uls",   "ULS – Bottom (Sagging)",         False),
-        ("ur_top_uls",   "ULS – Top (Hogging)",            False),
-        ("ur_oh_uls",    "ULS – Overhang",                 True),
-        ("ur_bot_sls_c", "SLS – Bottom Concrete Stress",   False),
-        ("ur_bot_sls_s", "SLS – Bottom Steel Stress",      False),
-        ("ur_top_sls_c", "SLS – Top Concrete Stress",      False),
-        ("ur_top_sls_s", "SLS – Top Steel Stress",         False),
-        ("ur_bot_crack", "SLS – Bottom Crack Width",       False),
-        ("ur_top_crack", "SLS – Top Crack Width",          False),
-        ("ur_oh_sls_c",  "SLS – Overhang Concrete Stress", True),
-        ("ur_oh_sls_s",  "SLS – Overhang Steel Stress",    True),
-        ("ur_oh_crack",  "SLS – Overhang Crack Width",     True),
-    ]
-
-    # =========================================================================
-    #   UI INITIALISATION
-    # =========================================================================
 
     def __init__(self, parent=None):
         super().__init__(None)
@@ -79,6 +47,7 @@ class DeckDesign(QDialog):
         self.setObjectName("DeckDesign")
         self.resize(1024, 720)
         self.setMinimumSize(900, 520)
+        self.schema = DECK_DESIGN_SUMMARY_SCHEMA
         self.init_ui()
 
         self.setStyleSheet("""
@@ -87,10 +56,6 @@ class DeckDesign(QDialog):
                 border: 1px solid #90AF13;
             }
         """)
-
-    # =========================================================================
-    #   WINDOW WRAPPER — frameless with custom title bar + resize grip
-    # =========================================================================
 
     def setupWrapper(self):
         self.setWindowFlags(
@@ -118,7 +83,6 @@ class DeckDesign(QDialog):
         main_layout.addLayout(overlay)
 
     def init_ui(self):
-        """Build the top-level layout: scroll area containing all sections."""
         self.setupWrapper()
 
         main_layout = QVBoxLayout(self.content_widget)
@@ -134,7 +98,7 @@ class DeckDesign(QDialog):
         container_layout.setContentsMargins(10, 10, 10, 10)
         container_layout.setSpacing(12)
 
-        # Deck Properties — left half only (mirrors Steel Design Details layout)
+        # Deck Properties — left half only
         props_row = QHBoxLayout()
         props_row.setContentsMargins(0, 0, 0, 0)
         props_row.setSpacing(0)
@@ -150,8 +114,6 @@ class DeckDesign(QDialog):
         scroll_area.setWidget(container)
         main_layout.addWidget(scroll_area)
 
-        # Only run deck design if the main design has already been executed
-        # (sizing_result is None until the Design button is clicked).
         backend = getattr(self._main_window, "backend", None)
         if backend is not None and getattr(backend, "grillage_geometry", None) is not None:
             try:
@@ -172,12 +134,8 @@ class DeckDesign(QDialog):
                 "</p>"
             )
 
-    # =========================================================================
-    #   HELPERS — mirrors steel_design_details.py card / label / grid patterns
-    # =========================================================================
-
     def _create_card_frame(self) -> QFrame:
-        frame = QFrame()
+        frame = QFrame(self)
         frame.setObjectName("girderCard")
         frame.setStyleSheet(
             "QFrame#girderCard {"
@@ -234,50 +192,50 @@ class DeckDesign(QDialog):
         grid.addWidget(widget, row, 1)
         return row + 1
 
-    # =========================================================================
-    #   SECTIONS
-    # =========================================================================
-
     def _build_properties_section(self) -> QFrame:
-        """Deck Properties card: grade, thickness, and overhang."""
+        prop_schema = self.schema.get("properties_card", {})
         card = self._create_card_frame()
         card_layout = QVBoxLayout(card)
         card_layout.setContentsMargins(18, 16, 18, 16)
         card_layout.setSpacing(10)
-        card_layout.addWidget(self._create_label("Deck Properties:"))
+        card_layout.addWidget(self._create_label(prop_schema.get("title", "Deck Properties:")))
 
         grid = self._make_grid()
-        self.grade_field    = self._readonly_field()
-        self.thickness_field = self._readonly_field()
-        self.overhang_field  = self._readonly_field()
-
+        self._prop_fields = {}
+        
         r = 0
-        r = self._add_row(grid, r, "Grade of Material:",   self.grade_field)
-        r = self._add_row(grid, r, "Thickness (mm):",      self.thickness_field)
-        r = self._add_row(grid, r, "Deck Overhang (mm):",  self.overhang_field)
+        for field_def in prop_schema.get("fields", []):
+            field = self._readonly_field()
+            data_key = field_def.get("data_key")
+            if data_key:
+                self._prop_fields[data_key] = field
+            r = self._add_row(grid, r, field_def.get("label", ""), field)
 
         card_layout.addLayout(grid)
         return card
 
     def _build_reinforcement_section(self) -> QFrame:
-        """Reinforcement Details card with a table for top, bottom, and overhang."""
+        reinf_schema = self.schema.get("reinforcement_table", {})
         card = self._create_card_frame()
         card.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Maximum)
         card_layout = QVBoxLayout(card)
         card_layout.setContentsMargins(18, 16, 18, 16)
         card_layout.setSpacing(12)
-        card_layout.addWidget(self._create_label("Reinforcement Details:"))
+        card_layout.addWidget(self._create_label(reinf_schema.get("title", "Reinforcement Details:")))
 
-        num_rows = len(self._REBAR_TYPES)
-        num_cols = len(self._REBAR_HEADERS)
+        rows_def = reinf_schema.get("rows", [])
+        headers = reinf_schema.get("columns", [])
+        
+        num_rows = len(rows_def)
+        num_cols = len(headers)
 
         self.rebar_table = NoScrollTable()
         self.rebar_table.setRowCount(num_rows)
         self.rebar_table.setColumnCount(num_cols)
-        self.rebar_table.setHorizontalHeaderLabels(self._REBAR_HEADERS)
+        self.rebar_table.setHorizontalHeaderLabels(headers)
 
-        for row, type_name in enumerate(self._REBAR_TYPES):
-            type_item = QTableWidgetItem(type_name)
+        for row, row_def in enumerate(rows_def):
+            type_item = QTableWidgetItem(row_def.get("label", ""))
             type_item.setFlags(Qt.ItemIsEnabled)
             type_item.setTextAlignment(Qt.AlignCenter)
             self.rebar_table.setItem(row, 0, type_item)
@@ -288,8 +246,7 @@ class DeckDesign(QDialog):
                 cell.setTextAlignment(Qt.AlignCenter)
                 self.rebar_table.setItem(row, col, cell)
 
-        # Hide overhang row (row 2) until load_data() reveals it
-        self.rebar_table.setRowHidden(2, True)
+        self.rebar_table.setRowHidden(2, True)  # Initially hide overhang, index 2
 
         h_header = self.rebar_table.horizontalHeader()
         h_header.setSectionResizeMode(QHeaderView.Stretch)
@@ -308,7 +265,6 @@ class DeckDesign(QDialog):
         self.rebar_table.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.rebar_table.setAlternatingRowColors(True)
 
-        # Initial height for 2 visible rows (overhang hidden)
         self.rebar_table.setFixedHeight(
             self._REBAR_HEADER_HEIGHT + 2 * self._REBAR_ROW_HEIGHT + 2
         )
@@ -341,82 +297,39 @@ class DeckDesign(QDialog):
         return card
 
     def _build_utilization_section(self) -> QFrame:
-        """Utilization Summary card with demand/capacity bars for all ULS and SLS checks."""
+        util_schema = self.schema.get("utilization_card", {})
         card = self._create_card_frame()
         card_layout = QVBoxLayout(card)
         card_layout.setContentsMargins(18, 16, 18, 16)
-        card_layout.setSpacing(6)
-        card_layout.addWidget(self._create_label("Utilization Summary:"))
-
-        # Column header
-        hdr = QHBoxLayout()
-        hdr.setContentsMargins(0, 2, 0, 4)
-        hdr_lbl = QLabel("Check")
-        hdr_lbl.setStyleSheet("font-size: 10px; color: #888; font-weight: bold;")
-        hdr_lbl.setFixedWidth(230)
-        hdr.addWidget(hdr_lbl)
-        hdr.addStretch(1)
-        for txt in ("UR", "Status"):
-            w = QLabel(txt)
-            w.setStyleSheet("font-size: 10px; color: #888; font-weight: bold;")
-            w.setFixedWidth(52 if txt == "UR" else 64)
-            w.setAlignment(Qt.AlignCenter)
-            hdr.addWidget(w)
-        card_layout.addLayout(hdr)
-
-        # Separator line
-        sep = QFrame()
-        sep.setFrameShape(QFrame.HLine)
-        sep.setStyleSheet("color: #e0e0e0;")
-        card_layout.addWidget(sep)
+        card_layout.setSpacing(12)
+        card_layout.addWidget(self._create_label(util_schema.get("title", "Utilization Summary:")))
 
         self._ur_widgets: dict = {}
 
-        for key, label, is_overhang in self._UR_CHECKS:
-            row_w = QWidget()
-            row_l = QHBoxLayout(row_w)
-            row_l.setContentsMargins(0, 3, 0, 3)
-            row_l.setSpacing(8)
-
-            lbl = QLabel(label)
-            lbl.setStyleSheet("font-size: 11px; color: #333333;")
-            lbl.setFixedWidth(230)
-            row_l.addWidget(lbl)
-
-            bar = UtilizationBar()
-            bar.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-            row_l.addWidget(bar, 1)
-
-            val = QLabel("–")
-            val.setFixedWidth(52)
-            val.setAlignment(Qt.AlignCenter)
-            val.setStyleSheet("font-size: 11px; color: #333333; font-weight: bold;")
-            row_l.addWidget(val)
-
-            badge = StatusBadge()
-            row_l.addWidget(badge)
-
-            # Hide overhang rows until overhang data is present
-            row_w.setVisible(not is_overhang)
-            card_layout.addWidget(row_w)
+        for check_def in util_schema.get("checks", []):
+            key = check_def.get("key")
+            label = check_def.get("label", "")
+            is_overhang = check_def.get("is_overhang", False)
+            
+            bar = PercentBarWidget(label=label, value=0.0, parent=self)
+            
+            card_layout.addWidget(bar)
+            bar.setVisible(not is_overhang)
 
             self._ur_widgets[key] = {
-                "row":   row_w,
                 "bar":   bar,
-                "val":   val,
-                "badge": badge,
                 "is_overhang": is_overhang,
             }
 
         return card
 
     def _build_design_check_section(self) -> QFrame:
-        """Design Check card with a read-only HTML text area."""
+        dc_schema = self.schema.get("design_check_card", {})
         card = self._create_card_frame()
         card_layout = QVBoxLayout(card)
         card_layout.setContentsMargins(18, 16, 18, 16)
         card_layout.setSpacing(10)
-        card_layout.addWidget(self._create_label("Design Check:"))
+        card_layout.addWidget(self._create_label(dc_schema.get("title", "Design Check:")))
 
         self.design_check_text = QTextEdit()
         self.design_check_text.setReadOnly(True)
@@ -435,13 +348,8 @@ class DeckDesign(QDialog):
         card_layout.addWidget(self.design_check_text)
         return card
 
-    # =========================================================================
-    #   HELPERS
-    # =========================================================================
-
     @staticmethod
     def _text_to_html(text: str) -> str:
-        """Convert the plain-text design report to HTML with PASS/FAIL colouring."""
         lines = []
         for line in text.split("\n"):
             esc = (line
@@ -464,49 +372,44 @@ class DeckDesign(QDialog):
             + "</pre>"
         )
 
-    # =========================================================================
-    #   PUBLIC API
-    # =========================================================================
-
-    def load_data(self, cad_state: dict) -> None:
-        """Populate all widgets from a deck-design result dict.
-
-        Silently ignores missing or invalid keys — safe to call with partial data.
-        """
-        if not cad_state:
+    def load_data(self, output_dict: dict) -> None:
+        if not output_dict:
             return
 
         # ── Properties ───────────────────────────────────────────────────────
-        self.grade_field.setText(str(cad_state.get("deck_grade", "")))
-        self.thickness_field.setText(str(cad_state.get("deck_thickness", "")))
-        self.overhang_field.setText(str(cad_state.get("deck_overhang", "")))
+        prop_schema = self.schema.get("properties_card", {})
+        for field_def in prop_schema.get("fields", []):
+            data_key = field_def.get("data_key")
+            if data_key and data_key in self._prop_fields:
+                self._prop_fields[data_key].setText(str(output_dict.get(data_key, "")))
 
         # ── Reinforcement table ───────────────────────────────────────────────
-        rebar_map = {0: "top", 1: "bottom"}
-        for row, prefix in rebar_map.items():
-            for col, suffix in enumerate(
-                ["yield", "dia", "spacing", "cover", "area"], start=1,
-            ):
-                value = cad_state.get(f"rebar_{prefix}_{suffix}", "")
+        reinf_schema = self.schema.get("reinforcement_table", {})
+        rows_def = reinf_schema.get("rows", [])
+        data_suffixes = reinf_schema.get("data_suffixes", [])
+        
+        has_overhang = False
+
+        for row, row_def in enumerate(rows_def):
+            prefix = row_def.get("prefix", "")
+            is_overhang = row_def.get("is_overhang", False)
+            
+            if is_overhang:
+                # Check if we have overhang data (e.g. rebar_overhang_dia)
+                test_key = f"{prefix}_{data_suffixes[1]}" if len(data_suffixes) > 1 else f"{prefix}_dia"
+                has_overhang = bool(output_dict.get(test_key, ""))
+                self.rebar_table.setRowHidden(row, not has_overhang)
+                if not has_overhang:
+                    continue
+
+            for col, suffix in enumerate(data_suffixes, start=1):
+                value = output_dict.get(f"{prefix}_{suffix}", "")
                 item = QTableWidgetItem(str(value))
                 item.setFlags(Qt.ItemIsEnabled)
                 item.setTextAlignment(Qt.AlignCenter)
                 self.rebar_table.setItem(row, col, item)
 
-        # Show overhang row only when overhang reinforcement data is present
-        has_overhang = bool(cad_state.get("rebar_overhang_dia", ""))
-        self.rebar_table.setRowHidden(2, not has_overhang)
-        if has_overhang:
-            for col, suffix in enumerate(
-                ["yield", "dia", "spacing", "cover", "area"], start=1,
-            ):
-                value = cad_state.get(f"rebar_overhang_{suffix}", "")
-                item = QTableWidgetItem(str(value))
-                item.setFlags(Qt.ItemIsEnabled)
-                item.setTextAlignment(Qt.AlignCenter)
-                self.rebar_table.setItem(2, col, item)
-
-        n_visible = 2 + (1 if has_overhang else 0)
+        n_visible = sum(1 for r in rows_def if not r.get("is_overhang", False)) + (1 if has_overhang else 0)
         self.rebar_table.setFixedHeight(
             self._REBAR_HEADER_HEIGHT + n_visible * self._REBAR_ROW_HEIGHT + 2
         )
@@ -514,24 +417,19 @@ class DeckDesign(QDialog):
         # ── Utilization bars ──────────────────────────────────────────────────
         for key, widgets in self._ur_widgets.items():
             if widgets["is_overhang"]:
-                widgets["row"].setVisible(has_overhang)
+                widgets["bar"].setVisible(has_overhang)
 
-            raw = cad_state.get(key)
+            raw = output_dict.get(key)
             if raw is None:
-                widgets["val"].setText("–")
-                widgets["bar"].set_ratio(0.0)
-                widgets["badge"].set_neutral()
+                widgets["bar"].set_value(0.0)
             else:
-                ratio = float(raw)
-                widgets["val"].setText(f"{ratio:.3f}")
-                widgets["bar"].set_ratio(ratio)
-                if ratio <= 1.0:
-                    widgets["badge"].set_pass()
-                else:
-                    widgets["badge"].set_fail()
+                widgets["bar"].set_value(float(raw) * 100.0)
 
         # ── Design check text ─────────────────────────────────────────────────
-        raw_text = str(cad_state.get("deck_design_check", ""))
+        dc_schema = self.schema.get("design_check_card", {})
+        dc_key = dc_schema.get("data_key", "deck_design_check")
+        raw_text = str(output_dict.get(dc_key, ""))
+        
         if raw_text:
             self.design_check_text.setHtml(self._text_to_html(raw_text))
         else:

@@ -656,15 +656,15 @@ class SteelDesignAnalysisTab(QWidget):
 
 
 
-    def load_data(self, cad_state: dict):
+    def load_data(self, output_dict: dict):
         """
-        Pre-fill fields from a cad_state snapshot (e.g. on dialog open).
+        Pre-fill fields from a output_dict snapshot (e.g. on dialog open).
         Silently ignores missing or invalid entries.
         """
-        if not cad_state:
+        if not output_dict:
             return
         for key, field in self.result_fields.items():
-            field.setText(str(cad_state.get(key, "")))
+            field.setText(str(output_dict.get(key, "")))
         for key, field in self.x_fields.items():
             if hasattr(field, "setText"):
-                field.setText(str(cad_state.get(key, "")))
+                field.setText(str(output_dict.get(key, "")))

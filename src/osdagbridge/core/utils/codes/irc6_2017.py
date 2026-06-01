@@ -843,7 +843,18 @@ class IRC6_2017:
         
         # Final transverse wind load per unit length
         FT_LL = Pz * A1 * G * CD
-        return round(FT_LL, 3)
+
+        # Longitudinal wind load on live load = 25% of transverse (IRC:6-2017 Cl.209.3.6)
+        # Both loads applied simultaneously at 1.5 m above the roadway
+        FL_LL = 0.25 * FT_LL
+        application_height_m = 1.5
+
+        return {
+            'FT_LL': round(FT_LL, 3),
+            'FL_LL': round(FL_LL, 3),
+            'application_height_m': application_height_m,
+            'clause': 'IRC 6:2017 - 209.3.6'
+        }
     
     @staticmethod
     def cl_209_3_7(wind_speed):
@@ -916,11 +927,182 @@ class IRC6_2017:
         return round(bridge_temp, 3)
     
     @staticmethod
-    def cl_215_4_material_properties():
-        
-        thermal_expansion_coefficient = 12 * 1.0e-6  # per °C
+    def cl_215_2_effective_bridge_temperature(
+            max_temp: float,
+            min_temp: float,
+            structural_type: str = 'metallic',
+            snowbound: bool = False
+    ) -> dict:
+        """
+        Returns the range of effective bridge temperature as per IRC:6-2017 Clause 215.2.
 
-        
+        For metallic structures (default when type is unknown):
+          - Snowbound areas : -35°C to +50°C
+          - Other areas     : (min_air_shade_temp − 10°C) to (max_air_shade_temp + 15°C)
+
+        For other (restrained) structures, Table 15 applies:
+          - delta > 20°C : mean ± 10°C (whichever is critical)
+          - delta < 20°C : mean ± 5°C  (whichever is critical)
+
+        Parameters:
+            max_temp (float): Maximum shade air temperature in °C (from Annexure F)
+            min_temp (float): Minimum shade air temperature in °C (from Annexure F)
+            structural_type (str): 'metallic' or 'other'; defaults to 'metallic' if unknown
+            snowbound (bool): True if location is snowbound (metallic structures only)
+
+        Returns:
+            dict: T_min, T_max (°C), structural_type used, clause reference
+        """
+        stype = structural_type.strip().lower() if structural_type else 'metallic'
+
+        if stype == 'metallic':
+            if snowbound:
+                T_min = -35.0
+                T_max = 50.0
+            else:
+                # Other areas: max + 15, min - 10
+                T_min = min_temp - 10.0
+                T_max = max_temp + 15.0
+        else:
+            # Non-metallic restrained structure — Table 15
+            delta = max_temp - min_temp
+            mean = (max_temp + min_temp) / 2.0
+            if delta > 20.0:
+                T_min = mean - 10.0
+                T_max = mean + 10.0
+            else:
+                T_min = mean - 5.0
+                T_max = mean + 5.0
+
+        return {
+            'T_min': round(T_min, 3),
+            'T_max': round(T_max, 3),
+            'structural_type': stype,
+            'clause': 'IRC 6:2017 - 215.2'
+        }
+
+    @staticmethod
+    def cl_215_4_temperature_gradient(h: float, gradient_type: str = 'heating') -> dict:
+        """
+        Temperature gradient across bridge deck section per IRC:6-2017 Clause 215.4.
+
+        NOTE: Clause figure assumes 50 mm surfacing on top of slab.
+        h = slab (deck) thickness in metres.
+
+        ── Heating (positive gradient) ─────────────────────────────────────────
+        h₁ = 0.6 × h  (depth of upper zone from top surface)
+        h₂ = 0.4 m    (depth of lower zone from soffit; fixed)
+
+        Temperature variation (y measured downward from top surface):
+          Zone 1  0 ≤ y ≤ h₁  :  T(y) = T₁ × (1 − y/h₁)^(1/4)
+                  4th-root parabola — the "4" in the clause figure denotes the
+                  1/4-power curve shape. T = T₁ at surface, reduces to 0 at h₁.
+          Zone 2  h₁ < y < h − h₂  :  T(y) = 0
+          Zone 3  h − h₂ ≤ y ≤ h   :  T(y) = 0  (no soffit temperature for heating)
+
+        T₁ (°C) with 50 mm surfacing — from figure:
+            H = 0.2 m  →  T₁ = 18.0 °C
+            H = 0.3 m  →  T₁ = 20.5 °C
+            (linearly interpolated for intermediate H; capped at H = 0.3 m for H ≥ 0.3 m)
+
+        ── Cooling (negative gradient) ──────────────────────────────────────────
+        h₁ = 0.6 × h  (same zone proportions as heating)
+        h₂ = 0.4 m    (bottom zone; fixed)
+
+        Temperature variation:
+          Zone 1  0 ≤ y ≤ h₁  :  T(y) = T₁ × (1 − y/h₁)
+                  Linear decrease — triangular profile; "8" in the clause figure
+                  labels the reference temperature level at the base of h₂ zone.
+                  T = T₁ at surface, reduces linearly to 0 at depth h₁.
+          Zone 2  h₁ < y < h − h₂  :  T(y) = 0
+          Zone 3  h − h₂ ≤ y ≤ h   :  T(y) = 0
+
+        T₁ (°C) with 50 mm surfacing — from figure:
+            H = 0.2 m  →  T₁ = 4.4 °C
+            H = 0.3 m  →  T₁ = 6.8 °C
+
+        Parameters:
+            h (float): slab thickness in metres
+            gradient_type (str): 'heating' (positive) or 'cooling' (negative)
+
+        Returns dict:
+            T1          – peak temperature differential at top surface (°C)
+            h1          – depth of top zone (m)
+            h2          – depth of bottom zone from soffit (m; fixed 0.4)
+            T_at_y      – callable T_at_y(y) → temperature (°C) at depth y from top
+            gradient_type – 'heating' or 'cooling'
+            clause      – reference string
+        """
+        _heating_T1 = {0.2: 18.0, 0.3: 20.5}
+        _cooling_T1  = {0.2:  4.4, 0.3:  6.8}
+
+        def _interp_T1(table: dict, h_val: float) -> float:
+            if h_val <= 0.2:
+                return table[0.2]
+            if h_val >= 0.3:
+                return table[0.3]
+            return table[0.2] + (h_val - 0.2) / 0.1 * (table[0.3] - table[0.2])
+
+        g  = gradient_type.strip().lower()
+        h1 = round(0.6 * h, 4)
+        h2 = 0.4  # fixed 0.4 m from soffit
+
+        if g == 'heating':
+            T1 = _interp_T1(_heating_T1, h)
+
+            def T_at_y(y: float) -> float:
+                # Zone 1: T(y) = T₁ × (1 − y/h₁)^(1/4)  [4th-root parabola]
+                # Zone 2 & 3: T = 0
+                if y < 0 or y > h:
+                    return 0.0
+                if y <= h1:
+                    return round(T1 * (1.0 - y / h1) ** 0.25, 4)
+                return 0.0
+
+        elif g == 'cooling':
+            T1 = _interp_T1(_cooling_T1, h)
+
+            def T_at_y(y: float) -> float:
+                # Zone 1: T(y) = T₁ × (1 − y/h₁)  [linear, triangular profile]
+                # Zone 2 & 3: T = 0
+                if y < 0 or y > h:
+                    return 0.0
+                if y <= h1:
+                    return round(T1 * (1.0 - y / h1), 4)
+                return 0.0
+
+        else:
+            raise ValueError(
+                f"gradient_type must be 'heating' or 'cooling', got '{gradient_type}'"
+            )
+
+        return {
+            'T1': round(T1, 3),
+            'h1': h1,
+            'h2': h2,
+            'T_at_y': T_at_y,
+            'gradient_type': g,
+            'clause': 'IRC 6:2017 - 215.4',
+        }
+
+    @staticmethod
+    def cl_215_4_material_properties() -> dict:
+        """
+        Thermal material properties per IRC:6-2017 Cl.215.2.
+
+        Returns
+        -------
+        dict
+            alpha  (float) : coefficient of thermal expansion (/°C)
+            clause (str)   : code reference
+        """
+        thermal_expansion_coefficient = 11.7e-6  # /°C — IRC 6:2017 Cl.215.2 (metallic / composite)
+        return {
+            'alpha':  thermal_expansion_coefficient,
+            'clause': 'IRC 6:2017 Cl.215.2',
+        }
+
+
 
     @staticmethod
     def table_16():
@@ -1198,20 +1380,37 @@ class IRC6_2017:
         )
 
     @staticmethod
-    def cl_218_3_seismic_combinations(r1, r2, r3):
+    def cl_218_3_vertical_seismic_component(Ah):
         """
-        Returns the design seismic force combinations as per IRC:6-2017 Clause 218.3.
-        
+        Returns the vertical seismic coefficient as per IRC:6-2017 Clause 218.3.
+
+        Two horizontal components are taken as of equal magnitude, and the vertical
+        component is taken as two-thirds of the horizontal component.
+
+        Parameters:
+            Ah (float): Horizontal seismic coefficient
+
+        Returns:
+            float: Vertical seismic coefficient Av = (2/3) * Ah
+        """
+        Av = (2.0 / 3.0) * Ah
+        return round(Av, 4)
+
+    @staticmethod
+    def cl_218_4_seismic_combinations(r1, r2, r3):
+        """
+        Returns the design seismic force combinations as per IRC:6-2017 Clause 218.4.
+
         The design seismic force resultants shall be combined as:
         a) ± r1 ± 0.3*r2 ± 0.3*r3
         b) ± 0.3*r1 ± r2 ± 0.3*r3
         c) ± 0.3*r1 ± 0.3*r2 ± r3
-        
+
         Parameters:
             r1 (float): Seismic force resultant in direction 1 (longitudinal)
             r2 (float): Seismic force resultant in direction 2 (transverse)
             r3 (float): Seismic force resultant in direction 3 (vertical)
-            
+
         Returns:
             list: List of dictionaries containing all combinations
         """

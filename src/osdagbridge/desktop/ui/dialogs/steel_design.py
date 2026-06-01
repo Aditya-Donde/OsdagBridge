@@ -148,8 +148,9 @@ class SteelDesign(QDialog):
         main_layout.addWidget(self._build_global_selection_bar())
         main_layout.addWidget(self.tabs)
 
-        if hasattr(self._main_window, "cad_state"):
-            self.details_tab.load_data(self._main_window.cad_state)
+        backend = getattr(self._main_window, "backend", None)
+        if backend is not None and backend.output_dict:
+            self.details_tab.load_data(backend.output_dict)
 
         if self._result_handler is not None:
             # Inject the matplotlib canvas into the Analysis Results tab
@@ -223,6 +224,32 @@ class SteelDesign(QDialog):
                 background-color: #90AF13;
                 color: black;
                 border: 1px solid #90AF13;
+            }
+            QComboBox QAbstractItemView QScrollBar:vertical {
+                border: none;
+                background: #f0f0f0;
+                width: 8px;
+                margin-left: 2px;
+            }
+            QComboBox QAbstractItemView QScrollBar::handle:vertical {
+                background: #c0c0c0;
+                border-radius: 4px;
+                min-height: 20px;
+            }
+            QComboBox QAbstractItemView QScrollBar::handle:vertical:hover {
+                background: #a0a0a0;
+            }
+            QComboBox QAbstractItemView QScrollBar::handle:vertical:pressed {
+                background: #808080;
+            }
+            QComboBox QAbstractItemView QScrollBar::add-line:vertical,
+            QComboBox QAbstractItemView QScrollBar::sub-line:vertical {
+                border: none;
+                background: none;
+            }
+            QComboBox QAbstractItemView QScrollBar::add-page:vertical,
+            QComboBox QAbstractItemView QScrollBar::sub-page:vertical {
+                background: none;
             }
         """
 

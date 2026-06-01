@@ -205,6 +205,7 @@ class FrontendData:
             (KEY_GIRDER, KEY_DISP_GIRDER, TYPE_COMBOBOX, steel_properties,
                 True, "No Validator",
                 {
+                    "default":           BASIC_INPUT_DICT.get(KEY_GIRDER),
                     "is_material_field": True,
                     "member_type":       "Girder",
                 }),
@@ -212,6 +213,7 @@ class FrontendData:
             (KEY_CROSS_BRACING, KEY_DISP_CROSS_BRACING, TYPE_COMBOBOX, steel_properties,
                 True, "No Validator",
                 {
+                    "default":           BASIC_INPUT_DICT.get(KEY_CROSS_BRACING),
                     "is_material_field": True,
                     "member_type":       "Girder",
                 }),
@@ -219,6 +221,7 @@ class FrontendData:
             (KEY_END_DIAPHRAGM, KEY_DISP_END_DIAPHRAGM, TYPE_COMBOBOX, steel_properties,
                 True, "No Validator",
                 {
+                    "default":           BASIC_INPUT_DICT.get(KEY_END_DIAPHRAGM),
                     "is_material_field": True,
                     "member_type":       "Girder",
                 }),
@@ -309,9 +312,20 @@ class FrontendData:
             (KEY_BTN_STEEL_DESIGN, "Analysis and Design Results Summary",
                 TYPE_ONLY_BUTTON, None, True, "No Validator",
                 {
-                    "action": "open_steel_design"
+                    "action": "open_steel_design",
+                    "group_end": True
                 }),
             
+            # ─── Transverse Design ─────────────────────────────────────────────────────────
+
+            (KEY_BTN_TRANSVERSE_DESIGN, "Design Summary",
+                TYPE_ONLY_BUTTON, None, True, "No Validator",
+                {
+                    "action": "open_transverse_design",
+                    "group_title": "Transverse Design",
+                    "group_end": True
+                }),
+
             # ─── Deck Design ─────────────────────────────────────────────────────────
 
             (KEY_BTN_DECK_DESIGN, "Design Summary",

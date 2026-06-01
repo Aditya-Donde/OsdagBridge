@@ -591,6 +591,16 @@ class CustomWindow(QWidget):
         if not self.input_dock:
             return
 
+        # Keep CAD numeric labels in sync with homepage edits by re-solving
+        # derived layout values (girders/spacing/overhang/overall width) on-demand.
+        if self.input_dock.is_require_field_changed:
+            try:
+                solve_extend_basic_input_dict(self.input_dict)
+                self.input_dock.is_require_field_changed = False
+            except Exception:
+                # If solver fails mid-edit, keep raw values for best-effort redraw.
+                pass
+
         # Apply state to CAD UI & Update Cad-State
         self.cad_comp_widget.update_from_osdag_inputs(self.input_dict)
 

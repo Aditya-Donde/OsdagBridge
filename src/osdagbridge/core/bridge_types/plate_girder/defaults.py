@@ -71,9 +71,9 @@ BASIC_INPUT_DICT = {
     KEY_FOOTPATH: "None",
     KEY_SKEW_ANGLE: None,
     KEY_DESIGN_MODE: "Optimized",
-    KEY_GIRDER: steel_properties[0],
-    KEY_CROSS_BRACING: steel_properties[0],
-    KEY_END_DIAPHRAGM: steel_properties[0],
+    KEY_GIRDER: steel_properties[12],
+    KEY_CROSS_BRACING: steel_properties[12],
+    KEY_END_DIAPHRAGM: steel_properties[12],
     KEY_DECK_CONCRETE_GRADE_BASIC: concrete_properies[5],
 
     # Additional Inputs Defaults

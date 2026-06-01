@@ -7,14 +7,9 @@ from mpl_toolkits.mplot3d.art3d import Path3DCollection
 
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QComboBox, QSizePolicy, QPushButton,
-    QFrame, QLabel, QCheckBox, QScrollArea, QApplication, QLineEdit 
+    QFrame, QLabel, QCheckBox, QScrollArea, QApplication
 )
 from PySide6.QtCore import Qt, QEvent, QTimer
-
-# ══════════════════════════════════════════════
-# ADDED: QDoubleValidator for scale input validation
-# ══════════════════════════════════════════════
-from PySide6.QtGui import QDoubleValidator
 
 from navcube import NavCubeOverlay, NavCubeStyle
 from osdagbridge.desktop.ui.utils.mpl_widget_navcube_sync import MatplotlibNavCubeSync
@@ -124,7 +119,6 @@ class MplPlotWidget(QWidget):
         self._show_max = False  
         self._show_min = False  
         self._show_all_vals = False 
-        self._show_girder_labels = False
 
         self._zoom_scale  = 1.0
         self._base_box_x  = 2.5
@@ -140,19 +134,6 @@ class MplPlotWidget(QWidget):
         self._current_azim = -60.0
         
         self._orig_limits = None   
-        
-        # ══════════════════════════════════════════════
-        # Interaction mode state for view-control buttons
-        # ══════════════════════════════════════════════
-        self._pan_active         = False
-        self._zoom_window_active = False
-        self._pan_start          = None  # pixel (x,y) on press
-        self._zoom_rect_start    = None  # data coords for rubber-band
-        self._zoom_rect_patch    = None  # Rectangle drawn on canvas
-        self._cid_press          = None  # mpl event ids – disconnected when mode off
-        self._cid_release        = None
-        self._cid_motion         = None
-        
 
         # matplotlib canvas
         self._fig    = plt.figure(figsize=(14, 6), facecolor="white")
@@ -189,12 +170,10 @@ class MplPlotWidget(QWidget):
         ))
         self._navcube.hide()
         self._navcube_sync = MatplotlibNavCubeSync(self._canvas, self._navcube)
-
-
-        self._canvas.mpl_connect("button_press_event",   lambda e: self._navcube_sync.set_interaction_active(True)  if e.button == 1 and not self._any_mode_active() else None)
-        self._canvas.mpl_connect("button_release_event", lambda e: self._navcube_sync.set_interaction_active(False) if e.button == 1 and not self._any_mode_active() else None)
-        self._canvas.mpl_connect("motion_notify_event",  lambda e: self._navcube_sync.force_sync() if e.button == 1 and not self._any_mode_active() else None)
-
+        self._canvas.mpl_connect("button_press_event",   lambda e: self._navcube_sync.set_interaction_active(True)  if e.button == 1 else None)
+        self._canvas.mpl_connect("button_release_event", lambda e: self._navcube_sync.set_interaction_active(False) if e.button == 1 else None)
+        self._canvas.mpl_connect("motion_notify_event",  lambda e: self._navcube_sync.force_sync() if e.button == 1 else None)
+        # ──────────────────────────────────────────────────────────
 
         # zoom toolbar
         self._btn_zoom_in  = QPushButton("+")
@@ -379,27 +358,12 @@ class MplPlotWidget(QWidget):
         toolbar_row.addWidget(self._btn_zoom_out)
         toolbar_row.addWidget(self._btn_zoom_in)
         toolbar_row.addWidget(self._btn_zoom_reset)
-        toolbar_row.addWidget(self._scale_widget)
-
-
-        
-        # ── Row 2: new view-control buttons ────────────────────────
-        toolbar_row2 = QHBoxLayout()
-        toolbar_row2.setContentsMargins(4, 2, 4, 2)
-        toolbar_row2.setSpacing(4)
-        toolbar_row2.addWidget(self._btn_zoom_fit)
-        toolbar_row2.addWidget(self._btn_zoom_window)
-        toolbar_row2.addWidget(self._btn_pan)
-        toolbar_row2.addWidget(self._btn_rotate)
-        toolbar_row2.addWidget(self._btn_girder_labels)
-        toolbar_row2.addStretch()
 
         # layout
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(0)
         root.addLayout(toolbar_row)
-        root.addLayout(toolbar_row2)   # second row added here
         root.addWidget(self._scroll_area, stretch=1)
 
     # public API
@@ -726,7 +690,6 @@ class MplPlotWidget(QWidget):
             self._apply_axis_visibility()
             self._apply_supports_visibility()
             self._apply_grid_visibility()
-            self._apply_girder_label_visibility()
             self._summary_overlay.hide() 
             
             self._fit_figure_to_canvas()
@@ -756,18 +719,6 @@ class MplPlotWidget(QWidget):
         self._show_grid = checked
         self._apply_grid_visibility()
         self._canvas.draw_idle()
-
-    def _on_girder_labels_toggled(self, checked: bool):
-        self._show_girder_labels = checked
-        self._apply_girder_label_visibility()
-        self._canvas.draw_idle()
-
-    def _apply_girder_label_visibility(self):
-        """Show or hide all text artists tagged with gid='girder_label'."""
-        for ax in self._fig.axes:
-            for text in ax.texts:
-                if text.get_gid() == "girder_label":
-                    text.set_visible(self._show_girder_labels)
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
@@ -819,24 +770,15 @@ class MplPlotWidget(QWidget):
                 elif text.get_gid() == "all_vals": 
                     text.set_visible(self._show_all_vals)
 
-
-    
-    # ══════════════════════════════════════════════
-    # ADDED | Grid visibility with 3D zoom correction
-    # ══════════════════════════════════════════════
     def _apply_grid_visibility(self):
         for ax in self._fig.axes:
             if self._show_grid:
+                # Turn everything ON and re-apply your custom dashed grid styling
                 ax.set_axis_on()
                 ax.grid(True, linestyle="--", linewidth=0.4, alpha=0.5)
-                if hasattr(ax, 'set_box_aspect'):
-                    ax.set_box_aspect(aspect=(2.5, 1.2, 1.0), zoom=self._zoom_scale * 0.82)
             else:
+                # Throw the invisibility cloak over the panes, cube, labels, and ticks!
                 ax.set_axis_off()
-                if hasattr(ax, 'set_box_aspect'):
-                    ax.set_box_aspect(aspect=(2.5, 1.2, 1.0), zoom=self._zoom_scale)
-    # ══════════════════════════════════════════════                
-
 
     def _fit_figure_to_canvas(self):
         # Resize the Matplotlib Figure to match the widget canvas in physical pixels
@@ -1311,7 +1253,7 @@ class MplPlotWidget(QWidget):
             base_h = self._scroll_area.height() - 2
             # Physically resize the canvas like zooming a photo
             self._canvas.setFixedSize(int(base_w * self._zoom_scale), int(base_h * self._zoom_scale))
-            self._canvas.draw_idle()
+        self._canvas.draw_idle()
 
     # def eventFilter(self, obj, event):
     #     if obj is self._canvas and event.type() == QEvent.Type.Wheel:
@@ -1447,4 +1389,4 @@ class MplPlotWidget(QWidget):
         for rb in self._output_dock.output_widget.findChildren(CustomRadioButton):
             if rb.isChecked() and rb.text() in _RICH_LABEL_TO_FORCE:
                 return _RICH_LABEL_TO_FORCE[rb.text()]
-        return "Fy"        
+        return "Fy"

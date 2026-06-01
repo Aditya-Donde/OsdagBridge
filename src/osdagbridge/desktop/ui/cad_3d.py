@@ -7,6 +7,7 @@
 """
 
 import sys
+import math
 
 from PySide6.QtWidgets import (
     QApplication,
@@ -15,19 +16,50 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QHBoxLayout,
     QCheckBox,
-    QPushButton
+    QPushButton,
+    QFrame,
+    QLabel,
+    QGridLayout
 )
 from PySide6.QtCore import QTimer, Qt
 
 from OCC.Core.Quantity import Quantity_Color, Quantity_TOC_RGB
+from OCC.Core.AIS import AIS_Shape
+from OCC.Core.gp import gp_Pnt
+from OCC.Core.BRepPrimAPI import BRepPrimAPI_MakeSphere
+from OCC.Core.BRepBuilderAPI import BRepBuilderAPI_MakeEdge
 from OCC.Display.backend import load_backend
+
+try:
+    from OCC.Core.AIS import AIS_TextLabel
+    _HAS_AIS_TEXT = True
+except ImportError:
+    _HAS_AIS_TEXT = False
+
+# Z-layer constant (resolved once at import time)
+try:
+    from OCC.Core.Graphic3d import Graphic3d_ZLayerId_Topmost as _Z_TOP
+except ImportError:
+    try:
+        from OCC.Core.Graphic3d import Graphic3d_ZLayerId_Top as _Z_TOP
+    except ImportError:
+        _Z_TOP = None
+
+try:
+    from OCC.Core.Aspect import Aspect_TODT_NORMAL as _TODT_NORMAL
+except ImportError:
+    try:
+        from OCC.Core.Aspect import Aspect_TODT_SUBTITLE as _TODT_NORMAL
+    except ImportError:
+        _TODT_NORMAL = 0  # numeric fallback
 
 # CAD generator
 from osdagbridge.core.bridge_types.plate_girder.cad_generator import (
     PlateGirderCADGenerator
 )
+from osdagbridge.core.bridge_types.plate_girder import results_data
 
-# Custom 3D Viewer 
+# Custom 3D Viewer
 from osdagbridge.desktop.ui.utils.custom_3dviewer import CustomViewer3d
 
 from osdagbridge.core.bridge_types.plate_girder.dto import (
@@ -53,6 +85,11 @@ class CAD3DWindow(QWidget):
         self.viewer = None
         self.display = None
         self._cad_init_pending = True
+
+        # Node state — single source of truth
+        # _node_data: nid -> {x, y, z (mm), label}
+        self._node_data: dict = {}
+        self._members = {}
 
         # UI + CAD setup
         self.setup_ui()
@@ -125,6 +162,8 @@ class CAD3DWindow(QWidget):
         if not self._is_display_ready():
             return
 
+        self.design_params = design_params
+
         # Generate fresh model data
         self.generator.model_data = self.generator.generate(design_params)
 
@@ -133,6 +172,10 @@ class CAD3DWindow(QWidget):
 
         # Show component selector
         self.component_selector.show()
+
+        # Update info table
+        if hasattr(self, "update_info_table"):
+            self.update_info_table(design_params)
 
     def clear_3d_cad(self):
         """
@@ -148,10 +191,16 @@ class CAD3DWindow(QWidget):
         self.display.Repaint()
 
         # Reset tracked objects
+        self._node_data = {}
+        self._members = {}
         self.viewer.model_ais_objects = {}
         self.viewer.model_hover_labels = {}
         if hasattr(self.viewer, "deck_texture_ais"):
             self.viewer.deck_texture_ais = []
+        if hasattr(self.viewer, "set_node_hover_data"):
+            self.viewer.set_node_hover_data([])
+        if hasattr(self.viewer, "model_hover_labels_by_ais"):
+            self.viewer.model_hover_labels_by_ais.clear()
 
         # Hide component selector
         self.component_selector.hide()
@@ -164,6 +213,7 @@ class CAD3DWindow(QWidget):
         if not self._is_display_ready():
             return
 
+        params = self.design_params
         cad_data = self.generator.model_data
         display = self.display
         context = self.viewer.context
@@ -196,7 +246,11 @@ class CAD3DWindow(QWidget):
             ais_list = []
 
             for shp in shapes:
-                ais = display.DisplayShape(shp, color=color, transparency=transparency, update=False)
+                kwargs = {'color': color, 'update': False}
+                if transparency is not None:
+                    kwargs['transparency'] = float(transparency)
+                ais = display.DisplayShape(shp, **kwargs)
+
                 ais = ais[0] if isinstance(ais, list) else ais
 
                 if line_width is not None:
@@ -218,14 +272,14 @@ class CAD3DWindow(QWidget):
         display_and_register(
             cad_data.get("girder_web", []),
             "Girder Web",
-            "Girder Web",
+            f"Girder Web\nDepth: {params.girder_section_d:.2f} mm\nWeb Thickness: {params.girder_section_tw:.2f} mm\nSpan: {params.span_length_L / 1000:.2f} m\nSteel Grade: {params.steel_grade}",
             WEB_COLOR
         )
 
         display_and_register(
             cad_data.get("girder_flanges", []),
             "Girder Flange",
-            "Girder Flange",
+            f"Girder Flange\nTop Flange Width: {params.girder_section_bf:.2f} mm\nTop Flange Thickness: {params.girder_section_tf:.2f} mm\nBottom Flange Width: {params.girder_section_bf_b:.2f} mm\nBottom Flange Thickness: {params.girder_section_tf_b:.2f} mm",
             FLANGE_COLOR
         )
 
@@ -233,14 +287,14 @@ class CAD3DWindow(QWidget):
         display_and_register(
             cad_data.get("stiffeners", []),
             "Stiffener",
-            "Stiffener",
+            f"Stiffener\nSpacing: {params.intermediate_stiffener_spacing:.2f} mm\nThickness: {params.intermediate_stiffener_thickness:.2f} mm\nEnd Pairs: {params.num_end_stiffener_pairs}",
             STIFFENER_COLOR
         )
 
         display_and_register(
             cad_data.get("shear_studs", []),
             "Shear Stud",
-            "Shear Stud",
+            f"Shear Stud\nBase Dia: {params.shear_stud_params.base_diameter:.2f} mm\nHeight: {params.shear_stud_params.base_height + params.shear_stud_params.top_height:.2f} mm\nPitch: {params.shear_stud_params.pitch:.2f} mm\nPer Section: {params.shear_stud_params.num_per_section}",
             STIFFENER_COLOR
         )
 
@@ -274,14 +328,14 @@ class CAD3DWindow(QWidget):
         display_and_register(
             cad_data.get("cross_bracings", []),
             "Cross Bracing",
-            "Cross Bracing",
+            f"Cross Bracing\nType: {params.bracing_type}-Bracing\nSpacing: {params.cross_bracing_spacing:.2f} mm\nSection: {params.diagonal_section_type}\nLeg H: {params.diagonal_section_dims.leg_h:.2f} mm\nLeg W: {params.diagonal_section_dims.leg_w:.2f} mm",
             BRACING_COLOR
         )
 
         display_and_register(
             cad_data.get("deck_slab"),
             "Deck",
-            "Deck Slab",
+            f"Deck Slab\nThickness: {params.deck_thickness:.2f} mm\nCarriageway Width: {params.carriageway_width:.2f} mm\nConcrete Grade: {params.concrete_grade}\nFootpath: {params.footpath_config}",
             DECK_COLOR
         )
         # DECK TEXTURES (DISPLAY ONLY, NO HOVER)
@@ -316,7 +370,7 @@ class CAD3DWindow(QWidget):
         display_and_register(
             cad_data.get("crash_barriers", []),
             "Crash Barrier",
-            "Crash Barrier",
+            f"Crash Barrier\nType: {params.barrier_type}\nSubtype: {params.crash_barrier_subtype}",
             BARRIER_POST_COLOR
         )
 
@@ -324,26 +378,30 @@ class CAD3DWindow(QWidget):
         display_and_register(
             cad_data.get("median_barriers", []),
             "Median",
-            "Median Barrier",
+            f"Median Barrier\nType: {params.median_type}",
             BARRIER_COLOR
         )
 
         display_and_register(
             cad_data.get("railings", []),
             "Railing",
-            "Railing",
+            f"Railing\nType: {params.railing_type.upper()}\nRails: {params.rail_count}\nWidth: {params.railing_width:.2f} mm",
             BARRIER_COLOR
         )
 
-        # FINAL VIEW 
+        # Nodes and grillage overlays
+        node_positions = self._render_nodes()
+        self._render_grillage(node_positions)
+
+        # FINAL VIEW
         display.View_Iso()
         display.FitAll()
 
         if hasattr(self.viewer, "display_view_cube"):
             self.viewer.display_view_cube()
 
-
         self.component_selector.show()
+        self.component_selector.apply_selection()
 
     # ZOOM CONTROLS 
 
@@ -367,10 +425,68 @@ class CAD3DWindow(QWidget):
         self.zoom_out_btn.clicked.connect(lambda: self.display.ZoomFactor(1 / 1.1))
         self._style_zoom_button(self.zoom_out_btn)
 
+        self.zoom_fit_btn = QPushButton("Fit", self.viewer)
+        self.zoom_fit_btn.setFixedSize(self._zoom_btn_size, self._zoom_btn_size)
+        self.zoom_fit_btn.setCursor(Qt.PointingHandCursor)
+        self.zoom_fit_btn.setToolTip("Zoom Fit — fit all geometry in view")
+        self.zoom_fit_btn.clicked.connect(self._zoom_fit)
+        self.zoom_fit_btn.setStyleSheet("""
+            QPushButton {
+                font-size: 13px; font-weight: bold;
+                background-color: white;
+                border: 1px solid #bdbdbd;
+            }
+            QPushButton:hover   { background-color: #e6e6e6; }
+            QPushButton:pressed { background-color: #d6d6d6; }
+        """)
+
         self.zoom_in_btn.show()
         self.zoom_out_btn.show()
+        self.zoom_fit_btn.show()
 
         self.position_zoom_buttons()
+
+        # ── Info table overlay ──────────────────────────────────────────
+        self._info_table = QFrame(self.viewer)
+        self._info_table.setStyleSheet("""
+            QFrame {
+                background-color: rgba(255, 255, 255, 210);
+                border: 1px solid #bdbdbd;
+                border-radius: 4px;
+            }
+        """)
+        grid = QGridLayout(self._info_table)
+        grid.setContentsMargins(8, 6, 8, 6)
+        grid.setHorizontalSpacing(12)
+        grid.setVerticalSpacing(3)
+
+        label_style = "font-size: 11px; color: #444; font-weight: bold; background: transparent; border: none;"
+        value_style = "font-size: 11px; color: #111; background: transparent; border: none;"
+
+        rows = [
+            ("Overall Bridge Width", "—", "m"),
+            ("Span Length",          "—", "m"),
+            ("Girder Spacing",       "—", "m"),
+            ("Deck Thickness",       "—", "mm")
+        ]
+        self._info_value_labels = {}
+        keys = ["bridge_width", "span_length", "girder_spacing", "deck_thickness"]
+
+        for i, (name, default, unit) in enumerate(rows):
+            lbl = QLabel(name + ":")
+            lbl.setStyleSheet(label_style)
+            val = QLabel(default)
+            val.setStyleSheet(value_style)
+            unt = QLabel(unit)
+            unt.setStyleSheet(value_style)
+            grid.addWidget(lbl, i, 0)
+            grid.addWidget(val, i, 1)
+            grid.addWidget(unt, i, 2)
+            self._info_value_labels[keys[i]] = val
+
+        self._info_table.adjustSize()
+        self._info_table.show()
+        self._position_info_table()
 
         self._orig_resize_event = self.viewer.resizeEvent
         self.viewer.resizeEvent = self._cad_resize_proxy
@@ -391,6 +507,11 @@ class CAD3DWindow(QWidget):
             }
         """)
 
+    def _zoom_fit(self):
+        """Reset the view to fit all visible geometry."""
+        if self._is_display_ready():
+            self.display.FitAll()
+
     def position_zoom_buttons(self):
         if not hasattr(self, "zoom_in_btn"):
             return
@@ -407,14 +528,53 @@ class CAD3DWindow(QWidget):
 
         btn_y_1 = cube_bottom + self._zoom_spacing
         btn_y_2 = btn_y_1 + self._zoom_btn_size + self._zoom_spacing
+        btn_y_3 = btn_y_2 + self._zoom_btn_size + self._zoom_spacing
 
         self.zoom_in_btn.move(btn_x, btn_y_1)
         self.zoom_out_btn.move(btn_x, btn_y_2)
+        if hasattr(self, "zoom_fit_btn"):
+            self.zoom_fit_btn.move(btn_x, btn_y_3)
 
     def _cad_resize_proxy(self, event):
         if self._orig_resize_event:
             self._orig_resize_event(event)
         self.position_zoom_buttons()
+        self._position_info_table()
+
+    def _position_info_table(self):
+        if not hasattr(self, "_info_table") or not self._info_table:
+            return
+        margin = 10
+        h = self.viewer.height()
+        tbl_h = self._info_table.height()
+        tbl_w = self._info_table.width()
+        self._info_table.move(margin, h - tbl_h - margin)
+
+    def update_info_table(self, params: "BridgeParametersDTO"):
+        """Populate the info table from design params."""
+        if not hasattr(self, "_info_value_labels"):
+            return
+
+        # Get total bridge width from generator model data (already computed)
+        model_data = getattr(self.generator, "model_data", None)
+        if model_data and "total_deck_width" in model_data:
+            bridge_width_mm = model_data["total_deck_width"]
+        else:
+            # Fallback: carriageway + footpaths
+            footpath_total = 0.0
+            if params.footpath_config in ("LEFT", "BOTH"):
+                footpath_total += params.footpath_width
+            if params.footpath_config in ("RIGHT", "BOTH"):
+                footpath_total += params.footpath_width
+            bridge_width_mm = params.carriageway_width + footpath_total
+
+        self._info_value_labels["bridge_width"].setText(f"{bridge_width_mm / 1000:.2f}")
+        self._info_value_labels["span_length"].setText(f"{params.span_length_L / 1000:.2f}")
+        self._info_value_labels["girder_spacing"].setText(f"{params.girder_spacing / 1000:.2f}")
+        self._info_value_labels["deck_thickness"].setText(f"{params.deck_thickness:.0f}")
+
+        self._info_table.adjustSize()
+        self._position_info_table()
 
     def show_full_model(self):
         """
@@ -438,69 +598,355 @@ class CAD3DWindow(QWidget):
         self.display.Repaint()
 
 
-    def update_component_visibility(self, selected_components):
+    def update_component_visibility(self, selected_components: list) -> None:
         """
-        Show/hide components based on multi-selection.
-        
+        Show/hide model objects based on the current checkbox selection.
+
         Args:
-            selected_components: List of component keys that should be visible
+            selected_components: List of component keys that should be visible.
+                                 Overlay keys (Grillage, Node, NodeNumbers) are
+                                 toggled independently of the base structure.
         """
         if not self._is_display_ready():
             return
 
         context = self.viewer.context
+        show_node_numbers = "NodeNumbers" in selected_components
+        show_nodes        = "Node" in selected_components
 
-        # Component key mappings (handles composite components)
+        # Map checkbox keys → internal model_ais_objects keys
         component_map = {
-            "Crash Barrier": ["Crash Barrier", "Crash Barrier W-Beam"],
-            "Median": ["Median", "Median W-Beam"],
-            #"Support"
-            "Girder": ["Girder Web", "Girder Flange", "Stiffener", "Shear Stud", "Support Vertical", "Support Transverse", "Support Longitudinal"],
-            "Deck": ["Deck"],
+            "Girder":        ["Girder Web", "Girder Flange", "Stiffener", "Shear Stud",
+                              "Support Vertical", "Support Transverse", "Support Longitudinal"],
+            "Deck":          ["Deck"],
             "Cross Bracing": ["Cross Bracing"],
-            "Railing": ["Railing"],
-            "Stiffener": ["Stiffener"]
+            "Crash Barrier": ["Crash Barrier", "Crash Barrier W-Beam"],
+            "Median":        ["Median", "Median W-Beam"],
+            "Railing":       ["Railing"],
+            "Grillage":      ["Grillage"],
+            "Node":          ["Node"],
         }
 
-        # Collect all keys that should be visible
-        visible_keys = set()
+        # Build the set of AIS keys that should be visible
+        visible_keys: set = set()
         for comp in selected_components:
             if comp in component_map:
                 visible_keys.update(component_map[comp])
 
-        # Update visibility for all structural components
+        # ── Node Numbers: mutually exclusive with sphere markers ──────────────
+        if show_node_numbers:
+            self._render_node_numbers()
+            # Hide sphere markers while numbers are shown
+            for ais in self.viewer.model_ais_objects.get("Node", []):
+                try:
+                    context.Erase(ais, False)
+                except Exception:
+                    pass
+            # Disable hover tooltips (text labels already give the info)
+            if hasattr(self.viewer, "set_node_hover_data"):
+                self.viewer.set_node_hover_data([])
+        else:
+            # Clear any existing number labels
+            for ais in self.viewer.model_ais_objects.pop("NodeNumbers", []):
+                try:
+                    context.Erase(ais, False)
+                except Exception:
+                    pass
+            # Re-enable hover when Node spheres are visible
+            if show_nodes and hasattr(self.viewer, "set_node_hover_data"):
+                self.viewer.set_node_hover_data(
+                    [{"x": d["x"], "y": d["y"], "z": d["z"], "label": d["label"]}
+                     for d in self._node_data.values()]
+                )
+            elif hasattr(self.viewer, "set_node_hover_data"):
+                self.viewer.set_node_hover_data([])
+
+        # ── Show / hide all registered AIS objects ────────────────────────────
         for key, ais_list in self.viewer.model_ais_objects.items():
+            if key == "NodeNumbers":
+                continue  # already handled above
+            if key == "Node" and show_node_numbers:
+                continue  # already erased above; don’t re-show
             should_show = key in visible_keys
             for ais in ais_list:
-                if should_show:
+                try:
+                    if should_show:
+                        context.Display(ais, False)
+                    else:
+                        context.Erase(ais, False)
+                except Exception:
+                    pass
+
+        # Deck textures follow the Deck checkbox
+        show_deck = "Deck" in selected_components
+        for ais in getattr(self.viewer, "deck_texture_ais", []):
+            try:
+                if show_deck:
                     context.Display(ais, False)
                 else:
                     context.Erase(ais, False)
-
-        # Handle deck textures (show only if Deck is selected)
-        show_deck_textures = "Deck" in selected_components
-        for ais in getattr(self.viewer, "deck_texture_ais", []):
-            if show_deck_textures:
-                context.Display(ais, False)
-            else:
-                context.Erase(ais, False)
+            except Exception:
+                pass
 
         self.display.FitAll()
         self.display.Repaint()
 
-
     def regenerate_bridge(self):
         self.load_bridge()
+
+    # ── RENDER NODES ──────────────────────────────────────────────────────────
+
+    def _render_nodes(self) -> dict:
+        """
+        Build node sphere markers from the live OpenSees model.
+        All nodes are initially displayed but hidden by apply_selection()
+        unless the Node checkbox is checked.
+
+        Returns a dict: nid -> (x_mm, y_mm, z_mm) for grillage construction.
+        """
+        if not self._is_display_ready():
+            return {}
+
+        try:
+            nodes, members = results_data._build_nodes_members()
+        except Exception:
+            return {}
+
+        if not nodes:
+            return {}
+
+        deck_top_z = self.generator.model_data.get("deck_top_z")
+        if deck_top_z is None:
+            return {}
+
+        # Unit heuristic: OpenSees uses metres; CAD uses mm.
+        coords = [(float(c[0]), float(c[2])) for c in nodes.values() if c]
+        max_abs = max((max(abs(x), abs(z)) for x, z in coords), default=0.0)
+        scale = 1000.0 if max_abs <= 500.0 else 1.0
+
+        skew_rad = math.radians(float(getattr(self.generator, "skew_angle", 0.0) or 0.0))
+        skew_tan = math.tan(skew_rad) if abs(skew_rad) > 1e-9 else 0.0
+
+        z_vals = [z for _, z in coords]
+        z_center = 0.5 * (min(z_vals) + max(z_vals)) if z_vals and min(z_vals) >= -1e-6 else 0.0
+
+        NODE_COLOR = Quantity_Color(0.0, 0.0, 0.0, Quantity_TOC_RGB)
+        NODE_R     = 65.0    # visible sphere radius
+        PICK_R     = 120.0   # larger transparent pick sphere for hover hit-testing
+        z_base     = float(deck_top_z) + 2.0
+
+        self._node_data = {}
+        node_ais_list = []
+        hover_nodes = []
+
+        self.viewer.model_ais_objects.pop("Node", None)
+        if hasattr(self.viewer, "set_node_hover_data"):
+            self.viewer.set_node_hover_data([])
+        if hasattr(self.viewer, "model_hover_labels_by_ais"):
+            self.viewer.model_hover_labels_by_ais.clear()
+
+        for nid, coord in nodes.items():
+            if not coord:
+                continue
+
+            x_m, z_m = float(coord[0]), float(coord[2])
+            x_mm = x_m * scale
+            y_mm = (z_m - z_center) * scale
+            if skew_tan:
+                x_mm += y_mm * skew_tan
+
+            label = f"Node {nid}\nX: {x_m:.2f} m\nZ: {z_m:.2f} m"
+
+            # Visible sphere
+            vis = AIS_Shape(BRepPrimAPI_MakeSphere(gp_Pnt(x_mm, y_mm, z_base), NODE_R).Shape())
+            vis.SetColor(NODE_COLOR)
+            if _Z_TOP is not None:
+                try:
+                    vis.SetZLayer(_Z_TOP)
+                except Exception:
+                    pass
+            self.viewer.context.Display(vis, False)
+            node_ais_list.append(vis)
+
+            # Transparent pick sphere (larger hit area for hover)
+            pick = AIS_Shape(BRepPrimAPI_MakeSphere(gp_Pnt(x_mm, y_mm, z_base), PICK_R).Shape())
+            pick.SetColor(NODE_COLOR)
+            if _Z_TOP is not None:
+                try:
+                    pick.SetZLayer(_Z_TOP)
+                except Exception:
+                    pass
+            try:
+                pick.SetTransparency(0.97)
+            except Exception:
+                pass
+            self.viewer.context.Display(pick, False)
+            self.viewer.context.Activate(pick, 0)
+            try:
+                self.viewer.context.SetSelectionSensitivity(pick, 0, 30)
+            except Exception:
+                pass
+            if hasattr(self.viewer, "model_hover_labels_by_ais"):
+                self.viewer.model_hover_labels_by_ais[pick] = label
+            node_ais_list.append(pick)
+
+            hover_nodes.append({"x": x_mm, "y": y_mm, "z": z_base, "label": label})
+            self._node_data[nid] = {"x": x_mm, "y": y_mm, "z": z_base, "label": label}
+
+        self.viewer.model_ais_objects["Node"] = node_ais_list
+        if hasattr(self.viewer, "set_node_hover_data"):
+            self.viewer.set_node_hover_data(hover_nodes)
+
+        # Store members for grillage
+        self._members = members
+        return {nid: (d["x"], d["y"], d["z"]) for nid, d in self._node_data.items()}
+
+    # ── RENDER GRILLAGE ───────────────────────────────────────────────────────
+
+    def _render_grillage(self, node_positions: dict) -> None:
+        """Draw member edges between nodes to form the grillage overlay."""
+        if not self._is_display_ready() or not node_positions:
+            return
+
+        members = getattr(self, "_members", None)
+        if not members:
+            return
+
+        grillage_color = Quantity_Color(0.15, 0.15, 0.15, Quantity_TOC_RGB)
+        grillage_ais = []
+
+        deck_thickness = float(getattr(self.generator, "deck_thickness", 0.0) or 0.0)
+        # Single layer at deck top; optionally a second layer below the deck slab.
+        z_offsets = [0.0] + ([-deck_thickness - 4.0] if deck_thickness > 0 else [])
+
+        for node_pair in members.values():
+            if not node_pair or len(node_pair) < 2:
+                continue
+            p1 = node_positions.get(node_pair[0])
+            p2 = node_positions.get(node_pair[1])
+            if not p1 or not p2:
+                continue
+            for dz in z_offsets:
+                edge = BRepBuilderAPI_MakeEdge(
+                    gp_Pnt(p1[0], p1[1], p1[2] + dz),
+                    gp_Pnt(p2[0], p2[1], p2[2] + dz),
+                ).Shape()
+                ais = self.display.DisplayShape(edge, color=grillage_color, update=False)
+                ais = ais[0] if isinstance(ais, list) else ais
+                try:
+                    ais.SetWidth(2.0)
+                except Exception:
+                    pass
+                grillage_ais.append(ais)
+
+        if grillage_ais:
+            self.viewer.model_ais_objects["Grillage"] = grillage_ais
+
+    # ── RENDER NODE NUMBERS ───────────────────────────────────────────────────
+
+    def _render_node_numbers(self) -> None:
+        """
+        Display node-id labels in 3D world space.
+        Uses AIS_TextLabel when available; falls back to colour-coded spheres.
+        Text is dark (near-black) for legibility on the light deck.
+        Labels are drawn on the topmost Z-layer.
+        """
+        if not self._is_display_ready() or not self._node_data:
+            return
+
+        # Clear any previous labels
+        for ais in self.viewer.model_ais_objects.pop("NodeNumbers", []):
+            try:
+                self.viewer.context.Erase(ais, False)
+            except Exception:
+                pass
+
+        # Very dark charcoal — visible against the light deck without a box
+        text_color = Quantity_Color(0.05, 0.05, 0.05, Quantity_TOC_RGB)
+
+        label_ais_list = []
+
+        if _HAS_AIS_TEXT:
+            for nid, d in self._node_data.items():
+                try:
+                    txt = AIS_TextLabel()
+                    txt.SetText(str(nid))
+                    txt.SetPosition(gp_Pnt(d["x"], d["y"], d["z"] + 80.0))
+                    txt.SetColor(text_color)
+                    try:
+                        txt.SetDisplayType(_TODT_NORMAL)
+                    except Exception:
+                        pass
+                    try:
+                        txt.SetHeight(30.0)
+                    except Exception:
+                        pass
+                    try:
+                        txt.SetFlipping(True)
+                    except Exception:
+                        pass
+                    if _Z_TOP is not None:
+                        try:
+                            txt.SetZLayer(_Z_TOP)
+                        except Exception:
+                            pass
+                    self.viewer.context.Display(txt, False)
+                    label_ais_list.append(txt)
+                except Exception:
+                    pass
+        else:
+            # Fallback: small coloured sphere when AIS_TextLabel unavailable
+            for nid, d in self._node_data.items():
+                try:
+                    r = (int(nid) * 37 % 200 + 55) / 255.0
+                    g = (int(nid) * 71 % 200 + 55) / 255.0
+                    col = Quantity_Color(r, g, 0.9, Quantity_TOC_RGB)
+                    ais = AIS_Shape(
+                        BRepPrimAPI_MakeSphere(gp_Pnt(d["x"], d["y"], d["z"] + 80.0), 45.0).Shape()
+                    )
+                    ais.SetColor(col)
+                    if _Z_TOP is not None:
+                        try:
+                            ais.SetZLayer(_Z_TOP)
+                        except Exception:
+                            pass
+                    self.viewer.context.Display(ais, False)
+                    label_ais_list.append(ais)
+                except Exception:
+                    pass
+
+        if label_ais_list:
+            self.viewer.model_ais_objects["NodeNumbers"] = label_ais_list
 
 
 
 class BridgeComponentCheckbox(QWidget):
     """
-    Horizontal component selector with multi-select capability
+    Horizontal component selector with multi-select capability.
+    Includes overlay checkboxes (Grillage / Node / Node Numbers) and
+    navigation toggle buttons (Rotate / Pan / Zoom Window).
     """
+
+    # (label, internal key)
+    # key=None  → "Model" pseudo-checkbox (selects all base components)
+    # key in OVERLAY_KEYS → independent toggle, not affected by Model
+    COMPONENTS = [
+        ("Bridge",         None),
+        ("Girder",        "Girder"),
+        ("Deck",          "Deck"),
+        ("Cross Bracing", "Cross Bracing"),
+        ("Crash Barrier", "Crash Barrier"),
+        ("Median",        "Median"),
+        ("Railing",       "Railing"),
+        ("Grillage view", "Grillage"),
+        ("Node",          "Node"),
+        ("Node Numbers",  "NodeNumbers"),
+    ]
+    OVERLAY_KEYS = {"Grillage", "Node", "NodeNumbers"}
+
     def __init__(self, parent: CAD3DWindow):
         super().__init__(parent)
-        self.parent = parent
+        self._cad = parent
 
         self.setObjectName("cad_component_selector")
         self.setFixedHeight(30)
@@ -508,104 +954,226 @@ class BridgeComponentCheckbox(QWidget):
         layout = QHBoxLayout(self)
         layout.setContentsMargins(12, 4, 12, 4)
         layout.setSpacing(16)
-
         layout.addStretch()
 
-        self.checkboxes = []
-
-        
-        self.components = [
-            ("Model", None),  # Special: shows full model
-            ("Girder", "Girder"),
-            ("Deck", "Deck"),
-            ("Cross Bracing", "Cross Bracing"),
-            ("Crash Barrier", "Crash Barrier"),
-            ("Median", "Median"),
-            ("Railing", "Railing"),
-        ]
-
-        for label, key in self.components:
+        self._checkboxes: list[QCheckBox] = []
+        for label, key in self.COMPONENTS:
             cb = QCheckBox(label, self)
             cb.setObjectName(label)
             cb.setCursor(Qt.PointingHandCursor)
-
-            cb.clicked.connect(
-                lambda checked, k=key, c=cb: self._on_click(k, c, checked)
-            )
-
+            cb.clicked.connect(lambda checked, k=key, c=cb: self._on_click(k, c, checked))
             layout.addWidget(cb)
-            self.checkboxes.append(cb)
+            self._checkboxes.append(cb)
+
+        # ── Separator ─────────────────────────────────────────────────────────
+        sep = QFrame(self)
+        sep.setFrameShape(QFrame.VLine)
+        sep.setFrameShadow(QFrame.Sunken)
+        sep.setFixedWidth(2)
+        layout.addWidget(sep)
+
+        # ── Navigation buttons ─────────────────────────────────────────────────
+        _nav_base = """
+            QPushButton {
+                font-size: 11px; font-weight: bold;
+                background-color: white;
+                border: 1px solid #bdbdbd;
+                border-radius: 3px;
+                padding: 2px 10px;
+                color: #444;
+            }
+            QPushButton:hover:!checked { background-color: #e6e6e6; }
+            QPushButton:pressed        { background-color: #d0d0d0; }
+        """
+
+        self._rotate_btn = QPushButton("Rotate", self)
+        self._rotate_btn.setObjectName("rotate_toggle")
+        self._rotate_btn.setCheckable(True)
+        self._rotate_btn.setCursor(Qt.PointingHandCursor)
+        self._rotate_btn.setToolTip("Rotate mode — left-click and drag to rotate the model")
+        self._rotate_btn.setStyleSheet(_nav_base + """
+            QPushButton:checked { background-color: #27ae60; color: white; border-color: #1e8449; }
+        """)
+        self._rotate_btn.toggled.connect(self._on_rotate_toggled)
+        layout.addWidget(self._rotate_btn)
+
+        self._pan_btn = QPushButton("Pan", self)
+        self._pan_btn.setObjectName("pan_toggle")
+        self._pan_btn.setCheckable(True)
+        self._pan_btn.setCursor(Qt.PointingHandCursor)
+        self._pan_btn.setToolTip("Pan mode — hold left-click and drag to pan the view")
+        self._pan_btn.setStyleSheet(_nav_base + """
+            QPushButton:checked { background-color: #4A90C4; color: white; border-color: #3a7ab4; }
+        """)
+        self._pan_btn.toggled.connect(self._on_pan_toggled)
+        layout.addWidget(self._pan_btn)
+
+        self._zoom_win_btn = QPushButton("Zoom Win", self)
+        self._zoom_win_btn.setObjectName("zoom_window_toggle")
+        self._zoom_win_btn.setCheckable(True)
+        self._zoom_win_btn.setCursor(Qt.PointingHandCursor)
+        self._zoom_win_btn.setToolTip("Zoom Window — drag a rectangle to zoom into that area")
+        self._zoom_win_btn.setStyleSheet(_nav_base + """
+            QPushButton:checked { background-color: #e67e22; color: white; border-color: #c0622a; }
+        """)
+        self._zoom_win_btn.toggled.connect(self._on_zoom_window_toggled)
+        layout.addWidget(self._zoom_win_btn)
 
         layout.addStretch()
 
-        # Default selection → Model
-        self.checkboxes[0].setChecked(True)
+        # Default: Model checked; overlays and nav buttons off
+        self._checkboxes[0].setChecked(True)
 
-    def _on_click(self, component_key, clicked_cb, checked):
-        """
-        Handle multi-select logic:
-        - "Model" is exclusive (unchecks all others)
-        - Other components can be multi-selected
-        - Selecting any component unchecks "Model"
-        """
-        model_cb = self.checkboxes[0]  # "Model" checkbox
-        
-        if component_key is None:  # "Model" clicked
+    # ── Maintain a back-compat alias ──────────────────────────────────────────
+    @property
+    def checkboxes(self):
+        return self._checkboxes
+
+    @property
+    def components(self):
+        return self.COMPONENTS
+
+    # ── Click logic ───────────────────────────────────────────────────────────
+
+    def _on_click(self, key, cb, checked):
+        model_cb = self._checkboxes[0]
+
+        if key is None:                        # "Model" clicked
             if checked:
-                # Uncheck all other components
-                for cb in self.checkboxes[1:]:
+                # Uncheck individual base components, keep overlays as-is
+                for c, (_, k) in zip(self._checkboxes[1:], self.COMPONENTS[1:]):
+                    if k and k not in self.OVERLAY_KEYS:
+                        c.blockSignals(True)
+                        c.setChecked(False)
+                        c.blockSignals(False)
+            else:
+                if not self._any_base_checked():
                     cb.blockSignals(True)
-                    cb.setChecked(False)
+                    cb.setChecked(True)
                     cb.blockSignals(False)
-                self.parent.show_full_model()
-            else:
-                # Don't allow unchecking Model if nothing else is selected
-                if not any(cb.isChecked() for cb in self.checkboxes[1:]):
-                    clicked_cb.blockSignals(True)
-                    clicked_cb.setChecked(True)
-                    clicked_cb.blockSignals(False)
-        
-        else:  # Component clicked
-            if checked:
-                # Uncheck "Model" when selecting a specific component
-                model_cb.blockSignals(True)
-                model_cb.setChecked(False)
-                model_cb.blockSignals(False)
-            else:
-                # If all components are unchecked, check "Model"
-                if not any(cb.isChecked() for cb in self.checkboxes):
-                    model_cb.blockSignals(True)
-                    model_cb.setChecked(True)
-                    model_cb.blockSignals(False)
-                    self.parent.show_full_model()
-                    return
-            
-            # Update visibility based on selected components
-            selected = [
-                key for cb, (_, key) in zip(self.checkboxes[1:], self.components[1:])
-                if cb.isChecked() and key is not None
-            ]
-            
-            if selected:
-                self.parent.update_component_visibility(selected)
-            else:
-                # If nothing selected, show full model
+            self._apply()
+            return
+
+        if key in self.OVERLAY_KEYS:
+            self._apply()
+            return
+
+        # Base component clicked
+        if checked:
+            model_cb.blockSignals(True)
+            model_cb.setChecked(False)
+            model_cb.blockSignals(False)
+        else:
+            if not self._any_base_checked():
                 model_cb.blockSignals(True)
                 model_cb.setChecked(True)
                 model_cb.blockSignals(False)
-                self.parent.show_full_model()
-    
+        self._apply()
+
+    def _any_base_checked(self) -> bool:
+        return any(
+            cb.isChecked()
+            for cb, (_, k) in zip(self._checkboxes[1:], self.COMPONENTS[1:])
+            if k and k not in self.OVERLAY_KEYS
+        )
+
+    def _collect(self) -> list:
+        model_checked = self._checkboxes[0].isChecked()
+        result = []
+        for cb, (_, key) in zip(self._checkboxes[1:], self.COMPONENTS[1:]):
+            if not key:
+                continue
+            if key in self.OVERLAY_KEYS:
+                if cb.isChecked():
+                    result.append(key)
+            elif model_checked or cb.isChecked():
+                result.append(key)
+        return result
+
+    def _apply(self):
+        selected = self._collect()
+        if selected:
+            self._cad.update_component_visibility(selected)
+            return
+        # Nothing selected → fall back to Model
+        self._checkboxes[0].blockSignals(True)
+        self._checkboxes[0].setChecked(True)
+        self._checkboxes[0].blockSignals(False)
+        selected = self._collect()
+        if selected:
+            self._cad.update_component_visibility(selected)
+        else:
+            self._cad.show_full_model()
+
+    def apply_selection(self):
+        """Public entry-point called after load_bridge to apply default state."""
+        self._apply()
+
+    # ── Navigation toggles ────────────────────────────────────────────────────
+
+    def _on_rotate_toggled(self, checked: bool) -> None:
+        from osdagbridge.desktop.ui.utils.custom_3dviewer import NavMode
+        viewer = self._cad.viewer
+        if viewer is None:
+            return
+        if checked:
+            for btn in (self._pan_btn, self._zoom_win_btn):
+                if btn.isChecked():
+                    btn.blockSignals(True)
+                    btn.setChecked(False)
+                    btn.blockSignals(False)
+            viewer.set_navigation_mode(NavMode.ROTATE)
+        else:
+            viewer.set_navigation_mode(None)
+
+    def _on_pan_toggled(self, checked: bool) -> None:
+        from osdagbridge.desktop.ui.utils.custom_3dviewer import NavMode
+        viewer = self._cad.viewer
+        if viewer is None:
+            return
+        if checked:
+            for btn in (self._rotate_btn, self._zoom_win_btn):
+                if btn.isChecked():
+                    btn.blockSignals(True)
+                    btn.setChecked(False)
+                    btn.blockSignals(False)
+            viewer.set_navigation_mode(NavMode.PAN)
+        else:
+            viewer.set_navigation_mode(None)
+
+    def _on_zoom_window_toggled(self, checked: bool) -> None:
+        from osdagbridge.desktop.ui.utils.custom_3dviewer import NavMode
+        viewer = self._cad.viewer
+        if viewer is None:
+            return
+        if checked:
+            for btn in (self._rotate_btn, self._pan_btn):
+                if btn.isChecked():
+                    btn.blockSignals(True)
+                    btn.setChecked(False)
+                    btn.blockSignals(False)
+            viewer.set_navigation_mode(NavMode.ZOOM_WINDOW)
+        else:
+            viewer.set_navigation_mode(None)
+
     def reset(self):
-        """Reset all checkboxes to default state (Model selected, others unchecked)."""
-        for cb in self.checkboxes:
+        """Reset to default: Model checked, all others unchecked, nav mode off."""
+        for cb in self._checkboxes:
             cb.blockSignals(True)
             cb.setChecked(False)
             cb.blockSignals(False)
+        self._checkboxes[0].blockSignals(True)
+        self._checkboxes[0].setChecked(True)
+        self._checkboxes[0].blockSignals(False)
 
-        # Re-check "Model" as default
-        self.checkboxes[0].blockSignals(True)
-        self.checkboxes[0].setChecked(True)
-        self.checkboxes[0].blockSignals(False)
+        for btn in (self._rotate_btn, self._pan_btn, self._zoom_win_btn):
+            btn.blockSignals(True)
+            btn.setChecked(False)
+            btn.blockSignals(False)
+
+        if self._cad.viewer is not None:
+            self._cad.viewer.set_navigation_mode(None)
+
 
 # Standalone Testing----------------------------
 def main():
