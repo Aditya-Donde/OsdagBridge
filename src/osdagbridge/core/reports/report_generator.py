@@ -242,8 +242,37 @@ def _v(input_dict, key, suffix='', default=''):
     """Safely fetch an input value with optional unit suffix."""
     val = input_dict.get(key, '')
     if val in ('', None):
+        # Check if the default contains an annotation we want to omit
         return default
     return f"{val}{suffix}"
+
+
+def _vsd(input_dict, key, suffix='', software_default_value=''):
+    """Like _v(), but appends \\sdstar if the value is absent (software default).
+
+    Args:
+        input_dict:              The dict to look up.
+        key:                     The key to fetch.
+        suffix:                  Unit string appended to the value (e.g. ' m', ' mm').
+        software_default_value:  The default string to display when key is absent.
+                                 Pass '' to fall back to \\placeholder{} as before.
+
+    Returns:
+        LaTeX string:
+          - user-defined value  → "{value}{suffix}"      (no asterisk)
+          - software default    → "{default}{suffix}\\sdstar{}"
+          - completely unknown  → "" (no asterisk; value is unknown, not defaulted)
+    """
+    val = input_dict.get(key, '')
+    if val not in ('', None):
+        # User supplied a real value — no asterisk
+        return f"{val}{suffix}"
+    if software_default_value:
+        # Known software default — show value with asterisk
+        return _tex(software_default_value) + suffix + r'\sdstar{}'
+    # Genuinely unknown — empty string to allow falling back to a placeholder
+    return ''
+
 
 
 def _ph(key):
@@ -356,6 +385,7 @@ def preamble(project_name, job_number, report_date, report_version='Rev 0'):
 \usepackage{titletoc}
 \usepackage{lastpage}
 \usepackage{makecell}
+\usepackage{etoolbox}
 
 \definecolor{osdagGreen}{HTML}{91B014}
 
@@ -363,7 +393,12 @@ def preamble(project_name, job_number, report_date, report_version='Rev 0'):
   \fancyhf{}
   \fancyhead[L]{""" + pn + r""" $|$ """ + jn + r"""}
   \fancyhead[R]{""" + rd + r""" $|$ """ + rv + r"""}
-  \fancyfoot[L]{Osdag $|$ FOSSEE $|$ Indian Institute of Technology Bombay}
+  \fancyfoot[L]{%
+    \ifbool{hasSDonPage}{%
+      \rlap{\raisebox{2.8ex}{\textcolor{black}{\footnotesize\textit{* Software default value}}}}%
+    }{}%
+    Osdag $|$ FOSSEE $|$ Indian Institute of Technology Bombay%
+  }
   \fancyfoot[R]{Page \thepage\ of \pageref{LastPage}}
   \renewcommand{\headrule}{\color{osdagGreen}\hrule width\headwidth height 1pt \vspace{2pt}}
   \renewcommand{\footrule}{\vspace{-8pt}\color{osdagGreen}\hrule width\headwidth height 1pt \vspace{6pt}}
@@ -372,7 +407,12 @@ def preamble(project_name, job_number, report_date, report_version='Rev 0'):
   \fancyhf{}
   \fancyhead[L]{""" + pn + r""" $|$ """ + jn + r"""}
   \fancyhead[R]{""" + rd + r""" $|$ """ + rv + r"""}
-  \fancyfoot[L]{Osdag $|$ FOSSEE $|$ Indian Institute of Technology Bombay}
+  \fancyfoot[L]{%
+    \ifbool{hasSDonPage}{%
+      \rlap{\raisebox{2.8ex}{\textcolor{black}{\footnotesize\textit{* Software default value}}}}%
+    }{}%
+    Osdag $|$ FOSSEE $|$ Indian Institute of Technology Bombay%
+  }
   \fancyfoot[R]{Page \thepage\ of \pageref{LastPage}}
   \renewcommand{\headrule}{\color{osdagGreen}\hrule width\headwidth height 1pt \vspace{2pt}}
   \renewcommand{\footrule}{\vspace{-8pt}\color{osdagGreen}\hrule width\headwidth height 1pt \vspace{6pt}}
@@ -393,6 +433,14 @@ def preamble(project_name, job_number, report_date, report_version='Rev 0'):
 \newcolumntype{L}[1]{>{\raggedright\arraybackslash}p{#1}}
 \newcolumntype{C}[1]{>{\centering\arraybackslash}p{#1}}
 \newcolumntype{R}[1]{>{\raggedleft\arraybackslash}p{#1}}
+
+% Software-default asterisk
+\newcommand{\sdstar}{\textsuperscript{*}}
+\newbool{hasSDonPage}
+\boolfalse{hasSDonPage}
+\newcommand{\markSD}{\global\booltrue{hasSDonPage}}
+\renewcommand{\sdstar}{\textsuperscript{*}\markSD{}}
+\AddToHook{shipout/before}{\global\boolfalse{hasSDonPage}}
 
 \title{\Large\textbf{OsdagBridge} \\ \normalsize Open Source Software for Steel Girder Bridge Design \\ \vspace{2cm} \large Design Report}
 \author{}
@@ -704,7 +752,7 @@ def ch2_input_parameters(m, input_dict, output_dict=None):
 \setlength{\abovecaptionskip}{2pt}
 \setlength{\belowcaptionskip}{2pt}
 
-This section documents all inputs provided to OsdagBridge. User-provided inputs are clearly distinguished from software-assumed defaults. Where the user did not supply a value, the software has applied the IRC/IS code default or an empirical guideline; these are annotated [SOFTWARE DEFAULT].
+This section documents all inputs provided to OsdagBridge. User-provided inputs are clearly distinguished from software-assumed defaults. Where the user did not supply a value, the software has applied the IRC/IS code default or an empirical guideline; these are annotated with an asterisk (\sdstar{}).
 
 \section{Basic Inputs (User-Defined)}
 \label{sec:basic-inputs}
@@ -785,13 +833,13 @@ Where the user has modified additional inputs, those values are reported here. W
 \hline
 \textbf{Overall Bridge Width (m)} & """ + (_v(input_dict, KEY_TS_OVERALL_WIDTH) or _ph('Calculated')) + r""" \\[6pt]
 \hline
-\textbf{No. of Girders} & """ + (_v(input_dict, KEY_TS_NO_OF_GIRDERS) or _ph('n')) + r""" [SOFTWARE DEFAULT / USER] \\[6pt]
+\textbf{No. of Girders} & """ + (_vsd(input_dict, KEY_TS_NO_OF_GIRDERS, '', '4') or _ph('n')) + r""" \\[6pt]
 \hline
-\textbf{Girder Spacing (m)} & """ + (_v(input_dict, KEY_TS_GIRDER_SPACING,' m') or _ph('s') + ' m') + r""" [SOFTWARE DEFAULT: 2.5 m] \\[6pt]
+\textbf{Girder Spacing (m)} & """ + (_vsd(input_dict, KEY_TS_GIRDER_SPACING, ' m', '2.5') or _ph('s') + ' m') + r""" \\[6pt]
 \hline
-\textbf{Deck Overhang Width (m)} & """ + (_v(input_dict, KEY_TS_DECK_OVERHANG,' m') or _ph(r'd\_oh') + ' m') + r""" [SOFTWARE DEFAULT: 0.35 x spacing] \\[6pt]
+\textbf{Deck Overhang Width (m)} & """ + (_vsd(input_dict, KEY_TS_DECK_OVERHANG, ' m', '0.35 × spacing') or _ph(r'd\_oh') + ' m') + r""" \\[6pt]
 \hline
-\textbf{Deck Thickness (mm)} & """ + (_v(input_dict, KEY_TS_DECK_THICKNESS,' mm') or _ph('dt') + ' mm') + r""" [SOFTWARE DEFAULT: 200 mm] \\[6pt]
+\textbf{Deck Thickness (mm)} & """ + (_vsd(input_dict, KEY_TS_DECK_THICKNESS, ' mm', '200') or _ph('dt') + ' mm') + r""" \\[6pt]
 \hline
 \textbf{Footpath Width (m)} & """ + (_v(input_dict, KEY_TS_FOOTPATH_WIDTH,' m') or _ph('$f_w$') + ' m') + r""" (IRC 5 Cl. 104.3.6 min: 1.5 m) \\[6pt]
 \hline
@@ -815,11 +863,11 @@ Where the user has modified additional inputs, those values are reported here. W
 \hline
 \textbf{Railing Type} & """ + (_v(input_dict, KEY_RL_TYPE) or _ph('IRC 5 RCC / Steel / N/A')) + r""" \\[6pt]
 \hline
-\textbf{Railing Load (kN/m)} & 1.5 kN/m [SOFTWARE DEFAULT per IRC 6 Cl. 206.5] \\[6pt]
+\textbf{Railing Load (kN/m)} & 1.5 kN/m\sdstar{} \\[6pt]
 \hline
 \textbf{Wearing Course Material} & """ + (_v(input_dict, KEY_WC_MATERIAL) or _ph('Bituminous / Concrete')) + r""" \\[6pt]
 \hline
-\textbf{Wearing Course Thickness (mm)} & """ + (_v(input_dict, KEY_WC_THICKNESS,' mm') or _ph(r'wc\_t') + ' mm') + r""" [SOFTWARE DEFAULT: 80 mm] \\[6pt]
+\textbf{Wearing Course Thickness (mm)} & """ + (_vsd(input_dict, KEY_WC_THICKNESS, ' mm', '80') or _ph(r'wc\_t') + ' mm') + r""" \\[6pt]
 \hline
 \end{tabularx}
 \end{table}
@@ -1014,15 +1062,15 @@ def _shear_connector_table(input_dict):
 \vspace{0.4em}
 \begin{tabularx}{\textwidth}{|L{5.5cm}|X|}
 \hline
-\textbf{Stud Diameter (mm)} & """ + (_v(input_dict, KEY_DS_STUD_DIAMETER, ' mm') or _ph('$d_{stud}$') + ' mm') + r""" [SOFTWARE DEFAULT: 22 mm] \\[6pt]
+\textbf{Stud Diameter (mm)} & """ + (_vsd(input_dict, KEY_DS_STUD_DIAMETER, ' mm', '22') or _ph('$d_{stud}$') + ' mm') + r""" \\[6pt]
 \hline
-\textbf{Stud Height (mm)} & """ + (_v(input_dict, KEY_DS_STUD_HEIGHT, ' mm') or _ph('$h_{stud}$') + ' mm') + r""" [SOFTWARE DEFAULT: 100 mm] \\[6pt]
+\textbf{Stud Height (mm)} & """ + (_vsd(input_dict, KEY_DS_STUD_HEIGHT, ' mm', '100') or _ph('$h_{stud}$') + ' mm') + r""" \\[6pt]
 \hline
-\textbf{Stud fy (MPa)} & """ + (_v(input_dict, KEY_DS_STUD_YIELD_STRENGTH, ' MPa') or _ph('$f_{ys}$') + ' MPa') + r""" [SOFTWARE DEFAULT: 385 MPa] \\[6pt]
+\textbf{Stud fy (MPa)} & """ + (_vsd(input_dict, KEY_DS_STUD_YIELD_STRENGTH, ' MPa', '385') or _ph('$f_{ys}$') + ' MPa') + r""" \\[6pt]
 \hline
-\textbf{Stud fu (MPa)} & """ + (_v(input_dict, KEY_DS_STUD_ULTIMATE_STRENGTH, ' MPa') or _ph('$f_{us}$') + ' MPa') + r""" [SOFTWARE DEFAULT: 495 MPa] \\[6pt]
+\textbf{Stud fu (MPa)} & """ + (_vsd(input_dict, KEY_DS_STUD_ULTIMATE_STRENGTH, ' MPa', '495') or _ph('$f_{us}$') + ' MPa') + r""" \\[6pt]
 \hline
-\textbf{No. of Studs per Section} & """ + (_v(input_dict, KEY_DS_STUD_COUNT) or _ph('$n_s$')) + r""" [SOFTWARE DEFAULT: 2] \\[6pt]
+\textbf{No. of Studs per Section} & """ + (_vsd(input_dict, KEY_DS_STUD_COUNT, '', '2') or _ph('$n_s$')) + r""" \\[6pt]
 \hline
 \end{tabularx}
 """
@@ -1041,19 +1089,19 @@ def _safety_factors_table(input_dict):
 \vspace{0.4em}
 \begin{tabularx}{\textwidth}{|L{5.5cm}|X|}
 \hline
-\textbf{$\gamma_{M0}$ (Yielding / Buckling)} & """ + (_v(input_dict, KEY_DO_GAMMA_M0) or '1.10 [IRC 22 default]') + r""" \\[6pt]
+\textbf{$\gamma_{M0}$ (Yielding / Buckling)} & """ + (_vsd(input_dict, KEY_DO_GAMMA_M0, '', '1.10')) + r""" \\[6pt]
 \hline
-\textbf{$\gamma_{M1}$ (Ultimate Stress)} & """ + (_v(input_dict, KEY_DO_GAMMA_M1) or '1.25 [IRC 22 default]') + r""" \\[6pt]
+\textbf{$\gamma_{M1}$ (Ultimate Stress)} & """ + (_vsd(input_dict, KEY_DO_GAMMA_M1, '', '1.25')) + r""" \\[6pt]
 \hline
-\textbf{$\gamma_C$ (Concrete, Basic)} & """ + (_v(input_dict, KEY_DO_GAMMA_C_BASIC) or '1.50 [IRC 22 default]') + r""" \\[6pt]
+\textbf{$\gamma_C$ (Concrete, Basic)} & """ + (_vsd(input_dict, KEY_DO_GAMMA_C_BASIC, '', '1.50')) + r""" \\[6pt]
 \hline
-\textbf{$\gamma_s$ (Reinforcement)} & """ + (_v(input_dict, KEY_DO_GAMMA_S) or '1.15 [IRC 22 default]') + r""" \\[6pt]
+\textbf{$\gamma_s$ (Reinforcement)} & """ + (_vsd(input_dict, KEY_DO_GAMMA_S, '', '1.15')) + r""" \\[6pt]
 \hline
-\textbf{$\gamma_v$ (Shear Connectors)} & """ + (_v(input_dict, KEY_DO_GAMMA_V) or '1.25 [IRC 22 default]') + r""" \\[6pt]
+\textbf{$\gamma_v$ (Shear Connectors)} & """ + (_vsd(input_dict, KEY_DO_GAMMA_V, '', '1.25')) + r""" \\[6pt]
 \hline
-\textbf{$\gamma_{fft}$ (Fatigue Load)} & """ + (_v(input_dict, KEY_DO_GAMMA_FLT) or '1.00 [IRC 22 default]') + r""" \\[6pt]
+\textbf{$\gamma_{fft}$ (Fatigue Load)} & """ + (_vsd(input_dict, KEY_DO_GAMMA_FLT, '', '1.00')) + r""" \\[6pt]
 \hline
-\textbf{$\gamma_{Mft}$ (Fatigue Strength)} & """ + (_v(input_dict, KEY_DO_GAMMA_MF) or '1.35 [IRC 22 default]') + r""" \\[6pt]
+\textbf{$\gamma_{Mft}$ (Fatigue Strength)} & """ + (_vsd(input_dict, KEY_DO_GAMMA_MF, '', '1.35')) + r""" \\[6pt]
 \hline
 \end{tabularx}
 """
@@ -1079,7 +1127,7 @@ This section summarizes all loads applied to the bridge and the load combination
 \hline
 \textbf{Concrete Deck Weight} & Yes [per slab area x thickness x 25 kN/m\textsuperscript{3}] \\[6pt]
 \hline
-\textbf{Self-Weight Factor} & 1.0 [SOFTWARE DEFAULT] \\[6pt]
+\textbf{Self-Weight Factor} & 1.0\sdstar{} \\[6pt]
 \hline
 \end{tabularx}
 \end{table}
@@ -1095,7 +1143,7 @@ This section summarizes all loads applied to the bridge and the load combination
 \hline
 \textbf{Additional SIDL (Crash Barrier)} & """ + (_v(input_dict, KEY_CB_LOAD) or _ph('Load')) + r""" kN/m per barrier \\[6pt]
 \hline
-\textbf{Railing Load} & 1.5 kN/m per railing [IRC 6 Cl. 206.5] \\[6pt]
+\textbf{Railing Load} & 1.5 kN/m per railing\sdstar{} \\[6pt]
 \hline
 \end{tabularx}
 \end{table}
@@ -1113,7 +1161,7 @@ This section summarizes all loads applied to the bridge and the load combination
 \hline
 \textbf{Braking Load (IRC 6)} & Applied --- """ + (_v(input_dict, "braking_load", " kN") or _ph("Value")) + r""" \\[6pt]
 \hline
-\textbf{Footpath Live Load (if applicable)} & """ + (_v(input_dict, "footpath_live_load", " kN/m\\textsuperscript{2}") or "5 kN/m\\textsuperscript{2} [SOFTWARE DEFAULT per IRC 6]") + r""" \\[6pt]
+\textbf{Footpath Live Load (if applicable)} & """ + _vsd(input_dict, "footpath_live_load", " kN/m\\textsuperscript{2}", "5") + r""" \\[6pt]
 \hline
 \end{tabularx}
 \end{table}
@@ -1127,9 +1175,9 @@ This section summarizes all loads applied to the bridge and the load combination
 \hline
 \textbf{Basic Wind Speed, Vb} & """ + (_v(input_dict,'wind_speed',' m/s') or _ph('Vb') + ' m/s') + r""" [from Project Location] \\[6pt]
 \hline
-\textbf{Terrain Type} & """ + (_v(input_dict, "terrain_type") or "Plain Terrain [SOFTWARE DEFAULT]") + r""" \\[6pt]
+\textbf{Terrain Type} & """ + _vsd(input_dict, "terrain_type", '', 'Plain Terrain') + r""" \\[6pt]
 \hline
-\textbf{Average Exposed Height, H (m)} & """ + (_v(input_dict, "avg_exposed_height", " m") or "10 m [SOFTWARE DEFAULT]") + r""" \\[6pt]
+\textbf{Average Exposed Height, H (m)} & """ + _vsd(input_dict, "avg_exposed_height", " m", '10') + r""" \\[6pt]
 \hline
 \textbf{Hourly Mean Wind Speed, Vz} & """ + str(input_dict.get("wind_Vz", _ph("Vz"))) + r""" m/s \\[6pt]
 \hline
@@ -1155,9 +1203,9 @@ This section summarizes all loads applied to the bridge and the load combination
 \hline
 \textbf{Zone Factor, Z} & """ + str(input_dict.get("seismic_Z", _ph("Z"))) + r""" \\[6pt]
 \hline
-\textbf{Importance Factor, I} & """ + (_v(input_dict, "importance_factor") or "1.0 [SOFTWARE DEFAULT]") + r""" \\[6pt]
+\textbf{Importance Factor, I} & """ + _vsd(input_dict, "importance_factor", '', '1.0') + r""" \\[6pt]
 \hline
-\textbf{Type of Soil} & """ + (_v(input_dict, "soil_type") or "Type I -- Rocky [SOFTWARE DEFAULT]") + r""" \\[6pt]
+\textbf{Type of Soil} & """ + _vsd(input_dict, "soil_type", '', 'Type I -- Rocky') + r""" \\[6pt]
 \hline
 \textbf{Sa/g} & """ + str(input_dict.get("seismic_Sa_g", _ph("Sa_g"))) + r""" \\[6pt]
 \hline
