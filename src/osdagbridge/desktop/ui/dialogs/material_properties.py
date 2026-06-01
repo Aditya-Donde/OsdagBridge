@@ -7,6 +7,8 @@ from pathlib import Path
 import sqlite3
 import re
 
+from osdagbridge.core.utils.codes.irc6_2017 import IRC6_2017
+
 from osdagbridge.desktop.ui.utils.custom_titlebar import CustomTitleBar
 from osdagbridge.desktop.ui.dialogs.custom_messagebox import CustomMessageBox, MessageBoxType
 from osdagbridge.desktop.ui.docks.dock_utils import apply_field_style
@@ -14,10 +16,14 @@ from osdagbridge.core.utils.common import (
     connectdb, KEY_GIRDER, KEY_CROSS_BRACING, KEY_END_DIAPHRAGM, KEY_DECK_CONCRETE_GRADE_BASIC,
     KEY_MATERIAL_GIRDER_FY, KEY_MATERIAL_GIRDER_FU, KEY_MATERIAL_GIRDER_E,
     KEY_MATERIAL_GIRDER_G, KEY_MATERIAL_GIRDER_POISSON, KEY_MATERIAL_GIRDER_THERMAL,
+    KEY_MATERIAL_GIRDER_DENSITY,
     KEY_MATERIAL_DECK_FCK, KEY_MATERIAL_DECK_FCTM, KEY_MATERIAL_DECK_ECM, KEY_MATERIAL_DECK_THERMAL,
+    KEY_MATERIAL_DECK_DENSITY,
     DISP_MATERIAL_GIRDER_FY, DISP_MATERIAL_GIRDER_FU, DISP_MATERIAL_GIRDER_E,
     DISP_MATERIAL_GIRDER_G, DISP_MATERIAL_GIRDER_POISSON, DISP_MATERIAL_GIRDER_THERMAL,
+    DISP_MATERIAL_GIRDER_DENSITY,
     DISP_MATERIAL_DECK_FCK, DISP_MATERIAL_DECK_FCTM, DISP_MATERIAL_DECK_ECM, DISP_MATERIAL_DECK_THERMAL,
+    DISP_MATERIAL_DECK_DENSITY,
 )
 
 concrete_properies = connectdb("Concrete_Grade_Properties")
@@ -46,6 +52,11 @@ DEFAULT_ECM_FACTOR_LABEL = ECM_FACTOR_OPTIONS[0][0]
 
 # HARD CODED VALUES REMOVED AND COMPLETELY SWAPPED OUT
 STEEL_THERMAL_COEFF = 11.7      # COEFF is constant regardless, so not removed.
+
+# Weight densities fetched from IRC6:2017 Cl.203 (t/m3) and converted to kN/m3
+_dead_load_data = IRC6_2017.cl_203_dead_load()
+STEEL_WEIGHT_DENSITY = round(_dead_load_data['steel'] * 9.8, 2)           # 7.8 t/m3 -> kN/m3
+CONCRETE_WEIGHT_DENSITY = round(_dead_load_data['concrete_cement_reinforced'] * 9.8, 2)  # 2.5 t/m3 -> kN/m3
 
 def _locate_resource_file(file_name: str) -> Path:
     current = Path(__file__).resolve()
@@ -137,6 +148,7 @@ TYPE_TEXTBOX = 'textbox'
 
 def steel_material_properties_values():
     return [
+        (KEY_MATERIAL_GIRDER_DENSITY, DISP_MATERIAL_GIRDER_DENSITY, TYPE_TEXTBOX, None, True, 'Double Validator'),
         (KEY_MATERIAL_GIRDER_FY, DISP_MATERIAL_GIRDER_FY, TYPE_TEXTBOX, None, True, 'Double Validator'),
         (KEY_MATERIAL_GIRDER_FU, DISP_MATERIAL_GIRDER_FU, TYPE_TEXTBOX, None, True, 'Double Validator'),
         (KEY_MATERIAL_GIRDER_E, DISP_MATERIAL_GIRDER_E, TYPE_TEXTBOX, None, True, 'Double Validator'),
@@ -147,6 +159,7 @@ def steel_material_properties_values():
 
 def deck_material_properties_values():
     return [
+        (KEY_MATERIAL_DECK_DENSITY, DISP_MATERIAL_DECK_DENSITY, TYPE_TEXTBOX, None, True, 'Double Validator'),
         (KEY_MATERIAL_DECK_FCK, DISP_MATERIAL_DECK_FCK, TYPE_TEXTBOX, None, True, 'Double Validator'),
         (KEY_MATERIAL_DECK_FCTM, DISP_MATERIAL_DECK_FCTM, TYPE_TEXTBOX, None, True, 'Double Validator'),
         (KEY_MATERIAL_DECK_ECM, DISP_MATERIAL_DECK_ECM, TYPE_TEXTBOX, None, True, 'Double Validator'),
@@ -191,6 +204,7 @@ class MaterialPropertiesDialog(QDialog):
 
         self.fields = deck_material_properties_values() if self.is_deck_material else steel_material_properties_values()
         self._loading = False
+        self._suppress_auto_update = False
         default_prefix = CUSTOM_CONCRETE_PREFIX if self.is_deck_material else CUSTOM_STEEL_PREFIX
         initial_material = self.selected_material.strip() if self.read_only else default_prefix
         self.form_data = {
@@ -299,14 +313,38 @@ class MaterialPropertiesDialog(QDialog):
         layout.addLayout(footer)
 
     def _validate_and_save(self):
+        # Create a mapping from key to display label for better error messages
+        key_to_label = {f[0]: f[1] for f in self.fields}
+        
         for key, widget in self.field_inputs.items():
-            if not widget.text().strip():
+            text = widget.text().strip()
+            display_name = key_to_label.get(key, key)
+            
+            if not text:
                 CustomMessageBox(
                     title="Validation Error",
-                    text=f"Please enter a valid value for {key}",
+                    text=f"Please enter a value for {display_name}.",
                     dialogType=MessageBoxType.Critical,
                 ).exec()
                 return
+                
+            try:
+                val = float(text)
+                if val <= 0.0:
+                    CustomMessageBox(
+                        title="Validation Error",
+                        text=f"{display_name} must be greater than 0.",
+                        dialogType=MessageBoxType.Critical,
+                    ).exec()
+                    return
+            except ValueError:
+                CustomMessageBox(
+                    title="Validation Error",
+                    text=f"Please enter a valid number for {display_name}.",
+                    dialogType=MessageBoxType.Critical,
+                ).exec()
+                return
+                
         self._save_form()
         self.accept()
 
@@ -379,7 +417,9 @@ class MaterialPropertiesDialog(QDialog):
         result = {}
         for field_tuple in steel_material_properties_values():
             key = field_tuple[0]
-            if key == KEY_MATERIAL_GIRDER_FU:
+            if key == KEY_MATERIAL_GIRDER_DENSITY:
+                result[key] = "{:.1f}".format(STEEL_WEIGHT_DENSITY)
+            elif key == KEY_MATERIAL_GIRDER_FU:
                 result[key] = "{:.1f}".format(defaults.get("Fu", 0.0))
             elif key == KEY_MATERIAL_GIRDER_FY:
                 result[key] = "{:.1f}".format(defaults.get("Fy", 0.0))
@@ -402,6 +442,7 @@ class MaterialPropertiesDialog(QDialog):
         data = self._get_concrete_from_code(grade)
         if not data:
             return {
+                KEY_MATERIAL_DECK_DENSITY: "{:.1f}".format(CONCRETE_WEIGHT_DENSITY),
                 KEY_MATERIAL_DECK_FCK: "",
                 KEY_MATERIAL_DECK_FCTM: "",
                 KEY_MATERIAL_DECK_ECM: "",
@@ -410,6 +451,7 @@ class MaterialPropertiesDialog(QDialog):
 
         ecm = round(data["Ecm"] * factor_value, 1)
         return {
+            KEY_MATERIAL_DECK_DENSITY: "{:.1f}".format(CONCRETE_WEIGHT_DENSITY),
             KEY_MATERIAL_DECK_FCK: "{:.1f}".format(data["fck"]),
             KEY_MATERIAL_DECK_FCTM: "{:.1f}".format(data["fctm"]),
             KEY_MATERIAL_DECK_ECM: "{:.1f}".format(ecm),
@@ -659,6 +701,7 @@ class MaterialPropertiesDialog(QDialog):
                         fu_value = "{:.1f}".format(defaults["Fu"])
 
                 self.form_data["fields"] = {
+                    KEY_MATERIAL_GIRDER_DENSITY: "{:.1f}".format(STEEL_WEIGHT_DENSITY),
                     KEY_MATERIAL_GIRDER_FY: fy_value,
                     KEY_MATERIAL_GIRDER_FU: fu_value,
                     KEY_MATERIAL_GIRDER_E: "{:.1f}".format(defaults.get("E", 0.0)) if defaults else "",
