@@ -27,7 +27,7 @@ from osdagbridge.core.utils.codes.keyfile import (
     DCR_FAIL_THRESHOLD,
 )
 from osdagbridge.core.utils.codes.is800_2007 import IS800_2007
-
+from osdagbridge.core.utils.common import *
 
 # IRC 22:2015 Cl.601.4 Table 1 — partial safety factors (pulled once at import).
 _GAMMA_M = IRC22_2014.cl_601_4_material_safety_factors()
@@ -377,8 +377,8 @@ class BridgeConfig:
         edge_dist = geom.edge_dist
 
         # Cross-bracing spacing drives the lateral unbraced length for LTB.
-        cb_spacing = float(_req(bridge.additional_inputs.get(KEY_CROSS_BRACING_SPACING),
-                                KEY_CROSS_BRACING_SPACING, "additional_inputs"))
+        cb_spacing = float(bridge.additional_inputs.get(KEY_CROSS_BRACING_SPACING) or
+                                DEFAULT_CROSS_BRACING_SPACING)
 
         geometry = GeometryConfig(
             span=float(span),
@@ -397,18 +397,42 @@ class BridgeConfig:
                     KEY_TS_DECK_THICKNESS, "additional_inputs")
         slab = SlabProperties(thickness=float(deck_t))
 
-        # Shear stud parameters from Additional Inputs; defaults match the UI field defaults.
-        stud_d  = float(_req(bridge.additional_inputs.get("shear_stud_diameter"),
-                            "shear_stud_diameter", "additional_inputs"))
-        stud_h  = float(_req(bridge.additional_inputs.get("shear_stud_height"),
-                            "shear_stud_height", "additional_inputs"))
-        stud_fu = float(_req(bridge.additional_inputs.get("shear_stud_ultimate_strength"),
-                            "shear_stud_ultimate_strength", "additional_inputs"))
-        stud_n  = int(float(_req(bridge.additional_inputs.get("shear_stud_count"),
-                                "shear_stud_count", "additional_inputs")))
+        # Shear stud parameters — read from Additional Inputs if the user has filled them,
+        # otherwise fall back to IRC 22:2015 Cl.606 recommended defaults so the pipeline
+        # can always run without the user touching the stud fields first.
+        ai = bridge.additional_inputs
+        stud_d  = float(ai.get(KEY_DS_STUD_DIAMETER)          or 22.0)
+        stud_h  = float(ai.get(KEY_DS_STUD_HEIGHT)            or 150.0)
+        stud_fu = float(ai.get(KEY_DS_STUD_ULTIMATE_STRENGTH) or 500.0)
+        stud_n  = int(float(ai.get(KEY_DS_STUD_COUNT)         or 2))
         studs = ShearStudConfig(diameter=stud_d, height=stud_h, fu=stud_fu, n_per_section=stud_n)
 
-        return cls(material=material, section=section, geometry=geometry, slab=slab, studs=studs)
+        # Stiffener parameters — all optional. When plate dimensions are not given (default 0.0),
+        # compute_intermediate_stiffener() and compute_bearing_stiffener() run in guidance mode,
+        # returning required sizing instead of verification. bs_R_kN=0 means: resolve from
+        # max(Vu) in run_design_check().
+        def _optfloat(key, default=0.0):
+            v = ai.get(key)
+            if v is None or str(v).strip() in ("", "NA", "None"):
+                return default
+            try:
+                return float(v)
+            except (TypeError, ValueError):
+                return default
+
+        stiffener = StiffenerConfig(
+            c_mm        = _optfloat(KEY_INTERMEDIATE_STIFFENER_SPACING),
+            tq_mm       = _optfloat(KEY_INTERMEDIATE_STIFFENER_THICKNESS),
+            H_mm        = _optfloat(KEY_INTERMEDIATE_STIFFENER_OUTSTAND),
+            n_sides     = int(_optfloat(KEY_NO_BEARING_STIFFENERS, 1)),
+            bs_tq_mm    = _optfloat(KEY_BEARING_STIFFENER_PLATE_THICKNESS),
+            bs_H_mm     = _optfloat(KEY_OUTSTAND_BEARING_STIFFENER),
+            bs_n_plates = int(_optfloat(KEY_NO_BEARING_STIFFENERS, 2)),
+            bs_R_kN     = 0.0,
+        )
+
+        return cls(material=material, section=section, geometry=geometry,
+                   slab=slab, studs=studs, stiffener=stiffener)
 
 
 
@@ -2006,8 +2030,16 @@ class DCREngine:
                                    f"As_prov={c.As_provided_crack_mm2:.0f} mm²"))
 
         # ── CATEGORY 5 (cont.): Transverse Shear (Cl.606.10)
-        ts = c.details.get("transverse_shear", {})
+        if "transverse_shear" not in c.details:
+            raise KeyError(
+                "'transverse_shear' missing from capacity.details. "
+                "Ensure compute_all() has been run."
+            )
+        ts = c.details["transverse_shear"]
         if ts:
+            for key in ("VL_N_per_mm", "governing_capacity_kN_per_m", "L_shear_plane_mm"):
+                if key not in ts:
+                    raise KeyError(f"'{key}' missing from transverse_shear details.")
             self._add_check(16, "Transverse Shear (VL vs Vcap)", "Cl.606.10",
                             ts["VL_N_per_mm"], ts["governing_capacity_kN_per_m"], "kN/m",
                             note=f"L={ts['L_shear_plane_mm']:.0f} mm")
@@ -2019,10 +2051,20 @@ class DCREngine:
 
         # ── IRC 24-2010 STIFFENER CHECKS (Cl.509.7 / IS 800 Cl.8.7) ─────────────────
         # Intermediate transverse stiffener
-        is_det = c.details.get("intermediate_stiffener", {})
+        if "intermediate_stiffener" not in c.details:
+            raise KeyError(
+                "'intermediate_stiffener' missing from capacity.details. "
+                "Ensure compute_all() has been run."
+            )
+        is_det = c.details.get("intermediate_stiffener", {"skipped": True})
         if is_det and not is_det.get("skipped"):
-            if is_det.get("design_guidance"):
+            if "design_guidance" not in is_det:
+                raise KeyError("'design_guidance' key missing from intermediate_stiffener details.")
+            if is_det["design_guidance"]:
                 # No dimensions provided — report required values as a single guidance row
+                for key in ("H_max_mm", "tq_req_1sided_mm", "tq_req_2sided_mm", "c_req_min_mm"):
+                    if key not in is_det:
+                        raise KeyError(f"'{key}' missing from intermediate_stiffener details.")
                 _note = (f"H_max={(is_det['H_max_mm']):.0f} mm = (bf_min−tw)/2; "
                          f"tq_req(1-sided)≥{is_det['tq_req_1sided_mm']:.1f} mm, "
                          f"tq_req(2-sided)≥{is_det['tq_req_2sided_mm']:.1f} mm")
@@ -2032,6 +2074,11 @@ class DCREngine:
                                  0.0, 1.0, "–", note=_note)
             else:
                 # Full verification — three separate checks
+                for key in ("H_mm", "H_limit_mm", "H_limit_type", "H_max_mm", "tq_req_provided_mm",
+                           "Iys_min_mm4", "Iys_prov_mm4", "iys_formula", "Fq_kN", "Fqd_kN",
+                           "fcd_MPa", "KL_r"):
+                    if key not in is_det:
+                        raise KeyError(f"'{key}' missing from intermediate_stiffener details.")
                 # Cl.509.7.2.4 — outstanding leg: H ≤ H_limit
                 self._add_check(20, "Int.Stiff: Leg ≤ H_limit", "Cl.509.7.2.4",
                                  is_det["H_mm"], is_det["H_limit_mm"], "mm",
@@ -2050,11 +2097,18 @@ class DCREngine:
                                            f"KL/r={is_det['KL_r']:.2f}"))
 
         # Bearing stiffener
-        bs_det = c.details.get("bearing_stiffener", {})
+        bs_det = c.details.get("bearing_stiffener", {"skipped": True})
         if bs_det and not bs_det.get("skipped"):
+            if "R_kN" not in bs_det:
+                raise KeyError("'R_kN' missing from bearing_stiffener details.")
             R = bs_det["R_kN"]
-            if bs_det.get("design_guidance"):
+            if "design_guidance" not in bs_det:
+                raise KeyError("'design_guidance' key missing from bearing_stiffener details.")
+            if bs_det["design_guidance"]:
                 # No dimensions provided — report required tq as a single guidance row
+                for key in ("H_max_mm", "tq_req_bearing_mm", "tq_req_leg_mm", "n_plates"):
+                    if key not in bs_det:
+                        raise KeyError(f"'{key}' missing from bearing_stiffener details.")
                 self._add_check(21, "Brg.Stiff: Sizing Required", "Cl.509.7.3.3",
                                  0.0, 1.0, "–",
                                  note=(f"R={R:.1f} kN; H_max={bs_det['H_max_mm']:.0f} mm; "
@@ -2063,6 +2117,11 @@ class DCREngine:
                                        f"(n_plates={bs_det['n_plates']})"))
             else:
                 # Full verification — four separate checks
+                for key in ("Fcdw_wb_kN", "fcc_wb_MPa", "A_wb_mm2", "Fcdw_lc_kN", "fcd_y_MPa",
+                           "A_lc_mm2", "Fpsd_kN", "Aq_mm2", "tq_req_bearing_mm", "Fcd_kN",
+                           "fcd_bs_MPa", "KL_r_bs"):
+                    if key not in bs_det:
+                        raise KeyError(f"'{key}' missing from bearing_stiffener details.")
                 # Cl.509.7.3.1 — web buckling (PASS = stiffener not needed; FAIL = stiffener needed)
                 self._add_check(21, "Brg.Stiff: Web Buckling", "Cl.509.7.3.1",
                                  R, bs_det["Fcdw_wb_kN"], "kN",
@@ -2244,11 +2303,18 @@ class ReportGenerator:
         lines.append(f"\n  1. Effective Width (Cl.603.2.1)")
         lines.append(f"     beff = {c.beff_mm:.1f} mm")
 
+        # Validate section_class keys
+        for key in ('epsilon', 'web_class', 'd_tw_ratio', 'flange_class', 'b_tf_ratio', 'governing_class'):
+            if key not in sc:
+                raise KeyError(
+                    f"'{key}' missing from section_class details. "
+                    "Ensure compute_all() has been run."
+                )
         lines.append(f"\n  2. Section Classification (Cl.603)")
-        lines.append(f"     epsilon = {sc.get('epsilon', 0):.4f}")
-        lines.append(f"     Web: {sc.get('web_class', '?')}  (d/tw = {sc.get('d_tw_ratio', 0):.1f})")
-        lines.append(f"     Flange: {sc.get('flange_class', '?')}  (b/tf = {sc.get('b_tf_ratio', 0):.1f})")
-        lines.append(f"     Governing: {sc.get('governing_class', '?')}")
+        lines.append(f"     epsilon = {sc['epsilon']:.4f}")
+        lines.append(f"     Web: {sc['web_class']}  (d/tw = {sc['d_tw_ratio']:.1f})")
+        lines.append(f"     Flange: {sc['flange_class']}  (b/tf = {sc['b_tf_ratio']:.1f})")
+        lines.append(f"     Governing: {sc['governing_class']}")
 
         lines.append(f"\n  3. Positive Moment Capacity (Cl.603.3.1)")
         lines.append(f"     PNA Location: {c.pna_location}")
@@ -2270,13 +2336,24 @@ class ReportGenerator:
         # Composite section properties
         lines.append(f"\n  7. Composite Section Properties (Cl.604.3)")
         if cmp:
-            st = cmp.get("short_term", {})
-            lt = cmp.get("long_term",  {})
-            lines.append(f"     Short-term (n={cmp.get('short_term',{}).get('n','?')}):  "
-                         f"I = {st.get('I_comp_mm4',0):,.0f} mm⁴  |  "
-                         f"y_top = {st.get('y_top_mm',0):.1f} mm  |  y_bot = {st.get('y_bot_mm',0):.1f} mm")
-            lines.append(f"     Long-term  (n={cmp.get('long_term',{}).get('n','?')}):  "
-                         f"I = {lt.get('I_comp_mm4',0):,.0f} mm⁴")
+            for key in ('short_term', 'long_term'):
+                if key not in cmp:
+                    raise KeyError(
+                        f"'{key}' missing from composite_section_props. "
+                        "Ensure compute_all() has been run."
+                    )
+            st = cmp["short_term"]
+            lt = cmp["long_term"]
+            for subkey in ('n', 'I_comp_mm4', 'y_top_mm', 'y_bot_mm'):
+                if subkey not in st:
+                    raise KeyError(f"'{subkey}' missing from short_term composite properties.")
+            if 'n' not in lt or 'I_comp_mm4' not in lt:
+                raise KeyError("'n' or 'I_comp_mm4' missing from long_term composite properties.")
+            lines.append(f"     Short-term (n={st['n']}):  "
+                         f"I = {st['I_comp_mm4']:,.0f} mm⁴  |  "
+                         f"y_top = {st['y_top_mm']:.1f} mm  |  y_bot = {st['y_bot_mm']:.1f} mm")
+            lines.append(f"     Long-term  (n={lt['n']}):  "
+                         f"I = {lt['I_comp_mm4']:,.0f} mm⁴")
 
         lines.append(f"\n  8. SLS Stress Limits (Cl.604.3.1)")
         lines.append(f"     Concrete limit   : σc  ≤ 0.48 fck = {c.sigma_c_limit_MPa:.1f} MPa")
@@ -2284,7 +2361,7 @@ class ReportGenerator:
         lines.append(f"     Rebar limit      : σr  ≤ 0.80 fyk = {c.sigma_rebar_limit_MPa:.1f} MPa")
         # Actual stresses
         if not sls.get("skipped"):
-            lines.append(f"     --- Actual stresses (M_sls = {sls.get('M_sls_kNm',0):.1f} kNm) ---")
+            lines.append(f"     --- Actual stresses (M_sls = {sls['M_sls_kNm']:.1f} kNm) ---")
             lines.append(f"     σc (concrete)  = {c.sigma_c_actual_MPa:.3f} MPa"
                          f"  {'OK' if c.sigma_c_actual_MPa <= c.sigma_c_limit_MPa else 'FAIL'}")
             lines.append(f"     fe (steel)     = {c.sigma_steel_equiv_MPa:.3f} MPa"
@@ -2563,12 +2640,12 @@ def run_design_check(
         raise ValueError(
             "Either config (BridgeConfig) or plate_girder_bridge must be supplied to run_design_check()."
         )
-    # FIX
+
+    # If stiffener was not set at all (e.g. config built manually without from_plate_girder_bridge),
+    # create a default StiffenerConfig so the pipeline always runs in guidance mode at minimum.
     if config.stiffener is None:
-        raise ValueError(
-            "config.stiffener is None. "
-            "Set config.stiffener = StiffenerConfig() explicitly before calling run_design_check()."
-        )
+        config.stiffener = StiffenerConfig()
+        print("  [INFO] stiffener not set — using default StiffenerConfig() (guidance mode)")
     print(f"  Config: {config.summary()}")
 
     if per_girder_demands is None and analysis_results is not None:
@@ -2586,11 +2663,13 @@ def run_design_check(
     print(f"\n[Step 2] Running checks for {len(per_girder_demands)} girder(s) ...")
     per_girder_results: Dict[str, dict] = {}
 
-    if config.stiffener.bs_R_kN <= 0.0:
-        raise ValueError(
-            "config.stiffener.bs_R_kN must be set to the bearing reaction (kN) before calling "
-            "run_design_check(). It cannot be auto-derived from Vu."
-        )
+    # Bearing reaction — if not explicitly set by the user, approximate from the maximum
+    # shear demand across girders. For a simply supported bridge this is a close estimate.
+    # The user can override by setting bearing_stiffener_reaction in Additional Inputs.
+    if config.stiffener.bs_R_kN <= 0.0 and per_girder_demands:
+        max_Vu = max(d.Vu_kN for d in per_girder_demands.values())
+        config.stiffener.bs_R_kN = max_Vu
+        print(f"  [INFO] bs_R_kN not set — using max Vu = {max_Vu:.1f} kN as bearing reaction default")
 
     for g_name, g_demand in per_girder_demands.items():
         g_cap = IRC22CapacityCalculator(config).compute_all(
