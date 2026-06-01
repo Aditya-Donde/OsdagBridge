@@ -314,7 +314,8 @@ class PlateGirderBridge:
             transverse=self._transverse_section(),
             end_transverse=self._end_transverse_section(),
         )
-        self.grillage_model.create_material(self._build_material_props())
+        self.material_props = self._build_material_props()
+        self.grillage_model.create_material(self.material_props)
         self.grillage_model.assign_members()
         self.grillage_model.create_model()
 
