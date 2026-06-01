@@ -279,6 +279,31 @@ class CustomWindow(QWidget):
         self.plots_widget.setVisible(False)
         self.cad_log_splitter.addWidget(self.plots_widget)
 
+        # Connect toolbar buttons to plot widget
+        self.tool_bar.btn_zoom_fit.clicked.connect(self.plots_widget._zoom_reset)
+        self.tool_bar.btn_zoom_in.clicked.connect(self.plots_widget._zoom_in)
+        self.tool_bar.btn_zoom_out.clicked.connect(self.plots_widget._zoom_out)
+
+        # Pan/Rotate are mutually exclusive
+        def on_pan_toggled(checked):
+            if checked:
+                self.tool_bar.btn_rotate.blockSignals(True)
+                self.tool_bar.btn_rotate.setChecked(False)
+                self.tool_bar.btn_rotate.blockSignals(False)
+                self.plots_widget._toggle_rotate(False)  # Explicitly disable rotate
+            self.plots_widget._toggle_pan(checked)
+
+        def on_rotate_toggled(checked):
+            if checked:
+                self.tool_bar.btn_pan.blockSignals(True)
+                self.tool_bar.btn_pan.setChecked(False)
+                self.tool_bar.btn_pan.blockSignals(False)
+                self.plots_widget._toggle_pan(False)  # Explicitly disable pan
+            self.plots_widget._toggle_rotate(checked)
+
+        self.tool_bar.btn_pan.toggled.connect(on_pan_toggled)
+        self.tool_bar.btn_rotate.toggled.connect(on_rotate_toggled)
+
         # Log dock (inside splitter)
         self.logs_dock = LogDock(parent=self)
         self.logs_dock.setVisible(False)

@@ -497,6 +497,13 @@ class ToolBarWidget(QWidget):
             QPushButton:hover {
                 background-color: rgba(150, 150, 150, 60);
             }
+            QPushButton:checked {
+                background-color: #1565C0;
+                border-radius: 4px;
+            }
+            QPushButton:checked:hover {
+                background-color: #0D47A1;
+            }
         """
 
         def create_button(icon_path, tooltip):
@@ -527,16 +534,24 @@ class ToolBarWidget(QWidget):
 
         # ---- Buttons ----
         # Zoom group
-        self.layout.addWidget(create_button(":/vectors/tool_bar/zoom_fit_light.svg", "Zoom Fit"))
-        self.layout.addWidget(create_button(":/vectors/tool_bar/zoom_window_light.svg", "Zoom Window"))
-        self.layout.addWidget(create_button(":/vectors/tool_bar/zoom_in_light.svg", "Zoom In"))
-        self.layout.addWidget(create_button(":/vectors/tool_bar/zoom_out_light.svg", "Zoom Out"))
+        self.btn_zoom_fit = create_button(":/vectors/tool_bar/zoom_fit_light.svg", "Zoom Fit")
+        self.btn_zoom_window = create_button(":/vectors/tool_bar/zoom_window_light.svg", "Zoom Window")
+        self.btn_zoom_in = create_button(":/vectors/tool_bar/zoom_in_light.svg", "Zoom In")
+        self.btn_zoom_out = create_button(":/vectors/tool_bar/zoom_out_light.svg", "Zoom Out")
+        self.layout.addWidget(self.btn_zoom_fit)
+        self.layout.addWidget(self.btn_zoom_window)
+        self.layout.addWidget(self.btn_zoom_in)
+        self.layout.addWidget(self.btn_zoom_out)
 
         self.layout.addWidget(add_separator())  # after zoom
 
         # Navigation group
-        self.layout.addWidget(create_button(":/vectors/tool_bar/pan_light.svg", "Pan"))
-        self.layout.addWidget(create_button(":/vectors/tool_bar/rotate_light.svg", "Rotate"))
+        self.btn_pan = create_button(":/vectors/tool_bar/pan_light.svg", "Pan")
+        self.btn_rotate = create_button(":/vectors/tool_bar/rotate_light.svg", "Rotate")
+        self.btn_pan.setCheckable(True)
+        self.btn_rotate.setCheckable(True)
+        self.layout.addWidget(self.btn_pan)
+        self.layout.addWidget(self.btn_rotate)
 
         self.layout.addWidget(add_separator())  # after rotate
 

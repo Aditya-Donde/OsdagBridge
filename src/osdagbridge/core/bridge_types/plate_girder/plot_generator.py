@@ -126,7 +126,16 @@ def _build_polyline(elems, members, nodes, force_i, force_j, ds):
 # DRAWING HELPERS (matplotlib 3-D)
 # =============================================================================
 
-def _add_grillage_background(ax, nodes, members, x_tol=3, z_tol=3, show_transverse=False):
+def _add_grillage_background(
+    ax,
+    nodes,
+    members,
+    x_tol=3,
+    z_tol=3,
+    show_transverse=False,
+    include_edge_longitudinals=True,
+    show_inner_nodes=True,
+):
         """
         Draw the structural grid by grouping nodes rather than tracing element tags.
         """
@@ -151,7 +160,12 @@ def _add_grillage_background(ax, nodes, members, x_tol=3, z_tol=3, show_transver
         trans_kw = dict(color="slategrey", linewidth=1.2, alpha=0.4, zorder=1)
 
         # longitudinal lines (along span)
+        z_keys = sorted(by_z.keys())
+        edge_z_min = z_keys[0] if z_keys else None
+        edge_z_max = z_keys[-1] if z_keys else None
         for z_val, x_vals in by_z.items():
+            if not include_edge_longitudinals and z_val in (edge_z_min, edge_z_max):
+                continue
             x_sorted = sorted(set(x_vals))
             if len(x_sorted) > 1:
                 ax.plot(x_sorted, [z_val] * len(x_sorted), [0] * len(x_sorted), **long_kw)
@@ -172,20 +186,18 @@ def _add_grillage_background(ax, nodes, members, x_tol=3, z_tol=3, show_transver
         # ==========================================
         # 3. THE DOTS (Sniper Fix for Z-Fighting)
         # ==========================================
-        inner_xs, inner_zs, inner_ys = [], [], []
-        
-        if by_x:
-            min_x = min(by_x.keys())
-            max_x = max(by_x.keys())
-            
-            # Only collect dots that are NOT at the absolute ends of the bridge
-            for coord in nodes.values():
-                if coord[0] != min_x and coord[0] != max_x:
-                    inner_xs.append(coord[0])
-                    inner_zs.append(coord[2])
-                    inner_ys.append(0) # Base elevation
-                    
-            ax.scatter(inner_xs, inner_zs, inner_ys, color="#388E3C", alpha=0.4, s=5, zorder=2, depthshade=False)
+        if show_inner_nodes:
+            inner_xs, inner_zs, inner_ys = [], [], []
+            if by_x:
+                min_x = min(by_x.keys())
+                max_x = max(by_x.keys())
+                # Only collect dots that are NOT at the absolute ends of the bridge
+                for coord in nodes.values():
+                    if coord[0] != min_x and coord[0] != max_x:
+                        inner_xs.append(coord[0])
+                        inner_zs.append(coord[2])
+                        inner_ys.append(0) # Base elevation
+                ax.scatter(inner_xs, inner_zs, inner_ys, color="#388E3C", alpha=0.4, s=5, zorder=2, depthshade=False)
 
 
 def _add_coordinate_triad(ax, nodes, scale=0.12):
@@ -346,10 +358,8 @@ def build_figure_grillage(nodes, members, edge_dist=0.0):
         # Add the Girder labels (G1, G2, etc.) to the inner beams
         if not is_edge_beam:
             ax.text(x_start - (x_range * 0.02), z_base, 0, f"{girder_name}",
-                    color="black", fontsize=11, fontweight="normal",
-                    ha="right", va="center", zorder=6,
-                    bbox=dict(boxstyle="round,pad=0.2", facecolor="white",
-                              alpha=0.8, edgecolor="none"))
+                    color="black", fontsize=13, fontweight="normal",
+                    ha="right", va="center", zorder=6, gid="girder_labels")
 
     # Extract node IDs and coordinates properly for tracking
     node_ids = list(nodes.keys())
@@ -455,7 +465,9 @@ def build_figure_sfd(ds, force_key, nodes, members, edge_dist=0.0):
     ax.set_ylim(z_min - z_pad, z_max + z_pad)
     ax.set_box_aspect([x_range, z_range, x_range * 0.30])
 
-    _add_grillage_background(ax, nodes, members, show_transverse=False)
+    _add_grillage_background(
+        ax, nodes, members, show_transverse=False, include_edge_longitudinals=False, show_inner_nodes=False
+    )
     
     shear_color = "#1565C0"
     fill_color  = "#90CAF9"
@@ -490,9 +502,8 @@ def build_figure_sfd(ds, force_key, nodes, members, edge_dist=0.0):
 
         dynamic_zorder = 100 - i  
         ax.text(xs[0] - (x_range * 0.02), z_base, 0, f"{girder_name}",
-                color="black", fontsize=11, ha="right", va="center", 
-                zorder=dynamic_zorder,
-                bbox=dict(boxstyle="round,pad=0.2", facecolor="white", alpha=0.8, edgecolor="none"))
+                color="black", fontsize=13, ha="right", va="center",
+                zorder=dynamic_zorder, gid="girder_labels")
 
         x_step  = np.repeat(xs, 2)[1:-1]
         Vy_step = np.repeat(Vy[:-1], 2)
@@ -675,7 +686,9 @@ def build_figure_bmd(ds, force_key, nodes, members, edge_dist=0.0):
     ax.set_ylim(min(all_zs), max(all_zs))
     ax.set_box_aspect([x_range, z_range, x_range * 0.30])
 
-    _add_grillage_background(ax, nodes, members, show_transverse=False)
+    _add_grillage_background(
+        ax, nodes, members, show_transverse=False, include_edge_longitudinals=False, show_inner_nodes=False
+    )
     
     
 
@@ -718,14 +731,8 @@ def build_figure_bmd(ds, force_key, nodes, members, edge_dist=0.0):
         
 
         ax.text(xs[0] - (x_range * 0.02), z_base, 0, f"{girder_name}",
-                color="black", fontsize=11, ha="right", va="center", 
-                zorder=dynamic_zorder, 
-                bbox=dict(
-                    boxstyle="round,pad=0.2", 
-                    facecolor="white", 
-                    alpha=0.8, # Fades the white background box
-                    edgecolor="none"
-                ))
+                color="black", fontsize=13, ha="right", va="center",
+                zorder=dynamic_zorder, gid="girder_labels")
 
         # val_range = max(Mz) - min(Mz)
         # if val_range == 0:
@@ -908,7 +915,7 @@ def build_figure_bmd_contour(ds, force_key, nodes, members, edge_dist=0.0):
     ax.set_ylim(min(all_zs), max(all_zs))
     ax.set_box_aspect([x_range, z_range, x_range * 0.30])
 
-    _add_grillage_background(ax, nodes, members)
+    _add_grillage_background(ax, nodes, members, include_edge_longitudinals=False, show_inner_nodes=False)
     _add_coordinate_triad(ax, nodes)
     _add_supports(ax, nodes, members, edge_dist=edge_dist)
 
@@ -936,10 +943,8 @@ def build_figure_bmd_contour(ds, force_key, nodes, members, edge_dist=0.0):
 
         # girder label
         ax.text(xs[0] - (x_range * 0.02), z_base, 0, f"{girder_name}",
-                color="black", fontsize=11, fontweight="normal",
-                ha="right", va="center", zorder=6,
-                bbox=dict(boxstyle="round,pad=0.2", facecolor="white",
-                          alpha=0.8, edgecolor="none"))
+                color="black", fontsize=13, fontweight="normal",
+                ha="right", va="center", zorder=6, gid="girder_labels")
 
         # val_range = max(Mz) - min(Mz)
         # if val_range == 0:
@@ -1024,7 +1029,9 @@ def build_figure_deflection(ds, disp_key, nodes, members, edge_dist=0.0):
     # Rigid 3D bounding box (matches our UI zoom fix)
     ax.set_box_aspect(aspect=(2.5, 1.2, 1.0))
 
-    _add_grillage_background(ax, nodes, members, show_transverse=False)
+    _add_grillage_background(
+        ax, nodes, members, show_transverse=False, include_edge_longitudinals=False, show_inner_nodes=False
+    )
 
     defl_color = "#6A1B9A"   # deep purple
     base_color = "#388E3C"   # green baseline
@@ -1107,14 +1114,8 @@ def build_figure_deflection(ds, disp_key, nodes, members, edge_dist=0.0):
         
 
         ax.text(xs[0] - (x_range * 0.02), z_base, 0, f"{girder_name}",
-                color="black", fontsize=11, ha="right", va="center", 
-                zorder=dynamic_zorder, 
-                bbox=dict(
-                    boxstyle="round,pad=0.2", 
-                    facecolor="white", 
-                    alpha=0.8, # Fades the white background box
-                    edgecolor="none"
-                ))
+                color="black", fontsize=13, ha="right", va="center",
+                zorder=dynamic_zorder, gid="girder_labels")
 
         y_plot = vals 
 

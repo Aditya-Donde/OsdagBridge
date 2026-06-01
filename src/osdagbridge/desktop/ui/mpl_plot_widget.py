@@ -4,6 +4,8 @@ matplotlib.use("QtAgg")
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d.art3d import Path3DCollection 
+from html import escape
+import re
 
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QComboBox, QSizePolicy, QPushButton,
@@ -41,6 +43,64 @@ _RICH_LABEL_TO_FORCE = {
 }
 
 _DEFAULT_FORCE_LABEL = "V<sub>y</sub>"   # pre-checked on first link
+
+
+# =============================================================================
+# PLOT TITLE OVERLAY
+# =============================================================================
+class PlotTitleOverlay(QFrame):
+    """Device-consistent title text rendered independently of Matplotlib."""
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setAttribute(Qt.WA_TransparentForMouseEvents)
+        self.setStyleSheet("""
+            PlotTitleOverlay {
+                background: transparent;
+                border: none;
+            }
+            QLabel {
+                background: transparent;
+                border: none;
+            }
+            QLabel#plotTitle {
+                color: #171717;
+                font-size: 18px;
+                font-weight: normal;
+            }
+            QLabel#plotSubtitle {
+                color: #3f3f3f;
+                font-size: 14px;
+                font-weight: normal;
+            }
+        """)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(4)
+
+        self.title_label = QLabel()
+        self.title_label.setObjectName("plotTitle")
+        self.title_label.setTextFormat(Qt.RichText)
+        self.title_label.setAlignment(Qt.AlignHCenter | Qt.AlignTop)
+        layout.addWidget(self.title_label)
+
+        self.subtitle_label = QLabel()
+        self.subtitle_label.setObjectName("plotSubtitle")
+        self.subtitle_label.setAlignment(Qt.AlignHCenter | Qt.AlignTop)
+        layout.addWidget(self.subtitle_label)
+
+    def update_text(self, title: str, subtitle: str = ""):
+        self.title_label.setText(self._to_rich_text(title))
+        self.subtitle_label.setText(subtitle)
+        self.subtitle_label.setVisible(bool(subtitle))
+        self.show()
+
+    @staticmethod
+    def _to_rich_text(text: str) -> str:
+        """Convert the simple Matplotlib mathtext used in titles into Qt HTML."""
+        text = escape(text)
+        text = re.sub(r"\$_\{?([^}$]+)\}?\$", r"<sub>\1</sub>", text)
+        return re.sub(r"\$\^\{?([^}$]+)\}?\$", r"<sup>\1</sup>", text)
 
 
 # =============================================================================
@@ -115,6 +175,7 @@ class MplPlotWidget(QWidget):
         self._show_axis = False 
         self._show_supports = True 
         self._show_grid = False  
+        self._show_girder_labels = True
         self._is_summary_checked = False
         self._show_max = False  
         self._show_min = False  
@@ -122,7 +183,21 @@ class MplPlotWidget(QWidget):
 
         # Zoom state
         self._zoom_scale  = 1.0
-        self._orig_limits = None   
+        self._orig_limits = None
+
+        # Pan/Rotate/Zoom Window mode states
+        self._pan_active = False
+        self._rotate_active = False
+        self._zoom_window_active = False
+        self._pan_start = None
+        self._rotate_start = None
+        self._pan_dragging = False
+        self._rotate_dragging = False
+        self._cid_press = None
+        self._cid_motion = None
+        self._cid_release = None   
+        self._view_dragging   = False
+        self._view_drag_start = None 
 
         # matplotlib canvas
         self._fig    = plt.figure(figsize=(14, 6), facecolor="white")
@@ -135,6 +210,9 @@ class MplPlotWidget(QWidget):
         self._scroll_area.setWidgetResizable(True)
         self._scroll_area.setWidget(self._canvas)
         self._scroll_area.setFrameShape(QFrame.NoFrame)
+
+        self._title_overlay = PlotTitleOverlay(self._canvas)
+        self._title_overlay.hide()
 
         # Initialize the Summary Overlay
         self._summary_overlay = SummaryOverlay(self._canvas)
@@ -159,16 +237,14 @@ class MplPlotWidget(QWidget):
         ))
         self._navcube.hide()
         self._navcube_sync = MatplotlibNavCubeSync(self._canvas, self._navcube)
-        self._canvas.mpl_connect("button_press_event",   lambda e: self._navcube_sync.set_interaction_active(True)  if e.button == 1 else None)
-        self._canvas.mpl_connect("button_release_event", lambda e: self._navcube_sync.set_interaction_active(False) if e.button == 1 else None)
-        self._canvas.mpl_connect("motion_notify_event",  lambda e: self._navcube_sync.force_sync() if e.button == 1 else None)
+        self._canvas.mpl_connect("button_press_event",   lambda e: self._navcube_sync.set_interaction_active(True)  if e.button == 1 and not self._pan_active and not self._rotate_active else None)
+        self._canvas.mpl_connect("button_release_event", lambda e: self._navcube_sync.set_interaction_active(False) if e.button == 1 and not self._pan_active and not self._rotate_active else None)
+        self._canvas.mpl_connect("motion_notify_event",  lambda e: self._navcube_sync.force_sync() if e.button == 1 and not self._pan_active and not self._rotate_active else None)
         # ──────────────────────────────────────────────────────────
 
         # zoom toolbar
-        self._btn_zoom_in  = QPushButton("+")
-        self._btn_zoom_out = QPushButton("−")
         self._btn_zoom_reset = QPushButton("⟳")
-        for btn in (self._btn_zoom_in, self._btn_zoom_out, self._btn_zoom_reset):
+        for btn in (self._btn_zoom_reset,):
             btn.setFixedSize(28, 28)
             btn.setFocusPolicy(Qt.NoFocus)
             btn.setStyleSheet(
@@ -177,8 +253,6 @@ class MplPlotWidget(QWidget):
                 "QPushButton:hover { background: #e0e0e0; }"
                 "QPushButton:pressed { background: #bdbdbd; }"
             )
-        self._btn_zoom_in.clicked.connect(self._zoom_in)
-        self._btn_zoom_out.clicked.connect(self._zoom_out)
         self._btn_zoom_reset.clicked.connect(self._zoom_reset)
 
         # TOOBAR BUTTONS
@@ -229,6 +303,14 @@ class MplPlotWidget(QWidget):
         self._btn_grid.setFocusPolicy(Qt.NoFocus)
         self._btn_grid.setStyleSheet(btn_style)
         self._btn_grid.toggled.connect(self._on_grid_toggled)
+
+        self._btn_girder_labels = QPushButton("Girder Labels")
+        self._btn_girder_labels.setCheckable(True)
+        self._btn_girder_labels.setChecked(True)
+        self._btn_girder_labels.setFixedHeight(28)
+        self._btn_girder_labels.setFocusPolicy(Qt.NoFocus)
+        self._btn_girder_labels.setStyleSheet(btn_style)
+        self._btn_girder_labels.toggled.connect(self._on_girder_labels_toggled)
         # self._canvas.mpl_connect('scroll_event', self._on_scroll)
 
         toolbar_row = QHBoxLayout()
@@ -238,10 +320,9 @@ class MplPlotWidget(QWidget):
         toolbar_row.addWidget(self._btn_nodes)
         toolbar_row.addWidget(self._btn_supports) 
         toolbar_row.addWidget(self._btn_axis) 
-        toolbar_row.addWidget(self._btn_grid) 
+        toolbar_row.addWidget(self._btn_grid)
+        toolbar_row.addWidget(self._btn_girder_labels)
         toolbar_row.addStretch()
-        toolbar_row.addWidget(self._btn_zoom_out)
-        toolbar_row.addWidget(self._btn_zoom_in)
         toolbar_row.addWidget(self._btn_zoom_reset)
 
         # layout
@@ -334,9 +415,6 @@ class MplPlotWidget(QWidget):
 
         ds = self._ds_all.sel(Loadcase=loadcase)
         
-        # ==========================================
-        # 1. 🚨 CAPTURE CAMERA STATE BEFORE CLOSING
-        # ==========================================
         old_elev, old_azim = None, None
         if hasattr(self, '_fig') and self._fig and self._fig.axes:
             old_ax = self._fig.axes[0]
@@ -357,16 +435,14 @@ class MplPlotWidget(QWidget):
         else:
             self._fig, self._summary_data = build_figure_bmd(ds, force_key, self._nodes, self._members, edge_dist=self._edge_dist)
 
-        self._canvas.figure = self._fig
-        self._fig.set_canvas(self._canvas)
-        # Ensure the figure size matches the current canvas (DPI-aware)
-        QTimer.singleShot(0, self._fit_figure_to_canvas)
+        self._attach_figure(self._fig)
         
         # (Your existing visibility toggles)
         self._apply_node_visibility()
         self._apply_axis_visibility()
         self._apply_supports_visibility()
-        self._apply_grid_visibility() 
+        self._apply_grid_visibility()
+        self._apply_girder_labels_visibility()
         self._apply_annotation_visibility() 
         
         # (Your existing HUD logic)
@@ -385,14 +461,17 @@ class MplPlotWidget(QWidget):
                 return
 
             ax = self._fig.axes[0]
-
-            # ==========================================
-            # 2. 🚨 RESTORE CAMERA STATE TO NEW PLOT
-            # ==========================================
             if old_elev is not None and old_azim is not None:
                 ax.view_init(elev=old_elev, azim=old_azim)
 
-            # (Keep your existing native zoom logic)
+            title = ax.get_title()
+            ax.set_title("")
+            self._title_overlay.update_text(
+                title,
+                f"Load Case/Combination : {loadcase}",
+            )
+            self._position_title_overlay()
+
             if hasattr(ax, 'set_box_aspect'):
                 ax.set_box_aspect(aspect=(2.5, 1.2, 1.0), zoom=self._zoom_scale)
 
@@ -404,7 +483,7 @@ class MplPlotWidget(QWidget):
             for text in ax.texts:
                 text.set_clip_on(False)
 
-            self._canvas.draw_idle()
+            self._canvas.draw()
 
         # Show NavCube for 3-D plots only, hide for 2-D.
         QTimer.singleShot(100, self._update_navcube_visibility)
@@ -453,14 +532,6 @@ class MplPlotWidget(QWidget):
         x = max(0, self._canvas.width() - self._navcube.width() - padding)
         self._navcube.move(x, padding)
 
-    def eventFilter(self, obj, event):
-        if obj is self._canvas and event.type() == QEvent.Type.Resize:
-            self._resize_navcube()
-            self._position_navcube()
-            if self._navcube.isVisible():
-                self._navcube.raise_()
-        return super().eventFilter(obj, event)
-
     # ──────────────────────────────────────────────────────────────
 
     # NATIVE SLOTS: The 'checked' variable is now passed instantly by Qt!
@@ -499,20 +570,34 @@ class MplPlotWidget(QWidget):
         self._grillage_mode = checked
         if checked:
             if not self._nodes: return
+            old_elev, old_azim = None, None
+            if self._fig and self._fig.axes and hasattr(self._fig.axes[0], 'elev'):
+                old_elev = self._fig.axes[0].elev
+                old_azim = self._fig.axes[0].azim
             plt.close(self._fig)
             self._fig = build_figure_grillage(self._nodes, self._members, edge_dist=self._edge_dist)
-            self._canvas.figure = self._fig
-            self._fig.set_canvas(self._canvas)
+            self._attach_figure(self._fig)
+            if self._fig.axes and old_elev is not None and old_azim is not None:
+                self._fig.axes[0].view_init(elev=old_elev, azim=old_azim)
+            if self._fig.axes:
+                title = self._fig.axes[0].get_title()
+                self._fig.axes[0].set_title("")
+                self._title_overlay.update_text(title)
+                self._position_title_overlay()
             
             self._apply_node_visibility()
             self._apply_axis_visibility()
             self._apply_supports_visibility()
             self._apply_grid_visibility()
+            self._apply_girder_labels_visibility()
             self._summary_overlay.hide() 
             
-            self._fit_figure_to_canvas()
+            if self._fig.axes and hasattr(self._fig.axes[0], 'set_box_aspect'):
+                self._fig.axes[0].set_box_aspect(
+                    aspect=(2.5, 1.2, 1.0),
+                    zoom=self._zoom_scale,
+                )
             self._canvas.draw()
-            self._zoom_scale = 1.0
             self._store_orig_limits()
             QTimer.singleShot(100, self._update_navcube_visibility)
         else:
@@ -538,12 +623,16 @@ class MplPlotWidget(QWidget):
         self._apply_grid_visibility()
         self._canvas.draw_idle()
 
+    def _on_girder_labels_toggled(self, checked: bool):
+        self._show_girder_labels = checked
+        self._apply_girder_labels_visibility()
+        self._canvas.draw_idle()
+
     def resizeEvent(self, event):
         super().resizeEvent(event)
         if self._summary_overlay:
             self._summary_overlay.move(15, 45) # Keep HUD floating safely under the toolbar
-        # Debounced resize: adjust Matplotlib figure to match the canvas size
-        QTimer.singleShot(150, self._on_delayed_resize)
+        self._position_title_overlay()
 
     # private helpers
     def _apply_node_visibility(self):
@@ -598,35 +687,31 @@ class MplPlotWidget(QWidget):
                 # Throw the invisibility cloak over the panes, cube, labels, and ticks!
                 ax.set_axis_off()
 
-    def _fit_figure_to_canvas(self):
-        # Resize the Matplotlib Figure to match the widget canvas in physical pixels
-        if not hasattr(self, '_fig') or not self._fig:
+    def _apply_girder_labels_visibility(self):
+        for ax in self._fig.axes:
+            for text in ax.texts:
+                if text.get_gid() == "girder_labels":
+                    text.set_visible(self._show_girder_labels)
+                    # Enforce a consistent visual style across all plot rebuilds.
+                    text.set_fontsize(13)
+                    text.set_color("black")
+
+    def _attach_figure(self, fig):
+        """Install a rebuilt figure using QtAgg's current DPR-aware canvas size."""
+        self._canvas.figure = fig
+        fig.set_canvas(self._canvas)
+        dpr = float(getattr(self._canvas, "device_pixel_ratio", 1.0))
+        width = self._canvas.width() * dpr
+        height = self._canvas.height() * dpr
+        if width > 10 and height > 10:
+            fig.set_size_inches(width / fig.dpi, height / fig.dpi, forward=False)
+
+    def _position_title_overlay(self):
+        if not hasattr(self, "_title_overlay"):
             return
-        w_px = self._canvas.width()
-        h_px = self._canvas.height()
-        if w_px > 10 and h_px > 10:
-            # Prefer the canvas/device DPR when available to support HiDPI displays
-            try:
-                dpr = float(self._canvas.devicePixelRatioF())
-            except Exception:
-                app = QApplication.instance()
-                screen = app.primaryScreen() if app else None
-                dpr = float(screen.devicePixelRatio()) if screen else 1.0
-
-            physical_w = max(1, int(w_px * dpr))
-            physical_h = max(1, int(h_px * dpr))
-            dpi = float(getattr(self._fig, 'dpi', 100.0))
-            # Apply new size in inches and forward the change so Matplotlib updates internals
-            self._fig.set_size_inches(physical_w / dpi, physical_h / dpi, forward=True)
-
-    def _on_delayed_resize(self):
-        # Called via QTimer.singleShot to avoid rapid redraws while resizing
-        try:
-            self._fit_figure_to_canvas()
-            if hasattr(self, '_canvas') and self._canvas:
-                self._canvas.draw_idle()
-        except Exception:
-            pass
+        height = 58 if self._title_overlay.subtitle_label.isVisible() else 28
+        self._title_overlay.setGeometry(0, 18, self._canvas.width(), height)
+        self._title_overlay.raise_()
 
     def _store_orig_limits(self):
         pass # Not needed for Uniform Render Zoom
@@ -684,20 +769,48 @@ class MplPlotWidget(QWidget):
 
     #         return True   
     #     return super().eventFilter(obj, event)
+    
+    # REPLACE both eventFilter methods with this single one:
     def eventFilter(self, obj, event):
-        """Intercepts the mouse wheel at the OS level to guarantee zoom triggers."""
-        from PySide6.QtCore import QEvent
-        
-        if obj is self._canvas and event.type() == QEvent.Type.Wheel:
-            event.accept() # Tell PySide6 "I handled this, do not scroll the window!"
-            
-            delta = event.angleDelta().y()
-            if delta > 0:
+        if obj is not self._canvas:
+            return super().eventFilter(obj, event)
+        etype = event.type()
+
+        if etype == QEvent.Type.Resize:                        # NavCube reposition
+            self._resize_navcube()
+            self._position_navcube()
+            self._position_title_overlay()
+            if self._navcube.isVisible():
+                self._navcube.raise_()
+
+        elif etype == QEvent.Type.Wheel:                       # Zoom
+            event.accept()
+            if event.angleDelta().y() > 0:
                 self._zoom_in()
             else:
                 self._zoom_out()
-                
-            return True   
+            return True
+
+        elif self._pan_active:                                 # ← NEW: viewport drag
+            if etype == QEvent.Type.MouseButtonPress and event.button() == Qt.LeftButton:
+                self._view_dragging   = True
+                self._view_drag_start = event.pos()
+                self._canvas.setCursor(Qt.ClosedHandCursor)
+                return True
+            elif etype == QEvent.Type.MouseMove and self._view_dragging:
+                delta = event.pos() - self._view_drag_start
+                self._view_drag_start = event.pos()
+                self._scroll_area.horizontalScrollBar().setValue(
+                    self._scroll_area.horizontalScrollBar().value() - delta.x())
+                self._scroll_area.verticalScrollBar().setValue(
+                    self._scroll_area.verticalScrollBar().value() - delta.y())
+                return True
+            elif etype == QEvent.Type.MouseButtonRelease and self._view_dragging:
+                self._view_dragging   = False
+                self._view_drag_start = None
+                self._canvas.setCursor(Qt.OpenHandCursor)
+                return True
+
         return super().eventFilter(obj, event)
 
     # def _zoom_step(self, factor):
@@ -749,13 +862,145 @@ class MplPlotWidget(QWidget):
         self._apply_camera_zoom()
 
     def _zoom_reset(self):
-        """Snaps back to 100% scale."""
+        """Reset zoom and auto-fit plot to show all data."""
         self._zoom_scale = 1.0
+        if not self._fig or not self._fig.axes:
+            return
+        ax = self._fig.axes[0]
+        if hasattr(ax, 'set_box_aspect'):  # 3D
+            fit_zoom = 0.82 if self._show_grid else 1.0
+            ax.set_box_aspect(aspect=(2.5, 1.2, 1.0), zoom=fit_zoom)
+            ax.autoscale()
+        else:  # 2D
+            ax.relim()
+            ax.autoscale_view()
+        self._apply_zoom()
         self._apply_camera_zoom()
 
-    # ==========================================
-    # STATE HELPERS
-    # ==========================================
+    def _toggle_pan(self, enabled: bool):
+        """Enable/disable pan mode."""
+        if enabled:
+            self._disconnect_pan_rotate()
+            self._rotate_active = False
+            self._zoom_window_active = False
+            self._pan_active = True
+            self._pan_start = None
+            self._canvas.setCursor(Qt.OpenHandCursor)
+            self._set_native_3d_mouse(rotate_btn=[], zoom_btn=[])
+            self._cid_press = self._canvas.mpl_connect("button_press_event", self._pan_on_press)
+            self._cid_motion = self._canvas.mpl_connect("motion_notify_event", self._pan_on_motion)
+            self._cid_release = self._canvas.mpl_connect("button_release_event", self._pan_on_release)
+        else:
+            self._pan_active = False
+            self._canvas.setCursor(Qt.ArrowCursor)
+            self._pan_dragging = False
+            self._disconnect_pan_rotate()
+            self._set_native_3d_mouse(rotate_btn=1, zoom_btn=3)
+
+    def _pan_on_press(self, event):
+        """Store the starting position for pan."""
+        if event.inaxes and event.button == 1:
+            self._pan_start = (event.x, event.y)
+            self._pan_dragging = True
+
+    def _pan_on_motion(self, event):
+        """Pan the plot by shifting axis limits."""
+        if not self._pan_active or not self._pan_dragging or not self._pan_start or not event.inaxes:
+            return
+
+        ax = event.inaxes
+
+        dx_px = event.x - self._pan_start[0]
+        dy_px = event.y - self._pan_start[1]
+
+        axbbox = ax.get_window_extent()
+        width_px = axbbox.width
+        height_px = axbbox.height
+
+        if width_px > 0 and height_px > 0:
+            xl, yl = ax.get_xlim(), ax.get_ylim()
+            data_dx = -dx_px * (xl[1] - xl[0]) / width_px
+            data_dy = dy_px * (yl[1] - yl[0]) / height_px
+
+            # 3D: shift X with horizontal drag and Z with vertical drag so
+            # the full plotted block appears to move in both directions.
+            if hasattr(ax, "get_zlim") and hasattr(ax, "set_zlim"):
+                zl = ax.get_zlim()
+                # Keep drag direction natural: dragging up moves scene up.
+                data_dz = -dy_px * (zl[1] - zl[0]) / height_px
+                ax.set_xlim(xl[0] + data_dx, xl[1] + data_dx)
+                ax.set_ylim(yl[0] + data_dy, yl[1] + data_dy)
+                ax.set_zlim(zl[0] + data_dz, zl[1] + data_dz)
+            else:
+                # 2D fallback
+                ax.set_xlim(xl[0] + data_dx, xl[1] + data_dx)
+                ax.set_ylim(yl[0] + data_dy, yl[1] + data_dy)
+
+            self._canvas.draw_idle()
+
+        self._pan_start = (event.x, event.y)
+
+    def _pan_on_release(self, event):
+        self._pan_start = None
+        self._pan_dragging = False
+
+    def _toggle_rotate(self, enabled: bool):
+        """Enable/disable rotate mode (3D only)."""
+        if enabled:
+            self._disconnect_pan_rotate()
+            self._pan_active = False
+            self._zoom_window_active = False
+            self._rotate_active = True
+            self._rotate_start = None
+            self._set_native_3d_mouse(rotate_btn=1, zoom_btn=3)
+            self._canvas.setCursor(Qt.OpenHandCursor)
+            self._cid_press = self._canvas.mpl_connect("button_press_event", self._rot_on_press)
+            self._cid_motion = self._canvas.mpl_connect("motion_notify_event", self._rot_on_motion)
+            self._cid_release = self._canvas.mpl_connect("button_release_event", self._rot_on_release)
+        else:
+            self._rotate_active = False
+            self._canvas.setCursor(Qt.ArrowCursor)
+            self._rotate_dragging = False
+            self._disconnect_pan_rotate()
+
+    def _rot_on_press(self, event):
+        if event.button == 1:
+            self._rotate_start = (event.x, event.y)
+            self._rotate_dragging = True
+
+    def _rot_on_motion(self, event):
+        if not self._rotate_active or not self._rotate_dragging or not self._rotate_start or not self._fig or not self._fig.axes:
+            return
+        ax = self._fig.axes[0]
+        if not hasattr(ax, 'elev'):
+            return
+        dx = event.x - self._rotate_start[0]
+        dy = event.y - self._rotate_start[1]
+        self._rotate_start = (event.x, event.y)
+        ax.view_init(elev=max(-90, min(90, ax.elev + dy * 0.5)), azim=ax.azim - dx * 0.5)
+        self._navcube_sync.force_sync()
+        self._canvas.draw_idle()
+
+    def _rot_on_release(self, event):
+        self._rotate_start = None
+        self._rotate_dragging = False
+
+    def _set_native_3d_mouse(self, rotate_btn=1, zoom_btn=3):
+        if not self._fig or not self._fig.axes:
+            return
+        for ax in self._fig.axes:
+            if hasattr(ax, "mouse_init"):
+                ax.mouse_init(rotate_btn=rotate_btn, zoom_btn=zoom_btn)
+
+    def _disconnect_pan_rotate(self):
+        """Disconnect pan/rotate event handlers."""
+        for cid in (self._cid_press, self._cid_motion, self._cid_release):
+            if cid is not None:
+                try:
+                    self._canvas.mpl_disconnect(cid)
+                except Exception:
+                    pass
+        self._cid_press = self._cid_motion = self._cid_release = None
 
     def _current_loadcase(self) -> str:
         combo = self._output_dock.output_widget.findChild(
