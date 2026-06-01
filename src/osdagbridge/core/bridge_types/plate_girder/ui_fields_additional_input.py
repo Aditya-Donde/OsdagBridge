@@ -805,9 +805,38 @@ _WIND_LOAD_TAB_SCHEMA = {
             "column": 0,
             "title":  "Wind Load (WL) Inputs",
             "rows": [
-                {"fields": [{"id": KEY_WL_BASIC_WIND_SPEED,       "label": "Basic Wind Speed, V<sub>b</sub> (m/s)",                           "type": TYPE_TEXTBOX,  "read_only": True,  "bind": "basic_wind_speed_input"}]},
-                {"fields": [{"id": KEY_WL_AVG_EXPOSED_HEIGHT,     "label": "Average Exposed Height, H (m)",                                   "type": TYPE_TEXTBOX,  "placeholder": "10", "bind": "avg_exposed_height_input"}]},
-                {"fields": [{"id": KEY_WL_TERRAIN_TYPE,           "label": "Type of Terrain",                                                 "type": TYPE_COMBOBOX, "choices": ["Plain Terrain", "Terrain with Obstructions"], "bind": "terrain_type_combo"}]},
+                {
+                    "fields": [{
+                        "id": KEY_WL_BASIC_WIND_SPEED,
+                        "label": "Basic Wind Speed, V<sub>b</sub> (m/s)",
+                        "type": TYPE_TEXTBOX,
+                        "read_only": True,
+                        "bind": "basic_wind_speed_input",
+                        "on_change_compute": {"function": "_compute_wind_values"}
+                    }]
+                },
+                {
+                    "fields": [{
+                        "id": KEY_WL_AVG_EXPOSED_HEIGHT,
+                        "label": "Average Exposed Height, H (m)",
+                        "type": TYPE_TEXTBOX,
+                        "placeholder": "10",
+                        "default": "10",
+                        "bind": "avg_exposed_height_input",
+                        "on_change_compute": {"function": "_compute_wind_values"}
+                    }]
+                },
+                {
+                    "fields": [{
+                        "id": KEY_WL_TERRAIN_TYPE,
+                        "label": "Type of Terrain",
+                        "type": TYPE_COMBOBOX,
+                        "choices": ["Plain Terrain", "Terrain with Obstructions"],
+                        "default": "Plain Terrain",
+                        "bind": "terrain_type_combo",
+                        "on_change_compute": {"function": "_compute_wind_values"}
+                    }]
+                },
                 {"fields": [{"id": KEY_WL_SITE_TOPOGRAPHY,        "label": "Site Topography",                                                 "type": TYPE_COMBOBOX, "choices": ["Flat", "Hill, ridge, escarpment or cliff"], "bind": "site_topography_combo"}]},
                 {"fields": [{"id": KEY_WL_GUST_FACTOR,            "label": "Gust Factor, G",                                                  "type": TYPE_MODE_LINE, "mode_choices": ["As per IRC 6", "Custom"], "bind_mode": "gust_factor_combo",       "bind_value": "gust_factor_value",       "on_mode_change": "_toggle_wind_custom_input"}]},
                 {"fields": [{"id": KEY_WL_DRAG_COEFF,             "label": "Drag Coefficient, C<sub>D</sub>",                                 "type": TYPE_MODE_LINE, "mode_choices": ["As per IRC 6", "Custom"], "bind_mode": "drag_coeff_combo",         "bind_value": "drag_coeff_value",        "on_mode_change": "_toggle_wind_custom_input"}]},
@@ -861,8 +890,28 @@ _TEMPERATURE_LOAD_TAB_SCHEMA = {
             "column": 0,
             "title":  "Temperature Load (TL) Inputs for Evaluation per IRC6",
             "rows": [
-                {"fields": [{"id": KEY_TL_HIGHEST_MAX_TEMP,    "label": "Highest Maximum Air Temperature (°C)",                    "type": TYPE_TEXTBOX, "placeholder": "From Project Location", "enabled": False, "bind": "highest_max_temp_input"}]},
-                {"fields": [{"id": KEY_TL_LOWEST_MIN_TEMP,     "label": "Lowest Minimum Air Temperature (°C)",                     "type": TYPE_TEXTBOX, "placeholder": "From Project Location", "enabled": False, "bind": "lowest_min_temp_input"}]},
+                {
+                    "fields": [{
+                        "id": KEY_TL_HIGHEST_MAX_TEMP,
+                        "label": "Highest Maximum Air Temperature (°C)",
+                        "type": TYPE_TEXTBOX,
+                        "placeholder": "From Project Location",
+                        "enabled": False,
+                        "bind": "highest_max_temp_input",
+                        "on_change_compute": {"function": "_compute_temperature_values"}
+                    }]
+                },
+                {
+                    "fields": [{
+                        "id": KEY_TL_LOWEST_MIN_TEMP,
+                        "label": "Lowest Minimum Air Temperature (°C)",
+                        "type": TYPE_TEXTBOX,
+                        "placeholder": "From Project Location",
+                        "enabled": False,
+                        "bind": "lowest_min_temp_input",
+                        "on_change_compute": {"function": "_compute_temperature_values"}
+                    }]
+                },
                 {"fields": [{"id": KEY_TL_THERMAL_COEFF_STEEL, "label": "Coefficient of Thermal Expansion for Steel (1/°C)",       "type": TYPE_TEXTBOX, "placeholder": "e.g. 12.0e-6",        "bind": "thermal_coeff_steel_input"}]},
                 {"fields": [{"id": KEY_TL_THERMAL_COEFF_RCC,   "label": "Coefficient of Thermal Expansion for RCC (1/°C)",         "type": TYPE_TEXTBOX, "placeholder": "e.g. 12.0e-6",        "bind": "thermal_coeff_rcc_input"}]},
             ],

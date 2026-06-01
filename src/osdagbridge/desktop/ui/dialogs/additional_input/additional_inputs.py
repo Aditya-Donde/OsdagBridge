@@ -1,4 +1,4 @@
-﻿"""
+"""
 Additional Inputs Widget for Highway Bridge Design
 Provides detailed input fields for manual bridge parameter definition
 """
@@ -190,6 +190,63 @@ class AdditionalInputs(QDialog):
             KEY_SL_SPECTRAL_COEFF:    str(result.get("Sa_g_adjusted", "")),
             KEY_SL_HORIZONTAL_COEFF:  str(Ah),
             KEY_SL_VERTICAL_COEFF:    str(Av),
+        }
+
+    def _compute_wind_values(self, working_input_dict: dict) -> dict:
+        from osdagbridge.core.utils.codes.irc6_2017 import IRC6_2017
+
+        basic_wind_speed_str = working_input_dict.get(KEY_WL_BASIC_WIND_SPEED)
+        height_str = working_input_dict.get(KEY_WL_AVG_EXPOSED_HEIGHT)
+        terrain_str = working_input_dict.get(KEY_WL_TERRAIN_TYPE)
+
+        if not basic_wind_speed_str or not height_str or not terrain_str:
+            return {}
+
+        try:
+            height = float(height_str)
+            basic_wind_speed = float(basic_wind_speed_str)
+        except ValueError:
+            return {}
+
+        terrain_map = {
+            "Plain Terrain": "plain",
+            "Terrain with Obstructions": "obstructed"
+        }
+        terrain = terrain_map.get(terrain_str, "plain")
+
+        result = IRC6_2017.table_12(height, terrain, basic_wind_speed)
+        return {
+            KEY_WL_HOURLY_MEAN_WIND: f"{result['Vz']:.2f}",
+            KEY_WL_HOURLY_WIND_PRESSURE: f"{result['Pz']:.2f}",
+        }
+
+    def _compute_temperature_values(self, working_input_dict: dict) -> dict:
+        from osdagbridge.core.utils.codes.irc6_2017 import IRC6_2017
+
+        max_str = working_input_dict.get(KEY_TL_HIGHEST_MAX_TEMP)
+        min_str = working_input_dict.get(KEY_TL_LOWEST_MIN_TEMP)
+        if not max_str or not min_str or max_str == "—" or min_str == "—":
+            return {}
+
+        try:
+            max_temp = float(max_str)
+            min_temp = float(min_str)
+        except ValueError:
+            return {}
+
+        res = IRC6_2017.cl_215_2_effective_bridge_temperature(max_temp, min_temp, 'metallic', False)
+        t_min = res.get('T_min', 0)
+        t_max = res.get('T_max', 0)
+
+        mean_temp = (t_max + t_min) / 2.0
+        rise = t_max - mean_temp
+        fall = mean_temp - t_min
+
+        return {
+            KEY_TL_BRIDGE_TEMP_MIN: f"{t_min:.2f}",
+            KEY_TL_BRIDGE_TEMP_MAX: f"{t_max:.2f}",
+            KEY_TL_TEMP_RISE: f"{rise:.2f}",
+            KEY_TL_TEMP_FALL: f"{fall:.2f}"
         }
     
     # Calculation from Core IRC ENDS=======================================================================
