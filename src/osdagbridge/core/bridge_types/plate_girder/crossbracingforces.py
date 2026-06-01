@@ -552,6 +552,20 @@ class CrossBracingForces:
     def get_crossbracing_count(self) -> int:
         """Return the number of cross-bracing panels in result_data."""
         return len(self.bridge.result_data.get("crossbracings", []))
+    
+    def _extract_cap(result: dict | None, force_type: str) -> str:
+        if not result:
+            return "—"
+        cap = result.get("Member.tension_capacity", "")
+        designation = result.get("section_size.designation", "")
+        efficiency  = result.get("Member.efficiency", "")
+        if cap == "" or cap is None:
+            return "—"
+        try:
+            cap_kn = float(cap)
+            return f"{cap_kn:.2f} kN  [{designation}  Efficiency={efficiency}]"
+        except (TypeError, ValueError):
+            return str(cap)
 
     def run_member_designs(self, forces_dict: dict, dev: bool = False) -> dict:
         """
