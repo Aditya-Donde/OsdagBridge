@@ -283,6 +283,8 @@ class CustomWindow(QWidget):
         self.tool_bar.btn_zoom_fit.clicked.connect(self.plots_widget._zoom_reset)
         self.tool_bar.btn_zoom_in.clicked.connect(self.plots_widget._zoom_in)
         self.tool_bar.btn_zoom_out.clicked.connect(self.plots_widget._zoom_out)
+        if hasattr(self.tool_bar, "spin_scale"):
+            self.tool_bar.spin_scale.valueChanged.connect(self.plots_widget.set_engineering_scale)
 
         # Pan/Rotate are mutually exclusive
         def on_pan_toggled(checked):

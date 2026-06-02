@@ -9,7 +9,8 @@ from matplotlib.ticker import MaxNLocator
 import numpy as np
 import openseespy.opensees as ops
 from mpl_toolkits.mplot3d.art3d import Line3DCollection
-
+from mpl_toolkits.mplot3d import proj3d
+from matplotlib.text import Annotation
 try:
     import mplcursors
     _MPLCURSORS = True
@@ -47,6 +48,38 @@ DISP_DISPLAY = {
 # View settings (elevation/azimuth for a near-front-elevation look)
 DEFAULT_ELEV = 10
 DEFAULT_AZIM = -90
+
+
+def _value_plot_scale(eng_scale):
+    """Clamp engineering scale factor used for diagram geometry (0 = flat diagram)."""
+    try:
+        return max(0.0, float(eng_scale))
+    except (TypeError, ValueError):
+        return 1.0
+
+
+def _set_value_axis_tick_formatter(ax, eng_scale, value_sign: float = 1.0, use_abs: bool = False):
+    """
+    Format value-axis ticks as real engineering units while data coords stay scaled.
+
+    Matplotlib tick locations are in *scaled* coordinates; real value is:
+      real_value = value_sign * (scaled_value / scale)
+    """
+    scale = _value_plot_scale(eng_scale)
+    if scale < 1e-12:
+        ax.zaxis.set_major_formatter(FuncFormatter(lambda val, pos: "0"))
+        return
+
+    s = float(scale)
+    sign = float(value_sign)
+
+    def fmt(val, pos, sv=s, sgn=sign, abs_flag=use_abs):
+        real_v = sgn * (val / sv)
+        if abs_flag:
+            real_v = abs(real_v)
+        return f"{real_v:g}"
+
+    ax.zaxis.set_major_formatter(FuncFormatter(fmt))
 
 
 # =============================================================================
@@ -134,6 +167,7 @@ def _add_grillage_background(
     z_tol=3,
     show_transverse=False,
     include_edge_longitudinals=True,
+    include_end_transverse=True,
     show_inner_nodes=True,
 ):
         """
@@ -178,8 +212,8 @@ def _add_grillage_background(
                 # Check if this specific line is at the absolute start or end of the bridge
                 is_end_line = (x_val == min_x or x_val == max_x)
 
-                # Draw it if the Master Switch is ON, OR if it's an end line!
-                if show_transverse or is_end_line:
+                # Draw it if the Master Switch is ON, OR if it's an end line AND allowed
+                if show_transverse or (include_end_transverse and is_end_line):
                     z_sorted = sorted(set(z_vals))
                     if len(z_sorted) > 1:
                         ax.plot([x_val] * len(z_sorted), z_sorted, [0] * len(z_sorted), **trans_kw)
@@ -199,6 +233,44 @@ def _add_grillage_background(
                         inner_ys.append(0) # Base elevation
                 ax.scatter(inner_xs, inner_zs, inner_ys, color="#388E3C", alpha=0.4, s=5, zorder=2, depthshade=False)
 
+class Arrow3D(Annotation):
+    def __init__(self, start, end, *args, **kwargs):
+        super().__init__("", xy=(0, 0), xytext=(0, 0), *args, **kwargs)
+        self._start = start
+        self._end = end
+
+    def draw(self, renderer):
+        x1, y1, z1 = self._start
+        x2, y2, z2 = self._end
+        
+        x1p, y1p, _ = proj3d.proj_transform(x1, y1, z1, self.axes.get_proj())
+        x2p, y2p, _ = proj3d.proj_transform(x2, y2, z2, self.axes.get_proj())
+        
+        self.xy = (x2p, y2p)
+        self.set_position((x1p, y1p))
+        super().draw(renderer)
+
+def _draw_camera_arrow(ax, start, end, color, lw=2.2, gid=None):
+    """Draw a clean camera-facing arrow that dynamically updates in 3D."""
+    arrow = Arrow3D(
+        start, end,
+        arrowprops=dict(
+            arrowstyle="-|>",
+            color=color,
+            lw=lw,
+            mutation_scale=15,
+            shrinkA=0,
+            shrinkB=0
+        ),
+        annotation_clip=False
+    )
+    if gid:
+        arrow.set_gid(gid)
+    ax.add_artist(arrow)
+
+
+
+
 
 def _add_coordinate_triad(ax, nodes, scale=0.12):
     """Draw X/Y/Z axes with 3D pyramid arrowheads and locked boundaries."""
@@ -206,8 +278,8 @@ def _add_coordinate_triad(ax, nodes, scale=0.12):
     zs = [c[2] for c in nodes.values()]
     
     ox, oy, oz = min(xs), 0, min(zs)
-    colors = {"X": "#E65100", "Y": "#6A1B9A", "Z": "#0097A7"}
-    tag = "coord_triad" 
+    colors = {"X": "#E65100", "Z": "#0D47A1"}
+    tag = "coord_triad"
 
     ax.scatter([ox], [oz], [oy], color="#333333", s=40, zorder=6, gid=tag)
 
@@ -226,37 +298,43 @@ def _add_coordinate_triad(ax, nodes, scale=0.12):
     if zr < 1e-3: zr = 10.0
 
     # 2. Fixed Screen Proportions (Stems are 12%, widths are 2.5% of visual space)
-    Lx, Lz, Ly = xr * scale, yr * scale, zr * scale
-    hl_x, hl_z, hl_y = Lx * 0.30, Lz * 0.30, Ly * 0.30
-    w_frac = 0.025 
+    Lx, Lz = xr * scale, zr * scale
+    hl_x, hl_z = Lx * 0.30, Lz * 0.30
+    w_frac = 0.025
 
     # --- X-Axis (Span) ---
-    ax.plot([ox, ox + Lx], [oz, oz], [oy, oy], color=colors["X"], linewidth=2.5, zorder=5, gid=tag)
-    # Draw 4 lines to form a 3D pyramid arrowhead (immune to camera rotation)
-    tx, bx = ox + Lx, ox + Lx - hl_x
-    ax.plot([tx, bx], [oz, oz + (yr * w_frac)], [oy, oy], color=colors["X"], linewidth=2.0, zorder=5, gid=tag)
-    ax.plot([tx, bx], [oz, oz - (yr * w_frac)], [oy, oy], color=colors["X"], linewidth=2.0, zorder=5, gid=tag)
-    ax.plot([tx, bx], [oz, oz], [oy, oy + (zr * w_frac)], color=colors["X"], linewidth=2.0, zorder=5, gid=tag)
-    ax.plot([tx, bx], [oz, oz], [oy, oy - (zr * w_frac)], color=colors["X"], linewidth=2.0, zorder=5, gid=tag)
-    ax.text(tx + (xr * 0.03), oz, oy, "X", color=colors["X"], fontsize=10, fontweight="bold", zorder=6, gid=tag)
+    axis_len = max(xr, zr) * 0.10
+
+    start = (ox, oz, oy)
+    end   = (ox + axis_len, oz, oy)
+
+    _draw_camera_arrow(ax, start, end, colors["X"], lw=2.2, gid=tag)
+
+    ax.text(
+        end[0] + xr * 0.02, end[1], end[2],
+        "X",
+        color=colors["X"],
+        fontsize=10,
+        fontweight="bold",
+        zorder=7,
+        gid=tag
+    )
 
     # --- Z-Axis (Transverse width, mapped to Matplotlib Y) ---
-    ax.plot([ox, ox], [oz, oz + Lz], [oy, oy], color=colors["Z"], linewidth=2.5, zorder=5, gid=tag)
-    tz, bz = oz + Lz, oz + Lz - hl_z
-    ax.plot([ox, ox + (xr * w_frac)], [tz, bz], [oy, oy], color=colors["Z"], linewidth=2.0, zorder=5, gid=tag)
-    ax.plot([ox, ox - (xr * w_frac)], [tz, bz], [oy, oy], color=colors["Z"], linewidth=2.0, zorder=5, gid=tag)
-    ax.plot([ox, ox], [tz, bz], [oy, oy + (zr * w_frac)], color=colors["Z"], linewidth=2.0, zorder=5, gid=tag)
-    ax.plot([ox, ox], [tz, bz], [oy, oy - (zr * w_frac)], color=colors["Z"], linewidth=2.0, zorder=5, gid=tag)
-    ax.text(ox, tz + (yr * 0.04), oy, "Z", color=colors["Z"], fontsize=10, fontweight="bold", zorder=6, gid=tag)
+    end = (ox, oz + axis_len, oy)
 
-    # --- Y-Axis (Vertical Forces, mapped to Matplotlib Z) ---
-    ax.plot([ox, ox], [oz, oz], [oy, oy + Ly], color=colors["Y"], linewidth=2.5, zorder=5, gid=tag)
-    ty, by = oy + Ly, oy + Ly - hl_y
-    ax.plot([ox, ox + (xr * w_frac)], [oz, oz], [ty, by], color=colors["Y"], linewidth=2.0, zorder=5, gid=tag)
-    ax.plot([ox, ox - (xr * w_frac)], [oz, oz], [ty, by], color=colors["Y"], linewidth=2.0, zorder=5, gid=tag)
-    ax.plot([ox, ox], [oz + (yr * w_frac), oz], [ty, by], color=colors["Y"], linewidth=2.0, zorder=5, gid=tag)
-    ax.plot([ox, ox], [oz - (yr * w_frac), oz], [ty, by], color=colors["Y"], linewidth=2.0, zorder=5, gid=tag)
-    ax.text(ox, oz, ty + (zr * 0.04), "Y", color=colors["Y"], fontsize=10, fontweight="bold", zorder=6, gid=tag)
+    _draw_camera_arrow(ax, start, end, colors["Z"], lw=2.2, gid=tag)
+
+    ax.text(
+        end[0], end[1] + yr * 0.03, end[2],
+        "Z",
+        color=colors["Z"],
+        fontsize=10,
+        fontweight="bold",
+        zorder=7,
+        gid=tag
+    )
+
 
     # 3. CRITICAL FIX: Lock limits so drawing the triad doesn't stretch empty charts!
     ax.set_xlim(xlim)
@@ -329,7 +407,7 @@ def build_figure_grillage(nodes, members, edge_dist=0.0):
     ax.set_zlim(-x_range * 0.05, x_range * 0.15)
     ax.set_box_aspect([x_range, z_range, x_range * 0.30])
 
-    _add_grillage_background(ax, nodes, members, show_transverse=True)
+    _add_grillage_background(ax, nodes, members, show_transverse=True, include_end_transverse=True)
     _add_coordinate_triad(ax, nodes)
     
 
@@ -436,10 +514,11 @@ def build_figure_grillage(nodes, members, edge_dist=0.0):
 # SFD PLOT
 # =============================================================================
 
-def build_figure_sfd(ds, force_key, nodes, members, edge_dist=0.0):
+def build_figure_sfd(ds, force_key, nodes, members, edge_dist=0.0, eng_scale=1.0):
     """
     Build a 3-D matplotlib figure showing the Shear Force Diagram.
     """
+    v_scale = _value_plot_scale(eng_scale)
     comp_i_name, comp_j_name = FORCE_MAP[force_key]
     disp_key = FORCE_DISPLAY.get(force_key, force_key)
     girders = _find_girders(nodes, members)
@@ -466,7 +545,11 @@ def build_figure_sfd(ds, force_key, nodes, members, edge_dist=0.0):
     ax.set_box_aspect([x_range, z_range, x_range * 0.30])
 
     _add_grillage_background(
-        ax, nodes, members, show_transverse=False, include_edge_longitudinals=False, show_inner_nodes=False
+        ax, nodes, members,
+        show_transverse=False,
+        include_edge_longitudinals=False,
+        include_end_transverse=False,
+        show_inner_nodes=False,
     )
     
     shear_color = "#1565C0"
@@ -479,6 +562,10 @@ def build_figure_sfd(ds, force_key, nodes, members, edge_dist=0.0):
     _scatter_data = {}
 
     summary_data = {}
+    # Track global scaled value range for z-limits so 0 stays a visible baseline
+    # and the 3D "grid" can expand/shrink with v_scale.
+    global_vmin = 0.0
+    global_vmax = 0.0
 
     for i, (z_val, elems) in enumerate(girder_items):
         is_edge_beam = edge_dist > 0 and (i == 0 or i == n_girders - 1)
@@ -490,6 +577,10 @@ def build_figure_sfd(ds, force_key, nodes, members, edge_dist=0.0):
 
         Vy = Vy.copy()
         Vy[-1] = -Vy[-1]
+        Vy_geom = Vy * v_scale
+        if (not is_edge_beam) and Vy_geom.size:
+            global_vmin = min(global_vmin, float(np.min(Vy_geom)))
+            global_vmax = max(global_vmax, float(np.max(Vy_geom)))
 
         z_base = float(np.mean(zs))
         z_arr  = np.full_like(xs, z_base)
@@ -506,8 +597,8 @@ def build_figure_sfd(ds, force_key, nodes, members, edge_dist=0.0):
                 zorder=dynamic_zorder, gid="girder_labels")
 
         x_step  = np.repeat(xs, 2)[1:-1]
-        Vy_step = np.repeat(Vy[:-1], 2)
-        y_step  = Vy_step 
+        Vy_step = np.repeat(Vy_geom[:-1], 2)
+        y_step  = Vy_step
         z_step  = np.full_like(x_step, z_base)
 
         ax.plot_surface(
@@ -519,11 +610,11 @@ def build_figure_sfd(ds, force_key, nodes, members, edge_dist=0.0):
 
         ax.plot(x_step, z_step, y_step, color=shear_color, linewidth=2.0, zorder=4)
 
-        for xi, vyi in zip(xs, Vy):
-            ax.plot([xi, xi], [z_base, z_base], [0, vyi],
+        for xi, vyi_geom in zip(xs, Vy_geom):
+            ax.plot([xi, xi], [z_base, z_base], [0, vyi_geom],
                     color=shear_color, linewidth=1.2, alpha=0.7, zorder=3)
 
-        sc = ax.scatter(xs, z_arr, Vy,
+        sc = ax.scatter(xs, z_arr, Vy_geom,
                         color=shear_color, s=30, zorder=5, depthshade=False)
         _scatter_objs.append(sc)
         _scatter_data[id(sc)] = (node_ids, xs, Vy)
@@ -545,22 +636,22 @@ def build_figure_sfd(ds, force_key, nodes, members, edge_dist=0.0):
             extreme_align_color = "black"
 
             # Max Node Highlight and Text (Highest Positive)
-            ax.plot([xs[idx_max]], [z_base], [Vy[idx_max]],
+            ax.plot([xs[idx_max]], [z_base], [Vy_geom[idx_max]],
                     marker="o", markersize=9, color=extreme_align_color, markeredgecolor="white", markeredgewidth=1.5, 
                     linestyle="None", zorder=10, gid="max_line")
             
             # CLEAN: Removed "Max:" prefix.
-            ax.text(xs[idx_max], z_base, Vy[idx_max], f" {Vy[idx_max]:.3f} kN",
+            ax.text(xs[idx_max], z_base, Vy_geom[idx_max], f" {Vy[idx_max]:.3f} kN",
                     color=extreme_align_color, fontsize=7, fontweight="bold", ha="left", va="bottom", zorder=11,
                     gid="max_line", bbox=dict(boxstyle="round,pad=0.2", facecolor="white", alpha=0.8, edgecolor="none"))
 
             # Min Node Highlight and Text (Lowest Negative)
-            ax.plot([xs[idx_min]], [z_base], [Vy[idx_min]],
+            ax.plot([xs[idx_min]], [z_base], [Vy_geom[idx_min]],
                     marker="o", markersize=9, color=extreme_align_color, markeredgecolor="white", markeredgewidth=1.5, 
                     linestyle="None", zorder=10, gid="min_line")
             
             # CLEAN: Removed "Min:" prefix.
-            ax.text(xs[idx_min], z_base, Vy[idx_min], f" {Vy[idx_min]:.3f} kN",
+            ax.text(xs[idx_min], z_base, Vy_geom[idx_min], f" {Vy[idx_min]:.3f} kN",
                     color=extreme_align_color, fontsize=7, fontweight="bold", ha="right", va="top", zorder=11,
                     gid="min_line", bbox=dict(boxstyle="round,pad=0.2", facecolor="white", alpha=0.8, edgecolor="none"))
 
@@ -573,7 +664,7 @@ def build_figure_sfd(ds, force_key, nodes, members, edge_dist=0.0):
                     v_align = "bottom" if j % 2 == 0 else "top"
                     h_align = "left" if i % 2 == 0 else "right" 
 
-                    ax.text(xs[j], z_base, Vy[j], 
+                    ax.text(xs[j], z_base, Vy_geom[j], 
                             f" {Vy[j]:.3f} kN", 
                             color=standard_gray, fontsize=7, ha=h_align, va=v_align, zorder=6, 
                             gid="all_vals", bbox=dict(boxstyle="round,pad=0.1", facecolor="white", alpha=0.7, edgecolor="none"))
@@ -625,8 +716,19 @@ def build_figure_sfd(ds, force_key, nodes, members, edge_dist=0.0):
     ax.set_xlabel("Span Length (m)", fontsize=10, labelpad=8)
     ax.set_ylabel("Bridge Width (m)", fontsize=10, labelpad=8)
     ax.set_zlabel(f"{disp_key} (kN)", fontsize=10, labelpad=8)
+    _set_value_axis_tick_formatter(ax, v_scale)
+    # Keep baseline at 0 and let z-limits expand/shrink with v_scale.
+    zmin = min(0.0, global_vmin)
+    zmax = max(0.0, global_vmax)
+    z_span = max(1e-9, zmax - zmin)
+    pad = max(1e-6, 0.05 * z_span)
+    ax.set_zlim(zmin - pad, zmax + pad)
+    # IMPORTANT: rescale the 3D grid height so the diagram does not get stuck
+    # inside the same cube for different v_scale values.
+    ax.set_box_aspect([x_range, z_range, (x_range * 0.30) * max(v_scale, 1e-6)])
     ax.yaxis.set_major_locator(MaxNLocator(nbins=4, steps=[1, 2, 2.5, 5, 10]))
     ax.set_title(f"Shear Force Diagram  —  {disp_key}", fontsize=12, fontweight="bold", pad=12)
+    fig._eng_scale = v_scale
     ax.view_init(elev=DEFAULT_ELEV, azim=DEFAULT_AZIM)
     ax.xaxis.pane.fill = False
     ax.yaxis.pane.fill = False
@@ -651,7 +753,7 @@ def build_figure_sfd(ds, force_key, nodes, members, edge_dist=0.0):
 # BMD PLOT
 # =============================================================================
 
-def build_figure_bmd(ds, force_key, nodes, members, edge_dist=0.0):
+def build_figure_bmd(ds, force_key, nodes, members, edge_dist=0.0, eng_scale=1.0):
     """
     Build a 3-D matplotlib figure showing the Bending Moment Diagram.
 
@@ -671,6 +773,7 @@ def build_figure_bmd(ds, force_key, nodes, members, edge_dist=0.0):
     fig          : matplotlib.figure.Figure
     summary_data : dict  — {girder_name: {"max": float, "min": float}}
     """
+    v_scale = _value_plot_scale(eng_scale)
     comp_i_name, comp_j_name = FORCE_MAP[force_key]
     disp_key = FORCE_DISPLAY.get(force_key, force_key)
     girders = _find_girders(nodes, members)
@@ -687,10 +790,12 @@ def build_figure_bmd(ds, force_key, nodes, members, edge_dist=0.0):
     ax.set_box_aspect([x_range, z_range, x_range * 0.30])
 
     _add_grillage_background(
-        ax, nodes, members, show_transverse=False, include_edge_longitudinals=False, show_inner_nodes=False
+        ax, nodes, members,
+        show_transverse=False,
+        include_edge_longitudinals=False,
+        include_end_transverse=False,
+        show_inner_nodes=False,
     )
-    
-    
 
     moment_color = "#C62828"
     fill_color   = "#EF9A9A"
@@ -702,6 +807,9 @@ def build_figure_bmd(ds, force_key, nodes, members, edge_dist=0.0):
     _scatter_objs = []
     _scatter_data = {}
 
+    # Track global scaled z-range for baseline at 0 and cube resizing.
+    global_vmin = 0.0
+    global_vmax = 0.0
     for i, (z_val, elems) in enumerate(girder_items_bmd):
         is_edge_beam = edge_dist > 0 and (i == 0 or i == n_girders_bmd - 1)
         girder_name  = f"G{i}" if edge_dist > 0 else f"G{i + 1}"
@@ -740,7 +848,10 @@ def build_figure_bmd(ds, force_key, nodes, members, edge_dist=0.0):
         # else:
         #     moment_scale = 0.1 * abs((max(xs) - min(xs)) / val_range)
 
-        y_plot = -Mz   # negate: positive moment plots downward
+        y_plot = -Mz * v_scale   # negate: positive moment plots downward
+        if y_plot.size:
+            global_vmin = min(global_vmin, float(np.min(y_plot)))
+            global_vmax = max(global_vmax, float(np.max(y_plot)))
 
         ax.plot_surface(
             np.vstack([xs, xs]),
@@ -773,7 +884,7 @@ def build_figure_bmd(ds, force_key, nodes, members, edge_dist=0.0):
             ax.text(xi, z_base, yi, f" {mzi:.2f}", color="#555555", fontsize=7, zorder=5, gid="all_vals")
 
         # Slicing [1:-1] strips away the first and last dots so the supports stay clean!
-        sc = ax.scatter(xs[1:-1], z_arr[1:-1], -Mz[1:-1],
+        sc = ax.scatter(xs[1:-1], z_arr[1:-1], y_plot[1:-1],
                         color=moment_color, s=30, zorder=5, depthshade=False)
         
         _scatter_objs.append(sc)
@@ -832,9 +943,18 @@ def build_figure_bmd(ds, force_key, nodes, members, edge_dist=0.0):
     ax.set_xlabel("Span Length (m)", fontsize=10, labelpad=8)
     ax.set_ylabel("Bridge Width (m)", fontsize=10, labelpad=8)
     ax.set_zlabel(f"{disp_key} (kNm)", fontsize=10, labelpad=8)
-    ax.zaxis.set_major_formatter(FuncFormatter(lambda val, pos: f"{abs(val):g}"))
+    # z-coordinate is y_plot = -Mz * v_scale, so real Mz = -(z / scale)
+    _set_value_axis_tick_formatter(ax, v_scale, value_sign=-1.0, use_abs=True)
+
+    zmin = min(0.0, global_vmin)
+    zmax = max(0.0, global_vmax)
+    z_span = max(1e-9, zmax - zmin)
+    pad = max(1e-6, 0.05 * z_span)
+    ax.set_zlim(zmin - pad, zmax + pad)
+    ax.set_box_aspect([x_range, z_range, (x_range * 0.30) * max(v_scale, 1e-6)])
     ax.yaxis.set_major_locator(MaxNLocator(nbins=4, steps=[1, 2, 2.5, 5, 10]))
     ax.set_title(f"Bending Moment Diagram  —  {disp_key}", fontsize=12, fontweight="bold", pad=12)
+    fig._eng_scale = v_scale
     ax.view_init(elev=DEFAULT_ELEV, azim=DEFAULT_AZIM)
     ax.xaxis.pane.fill = False
     ax.yaxis.pane.fill = False
@@ -915,7 +1035,12 @@ def build_figure_bmd_contour(ds, force_key, nodes, members, edge_dist=0.0):
     ax.set_ylim(min(all_zs), max(all_zs))
     ax.set_box_aspect([x_range, z_range, x_range * 0.30])
 
-    _add_grillage_background(ax, nodes, members, include_edge_longitudinals=False, show_inner_nodes=False)
+    _add_grillage_background(
+        ax, nodes, members,
+        include_edge_longitudinals=False,
+        include_end_transverse=False,
+        show_inner_nodes=False,
+    )
     _add_coordinate_triad(ax, nodes)
     _add_supports(ax, nodes, members, edge_dist=edge_dist)
 
@@ -1010,10 +1135,11 @@ def build_figure_bmd_contour(ds, force_key, nodes, members, edge_dist=0.0):
 # DEFLECTION PLOT
 # =============================================================================
 
-def build_figure_deflection(ds, disp_key, nodes, members, edge_dist=0.0):
+def build_figure_deflection(ds, disp_key, nodes, members, edge_dist=0.0, eng_scale=1.0):
     """
     Build a 3-D matplotlib figure showing the Deflection Diagram.
     """
+    v_scale = _value_plot_scale(eng_scale)
     comp_name  = DISP_MAP[disp_key]
     disp_label = DISP_DISPLAY.get(disp_key, disp_key)
     girders    = _find_girders(nodes, members)
@@ -1030,7 +1156,11 @@ def build_figure_deflection(ds, disp_key, nodes, members, edge_dist=0.0):
     ax.set_box_aspect(aspect=(2.5, 1.2, 1.0))
 
     _add_grillage_background(
-        ax, nodes, members, show_transverse=False, include_edge_longitudinals=False, show_inner_nodes=False
+        ax, nodes, members,
+        show_transverse=False,
+        include_edge_longitudinals=False,
+        include_end_transverse=False,
+        show_inner_nodes=False,
     )
 
     defl_color = "#6A1B9A"   # deep purple
@@ -1086,6 +1216,9 @@ def build_figure_deflection(ds, disp_key, nodes, members, edge_dist=0.0):
     _scatter_objs = []
     _scatter_data = {}
     summary_data = {}
+    # Track global scaled z-range for baseline at 0 and cube resizing.
+    global_vmin = 0.0
+    global_vmax = 0.0
 
     for i, (z_val, elems) in enumerate(girder_items):
         is_edge_beam = edge_dist > 0 and (i == 0 or i == n_girders - 1)
@@ -1117,7 +1250,10 @@ def build_figure_deflection(ds, disp_key, nodes, members, edge_dist=0.0):
                 color="black", fontsize=13, ha="right", va="center",
                 zorder=dynamic_zorder, gid="girder_labels")
 
-        y_plot = vals 
+        y_plot = vals * v_scale
+        if y_plot.size:
+            global_vmin = min(global_vmin, float(np.min(y_plot)))
+            global_vmax = max(global_vmax, float(np.max(y_plot)))
 
         # Draw thick deflection line (NO plot_surface fill!)
         ax.plot(xs, z_arr, y_plot, color=defl_color, linewidth=2.5, zorder=4)
@@ -1231,7 +1367,15 @@ def build_figure_deflection(ds, disp_key, nodes, members, edge_dist=0.0):
     from matplotlib.ticker import MaxNLocator
     ax.yaxis.set_major_locator(MaxNLocator(nbins=4, integer=True, steps=[1, 2, 4, 5, 10]))
     ax.zaxis.set_major_locator(MaxNLocator(nbins=4, steps=[1, 2, 2.5, 5, 10]))
-    
+    _set_value_axis_tick_formatter(ax, v_scale)
+    zmin = min(0.0, global_vmin)
+    zmax = max(0.0, global_vmax)
+    z_span = max(1e-9, zmax - zmin)
+    pad = max(1e-6, 0.05 * z_span)
+    ax.set_zlim(zmin - pad, zmax + pad)
+    ax.set_box_aspect(aspect=(2.5, 1.2, max(v_scale, 1e-6)))
+    fig._eng_scale = v_scale
+
     ax.set_title(f"Deflection Diagram  —  {disp_label}", fontsize=12, fontweight="bold", pad=12)
     ax.view_init(elev=DEFAULT_ELEV, azim=DEFAULT_AZIM)
     

@@ -185,6 +185,9 @@ class MplPlotWidget(QWidget):
         self._zoom_scale  = 1.0
         self._orig_limits = None
 
+        # Engineering diagram scale (toolbar 0–10, baseline 1.0)
+        self._eng_scale = 1.0
+
         # Pan/Rotate/Zoom Window mode states
         self._pan_active = False
         self._rotate_active = False
@@ -400,6 +403,20 @@ class MplPlotWidget(QWidget):
 
         self.update_plot()
 
+    def set_engineering_scale(self, scale):
+        """Apply display scale for force/deflection diagrams (0–10, baseline 1.0)."""
+        try:
+            scale = float(scale)
+        except (TypeError, ValueError):
+            scale = 1.0
+        scale = max(0.0, min(10.0, scale))
+        if abs(scale - self._eng_scale) < 1e-9:
+            return
+        self._eng_scale = scale
+        if self._grillage_mode:
+            return
+        self.update_plot()
+
     def update_plot(self, *_args):
         if self._grillage_mode:
             return
@@ -428,12 +445,22 @@ class MplPlotWidget(QWidget):
         self._summary_data = {} 
 
         # (Your existing if/elif/else block to build the new figures)
+        eng_scale = self._eng_scale
         if force_key in _SFD_KEYS:
-            self._fig, self._summary_data = build_figure_sfd(ds, force_key, self._nodes, self._members, edge_dist=self._edge_dist)
+            self._fig, self._summary_data = build_figure_sfd(
+                ds, force_key, self._nodes, self._members,
+                edge_dist=self._edge_dist, eng_scale=eng_scale,
+            )
         elif force_key in _DEFL_KEYS:
-            self._fig, self._summary_data = build_figure_deflection(ds, force_key, self._nodes, self._members, edge_dist=self._edge_dist)
+            self._fig, self._summary_data = build_figure_deflection(
+                ds, force_key, self._nodes, self._members,
+                edge_dist=self._edge_dist, eng_scale=eng_scale,
+            )
         else:
-            self._fig, self._summary_data = build_figure_bmd(ds, force_key, self._nodes, self._members, edge_dist=self._edge_dist)
+            self._fig, self._summary_data = build_figure_bmd(
+                ds, force_key, self._nodes, self._members,
+                edge_dist=self._edge_dist, eng_scale=eng_scale,
+            )
 
         self._attach_figure(self._fig)
         
@@ -466,14 +493,17 @@ class MplPlotWidget(QWidget):
 
             title = ax.get_title()
             ax.set_title("")
-            self._title_overlay.update_text(
-                title,
-                f"Load Case/Combination : {loadcase}",
-            )
-            self._position_title_overlay()
 
+            # Preserve the box aspect computed by plot_generator (it now depends on engineering scale),
+            # and only apply camera zoom.
             if hasattr(ax, 'set_box_aspect'):
-                ax.set_box_aspect(aspect=(2.5, 1.2, 1.0), zoom=self._zoom_scale)
+                try:
+                    cur_aspect = ax.get_box_aspect()
+                except Exception:
+                    cur_aspect = None
+                if cur_aspect is None:
+                    cur_aspect = (2.5, 1.2, 1.0)
+                ax.set_box_aspect(aspect=cur_aspect, zoom=self._zoom_scale)
 
             # (Keep your existing anti-clipping loop here)
             for line in ax.lines:
@@ -484,6 +514,13 @@ class MplPlotWidget(QWidget):
                 text.set_clip_on(False)
 
             self._canvas.draw()
+
+            scale_label = self._engineering_scale_label(ax, force_key)
+            subtitle = f"Load Case/Combination : {loadcase}"
+            if scale_label:
+                subtitle = f"{subtitle}  |  {scale_label}"
+            self._title_overlay.update_text(title, subtitle)
+            self._position_title_overlay()
 
         # Show NavCube for 3-D plots only, hide for 2-D.
         QTimer.singleShot(100, self._update_navcube_visibility)
@@ -845,7 +882,13 @@ class MplPlotWidget(QWidget):
         
         # Change the optical zoom instantly without touching limits or layout
         if hasattr(ax, 'set_box_aspect'):
-            ax.set_box_aspect(aspect=(2.5, 1.2, 1.0), zoom=self._zoom_scale)
+            try:
+                cur_aspect = ax.get_box_aspect()
+            except Exception:
+                cur_aspect = None
+            if cur_aspect is None:
+                cur_aspect = (2.5, 1.2, 1.0)
+            ax.set_box_aspect(aspect=cur_aspect, zoom=self._zoom_scale)
             
         self._canvas.draw_idle()
 
@@ -869,7 +912,13 @@ class MplPlotWidget(QWidget):
         ax = self._fig.axes[0]
         if hasattr(ax, 'set_box_aspect'):  # 3D
             fit_zoom = 0.82 if self._show_grid else 1.0
-            ax.set_box_aspect(aspect=(2.5, 1.2, 1.0), zoom=fit_zoom)
+            try:
+                cur_aspect = ax.get_box_aspect()
+            except Exception:
+                cur_aspect = None
+            if cur_aspect is None:
+                cur_aspect = (2.5, 1.2, 1.0)
+            ax.set_box_aspect(aspect=cur_aspect, zoom=fit_zoom)
             ax.autoscale()
         else:  # 2D
             ax.relim()
@@ -1001,6 +1050,55 @@ class MplPlotWidget(QWidget):
                 except Exception:
                     pass
         self._cid_press = self._cid_motion = self._cid_release = None
+
+    @staticmethod
+    def _value_unit_for_force_key(force_key: str) -> str:
+        if force_key in _DEFL_KEYS:
+            return "mm"
+        if force_key in _SFD_KEYS:
+            return "kN"
+        return "kNm"
+
+    def _engineering_scale_label(self, ax, force_key: str) -> str:
+        """Compute '1 cm = …' from axis limits and rendered height."""
+        if not hasattr(ax, "get_zlim"):
+            return ""
+        eng_scale = self._eng_scale
+        if eng_scale < 1e-12:
+            return "Scale: N/A"
+
+        z0, z1 = ax.get_zlim()
+        zmin = min(z0, z1)
+        zmax = max(z0, z1)
+        z_span = zmax - zmin
+        if z_span < 1e-12:
+            return ""
+
+        try:
+            renderer = self._canvas.get_renderer()
+            bbox = ax.get_window_extent(renderer)
+        except Exception:
+            return ""
+
+        height_px = bbox.height
+        if height_px < 1:
+            return ""
+        if abs(zmax) < 1e-12:
+            return ""
+
+        dpi = float(self._fig.dpi) if self._fig else 110.0
+        dpr = float(getattr(self._canvas, "device_pixel_ratio", 1.0))
+        # We want "from baseline (0) up to the positive extreme" to match the
+        # common engineering meaning of the scale label.
+        height_above_zero_px = height_px * (zmax / z_span)
+        height_cm = (height_above_zero_px / max(dpi * dpr, 1.0)) * 2.54
+        if height_cm < 1e-6:
+            return ""
+
+        # z-axis coordinate is already multiplied by eng_scale, so divide back.
+        real_per_cm = (zmax / height_cm) / eng_scale
+        unit = self._value_unit_for_force_key(force_key)
+        return f"Scale: 1 cm = {real_per_cm:.3g} {unit}"
 
     def _current_loadcase(self) -> str:
         combo = self._output_dock.output_widget.findChild(

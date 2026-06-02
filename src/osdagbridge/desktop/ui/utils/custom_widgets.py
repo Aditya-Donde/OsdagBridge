@@ -9,7 +9,7 @@ Provides enhanced combobox views with:
 
 from PySide6.QtWidgets import (
     QListView, QStyledItemDelegate, QWidget, QVBoxLayout,
-    QSizePolicy, QRadioButton, QSpinBox, QPushButton, QScrollArea, QFrame
+    QSizePolicy, QRadioButton, QSpinBox, QDoubleSpinBox, QPushButton, QScrollArea, QFrame, QLabel, QHBoxLayout
 )
 from PySide6.QtCore import Qt, QRectF, QRect
 from PySide6.QtGui import QColor, QPainterPath, QPen, QFontMetrics, QIcon, QCursor
@@ -573,12 +573,15 @@ class ToolBarWidget(QWidget):
 
         # Scale
         scale_label = QLabel("Scale:")
-        scale_spin = QSpinBox()
-        scale_spin.setRange(1, 1000)
-        scale_spin.setValue(100)
-        scale_spin.setFixedWidth(70)
-        scale_spin.setStyleSheet("""
-            QSpinBox {
+        self.spin_scale = QDoubleSpinBox()
+        self.spin_scale.setRange(0.0, 10.0)
+        self.spin_scale.setSingleStep(0.1)
+        self.spin_scale.setDecimals(2)
+        self.spin_scale.setValue(1.0)
+        self.spin_scale.setFixedWidth(74)
+        self.spin_scale.setKeyboardTracking(False)
+        self.spin_scale.setStyleSheet("""
+            QDoubleSpinBox {
                 border: 1px solid #aaa;
                 border-radius: 4px;
                 padding-right: 10px; /* space for BOTH buttons */
@@ -586,18 +589,18 @@ class ToolBarWidget(QWidget):
                 margin: 0px;
             }
 
-            QSpinBox:hover {
+            QDoubleSpinBox:hover {
                 border: 1px solid #888;
                 background: #ffffff;
             }
 
-            QSpinBox:focus {
+            QDoubleSpinBox:focus {
                 border: 1px solid #555;
                 background: #ffffff;
             }
 
             /* UP BUTTON (right-top → shifted left) */
-            QSpinBox::up-button {
+            QDoubleSpinBox::up-button {
                 subcontrol-origin: border;
                 subcontrol-position: top right;
                 width: 15px;
@@ -608,7 +611,7 @@ class ToolBarWidget(QWidget):
             }
 
             /* DOWN BUTTON (right-most) */
-            QSpinBox::down-button {
+            QDoubleSpinBox::down-button {
                 subcontrol-origin: border;
                 subcontrol-position: top right;
                 width: 15px;
@@ -618,27 +621,27 @@ class ToolBarWidget(QWidget):
                 background: transparent;
             }
 
-            QSpinBox::up-arrow {
+            QDoubleSpinBox::up-arrow {
                 image: url(:/vectors/arrow_up_light.svg);
                 width: 15px;
                 height: 15px;
             }
 
-            QSpinBox::down-arrow {
+            QDoubleSpinBox::down-arrow {
                 image: url(:/vectors/arrow_down_light.svg);
                 width: 15px;
                 height: 15px;
             }
 
-            QSpinBox::up-button:hover,
-            QSpinBox::down-button:hover {
+            QDoubleSpinBox::up-button:hover,
+            QDoubleSpinBox::down-button:hover {
                 background: rgba(150,150,150,60);
                 border-radius: 3px;
             }
         """)
 
         self.layout.addWidget(scale_label)
-        self.layout.addWidget(scale_spin)
+        self.layout.addWidget(self.spin_scale)
 
         self.layout.addStretch()
 
