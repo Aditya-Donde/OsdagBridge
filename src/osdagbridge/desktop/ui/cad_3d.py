@@ -600,12 +600,30 @@ class CAD3DWindow(QWidget):
 
     def update_component_visibility(self, selected_components: list) -> None:
         """
-        Show/hide model objects based on the current checkbox selection.
+        Show or hide model AIS objects based on which component keys are selected.
 
-        Args:
-            selected_components: List of component keys that should be visible.
-                                 Overlay keys (Grillage, Node, NodeNumbers) are
-                                 toggled independently of the base structure.
+        CALLED FROM
+        ───────────
+        • BridgeComponentCheckbox._apply()  (this file, below)
+              When the user ticks/unticks a checkbox in the 2nd-row panel.
+
+        • ToolBarController._cad_toggle_grillage() / _cad_toggle_node()  (toolbar_controller.py)
+              When the user clicks the Grillage View or Node button on the main toolbar.
+              The controller finds the hidden Grillage/Node QCheckBox in
+              BridgeComponentCheckbox._checkboxes, sets its state, then calls
+              BridgeComponentCheckbox._apply() which calls this method.
+
+        PARAMETERS
+        ──────────
+        selected_components : list[str]
+            Keys that should be VISIBLE after this call.
+            Base keys  — show structural geometry:
+                "Girder", "Deck", "Cross Bracing", "Crash Barrier",
+                "Median", "Railing"
+            Overlay keys — toggled independently of the base:
+                "Grillage"     — edge lines between nodes (_render_grillage)
+                "Node"         — sphere markers at each node (_render_nodes)
+                "NodeNumbers"  — node-ID text labels (_render_node_numbers)
         """
         if not self._is_display_ready():
             return
@@ -695,14 +713,38 @@ class CAD3DWindow(QWidget):
         self.load_bridge()
 
     # ── RENDER NODES ──────────────────────────────────────────────────────────
+    # Called once during load_bridge() to build node sphere AIS objects.
+    # The Node toolbar button in toolbar_controller.py triggers visibility
+    # changes by calling update_component_visibility() — it does NOT call
+    # this method again.  Rendering happens once; visibility is toggled.
 
     def _render_nodes(self) -> dict:
         """
-        Build node sphere markers from the live OpenSees model.
-        All nodes are initially displayed but hidden by apply_selection()
-        unless the Node checkbox is checked.
+        Build node sphere markers from the live OpenSees model and register
+        them in the OCC context.
 
-        Returns a dict: nid -> (x_mm, y_mm, z_mm) for grillage construction.
+        DATA SOURCE
+        ───────────
+        Node coordinates come from:
+            results_data._build_nodes_members()
+                → ops.getNodeTags()      (openseespy — live model)
+                → ops.nodeCoord(n)       (metres, converted to mm here)
+
+        WHAT IT CREATES (stored in viewer.model_ais_objects["Node"])
+        ───────────────────────────────────────
+        Per node, two OCC AIS_Shape objects:
+          • Visible sphere (radius 65 mm, black) — what the user sees
+          • Transparent pick sphere (radius 120 mm) — larger hit area for
+            hover tooltips ("Node N\nX: ... m\nZ: ... m")
+
+        RETURN VALUE
+        ────────────
+        dict  nid → (x_mm, y_mm, z_mm) — passed straight to _render_grillage()
+
+        USED BY (toolbar_controller.py)
+        ────────────────────────────────
+        ToolBarController._cad_toggle_node() shows/hides the AIS objects
+        created here by calling update_component_visibility("Node").
         """
         if not self._is_display_ready():
             return {}
@@ -801,10 +843,32 @@ class CAD3DWindow(QWidget):
         self._members = members
         return {nid: (d["x"], d["y"], d["z"]) for nid, d in self._node_data.items()}
 
-    # ── RENDER GRILLAGE ───────────────────────────────────────────────────────
+    # ── RENDER GRILLAGE ───────────────────────────────────────────────────────────
+    # Called once during load_bridge() after _render_nodes().
+    # Receives node positions from _render_nodes() and draws edge lines between
+    # connected nodes using the member list from results_data._build_nodes_members().
+    # The Grillage View toolbar button (toolbar_controller.py) toggles visibility
+    # of these edges via update_component_visibility("Grillage").
 
     def _render_grillage(self, node_positions: dict) -> None:
-        """Draw member edges between nodes to form the grillage overlay."""
+        """Draw member edges between nodes to form the grillage overlay.
+
+        DATA SOURCE
+        ───────────
+        node_positions: returned by _render_nodes() in this file.
+        self._members:  member list from results_data._build_nodes_members().
+
+        WHAT IT CREATES (stored in viewer.model_ais_objects["Grillage"])
+        ───────────────────────────────────────
+        AIS edge objects (thin dark lines) connecting pairs of nodes.
+        Two layers are drawn when a deck slab exists — one at deck top and
+        one below the slab.
+
+        USED BY (toolbar_controller.py)
+        ────────────────────────────────
+        ToolBarController._cad_toggle_grillage() shows/hides the AIS objects
+        created here by calling update_component_visibility("Grillage").
+        """
         if not self._is_display_ready() or not node_positions:
             return
 
@@ -842,14 +906,28 @@ class CAD3DWindow(QWidget):
         if grillage_ais:
             self.viewer.model_ais_objects["Grillage"] = grillage_ais
 
-    # ── RENDER NODE NUMBERS ───────────────────────────────────────────────────
+    # ── RENDER NODE NUMBERS ───────────────────────────────────────────────────────
+    # Called by update_component_visibility() when "NodeNumbers" is in the
+    # selected list.  The "Node Numbers" checkbox in BridgeComponentCheckbox
+    # (this file, below) triggers it through _apply() → update_component_visibility().
+    # This method is NOT called from toolbar_controller.py — Node Numbers is
+    # still controlled only by the 2nd-row panel checkbox.
 
     def _render_node_numbers(self) -> None:
         """
-        Display node-id labels in 3D world space.
-        Uses AIS_TextLabel when available; falls back to colour-coded spheres.
-        Text is dark (near-black) for legibility on the light deck.
-        Labels are drawn on the topmost Z-layer.
+        Display node-ID labels in 3D world space.
+
+        DATA SOURCE
+        ───────────
+        Uses self._node_data populated by _render_nodes() in this file.
+        Each entry: nid → {x, y, z (mm), label}.
+
+        WHAT IT CREATES (stored in viewer.model_ais_objects["NodeNumbers"])
+        ───────────────────────────────────────
+        • AIS_TextLabel per node (when pythonocc is built with text support)
+          positioned 80 mm above the node sphere, drawn on the topmost Z-layer.
+        • Fallback: small colour-coded sphere per node when AIS_TextLabel
+          is unavailable.
         """
         if not self._is_display_ready() or not self._node_data:
             return
@@ -922,9 +1000,31 @@ class CAD3DWindow(QWidget):
 
 class BridgeComponentCheckbox(QWidget):
     """
-    Horizontal component selector with multi-select capability.
-    Includes overlay checkboxes (Grillage / Node / Node Numbers) and
-    navigation toggle buttons (Rotate / Pan / Zoom Window).
+    The 2nd-row horizontal panel shown below the 3D CAD view.
+    Provides checkboxes for toggling structural components and overlays.
+
+    ROLE IN THE APPLICATION
+    ─────────────────────
+    This widget owns and drives CAD3DWindow.update_component_visibility().
+    The main ToolBar (toolbar_controller.py) is a SECONDARY controller that
+    also drives visibility — it does so by finding the hidden Grillage/Node
+    checkboxes in self._checkboxes and calling self._apply() directly.
+
+    WHAT EACH CHECKBOX DOES
+    ───────────────────────
+    • Bridge (key=None)  — pseudo-checkbox: when checked, shows all base
+      structural components (Girder, Deck, Cross Bracing, Crash Barrier,
+      Median, Railing) at once.  Overlay keys are independent.
+    • Individual base checkboxes (Girder, Deck, …) — show/hide each
+      structural component individually.
+    • Grillage view (hidden) — show/hide grillage edge lines.
+      Created by _render_grillage() (this file).  Controlled exclusively
+      from the main toolbar via ToolBarController (toolbar_controller.py).
+    • Node (hidden) — show/hide node sphere markers.
+      Created by _render_nodes() (this file).  Controlled exclusively
+      from the main toolbar via ToolBarController (toolbar_controller.py).
+    • Node Numbers — show/hide node-ID text labels.
+      Created by _render_node_numbers() (this file).
     """
 
     # (label, internal key)
@@ -965,63 +1065,17 @@ class BridgeComponentCheckbox(QWidget):
             layout.addWidget(cb)
             self._checkboxes.append(cb)
 
-        # ── Separator ─────────────────────────────────────────────────────────
-        sep = QFrame(self)
-        sep.setFrameShape(QFrame.VLine)
-        sep.setFrameShadow(QFrame.Sunken)
-        sep.setFixedWidth(2)
-        layout.addWidget(sep)
-
-        # ── Navigation buttons ─────────────────────────────────────────────────
-        _nav_base = """
-            QPushButton {
-                font-size: 11px; font-weight: bold;
-                background-color: white;
-                border: 1px solid #bdbdbd;
-                border-radius: 3px;
-                padding: 2px 10px;
-                color: #444;
-            }
-            QPushButton:hover:!checked { background-color: #e6e6e6; }
-            QPushButton:pressed        { background-color: #d0d0d0; }
-        """
-
-        self._rotate_btn = QPushButton("Rotate", self)
-        self._rotate_btn.setObjectName("rotate_toggle")
-        self._rotate_btn.setCheckable(True)
-        self._rotate_btn.setCursor(Qt.PointingHandCursor)
-        self._rotate_btn.setToolTip("Rotate mode — left-click and drag to rotate the model")
-        self._rotate_btn.setStyleSheet(_nav_base + """
-            QPushButton:checked { background-color: #27ae60; color: white; border-color: #1e8449; }
-        """)
-        self._rotate_btn.toggled.connect(self._on_rotate_toggled)
-        layout.addWidget(self._rotate_btn)
-
-        self._pan_btn = QPushButton("Pan", self)
-        self._pan_btn.setObjectName("pan_toggle")
-        self._pan_btn.setCheckable(True)
-        self._pan_btn.setCursor(Qt.PointingHandCursor)
-        self._pan_btn.setToolTip("Pan mode — hold left-click and drag to pan the view")
-        self._pan_btn.setStyleSheet(_nav_base + """
-            QPushButton:checked { background-color: #4A90C4; color: white; border-color: #3a7ab4; }
-        """)
-        self._pan_btn.toggled.connect(self._on_pan_toggled)
-        layout.addWidget(self._pan_btn)
-
-        self._zoom_win_btn = QPushButton("Zoom Win", self)
-        self._zoom_win_btn.setObjectName("zoom_window_toggle")
-        self._zoom_win_btn.setCheckable(True)
-        self._zoom_win_btn.setCursor(Qt.PointingHandCursor)
-        self._zoom_win_btn.setToolTip("Zoom Window — drag a rectangle to zoom into that area")
-        self._zoom_win_btn.setStyleSheet(_nav_base + """
-            QPushButton:checked { background-color: #e67e22; color: white; border-color: #c0622a; }
-        """)
-        self._zoom_win_btn.toggled.connect(self._on_zoom_window_toggled)
-        layout.addWidget(self._zoom_win_btn)
+        # Hide "Grillage view" and "Node" from the panel — these are now
+        # controlled exclusively from the main ToolBar (toolbar_controller.py).
+        # The checkboxes still exist in _checkboxes so the toolbar handler
+        # can find and update them; they are just not visible to the user.
+        for cb in self._checkboxes:
+            if cb.text() in ("Grillage view", "Node"):
+                cb.hide()
 
         layout.addStretch()
 
-        # Default: Model checked; overlays and nav buttons off
+        # Default: Model checked; overlays off
         self._checkboxes[0].setChecked(True)
 
     # ── Maintain a back-compat alias ──────────────────────────────────────────
@@ -1109,49 +1163,50 @@ class BridgeComponentCheckbox(QWidget):
         """Public entry-point called after load_bridge to apply default state."""
         self._apply()
 
-    # ── Navigation toggles ────────────────────────────────────────────────────
+    # ── NAVIGATION TOGGLES ────────────────────────────────────────────────────
+    # These methods set the OCC viewer's navigation mode.
+    # They are called from ToolBarController (toolbar_controller.py):
+    #   • _cad_toggle_rotate()       → calls _on_rotate_toggled(want)
+    #   • _cad_toggle_pan()          → calls _on_pan_toggled(want)
+    #   • _cad_toggle_zoom_window()  → calls _on_zoom_window_toggled(want)
+    # Each method passes the nav mode to CustomViewer3d.set_navigation_mode()
+    # which is defined in custom_3dviewer.py.
 
     def _on_rotate_toggled(self, checked: bool) -> None:
+        """Called by ToolBarController._cad_toggle_rotate() (toolbar_controller.py).
+        Sets NavMode.ROTATE on the OCC viewer (custom_3dviewer.py) when checked,
+        or clears the nav mode when unchecked."""
         from osdagbridge.desktop.ui.utils.custom_3dviewer import NavMode
         viewer = self._cad.viewer
         if viewer is None:
             return
         if checked:
-            for btn in (self._pan_btn, self._zoom_win_btn):
-                if btn.isChecked():
-                    btn.blockSignals(True)
-                    btn.setChecked(False)
-                    btn.blockSignals(False)
             viewer.set_navigation_mode(NavMode.ROTATE)
         else:
             viewer.set_navigation_mode(None)
 
     def _on_pan_toggled(self, checked: bool) -> None:
+        """Called by ToolBarController._cad_toggle_pan() (toolbar_controller.py).
+        Sets NavMode.PAN on the OCC viewer (custom_3dviewer.py) when checked,
+        or clears the nav mode when unchecked."""
         from osdagbridge.desktop.ui.utils.custom_3dviewer import NavMode
         viewer = self._cad.viewer
         if viewer is None:
             return
         if checked:
-            for btn in (self._rotate_btn, self._zoom_win_btn):
-                if btn.isChecked():
-                    btn.blockSignals(True)
-                    btn.setChecked(False)
-                    btn.blockSignals(False)
             viewer.set_navigation_mode(NavMode.PAN)
         else:
             viewer.set_navigation_mode(None)
 
     def _on_zoom_window_toggled(self, checked: bool) -> None:
+        """Called by ToolBarController._cad_toggle_zoom_window() (toolbar_controller.py).
+        Sets NavMode.ZOOM_WINDOW on the OCC viewer (custom_3dviewer.py) when checked,
+        or clears the nav mode when unchecked."""
         from osdagbridge.desktop.ui.utils.custom_3dviewer import NavMode
         viewer = self._cad.viewer
         if viewer is None:
             return
         if checked:
-            for btn in (self._rotate_btn, self._pan_btn):
-                if btn.isChecked():
-                    btn.blockSignals(True)
-                    btn.setChecked(False)
-                    btn.blockSignals(False)
             viewer.set_navigation_mode(NavMode.ZOOM_WINDOW)
         else:
             viewer.set_navigation_mode(None)
@@ -1165,11 +1220,6 @@ class BridgeComponentCheckbox(QWidget):
         self._checkboxes[0].blockSignals(True)
         self._checkboxes[0].setChecked(True)
         self._checkboxes[0].blockSignals(False)
-
-        for btn in (self._rotate_btn, self._pan_btn, self._zoom_win_btn):
-            btn.blockSignals(True)
-            btn.setChecked(False)
-            btn.blockSignals(False)
 
         if self._cad.viewer is not None:
             self._cad.viewer.set_navigation_mode(None)
