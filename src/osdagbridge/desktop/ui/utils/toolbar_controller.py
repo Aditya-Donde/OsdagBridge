@@ -17,21 +17,20 @@ Design notes
 • Buttons in ToolBarWidget are anonymous (no stored references).
   ``_find_button(tooltip)`` locates them by matching toolTip() strings.
 
-• Each toolbar button is made checkable when a view is bound, with a
-  green "active" highlight so the user always knows the current state.
+• Toggle buttons (Grillage, Node) are made checkable when a view is bound
+  and get a green active-highlight so the user sees the current state.
 
-• For 3D CAD: clicking a toolbar button reads its new checked state
-  (Qt auto-toggles it on click) and **calls cb.click()** on the matching
-  BridgeComponentCheckbox checkbox so that _on_click → _apply → the 3D
-  context receive the update properly.  Then the toolbar button is forced
-  in sync with the checkbox's final state.
+• For 3D CAD toggles: we directly set the checkbox state with blockSignals
+  and then call selector._apply() — this bypasses the hidden-widget signal
+  limitation (cb.click() on a hidden QWidget is unreliable in Qt).
 
-• For Plots: clicking a toolbar button delegates directly to
-  the MplPlotWidget's own internal checkable buttons via .click(), then
-  syncs the toolbar button state from the internal button.
+• For 3D CAD one-shot actions (Zoom Fit, Zoom In): we call the OCC display
+  method directly after checking display readiness.
 
-• reset() unchecks all managed buttons and restores them to non-checkable
-  plain buttons (matching their original appearance in ToolBarWidget).
+• For Plots: clicks are proxied to MplPlotWidget's own checkable buttons
+  via .click() (those widgets are visible), then toolbar state is synced.
+
+• reset() unchecks all managed buttons and restores plain appearance.
 """
 
 from __future__ import annotations
@@ -98,8 +97,10 @@ class ToolBarController:
     """
 
     # Must match exactly the tooltip strings passed to create_button() in ToolBarWidget
-    _TIP_GRILLAGE = "Grillage View"
-    _TIP_NODE     = "Node"
+    _TIP_GRILLAGE  = "Grillage View"
+    _TIP_NODE      = "Node"
+    _TIP_ZOOM_FIT  = "Zoom Fit"    # one-shot action — not a toggle
+    _TIP_ZOOM_IN   = "Zoom In"     # one-shot action — not a toggle
 
     def __init__(self, tool_bar: "ToolBarWidget") -> None:
         self._toolbar = tool_bar
@@ -107,11 +108,15 @@ class ToolBarController:
         # (button, handler) pairs tracked for precise disconnection
         self._active_connections: list[tuple[QPushButton, object]] = []
 
-        # Buttons managed by this controller (resolved once from layout)
+        # Toggle buttons (resolved once from layout)
         self._btn_grillage: QPushButton | None = self._find_button(self._TIP_GRILLAGE)
         self._btn_node: QPushButton | None     = self._find_button(self._TIP_NODE)
 
-        # All managed buttons in one list — convenient for bulk operations
+        # One-shot action buttons (not toggles — resolved separately)
+        self._btn_zoom_fit: QPushButton | None = self._find_button(self._TIP_ZOOM_FIT)
+        self._btn_zoom_in:  QPushButton | None = self._find_button(self._TIP_ZOOM_IN)
+
+        # Toggle buttons in a list — used for bulk checkable/restore operations
         self._managed_buttons: list[QPushButton] = [
             b for b in (self._btn_grillage, self._btn_node) if b is not None
         ]
@@ -198,23 +203,30 @@ class ToolBarController:
 
     def bind_to_cad_3d(self, cad_widget: "CAD3DWindow") -> None:
         """
-        Disconnect any existing bindings, then wire Grillage and Node toolbar
-        buttons to the BridgeComponentCheckbox inside *cad_widget*.
+        Disconnect any existing bindings, then wire toolbar buttons to the
+        3D CAD view.
 
-        The key fix vs the previous version
+        Toggle buttons: Grillage View, Node
         ────────────────────────────────────
-        We call **cb.click()** (not cb.setChecked()) so that Qt emits the
-        clicked(checked) signal.  That propagates through _on_click() →
-        _apply() → update_component_visibility() and the 3D display updates.
+        We use blockSignals + setChecked + _apply() instead of cb.click().
+        Reason: BridgeComponentCheckbox.component_selector is hidden until
+        render_3d_cad() is called.  Qt's QAbstractButton.click() does not
+        reliably emit signals when the widget (or any ancestor) is hidden,
+        so the _on_click → _apply chain was silently skipped.
 
-        After cb.click() the checkbox's isChecked() reflects the new truth;
-        we then force-sync the toolbar button to match so the highlight stays
-        accurate even if BridgeComponentCheckbox's logic overrides the state.
+        The fix: set the checkbox state manually (blockSignals so no double-
+        fire), then call selector._apply() directly — _apply() builds the
+        visible-key list and calls cad_widget.update_component_visibility(),
+        which talks to the OCC context regardless of widget visibility.
+
+        One-shot buttons: Zoom Fit, Zoom In
+        ────────────────────────────────────
+        Call the OCC display API directly after checking readiness.
         """
         self._disconnect_all()
 
-        # Determine current checkbox states so the toolbar button starts in sync
-        def _initial_state(label: str) -> bool:
+        # Sync toggle button initial state with current checkbox state
+        def _initial_cb_state(label: str) -> bool:
             try:
                 for cb in cad_widget.component_selector._checkboxes:
                     if cb.text() == label:
@@ -223,23 +235,28 @@ class ToolBarController:
                 pass
             return False
 
-        self._make_checkable(self._btn_grillage, _initial_state("Grillage view"))
-        self._make_checkable(self._btn_node,     _initial_state("Node"))
+        self._make_checkable(self._btn_grillage, _initial_cb_state("Grillage view"))
+        self._make_checkable(self._btn_node,     _initial_cb_state("Node"))
 
         # ── Grillage ─────────────────────────────────────────────────────────
         def _cad_toggle_grillage():
             """
-            Qt has already toggled btn_grillage when this handler fires.
-            Read the button's new state and drive the CAD checkbox to match.
+            Qt has already auto-toggled the toolbar button.  Read its new state
+            and drive the BridgeComponentCheckbox to match, then call _apply()
+            directly so the OCC context updates regardless of widget visibility.
             """
             want = self._btn_grillage.isChecked()
             try:
                 selector = cad_widget.component_selector
                 for cb in selector._checkboxes:
                     if cb.text() == "Grillage view":
-                        if cb.isChecked() != want:
-                            cb.click()           # emits clicked → _on_click → _apply → 3D update
-                        # Force-sync button to whatever the checkbox settled on
+                        # Set checkbox state without emitting its own signal
+                        cb.blockSignals(True)
+                        cb.setChecked(want)
+                        cb.blockSignals(False)
+                        # Apply selection directly — this calls update_component_visibility
+                        selector._apply()
+                        # Sync toolbar button to checkbox's settled state
                         self._sync_btn_to(self._btn_grillage, cb.isChecked())
                         break
             except Exception:
@@ -253,8 +270,10 @@ class ToolBarController:
                 selector = cad_widget.component_selector
                 for cb in selector._checkboxes:
                     if cb.text() == "Node":
-                        if cb.isChecked() != want:
-                            cb.click()           # emits clicked → _on_click → _apply → 3D update
+                        cb.blockSignals(True)
+                        cb.setChecked(want)
+                        cb.blockSignals(False)
+                        selector._apply()
                         self._sync_btn_to(self._btn_node, cb.isChecked())
                         break
             except Exception:
@@ -263,19 +282,36 @@ class ToolBarController:
         self._connect(self._btn_grillage, _cad_toggle_grillage)
         self._connect(self._btn_node,     _cad_toggle_node)
 
+        # ── Zoom Fit (one-shot) ───────────────────────────────────────────────
+        def _cad_zoom_fit():
+            """Fit all visible geometry in the OCC view."""
+            try:
+                if cad_widget.display is not None and not cad_widget._cad_init_pending:
+                    cad_widget.display.FitAll()
+            except Exception:
+                pass
+
+        self._connect(self._btn_zoom_fit, _cad_zoom_fit)
+
+        # ── Zoom In (one-shot) ────────────────────────────────────────────────
+        def _cad_zoom_in():
+            """Zoom into the OCC view by a fixed 10% step."""
+            try:
+                if cad_widget.display is not None and not cad_widget._cad_init_pending:
+                    cad_widget.display.ZoomFactor(1.1)
+            except Exception:
+                pass
+
+        self._connect(self._btn_zoom_in, _cad_zoom_in)
+
     def bind_to_plots(self, plots_widget: "MplPlotWidget") -> None:
         """
         Disconnect any existing bindings, then wire Grillage and Node toolbar
         buttons to the MplPlotWidget's own internal checkable buttons.
 
-        Delegation strategy
-        ───────────────────
-        The plot widget already has checkable buttons (_btn_grillage, _btn_nodes)
-        with their own logic.  We proxy the click through to those buttons via
-        .click() so all existing toggle / render logic still runs unchanged.
-
-        After the proxy click the toolbar button is forced in sync with the
-        internal button's state so the highlight reflects reality.
+        The plot widget's internal buttons (_btn_grillage, _btn_nodes) are
+        always visible when the Plots view is active, so proxying via .click()
+        is safe and fires all the existing toggle/render logic unchanged.
         """
         self._disconnect_all()
 
@@ -295,11 +331,11 @@ class ToolBarController:
         # ── Grillage ─────────────────────────────────────────────────────────
         def _plots_toggle_grillage():
             """
-            Proxy the click through to MplPlotWidget._btn_grillage, then sync
-            our toolbar button so its highlight matches the internal state.
+            Proxy the click to MplPlotWidget._btn_grillage (it is visible),
+            then sync our toolbar button highlight to match its final state.
             """
             try:
-                plots_widget._btn_grillage.click()          # runs all plot logic
+                plots_widget._btn_grillage.click()
                 self._sync_btn_to(
                     self._btn_grillage,
                     plots_widget._btn_grillage.isChecked()
