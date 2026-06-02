@@ -102,6 +102,8 @@ class UIBuilder(QWidget):
             scroll.setWidgetResizable(True)
             scroll.setFrameShape(QFrame.NoFrame)
             scroll.setStyleSheet(ADDITIONAL_INPUTS_SCROLL_STYLE)
+            if not self._schema.get("scroll", True):
+                scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
             scroll.setWidget(self.main_widget)
             outer.addWidget(scroll)
         else:

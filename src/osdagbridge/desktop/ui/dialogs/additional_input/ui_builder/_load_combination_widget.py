@@ -79,31 +79,26 @@ class LoadCombinationWidget(QWidget):
         # ── Table ─────────────────────────────────────────────────────────
         self.table = QTableWidget(0, 2)
         self.table.setObjectName(self._field_id + "_table")
-        self.table.setHorizontalHeaderLabels(["Combination Name", "Include"])
-        self.table.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        self.table.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.table.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.table.horizontalHeader().setVisible(False)
+        self.table.verticalHeader().setVisible(False)
         self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
         self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Fixed)
         self.table.setColumnWidth(0, 1200)
         self.table.setColumnWidth(1, 80)
 
-        self.table.verticalHeader().setVisible(False)
         self.table.verticalHeader().setDefaultSectionSize(36)
         self.table.setSelectionBehavior(QTableWidget.SelectRows)
         self.table.setSelectionMode(QTableWidget.SingleSelection)
-        self.table.setShowGrid(True)
+        self.table.setShowGrid(False)
         self.table.setAlternatingRowColors(False)
         self.table.setVisible(False)
         self.table.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         self.table.setStyleSheet("""
-            QTableWidget { background-color:#ffffff; border:1px solid #a0a0a0;
-                border-radius:4px; gridline-color:#d0d0d0;
-                selection-background-color:#e3f2fd; }
-            QTableWidget::item { padding:6px; color:#2a2a2a; font-size:11px; border:none; }
-            QTableWidget::item:selected { background-color:#e3f2fd; color:#1a1a1a; }
-            QHeaderView::section { background-color:#f8f8f8; color:#2a2a2a;
-                font-size:11px; font-weight:600; padding:6px;
-                border:none; border-right:1px solid #d0d0d0;
-                border-bottom:1px solid #d0d0d0; }
+            QTableWidget { background-color: transparent; border: none; }
+            QTableWidget::item { padding: 6px; color: #000000; font-size: 11px; border: none; }
+            QTableWidget::item:selected { background-color: transparent; color: #000000; }
         """)
         layout.addWidget(self.table)
 
@@ -173,7 +168,7 @@ class LoadCombinationWidget(QWidget):
         row_height  = self.table.verticalHeader().defaultSectionSize()
         hdr_height  = self.table.horizontalHeader().height()
         new_height  = hdr_height + rows * row_height + 8
-        new_height  = max(80, min(new_height, 260))
+        new_height  = max(80, new_height)
         self.table.setFixedHeight(new_height)
 
     def _on_selection_changed(self):

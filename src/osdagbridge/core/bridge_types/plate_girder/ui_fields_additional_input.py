@@ -804,6 +804,7 @@ _SEISMIC_LOAD_TAB_SCHEMA = {
 
 _WIND_LOAD_TAB_SCHEMA = {
     "id":     KEY_WL_TAB,
+    "scroll": False,
     "label_width": 270,
     "layout": {
         "type":          "columns",
@@ -963,8 +964,18 @@ _TEMPERATURE_LOAD_TAB_SCHEMA = {
         {
             "column":  1,
             "type":    TYPE_DESCRIPTION,
-            "title":   "Description Box",
-            "text":    "",
+            "title":   "Temperature Load (TL)",
+            "text":    (
+                "Highest maximum and lowest minimum air shade temperatures are auto-filled from the project location (per IRC 6 Annex B meteorological data).<br><br>"
+                "<b>Coefficient of thermal expansion (α):</b><br>"
+                "Governs the unit change in length per degree Celsius. IRC 6 Cl. 215 specifies 12 × 10⁻⁶ /°C for steel and 12 × 10⁻⁶ /°C for RCC; values may be revised if site-specific material data is available. Both coefficients are user-editable.<br><br>"
+                "<b>Range of effective bridge temperature (EBT):</b><br>"
+                "The effective bridge temperature is the uniform temperature through the depth of the bridge cross-section at any instant. The minimum and maximum EBT values are derived from the air shade temperatures using IRC 6 Cl. 215. These are computed automatically and shown read-only.<br><br>"
+                "<b>Temperature for design:</b><br>"
+                "• Temperature Rise = Maximum EBT − Mean temperature<br>"
+                "• Temperature Fall = Mean temperature − Minimum EBT<br>"
+                "The Mean temperature is the midpoint of min and max air shade temperatures. The rise and fall values are used to compute thermal expansion and contraction forces, and longitudinal effects throughout the analysis."
+            ),
             "stretch": True,
         },
     ],
@@ -1052,6 +1063,7 @@ _CUSTOM_LOAD_TAB_SCHEMA = {
 
 _LOAD_COMBINATION_TAB_SCHEMA = {
     "id":     KEY_LC_TAB,
+    "scroll": False,
     "layout": {
         "type":          "columns",
         "columns":       2,
