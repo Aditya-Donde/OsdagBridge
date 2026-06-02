@@ -250,6 +250,10 @@ class CustomWindow(QWidget):
         self.tool_bar = ToolBarWidget()
         central_V_layout.addWidget(self.tool_bar)
 
+        # Wire context-sensitive toolbar behaviour (no existing code changed)
+        from osdagbridge.desktop.ui.utils.toolbar_controller import ToolBarController
+        self.toolbar_ctrl = ToolBarController(self.tool_bar)
+
         # ----------------- CAD + LOG SPLITTER (ADDED) -----------------
 
         self.cad_log_splitter = QSplitter(Qt.Vertical)
@@ -782,6 +786,15 @@ class CustomWindow(QWidget):
         
         # Update tool bar visibility based on view rules
         self._update_tool_bar_visibility()
+
+        # Rebind toolbar buttons to the newly active view
+        if hasattr(self, 'toolbar_ctrl'):
+            if view == '3d':
+                self.toolbar_ctrl.bind_to_cad_3d(self.cad_3d_widget)
+            elif view == 'plots':
+                self.toolbar_ctrl.bind_to_plots(self.plots_widget)
+            else:
+                self.toolbar_ctrl.reset()
         
     def _position_log_dock(self):
         """Position log dock at bottom of central widget as overlay (max 1/5 height)"""
