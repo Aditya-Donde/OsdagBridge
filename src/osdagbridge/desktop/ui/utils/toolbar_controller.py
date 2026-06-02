@@ -100,6 +100,7 @@ class ToolBarController:
     _TIP_GRILLAGE  = "Grillage View"
     _TIP_NODE      = "Node"
     _TIP_ZOOM_WIN  = "Zoom Window"  # toggle — activates drag-to-zoom rect mode
+    _TIP_PAN       = "Pan"          # toggle — activates pan navigation mode
     _TIP_ZOOM_FIT  = "Zoom Fit"    # one-shot action — not a toggle
     _TIP_ZOOM_IN   = "Zoom In"     # one-shot action — not a toggle
     _TIP_ZOOM_OUT  = "Zoom Out"    # one-shot action — not a toggle
@@ -114,6 +115,7 @@ class ToolBarController:
         self._btn_grillage: QPushButton | None = self._find_button(self._TIP_GRILLAGE)
         self._btn_node: QPushButton | None     = self._find_button(self._TIP_NODE)
         self._btn_zoom_win: QPushButton | None = self._find_button(self._TIP_ZOOM_WIN)
+        self._btn_pan: QPushButton | None      = self._find_button(self._TIP_PAN)
 
         # One-shot action buttons (not toggles — resolved separately)
         self._btn_zoom_fit: QPushButton | None = self._find_button(self._TIP_ZOOM_FIT)
@@ -122,7 +124,10 @@ class ToolBarController:
 
         # Toggle buttons in a list — used for bulk checkable/restore operations
         self._managed_buttons: list[QPushButton] = [
-            b for b in (self._btn_grillage, self._btn_node, self._btn_zoom_win)
+            b for b in (
+                self._btn_grillage, self._btn_node,
+                self._btn_zoom_win, self._btn_pan,
+            )
             if b is not None
         ]
 
@@ -322,6 +327,38 @@ class ToolBarController:
             self._sync_btn_to(self._btn_zoom_win, want)
 
         self._connect(self._btn_zoom_win, _cad_toggle_zoom_window)
+
+        # ── Pan (toggle — activates pan navigation mode) ──────────────────────
+        self._make_checkable(self._btn_pan, initial=False)
+
+        def _cad_toggle_pan():
+            """
+            Delegate to BridgeComponentCheckbox._on_pan_toggled():
+              - sets NavMode.PAN on the OCC viewer when checked
+              - resets NavMode to None when unchecked
+              - deactivates Rotate / Zoom Window buttons (mutual exclusion)
+            """
+            want = self._btn_pan.isChecked()
+            try:
+                selector = cad_widget.component_selector
+                selector._on_pan_toggled(want)
+                # Keep internal _pan_btn in sync
+                selector._pan_btn.blockSignals(True)
+                selector._pan_btn.setChecked(want)
+                selector._pan_btn.blockSignals(False)
+            except Exception:
+                # Fallback: call viewer directly
+                try:
+                    from osdagbridge.desktop.ui.utils.custom_3dviewer import NavMode
+                    if cad_widget.viewer is not None:
+                        cad_widget.viewer.set_navigation_mode(
+                            NavMode.PAN if want else None
+                        )
+                except Exception:
+                    pass
+            self._sync_btn_to(self._btn_pan, want)
+
+        self._connect(self._btn_pan, _cad_toggle_pan)
 
         # ── Zoom Fit (one-shot) ───────────────────────────────────────────────
         def _cad_zoom_fit():
