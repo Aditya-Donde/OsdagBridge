@@ -538,35 +538,64 @@ class CustomWindow(QWidget):
         pprint(self.input_dict)
 
         if trigger == "Design":
-            
+            import traceback
+
             # Start-Loading-popup---------------------------------------------
             self._start_loading()
-            
-            # Collect all the values from input Dock and pass to backend
-            self.backend.set_input(self.input_dict)
-            self.backend.design()
-            self.output_dock.refresh_utilization()
 
-            # Lock the input dock after design is triggered
-            if self.input_dock and not self.input_dock.is_locked:
-                self.input_dock.toggle_lock()
+            try:
+                # Collect all the values from input Dock and pass to backend
+                self.backend.set_input(self.input_dict)
+                self.backend.design()
+                self.output_dock.refresh_utilization()
 
-            # Wire up the plots widget with results from the completed analysis
-            ds_all = self.backend.get_results_dataset()
-            loadcases = self.backend.get_available_loadcases()
-            nodes, members = self.backend.get_nodes_members()
-            edge_dist = self.backend.get_edge_dist()
-            self.plots_widget.setup(ds_all, loadcases, nodes, members, edge_dist=edge_dist)
-            self.plots_widget.link_output_dock(self.output_dock)
+                # Lock the input dock after design is triggered
+                if self.input_dock and not self.input_dock.is_locked:
+                    self.input_dock.toggle_lock()
 
-            # Render 3D cad using the parameters from Backend
-            self.cad_3d_widget.render_3d_cad(self.backend.get_3d_cad_parameters())
+                # Wire up the plots widget with results from the completed analysis
+                ds_all    = self.backend.get_results_dataset()
+                loadcases = self.backend.get_available_loadcases()
+                nodes, members = self.backend.get_nodes_members()
+                edge_dist = self.backend.get_edge_dist()
+                self.plots_widget.setup(ds_all, loadcases, nodes, members, edge_dist=edge_dist)
+                self.plots_widget.link_output_dock(self.output_dock)
 
-            # Close-loading-popup---------------------------------------------
-            self._finish_loading()
+                # Render 3D cad using the parameters from Backend
+                self.cad_3d_widget.render_3d_cad(self.backend.get_3d_cad_parameters())
 
-            # Focus 3D-Cad widget
-            self.cad_3d_view_toggle(force_show=True)
+                # Close-loading-popup-----------------------------------------
+                self._finish_loading()
+
+                # Focus 3D-Cad widget
+                self.cad_3d_view_toggle(force_show=True)
+
+            except Exception:
+                err_trace = traceback.format_exc()
+                print(f"[Design Error]\n{err_trace}")
+
+                # Close loading before showing the dialog, otherwise it stays
+                # on top and blocks the message box.
+                self._finish_loading()
+
+                # Graceful recovery — unlock inputs so the user can fix and retry
+                if self.input_dock and self.input_dock.is_locked:
+                    self.input_dock.toggle_lock()
+
+                # Show the last two non-empty lines of the traceback as the
+                # short summary (the actual exception line + the error message).
+                lines = [l for l in err_trace.splitlines() if l.strip()]
+                short_summary = "\n".join(lines[-2:]) if len(lines) >= 2 else err_trace
+
+                CustomMessageBox(
+                    title="Design Error",
+                    text=(
+                        "An error occurred during design. Please check your inputs and try again.\n\n"
+                        f"{short_summary}"
+                    ),
+                    informativeText=f"Full traceback:\n{err_trace}",
+                    dialogType=MessageBoxType.Critical,
+                ).exec()
 
         elif trigger == "Save":
             # Collect all the values from input Dock and save to osi/csv
