@@ -101,6 +101,7 @@ class ToolBarController:
     _TIP_NODE      = "Node"
     _TIP_ZOOM_FIT  = "Zoom Fit"    # one-shot action — not a toggle
     _TIP_ZOOM_IN   = "Zoom In"     # one-shot action — not a toggle
+    _TIP_ZOOM_OUT  = "Zoom Out"    # one-shot action — not a toggle
 
     def __init__(self, tool_bar: "ToolBarWidget") -> None:
         self._toolbar = tool_bar
@@ -115,6 +116,7 @@ class ToolBarController:
         # One-shot action buttons (not toggles — resolved separately)
         self._btn_zoom_fit: QPushButton | None = self._find_button(self._TIP_ZOOM_FIT)
         self._btn_zoom_in:  QPushButton | None = self._find_button(self._TIP_ZOOM_IN)
+        self._btn_zoom_out: QPushButton | None = self._find_button(self._TIP_ZOOM_OUT)
 
         # Toggle buttons in a list — used for bulk checkable/restore operations
         self._managed_buttons: list[QPushButton] = [
@@ -303,6 +305,17 @@ class ToolBarController:
                 pass
 
         self._connect(self._btn_zoom_in, _cad_zoom_in)
+
+        # ── Zoom Out (one-shot) ────────────────────────────────────────
+        def _cad_zoom_out():
+            """Zoom out of the OCC view by a fixed 10% step."""
+            try:
+                if cad_widget.display is not None and not cad_widget._cad_init_pending:
+                    cad_widget.display.ZoomFactor(1 / 1.1)
+            except Exception:
+                pass
+
+        self._connect(self._btn_zoom_out, _cad_zoom_out)
 
     def bind_to_plots(self, plots_widget: "MplPlotWidget") -> None:
         """
