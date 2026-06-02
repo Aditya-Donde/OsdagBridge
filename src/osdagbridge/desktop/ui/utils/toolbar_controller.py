@@ -99,6 +99,7 @@ class ToolBarController:
     # Must match exactly the tooltip strings passed to create_button() in ToolBarWidget
     _TIP_GRILLAGE  = "Grillage View"
     _TIP_NODE      = "Node"
+    _TIP_ZOOM_WIN  = "Zoom Window"  # toggle — activates drag-to-zoom rect mode
     _TIP_ZOOM_FIT  = "Zoom Fit"    # one-shot action — not a toggle
     _TIP_ZOOM_IN   = "Zoom In"     # one-shot action — not a toggle
     _TIP_ZOOM_OUT  = "Zoom Out"    # one-shot action — not a toggle
@@ -112,6 +113,7 @@ class ToolBarController:
         # Toggle buttons (resolved once from layout)
         self._btn_grillage: QPushButton | None = self._find_button(self._TIP_GRILLAGE)
         self._btn_node: QPushButton | None     = self._find_button(self._TIP_NODE)
+        self._btn_zoom_win: QPushButton | None = self._find_button(self._TIP_ZOOM_WIN)
 
         # One-shot action buttons (not toggles — resolved separately)
         self._btn_zoom_fit: QPushButton | None = self._find_button(self._TIP_ZOOM_FIT)
@@ -120,7 +122,8 @@ class ToolBarController:
 
         # Toggle buttons in a list — used for bulk checkable/restore operations
         self._managed_buttons: list[QPushButton] = [
-            b for b in (self._btn_grillage, self._btn_node) if b is not None
+            b for b in (self._btn_grillage, self._btn_node, self._btn_zoom_win)
+            if b is not None
         ]
 
     # ── BUTTON RETRIEVAL ──────────────────────────────────────────────────────
@@ -283,6 +286,42 @@ class ToolBarController:
 
         self._connect(self._btn_grillage, _cad_toggle_grillage)
         self._connect(self._btn_node,     _cad_toggle_node)
+
+        # ── Zoom Window (toggle — activates drag-to-zoom rect mode) ────────────
+        self._make_checkable(self._btn_zoom_win, initial=False)
+
+        def _cad_toggle_zoom_window():
+            """
+            Qt has already auto-toggled the toolbar button.
+            Delegate to BridgeComponentCheckbox._on_zoom_window_toggled():
+              - sets NavMode.ZOOM_WINDOW on the OCC viewer when checked
+              - resets NavMode to None when unchecked
+              - deactivates Rotate / Pan buttons (mutual exclusion)
+            Sync the toolbar button back to whatever state the method settled on.
+            """
+            want = self._btn_zoom_win.isChecked()
+            try:
+                selector = cad_widget.component_selector
+                # Also uncheck Rotate / Pan toolbar buttons if they exist
+                # (the selector handles its own internal buttons via _on_zoom_window_toggled)
+                selector._on_zoom_window_toggled(want)
+                # Keep the internal _zoom_win_btn in sync so state is consistent
+                selector._zoom_win_btn.blockSignals(True)
+                selector._zoom_win_btn.setChecked(want)
+                selector._zoom_win_btn.blockSignals(False)
+            except Exception:
+                # Fallback: call viewer directly if selector unavailable
+                try:
+                    from osdagbridge.desktop.ui.utils.custom_3dviewer import NavMode
+                    if cad_widget.viewer is not None:
+                        cad_widget.viewer.set_navigation_mode(
+                            NavMode.ZOOM_WINDOW if want else None
+                        )
+                except Exception:
+                    pass
+            self._sync_btn_to(self._btn_zoom_win, want)
+
+        self._connect(self._btn_zoom_win, _cad_toggle_zoom_window)
 
         # ── Zoom Fit (one-shot) ───────────────────────────────────────────────
         def _cad_zoom_fit():
