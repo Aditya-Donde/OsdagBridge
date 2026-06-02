@@ -104,6 +104,67 @@ from osdagbridge.core.bridge_components.super_structure.crash_barrier.geometry i
 from osdagbridge.core.bridge_components.super_structure.railing.geometry import (
     railing_load_from_inputs,
 )
+from osdagbridge.core.utils.common import (
+    KEY_GIRDER_TORSIONAL_RESTRAINT,
+    KEY_GIRDER_WARPING_RESTRAINT,
+    KEY_GIRDER_WEB_TYPE,
+
+    # Dimensional card
+    KEY_SD_GRADE_OF_MATERIAL,
+    KEY_SD_SECTION_TYPE,
+    KEY_SD_SECTION_DESIGNATION,
+    KEY_SD_SECTION_CLASS,
+    KEY_SD_TOTAL_DEPTH,
+    KEY_SD_WEB_THICKNESS,
+    KEY_SD_TOP_FLANGE_WIDTH,
+    KEY_SD_TOP_FLANGE_THICKNESS,
+    KEY_SD_BOTTOM_FLANGE_WIDTH,
+    KEY_SD_BOTTOM_FLANGE_THICKNESS,
+    KEY_SD_TORSIONAL_RESTRAINT,
+    KEY_SD_WARPING_RESTRAINT,
+    KEY_SD_WEB_TYPE,
+    KEY_SD_EFFECTIVE_SLAB_WIDTH,
+    # Shear connector card
+    KEY_SD_SHEAR_YIELD_STRENGTH,
+    KEY_SD_SHEAR_ULTIMATE_STRENGTH,
+    KEY_SD_SHEAR_DIAMETER,
+    KEY_SD_SHEAR_HEIGHT,
+    KEY_SD_SHEAR_TRANSVERSE_SPACING,
+    KEY_SD_SHEAR_STUDS_PER_SECTION,
+    KEY_SD_SHEAR_LONGITUDINAL_SPACING,
+    # Section properties card
+    KEY_SD_SECTION_PROP_MASS,
+    KEY_SD_SECTION_PROP_AREA,
+    KEY_SD_SECTION_PROP_IZ,
+    KEY_SD_SECTION_PROP_IV,
+    KEY_SD_SECTION_PROP_RZ,
+    KEY_SD_SECTION_PROP_RV,
+    KEY_SD_SECTION_PROP_ZZ,
+    KEY_SD_SECTION_PROP_ZV,
+    KEY_SD_SECTION_PROP_ZUZ,
+    KEY_SD_SECTION_PROP_ZUV,
+    KEY_SD_SECTION_PROP_IT,
+    KEY_SD_SECTION_PROP_IW,
+    # Stiffener table
+    KEY_SD_STIFFENER_ROW_INTERMEDIATE,
+    KEY_SD_STIFFENER_ROW_LONGITUDINAL,
+    KEY_SD_STIFFENER_ROW_BEARING,
+    KEY_SD_STIFFENER_COL_GRADE,
+    KEY_SD_STIFFENER_COL_THICKNESS,
+    KEY_SD_STIFFENER_COL_WIDTH,
+    KEY_SD_STIFFENER_COL_SPACING,
+    # Design options — shear stud transverse spacing input key
+    KEY_DS_STUD_TRANSVERSE_SPACING,
+    KEY_LONGITUDINAL_STIFFENER_THICKNESS,
+    KEY_OUTSTAND_BEARING_STIFFENER,
+    KEY_BEARING_STIFFENER_PLATE_THICKNESS,
+    KEY_STIFFENER_SPACING,
+    KEY_INTERMEDIATE_STIFFENER,
+    KEY_INTERMEDIATE_STIFFENER_THICKNESS,
+    KEY_INTERMEDIATE_STIFFENER_OUTSTAND,
+    KEY_INTERMEDIATE_STIFFENER_SPACING,
+    KEY_LONGITUDINAL_STIFFENER,
+)
 
 
 _DB_PATH = Path(__file__).resolve().parents[2] / "data" / "ResourceFiles" / "Intg_osdag.sqlite"
@@ -786,6 +847,12 @@ class PlateGirderBridge:
         )
         self.design_results = design_results
 
+        # Write every output into output_dict while it is still mutable.
+        # store_design_results also sets the KEY_UTIL_* values so the block
+        # below is redundant — but kept for the _frontend.set_output_value calls.
+        self.store_design_results(design_results)
+
+        # Keep frontend output-dock values in sync (these drive the percent bars).
         dcr_by_id: dict[int, float] = {}
         for c in engine.checks:
             dcr_by_id[c.check_id] = max(dcr_by_id.get(c.check_id, 0.0), c.dcr)
@@ -1337,3 +1404,169 @@ class PlateGirderBridge:
             return float(val)
         except (TypeError, ValueError):
             return fallback
+        
+
+    def store_design_results(self, design_results: dict) -> None:
+        """Write every IRC 22:2015 design-check output into self.output_dict.
+
+        Reads from two sources:
+        - design_results  : mm / MPa / kN / kNm values from run_design_check()
+        - self.input_dict : SI values (m, Pa, m^4 …) from initial sizing
+
+        All KEY_SD_* output-dock keys are populated here so every tab can read
+        directly from self.output_dict without touching design_results themselves.
+
+        Call this immediately after run_design_check() inside _run_dcr_checks().
+        output_dict must still be mutable (i.e. before the MappingProxyType freeze).
+        """
+        dr  = design_results          # alias: mm/MPa/kN from designer pipeline
+        inp = self.input_dict         # alias: SI (m, Pa) from initial sizing
+        out = self.output_dict        # must be mutable dict at this point
+
+        # ── 1. Category URs — eight utilisation percent values ─────────────────
+        cat_urs = dr.get("category_urs", {})
+        out[KEY_UTIL_FLEXURE]          = cat_urs.get(1, {}).get("max_dcr", 0.0) * 100
+        out[KEY_UTIL_SHEAR]            = cat_urs.get(2, {}).get("max_dcr", 0.0) * 100
+        out[KEY_UTIL_INTERACTION]      = cat_urs.get(3, {}).get("max_dcr", 0.0) * 100
+        out[KEY_UTIL_LTB]              = cat_urs.get(4, {}).get("max_dcr", 0.0) * 100
+        out[KEY_UTIL_LONG_TRANS_SHEAR] = cat_urs.get(5, {}).get("max_dcr", 0.0) * 100
+        out[KEY_UTIL_FATIGUE]          = cat_urs.get(6, {}).get("max_dcr", 0.0) * 100
+        out[KEY_UTIL_STRESS_LIMITATION]= cat_urs.get(7, {}).get("max_dcr", 0.0) * 100
+        out[KEY_UTIL_DEFLECTION_CRACK] = cat_urs.get(8, {}).get("max_dcr", 0.0) * 100
+
+        # ── 2. Dimensional card ─────────────────────────────────────────────────
+        # Grade, type, designation, class, and all plate dimensions in mm.
+        out[KEY_SD_GRADE_OF_MATERIAL]       = dr["steel_grade"]
+        out[KEY_SD_SECTION_TYPE]            = dr["fabrication"].title()   # "Welded" / "Rolled"
+
+        # Designation: "D × bf_top × tf_top × bf_bot × tf_bot" (overall depth D, not clear web)
+        # Built directly here from design_results plate dimensions (all in mm).
+        dw  = dr["dw_mm"]
+        D   = dr["D_mm"]
+        bft = dr["bf_top_mm"]
+        tft = dr["tf_top_mm"]
+        bfb = dr["bf_bot_mm"]
+        tfb = dr["tf_bot_mm"]
+        tw  = dr["tw_mm"]
+        out[KEY_SD_SECTION_DESIGNATION] = (
+            f"{D:.0f} × {bft:.0f} × {tft:.0f} × {bfb:.0f} × {tfb:.0f}"
+        )
+        out[KEY_SD_SECTION_CLASS]           = dr["section_class_governing"]
+        out[KEY_SD_TOTAL_DEPTH]             = D          # mm
+        out[KEY_SD_WEB_THICKNESS]           = tw         # mm
+        out[KEY_SD_TOP_FLANGE_WIDTH]        = bft        # mm
+        out[KEY_SD_TOP_FLANGE_THICKNESS]    = tft        # mm
+        out[KEY_SD_BOTTOM_FLANGE_WIDTH]     = bfb        # mm
+        out[KEY_SD_BOTTOM_FLANGE_THICKNESS] = tfb        # mm
+
+        # Torsional/warping restraint and web type come from the Additional Inputs
+        # dialog, not from the designer pipeline. Read them directly from input_dict
+        # so the output card echoes back what the user configured.
+        out[KEY_SD_TORSIONAL_RESTRAINT] = inp.get(KEY_GIRDER_TORSIONAL_RESTRAINT, "—")
+        out[KEY_SD_WARPING_RESTRAINT]   = inp.get(KEY_GIRDER_WARPING_RESTRAINT,   "—")
+        out[KEY_SD_WEB_TYPE]            = inp.get(KEY_GIRDER_WEB_TYPE,            "—")
+
+        # Effective slab width from the composite capacity check (mm)
+        out[KEY_SD_EFFECTIVE_SLAB_WIDTH] = dr["beff_mm"]
+
+        # ── 3. Shear connector card ─────────────────────────────────────────────
+        # All stud dimensions in mm; strengths in MPa; count and spacing as numbers.
+        out[KEY_SD_SHEAR_YIELD_STRENGTH]      = dr.get("stud_fy_MPa", 350.0)   # MPa
+        out[KEY_SD_SHEAR_ULTIMATE_STRENGTH]   = dr["stud_fu_MPa"]              # MPa
+        out[KEY_SD_SHEAR_DIAMETER]            = dr["stud_dia_mm"]              # mm
+        out[KEY_SD_SHEAR_HEIGHT]              = dr["stud_height_mm"]           # mm
+        # Transverse spacing: not a direct design_results field — read from
+        # Additional Inputs (KEY_DS_STUD_TRANSVERSE_SPACING); fall back to "—".
+        out[KEY_SD_SHEAR_TRANSVERSE_SPACING]  = inp.get(
+            KEY_DS_STUD_TRANSVERSE_SPACING, "—"
+        )
+        out[KEY_SD_SHEAR_STUDS_PER_SECTION]   = dr["studs_per_section"]         # count
+        out[KEY_SD_SHEAR_LONGITUDINAL_SPACING]= dr["stud_spacing_provided_mm"]  # mm
+
+        # ── 4. Section properties card ──────────────────────────────────────────
+        # input_dict stores these in SI (m², m⁴, m³, kg/m).
+        # The section-property card is expected to show SI values (matching the
+        # initial sizing display), so no unit conversion is applied here.
+        out[KEY_SD_SECTION_PROP_MASS]  = inp.get(KEY_GIRDER_MASS,               0.0)   # kg/m
+        out[KEY_SD_SECTION_PROP_AREA]  = inp.get(KEY_GIRDER_SECTIONAL_AREA,     0.0)   # m²
+        out[KEY_SD_SECTION_PROP_IZ]    = inp.get(KEY_GIRDER_SECTIONAL_IZ,       0.0)   # m⁴
+        out[KEY_SD_SECTION_PROP_IV]    = inp.get(KEY_GIRDER_SECTIONAL_IY,       0.0)   # m⁴
+        out[KEY_SD_SECTION_PROP_RZ]    = inp.get(KEY_GIRDER_RADIUS_GYRATION_Z,  0.0)   # m
+        out[KEY_SD_SECTION_PROP_RV]    = inp.get(KEY_GIRDER_RADIUS_GYRATION_Y,  0.0)   # m
+        out[KEY_SD_SECTION_PROP_ZZ]    = inp.get(KEY_GIRDER_ELASTIC_MODULUS_ZZ, 0.0)   # m³ (Ze about zz)
+        out[KEY_SD_SECTION_PROP_ZV]    = inp.get(KEY_GIRDER_ELASTIC_MODULUS_ZY, 0.0)   # m³ (Ze about zy)
+        out[KEY_SD_SECTION_PROP_ZUZ]   = inp.get(KEY_GIRDER_PLASTIC_MODULUS_ZUZ,0.0)   # m³ (Zp about zz)
+        out[KEY_SD_SECTION_PROP_ZUV]   = inp.get(KEY_GIRDER_PLASTIC_MODULUS_ZUY,0.0)   # m³ (Zp about zy)
+        out[KEY_SD_SECTION_PROP_IT]    = inp.get(KEY_GIRDER_TORSION_CONSTANT_IT,0.0)   # m³ (torsion J)
+        out[KEY_SD_SECTION_PROP_IW]    = inp.get(KEY_GIRDER_WARPING_CONSTANT_IW,0.0)   # m⁶ (warping Iw)
+
+        # In store_design_results(), replace the stiffener section (── 5. Stiffener table ──) with:
+
+        grade = str(inp.get(KEY_GIRDER, ""))
+
+        # Read stiffener state from the nested structure saved by StiffenerDetailsTab.collect_data()
+        stiffener_data = inp.get("stiffener_by_member") or {}
+        # Use the first member's state as the representative (bearing stiffeners are per bridge end)
+        first_member_state = {}
+        if stiffener_data:
+            first_key = next(iter(stiffener_data), None)
+            if first_key:
+                first_member_state = stiffener_data[first_key] or {}
+
+        def _stiff_from_member(key, fallback="NA"):
+            v = first_member_state.get(key)
+            if v is not None and str(v).strip() not in ("", "None", "NA"):
+                return str(v)
+            return fallback
+
+        # ── Bearing ─────────────────────────────────────────────────────────────────
+        out["stiff_bearing_grade"]     = grade
+        out["stiff_bearing_thickness"] = _stiff_from_member("bearing_thickness_value")
+        out["stiff_bearing_width"]     = _stiff_from_member("bearing_outstand_mm")
+        out["stiff_bearing_spacing"]   = _stiff_from_member("bearing_spacing_mm")
+
+        # ── Intermediate ────────────────────────────────────────────────────────────
+        int_stiff_on = _stiff_from_member("intermediate_stiffener", "No") == "Yes"
+        if int_stiff_on:
+            out["stiff_intermediate_grade"]     = grade
+            out["stiff_intermediate_thickness"] = _stiff_from_member("intermediate_thickness_value")
+            out["stiff_intermediate_width"]     = _stiff_from_member("intermediate_outstand_mm")
+            out["stiff_intermediate_spacing"]   = _stiff_from_member("intermediate_spacing_mm")
+        else:
+            out["stiff_intermediate_grade"]     = "NA"
+            out["stiff_intermediate_thickness"] = "NA"
+            out["stiff_intermediate_width"]     = "NA"
+            out["stiff_intermediate_spacing"]   = "NA"
+
+        # ── Longitudinal ─────────────────────────────────────────────────────────────
+        long_val = _stiff_from_member("longitudinal_stiffener", "No")
+        long_stiff_on = (long_val != "No")
+        if long_stiff_on:
+            out["stiff_longitudinal_grade"]     = grade
+            out["stiff_longitudinal_thickness"] = _stiff_from_member("longitudinal_thickness_value")
+            out["stiff_longitudinal_width"]     = "NA"
+            out["stiff_longitudinal_spacing"]   = "NA"
+        else:
+            out["stiff_longitudinal_grade"]     = "NA"
+            out["stiff_longitudinal_thickness"] = "NA"
+            out["stiff_longitudinal_width"]     = "NA"
+            out["stiff_longitudinal_spacing"]   = "NA"
+            
+        # ── 6. Full design_results blob — consumed by dialogs / report tab ──────
+        # Store the entire dict under a single key so any tab that needs deeper
+        # data (capacity details, per-girder breakdown, report text) can get it
+        # without re-running the pipeline.
+        out["design_results"] = design_results    
+
+        # ── Torsional / Warping Restraint / Web Type ────────────────────────────────
+        # These are Additional Inputs fields. If the user never opened the dialog
+        # the keys are absent from input_dict — fall back to IRC 22 design defaults.
+        out[KEY_SD_TORSIONAL_RESTRAINT] = str(
+            inp.get(KEY_GIRDER_TORSIONAL_RESTRAINT) or "Fully Restrained"
+        )
+        out[KEY_SD_WARPING_RESTRAINT] = str(
+            inp.get(KEY_GIRDER_WARPING_RESTRAINT) or "Both Flanges Restrained"
+        )
+        out[KEY_SD_WEB_TYPE] = str(
+            inp.get(KEY_GIRDER_WEB_TYPE) or "Thin Web with ITS"
+        )

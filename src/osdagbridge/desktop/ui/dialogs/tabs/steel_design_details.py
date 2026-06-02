@@ -27,6 +27,41 @@ from osdagbridge.desktop.ui.dialogs.tabs.sub_tabs.section_properties.stiffener_d
 from osdagbridge.core.bridge_types.plate_girder.ui_fields_additional_input import (
     STEEL_DESIGN_DETAILS_SCHEMA,
 )
+from osdagbridge.core.utils.common import (
+    KEY_SD_GRADE_OF_MATERIAL,
+    KEY_SD_SECTION_TYPE,
+    KEY_SD_SECTION_DESIGNATION,
+    KEY_SD_SECTION_CLASS,
+    KEY_SD_TOTAL_DEPTH,
+    KEY_SD_WEB_THICKNESS,
+    KEY_SD_TOP_FLANGE_WIDTH,
+    KEY_SD_TOP_FLANGE_THICKNESS,
+    KEY_SD_BOTTOM_FLANGE_WIDTH,
+    KEY_SD_BOTTOM_FLANGE_THICKNESS,
+    KEY_SD_TORSIONAL_RESTRAINT,
+    KEY_SD_WARPING_RESTRAINT,
+    KEY_SD_WEB_TYPE,
+    KEY_SD_EFFECTIVE_SLAB_WIDTH,
+    KEY_SD_SHEAR_YIELD_STRENGTH,
+    KEY_SD_SHEAR_ULTIMATE_STRENGTH,
+    KEY_SD_SHEAR_DIAMETER,
+    KEY_SD_SHEAR_HEIGHT,
+    KEY_SD_SHEAR_TRANSVERSE_SPACING,
+    KEY_SD_SHEAR_STUDS_PER_SECTION,
+    KEY_SD_SHEAR_LONGITUDINAL_SPACING,
+    KEY_SD_SECTION_PROP_MASS,
+    KEY_SD_SECTION_PROP_AREA,
+    KEY_SD_SECTION_PROP_IZ,
+    KEY_SD_SECTION_PROP_IV,
+    KEY_SD_SECTION_PROP_RZ,
+    KEY_SD_SECTION_PROP_RV,
+    KEY_SD_SECTION_PROP_ZZ,
+    KEY_SD_SECTION_PROP_ZV,
+    KEY_SD_SECTION_PROP_ZUZ,
+    KEY_SD_SECTION_PROP_ZUV,
+    KEY_SD_SECTION_PROP_IT,
+    KEY_SD_SECTION_PROP_IW,
+)
 
 # Greyed-out read-only style for combos mirroring the Output Dock selection.
 _DISABLED_COMBO_STYLE = (
@@ -390,10 +425,18 @@ class SteelDesignDetailsTab(QWidget):
             rows = self._stiffener_rows
             for row_index, row_def in enumerate(rows):
                 prefix = row_def.get("data_prefix", "")
+                if not prefix:
+                    continue
                 for col_index, col_def in enumerate(columns[1:], start=1):
                     suffix = col_def.get("suffix", "")
-                    value_key = f"{prefix}_{suffix}" if prefix and suffix else ""
-                    value = normalized_state.get(value_key, "") if value_key else ""
+                    if not suffix:
+                        continue
+                    value_key = f"{prefix}_{suffix}"
+                    # Try to get the value from normalized_state, with a sensible default
+                    value = normalized_state.get(value_key, "NA")
+                    # Avoid displaying "None" or empty strings
+                    if not value or value == "None":
+                        value = "NA"
                     item = QTableWidgetItem(str(value))
                     item.setFlags(Qt.ItemIsEnabled)
                     item.setTextAlignment(Qt.AlignCenter)
@@ -402,68 +445,325 @@ class SteelDesignDetailsTab(QWidget):
         self._update_cad_previews(normalized_state, output_dict)
 
     def _normalize_output_dict(self, output_dict: dict) -> dict:
-        if "output_dict" in output_dict or not output_dict:
-            return output_dict
-            
-        out = {}
-        def to_mm(val):
-            try: return f"{float(val) * 1000:.1f}"
-            except: return val
+        """
+        Build a flat dict keyed by schema data_key strings, suitable for
+        field.setText() in load_data().
 
-        def to_str(val):
-            if val is None: return ""
+        Priority: read KEY_SD_* values written by store_design_results() first
+        (present after a full design run), then fall back to raw input_dict keys
+        (present when the dialog is opened before design has run).
+        """
+        out = {}
+
+        # ── Helpers ──────────────────────────────────────────────────────────────
+        def _str(val):
+            if val is None or val == "":
+                return ""
             return str(val)
 
-        out["grade_of_material"] = output_dict.get("material.girder", "")
-        mode = str(output_dict.get("geometry.design_mode", ""))
-        out["section_type"] = "Welded" if "Optimized" in mode else "Rolled"
-        out["total_depth"] = to_mm(output_dict.get("member_properties.girder_details.section_input.depth", ""))
-        out["web_thickness"] = to_mm(output_dict.get("member_properties.girder_details.section_input.web_thickness", ""))
-        out["top_flange_width"] = to_mm(output_dict.get("member_properties.girder_details.section_input.top_flange_width", ""))
-        out["top_flange_thickness"] = to_mm(output_dict.get("member_properties.girder_details.section_input.top_flange_thickness", ""))
-        out["bottom_flange_width"] = to_mm(output_dict.get("member_properties.girder_details.section_input.bottom_flange_width", ""))
-        out["bottom_flange_thickness"] = to_mm(output_dict.get("member_properties.girder_details.section_input.bottom_flange_thickness", ""))
-        out["torsional_restraint"] = to_mm(output_dict.get("member_properties.girder_details.section_properties.torsion_constant_it", ""))
-        out["warping_restraint"] = to_mm(output_dict.get("member_properties.girder_details.section_properties.warping_constant_iw", ""))
-        
-        # Shear
-        out["shear_material_yield_strength"] = to_str(output_dict.get("design_options.shear_studs.yield_strength", ""))
-        out["shear_material_ultimate_strength"] = to_str(output_dict.get("design_options.shear_studs.ultimate_strength", ""))
-        out["shear_diameter"] = to_str(output_dict.get("design_options.shear_studs.diameter", ""))
-        out["shear_height"] = to_str(output_dict.get("design_options.shear_studs.height", ""))
-        out["shear_transverse_spacing"] = to_str(output_dict.get("design_options.shear_studs.transverse_spacing", ""))
-        out["shear_studs_per_section"] = to_str(output_dict.get("design_options.shear_studs.count", ""))
+        def _mm(val):
+            """SI metres → mm string, 1 dp."""
+            try:
+                return f"{float(val) * 1000:.1f}"
+            except (TypeError, ValueError):
+                return _str(val)
 
-        def m2_to_cm2(val):
-            try: return f"{float(val) * 10000:.2f}"
-            except: return val
-        def m4_to_cm4(val):
-            try: return f"{float(val) * 1e8:.2f}"
-            except: return val
-        def m_to_cm(val):
-            try: return f"{float(val) * 100:.2f}"
-            except: return val
-        def m3_to_cm3(val):
-            try: return f"{float(val) * 1e6:.2f}"
-            except: return val
-        def m6_to_cm6(val):
-            try: return f"{float(val) * 1e12:.2f}"
-            except: return val
+        def _get(key, fallback_key=None, fallback_val=""):
+            """Read key; if missing or empty try fallback_key; else fallback_val."""
+            v = output_dict.get(key)
+            if v is not None and v != "":
+                return v
+            if fallback_key is not None:
+                v2 = output_dict.get(fallback_key)
+                if v2 is not None and v2 != "":
+                    return v2
+            return fallback_val
 
-        out["mass"] = to_str(output_dict.get("member_properties.girder_details.section_properties.mass", ""))
-        out["area"] = m2_to_cm2(output_dict.get("member_properties.girder_details.section_properties.area", ""))
-        out["iz"] = m4_to_cm4(output_dict.get("member_properties.girder_details.section_properties.iz", ""))
-        out["iv"] = m4_to_cm4(output_dict.get("member_properties.girder_details.section_properties.iy", ""))
-        out["rz"] = m_to_cm(output_dict.get("member_properties.girder_details.section_properties.radius_gyration_z", ""))
-        out["rv"] = m_to_cm(output_dict.get("member_properties.girder_details.section_properties.radius_gyration_y", ""))
-        out["zz"] = m3_to_cm3(output_dict.get("member_properties.girder_details.material_properties.modulus_of_elasticity_zz", ""))
-        out["zv"] = m3_to_cm3(output_dict.get("member_properties.girder_details.material_properties.modulus_of_elasticity_zy", ""))
-        out["zuz"] = m3_to_cm3(output_dict.get("member_properties.girder_details.material_properties.plastic_modulus_zuz", ""))
-        out["zuv"] = m3_to_cm3(output_dict.get("member_properties.girder_details.material_properties.plastic_modulus_zuy", ""))
-        out["it"] = m4_to_cm4(output_dict.get("member_properties.girder_details.section_properties.torsion_constant_it", ""))
-        out["iw"] = m6_to_cm6(output_dict.get("member_properties.girder_details.section_properties.warping_constant_iw", ""))
-        # Section designation fallback if rolled
-        out["section_designation"] = to_str(output_dict.get("member_properties.girder_details.section_input.is_section", ""))
+        # ─────────────────────────────────────────────────────────────────────────
+        # DIMENSIONAL DETAILS
+        # Prefer KEY_SD_* (post-design); fall back to raw input_dict keys (pre-design).
+        # ─────────────────────────────────────────────────────────────────────────
+
+        # Grade of Material
+        out["grade_of_material"] = _str(_get(
+            KEY_SD_GRADE_OF_MATERIAL,               # "steeldesign.details.grade_of_material"
+            "material.girder",                       # raw fallback
+        ))
+
+        # Section Type — KEY_SD_SECTION_TYPE written as "Welded"/"Rolled" by store_design_results.
+        # Raw fallback: derive from design_mode ("Optimized" → "Welded").
+        sd_type = _get(KEY_SD_SECTION_TYPE)
+        if not sd_type:
+            mode = _str(output_dict.get("geometry.design_mode", ""))
+            sd_type = "Welded" if "Optimized" in mode else "Rolled"
+        out["section_type"] = _str(sd_type)
+
+        # Section Designation — "D × bf_top × tf_top × bf_bot × tf_bot" built by store_design_results.
+        # Raw fallback: rolled IS section name.
+        out["section_designation"] = _str(_get(
+            KEY_SD_SECTION_DESIGNATION,
+            "member_properties.girder_details.section_input.is_section",
+        ))
+
+        # Section Class — only available post-design (no raw fallback).
+        out["section_class"] = _str(_get(KEY_SD_SECTION_CLASS))
+
+        # Plate dimensions — KEY_SD_* are already in mm (post-design).
+        # Raw fallback keys are SI (m) → convert with _mm().
+        def _dim(sd_key, raw_key):
+            v = output_dict.get(sd_key)
+            if v is not None and v != "":
+                return _str(round(float(v), 1))      # already mm
+            raw = output_dict.get(raw_key)
+            if raw is not None and raw != "":
+                return _mm(raw)                       # SI → mm
+            return ""
+
+        out["total_depth"] = _dim(
+            KEY_SD_TOTAL_DEPTH,
+            "member_properties.girder_details.section_input.depth",
+        )
+        out["web_thickness"] = _dim(
+            KEY_SD_WEB_THICKNESS,
+            "member_properties.girder_details.section_input.web_thickness",
+        )
+        out["top_flange_width"] = _dim(
+            KEY_SD_TOP_FLANGE_WIDTH,
+            "member_properties.girder_details.section_input.top_flange_width",
+        )
+        out["top_flange_thickness"] = _dim(
+            KEY_SD_TOP_FLANGE_THICKNESS,
+            "member_properties.girder_details.section_input.top_flange_thickness",
+        )
+        out["bottom_flange_width"] = _dim(
+            KEY_SD_BOTTOM_FLANGE_WIDTH,
+            "member_properties.girder_details.section_input.bottom_flange_width",
+        )
+        out["bottom_flange_thickness"] = _dim(
+            KEY_SD_BOTTOM_FLANGE_THICKNESS,
+            "member_properties.girder_details.section_input.bottom_flange_thickness",
+        )
+
+        # Torsional / Warping Restraint — string labels from Additional Inputs.
+        # store_design_results writes the label string; no meaningful raw fallback.
+        out["torsional_restraint"] = _str(_get(KEY_SD_TORSIONAL_RESTRAINT))
+        out["warping_restraint"]   = _str(_get(KEY_SD_WARPING_RESTRAINT))
+
+        # Web Type — string label from Additional Inputs.
+        out["web_type"] = _str(_get(KEY_SD_WEB_TYPE))
+
+        # Effective Slab Width — mm, only available post-design.
+        eff = output_dict.get(KEY_SD_EFFECTIVE_SLAB_WIDTH)
+        out["effective_slab_width"] = _str(round(float(eff), 1)) if eff not in (None, "") else ""
+
+        # ─────────────────────────────────────────────────────────────────────────
+        # SHEAR CONNECTOR DETAILS
+        # ─────────────────────────────────────────────────────────────────────────
+
+        out["shear_material_yield_strength"] = _str(_get(
+            KEY_SD_SHEAR_YIELD_STRENGTH,
+            "design_options.shear_studs.yield_strength",
+        ))
+        out["shear_material_ultimate_strength"] = _str(_get(
+            KEY_SD_SHEAR_ULTIMATE_STRENGTH,
+            "design_options.shear_studs.ultimate_strength",
+        ))
+        out["shear_diameter"] = _str(_get(
+            KEY_SD_SHEAR_DIAMETER,
+            "design_options.shear_studs.diameter",
+        ))
+        out["shear_height"] = _str(_get(
+            KEY_SD_SHEAR_HEIGHT,
+            "design_options.shear_studs.height",
+        ))
+        out["shear_transverse_spacing"] = _str(_get(
+            KEY_SD_SHEAR_TRANSVERSE_SPACING,
+            "design_options.shear_studs.transverse_spacing",
+        ))
+        out["shear_studs_per_section"] = _str(_get(
+            KEY_SD_SHEAR_STUDS_PER_SECTION,
+            "design_options.shear_studs.count",
+        ))
+        # Longitudinal spacing — only available post-design (computed by IRC 22 pipeline).
+        out["shear_longitudinal_spacing"] = _str(_get(KEY_SD_SHEAR_LONGITUDINAL_SPACING))
+
+        # ─────────────────────────────────────────────────────────────────────────
+        # SECTION PROPERTIES
+        # Display units: cm², cm⁴, cm, cm³, cm⁶  (matches girder_details_tab convention)
+        # KEY_SD_SECTION_PROP_* store SI values (m², m⁴ …) from input_dict.
+        # ─────────────────────────────────────────────────────────────────────────
+
+        def _si(sd_key, raw_key, conv_fn):
+            """Read sd_key or raw_key; apply conv_fn to convert SI → display unit."""
+            v = output_dict.get(sd_key)
+            if v is None or v == "":
+                v = output_dict.get(raw_key)
+            if v is None or v == "":
+                return ""
+            try:
+                return f"{conv_fn(float(v)):.2f}"
+            except (TypeError, ValueError):
+                return _str(v)
+
+        m2_to_cm2  = lambda v: v * 1e4
+        m4_to_cm4  = lambda v: v * 1e8
+        m_to_cm    = lambda v: v * 1e2
+        m3_to_cm3  = lambda v: v * 1e6
+        m6_to_cm6  = lambda v: v * 1e12
+
+        out["mass"] = _str(_get(
+            KEY_SD_SECTION_PROP_MASS,
+            "member_properties.girder_details.section_properties.mass",
+        ))
+        out["area"] = _si(
+            KEY_SD_SECTION_PROP_AREA,
+            "member_properties.girder_details.section_properties.area",
+            m2_to_cm2,
+        )
+        out["iz"] = _si(
+            KEY_SD_SECTION_PROP_IZ,
+            "member_properties.girder_details.section_properties.iz",
+            m4_to_cm4,
+        )
+        out["iv"] = _si(
+            KEY_SD_SECTION_PROP_IV,
+            "member_properties.girder_details.section_properties.iy",
+            m4_to_cm4,
+        )
+        out["rz"] = _si(
+            KEY_SD_SECTION_PROP_RZ,
+            "member_properties.girder_details.section_properties.radius_gyration_z",
+            m_to_cm,
+        )
+        out["rv"] = _si(
+            KEY_SD_SECTION_PROP_RV,
+            "member_properties.girder_details.section_properties.radius_gyration_y",
+            m_to_cm,
+        )
+        out["zz"] = _si(
+            KEY_SD_SECTION_PROP_ZZ,
+            "member_properties.girder_details.material_properties.modulus_of_elasticity_zz",
+            m3_to_cm3,
+        )
+        out["zv"] = _si(
+            KEY_SD_SECTION_PROP_ZV,
+            "member_properties.girder_details.material_properties.modulus_of_elasticity_zy",
+            m3_to_cm3,
+        )
+        out["zuz"] = _si(
+            KEY_SD_SECTION_PROP_ZUZ,
+            "member_properties.girder_details.material_properties.plastic_modulus_zuz",
+            m3_to_cm3,
+        )
+        out["zuv"] = _si(
+            KEY_SD_SECTION_PROP_ZUV,
+            "member_properties.girder_details.material_properties.plastic_modulus_zuy",
+            m3_to_cm3,
+        )
+        out["it"] = _si(
+            KEY_SD_SECTION_PROP_IT,
+            "member_properties.girder_details.section_properties.torsion_constant_it",
+            m4_to_cm4,
+        )
+        out["iw"] = _si(
+            KEY_SD_SECTION_PROP_IW,
+            "member_properties.girder_details.section_properties.warping_constant_iw",
+            m6_to_cm6,
+        )
+        out["torsional_restraint"] = _str(
+            _get(KEY_SD_TORSIONAL_RESTRAINT) or "Fully Restrained"
+        )
+        out["warping_restraint"] = _str(
+            _get(KEY_SD_WARPING_RESTRAINT) or "Both Flanges Restrained"
+        )
+        out["web_type"] = _str(
+            _get(KEY_SD_WEB_TYPE) or "Thin Web with ITS"
+        )
+
+        grade = out.get("grade_of_material", "")   # already resolved above
+
+        # StiffenerDetailsTab.collect_data() saves values nested under
+        # stiffener_by_member[member_id]. Read from the first member's state
+        # as the pre-design fallback; post-design flat keys take priority.
+        stiffener_data = output_dict.get("stiffener_by_member") or {}
+        first_member_state = {}
+        if stiffener_data:
+            first_key = next(iter(stiffener_data), None)
+            if first_key:
+                first_member_state = stiffener_data[first_key] or {}
+
+        def _stiff_val(flat_key, nested_key=None):
+            """Read post-design flat key first; fall back to nested member state."""
+            if flat_key:
+                v = output_dict.get(flat_key)
+                if v is not None and str(v).strip() not in ("", "None"):
+                    return str(v)
+            if nested_key:
+                v2 = first_member_state.get(nested_key)
+                if v2 is not None and str(v2).strip() not in ("", "None"):
+                    return str(v2)
+            return ""
+
+        # ── Bearing (always populated) ────────────────────────────────────────────
+        out["stiff_bearing_grade"]     = _stiff_val("stiff_bearing_grade") or grade
+        out["stiff_bearing_thickness"] = _stiff_val("stiff_bearing_thickness", "bearing_thickness_value")
+        out["stiff_bearing_width"]     = _stiff_val("stiff_bearing_width",     "bearing_outstand_mm")
+        out["stiff_bearing_spacing"]   = _stiff_val("stiff_bearing_spacing",   "bearing_spacing_mm")
+        for key in ("stiff_bearing_grade", "stiff_bearing_thickness", "stiff_bearing_width", "stiff_bearing_spacing"):
+            if not out[key] or str(out[key]).strip() in ("", "None"):
+                out[key] = "NA"
+
+        # ── Intermediate ──────────────────────────────────────────────────────────
+        int_from_store = output_dict.get("stiff_intermediate_grade")
+        int_flag_raw = str(
+            first_member_state.get("intermediate_stiffener")
+            or output_dict.get("intermediate_stiffener", "No")
+        ).strip()
+
+        if int_from_store is not None:
+            out["stiff_intermediate_grade"]     = _stiff_val("stiff_intermediate_grade")
+            out["stiff_intermediate_thickness"] = _stiff_val("stiff_intermediate_thickness")
+            out["stiff_intermediate_width"]     = _stiff_val("stiff_intermediate_width")
+            out["stiff_intermediate_spacing"]   = _stiff_val("stiff_intermediate_spacing")
+        elif int_flag_raw == "Yes":
+            out["stiff_intermediate_grade"]     = grade
+            out["stiff_intermediate_thickness"] = _stiff_val("", "intermediate_thickness_value")
+            out["stiff_intermediate_width"]     = _stiff_val("", "intermediate_outstand_mm")
+            out["stiff_intermediate_spacing"]   = _stiff_val("", "intermediate_spacing_mm")
+        else:
+            out["stiff_intermediate_grade"]     = "NA"
+            out["stiff_intermediate_thickness"] = "NA"
+            out["stiff_intermediate_width"]     = "NA"
+            out["stiff_intermediate_spacing"]   = "NA"
+        for key in ("stiff_intermediate_grade", "stiff_intermediate_thickness", "stiff_intermediate_width", "stiff_intermediate_spacing"):
+            if not out[key] or str(out[key]).strip() in ("", "None"):
+                out[key] = "NA"
+
+        # ── Longitudinal ──────────────────────────────────────────────────────────
+        long_from_store = output_dict.get("stiff_longitudinal_grade")
+        long_flag_raw = str(
+            first_member_state.get("longitudinal_stiffener")
+            or output_dict.get("longitudinal_stiffener", "No")
+        ).strip()
+
+        if long_from_store is not None:
+            out["stiff_longitudinal_grade"]     = _stiff_val("stiff_longitudinal_grade")
+            out["stiff_longitudinal_thickness"] = _stiff_val("stiff_longitudinal_thickness")
+            out["stiff_longitudinal_width"]     = _stiff_val("stiff_longitudinal_width")
+            out["stiff_longitudinal_spacing"]   = _stiff_val("stiff_longitudinal_spacing")
+        elif long_flag_raw != "No":
+            out["stiff_longitudinal_grade"]     = grade
+            out["stiff_longitudinal_thickness"] = _stiff_val("", "longitudinal_thickness_value")
+            out["stiff_longitudinal_width"]     = "NA"
+            out["stiff_longitudinal_spacing"]   = "NA"
+        else:
+            out["stiff_longitudinal_grade"]     = "NA"
+            out["stiff_longitudinal_thickness"] = "NA"
+            out["stiff_longitudinal_width"]     = "NA"
+            out["stiff_longitudinal_spacing"]   = "NA"
+        for key in ("stiff_longitudinal_grade", "stiff_longitudinal_thickness", "stiff_longitudinal_width", "stiff_longitudinal_spacing"):
+            if not out[key] or str(out[key]).strip() in ("", "None"):
+                out[key] = "NA"
 
         return out
 
@@ -516,11 +816,11 @@ class SteelDesignDetailsTab(QWidget):
             segments = [{"id": "G1M1", "start": 0.0, "end": length_m, "length": length_m}]
             
             stiff_state = {
-                "bearing_stiffeners_each_end": str(output_dict.get("member_properties.stiffener_details.no_bearing_stiffeners_each_end", "2")),
-                "bearing_spacing_mm": str(output_dict.get("member_properties.stiffener_details.bearing_stiffener_spacing", "200")),
-                "intermediate_stiffener": str(output_dict.get("member_properties.stiffener_details.intermediate_stiffener", "Yes")),
-                "intermediate_spacing_mm": str(output_dict.get("member_properties.stiffener_details.intermediate_stiffener_spacing", "1500")),
-                "longitudinal_stiffener": str(output_dict.get("member_properties.stiffener_details.longitudinal_stiffener", "None"))
+                "bearing_stiffeners_each_end": str(output_dict.get("bearing_stiffeners_each_end", "2")),
+                "bearing_spacing_mm":          str(output_dict.get("bearing_spacing_mm", "")),
+                "intermediate_stiffener":      str(output_dict.get("intermediate_stiffener", "No")),
+                "intermediate_spacing_mm":     str(output_dict.get("intermediate_spacing_mm", "NA")),
+                "longitudinal_stiffener":      str(output_dict.get("longitudinal_stiffener", "No")),
             }
 
             stiffener_by_member = {"G1M1": stiff_state}

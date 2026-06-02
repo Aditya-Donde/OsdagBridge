@@ -168,6 +168,15 @@ class SteelSection:
         return self.Af_top + self.Aw + self.Af_bot
 
     @property
+    def designation(self) -> str:
+        # "dw x bf_top x tf_top x bf_bot x tf_bot"
+        # e.g. "1455 x 400 x 20 x 500 x 25"
+        return (
+            f"{self.D:.0f} x {self.bf_top:.0f} x {self.tf_top:.0f}"
+            f" x {self.bf_bot:.0f} x {self.tf_bot:.0f}"
+        )
+
+    @property
     def y_cg_from_bot(self) -> float:
         # Steel centroid measured from bottom fibre (mm).
         y_b = self.tf_bot / 2.0
@@ -262,6 +271,7 @@ class ShearStudConfig:
     diameter: float = 22.0
     height: float = 150.0
     fu: float = 500.0
+    fy: float = 350.0
     n_per_section: int = 2
 
 
@@ -507,6 +517,7 @@ class CapacityResults:
     chi_LT: float = 0.0
     Mb_kNm: float = 0.0
     # Stage 1 LTB (girder only, LLT = full span) — lower Mb, used for girder-SW check.
+    NRd_kN: float = 0.0 
     Mb_kNm_stage1: float = 0.0
     lambda_LT_stage1: float = 0.0
     chi_LT_stage1: float = 0.0
@@ -1568,6 +1579,11 @@ class IRC22CapacityCalculator:
         results.Vd_kN = shear["Vd_kN"]
         results.details["shear_capacity"] = shear
 
+        # 4b. Axial resistance for M-N interaction (Cl.603.3.3.3)
+        _fyw  = shear["fyw_MPa"]
+        _gm0  = self.mat.gamma_m0
+        results.NRd_kN = self.sec.A_steel * _fyw / _gm0 / 1e3
+
         # 5. LTB buckling resistance — Stage 2: cross-bracings in place, LLT = cross-bracing spacing.
         # FIX
         ltb = self.compute_buckling_resistance(
@@ -1783,6 +1799,27 @@ class DCREngine:
     PASS_THRESHOLD = DCR_PASS_THRESHOLD
     FAIL_THRESHOLD = DCR_FAIL_THRESHOLD
 
+    CATEGORY_MAP: Dict[int, tuple] = {
+    1 : (1, "Strength – Flexure"),
+    2 : (2, "Strength – Shear"),
+    3 : (3, "Interaction"),
+    4 : (3, "Interaction"),
+    5 : (4, "Lateral Torsional Buckling"),
+    6 : (5, "Longitudinal & Transverse Shear"),
+    7 : (5, "Longitudinal & Transverse Shear"),
+    8 : (6, "Fatigue"),
+    9 : (6, "Fatigue"),
+    10: (7, "SLS Stress Limitation"),
+    11: (7, "SLS Stress Limitation"),
+    12: (7, "SLS Stress Limitation"),
+    13: (8, "Deflection & Crack Control"),
+    14: (8, "Deflection & Crack Control"),
+    15: (8, "Deflection & Crack Control"),
+    16: (5, "Longitudinal & Transverse Shear"),
+    17: (5, "Longitudinal & Transverse Shear"),
+    # 20, 21 — stiffener: excluded from the 8-category aggregation
+    }
+
     def __init__(self, demand: DemandEnvelope, capacity: CapacityResults):
         self.demand = demand
         self.capacity = capacity
@@ -1811,6 +1848,49 @@ class DCREngine:
             dcr=round(dcr, 4), status=status, note=note,
         )
         self.checks.append(result)
+        return result
+    
+    def category_urs(self) -> Dict[int, dict]:
+        """Aggregate check-level DCRs into one governing entry per design category (1–8)."""
+        from collections import defaultdict
+
+        buckets: Dict[int, list] = defaultdict(list)
+        for chk in self.checks:
+            cat_entry = self.CATEGORY_MAP.get(chk.check_id)
+            if cat_entry is None:
+                continue
+            cat_no, _ = cat_entry
+            buckets[cat_no].append(chk)
+
+        result: Dict[int, dict] = {}
+        for cat_no in range(1, 9):
+            rows = buckets.get(cat_no)
+            if not rows:
+                continue
+            _, label = self.CATEGORY_MAP[rows[0].check_id]
+            max_dcr  = max(c.dcr for c in rows)
+            status   = self.classify(max_dcr)
+            result[cat_no] = {
+                "category_no": cat_no,
+                "label"      : label,
+                "max_dcr"    : round(max_dcr, 4),
+                "status"     : status,
+                "sub_checks" : [
+                    {
+                        "check_id"     : c.check_id,
+                        "name"         : c.name,
+                        "clause"       : c.clause,
+                        "demand"       : c.demand,
+                        "demand_unit"  : c.demand_unit,
+                        "capacity"     : c.capacity,
+                        "capacity_unit": c.capacity_unit,
+                        "dcr"          : c.dcr,
+                        "status"       : c.status,
+                        "note"         : c.note,
+                    }
+                    for c in rows
+                ],
+            }
         return result
 
     # Run all IRC 22:2015 design checks — mapped to the 8 output-dock categories.    # ←── CHANGED
@@ -2681,6 +2761,7 @@ def run_design_check(
         )
         g_engine = DCREngine(g_demand, g_cap)
         g_engine.run_all_checks()
+        g_cat_urs = g_engine.category_urs()
         # FIX
         if per_girder_per_lc is None:
             raise ValueError(
@@ -2730,6 +2811,7 @@ def run_design_check(
                 }
                 for chk in g_engine.checks
             ],
+            "category_urs": g_cat_urs,     
             "per_lc": {
                 lc_name: {
                     "Mu_kNm"  : lc_d.Mu_kNm,
@@ -2814,6 +2896,7 @@ def run_design_check(
         "stud_dia_mm"               : config.studs.diameter,
         "stud_height_mm"            : config.studs.height,
         "stud_fu_MPa"               : config.studs.fu,
+        "stud_fy_MPa"               : config.studs.fy, 
         "studs_per_section"         : config.studs.n_per_section,
         # -- controlling girder --
         "controlling_girder"        : ctrl_name,
@@ -2835,16 +2918,29 @@ def run_design_check(
         "demand_member"             : demand.member,
         "demand_source"             : demand.source,
         # -- capacities: ULS flexure --
+        "Ag_mm2"                    : capacity.Ag_mm2,
+        "NRd_kN"                    : capacity.NRd_kN,
         "beff_mm"                   : capacity.beff_mm,
         "xu_mm"                     : capacity.xu_mm,
         "pna_location"              : capacity.pna_location,
         "Mp_kNm"                    : capacity.Mp_kNm,
         "Md_kNm"                    : capacity.Md_kNm,
+        # -- section classification --
+        "section_class_web"        : capacity.details["section_class"]["web_class"],
+        "section_class_flange"     : capacity.details["section_class"]["flange_class"],
+        "section_class_governing"  : capacity.details["section_class"]["governing_class"],
+        "section_epsilon"          : capacity.details["section_class"]["epsilon"],
+        "section_designation"      : _sec.designation,
+        "stiffener_grade"          : _mat.steel_grade,
         # -- capacities: LTB --
         "Mcr_kNm"                   : capacity.Mcr_kNm,
         "lambda_LT"                 : capacity.lambda_LT,
         "chi_LT"                    : capacity.chi_LT,
         "Mb_kNm"                    : capacity.Mb_kNm,
+        # -- capacities: LTB Stage 1 (girder only, no cross-bracings) --
+        "Mb_kNm_stage1"            : capacity.Mb_kNm_stage1,
+        "lambda_LT_stage1"         : capacity.lambda_LT_stage1,
+        "chi_LT_stage1"            : capacity.chi_LT_stage1,
         # -- capacities: shear --
         "Av_mm2"                    : capacity.Av_mm2,
         "Vn_kN"                     : capacity.Vn_kN,
@@ -2891,7 +2987,15 @@ def run_design_check(
         # -- crack control --
         "As_min_crack_mm2"          : capacity.As_min_crack_mm2,
         "As_provided_crack_mm2"     : capacity.As_provided_crack_mm2,
-        # -- stiffener --
+        # -- stiffener inputs (grade = steel_grade above; same material assumed) --
+        "is_tq_mm"                  : config.stiffener.tq_mm if config.stiffener else 0.0,
+        "is_H_mm"                   : config.stiffener.H_mm if config.stiffener else 0.0,
+        "is_c_mm"                   : config.stiffener.c_mm if config.stiffener else 0.0,
+        "is_n_sides"                : config.stiffener.n_sides if config.stiffener else 0,
+        "bs_tq_mm"                  : config.stiffener.bs_tq_mm if config.stiffener else 0.0,
+        "bs_H_mm"                   : config.stiffener.bs_H_mm if config.stiffener else 0.0,
+        "bs_n_plates"               : config.stiffener.bs_n_plates if config.stiffener else 0,
+        # -- stiffener capacities --
         "is_H_limit_mm"             : capacity.is_H_limit_mm,
         "is_Iys_min_mm4"            : capacity.is_Iys_min_mm4,
         "is_Iys_prov_mm4"           : capacity.is_Iys_prov_mm4,
@@ -2908,6 +3012,7 @@ def run_design_check(
         "n_pass"                    : engine.n_pass(),
         "n_warn"                    : engine.n_warn(),
         "n_fail"                    : engine.n_fail(),
+        "category_urs": engine.category_urs(),
         # -- DCR check rows --
         "checks": [
             {
