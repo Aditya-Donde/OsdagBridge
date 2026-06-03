@@ -2708,12 +2708,7 @@ def run_design_check(
     per_girder_per_lc: "Dict[str, Dict[str, DemandEnvelope]] | None" = None,
     print_report: bool = True,
 ) -> tuple:
-    print("=" * 60)
-    print("  IRC 22:2015 DESIGN CHECK PIPELINE")
-    print("=" * 60)
-
     # -- Step 1: Configuration --
-    print("\n[Step 1] Loading bridge configuration ...")
     if plate_girder_bridge is not None:
         config = BridgeConfig.from_plate_girder_bridge(plate_girder_bridge)
     elif config is None:
@@ -2725,8 +2720,6 @@ def run_design_check(
     # create a default StiffenerConfig so the pipeline always runs in guidance mode at minimum.
     if config.stiffener is None:
         config.stiffener = StiffenerConfig()
-        print("  [INFO] stiffener not set — using default StiffenerConfig() (guidance mode)")
-    print(f"  Config: {config.summary()}")
 
     if per_girder_demands is None and analysis_results is not None:
         per_girder_demands, per_girder_per_lc = _extract_demands_from_analysis_results(
@@ -2740,7 +2733,6 @@ def run_design_check(
         )
 
     # -- Step 2: Run IRC 22:2015 checks for every girder (1 to N) --
-    print(f"\n[Step 2] Running checks for {len(per_girder_demands)} girder(s) ...")
     per_girder_results: Dict[str, dict] = {}
 
     # Bearing reaction — if not explicitly set by the user, approximate from the maximum
@@ -2749,7 +2741,6 @@ def run_design_check(
     if config.stiffener.bs_R_kN <= 0.0 and per_girder_demands:
         max_Vu = max(d.Vu_kN for d in per_girder_demands.values())
         config.stiffener.bs_R_kN = max_Vu
-        print(f"  [INFO] bs_R_kN not set — using max Vu = {max_Vu:.1f} kN as bearing reaction default")
 
     for g_name, g_demand in per_girder_demands.items():
         g_cap = IRC22CapacityCalculator(config).compute_all(
@@ -2823,8 +2814,6 @@ def run_design_check(
             "_engine"  : g_engine,
             "_capacity": g_cap,
         }
-        icon = {"PASS": "+", "WARN": "~", "FAIL": "X"}.get(g_engine.overall_status(), "?")
-        print(f"  [{icon}] {g_name:<40} max_DCR={g_engine.max_dcr():.3f}  {g_engine.overall_status()}")
 
     # -- Step 3: Controlling girder = highest max DCR --
     ctrl_name = max(per_girder_results, key=lambda g: per_girder_results[g]["max_dcr"])
@@ -2835,19 +2824,10 @@ def run_design_check(
     for g in per_girder_results.values():
         g.pop("_engine", None)
         g.pop("_capacity", None)
-    print(f"\n  Controlling girder: {ctrl_name}  (max_DCR = {ctrl['max_dcr']:.3f})")
 
     # -- Step 4: Report for controlling girder only --
-    print("\n[Step 4] Generating report for controlling girder ...")
     reporter = ReportGenerator(config, demand, capacity, engine)
     report_text = reporter.generate()
-
-    if print_report:
-        print("\n" + report_text)
-
-    print("\n" + "=" * 60)
-    print(f"  PIPELINE COMPLETE -- {ctrl_name}  Overall: {engine.overall_status()}")
-    print("=" * 60)
 
     # -- Structured results dict --
     _sec = config.section

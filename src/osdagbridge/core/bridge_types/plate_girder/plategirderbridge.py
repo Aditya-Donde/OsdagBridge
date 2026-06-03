@@ -273,36 +273,6 @@ class PlateGirderBridge:
         self.create_sls_combinations()
         dataset = self._reanalyze_with_dedup()
 
-        inp = self.input_dict
-        print(
-            f"\n{'-'*60}\n"
-            f"  PLATE GIRDER BRIDGE - DESIGN SUMMARY\n"
-            f"{'-'*60}\n"
-            f"  Span                  : {float(inp[KEY_SPAN]):.1f} m\n"
-            f"  Overall width         : {inp[KEY_TS_OVERALL_WIDTH]:.3f} m\n"
-            f"  No. of girders        : {inp[KEY_TS_NO_OF_GIRDERS]}\n"
-            f"  Girder spacing        : {inp[KEY_TS_GIRDER_SPACING] * 1e3:.1f} mm\n"
-            f"  Deck overhang         : {inp[KEY_TS_DECK_OVERHANG] * 1e3:.1f} mm\n"
-            f"{'-'*60}\n"
-            f"  GIRDER CROSS-SECTION (all dimensions in mm)\n"
-            f"{'-'*60}\n"
-            f"  Total depth      D    : {inp[KEY_GIRDER_DEPTH]                   * 1e3:.1f}\n"
-            f"  Web depth        d_w  : {inp[KEY_GIRDER_WEB_DEPTH]               * 1e3:.1f}\n"
-            f"  Web thickness    t_w  : {inp[KEY_GIRDER_WEB_THICKNESS]           * 1e3:.1f}\n"
-            f"  Top flange width B_ft : {inp[KEY_GIRDER_TOP_FLANGE_WIDTH]        * 1e3:.1f}\n"
-            f"  Top flange thk   T_ft : {inp[KEY_GIRDER_TOP_FLANGE_THICKNESS]    * 1e3:.1f}\n"
-            f"  Bot flange width B_fb : {inp[KEY_GIRDER_BOTTOM_FLANGE_WIDTH]     * 1e3:.1f}\n"
-            f"  Bot flange thk   T_fb : {inp[KEY_GIRDER_BOTTOM_FLANGE_THICKNESS] * 1e3:.1f}\n"
-            f"{'-'*60}\n"
-            f"  SECTION PROPERTIES (SI units)\n"
-            f"{'-'*60}\n"
-            f"  Area   A  : {inp[KEY_GIRDER_SECTIONAL_AREA]:.6f} m^2\n"
-            f"  I_z       : {inp[KEY_GIRDER_SECTIONAL_IZ]:.6f} m^4\n"
-            f"  I_y       : {inp[KEY_GIRDER_SECTIONAL_IY]:.6f} m^4\n"
-            f"  I_t (J)   : {inp[KEY_GIRDER_TORSION_CONSTANT_IT]:.6f} m^3\n"
-            f"{'-'*60}\n"
-        )
-
         self._run_dcr_checks(dataset)
         self.result_data = self.grillage_model.get_result_data()
 
@@ -311,16 +281,6 @@ class PlateGirderBridge:
 
         # Freeze output_dict — no further writes allowed after this point
         self.output_dict = types.MappingProxyType(self.output_dict)
-        import pprint
-        sep = "=" * 60
-        print(f"\n{sep}\n  OUTPUT DICT (frozen) — {len(self.output_dict)} keys\n{sep}")
-        for k, v in self.output_dict.items():
-            if k == "crossbracing_design_results":
-                print(f"  {k!r} :")
-                pprint.pprint(v, indent=4, width=120)
-            else:
-                print(f"  {k!r:50s} : {v!r}")
-        print(sep)
 
     def _build_dtos(self) -> None:
         """Construct GrillageGeometry and DeckLayoutProperties DTOs from solved results."""
@@ -890,12 +850,10 @@ class PlateGirderBridge:
         from osdagbridge.core.bridge_types.plate_girder.results_data import enrich_crossbracing_dump
 
         if not self.result_data:
-            print("[CrossBracing] No analysis results available — skipping.")
             return {}
 
         cb = CrossBracingForces(bridge=self)
         if not cb.get_crossbracing_count():
-            print("[CrossBracing] No cross-bracing panels found — skipping.")
             return {}
 
         forces_dict = cb.get_design_forces_dict()
@@ -906,48 +864,8 @@ class PlateGirderBridge:
         pair_designs = cb.run_member_designs(forces_dict)
 
         enrich_crossbracing_dump(pair_designs)
-        self._print_crossbracing_design_results(forces_dict, pair_designs)
 
         return pair_designs
-
-    @staticmethod
-    def _print_crossbracing_design_results(forces_dict: dict, pair_designs: dict) -> None:
-        from osdagbridge.core.bridge_types.plate_girder.results_data import _extract_osdag_summary
-
-        sep = "=" * 75
-        print(f"\n{sep}")
-        print(f"{'CROSS BRACING — OSDAG DESIGN RESULTS':^75}")
-        print(sep)
-
-        for pair, vals in forces_dict.get("pairs", {}).items():
-            designs = pair_designs.get(pair, {})
-            print(f"  Pair : {pair}")
-
-            for label, t_key, c_key, member in (
-                ("Diagonal", "diag_tension_kN",  "diag_compression_kN",  "diagonal"),
-                ("Chord",    "chord_tension_kN", "chord_compression_kN", "chord"),
-            ):
-                member_designs = designs.get(member, {})
-                for force_type, force_key in (("Tension", t_key), ("Compression", c_key)):
-                    force_kn = vals.get(force_key)
-                    if force_kn is None:
-                        continue
-                    res  = _extract_osdag_summary(member_designs.get(force_type.lower()) or {})
-                    sec  = res.get("section")     or "—"
-                    cap  = res.get("capacity_kN") or "—"
-                    eff  = res.get("efficiency")
-                    slnd = res.get("slenderness")
-                    conn = res.get("connection")  or "—"
-
-                    eff_str  = f"  eff={float(eff):.2f}" if eff  not in (None, "") else ""
-                    slnd_str = f"  λ={float(slnd):.1f}"  if slnd not in (None, "") else ""
-
-                    print(
-                        f"    {label:<8} [{force_type:>11}  {force_kn:>8.3f} kN]"
-                        f"  →  {sec}   cap={cap} kN{eff_str}{slnd_str}  {conn}"
-                    )
-
-        print(sep)
 
     # ─────────────────────────────────────────────────────────────────────────
     # Plotting
@@ -1131,12 +1049,6 @@ class PlateGirderBridge:
             resolved_median_type = raw_md_string
         else:
             resolved_median_type = KEY_MEDIAN_TYPE[1]  # safe default: RCC
-
-        
-        print("DEBUG railing raw:", raw_rl_string)
-        print("DEBUG railing resolved:", resolved_railing_value)
-        print("DEBUG girder spacing input m:", self.output_dict[KEY_TS_GIRDER_SPACING])
-        print("DEBUG girder spacing dto mm:", self.output_dict[KEY_TS_GIRDER_SPACING] * 1e3)
 
         return BridgeParametersDTO(
             # --- Material Grades ---
