@@ -183,6 +183,56 @@ class UIBuilder(QWidget):
     def _build_section(self, section: dict, parent_layout):
         """Build one section — checkbox groups or a normal card with grid."""
 
+        if section.get("checkbox_groups"):
+            # ── Checkbox groups (side-by-side QGroupBox) ──────────────────
+            title = section.get("title")
+            if title:
+                lbl = QLabel(title)
+                lbl.setStyleSheet("font-size: 12px; font-weight: bold; color: #000;")
+                parent_layout.addWidget(lbl)
+
+            groups_layout = QHBoxLayout()
+            groups_layout.setSpacing(20)
+
+            for group in section["checkbox_groups"]:
+                box = QGroupBox(group.get("title", ""))
+                box.setStyleSheet("""
+                    QGroupBox {
+                        border: 1px solid #000; border-radius: 8px;
+                        margin-top: 12px; padding: 8px; background-color: #fff;
+                    }
+                    QGroupBox::title {
+                        subcontrol-origin: margin; subcontrol-position: top left;
+                        left: 12px; padding: 0 6px; background-color: #fff;
+                        font-weight: 600; font-size: 11px; color: #000;
+                    }
+                """)
+                vbox = QVBoxLayout(box)
+                vbox.setContentsMargins(16, 20, 16, 16)
+                vbox.setSpacing(8)
+
+                checkboxes = []
+                default_checked = group.get("default_checked", False)
+                for item in group.get("items", []):
+                    label = item["label"] if isinstance(item, dict) else item
+                    cb_id = item.get("id") if isinstance(item, dict) else None
+                    cb = QCheckBox(label)
+                    cb.setChecked(default_checked)
+                    if cb_id:
+                        cb.setObjectName(cb_id)
+                    cb.setStyleSheet("QCheckBox { font-size: 11px; color: #333; spacing: 6px; }")
+                    vbox.addWidget(cb)
+                    checkboxes.append(cb)
+                vbox.addStretch()
+
+                bind_name = group.get("bind")
+                if bind_name:
+                    setattr(self.owner, bind_name, checkboxes)
+                groups_layout.addWidget(box)
+
+            parent_layout.addLayout(groups_layout)
+            return
+
         # ── Normal card with grid ──────────────────────────────────────────
         card, card_layout = self._create_section_card(section.get("title", ""))
         self._build_grid(section, card_layout)

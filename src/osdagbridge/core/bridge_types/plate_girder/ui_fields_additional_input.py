@@ -1511,28 +1511,37 @@ DESIGN_OPTIONS_CONT_SCHEMA = {
 
         # ──────────────────── Limit States ────────────────────
         {
-            "column": 2,
-            "title":  "Ultimate Limit States",
-            "rows": [
-                {"fields": [{"id": KEY_DO_ULS_BENDING,    "label": "Bending Resistance",                    "type": TYPE_CHECKBOX}]},
-                {"fields": [{"id": KEY_DO_ULS_SHEAR,      "label": "Resistance to Vertical Shear",          "type": TYPE_CHECKBOX}]},
-                {"fields": [{"id": KEY_DO_ULS_LTB,        "label": "Resistance to Lateral-torsional Buckling", "type": TYPE_CHECKBOX}]},
-                {"fields": [{"id": KEY_DO_ULS_TRANSVERSE,  "label": "Resistance to Transverse force",       "type": TYPE_CHECKBOX}]},
-                {"fields": [{"id": KEY_DO_ULS_LONG_SHEAR,  "label": "Resistance to Longitudinal Shear",     "type": TYPE_CHECKBOX}]},
-                {"fields": [{"id": KEY_DO_ULS_FATIGUE,     "label": "Resistance to Fatigue",                "type": TYPE_CHECKBOX}]},
-            ],
+            "column": 0,
+            "title":  "Limit States",
+            "checkbox_groups": [
+                {
+                    "title":           "Ultimate Limit States",
+                    "bind":            "ultimate_checkboxes",
+                    "default_checked": True,
+                    "items": [
+                        {"id": KEY_DO_ULS_BENDING,    "label": "Bending Resistance",                    "type": TYPE_CHECKBOX},
+                        {"id": KEY_DO_ULS_SHEAR,      "label": "Resistance to Vertical Shear",          "type": TYPE_CHECKBOX},
+                        {"id": KEY_DO_ULS_LTB,        "label": "Resistance to Lateral-torsional Buckling", "type": TYPE_CHECKBOX},
+                        {"id": KEY_DO_ULS_TRANSVERSE,  "label": "Resistance to Transverse force",       "type": TYPE_CHECKBOX},
+                        {"id": KEY_DO_ULS_LONG_SHEAR,  "label": "Resistance to Longitudinal Shear",     "type": TYPE_CHECKBOX},
+                        {"id": KEY_DO_ULS_FATIGUE,     "label": "Resistance to Fatigue",                "type": TYPE_CHECKBOX},
+                    ],
         },
         {
-            "column": 2,
-            "title":  "Serviceability Limit States",
-            "rows": [
-                {"fields": [{"id": KEY_DO_SLS_STRESS,      "label": "Stress Limitation",        "type": TYPE_CHECKBOX}]},
-                {"fields": [{"id": KEY_DO_SLS_LONG_SHEAR,  "label": "Longitudinal Shear (SLS)", "type": TYPE_CHECKBOX}]},
-                {"fields": [{"id": KEY_DO_SLS_DEFLECTION,  "label": "Deflection Control",       "type": TYPE_CHECKBOX}]},
-                {"fields": [{"id": KEY_DO_SLS_CRACK_WIDTH,  "label": "Crack Width Check",       "type": TYPE_CHECKBOX}]},
+            
+            "title":           "Serviceability Limit States",
+                    "bind":            "service_checkboxes",
+                    "default_checked": True,
+                    "items": [
+                        {"id": KEY_DO_SLS_STRESS,      "label": "Stress Limitation",        "type": TYPE_CHECKBOX},
+                        {"id": KEY_DO_SLS_LONG_SHEAR,  "label": "Longitudinal Shear (SLS)", "type": TYPE_CHECKBOX},
+                        {"id": KEY_DO_SLS_DEFLECTION,  "label": "Deflection Control",       "type": TYPE_CHECKBOX},
+                        {"id": KEY_DO_SLS_CRACK_WIDTH,  "label": "Crack Width Check",       "type": TYPE_CHECKBOX},
             ],
         },
     ],
+}
+    ]
 }
 
 
