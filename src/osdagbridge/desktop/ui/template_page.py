@@ -279,32 +279,9 @@ class CustomWindow(QWidget):
         self.plots_widget.setVisible(False)
         self.cad_log_splitter.addWidget(self.plots_widget)
 
-        # Connect toolbar buttons to plot widget
-        self.tool_bar.btn_zoom_fit.clicked.connect(self.plots_widget._zoom_reset)
-        self.tool_bar.btn_zoom_in.clicked.connect(self.plots_widget._zoom_in)
-        self.tool_bar.btn_zoom_out.clicked.connect(self.plots_widget._zoom_out)
+        # Connect engineering scale spinner directly (this is not handled by toolbar controller)
         if hasattr(self.tool_bar, "spin_scale"):
             self.tool_bar.spin_scale.valueChanged.connect(self.plots_widget.set_engineering_scale)
-
-        # Pan/Rotate are mutually exclusive
-        def on_pan_toggled(checked):
-            if checked:
-                self.tool_bar.btn_rotate.blockSignals(True)
-                self.tool_bar.btn_rotate.setChecked(False)
-                self.tool_bar.btn_rotate.blockSignals(False)
-                self.plots_widget._toggle_rotate(False)  # Explicitly disable rotate
-            self.plots_widget._toggle_pan(checked)
-
-        def on_rotate_toggled(checked):
-            if checked:
-                self.tool_bar.btn_pan.blockSignals(True)
-                self.tool_bar.btn_pan.setChecked(False)
-                self.tool_bar.btn_pan.blockSignals(False)
-                self.plots_widget._toggle_pan(False)  # Explicitly disable pan
-            self.plots_widget._toggle_rotate(checked)
-
-        self.tool_bar.btn_pan.toggled.connect(on_pan_toggled)
-        self.tool_bar.btn_rotate.toggled.connect(on_rotate_toggled)
 
         # Log dock (inside splitter)
         self.logs_dock = LogDock(parent=self)
@@ -822,6 +799,28 @@ class CustomWindow(QWidget):
 
     # Helper function to show and hide the 3D CAD | Plots | 2D CAD widgets
     def _set_central_view(self, view: str):
+        # First, explicitly turn off any active navigation modes in both views
+        # This prevents cross-contamination when switching views
+        try:
+            # Turn off CAD navigation modes
+            if hasattr(self.cad_3d_widget, 'component_selector'):
+                selector = self.cad_3d_widget.component_selector
+                if hasattr(selector, '_on_pan_toggled'):
+                    selector._on_pan_toggled(False)
+                if hasattr(selector, '_on_rotate_toggled'):
+                    selector._on_rotate_toggled(False)
+        except:
+            pass
+            
+        try:
+            # Turn off Plot navigation modes
+            if hasattr(self.plots_widget, '_toggle_pan'):
+                self.plots_widget._toggle_pan(False)
+            if hasattr(self.plots_widget, '_toggle_rotate'):
+                self.plots_widget._toggle_rotate(False)
+        except:
+            pass
+
         # Show only the requested widget; hide the other two
         self.cad_comp_widget.setVisible(view == 'dual')
         self.cad_3d_widget.setVisible(view == '3d')
@@ -835,22 +834,19 @@ class CustomWindow(QWidget):
 
         if view == 'dual':
             self.cad_log_splitter.setSizes([view_h, 0, 0, log_h])
+            # Reset toolbar when returning to dual view
+            self.toolbar_ctrl.reset()
         elif view == '3d':
             self.cad_log_splitter.setSizes([0, view_h, 0, log_h])
+            # Bind toolbar to 3D CAD view
+            self.toolbar_ctrl.bind_to_cad_3d(self.cad_3d_widget)
         else:  # plots
             self.cad_log_splitter.setSizes([0, 0, view_h, log_h])
+            # Bind toolbar to Plots view
+            self.toolbar_ctrl.bind_to_plots(self.plots_widget)
         
         # Update tool bar visibility based on view rules
         self._update_tool_bar_visibility()
-
-        # Rebind toolbar buttons to the newly active view
-        if hasattr(self, 'toolbar_ctrl'):
-            if view == '3d':
-                self.toolbar_ctrl.bind_to_cad_3d(self.cad_3d_widget)
-            elif view == 'plots':
-                self.toolbar_ctrl.bind_to_plots(self.plots_widget)
-            else:
-                self.toolbar_ctrl.reset()
         
     def _position_log_dock(self):
         """Position log dock at bottom of central widget as overlay (max 1/5 height)"""

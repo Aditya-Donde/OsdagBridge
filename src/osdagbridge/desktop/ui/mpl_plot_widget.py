@@ -9,7 +9,7 @@ import re
 
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QComboBox, QSizePolicy, QPushButton,
-    QFrame, QLabel, QCheckBox, QScrollArea, QApplication
+    QFrame, QLabel, QCheckBox, QScrollArea, QApplication, QRubberBand
 )
 from PySide6.QtCore import Qt, QEvent, QTimer
 
@@ -201,6 +201,15 @@ class MplPlotWidget(QWidget):
         self._cid_release = None   
         self._view_dragging   = False
         self._view_drag_start = None 
+        
+        # Auto-rotate state (like CAD 3D)
+        self._auto_rotate_timer = None
+        self._auto_rotate_angle = 0
+        self._AUTO_ROTATE_FPS = 60  # Same as CAD 3D
+        
+        # Zoom-window (rubber-band) state
+        self._rubber_band: QRubberBand | None = None
+        self._zwin_origin = None
 
         # matplotlib canvas
         self._fig    = plt.figure(figsize=(14, 6), facecolor="white")
@@ -268,45 +277,6 @@ class MplPlotWidget(QWidget):
             " border: 1px solid #0D47A1; }"
         )
 
-        self._btn_grillage = QPushButton("Grillage")
-        self._btn_grillage.setCheckable(True)
-        self._btn_grillage.setFixedHeight(28)
-        self._btn_grillage.setFocusPolicy(Qt.NoFocus)
-        self._btn_grillage.setStyleSheet(btn_style)
-        self._btn_grillage.toggled.connect(self._on_grillage_toggled)
-
-        self._btn_nodes = QPushButton("Nodes")
-        self._btn_nodes.setCheckable(True)
-        self._btn_nodes.setChecked(True) 
-        self._btn_nodes.setFixedHeight(28)
-        self._btn_nodes.setFocusPolicy(Qt.NoFocus)
-        self._btn_nodes.setStyleSheet(btn_style)
-        self._btn_nodes.toggled.connect(self._on_nodes_toggled)
-
-        self._btn_supports = QPushButton("Supports")
-        self._btn_supports.setCheckable(True)
-        self._btn_supports.setChecked(True) 
-        self._btn_supports.setFixedHeight(28)
-        self._btn_supports.setFocusPolicy(Qt.NoFocus)
-        self._btn_supports.setStyleSheet(btn_style)
-        self._btn_supports.toggled.connect(self._on_supports_toggled)
-
-        self._btn_axis = QPushButton("Axis")
-        self._btn_axis.setCheckable(True)
-        self._btn_axis.setChecked(False) 
-        self._btn_axis.setFixedHeight(28)
-        self._btn_axis.setFocusPolicy(Qt.NoFocus)
-        self._btn_axis.setStyleSheet(btn_style)
-        self._btn_axis.toggled.connect(self._on_axis_toggled)
-
-        self._btn_grid = QPushButton("Grid")
-        self._btn_grid.setCheckable(True)
-        self._btn_grid.setChecked(False) 
-        self._btn_grid.setFixedHeight(28)
-        self._btn_grid.setFocusPolicy(Qt.NoFocus)
-        self._btn_grid.setStyleSheet(btn_style)
-        self._btn_grid.toggled.connect(self._on_grid_toggled)
-
         self._btn_girder_labels = QPushButton("Girder Labels")
         self._btn_girder_labels.setCheckable(True)
         self._btn_girder_labels.setChecked(True)
@@ -319,15 +289,9 @@ class MplPlotWidget(QWidget):
         toolbar_row = QHBoxLayout()
         toolbar_row.setContentsMargins(4, 2, 4, 2)
         toolbar_row.setSpacing(4)
-        toolbar_row.addWidget(self._btn_grillage)
-        toolbar_row.addWidget(self._btn_nodes)
-        toolbar_row.addWidget(self._btn_supports) 
-        toolbar_row.addWidget(self._btn_axis) 
-        toolbar_row.addWidget(self._btn_grid)
         toolbar_row.addWidget(self._btn_girder_labels)
         toolbar_row.addStretch()
         toolbar_row.addWidget(self._btn_zoom_reset)
-
         # layout
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
@@ -515,10 +479,8 @@ class MplPlotWidget(QWidget):
 
             self._canvas.draw()
 
-            scale_label = self._engineering_scale_label(ax, force_key)
+            # Removed scale label from subtitle - will add as tooltip instead
             subtitle = f"Load Case/Combination : {loadcase}"
-            if scale_label:
-                subtitle = f"{subtitle}  |  {scale_label}"
             self._title_overlay.update_text(title, subtitle)
             self._position_title_overlay()
 
@@ -830,22 +792,16 @@ class MplPlotWidget(QWidget):
 
         elif self._pan_active:                                 # ← NEW: viewport drag
             if etype == QEvent.Type.MouseButtonPress and event.button() == Qt.LeftButton:
-                self._view_dragging   = True
-                self._view_drag_start = event.pos()
-                self._canvas.setCursor(Qt.ClosedHandCursor)
+                # Call the pan press handler instead of handling here
+                self._pan_on_press(event)
                 return True
-            elif etype == QEvent.Type.MouseMove and self._view_dragging:
-                delta = event.pos() - self._view_drag_start
-                self._view_drag_start = event.pos()
-                self._scroll_area.horizontalScrollBar().setValue(
-                    self._scroll_area.horizontalScrollBar().value() - delta.x())
-                self._scroll_area.verticalScrollBar().setValue(
-                    self._scroll_area.verticalScrollBar().value() - delta.y())
+            elif etype == QEvent.Type.MouseMove:
+                # Call the pan motion handler instead of handling here
+                self._pan_on_motion(event)
                 return True
-            elif etype == QEvent.Type.MouseButtonRelease and self._view_dragging:
-                self._view_dragging   = False
-                self._view_drag_start = None
-                self._canvas.setCursor(Qt.OpenHandCursor)
+            elif etype == QEvent.Type.MouseButtonRelease and event.button() == Qt.LeftButton:
+                # Call the pan release handler instead of handling here
+                self._pan_on_release(event)
                 return True
 
         return super().eventFilter(obj, event)
@@ -927,112 +883,178 @@ class MplPlotWidget(QWidget):
         self._apply_camera_zoom()
 
     def _toggle_pan(self, enabled: bool):
-        """Enable/disable pan mode."""
+        """
+        Enable/disable pan mode using matplotlib's native start_pan/drag_pan/end_pan.
+        Mirrors how CAD pan works — the viewer handles pan natively,
+        we just enable/disable the mode.
+        """
+        self._disconnect_pan_rotate()
         if enabled:
-            self._disconnect_pan_rotate()
             self._rotate_active = False
             self._zoom_window_active = False
-            self._pan_active = True
-            self._pan_start = None
-            self._canvas.setCursor(Qt.OpenHandCursor)
-            self._set_native_3d_mouse(rotate_btn=[], zoom_btn=[])
-            self._cid_press = self._canvas.mpl_connect("button_press_event", self._pan_on_press)
-            self._cid_motion = self._canvas.mpl_connect("motion_notify_event", self._pan_on_motion)
-            self._cid_release = self._canvas.mpl_connect("button_release_event", self._pan_on_release)
-        else:
-            self._pan_active = False
-            self._canvas.setCursor(Qt.ArrowCursor)
+            self._zwin_origin = None
+            if self._rubber_band is not None:
+                self._rubber_band.hide()
+            self._pan_active   = True
             self._pan_dragging = False
-            self._disconnect_pan_rotate()
+            self._pan_start    = None
+            # Disable native 3-D rotate so left button is free for pan
+            self._set_native_3d_mouse(rotate_btn=[], zoom_btn=[])
+            self._canvas.setCursor(Qt.OpenHandCursor)
+            # Note: Pan events are now handled by the eventFilter, not direct connections
+            # self._cid_press   = self._canvas.mpl_connect("button_press_event",   self._pan_on_press)
+            # self._cid_motion  = self._canvas.mpl_connect("motion_notify_event",  self._pan_on_motion)
+            # self._cid_release = self._canvas.mpl_connect("button_release_event", self._pan_on_release)
+        else:
+            self._pan_active   = False
+            self._pan_dragging = False
+            self._pan_start    = None
+            self._canvas.setCursor(Qt.ArrowCursor)
+            # Restore native 3-D defaults so rotate still works if mode is switched
             self._set_native_3d_mouse(rotate_btn=1, zoom_btn=3)
 
     def _pan_on_press(self, event):
-        """Store the starting position for pan."""
-        if event.inaxes and event.button == 1:
-            self._pan_start = (event.x, event.y)
-            self._pan_dragging = True
+        # Use matplotlib's native pan functionality
+        try:
+            if hasattr(event, 'button') and hasattr(event, 'inaxes'):  # Matplotlib event
+                if event.button == 1 and event.inaxes is not None:
+                    # Start native pan operation
+                    event.inaxes.start_pan(event.x, event.y, button=1)
+                    self._pan_dragging = True
+                    self._canvas.setCursor(Qt.ClosedHandCursor)
+            elif hasattr(event, 'pos'):  # Qt event
+                # For Qt events, find the axes under the cursor and start pan
+                pos = event.pos()
+                if self._fig and self._fig.axes:
+                    # Find the first axis that contains this position
+                    for ax in self._fig.axes:
+                        if ax.contains(event)[0]:
+                            # Use pixel coordinates for start_pan
+                            ax.start_pan(pos.x(), pos.y(), button=1)
+                            self._pan_dragging = True
+                            self._canvas.setCursor(Qt.ClosedHandCursor)
+                            break
+        except Exception as e:
+            print(f"Error in pan press: {e}")
 
     def _pan_on_motion(self, event):
-        """Pan the plot by shifting axis limits."""
-        if not self._pan_active or not self._pan_dragging or not self._pan_start or not event.inaxes:
+        if not self._pan_active or not self._pan_dragging:
             return
-
-        ax = event.inaxes
-
-        dx_px = event.x - self._pan_start[0]
-        dy_px = event.y - self._pan_start[1]
-
-        axbbox = ax.get_window_extent()
-        width_px = axbbox.width
-        height_px = axbbox.height
-
-        if width_px > 0 and height_px > 0:
-            xl, yl = ax.get_xlim(), ax.get_ylim()
-            data_dx = -dx_px * (xl[1] - xl[0]) / width_px
-            data_dy = dy_px * (yl[1] - yl[0]) / height_px
-
-            # 3D: shift X with horizontal drag and Z with vertical drag so
-            # the full plotted block appears to move in both directions.
-            if hasattr(ax, "get_zlim") and hasattr(ax, "set_zlim"):
-                zl = ax.get_zlim()
-                # Keep drag direction natural: dragging up moves scene up.
-                data_dz = -dy_px * (zl[1] - zl[0]) / height_px
-                ax.set_xlim(xl[0] + data_dx, xl[1] + data_dx)
-                ax.set_ylim(yl[0] + data_dy, yl[1] + data_dy)
-                ax.set_zlim(zl[0] + data_dz, zl[1] + data_dz)
+        
+        try:
+            # Use matplotlib's native pan functionality when possible
+            if hasattr(event, 'inaxes') and event.inaxes is not None:
+                # For matplotlib events, use the built-in drag_pan
+                event.inaxes.drag_pan(1, None, event.x, event.y)
             else:
-                # 2D fallback
-                ax.set_xlim(xl[0] + data_dx, xl[1] + data_dx)
-                ax.set_ylim(yl[0] + data_dy, yl[1] + data_dy)
-
+                # For Qt events or when we don't have inaxes, use our fallback
+                # Get the current mouse position
+                if hasattr(event, 'x'):
+                    pos_x, pos_y = event.x, event.y
+                else:
+                    pos = event.pos()
+                    pos_x, pos_y = pos.x(), pos.y()
+                
+                # Find the axis under the cursor
+                if self._fig and self._fig.axes:
+                    for ax in self._fig.axes:
+                        if ax.contains(event)[0]:
+                            # Create a simple event-like object for drag_pan
+                            class SimpleEvent:
+                                def __init__(self, x, y, inaxes):
+                                    self.x = x
+                                    self.y = y
+                                    self.inaxes = inaxes
+                            
+                            simple_event = SimpleEvent(pos_x, pos_y, ax)
+                            ax.drag_pan(1, None, simple_event.x, simple_event.y)
+                            break
+            
             self._canvas.draw_idle()
-
-        self._pan_start = (event.x, event.y)
+            
+            # Sync NavCube if present
+            if self._navcube_sync:
+                self._navcube_sync.force_sync()
+                
+        except Exception as e:
+            print(f"Pan motion error: {e}")
 
     def _pan_on_release(self, event):
-        self._pan_start = None
-        self._pan_dragging = False
+        if self._pan_dragging:
+            try:
+                # End the pan operation on all axes
+                if self._fig and self._fig.axes:
+                    for ax in self._fig.axes:
+                        if hasattr(ax, 'end_pan'):
+                            ax.end_pan()
+            except Exception as e:
+                print(f"Error ending pan: {e}")
+            finally:
+                # Reset state regardless of success
+                self._pan_dragging = False
+                self._pan_start = None
+                self._canvas.setCursor(Qt.OpenHandCursor)
 
+    # WITH
     def _toggle_rotate(self, enabled: bool):
-        """Enable/disable rotate mode (3D only)."""
+        """
+        Enable/disable rotate mode using matplotlib's native 3-D mouse.
+        Mirrors how CAD rotate works — the viewer handles rotation natively,
+        custom handlers only manage cursor and NavCube sync.
+        Now includes auto-rotate (continuous spinning) like CAD 3D.
+        """
+        self._disconnect_pan_rotate()
         if enabled:
-            self._disconnect_pan_rotate()
             self._pan_active = False
             self._zoom_window_active = False
-            self._rotate_active = True
-            self._rotate_start = None
+            self._zwin_origin = None
+            if self._rubber_band is not None:
+                self._rubber_band.hide()
+            self._rotate_active   = True
+            self._rotate_dragging = False
+            self._rotate_start    = None
+            
+            # Start auto-rotate (continuous spinning) like CAD 3D
+            self._start_auto_rotate()
+            
+            # Native matplotlib 3-D mouse: left drag = rotate, right drag = zoom
             self._set_native_3d_mouse(rotate_btn=1, zoom_btn=3)
             self._canvas.setCursor(Qt.OpenHandCursor)
-            self._cid_press = self._canvas.mpl_connect("button_press_event", self._rot_on_press)
-            self._cid_motion = self._canvas.mpl_connect("motion_notify_event", self._rot_on_motion)
+            # Connect only for cursor management and NavCube sync;
+            # actual rotation is handled entirely by matplotlib internals.
+            self._cid_press   = self._canvas.mpl_connect("button_press_event",   self._rot_on_press)
+            self._cid_motion  = self._canvas.mpl_connect("motion_notify_event",  self._rot_on_motion)
             self._cid_release = self._canvas.mpl_connect("button_release_event", self._rot_on_release)
         else:
-            self._rotate_active = False
-            self._canvas.setCursor(Qt.ArrowCursor)
+            self._rotate_active   = False
             self._rotate_dragging = False
-            self._disconnect_pan_rotate()
+            
+            # Stop auto-rotate when disabling rotate mode
+            self._stop_auto_rotate()
+            
+            self._canvas.setCursor(Qt.ArrowCursor)
+            # Restore default matplotlib 3D mouse behavior for native rotation
+            self._set_native_3d_mouse(rotate_btn=1, zoom_btn=3)
 
     def _rot_on_press(self, event):
         if event.button == 1:
-            self._rotate_start = (event.x, event.y)
             self._rotate_dragging = True
+            self._rotate_start    = (event.x, event.y)
+            self._canvas.setCursor(Qt.ClosedHandCursor)
 
     def _rot_on_motion(self, event):
-        if not self._rotate_active or not self._rotate_dragging or not self._rotate_start or not self._fig or not self._fig.axes:
+        if not self._rotate_active or not self._rotate_dragging:
             return
-        ax = self._fig.axes[0]
-        if not hasattr(ax, 'elev'):
-            return
-        dx = event.x - self._rotate_start[0]
-        dy = event.y - self._rotate_start[1]
-        self._rotate_start = (event.x, event.y)
-        ax.view_init(elev=max(-90, min(90, ax.elev + dy * 0.5)), azim=ax.azim - dx * 0.5)
+        # matplotlib's native mouse_init handles the 3-D rotation itself;
+        # we only need to keep the NavCube overlay in sync.
         self._navcube_sync.force_sync()
-        self._canvas.draw_idle()
 
     def _rot_on_release(self, event):
-        self._rotate_start = None
         self._rotate_dragging = False
+        self._rotate_start    = None
+        if self._rotate_active:
+            self._canvas.setCursor(Qt.OpenHandCursor)
+        self._navcube_sync.force_sync()
 
     def _set_native_3d_mouse(self, rotate_btn=1, zoom_btn=3):
         if not self._fig or not self._fig.axes:
@@ -1050,6 +1072,56 @@ class MplPlotWidget(QWidget):
                 except Exception:
                     pass
         self._cid_press = self._cid_motion = self._cid_release = None
+
+    # Auto-rotate methods (like CAD 3D) ─────────────────────────────────────
+    def _start_auto_rotate(self):
+        """Begin continuous horizontal (turntable) rotation at ~60 fps."""
+        self._stop_auto_rotate()
+        
+        if not self._fig or not self._fig.axes:
+            return
+        
+        # Store current view angles for reference
+        ax = self._fig.axes[0]
+        if hasattr(ax, 'elev') and hasattr(ax, 'azim'):
+            self._auto_rotate_angle = ax.azim
+        
+        # Create timer for smooth animation
+        self._auto_rotate_timer = QTimer(self)
+        self._auto_rotate_timer.setInterval(1000 // self._AUTO_ROTATE_FPS)
+        self._auto_rotate_timer.timeout.connect(self._auto_rotate_step)
+        self._auto_rotate_timer.start()
+
+    def _stop_auto_rotate(self):
+        """Stop continuous rotation."""
+        if self._auto_rotate_timer is not None:
+            self._auto_rotate_timer.stop()
+            self._auto_rotate_timer = None
+
+    def _auto_rotate_step(self):
+        """Advance rotation by a small amount for smooth spinning."""
+        if not self._fig or not self._fig.axes or not self._rotate_active:
+            self._stop_auto_rotate()
+            return
+        
+        try:
+            ax = self._fig.axes[0]
+            if hasattr(ax, 'elev') and hasattr(ax, 'azim'):
+                # Increment azimuth angle for turntable rotation
+                ax.azim += 0.5  # Small increment for smooth rotation
+                if ax.azim >= 360:
+                    ax.azim = 0
+                
+                # Keep elevation constant (horizontal rotation only)
+                # ax.elev remains unchanged
+                
+                self._canvas.draw_idle()
+                
+                # Sync NavCube if present
+                if self._navcube_sync:
+                    self._navcube_sync.force_sync()
+        except Exception:
+            self._stop_auto_rotate()
 
     @staticmethod
     def _value_unit_for_force_key(force_key: str) -> str:

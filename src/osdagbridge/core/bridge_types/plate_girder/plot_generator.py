@@ -272,8 +272,16 @@ def _draw_camera_arrow(ax, start, end, color, lw=2.2, gid=None):
 
 
 
-def _add_coordinate_triad(ax, nodes, scale=0.12):
-    """Draw X/Y/Z axes with 3D pyramid arrowheads and locked boundaries."""
+def _add_coordinate_triad(ax, nodes, scale=0.12, eng_scale: float = 1.0):
+    """Draw X/Y/Z axes with 3‑D arrowheads.
+
+    ``eng_scale`` is the engineering‑scale factor applied to the *value* axis
+    (Matplotlib **Z**, which we treat as Y).  The original implementation drew
+    the Z‑arrow using raw data units, so when the value axis was scaled the
+    arrow grew/shrank together with the plotted data.  By dividing the Z‑arrow
+    length by ``eng_scale`` we keep the visual size of the triad constant
+    regardless of how the value axis is scaled.
+    """
     xs = [c[0] for c in nodes.values()]
     zs = [c[2] for c in nodes.values()]
     
@@ -303,38 +311,32 @@ def _add_coordinate_triad(ax, nodes, scale=0.12):
     w_frac = 0.025
 
     # --- X-Axis (Span) ---
-    axis_len = max(xr, zr) * 0.10
-
+    # Use only the X-range (span length) so the triad stays the same size
+    # regardless of how the value axis (Z) is scaled by eng_scale.
+    axis_len = xr * 0.10
     start = (ox, oz, oy)
     end   = (ox + axis_len, oz, oy)
-
     _draw_camera_arrow(ax, start, end, colors["X"], lw=2.2, gid=tag)
-
     ax.text(
         end[0] + xr * 0.02, end[1], end[2],
         "X",
-        color=colors["X"],
-        fontsize=10,
-        fontweight="bold",
-        zorder=7,
-        gid=tag
+        color=colors["X"], fontsize=10, fontweight="bold",
+        zorder=7, gid=tag
     )
 
     # --- Z-Axis (Transverse width, mapped to Matplotlib Y) ---
-    end = (ox, oz + axis_len, oy)
-
+    # The Z-arrow length must be independent of the engineering scale.
+    # ``axis_len`` is expressed in data units; the value axis is scaled by
+    # ``eng_scale``.  Dividing by ``eng_scale`` yields a constant visual length.
+    z_axis_len = axis_len / max(eng_scale, 1e-6)
+    end = (ox, oz + z_axis_len, oy)
     _draw_camera_arrow(ax, start, end, colors["Z"], lw=2.2, gid=tag)
-
     ax.text(
         end[0], end[1] + yr * 0.03, end[2],
         "Z",
-        color=colors["Z"],
-        fontsize=10,
-        fontweight="bold",
-        zorder=7,
-        gid=tag
+        color=colors["Z"], fontsize=10, fontweight="bold",
+        zorder=7, gid=tag
     )
-
 
     # 3. CRITICAL FIX: Lock limits so drawing the triad doesn't stretch empty charts!
     ax.set_xlim(xlim)
@@ -744,7 +746,7 @@ def build_figure_sfd(ds, force_key, nodes, members, edge_dist=0.0, eng_scale=1.0
     ax.zaxis.pane.set_alpha(1.0)
     ax.grid(True, linestyle="--", linewidth=0.4, alpha=0.5)
 
-    _add_coordinate_triad(ax, nodes)
+    _add_coordinate_triad(ax, nodes, eng_scale=v_scale)
     ax.set_axis_off()
 
     return fig, summary_data
@@ -974,7 +976,7 @@ def build_figure_bmd(ds, force_key, nodes, members, edge_dist=0.0, eng_scale=1.0
     # Force the 3D plot to use the maximum available canvas space
     # Dedicate 18% of the right side purely to the massive axis labels.
     # This naturally shoves the 3D bridge perfectly into the center of the screen!
-    _add_coordinate_triad(ax, nodes)
+    _add_coordinate_triad(ax, nodes, eng_scale=v_scale)
     ax.set_axis_off()
     return fig, summary_data
 
@@ -1041,7 +1043,7 @@ def build_figure_bmd_contour(ds, force_key, nodes, members, edge_dist=0.0):
         include_end_transverse=False,
         show_inner_nodes=False,
     )
-    _add_coordinate_triad(ax, nodes)
+    _add_coordinate_triad(ax, nodes, eng_scale=1.0)
     _add_supports(ax, nodes, members, edge_dist=edge_dist)
 
     base_color = "#388E3C"
@@ -1387,7 +1389,7 @@ def build_figure_deflection(ds, disp_key, nodes, members, edge_dist=0.0, eng_sca
         pane.set_alpha(1.0)
         
     ax.grid(True, linestyle="--", linewidth=0.4, alpha=0.5)
-    _add_coordinate_triad(ax, nodes)
+    _add_coordinate_triad(ax, nodes, eng_scale=v_scale)
     ax.set_axis_off()
     return fig, summary_data
 

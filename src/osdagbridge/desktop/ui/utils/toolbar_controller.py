@@ -126,6 +126,9 @@ class ToolBarController:
     _TIP_ZOOM_FIT  = "Zoom Fit"    # one-shot action — not a toggle
     _TIP_ZOOM_IN   = "Zoom In"     # one-shot action — not a toggle
     _TIP_ZOOM_OUT  = "Zoom Out"    # one-shot action — not a toggle
+    _TIP_AXIS      = "Axis"
+    _TIP_GRID      = "Grid Lines"
+    _TIP_SUPPORTS  = "Supports"
 
     def __init__(self, tool_bar: "ToolBarWidget") -> None:
         self._toolbar = tool_bar
@@ -148,12 +151,18 @@ class ToolBarController:
         self._btn_zoom_in:  QPushButton | None = self._find_button(self._TIP_ZOOM_IN)
         self._btn_zoom_out: QPushButton | None = self._find_button(self._TIP_ZOOM_OUT)
 
+        # Plot toggle buttons — these become checkable when Plots view is bound:
+        self._btn_axis: QPushButton | None = self._find_button(self._TIP_AXIS)
+        self._btn_grid: QPushButton | None = self._find_button(self._TIP_GRID)
+        self._btn_supports: QPushButton | None = self._find_button(self._TIP_SUPPORTS)
+
         # Collected list of toggle buttons — used for bulk checkable/restore
         # operations in reset() and bind_to_*().
         self._managed_buttons: list[QPushButton] = [
             b for b in (
                 self._btn_grillage, self._btn_node,
                 self._btn_zoom_win, self._btn_pan, self._btn_rotate,
+                self._btn_axis, self._btn_grid, self._btn_supports,
             )
             if b is not None
         ]
@@ -241,6 +250,9 @@ class ToolBarController:
             except (RuntimeError, TypeError):
                 pass
         self._active_connections.clear()
+        
+        # Note: We no longer reset button states here to preserve user selections
+        # Button states are now managed by the specific view binding methods
 
     # ── PUBLIC API ────────────────────────────────────────────────────────────
 
@@ -292,6 +304,11 @@ class ToolBarController:
           • display.ZoomFactor(f)   — zoom in/out by factor f
         """
         self._disconnect_all()
+
+        # Restore PLOTS-only buttons to plain state (they should not be checkable in CAD view)
+        self._restore_plain(self._btn_axis)
+        self._restore_plain(self._btn_grid)
+        self._restore_plain(self._btn_supports)
 
         # ── Read initial checkbox state from BridgeComponentCheckbox (cad_3d.py) ──
         # The "Grillage view" and "Node" checkboxes are hidden from the panel
@@ -516,48 +533,142 @@ class ToolBarController:
         """
         self._disconnect_all()
 
-        # Read the current state of MplPlotWidget's internal buttons so the
+        # Read the current state of MplPlotWidget's internal state variables so the
         # toolbar buttons start in the correct checked/unchecked state.
-        try:
-            grillage_init = plots_widget._btn_grillage.isChecked()
-        except Exception:
-            grillage_init = False
-        try:
-            node_init = plots_widget._btn_nodes.isChecked()
-        except Exception:
-            node_init = False
+        def _initial_plot_state(attr_name: str, default: bool = False) -> bool:
+            try:
+                return getattr(plots_widget, attr_name) if hasattr(plots_widget, attr_name) else default
+            except Exception:
+                return default
+
+        grillage_init = _initial_plot_state('_grillage_mode', False)
+        node_init = _initial_plot_state('_show_nodes', True)
+        axis_init = _initial_plot_state('_show_axis', False)
+        grid_init = _initial_plot_state('_show_grid', False)
+        supports_init = _initial_plot_state('_show_supports', True)
+        pan_init = _initial_plot_state('_pan_active', False)
+        rotate_init = _initial_plot_state('_rotate_active', False)
 
         self._make_checkable(self._btn_grillage, grillage_init)
         self._make_checkable(self._btn_node,     node_init)
+        self._make_checkable(self._btn_axis,     axis_init)
+        self._make_checkable(self._btn_grid,     grid_init)
+        self._make_checkable(self._btn_supports, supports_init)
+        self._make_checkable(self._btn_pan,      pan_init)
+        self._make_checkable(self._btn_rotate,   rotate_init)
 
-        # ── Grillage — proxy to MplPlotWidget._btn_grillage (mpl_plot_widget.py) ──
+        # ── Grillage — direct call to MplPlotWidget._on_grillage_toggled ──────
         def _plots_toggle_grillage():
             """
-            Proxy the click to MplPlotWidget._btn_grillage (mpl_plot_widget.py).
-            That button is always visible, so .click() reliably fires all of
-            MplPlotWidget's internal grillage toggle/render logic.
-            Then sync the toolbar button to match its settled state.
+            Direct call to MplPlotWidget._on_grillage_toggled method.
+            This bypasses the internal button and calls the toggle logic directly.
+            Then sync the toolbar button to match the new state.
             """
             try:
-                plots_widget._btn_grillage.click()
-                self._sync_btn_to(
-                    self._btn_grillage,
-                    plots_widget._btn_grillage.isChecked()
-                )
+                # Get current state from toolbar button
+                checked = self._btn_grillage.isChecked()
+                plots_widget._on_grillage_toggled(checked)
+                # Sync the state back to the button
+                self._sync_btn_to(self._btn_grillage, checked)
             except Exception:
                 pass
 
-        # ── Node — proxy to MplPlotWidget._btn_nodes (mpl_plot_widget.py) ────
+        # ── Node — direct call to MplPlotWidget._on_nodes_toggled ────────────
         def _plots_toggle_node():
-            """Same pattern — proxies to MplPlotWidget._btn_nodes (mpl_plot_widget.py)."""
+            """Direct call to MplPlotWidget._on_nodes_toggled method."""
             try:
-                plots_widget._btn_nodes.click()
-                self._sync_btn_to(
-                    self._btn_node,
-                    plots_widget._btn_nodes.isChecked()
-                )
+                # Get current state from toolbar button
+                checked = self._btn_node.isChecked()
+                plots_widget._on_nodes_toggled(checked)
+                # Sync the state back to the button
+                self._sync_btn_to(self._btn_node, checked)
             except Exception:
                 pass
 
         self._connect(self._btn_grillage, _plots_toggle_grillage)
         self._connect(self._btn_node,     _plots_toggle_node)
+
+        # ── Axis — direct call to MplPlotWidget._on_axis_toggled ──────────────
+        def _plots_toggle_axis():
+            try:
+                # Get current state from toolbar button
+                checked = self._btn_axis.isChecked()
+                plots_widget._on_axis_toggled(checked)
+                # Sync the state back to the button
+                self._sync_btn_to(self._btn_axis, checked)
+            except Exception:
+                pass
+
+        self._connect(self._btn_axis, _plots_toggle_axis)
+
+        # ── Grid — direct call to MplPlotWidget._on_grid_toggled ────────────────
+        def _plots_toggle_grid():
+            try:
+                # Get current state from toolbar button
+                checked = self._btn_grid.isChecked()
+                plots_widget._on_grid_toggled(checked)
+                # Sync the state back to the button
+                self._sync_btn_to(self._btn_grid, checked)
+            except Exception:
+                pass
+
+        self._connect(self._btn_grid, _plots_toggle_grid)
+
+        # ── Supports — direct call to MplPlotWidget._on_supports_toggled ─────────
+        def _plots_toggle_supports():
+            try:
+                # Get current state from toolbar button
+                checked = self._btn_supports.isChecked()
+                plots_widget._on_supports_toggled(checked)
+                # Sync the state back to the button
+                self._sync_btn_to(self._btn_supports, checked)
+            except Exception:
+                pass
+
+        self._connect(self._btn_supports, _plots_toggle_supports)
+
+        # ── Pan — direct call to MplPlotWidget._toggle_pan ─────────────────────
+        try:
+            pan_init = plots_widget._pan_active if hasattr(plots_widget, '_pan_active') else False
+        except Exception:
+            pan_init = False
+        self._make_checkable(self._btn_pan, pan_init)
+
+        def _plots_toggle_pan():
+            try:
+                # Get current state from toolbar button
+                checked = self._btn_pan.isChecked()
+                plots_widget._toggle_pan(checked)
+                # Sync the state back to the button
+                self._sync_btn_to(self._btn_pan, checked)
+            except Exception:
+                pass
+
+        self._connect(self._btn_pan, _plots_toggle_pan)
+
+        # ── Rotate — direct call to MplPlotWidget._toggle_rotate ───────────────
+        try:
+            rotate_init = plots_widget._rotate_active if hasattr(plots_widget, '_rotate_active') else False
+        except Exception:
+            rotate_init = False
+        self._make_checkable(self._btn_rotate, rotate_init)
+
+        def _plots_toggle_rotate():
+            try:
+                # Get current state from toolbar button
+                checked = self._btn_rotate.isChecked()
+                plots_widget._toggle_rotate(checked)
+                # Sync the state back to the button
+                self._sync_btn_to(self._btn_rotate, checked)
+            except Exception:
+                pass
+
+        self._connect(self._btn_rotate, _plots_toggle_rotate)
+
+        # ------------------------------------------------------------            # One‑shot zoom actions for the Plot view – map directly to the
+        # MplPlotWidget's internal zoom methods. These are not toggle
+        # buttons; they perform an immediate action when clicked.
+        # ------------------------------------------------------------
+        self._connect(self._btn_zoom_fit, plots_widget._zoom_reset)
+        self._connect(self._btn_zoom_in,  plots_widget._zoom_in)
+        self._connect(self._btn_zoom_out, plots_widget._zoom_out)

@@ -580,6 +580,7 @@ class ToolBarWidget(QWidget):
         self.spin_scale.setValue(1.0)
         self.spin_scale.setFixedWidth(74)
         self.spin_scale.setKeyboardTracking(False)
+        self.spin_scale.setToolTip("Display scale")
         self.spin_scale.setStyleSheet("""
             QDoubleSpinBox {
                 border: 1px solid #aaa;
