@@ -1591,6 +1591,7 @@ class PlateGirderBridge:
             analysis_results=results,
             print_report=True,
         )
+        self._dcr_engine = engine
         self.design_results = design_results
 
         # Write every output into output_dict while it is still mutable.
