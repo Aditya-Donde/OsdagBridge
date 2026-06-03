@@ -234,10 +234,10 @@ def resolve_girder_section_properties(input_dict: dict, bridge=None) -> dict | N
     n_girders = input_dict.get(KEY_TS_NO_OF_GIRDERS)
     # Probe girder 0 so we can bail out cleanly when no girder data is present.
     if not _has(
-        _gv(KEY_GIRDER_DEPTH, 0), _gv(KEY_GIRDER_TOP_FLANGE_WIDTH, 0),
-        _gv(KEY_GIRDER_TOP_FLANGE_THICKNESS, 0), _gv(KEY_GIRDER_BOTTOM_FLANGE_WIDTH, 0),
-        _gv(KEY_GIRDER_BOTTOM_FLANGE_THICKNESS, 0), _gv(KEY_GIRDER_WEB_THICKNESS, 0),
-        _gv(KEY_GIRDER_SECTIONAL_AREA, 0), _gv(KEY_GIRDER_SECTIONAL_IZ, 0), n_girders,
+        _gv(KEY_MP_GIRDER_DEPTH, 0), _gv(KEY_MP_GIRDER_TOP_FLANGE_WIDTH, 0),
+        _gv(KEY_MP_GIRDER_TOP_FLANGE_THICKNESS, 0), _gv(KEY_MP_GIRDER_BOTTOM_FLANGE_WIDTH, 0),
+        _gv(KEY_MP_GIRDER_BOTTOM_FLANGE_THICKNESS, 0), _gv(KEY_MP_GIRDER_WEB_THICKNESS, 0),
+        _gv(KEY_MP_GIRDER_SECTIONAL_AREA, 0), _gv(KEY_MP_GIRDER_SECTIONAL_IZ, 0), n_girders,
     ):
         return None
 
@@ -251,14 +251,14 @@ def resolve_girder_section_properties(input_dict: dict, bridge=None) -> dict | N
         gi = i - 1
         rows.append([
             f"Girder {i}",
-            _mm(_gv(KEY_GIRDER_DEPTH, gi)),
-            _mm(_gv(KEY_GIRDER_TOP_FLANGE_WIDTH, gi)),
-            _mm(_gv(KEY_GIRDER_BOTTOM_FLANGE_WIDTH, gi)),
-            _mm(_gv(KEY_GIRDER_TOP_FLANGE_THICKNESS, gi)),
-            _mm(_gv(KEY_GIRDER_BOTTOM_FLANGE_THICKNESS, gi)),
-            _mm(_gv(KEY_GIRDER_WEB_THICKNESS, gi)),
-            _mm2(_gv(KEY_GIRDER_SECTIONAL_AREA, gi)),
-            _mm4(_gv(KEY_GIRDER_SECTIONAL_IZ, gi)),
+            _mm(_gv(KEY_MP_GIRDER_DEPTH, gi)),
+            _mm(_gv(KEY_MP_GIRDER_TOP_FLANGE_WIDTH, gi)),
+            _mm(_gv(KEY_MP_GIRDER_BOTTOM_FLANGE_WIDTH, gi)),
+            _mm(_gv(KEY_MP_GIRDER_TOP_FLANGE_THICKNESS, gi)),
+            _mm(_gv(KEY_MP_GIRDER_BOTTOM_FLANGE_THICKNESS, gi)),
+            _mm(_gv(KEY_MP_GIRDER_WEB_THICKNESS, gi)),
+            _mm2(_gv(KEY_MP_GIRDER_SECTIONAL_AREA, gi)),
+            _mm4(_gv(KEY_MP_GIRDER_SECTIONAL_IZ, gi)),
             EMPTY,              # Cross-section class — not yet resolved from inputs
         ])
 
@@ -282,9 +282,9 @@ def resolve_girder_section_properties(input_dict: dict, bridge=None) -> dict | N
 
 
 def resolve_cross_bracing_section_properties(input_dict: dict, bridge=None) -> dict | None:
-    cb_type    = input_dict.get(KEY_CROSS_BRACING_TYPE)
-    cb_section = input_dict.get(KEY_CROSS_BRACING_SECTION)
-    cb_spacing = input_dict.get(KEY_CROSS_BRACING_SPACING)
+    cb_type    = input_dict.get(KEY_MP_CB_TYPE)
+    cb_section = input_dict.get(KEY_MP_CB_SECTION)
+    cb_spacing = input_dict.get(KEY_MP_CB_SPACING)
 
     if not _has(cb_type, cb_spacing):
         return None
@@ -306,8 +306,8 @@ def resolve_cross_bracing_section_properties(input_dict: dict, bridge=None) -> d
 
 
 def resolve_end_diaphragm_section_properties(input_dict: dict, bridge=None) -> dict | None:
-    ed_type    = input_dict.get(KEY_END_DIAPHRAGM_TYPE)
-    ed_section = input_dict.get(KEY_END_DIAPHRAGM_BRACING_SECTION_DESIGNATION)
+    ed_type    = input_dict.get(KEY_MP_ED_TYPE)
+    ed_section = input_dict.get(KEY_MP_ED_BRACING_SECTION_DESIGNATION)
 
     if not _has(ed_type):
         return None

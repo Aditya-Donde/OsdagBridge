@@ -75,16 +75,15 @@ from osdagbridge.core.utils.common import (
     KEY_TS_FOOTPATH_WIDTH,
     KEY_TS_NO_OF_FOOTPATHS,
     KEY_WC_THICKNESS,
-    KEY_WC_DENSITY,
-    KEY_GIRDER_SYMMETRY, KEY_GIRDER_DEPTH, KEY_GIRDER_WEB_DEPTH, KEY_GIRDER_WEB_THICKNESS,
-    KEY_GIRDER_TOP_FLANGE_WIDTH, KEY_GIRDER_TOP_FLANGE_THICKNESS,
-    KEY_GIRDER_BOTTOM_FLANGE_WIDTH, KEY_GIRDER_BOTTOM_FLANGE_THICKNESS,
-    KEY_GIRDER_SECTIONAL_AREA, KEY_GIRDER_MASS,
-    KEY_GIRDER_SECTIONAL_IZ, KEY_GIRDER_SECTIONAL_IY,
-    KEY_GIRDER_RADIUS_GYRATION_Z, KEY_GIRDER_RADIUS_GYRATION_Y,
-    KEY_GIRDER_ELASTIC_MODULUS_ZZ, KEY_GIRDER_ELASTIC_MODULUS_ZY,
-    KEY_GIRDER_PLASTIC_MODULUS_ZUZ, KEY_GIRDER_PLASTIC_MODULUS_ZUY,
-    KEY_GIRDER_TORSION_CONSTANT_IT, KEY_GIRDER_WARPING_CONSTANT_IW,
+    KEY_WC_DENSITY, KEY_MP_GIRDER_DEPTH, KEY_MP_GIRDER_WEB_DEPTH, KEY_MP_GIRDER_WEB_THICKNESS,
+    KEY_MP_GIRDER_TOP_FLANGE_WIDTH, KEY_MP_GIRDER_TOP_FLANGE_THICKNESS,
+    KEY_MP_GIRDER_BOTTOM_FLANGE_WIDTH, KEY_MP_GIRDER_BOTTOM_FLANGE_THICKNESS,
+    KEY_MP_GIRDER_SECTIONAL_AREA,
+    KEY_MP_GIRDER_SECTIONAL_IZ, KEY_MP_GIRDER_SECTIONAL_IY,
+    KEY_MP_GIRDER_RADIUS_GYRATION_Z, KEY_MP_GIRDER_RADIUS_GYRATION_Y,
+    KEY_MP_GIRDER_ELASTIC_MODULUS_ZZ, KEY_MP_GIRDER_ELASTIC_MODULUS_ZY,
+    KEY_MP_GIRDER_PLASTIC_MODULUS_ZUZ, KEY_MP_GIRDER_PLASTIC_MODULUS_ZUY,
+    KEY_MP_GIRDER_TORSION_CONSTANT_IT, KEY_MP_GIRDER_WARPING_CONSTANT_IW,
     KEY_METALLIC_CRASH_BARRIER_TYPE,
     KEY_RIGID_CRASH_BARRIER_TYPE,
     KEY_CRASH_BARRIER_TYPE,
@@ -262,17 +261,17 @@ class PlateGirderBridge:
                 f"{'-'*60}\n"
                 f"  GIRDER G{gi + 1} CROSS-SECTION (mm) / PROPERTIES (SI)\n"
                 f"{'-'*60}\n"
-                f"  Total depth      D    : {v(KEY_GIRDER_DEPTH)                   * 1e3:.1f}\n"
-                f"  Web depth        d_w  : {v(KEY_GIRDER_WEB_DEPTH)               * 1e3:.1f}\n"
-                f"  Web thickness    t_w  : {v(KEY_GIRDER_WEB_THICKNESS)           * 1e3:.1f}\n"
-                f"  Top flange width B_ft : {v(KEY_GIRDER_TOP_FLANGE_WIDTH)        * 1e3:.1f}\n"
-                f"  Top flange thk   T_ft : {v(KEY_GIRDER_TOP_FLANGE_THICKNESS)    * 1e3:.1f}\n"
-                f"  Bot flange width B_fb : {v(KEY_GIRDER_BOTTOM_FLANGE_WIDTH)     * 1e3:.1f}\n"
-                f"  Bot flange thk   T_fb : {v(KEY_GIRDER_BOTTOM_FLANGE_THICKNESS) * 1e3:.1f}\n"
-                f"  Area   A  : {v(KEY_GIRDER_SECTIONAL_AREA):.6f} m^2\n"
-                f"  I_z       : {v(KEY_GIRDER_SECTIONAL_IZ):.6f} m^4\n"
-                f"  I_y       : {v(KEY_GIRDER_SECTIONAL_IY):.6f} m^4\n"
-                f"  I_t (J)   : {v(KEY_GIRDER_TORSION_CONSTANT_IT):.6f} m^3\n"
+                f"  Total depth      D    : {v(KEY_MP_GIRDER_DEPTH)                   * 1e3:.1f}\n"
+                f"  Web depth        d_w  : {v(KEY_MP_GIRDER_WEB_DEPTH)               * 1e3:.1f}\n"
+                f"  Web thickness    t_w  : {v(KEY_MP_GIRDER_WEB_THICKNESS)           * 1e3:.1f}\n"
+                f"  Top flange width B_ft : {v(KEY_MP_GIRDER_TOP_FLANGE_WIDTH)        * 1e3:.1f}\n"
+                f"  Top flange thk   T_ft : {v(KEY_MP_GIRDER_TOP_FLANGE_THICKNESS)    * 1e3:.1f}\n"
+                f"  Bot flange width B_fb : {v(KEY_MP_GIRDER_BOTTOM_FLANGE_WIDTH)     * 1e3:.1f}\n"
+                f"  Bot flange thk   T_fb : {v(KEY_MP_GIRDER_BOTTOM_FLANGE_THICKNESS) * 1e3:.1f}\n"
+                f"  Area   A  : {v(KEY_MP_GIRDER_SECTIONAL_AREA):.6f} m^2\n"
+                f"  I_z       : {v(KEY_MP_GIRDER_SECTIONAL_IZ):.6f} m^4\n"
+                f"  I_y       : {v(KEY_MP_GIRDER_SECTIONAL_IY):.6f} m^4\n"
+                f"  I_t (J)   : {v(KEY_MP_GIRDER_TORSION_CONSTANT_IT):.6f} m^3\n"
                 f"{'-'*60}"
             )
 
@@ -468,13 +467,13 @@ class PlateGirderBridge:
         beams and as the uniform fallback.
         """
         g = lambda key: self._girder_value(key, i)
-        Az = g(KEY_GIRDER_WEB_DEPTH) * g(KEY_GIRDER_WEB_THICKNESS)
-        Ay = 2 * g(KEY_GIRDER_TOP_FLANGE_WIDTH) * g(KEY_GIRDER_TOP_FLANGE_THICKNESS)
+        Az = g(KEY_MP_GIRDER_WEB_DEPTH) * g(KEY_MP_GIRDER_WEB_THICKNESS)
+        Ay = 2 * g(KEY_MP_GIRDER_TOP_FLANGE_WIDTH) * g(KEY_MP_GIRDER_TOP_FLANGE_THICKNESS)
         return SectionProperties(
-            A=g(KEY_GIRDER_SECTIONAL_AREA),
-            J=g(KEY_GIRDER_TORSION_CONSTANT_IT),
-            Iz=g(KEY_GIRDER_SECTIONAL_IZ),
-            Iy=g(KEY_GIRDER_SECTIONAL_IY),
+            A=g(KEY_MP_GIRDER_SECTIONAL_AREA),
+            J=g(KEY_MP_GIRDER_TORSION_CONSTANT_IT),
+            Iz=g(KEY_MP_GIRDER_SECTIONAL_IZ),
+            Iy=g(KEY_MP_GIRDER_SECTIONAL_IY),
             Az=Az,
             Ay=Ay,
         )
@@ -482,13 +481,13 @@ class PlateGirderBridge:
     def _transverse_section(self) -> SectionProperties:
         """Build a SectionProperties for the transverse deck slab (half-depth, unit width)."""
         g = lambda key: self._girder_value(key)  # representative (first) girder
-        t  = g(KEY_GIRDER_DEPTH) / 2
-        Az = t * g(KEY_GIRDER_WEB_THICKNESS)
+        t  = g(KEY_MP_GIRDER_DEPTH) / 2
+        Az = t * g(KEY_MP_GIRDER_WEB_THICKNESS)
         return SectionProperties(
-            A=g(KEY_GIRDER_SECTIONAL_AREA) / 2,
-            J=g(KEY_GIRDER_TORSION_CONSTANT_IT) / 2,
-            Iz=g(KEY_GIRDER_SECTIONAL_IZ) / 2,
-            Iy=g(KEY_GIRDER_SECTIONAL_IY) / 2,
+            A=g(KEY_MP_GIRDER_SECTIONAL_AREA) / 2,
+            J=g(KEY_MP_GIRDER_TORSION_CONSTANT_IT) / 2,
+            Iz=g(KEY_MP_GIRDER_SECTIONAL_IZ) / 2,
+            Iy=g(KEY_MP_GIRDER_SECTIONAL_IY) / 2,
             Az=Az,
             Ay=Az,
         )
@@ -496,13 +495,13 @@ class PlateGirderBridge:
     def _end_transverse_section(self) -> SectionProperties:
         """Build a SectionProperties for the end transverse slab (quarter-depth)."""
         g = lambda key: self._girder_value(key)  # representative (first) girder
-        Az = g(KEY_GIRDER_WEB_DEPTH) / 2 * g(KEY_GIRDER_WEB_THICKNESS)
-        Ay = g(KEY_GIRDER_TOP_FLANGE_WIDTH) * g(KEY_GIRDER_TOP_FLANGE_THICKNESS)
+        Az = g(KEY_MP_GIRDER_WEB_DEPTH) / 2 * g(KEY_MP_GIRDER_WEB_THICKNESS)
+        Ay = g(KEY_MP_GIRDER_TOP_FLANGE_WIDTH) * g(KEY_MP_GIRDER_TOP_FLANGE_THICKNESS)
         return SectionProperties(
-            A=g(KEY_GIRDER_SECTIONAL_AREA) / 4,
-            J=g(KEY_GIRDER_TORSION_CONSTANT_IT) / 4,
-            Iz=g(KEY_GIRDER_SECTIONAL_IZ) / 4,
-            Iy=g(KEY_GIRDER_SECTIONAL_IY) / 4,
+            A=g(KEY_MP_GIRDER_SECTIONAL_AREA) / 4,
+            J=g(KEY_MP_GIRDER_TORSION_CONSTANT_IT) / 4,
+            Iz=g(KEY_MP_GIRDER_SECTIONAL_IZ) / 4,
+            Iy=g(KEY_MP_GIRDER_SECTIONAL_IY) / 4,
             Az=Az,
             Ay=Ay,
         )
@@ -594,7 +593,7 @@ class PlateGirderBridge:
         # mix of per-girder depths still yields a conservative transverse force.
         n_girders = inp[KEY_TS_NO_OF_GIRDERS]
         d_depth   = max(
-            self._girder_value(KEY_GIRDER_DEPTH, i) for i in range(self._girder_count())
+            self._girder_value(KEY_MP_GIRDER_DEPTH, i) for i in range(self._girder_count())
         )
         c_spacing = inp[KEY_TS_GIRDER_SPACING]
 
@@ -1503,12 +1502,12 @@ class PlateGirderBridge:
         # CAD currently renders a single uniform segment, so use the representative
         # (first) girder via resolve_girder_value (tolerates per-girder keys).
         gv = lambda key: resolve_girder_value(inp, key)
-        D       = gv(KEY_GIRDER_DEPTH)                   * 1e3
-        tw      = gv(KEY_GIRDER_WEB_THICKNESS)           * 1e3
-        B_top   = gv(KEY_GIRDER_TOP_FLANGE_WIDTH)        * 1e3
-        t_f_top = gv(KEY_GIRDER_TOP_FLANGE_THICKNESS)    * 1e3
-        B_bot   = gv(KEY_GIRDER_BOTTOM_FLANGE_WIDTH)     * 1e3
-        t_f_bot = gv(KEY_GIRDER_BOTTOM_FLANGE_THICKNESS) * 1e3
+        D       = gv(KEY_MP_GIRDER_DEPTH)                   * 1e3
+        tw      = gv(KEY_MP_GIRDER_WEB_THICKNESS)           * 1e3
+        B_top   = gv(KEY_MP_GIRDER_TOP_FLANGE_WIDTH)        * 1e3
+        t_f_top = gv(KEY_MP_GIRDER_TOP_FLANGE_THICKNESS)    * 1e3
+        B_bot   = gv(KEY_MP_GIRDER_BOTTOM_FLANGE_WIDTH)     * 1e3
+        t_f_bot = gv(KEY_MP_GIRDER_BOTTOM_FLANGE_THICKNESS) * 1e3
 
         span_mm = float(self.output_dict[KEY_SPAN]) * 1e3
         cw_each_way_m = float(self.output_dict[KEY_CARRIAGEWAY_WIDTH])

@@ -642,9 +642,9 @@ class CrossSectionCADWidget(QWidget):
                 params[KEY_WC_MATERIAL] = wearing_material
         
         # Map cross bracing spacing (meters to mm)
-        if KEY_CROSS_BRACING_SPACING in input_dict:
-            if input_dict[KEY_CROSS_BRACING_SPACING] is not None:
-                params['cross_bracing_spacing'] = float(input_dict[KEY_CROSS_BRACING_SPACING]) * 1000
+        if KEY_MP_CB_SPACING in input_dict:
+            if input_dict[KEY_MP_CB_SPACING] is not None:
+                params['cross_bracing_spacing'] = float(input_dict[KEY_MP_CB_SPACING]) * 1000
             else:
                 params['cross_bracing_spacing'] = 3.5 * 1000 # Add default values if not present
 
