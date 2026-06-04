@@ -6,7 +6,7 @@ Design pipeline:
   2. Receive concrete / rebar properties (fck, fctm, fy) resolved from the material DB.
   3. Fetch impact factor from IRC 6:2017 Cl.208.2 / 208.3.
   4. Fetch ULS partial safety factors from IRC 6:2017 Table B.2.
-  5. Compute dead-load and live-load moments (effective-width method, IRC 21 Cl.305.16).
+  5. Compute dead-load and live-load moments (effective-width method, IRC 112:2020 Eq. B3.1/B3.2).
   6. Design transverse reinforcement (bottom sagging + top hogging).
   7. Verify moment capacity.
   8. Return a dict compatible with DeckDesign.load_data().
@@ -17,12 +17,13 @@ from __future__ import annotations
 import math
 
 from osdagbridge.core.utils.codes.irc6_2017 import IRC6_2017
+from osdagbridge.core.utils.codes.irc112_2019 import IRC112_2019
 from osdagbridge.core.utils.codes.keyfile import KEY_VEHICLE
 from osdagbridge.core.utils.common import (
     KEY_SPAN, KEY_CARRIAGEWAY_WIDTH, KEY_DECK_CONCRETE_GRADE_BASIC,
     KEY_TS_GIRDER_SPACING, KEY_TS_DECK_OVERHANG, KEY_TS_DECK_THICKNESS,
     KEY_DS_REINF_MATERIAL, KEY_DS_TOP_CLEAR_COVER, KEY_DS_BOTTOM_CLEAR_COVER,
-    KEY_DS_REINF_BOUNDS,
+    KEY_DS_REINF_BOUNDS, KEY_WC_THICKNESS, KEY_MP_CB_SPACING,
 )
 
 # ── constants ─────────────────────────────────────────────────────────────────
@@ -249,6 +250,8 @@ def design_deck_slab(input_dict: dict, fck: float, fctm: float, fy: float, Es: f
     beam_spacing_m = float(inp[KEY_TS_GIRDER_SPACING])
     overhang_m = float(inp[KEY_TS_DECK_OVERHANG])
     deck_t_mm = float(inp[KEY_TS_DECK_THICKNESS])
+    wc_t_m = float(inp[KEY_WC_THICKNESS]) / 1000.0   # wearing course thickness (m)
+    cb_spacing_m = float(inp.get(KEY_MP_CB_SPACING) or 3.0)  # longitudinal cross-bracing spacing (m)
 
     rebar_grade = str(inp[KEY_DS_REINF_MATERIAL]).strip()
     cover_top_mm = float(inp[KEY_DS_TOP_CLEAR_COVER])
@@ -287,15 +290,16 @@ def design_deck_slab(input_dict: dict, fck: float, fctm: float, fy: float, Es: f
     S = beam_spacing_m
     M_DL_kNm = w_DL_kN_m2 * S ** 2 / 10.0   # kNm/m — moment in a continuous slab
 
-    # ── 5. live load moment (effective-width method, IRC 21 Cl.305.16.2) ─────
-    # Effective dispersion width through slab depth (45° both sides)
-    bw_m = _wheel_contact_width_m(vehicle_class) + deck_t_mm / 1000.0
-    # IRC 21 Cl.305.16.2: beff = K × S × (1 - a/S) + b0
-    #   K ≈ 2.5 (Table 7 for B/L close to 1), load at a = S/2 → max moment
-    K = 2.5
-    a = S / 2.0
-    beff_m = min(K * S * (1.0 - a / S) + bw_m, S)
-    # Simply-supported transverse moment at mid-span: M = P × a × (S-a) / (S × beff)
+    # ── 5. live load moment (effective-width method, IRC 112:2020 Eq. B3.1) ────
+    # The deck slab forms rectangular panels bounded by:
+    #   l_o = S   (transverse girder spacing — the span direction)
+    #   b = cb_spacing_m  (longitudinal cross-bracing spacing — dimension parallel to supports)
+    # b1 = tyre contact width + 2 × wearing course thickness (IRC 112:2020 Eq. B3.1)
+    b1_m = _wheel_contact_width_m(vehicle_class) + 2.0 * wc_t_m
+    alpha_e = IRC112_2019.table_B31_alpha_e(cb_spacing_m / S, continuous=True)
+    a = S / 2.0   # load at mid-span for maximum sagging moment
+    beff_m = IRC112_2019.eq_B31_effective_width(S, a, b1_m, cb_spacing_m / S, continuous=True, b_cap=S)
+    # Transverse moment at mid-span: M = P × a × (S-a) / (S × beff)
     M_LL_kNm = P_wheel_kN * a * (S - a) / (S * beff_m)
 
     # ── 6. ULS design moment ─────────────────────────────────────────────────
@@ -355,9 +359,10 @@ def design_deck_slab(input_dict: dict, fck: float, fctm: float, fy: float, Es: f
         # LL cantilever moment: wheel placed at f_edge clearance from the free (kerb) edge
         arm_wheel = overhang_m - f_edge
         if arm_wheel > 0.0:
-            bw_oh = _wheel_contact_width_m(vehicle_class) + deck_t_mm / 1000.0
-            # IRC 21 Cl.305.16.3 cantilever effective width: beff = 1.3·a + bw
-            beff_oh = min(1.3 * arm_wheel + bw_oh, overhang_m)
+            # IRC 112:2020 Eq. B3.2 — cantilever effective width
+            # b1 = tyre contact width + 2 × wearing course thickness
+            b1_oh = _wheel_contact_width_m(vehicle_class) + 2.0 * wc_t_m
+            beff_oh = IRC112_2019.eq_B32_effective_width_cantilever(arm_wheel, b1_oh, span_m)
             M_LL_oh = P_wheel_kN * arm_wheel / beff_oh
         else:
             arm_wheel = 0.0
@@ -523,7 +528,8 @@ def design_deck_slab(input_dict: dict, fck: float, fctm: float, fy: float, Es: f
         "-" * 40,
         f"  Dead load (w_DL)     : {w_DL_kN_m2:.2f} kN/m²",
         f"  Max wheel load (P)   : {P_wheel_kN:.1f} kN  [IRC 6:2017 Cl.204]",
-        f"  Effective width beff : {beff_m:.3f} m  [IRC 21 Cl.305.16.2]",
+        f"  Cross-bracing spacing : {cb_spacing_m:.3f} m  (b/l_o = {cb_spacing_m/S:.2f})",
+        f"  Effective width beff : {beff_m:.3f} m  [IRC 112:2020 Eq. B3.1, α_e={alpha_e:.2f}]",
         "",
         "Interior Span Design Moments",
         "-" * 40,
