@@ -643,18 +643,13 @@ class ToolBarController:
         self._connect(self._btn_supports, _plots_toggle_supports)
 
         # ── Pan — direct call to MplPlotWidget._toggle_pan ─────────────────────
-        try:
-            pan_init = plots_widget._pan_active if hasattr(plots_widget, '_pan_active') else False
-        except Exception:
-            pan_init = False
-        self._make_checkable(self._btn_pan, pan_init)
-
         def _plots_toggle_pan():
+            checked = self._btn_pan.isChecked()
+            # Mutual exclusion: deactivate Rotate when Pan is activated
+            if checked:
+                self._sync_btn_to(self._btn_rotate, False)
             try:
-                # Get current state from toolbar button
-                checked = self._btn_pan.isChecked()
                 plots_widget._toggle_pan(checked)
-                # Sync the state back to the button
                 self._sync_btn_to(self._btn_pan, checked)
             except Exception:
                 pass
@@ -662,18 +657,13 @@ class ToolBarController:
         self._connect(self._btn_pan, _plots_toggle_pan)
 
         # ── Rotate — direct call to MplPlotWidget._toggle_rotate ───────────────
-        try:
-            rotate_init = plots_widget._rotate_active if hasattr(plots_widget, '_rotate_active') else False
-        except Exception:
-            rotate_init = False
-        self._make_checkable(self._btn_rotate, rotate_init)
-
         def _plots_toggle_rotate():
+            checked = self._btn_rotate.isChecked()
+            # Mutual exclusion: deactivate Pan when Rotate is activated
+            if checked:
+                self._sync_btn_to(self._btn_pan, False)
             try:
-                # Get current state from toolbar button
-                checked = self._btn_rotate.isChecked()
                 plots_widget._toggle_rotate(checked)
-                # Sync the state back to the button
                 self._sync_btn_to(self._btn_rotate, checked)
             except Exception:
                 pass

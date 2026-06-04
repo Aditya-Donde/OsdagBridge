@@ -922,18 +922,22 @@ class MplPlotWidget(QWidget):
                     event.inaxes.start_pan(event.x, event.y, button=1)
                     self._pan_dragging = True
                     self._canvas.setCursor(Qt.ClosedHandCursor)
-            elif hasattr(event, 'pos'):  # Qt event
-                # For Qt events, find the axes under the cursor and start pan
-                pos = event.pos()
+            elif hasattr(event, 'pos') or hasattr(event, 'position'):  # Qt event
+                # Convert Qt widget coordinates (top-left origin) to
+                # Matplotlib pixel coordinates (bottom-left origin)
+                try:
+                    pos = event.position()  # PySide6
+                    qx, qy = pos.x(), pos.y()
+                except AttributeError:
+                    pos = event.pos()       # older Qt
+                    qx, qy = pos.x(), pos.y()
+                mpl_x = qx
+                mpl_y = self._canvas.height() - qy  # flip Y axis
                 if self._fig and self._fig.axes:
-                    # Find the first axis that contains this position
                     for ax in self._fig.axes:
-                        if ax.contains(event)[0]:
-                            # Use pixel coordinates for start_pan
-                            ax.start_pan(pos.x(), pos.y(), button=1)
-                            self._pan_dragging = True
-                            self._canvas.setCursor(Qt.ClosedHandCursor)
-                            break
+                        ax.start_pan(mpl_x, mpl_y, button=1)
+                    self._pan_dragging = True
+                    self._canvas.setCursor(Qt.ClosedHandCursor)
         except Exception as e:
             print(f"Error in pan press: {e}")
 
@@ -947,28 +951,19 @@ class MplPlotWidget(QWidget):
                 # For matplotlib events, use the built-in drag_pan
                 event.inaxes.drag_pan(1, None, event.x, event.y)
             else:
-                # For Qt events or when we don't have inaxes, use our fallback
-                # Get the current mouse position
-                if hasattr(event, 'x'):
-                    pos_x, pos_y = event.x, event.y
-                else:
-                    pos = event.pos()
-                    pos_x, pos_y = pos.x(), pos.y()
-                
-                # Find the axis under the cursor
+                # For Qt events: convert widget coords (top-left origin) to
+                # Matplotlib pixel coords (bottom-left origin)
+                try:
+                    pos = event.position()  # PySide6
+                    qx, qy = pos.x(), pos.y()
+                except AttributeError:
+                    pos = event.pos()       # older Qt
+                    qx, qy = pos.x(), pos.y()
+                mpl_x = qx
+                mpl_y = self._canvas.height() - qy  # flip Y
                 if self._fig and self._fig.axes:
                     for ax in self._fig.axes:
-                        if ax.contains(event)[0]:
-                            # Create a simple event-like object for drag_pan
-                            class SimpleEvent:
-                                def __init__(self, x, y, inaxes):
-                                    self.x = x
-                                    self.y = y
-                                    self.inaxes = inaxes
-                            
-                            simple_event = SimpleEvent(pos_x, pos_y, ax)
-                            ax.drag_pan(1, None, simple_event.x, simple_event.y)
-                            break
+                        ax.drag_pan(1, None, mpl_x, mpl_y)
             
             self._canvas.draw_idle()
             
