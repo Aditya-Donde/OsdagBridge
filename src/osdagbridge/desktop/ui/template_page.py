@@ -555,7 +555,10 @@ class CustomWindow(QWidget):
                 self.backend.set_input(self.input_dict)
                 self.backend.design()
                 self.output_dock.refresh_utilization()
-
+                self.output_dock.refresh_loadcase_dropdowns()
+                self.output_dock.refresh_member_dropdown()
+                self.output_dock.connect_design_dropdowns()
+                
                 # Lock the input dock after design is triggered
                 if self.input_dock and not self.input_dock.is_locked:
                     self.input_dock.toggle_lock()
