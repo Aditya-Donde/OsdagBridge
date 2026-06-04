@@ -100,16 +100,14 @@ def _pick_rebar(As_req_mm2: float,
 
 # ── SLS helpers ───────────────────────────────────────────────────────────────
 
-def _cracked_section(As_mm2: float, d_mm: float, fck_MPa: float,
+def _cracked_section(As_mm2: float, d_mm: float, Es_MPa: float, Ecm_MPa: float,
                      b_mm: float = 1000.0) -> tuple:
     """
     Cracked-section neutral axis depth x (mm), I_cr (mm⁴), and αe = Es/Ecm.
     Ecm per IRC 112:2020 Cl.6.4.2.3 — 22·(fck/10)^0.3 GPa.
     Solves b/2·x² + αe·As·x − αe·As·d = 0.
     """
-    Es = 200_000.0
-    Ecm = 22_000.0 * (fck_MPa / 10.0) ** 0.3
-    alpha_e = Es / Ecm
+    alpha_e = Es_MPa / Ecm_MPa
     A = b_mm / 2.0
     B = alpha_e * As_mm2
     C = -alpha_e * As_mm2 * d_mm
@@ -119,12 +117,12 @@ def _cracked_section(As_mm2: float, d_mm: float, fck_MPa: float,
 
 
 def _sls_stress(M_SLS_kNm: float, As_mm2: float, d_mm: float,
-                fck_MPa: float, fy_MPa: float, b_mm: float = 1000.0) -> dict:
+                fck_MPa: float, fy_MPa: float, Es_MPa: float, Ecm_MPa: float, b_mm: float = 1000.0) -> dict:
     """
     IRC 112:2020 Cl.12.2.1 — SLS stress check (characteristic combination).
     Limits: σc ≤ 0.48·fck, σs ≤ 0.80·fyk.
     """
-    x, I_cr, alpha_e = _cracked_section(As_mm2, d_mm, fck_MPa, b_mm)
+    x, I_cr, alpha_e = _cracked_section(As_mm2, d_mm, Es_MPa, Ecm_MPa, b_mm)
     M_Nmm = M_SLS_kNm * 1.0e6
     sigma_c = M_Nmm * x / I_cr
     sigma_s = M_Nmm * (d_mm - x) * alpha_e / I_cr
@@ -140,7 +138,7 @@ def _sls_stress(M_SLS_kNm: float, As_mm2: float, d_mm: float,
 
 def _sls_crack_width(M_SLS_kNm: float, As_mm2: float, dia_mm: float,
                      d_mm: float, h_mm: float, cover_mm: float,
-                     fck_MPa: float, fctm_MPa: float,
+                     fctm_MPa: float, Es_MPa: float, Ecm_MPa: float,
                      b_mm: float = 1000.0) -> dict:
     """
     IRC 112:2020 Cl.12.3.4 — crack width check (frequent combination).
@@ -149,8 +147,7 @@ def _sls_crack_width(M_SLS_kNm: float, As_mm2: float, dia_mm: float,
     works identically for sagging (compressive face = top) and hogging
     (compressive face = bottom).
     """
-    Es = 200_000.0
-    x, I_cr, alpha_e = _cracked_section(As_mm2, d_mm, fck_MPa, b_mm)
+    x, I_cr, alpha_e = _cracked_section(As_mm2, d_mm, Es_MPa, Ecm_MPa, b_mm)
     M_Nmm = M_SLS_kNm * 1.0e6
     sigma_s = M_Nmm * (d_mm - x) * alpha_e / I_cr
     # Effective tension area depth (measured from tensile face)
@@ -164,8 +161,8 @@ def _sls_crack_width(M_SLS_kNm: float, As_mm2: float, dia_mm: float,
     # Mean strain difference (long-term, kt = 0.5)
     kt = 0.5
     eps_diff = max(
-        (sigma_s - kt * (fctm_MPa / rho_p_eff) * (1.0 + alpha_e * rho_p_eff)) / Es,
-        0.6 * sigma_s / Es,
+        (sigma_s - kt * (fctm_MPa / rho_p_eff) * (1.0 + alpha_e * rho_p_eff)) / Es_MPa,
+        0.6 * sigma_s / Es_MPa,
     )
     wk = Sr_max * eps_diff   # mm
     wk_lim = 0.3
@@ -213,7 +210,7 @@ def _wheel_contact_width_m(vehicle_class: str) -> float:
 
 # ── main design function ──────────────────────────────────────────────────────
 
-def design_deck_slab(input_dict: dict, fck: float, fctm: float, fy: float) -> dict:
+def design_deck_slab(input_dict: dict, fck: float, fctm: float, fy: float, Es: float, Ecm: float) -> dict:
     """
     Design the concrete deck slab of a plate girder bridge.
 
@@ -228,6 +225,10 @@ def design_deck_slab(input_dict: dict, fck: float, fctm: float, fy: float) -> di
         Mean concrete tensile strength (MPa), from the material DB.
     fy : float
         Reinforcement characteristic yield strength (MPa), from the material DB.
+    Es : float
+        Modulus of elasticity of reinforcement (MPa), from the material DB.
+    Ecm : float
+        Modulus of elasticity of concrete (MPa), from the material DB.
 
     Returns
     -------
@@ -334,9 +335,10 @@ def design_deck_slab(input_dict: dict, fck: float, fctm: float, fy: float) -> di
 
     # ── 10. deck overhang design ─────────────────────────────────────────────
     if overhang_m > 0.01:
-        # Minimum clearance from kerb face to wheel — IRC 6:2017 Table 3
+        # Edge clearance f: min distance from kerb/barrier face to wheel — IRC 6:2017 Table 3
+        # (g is the inter-vehicle gap, f is the wheel-to-edge clearance used for arm calculation)
         table3 = IRC6_2017.table_3(cw_m)
-        g_min = float(table3["g_min"])
+        f_edge = float(table3["f"])
 
         # Railing dead load — IRC 6:2017 Cl.206.5 (kg/m → kN/m)
         railing_kN_m = IRC6_2017.cl_206_5_railing_load() * 9.81 / 1000.0
@@ -350,8 +352,8 @@ def design_deck_slab(input_dict: dict, fck: float, fctm: float, fy: float) -> di
         M_DL_railing_oh = railing_kN_m * overhang_m
         M_DL_oh = M_DL_slab_oh + M_DL_railing_oh
 
-        # LL cantilever moment: wheel at g_min clearance from free edge
-        arm_wheel = overhang_m - g_min
+        # LL cantilever moment: wheel placed at f_edge clearance from the free (kerb) edge
+        arm_wheel = overhang_m - f_edge
         if arm_wheel > 0.0:
             bw_oh = _wheel_contact_width_m(vehicle_class) + deck_t_mm / 1000.0
             # IRC 21 Cl.305.16.3 cantilever effective width: beff = 1.3·a + bw
@@ -388,7 +390,7 @@ def design_deck_slab(input_dict: dict, fck: float, fctm: float, fy: float) -> di
             "Deck Overhang Design",
             "-" * 40,
             f"  Overhang length L_oh  : {overhang_m * 1000:.0f} mm  ({overhang_m:.3f} m)",
-            f"  Min. clearance g_min  : {g_min:.3f} m  [IRC 6:2017 Table 3]",
+            f"  Edge clearance f      : {f_edge:.3f} m  [IRC 6:2017 Table 3]",
             f"  Railing DL load       : {railing_kN_m:.3f} kN/m  [IRC 6:2017 Cl.206.5]",
             f"  Crash barrier moment  : {M_barrier_kNm:.2f} kNm/m  [IRC 6:2017 Cl.206.4]",
             f"  Wheel arm from root   : {arm_wheel:.3f} m",
@@ -405,7 +407,7 @@ def design_deck_slab(input_dict: dict, fck: float, fctm: float, fy: float) -> di
             f"  Status                : {'PASS' if oh_ok else 'FAIL'}",
         ]
     else:
-        g_min = railing_kN_m = M_barrier_kNm = 0.0
+        f_edge = railing_kN_m = M_barrier_kNm = 0.0
         M_DL_oh = M_LL_oh = M_ULS_oh = arm_wheel = 0.0
         dia_oh = spc_oh = As_oh = As_req_oh = d_oh_mm = Mu_oh = 0.0
         oh_ok = True
@@ -419,19 +421,19 @@ def design_deck_slab(input_dict: dict, fck: float, fctm: float, fy: float) -> di
     M_SLS_freq_bot = M_DL_kNm + 0.75 * impact_factor * M_LL_kNm
     M_SLS_freq_top = 0.75 * M_SLS_freq_bot
 
-    sc_bot = _sls_stress(M_SLS_char_bot, As_bot, d_bot_mm, fck, fy)
-    sc_top = _sls_stress(M_SLS_char_top, As_top, d_top_mm, fck, fy)
+    sc_bot = _sls_stress(M_SLS_char_bot, As_bot, d_bot_mm, fck, fy, Es, Ecm)
+    sc_top = _sls_stress(M_SLS_char_top, As_top, d_top_mm, fck, fy, Es, Ecm)
     cw_bot = _sls_crack_width(M_SLS_freq_bot, As_bot, dia_bot, d_bot_mm,
-                               deck_t_mm, cover_bot_mm, fck, fctm)
+                               deck_t_mm, cover_bot_mm, fctm, Es, Ecm)
     cw_top = _sls_crack_width(M_SLS_freq_top, As_top, dia_top, d_top_mm,
-                               deck_t_mm, cover_top_mm, fck, fctm)
+                               deck_t_mm, cover_top_mm, fctm, Es, Ecm)
 
     if overhang_m > 0.01:
         M_SLS_char_oh = M_DL_oh + impact_factor * M_LL_oh + M_barrier_kNm
         M_SLS_freq_oh = M_DL_oh + 0.75 * (impact_factor * M_LL_oh + M_barrier_kNm)
-        sc_oh  = _sls_stress(M_SLS_char_oh, As_oh, d_oh_mm, fck, fy)
+        sc_oh  = _sls_stress(M_SLS_char_oh, As_oh, d_oh_mm, fck, fy, Es, Ecm)
         cw_oh  = _sls_crack_width(M_SLS_freq_oh, As_oh, dia_oh, d_oh_mm,
-                                   deck_t_mm, cover_top_mm, fck, fctm)
+                                   deck_t_mm, cover_top_mm, fctm, Es, Ecm)
         overhang_sls_lines = [
             "",
             "Overhang SLS Stress Check  [IRC 112:2020 Cl.12.2.1]",

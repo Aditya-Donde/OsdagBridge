@@ -539,7 +539,7 @@ class PlateGirderBridge:
                     return float(row[0]) * MPa              # DB stores MPa as integer → convert to Pa
                 elif property == "Ultimate Tensile Strength":
                     return float(row[0]) * MPa
-                elif property in ("fck", "fctm", "Ecm", "fy", "fu"):  # Concrete (MPa/GPa) and rebar (MPa) properties — returned as plain numbers
+                elif property in ("fck", "fctm", "Ecm", "fy", "fu", "Es"):  # Concrete (MPa/GPa) and rebar (MPa) properties — returned as plain numbers
                     return float(row[0])
                 else:
                     raise SyntaxError(f"Unknown property '{property}' requested in table '{table}' in PlateGirderBridge._lookup_material")
@@ -1593,10 +1593,12 @@ class PlateGirderBridge:
         rebar_grade = str(self.input_dict[KEY_DS_REINF_MATERIAL]).strip()
 
         fck = self._lookup_material(concrete_grade, "fck")
+        Ecm = self._lookup_material(concrete_grade, "Ecm")
         fctm = self._lookup_material(concrete_grade, "fctm")
         fy = self._lookup_material(rebar_grade, "fy")
+        Es = self._lookup_material(rebar_grade, "Es")
 
-        result = deckdesign.design_deck_slab(self.input_dict, fck=fck, fctm=fctm, fy=fy)
+        result = deckdesign.design_deck_slab(self.input_dict, fck=fck, fctm=fctm, fy=fy, Ecm=Ecm, Es=Es)
         self.output_dict["deck_design_results"] = result
 
         import pprint

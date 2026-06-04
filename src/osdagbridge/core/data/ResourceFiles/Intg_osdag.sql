@@ -123,15 +123,16 @@ INSERT INTO Concrete_Grade_Properties VALUES('M90',90.0,5.0,41.0);
 CREATE TABLE IF NOT EXISTS "Rebar_Grade_Properties" (
 	"Grade"	TEXT NOT NULL UNIQUE,
 	"fy"	REAL NOT NULL,
-	"fu"	REAL NOT NULL
+	"fu"	REAL NOT NULL,
+	"Es"	REAL NOT NULL
 );
-INSERT INTO Rebar_Grade_Properties VALUES('Fe 415',415.0,485.0);
-INSERT INTO Rebar_Grade_Properties VALUES('Fe 415D',415.0,500.0);
-INSERT INTO Rebar_Grade_Properties VALUES('Fe 500',500.0,545.0);
-INSERT INTO Rebar_Grade_Properties VALUES('Fe 500D',500.0,565.0);
-INSERT INTO Rebar_Grade_Properties VALUES('Fe 550',550.0,585.0);
-INSERT INTO Rebar_Grade_Properties VALUES('Fe 550D',550.0,600.0);
-INSERT INTO Rebar_Grade_Properties VALUES('Fe 600',600.0,660.0);
+INSERT INTO Rebar_Grade_Properties VALUES('Fe 415',415.0,485.0,200000.0);
+INSERT INTO Rebar_Grade_Properties VALUES('Fe 415D',415.0,500.0,200000.0);
+INSERT INTO Rebar_Grade_Properties VALUES('Fe 500',500.0,545.0,200000.0);
+INSERT INTO Rebar_Grade_Properties VALUES('Fe 500D',500.0,565.0,200000.0);
+INSERT INTO Rebar_Grade_Properties VALUES('Fe 550',550.0,585.0, 200000.0);
+INSERT INTO Rebar_Grade_Properties VALUES('Fe 550D',550.0,600.0,200000.0);
+INSERT INTO Rebar_Grade_Properties VALUES('Fe 600',600.0,660.0,200000.0);
 CREATE TABLE IF NOT EXISTS "Bolt_fy_fu" (
 	`Property_Class`	NUMERIC,
 	`Diameter_min`	INTEGER,
