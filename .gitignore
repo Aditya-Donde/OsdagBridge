@@ -260,3 +260,6 @@ ospgrillage/
 temp_plot.html
 *.html
 tools/
+
+# Node.js dependencies
+node_modules/
