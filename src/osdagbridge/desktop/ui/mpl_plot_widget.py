@@ -495,7 +495,6 @@ class MplPlotWidget(QWidget):
         if has_3d:
             self._resize_navcube()
             self._position_navcube()
-            self._navcube.mark_ready()
             self._navcube.show()
             self._navcube.raise_()
             self._navcube_sync.force_sync()
