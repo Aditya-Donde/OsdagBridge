@@ -911,7 +911,7 @@ class AdditionalInputs(QDialog):
             KEY_TS_DECK_THICKNESS,
             KEY_TS_FOOTPATH_WIDTH,
             KEY_TS_FOOTPATH_THICKNESS,
-            KEY_CROSS_BRACING_SPACING,
+            KEY_MP_CB_SPACING,
             KEY_WC_THICKNESS,
             KEY_WC_DENSITY,
             KEY_WC_MATERIAL,
@@ -1018,7 +1018,7 @@ class AdditionalInputs(QDialog):
         try:
             bracing_tab = self.section_properties_tab.cross_bracing_details_tab
             if hasattr(bracing_tab, "bracing_spacing") and bracing_tab.bracing_spacing.text():
-                values[KEY_CROSS_BRACING_SPACING] = float(bracing_tab.bracing_spacing.text())
+                values[KEY_MP_CB_SPACING] = float(bracing_tab.bracing_spacing.text())
             
         except Exception:
             pass

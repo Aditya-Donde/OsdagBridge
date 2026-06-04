@@ -135,11 +135,11 @@ import pandas as pd
 
 from osdagbridge.core.utils.common import (
     DEFAULT_CROSS_BRACING_SPACING,
-    KEY_CROSS_BRACING_SPACING,
-    KEY_CROSS_BRACING_TYPE,
-    KEY_GIRDER_DEPTH,
-    KEY_GIRDER_TOP_FLANGE_THICKNESS,
-    KEY_GIRDER_BOTTOM_FLANGE_THICKNESS,
+    KEY_MP_CB_SPACING,
+    KEY_MP_CB_TYPE,
+    KEY_MP_GIRDER_DEPTH,
+    KEY_MP_GIRDER_TOP_FLANGE_THICKNESS,
+    KEY_MP_GIRDER_BOTTOM_FLANGE_THICKNESS,
     KEY_TS_GIRDER_SPACING,
 )
 
@@ -214,7 +214,7 @@ class CrossBracingForces:
         if brace_type is not None:
             raw = str(brace_type).strip().upper()
         else:
-            raw = str(ai.get(KEY_CROSS_BRACING_TYPE, BRACE_X)).strip().upper()
+            raw = str(ai.get(KEY_MP_CB_TYPE, BRACE_X)).strip().upper()
 
         if raw not in (BRACE_X, BRACE_K):
             raise ValueError(f"Unsupported brace_type '{raw}'. Choose 'X' or 'K'.")
@@ -249,7 +249,7 @@ class CrossBracingForces:
         else:
             ai = getattr(self.bridge, "additional_inputs", {})
             self.cb_spacing = float(
-                ai.get(KEY_CROSS_BRACING_SPACING, DEFAULT_CROSS_BRACING_SPACING)
+                ai.get(KEY_MP_CB_SPACING, DEFAULT_CROSS_BRACING_SPACING)
             )
 
         # --- Girder section dimensions (metres) ---
@@ -259,9 +259,9 @@ class CrossBracingForces:
             resolve_girder_value as _gv,
         )
         inp = self.bridge.input_dict
-        self.D      = float(_gv(inp, KEY_GIRDER_DEPTH))
-        self.tf_top = float(_gv(inp, KEY_GIRDER_TOP_FLANGE_THICKNESS))
-        self.tf_bot = float(_gv(inp, KEY_GIRDER_BOTTOM_FLANGE_THICKNESS))
+        self.D      = float(_gv(inp, KEY_MP_GIRDER_DEPTH))
+        self.tf_top = float(_gv(inp, KEY_MP_GIRDER_TOP_FLANGE_THICKNESS))
+        self.tf_bot = float(_gv(inp, KEY_MP_GIRDER_BOTTOM_FLANGE_THICKNESS))
         self.h = self.D * self.depth_ratio
         self.s = float(inp[KEY_TS_GIRDER_SPACING])
 

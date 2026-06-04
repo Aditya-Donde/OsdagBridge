@@ -486,7 +486,7 @@ class BridgeInputValidator:
         elif key == KEY_DS_STUD_COUNT:
             v         = self._to_int(inputs.get(key))
             d         = self._to_float(inputs.get(KEY_DS_STUD_DIAMETER))
-            flange_m  = self._to_float(inputs.get(KEY_GIRDER_TOP_FLANGE_WIDTH))
+            flange_m  = self._to_float(inputs.get(KEY_MP_GIRDER_TOP_FLANGE_WIDTH))
             flange_mm = flange_m * 1000.0 if flange_m is not None else None
             max_n     = int(ceil((flange_mm - 50.0) / (2.5 * d))) if (flange_mm is not None and d) else None
             if max_n is not None: max_n = max(max_n, 1)
@@ -498,7 +498,7 @@ class BridgeInputValidator:
         elif key == KEY_DS_STUD_TRANSVERSE_SPACING:
             v         = self._to_float(inputs.get(key))
             d         = self._to_float(inputs.get(KEY_DS_STUD_DIAMETER))
-            flange_m  = self._to_float(inputs.get(KEY_GIRDER_TOP_FLANGE_WIDTH))
+            flange_m  = self._to_float(inputs.get(KEY_MP_GIRDER_TOP_FLANGE_WIDTH))
             flange_mm = flange_m * 1000.0 if flange_m is not None else None
             n         = self._to_int(inputs.get(KEY_DS_STUD_COUNT))
             min_sp    = (2.5 * d) if d is not None else None

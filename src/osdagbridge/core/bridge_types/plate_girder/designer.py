@@ -280,10 +280,10 @@ class BridgeConfig:
         # (which mirrors IS 2062 / IRC 22 Annex III), concrete/rebar resolved via IRC 22 Annex III.
         from osdagbridge.core.utils.common import (
             KEY_GIRDER, KEY_DECK_CONCRETE_GRADE_BASIC, KEY_TS_DECK_THICKNESS,
-            KEY_SPAN, KEY_CARRIAGEWAY_WIDTH, KEY_CROSS_BRACING_SPACING,
-            KEY_GIRDER_DEPTH, KEY_GIRDER_TOP_FLANGE_WIDTH, KEY_GIRDER_TOP_FLANGE_THICKNESS,
-            KEY_GIRDER_BOTTOM_FLANGE_WIDTH, KEY_GIRDER_BOTTOM_FLANGE_THICKNESS,
-            KEY_GIRDER_WEB_THICKNESS,
+            KEY_SPAN, KEY_CARRIAGEWAY_WIDTH, KEY_MP_CB_SPACING,
+            KEY_MP_GIRDER_DEPTH, KEY_MP_GIRDER_TOP_FLANGE_WIDTH, KEY_MP_GIRDER_TOP_FLANGE_THICKNESS,
+            KEY_MP_GIRDER_BOTTOM_FLANGE_WIDTH, KEY_MP_GIRDER_BOTTOM_FLANGE_THICKNESS,
+            KEY_MP_GIRDER_WEB_THICKNESS,
         )
 
         if not getattr(bridge, "material_props", None):
@@ -310,12 +310,12 @@ class BridgeConfig:
             resolve_girder_value as _gv,
         )
         section = SteelSection(
-            D=_gv(inp, KEY_GIRDER_DEPTH)                   * 1000,
-            bf_top=_gv(inp, KEY_GIRDER_TOP_FLANGE_WIDTH)        * 1000,
-            tf_top=_gv(inp, KEY_GIRDER_TOP_FLANGE_THICKNESS)    * 1000,
-            bf_bot=_gv(inp, KEY_GIRDER_BOTTOM_FLANGE_WIDTH)     * 1000,
-            tf_bot=_gv(inp, KEY_GIRDER_BOTTOM_FLANGE_THICKNESS) * 1000,
-            tw=_gv(inp, KEY_GIRDER_WEB_THICKNESS)               * 1000,
+            D=_gv(inp, KEY_MP_GIRDER_DEPTH)                   * 1000,
+            bf_top=_gv(inp, KEY_MP_GIRDER_TOP_FLANGE_WIDTH)        * 1000,
+            tf_top=_gv(inp, KEY_MP_GIRDER_TOP_FLANGE_THICKNESS)    * 1000,
+            bf_bot=_gv(inp, KEY_MP_GIRDER_BOTTOM_FLANGE_WIDTH)     * 1000,
+            tf_bot=_gv(inp, KEY_MP_GIRDER_BOTTOM_FLANGE_THICKNESS) * 1000,
+            tw=_gv(inp, KEY_MP_GIRDER_WEB_THICKNESS)               * 1000,
         )
 
         geom = getattr(bridge, "grillage_geometry", None)
@@ -342,7 +342,7 @@ class BridgeConfig:
 
         # Cross-bracing spacing drives the lateral unbraced length for LTB.
         from osdagbridge.core.utils.common import DEFAULT_CROSS_BRACING_SPACING as _DEFAULT_CB_SPACING
-        cb_spacing = float(bridge.additional_inputs.get(KEY_CROSS_BRACING_SPACING, _DEFAULT_CB_SPACING))
+        cb_spacing = float(bridge.additional_inputs.get(KEY_MP_CB_SPACING, _DEFAULT_CB_SPACING))
 
         geometry = GeometryConfig(
             span=float(span),
