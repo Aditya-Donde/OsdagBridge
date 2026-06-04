@@ -403,48 +403,10 @@ class CAD3DWindow(QWidget):
         self.component_selector.show()
         self.component_selector.apply_selection()
 
-    # ZOOM CONTROLS 
+    # CAD OVERLAY CONTROLS
 
     def create_cad_view_controls(self):
-        """Create zoom buttons below the view cube."""
-
-        self._view_cube_size = 75
-        self._view_cube_margin = 10
-        self._zoom_btn_size = 40
-        self._zoom_spacing = 6
-
-        self.zoom_in_btn = QPushButton("+", self.viewer)
-        self.zoom_in_btn.setFixedSize(self._zoom_btn_size, self._zoom_btn_size)
-        self.zoom_in_btn.setCursor(Qt.PointingHandCursor)
-        self.zoom_in_btn.clicked.connect(lambda: self.display.ZoomFactor(1.1))
-        self._style_zoom_button(self.zoom_in_btn)
-
-        self.zoom_out_btn = QPushButton("-", self.viewer)
-        self.zoom_out_btn.setFixedSize(self._zoom_btn_size, self._zoom_btn_size)
-        self.zoom_out_btn.setCursor(Qt.PointingHandCursor)
-        self.zoom_out_btn.clicked.connect(lambda: self.display.ZoomFactor(1 / 1.1))
-        self._style_zoom_button(self.zoom_out_btn)
-
-        self.zoom_fit_btn = QPushButton("Fit", self.viewer)
-        self.zoom_fit_btn.setFixedSize(self._zoom_btn_size, self._zoom_btn_size)
-        self.zoom_fit_btn.setCursor(Qt.PointingHandCursor)
-        self.zoom_fit_btn.setToolTip("Zoom Fit — fit all geometry in view")
-        self.zoom_fit_btn.clicked.connect(self._zoom_fit)
-        self.zoom_fit_btn.setStyleSheet("""
-            QPushButton {
-                font-size: 13px; font-weight: bold;
-                background-color: white;
-                border: 1px solid #bdbdbd;
-            }
-            QPushButton:hover   { background-color: #e6e6e6; }
-            QPushButton:pressed { background-color: #d6d6d6; }
-        """)
-
-        self.zoom_in_btn.show()
-        self.zoom_out_btn.show()
-        self.zoom_fit_btn.show()
-
-        self.position_zoom_buttons()
+        """Create the info table overlay and wire the resize proxy."""
 
         # ── Info table overlay ──────────────────────────────────────────
         self._info_table = QFrame(self.viewer)
@@ -491,54 +453,9 @@ class CAD3DWindow(QWidget):
         self._orig_resize_event = self.viewer.resizeEvent
         self.viewer.resizeEvent = self._cad_resize_proxy
 
-    def _style_zoom_button(self, btn):
-        btn.setStyleSheet("""
-            QPushButton {
-                font-size: 20px;
-                font-weight: bold;
-                background-color: white;
-                border: 1px solid #bdbdbd;
-            }
-            QPushButton:hover {
-                background-color: #e6e6e6;
-            }
-            QPushButton:pressed {
-                background-color: #d6d6d6;
-            }
-        """)
-
-    def _zoom_fit(self):
-        """Reset the view to fit all visible geometry."""
-        if self._is_display_ready():
-            self.display.FitAll()
-
-    def position_zoom_buttons(self):
-        if not hasattr(self, "zoom_in_btn"):
-            return
-
-        w = self.viewer.width()
-
-        cube_right = w - self._view_cube_margin
-        cube_left = cube_right - self._view_cube_size
-
-        cube_bottom = self._view_cube_margin + self._view_cube_size + 30
-
-        center_x = cube_left + self._view_cube_size // 2
-        btn_x = center_x - self._zoom_btn_size // 2
-
-        btn_y_1 = cube_bottom + self._zoom_spacing
-        btn_y_2 = btn_y_1 + self._zoom_btn_size + self._zoom_spacing
-        btn_y_3 = btn_y_2 + self._zoom_btn_size + self._zoom_spacing
-
-        self.zoom_in_btn.move(btn_x, btn_y_1)
-        self.zoom_out_btn.move(btn_x, btn_y_2)
-        if hasattr(self, "zoom_fit_btn"):
-            self.zoom_fit_btn.move(btn_x, btn_y_3)
-
     def _cad_resize_proxy(self, event):
         if self._orig_resize_event:
             self._orig_resize_event(event)
-        self.position_zoom_buttons()
         self._position_info_table()
 
     def _position_info_table(self):
