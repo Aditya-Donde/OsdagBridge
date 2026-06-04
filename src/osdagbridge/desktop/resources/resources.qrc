@@ -49,7 +49,10 @@
         <!-- Toolbar Icons -->
         <file>vectors/tool_bar/grillage_view_light.svg</file>
         <file>vectors/tool_bar/node_element_light.svg</file>
+        <file>vectors/tool_bar/element_number_light.svg</file>
         <file>vectors/tool_bar/node_light.svg</file>
+        <file>vectors/tool_bar/node_number_light.svg</file>
+        <file>vectors/tool_bar/girder_label_light.svg</file>
         <file>vectors/tool_bar/pan_light.svg</file>
         <file>vectors/tool_bar/rotate_light.svg</file>
         <file>vectors/tool_bar/show_axis_light.svg</file>

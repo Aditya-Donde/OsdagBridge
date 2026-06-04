@@ -557,17 +557,18 @@ class ToolBarWidget(QWidget):
 
         # Node group
         self.layout.addWidget(create_button(":/vectors/tool_bar/node_light.svg", "Node"))
-        self.layout.addWidget(create_button(":/vectors/tool_bar/node_element_light.svg", "Node Element"))
+        self.layout.addWidget(create_button(":/vectors/tool_bar/node_number_light.svg", "Node Number"))
+        self.layout.addWidget(create_button(":/vectors/tool_bar/element_number_light.svg", "Element Number"))
 
         self.layout.addWidget(add_separator())  # after node element
 
         # Model display group
         self.layout.addWidget(create_button(":/vectors/tool_bar/grillage_view_light.svg", "Grillage View"))
-        self.layout.addWidget(create_button(":/vectors/tool_bar/show_contour_light.svg", "Contour Plot"))
         self.layout.addWidget(create_button(":/vectors/tool_bar/show_axis_light.svg", "Axis"))
         self.layout.addWidget(create_button(":/vectors/tool_bar/show_grid_lines_light.svg", "Grid Lines"))
         self.layout.addWidget(create_button(":/vectors/tool_bar/show_support_light.svg", "Supports"))
         self.layout.addWidget(create_button(":/vectors/tool_bar/show_load_light.svg", "Loads"))
+        self.layout.addWidget(create_button(":/vectors/tool_bar/girder_label_light.svg", "Girder Label"))
 
         self.layout.addWidget(add_separator())  # after load
 

@@ -1041,8 +1041,10 @@ class BridgeComponentCheckbox(QWidget):
         ("Grillage view", "Grillage"),
         ("Node",          "Node"),
         ("Node Numbers",  "NodeNumbers"),
+        ("Element Number", "ElementNumber"),
+        ("Girder Label",  "GirderLabel"),
     ]
-    OVERLAY_KEYS = {"Grillage", "Node", "NodeNumbers"}
+    OVERLAY_KEYS = {"Grillage", "Node", "NodeNumbers", "ElementNumber", "GirderLabel"}
 
     def __init__(self, parent: CAD3DWindow):
         super().__init__(parent)
@@ -1065,12 +1067,13 @@ class BridgeComponentCheckbox(QWidget):
             layout.addWidget(cb)
             self._checkboxes.append(cb)
 
-        # Hide "Grillage view" and "Node" from the panel — these are now
+        # Hide "Grillage view", "Node", "Node Numbers", "Element Number", 
+        # and "Girder Label" from the panel — these are now
         # controlled exclusively from the main ToolBar (toolbar_controller.py).
         # The checkboxes still exist in _checkboxes so the toolbar handler
         # can find and update them; they are just not visible to the user.
         for cb in self._checkboxes:
-            if cb.text() in ("Grillage view", "Node"):
+            if cb.text() in ("Grillage view", "Node", "Node Numbers", "Element Number", "Girder Label"):
                 cb.hide()
 
         layout.addStretch()

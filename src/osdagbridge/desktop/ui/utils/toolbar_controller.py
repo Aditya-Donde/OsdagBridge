@@ -120,6 +120,8 @@ class ToolBarController:
     # tooltip to locate the correct QPushButton in the toolbar layout.
     _TIP_GRILLAGE  = "Grillage View"
     _TIP_NODE      = "Node"
+    _TIP_NODE_NUM  = "Node Number"
+    _TIP_ELEM_NUM  = "Element Number"
     _TIP_ZOOM_WIN  = "Zoom Window"  # toggle — activates drag-to-zoom rect mode
     _TIP_PAN       = "Pan"          # toggle — activates pan navigation mode
     _TIP_ROTATE    = "Rotate"       # toggle — activates rotate navigation mode
@@ -129,6 +131,7 @@ class ToolBarController:
     _TIP_AXIS      = "Axis"
     _TIP_GRID      = "Grid Lines"
     _TIP_SUPPORTS  = "Supports"
+    _TIP_GIRDER_LABEL = "Girder Label"
 
     def __init__(self, tool_bar: "ToolBarWidget") -> None:
         self._toolbar = tool_bar
@@ -142,9 +145,12 @@ class ToolBarController:
         # Toggle buttons — these become checkable when a view is bound:
         self._btn_grillage: QPushButton | None = self._find_button(self._TIP_GRILLAGE)
         self._btn_node: QPushButton | None     = self._find_button(self._TIP_NODE)
+        self._btn_node_num: QPushButton | None = self._find_button(self._TIP_NODE_NUM)
+        self._btn_elem_num: QPushButton | None = self._find_button(self._TIP_ELEM_NUM)
         self._btn_zoom_win: QPushButton | None = self._find_button(self._TIP_ZOOM_WIN)
         self._btn_pan: QPushButton | None      = self._find_button(self._TIP_PAN)
         self._btn_rotate: QPushButton | None   = self._find_button(self._TIP_ROTATE)
+        self._btn_girder_label: QPushButton | None = self._find_button(self._TIP_GIRDER_LABEL)
 
         # One-shot buttons — always plain, never checkable:
         self._btn_zoom_fit: QPushButton | None = self._find_button(self._TIP_ZOOM_FIT)
@@ -161,8 +167,10 @@ class ToolBarController:
         self._managed_buttons: list[QPushButton] = [
             b for b in (
                 self._btn_grillage, self._btn_node,
+                self._btn_node_num, self._btn_elem_num,
                 self._btn_zoom_win, self._btn_pan, self._btn_rotate,
                 self._btn_axis, self._btn_grid, self._btn_supports,
+                self._btn_girder_label
             )
             if b is not None
         ]
@@ -325,6 +333,9 @@ class ToolBarController:
 
         self._make_checkable(self._btn_grillage, _initial_cb_state("Grillage view"))
         self._make_checkable(self._btn_node,     _initial_cb_state("Node"))
+        self._make_checkable(self._btn_node_num, _initial_cb_state("Node Numbers"))
+        self._make_checkable(self._btn_elem_num, _initial_cb_state("Element Number"))
+        self._make_checkable(self._btn_girder_label, _initial_cb_state("Girder Label"))
 
         # ── Grillage toggle ───────────────────────────────────────────────────
         # RENDERING LOGIC: cad_3d.py → CAD3DWindow._render_grillage()
@@ -375,8 +386,59 @@ class ToolBarController:
             except Exception:
                 pass
 
+        # ── Node Numbers toggle ───────────────────────────────────────────────
+        def _cad_toggle_node_num():
+            want = self._btn_node_num.isChecked()
+            try:
+                selector = cad_widget.component_selector
+                for cb in selector._checkboxes:
+                    if cb.text() == "Node Numbers":
+                        cb.blockSignals(True)
+                        cb.setChecked(want)
+                        cb.blockSignals(False)
+                        selector._apply()
+                        self._sync_btn_to(self._btn_node_num, cb.isChecked())
+                        break
+            except Exception:
+                pass
+
+        # ── Element Number toggle ───────────────────────────────────────────────
+        def _cad_toggle_elem_num():
+            want = self._btn_elem_num.isChecked()
+            try:
+                selector = cad_widget.component_selector
+                for cb in selector._checkboxes:
+                    if cb.text() == "Element Number":
+                        cb.blockSignals(True)
+                        cb.setChecked(want)
+                        cb.blockSignals(False)
+                        selector._apply()
+                        self._sync_btn_to(self._btn_elem_num, cb.isChecked())
+                        break
+            except Exception:
+                pass
+
+        # ── Girder Label toggle ───────────────────────────────────────────────
+        def _cad_toggle_girder_label():
+            want = self._btn_girder_label.isChecked()
+            try:
+                selector = cad_widget.component_selector
+                for cb in selector._checkboxes:
+                    if cb.text() == "Girder Label":
+                        cb.blockSignals(True)
+                        cb.setChecked(want)
+                        cb.blockSignals(False)
+                        selector._apply()
+                        self._sync_btn_to(self._btn_girder_label, cb.isChecked())
+                        break
+            except Exception:
+                pass
+
         self._connect(self._btn_grillage, _cad_toggle_grillage)
         self._connect(self._btn_node,     _cad_toggle_node)
+        self._connect(self._btn_node_num, _cad_toggle_node_num)
+        self._connect(self._btn_elem_num, _cad_toggle_elem_num)
+        self._connect(self._btn_girder_label, _cad_toggle_girder_label)
 
         # ── Zoom Window toggle ────────────────────────────────────────────────
         # NAVIGATION LOGIC: cad_3d.py → BridgeComponentCheckbox._on_zoom_window_toggled()
