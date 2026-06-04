@@ -389,8 +389,13 @@ class ToolBarController:
             Delegates to BridgeComponentCheckbox._on_zoom_window_toggled() (cad_3d.py)
             which calls CustomViewer3d.set_navigation_mode() (custom_3dviewer.py).
             If the selector is unavailable, falls back to calling the viewer directly.
+            Mutually exclusive with Pan and Rotate — unchecks those buttons when activated.
             """
             want = self._btn_zoom_win.isChecked()
+            # Mutual exclusion: deactivate the other navigation toggles
+            if want:
+                self._sync_btn_to(self._btn_pan, False)
+                self._sync_btn_to(self._btn_rotate, False)
             try:
                 selector = cad_widget.component_selector
                 # _on_zoom_window_toggled is defined in BridgeComponentCheckbox (cad_3d.py)
@@ -424,8 +429,13 @@ class ToolBarController:
             Delegates to BridgeComponentCheckbox._on_pan_toggled() (cad_3d.py)
             which calls CustomViewer3d.set_navigation_mode(NavMode.PAN).
             Falls back to calling the viewer directly if the selector is unavailable.
+            Mutually exclusive with Rotate and Zoom Window — unchecks those buttons when activated.
             """
             want = self._btn_pan.isChecked()
+            # Mutual exclusion: deactivate the other navigation toggles
+            if want:
+                self._sync_btn_to(self._btn_rotate, False)
+                self._sync_btn_to(self._btn_zoom_win, False)
             try:
                 selector = cad_widget.component_selector
                 # _on_pan_toggled is defined in BridgeComponentCheckbox (cad_3d.py)
@@ -454,8 +464,13 @@ class ToolBarController:
             Delegates to BridgeComponentCheckbox._on_rotate_toggled() (cad_3d.py)
             which calls CustomViewer3d.set_navigation_mode(NavMode.ROTATE).
             Falls back to calling the viewer directly if the selector is unavailable.
+            Mutually exclusive with Pan and Zoom Window — unchecks those buttons when activated.
             """
             want = self._btn_rotate.isChecked()
+            # Mutual exclusion: deactivate the other navigation toggles
+            if want:
+                self._sync_btn_to(self._btn_pan, False)
+                self._sync_btn_to(self._btn_zoom_win, False)
             try:
                 selector = cad_widget.component_selector
                 # _on_rotate_toggled is defined in BridgeComponentCheckbox (cad_3d.py)
