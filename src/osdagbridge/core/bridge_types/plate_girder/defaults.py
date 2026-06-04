@@ -33,7 +33,7 @@ from osdagbridge.core.utils.common import (
 
     KEY_MP_STIFFENER_NO_BEARING_STIFFENERS,
     KEY_MP_STIFFENER_SPACING,
-    KEY_MP_STIFFENER_BEARING_THICKNESS,
+    KEY_MP_STIFFENER_BEARING_PLATE_THICKNESS,
     KEY_MP_STIFFENER_BEARING_OUTSTAND,
     KEY_MP_STIFFENER_INTERMEDIATE,
     KEY_MP_STIFFENER_INTERMEDIATE_SPACING,
@@ -489,7 +489,7 @@ def solve_extend_basic_input_dict(basic_input_dict: dict) -> None:
         (KEY_MP_STIFFENER_NO_BEARING_STIFFENERS,  "bearing_stiffeners_each_end"),
         (KEY_MP_STIFFENER_SPACING,                "bearing_spacing_mm"),
         (KEY_MP_STIFFENER_BEARING_THICKNESS_MODE, "bearing_thickness_mode"),
-        (KEY_MP_STIFFENER_BEARING_THICKNESS,      "bearing_thickness_value"),
+        (KEY_MP_STIFFENER_BEARING_PLATE_THICKNESS,      "bearing_thickness_value"),
         (KEY_MP_STIFFENER_BEARING_OUTSTAND,       "bearing_outstand_mm"),
         (KEY_MP_STIFFENER_INTERMEDIATE,           "intermediate_stiffener"),
         (KEY_MP_STIFFENER_INTERMEDIATE_SPACING,   "intermediate_spacing_mm"),
