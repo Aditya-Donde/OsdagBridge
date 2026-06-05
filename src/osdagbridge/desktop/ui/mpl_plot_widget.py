@@ -288,10 +288,16 @@ class MplPlotWidget(QWidget):
         self._btn_girder_labels.toggled.connect(self._on_girder_labels_toggled)
         # self._canvas.mpl_connect('scroll_event', self._on_scroll)
 
+        # Hide internal Girder Labels button — controlled from the shared ToolBarWidget
+        # via ToolBarController.bind_to_plots() → _plots_toggle_girder_labels().
+        # The button instance (_btn_girder_labels) is kept alive so the controller
+        # can read its initial checked state; only its widget is hidden here.
+        self._btn_girder_labels.hide()
+
         toolbar_row = QHBoxLayout()
         toolbar_row.setContentsMargins(4, 2, 4, 2)
         toolbar_row.setSpacing(4)
-        toolbar_row.addWidget(self._btn_girder_labels)
+        toolbar_row.addWidget(self._btn_girder_labels)  # hidden; kept for state reference
         toolbar_row.addStretch()
         toolbar_row.addWidget(self._btn_zoom_reset)
         # layout

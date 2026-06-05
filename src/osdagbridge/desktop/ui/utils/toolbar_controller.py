@@ -127,9 +127,10 @@ class ToolBarController:
     _TIP_ZOOM_FIT     = "Zoom Fit"    # one-shot action — not a toggle
     _TIP_ZOOM_IN      = "Zoom In"     # one-shot action — not a toggle
     _TIP_ZOOM_OUT     = "Zoom Out"    # one-shot action — not a toggle
-    _TIP_AXIS         = "Axis"
-    _TIP_GRID         = "Grid Lines"
-    _TIP_SUPPORTS     = "Supports"
+    _TIP_AXIS          = "Axis"
+    _TIP_GRID          = "Grid Lines"
+    _TIP_SUPPORTS      = "Supports"
+    _TIP_GIRDER_LABELS = "Girder Labels"
 
     def __init__(self, tool_bar: "ToolBarWidget") -> None:
         self._toolbar = tool_bar
@@ -154,9 +155,10 @@ class ToolBarController:
         self._btn_zoom_out: QPushButton | None = self._find_button(self._TIP_ZOOM_OUT)
 
         # Plot toggle buttons — these become checkable when Plots view is bound:
-        self._btn_axis:     QPushButton | None = self._find_button(self._TIP_AXIS)
-        self._btn_grid:     QPushButton | None = self._find_button(self._TIP_GRID)
-        self._btn_supports: QPushButton | None = self._find_button(self._TIP_SUPPORTS)
+        self._btn_axis:          QPushButton | None = self._find_button(self._TIP_AXIS)
+        self._btn_grid:          QPushButton | None = self._find_button(self._TIP_GRID)
+        self._btn_supports:      QPushButton | None = self._find_button(self._TIP_SUPPORTS)
+        self._btn_girder_labels: QPushButton | None = self._find_button(self._TIP_GIRDER_LABELS)
 
         # Collected list of toggle buttons — used for bulk checkable/restore
         # operations in reset() and bind_to_*().
@@ -165,6 +167,7 @@ class ToolBarController:
                 self._btn_grillage, self._btn_node, self._btn_node_number,
                 self._btn_zoom_win, self._btn_pan, self._btn_rotate,
                 self._btn_axis, self._btn_grid, self._btn_supports,
+                self._btn_girder_labels,
             )
             if b is not None
         ]
@@ -311,6 +314,7 @@ class ToolBarController:
         self._restore_plain(self._btn_axis)
         self._restore_plain(self._btn_grid)
         self._restore_plain(self._btn_supports)
+        self._restore_plain(self._btn_girder_labels)
 
         # ── Read initial checkbox state from BridgeComponentCheckbox (cad_3d.py) ──
         # The "Grillage view", "Node", and "Node Numbers" checkboxes are read so
@@ -601,23 +605,25 @@ class ToolBarController:
             except Exception:
                 return default
 
-        grillage_init = _initial_plot_state('_grillage_mode', False)
-        node_init        = _initial_plot_state('_show_nodes', True)
-        node_number_init = _initial_plot_state('_show_node_numbers', False)
-        axis_init        = _initial_plot_state('_show_axis', False)
-        grid_init = _initial_plot_state('_show_grid', False)
-        supports_init = _initial_plot_state('_show_supports', True)
-        pan_init = _initial_plot_state('_pan_active', False)
-        rotate_init = _initial_plot_state('_rotate_active', False)
+        grillage_init      = _initial_plot_state('_grillage_mode', False)
+        node_init          = _initial_plot_state('_show_nodes', True)
+        node_number_init   = _initial_plot_state('_show_node_numbers', False)
+        axis_init          = _initial_plot_state('_show_axis', False)
+        grid_init          = _initial_plot_state('_show_grid', False)
+        supports_init      = _initial_plot_state('_show_supports', True)
+        pan_init           = _initial_plot_state('_pan_active', False)
+        rotate_init        = _initial_plot_state('_rotate_active', False)
+        girder_labels_init = _initial_plot_state('_show_girder_labels', True)
 
-        self._make_checkable(self._btn_grillage,    grillage_init)
-        self._make_checkable(self._btn_node,         node_init)
-        self._make_checkable(self._btn_node_number,  node_number_init)
-        self._make_checkable(self._btn_axis,         axis_init)
-        self._make_checkable(self._btn_grid,     grid_init)
-        self._make_checkable(self._btn_supports, supports_init)
-        self._make_checkable(self._btn_pan,      pan_init)
-        self._make_checkable(self._btn_rotate,   rotate_init)
+        self._make_checkable(self._btn_grillage,      grillage_init)
+        self._make_checkable(self._btn_node,           node_init)
+        self._make_checkable(self._btn_node_number,    node_number_init)
+        self._make_checkable(self._btn_axis,           axis_init)
+        self._make_checkable(self._btn_grid,           grid_init)
+        self._make_checkable(self._btn_supports,       supports_init)
+        self._make_checkable(self._btn_pan,            pan_init)
+        self._make_checkable(self._btn_rotate,         rotate_init)
+        self._make_checkable(self._btn_girder_labels,  girder_labels_init)
 
         # ── Grillage — direct call to MplPlotWidget._on_grillage_toggled ──────
         def _plots_toggle_grillage():
@@ -732,6 +738,21 @@ class ToolBarController:
                 pass
 
         self._connect(self._btn_rotate, _plots_toggle_rotate)
+
+        # ── Girder Labels — direct call to MplPlotWidget._on_girder_labels_toggled ──
+        # TOGGLE LOGIC: MplPlotWidget._on_girder_labels_toggled() / _apply_girder_labels_visibility()
+        #   walks ax.texts and sets visible=True/False for every gid="girder_labels" text.
+        # INITIAL STATE: True — girder labels (G1, G2, …) are shown by default.
+        def _plots_toggle_girder_labels():
+            """Direct call to MplPlotWidget._on_girder_labels_toggled method."""
+            try:
+                checked = self._btn_girder_labels.isChecked()
+                plots_widget._on_girder_labels_toggled(checked)
+                self._sync_btn_to(self._btn_girder_labels, checked)
+            except Exception:
+                pass
+
+        self._connect(self._btn_girder_labels, _plots_toggle_girder_labels)
 
         # ------------------------------------------------------------            # One‑shot zoom actions for the Plot view – map directly to the
         # MplPlotWidget's internal zoom methods. These are not toggle
