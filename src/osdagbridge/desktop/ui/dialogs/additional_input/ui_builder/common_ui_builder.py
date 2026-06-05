@@ -61,6 +61,14 @@ class AdaptiveWidget(QStackedWidget):
 class UIBuilder(QWidget):
     """Builds a card + grid from a tab schema dict."""
 
+    @classmethod
+    def build_field_widget(cls, owner, field_def: dict, additional_input_instance=None, field_width: int = 200):
+        """Build one schema field using the shared UIBuilder factory."""
+        builder = cls.__new__(cls)
+        builder.owner = owner
+        builder.additional_input_instance = additional_input_instance
+        return cls._create_field(builder, field_def, field_width=field_width)
+
     def __init__(
         self,
         owner,
@@ -510,6 +518,13 @@ class UIBuilder(QWidget):
         # Normalize type aliases
         if ftype == "line":
             ftype = TYPE_TEXTBOX
+        elif ftype in ("combo", "combo_dynamic"):
+            ftype = TYPE_COMBOBOX
+
+        if ftype == "dimension" and hasattr(owner, "_create_schema_dimension_field"):
+            return owner._create_schema_dimension_field(field_def, field_width)
+        if ftype == "mode_value" and field_def.get("bind_value_combo") and hasattr(owner, "_create_schema_mode_value_field"):
+            return owner._create_schema_mode_value_field(field_def, field_width)
 
         # ── Build widget ───────────────────────────────────────────────────
         if ftype == TYPE_COMBOBOX:
@@ -518,6 +533,9 @@ class UIBuilder(QWidget):
             field.addItems(choices)
             field.setSizeAdjustPolicy(QComboBox.AdjustToContents)
             field.setMinimumContentsLength(max((len(c) for c in choices), default=0))
+            default = field_def.get("default")
+            if default is not None:
+                field.setCurrentText(str(default))
 
             # enabled_choices — disable others with grey + forbidden cursor
             enabled_choices = field_def.get("enabled_choices")
@@ -532,12 +550,16 @@ class UIBuilder(QWidget):
                 from osdagbridge.desktop.ui.utils.custom_widgets import SmartCursorComboBoxView
                 field.setView(SmartCursorComboBoxView())
 
+            dynamic_source = str(field_def.get("dynamic_source") or "").strip()
+            if dynamic_source and hasattr(owner, "_populate_dynamic_schema_combo"):
+                owner._populate_dynamic_schema_combo(field, field_def)
+
         elif ftype == TYPE_CHECKBOX:
             label_first = field_def.get("label_first", False)
             label_text  = "" if label_first else field_def.get("label", "")
             field = QCheckBox(label_text)
             field.setObjectName(field_def.get("id", ""))
-            field.setChecked(field_def.get("default_checked", False))
+            field.setChecked(bool(field_def.get("default_checked", field_def.get("default", False))))
             field.setStyleSheet("QCheckBox { font-size: 11px; color: #333; spacing: 6px; }")
             bind_name = field_def.get("bind")
             if bind_name:
