@@ -2564,6 +2564,7 @@ def _extract_demands_from_analysis_results(
     import numpy as np
 
     girders, _   = analysis_results.build_girders(verbose=False)
+    girders      = {k: v for k, v in girders.items() if k not in ("EB1", "EB2")}
     lc_groups    = analysis_results.classify_loadcases()
     dead_lcs     = lc_groups["dead"]
     live_static  = lc_groups["vehicle_static"]
@@ -2601,6 +2602,8 @@ def _extract_demands_from_analysis_results(
     per_girder_per_lc:  Dict[str, Dict[str, DemandEnvelope]] = {}
 
     for g_name, g_info in girders.items():
+        if g_name in ("EB1", "EB2"):
+            continue
         elements = list(g_info.get("elements", []))
         nodes    = list(g_info.get("path", []))
         if not elements:
@@ -2694,15 +2697,51 @@ def _extract_demands_from_analysis_results(
 
         # Per-LC DemandEnvelopes — one row per load case from envelopes_df
         per_lc: Dict[str, DemandEnvelope] = {}
-        if g_env is not None and not g_env.empty:
-            for _, row in g_env.iterrows():
-                lc_str = str(row["LoadCase"])
-                per_lc[lc_str] = DemandEnvelope(
-                    Mu_kNm=round(float(max(abs(row["Max Mz"]), abs(row["Min Mz"]))), 2),
-                    Vu_kN=round(float(max(abs(row["Max Vy"]), abs(row["Min Vy"]))), 2),
-                    governing_combination=lc_str,
-                    location="critical element", member=g_name, source="grillage_analysis_per_lc",
-                )
+        all_lcs_in_env = [str(row["LoadCase"]) for _, row in g_env.iterrows()] if g_env is not None and not g_env.empty else []
+
+        for lc_str in all_lcs_in_env:
+            # ── Forces: max(abs(i), abs(j)) per component ──────────────────
+            try:
+                lc_forces = analysis_results.ds.forces.sel(Loadcase=lc_str, Element=elements)
+                def _fmax(comp_i, comp_j):
+                    vi = float(np.nan_to_num(np.asarray(lc_forces.sel(Component=comp_i).values, dtype=float), nan=0.0).max())
+                    vj = float(np.nan_to_num(np.asarray(lc_forces.sel(Component=comp_j).values, dtype=float), nan=0.0).max())
+                    return max(abs(vi), abs(vj))
+                Mz  = _fmax("Mz_i", "Mz_j") / 1e3   # N·m → kN·m
+                Vy  = _fmax("Vy_i", "Vy_j") / 1e3   # N → kN
+                Vz  = _fmax("Vz_i", "Vz_j") / 1e3
+                Vx  = _fmax("Vx_i", "Vx_j") / 1e3
+                Mx  = _fmax("Mx_i", "Mx_j") / 1e3
+                My  = _fmax("My_i", "My_j") / 1e3
+            except Exception:
+                Mz = Vy = Vz = Vx = Mx = My = 0.0
+
+            # ── Displacements: max abs across girder nodes ──────────────────
+            try:
+                lc_disps = analysis_results.ds.displacements.sel(Loadcase=lc_str, Node=nodes)
+                def _dmax(comp):
+                    v = np.nan_to_num(np.asarray(lc_disps.sel(Component=comp).values, dtype=float), nan=0.0)
+                    return float(np.abs(v).max())
+                Dx = _dmax("x") * 1e3   # m → mm
+                Dy = _dmax("y") * 1e3
+                Dz = _dmax("z") * 1e3
+            except Exception:
+                Dx = Dy = Dz = 0.0
+
+            per_lc[lc_str] = DemandEnvelope(
+                Mu_kNm=round(Mz, 2),
+                Vu_kN=round(Vy, 2),
+                Nu_kN=round(Vx, 2),
+                M_construction_kNm=round(Mx, 2),
+                M_sls_kNm=round(My, 2),
+                V_sls_kN=round(Vz, 2),
+                delta_live_mm=round(Dy, 3),
+                delta_total_mm=round(Dx, 3),
+                stress_range_MPa=round(Dz, 3),
+                governing_combination=lc_str,
+                location="critical element", member=g_name, source="grillage_analysis_per_lc",
+            )
+
         per_girder_per_lc[g_name] = per_lc
 
     return per_girder_demands, per_girder_per_lc
@@ -2822,9 +2861,15 @@ def run_design_check(
             "category_urs": g_cat_urs,     
             "per_lc": {
                 lc_name: {
-                    "Mu_kNm"  : lc_d.Mu_kNm,
-                    "Vu_kN"   : lc_d.Vu_kN,
-                    "delta_mm": lc_d.delta_live_mm,
+                    "Mu_kNm"             : lc_d.Mu_kNm,
+                    "Vu_kN"              : lc_d.Vu_kN,
+                    "Nu_kN"              : lc_d.Nu_kN,
+                    "M_construction_kNm" : lc_d.M_construction_kNm,
+                    "M_sls_kNm"          : lc_d.M_sls_kNm,
+                    "V_sls_kN"           : lc_d.V_sls_kN,
+                    "delta_live_mm"      : lc_d.delta_live_mm,
+                    "delta_total_mm"     : lc_d.delta_total_mm,
+                    "stress_range_MPa"   : lc_d.stress_range_MPa,
                 }
                 for lc_name, lc_d in g_lc.items()
             },
