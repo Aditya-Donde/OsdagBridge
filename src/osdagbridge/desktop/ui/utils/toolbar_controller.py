@@ -282,6 +282,16 @@ class ToolBarController:
         btn.setChecked(state)
         btn.blockSignals(False)
 
+    def _update_loads_button_ui(self, mode: str):
+        if not self._btn_loads:
+            return
+        if mode == "off":
+            self._sync_btn_to(self._btn_loads, False)
+            self._btn_loads.setToolTip(self._TIP_LOADS)
+        elif mode == "all":
+            self._sync_btn_to(self._btn_loads, True)
+            self._btn_loads.setToolTip("Loads: On")
+
     # ── CONNECTION MANAGEMENT ─────────────────────────────────────────────────
     # All connections made by this controller go through _connect() so they
     # are recorded and can be removed cleanly by _disconnect_all().

@@ -186,8 +186,9 @@ class MplPlotWidget(QWidget):
         self._show_element_numbers = False
         self._is_summary_checked = False
         self._show_max = False  
-        self._show_min = False  
         self._show_all_vals = False 
+        self._load_mode = "off"
+        self._result_data = None
 
         # Zoom state
         self._zoom_scale  = 1.0
@@ -407,12 +408,13 @@ class MplPlotWidget(QWidget):
                     pass
 
     def setup(self, ds_all, loadcases: list, nodes: dict, members: dict,
-              edge_dist: float = 0.0):
+              edge_dist: float = 0.0, result_data: dict = None):
         self._ds_all    = ds_all
         self._loadcases = list(loadcases)
         self._nodes     = nodes
         self._members   = members
         self._edge_dist = edge_dist
+        self._result_data = result_data
 
         if hasattr(self, '_fig') and self._fig.axes:
             ax = self._fig.axes[0]
@@ -535,6 +537,13 @@ class MplPlotWidget(QWidget):
         plt.close(self._fig)
         
         self._summary_data = {} 
+        
+        # Calculate nodal forces from the first load case for arrows
+        from osdagbridge.core.bridge_types.plate_girder.plot_generator import _compute_nodal_fy
+        nodal_fy = None
+        if self._load_mode != "off" and self._result_data and self._loadcases:
+            active_lc = self._current_loadcase() or self._loadcases[0]
+            nodal_fy = _compute_nodal_fy(self._result_data, active_lc)
 
         # (Your existing if/elif/else block to build the new figures)
         eng_scale = self._eng_scale
@@ -543,18 +552,21 @@ class MplPlotWidget(QWidget):
                 ds, force_key, self._nodes, self._members,
                 edge_dist=self._edge_dist, eng_scale=eng_scale,
                 selected_girder=sel_girder
+                nodal_fy=nodal_fy, load_mode=self._load_mode
             )
         elif force_key in _DEFL_KEYS:
             self._fig, self._summary_data = build_figure_deflection(
                 ds, force_key, self._nodes, self._members,
                 edge_dist=self._edge_dist, eng_scale=eng_scale,
                 selected_girder=sel_girder
+                nodal_fy=nodal_fy, load_mode=self._load_mode
             )
         else:
             self._fig, self._summary_data = build_figure_bmd(
                 ds, force_key, self._nodes, self._members,
                 edge_dist=self._edge_dist, eng_scale=eng_scale,
                 selected_girder=sel_girder
+                nodal_fy=nodal_fy, load_mode=self._load_mode
             )
 
         self._attach_figure(self._fig)
@@ -716,7 +728,17 @@ class MplPlotWidget(QWidget):
                 old_azim = self._fig.axes[0].azim
             plt.close(self._fig)
             sel_girder = self._current_member()
-            self._fig = build_figure_grillage(self._nodes, self._members, edge_dist=self._edge_dist, selected_girder=sel_girder)
+            
+            from osdagbridge.core.bridge_types.plate_girder.plot_generator import _compute_nodal_fy
+            nodal_fy = None
+            if self._load_mode != "off" and self._result_data and self._loadcases:
+                active_lc = self._current_loadcase() or self._loadcases[0]
+                nodal_fy = _compute_nodal_fy(self._result_data, active_lc)
+                
+            self._fig = build_figure_grillage(
+                self._nodes, self._members, edge_dist=self._edge_dist, selected_girder=sel_girder,
+                nodal_fy=nodal_fy, load_mode=self._load_mode
+            )
             self._attach_figure(self._fig)
             if self._fig.axes and old_elev is not None and old_azim is not None:
                 self._fig.axes[0].view_init(elev=old_elev, azim=old_azim)
