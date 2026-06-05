@@ -534,7 +534,69 @@ class DemandEnvelope:
     # Values: "ULS" | "SLS_frequent" | "SLS" | "DL_LL" | "live_only" | "individual" | ""
     lc_type: str = ""
 
+def make_factored_demand(
+    M_dead_kNm: float,
+    M_live_kNm: float,
+    V_dead_kN: float,
+    V_live_kN: float,
+    span_m: float,
+    vehicle_class: str = "70R(W)",
+    Nsc: int = 2_000_000,
+    location: str = "midspan",
+    member: str = "",
+) -> DemandEnvelope:
+    """
+    IRC 6:2017 Table B.2 (ULS basic) load combination.
 
+    Applies partial safety factors and impact factor to unfactored dead
+    and live load components and returns a ready-to-use DemandEnvelope.
+
+    Use this when you have hand-calculated or separately computed unfactored
+    load effects and want to run the design check without a grillage analysis.
+
+    Args:
+        M_dead_kNm   : Unfactored dead load moment at critical section (kNm).
+        M_live_kNm   : Unfactored live load moment at critical section (kNm).
+        V_dead_kN    : Unfactored dead load shear at critical section (kN).
+        V_live_kN    : Unfactored live load shear at critical section (kN).
+        span_m       : Bridge span in metres (used for impact factor lookup).
+        vehicle_class: IRC vehicle class string — "70R(W)", "70R(T)", "ClassA", "ClassB".
+        Nsc          : Number of stress cycles for fatigue (default 2×10⁶).
+        location     : Description of the critical section (for the report).
+        member       : Girder member name (for the report).
+
+    Returns:
+        DemandEnvelope with Mu_kNm, Vu_kN, and governing_combination set.
+        All fatigue, deflection, and SLS fields are left at 0.0 — supply
+        them directly on the returned object if needed.
+    """
+    gamma_dl = IRC6_2017.table_B2(
+        load_type="dead_load", qualifier="adding", combination="basic"
+    )
+    gamma_ll = IRC6_2017.table_B2(
+        load_type="live_load", qualifier="leading", combination="basic"
+    )
+
+    if vehicle_class in ("70R(W)", "70R(T)"):
+        impact = 1.0 + IRC6_2017.cl_208_3_impact_factor(span_m)
+    else:
+        impact = 1.0 + IRC6_2017.cl_208_2_impact_factor(span_m)
+
+    Mu = gamma_dl * M_dead_kNm + gamma_ll * impact * M_live_kNm
+    Vu = gamma_dl * V_dead_kN  + gamma_ll * impact * V_live_kN
+
+    return DemandEnvelope(
+        Mu_kNm=round(Mu, 3),
+        Vu_kN=round(Vu, 3),
+        Nsc=Nsc,
+        governing_combination=(
+            f"IRC 6:2017 ULS Basic: "
+            f"γDL={gamma_dl}·DL + γLL={gamma_ll}·IF={impact:.3f}·LL"
+        ),
+        location=location,
+        member=member,
+        source="factored_components",
+    )
 # ======================================================================
 #  SECTION 3 -- IRC 22:2015 CAPACITY CALCULATOR
 # ======================================================================
@@ -2717,23 +2779,9 @@ def _extract_demands_from_analysis_results(
         # (1) ULS Mu / Vu — from analyser's Envelope_ULS case.
         Mu_kNm = _fmax_lc(_uls_env_lc, "Mz_i", "Mz_j") / 1e3   # N·m → kN·m
         Vu_kN  = _fmax_lc(_uls_env_lc, "Vy_i", "Vy_j") / 1e3   # N → kN
-
         # (2) Construction moments — from analyser's SW case (stage 1) and DL+LL case (service).
         M_girder_sw_kNm = _fmax_lc(_sw_lc,    "Mz_i", "Mz_j") / 1e3
         M_const_kNm     = _fmax_lc(_dl_ll_lc, "Mz_i", "Mz_j") / 1e3
-
-        # (3) Deflections — fetched directly from analyser cases; no summing, no fallback.
-        disp_y = analysis_results.ds.displacements.sel(Component="y", Node=nodes)
-
-        # delta_live: max displacement across individual live-only LCs.
-        delta_live_mm = 0.0
-        if all_live_lcs:
-            try:
-                lv = np.asarray(disp_y.sel(Loadcase=all_live_lcs).values, dtype=float)
-                lv = lv[~np.isnan(lv)]
-                if lv.size:
-                    delta_live_mm = float(np.abs(lv).max()) / stiffness_ratio * 1000.0
-            except Exception:
                 pass
 
         # delta_total: Dy from analyser's DL+LL case (DL = SW+DC+DD+SIDL, not DW).
