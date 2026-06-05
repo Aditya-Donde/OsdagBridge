@@ -416,126 +416,126 @@ def build_figure_bmd(ds, force_key, nodes, members):
 
 
 # ============================================================
-# BMD CONTOUR
+# BMD CONTOUR  (commented out — kept for reference)
 # ============================================================
-def build_figure_bmd_contour(ds, force_key, nodes, members):
-    def find_component(name):
-        for c in ds["Component"].values:
-            if c.lower() == name.lower():
-                return c
-        return None
+# def build_figure_bmd_contour(ds, force_key, nodes, members):
+#     def find_component(name):
+#         for c in ds["Component"].values:
+#             if c.lower() == name.lower():
+#                 return c
+#         return None
 
-    comp_i_name, comp_j_name = FORCE_MAP[force_key]
-    comp_i = find_component(comp_i_name)
-    comp_j = find_component(comp_j_name)
+#     comp_i_name, comp_j_name = FORCE_MAP[force_key]
+#     comp_i = find_component(comp_i_name)
+#     comp_j = find_component(comp_j_name)
 
-    def get_force(elem, comp):
-        return float(ds["forces"].sel(Element=elem, Component=comp).values)
+#     def get_force(elem, comp):
+#         return float(ds["forces"].sel(Element=elem, Component=comp).values)
 
-    Z_TOL = 3
-    node_z = {}
-    for n in ops.getNodeTags():
-        z = float(ops.nodeCoord(n)[2])
-        node_z[int(n)] = round(z, Z_TOL)
+#     Z_TOL = 3
+#     node_z = {}
+#     for n in ops.getNodeTags():
+#         z = float(ops.nodeCoord(n)[2])
+#         node_z[int(n)] = round(z, Z_TOL)
 
-    from collections import defaultdict
-    girders = defaultdict(list)
+#     from collections import defaultdict
+#     girders = defaultdict(list)
 
-    for ele in ops.getEleTags():
-        n1, n2 = map(int, ops.eleNodes(ele))
-        z1, z2 = node_z[n1], node_z[n2]
-        if z1 == z2:
-            girders[z1].append(int(ele))
+#     for ele in ops.getEleTags():
+#         n1, n2 = map(int, ops.eleNodes(ele))
+#         z1, z2 = node_z[n1], node_z[n2]
+#         if z1 == z2:
+#             girders[z1].append(int(ele))
 
-    def build_polyline(elem_list, comp_i, comp_j):
-        xs, ys, zs, mz, node_ids = [], [], [], [], []
-        for e in elem_list:
-            n1, n2 = members[e]
-            x1, y1, z1 = nodes[n1]
-            xs.append(x1); ys.append(y1); zs.append(z1)
-            mz.append(round(get_force(e, comp_i), 3))
-            node_ids.append(n1)
+#     def build_polyline(elem_list, comp_i, comp_j):
+#         xs, ys, zs, mz, node_ids = [], [], [], [], []
+#         for e in elem_list:
+#             n1, n2 = members[e]
+#             x1, y1, z1 = nodes[n1]
+#             xs.append(x1); ys.append(y1); zs.append(z1)
+#             mz.append(round(get_force(e, comp_i), 3))
+#             node_ids.append(n1)
 
-        last_e = elem_list[-1]
-        n1, n2 = members[last_e]
-        x2, y2, z2 = nodes[n2]
-        xs.append(x2); ys.append(y2); zs.append(z2)
-        mz.append(round(get_force(last_e, comp_j), 3))
-        node_ids.append(n2)
-        return np.array(xs), np.array(ys), np.array(zs), np.array(mz), node_ids
+#         last_e = elem_list[-1]
+#         n1, n2 = members[last_e]
+#         x2, y2, z2 = nodes[n2]
+#         xs.append(x2); ys.append(y2); zs.append(z2)
+#         mz.append(round(get_force(last_e, comp_j), 3))
+#         node_ids.append(n2)
+#         return np.array(xs), np.array(ys), np.array(zs), np.array(mz), node_ids
 
-    xfull, mzfull = [], []
-    for elems in girders.values():
-        xs, ys, zs, mz, _ = build_polyline(elems, comp_i, comp_j)
-        xfull.extend(xs)
-        mzfull.extend(mz)
+#     xfull, mzfull = [], []
+#     for elems in girders.values():
+#         xs, ys, zs, mz, _ = build_polyline(elems, comp_i, comp_j)
+#         xfull.extend(xs)
+#         mzfull.extend(mz)
 
-    fig = go.Figure()
-    add_grillage_background(fig, nodes, members)
-    add_coordinate_triad(fig, nodes)
+#     fig = go.Figure()
+#     add_grillage_background(fig, nodes, members)
+#     add_coordinate_triad(fig, nodes)
 
-    master_drop_x, master_drop_y, master_drop_z, master_drop_color, master_drop_text = [], [], [], [], []
-    master_base_x, master_base_y, master_base_z = [], [], []
+#     master_drop_x, master_drop_y, master_drop_z, master_drop_color, master_drop_text = [], [], [], [], []
+#     master_base_x, master_base_y, master_base_z = [], [], []
 
-    sorted_girders = sorted(girders.items(), key=lambda item: item[0])
-    for i, (gid, elems) in enumerate(sorted_girders):
-        girder_name = f"G{i+1}"
-        xs, ys, zs, mz, node_ids = build_polyline(elems, comp_i, comp_j)
+#     sorted_girders = sorted(girders.items(), key=lambda item: item[0])
+#     for i, (gid, elems) in enumerate(sorted_girders):
+#         girder_name = f"G{i+1}"
+#         xs, ys, zs, mz, node_ids = build_polyline(elems, comp_i, comp_j)
 
-        if max(mz) - min(mz) == 0:
-            moment_scale = 1.0 if max(mz) == 0 else 0.1 * abs((max(xs) - min(xs)) / max(mz))
-        else:
-            moment_scale = 0.1 * abs((max(xs) - min(xs)) / (max(mz) - min(mz)))
+#         if max(mz) - min(mz) == 0:
+#             moment_scale = 1.0 if max(mz) == 0 else 0.1 * abs((max(xs) - min(xs)) / max(mz))
+#         else:
+#             moment_scale = 0.1 * abs((max(xs) - min(xs)) / (max(mz) - min(mz)))
 
-        y_plot = mz * moment_scale
+#         y_plot = mz * moment_scale
 
-        fig.add_trace(go.Surface(
-            x=[xs, xs], y=[np.zeros(len(xs)), y_plot], z=[zs, zs],
-            surfacecolor=[mz, mz], colorscale="Jet", cmin=min(mzfull), cmax=max(mzfull),
-            opacity=0.4, showscale=False, hoverinfo="skip"
-        ))
+#         fig.add_trace(go.Surface(
+#             x=[xs, xs], y=[np.zeros(len(xs)), y_plot], z=[zs, zs],
+#             surfacecolor=[mz, mz], colorscale="Jet", cmin=min(mzfull), cmax=max(mzfull),
+#             opacity=0.4, showscale=False, hoverinfo="skip"
+#         ))
 
-        fig.add_trace(go.Scatter3d(
-            x=xs, y=y_plot, z=zs, mode="lines+markers",
-            line=dict(width=6, color=mz, colorscale="Jet", cmin=min(mzfull), cmax=max(mzfull)),
-            marker=dict(size=12, opacity=0),
-            showlegend=False, text=[f"Node {nid}<br>X={x:.2f}<br>{force_key}={v:.2f}" for nid, x, v in zip(node_ids, xs, mz)],
-            hoverinfo="text"
-        ))
+#         fig.add_trace(go.Scatter3d(
+#             x=xs, y=y_plot, z=zs, mode="lines+markers",
+#             line=dict(width=6, color=mz, colorscale="Jet", cmin=min(mzfull), cmax=max(mzfull)),
+#             marker=dict(size=12, opacity=0),
+#             showlegend=False, text=[f"Node {nid}<br>X={x:.2f}<br>{force_key}={v:.2f}" for nid, x, v in zip(node_ids, xs, mz)],
+#             hoverinfo="text"
+#         ))
 
-        fig.add_trace(go.Scatter3d(
-            x=[xs[0]], y=[0], z=[zs[0]], mode="text", text=[f"<b>{girder_name}</b>"],
-            textposition="middle left", textfont=dict(size=14, color="black"),
-            showlegend=False, hoverinfo="skip"
-        ))
+#         fig.add_trace(go.Scatter3d(
+#             x=[xs[0]], y=[0], z=[zs[0]], mode="text", text=[f"<b>{girder_name}</b>"],
+#             textposition="middle left", textfont=dict(size=14, color="black"),
+#             showlegend=False, hoverinfo="skip"
+#         ))
 
-        master_base_x.extend([xs[0], xs[-1], None])
-        master_base_y.extend([0, 0, None])
-        master_base_z.extend([zs[0], zs[0], None])
+#         master_base_x.extend([xs[0], xs[-1], None])
+#         master_base_y.extend([0, 0, None])
+#         master_base_z.extend([zs[0], zs[0], None])
 
-        for xi, zi, mzi, nid in zip(xs, zs, mz, node_ids):
-            master_drop_x.extend([xi, xi, None])
-            master_drop_y.extend([0, mzi * moment_scale, None])
-            master_drop_z.extend([zi, zi, None])
-            master_drop_color.extend([mzi, mzi, mzi])
-            htext = f"Node {nid}<br>X={xi:.2f}<br>{force_key}={mzi:.2f}"
-            master_drop_text.extend([htext, htext, None])
+#         for xi, zi, mzi, nid in zip(xs, zs, mz, node_ids):
+#             master_drop_x.extend([xi, xi, None])
+#             master_drop_y.extend([0, mzi * moment_scale, None])
+#             master_drop_z.extend([zi, zi, None])
+#             master_drop_color.extend([mzi, mzi, mzi])
+#             htext = f"Node {nid}<br>X={xi:.2f}<br>{force_key}={mzi:.2f}"
+#             master_drop_text.extend([htext, htext, None])
 
-    fig.add_trace(go.Scatter3d(
-        x=master_base_x, y=master_base_y, z=master_base_z, mode="lines",
-        line=dict(color="green", width=3), hoverinfo="skip", showlegend=False
-    ))
-    fig.add_trace(go.Scatter3d(
-        x=master_drop_x, y=master_drop_y, z=master_drop_z, mode="lines+markers",
-        line=dict(width=4, color=master_drop_color, colorscale="Jet", cmin=min(mzfull), cmax=max(mzfull)),
-        marker=dict(size=12, opacity=0), showlegend=False, text=master_drop_text, hoverinfo="text"
-    ))
+#     fig.add_trace(go.Scatter3d(
+#         x=master_base_x, y=master_base_y, z=master_base_z, mode="lines",
+#         line=dict(color="green", width=3), hoverinfo="skip", showlegend=False
+#     ))
+#     fig.add_trace(go.Scatter3d(
+#         x=master_drop_x, y=master_drop_y, z=master_drop_z, mode="lines+markers",
+#         line=dict(width=4, color=master_drop_color, colorscale="Jet", cmin=min(mzfull), cmax=max(mzfull)),
+#         marker=dict(size=12, opacity=0), showlegend=False, text=master_drop_text, hoverinfo="text"
+#     ))
 
-    fig.update_layout(
-        uirevision="constant_view",
-        hoverlabel=dict(bgcolor="rgba(15, 23, 42, 0.95)", font_size=12, font_color="#F8F9FA", bordercolor="#0EA5E9", namelength=-1),
-        scene=SHARED_SCENE,
-        paper_bgcolor="white", plot_bgcolor="white", margin=dict(l=0, r=0, t=40, b=0)
-    )
+#     fig.update_layout(
+#         uirevision="constant_view",
+#         hoverlabel=dict(bgcolor="rgba(15, 23, 42, 0.95)", font_size=12, font_color="#F8F9FA", bordercolor="#0EA5E9", namelength=-1),
+#         scene=SHARED_SCENE,
+#         paper_bgcolor="white", plot_bgcolor="white", margin=dict(l=0, r=0, t=40, b=0)
+#     )
 
-    return fig.to_json()
+#     return fig.to_json()

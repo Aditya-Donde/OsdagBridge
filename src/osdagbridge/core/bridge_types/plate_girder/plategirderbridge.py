@@ -27,7 +27,7 @@ from . import deckdesign
 from .plot_generator import (
     build_figure_sfd,
     build_figure_bmd,
-    build_figure_bmd_contour,
+    # build_figure_bmd_contour,  # commented out
     build_figure_deflection,
     build_figure_grillage,
     build_nodes_members,
@@ -2034,10 +2034,10 @@ class PlateGirderBridge:
         nodes, members = self.get_nodes_members()
         return build_figure_bmd(ds, force_key, nodes, members, edge_dist=self.get_edge_dist())
 
-    def build_figure_bmd_contour(self, ds, force_key: str):
-        """Build and return a matplotlib Figure for the BMD contour plot of the given dataset slice."""
-        nodes, members = self.get_nodes_members()
-        return build_figure_bmd_contour(ds, force_key, nodes, members, edge_dist=self.get_edge_dist())
+    # def build_figure_bmd_contour(self, ds, force_key: str):
+    #     """Build and return a matplotlib Figure for the BMD contour plot (commented out)."""
+    #     nodes, members = self.get_nodes_members()
+    #     return build_figure_bmd_contour(ds, force_key, nodes, members, edge_dist=self.get_edge_dist())
 
     def build_figure_deflection(self, ds, disp_key: str):
         """Build and return a matplotlib Figure for the deflection diagram of the given dataset slice."""

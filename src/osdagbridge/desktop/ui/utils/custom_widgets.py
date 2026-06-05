@@ -563,7 +563,7 @@ class ToolBarWidget(QWidget):
 
         # Model display group
         self.layout.addWidget(create_button(":/vectors/tool_bar/grillage_view_light.svg", "Grillage View"))
-        self.layout.addWidget(create_button(":/vectors/tool_bar/show_contour_light.svg", "Contour Plot"))
+
         self.layout.addWidget(create_button(":/vectors/tool_bar/show_axis_light.svg", "Axis"))
         self.layout.addWidget(create_button(":/vectors/tool_bar/show_grid_lines_light.svg", "Grid Lines"))
         self.layout.addWidget(create_button(":/vectors/tool_bar/show_support_light.svg", "Supports"))

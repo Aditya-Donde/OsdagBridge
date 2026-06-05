@@ -28,7 +28,7 @@ from PySide6.QtWebChannel import QWebChannel
 from osdagbridge.core.bridge_types.plate_girder.plots_widget import (
     build_figure_sfd,
     build_figure_bmd,
-    build_figure_bmd_contour,
+    # build_figure_bmd_contour,  # commented out
     FORCE_MAP,
 )
 
@@ -174,10 +174,11 @@ class PlotWidget(QWidget):
         self.force_combo.currentTextChanged.connect(self.update_plot)
         top.addWidget(self.force_combo)
 
-        # ---------- CONTOUR CHECKBOX ----------
-        self.contour = QCheckBox("Contour (Moments only)")
-        self.contour.stateChanged.connect(self.update_plot)
-        top.addWidget(self.contour)
+        # ---------- CONTOUR CHECKBOX (commented out) ----------
+        # self.contour = QCheckBox("Contour (Moments only)")
+        # self.contour.stateChanged.connect(self.update_plot)
+        # top.addWidget(self.contour)
+
         
         top.addStretch()
         layout.addLayout(top)
@@ -244,25 +245,23 @@ class PlotWidget(QWidget):
         is_moment = force_key.startswith("M") 
 
         if is_force:
-            self.contour.blockSignals(True)
-            self.contour.setChecked(False)
-            self.contour.setEnabled(False)
-            self.contour.blockSignals(False)
-            
+            # self.contour.blockSignals(True)   # commented out
+            # self.contour.setChecked(False)    # commented out
+            # self.contour.setEnabled(False)    # commented out
+            # self.contour.blockSignals(False)  # commented out
             self.stats_dict = {}
             plot_json = build_figure_sfd(ds, force_key, self._nodes, self._members)
 
         elif is_moment:
-            self.contour.setEnabled(True)
+            # self.contour.setEnabled(True)     # commented out
+            # if self.contour.isChecked():      # commented out
+            #     plot_json = build_figure_bmd_contour(ds, force_key, self._nodes, self._members)
+            #     self.stats_dict = {}
+            # else:
+            plot_json, self.stats_dict = build_figure_bmd(ds, force_key, self._nodes, self._members)
 
-            if self.contour.isChecked():
-                plot_json = build_figure_bmd_contour(ds, force_key, self._nodes, self._members)
-                self.stats_dict = {}
-            else:
-                plot_json, self.stats_dict = build_figure_bmd(ds, force_key, self._nodes, self._members)
-                
-                if self.summary_dialog.isVisible():
-                    self.summary_dialog.update_data(self.stats_dict)
+            if self.summary_dialog.isVisible():
+                self.summary_dialog.update_data(self.stats_dict)
 
         else:
             raise ValueError(f"Unsupported force: {force_key}")

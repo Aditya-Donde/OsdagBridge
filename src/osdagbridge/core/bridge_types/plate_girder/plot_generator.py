@@ -985,93 +985,93 @@ def build_figure_bmd(ds, force_key, nodes, members, edge_dist=0.0, eng_scale=1.0
 # BMD CONTOUR PLOT
 # =============================================================================
 
-def build_figure_bmd_contour(ds, force_key, nodes, members, edge_dist=0.0):
-    """
-    Build a 3-D matplotlib figure showing the BMD with a Jet colour-map
-    scaled to the global moment range across all girders.
+# def build_figure_bmd_contour(ds, force_key, nodes, members, edge_dist=0.0):
+    # """
+    # Build a 3-D matplotlib figure showing the BMD with a Jet colour-map
+    # scaled to the global moment range across all girders.
 
-    Parameters
-    ----------
-    ds         : xarray.Dataset
-    force_key  : str
-    nodes      : dict
-    members    : dict
-    edge_dist  : float  — overhang distance; when > 0 the outermost two
-                          girders are edge beams and are skipped in the
-                          force diagram (their lines remain visible via
-                          the grillage background).
+    # Parameters
+    # ----------
+    # ds         : xarray.Dataset
+    # force_key  : str
+    # nodes      : dict
+    # members    : dict
+    # edge_dist  : float  — overhang distance; when > 0 the outermost two
+    #                       girders are edge beams and are skipped in the
+    #                       force diagram (their lines remain visible via
+    #                       the grillage background).
 
-    Returns
-    -------
-    fig : matplotlib.figure.Figure
-    """
-    comp_i_name, comp_j_name = FORCE_MAP[force_key]
-    disp_key = FORCE_DISPLAY.get(force_key, force_key)
-    girders = _find_girders(nodes, members)
+    # Returns
+    # -------
+    # fig : matplotlib.figure.Figure
+    # """
+    # comp_i_name, comp_j_name = FORCE_MAP[force_key]
+    # disp_key = FORCE_DISPLAY.get(force_key, force_key)
+    # girders = _find_girders(nodes, members)
 
-    girder_items_cnt = list(girders.items())
-    n_girders_cnt    = len(girder_items_cnt)
+    # girder_items_cnt = list(girders.items())
+    # n_girders_cnt    = len(girder_items_cnt)
 
     # Global moment range - exclude edge beams from colour scale
-    all_vals = []
-    for i, (_, elems) in enumerate(girder_items_cnt):
-        if edge_dist > 0 and (i == 0 or i == n_girders_cnt - 1):
-            continue
-        _, _, _, mz, _ = _build_polyline(elems, members, nodes, comp_i_name, comp_j_name, ds)
-        all_vals.extend(mz.tolist())
-    vmin, vmax = min(all_vals), max(all_vals)
-    if vmin == vmax:
-        vmin -= 1.0; vmax += 1.0
+    # all_vals = []
+    # for i, (_, elems) in enumerate(girder_items_cnt):
+    #     if edge_dist > 0 and (i == 0 or i == n_girders_cnt - 1):
+    #         continue
+    #     _, _, _, mz, _ = _build_polyline(elems, members, nodes, comp_i_name, comp_j_name, ds)
+    #     all_vals.extend(mz.tolist())
+    # vmin, vmax = min(all_vals), max(all_vals)
+    # if vmin == vmax:
+    #     vmin -= 1.0; vmax += 1.0
 
-    norm = mcolors.Normalize(vmin=vmin, vmax=vmax)
-    cmap = plt.colormaps["jet"]
+    # norm = mcolors.Normalize(vmin=vmin, vmax=vmax)
+    # cmap = plt.colormaps["jet"]
 
-    fig = plt.figure(figsize=(14, 6), dpi=110, facecolor="white")
-    ax  = fig.add_subplot(111, projection="3d", facecolor="white")
+    # fig = plt.figure(figsize=(14, 6), dpi=110, facecolor="white")
+    # ax  = fig.add_subplot(111, projection="3d", facecolor="white")
 
-    all_xs = [coord[0] for coord in nodes.values()]
-    all_zs = [coord[2] for coord in nodes.values()]
-    x_range = max(all_xs) - min(all_xs) or 1.0
-    z_range = max(all_zs) - min(all_zs) or 1.0
-    ax.set_xlim(min(all_xs), max(all_xs))
-    ax.set_ylim(min(all_zs), max(all_zs))
-    ax.set_box_aspect([x_range, z_range, x_range * 0.30])
+    # all_xs = [coord[0] for coord in nodes.values()]
+    # all_zs = [coord[2] for coord in nodes.values()]
+    # x_range = max(all_xs) - min(all_xs) or 1.0
+    # z_range = max(all_zs) - min(all_zs) or 1.0
+    # ax.set_xlim(min(all_xs), max(all_xs))
+    # ax.set_ylim(min(all_zs), max(all_zs))
+    # ax.set_box_aspect([x_range, z_range, x_range * 0.30])
 
-    _add_grillage_background(
-        ax, nodes, members,
-        include_edge_longitudinals=False,
-        include_end_transverse=False,
-        show_inner_nodes=False,
-    )
-    _add_coordinate_triad(ax, nodes, eng_scale=1.0)
-    _add_supports(ax, nodes, members, edge_dist=edge_dist)
+    # _add_grillage_background(
+    #     ax, nodes, members,
+    #     include_edge_longitudinals=False,
+    #     include_end_transverse=False,
+    #     show_inner_nodes=False,
+    # )
+    # _add_coordinate_triad(ax, nodes, eng_scale=1.0)
+    # _add_supports(ax, nodes, members, edge_dist=edge_dist)
 
-    base_color = "#388E3C"
+    # base_color = "#388E3C"
 
-    for i, (z_val, elems) in enumerate(girder_items_cnt):
-        is_edge_beam = edge_dist > 0 and (i == 0 or i == n_girders_cnt - 1)
-        girder_name  = f"G{i}" if edge_dist > 0 else f"G{i + 1}"
+    # for i, (z_val, elems) in enumerate(girder_items_cnt):
+    #     is_edge_beam = edge_dist > 0 and (i == 0 or i == n_girders_cnt - 1)
+    #     girder_name  = f"G{i}" if edge_dist > 0 else f"G{i + 1}"
 
-        xs, ys, zs, Mz, node_ids = _build_polyline(
-            elems, members, nodes, comp_i_name, comp_j_name, ds
-        )
+    #     xs, ys, zs, Mz, node_ids = _build_polyline(
+    #         elems, members, nodes, comp_i_name, comp_j_name, ds
+    #     )
 
-        z_base = float(np.mean(zs))
-        z_arr  = np.full_like(xs, z_base)
+    #     z_base = float(np.mean(zs))
+    #     z_arr  = np.full_like(xs, z_base)
 
         # baseline - grey for edge beams, green for structural
-        ax.plot([xs[0], xs[-1]], [z_base, z_base], [0, 0],
-                color="slategrey" if is_edge_beam else base_color,
-                linewidth=1.5, linestyle="--", zorder=3)
+        # ax.plot([xs[0], xs[-1]], [z_base, z_base], [0, 0],
+        #         color="slategrey" if is_edge_beam else base_color,
+        #         linewidth=1.5, linestyle="--", zorder=3)
 
         # edge beams: baseline only, no label or force diagram
-        if is_edge_beam:
-            continue
+        # if is_edge_beam:
+        #     continue
 
         # girder label
-        ax.text(xs[0] - (x_range * 0.02), z_base, 0, f"{girder_name}",
-                color="black", fontsize=13, fontweight="normal",
-                ha="right", va="center", zorder=6, gid="girder_labels")
+        # ax.text(xs[0] - (x_range * 0.02), z_base, 0, f"{girder_name}",
+        #         color="black", fontsize=13, fontweight="normal",
+        #         ha="right", va="center", zorder=6, gid="girder_labels")
 
         # val_range = max(Mz) - min(Mz)
         # if val_range == 0:
@@ -1079,58 +1079,58 @@ def build_figure_bmd_contour(ds, force_key, nodes, members, edge_dist=0.0):
         # else:
         #     moment_scale = 0.1 * abs((max(xs) - min(xs)) / val_range)
 
-        y_plot = Mz 
+        # y_plot = Mz 
 
-        face_colors = cmap(norm(np.vstack([Mz, Mz])))
-        ax.plot_surface(
-            np.vstack([xs, xs]),
-            np.vstack([z_arr, z_arr]),
-            np.vstack([np.zeros_like(y_plot), y_plot]),
-            facecolors=face_colors, alpha=0.35, linewidth=0,
-            antialiased=False, zorder=2
-        )
+        # face_colors = cmap(norm(np.vstack([Mz, Mz])))
+        # ax.plot_surface(
+        #     np.vstack([xs, xs]),
+        #     np.vstack([z_arr, z_arr]),
+        #     np.vstack([np.zeros_like(y_plot), y_plot]),
+        #     facecolors=face_colors, alpha=0.35, linewidth=0,
+        #     antialiased=False, zorder=2
+        # )
 
-        pts  = np.column_stack([xs, z_arr, y_plot])          # (N, 3)
-        segs = np.stack([pts[:-1], pts[1:]], axis=1)          # (N-1, 2, 3)
-        seg_colors = cmap(norm((Mz[:-1] + Mz[1:]) / 2))
-        lc = Line3DCollection(segs, colors=seg_colors, linewidths=3, zorder=4)
-        ax.add_collection3d(lc)
+        # pts  = np.column_stack([xs, z_arr, y_plot])          # (N, 3)
+        # segs = np.stack([pts[:-1], pts[1:]], axis=1)          # (N-1, 2, 3)
+        # seg_colors = cmap(norm((Mz[:-1] + Mz[1:]) / 2))
+        # lc = Line3DCollection(segs, colors=seg_colors, linewidths=3, zorder=4)
+        # ax.add_collection3d(lc)
 
         # coloured drop lines at each node
-        for xi, zi, mzi, ypi in zip(xs, z_arr, Mz, y_plot):
-            ax.plot([xi, xi], [zi, zi], [0, ypi],
-                    color=cmap(norm(mzi)), linewidth=1.0, alpha=0.7, zorder=3)
+        # for xi, zi, mzi, ypi in zip(xs, z_arr, Mz, y_plot):
+        #     ax.plot([xi, xi], [zi, zi], [0, ypi],
+        #             color=cmap(norm(mzi)), linewidth=1.0, alpha=0.7, zorder=3)
 
-    sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
-    sm.set_array([])
-    cbar = fig.colorbar(sm, ax=ax, shrink=0.5, pad=0.1, aspect=20)
-    cbar.set_label(f"{disp_key}", fontsize=10)
+    # sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
+    # sm.set_array([])
+    # cbar = fig.colorbar(sm, ax=ax, shrink=0.5, pad=0.1, aspect=20)
+    # cbar.set_label(f"{disp_key}", fontsize=10)
 
-    ax.set_xlabel("Span Length (m)", fontsize=10, labelpad=8)
-    ax.set_ylabel("Bridge Width (m)", fontsize=10, labelpad=8)
-    ax.set_zlabel(f"{disp_key} (kNm)", fontsize=10, labelpad=8)
-    ax.set_title(f"BMD Contour  —  {disp_key}", fontsize=12, fontweight="bold", pad=12)
-    ax.view_init(elev=DEFAULT_ELEV, azim=DEFAULT_AZIM)
-    ax.xaxis.pane.fill = False
-    ax.yaxis.pane.fill = False
-    ax.zaxis.pane.fill = False
-    # Professional, high-contrast bounding box borders
-    ax.xaxis.pane.set_edgecolor("#555555")
-    ax.yaxis.pane.set_edgecolor("#555555")
-    ax.zaxis.pane.set_edgecolor("#555555")
-    ax.xaxis.pane.set_linewidth(1.5)
-    ax.yaxis.pane.set_linewidth(1.5)
-    ax.zaxis.pane.set_linewidth(1.5)
-    ax.xaxis.pane.set_alpha(1.0)
-    ax.yaxis.pane.set_alpha(1.0)
-    ax.zaxis.pane.set_alpha(1.0)
-    ax.grid(True, linestyle="--", linewidth=0.4, alpha=0.5)
+    # ax.set_xlabel("Span Length (m)", fontsize=10, labelpad=8)
+    # ax.set_ylabel("Bridge Width (m)", fontsize=10, labelpad=8)
+    # ax.set_zlabel(f"{disp_key} (kNm)", fontsize=10, labelpad=8)
+    # ax.set_title(f"BMD Contour  —  {disp_key}", fontsize=12, fontweight="bold", pad=12)
+    # ax.view_init(elev=DEFAULT_ELEV, azim=DEFAULT_AZIM)
+    # ax.xaxis.pane.fill = False
+    # ax.yaxis.pane.fill = False
+        # ax.zaxis.pane.fill = False
+        # # Professional, high-contrast bounding box borders
+        # ax.xaxis.pane.set_edgecolor("#555555")
+        # ax.yaxis.pane.set_edgecolor("#555555")
+        # ax.zaxis.pane.set_edgecolor("#555555")
+        # ax.xaxis.pane.set_linewidth(1.5)
+        # ax.yaxis.pane.set_linewidth(1.5)
+        # ax.zaxis.pane.set_linewidth(1.5)
+        # ax.xaxis.pane.set_alpha(1.0)
+        # ax.yaxis.pane.set_alpha(1.0)
+        # ax.zaxis.pane.set_alpha(1.0)
+        # ax.grid(True, linestyle="--", linewidth=0.4, alpha=0.5)
 
     # Force the 3D plot to use the maximum available canvas space
     # Dedicate 18% of the right side purely to the massive axis labels.
     # This naturally shoves the 3D bridge perfectly into the center of the screen!
     # fig.subplots_adjust(left=0.05, right=0.88, bottom=0.05, top=0.90)
-    return fig
+    # return fig
 
 
 # =============================================================================
