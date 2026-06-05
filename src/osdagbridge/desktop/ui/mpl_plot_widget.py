@@ -22,6 +22,7 @@ from osdagbridge.core.bridge_types.plate_girder.plot_generator import (
     build_figure_deflection,
     build_figure_grillage,
     _add_node_number_labels,
+    _add_element_number_labels,
     FORCE_MAP,
     DISP_MAP,
 )
@@ -178,6 +179,7 @@ class MplPlotWidget(QWidget):
         self._show_grid = False  
         self._show_girder_labels = True
         self._show_node_numbers = False
+        self._show_element_numbers = False
         self._is_summary_checked = False
         self._show_max = False  
         self._show_min = False  
@@ -286,6 +288,16 @@ class MplPlotWidget(QWidget):
         self._btn_girder_labels.setFocusPolicy(Qt.NoFocus)
         self._btn_girder_labels.setStyleSheet(btn_style)
         self._btn_girder_labels.toggled.connect(self._on_girder_labels_toggled)
+
+        # Hidden internal button for Element Numbers — controlled from shared ToolBarWidget
+        # via ToolBarController.bind_to_plots() → _plots_toggle_element_numbers().
+        self._btn_element_numbers = QPushButton("Element Numbers")
+        self._btn_element_numbers.setCheckable(True)
+        self._btn_element_numbers.setChecked(False)   # off by default
+        self._btn_element_numbers.setFocusPolicy(Qt.NoFocus)
+        self._btn_element_numbers.setStyleSheet(btn_style)
+        self._btn_element_numbers.toggled.connect(self._on_element_numbers_toggled)
+        self._btn_element_numbers.hide()
         # self._canvas.mpl_connect('scroll_event', self._on_scroll)
 
         # Hide internal Girder Labels button — controlled from the shared ToolBarWidget
@@ -443,7 +455,8 @@ class MplPlotWidget(QWidget):
         self._apply_supports_visibility()
         self._apply_grid_visibility()
         self._apply_girder_labels_visibility()
-        self._apply_annotation_visibility() 
+        self._apply_element_number_visibility()
+        self._apply_annotation_visibility()
         
         # (Your existing HUD logic)
         if self._summary_data:
@@ -597,7 +610,8 @@ class MplPlotWidget(QWidget):
             self._apply_supports_visibility()
             self._apply_grid_visibility()
             self._apply_girder_labels_visibility()
-            self._summary_overlay.hide() 
+            self._apply_element_number_visibility()
+            self._summary_overlay.hide()
             
             if self._fig.axes and hasattr(self._fig.axes[0], 'set_box_aspect'):
                 self._fig.axes[0].set_box_aspect(
@@ -638,6 +652,16 @@ class MplPlotWidget(QWidget):
     def _on_node_numbers_toggled(self, checked: bool):
         self._show_node_numbers = checked
         self._apply_node_number_visibility()
+        self._canvas.draw_idle()
+
+    def _on_element_numbers_toggled(self, checked: bool):
+        """Called by ToolBarController._plots_toggle_element_numbers (toolbar_controller.py).
+        Toggles element-ID labels (gid='element_number') drawn by
+        plot_generator._add_element_number_labels() in every figure builder.
+        DATA SOURCE: members dict from results_data._build_nodes_members() via MplPlotWidget.setup().
+        """
+        self._show_element_numbers = checked
+        self._apply_element_number_visibility()
         self._canvas.draw_idle()
 
     def resizeEvent(self, event):
@@ -714,6 +738,23 @@ class MplPlotWidget(QWidget):
                     # Enforce a consistent visual style across all plot rebuilds.
                     text.set_fontsize(13)
                     text.set_color("black")
+
+    def _apply_element_number_visibility(self):
+        """Show/hide element-ID text labels (gid='element_number') on all axes.
+
+        DATA FLOW
+        ---------
+        Labels are drawn once per figure build by
+        plot_generator._add_element_number_labels(ax, nodes, members).
+        The members dict comes from results_data._build_nodes_members()
+        (via openseespy: ops.getEleTags(), ops.eleNodes()) and is passed to
+        MplPlotWidget via setup().  This method only toggles visibility; no
+        rebuild is needed.
+        """
+        for ax in self._fig.axes:
+            for text in ax.texts:
+                if text.get_gid() == "element_number":
+                    text.set_visible(self._show_element_numbers)
 
     def _attach_figure(self, fig):
         """Install a rebuilt figure using QtAgg's current DPR-aware canvas size."""

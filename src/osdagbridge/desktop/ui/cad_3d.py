@@ -537,17 +537,15 @@ class CAD3DWindow(QWidget):
             Base keys  — show structural geometry:
                 "Girder", "Deck", "Cross Bracing", "Crash Barrier",
                 "Median", "Railing"
-            Overlay keys — toggled independently of the base:
-                "Grillage"     — edge lines between nodes (_render_grillage)
-                "Node"         — sphere markers at each node (_render_nodes)
-                "NodeNumbers"  — node-ID text labels (_render_node_numbers)
+            Toolbar-overlay keys (checkbox-independent, never erased here):
+                "Grillage"     — edge lines between nodes
+                "Node"         — sphere markers at each node
         """
         if not self._is_display_ready():
             return
 
         context = self.viewer.context
-        show_node_numbers = "NodeNumbers" in selected_components
-        show_nodes        = "Node" in selected_components
+        show_nodes = "Node" in selected_components
 
         # Map checkbox keys → internal model_ais_objects keys
         component_map = {
@@ -568,40 +566,26 @@ class CAD3DWindow(QWidget):
             if comp in component_map:
                 visible_keys.update(component_map[comp])
 
-        # ── Node Numbers: mutually exclusive with sphere markers ──────────────
-        if show_node_numbers:
-            self._render_node_numbers()
-            # Hide sphere markers while numbers are shown
-            for ais in self.viewer.model_ais_objects.get("Node", []):
-                try:
-                    context.Erase(ais, False)
-                except Exception:
-                    pass
-            # Disable hover tooltips (text labels already give the info)
-            if hasattr(self.viewer, "set_node_hover_data"):
-                self.viewer.set_node_hover_data([])
-        else:
-            # Clear any existing number labels
-            for ais in self.viewer.model_ais_objects.pop("NodeNumbers", []):
-                try:
-                    context.Erase(ais, False)
-                except Exception:
-                    pass
-            # Re-enable hover when Node spheres are visible
-            if show_nodes and hasattr(self.viewer, "set_node_hover_data"):
-                self.viewer.set_node_hover_data(
-                    [{"x": d["x"], "y": d["y"], "z": d["z"], "label": d["label"]}
-                     for d in self._node_data.values()]
-                )
-            elif hasattr(self.viewer, "set_node_hover_data"):
-                self.viewer.set_node_hover_data([])
+        # ── Toolbar-only overlays: NodeNumbers and ElementNumbers ─────────────
+        # These are toggled exclusively by the toolbar buttons
+        # (ToolBarController._cad_toggle_node_number / _cad_toggle_element_number)
+        # and MUST NOT be touched by the checkbox-driven _apply() flow.
+        # Skipping them here means they survive Grillage/Node/Deck checkbox changes.
+        _TOOLBAR_OVERLAYS = {"NodeNumbers", "ElementNumbers"}
+
+        # ── Node hover data: follow the Node checkbox (not the label toggle) ──
+        if show_nodes and hasattr(self.viewer, "set_node_hover_data"):
+            self.viewer.set_node_hover_data(
+                [{"x": d["x"], "y": d["y"], "z": d["z"], "label": d["label"]}
+                 for d in self._node_data.values()]
+            )
+        elif not show_nodes and hasattr(self.viewer, "set_node_hover_data"):
+            self.viewer.set_node_hover_data([])
 
         # ── Show / hide all registered AIS objects ────────────────────────────
         for key, ais_list in self.viewer.model_ais_objects.items():
-            if key == "NodeNumbers":
-                continue  # already handled above
-            if key == "Node" and show_node_numbers:
-                continue  # already erased above; don’t re-show
+            if key in _TOOLBAR_OVERLAYS:
+                continue  # toolbar-only overlays: never touched here
             should_show = key in visible_keys
             for ais in ais_list:
                 try:
@@ -913,6 +897,115 @@ class CAD3DWindow(QWidget):
         if label_ais_list:
             self.viewer.model_ais_objects["NodeNumbers"] = label_ais_list
 
+
+    # ── RENDER ELEMENT NUMBERS ────────────────────────────────────────────────────
+    # Called by ToolBarController._cad_toggle_element_number() (toolbar_controller.py)
+    # when the user clicks the Element Number button on the main toolbar.
+    # ON  → renders one AIS_TextLabel per element at its mid-span point.
+    # OFF → erases all AIS objects in model_ais_objects["ElementNumbers"].
+    #
+    # DATA SOURCE
+    # ───────────
+    # self._node_data : populated by _render_nodes() — nid → {x, y, z (mm)}
+    # self._members   : populated by _render_nodes() — eid → [n1, n2]
+    #   Both come from results_data._build_nodes_members()
+    #   → ops.getNodeTags() / ops.nodeCoord() / ops.getEleTags() / ops.eleNodes()
+
+    def _render_element_numbers(self) -> None:
+        """
+        Display element-ID labels at the midpoint of each member in 3D world space.
+
+        DATA SOURCE
+        ───────────
+        self._node_data : nid → {x, y, z (mm)} — from _render_nodes()
+        self._members   : eid → [n1, n2]        — from _render_nodes()
+
+        WHAT IT CREATES (stored in viewer.model_ais_objects["ElementNumbers"])
+        ───────────────────────────────────────────────────────────────────────
+        • AIS_TextLabel per element midpoint (when pythonocc has text support)
+          drawn on the topmost Z-layer in deep-orange colour to distinguish
+          from the dark node-number labels.
+        • Fallback: small deep-orange sphere at the midpoint when AIS_TextLabel
+          is unavailable.
+        """
+        if not self._is_display_ready() or not self._members or not self._node_data:
+            return
+
+        # Clear any existing element-number labels
+        for ais in self.viewer.model_ais_objects.pop("ElementNumbers", []):
+            try:
+                self.viewer.context.Erase(ais, False)
+            except Exception:
+                pass
+
+        # Deep orange — distinct from node numbers (dark charcoal)
+        elem_color = Quantity_Color(0.749, 0.212, 0.047, Quantity_TOC_RGB)  # #BF360C
+
+        label_ais_list = []
+        z_base = float(next(iter(self._node_data.values()), {}).get("z", 2.0))
+
+        if _HAS_AIS_TEXT:
+            for eid, (n1, n2) in self._members.items():
+                d1 = self._node_data.get(n1)
+                d2 = self._node_data.get(n2)
+                if d1 is None or d2 is None:
+                    continue
+                mx = (d1["x"] + d2["x"]) / 2.0
+                my = (d1["y"] + d2["y"]) / 2.0
+                try:
+                    txt = AIS_TextLabel()
+                    txt.SetText(f"E{eid}")
+                    txt.SetPosition(gp_Pnt(mx, my, z_base + 40.0))
+                    txt.SetColor(elem_color)
+                    try:
+                        txt.SetDisplayType(_TODT_NORMAL)
+                    except Exception:
+                        pass
+                    try:
+                        txt.SetHeight(22.0)
+                    except Exception:
+                        pass
+                    try:
+                        txt.SetFlipping(True)
+                    except Exception:
+                        pass
+                    if _Z_TOP is not None:
+                        try:
+                            txt.SetZLayer(_Z_TOP)
+                        except Exception:
+                            pass
+                    self.viewer.context.Display(txt, False)
+                    label_ais_list.append(txt)
+                except Exception:
+                    pass
+        else:
+            # Fallback: small orange sphere at element midpoint
+            for eid, (n1, n2) in self._members.items():
+                d1 = self._node_data.get(n1)
+                d2 = self._node_data.get(n2)
+                if d1 is None or d2 is None:
+                    continue
+                mx = (d1["x"] + d2["x"]) / 2.0
+                my = (d1["y"] + d2["y"]) / 2.0
+                try:
+                    ais = AIS_Shape(
+                        BRepPrimAPI_MakeSphere(
+                            gp_Pnt(mx, my, z_base + 40.0), 30.0
+                        ).Shape()
+                    )
+                    ais.SetColor(elem_color)
+                    if _Z_TOP is not None:
+                        try:
+                            ais.SetZLayer(_Z_TOP)
+                        except Exception:
+                            pass
+                    self.viewer.context.Display(ais, False)
+                    label_ais_list.append(ais)
+                except Exception:
+                    pass
+
+        if label_ais_list:
+            self.viewer.model_ais_objects["ElementNumbers"] = label_ais_list
 
 
 class BridgeComponentCheckbox(QWidget):

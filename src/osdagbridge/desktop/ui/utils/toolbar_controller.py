@@ -121,16 +121,17 @@ class ToolBarController:
     _TIP_GRILLAGE     = "Grillage View"
     _TIP_NODE         = "Node"
     _TIP_NODE_NUMBER  = "Node Number"
+    _TIP_ELEMENT_NUMBER= "Element Number"   # Element Number toggle (both CAD and Plots)
     _TIP_ZOOM_WIN     = "Zoom Window"  # toggle — activates drag-to-zoom rect mode
     _TIP_PAN          = "Pan"          # toggle — activates pan navigation mode
     _TIP_ROTATE       = "Rotate"       # toggle — activates rotate navigation mode
     _TIP_ZOOM_FIT     = "Zoom Fit"    # one-shot action — not a toggle
     _TIP_ZOOM_IN      = "Zoom In"     # one-shot action — not a toggle
     _TIP_ZOOM_OUT     = "Zoom Out"    # one-shot action — not a toggle
-    _TIP_AXIS          = "Axis"
-    _TIP_GRID          = "Grid Lines"
-    _TIP_SUPPORTS      = "Supports"
-    _TIP_GIRDER_LABELS = "Girder Labels"
+    _TIP_AXIS         = "Axis"
+    _TIP_GRID         = "Grid Lines"
+    _TIP_SUPPORTS     = "Supports"
+    _TIP_GIRDER_LABELS= "Girder Labels"
 
     def __init__(self, tool_bar: "ToolBarWidget") -> None:
         self._toolbar = tool_bar
@@ -142,12 +143,13 @@ class ToolBarController:
         # ── Resolve toolbar buttons from the ToolBarWidget layout ──────────────
         # Each button is found once at construction by its tooltip string.
         # Toggle buttons — these become checkable when a view is bound:
-        self._btn_grillage:     QPushButton | None = self._find_button(self._TIP_GRILLAGE)
-        self._btn_node:         QPushButton | None = self._find_button(self._TIP_NODE)
-        self._btn_node_number:  QPushButton | None = self._find_button(self._TIP_NODE_NUMBER)
-        self._btn_zoom_win:     QPushButton | None = self._find_button(self._TIP_ZOOM_WIN)
-        self._btn_pan:          QPushButton | None = self._find_button(self._TIP_PAN)
-        self._btn_rotate:       QPushButton | None = self._find_button(self._TIP_ROTATE)
+        self._btn_grillage:      QPushButton | None = self._find_button(self._TIP_GRILLAGE)
+        self._btn_node:          QPushButton | None = self._find_button(self._TIP_NODE)
+        self._btn_node_number:   QPushButton | None = self._find_button(self._TIP_NODE_NUMBER)
+        self._btn_element_number: QPushButton | None = self._find_button(self._TIP_ELEMENT_NUMBER)
+        self._btn_zoom_win:      QPushButton | None = self._find_button(self._TIP_ZOOM_WIN)
+        self._btn_pan:           QPushButton | None = self._find_button(self._TIP_PAN)
+        self._btn_rotate:        QPushButton | None = self._find_button(self._TIP_ROTATE)
 
         # One-shot buttons — always plain, never checkable:
         self._btn_zoom_fit: QPushButton | None = self._find_button(self._TIP_ZOOM_FIT)
@@ -165,6 +167,7 @@ class ToolBarController:
         self._managed_buttons: list[QPushButton] = [
             b for b in (
                 self._btn_grillage, self._btn_node, self._btn_node_number,
+                self._btn_element_number,
                 self._btn_zoom_win, self._btn_pan, self._btn_rotate,
                 self._btn_axis, self._btn_grid, self._btn_supports,
                 self._btn_girder_labels,
@@ -423,6 +426,42 @@ class ToolBarController:
                 pass
             self._sync_btn_to(self._btn_node_number, want)
 
+        # ── Element Number toggle ——————————————————————————————————————————————————
+        # RENDERING LOGIC: cad_3d.py → CAD3DWindow._render_element_numbers()
+        # DATA SOURCE: self._members populated by _render_nodes() (openseespy)
+        self._make_checkable(self._btn_element_number, initial=False)
+
+        def _cad_toggle_element_number():
+            """
+            Independent element-number toggle — same pattern as _cad_toggle_node_number.
+            ON  → call cad_widget._render_element_numbers() which builds one
+                   AIS_TextLabel per element at the member midpoint and registers
+                   them in cad_widget.viewer.model_ais_objects["ElementNumbers"].
+            OFF → erase every AIS object stored in model_ais_objects["ElementNumbers"]
+                   directly via the OCC context, then repaint.
+            DATA SOURCE: cad_widget._node_data and cad_widget._members from _render_nodes().
+            """
+            want = self._btn_element_number.isChecked()
+            try:
+                if want:
+                    cad_widget._render_element_numbers()
+                else:
+                    context = cad_widget.viewer.context
+                    for ais in cad_widget.viewer.model_ais_objects.pop("ElementNumbers", []):
+                        try:
+                            context.Erase(ais, False)
+                        except Exception:
+                            pass
+                    try:
+                        cad_widget.display.Repaint()
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+            self._sync_btn_to(self._btn_element_number, want)
+
+        self._connect(self._btn_element_number, _cad_toggle_element_number)
+
         self._connect(self._btn_grillage,   _cad_toggle_grillage)
         self._connect(self._btn_node,        _cad_toggle_node)
         self._connect(self._btn_node_number, _cad_toggle_node_number)
@@ -618,6 +657,7 @@ class ToolBarController:
         self._make_checkable(self._btn_grillage,      grillage_init)
         self._make_checkable(self._btn_node,           node_init)
         self._make_checkable(self._btn_node_number,    node_number_init)
+        self._make_checkable(self._btn_element_number,  False)           # always off on bind
         self._make_checkable(self._btn_axis,           axis_init)
         self._make_checkable(self._btn_grid,           grid_init)
         self._make_checkable(self._btn_supports,       supports_init)
@@ -671,6 +711,25 @@ class ToolBarController:
                 pass
 
         self._connect(self._btn_node_number, _plots_toggle_node_number)
+
+        # ── Element Number — direct call to MplPlotWidget._on_element_numbers_toggled ──
+        # RENDERING LOGIC: plot_generator._add_element_number_labels() draws text with
+        #   gid="element_number" at each element midpoint, initially hidden.
+        #   DATA SOURCE: members dict from results_data._build_nodes_members()
+        #   (ops.getEleTags() / ops.eleNodes()) passed via MplPlotWidget.setup().
+        # TOGGLE LOGIC: MplPlotWidget._on_element_numbers_toggled() /
+        #   _apply_element_number_visibility() walks ax.texts and sets
+        #   visible=True/False for every gid="element_number" text.
+        def _plots_toggle_element_numbers():
+            """Direct call to MplPlotWidget._on_element_numbers_toggled method."""
+            try:
+                checked = self._btn_element_number.isChecked()
+                plots_widget._on_element_numbers_toggled(checked)
+                self._sync_btn_to(self._btn_element_number, checked)
+            except Exception:
+                pass
+
+        self._connect(self._btn_element_number, _plots_toggle_element_numbers)
 
         # ── Axis — direct call to MplPlotWidget._on_axis_toggled ──────────────
         def _plots_toggle_axis():

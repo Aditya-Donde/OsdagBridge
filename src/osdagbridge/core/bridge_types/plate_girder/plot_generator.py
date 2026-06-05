@@ -413,6 +413,51 @@ def _add_node_number_labels(ax, nodes, visible: bool = False):
         t.set_visible(visible)
 
 # =============================================================================
+# ELEMENT NUMBER LABELS HELPER
+# =============================================================================
+
+def _add_element_number_labels(ax, nodes, members, visible: bool = False):
+    """
+    Draw the integer element tag as a small text label at the midpoint of each
+    element (average of its two end-node positions, at y=0).
+
+    All labels are tagged with gid="element_number" so MplPlotWidget can
+    show/hide them in bulk without rebuilding the figure.
+
+    DATA SOURCE
+    -----------
+    nodes   : dict  — {node_id: [x, y, z]}  (from results_data._build_nodes_members)
+    members : dict  — {element_id: [n1, n2]} (from results_data._build_nodes_members)
+
+    Parameters
+    ----------
+    ax      : mpl_toolkits.mplot3d.axes3d.Axes3D
+    nodes   : dict  — {node_id: [x, y, z]}
+    members : dict  — {element_id: [n1, n2]}
+    visible : bool  — initial visibility (default False, toggled by toolbar)
+    """
+    for eid, (n1, n2) in members.items():
+        c1 = nodes.get(n1)
+        c2 = nodes.get(n2)
+        if c1 is None or c2 is None:
+            continue
+        mx = (c1[0] + c2[0]) / 2.0
+        mz = (c1[2] + c2[2]) / 2.0  # physical Z plotted on Matplotlib Y-axis
+        t = ax.text(
+            mx, mz, 0.0,
+            f" E{eid}",
+            fontsize=6,
+            color="#BF360C",          # deep orange — distinct from node blue
+            fontweight="normal",
+            ha="center",
+            va="top",
+            zorder=7,
+            gid="element_number",
+        )
+        t.set_visible(visible)
+
+
+# =============================================================================
 # GRILLAGE PLOT
 # =============================================================================
 
@@ -525,6 +570,7 @@ def build_figure_grillage(nodes, members, edge_dist=0.0):
             timer.start()
     _add_supports(ax, nodes, members, edge_dist=edge_dist)
     _add_node_number_labels(ax, nodes)
+    _add_element_number_labels(ax, nodes, members)  # hidden by default; toggled by toolbar
     ax.set_xlabel("Span Length (m)", fontsize=10, labelpad=8)
     ax.set_ylabel("Bridge Width (m)", fontsize=10, labelpad=8)
     ax.set_zlabel("", fontsize=10, labelpad=8)
@@ -749,6 +795,7 @@ def build_figure_sfd(ds, force_key, nodes, members, edge_dist=0.0, eng_scale=1.0
 
     _add_supports(ax, nodes, members, edge_dist=edge_dist)
     _add_node_number_labels(ax, nodes)
+    _add_element_number_labels(ax, nodes, members)  # hidden by default; toggled by toolbar
     ax.set_xlabel("Span Length (m)", fontsize=10, labelpad=8)
     ax.set_ylabel("Bridge Width (m)", fontsize=10, labelpad=8)
     ax.set_zlabel(f"{disp_key} (kN)", fontsize=10, labelpad=8)
@@ -977,6 +1024,7 @@ def build_figure_bmd(ds, force_key, nodes, members, edge_dist=0.0, eng_scale=1.0
             timer.start()
     _add_supports(ax, nodes, members, edge_dist=edge_dist)
     _add_node_number_labels(ax, nodes)
+    _add_element_number_labels(ax, nodes, members)  # hidden by default; toggled by toolbar
     ax.set_xlabel("Span Length (m)", fontsize=10, labelpad=8)
     ax.set_ylabel("Bridge Width (m)", fontsize=10, labelpad=8)
     ax.set_zlabel(f"{disp_key} (kNm)", fontsize=10, labelpad=8)
@@ -1396,6 +1444,7 @@ def build_figure_deflection(ds, disp_key, nodes, members, edge_dist=0.0, eng_sca
     # CRITICAL: Draw supports absolute last so they sit on top of the black nodes
     _add_supports(ax, nodes, members, edge_dist=edge_dist)
     _add_node_number_labels(ax, nodes)
+    _add_element_number_labels(ax, nodes, members)  # hidden by default; toggled by toolbar
 
     # Robust axes and labels
     ax.set_xlabel("Span Length (m)", fontsize=10, fontweight="bold", labelpad=8)
