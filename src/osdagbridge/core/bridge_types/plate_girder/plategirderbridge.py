@@ -2352,7 +2352,7 @@ class PlateGirderBridge:
         for g_name in girder_names:
             g_data = per_girder.get(g_name, {})
 
-            # Use per-LC demand
+            # Always use per-LC demand with all 9 forces
             per_lc = g_data.get("per_lc", {})
             lc_demand = per_lc.get(load_case)
             if not lc_demand:
@@ -2360,6 +2360,13 @@ class PlateGirderBridge:
             demand = DemandEnvelope(
                 Mu_kNm=lc_demand.get("Mu_kNm", 0.0),
                 Vu_kN=lc_demand.get("Vu_kN", 0.0),
+                Nu_kN=lc_demand.get("Nu_kN", 0.0),
+                M_construction_kNm=lc_demand.get("M_construction_kNm", 0.0),
+                M_sls_kNm=lc_demand.get("M_sls_kNm", 0.0),
+                V_sls_kN=lc_demand.get("V_sls_kN", 0.0),
+                delta_live_mm=lc_demand.get("delta_live_mm", 0.0),
+                delta_total_mm=lc_demand.get("delta_total_mm", 0.0),
+                stress_range_MPa=lc_demand.get("stress_range_MPa", 0.0),
                 governing_combination=load_case,
                 member=g_name,
                 source="per_lc",

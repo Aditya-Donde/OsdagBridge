@@ -2782,6 +2782,29 @@ def _extract_demands_from_analysis_results(
         # (2) Construction moments — from analyser's SW case (stage 1) and DL+LL case (service).
         M_girder_sw_kNm = _fmax_lc(_sw_lc,    "Mz_i", "Mz_j") / 1e3
         M_const_kNm     = _fmax_lc(_dl_ll_lc, "Mz_i", "Mz_j") / 1e3
+
+        # delta_total: Dy from analyser's DL+LL case (DL = SW+DC+DD+SIDL, not DW).
+        delta_total_mm = 0.0
+        if _dl_ll_lc:
+            try:
+                tv = np.asarray(disp_y.sel(Loadcase=_dl_ll_lc).values, dtype=float)
+                tv = tv[~np.isnan(tv)]
+                if tv.size:
+                    delta_total_mm = float(np.abs(tv).max()) / stiffness_ratio * 1000.0
+            except Exception:
+                pass
+      # (3) Deflections — fetched directly from analyser cases; no summing, no fallback.
+        disp_y = analysis_results.ds.displacements.sel(Component="y", Node=nodes)
+
+                # delta_live: max displacement across individual live-only LCs.
+        delta_live_mm = 0.0
+        if all_live_lcs:
+            try:
+                lv = np.asarray(disp_y.sel(Loadcase=all_live_lcs).values, dtype=float)
+                lv = lv[~np.isnan(lv)]
+                if lv.size:
+                    delta_live_mm = float(np.abs(lv).max()) / stiffness_ratio * 1000.0
+            except Exception:
                 pass
 
         # delta_total: Dy from analyser's DL+LL case (DL = SW+DC+DD+SIDL, not DW).
