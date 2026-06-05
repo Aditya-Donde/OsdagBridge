@@ -556,10 +556,17 @@ class ToolBarWidget(QWidget):
         self.layout.addWidget(add_separator())  # after rotate
 
         # Node group
-        self.layout.addWidget(create_button(":/vectors/tool_bar/node_light.svg", "Node"))
-        self.layout.addWidget(create_button(":/vectors/tool_bar/node_element_light.svg", "Node Element"))
+        self.btn_show_node = create_button(":/vectors/tool_bar/node_light.svg", "Node")
+        self.btn_show_node.setCheckable(True)
+        self.btn_show_node_number = create_button(":/vectors/tool_bar/Node_Number.svg", "Node Number")
+        self.btn_show_node_number.setCheckable(True)
+        self.btn_show_element_number = create_button(":/vectors/tool_bar/Element_number.svg", "Element Number")
+        self.btn_show_element_number.setCheckable(True)
+        self.layout.addWidget(self.btn_show_node)
+        self.layout.addWidget(self.btn_show_node_number)
+        self.layout.addWidget(self.btn_show_element_number)
 
-        self.layout.addWidget(add_separator())  # after node element
+        self.layout.addWidget(add_separator())  # after element number
 
         # Model display group
         self.layout.addWidget(create_button(":/vectors/tool_bar/grillage_view_light.svg", "Grillage View"))
@@ -568,8 +575,11 @@ class ToolBarWidget(QWidget):
         self.layout.addWidget(create_button(":/vectors/tool_bar/show_grid_lines_light.svg", "Grid Lines"))
         self.layout.addWidget(create_button(":/vectors/tool_bar/show_support_light.svg", "Supports"))
         self.layout.addWidget(create_button(":/vectors/tool_bar/show_load_light.svg", "Loads"))
+        self.btn_show_girder_label = create_button(":/vectors/tool_bar/Girder_label.svg", "Girder Labels")
+        self.btn_show_girder_label.setCheckable(True)
+        self.layout.addWidget(self.btn_show_girder_label)
 
-        self.layout.addWidget(add_separator())  # after load
+        self.layout.addWidget(add_separator())  # after girder label
 
         # Scale
         scale_label = QLabel("Scale:")

@@ -60,6 +60,9 @@
         <file>vectors/tool_bar/zoom_in_light.svg</file>
         <file>vectors/tool_bar/zoom_out_light.svg</file>
         <file>vectors/tool_bar/zoom_window_light.svg</file>
+        <file>vectors/tool_bar/Node_Number.svg</file>
+        <file>vectors/tool_bar/Element_number.svg</file>
+        <file>vectors/tool_bar/Girder_label.svg</file>
 
     </qresource>
 </RCC>
