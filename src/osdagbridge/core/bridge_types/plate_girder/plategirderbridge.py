@@ -1506,37 +1506,6 @@ class PlateGirderBridge:
         )
         self.design_results = design_results
 
-        # Write every output into output_dict while it is still mutable.
-        # store_design_results also sets the KEY_UTIL_* values so the block
-        # below is redundant — but kept for the _frontend.set_output_value calls.
-        self.store_design_results(design_results)
-
-        # Keep frontend output-dock values in sync (these drive the percent bars).
-        dcr_by_id: dict[int, float] = {}
-        for c in engine.checks:
-            dcr_by_id[c.check_id] = max(dcr_by_id.get(c.check_id, 0.0), c.dcr)
-        self._frontend.set_output_value(KEY_UTIL_FLEXURE,          dcr_by_id.get(1,  0.0) * 100)
-        self._frontend.set_output_value(KEY_UTIL_SHEAR,            dcr_by_id.get(2,  0.0) * 100)
-        self._frontend.set_output_value(KEY_UTIL_INTERACTION,      dcr_by_id.get(3,  0.0) * 100)
-        self._frontend.set_output_value(KEY_UTIL_LTB,              dcr_by_id.get(5,  0.0) * 100)
-        defl_dcr = max(dcr_by_id.get(13, 0.0), dcr_by_id.get(14, 0.0), dcr_by_id.get(15, 0.0))
-        self._frontend.set_output_value(KEY_UTIL_DEFLECTION_CRACK,  defl_dcr * 100)
-        fatigue_dcr = max(dcr_by_id.get(8, 0.0), dcr_by_id.get(9, 0.0))
-        self._frontend.set_output_value(KEY_UTIL_FATIGUE,           fatigue_dcr * 100)
-        trans_shear_dcr = max(dcr_by_id.get(16, 0.0), dcr_by_id.get(17, 0.0))
-        self._frontend.set_output_value(KEY_UTIL_LONG_TRANS_SHEAR,  trans_shear_dcr * 100)
-        stress_dcr = max(dcr_by_id.get(10, 0.0), dcr_by_id.get(11, 0.0), dcr_by_id.get(12, 0.0))
-        self._frontend.set_output_value(KEY_UTIL_STRESS_LIMITATION, stress_dcr * 100)
-
-        self.output_dict[KEY_UTIL_FLEXURE]           = dcr_by_id.get(1,  0.0) * 100
-        self.output_dict[KEY_UTIL_SHEAR]             = dcr_by_id.get(2,  0.0) * 100
-        self.output_dict[KEY_UTIL_INTERACTION]       = dcr_by_id.get(3,  0.0) * 100
-        self.output_dict[KEY_UTIL_LTB]               = dcr_by_id.get(5,  0.0) * 100
-        self.output_dict[KEY_UTIL_DEFLECTION_CRACK]  = defl_dcr * 100
-        self.output_dict[KEY_UTIL_FATIGUE]           = fatigue_dcr * 100
-        self.output_dict[KEY_UTIL_LONG_TRANS_SHEAR]  = trans_shear_dcr * 100
-        self.output_dict[KEY_UTIL_STRESS_LIMITATION] = stress_dcr * 100
-
     def _design_cross_bracing_members(self) -> dict:
         """
         Run Osdag member designs for cross-bracing diagonals and chords.
@@ -2091,13 +2060,10 @@ class PlateGirderBridge:
             return {}
 
         # Resolve which girders to include
-        if girder_name and girder_name != "All":
-            girder_names = [girder_name] if girder_name in per_girder else list(per_girder)
+        if girder_name and girder_name in per_girder:
+            girder_names = [girder_name]
         else:
             girder_names = list(per_girder)
-
-        # Resolve which load case to use
-        use_envelope = not load_case
 
         # Re-build BridgeConfig (capacity is load-case independent)
         try:
@@ -2111,39 +2077,18 @@ class PlateGirderBridge:
         for g_name in girder_names:
             g_data = per_girder.get(g_name, {})
 
-            if use_envelope:
-                # Use the envelope demand already stored in design_results
-                envelope_demand = g_data.get("demand", {})
-                if not envelope_demand:
-                    continue
-                demand = DemandEnvelope(
-                    Mu_kNm=envelope_demand.get("Mu_kNm", 0.0),
-                    Vu_kN=envelope_demand.get("Vu_kN", 0.0),
-                    M_construction_kNm=envelope_demand.get("M_construction_kNm", 0.0),
-                    M_girder_sw_kNm=envelope_demand.get("M_girder_sw_kNm", 0.0),
-                    M_sls_kNm=envelope_demand.get("M_sls_kNm", 0.0),
-                    V_sls_kN=envelope_demand.get("V_sls_kN", 0.0),
-                    delta_live_mm=envelope_demand.get("delta_live_mm", 0.0),
-                    delta_total_mm=envelope_demand.get("delta_total_mm", 0.0),
-                    stress_range_MPa=envelope_demand.get("stress_range_MPa", 0.0),
-                    shear_range_MPa=envelope_demand.get("shear_range_MPa", 0.0),
-                    governing_combination=envelope_demand.get("governing_combination", "Envelope"),
-                    member=g_name,
-                    source="stored_envelope",
-                )
-            else:
-                # Use per-LC demand
-                per_lc = g_data.get("per_lc", {})
-                lc_demand = per_lc.get(load_case)
-                if not lc_demand:
-                    continue
-                demand = DemandEnvelope(
-                    Mu_kNm=lc_demand.get("Mu_kNm", 0.0),
-                    Vu_kN=lc_demand.get("Vu_kN", 0.0),
-                    governing_combination=load_case,
-                    member=g_name,
-                    source="per_lc",
-                )
+            # Use per-LC demand
+            per_lc = g_data.get("per_lc", {})
+            lc_demand = per_lc.get(load_case)
+            if not lc_demand:
+                continue
+            demand = DemandEnvelope(
+                Mu_kNm=lc_demand.get("Mu_kNm", 0.0),
+                Vu_kN=lc_demand.get("Vu_kN", 0.0),
+                governing_combination=load_case,
+                member=g_name,
+                source="per_lc",
+            )
 
             try:
                 capacity = IRC22CapacityCalculator(config).compute_all(
