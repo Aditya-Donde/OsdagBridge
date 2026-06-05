@@ -363,16 +363,6 @@ class PlateGirderBridge:
 
         # Freeze output_dict — no further writes allowed after this point
         self.output_dict = types.MappingProxyType(self.output_dict)
-        import pprint
-        sep = "=" * 60
-        print(f"\n{sep}\n  OUTPUT DICT (frozen) — {len(self.output_dict)} keys\n{sep}")
-        for k, v in self.output_dict.items():
-            if k in ("crossbracing_design_results", "deck_design_results"):
-                print(f"  {k!r} :")
-                pprint.pprint(v, indent=4, width=120)
-            else:
-                print(f"  {k!r:50s} : {v!r}")
-        print(sep)
 
     def _build_dtos(self) -> None:
         """Construct GrillageGeometry and DeckLayoutProperties DTOs from solved results."""
