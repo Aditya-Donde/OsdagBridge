@@ -53,6 +53,176 @@ VIEW_WELDED_BEAM = _choice_value(list(VALUES_END_DIAPHRAGM_TYPE), "Welded Beam",
 DESIGN_OPTIMIZED = _choice_value(list(VALUES_GIRDER_DESIGN_MODE), "Optimized", 0)
 DESIGN_CUSTOM = _choice_value(list(VALUES_GIRDER_DESIGN_MODE), "Custom", 1)
 
+
+class _EndDiaphragmDetailsSchemaBuilder:
+    """Local schema-driven widget builder for the End Diaphragm tab."""
+
+    def __init__(self, owner: QWidget):
+        self.owner = owner
+
+    def create_widget(self, field_def: dict) -> QWidget:
+        field_type = str(field_def.get("type") or "line").strip().lower()
+        field_id = str(field_def.get("id") or "").strip()
+
+        if field_type in {"combo", "combo_dynamic"}:
+            widget = QComboBox()
+            widget.addItems([str(choice) for choice in field_def.get("choices") or []])
+            default = field_def.get("default")
+            if default is not None:
+                widget.setCurrentText(str(default))
+            self.owner._configure_combo_box(widget)
+            apply_field_style(widget)
+            if field_type == "combo_dynamic" and str(field_def.get("dynamic_source") or "").strip() == "rolled_sections":
+                self.owner._populate_rolled_sections(widget)
+
+        elif field_type == "checkbox":
+            widget = QCheckBox()
+            widget.setChecked(bool(field_def.get("default", False)))
+            widget.setFixedHeight(28)
+            widget.setStyleSheet("margin-left: 2px;")
+
+        elif field_type == "dimension":
+            widget, value_input, bounds_button = self.owner._create_dimension_input_widget(
+                str(field_def.get("dimension_key") or field_id)
+            )
+            self._bind_composite_field(field_def, widget, value_input, bounds_button)
+            return widget
+
+        elif field_type == "mode_value":
+            widget, mode_combo, value_input, value_combo = self._create_mode_value_widget(field_def)
+            self._bind_composite_field(field_def, widget, value_input, value_combo, mode_combo=mode_combo)
+            return widget
+
+        else:
+            widget = QLineEdit()
+            default = field_def.get("default")
+            if default is not None:
+                widget.setText(str(default))
+            self._apply_validator(widget, field_def.get("validator"))
+            if bool(field_def.get("read_only", False)):
+                widget.setReadOnly(True)
+                try:
+                    widget.setFocusPolicy(Qt.NoFocus)
+                except Exception:
+                    pass
+
+        if field_type not in {"checkbox"}:
+            apply_field_style(widget)
+
+        if isinstance(widget, QLineEdit):
+            try:
+                widget.setFixedSize(self.owner._combo_width, 28)
+            except Exception:
+                pass
+            widget.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+        elif isinstance(widget, QComboBox):
+            widget.setFixedHeight(28)
+            widget.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+
+        if field_id:
+            widget.setObjectName(field_id)
+
+        bind_name = str(field_def.get("bind") or "").strip()
+        if bind_name:
+            setattr(self.owner, bind_name, widget)
+
+        self._connect_handlers(widget, field_def)
+        return widget
+
+    def _bind_composite_field(
+        self,
+        field_def: dict,
+        widget: QWidget,
+        value_input: QLineEdit,
+        aux_widget: QWidget | None,
+        *,
+        mode_combo: QComboBox | None = None,
+    ) -> None:
+        field_id = str(field_def.get("id") or "").strip()
+        if field_id:
+            widget.setObjectName(field_id)
+        bind_widget = str(field_def.get("bind_widget") or "").strip()
+        if bind_widget:
+            setattr(self.owner, bind_widget, widget)
+        bind = str(field_def.get("bind") or "").strip()
+        if bind:
+            setattr(self.owner, bind, value_input)
+        bind_value = str(field_def.get("bind_value") or "").strip()
+        if bind_value:
+            setattr(self.owner, bind_value, value_input)
+        bind_mode = str(field_def.get("bind_mode") or "").strip()
+        if bind_mode and mode_combo is not None:
+            setattr(self.owner, bind_mode, mode_combo)
+        bind_value_combo = str(field_def.get("bind_value_combo") or "").strip()
+        if bind_value_combo and aux_widget is not None:
+            setattr(self.owner, bind_value_combo, aux_widget)
+
+    def _create_mode_value_widget(self, field_def: dict) -> tuple[QWidget, QComboBox, QLineEdit, QComboBox | None]:
+        mode_combo = QComboBox()
+        mode_combo.addItems([str(choice) for choice in field_def.get("mode_choices") or []])
+        default_mode = field_def.get("default_mode")
+        if default_mode is not None:
+            mode_combo.setCurrentText(str(default_mode))
+        self.owner._configure_combo_box(mode_combo)
+        apply_field_style(mode_combo)
+
+        value_input = self.owner._create_line_edit()
+        validator_cfg = field_def.get("validator") or {}
+        if str(validator_cfg.get("type") or "").strip().lower() == "double":
+            value_input.setValidator(
+                QDoubleValidator(
+                    float(validator_cfg.get("bottom", 0.0)),
+                    float(validator_cfg.get("top", 1_000_000.0)),
+                    int(validator_cfg.get("decimals", 3)),
+                )
+            )
+        try:
+            value_input.setFixedWidth(int(field_def.get("value_width", 78)))
+            value_input.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+        except Exception:
+            pass
+
+        widget = self.owner._create_mode_value_widget(mode_combo, value_input)
+        value_combo = self.owner._attach_thickness_value_dropdown(widget, value_input)
+        return widget, mode_combo, value_input, value_combo
+
+    def _apply_validator(self, widget: QLineEdit, validator_def: dict | None) -> None:
+        if not validator_def:
+            return
+
+        vtype = str(validator_def.get("type") or "").strip().lower()
+        if vtype in {"double", "double_range"}:
+            widget.setValidator(
+                QDoubleValidator(
+                    float(validator_def.get("bottom", 0.0)),
+                    float(validator_def.get("top", 1_000_000.0)),
+                    int(validator_def.get("decimals", 3)),
+                )
+            )
+        elif vtype == "int_range":
+            widget.setValidator(
+                QIntValidator(
+                    int(validator_def.get("bottom", 0)),
+                    int(validator_def.get("top", 1_000_000)),
+                )
+            )
+
+    def _connect_handlers(self, widget: QWidget, field_def: dict) -> None:
+        on_change = str(field_def.get("on_change") or "").strip()
+        if on_change and hasattr(self.owner, on_change):
+            if isinstance(widget, QComboBox):
+                widget.currentTextChanged.connect(getattr(self.owner, on_change))
+            elif isinstance(widget, QCheckBox):
+                widget.stateChanged.connect(getattr(self.owner, on_change))
+
+        on_text_changed = str(field_def.get("on_text_changed") or "").strip()
+        if on_text_changed and hasattr(self.owner, on_text_changed) and isinstance(widget, QLineEdit):
+            widget.textChanged.connect(getattr(self.owner, on_text_changed))
+
+        on_editing_finished = str(field_def.get("on_editing_finished") or "").strip()
+        if on_editing_finished and hasattr(self.owner, on_editing_finished) and isinstance(widget, QLineEdit):
+            widget.editingFinished.connect(getattr(self.owner, on_editing_finished))
+
 class EndDiaphragmDetailsTab(QWidget):
     """Tab for End Diaphragm Details with type-specific layouts"""
 
@@ -88,6 +258,7 @@ class EndDiaphragmDetailsTab(QWidget):
         self._updating_cross_chord_rules = False
         self.cross_right_column = None
         self.cross_design_combo = None
+        self.cross_connection_type_combo = None
         self.cross_bracing_section_type_combo = None
         self.cross_bracing_section_combo = None
         self.cross_top_chord_checkbox = None
@@ -113,7 +284,13 @@ class EndDiaphragmDetailsTab(QWidget):
         self._rolled_inputs = []
         self._welded_inputs = []
         self._suppress_welded_thickness_popup = False
+        self._schema_builder = _EndDiaphragmDetailsSchemaBuilder(self)
         self.init_ui()
+
+    def bind_additional_input_instance(self, additional_input_instance) -> None:
+        """Bind the AdditionalInputs owner for Typical Section synchronization."""
+        self._additional_input_instance = additional_input_instance
+        self.refresh_girder_options()
 
     def bind_girder_details_tab(self, girder_details_tab) -> None:
         """Bind to Girder Details so Select Girders reflects user inputs."""
@@ -126,7 +303,16 @@ class EndDiaphragmDetailsTab(QWidget):
 
     def _girder_pairs(self) -> list[str]:
         girders = []
-        if self._girder_details_tab is not None and hasattr(self._girder_details_tab, "available_girders"):
+        ai = getattr(self, "_additional_input_instance", None)
+        if ai is not None and hasattr(ai, "typical_section_tab"):
+            try:
+                count_text = str(getattr(ai.typical_section_tab, "no_of_girders", None).text() or "").strip()
+                count = int(float(count_text)) if count_text else None
+            except Exception:
+                count = None
+            if count is not None and count >= 2:
+                girders = [f"G{i}" for i in range(1, count + 1)]
+        if not girders and self._girder_details_tab is not None and hasattr(self._girder_details_tab, "available_girders"):
             try:
                 girders = list(getattr(self._girder_details_tab, "available_girders") or [])
             except Exception:
@@ -824,6 +1010,13 @@ class EndDiaphragmDetailsTab(QWidget):
         fields = view_schema.get("section_inputs", [])
         return [dict(field) for field in fields if isinstance(field, dict)]
 
+    def _end_schema_overview_fields(self, view_key: str) -> list[dict]:
+        """Return normalized `overview` fields for one view."""
+        views = END_DIAPHRAGM_DETAILS_SCHEMA.get("views", {})
+        view_schema = views.get(str(view_key or ""), {}) if isinstance(views, dict) else {}
+        fields = view_schema.get("overview", [])
+        return [dict(field) for field in fields if isinstance(field, dict)]
+
     def _schema_default_state_for_view(self, view_key: str) -> dict:
         """Build default state payload for all schema fields in a view.
 
@@ -1114,7 +1307,7 @@ class EndDiaphragmDetailsTab(QWidget):
             "welded_top_thickness": "Select Values: Top Flange Thickness",
             "welded_bottom_thickness": "Select Values: Bottom Flange Thickness",
         }
-        dialog = _ThicknessSelectionDialog(titles.get(field_key, "Select Values"), selected, self)
+        dialog = _ThicknessSelectionDialog(titles.get(field_key, "Select Values"), selected, SAIL_APPROVED_THICKNESS_VALUES, self)
         if dialog.exec() != QDialog.Accepted:
             return
 
@@ -1861,98 +2054,44 @@ class EndDiaphragmDetailsTab(QWidget):
         grid.setColumnStretch(0, 0)
         grid.setColumnStretch(1, 1)
 
-        design_combo = QComboBox()
-        design_combo.addItems(self._end_schema_choices(VIEW_CROSS_BRACING, "design", list(VALUES_GIRDER_DESIGN_MODE)))
-        design_combo.setCurrentText(self._end_schema_default(VIEW_CROSS_BRACING, "design", DESIGN_OPTIMIZED))
-        self._configure_combo_box(design_combo)
-        apply_field_style(design_combo)
+        design_field = self._end_schema_field(VIEW_CROSS_BRACING, "design")
+        design_combo = self._schema_builder.create_widget(design_field)
+        self.cross_design_combo = design_combo
         design_combo.setVisible(False)
         row = 0
-        self.cross_design_combo = design_combo
-        self._bind_end_schema_widget(VIEW_CROSS_BRACING, "design", design_combo)
+        type_selector = None
+        for field_def in self._end_schema_overview_fields(VIEW_CROSS_BRACING):
+            widget = self._schema_builder.create_widget(field_def)
+            row = self._add_grid_row(grid, row, str(field_def.get("label") or ""), widget)
+            if str(field_def.get("id") or "").strip() == "type_selector":
+                type_selector = widget
 
-        type_selector = QComboBox()
-        type_selector.addItems(self._end_schema_choices(VIEW_CROSS_BRACING, "type_selector", list(VALUES_END_DIAPHRAGM_TYPE)))
-        type_selector.setCurrentText(self._end_schema_default(VIEW_CROSS_BRACING, "type_selector", VIEW_CROSS_BRACING))
-        self._configure_combo_box(type_selector)
-        apply_field_style(type_selector)
-        row = self._add_grid_row(grid, row, "Type:", type_selector)
-
-        bracing_combo = QComboBox()
-        bracing_combo.addItems(self._end_schema_choices(VIEW_CROSS_BRACING, "bracing_type", ["K-Bracing", "X-Bracing"]))
-        self._configure_combo_box(bracing_combo)
-        apply_field_style(bracing_combo)
-        row = self._add_grid_row(grid, row, "Type of Bracing:", bracing_combo)
-        self.cross_bracing_type_combo = bracing_combo
-        self._bind_end_schema_widget(VIEW_CROSS_BRACING, "bracing_type", bracing_combo)
-
-        section_type_options = self._end_schema_choices(
-            VIEW_CROSS_BRACING,
-            "bracing_section_type",
-            [
-                "Angle",
-                "Double Angle (Long Leg)",
-                "Double Angle (Short Leg)",
-                "Channel",
-                "Double Channel",
-            ],
-        )
-
-        bracing_section_type = QComboBox()
-        bracing_section_type.addItems(section_type_options)
-        self._configure_combo_box(bracing_section_type)
-        apply_field_style(bracing_section_type)
-        row = self._add_grid_row(grid, row, "Bracing Section Type:", bracing_section_type)
-        self.cross_bracing_section_type_combo = bracing_section_type
-        self._bind_end_schema_widget(VIEW_CROSS_BRACING, "bracing_section_type", bracing_section_type)
-
-        bracing_section_size = QComboBox()
-        self._configure_combo_box(bracing_section_size)
-        apply_field_style(bracing_section_size)
-        row = self._add_grid_row(grid, row, "Bracing Section Designation:", bracing_section_size)
-        self.cross_bracing_section_combo = bracing_section_size
-
-        self.cross_top_chord_checkbox = QCheckBox()
-        self.cross_top_chord_checkbox.setFixedHeight(28)
-        self.cross_top_chord_checkbox.setStyleSheet("margin-left: 2px;")
-        self.cross_top_chord_checkbox.setChecked(self._end_schema_default(VIEW_CROSS_BRACING, "top_chord_enabled", "False").lower() == "true")
-        row = self._add_grid_row(grid, row, "Top Chord:", self.cross_top_chord_checkbox)
-        self._bind_end_schema_widget(VIEW_CROSS_BRACING, "top_chord_enabled", self.cross_top_chord_checkbox)
-
-        top_chord_type = QComboBox()
-        top_chord_type.addItems(section_type_options)
-        self._configure_combo_box(top_chord_type)
-        apply_field_style(top_chord_type)
-        row = self._add_grid_row(grid, row, "Top Chord Section Type:", top_chord_type)
-        self.cross_top_chord_type_combo = top_chord_type
-        self._bind_end_schema_widget(VIEW_CROSS_BRACING, "top_chord_type", top_chord_type)
-
-        top_chord_size = QComboBox()
-        self._configure_combo_box(top_chord_size)
-        apply_field_style(top_chord_size)
-        row = self._add_grid_row(grid, row, "Top Chord Section Designation:", top_chord_size)
-        self.cross_top_chord_size_combo = top_chord_size
-
-        self.cross_bottom_chord_checkbox = QCheckBox()
-        self.cross_bottom_chord_checkbox.setFixedHeight(28)
-        self.cross_bottom_chord_checkbox.setStyleSheet("margin-left: 2px;")
-        self.cross_bottom_chord_checkbox.setChecked(self._end_schema_default(VIEW_CROSS_BRACING, "bottom_chord_enabled", "True").lower() == "true")
-        row = self._add_grid_row(grid, row, "Bottom Chord:", self.cross_bottom_chord_checkbox)
-        self._bind_end_schema_widget(VIEW_CROSS_BRACING, "bottom_chord_enabled", self.cross_bottom_chord_checkbox)
-
-        bottom_chord_type = QComboBox()
-        bottom_chord_type.addItems(section_type_options)
-        self._configure_combo_box(bottom_chord_type)
-        apply_field_style(bottom_chord_type)
-        row = self._add_grid_row(grid, row, "Bottom Chord Section Type:", bottom_chord_type)
-        self.cross_bottom_chord_type_combo = bottom_chord_type
-        self._bind_end_schema_widget(VIEW_CROSS_BRACING, "bottom_chord_type", bottom_chord_type)
-
-        bottom_chord_size = QComboBox()
-        self._configure_combo_box(bottom_chord_size)
-        apply_field_style(bottom_chord_size)
-        row = self._add_grid_row(grid, row, "Bottom Chord Section Designation:", bottom_chord_size)
-        self.cross_bottom_chord_size_combo = bottom_chord_size
+        for field_def in self._end_schema_section_inputs(VIEW_CROSS_BRACING):
+            field_id = str(field_def.get("id") or "").strip()
+            if field_id == "design":
+                continue
+            widget = self._schema_builder.create_widget(field_def)
+            row = self._add_grid_row(grid, row, str(field_def.get("label") or ""), widget)
+            if field_id == "bracing_type":
+                self.cross_bracing_type_combo = widget
+            elif field_id == "connection_type":
+                self.cross_connection_type_combo = widget
+            elif field_id == "bracing_section_type":
+                self.cross_bracing_section_type_combo = widget
+            elif field_id == "bracing_section":
+                self.cross_bracing_section_combo = widget
+            elif field_id == "top_chord_enabled":
+                self.cross_top_chord_checkbox = widget
+            elif field_id == "top_chord_type":
+                self.cross_top_chord_type_combo = widget
+            elif field_id == "top_chord_size":
+                self.cross_top_chord_size_combo = widget
+            elif field_id == "bottom_chord_enabled":
+                self.cross_bottom_chord_checkbox = widget
+            elif field_id == "bottom_chord_type":
+                self.cross_bottom_chord_type_combo = widget
+            elif field_id == "bottom_chord_size":
+                self.cross_bottom_chord_size_combo = widget
 
         inputs_layout.addLayout(grid)
         inputs_box.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
@@ -1999,30 +2138,51 @@ class EndDiaphragmDetailsTab(QWidget):
         layout.setStretch(0, 1)
         layout.setStretch(1, 1)
 
-        # Wire up dynamic designations + previews (same logic as CrossBracingDetailsTab).
-        design_combo.currentTextChanged.connect(self._on_cross_design_changed)
+        # Wire up dynamic designations + previews (same behavior as before).
+        if isinstance(design_combo, QComboBox):
+            design_combo.currentTextChanged.connect(self._on_cross_design_changed)
 
-        self.cross_bracing_type_combo.currentTextChanged.connect(self._on_cross_bracing_layout_changed)
-        self.cross_top_chord_checkbox.toggled.connect(self._on_cross_bracing_layout_changed)
-        self.cross_bottom_chord_checkbox.toggled.connect(self._on_cross_bracing_layout_changed)
+        if isinstance(self.cross_bracing_type_combo, QComboBox):
+            self.cross_bracing_type_combo.currentTextChanged.connect(self._on_cross_bracing_layout_changed)
+        if isinstance(self.cross_top_chord_checkbox, QCheckBox):
+            self.cross_top_chord_checkbox.toggled.connect(self._on_cross_bracing_layout_changed)
+        if isinstance(self.cross_bottom_chord_checkbox, QCheckBox):
+            self.cross_bottom_chord_checkbox.toggled.connect(self._on_cross_bracing_layout_changed)
 
-        bracing_section_type.currentTextChanged.connect(
-            lambda label: (self._cross_update_designations_for(bracing_section_size, label), self._update_cross_previews())
-        )
-        bracing_section_size.currentTextChanged.connect(self._update_cross_previews)
+        if isinstance(self.cross_bracing_section_type_combo, QComboBox):
+            self.cross_bracing_section_type_combo.currentTextChanged.connect(
+                lambda label: (
+                    self._cross_update_designations_for(self.cross_bracing_section_combo, label),
+                    self._update_cross_previews(),
+                )
+            )
+        if isinstance(self.cross_bracing_section_combo, QComboBox):
+            self.cross_bracing_section_combo.currentTextChanged.connect(self._update_cross_previews)
 
-        top_chord_type.currentTextChanged.connect(
-            lambda label: (self._cross_update_designations_for(top_chord_size, label), self._update_cross_previews())
-        )
-        top_chord_size.currentTextChanged.connect(self._update_cross_previews)
+        if isinstance(self.cross_top_chord_type_combo, QComboBox):
+            self.cross_top_chord_type_combo.currentTextChanged.connect(
+                lambda label: (
+                    self._cross_update_designations_for(self.cross_top_chord_size_combo, label),
+                    self._update_cross_previews(),
+                )
+            )
+        if isinstance(self.cross_top_chord_size_combo, QComboBox):
+            self.cross_top_chord_size_combo.currentTextChanged.connect(self._update_cross_previews)
 
-        bottom_chord_type.currentTextChanged.connect(
-            lambda label: (self._cross_update_designations_for(bottom_chord_size, label), self._update_cross_previews())
-        )
-        bottom_chord_size.currentTextChanged.connect(self._update_cross_previews)
+        if isinstance(self.cross_bottom_chord_type_combo, QComboBox):
+            self.cross_bottom_chord_type_combo.currentTextChanged.connect(
+                lambda label: (
+                    self._cross_update_designations_for(self.cross_bottom_chord_size_combo, label),
+                    self._update_cross_previews(),
+                )
+            )
+        if isinstance(self.cross_bottom_chord_size_combo, QComboBox):
+            self.cross_bottom_chord_size_combo.currentTextChanged.connect(self._update_cross_previews)
 
         self._cross_populate_designations()
-        self._on_cross_design_changed(design_combo.currentText())
+        self._on_cross_design_changed(design_combo.currentText() if isinstance(design_combo, QComboBox) else "")
+        if type_selector is None:
+            type_selector = QComboBox()
         return view, type_selector
 
     def _build_rolled_view(self):
@@ -2053,31 +2213,32 @@ class EndDiaphragmDetailsTab(QWidget):
         grid.setColumnStretch(0, 0)
         grid.setColumnStretch(1, 1)
 
-        design_combo = QComboBox()
-        design_combo.addItems(self._end_schema_choices(VIEW_ROLLED_BEAM, "design", list(VALUES_GIRDER_DESIGN_MODE)))
-        design_combo.setCurrentText(self._end_schema_default(VIEW_ROLLED_BEAM, "design", DESIGN_OPTIMIZED))
+        design_field = self._end_schema_field(VIEW_ROLLED_BEAM, "design")
+        design_combo = self._schema_builder.create_widget(design_field)
         self.rolled_design_combo = design_combo
-        self._bind_end_schema_widget(VIEW_ROLLED_BEAM, "design", design_combo)
-        self._configure_combo_box(design_combo)
-        apply_field_style(design_combo)
         design_combo.setVisible(False)
         row = 0
 
-        type_selector = QComboBox()
-        type_selector.addItems(self._end_schema_choices(VIEW_ROLLED_BEAM, "type_selector", list(VALUES_END_DIAPHRAGM_TYPE)))
-        type_selector.setCurrentText(self._end_schema_default(VIEW_ROLLED_BEAM, "type_selector", VIEW_ROLLED_BEAM))
-        self._configure_combo_box(type_selector)
-        apply_field_style(type_selector)
-        row = self._add_grid_row(grid, row, "Type:", type_selector)
+        type_selector = None
+        for field_def in self._end_schema_overview_fields(VIEW_ROLLED_BEAM):
+            widget = self._schema_builder.create_widget(field_def)
+            row = self._add_grid_row(grid, row, str(field_def.get("label") or ""), widget)
+            if str(field_def.get("id") or "").strip() == "type_selector":
+                type_selector = widget
 
-        is_section_combo = QComboBox()
-        self._configure_combo_box(is_section_combo)
-        apply_field_style(is_section_combo)
-        self._populate_rolled_sections(is_section_combo)
-        self._add_grid_row(grid, row, "IS Section:", is_section_combo)
-        self.rolled_is_section_combo = is_section_combo
-        self._bind_end_schema_widget(VIEW_ROLLED_BEAM, "is_section", is_section_combo)
-        self._rolled_inputs = [is_section_combo]
+        rolled_inputs = []
+        for field_def in self._end_schema_section_inputs(VIEW_ROLLED_BEAM):
+            field_id = str(field_def.get("id") or "").strip()
+            if field_id == "design":
+                continue
+            widget = self._schema_builder.create_widget(field_def)
+            row = self._add_grid_row(grid, row, str(field_def.get("label") or ""), widget)
+            field_widget = widget
+            if field_id == "is_section" and isinstance(field_widget, QComboBox):
+                self.rolled_is_section_combo = field_widget
+                rolled_inputs.append(field_widget)
+
+        self._rolled_inputs = rolled_inputs
 
         inputs_layout.addLayout(grid)
         inputs_box.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
@@ -2119,9 +2280,12 @@ class EndDiaphragmDetailsTab(QWidget):
         layout.setStretch(1, 1)
 
         design_combo.currentTextChanged.connect(self._on_rolled_design_changed)
-        is_section_combo.currentTextChanged.connect(self._update_rolled_preview_and_props)
+        if hasattr(self, "rolled_is_section_combo") and self.rolled_is_section_combo:
+            self.rolled_is_section_combo.currentTextChanged.connect(self._update_rolled_preview_and_props)
         self._update_rolled_preview_and_props()
         self._on_rolled_design_changed(design_combo.currentText())
+        if type_selector is None:
+            type_selector = QComboBox()
         return view, type_selector
 
     def _build_welded_view(self):
@@ -2153,120 +2317,45 @@ class EndDiaphragmDetailsTab(QWidget):
         grid.setColumnStretch(0, 0)
         grid.setColumnStretch(1, 1)
 
-        design_combo = QComboBox()
-        design_combo.addItems(self._end_schema_choices(VIEW_WELDED_BEAM, "design", list(VALUES_GIRDER_DESIGN_MODE)))
-        design_combo.setCurrentText(self._end_schema_default(VIEW_WELDED_BEAM, "design", DESIGN_OPTIMIZED))
+        design_field = self._end_schema_field(VIEW_WELDED_BEAM, "design")
+        design_combo = self._schema_builder.create_widget(design_field)
         self.welded_design_combo = design_combo
-        self._bind_end_schema_widget(VIEW_WELDED_BEAM, "design", design_combo)
-        self._configure_combo_box(design_combo)
-        apply_field_style(design_combo)
         design_combo.setVisible(False)
         row = 0
 
-        type_selector = QComboBox()
-        type_selector.addItems(self._end_schema_choices(VIEW_WELDED_BEAM, "type_selector", list(VALUES_END_DIAPHRAGM_TYPE)))
-        type_selector.setCurrentText(self._end_schema_default(VIEW_WELDED_BEAM, "type_selector", VIEW_WELDED_BEAM))
-        self._configure_combo_box(type_selector)
-        apply_field_style(type_selector)
-        row = self._add_grid_row(grid, row, "Type:", type_selector)
+        type_selector = None
+        for field_def in self._end_schema_overview_fields(VIEW_WELDED_BEAM):
+            widget = self._schema_builder.create_widget(field_def)
+            row = self._add_grid_row(grid, row, str(field_def.get("label") or ""), widget)
+            if str(field_def.get("id") or "").strip() == "type_selector":
+                type_selector = widget
 
-        symmetry_combo = QComboBox()
-        symmetry_combo.addItems(self._end_schema_choices(VIEW_WELDED_BEAM, "symmetry", list(VALUES_GIRDER_SYMMETRY)))
-        self._configure_combo_box(symmetry_combo)
-        apply_field_style(symmetry_combo)
-        row = self._add_grid_row(grid, row, "Symmetry:", symmetry_combo)
-        self._bind_end_schema_widget(VIEW_WELDED_BEAM, "symmetry", symmetry_combo)
+        welded_inputs = []
+        for field_def in self._end_schema_section_inputs(VIEW_WELDED_BEAM):
+            field_id = str(field_def.get("id") or "").strip()
+            if field_id == "design":
+                continue
 
-        total_depth_widget, total_depth, total_depth_bounds_button = self._create_dimension_input_widget("total_depth")
-        row = self._add_grid_row(grid, row, "Total Depth, d (mm):", total_depth_widget)
-        self.welded_total_depth = total_depth
-        self.welded_total_depth_widget = total_depth_widget
-        self.welded_total_depth_bounds_button = total_depth_bounds_button
+            widget = self._schema_builder.create_widget(field_def)
+            row = self._add_grid_row(grid, row, str(field_def.get("label") or ""), widget)
+            field_type = str(field_def.get("type") or "").strip().lower()
+            if field_type == "combo":
+                if isinstance(widget, QComboBox):
+                    welded_inputs.append(widget)
+            elif field_type == "dimension":
+                bind = str(field_def.get("bind") or "").strip()
+                field_widget = getattr(self, bind, None) if bind else None
+                if isinstance(field_widget, QLineEdit):
+                    welded_inputs.append(field_widget)
+            elif field_type == "mode_value":
+                mode_combo = getattr(self, str(field_def.get("bind_mode") or "").strip(), None)
+                value_input = getattr(self, str(field_def.get("bind_value") or "").strip(), None)
+                if isinstance(mode_combo, QComboBox):
+                    welded_inputs.append(mode_combo)
+                if isinstance(value_input, QLineEdit):
+                    welded_inputs.append(value_input)
 
-        web_thick_combo = QComboBox()
-        web_thick_combo.addItems(VALUES_PROFILE_SCOPE)
-        self._configure_combo_box(web_thick_combo)
-        apply_field_style(web_thick_combo)
-
-        web_thick_value = self._create_line_edit()
-        web_thick_value.setValidator(QDoubleValidator(0, 1_000_000, 3))
-        try:
-            web_thick_value.setFixedWidth(78)
-            web_thick_value.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
-        except Exception:
-            pass
-
-        web_thick_widget = self._create_mode_value_widget(web_thick_combo, web_thick_value)
-        row = self._add_grid_row(grid, row, "Web Thickness, w<sub>t</sub> (mm):", web_thick_widget)
-        self.welded_web_thickness_combo = web_thick_combo
-        self.welded_web_thickness_value = web_thick_value
-        self.welded_web_thickness_widget = web_thick_widget
-        self.welded_web_thickness_value_combo = self._attach_thickness_value_dropdown(web_thick_widget, web_thick_value)
-
-        top_width_widget, top_width, top_width_bounds_button = self._create_dimension_input_widget("top_width")
-        row = self._add_grid_row(grid, row, "Width of Top Flange, t<sub>fw</sub> (mm):", top_width_widget)
-        self.welded_top_width = top_width
-        self.welded_top_width_widget = top_width_widget
-        self.welded_top_width_bounds_button = top_width_bounds_button
-
-        top_thickness_combo = QComboBox()
-        top_thickness_combo.addItems(VALUES_PROFILE_SCOPE)
-        self._configure_combo_box(top_thickness_combo)
-        apply_field_style(top_thickness_combo)
-
-        top_thickness_value = self._create_line_edit()
-        top_thickness_value.setValidator(QDoubleValidator(0, 1_000_000, 3))
-        try:
-            top_thickness_value.setFixedWidth(78)
-            top_thickness_value.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
-        except Exception:
-            pass
-
-        top_thickness_widget = self._create_mode_value_widget(top_thickness_combo, top_thickness_value)
-        row = self._add_grid_row(grid, row, "Top Flange Thickness, t<sub>ft</sub> (mm):", top_thickness_widget)
-        self.welded_top_thickness_combo = top_thickness_combo
-        self.welded_top_thickness_value = top_thickness_value
-        self.welded_top_thickness_widget = top_thickness_widget
-        self.welded_top_thickness_value_combo = self._attach_thickness_value_dropdown(top_thickness_widget, top_thickness_value)
-
-        bottom_width_widget, bottom_width, bottom_width_bounds_button = self._create_dimension_input_widget("bottom_width")
-        row = self._add_grid_row(grid, row, "Width of Bottom Flange, b<sub>fw</sub> (mm):", bottom_width_widget)
-        self.welded_bottom_width = bottom_width
-        self.welded_bottom_width_widget = bottom_width_widget
-        self.welded_bottom_width_bounds_button = bottom_width_bounds_button
-
-        bottom_thickness_combo = QComboBox()
-        bottom_thickness_combo.addItems(VALUES_PROFILE_SCOPE)
-        self._configure_combo_box(bottom_thickness_combo)
-        apply_field_style(bottom_thickness_combo)
-
-        bottom_thickness_value = self._create_line_edit()
-        bottom_thickness_value.setValidator(QDoubleValidator(0, 1_000_000, 3))
-        try:
-            bottom_thickness_value.setFixedWidth(78)
-            bottom_thickness_value.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
-        except Exception:
-            pass
-
-        bottom_thickness_widget = self._create_mode_value_widget(bottom_thickness_combo, bottom_thickness_value)
-        row = self._add_grid_row(grid, row, "Bottom Flange Thickness, b<sub>ft</sub> (mm):", bottom_thickness_widget)
-        self.welded_bottom_thickness_combo = bottom_thickness_combo
-        self.welded_bottom_thickness_value = bottom_thickness_value
-        self.welded_bottom_thickness_widget = bottom_thickness_widget
-        self.welded_bottom_thickness_value_combo = self._attach_thickness_value_dropdown(bottom_thickness_widget, bottom_thickness_value)
-
-        self._welded_inputs = [
-            symmetry_combo,
-            total_depth,
-            web_thick_combo,
-            web_thick_value,
-            top_width,
-            top_thickness_combo,
-            top_thickness_value,
-            bottom_width,
-            bottom_thickness_combo,
-            bottom_thickness_value,
-        ]
+        self._welded_inputs = welded_inputs
 
         inputs_layout.addLayout(grid)
         inputs_box.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
@@ -2309,17 +2398,21 @@ class EndDiaphragmDetailsTab(QWidget):
         layout.setStretch(1, 1)
 
         design_combo.currentTextChanged.connect(self._on_welded_design_changed)
-        for watcher in (total_depth, top_width, bottom_width):
+        for watcher in (self.welded_total_depth, self.welded_top_width, self.welded_bottom_width):
             watcher.textChanged.connect(self._update_welded_preview_and_props)
-        for watcher in (web_thick_value, top_thickness_value, bottom_thickness_value):
+        for watcher in (
+            self.welded_web_thickness_value,
+            self.welded_top_thickness_value,
+            self.welded_bottom_thickness_value,
+        ):
             watcher.textChanged.connect(self._update_welded_preview_and_props)
-        web_thick_combo.currentTextChanged.connect(
+        self.welded_web_thickness_combo.currentTextChanged.connect(
             lambda text: self._on_welded_thickness_mode_changed("welded_web_thickness", text)
         )
-        top_thickness_combo.currentTextChanged.connect(
+        self.welded_top_thickness_combo.currentTextChanged.connect(
             lambda text: self._on_welded_thickness_mode_changed("welded_top_thickness", text)
         )
-        bottom_thickness_combo.currentTextChanged.connect(
+        self.welded_bottom_thickness_combo.currentTextChanged.connect(
             lambda text: self._on_welded_thickness_mode_changed("welded_bottom_thickness", text)
         )
         self._update_welded_preview_and_props()
@@ -2327,6 +2420,8 @@ class EndDiaphragmDetailsTab(QWidget):
         self._update_welded_thickness_value_enabled_state()
         self._update_welded_dimension_field_mode()
         self._refresh_bounds_tooltips()
+        if type_selector is None:
+            type_selector = QComboBox()
         return view, type_selector
 
     def _handle_type_selection(self, value):

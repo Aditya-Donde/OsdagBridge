@@ -92,6 +92,10 @@ class SectionPropertiesTab(QWidget):
         except Exception:
             pass
         try:
+            self.end_diaphragm_tab.bind_additional_input_instance(self.additional_input_instance)
+        except Exception:
+            pass
+        try:
             self.end_diaphragm_tab.bind_girder_details_tab(self.girder_details_tab)
         except Exception:
             pass
