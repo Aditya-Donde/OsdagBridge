@@ -118,17 +118,18 @@ class ToolBarController:
     # These must exactly match the tooltip strings passed to create_button()
     # inside ToolBarWidget (custom_widgets.py).  _find_button() searches by
     # tooltip to locate the correct QPushButton in the toolbar layout.
-    _TIP_GRILLAGE  = "Grillage View"
-    _TIP_NODE      = "Node"
-    _TIP_ZOOM_WIN  = "Zoom Window"  # toggle — activates drag-to-zoom rect mode
-    _TIP_PAN       = "Pan"          # toggle — activates pan navigation mode
-    _TIP_ROTATE    = "Rotate"       # toggle — activates rotate navigation mode
-    _TIP_ZOOM_FIT  = "Zoom Fit"    # one-shot action — not a toggle
-    _TIP_ZOOM_IN   = "Zoom In"     # one-shot action — not a toggle
-    _TIP_ZOOM_OUT  = "Zoom Out"    # one-shot action — not a toggle
-    _TIP_AXIS      = "Axis"
-    _TIP_GRID      = "Grid Lines"
-    _TIP_SUPPORTS  = "Supports"
+    _TIP_GRILLAGE     = "Grillage View"
+    _TIP_NODE         = "Node"
+    _TIP_NODE_NUMBER  = "Node Number"
+    _TIP_ZOOM_WIN     = "Zoom Window"  # toggle — activates drag-to-zoom rect mode
+    _TIP_PAN          = "Pan"          # toggle — activates pan navigation mode
+    _TIP_ROTATE       = "Rotate"       # toggle — activates rotate navigation mode
+    _TIP_ZOOM_FIT     = "Zoom Fit"    # one-shot action — not a toggle
+    _TIP_ZOOM_IN      = "Zoom In"     # one-shot action — not a toggle
+    _TIP_ZOOM_OUT     = "Zoom Out"    # one-shot action — not a toggle
+    _TIP_AXIS         = "Axis"
+    _TIP_GRID         = "Grid Lines"
+    _TIP_SUPPORTS     = "Supports"
 
     def __init__(self, tool_bar: "ToolBarWidget") -> None:
         self._toolbar = tool_bar
@@ -140,11 +141,12 @@ class ToolBarController:
         # ── Resolve toolbar buttons from the ToolBarWidget layout ──────────────
         # Each button is found once at construction by its tooltip string.
         # Toggle buttons — these become checkable when a view is bound:
-        self._btn_grillage: QPushButton | None = self._find_button(self._TIP_GRILLAGE)
-        self._btn_node: QPushButton | None     = self._find_button(self._TIP_NODE)
-        self._btn_zoom_win: QPushButton | None = self._find_button(self._TIP_ZOOM_WIN)
-        self._btn_pan: QPushButton | None      = self._find_button(self._TIP_PAN)
-        self._btn_rotate: QPushButton | None   = self._find_button(self._TIP_ROTATE)
+        self._btn_grillage:     QPushButton | None = self._find_button(self._TIP_GRILLAGE)
+        self._btn_node:         QPushButton | None = self._find_button(self._TIP_NODE)
+        self._btn_node_number:  QPushButton | None = self._find_button(self._TIP_NODE_NUMBER)
+        self._btn_zoom_win:     QPushButton | None = self._find_button(self._TIP_ZOOM_WIN)
+        self._btn_pan:          QPushButton | None = self._find_button(self._TIP_PAN)
+        self._btn_rotate:       QPushButton | None = self._find_button(self._TIP_ROTATE)
 
         # One-shot buttons — always plain, never checkable:
         self._btn_zoom_fit: QPushButton | None = self._find_button(self._TIP_ZOOM_FIT)
@@ -152,15 +154,15 @@ class ToolBarController:
         self._btn_zoom_out: QPushButton | None = self._find_button(self._TIP_ZOOM_OUT)
 
         # Plot toggle buttons — these become checkable when Plots view is bound:
-        self._btn_axis: QPushButton | None = self._find_button(self._TIP_AXIS)
-        self._btn_grid: QPushButton | None = self._find_button(self._TIP_GRID)
+        self._btn_axis:     QPushButton | None = self._find_button(self._TIP_AXIS)
+        self._btn_grid:     QPushButton | None = self._find_button(self._TIP_GRID)
         self._btn_supports: QPushButton | None = self._find_button(self._TIP_SUPPORTS)
 
         # Collected list of toggle buttons — used for bulk checkable/restore
         # operations in reset() and bind_to_*().
         self._managed_buttons: list[QPushButton] = [
             b for b in (
-                self._btn_grillage, self._btn_node,
+                self._btn_grillage, self._btn_node, self._btn_node_number,
                 self._btn_zoom_win, self._btn_pan, self._btn_rotate,
                 self._btn_axis, self._btn_grid, self._btn_supports,
             )
@@ -311,9 +313,8 @@ class ToolBarController:
         self._restore_plain(self._btn_supports)
 
         # ── Read initial checkbox state from BridgeComponentCheckbox (cad_3d.py) ──
-        # The "Grillage view" and "Node" checkboxes are hidden from the panel
-        # but still exist in selector._checkboxes — read them so the toolbar
-        # button starts in the correct checked/unchecked state.
+        # The "Grillage view", "Node", and "Node Numbers" checkboxes are read so
+        # the toolbar buttons start in the correct checked/unchecked state.
         def _initial_cb_state(label: str) -> bool:
             try:
                 for cb in cad_widget.component_selector._checkboxes:
@@ -323,8 +324,9 @@ class ToolBarController:
                 pass
             return False
 
-        self._make_checkable(self._btn_grillage, _initial_cb_state("Grillage view"))
-        self._make_checkable(self._btn_node,     _initial_cb_state("Node"))
+        self._make_checkable(self._btn_grillage,    _initial_cb_state("Grillage view"))
+        self._make_checkable(self._btn_node,         _initial_cb_state("Node"))
+        self._make_checkable(self._btn_node_number,  _initial_cb_state("Node Numbers"))
 
         # ── Grillage toggle ───────────────────────────────────────────────────
         # RENDERING LOGIC: cad_3d.py → CAD3DWindow._render_grillage()
@@ -375,8 +377,51 @@ class ToolBarController:
             except Exception:
                 pass
 
-        self._connect(self._btn_grillage, _cad_toggle_grillage)
-        self._connect(self._btn_node,     _cad_toggle_node)
+        # ── Node Number toggle ────────────────────────────────────────────────
+        # Fully independent of BridgeComponentCheckbox — logic lives here only.
+        #
+        # ON  → call cad_widget._render_node_numbers() directly.
+        #       That method builds AIS_TextLabel objects (one per node) at
+        #       deck_top_z + 80 mm and registers them in
+        #       cad_widget.viewer.model_ais_objects["NodeNumbers"].
+        #       It also erases the Node sphere markers while labels are shown.
+        #
+        # OFF → erase every AIS object stored in model_ais_objects["NodeNumbers"]
+        #       directly via the OCC context, then repaint.
+        #       Node spheres are NOT automatically restored here — that is left
+        #       to the existing Node button so the two toggles stay independent.
+        #
+        # DATA SOURCE: cad_widget._node_data populated by _render_nodes().
+        def _cad_toggle_node_number():
+            """
+            Independent node-number toggle.
+            Does NOT touch BridgeComponentCheckbox or call _apply().
+            All logic is self-contained in toolbar_controller.py.
+            """
+            want = self._btn_node_number.isChecked()
+            try:
+                if want:
+                    # Render labels directly — no checkbox involved
+                    cad_widget._render_node_numbers()
+                else:
+                    # Erase all NodeNumbers AIS objects directly
+                    context = cad_widget.viewer.context
+                    for ais in cad_widget.viewer.model_ais_objects.pop("NodeNumbers", []):
+                        try:
+                            context.Erase(ais, False)
+                        except Exception:
+                            pass
+                    try:
+                        cad_widget.display.Repaint()
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+            self._sync_btn_to(self._btn_node_number, want)
+
+        self._connect(self._btn_grillage,   _cad_toggle_grillage)
+        self._connect(self._btn_node,        _cad_toggle_node)
+        self._connect(self._btn_node_number, _cad_toggle_node_number)
 
         # ── Zoom Window toggle ────────────────────────────────────────────────
         # NAVIGATION LOGIC: cad_3d.py → BridgeComponentCheckbox._on_zoom_window_toggled()
@@ -557,16 +602,18 @@ class ToolBarController:
                 return default
 
         grillage_init = _initial_plot_state('_grillage_mode', False)
-        node_init = _initial_plot_state('_show_nodes', True)
-        axis_init = _initial_plot_state('_show_axis', False)
+        node_init        = _initial_plot_state('_show_nodes', True)
+        node_number_init = _initial_plot_state('_show_node_numbers', False)
+        axis_init        = _initial_plot_state('_show_axis', False)
         grid_init = _initial_plot_state('_show_grid', False)
         supports_init = _initial_plot_state('_show_supports', True)
         pan_init = _initial_plot_state('_pan_active', False)
         rotate_init = _initial_plot_state('_rotate_active', False)
 
-        self._make_checkable(self._btn_grillage, grillage_init)
-        self._make_checkable(self._btn_node,     node_init)
-        self._make_checkable(self._btn_axis,     axis_init)
+        self._make_checkable(self._btn_grillage,    grillage_init)
+        self._make_checkable(self._btn_node,         node_init)
+        self._make_checkable(self._btn_node_number,  node_number_init)
+        self._make_checkable(self._btn_axis,         axis_init)
         self._make_checkable(self._btn_grid,     grid_init)
         self._make_checkable(self._btn_supports, supports_init)
         self._make_checkable(self._btn_pan,      pan_init)
@@ -602,6 +649,22 @@ class ToolBarController:
 
         self._connect(self._btn_grillage, _plots_toggle_grillage)
         self._connect(self._btn_node,     _plots_toggle_node)
+
+        # ── Node Number — direct call to MplPlotWidget._on_node_numbers_toggled ──
+        # RENDERING LOGIC: plot_generator._add_node_number_labels() draws text with
+        #   gid="node_number" at each node position, initially hidden.
+        # TOGGLE LOGIC: MplPlotWidget._on_node_numbers_toggled() / _apply_node_number_visibility()
+        #   walks ax.texts and sets visible=True/False for every gid="node_number" text.
+        def _plots_toggle_node_number():
+            """Direct call to MplPlotWidget._on_node_numbers_toggled method."""
+            try:
+                checked = self._btn_node_number.isChecked()
+                plots_widget._on_node_numbers_toggled(checked)
+                self._sync_btn_to(self._btn_node_number, checked)
+            except Exception:
+                pass
+
+        self._connect(self._btn_node_number, _plots_toggle_node_number)
 
         # ── Axis — direct call to MplPlotWidget._on_axis_toggled ──────────────
         def _plots_toggle_axis():

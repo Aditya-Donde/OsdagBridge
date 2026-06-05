@@ -21,6 +21,7 @@ from osdagbridge.core.bridge_types.plate_girder.plot_generator import (
     build_figure_bmd,
     build_figure_deflection,
     build_figure_grillage,
+    _add_node_number_labels,
     FORCE_MAP,
     DISP_MAP,
 )
@@ -176,6 +177,7 @@ class MplPlotWidget(QWidget):
         self._show_supports = True 
         self._show_grid = False  
         self._show_girder_labels = True
+        self._show_node_numbers = False
         self._is_summary_checked = False
         self._show_max = False  
         self._show_min = False  
@@ -430,6 +432,7 @@ class MplPlotWidget(QWidget):
         
         # (Your existing visibility toggles)
         self._apply_node_visibility()
+        self._apply_node_number_visibility()
         self._apply_axis_visibility()
         self._apply_supports_visibility()
         self._apply_grid_visibility()
@@ -626,6 +629,11 @@ class MplPlotWidget(QWidget):
         self._apply_girder_labels_visibility()
         self._canvas.draw_idle()
 
+    def _on_node_numbers_toggled(self, checked: bool):
+        self._show_node_numbers = checked
+        self._apply_node_number_visibility()
+        self._canvas.draw_idle()
+
     def resizeEvent(self, event):
         super().resizeEvent(event)
         if self._summary_overlay:
@@ -639,6 +647,13 @@ class MplPlotWidget(QWidget):
                 if isinstance(collection, Path3DCollection):
                     if collection.get_gid() != "supports":
                         collection.set_visible(self._show_nodes)
+
+    def _apply_node_number_visibility(self):
+        """Show/hide the node ID text labels (gid='node_number') on all axes."""
+        for ax in self._fig.axes:
+            for text in ax.texts:
+                if text.get_gid() == "node_number":
+                    text.set_visible(self._show_node_numbers)
 
     def _apply_supports_visibility(self):
         for ax in self._fig.axes:

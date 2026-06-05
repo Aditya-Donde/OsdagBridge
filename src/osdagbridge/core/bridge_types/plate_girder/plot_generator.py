@@ -380,6 +380,38 @@ def _add_supports(ax, nodes, members, edge_dist=0.0):
                zorder=1000, depthshade=False, gid="supports")
 
 
+
+# =============================================================================
+# NODE NUMBER LABELS HELPER
+# =============================================================================
+
+def _add_node_number_labels(ax, nodes, visible: bool = False):
+    """
+    Draw the integer node ID as a small text label at each node position.
+    All labels are tagged with gid="node_number" so MplPlotWidget can
+    show/hide them in bulk without rebuilding the figure.
+
+    Parameters
+    ----------
+    ax      : mpl_toolkits.mplot3d.axes3d.Axes3D
+    nodes   : dict  — {node_id: [x, y, z]}
+    visible : bool  — initial visibility (default False, toggled by toolbar)
+    """
+    for nid, coord in nodes.items():
+        x, z, y = coord[0], coord[2], 0.0
+        t = ax.text(
+            x, z, y,
+            f" {nid}",
+            fontsize=7,
+            color="#1565C0",
+            fontweight="normal",
+            ha="left",
+            va="bottom",
+            zorder=8,
+            gid="node_number",
+        )
+        t.set_visible(visible)
+
 # =============================================================================
 # GRILLAGE PLOT
 # =============================================================================
@@ -492,6 +524,7 @@ def build_figure_grillage(nodes, members, edge_dist=0.0):
             timer.add_callback(auto_hide)
             timer.start()
     _add_supports(ax, nodes, members, edge_dist=edge_dist)
+    _add_node_number_labels(ax, nodes)
     ax.set_xlabel("Span Length (m)", fontsize=10, labelpad=8)
     ax.set_ylabel("Bridge Width (m)", fontsize=10, labelpad=8)
     ax.set_zlabel("", fontsize=10, labelpad=8)
@@ -715,6 +748,7 @@ def build_figure_sfd(ds, force_key, nodes, members, edge_dist=0.0, eng_scale=1.0
             timer.start()
 
     _add_supports(ax, nodes, members, edge_dist=edge_dist)
+    _add_node_number_labels(ax, nodes)
     ax.set_xlabel("Span Length (m)", fontsize=10, labelpad=8)
     ax.set_ylabel("Bridge Width (m)", fontsize=10, labelpad=8)
     ax.set_zlabel(f"{disp_key} (kN)", fontsize=10, labelpad=8)
@@ -942,6 +976,7 @@ def build_figure_bmd(ds, force_key, nodes, members, edge_dist=0.0, eng_scale=1.0
             timer.add_callback(auto_hide)
             timer.start()
     _add_supports(ax, nodes, members, edge_dist=edge_dist)
+    _add_node_number_labels(ax, nodes)
     ax.set_xlabel("Span Length (m)", fontsize=10, labelpad=8)
     ax.set_ylabel("Bridge Width (m)", fontsize=10, labelpad=8)
     ax.set_zlabel(f"{disp_key} (kNm)", fontsize=10, labelpad=8)
@@ -1360,6 +1395,7 @@ def build_figure_deflection(ds, disp_key, nodes, members, edge_dist=0.0, eng_sca
 
     # CRITICAL: Draw supports absolute last so they sit on top of the black nodes
     _add_supports(ax, nodes, members, edge_dist=edge_dist)
+    _add_node_number_labels(ax, nodes)
 
     # Robust axes and labels
     ax.set_xlabel("Span Length (m)", fontsize=10, fontweight="bold", labelpad=8)

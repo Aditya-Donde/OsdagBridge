@@ -982,12 +982,12 @@ class BridgeComponentCheckbox(QWidget):
             layout.addWidget(cb)
             self._checkboxes.append(cb)
 
-        # Hide "Grillage view" and "Node" from the panel — these are now
-        # controlled exclusively from the main ToolBar (toolbar_controller.py).
+        # Hide "Grillage view", "Node", and "Node Numbers" from the panel —
+        # these are now controlled exclusively from the main ToolBar (toolbar_controller.py).
         # The checkboxes still exist in _checkboxes so the toolbar handler
         # can find and update them; they are just not visible to the user.
         for cb in self._checkboxes:
-            if cb.text() in ("Grillage view", "Node"):
+            if cb.text() in ("Grillage view", "Node", "Node Numbers"):
                 cb.hide()
 
         layout.addStretch()
