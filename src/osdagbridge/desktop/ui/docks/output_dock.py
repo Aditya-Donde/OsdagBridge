@@ -589,20 +589,6 @@ class OutputDock(QWidget):
         if main_window and hasattr(main_window, 'open_report_dialog'):
             main_window.open_report_dialog()
 
-    def refresh_utilization(self):
-        """Read utilization ratios from backend and update all PercentBarWidgets."""
-        if not self.backend or not hasattr(self.backend, "_frontend"):
-            return
-        frontend = self.backend._frontend
-        for key in (
-            KEY_UTIL_FLEXURE, KEY_UTIL_SHEAR, KEY_UTIL_INTERACTION,
-            KEY_UTIL_LTB, KEY_UTIL_LONG_TRANS_SHEAR, KEY_UTIL_FATIGUE,
-            KEY_UTIL_STRESS_LIMITATION, KEY_UTIL_DEFLECTION_CRACK,
-        ):
-            value = frontend.get_output_value(key, 0.0)
-            bar = self._w(key)
-            if bar is not None:
-                bar.set_value(float(value))
 
     def refresh_loadcase_dropdowns(self):
         """Populate both Load Case dropdowns with real load cases after design completes."""
@@ -638,10 +624,10 @@ class OutputDock(QWidget):
 
         if len(members_per_girder) == 1:
             # Simple case: one member per girder — just show G1, G2, ..., Gn
-            items = ["All"] + [f"G{g}" for g in range(1, n_girders + 1)]
+            items = [f"G{g}" for g in range(1, n_girders + 1)]
         else:
             # Multiple members per girder — show GnMm entries
-            items = ["All"] + [
+            items = [
                 f"G{g}M{m}"
                 for g in range(1, n_girders + 1)
                 for m in members_per_girder
