@@ -2309,18 +2309,14 @@ class PlateGirderBridge:
         handler = PlateGirderAnalysisResults(dataset=results, bridge=self.grillage_model)
         return [str(lc) for lc in handler.get_available_loadcases()]
     
-    def get_dcr_for_selection(
+    def get_dcr_engine_for_selection(
         self, girder_name: str | None, load_case: str | None
-    ) -> dict[str, float]:
+    ) -> "DCREngine | None":
         """
-        Return DCR percentages for the given girder + load case selection.
-
-        girder_name : "All" or "G1" / "G2" etc.
-        load_case   : "Envelope" or a specific LC string.
-
-        Returns a dict keyed by KEY_UTIL_* with values as percentages (0-100).
-        Falls back to the envelope (worst-case across all girders/LCs) when
-        "All" or "Envelope" is selected, which mirrors the initial design output.
+        Single source of truth for DCR computation.
+        Returns a fully-run DCREngine for the given (girder, loadcase).
+        Both the Output Dock percent bars and the Steel Design check cards
+        call this — never compute DCR anywhere else.
         """
         from osdagbridge.core.bridge_types.plate_girder.designer import (
             BridgeConfig, IRC22CapacityCalculator, DCREngine, DemandEnvelope,
@@ -2328,35 +2324,31 @@ class PlateGirderBridge:
 
         dr = getattr(self, "design_results", None)
         if not dr:
-            return {}
+            return None
 
         per_girder = dr.get("per_girder", {})
         if not per_girder:
-            return {}
+            return None
 
-        # Resolve which girders to include
         if girder_name and girder_name in per_girder:
             girder_names = [girder_name]
         else:
             girder_names = list(per_girder)
 
-        # Re-build BridgeConfig (capacity is load-case independent)
         try:
             config = BridgeConfig.from_plate_girder_bridge(self)
         except Exception:
-            return {}
+            return None
 
-        # Aggregate DCR across selected girders
-        dcr_by_id: dict[int, float] = {}
+        best_engine = None
 
         for g_name in girder_names:
             g_data = per_girder.get(g_name, {})
-
-            # Always use per-LC demand with all 9 forces
             per_lc = g_data.get("per_lc", {})
             lc_demand = per_lc.get(load_case)
             if not lc_demand:
                 continue
+
             demand = DemandEnvelope(
                 Mu_kNm=lc_demand.get("Mu_kNm", 0.0),
                 Vu_kN=lc_demand.get("Vu_kN", 0.0),
@@ -2371,7 +2363,6 @@ class PlateGirderBridge:
                 member=g_name,
                 source="per_lc",
             )
-
             try:
                 capacity = IRC22CapacityCalculator(config).compute_all(
                     Vu_kN=demand.Vu_kN,
@@ -2381,37 +2372,48 @@ class PlateGirderBridge:
                 )
                 engine = DCREngine(demand, capacity)
                 engine.run_all_checks()
-                for chk in engine.checks:
-                    dcr_by_id[chk.check_id] = max(
-                        dcr_by_id.get(chk.check_id, 0.0), chk.dcr
-                    )
+
+                max_dcr = max((c.dcr for c in engine.checks), default=0.0)
+                best_max = max((c.dcr for c in best_engine.checks), default=0.0) if best_engine else -1.0
+                if max_dcr > best_max:
+                    best_engine = engine
             except Exception:
                 continue
 
-        if not dcr_by_id:
-            return {}
+        return best_engine
 
-        defl_dcr = max(dcr_by_id.get(13, 0.0), dcr_by_id.get(14, 0.0), dcr_by_id.get(15, 0.0))
-        fatigue_dcr = max(dcr_by_id.get(8, 0.0), dcr_by_id.get(9, 0.0))
-        trans_shear_dcr = max(dcr_by_id.get(16, 0.0), dcr_by_id.get(17, 0.0))
-        stress_dcr = max(dcr_by_id.get(10, 0.0), dcr_by_id.get(11, 0.0), dcr_by_id.get(12, 0.0))
 
+    def get_dcr_for_selection(
+        self, girder_name: str | None, load_case: str | None
+    ) -> dict[str, float]:
+        """
+        Return DCR percentages for the Output Dock percent bars.
+        Thin wrapper around get_dcr_engine_for_selection — no computation here.
+        """
         from osdagbridge.core.utils.common import (
             KEY_UTIL_FLEXURE, KEY_UTIL_SHEAR, KEY_UTIL_INTERACTION,
             KEY_UTIL_LTB, KEY_UTIL_LONG_TRANS_SHEAR, KEY_UTIL_FATIGUE,
             KEY_UTIL_STRESS_LIMITATION, KEY_UTIL_DEFLECTION_CRACK,
         )
-        return {
-            KEY_UTIL_FLEXURE:          dcr_by_id.get(1,  0.0) * 100,
-            KEY_UTIL_SHEAR:            dcr_by_id.get(2,  0.0) * 100,
-            KEY_UTIL_INTERACTION:      dcr_by_id.get(3,  0.0) * 100,
-            KEY_UTIL_LTB:              dcr_by_id.get(5,  0.0) * 100,
-            KEY_UTIL_LONG_TRANS_SHEAR: trans_shear_dcr * 100,
-            KEY_UTIL_FATIGUE:          fatigue_dcr * 100,
-            KEY_UTIL_STRESS_LIMITATION: stress_dcr * 100,
-            KEY_UTIL_DEFLECTION_CRACK:  defl_dcr * 100,
-        }
 
+        engine = self.get_dcr_engine_for_selection(girder_name, load_case)
+        if engine is None:
+            return {}
+
+        by_id = {c.check_id: c.dcr for c in engine.checks}
+
+        return {
+            KEY_UTIL_FLEXURE:           by_id.get(1,  0.0) * 100,
+            KEY_UTIL_SHEAR:             by_id.get(2,  0.0) * 100,
+            KEY_UTIL_INTERACTION:       by_id.get(3,  0.0) * 100,
+            KEY_UTIL_LTB:               by_id.get(5,  0.0) * 100,
+            KEY_UTIL_LONG_TRANS_SHEAR:  max(by_id.get(16, 0.0), by_id.get(17, 0.0)) * 100,
+            KEY_UTIL_FATIGUE:           max(by_id.get(8,  0.0), by_id.get(9,  0.0)) * 100,
+            KEY_UTIL_STRESS_LIMITATION: max(by_id.get(10, 0.0), by_id.get(11, 0.0),
+                                            by_id.get(12, 0.0)) * 100,
+            KEY_UTIL_DEFLECTION_CRACK:  max(by_id.get(13, 0.0), by_id.get(14, 0.0),
+                                            by_id.get(15, 0.0)) * 100,
+        }
 
     def get_nodes_members(self) -> tuple[dict, dict]:
         """Return (nodes, members) dicts built from the active openseespy model."""

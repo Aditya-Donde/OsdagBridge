@@ -492,9 +492,10 @@ class SteelDesign(QDialog):
 
         # ── Signal wiring ─────────────────────────────────────────────────────
         self.tabs.currentChanged.connect(self._on_tab_changed)
-        # NOTE: member_combo and load_combo are now fully interactive
         self.member_combo.currentIndexChanged.connect(self._update_analysis_plots)
+        self.member_combo.currentIndexChanged.connect(self._on_selection_changed_maybe_refresh_checks)
         self.load_combo.currentIndexChanged.connect(self._on_load_combo_changed)
+        self.load_combo.currentIndexChanged.connect(self._on_selection_changed_maybe_refresh_checks)
         if hasattr(self.analysis_tab, "component_combo"):
             self.analysis_tab.component_combo.currentIndexChanged.connect(self._update_analysis_plots)
             self.analysis_tab.component_combo.currentIndexChanged.connect(
@@ -569,15 +570,35 @@ class SteelDesign(QDialog):
 
         self._update_analysis_plots()
 
+    def _on_selection_changed_maybe_refresh_checks(self) -> None:
+        """
+        Called when member or load combo changes.
+        Marks design check results stale; if the Design Check tab is
+        currently visible, refreshes immediately so the user sees
+        updated values without switching away and back.
+        """
+        self._dcr_dirty = True
+        if self.tabs.currentIndex() == 2:
+            self._run_design_checks()
+            
     def _run_design_checks(self) -> None:
-        # Always use the backend's pre-computed engine from _run_dcr_checks()
-        # so the design check tab is always consistent with the output dock.
         if self._checks_ran and not self._dcr_dirty:
             return
 
         try:
             backend = getattr(self._main_window, "backend", None)
-            engine  = getattr(backend, "_dcr_engine", None) if backend else None
+            if backend is None:
+                return
+
+            # Resolve current selection from the dialog's own dropdowns
+            girder_key = self.member_combo.currentData() or self.member_combo.currentText()
+            load_case  = self.load_combo.currentText()
+
+            if not girder_key or not load_case or load_case.startswith(_COMBO_HEADER_PREFIX):
+                return
+
+            # Single computation path — same method the Output Dock uses
+            engine = backend.get_dcr_engine_for_selection(girder_key, load_case)
             if engine is None:
                 return
 
@@ -585,16 +606,15 @@ class SteelDesign(QDialog):
                 engine.demand, engine.capacity, engine,
             )
 
-            self._checks_ran  = True
-            self._dcr_dirty   = False
+            self._checks_ran = True
+            self._dcr_dirty  = False
 
         except Exception:
             import traceback
             err = f"Design check error:\n{traceback.format_exc()}"
             for key in DESIGN_CHECK_ORDER:
                 self.check_tab.set_check_result(key, err)
-
- 
+                
     @property
     def _interaction_mode(self) -> str:
         """Return the active display mode based on radio button selection."""
