@@ -741,9 +741,12 @@ KEY_BEARING_LENGTH = "Bearing Length"
 # Transverse Member Design - General Keys
 KEY_TD_DIALOG = "transverse_member_design"
 KEY_TD_MEMBER_ID = "transverse_member_design.member_id"
+KEY_TD_SELECT_GIRDER = "transverse_member_design.select_girder"
 KEY_TD_LOAD_COMBINATION = "transverse_member_design.load_combination"
 KEY_TD_SECTION_INPUTS_DESIGN = "transverse_member_design.section_inputs.design"
+KEY_TD_SECTION_INPUTS_NO_OF_CB = "transverse_member_design.section_inputs.no_of_cb"
 KEY_TD_SECTION_INPUTS_BRACING_TYPE = "transverse_member_design.section_inputs.bracing_type"
+KEY_TD_SECTION_INPUTS_CONNECTION_TYPE = "transverse_member_design.section_inputs.connection_type"
 KEY_TD_SECTION_INPUTS_BRACING_SECTION_TYPE = "transverse_member_design.section_inputs.bracing_section_type"
 KEY_TD_SECTION_INPUTS_BRACING_SECTION_DESIGNATION = "transverse_member_design.section_inputs.bracing_section_designation"
 KEY_TD_SECTION_INPUTS_TOP_CHORD_ENABLED = "transverse_member_design.section_inputs.top_chord_enabled"
@@ -761,6 +764,7 @@ KEY_TD_DESIGN_CHECK_FORCES_TABLE = "transverse_member_design.design_check.forces
 KEY_TD_DESIGN_CHECK_RESULTS = "transverse_member_design.design_check.results"
 KEY_TD_DETAILS_TAB = "transverse_member_design.details"
 KEY_TD_DESIGN_CHECK_TAB = "transverse_member_design.design_check"
+KEY_TD_CROSSBRACING_TAB = "transverse_member_design.crossbracing"
 
 # Transverse Member Design - section property field keys
 KEY_TD_BRACING_PROP_L = "transverse_member_design.section_properties.bracing.L"
