@@ -1593,6 +1593,7 @@ class PlateGirderBridge:
         )
         self._dcr_engine = engine
         self.design_results = design_results
+        self.store_design_results(design_results)
 
     def _design_cross_bracing_members(self) -> dict:
         """
