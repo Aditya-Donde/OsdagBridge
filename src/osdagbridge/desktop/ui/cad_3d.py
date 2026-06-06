@@ -236,7 +236,7 @@ class CAD3DWindow(QWidget):
 
 
         # HELPER 
-        def display_and_register(shapes, key, label, color, transparency=None, line_width=None):
+        def display_and_register(shapes, key, label, color, transparency=None, line_width=None, selectable=True):
             if not shapes:
                 return
 
@@ -257,7 +257,10 @@ class CAD3DWindow(QWidget):
                     ais.SetWidth(line_width)
                     context.RecomputePrsOnly(ais, False)
 
-                context.Activate(ais, 0)   # REQUIRED for hover
+                if selectable:
+                    context.Activate(ais, 0)   # REQUIRED for hover
+                else:
+                    context.Deactivate(ais)
                 ais_list.append(ais)
 
             self.viewer.model_ais_objects[key] = ais_list
@@ -288,14 +291,16 @@ class CAD3DWindow(QWidget):
             cad_data.get("stiffeners", []),
             "Stiffener",
             f"Stiffener\nSpacing: {params.intermediate_stiffener_spacing:.2f} mm\nThickness: {params.intermediate_stiffener_thickness:.2f} mm\nEnd Pairs: {params.num_end_stiffener_pairs}",
-            STIFFENER_COLOR
+            STIFFENER_COLOR,
+            selectable=False
         )
 
         display_and_register(
             cad_data.get("shear_studs", []),
             "Shear Stud",
             f"Shear Stud\nBase Dia: {params.shear_stud_params.base_diameter:.2f} mm\nHeight: {params.shear_stud_params.base_height + params.shear_stud_params.top_height:.2f} mm\nPitch: {params.shear_stud_params.pitch:.2f} mm\nPer Section: {params.shear_stud_params.num_per_section}",
-            STIFFENER_COLOR
+            STIFFENER_COLOR,
+            selectable=False
         )
 
         SUPPORT_VERTICAL_COLOR   = Quantity_Color(0.0, 0.35, 0.0,  Quantity_TOC_RGB)  # Green
@@ -401,6 +406,9 @@ class CAD3DWindow(QWidget):
             self.viewer.display_view_cube()
 
         self.component_selector.show()
+
+        # Trigger lookup dictionary rebuild
+        self.viewer.rebuild_ais_lookup_map()
         self.component_selector.apply_selection()
 
     # CAD OVERLAY CONTROLS

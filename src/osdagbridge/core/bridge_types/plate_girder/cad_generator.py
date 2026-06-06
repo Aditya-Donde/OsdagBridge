@@ -434,6 +434,8 @@ class PlateGirderCADGenerator:
         supports_wide_horiz = []
         supports_long_horiz = []
         supports_cyl = []
+        raw_shear_studs = []
+        raw_stiffeners = []
 
         total_width = (self.num_girders - 1) * self.girder_spacing
         reference_position = 0.0  # Centerline reference for skew
@@ -519,13 +521,13 @@ class PlateGirderCADGenerator:
             # Place stiffeners (follow parent girder's offset)
             for stiff in pg["stiffeners"]:
                 stiffeners.append(
-                    _translate(stiff, dx=x_offset, dy=y_offset)
+                    raw_stiffeners.append(_translate(stiff, dx=x_offset, dy=y_offset))
                 )
 
             # Place shear studs
             for stud in pg.get("shear_studs", []):
                 shear_studs.append(
-                    _translate(stud, dx=x_offset, dy=y_offset)
+                    raw_shear_studs.append(_translate(stud, dx=x_offset, dy=y_offset))
                 )
 
             # Place triangular supports
@@ -535,6 +537,28 @@ class PlateGirderCADGenerator:
             # Place cylindrical supports
             for s in pg["supports_cyl"]:
                 supports_cyl.append(_translate(s, dx=x_offset, dy=y_offset))
+
+        # Compound stiffeners
+        if raw_stiffeners:
+            from OCC.Core.BRep import BRep_Builder
+            from OCC.Core.TopoDS import TopoDS_Compound
+            builder = BRep_Builder()
+            compound = TopoDS_Compound()
+            builder.MakeCompound(compound)
+            for s in raw_stiffeners:
+                builder.Add(compound, s)
+            stiffeners = [compound]
+
+        # Compound shear studs
+        if raw_shear_studs:
+            from OCC.Core.BRep import BRep_Builder
+            from OCC.Core.TopoDS import TopoDS_Compound
+            builder = BRep_Builder()
+            compound = TopoDS_Compound()
+            builder.MakeCompound(compound)
+            for s in raw_shear_studs:
+                builder.Add(compound, s)
+            shear_studs = [compound]
 
         # STEP 4: CALCULATE REFERENCE Z-LEVELS
         
@@ -699,6 +723,18 @@ class PlateGirderCADGenerator:
         )
 
         # STEP 8: BUILD CRASH BARRIERS
+
+        # Compound deck textures into a single shape
+        raw_textures = deck_out.get("deck_textures", [])
+        if raw_textures:
+            from OCC.Core.BRep import BRep_Builder
+            from OCC.Core.TopoDS import TopoDS_Compound
+            builder = BRep_Builder()
+            compound = TopoDS_Compound()
+            builder.MakeCompound(compound)
+            for t in raw_textures:
+                builder.Add(compound, t)
+            deck_out["deck_textures"] = [compound]
         
         crash_barrier_w_beams = []
         crash_barrier_other = []
@@ -787,6 +823,27 @@ class PlateGirderCADGenerator:
         )
 
         # STEP 11: CONSOLIDATE SUPPORT STRUCTURES
+
+        # Compound cross bracings
+        if cross_bracings:
+            from OCC.Core.BRep import BRep_Builder
+            from OCC.Core.TopoDS import TopoDS_Compound
+            builder = BRep_Builder()
+            compound = TopoDS_Compound()
+            builder.MakeCompound(compound)
+            for cb in cross_bracings:
+                builder.Add(compound, cb)
+            cross_bracings = [compound]
+        # Compound railings
+        if railings:
+            from OCC.Core.BRep import BRep_Builder
+            from OCC.Core.TopoDS import TopoDS_Compound
+            builder = BRep_Builder()
+            compound = TopoDS_Compound()
+            builder.MakeCompound(compound)
+            for r in railings:
+                builder.Add(compound, r)
+            railings = [compound]
         
         supports = supports_tri + supports_cyl
 

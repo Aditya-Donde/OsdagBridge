@@ -22,6 +22,7 @@ class CustomViewer3d(qtViewer3d):
 
         self.model_ais_objects = {}
         self.model_hover_labels = {}
+        self.ais_to_model = {}
         self.model_hover_labels_by_ais = {}
         self._node_hover_data = []
         self._node_pick_px = 14
@@ -270,6 +271,12 @@ class CustomViewer3d(qtViewer3d):
             event.accept()
             return
 
+        # NEW: Skip hover/raycasting completely if a mouse button is pressed (active dragging)
+        if event.buttons() != Qt.NoButton:
+            super().mouseMoveEvent(event)
+            return
+
+
         if not self.context or not self.view:
             super().mouseMoveEvent(event)
             return
@@ -314,13 +321,8 @@ class CustomViewer3d(qtViewer3d):
                     detected = detected_list[0]
 
                 # Standard model highlighting
-                for model_name, ais_list in self.model_ais_objects.items():
-                    for ais in ais_list:
-                        if detected == ais:
-                            hovered_model = model_name
-                            break
-                    if hovered_model:
-                        break
+                ptr = self.get_occ_ptr(detected)
+                hovered_model = self.ais_to_model.get(ptr)
 
                 objects_to_highlight = []
 
@@ -471,6 +473,45 @@ class CustomViewer3d(qtViewer3d):
         # NOTE: Do NOT call gc.collect() here!
         # The gdb backtrace shows the crash happens during GC when trying to clean up
         # Shiboken MetaObjectBuilder objects. Let Python handle GC naturally.
+
+    def rebuild_ais_lookup_map(self):
+        """Rebuilds the fast O(1) hash map mapping C++ pointer addresses to model names."""
+        self.ais_to_model = {}
+        for model_name, ais_list in self.model_ais_objects.items():
+            for ais in ais_list:
+                ptr = self.get_occ_ptr(ais)
+                self.ais_to_model[ptr] = model_name
+    def get_occ_ptr(self, obj):
+        """Recursively resolves the raw C++ pointer address from a SWIG/pythonOCC object."""
+        import re
+        current = obj
+        for _ in range(5):  # Limit depth to prevent infinite loops
+            if not hasattr(current, "this"):
+                break
+            
+            # Try converting the SWIG pointer directly to an integer
+            try:
+                return int(current.this)
+            except TypeError:
+                pass
+                
+            # Try parsing the C++ hex address string representation of the SWIG pointer
+            try:
+                s = str(current.this)
+                # s is formatted like "_000001859d3f34b0_p_Handle_AIS_Shape"
+                match = re.match(r"^_[0-9a-fA-F]+", s)
+                if match:
+                    return int(match.group(0)[1:], 16)
+            except Exception:
+                pass
+                
+            # Go one level deeper (e.g., Handle_AIS_Shape -> AIS_Shape)
+            next_obj = getattr(current, "this")
+            if next_obj is current:
+                break
+            current = next_obj
+            
+        return hash(obj)
 
     # ------------------------------------------------------------------
     # NaviCube teardown
