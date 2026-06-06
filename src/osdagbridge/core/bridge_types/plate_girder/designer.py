@@ -15,26 +15,21 @@ from osdagbridge.core.bridge_types.plate_girder.analysis_results import PlateGir
 from osdagbridge.core.bridge_types.plate_girder.initial_sizing import composite_section_properties
 from osdagbridge.core.utils.codes.irc22_2015 import IRC22_2014
 from osdagbridge.core.utils.codes.irc6_2017 import IRC6_2017
+from osdagbridge.core.utils.common import (
+    KEY_MATERIAL_GIRDER_E,
+    KEY_MATERIAL_GIRDER_G,
+    KEY_MATERIAL_GIRDER_POISSON,
+    KEY_DO_GAMMA_MF,
+    KEY_DO_GAMMA_M0,
+    KEY_DO_GAMMA_M1,
+    KEY_DO_GAMMA_V,
+)
 from osdagbridge.core.utils.codes.keyfile import (
-    E_STEEL_MPA,
-    G_STEEL_MPA,
-    POISSON_RATIO_STEEL,
-    GAMMA_M0_STEEL,
-    GAMMA_M1_STEEL_ULTIMATE,
-    GAMMA_M_REINFORCEMENT,
-    GAMMA_MFT_FATIGUE,
     DCR_PASS_THRESHOLD,
     DCR_FAIL_THRESHOLD,
 )
 from osdagbridge.core.utils.codes.is800_2007 import IS800_2007
 from osdagbridge.core.utils.common import *
-
-# IRC 22:2015 Cl.601.4 Table 1 — partial safety factors (pulled once at import).
-_GAMMA_M = IRC22_2014.cl_601_4_material_safety_factors()
-GAMMA_M0 = _GAMMA_M["structural_steel_yield"]["ULS"]              # yielding / instability
-GAMMA_M1 = _GAMMA_M["structural_steel_ultimate"]["ULS"]           # ultimate stress
-GAMMA_V = _GAMMA_M["bolts_rivets_shear_tension"]["ULS"]           # shear connectors
-# GAMMA_MFT_FATIGUE imported from keyfile (IRC 22:2015 Cl.605 Table 3).
 
 # IRC 22:2015 Cl.605.3 — fatigue strength at 5×10^6 cycles derived from IRC module defaults.
 _fat_r = IRC22_2014.cl_605_3_fatigue_strength(5_000_000, "rolled")
@@ -94,15 +89,15 @@ class SteelProperties:
     fy_rebar: float = 500.0                             # MPa — looked up from IRC 22 Annex III
 
     # IRC 22:2015 Cl.602 Annex III — structural-steel elastic constants (grade-independent).
-    Es: float = E_STEEL_MPA
-    Gs: float = G_STEEL_MPA
-    nu: float = POISSON_RATIO_STEEL
+    Es: float = 200000
+    Gs: float = 80000
+    nu: float = 0.3
 
     # IRC 22:2015 Cl.601.4 Table 1 — partial safety factors.
-    gamma_m0: float = GAMMA_M0
-    gamma_m1: float = GAMMA_M1
-    gamma_v: float = GAMMA_V
-    gamma_mft: float = GAMMA_MFT_FATIGUE
+    gamma_m0: float = 1.0
+    gamma_m1: float = 1.25
+    gamma_v: float = 1.25
+    gamma_mft: float = 1.35
 
     @classmethod
     def from_grades(
@@ -487,10 +482,39 @@ class BridgeConfig:
 
 @dataclass
 class DemandEnvelope:
-    # Factored force demands at the critical section. Unit suffix is part of each name for clarity.
+    # Demand envelope at the critical section. Unit suffix is part of each name for clarity.
+    #
+    # Semantic fields (populated at envelope level from specific load combinations/cases):
+    #   Mu_kNm            — ULS strong-axis moment (Mz) from ULS combinations
+    #   Vu_kN             — ULS vertical shear (Fy) from ULS combinations
+    #   Nu_kN             — ULS axial force (Fx) from ULS combinations
+    #   M_construction_kNm — Mz from analyser's DL+LL case (SW+DC+DD+SIDL+LL at service)
+    #   M_girder_sw_kNm   — Mz from girder self-weight only (construction stage 1, SW case)
+    #   M_sls_kNm         — Mz from Envelope_SLS (analyser pre-combined SLS envelope)
+    #   V_sls_kN          — Vy from Envelope_SLS
+    #   delta_live_mm     — Dy (vertical displacement) from individual live-only LCs
+    #   delta_total_mm    — Dy from analyser's DL+LL case (DL = SW+DC+DD+SIDL, not DW)
+    #   stress_range_MPa  — computed from applied forces (Mz range over moving LCs / Ze)
+    #   shear_range_MPa   — computed from applied forces (Vy range over moving LCs / Aw)
+    #
+    # Raw 9-component fields (populated per-LC; all 9 DOF components from grillage output):
+    #   Mx_kNm — torsion about the longitudinal axis
+    #   My_kNm — weak-axis bending moment
+    #   Vz_kN  — transverse (out-of-plane) shear
+    #   Dx_mm  — axial displacement
+    #   Dy_mm  — vertical displacement
+    #   Dz_mm  — transverse displacement
     Mu_kNm: float = 0.0
     Vu_kN: float = 0.0
     Nu_kN: float = 0.0
+    # Raw per-LC components (grillage output; all 9 DOFs stored without semantic reinterpretation)
+    Mx_kNm: float = 0.0           # torsion about longitudinal axis
+    My_kNm: float = 0.0           # weak-axis bending moment
+    Vz_kN: float = 0.0            # transverse (out-of-plane) shear
+    Dx_mm: float = 0.0            # axial displacement
+    Dy_mm: float = 0.0            # vertical displacement
+    Dz_mm: float = 0.0            # transverse displacement
+    # Semantic envelope fields
     M_construction_kNm: float = 0.0
     delta_live_mm: float = 0.0
     delta_total_mm: float = 0.0
@@ -505,6 +529,10 @@ class DemandEnvelope:
     V_sls_kN: float = 0.0
     Vr_kN: float = 0.0                                    # Cl.606.4.2 — LL shear range (Vmax_LL - Vmin_LL)
     M_girder_sw_kNm: float = 0.0                          # Construction stage 1: girder self-weight only (bare steel)
+    # LC type — governs which checks are applicable (see DCREngine._*_TYPES sets).
+    # "" = aggregate envelope (all applicable checks run); typed = per-LC run with scoped checks.
+    # Values: "ULS" | "SLS_frequent" | "SLS" | "DL_LL" | "live_only" | "individual" | ""
+    lc_type: str = ""
 
 
 # ======================================================================
@@ -1807,6 +1835,14 @@ class DCREngine:
     PASS_THRESHOLD = DCR_PASS_THRESHOLD
     FAIL_THRESHOLD = DCR_FAIL_THRESHOLD
 
+    # lc_type sets used to gate check categories.
+    # An empty lc_type ("") means aggregate envelope — all checks are applicable.
+    _ULS_TYPES          = frozenset({"ULS"})
+    _SLS_TYPES          = frozenset({"SLS", "SLS_frequent", "SLS_rare", "SLS_quasi"})
+    _SLS_FREQUENT_TYPES = frozenset({"SLS_frequent"})
+    _LIVE_ONLY_TYPES    = frozenset({"live_only"})
+    _DL_LL_TYPES        = frozenset({"DL_LL"})
+
     CATEGORY_MAP: Dict[int, tuple] = {
     1 : (1, "Strength – Flexure"),
     2 : (2, "Strength – Shear"),
@@ -1846,7 +1882,7 @@ class DCREngine:
             dcr = demand / capacity
             status = self.classify(dcr)
         else:
-            dcr = float("inf")
+            dcr = 999.0
             status = "FAIL"
 
         result = CheckResult(
@@ -1905,6 +1941,14 @@ class DCREngine:
     def run_all_checks(self) -> List[CheckResult]:
         self.checks.clear()
         d, c = self.demand, self.capacity
+
+        # Predicates for check gating based on lc_type.
+        # An empty lc_type ("") = aggregate envelope → all checks applicable.
+        t = d.lc_type
+        _not_uls   = (not t) or (t not in self._ULS_TYPES)
+        _sls_freq  = (not t) or (t in self._SLS_FREQUENT_TYPES)
+        _live_only = (not t) or (t in self._LIVE_ONLY_TYPES)
+        _dl_ll     = (not t) or (t in self._DL_LL_TYPES)
 
         # ── CATEGORY 1: Strength Limit State (Flexure) ───────────────────────
         self._add_check(1, "ULS Flexure", "Cl.603.3.1",
@@ -2064,66 +2108,65 @@ class DCREngine:
                          note="d≤2tf, h≥max(4d,100), edge≥25, cover≥25")    
 
         # ── CATEGORY 6: Resistance to Fatigue ────────────────────────────────
-        if d.stress_range_MPa > 0 and c.f_fd_eff_MPa > 0:
-            self._add_check(8, "Fatigue Normal Stress", "Cl.605",       
+        # Fatigue checks apply only under frequent SLS combinations (IRC 22 Cl.604.5).
+        if _sls_freq and d.stress_range_MPa > 0 and c.f_fd_eff_MPa > 0:
+            self._add_check(8, "Fatigue Normal Stress", "Cl.605",
                              d.stress_range_MPa, c.f_fd_eff_MPa, "MPa",
                              note=f"Nsc={d.Nsc:,}")
 
-        if d.shear_range_MPa > 0 and c.tau_fd_eff_MPa > 0:
+        if _sls_freq and d.shear_range_MPa > 0 and c.tau_fd_eff_MPa > 0:
             self._add_check(9, "Fatigue Shear Stress", "Cl.605",
                              d.shear_range_MPa, c.tau_fd_eff_MPa, "MPa",
                              note=f"Nsc={d.Nsc:,}")
 
         # ── CATEGORY 7: Stress Limitation (SLS) ──────────────────────────────
-        # 7a. Concrete compressive stress (Cl.604.3.1)
-        sls_act = c.details.get("sls_actual_stresses") 
+        # SLS stress checks do not apply to ULS load combinations.
+        sls_act = c.details.get("sls_actual_stresses")
         if sls_act is None:
             raise KeyError(
                 "'sls_actual_stresses' missing from capacity.details. "
                 "Ensure compute_all() has been run."
-            )            
-        if not sls_act.get("skipped") and c.sigma_c_actual_MPa > 0.0:  
-            self._add_check(10, "SLS Concrete Stress", "Cl.604.3.1",   
-                             c.sigma_c_actual_MPa, c.sigma_c_limit_MPa, "MPa", 
-                             note=f"Limit = 0.48 fck = {c.sigma_c_limit_MPa:.1f} MPa")  
+            )
+        # 7a. Concrete compressive stress (Cl.604.3.1)
+        if _not_uls and not sls_act.get("skipped") and c.sigma_c_actual_MPa > 0.0:
+            self._add_check(10, "SLS Concrete Stress", "Cl.604.3.1",
+                             c.sigma_c_actual_MPa, c.sigma_c_limit_MPa, "MPa",
+                             note=f"Limit = 0.48 fck = {c.sigma_c_limit_MPa:.1f} MPa")
 
         # 7b. Structural steel equivalent stress (Cl.604.3.1)
-        if not sls_act.get("skipped") and c.sigma_steel_equiv_MPa > 0.0:  
-            self._add_check(11, "SLS Steel Equiv. Stress", "Cl.604.3.1",  
-                             c.sigma_steel_equiv_MPa, c.sigma_s_limit_MPa, "MPa",  
-                             note=f"fe = √(fbc²+fp²+fbc·fp+3τ²) ≤ 0.9fy = {c.sigma_s_limit_MPa:.1f} MPa")  
+        if _not_uls and not sls_act.get("skipped") and c.sigma_steel_equiv_MPa > 0.0:
+            self._add_check(11, "SLS Steel Equiv. Stress", "Cl.604.3.1",
+                             c.sigma_steel_equiv_MPa, c.sigma_s_limit_MPa, "MPa",
+                             note=f"fe = √(fbc²+fp²+fbc·fp+3τ²) ≤ 0.9fy = {c.sigma_s_limit_MPa:.1f} MPa")
 
         # 7c. Rebar tensile stress (Cl.604.3.1 / IRC 112 Cl.12.2.2)
-        if not sls_act.get("skipped") and c.sigma_rebar_actual_MPa > 0.0 and c.sigma_rebar_limit_MPa > 0.0:  
-            self._add_check(12, "SLS Rebar Stress", "Cl.604.3.1",      
-                             c.sigma_rebar_actual_MPa, c.sigma_rebar_limit_MPa, "MPa",  
-                             note=f"Limit = 0.80 fyk = {c.sigma_rebar_limit_MPa:.1f} MPa")  
+        if _not_uls and not sls_act.get("skipped") and c.sigma_rebar_actual_MPa > 0.0 and c.sigma_rebar_limit_MPa > 0.0:
+            self._add_check(12, "SLS Rebar Stress", "Cl.604.3.1",
+                             c.sigma_rebar_actual_MPa, c.sigma_rebar_limit_MPa, "MPa",
+                             note=f"Limit = 0.80 fyk = {c.sigma_rebar_limit_MPa:.1f} MPa")
 
         # ── CATEGORY 8: Deflection and Crack Control ──────────────────────────
-        if d.delta_live_mm > 0:
-            self._add_check(13, "SLS Deflection (Live)", "Cl.604.3.2", 
+        # Live-load deflection: only for live-only individual LCs.
+        if _live_only and d.delta_live_mm > 0:
+            self._add_check(13, "SLS Deflection (Live)", "Cl.604.3.2",
                              d.delta_live_mm, c.defl_limit_live_mm, "mm",
                              note="Limit = L/800")
 
-        if d.delta_total_mm > 0:
+        # Total deflection: only for DL+LL combination (DL=SW+DC+SIDL, not DW).
+        if _dl_ll and d.delta_total_mm > 0:
             self._add_check(14, "SLS Deflection (Total)", "Cl.604.3.2",
                              d.delta_total_mm, c.defl_limit_total_mm, "mm",
                              note="Limit = L/600")
 
-        # Crack control — minimum reinforcement check (Cl.604.4)
-        if c.As_min_crack_mm2 > 0.0 and c.As_provided_crack_mm2 > 0.0:
-            self._add_check(15, "Crack Control (As_min)", "Cl.604.4", 
-                             c.As_min_crack_mm2, c.As_provided_crack_mm2, "mm²", 
-                             note=(f"As_min={c.As_min_crack_mm2:.0f} mm², " 
+        # Crack control — applies for SLS combinations and individual LCs, not ULS.
+        if _not_uls and c.As_min_crack_mm2 > 0.0 and c.As_provided_crack_mm2 > 0.0:
+            self._add_check(15, "Crack Control (As_min)", "Cl.604.4",
+                             c.As_min_crack_mm2, c.As_provided_crack_mm2, "mm²",
+                             note=(f"As_min={c.As_min_crack_mm2:.0f} mm², "
                                    f"As_prov={c.As_provided_crack_mm2:.0f} mm²"))
 
         # ── CATEGORY 5 (cont.): Transverse Shear (Cl.606.10)
-        if "transverse_shear" not in c.details:
-            raise KeyError(
-                "'transverse_shear' missing from capacity.details. "
-                "Ensure compute_all() has been run."
-            )
-        ts = c.details["transverse_shear"]
+        ts = c.details.get("transverse_shear")
         if ts:
             for key in ("VL_N_per_mm", "governing_capacity_kN_per_m", "L_shear_plane_mm"):
                 if key not in ts:
@@ -2139,11 +2182,6 @@ class DCREngine:
 
         # ── IRC 24-2010 STIFFENER CHECKS (Cl.509.7 / IS 800 Cl.8.7) ─────────────────
         # Intermediate transverse stiffener
-        if "intermediate_stiffener" not in c.details:
-            raise KeyError(
-                "'intermediate_stiffener' missing from capacity.details. "
-                "Ensure compute_all() has been run."
-            )
         is_det = c.details.get("intermediate_stiffener", {"skipped": True})
         if is_det and not is_det.get("skipped"):
             if "design_guidance" not in is_det:
@@ -2564,12 +2602,65 @@ def _extract_demands_from_analysis_results(
     import numpy as np
 
     girders, _   = analysis_results.build_girders(verbose=False)
+    girders      = {k: v for k, v in girders.items() if k not in ("EB1", "EB2")}
     lc_groups    = analysis_results.classify_loadcases()
-    dead_lcs     = lc_groups["dead"]
     live_static  = lc_groups["vehicle_static"]
-    live_moving  = lc_groups["vehicle_moving"]
-    all_live_lcs = live_static + live_moving
+    all_live_lcs = live_static
     live_set     = set(str(lc) for lc in all_live_lcs)
+
+    # Typed combination LCs from the analyser's classifier (empty list if key not present).
+    # ULS: basic + seismic + accidental.  SLS: frequent + rare + quasi-permanent.
+    _sls_frequent_lcs = list(lc_groups.get("sls_frequent",      lc_groups.get("SLS_frequent",      [])))
+    _sls_rare_lcs     = list(lc_groups.get("sls_rare",          lc_groups.get("SLS_rare",          [])))
+    _sls_quasi_lcs    = list(lc_groups.get("sls_quasi_permanent",lc_groups.get("SLS_quasi_permanent",[])))
+    _sls_all_lcs      = _sls_frequent_lcs + _sls_rare_lcs + _sls_quasi_lcs
+    _uls_basic_lcs    = list(lc_groups.get("uls_basic",         lc_groups.get("ULS_basic",         [])))
+    _uls_seismic_lcs  = list(lc_groups.get("uls_seismic",       lc_groups.get("ULS_seismic",       [])))
+    _uls_acc_lcs      = list(lc_groups.get("uls_accidental",    lc_groups.get("ULS_accidental",    [])))
+    _uls_all_lcs      = _uls_basic_lcs + _uls_seismic_lcs + _uls_acc_lcs
+    # DL+LL combination case from analyser (DL = SW+DC+DD+SIDL, not DW).
+    _dl_ll_lcs = list(lc_groups.get("dl_ll_envelope",
+                 lc_groups.get("DL_LL_envelope",
+                 lc_groups.get("service_total", []))))
+    # Analyser-provided pre-combined envelopes (single load case each).
+    _uls_env_lcs = list(lc_groups.get("envelope_uls", lc_groups.get("Envelope_ULS", [])))
+    _sls_env_lcs = list(lc_groups.get("envelope_sls", lc_groups.get("Envelope_SLS", [])))
+    # SW individual case for construction stage 1.
+    _sw_lcs = list(lc_groups.get("sw", lc_groups.get("SW",
+              lc_groups.get("girder_sw", lc_groups.get("self_weight", [])))))
+
+    _uls_set          = set(str(lc) for lc in _uls_all_lcs)
+    _sls_set          = set(str(lc) for lc in _sls_all_lcs)
+    _sls_frequent_set = set(str(lc) for lc in _sls_frequent_lcs)
+    _dl_ll_set        = set(str(lc) for lc in _dl_ll_lcs)
+
+    # Single-LC handles used directly for demand extraction (None = case not available → skip).
+    _uls_env_lc  = str(_uls_env_lcs[0])    if _uls_env_lcs    else None
+    _sls_env_lc  = str(_sls_env_lcs[0])    if _sls_env_lcs    else None
+    _fatigue_lc  = str(_sls_frequent_lcs[0]) if _sls_frequent_lcs else None
+    _dl_ll_lc    = str(_dl_ll_lcs[0])      if _dl_ll_lcs      else None
+    _sw_lc       = str(_sw_lcs[0])         if _sw_lcs         else None
+
+    def _lc_type(lc_str: str) -> str:
+        """Classify a single LC string into a type tag for check scoping.
+        Name-based rules take precedence over set membership so that any
+        combination LC is correctly tagged regardless of how classify_loadcases
+        grouped it.
+        """
+        n = lc_str.upper()
+        # ULS combinations — BASIC_*, ACCIDENTAL_*, SEISMIC_*, or Envelope ULS
+        if n.startswith(("BASIC_", "ACCIDENTAL_", "SEISMIC_")) or lc_str == "Envelope ULS":
+            return "ULS"
+        # SLS frequent — fatigue checks apply here
+        if n.startswith("SLS_FREQUENT_"):
+            return "SLS_frequent"
+        # Any other SLS_ prefix (RARE, QP, OP, …) or Envelope SLS
+        if n.startswith("SLS_") or lc_str == "Envelope SLS":
+            return "SLS"
+        # Fallback to set membership for user-named individual cases
+        if lc_str in _dl_ll_set:   return "DL_LL"
+        if lc_str in live_set:     return "live_only"
+        return "individual"
 
     # Composite stiffness ratio for SLS deflection correction
 
@@ -2587,125 +2678,233 @@ def _extract_demands_from_analysis_results(
     Ze_steel_mm3 = float(config.section.Ze_steel)
     Aw_mm2       = float(config.section.Aw)
     Nsc          = int(config.fatigue.Nsc)
-    gamma_dl     = IRC6_2017.table_B2(load_type="dead_load", qualifier="adding", combination="basic")
 
-    # _get_envelopes_df covers ALL LCs x ALL girders: columns LoadCase, Girder, Max Vy, Min Vy, Max Mz, Min Mz
-    envelopes_df = analysis_results._get_envelopes_df()
-
-    _c_pats   = ("girder self weight","deck slab load","girder_self_weight","deck_slab_load","steel","wet_concrete")
-    _gsw      = ("girder self weight","girder_self_weight","steel")
-    _excl     = ("deck","concrete","wet","slab")
-    _sdl_pats = ("dw","footpath","barrier","crash","railing","median","wearing","overlay","kerb","curb","parapet")
+    # All LCs for the per-LC loop: union of every classified group, deduplicated, preserving order.
+    _seen_lcs: set = set()
+    _all_lcs_for_per_lc: List[str] = []
+    for _grp_lcs in lc_groups.values():
+        if isinstance(_grp_lcs, list):
+            for _lc in _grp_lcs:
+                _s = str(_lc)
+                if _s not in _seen_lcs:
+                    _seen_lcs.add(_s)
+                    _all_lcs_for_per_lc.append(_s)
 
     per_girder_demands: Dict[str, DemandEnvelope] = {}
     per_girder_per_lc:  Dict[str, Dict[str, DemandEnvelope]] = {}
 
     for g_name, g_info in girders.items():
+        if g_name in ("EB1", "EB2"):
+            continue
         elements = list(g_info.get("elements", []))
         nodes    = list(g_info.get("path", []))
         if not elements:
             continue
 
-        g_env = (envelopes_df[envelopes_df["Girder"] == g_name].copy()
-                 if envelopes_df is not None and not envelopes_df.empty else None)
+        # Helper: max(|comp_i|, |comp_j|) across all girder elements for a single named LC.
+        # Returns 0.0 if the LC is not available.
+        def _fmax_lc(lc_name, comp_i, comp_j):
+            if lc_name is None:
+                return 0.0
+            try:
+                f = analysis_results.ds.forces.sel(Loadcase=lc_name, Element=elements)
+                vi = float(np.nan_to_num(np.asarray(f.sel(Component=comp_i).values, dtype=float), nan=0.0).max())
+                vj = float(np.nan_to_num(np.asarray(f.sel(Component=comp_j).values, dtype=float), nan=0.0).max())
+                return max(abs(vi), abs(vj))
+            except Exception:
+                return 0.0
 
-        # (1) ULS Mu / Vu — absolute envelope across all LCs
-        if g_env is not None and not g_env.empty:
-            Mu_kNm = float(g_env[["Max Mz","Min Mz"]].abs().max().max())
-            Vu_kN  = float(g_env[["Max Vy","Min Vy"]].abs().max().max())
-        else:
-            Mu_kNm = Vu_kN = 0.0
+        # (1) ULS Mu / Vu — from analyser's Envelope_ULS case.
+        Mu_kNm = _fmax_lc(_uls_env_lc, "Mz_i", "Mz_j") / 1e3   # N·m → kN·m
+        Vu_kN  = _fmax_lc(_uls_env_lc, "Vy_i", "Vy_j") / 1e3   # N → kN
 
-        # (2) Construction moment + girder-SW moment
-        M_const_kNm = M_girder_sw_kNm = 0.0
-        if g_env is not None and not g_env.empty:
-            lc_s = g_env["LoadCase"].astype(str).str.lower()
-            c_mask   = lc_s.apply(lambda x: any(p in x for p in _c_pats))
-            gsw_mask = lc_s.apply(lambda x: any(p in x for p in _gsw) and not any(p in x for p in _excl))
-            if c_mask.any():
-                M_const_kNm    = float(g_env[c_mask][["Max Mz","Min Mz"]].abs().max().max()) * gamma_dl
-            if gsw_mask.any():
-                M_girder_sw_kNm = float(g_env[gsw_mask][["Max Mz","Min Mz"]].abs().max().max()) * gamma_dl
+        # (2) Construction moments — from analyser's SW case (stage 1) and DL+LL case (service).
+        M_girder_sw_kNm = _fmax_lc(_sw_lc,    "Mz_i", "Mz_j") / 1e3
+        M_const_kNm     = _fmax_lc(_dl_ll_lc, "Mz_i", "Mz_j") / 1e3
 
-        # (3) Deflections from dataset
-        _const_set = {lc for lc in dead_lcs if any(p in str(lc).lower() for p in _c_pats)}
-        sdl_lcs    = [lc for lc in dead_lcs if lc not in _const_set
-                      and any(p in str(lc).lower() for p in _sdl_pats)]
-        delta_sdl_m = delta_live_m = 0.0
-
+        # (3) Deflections — fetched directly from analyser cases; no summing, no fallback.
         disp_y = analysis_results.ds.displacements.sel(Component="y", Node=nodes)
-        def _sum_defl(lcs):
-            if not lcs: return 0.0
-            v = np.nan_to_num(np.asarray(disp_y.sel(Loadcase=lcs).values, dtype=float), nan=0.0)
-            pn = v.sum(axis=0) if v.ndim > 1 else v
-            return float(np.abs(pn).max()) if pn.size else 0.0
-        delta_sdl_m = _sum_defl(sdl_lcs)
+
+        # delta_live: max displacement across individual live-only LCs.
+        delta_live_mm = 0.0
         if all_live_lcs:
-            lv = np.asarray(disp_y.sel(Loadcase=all_live_lcs).values, dtype=float)
-            lv = lv[~np.isnan(lv)]
-            if lv.size: delta_live_m = float(np.abs(lv).max())
+            try:
+                lv = np.asarray(disp_y.sel(Loadcase=all_live_lcs).values, dtype=float)
+                lv = lv[~np.isnan(lv)]
+                if lv.size:
+                    delta_live_mm = float(np.abs(lv).max()) / stiffness_ratio * 1000.0
+            except Exception:
+                pass
 
-        delta_live_mm  = delta_live_m / stiffness_ratio * 1000.0
-        delta_total_mm = (delta_sdl_m + delta_live_m) / stiffness_ratio * 1000.0
+        # delta_total: Dy from analyser's DL+LL case (DL = SW+DC+DD+SIDL, not DW).
+        delta_total_mm = 0.0
+        if _dl_ll_lc:
+            try:
+                tv = np.asarray(disp_y.sel(Loadcase=_dl_ll_lc).values, dtype=float)
+                tv = tv[~np.isnan(tv)]
+                if tv.size:
+                    delta_total_mm = float(np.abs(tv).max()) / stiffness_ratio * 1000.0
+            except Exception:
+                pass
 
-        # (4) Fatigue stress/shear ranges from moving LCs
+        # (4) Fatigue stress/shear ranges — from first frequent SLS case only (IRC 22 Cl.604.5).
         stress_range_MPa = shear_range_MPa = 0.0
-        if live_moving:
-            ds = analysis_results.ds
-            mz_all = np.concatenate([
-                np.asarray(ds.forces.sel(Loadcase=live_moving, Element=elements,
-                           Component=c).values, dtype=float).flatten()
-                for c in ("Mz_i","Mz_j")
-            ])
-            mz_all = mz_all[~np.isnan(mz_all)]
-            if mz_all.size and Ze_steel_mm3 > 0:
-                stress_range_MPa = float(np.abs(mz_all).max()) * 1000.0 / Ze_steel_mm3
-            vy_all = np.concatenate([
-                np.asarray(ds.forces.sel(Loadcase=live_moving, Element=elements,
-                           Component=c).values, dtype=float).flatten()
-                for c in ("Vy_i","Vy_j")
-            ])
-            vy_all = vy_all[~np.isnan(vy_all)]
-            if vy_all.size and Aw_mm2 > 0:
-                shear_range_MPa = float(np.abs(vy_all).max()) / Aw_mm2
+        if _fatigue_lc:
+            try:
+                ds = analysis_results.ds
+                mz_all = np.concatenate([
+                    np.asarray(ds.forces.sel(Loadcase=_fatigue_lc, Element=elements,
+                               Component=c).values, dtype=float).flatten()
+                    for c in ("Mz_i", "Mz_j")
+                ])
+                mz_all = mz_all[~np.isnan(mz_all)]
+                if mz_all.size and Ze_steel_mm3 > 0:
+                    stress_range_MPa = float(np.abs(mz_all).max()) * 1000.0 / Ze_steel_mm3
+                vy_all = np.concatenate([
+                    np.asarray(ds.forces.sel(Loadcase=_fatigue_lc, Element=elements,
+                               Component=c).values, dtype=float).flatten()
+                    for c in ("Vy_i", "Vy_j")
+                ])
+                vy_all = vy_all[~np.isnan(vy_all)]
+                if vy_all.size and Aw_mm2 > 0:
+                    shear_range_MPa = float(np.abs(vy_all).max()) / Aw_mm2
+            except Exception:
+                pass
 
-        # (5) SLS M and V — SDL + live (from envelopes)
-        M_sls_kNm = V_sls_kN = 0.0
-        if g_env is not None and not g_env.empty:
-            lc_s   = g_env["LoadCase"].astype(str).str.lower()
-            sdl_m  = lc_s.apply(lambda x: any(p in x for p in _sdl_pats))
-            live_m = g_env["LoadCase"].astype(str).apply(lambda x: x in live_set)
-            M_sdl = float(g_env[sdl_m][["Max Mz","Min Mz"]].abs().max().max()) if sdl_m.any() else 0.0
-            M_ll  = float(g_env[live_m][["Max Mz","Min Mz"]].abs().max().max()) if live_m.any() else 0.0
-            V_sdl = float(g_env[sdl_m][["Max Vy","Min Vy"]].abs().max().max()) if sdl_m.any() else 0.0
-            V_ll  = float(g_env[live_m][["Max Vy","Min Vy"]].abs().max().max()) if live_m.any() else 0.0
-            M_sls_kNm = M_sdl + M_ll
-            V_sls_kN  = V_sdl + V_ll
+        # (5) SLS M and V — from analyser's Envelope_SLS case.
+        M_sls_kNm = _fmax_lc(_sls_env_lc, "Mz_i", "Mz_j") / 1e3
+        V_sls_kN  = _fmax_lc(_sls_env_lc, "Vy_i", "Vy_j") / 1e3
 
         per_girder_demands[g_name] = DemandEnvelope(
             Mu_kNm=round(Mu_kNm, 2), Vu_kN=round(Vu_kN, 2), Nu_kN=0.0,
             M_construction_kNm=round(M_const_kNm, 2), M_girder_sw_kNm=round(M_girder_sw_kNm, 2),
             delta_live_mm=round(delta_live_mm, 3), delta_total_mm=round(delta_total_mm, 3),
             stress_range_MPa=round(stress_range_MPa, 3), shear_range_MPa=round(shear_range_MPa, 3),
-            Nsc=Nsc, governing_combination="Max Extracted (All LCs)",
+            Nsc=Nsc, governing_combination=_uls_env_lc or "Envelope_ULS",
             location="critical element", member=g_name, source="grillage_analysis",
             M_sls_kNm=round(M_sls_kNm, 2), V_sls_kN=round(V_sls_kN, 2),
+            lc_type="",  # aggregate envelope — all applicable checks run
         )
 
-        # Per-LC DemandEnvelopes — one row per load case from envelopes_df
+        # Per-LC DemandEnvelopes — one entry per LC from the analyser's classified groups.
         per_lc: Dict[str, DemandEnvelope] = {}
-        if g_env is not None and not g_env.empty:
-            for _, row in g_env.iterrows():
-                lc_str = str(row["LoadCase"])
-                per_lc[lc_str] = DemandEnvelope(
-                    Mu_kNm=round(float(max(abs(row["Max Mz"]), abs(row["Min Mz"]))), 2),
-                    Vu_kN=round(float(max(abs(row["Max Vy"]), abs(row["Min Vy"]))), 2),
-                    governing_combination=lc_str,
-                    location="critical element", member=g_name, source="grillage_analysis_per_lc",
-                )
+
+        for lc_str in _all_lcs_for_per_lc:
+            # ── Forces: max(|i|, |j|) per component across girder elements ──
+            try:
+                lc_forces = analysis_results.ds.forces.sel(Loadcase=lc_str, Element=elements)
+                def _fmax(comp_i, comp_j):
+                    vi = float(np.nan_to_num(np.asarray(lc_forces.sel(Component=comp_i).values, dtype=float), nan=0.0).max())
+                    vj = float(np.nan_to_num(np.asarray(lc_forces.sel(Component=comp_j).values, dtype=float), nan=0.0).max())
+                    return max(abs(vi), abs(vj))
+                Mz = _fmax("Mz_i", "Mz_j") / 1e3   # N·m → kN·m
+                Vy = _fmax("Vy_i", "Vy_j") / 1e3   # N → kN
+                Vz = _fmax("Vz_i", "Vz_j") / 1e3
+                Vx = _fmax("Vx_i", "Vx_j") / 1e3
+                Mx = _fmax("Mx_i", "Mx_j") / 1e3
+                My = _fmax("My_i", "My_j") / 1e3
+            except Exception:
+                continue  # skip LC if forces can't be read from dataset
+
+            # ── Displacements: max abs across girder nodes ──────────────────
+            try:
+                lc_disps = analysis_results.ds.displacements.sel(Loadcase=lc_str, Node=nodes)
+                def _dmax(comp):
+                    v = np.nan_to_num(np.asarray(lc_disps.sel(Component=comp).values, dtype=float), nan=0.0)
+                    return float(np.abs(v).max())
+                Dx = _dmax("x") * 1e3   # m → mm
+                Dy = _dmax("y") * 1e3
+                Dz = _dmax("z") * 1e3
+            except Exception:
+                Dx = Dy = Dz = 0.0
+
+            lc_t = _lc_type(lc_str)
+            # Populate semantic deflection fields so DCREngine checks 13/14 fire per-LC.
+            _d_live  = round(Dy / stiffness_ratio, 3) if lc_t == "live_only" else 0.0
+            _d_total = round(Dy / stiffness_ratio, 3) if lc_t == "DL_LL" else 0.0
+            # Populate M_sls / V_sls for SLS-typed LCs so stress and crack checks fire per-LC.
+            _is_sls = lc_t in {"SLS", "SLS_frequent", "individual"}
+            _m_sls  = round(Mz, 2) if _is_sls else 0.0
+            _v_sls  = round(Vy, 2) if _is_sls else 0.0
+
+            per_lc[lc_str] = DemandEnvelope(
+                # Strong-axis moment, vertical shear, axial — directly usable as ULS demands
+                Mu_kNm=round(Mz, 2),
+                Vu_kN=round(Vy, 2),
+                Nu_kN=round(Vx, 2),
+                # Raw 9-component grillage output stored without semantic reinterpretation
+                Mx_kNm=round(Mx, 2),   # torsion about longitudinal axis
+                My_kNm=round(My, 2),   # weak-axis bending moment
+                Vz_kN=round(Vz, 2),    # transverse (out-of-plane) shear
+                Dx_mm=round(Dx, 3),    # axial displacement
+                Dy_mm=round(Dy, 3),    # vertical displacement
+                Dz_mm=round(Dz, 3),    # transverse displacement
+                delta_live_mm=_d_live,
+                delta_total_mm=_d_total,
+                M_sls_kNm=_m_sls,
+                V_sls_kN=_v_sls,
+                governing_combination=lc_str,
+                location="critical element", member=g_name, source="grillage_analysis_per_lc",
+                lc_type=lc_t,
+            )
+
         per_girder_per_lc[g_name] = per_lc
 
     return per_girder_demands, per_girder_per_lc
+
+
+def _compute_per_lc_dcr(
+    config: "BridgeConfig",
+    g_lc: "Dict[str, DemandEnvelope]",
+) -> "Dict[str, dict]":
+    # For each LC run capacity + DCR so the output-dock dropdown can show
+    # utilization ratios for all 8 checks per LC / girder combination.
+    result: Dict[str, dict] = {}
+    for lc_name, lc_d in g_lc.items():
+        lc_cap = IRC22CapacityCalculator(config).compute_all(
+            Vu_kN=lc_d.Vu_kN,
+            stress_range_MPa=lc_d.stress_range_MPa,
+            M_sls_kNm=lc_d.M_sls_kNm,
+            V_sls_kN=lc_d.V_sls_kN,
+            Vr_kN=lc_d.Vr_kN,
+        )
+        lc_engine = DCREngine(lc_d, lc_cap)
+        lc_engine.run_all_checks()
+        result[lc_name] = {
+            # ── raw demand ──────────────────────────────────────────────────
+            "Mu_kNm" : lc_d.Mu_kNm,
+            "Vu_kN"  : lc_d.Vu_kN,
+            "Nu_kN"  : lc_d.Nu_kN,
+            "Mx_kNm" : lc_d.Mx_kNm,
+            "My_kNm" : lc_d.My_kNm,
+            "Vz_kN"           : lc_d.Vz_kN,
+            "Dx_mm"           : lc_d.Dx_mm,
+            "Dy_mm"           : lc_d.Dy_mm,
+            "Dz_mm"           : lc_d.Dz_mm,
+            "lc_type"         : lc_d.lc_type,
+            "M_sls_kNm"       : lc_d.M_sls_kNm,
+            "V_sls_kN"        : lc_d.V_sls_kN,
+            "delta_live_mm"   : lc_d.delta_live_mm,
+            "delta_total_mm"  : lc_d.delta_total_mm,
+            "stress_range_MPa": lc_d.stress_range_MPa,
+            # ── DCR summary ─────────────────────────────────────────────────
+            "overall_status": lc_engine.overall_status(),
+            "max_dcr"       : lc_engine.max_dcr(),
+            "category_urs"  : lc_engine.category_urs(),
+            # ── per-check detail (id, label, dcr, status, note) ────────────
+            "checks": [
+                {
+                    "id"    : chk.check_id,
+                    "label" : chk.name,
+                    "clause": chk.clause,
+                    "dcr"   : chk.dcr,
+                    "status": chk.status,
+                    "note"  : chk.note,
+                }
+                for chk in lc_engine.checks
+            ],
+        }
+    return result
 
 
 def run_design_check(
@@ -2819,15 +3018,8 @@ def run_design_check(
                 }
                 for chk in g_engine.checks
             ],
-            "category_urs": g_cat_urs,     
-            "per_lc": {
-                lc_name: {
-                    "Mu_kNm"  : lc_d.Mu_kNm,
-                    "Vu_kN"   : lc_d.Vu_kN,
-                    "delta_mm": lc_d.delta_live_mm,
-                }
-                for lc_name, lc_d in g_lc.items()
-            },
+            "category_urs": g_cat_urs,
+            "per_lc": _compute_per_lc_dcr(config, g_lc),
             "_engine"  : g_engine,
             "_capacity": g_cap,
         }

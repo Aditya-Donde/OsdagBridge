@@ -204,43 +204,80 @@ class PlateGirderAnalysisResults:
 
         all_lc = self.get_available_loadcases()
 
-        vehicle_static = []
-        vehicle_moving = []
-        dead_loads = []
+        vehicle_static    = []
+        dead_loads        = []
+        sw_cases          = []
+        uls_basic         = []
+        uls_accidental    = []
+        uls_seismic       = []
+        sls_frequent      = []
+        sls_rare          = []
+        sls_quasi         = []
+        envelope_uls      = []
+        envelope_sls      = []
 
         for lc in all_lc:
+            name       = str(lc)
+            name_lower = name.lower()
 
-            name = str(lc).lower()
-
-            # -----------------------------
-            # MOVING VEHICLES
-            # -----------------------------
-            if "moving" in name:
-                vehicle_moving.append(lc)
+            # Envelope pseudo-LCs injected by create_envelope_load_case()
+            if name == "Envelope ULS":
+                envelope_uls.append(lc)
+                continue
+            if name == "Envelope SLS":
+                envelope_sls.append(lc)
                 continue
 
-            # -----------------------------
-            # STATIC VEHICLES
-            # Detect your naming pattern
-            # -----------------------------
-            if name.startswith("case"):
+            # ULS combinations (BASIC_*, ACCIDENTAL_*, SEISMIC_*)
+            if name.startswith("BASIC_"):
+                uls_basic.append(lc)
+                continue
+            if name.startswith("ACCIDENTAL_"):
+                uls_accidental.append(lc)
+                continue
+            if name.startswith("SEISMIC_"):
+                uls_seismic.append(lc)
+                continue
+
+            # SLS combinations (SLS_FREQUENT_*, SLS_RARE_*, SLS_QP_*)
+            if name.startswith("SLS_FREQUENT_"):
+                sls_frequent.append(lc)
+                continue
+            if name.startswith("SLS_RARE_"):
+                sls_rare.append(lc)
+                continue
+            if name.startswith("SLS_QP_") or name.startswith("SLS_OP_"):
+                sls_quasi.append(lc)
+                continue
+
+            # Live load: Class A, 70R, and LL envelope cases
+            if name_lower.startswith("case") or "classa" in name_lower or "70r" in name_lower or name_lower.endswith("ll"):
                 vehicle_static.append(lc)
                 continue
 
-            if "classa" in name or "70r" in name:
-                vehicle_static.append(lc)
+            # Self-weight individual case
+            if name == "SW":
+                sw_cases.append(lc)
+                dead_loads.append(lc)
                 continue
 
-            # -----------------------------
-            # DEAD LOADS
-            # -----------------------------
+            # Dead loads (DL, DD, DW, SIDL, etc.)
             dead_loads.append(lc)
 
         return {
-            "all": all_lc,
-            "dead": dead_loads,
-            "vehicle_static": vehicle_static,
-            "vehicle_moving": vehicle_moving,
+            "all":                  all_lc,
+            "dead":                 dead_loads,
+            "vehicle_static":       vehicle_static,
+            "vehicle_moving":       [],          # moving load cases removed from analyser
+            "sw":                   sw_cases,
+            "uls_basic":            uls_basic,
+            "uls_accidental":       uls_accidental,
+            "uls_seismic":          uls_seismic,
+            "sls_frequent":         sls_frequent,
+            "sls_rare":             sls_rare,
+            "sls_quasi_permanent":  sls_quasi,
+            "envelope_uls":         envelope_uls,
+            "envelope_sls":         envelope_sls,
         }
 
     # ========================================================
