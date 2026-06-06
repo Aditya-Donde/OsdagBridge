@@ -2798,73 +2798,42 @@ TRANSVERSE_MEMBER_DESIGN_SCHEMA = {
     "id": KEY_TD_DIALOG,
     "title": "Transverse Member Design",
     "window": {"width": 1100, "height": 720, "min_width": 950, "min_height": 550},
-
-    # Global bar - only Member ID + Load Combination
     "global_bar": [
-        {"id": KEY_TD_MEMBER_ID,        "label": "Member ID",        "type": "combo"},
+        {"id": KEY_TD_SELECT_GIRDER, "label": "Select Girder", "type": "combo"},
         {"id": KEY_TD_LOAD_COMBINATION, "label": "Load Combination", "type": "combo", "default": "Envelope"},
     ],
-
-    # Details Tab
-    "details_tab": {
-        "id": KEY_TD_DETAILS_TAB,
-        "label": "Details",
+    # Unified Crossbracing Tab
+    "crossbracing_tab": {
+        "id": KEY_TD_CROSSBRACING_TAB,
+        "label": "Crossbracing",
         "left_panel": {
             "section_inputs": {
                 "label": "Section Inputs:",
                 "label_width": 100,
                 "fields": [
-                    {"id": KEY_TD_SECTION_INPUTS_DESIGN,                     "label": "Design:",                            "type": "line",     "read_only": True},
-                    {"id": KEY_TD_SECTION_INPUTS_BRACING_TYPE,               "label": "Type of Bracing:",                   "type": "line",     "read_only": True},
-                    {"id": KEY_TD_SECTION_INPUTS_BRACING_SECTION_TYPE,       "label": "Bracing Section Type:",              "type": "line",     "read_only": True},
-                    {"id": KEY_TD_SECTION_INPUTS_BRACING_SECTION_DESIGNATION,"label": "Bracing Section Designation:",       "type": "line",     "read_only": True},
-                    {"id": KEY_TD_SECTION_INPUTS_TOP_CHORD_ENABLED,          "label": "Top Chord",                          "type": "checkbox", "default": True, "enabled": False},
-                    {"id": KEY_TD_SECTION_INPUTS_TOP_CHORD_SECTION_TYPE,     "label": "  Top Chord Section Type:",          "type": "line",     "read_only": True},
-                    {"id": KEY_TD_SECTION_INPUTS_TOP_CHORD_SECTION_DESIGNATION,"label": "  Top Chord Section Designation:",   "type": "line",     "read_only": True},
-                    {"id": KEY_TD_SECTION_INPUTS_BOTTOM_CHORD_ENABLED,       "label": "Bottom Chord",                       "type": "checkbox", "default": True, "enabled": False},
-                    {"id": KEY_TD_SECTION_INPUTS_BOTTOM_CHORD_SECTION_TYPE,  "label": "  Bottom Chord Section Type:",       "type": "line",     "read_only": True},
-                    {"id": KEY_TD_SECTION_INPUTS_BOTTOM_CHORD_SECTION_DESIGNATION, "label": "  Bottom Chord Section Designation:","type": "line",     "read_only": True},
-                    {"id": KEY_TD_SECTION_INPUTS_SPACING,                    "label": "Spacing:",                           "type": "line",     "read_only": True},
+                    {"id": KEY_TD_SECTION_INPUTS_DESIGN, "label": "Design:", "type": "line", "read_only": True},
+                    {"id": KEY_TD_SECTION_INPUTS_NO_OF_CB, "label": "No. of Crossbracing:", "type": "line", "read_only": True},
+                    {"id": KEY_TD_SECTION_INPUTS_BRACING_TYPE, "label": "Type of Bracing:", "type": "line", "read_only": True},
+                    {"id": KEY_TD_SECTION_INPUTS_CONNECTION_TYPE, "label": "Type of Connection:", "type": "line", "read_only": True},
+                    {"id": KEY_TD_SECTION_INPUTS_BRACING_SECTION_TYPE, "label": "Bracing Section Type:", "type": "line", "read_only": True},
+                    {"id": KEY_TD_SECTION_INPUTS_BRACING_SECTION_DESIGNATION, "label": "Bracing Section Designation:", "type": "line", "read_only": True},
+                    {"id": KEY_TD_SECTION_INPUTS_TOP_CHORD_ENABLED, "label": "Top Chord", "type": "checkbox", "default": True, "enabled": False},
+                    {"id": KEY_TD_SECTION_INPUTS_TOP_CHORD_SECTION_TYPE, "label": " Top Chord Section Type:", "type": "line", "read_only": True},
+                    {"id": KEY_TD_SECTION_INPUTS_TOP_CHORD_SECTION_DESIGNATION, "label": " Top Chord Section Designation:", "type": "line", "read_only": True},
+                    {"id": KEY_TD_SECTION_INPUTS_BOTTOM_CHORD_ENABLED, "label": "Bottom Chord", "type": "checkbox", "default": True, "enabled": False},
+                    {"id": KEY_TD_SECTION_INPUTS_BOTTOM_CHORD_SECTION_TYPE, "label": " Bottom Chord Section Type:", "type": "line", "read_only": True},
+                    {"id": KEY_TD_SECTION_INPUTS_BOTTOM_CHORD_SECTION_DESIGNATION, "label": " Bottom Chord Section Designation:", "type": "line", "read_only": True},
+                    {"id": KEY_TD_SECTION_INPUTS_SPACING, "label": "Spacing:", "type": "line", "read_only": True},
                 ],
             },
         },
         "right_panel": {
             "bracing_diagram": {"id": KEY_TD_BRACING_DIAGRAM, "height": 170},
             "section_cards": [
-                {
-                    "id":    KEY_TD_SECTION_PROPS_BRACING,
-                    "title": "Bracing",
-                    "col1": ["L (m)", "H (m)", "B (m)", "tw (m)", "tF (m)", "rz (cm)"],
-                    "col2": ["M (Kg/m)", "A (cm²)", "Iz (cm⁴)", "Iv (cm⁴)", "rv (cm)"],
-                    "col3": ["Zz (cm³)", "Zv (cm³)", "Zuz (cm³)", "Zuv (cm³)"],
-                },
-                {
-                    "id":    KEY_TD_SECTION_PROPS_TOP_CHORD,
-                    "title": "Top Chord",
-                    "col1": ["L (m)", "H (m)", "B (m)", "tw (m)", "tF (m)", "rz (cm)"],
-                    "col2": ["M (Kg/m)", "A (cm²)", "Iz (cm⁴)", "Iv (cm⁴)", "rv (cm)"],
-                    "col3": ["Zz (cm³)", "Zv (cm³)", "Zuz (cm³)", "Zuv (cm³)"],
-                },
-                {
-                    "id":    KEY_TD_SECTION_PROPS_BOTTOM_CHORD,
-                    "title": "Bottom Chord",
-                    "col1": ["L (m)", "H (m)", "B (m)", "tw (m)", "tF (m)", "rz (cm)"],
-                    "col2": ["M (Kg/m)", "A (cm²)", "Iz (cm⁴)", "Iv (cm⁴)", "rv (cm)"],
-                    "col3": ["Zz (cm³)", "Zv (cm³)", "Zuz (cm³)", "Zuv (cm³)"],
-                },
+                {"id": KEY_TD_SECTION_PROPS_BRACING, "title": "Bracing", "col1": ["L (m)", "H (m)", "B (m)", "tw (m)", "tF (m)", "rz (cm)"], "col2": ["M (Kg/m)", "A (cm²)", "Iz (cm⁴)", "Iv (cm⁴)", "rv (cm)"], "col3": ["Zz (cm³)", "Zv (cm³)", "Zuz (cm³)", "Zuv (cm³)"]},
+                {"id": KEY_TD_SECTION_PROPS_TOP_CHORD, "title": "Top Chord", "col1": ["L (m)", "H (m)", "B (m)", "tw (m)", "tF (m)", "rz (cm)"], "col2": ["M (Kg/m)", "A (cm²)", "Iz (cm⁴)", "Iv (cm⁴)", "rv (cm)"], "col3": ["Zz (cm³)", "Zv (cm³)", "Zuz (cm³)", "Zuv (cm³)"]},
+                {"id": KEY_TD_SECTION_PROPS_BOTTOM_CHORD, "title": "Bottom Chord", "col1": ["L (m)", "H (m)", "B (m)", "tw (m)", "tF (m)", "rz (cm)"], "col2": ["M (Kg/m)", "A (cm²)", "Iz (cm⁴)", "Iv (cm⁴)", "rv (cm)"], "col3": ["Zz (cm³)", "Zv (cm³)", "Zuz (cm³)", "Zuv (cm³)"]},
             ],
-        },
-    },
-
-    # Design Check Tab
-    "design_check_tab": {
-        "id": KEY_TD_DESIGN_CHECK_TAB,
-        "label": "Design Check",
-        "forces_table": {
-            "id":      KEY_TD_DESIGN_CHECK_FORCES_TABLE,
-            "title":   "Design Forces Summary:",
-            "columns": ["Member", "Tension (kN)", "Compression (kN)", "Gov. LC"],
-            "always_visible": True,
         },
         "results_table": {
             "id": KEY_TD_DESIGN_CHECK_RESULTS,
@@ -2875,10 +2844,10 @@ TRANSVERSE_MEMBER_DESIGN_SCHEMA = {
                 "Force Type",
                 "Force (kN)",
                 "Section",
-                "Capacity (kN)",
-                "Eff. Ratio",
-                "λ (slend.)",
                 "Connection",
+                "λ (slend.)",
+                "Capacity (kN)",
+                "Utilization Ratio",
                 "Status",
             ],
         },
