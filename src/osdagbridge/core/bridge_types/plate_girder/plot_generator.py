@@ -1356,8 +1356,8 @@ def build_figure_deflection(ds, disp_key, nodes, members, edge_dist=0.0, eng_sca
 
         # Annotate maximum deflection
         if len(vals) > 0 and np.max(np.abs(vals)) > 0:
-            idx_max = int(np.argmin(vals))  # Finds the most negative value (Maximum Sag)
-            idx_min = int(np.argmax(vals))
+            idx_max = int(np.argmax(vals))
+            idx_min = int(np.argmin(vals))
 
             for j in range(len(xs)):
                 if abs(vals[j]) > 1e-4: 
