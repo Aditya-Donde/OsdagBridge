@@ -582,7 +582,7 @@ class ToolBarWidget(QWidget):
         self.layout.addWidget(add_separator())  # after girder label
 
         # Scale
-        scale_label = QLabel("Scale:")
+        self.scale_label = QLabel("Scale:")
         self.spin_scale = QDoubleSpinBox()
         self.spin_scale.setRange(0.0, 10.0)
         self.spin_scale.setSingleStep(0.1)
@@ -651,7 +651,7 @@ class ToolBarWidget(QWidget):
             }
         """)
 
-        self.layout.addWidget(scale_label)
+        self.layout.addWidget(self.scale_label)
         self.layout.addWidget(self.spin_scale)
 
         self.layout.addStretch()
