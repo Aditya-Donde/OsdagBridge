@@ -274,6 +274,42 @@ def _vsd(input_dict, key, suffix='', software_default_value=''):
     return ''
 
 
+def _v_mm(input_dict, key, suffix='', default='', decimals=1):
+    """Safely fetch a value from input_dict (stored in meters), convert to mm, and round."""
+    val = input_dict.get(key, '')
+    if val in ('', None):
+        return default
+    try:
+        val_mm = round(float(val) * 1000.0, decimals)
+        if val_mm.is_integer() and decimals == 1:
+            val_str = str(int(val_mm))
+        else:
+            val_str = f"{val_mm:.{decimals}f}"
+        return f"{val_str}{suffix}"
+    except (ValueError, TypeError):
+        return f"{val}{suffix}"
+
+
+def _vsd_mm(input_dict, key, suffix='', software_default_value='', decimals=1):
+    """Like _v_mm(), but appends \\sdstar if the value is absent (software default).
+    The software_default_value is assumed to be in mm (target unit).
+    """
+    val = input_dict.get(key, '')
+    if val not in ('', None):
+        try:
+            val_mm = round(float(val) * 1000.0, decimals)
+            if val_mm.is_integer() and decimals == 1:
+                val_str = str(int(val_mm))
+            else:
+                val_str = f"{val_mm:.{decimals}f}"
+            return f"{val_str}{suffix}"
+        except (ValueError, TypeError):
+            return f"{val}{suffix}"
+    if software_default_value:
+        return _tex(software_default_value) + suffix + r'\sdstar{}'
+    return ''
+
+
 
 def _ph(key):
     """Return a \\placeholder{key} command."""
@@ -386,6 +422,12 @@ def preamble(project_name, job_number, report_date, report_version='Rev 0'):
 \usepackage{lastpage}
 \usepackage{makecell}
 \usepackage{etoolbox}
+\usepackage{needspace}
+
+% Prevent tables from overflowing past the page bottom:
+% if fewer than 5 baseline-skips remain, break to the next page first.
+\BeforeBeginEnvironment{table}{\needspace{5\baselineskip}}
+\BeforeBeginEnvironment{longtable}{\needspace{5\baselineskip}}
 
 \definecolor{osdagGreen}{HTML}{91B014}
 
@@ -393,29 +435,37 @@ def preamble(project_name, job_number, report_date, report_version='Rev 0'):
   \fancyhf{}
   \fancyhead[L]{""" + pn + r""" $|$ """ + jn + r"""}
   \fancyhead[R]{""" + rd + r""" $|$ """ + rv + r"""}
-  \fancyfoot[L]{%
-    \ifbool{hasSDonPage}{%
-      \rlap{\raisebox{2.8ex}{\textcolor{black}{\footnotesize\textit{* Software default value}}}}%
-    }{}%
-    Osdag $|$ FOSSEE $|$ Indian Institute of Technology Bombay%
-  }
+  \fancyfoot[L]{Osdag $|$ FOSSEE $|$ Indian Institute of Technology Bombay}
   \fancyfoot[R]{Page \thepage\ of \pageref{LastPage}}
   \renewcommand{\headrule}{\color{osdagGreen}\hrule width\headwidth height 1pt \vspace{2pt}}
-  \renewcommand{\footrule}{\vspace{-8pt}\color{osdagGreen}\hrule width\headwidth height 1pt \vspace{6pt}}
+  \renewcommand{\footrule}{%
+    \ifbool{hasSDonPage}{%
+      \vspace{-20pt}%
+      \hbox to \headwidth{\textcolor{black}{\footnotesize\textit{* Software default value}}\hfil}%
+      \vspace{4pt}%
+    }{%
+      \vspace{-8pt}%
+    }%
+    \color{osdagGreen}\hrule width\headwidth height 1pt \vspace{6pt}%
+  }
 }
 \fancypagestyle{plain}{
   \fancyhf{}
   \fancyhead[L]{""" + pn + r""" $|$ """ + jn + r"""}
   \fancyhead[R]{""" + rd + r""" $|$ """ + rv + r"""}
-  \fancyfoot[L]{%
-    \ifbool{hasSDonPage}{%
-      \rlap{\raisebox{2.8ex}{\textcolor{black}{\footnotesize\textit{* Software default value}}}}%
-    }{}%
-    Osdag $|$ FOSSEE $|$ Indian Institute of Technology Bombay%
-  }
+  \fancyfoot[L]{Osdag $|$ FOSSEE $|$ Indian Institute of Technology Bombay}
   \fancyfoot[R]{Page \thepage\ of \pageref{LastPage}}
   \renewcommand{\headrule}{\color{osdagGreen}\hrule width\headwidth height 1pt \vspace{2pt}}
-  \renewcommand{\footrule}{\vspace{-8pt}\color{osdagGreen}\hrule width\headwidth height 1pt \vspace{6pt}}
+  \renewcommand{\footrule}{%
+    \ifbool{hasSDonPage}{%
+      \vspace{-20pt}%
+      \hbox to \headwidth{\textcolor{black}{\footnotesize\textit{* Software default value}}\hfil}%
+      \vspace{4pt}%
+    }{%
+      \vspace{-8pt}%
+    }%
+    \color{osdagGreen}\hrule width\headwidth height 1pt \vspace{6pt}%
+  }
 }
 \fancypagestyle{firstpage}{
   \fancyhf{}
@@ -626,7 +676,7 @@ This section provides a concise summary of the bridge design, key inputs, govern
 \addcontentsline{toc}{section}{Project Overview}
 \label{sec:project-overview}
 
-\begin{table}[H]
+
 \begin{tabular}{|L{5.5cm}|L{8.5cm}|}
 \hline
 \textbf{Bridge Type} & Steel I-Girder Bridge \\
@@ -652,7 +702,7 @@ This section provides a concise summary of the bridge design, key inputs, govern
 \textbf{Overall Utilization Ratio (max)} & """ + (_tex(output_dict.get('overall_utilization_ratio', '')) or _ph('Value')) + r""" \\
 \hline
 \end{tabular}
-\end{table}
+
 
 """ + plan_fig + r"""
 
@@ -704,7 +754,7 @@ This section records all project metadata as entered by the designer.
 \section{Project and Design Team Details}
 \label{sec:project-details}
 
-\begin{table}[H]
+
 \begin{tabular}{|L{5.5cm}|L{8.5cm}|}
 \hline
 \textbf{Project Name} & """ + _tex(m.project_name) + r""" \\
@@ -722,7 +772,7 @@ This section records all project metadata as entered by the designer.
 \textbf{Software Version} & OsdagBridge \\
 \hline
 \end{tabular}
-\end{table}
+
 
 \section{Applicable Codes and Standards}
 \label{sec:codes}
@@ -762,8 +812,7 @@ This section documents all inputs provided to OsdagBridge. User-provided inputs 
 \noindent\textbf{Table 2.1 Project Location}
 \label{subsec:project-location}
 
-\begin{table}[H]
-\vspace{-6pt}
+
 \begin{tabular}{|L{5.5cm}|L{8.5cm}|}
 \hline
 \textbf{Project Location} & """ + _tex(m.project_location) + r""" \\
@@ -777,13 +826,12 @@ This section documents all inputs provided to OsdagBridge. User-provided inputs 
 \textbf{Shade Temp. Max / Min (IRC 6)} & """ + (_v(input_dict,'shade_temp_max','') or _ph('Max')) + r""" °C / """ + (_v(input_dict,'shade_temp_min','') or _ph('Min')) + r""" °C \\
 \hline
 \end{tabular}
-\end{table}
+
 
 \noindent\textbf{Table 2.2 Bridge Geometry}
 \label{subsec:bridge-geometry}
 
-\begin{table}[H]
-\vspace{-6pt}
+
 \begin{tabular}{|L{5.5cm}|L{8.5cm}|}
 \hline
 \textbf{Type of Structure} & Highway Bridge \\
@@ -799,13 +847,12 @@ This section documents all inputs provided to OsdagBridge. User-provided inputs 
 \textbf{Skew Angle (degrees)} & """ + (_v(input_dict, KEY_SKEW_ANGLE,'°') or _ph('Angle') + '°') + r""" (IRC 24 Cl. 504.8 limit: $\pm$15°) \\
 \hline
 \end{tabular}
-\end{table}
+
 
 \noindent\textbf{Table 2.3 Material Selection}
 \label{subsec:material}
 
-\begin{table}[H]
-\vspace{-6pt}
+
 \begin{tabular}{|L{5.5cm}|L{8.5cm}|}
 \hline
 \textbf{Girder Steel Grade (IS 2062)} & """ + (_v(input_dict, KEY_GIRDER) or _ph('e.g. E 350')) + r""" \\
@@ -817,7 +864,7 @@ This section documents all inputs provided to OsdagBridge. User-provided inputs 
 \textbf{Concrete Deck Grade (IRC 22)} & """ + (_v(input_dict, KEY_DECK_CONCRETE_GRADE_BASIC) or _ph('e.g. M 40')) + r""" \\
 \hline
 \end{tabular}
-\end{table}
+
 
 \newpage
 \section{Additional Inputs}
@@ -827,9 +874,7 @@ Where the user has modified additional inputs, those values are reported here. W
 
 \noindent\textbf{Table 2.4  Typical Section Details}
 
-\begin{table}[H]
-\vspace{-6pt}
-\begin{tabularx}{\textwidth}{|L{5.5cm}|X|}
+\begin{longtable}{|L{5.5cm}|p{10.0cm}|}
 \hline
 \textbf{Overall Bridge Width (m)} & """ + (_v(input_dict, KEY_TS_OVERALL_WIDTH) or _ph('Calculated')) + r""" \\[6pt]
 \hline
@@ -845,15 +890,12 @@ Where the user has modified additional inputs, those values are reported here. W
 \hline
 \textbf{No. of Traffic Lanes} & """ + (_v(input_dict, KEY_WC_LD_LANE_TABLE_COUNT) or _ph(r'n\_lanes')) + r""" (per IRC 5 Cl. 104.3.1) \\[6pt]
 \hline
-\end{tabularx}
-\end{table}
+\end{longtable}
 
 \vspace{0.8em}
 \noindent\textbf{Table 2.5  Components Details}
 
-\begin{table}[H]
-\vspace{-6pt}
-\begin{tabularx}{\textwidth}{|L{5.5cm}|X|}
+\begin{longtable}{|L{5.5cm}|p{10.0cm}|}
 \hline
 \textbf{Crash Barrier Type} & """ + (_v(input_dict, KEY_CB_TYPE) or _ph('IRC 5 RCC / Metallic / Custom')) + r""" \\[6pt]
 \hline
@@ -869,8 +911,7 @@ Where the user has modified additional inputs, those values are reported here. W
 \hline
 \textbf{Wearing Course Thickness (mm)} & """ + (_vsd(input_dict, KEY_WC_THICKNESS, ' mm', '80') or _ph(r'wc\_t') + ' mm') + r""" \\[6pt]
 \hline
-\end{tabularx}
-\end{table}
+\end{longtable}
 
 """ + _girder_tables(input_dict, n_girders) + r"""
 
@@ -885,17 +926,17 @@ def _girder_tables(input_dict, n_girders):
     # Helper: one girder-dimension row (all girders share same section)
     def _dim_row(label):
         return (label + r""" & """
-                + (_v(input_dict, KEY_GIRDER_DEPTH, ' mm') or _ph('D'))
+                + (_v_mm(input_dict, KEY_GIRDER_DEPTH, ' mm') or _ph('D'))
                 + r""" & """
-                + (_v(input_dict, KEY_GIRDER_WEB_THICKNESS, ' mm') or _ph('tw'))
+                + (_v_mm(input_dict, KEY_GIRDER_WEB_THICKNESS, ' mm') or _ph('tw'))
                 + r""" & """
-                + (_v(input_dict, KEY_GIRDER_TOP_FLANGE_WIDTH, ' mm') or _ph('btf'))
+                + (_v_mm(input_dict, KEY_GIRDER_TOP_FLANGE_WIDTH, ' mm') or _ph('btf'))
                 + ', '
-                + (_v(input_dict, KEY_GIRDER_TOP_FLANGE_THICKNESS, ' mm') or _ph('ttf'))
+                + (_v_mm(input_dict, KEY_GIRDER_TOP_FLANGE_THICKNESS, ' mm') or _ph('ttf'))
                 + r""" & """
-                + (_v(input_dict, KEY_GIRDER_BOTTOM_FLANGE_WIDTH, ' mm') or _ph('bbf'))
+                + (_v_mm(input_dict, KEY_GIRDER_BOTTOM_FLANGE_WIDTH, ' mm') or _ph('bbf'))
                 + ', '
-                + (_v(input_dict, KEY_GIRDER_BOTTOM_FLANGE_THICKNESS, ' mm') or _ph('tbf'))
+                + (_v_mm(input_dict, KEY_GIRDER_BOTTOM_FLANGE_THICKNESS, ' mm') or _ph('tbf'))
                 + r""" \\[8pt]
 \hline
 """)
@@ -945,46 +986,43 @@ def _girder_tables(input_dict, n_girders):
 
 \vspace{0.4em}
 \noindent
-\begin{table}[H]
+
 \captionsetup{justification=raggedright,singlelinecheck=false}
 \caption*{\textbf{Table 2.6(a)  Girder General Information}}
 \vspace{4pt}
-\begin{tabularx}{\textwidth}{|L{2.2cm}|L{1.8cm}|X|X|X|}
+\begin{longtable}{|L{2.2cm}|L{1.8cm}|p{3.8cm}|p{3.8cm}|p{3.8cm}|}
 \hline
 \textbf{Girder} & \textbf{Member ID} & \textbf{Design Mode} & \textbf{Girder Type} & \textbf{Girder Symmetry} \\[6pt]
 \hline
 """
             + gen_rows
-            + r"""\end{tabularx}
-\end{table}
+            + r"""\end{longtable}
 
 \vspace{0.6em}
-\begin{table}[H]
+
 \captionsetup{justification=raggedright,singlelinecheck=false}
 \caption*{\textbf{Table 2.6(b)  Girder Section Dimensions}}
 \vspace{4pt}
-\begin{tabularx}{\textwidth}{|L{1.8cm}|L{2.3cm}|L{1.8cm}|X|X|}
+\begin{longtable}{|L{1.8cm}|L{2.3cm}|L{1.8cm}|p{4.8cm}|p{4.8cm}|}
 \hline
 \textbf{Girder} & \textbf{Total Depth, D (mm)} & \textbf{Web, tw (mm)} & \textbf{Top Flange (b\textsubscript{tf}, t\textsubscript{tf}) mm} & \textbf{Bottom Flange (b\textsubscript{bf}, t\textsubscript{bf}) mm} \\[6pt]
 \hline
 """
             + dim_rows
-            + r"""\end{tabularx}
-\end{table}
+            + r"""\end{longtable}
 
 \vspace{0.6em}
-\begin{table}[H]
+
 \captionsetup{justification=raggedright,singlelinecheck=false}
 \caption*{\textbf{Table 2.6(c)  Girder Restraint and Stiffener Details}}
 \vspace{4pt}
-\begin{tabularx}{\textwidth}{|L{1.8cm}|X|X|X|X|}
+\begin{longtable}{|L{1.8cm}|p{3.4cm}|p{3.4cm}|p{3.4cm}|p{3.4cm}|}
 \hline
 \textbf{Girder} & \textbf{Torsional / Warping Restraint} & \textbf{Web Philosophy} & \textbf{Intermediate Stiffeners} & \textbf{Longitudinal / End Panel Stiffeners} \\[6pt]
 \hline
 """
             + rst_rows
-            + r"""\end{tabularx}
-\end{table}
+            + r"""\end{longtable}
 """)
 
 
@@ -1060,7 +1098,7 @@ def _shear_connector_table(input_dict):
 \noindent\textbf{Table 2.9  Shear Connector Details}
 
 \vspace{0.4em}
-\begin{tabularx}{\textwidth}{|L{5.5cm}|X|}
+\begin{longtable}{|L{5.5cm}|p{10.0cm}|}
 \hline
 \textbf{Stud Diameter (mm)} & """ + (_vsd(input_dict, KEY_DS_STUD_DIAMETER, ' mm', '22') or _ph('$d_{stud}$') + ' mm') + r""" \\[6pt]
 \hline
@@ -1072,7 +1110,7 @@ def _shear_connector_table(input_dict):
 \hline
 \textbf{No. of Studs per Section} & """ + (_vsd(input_dict, KEY_DS_STUD_COUNT, '', '2') or _ph('$n_s$')) + r""" \\[6pt]
 \hline
-\end{tabularx}
+\end{longtable}
 """
 
 
@@ -1087,7 +1125,7 @@ def _safety_factors_table(input_dict):
 \noindent\textit{Note: All values are per IRC 22 Table 1 unless user-modified.}
 
 \vspace{0.4em}
-\begin{tabularx}{\textwidth}{|L{5.5cm}|X|}
+\begin{longtable}{|L{5.5cm}|p{10.0cm}|}
 \hline
 \textbf{$\gamma_{M0}$ (Yielding / Buckling)} & """ + (_vsd(input_dict, KEY_DO_GAMMA_M0, '', '1.10')) + r""" \\[6pt]
 \hline
@@ -1103,7 +1141,7 @@ def _safety_factors_table(input_dict):
 \hline
 \textbf{$\gamma_{Mft}$ (Fatigue Strength)} & """ + (_vsd(input_dict, KEY_DO_GAMMA_MF, '', '1.35')) + r""" \\[6pt]
 \hline
-\end{tabularx}
+\end{longtable}
 """
 
 
@@ -1119,9 +1157,7 @@ This section summarizes all loads applied to the bridge and the load combination
 \vspace{1em}
 \noindent\textbf{Table 3.1  Dead Load -- Self Weight}
 
-\begin{table}[H]
-\vspace{-6pt}
-\begin{tabularx}{\textwidth}{|L{5.5cm}|X|}
+\begin{longtable}{|L{5.5cm}|p{10.0cm}|}
 \hline
 \textbf{Steel Self-Weight Applied} & Yes [per member volume x 78.5 kN/m\textsuperscript{3}] \\[6pt]
 \hline
@@ -1129,15 +1165,12 @@ This section summarizes all loads applied to the bridge and the load combination
 \hline
 \textbf{Self-Weight Factor} & 1.0\sdstar{} \\[6pt]
 \hline
-\end{tabularx}
-\end{table}
+\end{longtable}
 
 \vspace{1em}
 \noindent\textbf{Table 3.2  Dead Load for Surfacing (DW)}
 
-\begin{table}[H]
-\vspace{-6pt}
-\begin{tabularx}{\textwidth}{|L{5.5cm}|X|}
+\begin{longtable}{|L{5.5cm}|p{10.0cm}|}
 \hline
 \textbf{Wearing Course Load} & """ + (_v(input_dict, KEY_WC_MATERIAL) or _ph('Density')) + r""" x """ + (_v(input_dict, KEY_WC_THICKNESS) or _ph('Thickness')) + r""" \\[6pt]
 \hline
@@ -1145,15 +1178,12 @@ This section summarizes all loads applied to the bridge and the load combination
 \hline
 \textbf{Railing Load} & 1.5 kN/m per railing\sdstar{} \\[6pt]
 \hline
-\end{tabularx}
-\end{table}
+\end{longtable}
 
 \vspace{1em}
 \noindent\textbf{Table 3.3  Live Loads (LL)}
 
-\begin{table}[H]
-\vspace{-6pt}
-\begin{tabularx}{\textwidth}{|L{5.5cm}|X|}
+\begin{longtable}{|L{5.5cm}|p{10.0cm}|}
 \hline
 \textbf{Vehicles Considered} & Class A, Class 70R Wheeled/Tracked [IRC 6] \\[6pt]
 \hline
@@ -1163,15 +1193,12 @@ This section summarizes all loads applied to the bridge and the load combination
 \hline
 \textbf{Footpath Live Load (if applicable)} & """ + _vsd(input_dict, "footpath_live_load", " kN/m\\textsuperscript{2}", "5") + r""" \\[6pt]
 \hline
-\end{tabularx}
-\end{table}
+\end{longtable}
 
 \vspace{1em}
 \noindent\textbf{Table 3.4  Wind Load (WL) --- per IRC 6}
 
-\begin{table}[H]
-\vspace{-6pt}
-\begin{tabularx}{\textwidth}{|L{5.5cm}|X|}
+\begin{longtable}{|L{5.5cm}|p{10.0cm}|}
 \hline
 \textbf{Basic Wind Speed, Vb} & """ + (_v(input_dict,'wind_speed',' m/s') or _ph('Vb') + ' m/s') + r""" [from Project Location] \\[6pt]
 \hline
@@ -1189,15 +1216,12 @@ This section summarizes all loads applied to the bridge and the load combination
 \hline
 \textbf{Vertical Wind Force} & """ + str(input_dict.get("wind_Fw_V", _ph("Fw_V"))) + r""" kN \\[6pt]
 \hline
-\end{tabularx}
-\end{table}
+\end{longtable}
 
 \vspace{1em}
 \noindent\textbf{Table 3.5  Earthquake Load (EL) --- per IRC 6}
 
-\begin{table}[H]
-\vspace{-6pt}
-\begin{tabularx}{\textwidth}{|L{5.5cm}|X|}
+\begin{longtable}{|L{5.5cm}|p{10.0cm}|}
 \hline
 \textbf{Seismic Zone} & """ + (_v(input_dict,'seismic_zone') or _ph('Zone')) + r""" [from Project Location] \\[6pt]
 \hline
@@ -1215,15 +1239,12 @@ This section summarizes all loads applied to the bridge and the load combination
 \hline
 \textbf{Horizontal Seismic Force} & """ + str(input_dict.get("seismic_Feq_L", _ph("Feq_L"))) + r""" kN (longitudinal), """ + str(input_dict.get("seismic_Feq_T", _ph("Feq_T"))) + r""" kN (transverse) \\[6pt]
 \hline
-\end{tabularx}
-\end{table}
+\end{longtable}
 
 \vspace{1em}
 \noindent\textbf{Table 3.6  Temperature Load (EL) --- per IRC 6}
 
-\begin{table}[H]
-\vspace{-6pt}
-\begin{tabularx}{\textwidth}{|L{5.5cm}|X|}
+\begin{longtable}{|L{5.5cm}|p{10.0cm}|}
 \hline
 \textbf{Maximum Shade Temperature} & """ + (_v(input_dict,'shade_temp_max') or _ph(r'T\_max')) + r""" $^\circ$C \\[6pt]
 \hline
@@ -1233,8 +1254,7 @@ This section summarizes all loads applied to the bridge and the load combination
 \hline
 \textbf{Temperature Rise / Fall for Design} & +""" + str(input_dict.get("temp_dT_rise", _ph("dT_rise"))) + r""" $^\circ$C / -""" + str(input_dict.get("temp_dT_fall", _ph("dT_fall"))) + r""" $^\circ$C \\[6pt]
 \hline
-\end{tabularx}
-\end{table}
+\end{longtable}
 
 \vspace{1em}
 \noindent\textbf{Table 3.7  Load Combinations}
@@ -1242,9 +1262,7 @@ This section summarizes all loads applied to the bridge and the load combination
 \vspace{0.4em}
 The following load combinations were evaluated per IRC 6. The governing combination for each member is identified in the design checks section.
 
-\begin{table}[H]
-\vspace{-6pt}
-\begin{tabularx}{\textwidth}{|C{3.2cm}|C{3.5cm}|C{4.5cm}|>{\centering\arraybackslash}X|}
+\begin{longtable}{|C{3.2cm}|C{3.5cm}|C{4.5cm}|>{\centering\arraybackslash}p{4.3cm}|}
 \hline
 \textbf{Combination ID} & \textbf{Description} & \textbf{Load Cases} & \textbf{Governs For} \\[6pt]
 \hline
@@ -1260,8 +1278,7 @@ LC-FAT-1 & Fatigue (LL only) & Fatigue Truck & Fatigue checks \\[6pt]
 \hline
 (Additional combinations per IRC 6 auto-generated by software) & ... & ... & ... \\[6pt]
 \hline
-\end{tabularx}
-\end{table}
+\end{longtable}
 
 \noindent\textit{Note: All IRC 6 load combinations are auto-generated by OsdagBridge. User-defined custom combinations, if any, are appended.}
 """
@@ -1276,9 +1293,7 @@ A grillage model was used for structural analysis. The deck is idealized as a gr
 \vspace{1em}
 \noindent\textbf{Table 4.1  Summary of Maximum Demands}
 
-\begin{table}[H]
-\vspace{-6pt}
-\begin{tabularx}{\textwidth}{|>{\centering\arraybackslash}X|>{\centering\arraybackslash}C{2.8cm}|>{\centering\arraybackslash}C{2.2cm}|>{\centering\arraybackslash}C{2.5cm}|>{\centering\arraybackslash}C{2.2cm}|>{\centering\arraybackslash}C{1.8cm}|}
+\begin{longtable}{|>{\centering\arraybackslash}p{4.0cm}|>{\centering\arraybackslash}C{2.8cm}|>{\centering\arraybackslash}C{2.2cm}|>{\centering\arraybackslash}C{2.5cm}|>{\centering\arraybackslash}C{2.2cm}|>{\centering\arraybackslash}C{1.8cm}|}
 \hline
 \textbf{Load Case} & \textbf{Max BM (kN-m)} & \textbf{Location (m)} & \textbf{Max SF (kN)} & \textbf{Location (m)} & \textbf{Girder} \\[6pt]
 \hline
@@ -1292,15 +1307,12 @@ LC-ULS-1 (Governing) & """ + bridge.get_max_bm("LC-ULS-1 (Governing)") + r""" & 
 \hline
 LC-SLS-1 & """ + bridge.get_max_bm("LC-SLS-1") + r""" & """ + bridge.get_bm_location("LC-SLS-1") + r""" & """ + bridge.get_max_sf("LC-SLS-1") + r""" & """ + bridge.get_sf_location("LC-SLS-1") + r""" & \\[6pt]
 \hline
-\end{tabularx}
-\end{table}
+\end{longtable}
 
 \vspace{1em}
 \noindent\textbf{Table 4.2  Reactions at Supports}
 
-\begin{table}[H]
-\vspace{-6pt}
-\begin{tabularx}{\textwidth}{|>{\centering\arraybackslash}X|>{\centering\arraybackslash}X|>{\centering\arraybackslash}X|}
+\begin{longtable}{|>{\centering\arraybackslash}p{5.2cm}|>{\centering\arraybackslash}p{5.2cm}|>{\centering\arraybackslash}p{5.2cm}|}
 \hline
 \textbf{Load Case} & \textbf{Left Support (kN)} & \textbf{Right Support (kN)} \\[6pt]
 \hline
@@ -1310,15 +1322,12 @@ DL + LL (governing) & """ + bridge.get_reaction("left", "DL + LL (governing)") +
 \hline
 Seismic (EL) & """ + bridge.get_reaction("left", "Seismic (EL)") + r""" & """ + bridge.get_reaction("right", "Seismic (EL)") + r""" \\[6pt]
 \hline
-\end{tabularx}
-\end{table}
+\end{longtable}
 
 \vspace{1em}
 \noindent\textbf{Table 4.3  Deflection Summary (Live Load \& Total Load)}
 
-\begin{table}[H]
-\vspace{-6pt}
-\begin{tabularx}{\textwidth}{|L{7cm}|X|}
+\begin{longtable}{|L{7cm}|p{8.5cm}|}
 \hline
 \textbf{Deflection due to Live Load, delta\_LL} & """ + bridge.get_deflection("ll") + r""" \\[6pt]
 \hline
@@ -1332,8 +1341,7 @@ Seismic (EL) & """ + bridge.get_reaction("left", "Seismic (EL)") + r""" & """ + 
 \hline
 \textbf{Total Load Deflection Check Status} & """ + bridge.get_deflection_status("total", span_m) + r""" \\[6pt]
 \hline
-\end{tabularx}
-\end{table}
+\end{longtable}
 
 \vspace{1em}
 \noindent
@@ -1366,7 +1374,7 @@ def ch5_design_checks(checks_data, bridge: "ReportDataBridge"):
     t52_rows = []
     for lbl, _ in _girder_labels(n_girders):
         t52_rows.append(
-            r"\multirow{4}{*}{\centering " + lbl + r"""} & Top Flange & $(b_f - t_w) / 2t_f =$ \placeholder{val} & \placeholder{limit} & Plastic / Compact / Semi-Compact \\[6pt]
+            r"\multirow{4}{*}{\makecell{" + lbl + r"""}} & Top Flange & $(b_f - t_w) / 2t_f =$ \placeholder{val} & \placeholder{limit} & Plastic / Compact / Semi-Compact \\[6pt]
 \cline{2-5}
  & Bottom Flange & $(b_f - t_w) / 2t_f =$ \placeholder{val} & \placeholder{limit} & \placeholder{class} \\[6pt]
 \cline{2-5}
@@ -1381,7 +1389,7 @@ def ch5_design_checks(checks_data, bridge: "ReportDataBridge"):
     t53_rows = []
     for lbl, _ in _girder_labels(n_girders):
         t53_rows.append(
-            r"\multirow{4}{*}{\centering " + lbl + r"""} & Applied Moment, $M_u$ & from LC-ULS-1 & \placeholder{$M_u$} kN-m & --- \\[6pt]
+            r"\multirow{4}{*}{\makecell{" + lbl + r"""}} & Applied Moment, $M_u$ & from LC-ULS-1 & \placeholder{$M_u$} kN-m & --- \\[6pt]
 \cline{2-5}
  & Plastic Moment, Mp & Zp $\times$ fy / $\gamma_{M0}$ & \placeholder{Mp} kN-m & --- \\[6pt]
 \cline{2-5}
@@ -1396,7 +1404,7 @@ def ch5_design_checks(checks_data, bridge: "ReportDataBridge"):
     t54_rows = []
     for lbl, _ in _girder_labels(n_girders):
         t54_rows.append(
-            r"\multirow{9}{*}{\centering " + lbl + r"""} & Applied Shear, $V_u$ & from LC-ULS-1 & \placeholder{$V_u$} kN & --- \\[6pt]
+            r"\multirow{9}{*}{\makecell{" + lbl + r"""}} & Applied Shear, $V_u$ & from LC-ULS-1 & \placeholder{$V_u$} kN & --- \\[6pt]
 \cline{2-5}
  & Shear Area, Av & h $\times$ tw & \placeholder{$A_v$} mm² & --- \\[6pt]
 \cline{2-5}
@@ -1421,7 +1429,7 @@ def ch5_design_checks(checks_data, bridge: "ReportDataBridge"):
     t55_rows = []
     for lbl, _ in _girder_labels(n_girders):
         t55_rows.append(
-            r"\multirow{3}{*}{\centering " + lbl + r"""} & High Shear Condition? & V > 0.6 Vd & Yes / No & --- \\[6pt]
+            r"\multirow{3}{*}{\makecell{" + lbl + r"""}} & High Shear Condition? & V > 0.6 Vd & Yes / No & --- \\[6pt]
 \cline{2-5}
  & Reduced Moment Capacity, $M_{dv}$ & $M_d - \beta(M_d - M_{fd})$ & \placeholder{$M_{dv Fluss}$} kN-m & --- \\[6pt]
 \cline{2-5}
@@ -1434,7 +1442,7 @@ def ch5_design_checks(checks_data, bridge: "ReportDataBridge"):
     t56_rows = []
     for lbl, _ in _girder_labels(n_girders):
         t56_rows.append(
-            r"\multirow{5}{*}{\centering " + lbl + r"""} & Elastic Critical Moment, Mcr & pi²EIy/LLT² $\times$ (GIt + pi²EIw/LLT²)\textasciicircum 0.5 & \placeholder{$M_{cr}$} kN-m & --- \\[6pt]
+            r"\multirow{5}{*}{\makecell{" + lbl + r"""}} & Elastic Critical Moment, Mcr & pi²EIy/LLT² $\times$ (GIt + pi²EIw/LLT²)\textasciicircum 0.5 & \placeholder{$M_{cr}$} kN-m & --- \\[6pt]
 \cline{2-5}
  & Non-dim. Slenderness, $\bar{\lambda}_{LT}$ & $\sqrt{M_p / M_{cr}}$ & \placeholder{$\bar{\lambda}_{LT}$} & --- \\[6pt]
 \cline{2-5}
@@ -1451,7 +1459,7 @@ def ch5_design_checks(checks_data, bridge: "ReportDataBridge"):
     t57_rows = []
     for lbl, _ in _girder_labels(n_girders):
         t57_rows.append(
-            r"\multirow{6}{*}{\centering " + lbl + r"""} & \textbf{Shear Buckling Design Method} & Simple Post Critical / Tension Field \\[6pt]
+            r"\multirow{6}{*}{\makecell{" + lbl + r"""}} & \textbf{Shear Buckling Design Method} & Simple Post Critical / Tension Field \\[6pt]
 \cline{2-3}
  & \textbf{Intermediate Stiffener Thickness (mm)} & \placeholder{ts\_i} mm \\[6pt]
 \cline{2-3}
@@ -1470,7 +1478,7 @@ def ch5_design_checks(checks_data, bridge: "ReportDataBridge"):
     t58_rows = []
     for lbl, _ in _girder_labels(n_girders):
         t58_rows.append(
-            r"\multirow{2}{*}{\centering " + lbl + r"""} & Min. Moment of Inertia, Is & $\geq$ 0.75 d tw³ = \placeholder{val} mm⁴ & \placeholder{Is\_prov} mm⁴ & PASS \\[6pt]
+            r"\multirow{2}{*}{\makecell{" + lbl + r"""}} & Min. Moment of Inertia, Is & $\geq$ 0.75 d tw3$ = \placeholder{val} mm4$ & \placeholder{Is\_prov} mm4$ & PASS \\[6pt]
 \cline{2-5}
  & Critical Buckling Stress, tau\_cr,e & per IS 800 Cl. 8.4.2.2 & \placeholder{tau\_cr} MPa & --- \\[6pt]
 \hline"""
@@ -1481,7 +1489,7 @@ def ch5_design_checks(checks_data, bridge: "ReportDataBridge"):
     t59_rows = []
     for lbl, _ in _girder_labels(n_girders):
         t59_rows.append(
-            r"\multirow{3}{*}{\centering " + lbl + r"""} & Vertical Anchor Force, $V_p$ & $d \times t_w \times f_y / \sqrt{3}$ & \placeholder{$V_p$} kN & --- \\[6pt]
+            r"\multirow{3}{*}{\makecell{" + lbl + r"""}} & Vertical Anchor Force, $V_p$ & $d \times t_w \times f_y / \sqrt{3}$ & \placeholder{$V_p$} kN & --- \\[6pt]
 \cline{2-5}
  & Tension Flange Reaction, $R_{tf}$ & $V_p / 2$ & \placeholder{$R_{tf}$} kN & --- \\[6pt]
 \cline{2-5}
@@ -1494,9 +1502,9 @@ def ch5_design_checks(checks_data, bridge: "ReportDataBridge"):
     t510_rows = []
     for lbl, _ in _girder_labels(n_girders):
         t510_rows.append(
-            r"\multirow{2}{*}{\centering " + lbl + r"""} & Live Load Deflection (L/800) & \placeholder{δ\_allow\_LL} mm & \placeholder{δ\_LL} mm & PASS / FAIL \\[6pt]
+            r"\multirow{2}{*}{\makecell{" + lbl + r"""}} & Live Load Deflection (L/800) & \placeholder{$\delta$\_allow\_LL} mm & \placeholder{$\delta$\_LL} mm & PASS / FAIL \\[6pt]
 \cline{2-5}
- & Total Load Deflection (L/600) & \placeholder{δ\_allow\_tot} mm & \placeholder{δ\_tot} mm & PASS / FAIL \\[6pt]
+ & Total Load Deflection (L/600) & \placeholder{$\delta$\_allow\_tot} mm & \placeholder{$\delta$\_tot} mm & PASS / FAIL \\[6pt]
 \hline"""
         )
     t510_content = "\n".join(t510_rows)
@@ -1505,7 +1513,7 @@ def ch5_design_checks(checks_data, bridge: "ReportDataBridge"):
     t511_rows = []
     for lbl, _ in _girder_labels(n_girders):
         t511_rows.append(
-            r"\multirow{2}{*}{\centering " + lbl + r"""} & Concrete (0.48 fck) & \placeholder{allow\_c} MPa & \placeholder{actual\_c} MPa & PASS / FAIL \\[6pt]
+            r"\multirow{2}{*}{\makecell{" + lbl + r"""}} & Concrete (0.48 fck) & \placeholder{allow\_c} MPa & \placeholder{actual\_c} MPa & PASS / FAIL \\[6pt]
 \cline{2-5}
  & Steel (0.66 fy) & \placeholder{allow\_s} MPa & \placeholder{actual\_s} MPa & PASS / FAIL \\[6pt]
 \hline"""
@@ -1516,7 +1524,7 @@ def ch5_design_checks(checks_data, bridge: "ReportDataBridge"):
     t512_rows = []
     for lbl, _ in _girder_labels(n_girders):
         t512_rows.append(
-            r"\multirow{3}{*}{\centering " + lbl + r"""} & Welded Girder Web & IS 800 Table & \placeholder{ffd} MPa & \placeholder{f\_actual} MPa --- PASS \\[6pt]
+            r"\multirow{3}{*}{\makecell{" + lbl + r"""}} & Welded Girder Web & IS 800 Table & \placeholder{ffd} MPa & \placeholder{f\_actual} MPa --- PASS \\[6pt]
 \cline{2-5}
  & Welded Girder Flange & IS 800 Table & \placeholder{ffd} MPa & \placeholder{f\_actual} MPa --- PASS \\[6pt]
 \cline{2-5}
@@ -1545,7 +1553,7 @@ def ch5_design_checks(checks_data, bridge: "ReportDataBridge"):
         for i in range(n_girders - 1):
             lbl = f"G{i+1}--G{i+2}"
             cb_forces_rows.append(
-                r"\multirow{3}{*}{\centering " + lbl + r"""} & Diagonal & \placeholder{ISA} & \placeholder{$P_u$} & C / T & \placeholder{$A_g$} & \placeholder{$r$} \\[6pt]
+                r"\multirow{3}{*}{\makecell{" + lbl + r"""}} & Diagonal & \placeholder{ISA} & \placeholder{$P_u$} & C / T & \placeholder{$A_g$} & \placeholder{$r$} \\[6pt]
 \cline{2-7}
  & Top chord & \placeholder{ISA} & \placeholder{$P_u$} & C / T & \placeholder{$A_g$} & \placeholder{$r$} \\[6pt]
 \cline{2-7}
@@ -1565,7 +1573,7 @@ def ch5_design_checks(checks_data, bridge: "ReportDataBridge"):
         for i in range(n_girders - 1):
             lbl = f"G{i+1}--G{i+2}"
             cb_slenderness_rows.append(
-                r"\multirow{3}{*}{\centering " + lbl + r"""} & Diagonal & C & \placeholder{$KL$} & \placeholder{$KL/r$} & 250 --- PASS \\[6pt]
+                r"\multirow{3}{*}{\makecell{" + lbl + r"""}} & Diagonal & C & \placeholder{$KL$} & \placeholder{$KL/r$} & 250 --- PASS \\[6pt]
 \cline{2-6}
  & Top chord & C & \placeholder{$KL$} & \placeholder{$KL/r$} & 250 --- PASS \\[6pt]
 \cline{2-6}
@@ -1585,7 +1593,7 @@ def ch5_design_checks(checks_data, bridge: "ReportDataBridge"):
         for i in range(n_girders - 1):
             lbl = f"Girder {i+1} -- {i+2}"
             cb_capacity_rows.append(
-                r"\multirow{3}{*}{\centering " + lbl + r"""} & Brace diagonal (typical) & \placeholder{ISA section} & \placeholder{P\_u} & \placeholder{P\_d} --- PASS \\[6pt]
+                r"\multirow{3}{*}{\makecell{" + lbl + r"""}} & Brace diagonal (typical) & \placeholder{ISA section} & \placeholder{P\_u} & \placeholder{P\_d} --- PASS \\[6pt]
 \cline{2-5}
  & Top chord & \placeholder{ISA section} & \placeholder{P\_u} & \placeholder{P\_d} --- PASS \\[6pt]
 \cline{2-5}
@@ -1605,9 +1613,7 @@ This section presents all structural design checks performed by OsdagBridge. For
 \vspace{1em}
 \noindent\textbf{Table 5.1  Girder Section Properties (Final Optimized / User-selected)}
 
-\begin{table}[H]
-\vspace{-6pt}
-\begin{tabularx}{\textwidth}{|L{7.5cm}|X|}
+\begin{longtable}{|L{7.5cm}|p{8.0cm}|}
 \hline
 \textbf{Depth, D} & \placeholder{D\_final} mm \\[6pt]
 \hline
@@ -1619,194 +1625,155 @@ This section presents all structural design checks performed by OsdagBridge. For
 \hline
 \textbf{Gross Area of Steel Section, A (cm²)} & \placeholder{A} \\[6pt]
 \hline
-\textbf{Moment of Inertia, Iz (cm⁴)} & \placeholder{Iz} \\[6pt]
+\textbf{Moment of Inertia, Iz (cm$^4$)} & \placeholder{Iz} \\[6pt]
 \hline
-\textbf{Elastic Section Modulus, Zez (cm³)} & \placeholder{Zez} \\[6pt]
+\textbf{Elastic Section Modulus, Zez (cm$^3$)} & \placeholder{Zez} \\[6pt]
 \hline
-\textbf{Plastic Section Modulus, Zpz (cm³)} & \placeholder{Zpz} \\[6pt]
+\textbf{Plastic Section Modulus, Zpz (cm$^3$)} & \placeholder{Zpz} \\[6pt]
 \hline
 \textbf{Effective Width of Slab, b\_eff (mm)} & \placeholder{$b_{eff}$} (per IRC 22 Cl. 603.2) \\[6pt]
 \hline
-\textbf{Transformed Composite Iz (cm⁴)} & \placeholder{$I_{z,comp}$} (modular ratio m = Es/Ec) \\[6pt]
+\textbf{Transformed Composite Iz (cm$^4$)} & \placeholder{$I_{z,comp}$} (modular ratio m = Es/Ec) \\[6pt]
 \hline
 \textbf{Depth to Plastic Neutral Axis (mm)} & \placeholder{xu} from top of slab \\[6pt]
 \hline
-\end{tabularx}
-\end{table}
+\end{longtable}
 
 \vspace{1em}
 \noindent\textbf{Table 5.2  Girder Section Classification}
 
-\begin{table}[H]
-\vspace{-6pt}
-\begin{tabularx}{\textwidth}{|C{2.5cm}|C{3cm}|C{3.5cm}|C{2.5cm}|>{\centering\arraybackslash}X|}
+\begin{longtable}{|C{2.5cm}|C{3cm}|C{3.5cm}|C{2.5cm}|>{\centering\arraybackslash}p{4.0cm}|}
 \hline
 \textbf{} & \textbf{Element} & \textbf{Slenderness Ratio} & \textbf{Class Limit} & \textbf{Classification} \\[6pt]
 \hline
 """ + t52_content + r"""
-\end{tabularx}
-\end{table}
+\end{longtable}
 \noindent\textit{Note: IS 800:2007 Table 2}
 
 \vspace{1em}
 \noindent\textbf{Table 5.3  Moment Capacity Check}
 
-\begin{table}[H]
-\vspace{-6pt}
-\begin{tabularx}{\textwidth}{|C{2.5cm}|C{3.5cm}|C{3.5cm}|>{\centering\arraybackslash}X|C{1.8cm}|}
+\begin{longtable}{|C{2.5cm}|C{3.5cm}|C{3.5cm}|>{\centering\arraybackslash}p{4.2cm}|C{1.8cm}|}
 \hline
 \textbf{} & \textbf{Parameter} & \textbf{Formula} & \textbf{Value} & \textbf{Status} \\[6pt]
 \hline
 """ + t53_content + r"""
-\end{tabularx}
-\end{table}
+\end{longtable}
 \noindent\textit{Note: IRC 22 Cl. 603.3.1, IS 800 Cl. 8.2.1}
 
 \vspace{1em}
 \noindent\textbf{Table 5.4  Shear Capacity Check}
 
-\begin{table}[H]
-\vspace{-6pt}
-\begin{tabularx}{\textwidth}{|C{2.5cm}|C{3.5cm}|C{3.5cm}|>{\centering\arraybackslash}X|C{1.8cm}|}
+\begin{longtable}{|C{2.5cm}|C{3.5cm}|C{3.5cm}|>{\centering\arraybackslash}p{4.2cm}|C{1.8cm}|}
 \hline
 \textbf{} & \textbf{Parameter} & \textbf{Formula} & \textbf{Value} & \textbf{Status} \\[6pt]
 \hline
 """ + t54_content + r"""
-\end{tabularx}
-\end{table}
+\end{longtable}
 \noindent\textit{Note: IS 800 Cl. 8.4, IRC 22 Cl. 603.3.3.2}
 
 \vspace{1em}
 \noindent\textbf{Table 5.5  Bending-Shear Interaction Check}
 
-\begin{table}[H]
-\vspace{-6pt}
-\begin{tabularx}{\textwidth}{|C{2.5cm}|C{3.5cm}|C{3.5cm}|>{\centering\arraybackslash}X|C{1.8cm}|}
+\begin{longtable}{|C{2.5cm}|C{3.5cm}|C{3.5cm}|>{\centering\arraybackslash}p{4.2cm}|C{1.8cm}|}
 \hline
 \textbf{} & \textbf{Check} & \textbf{Condition} & \textbf{Value} & \textbf{Status} \\[6pt]
 \hline
 """ + t55_content + r"""
-\end{tabularx}
-\end{table}
+\end{longtable}
 \noindent\textit{Note: IS 800 Cl. 9.2.2}
 
 \vspace{1em}
 \noindent\textbf{Table 5.6  Lateral Torsional Buckling Check -- Construction Stage}
 
-\begin{table}[H]
-\vspace{-6pt}
-\begin{tabularx}{\textwidth}{|C{2.5cm}|C{3.5cm}|C{3.5cm}|>{\centering\arraybackslash}X|C{1.8cm}|}
+\begin{longtable}{|C{2.5cm}|C{3.5cm}|C{3.5cm}|>{\centering\arraybackslash}p{4.2cm}|C{1.8cm}|}
 \hline
 \textbf{} & \textbf{Parameter} & \textbf{Formula} & \textbf{Value} & \textbf{Status} \\[6pt]
 \hline
 """ + t56_content + r"""
-\end{tabularx}
-\end{table}
+\end{longtable}
 \noindent\textit{Note: IRC 22 Cl. 603.3.3.1, IS 800 Cl. 8.2.2}
 
 
 \vspace{1em}
 \noindent\textbf{Table 5.7  Stiffener Design Summary}
 
-\begin{table}[H]
-\vspace{-6pt}
-\begin{tabularx}{\textwidth}{|C{2.5cm}|L{6.5cm}|>{\arraybackslash}X|}
+\begin{longtable}{|C{2.5cm}|L{6.5cm}|>{\arraybackslash}p{6.5cm}|}
 \hline
 """ + t57_content + r"""
-\end{tabularx}
-\end{table}
+\end{longtable}
 
 \vspace{1em}
 \noindent\textbf{Table 5.8  Intermediate Stiffener Checks}
 
-\begin{table}[H]
-\vspace{-6pt}
-\begin{tabularx}{\textwidth}{|C{2.5cm}|C{3.5cm}|C{3.5cm}|>{\centering\arraybackslash}X|C{1.8cm}|}
+\begin{longtable}{|C{2.5cm}|C{3.5cm}|C{3.5cm}|>{\centering\arraybackslash}p{4.2cm}|C{1.8cm}|}
 \hline
 \textbf{} & \textbf{Check} & \textbf{Required} & \textbf{Provided} & \textbf{Status} \\[6pt]
 \hline
 """ + t58_content + r"""
-\end{tabularx}
-\end{table}
+\end{longtable}
 \noindent\textit{Note: IS 800 Cl. 8.7.1.2}
 
 \vspace{1em}
 \noindent\textbf{Table 5.9  End Panel Stiffener Checks}
 
-\begin{table}[H]
-\vspace{-6pt}
-\begin{tabularx}{\textwidth}{|C{2.5cm}|C{3.5cm}|C{3.5cm}|>{\centering\arraybackslash}X|C{1.8cm}|}
+\begin{longtable}{|C{2.5cm}|C{3.5cm}|C{3.5cm}|>{\centering\arraybackslash}p{4.2cm}|C{1.8cm}|}
 \hline
 \textbf{} & \textbf{Check} & \textbf{Required} & \textbf{Provided} & \textbf{Status} \\[6pt]
 \hline
 """ + t59_content + r"""
-\end{tabularx}
-\end{table}
+\end{longtable}
 \noindent\textit{Note: IS 800 Cl. 8.4.2.2}
 
 
 \vspace{1em}
 \noindent\textbf{Table 5.10  Serviceability -- Deflection Checks}
 
-\begin{table}[H]
-\vspace{-6pt}
-\begin{tabularx}{\textwidth}{|C{2.5cm}|C{3.5cm}|C{3.5cm}|>{\centering\arraybackslash}X|C{2.5cm}|}
+\begin{longtable}{|C{2.5cm}|C{3.5cm}|C{3.5cm}|>{\centering\arraybackslash}p{3.5cm}|C{2.5cm}|}
 \hline
 \textbf{} & \textbf{Check} & \textbf{Allowable} & \textbf{Actual} & \textbf{Status} \\[6pt]
 \hline
 """ + t510_content + r"""
-\end{tabularx}
-\end{table}
+\end{longtable}
 \noindent\textit{Note: IRC 22 Cl. 604.3.2}
 
 \vspace{1em}
 \noindent\textbf{Table 5.11  Serviceability -- Maximum Stress Limitation}
 
-\begin{table}[H]
-\vspace{-6pt}
-\begin{tabularx}{\textwidth}{|C{2.5cm}|C{3.5cm}|C{3.5cm}|>{\centering\arraybackslash}X|C{2.5cm}|}
+\begin{longtable}{|C{2.5cm}|C{3.5cm}|C{3.5cm}|>{\centering\arraybackslash}p{3.5cm}|C{2.5cm}|}
 \hline
 \textbf{} & \textbf{Element} & \textbf{Allowable Stress} & \textbf{Actual Stress} & \textbf{Status} \\[6pt]
 \hline
 """ + t511_content + r"""
-\end{tabularx}
-\end{table}
+\end{longtable}
 
 \vspace{1em}
 \noindent\textbf{Table 5.12  Serviceability -- Fatigue Assessment}
 
-\begin{table}[H]
-\vspace{-6pt}
-\begin{tabularx}{\textwidth}{|C{2.5cm}|C{3.5cm}|C{3.5cm}|>{\centering\arraybackslash}X|C{2.5cm}|}
+\begin{longtable}{|C{2.5cm}|C{3.5cm}|C{3.5cm}|>{\centering\arraybackslash}p{3.5cm}|C{2.5cm}|}
 \hline
 \textbf{} & \textbf{Element} & \textbf{Detail Category} & \textbf{Allowable Stress Range (ffd)} & \textbf{Actual Stress Range ($\gamma_{fft}$ $\times$ f)} \\[6pt]
 \hline
 """ + t512_content + r"""
-\end{tabularx}
-\end{table}
+\end{longtable}
 \noindent\textit{Note: IRC 22 Cl. 605. NSC = \placeholder{n\_cycles} cycles. Capacity reduction factor mu\_r applied where plate thickness > 25 mm.}
 
 \vspace{1em}
 \noindent\textbf{Table 5.13  Girder Design Summary (DCR / Utilization Ratio)}
 
 \vspace{0.4em}
-\begin{table}[H]
-\vspace{-6pt}
-\begin{tabularx}{\textwidth}{|C{1.6cm}|C{2.8cm}|C{1.7cm}|C{1.7cm}|C{1.7cm}|C{1.8cm}|>{\centering\arraybackslash}X|}
+\begin{longtable}{|C{1.6cm}|C{2.8cm}|C{1.7cm}|C{1.7cm}|C{1.7cm}|C{1.8cm}|>{\centering\arraybackslash}p{4.2cm}|}
 \hline
 \textbf{Girder} & \textbf{Governing Check} & \textbf{Moment UR} & \textbf{Shear UR} & \textbf{LTB UR} & \textbf{Deflection UR} & \textbf{Status} \\[6pt]
 \hline
 """ + g_summary_table_content + r"""
-\end{tabularx}
-\end{table}
+\end{longtable}
 \noindent\textit{Note: UR = Demand / Capacity. A value $\leq 1.0$ indicates a passing check. Governing check identifies the critical design criterion for each girder.}
 
 \vspace{1em}
 \noindent\textbf{Table 5.14  Shear Connector Capacity}
 
-\begin{table}[H]
-\vspace{-6pt}
-\begin{tabularx}{\textwidth}{|C{4cm}|C{5cm}|>{\centering\arraybackslash}X|C{3.5cm}|}
+\begin{longtable}{|C{4cm}|C{5cm}|>{\centering\arraybackslash}p{3.0cm}|C{3.5cm}|}
 \hline
 \textbf{Parameter} & \textbf{Formula} & \textbf{Value} & \textbf{Reference} \\[6pt]
 \hline
@@ -1814,19 +1781,16 @@ Design Resistance, $Q_u$ & $\min(0.8d^2\sqrt{f_{ck}E_c},\;0.8\pi d^2 f_u)$ & \pl
 \hline
 Fatigue Shear Resistance, Qr & tau\_fn $\times$ (5e6/NSC)\textasciicircum(1/5) & \placeholder{Qr} kN & IRC 22 Cl. 606.3.2 \\[6pt]
 \hline
-\end{tabularx}
-\end{table}
+\end{longtable}
 
 \vspace{1em}
 \noindent\textbf{Table 5.15  Shear Connector Spacing}
 
-\begin{table}[H]
-\vspace{-6pt}
-\begin{tabularx}{\textwidth}{|C{2.5cm}|L{2.8cm}|>{\centering\arraybackslash}X|>{\centering\arraybackslash}X|C{1.5cm}|}
+\begin{longtable}{|C{2.5cm}|L{2.8cm}|>{\centering\arraybackslash}p{4.3cm}|>{\centering\arraybackslash}p{4.3cm}|C{1.5cm}|}
 \hline
 \textbf{} & \textbf{Criterion} & \textbf{Governing Spacing} & \textbf{Actual Spacing Provided} & \textbf{Status} \\[6pt]
 \hline
-\multirow{4}{*}{\centering Girder 1 - n} & ULS Shear (SL1) & \placeholder{SL1} mm & \placeholder{S\_prov} mm & PASS \\[6pt]
+\multirow{4}{*}{\makecell{Girder 1 - n}} & ULS Shear (SL1) & \placeholder{SL1} mm & \placeholder{S\_prov} mm & PASS \\[6pt]
 \cline{2-5}
  & Full Composite (SL2) & \placeholder{SL2} mm & \placeholder{S\_prov} mm & PASS \\[6pt]
 \cline{2-5}
@@ -1834,18 +1798,15 @@ Fatigue Shear Resistance, Qr & tau\_fn $\times$ (5e6/NSC)\textasciicircum(1/5) &
 \cline{2-5}
  & Max Spacing Limit (IRC 22) & $\min(600,\,3t_{slab},\,4h_{stud})$ & \placeholder{limit} mm & PASS \\[6pt]
 \hline
-\end{tabularx}
-\end{table}
+\end{longtable}
 \noindent\textit{Note: IRC 22 Cl. 606.4, 606.9. Governing spacing $= \min(S_{L1}, S_{L2}, S_R)$.}
 
 \vspace{1em}
 \noindent\textbf{Table 5.16  Transverse Shear and Detailing Checks}
 
-\begin{table}[H]
-\vspace{-6pt}
-\begin{tabularx}{\textwidth}{|C{3.5cm}|L{5cm}|>{\arraybackslash}X|}
+\begin{longtable}{|C{3.5cm}|L{5cm}|>{\arraybackslash}p{7.0cm}|}
 \hline
-\multirow{6}{*}{\centering Girder 1 - n} & \textbf{Longitudinal Shear per unit length, $V_L$} & \placeholder{$V_L$} N/mm \\[6pt]
+\multirow{6}{*}{\makecell{Girder 1 - n}} & \textbf{Longitudinal Shear per unit length, $V_L$} & \placeholder{$V_L$} N/mm \\[6pt]
 \cline{2-3}
  & \textbf{Transverse Shear Capacity of Slab} & $0.9L \times \sqrt{f_{ck}} + 0.8\,f_{yk}\,A_{st} \geq V_L$ \\[6pt]
 \cline{2-3}
@@ -1857,8 +1818,7 @@ Fatigue Shear Resistance, Qr & tau\_fn $\times$ (5e6/NSC)\textasciicircum(1/5) &
 \cline{2-3}
  & \textbf{Edge Distance (min 25 mm)} & \placeholder{$e_{dist}$} mm \\[6pt]
 \hline
-\end{tabularx}
-\end{table}
+\end{longtable}
 \noindent\textit{Note: IRC 22 Cl. 606.6, 606.10.}
 
 % ===========================
@@ -1871,9 +1831,7 @@ The reinforced concrete deck slab is designed per IRC~112:2011 (flexure, shear, 
 \vspace{1em}
 \noindent\textbf{Table 5.17(a)  Deck Slab --- Loading and Geometry}
 
-\begin{table}[H]
-\vspace{-6pt}
-\begin{tabularx}{\textwidth}{|L{5.5cm}|X|}
+\begin{longtable}{|L{5.5cm}|p{10.0cm}|}
 \hline
 \textbf{Effective Span of Deck Slab, $l_{eff}$} & \placeholder{$l_{eff}$} mm (= Girder Spacing $-$ Top Flange Width) \\[6pt]
 \hline
@@ -1891,19 +1849,16 @@ The reinforced concrete deck slab is designed per IRC~112:2011 (flexure, shear, 
 \hline
 \textbf{Governing Live Load Case} & \placeholder{Class A / 70R Wheeled / 70R Tracked} \\[6pt]
 \hline
-\end{tabularx}
-\end{table}
+\end{longtable}
 
 \vspace{1em}
 \noindent\textbf{Table 5.17(b)  Deck Slab --- Flexure Check: Interior Panel (Pigeaud's Method)}
 
-\begin{table}[H]
-\vspace{-6pt}
-\begin{tabularx}{\textwidth}{|C{3.0cm}|C{3.5cm}|C{3.0cm}|>{\centering\arraybackslash}X|C{1.8cm}|}
+\begin{longtable}{|C{3.0cm}|C{3.5cm}|C{3.0cm}|>{\centering\arraybackslash}p{4.2cm}|C{1.8cm}|}
 \hline
 \textbf{Location} & \textbf{Parameter} & \textbf{Formula / Reference} & \textbf{Value} & \textbf{Status} \\[6pt]
 \hline
-\multirow{5}{*}{\centering At Midspan\\(Sagging)} & Transverse BM (DL), $M_{T,DL}$ & $w_{DL}\,l_{eff}^2/8$ & \placeholder{$M_{T,DL}$} kN-m/m & --- \\[6pt]
+\multirow{5}{*}{\makecell{At Midspan\\(Sagging)}} & Transverse BM (DL), $M_{T,DL}$ & $w_{DL}\,l_{eff}^2/8$ & \placeholder{$M_{T,DL}$} kN-m/m & --- \\[6pt]
 \cline{2-5}
  & Transverse BM (LL), $M_{T,LL}$ & Pigeaud coefficients $\times$ $P_w$ & \placeholder{$M_{T,LL}$} kN-m/m & --- \\[6pt]
 \cline{2-5}
@@ -1913,22 +1868,19 @@ The reinforced concrete deck slab is designed per IRC~112:2011 (flexure, shear, 
 \cline{2-5}
  & Moment Capacity, $M_{Rd}$ & IRC 112 Cl. 12.2 & \placeholder{$M_{Rd}$} kN-m/m & PASS / FAIL \\[6pt]
 \hline
-\multirow{3}{*}{\centering At Support\\(Hogging)} & Total Design BM, $M_{u,hog}$ & 1.35 DL + 1.5 LL (at support) & \placeholder{$M_{u,hog}$} kN-m/m & --- \\[6pt]
+\multirow{3}{*}{\makecell{At Support\\(Hogging)}} & Total Design BM, $M_{u,hog}$ & 1.35 DL + 1.5 LL (at support) & \placeholder{$M_{u,hog}$} kN-m/m & --- \\[6pt]
 \cline{2-5}
  & Required Top Steel, $A_{st,top}$ & $M_u / (0.87\,f_y\,d)$ & \placeholder{$A_{st,top}$} mm²/m & --- \\[6pt]
 \cline{2-5}
  & Moment Capacity, $M_{Rd}$ & IRC 112 Cl. 12.2 & \placeholder{$M_{Rd}$} kN-m/m & PASS / FAIL \\[6pt]
 \hline
-\end{tabularx}
-\end{table}
+\end{longtable}
 \noindent\textit{Note: IRC 112 Cl. 12.2. Distribution (longitudinal) reinforcement designed for 20\% of main steel moment (IRC 21 Cl. 305.18).}
 
 \vspace{1em}
 \noindent\textbf{Table 5.17(c)  Deck Slab --- Cantilever Overhang Flexure Check}
 
-\begin{table}[H]
-\vspace{-6pt}
-\begin{tabularx}{\textwidth}{|L{5.5cm}|C{3.5cm}|>{\centering\arraybackslash}X|C{2cm}|}
+\begin{longtable}{|L{5.5cm}|C{3.5cm}|>{\centering\arraybackslash}p{4.5cm}|C{2cm}|}
 \hline
 \textbf{Parameter} & \textbf{Formula} & \textbf{Value} & \textbf{Status} \\[6pt]
 \hline
@@ -1944,16 +1896,13 @@ Total Hogging Moment, $M_{u,oh}$ & 1.35 DL + 1.5 LL + 1.5 CB & \placeholder{$M_{
 \hline
 Moment Capacity (top steel), $M_{Rd,oh}$ & IRC 112 Cl. 12.2 & \placeholder{$M_{Rd,oh}$} kN-m/m & PASS / FAIL \\[6pt]
 \hline
-\end{tabularx}
-\end{table}
+\end{longtable}
 \noindent\textit{Note: IRC 6 Cl. 206.4 crash barrier loads applied at kerb face; IRC 112 Cl. 12.2 flexure.}
 
 \vspace{1em}
 \noindent\textbf{Table 5.17(d)  Deck Slab --- Punching Shear Check (IRC~112 Cl.~10.4.6)}
 
-\begin{table}[H]
-\vspace{-6pt}
-\begin{tabularx}{\textwidth}{|L{5.5cm}|C{3.5cm}|>{\centering\arraybackslash}X|C{2cm}|}
+\begin{longtable}{|L{5.5cm}|C{3.5cm}|>{\centering\arraybackslash}p{4.5cm}|C{2cm}|}
 \hline
 \textbf{Parameter} & \textbf{Formula / Reference} & \textbf{Value} & \textbf{Status} \\[6pt]
 \hline
@@ -1971,16 +1920,13 @@ Punching Resistance, $v_{Rd,c}$ & IRC 112 Cl. 10.4.6 & \placeholder{$v_{Rd,c}$} 
 \hline
 Punching Shear Check & $v_{Ed} \leq v_{Rd,c}$ & \placeholder{UR} & PASS / FAIL \\[6pt]
 \hline
-\end{tabularx}
-\end{table}
+\end{longtable}
 \noindent\textit{Note: Punching shear reinforcement not typically required for deck slabs with $d \geq 200$ mm and adequate longitudinal reinforcement.}
 
 \vspace{1em}
 \noindent\textbf{Table 5.17(e)  Crack Width Check (Deck Slab)}
 
-\begin{table}[H]
-\vspace{-6pt}
-\begin{tabularx}{\textwidth}{|C{7cm}|>{\arraybackslash}X|}
+\begin{longtable}{|C{7cm}|>{\arraybackslash}p{8.5cm}|}
 \hline
 \textbf{Min. Reinforcement for Crack Control, $A_{s,min}$} & \placeholder{$A_{s,min}$} cm² [IRC 22 Cl. 604.4] \\[6pt]
 \hline
@@ -1992,15 +1938,12 @@ Punching Shear Check & $v_{Ed} \leq v_{Rd,c}$ & \placeholder{UR} & PASS / FAIL \
 \hline
 \textbf{Crack Width Check} & PASS / FAIL \\[6pt]
 \hline
-\end{tabularx}
-\end{table}
+\end{longtable}
 
 \vspace{1em}
 \noindent\textbf{Table 5.17(f)  One-Way (Beam) Shear Check (Deck Slab)}
 
-\begin{table}[H]
-\vspace{-6pt}
-\begin{tabularx}{\textwidth}{|L{5.5cm}|C{3.5cm}|>{\centering\arraybackslash}X|C{2cm}|}
+\begin{longtable}{|L{5.5cm}|C{3.5cm}|>{\centering\arraybackslash}p{4.5cm}|C{2cm}|}
 \hline
 \textbf{Parameter} & \textbf{Formula / Reference} & \textbf{Value} & \textbf{Status} \\[6pt]
 \hline
@@ -2016,16 +1959,13 @@ Shear resistance (no stirrups), $V_{Rd,c}$ & IRC 112 Cl. 10.3.2: $[0.12\,k\,(80\
 \hline
 One-Way Shear Check & $V_{Ed} \leq V_{Rd,c}$ & \placeholder{UR} & PASS / FAIL \\[6pt]
 \hline
-\end{tabularx}
-\end{table}
+\end{longtable}
 \noindent\textit{Note: IRC 112 Cl. 10.3.2. Shear reinforcement not provided in deck slabs; capacity relies on concrete and main reinforcement.}
 
 \vspace{1em}
 \noindent\textbf{Table 5.17(g)  Reinforcement Detailing Summary (Deck Slab)}
 
-\begin{table}[H]
-\vspace{-6pt}
-\begin{tabularx}{\textwidth}{|L{5.5cm}|>{\centering\arraybackslash}X|>{\centering\arraybackslash}X|C{1.8cm}|}
+\begin{longtable}{|L{5.5cm}|>{\centering\arraybackslash}p{4.1cm}|>{\centering\arraybackslash}p{4.1cm}|C{1.8cm}|}
 \hline
 \textbf{Parameter} & \textbf{Required / Limit} & \textbf{Provided} & \textbf{Status} \\[6pt]
 \hline
@@ -2051,8 +1991,7 @@ Required Area, $A_{st,top}$ (mm²/m) & \placeholder{$A_{st,req,top}$} mm²/m & \
 \hline
 Clear Cover (IRC 112 Cl. 15.2) & 40 mm (Moderate exposure) & \placeholder{cover} mm & PASS \\[6pt]
 \hline
-\end{tabularx}
-\end{table}
+\end{longtable}
 \noindent\textit{Note: IRC 112 Cl. 16.3, IS 456 Cl. 26.5. All reinforcement provisions satisfy strength and detailing requirements.}
 
 % ===========================
@@ -2079,27 +2018,22 @@ Cross bracing between adjacent plate girders provides lateral stability during c
 \vspace{1em}
 \noindent\textbf{Table 5.20(b)  Cross Bracing --- Slenderness Ratio Check (IS~800 Cl.~3.8 \& Table~3)}
 
-\begin{table}[H]
-\vspace{-6pt}
-\begin{tabularx}{\textwidth}{|C{2.2cm}|C{2.2cm}|C{2.5cm}|C{2.5cm}|C{2.5cm}|>{\centering\arraybackslash}X|}
+\begin{longtable}{|C{2.2cm}|C{2.2cm}|C{2.5cm}|C{2.5cm}|C{2.5cm}|>{\centering\arraybackslash}p{3.6cm}|}
 \hline
 \textbf{Panel} & \textbf{Member} & \textbf{Nature} & \textbf{Eff.\ Length $KL$ (mm)} & \textbf{$KL/r$} & \textbf{Limit / Status} \\[6pt]
 \hline
 """ + cb_slenderness_content + r"""
-\end{tabularx}
-\end{table}
+\end{longtable}
 \noindent\textit{Note: IS 800 Table 3. Limit = 250 for compression members, 400 for tension members. $K = 1.0$ for members with both ends pinned.}
 
 \vspace{1em}
 \noindent\textbf{Table 5.20(c)  Cross Bracing --- Compression Capacity Check (IS~800 Cl.~7)}
 
-\begin{table}[H]
-\vspace{-6pt}
-\begin{tabularx}{\textwidth}{|C{2.5cm}|C{3.5cm}|C{3.5cm}|>{\centering\arraybackslash}X|C{1.8cm}|}
+\begin{longtable}{|C{2.5cm}|C{3.5cm}|C{3.5cm}|>{\centering\arraybackslash}p{4.2cm}|C{1.8cm}|}
 \hline
 \textbf{} & \textbf{Parameter} & \textbf{Formula} & \textbf{Value} & \textbf{Status} \\[6pt]
 \hline
-\multirow{8}{*}{\centering Diagonal\\(typical)} & Euler Critical Stress, $f_{cc}$ & $\pi^2 E / (KL/r)^2$ & \placeholder{$f_{cc}$} MPa & --- \\[6pt]
+\multirow{8}{*}{\makecell{Diagonal\\(typical)}} & Euler Critical Stress, $f_{cc}$ & $\pi^2 E / (KL/r)^2$ & \placeholder{$f_{cc}$} MPa & --- \\[6pt]
 \cline{2-5}
  & Non-dim.\ Slenderness, $\bar{\lambda}$ & $\sqrt{f_y / f_{cc}}$ & \placeholder{$\bar{\lambda}$} & --- \\[6pt]
 \cline{2-5}
@@ -2115,20 +2049,17 @@ Cross bracing between adjacent plate girders provides lateral stability during c
 \cline{2-5}
  & Utilization Ratio, $P_u / P_d$ & --- & \placeholder{UR} & $\leq 1.0$ \\[6pt]
 \hline
-\end{tabularx}
-\end{table}
+\end{longtable}
 \noindent\textit{Note: IS 800 Cl. 7.1.2. Effective area $A_e$ accounts for single-leg connection (shear lag) per IS 800 Cl. 7.5.1.2. $\gamma_{M0} = 1.10$.}
 
 \vspace{1em}
 \noindent\textbf{Table 5.20(d)  Cross Bracing --- Tension Capacity Check (IS~800 Cl.~6)}
 
-\begin{table}[H]
-\vspace{-6pt}
-\begin{tabularx}{\textwidth}{|C{2.5cm}|C{3.5cm}|C{3.5cm}|>{\centering\arraybackslash}X|C{1.8cm}|}
+\begin{longtable}{|C{2.5cm}|C{3.5cm}|C{3.5cm}|>{\centering\arraybackslash}p{4.2cm}|C{1.8cm}|}
 \hline
 \textbf{} & \textbf{Parameter} & \textbf{Formula} & \textbf{Value} & \textbf{Status} \\[6pt]
 \hline
-\multirow{6}{*}{\centering Bottom chord\\(typical)} & Gross Yielding, $T_{dg}$ & $A_g \times f_y / \gamma_{M0}$ & \placeholder{$T_{dg}$} kN & --- \\[6pt]
+\multirow{6}{*}{\makecell{Bottom chord\\(typical)}} & Gross Yielding, $T_{dg}$ & $A_g \times f_y / \gamma_{M0}$ & \placeholder{$T_{dg}$} kN & --- \\[6pt]
 \cline{2-5}
  & Net Section Area, $A_n$ & $A_g - n_h \times d_h \times t$ & \placeholder{$A_n$} mm² & --- \\[6pt]
 \cline{2-5}
@@ -2140,22 +2071,18 @@ Cross bracing between adjacent plate girders provides lateral stability during c
 \cline{2-5}
  & Utilization Ratio, $T_u / T_d$ & --- & \placeholder{UR} & $\leq 1.0$ \\[6pt]
 \hline
-\end{tabularx}
-\end{table}
+\end{longtable}
 \noindent\textit{Note: IS 800 Cl. 6.1--6.4. $d_h$ = bolt hole diameter; $n_h$ = number of bolt holes; $t$ = angle leg thickness. $\gamma_{M0} = 1.10$; $\gamma_{M1} = 1.25$.}
 
 \vspace{1em}
 \noindent\textbf{Table 5.20(e)  Cross Bracing Design --- Capacity Summary}
 
-\begin{table}[H]
-\vspace{-6pt}
-\begin{tabularx}{\textwidth}{|C{3.3cm}|C{3.2cm}|C{3.2cm}|>{\centering\arraybackslash}X|C{2.3cm}|}
+\begin{longtable}{|C{3.3cm}|C{3.2cm}|C{3.2cm}|>{\centering\arraybackslash}p{3.5cm}|C{2.3cm}|}
 \hline
 \textbf{} & \textbf{Member} & \textbf{Section} & \textbf{Demand (kN)} & \textbf{Capacity (kN)} \\[6pt]
 \hline
 """ + cb_capacity_content + r"""
-\end{tabularx}
-\end{table}
+\end{longtable}
 \noindent\textit{Note: Designed per IS 800 Cl. 7 (compression) and Cl. 6 (tension). OsdagBridge cross-bracing module used.}
 
 % ===========================
@@ -2168,9 +2095,7 @@ End diaphragms at the supports transfer transverse loads to the bearings, restra
 \vspace{1em}
 \noindent\textbf{Table 5.21(a)  End Diaphragm --- Member Properties and Forces}
 
-\begin{table}[H]
-\vspace{-6pt}
-\begin{tabularx}{\textwidth}{|L{5.5cm}|X|}
+\begin{longtable}{|L{5.5cm}|p{10.0cm}|}
 \hline
 \textbf{End Diaphragm Type} & \placeholder{K-Bracing / X-Bracing / Rolled Beam / Welded} \\[6pt]
 \hline
@@ -2186,17 +2111,14 @@ End diaphragms at the supports transfer transverse loads to the bearings, restra
 \hline
 \textbf{Axial Force, $P_u$ (diagonal members)} & \placeholder{$P_u$} kN \\[6pt]
 \hline
-\end{tabularx}
-\end{table}
+\end{longtable}
 
 \vspace{1em}
 \noindent\textbf{Table 5.21(b)  End Diaphragm Design --- Capacity Checks}
 
-\begin{table}[H]
-\vspace{-6pt}
-\begin{tabularx}{\textwidth}{|C{4cm}|L{5cm}|>{\arraybackslash}X|}
+\begin{longtable}{|C{4cm}|L{5cm}|>{\arraybackslash}p{6.5cm}|}
 \hline
-\multirow{7}{*}{\centering\textbf{\shortstack{End Diaphragm\\(G1--G2 and\\G2--G3, etc.)}}} & \textbf{Section Designation} & \placeholder{Section} \\[6pt]
+\multirow{7}{*}{\makecell{\textbf{End Diaphragm}\\\textbf{(G1--G2 and)}\\\textbf{(G2--G3, etc.)}}} & \textbf{Section Designation} & \placeholder{Section} \\[6pt]
 \cline{2-3}
  & \textbf{Moment Demand, $M_u$} & \placeholder{$M_u$} kN-m \\[6pt]
 \cline{2-3}
@@ -2210,15 +2132,12 @@ End diaphragms at the supports transfer transverse loads to the bearings, restra
 \cline{2-3}
  & \textbf{Status} & PASS / FAIL \\[6pt]
 \hline
-\end{tabularx}
-\end{table}
+\end{longtable}
 \noindent\textit{Note: IS 800:2007 Cl. 8.2 (moment capacity), Cl. 8.4 (shear capacity). IRC 24:2010 Cl. 507 (diaphragm requirements).}
 \vspace{1em}
 \noindent\textbf{Table 5.22  Overall Design Check Summary --- All Members}
 
-\begin{table}[H]
-\vspace{-6pt}
-\begin{tabularx}{\textwidth}{|C{4cm}|C{3cm}|C{2.5cm}|C{2.5cm}|>{\centering\arraybackslash}X|}
+\begin{longtable}{|C{4cm}|C{3cm}|C{2.5cm}|C{2.5cm}|>{\centering\arraybackslash}p{3.5cm}|}
 \hline
 \textbf{Member / Check} & \textbf{Governing Load Combo} & \textbf{Demand} & \textbf{Capacity} & \textbf{UR} \\[6pt]
 \hline
@@ -2228,7 +2147,7 @@ Girder --- Shear & LC-ULS-1 & \placeholder{$V_u$} & \placeholder{$V_d$} & \place
 \hline
 Girder --- LTB (constr.) & LC-ULS-1 & \placeholder{$M_u$} & \placeholder{$M_b$} & \placeholder{UR} \\[6pt]
 \hline
-Girder --- Deflection & LC-SLS-1 & \placeholder{δ} & \placeholder{δ\_allow} & \placeholder{UR} \\[6pt]
+Girder --- Deflection & LC-SLS-1 & \placeholder{$\delta$} & \placeholder{$\delta$\_allow} & \placeholder{UR} \\[6pt]
 \hline
 Girder --- Stress & LC-SLS-1 & \placeholder{sigma} & \placeholder{sigma\_allow} & \placeholder{UR} \\[6pt]
 \hline
@@ -2262,8 +2181,7 @@ End Diaphragm --- Shear & LC-ULS-1 & \placeholder{$V_u$} & \placeholder{$V_d$} &
 \hline
 Inter. Stiffener ($I_s$) & --- & \placeholder{$I_{s,req}$} & \placeholder{$I_{s,prov}$} & PASS \\[6pt]
 \hline
-\end{tabularx}
-\end{table}
+\end{longtable}
 \noindent\textit{Note: UR = Demand / Capacity. All values $\leq 1.0$ indicate passing checks. The governing check for each component is highlighted in the individual design check sections above.}
 
 """
@@ -2458,8 +2376,8 @@ def ch7_quantities(input_dict):
 
 \noindent\textbf{Table 7.1  Bill of Materials (Steel tonnage for girders, bracing, stiffeners, studs, etc.; Concrete volume; Reinforcement)}
 
-\begin{table}[H]
-\begin{tabularx}{\textwidth}{|>{\centering\arraybackslash}C{1cm}|X|>{\centering\arraybackslash}C{2cm}|>{\centering\arraybackslash}C{2cm}|>{\centering\arraybackslash}C{2cm}|}
+
+\begin{longtable}{|>{\centering\arraybackslash}C{1cm}|p{8.5cm}|>{\centering\arraybackslash}C{2cm}|>{\centering\arraybackslash}C{2cm}|>{\centering\arraybackslash}C{2cm}|}
 \hline
 \textbf{S.N.} & \textbf{Item Description} & \textbf{Unit} & \textbf{Quantity} & \textbf{Remarks} \\
 \hline
@@ -2473,8 +2391,7 @@ def ch7_quantities(input_dict):
 \hline
 5 & Shear Stud Connectors & Nos & """ + str(input_dict.get("shear_studs_nos", _ph("shear_studs_nos"))) + r""" & \\
 \hline
-\end{tabularx}
-\end{table}
+\end{longtable}
 """
 
 
