@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QTabWidget, QTabBar, QWidget, QSizeGrip,
     QSizePolicy, QRadioButton, QLabel, QFrame
@@ -18,7 +16,6 @@ from matplotlib.figure import Figure
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 
 from osdagbridge.core.bridge_types.plate_girder.graph_engine import GirderGraphEngine
-from osdagbridge.core.utils.common import DESIGN_CHECK_ORDER
 
 # Prefix used to identify non-selectable category header items in combo boxes.
 _COMBO_HEADER_PREFIX = "──"
@@ -58,6 +55,7 @@ class SteelDesign(QDialog):
                 
         self._result_handler = result_handler  # PlateGirderAnalysisResults or None
         self._checks_ran   = False
+        self._last_handler = None
         self.setObjectName("SteelDesign")
         self.resize(1024, 720)
         self.setMinimumSize(900, 520)
@@ -492,10 +490,9 @@ class SteelDesign(QDialog):
 
         # ── Signal wiring ─────────────────────────────────────────────────────
         self.tabs.currentChanged.connect(self._on_tab_changed)
+        # NOTE: member_combo and load_combo are now fully interactive
         self.member_combo.currentIndexChanged.connect(self._update_analysis_plots)
-        self.member_combo.currentIndexChanged.connect(self._on_selection_changed_maybe_refresh_checks)
         self.load_combo.currentIndexChanged.connect(self._on_load_combo_changed)
-        self.load_combo.currentIndexChanged.connect(self._on_selection_changed_maybe_refresh_checks)
         if hasattr(self.analysis_tab, "component_combo"):
             self.analysis_tab.component_combo.currentIndexChanged.connect(self._update_analysis_plots)
             self.analysis_tab.component_combo.currentIndexChanged.connect(
@@ -521,6 +518,10 @@ class SteelDesign(QDialog):
         # Track the last plotted (member, loadcase, component) to avoid
         # expensive matplotlib re-renders when nothing has changed.
         self._last_plot_key: tuple | None = None
+
+        # Track the last member key for which DCR was computed so the
+        # Design Check tab can skip re-running the full pipeline.
+        self._last_dcr_member_key: str | None = None
 
         # Flag set when member/LC selection changes — tells the Design Check
         # tab that cached DCR values are stale and need recomputation.
@@ -570,35 +571,35 @@ class SteelDesign(QDialog):
 
         self._update_analysis_plots()
 
-    def _on_selection_changed_maybe_refresh_checks(self) -> None:
-        """
-        Called when member or load combo changes.
-        Marks design check results stale; if the Design Check tab is
-        currently visible, refreshes immediately so the user sees
-        updated values without switching away and back.
-        """
-        self._dcr_dirty = True
-        if self.tabs.currentIndex() == 2:
-            self._run_design_checks()
-            
     def _run_design_checks(self) -> None:
-        if self._checks_ran and not self._dcr_dirty:
+        """
+        Populate the Design Check tab for the currently selected member.
+
+        Uses a dirty-flag + member-key cache to avoid re-running the full
+        DCR pipeline when nothing has changed.  The first call falls back
+        to the pre-computed engine stored on the backend; subsequent calls
+        dynamically recompute for the selected member.
+        """
+        combo      = self.member_combo
+        member_key = combo.currentData() or combo.currentText() or ""
+
+        # Fast path: nothing changed since the last computation.
+        if not self._dcr_dirty and member_key == self._last_dcr_member_key:
+            return
+
+        # If a member is selected, compute DCR dynamically for that girder.
+        if member_key:
+            self._update_design_checks_for_member(member_key)
+            return
+
+        # Fallback for first launch: use the backend's pre-computed engine
+        # (produced during design() → _run_dcr_checks()).
+        if self._checks_ran and (self._result_handler is self._last_handler):
             return
 
         try:
             backend = getattr(self._main_window, "backend", None)
-            if backend is None:
-                return
-
-            # Resolve current selection from the dialog's own dropdowns
-            girder_key = self.member_combo.currentData() or self.member_combo.currentText()
-            load_case  = self.load_combo.currentText()
-
-            if not girder_key or not load_case or load_case.startswith(_COMBO_HEADER_PREFIX):
-                return
-
-            # Single computation path — same method the Output Dock uses
-            engine = backend.get_dcr_engine_for_selection(girder_key, load_case)
+            engine  = getattr(backend, "_dcr_engine", None) if backend else None
             if engine is None:
                 return
 
@@ -606,15 +607,110 @@ class SteelDesign(QDialog):
                 engine.demand, engine.capacity, engine,
             )
 
-            self._checks_ran = True
-            self._dcr_dirty  = False
+            self._checks_ran          = True
+            self._last_handler        = self._result_handler
+            self._dcr_dirty           = False
+            self._last_dcr_member_key = member_key
 
         except Exception:
             import traceback
             err = f"Design check error:\n{traceback.format_exc()}"
-            for key in DESIGN_CHECK_ORDER:
+            for key in ("flexure", "shear", "interaction", "ltb",
+                        "shear_long_trans", "fatigue", "stress", "deflection"):
                 self.check_tab.set_check_result(key, err)
-                
+
+    def _update_design_checks_for_member(self, member_key: str) -> None:
+        """
+        Re-run the DCR pipeline for the selected girder member.
+
+        Skips if *member_key* matches the last-computed key and the dirty
+        flag is not set, providing O(1) repeated tab visits.
+
+        Reads pre-computed per-girder results from backend.design_results
+        and re-runs capacity + DCR for the selected girder's demands.
+        """
+        # Skip if already computed for this exact selection.
+        if member_key == self._last_dcr_member_key and not self._dcr_dirty:
+            return
+
+        try:
+            backend = getattr(self._main_window, "backend", None)
+            if backend is None or self._result_handler is None:
+                return
+
+            from osdagbridge.core.bridge_types.plate_girder.designer import (
+                BridgeConfig,
+                DemandEnvelope,
+                IRC22CapacityCalculator,
+                DCREngine,
+            )
+
+            # Step 1: BridgeConfig
+            config = BridgeConfig.from_plate_girder_bridge(backend)
+
+            # Step 2: Get pre-computed per-girder demand from design_results
+            design_results = getattr(backend, "design_results", None)
+            if design_results is None:
+                return
+
+            per_girder = design_results.get("per_girder", {})
+            girder_data = per_girder.get(member_key)
+            if girder_data is None:
+                # member_key not found — keep the existing checks
+                return
+
+            # Step 3: Reconstruct DemandEnvelope from stored demand dict
+            d = girder_data.get("demand", {})
+            demand = DemandEnvelope(
+                Mu_kNm             = d.get("Mu_kNm",             0.0),
+                Vu_kN              = d.get("Vu_kN",              0.0),
+                Nu_kN              = d.get("Nu_kN",              0.0),
+                M_construction_kNm = d.get("M_construction_kNm", 0.0),
+                M_girder_sw_kNm    = d.get("M_girder_sw_kNm",    0.0),
+                M_sls_kNm          = d.get("M_sls_kNm",          0.0),
+                V_sls_kN           = d.get("V_sls_kN",           0.0),
+                delta_live_mm      = d.get("delta_live_mm",       0.0),
+                delta_total_mm     = d.get("delta_total_mm",      0.0),
+                stress_range_MPa   = d.get("stress_range_MPa",    0.0),
+                shear_range_MPa    = d.get("shear_range_MPa",     0.0),
+                Nsc                = int(config.fatigue.Nsc),
+                governing_combination = d.get("governing_combination", ""),
+                location           = "critical element",
+                member             = member_key,
+                source             = d.get("source", "grillage_analysis"),
+                lc_type            = "",  # aggregate envelope — all checks run
+            )
+
+            # Step 4: Compute capacity
+            calculator = IRC22CapacityCalculator(config)
+            capacity = calculator.compute_all(
+                Vu_kN            = demand.Vu_kN,
+                stress_range_MPa = demand.stress_range_MPa,
+                M_sls_kNm        = demand.M_sls_kNm,
+                V_sls_kN         = demand.V_sls_kN,
+                Vr_kN            = demand.Vr_kN,
+            )
+
+            # Step 5: Run DCR checks
+            engine = DCREngine(demand, capacity)
+            engine.run_all_checks()
+
+            # Store the dynamic engine
+            self._dynamic_dcr_engine = engine
+
+            # Step 6: Update the Design Check tab
+            self.check_tab.populate_from_results(
+                engine.demand, engine.capacity, engine,
+            )
+
+            # Mark as clean for this member.
+            self._dcr_dirty           = False
+            self._last_dcr_member_key = member_key
+
+        except Exception:
+            import traceback
+            traceback.print_exc()
+            
     @property
     def _interaction_mode(self) -> str:
         """Return the active display mode based on radio button selection."""
@@ -1037,29 +1133,33 @@ class SteelDesign(QDialog):
         if self._current_x is None:
             return
 
-        mode = self._interaction_mode
-        xf   = self.analysis_tab.x_fields
-        keys = list(xf.keys())
+        mode    = self._interaction_mode
+        xf      = self.analysis_tab.x_fields   # {bmd_key: label, sfd_key: label, defl_key: label}
+        keys    = list(xf.keys())              # [bmd_key, sfd_key, defl_key]
+
+        # Unit suffix helpers for single-line interactive labels
+        def _unit(k):
+            if k.startswith("D"):
+                return "mm"
+            elif k.startswith("M"):
+                return "kNm"
+            return "kN"
 
         if mode == "Maximum Values":
-            max_d = getattr(self, "_current_max_dict", {})
-            vals  = [
-                max_d.get("M_max", 0.0),
-                max_d.get("V_max", 0.0),
-                max_d.get("D_max", 0.0),
-            ]
-            x_pos = [
-                max_d.get("x_M", 0.0),
-                max_d.get("x_V", 0.0),
-                max_d.get("x_D", 0.0),
-            ]
-            fmt = "{:.2f}<br>at x = {x:.2f} m"
+            max_d  = getattr(self, "_current_max_dict", {})
+            vals   = [max_d.get("M_max", 0.0), max_d.get("V_max", 0.0), max_d.get("D_max", 0.0)]
+            x_pos  = [max_d.get("x_M", 0.0),   max_d.get("x_V", 0.0),   max_d.get("x_D", 0.0)]
+            # Value unit stripped — shown in row label ("M_z (kNm)" etc.).
+            # Position '... at x = N.NN m' keeps 'm' (positional context, not force unit).
+            fmts   = ["{:.2f}<br>at x = {x:.2f} m",
+                      "{:.2f}<br>at x = {x:.2f} m",
+                      "{:.2f}<br>at x = {x:.2f} m"]
 
             if hasattr(self.analysis_tab, "x_input"):
                 self.analysis_tab.x_input.setText("Multiple")
                 self.analysis_tab.x_input.setFixedHeight(55)
 
-            for key, val, xp in zip(keys, vals, x_pos):
+            for key, val, xp, fmt in zip(keys, vals, x_pos, fmts):
                 if key in xf:
                     xf[key].setFixedHeight(55)
                     xf[key].setText(fmt.format(val, x=xp))
@@ -1081,13 +1181,16 @@ class SteelDesign(QDialog):
                 interp_data.append(self._current_defl)
             else:
                 interp_data.append(np.zeros_like(self._current_x))
+            
+            # Value unit stripped — shown in row label. Precision unchanged.
+            fmts_scalar = ["{:.2f}", "{:.2f}", "{:.2f}"]
 
             if hasattr(self.analysis_tab, "x_input"):
                 self.analysis_tab.x_input.setText(f"{cx:.2f}")  # numerical position only
                 self.analysis_tab.x_input.setFixedHeight(35)
 
-            for key, data in zip(keys, interp_data):
+            for key, data, fmt in zip(keys, interp_data, fmts_scalar):
                 if key in xf:
                     val = float(np.interp(cx, self._current_x, data))
                     xf[key].setFixedHeight(35)
-                    xf[key].setText(f"{val:.2f}")
+                    xf[key].setText(fmt.format(val))
