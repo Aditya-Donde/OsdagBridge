@@ -173,11 +173,11 @@ class MplPlotWidget(QWidget):
 
         # Display States
         self._grillage_mode = False
-        self._show_nodes = True 
+        self._show_nodes = False 
         self._show_axis = False 
-        self._show_supports = True 
+        self._show_supports = False 
         self._show_grid = False  
-        self._show_girder_labels = True
+        self._show_girder_labels = False
         self._show_node_numbers = False
         self._show_element_numbers = False
         self._is_summary_checked = False
