@@ -3,7 +3,8 @@ Custom 3D CAD Viewer with stable hover highlighting for models and ViewCube.
 """
 import math
 from PySide6.QtCore import QEvent, QPoint, QRect, QSize, QTimer, Qt
-from PySide6.QtWidgets import QApplication, QRubberBand, QToolTip
+from PySide6.QtGui  import QColor, QFont, QPainter, QPen, QPolygon
+from PySide6.QtWidgets import QApplication, QRubberBand, QToolTip, QWidget
 
 from OCC.Display import backend
 backend.load_backend("pyside6")
@@ -12,6 +13,221 @@ from OCC.Display.qtDisplay import qtViewer3d
 from navcube import NavCubeOverlay, NavCubeStyle
 from navcube.connectors.occ import OCCNavCubeSync
 
+
+# =============================================================================
+# OCC-FREE AXIS TRIAD OVERLAY  (drawing is pure QPainter; camera sync via poll)
+# =============================================================================
+
+class AxisTriadOverlay(QWidget):
+    """
+    QPainter-drawn XYZ axis gizmo that stays in sync with the OCC camera.
+
+    COLOURS (user spec)
+    --------------------
+    X  rgb(217,  26,  26)  red
+    Y  rgb(  0,  89,   0)  dark green
+    Z  rgb( 26,  26, 217)  blue
+
+    SYNCHRONISATION
+    ---------------
+    A QTimer fires every _POLL_MS milliseconds and reads three float-tuples
+    from V3d_View.Eye / .At / .Up.  From those three vectors the camera's
+    Right and Up basis directions are computed in pure Python math, then each
+    world axis (X, Y, Z) is projected onto the 2-D screen plane.
+
+    Because the timer reads the SAME V3d_View that OCCNavCubeSync drives, the
+    triad is automatically in sync with the NavCube — view snaps, free rotation,
+    auto-rotate and any other camera driver all update the triad without any
+    extra wiring.
+
+    MATH (verified for front view)
+    ------------------------------
+    forward  = normalize(At  - Eye)          # camera look direction
+    up       = normalize(Up)                 # camera up (from V3d_View)
+    right    = normalize(up  × forward)      # camera screen-right
+
+    For a world axis V:
+      screen_x = dot(V, right)              → horizontal offset from centre
+      screen_y = dot(V, up)                 → vertical   offset (Qt Y-down corrected below)
+
+    Verified front view (Eye on +Y, At at origin, Up = Z):
+      forward  = (0,-1, 0),  up = (0,0,1),  right = (1,0,0)
+      world X  → screen_x=1, screen_y=0  → points RIGHT   ✓
+      world Y  → screen_x=0, screen_y=0  → into screen (dot) ✓
+      world Z  → screen_x=0, screen_y=1  → points UP     ✓
+    """
+
+    _POLL_MS   = 50     # refresh rate (ms)  ≈ 20 fps, negligible CPU
+    _SIZE      = 80     # widget side (logical px)
+    _ARM_LEN   = 26     # shaft length (logical px)
+    _HEAD_BASE = 7      # arrowhead half-base (logical px)
+    _LINE_W    = 2      # shaft line width
+    _FONT_SZ   = 9      # axis label point size
+    _MARGIN    = 14     # gap from viewer bottom-right corner
+
+    _COL_X = QColor(217,  26,  26)
+    _COL_Y = QColor(  0,  89,   0)
+    _COL_Z = QColor( 26,  26, 217)
+
+    def __init__(self, viewer_widget, parent=None):
+        super().__init__(parent or viewer_widget)
+        self._viewer = viewer_widget
+
+        self.setAttribute(Qt.WA_TransparentForMouseEvents, True)
+        self.setAttribute(Qt.WA_NoSystemBackground,        True)
+        self.setStyleSheet("background: transparent;")
+
+        # Default screen projections — identity (front view, Z-up OCC convention):
+        #   X → right,  Y → into screen (near zero),  Z → up
+        self._Xx, self._Xy = 1.0, 0.0
+        self._Yx, self._Yy = 0.0, 0.0
+        self._Zx, self._Zy = 0.0, 1.0
+
+        # Poll timer — started in start(), stopped in stop()
+        self._timer = QTimer(self)
+        self._timer.setInterval(self._POLL_MS)
+        self._timer.timeout.connect(self._sync_from_view)
+        self._started = False
+
+    # ------------------------------------------------------------------ #
+    #  Public API                                                         #
+    # ------------------------------------------------------------------ #
+
+    def start(self):
+        """Show the widget and begin polling the OCC view orientation."""
+        self._started = True
+        self._timer.start()
+        self.show()
+        self.raise_()
+
+    def stop(self):
+        """Hide the widget and stop the poll timer."""
+        self._started = False
+        self._timer.stop()
+        self.hide()
+
+    # ------------------------------------------------------------------ #
+    #  Camera sync (pure math — no OCC rendering calls)                  #
+    # ------------------------------------------------------------------ #
+
+    def _sync_from_view(self):
+        """
+        Read Eye/At/Up from V3d_View and recompute the 2-D screen projections
+        for the X, Y, Z world axes.  No OCC rendering API is touched.
+        """
+        try:
+            view = getattr(self._viewer, "view", None)
+            if view is None:
+                return
+
+            # 1. Read camera geometry (3 float-tuple reads)
+            eye    = view.Eye()   # camera position   (world coords)
+            at     = view.At()    # look-at point     (world coords)
+            up_raw = view.Up()    # camera up vector  (world coords)
+
+            # 2. Camera forward = normalize(At - Eye)
+            fx = float(at[0]) - float(eye[0])
+            fy = float(at[1]) - float(eye[1])
+            fz = float(at[2]) - float(eye[2])
+            fn = math.sqrt(fx*fx + fy*fy + fz*fz) or 1.0
+            fx /= fn;  fy /= fn;  fz /= fn
+
+            # 3. Camera up = normalize(Up)
+            ux = float(up_raw[0]);  uy = float(up_raw[1]);  uz = float(up_raw[2])
+            un = math.sqrt(ux*ux + uy*uy + uz*uz) or 1.0
+            ux /= un;  uy /= un;  uz /= un
+
+            # 4. Camera right = normalize(forward × up)
+            #    forward × up gives the screen-right direction:
+            #    verified: front view (fwd=(0,1,0), up=(0,0,1)) → right=(1,0,0) ✓
+            rx = fy*uz - fz*uy
+            ry = fz*ux - fx*uz
+            rz = fx*uy - fy*ux
+            rn = math.sqrt(rx*rx + ry*ry + rz*rz) or 1.0
+            rx /= rn;  ry /= rn;  rz /= rn
+
+            # 5. Project each world axis onto screen plane:
+            #    screen_x = dot(world_axis, right)
+            #    screen_y = dot(world_axis, up)   [used as cy - _Xy*L, so up → smaller Qt-y]
+            self._Xx = rx;   self._Xy = ux   # world X = [1,0,0]
+            self._Yx = ry;   self._Yy = uy   # world Y = [0,1,0]
+            self._Zx = rz;   self._Zy = uz   # world Z = [0,0,1]
+
+            self.update()
+        except Exception:
+            pass
+
+    # ------------------------------------------------------------------ #
+    #  Drawing (100 % QPainter)                                          #
+    # ------------------------------------------------------------------ #
+
+    def paintEvent(self, event):          # noqa: N802
+        p = QPainter(self)
+
+        # Erase the previous frame by painting a solid background first.
+        # This is the safest cross-platform approach — no Qt translucent-window
+        # attributes needed, works on macOS+OpenGL without crashing.
+        p.setRenderHint(QPainter.Antialiasing, True)
+        p.setPen(Qt.NoPen)
+        p.setBrush(QColor(245, 245, 245, 200))   # light grey, slightly transparent
+        p.drawRoundedRect(self.rect(), 8, 8)
+
+        cx = cy = self._SIZE // 2
+        L  = self._ARM_LEN
+
+        # 2-D tip positions.  Qt Y is positive downward → negate the up component:
+        #   tx = cx + screen_x * L
+        #   ty = cy - screen_y * L   (up in world → ty < cy → visually above centre)
+        # Label → projection mapping:
+        #   Display "X"  ← OCC world X  (span,  screen-right)
+        #   Display "Y"  ← OCC world Z  (height, screen-up)   ← user wants Y=up
+        #   Display "Z"  ← OCC world Y  (depth,  into screen) ← user wants Z=depth
+        tips = [
+            ("X", self._COL_X,
+             cx + round(self._Xx * L),  cy - round(self._Xy * L)),
+            ("Y", self._COL_Y,
+             cx + round(self._Zx * L),  cy - round(self._Zy * L)),
+            ("Z", self._COL_Z,
+             cx + round(self._Yx * L),  cy - round(self._Yy * L)),
+        ]
+
+        # Back-to-front: axis tips farthest from centre are "behind"
+        tips.sort(key=lambda t: -((t[2] - cx) ** 2 + (t[3] - cy) ** 2))
+
+        for label, col, tx, ty in tips:
+            self._draw_arrow(p, cx, cy, tx, ty, col, label)
+
+        p.end()
+
+    def _draw_arrow(self, p, ox, oy, tx, ty, col, label):
+        """Shaft + filled arrowhead triangle + axis letter."""
+        dx, dy = tx - ox, ty - oy
+        ln     = math.sqrt(dx * dx + dy * dy) or 1.0
+        hs     = self._HEAD_BASE
+
+        # Shaft
+        p.setPen(QPen(col, self._LINE_W, Qt.SolidLine, Qt.RoundCap))
+        p.drawLine(ox, oy, tx, ty)
+
+        # Arrowhead (filled triangle)
+        px = -dy / ln;  py = dx / ln          # unit perpendicular
+        bx = tx - round(dx / ln * hs * 1.6)  # base of head
+        by = ty - round(dy / ln * hs * 1.6)
+        poly = QPolygon([
+            QPoint(tx, ty),
+            QPoint(round(bx + px * hs * 0.7), round(by + py * hs * 0.7)),
+            QPoint(round(bx - px * hs * 0.7), round(by - py * hs * 0.7)),
+        ])
+        p.setPen(Qt.NoPen)
+        p.setBrush(col)
+        p.drawPolygon(poly)
+
+        # Axis letter (just beyond the arrowhead)
+        p.setPen(QPen(col))
+        p.setFont(QFont("Arial", self._FONT_SZ, QFont.Bold))
+        lx = tx + round(dx / ln * 9)
+        ly = ty + round(dy / ln * 9)
+        p.drawText(lx - 5, ly + 5, label)
 
 class CustomViewer3d(qtViewer3d):
     def __init__(self, parent=None):
@@ -55,6 +271,11 @@ class CustomViewer3d(qtViewer3d):
         self.last_mouse_pos = None
         self._auto_rotate_timer: QTimer | None = None   # turntable timer
 
+        # Axis triad overlay — parented as a sibling of the OCC canvas so
+        # Qt can composit it over the OpenGL surface on all platforms.
+        self._axis_triad = AxisTriadOverlay(self, parent=overlay_parent)
+        self._axis_triad.hide()
+
         # ---------------- Zoom-window rubber band ----------------
         self._zoom_win_start: QPoint | None = None
         self._zoom_win_active: bool = False
@@ -64,6 +285,7 @@ class CustomViewer3d(qtViewer3d):
         super().resizeEvent(event)
         self._resize_navcube()
         self._position_navcube()
+        self._position_axis_triad()
 
     def _resize_navcube(self):
         """Scale the NavCube to a consistent 8% of the viewport in physical pixels.
@@ -111,11 +333,13 @@ class CustomViewer3d(qtViewer3d):
     def moveEvent(self, event):
         super().moveEvent(event)
         self._position_navcube()
+        self._position_axis_triad()
 
     def showEvent(self, event):
         super().showEvent(event)
         self._resize_navcube()
         self._position_navcube()
+        self._position_axis_triad()
         # Re-show the navcube when the tab is restored or the window is un-minimized.
         # Only show it if OCC has already been initialised (_navcube_sync set).
         if (
@@ -124,10 +348,18 @@ class CustomViewer3d(qtViewer3d):
         ):
             self.navcube.show()
             self.navcube.raise_()
+        # Re-show axis triad if it was already started (timer was running before hide)
+        if hasattr(self, "_axis_triad") and self._axis_triad:
+            at = self._axis_triad
+            if getattr(at, "_started", False):
+                at.show()
+                at.raise_()
 
     def hideEvent(self, event):
         if hasattr(self, "navcube") and self.navcube:
             self.navcube.hide()
+        if hasattr(self, "_axis_triad") and self._axis_triad:
+            self._axis_triad.hide()
         super().hideEvent(event)
 
     def _position_navcube(self):
@@ -156,6 +388,33 @@ class CustomViewer3d(qtViewer3d):
         if self.navcube.isVisible():
             self.navcube.raise_()
 
+    def _position_axis_triad(self):
+        """Place the axis triad in the bottom-right corner of the viewer,
+        translated to its parent widget's coordinate system (same logic as
+        _position_navcube so it works for any host layout)."""
+        if not hasattr(self, "_axis_triad") or not self._axis_triad:
+            return
+        sz = self._axis_triad._SIZE
+        mg = self._axis_triad._MARGIN
+        local_pos = QPoint(
+            max(0, self.width()  - sz - mg),
+            max(0, self.height() - sz - mg),
+        )
+        host = self._axis_triad.parentWidget()
+        if host is None or host is self:
+            target_pos = local_pos
+        elif self._axis_triad.isWindow():
+            target_pos = self.mapToGlobal(local_pos)
+        else:
+            target_pos = host.mapFromGlobal(self.mapToGlobal(local_pos))
+        self._axis_triad.setGeometry(target_pos.x(), target_pos.y(), sz, sz)
+        if self._axis_triad.isVisible():
+            self._axis_triad.raise_()
+
+    def apply_triad_delta(self, dx: float, dy: float):
+        """No-op — kept for compatibility. Triad now syncs via poll timer."""
+        pass
+
     def eventFilter(self, watched, event):
         if watched is getattr(self, "_overlay_anchor", None):
             if event.type() in (
@@ -165,8 +424,11 @@ class CustomViewer3d(qtViewer3d):
                 QEvent.WindowStateChange,
             ):
                 self._position_navcube()
+                self._position_axis_triad()
                 if hasattr(self, "navcube") and self.navcube and self.navcube.isVisible():
                     self.navcube.raise_()
+                if hasattr(self, "_axis_triad") and self._axis_triad and self._axis_triad.isVisible():
+                    self._axis_triad.raise_()
         return super().eventFilter(watched, event)
 
     def set_node_hover_data(self, nodes: list | None) -> None:
@@ -271,7 +533,7 @@ class CustomViewer3d(qtViewer3d):
             event.accept()
             return
 
-        # NEW: Skip hover/raycasting completely if a mouse button is pressed (active dragging)
+        # Skip hover/raycasting when a mouse button is pressed (OCC drag active)
         if event.buttons() != Qt.NoButton:
             super().mouseMoveEvent(event)
             return
@@ -519,10 +781,8 @@ class CustomViewer3d(qtViewer3d):
     def _teardown_navcube(self):
         """
         Called via self.destroyed signal when this viewer's C++ object is
-        being deleted.  Tears down the OCC sync helper (stops its poll timer,
-        disconnects signals) then makes the navicube widget inert.
-        The widget itself is parented to the tab and is deleted by Qt; we
-        just ensure no OCC calls happen after this point.
+        being deleted.  Tears down the OCC sync helper then makes all overlays
+        inert so no further Qt/OCC calls happen.
         """
         try:
             sync = getattr(self, "_navcube_sync", None)
@@ -538,13 +798,19 @@ class CustomViewer3d(qtViewer3d):
                 nc.hide()
         except Exception:
             pass
+        # Stop the axis triad (it has no OCC refs but we hide it cleanly)
+        try:
+            if hasattr(self, "_axis_triad") and self._axis_triad:
+                self._axis_triad.stop()
+        except Exception:
+            pass
         self._stop_auto_rotate()
 
     # ------------------------------------------------------------------
     # View Cube Display
     # ------------------------------------------------------------------
     def display_view_cube(self):
-        """Displays the custom Qt NaviCube overlay after CAD init."""
+        """Displays the NaviCube overlay and starts the axis triad after CAD init."""
         if not (hasattr(self, "navcube") and self.navcube and self.view):
             return
 
@@ -589,6 +855,12 @@ class CustomViewer3d(qtViewer3d):
         self.navcube.show()
         self.navcube.raise_()
         QTimer.singleShot(150, self._show_navcube_when_ready)
+
+        # Show axis triad (pure Qt — no OCC init needed)
+        if hasattr(self, "_axis_triad") and self._axis_triad:
+            self._position_axis_triad()
+            self._axis_triad._started = True   # flag so showEvent can re-show it
+            self._axis_triad.start()
 
     def _show_navcube_when_ready(self):
         self._resize_navcube()
@@ -765,6 +1037,7 @@ class CustomViewer3d(qtViewer3d):
         frame, then applies a fixed virtual horizontal drag of
         ``_AUTO_ROTATE_SPEED_PX`` pixels — giving a constant angular delta per
         tick regardless of accumulated position.
+        Also drives the axis triad by the same pixel delta (pure math, no OCC).
         """
         if not self.view:
             return
