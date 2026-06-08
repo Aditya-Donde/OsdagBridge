@@ -22,7 +22,13 @@ from .defaults import (
 from .initial_sizing import DEFAULT_FOOTPATH_WIDTH
 from .analyser import BridgeGrillageModel
 from .analysis_results import PlateGirderAnalysisResults
-from .designer import run_design_check
+from .designer import (
+    run_design_check,
+    BridgeConfig,
+    IRC22CapacityCalculator,
+    DCREngine,
+    DemandEnvelope,
+)
 from . import deckdesign
 from .plot_generator import (
     build_figure_sfd,
@@ -2354,15 +2360,43 @@ class PlateGirderBridge:
                 Mu_kNm=lc_demand.get("Mu_kNm", 0.0),
                 Vu_kN=lc_demand.get("Vu_kN", 0.0),
                 Nu_kN=lc_demand.get("Nu_kN", 0.0),
+
+                # Raw force components
+                Mx_kNm=lc_demand.get("Mx_kNm", 0.0),
+                My_kNm=lc_demand.get("My_kNm", 0.0),
+                Vz_kN=lc_demand.get("Vz_kN", 0.0),
+
+                # Raw displacement components
+                Dx_mm=lc_demand.get("Dx_mm", 0.0),
+                Dy_mm=lc_demand.get("Dy_mm", 0.0),
+                Dz_mm=lc_demand.get("Dz_mm", 0.0),
+
+                # Construction stage demands
                 M_construction_kNm=lc_demand.get("M_construction_kNm", 0.0),
+                M_girder_sw_kNm=lc_demand.get("M_girder_sw_kNm", 0.0),
+
+                # SLS demands
                 M_sls_kNm=lc_demand.get("M_sls_kNm", 0.0),
                 V_sls_kN=lc_demand.get("V_sls_kN", 0.0),
+
+                # Deflection
                 delta_live_mm=lc_demand.get("delta_live_mm", 0.0),
                 delta_total_mm=lc_demand.get("delta_total_mm", 0.0),
+
+                # Fatigue
                 stress_range_MPa=lc_demand.get("stress_range_MPa", 0.0),
+                shear_range_MPa=lc_demand.get("shear_range_MPa", 0.0),
+
+                # Shear connector / fatigue
+                Nsc=lc_demand.get("Nsc", 0),
+                Vr_kN=lc_demand.get("Vr_kN", 0.0),
+
                 governing_combination=load_case,
                 member=g_name,
                 source="per_lc",
+
+                # LC metadata
+                lc_type=lc_demand.get("lc_type", ""),
             )
             try:
                 capacity = IRC22CapacityCalculator(config).compute_all(
