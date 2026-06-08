@@ -314,7 +314,7 @@ class ToolBarController:
         self._disconnect_all()
 
         # Restore PLOTS-only buttons to plain state (they should not be checkable in CAD view)
-        self._restore_plain(self._btn_axis)
+        # NOTE: _btn_axis is NOT restored — it is active in CAD view (controls the 3D axis triad)
         self._restore_plain(self._btn_grid)
         self._restore_plain(self._btn_supports)
         self._restore_plain(self._btn_girder_labels)
@@ -334,6 +334,15 @@ class ToolBarController:
         self._make_checkable(self._btn_grillage,    _initial_cb_state("Grillage view"))
         self._make_checkable(self._btn_node,         _initial_cb_state("Node"))
         self._make_checkable(self._btn_node_number,  _initial_cb_state("Node Numbers"))
+
+        # ── Axis triad toggle — initial state: on if the triad widget is already started ──
+        def _initial_axis_state() -> bool:
+            try:
+                return getattr(cad_widget.viewer._axis_triad, "_started", False)
+            except Exception:
+                return False
+
+        self._make_checkable(self._btn_axis, _initial_axis_state())
 
         # ── Grillage toggle ───────────────────────────────────────────────────
         # RENDERING LOGIC: cad_3d.py → CAD3DWindow._render_grillage()
@@ -461,6 +470,34 @@ class ToolBarController:
             self._sync_btn_to(self._btn_element_number, want)
 
         self._connect(self._btn_element_number, _cad_toggle_element_number)
+
+        # ── Axis Triad toggle ─────────────────────────────────────────────────
+        # RENDERING:  custom_3dviewer.py → AxisTriadOverlay.start() / .stop()
+        # The overlay is parented to the same host widget as the NavCube and
+        # polls V3d_View.Eye/At/Up every 50 ms to stay in sync with the camera.
+        # ON  → call start() which shows the widget and starts the poll timer.
+        # OFF → call stop()  which hides the widget and stops the poll timer.
+        def _cad_toggle_axis():
+            """
+            Show/hide the 3D axis triad overlay.
+            start() / stop() are defined on AxisTriadOverlay in custom_3dviewer.py.
+            They control both widget visibility and the 50-ms poll timer.
+            """
+            want = self._btn_axis.isChecked()
+            try:
+                triad = cad_widget.viewer._axis_triad
+                if triad is not None:
+                    if want:
+                        # Re-position before showing in case the viewer was resized
+                        cad_widget.viewer._position_axis_triad()
+                        triad.start()
+                    else:
+                        triad.stop()
+            except Exception:
+                pass
+            self._sync_btn_to(self._btn_axis, want)
+
+        self._connect(self._btn_axis, _cad_toggle_axis)
 
         self._connect(self._btn_grillage,   _cad_toggle_grillage)
         self._connect(self._btn_node,        _cad_toggle_node)
