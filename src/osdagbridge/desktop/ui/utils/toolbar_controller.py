@@ -131,6 +131,7 @@ class ToolBarController:
     _TIP_AXIS         = "Axis"
     _TIP_GRID         = "Grid Lines"
     _TIP_SUPPORTS     = "Supports"
+    _TIP_LOADS        = "Loads"
     _TIP_GIRDER_LABELS= "Girder Labels"
 
     def __init__(self, tool_bar: "ToolBarWidget") -> None:
@@ -156,14 +157,16 @@ class ToolBarController:
         self._btn_zoom_in:  QPushButton | None = self._find_button(self._TIP_ZOOM_IN)
         self._btn_zoom_out: QPushButton | None = self._find_button(self._TIP_ZOOM_OUT)
 
-        # Plot toggle buttons — these become checkable when Plots view is bound:
+        # Plot-only toggle buttons — hidden in CAD view, shown in Plots view:
         self._btn_axis:          QPushButton | None = self._find_button(self._TIP_AXIS)
         self._btn_grid:          QPushButton | None = self._find_button(self._TIP_GRID)
         self._btn_supports:      QPushButton | None = self._find_button(self._TIP_SUPPORTS)
+        self._btn_loads:         QPushButton | None = self._find_button(self._TIP_LOADS)
         self._btn_girder_labels: QPushButton | None = self._find_button(self._TIP_GIRDER_LABELS)
 
-        # Collected list of toggle buttons — used for bulk checkable/restore
-        # operations in reset() and bind_to_*().
+        # Managed toggle buttons — bulk checkable/restore in reset() and bind_to_*()
+        # NOTE: _btn_loads is intentionally excluded — it is never made checkable,
+        #       it is simply hidden in CAD view and shown in Plots view.
         self._managed_buttons: list[QPushButton] = [
             b for b in (
                 self._btn_grillage, self._btn_node, self._btn_node_number,
@@ -201,6 +204,35 @@ class ToolBarController:
         except Exception:
             pass
         return None
+
+    # ── PLOTS-ONLY WIDGET VISIBILITY ─────────────────────────────────────────
+    # Grid Lines, Supports, Loads, Girder Labels, and the Scale spinner are
+    # only meaningful in the Plots view.  They are hidden when the 3D CAD view
+    # is active and restored when the Plots view (or no view) is active.
+
+    def _hide_plots_only_widgets(self) -> None:
+        """Hide toolbar widgets that are irrelevant in the 3D CAD view."""
+        for btn in (self._btn_grid, self._btn_supports,
+                    self._btn_loads, self._btn_girder_labels):
+            if btn is not None:
+                btn.hide()
+        try:
+            self._toolbar.spin_scale.hide()
+            self._toolbar.scale_label.hide()
+        except Exception:
+            pass
+
+    def _show_plots_only_widgets(self) -> None:
+        """Restore toolbar widgets that are only used in Plots / reset state."""
+        for btn in (self._btn_grid, self._btn_supports,
+                    self._btn_loads, self._btn_girder_labels):
+            if btn is not None:
+                btn.show()
+        try:
+            self._toolbar.spin_scale.show()
+            self._toolbar.scale_label.show()
+        except Exception:
+            pass
 
     # ── STYLE / CHECKABLE HELPERS ─────────────────────────────────────────────
     # These helpers centralise all style and checkable state changes so no
@@ -272,6 +304,8 @@ class ToolBarController:
         self._disconnect_all()
         for btn in self._managed_buttons:
             self._restore_plain(btn)
+        # Show all widgets — reset is the neutral state where everything is visible
+        self._show_plots_only_widgets()
 
     def bind_to_cad_3d(self, cad_widget: "CAD3DWindow") -> None:
         """
@@ -313,11 +347,10 @@ class ToolBarController:
         """
         self._disconnect_all()
 
-        # Restore PLOTS-only buttons to plain state (they should not be checkable in CAD view)
-        # NOTE: _btn_axis is NOT restored — it is active in CAD view (controls the 3D axis triad)
-        self._restore_plain(self._btn_grid)
-        self._restore_plain(self._btn_supports)
-        self._restore_plain(self._btn_girder_labels)
+        # Hide buttons that are only useful in the Plots view
+        self._hide_plots_only_widgets()
+
+        # NOTE: _btn_axis is NOT hidden — it is active in CAD view (controls the 3D axis triad)
 
         # ── Read initial checkbox state from BridgeComponentCheckbox (cad_3d.py) ──
         # The "Grillage view", "Node", and "Node Numbers" checkboxes are read so
@@ -672,6 +705,9 @@ class ToolBarController:
         view (CAD3DWindow in cad_3d.py).
         """
         self._disconnect_all()
+
+        # Show all plots-only widgets now that we are in Plots view
+        self._show_plots_only_widgets()
 
         # Read the current state of MplPlotWidget's internal state variables so the
         # toolbar buttons start in the correct checked/unchecked state.
