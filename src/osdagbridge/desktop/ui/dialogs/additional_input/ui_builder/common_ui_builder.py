@@ -47,9 +47,9 @@ class AdaptiveWidget(QStackedWidget):
             return
         value  = self._ai.working_input_dict.get(self._field_id)
         active = self.currentWidget()
-        if isinstance(active, QLineEdit) and value is not None:
+        if isinstance(active, QLineEdit):
             active.blockSignals(True)
-            active.setText(str(value))
+            active.setText("" if isinstance(value, dict) or value is None else str(value))
             active.blockSignals(False)
 
     def setText(self, value: str) -> None:
@@ -586,7 +586,7 @@ class UIBuilder(QWidget):
             label_first = field_def.get("label_first", False)
             label_text  = "" if label_first else field_def.get("label", "")
             field = QCheckBox(label_text)
-            field.setObjectName(field_def.get("id", ""))
+            field.setObjectName(field_def.get("id"))
             field.setChecked(field_def.get("default_checked", False))
             field.setStyleSheet("QCheckBox { font-size: 11px; color: #333; spacing: 6px; }")
             bind_name = field_def.get("bind")
@@ -771,7 +771,7 @@ class UIBuilder(QWidget):
         field_id = field_def.get("id", "")
 
         # ── Signal wiring ──────────────────────────────────────────────────
-        if ftype == TYPE_COMBOBOX:
+        if ftype in (TYPE_COMBOBOX):
             if ai and field_id:
                 field.currentTextChanged.connect(
                     lambda text, k=field_id: ai._on_field_edited(k, text)
@@ -968,10 +968,10 @@ class UIBuilder(QWidget):
         ):
             # Read current bounds from working_input_dict
             current = {}
-            if _ai and hasattr(_ai, "working_input_dict"):
-                stored = _ai.working_input_dict.get(_field_id)
-                if isinstance(stored, dict):
-                    current = stored
+
+            stored = _ai.working_input_dict.get(_field_id)
+            if isinstance(stored, dict):
+                current = stored
 
             dlg = BoundsSelectorDialog(
                 title=_title,
@@ -992,7 +992,7 @@ class UIBuilder(QWidget):
                         _ai._on_field_edited(_field_id, result)
                     # Domain callback on owner
                     if _on_accepted and hasattr(_owner, _on_accepted):
-                        getattr(_owner, _on_accepted)(result)
+                        getattr(_owner, _on_accepted)(_field_id, result)
 
         btn.clicked.connect(_open_bounds)
         return btn
@@ -1423,6 +1423,7 @@ class UIBuilder(QWidget):
 
             current_raw = (_ai.working_input_dict.get(_fid + ".selected", [])
                             if _ai and hasattr(_ai, "working_input_dict") else [])
+        
             if isinstance(current_raw, str):
                 current_raw = [v.strip() for v in current_raw.split(",") if v.strip()]
 
@@ -1437,6 +1438,12 @@ class UIBuilder(QWidget):
                 chosen = dlg.selected_values()
                 if _ai and hasattr(_ai, "working_input_dict"):
                     _ai.working_input_dict[_fid + ".selected"] = chosen
+                
+                # Domain callback — passes field_id and chosen to owner
+                on_selected = field_def.get("on_selected") or ""
+                if on_selected and hasattr(owner, on_selected):
+                    getattr(owner, on_selected)(_fid, chosen)
+
             else:
                 # user cancelled — revert combo to "All"
                 _combo.blockSignals(True)
@@ -1445,3 +1452,50 @@ class UIBuilder(QWidget):
 
         combo.currentTextChanged.connect(_on_changed)
         return combo
+    
+    @staticmethod
+    def wire_end_connectors(connectors: list, ai: QWidget) -> None:
+        """Wire end connectors after all UIBuilder instances are built.
+        
+        connectors: list of (origin_key, target_key, handler_name) tuples
+        ai: the AdditionalInputs instance that owns the handler methods & all the widgets
+        """
+        for origin_key, target_key, handler_name in connectors:
+            handler = getattr(ai, handler_name)
+
+            origin_widget = ai.findChild(QWidget, origin_key)
+            target_widget = ai.findChild(QWidget, target_key)
+
+            from osdagbridge.desktop.ui.dialogs.additional_input.ui_builder._segment_table_widget import SegmentTableWidget
+
+            # Connect origin signal → handler(origin_key, target_widget)
+            if isinstance(origin_widget, QLineEdit):
+                origin_widget.editingFinished.connect(
+                    lambda k=origin_key, obj=target_widget, h=handler: h(k, obj)
+                )
+            
+            elif isinstance(origin_widget, AdaptiveWidget):
+                # Connect whichever child widget is currently active,
+                # and also connect all child widgets so mode switches are covered.
+                for mode_widget in origin_widget._mode_widgets.values():
+                    if isinstance(mode_widget, QLineEdit):
+                        mode_widget.editingFinished.connect(
+                            lambda k=origin_key, obj=target_widget, h=handler: h(k, obj)
+                        )
+                    elif isinstance(mode_widget, QComboBox):
+                        mode_widget.currentTextChanged.connect(
+                            lambda _val, k=origin_key, obj=target_widget, h=handler: h(k, obj)
+                        )
+
+            elif isinstance(origin_widget, QComboBox):
+                origin_widget.currentTextChanged.connect(
+                    lambda _val, k=origin_key, obj=target_widget, h=handler: h(k, obj)
+                )
+            
+            elif isinstance(origin_widget, SegmentTableWidget):
+                origin_widget.data_changed.connect(
+                    lambda data, k=origin_key, obj=target_widget, h=handler: h(k, obj)
+                )
+            
+            # Trigger immediately to populate target with current working_input_dict value
+            handler(origin_key, target_widget)

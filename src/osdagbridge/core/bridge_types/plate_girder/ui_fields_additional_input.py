@@ -1720,73 +1720,73 @@ STEEL_DESIGN_DETAILS_SCHEMA = {
             "title": "Section Properties:",
             "fields": [
                 {
-                    "id": KEY_SD_SECTION_PROP_MASS,
+                    "id": KEY_MP_GIRDER_MASS,
                     "label": "Mass, M (Kg/m)",
                     "data_key": "mass",
                     "group": "section",
                 },
                 {
-                    "id": KEY_SD_SECTION_PROP_AREA,
+                    "id": KEY_MP_GIRDER_SECTIONAL_AREA,
                     "label": "Sectional Area, a (cm<sup>2</sup>)",
                     "data_key": "area",
                     "group": "section",
                 },
                 {
-                    "id": KEY_SD_SECTION_PROP_IZ,
+                    "id": KEY_MP_GIRDER_SECTIONAL_IZ,
                     "label": "2nd Moment of Area, I<sub>z</sub> (cm<sup>4</sup>)",
                     "data_key": "iz",
                     "group": "section",
                 },
                 {
-                    "id": KEY_SD_SECTION_PROP_IV,
+                    "id": KEY_MP_GIRDER_SECTIONAL_IY,
                     "label": "2nd Moment of Area, I<sub>y</sub> (cm<sup>4</sup>)",
                     "data_key": "iv",
                     "group": "section",
                 },
                 {
-                    "id": KEY_SD_SECTION_PROP_RZ,
+                    "id": KEY_MP_GIRDER_RADIUS_GYRATION_Z,
                     "label": "Radius of Gyration, r<sub>z</sub> (cm)",
                     "data_key": "rz",
                     "group": "section",
                 },
                 {
-                    "id": KEY_SD_SECTION_PROP_RV,
+                    "id": KEY_MP_GIRDER_RADIUS_GYRATION_Y,
                     "label": "Radius of Gyration, r<sub>y</sub> (cm)",
                     "data_key": "rv",
                     "group": "section",
                 },
                 {
-                    "id": KEY_SD_SECTION_PROP_ZZ,
+                    "id": KEY_MP_GIRDER_ELASTIC_MODULUS_ZZ,
                     "label": "Elastic Modulus, Z<sub>z</sub> (cm<sup>3</sup>)",
                     "data_key": "zz",
                     "group": "section",
                 },
                 {
-                    "id": KEY_SD_SECTION_PROP_ZV,
+                    "id": KEY_MP_GIRDER_ELASTIC_MODULUS_ZY,
                     "label": "Elastic Modulus, Z<sub>y</sub> (cm<sup>3</sup>)",
                     "data_key": "zv",
                     "group": "section",
                 },
                 {
-                    "id": KEY_SD_SECTION_PROP_ZUZ,
+                    "id": KEY_MP_GIRDER_PLASTIC_MODULUS_ZUZ,
                     "label": "Plastic Modulus, Z<sub>pz</sub> (cm<sup>3</sup>)",
                     "data_key": "zuz",
                     "group": "section",
                 },
                 {
-                    "id": KEY_SD_SECTION_PROP_ZUV,
+                    "id": KEY_MP_GIRDER_PLASTIC_MODULUS_ZUY,
                     "label": "Plastic Modulus, Z<sub>py</sub> (cm<sup>3</sup>)",
                     "data_key": "zuv",
                     "group": "section",
                 },
                 {
-                    "id": KEY_SD_SECTION_PROP_IT,
+                    "id": KEY_MP_GIRDER_TORSION_CONSTANT_IT,
                     "label": "Torsion Constant, I<sub>t</sub> (cm<sup>4</sup>)",
                     "data_key": "it",
                     "group": "section",
                 },
                 {
-                    "id": KEY_SD_SECTION_PROP_IW,
+                    "id": KEY_MP_GIRDER_WARPING_CONSTANT_IW,
                     "label": "Warping Constant, I<sub>w</sub> (cm<sup>6</sup>)",
                     "data_key": "iw",
                     "group": "section",
@@ -1828,6 +1828,46 @@ from osdagbridge.desktop.ui.dialogs.additional_input.drawings.cad_preview_widget
 from osdagbridge.desktop.ui.dialogs.additional_input.ui_builder._segment_table_widget import SegmentTableWidget
 from osdagbridge.desktop.ui.dialogs.additional_input.drawings.rolled_section_preview import RolledSectionPreview
 
+END_CONNECTORS = [
+
+    #------Origin------------------Target-----------------------Callback---------------------- 
+    
+    # Update Select Girder Combobox (Target) on change no of girder (Origin)
+    (KEY_TS_NO_OF_GIRDERS,     KEY_MP_GD_SELECT_GIRDER,    "_on_girder_count_refreshed"),
+    
+    # Update Apply buttons visibility
+    (KEY_MP_GD_SELECT_GIRDER,  KEY_MP_GD_APPLY_EXTERIOR,   "_update_apply_button_visibility"),
+    (KEY_MP_GD_SELECT_GIRDER,  KEY_MP_GD_APPLY_INTERIOR,   "_update_apply_button_visibility"),
+    
+    # Update Member ID (Target) on interaction with Segment Table (Origin)
+    (KEY_MP_GD_SEGMENT_TABLE,  KEY_MP_GD_MEMBER_ID,        "_on_segment_members_refreshed"),
+
+    # Update/load data from dict for related girder in segment table
+    (KEY_MP_GD_SELECT_GIRDER,  KEY_MP_GD_SEGMENT_TABLE,    "_on_girder_segments_load"),
+
+    # On change of member_id the fields below will be changed according to Girder & Member
+    (KEY_MP_GD_MEMBER_ID,      KEY_MP_GD_MEMBER_ID,        "_on_member_id_load"),
+
+    # On change origin fields save the data using dynamic keys
+    (KEY_MP_GIRDER_TYPE,                    KEY_MP_GD_MEMBER_ID, "_save_member_fields_connector"),
+    (KEY_MP_GIRDER_SYMMETRY,                KEY_MP_GD_MEMBER_ID, "_save_member_fields_connector"),
+    (KEY_MP_GD_SUPPORT_TYPE,                KEY_MP_GD_MEMBER_ID, "_save_member_fields_connector"),
+    (KEY_MP_GD_SUPPORT_WIDTH,               KEY_MP_GD_MEMBER_ID, "_save_member_fields_connector"),
+    (KEY_MP_GIRDER_TORSIONAL_RESTRAINT,     KEY_MP_GD_MEMBER_ID, "_save_member_fields_connector"),
+    (KEY_MP_GIRDER_WARPING_RESTRAINT,       KEY_MP_GD_MEMBER_ID, "_save_member_fields_connector"),
+    (KEY_MP_GIRDER_WEB_TYPE,                KEY_MP_GD_MEMBER_ID, "_save_member_fields_connector"),
+    (KEY_MP_GIRDER_IS_SECTION,              KEY_MP_GD_MEMBER_ID, "_save_member_fields_connector"),
+
+    # Adaptive fields — Custom mode (QLineEdit/QComboBox) wired via wire_end_connectors;
+    # Optimized mode (TYPE_BOUND_BTN) save is handled directly by _on_bounds_accepted.
+    (KEY_MP_GIRDER_DEPTH,                   KEY_MP_GD_MEMBER_ID, "_save_member_fields_connector"),
+    (KEY_MP_GIRDER_TOP_FLANGE_WIDTH,        KEY_MP_GD_MEMBER_ID, "_save_member_fields_connector"),
+    (KEY_MP_GIRDER_TOP_FLANGE_THICKNESS,    KEY_MP_GD_MEMBER_ID, "_save_member_fields_connector"),
+    (KEY_MP_GIRDER_BOTTOM_FLANGE_WIDTH,     KEY_MP_GD_MEMBER_ID, "_save_member_fields_connector"),
+    (KEY_MP_GIRDER_BOTTOM_FLANGE_THICKNESS, KEY_MP_GD_MEMBER_ID, "_save_member_fields_connector"),
+    (KEY_MP_GIRDER_WEB_THICKNESS,           KEY_MP_GD_MEMBER_ID, "_save_member_fields_connector"),
+]
+
 GIRDER_DETAILS_SCHEMA = {
     "id": KEY_MP_GD_TAB,
     "layout": {
@@ -1845,7 +1885,7 @@ GIRDER_DETAILS_SCHEMA = {
             "rows": [
                 {
                     "fields": [{
-                        "id":           KEY_GD_CAD_PREVIEW,
+                        "id":           KEY_MP_GD_CAD_PREVIEW,
                         "type":         TYPE_DIRECT_WIDGET,
                         "widget_class": CadPreviewWidget,
                     }]
@@ -1857,27 +1897,18 @@ GIRDER_DETAILS_SCHEMA = {
         {
             "column":  0,
             "title":   "Girder Overview",
-            "refresh": [{
-                "widget_id": KEY_MP_SELECT_GIRDER,
-                "path":      [KEY_TS_NO_OF_GIRDERS],
-                "on_refresh": "_on_girder_count_refreshed",
-            }],
             "rows": [
                 {
                     "fields": [{
-                        "id":          KEY_MP_SELECT_GIRDER,
-                        "label":       "Select Girder:",
-                        "type":        TYPE_COMBOBOX,
-                        "choices":     [],
-                        "on_activate": [{
-                            "source_key": KEY_TS_NO_OF_GIRDERS,
-                            "handler":    "_on_girder_count_refreshed",
-                        }],
+                        "id":      KEY_MP_GD_SELECT_GIRDER,
+                        "label":   "Select Girder:",
+                        "type":    TYPE_COMBOBOX,
+                        "choices": [],
                     }]
                 },
                 {
                     "fields": [{
-                        "id":        KEY_MP_TOTAL_SPAN,
+                        "id":        KEY_MP_GD_TOTAL_SPAN,
                         "label":     "Total Span (m):",
                         "type":      TYPE_TEXTBOX,
                         "read_only": True,
@@ -1886,7 +1917,7 @@ GIRDER_DETAILS_SCHEMA = {
                 },
                 {
                     "fields": [{
-                        "id":       KEY_GD_APPLY_EXTERIOR,
+                        "id":       KEY_MP_GD_APPLY_EXTERIOR,
                         "type":     TYPE_BUTTON,
                         "text":     "Apply changes to exterior girders",
                         "on_click": "_on_apply_exterior_clicked",
@@ -1894,9 +1925,9 @@ GIRDER_DETAILS_SCHEMA = {
                 },
                 {
                     "fields": [{
-                        "id":       KEY_GD_APPLY_INTERIOR,
+                        "id":       KEY_MP_GD_APPLY_INTERIOR,
                         "type":     TYPE_BUTTON,
-                        "text":     "Apply changes to interior girder",
+                        "text":     "Apply changes to interior girders",
                         "on_click": "_on_apply_interior_clicked",
                     }]
                 },
@@ -1910,7 +1941,7 @@ GIRDER_DETAILS_SCHEMA = {
             "rows": [
                 {
                     "fields": [{
-                        "id":                KEY_GD_SEGMENT_TABLE,
+                        "id":                KEY_MP_GD_SEGMENT_TABLE,
                         "type":              TYPE_DIRECT_WIDGET,
                         "widget_class":      SegmentTableWidget,
                         "on_row_select":     "_on_segment_selected",
@@ -1930,7 +1961,7 @@ GIRDER_DETAILS_SCHEMA = {
                 # Member ID selector
                 {
                     "fields": [{
-                        "id":        KEY_MP_MEMBER_ID,
+                        "id":        KEY_MP_GD_MEMBER_ID,
                         "label":     "Member ID:",
                         "type":      TYPE_COMBOBOX,
                         "choices":   [],
@@ -1974,12 +2005,14 @@ GIRDER_DETAILS_SCHEMA = {
                                 "lower_limit":    200.0,
                                 "upper_limit":    2000.0,
                                 "with_increment": True,
+                                "on_accepted":    "_on_bounds_accepted",
                             },
                             "Custom": {
-                                "type":        TYPE_TEXTBOX,
-                                "placeholder": "",
-                                "bind":        "total_depth_input",
+                                "type":              TYPE_TEXTBOX,
+                                "placeholder":       "",
+                                "bind":              "total_depth_input",
                                 "on_editing_finished": "_update_section_drawing",
+                                "on_change_compute": {"function": "_compute_welded_section_properties"},
                             },
                         },
                     }],
@@ -1997,12 +2030,14 @@ GIRDER_DETAILS_SCHEMA = {
                                 "lower_limit":    100.0,
                                 "upper_limit":    1000.0,
                                 "with_increment": True,
+                                "on_accepted": "_on_bounds_accepted",
                             },
                             "Custom": {
-                                "type":        TYPE_TEXTBOX,
-                                "placeholder": "",
-                                "bind":        "top_width_input",
+                                "type":              TYPE_TEXTBOX,
+                                "placeholder":       "",
+                                "bind":              "top_width_input",
                                 "on_editing_finished": "_update_section_drawing",
+                                "on_change_compute": {"function": "_compute_welded_section_properties"},
                             },
                         },
                     }],
@@ -2016,13 +2051,14 @@ GIRDER_DETAILS_SCHEMA = {
                         "modes": {
                             "Optimized": {
                                 "type":            TYPE_ALL_CUSTOM,
-                                "bind":            "top_thickness_combo",
+                                "on_selected":     "_on_all_custom_selected",
                             },
                             "Custom": {
-                                "type":    TYPE_COMBOBOX,
-                                "choices": [str(v) for v in SAIL_APPROVED_THICKNESS_VALUES],
-                                "bind":    "top_thickness_combo",
-                                "on_change": "_update_section_drawing",
+                                "type":              TYPE_COMBOBOX,
+                                "choices":           [str(v) for v in SAIL_APPROVED_THICKNESS_VALUES],
+                                "bind":              "top_thickness_combo",
+                                "on_change":         "_update_section_drawing",
+                                "on_change_compute": {"function": "_compute_welded_section_properties"},
                             },
                         },
                     }]
@@ -2040,12 +2076,14 @@ GIRDER_DETAILS_SCHEMA = {
                                 "lower_limit":    100.0,
                                 "upper_limit":    1000.0,
                                 "with_increment": True,
+                                "on_accepted": "_on_bounds_accepted",
                             },
                             "Custom": {
-                                "type":        TYPE_TEXTBOX,
-                                "placeholder": "",
-                                "bind":        "bottom_width_input",
+                                "type":              TYPE_TEXTBOX,
+                                "placeholder":       "",
+                                "bind":              "bottom_width_input",
                                 "on_editing_finished": "_update_section_drawing",
+                                "on_change_compute": {"function": "_compute_welded_section_properties"},
                             },
                         },
                     }],
@@ -2059,20 +2097,21 @@ GIRDER_DETAILS_SCHEMA = {
                         "modes": {
                             "Optimized": {
                                 "type":            TYPE_ALL_CUSTOM,
-                                "bind":            "bottom_thickness_combo",
+                                "on_selected":     "_on_all_custom_selected",
                             },
                             "Custom": {
-                                "type":    TYPE_COMBOBOX,
-                                "choices": [str(v) for v in SAIL_APPROVED_THICKNESS_VALUES],
-                                "bind":    "bottom_thickness_combo",
-                                "on_change": "_update_section_drawing",
+                                "type":              TYPE_COMBOBOX,
+                                "choices":           [str(v) for v in SAIL_APPROVED_THICKNESS_VALUES],
+                                "bind":              "bottom_thickness_combo",
+                                "on_change":         "_update_section_drawing",
+                                "on_change_compute": {"function": "_compute_welded_section_properties"},
                             },
                         },
                     }]
                 },
                 {
                     "fields": [{
-                        "id":      KEY_MP_SUPPORT_TYPE,
+                        "id":      KEY_MP_GD_SUPPORT_TYPE,
                         "label":   "Support Type:",
                         "type":    TYPE_COMBOBOX,
                         "choices": VALUES_GIRDER_SUPPORT_TYPE,
@@ -2081,7 +2120,7 @@ GIRDER_DETAILS_SCHEMA = {
                 },
                 {
                     "fields": [{
-                        "id":    KEY_MP_SUPPORT_WIDTH,
+                        "id":    KEY_MP_GD_SUPPORT_WIDTH,
                         "label": "Support Width (mm):",
                         "type":  TYPE_TEXTBOX,
                         "bind":  "support_width_input",
@@ -2096,13 +2135,14 @@ GIRDER_DETAILS_SCHEMA = {
                         "modes": {
                             "Optimized": {
                                 "type":            TYPE_ALL_CUSTOM,
-                                "bind":            "web_thickness_combo",
+                                "on_selected":     "_on_all_custom_selected",
                             },
                             "Custom": {
-                                "type":    TYPE_COMBOBOX,
-                                "choices": [str(v) for v in SAIL_APPROVED_THICKNESS_VALUES],
-                                "bind":    "web_thickness_combo",
-                                "on_change": "_update_section_drawing",
+                                "type":              TYPE_COMBOBOX,
+                                "choices":           [str(v) for v in SAIL_APPROVED_THICKNESS_VALUES],
+                                "bind":              "web_thickness_combo",
+                                "on_change":         "_update_section_drawing",
+                                "on_change_compute": {"function": "_compute_welded_section_properties"},
                             },
                         },
                     }]
@@ -2111,12 +2151,13 @@ GIRDER_DETAILS_SCHEMA = {
                 # Rolled section
                 {
                     "fields": [{
-                        "id":        KEY_MP_GIRDER_IS_SECTION,
-                        "label":     "IS Section:",
-                        "type":      TYPE_COMBOBOX,
-                        "choices":   [],
-                        "bind":      "is_section_combo",
-                        "on_change": "_update_section_drawing",
+                        "id":               KEY_MP_GIRDER_IS_SECTION,
+                        "label":            "IS Section:",
+                        "type":             TYPE_COMBOBOX,
+                        "choices":          get_is_section_list(),
+                        "bind":             "is_section_combo",
+                        "on_change":        "_update_section_drawing",
+                        "on_change_compute": {"function": "_compute_rolled_section_properties"},
                     }]
                 },
 
@@ -2155,11 +2196,11 @@ GIRDER_DETAILS_SCHEMA = {
         {
             "column": 1,
             "title":  "",
-            "id":     KEY_GD_SECTION_DRAWING,
+            "id":     KEY_MP_GD_SECTION_DRAWING,
             "rows": [
                 {
                     "fields": [{
-                        "id":           KEY_GD_SECTION_PREVIEW,
+                        "id":           KEY_MP_GD_SECTION_PREVIEW,
                         "type":         TYPE_DIRECT_WIDGET,
                         "widget_class": RolledSectionPreview,
                     }]
@@ -2171,26 +2212,26 @@ GIRDER_DETAILS_SCHEMA = {
         {
             "column": 1,
             "title":  "Section Properties",
-            "id":     KEY_GD_SP,
+            "id":     KEY_MP_GD_SP,
             "rows": [
                 {
                     "fields": 
                         [{
-                            "id": KEY_SD_SECTION_PROP_MASS,  
+                            "id": KEY_MP_GIRDER_MASS,  
                             "label": "Mass, M (Kg/m)",                                    
                             "type": TYPE_TEXTBOX, "read_only": True,
                         }]},
                 {
                     "fields": 
                         [{
-                            "id": KEY_SD_SECTION_PROP_AREA,  
+                            "id": KEY_MP_GIRDER_SECTIONAL_AREA,  
                             "label": "Sectional Area, a (cm<sup>2</sup>)",                
                             "type": TYPE_TEXTBOX, "read_only": True,
                         }]},
                 {
                     "fields": 
                         [{
-                            "id": KEY_SD_SECTION_PROP_IZ,  
+                            "id": KEY_MP_GIRDER_SECTIONAL_IZ,  
                             "label": "2nd Moment of Area, I<sub>z</sub> (cm<sup>4</sup>)",  
                             "type": TYPE_TEXTBOX, "read_only": True
                         }]
@@ -2198,7 +2239,7 @@ GIRDER_DETAILS_SCHEMA = {
                 {
                     "fields": 
                         [{
-                            "id": KEY_SD_SECTION_PROP_IV,  
+                            "id": KEY_MP_GIRDER_SECTIONAL_IY,  
                             "label": "2nd Moment of Area, I<sub>y</sub> (cm<sup>4</sup>)",  
                             "type": TYPE_TEXTBOX, "read_only": True
                         }]
@@ -2206,7 +2247,7 @@ GIRDER_DETAILS_SCHEMA = {
                 {
                     "fields": 
                         [{
-                            "id": KEY_SD_SECTION_PROP_RZ,  
+                            "id": KEY_MP_GIRDER_RADIUS_GYRATION_Z,  
                             "label": "Radius of Gyration, r<sub>z</sub> (cm)",              
                             "type": TYPE_TEXTBOX, "read_only": True
                         }]
@@ -2214,7 +2255,7 @@ GIRDER_DETAILS_SCHEMA = {
                 {
                     "fields": 
                         [{
-                            "id": KEY_SD_SECTION_PROP_RV,  
+                            "id": KEY_MP_GIRDER_RADIUS_GYRATION_Y,  
                             "label": "Radius of Gyration, r<sub>y</sub> (cm)",              
                             "type": TYPE_TEXTBOX, "read_only": True
                         }]
@@ -2222,7 +2263,7 @@ GIRDER_DETAILS_SCHEMA = {
                 {
                     "fields": 
                         [{
-                            "id": KEY_SD_SECTION_PROP_ZZ,  
+                            "id": KEY_MP_GIRDER_ELASTIC_MODULUS_ZZ,  
                             "label": "Elastic Modulus, Z<sub>z</sub> (cm<sup>3</sup>)",     
                             "type": TYPE_TEXTBOX, "read_only": True
                         }]
@@ -2230,7 +2271,7 @@ GIRDER_DETAILS_SCHEMA = {
                 {
                     "fields": 
                         [{
-                            "id": KEY_SD_SECTION_PROP_ZV,  
+                            "id": KEY_MP_GIRDER_ELASTIC_MODULUS_ZY,  
                             "label": "Elastic Modulus, Z<sub>y</sub> (cm<sup>3</sup>)",     
                             "type": TYPE_TEXTBOX, "read_only": True
                         }]
@@ -2238,7 +2279,7 @@ GIRDER_DETAILS_SCHEMA = {
                 {
                     "fields": 
                         [{
-                            "id": KEY_SD_SECTION_PROP_ZUZ,  
+                            "id": KEY_MP_GIRDER_PLASTIC_MODULUS_ZUZ,  
                             "label": "Plastic Modulus, Z<sub>pz</sub> (cm<sup>3</sup>)",     
                             "type": TYPE_TEXTBOX, "read_only": True
                         }]
@@ -2246,7 +2287,7 @@ GIRDER_DETAILS_SCHEMA = {
                 {
                     "fields": 
                         [{
-                            "id": KEY_SD_SECTION_PROP_ZUV,  
+                            "id": KEY_MP_GIRDER_PLASTIC_MODULUS_ZUY,  
                             "label": "Plastic Modulus, Z<sub>py</sub> (cm<sup>3</sup>)",     
                             "type": TYPE_TEXTBOX, "read_only": True
                         }]
@@ -2254,7 +2295,7 @@ GIRDER_DETAILS_SCHEMA = {
                 {
                     "fields": 
                         [{
-                            "id": KEY_SD_SECTION_PROP_IT,  
+                            "id": KEY_MP_GIRDER_TORSION_CONSTANT_IT,  
                             "label": "Torsion Constant, I<sub>t</sub> (cm<sup>4</sup>)",     
                             "type": TYPE_TEXTBOX, "read_only": True
                         }]
@@ -2262,7 +2303,7 @@ GIRDER_DETAILS_SCHEMA = {
                 {
                     "fields": 
                         [{
-                            "id": KEY_SD_SECTION_PROP_IW,  
+                            "id": KEY_MP_GIRDER_WARPING_CONSTANT_IW,  
                             "label": "Warping Constant, I<sub>w</sub> (cm<sup>6</sup>)",     
                             "type": TYPE_TEXTBOX, "read_only": True
                         }]

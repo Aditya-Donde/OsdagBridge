@@ -43,7 +43,7 @@ class RolledSectionPreview(QWidget):
 
         self._outer_margin = 16
         self._annotation_margin_top = 36
-        self._annotation_margin_bottom = 28
+        self._annotation_margin_bottom = 44
         self._annotation_margin_left = 52
         self._annotation_margin_right = 74
         self._dim_gap = 12
@@ -73,12 +73,13 @@ class RolledSectionPreview(QWidget):
         is_welded = str(working_input_dict.get(KEY_MP_GIRDER_TYPE) or "").lower() == "welded"
 
         if is_welded:
-            depth = float(working_input_dict.get(KEY_MP_GIRDER_DEPTH) or 0)
-            top_w = float(working_input_dict.get(KEY_MP_GIRDER_TOP_FLANGE_WIDTH) or 0)
-            bot_w = float(working_input_dict.get(KEY_MP_GIRDER_BOTTOM_FLANGE_WIDTH) or top_w)
-            web_t = float(working_input_dict.get(KEY_MP_GIRDER_WEB_THICKNESS) or 0)
-            top_t = float(working_input_dict.get(KEY_MP_GIRDER_TOP_FLANGE_THICKNESS) or 0)
-            bot_t = float(working_input_dict.get(KEY_MP_GIRDER_BOTTOM_FLANGE_THICKNESS) or top_t)
+            depth = self._safe_dim(working_input_dict.get(KEY_MP_GIRDER_DEPTH))
+            top_w = self._safe_dim(working_input_dict.get(KEY_MP_GIRDER_TOP_FLANGE_WIDTH))
+            bot_w = self._safe_dim(working_input_dict.get(KEY_MP_GIRDER_BOTTOM_FLANGE_WIDTH)) or top_w
+            web_t = self._safe_dim(working_input_dict.get(KEY_MP_GIRDER_WEB_THICKNESS))
+            top_t = self._safe_dim(working_input_dict.get(KEY_MP_GIRDER_TOP_FLANGE_THICKNESS))
+            bot_t = self._safe_dim(working_input_dict.get(KEY_MP_GIRDER_BOTTOM_FLANGE_THICKNESS)) or top_t
+
             if not depth or not top_w:
                 self.clear()
                 return
@@ -105,7 +106,7 @@ class RolledSectionPreview(QWidget):
             outline = girder_properties.get_rolled_section(designation) if beam is None else None
             if beam:
                 self.set_section(beam)
-                self._caption = f"Rolled section \u2022 {designation}"
+                self._caption = f"Rolled Section \u2022 {designation}"
                 self.update()
             elif outline:
                 self.set_dimensions(
@@ -116,7 +117,7 @@ class RolledSectionPreview(QWidget):
                     flange_thickness_mm=outline["top_flange_thickness_mm"],
                     bottom_flange_thickness_mm=outline["bottom_flange_thickness_mm"],
                 )
-                self._caption = f"Rolled section \u2022 {designation}"
+                self._caption = f"Rolled Section \u2022 {designation}"
                 self.update()
             else:
                 self.clear()
@@ -372,7 +373,7 @@ class RolledSectionPreview(QWidget):
             label_symbol="wt",
         )
 
-        # Draw caption (e.g. "Welded girder preview" / "Rolled section • ISMB 500") at bottom
+        # Draw caption (e.g. "Welded girder preview" / "Rolled Section • ISMB 500") at bottom
         if self._caption:
             painter.save()
             cap_font = QFont(self.font())
@@ -382,7 +383,7 @@ class RolledSectionPreview(QWidget):
             painter.setFont(cap_font)
             painter.setPen(QColor(CAD_TEXT))
             painter.drawText(
-                self.rect().adjusted(8, 0, -8, -6),
+                self.rect().adjusted(8, 0, -8, -4),
                 Qt.AlignHCenter | Qt.AlignBottom,
                 self._caption,
             )
@@ -758,6 +759,16 @@ class RolledSectionPreview(QWidget):
         if abs(value - rounded) < 0.01:
             return f"{rounded} mm"
         return f"{value:.1f} mm"
+
+    @staticmethod
+    def _safe_dim(value, default: float = 0.0) -> float:
+        """Return float from value; returns default when value is a dict (bounds) or non-numeric."""
+        if isinstance(value, dict):
+            return default
+        try:
+            return float(value or default)
+        except (ValueError, TypeError):
+            return default
 
     @staticmethod
     def _extract_dimension(section, names, default: float) -> float:

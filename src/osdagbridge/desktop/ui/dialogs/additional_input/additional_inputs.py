@@ -27,7 +27,8 @@ from osdagbridge.core.bridge_types.plate_girder.ui_fields_additional_input impor
     SUPPORT_CONDITIONS_SCHEMA,
 )
 from osdagbridge.desktop.ui.dialogs.additional_input.ui_builder._load_combination_widget import LoadCombinationWidget
-            
+from osdagbridge.desktop.ui.dialogs.additional_input.ui_builder.common_ui_builder import AdaptiveWidget
+
 # =================================================================================
 #   MAIN IMPLEMENTATION
 # =================================================================================
@@ -54,6 +55,10 @@ class AdditionalInputs(QDialog):
         # Work temporarily on a copy of default dictionary
         self.working_input_dict = {}
 
+        # TO tract additional input is opened first time or not.
+        # This is required for end connectors
+        self.interacted_first = True
+
         self.setObjectName("AdditionalInputs")
         self.resize(1024, 850)
         self.setMinimumSize(900, 520)
@@ -71,6 +76,142 @@ class AdditionalInputs(QDialog):
             }
         """)
     
+    def init_ui(self):
+        self.setupWrapper()
+        
+        main_layout = QVBoxLayout(self.content_widget)
+        main_layout.setContentsMargins(5, 5, 5, 5)
+        
+        # Main tab widget
+        self.tabs = QTabWidget()
+        self.tabs.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self.stretching_tab_bar = QTabBar()
+        self.stretching_tab_bar.setElideMode(Qt.ElideRight)
+        self.tabs.setTabBar(self.stretching_tab_bar)
+        self.tabs.setStyleSheet("""
+            QTabWidget::pane {
+                border: 1px solid #d1d1d1;
+                background-color: #ffffff;
+                border-radius: 6px;
+            }
+            QTabBar::tab {
+                font-weight: bold;
+                font-size: 12px;
+                background: #ffffff;
+                color: #3a3a3a;
+                border: 1px solid #d1d1d1;
+                padding: 10px 22px;
+            }
+            QTabBar::tab:selected {
+                background: #90AF13;
+                color: #ffffff;
+                border: 1px solid #90AF13;
+            }
+            QTabBar::tab:hover {
+                background: #90AF13;
+                color: #ffffff;
+            }
+        """)
+
+        self._last_top_tab_index = 0
+        
+        # Sub-Tab 1: Typical Section Details
+        self.typical_section_tab = TypicalSectionDetailsTab(
+            self.carriageway_width,
+            additional_input_instance=self)
+        self.typical_section_tab.update_footpath_value(self.footpath_value)
+        self.tabs.addTab(self.typical_section_tab, "Typical Section Details")
+        
+        # Sub-Tab 2: Member Properties
+        self.section_properties_tab = SectionPropertiesTab(
+            additiona_input_instance=self
+        )
+        self.tabs.addTab(self.section_properties_tab, "Member Properties")
+        self.section_properties_tab.set_editable_mode(self._member_properties_editable)
+
+        # Keep girder count in sync across tabs
+        try:
+            self.typical_section_tab.girder_count_changed.connect(self.section_properties_tab.set_girder_count)
+            
+            self._sync_member_properties_girder_count()
+        except Exception:
+            pass
+        
+        # Sub-Tab 3: Loading
+        from osdagbridge.core.bridge_types.plate_girder.ui_fields_additional_input import LOADING_TAB_SCHEMA
+        self.loading_tab = UIBuilder(
+            owner=self,
+            schema=LOADING_TAB_SCHEMA,
+            card_title="",
+            with_scroll=False,
+            main_widget_object_name="loading.main",
+            additional_input_instance=self,
+        )
+        self.tabs.addTab(self.loading_tab, "Loading")
+
+        self.support_tab = UIBuilder(
+            owner=self,
+            schema=SUPPORT_CONDITIONS_SCHEMA,
+            card_title="",
+            with_scroll=True,
+            main_widget_object_name="support_conditions.main",
+            additional_input_instance=self,
+        )
+        self.tabs.addTab(self.support_tab, "Support Conditions")
+        
+        # Sub-Tab 5: Analysis/Design Options
+        self.design_options_tab = UIBuilder(
+            owner=self,
+            schema=DESIGN_OPTIONS_SCHEMA,
+            card_title="",
+            with_scroll=True,
+            main_widget_object_name="design_options.main",
+            additional_input_instance=self,
+        )
+        self.tabs.addTab(self.design_options_tab, "Analysis/Design Options")
+
+        # Sub-Tab 6: Design Options (Cont.)
+        self.design_options_cont_tab = UIBuilder(
+            owner=self,
+            schema=DESIGN_OPTIONS_CONT_SCHEMA,
+            card_title="",
+            with_scroll=True,
+            main_widget_object_name="design_options_cont.main",
+            additional_input_instance=self,
+        )
+        self.tabs.addTab(self.design_options_cont_tab, "Design Options (Cont.)")
+
+        self.tabs.currentChanged.connect(self._on_top_tab_changed)        
+        main_layout.addWidget(self.tabs)
+        
+        action_bar, self.defaults_button, self.save_button = create_action_button_bar()
+        self.defaults_button.clicked.connect(self.reset_active_tab_defaults)
+
+        from pprint import pprint
+        self.defaults_button.clicked.connect(lambda: pprint(self.working_input_dict))
+
+        self.save_button.clicked.connect(self._save_inputs)
+        main_layout.addSpacing(6)
+        main_layout.addWidget(action_bar)
+        
+        # Enforce max 2 decimal places for all double validators in the dialog
+        self._enforce_decimal_places(2)
+        # Normalize existing numeric text to 2 decimal places for consistent display
+        self._normalize_numeric_texts(2)
+
+        # def _print_widget_tree(root, indent=0):
+        #     """Print the full widget tree with objectNames for debugging findChild issues."""
+        #     from PySide6.QtWidgets import QWidget
+        #     node = root
+        #     name = node.objectName() or "<no name>"
+        #     cls  = type(node).__name__
+        #     print("  " * indent + f"{cls}  [{name}]")
+        #     for child in node.children():
+        #         if isinstance(child, QWidget):
+        #             _print_widget_tree(child, indent + 1)
+        
+        # _print_widget_tree(self)
+    
     def set_input_dictionary(self, input_dict: dict):
         # -- Master input_dict reference (never mutated until Save) ------------------
 
@@ -87,6 +228,13 @@ class AdditionalInputs(QDialog):
         # self.typical_section_tab.apply_current_selection_defaults()
         self.default_input_dict.update(self.working_input_dict)
 
+        if self.interacted_first:
+            self.interacted_first = False
+            # Connect the connectors and Update
+            from osdagbridge.core.bridge_types.plate_girder.ui_fields_additional_input import END_CONNECTORS
+            UIBuilder.wire_end_connectors(END_CONNECTORS, ai=self)
+
+
     def set_defaults(self) -> None:
         """
         Central function to populate all widgets in the dialog from working_input_dict.
@@ -102,6 +250,8 @@ class AdditionalInputs(QDialog):
                 continue
 
             if isinstance(widget, QLineEdit):
+                if isinstance(value, dict):
+                    continue
                 # Format numeric values to 2 decimal places (except integer fields)
                 try:
                     if name == "design_options_cont.fatigue.load_cycles":
@@ -135,14 +285,14 @@ class AdditionalInputs(QDialog):
  
     def _on_apply_exterior_clicked(self) -> None:
         """Connector: Apply changes to first and last girders."""
-        from osdagbridge.core.utils.common import KEY_MP_SELECT_GIRDER
-        girder_w = self.findChild(QWidget, KEY_MP_SELECT_GIRDER)
+        from osdagbridge.core.utils.common import KEY_MP_GD_SELECT_GIRDER
+        girder_w = self.findChild(QWidget, KEY_MP_GD_SELECT_GIRDER)
         pass
 
     def _on_apply_interior_clicked(self) -> None:
         """Connector: Apply changes to interior girders."""
-        from osdagbridge.core.utils.common import KEY_GD_SEGMENT_TABLE
-        table = self.findChild(QWidget, KEY_GD_SEGMENT_TABLE)
+        from osdagbridge.core.utils.common import KEY_MP_GD_SEGMENT_TABLE
+        table = self.findChild(QWidget, KEY_MP_GD_SEGMENT_TABLE)
         pass
 
     # ==== Show/Hide Fields Based on Girder Type Selection in Girder Details Tab ============================
@@ -153,8 +303,8 @@ class AdditionalInputs(QDialog):
         welded_keys = [
             KEY_MP_GIRDER_SYMMETRY, KEY_MP_GIRDER_DEPTH, KEY_MP_GIRDER_TOP_FLANGE_WIDTH,
             KEY_MP_GIRDER_TOP_FLANGE_THICKNESS, KEY_MP_GIRDER_BOTTOM_FLANGE_WIDTH,
-            KEY_MP_GIRDER_BOTTOM_FLANGE_THICKNESS, KEY_MP_SUPPORT_TYPE,
-            KEY_MP_SUPPORT_WIDTH, KEY_MP_GIRDER_WEB_THICKNESS, KEY_MP_GIRDER_WEB_TYPE,
+            KEY_MP_GIRDER_BOTTOM_FLANGE_THICKNESS, KEY_MP_GD_SUPPORT_TYPE,
+            KEY_MP_GD_SUPPORT_WIDTH, KEY_MP_GIRDER_WEB_THICKNESS, KEY_MP_GIRDER_WEB_TYPE,
         ]
         rolled_keys = [KEY_MP_GIRDER_IS_SECTION]
 
@@ -212,12 +362,12 @@ class AdditionalInputs(QDialog):
                 web_type_w.blockSignals(False)
 
         # Section Properties card — hide entirely when Optimized
-        wrapper = self.findChild(QWidget, KEY_GD_SP)
+        wrapper = self.findChild(QWidget, KEY_MP_GD_SP)
         if wrapper:
             wrapper.setVisible(not is_optimized)
 
         # Hide section drawing when Optimized — only visible in Custom mode
-        wrapper = self.findChild(QWidget, KEY_GD_SECTION_DRAWING)
+        wrapper = self.findChild(QWidget, KEY_MP_GD_SECTION_DRAWING)
         if wrapper:
             wrapper.setVisible(not is_optimized)
         
@@ -250,32 +400,42 @@ class AdditionalInputs(QDialog):
         
         # Update stiffener
         self._update_stiffener_cad()
+    
+    def _update_apply_button_visibility(self, origin_key: str, target_widget: QWidget) -> None:
+        """Show/hide Apply Exterior or Apply Interior button based on selected girder index."""
+        
+        count = int(float(str(self.working_input_dict.get(KEY_TS_NO_OF_GIRDERS) or 1)))
 
-    # === Refresh Girder List in Member Properties ===========================================
-    def _on_girder_count_refreshed(self, widget_id: str, value) -> None:
-        """Connector: refresh mechanism updates Select Girder combo
-        when girder count changes in working_input_dict (from Typical Section).
-        Called by UIBuilder's refresh path with widget_id=KEY_MP_SELECT_GIRDER.
-        """
-        from osdagbridge.core.utils.common import KEY_MP_SELECT_GIRDER
-        combo = self.findChild(QComboBox, KEY_MP_SELECT_GIRDER)
+        combo = self.findChild(QComboBox, KEY_MP_GD_SELECT_GIRDER)
         if combo is None:
             return
-        try:
-            count = int(float(str(value or 0)))
-        except (ValueError, TypeError):
-            return
-        current = combo.currentText()
-        combo.blockSignals(True)
-        combo.clear()
-        for i in range(1, count + 1):
-            combo.addItem(f"Girder {i}", f"G{i}")
-        # restore selection if still valid
-        idx = combo.findText(current)
-        combo.setCurrentIndex(idx if idx >= 0 else 0)
-        combo.blockSignals(False)
+        idx = combo.currentIndex()
+        is_exterior = (count <= 1) or (idx == 0 or idx == count - 1)
 
-    # Updates StiffenerDetailsCad in Stiffener Details tab.
+        widget_id = target_widget.objectName()
+        if widget_id == KEY_MP_GD_APPLY_EXTERIOR:
+            target_widget.setVisible(is_exterior)
+        elif widget_id == KEY_MP_GD_APPLY_INTERIOR:
+            target_widget.setVisible(not is_exterior)
+
+    # === Refresh Girder List in Member Properties ===========================================
+    # Connector: fires when origin field (e.g. KEY_TS_NO_OF_GIRDERS) editing finishes.
+    # Reads count from working_input_dict[origin_key], repopulates current_object combo.
+    def _on_girder_count_refreshed(self, origin_key: str, current_object: QComboBox) -> None:
+        
+        value = self.working_input_dict.get(origin_key)
+        if value is None:
+            return
+        
+        count = int(float(str(value)))
+        current = current_object.currentText()
+        current_object.clear()
+        for i in range(1, count + 1):
+            current_object.addItem(f"Girder {i}", f"G{i}")
+        idx = current_object.findText(current)
+        current_object.setCurrentIndex(idx if idx >= 0 else 0)
+        print(f"@@: Update Girder List")
+
     def _update_stiffener_cad(self) -> None:
         from osdagbridge.desktop.ui.dialogs.additional_input.drawings.stiffener_details_cad import StiffenerDetailsCad
         widget = self.findChild(StiffenerDetailsCad, "stiffener_cad_preview")
@@ -340,39 +500,324 @@ class AdditionalInputs(QDialog):
             self.working_input_dict[name] = value
 
     # Update Section Drawing (RolledSectionPreview renamed to SectionDrawing) in Girder Details.
-    # Implicitly connected via schema on_change / on_editing_finished on section input fields.
+    # Implicitly connected via schema on_change / on_editing_finished on section input fields.   
     def _update_section_drawing(self) -> None:
-        from osdagbridge.core.utils.common import KEY_GD_SECTION_PREVIEW
+        from osdagbridge.core.utils.common import KEY_MP_GD_SECTION_PREVIEW
         from osdagbridge.desktop.ui.dialogs.additional_input.drawings.rolled_section_preview import RolledSectionPreview
-        widget = self.findChild(RolledSectionPreview, KEY_GD_SECTION_PREVIEW)
+        widget = self.findChild(RolledSectionPreview, KEY_MP_GD_SECTION_PREVIEW)
         if widget is None:
             return
-        widget.update_section(self.working_input_dict)
+
+        # Build snapshot — prefer live widget value over working_input_dict
+        # because on_change fires before _on_field_edited updates the dict.
+        snapshot = dict(self.working_input_dict)
+
+        from osdagbridge.core.utils.common import (
+            KEY_MP_GIRDER_TYPE, KEY_MP_GIRDER_IS_SECTION,
+            KEY_MP_GIRDER_DEPTH, KEY_MP_GIRDER_TOP_FLANGE_WIDTH, KEY_MP_GIRDER_BOTTOM_FLANGE_WIDTH,
+            KEY_MP_GIRDER_TOP_FLANGE_THICKNESS, KEY_MP_GIRDER_BOTTOM_FLANGE_THICKNESS,
+            KEY_MP_GIRDER_WEB_THICKNESS,
+        )
+
+        for key in [
+            KEY_MP_GIRDER_TYPE, KEY_MP_GIRDER_IS_SECTION,
+            KEY_MP_GIRDER_DEPTH, KEY_MP_GIRDER_TOP_FLANGE_WIDTH, KEY_MP_GIRDER_BOTTOM_FLANGE_WIDTH,
+            KEY_MP_GIRDER_TOP_FLANGE_THICKNESS, KEY_MP_GIRDER_BOTTOM_FLANGE_THICKNESS,
+            KEY_MP_GIRDER_WEB_THICKNESS,
+        ]:
+            w = self.findChild(QWidget, key)
+            if isinstance(w, QComboBox):
+                snapshot[key] = w.currentText()
+            elif isinstance(w, QLineEdit):
+                snapshot[key] = w.text().strip()
+            elif isinstance(w, AdaptiveWidget):
+                active = w.currentWidget()
+                if isinstance(active, QComboBox):
+                    snapshot[key] = active.currentText()
+                elif isinstance(active, QLineEdit):
+                    snapshot[key] = active.text().strip()
+
+        widget.update_section(snapshot)
 
     # == Member Properties > Girder Details = segment table connectors = STARTS ================
     def _on_segment_selected(self, row: int, member_id: str) -> None:
         """Connector: SegmentTableWidget.row_selected → CadPreviewWidget.
         Fired when the user clicks a row. Highlights that member on the canvas.
         """
-        from osdagbridge.core.utils.common import KEY_GD_CAD_PREVIEW
-        cad = self.findChild(QWidget, KEY_GD_CAD_PREVIEW)
+        from osdagbridge.core.utils.common import KEY_MP_GD_CAD_PREVIEW
+        cad = self.findChild(QWidget, KEY_MP_GD_CAD_PREVIEW)
         if cad and hasattr(cad, "update_selected_member"):
             cad.update_selected_member(member_id)
- 
+
     def _on_segment_data_changed(self, segments) -> None:
-        """Connector: SegmentTableWidget.data_changed → CadPreviewWidget.
-        Fired on End edit, split (+), or remove (−). Redraws the canvas
-        with the updated segment chain. Non-list payloads (action dicts)
-        are ignored here — the table handles split/remove internally.
         """
-        from osdagbridge.core.utils.common import KEY_GD_CAD_PREVIEW
+        Connector: SegmentTableWidget.data_changed → CadPreviewWidget.
+        Update Working dict with dynamic keys
+        """
         if not isinstance(segments, list):
             return
-        cad = self.findChild(QWidget, KEY_GD_CAD_PREVIEW)
-        if cad and hasattr(cad, "update_segments"):
-            cad.update_segments(segments)
+
+        # Get currently selected girder index from combo
+        combo = self.findChild(QComboBox, KEY_MP_GD_SELECT_GIRDER)
+        if combo is None:
+            return
+
+        idx = combo.currentIndex()   # 0-based → G1 = index 0
+        girder_key = f"{KEY_MP_GD_SEGMENT_TABLE}.G{idx + 1}"
+
+        self.working_input_dict[girder_key] = segments
+
+        # Update CAD preview
+        cad = self.findChild(QWidget, KEY_MP_GD_CAD_PREVIEW)
+        cad.update_segments(segments)
+
+        # print(f"@@: Updated working_dict with key={girder_key}, segments={segments}")
     
-    # == Member Properties > Girder Details = segment table connectors = ENDS ================
+    # Connector: fires when segment table data changes.
+    # Extracts member IDs from segments and populates Member ID combo.
+    def _on_segment_members_refreshed(self, origin_key: str, target_widget: QWidget) -> None:
+        if not isinstance(target_widget, QComboBox):
+            return
+
+        idx       = self.findChild(QComboBox, KEY_MP_GD_SELECT_GIRDER)
+        girder_id = f"G{idx.currentIndex() + 1}" if idx else "G1"
+        seg_key   = f"{KEY_MP_GD_SEGMENT_TABLE}.{girder_id}"
+        segments  = self.working_input_dict.get(seg_key, [])
+
+        member_ids = [str(seg.get("id", "")) for seg in segments if seg.get("id")]
+
+        current = target_widget.currentText()
+        # target_widget.blockSignals(True)
+        target_widget.clear()
+        target_widget.addItems(member_ids)
+        idx_restore = target_widget.findText(current)
+        target_widget.setCurrentIndex(idx_restore if idx_restore >= 0 else 0)
+        # target_widget.blockSignals(False)
+
+        # Extend dynamic keys for new members
+        from osdagbridge.core.bridge_types.plate_girder.defaults import _extend_member_field_keys
+        _extend_member_field_keys(
+            working_input_dict = self.working_input_dict,
+            girder_id          = girder_id,
+            member_field_keys  = self._MEMBER_FIELD_KEYS,
+        )
+    
+    # Connector: fires when Select Girder combo changes.
+    # Loads stored segments for selected girder into SegmentTableWidget.
+    def _on_girder_segments_load(self, origin_key: str, target_widget: QWidget) -> None:
+        from osdagbridge.desktop.ui.dialogs.additional_input.ui_builder._segment_table_widget import SegmentTableWidget
+        if not isinstance(target_widget, SegmentTableWidget):
+            return
+
+        combo = self.findChild(QComboBox, origin_key)
+        if combo is None:
+            print(f"@@: Girder selection combo not found for loading segments.")
+            return
+
+        girder_id = f"G{combo.currentIndex() + 1}"
+        seg_key   = f"{KEY_MP_GD_SEGMENT_TABLE}.{girder_id}"
+
+        segments = self.working_input_dict.get(seg_key)
+        print(f"@@: Loading segments for {girder_id} with key={seg_key}, segments={segments}")
+        if not segments:
+            # First time for this girder — create default single segment
+            total_span = float(self.working_input_dict.get(KEY_MP_GD_TOTAL_SPAN) or 30.0)
+            segments   = [{"id": f"{girder_id}M1", "start": 0.0, "end": total_span}]
+            self.working_input_dict[seg_key] = segments
+
+        target_widget.refresh(segments)
+    # == Member Properties > Girder Details = segment table connectors = ENDS ========================
+
+    # == Member Properties > Member Dependant field connectors = STARTS ==============================
+    
+    # Keys that are stored per member (G{i}.M{j})
+    _MEMBER_FIELD_KEYS = [
+        KEY_MP_GIRDER_TYPE, KEY_MP_GIRDER_SYMMETRY, KEY_MP_GIRDER_DEPTH,
+        KEY_MP_GIRDER_TOP_FLANGE_WIDTH, KEY_MP_GIRDER_TOP_FLANGE_THICKNESS,
+        KEY_MP_GIRDER_BOTTOM_FLANGE_WIDTH, KEY_MP_GIRDER_BOTTOM_FLANGE_THICKNESS,
+        KEY_MP_GD_SUPPORT_TYPE, KEY_MP_GD_SUPPORT_WIDTH, KEY_MP_GIRDER_WEB_THICKNESS,
+        KEY_MP_GIRDER_IS_SECTION, KEY_MP_GIRDER_TORSIONAL_RESTRAINT,
+        KEY_MP_GIRDER_WARPING_RESTRAINT, KEY_MP_GIRDER_WEB_TYPE,
+        KEY_MP_GIRDER_MASS, KEY_MP_GIRDER_SECTIONAL_AREA,
+        KEY_MP_GIRDER_SECTIONAL_IY, KEY_MP_GIRDER_SECTIONAL_IZ,
+        KEY_MP_GIRDER_RADIUS_GYRATION_Y, KEY_MP_GIRDER_RADIUS_GYRATION_Z,
+        KEY_MP_GIRDER_ELASTIC_MODULUS_ZZ, KEY_MP_GIRDER_ELASTIC_MODULUS_ZY,
+        KEY_MP_GIRDER_PLASTIC_MODULUS_ZUZ, KEY_MP_GIRDER_PLASTIC_MODULUS_ZUY,
+        KEY_MP_GIRDER_TORSION_CONSTANT_IT, KEY_MP_GIRDER_WARPING_CONSTANT_IW,
+    ]
+
+    def _get_current_girder_member_indices(self) -> tuple[int, int]:
+        """Returns (girder_index, member_index) both 1-based from current selections."""
+        girder_combo = self.findChild(QComboBox, KEY_MP_GD_SELECT_GIRDER)
+        member_combo = self.findChild(QComboBox, KEY_MP_GD_MEMBER_ID)
+        gi = (girder_combo.currentIndex() + 1) if girder_combo else 1
+        mi = (member_combo.currentIndex() + 1) if member_combo else 1
+        return gi, mi
+
+    def _save_member_fields(self) -> None:
+        gi, mi = self._get_current_girder_member_indices()
+        suffix = f".G{gi}.M{mi}"
+        print(f"[SAVE_MEMBER_FIELDS] G{gi}.M{mi}")
+    
+        for key in self._MEMBER_FIELD_KEYS:
+            w = self.findChild(QWidget, key)
+
+            # AdaptiveWidget — read from its currently active child widget
+            if isinstance(w, AdaptiveWidget):
+                active = w.currentWidget()
+                if isinstance(active, QComboBox):
+                    mode = active.currentText()
+                    self.working_input_dict[key + suffix] = mode
+                    print(f"  [SAVE] {key + suffix} = {mode} (AdaptiveWidget→QComboBox)")
+                
+                elif isinstance(active, QLineEdit):
+                    self.working_input_dict[key + suffix] = active.text()
+                    print(f"  [SAVE] {key + suffix} = {active.text()} (AdaptiveWidget→QLineEdit)")
+                
+                elif isinstance(active, QPushButton):
+                    # Bounds Button
+                    existing = self.working_input_dict.get(key)
+                    if existing is not None:
+                        self.working_input_dict[key + suffix] = existing
+                    # print(f"  [SAVE] {key + suffix} = {existing} (BoundBtn)")
+                
+                else:
+                    print(f"  [SAVE] {key} — AdaptiveWidget active child unknown: {type(active)}")
+            
+            elif isinstance(w, QComboBox):
+                self.working_input_dict[key + suffix] = w.currentText()
+                # print(f"  [SAVE] {key + suffix} = {w.currentText()}")
+            
+            elif isinstance(w, QLineEdit):
+                self.working_input_dict[key + suffix] = w.text()
+                # print(f"  [SAVE] {key + suffix} = {w.text()}")
+            
+            else:
+                # Check if it's a mode_line wrapper (QWidget containing QComboBox + QLineEdit)
+                if isinstance(w, QWidget):
+                    inner_combo = w.findChild(QComboBox)
+                    inner_line  = w.findChild(QLineEdit)
+                    if inner_combo:
+                        self.working_input_dict[key + suffix + ".mode"] = inner_combo.currentText()
+                        print(f"  [SAVE] {key + suffix}.mode = {inner_combo.currentText()} (ModeLine → QComboBox)")
+                    if inner_line:
+                        text = inner_line.text().strip()
+                        if text:
+                            self.working_input_dict[key + suffix + ".value"] = text
+                            print(f"  [SAVE] {key + suffix}.value = {text} (ModeLine → QLineEdit)")
+                else:
+                    print(f"  [SAVE] {key} — widget not found: {type(w)}")
+
+    def _load_member_fields(self, gi: int, mi: int) -> None:
+        suffix = f".G{gi}.M{mi}"
+        print(f"[LOAD] G{gi}.M{mi}")
+
+        for key in self._MEMBER_FIELD_KEYS:
+            value = self.working_input_dict.get(key + suffix)
+            if value is None:
+                print(f"  [LOAD] {key + suffix} — not in dict, skipping")
+                continue
+
+            w = self.findChild(QWidget, key)
+
+            # AdaptiveWidget — set on its currently active child widget
+            if isinstance(w, AdaptiveWidget):
+                active = w.currentWidget()
+                if isinstance(active, QComboBox):
+                    active.blockSignals(True)
+                    active.setCurrentText(str(value))
+                    active.blockSignals(False)
+                    print(f"  [LOAD] {key + suffix} = {value} → AdaptiveWidget→QComboBox")
+
+                    self.working_input_dict[key] = value
+
+                    selected = self.working_input_dict.get(key + ".selected" + suffix)
+                    if selected is not None:
+                        self.working_input_dict[key + ".selected"] = selected
+                
+                elif isinstance(active, QLineEdit):
+                    active.blockSignals(True)
+                    active.setText(str(value))
+                    active.blockSignals(False)
+                    print(f"  [LOAD] {key + suffix} = {value} → AdaptiveWidget→QLineEdit")
+
+                elif isinstance(active, QPushButton):
+                    # Bounds Button
+                    if value is not None:
+                        self.working_input_dict[key] = value
+                    # print(f"  [LOAD] {key + suffix} = {value} → BoundBtn (restored to base key)")  
+                
+                else:
+                    print(f"  [LOAD] {key} — AdaptiveWidget active child unknown: {type(active)}")
+            
+            elif isinstance(w, QComboBox):
+                w.blockSignals(True)
+                w.setCurrentText(str(value))
+                w.blockSignals(False)
+                # print(f"  [LOAD] {key + suffix} = {value} → QComboBox")
+
+            elif isinstance(w, QLineEdit):
+                w.blockSignals(True)
+                w.setText(str(value))
+                w.blockSignals(False)
+                # print(f"  [LOAD] {key + suffix} = {value} → QLineEdit")
+            
+            else:
+                # For TYPE_MODE_LINE
+                if isinstance(w, QWidget):
+                    inner_combo = w.findChild(QComboBox)
+                    inner_line  = w.findChild(QLineEdit)
+                    mode_val  = self.working_input_dict.get(key + suffix + ".mode")
+                    value_val = self.working_input_dict.get(key + suffix + ".value")
+                    if inner_combo and mode_val:
+                        inner_combo.blockSignals(True)
+                        inner_combo.setCurrentText(str(mode_val))
+                        inner_combo.blockSignals(False)
+                        print(f"  [LOAD] {key + suffix}.mode = {mode_val} → ModeLine→QComboBox")
+                    if inner_line and value_val:
+                        inner_line.blockSignals(True)
+                        inner_line.setText(str(value_val))
+                        inner_line.blockSignals(False)
+                        print(f"  [LOAD] {key + suffix}.value = {value_val} → ModeLine→QLineEdit")
+                
+                else:
+                    print(f"  [LOAD] {key} — widget not found: {type(w)}")
+
+    # Update saved data for Bounds Btn with dynamic keys - Implicit through schema
+    def _on_bounds_accepted(self, field_id: str, result: dict) -> None:
+        gi, mi = self._get_current_girder_member_indices()
+        suffix = f".G{gi}.M{mi}"
+        self.working_input_dict[field_id + suffix] = result
+        print(f"[BOUNDS_ACCEPTED] {field_id + suffix} = {result}")
+    
+    # Update saved data for TYPE_ALL_CUSTOM with dynamic keys - Implicit through schema
+    def _on_all_custom_selected(self, field_id: str, chosen: list) -> None:
+        gi, mi = self._get_current_girder_member_indices()
+        suffix = f".G{gi}.M{mi}"
+        self.working_input_dict[field_id + ".selected" + suffix] = chosen
+        self.working_input_dict[field_id + suffix] = "Custom"
+        print(f"[ALL_CUSTOM_SELECTED] {field_id}.selected{suffix} = {chosen}")
+                
+    # Loads fields for selected member — fired by END_CONNECTORS on member ID change
+    def _on_member_id_load(self, origin_key: str, target_widget: QWidget) -> None:
+        import re
+        if not isinstance(target_widget, QComboBox):
+            return
+        value = target_widget.currentText()
+        match = re.match(r"G(\d+)M(\d+)", str(value or "").strip())
+        if not match:
+            return
+        gi, mi = int(match.group(1)), int(match.group(2))
+        print(f"[MEMBER_ID_LOAD] G{gi}.M{mi}")
+        self._load_member_fields(gi, mi)
+        self._update_section_drawing()
+
+    # Saves current fields — fired by END_CONNECTORS on any section input change
+    def _save_member_fields_connector(self, origin_key: str, target_widget: QWidget) -> None:
+        
+        self._save_member_fields()
+
+    # == Member Properties > Member Dependant field connectors = ENDS ==============================
 
     # Compute func that return the value to be updated (field)
     # Calculation from Core IRC STARTS=======================================================================
@@ -501,6 +946,92 @@ class AdditionalInputs(QDialog):
             KEY_TL_TEMP_FALL: f"{fall:.2f}"
         }
     
+    def _compute_rolled_section_properties(self, working_input_dict: dict) -> dict:
+        from osdagbridge.core.utils.common import GirderSectionCatalog
+
+        designation = working_input_dict.get(KEY_MP_GIRDER_IS_SECTION, "")
+        if not designation:
+            return {}
+
+        girder_properties = GirderSectionCatalog()
+        section = girder_properties.get_beam_profile(str(designation).strip())
+        if section is None:
+            return {}
+
+        return {
+            KEY_MP_GIRDER_MASS:                str(section.mass_per_meter_kg),
+            KEY_MP_GIRDER_SECTIONAL_AREA:      str(section.area_cm2),
+            KEY_MP_GIRDER_SECTIONAL_IZ:        str(section.moment_of_inertia_zz_cm4),
+            KEY_MP_GIRDER_SECTIONAL_IY:        str(section.moment_of_inertia_yy_cm4),
+            KEY_MP_GIRDER_RADIUS_GYRATION_Z:   str(section.radius_of_gyration_z_cm),
+            KEY_MP_GIRDER_RADIUS_GYRATION_Y:   str(section.radius_of_gyration_y_cm),
+            KEY_MP_GIRDER_ELASTIC_MODULUS_ZZ:  str(section.elastic_section_modulus_z_cm3),
+            KEY_MP_GIRDER_ELASTIC_MODULUS_ZY:  str(section.elastic_section_modulus_y_cm3),
+            KEY_MP_GIRDER_PLASTIC_MODULUS_ZUZ: str(section.plastic_section_modulus_z_cm3),
+            KEY_MP_GIRDER_PLASTIC_MODULUS_ZUY: str(section.plastic_section_modulus_y_cm3),
+            KEY_MP_GIRDER_TORSION_CONSTANT_IT: str(section.torsion_constant_cm4),
+            KEY_MP_GIRDER_WARPING_CONSTANT_IW: str(section.warping_constant_cm6),
+        }
+
+    def _compute_welded_section_properties(self, working_input_dict: dict) -> dict:
+        from osdagbridge.core.bridge_types.plate_girder.initial_sizing import BridgeConfigurationSolver
+
+        def _to_m(key: str) -> float:
+            val = working_input_dict.get(key)
+            if val is None or isinstance(val, (dict, list)):
+                return 0.0
+            try:
+                return float(val) / 1000.0 # Convert to meters
+            except (ValueError, TypeError):
+                return 0.0
+
+        depth_m  = _to_m(KEY_MP_GIRDER_DEPTH)
+        b_top_m  = _to_m(KEY_MP_GIRDER_TOP_FLANGE_WIDTH)
+        b_bot_m  = _to_m(KEY_MP_GIRDER_BOTTOM_FLANGE_WIDTH)
+        tf_top_m = _to_m(KEY_MP_GIRDER_TOP_FLANGE_THICKNESS)
+        tf_bot_m = _to_m(KEY_MP_GIRDER_BOTTOM_FLANGE_THICKNESS)
+        tw_m     = _to_m(KEY_MP_GIRDER_WEB_THICKNESS)
+
+        if not depth_m or not b_top_m:
+            return {}
+
+        try:
+            span_m = float(working_input_dict.get(KEY_MP_GD_TOTAL_SPAN) or 30.0)
+        except (ValueError, TypeError):
+            span_m = 30.0
+
+        symmetry = str(working_input_dict.get(KEY_MP_GIRDER_SYMMETRY) or "Girder Symmetric")
+
+        try:
+            result = BridgeConfigurationSolver(carriageway_width=1.0).compute_section_properties(
+                span=span_m,
+                symmetry=symmetry,
+                user_depth=depth_m,
+                B_top=b_top_m,
+                B_bot=b_bot_m,
+                t_f_top=tf_top_m,
+                t_f_bot=tf_bot_m,
+                t_w=tw_m,
+            )
+        except Exception:
+            return {}
+
+        # Outputs are in SI metres; convert to the cm-based display units in the schema labels
+        return {
+            KEY_MP_GIRDER_MASS:                f"{result['Mass']:.4f}",
+            KEY_MP_GIRDER_SECTIONAL_AREA:      f"{result['Area']  * 1e4:.4f}",   # m²  → cm²
+            KEY_MP_GIRDER_SECTIONAL_IZ:        f"{result['I_z']   * 1e8:.4f}",   # m⁴  → cm⁴
+            KEY_MP_GIRDER_SECTIONAL_IY:        f"{result['I_y']   * 1e8:.4f}",   # m⁴  → cm⁴
+            KEY_MP_GIRDER_RADIUS_GYRATION_Z:   f"{result['r_z']   * 1e2:.4f}",   # m   → cm
+            KEY_MP_GIRDER_RADIUS_GYRATION_Y:   f"{result['r_y']   * 1e2:.4f}",   # m   → cm
+            KEY_MP_GIRDER_ELASTIC_MODULUS_ZZ:  f"{result['Z_ez']  * 1e6:.4f}",   # m³  → cm³
+            KEY_MP_GIRDER_ELASTIC_MODULUS_ZY:  f"{result['Z_ey']  * 1e6:.4f}",   # m³  → cm³
+            KEY_MP_GIRDER_PLASTIC_MODULUS_ZUZ: f"{result['Z_pz']  * 1e6:.4f}",   # m³  → cm³
+            KEY_MP_GIRDER_PLASTIC_MODULUS_ZUY: f"{result['Z_py']  * 1e6:.4f}",   # m³  → cm³
+            KEY_MP_GIRDER_TORSION_CONSTANT_IT: f"{result['I_t']   * 1e8:.4f}",   # m⁴  → cm⁴
+            KEY_MP_GIRDER_WARPING_CONSTANT_IW: f"{result['I_w']   * 1e12:.4f}",  # m⁶  → cm⁶
+        }
+
     # Calculation from Core IRC ENDS=======================================================================
 
     #-------------Field Change Handling and Validation Logic-Start-------------------------
@@ -540,7 +1071,7 @@ class AdditionalInputs(QDialog):
 
         # hard-validation start ----------------------
         result = self.validator.validate_additional_inputs(key, self.working_input_dict)
-        # print(f"@@: After Edited Validation result for {key} = {result}")
+        print(f"@@: After Edited Validation result for {key} = {result}")
         if result is not None:
             corrected, message = result
             CustomMessageBox(
@@ -748,125 +1279,6 @@ class AdditionalInputs(QDialog):
     def style_input_field(self, field):
         apply_field_style(field)
 
-    def init_ui(self):
-        self.setupWrapper()
-        
-        main_layout = QVBoxLayout(self.content_widget)
-        main_layout.setContentsMargins(5, 5, 5, 5)
-        
-        # Main tab widget
-        self.tabs = QTabWidget()
-        self.tabs.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        self.stretching_tab_bar = QTabBar()
-        self.stretching_tab_bar.setElideMode(Qt.ElideRight)
-        self.tabs.setTabBar(self.stretching_tab_bar)
-        self.tabs.setStyleSheet("""
-            QTabWidget::pane {
-                border: 1px solid #d1d1d1;
-                background-color: #ffffff;
-                border-radius: 6px;
-            }
-            QTabBar::tab {
-                font-weight: bold;
-                font-size: 12px;
-                background: #ffffff;
-                color: #3a3a3a;
-                border: 1px solid #d1d1d1;
-                padding: 10px 22px;
-            }
-            QTabBar::tab:selected {
-                background: #90AF13;
-                color: #ffffff;
-                border: 1px solid #90AF13;
-            }
-            QTabBar::tab:hover {
-                background: #90AF13;
-                color: #ffffff;
-            }
-        """)
-
-        self._last_top_tab_index = 0
-        
-        # Sub-Tab 1: Typical Section Details
-        self.typical_section_tab = TypicalSectionDetailsTab(
-            self.carriageway_width,
-            additional_input_instance=self)
-        self.typical_section_tab.update_footpath_value(self.footpath_value)
-        self.tabs.addTab(self.typical_section_tab, "Typical Section Details")
-        
-        # Sub-Tab 2: Member Properties
-        self.section_properties_tab = SectionPropertiesTab(
-            additiona_input_instance=self
-        )
-        self.tabs.addTab(self.section_properties_tab, "Member Properties")
-        self.section_properties_tab.set_editable_mode(self._member_properties_editable)
-
-        # Keep girder count in sync across tabs
-        try:
-            self.typical_section_tab.girder_count_changed.connect(self.section_properties_tab.set_girder_count)
-            
-            self._sync_member_properties_girder_count()
-        except Exception:
-            pass
-        
-        # Sub-Tab 3: Loading
-        from osdagbridge.core.bridge_types.plate_girder.ui_fields_additional_input import LOADING_TAB_SCHEMA
-        self.loading_tab = UIBuilder(
-            owner=self,
-            schema=LOADING_TAB_SCHEMA,
-            card_title="",
-            with_scroll=False,
-            main_widget_object_name="loading.main",
-            additional_input_instance=self,
-        )
-        self.tabs.addTab(self.loading_tab, "Loading")
-
-        self.support_tab = UIBuilder(
-            owner=self,
-            schema=SUPPORT_CONDITIONS_SCHEMA,
-            card_title="",
-            with_scroll=True,
-            main_widget_object_name="support_conditions.main",
-            additional_input_instance=self,
-        )
-        self.tabs.addTab(self.support_tab, "Support Conditions")
-        
-        # Sub-Tab 5: Analysis/Design Options
-        self.design_options_tab = UIBuilder(
-            owner=self,
-            schema=DESIGN_OPTIONS_SCHEMA,
-            card_title="",
-            with_scroll=True,
-            main_widget_object_name="design_options.main",
-            additional_input_instance=self,
-        )
-        self.tabs.addTab(self.design_options_tab, "Analysis/Design Options")
-
-        # Sub-Tab 6: Design Options (Cont.)
-        self.design_options_cont_tab = UIBuilder(
-            owner=self,
-            schema=DESIGN_OPTIONS_CONT_SCHEMA,
-            card_title="",
-            with_scroll=True,
-            main_widget_object_name="design_options_cont.main",
-            additional_input_instance=self,
-        )
-        self.tabs.addTab(self.design_options_cont_tab, "Design Options (Cont.)")
-
-        self.tabs.currentChanged.connect(self._on_top_tab_changed)        
-        main_layout.addWidget(self.tabs)
-        
-        action_bar, self.defaults_button, self.save_button = create_action_button_bar()
-        self.defaults_button.clicked.connect(self.reset_active_tab_defaults)
-        self.save_button.clicked.connect(self._save_inputs)
-        main_layout.addSpacing(6)
-        main_layout.addWidget(action_bar)
-        
-        # Enforce max 2 decimal places for all double validators in the dialog
-        self._enforce_decimal_places(2)
-        # Normalize existing numeric text to 2 decimal places for consistent display
-        self._normalize_numeric_texts(2)
-
     # Connector on_editing_finished for No of Girders (Typical Section Tab) → refresh Select Girder combo (Member Properties Tab)
     def on_no_of_girders_changed(self):
 
@@ -874,12 +1286,12 @@ class AdditionalInputs(QDialog):
         from osdagbridge.core.bridge_types.plate_girder.defaults import _on_no_of_girders_changed
         from pprint import pprint
         print(f"\n\n@@: Dict before updating dynamic keys:\n")
-        pprint(self.working_input_dict)
-        print("\n\n")
+        # pprint(self.working_input_dict)
+        # print("\n\n")
         _on_no_of_girders_changed(self.working_input_dict)
         print(f"\n\n@@: Dict after updating dynamic keys:\n")
-        pprint(self.working_input_dict)
-        print("\n\n")
+        # pprint(self.working_input_dict)
+        # print("\n\n")
 
     # Update CAD Method for Support Conditions Tab Drawing
     # This function is implicitly connected using Schema of the Tab
@@ -978,114 +1390,6 @@ class AdditionalInputs(QDialog):
                 self.section_properties_tab.set_girder_count(count)
         except Exception:
             pass
-
-    def _create_schema_widget(self, field_def, field_width):
-        field_type = field_def.get("type")
-        widget = None
-
-        if field_type == "combo":
-            widget = QComboBox()
-            choices = field_def.get("choices") or []
-
-            for choice in choices:
-                widget.addItem(choice)
-
-            # apply enabled/disabled states if specified
-            enabled_list = field_def.get("enabled_choices")
-            if enabled_list is not None:
-                # after adding items we can disable the others
-                for idx in range(widget.count()):
-                    text = widget.itemText(idx)
-                    if text not in enabled_list:
-                        item = widget.model().item(idx)
-                        if item is not None:
-                            item.setEnabled(False)
-                            # grey out the text
-                            item.setForeground(Qt.gray)
-
-            default = field_def.get("default")
-            if default:
-                widget.setCurrentText(str(default))
-
-            widget.setFixedWidth(field_width)
-            # use custom view with smart cursor handling for disabled items
-            try:
-                custom_view = SmartCursorComboBoxView()
-                widget.setView(custom_view)
-            except Exception:
-                pass
-
-        elif field_type == "checkbox":
-            widget = QCheckBox(field_def.get("label", ""))
-            widget.setChecked(bool(field_def.get("default", False)))
-
-        elif field_type == "label":
-            widget = QLabel(field_def.get("default", ""))
-            widget.setFixedWidth(field_width)
-
-        elif field_type == "button":
-            widget = QPushButton(field_def.get("text", "Set Bounds"))
-
-            widget.setFixedHeight(28)   
-            widget.setFixedWidth(field_width)  
-
-            widget.setCursor(Qt.PointingHandCursor)
-
-            widget.setStyleSheet("""
-                QPushButton {
-                    background-color: #ffffff;
-                    border: 1px solid #b2b2b2;
-                    border-radius: 6px;
-                    padding: 4px;
-                }
-                QPushButton:hover {
-                    background-color: #e6e6e6;
-                    color: #2b2b2b;
-                }
-                QPushButton:pressed {
-                    background-color: #d0d0d0;
-                }
-            """)     
-
-        elif field_type in ["line", "number"]:
-            widget = QLineEdit()
-
-            default = field_def.get("default")
-            if default is not None:
-                widget.setText(str(default))
-                widget.setProperty("default_value", default)
-            validator_def = field_def.get("validator")
-
-            if validator_def:
-                if validator_def.get("type") == "double_range":
-                    bottom = validator_def.get("bottom", 0.0)
-                    top = validator_def.get("top", 1e9)
-                    decimals = validator_def.get("decimals", 2)
-                    validator = QDoubleValidator(bottom, top, decimals)
-                    widget.setValidator(validator)
-                    # placeholder showing range
-                    widget.setPlaceholderText(f"{bottom} - {top}")
-
-                elif validator_def.get("type") == "int_range":
-                    bottom = validator_def.get("bottom", 0)
-                    top = validator_def.get("top", 1_000_000)
-                    validator = QIntValidator(bottom, top)
-                    widget.setValidator(validator)
-                    widget.setPlaceholderText(f"{bottom} - {top}")
-
-            widget.setFixedWidth(field_width)
-
-        if field_type not in ["checkbox", "label"]:
-            apply_field_style(widget)
-
-        bind_name = field_def.get("bind")
-        if bind_name:
-            setattr(self, bind_name, widget)
-
-        if field_def.get("id"):
-            widget.setObjectName(field_def["id"])
-
-        return widget
 
     def get_all_values(self):
         """
@@ -1222,123 +1526,6 @@ class AdditionalInputs(QDialog):
         self._sync_member_properties_girder_count()
 
         return values
-
-    def _build_sections_from_schema(self, parent_layout, sections, heading_style, label_style, field_width):
-        for section in sections:
-            title = section.get("title")
-            section_field_width = section.get("field_width", field_width)
-
-            checkbox_groups = section.get("checkbox_groups")
-            if checkbox_groups:
-                groups_layout = QHBoxLayout()
-                groups_layout.setSpacing(20)
-
-                for group in checkbox_groups:
-                    box = QGroupBox(group.get("title", ""))
-                    box.setStyleSheet(
-                        "QGroupBox { border: 1px solid #b0b0b0; border-radius: 6px; margin-top: 12px; padding: 8px; background: #ffffff; }"
-                        "QGroupBox::title { subcontrol-origin: margin; subcontrol-position: top left; left: 12px; padding: 0 6px; background: #f5f5f5; font-weight: 600; font-size: 11px; color: #333333; }"
-                    )
-                    vbox = QVBoxLayout(box)
-                    vbox.setContentsMargins(16, 24, 16, 16)
-                    vbox.setSpacing(12)
-                    checkboxes = []
-                    default_checked = group.get("default_checked", False)
-
-                    for text in group.get("items", []):
-                        cb = QCheckBox(text)
-                        cb.setChecked(default_checked)
-                        cb.setStyleSheet("QCheckBox { font-size: 11px; color: #333333; background: transparent; spacing: 8px; }")
-                        vbox.addWidget(cb)
-                        checkboxes.append(cb)
-                        
-
-                    bind_name = group.get("bind")
-                    if bind_name:
-                        setattr(self, bind_name, checkboxes)
-
-                    groups_layout.addWidget(box)
-
-                if title:
-                    title_lbl = QLabel(title)
-                    title_lbl.setStyleSheet(heading_style)
-                    parent_layout.addWidget(title_lbl)
-
-                parent_layout.addLayout(groups_layout)
-                continue
-
-            if title:
-                title_lbl = QLabel(title)
-                title_lbl.setStyleSheet(heading_style)
-                parent_layout.addWidget(title_lbl)
-
-            grid = QGridLayout()
-            grid.setContentsMargins(0, 8, 0, 0)
-            grid.setHorizontalSpacing(12)
-            grid.setVerticalSpacing(12)
-            grid.setColumnMinimumWidth(0, 120)
-
-            row_index = 0
-            for field_def in section.get("fields", []):
-                row_fields = field_def.get("row_fields")
-                if row_fields:
-                    row_layout = QHBoxLayout()
-                    row_layout.setSpacing(8)  # reduce gap
-                    row_layout.setContentsMargins(0, 0, 0, 0)
-
-                    for i, inline_def in enumerate(row_fields):
-
-                        if inline_def.get("type") == "label":
-                            lbl = QLabel(inline_def.get("label", ""))
-                            lbl.setStyleSheet(label_style)
-                            row_layout.addWidget(lbl)
-
-                            # Add extra spacing only after "Limit :"
-                            if inline_def.get("after_spacing"):
-                                row_layout.addSpacing(inline_def["after_spacing"])
-
-                        else:
-                            widget = self._create_schema_widget(
-                                inline_def,
-                                inline_def.get("width", section_field_width)
-                            )
-                            row_layout.addWidget(widget)
-
-                    row_layout.addStretch()  # keep left aligned
-                    parent_layout.addLayout(row_layout)
-                    continue
-
-                field_type = field_def.get("type")
-                if field_type == "checkbox":
-                    widget = self._create_schema_widget(field_def, section_field_width)
-                    grid.addWidget(widget, row_index, 0, 1, 2, Qt.AlignLeft)
-                    row_index += 1
-                    continue
-
-                lbl = QLabel(field_def.get("label", ""))
-                lbl.setTextFormat(Qt.RichText)
-                lbl.setStyleSheet(label_style)
-                grid.addWidget(lbl, row_index, 0, Qt.AlignLeft | Qt.AlignVCenter)
-
-                widget = self._create_schema_widget(field_def, section_field_width)
-                # Create vertical container for error + field
-                field_container = QVBoxLayout()
-                field_container.setContentsMargins(0, 0, 0, 0)
-                field_container.setSpacing(2)
-
-                error_label = getattr(widget, "_error_label", None)
-                if error_label is not None:
-                    field_container.addWidget(error_label)
-
-                field_container.addWidget(widget)
-
-                container_widget = QWidget()
-                container_widget.setLayout(field_container)
-
-                grid.addWidget(container_widget, row_index, 1, Qt.AlignLeft)
-                row_index += 1
-
-            parent_layout.addLayout(grid)
 
     def _find_inner_tab_index(self, tab_widget, tab_name: str) -> int:
         """

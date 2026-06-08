@@ -221,8 +221,8 @@ class CadPreviewWidget(QWidget):
 
     def update_from_bridge_inputs(self, working_input_dict: dict) -> None:
         """Redraw the canvas from the current working input dict."""
-        from osdagbridge.core.utils.common import KEY_GD_SEGMENT_TABLE
-        segments = working_input_dict.get(KEY_GD_SEGMENT_TABLE) or []
+        from osdagbridge.core.utils.common import KEY_MP_GD_SEGMENT_TABLE
+        segments = working_input_dict.get(KEY_MP_GD_SEGMENT_TABLE) or []
         selected = working_input_dict.get("selected_member_id", "")
         self._cad.set_segments(segments)
         self._cad.set_selected_member(selected)

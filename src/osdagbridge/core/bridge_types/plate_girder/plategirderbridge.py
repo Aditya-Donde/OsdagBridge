@@ -135,18 +135,18 @@ from osdagbridge.core.utils.common import (
     KEY_SD_SHEAR_STUDS_PER_SECTION,
     KEY_SD_SHEAR_LONGITUDINAL_SPACING,
     # Section properties card
-    KEY_SD_SECTION_PROP_MASS,
-    KEY_SD_SECTION_PROP_AREA,
-    KEY_SD_SECTION_PROP_IZ,
-    KEY_SD_SECTION_PROP_IV,
-    KEY_SD_SECTION_PROP_RZ,
-    KEY_SD_SECTION_PROP_RV,
-    KEY_SD_SECTION_PROP_ZZ,
-    KEY_SD_SECTION_PROP_ZV,
-    KEY_SD_SECTION_PROP_ZUZ,
-    KEY_SD_SECTION_PROP_ZUV,
-    KEY_SD_SECTION_PROP_IT,
-    KEY_SD_SECTION_PROP_IW,
+    KEY_MP_GIRDER_MASS,
+    KEY_MP_GIRDER_SECTIONAL_AREA,
+    KEY_MP_GIRDER_SECTIONAL_IZ,
+    KEY_MP_GIRDER_SECTIONAL_IY,
+    KEY_MP_GIRDER_RADIUS_GYRATION_Z,
+    KEY_MP_GIRDER_RADIUS_GYRATION_Y,
+    KEY_MP_GIRDER_ELASTIC_MODULUS_ZZ,
+    KEY_MP_GIRDER_ELASTIC_MODULUS_ZY,
+    KEY_MP_GIRDER_PLASTIC_MODULUS_ZUZ,
+    KEY_MP_GIRDER_PLASTIC_MODULUS_ZUY,
+    KEY_MP_GIRDER_TORSION_CONSTANT_IT,
+    KEY_MP_GIRDER_WARPING_CONSTANT_IW,
     # Stiffener table
     KEY_SD_STIFFENER_ROW_INTERMEDIATE,
     KEY_SD_STIFFENER_ROW_LONGITUDINAL,
@@ -2961,18 +2961,18 @@ class PlateGirderBridge:
         # input_dict stores these in SI (m², m⁴, m³, kg/m).
         # The section-property card is expected to show SI values (matching the
         # initial sizing display), so no unit conversion is applied here.
-        out[KEY_SD_SECTION_PROP_MASS]  = inp.get(KEY_MP_GIRDER_MASS,               0.0)   # kg/m
-        out[KEY_SD_SECTION_PROP_AREA]  = inp.get(KEY_MP_GIRDER_SECTIONAL_AREA,     0.0)   # m²
-        out[KEY_SD_SECTION_PROP_IZ]    = inp.get(KEY_MP_GIRDER_SECTIONAL_IZ,       0.0)   # m⁴
-        out[KEY_SD_SECTION_PROP_IV]    = inp.get(KEY_MP_GIRDER_SECTIONAL_IY,       0.0)   # m⁴
-        out[KEY_SD_SECTION_PROP_RZ]    = inp.get(KEY_MP_GIRDER_RADIUS_GYRATION_Z,  0.0)   # m
-        out[KEY_SD_SECTION_PROP_RV]    = inp.get(KEY_MP_GIRDER_RADIUS_GYRATION_Y,  0.0)   # m
-        out[KEY_SD_SECTION_PROP_ZZ]    = inp.get(KEY_MP_GIRDER_ELASTIC_MODULUS_ZZ, 0.0)   # m³ (Ze about zz)
-        out[KEY_SD_SECTION_PROP_ZV]    = inp.get(KEY_MP_GIRDER_ELASTIC_MODULUS_ZY, 0.0)   # m³ (Ze about zy)
-        out[KEY_SD_SECTION_PROP_ZUZ]   = inp.get(KEY_MP_GIRDER_PLASTIC_MODULUS_ZUZ,0.0)   # m³ (Zp about zz)
-        out[KEY_SD_SECTION_PROP_ZUV]   = inp.get(KEY_MP_GIRDER_PLASTIC_MODULUS_ZUY,0.0)   # m³ (Zp about zy)
-        out[KEY_SD_SECTION_PROP_IT]    = inp.get(KEY_MP_GIRDER_TORSION_CONSTANT_IT,0.0)   # m³ (torsion J)
-        out[KEY_SD_SECTION_PROP_IW]    = inp.get(KEY_MP_GIRDER_WARPING_CONSTANT_IW,0.0)   # m⁶ (warping Iw)
+        out[KEY_MP_GIRDER_MASS]  = inp.get(KEY_MP_GIRDER_MASS,               0.0)   # kg/m
+        out[KEY_MP_GIRDER_SECTIONAL_AREA]  = inp.get(KEY_MP_GIRDER_SECTIONAL_AREA,     0.0)   # m²
+        out[KEY_MP_GIRDER_SECTIONAL_IZ]    = inp.get(KEY_MP_GIRDER_SECTIONAL_IZ,       0.0)   # m⁴
+        out[KEY_MP_GIRDER_SECTIONAL_IY]    = inp.get(KEY_MP_GIRDER_SECTIONAL_IY,       0.0)   # m⁴
+        out[KEY_MP_GIRDER_RADIUS_GYRATION_Z]    = inp.get(KEY_MP_GIRDER_RADIUS_GYRATION_Z,  0.0)   # m
+        out[KEY_MP_GIRDER_RADIUS_GYRATION_Y]    = inp.get(KEY_MP_GIRDER_RADIUS_GYRATION_Y,  0.0)   # m
+        out[KEY_MP_GIRDER_ELASTIC_MODULUS_ZZ]    = inp.get(KEY_MP_GIRDER_ELASTIC_MODULUS_ZZ, 0.0)   # m³ (Ze about zz)
+        out[KEY_MP_GIRDER_ELASTIC_MODULUS_ZY]    = inp.get(KEY_MP_GIRDER_ELASTIC_MODULUS_ZY, 0.0)   # m³ (Ze about zy)
+        out[KEY_MP_GIRDER_PLASTIC_MODULUS_ZUZ]   = inp.get(KEY_MP_GIRDER_PLASTIC_MODULUS_ZUZ,0.0)   # m³ (Zp about zz)
+        out[KEY_MP_GIRDER_PLASTIC_MODULUS_ZUY]   = inp.get(KEY_MP_GIRDER_PLASTIC_MODULUS_ZUY,0.0)   # m³ (Zp about zy)
+        out[KEY_MP_GIRDER_TORSION_CONSTANT_IT]    = inp.get(KEY_MP_GIRDER_TORSION_CONSTANT_IT,0.0)   # m³ (torsion J)
+        out[KEY_MP_GIRDER_WARPING_CONSTANT_IW]    = inp.get(KEY_MP_GIRDER_WARPING_CONSTANT_IW,0.0)   # m⁶ (warping Iw)
 
         # In store_design_results(), replace the stiffener section (── 5. Stiffener table ──) with:
 

@@ -49,18 +49,18 @@ from osdagbridge.core.utils.common import (
     KEY_SD_SHEAR_TRANSVERSE_SPACING,
     KEY_SD_SHEAR_STUDS_PER_SECTION,
     KEY_SD_SHEAR_LONGITUDINAL_SPACING,
-    KEY_SD_SECTION_PROP_MASS,
-    KEY_SD_SECTION_PROP_AREA,
-    KEY_SD_SECTION_PROP_IZ,
-    KEY_SD_SECTION_PROP_IV,
-    KEY_SD_SECTION_PROP_RZ,
-    KEY_SD_SECTION_PROP_RV,
-    KEY_SD_SECTION_PROP_ZZ,
-    KEY_SD_SECTION_PROP_ZV,
-    KEY_SD_SECTION_PROP_ZUZ,
-    KEY_SD_SECTION_PROP_ZUV,
-    KEY_SD_SECTION_PROP_IT,
-    KEY_SD_SECTION_PROP_IW,
+    KEY_MP_GIRDER_MASS,
+    KEY_MP_GIRDER_SECTIONAL_AREA,
+    KEY_MP_GIRDER_SECTIONAL_IZ,
+    KEY_MP_GIRDER_SECTIONAL_IY,
+    KEY_MP_GIRDER_RADIUS_GYRATION_Z,
+    KEY_MP_GIRDER_RADIUS_GYRATION_Y,
+    KEY_MP_GIRDER_ELASTIC_MODULUS_ZZ,
+    KEY_MP_GIRDER_ELASTIC_MODULUS_ZY,
+    KEY_MP_GIRDER_PLASTIC_MODULUS_ZUZ,
+    KEY_MP_GIRDER_PLASTIC_MODULUS_ZUY,
+    KEY_MP_GIRDER_TORSION_CONSTANT_IT,
+    KEY_MP_GIRDER_WARPING_CONSTANT_IW,
 )
 
 # Greyed-out read-only style for combos mirroring the Output Dock selection.
@@ -612,61 +612,61 @@ class SteelDesignDetailsTab(QWidget):
         m6_to_cm6  = lambda v: v * 1e12
 
         out["mass"] = _str(_get(
-            KEY_SD_SECTION_PROP_MASS,
+            KEY_MP_GIRDER_MASS,
             "member_properties.girder_details.section_properties.mass",
         ))
         out["area"] = _si(
-            KEY_SD_SECTION_PROP_AREA,
+            KEY_MP_GIRDER_SECTIONAL_AREA,
             "member_properties.girder_details.section_properties.area",
             m2_to_cm2,
         )
         out["iz"] = _si(
-            KEY_SD_SECTION_PROP_IZ,
+            KEY_MP_GIRDER_SECTIONAL_IZ,
             "member_properties.girder_details.section_properties.iz",
             m4_to_cm4,
         )
         out["iv"] = _si(
-            KEY_SD_SECTION_PROP_IV,
+            KEY_MP_GIRDER_SECTIONAL_IY,
             "member_properties.girder_details.section_properties.iy",
             m4_to_cm4,
         )
         out["rz"] = _si(
-            KEY_SD_SECTION_PROP_RZ,
+            KEY_MP_GIRDER_RADIUS_GYRATION_Z,
             "member_properties.girder_details.section_properties.radius_gyration_z",
             m_to_cm,
         )
         out["rv"] = _si(
-            KEY_SD_SECTION_PROP_RV,
+            KEY_MP_GIRDER_RADIUS_GYRATION_Y,
             "member_properties.girder_details.section_properties.radius_gyration_y",
             m_to_cm,
         )
         out["zz"] = _si(
-            KEY_SD_SECTION_PROP_ZZ,
+            KEY_MP_GIRDER_ELASTIC_MODULUS_ZZ,
             "member_properties.girder_details.material_properties.modulus_of_elasticity_zz",
             m3_to_cm3,
         )
         out["zv"] = _si(
-            KEY_SD_SECTION_PROP_ZV,
+            KEY_MP_GIRDER_ELASTIC_MODULUS_ZY,
             "member_properties.girder_details.material_properties.modulus_of_elasticity_zy",
             m3_to_cm3,
         )
         out["zuz"] = _si(
-            KEY_SD_SECTION_PROP_ZUZ,
+            KEY_MP_GIRDER_PLASTIC_MODULUS_ZUZ,
             "member_properties.girder_details.material_properties.plastic_modulus_zuz",
             m3_to_cm3,
         )
         out["zuv"] = _si(
-            KEY_SD_SECTION_PROP_ZUV,
+            KEY_MP_GIRDER_PLASTIC_MODULUS_ZUY,
             "member_properties.girder_details.material_properties.plastic_modulus_zuy",
             m3_to_cm3,
         )
         out["it"] = _si(
-            KEY_SD_SECTION_PROP_IT,
+            KEY_MP_GIRDER_TORSION_CONSTANT_IT,
             "member_properties.girder_details.section_properties.torsion_constant_it",
             m4_to_cm4,
         )
         out["iw"] = _si(
-            KEY_SD_SECTION_PROP_IW,
+            KEY_MP_GIRDER_WARPING_CONSTANT_IW,
             "member_properties.girder_details.section_properties.warping_constant_iw",
             m6_to_cm6,
         )

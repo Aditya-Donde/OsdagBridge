@@ -389,40 +389,63 @@ KEY_WC_LD_LANE_TABLE_COUNT = "typical_section.lane_details.lane_table_count"
 KEY_MEMBER_PROPERTIES_TAB           = "member_properties"
 
 #-------------- Girder Details Sub-Tab --------------------------------------------
-KEY_GD_SP                           = "member_properties.girder_details.section_properties"
-KEY_GD_SECTION_DRAWING              = "member_properties.girder_details.section_drawing"
-KEY_GD_CAD_BTN_CROSS_SECTION = "member_properties.girder_details.cad_btn.cross_section"
-KEY_GD_CAD_BTN_SIDE_VIEW     = "member_properties.girder_details.cad_btn.side_view"
+KEY_MP_GD_TAB                          = "member_properties.girder_details"
+KEY_MP_GD_SP                           = "member_properties.girder_details.section_properties"
+KEY_MP_GD_SECTION_DRAWING              = "member_properties.girder_details.section_drawing"
+KEY_MP_GD_CAD_BTN_CROSS_SECTION = "member_properties.girder_details.cad_btn.cross_section"
+KEY_MP_GD_CAD_BTN_SIDE_VIEW     = "member_properties.girder_details.cad_btn.side_view"
 
 # Top-level composite fields
-KEY_GD_CAD_PREVIEW               = "member_properties.girder_details.cad_preview"
-KEY_GD_SEGMENT_TABLE             = "member_properties.girder_details.segment_table"
+KEY_MP_GD_CAD_PREVIEW                  = "member_properties.girder_details.cad_preview"
+KEY_MP_GD_SEGMENT_TABLE                = "member_properties.girder_details.segment_table"
  
+# Overview fields
+KEY_MP_GD_SELECT_GIRDER                = "member_properties.girder_details.select_girder"
+KEY_MP_GD_SPAN                         = "member_properties.girder_details.span"
+KEY_MP_GD_TOTAL_SPAN                   = "member_properties.girder_details.total_span"
  
 # Section inputs
-KEY_GD_APPLY_EXTERIOR            = "member_properties.girder_details.apply_exterior"
-KEY_GD_APPLY_INTERIOR            = "member_properties.girder_details.apply_interior"
-KEY_GD_SECTION_PREVIEW           = "member_properties.girder_details.section_preview"
+KEY_MP_GIRDER_TYPE                    = "member_properties.girder_details.section_input.type"
+KEY_MP_GIRDER_SYMMETRY                = "member_properties.girder_details.section_input.symmetry"
+KEY_MP_GIRDER_DEPTH                   = "member_properties.girder_details.section_input.depth"
+KEY_MP_GIRDER_TOP_FLANGE_WIDTH        = "member_properties.girder_details.section_input.top_flange_width"
+KEY_MP_GIRDER_TOP_FLANGE_THICKNESS    = "member_properties.girder_details.section_input.top_flange_thickness"
+KEY_MP_GIRDER_BOTTOM_FLANGE_WIDTH     = "member_properties.girder_details.section_input.bottom_flange_width"
+KEY_MP_GIRDER_BOTTOM_FLANGE_THICKNESS = "member_properties.girder_details.section_input.bottom_flange_thickness"
+KEY_MP_GD_SUPPORT_TYPE                = "member_properties.girder_details.section_inputs.support_type"
+KEY_MP_GD_SUPPORT_WIDTH               = "member_properties.girder_details.section_inputs.support_width"
+KEY_MP_GIRDER_WEB_THICKNESS           = "member_properties.girder_details.section_input.web_thickness"
+KEY_MP_GIRDER_IS_SECTION              = "member_properties.girder_details.section_input.is_section"
+KEY_MP_GIRDER_TORSIONAL_RESTRAINT     = "member_properties.girder_details.section_input.torsional_restraint"
+KEY_MP_GIRDER_WARPING_RESTRAINT       = "member_properties.girder_details.section_input.warping_restraint"
+KEY_MP_GIRDER_WEB_TYPE                = "member_properties.girder_details.section_input.web_type"
+
+KEY_MP_GD_MEMBER_ID                      = "member_properties.girder_details.member_id"
+KEY_MP_GD_APPLY_EXTERIOR                 = "member_properties.girder_details.apply_exterior"
+KEY_MP_GD_APPLY_INTERIOR                 = "member_properties.girder_details.apply_interior"
+KEY_MP_GD_SECTION_PREVIEW                = "member_properties.girder_details.section_preview"
+
+# Steel Design Properties
+KEY_MP_GIRDER_MASS = "member_properties.girder_details.section_properties.mass"
+KEY_MP_GIRDER_SECTIONAL_AREA = "member_properties.girder_details.section_properties.area"
+KEY_MP_GIRDER_SECTIONAL_IY = "member_properties.girder_details.section_properties.iy"
+KEY_MP_GIRDER_SECTIONAL_IZ = "member_properties.girder_details.section_properties.iz"
+KEY_MP_GIRDER_RADIUS_GYRATION_Y = "member_properties.girder_details.section_properties.radius_gyration_y"
+KEY_MP_GIRDER_RADIUS_GYRATION_Z = "member_properties.girder_details.section_properties.radius_gyration_z"
+KEY_MP_GIRDER_ELASTIC_MODULUS_ZZ = "member_properties.girder_details.material_properties.modulus_of_elasticity_zz"
+KEY_MP_GIRDER_ELASTIC_MODULUS_ZY = "member_properties.girder_details.material_properties.modulus_of_elasticity_zy"
+KEY_MP_GIRDER_PLASTIC_MODULUS_ZUZ = "member_properties.girder_details.material_properties.plastic_modulus_zuz"
+KEY_MP_GIRDER_PLASTIC_MODULUS_ZUY = "member_properties.girder_details.material_properties.plastic_modulus_zuy"
+KEY_MP_GIRDER_TORSION_CONSTANT_IT = "member_properties.girder_details.section_properties.torsion_constant_it"
+KEY_MP_GIRDER_WARPING_CONSTANT_IW = "member_properties.girder_details.section_properties.warping_constant_iw"
 
 
 
 # Stiffener inputs
 KEY_SD_STIFFENER_DETAILS            = "member_properties.stiffener_details.stiffener_details_cad"
 
-# Steel Design Properties
-KEY_SD_SECTION_PROP_MASS = "steeldesign.details.section_properties.mass"
-KEY_SD_SECTION_PROP_AREA = "steeldesign.details.section_properties.area"
-KEY_SD_SECTION_PROP_IZ = "steeldesign.details.section_properties.iz"
-KEY_SD_SECTION_PROP_IV = "steeldesign.details.section_properties.iv"
-KEY_SD_SECTION_PROP_RZ = "steeldesign.details.section_properties.rz"
-KEY_SD_SECTION_PROP_RV = "steeldesign.details.section_properties.rv"
-KEY_SD_SECTION_PROP_ZZ = "steeldesign.details.section_properties.zz"
-KEY_SD_SECTION_PROP_ZV = "steeldesign.details.section_properties.zv"
-KEY_SD_SECTION_PROP_ZUZ = "steeldesign.details.section_properties.zuz"
-KEY_SD_SECTION_PROP_ZUV = "steeldesign.details.section_properties.zuv"
-KEY_SD_SECTION_PROP_IT = "steeldesign.details.section_properties.it"
-KEY_SD_SECTION_PROP_IW = "steeldesign.details.section_properties.iw"
-
+# Web buckling inputs
+KEY_SD_SHEAR_BUCKLING_METHOD        = "member_properties.stiffener_details.shear_buckling_method"
 
 
 
@@ -691,38 +714,8 @@ KEY_FOOTPATH_CLEAR_MIN_WIDTH = 1500
 
 
 # Member Properties - Girder Details - just created for now so it doesnt affects other imports
-KEY_MP_GD_TAB                          = "member_properties.girder_details"
-KEY_MP_SELECT_GIRDER = "member_properties.girder_details.select_girder" # Dropdown to select girder number (1,2,3...)
-KEY_MP_TOTAL_SPAN                = "member_properties.girder_details.total_span"
-KEY_MP_MEMBER_ID = "member_properties.member_id" # Member ID field (auto-populated based on selected girder)
-KEY_MP_GIRDER_TYPE = "member_properties.girder_details.section_input.type" # Girder type combo box (rolled,welded)
-KEY_MP_GIRDER_IS_SECTION = "member_properties.girder_details.section_input.is_section" # IS section for rolled type
-KEY_MP_GIRDER_SYMMETRY = "member_properties.girder_details.section_input.symmetry" # Symmetry combo box (symmetric/asymmetric)
-KEY_MP_GIRDER_TOP_FLANGE_WIDTH = "member_properties.girder_details.section_input.top_flange_width" # Top flange width for welded girder
-KEY_MP_GIRDER_TOP_FLANGE_THICKNESS = "member_properties.girder_details.section_input.top_flange_thickness" # Top flange thickness for welded girder
-KEY_MP_GIRDER_BOTTOM_FLANGE_WIDTH = "member_properties.girder_details.section_input.bottom_flange_width" # Bottom flange width for welded girder
-KEY_MP_GIRDER_BOTTOM_FLANGE_THICKNESS = "member_properties.girder_details.section_input.bottom_flange_thickness" # Bottom flange thickness for welded girder
-KEY_MP_GIRDER_DEPTH = "member_properties.girder_details.section_input.depth" # Depth for welded girder
-KEY_MP_GIRDER_WEB_THICKNESS = "member_properties.girder_details.section_input.web_thickness" # Web thickness for welded girder
-KEY_MP_SUPPORT_TYPE = "member_properties.girder_details.section_input.support_type" # Support type combo box (major laterally supported or minor laterally supported)
-KEY_MP_SUPPORT_WIDTH = "member_properties.girder_details.section_input.support_width" # Support width for girders
-KEY_MP_GIRDER_WEB_DEPTH = "member_properties.girder_details.section_input.web_depth" # Web depth for welded girder
-KEY_MP_GIRDER_TORSIONAL_RESTRAINT = "member_properties.girder_details.section_input.torsional_restraint" # Torsional restraint for welded girder
-KEY_MP_GIRDER_WARPING_RESTRAINT = "member_properties.girder_details.section_input.warping_restraint" # Warping restraint for welded girder
-KEY_MP_GIRDER_WEB_TYPE = "member_properties.girder_details.section_input.web_type" # Web type combo box (plain, corrugated, perforated)
 
-KEY_MP_GIRDER_MASS = "member_properties.girder_details.section_properties.mass" # Section mass per unit length
-KEY_MP_GIRDER_SECTIONAL_AREA = "member_properties.girder_details.section_properties.area" # Sectional area
-KEY_MP_GIRDER_SECTIONAL_IY = "member_properties.girder_details.section_properties.iy" # Moment of inertia about y-axis
-KEY_MP_GIRDER_SECTIONAL_IZ = "member_properties.girder_details.section_properties.iz" # Moment of inertia about z-axis
-KEY_MP_GIRDER_RADIUS_GYRATION_Y = "member_properties.girder_details.section_properties.radius_gyration_y" # Radius of gyration about y-axis
-KEY_MP_GIRDER_RADIUS_GYRATION_Z = "member_properties.girder_details.section_properties.radius_gyration_z" # Radius of gyration about z-axis
-KEY_MP_GIRDER_ELASTIC_MODULUS_ZZ = "member_properties.girder_details.material_properties.elastic_modulus_zz" # Elastic modulus in strong axis direction
-KEY_MP_GIRDER_ELASTIC_MODULUS_ZY = "member_properties.girder_details.material_properties.elastic_modulus_zy" # Elastic modulus in weak axis direction
-KEY_MP_GIRDER_PLASTIC_MODULUS_ZUZ = "member_properties.girder_details.material_properties.plastic_modulus_zuz" # Plastic modulus in strong axis direction
-KEY_MP_GIRDER_PLASTIC_MODULUS_ZUY = "member_properties.girder_details.material_properties.plastic_modulus_zuy" # Plastic modulus in weak axis direction
-KEY_MP_GIRDER_TORSION_CONSTANT_IT = "member_properties.girder_details.section_properties.torsion_constant_it" # Torsion constant
-KEY_MP_GIRDER_WARPING_CONSTANT_IW = "member_properties.girder_details.section_properties.warping_constant_iw" # Warping constant
+KEY_MP_GIRDER_WEB_DEPTH = "member_properties.girder_details.section_input.web_depth"
 
 
 # Member Properties - Stiffener Details (dynamic keys, mirrors KEY_MP_GIRDER_* pattern)
@@ -1338,3 +1331,173 @@ def get_documents_folder():
     if not docs_path.exists():
         docs_path = Path.home()
     return str(docs_path)
+
+# ------- Database Interaction -------------------------------------------------------------
+"""Standalone girder section catalog — no UI dependencies.
+
+Provides:
+    GirderSectionCatalog  — loads rolled beam data from SQLite
+    BeamSection           — frozen dataclass for beam properties
+    girder_catalog        — module-level singleton instance
+
+Public API:
+    get_is_section_list()              → list[str]
+    get_is_section_properties(desig)   → dict | None
+"""
+
+import sqlite3
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Dict, Optional
+
+
+# ── Database location ─────────────────────────────────────────────────────────
+
+def _locate_database() -> Path:
+    current = Path(__file__).resolve()
+    for parent in current.parents:
+        candidate = parent / "core" / "data" / "ResourceFiles" / "Intg_osdag.sqlite"
+        if candidate.exists():
+            return candidate
+    return current.parents[4] / "core" / "data" / "ResourceFiles" / "Intg_osdag.sqlite"
+
+DB_PATH = _locate_database()
+
+# ── Data container ────────────────────────────────────────────────────────────
+
+@dataclass(frozen=True)
+class BeamSection:
+    """Immutable container for rolled beam section properties."""
+    designation:                  str
+    type_name:                    str
+    mass_per_meter_kg:            float
+    area_cm2:                     float
+    depth_mm:                     float
+    flange_width_mm:              float
+    web_thickness_mm:             float
+    flange_thickness_mm:          float
+    root_radius_mm:               float
+    toe_radius_mm:                float
+    moment_of_inertia_zz_cm4:    float
+    moment_of_inertia_yy_cm4:    float
+    radius_of_gyration_z_cm:     float
+    radius_of_gyration_y_cm:     float
+    elastic_section_modulus_z_cm3: float
+    elastic_section_modulus_y_cm3: float
+    plastic_section_modulus_z_cm3: float
+    plastic_section_modulus_y_cm3: float
+    torsion_constant_cm4:         float
+    warping_constant_cm6:         float
+
+# ── Catalog ───────────────────────────────────────────────────────────────────
+
+class GirderSectionCatalog:
+    """Loads rolled girder data from the bundled SQLite database."""
+
+    def __init__(self, db_path: Path = DB_PATH) -> None:
+        self.db_path = db_path
+        self._sections: Dict[str, BeamSection] = {}
+        self._outlines:  Dict[str, dict]       = {}
+        self._load()
+
+    def _load(self) -> None:
+        if not self.db_path.exists():
+            return
+        conn   = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        try:
+            cursor.execute("""
+                SELECT Designation, Type, Mass, Area, D, B, tw, T,
+                       R1, R2, Iz, Iy, rz, ry, Zz, Zy, Zpz, Zpy, It, Iw
+                FROM Beams
+            """)
+            for row in cursor.fetchall():
+                (desig, type_name, mass, area, depth, b_flange,
+                 tw, tf, r1, r2, iz, iy, rz, ry,
+                 zz, zy, zpz, zpy, it, iw) = row
+
+                section = BeamSection(
+                    designation               = str(desig).strip(),
+                    type_name                 = str(type_name or "").strip(),
+                    mass_per_meter_kg         = float(mass  or 0.0),
+                    area_cm2                  = float(area  or 0.0),
+                    depth_mm                  = float(depth or 0.0),
+                    flange_width_mm           = float(b_flange or 0.0),
+                    web_thickness_mm          = float(tw    or 0.0),
+                    flange_thickness_mm       = float(tf    or 0.0),
+                    root_radius_mm            = float(r1    or 0.0),
+                    toe_radius_mm             = float(r2    or 0.0),
+                    moment_of_inertia_zz_cm4  = float(iz    or 0.0),
+                    moment_of_inertia_yy_cm4  = float(iy    or 0.0),
+                    radius_of_gyration_z_cm   = float(rz    or 0.0),
+                    radius_of_gyration_y_cm   = float(ry    or 0.0),
+                    elastic_section_modulus_z_cm3 = float(zz  or 0.0),
+                    elastic_section_modulus_y_cm3 = float(zy  or 0.0),
+                    plastic_section_modulus_z_cm3 = float(zpz or 0.0),
+                    plastic_section_modulus_y_cm3 = float(zpy or 0.0),
+                    torsion_constant_cm4      = float(it    or 0.0),
+                    warping_constant_cm6      = float(iw    or 0.0),
+                )
+                self._sections[section.designation] = section
+                self._outlines[section.designation] = {
+                    "designation":            section.designation,
+                    "depth_mm":               section.depth_mm,
+                    "top_flange_width_mm":    section.flange_width_mm,
+                    "bottom_flange_width_mm": section.flange_width_mm,
+                    "web_thickness_mm":       section.web_thickness_mm,
+                    "top_flange_thickness_mm":    section.flange_thickness_mm,
+                    "bottom_flange_thickness_mm": section.flange_thickness_mm,
+                }
+        finally:
+            conn.close()
+
+    def list_available_sections(self) -> Dict[str, BeamSection]:
+        return dict(self._sections)
+
+    def get_beam_profile(self, designation: str) -> Optional[BeamSection]:
+        if not designation:
+            return None
+        return self._sections.get(str(designation).strip())
+
+    def get_rolled_section(self, designation: str) -> Optional[dict]:
+        if not designation:
+            return None
+        return self._outlines.get(str(designation).strip())
+
+
+# ── Module-level singleton ────────────────────────────────────────────────────
+
+girder_catalog = GirderSectionCatalog()
+
+# ── Public API ────────────────────────────────────────────────────────────────
+
+def get_is_section_list() -> list[str]:
+    """Return sorted list of all IS section designations available in the database."""
+    return sorted(girder_catalog.list_available_sections().keys())
+
+
+def get_is_section_properties(designation: str) -> Optional[dict]:
+    """Return section properties for the given designation.
+
+    Keys match KEY_MP_GIRDER_* suffix names used in working_input_dict:
+        mass, area, iz, iy, rz, ry, zz, zy, zuz, zuy, it, iw
+
+    Returns None if designation is not found.
+    """
+    beam = girder_catalog.get_beam_profile(designation)
+    if beam is None:
+        return None
+    return {
+        "mass":  beam.mass_per_meter_kg,
+        "area":  beam.area_cm2,
+        "iz":    beam.moment_of_inertia_zz_cm4,
+        "iy":    beam.moment_of_inertia_yy_cm4,
+        "rz":    beam.radius_of_gyration_z_cm,
+        "ry":    beam.radius_of_gyration_y_cm,
+        "zz":    beam.elastic_section_modulus_z_cm3,
+        "zy":    beam.elastic_section_modulus_y_cm3,
+        "zuz":   beam.plastic_section_modulus_z_cm3,
+        "zuy":   beam.plastic_section_modulus_y_cm3,
+        "it":    beam.torsion_constant_cm4,
+        "iw":    beam.warping_constant_cm6,
+    }

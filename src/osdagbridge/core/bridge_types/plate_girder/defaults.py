@@ -21,20 +21,20 @@ from osdagbridge.core.utils.common import (
     KEY_RL_TYPE, KEY_RL_WIDTH, KEY_RL_HEIGHT, KEY_RL_LOAD_MODE, KEY_RL_LOAD_VALUE,
     KEY_WC_MATERIAL, KEY_WC_DENSITY, KEY_WC_THICKNESS,
 
-    KEY_MP_SELECT_GIRDER,
-    KEY_MP_MEMBER_ID,
-    KEY_MP_GIRDER_TYPE,
-    KEY_MP_SUPPORT_TYPE,
-    KEY_MP_SUPPORT_WIDTH,
+    KEY_MP_GD_SELECT_GIRDER,
+    KEY_MP_GD_MEMBER_ID,
     KEY_MP_GIRDER_SYMMETRY, KEY_MP_GIRDER_DEPTH, KEY_MP_GIRDER_WEB_DEPTH, KEY_MP_GIRDER_WEB_THICKNESS,
     KEY_MP_GIRDER_TOP_FLANGE_WIDTH, KEY_MP_GIRDER_TOP_FLANGE_THICKNESS,
     KEY_MP_GIRDER_BOTTOM_FLANGE_WIDTH, KEY_MP_GIRDER_BOTTOM_FLANGE_THICKNESS,
-    KEY_MP_GIRDER_SECTIONAL_AREA, KEY_MP_GIRDER_MASS,
+    KEY_MP_GIRDER_SECTIONAL_AREA, KEY_MP_GIRDER_MASS, 
     KEY_MP_GIRDER_SECTIONAL_IZ, KEY_MP_GIRDER_SECTIONAL_IY,
     KEY_MP_GIRDER_RADIUS_GYRATION_Z, KEY_MP_GIRDER_RADIUS_GYRATION_Y,
     KEY_MP_GIRDER_ELASTIC_MODULUS_ZZ, KEY_MP_GIRDER_ELASTIC_MODULUS_ZY,
     KEY_MP_GIRDER_PLASTIC_MODULUS_ZUZ, KEY_MP_GIRDER_PLASTIC_MODULUS_ZUY,
     KEY_MP_GIRDER_TORSION_CONSTANT_IT, KEY_MP_GIRDER_WARPING_CONSTANT_IW,
+    KEY_MP_GIRDER_TYPE, KEY_MP_GD_SUPPORT_TYPE, KEY_MP_GD_SUPPORT_WIDTH, KEY_MP_GIRDER_WEB_TYPE,
+    KEY_MP_GIRDER_IS_SECTION, KEY_MP_GIRDER_TORSIONAL_RESTRAINT, KEY_MP_GIRDER_WARPING_RESTRAINT,
+    KEY_MP_GD_SEGMENT_TABLE,
 
     KEY_MP_STIFFENER_SELECT_MEMBER_ID,
     KEY_MP_STIFFENER_NO_BEARING_STIFFENERS,
@@ -96,7 +96,7 @@ from osdagbridge.core.utils.common import (
     KEY_MP_ED_PLASTIC_MODULUS_ZUZ,
     KEY_MP_ED_PLASTIC_MODULUS_ZUY,
     VALUES_END_DIAPHRAGM_TYPE,
-    get_angle_section_properties,
+    get_angle_section_properties, get_is_section_list,
 
     KEY_DO_GAMMA_C_BASIC, KEY_DO_GAMMA_C_ACCIDENTAL, KEY_DO_GAMMA_M0, KEY_DO_GAMMA_M1, KEY_DO_GAMMA_S,
     KEY_DO_GAMMA_V, KEY_DO_GAMMA_FLT, KEY_DO_GAMMA_MF, KEY_DO_LOAD_CYCLES, KEY_DO_DEFLECTION_LIMIT,
@@ -375,6 +375,52 @@ def _update_design_options_cont_defaults(input_dict: dict) -> None:
     _update(KEY_DO_SLS_DEFLECTION,     True)
     _update(KEY_DO_SLS_CRACK_WIDTH,    True)
 
+def _extend_member_field_keys(working_input_dict: dict, girder_id: str, member_field_keys: list) -> None:
+    """For each member ID ensure dynamic keys exist in working_input_dict.
+    New members are seeded from M1 of the same girder.
+    """
+    _MEMBER_FIELD_KEYS = [
+        KEY_MP_GIRDER_TYPE, KEY_MP_GIRDER_SYMMETRY, KEY_MP_GIRDER_DEPTH,
+        KEY_MP_GIRDER_TOP_FLANGE_WIDTH, KEY_MP_GIRDER_TOP_FLANGE_THICKNESS,
+        KEY_MP_GIRDER_BOTTOM_FLANGE_WIDTH, KEY_MP_GIRDER_BOTTOM_FLANGE_THICKNESS,
+        KEY_MP_GD_SUPPORT_TYPE, KEY_MP_GD_SUPPORT_WIDTH, KEY_MP_GIRDER_WEB_THICKNESS,
+        KEY_MP_GIRDER_IS_SECTION, KEY_MP_GIRDER_TORSIONAL_RESTRAINT,
+        KEY_MP_GIRDER_WARPING_RESTRAINT, KEY_MP_GIRDER_WEB_TYPE,
+        KEY_MP_GIRDER_MASS, KEY_MP_GIRDER_SECTIONAL_AREA,
+        KEY_MP_GIRDER_SECTIONAL_IY, KEY_MP_GIRDER_SECTIONAL_IZ,
+        KEY_MP_GIRDER_RADIUS_GYRATION_Y, KEY_MP_GIRDER_RADIUS_GYRATION_Z,
+        KEY_MP_GIRDER_ELASTIC_MODULUS_ZZ, KEY_MP_GIRDER_ELASTIC_MODULUS_ZY,
+        KEY_MP_GIRDER_PLASTIC_MODULUS_ZUZ, KEY_MP_GIRDER_PLASTIC_MODULUS_ZUY,
+        KEY_MP_GIRDER_TORSION_CONSTANT_IT, KEY_MP_GIRDER_WARPING_CONSTANT_IW,
+    ]
+
+    gi          = int(girder_id.replace("G", ""))
+    seed_suffix = f".{girder_id}.M1"
+
+    # Get member IDs from segment table for this girder
+    seg_key  = f"{KEY_MP_GD_SEGMENT_TABLE}.{girder_id}"
+    segments = working_input_dict.get(seg_key, [])
+    member_ids = [str(seg.get("id", "")) for seg in segments if seg.get("id")]
+
+    for member_id in member_ids:
+        import re
+        match = re.match(r"G\d+M(\d+)", str(member_id or "").strip())
+        if not match:
+            continue
+        mi     = int(match.group(1))
+        suffix = f".G{gi}.M{mi}"
+
+        # Skip if already exists
+        if _MEMBER_FIELD_KEYS[0] + suffix in working_input_dict:
+            continue
+
+        # Seed from M1
+        for key in _MEMBER_FIELD_KEYS:
+            seed_val = working_input_dict.get(key + seed_suffix)
+            if seed_val is not None:
+                print(f"@@: Update {key+suffix} = {seed_val}")
+                working_input_dict[key + suffix] = seed_val
+
 def _on_no_of_girders_changed(working_input_dict: dict) -> None:
     """
     Regenerate all dynamic per-girder/member keys for the given girder count.
@@ -420,7 +466,7 @@ def _on_no_of_girders_changed(working_input_dict: dict) -> None:
     symmetry = 'Girder Symmetric' if design_mode == 'Optimized' else 'Girder Unsymmetric'
     section_props = solver.compute_section_properties(span=span, symmetry=symmetry)
 
-    count = working_input_dict[KEY_TS_NO_OF_GIRDERS]
+    count = int(float(str(working_input_dict.get(KEY_TS_NO_OF_GIRDERS)).strip()))
 
     # ── Girder section properties ─────────────────────────────────────────────
     
@@ -435,26 +481,30 @@ def _on_no_of_girders_changed(working_input_dict: dict) -> None:
 
     # --- Girder selector key: only a .G{n} suffix, no member id ---
     for girder_idx in range(1, count + 1):
-        working_input_dict[f"{KEY_MP_SELECT_GIRDER}.G{girder_idx}"] = f"G{girder_idx}"
+        working_input_dict[f"{KEY_MP_GD_SELECT_GIRDER}.G{girder_idx}"] = f"G{girder_idx}"
 
     # --- Per-girder/member section-input defaults: <base_key>.G{n}.M{m} ---
-    # KEY_MP_MEMBER_ID lives under "member_properties.member_id" (not
+    # KEY_MP_GD_MEMBER_ID lives under "member_properties.member_id" (not
     # ".girder_details."), so it isn't covered by stale_girder_keys above.
     stale_member_id_keys = [
         k for k in working_input_dict
-        if k.startswith(f"{KEY_MP_MEMBER_ID}.G")
+        if k.startswith(f"{KEY_MP_GD_MEMBER_ID}.G")
     ]
     for k in stale_member_id_keys:
         del working_input_dict[k]
 
     MP_GIRDER_INPUT_DEFAULTS = [
-        (KEY_MP_GIRDER_TYPE,   "welded"),
-        (KEY_MP_SUPPORT_TYPE,  "major laterally supported"),
-        (KEY_MP_SUPPORT_WIDTH, 400.0),
+        (KEY_MP_GIRDER_TYPE,                "Welded"),
+        (KEY_MP_GD_SUPPORT_TYPE,            "Major Laterally Supported"),
+        (KEY_MP_GD_SUPPORT_WIDTH,           400.0),
+        (KEY_MP_GIRDER_WEB_TYPE,            "Thin Web with ITS"),
+        (KEY_MP_GIRDER_IS_SECTION,          get_is_section_list()[0]),
+        (KEY_MP_GIRDER_WARPING_RESTRAINT,   "Both Flanges Restrained"),
+        (KEY_MP_GIRDER_TORSIONAL_RESTRAINT, "Fully Restrained"),
     ]
     for girder_idx in range(1, count + 1):
         for member_id in [1]:
-            working_input_dict[f"{KEY_MP_MEMBER_ID}.G{girder_idx}.M{member_id}"] = f"G{girder_idx}M{member_id}"
+            working_input_dict[f"{KEY_MP_GD_MEMBER_ID}.G{girder_idx}.M{member_id}"] = f"G{girder_idx}M{member_id}"
             for base_key, value in MP_GIRDER_INPUT_DEFAULTS:
                 working_input_dict[f"{base_key}.G{girder_idx}.M{member_id}"] = value
 
@@ -468,11 +518,8 @@ def _on_no_of_girders_changed(working_input_dict: dict) -> None:
             (KEY_MP_GIRDER_SYMMETRY,                section_props['symmetry']),
             (KEY_MP_GIRDER_DEPTH,                   section_props['D']),
             (KEY_MP_GIRDER_WEB_DEPTH,               section_props['d_web']),
-            (KEY_MP_GIRDER_WEB_THICKNESS,           section_props['t_w']),
             (KEY_MP_GIRDER_TOP_FLANGE_WIDTH,        section_props['B_top']),
-            (KEY_MP_GIRDER_TOP_FLANGE_THICKNESS,    section_props['t_f_top']),
             (KEY_MP_GIRDER_BOTTOM_FLANGE_WIDTH,     section_props['B_bot']),
-            (KEY_MP_GIRDER_BOTTOM_FLANGE_THICKNESS, section_props['t_f_bot']),
             (KEY_MP_GIRDER_SECTIONAL_AREA,          section_props['Area']),
             (KEY_MP_GIRDER_MASS,                    section_props['Mass']),
             (KEY_MP_GIRDER_SECTIONAL_IZ,            section_props['I_z']),
@@ -486,6 +533,19 @@ def _on_no_of_girders_changed(working_input_dict: dict) -> None:
             (KEY_MP_GIRDER_TORSION_CONSTANT_IT,     section_props['I_t']),
             (KEY_MP_GIRDER_WARPING_CONSTANT_IW,     section_props['I_w']),
         ]
+
+        if design_mode == 'Optimized':
+            MP_GIRDER_PROPS += [
+                (KEY_MP_GIRDER_TOP_FLANGE_THICKNESS,    "All"),
+                (KEY_MP_GIRDER_BOTTOM_FLANGE_THICKNESS, "All"),
+                (KEY_MP_GIRDER_WEB_THICKNESS,           "All"),
+            ]
+        else:
+            MP_GIRDER_PROPS += [
+                (KEY_MP_GIRDER_TOP_FLANGE_THICKNESS,    section_props['t_f_top']),
+                (KEY_MP_GIRDER_BOTTOM_FLANGE_THICKNESS, section_props['t_f_bot']),
+                (KEY_MP_GIRDER_WEB_THICKNESS,           section_props['t_w']),
+            ]
 
         # --- Populate dynamic girder keys for each girder and member ---
         # girder_idx : 1 to no_of_girders (driven by user input)

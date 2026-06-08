@@ -334,7 +334,6 @@ class SegmentTableWidget(QWidget):
             self._table.editItem(item)
 
     def _on_item_changed(self, item: QTableWidgetItem) -> None:
-        """End (m) edited — ripple start of next segment, recalc Length, emit."""
         if item.column() != 2 or item.row() < 0:
             return
         row = item.row()
@@ -343,31 +342,50 @@ class SegmentTableWidget(QWidget):
         try:
             new_end = float(item.text())
         except ValueError:
-            # Revert to stored value
             self._table.blockSignals(True)
             item.setText(self._fmt(self._segments[row].get("end", 0.0)))
             self._table.blockSignals(False)
             return
 
-        # Clamp: cannot exceed next segment's end; cannot go below start
-        start = float(self._segments[row].get("start", 0.0))
-        if row + 1 < len(self._segments):
-            next_end = float(self._segments[row + 1].get("end", new_end))
-            new_end = max(start, min(new_end, next_end))
+        current    = self._segments[row]
+        start      = float(current.get("start", 0.0))
+        old_end    = float(current.get("end",   0.0))
+        total_span = float(self._segments[-1].get("end", old_end))  # last segment's end = total span
+        is_last    = row == len(self._segments) - 1
+
+        # Clamp below start
+        if new_end < start:
+            new_end = start
+
+        if is_last:
+            # Cannot exceed total span
+            new_end = min(new_end, total_span)
         else:
-            new_end = max(start, new_end)
+            # Cannot exceed next segment's end
+            next_end = float(self._segments[row + 1].get("end", total_span))
+            new_end  = min(new_end, next_end)
 
-        self._segments[row]["end"] = new_end
+        current["end"] = new_end
 
-        # Ripple: next segment's start = this end
-        if row + 1 < len(self._segments):
+        if not is_last:
+            # Ripple: next segment start = this end
             self._segments[row + 1]["start"] = new_end
+        else:
+            # Last segment shortened → create fill segment
+            if new_end < old_end and new_end < total_span:
+                girder   = str(self._segments[0].get("id", "G1M1")).rsplit("M", 1)[0]
+                next_id  = f"{girder}M{len(self._segments) + 1}"
+                self._segments.append({"id": next_id, "start": new_end, "end": total_span})
 
-        # Refresh rows without full repopulate (keeps editing smooth)
-        self._refresh_row(row)
-        if row + 1 < len(self._segments):
-            self._refresh_row(row + 1)
+        # Renormalize all starts
+        self._segments[0]["start"] = 0.0
+        for i in range(1, len(self._segments)):
+            self._segments[i]["start"] = float(self._segments[i - 1].get("end", 0.0))
 
+        # Enforce last end == total_span
+        self._segments[-1]["end"] = total_span
+
+        QTimer.singleShot(0, lambda: self._deferred_refresh(row))
         self.data_changed.emit(list(self._segments))
 
     def _refresh_row(self, row: int) -> None:
