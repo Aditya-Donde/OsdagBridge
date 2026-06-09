@@ -1130,6 +1130,10 @@ class BridgeGrillageModel:
         ``"{lf} EQ (a/b/c)"`` : IRC 218.3 combination cases registered with
                                 ``partial_safety_factor``.
 
+        The vertical-dominant combination (c) is also stored on
+        ``self.seismic_load_case`` so the ULS Table B.2 SEISMIC combinations
+        include it as their EL term.
+
         Parameters
         ----------
         z_value : float
@@ -1284,6 +1288,15 @@ class BridgeGrillageModel:
             combo_cases.append(lc)
 
         self.seismic_combo_a, self.seismic_combo_b, self.seismic_combo_c = combo_cases
+
+        # The ULS Table B.2 SEISMIC combinations consume ``seismic_load_case``
+        # as their EL term. Expose the vertical-dominant IRC 218.3 combination
+        # (c) — y direction, perpendicular to the deck — since vertical seismic
+        # governs superstructure girder bending. Its load_groups are unfactored
+        # (the 1.5 registration factor is not baked in), so the ULS builder's
+        # own γ_EL (1.5 service / 0.75 construction) applies without
+        # double-counting.
+        self.seismic_load_case = combo_cases[2]
 
         return {
             "EQ_X": EQ_X, "EQ_Z": EQ_Z, "EQ_Y": EQ_Y,
@@ -2287,6 +2300,8 @@ class BridgeGrillageModel:
             Adding    (DL=1.35, Surf=1.75): SEISMIC_1 service, SEISMIC_2 construction
             Relieving  (DL=1.00, Surf=1.00): SEISMIC_3 service, SEISMIC_4 construction
             Wind load accompanying = None for seismic → omitted.
+            EL term = ``seismic_load_case``, the vertical-dominant IRC 218.3
+            combination (c) set by ``create_seismic_load_cases()``.
 
         Total: 13 ULS combinations when all are selected.
 
