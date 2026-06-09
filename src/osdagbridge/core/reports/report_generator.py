@@ -24,38 +24,22 @@
 # ─────────────────────────────────────────────────────────────────────────────
 # 1   | Table 2.1                 | 'latitude'                   | injected from weather_data; no KEY_ yet
 # 2   | Table 2.1                 | 'longitude'                  | injected from weather_data; no KEY_ yet
-# 3   | Table 2.1                 | 'seismic_zone'               | injected from weather_data; no KEY_ yet
-# 4   | Table 2.1                 | 'wind_speed'                 | injected from weather_data; no KEY_ yet
-# 5   | Table 2.1                 | 'shade_temp_max'             | injected from weather_data; no KEY_ yet
-# 6   | Table 2.1                 | 'shade_temp_min'             | injected from weather_data; no KEY_ yet
-# 7   | Table 2.4 / Exec Summary  | 'num_lanes'                  | design lane count; NOT the UI counter
+# 3   | Table 2.4 / Exec Summary  | 'num_lanes'                  | design lane count; NOT the UI counter
 #     |                           |                              | KEY_WC_LD_LANE_TABLE_COUNT; stays GAP
-# 8   | Exec Summary (Proj Ovw)   | 'overall_design_status'      | output_dict value; no KEY_ needed
-# 9   | Exec Summary (Proj Ovw)   | 'governing_check'            | output_dict value; no KEY_ needed
-# 10  | Exec Summary (Proj Ovw)   | 'overall_utilization_ratio'  | output_dict value; no KEY_ needed
-# 11  | Exec Summary (Table 1)    | 'section_designation'        | output_dict value; no KEY_ needed
-# 12  | Table 2.6(c)              | _ph('t_{s,end}')             | end panel stiffener thickness; no KEY_
-# 13  | Table 2.7 / 2.8           | _ph('$n_{br}$')              | no. of bracing panels; no KEY_ yet
-# 14  | _girder_labels()          | _ph('Girder Label')          | Girder labels (Girder 1, Girder 2); ADD_BACKEND_KEY
-# 15  | _girder_labels()          | _ph('Member ID')             | Girder member IDs (G1M1, G2M1); ADD_BACKEND_KEY
-# 16  | _bracing_panel_labels()   | _ph('Location')              | Bracing locations; ADD_BACKEND_KEY
-# 17  | _bracing_panel_labels()   | _ph('CB Member IDs')         | Cross bracing IDs (B1M1); ADD_BACKEND_KEY
-# 18  | _bracing_panel_labels()   | _ph('ED Member IDs')         | End diaphragm IDs (E1M1); ADD_BACKEND_KEY
-# 19  | Table 4.1, 4.2            | _ph('Load Case')             | Load Cases (DL only, Seismic (EL)); ADD_BACKEND_KEY
-# 20  | Table 4.1, 5.22           | _ph('Load Case')             | Load Combinations (LC-ULS-1, LC-SLS-1); ADD_BACKEND_KEY
-# 21  | Table 4.3, 5.10           | _ph('Limit')                 | Deflection limits (L/800, L/600); PLACEHOLDER
-# 22  | Table 3.1                 | _ph('Density')               | Steel & Concrete density (78.5, 25); PLACEHOLDER
-# 23  | Table 3.1                 | _ph('Factor')                | Self-weight factor (1.0); PLACEHOLDER
-# 24  | Table 2.5, 3.2            | _ph('Load')                  | Railing load (1.5); PLACEHOLDER
-# 25  | Table 3.3                 | _ph('Load')                  | Footpath LL (5); PLACEHOLDER
-# 26  | Table 3.4                 | _ph('H')                     | Exposed height (10); PLACEHOLDER
-# 27  | Table 3.4                 | _ph('Terrain')               | Plain Terrain; PLACEHOLDER
-# 28  | Table 3.5                 | _ph('I')                     | Importance factor (1.0); PLACEHOLDER
-# 29  | Table 3.5                 | _ph('Soil Type')             | Soil Type (Type I); PLACEHOLDER
-# 30  | Table 5.12                | _ph('tau_fn')                | tau_fn (67 MPa); PLACEHOLDER
-# 31  | Table 5.17e, 5.22         | _ph('Crack Limit')           | Crack width (0.3); PLACEHOLDER
-# 32  | Table 5.17g               | _ph('Cover')                 | Clear cover (40); PLACEHOLDER
-# 33  | Table 5.20b, 5.22         | _ph('Limit')                 | Slenderness limits (250, 400); PLACEHOLDER
+# 4   | Exec Summary (Proj Ovw)   | 'overall_design_status'      | output_dict value; no KEY_ needed
+# 5   | Exec Summary (Proj Ovw)   | 'governing_check'            | output_dict value; no KEY_ needed
+# 6   | Exec Summary (Proj Ovw)   | 'overall_utilization_ratio'  | output_dict value; no KEY_ needed
+# 7   | Exec Summary (Table 1)    | 'section_designation'        | output_dict value; no KEY_ needed
+# 8   | Table 2.7 / 2.8           | _ph('$n_{br}$')              | no. of bracing panels; no KEY_ yet
+# 9   | _girder_labels()          | _ph('Girder Label')          | Girder labels (Girder 1, Girder 2); ADD_BACKEND_KEY
+# 10  | _girder_labels()          | _ph('Member ID')             | Girder member IDs (G1M1, G2M1); ADD_BACKEND_KEY
+# 11  | _bracing_panel_labels()   | _ph('Location')              | Bracing locations; ADD_BACKEND_KEY
+# 12  | _bracing_panel_labels()   | _ph('CB Member IDs')         | Cross bracing IDs (B1M1); ADD_BACKEND_KEY
+# 13  | _bracing_panel_labels()   | _ph('ED Member IDs')         | End diaphragm IDs (E1M1); ADD_BACKEND_KEY
+# 14  | Table 4.1, 4.2            | _ph('Load Case')             | Load Cases (DL only, Seismic (EL)); ADD_BACKEND_KEY
+# 15  | Table 4.1, 5.22           | _ph('Load Case')             | Load Combinations (LC-ULS-1, LC-SLS-1); ADD_BACKEND_KEY
+# 16  | Table 5.12                | _ph('tau_fn')                | tau_fn (67 MPa); PLACEHOLDER
+# 17  | Table 5.20b, 5.22         | _ph('Limit')                 | Slenderness limits (250, 400); PLACEHOLDER
 # =============================================================================
 
 # =============================================================================
@@ -64,43 +48,7 @@
 # =============================================================================
 # #  | KEY_ constant used                        | Template   | Backend action needed
 # ─────────────────────────────────────────────────────────────────────────────
-# 1  | KEY_TS_OVERALL_WIDTH                      | Table 2.4  | typical_section tab must write this key
-# 2  | KEY_CB_TYPE                               | Table 2.5  | crash_barrier subtab must write this key
-# 3  | KEY_MD_TYPE                               | Table 2.5  | median subtab must write this key
-# 4  | KEY_RL_TYPE                               | Table 2.5  | railing subtab must write this key
-# 5  | KEY_MP_GIRDER_TYPE                           | Table 2.6a | member_properties girder tab must write
-# 6  | KEY_MP_GIRDER_SYMMETRY                       | Table 2.6a | member_properties girder tab must write
-# 7  | KEY_MP_GIRDER_DEPTH                          | Table 2.6b | section_input must populate before report
-# 8  | KEY_MP_GIRDER_WEB_THICKNESS                  | Table 2.6b | section_input must populate before report
-# 9  | KEY_MP_GIRDER_TOP_FLANGE_WIDTH               | Table 2.6b | section_input must populate before report
-# 10 | KEY_MP_GIRDER_TOP_FLANGE_THICKNESS           | Table 2.6b | section_input must populate before report
-# 11 | KEY_MP_GIRDER_BOTTOM_FLANGE_WIDTH            | Table 2.6b | section_input must populate before report
-# 12 | KEY_MP_GIRDER_BOTTOM_FLANGE_THICKNESS        | Table 2.6b | section_input must populate before report
-# 13 | KEY_MP_GIRDER_TORSIONAL_RESTRAINT            | Table 2.6c | section_input must populate before report
-# 14 | KEY_MP_GIRDER_WARPING_RESTRAINT              | Table 2.6c | section_input must populate before report
-# 15 | KEY_MP_GIRDER_WEB_TYPE                       | Table 2.6c | section_input must populate before report
-# 16 | KEY_MP_STIFFENER_INTERMEDIATE                | Table 2.6c | stiffener_details must write this key
-# 17 | KEY_MP_STIFFENER_INTERMEDIATE_SPACING        | Table 2.6c | stiffener_details must write this key
-# 18 | KEY_MP_STIFFENER_INTERMEDIATE_THICKNESS      | Table 2.6c | stiffener_details must write this key
-# 19 | KEY_MP_STIFFENER_LONGITUDINAL                | Table 2.6c | stiffener_details must write this key
-# 20 | KEY_MP_CB_TYPE                    | Table 2.7  | cross_bracing_details must write this key
-# 21 | KEY_MP_CB_BRACING_SECTION_DESIGNATION                 | Table 2.7  | cross_bracing_details must write this key
-# 22 | KEY_MP_CB_SPACING                 | Table 2.7  | cross_bracing_details must write this key
-# 23 | KEY_MP_ED_TYPE                    | Table 2.8  | end_diaphragm_details must write this key
-# 24 | KEY_MP_ED_BRACING_SECTION_DESIGNATION | Table 2.8 | end_diaphragm_details must write
-# 25 | KEY_MP_ED_END_DIAPHRAGM_SPACING                 | Table 2.8  | end_diaphragm_details must write this key
-# 26 | KEY_DS_STUD_DIAMETER                      | Table 2.9  | design_options shear_studs tab must write
-# 27 | KEY_DS_STUD_HEIGHT                        | Table 2.9  | design_options shear_studs tab must write
-# 28 | KEY_SD_SHEAR_YIELD_STRENGTH                | Table 2.9  | design_options shear_studs tab must write
-# 29 | KEY_SD_SHEAR_ULTIMATE_STRENGTH             | Table 2.9  | design_options shear_studs tab must write
-# 30 | KEY_DS_STUD_COUNT                         | Table 2.9  | design_options shear_studs tab must write
-# 31 | KEY_DO_GAMMA_M0                           | Table 2.10 | design_options_cont partial_factor must write
-# 32 | KEY_DO_GAMMA_M1                           | Table 2.10 | design_options_cont partial_factor must write
-# 33 | KEY_DO_GAMMA_C_BASIC                      | Table 2.10 | design_options_cont partial_factor must write
-# 34 | KEY_DO_GAMMA_S                            | Table 2.10 | design_options_cont partial_factor must write
-# 35 | KEY_DO_GAMMA_V                            | Table 2.10 | design_options_cont partial_factor must write
-# 36 | KEY_DO_GAMMA_FLT                          | Table 2.10 | design_options_cont partial_factor must write
-# 37 | KEY_DO_GAMMA_MF                           | Table 2.10 | design_options_cont partial_factor must write
+# 1  | KEY_MP_ED_END_DIAPHRAGM_SPACING           | Table 2.8  | end_diaphragm_details must write this key
 # =============================================================================
 
 #==============================================================================
@@ -109,54 +57,50 @@
 # USER CLICKS "Generate Report" button
 #        │
 #        ▼
-#[output_dock.py] OutputDock._build_bottom_buttons()
-#        │  QPushButton.clicked signal → connected to _on_report_clicked
-#        ▼
 #[output_dock.py] OutputDock._on_report_clicked()
-#        │
-#        ├──► [output_dock.py] OutputDock._export_cad_figures()
-#        │           │
-#        │           ├── init_display()            [OCC.Display.SimpleGui]
-#        │           ├── core.display_3dModel()    [cad_generator.py × 7 components]
-#        │           ├── off_display.ExportToImage() × 4 views
-#        │           └── returns dict of 4 PNG paths → stored on self._cad_figure_paths
-#        │
-#        └──► [template_page.py] CustomWindow.open_report_dialog()
+#        │  traverses UI tree to locate `cad_generator` widget
+#        └──► [template_page.py] CustomWindow.open_report_dialog(cad_generator)
 #                    │
 #                    ├── ReportOptionsDialog(parent=self).exec()
 #                    │         [report_options.py — user fills form]
 #                    │         └── returns request (ReportRequest dataclass)
 #                    │
-#                    ├── self.input_dict → report_inputs (dict copy)
-#                    ├── self.backend.get_results() → output_dict
+#                    ├── Spawns background thread: _ReportWorker(backend, request, cad_generator)
 #                    │
-#                    ├──► [report_generator.py] build_report_payload(request, report_inputs, output_dict)
-#                    │           └── returns ReportPayload dataclass
-#                    │
-#                    ├── self.backend.get_grillage_figure() → grillage_image
-#                    ├──► [report_generator.py] export_grillage_figure(grillage_image, output_dir, file_stem)
-#                    │           └── writes grillage.png → returns absolute path
-#                    │           └── payload.figures.grillage = path
-#                    │
-#                    ├── self.output_dock._cad_figure_paths → wire 4 paths onto payload.figures
-#                    │
-#                    └──► [report_generator.py] generate_report(payload, request)
+#                    └──► [template_page.py] _ReportWorker.run()
 #                                │
-#                                ├── OsdagLatexEnv() → discovers pdflatex binary
-#                                ├── Creates output_dir/assets/
-#                                ├── Copies logos → assets/
-#                                ├── Copies figure PNGs → assets/ (from _FIGURE_MAP)
-#                                ├── Calls 10 chapter functions → full_tex string
-#                                ├── Writes full_tex to tempdir/stem.tex
-#                                ├── shutil.copytree(assets_dir → tempdir/assets/)
-#                                ├── subprocess.run(pdflatex) × 2 passes
-#                                ├── shutil.copy2(tmp_pdf → output_dir/stem.pdf)
-#                                └── returns ReportResult(pdf_path, tex_path)
-#                                          │
-#                                          ▼
-#                              [template_page.py] open_report_dialog()
-#                                  if dialog.is_preview → os.startfile(pdf_path)
-#                                  else → CustomMessageBox("Report Saved")
+#                                └──► [plategirderbridge.py] PlateGirderBridge.generate_design_report(request, cad_generator)
+#                                            │
+#                                            ├── self.input_dict.copy() → report_inputs
+#                                            ├── dict(self.output_dict) → output_dict
+#                                            │
+#                                            ├──► [report_generator.py] build_report_payload(request, report_inputs, output_dict)
+#                                            │           └── returns ReportPayload dataclass
+#                                            │
+#                                            ├── self._export_cad_figures(cad_generator)
+#                                            │    └── exports 4 headless views to ResourceFiles/Images
+#                                            │    └── wires paths onto payload.figures (girder_3d, etc.)
+#                                            │
+#                                            ├── self.build_figure_grillage() → grillage_fig (matplotlib)
+#                                            ├── self.figure_to_bytes(grillage_fig) → grillage_bytes
+#                                            ├──► [report_generator.py] export_grillage_figure(grillage_bytes, output_dir, file_stem)
+#                                            │           └── writes grillage.png → payload.figures.grillage = path
+#                                            │
+#                                            └──► [report_generator.py] generate_report(payload, request)
+#                                                        │
+#                                                        ├── OsdagLatexEnv() → discovers pdflatex binary
+#                                                        ├── Creates output_dir/assets/
+#                                                        ├── Copies logos & payload figures → assets/
+#                                                        ├── Calls 10 chapter functions → full_tex string
+#                                                        ├── Writes full_tex to tempdir/stem.tex
+#                                                        ├── subprocess.run(pdflatex) × 2 passes
+#                                                        ├── shutil.copy2(tmp_pdf → output_dir/stem.pdf)
+#                                                        └── returns ReportResult(pdf_path, tex_path)
+#                                                                  │
+#                                                                  ▼
+#                                                      [template_page.py] _on_report_finished()
+#                                                          if dialog.is_preview → os.startfile(pdf_path)
+#                                                          else → CustomMessageBox("Report Saved")
 #==============================================================================
 
 import os, shutil, logging, datetime, tempfile, subprocess
@@ -1298,7 +1242,7 @@ A grillage model was used for structural analysis. The deck is idealized as a gr
 
 \vspace{1em}
 \noindent
-Figure 3 -- 3D Grillage Model with deformed shape
+""" + _fig_embed(fig_paths.get('grillage'), 'Figure 3 -- 3D Grillage Model with deformed shape') + r"""
 """
 
 

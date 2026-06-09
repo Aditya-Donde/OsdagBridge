@@ -414,6 +414,149 @@ class PlateGirderBridge:
                 print(f"  {k!r:50s} : {v!r}")
         print(sep)
 
+    def _export_cad_figures(self, cad_generator) -> dict:
+        """
+        Export 4 CAD views to the fixed internal Images folder.
+        Returns { ReportFigures_attr: absolute_path } for each view.
+        Returns {} on any failure. Never raises.
+        """
+        import os
+        import logging
+        _log = logging.getLogger(__name__)
+
+        # ── Resolve save path: core/data/ResourceFiles/Images/ ───────
+        resource_files_dir = os.path.normpath(os.path.join(
+            os.path.dirname(os.path.abspath(__file__)),
+            '..', '..', '..', 'core', 'data', 'ResourceFiles'
+        ))
+        figures_dir = os.path.join(resource_files_dir, 'Images')
+        if not os.path.exists(figures_dir):
+            os.makedirs(figures_dir)
+
+        if not cad_generator:
+            return {}
+
+        core = cad_generator
+
+        # ── Verify model has been generated ───────────────────────────
+        if not getattr(core, 'model_data', None):
+            _log.warning(
+                "_export_cad_figures: model_data is empty — "
+                "run design first")
+            return {}
+
+        # ── Create headless Viewer3d — no window, no auto-export ─────
+        try:
+            from OCC.Display.OCCViewer import Viewer3d
+            off_display = Viewer3d()
+            off_display.Create()          # NO arguments — avoids TypeError
+            off_display.SetModeShaded()
+        except Exception as exc:
+            _log.warning(
+                "_export_cad_figures: Viewer3d init failed: "
+                "%s — export skipped", exc)
+            return {}
+
+        if not hasattr(off_display, 'ExportToImage'):
+            _log.warning(
+                "_export_cad_figures: off_display has no ExportToImage "
+                "— export skipped")
+            return {}
+
+        # ── Stub cad_widget for off-screen rendering ─────────────────
+        # osdag_display_shape() calls canvas.model_ais_objects — provide it.
+        class _OffscreenCanvas:
+            def __init__(self):
+                self.model_ais_objects = {}
+        off_canvas = _OffscreenCanvas()
+
+        # ── Save originals BEFORE touching anything ──────────────────
+        original_display    = getattr(core, 'display', None)
+        original_cad_widget = getattr(core, 'cad_widget', None)
+        original_component  = getattr(core, 'component', None)
+
+        figure_paths = {}
+
+        try:
+            # ── Substitute + render all components onto off-screen display
+            core.display    = off_display
+            core.cad_widget = off_canvas
+
+            for component in ["Girder", "Stiffener", "Cross Bracing",
+                              "Deck", "Crash Barrier", "Railing", "Median"]:
+                try:
+                    if hasattr(core, 'display_3dModel'):
+                        core.display_3dModel(component)
+                except Exception as exc:
+                    _log.debug("component %s skipped: %s", component, exc)
+
+            off_display.FitAll()
+
+            # View 1 — Isometric / 3D
+            try:
+                off_display.set_bg_gradient_color(
+                    [235, 235, 235], [195, 195, 195])
+                p = os.path.join(figures_dir, 'girder_3d.png')
+                off_display.ExportToImage(p)
+                if os.path.exists(p):
+                    figure_paths['girder_3d'] = os.path.abspath(p)
+            except Exception as exc:
+                _log.warning("3D view export failed: %s", exc)
+
+            # View 2 — Front
+            try:
+                off_display.View_Front()
+                off_display.FitAll()
+                off_display.set_bg_gradient_color(
+                    [235, 235, 235], [195, 195, 195])
+                p = os.path.join(figures_dir, 'girder_front.png')
+                off_display.ExportToImage(p)
+                if os.path.exists(p):
+                    figure_paths['girder_front'] = os.path.abspath(p)
+            except Exception as exc:
+                _log.warning("Front view export failed: %s", exc)
+
+            # View 3 — Top
+            try:
+                off_display.View_Top()
+                off_display.FitAll()
+                off_display.set_bg_gradient_color(
+                    [235, 235, 235], [195, 195, 195])
+                p = os.path.join(figures_dir, 'girder_top.png')
+                off_display.ExportToImage(p)
+                if os.path.exists(p):
+                    figure_paths['girder_top'] = os.path.abspath(p)
+            except Exception as exc:
+                _log.warning("Top view export failed: %s", exc)
+
+            # View 4 — Side (Right)
+            try:
+                off_display.View_Right()
+                off_display.FitAll()
+                off_display.set_bg_gradient_color(
+                    [235, 235, 235], [195, 195, 195])
+                p = os.path.join(figures_dir, 'girder_end.png')
+                off_display.ExportToImage(p)
+                if os.path.exists(p):
+                    figure_paths['girder_end'] = os.path.abspath(p)
+            except Exception as exc:
+                _log.warning("Side view export failed: %s", exc)
+
+        finally:
+            # ── CRITICAL: isolation cleanup — ALWAYS runs ────────────
+            try:
+                off_display.EraseAll()
+            except Exception:
+                pass
+            core.display    = original_display
+            core.cad_widget = original_cad_widget
+            core.component  = original_component
+
+        _log.info(
+            "_export_cad_figures: exported %d view(s) to %s",
+            len(figure_paths), figures_dir)
+        return figure_paths
+
     def generate_design_report(self, request, cad_generator, is_preview=False):
         """Compile the final PDF design report. 
         `cad_generator` acts as the `context_data` payload from the GUI."""
@@ -430,26 +573,27 @@ class PlateGirderBridge:
         
         if cad_generator:
             try:
-                # cad_generator may be a PlateGirderCADGenerator object or a dict
+                # Handle dictionary or instance
                 if isinstance(cad_generator, dict):
-                    window = cad_generator.get('window')
+                    core = cad_generator.get('generator')
                 else:
-                    window = getattr(cad_generator, 'window', None)
-                if window and hasattr(window, 'output_dock') and hasattr(window.output_dock, '_cad_figure_paths'):
-                    paths = window.output_dock._cad_figure_paths
-                    if '3d' in paths: payload.figures.girder_3d = paths['3d']
-                    if 'front' in paths: payload.figures.girder_front = paths['front']
-                    if 'top' in paths: payload.figures.girder_top = paths['top']
-                    if 'side' in paths: payload.figures.girder_end = paths['side']
-                    if 'plots' in paths:
-                        if 'bm_envelope' in paths['plots']: payload.figures.bm_envelope = paths['plots']['bm_envelope']
-                        if 'sf_envelope' in paths['plots']: payload.figures.sf_envelope = paths['plots']['sf_envelope']
+                    core = cad_generator
+
+                # Execute headless CAD export without reaching into the UI layer
+                paths = self._export_cad_figures(core)
+                if 'girder_3d' in paths: payload.figures.girder_3d = paths['girder_3d']
+                if 'girder_front' in paths: payload.figures.girder_front = paths['girder_front']
+                if 'girder_top' in paths: payload.figures.girder_top = paths['girder_top']
+                if 'girder_end' in paths: payload.figures.girder_end = paths['girder_end']
+                
             except Exception as fig_exc:
                 print(f"[REPORT-DEBUG] Could not extract CAD figures: {fig_exc}")
         
-        grillage_image = self.get_grillage_figure() if hasattr(self, 'get_grillage_figure') else None
-        if grillage_image:
-            path = export_grillage_figure(grillage_image, request.output_dir, request.file_stem)
+        # Build Grillage image using the backend builder and convert to bytes
+        grillage_fig = self.build_figure_grillage() if hasattr(self, 'build_figure_grillage') else None
+        if grillage_fig:
+            grillage_bytes = self.figure_to_bytes(grillage_fig)
+            path = export_grillage_figure(grillage_bytes, request.output_dir, request.file_stem)
             payload.figures.grillage = path
             
         return generate_report(payload, request)
