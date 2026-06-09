@@ -1101,6 +1101,9 @@ class CustomWindow(QWidget):
                     self._is_preview   = is_preview
 
                 def run(self):
+                    print("[REPORT-DEBUG] Worker.run() ENTERED")
+                    print(f"[REPORT-DEBUG]   backend type = {type(self._backend).__name__}")
+                    print(f"[REPORT-DEBUG]   has generate_design_report = {hasattr(self._backend, 'generate_design_report')}")
                     try:
                         result = \
                             self._backend \
@@ -1109,13 +1112,23 @@ class CustomWindow(QWidget):
                                 self._cad_gen,
                                 is_preview=self._is_preview,
                             )
+                        print(f"[REPORT-DEBUG] generate_design_report returned: {type(result).__name__}")
                     except Exception as exc:
+                        import traceback as _tb
+                        print(f"[REPORT-DEBUG] EXCEPTION in worker: {exc}")
+                        _tb.print_exc()
                         result = exc
                     self.finished.emit(result)
 
             QApplication.setOverrideCursor(Qt.WaitCursor)
 
+            class SignalCatcher(QObject):
+                catch = Signal(object)
+            
+            self._report_catcher = SignalCatcher()
+
             def _on_done(result):
+                print(f"[REPORT-DEBUG] _on_done called, result type = {type(result).__name__}")
                 QApplication.restoreOverrideCursor()
 
                 if isinstance(result, Exception):
@@ -1139,6 +1152,21 @@ class CustomWindow(QWidget):
                 if result.pdf_path and \
                         os.path.exists(result.pdf_path):
                     if dialog.is_preview:
+                        # Attempt to auto-open the PDF
+                        try:
+                            if sys.platform == "win32":
+                                os.startfile(result.pdf_path)
+                            elif sys.platform == "darwin":
+                                import subprocess
+                                subprocess.run(["open", result.pdf_path], check=False)
+                            else:
+                                import subprocess
+                                subprocess.run(["xdg-open", result.pdf_path], check=False)
+                            result.opened = True
+                        except Exception as e:
+                            print(f"[REPORT-DEBUG] Failed to auto-open PDF: {e}")
+                            result.opened = False
+
                         if not getattr(result, 'opened', False):
                             CustomMessageBox(
                                 title="PDF Ready",
@@ -1183,11 +1211,13 @@ class CustomWindow(QWidget):
                 backend, request, cad_generator, dialog.is_preview)
             self._report_worker.moveToThread(
                 self._report_thread)
+            
+            self._report_catcher.catch.connect(_on_done)
+            self._report_worker.finished.connect(self._report_catcher.catch)
+            self._report_worker.finished.connect(self._report_thread.quit)
+            
             self._report_thread.started.connect(
                 self._report_worker.run)
-            self._report_worker.finished.connect(_on_done)
-            self._report_worker.finished.connect(
-                self._report_thread.quit)
             self._report_thread.start()
 
         except Exception:

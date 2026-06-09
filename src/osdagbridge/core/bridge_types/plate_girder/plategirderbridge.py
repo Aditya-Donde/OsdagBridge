@@ -414,6 +414,46 @@ class PlateGirderBridge:
                 print(f"  {k!r:50s} : {v!r}")
         print(sep)
 
+    def generate_design_report(self, request, cad_generator, is_preview=False):
+        """Compile the final PDF design report. 
+        `cad_generator` acts as the `context_data` payload from the GUI."""
+        print("[REPORT-DEBUG] generate_design_report() ENTERED")
+        from osdagbridge.core.reports.report_generator import build_report_payload, export_grillage_figure, generate_report
+        print("[REPORT-DEBUG] imports OK")
+        
+        report_inputs = self.input_dict.copy()
+        output_dict = dict(self.output_dict)  # MappingProxyType → dict
+        print(f"[REPORT-DEBUG] input_dict keys: {len(report_inputs)}, output_dict keys: {len(output_dict)}")
+        
+        payload = build_report_payload(request, report_inputs, output_dict)
+        print(f"[REPORT-DEBUG] payload built: {type(payload).__name__}")
+        
+        if cad_generator:
+            try:
+                # cad_generator may be a PlateGirderCADGenerator object or a dict
+                if isinstance(cad_generator, dict):
+                    window = cad_generator.get('window')
+                else:
+                    window = getattr(cad_generator, 'window', None)
+                if window and hasattr(window, 'output_dock') and hasattr(window.output_dock, '_cad_figure_paths'):
+                    paths = window.output_dock._cad_figure_paths
+                    if '3d' in paths: payload.figures.girder_3d = paths['3d']
+                    if 'front' in paths: payload.figures.girder_front = paths['front']
+                    if 'top' in paths: payload.figures.girder_top = paths['top']
+                    if 'side' in paths: payload.figures.girder_end = paths['side']
+                    if 'plots' in paths:
+                        if 'bm_envelope' in paths['plots']: payload.figures.bm_envelope = paths['plots']['bm_envelope']
+                        if 'sf_envelope' in paths['plots']: payload.figures.sf_envelope = paths['plots']['sf_envelope']
+            except Exception as fig_exc:
+                print(f"[REPORT-DEBUG] Could not extract CAD figures: {fig_exc}")
+        
+        grillage_image = self.get_grillage_figure() if hasattr(self, 'get_grillage_figure') else None
+        if grillage_image:
+            path = export_grillage_figure(grillage_image, request.output_dir, request.file_stem)
+            payload.figures.grillage = path
+            
+        return generate_report(payload, request)
+
     def _build_dtos(self) -> None:
         """Construct GrillageGeometry and DeckLayoutProperties DTOs from solved results."""
         inp = self.input_dict
@@ -1585,33 +1625,13 @@ class PlateGirderBridge:
 
     def _run_dcr_checks(self, dataset) -> None:
         """Run structural capacity checks and push DCR percentages to the output dock."""
-        from .designer import (
-            BridgeConfig,
-            StiffenerConfig,
-            _extract_demands_from_analysis,
-            IRC22CapacityCalculator,
-            DCREngine,
-        )
         results = PlateGirderAnalysisResults(dataset=dataset, bridge=self.grillage_model)
-        config = BridgeConfig.from_plate_girder_bridge(self)
-        if config.stiffener is None:
-            config.stiffener = StiffenerConfig()
-            
-        demand = _extract_demands_from_analysis(results, config)
-        
-        if config.stiffener.bs_R_kN <= 0.0 and demand.Vu_kN > 0.0:
-            config.stiffener.bs_R_kN = demand.Vu_kN
-            
-        capacity = IRC22CapacityCalculator(config).compute_all(
-            Vu_kN=demand.Vu_kN,
-            stress_range_MPa=demand.stress_range_MPa,
-            M_sls_kNm=demand.M_sls_kNm,
-            V_sls_kN=demand.V_sls_kN,
+        _, engine, design_results = run_design_check(
+            plate_girder_bridge=self,
+            analysis_results=results,
+            print_report=True,
         )
-        engine = DCREngine(demand, capacity)
-        engine.run_all_checks()
-
-        self.design_results = engine.get_results_dict() if hasattr(engine, 'get_results_dict') else None
+        self.design_results = design_results
 
         # Write every output into output_dict while it is still mutable.
         # store_design_results also sets the KEY_UTIL_* values so the block
