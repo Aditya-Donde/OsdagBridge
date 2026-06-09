@@ -23,19 +23,19 @@ from osdagbridge.core.utils.common import (
     KEY_TD_MEMBER_ID,
     KEY_TD_SELECT_GIRDER,
     KEY_TD_LOAD_COMBINATION,
-    KEY_TD_SECTION_INPUTS_BRACING_TYPE,
-    KEY_TD_SECTION_INPUTS_TOP_CHORD_ENABLED,
-    KEY_TD_SECTION_INPUTS_BOTTOM_CHORD_ENABLED,
-    KEY_TD_SECTION_INPUTS_SPACING,
-    KEY_TD_SECTION_INPUTS_BRACING_SECTION_DESIGNATION,
-    KEY_TD_SECTION_INPUTS_TOP_CHORD_SECTION_DESIGNATION,
-    KEY_TD_SECTION_INPUTS_BOTTOM_CHORD_SECTION_DESIGNATION,
-    KEY_TD_SECTION_INPUTS_DESIGN,
-    KEY_TD_SECTION_INPUTS_NO_OF_CB,
-    KEY_TD_SECTION_INPUTS_CONNECTION_TYPE,
-    KEY_TD_SECTION_INPUTS_BRACING_SECTION_TYPE,
-    KEY_TD_SECTION_INPUTS_TOP_CHORD_SECTION_TYPE,
-    KEY_TD_SECTION_INPUTS_BOTTOM_CHORD_SECTION_TYPE,
+    KEY_TD_CB_SECTION_INPUTS_BRACING_TYPE,
+    KEY_TD_CB_SECTION_INPUTS_TOP_CHORD_ENABLED,
+    KEY_TD_CB_SECTION_INPUTS_BOTTOM_CHORD_ENABLED,
+    KEY_TD_CB_SECTION_INPUTS_SPACING,
+    KEY_TD_CB_SECTION_INPUTS_BRACING_SECTION_DESIGNATION,
+    KEY_TD_CB_SECTION_INPUTS_TOP_CHORD_SECTION_DESIGNATION,
+    KEY_TD_CB_SECTION_INPUTS_BOTTOM_CHORD_SECTION_DESIGNATION,
+    KEY_TD_CB_SECTION_INPUTS_DESIGN,
+    KEY_TD_CB_SECTION_INPUTS_NO_OF_CB,
+    KEY_TD_CB_SECTION_INPUTS_CONNECTION_TYPE,
+    KEY_TD_CB_SECTION_INPUTS_BRACING_SECTION_TYPE,
+    KEY_TD_CB_SECTION_INPUTS_TOP_CHORD_SECTION_TYPE,
+    KEY_TD_CB_SECTION_INPUTS_BOTTOM_CHORD_SECTION_TYPE,
 )
 
 # ── Style constants ───────────────────────────────────────────────────────────
@@ -626,11 +626,11 @@ class TransverseMemberDesign(QDialog):
     def _refresh_bracing_layout(self):
         if self.bracing_layout_widget is None:
             return
-        bracing_w = self._widgets.get(KEY_TD_SECTION_INPUTS_BRACING_TYPE)
-        tc_w      = self._widgets.get(KEY_TD_SECTION_INPUTS_TOP_CHORD_ENABLED)
-        bc_w      = self._widgets.get(KEY_TD_SECTION_INPUTS_BOTTOM_CHORD_ENABLED)
+        bracing_w = self._widgets.get(KEY_TD_CB_SECTION_INPUTS_BRACING_TYPE)
+        tc_w      = self._widgets.get(KEY_TD_CB_SECTION_INPUTS_TOP_CHORD_ENABLED)
+        bc_w      = self._widgets.get(KEY_TD_CB_SECTION_INPUTS_BOTTOM_CHORD_ENABLED)
 
-        bracing = bracing_w.currentText() if bracing_w else "X-Bracing"
+        bracing = bracing_w.text() if bracing_w else "X-Bracing"
         top     = tc_w.isChecked() if tc_w else True
         bottom  = bc_w.isChecked() if bc_w else True
 
@@ -644,6 +644,8 @@ class TransverseMemberDesign(QDialog):
         print(f"[DEBUG] sizing_result: {getattr(backend, 'sizing_result', 'NOT_FOUND') if backend else 'NO_BACKEND'}")
         if backend is None or getattr(backend, "sizing_result", None) is None:
             print("[DEBUG] Early return - no backend or sizing_result")
+        if backend is None or not getattr(backend, "result_data", None):
+            print("[DEBUG] Early return - no backend or result_data")
             return
 
         try:
@@ -699,21 +701,21 @@ class TransverseMemberDesign(QDialog):
         # Set bracing type
         brace_raw   = forces_dict.get("brace_type", "X")
         brace_label = "K-Bracing" if brace_raw == "K" else "X-Bracing"
-        bracing_w = self._widgets.get(KEY_TD_SECTION_INPUTS_BRACING_TYPE)
+        bracing_w = self._widgets.get(KEY_TD_CB_SECTION_INPUTS_BRACING_TYPE)
         if bracing_w:
-            bracing_w.setCurrentText(brace_label)
+            bracing_w.setText(brace_label)
 
         # Set chord checkboxes
-        tc_w = self._widgets.get(KEY_TD_SECTION_INPUTS_TOP_CHORD_ENABLED)
+        tc_w = self._widgets.get(KEY_TD_CB_SECTION_INPUTS_TOP_CHORD_ENABLED)
         if tc_w:
             tc_w.setChecked(bool(forces_dict.get("top_chord", True)))
-        bc_w = self._widgets.get(KEY_TD_SECTION_INPUTS_BOTTOM_CHORD_ENABLED)
+        bc_w = self._widgets.get(KEY_TD_CB_SECTION_INPUTS_BOTTOM_CHORD_ENABLED)
         if bc_w:
             bc_w.setChecked(bool(forces_dict.get("bottom_chord", True)))
 
         # Set spacing
         spacing = geom.get("cb_spacing_m")
-        spacing_w = self._widgets.get(KEY_TD_SECTION_INPUTS_SPACING)
+        spacing_w = self._widgets.get(KEY_TD_CB_SECTION_INPUTS_SPACING)
         if spacing is not None and spacing_w:
             spacing_w.setText(f"{spacing:.3f} m")
 
@@ -761,24 +763,24 @@ class TransverseMemberDesign(QDialog):
         chord_des    = self._get_governing_section(pair_designs, "chord")
 
         # 1) Design
-        design_w = self._widgets.get(KEY_TD_SECTION_INPUTS_DESIGN)
+        design_w = self._widgets.get(KEY_TD_CB_SECTION_INPUTS_DESIGN)
         if design_w:
             design_w.setText("Cross Bracing")
             
         # 2) No. of CB for this specific pair
-        no_cb_w = self._widgets.get(KEY_TD_SECTION_INPUTS_NO_OF_CB)
+        no_cb_w = self._widgets.get(KEY_TD_CB_SECTION_INPUTS_NO_OF_CB)
         if no_cb_w:
             n_members = self._members_per_pair.get(pair_key, 0)
             no_cb_w.setText(str(n_members))
 
         # 3) Type of Connection
-        conn_w = self._widgets.get(KEY_TD_SECTION_INPUTS_CONNECTION_TYPE)
+        conn_w = self._widgets.get(KEY_TD_CB_SECTION_INPUTS_CONNECTION_TYPE)
         if conn_w:
             conn_w.setText("Bolted")
 
-        bracing_des_w = self._widgets.get(KEY_TD_SECTION_INPUTS_BRACING_SECTION_DESIGNATION)
-        tc_des_w      = self._widgets.get(KEY_TD_SECTION_INPUTS_TOP_CHORD_SECTION_DESIGNATION)
-        bc_des_w      = self._widgets.get(KEY_TD_SECTION_INPUTS_BOTTOM_CHORD_SECTION_DESIGNATION)
+        bracing_des_w = self._widgets.get(KEY_TD_CB_SECTION_INPUTS_BRACING_SECTION_DESIGNATION)
+        tc_des_w      = self._widgets.get(KEY_TD_CB_SECTION_INPUTS_TOP_CHORD_SECTION_DESIGNATION)
+        bc_des_w      = self._widgets.get(KEY_TD_CB_SECTION_INPUTS_BOTTOM_CHORD_SECTION_DESIGNATION)
 
         if bracing_des_w:
             bracing_des_w.setText(diag_des or "")

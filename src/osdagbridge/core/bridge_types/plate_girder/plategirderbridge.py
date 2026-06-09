@@ -168,17 +168,29 @@ from osdagbridge.core.utils.common import (
     KEY_MP_CB_BOTTOM_CHORD_SECTION_DESIG,
 
     # Transverse member properties
-    KEY_TD_BRACING_PROP_L, KEY_TD_BRACING_PROP_H, KEY_TD_BRACING_PROP_B, KEY_TD_BRACING_PROP_TW, KEY_TD_BRACING_PROP_TF,
-    KEY_TD_BRACING_PROP_RZ, KEY_TD_BRACING_PROP_M, KEY_TD_BRACING_PROP_A, KEY_TD_BRACING_PROP_IZ, KEY_TD_BRACING_PROP_IV,
-    KEY_TD_BRACING_PROP_RV, KEY_TD_BRACING_PROP_ZZ, KEY_TD_BRACING_PROP_ZV, KEY_TD_BRACING_PROP_ZUZ, KEY_TD_BRACING_PROP_ZUV,
+    KEY_TD_CB_PROP_L, KEY_TD_CB_PROP_H, KEY_TD_CB_PROP_B, KEY_TD_CB_PROP_TW, KEY_TD_CB_PROP_TF,
+    KEY_TD_CB_PROP_RZ, KEY_TD_CB_PROP_M, KEY_TD_CB_PROP_A, KEY_TD_CB_PROP_IZ, KEY_TD_CB_PROP_IV,
+    KEY_TD_CB_PROP_RV, KEY_TD_CB_PROP_ZZ, KEY_TD_CB_PROP_ZV, KEY_TD_CB_PROP_ZUZ, KEY_TD_CB_PROP_ZUV,
             
-    KEY_TD_TOP_CHORD_PROP_L, KEY_TD_TOP_CHORD_PROP_H, KEY_TD_TOP_CHORD_PROP_B, KEY_TD_TOP_CHORD_PROP_TW, KEY_TD_TOP_CHORD_PROP_TF,
-    KEY_TD_TOP_CHORD_PROP_RZ, KEY_TD_TOP_CHORD_PROP_M, KEY_TD_TOP_CHORD_PROP_A, KEY_TD_TOP_CHORD_PROP_IZ, KEY_TD_TOP_CHORD_PROP_IV,
-    KEY_TD_TOP_CHORD_PROP_RV, KEY_TD_TOP_CHORD_PROP_ZZ, KEY_TD_TOP_CHORD_PROP_ZV, KEY_TD_TOP_CHORD_PROP_ZUZ, KEY_TD_TOP_CHORD_PROP_ZUV,
-            
-    KEY_TD_BOTTOM_CHORD_PROP_L, KEY_TD_BOTTOM_CHORD_PROP_H, KEY_TD_BOTTOM_CHORD_PROP_B, KEY_TD_BOTTOM_CHORD_PROP_TW, KEY_TD_BOTTOM_CHORD_PROP_TF,
-    KEY_TD_BOTTOM_CHORD_PROP_RZ, KEY_TD_BOTTOM_CHORD_PROP_M, KEY_TD_BOTTOM_CHORD_PROP_A, KEY_TD_BOTTOM_CHORD_PROP_IZ, KEY_TD_BOTTOM_CHORD_PROP_IV,
-    KEY_TD_BOTTOM_CHORD_PROP_RV, KEY_TD_BOTTOM_CHORD_PROP_ZZ, KEY_TD_BOTTOM_CHORD_PROP_ZV, KEY_TD_BOTTOM_CHORD_PROP_ZUZ, KEY_TD_BOTTOM_CHORD_PROP_ZUV,
+    KEY_TD_CB_TOP_CHORD_PROP_L, KEY_TD_CB_TOP_CHORD_PROP_H, KEY_TD_CB_TOP_CHORD_PROP_B, KEY_TD_CB_TOP_CHORD_PROP_TW, KEY_TD_CB_TOP_CHORD_PROP_TF,
+    KEY_TD_CB_TOP_CHORD_PROP_RZ, KEY_TD_CB_TOP_CHORD_PROP_M, KEY_TD_CB_TOP_CHORD_PROP_A, KEY_TD_CB_TOP_CHORD_PROP_IZ, KEY_TD_CB_TOP_CHORD_PROP_IV,
+    KEY_TD_CB_TOP_CHORD_PROP_RV, KEY_TD_CB_TOP_CHORD_PROP_ZZ, KEY_TD_CB_TOP_CHORD_PROP_ZV, KEY_TD_CB_TOP_CHORD_PROP_ZUZ, KEY_TD_CB_TOP_CHORD_PROP_ZUV,
+    
+    KEY_TD_CB_BOTTOM_CHORD_PROP_L, KEY_TD_CB_BOTTOM_CHORD_PROP_H, KEY_TD_CB_BOTTOM_CHORD_PROP_B, KEY_TD_CB_BOTTOM_CHORD_PROP_TW, KEY_TD_CB_BOTTOM_CHORD_PROP_TF,
+    KEY_TD_CB_BOTTOM_CHORD_PROP_RZ, KEY_TD_CB_BOTTOM_CHORD_PROP_M, KEY_TD_CB_BOTTOM_CHORD_PROP_A, KEY_TD_CB_BOTTOM_CHORD_PROP_IZ, KEY_TD_CB_BOTTOM_CHORD_PROP_IV,
+    KEY_TD_CB_BOTTOM_CHORD_PROP_RV, KEY_TD_CB_BOTTOM_CHORD_PROP_ZZ, KEY_TD_CB_BOTTOM_CHORD_PROP_ZV, KEY_TD_CB_BOTTOM_CHORD_PROP_ZUZ, KEY_TD_CB_BOTTOM_CHORD_PROP_ZUV,
+
+    KEY_TD_ED_PROP_L, KEY_TD_ED_PROP_H, KEY_TD_ED_PROP_B, KEY_TD_ED_PROP_TW, KEY_TD_ED_PROP_TF,
+    KEY_TD_ED_PROP_RZ, KEY_TD_ED_PROP_M, KEY_TD_ED_PROP_A, KEY_TD_ED_PROP_IZ, KEY_TD_ED_PROP_IV,
+    KEY_TD_ED_PROP_RV, KEY_TD_ED_PROP_ZZ, KEY_TD_ED_PROP_ZV, KEY_TD_ED_PROP_ZUZ, KEY_TD_ED_PROP_ZUV,
+
+    KEY_TD_ED_TOP_CHORD_PROP_L, KEY_TD_ED_TOP_CHORD_PROP_H, KEY_TD_ED_TOP_CHORD_PROP_B, KEY_TD_ED_TOP_CHORD_PROP_TW, KEY_TD_ED_TOP_CHORD_PROP_TF,
+    KEY_TD_ED_TOP_CHORD_PROP_RZ, KEY_TD_ED_TOP_CHORD_PROP_M, KEY_TD_ED_TOP_CHORD_PROP_A, KEY_TD_ED_TOP_CHORD_PROP_IZ, KEY_TD_ED_TOP_CHORD_PROP_IV,
+    KEY_TD_ED_TOP_CHORD_PROP_RV, KEY_TD_ED_TOP_CHORD_PROP_ZZ, KEY_TD_ED_TOP_CHORD_PROP_ZV, KEY_TD_ED_TOP_CHORD_PROP_ZUZ, KEY_TD_ED_TOP_CHORD_PROP_ZUV,
+
+    KEY_TD_ED_BOTTOM_CHORD_PROP_L, KEY_TD_ED_BOTTOM_CHORD_PROP_H, KEY_TD_ED_BOTTOM_CHORD_PROP_B, KEY_TD_ED_BOTTOM_CHORD_PROP_TW, KEY_TD_ED_BOTTOM_CHORD_PROP_TF,
+    KEY_TD_ED_BOTTOM_CHORD_PROP_RZ, KEY_TD_ED_BOTTOM_CHORD_PROP_M, KEY_TD_ED_BOTTOM_CHORD_PROP_A, KEY_TD_ED_BOTTOM_CHORD_PROP_IZ, KEY_TD_ED_BOTTOM_CHORD_PROP_IV,
+    KEY_TD_ED_BOTTOM_CHORD_PROP_RV, KEY_TD_ED_BOTTOM_CHORD_PROP_ZZ, KEY_TD_ED_BOTTOM_CHORD_PROP_ZV, KEY_TD_ED_BOTTOM_CHORD_PROP_ZUZ, KEY_TD_ED_BOTTOM_CHORD_PROP_ZUV,
 )
 
 from osdagbridge.core.bridge_types.plate_girder.initial_sizing import (
@@ -391,6 +403,9 @@ class PlateGirderBridge:
 
         self.crossbracing_design_results = self._design_cross_bracing_members()
         self.output_dict["crossbracing_design_results"] = self.crossbracing_design_results
+
+        self.end_diaphragm_design_results = self._design_end_diaphragm_members()
+        self.output_dict["end_diaphragm_design_results"] = self.end_diaphragm_design_results
 
 
         # Deck slab design — writes "deck_design_results" into output_dict
@@ -1686,25 +1701,25 @@ class PlateGirderBridge:
             
             # Diagonal/bracing
             for k in (
-                KEY_TD_BRACING_PROP_L, KEY_TD_BRACING_PROP_H, KEY_TD_BRACING_PROP_B, KEY_TD_BRACING_PROP_TW, KEY_TD_BRACING_PROP_TF,
-                KEY_TD_BRACING_PROP_RZ, KEY_TD_BRACING_PROP_M, KEY_TD_BRACING_PROP_A, KEY_TD_BRACING_PROP_IZ, KEY_TD_BRACING_PROP_IV,
-                KEY_TD_BRACING_PROP_RV, KEY_TD_BRACING_PROP_ZZ, KEY_TD_BRACING_PROP_ZV, KEY_TD_BRACING_PROP_ZUZ, KEY_TD_BRACING_PROP_ZUV,
+                KEY_TD_CB_PROP_L, KEY_TD_CB_PROP_H, KEY_TD_CB_PROP_B, KEY_TD_CB_PROP_TW, KEY_TD_CB_PROP_TF,
+                KEY_TD_CB_PROP_RZ, KEY_TD_CB_PROP_M, KEY_TD_CB_PROP_A, KEY_TD_CB_PROP_IZ, KEY_TD_CB_PROP_IV,
+                KEY_TD_CB_PROP_RV, KEY_TD_CB_PROP_ZZ, KEY_TD_CB_PROP_ZV, KEY_TD_CB_PROP_ZUZ, KEY_TD_CB_PROP_ZUV,
             ):
                 self.output_dict[make_pair_key(k, pair_id)] = None
 
             # Top chord
             for k in (
-                KEY_TD_TOP_CHORD_PROP_L, KEY_TD_TOP_CHORD_PROP_H, KEY_TD_TOP_CHORD_PROP_B, KEY_TD_TOP_CHORD_PROP_TW, KEY_TD_TOP_CHORD_PROP_TF,
-                KEY_TD_TOP_CHORD_PROP_RZ, KEY_TD_TOP_CHORD_PROP_M, KEY_TD_TOP_CHORD_PROP_A, KEY_TD_TOP_CHORD_PROP_IZ, KEY_TD_TOP_CHORD_PROP_IV,
-                KEY_TD_TOP_CHORD_PROP_RV, KEY_TD_TOP_CHORD_PROP_ZZ, KEY_TD_TOP_CHORD_PROP_ZV, KEY_TD_TOP_CHORD_PROP_ZUZ, KEY_TD_TOP_CHORD_PROP_ZUV,
+                KEY_TD_CB_TOP_CHORD_PROP_L, KEY_TD_CB_TOP_CHORD_PROP_H, KEY_TD_CB_TOP_CHORD_PROP_B, KEY_TD_CB_TOP_CHORD_PROP_TW, KEY_TD_CB_TOP_CHORD_PROP_TF,
+                KEY_TD_CB_TOP_CHORD_PROP_RZ, KEY_TD_CB_TOP_CHORD_PROP_M, KEY_TD_CB_TOP_CHORD_PROP_A, KEY_TD_CB_TOP_CHORD_PROP_IZ, KEY_TD_CB_TOP_CHORD_PROP_IV,
+                KEY_TD_CB_TOP_CHORD_PROP_RV, KEY_TD_CB_TOP_CHORD_PROP_ZZ, KEY_TD_CB_TOP_CHORD_PROP_ZV, KEY_TD_CB_TOP_CHORD_PROP_ZUZ, KEY_TD_CB_TOP_CHORD_PROP_ZUV,
             ):
                 self.output_dict[make_pair_key(k, pair_id)] = None
 
             # Bottom chord
             for k in (
-                KEY_TD_BOTTOM_CHORD_PROP_L, KEY_TD_BOTTOM_CHORD_PROP_H, KEY_TD_BOTTOM_CHORD_PROP_B, KEY_TD_BOTTOM_CHORD_PROP_TW, KEY_TD_BOTTOM_CHORD_PROP_TF,
-                KEY_TD_BOTTOM_CHORD_PROP_RZ, KEY_TD_BOTTOM_CHORD_PROP_M, KEY_TD_BOTTOM_CHORD_PROP_A, KEY_TD_BOTTOM_CHORD_PROP_IZ, KEY_TD_BOTTOM_CHORD_PROP_IV,
-                KEY_TD_BOTTOM_CHORD_PROP_RV, KEY_TD_BOTTOM_CHORD_PROP_ZZ, KEY_TD_BOTTOM_CHORD_PROP_ZV, KEY_TD_BOTTOM_CHORD_PROP_ZUZ, KEY_TD_BOTTOM_CHORD_PROP_ZUV,
+                KEY_TD_CB_BOTTOM_CHORD_PROP_L, KEY_TD_CB_BOTTOM_CHORD_PROP_H, KEY_TD_CB_BOTTOM_CHORD_PROP_B, KEY_TD_CB_BOTTOM_CHORD_PROP_TW, KEY_TD_CB_BOTTOM_CHORD_PROP_TF,
+                KEY_TD_CB_BOTTOM_CHORD_PROP_RZ, KEY_TD_CB_BOTTOM_CHORD_PROP_M, KEY_TD_CB_BOTTOM_CHORD_PROP_A, KEY_TD_CB_BOTTOM_CHORD_PROP_IZ, KEY_TD_CB_BOTTOM_CHORD_PROP_IV,
+                KEY_TD_CB_BOTTOM_CHORD_PROP_RV, KEY_TD_CB_BOTTOM_CHORD_PROP_ZZ, KEY_TD_CB_BOTTOM_CHORD_PROP_ZV, KEY_TD_CB_BOTTOM_CHORD_PROP_ZUZ, KEY_TD_CB_BOTTOM_CHORD_PROP_ZUV,
             ):
                 self.output_dict[make_pair_key(k, pair_id)] = None
 
@@ -1758,21 +1773,21 @@ class PlateGirderBridge:
                         self.output_dict[leg_w_key] = diag_details["B"] * 1000.0
                         self.output_dict[thick_key] = diag_details["tw"] * 1000.0
 
-                    self.output_dict[make_pair_key(KEY_TD_BRACING_PROP_L, pair_id)] = diag_details["L"]
-                    self.output_dict[make_pair_key(KEY_TD_BRACING_PROP_H, pair_id)] = diag_details["H"]
-                    self.output_dict[make_pair_key(KEY_TD_BRACING_PROP_B, pair_id)] = diag_details["B"]
-                    self.output_dict[make_pair_key(KEY_TD_BRACING_PROP_TW, pair_id)] = diag_details["tw"]
-                    self.output_dict[make_pair_key(KEY_TD_BRACING_PROP_TF, pair_id)] = diag_details["tF"]
-                    self.output_dict[make_pair_key(KEY_TD_BRACING_PROP_RZ, pair_id)] = diag_details["rz"]
-                    self.output_dict[make_pair_key(KEY_TD_BRACING_PROP_M, pair_id)] = diag_details["M"]
-                    self.output_dict[make_pair_key(KEY_TD_BRACING_PROP_A, pair_id)] = diag_details["A"]
-                    self.output_dict[make_pair_key(KEY_TD_BRACING_PROP_IZ, pair_id)] = diag_details["Iz"]
-                    self.output_dict[make_pair_key(KEY_TD_BRACING_PROP_IV, pair_id)] = diag_details["Iv"]
-                    self.output_dict[make_pair_key(KEY_TD_BRACING_PROP_RV, pair_id)] = diag_details["rv"]
-                    self.output_dict[make_pair_key(KEY_TD_BRACING_PROP_ZZ, pair_id)] = diag_details["Zz"]
-                    self.output_dict[make_pair_key(KEY_TD_BRACING_PROP_ZV, pair_id)] = diag_details["Zv"]
-                    self.output_dict[make_pair_key(KEY_TD_BRACING_PROP_ZUZ, pair_id)] = diag_details["Zuz"]
-                    self.output_dict[make_pair_key(KEY_TD_BRACING_PROP_ZUV, pair_id)] = diag_details["Zuv"]
+                    self.output_dict[make_pair_key(KEY_TD_CB_PROP_L, pair_id)] = diag_details["L"]
+                    self.output_dict[make_pair_key(KEY_TD_CB_PROP_H, pair_id)] = diag_details["H"]
+                    self.output_dict[make_pair_key(KEY_TD_CB_PROP_B, pair_id)] = diag_details["B"]
+                    self.output_dict[make_pair_key(KEY_TD_CB_PROP_TW, pair_id)] = diag_details["tw"]
+                    self.output_dict[make_pair_key(KEY_TD_CB_PROP_TF, pair_id)] = diag_details["tF"]
+                    self.output_dict[make_pair_key(KEY_TD_CB_PROP_RZ, pair_id)] = diag_details["rz"]
+                    self.output_dict[make_pair_key(KEY_TD_CB_PROP_M, pair_id)] = diag_details["M"]
+                    self.output_dict[make_pair_key(KEY_TD_CB_PROP_A, pair_id)] = diag_details["A"]
+                    self.output_dict[make_pair_key(KEY_TD_CB_PROP_IZ, pair_id)] = diag_details["Iz"]
+                    self.output_dict[make_pair_key(KEY_TD_CB_PROP_IV, pair_id)] = diag_details["Iv"]
+                    self.output_dict[make_pair_key(KEY_TD_CB_PROP_RV, pair_id)] = diag_details["rv"]
+                    self.output_dict[make_pair_key(KEY_TD_CB_PROP_ZZ, pair_id)] = diag_details["Zz"]
+                    self.output_dict[make_pair_key(KEY_TD_CB_PROP_ZV, pair_id)] = diag_details["Zv"]
+                    self.output_dict[make_pair_key(KEY_TD_CB_PROP_ZUZ, pair_id)] = diag_details["Zuz"]
+                    self.output_dict[make_pair_key(KEY_TD_CB_PROP_ZUV, pair_id)] = diag_details["Zuv"]
 
             # Query database and populate top/bottom chords section properties
             if chord_des:
@@ -1794,21 +1809,21 @@ class PlateGirderBridge:
                             self.output_dict[tc_w_key] = chord_details["B"] * 1000.0
                             self.output_dict[tc_t_key] = chord_details["tw"] * 1000.0
 
-                        self.output_dict[make_pair_key(KEY_TD_TOP_CHORD_PROP_L, pair_id)] = chord_details["L"]
-                        self.output_dict[make_pair_key(KEY_TD_TOP_CHORD_PROP_H, pair_id)] = chord_details["H"]
-                        self.output_dict[make_pair_key(KEY_TD_TOP_CHORD_PROP_B, pair_id)] = chord_details["B"]
-                        self.output_dict[make_pair_key(KEY_TD_TOP_CHORD_PROP_TW, pair_id)] = chord_details["tw"]
-                        self.output_dict[make_pair_key(KEY_TD_TOP_CHORD_PROP_TF, pair_id)] = chord_details["tF"]
-                        self.output_dict[make_pair_key(KEY_TD_TOP_CHORD_PROP_RZ, pair_id)] = chord_details["rz"]
-                        self.output_dict[make_pair_key(KEY_TD_TOP_CHORD_PROP_M, pair_id)] = chord_details["M"]
-                        self.output_dict[make_pair_key(KEY_TD_TOP_CHORD_PROP_A, pair_id)] = chord_details["A"]
-                        self.output_dict[make_pair_key(KEY_TD_TOP_CHORD_PROP_IZ, pair_id)] = chord_details["Iz"]
-                        self.output_dict[make_pair_key(KEY_TD_TOP_CHORD_PROP_IV, pair_id)] = chord_details["Iv"]
-                        self.output_dict[make_pair_key(KEY_TD_TOP_CHORD_PROP_RV, pair_id)] = chord_details["rv"]
-                        self.output_dict[make_pair_key(KEY_TD_TOP_CHORD_PROP_ZZ, pair_id)] = chord_details["Zz"]
-                        self.output_dict[make_pair_key(KEY_TD_TOP_CHORD_PROP_ZV, pair_id)] = chord_details["Zv"]
-                        self.output_dict[make_pair_key(KEY_TD_TOP_CHORD_PROP_ZUZ, pair_id)] = chord_details["Zuz"]
-                        self.output_dict[make_pair_key(KEY_TD_TOP_CHORD_PROP_ZUV, pair_id)] = chord_details["Zuv"]
+                        self.output_dict[make_pair_key(KEY_TD_CB_TOP_CHORD_PROP_L, pair_id)] = chord_details["L"]
+                        self.output_dict[make_pair_key(KEY_TD_CB_TOP_CHORD_PROP_H, pair_id)] = chord_details["H"]
+                        self.output_dict[make_pair_key(KEY_TD_CB_TOP_CHORD_PROP_B, pair_id)] = chord_details["B"]
+                        self.output_dict[make_pair_key(KEY_TD_CB_TOP_CHORD_PROP_TW, pair_id)] = chord_details["tw"]
+                        self.output_dict[make_pair_key(KEY_TD_CB_TOP_CHORD_PROP_TF, pair_id)] = chord_details["tF"]
+                        self.output_dict[make_pair_key(KEY_TD_CB_TOP_CHORD_PROP_RZ, pair_id)] = chord_details["rz"]
+                        self.output_dict[make_pair_key(KEY_TD_CB_TOP_CHORD_PROP_M, pair_id)] = chord_details["M"]
+                        self.output_dict[make_pair_key(KEY_TD_CB_TOP_CHORD_PROP_A, pair_id)] = chord_details["A"]
+                        self.output_dict[make_pair_key(KEY_TD_CB_TOP_CHORD_PROP_IZ, pair_id)] = chord_details["Iz"]
+                        self.output_dict[make_pair_key(KEY_TD_CB_TOP_CHORD_PROP_IV, pair_id)] = chord_details["Iv"]
+                        self.output_dict[make_pair_key(KEY_TD_CB_TOP_CHORD_PROP_RV, pair_id)] = chord_details["rv"]
+                        self.output_dict[make_pair_key(KEY_TD_CB_TOP_CHORD_PROP_ZZ, pair_id)] = chord_details["Zz"]
+                        self.output_dict[make_pair_key(KEY_TD_CB_TOP_CHORD_PROP_ZV, pair_id)] = chord_details["Zv"]
+                        self.output_dict[make_pair_key(KEY_TD_CB_TOP_CHORD_PROP_ZUZ, pair_id)] = chord_details["Zuz"]
+                        self.output_dict[make_pair_key(KEY_TD_CB_TOP_CHORD_PROP_ZUV, pair_id)] = chord_details["Zuv"]
 
                     if bottom_chord_enabled:
                         self.output_dict[make_pair_key("member_properties.cross_bracing_details.bottom_chord.section_type", pair_id)] = chord_details["type"]
@@ -1824,21 +1839,21 @@ class PlateGirderBridge:
                             self.output_dict[bc_w_key] = chord_details["B"] * 1000.0
                             self.output_dict[bc_t_key] = chord_details["tw"] * 1000.0
 
-                        self.output_dict[make_pair_key(KEY_TD_BOTTOM_CHORD_PROP_L, pair_id)] = chord_details["L"]
-                        self.output_dict[make_pair_key(KEY_TD_BOTTOM_CHORD_PROP_H, pair_id)] = chord_details["H"]
-                        self.output_dict[make_pair_key(KEY_TD_BOTTOM_CHORD_PROP_B, pair_id)] = chord_details["B"]
-                        self.output_dict[make_pair_key(KEY_TD_BOTTOM_CHORD_PROP_TW, pair_id)] = chord_details["tw"]
-                        self.output_dict[make_pair_key(KEY_TD_BOTTOM_CHORD_PROP_TF, pair_id)] = chord_details["tF"]
-                        self.output_dict[make_pair_key(KEY_TD_BOTTOM_CHORD_PROP_RZ, pair_id)] = chord_details["rz"]
-                        self.output_dict[make_pair_key(KEY_TD_BOTTOM_CHORD_PROP_M, pair_id)] = chord_details["M"]
-                        self.output_dict[make_pair_key(KEY_TD_BOTTOM_CHORD_PROP_A, pair_id)] = chord_details["A"]
-                        self.output_dict[make_pair_key(KEY_TD_BOTTOM_CHORD_PROP_IZ, pair_id)] = chord_details["Iz"]
-                        self.output_dict[make_pair_key(KEY_TD_BOTTOM_CHORD_PROP_IV, pair_id)] = chord_details["Iv"]
-                        self.output_dict[make_pair_key(KEY_TD_BOTTOM_CHORD_PROP_RV, pair_id)] = chord_details["rv"]
-                        self.output_dict[make_pair_key(KEY_TD_BOTTOM_CHORD_PROP_ZZ, pair_id)] = chord_details["Zz"]
-                        self.output_dict[make_pair_key(KEY_TD_BOTTOM_CHORD_PROP_ZV, pair_id)] = chord_details["Zv"]
-                        self.output_dict[make_pair_key(KEY_TD_BOTTOM_CHORD_PROP_ZUZ, pair_id)] = chord_details["Zuz"]
-                        self.output_dict[make_pair_key(KEY_TD_BOTTOM_CHORD_PROP_ZUV, pair_id)] = chord_details["Zuv"]
+                        self.output_dict[make_pair_key(KEY_TD_CB_BOTTOM_CHORD_PROP_L, pair_id)] = chord_details["L"]
+                        self.output_dict[make_pair_key(KEY_TD_CB_BOTTOM_CHORD_PROP_H, pair_id)] = chord_details["H"]
+                        self.output_dict[make_pair_key(KEY_TD_CB_BOTTOM_CHORD_PROP_B, pair_id)] = chord_details["B"]
+                        self.output_dict[make_pair_key(KEY_TD_CB_BOTTOM_CHORD_PROP_TW, pair_id)] = chord_details["tw"]
+                        self.output_dict[make_pair_key(KEY_TD_CB_BOTTOM_CHORD_PROP_TF, pair_id)] = chord_details["tF"]
+                        self.output_dict[make_pair_key(KEY_TD_CB_BOTTOM_CHORD_PROP_RZ, pair_id)] = chord_details["rz"]
+                        self.output_dict[make_pair_key(KEY_TD_CB_BOTTOM_CHORD_PROP_M, pair_id)] = chord_details["M"]
+                        self.output_dict[make_pair_key(KEY_TD_CB_BOTTOM_CHORD_PROP_A, pair_id)] = chord_details["A"]
+                        self.output_dict[make_pair_key(KEY_TD_CB_BOTTOM_CHORD_PROP_IZ, pair_id)] = chord_details["Iz"]
+                        self.output_dict[make_pair_key(KEY_TD_CB_BOTTOM_CHORD_PROP_IV, pair_id)] = chord_details["Iv"]
+                        self.output_dict[make_pair_key(KEY_TD_CB_BOTTOM_CHORD_PROP_RV, pair_id)] = chord_details["rv"]
+                        self.output_dict[make_pair_key(KEY_TD_CB_BOTTOM_CHORD_PROP_ZZ, pair_id)] = chord_details["Zz"]
+                        self.output_dict[make_pair_key(KEY_TD_CB_BOTTOM_CHORD_PROP_ZV, pair_id)] = chord_details["Zv"]
+                        self.output_dict[make_pair_key(KEY_TD_CB_BOTTOM_CHORD_PROP_ZUZ, pair_id)] = chord_details["Zuz"]
+                        self.output_dict[make_pair_key(KEY_TD_CB_BOTTOM_CHORD_PROP_ZUV, pair_id)] = chord_details["Zuv"]
 
         return pair_designs
 
