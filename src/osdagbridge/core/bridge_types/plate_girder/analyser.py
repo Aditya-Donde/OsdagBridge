@@ -979,78 +979,316 @@ class BridgeGrillageModel:
     #   Seismic / Earthquake Load
     # ============================================================
 
-    def create_seismic_load(
+    @staticmethod
+    def _load_case_resultant_kN(load_case) -> float:
+        """
+        Integrate the total applied resultant (kN) of a load case directly
+        from its load objects: line loads (p in N/m × length), patch loads
+        (p in N/m² × quad area), point loads (p in N) and nodal loads (|Fy|).
+        Compound loads (e.g. vehicles) are summed over their children.
+
+        Only the per-load ``factor`` stored in ``load_groups`` is applied —
+        the registration-time ``load_factor`` passed to
+        ``model.add_load_case()`` is NOT included, so the result is the
+        unfactored load total of the case.
+        """
+        if load_case is None:
+            return 0.0
+
+        def _resultant_N(load) -> float:
+            children = getattr(load, "compound_load_obj_list", None)
+            if children:
+                return sum(_resultant_N(child) for child in children)
+            pts = [pt for pt in getattr(load, "point_list", []) if pt is not None]
+            if not pts:
+                # nodal load — vertical component only
+                return abs(getattr(load, "Fy", 0.0) or 0.0)
+            if len(pts) == 1:
+                # point load: p is the force (N)
+                return abs(pts[0].p)
+            if len(pts) >= 4:
+                # patch load: shoelace area of the corner quad × average p (N/m²)
+                area = 0.5 * abs(sum(
+                    pts[i].x * pts[(i + 1) % len(pts)].z
+                    - pts[(i + 1) % len(pts)].x * pts[i].z
+                    for i in range(len(pts))
+                ))
+                p_avg = sum(pt.p for pt in pts) / len(pts)
+                return abs(p_avg) * area
+            # line load (2–3 vertices): trapezoidal p (N/m) over segment lengths
+            return abs(sum(
+                0.5 * (a.p + b.p) * ((b.x - a.x) ** 2 + (b.z - a.z) ** 2) ** 0.5
+                for a, b in zip(pts[:-1], pts[1:])
+            ))
+
+        return sum(
+            float(entry.get("factor", 1) or 1) * _resultant_N(entry["load"])
+            for entry in load_case.load_groups
+        ) / 1000.0
+
+    def _total_dead_load_kN(self) -> float:
+        """
+        Total unfactored dead load (kN) used as the seismic mass per
+        IRC:6-2017 Cl.218.5: the ``DL`` combination (self weight, deck,
+        footpath and SIDL) plus the wearing-course (surfacing) case, which
+        is registered separately as ``DW``.
+
+        Derived on demand from the registered load cases — no per-method
+        accumulator is needed because ``create_dead_load_combination()``
+        already aggregates every dead-load sub-case applied to the model.
+        """
+        dl = self._load_case_resultant_kN(getattr(self, "dead_load_combination", None))
+        dw = self._load_case_resultant_kN(getattr(self, "wearing_course_load", None))
+        if dl == 0.0:
+            warnings.warn(
+                "Total dead load for seismic is zero — call the dead-load "
+                "creation methods and create_dead_load_combination() first."
+            )
+        return dl + dw
+
+    @staticmethod
+    def _vehicle_total_weight_kN(vehicle_type: str) -> float:
+        """
+        Return total unfactored axle load (kN) for one vehicle.
+
+        The IRC6_2017 vehicle geometries define ``wheel_loads`` with the ``t``
+        unit constant (tonne → N), so the sum is in N and converted to kN here.
+        """
+        try:
+            if vehicle_type == 'ClassA':
+                return float(sum(IRC6_2017.cl_204_1_ClassA_vehicle()['wheel_loads'])) / kN
+            elif vehicle_type == 'Class70R':
+                return float(sum(IRC6_2017.cl_204_1_Class70R_vehicle_wheel()['wheel_loads'])) / kN
+        except Exception:
+            pass
+        return 0.0
+
+    def _get_governing_ll_kN(self) -> float:
+        """Total unfactored vehicle weight (kN) for the governing live load case."""
+        governing_name = getattr(self, 'governing_ll_name', None)
+        if not governing_name:
+            return 0.0
+        try:
+            case_num = int(str(governing_name).split('Case')[1].split(' ')[0])
+        except (IndexError, ValueError):
+            return 0.0
+        vehicles = self.vehicle_moving_loads_by_case.get(case_num, [])
+        return sum(
+            self._vehicle_total_weight_kN(self.vehicle_type_map.get(id(v), ''))
+            for v in vehicles
+        )
+
+    @staticmethod
+    def _spectral_sa_g(soil_type: int, T: float) -> float:
+        """Spectral acceleration coefficient Sa/g per IRC:6-2017 Cl.218.5.1."""
+        T = min(max(float(T), 0.0), 4.0)
+        if soil_type == 1:    # Type I: Rock / Hard (N > 30)
+            corner = 0.40
+            factor = 1.00
+        elif soil_type == 2:  # Type II: Medium (10 < N ≤ 30)
+            corner = 0.55
+            factor = 1.36
+        else:                 # Type III: Soft (N < 10)
+            corner = 0.67
+            factor = 1.67
+        if T <= 0.10:
+            return 1 + 15 * T
+        if T <= corner:
+            return 2.50
+        return factor / T
+
+    def create_seismic_load_cases(
             self,
             model=None,
-            seismic_load_kN_m2: float | None = None,
-            partial_safety_factor: float = 1.0,
-    ):
+            z_value: float = 0.10,
+            soil_type: int = 1,
+            importance_factor: float = 1.0,
+            damping_percent: float = 2.0,
+            response_reduction_factor: float = 1.0,
+            time_period: float = 0.5,
+            Ah: float | None = None,
+            Av: float | None = None,
+            dead_load_kN: float | None = None,
+            live_load_kN: float | None = None,
+            partial_safety_factor: float = 1.5,
+    ) -> dict:
         """
-        Creates a uniform seismic (earthquake) load as a patch load over the
-        full bridge deck footprint (same extents as the deck slab load).
+        Creates seismic load cases per IRC:6-2017 Cl. 218.5.1 and combines them
+        per Cl. 218.3.
 
-        The load represents the equivalent horizontal seismic pressure on the
-        bridge superstructure per IRC:6-2017 Cl.219 / IS 1893 (Part 3).
+        DL and LL default to model state: total DL is integrated from the
+        registered dead-load cases (``_total_dead_load_kN()``) and LL from the
+        governing vehicle case (``_get_governing_ll_kN()``). Explicit
+        ``dead_load_kN`` / ``live_load_kN`` values (the seismic tab's Custom
+        mode) override the automatic derivation.
+
+        Load cases created
+        ------------------
+        ``"EQ_X"``            : Longitudinal seismic (Fx at all nodes, 0% LL).
+        ``"EQ_Z"``            : Transverse seismic (Fz at all nodes, 20% LL).
+        ``"EQ_Y"``            : Vertical seismic (Fy upward, Av = 2/3 × Ah, 20% LL).
+        ``"{lf} EQ (a/b/c)"`` : IRC 218.3 combination cases registered with
+                                ``partial_safety_factor``.
 
         Parameters
         ----------
-        seismic_load_kN_m2 : float
-            Seismic load intensity in kN/m² (required).
+        z_value : float
+            Zone factor Z from IRC Table 16 (project location ``weather_data``).
+        soil_type : int
+            1 = Rock/Hard (N>30), 2 = Medium (10<N≤30), 3 = Soft (N<10).
+        importance_factor : float
+            I (IRC Table 19): 1.0 normal, 1.2 important, 1.5 large critical.
+        damping_percent : float
+            Damping %: 2 (steel/composite), 5 (RC), 10 (retrofitted).
+        response_reduction_factor : float
+            R from IRC Table 20 (1.0 non-ductile Zone II, 2.0 ductile).
+        time_period : float
+            Fundamental time period T (s) used for Sa/g when Ah is computed here.
+        Ah : float | None
+            Horizontal seismic coefficient. If provided by the UI
+            (``KEY_SL_HORIZONTAL_COEFF``), it is used directly; otherwise
+            computed from z_value, importance_factor, Sa/g and damping factor.
+        Av : float | None
+            Vertical seismic coefficient. If provided
+            (``KEY_SL_VERTICAL_COEFF``), used directly; otherwise taken as
+            (2/3) × Ah per IRC 218.4.
+        dead_load_kN : float | None
+            Custom dead load for seismic force; None → derived from model state.
+        live_load_kN : float | None
+            Custom live load for seismic force; None → derived from the
+            governing vehicle case.
         partial_safety_factor : float
-            Partial safety factor applied to the ``"{psf} EL"`` load case.
-            Default is 1.0.
+            ULS load factor for combination cases (IRC Table B.2 seismic: 1.5).
 
-        The created load case is stored on ``self.seismic_load_case``.
+        Returns
+        -------
+        dict
+            ``{"EQ_X": ..., "EQ_Z": ..., "EQ_Y": ...,
+               "EQ_a": ..., "EQ_b": ..., "EQ_c": ...}``
         """
         model = model or self.model
         if model is None:
-            raise ValueError("Model is not available. Create model before adding loads.")
+            raise ValueError("Model not created. Call create_model() first.")
 
-        if seismic_load_kN_m2 is None:
-            raise ValueError(
-                "create_seismic_load requires seismic_load_kN_m2 (in kN/m²) "
-                "so the patch load magnitude can be set."
-            )
-
-        el_mag = seismic_load_kN_m2 * kN / m**2  # N/m²
-        print(f"Seismic load magnitude: {el_mag:.2f} N/m²")
-
-        # -------------------------------------------------
-        # Get geometry from load manager (full deck footprint)
-        # -------------------------------------------------
-        geom = self.load_manager.deck_load()
-
-        # -------------------------------------------------
-        # Convert geometry → ospgrillage vertices
-        # -------------------------------------------------
-        p1 = og.create_load_vertex(x=geom.p1.x, z=geom.p1.z, p=el_mag)
-        p2 = og.create_load_vertex(x=geom.p2.x, z=geom.p2.z, p=el_mag)
-        p3 = og.create_load_vertex(x=geom.p3.x, z=geom.p3.z, p=el_mag)
-        p4 = og.create_load_vertex(x=geom.p4.x, z=geom.p4.z, p=el_mag)
-
-        # -------------------------------------------------
-        # Create patch load
-        # -------------------------------------------------
-        seismic_load = og.create_load(
-            loadtype="patch",
-            name="seismic load",
-            point1=p1,
-            point2=p2,
-            point3=p3,
-            point4=p4,
+        # ── DL and LL from model state unless custom values are supplied ──
+        if dead_load_kN is None:
+            dead_load_kN = self._total_dead_load_kN()
+        if live_load_kN is None:
+            live_load_kN = self._get_governing_ll_kN()
+        print(
+            f"Seismic inputs: DL={dead_load_kN:.1f} kN  "
+            f"Governing LL={live_load_kN:.1f} kN"
         )
 
-        # -------------------------------------------------
-        # Create & register load case
-        # -------------------------------------------------
-        EL = og.create_load_case(name=f"{partial_safety_factor} EL")
-        EL.add_load(seismic_load)
-        model.add_load_case(EL, load_factor=partial_safety_factor)
+        # ── 1. Seismic coefficients (IRC:6-2017 Cl.218.5.1) ──
+        # Use Ah/Av from UI if available; otherwise compute from IRC formula.
+        if not Ah:
+            sa_g = self._spectral_sa_g(soil_type, time_period)
+            damping_factor = IRC6_2017.table_18(damping_percent)
+            Ah = (z_value / 2.0) * importance_factor * sa_g * damping_factor
+        if not Av:
+            Av = (2.0 / 3.0) * Ah  # IRC 218.4: vertical component
 
-        # store reference
-        self.seismic_load_case = EL
+        # ── 2. Feq_design for each direction (kN) ──
+        # IRC 218.5.2: appropriate LL = 20% for transverse/vertical, 0 for longitudinal
+        R = response_reduction_factor
+        ll_contribution = 0.20 * live_load_kN
+        Feq_X_kN = Ah * dead_load_kN / R                            # longitudinal (0% LL)
+        Feq_Z_kN = Ah * (dead_load_kN + ll_contribution) / R        # transverse  (20% LL)
+        Feq_Y_kN = Av * (dead_load_kN + ll_contribution) / R        # vertical    (20% LL, Av)
 
-        return EL
+        print(
+            f"Seismic loads (IRC:6-2017 Cl.218): Z={z_value}  "
+            f"Ah={Ah:.4f}  Av={Av:.4f}\n"
+            f"  Feq_X={Feq_X_kN:.2f} kN  "
+            f"Feq_Z={Feq_Z_kN:.2f} kN  "
+            f"Feq_Y={Feq_Y_kN:.2f} kN"
+        )
+
+        # ── 3. Tributary-area distribution (same pattern as wind load) ──
+        nox_sorted = sorted(model.Mesh_obj.nox)
+        noz_sorted = sorted(model.Mesh_obj.noz)
+        node_spec  = model.Mesh_obj.node_spec
+
+        def _trib_1d(positions: list, value: float) -> float:
+            """Tributary half-interval for `value` inside sorted `positions`."""
+            idx   = min(range(len(positions)), key=lambda i: abs(positions[i] - value))
+            left  = (positions[idx] - positions[idx - 1]) / 2 if idx > 0                  else 0.0
+            right = (positions[idx + 1] - positions[idx]) / 2 if idx < len(positions) - 1 else 0.0
+            return left + right
+
+        total_trib_area = self.L * (self.w or self.bridge_geometry.width)  # m²
+
+        # Convert Feq (kN) → intensity (N/m²) for uniform mass distribution
+        Feq_X_N_per_m2 = Feq_X_kN * 1000.0 / total_trib_area
+        Feq_Z_N_per_m2 = Feq_Z_kN * 1000.0 / total_trib_area
+        Feq_Y_N_per_m2 = Feq_Y_kN * 1000.0 / total_trib_area
+
+        # Pre-compute per-node forces for all 3 directions
+        node_forces: dict = {}  # {tag: (Fx, Fz, Fy)}
+        for tag, spec in node_spec.items():
+            coord = spec["coordinate"]
+            trib  = _trib_1d(nox_sorted, coord[0]) * _trib_1d(noz_sorted, coord[2])
+            node_forces[tag] = (
+                Feq_X_N_per_m2 * trib,   # Fx  (longitudinal +x)
+                Feq_Z_N_per_m2 * trib,   # Fz  (transverse +z)
+                -Feq_Y_N_per_m2 * trib,  # Fy  (vertical, upward = negative)
+            )
+
+        # ── 4. Individual directional load cases ──
+        EQ_X = og.create_load_case(name="EQ_X")
+        EQ_Z = og.create_load_case(name="EQ_Z")
+        EQ_Y = og.create_load_case(name="EQ_Y")
+
+        for tag, (fx, fz, fy) in node_forces.items():
+            EQ_X.add_load(og.create_load(
+                loadtype="nodal", node_tag=tag,
+                Fx=fx, Fy=0,  Fz=0,  Mx=0, My=0, Mz=0,
+            ))
+            EQ_Z.add_load(og.create_load(
+                loadtype="nodal", node_tag=tag,
+                Fx=0,  Fy=0,  Fz=fz, Mx=0, My=0, Mz=0,
+            ))
+            EQ_Y.add_load(og.create_load(
+                loadtype="nodal", node_tag=tag,
+                Fx=0,  Fy=fy, Fz=0,  Mx=0, My=0, Mz=0,
+            ))
+
+        model.add_load_case(EQ_X)
+        model.add_load_case(EQ_Z)
+        model.add_load_case(EQ_Y)
+        self.seismic_x_load_case = EQ_X
+        self.seismic_z_load_case = EQ_Z
+        self.seismic_y_load_case = EQ_Y
+
+        # ── 5. IRC 218.3 combination cases ──
+        # (a) ±r1 ± 0.3r2 ± 0.3r3   r1=EQ_X, r2=EQ_Z, r3=EQ_Y
+        # (b) ±0.3r1 ± r2 ± 0.3r3
+        # (c) ±0.3r1 ± 0.3r2 ± r3
+        COMBOS = [
+            ("EQ (a)", 1.0, 0.3, 0.3),   # (cx, cz, cy)
+            ("EQ (b)", 0.3, 1.0, 0.3),
+            ("EQ (c)", 0.3, 0.3, 1.0),
+        ]
+        combo_cases = []
+        lf = partial_safety_factor
+        for name, cx, cz, cy in COMBOS:
+            lc = og.create_load_case(name=f"{lf} {name}")
+            for tag, (fx, fz, fy) in node_forces.items():
+                lc.add_load(og.create_load(
+                    loadtype="nodal", node_tag=tag,
+                    Fx=cx * fx, Fy=cy * fy, Fz=cz * fz,
+                    Mx=0, My=0, Mz=0,
+                ))
+            model.add_load_case(lc, load_factor=lf)
+            combo_cases.append(lc)
+
+        self.seismic_combo_a, self.seismic_combo_b, self.seismic_combo_c = combo_cases
+
+        return {
+            "EQ_X": EQ_X, "EQ_Z": EQ_Z, "EQ_Y": EQ_Y,
+            "EQ_a": combo_cases[0], "EQ_b": combo_cases[1], "EQ_c": combo_cases[2],
+        }
 
     # ============================================================
     #   Wind Load
