@@ -904,7 +904,10 @@ class CAD3DWindow(QWidget):
 
         if label_ais_list:
             self.viewer.model_ais_objects["NodeNumbers"] = label_ais_list
-
+            try:
+                self.display.Repaint()
+            except Exception:
+                pass
 
     # ── RENDER ELEMENT NUMBERS ────────────────────────────────────────────────────
     # Called by ToolBarController._cad_toggle_element_number() (toolbar_controller.py)
@@ -1014,7 +1017,10 @@ class CAD3DWindow(QWidget):
 
         if label_ais_list:
             self.viewer.model_ais_objects["ElementNumbers"] = label_ais_list
-
+        try:
+            self.display.Repaint()
+        except Exception:
+            pass
 
 class BridgeComponentCheckbox(QWidget):
     """
