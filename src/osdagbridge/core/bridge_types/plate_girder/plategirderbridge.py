@@ -69,6 +69,11 @@ from osdagbridge.core.utils.common import (
     KEY_UTIL_FATIGUE,
     KEY_UTIL_LONG_TRANS_SHEAR,
     KEY_UTIL_STRESS_LIMITATION,
+    KEY_SL_IMPORTANCE_FACTOR, KEY_SL_SOIL_TYPE, KEY_SL_TIME_PERIOD,
+    KEY_SL_DAMPING, KEY_SL_RESPONSE_REDUCTION,
+    KEY_SL_DEAD_LOAD_MODE, KEY_SL_DEAD_LOAD_VALUE,
+    KEY_SL_LIVE_LOAD_MODE, KEY_SL_LIVE_LOAD_VALUE,
+    KEY_SL_HORIZONTAL_COEFF, KEY_SL_VERTICAL_COEFF,
     KEY_MD_WIDTH,
     KEY_RL_WIDTH,
     KEY_TS_DECK_OVERHANG,
@@ -541,9 +546,13 @@ class PlateGirderBridge:
         self.add_live_loads()
         self.add_wind_loads()
         self.add_temperature_load()
-        self.add_seismic_load()
+        # First analysis pass: DL + LL + WL + TL
         dataset = self.analyze()
+        # Governing LL (re-analyzes internally, sets governing_ll_name on grillage model)
         dataset = self.create_governing_ll_load_case(dataset, partial_safety_factor=1.0)
+        # Seismic loads — need the dead-load cases and governing_ll_name to be
+        # available; the EQ cases are analyzed by _reanalyze_with_dedup() below.
+        self.add_seismic_loads()
 
         self.create_dl_ll_combination(dl_factor=1.0, ll_factor=1.0)
         self.create_uls_combinations()
@@ -1501,26 +1510,102 @@ class PlateGirderBridge:
             partial_safety_factor=1.0,
         )
 
-    def add_seismic_load(self) -> None:
+    def add_seismic_loads(self) -> None:
         """
-        Apply seismic (earthquake) load to the grillage model as a patch load
-        over the full deck footprint per IRC:6-2017 Cl.219 / IS 1893 (Part 3).
+        Apply seismic load cases to the grillage model per IRC:6-2017 Cl. 218.
 
-        The load intensity is read from ``self.input_dict`` using the key
-        ``"seismic_load_kN_m2"``.  If the key is absent or zero the load is
-        silently skipped (seismic load is optional).
+        Must be called AFTER ``create_governing_ll_load_case()`` so that:
+          - the dead-load cases exist on the grillage model (total DL is
+            integrated from them on demand), and
+          - ``governing_ll_name`` is set so the governing vehicle weight can
+            be computed for the IRC 218.5.2 live-load fraction.
 
-        Delegates to BridgeGrillageModel.create_seismic_load().
+        Input sources
+        -------------
+        ``KEY_PROJECT_LOCATION`` : zone factor Z from ``weather_data['z_value']``.
+        ``KEY_SL_*``             : importance factor, soil type, time period,
+                                   damping, response reduction factor and the
+                                   UI-computed Ah / Av coefficients.
+        DL / LL                  : derived from model state, unless the seismic
+                                   tab's Custom mode supplies explicit values.
+
+        Load cases created (delegated to
+        BridgeGrillageModel.create_seismic_load_cases):
+          - ``"EQ_X"``            → Longitudinal seismic (0% LL)
+          - ``"EQ_Z"``            → Transverse seismic (20% LL)
+          - ``"EQ_Y"``            → Vertical seismic, Av = (2/3)×Ah (20% LL)
+          - ``"1.5 EQ (a/b/c)"``  → IRC 218.3 design combinations with γ = 1.5
         """
-        el_raw = self.input_dict.get("seismic_load_kN_m2")
-        if not el_raw:
-            return
-        el_kN_m2 = float(el_raw)
-        if el_kN_m2 == 0.0:
-            return
-        self.grillage_model.create_seismic_load(
-            seismic_load_kN_m2=el_kN_m2,
-            partial_safety_factor=1.0,
+        inp = self.input_dict
+
+        # ── Zone factor Z: from project-location weather_data ──
+        location = inp.get(KEY_PROJECT_LOCATION) or {}
+        if isinstance(location, str) and '{' in location:
+            import ast
+            try:
+                location = ast.literal_eval(location)
+            except (ValueError, SyntaxError):
+                location = {}
+        z_value = 0.10  # Zone II default (lowest hazard)
+        if isinstance(location, dict):
+            weather = location.get('weather_data') or {}
+            z_val = weather.get('z_value')
+            if z_val is not None:
+                z_value = float(z_val)
+
+        # ── Soil type from the seismic tab ──
+        soil_str = str(inp.get(KEY_SL_SOIL_TYPE) or "")
+        soil_type = 3 if "III" in soil_str else (2 if "II" in soil_str else 1)
+
+        # ── IRC 218 parameters from the seismic tab ──
+        def _to_float(key: str, default: float) -> float:
+            try:
+                return float(inp.get(key))
+            except (TypeError, ValueError):
+                return default
+
+        importance_factor = _to_float(KEY_SL_IMPORTANCE_FACTOR, 1.0)
+        damping_pct       = _to_float(KEY_SL_DAMPING, 2.0)
+        R                 = _to_float(KEY_SL_RESPONSE_REDUCTION, 1.0)
+        time_period       = _to_float(KEY_SL_TIME_PERIOD, 0.5)
+
+        # ── Ah and Av: use UI-computed values if present; else computed in
+        # the analyser from z_value / soil / T / damping ──
+        def _to_coeff(key: str) -> float | None:
+            try:
+                v = float(inp.get(key))
+                return v if v > 0 else None
+            except (TypeError, ValueError):
+                return None
+
+        Ah = _to_coeff(KEY_SL_HORIZONTAL_COEFF)
+        Av = _to_coeff(KEY_SL_VERTICAL_COEFF)
+
+        # ── DL / LL: Custom mode overrides; Automatic (default) derives them
+        # from model state inside create_seismic_load_cases() ──
+        def _custom_load(mode_key: str, value_key: str) -> float | None:
+            if str(inp.get(mode_key) or "Automatic") != "Custom":
+                return None
+            try:
+                return float(inp.get(value_key))
+            except (TypeError, ValueError):
+                return None
+
+        dead_load_kN = _custom_load(KEY_SL_DEAD_LOAD_MODE, KEY_SL_DEAD_LOAD_VALUE)
+        live_load_kN = _custom_load(KEY_SL_LIVE_LOAD_MODE, KEY_SL_LIVE_LOAD_VALUE)
+
+        self.grillage_model.create_seismic_load_cases(
+            z_value=z_value,
+            soil_type=soil_type,
+            importance_factor=importance_factor,
+            damping_percent=damping_pct,
+            response_reduction_factor=R,
+            time_period=time_period,
+            Ah=Ah,
+            Av=Av,
+            dead_load_kN=dead_load_kN,
+            live_load_kN=live_load_kN,
+            partial_safety_factor=1.5,  # IRC:6-2017 Table B.2 seismic ULS
         )
 
     def vehicle_lane_coordinates(self) -> list:
