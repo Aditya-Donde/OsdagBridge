@@ -491,7 +491,7 @@ def title_page(m, osdag_logo, org_logo):
 \hline
 \textbf{Date} & """ + _tex(m.report_date) + r""" \\
 \hline
-\textbf{Report Version} & """ + (_tex(m.subtitle) if m.subtitle else r"<Review>") + r""" \\
+\textbf{Report Version} & """ + (_tex(m.subtitle) if m.subtitle else _ph("Review")) + r""" \\
 \hline
 \end{tabular}
 \end{titlepage}
@@ -985,7 +985,7 @@ def _bracing_tables(input_dict, n_girders):
                 + r""" & """
                 + (_v(input_dict, KEY_MP_ED_BRACING_SECTION_DESIGNATION) or _ph('Bracing Section'))
                 + r""" & """
-                + (_v(input_dict, KEY_MP_ED_END_DIAPHRAGM_SPACING, ' m') or _ph('$s_{br}$'))
+                + _ph('$s_{br}$')
                 + r""" & """
                 + _ph('$n_{br}$')  # GAP — no KEY_ for number of bracing panels
                 + r""" \\[6pt]
