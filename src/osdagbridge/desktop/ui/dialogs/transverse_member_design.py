@@ -36,6 +36,32 @@ from osdagbridge.core.utils.common import (
     KEY_TD_CB_SECTION_INPUTS_BRACING_SECTION_TYPE,
     KEY_TD_CB_SECTION_INPUTS_TOP_CHORD_SECTION_TYPE,
     KEY_TD_CB_SECTION_INPUTS_BOTTOM_CHORD_SECTION_TYPE,
+    KEY_TD_ED_SECTION_INPUTS_TYPE,
+    KEY_TD_ED_SECTION_INPUTS_DESIGN,
+    KEY_TD_ED_SECTION_INPUTS_NO_OF_CB,
+    KEY_TD_ED_SECTION_INPUTS_BRACING_TYPE,
+    KEY_TD_ED_SECTION_INPUTS_CONNECTION_TYPE,
+    KEY_TD_ED_SECTION_INPUTS_BRACING_SECTION_TYPE,
+    KEY_TD_ED_SECTION_INPUTS_BRACING_SECTION_DESIGNATION,
+    KEY_TD_ED_SECTION_INPUTS_TOP_CHORD_ENABLED,
+    KEY_TD_ED_SECTION_INPUTS_TOP_CHORD_SECTION_TYPE,
+    KEY_TD_ED_SECTION_INPUTS_TOP_CHORD_SECTION_DESIGNATION,
+    KEY_TD_ED_SECTION_INPUTS_BOTTOM_CHORD_ENABLED,
+    KEY_TD_ED_SECTION_INPUTS_BOTTOM_CHORD_SECTION_TYPE,
+    KEY_TD_ED_SECTION_INPUTS_BOTTOM_CHORD_SECTION_DESIGNATION,
+    KEY_TD_ED_SECTION_INPUTS_IS_SECTION,
+    KEY_TD_ED_SECTION_INPUTS_SYMMETRY,
+    KEY_TD_ED_SECTION_INPUTS_TOTAL_DEPTH,
+    KEY_TD_ED_SECTION_INPUTS_WEB_THICKNESS,
+    KEY_TD_ED_SECTION_INPUTS_TOP_FLANGE_WIDTH,
+    KEY_TD_ED_SECTION_INPUTS_BOTTOM_FLANGE_WIDTH,
+    KEY_TD_ED_SECTION_INPUTS_TOP_FLANGE_THICKNESS,
+    KEY_TD_ED_SECTION_INPUTS_BOTTOM_FLANGE_THICKNESS,
+    KEY_TD_ED_SECTION_PROPS_BRACING,
+    KEY_TD_ED_SECTION_PROPS_TOP_CHORD,
+    KEY_TD_ED_SECTION_PROPS_BOTTOM_CHORD,
+    KEY_TD_ED_DESIGN_CHECK_RESULTS,
+    KEY_TD_ED_BRACING_DIAGRAM,
 )
 
 # ── Style constants ───────────────────────────────────────────────────────────
@@ -152,9 +178,15 @@ class TransverseMemberDesign(QDialog):
         self._designs_dict:     dict          = {}
         self._pair_keys:        list[str]     = []
         self._members_per_pair: dict[str, int] = {}
+        self._ed_group_widgets: dict[str, list[QWidget]] = {"crossbracing": [], "welded_beam": []}
+
 
         # All schema-driven widgets keyed by their schema "id"
         self._widgets: dict[str, QWidget] = {}
+        # Per-tab bracing layout and result widgets (avoids collision between CB and ED tabs)
+        self._tab_bracing_widgets: dict = {"cb": None, "ed": None}
+        self._tab_result_texts: dict = {"cb": None, "ed": None}
+        self._ed_type_combo = None
 
         # Section property fields and previews keyed by card title
         self._prop_fields:      dict[str, dict[str, QLineEdit]]            = {}
@@ -209,9 +241,16 @@ class TransverseMemberDesign(QDialog):
 
         details_schema = _SCHEMA.get("crossbracing_tab", {})
         self.tabs.addTab(
-            self._build_details_tab(details_schema),
+            self._build_crossbracing_tab(details_schema),
             "Crossbracing",
         )
+        ed_schema = _SCHEMA.get("end_diaphragm_tab", {})
+        self.tabs.addTab(
+            self._build_end_diaphragm_tab(ed_schema),
+            "End Diaphragm",
+        )
+
+        self.tabs.currentChanged.connect(self._on_tab_changed)
         main.addWidget(self.tabs)
 
     def _build_global_bar(self) -> QWidget:
@@ -263,9 +302,8 @@ class TransverseMemberDesign(QDialog):
 
         return container
 
-    # Details tab
-
-    def _build_details_tab(self, schema: dict) -> QWidget:
+    # Crossbracing tab
+    def _build_crossbracing_tab(self, schema: dict) -> QWidget:
         tab = QWidget()
         tab.setStyleSheet("background-color: white;")
         outer = QVBoxLayout(tab)
@@ -281,6 +319,7 @@ class TransverseMemberDesign(QDialog):
         # 2D Bracing Diagram - full width at top with left/right margins
         diag_schema = schema.get("right_panel", {}).get("bracing_diagram", {})
         diagram_box = self._build_bracing_diagram_box(diag_schema)
+        self._tab_bracing_widgets["cb"] = self.bracing_layout_widget  # store here
         diagram_box.setContentsMargins(20, 10, 20, 10)  # Left/right margins for diagram
         cl.addWidget(diagram_box)
 
@@ -297,10 +336,75 @@ class TransverseMemberDesign(QDialog):
         # Results table at bottom
         dc_schema = _SCHEMA.get("crossbracing_tab", {})
         rt_schema = dc_schema.get("results_table", {})
-        cl.addWidget(self._build_result_text_card(rt_schema))
+        result_card, cb_text = self._build_result_text_card(rt_schema)
+        self.design_check_text = cb_text          # keep for backward compat
+        self._tab_result_texts["cb"] = cb_text
+        cl.addWidget(result_card)
         cl.addStretch()
         scroll.setWidget(content)
         outer.addWidget(scroll)
+        return tab
+
+    # End Diaphragm tab 
+    def _build_end_diaphragm_tab(self, schema: dict) -> QWidget:
+        tab = QWidget()
+        tab.setStyleSheet("background-color: white;")
+        outer = QVBoxLayout(tab)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(0)
+        scroll = StyledScrollArea()
+        content = QWidget()
+        content.setStyleSheet("background-color: white;")
+        cl = QVBoxLayout(content)
+        cl.setContentsMargins(10, 10, 10, 10)
+        cl.setSpacing(12)
+
+        # ── Diagram (same as CB) ──────────────────────────────────────────────
+        diag_schema = schema.get("right_panel", {}).get("bracing_diagram", {})
+        diagram_box = self._build_bracing_diagram_box(diag_schema)
+        self._tab_bracing_widgets["ed"] = self.bracing_layout_widget
+        diagram_box.setContentsMargins(20, 10, 20, 10)
+        cl.addWidget(diagram_box)
+
+        # ── Middle: left inputs + stacked right panel ─────────────────────────
+        middle_part = QWidget()
+        middle_layout = QHBoxLayout(middle_part)
+        middle_layout.setContentsMargins(0, 0, 0, 0)
+        middle_layout.setSpacing(12)
+
+        middle_layout.addWidget(
+            self._build_section_inputs_box(
+                schema.get("left_panel", {}).get("section_inputs", {})
+            ), 0
+        )
+
+        # Right: two variants stacked, show/hide via _on_ed_type_changed
+        self._ed_right_stack = QWidget()
+        self._ed_right_stack.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        stack_layout = QVBoxLayout(self._ed_right_stack)
+        stack_layout.setContentsMargins(0, 0, 0, 0)
+        stack_layout.setSpacing(0)
+
+        self._ed_cards_cb = self._build_section_cards_panel(schema.get("right_panel", {}))
+        stack_layout.addWidget(self._ed_cards_cb)
+
+        self._ed_cards_wb = self._build_welded_beam_card()
+        stack_layout.addWidget(self._ed_cards_wb)
+
+        middle_layout.addWidget(self._ed_right_stack, 1)
+        cl.addWidget(middle_part)
+
+        # ── Results ───────────────────────────────────────────────────────────
+        rt_schema = schema.get("results_table", {})
+        result_card, ed_text = self._build_result_text_card(rt_schema)
+        self._tab_result_texts["ed"] = ed_text
+        cl.addWidget(result_card)
+        cl.addStretch()
+        scroll.setWidget(content)
+        outer.addWidget(scroll)
+
+        # Set initial state — crossbracing visible, welded beam hidden
+        self._on_ed_type_changed("Cross Bracing")
         return tab
 
     # Left panel
@@ -346,8 +450,9 @@ class TransverseMemberDesign(QDialog):
             flabel = field_def.get("label", "")
 
             if ftype == "checkbox":
-                # Checkbox header row (Top Chord / Bottom Chord)
-                hdr = QHBoxLayout()
+                hdr_widget = QWidget()
+                hdr_widget.setStyleSheet("background: transparent;")
+                hdr = QHBoxLayout(hdr_widget)
                 hdr.setContentsMargins(0, 4, 0, 0)
                 hdr.setSpacing(6)
                 hdr.addWidget(self._subhead(flabel))
@@ -357,26 +462,39 @@ class TransverseMemberDesign(QDialog):
                 cb.setChecked(field_def.get("default", False))
                 hdr.addWidget(cb)
                 hdr.addStretch()
-                grid.addLayout(hdr, row, 0, 1, 2)
+                grid.addWidget(hdr_widget, row, 0, 1, 2)   # ← addWidget not addLayout
                 self._widgets[fid] = cb
+                group = field_def.get("group")
+                if group is not None:
+                    self._ed_group_widgets.setdefault(group, []).append(hdr_widget)
                 row += 1
 
             elif ftype == "combo":
                 widget = self._ro_combo(field_def.get("choices", []))
                 widget.setObjectName(fid)
-                # Wire on_change callback if specified
                 callback_name = field_def.get("on_change")
                 if callback_name:
                     cb_func = getattr(self, callback_name, None)
                     if callable(cb_func):
                         widget.currentTextChanged.connect(cb_func)
-                row = self._grid_row(grid, row, flabel, widget)
+                row, lbl_widget = self._grid_row(grid, row, flabel, widget)
+                group = field_def.get("group")
+                if group is not None:
+                    self._ed_group_widgets.setdefault(group, []).extend([lbl_widget, widget])
                 self._widgets[fid] = widget
 
             else:  # "line"
                 widget = self._ro_line()
                 widget.setObjectName(fid)
-                row = self._grid_row(grid, row, flabel, widget)
+                callback_name = field_def.get("on_change")
+                if callback_name:
+                    cb_func = getattr(self, callback_name, None)
+                    if callable(cb_func):
+                        widget.textChanged.connect(cb_func)   # textChanged for QLineEdit
+                row, lbl_widget = self._grid_row(grid, row, flabel, widget)
+                group = field_def.get("group")
+                if group is not None:
+                    self._ed_group_widgets.setdefault(group, []).extend([lbl_widget, widget])
                 self._widgets[fid] = widget
 
         vl.addLayout(grid)
@@ -384,29 +502,6 @@ class TransverseMemberDesign(QDialog):
         return box
 
     # ── Right panel (schema-driven diagram + property cards) ──────────────
-
-    def _build_right_panel(self, schema: dict) -> QWidget:
-        panel = QWidget()
-        panel.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
-        layout = QVBoxLayout(panel)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(8)
-
-        # Bracing diagram
-        diag_schema = schema.get("bracing_diagram", {})
-        layout.addWidget(self._build_bracing_diagram_box(diag_schema))
-
-        # Section property cards from schema
-        for card_def in schema.get("section_cards", []):
-            card_title = card_def["title"]
-            col_lists  = [card_def.get("col1", []), card_def.get("col2", []), card_def.get("col3", [])]
-            card, fields = self._build_section_property_card(card_title, col_lists)
-            self._prop_fields[card_title] = fields
-            self._widgets[card_def["id"]] = card
-            layout.addWidget(card)
-
-        layout.addStretch()
-        return panel
 
     def _build_section_cards_panel(self, schema: dict) -> QWidget:
         panel = QWidget()
@@ -455,8 +550,65 @@ class TransverseMemberDesign(QDialog):
         fid = schema.get("id")
         if fid:
             self._widgets[fid] = box
-
         return box
+    
+    def _build_welded_beam_card(self) -> QFrame:
+        """Single full-width card shown when ED type is Welded Beam."""
+        card = self._inner_box()
+        card.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        outer = QHBoxLayout(card)
+        outer.setContentsMargins(10, 8, 10, 8)
+        outer.setSpacing(16)
+
+        # Left: section preview (I-beam shape)
+        lbl = QLabel("End Diaphragm")
+        lbl.setStyleSheet(_HEADING_STYLE)
+        preview = PlaceholderSectionPreviewWidget(placeholder_text="Welded Beam", min_height=150)
+        preview.setFixedWidth(160)
+        self._section_previews["ED Welded Beam"] = preview
+        left_v = QVBoxLayout()
+        left_v.setContentsMargins(0, 0, 0, 0)
+        left_v.setSpacing(4)
+        left_v.addWidget(lbl)
+        left_v.addWidget(preview)
+        left_v.addStretch()
+        outer.addLayout(left_v)
+
+        # Right: property columns
+        col1 = ["D (mm)", "B_top (mm)", "tf_top (mm)"]
+        col2 = ["tw (mm)", "B_bot (mm)", "tf_bot (mm)"]
+        col3 = ["A (cm²)", "Iz (cm⁴)", "M (Kg/m)"]
+
+        props_layout = QHBoxLayout()
+        props_layout.setContentsMargins(0, 0, 0, 0)
+        props_layout.setSpacing(10)
+        fields: dict[str, QLineEdit] = {}
+
+        for col_props in [col1, col2, col3]:
+            col = QGridLayout()
+            col.setContentsMargins(0, 0, 0, 0)
+            col.setHorizontalSpacing(4)
+            col.setVerticalSpacing(3)
+            for r, prop in enumerate(col_props):
+                lbl_p = QLabel(prop)
+                lbl_p.setStyleSheet(_PROP_LBL_STYLE)
+                field = QLineEdit()
+                field.setReadOnly(True)
+                field.setFixedWidth(68)
+                field.setFixedHeight(21)
+                field.setStyleSheet(
+                    "QLineEdit { border:1px solid #d0d0d0; border-radius:3px;"
+                    " background:#fafafa; font-size:10px; color:#333; padding:1px 4px; }"
+                )
+                col.addWidget(lbl_p, r, 0, Qt.AlignLeft | Qt.AlignVCenter)
+                col.addWidget(field, r, 1, Qt.AlignLeft | Qt.AlignVCenter)
+                fields[prop] = field
+            props_layout.addLayout(col)
+
+        self._prop_fields["ED Welded Beam"] = fields
+        outer.addLayout(props_layout)
+        outer.addStretch()
+        return card
 
     def _build_section_property_card(
         self, title: str, col_lists: list[list[str]],
@@ -513,32 +665,31 @@ class TransverseMemberDesign(QDialog):
         return card, fields
 
 
-    def _build_result_text_card(self, schema: dict) -> QFrame:
+    def _build_result_text_card(self, schema: dict) -> tuple[QFrame, QTextEdit]:
         card = self._inner_box()
         vl = QVBoxLayout(card)
         vl.setContentsMargins(14, 10, 14, 14)
         vl.setSpacing(8)
         vl.addWidget(self._heading(schema.get("title", "Design Check Results:")))
 
-        self.design_check_text = QTextEdit()
-        self.design_check_text.setReadOnly(True)
-        self.design_check_text.setMinimumHeight(schema.get("min_height", 200))
-        self.design_check_text.setStyleSheet(
+        text_widget = QTextEdit()                    # ← ONE widget only
+        text_widget.setReadOnly(True)
+        text_widget.setMinimumHeight(schema.get("min_height", 200))
+        text_widget.setStyleSheet(
             "QTextEdit { background-color: white; border: none;"
             " font-size: 11px; color: #333333; padding: 0px; }"
         )
-        self.design_check_text.setContentsMargins(0, 0, 0, 0)
-        self.design_check_text.setViewportMargins(0, 0, 0, 0)
-        self.design_check_text.document().setDocumentMargin(0)
-        self.design_check_text.setHtml(self._empty_design_check_html())
-        self._sync_design_check_width()
-        vl.addWidget(self.design_check_text)
+        text_widget.setContentsMargins(0, 0, 0, 0)
+        text_widget.setViewportMargins(0, 0, 0, 0)
+        text_widget.document().setDocumentMargin(0)
+        text_widget.setHtml(self._empty_design_check_html())
+        vl.addWidget(text_widget)                    # ← add it
 
         fid = schema.get("id")
         if fid:
-            self._widgets[fid] = self.design_check_text
+            self._widgets[fid] = text_widget         # ← register it
 
-        return card
+        return card, text_widget
 
     # ── Shared widget helpers ─────────────────────────────────────────────
 
@@ -548,11 +699,9 @@ class TransverseMemberDesign(QDialog):
         return frame
 
     def _sync_design_check_width(self) -> None:
-        if not hasattr(self, "design_check_text"):
-            return
-        self.design_check_text.document().setTextWidth(
-            self.design_check_text.viewport().width()
-        )
+        for text_w in self._tab_result_texts.values():
+            if text_w is not None:
+                text_w.document().setTextWidth(text_w.viewport().width())
 
     def resizeEvent(self, event) -> None:
         super().resizeEvent(event)
@@ -592,14 +741,11 @@ class TransverseMemberDesign(QDialog):
         combo.setStyleSheet(_COMBO_STYLE)
         return combo
 
-    def _grid_row(self, grid: QGridLayout, row: int, label: str, widget: QWidget) -> int:
-        # Use subhead style for "Spacing:" to match "Top Chord" and "Bottom Chord"
-        if label == "Spacing:":
-            grid.addWidget(self._subhead(label), row, 0, Qt.AlignLeft | Qt.AlignVCenter)
-        else:
-            grid.addWidget(self._lbl(label), row, 0, Qt.AlignLeft | Qt.AlignVCenter)
+    def _grid_row(self, grid: QGridLayout, row: int, label: str, widget: QWidget) -> tuple[int, QLabel]:
+        lbl = self._subhead(label) if label == "Spacing:" else self._lbl(label)
+        grid.addWidget(lbl,    row, 0, Qt.AlignLeft | Qt.AlignVCenter)
         grid.addWidget(widget, row, 1)
-        return row + 1
+        return row + 1, lbl
 
     # ── Signal handlers ───────────────────────────────────────────────────
 
@@ -615,17 +761,20 @@ class TransverseMemberDesign(QDialog):
         self._refresh_bracing_layout()
         if pair_key:
             if self._designs_dict:
-                self._populate_pair_details(pair_key)
+                self._populate_cb_pair_details(pair_key)
+                self._populate_ed_pair_details(pair_key)
             if hasattr(self, '_forces_dict') and self._forces_dict and self._designs_dict:
-                html = self._build_design_check_html(pair_key, self._forces_dict, self._designs_dict)
-                self.design_check_text.setHtml(html)
+                cb_html = self._build_cb_design_check_html(pair_key, self._forces_dict, self._designs_dict)
+                if self._tab_result_texts.get("cb"):
+                    self._tab_result_texts["cb"].setHtml(cb_html)
+                ed_html = self._build_ed_design_check_html(pair_key, self._forces_dict, self._designs_dict)
+                if self._tab_result_texts.get("ed"):
+                    self._tab_result_texts["ed"].setHtml(ed_html)
 
     def _on_bracing_type_changed(self, _text: str):
         self._refresh_bracing_layout()
 
     def _refresh_bracing_layout(self):
-        if self.bracing_layout_widget is None:
-            return
         bracing_w = self._widgets.get(KEY_TD_CB_SECTION_INPUTS_BRACING_TYPE)
         tc_w      = self._widgets.get(KEY_TD_CB_SECTION_INPUTS_TOP_CHORD_ENABLED)
         bc_w      = self._widgets.get(KEY_TD_CB_SECTION_INPUTS_BOTTOM_CHORD_ENABLED)
@@ -634,7 +783,9 @@ class TransverseMemberDesign(QDialog):
         top     = tc_w.isChecked() if tc_w else True
         bottom  = bc_w.isChecked() if bc_w else True
 
-        self.bracing_layout_widget.set_layout(bracing, top, bottom, "", "")
+        for widget in self._tab_bracing_widgets.values():   # ← refresh both
+            if widget is not None:
+                widget.set_layout(bracing, top, bottom, "", "")
 
     # ── Data loading ──────────────────────────────────────────────────────
 
@@ -748,13 +899,18 @@ class TransverseMemberDesign(QDialog):
         self._refresh_bracing_layout()
 
         if self._pair_keys:
-            self._populate_pair_details(self._pair_keys[0])
+            self._populate_cb_pair_details(self._pair_keys[0])
+            self._populate_ed_pair_details(self._pair_keys[0])
 
         if self._pair_keys and self._designs_dict:
-            html = self._build_design_check_html(self._pair_keys[0], forces_dict, self._designs_dict)
-            self.design_check_text.setHtml(html)
+            cb_html = self._build_cb_design_check_html(self._pair_keys[0], forces_dict, self._designs_dict)
+            if self._tab_result_texts.get("cb"):
+                self._tab_result_texts["cb"].setHtml(cb_html)
+            ed_html = self._build_ed_design_check_html(self._pair_keys[0], forces_dict, self._designs_dict)
+            if self._tab_result_texts.get("ed"):
+                self._tab_result_texts["ed"].setHtml(ed_html)
 
-    def _populate_pair_details(self, pair_key: str) -> None:
+    def _populate_cb_pair_details(self, pair_key: str) -> None:
         if not self._designs_dict:
             return
 
@@ -795,6 +951,73 @@ class TransverseMemberDesign(QDialog):
             ("Bottom Chord", chord_des),
         ):
             self._fill_section_card(card_name, designation, "Double Angles")
+
+    def _populate_ed_pair_details(self, pair_key: str) -> None:
+        if not self._designs_dict:
+            return
+
+        pair_designs = self._designs_dict.get(pair_key, {})
+        ed_type      = pair_designs.get("ed_type", "Cross Bracing")  # "Cross Bracing" or "Welded Beam"
+
+        # Always-visible fields
+        design_w = self._widgets.get(KEY_TD_ED_SECTION_INPUTS_DESIGN)
+        if design_w:
+            design_w.setText("End Diaphragm")
+
+        no_cb_w = self._widgets.get(KEY_TD_ED_SECTION_INPUTS_NO_OF_CB)
+        if no_cb_w:
+            no_cb_w.setText(str(self._members_per_pair.get(pair_key, 0)))
+
+        conn_w = self._widgets.get(KEY_TD_ED_SECTION_INPUTS_CONNECTION_TYPE)
+        if conn_w:
+            conn_w.setText("Bolted")
+
+        # Setting TYPE fires textChanged → _on_ed_type_changed → show/hide automatically
+        type_w = self._widgets.get(KEY_TD_ED_SECTION_INPUTS_TYPE)
+        if type_w:
+            type_w.setText(ed_type)
+
+        if ed_type == "Welded Beam":
+            wb = pair_designs.get("welded_beam", {})
+            for key, fid in (
+                ("is_section",        KEY_TD_ED_SECTION_INPUTS_IS_SECTION),
+                ("symmetry",          KEY_TD_ED_SECTION_INPUTS_SYMMETRY),
+                ("total_depth",       KEY_TD_ED_SECTION_INPUTS_TOTAL_DEPTH),
+                ("web_thickness",     KEY_TD_ED_SECTION_INPUTS_WEB_THICKNESS),
+                ("top_flange_width",  KEY_TD_ED_SECTION_INPUTS_TOP_FLANGE_WIDTH),
+                ("top_flange_thk",    KEY_TD_ED_SECTION_INPUTS_TOP_FLANGE_THICKNESS),
+                ("bot_flange_width",  KEY_TD_ED_SECTION_INPUTS_BOTTOM_FLANGE_WIDTH),
+                ("bot_flange_thk",    KEY_TD_ED_SECTION_INPUTS_BOTTOM_FLANGE_THICKNESS),
+            ):
+                w = self._widgets.get(fid)
+                if w:
+                    val = wb.get(key, "")
+                    w.setText(str(val) if val != "" else "")
+            self._fill_section_card("ED Welded Beam", wb.get("designation", ""), "Welded Beam")
+
+        else:  # Cross Bracing
+            diag_des  = self._get_governing_section(pair_designs, "diagonal")
+            chord_des = self._get_governing_section(pair_designs, "chord")
+
+            for fid, val in (
+                (KEY_TD_ED_SECTION_INPUTS_BRACING_TYPE,                "X-Bracing"),
+                (KEY_TD_ED_SECTION_INPUTS_BRACING_SECTION_TYPE,        "Double Angles"),
+                (KEY_TD_ED_SECTION_INPUTS_BRACING_SECTION_DESIGNATION, diag_des or ""),
+                (KEY_TD_ED_SECTION_INPUTS_TOP_CHORD_SECTION_TYPE,      "Double Angles"),
+                (KEY_TD_ED_SECTION_INPUTS_TOP_CHORD_SECTION_DESIGNATION,    chord_des or ""),
+                (KEY_TD_ED_SECTION_INPUTS_BOTTOM_CHORD_SECTION_TYPE,   "Double Angles"),
+                (KEY_TD_ED_SECTION_INPUTS_BOTTOM_CHORD_SECTION_DESIGNATION, chord_des or ""),
+            ):
+                w = self._widgets.get(fid)
+                if w:
+                    w.setText(val)
+
+            for card_name, designation in (
+                ("End Diaphragm", diag_des),
+                ("Top Chord",     chord_des),
+                ("Bottom Chord",  chord_des),
+            ):
+                self._fill_section_card(card_name, designation, "Double Angles")
 
     def _get_governing_section(self, member_designs: dict, member_type: str) -> str:
         from osdagbridge.core.bridge_types.plate_girder.results_data import _extract_osdag_summary
@@ -918,7 +1141,7 @@ class TransverseMemberDesign(QDialog):
 
     # ── Design check HTML (no Pair column) ────────────────────────────────
 
-    def _build_design_check_html(self, pair_key: str, forces_dict: dict, designs_dict: dict) -> str:
+    def _build_cb_design_check_html(self, pair_key: str, forces_dict: dict, designs_dict: dict) -> str:
         from osdagbridge.core.bridge_types.plate_girder.results_data import _extract_osdag_summary
 
         rows_html = []
@@ -976,33 +1199,7 @@ class TransverseMemberDesign(QDialog):
         if not rows_html:
             return self._empty_design_check_html()
 
-        hdr_style = "background:#f0f0f0;font-weight:bold;padding:5px 8px;border-bottom:2px solid #ddd;"
-        td_style  = "padding:4px 8px;border-bottom:1px solid #e8e8e8;"
-
-        header = (
-            f"<tr>"
-            f"<th style='{hdr_style}'>Member</th>"
-            f"<th style='{hdr_style}'>Force Type</th>"
-            f"<th style='{hdr_style}'>Force (kN)</th>"
-            f"<th style='{hdr_style}'>Section</th>"
-            f"<th style='{hdr_style}'>Connection</th>"
-            f"<th style='{hdr_style}'>λ (slend.)</th>"
-            f"<th style='{hdr_style}'>Capacity (kN)</th>"
-            f"<th style='{hdr_style}'>Utilization Ratio</th>"
-            f"<th style='{hdr_style}'>Status</th>"
-            f"</tr>"
-        )
-
-        rows_styled = [r.replace("<td>", f"<td style='{td_style}'>") for r in rows_html]
-
-        return (
-            "<style>"
-            "body{margin:0;padding:0;}"
-            "table{border-collapse:collapse;width:100%;table-layout:fixed;font-size:11px;margin:0;border:1px solid black;}"
-            "tr:nth-child(even){background:#fafafa;}"
-            "</style>"
-            "<table width='100%'>" + header + "".join(rows_styled) + "</table>"
-        )
+        return self._wrap_design_check_table(rows_html)
 
     def _empty_design_check_html(self) -> str:
         hdr_style = "background:#f0f0f0;font-weight:bold;padding:5px 8px;border-bottom:2px solid #ddd;"
@@ -1034,3 +1231,135 @@ class TransverseMemberDesign(QDialog):
 
     def load_design_check_html(self, html: str) -> None:
         self.design_check_text.setHtml(html)
+
+
+    def _build_ed_design_check_html(self, pair_key: str, forces_dict: dict, designs_dict: dict) -> str:
+        from osdagbridge.core.bridge_types.plate_girder.results_data import _extract_osdag_summary
+
+        rows_html    = []
+        pairs        = forces_dict.get("pairs", {})
+        vals         = pairs.get(pair_key, {})
+        pair_designs = designs_dict.get(pair_key, {})
+        n_members    = self._members_per_pair.get(pair_key, 1)
+        pair_idx     = self._pair_keys.index(pair_key) if pair_key in self._pair_keys else 0
+        ed_type      = pair_designs.get("ed_type", "Cross Bracing")
+
+        for m_idx in range(n_members):
+            member_id = f"E{pair_idx + 1}M{m_idx + 1}"   # ← E prefix
+
+            if ed_type == "Welded Beam":
+                member_data = pair_designs.get("welded_beam", {})
+                for force_type, force_key in (
+                    ("Tension",     "ed_tension_kN"),
+                    ("Compression", "ed_compression_kN"),
+                ):
+                    force_kn = vals.get(force_key)
+                    if force_kn is None:
+                        continue
+                    res      = _extract_osdag_summary(member_data.get(force_type.lower()) or {})
+                    section  = res.get("section")   or "—"
+                    cap_kn   = res.get("capacity_kN")
+                    eff      = res.get("efficiency")
+                    slnd     = res.get("slenderness")
+                    conn     = res.get("connection") or "—"
+                    cap_str  = f"{cap_kn:.2f}" if cap_kn is not None else "—"
+                    eff_str  = f"{eff:.3f}"    if eff    is not None else "—"
+                    slnd_str = f"{slnd:.1f}"   if slnd   is not None else "—"
+                    if eff is None:
+                        status_color, status = "#888888", "N/A"
+                    elif eff <= 1.0:
+                        status_color, status = "#3a7d00", "PASS"
+                    else:
+                        status_color, status = "#c0392b", "FAIL"
+                    rows_html.append(
+                        f"<tr><td>{member_id}</td><td>Beam ({force_type})</td>"
+                        f"<td>{force_kn:.3f}</td><td>{section}</td><td>{conn}</td>"
+                        f"<td>{slnd_str}</td><td>{cap_str}</td><td>{eff_str}</td>"
+                        f"<td style='color:{status_color};font-weight:bold;'>{status}</td></tr>"
+                    )
+            else:  # Cross Bracing — same structure as CB but E prefix already handled
+                for label, member_type, t_key, c_key in (
+                    ("Diagonal", "diagonal", "diag_tension_kN",  "diag_compression_kN"),
+                    ("Chord",    "chord",    "chord_tension_kN", "chord_compression_kN"),
+                ):
+                    member_data = pair_designs.get(member_type, {})
+                    for force_type, force_key in (
+                        ("Tension",     t_key),
+                        ("Compression", c_key),
+                    ):
+                        force_kn = vals.get(force_key)
+                        if force_kn is None:
+                            continue
+                        res      = _extract_osdag_summary(member_data.get(force_type.lower()) or {})
+                        section  = res.get("section")   or "—"
+                        cap_kn   = res.get("capacity_kN")
+                        eff      = res.get("efficiency")
+                        slnd     = res.get("slenderness")
+                        conn     = res.get("connection") or "—"
+                        cap_str  = f"{cap_kn:.2f}" if cap_kn is not None else "—"
+                        eff_str  = f"{eff:.3f}"    if eff    is not None else "—"
+                        slnd_str = f"{slnd:.1f}"   if slnd   is not None else "—"
+                        if eff is None:
+                            status_color, status = "#888888", "N/A"
+                        elif eff <= 1.0:
+                            status_color, status = "#3a7d00", "PASS"
+                        else:
+                            status_color, status = "#c0392b", "FAIL"
+                        rows_html.append(
+                            f"<tr><td>{member_id}</td><td>{label} ({force_type})</td>"
+                            f"<td>{force_kn:.3f}</td><td>{section}</td><td>{conn}</td>"
+                            f"<td>{slnd_str}</td><td>{cap_str}</td><td>{eff_str}</td>"
+                            f"<td style='color:{status_color};font-weight:bold;'>{status}</td></tr>"
+                        )
+
+        if not rows_html:
+            return self._empty_design_check_html()
+
+        return self._wrap_design_check_table(rows_html)
+    
+    def _wrap_design_check_table(self, rows_html: list[str]) -> str:
+        hdr_style = "background:#f0f0f0;font-weight:bold;padding:5px 8px;border-bottom:2px solid #ddd;"
+        td_style  = "padding:4px 8px;border-bottom:1px solid #e8e8e8;"
+        header = (
+            f"<tr>"
+            f"<th style='{hdr_style}'>Member</th>"
+            f"<th style='{hdr_style}'>Force Type</th>"
+            f"<th style='{hdr_style}'>Force (kN)</th>"
+            f"<th style='{hdr_style}'>Section</th>"
+            f"<th style='{hdr_style}'>Connection</th>"
+            f"<th style='{hdr_style}'>λ (slend.)</th>"
+            f"<th style='{hdr_style}'>Capacity (kN)</th>"
+            f"<th style='{hdr_style}'>Utilization Ratio</th>"
+            f"<th style='{hdr_style}'>Status</th>"
+            f"</tr>"
+        )
+        rows_styled = [r.replace("<td>", f"<td style='{td_style}'>") for r in rows_html]
+        return (
+            "<style>body{margin:0;padding:0;}"
+            "table{border-collapse:collapse;width:100%;table-layout:fixed;font-size:11px;margin:0;border:1px solid black;}"
+            "tr:nth-child(even){background:#fafafa;}</style>"
+            "<table width='100%'>" + header + "".join(rows_styled) + "</table>"
+        )
+    
+    def _on_ed_type_changed(self, text: str) -> None:
+        is_welded = text == "Welded Beam"
+
+        # Show/hide left panel field rows
+        for wgt in self._ed_group_widgets.get("crossbracing", []):
+            wgt.setVisible(not is_welded)
+        for wgt in self._ed_group_widgets.get("welded_beam", []):
+            wgt.setVisible(is_welded)
+
+        # Switch right panel cards
+        self._switch_ed_right_panel(is_welded)
+    
+    def _switch_ed_right_panel(self, is_welded: bool) -> None:
+        self._ed_cards_cb.setVisible(not is_welded)
+        self._ed_cards_wb.setVisible(is_welded)
+
+    def _on_tab_changed(self, index: int):
+        tab_key = "cb" if index == 0 else "ed"
+        # Point self.design_check_text at the active tab's widget
+        active = self._tab_result_texts.get(tab_key)
+        if active:
+            self.design_check_text = active
