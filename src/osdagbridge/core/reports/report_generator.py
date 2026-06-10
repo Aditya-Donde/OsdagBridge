@@ -2185,83 +2185,33 @@ def _fig_embed(path, caption, width=r'0.9\textwidth'):
 def ch6_drawings(fig_paths):
     """Chapter 6 – Drawings and Visualizations.
 
-    Mirrors the exact section/subsection structure and fbox-placeholder style
-    from the LaTeX template. Real figures are embedded when available;
-    otherwise the fbox placeholder text is shown.
+    Layout: section heading → figure → small numbered label below.
+    No subsection headers. 6.3 and 6.4 are headings only (no figures).
     """
 
-    def _sec_fig(path, placeholder_text, caption=None):
-        """Render figure or fbox placeholder. caption is used only for real images."""
+    def _sec_fig(path, label, title):
+        """Figure block: image first, numbered label below. Placeholder if no path."""
+        label_line = r'\noindent{\small \textbf{' + label + r'}\enspace ' + title + r'}' + '\n\\vspace{8pt}'
         if path:
             p = path.replace('\\', '/')
-            cap = caption or placeholder_text
             return (r'\begin{figure}[H]' + '\n'
                     r'\centering' + '\n'
-                    r'\includegraphics[width=0.9\textwidth]{' + p + '}\n'
-                    r'\caption*{' + cap + '}\n'
-                    r'\end{figure}')
+                    r'\vspace{4pt}' + '\n'
+                    r'\includegraphics[width=0.85\textwidth]{' + p + '}\n'
+                    r'\vspace{4pt}' + '\n'
+                    r'\end{figure}' + '\n'
+                    + label_line)
         return (r'\noindent\fbox{\parbox{0.97\textwidth}{' + '\n'
-                r'\textit{[ PLACEHOLDER: ' + placeholder_text + r' ]}' + '\n'
-                r'}}')
+                r'\textit{[ PLACEHOLDER: ' + label + ' ' + title + r' ]}' + '\n'
+                r'}}' + '\n'
+                + label_line)
 
-    cs   = _sec_fig(fig_paths.get('cross_section'),
-                    'FIGURE 6.1 --- Annotated cross-section of the bridge deck showing: '
-                    'overall width, carriageway, footpath, crash barriers, median (if any), '
-                    'no. of girders, girder spacing, deck overhang, deck thickness, and '
-                    'wearing course thickness. Label all key dimensions.',
-                    'Figure 6.1 -- Typical Cross Section')
-
-    elev = _sec_fig(fig_paths.get('longitudinal_elevation'),
-                    'FIGURE 6.2 --- Side elevation of the full bridge span showing: '
-                    'span length, support locations, bearing positions, intermediate '
-                    'stiffener locations (marked as tick marks), and cross bracing positions.',
-                    'Figure 6.2 -- Longitudinal Elevation')
-
-    g3d  = _sec_fig(fig_paths.get('girder_3d'),
-                    'FIGURE 6.3 --- 3D isometric view of a single plate girder (full span) '
-                    'showing: web, top and bottom flanges, intermediate transverse stiffeners, '
-                    'end panel stiffeners, longitudinal stiffeners (if required), and shear '
-                    'studs on the top flange. Use OsdagBridge CAD output.',
-                    'Figure 6.3 -- 3D View of Single Plate Girder')
-
-    gfront = _sec_fig(
-        fig_paths.get('girder_front'),
-        'FIGURE 6.3b --- Front elevation of plate girder: full '
-        'span, showing web, top and bottom flanges, intermediate '
-        'stiffener spacing and bearing stiffeners at supports.',
-        'Figure 6.3b -- Front Elevation of Plate Girder'
-    )
-
-    gtop = _sec_fig(fig_paths.get('girder_top'),
-                    'FIGURE 6.4 --- Plan (top) view of the girder showing: flange widths, '
-                    'stiffener spacing pattern, shear stud layout zones (dense near supports, '
-                    'sparser at midspan).',
-                    'Figure 6.4 -- Top View of Girder')
-
-    gend = _sec_fig(fig_paths.get('girder_end'),
-                    'FIGURE 6.5 --- Front and side views of the end panel region showing: '
-                    'end panel stiffener dimensions, web thickness, flange details, and weld '
-                    'positions.',
-                    'Figure 6.5 -- Front and Side Views (End Panel Detail)')
-
-    sup3d = _sec_fig(fig_paths.get('final_geometry'),
-                     'FIGURE 6.6 --- 3D view of the complete superstructure: all girders in '
-                     'position, cross bracing between girders, end diaphragms at supports, and '
-                     'deck slab (shown as transparent or ghost outline). This gives the '
-                     'stakeholder a comprehensive picture of what is being built.',
-                     'Figure 6.6 -- Overall 3D Bridge Superstructure')
-
-    scon = _sec_fig(fig_paths.get('shear_connector'),
-                    'FIGURE 6.7 --- Close-up detail of the top flange showing shear stud '
-                    'placement: stud diameter, stud height, longitudinal spacing pattern, '
-                    'transverse spacing, and edge distances. Show both plan and elevation views.',
-                    'Figure 6.7 -- Shear Connector Layout Detail')
-
-    cbrc = _sec_fig(fig_paths.get('cross_bracing'),
-                    'FIGURE 6.8 --- 3D detail of a typical cross-bracing panel between two '
-                    'adjacent girders: brace type (K or X), section designation, connection '
-                    'geometry. Elevation and plan view.',
-                    'Figure 6.8 -- Cross Bracing Detail')
+    sup3d  = _sec_fig(fig_paths.get('final_geometry'),    '6.1.1', 'Overall 3D Bridge Superstructure')
+    cs     = _sec_fig(fig_paths.get('cross_section'),     '6.1.2', 'Typical Cross Section')
+    gtop   = _sec_fig(fig_paths.get('girder_top'),        '6.1.3', 'Top View')
+    g3d    = _sec_fig(fig_paths.get('girder_3d'),         '6.2.1', '3D View of Plate Girders')
+    gxsec  = _sec_fig(fig_paths.get('section_preview'),   '6.2.2', 'Cross Section of Plate Girder')
+    gside  = _sec_fig(fig_paths.get('stiffener_preview'), '6.2.3', 'Side View of Girder')
 
     return (r"""
 \chapter{Drawings and Visualizations}
@@ -2272,78 +2222,26 @@ This section presents CAD-generated views of the designed bridge and its compone
 \section{Bridge Configuration and Layout}
 \label{sec:bridge-layout}
 
-\subsection{Typical Cross Section}
-\label{subsec:cross-section}
-
 """
-            + cs + r"""
-
-\vspace{1em}
-
-\subsection{Longitudinal Elevation}
-\label{subsec:elevation}
-
-"""
-            + elev + r"""
-
-\vspace{1em}
+            + sup3d + '\n\n'
+            + cs + '\n\n'
+            + gtop + r"""
 
 \section{Plate Girder --- Detailed Views}
 \label{sec:girder-views}
 
-\subsection{3D View of Single Plate Girder}
-\label{subsec:3d-girder}
-
 """
-            + g3d + r"""
-
-\vspace{1em}
-
-\subsection{Front Elevation of Girder}
-\label{subsec:front-elevation}
-
-"""
-            + gfront + r"""
-
-\vspace{1em}
-
-\subsection{Top View of Girder}
-\label{subsec:top-view}
-
-"""
-            + gtop + r"""
-
-\vspace{1em}
-
-\subsection{Front and Side Views (End Panel Detail)}
-\label{subsec:end-panel}
-
-"""
-            + gend + r"""
-
-\vspace{1em}
-
-\section{Overall 3D Bridge Superstructure}
-\label{sec:3d-structure}
-
-"""
-            + sup3d + r"""
-
-\vspace{1em}
-
-\section{Shear Connector Layout Detail}
-\label{sec:connector-layout}
-
-"""
-            + scon + r"""
-
-\vspace{1em}
+            + g3d + '\n\n'
+            + gxsec + '\n\n'
+            + gside + r"""
 
 \section{Cross Bracing Detail}
 \label{sec:bracing-detail}
 
-"""
-            + cbrc + '\n')
+\section{End Diaphragm Detail}
+\label{sec:diaphragm-detail}
+
+""")
 
 
 def ch7_quantities(input_dict):
@@ -2504,7 +2402,8 @@ class ReportPayload:
     design_checks:    list
     figures:          ReportFigures
     log_entries:      List[str] = field(default_factory=list)
-    output_dict:  dict = field(default_factory=dict)
+    output_dict:      dict = field(default_factory=dict)
+    figure_data:      dict = field(default_factory=dict)  # {attr: bytes} — cleared after writing to tmpdir
 
 
 @dataclass
@@ -2721,7 +2620,7 @@ def _format_project_location(pl_data):
         if lat and lon:
             try:
                 from osdagbridge.core.bridge_types.plate_girder.ui_fields_project_location import DB_PATH
-                from osdagbridge.core.data.project_location.database import Database
+                from osdagbTemporaryDirectoryridge.core.data.project_location.database import Database
                 db = Database(DB_PATH)
                 db.connect()
                 nearest = db.get_nearest_station_temperature(float(lat), float(lon))
@@ -2857,13 +2756,11 @@ _FIGURE_MAP = [
     ('grillage',              'grillage.png'),
     ('longitudinal_elevation','longitudinal_elevation.png'),
     ('girder_3d',             'girder_3d.png'),
-    ('girder_front',          'girder_front.png'),
     ('girder_top',            'girder_top.png'),
-    ('girder_end',            'girder_end.png'),
+    ('section_preview',       'section_preview.png'),
+    ('stiffener_preview',     'stiffener_preview.png'),
     ('bm_envelope',           'bm_envelope.png'),
     ('sf_envelope',           'sf_envelope.png'),
-    ('shear_connector',       'shear_connector.png'),
-    ('cross_bracing',         'cross_bracing.png'),
 ]
 
 def generate_report(payload, request):
@@ -2910,66 +2807,70 @@ def generate_report(payload, request):
             shutil.copy2(iit_logo_src, org_dest)
             org_logo_latex = 'assets/org_logo.png'
 
-        fig_paths = {}      # absolute paths — helpers do exists() check then convert to relative
-        fig_rel   = {}      # 'assets/fname' relative paths for LaTeX embedding
-        for attr, fname in _FIGURE_MAP:
-            src = getattr(payload.figures, attr, None)
-            if src and os.path.exists(src):
-                dest = os.path.join(assets_dir, fname)
-                shutil.copy2(src, dest)
-                fig_paths[attr] = dest            # absolute, for os.path.exists()
-                fig_rel[attr]   = 'assets/' + fname  # relative, for LaTeX
+        # fig_paths is built inside TemporaryDirectory (see below) after bytes are written
 
-        # Assemble LaTeX document
-        doc_parts = []
-        doc_parts.append(preamble(payload.metadata.project_name, payload.metadata.job_number, payload.metadata.report_date, payload.metadata.subtitle or r''))
-        doc_parts.append(title_page(payload.metadata, osdag_logo_latex, org_logo_latex))
-        
-        if payload.options.include_toc:
-            doc_parts.append(toc_section())
-            
-        # Instantiate ReportDataBridge
-        bridge = ReportDataBridge(payload.output_dict, payload.inputs, payload)
-        span_m = float(payload.inputs.get(KEY_SPAN, 0) or 0)
-        
-        doc_parts.append(executive_summary(payload.inputs, payload.output_dict, fig_rel))
-        doc_parts.append(ch1_project_info(payload.metadata))
-        
-        secs = payload.options.sections
-        if 'Input Parameters' in secs:
-            doc_parts.append(ch2_input_parameters(payload.metadata, payload.inputs, payload.output_dict))
-            
-        doc_parts.append(ch3_loads(payload.inputs))
-        doc_parts.append(ch4_analysis(payload.analysis_summary, fig_rel, bridge, span_m))
-        
-        if 'Design Checks' in secs:
-            doc_parts.append(ch5_design_checks(payload.design_checks, bridge))
-            
-        if payload.options.include_figures:
-            doc_parts.append(ch6_drawings(fig_rel))
-            
-        doc_parts.append(ch7_quantities(payload.inputs))
-        
-        if 'Design Log' in secs:
-            doc_parts.append(ch8_design_log(payload.log_entries))
-            
-        doc_parts.append(ch9_references())
-        doc_parts.append(r"\end{document}")
-
-        full_tex = "\n".join(doc_parts)
-        
         pdf_path = os.path.join(request.output_dir, request.file_stem + '.pdf')
         tex_path = os.path.join(request.output_dir, request.file_stem + '.tex')
 
         # Write to temp dir first, compile there, then copy back
         with tempfile.TemporaryDirectory() as tmp_dir:
+
+            # ── Write figure bytes into tmp_dir/images/ then free RAM immediately ──
+            tmp_images = os.path.join(tmp_dir, 'images')
+            os.makedirs(tmp_images, exist_ok=True)
+            fig_paths = {}
+            for attr, img_bytes in list(payload.figure_data.items()):
+                if img_bytes:
+                    p = os.path.join(tmp_images, attr + '.png')
+                    with open(p, 'wb') as fh:
+                        fh.write(img_bytes)
+                    fig_paths[attr] = p.replace('\\', '/')
+            payload.figure_data.clear()  # bytes no longer needed — free RAM now
+
+            # ── Assemble LaTeX document (fig_paths now has tmp_dir paths) ──
+            bridge = ReportDataBridge(payload.output_dict, payload.inputs, payload)
+            span_m = float(payload.inputs.get(KEY_SPAN, 0) or 0)
+
+            doc_parts = []
+            doc_parts.append(preamble(payload.metadata.project_name, payload.metadata.job_number, payload.metadata.report_date, payload.metadata.subtitle or r'\placeholder{Rev 0}'))
+            doc_parts.append(title_page(payload.metadata, osdag_logo_latex, org_logo_latex))
+
+            if payload.options.include_toc:
+                doc_parts.append(toc_section())
+
+            doc_parts.append(executive_summary(payload.inputs, payload.output_dict, fig_paths))
+            doc_parts.append(ch1_project_info(payload.metadata))
+
+            secs = payload.options.sections
+            if 'Input Parameters' in secs:
+                doc_parts.append(ch2_input_parameters(payload.metadata, payload.inputs, payload.output_dict))
+
+            doc_parts.append(ch3_loads(payload.inputs))
+            doc_parts.append(ch4_analysis(payload.analysis_summary, fig_paths, bridge, span_m))
+
+            if 'Design Checks' in secs:
+                doc_parts.append(ch5_design_checks(payload.design_checks, bridge))
+
+            if payload.options.include_figures:
+                doc_parts.append(ch6_drawings(fig_paths))
+
+            doc_parts.append(ch7_quantities(payload.inputs))
+
+            if 'Design Log' in secs:
+                doc_parts.append(ch8_design_log(payload.log_entries))
+
+            doc_parts.append(ch9_references())
+            doc_parts.append(r"\end{document}")
+
+            full_tex = "\n".join(doc_parts)
+
             tmp_tex = os.path.join(tmp_dir, request.file_stem + '.tex')
             tmp_pdf = os.path.join(tmp_dir, request.file_stem + '.pdf')
-            
+
             with open(tmp_tex, 'w', encoding='utf-8') as f:
                 f.write(full_tex)
-                
-            # Mirror assets so LaTeX can find them
+
+            # Mirror assets (logos) so LaTeX can find them
             tmp_assets = os.path.join(tmp_dir, 'assets')
             if os.path.exists(assets_dir):
                 shutil.copytree(assets_dir, tmp_assets, dirs_exist_ok=True)

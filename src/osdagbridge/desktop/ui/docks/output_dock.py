@@ -587,32 +587,136 @@ class OutputDock(QWidget):
         """
         Resolve Qt-side objects then delegate entirely to
         template_page.open_report_dialog(). OutputDock owns
-        no report logic — it only resolves cad_generator
-        (a Qt widget attribute) which cannot be done from
-        a background thread or from the backend.
+        no report logic — it captures CAD figures on the main
+        thread (Qt-safe) and passes paths to the report worker.
         """
-        # Resolve cad_generator on main thread (Qt-safe)
-        cad_generator = None
+        import os
+
+        # Find cad_3d_widget
+        cad_3d_widget = None
         main_window = self.parent
-        while main_window and not hasattr(main_window,
-                                          'cad_3d_widget'):
+        while main_window and not hasattr(main_window, 'cad_3d_widget'):
             main_window = getattr(main_window, 'parent', None)
         if main_window and hasattr(main_window, 'cad_3d_widget'):
+            cad_3d_widget = main_window.cad_3d_widget
+
+        # Capture figures on the main thread — bytes only, nothing written to disk
+        cad_generator = None
+        if cad_3d_widget is not None:
+            # 3D views: OCC → NamedTemporaryFile → bytes → temp file deleted
             try:
-                cad_generator = \
-                    main_window.cad_3d_widget.generator
-            except Exception:
-                pass
+                figure_data = cad_3d_widget.capture_for_report()
+            except Exception as exc:
+                logger.warning("Could not capture CAD figures: %s", exc)
+                figure_data = {}
+
+            # Figure 6.1.3 — Top View: 2D plan widget → QBuffer → bytes (no file)
+            try:
+                from PySide6.QtCore import QBuffer, QIODevice
+                cad_comp = getattr(main_window, 'cad_comp_widget', None)
+                top_view = getattr(cad_comp, 'top_view_widget', None)
+                if top_view is not None:
+                    pixmap = top_view.grab()
+                    # Auto-crop the white border so the drawing fills the frame
+                    # (otherwise it renders tiny inside a mostly-blank canvas).
+                    img = pixmap.toImage()
+                    w, h = img.width(), img.height()
+                    minx, miny, maxx, maxy = w, h, -1, -1
+                    for y in range(h):
+                        for x in range(w):
+                            px = img.pixel(x, y)
+                            r = (px >> 16) & 0xFF; g = (px >> 8) & 0xFF; b = px & 0xFF
+                            if r < 245 or g < 245 or b < 245:   # non-white content pixel
+                                if x < minx: minx = x
+                                if x > maxx: maxx = x
+                                if y < miny: miny = y
+                                if y > maxy: maxy = y
+                    if maxx > minx and maxy > miny:
+                        pad = 12
+                        minx = max(0, minx - pad); miny = max(0, miny - pad)
+                        maxx = min(w - 1, maxx + pad); maxy = min(h - 1, maxy + pad)
+                        pixmap = pixmap.copy(minx, miny, maxx - minx + 1, maxy - miny + 1)
+                    buf = QBuffer()
+                    buf.open(QIODevice.WriteOnly)
+                    pixmap.save(buf, 'PNG')
+                    figure_data['girder_top'] = bytes(buf.data())
+                    buf.close()
+            except Exception as exc:
+                logger.warning("Could not capture top view: %s", exc)
+
+            # Figure 6.2.2 — Cross Section of Plate Girder: RolledSectionPreview off-screen
+            try:
+                from PySide6.QtCore import QBuffer, QIODevice
+                from osdagbridge.desktop.ui.dialogs.additional_input.drawings.rolled_section_preview import RolledSectionPreview
+                _out = dict(getattr(self.backend, 'output_dict', {}) or {})
+                def _f(v):
+                    try: return float(v)
+                    except: return None
+                _d   = _f(_out.get('steeldesign.details.total_depth'))    or 0.0
+                _tfw = _f(_out.get('steeldesign.details.top_flange_width'))    or 0.0
+                _tft = _f(_out.get('steeldesign.details.top_flange_thickness')) or 0.0
+                _bfw = _f(_out.get('steeldesign.details.bottom_flange_width'))  or _tfw
+                _bft = _f(_out.get('steeldesign.details.bottom_flange_thickness')) or _tft
+                _wt  = _f(_out.get('steeldesign.details.web_thickness'))   or 0.0
+                _st  = str(_out.get('steeldesign.details.section_type', '')).lower()
+                if _d and _tfw and _tft and _wt:
+                    _w = RolledSectionPreview()
+                    _w.resize(700, 500)
+                    _w.set_dimensions(depth_mm=_d, flange_width_mm=_tfw, bottom_flange_width_mm=_bfw,
+                                      web_thickness_mm=_wt, flange_thickness_mm=_tft,
+                                      bottom_flange_thickness_mm=_bft, show_welds=(_st == 'welded'))
+                    _buf = QBuffer()
+                    _buf.open(QIODevice.WriteOnly)
+                    _w.grab().save(_buf, 'PNG')
+                    figure_data['section_preview'] = bytes(_buf.data())
+                    _buf.close()
+            except Exception as exc:
+                logger.warning("Could not capture girder cross section: %s", exc)
+
+            # Figure 6.2.3 — Side View of Girder: StiffenerCadPreviewWidget off-screen
+            try:
+                from PySide6.QtCore import QBuffer, QIODevice
+                from osdagbridge.desktop.ui.dialogs.tabs.sub_tabs.section_properties.stiffener_details_tab import StiffenerCadPreviewWidget
+                _gen = getattr(cad_3d_widget, 'generator', None)
+                _out = getattr(_gen, 'output_dict', {}) if _gen else {}
+                _depth = _f(_out.get('steeldesign.details.total_depth')) or 0.0
+                _tf_t  = _f(_out.get('steeldesign.details.top_flange_thickness')) or 0.0
+                _bf_t  = _f(_out.get('steeldesign.details.bottom_flange_thickness')) or 0.0
+                try: _length_m = float(_out.get('geometry.length') or 30.0)
+                except: _length_m = 30.0
+                _segments = [{'id': 'G1M1', 'start': 0.0, 'end': _length_m, 'length': _length_m}]
+                _stiff = {
+                    'bearing_stiffeners_each_end': str(_out.get('bearing_stiffeners_each_end', '2')),
+                    'bearing_spacing_mm':          str(_out.get('bearing_spacing_mm', '')),
+                    'intermediate_stiffener':      str(_out.get('intermediate_stiffener', 'No')),
+                    'intermediate_spacing_mm':     str(_out.get('intermediate_spacing_mm', 'NA')),
+                    'longitudinal_stiffener':      str(_out.get('longitudinal_stiffener', 'No')),
+                }
+                _dims = {'G1M1': {'depth_mm': _depth, 'top_flange_thickness_mm': _tf_t, 'bottom_flange_thickness_mm': _bf_t}}
+                _w = StiffenerCadPreviewWidget()
+                _w.resize(700, 300)
+                _w.set_data(segments=_segments, stiffener_by_member={'G1M1': _stiff},
+                            active_member_id='G1M1', section_dims_by_member=_dims)
+                _buf = QBuffer()
+                _buf.open(QIODevice.WriteOnly)
+                _w.grab().save(_buf, 'PNG')
+                figure_data['stiffener_preview'] = bytes(_buf.data())
+                _buf.close()
+            except Exception as exc:
+                logger.warning("Could not capture stiffener preview: %s", exc)
+
+            cad_generator = {
+                'generator':   getattr(cad_3d_widget, 'generator', None),
+                'figure_data': figure_data,
+            }
+            # figure_data local var goes out of scope here; cad_generator holds the only ref
 
         # Find dialog host and trigger
         main_window = self.parent
-        while main_window and not hasattr(main_window,
-                                          'open_report_dialog'):
+        while main_window and not hasattr(main_window, 'open_report_dialog'):
             main_window = getattr(main_window, 'parent', None)
-        if main_window and hasattr(main_window,
-                                   'open_report_dialog'):
-            main_window.open_report_dialog(
-                cad_generator=cad_generator)
+        if main_window and hasattr(main_window, 'open_report_dialog'):
+            main_window.open_report_dialog(cad_generator=cad_generator)
 
 
     def refresh_loadcase_dropdowns(self):
