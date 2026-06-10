@@ -1,285 +1,210 @@
 from __future__ import annotations
 
-from PySide6.QtWidgets import (
-    QWidget,
-    QVBoxLayout,
-    QHBoxLayout,
-    QGridLayout,
-    QLabel,
-    QLineEdit,
-    QFrame,
-    QSizePolicy,
-)
-from PySide6.QtCore import Qt
-from PySide6.QtGui import QPixmap, QImage
-
+import logging
 import io
-from matplotlib.figure import Figure
-from matplotlib.backends.backend_agg import FigureCanvasAgg
+import re
 
-from osdagbridge.desktop.ui.docks.output_dock import (
-    NoScrollComboBox,
+def _to_display_style(latex: str) -> str:
+    """Replace \frac with \dfrac so num/denom render at full glyph size."""
+    return latex.replace(r"\frac", r"\dfrac")
+
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.figure as mfigure
+import matplotlib.mathtext as mathtext
+
+from PySide6.QtWidgets import (
+    QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
+    QLabel, QFrame, QSizePolicy,
 )
-from osdagbridge.desktop.ui.dialogs.tabs.common import apply_field_style
+from PySide6.QtCore import Qt, QByteArray
+from PySide6.QtSvgWidgets import QSvgWidget
+from PySide6.QtSvg import QSvgRenderer
+
 from osdagbridge.desktop.ui.utils.styled_scroll_area import StyledScrollArea
+from osdagbridge.desktop.ui.utils.custom_widgets import PercentBarWidget
+from osdagbridge.core.utils.common import (
+    KEY_CHECK_FLEXURE, KEY_CHECK_SHEAR, KEY_CHECK_INTERACTION, KEY_CHECK_LTB,
+    KEY_CHECK_SHEAR_LONG_TRANS, KEY_CHECK_FATIGUE, KEY_CHECK_STRESS, KEY_CHECK_DEFLECTION,
+    DESIGN_CHECK_ORDER, DESIGN_CHECK_TITLES, DESIGN_CHECK_UNITS,
+    DESIGN_CHECK_DEM_PFX, DESIGN_CHECK_CAP_PFX,
+)
 
-_UI_FONT = "font-family: 'Segoe UI', Arial, sans-serif; font-size: 11px;"
-
-# From load_combination_tab.py defaults + output_dock
-LOAD_COMBINATIONS = [
-    "Envelope",
-    "DL + LL",
-    "1.35 DL + 1.5 LL",
-    "DL", "SIDL", "LL",
-    "WL", "EL", "IMF", "TL",
-]
-
-# 8 design checks from the screenshot - 2 columns - 4 rows
-DESIGN_CHECKS = [
-    ("flexure",          "Strength Limit State (Flexure)"),
-    ("shear_long_trans", "Resistance to Longitudinal and Transverse Shear"),
-    ("shear",            "Strength Limit State (Shear)"),
-    ("fatigue",          "Resistance to Fatigue"),
-    ("interaction",      "Interaction"),
-    ("stress",           "Stress Limitation"),
-    ("ltb",              "Lateral Torsional Buckling"),
-    ("deflection",       "Deflection and Crack Control"),
-]
-
-# HTML equation strings for each card (rendered via Qt.RichText)
-_RENDER_MAP = {
-    "flexure": {
-        "eq": (
-            "<i>M<sub>d</sub></i> &le; <i>M<sub>r</sub></i><br>"
-            "<i>M<sub>r</sub></i> = <i>&beta;<sub>b</sub></i> &middot; "
-            "<i>Z<sub>p</sub></i> &middot; <i>f<sub>y</sub></i> / <i>&gamma;<sub>m</sub></i>"
-        ),
-        "dem_pfx": "<i>M<sub>d</sub></i>",
-        "cap_pfx": "<i>M<sub>r</sub></i>",
-        "unit": "kNm",
-    },
-    "shear": {
-        "eq": (
-            "<i>V<sub>d</sub></i> &le; <i>V<sub>r</sub></i><br>"
-            "<i>V<sub>r</sub></i> = <i>A<sub>v</sub></i> &middot; <i>f<sub>y</sub></i> / "
-            "(&radic;3 &middot; <i>&gamma;<sub>m</sub></i>)"
-        ),
-        "dem_pfx": "<i>V<sub>d</sub></i>",
-        "cap_pfx": "<i>V<sub>r</sub></i>",
-        "unit": "kN",
-    },
-    "interaction": {
-        "eq": (
-            "<i>M<sub>d</sub></i> / (<i>&beta;<sub>b</sub></i> &middot; <i>Z<sub>p</sub></i> &middot; "
-            "<i>f<sub>y</sub></i> / <i>&gamma;<sub>m</sub></i>) + "
-            "<i>V<sub>d</sub></i> / (<i>A<sub>v</sub></i> &middot; <i>f<sub>y</sub></i> / "
-            "(&radic;3 &middot; <i>&gamma;<sub>m</sub></i>)) &le; 1.0"
-        ),
-        "unit": "",
-    },
-    "ltb": {
-        "eq": (
-            "<i>M<sub>d</sub></i> &le; <i>M<sub>cr</sub></i><br>"
-            "<i>M<sub>cr</sub></i> &approx; (&pi;&sup2; &middot; <i>E</i> &middot; "
-            "<i>I<sub>y</sub></i>) / <i>L<sub>LTB</sub></i>&sup2;"
-        ),
-        "dem_pfx": "<i>M<sub>d</sub></i>",
-        "cap_pfx": "<i>M<sub>cr</sub></i>",
-        "unit": "kNm",
-    },
-    "shear_long_trans": {
-        # IRC 22:2015 Cl.606.4.1 - Longitudinal shear flow at steel-concrete interface.
-        # Demand  : VL (N/mm) - longitudinal shear flow
-        # Capacity: n_studs * Qu / spacing (N/mm) - stud resistance per unit length
-        "eq": (
-            "<i>V<sub>L</sub></i> &le; <i>n</i> &middot; <i>Q<sub>u</sub></i> / <i>s</i><br>"
-            "<i>V<sub>L</sub></i> = <i>V<sub>d</sub></i> &middot; <i>A<sub>ec</sub></i>"
-            " &middot; <i>Y</i> / <i>I<sub>c</sub></i><br>"
-            "<i>Q<sub>u</sub></i> = min(0.8<i>f<sub>u</sub>A</i>, "
-            "0.29&alpha;<i>d</i>&sup2;"
-            "&radic;(<i>f<sub>ck</sub>E<sub>cm</sub></i>)) / <i>&gamma;<sub>v</sub></i>"
-        ),
-        "dem_pfx": "<i>V<sub>L</sub></i>",
-        "cap_pfx": "<i>nQ<sub>u</sub>/s</i>",
-        "unit": "N/mm",
-    },
-    "fatigue": {
-        "eq": (
-            "&Delta;<i>&sigma;</i> &le; &Delta;<i>&sigma;<sub>allowable</sub></i><br>"
-            "&Delta;<i>&sigma;<sub>allowable</sub></i> = &Delta;<i>&sigma;<sub>c</sub></i> / "
-            "<i>&gamma;<sub>mf</sub></i>"
-        ),
-        "dem_pfx": "&Delta;<i>&sigma;</i>",
-        "cap_pfx": "&Delta;<i>&sigma;<sub>allowable</sub></i>",
-        "unit": "MPa",
-    },
-    "stress": {
-        "eq": (
-            "<i>&sigma;</i> = <i>M<sub>d</sub></i> / <i>Z</i><br>"
-            "<i>&sigma;</i> &le; <i>f<sub>y</sub></i> / <i>&gamma;<sub>m</sub></i>"
-        ),
-        "dem_pfx": "<i>&sigma;</i>",
-        "cap_pfx": "<i>f<sub>y</sub> / &gamma;<sub>m</sub></i>",
-        "unit": "MPa",
-    },
-    "deflection": {
-        "eq": (
-            "<i>&delta;</i> &le; <i>L</i> / <i>x</i><br>"
-            "(Default <i>x</i> = 600)"
-        ),
-        "dem_pfx": "<i>&delta;</i>",
-        "cap_pfx": "<i>L / x</i>",
-        "unit": "mm",
-    },
-}
-
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
-# Matplotlib mathtext strings — one list per check key.
-# Each string in the list becomes one rendered line in the equation box.
-# Syntax: matplotlib mathtext (large subset of AMS LaTeX).
+# Constants
 # ---------------------------------------------------------------------------
-_MATHTEXT_MAP: dict[str, list[str]] = {
-    "flexure": [
-        r"$M_d \leq M_r$",
-        r"$M_r = \beta_b \cdot Z_p \cdot f_y \;/\; \gamma_m$",
-    ],
-    "shear": [
-        r"$V_d \leq V_r$",
-        r"$V_r = \dfrac{A_v \cdot f_y}{\sqrt{3} \cdot \gamma_m}$",
-    ],
-    "interaction": [
-        r"$\dfrac{M_d}{\beta_b Z_p f_y / \gamma_m}"
-        r" + \dfrac{V_d}{A_v f_y / (\sqrt{3}\,\gamma_m)} \leq 1.0$",
-    ],
-    "ltb": [
-        r"$M_d \leq M_{cr}$",
-        r"$M_{cr} \approx \dfrac{\pi^2 E \, I_y}{L_{LTB}^{\,2}}$",
-    ],
-    "shear_long_trans": [
-        r"$V_L \leq n \cdot Q_u \;/\; s$",
-        r"$V_L = V_d \cdot A_{ec} \cdot Y \;/\; I_c$",
-        r"$Q_u = \min\!\left(0.8\,f_u A,\;"
-        r"0.29\,\alpha\,d^2\sqrt{f_{ck}\,E_{cm}}\right)/\gamma_v$",
-    ],
-    "fatigue": [
-        r"$\Delta\sigma \leq \Delta\sigma_{allowable}$",
-        r"$\Delta\sigma_{allowable} = \Delta\sigma_C \;/\; \gamma_{mf}$",
-    ],
-    "stress": [
-        r"$\sigma = M_d \;/\; Z$",
-        r"$\sigma \leq f_y \;/\; \gamma_m$",
-    ],
-    "deflection": [
-        r"$\delta \leq L \;/\; x$",
-        r"$(\mathrm{Default}\; x = 600)$",
-    ],
+
+DESIGN_CHECKS = [(k, DESIGN_CHECK_TITLES[k]) for k in DESIGN_CHECK_ORDER]
+
+# ---------------------------------------------------------------------------
+# LaTeX equation strings and sizing constants
+# ---------------------------------------------------------------------------
+
+_LINE_HEIGHT_SIMPLE = 38
+_LINE_HEIGHT_FRAC   = 70
+
+_FONTSIZE_SIMPLE = 16
+_FONTSIZE_FRAC   = 66
+# (check_key) → tuple of (latex_string, display_width_px, is_frac)
+# is_frac=True for equations containing \frac or complex \sqrt
+_EQ_LATEX: dict[str, tuple[tuple[str, int, bool], ...]] = {
+    KEY_CHECK_FLEXURE: (
+        (r"$M_d \leq M_r$",                                          80, False),
+        (r"$M_r = \beta_b \cdot Z_p \cdot f_y / \gamma_{m}$",      180, False),
+    ),
+    KEY_CHECK_SHEAR: (
+        (r"$V_d \leq V_r$",                                          80, False),
+        (r"$V_r = \frac{A_v \cdot f_y}{\sqrt{3} \cdot \gamma_{m0}}$", 140, True),
+    ),
+    KEY_CHECK_INTERACTION: (
+        (r"$\frac{M_d}{\beta_b Z_p f_y/\gamma_{m0}} + \frac{V_d}{A_v f_y/(\sqrt{3}\,\gamma_{m0})} \leq 1.0$", 300, True),
+    ),
+    KEY_CHECK_LTB: (
+        (r"$M_d \leq M_{cr}$",                                       80, False),
+        (r"$M_{cr} \approx \frac{\pi^2 E\,I_y}{L_{LTB}^{2}}$",     140, True),
+    ),
+    KEY_CHECK_SHEAR_LONG_TRANS: (
+        (r"$V_L \leq n \cdot Q_u / s$",                             100, False),
+        (r"$V_L = V_d \cdot A_{ec} \cdot Y / I_c$",                 140, False),
+        (r"$Q_u = \min(0.8 f_u A,\; 0.29\alpha d^2\sqrt{f_{ck} E_{cm}}/\gamma_v)$", 280, False),
+    ),
+    KEY_CHECK_FATIGUE: (
+        (r"$\Delta\sigma \leq \Delta\sigma_{allowable}$",            160, False),
+        (r"$\Delta\sigma_{allowable} = \Delta\sigma_C / \gamma_{mf}$", 180, False),
+    ),
+    KEY_CHECK_STRESS: (
+        (r"$\sigma = M_d / Z$",                                      80, False),
+        (r"$\sigma \leq f_y / \gamma_{m0}$",                        100, False),
+    ),
+    KEY_CHECK_DEFLECTION: (
+        (r"$\delta \leq L / x$",                                     80, False),
+        (r"$\mathrm{(Default}\ x = 600\mathrm{)}$",                 160, False),
+    ),
 }
 
-# Module-level cache: maps a frozen tuple of mathtext lines to the rendered
-# QPixmap.  Since the 8 equation sets are static, each is rendered exactly once
-# per application session, eliminating repeated matplotlib Figure creation.
-_PIXMAP_CACHE: dict[tuple[str, ...], QPixmap] = {}
+# ---------------------------------------------------------------------------
+# LaTeX → SVG via matplotlib mathtext
+# Pure vector paths — no pixels, no temp files, no pdflatex
+# ---------------------------------------------------------------------------
 
+_SVG_CACHE: dict[tuple[str, int, int], bytes] = {}  # key is now (latex, display_width, fontsize)
 
-def _render_mathtext_pixmap(
-    lines: list[str],
-    *,
-    font_size: float = 9,
-    dpi: int = 110,
-    text_color: str = "#2E3B4E",
-    bg_color: str = "#FFFFFF",
-    h_pad_in: float = 0.12,
-    v_pad_in: float = 0.10,
-    line_gap_in: float = 0.32,
-) -> QPixmap:
-    """
-    Render a list of matplotlib mathtext strings into a single QPixmap.
+def _latex_to_svg(latex: str, display_width: int = 260, fontsize: int = 14) -> bytes:
+    cache_key = (latex, display_width, fontsize)
+    if cache_key in _SVG_CACHE:
+        return _SVG_CACHE[cache_key]
 
-    Results are cached by the tuple of *lines* so that each unique equation
-    set is rasterised at most once per application session.
-
-    Parameters
-    ----------
-    lines       : list of mathtext strings, each wrapped in ``$...$``
-    font_size   : points; 11.5 matches the surrounding 13 px UI font at 96 dpi
-    dpi         : dots per inch for rasterisation
-    text_color  : hex colour string matching the existing equation box style
-    bg_color    : figure background; should match the QLabel background colour
-    h_pad_in    : left/right margin in inches
-    v_pad_in    : top/bottom margin in inches
-    line_gap_in : vertical gap between lines in inches
-
-    Returns
-    -------
-    QPixmap — transparent if rendering fails (caller falls back to HTML).
-
-    Raises
-    ------
-    Never raises. Returns an empty QPixmap on any error.
-    """
-    if not lines:
-        return QPixmap()
-
-    cache_key = tuple(lines)
-    cached = _PIXMAP_CACHE.get(cache_key)
-    if cached is not None:
-        return cached
-
-    n = len(lines)
-    # Estimate figure height: n lines + (n-1) gaps + top/bottom padding
-    fig_h = n * line_gap_in + (n - 1) * (line_gap_in * 0.15) + 2 * v_pad_in
-    # Width will be determined by bbox_inches="tight"; start with a sensible default
-    fig_w = 4.8
-
-    fig = Figure(figsize=(fig_w, fig_h), dpi=dpi, facecolor=bg_color)
-    fig.patch.set_facecolor(bg_color)
-
+    svg_bytes = b""
     try:
-        for i, expr in enumerate(lines):
-            # y position: distribute evenly from top (1.0) to bottom (0.0)
-            y = 1.0 - (i + 0.5) / n
-            fig.text(
-                0.5, y,
-                expr,
-                ha="center",
-                va="center",
-                fontsize=font_size,
-                color=text_color,
-                usetex=False,          # matplotlib mathtext, NOT system LaTeX
-            )
+        dpi  = 150
+        pad  = 6
+        prop = matplotlib.font_manager.FontProperties(size=fontsize)
+        parser = mathtext.MathTextParser("path")
 
-        canvas = FigureCanvasAgg(fig)
-        canvas.draw()
+        width_pt, height_pt, *_ = parser.parse(latex, dpi=72, prop=prop)
+
+        fig_w = (width_pt  + pad * 2) / 72
+        fig_h = (height_pt + pad * 2) / 72
+
+        fig = mfigure.Figure(figsize=(fig_w, fig_h), dpi=dpi)
+        fig.patch.set_visible(False)
+        ax = fig.add_axes([0, 0, 1, 1])
+        ax.set_axis_off()
+        ax.set_xlim(0, fig_w * dpi)
+        ax.set_ylim(0, fig_h * dpi)
+        ax.text(
+            fig_w * dpi / 2, fig_h * dpi / 2, latex,
+            fontsize=fontsize, color="#1a1a1a",
+            ha="center", va="center",
+        )
 
         buf = io.BytesIO()
-        fig.savefig(
-            buf,
-            format="png",
-            dpi=dpi,
-            bbox_inches="tight",
-            facecolor=bg_color,
-            pad_inches=v_pad_in,
-        )
-        buf.seek(0)
-        data = buf.read()
+        fig.savefig(buf, format="svg", transparent=True,
+                    bbox_inches="tight", pad_inches=pad / 72)
+        matplotlib.pyplot.close(fig)
+        svg_bytes = buf.getvalue()
 
     except Exception:
-        return QPixmap()
-    finally:
-        import matplotlib.pyplot as _plt
-        _plt.close(fig)       # prevent memory accumulation across 8 cards
+        logger.exception("mathtext SVG render failed for: %s", latex[:80])
+        svg_bytes = b'<svg xmlns="http://www.w3.org/2000/svg" width="200" height="30"></svg>'
 
-    pixmap = QPixmap()
-    if not pixmap.loadFromData(data, "PNG"):
-        return QPixmap()
-
-    _PIXMAP_CACHE[cache_key] = pixmap
-    return pixmap
-
-
+    _SVG_CACHE[cache_key] = svg_bytes
+    return svg_bytes
 # ---------------------------------------------------------------------------
-# Badge style definitions
+# MathSvgWidget — a QSvgWidget that auto-sizes to its SVG content
+# ---------------------------------------------------------------------------
+
+# Single unified line height for ALL equations — frac or not
+_LINE_HEIGHT = 84  # px — tall enough for fractions, simple equations scale up to match
+
+class MathSvgWidget(QSvgWidget):
+    def __init__(self, svg_bytes: bytes, target_height: int = _LINE_HEIGHT_FRAC, parent=None):
+        super().__init__(parent)
+        self.setStyleSheet("background: transparent;")
+        self.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+        self.load(QByteArray(svg_bytes))
+
+        sz = self.renderer().defaultSize()
+        if sz.isValid() and sz.width() > 0 and sz.height() > 0:
+            scale = target_height / sz.height()
+            w = int(sz.width() * scale)
+            h = target_height
+        else:
+            w, h = 200, target_height
+        self.setFixedSize(w, h)
+# ---------------------------------------------------------------------------
+# LatexEquationView — renders each equation line as an SVG widget
+# ---------------------------------------------------------------------------
+
+# Calculate view height for worst-case: 3 lines with mixed types, spacing included
+# Worst case is KEY_CHECK_SHEAR_LONG_TRANS with 3 lines (2 simple + 1 frac/complex)
+# Height = (2 * _SIMPLE_LINE_HEIGHT + 1 * _FRAC_LINE_HEIGHT) + spacing
+_EQ_INTERNAL_PADDING = 8  # total padding (margins + spacing inside LatexEquationView)
+# _EQ_VIEW_FIXED_HEIGHT = (2 * _SIMPLE_LINE_HEIGHT + 1 * _FRAC_LINE_HEIGHT) + 2 * _EQ_INTERNAL_PADDING + 6  # +6 for line spacing
+
+_EQ_VIEW_FIXED_HEIGHT = (2 * _LINE_HEIGHT_SIMPLE + _LINE_HEIGHT_FRAC) + 2 * _EQ_INTERNAL_PADDING + 12
+
+class LatexEquationView(QWidget):
+    def __init__(self, lines, parent=None):
+        super().__init__(parent)
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self.setFixedHeight(_EQ_VIEW_FIXED_HEIGHT)
+        self.setStyleSheet("background: white;")
+
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(0)
+        outer.setAlignment(Qt.AlignVCenter)
+
+        if not lines:
+            return
+
+        inner = QWidget()
+        inner.setStyleSheet("background: white;")
+        inner_layout = QVBoxLayout(inner)
+        inner_layout.setContentsMargins(4, 4, 4, 4)
+        inner_layout.setSpacing(4)
+        inner_layout.setAlignment(Qt.AlignVCenter)
+
+        for latex_line, display_width, is_frac in lines:
+            latex     = _to_display_style(latex_line) if is_frac else latex_line
+            fontsize  = _FONTSIZE_SIMPLE  # same fontsize for everything now
+            target_h  = _LINE_HEIGHT_FRAC if is_frac else _LINE_HEIGHT_SIMPLE
+            svg_bytes = _latex_to_svg(latex, display_width, fontsize=fontsize)
+            row = QHBoxLayout()
+            row.setContentsMargins(0, 0, 0, 0)
+            row.addStretch()
+            row.addWidget(MathSvgWidget(svg_bytes, target_h))
+            row.addStretch()
+            inner_layout.addLayout(row)
+            
+        outer.addStretch()
+        outer.addWidget(inner)
+        outer.addStretch()
+# ---------------------------------------------------------------------------
+# StatusBadge
 # ---------------------------------------------------------------------------
 
 _BADGE_STYLES = {
@@ -289,48 +214,14 @@ _BADGE_STYLES = {
 }
 
 
-# ---------------------------------------------------------------------------
-# Inline widgets - UtilizationBar and StatusBadge
-# ---------------------------------------------------------------------------
-
-class UtilizationBar(QWidget):
-    """Horizontal fill-bar showing demand/capacity ratio (0-1+)."""
-
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.setFixedHeight(10)
-        self.setStyleSheet("background: #e0e0e0; border-radius: 5px;")
-        self._fill = QWidget(self)
-        self._fill.setFixedHeight(10)
-        self._ratio = 0.0
-        self._fill.resize(0, 10)
-        self._update()
-
-    def set_ratio(self, ratio: float):
-        self._ratio = ratio
-        self._update()
-
-    def resizeEvent(self, event):
-        super().resizeEvent(event)
-        self._update()
-
-    def _update(self):
-        fill_w = int(min(self._ratio, 1.0) * self.width())
-        color = "#28a745" if self._ratio <= 1.0 else "#dc3545"
-        self._fill.setFixedWidth(max(0, fill_w))
-        self._fill.setStyleSheet(f"background: {color}; border-radius: 5px;")
-
-
 class StatusBadge(QLabel):
-    """Small PASS / FAIL label badge with coloured background."""
-
-    def __init__(self, parent=None):
+    def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setFixedSize(60, 22)
         self.setAlignment(Qt.AlignCenter)
         self.set_neutral()
 
-    def _apply(self, state):
+    def _apply(self, state: str) -> None:
         text, fg, bg = _BADGE_STYLES[state]
         self.setText(text)
         self.setStyleSheet(
@@ -338,60 +229,39 @@ class StatusBadge(QLabel):
             "font-weight: bold; font-size: 10px; border-radius: 6px;"
         )
 
-    def set_pass(self):
-        self._apply("pass")
-
-    def set_fail(self):
-        self._apply("fail")
-
-    def set_neutral(self):
-        self._apply("neutral")
+    def set_pass(self) -> None: self._apply("pass")
+    def set_fail(self) -> None: self._apply("fail")
+    def set_neutral(self) -> None: self._apply("neutral")
 
 
 # ---------------------------------------------------------------------------
-# Main tab widget
+# SteelDesignCheckTab
 # ---------------------------------------------------------------------------
 
 class SteelDesignCheckTab(QWidget):
     """
     Design Check tab for the Steel Design dialog.
 
-    Displays eight IRC code compliance check cards in a two-column grid.
-    Each card shows: bold title, styled equation box, computed demand/capacity
-    values, coloured DCR label, utilization progress bar, and PASS/FAIL badge.
-
-    A summary bar at the top shows aggregate pass/fail counts.
-
-    Public API
-    ----------
-    populate_from_results(demand, capacity, engine)
-        Populate all 8 cards from the IRC 22:2015 pipeline output.
-    set_check_result(key, text)
-        Write a result string into the named check card.
-    clear_results()
-        Clear all check output areas.
-    set_girder_count(count)
-        Repopulate the Member ID combo.
-    load_data(output_dict)
-        Restore check results from a output_dict snapshot.
+    Eight IRC code-compliance check cards in a two-column grid.
+    Equations are rendered as pure SVG vector paths via matplotlib mathtext —
+    Computer Modern fonts, true fractions and radicals, no pdflatex,
+    no PyMuPDF, no QtWebEngine, no pixmaps required.
     """
 
-    def __init__(self, parent=None):
-        # Widget tracking dicts - one entry per card key
-        self.check_eq_labels  = {}   # key - equation QLabel
-        self.check_val_labels = {}   # key - demand/capacity QLabel
-        self.check_dcr_labels = {}   # key - DCR QLabel
-        self.check_bars       = {}   # key - UtilizationBar
-        self.check_badges     = {}   # key - StatusBadge
-
-        self.summary_passed_label = None
-        self.summary_failed_label = None
-        self.summary_badge        = None
-        self.design_results       = []
-
+    def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
 
-        # White background - consistent with other tabs.
+        self.check_eq_views   : dict[str, LatexEquationView] = {}
+        self.check_val_labels : dict[str, QLabel]            = {}
+        self.check_dcr_labels : dict[str, QLabel]            = {}
+        self.check_bars       : dict[str, PercentBarWidget]  = {}
+        self.check_badges     : dict[str, StatusBadge]       = {}
+
+        self.summary_passed_label : QLabel | None      = None
+        self.summary_failed_label : QLabel | None      = None
+        self.summary_badge        : StatusBadge | None = None
+        self.design_results       : list[dict]         = []
+
         self.setStyleSheet("background-color: white;")
 
         main_layout = QVBoxLayout(self)
@@ -399,32 +269,20 @@ class SteelDesignCheckTab(QWidget):
         main_layout.setSpacing(0)
 
         scroll_area = StyledScrollArea()
-
-        container = QWidget()
+        container   = QWidget()
         container.setStyleSheet("background-color: white;")
 
-        container_layout = QVBoxLayout(container)
-        container_layout.setContentsMargins(18, 6, 18, 12)
-        container_layout.setSpacing(16)
-
-
-
-        # - SUMMARY BAR: pass/fail counts + overall badge -
-        container_layout.addWidget(self._build_summary_bar())
-
-        # - CHECK CARDS GRID: 2 columns -
-        container_layout.addLayout(self._build_checks_grid())
-
-        container_layout.addStretch()
+        c_layout = QVBoxLayout(container)
+        c_layout.setContentsMargins(18, 6, 18, 12)
+        c_layout.setSpacing(16)
+        c_layout.addWidget(self._build_summary_bar())
+        c_layout.addLayout(self._build_checks_grid())
+        c_layout.addStretch()
 
         scroll_area.setWidget(container)
         main_layout.addWidget(scroll_area)
 
-    # ---------------------------------------------------------------------------
-    # SUMMARY BAR
-    # ---------------------------------------------------------------------------
-    def _build_summary_bar(self):
-        """Build the Checks / Passed / Failed summary row with an overall badge."""
+    def _build_summary_bar(self) -> QFrame:
         frame = QFrame()
         frame.setObjectName("summaryFrame")
         frame.setStyleSheet(
@@ -437,165 +295,95 @@ class SteelDesignCheckTab(QWidget):
         layout.setContentsMargins(12, 6, 12, 6)
         layout.setSpacing(16)
 
-        _SUMMARY_STYLE = (
+        _S = (
             "font-size: 11px; font-weight: 600; color: #2b2b2b; "
             "background: transparent; border: none;"
         )
 
-        label = QLabel("Checks: 8")
-        label.setStyleSheet(_SUMMARY_STYLE)
-        layout.addWidget(label)
+        checks_lbl = QLabel(f"Checks: {len(DESIGN_CHECKS)}")
+        checks_lbl.setStyleSheet(_S)
+        layout.addWidget(checks_lbl)
 
         self.summary_passed_label = QLabel("Passed: \u2014")
-        self.summary_passed_label.setStyleSheet(_SUMMARY_STYLE)
+        self.summary_passed_label.setStyleSheet(_S)
         layout.addWidget(self.summary_passed_label)
 
         self.summary_failed_label = QLabel("Failed: \u2014")
-        self.summary_failed_label.setStyleSheet(_SUMMARY_STYLE)
+        self.summary_failed_label.setStyleSheet(_S)
         layout.addWidget(self.summary_failed_label)
 
         layout.addStretch()
 
         self.summary_badge = StatusBadge()
         layout.addWidget(self.summary_badge)
-
         return frame
 
-# ---------------------------------------------------------------------------
-    # HELPERS - exact copy from steel_design_details.py
-# ---------------------------------------------------------------------------
-
-    def _section_card(self, title):
-        """Return a borderless card QFrame with a bold title label and a QVBoxLayout."""
-        card = QFrame()
-        card.setObjectName("sectionCard")
-        card.setStyleSheet("""
-            QFrame#sectionCard {
-                background-color: white;
-                border: none;
-            }
-        """)
-        card_layout = QVBoxLayout(card)
-        card_layout.setContentsMargins(0, 0, 0, 0)
-        card_layout.setSpacing(10)
-
-        title_label = QLabel(title)
-        title_label.setStyleSheet("font-size: 12px; font-weight: bold; color: #000;")
-        card_layout.addWidget(title_label)
-
-        return card, card_layout
-
-    def _row_label(self, text):
-        """Return a left-aligned row label with minimum width 180 px."""
-        lbl = QLabel(text)
-        lbl.setStyleSheet(f"{_UI_FONT} color: #333333;")
-        lbl.setMinimumWidth(180)
-        return lbl
-
-    def _make_grid(self):
-        """Return a three-column QGridLayout: label | field | stretch."""
-        grid = QGridLayout()
-        grid.setContentsMargins(0, 0, 0, 0)
-        grid.setHorizontalSpacing(24)
-        grid.setVerticalSpacing(10)
-        grid.setColumnStretch(0, 0)
-        grid.setColumnStretch(1, 0)
-        grid.setColumnStretch(2, 1)
-        return grid
-
-
-    # ---------------------------------------------------------------------------
-    # CHECK CARDS GRID
-    # ---------------------------------------------------------------------------
-    def _build_checks_grid(self):
-        """
-        2-column grid of check cards.
-        Left column: flexure, shear, interaction, LTB
-        Right column: longitudinal/transverse shear, fatigue, stress, deflection
-        """
+    def _build_checks_grid(self) -> QGridLayout:
         grid = QGridLayout()
         grid.setHorizontalSpacing(16)
         grid.setVerticalSpacing(16)
         grid.setContentsMargins(0, 0, 0, 0)
         grid.setColumnStretch(0, 1)
         grid.setColumnStretch(1, 1)
-
         for idx, (key, title) in enumerate(DESIGN_CHECKS):
-            col = idx % 2
-            row = idx // 2
-            card = self._build_check_card(key, title)
-            grid.addWidget(card, row, col)
-
+            widget = self._build_check_card(key, title)
+            grid.addWidget(widget, idx // 2, idx % 2)
+            grid.setRowMinimumHeight(idx // 2, 0)   # don't force row height
         return grid
 
     def _build_check_card(self, key: str, title: str) -> QFrame:
-        """
-        Single check card with five layers:
-          1. Bold title
-          2. Styled equation box (HTML rich text)
-          3. Computed demand / capacity value lines
-          4. Coloured DCR label + utilization progress bar
-          5. PASS / FAIL status badge
-        """
+        # Calculate total card height: title + eq_view + labels + bar + badge + spacing + margins
+        # Title height estimate
+        _TITLE_HEIGHT = 20
+        # Value label height estimate (when shown)
+        _VAL_LABEL_HEIGHT = 32
+        # DCR label height estimate (when shown)
+        _DCR_LABEL_HEIGHT = 20
+        # PercentBarWidget height
+        _BAR_HEIGHT = 30
+        # StatusBadge height
+        _BADGE_HEIGHT = 22
+        # Layout margins (top + bottom)
+        _CARD_MARGIN_HEIGHT = 24
+        # Spacing between 6 widgets = 5 spacings * 8 px each
+        _CARD_SPACING_HEIGHT = 40
+        
+        # Total card height (includes all elements visible and hidden)
+        _CARD_FIXED_HEIGHT = (
+            _TITLE_HEIGHT + _EQ_VIEW_FIXED_HEIGHT + _VAL_LABEL_HEIGHT +
+            _DCR_LABEL_HEIGHT + _BAR_HEIGHT + _BADGE_HEIGHT +
+            _CARD_MARGIN_HEIGHT + _CARD_SPACING_HEIGHT
+        )
+        
         card = QFrame()
         card.setObjectName("checkCard")
-        card.setStyleSheet("""
-            QFrame#checkCard {
-                background-color: white;
-                border: 1px solid #222222;
-                border-radius: 8px;
-            }
-        """)
-        card.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        card.setStyleSheet(
+            "QFrame#checkCard {"
+            "background-color: white;"
+            "border: 1px solid #222222;"
+            "border-radius: 8px;"
+            "}"
+        )
+        card.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        card.setFixedHeight(_CARD_FIXED_HEIGHT)
 
-        card_layout = QVBoxLayout(card)
-        card_layout.setContentsMargins(14, 12, 14, 12)
-        card_layout.setSpacing(8)
+        layout = QVBoxLayout(card)
+        layout.setContentsMargins(14, 12, 14, 12)
+        layout.setSpacing(8)
 
-        # - 1. Title -
         title_lbl = QLabel(title)
         title_lbl.setStyleSheet(
             "font-size: 13px; font-weight: bold; color: #000; "
             "background: transparent; border: none;"
         )
         title_lbl.setWordWrap(True)
-        card_layout.addWidget(title_lbl)
+        layout.addWidget(title_lbl)
 
-        # - 2. Equation box (mathtext pixmap or HTML fallback) -
-        eq_lbl = QLabel()
-        eq_lbl.setAlignment(Qt.AlignCenter)
-        eq_lbl.setStyleSheet(
-            "background-color: white; border: none; padding: 6px;"
-        )
+        lines   = _EQ_LATEX.get(key, ())
+        eq_view = LatexEquationView(lines)
+        layout.addWidget(eq_view)
+        self.check_eq_views[key] = eq_view
 
-        math_lines = _MATHTEXT_MAP.get(key, [])
-        _pixmap_set = False
-
-        if math_lines:
-            try:
-                pixmap = _render_mathtext_pixmap(math_lines)
-                if not pixmap.isNull():
-                    eq_lbl.setPixmap(pixmap)
-                    _pixmap_set = True
-            except Exception:
-                pass
-
-        if not _pixmap_set:
-            # Graceful fallback: render using original HTML if mathtext fails
-            eq_lbl.setTextFormat(Qt.RichText)
-            eq_lbl.setWordWrap(True)
-            eq_lbl.setStyleSheet(
-                "font-family: 'Cambria Math', 'Times New Roman', serif; "
-                "font-size: 13px; color: #2E3B4E; "
-                "background-color: white; border: none; padding: 6px;"
-            )
-            eq_text = _RENDER_MAP.get(key, {}).get("eq", "")
-            eq_lbl.setText(eq_text)
-
-        card_layout.addWidget(eq_lbl)
-        self.check_eq_labels[key] = eq_lbl
-
-        # - 3. Value lines (demand / capacity) -
         val_lbl = QLabel()
         val_lbl.setTextFormat(Qt.RichText)
         val_lbl.setWordWrap(True)
@@ -603,190 +391,124 @@ class SteelDesignCheckTab(QWidget):
             "font-size: 13px; color: #222; "
             "background: transparent; border: none; padding-top: 2px;"
         )
-        card_layout.addWidget(val_lbl)
+        val_lbl.setVisible(False)
+        layout.addWidget(val_lbl)
         self.check_val_labels[key] = val_lbl
 
-        # - 4. DCR label -
+        dcr_bar_widget = QWidget()
+        dcr_bar_widget.setStyleSheet("background: transparent;")
+        dcr_bar_layout = QVBoxLayout(dcr_bar_widget)
+        dcr_bar_layout.setContentsMargins(0, 0, 0, 0)
+        dcr_bar_layout.setSpacing(2)
+
         dcr_lbl = QLabel()
         dcr_lbl.setStyleSheet(
             "font-size: 14px; font-weight: bold; color: #555; "
             "background: transparent; border: none;"
         )
-        dcr_lbl.setToolTip("Utilization Ratio = Demand / Capacity  (UR < 1.0 - PASS)")
-        card_layout.addWidget(dcr_lbl)
+        dcr_lbl.setToolTip("Utilization Ratio = Demand / Capacity  (UR ≤ 1.0 → PASS)")
+        dcr_lbl.setVisible(False)
+        dcr_bar_layout.addWidget(dcr_lbl)
         self.check_dcr_labels[key] = dcr_lbl
 
-        # - 5. Utilization bar -
-        bar = UtilizationBar()
-        card_layout.addWidget(bar)
+        bar = PercentBarWidget(label="", value=0.0)
+        dcr_bar_layout.addWidget(bar)
         self.check_bars[key] = bar
 
-        # - 6. Status badge -
+        layout.addWidget(dcr_bar_widget)
+
         badge = StatusBadge()
-        card_layout.addWidget(badge, alignment=Qt.AlignLeft)
+        badge.setVisible(False)
+        layout.addWidget(badge, alignment=Qt.AlignRight)
         self.check_badges[key] = badge
 
         return card
 
-    # ---------------------------------------------------------------------------
-    # PUBLIC API
-    # ---------------------------------------------------------------------------
-
-
-    def load_data(self, output_dict: dict):
-        """Populate check output areas from a output_dict snapshot."""
-        if not output_dict:
-            return
+    def load_data(self, cad_state: dict) -> None:
+        pass
 
     def set_check_result(self, key: str, text: str) -> None:
-        """Write plain-text result into the value label of the named card."""
         lbl = self.check_val_labels.get(key)
         if lbl is not None:
             lbl.setTextFormat(Qt.PlainText)
             lbl.setText(text)
 
     def clear_results(self) -> None:
-        """Reset all eight cards to their initial empty state."""
         for key in self.check_badges:
             lbl = self.check_val_labels.get(key)
             if lbl:
                 lbl.setText("")
+                lbl.setVisible(False)
             dcr = self.check_dcr_labels.get(key)
             if dcr:
                 dcr.setText("")
+                dcr.setVisible(False)
                 dcr.setStyleSheet(
                     "font-size: 14px; font-weight: bold; color: #555; "
                     "background: transparent; border: none;"
                 )
             bar = self.check_bars.get(key)
             if bar:
-                bar.set_ratio(0)
+                bar.set_value(0)
             badge = self.check_badges.get(key)
             if badge:
                 badge.set_neutral()
+                badge.setVisible(False)
         self.design_results = []
         self._refresh_summary()
 
-    def populate_from_results(
-        self,
-        demand: object,
-        capacity: object,
-        engine: object,
-    ) -> None:
-        """
-        Populate all 8 design-check cards from IRC 22:2015 pipeline output.
-
-        Called by steel_design.py ``_run_design_checks()``.
-        Each card is populated independently - a failure in one card never
-        prevents the others from rendering.
-
-        Parameters
-        ----------
-        demand   : DemandEnvelope
-        capacity : CapacityResults  (from IRC22CapacityCalculator.compute_all())
-        engine   : DCREngine        (run_all_checks() already called)
-        """
+    def populate_from_results(self, demand, capacity, engine) -> None:
         self.clear_results()
 
-        by_id: dict[int, object] = {chk.check_id: chk for chk in engine.checks}
+        # Multiple checks share the same check_id (e.g. several checks all have id=5 or id=7).
+        # Build a list-of-lists so _worst picks the highest DCR across ALL checks with those IDs.
+        from collections import defaultdict
+        by_id: dict[int, list] = defaultdict(list)
+        for chk in engine.checks:
+            by_id[chk.check_id].append(chk)
 
-        def _classify(dcr: float) -> bool:
-            return dcr < 1.0
+        def _worst(*ids):
+            """Return the check with the highest DCR among all checks with the given IDs."""
+            candidates = []
+            for i in ids:
+                candidates.extend(by_id.get(i, []))
+            return max(candidates, key=lambda c: c.dcr) if candidates else None
 
-        # Build a result dict for each card via the DCREngine checks
+        mapping = [
+            # (ui_key,               check_ids to pick worst from)
+            (KEY_CHECK_FLEXURE,          (1,)),
+            (KEY_CHECK_SHEAR,            (2,)),
+            (KEY_CHECK_INTERACTION,      (3, 4)),  # M-V and M-N interaction
+            (KEY_CHECK_LTB,              (5,)),
+            (KEY_CHECK_SHEAR_LONG_TRANS, (6, 7, 16, 17)),  # stud spacing, detailing + transverse shear
+            (KEY_CHECK_FATIGUE,          (8, 9)),           # normal + shear fatigue
+            (KEY_CHECK_STRESS,           (10, 11, 12)),     # concrete, steel, rebar
+            (KEY_CHECK_DEFLECTION,       (13, 14, 15)),     # live, total, crack
+        ]
+
         results_by_key: dict[str, dict] = {}
 
-        # - 1. Flexure (check_id=1) -
-        try:
-            c = by_id[1]
-            results_by_key["flexure"] = {
-                "demand": c.demand, "capacity": c.capacity,
-                "ratio": c.dcr, "passed": c.status != "FAIL",
-            }
-        except Exception:
-            pass
-
-        # - 2. Shear (check_id=2) -
-        try:
-            c = by_id[2]
-            results_by_key["shear"] = {
-                "demand": c.demand, "capacity": c.capacity,
-                "ratio": c.dcr, "passed": c.status != "FAIL",
-            }
-        except Exception:
-            pass
-
-        # - 3. Interaction (check_id=3) -
-        try:
-            c = by_id[3]
-            results_by_key["interaction"] = {
-                "demand": c.demand, "capacity": c.capacity,
-                "ratio": c.dcr, "passed": c.status != "FAIL",
-            }
-        except Exception:
-            pass
-
-        # - 4. LTB (check_id=4) -
-        try:
-            c = by_id[4]
-            results_by_key["ltb"] = {
-                "demand": c.demand, "capacity": c.capacity,
-                "ratio": c.dcr, "passed": c.status != "FAIL",
-            }
-        except Exception:
-            pass
-
-        # - 5. Deflection - worst of Live (id=5) and Total (id=6) -
-        try:
-            worst = None
-            for cid in (5, 6):
-                c = by_id.get(cid)
-                if c and (worst is None or c.dcr > worst.dcr):
-                    worst = c
-            if worst:
-                results_by_key["deflection"] = {
-                    "demand": worst.demand, "capacity": worst.capacity,
-                    "ratio": worst.dcr, "passed": worst.status != "FAIL",
+        for key, ids in mapping:
+            try:
+                worst = _worst(*ids)
+                if worst is None:
+                    continue
+                results_by_key[key] = {
+                    "demand":   worst.demand,
+                    "capacity": worst.capacity,
+                    "ratio":    worst.dcr,
+                    "passed":   worst.status != "FAIL",
                 }
-        except Exception:
-            pass
+            except Exception:
+                logger.exception("Failed to load checks %s for key %s", ids, key)
 
-        # - 6. Fatigue - worst of Normal (id=7) and Shear (id=8) -
-        try:
-            worst = None
-            for cid in (7, 8):
-                c = by_id.get(cid)
-                if c and (worst is None or c.dcr > worst.dcr):
-                    worst = c
-            if worst:
-                results_by_key["fatigue"] = {
-                    "demand": worst.demand, "capacity": worst.capacity,
-                    "ratio": worst.dcr, "passed": worst.status != "FAIL",
-                }
-        except Exception:
-            pass
-
-        # - 7. Stress Limitation (Cl.604.3.1) -
-        # - 8. Resistance to Longitudinal and Transverse Shear (Cl.606.4.1) -
-        #
-        # Neither check has a corresponding check_id in DCREngine (only IDs
-        # 1-8 are emitted).  These cards intentionally remain blank - showing
-        # their governing equation only - until the engine adds the checks.
-        # This matches the Output Dock which shows 0 % for both.
-
-        # - Apply results to card widgets -
         self.design_results = list(results_by_key.values())
-
         for key, res in results_by_key.items():
             self._apply_card_result(key, res)
-
         self._refresh_summary()
 
-    # ---------------------------------------------------------------------------
-    # CARD RENDERING HELPERS
-    # ---------------------------------------------------------------------------
+
     def _apply_card_result(self, key: str, res: dict) -> None:
-        """Populate a single card's value/DCR/bar/badge widgets from a result dict."""
         if key not in self.check_val_labels:
             return
 
@@ -794,54 +516,50 @@ class SteelDesignCheckTab(QWidget):
         capacity = res.get("capacity", 0.0)
         ratio    = res.get("ratio",    0.0)
         passed   = res.get("passed",   False)
+        unit_str = f" {DESIGN_CHECK_UNITS[key]}" if DESIGN_CHECK_UNITS.get(key) else ""
 
-        rm       = _RENDER_MAP.get(key, {})
-        unit     = rm.get("unit", "")
-        unit_str = f" {unit}" if unit else ""
-
-        # Build value text (demand / capacity lines)
-        if key == "interaction":
+        if key == KEY_CHECK_INTERACTION:
             val_text = (
                 f"<i>M<sub>d</sub></i> / <i>M<sub>r</sub></i> + "
-                f"<i>V<sub>d</sub></i> / <i>V<sub>r</sub></i> = {demand:.2f}"
+                f"<i>V<sub>d</sub></i> / <i>V<sub>r</sub></i> = {ratio:.2f}"
             )
         else:
-            dem_pfx = rm.get("dem_pfx", "Demand")
-            cap_pfx = rm.get("cap_pfx", "Capacity")
+            dem_pfx = DESIGN_CHECK_DEM_PFX.get(key, "Demand")
+            cap_pfx = DESIGN_CHECK_CAP_PFX.get(key, "Capacity")
             val_text = (
                 f"{dem_pfx} = {demand:.2f}{unit_str}<br>"
                 f"{cap_pfx} = {capacity:.2f}{unit_str}"
             )
 
-        dcr_text  = f"Utilization Ratio = {ratio:.2f}"
         dcr_color = "#388E3C" if passed else "#D32F2F"
 
-        # Set value label
         val_lbl = self.check_val_labels[key]
         val_lbl.setTextFormat(Qt.RichText)
         val_lbl.setText(val_text)
+        val_lbl.setVisible(True)
 
-        # Set DCR label
         dcr_lbl = self.check_dcr_labels.get(key)
         if dcr_lbl:
-            dcr_lbl.setText(dcr_text)
+            dcr_lbl.setText(f"Utilization Ratio = {ratio:.2f}")
             dcr_lbl.setStyleSheet(
                 f"font-size: 14px; font-weight: bold; color: {dcr_color}; "
                 "background: transparent; border: none;"
             )
+            dcr_lbl.setVisible(True)
 
-        # Set utilization bar
         bar = self.check_bars.get(key)
         if bar:
-            bar.set_ratio(ratio)
+            bar.set_value(ratio * 100)
 
-        # Set badge
         badge = self.check_badges.get(key)
         if badge:
-            badge.set_pass() if passed else badge.set_fail()
+            badge.setVisible(True)
+            if passed:
+                badge.set_pass()
+            else:
+                badge.set_fail()
 
     def _refresh_summary(self) -> None:
-        """Update the summary bar pass/fail counts and overall badge."""
         passed = sum(1 for r in self.design_results if r.get("passed"))
         failed = len(self.design_results) - passed
         if self.summary_passed_label:

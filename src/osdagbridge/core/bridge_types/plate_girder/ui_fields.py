@@ -248,7 +248,7 @@ class FrontendData:
                 TYPE_COMBOBOX, ["All"], True, "No Validator", {}),
 
             (KEY_ANALYSIS_LOAD_COMBINATION, "Load Case /\nCombination",
-                TYPE_COMBOBOX, ["Envelope"], True, "No Validator", {}),
+                TYPE_COMBOBOX, ["-"], True, "No Validator", {}),
 
             (KEY_ANALYSIS_FORCES, None,           # None = no label
                 TYPE_RADIO_GRID,
@@ -278,12 +278,12 @@ class FrontendData:
 
             # ─── Percentage Bars ─────────────────────────────────────────────────────────
 
-            (KEY_STEELDESIGN_MEMBER_ID, "Member",
-                TYPE_COMBOBOX, ["All"], True, "No Validator", 
+            (KEY_OUTPUT_DOCK_MEMBER_ID, "Member",
+                TYPE_COMBOBOX, ["-"], True, "No Validator",
                 {"group_title": "Girder Design"}),
 
-            (KEY_STEELDESIGN_LOAD_COMBINATION, "Load Case /\nCombination",
-                TYPE_COMBOBOX, ["Envelope"], True, "No Validator", {}),
+            (KEY_OUTPUT_DOCK_LOAD_COMBINATION, "Load Case /\nCombination",
+                TYPE_COMBOBOX, ["-"], True, "No Validator", {}),
 
             (KEY_UTIL_FLEXURE, "Strength Limit State (Flexure)",
                 TYPE_PERCENT_BAR, 0.0, True, "No Validator", {}),

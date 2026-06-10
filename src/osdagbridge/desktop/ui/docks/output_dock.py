@@ -33,7 +33,9 @@ from osdagbridge.core.utils.common import (
     TYPE_CHECKBOX, TYPE_CHECKBOX_ROW, TYPE_CHECKBOX_GRID, TYPE_ONLY_BUTTON,
     KEY_UTIL_FLEXURE, KEY_UTIL_SHEAR, KEY_UTIL_INTERACTION, KEY_UTIL_LTB,
     KEY_UTIL_LONG_TRANS_SHEAR, KEY_UTIL_FATIGUE, KEY_UTIL_STRESS_LIMITATION,
-    KEY_UTIL_DEFLECTION_CRACK,
+    KEY_UTIL_DEFLECTION_CRACK, KEY_ANALYSIS_LOAD_COMBINATION,
+    KEY_OUTPUT_DOCK_MEMBER_ID, KEY_OUTPUT_DOCK_LOAD_COMBINATION,
+    KEY_TS_NO_OF_GIRDERS
 )
 from osdagbridge.desktop.ui.utils.custom_buttons import DockCustomButton
 from osdagbridge.desktop.ui.docks.dock_utils import apply_field_style
@@ -587,17 +589,82 @@ class OutputDock(QWidget):
         if main_window and hasattr(main_window, 'open_report_dialog'):
             main_window.open_report_dialog()
 
-    def refresh_utilization(self):
-        """Read utilization ratios from backend and update all PercentBarWidgets."""
-        if not self.backend or not hasattr(self.backend, "_frontend"):
+
+    def refresh_loadcase_dropdowns(self):
+        """Populate both Load Case dropdowns with real load cases after design completes."""
+        if not self.backend or not hasattr(self.backend, "get_available_loadcases"):
             return
-        frontend = self.backend._frontend
-        for key in (
-            KEY_UTIL_FLEXURE, KEY_UTIL_SHEAR, KEY_UTIL_INTERACTION,
-            KEY_UTIL_LTB, KEY_UTIL_LONG_TRANS_SHEAR, KEY_UTIL_FATIGUE,
-            KEY_UTIL_STRESS_LIMITATION, KEY_UTIL_DEFLECTION_CRACK,
-        ):
-            value = frontend.get_output_value(key, 0.0)
+        loadcases = [
+            lc for lc in self.backend.get_available_loadcases()
+            if " at global position " not in lc.lower()
+        ]
+        for key in (KEY_ANALYSIS_LOAD_COMBINATION, KEY_OUTPUT_DOCK_LOAD_COMBINATION):
+            combo = self._w(key)
+            if combo is not None:
+                combo.blockSignals(True)
+                combo.clear()
+                combo.addItems(loadcases)
+                combo.setCurrentIndex(0)  # first real load case is default
+                combo.setSizeAdjustPolicy(QComboBox.AdjustToMinimumContentsLengthWithIcon)
+                combo.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Fixed)
+                combo.blockSignals(False)
+
+    def refresh_member_dropdown(self):
+        """Populate the Girder Design Member dropdown after design completes."""
+        if not self.backend or not hasattr(self.backend, "input_dict"):
+            return
+        combo = self._w(KEY_OUTPUT_DOCK_MEMBER_ID)
+        if combo is None:
+            return
+
+        n_girders = int(self.backend.input_dict.get(KEY_TS_NO_OF_GIRDERS, 1))
+
+        # Currently 1 member per girder (M1 only).
+        # When multiple members per girder are introduced, extend the
+        # members_per_girder list below, e.g. [1, 2, 3], and the items
+        # will automatically expand to G1M1, G1M2, ..., GnM3.
+        members_per_girder = [1]
+
+        if len(members_per_girder) == 1:
+            # Simple case: one member per girder — just show G1, G2, ..., Gn
+            items = [f"G{g}" for g in range(1, n_girders + 1)]
+        else:
+            # Multiple members per girder — show GnMm entries
+            items = [
+                f"G{g}M{m}"
+                for g in range(1, n_girders + 1)
+                for m in members_per_girder
+            ]
+
+        combo.blockSignals(True)
+        combo.clear()
+        combo.addItems(items)
+        combo.setCurrentIndex(0)
+        combo.setSizeAdjustPolicy(QComboBox.AdjustToMinimumContentsLengthWithIcon)
+        combo.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Fixed)
+        combo.blockSignals(False)
+   
+    def connect_design_dropdowns(self):
+        """Connect Member and Load Case dropdowns to refresh DCR bars on change."""
+        for key in (KEY_OUTPUT_DOCK_MEMBER_ID, KEY_OUTPUT_DOCK_LOAD_COMBINATION):
+            combo = self._w(key)
+            if combo is not None:
+                combo.currentTextChanged.connect(self._on_design_selection_changed)
+
+    def _on_design_selection_changed(self):
+        """Called when either the Member or Load Case dropdown changes."""
+        if not self.backend or not hasattr(self.backend, "get_dcr_for_selection"):
+            return
+        member_combo = self._w(KEY_OUTPUT_DOCK_MEMBER_ID)
+        lc_combo     = self._w(KEY_OUTPUT_DOCK_LOAD_COMBINATION)
+        girder_name  = member_combo.currentText() if member_combo else "All"
+        load_case    = lc_combo.currentText()     if lc_combo     else "Envelope"
+
+        dcr_values = self.backend.get_dcr_for_selection(girder_name, load_case)
+        if not dcr_values:
+            return
+
+        for key, value in dcr_values.items():
             bar = self._w(key)
             if bar is not None:
                 bar.set_value(float(value))
