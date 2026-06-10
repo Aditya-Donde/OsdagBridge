@@ -283,7 +283,6 @@ def resolve_girder_section_properties(input_dict: dict, bridge=None) -> dict | N
 
 def resolve_cross_bracing_section_properties(input_dict: dict, bridge=None) -> dict | None:
     cb_type    = input_dict.get(KEY_MP_CB_TYPE)
-    cb_section = input_dict.get(KEY_MP_CB_SECTION )
     cb_spacing = input_dict.get(KEY_MP_CB_SPACING)
 
     if not _has(cb_type, cb_spacing):
@@ -299,7 +298,6 @@ def resolve_cross_bracing_section_properties(input_dict: dict, bridge=None) -> d
         ],
         "rows": [[
             _val(cb_type),
-            _val(cb_section),
             _num(cb_spacing),
         ]],
     }
@@ -396,48 +394,381 @@ def resolve_deck_slab_properties(input_dict: dict, bridge=None) -> dict | None:
 
 def resolve_live_load_definitions(input_dict: dict, bridge=None) -> dict | None:
     """
-    Populate Vehicle Class and Impact Factor from user-selected vehicle types.
-    KEY_VEHICLE holds a list of selected vehicle class strings.
-    Impact factor is looked up per IRC:6 clause based on span.
+    Two-column table: Parameter | Value/Status.
+    Vehicle class rows show Yes/No checkbox state.
+    Eccentricity and Footpath Pressure rows show their values.
     """
-    vehicles = input_dict.get(KEY_VEHICLE)
-    span     = input_dict.get(KEY_SPAN)
+    # ── Vehicle definitions ───────────────────────────────────────────────
+    VEHICLE_KEYS = [
+        ("Class A",           KEY_LL_IRC_CLASS_A),
+        ("Class AA Wheeled",  KEY_LL_IRC_AA_WHEELED),
+        ("Class AA Tracked",  KEY_LL_IRC_AA_TRACKED),
+        ("Class 70R Wheeled", KEY_LL_IRC_70R_WHEELED),
+        ("Class 70R Tracked", KEY_LL_IRC_70R_TRACKED),
+        ("Class 70R Bogie",   KEY_LL_IRC_70R_BOGIE),
+        ("Class SV",          KEY_LL_IRC_CLASS_SV),
+        ("Class Fatigue",     KEY_LL_IRC_CLASS_FATIGUE),
+    ]
 
-    if not _has(vehicles):
-        return None
+    rows = []
+    for label, key in VEHICLE_KEYS:
+        raw = input_dict.get(key)
+        selected = (
+            raw is True
+            or str(raw).strip().lower() in ("true", "yes", "1", "checked")
+        ) if raw is not None else False
+        rows.append([label, "Yes" if selected else "No"])
 
-    # Normalise: KEY_VEHICLE may be a single string or a list
-    if isinstance(vehicles, str):
-        vehicles = [vehicles]
+    # ── Eccentricity ──────────────────────────────────────────────────────
+    ecc = input_dict.get(KEY_LL_ECCENTRICITY)
+    rows.append(["Eccentricity from Top of Deck (m)", _num(ecc) if _has(ecc) else EMPTY])
 
-    # IRC:6 Cl.208.2 impact factor formula: 4.5/(6+L) for Class A/B;
-    # 10% for 70R wheeled; 25% for 70R tracked/Class AA tracked.
-    # Show formula string when span is available, else EMPTY.
-    def _impact(vehicle_label: str) -> str:
-        label = str(vehicle_label).lower()
-        if not _has(span):
-            return EMPTY
-        L = float(span)
-        if "70r" in label and "tracked" in label:
-            return "25%"
-        if "70r" in label or "aa" in label:
-            return "10%"
-        # Class A / B
-        if L <= 3:
-            return "50%"
-        pct = round(4.5 / (6 + L) * 100, 1)
-        return f"{pct}%"
+    # ── Footpath Pressure: mode-aware ────────────────────────────────────
+    fp_mode  = input_dict.get(KEY_LL_FOOTPATH_PRESSURE_MODE)
+    fp_value = input_dict.get(KEY_LL_FOOTPATH_PRESSURE_VALUE)
 
-    rows = [[_val(v), _impact(v)] for v in vehicles]
+    if _has(fp_mode):
+        mode_str = str(fp_mode).strip().lower()
+        if mode_str in ("as per irc 6", "as per irc6", "automatic"):
+            fp_display = str(fp_mode).strip()
+        elif _has(fp_value):
+            fp_display = _num(fp_value)
+        else:
+            fp_display = EMPTY
+    else:
+        fp_display = _num(fp_value) if _has(fp_value) else EMPTY
+
+    rows.append(["Footpath Pressure (kN/mm²)", fp_display])
 
     return {
         "id":    "live_load_definitions",
         "label": "Live Load Definitions",
-        "columns": ["Vehicle Class", "Impact Factor"],
-        "rows":  rows,
+        "columns": [
+            "Parameter",
+            "Value / Status",
+        ],
+        "rows": rows,
+    }
+def resolve_seismic_load_parameters(input_dict: dict, bridge=None) -> dict | None:
+    """
+    One row per girder. All seismic parameters are bridge-level (not girder-specific),
+    so the same values repeat across rows — girder column anchors each row.
+    Dead/Live load for seismic use mode+value pattern same as live load footpath.
+    """
+    n_girders = input_dict.get(KEY_TS_NO_OF_GIRDERS)
+    if not _has(n_girders):
+        return None
+
+    try:
+        n = int(n_girders)
+    except Exception:
+        return None
+
+    # ── User inputs ───────────────────────────────────────────────────────
+    zone              = input_dict.get(KEY_SL_SEISMIC_ZONE)
+    importance        = input_dict.get(KEY_SL_IMPORTANCE_FACTOR)
+    soil_type         = input_dict.get(KEY_SL_SOIL_TYPE)
+    time_period       = input_dict.get(KEY_SL_TIME_PERIOD)
+    damping           = input_dict.get(KEY_SL_DAMPING)
+    response_red      = input_dict.get(KEY_SL_RESPONSE_REDUCTION)
+
+    # ── Computed coefficients ─────────────────────────────────────────────
+    zone_factor       = input_dict.get(KEY_SL_ZONE_FACTOR)
+    spectral_coeff    = input_dict.get(KEY_SL_SPECTRAL_COEFF)
+    horizontal_coeff  = input_dict.get(KEY_SL_HORIZONTAL_COEFF)
+    vertical_coeff    = input_dict.get(KEY_SL_VERTICAL_COEFF)
+
+    # ── Dead load for seismic: mode + value ───────────────────────────────
+    dl_mode  = input_dict.get(KEY_SL_DEAD_LOAD_MODE)
+    dl_value = input_dict.get(KEY_SL_DEAD_LOAD_VALUE)
+    if _has(dl_mode) and str(dl_mode).lower() == "automatic":
+        dl_display = "Automatic"
+    elif _has(dl_value):
+        dl_display = _num(dl_value)
+    else:
+        dl_display = EMPTY
+
+    # ── Live load for seismic: mode + value ───────────────────────────────
+    ll_mode  = input_dict.get(KEY_SL_LIVE_LOAD_MODE)
+    ll_value = input_dict.get(KEY_SL_LIVE_LOAD_VALUE)
+    if _has(ll_mode) and str(ll_mode).lower() == "automatic":
+        ll_display = "Automatic"
+    elif _has(ll_value):
+        ll_display = _num(ll_value)
+    else:
+        ll_display = EMPTY
+
+    # ── Shared parameter displays ─────────────────────────────────────────
+    zone_disp     = _val(zone)          if _has(zone)             else EMPTY
+    imp_disp      = _num(importance)    if _has(importance)       else EMPTY
+    soil_disp     = _val(soil_type)     if _has(soil_type)        else EMPTY
+    tp_disp       = _num(time_period)   if _has(time_period)      else EMPTY
+    damp_disp     = _num(damping)       if _has(damping)          else EMPTY
+    rr_disp       = _num(response_red)  if _has(response_red)     else EMPTY
+    zf_disp       = _num(zone_factor)   if _has(zone_factor)      else EMPTY
+    sa_disp       = _num(spectral_coeff)   if _has(spectral_coeff)   else EMPTY
+    ah_disp       = _num(horizontal_coeff) if _has(horizontal_coeff) else EMPTY
+    av_disp       = _num(vertical_coeff)   if _has(vertical_coeff)   else EMPTY
+
+    rows = [
+        [
+            f"Girder {i}",
+            zone_disp,
+            zf_disp,
+            imp_disp,
+            soil_disp,
+            tp_disp,
+            damp_disp,
+            rr_disp,
+            sa_disp,
+            ah_disp,
+            av_disp,
+            dl_display,
+            ll_display,
+        ]
+        for i in range(1, n + 1)
+    ]
+
+    return {
+        "id":    "seismic_load_parameters",
+        "label": "Seismic Load Parameters",
+        "columns": [
+            "Girder",
+            "Zone",
+            "Seismic Zone Factor, Z",
+            "Importance Factor, I",
+            "Soil Type",
+            "Time Period (s)",
+            "Damping (%)",
+            "Response Reduction Factor",
+            "Spectral Acceleration / g, Sₐ/g",
+            "Horizontal Acceleration Coefficient, Aₕ",
+            "Vertical Acceleration Coefficient, Aᵥ",
+            "Dead Load Considered for Seismic (kN/m)",
+            "Live Load Considered for Seismic (kN/m)",
+        ],
+        "rows": rows,
     }
 
+def resolve_wind_load_parameters(input_dict: dict, bridge=None) -> dict | None:
+    """
+    One row per girder. All wind parameters are bridge-level so values repeat
+    across rows — girder column anchors each row.
+    Mode-aware fields (Automatic / As per IRC 6 / User-defined) show the mode
+    string when set to automatic/IRC, or the numeric value when user-defined.
+    """
+    n_girders = input_dict.get(KEY_TS_NO_OF_GIRDERS)
+    if not _has(n_girders):
+        return None
 
+    try:
+        n = int(n_girders)
+    except Exception:
+        return None
+
+    # ── Direct user inputs ────────────────────────────────────────────────
+    basic_wind_speed    = input_dict.get(KEY_WL_BASIC_WIND_SPEED)
+    avg_exposed_height  = input_dict.get(KEY_WL_AVG_EXPOSED_HEIGHT)
+    terrain_type        = input_dict.get(KEY_WL_TERRAIN_TYPE)
+    site_topography     = input_dict.get(KEY_WL_SITE_TOPOGRAPHY)
+
+    # ── Mode-aware helper: show mode label or numeric value ───────────────
+    def _mode_val(mode_key, value_key, decimals=2):
+        mode  = input_dict.get(mode_key)
+        value = input_dict.get(value_key)
+        if _has(mode):
+            mode_str = str(mode).strip().lower()
+            if mode_str in ("automatic", "as per irc 6", "as per irc6"):
+                return str(mode).strip()   # preserve original casing
+        if _has(value):
+            return _num(value, decimals)
+        return EMPTY
+
+    gust_factor         = _mode_val(KEY_WL_GUST_FACTOR_MODE,        KEY_WL_GUST_FACTOR_VALUE)
+    drag_coeff          = _mode_val(KEY_WL_DRAG_COEFF_MODE,          KEY_WL_DRAG_COEFF_VALUE)
+    drag_coeff_ll       = _mode_val(KEY_WL_DRAG_COEFF_LL_MODE,       KEY_WL_DRAG_COEFF_LL_VALUE)
+    lift_coeff          = _mode_val(KEY_WL_LIFT_COEFF_MODE,          KEY_WL_LIFT_COEFF_VALUE)
+    super_area_elev     = _mode_val(KEY_WL_SUPER_AREA_ELEV_MODE,     KEY_WL_SUPER_AREA_ELEV_VALUE)
+    super_area_plain    = _mode_val(KEY_WL_SUPER_AREA_PLAIN_MODE,    KEY_WL_SUPER_AREA_PLAIN_VALUE)
+    exposed_frontal     = _mode_val(KEY_WL_EXPOSED_FRONTAL_MODE,     KEY_WL_EXPOSED_FRONTAL_VALUE)
+    wind_ecc_deck       = _mode_val(KEY_WL_WIND_ECC_DECK_MODE,       KEY_WL_WIND_ECC_DECK_VALUE)
+    wind_ll_ecc         = _mode_val(KEY_WL_WIND_LL_ECC_MODE,         KEY_WL_WIND_LL_ECC_VALUE)
+
+    # ── Computed values ───────────────────────────────────────────────────
+    hourly_mean_wind    = input_dict.get(KEY_WL_HOURLY_MEAN_WIND)
+    hourly_wind_pressure = input_dict.get(KEY_WL_HOURLY_WIND_PRESSURE)
+
+    # ── Shared parameter displays ─────────────────────────────────────────
+    vb_disp      = _num(basic_wind_speed)   if _has(basic_wind_speed)   else EMPTY
+    h_disp       = _num(avg_exposed_height) if _has(avg_exposed_height) else EMPTY
+    ter_disp     = _val(terrain_type)       if _has(terrain_type)       else EMPTY
+    topo_disp    = _val(site_topography)    if _has(site_topography)    else EMPTY
+    vz_disp      = _num(hourly_mean_wind)   if _has(hourly_mean_wind)   else EMPTY
+    pz_disp      = _num(hourly_wind_pressure) if _has(hourly_wind_pressure) else EMPTY
+
+    rows = [
+        [
+            f"Girder {i}",
+            vb_disp,
+            h_disp,
+            ter_disp,
+            topo_disp,
+            gust_factor,
+            drag_coeff,
+            drag_coeff_ll,
+            lift_coeff,
+            super_area_elev,
+            super_area_plain,
+            exposed_frontal,
+            wind_ecc_deck,
+            wind_ll_ecc,
+            vz_disp,
+            pz_disp,
+        ]
+        for i in range(1, n + 1)
+    ]
+
+    return {
+        "id":    "wind_load_parameters",
+        "label": "Wind Load Parameters",
+        "columns": [
+            "Girder",
+            "Basic Wind Speed, Vᵦ (m/s)",
+            "Average Exposed Height, H (m)",
+            "Type of Terrain",
+            "Site Topography",
+            "Gust Factor, G",
+            "Drag Coefficient, Cᴅ",
+            "Drag Coefficient against Live Load, Cᴅʟʟ",
+            "Lift Coefficient, Cᴸ",
+            "Superstructure Area in Elevation, A₁ (m²)",
+            "Superstructure Area in Plain, A₃ (m²)",
+            "Exposed Frontal Area of Live Load, A₁ʟʟ (m²)",
+            "Wind Load Eccentricity from Top of Deck (m)",
+            "Wind on Live Load Eccentricity from Top of Deck (m)",
+            "Hourly Mean Wind Speed, Vᵤ (m/s)",
+            "Hourly Wind Pressure, Pᵤ (N/m²)",
+        ],
+        "rows": rows,
+    }
+
+def resolve_temperature_load_parameters(input_dict: dict, bridge=None) -> dict | None:
+    """
+    Single summary row — temperature load is bridge-level, not per-girder.
+    Inputs: highest/lowest air temp, thermal coefficients for steel and RCC.
+    Computed: effective bridge temp min/max, temperature rise/fall for design.
+    """
+    # ── User inputs ───────────────────────────────────────────────────────
+    highest_max_temp     = input_dict.get(KEY_TL_HIGHEST_MAX_TEMP)
+    lowest_min_temp      = input_dict.get(KEY_TL_LOWEST_MIN_TEMP)
+    thermal_coeff_steel  = input_dict.get(KEY_TL_THERMAL_COEFF_STEEL)
+    thermal_coeff_rcc    = input_dict.get(KEY_TL_THERMAL_COEFF_RCC)
+
+    # ── Computed values ───────────────────────────────────────────────────
+    bridge_temp_min      = input_dict.get(KEY_TL_BRIDGE_TEMP_MIN)
+    bridge_temp_max      = input_dict.get(KEY_TL_BRIDGE_TEMP_MAX)
+    temp_rise            = input_dict.get(KEY_TL_TEMP_RISE)
+    temp_fall            = input_dict.get(KEY_TL_TEMP_FALL)
+
+    # Require at least the primary user inputs to emit a row
+    if not _has(highest_max_temp, lowest_min_temp):
+        return None
+
+    return {
+        "id":    "temperature_load_parameters",
+        "label": "Temperature Load Parameters",
+        "columns": [
+            "Highest Maximum Air Temperature (°C)",
+            "Lowest Minimum Air Temperature (°C)",
+            "Coefficient of Thermal Expansion for Steel (1/°C)",
+            "Coefficient of Thermal Expansion for RCC (1/°C)",
+            "Effective Bridge Temperature - Minimum (°C)",
+            "Effective Bridge Temperature - Maximum (°C)",
+            "Temperature for Design - Rise (°C)",
+            "Temperature for Design - Fall (°C)",
+        ],
+        "rows": [[
+            _num(highest_max_temp),
+            _num(lowest_min_temp),
+            _num(thermal_coeff_steel, decimals=6) if _has(thermal_coeff_steel) else EMPTY,
+            _num(thermal_coeff_rcc,   decimals=6) if _has(thermal_coeff_rcc)   else EMPTY,
+            _num(bridge_temp_min)  if _has(bridge_temp_min) else EMPTY,
+            _num(bridge_temp_max)  if _has(bridge_temp_max) else EMPTY,
+            _num(temp_rise)        if _has(temp_rise)       else EMPTY,
+            _num(temp_fall)        if _has(temp_fall)       else EMPTY,
+        ]],
+    }
+
+def resolve_load_combinations(input_dict: dict, bridge=None) -> dict | None:
+    """
+    One fixed row per IRC 6 load combination.
+    'Selected' = Yes/No based on the checkbox state stored in input_dict.
+    Keys map to KEY_BASIC_*, KEY_ACCIDENTAL_*, KEY_SEISMIC_*, KEY_SLS_* from common.py.
+    """
+
+    def _selected(key: str) -> str:
+        raw = input_dict.get(key)
+        if raw is None:
+            return "No"
+        selected = (
+            raw is True
+            or str(raw).strip().lower() in ("true", "yes", "1", "checked")
+        )
+        return "Yes" if selected else "No"
+
+    # (display name, expression string, common.py key)
+    COMBINATIONS = [
+        # ULS Basic — LL leading adding / relieving
+        ("basic_1", "1.35DL + 1.75DW + 1.5LL + 0.9WL + 0.9TL",  KEY_BASIC_LL_ADD_CASE),
+        ("basic_2", "1.0DL + 1.0DW + 1.5LL + 0.9WL + 0.9TL",    KEY_BASIC_LL_REL_CASE),
+        ("basic_3", "1.35DL + 1.75DW + 1.15LL + 1.5WL + 0.9TL", KEY_BASIC_WL_ADD_CASE),
+        ("basic_4", "1.0DL + 1.0DW + 1.15LL + 1.5WL + 0.9TL",   KEY_BASIC_WL_REL_CASE),
+        ("basic_5", "1.35DL + 1.75DW + 1.15LL + 0.9WL + 1.5TL", KEY_BASIC_TL_ADD_CASE),
+        ("basic_6", "1.0DL + 1.0DW + 1.15LL + 0.9WL + 1.5TL",   KEY_BASIC_TL_REL_CASE),
+        # ULS Accidental
+        ("accidental_1", "1.0DL + 1.0DW + 0.75LL + 0.5TL + 1.0VC", KEY_ACCIDENTAL_VC_LL_ADD_CASE),
+        ("accidental_2", "1.0DL + 1.0DW + 0.75LL + 0.5TL + 1.0BI", KEY_ACCIDENTAL_BI_LL_ADD_CASE),
+        ("accidental_3", "1.0DL + 1.0DW + 0.75LL + 0.5TL + 1.0FB", KEY_ACCIDENTAL_FB_LL_ADD_CASE),
+        # ULS Seismic
+        ("seismic_1", "1.35DL + 1.75DW + 0.2LL + 0.5TL + 1.5EL",  KEY_SEISMIC_SERVICE_ADD_CASE),
+        ("seismic_2", "1.0DL + 1.0DW + 0.2LL + 0.5TL + 1.5EL",    KEY_SEISMIC_SERVICE_REL_CASE),
+        ("seismic_3", "1.35DL + 1.75DW + 0.2LL + 0.5TL + 0.75EL", KEY_SEISMIC_CONSTRUCTION_ADD_CASE),
+        ("seismic_4", "1.0DL + 1.0DW + 0.2LL + 0.5TL + 0.75EL",   KEY_SEISMIC_CONSTRUCTION_REL_CASE),
+        # SLS Rare
+        ("rare_1", "1.0DL + 1.2DW + 1.0LL + 0.6WL + 0.6TL",   KEY_SLS_RARE_LL_ADD_CASE),
+        ("rare_2", "1.0DL + 1.0DW + 1.0LL + 0.6WL + 0.6TL",   KEY_SLS_RARE_LL_REL_CASE),
+        ("rare_3", "1.0DL + 1.2DW + 0.75LL + 1.0WL + 0.6TL",  KEY_SLS_RARE_WL_ADD_CASE),
+        ("rare_4", "1.0DL + 1.0DW + 0.75LL + 1.0WL + 0.6TL",  KEY_SLS_RARE_WL_REL_CASE),
+        ("rare_5", "1.0DL + 1.2DW + 0.75LL + 0.6WL + 1.0TL",  KEY_SLS_RARE_TL_ADD_CASE),
+        ("rare_6", "1.0DL + 1.0DW + 0.75LL + 0.6WL + 1.0TL",  KEY_SLS_RARE_TL_REL_CASE),
+        # SLS Frequent
+        ("frequent_1", "1.0DL + 1.2DW + 0.75LL + 0.5WL + 0.5TL", KEY_SLS_FREQ_LL_ADD_CASE),
+        ("frequent_2", "1.0DL + 1.0DW + 0.75LL + 0.5WL + 0.5TL", KEY_SLS_FREQ_LL_REL_CASE),
+        ("frequent_3", "1.0DL + 1.2DW + 0.2LL + 0.6WL + 0.5TL",  KEY_SLS_FREQ_WL_ADD_CASE),
+        ("frequent_4", "1.0DL + 1.0DW + 0.2LL + 0.6WL + 0.5TL",  KEY_SLS_FREQ_WL_REL_CASE),
+        ("frequent_5", "1.0DL + 1.2DW + 0.2LL + 0.5WL + 0.6TL",  KEY_SLS_FREQ_TL_ADD_CASE),
+        ("frequent_6", "1.0DL + 1.0DW + 0.2LL + 0.5WL + 0.6TL",  KEY_SLS_FREQ_TL_REL_CASE),
+        # SLS Quasi-permanent
+        ("quasi_permanent_1", "1.0DL + 1.2DW + 0.5TL", KEY_SLS_QP_ADD_CASE),
+        ("quasi_permanent_2", "1.0DL + 1.0DW + 0.5TL", KEY_SLS_QP_REL_CASE),
+    ]
+
+    rows = [
+        [name, expr, _selected(key)]
+        for name, expr, key in COMBINATIONS
+    ]
+
+    return {
+        "id":    "load_combinations",
+        "label": "Load Combinations",
+        "columns": [
+            "Combination",
+            "Expression",
+            "Selected",
+        ],
+        "rows": rows,
+    }
+    
 # ── Resolvers — Deflections (Analysis Results) ────────────────────────────────
 
 def resolve_deflection_live_load(input_dict: dict, bridge=None) -> dict | None:
@@ -878,6 +1209,10 @@ RESOLVER_MAP: dict[str, callable] = {
     "deck_slab_properties":               resolve_deck_slab_properties,       # ← overrides original
 
     # ── Load Definitions ──────────────────────────────────────────────────
+    "seismic_load_parameters": resolve_seismic_load_parameters,
+    "wind_load_parameters": resolve_wind_load_parameters,
+    "temperature_load_parameters": resolve_temperature_load_parameters,
+    "load_combinations": resolve_load_combinations,
 
     # ── Analysis Results — Deflections ────────────────────────────────────
     "deflection_live_load":               resolve_deflection_live_load,
