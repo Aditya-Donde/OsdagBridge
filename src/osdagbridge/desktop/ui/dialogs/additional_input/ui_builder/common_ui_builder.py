@@ -720,9 +720,6 @@ class UIBuilder(QWidget):
         elif ftype == TYPE_MODE_VALUE:
             return self._create_mode_value_field(field_def, owner, ai)
 
-        elif ftype == TYPE_CAD_PREVIEW:
-            return self._create_cad_preview_field(field_def, owner, ai)
-
         elif ftype == TYPE_SEGMENT_TABLE:
             return self._create_segment_table_field(field_def, owner, ai)
 
@@ -1211,45 +1208,6 @@ class UIBuilder(QWidget):
             h.setStretch(1, 1)
 
         return wrapper
-
-    # ──────────────────────────────────────────────────────────────────────────
-    # TYPE_CAD_PREVIEW — GirderCadView canvas + Cross Section / Side View btns
-    # ──────────────────────────────────────────────────────────────────────────
-
-    def _create_cad_preview_field(self, field_def: dict, owner, ai) -> QWidget:
-        """Instantiate CadPreviewWidget and bind it to owner.
-
-        Schema fields:
-            id          : str — objectName for the composite widget
-            bind        : str — owner attribute name (e.g. "cad_preview")
-            on_refresh  : str — owner method called with (view_mode) when
-                          the user clicks Cross Section / Side View buttons
-        """
-        from osdagbridge.desktop.ui.dialogs.additional_input.drawings.cad_preview_widget import (
-            CadPreviewWidget,
-        )
-
-        field_id   = field_def.get("id", "")
-        bind       = field_def.get("bind")
-        on_refresh = field_def.get("on_refresh") or ""
-
-        on_refresh_cb = None
-        if on_refresh:
-            # look up on owner first, then ai
-            target = (
-                getattr(owner, on_refresh, None)
-                or (getattr(ai, on_refresh, None) if ai else None)
-            )
-            if callable(target):
-                on_refresh_cb = target
-
-        widget = CadPreviewWidget(on_refresh=on_refresh_cb, parent=owner)
-        widget.setObjectName(field_id)
-
-        if bind:
-            setattr(owner, bind, widget)
-
-        return widget
 
     # ──────────────────────────────────────────────────────────────────────────
     # TYPE_SEGMENT_TABLE — master-detail segment table with +/− row actions

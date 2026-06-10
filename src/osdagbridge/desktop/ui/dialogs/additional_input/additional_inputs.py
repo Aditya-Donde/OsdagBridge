@@ -384,6 +384,19 @@ class AdditionalInputs(QDialog):
             w = self.findChild(QWidget, key)
             if w:
                 w.setEnabled(not is_optimized)
+        
+        # TODO: Must move it to refresh functionality after section_properties.py is removed
+        widget = self.findChild(QLineEdit, KEY_MP_GD_TOTAL_SPAN)
+        if widget:
+            widget.setText(str(self.working_input_dict.get(KEY_SPAN)))
+
+        # Sync segment table total span from KEY_SPAN so reopening with a changed span
+        # updates the last segment's end to match the new bridge span.
+        from osdagbridge.desktop.ui.dialogs.additional_input.ui_builder._segment_table_widget import SegmentTableWidget
+        seg_table = self.findChild(SegmentTableWidget, KEY_MP_GD_SEGMENT_TABLE)
+        if seg_table is not None:
+            total_span = float(self.working_input_dict.get(KEY_SPAN))
+            seg_table.set_total_span(total_span)
     
     # Greys out intermediate sub-fields when Intermediate Stiffener = No.
     def _on_intermediate_stiffener_changed(self, value: str) -> None:
@@ -619,13 +632,16 @@ class AdditionalInputs(QDialog):
 
         segments = self.working_input_dict.get(seg_key)
         print(f"@@: Loading segments for {girder_id} with key={seg_key}, segments={segments}")
+        total_span = float(self.working_input_dict.get(KEY_SPAN))
         if not segments:
             # First time for this girder — create default single segment
-            total_span = float(self.working_input_dict.get(KEY_MP_GD_TOTAL_SPAN) or 30.0)
-            segments   = [{"id": f"{girder_id}M1", "start": 0.0, "end": total_span}]
+            segments = [{"id": f"{girder_id}M1", "start": 0.0, "end": total_span}]
             self.working_input_dict[seg_key] = segments
 
+        target_widget.set_total_span(total_span)
         target_widget.refresh(segments)
+    
+
     # == Member Properties > Girder Details = segment table connectors = ENDS ========================
 
     # == Member Properties > Member Dependant field connectors = STARTS ==============================

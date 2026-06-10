@@ -39,7 +39,6 @@ TYPE_DESCRIPTION = "description"
 TYPE_CUSTOM_VEHICLE    = "custom_vehicle"
 TYPE_LOAD_COMBINATION = "load_combination"
 TYPE_MODE_VALUE = "mode_value"
-TYPE_CAD_PREVIEW    = "cad_preview"
 TYPE_SEGMENT_TABLE  = "segment_table"
 TYPE_ADAPTIVE = "adaptive"
 TYPE_ALL_CUSTOM = "all_custom"   # combo [All, Custom] where Custom opens popup dialog

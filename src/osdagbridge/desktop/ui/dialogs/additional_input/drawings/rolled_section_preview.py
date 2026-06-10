@@ -96,7 +96,8 @@ class RolledSectionPreview(QWidget):
             self.update()
 
         else:
-            from osdagbridge.desktop.ui.dialogs.tabs.sub_tabs.section_properties.girder_details_tab import girder_properties
+            from osdagbridge.core.utils.common import GirderSectionCatalog
+            girder_properties = GirderSectionCatalog()
             designation = str(working_input_dict.get(KEY_MP_GIRDER_IS_SECTION) or "")
             if not designation:
                 self.clear()

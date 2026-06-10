@@ -98,7 +98,6 @@ class SegmentTableWidget(QWidget):
 
     _HEADERS          = ["Member ID", "Start (m)", "End (m)", "Length (m)", "Action"]
     _ACTION_COL_WIDTH = 132
-    _DEFAULT_SEGMENTS = [{"id": "G1M1", "start": 0.0, "end": 30.0}]
 
     # Signals — connect from outside to react to user actions
     row_selected   = Signal(int, str)   # (row_index, member_id)
@@ -108,11 +107,29 @@ class SegmentTableWidget(QWidget):
         super().__init__(parent)
         self._segments:    List[dict] = []
         self._min_rows:    int        = 1
+        self._total_span:  float      = 30.0
         self._icon_cache:  dict       = {}
         self._build()
-        QTimer.singleShot(0, lambda: self.refresh(self._DEFAULT_SEGMENTS))
+        QTimer.singleShot(0, lambda: self.refresh([{"id": "G1M1", "start": 0.0, "end": self._total_span}]))
 
     # ── public API ────────────────────────────────────────────────────────────
+
+    def set_total_span(self, span: float) -> None:
+        """Update the total span (last segment end) and refresh the display."""
+        try:
+            span = float(span)
+        except (ValueError, TypeError):
+            return
+        if span <= 0.0:
+            return
+        self._total_span = span
+        if not self._segments:
+            return
+        self._segments[-1]["end"] = span
+        for i in range(1, len(self._segments)):
+            self._segments[i]["start"] = float(self._segments[i - 1].get("end", 0.0))
+        self._repopulate(self.current_row())
+        self.data_changed.emit(list(self._segments))
 
     def refresh(self, segments: List[dict], selected_index: int = 0) -> None:
         """Repopulate all rows from segments list."""
