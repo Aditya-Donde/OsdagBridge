@@ -1519,62 +1519,112 @@ def ch5_design_checks(checks_data, bridge: "ReportDataBridge"):
 
     # Generate Table 5.20(a) rows
     cb_forces_rows = []
-    if n_girders <= 1:
+    pairs = bridge.get_cb_pairs()
+
+    if not pairs:
+        # fallback: one placeholder row
         cb_forces_rows.append(
             r"""Between Girders & Diagonal &  &  & C / T &  &  \\[6pt]
 \hline"""
         )
     else:
-        for i in range(n_girders - 1):
-            lbl = f"G{i+1}--G{i+2}"
-            cb_forces_rows.append(
-                r"\multirow{3}{*}{\makecell{" + lbl + r"""}} & Diagonal &  &  & C / T &  &  \\[6pt]
-\cline{2-7}
- & Top chord &  &  & C / T &  &  \\[6pt]
-\cline{2-7}
- & Bottom chord &  &  & C / T &  &  \\[6pt]
-\hline"""
-            )
+        for pair in pairs:
+            pair_id = pair.replace("-", "")
+            for member, label in [("diagonal", "Diagonal"),
+                                ("chord", "Top / Bottom chord")]:
+                force_str, ftype = bridge.get_cb_governing_force(pair, member)
+                section  = bridge.get_cb_section(pair, member, ftype)
+                nature   = bridge.get_cb_nature(pair, member)
+
+                # Fetch properties from output_dict
+                if member == "diagonal":
+                    pfx = f"transverse_member_design.section_properties.bracing.{pair_id}"
+                else:
+                    pfx = f"transverse_member_design.section_properties.bottom_chord.{pair_id}"
+                    if bridge.output_dict.get(f"{pfx}.A") is None:
+                        pfx = f"transverse_member_design.section_properties.top_chord.{pair_id}"
+
+                area_cm2 = bridge.output_dict.get(f"{pfx}.A")
+                rv_cm = bridge.output_dict.get(f"{pfx}.rv")
+
+                # Convert Area: cm² -> mm²
+                area_str = f"{float(area_cm2) * 100:.1f}" if area_cm2 is not None else ""
+                # Convert rv: cm -> mm
+                rmin_str = f"{float(rv_cm) * 10:.1f}" if rv_cm is not None else ""
+                cb_forces_rows.append(
+                    r"\multirow{2}{*}{\makecell{" + _tex(pair) + r"}} & "
+                    + label + r" & " + section + r" & " + force_str
+                    + r" & " + nature
+                    + r" & " + area_str + r" & " + rmin_str
+                    + r" \\[6pt]\cline{2-7}"
+                )
+            cb_forces_rows.append(r"\hline")
     cb_forces_content = "\n".join(cb_forces_rows)
 
     # Generate Table 5.20(b) rows
+    def get_status_str(slnd_str, limit):
+        try:
+            v = float(slnd_str)
+            return r"\textcolor{black}{PASS}" if v <= limit else r"\textcolor{red}{FAIL}"
+        except (ValueError, TypeError):
+            return ""
     cb_slenderness_rows = []
-    if n_girders <= 1:
+    if not pairs:
         cb_slenderness_rows.append(
             r"""Between Girders & Diagonal & C &  &  &  ---  \\[6pt]
 \hline"""
         )
     else:
-        for i in range(n_girders - 1):
-            lbl = f"G{i+1}--G{i+2}"
-            cb_slenderness_rows.append(
-                r"\multirow{3}{*}{\makecell{" + lbl + r"""}} & Diagonal & C &  &  &  ---  \\[6pt]
-\cline{2-6}
- & Top chord & C &  &  &  ---  \\[6pt]
-\cline{2-6}
- & Bottom chord & T &  &  &  ---  \\[6pt]
-\hline"""
-            )
+        for pair in pairs:
+            kl_diag = bridge.get_cb_effective_length("diagonal")
+            slnd_diag = bridge.get_cb_slenderness(pair, "diagonal")
+            status_diag = get_status_str(slnd_diag, 250)
+            
+            kl_tc = bridge.get_cb_effective_length("chord")
+            slnd_tc = bridge.get_cb_slenderness(pair, "chord")
+            status_tc = get_status_str(slnd_tc, 250)
+            
+            kl_bc = bridge.get_cb_effective_length("chord")
+            slnd_bc = bridge.get_cb_slenderness(pair, "chord")
+            status_bc = get_status_str(slnd_bc, 400)
+            
+            top_chord_enabled = bridge.output_dict.get("member_properties.cross_bracing_details.top_chord", True)
+            bottom_chord_enabled = bridge.output_dict.get("member_properties.cross_bracing_details.bottom_chord", True)
+            
+            num_rows = 1 + int(top_chord_enabled) + int(bottom_chord_enabled)
+            row_tex = r"\multirow{" + str(num_rows) + r"}{*}{\makecell{" + _tex(pair) + r"}}"
+            row_tex += f" & Diagonal & C & {kl_diag} & {slnd_diag} & 250 --- {status_diag} \\\\[6pt]"
+            
+            if top_chord_enabled:
+                row_tex += f"\n\\cline{{2-6}}\n & Top chord & C & {kl_tc} & {slnd_tc} & 250 --- {status_tc} \\\\[6pt]"
+            if bottom_chord_enabled:
+                row_tex += f"\n\\cline{{2-6}}\n & Bottom chord & T & {kl_bc} & {slnd_bc} & 400 --- {status_bc} \\\\[6pt]"
+                
+            row_tex += "\n\\hline"
+            cb_slenderness_rows.append(row_tex)
     cb_slenderness_content = "\n".join(cb_slenderness_rows)
 
-    # Generate Table 5.20(e) rows
+    # Generate Table 5.20(c) rows
     cb_capacity_rows = []
-    if n_girders <= 1:
-        cb_capacity_rows.append(
-            r"""Between Girders & Brace diagonal (typical) &  &  &  \\[6pt]
-\hline"""
-        )
-    else:
-        for i in range(n_girders - 1):
-            lbl = f"Girder {i+1} -- {i+2}"
-            cb_capacity_rows.append(
-                r"\multirow{3}{*}{\makecell{" + lbl + r"""}} & Brace diagonal (typical) &  &  &  \\[6pt]
-\cline{2-5}
- & Top chord &  &  &  \\[6pt]
-\cline{2-5}
- & Bottom chord &  &  &  \\[6pt]
-\hline"""
+    for pair in pairs:
+        rows_for_pair = []
+        for member, label in [("diagonal", "Diagonal"),
+                            ("chord", "Chord")]:
+            force_str, ftype = bridge.get_cb_governing_force(pair, member)
+            section  = bridge.get_cb_section(pair, member, ftype)
+            capacity = bridge.get_cb_capacity(pair, member, ftype)
+            ur       = bridge.get_cb_efficiency(pair, member, ftype)
+            status   = bridge.get_cb_status(pair, member, ftype)
+            rows_for_pair.append(
+                r" & " + label + r" & " + section
+                + r" & " + force_str + r" & " + capacity
+                + r" & " + ur + r" & " + status + r" \\[6pt]\cline{2-7}"
             )
+        first = r"\multirow{2}{*}{\makecell{" + _tex(pair) + r"}}" + rows_for_pair[0]
+        rest  = rows_for_pair[1:]
+        cb_capacity_rows.append(first)
+        cb_capacity_rows.extend(rest)
+        cb_capacity_rows.append(r"\hline")
     cb_capacity_content = "\n".join(cb_capacity_rows)
 
     return r"""
@@ -2001,60 +2051,12 @@ Cross bracing between adjacent plate girders provides lateral stability during c
 \end{longtable}
 \noindent\textit{Note:  3. Limit = 250 for compression members, 400 for tension members. $K = 1.0$ for members with both ends pinned.}
 
-\vspace{1em}
-\noindent\textbf{Table 5.20(c)  Cross Bracing --- Compression Capacity Check (IS~800 Cl.~7)}
-
-\begin{longtable}{|C{2.5cm}|C{3.5cm}|C{3.5cm}|>{\centering\arraybackslash}p{4.2cm}|C{1.8cm}|}
-\hline
-\textbf{} & \textbf{Parameter} & \textbf{Formula} & \textbf{Value} & \textbf{Status} \\[6pt]
-\hline
-\multirow{8}{*}{\makecell{Diagonal\\(typical)}} & Euler Critical Stress, $f_{cc}$ &  &  & --- \\[6pt]
-\cline{2-5}
- & Non-dim.\ Slenderness, $\bar{\lambda}$ &  &  & --- \\[6pt]
-\cline{2-5}
- & Imperfection Factor, $\alpha$ &  &  & --- \\[6pt]
-\cline{2-5}
- & $\phi$ factor &  &  & --- \\[6pt]
-\cline{2-5}
- & Stress Reduction Factor, $\chi$ &  &  & --- \\[6pt]
-\cline{2-5}
- & Design Comp.\ Stress, $f_{cd}$ &  &  & --- \\[6pt]
-\cline{2-5}
- & Compression Capacity, $P_d$ &  &  & --- \\[6pt]
-\cline{2-5}
- & Utilization Ratio, $P_u / P_d$ & --- &  &  \\[6pt]
-\hline
-\end{longtable}
-\noindent\textit{Note: IS 800 Cl. 7.1.2. Effective area $A_e$ accounts for single-leg connection (shear lag) per IS 800 Cl. 7.5.1.2. $\gamma_{M0} = 1.10$.}
 
 \vspace{1em}
-\noindent\textbf{Table 5.20(d)  Cross Bracing --- Tension Capacity Check (IS~800 Cl.~6)}
-
-\begin{longtable}{|C{2.5cm}|C{3.5cm}|C{3.5cm}|>{\centering\arraybackslash}p{4.2cm}|C{1.8cm}|}
+\noindent\textbf{Table 5.20(c)  Cross Bracing Design --- Capacity Summary}
+\begin{longtable}{|C{2.2cm}|C{2.2cm}|C{2.5cm}|C{2.0cm}|C{2.0cm}|C{1.8cm}|C{2.8cm}|}
 \hline
-\textbf{} & \textbf{Parameter} & \textbf{Formula} & \textbf{Value} & \textbf{Status} \\[6pt]
-\hline
-\multirow{6}{*}{\makecell{Bottom chord\\(typical)}} & Gross Yielding, $T_{dg}$ &  &  & --- \\[6pt]
-\cline{2-5}
- & Net Section Area, $A_n$ &  &  & --- \\[6pt]
-\cline{2-5}
- & Net Rupture, $T_{dn}$ &  &  & --- \\[6pt]
-\cline{2-5}
- & Block Shear, $T_{db}$ &  &  & --- \\[6pt]
-\cline{2-5}
- & Design Tensile Strength, $T_d$ &  &  & --- \\[6pt]
-\cline{2-5}
- & Utilization Ratio, $T_u / T_d$ & --- &  &  \\[6pt]
-\hline
-\end{longtable}
-\noindent\textit{Note: IS 800 Cl. 6.1--6.4. $d_h$ = bolt hole diameter; $n_h$ = number of bolt holes; $t$ = angle leg thickness. $\gamma_{M0} = 1.10$; $\gamma_{M1} = 1.25$.}
-
-\vspace{1em}
-\noindent\textbf{Table 5.20(e)  Cross Bracing Design --- Capacity Summary}
-
-\begin{longtable}{|C{3.3cm}|C{3.2cm}|C{3.2cm}|>{\centering\arraybackslash}p{3.5cm}|C{2.3cm}|}
-\hline
-\textbf{} & \textbf{Member} & \textbf{Section} & \textbf{Demand (kN)} & \textbf{Capacity (kN)} \\[6pt]
+\textbf{Panel} & \textbf{Member} & \textbf{Section} & \textbf{Demand (kN)} & \textbf{Capacity (kN)} & \textbf{UR} & \textbf{Status} \\[6pt]
 \hline
 """ + cb_capacity_content + r"""
 \end{longtable}
@@ -2520,6 +2522,174 @@ class ReportDataBridge:
         self.output_dict = output_dict
         self.input_dict = input_dict
         self.payload = payload
+
+
+    # =====================================================================
+    # CHAPTER 5: CROSS BRACING
+    # =====================================================================
+
+    def _cb_forces_dict(self) -> dict:
+        """Internal: return crossbracing_forces_dict from output_dict."""
+        return self.output_dict.get("crossbracing_forces_dict", {})
+
+    def _cb_pair_designs(self) -> dict:
+        """Internal: return crossbracing_design_results from output_dict."""
+        return self.output_dict.get("crossbracing_design_results", {})
+
+    def _cb_osdag(self, pair: str, member: str, force_type: str) -> dict:
+        """
+        Extract the _extract_osdag_summary dict for one member.
+        pair      e.g. "G1-G2"
+        member    "diagonal" or "chord"
+        force_type "tension" or "compression"
+        """
+        from osdagbridge.core.bridge_types.plate_girder.results_data import _extract_osdag_summary
+        try:
+            raw = self._cb_pair_designs()[pair][member][force_type]
+            return _extract_osdag_summary(raw or {})
+        except (KeyError, TypeError):
+            return {}
+
+    def get_cb_pairs(self) -> list:
+        """Return sorted list of girder pair keys e.g. ['G1-G2', 'G2-G3']."""
+        try:
+            return sorted(self._cb_forces_dict().get("pairs", {}).keys())
+        except Exception:
+            return []
+
+    def get_cb_geometry(self) -> dict:
+        """Return the geometry sub-dict from forces_dict."""
+        return self._cb_forces_dict().get("geometry", {})
+
+    def get_cb_brace_type(self) -> str:
+        try:
+            return self._cb_forces_dict().get("brace_type", "X")
+        except Exception:
+            return "X"
+
+    # --- Table 5.20(a): Member Forces ---
+
+    def get_cb_force(self, pair: str, member: str, force_type: str) -> str:
+        """
+        Return demand force string for table 5.20(a).
+        member: "diagonal" or "chord"
+        force_type: "tension" or "compression"
+        """
+        try:
+            pairs = self._cb_forces_dict()["pairs"][pair]
+            key = f"diag_{force_type}_kN" if member == "diagonal" else f"chord_{force_type}_kN"
+            val = pairs.get(key)
+            if val is not None:
+                return f"{val:.3f}"
+        except (KeyError, TypeError):
+            pass
+        return ""
+
+    def get_cb_nature(self, pair: str, member: str) -> str:
+        """Return 'T', 'C', or 'T/C' depending on what forces exist for this member."""
+        try:
+            pairs = self._cb_forces_dict()["pairs"][pair]
+            t_key = "diag_tension_kN"     if member == "diagonal" else "chord_tension_kN"
+            c_key = "diag_compression_kN" if member == "diagonal" else "chord_compression_kN"
+            has_t = pairs.get(t_key) is not None
+            has_c = pairs.get(c_key) is not None
+            if has_t and has_c:
+                return "T / C"
+            if has_t:
+                return "T"
+            if has_c:
+                return "C"
+        except (KeyError, TypeError):
+            pass
+        return ""
+
+    def get_cb_governing_force(self, pair: str, member: str) -> tuple:
+        """
+        Return (force_kN_str, force_type) for the governing (max absolute) force.
+        Used as the single demand value for capacity tables.
+        """
+        try:
+            pairs = self._cb_forces_dict()["pairs"][pair]
+            t_key = "diag_tension_kN"     if member == "diagonal" else "chord_tension_kN"
+            c_key = "diag_compression_kN" if member == "diagonal" else "chord_compression_kN"
+            t_val = pairs.get(t_key)
+            c_val = pairs.get(c_key)
+            if t_val is not None and c_val is not None:
+                if abs(c_val) >= abs(t_val):
+                    return (f"{c_val:.3f}", "compression")
+                return (f"{t_val:.3f}", "tension")
+            if c_val is not None:
+                return (f"{c_val:.3f}", "compression")
+            if t_val is not None:
+                return (f"{t_val:.3f}", "tension")
+        except (KeyError, TypeError):
+            pass
+        return ("", "compression")
+
+    def get_cb_section(self, pair: str, member: str, force_type: str) -> str:
+        """Section designation for a member e.g. '75 x 75 x 8'."""
+        val = self._cb_osdag(pair, member, force_type).get("section")
+        return _tex(val) if val else ""
+
+    def get_cb_capacity(self, pair: str, member: str, force_type: str) -> str:
+        """Capacity in kN."""
+        val = self._cb_osdag(pair, member, force_type).get("capacity_kN")
+        return f"{float(val):.3f}" if val is not None else ""
+
+    def get_cb_efficiency(self, pair: str, member: str, force_type: str) -> str:
+        """Utilization ratio (efficiency)."""
+        val = self._cb_osdag(pair, member, force_type).get("efficiency")
+        return f"{float(val):.3f}" if val is not None else ""
+
+    def get_cb_slenderness(self, pair: str, member: str) -> str:
+        """KL/r — same for tension and compression (geometry-based)."""
+        # Prefer compression result (slenderness is more meaningful there)
+        for ft in ("compression", "tension"):
+            val = self._cb_osdag(pair, member, ft).get("slenderness")
+            if val is not None:
+                return f"{float(val):.1f}"
+        return ""
+
+    def get_cb_status(self, pair: str, member: str, force_type: str) -> str:
+        """PASS / FAIL based on UR <= 1.0."""
+        try:
+            val = self._cb_osdag(pair, member, force_type).get("efficiency")
+            if val is not None:
+                ur = float(val)
+                if ur <= 1.0:
+                    return r"\textcolor{black}{PASS}"
+                return r"\textcolor{red}{FAIL}"
+        except (TypeError, ValueError):
+            pass
+        return ""
+
+    def get_cb_gov_lc(self, pair: str, force_type: str) -> str:
+        """Governing load case label for diagonal (tension or compression)."""
+        try:
+            key = f"diag_{force_type}_gov_lc"
+            val = self._cb_forces_dict()["pairs"][pair].get(key)
+            return _tex(val) if val else ""
+        except (KeyError, TypeError):
+            return ""
+
+    def get_cb_effective_length(self, member: str) -> str:
+        """Effective length KL in mm from geometry."""
+        try:
+            geom = self.get_cb_geometry()
+            if member == "diagonal":
+                L_m = geom.get("diagonal_length_m", 0)
+            else:
+                L_m = geom.get("horiz_proj_m", 0)
+            return f"{L_m * 1000:.0f}"   # convert m → mm
+        except (TypeError, ValueError):
+            return ""
+
+    def get_cb_alpha_deg(self) -> str:
+        """Diagonal angle in degrees."""
+        try:
+            return f"{self.get_cb_geometry().get('alpha_deg', 0):.2f}"
+        except Exception:
+            return ""
 
 
 def _format_project_location(pl_data):
