@@ -558,44 +558,28 @@ class PlateGirderBridge:
         return figure_paths
 
     def generate_design_report(self, request, cad_generator, is_preview=False):
-        """Compile the final PDF design report. 
-        `cad_generator` acts as the `context_data` payload from the GUI."""
-        print("[REPORT-DEBUG] generate_design_report() ENTERED")
-        from osdagbridge.core.reports.report_generator import build_report_payload, export_grillage_figure, generate_report
-        print("[REPORT-DEBUG] imports OK")
-        
-        report_inputs = self.input_dict.copy()
-        output_dict = dict(self.output_dict)  # MappingProxyType → dict
-        print(f"[REPORT-DEBUG] input_dict keys: {len(report_inputs)}, output_dict keys: {len(output_dict)}")
-        
-        payload = build_report_payload(request, report_inputs, output_dict)
-        print(f"[REPORT-DEBUG] payload built: {type(payload).__name__}")
-        
-        if cad_generator:
-            try:
-                # Handle dictionary or instance
-                if isinstance(cad_generator, dict):
-                    core = cad_generator.get('generator')
-                else:
-                    core = cad_generator
+        """Compile the final PDF design report."""
+        from osdagbridge.core.reports.report_generator import build_report_payload, generate_report
 
-                # Execute headless CAD export without reaching into the UI layer
-                paths = self._export_cad_figures(core)
-                if 'girder_3d' in paths: payload.figures.girder_3d = paths['girder_3d']
-                if 'girder_front' in paths: payload.figures.girder_front = paths['girder_front']
-                if 'girder_top' in paths: payload.figures.girder_top = paths['girder_top']
-                if 'girder_end' in paths: payload.figures.girder_end = paths['girder_end']
-                
-            except Exception as fig_exc:
-                print(f"[REPORT-DEBUG] Could not extract CAD figures: {fig_exc}")
-        
-        # Build Grillage image using the backend builder and convert to bytes
+        report_inputs = self.input_dict.copy()
+        output_dict   = dict(self.output_dict)  # MappingProxyType → dict
+
+        payload = build_report_payload(request, report_inputs, output_dict)
+
+        # Collect figure bytes into payload.figure_data — no disk writes here
+        figure_data = {}
+        if isinstance(cad_generator, dict):
+            figure_data.update(cad_generator.get('figure_data', {}))
+
+        # Grillage figure: matplotlib → bytes (already in RAM, no file needed)
         grillage_fig = self.build_figure_grillage() if hasattr(self, 'build_figure_grillage') else None
         if grillage_fig:
             grillage_bytes = self.figure_to_bytes(grillage_fig)
-            path = export_grillage_figure(grillage_bytes, request.output_dir, request.file_stem)
-            payload.figures.grillage = path
-            
+            if grillage_bytes:
+                figure_data['grillage'] = grillage_bytes
+
+        payload.figure_data = figure_data  # handed off; generate_report clears it after writing
+
         return generate_report(payload, request)
 
     def _build_dtos(self) -> None:

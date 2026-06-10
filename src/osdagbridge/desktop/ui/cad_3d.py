@@ -503,7 +503,7 @@ class CAD3DWindow(QWidget):
 
     def show_full_model(self):
         """
-        Display all bridge components 
+        Display all bridge components
         """
         if not self._is_display_ready():
             return
@@ -521,6 +521,78 @@ class CAD3DWindow(QWidget):
 
         self.display.FitAll()
         self.display.Repaint()
+
+    # ── REPORT FIGURE CAPTURE ─────────────────────────────────────────────────
+
+    def capture_for_report(self) -> dict:
+        """Capture report figures from the live display. Must be called from main thread.
+
+        Returns {attr: bytes} — PNG data in RAM only. Each OCC export writes to a
+        NamedTemporaryFile, bytes are read immediately, file deleted right away.
+        Nothing is written permanently to the user's disk.
+        girder_top is NOT captured here; output_dock adds it via QBuffer.
+        """
+        import os, tempfile, logging
+        _log = logging.getLogger(__name__)
+
+        if not self._is_display_ready():
+            _log.warning("capture_for_report: display not ready — skipped")
+            return {}
+
+        ALL         = ['Girder', 'Deck', 'Cross Bracing', 'Crash Barrier', 'Median', 'Railing']
+        GIRDER_ONLY = ['Girder']
+        GIRDER_DECK = ['Girder', 'Deck']
+
+        def _snap(attr, components, view_fn):
+            """Set visibility, render, read PNG bytes, delete temp file. Returns bytes or None."""
+            tmp_path = None
+            try:
+                self.update_component_visibility(components)
+                view_fn()
+                self.display.FitAll()
+                tmp = tempfile.NamedTemporaryFile(suffix='.png', delete=False)
+                tmp_path = tmp.name
+                tmp.close()
+                self.display.ExportToImage(tmp_path)
+                if os.path.exists(tmp_path):
+                    with open(tmp_path, 'rb') as fh:
+                        return fh.read()
+            except Exception as exc:
+                _log.warning("capture_for_report: %s failed: %s", attr, exc)
+            finally:
+                if tmp_path and os.path.exists(tmp_path):
+                    try:
+                        os.unlink(tmp_path)
+                    except OSError:
+                        pass
+            return None
+
+        data = {}
+
+        # Figure 6.1 — Typical Cross Section: all components, end-on view
+        b = _snap('cross_section', ALL, self.display.View_Right)
+        if b: data['cross_section'] = b
+
+        # Figure 6.2 — 3D View of Plate Girder: girders only, isometric
+        b = _snap('girder_3d', GIRDER_ONLY, self.display.View_Iso)
+        if b: data['girder_3d'] = b
+
+        # Figure 6.1.3 — Top View: added by output_dock via QBuffer (skipped here)
+
+        # Figure 6.1.1 — Overall 3D Bridge Superstructure: all components, isometric
+        b = _snap('final_geometry', ALL, self.display.View_Iso)
+        if b: data['final_geometry'] = b
+
+        # Restore: show all components, iso view
+        try:
+            self.update_component_visibility(ALL)
+            self.display.View_Iso()
+            self.display.FitAll()
+        except Exception:
+            pass
+
+        _log.info("capture_for_report: %d figure(s) in RAM", len(data))
+        return data
 
 
     def update_component_visibility(self, selected_components: list) -> None:
