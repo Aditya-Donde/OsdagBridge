@@ -630,6 +630,24 @@ class InputDock(QWidget):
         # enabled state — flag so solve_extend_basic_input_dict runs on next open.
         self.is_require_field_changed = True
 
+        # Re-validate carriageway width against the new limits immediately.
+        self._update_carriageway_placeholder()
+
+        cw_widget = self.input_widget.findChild(QLineEdit, KEY_CARRIAGEWAY_WIDTH) if self.input_widget else None
+        if cw_widget is not None:
+            result = self.validator.validate_basic_inputs(KEY_CARRIAGEWAY_WIDTH, self.parent.input_dict)
+            if result is not None:
+                corrected, message = result
+                CustomMessageBox(
+                    title="Input Error",
+                    text=message,
+                    dialogType=MessageBoxType.Warning
+                ).exec()
+                cw_widget.blockSignals(True)
+                cw_widget.setText(str(corrected))
+                cw_widget.blockSignals(False)
+                self._update_input_dict(KEY_CARRIAGEWAY_WIDTH, str(corrected))
+
     def _on_design_mode_changed(self, mode_text: str = ""):
         self._current_design_mode = str(mode_text or "Optimized").strip()
         if self._current_design_mode.lower() == "custom":
