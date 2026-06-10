@@ -31,15 +31,11 @@
 # 6   | Exec Summary (Proj Ovw)   | 'overall_utilization_ratio'  | output_dict value; no KEY_ needed
 # 7   | Exec Summary (Table 1)    | 'section_designation'        | output_dict value; no KEY_ needed
 # 8   | Table 2.7 / 2.8           | _ph('$n_{br}$')              | no. of bracing panels; no KEY_ yet
-# 9   | _girder_labels()          | _ph('Girder Label')          | Girder labels (Girder 1, Girder 2); ADD_BACKEND_KEY
-# 10  | _girder_labels()          | _ph('Member ID')             | Girder member IDs (G1M1, G2M1); ADD_BACKEND_KEY
-# 11  | _bracing_panel_labels()   | _ph('Location')              | Bracing locations; ADD_BACKEND_KEY
-# 12  | _bracing_panel_labels()   | _ph('CB Member IDs')         | Cross bracing IDs (B1M1); ADD_BACKEND_KEY
-# 13  | _bracing_panel_labels()   | _ph('ED Member IDs')         | End diaphragm IDs (E1M1); ADD_BACKEND_KEY
-# 14  | Table 4.1, 4.2            | _ph('Load Case')             | Load Cases (DL only, Seismic (EL)); ADD_BACKEND_KEY
-# 15  | Table 4.1, 5.22           | _ph('Load Case')             | Load Combinations (LC-ULS-1, LC-SLS-1); ADD_BACKEND_KEY
-# 16  | Table 5.12                | _ph('tau_fn')                | tau_fn (67 MPa); PLACEHOLDER
-# 17  | Table 5.20b, 5.22         | _ph('Limit')                 | Slenderness limits (250, 400); PLACEHOLDER
+# 9   | Table 2.8                 | _ph('$s_{br}$')              | ED spacing; no KEY_ yet
+# 10  | Table 4.1, 4.2            | _ph('Load Case')             | Load Cases (DL only, Seismic (EL)); ADD_BACKEND_KEY
+# 11  | Table 4.1, 5.22           | _ph('Load Case')             | Load Combinations (LC-ULS-1, LC-SLS-1); ADD_BACKEND_KEY
+# 12  | Table 5.12                | _ph('tau_fn')                | tau_fn (67 MPa); PLACEHOLDER
+# 13  | Table 5.20b, 5.22         | _ph('Limit')                 | Slenderness limits (250, 400); PLACEHOLDER
 # =============================================================================
 
 # =============================================================================
@@ -48,7 +44,7 @@
 # =============================================================================
 # #  | KEY_ constant used                        | Template   | Backend action needed
 # ─────────────────────────────────────────────────────────────────────────────
-# 1  | KEY_MP_ED_END_DIAPHRAGM_SPACING           | Table 2.8  | end_diaphragm_details must write this key
+# (All missing data cases for Chapter 1 and 2 resolved or moved to GAPS)
 # =============================================================================
 
 #==============================================================================
@@ -185,6 +181,30 @@ from osdagbridge.core.utils.common import (
     KEY_MP_MEMBER_ID,
     # Steel design section designation
     KEY_SD_SECTION_DESIGNATION,
+    # Permanent Load
+    KEY_PL_SELF_WEIGHT_FACTOR,
+    # Live Load
+    KEY_LL_FOOTPATH_PRESSURE_VALUE,
+    # Wind Load (computed values)
+    KEY_WL_TERRAIN_TYPE,
+    KEY_WL_AVG_EXPOSED_HEIGHT,
+    KEY_WL_HOURLY_MEAN_WIND,
+    KEY_WL_HOURLY_WIND_PRESSURE,
+    KEY_WL_TRANSVERSE_WIND_FORCE,
+    KEY_WL_LONGITUDINAL_WIND_FORCE,
+    KEY_WL_VERTICAL_WIND_FORCE,
+    # Seismic Load (computed values)
+    KEY_SL_ZONE_FACTOR,
+    KEY_SL_IMPORTANCE_FACTOR,
+    KEY_SL_SOIL_TYPE,
+    KEY_SL_SPECTRAL_COEFF,
+    KEY_SL_HORIZONTAL_COEFF,
+    KEY_SL_VERTICAL_COEFF,
+    # Temperature Load (computed values)
+    KEY_TL_BRIDGE_TEMP_MIN,
+    KEY_TL_BRIDGE_TEMP_MAX,
+    KEY_TL_TEMP_RISE,
+    KEY_TL_TEMP_FALL,
 )
 
 
@@ -1086,7 +1106,7 @@ This section summarizes all loads applied to the bridge and the load combination
 \hline
 \textbf{Concrete Deck Weight} & \placeholder{Applied / Not Applied} \\[6pt]
 \hline
-\textbf{Self-Weight Factor} & \placeholder{Factor} \\[6pt]
+\textbf{Self-Weight Factor} & """ + (_v(input_dict, KEY_PL_SELF_WEIGHT_FACTOR) or _ph('Self-Weight Factor')) + r""" \\[6pt]
 \hline
 \end{longtable}
 
@@ -1099,7 +1119,7 @@ This section summarizes all loads applied to the bridge and the load combination
 \hline
 \textbf{Additional SIDL (Crash Barrier)} & """ + (_v(input_dict, KEY_CB_LOAD) or _ph('Load')) + r""" kN/m per barrier \\[6pt]
 \hline
-\textbf{Railing Load} & \placeholder{Load}\sdstar{} \\[6pt]
+\textbf{Railing Load} & """ + (_v(input_dict, KEY_RL_LOAD_VALUE) or _ph('Railing Load')) + r""" kN/m\sdstar{} \\[6pt]
 \hline
 \end{longtable}
 
@@ -1108,13 +1128,13 @@ This section summarizes all loads applied to the bridge and the load combination
 
 \begin{longtable}{|L{5.5cm}|p{10.0cm}|}
 \hline
-\textbf{Vehicles Considered} & \placeholder{Vehicles} \\[6pt]
+\textbf{Vehicles Considered} & """ + _ph('Vehicles') + r""" \\[6pt]
 \hline
-\textbf{Impact Factor (IRC 6)} & """ + (_v(input_dict, "impact_factor") or _ph("Value")) + r""" \\[6pt]
+\textbf{Impact Factor (IRC 6)} & """ + _ph('Impact Factor') + r""" \\[6pt]
 \hline
-\textbf{Braking Load (IRC 6)} & \placeholder{Status} """ + (_v(input_dict, "braking_load", " kN") or _ph("Value")) + r""" \\[6pt]
+\textbf{Braking Load (IRC 6)} & """ + _ph('Braking Load') + r""" \\[6pt]
 \hline
-\textbf{Footpath Live Load (if applicable)} & """ + (_v(input_dict, "footpath_live_load", " kN/m\\textsuperscript{2}") or _ph("Footpath Live Load")) + r""" \\[6pt]
+\textbf{Footpath Live Load (if applicable)} & """ + (_v(input_dict, KEY_LL_FOOTPATH_PRESSURE_VALUE, ' kN/m\\textsuperscript{2}') or _ph('Footpath Live Load')) + r""" \\[6pt]
 \hline
 \end{longtable}
 
@@ -1125,19 +1145,19 @@ This section summarizes all loads applied to the bridge and the load combination
 \hline
 \textbf{Basic Wind Speed, Vb} & """ + (_v(input_dict,'wind_speed',' m/s') or _ph('Vb') + ' m/s') + r""" [from Project Location] \\[6pt]
 \hline
-\textbf{Terrain Type} & """ + (_v(input_dict, "terrain_type") or _ph("Terrain Type")) + r""" \\[6pt]
+\textbf{Terrain Type} & """ + (_v(input_dict, KEY_WL_TERRAIN_TYPE) or _ph('Terrain Type')) + r""" \\[6pt]
 \hline
-\textbf{Average Exposed Height, H (m)} & """ + (_v(input_dict, "avg_exposed_height", " m") or _ph("Avg Exposed Height")) + r""" \\[6pt]
+\textbf{Average Exposed Height, H (m)} & """ + (_v(input_dict, KEY_WL_AVG_EXPOSED_HEIGHT, ' m') or _ph('Avg Exposed Height')) + r""" \\[6pt]
 \hline
-\textbf{Hourly Mean Wind Speed, Vz} & """ + str(input_dict.get("wind_Vz", _ph("Vz"))) + r""" m/s \\[6pt]
+\textbf{Hourly Mean Wind Speed, Vz} & """ + (_v(input_dict, KEY_WL_HOURLY_MEAN_WIND, ' m/s') or _ph('Vz') + ' m/s') + r""" \\[6pt]
 \hline
-\textbf{Hourly Wind Pressure, Pz} & """ + str(input_dict.get("wind_Pz", _ph("Pz"))) + r""" N/m\textsuperscript{2} \\[6pt]
+\textbf{Hourly Wind Pressure, Pz} & """ + (_v(input_dict, KEY_WL_HOURLY_WIND_PRESSURE, ' N/m\\textsuperscript{2}') or _ph('Pz') + ' N/m\\textsuperscript{2}') + r""" \\[6pt]
 \hline
-\textbf{Transverse Wind Force} & """ + str(input_dict.get("wind_Fw_T", _ph("Fw_T"))) + r""" kN \\[6pt]
+\textbf{Transverse Wind Force} & """ + (_v(input_dict, KEY_WL_TRANSVERSE_WIND_FORCE, ' kN') or _ph('Fw\_T') + ' kN') + r""" \\[6pt]
 \hline
-\textbf{Longitudinal Wind Force} & """ + str(input_dict.get("wind_Fw_L", _ph("Fw_L"))) + r""" kN \\[6pt]
+\textbf{Longitudinal Wind Force} & """ + (_v(input_dict, KEY_WL_LONGITUDINAL_WIND_FORCE, ' kN') or _ph('Fw\_L') + ' kN') + r""" \\[6pt]
 \hline
-\textbf{Vertical Wind Force} & """ + str(input_dict.get("wind_Fw_V", _ph("Fw_V"))) + r""" kN \\[6pt]
+\textbf{Vertical Wind Force} & """ + (_v(input_dict, KEY_WL_VERTICAL_WIND_FORCE, ' kN') or _ph('Fw\_V') + ' kN') + r""" \\[6pt]
 \hline
 \end{longtable}
 
@@ -1148,19 +1168,21 @@ This section summarizes all loads applied to the bridge and the load combination
 \hline
 \textbf{Seismic Zone} & """ + (_v(input_dict,'seismic_zone') or _ph('Zone')) + r""" [from Project Location] \\[6pt]
 \hline
-\textbf{Zone Factor, Z} & """ + str(input_dict.get("seismic_Z", _ph("Z"))) + r""" \\[6pt]
+\textbf{Zone Factor, Z} & """ + (_v(input_dict, KEY_SL_ZONE_FACTOR) or _ph('Z')) + r""" \\[6pt]
 \hline
-\textbf{Importance Factor, I} & """ + (_v(input_dict, "importance_factor") or _ph("Importance Factor")) + r""" \\[6pt]
+\textbf{Importance Factor, I} & """ + (_v(input_dict, KEY_SL_IMPORTANCE_FACTOR) or _ph('Importance Factor')) + r""" \\[6pt]
 \hline
-\textbf{Type of Soil} & """ + (_v(input_dict, "soil_type") or _ph("Soil Type")) + r""" \\[6pt]
+\textbf{Type of Soil} & """ + (_v(input_dict, KEY_SL_SOIL_TYPE) or _ph('Soil Type')) + r""" \\[6pt]
 \hline
-\textbf{Sa/g} & """ + str(input_dict.get("seismic_Sa_g", _ph("Sa_g"))) + r""" \\[6pt]
+\textbf{Sa/g} & """ + (_v(input_dict, KEY_SL_SPECTRAL_COEFF) or _ph('Sa/g')) + r""" \\[6pt]
 \hline
-\textbf{Horizontal Seismic Coefficient, Ah} & """ + str(input_dict.get("seismic_Ah", _ph("Ah"))) + r""" \\[6pt]
+\textbf{Horizontal Seismic Coefficient, Ah} & """ + (_v(input_dict, KEY_SL_HORIZONTAL_COEFF) or _ph('Ah')) + r""" \\[6pt]
 \hline
-\textbf{Vertical Seismic Coefficient, Av} & """ + str(input_dict.get("seismic_Av", _ph("Av"))) + r""" = 2/3 $\times$ Ah \\[6pt]
+\textbf{Vertical Seismic Coefficient, Av} & """ + (_v(input_dict, KEY_SL_VERTICAL_COEFF) or _ph('Av')) + r""" \\[6pt]
 \hline
-\textbf{Horizontal Seismic Force} & """ + str(input_dict.get("seismic_Feq_L", _ph("Feq_L"))) + r""" kN (longitudinal), """ + str(input_dict.get("seismic_Feq_T", _ph("Feq_T"))) + r""" kN (transverse) \\[6pt]
+\textbf{Horizontal Seismic Force (longitudinal)} & """ + _ph('Feq\_L') + r""" kN \\[6pt]
+\hline
+\textbf{Horizontal Seismic Force (transverse)} & """ + _ph('Feq\_T') + r""" kN \\[6pt]
 \hline
 \end{longtable}
 
@@ -1173,9 +1195,9 @@ This section summarizes all loads applied to the bridge and the load combination
 \hline
 \textbf{Minimum Shade Temperature} & """ + (_v(input_dict,'shade_temp_min') or _ph('$T_{min}$')) + r""" $^\circ$C \\[6pt]
 \hline
-\textbf{Effective Bridge Temp. Range} & """ + str(input_dict.get("temp_T_eff_min", _ph("T_eff_min"))) + r""" to """ + str(input_dict.get("temp_T_eff_max", _ph("T_eff_max"))) + r""" $^\circ$C \\[6pt]
+\textbf{Effective Bridge Temp. Range} & """ + (_v(input_dict, KEY_TL_BRIDGE_TEMP_MIN) or _ph('T\_eff\_min')) + r""" to """ + (_v(input_dict, KEY_TL_BRIDGE_TEMP_MAX) or _ph('T\_eff\_max')) + r""" $^\circ$C \\[6pt]
 \hline
-\textbf{Temperature Rise / Fall for Design} & +""" + str(input_dict.get("temp_dT_rise", _ph("dT_rise"))) + r""" $^\circ$C / -""" + str(input_dict.get("temp_dT_fall", _ph("dT_fall"))) + r""" $^\circ$C \\[6pt]
+\textbf{Temperature Rise / Fall for Design} & +""" + (_v(input_dict, KEY_TL_TEMP_RISE) or _ph('dT\_rise')) + r""" $^\circ$C / \textminus{}""" + (_v(input_dict, KEY_TL_TEMP_FALL) or _ph('dT\_fall')) + r""" $^\circ$C \\[6pt]
 \hline
 \end{longtable}
 
@@ -1189,17 +1211,15 @@ The following load combinations were evaluated per IRC 6. The governing combinat
 \hline
 \textbf{Combination ID} & \textbf{Description} & \textbf{Load Cases} & \textbf{Governs For} \\[6pt]
 \hline
-\placeholder{Load Case} & DL + LL (Basic) & 1.35 DL + 1.5 LL & Moment, Shear \\[6pt]
+""" + _ph('Combination ID') + r""" & """ + _ph('Description') + r""" & """ + _ph('Load Cases') + r""" & """ + _ph('Governs For') + r""" \\[6pt]
 \hline
-\placeholder{Load Case} & DL + LL + WL & 1.35 DL + 1.5 LL + 0.9 WL & Wind check \\[6pt]
+""" + _ph('Combination ID') + r""" & """ + _ph('Description') + r""" & """ + _ph('Load Cases') + r""" & """ + _ph('Governs For') + r""" \\[6pt]
 \hline
-\placeholder{Load Case} & DL + LL + EL & 1.35 DL + 0.2 LL + 1.5 EL & Seismic check \\[6pt]
+""" + _ph('Combination ID') + r""" & """ + _ph('Description') + r""" & """ + _ph('Load Cases') + r""" & """ + _ph('Governs For') + r""" \\[6pt]
 \hline
-\placeholder{Load Case} & Service (DL + LL) & 1.0 DL + 1.0 LL & Deflection, Stress \\[6pt]
+""" + _ph('Combination ID') + r""" & """ + _ph('Description') + r""" & """ + _ph('Load Cases') + r""" & """ + _ph('Governs For') + r""" \\[6pt]
 \hline
-\placeholder{Load Case} & Fatigue (LL only) & Fatigue Truck & Fatigue checks \\[6pt]
-\hline
-(Additional combinations per IRC 6 auto-generated by software) & ... & ... & ... \\[6pt]
+""" + _ph('Combination ID') + r""" & """ + _ph('Description') + r""" & """ + _ph('Load Cases') + r""" & """ + _ph('Governs For') + r""" \\[6pt]
 \hline
 \end{longtable}
 
