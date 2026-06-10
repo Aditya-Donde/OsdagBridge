@@ -2622,164 +2622,356 @@ CROSS_BRACING_DETAILS_SCHEMA = {
     ],
 }
 
-END_DIAPHRAGM_DETAILS_SCHEMA = {
-    "id": "end_diaphragm_details_tab",
-    "views": {
-        "Cross Bracing": {
-            "overview": [
-                {
-                    "id": "type_selector",
-                    "label": "Type:",
-                    "type": "combo",
-                    "choices": VALUES_END_DIAPHRAGM_TYPE,
-                    "default": "Cross Bracing",
-                },
-            ],
-            "section_inputs": [
-                {
-                    "id": "design",
-                    "label": "Design:",
-                    "type": "combo",
-                    "choices": VALUES_GIRDER_DESIGN_MODE,
-                    "default": "Optimized",
-                    "bind": "cross_design_combo",
-                },
-                {
-                    "id": "bracing_type",
-                    "label": "Type of Bracing:",
-                    "type": "combo",
-                    "choices": ["K-Bracing", "X-Bracing"],
-                    "bind": "cross_bracing_type_combo",
-                },
-                {
-                    "id": "bracing_section_type",
-                    "label": "Bracing Section Type:",
-                    "type": "combo",
-                    "choices": [
-                        "Angle",
-                        "Double Angle (Long Leg)",
-                        "Double Angle (Short Leg)",
-                        "Channel",
-                        "Double Channel",
-                    ],
-                    "bind": "cross_bracing_section_type_combo",
-                },
-                {
-                    "id": "bracing_section",
-                    "label": "Bracing Section Designation:",
-                    "type": "combo_dynamic",
-                    "bind": "cross_bracing_section_combo",
-                },
-                {
-                    "id": "top_chord_enabled",
-                    "label": "Top Chord:",
-                    "type": "checkbox",
-                    "default": False,
-                    "bind": "cross_top_chord_checkbox",
-                },
-                {
-                    "id": "top_chord_type",
-                    "label": "Top Chord Section Type:",
-                    "type": "combo",
-                    "choices": [
-                        "Angle",
-                        "Double Angle (Long Leg)",
-                        "Double Angle (Short Leg)",
-                        "Channel",
-                        "Double Channel",
-                    ],
-                    "bind": "cross_top_chord_type_combo",
-                },
-                {
-                    "id": "top_chord_size",
-                    "label": "Top Chord Section Designation:",
-                    "type": "combo_dynamic",
-                    "bind": "cross_top_chord_size_combo",
-                },
-                {
-                    "id": "bottom_chord_enabled",
-                    "label": "Bottom Chord:",
-                    "type": "checkbox",
-                    "default": True,
-                    "bind": "cross_bottom_chord_checkbox",
-                },
-                {
-                    "id": "bottom_chord_type",
-                    "label": "Bottom Chord Section Type:",
-                    "type": "combo",
-                    "choices": [
-                        "Angle",
-                        "Double Angle (Long Leg)",
-                        "Double Angle (Short Leg)",
-                        "Channel",
-                        "Double Channel",
-                    ],
-                    "bind": "cross_bottom_chord_type_combo",
-                },
-                {
-                    "id": "bottom_chord_size",
-                    "label": "Bottom Chord Section Designation:",
-                    "type": "combo_dynamic",
-                    "bind": "cross_bottom_chord_size_combo",
-                },
-            ],
-        },
-        "Rolled Beam": {
-            "overview": [
-                {
-                    "id": "type_selector",
-                    "label": "Type:",
-                    "type": "combo",
-                    "choices": VALUES_END_DIAPHRAGM_TYPE,
-                    "default": "Rolled Beam",
-                },
-            ],
-            "section_inputs": [
-                {
-                    "id": "design",
-                    "label": "Design:",
-                    "type": "combo",
-                    "choices": VALUES_GIRDER_DESIGN_MODE,
-                    "default": "Optimized",
-                    "bind": "rolled_design_combo",
-                },
-                {
-                    "id": "is_section",
-                    "label": "IS Section:",
-                    "type": "combo_dynamic",
-                    "bind": "rolled_is_section_combo",
-                },
-            ],
-        },
-        "Welded Beam": {
-            "overview": [
-                {
-                    "id": "type_selector",
-                    "label": "Type:",
-                    "type": "combo",
-                    "choices": VALUES_END_DIAPHRAGM_TYPE,
-                    "default": "Welded Beam",
-                },
-            ],
-            "section_inputs": [
-                {
-                    "id": "design",
-                    "label": "Design:",
-                    "type": "combo",
-                    "choices": VALUES_GIRDER_DESIGN_MODE,
-                    "default": "Optimized",
-                    "bind": "welded_design_combo",
-                },
-                {
-                    "id": "symmetry",
-                    "label": "Symmetry:",
-                    "type": "combo",
-                    "choices": VALUES_GIRDER_SYMMETRY,
-                    "bind": "welded_symmetry_combo",
-                },
-            ],
-        },
+from PySide6.QtWidgets import QLabel
+from osdagbridge.desktop.ui.widgets.placeholder_section_preview import PlaceholderSectionPreviewWidget
+from osdagbridge.desktop.ui.dialogs.additional_input.drawings.rolled_section_preview import RolledSectionPreview
+from osdagbridge.desktop.ui.dialogs.tabs.sub_tabs.section_properties.cross_bracing_details_tab import BracingLayoutCadWidget
+
+# ── End Diaphragm Cross-Bracing schema ──────────────────────────────────────
+END_DIAPHRAGM_CROSS_BRACING_SCHEMA = {
+    "id":     KEY_MP_ED_TAB + ".cross_bracing",
+    "layout": {
+        "type":          "columns",
+        "columns":       2,
+        "column_widths": [1, 1],
     },
+    "sections": [
+
+        # ── CAD preview + selection — full width ────────────────────────────
+        {
+            "column":   0,
+            "col_span": 2,
+            "title":    "",
+            "rows": [
+                {
+                    "fields": [{
+                        "id":           KEY_MP_ED_CAD_PREVIEW,
+                        "type":         TYPE_DIRECT_WIDGET,
+                        "widget_class": BracingLayoutCadWidget,
+                    }]
+                },
+            ],
+        },
+
+        # ── Section Inputs — col 0 ──────────────────────────────────────────
+        {
+            "column": 0,
+            "title":  "Section Inputs",
+            "rows": [
+                {
+                    "fields": [{
+                        "id":        KEY_MP_ED_BRACING_TYPE,
+                        "label":     "Type of Bracing:",
+                        "type":      TYPE_COMBOBOX,
+                        "choices":   ["K-Bracing", "X-Bracing"],
+                        "on_change": "_on_ed_bracing_type_changed",
+                    }]
+                },
+                {
+                    "fields": [{
+                        "id":        KEY_MP_ED_BRACING_SECTION,
+                        "label":     "Bracing Section Type:",
+                        "type":      TYPE_COMBOBOX,
+                        "choices":   ["Angle", "Double Angle (Long Leg)", "Double Angle (Short Leg)", "Channel", "Double Channel"],
+                        "on_change": "_on_ed_bracing_section_type_changed",
+                    }]
+                },
+                {
+                    "fields": [{
+                        "id":        KEY_MP_ED_BRACING_SECTION_DESIGNATION,
+                        "label":     "Bracing Section Designation:",
+                        "type":      TYPE_COMBOBOX,
+                        "choices":   [],
+                        "on_change": "_on_ed_bracing_section_desig_changed",
+                    }]
+                },
+                {
+                    "fields": [{
+                        "id":        KEY_MP_ED_TOP_CHORD,
+                        "label":     "Top Chord:",
+                        "type":      TYPE_CHECKBOX,
+                        "on_change": "_on_ed_top_chord_toggled",
+                    }]
+                },
+                {
+                    "fields": [{
+                        "id":        KEY_MP_ED_TOP_CHORD_SECTION_TYPE,
+                        "label":     "Top Chord Section Type:",
+                        "type":      TYPE_COMBOBOX,
+                        "choices":   ["Angle", "Double Angle (Long Leg)", "Double Angle (Short Leg)", "Channel", "Double Channel"],
+                        "on_change": "_on_ed_top_chord_type_changed",
+                    }]
+                },
+                {
+                    "fields": [{
+                        "id":        KEY_MP_ED_TOP_CHORD_SECTION_DESIG,
+                        "label":     "Top Chord Section Designation:",
+                        "type":      TYPE_COMBOBOX,
+                        "choices":   [],
+                        "on_change": "_on_ed_top_chord_desig_changed",
+                    }]
+                },
+                {
+                    "fields": [{
+                        "id":        KEY_MP_ED_BOTTOM_CHORD,
+                        "label":     "Bottom Chord:",
+                        "type":      TYPE_CHECKBOX,
+                        "on_change": "_on_ed_bottom_chord_toggled",
+                    }]
+                },
+                {
+                    "fields": [{
+                        "id":        KEY_MP_ED_BOTTOM_CHORD_SECTION_TYPE,
+                        "label":     "Bottom Chord Section Type:",
+                        "type":      TYPE_COMBOBOX,
+                        "choices":   ["Angle", "Double Angle (Long Leg)", "Double Angle (Short Leg)", "Channel", "Double Channel"],
+                        "on_change": "_on_ed_bottom_chord_type_changed",
+                    }]
+                },
+                {
+                    "fields": [{
+                        "id":        KEY_MP_ED_BOTTOM_CHORD_SECTION_DESIG,
+                        "label":     "Bottom Chord Section Designation:",
+                        "type":      TYPE_COMBOBOX,
+                        "choices":   [],
+                        "on_change": "_on_ed_bottom_chord_desig_changed",
+                    }]
+                },
+            ],
+        },
+
+        # ── Section previews — col 1 ───────────────────────────────────────
+        {
+            "column": 1,
+            "title":  "",
+            "rows": [
+                {
+                    "fields": [{
+                        "id":           KEY_MP_ED_BRACING_PREVIEW,
+                        "type":         TYPE_DIRECT_WIDGET,
+                        "widget_class": lambda parent=None: PlaceholderSectionPreviewWidget("Bracing", 110, parent),
+                    }]
+                },
+                {
+                    "fields": [{
+                        "id":           KEY_MP_ED_TOP_CHORD_PREVIEW,
+                        "type":         TYPE_DIRECT_WIDGET,
+                        "widget_class": lambda parent=None: PlaceholderSectionPreviewWidget("Top Chord", 110, parent),
+                    }]
+                },
+                {
+                    "fields": [{
+                        "id":           KEY_MP_ED_BOTTOM_CHORD_PREVIEW,
+                        "type":         TYPE_DIRECT_WIDGET,
+                        "widget_class": lambda parent=None: PlaceholderSectionPreviewWidget("Bottom Chord", 110, parent),
+                    }]
+                },
+            ],
+        },
+    ],
+}
+
+# ── End Diaphragm Rolled Beam schema ────────────────────────────────────────
+END_DIAPHRAGM_ROLLED_SCHEMA = {
+    "id":     KEY_MP_ED_TAB + ".rolled",
+    "layout": {
+        "type":          "columns",
+        "columns":       2,
+        "column_widths": [1, 1],
+    },
+    "sections": [
+
+        # ── Section Inputs — col 0 ──────────────────────────────────────────
+        {
+            "column": 0,
+            "title":  "Section Inputs",
+            "rows": [
+                {
+                    "fields": [{
+                        "id":        KEY_MP_ED_IS_SECTION,
+                        "label":     "IS Section:",
+                        "type":      TYPE_COMBOBOX,
+                        "choices":   [],
+                        "on_change": "_on_ed_rolled_section_changed",
+                    }]
+                },
+            ],
+        },
+
+        # ── Section preview + properties — col 1 ────────────────────────────
+        {
+            "column": 1,
+            "title":  "",
+            "rows": [
+                {
+                    "fields": [{
+                        "id":           KEY_MP_ED_SECTION_PREVIEW,
+                        "type":         TYPE_DIRECT_WIDGET,
+                        "widget_class": lambda parent=None: RolledSectionPreview(parent),
+                    }]
+                },
+                {
+                    "fields": [{
+                        "id":           KEY_MP_ED_SECTION_PROPERTIES_DISPLAY,
+                        "type":         TYPE_DIRECT_WIDGET,
+                        "widget_class": lambda parent=None: QLabel("Section Properties", parent=parent),
+                    }]
+                },
+            ],
+        },
+    ],
+}
+
+# ── End Diaphragm Welded Beam schema ────────────────────────────────────────
+END_DIAPHRAGM_WELDED_SCHEMA = {
+    "id":     KEY_MP_ED_TAB + ".welded",
+    "layout": {
+        "type":          "columns",
+        "columns":       2,
+        "column_widths": [1, 1],
+    },
+    "sections": [
+
+        # ── Section Inputs — col 0 ──────────────────────────────────────────
+        {
+            "column": 0,
+            "title":  "Section Inputs",
+            "rows": [
+                {
+                    "fields": [{
+                        "id":        KEY_MP_ED_SYMMETRY,
+                        "label":     "Symmetry:",
+                        "type":      TYPE_COMBOBOX,
+                        "choices":   VALUES_GIRDER_SYMMETRY,
+                        "on_change": "_on_ed_welded_symmetry_changed",
+                    }]
+                },
+                {
+                    "fields": [{
+                        "id":         KEY_MP_ED_TOTAL_DEPTH,
+                        "label":      "Total Depth, d (mm):",
+                        "type":       TYPE_ADAPTIVE,
+                        "controller": KEY_DESIGN_MODE,
+                        "modes": {
+                            "Optimized": {
+                                "type":           TYPE_BOUND_BTN,
+                                "text":           "Set Bounds",
+                                "lower_limit":    200.0,
+                                "upper_limit":    2000.0,
+                                "with_increment": True,
+                                "on_accepted":    "_on_ed_bounds_accepted",
+                            },
+                            "Custom": {
+                                "type":                TYPE_TEXTBOX,
+                                "on_editing_finished": "_on_ed_total_depth_changed",
+                            },
+                        },
+                    }]
+                },
+                {
+                    "fields": [{
+                        "id":           KEY_MP_ED_WEB_THICKNESS,
+                        "label":        "Web Thickness, w<sub>t</sub> (mm):",
+                        "type":         TYPE_MODE_LINE,
+                        "mode_choices": ["All", "Custom"],
+                        "on_mode_change": "_on_ed_welded_thickness_mode_changed",
+                    }]
+                },
+                {
+                    "fields": [{
+                        "id":         KEY_MP_ED_TOP_FLANGE_WIDTH,
+                        "label":      "Width of Top Flange, t<sub>fw</sub> (mm):",
+                        "type":       TYPE_ADAPTIVE,
+                        "controller": KEY_DESIGN_MODE,
+                        "modes": {
+                            "Optimized": {
+                                "type":           TYPE_BOUND_BTN,
+                                "text":           "Set Bounds",
+                                "lower_limit":    100.0,
+                                "upper_limit":    1000.0,
+                                "with_increment": True,
+                                "on_accepted":    "_on_ed_bounds_accepted",
+                            },
+                            "Custom": {
+                                "type":                TYPE_TEXTBOX,
+                                "on_editing_finished": "_on_ed_top_width_changed",
+                            },
+                        },
+                    }]
+                },
+                {
+                    "fields": [{
+                        "id":           KEY_MP_ED_TOP_FLANGE_THICKNESS,
+                        "label":        "Top Flange Thickness, t<sub>ft</sub> (mm):",
+                        "type":         TYPE_MODE_LINE,
+                        "mode_choices": ["All", "Custom"],
+                        "on_mode_change": "_on_ed_welded_thickness_mode_changed",
+                    }]
+                },
+                {
+                    "fields": [{
+                        "id":         KEY_MP_ED_BOTTOM_FLANGE_WIDTH,
+                        "label":      "Width of Bottom Flange, b<sub>fw</sub> (mm):",
+                        "type":       TYPE_ADAPTIVE,
+                        "controller": KEY_DESIGN_MODE,
+                        "modes": {
+                            "Optimized": {
+                                "type":           TYPE_BOUND_BTN,
+                                "text":           "Set Bounds",
+                                "lower_limit":    100.0,
+                                "upper_limit":    1000.0,
+                                "with_increment": True,
+                                "on_accepted":    "_on_ed_bounds_accepted",
+                            },
+                            "Custom": {
+                                "type":                TYPE_TEXTBOX,
+                                "on_editing_finished": "_on_ed_bottom_width_changed",
+                            },
+                        },
+                    }]
+                },
+                {
+                    "fields": [{
+                        "id":           KEY_MP_ED_BOTTOM_FLANGE_THICKNESS,
+                        "label":        "Bottom Flange Thickness, b<sub>ft</sub> (mm):",
+                        "type":         TYPE_MODE_LINE,
+                        "mode_choices": ["All", "Custom"],
+                        "on_mode_change": "_on_ed_welded_thickness_mode_changed",
+                    }]
+                },
+            ],
+        },
+
+        # ── Section preview + properties — col 1 ────────────────────────────
+        {
+            "column": 1,
+            "title":  "",
+            "rows": [
+                {
+                    "fields": [{
+                        "id":           KEY_MP_ED_SECTION_PREVIEW,
+                        "type":         TYPE_DIRECT_WIDGET,
+                        "widget_class": lambda parent=None: RolledSectionPreview(parent),
+                    }]
+                },
+                {
+                    "fields": [{
+                        "id":           KEY_MP_ED_SECTION_PROPERTIES_DISPLAY,
+                        "type":         TYPE_DIRECT_WIDGET,
+                        "widget_class": lambda parent=None: QLabel("Section Properties", parent=parent),
+                    }]
+                },
+            ],
+        },
+    ],
+}
+
+# Legacy wrapper — sub-schemas consumed by UIBuilder
+END_DIAPHRAGM_DETAILS_SCHEMA = {
+    "id": KEY_MP_ED_TAB,
+    "cross_bracing": END_DIAPHRAGM_CROSS_BRACING_SCHEMA,
+    "rolled": END_DIAPHRAGM_ROLLED_SCHEMA,
+    "welded": END_DIAPHRAGM_WELDED_SCHEMA,
 }
 
 # Versioned contract for schema-driven Member Properties migration.
@@ -2810,7 +3002,9 @@ MEMBER_PROPERTIES_SCHEMA_V1 = {
         "end_diaphragm_details": {
             "id": "end_diaphragm_details",
             "title": "End Diaphragm Details",
-            "views": END_DIAPHRAGM_DETAILS_SCHEMA.get("views", {}),
+            "cross_bracing": END_DIAPHRAGM_DETAILS_SCHEMA.get("cross_bracing", {}),
+            "rolled": END_DIAPHRAGM_DETAILS_SCHEMA.get("rolled", {}),
+            "welded": END_DIAPHRAGM_DETAILS_SCHEMA.get("welded", {}),
         },
     },
 }

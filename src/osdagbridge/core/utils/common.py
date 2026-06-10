@@ -703,6 +703,13 @@ KEY_MP_ED_ELASTIC_MODULUS_ZZ     = "member_properties.end_diaphragm_details.mate
 KEY_MP_ED_ELASTIC_MODULUS_ZY     = "member_properties.end_diaphragm_details.material_properties.elastic_modulus_zy" # Elastic modulus in weak axis direction for end diaphragm for welded or rolled type - only visible if end diaphragm type is welded or rolled
 KEY_MP_ED_PLASTIC_MODULUS_ZUZ    = "member_properties.end_diaphragm_details.material_properties.plastic_modulus_zuz" # Plastic modulus in strong axis direction for end diaphragm for welded or rolled type - only visible if end diaphragm type is welded or rolled
 KEY_MP_ED_PLASTIC_MODULUS_ZUY    = "member_properties.end_diaphragm_details.material_properties.plastic_modulus_zuy" # Plastic modulus in weak axis direction for end diaphragm for welded or rolled type - only visible if end diaphragm type is welded or rolled
+KEY_MP_ED_DESIGN                      = "member_properties.end_diaphragm_details.design"  # Design mode combo (Optimized/Custom)
+KEY_MP_ED_CAD_PREVIEW                 = "member_properties.end_diaphragm_details.cad_preview"
+KEY_MP_ED_SECTION_PREVIEW             = "member_properties.end_diaphragm_details.section_preview"
+KEY_MP_ED_BRACING_PREVIEW             = "member_properties.end_diaphragm_details.bracing_preview"
+KEY_MP_ED_TOP_CHORD_PREVIEW           = "member_properties.end_diaphragm_details.top_chord_preview"
+KEY_MP_ED_BOTTOM_CHORD_PREVIEW        = "member_properties.end_diaphragm_details.bottom_chord_preview"
+KEY_MP_ED_SECTION_PROPERTIES_DISPLAY  = "member_properties.end_diaphragm_details.section_properties_display"
 
 
 # Loading - Permanent Load

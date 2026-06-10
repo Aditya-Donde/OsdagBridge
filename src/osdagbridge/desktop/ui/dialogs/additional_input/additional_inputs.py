@@ -68,6 +68,7 @@ class AdditionalInputs(QDialog):
         self._member_properties_editable = True
         self._last_saved_data = {}
         self.saved_values = {}  # Store all input values here
+        self._ed_state_by_key = {}  # End Diaphragm per-member state
         self.init_ui()
         self.setStyleSheet("""
             QDialog {
@@ -1406,6 +1407,470 @@ class AdditionalInputs(QDialog):
                 self.section_properties_tab.set_girder_count(count)
         except Exception:
             pass
+
+    # ── End Diaphragm Handlers ───────────────────────────────────────────────
+
+    def _bind_ed_girder_details(self, girder_tab):
+        """Bind to Girder Details tab for girder pair updates."""
+        self._ed_girder_details_tab = girder_tab
+        self._refresh_ed_girder_pairs()
+
+    def _on_ed_type_changed(self, text: str):
+        """Switch End Diaphragm view (Cross Bracing / Rolled Beam / Welded Beam)."""
+        self._save_ed_state()
+        self.working_input_dict[KEY_MP_ED_TYPE] = text
+        view_map = {"Cross Bracing": 0, "Rolled Beam": 1, "Welded Beam": 2}
+        idx = view_map.get(text, 0)
+        if hasattr(self, "section_properties_tab") and hasattr(self.section_properties_tab, "ed_stack"):
+            self.section_properties_tab.ed_stack.setCurrentIndex(idx)
+        self._load_ed_state()
+
+    def _on_ed_tab_activated(self):
+        """Called when End Diaphragm tab is activated."""
+        self._refresh_ed_girder_pairs()
+        self._populate_rolled_sections()
+        self._load_ed_state()
+
+    def _on_ed_girder_pair_changed(self, pair_text: str):
+        """Handle girder pair selection change."""
+        self._save_ed_state()
+        self.working_input_dict[KEY_MP_ED_SELECT_GIRDERS] = pair_text
+        self._refresh_ed_member_ids(pair_text)
+        self._sync_ed_selection_across_views()
+        self._load_ed_state()
+
+    def _on_ed_member_changed(self, member_id: str):
+        """Handle member ID change."""
+        self.working_input_dict[KEY_MP_ED_MEMBER_ID] = member_id
+
+    def _refresh_ed_girder_pairs(self):
+        """Populate girder pair combos from Girder Details tab."""
+        pairs = []
+        if hasattr(self, "section_properties_tab"):
+            girder_tab = getattr(self.section_properties_tab, "girder_details_tab", None)
+            if girder_tab and hasattr(girder_tab, "available_girders"):
+                try:
+                    girders = list(getattr(girder_tab, "available_girders") or [])
+                except Exception:
+                    girders = []
+                if not girders:
+                    girders = ["G1", "G2"]
+                pairs = [f"{girders[i]} to {girders[i+1]}" for i in range(len(girders)-1)]
+        if not pairs:
+            pairs = ["G1 to G2"]
+
+        # TODO: Selection widget not yet implemented - skip for now
+        pass
+
+    def _refresh_ed_member_ids(self, pair_text: str):
+        """Generate member IDs for the selected girder pair."""
+        # TODO: Selection widget not yet implemented - skip for now
+        pass
+
+    def _sync_ed_selection_across_views(self):
+        """Sync girder pair selection across all 3 End Diaphragm views."""
+        # TODO: Selection widget not yet implemented - skip for now
+        pass
+
+    def _ed_selection_key(self) -> str:
+        """Build state key from current view, girder pair, member."""
+        view = str(self.working_input_dict.get(KEY_MP_ED_TYPE, "Cross Bracing")).strip()
+        pair = str(self.working_input_dict.get(KEY_MP_ED_SELECT_GIRDERS, "")).strip()
+        member = str(self.working_input_dict.get(KEY_MP_ED_MEMBER_ID, "")).strip()
+        return f"{view}::{pair}::{member}"
+
+    def _ed_snapshot_view_state(self) -> dict:
+        """Snapshot all End Diaphragm field values into a dict."""
+        ed_keys = [
+            KEY_MP_ED_TYPE, KEY_MP_ED_SELECT_GIRDERS, KEY_MP_ED_MEMBER_ID,
+            KEY_MP_ED_BRACING_TYPE, KEY_MP_ED_BRACING_SECTION,
+            KEY_MP_ED_BRACING_SECTION_DESIGNATION,
+            KEY_MP_ED_TOP_CHORD, KEY_MP_ED_TOP_CHORD_SECTION_TYPE,
+            KEY_MP_ED_TOP_CHORD_SECTION_DESIG,
+            KEY_MP_ED_BOTTOM_CHORD, KEY_MP_ED_BOTTOM_CHORD_SECTION_TYPE,
+            KEY_MP_ED_BOTTOM_CHORD_SECTION_DESIG,
+            KEY_MP_ED_SYMMETRY, KEY_MP_ED_IS_SECTION,
+            KEY_MP_ED_TOTAL_DEPTH, KEY_MP_ED_WEB_THICKNESS,
+            KEY_MP_ED_TOP_FLANGE_WIDTH, KEY_MP_ED_TOP_FLANGE_THICKNESS,
+            KEY_MP_ED_BOTTOM_FLANGE_WIDTH, KEY_MP_ED_BOTTOM_FLANGE_THICKNESS,
+        ]
+        state = {}
+        for key in ed_keys:
+            val = self.working_input_dict.get(key)
+            if val is not None:
+                state[key] = val
+        return state
+
+    def _ed_apply_view_state(self, state: dict):
+        """Apply state dict to End Diaphragm widgets."""
+        if not isinstance(state, dict):
+            return
+        for key, value in state.items():
+            self.working_input_dict[key] = value
+            w = self.findChild(QWidget, key)
+            if w is None:
+                continue
+            if isinstance(w, QComboBox):
+                w.setCurrentText(str(value))
+            elif isinstance(w, QCheckBox):
+                w.setChecked(bool(value))
+            elif isinstance(w, QLineEdit):
+                w.setText(str(value) if value is not None else "")
+
+    def _save_ed_state(self):
+        """Save current view state to storage."""
+        key = self._ed_selection_key()
+        if not key or key == "::":
+            return
+        state = self._ed_snapshot_view_state()
+        self._ed_state_by_key[key] = state
+
+    def _load_ed_state(self):
+        """Load state for current view from storage."""
+        key = self._ed_selection_key()
+        if not key or key == "::":
+            return
+        state = self._ed_state_by_key.get(key)
+        if state is not None:
+            self._ed_apply_view_state(state)
+
+    def _on_ed_reset_defaults(self):
+        """Reset End Diaphragm fields to defaults."""
+        defaults = {
+            KEY_MP_ED_TYPE: "Cross Bracing",
+            KEY_MP_ED_BRACING_TYPE: "K-Bracing",
+            KEY_MP_ED_TOP_CHORD: False,
+            KEY_MP_ED_BOTTOM_CHORD: True,
+            KEY_MP_ED_SYMMETRY: "Symmetric",
+        }
+        for key, val in defaults.items():
+            self.working_input_dict[key] = val
+            w = self.findChild(QWidget, key)
+            if w is None:
+                continue
+            if isinstance(w, QComboBox):
+                w.setCurrentText(str(val))
+            elif isinstance(w, QCheckBox):
+                w.setChecked(bool(val))
+        self.design_mode_trigger("Optimized")
+        type_text = str(self.working_input_dict.get(KEY_MP_ED_TYPE, "Cross Bracing"))
+        self._on_ed_type_changed(type_text)
+
+    def _on_ed_design_changed(self, text: str):
+        """Design mode is controlled externally via design_mode_trigger."""
+        pass
+
+    def _on_ed_bracing_type_changed(self, text: str):
+        self.working_input_dict[KEY_MP_ED_BRACING_TYPE] = text
+        self._update_ed_cad_preview()
+
+    def _on_ed_bracing_section_type_changed(self, text: str):
+        self.working_input_dict[KEY_MP_ED_BRACING_SECTION] = text
+        self._populate_ed_designations(text, KEY_MP_ED_BRACING_SECTION_DESIGNATION)
+
+    def _on_ed_bracing_section_desig_changed(self, text: str):
+        self.working_input_dict[KEY_MP_ED_BRACING_SECTION_DESIGNATION] = text
+        self._update_ed_cad_preview()
+
+    def _on_ed_top_chord_toggled(self, checked: bool):
+        self.working_input_dict[KEY_MP_ED_TOP_CHORD] = checked
+        self._update_ed_cad_preview()
+
+    def _on_ed_top_chord_type_changed(self, text: str):
+        self.working_input_dict[KEY_MP_ED_TOP_CHORD_SECTION_TYPE] = text
+        self._populate_ed_designations(text, KEY_MP_ED_TOP_CHORD_SECTION_DESIG)
+
+    def _on_ed_top_chord_desig_changed(self, text: str):
+        self.working_input_dict[KEY_MP_ED_TOP_CHORD_SECTION_DESIG] = text
+
+    def _on_ed_bottom_chord_toggled(self, checked: bool):
+        self.working_input_dict[KEY_MP_ED_BOTTOM_CHORD] = checked
+        self._update_ed_cad_preview()
+
+    def _on_ed_bottom_chord_type_changed(self, text: str):
+        self.working_input_dict[KEY_MP_ED_BOTTOM_CHORD_SECTION_TYPE] = text
+        self._populate_ed_designations(text, KEY_MP_ED_BOTTOM_CHORD_SECTION_DESIG)
+
+    def _on_ed_bottom_chord_desig_changed(self, text: str):
+        self.working_input_dict[KEY_MP_ED_BOTTOM_CHORD_SECTION_DESIG] = text
+
+    def _on_ed_rolled_section_changed(self, text: str):
+        self.working_input_dict[KEY_MP_ED_IS_SECTION] = text
+        self._update_ed_rolled_preview(text)
+
+    def _on_ed_welded_symmetry_changed(self, text: str):
+        self.working_input_dict[KEY_MP_ED_SYMMETRY] = text
+
+    def _on_ed_welded_thickness_mode_changed(self, text: str):
+        pass
+
+    def _on_ed_bounds_accepted(self, field_id: str, result: dict):
+        self.working_input_dict[field_id] = result
+        self._update_ed_welded_preview_and_props()
+
+    def _on_ed_total_depth_changed(self, text: str):
+        self.working_input_dict[KEY_MP_ED_TOTAL_DEPTH] = text
+        self._update_ed_welded_preview_and_props()
+
+    def _on_ed_web_thickness_changed(self, text: str):
+        self.working_input_dict[KEY_MP_ED_WEB_THICKNESS] = text
+        self._update_ed_welded_preview_and_props()
+
+    def _on_ed_top_width_changed(self, text: str):
+        self.working_input_dict[KEY_MP_ED_TOP_FLANGE_WIDTH] = text
+        self._update_ed_welded_preview_and_props()
+
+    def _on_ed_top_thickness_changed(self, text: str):
+        self.working_input_dict[KEY_MP_ED_TOP_FLANGE_THICKNESS] = text
+        self._update_ed_welded_preview_and_props()
+
+    def _on_ed_bottom_width_changed(self, text: str):
+        self.working_input_dict[KEY_MP_ED_BOTTOM_FLANGE_WIDTH] = text
+        self._update_ed_welded_preview_and_props()
+
+    def _on_ed_bottom_thickness_changed(self, text: str):
+        self.working_input_dict[KEY_MP_ED_BOTTOM_FLANGE_THICKNESS] = text
+        self._update_ed_welded_preview_and_props()
+
+    def _update_ed_welded_preview_and_props(self):
+        """Update welded section preview and properties."""
+        import math as _math
+        from osdagbridge.desktop.ui.dialogs.additional_input.drawings.rolled_section_preview import RolledSectionPreview
+        from PySide6.QtWidgets import QLabel
+
+        depth = float(str(self.working_input_dict.get(KEY_MP_ED_TOTAL_DEPTH, "") or 0) or 0)
+        top_width = float(str(self.working_input_dict.get(KEY_MP_ED_TOP_FLANGE_WIDTH, "") or 0) or 0)
+        bottom_width = float(str(self.working_input_dict.get(KEY_MP_ED_BOTTOM_FLANGE_WIDTH, "") or top_width) or top_width or 0)
+        web_t = float(str(self.working_input_dict.get(KEY_MP_ED_WEB_THICKNESS, "") or 0) or 0)
+        top_t = float(str(self.working_input_dict.get(KEY_MP_ED_TOP_FLANGE_THICKNESS, "") or 0) or 0)
+        bottom_t = float(str(self.working_input_dict.get(KEY_MP_ED_BOTTOM_FLANGE_THICKNESS, "") or top_t) or top_t or 0)
+
+        for widget in self.findChildren(RolledSectionPreview):
+            if depth > 0 and max(top_width, bottom_width) > 0:
+                widget.set_dimensions(depth, top_width, bottom_width, web_t, top_t, bottom_t)
+            else:
+                widget.clear()
+
+        # TODO: Properties widget not yet implemented - skip for now
+        pass
+
+    def _compute_welded_properties(self, depth, top_width, bottom_width, web_t, top_t, bottom_t):
+        h_web = max(depth - top_t - bottom_t, 1.0)
+        area_top = top_width * top_t
+        area_bottom = bottom_width * bottom_t
+        area_web = web_t * h_web
+        area_total_mm2 = area_top + area_bottom + area_web
+        area_cm2 = area_total_mm2 / 100.0
+        mass_kg_per_m = (area_total_mm2 / 1_000_000.0) * 7850.0
+
+        distance_top = h_web / 2.0 + top_t / 2.0
+        distance_bottom = h_web / 2.0 + bottom_t / 2.0
+        iz_web = (web_t * h_web**3) / 12.0
+        iz_top = (top_width * top_t**3) / 12.0 + area_top * distance_top**2
+        iz_bottom = (bottom_width * bottom_t**3) / 12.0 + area_bottom * distance_bottom**2
+        iz_cm4 = (iz_web + iz_top + iz_bottom) / 10000.0
+
+        iy_web = (h_web * web_t**3) / 12.0
+        iy_top = (top_t * top_width**3) / 12.0
+        iy_bottom = (bottom_t * bottom_width**3) / 12.0
+        iy_cm4 = (iy_web + iy_top + iy_bottom) / 10000.0
+
+        rz_cm = _math.sqrt(iz_cm4 / area_cm2) if area_cm2 > 0 else 0.0
+        ry_cm = _math.sqrt(iy_cm4 / area_cm2) if area_cm2 > 0 else 0.0
+
+        depth_cm = depth / 10.0
+        width_cm = max(top_width, bottom_width) / 10.0
+        zz_cm3 = iz_cm4 / (depth_cm / 2.0) if depth_cm > 0 else 0.0
+        zy_cm3 = iy_cm4 / (width_cm / 2.0) if width_cm > 0 else 0.0
+
+        zpl_major = (
+            area_top * distance_top + area_bottom * distance_bottom + (web_t * h_web**2) / 4.0
+        ) / 1000.0
+        zpl_minor = (
+            (top_t * top_width**2) / 4.0
+            + (bottom_t * bottom_width**2) / 4.0
+            + (h_web * web_t**2) / 4.0
+        ) / 1000.0
+
+        return {
+            "Mass, M (Kg/m)": mass_kg_per_m,
+            "Sectional Area, a (cm2)": area_cm2,
+            "2nd Moment of Area, Iz (cm4)": iz_cm4,
+            "2nd Moment of Area, Iy (cm4)": iy_cm4,
+            "Radius of Gyration, rz (cm)": rz_cm,
+            "Radius of Gyration, ry (cm)": ry_cm,
+            "Elastic Modulus, Zz (cm3)": zz_cm3,
+            "Elastic Modulus, Zy (cm3)": zy_cm3,
+            "Plastic Modulus, Zuz (cm3)": zpl_major,
+            "Plastic Modulus, Zuy (cm3)": zpl_minor,
+        }
+
+    def _populate_ed_designations(self, section_type: str, target_key: str):
+        """Populate designation combo based on section type."""
+        from osdagbridge.desktop.ui.widgets.section_viewer import SectionCatalog
+        catalog = SectionCatalog()
+        stype = str(section_type or "").strip().lower()
+        if stype in ("angle", "double angle (long leg)", "double angle (short leg)"):
+            items = catalog.list_angles()
+        elif stype in ("channel", "double channel"):
+            items = catalog.list_channels()
+        else:
+            items = []
+        combo = self.findChild(QComboBox, target_key)
+        if combo is None:
+            return
+        block = combo.blockSignals(True)
+        combo.clear()
+        combo.addItems(items)
+        if items:
+            combo.setCurrentIndex(0)
+        combo.blockSignals(block)
+
+    def _populate_rolled_sections(self):
+        """Populate IS Section combo for rolled beam view."""
+        try:
+            from osdagbridge.desktop.ui.dialogs.tabs.sub_tabs.section_properties.girder_details_tab import girder_properties
+            sections = list(girder_properties.list_available_sections().keys())
+        except Exception:
+            sections = []
+        if not sections:
+            sections = ["ISMB 500", "ISMB 550", "ISMB 600", "ISWB 500", "ISWB 550", "ISWB 600"]
+        combo = self.findChild(QComboBox, KEY_MP_ED_IS_SECTION)
+        if combo is None:
+            return
+        block = combo.blockSignals(True)
+        combo.clear()
+        combo.addItems(sections)
+        if sections:
+            combo.setCurrentIndex(0)
+        combo.blockSignals(block)
+
+    def _update_ed_cad_preview(self):
+        """Update End Diaphragm CAD preview with current values."""
+        from osdagbridge.desktop.ui.dialogs.tabs.sub_tabs.section_properties.cross_bracing_details_tab import BracingLayoutCadWidget
+        for widget in self.findChildren(BracingLayoutCadWidget):
+            bracing_type = self.working_input_dict.get(KEY_MP_ED_BRACING_TYPE, "K-Bracing")
+            top_chord = self.working_input_dict.get(KEY_MP_ED_TOP_CHORD, False)
+            bottom_chord = self.working_input_dict.get(KEY_MP_ED_BOTTOM_CHORD, True)
+            member_label = self.working_input_dict.get(KEY_MP_ED_MEMBER_ID, "")
+            girder_pair = self.working_input_dict.get(KEY_MP_ED_SELECT_GIRDERS, "")
+            widget.set_layout(
+                bracing_type=bracing_type,
+                top_chord=bool(top_chord),
+                bottom_chord=bool(bottom_chord),
+                member_label=member_label,
+                girder_pair=girder_pair,
+            )
+
+    def _update_ed_rolled_preview(self, designation: str):
+        """Update End Diaphragm rolled section preview and properties."""
+        from osdagbridge.desktop.ui.dialogs.additional_input.drawings.rolled_section_preview import RolledSectionPreview
+        try:
+            from osdagbridge.desktop.ui.dialogs.tabs.sub_tabs.section_properties.girder_details_tab import girder_properties
+            beam = girder_properties.get_beam_profile(designation)
+            outline = girder_properties.get_rolled_section(designation) if beam is None else None
+        except Exception:
+            beam = None
+            outline = None
+        for widget in self.findChildren(RolledSectionPreview):
+            if beam:
+                widget.set_dimensions(
+                    depth_mm=beam.depth_mm,
+                    flange_width_mm=beam.flange_width_mm,
+                    bottom_flange_width_mm=beam.flange_width_mm,
+                    web_thickness_mm=beam.web_thickness_mm,
+                    flange_thickness_mm=beam.flange_thickness_mm,
+                    bottom_flange_thickness_mm=beam.flange_thickness_mm,
+                )
+            elif outline:
+                widget.set_dimensions(
+                    depth_mm=outline["depth_mm"],
+                    flange_width_mm=outline["top_flange_width_mm"],
+                    bottom_flange_width_mm=outline["bottom_flange_width_mm"],
+                    web_thickness_mm=outline["web_thickness_mm"],
+                    flange_thickness_mm=outline["top_flange_thickness_mm"],
+                    bottom_flange_thickness_mm=outline["bottom_flange_thickness_mm"],
+                )
+            else:
+                widget.clear()
+        for widget in self.findChildren(EndDiaphragmPropertiesWidget):
+            if beam:
+                props = {
+                    "Mass, M (Kg/m)": beam.mass_per_meter_kg,
+                    "Sectional Area, a (cm2)": beam.area_cm2,
+                    "2nd Moment of Area, Iz (cm4)": beam.moment_of_inertia_zz_cm4,
+                    "2nd Moment of Area, Iy (cm4)": beam.moment_of_inertia_yy_cm4,
+                    "Radius of Gyration, rz (cm)": beam.radius_of_gyration_z_cm,
+                    "Radius of Gyration, ry (cm)": beam.radius_of_gyration_y_cm,
+                    "Elastic Modulus, Zz (cm3)": beam.elastic_section_modulus_z_cm3,
+                    "Elastic Modulus, Zy (cm3)": beam.elastic_section_modulus_y_cm3,
+                    "Plastic Modulus, Zuz (cm3)": beam.plastic_section_modulus_z_cm3,
+                    "Plastic Modulus, Zuy (cm3)": beam.plastic_section_modulus_y_cm3,
+                }
+                widget.set_properties(props)
+            else:
+                widget.clear()
+
+    def collect_ed_data(self) -> dict:
+        """Collect End Diaphragm data with per-member state."""
+        self._save_ed_state()
+        current_view = str(self.working_input_dict.get(KEY_MP_ED_TYPE, "Cross Bracing")).strip()
+        current_pair = str(self.working_input_dict.get(KEY_MP_ED_SELECT_GIRDERS, "")).strip()
+        current_member = str(self.working_input_dict.get(KEY_MP_ED_MEMBER_ID, "")).strip()
+
+        by_view = {}
+        for key, state in self._ed_state_by_key.items():
+            parts = key.split("::", 2)
+            if len(parts) != 3:
+                continue
+            view, pair, member = parts
+            if view not in by_view:
+                by_view[view] = {}
+            by_view[view][member] = {**state, "select_girders": pair, "member_id": member}
+
+        return {
+            "type": current_view,
+            "select_girders": current_pair,
+            "member_id": current_member,
+            "end_diaphragm_by_view": by_view,
+        }
+
+    def restore_ed_data(self, data: dict):
+        """Restore End Diaphragm data with per-member state."""
+        if not isinstance(data, dict):
+            return
+
+        by_view = data.get("end_diaphragm_by_view")
+        if isinstance(by_view, dict):
+            self._ed_state_by_key = {}
+            for view, members in by_view.items():
+                if not isinstance(members, dict):
+                    continue
+                for member, payload in members.items():
+                    if not isinstance(payload, dict):
+                        continue
+                    pair = str(payload.get("select_girders") or "").strip()
+                    canonical = str(payload.get("member_id") or member or "").strip()
+                    if canonical.endswith("M2"):
+                        canonical = canonical[:-1] + "1"
+                    if not view or not pair or not canonical:
+                        continue
+                    state = {k: v for k, v in payload.items() if k not in ("select_girders", "member_id")}
+                    self._ed_state_by_key[f"{view}::{pair}::{canonical}"] = state
+
+        for key in [KEY_MP_ED_TYPE, KEY_MP_ED_SELECT_GIRDERS, KEY_MP_ED_MEMBER_ID,
+                     KEY_MP_ED_BRACING_TYPE, KEY_MP_ED_SYMMETRY, KEY_MP_ED_IS_SECTION,
+                     KEY_MP_ED_TOTAL_DEPTH, KEY_MP_ED_WEB_THICKNESS,
+                     KEY_MP_ED_TOP_FLANGE_WIDTH, KEY_MP_ED_TOP_FLANGE_THICKNESS,
+                     KEY_MP_ED_BOTTOM_FLANGE_WIDTH, KEY_MP_ED_BOTTOM_FLANGE_THICKNESS]:
+            val = data.get(key)
+            if val is not None:
+                self.working_input_dict[key] = val
+
+        self._refresh_ed_girder_pairs()
+        type_text = str(self.working_input_dict.get(KEY_MP_ED_TYPE, "Cross Bracing"))
+        self._on_ed_type_changed(type_text)
+        self._load_ed_state()
 
     def get_all_values(self):
         """
