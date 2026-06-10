@@ -946,6 +946,44 @@ class InputDock(QWidget):
         else:
             print("[ERROR]: template_page.input_dictionary Not Found")
 
+    def populate_from_dict(self, data: dict) -> None:
+        """
+        Push all values from *data* into the input dock widgets and parent.input_dict.
+        Called after loading an OSI file.  Signals are blocked while setting
+        widget values to avoid cascading validation callbacks.
+        """
+        if not self.input_widget:
+            return
+
+        # Replace input_dict contents in-place (keep same object reference)
+        if hasattr(self.parent, "input_dict"):
+            self.parent.input_dict.clear()
+            self.parent.input_dict.update(data)
+
+        # Walk every widget that has an objectName matching a key in data
+        for widget in self.input_widget.findChildren(QWidget):
+            key = widget.objectName()
+            if not key or key not in data:
+                continue
+            value = data[key]
+            if value is None:
+                continue
+            text = str(value)
+            if isinstance(widget, QLineEdit):
+                widget.blockSignals(True)
+                widget.setText(text)
+                widget.blockSignals(False)
+            elif isinstance(widget, QComboBox):
+                # Ensure the saved value exists as an option (handles custom materials)
+                if widget.findText(text) < 0:
+                    widget.addItem(text)
+                self._set_combo_silently(widget, text)
+
+        # Mark required fields as changed so solve_extend_basic_input_dict
+        # runs on the next Design call and derives all computed defaults.
+        self.is_require_field_changed = True
+        self.input_value_changed.emit()
+
     # ══════════════════════════════════════════════════════════════════════════
     # Utilities
     # ══════════════════════════════════════════════════════════════════════════
