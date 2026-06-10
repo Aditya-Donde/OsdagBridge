@@ -126,6 +126,12 @@ class UIBuilder(QWidget):
             self._build_grid(self._schema, card_layout)
             main_layout.addWidget(card)
 
+        # Collect surplus vertical space below the cards so content stays
+        # top-aligned instead of being justified across the page height.
+        # Tabs/columns layouts manage their own stretch.
+        if layout_type not in ("tabs", "columns"):
+            main_layout.addStretch(1)
+
         if self._with_scroll:
             scroll = QScrollArea()
             scroll.setWidgetResizable(True)
@@ -427,6 +433,9 @@ class UIBuilder(QWidget):
                 "font-size: 12px; font-weight: bold; color: #000;"
                 " border: none; background: transparent;"
             )
+            # Keep surplus vertical space out of the title row when the card
+            # is allocated more height than its content needs.
+            title_label.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)
             card_layout.addWidget(title_label)
         return card, card_layout
 
@@ -631,7 +640,7 @@ class UIBuilder(QWidget):
                     ))
 
         elif ftype == TYPE_NOTICE:
-            notice_container, adjust_lbl, warning_lbl = self._build_notice_container()
+            notice_container, adjust_lbl, warning_lbl = self._build_notice_container(field_width)
             setattr(owner, field_def["bind_adjust"],    adjust_lbl)
             setattr(owner, field_def["bind_warning"],   warning_lbl)
             setattr(owner, field_def["bind_container"], notice_container)
