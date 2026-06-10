@@ -33,7 +33,7 @@ from .plot_generator import (
     build_nodes_members,
     figure_to_bytes,
 )
-
+from osdagbridge.core.utils.codes.irc6_2017 import IRC6_2017
 from osdagbridge.core.utils.common import (
     KEY_STRUCTURE_TYPE,
     KEY_PROJECT_LOCATION,
@@ -1885,38 +1885,13 @@ class PlateGirderBridge:
             analysis_results=results,
             print_report=True,
         )
+        self._dcr_engine = engine
         self.design_results = design_results
 
         # Write every output into output_dict while it is still mutable.
         # store_design_results also sets the KEY_UTIL_* values so the block
         # below is redundant — but kept for the _frontend.set_output_value calls.
         self.store_design_results(design_results)
-
-        # Keep frontend output-dock values in sync (these drive the percent bars).
-        dcr_by_id: dict[int, float] = {}
-        for c in engine.checks:
-            dcr_by_id[c.check_id] = max(dcr_by_id.get(c.check_id, 0.0), c.dcr)
-        self._frontend.set_output_value(KEY_UTIL_FLEXURE,          dcr_by_id.get(1,  0.0) * 100)
-        self._frontend.set_output_value(KEY_UTIL_SHEAR,            dcr_by_id.get(2,  0.0) * 100)
-        self._frontend.set_output_value(KEY_UTIL_INTERACTION,      dcr_by_id.get(3,  0.0) * 100)
-        self._frontend.set_output_value(KEY_UTIL_LTB,              dcr_by_id.get(5,  0.0) * 100)
-        defl_dcr = max(dcr_by_id.get(13, 0.0), dcr_by_id.get(14, 0.0), dcr_by_id.get(15, 0.0))
-        self._frontend.set_output_value(KEY_UTIL_DEFLECTION_CRACK,  defl_dcr * 100)
-        fatigue_dcr = max(dcr_by_id.get(8, 0.0), dcr_by_id.get(9, 0.0))
-        self._frontend.set_output_value(KEY_UTIL_FATIGUE,           fatigue_dcr * 100)
-        trans_shear_dcr = max(dcr_by_id.get(16, 0.0), dcr_by_id.get(17, 0.0))
-        self._frontend.set_output_value(KEY_UTIL_LONG_TRANS_SHEAR,  trans_shear_dcr * 100)
-        stress_dcr = max(dcr_by_id.get(10, 0.0), dcr_by_id.get(11, 0.0), dcr_by_id.get(12, 0.0))
-        self._frontend.set_output_value(KEY_UTIL_STRESS_LIMITATION, stress_dcr * 100)
-
-        self.output_dict[KEY_UTIL_FLEXURE]           = dcr_by_id.get(1,  0.0) * 100
-        self.output_dict[KEY_UTIL_SHEAR]             = dcr_by_id.get(2,  0.0) * 100
-        self.output_dict[KEY_UTIL_INTERACTION]       = dcr_by_id.get(3,  0.0) * 100
-        self.output_dict[KEY_UTIL_LTB]               = dcr_by_id.get(5,  0.0) * 100
-        self.output_dict[KEY_UTIL_DEFLECTION_CRACK]  = defl_dcr * 100
-        self.output_dict[KEY_UTIL_FATIGUE]           = fatigue_dcr * 100
-        self.output_dict[KEY_UTIL_LONG_TRANS_SHEAR]  = trans_shear_dcr * 100
-        self.output_dict[KEY_UTIL_STRESS_LIMITATION] = stress_dcr * 100
 
     def _design_cross_bracing_members(self) -> dict:
         """
@@ -3216,6 +3191,138 @@ class PlateGirderBridge:
         results = self.get_results_dataset()
         handler = PlateGirderAnalysisResults(dataset=results, bridge=self.grillage_model)
         return [str(lc) for lc in handler.get_available_loadcases()]
+    
+    def get_dcr_engine_for_selection(
+        self, girder_name: str | None, load_case: str | None
+    ) -> "DCREngine | None":
+        """
+        Single source of truth for DCR computation.
+        Returns a fully-run DCREngine for the given (girder, loadcase).
+        Both the Output Dock percent bars and the Steel Design check cards
+        call this — never compute DCR anywhere else.
+        """
+        from osdagbridge.core.bridge_types.plate_girder.designer import (
+            BridgeConfig, IRC22CapacityCalculator, DCREngine, DemandEnvelope,
+        )
+
+        dr = getattr(self, "design_results", None)
+        if not dr:
+            return None
+
+        per_girder = dr.get("per_girder", {})
+        if not per_girder:
+            return None
+
+        if girder_name and girder_name in per_girder:
+            girder_names = [girder_name]
+        else:
+            girder_names = list(per_girder)
+
+        try:
+            config = BridgeConfig.from_plate_girder_bridge(self)
+        except Exception:
+            return None
+
+        # Mirror the bearing reaction resolved during run_design_check so
+        # bearing stiffener checks fire here too (from_plate_girder_bridge
+        # always leaves bs_R_kN=0.0).
+        if config.stiffener is not None:
+            stored_r = dr.get("bs_R_kN", 0.0)
+            if stored_r and stored_r > 0.0:
+                config.stiffener.bs_R_kN = float(stored_r)
+                
+        best_engine = None
+
+        for g_name in girder_names:
+            g_data = per_girder.get(g_name, {})
+            per_lc = g_data.get("per_lc", {})
+            lc_demand = per_lc.get(load_case)
+            if not lc_demand:
+                continue
+
+            g_env = g_data.get("demand", {})
+
+            demand = DemandEnvelope(
+                Mu_kNm               = lc_demand.get("Mu_kNm",              0.0),
+                Vu_kN                = lc_demand.get("Vu_kN",               0.0),
+                Nu_kN                = lc_demand.get("Nu_kN",               0.0),
+                M_construction_kNm   = lc_demand.get("M_construction_kNm",  0.0),
+                M_girder_sw_kNm      = lc_demand.get("M_girder_sw_kNm",     0.0),
+                M_sls_kNm            = lc_demand.get("M_sls_kNm",           0.0),
+                V_sls_kN             = lc_demand.get("V_sls_kN",            0.0),
+                delta_live_mm        = lc_demand.get("delta_live_mm",       0.0),
+                delta_total_mm       = lc_demand.get("delta_total_mm",      0.0),
+                stress_range_MPa     = lc_demand.get("stress_range_MPa",    0.0),
+                shear_range_MPa      = lc_demand.get("shear_range_MPa",     0.0),
+                Mx_kNm               = lc_demand.get("Mx_kNm",              0.0),
+                My_kNm               = lc_demand.get("My_kNm",              0.0),
+                Vz_kN                = lc_demand.get("Vz_kN",               0.0),
+                Dx_mm                = lc_demand.get("Dx_mm",               0.0),
+                Dy_mm                = lc_demand.get("Dy_mm",               0.0),
+                Dz_mm                = lc_demand.get("Dz_mm",               0.0),
+                Vr_kN                = g_env.get("Vr_kN", 0.0),        # cross-LC aggregate → girder level
+                Nsc                  = int(dr.get("Nsc", 2_000_000)),  # config constant
+                governing_combination = load_case,
+                member               = g_name,
+                source               = "per_lc",
+                lc_type              = lc_demand.get("lc_type", ""),
+            )
+            try:
+                capacity = IRC22CapacityCalculator(config).compute_all(
+                    Vu_kN=demand.Vu_kN,
+                    stress_range_MPa=demand.stress_range_MPa,
+                    M_sls_kNm=demand.M_sls_kNm,
+                    V_sls_kN=demand.V_sls_kN,
+                    Vr_kN=demand.Vr_kN,
+                )
+                engine = DCREngine(demand, capacity)
+                engine.run_all_checks()
+
+                max_dcr  = engine.max_dcr()
+                best_max = best_engine.max_dcr() if best_engine else -1.0
+                if max_dcr > best_max:
+                    best_engine = engine
+            except Exception:
+                continue
+
+        return best_engine
+
+
+    def get_dcr_for_selection(
+        self, girder_name: str | None, load_case: str | None
+    ) -> dict[str, float]:
+        """
+        Return DCR percentages for the Output Dock percent bars.
+        Thin wrapper around get_dcr_engine_for_selection — no computation here.
+        """
+        from osdagbridge.core.utils.common import (
+            KEY_UTIL_FLEXURE, KEY_UTIL_SHEAR, KEY_UTIL_INTERACTION,
+            KEY_UTIL_LTB, KEY_UTIL_LONG_TRANS_SHEAR, KEY_UTIL_FATIGUE,
+            KEY_UTIL_STRESS_LIMITATION, KEY_UTIL_DEFLECTION_CRACK,
+        )
+
+        engine = self.get_dcr_engine_for_selection(girder_name, load_case)
+        if engine is None:
+            return {}
+
+        by_id: dict[int, float] = {}
+        for c in engine.checks:
+            if c.check_id not in by_id or c.dcr > by_id[c.check_id]:
+                by_id[c.check_id] = c.dcr
+
+        return {
+            KEY_UTIL_FLEXURE:           by_id.get(1,  0.0) * 100,
+            KEY_UTIL_SHEAR:             by_id.get(2,  0.0) * 100,
+            KEY_UTIL_INTERACTION:       max(by_id.get(3, 0.0), by_id.get(4, 0.0)) * 100,
+            KEY_UTIL_LTB:               by_id.get(5,  0.0) * 100,
+            KEY_UTIL_LONG_TRANS_SHEAR:  max(by_id.get(6,  0.0), by_id.get(7,  0.0),
+                                            by_id.get(16, 0.0), by_id.get(17, 0.0)) * 100,
+            KEY_UTIL_FATIGUE:           max(by_id.get(8,  0.0), by_id.get(9,  0.0)) * 100,
+            KEY_UTIL_STRESS_LIMITATION: max(by_id.get(10, 0.0), by_id.get(11, 0.0),
+                                            by_id.get(12, 0.0)) * 100,
+            KEY_UTIL_DEFLECTION_CRACK:  max(by_id.get(13, 0.0), by_id.get(14, 0.0),
+                                            by_id.get(15, 0.0)) * 100,
+        }
 
     def get_nodes_members(self) -> tuple[dict, dict]:
         """Return (nodes, members) dicts built from the active openseespy model."""

@@ -127,6 +127,9 @@ KEY_ANALYSIS_UTILIZATION      = "analysis.utilization"
 KEY_STEELDESIGN_MEMBER_ID = "steeldesign.member_id"
 KEY_STEELDESIGN_LOAD_COMBINATION = "steeldesign.load_combination"
 
+KEY_OUTPUT_DOCK_MEMBER_ID        = "dock.member_id"
+KEY_OUTPUT_DOCK_LOAD_COMBINATION = "dock.load_combination"
+
 # Steel design details UI keys
 KEY_SD_DETAILS_DIMENSIONAL_CARD = "steeldesign.details.dimensional"
 KEY_SD_DETAILS_SHEAR_CARD = "steeldesign.details.shear_connector"
@@ -932,6 +935,219 @@ KEY_TD_ED_BOTTOM_CHORD_PROP_ZZ = "transverse_member_design.ed.section_properties
 KEY_TD_ED_BOTTOM_CHORD_PROP_ZV = "transverse_member_design.ed.section_properties.bottom_chord.Zv"
 KEY_TD_ED_BOTTOM_CHORD_PROP_ZUZ = "transverse_member_design.ed.section_properties.bottom_chord.Zuz"
 KEY_TD_ED_BOTTOM_CHORD_PROP_ZUV = "transverse_member_design.ed.section_properties.bottom_chord.Zuv"
+# =============================================================================
+# Design Check Keys — paste these into common.py alongside existing KEY_ consts
+# =============================================================================
+
+# ---------------------------------------------------------------------------
+# Check identity keys  (used as dict keys / card IDs throughout the codebase)
+# ---------------------------------------------------------------------------
+KEY_CHECK_FLEXURE          = "flexure"
+KEY_CHECK_SHEAR            = "shear"
+KEY_CHECK_INTERACTION      = "interaction"
+KEY_CHECK_LTB              = "ltb"
+KEY_CHECK_SHEAR_LONG_TRANS = "shear_long_trans"
+KEY_CHECK_FATIGUE          = "fatigue"
+KEY_CHECK_STRESS           = "stress"
+KEY_CHECK_DEFLECTION       = "deflection"
+
+# Ordered list used for card layout (left-col, right-col alternating)
+DESIGN_CHECK_ORDER = [
+    KEY_CHECK_FLEXURE,
+    KEY_CHECK_SHEAR_LONG_TRANS,
+    KEY_CHECK_SHEAR,
+    KEY_CHECK_FATIGUE,
+    KEY_CHECK_INTERACTION,
+    KEY_CHECK_STRESS,
+    KEY_CHECK_LTB,
+    KEY_CHECK_DEFLECTION,
+]
+
+# Human-readable titles for each check card
+DESIGN_CHECK_TITLES = {
+    KEY_CHECK_FLEXURE:          "Strength Limit State (Flexure)",
+    KEY_CHECK_SHEAR_LONG_TRANS: "Resistance to Longitudinal and Transverse Shear",
+    KEY_CHECK_SHEAR:            "Strength Limit State (Shear)",
+    KEY_CHECK_FATIGUE:          "Resistance to Fatigue",
+    KEY_CHECK_INTERACTION:      "Interaction",
+    KEY_CHECK_STRESS:           "Stress Limitation",
+    KEY_CHECK_LTB:              "Lateral Torsional Buckling",
+    KEY_CHECK_DEFLECTION:       "Deflection and Crack Control",
+}
+
+# Units shown next to demand / capacity values in each card
+DESIGN_CHECK_UNITS = {
+    KEY_CHECK_FLEXURE:          "kNm",
+    KEY_CHECK_SHEAR:            "kN",
+    KEY_CHECK_INTERACTION:      "",
+    KEY_CHECK_LTB:              "kNm",
+    KEY_CHECK_SHEAR_LONG_TRANS: "N/mm",
+    KEY_CHECK_FATIGUE:          "MPa",
+    KEY_CHECK_STRESS:           "MPa",
+    KEY_CHECK_DEFLECTION:       "mm",
+}
+
+# ---------------------------------------------------------------------------
+# LaTeX equation strings — standalone fragment suitable for embedding inside
+# a \[ ... \] display-math block in a minimal article document.
+#
+# Convention:
+#   EQ_<KEY>_LINE_<n>   one display-math line  (n = 1, 2, 3 …)
+#   EQ_<KEY>_LINES      tuple of all lines in render order
+#
+# Each string is a *raw* Python string so backslashes reach LaTeX unchanged.
+# ---------------------------------------------------------------------------
+
+# -- Flexure (IRC 22 Cl. 603.3.1 / IS 800 Cl. 8.2.1) ----------------------
+EQ_FLEXURE_LINE_1 = r"M_d \leq M_r"
+EQ_FLEXURE_LINE_2 = r"M_r = \beta_b \cdot Z_p \cdot f_y \;/\; \gamma_{m0}"
+EQ_FLEXURE_LINES  = (EQ_FLEXURE_LINE_1, EQ_FLEXURE_LINE_2)
+
+# -- Shear (IS 800 Cl. 8.4 / IRC 22 Cl. 603.3.3) --------------------------
+EQ_SHEAR_LINE_1 = r"V_d \leq V_r"
+EQ_SHEAR_LINE_2 = r"V_r = \frac{A_v \cdot f_y}{\sqrt{3} \cdot \gamma_{m0}}"
+EQ_SHEAR_LINES  = (EQ_SHEAR_LINE_1, EQ_SHEAR_LINE_2)
+
+# -- Interaction (IS 800 Cl. 9.2.2) ----------------------------------------
+EQ_INTERACTION_LINE_1 = (
+    r"\frac{M_d}{\beta_b\,Z_p\,f_y/\gamma_{m0}}"
+    r"+ \frac{V_d}{A_v\,f_y/(\sqrt{3}\,\gamma_{m0})} \leq 1.0"
+)
+EQ_INTERACTION_LINES  = (EQ_INTERACTION_LINE_1,)
+
+# -- Lateral Torsional Buckling (IRC 22 Cl. 603.3.3.1 / IS 800 Cl. 8.2.2) -
+EQ_LTB_LINE_1 = r"M_d \leq M_{cr}"
+EQ_LTB_LINE_2 = r"M_{cr} \approx \frac{\pi^2 E\,I_y}{L_{\mathrm{LTB}}^{\,2}}"
+EQ_LTB_LINES  = (EQ_LTB_LINE_1, EQ_LTB_LINE_2)
+
+# -- Longitudinal & Transverse Shear (IRC 22 Cl. 606.4.1) ------------------
+EQ_SHEAR_LONG_TRANS_LINE_1 = r"V_L \leq n \cdot Q_u \;/\; s"
+EQ_SHEAR_LONG_TRANS_LINE_2 = r"V_L = V_d \cdot A_{ec} \cdot \bar{y} \;/\; I_c"
+EQ_SHEAR_LONG_TRANS_LINE_3 = (
+    r"Q_u = \min\!\left("
+    r"0.8\,f_u\,A_s,\;"
+    r"\frac{0.29\,\alpha\,d^2\sqrt{f_{ck}\,E_{cm}}}{\gamma_v}"
+    r"\right)"
+)
+EQ_SHEAR_LONG_TRANS_LINES  = (
+    EQ_SHEAR_LONG_TRANS_LINE_1,
+    EQ_SHEAR_LONG_TRANS_LINE_2,
+    EQ_SHEAR_LONG_TRANS_LINE_3,
+)
+
+# -- Fatigue (IRC 22 Cl. 605) -----------------------------------------------
+EQ_FATIGUE_LINE_1 = r"\Delta\sigma \leq \Delta\sigma_{\mathrm{allowable}}"
+EQ_FATIGUE_LINE_2 = r"\Delta\sigma_{\mathrm{allowable}} = \Delta\sigma_C \;/\; \gamma_{mf}"
+EQ_FATIGUE_LINES  = (EQ_FATIGUE_LINE_1, EQ_FATIGUE_LINE_2)
+
+# -- Stress Limitation (IRC 22 Cl. 604.3.1) ---------------------------------
+EQ_STRESS_LINE_1 = r"\sigma = M_d \;/\; Z"
+EQ_STRESS_LINE_2 = r"\sigma \leq f_y \;/\; \gamma_{m0}"
+EQ_STRESS_LINES  = (EQ_STRESS_LINE_1, EQ_STRESS_LINE_2)
+
+# -- Deflection (IRC 22 Cl. 604.3.2) ----------------------------------------
+EQ_DEFLECTION_LINE_1 = r"\delta \leq L \;/\; x"
+EQ_DEFLECTION_LINE_2 = r"(\text{Default } x = 600)"
+EQ_DEFLECTION_LINES  = (EQ_DEFLECTION_LINE_1, EQ_DEFLECTION_LINE_2)
+
+# Master map:  key  ->  tuple of LaTeX lines  (imported by the UI tab)
+DESIGN_CHECK_EQ_LINES = {
+    KEY_CHECK_FLEXURE:          EQ_FLEXURE_LINES,
+    KEY_CHECK_SHEAR:            EQ_SHEAR_LINES,
+    KEY_CHECK_INTERACTION:      EQ_INTERACTION_LINES,
+    KEY_CHECK_LTB:              EQ_LTB_LINES,
+    KEY_CHECK_SHEAR_LONG_TRANS: EQ_SHEAR_LONG_TRANS_LINES,
+    KEY_CHECK_FATIGUE:          EQ_FATIGUE_LINES,
+    KEY_CHECK_STRESS:           EQ_STRESS_LINES,
+    KEY_CHECK_DEFLECTION:       EQ_DEFLECTION_LINES,
+}
+
+# ---------------------------------------------------------------------------
+# HTML fallback equation strings  (used when LaTeX rendering is unavailable)
+# ---------------------------------------------------------------------------
+EQ_HTML_FLEXURE = (
+    "<i>M</i><sub>d</sub> &le; <i>M</i><sub>r</sub><br><br>"
+    "<i>M</i><sub>r</sub> = &beta;<sub>b</sub> &middot; <i>Z</i><sub>p</sub>"
+    " &middot; <i>f</i><sub>y</sub> / &gamma;<sub>m0</sub>"
+)
+
+EQ_HTML_SHEAR = (
+    "<i>V</i><sub>d</sub> &le; <i>V</i><sub>r</sub><br><br>"
+    "<i>V</i><sub>r</sub> = <i>A</i><sub>v</sub> &middot; <i>f</i><sub>y</sub>"
+    " / (&radic;3 &middot; &gamma;<sub>m0</sub>)"
+)
+
+EQ_HTML_INTERACTION = (
+    "<i>M</i><sub>d</sub> / (&beta;<sub>b</sub> &middot; <i>Z</i><sub>p</sub>"
+    " &middot; <i>f</i><sub>y</sub> / &gamma;<sub>m0</sub>)"
+    " + <i>V</i><sub>d</sub> / (<i>A</i><sub>v</sub> &middot; <i>f</i><sub>y</sub>"
+    " / (&radic;3 &middot; &gamma;<sub>m0</sub>)) &le; 1.0"
+)
+
+EQ_HTML_LTB = (
+    "<i>M</i><sub>d</sub> &le; <i>M</i><sub>cr</sub><br><br>"
+    "<i>M</i><sub>cr</sub> &approx; (&pi;&sup2; &middot; <i>E</i> &middot;"
+    " <i>I</i><sub>y</sub>) / <i>L</i><sub>LTB</sub>&sup2;"
+)
+
+EQ_HTML_SHEAR_LONG_TRANS = (
+    "<i>V</i><sub>L</sub> &le; <i>n</i> &middot; <i>Q</i><sub>u</sub> / <i>s</i><br><br>"
+    "<i>V</i><sub>L</sub> = <i>V</i><sub>d</sub> &middot; <i>A</i><sub>ec</sub>"
+    " &middot; <i>&#x1D56E;</i> / <i>I</i><sub>c</sub><br><br>"
+    "<i>Q</i><sub>u</sub> = min(0.8 <i>f</i><sub>u</sub> <i>A</i><sub>s</sub>,"
+    " 0.29 &alpha; <i>d</i>&sup2; &radic;(<i>f</i><sub>ck</sub>"
+    " <i>E</i><sub>cm</sub>)) / &gamma;<sub>v</sub>"
+)
+
+EQ_HTML_FATIGUE = (
+    "&Delta;&sigma; &le; &Delta;&sigma;<sub>allowable</sub><br><br>"
+    "&Delta;&sigma;<sub>allowable</sub> = &Delta;&sigma;<sub>C</sub>"
+    " / &gamma;<sub>mf</sub>"
+)
+
+EQ_HTML_STRESS = (
+    "&sigma; = <i>M</i><sub>d</sub> / <i>Z</i><br><br>"
+    "&sigma; &le; <i>f</i><sub>y</sub> / &gamma;<sub>m0</sub>"
+)
+
+EQ_HTML_DEFLECTION = (
+    "&delta; &le; <i>L</i> / <i>x</i><br><br>"
+    "(Default <i>x</i> = 600)"
+)
+
+# Master HTML fallback map
+DESIGN_CHECK_EQ_HTML = {
+    KEY_CHECK_FLEXURE:          EQ_HTML_FLEXURE,
+    KEY_CHECK_SHEAR:            EQ_HTML_SHEAR,
+    KEY_CHECK_INTERACTION:      EQ_HTML_INTERACTION,
+    KEY_CHECK_LTB:              EQ_HTML_LTB,
+    KEY_CHECK_SHEAR_LONG_TRANS: EQ_HTML_SHEAR_LONG_TRANS,
+    KEY_CHECK_FATIGUE:          EQ_HTML_FATIGUE,
+    KEY_CHECK_STRESS:           EQ_HTML_STRESS,
+    KEY_CHECK_DEFLECTION:       EQ_HTML_DEFLECTION,
+}
+
+# ---------------------------------------------------------------------------
+# Demand / capacity prefix labels  (HTML, for the value lines in each card)
+# ---------------------------------------------------------------------------
+DESIGN_CHECK_DEM_PFX = {
+    KEY_CHECK_FLEXURE:          "<i>M<sub>d</sub></i>",
+    KEY_CHECK_SHEAR:            "<i>V<sub>d</sub></i>",
+    KEY_CHECK_LTB:              "<i>M<sub>d</sub></i>",
+    KEY_CHECK_SHEAR_LONG_TRANS: "<i>V<sub>L</sub></i>",
+    KEY_CHECK_FATIGUE:          "&Delta;<i>&sigma;</i>",
+    KEY_CHECK_STRESS:           "<i>&sigma;</i>",
+    KEY_CHECK_DEFLECTION:       "<i>&delta;</i>",
+}
+DESIGN_CHECK_CAP_PFX = {
+    KEY_CHECK_FLEXURE:          "<i>M<sub>r</sub></i>",
+    KEY_CHECK_SHEAR:            "<i>V<sub>r</sub></i>",
+    KEY_CHECK_LTB:              "<i>M<sub>cr</sub></i>",
+    KEY_CHECK_SHEAR_LONG_TRANS: "<i>nQ<sub>u</sub>/s</i>",
+    KEY_CHECK_FATIGUE:          "&Delta;<i>&sigma;<sub>allowable</sub></i>",
+    KEY_CHECK_STRESS:           "<i>f<sub>y</sub> / &gamma;<sub>m</sub></i>",
+    KEY_CHECK_DEFLECTION:       "<i>L / x</i>",
+}
 
 # Value Lists for Additional Inputs
 VALUES_NO_YES = ["No", "Yes"]
