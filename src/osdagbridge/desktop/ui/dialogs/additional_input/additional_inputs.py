@@ -1384,10 +1384,187 @@ class AdditionalInputs(QDialog):
 
     # ── Typical Section Tab ───────────────────────────────────────────────────────
 
-    def on_no_of_girders_changed(self):  # on_change: updates dynamic keys in working_input_dict when girder count changes
-        from osdagbridge.core.bridge_types.plate_girder.defaults import _on_no_of_girders_changed
-        from pprint import pprint
-        _on_no_of_girders_changed(self.working_input_dict)
+    def recalculate_girders(self, changed_field=None):  # on_text_changed: recalculates linked girder layout fields from current Typical Section widths
+        allowed_fields = {"spacing", "overhang", "girders"}
+        primary_edit = changed_field in allowed_fields
+        if not primary_edit:
+            changed_field = "girders"
+
+        for notice_name in ("layout_notice.adjust", "layout_notice.warning"):
+            label = self.findChild(QLabel, notice_name)
+            if label is not None:
+                label.hide()
+                label.setText("")
+        container = self.findChild(QWidget, "layout_notice")
+        if container is not None:
+            container.hide()
+
+        required_keys = (
+            KEY_TS_GIRDER_SPACING,
+            KEY_TS_DECK_OVERHANG,
+            KEY_TS_NO_OF_GIRDERS,
+        )
+        if primary_edit:
+            for key in required_keys:
+                field = self.findChild(QLineEdit, key)
+                if field is not None and not field.text().strip():
+                    for clear_key in required_keys:
+                        clear_field = self.findChild(QLineEdit, clear_key)
+                        if clear_field is not None:
+                            clear_field.blockSignals(True)
+                            clear_field.clear()
+                            clear_field.blockSignals(False)
+                        self.working_input_dict[clear_key] = ""
+                    CustomMessageBox(
+                        title="Layout",
+                        text="Girder spacing, deck overhang, and number of girders are linked. Please enter all three.",
+                        buttons=["OK"],
+                        dialogType=MessageBoxType.Warning,
+                    ).exec()
+                    return False
+
+        d = self.working_input_dict
+        if not d.get(KEY_CARRIAGEWAY_WIDTH):
+            return False
+
+        def number_value(key, default=0.0):
+            value = d.get(key)
+            if value is None or value == "":
+                return default
+            if isinstance(value, (int, float)):
+                return float(value)
+            text = str(value).strip()
+            scan = text[1:] if text[:1] in "+-" else text
+            left, dot, right = scan.partition(".")
+            if dot:
+                return float(text) if bool(left or right) and (not left or left.isdigit()) and (not right or right.isdigit()) else default
+            return float(text) if left.isdigit() else default
+
+        rl_raw = number_value(KEY_RL_WIDTH, DEFAULT_RAILING_WIDTH)
+        railing_width = rl_raw / 1000.0 if rl_raw > 10 else rl_raw
+
+        footpath_str = str(d.get(KEY_FOOTPATH, "None")).strip()
+        if footpath_str in ("None", ""):
+            n_footpaths = 0
+        elif "Both" in footpath_str:
+            n_footpaths = 2
+        else:
+            n_footpaths = 1
+
+        from osdagbridge.core.bridge_types.plate_girder.initial_sizing import BridgeConfigurationSolver
+        solver = BridgeConfigurationSolver(
+            carriageway_width=number_value(KEY_CARRIAGEWAY_WIDTH, float(self.carriageway_width or 0.0)),
+            crash_barrier_width=number_value(KEY_CB_WIDTH, DEFAULT_CRASH_BARRIER_WIDTH),
+            footpath_width=number_value(KEY_TS_FOOTPATH_WIDTH, 0.0),
+            railing_width=railing_width,
+            median_width=number_value(KEY_MD_WIDTH, 0.0),
+            n_footpaths=n_footpaths,
+        )
+
+        spacing_old = number_value(KEY_TS_GIRDER_SPACING, DEFAULT_GIRDER_SPACING)
+        overhang_old = number_value(KEY_TS_DECK_OVERHANG, 0.0)
+        girders_old = int(number_value(KEY_TS_NO_OF_GIRDERS, 2))
+
+        try:
+            result = solver._solve_layout(
+                no_of_girders=girders_old,
+                girder_spacing=spacing_old,
+                deck_overhang=overhang_old,
+                changed_field=changed_field,
+            )
+        except ValueError as exc:
+            CustomMessageBox(
+                title="Layout",
+                text=str(exc),
+                buttons=["OK"],
+                dialogType=MessageBoxType.Warning,
+            ).exec()
+            return False
+
+        field_values = (
+            (KEY_TS_GIRDER_SPACING, f"{result.girder_spacing:.2f}"),
+            (KEY_TS_DECK_OVERHANG, f"{result.deck_overhang:.2f}"),
+            (KEY_TS_NO_OF_GIRDERS, str(int(result.no_of_girders))),
+            (KEY_TS_OVERALL_WIDTH, f"{result.overall_width:.2f}"),
+        )
+        for key, value in field_values:
+            field = self.findChild(QLineEdit, key)
+            if field is not None:
+                field.blockSignals(True)
+                field.setText(value)
+                field.blockSignals(False)
+
+        d[KEY_TS_GIRDER_SPACING] = result.girder_spacing
+        d[KEY_TS_DECK_OVERHANG] = result.deck_overhang
+        d[KEY_TS_NO_OF_GIRDERS] = result.no_of_girders
+        d[KEY_TS_OVERALL_WIDTH] = result.overall_width
+        d[KEY_TS_NO_OF_FOOTPATHS] = n_footpaths
+
+        if hasattr(self, "section_properties_tab") and hasattr(self.section_properties_tab, "set_girder_count"):
+            self.section_properties_tab.set_girder_count(int(result.no_of_girders))
+
+        reason_parts = []
+        if abs(result.girder_spacing - spacing_old) > 0.01:
+            reason_parts.append(f"spacing {spacing_old:.2f}->{result.girder_spacing:.2f}")
+        if abs(result.deck_overhang - overhang_old) > 1e-6:
+            reason_parts.append(f"overhang {overhang_old:.2f}->{result.deck_overhang:.2f}")
+        if result.no_of_girders != girders_old:
+            reason_parts.append(f"girders {girders_old}->{result.no_of_girders}")
+
+        warning_msg = None
+        if result.deck_overhang > result.girder_spacing + 1e-6:
+            warning_msg = (
+                f"Overhang ({result.deck_overhang:.2f} m) exceeds girder spacing "
+                f"({result.girder_spacing:.2f} m)"
+            )
+
+        adjust_label = self.findChild(QLabel, "layout_notice.adjust")
+        warning_label = self.findChild(QLabel, "layout_notice.warning")
+        notice_container = self.findChild(QWidget, "layout_notice")
+        if reason_parts and not warning_msg and adjust_label is not None:
+            adjust_label.setText(f"Values adjusted: {', '.join(reason_parts)}")
+            adjust_label.show()
+            if notice_container is not None:
+                notice_container.show()
+        if warning_msg and warning_label is not None:
+            warning_label.setText(f"Warning: {warning_msg}")
+            warning_label.show()
+            if notice_container is not None:
+                notice_container.show()
+
+        return True
+
+    def on_girder_spacing_changed(self):  # on_editing_finished: recalculates deck overhang after girder spacing changes
+        field = self.findChild(QLineEdit, KEY_TS_GIRDER_SPACING)
+        if field is None:
+            return
+        text = field.text().strip()
+        scan = text[1:] if text[:1] in "+-" else text
+        if text and not (scan.isdigit() or (scan.count(".") == 1 and scan.replace(".", "").isdigit())):
+            return
+        self.recalculate_girders("spacing")
+
+    def on_deck_overhang_changed(self):  # on_editing_finished: recalculates girder spacing after deck overhang changes
+        field = self.findChild(QLineEdit, KEY_TS_DECK_OVERHANG)
+        if field is None:
+            return
+        text = field.text().strip()
+        scan = text[1:] if text[:1] in "+-" else text
+        if text and not (scan.isdigit() or (scan.count(".") == 1 and scan.replace(".", "").isdigit())):
+            return
+        self.recalculate_girders("overhang")
+
+    def on_no_of_girders_changed(self):  # on_editing_finished: recalculates layout and dynamic girder keys after girder count changes
+        field = self.findChild(QLineEdit, KEY_TS_NO_OF_GIRDERS)
+        if field is None:
+            return
+        text = field.text().strip()
+        scan = text[1:] if text[:1] in "+-" else text
+        if text and not (scan.isdigit() or (scan.count(".") == 1 and scan.replace(".", "").isdigit())):
+            return
+        if self.recalculate_girders("girders"):
+            from osdagbridge.core.bridge_types.plate_girder.defaults import _on_no_of_girders_changed
+            _on_no_of_girders_changed(self.working_input_dict)
 
     # ── Public API ────────────────────────────────────────────────────────────────
 
@@ -1421,14 +1598,17 @@ class AdditionalInputs(QDialog):
         # ---- Typical Section tab ----
         ts = self.typical_section_tab
 
-        if hasattr(ts, "no_of_girders") and ts.no_of_girders.text():
-            values[KEY_TS_NO_OF_GIRDERS] = int(float(ts.no_of_girders.text()))
+        no_of_girders = self.findChild(QLineEdit, KEY_TS_NO_OF_GIRDERS)
+        if no_of_girders is not None and no_of_girders.text():
+            values[KEY_TS_NO_OF_GIRDERS] = int(float(no_of_girders.text()))
 
-        if hasattr(ts, "girder_spacing") and ts.girder_spacing.text():
-            values[KEY_TS_GIRDER_SPACING] = float(ts.girder_spacing.text())
+        girder_spacing = self.findChild(QLineEdit, KEY_TS_GIRDER_SPACING)
+        if girder_spacing is not None and girder_spacing.text():
+            values[KEY_TS_GIRDER_SPACING] = float(girder_spacing.text())
 
-        if hasattr(ts, "deck_overhang") and ts.deck_overhang.text():
-            values[KEY_TS_DECK_OVERHANG] = float(ts.deck_overhang.text())
+        deck_overhang = self.findChild(QLineEdit, KEY_TS_DECK_OVERHANG)
+        if deck_overhang is not None and deck_overhang.text():
+            values[KEY_TS_DECK_OVERHANG] = float(deck_overhang.text())
 
         if hasattr(ts, "deck_thickness") and ts.deck_thickness.text():
             values[KEY_TS_DECK_THICKNESS] = float(ts.deck_thickness.text())
@@ -1468,6 +1648,10 @@ class AdditionalInputs(QDialog):
         railing_type = ts._find_railing_widget(KEY_RL_TYPE)
         if railing_type:
             values[KEY_RL_TYPE] = railing_type.currentText()
+
+        railing_width = ts._find_railing_widget(KEY_RL_WIDTH)
+        if railing_width and railing_width.text():
+            values[KEY_RL_WIDTH] = float(railing_width.text())
 
         railing_height = ts._find_railing_widget(KEY_RL_HEIGHT)
         if railing_height and railing_height.text():
@@ -1530,6 +1714,10 @@ class AdditionalInputs(QDialog):
         Update the footpath configuration across UI and CAD preview.
         """
         self.footpath_value = footpath_value
+        # Sync into the working dict so recalculate_girders sees the new n_footpaths.
+        # default_input_dict shares the reference with template_page.input_dict,
+        # which the input dock already updates — no need to touch it here.
+
         if self.working_input_dict is not None:
             self.working_input_dict[KEY_FOOTPATH] = footpath_value
         self.typical_section_tab.update_footpath_value(footpath_value)

@@ -6,7 +6,6 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCore import Qt, Signal, QTimer
 
-from osdagbridge.core.bridge_types.plate_girder.initial_sizing import BridgeConfigurationSolver
 from osdagbridge.core.utils.common import *
 from osdagbridge.desktop.ui.dialogs.tabs.common import apply_field_style
 from osdagbridge.desktop.ui.dialogs.custom_messagebox import CustomMessageBox, MessageBoxType
@@ -79,6 +78,9 @@ class TypicalSectionDetailsTab(QWidget):
 
     def _find_lane_widget(self, widget_id, widget_type=QWidget):
         return self._find_tab_widget(KEY_WC_LD_TAB, widget_id, widget_type)
+
+    def _find_primary_widget(self, widget_id, widget_type=QWidget):
+        return self.primary_widget.main_widget.findChild(widget_type, widget_id) if self.primary_widget else None
 
     def style_input_field(self, field):
         apply_field_style(field)
@@ -257,8 +259,9 @@ class TypicalSectionDetailsTab(QWidget):
             self.on_wearing_material_changed(wearing_material_w.currentText())
 
         try:
-            if self.no_of_girders and self.no_of_girders.text():
-                self.girder_count_changed.emit(int(self.no_of_girders.text()))
+            no_of_girders = self._find_primary_widget(KEY_TS_NO_OF_GIRDERS)
+            if no_of_girders and no_of_girders.text():
+                self.girder_count_changed.emit(int(no_of_girders.text()))
         except Exception:
             pass
 
@@ -341,235 +344,9 @@ class TypicalSectionDetailsTab(QWidget):
 
     _LANE_WIDTH_M = 3.5  # IRC 5 Clause 104.3.1 minimum design lane width
 
-    def _clear_adjust_notice(self):
-        if hasattr(self, "layout_adjust_notice"):
-            self.layout_adjust_notice.hide()
-            self.layout_adjust_notice.setText("")
-        if hasattr(self, "layout_warning_notice"):
-            self.layout_warning_notice.hide()
-            self.layout_warning_notice.setText("")
-        if hasattr(self, "layout_notice_container"):
-            self.layout_notice_container.hide()
-
-    def _clear_layout_entry_fields(self, message: str) -> None:
-        """Clear layout inputs together when any of them is emptied and show an error."""
-        if self.updating_fields:
-            return
-        self.updating_fields = True
-        try:
-            for field in (
-                getattr(self, "girder_spacing", None),
-                getattr(self, "deck_overhang", None),
-                getattr(self, "no_of_girders", None),
-            ):
-                if field is not None:
-                    field.clear()
-        finally:
-            self.updating_fields = False
-        self._clear_adjust_notice()
-        CustomMessageBox(
-            title="Layout",
-            text=message,
-            buttons=["OK"],
-            dialogType=MessageBoxType.Warning,
-        ).exec()
-
-    def _show_adjust_notice(self, reason, warning=None):
-        any_visible = bool(reason) or bool(warning)
-        if hasattr(self, "layout_adjust_notice"):
-            if reason and not warning:
-                self.layout_adjust_notice.setText(f"Values adjusted: {reason}")
-                self.layout_adjust_notice.show()
-            else:
-                self.layout_adjust_notice.hide()
-                self.layout_adjust_notice.setText("")
-        if hasattr(self, "layout_warning_notice"):
-            if warning:
-                self.layout_warning_notice.setText(f"Warning: {warning}")
-                self.layout_warning_notice.show()
-            else:
-                self.layout_warning_notice.hide()
-                self.layout_warning_notice.setText("")
-        if hasattr(self, "layout_notice_container"):
-            if any_visible:
-                self.layout_notice_container.show()
-            else:
-                self.layout_notice_container.hide()
-
-    def _set_layout_fields(self, spacing, overhang, girders, overall_width=None):
-        self.updating_fields = True
-        try:
-            self.girder_spacing.setText(f"{spacing:.2f}")
-            self.deck_overhang.setText(f"{overhang:.2f}")
-            self.no_of_girders.setText(str(int(girders)))
-            if overall_width is not None and hasattr(self, "overall_bridge_width_display"):
-                self.overall_bridge_width_display.setText(f"{overall_width:.2f}")
-            try:
-                self.girder_count_changed.emit(int(girders))
-            except Exception:
-                pass
-        finally:
-            self.updating_fields = False
-
-    def _resolve_layout(self, changed_field: str) -> None:
-        """Run BridgeConfigurationSolver._solve_layout via working_input_dict.
-
-        changed_field: 'spacing' | 'overhang' | 'girders'.
-        Width-affecting field edits (CB / footpath / railing / median width)
-        call this with 'girders' so n stays fixed and spacing/overhang refresh.
-        """
-        if self.updating_fields:
-            return
-        self._clear_adjust_notice()
-
-        d = self.additional_input_instance.working_input_dict if self.additional_input_instance else {}
-        # Bail out if the dialog hasn't been initialised with input_dict yet
-        # (e.g. during construction, before set_input_dictionary runs).
-        if not d.get(KEY_CARRIAGEWAY_WIDTH):
-            return
-
-        def _f(key, default=0.0):
-            v = d.get(key)
-            if v is None or v == "":
-                return default
-            try:
-                return float(v)
-            except (TypeError, ValueError):
-                return default
-
-        def _i(key, default=0):
-            v = d.get(key)
-            if v is None or v == "":
-                return default
-            try:
-                return int(float(v))
-            except (TypeError, ValueError):
-                return default
-
-        # Railing width may be stored in mm (Additional Inputs) or m — same logic as defaults.py
-        rl_raw = _f(KEY_RL_WIDTH, DEFAULT_RAILING_WIDTH)
-        railing_width = rl_raw / 1000.0 if rl_raw > 10 else rl_raw
-
-        footpath_str = str(d.get(KEY_FOOTPATH, "None")).strip()
-        if footpath_str in ("None", ""):
-            n_footpaths = 0
-        elif "Both" in footpath_str:
-            n_footpaths = 2
-        else:
-            n_footpaths = 1
-
-        solver = BridgeConfigurationSolver(
-            carriageway_width=_f(KEY_CARRIAGEWAY_WIDTH, float(self.carriageway_width or 0.0)),
-            crash_barrier_width=_f(KEY_CB_WIDTH, DEFAULT_CRASH_BARRIER_WIDTH),
-            footpath_width=_f(KEY_TS_FOOTPATH_WIDTH, 0.0),
-            railing_width=railing_width,
-            median_width=_f(KEY_MD_WIDTH, 0.0),
-            n_footpaths=n_footpaths,
-        )
-
-        spacing_old = _f(KEY_TS_GIRDER_SPACING, DEFAULT_GIRDER_SPACING)
-        overhang_old = _f(KEY_TS_DECK_OVERHANG, 0.0)
-        girders_old = _i(KEY_TS_NO_OF_GIRDERS, 2)
-
-        try:
-            result = solver._solve_layout(
-                no_of_girders=girders_old,
-                girder_spacing=spacing_old,
-                deck_overhang=overhang_old,
-                changed_field=changed_field,
-            )
-        except ValueError as exc:
-            CustomMessageBox(
-                title="Layout",
-                text=str(exc),
-                buttons=["OK"],
-                dialogType=MessageBoxType.Warning,
-            ).exec()
-            return
-
-        self._set_layout_fields(
-            result.girder_spacing,
-            result.deck_overhang,
-            result.no_of_girders,
-            overall_width=result.overall_width,
-        )
-
-        # Keep working_input_dict in sync with the resolved layout
-        d[KEY_TS_GIRDER_SPACING] = result.girder_spacing
-        d[KEY_TS_DECK_OVERHANG]  = result.deck_overhang
-        d[KEY_TS_NO_OF_GIRDERS]  = result.no_of_girders
-        d[KEY_TS_OVERALL_WIDTH]  = result.overall_width
-        d[KEY_TS_NO_OF_FOOTPATHS] = n_footpaths
-
-        # User-feedback notice if values were nudged, plus overhang>spacing warning
-        reason_parts = []
-        if abs(result.girder_spacing - spacing_old) > 0.01:
-            reason_parts.append(f"spacing {spacing_old:.2f}→{result.girder_spacing:.2f}")
-        if abs(result.deck_overhang - overhang_old) > 1e-6:
-            reason_parts.append(f"overhang {overhang_old:.2f}→{result.deck_overhang:.2f}")
-        if result.no_of_girders != girders_old:
-            reason_parts.append(f"girders {girders_old}→{result.no_of_girders}")
-
-        warning_msg = None
-        if result.deck_overhang > result.girder_spacing + 1e-6:
-            warning_msg = (
-                f"Overhang ({result.deck_overhang:.2f} m) exceeds girder spacing "
-                f"({result.girder_spacing:.2f} m)"
-            )
-
-        if reason_parts:
-            self._show_adjust_notice(", ".join(reason_parts), warning_msg)
-        elif warning_msg:
-            self._show_adjust_notice(None, warning_msg)
-
-    def recalculate_girders(self):
-        self._resolve_layout("girders")
-
-    def on_girder_spacing_changed(self):
-        if self.updating_fields:
-            return
-        if not self.girder_spacing.text().strip():
-            self._clear_layout_entry_fields(
-                "Girder spacing, deck overhang, and number of girders are linked. Please enter all three."
-            )
-            return
-        try:
-            float(self.girder_spacing.text().strip())
-        except ValueError:
-            return
-        self._resolve_layout("spacing")
-
-    def on_deck_overhang_changed(self):
-        if self.updating_fields:
-            return
-        if not self.deck_overhang.text().strip():
-            self._clear_layout_entry_fields(
-                "Girder spacing, deck overhang, and number of girders are linked. Please enter all three."
-            )
-            return
-        try:
-            float(self.deck_overhang.text().strip())
-        except ValueError:
-            return
-        self._resolve_layout("overhang")
-
-    def on_no_of_girders_changed(self):
-        if self.updating_fields:
-            return
-        if not self.no_of_girders.text().strip():
-            self._clear_layout_entry_fields(
-                "Girder spacing, deck overhang, and number of girders are linked. Please enter all three."
-            )
-            return
-        try:
-            int(float(self.no_of_girders.text().strip()))
-        except ValueError:
-            return
-        self._resolve_layout("girders")
-
-    def on_footpath_width_changed(self):
-        if not self.updating_fields:
-            self._resolve_layout("girders")
+    def on_layout_width_changed(self, *_):  # on_text_changed: forwards width edits to AdditionalInputs layout recalculation
+        if self.additional_input_instance is not None:
+            self.additional_input_instance.recalculate_girders()
 
     def update_footpath_value(self, footpath_value):
         fp_map = {"Both Sides": "both", "Single Side": "left", "None": "none"}
@@ -579,7 +356,8 @@ class TypicalSectionDetailsTab(QWidget):
             self.footpath_width.setEnabled(footpath_value != "None")
         if hasattr(self, "footpath_thickness"):
             self.footpath_thickness.setEnabled(footpath_value != "None")
-        self.recalculate_girders()
+        if self.additional_input_instance is not None:
+            self.additional_input_instance.recalculate_girders()
 
     def validate_footpath_width(self):
         try:
@@ -821,7 +599,8 @@ class TypicalSectionDetailsTab(QWidget):
         self._apply_crash_barrier_defaults(barrier_type, force=True)
 
         # Recalculate AFTER geometry is locked
-        self.recalculate_girders()
+        if self.additional_input_instance is not None:
+            self.additional_input_instance.recalculate_girders()
 
     # ----- Median sub-tab ------------------------------------------------------
 
@@ -1035,7 +814,8 @@ class TypicalSectionDetailsTab(QWidget):
             params = {KEY_MD_TYPE: median_type}
             self.cad_preview.update_params(params)
 
-        self.recalculate_girders()
+        if self.additional_input_instance is not None:
+            self.additional_input_instance.recalculate_girders()
         
 
     # ----- Railing sub-tab -----------------------------------------------------
@@ -1109,7 +889,8 @@ class TypicalSectionDetailsTab(QWidget):
             params = {KEY_RL_TYPE: railing_type}
             self.cad_preview.update_params(params)
 
-        self.recalculate_girders()
+        if self.additional_input_instance is not None:
+            self.additional_input_instance.recalculate_girders()
 
     def on_railing_load_mode_changed(self, mode):
         railing_load_value = self._find_railing_widget(KEY_RL_LOAD_VALUE)
@@ -1371,7 +1152,16 @@ class TypicalSectionDetailsTab(QWidget):
         # preserved — they come from defaults.solve_extend_basic_input_dict based
         # on the user's basic inputs, and resetting them to arbitrary constants
         # would discard that work.
-        self._clear_adjust_notice()
+        ai = self.additional_input_instance
+        if ai is not None:
+            for label_name in ("layout_adjust_notice", "layout_warning_notice"):
+                label = getattr(ai, label_name, None)
+                if label is not None:
+                    label.hide()
+                    label.setText("")
+            container = getattr(ai, "layout_notice_container", None)
+            if container is not None:
+                container.hide()
 
         # Crash barrier defaults
         self._reset_crash_barrier_defaults()

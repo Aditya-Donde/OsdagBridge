@@ -36,7 +36,7 @@ _DECK_DETAILS_TAB_SCHEMA = {
                     "label": "Footpath Width (m):",
                     "type": TYPE_TEXTBOX,
                     "bind": "footpath_width",
-                    "on_text_changed": "on_footpath_width_changed",
+                    "on_text_changed": "on_layout_width_changed",
                 },
                 {
                     "id": KEY_TS_FOOTPATH_THICKNESS,
@@ -89,7 +89,7 @@ _CRASH_BARRIER_TAB_SCHEMA = {
                     "label": "Width (m):",
                     "type": TYPE_TEXTBOX,
                     "default": DEFAULT_CRASH_BARRIER_WIDTH,
-                    "on_text_changed": "recalculate_girders",
+                    "on_text_changed": "on_layout_width_changed",
                 }
             ]
         },
@@ -179,6 +179,7 @@ _MEDIAN_TAB_SCHEMA = {
                     "id": KEY_MD_WIDTH,
                     "label": "Width (m):",
                     "type": TYPE_TEXTBOX,
+                    "on_text_changed": "on_layout_width_changed",
                 }
             ]
         },
@@ -254,7 +255,7 @@ _RAILING_TAB_SCHEMA = {
                     "label": "Width (mm):",
                     "type": TYPE_TEXTBOX,
                     "default": f"{DEFAULT_RAILING_WIDTH * 1000:.0f}",
-                    "on_text_changed": "recalculate_girders",
+                    "on_text_changed": "on_layout_width_changed",
                 }
             ]
         },
@@ -368,14 +369,12 @@ TYPICAL_SECTION_SCHEMA = {
                         "id": KEY_TS_NO_OF_GIRDERS,
                         "label": "No. of Girders:",
                         "type": TYPE_TEXTBOX,
-                        "bind": "no_of_girders",
                         "on_editing_finished": "on_no_of_girders_changed",
                     },
                     {
                         "id": KEY_TS_GIRDER_SPACING,
                         "label": "Girder Spacing (m):",
                         "type": TYPE_TEXTBOX,
-                        "bind": "girder_spacing",
                         "on_editing_finished": "on_girder_spacing_changed",
                     },
                 ]
@@ -386,7 +385,6 @@ TYPICAL_SECTION_SCHEMA = {
                         "id": KEY_TS_DECK_OVERHANG,
                         "label": "Deck Overhang Width (m):",
                         "type": TYPE_TEXTBOX,
-                        "bind": "deck_overhang",
                         "on_editing_finished": "on_deck_overhang_changed",
                     },
                     {
@@ -394,7 +392,6 @@ TYPICAL_SECTION_SCHEMA = {
                         "label": "Overall Bridge Width (m):",
                         "type": TYPE_TEXTBOX,
                         "read_only": True,
-                        "bind": "overall_bridge_width_display",
                     },
                 ],
             },
@@ -404,9 +401,6 @@ TYPICAL_SECTION_SCHEMA = {
                     {
                         "type": TYPE_NOTICE,
                         "id": "layout_notice",
-                        "bind_adjust":    "layout_adjust_notice",
-                        "bind_warning":   "layout_warning_notice",
-                        "bind_container": "layout_notice_container",
                     },
                 ]
             },
