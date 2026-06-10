@@ -277,7 +277,7 @@ class PercentBarWidget(QWidget):
         self.setStyleSheet("background: transparent;")
 
         root = QVBoxLayout(self)
-        root.setContentsMargins(0, 5, 0, 0)
+        root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(4)
 
         # -- Label — max-width kept in sync with bar via resizeEvent -----------
@@ -287,6 +287,7 @@ class PercentBarWidget(QWidget):
         lbl.setWordWrap(True)
         lbl.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         self._lbl = lbl
+        lbl.setVisible(bool(label))
         root.addWidget(lbl)
 
         # -- Bar row -----------------------------------------------------------

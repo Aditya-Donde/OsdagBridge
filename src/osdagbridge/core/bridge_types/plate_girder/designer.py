@@ -1,7 +1,7 @@
 # IRC 22:2015 composite plate-girder design pipeline: Config -> Demand -> Capacity -> DCR -> Report.
 
 from __future__ import annotations
-
+import warnings
 import math
 import sys
 
@@ -2272,29 +2272,34 @@ class DCREngine:
 
         return self.checks
 
+    def _structural_checks(self) -> List[CheckResult]:
+        """Checks belonging to the 8 design categories only (excludes stiffener check_ids 20/21)."""
+        return [c for c in self.checks if c.check_id in self.CATEGORY_MAP]
+
     def overall_status(self) -> str:
-        if not self.checks:
+        structural = self._structural_checks()
+        if not structural:
             return "NO CHECKS RUN"
-        if any(c.status == "FAIL" for c in self.checks):
+        if any(c.status == "FAIL" for c in structural):
             return "FAIL"
-        if any(c.status == "WARN" for c in self.checks):
+        if any(c.status == "WARN" for c in structural):
             return "WARN"
         return "PASS"
 
     def max_dcr(self) -> float:
-        return max((c.dcr for c in self.checks), default=0.0)
+        return max((c.dcr for c in self._structural_checks()), default=0.0)
 
     def critical_check(self) -> CheckResult:
-        return max(self.checks, key=lambda c: c.dcr)
+        return max(self._structural_checks(), key=lambda c: c.dcr)
 
     def n_pass(self) -> int:
-        return sum(1 for c in self.checks if c.status == "PASS")
+        return sum(1 for c in self._structural_checks() if c.status == "PASS")
 
     def n_warn(self) -> int:
-        return sum(1 for c in self.checks if c.status == "WARN")
+        return sum(1 for c in self._structural_checks() if c.status == "WARN")
 
     def n_fail(self) -> int:
-        return sum(1 for c in self.checks if c.status == "FAIL")
+        return sum(1 for c in self._structural_checks() if c.status == "FAIL")
 
 
 # ======================================================================
@@ -2775,6 +2780,22 @@ def _extract_demands_from_analysis_results(
         M_sls_kNm = _fmax_lc(_sls_env_lc, "Mz_i", "Mz_j") / 1e3
         V_sls_kN  = _fmax_lc(_sls_env_lc, "Vy_i", "Vy_j") / 1e3
 
+        Vr_kN = 0.0
+        if all_live_lcs:
+            try:
+                f_ll = analysis_results.ds.forces.sel(Loadcase=all_live_lcs, Element=elements)
+                vy_ll = np.concatenate([
+                    np.asarray(f_ll.sel(Component=c).values, dtype=float).flatten()
+                    for c in ("Vy_i", "Vy_j")
+                ])
+                vy_ll = vy_ll[~np.isnan(vy_ll)]
+                if vy_ll.size:
+                    Vr_kN = (max(float(vy_ll.max()), 0.0)
+                             - min(float(vy_ll.min()), 0.0)) / 1e3   # N → kN
+            except Exception as e:
+                warnings.warn(f"Could not compute Vr for girder {g_name}: {e}. Defaulting to 0.0 kN.")
+                Vr_kN = 0.0
+            
         per_girder_demands[g_name] = DemandEnvelope(
             Mu_kNm=round(Mu_kNm, 2), Vu_kN=round(Vu_kN, 2), Nu_kN=0.0,
             M_construction_kNm=round(M_const_kNm, 2), M_girder_sw_kNm=round(M_girder_sw_kNm, 2),
@@ -2782,7 +2803,7 @@ def _extract_demands_from_analysis_results(
             stress_range_MPa=round(stress_range_MPa, 3), shear_range_MPa=round(shear_range_MPa, 3),
             Nsc=Nsc, governing_combination=_uls_env_lc or "Envelope_ULS",
             location="critical element", member=g_name, source="grillage_analysis",
-            M_sls_kNm=round(M_sls_kNm, 2), V_sls_kN=round(V_sls_kN, 2),
+            M_sls_kNm=round(M_sls_kNm, 2), V_sls_kN=round(V_sls_kN, 2),Vr_kN=round(Vr_kN, 2),
             lc_type="",  # aggregate envelope — all applicable checks run
         )
 
@@ -2819,13 +2840,26 @@ def _extract_demands_from_analysis_results(
                 Dx = Dy = Dz = 0.0
 
             lc_t = _lc_type(lc_str)
-            # Populate semantic deflection fields so DCREngine checks 13/14 fire per-LC.
+            # Every semantic field below is derived from THIS LC's own response,
+            # gated by its type — the per-LC contract. Cross-LC aggregates
+            # (Vr_kN) and constants (Nsc) stay at girder/config level.
             _d_live  = round(Dy / stiffness_ratio, 3) if lc_t == "live_only" else 0.0
             _d_total = round(Dy / stiffness_ratio, 3) if lc_t == "DL_LL" else 0.0
-            # Populate M_sls / V_sls for SLS-typed LCs so stress and crack checks fire per-LC.
             _is_sls = lc_t in {"SLS", "SLS_frequent", "individual"}
             _m_sls  = round(Mz, 2) if _is_sls else 0.0
             _v_sls  = round(Vy, 2) if _is_sls else 0.0
+            # Construction moment: this LC's Mz when it IS the DL+LL case
+            # (equals Mu there; check 5b's Mu fallback already covers it —
+            # populated for data-model consistency).
+            _m_const = round(Mz, 2) if lc_t == "DL_LL" else 0.0
+            # Girder self-weight moment: this LC's Mz when it IS the SW case —
+            # enables the Stage-1 LTB check (5a, vs Mb_stage1) in the per-LC view.
+            _m_sw    = round(Mz, 2) if (_sw_lc is not None and lc_str == _sw_lc) else 0.0
+            # Fatigue ranges (checks 8/9) apply only to frequent SLS cases (Cl.604.5).
+            # Mz is in kN·m here → ×1e6 = N·mm; Vy in kN → ×1e3 = N.
+            _is_fat     = (lc_t == "SLS_frequent")
+            _stress_rng = round(Mz * 1e6 / Ze_steel_mm3, 3) if _is_fat and Ze_steel_mm3 > 0 else 0.0
+            _shear_rng  = round(Vy * 1e3 / Aw_mm2, 3)       if _is_fat and Aw_mm2 > 0 else 0.0
 
             per_lc[lc_str] = DemandEnvelope(
                 # Strong-axis moment, vertical shear, axial — directly usable as ULS demands
@@ -2843,6 +2877,10 @@ def _extract_demands_from_analysis_results(
                 delta_total_mm=_d_total,
                 M_sls_kNm=_m_sls,
                 V_sls_kN=_v_sls,
+                M_construction_kNm=_m_const,
+                M_girder_sw_kNm=_m_sw,
+                stress_range_MPa=_stress_rng,
+                shear_range_MPa=_shear_rng,
                 governing_combination=lc_str,
                 location="critical element", member=g_name, source="grillage_analysis_per_lc",
                 lc_type=lc_t,
@@ -2887,6 +2925,10 @@ def _compute_per_lc_dcr(
             "delta_live_mm"   : lc_d.delta_live_mm,
             "delta_total_mm"  : lc_d.delta_total_mm,
             "stress_range_MPa": lc_d.stress_range_MPa,
+            "shear_range_MPa" : lc_d.shear_range_MPa,
+            "M_construction_kNm": lc_d.M_construction_kNm,
+            "M_girder_sw_kNm" : lc_d.M_girder_sw_kNm,
+
             # ── DCR summary ─────────────────────────────────────────────────
             "overall_status": lc_engine.overall_status(),
             "max_dcr"       : lc_engine.max_dcr(),
@@ -2995,6 +3037,7 @@ def run_design_check(
                 "stress_range_MPa"    : g_demand.stress_range_MPa,
                 "shear_range_MPa"     : g_demand.shear_range_MPa,
                 "governing_combination": g_demand.governing_combination,
+                "Vr_kN"               : g_demand.Vr_kN,
                 "member"              : g_demand.member,
                 "source"              : g_demand.source,
             },
