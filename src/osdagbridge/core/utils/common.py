@@ -130,9 +130,6 @@ KEY_STEELDESIGN_LOAD_COMBINATION = "steeldesign.load_combination"
 KEY_OUTPUT_DOCK_MEMBER_ID        = "dock.member_id"
 KEY_OUTPUT_DOCK_LOAD_COMBINATION = "dock.load_combination"
 
-KEY_OUTPUT_DOCK_MEMBER_ID        = "dock.member_id"
-KEY_OUTPUT_DOCK_LOAD_COMBINATION = "dock.load_combination"
-
 # Steel design details UI keys
 KEY_SD_DETAILS_DIMENSIONAL_CARD = "steeldesign.details.dimensional"
 KEY_SD_DETAILS_SHEAR_CARD = "steeldesign.details.shear_connector"
