@@ -165,7 +165,7 @@ class TypicalSectionDetailsTab(QWidget):
 
         if "primary_fields" in schema:
             self.primary_widget = UIBuilder(
-                owner=self.additional_input_instance,
+                owner=self,
                 schema=schema["primary_fields"],
                 card_title="Inputs:",
                 main_widget_object_name="primary_fields.main",
@@ -500,6 +500,11 @@ class TypicalSectionDetailsTab(QWidget):
         d[KEY_TS_NO_OF_GIRDERS]  = result.no_of_girders
         d[KEY_TS_OVERALL_WIDTH]  = result.overall_width
         d[KEY_TS_NO_OF_FOOTPATHS] = n_footpaths
+
+        # Regenerate dynamic per-girder/member keys when the girder count changed
+        # (no-ops when the keys already match the current count).
+        if self.additional_input_instance is not None:
+            self.additional_input_instance.on_no_of_girders_changed()
 
         # User-feedback notice if values were nudged, plus overhang>spacing warning
         reason_parts = []

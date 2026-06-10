@@ -867,19 +867,20 @@ class AdditionalInputs(QDialog):
         # Normalize existing numeric text to 2 decimal places for consistent display
         self._normalize_numeric_texts(2)
 
-    # Connector on_editing_finished for No of Girders (Typical Section Tab) → refresh Select Girder combo (Member Properties Tab)
+    # Regenerate dynamic per-girder/member keys when the girder count changes.
+    # Called by TypicalSectionDetailsTab._resolve_layout after the layout is solved.
     def on_no_of_girders_changed(self):
-
-        # Update Dynamic Keys in Working Dict for Member Properties Tab
         from osdagbridge.core.bridge_types.plate_girder.defaults import _on_no_of_girders_changed
-        from pprint import pprint
-        print(f"\n\n@@: Dict before updating dynamic keys:\n")
-        pprint(self.working_input_dict)
-        print("\n\n")
+        try:
+            count = int(float(self.working_input_dict.get(KEY_TS_NO_OF_GIRDERS)))
+        except (TypeError, ValueError):
+            return
+        # Skip when dynamic keys already match the current count — regeneration
+        # discards user-entered member properties.
+        if (f"{KEY_MP_MEMBER_ID}.G{count}.M1" in self.working_input_dict
+                and f"{KEY_MP_MEMBER_ID}.G{count + 1}.M1" not in self.working_input_dict):
+            return
         _on_no_of_girders_changed(self.working_input_dict)
-        print(f"\n\n@@: Dict after updating dynamic keys:\n")
-        pprint(self.working_input_dict)
-        print("\n\n")
 
     # Update CAD Method for Support Conditions Tab Drawing
     # This function is implicitly connected using Schema of the Tab
