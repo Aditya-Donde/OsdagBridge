@@ -1900,6 +1900,7 @@ class PlateGirderBridge:
         cb.print_critical_forces(forces_dict)
 
         pair_designs = cb.run_member_designs(forces_dict)
+        self.output_dict["crossbracing_forces_dict"] = forces_dict
 
         enrich_crossbracing_dump(pair_designs)
         self._print_crossbracing_design_results(forces_dict, pair_designs)
