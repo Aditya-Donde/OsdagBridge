@@ -1,5 +1,4 @@
-import sys
-import os
+import os, yaml
 from PySide6.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QHBoxLayout, QLabel,
     QMenuBar, QSplitter, QSizePolicy, QPushButton, QLineEdit, QComboBox, QFileDialog,
@@ -604,10 +603,10 @@ class CustomWindow(QWidget):
                     dialogType=MessageBoxType.Critical,
                 ).exec()
 
-        elif trigger == "Save":
-            # Collect all the values from input Dock and save to osi/csv
-            pass
-
+        if trigger == "Save":
+            self.saveOSI_inputs()
+            return
+        
         elif trigger == "Additional Inputs":
             self._show_additional_inputs(target_tab=target_tab)
 
@@ -620,6 +619,41 @@ class CustomWindow(QWidget):
         if hasattr(self.input_dock, 'input_value_changed'):
             self.input_dock.input_value_changed.connect(self.update_cad_from_inputs)        
             
+    # Function for saving input dictionary into an OSI file
+    def saveOSI_inputs(self):
+        # Populate additional input defaults so they appear in the saved file
+        # even if the user never opened the Additional Inputs dialog.
+        try:
+            solve_extend_basic_input_dict(self.input_dict)
+        except Exception:
+            pass
+
+        default_dir = os.path.join(get_documents_folder(), "inputs.osi")
+        filePath, _ = QFileDialog.getSaveFileName(self,
+                "Save Design Inputs",
+                default_dir,
+                "Input Files(*.osi)",
+                None)
+        if not filePath:
+            return
+
+        try:
+            with open(filePath, 'w') as input_file:
+                yaml.dump(self.input_dict, input_file)
+
+            CustomMessageBox(
+                title="Success",
+                text="Saved OSI Successfully!",
+                dialogType=MessageBoxType.Success
+            ).exec()
+
+        except Exception as e:
+            CustomMessageBox(
+                title="Unsaved File",
+                text=f"OSI file not saved:\n{e}",
+                dialogType=MessageBoxType.Warning
+            ).exec()
+
     def update_cad_from_inputs(self):
         """
         Collect inputs from InputDock and update 2D-CAD
