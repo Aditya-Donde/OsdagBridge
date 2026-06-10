@@ -328,7 +328,7 @@ def _add_coordinate_triad(ax, nodes, scale=0.12, eng_scale: float = 1.0):
     # The Z-arrow length must be independent of the engineering scale.
     # ``axis_len`` is expressed in data units; the value axis is scaled by
     # ``eng_scale``.  Dividing by ``eng_scale`` yields a constant visual length.
-    z_axis_len = axis_len / max(eng_scale, 1e-6)
+    z_axis_len = axis_len
     end = (ox, oz + z_axis_len, oy)
     _draw_camera_arrow(ax, start, end, colors["Z"], lw=2.2, gid=tag)
     ax.text(
