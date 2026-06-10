@@ -632,9 +632,11 @@ class UIBuilder(QWidget):
 
         elif ftype == TYPE_NOTICE:
             notice_container, adjust_lbl, warning_lbl = self._build_notice_container()
-            setattr(owner, field_def["bind_adjust"],    adjust_lbl)
-            setattr(owner, field_def["bind_warning"],   warning_lbl)
-            setattr(owner, field_def["bind_container"], notice_container)
+            notice_id = field_def.get("id", "")
+            if notice_id:
+                notice_container.setObjectName(notice_id)
+                adjust_lbl.setObjectName(notice_id + ".adjust")
+                warning_lbl.setObjectName(notice_id + ".warning")
             return notice_container
 
         elif ftype == TYPE_BUTTON:
