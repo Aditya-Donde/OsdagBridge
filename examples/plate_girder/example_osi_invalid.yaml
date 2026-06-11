@@ -1,0 +1,29 @@
+geometry:
+  span: '150'  # OUT OF RANGE - should be 10-100
+  carriageway_width: '2'  # OUT OF RANGE - too small
+  include_median: 'No'
+  design_mode: InvalidMode  # INVALID VALUE
+  # Missing: footpath field
+
+material:
+  girder: UNKNOWN_CODE  # INVALID MATERIAL
+  deck: M90  # INVALID CONCRETE GRADE
+
+# Missing: member_properties, design_options, loading, etc.
+
+typical_section:
+  deck_thickness: 50  # OUT OF RANGE - minimum is 100mm
+  girder_spacing: 50  # OUT OF RANGE - conflicts with width
+  overall_bridge_width: 6.9
+  no_of_girders: 4
+
+support_conditions:
+  bearing_length: '400.00'
+  left_support: Pinned
+  right_support: Roller
+
+structure:
+  type: Highway Bridge
+
+project:
+  location: Test
