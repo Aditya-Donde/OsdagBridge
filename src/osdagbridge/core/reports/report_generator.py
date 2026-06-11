@@ -1954,21 +1954,21 @@ The reinforced concrete deck slab is designed per IRC~112:2011 (flexure, shear, 
 \hline
 \textbf{Location} & \textbf{Parameter} & \textbf{Formula / Reference} & \textbf{Value} & \textbf{Status} \\[6pt]
 \hline
-\multirow{5}{*}{\makecell{At Midspan\\(Sagging)}} & Transverse BM (DL), $M_{T,DL}$ &  &  & --- \\[6pt]
+\multirow{5}{*}{\makecell{At Midspan\\(Sagging)}} & Transverse BM (DL), $M_{T,DL}$ & $w_{DL}\,l_{eff}^2/10$ & """ + _dkf(KEY_DECK_RPT_M_DL, nd=2) + r""" kN-m/m & --- \\[6pt]
 \cline{2-5}
- & Transverse BM (LL), $M_{T,LL}$ &  &  & --- \\[6pt]
+ & Transverse BM (LL), $M_{T,LL}$ & Effective width (IRC 112 B3.1) & """ + _dkf(KEY_DECK_RPT_M_LL, nd=2) + r""" kN-m/m & --- \\[6pt]
 \cline{2-5}
- & Total Design BM, $M_{u,sag}$ &  &  & --- \\[6pt]
+ & Total Design BM, $M_{u,sag}$ & """ + _dkf(KEY_DECK_RPT_GAMMA_DL, nd=2) + r""" DL + """ + _dkf(KEY_DECK_RPT_GAMMA_LL, nd=2) + r""" LL & """ + _dkf(KEY_DECK_RPT_M_ULS_SAG, nd=2) + r""" kN-m/m & --- \\[6pt]
 \cline{2-5}
- & Effective depth, $d$ &  &  & --- \\[6pt]
+ & Effective depth, $d$ & $t_s - c_{nom} - \phi/2$ & """ + _dkf(KEY_DECK_RPT_D_BOT, nd=1) + r""" mm & --- \\[6pt]
 \cline{2-5}
- & Moment Capacity, $M_{Rd}$ &  &  &  \\[6pt]
+ & Moment Capacity, $M_{Rd}$ & IRC 112 Cl. 12.2 & """ + _dkf(KEY_DECK_RPT_MU_BOT, nd=2) + r""" kN-m/m & """ + _dks(_dkv(KEY_DECK_RPT_MU_BOT) >= _dkv(KEY_DECK_RPT_M_ULS_SAG)) + r""" \\[6pt]
 \hline
-\multirow{3}{*}{\makecell{At Support\\(Hogging)}} & Total Design BM, $M_{u,hog}$ &  &  & --- \\[6pt]
+\multirow{3}{*}{\makecell{At Support\\(Hogging)}} & Total Design BM, $M_{u,hog}$ & """ + _dkf(KEY_DECK_RPT_GAMMA_DL, nd=2) + r""" DL + """ + _dkf(KEY_DECK_RPT_GAMMA_LL, nd=2) + r""" LL (at support) & """ + _dkf(KEY_DECK_RPT_M_ULS_HOG, nd=2) + r""" kN-m/m & --- \\[6pt]
 \cline{2-5}
- & Required Top Steel, $A_{st,top}$ &  &  & --- \\[6pt]
+ & Required Top Steel, $A_{st,top}$ & $M_u / (0.87\,f_y\,d)$ & """ + _dkf(KEY_DECK_RPT_AS_REQ_TOP, nd=0) + r""" mm²/m & --- \\[6pt]
 \cline{2-5}
- & Moment Capacity, $M_{Rd}$ &  &  &  \\[6pt]
+ & Moment Capacity, $M_{Rd}$ & IRC 112 Cl. 12.2 & """ + _dkf(KEY_DECK_RPT_MU_TOP, nd=2) + r""" kN-m/m & """ + _dks(_dkv(KEY_DECK_RPT_MU_TOP) >= _dkv(KEY_DECK_RPT_M_ULS_HOG)) + r""" \\[6pt]
 \hline
 \end{longtable}
 \noindent\textit{Note: IRC 112 Cl. 12.2. Distribution (longitudinal) reinforcement designed for 20\% of main steel moment (IRC 21 Cl. 305.18).}
