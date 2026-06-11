@@ -1,6 +1,7 @@
 """IRC 112:2020 — Code of Practice for Concrete Road Bridges."""
 
 from __future__ import annotations
+import re
 
 
 class IRC112_2019:
@@ -92,6 +93,56 @@ class IRC112_2019:
         if b_cap is not None:
             bef = min(bef, b_cap)
         return bef
+
+    # IRC 112:2020 Table 14.2 — Durability recommendations for service life ≥ 100 years
+    # (20 mm aggregate)
+    # (exposure_condition, max_wc_ratio, min_cement_kg_m3, min_grade_MPa, min_cover_mm)
+    _TABLE_14_2 = [
+        ("Moderate",    0.45, 340, 25, 40),
+        ("Severe",      0.45, 360, 30, 45),
+        ("Very Severe", 0.40, 380, 40, 50),
+        ("Extreme",     0.35, 400, 45, 75),
+    ]
+
+    @staticmethod
+    def table_14_2_min_cover(concrete_grade: str) -> dict:
+        """
+        IRC 112:2020 Table 14.2 — recommended minimum nominal cover (mm) for a
+        100-year service life (20 mm aggregate), based on concrete grade.
+
+        Given a grade string (e.g. "M30", "M40"), returns the most severe
+        exposure condition the grade satisfies as the minimum concrete requirement,
+        together with the corresponding recommended cover.
+
+        Parameters
+        ----------
+        concrete_grade : str
+            Grade string such as "M25", "M30", "M40", "M45".
+
+        Returns
+        -------
+        dict with keys:
+            exposure_condition  — e.g. "Severe"
+            max_wc_ratio        — maximum water/cement ratio
+            min_cement_kg_m3    — minimum cement content (kg/m³)
+            min_grade_MPa       — minimum concrete grade (MPa)
+            min_cover_mm        — recommended minimum nominal cover (mm)
+        """
+        nums = re.findall(r"\d+", concrete_grade.strip())
+        fck_val = int(nums[0]) if nums else 25
+
+        chosen = IRC112_2019._TABLE_14_2[0]
+        for row in IRC112_2019._TABLE_14_2:
+            if fck_val >= row[3]:
+                chosen = row
+
+        return {
+            "exposure_condition": chosen[0],
+            "max_wc_ratio":       chosen[1],
+            "min_cement_kg_m3":   chosen[2],
+            "min_grade_MPa":      chosen[3],
+            "min_cover_mm":       chosen[4],
+        }
 
     @staticmethod
     def eq_B32_effective_width_cantilever(

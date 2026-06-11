@@ -289,6 +289,12 @@ def design_deck_slab(input_dict: dict, fck: float, fctm: float, fy: float, Es: f
     # ── 2. material properties (fck, fctm, fy resolved from the material DB) ───
     # concrete_grade / rebar_grade are read above only for the report text.
 
+    # ── 2a. recommended minimum cover from IRC 112:2020 Table 14.2 ───────────
+    cover_rec = IRC112_2019.table_14_2_min_cover(concrete_grade)
+    min_cover_rec_mm = cover_rec["min_cover_mm"]
+    cover_top_ok = cover_top_mm >= min_cover_rec_mm
+    cover_bot_ok = cover_bot_mm >= min_cover_rec_mm
+
     # ── 3. governing vehicle & IRC 6 loads ────────────────────────────────────
     vehicle_class = _governing_vehicle(cw_m)
 
@@ -359,6 +365,11 @@ def design_deck_slab(input_dict: dict, fck: float, fctm: float, fy: float, Es: f
     Mu_top = _moment_capacity_kNm(fy, As_top, d_top_mm, fck)
     bot_ok = Mu_bot >= M_ULS_bot_kNm
     top_ok = Mu_top >= M_ULS_top_kNm
+
+    # ── 9a. longitudinal (distribution) reinforcement ────────────────────────
+    # IRC 112:2020 Cl.16.6.1: secondary reinforcement ≥ 20 % of main transverse.
+    As_req_long = max(0.20 * As_bot, _min_steel_mm2(fctm, fy, d_bot_mm))
+    dia_long, spc_long, As_long = _pick_rebar(As_req_long, allowed_dias)
 
     # ── 10. deck overhang design ─────────────────────────────────────────────
     if overhang_m > 0.01:
@@ -620,6 +631,13 @@ def design_deck_slab(input_dict: dict, fck: float, fctm: float, fy: float, Es: f
         f"Concrete               : {concrete_grade}  (fck = {fck:.0f} MPa, fctm = {fctm:.1f} MPa)",
         f"Reinforcement          : {rebar_grade}  (fy = {fy:.0f} MPa)",
         "",
+        "Cover Adequacy  [IRC 112:2020 Table 14.2 — 100-yr service life]",
+        "-" * 40,
+        f"  Concrete grade        : {concrete_grade}  → Exposure: {cover_rec['exposure_condition']}",
+        f"  Recommended min cover : {min_cover_rec_mm} mm",
+        f"  Top cover provided    : {cover_top_mm:.0f} mm  → {'OK' if cover_top_ok else 'BELOW RECOMMENDED'}",
+        f"  Bottom cover provided : {cover_bot_mm:.0f} mm  → {'OK' if cover_bot_ok else 'BELOW RECOMMENDED'}",
+        "",
         "Interior Span Loads",
         "-" * 40,
         f"  Dead load (w_DL)     : {w_DL_kN_m2:.2f} kN/m²",
@@ -649,6 +667,12 @@ def design_deck_slab(input_dict: dict, fck: float, fctm: float, fy: float, Es: f
         f"  Provided             : Ø{dia_top:.0f} @ {spc_top:.0f} mm c/c  →  {As_top:.0f} mm²/m",
         f"  Moment capacity Mu   : {Mu_top:.3f} kNm/m",
         f"  Status               : {'PASS' if top_ok else 'FAIL'}",
+        "",
+        "Longitudinal (Distribution) Reinforcement  [IRC 112:2020 Cl.16.6.1]",
+        "-" * 40,
+        f"  20% of As_bot        : {0.20 * As_bot:.0f} mm²/m",
+        f"  As required          : {As_req_long:.0f} mm²/m",
+        f"  Provided             : Ø{dia_long:.0f} @ {spc_long:.0f} mm c/c  →  {As_long:.0f} mm²/m",
         *overhang_lines,
         *shear_lines,
         *sls_lines,
@@ -661,6 +685,8 @@ def design_deck_slab(input_dict: dict, fck: float, fctm: float, fy: float, Es: f
         "deck_grade"             : concrete_grade,
         "deck_thickness"         : f"{deck_t_mm:.0f}",
         "deck_overhang"          : f"{overhang_m * 1000:.0f}",
+        "deck_exposure"          : cover_rec["exposure_condition"],
+        "min_cover_recommended"  : str(min_cover_rec_mm),
         # ── bottom reinforcement (interior sagging) ─────────────────────────
         "rebar_bottom_yield"     : f"{fy:.0f}",
         "rebar_bottom_dia"       : f"{dia_bot:.0f}",
@@ -673,6 +699,12 @@ def design_deck_slab(input_dict: dict, fck: float, fctm: float, fy: float, Es: f
         "rebar_top_spacing"      : f"{spc_top:.0f}",
         "rebar_top_cover"        : f"{cover_top_mm:.0f}",
         "rebar_top_area"         : f"{As_top:.0f}",
+        # ── longitudinal (distribution) reinforcement ────────────────────────
+        "rebar_long_yield"       : f"{fy:.0f}",
+        "rebar_long_dia"         : f"{dia_long:.0f}",
+        "rebar_long_spacing"     : f"{spc_long:.0f}",
+        "rebar_long_cover"       : f"{cover_bot_mm:.0f}",
+        "rebar_long_area"        : f"{As_long:.0f}",
         # ── utilization ratios (interior) ────────────────────────────────────
         "ur_bot_uls"             : round(ur_bot_uls, 3),
         "ur_top_uls"             : round(ur_top_uls, 3),
