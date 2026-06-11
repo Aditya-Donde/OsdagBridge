@@ -1,0 +1,120 @@
+geometry:
+  span: '25'
+  carriageway_width: '6'
+  include_median: 'No'
+  design_mode: Optimized
+  footpath: null
+  skew_angle: null
+
+material:
+  girder: E 350A
+  girder.density: '76.4'
+  girder.e: '200.0'
+  girder.fu: '490.0'
+  girder.fy: '350.0'
+  deck: M40
+  deck.density: '24.5'
+  deck.fck: '40.0'
+  cross_bracing: E 350A
+  cross_bracing.density: '76.4'
+  end_diaphragm: E 350A
+  end_diaphragm.density: '76.4'
+
+member_properties:
+  girder_details:
+    select_girder:
+      G1: G1
+      G2: G2
+      G3: G3
+      G4: G4
+  cross_bracing_details:
+    type:
+      G1G2:
+        B1M1: K-bracing
+
+design_options:
+  construction:
+    stage: 'Yes'
+  deck:
+    top_clear_cover: '50'
+    bottom_clear_cover: '50'
+    side_clear_cover: '50'
+    reinforcement_material: Fe 415
+    reinforcement_bounds:
+      lower: null
+      upper: null
+  shear_studs:
+    diameter: '16'
+    height: '100'
+    count: '2'
+    yield_strength: '400'
+    ultimate_strength: '400'
+    transverse_spacing: '100'
+
+design_options_cont:
+  deflection:
+    limit: '600.00'
+  fatigue:
+    load_cycles: '2000000'
+  partial_factor:
+    concrete_basic:
+      gamma_c_basic: '1.50'
+    concrete_accidental:
+      gamma_c_accidental: '1.20'
+    yielding_and_buckling:
+      gamma_m0: '1.10'
+    ultimate_stress:
+      gamma_m1: '1.25'
+    reinforcing_steel:
+      gamma_s: '1.15'
+    shear_connectors:
+      gamma_v: '1.25'
+
+loading:
+  permanent_load:
+    dead_load:
+      self_weight_factor: '1.00'
+  live_load:
+    eccentricity: '1.2'
+    footpath_pressure:
+      mode: As per IRC 6
+      value: ''
+  seismic_load:
+    importance_factor: '1.0'
+    time_period: '0.5'
+    damping: '2'
+  wind_load:
+    avg_exposed_height: '10'
+    site_topography: Flat
+    terrain_type: Plain Terrain
+  temperature_load:
+    thermal_coeff_steel: '12.0e-6'
+    thermal_coeff_rcc: '12.0e-6'
+
+typical_section:
+  deck_thickness: 200.0
+  footpath_width: 0.0
+  footpath_thickness: 100.0
+  girder_spacing: 1.73
+  no_of_girders: 4
+  deck_overhang: 0.855
+  overall_bridge_width: 6.9
+  crash_barrier:
+    type: IRC 5 - RCC Crash Barrier
+    width: 0.45
+    height: 1.1
+    load: 7.557
+
+support_conditions:
+  bearing_length: '400.00'
+  left_support: Pinned
+  right_support: Roller
+
+structure:
+  type: Highway Bridge
+
+project:
+  location:
+    method: map
+    latitude: '23.364437'
+    longitude: '76.392099'

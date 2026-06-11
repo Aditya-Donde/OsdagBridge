@@ -1,5 +1,4 @@
-import sys
-import os
+import os, yaml
 from PySide6.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QHBoxLayout, QLabel,
     QMenuBar, QSplitter, QSizePolicy, QPushButton, QLineEdit, QComboBox, QFileDialog,
@@ -607,10 +606,10 @@ class CustomWindow(QWidget):
                     dialogType=MessageBoxType.Critical,
                 ).exec()
 
-        elif trigger == "Save":
-            # Collect all the values from input Dock and save to osi/csv
-            pass
-
+        if trigger == "Save":
+            self.saveOSI_inputs()
+            return
+        
         elif trigger == "Additional Inputs":
             self._show_additional_inputs(target_tab=target_tab)
 
@@ -623,6 +622,84 @@ class CustomWindow(QWidget):
         if hasattr(self.input_dock, 'input_value_changed'):
             self.input_dock.input_value_changed.connect(self.update_cad_from_inputs)        
             
+    # Function for saving input dictionary into an OSI file
+    def saveOSI_inputs(self):
+        # Populate additional input defaults so they appear in the saved file
+        # even if the user never opened the Additional Inputs dialog.
+        try:
+            solve_extend_basic_input_dict(self.input_dict)
+        except Exception:
+            pass
+
+        default_dir = os.path.join(get_documents_folder(), "inputs.osi")
+        filePath, _ = QFileDialog.getSaveFileName(self,
+                "Save Design Inputs",
+                default_dir,
+                "Input Files(*.osi)",
+                None)
+        if not filePath:
+            return
+
+        try:
+            with open(filePath, 'w') as input_file:
+                yaml.dump(self.input_dict, input_file)
+
+            CustomMessageBox(
+                title="Success",
+                text="Saved OSI Successfully!",
+                dialogType=MessageBoxType.Success
+            ).exec()
+
+        except Exception as e:
+            CustomMessageBox(
+                title="Unsaved File",
+                text=f"OSI file not saved:\n{e}",
+                dialogType=MessageBoxType.Warning
+            ).exec()
+
+    def loadOSI_inputs(self):
+        filePath, _ = QFileDialog.getOpenFileName(
+            self,
+            "Load Design Inputs",
+            get_documents_folder(),
+            "Input Files (*.osi)",
+        )
+        if not filePath:
+            return
+
+        try:
+            with open(filePath, "r") as f:
+                data = yaml.safe_load(f)
+
+            if not isinstance(data, dict):
+                raise ValueError("File does not contain a valid input dictionary.")
+
+            self.input_dock.populate_from_dict(data)
+
+            # Sync additional inputs dialog if it has already been constructed
+            if self._additional_inputs_dialog is not None:
+                self._additional_inputs_dialog.set_input_dictionary(self.input_dict)
+
+            # Refresh 2D CAD to reflect loaded values
+            try:
+                solve_extend_basic_input_dict(self.input_dict)
+                self.cad_comp_widget.update_from_osdag_inputs(self.input_dict)
+            except Exception:
+                pass
+
+            CustomMessageBox(
+                title="Success",
+                text="Loaded OSI Successfully!",
+                dialogType=MessageBoxType.Success
+            ).exec()
+
+        except Exception as e:
+            CustomMessageBox(
+                title="Error",
+                text=f"Could not load OSI file:\n{e}",
+                dialogType=MessageBoxType.Warning
+            ).exec()
+
     def update_cad_from_inputs(self):
         """
         Collect inputs from InputDock and update 2D-CAD
@@ -1416,12 +1493,14 @@ class CustomWindow(QWidget):
 
         load_input_action = QAction("Load Input", self)
         load_input_action.setShortcut(QKeySequence("Ctrl+L"))
+        load_input_action.triggered.connect(lambda: self.loadOSI_inputs())
         file_menu.addAction(load_input_action)
 
         file_menu.addSeparator()
 
         save_input_action = QAction("Save Input", self)
         save_input_action.setShortcut(QKeySequence("Ctrl+S"))
+        save_input_action.triggered.connect(lambda: self.common_design_func("Save"))
         file_menu.addAction(save_input_action)
 
         save_log_action = QAction("Save Log Messages", self)
