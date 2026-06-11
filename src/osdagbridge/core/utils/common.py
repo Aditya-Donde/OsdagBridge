@@ -183,6 +183,71 @@ KEY_UTIL_FATIGUE             = "util.fatigue"
 KEY_UTIL_STRESS_LIMITATION   = "util.stress_limitation"
 KEY_UTIL_DEFLECTION_CRACK    = "util.deflection_crack"
 
+# ===== Deck Slab Design — Report Output Keys =====
+# Values computed by deckdesign.design_deck_slab() and stored in
+# output_dict["deck_report_values"] for the report generator (Tables 5.17(a)-(g)).
+# These are existing computed values only — no new structural calculation.
+
+# -- 5.17(a) Loading & Geometry --
+KEY_DECK_RPT_VEHICLE          = "deck.report.vehicle_class"      # governing IRC 6 vehicle
+KEY_DECK_RPT_IMPACT_FACTOR    = "deck.report.impact_factor"      # 1 + IF
+KEY_DECK_RPT_GAMMA_DL         = "deck.report.gamma_dl"           # ULS partial safety factor (DL)
+KEY_DECK_RPT_GAMMA_LL         = "deck.report.gamma_ll"           # ULS partial safety factor (LL)
+KEY_DECK_RPT_SPAN             = "deck.report.span"               # effective span = girder spacing (m)
+KEY_DECK_RPT_THICKNESS        = "deck.report.thickness"          # deck thickness (mm)
+KEY_DECK_RPT_COVER_TOP        = "deck.report.cover_top"          # top clear cover (mm)
+KEY_DECK_RPT_COVER_BOT        = "deck.report.cover_bot"          # bottom clear cover (mm)
+KEY_DECK_RPT_WDL              = "deck.report.w_dl"               # slab dead load (kN/m2)
+KEY_DECK_RPT_WHEEL_LOAD       = "deck.report.wheel_load"         # max single wheel load (kN)
+KEY_DECK_RPT_TYRE_WIDTH       = "deck.report.tyre_contact_width" # transverse tyre contact width (m)
+KEY_DECK_RPT_CONCRETE_GRADE   = "deck.report.concrete_grade"     # e.g. "M30"
+KEY_DECK_RPT_REBAR_GRADE      = "deck.report.rebar_grade"        # e.g. "Fe500"
+KEY_DECK_RPT_FCK              = "deck.report.fck"                # concrete fck (MPa)
+KEY_DECK_RPT_FCTM             = "deck.report.fctm"              # concrete fctm (MPa)
+KEY_DECK_RPT_FY               = "deck.report.fy"                # rebar fy (MPa)
+
+# -- 5.17(b) Interior panel flexure --
+KEY_DECK_RPT_M_DL             = "deck.report.m_dl"              # dead load moment (kNm/m)
+KEY_DECK_RPT_M_LL             = "deck.report.m_ll"              # live load moment, unfactored (kNm/m)
+KEY_DECK_RPT_M_ULS_SAG        = "deck.report.m_uls_sag"        # ULS sagging moment (kNm/m)
+KEY_DECK_RPT_M_ULS_HOG        = "deck.report.m_uls_hog"        # ULS hogging moment (kNm/m)
+KEY_DECK_RPT_D_BOT            = "deck.report.d_bot"            # bottom effective depth (mm)
+KEY_DECK_RPT_D_TOP            = "deck.report.d_top"            # top effective depth (mm)
+KEY_DECK_RPT_MU_BOT           = "deck.report.mu_bot"          # bottom moment capacity (kNm/m)
+KEY_DECK_RPT_MU_TOP           = "deck.report.mu_top"          # top moment capacity (kNm/m)
+KEY_DECK_RPT_AS_REQ_BOT       = "deck.report.as_req_bot"      # bottom required steel (mm2/m)
+KEY_DECK_RPT_AS_REQ_TOP       = "deck.report.as_req_top"      # top required steel (mm2/m)
+
+# -- 5.17(c) Cantilever overhang flexure --
+KEY_DECK_RPT_OVERHANG         = "deck.report.overhang"        # overhang length (mm)
+KEY_DECK_RPT_M_BARRIER        = "deck.report.m_barrier"       # crash barrier moment (kNm/m)
+KEY_DECK_RPT_M_DL_OH          = "deck.report.m_dl_oh"         # overhang dead load moment (kNm/m)
+KEY_DECK_RPT_M_LL_OH          = "deck.report.m_ll_oh"         # overhang live load moment (kNm/m)
+KEY_DECK_RPT_M_ULS_OH         = "deck.report.m_uls_oh"        # overhang ULS hogging moment (kNm/m)
+KEY_DECK_RPT_D_OH             = "deck.report.d_oh"            # overhang effective depth (mm)
+KEY_DECK_RPT_MU_OH            = "deck.report.mu_oh"           # overhang moment capacity (kNm/m)
+KEY_DECK_RPT_AS_REQ_OH        = "deck.report.as_req_oh"       # overhang required steel (mm2/m)
+
+# -- 5.17(e) Crack width --
+KEY_DECK_RPT_AS_MIN           = "deck.report.as_min"          # min reinforcement (mm2/m, IRC112 Cl.16.5.1)
+KEY_DECK_RPT_WK_BOT           = "deck.report.wk_bot"          # bottom crack width (mm)
+KEY_DECK_RPT_WK_TOP           = "deck.report.wk_top"          # top crack width (mm)
+KEY_DECK_RPT_WK_OH            = "deck.report.wk_oh"           # overhang crack width (mm)
+KEY_DECK_RPT_WK_LIMIT         = "deck.report.wk_limit"        # permissible crack width (mm)
+
+# -- 5.17(g) Reinforcement detailing (provided bars) --
+KEY_DECK_RPT_DIA_BOT          = "deck.report.dia_bot"         # bottom bar diameter (mm)
+KEY_DECK_RPT_SPC_BOT          = "deck.report.spc_bot"         # bottom bar spacing (mm)
+KEY_DECK_RPT_AS_BOT           = "deck.report.as_bot"          # bottom steel provided (mm2/m)
+KEY_DECK_RPT_DIA_TOP          = "deck.report.dia_top"         # top bar diameter (mm)
+KEY_DECK_RPT_SPC_TOP          = "deck.report.spc_top"         # top bar spacing (mm)
+KEY_DECK_RPT_AS_TOP           = "deck.report.as_top"          # top steel provided (mm2/m)
+KEY_DECK_RPT_DIA_OH           = "deck.report.dia_oh"          # overhang bar diameter (mm)
+KEY_DECK_RPT_SPC_OH           = "deck.report.spc_oh"          # overhang bar spacing (mm)
+KEY_DECK_RPT_AS_OH            = "deck.report.as_oh"           # overhang steel provided (mm2/m)
+KEY_DECK_RPT_SPACING_MAX      = "deck.report.spacing_max"     # max permissible bar spacing (mm)
+KEY_DECK_RPT_HAS_OVERHANG     = "deck.report.has_overhang"    # bool — overhang present
+
 # Module + section identifiers (also used as UI keys)
 KEY_MODULE_PLATE_GIRDER = "module.plate_girder"
 KEY_SECTION_STRUCTURE = "section.structure"

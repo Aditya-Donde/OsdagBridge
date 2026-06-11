@@ -229,6 +229,25 @@ from osdagbridge.core.utils.common import (
     KEY_UTIL_DEFLECTION_CRACK,
     KEY_UTIL_INTERACTION,
     KEY_UTIL_LONG_TRANS_SHEAR,
+    # Deck Slab Design — report output keys (Tables 5.17(a)-(g)),
+    # stored in output_dict["deck_report_values"] by design_deck_slab().
+    KEY_DECK_RPT_VEHICLE, KEY_DECK_RPT_IMPACT_FACTOR, KEY_DECK_RPT_GAMMA_DL,
+    KEY_DECK_RPT_GAMMA_LL, KEY_DECK_RPT_SPAN, KEY_DECK_RPT_THICKNESS,
+    KEY_DECK_RPT_COVER_TOP, KEY_DECK_RPT_COVER_BOT, KEY_DECK_RPT_WDL,
+    KEY_DECK_RPT_WHEEL_LOAD, KEY_DECK_RPT_TYRE_WIDTH, KEY_DECK_RPT_CONCRETE_GRADE,
+    KEY_DECK_RPT_REBAR_GRADE, KEY_DECK_RPT_FCK, KEY_DECK_RPT_FCTM, KEY_DECK_RPT_FY,
+    KEY_DECK_RPT_M_DL, KEY_DECK_RPT_M_LL, KEY_DECK_RPT_M_ULS_SAG,
+    KEY_DECK_RPT_M_ULS_HOG, KEY_DECK_RPT_D_BOT, KEY_DECK_RPT_D_TOP,
+    KEY_DECK_RPT_MU_BOT, KEY_DECK_RPT_MU_TOP, KEY_DECK_RPT_AS_REQ_BOT,
+    KEY_DECK_RPT_AS_REQ_TOP, KEY_DECK_RPT_OVERHANG, KEY_DECK_RPT_M_BARRIER,
+    KEY_DECK_RPT_M_DL_OH, KEY_DECK_RPT_M_LL_OH, KEY_DECK_RPT_M_ULS_OH,
+    KEY_DECK_RPT_D_OH, KEY_DECK_RPT_MU_OH, KEY_DECK_RPT_AS_REQ_OH,
+    KEY_DECK_RPT_AS_MIN, KEY_DECK_RPT_WK_BOT, KEY_DECK_RPT_WK_TOP,
+    KEY_DECK_RPT_WK_OH, KEY_DECK_RPT_WK_LIMIT, KEY_DECK_RPT_DIA_BOT,
+    KEY_DECK_RPT_SPC_BOT, KEY_DECK_RPT_AS_BOT, KEY_DECK_RPT_DIA_TOP,
+    KEY_DECK_RPT_SPC_TOP, KEY_DECK_RPT_AS_TOP, KEY_DECK_RPT_DIA_OH,
+    KEY_DECK_RPT_SPC_OH, KEY_DECK_RPT_AS_OH, KEY_DECK_RPT_SPACING_MAX,
+    KEY_DECK_RPT_HAS_OVERHANG,
 )
 
 
@@ -1345,6 +1364,11 @@ def ch5_design_checks(checks_data, bridge: "ReportDataBridge"):
         girder_entries = [(f"Girder {i}", f"M1") for i in range(1, n + 1)]
     n_girders = len(girder_entries)
 
+    # Deck slab design report values (Tables 5.17(a)-(g)), keyed to
+    # common.KEY_DECK_RPT_*. Populated by deckdesign.design_deck_slab(); empty
+    # dict when deck design has not been run. Look up with deck_rpt.get(KEY_...).
+    deck_rpt = bridge.output_dict.get("deck_report_values", {}) or {}
+
     # Generate Table 5.2 rows
     t52_rows = []
     for lbl, _ in girder_entries:
@@ -1627,6 +1651,53 @@ def ch5_design_checks(checks_data, bridge: "ReportDataBridge"):
         cb_capacity_rows.append(r"\hline")
     cb_capacity_content = "\n".join(cb_capacity_rows)
 
+    # ── Deck slab design value helpers (Tables 5.17 a/b/c/e/g) ────────────────
+    # Read from deck_rpt = output_dict["deck_report_values"] (common.KEY_DECK_RPT_*).
+    # Tables 5.17(d) punching shear and 5.17(f) one-way shear stay as
+    # placeholders — those are not computed by design_deck_slab().
+    _dk_has = bool(deck_rpt)
+    _dk_oh = bool(deck_rpt.get(KEY_DECK_RPT_HAS_OVERHANG))
+    _DKPH = r"\placeholder{---}"
+
+    def _dkv(key, default=0.0):
+        """Raw float for status comparisons (0.0 if missing/non-numeric)."""
+        try:
+            return float(deck_rpt.get(key))
+        except (TypeError, ValueError):
+            return default
+
+    def _dkf(key, nd=2, scale=1.0):
+        """Formatted display string; placeholder when deck design not run."""
+        if not _dk_has:
+            return _DKPH
+        v = deck_rpt.get(key)
+        if v is None or v == "":
+            return _DKPH
+        try:
+            return f"{float(v) * scale:.{nd}f}"
+        except (TypeError, ValueError):
+            return str(v)
+
+    def _dks(ok):
+        """PASS/FAIL status; '---' when deck design not run."""
+        return ("PASS" if ok else "FAIL") if _dk_has else "---"
+
+    def _dkoh(key, nd=2, scale=1.0, unit=""):
+        """Overhang value; 'N/A' when there is no overhang."""
+        if not _dk_has:
+            return _DKPH
+        if not _dk_oh:
+            return "N/A"
+        return _dkf(key, nd=nd, scale=scale) + unit
+
+    # Governing crack width = max(bottom, top[, overhang]) vs the limit.
+    _dk_wks = [_dkv(KEY_DECK_RPT_WK_BOT), _dkv(KEY_DECK_RPT_WK_TOP)]
+    if _dk_oh:
+        _dk_wks.append(_dkv(KEY_DECK_RPT_WK_OH))
+    _dk_gov_wk = max(_dk_wks)
+    _dk_gov_wk_str = (f"{_dk_gov_wk:.4f}" if _dk_has else _DKPH)
+    _dk_crack_ok = _dk_has and _dk_gov_wk <= _dkv(KEY_DECK_RPT_WK_LIMIT)
+
     return r"""
 \chapter{Design Checks}
 
@@ -1858,21 +1929,21 @@ The reinforced concrete deck slab is designed per IRC~112:2011 (flexure, shear, 
 
 \begin{longtable}{|L{5.5cm}|p{10.0cm}|}
 \hline
-\textbf{Effective Span of Deck Slab, $l_{eff}$} &  \\[6pt]
+\textbf{Effective Span of Deck Slab, $l_{eff}$} & """ + _dkf(KEY_DECK_RPT_SPAN, nd=0, scale=1000.0) + r""" mm (girder spacing, c/c) \\[6pt]
 \hline
-\textbf{Deck Thickness, $t_s$} &  \\[6pt]
+\textbf{Deck Thickness, $t_s$} & """ + _dkf(KEY_DECK_RPT_THICKNESS, nd=0) + r""" mm \\[6pt]
 \hline
-\textbf{Clear Cover (IRC 112 Cl. 15.2)} &  \\[6pt]
+\textbf{Clear Cover (IRC 112 Cl. 15.2)} & Top """ + _dkf(KEY_DECK_RPT_COVER_TOP, nd=0) + r""" / Bottom """ + _dkf(KEY_DECK_RPT_COVER_BOT, nd=0) + r""" mm \\[6pt]
 \hline
-\textbf{Dead Load per Unit Area, $w_{DL}$} &  \\[6pt]
+\textbf{Dead Load per Unit Area, $w_{DL}$} & """ + _dkf(KEY_DECK_RPT_WDL, nd=2) + r""" kN/m² (slab self-weight) \\[6pt]
 \hline
-\textbf{IRC 6 Wheel Load (Class A / 70R)} &  \\[6pt]
+\textbf{IRC 6 Wheel Load (Class A / 70R)} & """ + _dkf(KEY_DECK_RPT_WHEEL_LOAD, nd=1) + r""" kN \\[6pt]
 \hline
-\textbf{Tyre Contact Area (IRC 6 Annex~A)} &  \\[6pt]
+\textbf{Tyre Contact Width (IRC 6 Annex~A)} & """ + _dkf(KEY_DECK_RPT_TYRE_WIDTH, nd=0, scale=1000.0) + r""" mm (transverse) \\[6pt]
 \hline
-\textbf{Impact Factor (IRC 6 Cl. 208.2)} &  \\[6pt]
+\textbf{Impact Factor (IRC 6 Cl. 208.2)} & """ + _dkf(KEY_DECK_RPT_IMPACT_FACTOR, nd=3) + r""" \\[6pt]
 \hline
-\textbf{Governing Live Load Case} &  \\[6pt]
+\textbf{Governing Live Load Case} & """ + _dkf(KEY_DECK_RPT_VEHICLE) + r""" \\[6pt]
 \hline
 \end{longtable}
 

@@ -24,6 +24,24 @@ from osdagbridge.core.utils.common import (
     KEY_TS_GIRDER_SPACING, KEY_TS_DECK_OVERHANG, KEY_TS_DECK_THICKNESS,
     KEY_DS_REINF_MATERIAL, KEY_DS_TOP_CLEAR_COVER, KEY_DS_BOTTOM_CLEAR_COVER,
     KEY_DS_REINF_BOUNDS, KEY_WC_THICKNESS, KEY_MP_CB_SPACING,
+    # Report output keys — stored in output_dict["deck_report_values"]
+    KEY_DECK_RPT_VEHICLE, KEY_DECK_RPT_IMPACT_FACTOR, KEY_DECK_RPT_GAMMA_DL,
+    KEY_DECK_RPT_GAMMA_LL, KEY_DECK_RPT_SPAN, KEY_DECK_RPT_THICKNESS,
+    KEY_DECK_RPT_COVER_TOP, KEY_DECK_RPT_COVER_BOT, KEY_DECK_RPT_WDL,
+    KEY_DECK_RPT_WHEEL_LOAD, KEY_DECK_RPT_TYRE_WIDTH, KEY_DECK_RPT_CONCRETE_GRADE,
+    KEY_DECK_RPT_REBAR_GRADE, KEY_DECK_RPT_FCK, KEY_DECK_RPT_FCTM, KEY_DECK_RPT_FY,
+    KEY_DECK_RPT_M_DL, KEY_DECK_RPT_M_LL, KEY_DECK_RPT_M_ULS_SAG,
+    KEY_DECK_RPT_M_ULS_HOG, KEY_DECK_RPT_D_BOT, KEY_DECK_RPT_D_TOP,
+    KEY_DECK_RPT_MU_BOT, KEY_DECK_RPT_MU_TOP, KEY_DECK_RPT_AS_REQ_BOT,
+    KEY_DECK_RPT_AS_REQ_TOP, KEY_DECK_RPT_OVERHANG, KEY_DECK_RPT_M_BARRIER,
+    KEY_DECK_RPT_M_DL_OH, KEY_DECK_RPT_M_LL_OH, KEY_DECK_RPT_M_ULS_OH,
+    KEY_DECK_RPT_D_OH, KEY_DECK_RPT_MU_OH, KEY_DECK_RPT_AS_REQ_OH,
+    KEY_DECK_RPT_AS_MIN, KEY_DECK_RPT_WK_BOT, KEY_DECK_RPT_WK_TOP,
+    KEY_DECK_RPT_WK_OH, KEY_DECK_RPT_WK_LIMIT, KEY_DECK_RPT_DIA_BOT,
+    KEY_DECK_RPT_SPC_BOT, KEY_DECK_RPT_AS_BOT, KEY_DECK_RPT_DIA_TOP,
+    KEY_DECK_RPT_SPC_TOP, KEY_DECK_RPT_AS_TOP, KEY_DECK_RPT_DIA_OH,
+    KEY_DECK_RPT_SPC_OH, KEY_DECK_RPT_AS_OH, KEY_DECK_RPT_SPACING_MAX,
+    KEY_DECK_RPT_HAS_OVERHANG,
 )
 
 # ── constants ─────────────────────────────────────────────────────────────────
@@ -234,7 +252,7 @@ def _wheel_contact_width_m(vehicle_class: str) -> float:
 
 # ── main design function ──────────────────────────────────────────────────────
 
-def design_deck_slab(input_dict: dict, fck: float, fctm: float, fy: float, Es: float, Ecm: float) -> dict:
+def design_deck_slab(input_dict: dict, fck: float, fctm: float, fy: float, Es: float, Ecm: float) -> tuple[dict, dict]:
     """
     Design the concrete deck slab of a plate girder bridge.
 
@@ -256,12 +274,19 @@ def design_deck_slab(input_dict: dict, fck: float, fctm: float, fy: float, Es: f
 
     Returns
     -------
-    dict
-        Keys matching DeckDesign.load_data() / DECK_DESIGN_SUMMARY_SCHEMA:
+    tuple[dict, dict]
+        ``(result, report_values)``.
+
+        ``result`` — UI-facing dict keyed to DeckDesign.load_data() /
+        DECK_DESIGN_SUMMARY_SCHEMA:
         deck_grade, deck_thickness, deck_overhang,
         rebar_{top,bottom,overhang}_{yield,dia,spacing,cover,area},
         ur_{bot,top,oh}_{uls,sls_c,sls_s,crack},
         deck_design_check.
+
+        ``report_values`` — raw numeric values keyed to common.KEY_DECK_RPT_*,
+        consumed by the report generator (Tables 5.17(a)-(g)). Stored in
+        output_dict["deck_report_values"].
     """
     # ── 1. read bridge parameters ─────────────────────────────────────────────
     inp = input_dict
@@ -735,4 +760,68 @@ def design_deck_slab(input_dict: dict, fck: float, fctm: float, fy: float, Es: f
             "ur_oh_shear"            : round(ur_oh_shear, 3),
             "ur_oh_punch"            : round(ur_oh_punch, 3),
         })
-    return result
+
+    # ── 14. report values dict (keyed to common.KEY_DECK_RPT_*) ──────────────
+    # Raw numeric values consumed by the report generator (Tables 5.17(a)-(g)),
+    # stored separately from the UI-facing `result` dict above. Existing
+    # computed values only — no new structural calculation.
+    has_overhang = overhang_m > 0.01
+    as_min_bot = _min_steel_mm2(fctm, fy, d_bot_mm)
+    report_values = {
+        # -- 5.17(a) loading & geometry --
+        KEY_DECK_RPT_VEHICLE        : vehicle_class,
+        KEY_DECK_RPT_IMPACT_FACTOR  : impact_factor,
+        KEY_DECK_RPT_GAMMA_DL       : gamma_dl,
+        KEY_DECK_RPT_GAMMA_LL       : gamma_ll,
+        KEY_DECK_RPT_SPAN           : S,
+        KEY_DECK_RPT_THICKNESS      : deck_t_mm,
+        KEY_DECK_RPT_COVER_TOP      : cover_top_mm,
+        KEY_DECK_RPT_COVER_BOT      : cover_bot_mm,
+        KEY_DECK_RPT_WDL            : w_DL_kN_m2,
+        KEY_DECK_RPT_WHEEL_LOAD     : P_wheel_kN,
+        KEY_DECK_RPT_TYRE_WIDTH     : _wheel_contact_width_m(vehicle_class),
+        KEY_DECK_RPT_CONCRETE_GRADE : concrete_grade,
+        KEY_DECK_RPT_REBAR_GRADE    : rebar_grade,
+        KEY_DECK_RPT_FCK            : fck,
+        KEY_DECK_RPT_FCTM           : fctm,
+        KEY_DECK_RPT_FY             : fy,
+        # -- 5.17(b) interior panel flexure --
+        KEY_DECK_RPT_M_DL           : M_DL_kNm,
+        KEY_DECK_RPT_M_LL           : M_LL_kNm,
+        KEY_DECK_RPT_M_ULS_SAG      : M_ULS_bot_kNm,
+        KEY_DECK_RPT_M_ULS_HOG      : M_ULS_top_kNm,
+        KEY_DECK_RPT_D_BOT          : d_bot_mm,
+        KEY_DECK_RPT_D_TOP          : d_top_mm,
+        KEY_DECK_RPT_MU_BOT         : Mu_bot,
+        KEY_DECK_RPT_MU_TOP         : Mu_top,
+        KEY_DECK_RPT_AS_REQ_BOT     : As_req_bot,
+        KEY_DECK_RPT_AS_REQ_TOP     : As_req_top,
+        # -- 5.17(c) cantilever overhang flexure --
+        KEY_DECK_RPT_OVERHANG       : overhang_m * 1000.0,
+        KEY_DECK_RPT_M_BARRIER      : M_barrier_kNm,
+        KEY_DECK_RPT_M_DL_OH        : M_DL_oh,
+        KEY_DECK_RPT_M_LL_OH        : M_LL_oh,
+        KEY_DECK_RPT_M_ULS_OH       : M_ULS_oh,
+        KEY_DECK_RPT_D_OH           : d_oh_mm,
+        KEY_DECK_RPT_MU_OH          : Mu_oh,
+        KEY_DECK_RPT_AS_REQ_OH      : As_req_oh,
+        # -- 5.17(e) crack width --
+        KEY_DECK_RPT_AS_MIN         : as_min_bot,
+        KEY_DECK_RPT_WK_BOT         : cw_bot["wk"],
+        KEY_DECK_RPT_WK_TOP         : cw_top["wk"],
+        KEY_DECK_RPT_WK_OH          : (cw_oh["wk"] if has_overhang else 0.0),
+        KEY_DECK_RPT_WK_LIMIT       : cw_bot["wk_lim"],
+        # -- 5.17(g) reinforcement detailing (provided bars) --
+        KEY_DECK_RPT_DIA_BOT        : dia_bot,
+        KEY_DECK_RPT_SPC_BOT        : spc_bot,
+        KEY_DECK_RPT_AS_BOT         : As_bot,
+        KEY_DECK_RPT_DIA_TOP        : dia_top,
+        KEY_DECK_RPT_SPC_TOP        : spc_top,
+        KEY_DECK_RPT_AS_TOP         : As_top,
+        KEY_DECK_RPT_DIA_OH         : dia_oh,
+        KEY_DECK_RPT_SPC_OH         : spc_oh,
+        KEY_DECK_RPT_AS_OH          : As_oh,
+        KEY_DECK_RPT_SPACING_MAX    : _SPACING_MAX_MM,
+        KEY_DECK_RPT_HAS_OVERHANG   : has_overhang,
+    }
+    return result, report_values
