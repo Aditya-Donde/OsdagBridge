@@ -99,6 +99,30 @@ def _pick_rebar(As_req_mm2: float,
     return dia, spacing, a_bar * 1000.0 / spacing
 
 
+# ── shear helpers ─────────────────────────────────────────────────────────────
+
+def _wheel_contact_length_mm(vehicle_class: str) -> float:
+    """Longitudinal wheel-contact length (mm) for punching — IRC 6:2017 drawings."""
+    if vehicle_class in (KEY_VEHICLE[0], KEY_VEHICLE[1]):
+        return 150.0   # Class 70R
+    return 200.0       # Class A
+
+
+def _v_Rd_c_MPa(As_mm2: float, d_mm: float, fck_MPa: float,
+                b_mm: float = 1000.0) -> float:
+    """
+    IRC 112:2020 Eq.10.1 — design shear resistance stress (MPa), σ_cp = 0.
+    Shared by one-way shear (Cl.10.3.2, V_Rd,c = result × b_w × d)
+    and punching shear (Cl.10.4, compared directly to v_Ed = V/(u1·d)).
+    """
+    k = min(1.0 + math.sqrt(200.0 / d_mm), 2.0)
+    rho1 = min(As_mm2 / (b_mm * d_mm), 0.02)
+    return max(
+        0.12 * k * (80.0 * rho1 * fck_MPa) ** 0.33,
+        0.031 * k ** 1.5 * math.sqrt(fck_MPa),
+    )
+
+
 # ── SLS helpers ───────────────────────────────────────────────────────────────
 
 def _cracked_section(As_mm2: float, d_mm: float, Es_MPa: float, Ecm_MPa: float,
@@ -417,6 +441,79 @@ def design_deck_slab(input_dict: dict, fck: float, fctm: float, fy: float, Es: f
         oh_ok = True
         overhang_lines = []
 
+    # ── 10b. shear checks (IRC 112:2020 Cl.10.3.2 & Cl.10.4) ────────────────
+    # One-way shear — interior span, conservative: shear at support face.
+    V_DL_kN_m = w_DL_kN_m2 * S / 2.0
+    V_LL_kN_m = P_wheel_kN / beff_m
+    V_ULS_bot_shear = gamma_dl * V_DL_kN_m + gamma_ll * impact_factor * V_LL_kN_m
+    v_Rd_c_bot = _v_Rd_c_MPa(As_bot, d_bot_mm, fck)        # MPa
+    VRd_c_bot = v_Rd_c_bot * d_bot_mm                       # kN/m (b_w = 1000 mm)
+    shear_bot_ok = VRd_c_bot >= V_ULS_bot_shear
+    ur_bot_shear = V_ULS_bot_shear / VRd_c_bot if VRd_c_bot > 0 else 9.999
+
+    # Punching shear — wheel on interior slab (load dispersed through wearing course)
+    wc_t_mm = wc_t_m * 1000.0
+    c1_mm = _wheel_contact_width_m(vehicle_class) * 1000.0 + 2.0 * wc_t_mm   # transverse
+    c2_mm = _wheel_contact_length_mm(vehicle_class) + 2.0 * wc_t_mm           # longitudinal
+    u1_bot_mm = 2.0 * (c1_mm + c2_mm) + 4.0 * math.pi * d_bot_mm
+    v_Ed_bot_punch = P_wheel_kN * 1000.0 / (u1_bot_mm * d_bot_mm)
+    punch_bot_ok = v_Rd_c_bot >= v_Ed_bot_punch
+    ur_bot_punch = v_Ed_bot_punch / v_Rd_c_bot if v_Rd_c_bot > 0 else 9.999
+
+    # Shear checks — overhang cantilever at root
+    if overhang_m > 0.01:
+        V_DL_oh_v = w_DL_kN_m2 * overhang_m + railing_kN_m
+        V_LL_oh_v = P_wheel_kN / beff_oh if arm_wheel > 0.0 else 0.0
+        V_ULS_oh_shear = gamma_dl * V_DL_oh_v + gamma_ll * impact_factor * V_LL_oh_v
+        v_Rd_c_oh = _v_Rd_c_MPa(As_oh, d_oh_mm, fck)
+        VRd_c_oh = v_Rd_c_oh * d_oh_mm
+        shear_oh_ok = VRd_c_oh >= V_ULS_oh_shear
+        ur_oh_shear = V_ULS_oh_shear / VRd_c_oh if VRd_c_oh > 0 else 9.999
+        u1_oh_mm = 2.0 * (c1_mm + c2_mm) + 4.0 * math.pi * d_oh_mm
+        v_Ed_oh_punch = P_wheel_kN * 1000.0 / (u1_oh_mm * d_oh_mm)
+        punch_oh_ok = v_Rd_c_oh >= v_Ed_oh_punch
+        ur_oh_punch = v_Ed_oh_punch / v_Rd_c_oh if v_Rd_c_oh > 0 else 9.999
+        overhang_shear_lines = [
+            "",
+            "Shear Check — Overhang  [IRC 112:2020 Cl.10.3.2]",
+            "-" * 40,
+            f"  V_ULS (one-way) at root : {V_ULS_oh_shear:.3f} kN/m",
+            f"  VRd,c (no links)        : {VRd_c_oh:.3f} kN/m  → {'PASS' if shear_oh_ok else 'FAIL'}",
+            "",
+            "Punching Shear — Overhang  [IRC 112:2020 Cl.10.4]",
+            "-" * 40,
+            f"  Control perimeter u1    : {u1_oh_mm:.0f} mm  (at 2d = {2*d_oh_mm:.0f} mm)",
+            f"  vEd                     : {v_Ed_oh_punch:.4f} MPa",
+            f"  vRd,c                   : {v_Rd_c_oh:.4f} MPa  → {'PASS' if punch_oh_ok else 'FAIL'}",
+        ]
+    else:
+        V_ULS_oh_shear = VRd_c_oh = ur_oh_shear = ur_oh_punch = 0.0
+        shear_oh_ok = punch_oh_ok = True
+        overhang_shear_lines = []
+
+    shear_lines = [
+        "",
+        "=" * 52,
+        "Shear Checks  (IRC 112:2020)",
+        "=" * 52,
+        "",
+        "One-Way Shear — Interior Span  [Cl.10.3.2]",
+        "-" * 40,
+        f"  V_DL at support         : {V_DL_kN_m:.3f} kN/m",
+        f"  V_LL at support         : {V_LL_kN_m:.3f} kN/m",
+        f"  V_ULS                   : {V_ULS_bot_shear:.3f} kN/m",
+        f"  VRd,c (no links)        : {VRd_c_bot:.3f} kN/m  → {'PASS' if shear_bot_ok else 'FAIL'}",
+        "",
+        "Punching Shear — Interior Span  [Cl.10.4]",
+        "-" * 40,
+        f"  Effective contact c1    : {c1_mm:.0f} mm  (transverse, incl. WC dispersion)",
+        f"  Effective contact c2    : {c2_mm:.0f} mm  (longitudinal, incl. WC dispersion)",
+        f"  Control perimeter u1    : {u1_bot_mm:.0f} mm  (at 2d = {2*d_bot_mm:.0f} mm)",
+        f"  vEd                     : {v_Ed_bot_punch:.4f} MPa",
+        f"  vRd,c                   : {v_Rd_c_bot:.4f} MPa  → {'PASS' if punch_bot_ok else 'FAIL'}",
+        *overhang_shear_lines,
+    ]
+
     # ── 11. SLS checks (IRC 112:2020) ────────────────────────────────────────
     # Characteristic combination (stress, Cl.12.2.1): γ_DL=1.0, γ_LL=1.0
     # Frequent combination    (crack width, Cl.12.3.4): γ_DL=1.0, γ_LL=0.75
@@ -553,6 +650,7 @@ def design_deck_slab(input_dict: dict, fck: float, fctm: float, fy: float, Es: f
         f"  Moment capacity Mu   : {Mu_top:.3f} kNm/m",
         f"  Status               : {'PASS' if top_ok else 'FAIL'}",
         *overhang_lines,
+        *shear_lines,
         *sls_lines,
     ]
     design_check_text = "\n".join(lines)
@@ -584,6 +682,8 @@ def design_deck_slab(input_dict: dict, fck: float, fctm: float, fy: float, Es: f
         "ur_top_sls_s"           : round(ur_top_sls_s, 3),
         "ur_bot_crack"           : round(ur_bot_crack, 3),
         "ur_top_crack"           : round(ur_top_crack, 3),
+        "ur_bot_shear"           : round(ur_bot_shear, 3),
+        "ur_bot_punch"           : round(ur_bot_punch, 3),
         # ── design check report text ────────────────────────────────────────
         "deck_design_check"      : design_check_text,
     }
@@ -600,5 +700,7 @@ def design_deck_slab(input_dict: dict, fck: float, fctm: float, fy: float, Es: f
             "ur_oh_sls_c"            : round(sc_oh["sigma_c"] / sc_oh["sc_lim"], 3),
             "ur_oh_sls_s"            : round(sc_oh["sigma_s"] / sc_oh["ss_lim"], 3),
             "ur_oh_crack"            : round(cw_oh["wk"] / cw_oh["wk_lim"], 3),
+            "ur_oh_shear"            : round(ur_oh_shear, 3),
+            "ur_oh_punch"            : round(ur_oh_punch, 3),
         })
     return result

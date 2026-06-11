@@ -2898,7 +2898,11 @@ DECK_DESIGN_SUMMARY_SCHEMA = {
         "checks": [
             {"key": "ur_bot_uls",   "label": "ULS - Bottom (Sagging)",         "is_overhang": False},
             {"key": "ur_top_uls",   "label": "ULS - Top (Hogging)",            "is_overhang": False},
-            {"key": "ur_oh_uls",    "label": "ULS - Overhang",                 "is_overhang": True},
+            {"key": "ur_bot_shear", "label": "ULS - One-Way Shear (Interior)", "is_overhang": False},
+            {"key": "ur_bot_punch", "label": "ULS - Punching Shear (Interior)","is_overhang": False},
+            {"key": "ur_oh_uls",    "label": "ULS - Overhang (Flexure)",       "is_overhang": True},
+            {"key": "ur_oh_shear",  "label": "ULS - One-Way Shear (Overhang)", "is_overhang": True},
+            {"key": "ur_oh_punch",  "label": "ULS - Punching Shear (Overhang)","is_overhang": True},
             {"key": "ur_bot_sls_c", "label": "SLS - Bottom Concrete Stress",   "is_overhang": False},
             {"key": "ur_bot_sls_s", "label": "SLS - Bottom Steel Stress",      "is_overhang": False},
             {"key": "ur_top_sls_c", "label": "SLS - Top Concrete Stress",      "is_overhang": False},
