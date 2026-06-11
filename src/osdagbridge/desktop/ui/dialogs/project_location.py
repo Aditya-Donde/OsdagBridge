@@ -16,6 +16,9 @@ from osdagbridge.core.bridge_types.plate_girder.ui_fields_project_location impor
 from osdagbridge.desktop.ui.widgets.native_map import NativeMapWidget
 from osdagbridge.core.data.project_location.zone_lookup import get_zones_for_coordinates, get_temperature_for_coordinates
 from osdagbridge.desktop.ui.utils.custom_cursors import pointing_hand_cursor
+# Database utilities for nearest‑station lookup (used for map feedback)
+from osdagbridge.core.data.project_location.database import Database
+from osdagbridge.core.bridge_types.plate_girder.ui_fields_project_location import DB_PATH
 
 # Session-level state to persist values across dialog open/close cycles
 # so that reopening the dialog retains user-entered or looked-up data.
@@ -436,6 +439,30 @@ class ProjectLocationDialog(QDialog):
         row.addLayout(lng_col)
         coord_layout.addLayout(row)
 
+        # -----------------------------------------------------------------
+        # 2️⃣  Add read‑only fields that will display the nearest station and
+        #     state after a map selection. These are placed directly below the
+        #     coordinate inputs so the user gets immediate visual feedback.
+        # -----------------------------------------------------------------
+        station_state_row = QHBoxLayout()
+        station_state_row.setSpacing(10)
+
+        # Station name field
+        self.station_line = QLineEdit()
+        self.station_line.setReadOnly(True)
+        self.station_line.setPlaceholderText("Nearest Station")
+        apply_field_style(self.station_line)
+        station_state_row.addWidget(self.station_line)
+
+        # State name field
+        self.state_line = QLineEdit()
+        self.state_line.setReadOnly(True)
+        self.state_line.setPlaceholderText("State")
+        apply_field_style(self.state_line)
+        station_state_row.addWidget(self.state_line)
+
+        coord_layout.addLayout(station_state_row)
+
         vbox.addWidget(coord_container)
 
         # Connect map signal
@@ -648,6 +675,10 @@ class ProjectLocationDialog(QDialog):
             self.map_view.setEnabled(True)
             self.irc_title_label.setText("IRC 6 (2017) Values:")
             self.boundary_overlay_checkbox.setChecked(False)
+            # Clear any previous station/state display – a new map selection will fill them.
+            if hasattr(self, "station_line"):
+                self.station_line.clear()
+                self.state_line.clear()
         elif method == "custom_data" and self.method_custom_data.isChecked():
             self.method_stack.setCurrentIndex(2)
             self.code_widget.setVisible(False)
@@ -657,6 +688,10 @@ class ProjectLocationDialog(QDialog):
             self.district_combo.setEnabled(False)
             self.map_view.setEnabled(False)
             self.irc_title_label.setText("Custom Values:")
+            # Ensure station/state fields are cleared when not using the map.
+            if hasattr(self, "station_line"):
+                self.station_line.clear()
+                self.state_line.clear()
             # Pre-fill inline fields from any previously saved custom data
             if self.custom_weather_data:
                 self.custom_wind_input.setText(str(self.custom_weather_data.get("wind_speed", "")))
@@ -762,10 +797,41 @@ class ProjectLocationDialog(QDialog):
             self._set_active_method("location_name")
 
     def _on_map_location_selected(self, lat, lng):
+        """Handle a location selection from the map widget.
+
+        The map widget emits the latitude and longitude of the point the user
+        clicked. We update the coordinate line‑edits, perform the existing zone
+        lookup, and **additionally** query the weather‑station database to find
+        the nearest station. The resulting station name and state are displayed
+        in the read‑only fields added to the UI (``self.station_line`` and
+        ``self.state_line``).
+        """
         self.latitude_input.setText(f"{lat:.6f}")
         self.longitude_input.setText(f"{lng:.6f}")
-        # Perform zone lookup for coordinates
+        # Perform zone lookup for coordinates (updates IRC values)
         self._lookup_zones_for_coordinates(lat, lng)
+
+        # -----------------------------------------------------------------
+        # 3️⃣  Resolve the nearest weather station for visual feedback.
+        # -----------------------------------------------------------------
+        try:
+            db = Database(DB_PATH)
+            db.connect()
+            nearest = db.get_nearest_station_temperature(lat, lng)
+            db.close()
+            if nearest:
+                # Populate the UI fields with the station and state names.
+                self.station_line.setText(nearest.get("station", ""))
+                self.state_line.setText(nearest.get("state", ""))
+            else:
+                # Clear fields if lookup failed – user will still see the map
+                # coordinates and can rely on the IRC values.
+                self.station_line.clear()
+                self.state_line.clear()
+        except Exception as exc:  # pragma: no cover – defensive, should not happen
+            print(f"[ProjectLocationDialog] nearest‑station lookup error: {exc}")
+            self.station_line.clear()
+            self.state_line.clear()
         
     def _sync_map_from_inputs(self):
         """Called when Enter is pressed on manual coordinate inputs."""
@@ -1045,6 +1111,10 @@ class ProjectLocationDialog(QDialog):
                 'latitude': self.latitude_input.text(),
                 'longitude': self.longitude_input.text()
             }
+            # Include nearest station and state information populated in the read‑only fields.
+            # These fields are set in _on_map_location_selected when a map point is chosen.
+            result['data']['station'] = self.station_line.text() if hasattr(self, 'station_line') else ''
+            result['data']['state'] = self.state_line.text() if hasattr(self, 'state_line') else ''
         elif self.method_custom_data.isChecked():
             result['method'] = 'custom_data'
             result['data'] = {}

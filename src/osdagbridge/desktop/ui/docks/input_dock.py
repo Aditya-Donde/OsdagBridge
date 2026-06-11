@@ -15,10 +15,10 @@ import json
 from PySide6.QtWidgets import (
     QWidget, QHBoxLayout, QVBoxLayout, QPushButton,
     QComboBox, QScrollArea, QLabel, QLineEdit, QGroupBox, QSizePolicy,
-    QDialog, QFrame, QToolButton,
+    QDialog, QFrame, QToolButton
 )
 from PySide6.QtCore import Qt, QRegularExpression, QSize, QTimer, QPoint, QEvent, Signal
-from PySide6.QtGui import QDoubleValidator, QRegularExpressionValidator, QIcon, QColor, QBrush
+from PySide6.QtGui import QDoubleValidator, QRegularExpressionValidator, QIcon, QColor, QBrush, QFontMetrics
 
 from osdagbridge.core.utils.common import *
 from osdagbridge.desktop.ui.utils.custom_buttons import DockCustomButton
@@ -50,7 +50,9 @@ ACTION_BTN_STYLE = (
     "QPushButton[error='true']:disabled { background:#D0D0D0; color:#666; border: 1px solid #FF0000; }"
 )
 LABEL_STYLE = "QLabel { color:#000; font-size:12px; background:transparent; }"
-
+READONLY_FIELD_STYLE = (
+    "QLineEdit { padding: 1px 7px;border: 1px solid #d0d0d0; border-radius: 6px; background-color: #ededed; color: #2f2f2f; font-weight: normal; }"
+)
 
 class NoScrollComboBox(QComboBox):
     def wheelEvent(self, event):
@@ -448,21 +450,45 @@ class InputDock(QWidget):
 
         return widget
 
-    def _make_button_row(self, key: str, label: str, meta: dict) -> QHBoxLayout:
-        """
-        [Label | Action Button] row.
-        label    → tuple[1]
-        action   → meta["action"]   — InputDock method name
-        btn_text → meta["button_label"] (default "Modify Here")
-        """
-        row = QHBoxLayout()
-        row.setContentsMargins(0, 0, 0, 0)
-        row.setSpacing(8)
+    def _make_button_row(self, key: str, label: str, meta: dict) -> QVBoxLayout | QHBoxLayout:
+        if key != KEY_PROJECT_LOCATION:
+            row = QHBoxLayout()
+            row.setContentsMargins(0, 0, 0, 0)
+            row.setSpacing(8)
+
+            lbl = QLabel(label)
+            lbl.setStyleSheet(LABEL_STYLE)
+            lbl.setMinimumWidth(110)
+            row.addWidget(lbl)
+
+            btn_text = meta.get("button_label")
+            btn = QPushButton(btn_text)
+            btn.setObjectName(key)
+            btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            btn.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+            btn.setStyleSheet(ACTION_BTN_STYLE)
+            cb = getattr(self, meta.get("action", ""), None)
+            if callable(cb):
+                btn.clicked.connect(cb)
+            else:
+                btn.setEnabled(False)
+            btn.clicked.connect(lambda _, widget=btn: self.reset_error_state(widget))
+            row.addWidget(btn, 1)
+            return row
+
+        # KEY_PROJECT_LOCATION: button + station + state rows stacked
+        container = QVBoxLayout()
+        container.setContentsMargins(0, 0, 0, 0)
+        container.setSpacing(6)
+
+        top_row = QHBoxLayout()
+        top_row.setContentsMargins(0, 0, 0, 0)
+        top_row.setSpacing(8)
 
         lbl = QLabel(label)
         lbl.setStyleSheet(LABEL_STYLE)
         lbl.setMinimumWidth(110)
-        row.addWidget(lbl)
+        top_row.addWidget(lbl)
 
         btn_text = meta.get("button_label")
         btn = QPushButton(btn_text)
@@ -475,10 +501,49 @@ class InputDock(QWidget):
             btn.clicked.connect(cb)
         else:
             btn.setEnabled(False)
-        # Reset required-validation error-state (red)
         btn.clicked.connect(lambda _, widget=btn: self.reset_error_state(widget))
-        row.addWidget(btn, 1)
-        return row
+        top_row.addWidget(btn, 1)
+        container.addLayout(top_row)
+
+        # Station row
+        self.project_location_station_row = QWidget()
+        station_row = QHBoxLayout(self.project_location_station_row)
+        station_row.setContentsMargins(0, 0, 0, 0)
+        station_row.setSpacing(8)
+        station_lbl = QLabel("Station:")
+        station_lbl.setStyleSheet(LABEL_STYLE)
+        station_lbl.setMinimumWidth(110)
+        station_row.addWidget(station_lbl)
+        self.station_display = QLineEdit("")
+        self.station_display.setReadOnly(True)
+        self.station_display.setStyleSheet(READONLY_FIELD_STYLE)
+        self.station_display.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self.station_display.setMinimumHeight(28)
+        station_row.addWidget(self.station_display, 1)
+
+        # State row
+        self.project_location_state_row = QWidget()
+        state_row = QHBoxLayout(self.project_location_state_row)
+        state_row.setContentsMargins(0, 0, 0, 0)
+        state_row.setSpacing(8)
+        state_lbl = QLabel("State:")
+        state_lbl.setStyleSheet(LABEL_STYLE)
+        state_lbl.setMinimumWidth(110)
+        state_row.addWidget(state_lbl)
+        self.state_display = QLineEdit("")
+        self.state_display.setReadOnly(True)
+        self.state_display.setStyleSheet(READONLY_FIELD_STYLE)
+        self.state_display.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self.state_display.setMinimumHeight(28)
+        state_row.addWidget(self.state_display, 1)
+
+        container.addWidget(self.project_location_station_row)
+        container.addWidget(self.project_location_state_row)
+
+        self.project_location_station_row.setVisible(False)
+        self.project_location_state_row.setVisible(False)
+
+        return container
 
     def _field_row(self, label: str, widget: QWidget, meta: dict) -> QHBoxLayout:
         """[Label | widget] row. Material combos get an extra info (ℹ) button."""
@@ -777,8 +842,37 @@ class InputDock(QWidget):
 
     def show_project_location_dialog(self):
         dialog = ProjectLocationDialog()
-        if dialog.exec() == QDialog.Accepted:
-            self._update_input_dict(KEY_PROJECT_LOCATION, dialog.get_selected_location())
+        if dialog.exec() != QDialog.Accepted:
+            return
+
+        loc = dialog.get_selected_location()
+        self._update_input_dict(KEY_PROJECT_LOCATION, loc)
+
+        method = loc.get("method")
+        data = loc.get("data", {}) if isinstance(loc, dict) else {}
+
+        if method == "location_name":
+            station = data.get("district", "")
+            state = data.get("state", "")
+            show_rows = True
+        elif method == "map":
+            station = data.get("station", "")
+            state = data.get("state", "")
+            show_rows = True
+        else:  # custom_data
+            station = ""
+            state = ""
+            show_rows = False
+
+        if hasattr(self, "station_display"):
+            self.station_display.setText(station)
+        if hasattr(self, "state_display"):
+            self.state_display.setText(state)
+
+        if hasattr(self, "project_location_station_row"):
+            self.project_location_station_row.setVisible(show_rows)
+        if hasattr(self, "project_location_state_row"):
+            self.project_location_state_row.setVisible(show_rows)
 
     # To open additional input from additional geometry
     def show_additional_inputs(self):
