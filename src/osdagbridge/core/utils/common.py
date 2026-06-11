@@ -494,6 +494,17 @@ KEY_LL_IRC_CLASS_SV             = "loading.live_load.irc.class_sv"
 KEY_LL_IRC_70R_BOGIE            = "loading.live_load.irc.70r_bogie"
 KEY_LL_IRC_CLASS_FATIGUE        = "loading.live_load.irc.class_fatigue"
 
+# Breaking Load keys — mirror the vehicle class keys
+KEY_BL_IRC_CLASS_A        = "bl_irc_class_a"
+KEY_BL_IRC_AA_WHEELED     = "bl_irc_aa_wheeled"
+KEY_BL_IRC_AA_TRACKED     = "bl_irc_aa_tracked"
+KEY_BL_IRC_70R_WHEELED    = "bl_irc_70r_wheeled"
+KEY_BL_IRC_70R_TRACKED    = "bl_irc_70r_tracked"
+KEY_BL_IRC_70R_BOGIE      = "bl_irc_70r_bogie"
+KEY_BL_IRC_CLASS_SV       = "bl_irc_class_sv"
+KEY_BL_IRC_CLASS_FATIGUE  = "bl_irc_class_fatigue"
+KEY_BL_ECCENTRICITY       = "bl_eccentricity"
+
 # Custom Vehicle
 KEY_LL_CUSTOM_VEHICLES = "loading.live_load.custom_vehicles"
 

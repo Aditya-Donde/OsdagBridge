@@ -1,4 +1,8 @@
+import logging
+import time
 from osdagbridge.core.utils.common import *
+
+logger = logging.getLogger(__name__)
 
 # ── Empty value sentinel ──────────────────────────────────────────────────────
 
@@ -31,19 +35,43 @@ def _mm(value, decimals=1):
         return EMPTY
 
 
-def _mm2(value, decimals=1):
-    """Convert m² → mm², rounded. Returns EMPTY on any failure."""
+
+def _cm(value, decimals=2):
+    """Convert metres → cm. Returns EMPTY on any failure."""
+    try:
+        return round(float(value) * 100, decimals)
+    except Exception:
+        return EMPTY
+
+
+def _cm2(value, decimals=2):
+    """Convert m² → cm². Returns EMPTY on any failure."""
+    try:
+        return round(float(value) * 1e4, decimals)
+    except Exception:
+        return EMPTY
+
+
+def _cm3(value, decimals=2):
+    """Convert m³ → cm³. Returns EMPTY on any failure."""
     try:
         return round(float(value) * 1e6, decimals)
     except Exception:
         return EMPTY
 
 
-def _mm4(value):
-    """Convert m⁴ → mm⁴ in scientific notation string. Returns EMPTY on any failure."""
+def _cm4(value, decimals=2):
+    """Convert m⁴ → cm⁴. Returns EMPTY on any failure."""
     try:
-        v = float(value) * 1e12
-        return round(v, 3)
+        return round(float(value) * 1e8, decimals)
+    except Exception:
+        return EMPTY
+
+
+def _cm6(value, decimals=2):
+    """Convert m⁶ → cm⁶. Returns EMPTY on any failure."""
+    try:
+        return round(float(value) * 1e12, decimals)
     except Exception:
         return EMPTY
 
@@ -220,25 +248,8 @@ def resolve_material_properties_concrete(input_dict: dict, bridge=None) -> dict 
 # ── Resolvers — Member Definitions ───────────────────────────────────────────
 
 def resolve_girder_section_properties(input_dict: dict, bridge=None) -> dict | None:
-    from osdagbridge.core.bridge_types.plate_girder.plategirderbridge import (
-        resolve_girder_value,
-    )
-
-    def _gv(base_key, idx):
-        """Per-girder value (idx 0-based) or None if absent — no exceptions."""
-        try:
-            return resolve_girder_value(input_dict, base_key, idx)
-        except KeyError:
-            return None
-
     n_girders = input_dict.get(KEY_TS_NO_OF_GIRDERS)
-    # Probe girder 0 so we can bail out cleanly when no girder data is present.
-    if not _has(
-        _gv(KEY_MP_GIRDER_DEPTH, 0), _gv(KEY_MP_GIRDER_TOP_FLANGE_WIDTH, 0),
-        _gv(KEY_MP_GIRDER_TOP_FLANGE_THICKNESS, 0), _gv(KEY_MP_GIRDER_BOTTOM_FLANGE_WIDTH, 0),
-        _gv(KEY_MP_GIRDER_BOTTOM_FLANGE_THICKNESS, 0), _gv(KEY_MP_GIRDER_WEB_THICKNESS, 0),
-        _gv(KEY_MP_GIRDER_SECTIONAL_AREA, 0), _gv(KEY_MP_GIRDER_SECTIONAL_IZ, 0), n_girders,
-    ):
+    if not _has(n_girders):
         return None
 
     try:
@@ -246,110 +257,259 @@ def resolve_girder_section_properties(input_dict: dict, bridge=None) -> dict | N
     except Exception:
         return None
 
+    def _gk(base_key, gi, mi):
+        """Return input_dict[base_key.G{gi}.M{mi}] or None."""
+        return input_dict.get(f"{base_key}.G{gi}.M{mi}")
+
+    span = _num(input_dict.get(KEY_SPAN)) if _has(input_dict.get(KEY_SPAN)) else EMPTY
+
     rows = []
-    for i in range(1, n + 1):
-        gi = i - 1
-        rows.append([
-            f"Girder {i}",
-            _mm(_gv(KEY_MP_GIRDER_DEPTH, gi)),
-            _mm(_gv(KEY_MP_GIRDER_TOP_FLANGE_WIDTH, gi)),
-            _mm(_gv(KEY_MP_GIRDER_BOTTOM_FLANGE_WIDTH, gi)),
-            _mm(_gv(KEY_MP_GIRDER_TOP_FLANGE_THICKNESS, gi)),
-            _mm(_gv(KEY_MP_GIRDER_BOTTOM_FLANGE_THICKNESS, gi)),
-            _mm(_gv(KEY_MP_GIRDER_WEB_THICKNESS, gi)),
-            _mm2(_gv(KEY_MP_GIRDER_SECTIONAL_AREA, gi)),
-            _mm4(_gv(KEY_MP_GIRDER_SECTIONAL_IZ, gi)),
-            EMPTY,              # Cross-section class — not yet resolved from inputs
-        ])
+    for gi in range(1, n + 1):
+        mi = 1
+        while True:
+            if _gk(KEY_MP_GIRDER_DEPTH, gi, mi) is None:
+                break
+            rows.append([
+                f"G{gi}M{mi}",
+                span,
+                _val(_gk(KEY_MP_GIRDER_TYPE,                  gi, mi)),
+                _val(_gk(KEY_MP_GIRDER_SYMMETRY,               gi, mi)),
+                _mm (_gk(KEY_MP_GIRDER_DEPTH,                  gi, mi)),
+                _mm (_gk(KEY_MP_GIRDER_TOP_FLANGE_WIDTH,       gi, mi)),
+                _mm (_gk(KEY_MP_GIRDER_TOP_FLANGE_THICKNESS,   gi, mi)),
+                _mm (_gk(KEY_MP_GIRDER_BOTTOM_FLANGE_WIDTH,    gi, mi)),
+                _mm (_gk(KEY_MP_GIRDER_BOTTOM_FLANGE_THICKNESS,gi, mi)),
+                _val(_gk(KEY_MP_SUPPORT_TYPE,                  gi, mi)),
+                _num(_gk(KEY_MP_SUPPORT_WIDTH,                 gi, mi)),  # stored in mm
+                _mm (_gk(KEY_MP_GIRDER_WEB_THICKNESS,          gi, mi)),
+                _val(_gk(KEY_MP_GIRDER_TORSIONAL_RESTRAINT,    gi, mi)),
+                _val(_gk(KEY_MP_GIRDER_WARPING_RESTRAINT,      gi, mi)),
+                _val(_gk(KEY_MP_GIRDER_WEB_TYPE,               gi, mi)),
+                _num(_gk(KEY_MP_GIRDER_MASS,                   gi, mi)),  # kg/m, no conversion
+                _cm2(_gk(KEY_MP_GIRDER_SECTIONAL_AREA,         gi, mi)),
+                _cm4(_gk(KEY_MP_GIRDER_SECTIONAL_IZ,           gi, mi)),
+                _cm4(_gk(KEY_MP_GIRDER_SECTIONAL_IY,           gi, mi)),
+                _cm (_gk(KEY_MP_GIRDER_RADIUS_GYRATION_Z,      gi, mi)),
+                _cm (_gk(KEY_MP_GIRDER_RADIUS_GYRATION_Y,      gi, mi)),
+                _cm3(_gk(KEY_MP_GIRDER_ELASTIC_MODULUS_ZZ,     gi, mi)),
+                _cm3(_gk(KEY_MP_GIRDER_ELASTIC_MODULUS_ZY,     gi, mi)),
+                _cm3(_gk(KEY_MP_GIRDER_PLASTIC_MODULUS_ZUZ,    gi, mi)),
+                _cm3(_gk(KEY_MP_GIRDER_PLASTIC_MODULUS_ZUY,    gi, mi)),
+                _cm4(_gk(KEY_MP_GIRDER_TORSION_CONSTANT_IT,    gi, mi)),
+                _cm6(_gk(KEY_MP_GIRDER_WARPING_CONSTANT_IW,    gi, mi)),
+            ])
+            mi += 1
+
+    if not rows:
+        return None
 
     return {
         "id":    "girder_section_properties",
         "label": "Girder Section Properties",
         "columns": [
-            "Girder",
-            "Depth, d (mm)",
-            "Top Flange Width, bfₜₒₚ (mm)",
-            "Bottom Flange Width, bfᵦₒₜ (mm)",
-            "Top Flange Thickness, tfₜₒₚ (mm)",
-            "Bottom Flange Thickness, tfᵦₒₜ (mm)",
-            "Web Thickness, tᵤ (mm)",
-            "Cross-sectional Area, A (mm²)",
-            "Second Moment of Area (z-axis), Iᵤ (mm⁴)",
-            "Cross-section Class",
+            "Member",
+            "Total Span (m)",
+            "Type",
+            "Symmetry",
+            "Total Depth, d (mm)",
+            "Width of Top Flange (mm)",
+            "Top Flange Thickness (mm)",
+            "Width of Bottom Flange (mm)",
+            "Bottom Flange Thickness (mm)",
+            "Support Type",
+            "Support Width (mm)",
+            "Web Thickness (mm)",
+            "Torsional Restraint",
+            "Warping Restraint",
+            "Web Type",
+            "Mass, M (kg/m)",
+            "Sectional Area, a (cm²)",
+            "2nd Moment of Area, Iᵤ (cm⁴)",
+            "2nd Moment of Area, Iᵧ (cm⁴)",
+            "Radius of Gyration, rᵤ (cm)",
+            "Radius of Gyration, rᵧ (cm)",
+            "Elastic Modulus, Zᵤ (cm³)",
+            "Elastic Modulus, Zᵧ (cm³)",
+            "Plastic Modulus, Zₚᵤ (cm³)",
+            "Plastic Modulus, Zₚᵧ (cm³)",
+            "Torsion Constant, Iₜ (cm⁴)",
+            "Warping Constant, Iᵥᵥ (cm⁶)",
         ],
         "rows": rows,
     }
 
 
 def resolve_cross_bracing_section_properties(input_dict: dict, bridge=None) -> dict | None:
-    cb_type    = input_dict.get(KEY_MP_CB_TYPE)
-    cb_spacing = input_dict.get(KEY_MP_CB_SPACING)
+    n_girders = input_dict.get(KEY_TS_NO_OF_GIRDERS)
+    if not _has(n_girders):
+        return None
+    try:
+        n = int(n_girders)
+    except Exception:
+        return None
 
-    if not _has(cb_type, cb_spacing):
+    def _cbk(base_key, gi, mi):
+        return input_dict.get(f"{base_key}.G{gi}G{gi + 1}.B{gi}M{mi}")
+
+    rows = []
+    for gi in range(1, n):
+        mi = 1
+        while True:
+            if _cbk(KEY_MP_CB_TYPE, gi, mi) is None:
+                break
+            rows.append([
+                f"G{gi}G{gi + 1}_B{gi}M{mi}",
+                _val(_cbk(KEY_MP_CB_TYPE, gi, mi)),
+                _val(_cbk(KEY_MP_CB_BRACING_SECTION_TYPE, gi, mi)),
+                _val(_cbk(KEY_MP_CB_BRACING_SECTION_DESIGNATION, gi, mi)),
+                _val(_cbk(KEY_MP_CB_TOP_CHORD, gi, mi)),
+                _val(_cbk(KEY_MP_CB_TOP_CHORD_SECTION_TYPE, gi, mi)),
+                _val(_cbk(KEY_MP_CB_TOP_CHORD_SECTION_DESIG, gi, mi)),
+                _val(_cbk(KEY_MP_CB_BOTTOM_CHORD, gi, mi)),
+                _val(_cbk(KEY_MP_CB_BOTTOM_CHORD_SECTION_TYPE, gi, mi)),
+                _val(_cbk(KEY_MP_CB_BOTTOM_CHORD_SECTION_DESIG, gi, mi)),
+                _num(_cbk(KEY_MP_CB_SPACING, gi, mi)),
+            ])
+            mi += 1
+
+    if not rows:
         return None
 
     return {
-        "id":    "cross_bracing_section_properties",
+        "id": "cross_bracing_section_properties",
         "label": "Cross Bracing Section Properties",
         "columns": [
-            "Type",
-            "Section",
+            "Member",
+            "Type of Bracing",
+            "Bracing Section Type",
+            "Bracing Section Designation",
+            "Top Chord",
+            "Top Chord Section Type",
+            "Top Chord Section Designation",
+            "Bottom Chord",
+            "Bottom Chord Section Type",
+            "Bottom Chord Section Designation",
             "Spacing (m)",
         ],
-        "rows": [[
-            _val(cb_type),
-            _num(cb_spacing),
-        ]],
+        "rows": rows,
     }
 
 
 def resolve_end_diaphragm_section_properties(input_dict: dict, bridge=None) -> dict | None:
-    ed_type    = input_dict.get(KEY_MP_ED_TYPE)
-    ed_section = input_dict.get(KEY_MP_ED_BRACING_SECTION_DESIGNATION)
+    """
+    One row per end diaphragm member ID.
+    With n girders there are (n-1) adjacent pairs. Each pair has 2 end
+    diaphragms sharing the same config: E{i}M1 and E{i}M2 for pair G{i}G{i+1}.
 
-    if not _has(ed_type):
+    Key pattern (mirrors defaults.py _on_no_of_girders_changed):
+        <KEY_MP_ED_*>.G{i}G{i+1}.E{i}M{member_id}
+
+    Member ID label in table:  G1G2_E1, G1G2_E2, G2G3_E1, G2G3_E2, ...
+    """
+    n_girders = input_dict.get(KEY_TS_NO_OF_GIRDERS)
+    if not _has(n_girders):
         return None
+
+    try:
+        n = int(n_girders)
+    except Exception:
+        return None
+
+    if n < 2:
+        return None
+
+    rows = []
+
+    for i in range(1, n):
+        g_pair       = f"G{i}G{i + 1}"          # e.g. "G1G2"
+        pair_label   = f"G{i}G{i + 1}"           # e.g. "G1G2" (used in Member ID)
+
+        # ── Read config from M1 (both members share the same config) ──────
+        suffix = f".{g_pair}.E{i}M1"
+
+        ed_type      = input_dict.get(f"{KEY_MP_ED_TYPE}{suffix}")
+        bracing_type = input_dict.get(f"{KEY_MP_ED_BRACING_TYPE}{suffix}")
+        br_sec_type  = input_dict.get(f"{KEY_MP_ED_BRACING_SECTION}{suffix}")
+        br_sec_desig = input_dict.get(f"{KEY_MP_ED_BRACING_SECTION_DESIGNATION}{suffix}")
+        top_chord    = input_dict.get(f"{KEY_MP_ED_TOP_CHORD}{suffix}")
+        tc_sec_type  = input_dict.get(f"{KEY_MP_ED_TOP_CHORD_SECTION_TYPE}{suffix}")
+        tc_sec_desig = input_dict.get(f"{KEY_MP_ED_TOP_CHORD_SECTION_DESIG}{suffix}")
+        bot_chord    = input_dict.get(f"{KEY_MP_ED_BOTTOM_CHORD}{suffix}")
+        bc_sec_type  = input_dict.get(f"{KEY_MP_ED_BOTTOM_CHORD_SECTION_TYPE}{suffix}")
+        bc_sec_desig = input_dict.get(f"{KEY_MP_ED_BOTTOM_CHORD_SECTION_DESIG}{suffix}")
+
+        def _col(v):
+            return _val(v) if _has(v) else EMPTY
+
+        shared = [
+            _col(ed_type),
+            _col(bracing_type),
+            _col(br_sec_type),
+            _col(br_sec_desig),
+            _col(top_chord),
+            _col(tc_sec_type),
+            _col(tc_sec_desig),
+            _col(bot_chord),
+            _col(bc_sec_type),
+            _col(bc_sec_desig),
+        ]
+
+        # ── Two rows per pair — E{i}M1 and E{i}M2 share the same config ──
+        rows.append([f"{pair_label}_E1"] + shared)
+        rows.append([f"{pair_label}_E2"] + shared)
 
     return {
         "id":    "end_diaphragm_section_properties",
         "label": "End Diaphragm Section Properties",
         "columns": [
+            "Member ID",
             "Type",
-            "Section",
+            "Type of Bracing",
+            "Bracing Section Type",
+            "Bracing Section Designation",
+            "Top Chord",
+            "Top Chord Section Type",
+            "Top Chord Section Designation",
+            "Bottom Chord",
+            "Bottom Chord Section Type",
+            "Bottom Chord Section Designation",
         ],
-        "rows": [[
-            _val(ed_type),
-            _val(ed_section),
-        ]],
+        "rows": rows,
     }
 
 
 def resolve_shear_stud_properties(input_dict: dict, bridge=None) -> dict | None:
-    diameter  = input_dict.get(KEY_DS_STUD_DIAMETER)
-    height    = input_dict.get(KEY_DS_STUD_HEIGHT)
-    fu        = input_dict.get(KEY_DS_STUD_ULTIMATE_STRENGTH)
-    fy        = input_dict.get(KEY_DS_STUD_YIELD_STRENGTH)
-    count     = input_dict.get(KEY_DS_STUD_COUNT)
+    fy                  = input_dict.get(KEY_DS_STUD_YIELD_STRENGTH)
+    fu                  = input_dict.get(KEY_DS_STUD_ULTIMATE_STRENGTH)
+    diameter            = input_dict.get(KEY_DS_STUD_DIAMETER)
+    height              = input_dict.get(KEY_DS_STUD_HEIGHT)
+    transverse_spacing  = input_dict.get(KEY_DS_STUD_TRANSVERSE_SPACING)
+    count               = input_dict.get(KEY_DS_STUD_COUNT)
+    avg_long_spacing    = input_dict.get(KEY_SD_SHEAR_LONGITUDINAL_SPACING)
 
     if not _has(diameter, height, fu, fy, count):
         return None
 
     return {
         "id":    "shear_stud_properties",
-        "label": "Shear Stud Properties",
+        "label": "Shear Connector Details",
         "columns": [
+            "Material Yield Strength (MPa)",
+            "Material Ultimate Strength (MPa)",
             "Diameter (mm)",
             "Height (mm)",
-            "Ultimate Tensile Strength, Fᵤ (MPa)",
-            "Yield Strength, Fᵧ (MPa)",
-            "Number per Section",
+            "Transverse Spacing (mm)",
+            "No. of Shear Studs per Section",
+            "Average Longitudinal Spacing (mm)",
         ],
         "rows": [[
+            _num(fy),
+            _num(fu),
             _num(diameter),
             _num(height),
-            _num(fu),
-            _num(fy),
+            _num(transverse_spacing),
             _val(count),
+            _num(avg_long_spacing),
         ]],
     }
 
@@ -393,12 +553,18 @@ def resolve_deck_slab_properties(input_dict: dict, bridge=None) -> dict | None:
 # ── Resolvers — Load Definitions ─────────────────────────────────────────────
 
 def resolve_live_load_definitions(input_dict: dict, bridge=None) -> dict | None:
-    """
-    Two-column table: Parameter | Value/Status.
-    Vehicle class rows show Yes/No checkbox state.
-    Eccentricity and Footpath Pressure rows show their values.
-    """
-    # ── Vehicle definitions ───────────────────────────────────────────────
+
+    def _yn(key: str) -> str:
+        raw = input_dict.get(key)
+        if raw is None:
+            return "No"
+        selected = (
+            raw is True
+            or str(raw).strip().lower() in ("true", "yes", "1", "checked")
+        )
+        return "Yes" if selected else "No"
+
+    # ── Vehicle Classes ───────────────────────────────────────────────────
     VEHICLE_KEYS = [
         ("Class A",           KEY_LL_IRC_CLASS_A),
         ("Class AA Wheeled",  KEY_LL_IRC_AA_WHEELED),
@@ -410,18 +576,32 @@ def resolve_live_load_definitions(input_dict: dict, bridge=None) -> dict | None:
         ("Class Fatigue",     KEY_LL_IRC_CLASS_FATIGUE),
     ]
 
-    rows = []
-    for label, key in VEHICLE_KEYS:
-        raw = input_dict.get(key)
-        selected = (
-            raw is True
-            or str(raw).strip().lower() in ("true", "yes", "1", "checked")
-        ) if raw is not None else False
-        rows.append([label, "Yes" if selected else "No"])
+    # ── Breaking Load ─────────────────────────────────────────────────────
+    BREAKING_LOAD_KEYS = [
+        ("Breaking Load : Class A",           KEY_BL_IRC_CLASS_A),
+        ("Breaking Load : Class AA Wheeled",  KEY_BL_IRC_AA_WHEELED),
+        ("Breaking Load : Class AA Tracked",  KEY_BL_IRC_AA_TRACKED),
+        ("Breaking Load : Class 70R Wheeled", KEY_BL_IRC_70R_WHEELED),
+        ("Breaking Load : Class 70R Tracked", KEY_BL_IRC_70R_TRACKED),
+        ("Breaking Load : Class 70R Bogie",   KEY_BL_IRC_70R_BOGIE),
+        ("Breaking Load : Class SV",          KEY_BL_IRC_CLASS_SV),
+        ("Breaking Load : Class Fatigue",     KEY_BL_IRC_CLASS_FATIGUE),
+        ("Breaking Load : Eccentricity",      KEY_BL_ECCENTRICITY),
+    ]
 
-    # ── Eccentricity ──────────────────────────────────────────────────────
-    ecc = input_dict.get(KEY_LL_ECCENTRICITY)
-    rows.append(["Eccentricity from Top of Deck (m)", _num(ecc) if _has(ecc) else EMPTY])
+    rows = []
+
+    # Header row — Vehicle Classes
+    rows.append(["── Vehicle Classes ──", ""])
+
+    for label, key in VEHICLE_KEYS:
+        rows.append([label, _yn(key)])
+
+    # Header row — Breaking Load
+    rows.append(["── Breaking Load ──", ""])
+
+    for label, key in BREAKING_LOAD_KEYS:
+        rows.append([label, _yn(key)])
 
     # ── Footpath Pressure: mode-aware ────────────────────────────────────
     fp_mode  = input_dict.get(KEY_LL_FOOTPATH_PRESSURE_MODE)
@@ -444,11 +624,12 @@ def resolve_live_load_definitions(input_dict: dict, bridge=None) -> dict | None:
         "id":    "live_load_definitions",
         "label": "Live Load Definitions",
         "columns": [
-            "Parameter",
+            "Type of Live Load",
             "Value / Status",
         ],
         "rows": rows,
     }
+
 def resolve_seismic_load_parameters(input_dict: dict, bridge=None) -> dict | None:
     """
     One row per girder. All seismic parameters are bridge-level (not girder-specific),
@@ -1195,6 +1376,221 @@ def resolve_deck_slab_properties(input_dict: dict, bridge=None) -> dict | None:
 
 
 
+# ── Resolvers — Analysis Results: Load Effects (Girder) ───────────────────────
+
+def _get_force_context(bridge):
+    """
+    Build all data needed for force lookups in one shot.
+
+    Returns (ds, g_map, girders, filtered_lcs) or (None, None, None, None).
+    build_girders() is expensive (calls OpenSeesPy) so we call it exactly once
+    here and share the result across all element loops.
+    Vehicle (live load position) cases are excluded — only dead loads and
+    combination load cases are included.
+    """
+    rh = bridge.get_result_handler()
+    if rh is None:
+        return None, None, None, None
+    ds = rh.ds
+    if ds is None:
+        return None, None, None, None
+    g_map, _ = rh.build_girders(verbose=False)
+    girders = [k for k in g_map if not k.startswith("EB")]
+
+    classified = rh.classify_loadcases()
+    exclude = set(
+        classified.get("vehicle_static", []) +
+        classified.get("vehicle_moving", [])
+    )
+    all_lcs = [
+        lc for lc in classified.get("all", [])
+        if lc not in exclude and "moving" not in str(lc).lower()
+    ]
+
+    if not girders or not all_lcs:
+        return None, None, None, None
+    return ds, g_map, girders, all_lcs
+
+
+def _force_max_min(ds, g_map, load_case: str, girder: str, comp_i: str, comp_j: str):
+    """
+    Return (max_val, min_val) across both element ends for one girder / load case.
+    Queries the xarray dataset directly — no per-call build_girders() overhead.
+    Values are divided by 1000 (N→kN / Nmm→kNm).
+    Returns (None, None) if no data is available.
+    """
+    elements = g_map.get(girder, {}).get("elements", [])
+    values = []
+    for comp in (comp_i, comp_j):
+        for eid in elements:
+            try:
+                val = float(ds.sel(Loadcase=load_case, Element=eid, Component=comp)["forces"]) / 1000.0
+                values.append(val)
+            except Exception:
+                pass
+    if not values:
+        return None, None
+    return round(max(values), 3), round(min(values), 3)
+
+
+def resolve_bending_moment_envelope(input_dict: dict, bridge=None) -> dict | None:
+    if bridge is None:
+        return None
+    try:
+        _t0 = time.perf_counter()
+        ds, g_map, girders, all_lcs = _get_force_context(bridge)
+        _t1 = time.perf_counter()
+        print(f"[TIMER] bending_moment_envelope  context: {_t1-_t0:.3f}s  ({len(all_lcs or [])} LCs, {len(girders or [])} girders)")
+        if ds is None:
+            return None
+
+        rows = []
+        for girder in girders:
+            env_max, env_min = None, None
+            for lc in all_lcs:
+                mx, mn = _force_max_min(ds, g_map, lc, girder, "Mz_i", "Mz_j")
+                if mx is not None:
+                    env_max = mx if env_max is None else max(env_max, mx)
+                if mn is not None:
+                    env_min = mn if env_min is None else min(env_min, mn)
+            rows.append([
+                girder,
+                _num(env_max) if env_max is not None else EMPTY,
+                _num(env_min) if env_min is not None else EMPTY,
+            ])
+
+        print(f"[TIMER] bending_moment_envelope  total:   {time.perf_counter()-_t0:.3f}s")
+        return {
+            "id": "bending_moment_envelope",
+            "label": "Bending Moment Diagram - Envelope",
+            "columns": [
+                "Girder",
+                "Maximum Bending Moment, Mₘₐₓ (kNm)",
+                "Minimum Bending Moment, Mₘᵢₙ (kNm)",
+            ],
+            "rows": rows,
+        }
+    except Exception as exc:
+        logger.warning("resolve_bending_moment_envelope failed: %s", exc, exc_info=True)
+        return None
+
+
+def resolve_shear_force_envelope(input_dict: dict, bridge=None) -> dict | None:
+    if bridge is None:
+        return None
+    try:
+        _t0 = time.perf_counter()
+        ds, g_map, girders, all_lcs = _get_force_context(bridge)
+        _t1 = time.perf_counter()
+        print(f"[TIMER] shear_force_envelope     context: {_t1-_t0:.3f}s  ({len(all_lcs or [])} LCs, {len(girders or [])} girders)")
+        if ds is None:
+            return None
+
+        rows = []
+        for girder in girders:
+            env_max, env_min = None, None
+            for lc in all_lcs:
+                mx, mn = _force_max_min(ds, g_map, lc, girder, "Vy_i", "Vy_j")
+                if mx is not None:
+                    env_max = mx if env_max is None else max(env_max, mx)
+                if mn is not None:
+                    env_min = mn if env_min is None else min(env_min, mn)
+            rows.append([
+                girder,
+                _num(env_max) if env_max is not None else EMPTY,
+                _num(env_min) if env_min is not None else EMPTY,
+            ])
+
+        print(f"[TIMER] shear_force_envelope     total:   {time.perf_counter()-_t0:.3f}s")
+        return {
+            "id": "shear_force_envelope",
+            "label": "Shear Force Diagram - Envelope",
+            "columns": [
+                "Girder",
+                "Maximum Shear Force, Vₘₐₓ (kN)",
+                "Minimum Shear Force, Vₘᵢₙ (kN)",
+            ],
+            "rows": rows,
+        }
+    except Exception as exc:
+        logger.warning("resolve_shear_force_envelope failed: %s", exc, exc_info=True)
+        return None
+
+
+def resolve_bending_moment_by_load_case(input_dict: dict, bridge=None) -> dict | None:
+    if bridge is None:
+        return None
+    try:
+        _t0 = time.perf_counter()
+        ds, g_map, girders, all_lcs = _get_force_context(bridge)
+        _t1 = time.perf_counter()
+        print(f"[TIMER] bending_moment_by_lc     context: {_t1-_t0:.3f}s  ({len(all_lcs or [])} LCs, {len(girders or [])} girders)")
+        if ds is None:
+            return None
+
+        columns = ["Girder"]
+        for lc in all_lcs:
+            columns.append(f"{lc} - Max (kNm)")
+            columns.append(f"{lc} - Min (kNm)")
+
+        rows = []
+        for girder in girders:
+            row = [girder]
+            for lc in all_lcs:
+                mx, mn = _force_max_min(ds, g_map, lc, girder, "Mz_i", "Mz_j")
+                row.append(_num(mx) if mx is not None else EMPTY)
+                row.append(_num(mn) if mn is not None else EMPTY)
+            rows.append(row)
+
+        print(f"[TIMER] bending_moment_by_lc     total:   {time.perf_counter()-_t0:.3f}s")
+        return {
+            "id": "bending_moment_by_load_case",
+            "label": "Bending Moment - By Load Case",
+            "columns": columns,
+            "rows": rows,
+        }
+    except Exception as exc:
+        logger.warning("resolve_bending_moment_by_load_case failed: %s", exc, exc_info=True)
+        return None
+
+
+def resolve_shear_force_by_load_case(input_dict: dict, bridge=None) -> dict | None:
+    if bridge is None:
+        return None
+    try:
+        _t0 = time.perf_counter()
+        ds, g_map, girders, all_lcs = _get_force_context(bridge)
+        _t1 = time.perf_counter()
+        print(f"[TIMER] shear_force_by_lc        context: {_t1-_t0:.3f}s  ({len(all_lcs or [])} LCs, {len(girders or [])} girders)")
+        if ds is None:
+            return None
+
+        columns = ["Girder"]
+        for lc in all_lcs:
+            columns.append(f"{lc} - Max (kN)")
+            columns.append(f"{lc} - Min (kN)")
+
+        rows = []
+        for girder in girders:
+            row = [girder]
+            for lc in all_lcs:
+                mx, mn = _force_max_min(ds, g_map, lc, girder, "Vy_i", "Vy_j")
+                row.append(_num(mx) if mx is not None else EMPTY)
+                row.append(_num(mn) if mn is not None else EMPTY)
+            rows.append(row)
+
+        print(f"[TIMER] shear_force_by_lc        total:   {time.perf_counter()-_t0:.3f}s")
+        return {
+            "id": "shear_force_by_load_case",
+            "label": "Shear Force - By Load Case",
+            "columns": columns,
+            "rows": rows,
+        }
+    except Exception as exc:
+        logger.warning("resolve_shear_force_by_load_case failed: %s", exc, exc_info=True)
+        return None
+
+
 # ── Registry — must be after all resolver definitions ────────────────────────
 
 RESOLVER_MAP: dict[str, callable] = {
@@ -1213,6 +1609,12 @@ RESOLVER_MAP: dict[str, callable] = {
     "wind_load_parameters": resolve_wind_load_parameters,
     "temperature_load_parameters": resolve_temperature_load_parameters,
     "load_combinations": resolve_load_combinations,
+
+    # ── Analysis Results — Load Effects (Girder) ─────────────────────────────
+    "bending_moment_envelope":            resolve_bending_moment_envelope,
+    "shear_force_envelope":               resolve_shear_force_envelope,
+    "bending_moment_by_load_case":        resolve_bending_moment_by_load_case,
+    "shear_force_by_load_case":           resolve_shear_force_by_load_case,
 
     # ── Analysis Results — Deflections ────────────────────────────────────
     "deflection_live_load":               resolve_deflection_live_load,
