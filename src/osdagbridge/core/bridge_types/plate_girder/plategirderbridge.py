@@ -2122,7 +2122,7 @@ class PlateGirderBridge:
         Called from :meth:`design` while ``output_dict`` is still mutable.
 
         Also stores the report-generator values dict (keyed to
-        common.KEY_DECK_RPT_*) under ``self.output_dict["deck_report_values"]``.
+        common.KEY_DD_*) under ``self.output_dict["deck_report_values"]``.
 
         Returns
         -------
@@ -2143,7 +2143,7 @@ class PlateGirderBridge:
         result, report_values = deckdesign.design_deck_slab(self.input_dict, fck=fck, fctm=fctm, fy=fy, Ecm=Ecm, Es=Es)
         self.output_dict["deck_design_results"] = result
         # Raw numeric values for the report generator (Tables 5.17(a)-(g)),
-        # keyed to common.KEY_DECK_RPT_*.
+        # keyed to common.KEY_DD_*.
         self.output_dict["deck_report_values"] = report_values
 
         import pprint

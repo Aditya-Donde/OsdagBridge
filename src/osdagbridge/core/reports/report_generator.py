@@ -229,25 +229,26 @@ from osdagbridge.core.utils.common import (
     KEY_UTIL_DEFLECTION_CRACK,
     KEY_UTIL_INTERACTION,
     KEY_UTIL_LONG_TRANS_SHEAR,
+    # Deck materials & cover (read from input for Tables 5.17(a)-(g)).
+    KEY_DS_TOP_CLEAR_COVER, KEY_DS_BOTTOM_CLEAR_COVER,
+    KEY_DS_REINF_MATERIAL, KEY_MATERIAL_DECK_FCK, KEY_MATERIAL_DECK_FCTM,
     # Deck Slab Design — report output keys (Tables 5.17(a)-(g)),
     # stored in output_dict["deck_report_values"] by design_deck_slab().
-    KEY_DECK_RPT_VEHICLE, KEY_DECK_RPT_IMPACT_FACTOR, KEY_DECK_RPT_GAMMA_DL,
-    KEY_DECK_RPT_GAMMA_LL, KEY_DECK_RPT_SPAN, KEY_DECK_RPT_THICKNESS,
-    KEY_DECK_RPT_COVER_TOP, KEY_DECK_RPT_COVER_BOT, KEY_DECK_RPT_WDL,
-    KEY_DECK_RPT_WHEEL_LOAD, KEY_DECK_RPT_TYRE_WIDTH, KEY_DECK_RPT_CONCRETE_GRADE,
-    KEY_DECK_RPT_REBAR_GRADE, KEY_DECK_RPT_FCK, KEY_DECK_RPT_FCTM, KEY_DECK_RPT_FY,
-    KEY_DECK_RPT_M_DL, KEY_DECK_RPT_M_LL, KEY_DECK_RPT_M_ULS_SAG,
-    KEY_DECK_RPT_M_ULS_HOG, KEY_DECK_RPT_D_BOT, KEY_DECK_RPT_D_TOP,
-    KEY_DECK_RPT_MU_BOT, KEY_DECK_RPT_MU_TOP, KEY_DECK_RPT_AS_REQ_BOT,
-    KEY_DECK_RPT_AS_REQ_TOP, KEY_DECK_RPT_OVERHANG, KEY_DECK_RPT_M_BARRIER,
-    KEY_DECK_RPT_M_DL_OH, KEY_DECK_RPT_M_LL_OH, KEY_DECK_RPT_M_ULS_OH,
-    KEY_DECK_RPT_D_OH, KEY_DECK_RPT_MU_OH, KEY_DECK_RPT_AS_REQ_OH,
-    KEY_DECK_RPT_AS_MIN, KEY_DECK_RPT_WK_BOT, KEY_DECK_RPT_WK_TOP,
-    KEY_DECK_RPT_WK_OH, KEY_DECK_RPT_WK_LIMIT, KEY_DECK_RPT_DIA_BOT,
-    KEY_DECK_RPT_SPC_BOT, KEY_DECK_RPT_AS_BOT, KEY_DECK_RPT_DIA_TOP,
-    KEY_DECK_RPT_SPC_TOP, KEY_DECK_RPT_AS_TOP, KEY_DECK_RPT_DIA_OH,
-    KEY_DECK_RPT_SPC_OH, KEY_DECK_RPT_AS_OH, KEY_DECK_RPT_SPACING_MAX,
-    KEY_DECK_RPT_HAS_OVERHANG,
+    KEY_DD_VEHICLE, KEY_DD_IMPACT_FACTOR, KEY_DD_GAMMA_DL,
+    KEY_DD_GAMMA_LL, KEY_DD_SPAN, KEY_DD_WDL,
+    KEY_DD_WHEEL_LOAD, KEY_DD_TYRE_WIDTH, KEY_DD_FY,
+    KEY_DD_M_DL, KEY_DD_M_LL, KEY_DD_M_ULS_SAG,
+    KEY_DD_M_ULS_HOG, KEY_DD_D_BOT, KEY_DD_D_TOP,
+    KEY_DD_MU_BOT, KEY_DD_MU_TOP, KEY_DD_AS_REQ_BOT,
+    KEY_DD_AS_REQ_TOP, KEY_DD_M_BARRIER,
+    KEY_DD_M_DL_OH, KEY_DD_M_LL_OH, KEY_DD_M_ULS_OH,
+    KEY_DD_D_OH, KEY_DD_MU_OH, KEY_DD_AS_REQ_OH,
+    KEY_DD_AS_MIN, KEY_DD_WK_BOT, KEY_DD_WK_TOP,
+    KEY_DD_WK_OH, KEY_DD_WK_LIMIT, KEY_DD_DIA_BOT,
+    KEY_DD_SPC_BOT, KEY_DD_AS_BOT, KEY_DD_DIA_TOP,
+    KEY_DD_SPC_TOP, KEY_DD_AS_TOP, KEY_DD_DIA_OH,
+    KEY_DD_SPC_OH, KEY_DD_AS_OH, KEY_DD_SPACING_MAX,
+    KEY_DD_HAS_OVERHANG,
 )
 
 
@@ -1365,7 +1366,7 @@ def ch5_design_checks(checks_data, bridge: "ReportDataBridge"):
     n_girders = len(girder_entries)
 
     # Deck slab design report values (Tables 5.17(a)-(g)), keyed to
-    # common.KEY_DECK_RPT_*. Populated by deckdesign.design_deck_slab(); empty
+    # common.KEY_DD_*. Populated by deckdesign.design_deck_slab(); empty
     # dict when deck design has not been run. Look up with deck_rpt.get(KEY_...).
     deck_rpt = bridge.output_dict.get("deck_report_values", {}) or {}
 
@@ -1652,11 +1653,11 @@ def ch5_design_checks(checks_data, bridge: "ReportDataBridge"):
     cb_capacity_content = "\n".join(cb_capacity_rows)
 
     # ── Deck slab design value helpers (Tables 5.17 a/b/c/e/g) ────────────────
-    # Read from deck_rpt = output_dict["deck_report_values"] (common.KEY_DECK_RPT_*).
+    # Read from deck_rpt = output_dict["deck_report_values"] (common.KEY_DD_*).
     # Tables 5.17(d) punching shear and 5.17(f) one-way shear stay as
     # placeholders — those are not computed by design_deck_slab().
     _dk_has = bool(deck_rpt)
-    _dk_oh = bool(deck_rpt.get(KEY_DECK_RPT_HAS_OVERHANG))
+    _dk_oh = bool(deck_rpt.get(KEY_DD_HAS_OVERHANG))
     _DKPH = r"\placeholder{---}"
 
     def _dkv(key, default=0.0):
@@ -1691,12 +1692,12 @@ def ch5_design_checks(checks_data, bridge: "ReportDataBridge"):
         return _dkf(key, nd=nd, scale=scale) + unit
 
     # Governing crack width = max(bottom, top[, overhang]) vs the limit.
-    _dk_wks = [_dkv(KEY_DECK_RPT_WK_BOT), _dkv(KEY_DECK_RPT_WK_TOP)]
+    _dk_wks = [_dkv(KEY_DD_WK_BOT), _dkv(KEY_DD_WK_TOP)]
     if _dk_oh:
-        _dk_wks.append(_dkv(KEY_DECK_RPT_WK_OH))
+        _dk_wks.append(_dkv(KEY_DD_WK_OH))
     _dk_gov_wk = max(_dk_wks)
     _dk_gov_wk_str = (f"{_dk_gov_wk:.4f}" if _dk_has else _DKPH)
-    _dk_crack_ok = _dk_has and _dk_gov_wk <= _dkv(KEY_DECK_RPT_WK_LIMIT)
+    _dk_crack_ok = _dk_has and _dk_gov_wk <= _dkv(KEY_DD_WK_LIMIT)
 
     return r"""
 \chapter{Design Checks}
@@ -1929,21 +1930,25 @@ The reinforced concrete deck slab is designed per IRC~112:2011 (flexure, shear, 
 
 \begin{longtable}{|L{5.5cm}|p{10.0cm}|}
 \hline
-\textbf{Effective Span of Deck Slab, $l_{eff}$} & """ + _dkf(KEY_DECK_RPT_SPAN, nd=0, scale=1000.0) + r""" mm (girder spacing, c/c) \\[6pt]
+\textbf{Effective Span of Deck Slab, $l_{eff}$} & """ + _dkf(KEY_DD_SPAN, nd=0, scale=1000.0) + r""" mm (girder spacing, c/c) \\[6pt]
 \hline
-\textbf{Deck Thickness, $t_s$} & """ + _dkf(KEY_DECK_RPT_THICKNESS, nd=0) + r""" mm \\[6pt]
+\textbf{Deck Thickness, $t_s$} & """ + _render_value(bridge.input_dict, KEY_TS_DECK_THICKNESS) + r""" mm \\[6pt]
 \hline
-\textbf{Clear Cover (IRC 112 Cl. 15.2)} & Top """ + _dkf(KEY_DECK_RPT_COVER_TOP, nd=0) + r""" / Bottom """ + _dkf(KEY_DECK_RPT_COVER_BOT, nd=0) + r""" mm \\[6pt]
+\textbf{Clear Cover (IRC 112 Cl. 15.2)} & Top """ + _render_value(bridge.input_dict, KEY_DS_TOP_CLEAR_COVER) + r""" / Bottom """ + _render_value(bridge.input_dict, KEY_DS_BOTTOM_CLEAR_COVER) + r""" mm \\[6pt]
 \hline
-\textbf{Dead Load per Unit Area, $w_{DL}$} & """ + _dkf(KEY_DECK_RPT_WDL, nd=2) + r""" kN/m² (slab self-weight) \\[6pt]
+\textbf{Concrete Grade (IRC 112 Cl. 6.4)} & """ + _render_value(bridge.input_dict, KEY_DECK_CONCRETE_GRADE_BASIC) + r""" ($f_{ck}$ = """ + _render_value(bridge.input_dict, KEY_MATERIAL_DECK_FCK) + r""" MPa, $f_{ctm}$ = """ + _render_value(bridge.input_dict, KEY_MATERIAL_DECK_FCTM) + r""" MPa) \\[6pt]
 \hline
-\textbf{IRC 6 Wheel Load (Class A / 70R)} & """ + _dkf(KEY_DECK_RPT_WHEEL_LOAD, nd=1) + r""" kN \\[6pt]
+\textbf{Reinforcement Grade (IRC 112 Cl. 6.2)} & """ + _render_value(bridge.input_dict, KEY_DS_REINF_MATERIAL) + r""" ($f_y$ = """ + _dkf(KEY_DD_FY, nd=0) + r""" MPa) \\[6pt]
 \hline
-\textbf{Tyre Contact Width (IRC 6 Annex~A)} & """ + _dkf(KEY_DECK_RPT_TYRE_WIDTH, nd=0, scale=1000.0) + r""" mm (transverse) \\[6pt]
+\textbf{Dead Load per Unit Area, $w_{DL}$} & """ + _dkf(KEY_DD_WDL, nd=2) + r""" kN/m² (slab self-weight) \\[6pt]
 \hline
-\textbf{Impact Factor (IRC 6 Cl. 208.2)} & """ + _dkf(KEY_DECK_RPT_IMPACT_FACTOR, nd=3) + r""" \\[6pt]
+\textbf{IRC 6 Wheel Load (Class A / 70R)} & """ + _dkf(KEY_DD_WHEEL_LOAD, nd=1) + r""" kN \\[6pt]
 \hline
-\textbf{Governing Live Load Case} & """ + _dkf(KEY_DECK_RPT_VEHICLE) + r""" \\[6pt]
+\textbf{Tyre Contact Width (IRC 6 Annex~A)} & """ + _dkf(KEY_DD_TYRE_WIDTH, nd=0, scale=1000.0) + r""" mm (transverse) \\[6pt]
+\hline
+\textbf{Impact Factor (IRC 6 Cl. 208.2)} & """ + _dkf(KEY_DD_IMPACT_FACTOR, nd=3) + r""" \\[6pt]
+\hline
+\textbf{Governing Live Load Case} & """ + _dkf(KEY_DD_VEHICLE) + r""" \\[6pt]
 \hline
 \end{longtable}
 
@@ -1954,21 +1959,21 @@ The reinforced concrete deck slab is designed per IRC~112:2011 (flexure, shear, 
 \hline
 \textbf{Location} & \textbf{Parameter} & \textbf{Formula / Reference} & \textbf{Value} & \textbf{Status} \\[6pt]
 \hline
-\multirow{5}{*}{\makecell{At Midspan\\(Sagging)}} & Transverse BM (DL), $M_{T,DL}$ & $w_{DL}\,l_{eff}^2/10$ & """ + _dkf(KEY_DECK_RPT_M_DL, nd=2) + r""" kN-m/m & --- \\[6pt]
+\multirow{5}{*}{\makecell{At Midspan\\(Sagging)}} & Transverse BM (DL), $M_{T,DL}$ & $w_{DL}\,l_{eff}^2/10$ & """ + _dkf(KEY_DD_M_DL, nd=2) + r""" kN-m/m & --- \\[6pt]
 \cline{2-5}
- & Transverse BM (LL), $M_{T,LL}$ & Effective width (IRC 112 B3.1) & """ + _dkf(KEY_DECK_RPT_M_LL, nd=2) + r""" kN-m/m & --- \\[6pt]
+ & Transverse BM (LL), $M_{T,LL}$ & Effective width (IRC 112 B3.1) & """ + _dkf(KEY_DD_M_LL, nd=2) + r""" kN-m/m & --- \\[6pt]
 \cline{2-5}
- & Total Design BM, $M_{u,sag}$ & """ + _dkf(KEY_DECK_RPT_GAMMA_DL, nd=2) + r""" DL + """ + _dkf(KEY_DECK_RPT_GAMMA_LL, nd=2) + r""" LL & """ + _dkf(KEY_DECK_RPT_M_ULS_SAG, nd=2) + r""" kN-m/m & --- \\[6pt]
+ & Total Design BM, $M_{u,sag}$ & """ + _dkf(KEY_DD_GAMMA_DL, nd=2) + r""" DL + """ + _dkf(KEY_DD_GAMMA_LL, nd=2) + r""" LL & """ + _dkf(KEY_DD_M_ULS_SAG, nd=2) + r""" kN-m/m & --- \\[6pt]
 \cline{2-5}
- & Effective depth, $d$ & $t_s - c_{nom} - \phi/2$ & """ + _dkf(KEY_DECK_RPT_D_BOT, nd=1) + r""" mm & --- \\[6pt]
+ & Effective depth, $d$ & $t_s - c_{nom} - \phi/2$ & """ + _dkf(KEY_DD_D_BOT, nd=1) + r""" mm & --- \\[6pt]
 \cline{2-5}
- & Moment Capacity, $M_{Rd}$ & IRC 112 Cl. 12.2 & """ + _dkf(KEY_DECK_RPT_MU_BOT, nd=2) + r""" kN-m/m & """ + _dks(_dkv(KEY_DECK_RPT_MU_BOT) >= _dkv(KEY_DECK_RPT_M_ULS_SAG)) + r""" \\[6pt]
+ & Moment Capacity, $M_{Rd}$ & IRC 112 Cl. 12.2 & """ + _dkf(KEY_DD_MU_BOT, nd=2) + r""" kN-m/m & """ + _dks(_dkv(KEY_DD_MU_BOT) >= _dkv(KEY_DD_M_ULS_SAG)) + r""" \\[6pt]
 \hline
-\multirow{3}{*}{\makecell{At Support\\(Hogging)}} & Total Design BM, $M_{u,hog}$ & """ + _dkf(KEY_DECK_RPT_GAMMA_DL, nd=2) + r""" DL + """ + _dkf(KEY_DECK_RPT_GAMMA_LL, nd=2) + r""" LL (at support) & """ + _dkf(KEY_DECK_RPT_M_ULS_HOG, nd=2) + r""" kN-m/m & --- \\[6pt]
+\multirow{3}{*}{\makecell{At Support\\(Hogging)}} & Total Design BM, $M_{u,hog}$ & """ + _dkf(KEY_DD_GAMMA_DL, nd=2) + r""" DL + """ + _dkf(KEY_DD_GAMMA_LL, nd=2) + r""" LL (at support) & """ + _dkf(KEY_DD_M_ULS_HOG, nd=2) + r""" kN-m/m & --- \\[6pt]
 \cline{2-5}
- & Required Top Steel, $A_{st,top}$ & $M_u / (0.87\,f_y\,d)$ & """ + _dkf(KEY_DECK_RPT_AS_REQ_TOP, nd=0) + r""" mm²/m & --- \\[6pt]
+ & Required Top Steel, $A_{st,top}$ & $M_u / (0.87\,f_y\,d)$ & """ + _dkf(KEY_DD_AS_REQ_TOP, nd=0) + r""" mm²/m & --- \\[6pt]
 \cline{2-5}
- & Moment Capacity, $M_{Rd}$ & IRC 112 Cl. 12.2 & """ + _dkf(KEY_DECK_RPT_MU_TOP, nd=2) + r""" kN-m/m & """ + _dks(_dkv(KEY_DECK_RPT_MU_TOP) >= _dkv(KEY_DECK_RPT_M_ULS_HOG)) + r""" \\[6pt]
+ & Moment Capacity, $M_{Rd}$ & IRC 112 Cl. 12.2 & """ + _dkf(KEY_DD_MU_TOP, nd=2) + r""" kN-m/m & """ + _dks(_dkv(KEY_DD_MU_TOP) >= _dkv(KEY_DD_M_ULS_HOG)) + r""" \\[6pt]
 \hline
 \end{longtable}
 \noindent\textit{Note: IRC 112 Cl. 12.2. Distribution (longitudinal) reinforcement designed for 20\% of main steel moment (IRC 21 Cl. 305.18).}
@@ -1980,17 +1985,17 @@ The reinforced concrete deck slab is designed per IRC~112:2011 (flexure, shear, 
 \hline
 \textbf{Parameter} & \textbf{Formula} & \textbf{Value} & \textbf{Status} \\[6pt]
 \hline
-Overhang Length, $l_{oh}$ & --- & """ + _dkoh(KEY_DECK_RPT_OVERHANG, nd=0, unit=" mm") + r""" & --- \\[6pt]
+Overhang Length, $l_{oh}$ & --- & """ + _render_value(bridge.input_dict, KEY_TS_DECK_OVERHANG, " m") + r""" & --- \\[6pt]
 \hline
-Crash Barrier Load Moment & IRC 6 Cl. 206.4 & """ + _dkoh(KEY_DECK_RPT_M_BARRIER, nd=2, unit=" kN-m/m") + r""" & --- \\[6pt]
+Crash Barrier Load Moment & IRC 6 Cl. 206.4 & """ + _dkoh(KEY_DD_M_BARRIER, nd=2, unit=" kN-m/m") + r""" & --- \\[6pt]
 \hline
-Dead Load Moment & $w_{DL}\,l_{oh}^2/2$ + railing & """ + _dkoh(KEY_DECK_RPT_M_DL_OH, nd=2, unit=" kN-m/m") + r""" & --- \\[6pt]
+Dead Load Moment & $w_{DL}\,l_{oh}^2/2$ + railing & """ + _dkoh(KEY_DD_M_DL_OH, nd=2, unit=" kN-m/m") + r""" & --- \\[6pt]
 \hline
-Live Load Moment (eccentric wheel) & Wheel load $\times$ arm & """ + _dkoh(KEY_DECK_RPT_M_LL_OH, nd=2, unit=" kN-m/m") + r""" & --- \\[6pt]
+Live Load Moment (eccentric wheel) & Wheel load $\times$ arm & """ + _dkoh(KEY_DD_M_LL_OH, nd=2, unit=" kN-m/m") + r""" & --- \\[6pt]
 \hline
-Total Hogging Moment, $M_{u,oh}$ & """ + _dkf(KEY_DECK_RPT_GAMMA_DL, nd=2) + r""" DL + """ + _dkf(KEY_DECK_RPT_GAMMA_LL, nd=2) + r""" (LL + CB) & """ + _dkoh(KEY_DECK_RPT_M_ULS_OH, nd=2, unit=" kN-m/m") + r""" & --- \\[6pt]
+Total Hogging Moment, $M_{u,oh}$ & """ + _dkf(KEY_DD_GAMMA_DL, nd=2) + r""" DL + """ + _dkf(KEY_DD_GAMMA_LL, nd=2) + r""" (LL + CB) & """ + _dkoh(KEY_DD_M_ULS_OH, nd=2, unit=" kN-m/m") + r""" & --- \\[6pt]
 \hline
-Moment Capacity (top steel), $M_{Rd,oh}$ & IRC 112 Cl. 12.2 & """ + _dkoh(KEY_DECK_RPT_MU_OH, nd=2, unit=" kN-m/m") + r""" & """ + (_dks(_dkv(KEY_DECK_RPT_MU_OH) >= _dkv(KEY_DECK_RPT_M_ULS_OH)) if _dk_oh else ("N/A" if _dk_has else "---")) + r""" \\[6pt]
+Moment Capacity (top steel), $M_{Rd,oh}$ & IRC 112 Cl. 12.2 & """ + _dkoh(KEY_DD_MU_OH, nd=2, unit=" kN-m/m") + r""" & """ + (_dks(_dkv(KEY_DD_MU_OH) >= _dkv(KEY_DD_M_ULS_OH)) if _dk_oh else ("N/A" if _dk_has else "---")) + r""" \\[6pt]
 \hline
 \end{longtable}
 \noindent\textit{Note: IRC 6 Cl. 206.4 crash barrier loads applied at kerb face; IRC 112 Cl. 12.2 flexure.}
@@ -2024,11 +2029,11 @@ Punching Shear Check & $v_{Ed} \leq v_{Rd,c}$ &  &  \\[6pt]
 
 \begin{longtable}{|C{7cm}|>{\arraybackslash}p{8.5cm}|}
 \hline
-\textbf{Min. Reinforcement for Crack Control, $A_{s,min}$} & """ + _dkf(KEY_DECK_RPT_AS_MIN, nd=0) + r""" mm²/m [IRC 112 Cl. 16.5.1] \\[6pt]
+\textbf{Min. Reinforcement for Crack Control, $A_{s,min}$} & """ + _dkf(KEY_DD_AS_MIN, nd=0) + r""" mm²/m [IRC 112 Cl. 16.5.1] \\[6pt]
 \hline
-\textbf{Provided Reinforcement (bottom)} & $\phi$""" + _dkf(KEY_DECK_RPT_DIA_BOT, nd=0) + r""" @ """ + _dkf(KEY_DECK_RPT_SPC_BOT, nd=0) + r""" mm c/c (""" + _dkf(KEY_DECK_RPT_AS_BOT, nd=0) + r""" mm²/m) \\[6pt]
+\textbf{Provided Reinforcement (bottom)} & $\phi$""" + _dkf(KEY_DD_DIA_BOT, nd=0) + r""" @ """ + _dkf(KEY_DD_SPC_BOT, nd=0) + r""" mm c/c (""" + _dkf(KEY_DD_AS_BOT, nd=0) + r""" mm²/m) \\[6pt]
 \hline
-\textbf{Max. Permissible Crack Width} & """ + _dkf(KEY_DECK_RPT_WK_LIMIT, nd=2) + r""" mm \\[6pt]
+\textbf{Max. Permissible Crack Width} & """ + _dkf(KEY_DD_WK_LIMIT, nd=2) + r""" mm \\[6pt]
 \hline
 \textbf{Calculated Crack Width, $w_k$ (governing)} & """ + _dk_gov_wk_str + r""" mm \\[6pt]
 \hline
@@ -2067,13 +2072,13 @@ One-Way Shear Check & $V_{Ed} \leq V_{Rd,c}$ &  &  \\[6pt]
 \hline
 \multicolumn{4}{|l|}{\textbf{Main Reinforcement --- Bottom (Transverse)}} \\[6pt]
 \hline
-Required Area, $A_{st,req}$ (mm²/m) & """ + _dkf(KEY_DECK_RPT_AS_REQ_BOT, nd=0) + r""" mm²/m & """ + _dkf(KEY_DECK_RPT_AS_BOT, nd=0) + r""" mm²/m & """ + _dks(_dkv(KEY_DECK_RPT_AS_BOT) >= _dkv(KEY_DECK_RPT_AS_REQ_BOT)) + r""" \\[6pt]
+Required Area, $A_{st,req}$ (mm²/m) & """ + _dkf(KEY_DD_AS_REQ_BOT, nd=0) + r""" mm²/m & """ + _dkf(KEY_DD_AS_BOT, nd=0) + r""" mm²/m & """ + _dks(_dkv(KEY_DD_AS_BOT) >= _dkv(KEY_DD_AS_REQ_BOT)) + r""" \\[6pt]
 \hline
-Bar Diameter $\times$ Spacing & $\phi \geq 10$ mm (IRC 112) & $\phi$""" + _dkf(KEY_DECK_RPT_DIA_BOT, nd=0) + r""" @ """ + _dkf(KEY_DECK_RPT_SPC_BOT, nd=0) + r""" mm c/c & --- \\[6pt]
+Bar Diameter $\times$ Spacing & $\phi \geq 10$ mm (IRC 112) & $\phi$""" + _dkf(KEY_DD_DIA_BOT, nd=0) + r""" @ """ + _dkf(KEY_DD_SPC_BOT, nd=0) + r""" mm c/c & --- \\[6pt]
 \hline
-Min.\ Reinforcement $A_{s,min}$ (IRC 112 Cl. 16.3.1) & """ + _dkf(KEY_DECK_RPT_AS_MIN, nd=0) + r""" mm²/m & """ + _dkf(KEY_DECK_RPT_AS_BOT, nd=0) + r""" mm²/m & """ + _dks(_dkv(KEY_DECK_RPT_AS_BOT) >= _dkv(KEY_DECK_RPT_AS_MIN)) + r""" \\[6pt]
+Min.\ Reinforcement $A_{s,min}$ (IRC 112 Cl. 16.3.1) & """ + _dkf(KEY_DD_AS_MIN, nd=0) + r""" mm²/m & """ + _dkf(KEY_DD_AS_BOT, nd=0) + r""" mm²/m & """ + _dks(_dkv(KEY_DD_AS_BOT) >= _dkv(KEY_DD_AS_MIN)) + r""" \\[6pt]
 \hline
-Max.\ Bar Spacing (IRC 112 Cl. 16.3.2) & """ + _dkf(KEY_DECK_RPT_SPACING_MAX, nd=0) + r""" mm & """ + _dkf(KEY_DECK_RPT_SPC_BOT, nd=0) + r""" mm & """ + _dks(0.0 < _dkv(KEY_DECK_RPT_SPC_BOT) <= _dkv(KEY_DECK_RPT_SPACING_MAX)) + r""" \\[6pt]
+Max.\ Bar Spacing (IRC 112 Cl. 16.3.2) & """ + _dkf(KEY_DD_SPACING_MAX, nd=0) + r""" mm & """ + _dkf(KEY_DD_SPC_BOT, nd=0) + r""" mm & """ + _dks(0.0 < _dkv(KEY_DD_SPC_BOT) <= _dkv(KEY_DD_SPACING_MAX)) + r""" \\[6pt]
 \hline
 \multicolumn{4}{|l|}{\textbf{Distribution Reinforcement --- Longitudinal}} \\[6pt]
 \hline
@@ -2081,11 +2086,11 @@ Required Area, $A_{st,dist}$ (mm²/m) & $\geq 20\%$ of main steel & --- & --- \\
 \hline
 \multicolumn{4}{|l|}{\textbf{Top Reinforcement (Support / Cantilever Overhang)}} \\[6pt]
 \hline
-Required Area, $A_{st,top}$ (mm²/m) & """ + _dkf(KEY_DECK_RPT_AS_REQ_TOP, nd=0) + r""" mm²/m & """ + _dkf(KEY_DECK_RPT_AS_TOP, nd=0) + r""" mm²/m & """ + _dks(_dkv(KEY_DECK_RPT_AS_TOP) >= _dkv(KEY_DECK_RPT_AS_REQ_TOP)) + r""" \\[6pt]
+Required Area, $A_{st,top}$ (mm²/m) & """ + _dkf(KEY_DD_AS_REQ_TOP, nd=0) + r""" mm²/m & """ + _dkf(KEY_DD_AS_TOP, nd=0) + r""" mm²/m & """ + _dks(_dkv(KEY_DD_AS_TOP) >= _dkv(KEY_DD_AS_REQ_TOP)) + r""" \\[6pt]
 \hline
 \multicolumn{4}{|l|}{\textbf{Cover and Detailing}} \\[6pt]
 \hline
-Clear Cover (IRC 112 Cl. 15.2) & --- & Top """ + _dkf(KEY_DECK_RPT_COVER_TOP, nd=0) + r""" / Bottom """ + _dkf(KEY_DECK_RPT_COVER_BOT, nd=0) + r""" mm & --- \\[6pt]
+Clear Cover (IRC 112 Cl. 15.2) & --- & Top """ + _render_value(bridge.input_dict, KEY_DS_TOP_CLEAR_COVER) + r""" / Bottom """ + _render_value(bridge.input_dict, KEY_DS_BOTTOM_CLEAR_COVER) + r""" mm & --- \\[6pt]
 \hline
 \end{longtable}
 \noindent\textit{Note: IRC 112 Cl. 16.3, IS 456 Cl. 26.5. All reinforcement provisions satisfy strength and detailing requirements.}
