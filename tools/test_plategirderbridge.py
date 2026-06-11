@@ -651,3 +651,654 @@ def test_validate_cb_post_spacing(validator, valid_additional_inputs, cb_spacing
 
 
 # Median - WIDTH (0–max(overall_width/2))
+@pytest.mark.parametrize("md_width, overall_w, expected_valid", [
+    (-0.1, 10.0, False),
+    (0.0, 10.0, True),
+    (2.5, 10.0, True),
+    (5.0, 10.0, True),
+    (5.1, 10.0, False),
+    (None, 10.0, False),
+])
+def test_validate_md_width(validator, valid_additional_inputs, md_width, overall_w, expected_valid):
+    inputs = valid_additional_inputs.copy()
+    inputs[KEY_TS_OVERALL_WIDTH] = overall_w
+    inputs[KEY_MD_WIDTH] = md_width
+    result = validator.validate_additional_inputs(KEY_MD_WIDTH, inputs)
+    if expected_valid and md_width is not None:
+        assert result is None
+    else:
+        assert result is not None
+
+
+# Median - HEIGHT (0–10.0)
+@pytest.mark.parametrize("md_height, expected_valid", [
+    (-0.5, False),
+    (0.0, True),
+    (5.0, True),
+    (10.0, True),
+    (10.1, False),
+    (None, False),
+])
+def test_validate_md_height(validator, valid_additional_inputs, md_height, expected_valid):
+    inputs = valid_additional_inputs.copy()
+    inputs[KEY_MD_HEIGHT] = md_height
+    result = validator.validate_additional_inputs(KEY_MD_HEIGHT, inputs)
+    if expected_valid and md_height is not None:
+        assert result is None
+    else:
+        assert result is not None
+
+
+# Median - LOAD (0–100.0)
+@pytest.mark.parametrize("md_load, expected_valid", [
+    (-1.0, False),
+    (0.0, True),
+    (50.0, True),
+    (100.0, True),
+    (100.1, False),
+    (None, False),
+])
+def test_validate_md_load(validator, valid_additional_inputs, md_load, expected_valid):
+    inputs = valid_additional_inputs.copy()
+    inputs[KEY_MD_LOAD] = md_load
+    result = validator.validate_additional_inputs(KEY_MD_LOAD, inputs)
+    if expected_valid and md_load is not None:
+        assert result is None
+    else:
+        assert result is not None
+
+
+# Median - POST_SPACING (0.1–span)
+@pytest.mark.parametrize("md_spacing, span, expected_valid", [
+    (0.05, 30.0, False),
+    (0.1, 30.0, True),
+    (15.0, 30.0, True),
+    (30.0, 30.0, True),
+    (30.1, 30.0, False),
+    (None, 30.0, False),
+])
+def test_validate_md_post_spacing(validator, valid_additional_inputs, md_spacing, span, expected_valid):
+    inputs = valid_additional_inputs.copy()
+    inputs[KEY_SPAN] = span
+    inputs[KEY_MD_POST_SPACING] = md_spacing
+    result = validator.validate_additional_inputs(KEY_MD_POST_SPACING, inputs)
+    if expected_valid and md_spacing is not None:
+        assert result is None
+    else:
+        assert result is not None
+
+
+# Railing - HEIGHT (MIN_RAILING_HEIGHT–3.0m)
+@pytest.mark.parametrize("rl_height, expected_valid", [
+    (MIN_RAILING_HEIGHT - 0.1, False),
+    (MIN_RAILING_HEIGHT, True),
+    (1.5, True),
+    (3.0, True),
+    (3.1, False),
+    (None, False),
+])
+def test_validate_rl_height(validator, valid_additional_inputs, rl_height, expected_valid):
+    inputs = valid_additional_inputs.copy()
+    inputs[KEY_RL_HEIGHT] = rl_height
+    result = validator.validate_additional_inputs(KEY_RL_HEIGHT, inputs)
+    if expected_valid and rl_height is not None:
+        assert result is None
+    else:
+        assert result is not None
+
+
+# Railing - WIDTH (0–max(overall_width/2))
+@pytest.mark.parametrize("rl_width, overall_w, expected_valid", [
+    (-0.1, 10.0, False),
+    (0.0, 10.0, True),
+    (2.5, 10.0, True),
+    (5.0, 10.0, True),
+    (5.1, 10.0, False),
+    (None, 10.0, False),
+])
+def test_validate_rl_width(validator, valid_additional_inputs, rl_width, overall_w, expected_valid):
+    inputs = valid_additional_inputs.copy()
+    inputs[KEY_TS_OVERALL_WIDTH] = overall_w
+    inputs[KEY_RL_WIDTH] = rl_width
+    result = validator.validate_additional_inputs(KEY_RL_WIDTH, inputs)
+    if expected_valid and rl_width is not None:
+        assert result is None
+    else:
+        assert result is not None
+
+
+# Railing - LOAD_VALUE (0–100.0)
+@pytest.mark.parametrize("rl_load, expected_valid", [
+    (-1.0, False),
+    (0.0, True),
+    (50.0, True),
+    (100.0, True),
+    (100.1, False),
+    (None, False),
+])
+def test_validate_rl_load_value(validator, valid_additional_inputs, rl_load, expected_valid):
+    inputs = valid_additional_inputs.copy()
+    inputs[KEY_RL_LOAD_VALUE] = rl_load
+    result = validator.validate_additional_inputs(KEY_RL_LOAD_VALUE, inputs)
+    if expected_valid and rl_load is not None:
+        assert result is None
+    else:
+        assert result is not None
+
+
+# Wearing Course - DENSITY (0–10.0)
+@pytest.mark.parametrize("wc_density, expected_valid", [
+    (-0.5, False),
+    (0.0, True),
+    (5.0, True),
+    (10.0, True),
+    (10.1, False),
+    (None, False),
+])
+def test_validate_wc_density(validator, valid_additional_inputs, wc_density, expected_valid):
+    inputs = valid_additional_inputs.copy()
+    inputs[KEY_WC_DENSITY] = wc_density
+    result = validator.validate_additional_inputs(KEY_WC_DENSITY, inputs)
+    if expected_valid and wc_density is not None:
+        assert result is None
+    else:
+        assert result is not None
+
+
+# Wearing Course - THICKNESS (0–10.0)
+@pytest.mark.parametrize("wc_thickness, expected_valid", [
+    (-0.5, False),
+    (0.0, True),
+    (5.0, True),
+    (10.0, True),
+    (10.1, False),
+    (None, False),
+])
+def test_validate_wc_thickness(validator, valid_additional_inputs, wc_thickness, expected_valid):
+    inputs = valid_additional_inputs.copy()
+    inputs[KEY_WC_THICKNESS] = wc_thickness
+    result = validator.validate_additional_inputs(KEY_WC_THICKNESS, inputs)
+    if expected_valid and wc_thickness is not None:
+        assert result is None
+    else:
+        assert result is not None
+
+
+# Lane Details - LANE_TABLE_COUNT (1–max_lanes)
+@pytest.mark.parametrize("lane_count, cw_width, expected_valid", [
+    (0, 10.0, False),
+    (1, 10.0, True),
+    (2, 10.0, True),
+    (3, 10.0, False),  # Validator actually limits to floor(cw/3.5) = 2 for cw=10.0
+    (7, 10.0, False),
+    (None, 10.0, False),
+])
+def test_validate_wc_ld_lane_table_count(validator, valid_additional_inputs, lane_count, cw_width, expected_valid):
+    inputs = valid_additional_inputs.copy()
+    inputs[KEY_CARRIAGEWAY_WIDTH] = cw_width
+    inputs[KEY_WC_LD_LANE_TABLE_COUNT] = lane_count
+    result = validator.validate_additional_inputs(KEY_WC_LD_LANE_TABLE_COUNT, inputs)
+    if expected_valid and lane_count is not None:
+        assert result is None
+    else:
+        assert result is not None
+
+
+# Permanent Load - SELF_WEIGHT_FACTOR (0–10.0)
+@pytest.mark.parametrize("swf, expected_valid", [
+    (-0.5, False),
+    (0.0, True),
+    (1.0, True),
+    (10.0, True),
+    (10.1, False),
+    (None, False),
+])
+def test_validate_pl_self_weight_factor(validator, valid_additional_inputs, swf, expected_valid):
+    inputs = valid_additional_inputs.copy()
+    inputs[KEY_PL_SELF_WEIGHT_FACTOR] = swf
+    result = validator.validate_additional_inputs(KEY_PL_SELF_WEIGHT_FACTOR, inputs)
+    if expected_valid and swf is not None:
+        assert result is None
+    else:
+        assert result is not None
+
+
+# Live Load - ECCENTRICITY (-10–10)
+@pytest.mark.parametrize("ecc, expected_valid", [
+    (-10.5, False),
+    (-10.0, True),
+    (0.0, True),
+    (10.0, True),
+    (10.1, False),
+    (None, False),
+])
+def test_validate_ll_eccentricity(validator, valid_additional_inputs, ecc, expected_valid):
+    inputs = valid_additional_inputs.copy()
+    inputs[KEY_LL_ECCENTRICITY] = ecc
+    result = validator.validate_additional_inputs(KEY_LL_ECCENTRICITY, inputs)
+    if expected_valid and ecc is not None:
+        assert result is None
+    else:
+        assert result is not None
+
+
+# Live Load - FOOTPATH_PRESSURE_VALUE (mode-gated, 0–5000)
+@pytest.mark.parametrize("mode, pressure, expected_valid", [
+    ("Custom", -1.0, False),
+    ("Custom", 0.0, True),
+    ("Custom", 2500.0, True),
+    ("Custom", 5000.0, True),
+    ("Custom", 5001.0, False),
+    ("Custom", None, False),
+    ("Standard", 1000.0, True),  # mode not "Custom" → returns None
+    ("Standard", None, True),     # mode not "Custom" → returns None
+])
+def test_validate_ll_footpath_pressure_value(validator, valid_additional_inputs, mode, pressure, expected_valid):
+    inputs = valid_additional_inputs.copy()
+    inputs[KEY_LL_FOOTPATH_PRESSURE_MODE] = mode
+    inputs[KEY_LL_FOOTPATH_PRESSURE_VALUE] = pressure
+    result = validator.validate_additional_inputs(KEY_LL_FOOTPATH_PRESSURE_VALUE, inputs)
+    if expected_valid:
+        assert result is None
+    else:
+        assert result is not None
+
+
+# Seismic Load - IMPORTANCE_FACTOR (0–10.0)
+@pytest.mark.parametrize("ifactor, expected_valid", [
+    (-0.5, False),
+    (0.0, True),
+    (1.0, True),
+    (10.0, True),
+    (10.1, False),
+    (None, False),
+])
+def test_validate_sl_importance_factor(validator, valid_additional_inputs, ifactor, expected_valid):
+    inputs = valid_additional_inputs.copy()
+    inputs[KEY_SL_IMPORTANCE_FACTOR] = ifactor
+    result = validator.validate_additional_inputs(KEY_SL_IMPORTANCE_FACTOR, inputs)
+    if expected_valid and ifactor is not None:
+        assert result is None
+    else:
+        assert result is not None
+
+
+# Seismic Load - TIME_PERIOD (0–4s)
+@pytest.mark.parametrize("tp, expected_valid", [
+    (-0.5, False),
+    (0.0, True),
+    (2.0, True),
+    (4.0, True),
+    (4.1, False),
+    (None, False),
+])
+def test_validate_sl_time_period(validator, valid_additional_inputs, tp, expected_valid):
+    inputs = valid_additional_inputs.copy()
+    inputs[KEY_SL_TIME_PERIOD] = tp
+    result = validator.validate_additional_inputs(KEY_SL_TIME_PERIOD, inputs)
+    if expected_valid and tp is not None:
+        assert result is None
+    else:
+        assert result is not None
+
+
+# Seismic Load - DAMPING (2–10%)
+@pytest.mark.parametrize("damp, expected_valid", [
+    (1.5, False),
+    (2.0, True),
+    (5.0, True),
+    (10.0, True),
+    (10.1, False),
+    (None, False),
+])
+def test_validate_sl_damping(validator, valid_additional_inputs, damp, expected_valid):
+    inputs = valid_additional_inputs.copy()
+    inputs[KEY_SL_DAMPING] = damp
+    result = validator.validate_additional_inputs(KEY_SL_DAMPING, inputs)
+    if expected_valid and damp is not None:
+        assert result is None
+    else:
+        assert result is not None
+
+
+# Seismic Load - DEAD_LOAD_VALUE (mode-gated)
+@pytest.mark.parametrize("mode, value, expected_valid", [
+    ("Custom", 0.0, True),
+    ("Custom", 100.0, True),
+    ("Custom", None, False),
+    ("Standard", 100.0, True),  # mode not "Custom" → returns None
+    ("Standard", None, True),   # mode not "Custom" → returns None
+])
+def test_validate_sl_dead_load_value(validator, valid_additional_inputs, mode, value, expected_valid):
+    inputs = valid_additional_inputs.copy()
+    inputs[KEY_SL_DEAD_LOAD_MODE] = mode
+    inputs[KEY_SL_DEAD_LOAD_VALUE] = value
+    result = validator.validate_additional_inputs(KEY_SL_DEAD_LOAD_VALUE, inputs)
+    if expected_valid:
+        assert result is None
+    else:
+        assert result is not None
+
+
+# Seismic Load - LIVE_LOAD_VALUE (mode-gated)
+@pytest.mark.parametrize("mode, value, expected_valid", [
+    ("Custom", 0.0, True),
+    ("Custom", 100.0, True),
+    ("Custom", None, False),
+    ("Standard", 100.0, True),
+    ("Standard", None, True),
+])
+def test_validate_sl_live_load_value(validator, valid_additional_inputs, mode, value, expected_valid):
+    inputs = valid_additional_inputs.copy()
+    inputs[KEY_SL_LIVE_LOAD_MODE] = mode
+    inputs[KEY_SL_LIVE_LOAD_VALUE] = value
+    result = validator.validate_additional_inputs(KEY_SL_LIVE_LOAD_VALUE, inputs)
+    if expected_valid:
+        assert result is None
+    else:
+        assert result is not None
+
+
+# Wind Load - AVG_EXPOSED_HEIGHT (0–100m, no negative check in validator)
+@pytest.mark.parametrize("height, expected_valid", [
+    (-1.0, True),
+    (0.0, True),
+    (50.0, True),
+    (100.0, True),
+    (100.1, False),
+    (None, False),
+])
+def test_validate_wl_avg_exposed_height(validator, valid_additional_inputs, height, expected_valid):
+    inputs = valid_additional_inputs.copy()
+    inputs[KEY_WL_AVG_EXPOSED_HEIGHT] = height
+    result = validator.validate_additional_inputs(KEY_WL_AVG_EXPOSED_HEIGHT, inputs)
+    if expected_valid and height is not None:
+        assert result is None
+    else:
+        assert result is not None
+
+
+# Wind Load - GUST_FACTOR_VALUE (mode-gated, 2.0–10.0)
+@pytest.mark.parametrize("mode, gf, expected_valid", [
+    ("Custom", 1.5, False),
+    ("Custom", 2.0, True),
+    ("Custom", 5.0, True),
+    ("Custom", 10.0, True),
+    ("Custom", 10.1, False),
+    ("Custom", None, False),
+    ("Standard", 5.0, True),
+    ("Standard", None, True),
+])
+def test_validate_wl_gust_factor_value(validator, valid_additional_inputs, mode, gf, expected_valid):
+    inputs = valid_additional_inputs.copy()
+    inputs[KEY_WL_GUST_FACTOR_MODE] = mode
+    inputs[KEY_WL_GUST_FACTOR_VALUE] = gf
+    result = validator.validate_additional_inputs(KEY_WL_GUST_FACTOR_VALUE, inputs)
+    if expected_valid:
+        assert result is None
+    else:
+        assert result is not None
+
+
+# Wind Load - DRAG_COEFF_VALUE (mode-gated, 1.0–10.0)
+@pytest.mark.parametrize("mode, dc, expected_valid", [
+    ("Custom", 0.5, False),
+    ("Custom", 1.0, True),
+    ("Custom", 5.0, True),
+    ("Custom", 10.0, True),
+    ("Custom", 10.1, False),
+    ("Custom", None, False),
+    ("Standard", 5.0, True),
+    ("Standard", None, True),
+])
+def test_validate_wl_drag_coeff_value(validator, valid_additional_inputs, mode, dc, expected_valid):
+    inputs = valid_additional_inputs.copy()
+    inputs[KEY_WL_DRAG_COEFF_MODE] = mode
+    inputs[KEY_WL_DRAG_COEFF_VALUE] = dc
+    result = validator.validate_additional_inputs(KEY_WL_DRAG_COEFF_VALUE, inputs)
+    if expected_valid:
+        assert result is None
+    else:
+        assert result is not None
+
+
+# Wind Load - DRAG_COEFF_LL_VALUE (mode-gated, 1.0–10.0)
+@pytest.mark.parametrize("mode, dcll, expected_valid", [
+    ("Custom", 0.5, False),
+    ("Custom", 1.0, True),
+    ("Custom", 5.0, True),
+    ("Custom", 10.0, True),
+    ("Custom", 10.1, False),
+    ("Custom", None, False),
+    ("Standard", 5.0, True),
+    ("Standard", None, True),
+])
+def test_validate_wl_drag_coeff_ll_value(validator, valid_additional_inputs, mode, dcll, expected_valid):
+    inputs = valid_additional_inputs.copy()
+    inputs[KEY_WL_DRAG_COEFF_LL_MODE] = mode
+    inputs[KEY_WL_DRAG_COEFF_LL_VALUE] = dcll
+    result = validator.validate_additional_inputs(KEY_WL_DRAG_COEFF_LL_VALUE, inputs)
+    if expected_valid:
+        assert result is None
+    else:
+        assert result is not None
+
+
+# Wind Load - LIFT_COEFF_VALUE (mode-gated, 1.0–10.0)
+@pytest.mark.parametrize("mode, lc, expected_valid", [
+    ("Custom", 0.5, False),
+    ("Custom", 1.0, True),
+    ("Custom", 5.0, True),
+    ("Custom", 10.0, True),
+    ("Custom", 10.1, False),
+    ("Custom", None, False),
+    ("Standard", 5.0, True),
+    ("Standard", None, True),
+])
+def test_validate_wl_lift_coeff_value(validator, valid_additional_inputs, mode, lc, expected_valid):
+    inputs = valid_additional_inputs.copy()
+    inputs[KEY_WL_LIFT_COEFF_MODE] = mode
+    inputs[KEY_WL_LIFT_COEFF_VALUE] = lc
+    result = validator.validate_additional_inputs(KEY_WL_LIFT_COEFF_VALUE, inputs)
+    if expected_valid:
+        assert result is None
+    else:
+        assert result is not None
+
+
+# Wind Load - SUPER_AREA_ELEV_VALUE (mode-gated, >= 0)
+@pytest.mark.parametrize("mode, sae, expected_valid", [
+    ("Custom", -1.0, True),  # no check on negative in validator
+    ("Custom", 0.0, True),
+    ("Custom", 100.0, True),
+    ("Custom", None, False),
+    ("Standard", 50.0, True),
+    ("Standard", None, True),
+])
+def test_validate_wl_super_area_elev_value(validator, valid_additional_inputs, mode, sae, expected_valid):
+    inputs = valid_additional_inputs.copy()
+    inputs[KEY_WL_SUPER_AREA_ELEV_MODE] = mode
+    inputs[KEY_WL_SUPER_AREA_ELEV_VALUE] = sae
+    result = validator.validate_additional_inputs(KEY_WL_SUPER_AREA_ELEV_VALUE, inputs)
+    if expected_valid:
+        assert result is None
+    else:
+        assert result is not None
+
+
+# Wind Load - SUPER_AREA_PLAIN_VALUE (mode-gated)
+@pytest.mark.parametrize("mode, sap, expected_valid", [
+    ("Custom", 0.0, True),
+    ("Custom", 100.0, True),
+    ("Custom", None, False),
+    ("Standard", 50.0, True),
+    ("Standard", None, True),
+])
+def test_validate_wl_super_area_plain_value(validator, valid_additional_inputs, mode, sap, expected_valid):
+    inputs = valid_additional_inputs.copy()
+    inputs[KEY_WL_SUPER_AREA_PLAIN_MODE] = mode
+    inputs[KEY_WL_SUPER_AREA_PLAIN_VALUE] = sap
+    result = validator.validate_additional_inputs(KEY_WL_SUPER_AREA_PLAIN_VALUE, inputs)
+    if expected_valid:
+        assert result is None
+    else:
+        assert result is not None
+
+
+# Wind Load - EXPOSED_FRONTAL_VALUE (mode-gated)
+@pytest.mark.parametrize("mode, ef, expected_valid", [
+    ("Custom", 0.0, True),
+    ("Custom", 100.0, True),
+    ("Custom", None, False),
+    ("Standard", 50.0, True),
+    ("Standard", None, True),
+])
+def test_validate_wl_exposed_frontal_value(validator, valid_additional_inputs, mode, ef, expected_valid):
+    inputs = valid_additional_inputs.copy()
+    inputs[KEY_WL_EXPOSED_FRONTAL_MODE] = mode
+    inputs[KEY_WL_EXPOSED_FRONTAL_VALUE] = ef
+    result = validator.validate_additional_inputs(KEY_WL_EXPOSED_FRONTAL_VALUE, inputs)
+    if expected_valid:
+        assert result is None
+    else:
+        assert result is not None
+
+
+# Wind Load - WIND_ECC_DECK_VALUE (-10–10)
+@pytest.mark.parametrize("wecc, expected_valid", [
+    (-10.5, False),
+    (-10.0, True),
+    (0.0, True),
+    (10.0, True),
+    (10.1, False),
+    (None, False),
+])
+def test_validate_wl_wind_ecc_deck_value(validator, valid_additional_inputs, wecc, expected_valid):
+    inputs = valid_additional_inputs.copy()
+    inputs[KEY_WL_WIND_ECC_DECK_VALUE] = wecc
+    result = validator.validate_additional_inputs(KEY_WL_WIND_ECC_DECK_VALUE, inputs)
+    if expected_valid and wecc is not None:
+        assert result is None
+    else:
+        assert result is not None
+
+
+# Wind Load - WIND_LL_ECC_VALUE (-10–10)
+@pytest.mark.parametrize("wlecc, expected_valid", [
+    (-10.5, False),
+    (-10.0, True),
+    (0.0, True),
+    (10.0, True),
+    (10.1, False),
+    (None, False),
+])
+def test_validate_wl_wind_ll_ecc_value(validator, valid_additional_inputs, wlecc, expected_valid):
+    inputs = valid_additional_inputs.copy()
+    inputs[KEY_WL_WIND_LL_ECC_VALUE] = wlecc
+    result = validator.validate_additional_inputs(KEY_WL_WIND_LL_ECC_VALUE, inputs)
+    if expected_valid and wlecc is not None:
+        assert result is None
+    else:
+        assert result is not None
+
+
+# Temperature Load - THERMAL_COEFF_STEEL
+@pytest.mark.parametrize("tcs, expected_valid", [
+    (-1.0, True),
+    (0.0, True),
+    (100.0, True),
+    (None, False),
+])
+def test_validate_tl_thermal_coeff_steel(validator, valid_additional_inputs, tcs, expected_valid):
+    inputs = valid_additional_inputs.copy()
+    inputs[KEY_TL_THERMAL_COEFF_STEEL] = tcs
+    result = validator.validate_additional_inputs(KEY_TL_THERMAL_COEFF_STEEL, inputs)
+    if expected_valid:
+        assert result is None
+    else:
+        assert result is not None
+
+
+# Temperature Load - THERMAL_COEFF_RCC
+@pytest.mark.parametrize("tcr, expected_valid", [
+    (-1.0, True),
+    (0.0, True),
+    (100.0, True),
+    (None, False),
+])
+def test_validate_tl_thermal_coeff_rcc(validator, valid_additional_inputs, tcr, expected_valid):
+    inputs = valid_additional_inputs.copy()
+    inputs[KEY_TL_THERMAL_COEFF_RCC] = tcr
+    result = validator.validate_additional_inputs(KEY_TL_THERMAL_COEFF_RCC, inputs)
+    if expected_valid:
+        assert result is None
+    else:
+        assert result is not None
+
+
+# Design Options - REINF_BOUNDS
+@pytest.mark.parametrize("bounds, expected_valid", [
+    ({"lower": 8, "upper": 40}, True),
+    ({"lower": 8, "upper": 20}, True),
+    ({"lower": 20, "upper": 8}, False),  # upper < lower
+    ({"lower": 5, "upper": 40}, False),  # lower < 8
+    ({"lower": 8, "upper": 50}, False),  # upper > 40
+    (None, False),
+])
+def test_validate_ds_reinf_bounds(validator, valid_additional_inputs, bounds, expected_valid):
+    inputs = valid_additional_inputs.copy()
+    inputs[KEY_DS_REINF_BOUNDS] = bounds
+    result = validator.validate_additional_inputs(KEY_DS_REINF_BOUNDS, inputs)
+    if expected_valid:
+        assert result is None
+    else:
+        assert result is not None
+
+
+# Design Options - TOP_CLEAR_COVER (40–75 mm)
+@pytest.mark.parametrize("tcc, expected_valid", [
+    (35, False),
+    (40, True),
+    (57, True),
+    (75, True),
+    (80, False),
+    (None, False),
+])
+def test_validate_ds_top_clear_cover(validator, valid_additional_inputs, tcc, expected_valid):
+    inputs = valid_additional_inputs.copy()
+    inputs[KEY_DS_TOP_CLEAR_COVER] = tcc
+    result = validator.validate_additional_inputs(KEY_DS_TOP_CLEAR_COVER, inputs)
+    if expected_valid and tcc is not None:
+        assert result is None
+    else:
+        assert result is not None
+
+
+# Design Options - BOTTOM_CLEAR_COVER (35–75 mm)
+@pytest.mark.parametrize("bcc, expected_valid", [
+    (30, False),
+    (35, True),
+    (55, True),
+    (75, True),
+    (80, False),
+    (None, False),
+])
+def test_validate_ds_bottom_clear_cover(validator, valid_additional_inputs, bcc, expected_valid):
+    inputs = valid_additional_inputs.copy()
+    inputs[KEY_DS_BOTTOM_CLEAR_COVER] = bcc
+    result = validator.validate_additional_inputs(KEY_DS_BOTTOM_CLEAR_COVER, inputs)
+    if expected_valid and bcc is not None:
+        assert result is None
+    else:
+        assert result is not None
+
+
+# Design Options - SIDE_CLEAR_COVER (35–75 mm)
+@pytest.mark.parametrize("scc, expected_valid", [
+    (30, False),
+    (35, True),
+    (55, True),
+    (75, True),
+    (80, False),
+    (None, False),
+])
