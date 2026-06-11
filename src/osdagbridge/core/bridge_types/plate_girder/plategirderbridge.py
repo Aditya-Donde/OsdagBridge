@@ -1854,7 +1854,8 @@ class PlateGirderBridge:
                         self.output_dict[make_pair_key(KEY_TD_CB_BOTTOM_CHORD_PROP_ZV, pair_id)] = chord_details["Zv"]
                         self.output_dict[make_pair_key(KEY_TD_CB_BOTTOM_CHORD_PROP_ZUZ, pair_id)] = chord_details["Zuz"]
                         self.output_dict[make_pair_key(KEY_TD_CB_BOTTOM_CHORD_PROP_ZUV, pair_id)] = chord_details["Zuv"]
-
+        
+        self.crossbracing_design_results = pair_designs
         return pair_designs
     
     def _design_end_diaphragm_members(self) -> dict:
@@ -1999,12 +2000,20 @@ class PlateGirderBridge:
         # 5. Process design results and queries
         forces_dict = {"pairs": {}}
         pair_designs = {}
+        for pair in pairs:
+            pair_designs[pair] = {}
 
         for i, pair in enumerate(pairs, start=1):
             pair_id = pair.replace("-", "")
-            member_suffix = f".{pair_id}.E{i}M1"
+            # M1 = start end, M2 = finish end. Both share the same design config
+            # within a pair, so read from whichever slot has data.
+            _m1 = f".{pair_id}.E{i}M1"
+            _m2 = f".{pair_id}.E{i}M2"
+            member_suffix = _m1 if self.input_dict.get(f"{KEY_MP_ED_TYPE}{_m1}") else _m2
 
-            ed_type = self.input_dict.get(f"{KEY_MP_ED_TYPE}{member_suffix}") or "Cross Bracing"
+            ed_type = self.input_dict.get(f"{KEY_MP_ED_TYPE}{member_suffix}") or ""
+            if not ed_type:
+                continue   # no data for this pair, skip cleanly
             self.output_dict[make_pair_key(KEY_MP_ED_TYPE, pair_id)] = ed_type
             
             # -- CASE A: CROSS BRACING DIAPHRAGM --
@@ -2322,7 +2331,8 @@ class PlateGirderBridge:
 
         if forces_dict.get("pairs"):
             self._print_enddiaphragm_design_results(forces_dict, pair_designs)
-
+        
+        self.end_diaphragm_design_results = pair_designs
         return pair_designs
 
     def _query_rolled_beam_section(self, designation: str) -> dict | None:
