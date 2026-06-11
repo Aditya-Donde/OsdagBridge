@@ -1964,3 +1964,626 @@ def test_validate_carriageway_width_missing_field_fallback(validator):
     # Verify fallback is within reasonable bounds
     assert corrected_yes_median <= CARRIAGEWAY_WIDTH_MAX_LIMIT, f"Fallback {corrected_yes_median} exceeds reasonable maximum"
 
+def test_validate_basic_inputs_skew_angle_error_return_structure(validator):
+    """Skew angle validator returns error tuple for invalid input."""
+    res = validator.validate_basic_inputs(KEY_SKEW_ANGLE, {KEY_SKEW_ANGLE: SKEW_ANGLE_MAX + 1})
+    assert res is not None, "Should return error for skew angle above maximum"
+    assert isinstance(res, tuple), "Should return tuple"
+    assert len(res) == 2, "Tuple should have (value, message)"
+    corrected_value, message = res
+    # Verify structure without hard-coding implementation specifics
+    assert isinstance(corrected_value, (int, float)), f"Corrected value should be numeric, got {type(corrected_value)}"
+    assert isinstance(message, str) and len(message) > 0, "Message should be non-empty string"
+    # Corrected value should be within valid range
+    assert SKEW_ANGLE_MIN <= corrected_value <= SKEW_ANGLE_MAX, f"Corrected value {corrected_value} outside valid range [{SKEW_ANGLE_MIN}, {SKEW_ANGLE_MAX}]"
+
+def test_validate_additional_inputs_error_messages_are_nonempty_strings(validator, valid_additional_inputs):
+    inputs = valid_additional_inputs.copy()
+    inputs[KEY_DS_STUD_HEIGHT] = 50  # Clearly below 4*22=88 minimum
+    inputs[KEY_DS_STUD_DIAMETER] = 22
+    inputs[KEY_TS_DECK_THICKNESS] = 200
+    res = validator.validate_additional_inputs(KEY_DS_STUD_HEIGHT, inputs)
+    assert res is not None
+    assert isinstance(res[1], str)
+    assert len(res[1]) > 0
+
+
+# ════════════════════════════════════════════════════════════════════════════════
+# GROUP G — LANE TABLE VALIDATION (KEY_WC_LD_LANE_TABLE) - LARGEST UNTESTED AREA
+# ════════════════════════════════════════════════════════════════════════════════
+
+@pytest.mark.parametrize("lanes, carriageway, expected_valid", [
+    # Valid: continuous lanes, valid widths
+    ([[("Lane 1", 0.0, 5.0), ("Lane 2", 5.0, 5.0)]], 10.0, True),
+    # Valid: three lanes
+    ([[("Lane 1", 0.0, 5.0), ("Lane 2", 5.0, 5.0), ("Lane 3", 10.0, 5.0)]], 15.0, True),
+    # Invalid: lane width below minimum (3.5 m)
+    ([[("Lane 1", 0.0, 3.0), ("Lane 2", 3.0, 5.0)]], 10.0, False),
+    # Invalid: discontinuous start positions
+    ([[("Lane 1", 1.0, 5.0), ("Lane 2", 6.0, 5.0)]], 10.0, False),
+    # Invalid: sum exceeds carriageway
+    ([[("Lane 1", 0.0, 5.0), ("Lane 2", 5.0, 5.0)]], 8.0, False),
+    # Valid: partial fill (lanes < carriageway)
+    ([[("Lane 1", 0.0, 5.0), ("Lane 2", 5.0, 5.0)]], 15.0, True),
+])
+def test_validate_wc_ld_lane_table_complete(validator, valid_additional_inputs, lanes, carriageway, expected_valid):
+    """Comprehensive lane table validation tests."""
+    inputs = valid_additional_inputs.copy()
+    inputs[KEY_CARRIAGEWAY_WIDTH] = carriageway
+    inputs[KEY_WC_LD_LANE_TABLE] = lanes[0] if lanes else []
+    result = validator.validate_additional_inputs(KEY_WC_LD_LANE_TABLE, inputs)
+    if expected_valid:
+        assert result is None, f"Expected valid, got {result}"
+    else:
+        assert result is not None, "Expected error but got None"
+
+
+def test_validate_wc_ld_lane_table_empty_list(validator, valid_additional_inputs):
+    """Empty lane table should return None (no validation)."""
+    inputs = valid_additional_inputs.copy()
+    inputs[KEY_WC_LD_LANE_TABLE] = []
+    result = validator.validate_additional_inputs(KEY_WC_LD_LANE_TABLE, inputs)
+    assert result is None
+
+
+def test_validate_wc_ld_lane_table_not_list(validator, valid_additional_inputs):
+    """Non-list lane table (e.g., dict) should return None."""
+    inputs = valid_additional_inputs.copy()
+    inputs[KEY_WC_LD_LANE_TABLE] = {"lanes": []}
+    result = validator.validate_additional_inputs(KEY_WC_LD_LANE_TABLE, inputs)
+    assert result is None
+
+
+def test_validate_wc_ld_lane_table_invalid_row_format(validator, valid_additional_inputs):
+    """Rows with invalid format are skipped; remaining rows are validated."""
+    inputs = valid_additional_inputs.copy()
+    inputs[KEY_CARRIAGEWAY_WIDTH] = 10.0
+    inputs[KEY_WC_LD_LANE_TABLE] = [
+        ["Lane 1", 0.0, 5.0],
+        "invalid_row",  # Not a sequence - skipped
+        ("Lane 2", 5.0, 5.0),  # Valid tuple
+    ]
+    result = validator.validate_additional_inputs(KEY_WC_LD_LANE_TABLE, inputs)
+    # Valid rows (1 and 2) total 10.0, which equals carriageway 10.0
+    # Should return None since valid rows fit
+    assert result is None, f"Valid rows should pass, got {result}"
+
+
+def test_validate_wc_ld_lane_table_lane_width_error_message(validator, valid_additional_inputs):
+    """Lane width correction should have proper error message."""
+    inputs = valid_additional_inputs.copy()
+    inputs[KEY_CARRIAGEWAY_WIDTH] = 10.0
+    inputs[KEY_WC_LD_LANE_TABLE] = [
+        ["Lane 1", 0.0, 3.0],
+        ["Lane 2", 3.0, 5.0],
+    ]
+    result = validator.validate_additional_inputs(KEY_WC_LD_LANE_TABLE, inputs)
+    assert result is not None, "Should return error for lane table validation"
+    assert isinstance(result, tuple), f"Expected error tuple, got {type(result)}"
+    corrected, message = result
+    # Message should exist and contain the minimum lane width 3.5
+    assert isinstance(message, str) and len(message) > 0, "Error message should exist"
+    assert "3.5" in message, f"Expected 3.5 in message, got: {message}"
+
+
+def test_validate_wc_ld_lane_table_near_tolerances(validator, valid_additional_inputs):
+    """Lane table at floating point tolerance boundaries."""
+    inputs = valid_additional_inputs.copy()
+    inputs[KEY_CARRIAGEWAY_WIDTH] = 10.0001  # Slightly over 10.0
+    inputs[KEY_WC_LD_LANE_TABLE] = [
+        ["Lane 1", 0.0, 5.0],
+        ["Lane 2", 5.0, 5.0],  # Total 10.0
+    ]
+    result = validator.validate_additional_inputs(KEY_WC_LD_LANE_TABLE, inputs)
+    # Should be valid due to tolerance (1e-6)
+    assert result is None
+
+
+# ════════════════════════════════════════════════════════════════════════════════
+# GROUP H — FOOTPATH WIDTH EDGE CASES (KEY_TS_FOOTPATH_WIDTH)
+# ════════════════════════════════════════════════════════════════════════════════
+
+@pytest.mark.parametrize("footpath, fp_width, expected_valid", [
+    ("None", None, True),  # None footpath, None width - no validation
+    ("Single Side", None, False),  # Width required for Single Side
+    ("Single Side", 1.5, True),    # Changed to float to avoid relying on unverified string coercion assumption
+    ("Single Side", -0.5, False),  # Negative invalid
+    ("Single Side", 0.0, False),  # Zero invalid
+    ("Single Side", 1.49, False),  # Below minimum 1.5
+    ("Single Side", 1.5, True),  # At minimum
+    ("Both Sides", 1.5, True),  # Valid
+])
+def test_validate_footpath_width_edge_cases(validator, valid_additional_inputs, footpath, fp_width, expected_valid):
+    """Footpath width edge cases and type handling."""
+    inputs = valid_additional_inputs.copy()
+    inputs[KEY_FOOTPATH] = footpath
+    inputs[KEY_TS_FOOTPATH_WIDTH] = fp_width
+    result = validator.validate_additional_inputs(KEY_TS_FOOTPATH_WIDTH, inputs)
+    if expected_valid:
+        assert result is None, f"Expected valid for {footpath}/{fp_width}, got {result}"
+    else:
+        # Should return error for invalid footpath width
+        assert result is not None, f"Expected error for {footpath}/{fp_width}, got None"
+        assert isinstance(result, tuple), f"Expected tuple for {footpath}/{fp_width}, got {type(result)}"
+
+
+# ════════════════════════════════════════════════════════════════════════════════
+# GROUP I — STUD GEOMETRY EDGE CASES
+# ════════════════════════════════════════════════════════════════════════════════
+
+@pytest.mark.parametrize("flange_width, diameter, count, spacing, expected_valid", [
+    # Valid: flange 100mm, diameter 16, count 1, spacing at min (40)
+    (0.1, 16, 1, 40, True),
+    # Invalid: very large diameter (50mm) limits max_n=2 on 300mm flange, count=3 exceeds it
+    (0.3, 50, 3, 100, False),
+    # Valid: count = 1 (edge case)
+    (0.1, 16, 1, 50, True),
+    # Invalid: too many studs for flange - max_n=2, count=5 exceeds it
+    (0.1, 12, 5, 20, False),
+])
+def test_validate_stud_geometry_extreme_cases(validator, valid_additional_inputs, flange_width, diameter, count, spacing, expected_valid):
+    """Stud geometry with extreme parameter combinations."""
+    inputs = valid_additional_inputs.copy()
+    inputs[KEY_MP_GIRDER_TOP_FLANGE_WIDTH] = flange_width
+    inputs[KEY_DS_STUD_DIAMETER] = diameter
+    inputs[KEY_DS_STUD_COUNT] = count
+    inputs[KEY_DS_STUD_TRANSVERSE_SPACING] = spacing
+    inputs[KEY_TS_DECK_THICKNESS] = 300  # Large deck thickness to avoid height failing
+    # Set height safely above minimum but below max_h to avoid > vs >= fragility
+    inputs[KEY_DS_STUD_HEIGHT] = max(100, 4 * diameter) + 10
+    
+    # Test each field - all should pass for valid cases
+    res_h = validator.validate_additional_inputs(KEY_DS_STUD_HEIGHT, inputs)
+    res_c = validator.validate_additional_inputs(KEY_DS_STUD_COUNT, inputs)
+    res_s = validator.validate_additional_inputs(KEY_DS_STUD_TRANSVERSE_SPACING, inputs)
+    
+    # For valid cases, should all be None
+    if expected_valid:
+        assert res_h is None, f"Stud height should be valid, got {res_h}"
+        assert res_c is None, f"Stud count should be valid, got {res_c}"
+        assert res_s is None, f"Stud spacing should be valid, got {res_s}"
+    else:
+        # Invalid cases should have errors on the relevant field(s)
+        assert res_h is None, f"Expected height to be valid, got {res_h}"
+        assert res_c is not None, f"Expected count to be invalid, got None"
+        assert res_s is not None, f"Expected spacing to be invalid, got None"
+
+
+# ════════════════════════════════════════════════════════════════════════════════
+# GROUP K — UNKNOWN KEY HANDLING
+# ════════════════════════════════════════════════════════════════════════════════
+
+def test_validate_unknown_key(validator, valid_additional_inputs):
+    """Validation of unknown key should return None (passthrough)."""
+    inputs = valid_additional_inputs.copy()
+    result = validator.validate_additional_inputs("UNKNOWN_KEY_XYZ_12345", inputs)
+    assert result is None
+
+
+def test_validate_typo_key(validator, valid_additional_inputs):
+    """Validation with typo key should return None."""
+    inputs = valid_additional_inputs.copy()
+    result = validator.validate_additional_inputs("KEYRLHeightTYPO", inputs)
+    assert result is None
+# ════════════════════════════════════════════════════════════════════════════════
+# ════════════════════════════════════════════════════════════════════════════════
+# GROUP M — IMPOSSIBLE STUD GEOMETRY CASES
+# ════════════════════════════════════════════════════════════════════════════════
+
+def test_validate_stud_height_impossible_geometry_min_exceeds_max(validator, valid_additional_inputs):
+    """When 4*d > deck_thickness - 25, no valid height exists (min > max)."""
+    inputs = valid_additional_inputs.copy()
+    inputs[KEY_DS_STUD_DIAMETER] = 60  # 4*60 = 240 mm minimum
+    inputs[KEY_TS_DECK_THICKNESS] = 200  # 200-25 = 175 mm maximum
+    # min_h (240) > max_h (175) - impossible geometry
+    inputs[KEY_DS_STUD_HEIGHT] = 200  # Try invalid value
+    
+    result = validator.validate_additional_inputs(KEY_DS_STUD_HEIGHT, inputs)
+    # Should return error with corrected value to one of the bounds
+    assert result is not None, "Should error on impossible geometry"
+    assert isinstance(result, tuple), f"Expected tuple, got {result}"
+    corrected_height, message = result
+    # Corrected height should be a valid numeric value
+    assert isinstance(corrected_height, (int, float)), f"Corrected height should be numeric, got {type(corrected_height)}"
+    # Message should exist (not checking specific wording)
+    assert isinstance(message, str) and len(message) > 0, "Error message should exist"
+
+
+def test_validate_stud_count_extreme_flange_very_small(validator, valid_additional_inputs):
+    """Stud count with very small flange width (50 mm = cutoff) cannot fit multiple studs."""
+    inputs = valid_additional_inputs.copy()
+    inputs[KEY_MP_GIRDER_TOP_FLANGE_WIDTH] = 0.05  # 50 mm - at cutoff
+    inputs[KEY_DS_STUD_DIAMETER] = 16
+    inputs[KEY_DS_STUD_COUNT] = 2  # Try to fit 2 studs in 50 mm
+    
+    result = validator.validate_additional_inputs(KEY_DS_STUD_COUNT, inputs)
+    # max_n = ceil((50-50) / (2.5*16)) = ceil(0) = 0 -> max(0, 1) = 1
+    # So count=2 exceeds max, should return error with corrected value 1
+    assert result is not None, "Should error when count exceeds maximum"
+    assert isinstance(result, tuple), f"Expected tuple, got {result}"
+    corrected_count, message = result
+    # Corrected count should be valid numeric
+    assert isinstance(corrected_count, int) and corrected_count > 0, f"Corrected count should be positive int, got {corrected_count}"
+    # Message should exist (not checking specific wording)
+    assert isinstance(message, str) and len(message) > 0, "Error message should exist"
+
+
+def test_validate_stud_count_at_exact_maximum(validator, valid_additional_inputs):
+    """Stud count at exact maximum for given flange and diameter should pass."""
+    inputs = valid_additional_inputs.copy()
+    inputs[KEY_MP_GIRDER_TOP_FLANGE_WIDTH] = 0.3  # 300 mm
+    inputs[KEY_DS_STUD_DIAMETER] = 22
+    # max_n = ceil((300-50) / (2.5*22)) = ceil(250/55) = ceil(4.545) = 5
+    inputs[KEY_DS_STUD_COUNT] = 5
+    
+    result = validator.validate_additional_inputs(KEY_DS_STUD_COUNT, inputs)
+    # Should be valid (at max)
+    assert result is None, f"Count at maximum should be valid, got {result}"
+
+
+def test_validate_stud_count_exceeding_maximum(validator, valid_additional_inputs):
+    """Stud count exceeding maximum should be corrected."""
+    inputs = valid_additional_inputs.copy()
+    inputs[KEY_MP_GIRDER_TOP_FLANGE_WIDTH] = 0.3  # 300 mm
+    inputs[KEY_DS_STUD_DIAMETER] = 22
+    # max_n = 5 (calculated above)
+    inputs[KEY_DS_STUD_COUNT] = 6  # Exceeds max
+    
+    result = validator.validate_additional_inputs(KEY_DS_STUD_COUNT, inputs)
+    # Should return error with corrected value
+    assert result is not None, "Should error when exceeding maximum"
+    assert isinstance(result, tuple), f"Expected tuple, got {result}"
+    corrected_count, message = result
+    # Corrected value should be valid (less than invalid input)
+    assert isinstance(corrected_count, int) and corrected_count >= 1, f"Corrected count should be positive"
+    assert corrected_count < 6, f"Corrected count should be less than invalid 6"
+
+
+def test_validate_stud_transverse_spacing_min_boundary(validator, valid_additional_inputs):
+    """Stud spacing at minimum boundary (2.5*d) should pass."""
+    inputs = valid_additional_inputs.copy()
+    inputs[KEY_MP_GIRDER_TOP_FLANGE_WIDTH] = 0.3  # 300 mm
+    inputs[KEY_DS_STUD_DIAMETER] = 16
+    inputs[KEY_DS_STUD_COUNT] = 3
+    # min_sp = 2.5*16 = 40 mm
+    # max_sp = 300 - 50 - 16*(3-1) = 250 - 32 = 218 mm
+    inputs[KEY_DS_STUD_TRANSVERSE_SPACING] = 40  # At minimum
+    
+    result = validator.validate_additional_inputs(KEY_DS_STUD_TRANSVERSE_SPACING, inputs)
+    assert result is None, f"Spacing at minimum should be valid, got {result}"
+
+
+def test_validate_stud_transverse_spacing_max_boundary(validator, valid_additional_inputs):
+    """Stud spacing at maximum boundary should pass."""
+    inputs = valid_additional_inputs.copy()
+    inputs[KEY_MP_GIRDER_TOP_FLANGE_WIDTH] = 0.3  # 300 mm
+    inputs[KEY_DS_STUD_DIAMETER] = 16
+    inputs[KEY_DS_STUD_COUNT] = 3
+    # min_sp = 2.5*16 = 40 mm
+    # max_sp = 300 - 50 - 16*(3-1) = 250 - 32 = 218 mm
+    inputs[KEY_DS_STUD_TRANSVERSE_SPACING] = 218  # At maximum
+    
+    result = validator.validate_additional_inputs(KEY_DS_STUD_TRANSVERSE_SPACING, inputs)
+    assert result is None, f"Spacing at maximum should be valid, got {result}"
+
+
+def test_validate_stud_transverse_spacing_below_minimum(validator, valid_additional_inputs):
+    """Stud spacing below minimum should be corrected."""
+    inputs = valid_additional_inputs.copy()
+    inputs[KEY_MP_GIRDER_TOP_FLANGE_WIDTH] = 0.3  # 300 mm
+    inputs[KEY_DS_STUD_DIAMETER] = 16
+    inputs[KEY_DS_STUD_COUNT] = 3
+    # min_sp = 2.5*16 = 40 mm
+    inputs[KEY_DS_STUD_TRANSVERSE_SPACING] = 30  # Below minimum
+    
+    result = validator.validate_additional_inputs(KEY_DS_STUD_TRANSVERSE_SPACING, inputs)
+    # Should return error with corrected value
+    assert result is not None, "Should error below minimum"
+    assert isinstance(result, tuple), f"Expected tuple, got {result}"
+    corrected_spacing, message = result
+    # Corrected value should be >= minimum (2.5*d)
+    assert isinstance(corrected_spacing, (int, float)) and corrected_spacing > 0, "Corrected spacing should be positive"
+    # For d=16, minimum is 40mm; ensure corrected is at least that
+    min_spacing_mm = 40  # 2.5*16
+    assert corrected_spacing >= min_spacing_mm, f"Corrected spacing {corrected_spacing} should be >= minimum {min_spacing_mm}"
+    # Verify correction is meaningful (improved from 30 to at least 40)
+    assert corrected_spacing > 30, f"Corrected spacing {corrected_spacing} should improve from invalid 30"
+
+
+def test_validate_stud_transverse_spacing_exceeds_maximum(validator, valid_additional_inputs):
+    """Stud spacing exceeding maximum should be corrected."""
+    inputs = valid_additional_inputs.copy()
+    inputs[KEY_MP_GIRDER_TOP_FLANGE_WIDTH] = 0.3  # 300 mm
+    inputs[KEY_DS_STUD_DIAMETER] = 16
+    inputs[KEY_DS_STUD_COUNT] = 3
+    # max_sp = 300 - 50 - 16*2 = 218 mm
+    inputs[KEY_DS_STUD_TRANSVERSE_SPACING] = 300  # Exceeds maximum
+    
+    result = validator.validate_additional_inputs(KEY_DS_STUD_TRANSVERSE_SPACING, inputs)
+    # Should return error with corrected value
+    assert result is not None, "Should error exceeding maximum"
+    assert isinstance(result, tuple), f"Expected tuple, got {result}"
+    corrected_spacing, message = result
+    # Corrected value should be <= maximum available
+    assert isinstance(corrected_spacing, (int, float)) and corrected_spacing > 0, "Corrected spacing should be positive"
+    # Maximum for this config is (300-50-16*2) = 218mm; ensure corrected is reasonable
+    assert corrected_spacing <= 300, f"Corrected spacing {corrected_spacing} should be <= invalid 300"
+    # Verify correction improved from invalid input (was 300, now much less)
+    assert corrected_spacing < 300, f"Corrected spacing {corrected_spacing} should be significantly less than invalid 300"
+
+
+def test_validate_stud_transverse_spacing_impossible_geometry(validator, valid_additional_inputs):
+    """Stud spacing when too many studs in small flange (max_sp becomes negative)."""
+    inputs = valid_additional_inputs.copy()
+    inputs[KEY_MP_GIRDER_TOP_FLANGE_WIDTH] = 0.08  # 80 mm very small
+    inputs[KEY_DS_STUD_DIAMETER] = 20
+    inputs[KEY_DS_STUD_COUNT] = 5  # Too many studs for small flange
+    inputs[KEY_DS_STUD_TRANSVERSE_SPACING] = 40
+    
+    result = validator.validate_additional_inputs(KEY_DS_STUD_TRANSVERSE_SPACING, inputs)
+    # Geometry is impossible - should return error
+    assert result is not None, "Should return error for impossible stud geometry"
+    assert isinstance(result, tuple), f"Expected error tuple, got {type(result)}"
+    corrected_spacing, message = result
+    # Corrected spacing should be valid and positive
+    assert isinstance(corrected_spacing, (int, float)) and corrected_spacing >= 0, \
+        f"Corrected spacing should be non-negative number, got {corrected_spacing}"
+
+
+# ════════════════════════════════════════════════════════════════════════════════
+# GROUP N — MISSING KEY_TS_NO_OF_GIRDERS TESTS WITH DYNAMIC BOUNDS
+# ════════════════════════════════════════════════════════════════════════════════
+
+def test_validate_no_of_girders_rejects_invalid(validator, valid_additional_inputs):
+    """NO_OF_GIRDERS rejects zero, negative, and extremely high values."""
+    inputs = valid_additional_inputs.copy()
+    inputs[KEY_TS_OVERALL_WIDTH] = 5.0
+    
+    # Test that zero is rejected
+    inputs[KEY_TS_NO_OF_GIRDERS] = 0
+    result = validator.validate_additional_inputs(KEY_TS_NO_OF_GIRDERS, inputs)
+    assert result is not None, "Zero girders should be invalid"
+    
+    # Test that negative is rejected
+    inputs[KEY_TS_NO_OF_GIRDERS] = -5
+    result = validator.validate_additional_inputs(KEY_TS_NO_OF_GIRDERS, inputs)
+    assert result is not None, "Negative girders should be invalid"
+    
+    # Test that extremely high value is rejected
+    inputs[KEY_TS_NO_OF_GIRDERS] = 1000
+    result = validator.validate_additional_inputs(KEY_TS_NO_OF_GIRDERS, inputs)
+    assert result is not None, "1000 girders should be invalid"
+
+
+def test_validate_no_of_girders_accepts_valid(validator, valid_additional_inputs):
+    """NO_OF_GIRDERS accepts reasonable values for various widths."""
+    test_cases = [
+        (3.0, 2),   # Small width, minimum girders
+        (5.0, 5),   # Medium width
+        (10.0, 10), # Larger width
+    ]
+    
+    for overall_width, girder_count in test_cases:
+        inputs = valid_additional_inputs.copy()
+        inputs[KEY_TS_OVERALL_WIDTH] = overall_width
+        inputs[KEY_TS_NO_OF_GIRDERS] = girder_count
+        result = validator.validate_additional_inputs(KEY_TS_NO_OF_GIRDERS, inputs)
+        assert result is None, f"Expected {girder_count} girders to be valid for width {overall_width}"
+
+
+# ════════════════════════════════════════════════════════════════════════════════
+
+
+
+# ════════════════════════════════════════════════════════════════════════════════
+# GROUP P — DIRECT KEY_DS_STUD_DIAMETER VALIDATION
+# ════════════════════════════════════════════════════════════════════════════════
+
+
+
+
+def test_validate_stud_diameter_affects_height_bounds(validator, valid_additional_inputs):
+    """Changing stud diameter changes height minimum (proportional to diameter). Cross-field dependency."""
+    inputs = valid_additional_inputs.copy()
+    inputs[KEY_TS_DECK_THICKNESS] = 200
+    
+    # Smaller diameter → smaller height requirement
+    inputs[KEY_DS_STUD_DIAMETER] = 10
+    inputs[KEY_DS_STUD_HEIGHT] = 50  # Valid: min_h = 4*10 = 40
+    result_small = validator.validate_additional_inputs(KEY_DS_STUD_HEIGHT, inputs)
+    
+    inputs[KEY_DS_STUD_DIAMETER] = 20
+    inputs[KEY_DS_STUD_HEIGHT] = 50  # Invalid: min_h = 4*20 = 80
+    result_large = validator.validate_additional_inputs(KEY_DS_STUD_HEIGHT, inputs)
+    
+    assert result_small is None, "Height 50 should be valid for diameter 10 (min 40)"
+    assert result_large is not None, "Height 50 should be invalid for diameter 20 (min 80)"
+
+
+def test_validate_stud_diameter_affects_count_bounds(validator, valid_additional_inputs):
+    """Changing stud diameter affects count maximum (inverse relationship). Cross-field dependency."""
+    inputs = valid_additional_inputs.copy()
+    inputs[KEY_MP_GIRDER_TOP_FLANGE_WIDTH] = 0.3  # 300 mm flange
+    
+    # Smaller diameter allows more studs for same flange width
+    # Larger diameter allows fewer studs for same flange width
+    inputs[KEY_DS_STUD_DIAMETER] = 12  # Smaller diameter, max_n = 9
+    inputs[KEY_DS_STUD_COUNT] = 6      # Valid
+    result_small = validator.validate_additional_inputs(KEY_DS_STUD_COUNT, inputs)
+    assert result_small is None, "Count 6 should be valid for diameter 12"
+    
+    inputs[KEY_DS_STUD_DIAMETER] = 25  # Much larger diameter, max_n = 4
+    inputs[KEY_DS_STUD_COUNT] = 6      # Invalid
+    result_large = validator.validate_additional_inputs(KEY_DS_STUD_COUNT, inputs)
+    assert result_large is not None, "Count 6 should be invalid for diameter 25"
+
+
+def test_validate_stud_diameter_affects_spacing_bounds(validator, valid_additional_inputs):
+    """Changing stud diameter changes spacing bounds (min = 2.5 × d). Cross-field dependency."""
+    inputs = valid_additional_inputs.copy()
+    inputs[KEY_MP_GIRDER_TOP_FLANGE_WIDTH] = 0.3  # 300 mm
+    inputs[KEY_DS_STUD_COUNT] = 3
+    
+    # Smaller diameter allows smaller spacing
+    # Larger diameter requires larger spacing (min = 2.5*d)
+    inputs[KEY_DS_STUD_DIAMETER] = 8
+    inputs[KEY_DS_STUD_TRANSVERSE_SPACING] = 25  # Valid: min_sp = 2.5*8 = 20
+    result_small = validator.validate_additional_inputs(KEY_DS_STUD_TRANSVERSE_SPACING, inputs)
+    assert result_small is None, "Spacing 25 should be valid for diameter 8 (min 20)"
+    
+    inputs[KEY_DS_STUD_DIAMETER] = 20
+    inputs[KEY_DS_STUD_TRANSVERSE_SPACING] = 25  # Invalid: min_sp = 2.5*20 = 50
+    result_large = validator.validate_additional_inputs(KEY_DS_STUD_TRANSVERSE_SPACING, inputs)
+    assert result_large is not None, "Spacing 25 should be invalid for diameter 20 (min 50)"
+# ════════════════════════════════════════════════════════════════════════════════
+# GROUP T — CROSS-FIELD DEPENDENCY CHAINS
+# ════════════════════════════════════════════════════════════════════════════════
+
+def test_validate_cross_field_diameter_increase_invalidates_count(validator, valid_additional_inputs):
+    """When diameter increases, stud count max decreases. Should invalidate previously-valid counts."""
+    inputs = valid_additional_inputs.copy()
+    inputs[KEY_MP_GIRDER_TOP_FLANGE_WIDTH] = 0.3  # 300 mm
+    
+    # Start: diameter 12, count 8 valid
+    inputs[KEY_DS_STUD_DIAMETER] = 12
+    inputs[KEY_DS_STUD_COUNT] = 8
+    result_1 = validator.validate_additional_inputs(KEY_DS_STUD_COUNT, inputs)
+    assert result_1 is None, "Count 8 should be valid for diameter 12"
+    
+    # Change: diameter 20, count 8 now invalid (larger diameter reduces max count)
+    inputs[KEY_DS_STUD_DIAMETER] = 20
+    inputs[KEY_DS_STUD_COUNT] = 8
+    result_2 = validator.validate_additional_inputs(KEY_DS_STUD_COUNT, inputs)
+    # Should detect violation when diameter increases
+    assert result_2 is not None, "Count should be invalid when diameter increases from 12 to 20"
+    assert isinstance(result_2, tuple)
+    corrected_count, message = result_2
+    # Corrected count should be lower than original
+    assert corrected_count < 8, f"Corrected count {corrected_count} should be less than 8"
+
+
+def test_validate_cross_field_diameter_increase_invalidates_spacing(validator, valid_additional_inputs):
+    """When diameter increases, spacing min increases. Should invalidate previously-valid spacing."""
+    inputs = valid_additional_inputs.copy()
+    
+    # Start: diameter 10, spacing 25 valid (at or near minimum)
+    inputs[KEY_DS_STUD_DIAMETER] = 10
+    inputs[KEY_DS_STUD_TRANSVERSE_SPACING] = 25
+    result_1 = validator.validate_additional_inputs(KEY_DS_STUD_TRANSVERSE_SPACING, inputs)
+    assert result_1 is None, "Spacing 25 should be valid for diameter 10"
+    
+    # Change: diameter 12, spacing 25 now invalid (min increases with diameter)
+    inputs[KEY_DS_STUD_DIAMETER] = 12
+    inputs[KEY_DS_STUD_TRANSVERSE_SPACING] = 25
+    result_2 = validator.validate_additional_inputs(KEY_DS_STUD_TRANSVERSE_SPACING, inputs)
+    # Should detect violation when diameter increases
+    assert result_2 is not None, "Spacing should be invalid when diameter increases from 10 to 12"
+    assert isinstance(result_2, tuple)
+    corrected_spacing, message = result_2
+    # Corrected spacing should be higher than original (diameter increase raises minimum)
+    assert corrected_spacing > 25, f"Corrected spacing {corrected_spacing} should be greater than 25"
+
+
+def test_validate_cross_field_overall_width_decrease_shrinks_girder_max(validator, valid_additional_inputs):
+    """When overall width decreases, max number of girders decreases."""
+    inputs = valid_additional_inputs.copy()
+    
+    # Start: width 10, girders 20 valid (at or near maximum)
+    inputs[KEY_TS_OVERALL_WIDTH] = 10.0
+    inputs[KEY_TS_NO_OF_GIRDERS] = 20
+    result_1 = validator.validate_additional_inputs(KEY_TS_NO_OF_GIRDERS, inputs)
+    assert result_1 is None, "20 girders should be valid for width 10"
+    
+    # Change: width 5, girders 20 now invalid (max decreases with width)
+    inputs[KEY_TS_OVERALL_WIDTH] = 5.0
+    inputs[KEY_TS_NO_OF_GIRDERS] = 20
+    result_2 = validator.validate_additional_inputs(KEY_TS_NO_OF_GIRDERS, inputs)
+    # Should detect violation when width decreases
+    assert result_2 is not None, "20 girders should be invalid when width decreases from 10 to 5"
+    assert isinstance(result_2, tuple)
+    corrected_girders, message = result_2
+    # Corrected girders should be lower than original (width decrease lowers max)
+    assert corrected_girders < 20, f"Corrected girders {corrected_girders} should be less than 20"
+
+
+# ════════════════════════════════════════════════════════════════════════════════
+
+def test_validate_basic_enum_fields_garbage_values_pass_silently(validator):
+    """Basic enum fields should silently pass garbage strings, ignoring them."""
+    enum_keys = [
+        KEY_STRUCTURE_TYPE, KEY_DESIGN_MODE, KEY_GIRDER,
+        KEY_CROSS_BRACING, KEY_END_DIAPHRAGM, KEY_DECK_CONCRETE_GRADE_BASIC
+    ]
+    for k in enum_keys:
+        res = validator.validate_basic_inputs(k, {k: "Some Garbage Value"})
+        assert res is None, f"Basic enum key {k} should ignore garbage values and pass silently."
+
+def test_validate_enum_fields_garbage_values_pass_silently(validator, valid_additional_inputs):
+    """Enum fields should silently pass garbage strings, ignoring them."""
+    inputs = valid_additional_inputs.copy()
+    enum_keys = [
+        KEY_FOOTPATH, KEY_SL_DEAD_LOAD_MODE, KEY_SL_LIVE_LOAD_MODE,
+        KEY_WL_GUST_FACTOR_MODE, KEY_WL_DRAG_COEFF_MODE
+    ]
+    for k in enum_keys:
+        inputs[k] = "Some Garbage Value"
+        res = validator.validate_additional_inputs(k, inputs)
+        assert res is None, f"Enum key {k} should ignore garbage values and pass silently."
+
+def test_validate_ds_stud_diameter(validator, valid_additional_inputs):
+    """BVA test for KEY_DS_STUD_DIAMETER. Verifies it accepts valid and ignores/passes invalid values."""
+    # Tests that the field is currently unvalidated and silently passes even obvious invalid values
+    for val in [-10, 0, "garbage", 10, 22, 50]:
+        inputs = valid_additional_inputs.copy()
+        inputs[KEY_DS_STUD_DIAMETER] = val
+        res = validator.validate_additional_inputs(KEY_DS_STUD_DIAMETER, inputs)
+        assert res is None, f"Diameter {val} should pass validation since it's unvalidated."
+
+def test_validate_ts_overall_width(validator, valid_additional_inputs):
+    """BVA test for KEY_TS_OVERALL_WIDTH. Verifies it accepts valid and ignores/passes invalid values."""
+    for val in [-1.0, 0.0, "garbage", 1.0, 10.0, 50.0]:
+        inputs = valid_additional_inputs.copy()
+        inputs[KEY_TS_OVERALL_WIDTH] = val
+        res = validator.validate_additional_inputs(KEY_TS_OVERALL_WIDTH, inputs)
+        assert res is None, f"Overall width {val} should pass validation since it's unvalidated."
+
+
+# ════════════════════════════════════════════════════════════════════════════════
+# GROUP Q — UNVALIDATED RANGE COVERAGE
+# ════════════════════════════════════════════════════════════════════════════════
+
+def test_validate_unbounded_load_values_pass_silently(validator, valid_additional_inputs):
+    """
+    Documents genuine coverage gaps in the validator where certain load/area
+    values lack upper/lower bounds. Even negative or absurdly large numbers
+    will currently pass.
+    """
+    unbounded_keys_and_modes = [
+        (KEY_SL_DEAD_LOAD_VALUE, KEY_SL_DEAD_LOAD_MODE),
+        (KEY_SL_LIVE_LOAD_VALUE, KEY_SL_LIVE_LOAD_MODE),
+        (KEY_WL_SUPER_AREA_ELEV_VALUE, KEY_WL_SUPER_AREA_ELEV_MODE),
+        (KEY_WL_SUPER_AREA_PLAIN_VALUE, KEY_WL_SUPER_AREA_PLAIN_MODE),
+        (KEY_WL_EXPOSED_FRONTAL_VALUE, KEY_WL_EXPOSED_FRONTAL_MODE),
+    ]
+
+    for value_key, mode_key in unbounded_keys_and_modes:
+        for val in [-1000.0, -1.0, 0.0, 999999.0]:
+            inputs = valid_additional_inputs.copy()
+            inputs[mode_key] = "Custom"
+            inputs[value_key] = val
+            res = validator.validate_additional_inputs(value_key, inputs)
+            assert res is None, f"Key {value_key} unexpectedly rejected unbounded value {val}"
+
+def test_validate_unbounded_thermal_coefficients_pass_silently(validator, valid_additional_inputs):
+    """
+    Documents that thermal coefficients are completely unbounded by the validator.
+    Negative and absurdly large values will silently pass.
+    """
+    thermal_keys = [KEY_TL_THERMAL_COEFF_STEEL, KEY_TL_THERMAL_COEFF_RCC]
+    
+    for key in thermal_keys:
+        for val in [-10.0, -0.5, 0.0, 100.0, 9999.0]:
+            inputs = valid_additional_inputs.copy()
+            inputs[key] = val
+            res = validator.validate_additional_inputs(key, inputs)
+            assert res is None, f"Key {key} unexpectedly rejected unbounded value {val}"
