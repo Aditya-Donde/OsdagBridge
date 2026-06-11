@@ -2862,7 +2862,7 @@ TRANSVERSE_MEMBER_DESIGN_SCHEMA = {
                 "fields": [
                     {"id": KEY_TD_ED_SECTION_INPUTS_DESIGN,      "label": "Design:",               "type": "line",     "read_only": True,  "group": None},
                     {"id": KEY_TD_ED_SECTION_INPUTS_TYPE,         "label": "Type:",                 "type": "line",     "read_only": True,  "group": None, "on_change": "_on_ed_type_changed"},
-                    {"id": KEY_TD_ED_SECTION_INPUTS_NO_OF_CB,     "label": "No. of Crossbracing:",  "type": "line",     "read_only": True,  "group": None},
+                    {"id": KEY_TD_ED_SECTION_INPUTS_NO_OF_CB,     "label": "No. of End-Diaphragms:",  "type": "line",     "read_only": True,  "group": None},
                     {"id": KEY_TD_ED_SECTION_INPUTS_CONNECTION_TYPE, "label": "Type of Connection:", "type": "line",    "read_only": True,  "group": None},
 
                     # ── Cross Bracing group ───────────────────────────────────────────────

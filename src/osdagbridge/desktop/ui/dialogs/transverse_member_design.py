@@ -179,6 +179,7 @@ class TransverseMemberDesign(QDialog):
         self._pair_keys:        list[str]     = []
         self._members_per_pair: dict[str, int] = {}
         self._ed_group_widgets: dict[str, list[QWidget]] = {"crossbracing": [], "welded_beam": []}
+        self._backend: object = None   # ← ADD THIS 
 
 
         # All schema-driven widgets keyed by their schema "id"
@@ -385,7 +386,7 @@ class TransverseMemberDesign(QDialog):
         stack_layout.setContentsMargins(0, 0, 0, 0)
         stack_layout.setSpacing(0)
 
-        self._ed_cards_cb = self._build_section_cards_panel(schema.get("right_panel", {}))
+        self._ed_cards_cb = self._build_section_cards_panel(schema.get("right_panel", {}), key_prefix="ed_")
         stack_layout.addWidget(self._ed_cards_cb)
 
         self._ed_cards_wb = self._build_welded_beam_card()
@@ -503,7 +504,7 @@ class TransverseMemberDesign(QDialog):
 
     # ── Right panel (schema-driven diagram + property cards) ──────────────
 
-    def _build_section_cards_panel(self, schema: dict) -> QWidget:
+    def _build_section_cards_panel(self, schema: dict,key_prefix: str = "") -> QWidget:
         panel = QWidget()
         panel.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         layout = QVBoxLayout(panel)
@@ -512,9 +513,10 @@ class TransverseMemberDesign(QDialog):
         # Section property cards from schema (no diagram)
         for card_def in schema.get("section_cards", []):
             card_title = card_def["title"]
-            col_lists = [card_def.get("col1", []), card_def.get("col2", []), card_def.get("col3", [])]
-            card, fields = self._build_section_property_card(card_title, col_lists)
-            self._prop_fields[card_title] = fields
+            store_key  = key_prefix + card_title          # ← namespaced key
+            col_lists  = [card_def.get("col1", []), card_def.get("col2", []), card_def.get("col3", [])]
+            card, fields = self._build_section_property_card(card_title, col_lists, store_key=store_key)
+            self._prop_fields[store_key] = fields          # ← use store_key, not card_title
             self._widgets[card_def["id"]] = card
             layout.addWidget(card)
         layout.addStretch()
@@ -611,7 +613,7 @@ class TransverseMemberDesign(QDialog):
         return card
 
     def _build_section_property_card(
-        self, title: str, col_lists: list[list[str]],
+        self, title: str, col_lists: list[list[str]],store_key: str | None = None
     ) -> tuple[QFrame, dict[str, QLineEdit]]:
         card = self._inner_box()
         card.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
@@ -629,7 +631,7 @@ class TransverseMemberDesign(QDialog):
 
         preview = PlaceholderSectionPreviewWidget(placeholder_text=title, min_height=150)
         preview.setFixedWidth(150)
-        self._section_previews[title] = preview
+        self._section_previews[store_key if store_key is not None else title] = preview  # ← only change
         left.addWidget(preview)
         left.addStretch()
         card_layout.addLayout(left)
@@ -760,10 +762,9 @@ class TransverseMemberDesign(QDialog):
         pair_key = self._pair_keys[idx] if 0 <= idx < len(self._pair_keys) else None
         self._refresh_bracing_layout()
         if pair_key:
-            if self._designs_dict:
-                self._populate_cb_pair_details(pair_key)
-                self._populate_ed_pair_details(pair_key)
-            if hasattr(self, '_forces_dict') and self._forces_dict and self._designs_dict:
+            self._populate_cb_pair_details(pair_key)
+            self._populate_ed_pair_details(pair_key)
+            if self._forces_dict:   # forces are enough; designs just add capacity column
                 cb_html = self._build_cb_design_check_html(pair_key, self._forces_dict, self._designs_dict)
                 if self._tab_result_texts.get("cb"):
                     self._tab_result_texts["cb"].setHtml(cb_html)
@@ -775,17 +776,26 @@ class TransverseMemberDesign(QDialog):
         self._refresh_bracing_layout()
 
     def _refresh_bracing_layout(self):
-        bracing_w = self._widgets.get(KEY_TD_CB_SECTION_INPUTS_BRACING_TYPE)
-        tc_w      = self._widgets.get(KEY_TD_CB_SECTION_INPUTS_TOP_CHORD_ENABLED)
-        bc_w      = self._widgets.get(KEY_TD_CB_SECTION_INPUTS_BOTTOM_CHORD_ENABLED)
+        # NEW
+        is_ed_tab = (self.tabs.currentIndex() == 1)
 
-        bracing = bracing_w.text() if bracing_w else "X-Bracing"
+        bracing_w = self._widgets.get(
+            KEY_TD_ED_SECTION_INPUTS_BRACING_TYPE if is_ed_tab else KEY_TD_CB_SECTION_INPUTS_BRACING_TYPE
+        )
+        tc_w = self._widgets.get(
+            KEY_TD_ED_SECTION_INPUTS_TOP_CHORD_ENABLED if is_ed_tab else KEY_TD_CB_SECTION_INPUTS_TOP_CHORD_ENABLED
+        )
+        bc_w = self._widgets.get(
+            KEY_TD_ED_SECTION_INPUTS_BOTTOM_CHORD_ENABLED if is_ed_tab else KEY_TD_CB_SECTION_INPUTS_BOTTOM_CHORD_ENABLED
+        )
+
+        bracing = bracing_w.text() if (bracing_w and bracing_w.text()) else None
         top     = tc_w.isChecked() if tc_w else True
         bottom  = bc_w.isChecked() if bc_w else True
 
-        for widget in self._tab_bracing_widgets.values():   # ← refresh both
-            if widget is not None:
-                widget.set_layout(bracing, top, bottom, "", "")
+        active_widget = self._tab_bracing_widgets["ed" if is_ed_tab else "cb"]
+        if active_widget is not None:
+            active_widget.set_layout(bracing, top, bottom, "", "")
 
     # ── Data loading ──────────────────────────────────────────────────────
 
@@ -806,7 +816,30 @@ class TransverseMemberDesign(QDialog):
             if not forces_dict or not forces_dict.get("pairs"):
                 return
 
-            designs_dict     = getattr(backend, "crossbracing_design_results", {}) or {}
+            cb_designs = getattr(backend, "crossbracing_design_results", {}) or {}
+            ed_designs = getattr(backend, "end_diaphragm_design_results", {}) or {}
+            od         = getattr(backend, "output_dict", {}) or {}
+
+            # Merge ED results into designs_dict and tag ed_type / ed_bracing_type
+            designs_dict: dict = dict(cb_designs)
+            for pair, ed_pair_data in ed_designs.items():
+                pair_id   = pair.replace("-", "")
+                ed_type  = od.get(f"member_properties.end_diaphragm_details.{pair_id}.type") or ""
+                ed_btype = od.get(f"member_properties.end_diaphragm_details.{pair_id}.bracing_type") or ""
+                entry = designs_dict.setdefault(pair, {})
+                # Only attach ED metadata if real ED design exists
+                # ALWAYS store ED type metadata (UI needs this)
+                if ed_type:
+                    entry["ed_type"] = ed_type
+
+                if ed_btype:
+                    entry["ed_bracing_type"] = ed_btype
+
+                if ed_pair_data:
+                    for k, v in ed_pair_data.items():
+                        entry.setdefault(k, v)
+
+            self._backend = backend
             members_per_pair = self._compute_members_per_pair(backend, forces_dict)
             self.load_data(forces_dict, designs_dict, members_per_pair)
         except Exception as e:
@@ -844,14 +877,29 @@ class TransverseMemberDesign(QDialog):
         self._forces_dict  = forces_dict
         self._designs_dict = designs_dict or {}
 
+        # --- DEBUG PRINT ---
+        print(f"[TransverseMemberDesign] DEBUG: forces_dict: brace_type={self._forces_dict.get('brace_type')}, top_chord={self._forces_dict.get('top_chord')}, bottom_chord={self._forces_dict.get('bottom_chord')}")
+        print(f"[TransverseMemberDesign] DEBUG: designs_dict keys: {list(self._designs_dict.keys())}")
+        for pair_key, pair_designs in self._designs_dict.items():
+            print(f"[TransverseMemberDesign] DEBUG: Pair {pair_key} designs: ed_type={pair_designs.get('ed_type')}, ed_bracing_type={pair_designs.get('ed_bracing_type')}")
+            # Print ALL values for debugging to see what's available
+            print(f"[TransverseMemberDesign] DEBUG: Pair {pair_key} ALL design values:")
+            for key, value in pair_designs.items():
+                print(f"[TransverseMemberDesign] DEBUG:   {key} = {value}")
+        # --- END DEBUG ---
+
         geom  = forces_dict.get("geometry", {})
         pairs = forces_dict.get("pairs", {})
 
         self._pair_keys = list(pairs.keys())
 
         # Set bracing type
-        brace_raw   = forces_dict.get("brace_type", "X")
-        brace_label = "K-Bracing" if brace_raw == "K" else "X-Bracing"
+        brace_raw = forces_dict.get("brace_type")
+        if brace_raw:
+            brace_label = "K-Bracing" if "K" in str(brace_raw).upper() else "X-Bracing"
+        else:
+            brace_label = ""
+
         bracing_w = self._widgets.get(KEY_TD_CB_SECTION_INPUTS_BRACING_TYPE)
         if bracing_w:
             bracing_w.setText(brace_label)
@@ -902,7 +950,7 @@ class TransverseMemberDesign(QDialog):
             self._populate_cb_pair_details(self._pair_keys[0])
             self._populate_ed_pair_details(self._pair_keys[0])
 
-        if self._pair_keys and self._designs_dict:
+        if self._pair_keys:
             cb_html = self._build_cb_design_check_html(self._pair_keys[0], forces_dict, self._designs_dict)
             if self._tab_result_texts.get("cb"):
                 self._tab_result_texts["cb"].setHtml(cb_html)
@@ -911,68 +959,76 @@ class TransverseMemberDesign(QDialog):
                 self._tab_result_texts["ed"].setHtml(ed_html)
 
     def _populate_cb_pair_details(self, pair_key: str) -> None:
-        if not self._designs_dict:
-            return
-
-        pair_designs = self._designs_dict.get(pair_key, {})
-        diag_des     = self._get_governing_section(pair_designs, "diagonal")
-        chord_des    = self._get_governing_section(pair_designs, "chord")
-
-        # 1) Design
+        # ── Always-visible fields (no design data needed) ────────────────────
         design_w = self._widgets.get(KEY_TD_CB_SECTION_INPUTS_DESIGN)
         if design_w:
             design_w.setText("Cross Bracing")
-            
-        # 2) No. of CB for this specific pair
+
         no_cb_w = self._widgets.get(KEY_TD_CB_SECTION_INPUTS_NO_OF_CB)
         if no_cb_w:
-            n_members = self._members_per_pair.get(pair_key, 0)
-            no_cb_w.setText(str(n_members))
+            no_cb_w.setText(str(self._members_per_pair.get(pair_key, 0)))
 
-        # 3) Type of Connection
         conn_w = self._widgets.get(KEY_TD_CB_SECTION_INPUTS_CONNECTION_TYPE)
         if conn_w:
             conn_w.setText("Bolted")
 
-        bracing_des_w = self._widgets.get(KEY_TD_CB_SECTION_INPUTS_BRACING_SECTION_DESIGNATION)
-        tc_des_w      = self._widgets.get(KEY_TD_CB_SECTION_INPUTS_TOP_CHORD_SECTION_DESIGNATION)
-        bc_des_w      = self._widgets.get(KEY_TD_CB_SECTION_INPUTS_BOTTOM_CHORD_SECTION_DESIGNATION)
-
-        if bracing_des_w:
-            bracing_des_w.setText(diag_des or "")
-        if tc_des_w:
-            tc_des_w.setText(chord_des or "")
-        if bc_des_w:
-            bc_des_w.setText(chord_des or "")
-
-        for card_name, designation in (
-            ("Bracing",      diag_des),
-            ("Top Chord",    chord_des),
-            ("Bottom Chord", chord_des),
-        ):
-            self._fill_section_card(card_name, designation, "Double Angles")
-
-    def _populate_ed_pair_details(self, pair_key: str) -> None:
+        # ── Design-data-dependent fields ─────────────────────────────────────
         if not self._designs_dict:
             return
 
+        od      = getattr(self._backend, "output_dict", {}) or {}
+        pair_id = pair_key.replace("-", "")
         pair_designs = self._designs_dict.get(pair_key, {})
-        ed_type      = pair_designs.get("ed_type", "Cross Bracing")  # "Cross Bracing" or "Welded Beam"
 
-        # Always-visible fields
+        diag_des  = self._get_governing_section(pair_designs, "diagonal")
+        chord_des = self._get_governing_section(pair_designs, "chord")
+
+        # Read actual section types — backend writes these as literal strings
+        diag_type_lbl = self._section_type_label(
+            od.get(f"member_properties.cross_bracing_details.{pair_id}.diagonal.section_type", ""))
+        tc_type_lbl   = self._section_type_label(
+            od.get(f"member_properties.cross_bracing_details.{pair_id}.top_chord.section_type", ""))
+        bc_type_lbl   = self._section_type_label(
+            od.get(f"member_properties.cross_bracing_details.{pair_id}.bottom_chord.section_type", ""))
+
+        for fid, val in (
+            (KEY_TD_CB_SECTION_INPUTS_BRACING_SECTION_TYPE,             diag_type_lbl),
+            (KEY_TD_CB_SECTION_INPUTS_TOP_CHORD_SECTION_TYPE,           tc_type_lbl),
+            (KEY_TD_CB_SECTION_INPUTS_BOTTOM_CHORD_SECTION_TYPE,        bc_type_lbl),
+            (KEY_TD_CB_SECTION_INPUTS_BRACING_SECTION_DESIGNATION,      diag_des  or ""),
+            (KEY_TD_CB_SECTION_INPUTS_TOP_CHORD_SECTION_DESIGNATION,    chord_des or ""),
+            (KEY_TD_CB_SECTION_INPUTS_BOTTOM_CHORD_SECTION_DESIGNATION, chord_des or ""),
+        ):
+            w = self._widgets.get(fid)
+            if w:
+                w.setText(val)
+
+        for card_name, designation, type_lbl in (
+            ("Bracing",      diag_des,  diag_type_lbl),
+            ("Top Chord",    chord_des, tc_type_lbl),
+            ("Bottom Chord", chord_des, bc_type_lbl),
+        ):
+            self._fill_section_card(card_name, designation, type_lbl)
+
+    def _populate_ed_pair_details(self, pair_key: str) -> None:
+        # ── Always-visible fields ────────────────────────────────────────────
         design_w = self._widgets.get(KEY_TD_ED_SECTION_INPUTS_DESIGN)
         if design_w:
             design_w.setText("End Diaphragm")
 
         no_cb_w = self._widgets.get(KEY_TD_ED_SECTION_INPUTS_NO_OF_CB)
         if no_cb_w:
-            no_cb_w.setText(str(self._members_per_pair.get(pair_key, 0)))
+            no_cb_w.setText("2")
 
         conn_w = self._widgets.get(KEY_TD_ED_SECTION_INPUTS_CONNECTION_TYPE)
         if conn_w:
             conn_w.setText("Bolted")
 
-        # Setting TYPE fires textChanged → _on_ed_type_changed → show/hide automatically
+        if not self._designs_dict:
+            return
+
+        pair_designs = self._designs_dict.get(pair_key, {})
+        ed_type      = pair_designs.get("ed_type") or ""
         type_w = self._widgets.get(KEY_TD_ED_SECTION_INPUTS_TYPE)
         if type_w:
             type_w.setText(ed_type)
@@ -996,28 +1052,46 @@ class TransverseMemberDesign(QDialog):
             self._fill_section_card("ED Welded Beam", wb.get("designation", ""), "Welded Beam")
 
         else:  # Cross Bracing
+            od      = getattr(self._backend, "output_dict", {}) or {}
+            pair_id = pair_key.replace("-", "")
+
             diag_des  = self._get_governing_section(pair_designs, "diagonal")
             chord_des = self._get_governing_section(pair_designs, "chord")
 
+            btype_raw = pair_designs.get("ed_bracing_type")
+            brace_lbl = ("K-Bracing" if "K" in str(btype_raw).upper() else "X-Bracing") if btype_raw else ""
+
+            if diag_des:
+                diag_type_lbl = self._section_type_label(
+                    od.get(f"member_properties.end_diaphragm_details.{pair_id}.diagonal.section_type", "")
+                )
+            else:
+                diag_type_lbl = ""
+
+            tc_type_lbl   = self._section_type_label(
+                od.get(f"member_properties.end_diaphragm_details.{pair_id}.top_chord.section_type", ""))
+            bc_type_lbl   = self._section_type_label(
+                od.get(f"member_properties.end_diaphragm_details.{pair_id}.bottom_chord.section_type", ""))
+
             for fid, val in (
-                (KEY_TD_ED_SECTION_INPUTS_BRACING_TYPE,                "X-Bracing"),
-                (KEY_TD_ED_SECTION_INPUTS_BRACING_SECTION_TYPE,        "Double Angles"),
-                (KEY_TD_ED_SECTION_INPUTS_BRACING_SECTION_DESIGNATION, diag_des or ""),
-                (KEY_TD_ED_SECTION_INPUTS_TOP_CHORD_SECTION_TYPE,      "Double Angles"),
-                (KEY_TD_ED_SECTION_INPUTS_TOP_CHORD_SECTION_DESIGNATION,    chord_des or ""),
-                (KEY_TD_ED_SECTION_INPUTS_BOTTOM_CHORD_SECTION_TYPE,   "Double Angles"),
+                (KEY_TD_ED_SECTION_INPUTS_BRACING_TYPE,                  brace_lbl),
+                (KEY_TD_ED_SECTION_INPUTS_BRACING_SECTION_TYPE,          diag_type_lbl),
+                (KEY_TD_ED_SECTION_INPUTS_BRACING_SECTION_DESIGNATION,   diag_des  or ""),
+                (KEY_TD_ED_SECTION_INPUTS_TOP_CHORD_SECTION_TYPE,        tc_type_lbl),
+                (KEY_TD_ED_SECTION_INPUTS_TOP_CHORD_SECTION_DESIGNATION, chord_des or ""),
+                (KEY_TD_ED_SECTION_INPUTS_BOTTOM_CHORD_SECTION_TYPE,     bc_type_lbl),
                 (KEY_TD_ED_SECTION_INPUTS_BOTTOM_CHORD_SECTION_DESIGNATION, chord_des or ""),
             ):
                 w = self._widgets.get(fid)
                 if w:
                     w.setText(val)
 
-            for card_name, designation in (
-                ("End Diaphragm", diag_des),
-                ("Top Chord",     chord_des),
-                ("Bottom Chord",  chord_des),
+            for card_name, designation, type_lbl in (
+                ("ed_End Diaphragm", diag_des,  diag_type_lbl),
+                ("ed_Top Chord",     chord_des, tc_type_lbl),
+                ("ed_Bottom Chord",  chord_des, bc_type_lbl),
             ):
-                self._fill_section_card(card_name, designation, "Double Angles")
+                self._fill_section_card(card_name, designation, type_lbl)
 
     def _get_governing_section(self, member_designs: dict, member_type: str) -> str:
         from osdagbridge.core.bridge_types.plate_girder.results_data import _extract_osdag_summary
@@ -1240,12 +1314,12 @@ class TransverseMemberDesign(QDialog):
         pairs        = forces_dict.get("pairs", {})
         vals         = pairs.get(pair_key, {})
         pair_designs = designs_dict.get(pair_key, {})
-        n_members    = self._members_per_pair.get(pair_key, 1)
-        pair_idx     = self._pair_keys.index(pair_key) if pair_key in self._pair_keys else 0
+        n_members    = 2  # One end diaphragm at each end of the span
         ed_type      = pair_designs.get("ed_type", "Cross Bracing")
+        pair_num     = (self._pair_keys.index(pair_key) + 1) if pair_key in self._pair_keys else 1
 
         for m_idx in range(n_members):
-            member_id = f"E{pair_idx + 1}M{m_idx + 1}"   # ← E prefix
+            member_id = f"E{pair_num}M{m_idx + 1}"   # → E1M1, E1M2 / E2M1, E2M2
 
             if ed_type == "Welded Beam":
                 member_data = pair_designs.get("welded_beam", {})
@@ -1363,3 +1437,9 @@ class TransverseMemberDesign(QDialog):
         active = self._tab_result_texts.get(tab_key)
         if active:
             self.design_check_text = active
+    
+    @staticmethod
+    def _section_type_label(backend_type: str) -> str:
+        if not backend_type:
+            return ""
+        return "Double Channel" if str(backend_type).upper() == "CHANNEL" else "Double Angles"
