@@ -2024,15 +2024,15 @@ Punching Shear Check & $v_{Ed} \leq v_{Rd,c}$ &  &  \\[6pt]
 
 \begin{longtable}{|C{7cm}|>{\arraybackslash}p{8.5cm}|}
 \hline
-\textbf{Min. Reinforcement for Crack Control, $A_{s,min}$} &  \\[6pt]
+\textbf{Min. Reinforcement for Crack Control, $A_{s,min}$} & """ + _dkf(KEY_DECK_RPT_AS_MIN, nd=0) + r""" mm²/m [IRC 112 Cl. 16.5.1] \\[6pt]
 \hline
-\textbf{Provided Reinforcement} &  \\[6pt]
+\textbf{Provided Reinforcement (bottom)} & $\phi$""" + _dkf(KEY_DECK_RPT_DIA_BOT, nd=0) + r""" @ """ + _dkf(KEY_DECK_RPT_SPC_BOT, nd=0) + r""" mm c/c (""" + _dkf(KEY_DECK_RPT_AS_BOT, nd=0) + r""" mm²/m) \\[6pt]
 \hline
-\textbf{Max. Permissible Crack Width} &  \\[6pt]
+\textbf{Max. Permissible Crack Width} & """ + _dkf(KEY_DECK_RPT_WK_LIMIT, nd=2) + r""" mm \\[6pt]
 \hline
-\textbf{Calculated Crack Width, wk} &  \\[6pt]
+\textbf{Calculated Crack Width, $w_k$ (governing)} & """ + _dk_gov_wk_str + r""" mm \\[6pt]
 \hline
-\textbf{Crack Width Check} &  \\[6pt]
+\textbf{Crack Width Check} & """ + _dks(_dk_crack_ok) + r""" \\[6pt]
 \hline
 \end{longtable}
 
