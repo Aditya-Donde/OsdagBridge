@@ -1845,6 +1845,16 @@ END_CONNECTORS = [
     # Update/load data from dict for related girder in segment table
     (KEY_MP_GD_SELECT_GIRDER,  KEY_MP_GD_SEGMENT_TABLE,    "_on_girder_segments_load"),
 
+    # Populate Stiffener Details member ID combo from all girder segments
+    (KEY_MP_GD_SELECT_GIRDER,  KEY_MP_STIFFENER_SELECT_MEMBER_ID, "_on_stiffener_member_ids_refreshed"),
+    (KEY_MP_GD_SEGMENT_TABLE,  KEY_MP_STIFFENER_SELECT_MEMBER_ID, "_on_stiffener_member_ids_refreshed"),
+
+    # Show/hide bearing stiffener fields based on whether selected member is first or last in its girder
+    (KEY_MP_STIFFENER_SELECT_MEMBER_ID, KEY_MP_STIFFENER_NO_BEARING_STIFFENERS, "_on_stiffener_member_bearing_changed"),
+
+    # Save old member data and load new member data when member ID selection changes
+    (KEY_MP_STIFFENER_SELECT_MEMBER_ID, KEY_MP_STIFFENER_DESIGN_METHOD, "_on_stiffener_member_load"),
+
     # On change of member_id the fields below will be changed according to Girder & Member
     (KEY_MP_GD_MEMBER_ID,      KEY_MP_GD_MEMBER_ID,        "_on_member_id_load"),
 
@@ -1912,7 +1922,6 @@ GIRDER_DETAILS_SCHEMA = {
                         "label":     "Total Span (m):",
                         "type":      TYPE_TEXTBOX,
                         "read_only": True,
-                        "bind":      "length_input",
                     }]
                 },
                 {
@@ -1965,7 +1974,6 @@ GIRDER_DETAILS_SCHEMA = {
                         "label":     "Member ID:",
                         "type":      TYPE_COMBOBOX,
                         "choices":   [],
-                        "bind":      "member_id_combo",
                     }]
                 },
 
@@ -1987,7 +1995,6 @@ GIRDER_DETAILS_SCHEMA = {
                         "label":   "Symmetry:",
                         "type":    TYPE_COMBOBOX,
                         "choices": VALUES_GIRDER_SYMMETRY,
-                        "bind":    "symmetry_combo",
                     }]
                 },
 
@@ -2010,7 +2017,6 @@ GIRDER_DETAILS_SCHEMA = {
                             "Custom": {
                                 "type":              TYPE_TEXTBOX,
                                 "placeholder":       "",
-                                "bind":              "total_depth_input",
                                 "on_editing_finished": "_update_section_drawing",
                                 "on_change_compute": {"function": "_compute_welded_section_properties"},
                             },
@@ -2035,7 +2041,6 @@ GIRDER_DETAILS_SCHEMA = {
                             "Custom": {
                                 "type":              TYPE_TEXTBOX,
                                 "placeholder":       "",
-                                "bind":              "top_width_input",
                                 "on_editing_finished": "_update_section_drawing",
                                 "on_change_compute": {"function": "_compute_welded_section_properties"},
                             },
@@ -2056,7 +2061,6 @@ GIRDER_DETAILS_SCHEMA = {
                             "Custom": {
                                 "type":              TYPE_COMBOBOX,
                                 "choices":           [str(v) for v in SAIL_APPROVED_THICKNESS_VALUES],
-                                "bind":              "top_thickness_combo",
                                 "on_change":         "_update_section_drawing",
                                 "on_change_compute": {"function": "_compute_welded_section_properties"},
                             },
@@ -2081,7 +2085,6 @@ GIRDER_DETAILS_SCHEMA = {
                             "Custom": {
                                 "type":              TYPE_TEXTBOX,
                                 "placeholder":       "",
-                                "bind":              "bottom_width_input",
                                 "on_editing_finished": "_update_section_drawing",
                                 "on_change_compute": {"function": "_compute_welded_section_properties"},
                             },
@@ -2102,7 +2105,6 @@ GIRDER_DETAILS_SCHEMA = {
                             "Custom": {
                                 "type":              TYPE_COMBOBOX,
                                 "choices":           [str(v) for v in SAIL_APPROVED_THICKNESS_VALUES],
-                                "bind":              "bottom_thickness_combo",
                                 "on_change":         "_update_section_drawing",
                                 "on_change_compute": {"function": "_compute_welded_section_properties"},
                             },
@@ -2115,7 +2117,6 @@ GIRDER_DETAILS_SCHEMA = {
                         "label":   "Support Type:",
                         "type":    TYPE_COMBOBOX,
                         "choices": VALUES_GIRDER_SUPPORT_TYPE,
-                        "bind":    "support_type_combo",
                     }]
                 },
                 {
@@ -2123,7 +2124,6 @@ GIRDER_DETAILS_SCHEMA = {
                         "id":    KEY_MP_GD_SUPPORT_WIDTH,
                         "label": "Support Width (mm):",
                         "type":  TYPE_TEXTBOX,
-                        "bind":  "support_width_input",
                     }]
                 },
                 {
@@ -2140,7 +2140,6 @@ GIRDER_DETAILS_SCHEMA = {
                             "Custom": {
                                 "type":              TYPE_COMBOBOX,
                                 "choices":           [str(v) for v in SAIL_APPROVED_THICKNESS_VALUES],
-                                "bind":              "web_thickness_combo",
                                 "on_change":         "_update_section_drawing",
                                 "on_change_compute": {"function": "_compute_welded_section_properties"},
                             },
@@ -2155,7 +2154,6 @@ GIRDER_DETAILS_SCHEMA = {
                         "label":            "IS Section:",
                         "type":             TYPE_COMBOBOX,
                         "choices":          get_is_section_list(),
-                        "bind":             "is_section_combo",
                         "on_change":        "_update_section_drawing",
                         "on_change_compute": {"function": "_compute_rolled_section_properties"},
                     }]
@@ -2168,7 +2166,6 @@ GIRDER_DETAILS_SCHEMA = {
                         "label":   "Torsional Restraint:",
                         "type":    TYPE_COMBOBOX,
                         "choices": VALUES_TORSIONAL_RESTRAINT,
-                        "bind":    "torsion_combo",
                     }]
                 },
                 {
@@ -2177,7 +2174,6 @@ GIRDER_DETAILS_SCHEMA = {
                         "label":   "Warping Restraint:",
                         "type":    TYPE_COMBOBOX,
                         "choices": VALUES_WARPING_RESTRAINT,
-                        "bind":    "warping_combo",
                     }]
                 },
                 {
@@ -2186,7 +2182,6 @@ GIRDER_DETAILS_SCHEMA = {
                         "label":   "Web Type:",
                         "type":    TYPE_COMBOBOX,
                         "choices": VALUES_WEB_TYPE,
-                        "bind":    "web_type_combo",
                     }]
                 },
             ],
@@ -2350,13 +2345,12 @@ STIFFENER_DETAILS_SCHEMA = {
                         "label":   "Select Member ID:",
                         "type":    TYPE_COMBOBOX,
                         "choices": [],
-                        "bind":    "girder_member_combo",
                         "on_change": "_on_stiffener_member_changed",
                     }]
                 },
                 {
                     "fields": [{
-                        "id":       "stiffener_apply_all",
+                        "id":       KEY_MP_STIFFENER_APPLY_ALL,
                         "type":     TYPE_BUTTON,
                         "text":     "Apply changes to all custom",
                         # "on_click": "_on_stiffener_apply_all_clicked",
@@ -2397,10 +2391,9 @@ STIFFENER_DETAILS_SCHEMA = {
                 {
                     "fields": [{
                         "id":      KEY_MP_STIFFENER_NO_BEARING_STIFFENERS,
-                        "label":   "No. of Bearing Stiffeners\n(on one side only):",
+                        "label":   "No. of Bearing Stiffeners<br>(on one side only):",
                         "type":    TYPE_COMBOBOX,
                         "choices": VALUES_BEARING_STIFFENER_COUNT,
-                        "bind":    "bearing_count_combo",
                         "on_change": "_update_stiffener_cad",
                     }]
                 },
@@ -2409,7 +2402,6 @@ STIFFENER_DETAILS_SCHEMA = {
                         "id":    KEY_MP_STIFFENER_SPACING,
                         "label": "Bearing Stiffener Spacing (mm):",
                         "type":  TYPE_TEXTBOX,
-                        "bind":  "bearing_spacing_input",
                         "on_text_changed": "_update_stiffener_cad",
                     }]
                 },
@@ -2419,7 +2411,6 @@ STIFFENER_DETAILS_SCHEMA = {
                         "label":   "Bearing Stiffener Thickness (mm):",
                         "type":    TYPE_COMBOBOX,
                         "choices": [str(v) for v in SAIL_APPROVED_THICKNESS_VALUES],
-                        "bind":    "bearing_thick_value_combo",
                     }]
                 },
                 {
@@ -2427,7 +2418,6 @@ STIFFENER_DETAILS_SCHEMA = {
                         "id":    KEY_MP_STIFFENER_BEARING_OUTSTAND,
                         "label": "Outstand of Bearing Stiffener (mm):",
                         "type":  TYPE_TEXTBOX,
-                        "bind":  "bearing_outstand_input",
                     }]
                 },
                 {
@@ -2436,7 +2426,6 @@ STIFFENER_DETAILS_SCHEMA = {
                         "label":   "Intermediate Stiffener:",
                         "type":    TYPE_COMBOBOX,
                         "choices": VALUES_NO_YES,
-                        "bind":    "intermediate_combo",
                         "on_change": "_on_intermediate_stiffener_changed",
                     }]
                 },
@@ -2445,7 +2434,6 @@ STIFFENER_DETAILS_SCHEMA = {
                         "id":    KEY_MP_STIFFENER_INTERMEDIATE_SPACING,
                         "label": "Intermediate Stiffener Spacing (mm):",
                         "type":  TYPE_TEXTBOX,
-                        "bind":  "intermediate_spacing_input",
                         "on_text_changed": "_update_stiffener_cad",
                     }]
                 },
@@ -2455,7 +2443,6 @@ STIFFENER_DETAILS_SCHEMA = {
                         "label":   "Intermediate Stiffener Thickness (mm):",
                         "type":    TYPE_COMBOBOX,
                         "choices": [str(v) for v in SAIL_APPROVED_THICKNESS_VALUES],
-                        "bind":    "intermediate_thick_value_combo",
                     }]
                 },
                 {
@@ -2463,7 +2450,6 @@ STIFFENER_DETAILS_SCHEMA = {
                         "id":    KEY_MP_STIFFENER_INTERMEDIATE_OUTSTAND,
                         "label": "Outstand of Intermediate Stiffener (mm):",
                         "type":  TYPE_TEXTBOX,
-                        "bind":  "intermediate_outstand_input",
                     }]
                 },
                 {
@@ -2472,8 +2458,7 @@ STIFFENER_DETAILS_SCHEMA = {
                         "label":   "Longitudinal Stiffener:",
                         "type":    TYPE_COMBOBOX,
                         "choices": VALUES_LONGITUDINAL_STIFFENER,
-                        "bind":    "longitudinal_combo",
-                        "on_change": "_update_stiffener_cad",
+                        "on_change": "_on_longitudinal_stiffener_changed",
                     }]
                 },
                 {
@@ -2482,7 +2467,6 @@ STIFFENER_DETAILS_SCHEMA = {
                         "label":   "Longitudinal Stiffener Thickness (mm):",
                         "type":    TYPE_COMBOBOX,
                         "choices": [str(v) for v in SAIL_APPROVED_THICKNESS_VALUES],
-                        "bind":    "long_thick_value_combo",
                     }]
                 },
             ],
@@ -2499,7 +2483,6 @@ STIFFENER_DETAILS_SCHEMA = {
                         "label":   "Shear Buckling Design Method:",
                         "type":    TYPE_COMBOBOX,
                         "choices": VALUES_STIFFENER_DESIGN,
-                        "bind":    "method_combo",
                     }]
                 },
             ],

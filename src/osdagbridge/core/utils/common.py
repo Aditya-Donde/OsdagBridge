@@ -720,6 +720,7 @@ KEY_MP_GIRDER_WEB_DEPTH = "member_properties.girder_details.section_input.web_de
 # Member Properties - Stiffener Details (dynamic keys, mirrors KEY_MP_GIRDER_* pattern)
 KEY_MP_SD_TAB                          = "member_properties.stiffener_details"
 KEY_MP_STIFFENER_SELECT_MEMBER_ID             = "member_properties.stiffener_details.select_member_id" # Dropdown to select member ID for stiffener details
+KEY_MP_STIFFENER_APPLY_ALL                    = "member_properties.stiffener_details.apply_all_btn"
 KEY_MP_STIFFENER_NO_BEARING_STIFFENERS        = "member_properties.stiffener_details.no_bearing_stiffeners_each_end" # Number of bearing stiffeners at each end of the girder
 KEY_MP_STIFFENER_SPACING                      = "member_properties.stiffener_details.bearing_stiffener_spacing" # Spacing of bearing stiffeners
 KEY_MP_STIFFENER_BEARING_THICKNESS            = "member_properties.stiffener_details.bearing_stiffener_plate_thickness" # Thickness of bearing stiffener plate

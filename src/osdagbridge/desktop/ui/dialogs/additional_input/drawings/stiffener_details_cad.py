@@ -90,16 +90,25 @@ class StiffenerDetailsCad(QWidget):
         self._active_member_id       = str(active_member_id or "").strip()
         self.update()
 
-    # Reads all stiffener values and active member from working_input_dict directly.
-    def update_stiffener(self, working_input_dict: dict) -> None:
-        from osdagbridge.core.utils.common import KEY_MP_STIFFENER_SELECT_MEMBER_ID
-        active_member_id = str(working_input_dict.get(KEY_MP_STIFFENER_SELECT_MEMBER_ID) or "").strip()
+    def update_stiffener(self, working_input_dict: dict, active_member_id: str = "") -> None:
+        from osdagbridge.core.utils.common import KEY_MP_GD_SEGMENT_TABLE, KEY_TS_NO_OF_GIRDERS
+        active_member_id = str(active_member_id or "").strip()
 
         if active_member_id:
             self._stiffener_by_member[active_member_id] = dict(working_input_dict)
 
+        match = re.match(r"G(\d+)M\d+", active_member_id)
+        if match:
+            seg_key = f"{KEY_MP_GD_SEGMENT_TABLE}.G{match.group(1)}"
+            segments = working_input_dict.get(seg_key) or []
+        else:
+            girder_count = int(float(str(working_input_dict.get(KEY_TS_NO_OF_GIRDERS) or 1)))
+            segments = []
+            for gi in range(1, girder_count + 1):
+                segments.extend(working_input_dict.get(f"{KEY_MP_GD_SEGMENT_TABLE}.G{gi}") or [])
+
         self.set_data(
-            segments            = self._segments,        # keeps existing segments unchanged
+            segments            = segments or self._segments,
             stiffener_by_member = self._stiffener_by_member,
             active_member_id    = active_member_id,
         )
@@ -229,7 +238,6 @@ class StiffenerDetailsCad(QWidget):
         px_per_mm = girder_rect.width() / max(1.0, total_length * 1000.0)
 
         def resolve_bearing_params(seg_state: dict, seg_len_mm: float):
-            # Support both old keys (bearing_stiffeners_each_end) and new KEY_MP_STIFFENER_NO_BEARING_STIFFENERS
             raw_count = (
                 seg_state.get(KEY_MP_STIFFENER_NO_BEARING_STIFFENERS)
                 or seg_state.get("bearing_stiffeners_each_end")

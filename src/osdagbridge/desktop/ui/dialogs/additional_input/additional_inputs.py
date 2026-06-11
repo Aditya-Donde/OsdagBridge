@@ -378,12 +378,21 @@ class AdditionalInputs(QDialog):
             KEY_MP_STIFFENER_INTERMEDIATE, KEY_MP_STIFFENER_INTERMEDIATE_SPACING,
             KEY_MP_STIFFENER_INTERMEDIATE_THICKNESS, KEY_MP_STIFFENER_INTERMEDIATE_OUTSTAND,
             KEY_MP_STIFFENER_LONGITUDINAL, KEY_MP_STIFFENER_LONGITUDINAL_THICKNESS,
-            KEY_MP_STIFFENER_DESIGN_METHOD,
+            KEY_MP_STIFFENER_DESIGN_METHOD, KEY_MP_STIFFENER_APPLY_ALL
         ]
         for key in stiffener_keys:
             w = self.findChild(QWidget, key)
             if w:
                 w.setEnabled(not is_optimized)
+        
+        # In Custom mode re-apply conditional sub-field states.
+        if not is_optimized:
+            w = self.findChild(QComboBox, KEY_MP_STIFFENER_INTERMEDIATE)
+            if w:
+                self._on_intermediate_stiffener_changed(w.currentText())
+            w = self.findChild(QComboBox, KEY_MP_STIFFENER_LONGITUDINAL)
+            if w:
+                self._on_longitudinal_stiffener_changed(w.currentText())
         
         # TODO: Must move it to refresh functionality after section_properties.py is removed
         widget = self.findChild(QLineEdit, KEY_MP_GD_TOTAL_SPAN)
@@ -413,7 +422,15 @@ class AdditionalInputs(QDialog):
         
         # Update stiffener
         self._update_stiffener_cad()
-    
+
+    def _on_longitudinal_stiffener_changed(self, value: str) -> None:
+        is_yes = str(value).strip() != "No"
+        w   = self.findChild(QWidget, KEY_MP_STIFFENER_LONGITUDINAL_THICKNESS)
+        lbl = self.findChild(QLabel,  KEY_MP_STIFFENER_LONGITUDINAL_THICKNESS + "_label")
+        if w:   w.setEnabled(is_yes)
+        if lbl: lbl.setEnabled(is_yes)
+        self._update_stiffener_cad()
+
     def _update_apply_button_visibility(self, origin_key: str, target_widget: QWidget) -> None:
         """Show/hide Apply Exterior or Apply Interior button based on selected girder index."""
         
@@ -451,10 +468,12 @@ class AdditionalInputs(QDialog):
 
     def _update_stiffener_cad(self) -> None:
         from osdagbridge.desktop.ui.dialogs.additional_input.drawings.stiffener_details_cad import StiffenerDetailsCad
-        widget = self.findChild(StiffenerDetailsCad, "stiffener_cad_preview")
+        widget = self.findChild(StiffenerDetailsCad, KEY_SD_STIFFENER_DETAILS)
         if widget is None:
             return
-        widget.update_stiffener(self.working_input_dict)
+        combo = self.findChild(QComboBox, KEY_MP_STIFFENER_SELECT_MEMBER_ID)
+        active_member_id = combo.currentText().strip() if combo else ""
+        widget.update_stiffener(self.working_input_dict, active_member_id)
 
     def reset_active_tab_defaults(self) -> None:
         """
@@ -614,7 +633,129 @@ class AdditionalInputs(QDialog):
             girder_id          = girder_id,
             member_field_keys  = self._MEMBER_FIELD_KEYS,
         )
+
+        self._update_stiffener_cad()
     
+    # Connector: fires when Select Girder combo or segment table changes.
+    # Collects member IDs from ALL girders and populates Stiffener member ID combo.
+    def _on_stiffener_member_ids_refreshed(self, origin_key: str, target_widget: QWidget) -> None:
+        if not isinstance(target_widget, QComboBox):
+            return
+
+        girder_count = int(float(str(self.working_input_dict.get(KEY_TS_NO_OF_GIRDERS) or 1)))
+        all_member_ids = []
+        for gi in range(1, girder_count + 1):
+            seg_key  = f"{KEY_MP_GD_SEGMENT_TABLE}.G{gi}"
+            segments = self.working_input_dict.get(seg_key) or []
+            for seg in segments:
+                mid = str(seg.get("id") or "")
+                if mid:
+                    all_member_ids.append(mid)
+
+        current = target_widget.currentText()
+        target_widget.blockSignals(True)
+        target_widget.clear()
+        target_widget.addItems(all_member_ids)
+        idx = target_widget.findText(current)
+        target_widget.setCurrentIndex(idx if idx >= 0 else 0)
+        target_widget.blockSignals(False)
+
+    # Connector: fires when Stiffener member ID combo changes.
+    # Shows bearing stiffener fields only for first (M1) or last (Mn) member in the girder.
+    def _on_stiffener_member_bearing_changed(self, origin_key: str, target_widget: QWidget) -> None:
+        import re
+        combo = self.findChild(QComboBox, origin_key)
+        if combo is None:
+            return
+        member_id = combo.currentText().strip()
+        match = re.match(r"G(\d+)M(\d+)", member_id)
+        if not match:
+            return
+        gi      = int(match.group(1))
+        mi      = int(match.group(2))
+        total   = len(self.working_input_dict.get(f"{KEY_MP_GD_SEGMENT_TABLE}.G{gi}") or [])
+        is_bearing = (total <= 1) or (mi == 1 or mi == total)
+
+        lbl = self.findChild(QLabel, KEY_MP_STIFFENER_NO_BEARING_STIFFENERS + "_label")
+        target_widget.setVisible(is_bearing)
+        if lbl: lbl.setVisible(is_bearing)
+
+        for key in [KEY_MP_STIFFENER_SPACING, KEY_MP_STIFFENER_BEARING_THICKNESS, KEY_MP_STIFFENER_BEARING_OUTSTAND]:
+            w   = self.findChild(QWidget, key)
+            lbl = self.findChild(QLabel,  key + "_label")
+            if w:   w.setVisible(is_bearing)
+            if lbl: lbl.setVisible(is_bearing)
+
+    _STIFFENER_FIELD_KEYS = [
+        KEY_MP_STIFFENER_NO_BEARING_STIFFENERS,
+        KEY_MP_STIFFENER_SPACING,
+        KEY_MP_STIFFENER_BEARING_THICKNESS,
+        KEY_MP_STIFFENER_BEARING_OUTSTAND,
+        KEY_MP_STIFFENER_INTERMEDIATE,
+        KEY_MP_STIFFENER_INTERMEDIATE_SPACING,
+        KEY_MP_STIFFENER_INTERMEDIATE_THICKNESS,
+        KEY_MP_STIFFENER_INTERMEDIATE_OUTSTAND,
+        KEY_MP_STIFFENER_LONGITUDINAL,
+        KEY_MP_STIFFENER_LONGITUDINAL_THICKNESS,
+        KEY_MP_STIFFENER_DESIGN_METHOD,
+    ]  
+
+    def _save_stiffener_member_data(self, member_id: str) -> None:
+        
+        import re
+        m = re.match(r"G(\d+)M(\d+)", str(member_id or "").strip())
+        suffix = f".G{m.group(1)}.M{m.group(2)}" if m else ""
+        
+        if not suffix:
+            return
+        for key in self._STIFFENER_FIELD_KEYS:
+            w = self.findChild(QWidget, key)
+            if isinstance(w, QComboBox):
+                self.working_input_dict[f"{key}{suffix}"] = w.currentText()
+            elif isinstance(w, QLineEdit):
+                self.working_input_dict[f"{key}{suffix}"] = w.text()
+
+    def _load_stiffener_member_data(self, member_id: str) -> None:
+        
+        import re
+        m = re.match(r"G(\d+)M(\d+)", str(member_id or "").strip())
+        suffix = f".G{m.group(1)}.M{m.group(2)}" if m else ""
+
+        if not suffix:
+            return
+        for key in self._STIFFENER_FIELD_KEYS:
+            stored = self.working_input_dict.get(f"{key}{suffix}")
+            if stored is None:
+                continue
+            w = self.findChild(QWidget, key)
+            if isinstance(w, QComboBox):
+                w.setCurrentText(str(stored))
+            elif isinstance(w, QLineEdit):
+                w.setText(str(stored))
+
+    # Connector: saves current member's stiffener data then loads the newly selected member's data.
+    def _on_stiffener_member_load(self, origin_key: str, target_widget: QWidget) -> None:
+        combo = self.findChild(QComboBox, origin_key)
+        if combo is None:
+            return
+        new_member_id  = combo.currentText().strip()
+        prev_member_id = getattr(self, "_last_stiffener_member_id", None)
+
+        if prev_member_id:
+            self._save_stiffener_member_data(prev_member_id)
+
+        self._load_stiffener_member_data(new_member_id)
+        self._last_stiffener_member_id = new_member_id
+
+        w = self.findChild(QComboBox, KEY_MP_STIFFENER_INTERMEDIATE)
+        if w:
+            self._on_intermediate_stiffener_changed(w.currentText())
+        w = self.findChild(QComboBox, KEY_MP_STIFFENER_LONGITUDINAL)
+        if w:
+            self._on_longitudinal_stiffener_changed(w.currentText())
+
+        self._update_stiffener_cad()
+
     # Connector: fires when Select Girder combo changes.
     # Loads stored segments for selected girder into SegmentTableWidget.
     def _on_girder_segments_load(self, origin_key: str, target_widget: QWidget) -> None:
@@ -684,11 +825,11 @@ class AdditionalInputs(QDialog):
                 if isinstance(active, QComboBox):
                     mode = active.currentText()
                     self.working_input_dict[key + suffix] = mode
-                    print(f"  [SAVE] {key + suffix} = {mode} (AdaptiveWidget→QComboBox)")
+                    # print(f"  [SAVE] {key + suffix} = {mode} (AdaptiveWidget→QComboBox)")
                 
                 elif isinstance(active, QLineEdit):
                     self.working_input_dict[key + suffix] = active.text()
-                    print(f"  [SAVE] {key + suffix} = {active.text()} (AdaptiveWidget→QLineEdit)")
+                    # print(f"  [SAVE] {key + suffix} = {active.text()} (AdaptiveWidget→QLineEdit)")
                 
                 elif isinstance(active, QPushButton):
                     # Bounds Button
@@ -715,12 +856,12 @@ class AdditionalInputs(QDialog):
                     inner_line  = w.findChild(QLineEdit)
                     if inner_combo:
                         self.working_input_dict[key + suffix + ".mode"] = inner_combo.currentText()
-                        print(f"  [SAVE] {key + suffix}.mode = {inner_combo.currentText()} (ModeLine → QComboBox)")
+                        # print(f"  [SAVE] {key + suffix}.mode = {inner_combo.currentText()} (ModeLine → QComboBox)")
                     if inner_line:
                         text = inner_line.text().strip()
                         if text:
                             self.working_input_dict[key + suffix + ".value"] = text
-                            print(f"  [SAVE] {key + suffix}.value = {text} (ModeLine → QLineEdit)")
+                            # print(f"  [SAVE] {key + suffix}.value = {text} (ModeLine → QLineEdit)")
                 else:
                     print(f"  [SAVE] {key} — widget not found: {type(w)}")
 
@@ -731,7 +872,7 @@ class AdditionalInputs(QDialog):
         for key in self._MEMBER_FIELD_KEYS:
             value = self.working_input_dict.get(key + suffix)
             if value is None:
-                print(f"  [LOAD] {key + suffix} — not in dict, skipping")
+                # print(f"  [LOAD] {key + suffix} — not in dict, skipping")
                 continue
 
             w = self.findChild(QWidget, key)
@@ -743,7 +884,7 @@ class AdditionalInputs(QDialog):
                     active.blockSignals(True)
                     active.setCurrentText(str(value))
                     active.blockSignals(False)
-                    print(f"  [LOAD] {key + suffix} = {value} → AdaptiveWidget→QComboBox")
+                    # print(f"  [LOAD] {key + suffix} = {value} → AdaptiveWidget→QComboBox")
 
                     self.working_input_dict[key] = value
 
@@ -755,7 +896,7 @@ class AdditionalInputs(QDialog):
                     active.blockSignals(True)
                     active.setText(str(value))
                     active.blockSignals(False)
-                    print(f"  [LOAD] {key + suffix} = {value} → AdaptiveWidget→QLineEdit")
+                    # print(f"  [LOAD] {key + suffix} = {value} → AdaptiveWidget→QLineEdit")
 
                 elif isinstance(active, QPushButton):
                     # Bounds Button
@@ -789,12 +930,12 @@ class AdditionalInputs(QDialog):
                         inner_combo.blockSignals(True)
                         inner_combo.setCurrentText(str(mode_val))
                         inner_combo.blockSignals(False)
-                        print(f"  [LOAD] {key + suffix}.mode = {mode_val} → ModeLine→QComboBox")
+                        # print(f"  [LOAD] {key + suffix}.mode = {mode_val} → ModeLine→QComboBox")
                     if inner_line and value_val:
                         inner_line.blockSignals(True)
                         inner_line.setText(str(value_val))
                         inner_line.blockSignals(False)
-                        print(f"  [LOAD] {key + suffix}.value = {value_val} → ModeLine→QLineEdit")
+                        # print(f"  [LOAD] {key + suffix}.value = {value_val} → ModeLine→QLineEdit")
                 
                 else:
                     print(f"  [LOAD] {key} — widget not found: {type(w)}")
@@ -881,9 +1022,6 @@ class AdditionalInputs(QDialog):
         live_mode  = working_input_dict.get(KEY_SL_LIVE_LOAD_MODE, "Automatic")
         live_value = working_input_dict.get(KEY_SL_LIVE_LOAD_VALUE)
         live_load  = float(live_value) if live_mode == "Custom" and live_value else 0.0
-
-        print(f"@@: zone={zone},\nsoil={soil_str},\nperiod={period},\ndamping={damping}")
-        print(f"@@: d_m={dead_mode},\nd_v={dead_value},\nd_l={dead_load}")
 
         result = IRC6_2017.cl_218_5_1(
             zone=f"Zone {zone}",
@@ -1301,11 +1439,11 @@ class AdditionalInputs(QDialog):
         # Update Dynamic Keys in Working Dict for Member Properties Tab
         from osdagbridge.core.bridge_types.plate_girder.defaults import _on_no_of_girders_changed
         from pprint import pprint
-        print(f"\n\n@@: Dict before updating dynamic keys:\n")
+        # print(f"\n\n@@: Dict before updating dynamic keys:\n")
         # pprint(self.working_input_dict)
         # print("\n\n")
         _on_no_of_girders_changed(self.working_input_dict)
-        print(f"\n\n@@: Dict after updating dynamic keys:\n")
+        # print(f"\n\n@@: Dict after updating dynamic keys:\n")
         # pprint(self.working_input_dict)
         # print("\n\n")
 

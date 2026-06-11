@@ -479,9 +479,14 @@ def _on_no_of_girders_changed(working_input_dict: dict) -> None:
     for k in stale_girder_keys:
         del working_input_dict[k]
 
-    # --- Girder selector key: only a .G{n} suffix, no member id ---
+    # --- Girder selector key + default segment table: only a .G{n} suffix ---
     for girder_idx in range(1, count + 1):
         working_input_dict[f"{KEY_MP_GD_SELECT_GIRDER}.G{girder_idx}"] = f"G{girder_idx}"
+        seg_table_key = f"{KEY_MP_GD_SEGMENT_TABLE}.G{girder_idx}"
+        if seg_table_key not in working_input_dict:
+            working_input_dict[seg_table_key] = [
+                {"id": f"G{girder_idx}M1", "start": 0.0, "end": span}
+            ]
 
     # --- Per-girder/member section-input defaults: <base_key>.G{n}.M{m} ---
     # KEY_MP_GD_MEMBER_ID lives under "member_properties.member_id" (not

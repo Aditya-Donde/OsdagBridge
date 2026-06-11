@@ -650,8 +650,13 @@ class UIBuilder(QWidget):
                     font-size: 11px;
                     font-weight: bold;
                 }
-                QPushButton:hover   { background-color: #e6e6e6; color: #2b2b2b; }
-                QPushButton:pressed { background-color: #d0d0d0; }
+                QPushButton:hover    { background-color: #e6e6e6; color: #2b2b2b; }
+                QPushButton:pressed  { background-color: #d0d0d0; }
+                QPushButton:disabled {
+                    background-color: #f0f0f0;
+                    border: 1px solid #d0d0d0;
+                    color: #a8a8a8;
+                }
             """)
             bind_name = field_def.get("bind")
             if bind_name:
