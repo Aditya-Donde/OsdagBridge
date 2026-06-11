@@ -2067,25 +2067,25 @@ One-Way Shear Check & $V_{Ed} \leq V_{Rd,c}$ &  &  \\[6pt]
 \hline
 \multicolumn{4}{|l|}{\textbf{Main Reinforcement --- Bottom (Transverse)}} \\[6pt]
 \hline
-Required Area, $A_{st,req}$ (mm²/m) &  &  &  \\[6pt]
+Required Area, $A_{st,req}$ (mm²/m) & """ + _dkf(KEY_DECK_RPT_AS_REQ_BOT, nd=0) + r""" mm²/m & """ + _dkf(KEY_DECK_RPT_AS_BOT, nd=0) + r""" mm²/m & """ + _dks(_dkv(KEY_DECK_RPT_AS_BOT) >= _dkv(KEY_DECK_RPT_AS_REQ_BOT)) + r""" \\[6pt]
 \hline
-Bar Diameter $\times$ Spacing &  &  &  \\[6pt]
+Bar Diameter $\times$ Spacing & $\phi \geq 10$ mm (IRC 112) & $\phi$""" + _dkf(KEY_DECK_RPT_DIA_BOT, nd=0) + r""" @ """ + _dkf(KEY_DECK_RPT_SPC_BOT, nd=0) + r""" mm c/c & --- \\[6pt]
 \hline
-Min.\ Reinforcement $A_{s,min}$ (IRC 112 Cl. 16.3.1) &  &  &  \\[6pt]
+Min.\ Reinforcement $A_{s,min}$ (IRC 112 Cl. 16.3.1) & """ + _dkf(KEY_DECK_RPT_AS_MIN, nd=0) + r""" mm²/m & """ + _dkf(KEY_DECK_RPT_AS_BOT, nd=0) + r""" mm²/m & """ + _dks(_dkv(KEY_DECK_RPT_AS_BOT) >= _dkv(KEY_DECK_RPT_AS_MIN)) + r""" \\[6pt]
 \hline
-Max.\ Bar Spacing (IRC 112 Cl. 16.3.2) &  &  &  \\[6pt]
+Max.\ Bar Spacing (IRC 112 Cl. 16.3.2) & """ + _dkf(KEY_DECK_RPT_SPACING_MAX, nd=0) + r""" mm & """ + _dkf(KEY_DECK_RPT_SPC_BOT, nd=0) + r""" mm & """ + _dks(0.0 < _dkv(KEY_DECK_RPT_SPC_BOT) <= _dkv(KEY_DECK_RPT_SPACING_MAX)) + r""" \\[6pt]
 \hline
 \multicolumn{4}{|l|}{\textbf{Distribution Reinforcement --- Longitudinal}} \\[6pt]
 \hline
-Required Area, $A_{st,dist}$ (mm²/m) &  &  &  \\[6pt]
+Required Area, $A_{st,dist}$ (mm²/m) & $\geq 20\%$ of main steel & --- & --- \\[6pt]
 \hline
 \multicolumn{4}{|l|}{\textbf{Top Reinforcement (Support / Cantilever Overhang)}} \\[6pt]
 \hline
-Required Area, $A_{st,top}$ (mm²/m) &  &  &  \\[6pt]
+Required Area, $A_{st,top}$ (mm²/m) & """ + _dkf(KEY_DECK_RPT_AS_REQ_TOP, nd=0) + r""" mm²/m & """ + _dkf(KEY_DECK_RPT_AS_TOP, nd=0) + r""" mm²/m & """ + _dks(_dkv(KEY_DECK_RPT_AS_TOP) >= _dkv(KEY_DECK_RPT_AS_REQ_TOP)) + r""" \\[6pt]
 \hline
 \multicolumn{4}{|l|}{\textbf{Cover and Detailing}} \\[6pt]
 \hline
-Clear Cover (IRC 112 Cl. 15.2) &  &  &  \\[6pt]
+Clear Cover (IRC 112 Cl. 15.2) & --- & Top """ + _dkf(KEY_DECK_RPT_COVER_TOP, nd=0) + r""" / Bottom """ + _dkf(KEY_DECK_RPT_COVER_BOT, nd=0) + r""" mm & --- \\[6pt]
 \hline
 \end{longtable}
 \noindent\textit{Note: IRC 112 Cl. 16.3, IS 456 Cl. 26.5. All reinforcement provisions satisfy strength and detailing requirements.}
