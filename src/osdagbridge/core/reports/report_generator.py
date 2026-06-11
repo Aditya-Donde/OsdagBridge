@@ -1980,17 +1980,17 @@ The reinforced concrete deck slab is designed per IRC~112:2011 (flexure, shear, 
 \hline
 \textbf{Parameter} & \textbf{Formula} & \textbf{Value} & \textbf{Status} \\[6pt]
 \hline
-Overhang Length, $l_{oh}$ & --- &  & --- \\[6pt]
+Overhang Length, $l_{oh}$ & --- & """ + _dkoh(KEY_DECK_RPT_OVERHANG, nd=0, unit=" mm") + r""" & --- \\[6pt]
 \hline
-Crash Barrier Load Moment &  &  & --- \\[6pt]
+Crash Barrier Load Moment & IRC 6 Cl. 206.4 & """ + _dkoh(KEY_DECK_RPT_M_BARRIER, nd=2, unit=" kN-m/m") + r""" & --- \\[6pt]
 \hline
-Dead Load Moment &  &  & --- \\[6pt]
+Dead Load Moment & $w_{DL}\,l_{oh}^2/2$ + railing & """ + _dkoh(KEY_DECK_RPT_M_DL_OH, nd=2, unit=" kN-m/m") + r""" & --- \\[6pt]
 \hline
-Live Load Moment (eccentric wheel) &  &  & --- \\[6pt]
+Live Load Moment (eccentric wheel) & Wheel load $\times$ arm & """ + _dkoh(KEY_DECK_RPT_M_LL_OH, nd=2, unit=" kN-m/m") + r""" & --- \\[6pt]
 \hline
-Total Hogging Moment, $M_{u,oh}$ &  &  & --- \\[6pt]
+Total Hogging Moment, $M_{u,oh}$ & """ + _dkf(KEY_DECK_RPT_GAMMA_DL, nd=2) + r""" DL + """ + _dkf(KEY_DECK_RPT_GAMMA_LL, nd=2) + r""" (LL + CB) & """ + _dkoh(KEY_DECK_RPT_M_ULS_OH, nd=2, unit=" kN-m/m") + r""" & --- \\[6pt]
 \hline
-Moment Capacity (top steel), $M_{Rd,oh}$ &  &  &  \\[6pt]
+Moment Capacity (top steel), $M_{Rd,oh}$ & IRC 112 Cl. 12.2 & """ + _dkoh(KEY_DECK_RPT_MU_OH, nd=2, unit=" kN-m/m") + r""" & """ + (_dks(_dkv(KEY_DECK_RPT_MU_OH) >= _dkv(KEY_DECK_RPT_M_ULS_OH)) if _dk_oh else ("N/A" if _dk_has else "---")) + r""" \\[6pt]
 \hline
 \end{longtable}
 \noindent\textit{Note: IRC 6 Cl. 206.4 crash barrier loads applied at kerb face; IRC 112 Cl. 12.2 flexure.}
