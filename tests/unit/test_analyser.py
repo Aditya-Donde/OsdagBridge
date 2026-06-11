@@ -1114,3 +1114,423 @@ class TestLiveLoad:
 @patch("osdagbridge.core.bridge_types.plate_girder.analyser.og.create_point")
 @patch("osdagbridge.core.bridge_types.plate_girder.analyser.og.create_moving_path")
 @patch("osdagbridge.core.bridge_types.plate_girder.analyser.og.create_moving_load")
+class TestMovingLoad:
+    def test_raises_valueerror_when_vehicle_loads_empty(self, mock_ml, mock_mp, mock_pt):
+        bridge = BridgeGrillageModel()
+        bridge.model = MagicMock()
+        bridge.vehicle_moving_loads_by_case = {}
+        with pytest.raises(ValueError):
+            bridge.create_moving_vehicle_load_cases()
+
+    def test_one_moving_case_per_combination(self, mock_ml, mock_mp, mock_pt):
+        bridge = BridgeGrillageModel()
+        bridge.model = MagicMock()
+        mock_vehicle_1 = MagicMock()
+        mock_vehicle_2 = MagicMock()
+        bridge.vehicle_moving_loads_by_case = {1: [mock_vehicle_1], 2: [mock_vehicle_2]}
+        bridge.vehicle_type_map = {id(mock_vehicle_1): "ClassA", id(mock_vehicle_2): "ClassA"}
+        bridge.L = 33.5
+        bridge.create_moving_vehicle_load_cases()
+        assert len(bridge.moving_load_cases_list) == 2, (
+            f"Expected 2 moving load cases (one per combination), got {len(bridge.moving_load_cases_list)}"
+        )
+
+    def test_path_start_is_negative_vehicle_length(self, mock_ml, mock_mp, mock_pt):
+        bridge = BridgeGrillageModel()
+        bridge.model = MagicMock()
+        mock_vehicle_1 = MagicMock()
+        bridge.vehicle_moving_loads_by_case = {1: [mock_vehicle_1]}
+        bridge.vehicle_type_map = {id(mock_vehicle_1): "ClassA"}
+        bridge.L = 33.5
+        bridge.create_moving_vehicle_load_cases()
+        neg_x_found = False
+        for call in mock_pt.call_args_list:
+            if call.kwargs.get("x") is not None and call.kwargs["x"] < 0:
+                neg_x_found = True
+                break
+            elif call.args and call.args[0] < 0:
+                neg_x_found = True
+                break
+        assert neg_x_found, "Moving path should start at negative x (= −vehicle_length), but no negative x coord found in create_point calls"
+
+    def test_moving_load_cases_list_stored(self, mock_ml, mock_mp, mock_pt):
+        bridge = BridgeGrillageModel()
+        bridge.model = MagicMock()
+        mock_vehicle_1 = MagicMock()
+        bridge.vehicle_moving_loads_by_case = {1: [mock_vehicle_1]}
+        bridge.vehicle_type_map = {id(mock_vehicle_1): "ClassA"}
+        bridge.L = 33.5
+        bridge.create_moving_vehicle_load_cases()
+        assert bridge.moving_load_cases_list is not None, "moving_load_cases_list should not be None after create_moving_vehicle_load_cases()"
+        assert len(bridge.moving_load_cases_list) > 0, "moving_load_cases_list should contain at least one entry"
+
+class TestAnalyze:
+    def test_raises_valueerror_when_model_is_none(self):
+        bridge = BridgeGrillageModel()
+        bridge.model = None
+        with pytest.raises(ValueError):
+            bridge.analyze()
+
+    def test_model_analyze_called_once(self):
+        bridge = BridgeGrillageModel()
+        bridge.model = MagicMock()
+        bridge.analyze()
+        assert bridge.model.analyze.call_count == 1, f"model.analyze() should be called once, got {bridge.model.analyze.call_count}"
+
+    def test_returns_results_from_model_get_results(self):
+        bridge = BridgeGrillageModel()
+        bridge.model = MagicMock()
+        bridge.model.get_results.return_value = "fake_results"
+        result = bridge.analyze()
+        assert result == "fake_results", f"analyze() should return model.get_results(), got {result!r}"
+
+@patch("osdagbridge.core.bridge_types.plate_girder.analyser.PlateGirderAnalysisResults")
+class TestResultHandler:
+    def setup_method(self, method):
+        self.bridge = BridgeGrillageModel()
+        self.bridge.model = MagicMock()
+        self.bridge.model.analyze.return_value = None
+        self.bridge.model.get_results.return_value = MagicMock(name="fake_dataset")
+        self.bridge.edge_dist = 1.1
+
+    def test_result_handler_created_once(self, mock_handler):
+        results = self.bridge.analyze()
+        mock_handler(dataset=results, bridge=self.bridge, edge_dist=self.bridge.edge_dist)
+        assert mock_handler.call_count == 1, f"PlateGirderAnalysisResults should be instantiated once, got {mock_handler.call_count}"
+
+    def test_correct_dataset_passed(self, mock_handler):
+        results = self.bridge.analyze()
+        mock_handler(dataset=results, bridge=self.bridge, edge_dist=self.bridge.edge_dist)
+        mock_handler.assert_called_with(dataset=results, bridge=self.bridge, edge_dist=self.bridge.edge_dist)
+
+    def test_correct_bridge_instance_passed(self, mock_handler):
+        results = self.bridge.analyze()
+        mock_handler(dataset=results, bridge=self.bridge, edge_dist=self.bridge.edge_dist)
+        mock_handler.assert_called_with(dataset=results, bridge=self.bridge, edge_dist=self.bridge.edge_dist)
+
+    def test_correct_edge_dist_passed(self, mock_handler):
+        self.bridge.edge_dist = 1.1
+        results = self.bridge.analyze()
+        mock_handler(dataset=results, bridge=self.bridge, edge_dist=self.bridge.edge_dist)
+        mock_handler.assert_called_with(dataset=results, bridge=self.bridge, edge_dist=self.bridge.edge_dist)
+
+    def test_run_interactive_viewer_called_once(self, mock_handler):
+        mock_instance = MagicMock()
+        mock_handler.return_value = mock_instance
+        mock_instance.run_interactive_viewer()
+        assert mock_instance.run_interactive_viewer.call_count == 1, (
+            f"run_interactive_viewer should be called once, got {mock_instance.run_interactive_viewer.call_count}"
+        )
+
+    def test_viewer_called_with_no_arguments(self, mock_handler):
+        mock_instance = MagicMock()
+        mock_handler.return_value = mock_instance
+        mock_instance.run_interactive_viewer()
+        mock_instance.run_interactive_viewer.assert_called_with()
+
+    def test_raises_if_model_not_built(self, mock_handler):
+        self.bridge.model = None
+        with pytest.raises(ValueError):
+            self.bridge.analyze()
+
+@patch("osdagbridge.core.bridge_types.plate_girder.analyser.og.plt", create=True)
+@patch("osdagbridge.core.bridge_types.plate_girder.analyser.og.opsv", create=True)
+@patch("osdagbridge.core.bridge_types.plate_girder.analyser.og.opsplt", create=True)
+class TestPlotModel:
+    def test_raises_valueerror_when_model_is_none(self, mock_opsplt, mock_opsv, mock_plt):
+        bridge = BridgeGrillageModel()
+        bridge.model = None
+        with pytest.raises(ValueError):
+            bridge.plot_model()
+
+    def test_calls_plotting_functions(self, mock_opsplt, mock_opsv, mock_plt):
+        bridge = BridgeGrillageModel()
+        bridge.model = MagicMock()
+        mock_fig = MagicMock()
+        mock_plt.gcf.return_value = mock_fig
+        
+        bridge.plot_model()
+        
+        mock_opsplt.plot_model.assert_called_once_with(show_nodes="yes", show_nodetags="yes")
+        mock_opsv.plot_model.assert_called_once_with(az_el=(-90, 0), element_labels=0)
+        mock_plt.gcf.assert_called_once()
+        mock_fig.set_size_inches.assert_called_once_with(8, 8)
+        mock_plt.show.assert_called_once()
+
+@patch("osdagbridge.core.bridge_types.plate_girder.analyser.og.plot_force")
+@patch("osdagbridge.core.bridge_types.plate_girder.analyser.og.plot_defo")
+@patch("osdagbridge.core.bridge_types.plate_girder.analyser.og.plt", create=True)
+class TestPlot:
+    def test_raises_valueerror_when_model_is_none(self, mock_plt, mock_defo, mock_force):
+        bridge = BridgeGrillageModel()
+        bridge.model = None
+        with pytest.raises(ValueError):
+            bridge.plot()
+
+    def test_executes_plot_workflow(self, mock_plt, mock_defo, mock_force):
+        bridge = BridgeGrillageModel()
+        bridge.model = MagicMock()
+        
+        # Setup model mock returns
+        bridge.model.get_element.side_effect = lambda member, options: [101]
+        
+        # Mock the results dataset
+        mock_results = MagicMock()
+        mock_max_disp = MagicMock()
+        mock_max_disp.values = 0.005
+        mock_results.displacements.sel.return_value = [mock_max_disp]
+        
+        mock_static_results = MagicMock()
+        mock_max_force = MagicMock()
+        mock_max_force.values = 12000.0
+        mock_static_results.forces.sel.return_value = [mock_max_force]
+
+        # Deterministic call sequence: first call returns mock_results, second returns mock_static_results
+        bridge.model.get_results.side_effect = [mock_results, mock_static_results]
+        
+        bridge.plot()
+        
+        # Verify calls
+        mock_defo.assert_called_once_with(
+            bridge.model, mock_results, member="exterior_main_beam_1", option="nodes", loadcase='girder self weight'
+        )
+        mock_force.assert_called_once_with(
+            bridge.model, mock_results, member="exterior_main_beam_1", component="Mz", loadcase='Deck slab load'
+        )
+        mock_plt.show.assert_any_call()
+
+    def test_plot_extracts_correct_load_case_names(self, mock_plt, mock_defo, mock_force):
+        """Ensure that hardcoded load case names in plot() remain consistent with analyser."""
+        bridge = BridgeGrillageModel()
+        bridge.model = MagicMock()
+        bridge.model.get_element.side_effect = lambda member, options: [101]
+
+        mock_results = MagicMock()
+        mock_max_disp = MagicMock()
+        mock_max_disp.values = 0.001
+        mock_results.displacements.sel.return_value = [mock_max_disp]
+
+        mock_static_results = MagicMock()
+        mock_max_force = MagicMock()
+        mock_max_force.values = 5000.0
+        mock_static_results.forces.sel.return_value = [mock_max_force]
+
+        bridge.model.get_results.side_effect = [mock_results, mock_static_results]
+        bridge.plot()
+
+        # get_results() called twice: once with no args, once with load_case=[]
+        assert bridge.model.get_results.call_count == 2, (
+            f"plot() should call model.get_results() twice (general + load-case-specific), got {bridge.model.get_results.call_count}"
+        )
+        first_call_kwargs = bridge.model.get_results.call_args_list[1]
+        # Second call must include 'Deck slab load' as the load case
+        assert first_call_kwargs == call(load_case=['Deck slab load']), (
+            f"Second get_results() call should use load_case=['Deck slab load'], got {first_call_kwargs}"
+        )
+
+@patch("osdagbridge.core.bridge_types.plate_girder.analyser.og.create_load_case")
+class TestCreateGoverningLLLoadCase:
+    def test_raises_valueerror_when_model_is_none(self, mock_lc):
+        bridge = BridgeGrillageModel()
+        bridge.model = None
+        dataset = MagicMock()
+        with pytest.raises(ValueError):
+            bridge.create_governing_ll_load_case(dataset)
+
+    def test_warns_when_no_static_load_cases(self, mock_lc):
+        bridge = BridgeGrillageModel()
+        bridge.model = MagicMock()
+        dataset = MagicMock()
+        dataset.coords = {"Loadcase": MagicMock(values=[])}
+        with pytest.warns(UserWarning, match="No vehicle static load cases found"):
+            res = bridge.create_governing_ll_load_case(dataset)
+            assert res == dataset, "When no static load cases, create_governing_ll_load_case should return the original dataset"
+            assert bridge.ll_load_case is None, "ll_load_case should remain None when no static load cases found"
+
+    def test_governing_ll_load_case_creation_flow(self, mock_lc):
+        bridge = BridgeGrillageModel()
+        bridge.model = MagicMock()
+        
+        # Setup dataset
+        dataset = MagicMock()
+        dataset.coords = {"Loadcase": MagicMock(values=["case 1", "case 2"])}
+        
+        # Forces selection mocks: case 1 has max |Mz_i| = 50000, case 2 has 20000
+        forces_mock = MagicMock()
+        forces_mock.__abs__.return_value.max.side_effect = [50000.0, 20000.0]
+        dataset.__getitem__.return_value.sel.return_value = forces_mock
+
+        # Setup target load case matching case 1
+        mock_lc_case_1 = MagicMock()
+        mock_lc_case_1.name = "case 1"
+        mock_lc_case_1.load_groups = [{"load": "load_obj_1"}]
+        bridge.vehicle_load_cases_list = [mock_lc_case_1]
+
+        # Mock create_load_case return value for ULS load case
+        mock_uls_lc = MagicMock()
+        mock_lc.return_value = mock_uls_lc
+
+        # Mock self.model.get_results return value for post-analysis
+        post_ds = MagicMock()
+        post_ds.coords = {"Loadcase": MagicMock(values=["case 1", "case 2", "1.5 LL"])}
+        bridge.model.get_results.return_value = post_ds
+
+        res = bridge.create_governing_ll_load_case(dataset, partial_safety_factor=1.5)
+
+        # Assert correct governing case ULS created
+        mock_lc.assert_called_with(name="1.5 LL")
+        mock_uls_lc.add_load.assert_called_once_with("load_obj_1")
+        bridge.model.add_load_case.assert_called_once_with(mock_uls_lc, load_factor=1.5)
+        assert bridge.ll_load_case == mock_uls_lc, f"ll_load_case should be the ULS load case object, got {bridge.ll_load_case!r}"
+        assert bridge.governing_ll_name == "case 1", f"governing_ll_name should be 'case 1', got {bridge.governing_ll_name!r}"
+        assert bridge.model.analyze.call_count == 1, (
+            f"model.analyze() should be called once after adding LL, got {bridge.model.analyze.call_count}"
+        )
+
+
+@patch("osdagbridge.core.bridge_types.plate_girder.analyser.og.create_load_case")
+@patch("osdagbridge.core.bridge_types.plate_girder.analyser.og.create_load_model")
+@patch("osdagbridge.core.bridge_types.plate_girder.analyser.IRC6_2017.table_6A")
+@patch("osdagbridge.core.bridge_types.plate_girder.analyser.IRC6_2017.table_6")
+class TestCreateVehicleLoadCases:
+    """
+    Tests for BridgeGrillageModel.create_vehicle_load_cases().
+
+    Verifies orchestration logic:
+    - raises ValueError when model is not set
+    - creates exactly one load case per vehicle combination
+    - places vehicles at z-coordinates derived from IRC table_6 lane spacing
+    - adds each load case to model exactly once
+    - stores all load cases in self.vehicle_load_cases_list
+    """
+
+    def setup_method(self, method):
+        self.bridge = BridgeGrillageModel()
+        self.bridge.model = MagicMock()
+        self.bridge.L = 33.5
+        self.bridge.layout = MagicMock()
+
+    def _setup_single_carriageway(self, mock_t6, mock_t6a, n_lanes, cw_width, z_start=0.0):
+        self.bridge.layout.has_component.side_effect = lambda x: x == "carriageway"
+        cw = MagicMock()
+        cw.width = cw_width
+        cw.z_start = z_start
+        self.bridge.layout.get_component.return_value = cw
+        mock_t6.return_value = n_lanes
+        mock_t6a.return_value = {"vehicle_combinations": [{"ClassA": n_lanes}]}
+
+    def test_raises_valueerror_when_model_is_none(self, mock_t6, mock_t6a, mock_lm, mock_lc):
+        self.bridge.model = None
+        with pytest.raises(ValueError, match="Model is not available"):
+            self.bridge.create_vehicle_load_cases()
+
+    def test_creates_one_load_case_per_combination(self, mock_t6, mock_t6a, mock_lm, mock_lc):
+        """One IRC combination → one og.create_load_case call."""
+        self._setup_single_carriageway(mock_t6, mock_t6a, n_lanes=2, cw_width=7.0)
+        mock_lc.return_value = MagicMock()
+
+        self.bridge.create_vehicle_load_cases()
+
+        assert mock_lc.call_count == 1, f"Expected 1 og.create_load_case call for 1 combination, got {mock_lc.call_count}"
+
+    def test_load_case_name_reflects_combination(self, mock_t6, mock_t6a, mock_lm, mock_lc):
+        """Load case name must follow format 'Case{n} {k}x{vehicle_type}'."""
+        n_lanes = 2
+        self._setup_single_carriageway(mock_t6, mock_t6a, n_lanes=n_lanes, cw_width=7.0)
+        mock_lc.return_value = MagicMock()
+
+        self.bridge.create_vehicle_load_cases()
+
+        name_used = mock_lc.call_args_list[0].kwargs["name"]
+        expected_name = f"Case1 {n_lanes}xClassA"
+        assert name_used == expected_name, f"Load case name should be {expected_name!r}, got {name_used!r}"
+
+    def test_vehicle_placed_at_correct_z_coordinate(self, mock_t6, mock_t6a, mock_lm, mock_lc):
+        """Each vehicle must be placed at z = z_start + (i+0.5) * lane_width from IRC table_6."""
+        n_lanes = 2
+        cw_width = 7.0
+        z_start = 0.0
+        self._setup_single_carriageway(mock_t6, mock_t6a, n_lanes=n_lanes, cw_width=cw_width, z_start=z_start)
+
+        mock_vehicle = MagicMock()
+        mock_lm.return_value.create.return_value = mock_vehicle
+        mock_lc.return_value = MagicMock()
+
+        self.bridge.create_vehicle_load_cases()
+
+        # Check that set_global_coord was called with the expected z values
+        set_coord_calls = mock_vehicle.set_global_coord.call_args_list
+        lane_width = cw_width / n_lanes
+        expected_z_coords = [z_start + (i + 0.5) * lane_width for i in range(n_lanes)]
+
+        actual_z_coords = [c.args[0].z for c in set_coord_calls]
+        assert sorted(actual_z_coords) == pytest.approx(sorted(expected_z_coords)), (
+            f"Vehicle placed at incorrect Z-coordinates. Expected: {expected_z_coords}, Got: {actual_z_coords}"
+        )
+
+    def test_vehicle_x_coord_is_zero(self, mock_t6, mock_t6a, mock_lm, mock_lc):
+        """Vehicles always start at x=0 (longitudinal start of bridge)."""
+        self._setup_single_carriageway(mock_t6, mock_t6a, n_lanes=1, cw_width=3.5, z_start=0.0)
+        mock_vehicle = MagicMock()
+        mock_lm.return_value.create.return_value = mock_vehicle
+        mock_lc.return_value = MagicMock()
+
+        self.bridge.create_vehicle_load_cases()
+
+        for c in mock_vehicle.set_global_coord.call_args_list:
+            assert c.args[0].x == pytest.approx(0.0), f"Vehicle x-coordinate should be 0.0, got {c.args[0].x}"
+
+    def test_each_load_case_added_to_model(self, mock_t6, mock_t6a, mock_lm, mock_lc):
+        """Each created load case must be added to self.model exactly once."""
+        mock_t6.return_value = 2
+        # Two combinations → two calls to add_load_case
+        mock_t6a.return_value = {"vehicle_combinations": [{"ClassA": 2}, {"Class70R": 1}]}
+        self.bridge.layout.has_component.side_effect = lambda x: x == "carriageway"
+        cw = MagicMock()
+        cw.width = 7.0
+        cw.z_start = 0.0
+        self.bridge.layout.get_component.return_value = cw
+        mock_lc.side_effect = lambda name: MagicMock(name=name)
+
+        self.bridge.create_vehicle_load_cases()
+
+        assert self.bridge.model.add_load_case.call_count == 2, (
+            f"Expected 2 add_load_case calls for 2 combinations, got {self.bridge.model.add_load_case.call_count}"
+        )
+
+    def test_vehicle_load_cases_list_stored_on_instance(self, mock_t6, mock_t6a, mock_lm, mock_lc):
+        """All created load cases must be stored in self.vehicle_load_cases_list."""
+        mock_t6.return_value = 2
+        mock_t6a.return_value = {"vehicle_combinations": [{"ClassA": 2}, {"Class70R": 1}]}
+        self.bridge.layout.has_component.side_effect = lambda x: x == "carriageway"
+        cw = MagicMock()
+        cw.width = 7.0
+        cw.z_start = 0.0
+        self.bridge.layout.get_component.return_value = cw
+        mock_lc.side_effect = lambda name: MagicMock(name=name)
+
+        result = self.bridge.create_vehicle_load_cases()
+
+        assert hasattr(self.bridge, "vehicle_load_cases_list"), "vehicle_load_cases_list attribute missing after create_vehicle_load_cases()"
+        assert len(self.bridge.vehicle_load_cases_list) == 2, (
+            f"vehicle_load_cases_list should have 2 entries, got {len(self.bridge.vehicle_load_cases_list)}"
+        )
+        assert self.bridge.vehicle_load_cases_list == result, "vehicle_load_cases_list should equal the return value of create_vehicle_load_cases()"
+
+    def test_create_load_model_called_with_uppercase_vehicle_type(self, mock_t6, mock_t6a, mock_lm, mock_lc):
+        """og.create_load_model must be called with a model_type that is all-uppercase.
+        Uses a .upper() self-check so the assertion is not tied to a specific vehicle
+        name: if analyser.py drops .upper(), the received value will differ from its
+        own .upper() and the test fails regardless of vehicle type.
+        """
+        self._setup_single_carriageway(mock_t6, mock_t6a, n_lanes=1, cw_width=3.5, z_start=0.0)
+        mock_lc.return_value = MagicMock()
+
+        self.bridge.create_vehicle_load_cases()
+
+        assert mock_lm.call_count >= 1, "og.create_load_model was never called"
+        for c in mock_lm.call_args_list:
+            model_type = c.kwargs.get("model_type") or (c.args[0] if c.args else "")
+            assert model_type == model_type.upper(), (
+                f"model_type '{model_type}' was not uppercased — .upper() may have been removed from analyser.py"
+            )
