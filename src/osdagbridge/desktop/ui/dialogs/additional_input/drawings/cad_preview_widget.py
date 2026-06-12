@@ -10,8 +10,10 @@ from typing import List
 from PySide6.QtCore import Qt, QRectF
 from PySide6.QtGui  import QColor, QPainter, QPen
 from PySide6.QtWidgets import (
-    QHBoxLayout, QPushButton, QSizePolicy, QVBoxLayout, QWidget,
+    QHBoxLayout, QPushButton, QSizePolicy, QStackedWidget, QVBoxLayout, QWidget,
 )
+
+from osdagbridge.desktop.ui.docks.cad_cross_section import CrossSectionCADWidget
 
 class GirderCadView(QWidget):
     """Simple 2-D segmented girder view driven by member lengths."""
@@ -197,15 +199,19 @@ class GirderCadView(QWidget):
 
 class CadPreviewWidget(QWidget):
     """
-    Self-contained CAD preview: GirderCadView canvas + Cross Section / Side View buttons.
+    Self-contained CAD preview with two states toggled by side buttons:
 
-    All internal wiring (button clicks → view mode switch) is handled inside.
-    Only one public method is exposed to the outside:
+        • "Side View"      → GirderCadView (segmented member elevation)
+        • "Cross Section"  → CrossSectionCADWidget (the real bridge cross-section,
+                             rendered as a compact, non-interactive thumbnail with
+                             the selected girder highlighted)
 
-        update_from_bridge_inputs(working_input_dict)
-            Called by AdditionalInputs whenever data changes.
-            Extracts segment chain and selected member from the dict,
-            then redraws the canvas.
+    Public methods called from AdditionalInputs connectors:
+
+        update_segments(segments)            → side-view member chain
+        update_selected_member(member_id)    → side-view highlight
+        update_cad_state(working_input_dict) → cross-section bridge params
+        update_selected_girder(index)        → cross-section girder highlight
 
     Instantiated via TYPE_DIRECT_WIDGET in GIRDER_DETAILS_SCHEMA.
     """
@@ -220,12 +226,23 @@ class CadPreviewWidget(QWidget):
     # ── public update methods — called from AdditionalInputs connectors ────────
 
     def update_segments(self, segments: list) -> None:
-        """Redraw canvas with a new segment chain."""
+        """Redraw side-view canvas with a new segment chain."""
         self._cad.set_segments(segments)
 
     def update_selected_member(self, member_id: str) -> None:
-        """Highlight the selected member on the canvas."""
+        """Highlight the selected member on the side-view canvas."""
         self._cad.set_selected_member(member_id)
+
+    def update_cad_state(self, input_dict: dict) -> None:
+        """Feed live bridge inputs into the cross-section preview and redraw."""
+        if input_dict:
+            self._cross.update_from_bridge_inputs(input_dict)
+            self._cross.show_dimensions = False  # update_* re-enables it
+
+    def update_selected_girder(self, index: int) -> None:
+        """Highlight a specific girder (0-based) in the cross-section preview."""
+        self._cross.highlighted_girder_index = index
+        self._cross.update()
 
     # ── internal ──────────────────────────────────────────────────────────────
 
@@ -236,8 +253,23 @@ class CadPreviewWidget(QWidget):
         outer.setContentsMargins(0, 0, 0, 0)
         outer.setSpacing(12)
 
-        self._cad = GirderCadView(self)
-        outer.addWidget(self._cad, 1)
+        # Stack the two canvases; only one is visible per view mode.
+        self._stack = QStackedWidget(self)
+        self._stack.setFixedHeight(160)
+
+        self._cad = GirderCadView(self._stack)
+        self._stack.addWidget(self._cad)
+
+        self._cross = CrossSectionCADWidget(self._stack)
+        self._cross.show_dimensions = False
+        self._cross.interactive_hover = False
+        self._cross.show_zoom_controls = False
+        self._cross.scale_factor = 0.85
+        self._cross.setMinimumSize(0, 0)
+        self._cross.setFixedHeight(160)
+        self._stack.addWidget(self._cross)
+
+        outer.addWidget(self._stack, 1)
 
         btn_col = QVBoxLayout()
         btn_col.setContentsMargins(0, 0, 0, 0)
@@ -266,7 +298,13 @@ class CadPreviewWidget(QWidget):
 
     def _set_view_mode(self, mode: str) -> None:
         self._view_mode = mode
-        self._cad.set_view_mode(mode)
+        if mode == "cross":
+            self._stack.setCurrentWidget(self._cross)
+            self._cross._update_widget_size()
+            self._cross.update()
+        else:
+            self._stack.setCurrentWidget(self._cad)
+            self._cad.set_view_mode(mode)
         self._sync_button_styles()
 
     def _sync_button_styles(self) -> None:

@@ -394,6 +394,11 @@ class AdditionalInputs(QDialog):
 
         # Re-apply End Diaphragm bracing layout state (K-Bracing disables bottom chord, CAD sync)
         self._on_ed_bracing_layout_changed()
+        # Refresh the Girder Details cross-section preview with live bridge inputs.
+        # design_mode_trigger runs on every dialog open, so this also seeds it.
+        cad = self.findChild(QWidget, KEY_MP_GD_CAD_PREVIEW)
+        if cad:
+            cad.update_cad_state(self.working_input_dict)
 
     def reset_active_tab_defaults(self) -> None:  # lifecycle: resets current tab's fields to default_input_dict values
         """
@@ -734,6 +739,10 @@ class AdditionalInputs(QDialog):
         current_object.setCurrentIndex(idx if idx >= 0 else 0)
         print(f"@@: Update Girder List")
 
+        cad = self.findChild(QWidget, KEY_MP_GD_CAD_PREVIEW)
+        if cad:
+            cad.update_cad_state(self.working_input_dict)
+
     def _on_girder_type_changed(self, girder_type: str) -> None:  # on_change: shows welded or rolled section fields based on girder type selection
         is_welded = girder_type.strip().lower() == "welded"
 
@@ -781,6 +790,11 @@ class AdditionalInputs(QDialog):
 
         target_widget.set_total_span(total_span)
         target_widget.refresh(segments)
+
+        # Highlight the selected girder in the cross-section preview.
+        cad = self.findChild(QWidget, KEY_MP_GD_CAD_PREVIEW)
+        if cad:
+            cad.update_selected_girder(combo.currentIndex())
 
     def _on_segment_selected(self, row: int, member_id: str) -> None:  # on_change: highlights the clicked segment member on the CAD preview canvas
         from osdagbridge.core.utils.common import KEY_MP_GD_CAD_PREVIEW
