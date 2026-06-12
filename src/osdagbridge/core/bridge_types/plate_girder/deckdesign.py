@@ -34,6 +34,10 @@ from osdagbridge.core.utils.common import (
     KEY_DD_AS_REQ_TOP, KEY_DD_M_BARRIER,
     KEY_DD_M_DL_OH, KEY_DD_M_LL_OH, KEY_DD_M_ULS_OH,
     KEY_DD_D_OH, KEY_DD_MU_OH, KEY_DD_AS_REQ_OH,
+    KEY_DD_PUNCH_VED_KN, KEY_DD_TYRE_LENGTH, KEY_DD_PUNCH_C1,
+    KEY_DD_PUNCH_C2, KEY_DD_PUNCH_U1, KEY_DD_PUNCH_VED,
+    KEY_DD_VRD_C_MPA, KEY_DD_PUNCH_OK,
+    KEY_DD_SHEAR_VED, KEY_DD_SHEAR_VRDC, KEY_DD_SHEAR_OK,
     KEY_DD_AS_MIN, KEY_DD_WK_BOT, KEY_DD_WK_TOP,
     KEY_DD_WK_OH, KEY_DD_WK_LIMIT, KEY_DD_DIA_BOT,
     KEY_DD_SPC_BOT, KEY_DD_AS_BOT, KEY_DD_DIA_TOP,
@@ -487,11 +491,13 @@ def design_deck_slab(input_dict: dict, fck: float, fctm: float, fy: float, Es: f
     ur_bot_shear = V_ULS_bot_shear / VRd_c_bot if VRd_c_bot > 0 else 9.999
 
     # Punching shear — wheel on interior slab (load dispersed through wearing course)
+    # ULS design wheel load: γ_LL × impact factor × characteristic wheel load (IRC 112 Cl.10.4).
+    P_wheel_uls_kN = gamma_ll * impact_factor * P_wheel_kN
     wc_t_mm = wc_t_m * 1000.0
     c1_mm = _wheel_contact_width_m(vehicle_class) * 1000.0 + 2.0 * wc_t_mm   # transverse
     c2_mm = _wheel_contact_length_mm(vehicle_class) + 2.0 * wc_t_mm           # longitudinal
     u1_bot_mm = 2.0 * (c1_mm + c2_mm) + 4.0 * math.pi * d_bot_mm
-    v_Ed_bot_punch = P_wheel_kN * 1000.0 / (u1_bot_mm * d_bot_mm)
+    v_Ed_bot_punch = P_wheel_uls_kN * 1000.0 / (u1_bot_mm * d_bot_mm)
     punch_bot_ok = v_Rd_c_bot >= v_Ed_bot_punch
     ur_bot_punch = v_Ed_bot_punch / v_Rd_c_bot if v_Rd_c_bot > 0 else 9.999
 
@@ -505,7 +511,7 @@ def design_deck_slab(input_dict: dict, fck: float, fctm: float, fy: float, Es: f
         shear_oh_ok = VRd_c_oh >= V_ULS_oh_shear
         ur_oh_shear = V_ULS_oh_shear / VRd_c_oh if VRd_c_oh > 0 else 9.999
         u1_oh_mm = 2.0 * (c1_mm + c2_mm) + 4.0 * math.pi * d_oh_mm
-        v_Ed_oh_punch = P_wheel_kN * 1000.0 / (u1_oh_mm * d_oh_mm)
+        v_Ed_oh_punch = P_wheel_uls_kN * 1000.0 / (u1_oh_mm * d_oh_mm)
         punch_oh_ok = v_Rd_c_oh >= v_Ed_oh_punch
         ur_oh_punch = v_Ed_oh_punch / v_Rd_c_oh if v_Rd_c_oh > 0 else 9.999
         overhang_shear_lines = [
@@ -796,6 +802,19 @@ def design_deck_slab(input_dict: dict, fck: float, fctm: float, fy: float, Es: f
         KEY_DD_D_OH           : d_oh_mm,
         KEY_DD_MU_OH          : Mu_oh,
         KEY_DD_AS_REQ_OH      : As_req_oh,
+        # -- 5.17(d) punching shear --
+        KEY_DD_PUNCH_VED_KN   : P_wheel_uls_kN,
+        KEY_DD_TYRE_LENGTH    : _wheel_contact_length_mm(vehicle_class),
+        KEY_DD_PUNCH_C1       : c1_mm,
+        KEY_DD_PUNCH_C2       : c2_mm,
+        KEY_DD_PUNCH_U1       : u1_bot_mm,
+        KEY_DD_PUNCH_VED      : v_Ed_bot_punch,
+        KEY_DD_VRD_C_MPA      : v_Rd_c_bot,
+        KEY_DD_PUNCH_OK       : punch_bot_ok,
+        # -- 5.17(f) one-way (beam) shear --
+        KEY_DD_SHEAR_VED      : V_ULS_bot_shear,
+        KEY_DD_SHEAR_VRDC     : VRd_c_bot,
+        KEY_DD_SHEAR_OK       : shear_bot_ok,
         # -- 5.17(e) crack width --
         KEY_DD_AS_MIN         : as_min_bot,
         KEY_DD_WK_BOT         : cw_bot["wk"],

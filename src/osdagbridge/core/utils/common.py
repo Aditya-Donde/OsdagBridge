@@ -220,12 +220,27 @@ KEY_DD_D_OH             = "deck.report.d_oh"            # overhang effective dep
 KEY_DD_MU_OH            = "deck.report.mu_oh"           # overhang moment capacity (kNm/m)
 KEY_DD_AS_REQ_OH        = "deck.report.as_req_oh"       # overhang required steel (mm2/m)
 
+# -- 5.17(d) Punching shear (IRC 112 Cl.10.4) --
+KEY_DD_PUNCH_VED_KN     = "deck.report.punch_ved_kn"    # ULS design wheel load, γ_LL·(1+IF)·P_w (kN)
+KEY_DD_TYRE_LENGTH      = "deck.report.tyre_contact_length"  # raw longitudinal tyre contact (mm)
+KEY_DD_PUNCH_C1         = "deck.report.punch_c1"        # dispersed transverse contact c1 (mm)
+KEY_DD_PUNCH_C2         = "deck.report.punch_c2"        # dispersed longitudinal contact c2 (mm)
+KEY_DD_PUNCH_U1         = "deck.report.punch_u1"        # control perimeter u1 at 2d (mm)
+KEY_DD_PUNCH_VED        = "deck.report.punch_ved"       # punching shear stress v_Ed (MPa)
+KEY_DD_VRD_C_MPA        = "deck.report.vrd_c_mpa"       # shear resistance stress v_Rd,c (MPa)
+KEY_DD_PUNCH_OK         = "deck.report.punch_ok"        # bool — v_Ed ≤ v_Rd,c
+
 # -- 5.17(e) Crack width --
 KEY_DD_AS_MIN           = "deck.report.as_min"          # min reinforcement (mm2/m, IRC112 Cl.16.5.1)
 KEY_DD_WK_BOT           = "deck.report.wk_bot"          # bottom crack width (mm)
 KEY_DD_WK_TOP           = "deck.report.wk_top"          # top crack width (mm)
 KEY_DD_WK_OH            = "deck.report.wk_oh"           # overhang crack width (mm)
 KEY_DD_WK_LIMIT         = "deck.report.wk_limit"        # permissible crack width (mm)
+
+# -- 5.17(f) One-way (beam) shear (IRC 112 Cl.10.3.2) --
+KEY_DD_SHEAR_VED        = "deck.report.shear_ved"       # ULS design shear demand V_Ed (kN/m)
+KEY_DD_SHEAR_VRDC       = "deck.report.shear_vrdc"      # shear resistance V_Rd,c = v_Rd,c·b_w·d (kN/m)
+KEY_DD_SHEAR_OK         = "deck.report.shear_ok"        # bool — V_Ed ≤ V_Rd,c
 
 # -- 5.17(g) Reinforcement detailing (provided bars) --
 KEY_DD_DIA_BOT          = "deck.report.dia_bot"         # bottom bar diameter (mm)
