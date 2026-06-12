@@ -1030,29 +1030,59 @@ def _uls_girder_rows(n_girders) -> int | None:
         return None
 
 
+def _get_uls_per_girder(bridge) -> dict:
+    """Return design_results[KEY_SD_ULS_PER_GIRDER], or {} if unavailable."""
+    if bridge is None:
+        return {}
+    try:
+        return (getattr(bridge, "output_dict", {}).get("design_results") or {}).get(KEY_SD_ULS_PER_GIRDER) or {}
+    except Exception:
+        return {}
+
+
+def _uls_check_rows(bridge, category: str) -> list | None:
+    """Return ordered (girder_label, demand, capacity, ur, status) rows for one check category.
+
+    Girder order comes from _load_effects_cache (EB-filtered); each row gets
+    the per-girder values stored by _build_uls_per_girder in the designer.
+    Returns None if the data is not available yet.
+    """
+    uls_pg = _get_uls_per_girder(bridge)
+    cat_data = uls_pg.get(category)
+    if not cat_data:
+        return None
+
+    cache = getattr(bridge, "_load_effects_cache", None) or {}
+    girder_names = sorted(cache.keys()) if cache else sorted(cat_data.keys())
+
+    rows = []
+    for g in girder_names:
+        g_chk = cat_data.get(g)
+        if g_chk is None:
+            rows.append([f"{g}M1", EMPTY, EMPTY, EMPTY, EMPTY])
+        else:
+            rows.append([
+                f"{g}M1",
+                _num(g_chk["demand"]),
+                _num(g_chk["capacity"]),
+                _num(g_chk["ur"]),
+                g_chk.get("status", EMPTY),
+            ])
+    return rows if rows else None
+
+
 def resolve_flexural_resistance_check(input_dict: dict, bridge=None) -> dict | None:
-    dcr       = input_dict.get(KEY_UTIL_FLEXURE)
-    n_girders = input_dict.get(KEY_TS_NO_OF_GIRDERS)
-
-    if not _has(n_girders):
+    rows = _uls_check_rows(bridge, "flexure")
+    if rows is None:
         return None
-    n = _uls_girder_rows(n_girders)
-    if n is None:
-        return None
-
-    rows = [
-        [f"Girder {i}", EMPTY, EMPTY, _val(dcr) if _has(dcr) else EMPTY, EMPTY]
-        for i in range(1, n + 1)
-    ]
-
     return {
         "id":    "flexural_resistance_check",
         "label": "Flexural Resistance Check",
         "columns": [
             "Girder",
-            "Ultimate Bending Moment, Mᵤ (kNm)",
-            "Design Bending Moment, Mᵈ (kNm)",
-            "Demand to Capacity Ratio, DCR",
+            "Design Moment, Mᵈ (kNm)",
+            "Moment Resistance, Mᵣ (kNm)",
+            "Utilization Ratio",
             "Status",
         ],
         "rows": rows,
@@ -1060,28 +1090,17 @@ def resolve_flexural_resistance_check(input_dict: dict, bridge=None) -> dict | N
 
 
 def resolve_shear_resistance_check(input_dict: dict, bridge=None) -> dict | None:
-    dcr       = input_dict.get(KEY_UTIL_SHEAR)
-    n_girders = input_dict.get(KEY_TS_NO_OF_GIRDERS)
-
-    if not _has(n_girders):
+    rows = _uls_check_rows(bridge, "shear")
+    if rows is None:
         return None
-    n = _uls_girder_rows(n_girders)
-    if n is None:
-        return None
-
-    rows = [
-        [f"Girder {i}", EMPTY, EMPTY, _val(dcr) if _has(dcr) else EMPTY, EMPTY]
-        for i in range(1, n + 1)
-    ]
-
     return {
         "id":    "shear_resistance_check",
         "label": "Shear Resistance Check",
         "columns": [
             "Girder",
-            "Ultimate Shear Force, Vᵤ (kN)",
-            "Design Shear Force, Vᵈ (kN)",
-            "Demand to Capacity Ratio, DCR",
+            "Design Shear, Vᵈ (kN)",
+            "Shear Resistance, Vᵣ (kN)",
+            "Utilization Ratio",
             "Status",
         ],
         "rows": rows,
@@ -1089,29 +1108,17 @@ def resolve_shear_resistance_check(input_dict: dict, bridge=None) -> dict | None
 
 
 def resolve_bending_shear_interaction_check(input_dict: dict, bridge=None) -> dict | None:
-    dcr       = input_dict.get(KEY_UTIL_INTERACTION)
-    n_girders = input_dict.get(KEY_TS_NO_OF_GIRDERS)
-
-    if not _has(n_girders):
+    rows = _uls_check_rows(bridge, "interaction")
+    if rows is None:
         return None
-    n = _uls_girder_rows(n_girders)
-    if n is None:
-        return None
-
-    rows = [
-        [f"Girder {i}", EMPTY, EMPTY, _val(dcr) if _has(dcr) else EMPTY, EMPTY, EMPTY]
-        for i in range(1, n + 1)
-    ]
-
     return {
         "id":    "bending_shear_interaction_check",
         "label": "Bending-Shear Interaction Check",
         "columns": [
             "Girder",
-            "Ultimate Bending Moment, Mᵤ (kNm)",
-            "Reduced Design Bending Resistance, Mᵈᵥ (kNm)",
-            "Demand to Capacity Ratio, DCR",
-            "Clause Reference",
+            "Design Moment, Mᵈ (kNm)",
+            "Reduced Resistance, Mᵈᵥ (kNm)",
+            "Utilization Ratio",
             "Status",
         ],
         "rows": rows,
@@ -1119,31 +1126,17 @@ def resolve_bending_shear_interaction_check(input_dict: dict, bridge=None) -> di
 
 
 def resolve_lateral_torsional_buckling_check(input_dict: dict, bridge=None) -> dict | None:
-    dcr       = input_dict.get(KEY_UTIL_LTB)
-    n_girders = input_dict.get(KEY_TS_NO_OF_GIRDERS)
-
-    if not _has(n_girders):
+    rows = _uls_check_rows(bridge, "ltb")
+    if rows is None:
         return None
-    n = _uls_girder_rows(n_girders)
-    if n is None:
-        return None
-
-    rows = [
-        [f"Girder {i}", EMPTY, EMPTY, EMPTY, EMPTY, _val(dcr) if _has(dcr) else EMPTY, EMPTY, EMPTY]
-        for i in range(1, n + 1)
-    ]
-
     return {
         "id":    "lateral_torsional_buckling_check",
         "label": "Lateral Torsional Buckling Check - Construction Stage",
         "columns": [
             "Girder",
-            "Ultimate Bending Moment, Mᵤ (kNm)",
-            "LTB Design Buckling Resistance, Mᵦ (kNm)",
-            "LTB Reduction Factor, χ_LT",
-            "Non-Dimensional Slenderness, λ̄_LT",
-            "Demand to Capacity Ratio, DCR",
-            "Clause Reference",
+            "Design Moment, Mᵈ (kNm)",
+            "LTB Resistance, Mᵦ (kNm)",
+            "Utilization Ratio",
             "Status",
         ],
         "rows": rows,

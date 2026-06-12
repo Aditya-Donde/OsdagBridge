@@ -2951,6 +2951,49 @@ def _compute_per_lc_dcr(
     return result
 
 
+def _build_uls_per_girder(per_girder_results: dict) -> dict:
+    """Build the ULS-check summary consumed by the Generate Results tables.
+
+    Returns a dict keyed by check category (matching KEY_CHECK_* values):
+        {
+          "flexure":     {g_name: {demand, capacity, ur, status}, ...},
+          "shear":       {g_name: {...}, ...},
+          "interaction": {g_name: {...}, ...},   # worst of check_ids 3 & 4
+          "ltb":         {g_name: {...}, ...},
+        }
+    Only non-EB girders are included; checks missing for a girder are omitted.
+    """
+    _CATEGORY_IDS = {
+        "flexure":     (1,),
+        "shear":       (2,),
+        "interaction": (3, 4),
+        "ltb":         (5,),
+    }
+
+    def _worst(checks, *ids):
+        candidates = [c for c in checks if c["check_id"] in ids]
+        return max(candidates, key=lambda c: c["dcr"]) if candidates else None
+
+    result: Dict[str, Dict[str, dict]] = {cat: {} for cat in _CATEGORY_IDS}
+
+    for g_name, g_data in per_girder_results.items():
+        if g_name.startswith("EB"):
+            continue
+        checks = g_data.get("checks") or []
+        for cat, ids in _CATEGORY_IDS.items():
+            chk = _worst(checks, *ids)
+            if chk is None:
+                continue
+            result[cat][g_name] = {
+                "demand"  : chk["demand"],
+                "capacity": chk["capacity"],
+                "ur"      : chk["dcr"],
+                "status"  : chk["status"],
+            }
+
+    return result
+
+
 def run_design_check(
     config: "BridgeConfig | None" = None,
     plate_girder_bridge: Any | None = None,
@@ -3285,6 +3328,8 @@ def run_design_check(
         "report_text"               : report_text,
         # -- all-girder results --
         "per_girder"                : per_girder_results,
+        # -- ULS check table (Generate Results): per-girder demand/capacity/UR/status
+        KEY_SD_ULS_PER_GIRDER       : _build_uls_per_girder(per_girder_results),
     }
 
     return report_text, engine, design_results

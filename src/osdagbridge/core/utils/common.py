@@ -239,6 +239,8 @@ KEY_SD_STRESS_STEEL           = "steeldesign.stress.steel"
 KEY_SD_STRESS_STEEL_ALLOWABLE = "steeldesign.stress.steel.allowable"
 # Concrete deck (interior panel SLS): bottom & top fibre stress share one limit
 # (0.48·fck). Stored in deck_design_results.
+# ULS check per-girder table (stored in design_results under this key)
+KEY_SD_ULS_PER_GIRDER         = "steeldesign.uls_per_girder"
 KEY_DD_STRESS_CONC_BOTTOM     = "deckdesign.stress.concrete.bottom"
 KEY_DD_STRESS_CONC_TOP        = "deckdesign.stress.concrete.top"
 KEY_DD_STRESS_CONC_ALLOWABLE  = "deckdesign.stress.concrete.allowable"
