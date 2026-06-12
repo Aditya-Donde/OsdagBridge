@@ -169,6 +169,23 @@ KEY_SD_STIFFENER_COL_THICKNESS = "steeldesign.details.stiffener.col.thickness"
 KEY_SD_STIFFENER_COL_WIDTH = "steeldesign.details.stiffener.col.width"
 KEY_SD_STIFFENER_COL_SPACING = "steeldesign.details.stiffener.col.spacing"
 
+# Stiffener inputs
+KEY_SD_STIFFENER_DETAILS = "member_properties.stiffener_details.stiffener_details_cad"
+
+# Steel Design Properties
+KEY_SD_SECTION_PROP_MASS = "steeldesign.details.section_properties.mass"
+KEY_SD_SECTION_PROP_AREA = "steeldesign.details.section_properties.area"
+KEY_SD_SECTION_PROP_IZ = "steeldesign.details.section_properties.iz"
+KEY_SD_SECTION_PROP_IV = "steeldesign.details.section_properties.iv"
+KEY_SD_SECTION_PROP_RZ = "steeldesign.details.section_properties.rz"
+KEY_SD_SECTION_PROP_RV = "steeldesign.details.section_properties.rv"
+KEY_SD_SECTION_PROP_ZZ = "steeldesign.details.section_properties.zz"
+KEY_SD_SECTION_PROP_ZV = "steeldesign.details.section_properties.zv"
+KEY_SD_SECTION_PROP_ZUZ = "steeldesign.details.section_properties.zuz"
+KEY_SD_SECTION_PROP_ZUV = "steeldesign.details.section_properties.zuv"
+KEY_SD_SECTION_PROP_IT = "steeldesign.details.section_properties.it"
+KEY_SD_SECTION_PROP_IW = "steeldesign.details.section_properties.iw"
+
 KEY_BTN_STEEL_DESIGN          = "btn.steel_design"
 KEY_BTN_TRANSVERSE_DESIGN     = "btn.transverse_design"
 KEY_BTN_DECK_DESIGN           = "btn.deck_design"

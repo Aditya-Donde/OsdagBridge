@@ -915,6 +915,15 @@ def resolve_load_combinations(input_dict: dict, bridge=None) -> dict | None:
     
 # ── Resolvers — Deflections (Analysis Results) ────────────────────────────────
 
+def _defl_ur(defl_mm, limit_val):
+    """Compute utilization ratio for deflection; returns (ur_rounded, status) or (EMPTY, EMPTY)."""
+    try:
+        ur = round(float(defl_mm) / float(limit_val), 3)
+        return ur, ("PASS" if ur <= 1.0 else "FAIL")
+    except Exception:
+        return EMPTY, EMPTY
+
+
 def resolve_deflection_live_load(input_dict: dict, bridge=None) -> dict | None:
     span      = input_dict.get(KEY_SPAN)
     n_girders = input_dict.get(KEY_TS_NO_OF_GIRDERS)
@@ -940,18 +949,13 @@ def resolve_deflection_live_load(input_dict: dict, bridge=None) -> dict | None:
     rows = []
     for i in range(1, n + 1):
         girder = f"G{i}"
-        entry = defl_cache.get(girder, {})
-        live_mm = entry.get("live_mm")
-
-        if live_mm is not None and limit_val is not None:
-            status = "Pass" if live_mm <= limit_val else "Fail"
-        else:
-            status = EMPTY
-
+        live_mm = defl_cache.get(girder, {}).get("live_mm")
+        ur, status = _defl_ur(live_mm, limit_val) if (live_mm is not None and limit_val) else (EMPTY, EMPTY)
         rows.append([
             girder,
             _num(live_mm) if live_mm is not None else EMPTY,
             limit_str,
+            ur,
             status,
         ])
 
@@ -962,6 +966,7 @@ def resolve_deflection_live_load(input_dict: dict, bridge=None) -> dict | None:
             "Girder",
             "Deflection due to Live Load, δ_ₗᵢᵥₑ (mm)",
             "Permissible Limit",
+            "Utilization Ratio",
             "Status",
         ],
         "rows": rows,
@@ -993,18 +998,13 @@ def resolve_deflection_total_load(input_dict: dict, bridge=None) -> dict | None:
     rows = []
     for i in range(1, n + 1):
         girder = f"G{i}"
-        entry = defl_cache.get(girder, {})
-        total_mm = entry.get("total_mm")
-
-        if total_mm is not None and limit_val is not None:
-            status = "Pass" if total_mm <= limit_val else "Fail"
-        else:
-            status = EMPTY
-
+        total_mm = defl_cache.get(girder, {}).get("total_mm")
+        ur, status = _defl_ur(total_mm, limit_val) if (total_mm is not None and limit_val) else (EMPTY, EMPTY)
         rows.append([
             girder,
             _num(total_mm) if total_mm is not None else EMPTY,
             limit_str,
+            ur,
             status,
         ])
 
@@ -1015,6 +1015,7 @@ def resolve_deflection_total_load(input_dict: dict, bridge=None) -> dict | None:
             "Girder",
             "Total Deflection, δₜₒₜₐₗ (mm)",
             "Permissible Limit",
+            "Utilization Ratio",
             "Status",
         ],
         "rows": rows,
@@ -1415,6 +1416,15 @@ def _get_per_girder(bridge):
         return {}
 
 
+def _stress_ur(sigma, limit):
+    """Return (ur_rounded, status) for a stress / allowable pair."""
+    try:
+        ur = round(float(sigma) / float(limit), 3)
+        return ur, ("PASS" if ur <= 1.0 else "FAIL")
+    except Exception:
+        return EMPTY, EMPTY
+
+
 def resolve_stress_results_steel(input_dict: dict, bridge=None) -> dict | None:
     if bridge is None:
         return None
@@ -1427,24 +1437,25 @@ def resolve_stress_results_steel(input_dict: dict, bridge=None) -> dict | None:
     if sigma is None or limit is None:
         return None
 
+    ur, status = _stress_ur(sigma, limit)
+
     # Use _load_effects_cache keys — already EB-filtered and labelled G1…Gn
     cache = getattr(bridge, "_load_effects_cache", None) or {}
     if cache:
         girder_names = sorted(cache.keys())
     else:
-        # fallback: per_girder keys skip EB in designer.py
         girder_names = [g for g in _get_per_girder(bridge).keys()
                         if not g.startswith("EB")]
 
     if not girder_names:
         return None
 
-    rows = [[f"{g}M1", _num(sigma), _num(limit)] for g in girder_names]
+    rows = [[f"{g}M1", _num(sigma), _num(limit), ur, status] for g in girder_names]
 
     return {
         "id": "stress_steel_service",
         "label": "Stress in Structural Steel - Service",
-        "columns": ["Member", "Steel Stress (MPa)", "Allowable Stress (MPa)"],
+        "columns": ["Member", "Steel Stress (MPa)", "Allowable Stress (MPa)", "Utilization Ratio", "Status"],
         "rows": rows,
     }
 
@@ -1467,15 +1478,17 @@ def resolve_stress_results_concrete(input_dict: dict, bridge=None) -> dict | Non
         return None
 
     allow = dd.get(KEY_DD_STRESS_CONC_ALLOWABLE)
+    bot_ur, bot_st = _stress_ur(bot_c, allow)
+    top_ur, top_st = _stress_ur(top_c, allow)
     rows = [
-        ["Deck Slab (Bottom)", _num(bot_c), _num(allow)],
-        ["Deck Slab (Top)",    _num(top_c), _num(allow)],
+        ["Deck Slab (Bottom)", _num(bot_c), _num(allow), bot_ur, bot_st],
+        ["Deck Slab (Top)",    _num(top_c), _num(allow), top_ur, top_st],
     ]
 
     return {
         "id": "stress_concrete_service",
         "label": "Stress in Concrete Deck - Service",
-        "columns": ["Member", "Concrete Stress (MPa)", "Allowable Stress (MPa)"],
+        "columns": ["Member", "Concrete Stress (MPa)", "Allowable Stress (MPa)", "Utilization Ratio", "Status"],
         "rows": rows,
     }
 
@@ -1488,15 +1501,17 @@ def resolve_stress_results_reinforcement(input_dict: dict, bridge=None) -> dict 
         return None
 
     allow = dd.get(KEY_DD_STRESS_REINF_ALLOWABLE)
+    bot_ur, bot_st = _stress_ur(bot_s, allow)
+    top_ur, top_st = _stress_ur(top_s, allow)
     rows = [
-        ["Deck Slab (Bottom)", _num(bot_s), _num(allow)],
-        ["Deck Slab (Top)",    _num(top_s), _num(allow)],
+        ["Deck Slab (Bottom)", _num(bot_s), _num(allow), bot_ur, bot_st],
+        ["Deck Slab (Top)",    _num(top_s), _num(allow), top_ur, top_st],
     ]
 
     return {
         "id": "stress_reinf_service",
         "label": "Stress in Reinforcement - Service",
-        "columns": ["Member", "Rebar Stress (MPa)", "Allowable Stress (MPa)"],
+        "columns": ["Member", "Rebar Stress (MPa)", "Allowable Stress (MPa)", "Utilization Ratio", "Status"],
         "rows": rows,
     }
 

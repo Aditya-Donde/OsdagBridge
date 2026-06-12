@@ -3678,50 +3678,6 @@ GENERATE_RESULTS_DEFAULTS = {
                 ],
             },
         },
-
-        "stress_results": {
-            "id": "stress_results",
-            "label": "Stress Results",
-
-            "stress_steel_service": {
-                "id": "stress_steel_service",
-                "label": "Stress in Structural Steel - Service",
-                "columns": [
-                    "Girder",
-                    "Stress in Concrete, σS (MPa)",
-                    "Allowable Stress (MPa)",
-                ],
-                "rows": [
-                    [EMPTY, EMPTY, EMPTY],
-                ],
-            },
-
-            "stress_concrete_service": {
-                "id": "stress_concrete_service",
-                "label": "Stress in Concrete Deck - Service",
-                "columns": [
-                    "Girder",
-                    "Stress in Concrete, σc (MPa)",
-                    "Allowable Stress (MPa)",
-                ],
-                "rows": [
-                    [EMPTY, EMPTY, EMPTY],
-                ],
-            },
-
-            "stress_reinf_service": {
-                "id": "stress_reinf_service",
-                "label": "Stress in Reinforcement - Service",
-                "columns": [
-                    "Girder",
-                    "Stress in Reinforcement, σᵣₑᵢₙf (MPa)",
-                    "Allowable Stress (MPa)",
-                ],
-                "rows": [
-                    [EMPTY, EMPTY, EMPTY],
-                ],
-            },
-        },
     },
 
     "design_results": {
@@ -3804,10 +3760,11 @@ GENERATE_RESULTS_DEFAULTS = {
                     "Girder",
                     "Deflection due to Live Load, δ_ₗᵢᵥₑ (mm)",
                     "Permissible Limit",
+                    "Utilization Ratio",
                     "Status",
                 ],
                 "rows": [
-                    [EMPTY, EMPTY, EMPTY, EMPTY],
+                    [EMPTY, EMPTY, EMPTY, EMPTY, EMPTY],
                 ],
             },
 
@@ -3818,65 +3775,56 @@ GENERATE_RESULTS_DEFAULTS = {
                     "Girder",
                     "Total Deflection, δₜₒₜₐₗ (mm)",
                     "Permissible Limit",
+                    "Utilization Ratio",
                     "Status",
                 ],
                 "rows": [
-                    [EMPTY, EMPTY, EMPTY, EMPTY],
+                    [EMPTY, EMPTY, EMPTY, EMPTY, EMPTY],
                 ],
             },
 
-            "max_stress_steel": {
-                "id": "max_stress_steel",
-                "label": "Maximum Stress Limitation - Steel",
+            "stress_steel_service": {
+                "id": "stress_steel_service",
+                "label": "Stress in Structural Steel - Service",
                 "columns": [
-                    "Girder",
-                    "Stress in Steel, σₛ (MPa)",
-                    "Yield Strength, fyk (MPa)",
-                    "Allowable Stress, 0.9·fyk (MPa)",
-                    "Clause Reference",
+                    "Member",
+                    "Steel Stress (MPa)",
+                    "Allowable Stress (MPa)",
+                    "Utilization Ratio",
                     "Status",
                 ],
                 "rows": [
-                    ["Girder 1", 180, 350, 315, "IRC 22 Cl. 604.3.1", "PASS"],
-                    ["Girder 2", 176, 350, 315, "IRC 22 Cl. 604.3.1", "PASS"],
-                    ["Girder 3", 176, 350, 315, "IRC 22 Cl. 604.3.1", "PASS"],
-                    ["Girder 4", 180, 350, 315, "IRC 22 Cl. 604.3.1", "PASS"],
+                    [EMPTY, EMPTY, EMPTY, EMPTY, EMPTY],
                 ],
             },
 
-            "max_stress_concrete": {
-                "id": "max_stress_concrete",
-                "label": "Maximum Stress Limitation - Concrete",
+            "stress_concrete_service": {
+                "id": "stress_concrete_service",
+                "label": "Stress in Concrete Deck - Service",
                 "columns": [
-                    "Girder",
-                    "Stress in Concrete, σc (MPa)",
-                    "Characteristic Compressive Strength, fck (MPa)",
-                    "Allowable Stress, 0.48·fck (MPa)",
+                    "Member",
+                    "Concrete Stress (MPa)",
+                    "Allowable Stress (MPa)",
+                    "Utilization Ratio",
                     "Status",
                 ],
                 "rows": [
-                    ["Girder 1", 12.5, 40, 19.2, "PASS"],
-                    ["Girder 2", 12.1, 40, 19.2, "PASS"],
-                    ["Girder 3", 12.1, 40, 19.2, "PASS"],
-                    ["Girder 4", 12.5, 40, 19.2, "PASS"],
+                    [EMPTY, EMPTY, EMPTY, EMPTY, EMPTY],
                 ],
             },
 
-            "max_stress_reinforcement": {
-                "id": "max_stress_reinforcement",
-                "label": "Maximum Stress Limitation - Reinforcement",
+            "stress_reinf_service": {
+                "id": "stress_reinf_service",
+                "label": "Stress in Reinforcement - Service",
                 "columns": [
-                    "Girder",
-                    "Stress in Reinforcement, σᵣₑᵢₙf (MPa)",
-                    "Characteristic Yield Strength, fyk (MPa)",
-                    "Allowable Stress, 0.8·fyk (MPa)",
+                    "Member",
+                    "Rebar Stress (MPa)",
+                    "Allowable Stress (MPa)",
+                    "Utilization Ratio",
                     "Status",
                 ],
                 "rows": [
-                    ["Girder 1", 220, 500, 400, "PASS"],
-                    ["Girder 2", 215, 500, 400, "PASS"],
-                    ["Girder 3", 215, 500, 400, "PASS"],
-                    ["Girder 4", 220, 500, 400, "PASS"],
+                    [EMPTY, EMPTY, EMPTY, EMPTY, EMPTY],
                 ],
             },
         },
