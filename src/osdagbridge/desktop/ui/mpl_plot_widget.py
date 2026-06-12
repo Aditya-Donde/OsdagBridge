@@ -361,6 +361,13 @@ class MplPlotWidget(QWidget):
             combo_lc.setMinimumContentsLength(12)
             combo_lc.currentTextChanged.connect(self.update_plot)
 
+        # Connect Analysis Member Dropdown
+        combo_member = output_dock.output_widget.findChild(QComboBox, "analysis.member")
+        if combo_member is not None:
+            combo_member.currentTextChanged.connect(self.update_plot)
+            # Make sure it fires an update if changed from UI, since grillage might be active
+            combo_member.currentTextChanged.connect(lambda text: self._on_grillage_toggled(self._grillage_mode) if self._grillage_mode else None)
+
         # 2. Connect Force Radios
         from osdagbridge.desktop.ui.utils.custom_widgets import CustomRadioButton
         force_rbs = [
@@ -408,6 +415,14 @@ class MplPlotWidget(QWidget):
             return
         self.update_plot()
 
+    def _current_member(self):
+        if self._output_dock is None:
+            return "All"
+        combo_member = self._output_dock.output_widget.findChild(QComboBox, "analysis.member")
+        if combo_member and combo_member.currentText() != "-":
+            return combo_member.currentText()
+        return "All"
+
     def update_plot(self, *_args):
         if self._grillage_mode:
             return
@@ -417,6 +432,7 @@ class MplPlotWidget(QWidget):
 
         loadcase  = self._current_loadcase()
         force_key = self._current_force_key()
+        sel_girder= self._current_member()
 
         if not loadcase or not force_key:
             return
@@ -441,16 +457,19 @@ class MplPlotWidget(QWidget):
             self._fig, self._summary_data = build_figure_sfd(
                 ds, force_key, self._nodes, self._members,
                 edge_dist=self._edge_dist, eng_scale=eng_scale,
+                selected_girder=sel_girder
             )
         elif force_key in _DEFL_KEYS:
             self._fig, self._summary_data = build_figure_deflection(
                 ds, force_key, self._nodes, self._members,
                 edge_dist=self._edge_dist, eng_scale=eng_scale,
+                selected_girder=sel_girder
             )
         else:
             self._fig, self._summary_data = build_figure_bmd(
                 ds, force_key, self._nodes, self._members,
                 edge_dist=self._edge_dist, eng_scale=eng_scale,
+                selected_girder=sel_girder
             )
 
         self._attach_figure(self._fig)
@@ -602,7 +621,8 @@ class MplPlotWidget(QWidget):
                 old_elev = self._fig.axes[0].elev
                 old_azim = self._fig.axes[0].azim
             plt.close(self._fig)
-            self._fig = build_figure_grillage(self._nodes, self._members, edge_dist=self._edge_dist)
+            sel_girder = self._current_member()
+            self._fig = build_figure_grillage(self._nodes, self._members, edge_dist=self._edge_dist, selected_girder=sel_girder)
             self._attach_figure(self._fig)
             if self._fig.axes and old_elev is not None and old_azim is not None:
                 self._fig.axes[0].view_init(elev=old_elev, azim=old_azim)

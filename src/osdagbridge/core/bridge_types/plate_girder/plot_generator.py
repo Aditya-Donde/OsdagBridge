@@ -343,7 +343,22 @@ def _add_coordinate_triad(ax, nodes, scale=0.12, eng_scale: float = 1.0):
     ax.set_ylim(ylim)
     ax.set_zlim(zlim)
     
-def _add_supports(ax, nodes, members, edge_dist=0.0):
+def _get_bg_nodes_members(nodes, members, edge_dist, selected_girder, girder_items):
+    if selected_girder == "All":
+        return nodes, members
+    filtered_nodes = {}
+    filtered_members = {}
+    for i, (z_val, elems) in enumerate(girder_items):
+        g_name = f"G{i}" if edge_dist > 0 else f"G{i + 1}"
+        if g_name == selected_girder:
+            for e in elems:
+                filtered_members[e] = members[e]
+                for n in members[e]:
+                    filtered_nodes[n] = nodes[n]
+            break
+    return filtered_nodes, filtered_members
+
+def _add_supports(ax, nodes, members, edge_dist=0.0, selected_girder="All"):
     """Draw pin (diamond) and roller (circle) supports at the ends of girders."""
     girders = _find_girders(nodes, members)
     girder_items = list(girders.items())
@@ -355,6 +370,10 @@ def _add_supports(ax, nodes, members, edge_dist=0.0):
     for i, (z_val, elems) in enumerate(girder_items):
         if not elems: continue
         
+        girder_name = f"G{i}" if edge_dist > 0 else f"G{i + 1}"
+        if selected_girder != "All" and girder_name != selected_girder:
+            continue
+
         # Skip placing supports on edge beams if an overhang exists!
         is_edge_beam = edge_dist > 0 and (i == 0 or i == n_girders - 1)
         if is_edge_beam:
@@ -461,7 +480,7 @@ def _add_element_number_labels(ax, nodes, members, visible: bool = False):
 # GRILLAGE PLOT
 # =============================================================================
 
-def build_figure_grillage(nodes, members, edge_dist=0.0):
+def build_figure_grillage(nodes, members, edge_dist=0.0, selected_girder="All"):
     """
     Build a 3-D matplotlib figure showing only the bridge grillage mesh.
 
@@ -486,19 +505,24 @@ def build_figure_grillage(nodes, members, edge_dist=0.0):
     ax.set_zlim(-x_range * 0.05, x_range * 0.15)
     ax.set_box_aspect([x_range, z_range, x_range * 0.30])
 
-    _add_grillage_background(ax, nodes, members, show_transverse=True, include_end_transverse=True)
-    _add_coordinate_triad(ax, nodes)
-    
-
     girders = _find_girders(nodes, members)
     girder_items = list(girders.items())
     n_girders = len(girder_items)
+
+    bg_nodes, bg_members = _get_bg_nodes_members(nodes, members, edge_dist, selected_girder, girder_items)
+
+    _add_grillage_background(ax, bg_nodes, bg_members, show_transverse=True, include_end_transverse=True)
+    _add_coordinate_triad(ax, nodes)
+    
     base_color = "#388E3C"
 
     for i, (z_val, elems) in enumerate(girder_items):
         if not elems: continue
         is_edge_beam = edge_dist > 0 and (i == 0 or i == n_girders - 1)
         girder_name  = f"G{i}" if edge_dist > 0 else f"G{i + 1}"
+
+        if selected_girder != "All" and girder_name != selected_girder:
+            continue
 
         n_first = members[elems[0]][0]
         n_last  = members[elems[-1]][1]
@@ -519,9 +543,9 @@ def build_figure_grillage(nodes, members, edge_dist=0.0):
                     ha="right", va="center", zorder=6, gid="girder_labels")
 
     # Extract node IDs and coordinates properly for tracking
-    node_ids = list(nodes.keys())
-    xs = [nodes[n][0] for n in node_ids]
-    ys = [nodes[n][2] for n in node_ids] # The physical Z-coordinate is plotted on the Y-axis here
+    node_ids = list(bg_nodes.keys())
+    xs = [bg_nodes[n][0] for n in node_ids]
+    ys = [bg_nodes[n][2] for n in node_ids] # The physical Z-coordinate is plotted on the Y-axis here
     
     # Capture the scatter object
     sc = ax.scatter(xs, ys, [0] * len(xs),
@@ -568,9 +592,9 @@ def build_figure_grillage(nodes, members, edge_dist=0.0):
                     
             timer.add_callback(auto_hide)
             timer.start()
-    _add_supports(ax, nodes, members, edge_dist=edge_dist)
-    _add_node_number_labels(ax, nodes)
-    _add_element_number_labels(ax, nodes, members)  # hidden by default; toggled by toolbar
+    _add_supports(ax, nodes, members, edge_dist=edge_dist, selected_girder=selected_girder)
+    _add_node_number_labels(ax, bg_nodes)
+    _add_element_number_labels(ax, bg_nodes, bg_members)  # hidden by default; toggled by toolbar
     ax.set_xlabel("Span Length (m)", fontsize=10, labelpad=8)
     ax.set_ylabel("Bridge Width (m)", fontsize=10, labelpad=8)
     ax.set_zlabel("", fontsize=10, labelpad=8)
@@ -595,7 +619,7 @@ def build_figure_grillage(nodes, members, edge_dist=0.0):
 # SFD PLOT
 # =============================================================================
 
-def build_figure_sfd(ds, force_key, nodes, members, edge_dist=0.0, eng_scale=1.0):
+def build_figure_sfd(ds, force_key, nodes, members, edge_dist=0.0, eng_scale=1.0, selected_girder="All"):
     """
     Build a 3-D matplotlib figure showing the Shear Force Diagram.
     """
@@ -625,8 +649,13 @@ def build_figure_sfd(ds, force_key, nodes, members, edge_dist=0.0, eng_scale=1.0
     ax.set_ylim(z_min - z_pad, z_max + z_pad)
     ax.set_box_aspect([x_range, z_range, x_range * 0.30])
 
+    girder_items  = list(girders.items())
+    n_girders     = len(girder_items)
+
+    bg_nodes, bg_members = _get_bg_nodes_members(nodes, members, edge_dist, selected_girder, girder_items)
+
     _add_grillage_background(
-        ax, nodes, members,
+        ax, bg_nodes, bg_members,
         show_transverse=False,
         include_edge_longitudinals=False,
         include_end_transverse=False,
@@ -637,8 +666,6 @@ def build_figure_sfd(ds, force_key, nodes, members, edge_dist=0.0, eng_scale=1.0
     fill_color  = "#90CAF9"
     base_color  = "#388E3C"
 
-    girder_items  = list(girders.items())
-    n_girders     = len(girder_items)
     _scatter_objs = []
     _scatter_data = {}
 
@@ -651,6 +678,9 @@ def build_figure_sfd(ds, force_key, nodes, members, edge_dist=0.0, eng_scale=1.0
     for i, (z_val, elems) in enumerate(girder_items):
         is_edge_beam = edge_dist > 0 and (i == 0 or i == n_girders - 1)
         girder_name  = f"G{i}" if edge_dist > 0 else f"G{i + 1}"
+
+        if selected_girder != "All" and girder_name != selected_girder:
+            continue
 
         xs, ys, zs, Vy, node_ids = _build_polyline(
             elems, members, nodes, comp_i_name, comp_j_name, ds
@@ -793,9 +823,9 @@ def build_figure_sfd(ds, force_key, nodes, members, edge_dist=0.0, eng_scale=1.0
             timer.add_callback(auto_hide)
             timer.start()
 
-    _add_supports(ax, nodes, members, edge_dist=edge_dist)
-    _add_node_number_labels(ax, nodes)
-    _add_element_number_labels(ax, nodes, members)  # hidden by default; toggled by toolbar
+    _add_supports(ax, nodes, members, edge_dist=edge_dist, selected_girder=selected_girder)
+    _add_node_number_labels(ax, bg_nodes)
+    _add_element_number_labels(ax, bg_nodes, bg_members)  # hidden by default; toggled by toolbar
     ax.set_xlabel("Span Length (m)", fontsize=10, labelpad=8)
     ax.set_ylabel("Bridge Width (m)", fontsize=10, labelpad=8)
     ax.set_zlabel(f"{disp_key} (kN)", fontsize=10, labelpad=8)
@@ -836,7 +866,7 @@ def build_figure_sfd(ds, force_key, nodes, members, edge_dist=0.0, eng_scale=1.0
 # BMD PLOT
 # =============================================================================
 
-def build_figure_bmd(ds, force_key, nodes, members, edge_dist=0.0, eng_scale=1.0):
+def build_figure_bmd(ds, force_key, nodes, members, edge_dist=0.0, eng_scale=1.0, selected_girder="All"):
     """
     Build a 3-D matplotlib figure showing the Bending Moment Diagram.
 
@@ -872,8 +902,13 @@ def build_figure_bmd(ds, force_key, nodes, members, edge_dist=0.0, eng_scale=1.0
     ax.set_ylim(min(all_zs), max(all_zs))
     ax.set_box_aspect([x_range, z_range, x_range * 0.30])
 
+    girder_items_bmd = list(girders.items())
+    n_girders_bmd    = len(girder_items_bmd)
+
+    bg_nodes, bg_members = _get_bg_nodes_members(nodes, members, edge_dist, selected_girder, girder_items_bmd)
+
     _add_grillage_background(
-        ax, nodes, members,
+        ax, bg_nodes, bg_members,
         show_transverse=False,
         include_edge_longitudinals=False,
         include_end_transverse=False,
@@ -884,8 +919,6 @@ def build_figure_bmd(ds, force_key, nodes, members, edge_dist=0.0, eng_scale=1.0
     fill_color   = "#EF9A9A"
     base_color   = "#388E3C"
 
-    girder_items_bmd = list(girders.items())
-    n_girders_bmd    = len(girder_items_bmd)
     summary_data  = {}
     _scatter_objs = []
     _scatter_data = {}
@@ -896,6 +929,9 @@ def build_figure_bmd(ds, force_key, nodes, members, edge_dist=0.0, eng_scale=1.0
     for i, (z_val, elems) in enumerate(girder_items_bmd):
         is_edge_beam = edge_dist > 0 and (i == 0 or i == n_girders_bmd - 1)
         girder_name  = f"G{i}" if edge_dist > 0 else f"G{i + 1}"
+
+        if selected_girder != "All" and girder_name != selected_girder:
+            continue
 
         xs, ys, zs, Mz, node_ids = _build_polyline(
             elems, members, nodes, comp_i_name, comp_j_name, ds
@@ -1022,9 +1058,9 @@ def build_figure_bmd(ds, force_key, nodes, members, edge_dist=0.0, eng_scale=1.0
 
             timer.add_callback(auto_hide)
             timer.start()
-    _add_supports(ax, nodes, members, edge_dist=edge_dist)
-    _add_node_number_labels(ax, nodes)
-    _add_element_number_labels(ax, nodes, members)  # hidden by default; toggled by toolbar
+    _add_supports(ax, nodes, members, edge_dist=edge_dist, selected_girder=selected_girder)
+    _add_node_number_labels(ax, bg_nodes)
+    _add_element_number_labels(ax, bg_nodes, bg_members)  # hidden by default; toggled by toolbar
     ax.set_xlabel("Span Length (m)", fontsize=10, labelpad=8)
     ax.set_ylabel("Bridge Width (m)", fontsize=10, labelpad=8)
     ax.set_zlabel(f"{disp_key} (kNm)", fontsize=10, labelpad=8)
@@ -1220,7 +1256,7 @@ def build_figure_bmd(ds, force_key, nodes, members, edge_dist=0.0, eng_scale=1.0
 # DEFLECTION PLOT
 # =============================================================================
 
-def build_figure_deflection(ds, disp_key, nodes, members, edge_dist=0.0, eng_scale=1.0):
+def build_figure_deflection(ds, disp_key, nodes, members, edge_dist=0.0, eng_scale=1.0, selected_girder="All"):
     """
     Build a 3-D matplotlib figure showing the Deflection Diagram.
     """
@@ -1240,8 +1276,13 @@ def build_figure_deflection(ds, disp_key, nodes, members, edge_dist=0.0, eng_sca
     # Rigid 3D bounding box (matches our UI zoom fix)
     ax.set_box_aspect(aspect=(2.5, 1.2, 1.0))
 
+    girder_items = list(girders.items())
+    n_girders    = len(girder_items)
+
+    bg_nodes, bg_members = _get_bg_nodes_members(nodes, members, edge_dist, selected_girder, girder_items)
+
     _add_grillage_background(
-        ax, nodes, members,
+        ax, bg_nodes, bg_members,
         show_transverse=False,
         include_edge_longitudinals=False,
         include_end_transverse=False,
@@ -1296,8 +1337,6 @@ def build_figure_deflection(ds, disp_key, nodes, members, edge_dist=0.0, eng_sca
     # =========================================================
     # PHASE 2: PLOTTING THE DIAGRAM
     # =========================================================
-    girder_items = list(girders.items())
-    n_girders    = len(girder_items)
     _scatter_objs = []
     _scatter_data = {}
     summary_data = {}
@@ -1308,6 +1347,9 @@ def build_figure_deflection(ds, disp_key, nodes, members, edge_dist=0.0, eng_sca
     for i, (z_val, elems) in enumerate(girder_items):
         is_edge_beam = edge_dist > 0 and (i == 0 or i == n_girders - 1)
         girder_name  = f"G{i}" if edge_dist > 0 else f"G{i + 1}"
+
+        if selected_girder != "All" and girder_name != selected_girder:
+            continue
 
         node_list = [members[e][0] for e in elems] + [members[elems[-1]][1]]
         xs = np.array([nodes[n][0] for n in node_list])
@@ -1442,9 +1484,9 @@ def build_figure_deflection(ds, disp_key, nodes, members, edge_dist=0.0, eng_sca
             timer.start()
 
     # CRITICAL: Draw supports absolute last so they sit on top of the black nodes
-    _add_supports(ax, nodes, members, edge_dist=edge_dist)
-    _add_node_number_labels(ax, nodes)
-    _add_element_number_labels(ax, nodes, members)  # hidden by default; toggled by toolbar
+    _add_supports(ax, nodes, members, edge_dist=edge_dist, selected_girder=selected_girder)
+    _add_node_number_labels(ax, bg_nodes)
+    _add_element_number_labels(ax, bg_nodes, bg_members)  # hidden by default; toggled by toolbar
 
     # Robust axes and labels
     ax.set_xlabel("Span Length (m)", fontsize=10, fontweight="bold", labelpad=8)

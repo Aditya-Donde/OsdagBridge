@@ -765,13 +765,28 @@ class OutputDock(QWidget):
                 for m in members_per_girder
             ]
 
-        combo.blockSignals(True)
-        combo.clear()
-        combo.addItems(items)
-        combo.setCurrentIndex(0)
-        combo.setSizeAdjustPolicy(QComboBox.AdjustToMinimumContentsLengthWithIcon)
-        combo.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Fixed)
-        combo.blockSignals(False)
+        # 1. Update Design Girder dropdown
+        combo_design = self._w(KEY_OUTPUT_DOCK_MEMBER_ID)
+        if combo_design is not None:
+            combo_design.blockSignals(True)
+            combo_design.clear()
+            combo_design.addItems(items)
+            combo_design.setCurrentIndex(0)
+            combo_design.setSizeAdjustPolicy(QComboBox.AdjustToMinimumContentsLengthWithIcon)
+            combo_design.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Fixed)
+            combo_design.blockSignals(False)
+
+        # 2. Update Analysis Member dropdown
+        from osdagbridge.core.utils.common import KEY_ANALYSIS_MEMBER
+        combo_analysis = self._w(KEY_ANALYSIS_MEMBER)
+        if combo_analysis is not None:
+            combo_analysis.blockSignals(True)
+            combo_analysis.clear()
+            combo_analysis.addItems(["All"] + items)
+            combo_analysis.setCurrentIndex(0)
+            combo_analysis.setSizeAdjustPolicy(QComboBox.AdjustToMinimumContentsLengthWithIcon)
+            combo_analysis.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Fixed)
+            combo_analysis.blockSignals(False)
    
     def connect_design_dropdowns(self):
         """Connect Member and Load Case dropdowns to refresh DCR bars on change."""
