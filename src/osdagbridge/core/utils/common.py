@@ -287,6 +287,22 @@ KEY_SD_SC_REQ_EDGE_DIST    = "steeldesign.shear_connector.req_edge_distance_mm"
 KEY_SD_SC_CLEAR_COVER      = "steeldesign.shear_connector.clear_cover_mm"
 KEY_SD_SC_REQ_CLEAR_COVER  = "steeldesign.shear_connector.req_clear_cover_mm"
 
+# ── Generate-Results Transverse Shear table keys (design_results) ─────────────
+# IRC 22:2015 Cl.606.10 — interface shear between steel girder and deck slab.
+KEY_SD_TS_VL         = "steeldesign.transverse_shear.vl_kN_per_m"
+KEY_SD_TS_VCAP_CONC  = "steeldesign.transverse_shear.vcap_concrete_kN_per_m"
+KEY_SD_TS_VCAP_REINF = "steeldesign.transverse_shear.vcap_reinf_kN_per_m"
+KEY_SD_TS_VRD        = "steeldesign.transverse_shear.vrd_kN_per_m"
+
+# ── Generate-Results Crack Width table keys ───────────────────────────────────
+# Minimum crack-control reinforcement (IRC 22 Cl.604.4) — design_results.
+KEY_SD_CRACK_AS_MIN  = "steeldesign.crack.as_min_mm2"
+KEY_SD_CRACK_AS_PROV = "steeldesign.crack.as_provided_mm2"
+# Calculated crack width per face (IRC 112:2020 Cl.12.3.4) — deck_design_results.
+KEY_DD_CRACK_WK_BOTTOM = "deckdesign.crack.wk.bottom"
+KEY_DD_CRACK_WK_TOP    = "deckdesign.crack.wk.top"
+KEY_DD_CRACK_WK_LIMIT  = "deckdesign.crack.wk.limit"
+
 KEY_RAILING_PRESENT = "Railing Present"
 KEY_RAILING_WIDTH = "Railing Width"
 KEY_RAILING_HEIGHT = "Railing Height"

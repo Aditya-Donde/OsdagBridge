@@ -1463,41 +1463,89 @@ def resolve_shear_connector_detailing_checks(input_dict: dict, bridge=None) -> d
 
 # ── Resolvers — Crack Width Check (partial) ───────────────────────────────────
 
-def resolve_crack_width_check(input_dict: dict, bridge=None) -> dict | None:
-    bar_dia     = input_dict.get(KEY_DS_REINF_BOUNDS)
-    spacing_t   = input_dict.get(KEY_DECK_REINF_SPACING_TRANS)
-    spacing_l   = input_dict.get(KEY_DECK_REINF_SPACING_LONG)
-    n_girders   = input_dict.get(KEY_TS_NO_OF_GIRDERS)
-
-    if not _has(n_girders):
-        return None
-    n = _uls_girder_rows(n_girders)
+def resolve_transverse_shear_check(input_dict: dict, bridge=None) -> dict | None:
+    n = _sc_girder_rows(input_dict, bridge)
     if n is None:
         return None
 
-    # Use transverse spacing as the governing bar spacing for crack width
-    spacing = spacing_t if _has(spacing_t) else spacing_l
+    dr = _get_sc_dr(bridge)
+    if not dr:
+        return None
+
+    VL    = _num(dr[KEY_SD_TS_VL])         if dr.get(KEY_SD_TS_VL)         is not None else EMPTY
+    Vc    = _num(dr[KEY_SD_TS_VCAP_CONC])  if dr.get(KEY_SD_TS_VCAP_CONC)  is not None else EMPTY
+    Vs    = _num(dr[KEY_SD_TS_VCAP_REINF]) if dr.get(KEY_SD_TS_VCAP_REINF) is not None else EMPTY
+    VRd   = _num(dr[KEY_SD_TS_VRD])        if dr.get(KEY_SD_TS_VRD)        is not None else EMPTY
+    try:
+        dcr = _num(float(dr[KEY_SD_TS_VL]) / float(dr[KEY_SD_TS_VRD]), 3)
+    except Exception:
+        dcr = EMPTY
+    cd     = (dr.get("capacity_details") or {})
+    clause = cd.get("transverse_shear", {}).get("clause") or "IRC 22 Cl. 606.10"
+    status = ("PASS" if dr.get("transverse_shear_ok") else "FAIL") if "transverse_shear_ok" in dr else EMPTY
 
     rows = [
-        [
-            f"Girder {i}",
-            EMPTY,   # wk — computed
-            EMPTY,   # permissible limit — computed
-            EMPTY,   # As,min — computed
-            EMPTY,   # As,prov — computed
-            _val(bar_dia) if _has(bar_dia) else EMPTY,
-            _val(spacing) if _has(spacing) else EMPTY,
-            EMPTY,   # Clause
-            EMPTY,   # Status
-        ]
+        [f"Girder {i}", VL, Vc, Vs, VRd, dcr, clause, status]
         for i in range(1, n + 1)
+    ]
+
+    return {
+        "id":    "transverse_shear_check",
+        "label": "Transverse Shear Check in Concrete Slab",
+        "columns": [
+            "Girder",
+            "Design Longitudinal Shear per Unit Length, VL (kN/m)",
+            "Concrete Shear Resistance (kN/m)",
+            "Concrete + Reinforcement Shear Resistance (kN/m)",
+            "Total Shear Resistance, VRd (kN/m)",
+            "Utilization Ratio",
+            "Clause Reference",
+            "Status",
+        ],
+        "rows": rows,
+    }
+
+
+def resolve_crack_width_check(input_dict: dict, bridge=None) -> dict | None:
+    dd = _get_deck_design(bridge)
+    wk_bot = dd.get(KEY_DD_CRACK_WK_BOTTOM)
+    wk_top = dd.get(KEY_DD_CRACK_WK_TOP)
+    if wk_bot is None and wk_top is None:
+        return None
+
+    wk_lim = dd.get(KEY_DD_CRACK_WK_LIMIT)
+    dr      = _get_sc_dr(bridge)
+    as_min  = _num(dr[KEY_SD_CRACK_AS_MIN])  if dr.get(KEY_SD_CRACK_AS_MIN)  is not None else EMPTY
+    as_prov = _num(dr[KEY_SD_CRACK_AS_PROV]) if dr.get(KEY_SD_CRACK_AS_PROV) is not None else EMPTY
+    clause  = "IRC 112:2020 Cl. 12.3.4"
+
+    def _face_row(label, wk, dia_key, spc_key):
+        try:
+            status = "PASS" if float(wk) <= float(wk_lim) else "FAIL"
+        except Exception:
+            status = EMPTY
+        return [
+            label,
+            _num(wk, 4),
+            _num(wk_lim),
+            as_min,
+            as_prov,
+            _num(dd.get(dia_key)),
+            _num(dd.get(spc_key)),
+            clause,
+            status,
+        ]
+
+    rows = [
+        _face_row("Deck Slab (Bottom)", wk_bot, "rebar_bottom_dia", "rebar_bottom_spacing"),
+        _face_row("Deck Slab (Top)",    wk_top, "rebar_top_dia",    "rebar_top_spacing"),
     ]
 
     return {
         "id":    "crack_width_check",
         "label": "Crack Width Check",
         "columns": [
-            "Girder",
+            "Member",
             "Calculated Crack Width, wₖ (mm)",
             "Permissible Crack Width Limit (mm)",
             "Minimum Reinforcement Area, As,min (mm²)",
@@ -1505,6 +1553,80 @@ def resolve_crack_width_check(input_dict: dict, bridge=None) -> dict | None:
             "Bar Diameter, φ (mm)",
             "Bar Spacing, s (mm)",
             "Clause Reference",
+            "Status",
+        ],
+        "rows": rows,
+    }
+
+
+# ── Resolvers — Design Results Summary ────────────────────────────────────────
+
+def resolve_design_results_summary(input_dict: dict, bridge=None) -> dict | None:
+    """One row per girder: the controlling check (highest UR among the 8 design
+    checks, from envelope demands) plus the real load case / combination that
+    drives that check (worst per-LC UR for the same check id, envelope
+    pseudo-cases excluded)."""
+    pg = _get_per_girder(bridge)
+    if not pg:
+        return None
+
+    cache = getattr(bridge, "_load_effects_cache", None) or {}
+    girder_names = sorted(cache.keys()) if cache else sorted(
+        g for g in pg if not g.startswith("EB")
+    )
+
+    def _with_unit(value, unit):
+        v = _num(value)
+        if v == EMPTY:
+            return EMPTY
+        return f"{v} {unit}".strip() if unit and unit not in ("–", "-") else v
+
+    rows = []
+    for g in girder_names:
+        g_data = pg.get(g) or {}
+        checks = g_data.get("checks") or []
+        if not checks:
+            rows.append([f"{g}M1", EMPTY, EMPTY, EMPTY, EMPTY, EMPTY, EMPTY])
+            continue
+
+        ctrl = max(checks, key=lambda c: c.get("dcr") or 0.0)
+
+        # Worst real LC for the controlling check id (skip Envelope pseudo-LCs)
+        ctrl_lc, best_dcr = None, None
+        for lc_name, lc_data in (g_data.get("per_lc") or {}).items():
+            if str(lc_name).lower().startswith("envelope"):
+                continue
+            for chk in lc_data.get("checks") or []:
+                if chk.get("id") == ctrl.get("check_id"):
+                    d = chk.get("dcr") or 0.0
+                    if best_dcr is None or d > best_dcr:
+                        best_dcr, ctrl_lc = d, lc_name
+        if ctrl_lc is None:
+            ctrl_lc = (g_data.get("demand") or {}).get("governing_combination") or EMPTY
+
+        rows.append([
+            f"{g}M1",
+            ctrl_lc,
+            ctrl.get("name", EMPTY),
+            _with_unit(ctrl.get("demand"),   ctrl.get("demand_unit")),
+            _with_unit(ctrl.get("capacity"), ctrl.get("capacity_unit")),
+            _num(ctrl.get("dcr"), 3),
+            ctrl.get("status", EMPTY),
+        ])
+
+    if not rows:
+        return None
+
+    return {
+        "id":    "design_results_summary",
+        "label": "Design Results Summary",
+        "columns": [
+            "Member",
+            "Controlling Load Case / Combination",
+            "Controlling Design Check",
+            "Demand",
+            "Capacity",
+            "Utilization Ratio",
             "Status",
         ],
         "rows": rows,
@@ -1909,6 +2031,10 @@ RESOLVER_MAP: dict[str, callable] = {
     "governing_shear_connector_spacing":     resolve_governing_shear_connector_spacing,
     "shear_connector_detailing_checks":      resolve_shear_connector_detailing_checks,
 
-    # ── Crack Width ───────────────────────────────────────────────────────
+    # ── Transverse Shear & Crack Width ────────────────────────────────────
+    "transverse_shear_check":             resolve_transverse_shear_check,
     "crack_width_check":                  resolve_crack_width_check,
+
+    # ── Design Summary ────────────────────────────────────────────────────
+    "design_results_summary":             resolve_design_results_summary,
 }

@@ -40,6 +40,12 @@ from osdagbridge.core.utils.common import (
     KEY_SD_SC_REQ_EDGE_DIST,
     KEY_SD_SC_CLEAR_COVER,
     KEY_SD_SC_REQ_CLEAR_COVER,
+    KEY_SD_TS_VL,
+    KEY_SD_TS_VCAP_CONC,
+    KEY_SD_TS_VCAP_REINF,
+    KEY_SD_TS_VRD,
+    KEY_SD_CRACK_AS_MIN,
+    KEY_SD_CRACK_AS_PROV,
 )
 from osdagbridge.core.utils.codes.keyfile import (
     DCR_PASS_THRESHOLD,
@@ -3319,9 +3325,15 @@ def run_design_check(
         "transverse_shear_ok"       : capacity.transverse_shear_ok,
         "Ast_required_cm2_per_m"    : capacity.Ast_required_cm2_per_m,
         "Ast_provided_cm2_per_m"    : capacity.Ast_provided_cm2_per_m,
+        KEY_SD_TS_VL               : (capacity.details.get("transverse_shear") or {}).get("VL_N_per_mm"),
+        KEY_SD_TS_VCAP_CONC        : (capacity.details.get("transverse_shear") or {}).get("Vcap1_kN_per_m"),
+        KEY_SD_TS_VCAP_REINF       : (capacity.details.get("transverse_shear") or {}).get("Vcap2_kN_per_m"),
+        KEY_SD_TS_VRD              : (capacity.details.get("transverse_shear") or {}).get("governing_capacity_kN_per_m"),
         # -- crack control --
         "As_min_crack_mm2"          : capacity.As_min_crack_mm2,
         "As_provided_crack_mm2"     : capacity.As_provided_crack_mm2,
+        KEY_SD_CRACK_AS_MIN        : capacity.As_min_crack_mm2,
+        KEY_SD_CRACK_AS_PROV       : capacity.As_provided_crack_mm2,
         # -- stiffener inputs (grade = steel_grade above; same material assumed) --
         "is_tq_mm"                  : config.stiffener.tq_mm if config.stiffener else 0.0,
         "is_H_mm"                   : config.stiffener.H_mm if config.stiffener else 0.0,

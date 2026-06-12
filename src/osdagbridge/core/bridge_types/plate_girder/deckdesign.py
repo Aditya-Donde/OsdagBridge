@@ -26,6 +26,7 @@ from osdagbridge.core.utils.common import (
     KEY_DS_REINF_BOUNDS, KEY_WC_THICKNESS, KEY_MP_CB_SPACING,
     KEY_DD_STRESS_CONC_BOTTOM, KEY_DD_STRESS_CONC_TOP, KEY_DD_STRESS_CONC_ALLOWABLE,
     KEY_DD_STRESS_REINF_BOTTOM, KEY_DD_STRESS_REINF_TOP, KEY_DD_STRESS_REINF_ALLOWABLE,
+    KEY_DD_CRACK_WK_BOTTOM, KEY_DD_CRACK_WK_TOP, KEY_DD_CRACK_WK_LIMIT,
 )
 
 # ── constants ─────────────────────────────────────────────────────────────────
@@ -585,6 +586,10 @@ def design_deck_slab(input_dict: dict, fck: float, fctm: float, fy: float, Es: f
         KEY_DD_STRESS_REINF_BOTTOM   : round(sc_bot["sigma_s"], 3),
         KEY_DD_STRESS_REINF_TOP      : round(sc_top["sigma_s"], 3),
         KEY_DD_STRESS_REINF_ALLOWABLE: round(sc_bot["ss_lim"],  3),
+        # ── crack width (interior, frequent combination) ─────────────────────
+        KEY_DD_CRACK_WK_BOTTOM       : round(cw_bot["wk"], 4),
+        KEY_DD_CRACK_WK_TOP          : round(cw_top["wk"], 4),
+        KEY_DD_CRACK_WK_LIMIT        : cw_bot["wk_lim"],
         # ── utilization ratios (interior) ────────────────────────────────────
         "ur_bot_uls"             : round(ur_bot_uls, 3),
         "ur_top_uls"             : round(ur_top_uls, 3),
