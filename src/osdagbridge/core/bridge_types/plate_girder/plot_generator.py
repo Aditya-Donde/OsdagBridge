@@ -289,7 +289,7 @@ def _add_coordinate_triad(ax, nodes, scale=0.12, eng_scale: float = 1.0):
     colors = {"X": "#E65100", "Z": "#0D47A1"}
     tag = "coord_triad"
 
-    ax.scatter([ox], [oz], [oy], color="#333333", s=40, zorder=6, gid=tag)
+    ax.scatter([ox], [oz], [oy], color="green", s=40, zorder=6, gid=tag)
 
     # 1. Capture exact current limits to lock the visual screen space
     xlim = ax.get_xlim()

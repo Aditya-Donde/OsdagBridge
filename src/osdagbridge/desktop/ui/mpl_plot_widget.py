@@ -682,7 +682,7 @@ class MplPlotWidget(QWidget):
         for ax in self._fig.axes:
             for collection in ax.collections:
                 if isinstance(collection, Path3DCollection):
-                    if collection.get_gid() != "supports":
+                    if collection.get_gid() not in ("supports", "coord_triad"):
                         collection.set_visible(self._show_nodes)
 
     def _apply_node_number_visibility(self):
