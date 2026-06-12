@@ -49,10 +49,14 @@ class CrossSectionCADWidget(QWidget):
         self.hovered_label_index = -1
         self.hovered_element = None  # Track hovered element for highlighting
         self.cross_section_hover_zones = []  # Store hover zones as (QRectF, element_type)
-        
+        self.interactive_hover = True
+        self.highlighted_girder_index = -1
+
         # Scale factor for diagram size (1.0 = normal, <1.0 = smaller)
         self.scale_factor = 1.0
-        
+
+        self.show_zoom_controls = True
+
         # Zoom level for this widget
         self.zoom_level = 1.0
 
@@ -195,6 +199,13 @@ class CrossSectionCADWidget(QWidget):
     
     def _position_zoom_buttons(self):
         """Lock zoom buttons to fixed viewport position - improved version"""
+        if not getattr(self, 'show_zoom_controls', True):
+            if hasattr(self, 'zoom_in_btn'):
+                self.zoom_in_btn.hide()
+                self.zoom_out_btn.hide()
+                self.fit_to_screen_btn.hide()
+            return
+
         if not hasattr(self, 'zoom_in_btn'):
             return
 
@@ -674,6 +685,8 @@ class CrossSectionCADWidget(QWidget):
 
     def mouseMoveEvent(self, event):
         """Handle mouse hover for both labels and structural elements"""
+        if not getattr(self, 'interactive_hover', True):
+            return
         pos = event.position() if hasattr(event, 'position') else event.pos()
         
         # Check label hover first
@@ -1504,9 +1517,10 @@ class CrossSectionCADWidget(QWidget):
         margin_y = 10 if is_preview else 80
         
         scale_x = (width - 2 * margin_x) / total_deck_width
+        extra_dim_space = 800 if self.show_dimensions else 0
         scale_y = (height - 2 * margin_y - (40 if is_preview else 80)) / (self.girder['depth'] * self.girder_visual_scale['depth'] +
                                                 self.params['deck_thickness'] +
-                                                self.params['footpath_thickness'] + 800)
+                                                self.params['footpath_thickness'] + extra_dim_space)
         
         if is_preview:
             scale = min(scale_x, scale_y)
@@ -1811,9 +1825,9 @@ class CrossSectionCADWidget(QWidget):
         else:
             tf_top = tf_bottom = self.girder['flange_thickness'] * scale * self.girder_visual_scale['flange_thickness']
         # Draw girders and stiffeners
-        for girder_x in positions:
-            self.draw_i_section(painter, girder_x, base_y, scale, self.GIRDER_COLOR)
-            self.draw_stiffeners(painter, girder_x, base_y, scale, self.STIFFENER_COLOR)
+        for i, girder_x in enumerate(positions):
+            self.draw_i_section(painter, girder_x, base_y, scale, self.GIRDER_COLOR, index=i)
+            self.draw_stiffeners(painter, girder_x, base_y, scale, self.STIFFENER_COLOR, index=i)
             
     
 
@@ -2522,24 +2536,32 @@ class CrossSectionCADWidget(QWidget):
                 line
             )
 
-    def draw_i_section(self, painter, x, base_y, scale, girder_color):
+    def draw_i_section(self, painter, x, base_y, scale, girder_color, index=None):
         """Draw I-section girder (supports asymmetric sections)"""
         visual = self.girder_visual_scale
         d = self.girder['depth'] * scale * visual['depth']
-        
+
         bf_top = self.girder['top_flange_width'] * scale * visual['flange_width']
         tf_top = self.girder['top_flange_thickness'] * scale * visual['flange_thickness']
         bf_bottom = self.girder['bottom_flange_width'] * scale * visual['flange_width']
         tf_bottom = self.girder['bottom_flange_thickness'] * scale * visual['flange_thickness']
-        
+
         tw = self.girder['web_thickness'] * scale * visual['web_thickness']
-        
-        # Check if this girder is hovered (more visible brightness)
-        girder_hovered = (self.hovered_element == 'girder')
+
+        # In interactive mode highlight the hovered girder; in static preview mode
+        # highlight the externally selected girder (by index) instead.
+        if getattr(self, 'interactive_hover', True):
+            girder_hovered = (self.hovered_element == 'girder')
+        else:
+            girder_hovered = (getattr(self, 'highlighted_girder_index', -1) == index)
+
         if girder_hovered:
-            # Strong brightness increase (lighter by 70 units)
-            r, g, b = girder_color.red(), girder_color.green(), girder_color.blue()
-            highlight_color = QColor(min(255, r + 70), min(255, g + 70), min(255, b + 70))
+            if getattr(self, 'interactive_hover', True):
+                # Strong brightness increase (lighter by 70 units)
+                r, g, b = girder_color.red(), girder_color.green(), girder_color.blue()
+                highlight_color = QColor(min(255, r + 70), min(255, g + 70), min(255, b + 70))
+            else:
+                highlight_color = QColor(144, 175, 19)  # Bright green (#90af13)
             painter.setBrush(QBrush(highlight_color))
         else:
             painter.setBrush(QBrush(girder_color))
@@ -2565,9 +2587,14 @@ class CrossSectionCADWidget(QWidget):
                            d + 2*hover_padding)
         self.cross_section_hover_zones.append((hover_rect, 'girder'))
         
-    def draw_stiffeners(self, painter, x, base_y, scale, stiffener_color):
+    def draw_stiffeners(self, painter, x, base_y, scale, stiffener_color, index=None):
         """Draw vertical stiffeners with chamfered inner corners"""
         visual = self.girder_visual_scale
+
+        # Match the green highlight of the selected girder in static preview mode.
+        if not getattr(self, 'interactive_hover', True):
+            if getattr(self, 'highlighted_girder_index', -1) == index:
+                stiffener_color = QColor(144, 175, 19)
 
         '''stiff_w = (
             (min(self.girder['top_flange_width'], self.girder['bottom_flange_width'])
