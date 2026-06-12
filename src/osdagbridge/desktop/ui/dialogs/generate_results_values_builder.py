@@ -1406,6 +1406,107 @@ def resolve_deck_slab_properties(input_dict: dict, bridge=None) -> dict | None:
     }
 
 
+# ── Resolvers — Stress Results ────────────────────────────────────────────────
+# These resolvers read from bridge.output_dict["design_results"]["per_girder"]
+# which is populated at design time.  per_girder keys: G1, G2, ...
+# Each girder dict has "checks" (list with check_id 10/11/12) and
+# "sls_fibre_stresses" (raw fbt_MPa / fbc_MPa from compute_sls_stresses).
+
+def _get_per_girder(bridge):
+    """Return per_girder dict from design_results, or {} if unavailable."""
+    if bridge is None:
+        return {}
+    try:
+        return (getattr(bridge, "output_dict", {}).get("design_results") or {}).get("per_girder") or {}
+    except Exception:
+        return {}
+
+
+def resolve_stress_results_steel(input_dict: dict, bridge=None) -> dict | None:
+    if bridge is None:
+        return None
+
+    # Controlling-girder envelope-SLS steel stress + allowable — single source
+    # of truth computed in the designer; one value for every girder/member row.
+    dr = (getattr(bridge, "output_dict", {}).get("design_results") or {})
+    sigma = dr.get(KEY_SD_STRESS_STEEL)
+    limit = dr.get(KEY_SD_STRESS_STEEL_ALLOWABLE)
+    if sigma is None or limit is None:
+        return None
+
+    # Use _load_effects_cache keys — already EB-filtered and labelled G1…Gn
+    cache = getattr(bridge, "_load_effects_cache", None) or {}
+    if cache:
+        girder_names = sorted(cache.keys())
+    else:
+        # fallback: per_girder keys skip EB in designer.py
+        girder_names = [g for g in _get_per_girder(bridge).keys()
+                        if not g.startswith("EB")]
+
+    if not girder_names:
+        return None
+
+    rows = [[f"{g}M1", _num(sigma), _num(limit)] for g in girder_names]
+
+    return {
+        "id": "stress_steel_service",
+        "label": "Stress in Structural Steel - Service",
+        "columns": ["Member", "Steel Stress (MPa)", "Allowable Stress (MPa)"],
+        "rows": rows,
+    }
+
+
+def _get_deck_design(bridge):
+    """Return deck_design_results dict, or {} if unavailable."""
+    if bridge is None:
+        return {}
+    try:
+        return getattr(bridge, "output_dict", {}).get("deck_design_results") or {}
+    except Exception:
+        return {}
+
+
+def resolve_stress_results_concrete(input_dict: dict, bridge=None) -> dict | None:
+    dd = _get_deck_design(bridge)
+    bot_c = dd.get(KEY_DD_STRESS_CONC_BOTTOM)
+    top_c = dd.get(KEY_DD_STRESS_CONC_TOP)
+    if bot_c is None and top_c is None:
+        return None
+
+    allow = dd.get(KEY_DD_STRESS_CONC_ALLOWABLE)
+    rows = [
+        ["Deck Slab (Bottom)", _num(bot_c), _num(allow)],
+        ["Deck Slab (Top)",    _num(top_c), _num(allow)],
+    ]
+
+    return {
+        "id": "stress_concrete_service",
+        "label": "Stress in Concrete Deck - Service",
+        "columns": ["Member", "Concrete Stress (MPa)", "Allowable Stress (MPa)"],
+        "rows": rows,
+    }
+
+
+def resolve_stress_results_reinforcement(input_dict: dict, bridge=None) -> dict | None:
+    dd = _get_deck_design(bridge)
+    bot_s = dd.get(KEY_DD_STRESS_REINF_BOTTOM)
+    top_s = dd.get(KEY_DD_STRESS_REINF_TOP)
+    if bot_s is None and top_s is None:
+        return None
+
+    allow = dd.get(KEY_DD_STRESS_REINF_ALLOWABLE)
+    rows = [
+        ["Deck Slab (Bottom)", _num(bot_s), _num(allow)],
+        ["Deck Slab (Top)",    _num(top_s), _num(allow)],
+    ]
+
+    return {
+        "id": "stress_reinf_service",
+        "label": "Stress in Reinforcement - Service",
+        "columns": ["Member", "Rebar Stress (MPa)", "Allowable Stress (MPa)"],
+        "rows": rows,
+    }
+
 
 # ── Resolvers — Analysis Results: Load Effects (Girder) ───────────────────────
 # These resolvers read from bridge._load_effects_cache which is pre-computed
@@ -1594,7 +1695,9 @@ RESOLVER_MAP: dict[str, callable] = {
     "deflection_control_total":           resolve_deflection_total_load,
 
     # ── SLS — Stress ──────────────────────────────────────────────────────
-    "stress_reinf_service":               resolve_stress_reinf_service,
+    "stress_steel_service":               resolve_stress_results_steel,
+    "stress_concrete_service":            resolve_stress_results_concrete,
+    "stress_reinf_service":               resolve_stress_results_reinforcement,
 
     # ── Fatigue ───────────────────────────────────────────────────────────
     "fatigue_assessment_girder":          resolve_fatigue_assessment_girder,

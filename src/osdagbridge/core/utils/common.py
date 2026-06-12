@@ -231,6 +231,22 @@ KEY_DECK_REINF_MATERIAL = "Deck Reinforcement Material"
 KEY_DECK_REINF_SIZE = "Deck Reinforcement Size"
 KEY_DECK_REINF_SPACING_LONG = "Deck Reinforcement Spacing Longitudinal"
 KEY_DECK_REINF_SPACING_TRANS = "Deck Reinforcement Spacing Transverse"
+
+# ── Generate-Results SLS stress table keys ────────────────────────────────────
+# Structural steel: single envelope-SLS equivalent stress applied to every
+# girder/member row, plus its allowable (0.9·fy). Stored in design_results.
+KEY_SD_STRESS_STEEL           = "steeldesign.stress.steel"
+KEY_SD_STRESS_STEEL_ALLOWABLE = "steeldesign.stress.steel.allowable"
+# Concrete deck (interior panel SLS): bottom & top fibre stress share one limit
+# (0.48·fck). Stored in deck_design_results.
+KEY_DD_STRESS_CONC_BOTTOM     = "deckdesign.stress.concrete.bottom"
+KEY_DD_STRESS_CONC_TOP        = "deckdesign.stress.concrete.top"
+KEY_DD_STRESS_CONC_ALLOWABLE  = "deckdesign.stress.concrete.allowable"
+# Reinforcement (interior panel SLS): bottom & top fibre stress share one limit
+# (0.80·fyk). Stored in deck_design_results.
+KEY_DD_STRESS_REINF_BOTTOM    = "deckdesign.stress.reinf.bottom"
+KEY_DD_STRESS_REINF_TOP       = "deckdesign.stress.reinf.top"
+KEY_DD_STRESS_REINF_ALLOWABLE = "deckdesign.stress.reinf.allowable"
 KEY_RAILING_PRESENT = "Railing Present"
 KEY_RAILING_WIDTH = "Railing Width"
 KEY_RAILING_HEIGHT = "Railing Height"

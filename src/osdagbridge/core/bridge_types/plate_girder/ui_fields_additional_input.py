@@ -3721,13 +3721,11 @@ GENERATE_RESULTS_DEFAULTS = {
                 "label": "Stress in Structural Steel - Service",
                 "columns": [
                     "Girder",
-                    "Compression (MPa)",
-                    "Tension (MPa)",
-                    "Shear (MPa)",
-                    "Allowable",
+                    "Stress in Concrete, σS (MPa)",
+                    "Allowable Stress (MPa)",
                 ],
                 "rows": [
-                    [EMPTY, EMPTY, EMPTY, EMPTY, EMPTY],
+                    [EMPTY, EMPTY, EMPTY],
                 ],
             },
 

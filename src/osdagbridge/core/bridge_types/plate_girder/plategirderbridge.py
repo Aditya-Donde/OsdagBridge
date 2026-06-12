@@ -558,7 +558,11 @@ class PlateGirderBridge:
         self.create_uls_combinations()
         self.create_sls_combinations()
         dataset = self._reanalyze_with_dedup()
-        self.create_envelope_load_case(dataset)
+        # Capture the augmented dataset so the DCR pipeline sees the injected
+        # "Envelope ULS" / "Envelope SLS" pseudo load cases — without this the
+        # SLS envelope demand (M_sls) is 0 and the steel/concrete/rebar SLS
+        # stress checks never fire.
+        dataset = self.create_envelope_load_case(dataset)
 
         inp = self.input_dict
         header = (

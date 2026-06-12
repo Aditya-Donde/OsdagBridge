@@ -2933,15 +2933,17 @@ def _compute_per_lc_dcr(
             "overall_status": lc_engine.overall_status(),
             "max_dcr"       : lc_engine.max_dcr(),
             "category_urs"  : lc_engine.category_urs(),
-            # ── per-check detail (id, label, dcr, status, note) ────────────
+            # ── per-check detail (id, label, demand, capacity, dcr, status) ──
             "checks": [
                 {
-                    "id"    : chk.check_id,
-                    "label" : chk.name,
-                    "clause": chk.clause,
-                    "dcr"   : chk.dcr,
-                    "status": chk.status,
-                    "note"  : chk.note,
+                    "id"      : chk.check_id,
+                    "label"   : chk.name,
+                    "clause"  : chk.clause,
+                    "demand"  : chk.demand,
+                    "capacity": chk.capacity,
+                    "dcr"     : chk.dcr,
+                    "status"  : chk.status,
+                    "note"    : chk.note,
                 }
                 for chk in lc_engine.checks
             ],
@@ -3063,6 +3065,7 @@ def run_design_check(
             ],
             "category_urs": g_cat_urs,
             "per_lc": _compute_per_lc_dcr(config, g_lc),
+            "sls_fibre_stresses": g_cap.details.get("sls_actual_stresses") or {},
             "_engine"  : g_engine,
             "_capacity": g_cap,
         }
@@ -3201,6 +3204,10 @@ def run_design_check(
         "sigma_c_actual_MPa"        : capacity.sigma_c_actual_MPa,
         "sigma_rebar_actual_MPa"    : capacity.sigma_rebar_actual_MPa,
         "sigma_steel_equiv_MPa"     : capacity.sigma_steel_equiv_MPa,
+        # -- Generate-Results steel stress table (controlling-girder envelope SLS;
+        #    one value applied to every girder/member row) --
+        KEY_SD_STRESS_STEEL           : capacity.sigma_steel_equiv_MPa,
+        KEY_SD_STRESS_STEEL_ALLOWABLE : capacity.sigma_s_limit_MPa,
         "tau_web_actual_MPa"        : capacity.tau_web_actual_MPa,
         # -- composite section --
         "I_comp_short_mm4"          : capacity.I_comp_short_mm4,
