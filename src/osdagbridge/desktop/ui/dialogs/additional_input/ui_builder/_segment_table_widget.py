@@ -276,11 +276,13 @@ class SegmentTableWidget(QWidget):
         add_btn.setIconSize(QSize(12, 12))
         add_btn.setFocusPolicy(Qt.NoFocus)
         add_btn.setCursor(Qt.PointingHandCursor)
-        add_btn.setToolTip("Split/Add segment")
+        add_btn.setEnabled(False)
+        add_btn.setToolTip("Segment addition disabled for now")
         add_btn.setStyleSheet(
             "QPushButton { background-color: #90AF13; border: 1px solid #6f850f; border-radius: 8px; }"
             "QPushButton:hover { background-color: #7a9410; }"
             "QPushButton:pressed { background-color: #6a840d; }"
+            "QPushButton:disabled { background-color: #d6d6d6; color: #8c8c8c; border-color: #d6d6d6; }"
         )
         add_btn.clicked.connect(lambda _=False, r=row: self._on_add_clicked(r))
 
@@ -291,8 +293,8 @@ class SegmentTableWidget(QWidget):
         rem_btn.setIconSize(QSize(12, 12))
         rem_btn.setFocusPolicy(Qt.NoFocus)
         rem_btn.setCursor(Qt.PointingHandCursor)
-        rem_btn.setEnabled(can_remove)
-        rem_btn.setToolTip("Remove this segment" if can_remove else "At least one segment is required")
+        rem_btn.setEnabled(False)
+        rem_btn.setToolTip("Segment removal disabled for now")
         rem_btn.setStyleSheet(
             "QPushButton { background-color: #c72626; border: 1px solid #8f1c1c; border-radius: 8px; }"
             "QPushButton:hover { background-color: #ae1f1f; }"

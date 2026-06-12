@@ -2136,21 +2136,6 @@ GIRDER_DETAILS_SCHEMA = {
                 },
                 {
                     "fields": [{
-                        "id":      KEY_MP_GD_SUPPORT_TYPE,
-                        "label":   "Support Type:",
-                        "type":    TYPE_COMBOBOX,
-                        "choices": VALUES_GIRDER_SUPPORT_TYPE,
-                    }]
-                },
-                {
-                    "fields": [{
-                        "id":    KEY_MP_GD_SUPPORT_WIDTH,
-                        "label": "Support Width (mm):",
-                        "type":  TYPE_TEXTBOX,
-                    }]
-                },
-                {
-                    "fields": [{
                         "id":         KEY_MP_GIRDER_WEB_THICKNESS,
                         "label":      "Web Thickness, w<sub>t</sub> (mm):",
                         "type":       TYPE_ADAPTIVE,
@@ -2167,6 +2152,21 @@ GIRDER_DETAILS_SCHEMA = {
                                 "on_change_compute": {"function": "_compute_welded_section_properties"},
                             },
                         },
+                    }]
+                },
+                {
+                    "fields": [{
+                        "id":      KEY_MP_GD_SUPPORT_TYPE,
+                        "label":   "Support Type:",
+                        "type":    TYPE_COMBOBOX,
+                        "choices": VALUES_GIRDER_SUPPORT_TYPE,
+                    }]
+                },
+                {
+                    "fields": [{
+                        "id":    KEY_MP_GD_SUPPORT_WIDTH,
+                        "label": "Support Width (mm):",
+                        "type":  TYPE_TEXTBOX,
                     }]
                 },
 
