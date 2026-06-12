@@ -1,5 +1,4 @@
 import logging
-import time
 from osdagbridge.core.utils.common import *
 
 logger = logging.getLogger(__name__)
@@ -514,42 +513,6 @@ def resolve_shear_stud_properties(input_dict: dict, bridge=None) -> dict | None:
     }
 
 
-def resolve_deck_slab_properties(input_dict: dict, bridge=None) -> dict | None:
-    thickness    = input_dict.get(KEY_TS_DECK_THICKNESS)
-    reinf_size   = input_dict.get(KEY_DS_REINF_BOUNDS)
-    reinf_mat    = input_dict.get(KEY_DS_REINF_MATERIAL)
-    top_cover    = input_dict.get(KEY_DS_TOP_CLEAR_COVER)
-    bot_cover    = input_dict.get(KEY_DS_BOTTOM_CLEAR_COVER)
-
-    if not _has(thickness):
-        return None
-
-    # Format reinforcement label as "Grade @ spacing" when both are available,
-    # otherwise show whichever part is present.
-    def _reinf_label(size, mat):
-        if _has(size) and _has(mat):
-            return f"{mat} — {size}mm"
-        return _val(size or mat)
-
-    return {
-        "id":    "deck_slab_properties",
-        "label": "Deck Slab Properties",
-        "columns": [
-            "Thickness (mm)",
-            "Reinforcement Material",
-            "Reinforcement Size (mm)",
-            "Top Cover (mm)",
-            "Bottom Cover (mm)",
-        ],
-        "rows": [[
-            _mm(thickness),
-            _val(reinf_mat),
-            _val(reinf_size),
-            _num(top_cover),
-            _num(bot_cover),
-        ]],
-    }
-
 # ── Resolvers — Load Definitions ─────────────────────────────────────────────
 
 def resolve_live_load_definitions(input_dict: dict, bridge=None) -> dict | None:
@@ -953,27 +916,44 @@ def resolve_load_combinations(input_dict: dict, bridge=None) -> dict | None:
 # ── Resolvers — Deflections (Analysis Results) ────────────────────────────────
 
 def resolve_deflection_live_load(input_dict: dict, bridge=None) -> dict | None:
-    """
-    Analysis-result deflection table — live load only.
-    KEY_DO_SLS_DEFLECTION stores the user-entered/computed deflection limit toggle.
-    Actual deflection values come from analysis; only the limit input is available
-    here, so we show the user's limit and leave the computed value as EMPTY.
-    """
-    defl_limit = input_dict.get(KEY_DO_SLS_DEFLECTION)
-    n_girders  = input_dict.get(KEY_TS_NO_OF_GIRDERS)
+    span      = input_dict.get(KEY_SPAN)
+    n_girders = input_dict.get(KEY_TS_NO_OF_GIRDERS)
 
     if not _has(n_girders):
         return None
-
     try:
         n = int(n_girders)
     except Exception:
         return None
 
-    rows = [
-        [f"Girder {i}", EMPTY, _val(defl_limit) if _has(defl_limit) else EMPTY, EMPTY]
-        for i in range(1, n + 1)
-    ]
+    limit_val = None
+    limit_str = EMPTY
+    if _has(span):
+        try:
+            limit_val = float(span) * 1000.0 / 800.0
+            limit_str = f"L/800 = {round(limit_val, 1)} mm"
+        except Exception:
+            pass
+
+    defl_cache = getattr(bridge, "_deflections_cache", {}) if bridge else {}
+
+    rows = []
+    for i in range(1, n + 1):
+        girder = f"G{i}"
+        entry = defl_cache.get(girder, {})
+        live_mm = entry.get("live_mm")
+
+        if live_mm is not None and limit_val is not None:
+            status = "Pass" if live_mm <= limit_val else "Fail"
+        else:
+            status = EMPTY
+
+        rows.append([
+            girder,
+            _num(live_mm) if live_mm is not None else EMPTY,
+            limit_str,
+            status,
+        ])
 
     return {
         "id":    "deflection_live_load",
@@ -989,30 +969,44 @@ def resolve_deflection_live_load(input_dict: dict, bridge=None) -> dict | None:
 
 
 def resolve_deflection_total_load(input_dict: dict, bridge=None) -> dict | None:
-    """
-    Analysis-result deflection table — total load.
-    Permissible limit = Span / 600 (IRC:6 Cl.211.2).
-    """
     span      = input_dict.get(KEY_SPAN)
     n_girders = input_dict.get(KEY_TS_NO_OF_GIRDERS)
 
     if not _has(n_girders):
         return None
-
     try:
         n = int(n_girders)
     except Exception:
         return None
 
-    limit_str = (
-        f"L/600 = {round(float(span) * 1000 / 600, 1)} mm"
-        if _has(span) else EMPTY
-    )
+    limit_val = None
+    limit_str = EMPTY
+    if _has(span):
+        try:
+            limit_val = float(span) * 1000.0 / 600.0
+            limit_str = f"L/600 = {round(limit_val, 1)} mm"
+        except Exception:
+            pass
 
-    rows = [
-        [f"Girder {i}", EMPTY, limit_str, EMPTY]
-        for i in range(1, n + 1)
-    ]
+    defl_cache = getattr(bridge, "_deflections_cache", {}) if bridge else {}
+
+    rows = []
+    for i in range(1, n + 1):
+        girder = f"G{i}"
+        entry = defl_cache.get(girder, {})
+        total_mm = entry.get("total_mm")
+
+        if total_mm is not None and limit_val is not None:
+            status = "Pass" if total_mm <= limit_val else "Fail"
+        else:
+            status = EMPTY
+
+        rows.append([
+            girder,
+            _num(total_mm) if total_mm is not None else EMPTY,
+            limit_str,
+            status,
+        ])
 
     return {
         "id":    "deflection_total_load",
@@ -1331,135 +1325,117 @@ def resolve_crack_width_check(input_dict: dict, bridge=None) -> dict | None:
     }
 
 
-# ── Fix: deck_slab_properties — Bottom Reinforcement column ──────────────────
-# The schema has "Bottom Reinforcement" but the original resolver only returns
-# "Reinforcement Material" and "Reinforcement Size".  Override the resolver to
-# match the schema column list exactly.
-
 def resolve_deck_slab_properties(input_dict: dict, bridge=None) -> dict | None:
-    thickness  = input_dict.get(KEY_TS_DECK_THICKNESS)
-    reinf_size = input_dict.get(KEY_DS_REINF_BOUNDS)
-    reinf_mat  = input_dict.get(KEY_DS_REINF_MATERIAL)
-    top_cover  = input_dict.get(KEY_DS_TOP_CLEAR_COVER)
-    bot_cover  = input_dict.get(KEY_DS_BOTTOM_CLEAR_COVER)
+    """
+    Deck slab properties table.
 
-    if not _has(thickness):
-        return None
+    Primary source: bridge.output_dict["deck_design_results"] (after design_deck_slab()).
+    Fallback:       input_dict for grade/thickness/overhang before design runs.
+    """
+    dd = {}
+    if bridge is not None:
+        try:
+            dd = getattr(bridge, "output_dict", {}).get("deck_design_results") or {}
+        except Exception:
+            dd = {}
 
-    # Top reinforcement: combine material + size when both available
-    top_reinf = (
-        f"{reinf_mat} — {reinf_size} mm"
-        if _has(reinf_mat) and _has(reinf_size)
-        else _val(reinf_mat or reinf_size)
-    )
-    # Bottom reinforcement: same bar size/material, different cover — show same label
-    bot_reinf = top_reinf   # symmetrical until a separate key is introduced
+    def _dd(key):
+        v = dd.get(key)
+        return v if v not in (None, "", [], {}) else None
+
+    grade     = _dd("deck_grade")     or _val(input_dict.get(KEY_DECK_CONCRETE_GRADE_BASIC))
+    thickness = _dd("deck_thickness") or (_mm(input_dict.get(KEY_TS_DECK_THICKNESS)) if _has(input_dict.get(KEY_TS_DECK_THICKNESS)) else None)
+    overhang_raw = _dd("deck_overhang")
+    if overhang_raw is not None:
+        try:
+            overhang = round(float(overhang_raw) / 1000.0, 3)
+        except Exception:
+            overhang = None
+    else:
+        ov = input_dict.get(KEY_TS_DECK_OVERHANG)
+        overhang = _num(ov) if _has(ov) else None
+
+    top_fy   = _dd("rebar_top_yield")
+    top_dia  = _dd("rebar_top_dia")
+    top_spc  = _dd("rebar_top_spacing")
+    top_cov  = _dd("rebar_top_cover")
+    top_area = _dd("rebar_top_area")
+
+    bot_fy   = _dd("rebar_bottom_yield")
+    bot_dia  = _dd("rebar_bottom_dia")
+    bot_spc  = _dd("rebar_bottom_spacing")
+    bot_cov  = _dd("rebar_bottom_cover")
+    bot_area = _dd("rebar_bottom_area")
+
+    def _v(x):
+        return _val(x) if x is not None else EMPTY
 
     return {
         "id":    "deck_slab_properties",
         "label": "Deck Slab Properties",
         "columns": [
-            "Thickness (mm)",
-            "Top Reinforcement",
-            "Bottom Reinforcement",
-            "Top Cover (mm)",
-            "Bottom Cover (mm)",
+            "Grade of Material",
+            "Deck Thickness (mm)",
+            "Deck Overhang (m)",
+            "Top Layer - Material Strength (MPa)",
+            "Top Layer - Diameter (mm)",
+            "Top Layer - Spacing (mm)",
+            "Top Layer - Clear Cover (mm)",
+            "Top Layer - Area (mm²)",
+            "Bottom Layer - Material Strength (MPa)",
+            "Bottom Layer - Diameter (mm)",
+            "Bottom Layer - Spacing (mm)",
+            "Bottom Layer - Clear Cover (mm)",
+            "Bottom Layer - Area (mm²)",
         ],
         "rows": [[
-            _mm(thickness),
-            top_reinf,
-            bot_reinf,
-            _num(top_cover),
-            _num(bot_cover),
+            _v(grade),
+            _v(thickness),
+            _v(overhang),
+            _v(top_fy),
+            _v(top_dia),
+            _v(top_spc),
+            _v(top_cov),
+            _v(top_area),
+            _v(bot_fy),
+            _v(bot_dia),
+            _v(bot_spc),
+            _v(bot_cov),
+            _v(bot_area),
         ]],
     }
 
 
 
 # ── Resolvers — Analysis Results: Load Effects (Girder) ───────────────────────
+# These resolvers read from bridge._load_effects_cache which is pre-computed
+# once at the end of design() via PlateGirderBridge.compute_load_effects_cache().
+# Cache structure: {girder: {load_case: {Mz_max, Mz_min, Vy_max, Vy_min}}}
 
-def _get_force_context(bridge):
-    """
-    Build all data needed for force lookups in one shot.
-
-    Returns (ds, g_map, girders, filtered_lcs) or (None, None, None, None).
-    build_girders() is expensive (calls OpenSeesPy) so we call it exactly once
-    here and share the result across all element loops.
-    Vehicle (live load position) cases are excluded — only dead loads and
-    combination load cases are included.
-    """
-    rh = bridge.get_result_handler()
-    if rh is None:
-        return None, None, None, None
-    ds = rh.ds
-    if ds is None:
-        return None, None, None, None
-    g_map, _ = rh.build_girders(verbose=False)
-    girders = [k for k in g_map if not k.startswith("EB")]
-
-    classified = rh.classify_loadcases()
-    exclude = set(
-        classified.get("vehicle_static", []) +
-        classified.get("vehicle_moving", [])
-    )
-    all_lcs = [
-        lc for lc in classified.get("all", [])
-        if lc not in exclude and "moving" not in str(lc).lower()
-    ]
-
-    if not girders or not all_lcs:
-        return None, None, None, None
-    return ds, g_map, girders, all_lcs
-
-
-def _force_max_min(ds, g_map, load_case: str, girder: str, comp_i: str, comp_j: str):
-    """
-    Return (max_val, min_val) across both element ends for one girder / load case.
-    Queries the xarray dataset directly — no per-call build_girders() overhead.
-    Values are divided by 1000 (N→kN / Nmm→kNm).
-    Returns (None, None) if no data is available.
-    """
-    elements = g_map.get(girder, {}).get("elements", [])
-    values = []
-    for comp in (comp_i, comp_j):
-        for eid in elements:
-            try:
-                val = float(ds.sel(Loadcase=load_case, Element=eid, Component=comp)["forces"]) / 1000.0
-                values.append(val)
-            except Exception:
-                pass
-    if not values:
-        return None, None
-    return round(max(values), 3), round(min(values), 3)
+def _get_cache(bridge):
+    """Return the pre-computed load effects cache, or None if unavailable."""
+    cache = getattr(bridge, "_load_effects_cache", None)
+    return cache if cache else None
 
 
 def resolve_bending_moment_envelope(input_dict: dict, bridge=None) -> dict | None:
     if bridge is None:
         return None
     try:
-        _t0 = time.perf_counter()
-        ds, g_map, girders, all_lcs = _get_force_context(bridge)
-        _t1 = time.perf_counter()
-        print(f"[TIMER] bending_moment_envelope  context: {_t1-_t0:.3f}s  ({len(all_lcs or [])} LCs, {len(girders or [])} girders)")
-        if ds is None:
+        cache = _get_cache(bridge)
+        if cache is None:
             return None
 
         rows = []
-        for girder in girders:
-            env_max, env_min = None, None
-            for lc in all_lcs:
-                mx, mn = _force_max_min(ds, g_map, lc, girder, "Mz_i", "Mz_j")
-                if mx is not None:
-                    env_max = mx if env_max is None else max(env_max, mx)
-                if mn is not None:
-                    env_min = mn if env_min is None else min(env_min, mn)
+        for girder, lc_data in cache.items():
+            env_max = max((v["Mz_max"] for v in lc_data.values() if v.get("Mz_max") is not None), default=None)
+            env_min = min((v["Mz_min"] for v in lc_data.values() if v.get("Mz_min") is not None), default=None)
             rows.append([
                 girder,
                 _num(env_max) if env_max is not None else EMPTY,
                 _num(env_min) if env_min is not None else EMPTY,
             ])
 
-        print(f"[TIMER] bending_moment_envelope  total:   {time.perf_counter()-_t0:.3f}s")
         return {
             "id": "bending_moment_envelope",
             "label": "Bending Moment Diagram - Envelope",
@@ -1479,29 +1455,20 @@ def resolve_shear_force_envelope(input_dict: dict, bridge=None) -> dict | None:
     if bridge is None:
         return None
     try:
-        _t0 = time.perf_counter()
-        ds, g_map, girders, all_lcs = _get_force_context(bridge)
-        _t1 = time.perf_counter()
-        print(f"[TIMER] shear_force_envelope     context: {_t1-_t0:.3f}s  ({len(all_lcs or [])} LCs, {len(girders or [])} girders)")
-        if ds is None:
+        cache = _get_cache(bridge)
+        if cache is None:
             return None
 
         rows = []
-        for girder in girders:
-            env_max, env_min = None, None
-            for lc in all_lcs:
-                mx, mn = _force_max_min(ds, g_map, lc, girder, "Vy_i", "Vy_j")
-                if mx is not None:
-                    env_max = mx if env_max is None else max(env_max, mx)
-                if mn is not None:
-                    env_min = mn if env_min is None else min(env_min, mn)
+        for girder, lc_data in cache.items():
+            env_max = max((v["Vy_max"] for v in lc_data.values() if v.get("Vy_max") is not None), default=None)
+            env_min = min((v["Vy_min"] for v in lc_data.values() if v.get("Vy_min") is not None), default=None)
             rows.append([
                 girder,
                 _num(env_max) if env_max is not None else EMPTY,
                 _num(env_min) if env_min is not None else EMPTY,
             ])
 
-        print(f"[TIMER] shear_force_envelope     total:   {time.perf_counter()-_t0:.3f}s")
         return {
             "id": "shear_force_envelope",
             "label": "Shear Force Diagram - Envelope",
@@ -1521,12 +1488,11 @@ def resolve_bending_moment_by_load_case(input_dict: dict, bridge=None) -> dict |
     if bridge is None:
         return None
     try:
-        _t0 = time.perf_counter()
-        ds, g_map, girders, all_lcs = _get_force_context(bridge)
-        _t1 = time.perf_counter()
-        print(f"[TIMER] bending_moment_by_lc     context: {_t1-_t0:.3f}s  ({len(all_lcs or [])} LCs, {len(girders or [])} girders)")
-        if ds is None:
+        cache = _get_cache(bridge)
+        if cache is None:
             return None
+
+        all_lcs = list(next(iter(cache.values())).keys())
 
         columns = ["Girder"]
         for lc in all_lcs:
@@ -1534,15 +1500,14 @@ def resolve_bending_moment_by_load_case(input_dict: dict, bridge=None) -> dict |
             columns.append(f"{lc} - Min (kNm)")
 
         rows = []
-        for girder in girders:
+        for girder, lc_data in cache.items():
             row = [girder]
             for lc in all_lcs:
-                mx, mn = _force_max_min(ds, g_map, lc, girder, "Mz_i", "Mz_j")
-                row.append(_num(mx) if mx is not None else EMPTY)
-                row.append(_num(mn) if mn is not None else EMPTY)
+                entry = lc_data.get(lc, {})
+                row.append(_num(entry["Mz_max"]) if entry.get("Mz_max") is not None else EMPTY)
+                row.append(_num(entry["Mz_min"]) if entry.get("Mz_min") is not None else EMPTY)
             rows.append(row)
 
-        print(f"[TIMER] bending_moment_by_lc     total:   {time.perf_counter()-_t0:.3f}s")
         return {
             "id": "bending_moment_by_load_case",
             "label": "Bending Moment - By Load Case",
@@ -1558,12 +1523,11 @@ def resolve_shear_force_by_load_case(input_dict: dict, bridge=None) -> dict | No
     if bridge is None:
         return None
     try:
-        _t0 = time.perf_counter()
-        ds, g_map, girders, all_lcs = _get_force_context(bridge)
-        _t1 = time.perf_counter()
-        print(f"[TIMER] shear_force_by_lc        context: {_t1-_t0:.3f}s  ({len(all_lcs or [])} LCs, {len(girders or [])} girders)")
-        if ds is None:
+        cache = _get_cache(bridge)
+        if cache is None:
             return None
+
+        all_lcs = list(next(iter(cache.values())).keys())
 
         columns = ["Girder"]
         for lc in all_lcs:
@@ -1571,15 +1535,14 @@ def resolve_shear_force_by_load_case(input_dict: dict, bridge=None) -> dict | No
             columns.append(f"{lc} - Min (kN)")
 
         rows = []
-        for girder in girders:
+        for girder, lc_data in cache.items():
             row = [girder]
             for lc in all_lcs:
-                mx, mn = _force_max_min(ds, g_map, lc, girder, "Vy_i", "Vy_j")
-                row.append(_num(mx) if mx is not None else EMPTY)
-                row.append(_num(mn) if mn is not None else EMPTY)
+                entry = lc_data.get(lc, {})
+                row.append(_num(entry["Vy_max"]) if entry.get("Vy_max") is not None else EMPTY)
+                row.append(_num(entry["Vy_min"]) if entry.get("Vy_min") is not None else EMPTY)
             rows.append(row)
 
-        print(f"[TIMER] shear_force_by_lc        total:   {time.perf_counter()-_t0:.3f}s")
         return {
             "id": "shear_force_by_load_case",
             "label": "Shear Force - By Load Case",
