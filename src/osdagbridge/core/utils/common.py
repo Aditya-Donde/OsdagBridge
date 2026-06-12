@@ -237,6 +237,9 @@ KEY_DD_AS_TOP           = "deck.report.as_top"          # top steel provided (mm
 KEY_DD_DIA_OH           = "deck.report.dia_oh"          # overhang bar diameter (mm)
 KEY_DD_SPC_OH           = "deck.report.spc_oh"          # overhang bar spacing (mm)
 KEY_DD_AS_OH            = "deck.report.as_oh"           # overhang steel provided (mm2/m)
+KEY_DD_AS_LONG          = "deck.report.as_long"         # distribution (longitudinal) steel provided (mm2/m)
+KEY_DD_MIN_COVER        = "deck.report.min_cover"       # IRC 112 Table 14.2 recommended min cover (mm)
+KEY_DD_COVER_OK         = "deck.report.cover_ok"        # bool — provided covers ≥ min cover
 KEY_DD_SPACING_MAX      = "deck.report.spacing_max"     # max permissible bar spacing (mm)
 KEY_DD_HAS_OVERHANG     = "deck.report.has_overhang"    # bool — overhang present
 

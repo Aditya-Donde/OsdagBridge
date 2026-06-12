@@ -247,7 +247,8 @@ from osdagbridge.core.utils.common import (
     KEY_DD_WK_OH, KEY_DD_WK_LIMIT, KEY_DD_DIA_BOT,
     KEY_DD_SPC_BOT, KEY_DD_AS_BOT, KEY_DD_DIA_TOP,
     KEY_DD_SPC_TOP, KEY_DD_AS_TOP, KEY_DD_DIA_OH,
-    KEY_DD_SPC_OH, KEY_DD_AS_OH, KEY_DD_SPACING_MAX,
+    KEY_DD_SPC_OH, KEY_DD_AS_OH, KEY_DD_AS_LONG,
+    KEY_DD_MIN_COVER, KEY_DD_COVER_OK, KEY_DD_SPACING_MAX,
     KEY_DD_HAS_OVERHANG,
 )
 
@@ -2082,7 +2083,7 @@ Max.\ Bar Spacing (IRC 112 Cl. 16.3.2) & """ + _dkf(KEY_DD_SPACING_MAX, nd=0) + 
 \hline
 \multicolumn{4}{|l|}{\textbf{Distribution Reinforcement --- Longitudinal}} \\[6pt]
 \hline
-Required Area, $A_{st,dist}$ (mm²/m) & $\geq 20\%$ of main steel & --- & --- \\[6pt]
+Required Area, $A_{st,dist}$ (mm²/m) & $\geq 20\%$ of main steel & """ + _dkf(KEY_DD_AS_LONG, nd=0) + r""" mm²/m & """ + _dks(_dkv(KEY_DD_AS_LONG) >= max(0.20 * _dkv(KEY_DD_AS_BOT), _dkv(KEY_DD_AS_MIN))) + r""" \\[6pt]
 \hline
 \multicolumn{4}{|l|}{\textbf{Top Reinforcement (Support / Cantilever Overhang)}} \\[6pt]
 \hline
@@ -2090,7 +2091,7 @@ Required Area, $A_{st,top}$ (mm²/m) & """ + _dkf(KEY_DD_AS_REQ_TOP, nd=0) + r""
 \hline
 \multicolumn{4}{|l|}{\textbf{Cover and Detailing}} \\[6pt]
 \hline
-Clear Cover (IRC 112 Cl. 15.2) & --- & Top """ + _render_value(bridge.input_dict, KEY_DS_TOP_CLEAR_COVER) + r""" / Bottom """ + _render_value(bridge.input_dict, KEY_DS_BOTTOM_CLEAR_COVER) + r""" mm & --- \\[6pt]
+Clear Cover (IRC 112 Cl. 15.2) & $\geq$ """ + _dkf(KEY_DD_MIN_COVER, nd=0) + r""" mm (Table 14.2) & Top """ + _render_value(bridge.input_dict, KEY_DS_TOP_CLEAR_COVER) + r""" / Bottom """ + _render_value(bridge.input_dict, KEY_DS_BOTTOM_CLEAR_COVER) + r""" mm & """ + _dks(bool(deck_rpt.get(KEY_DD_COVER_OK))) + r""" \\[6pt]
 \hline
 \end{longtable}
 \noindent\textit{Note: IRC 112 Cl. 16.3, IS 456 Cl. 26.5. All reinforcement provisions satisfy strength and detailing requirements.}

@@ -38,7 +38,8 @@ from osdagbridge.core.utils.common import (
     KEY_DD_WK_OH, KEY_DD_WK_LIMIT, KEY_DD_DIA_BOT,
     KEY_DD_SPC_BOT, KEY_DD_AS_BOT, KEY_DD_DIA_TOP,
     KEY_DD_SPC_TOP, KEY_DD_AS_TOP, KEY_DD_DIA_OH,
-    KEY_DD_SPC_OH, KEY_DD_AS_OH, KEY_DD_SPACING_MAX,
+    KEY_DD_SPC_OH, KEY_DD_AS_OH, KEY_DD_AS_LONG,
+    KEY_DD_MIN_COVER, KEY_DD_COVER_OK, KEY_DD_SPACING_MAX,
     KEY_DD_HAS_OVERHANG,
 )
 
@@ -811,6 +812,9 @@ def design_deck_slab(input_dict: dict, fck: float, fctm: float, fy: float, Es: f
         KEY_DD_DIA_OH         : dia_oh,
         KEY_DD_SPC_OH         : spc_oh,
         KEY_DD_AS_OH          : As_oh,
+        KEY_DD_AS_LONG        : As_long,
+        KEY_DD_MIN_COVER      : min_cover_rec_mm,
+        KEY_DD_COVER_OK       : (cover_top_ok and cover_bot_ok),
         KEY_DD_SPACING_MAX    : _SPACING_MAX_MM,
         KEY_DD_HAS_OVERHANG   : has_overhang,
     }
