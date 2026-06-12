@@ -2018,6 +2018,7 @@ GIRDER_DETAILS_SCHEMA = {
                         "label":   "Symmetry:",
                         "type":    TYPE_COMBOBOX,
                         "choices": VALUES_GIRDER_SYMMETRY,
+                        "on_change": "_on_symmetry_changed",
                     }]
                 },
 
@@ -2189,6 +2190,7 @@ GIRDER_DETAILS_SCHEMA = {
                         "label":   "Torsional Restraint:",
                         "type":    TYPE_COMBOBOX,
                         "choices": VALUES_TORSIONAL_RESTRAINT,
+                        "on_change": "_on_torsional_restraint_changed",
                     }]
                 },
                 {
@@ -2197,6 +2199,7 @@ GIRDER_DETAILS_SCHEMA = {
                         "label":   "Warping Restraint:",
                         "type":    TYPE_COMBOBOX,
                         "choices": VALUES_WARPING_RESTRAINT,
+                        "on_change": "_on_warping_restraint_changed",
                     }]
                 },
                 {

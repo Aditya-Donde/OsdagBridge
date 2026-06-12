@@ -1,4 +1,4 @@
-﻿"""
+"""
 Additional Inputs Widget for Highway Bridge Design
 Provides detailed input fields for manual bridge parameter definition
 """
@@ -660,6 +660,12 @@ class AdditionalInputs(QDialog):
 
         self._update_additional_input_cad()
 
+        if key.startswith(KEY_MP_GIRDER_TOP_FLANGE_WIDTH) or key.startswith(KEY_MP_GIRDER_TOP_FLANGE_THICKNESS):
+            gi, mi = self._get_current_girder_member_indices()
+            sym_val = self.working_input_dict.get(f"{KEY_MP_GIRDER_SYMMETRY}.G{gi}.M{mi}", "Girder Symmetric")
+            if sym_val.strip().lower() == "girder symmetric":
+                self._on_symmetry_changed(sym_val)
+
     def _on_field_editing(self, current_text: str, key: str):  # on_change: soft validation while typing — updates dict/CAD only when valid, no popups
         if not current_text.strip():
             self._update_input_dict(key, "")
@@ -734,10 +740,12 @@ class AdditionalInputs(QDialog):
         current = current_object.currentText()
         current_object.clear()
         for i in range(1, count + 1):
-            current_object.addItem(f"Girder {i}", f"G{i}")
+            if i == 1 or i == count:
+                current_object.addItem(f"Girder {i} (Exterior)", f"G{i}")
+            else:
+                current_object.addItem(f"Girder {i} (Interior)", f"G{i}")
         idx = current_object.findText(current)
         current_object.setCurrentIndex(idx if idx >= 0 else 0)
-        print(f"@@: Update Girder List")
 
         cad = self.findChild(QWidget, KEY_MP_GD_CAD_PREVIEW)
         if cad:
@@ -979,15 +987,95 @@ class AdditionalInputs(QDialog):
         self.working_input_dict[field_id + suffix] = "Custom"
         print(f"[ALL_CUSTOM_SELECTED] {field_id}.selected{suffix} = {chosen}")
 
-    def _on_apply_exterior_clicked(self) -> None:  # on_change: applies current girder settings to first and last girders (stub)
-        from osdagbridge.core.utils.common import KEY_MP_GD_SELECT_GIRDER
-        girder_w = self.findChild(QWidget, KEY_MP_GD_SELECT_GIRDER)
-        pass
+    def _copy_girder_properties(self, source_g: int, target_g: int) -> None:
+        import copy, re
+        pattern = re.compile(rf"\.G{source_g}\.M(\d+)$")
+        keys_to_copy = [k for k in self.working_input_dict.keys() if pattern.search(k)]
+        for k in keys_to_copy:
+            new_key = k.replace(f".G{source_g}.", f".G{target_g}.")
+            self.working_input_dict[new_key] = copy.deepcopy(self.working_input_dict[k])
 
-    def _on_apply_interior_clicked(self) -> None:  # on_change: applies current girder settings to all interior girders (stub)
-        from osdagbridge.core.utils.common import KEY_MP_GD_SEGMENT_TABLE
-        table = self.findChild(QWidget, KEY_MP_GD_SEGMENT_TABLE)
-        pass
+    def _on_apply_exterior_clicked(self) -> None:  # on_change: applies current girder settings to first and last girders
+        gi, _ = self._get_current_girder_member_indices()
+        count = int(float(str(self.working_input_dict.get(KEY_TS_NO_OF_GIRDERS, 1))))
+        targets = {1, count} - {gi}
+        for target_g in targets:
+            self._copy_girder_properties(gi, target_g)
+        print(f"@@: Applied Girder {gi} settings to exterior girders: {targets}")
+
+    def _on_apply_interior_clicked(self) -> None:  # on_change: applies current girder settings to all interior girders
+        gi, _ = self._get_current_girder_member_indices()
+        count = int(float(str(self.working_input_dict.get(KEY_TS_NO_OF_GIRDERS, 1))))
+        targets = set(range(2, count)) - {gi}
+        for target_g in targets:
+            self._copy_girder_properties(gi, target_g)
+        print(f"@@: Applied Girder {gi} settings to interior girders: {targets}")
+
+    def _on_symmetry_changed(self, symmetry: str) -> None:
+        gi, mi = self._get_current_girder_member_indices()
+        is_symmetric = (symmetry.strip().lower() == "girder symmetric")
+        
+        from osdagbridge.core.utils.common import KEY_MP_GIRDER_TOP_FLANGE_WIDTH, KEY_MP_GIRDER_TOP_FLANGE_THICKNESS
+        from osdagbridge.core.utils.common import KEY_MP_GIRDER_BOTTOM_FLANGE_WIDTH, KEY_MP_GIRDER_BOTTOM_FLANGE_THICKNESS
+        
+        # Disable or enable bottom flange inputs
+        bw = self.findChild(QWidget, KEY_MP_GIRDER_BOTTOM_FLANGE_WIDTH)
+        bt = self.findChild(QWidget, KEY_MP_GIRDER_BOTTOM_FLANGE_THICKNESS)
+        if bw: bw.setEnabled(not is_symmetric)
+        if bt: bt.setEnabled(not is_symmetric)
+        
+        if is_symmetric:
+            suffix = f".G{gi}.M{mi}"
+            tw_val = self.working_input_dict.get(KEY_MP_GIRDER_TOP_FLANGE_WIDTH + suffix)
+            tt_val = self.working_input_dict.get(KEY_MP_GIRDER_TOP_FLANGE_THICKNESS + suffix)
+            
+            if bw and tw_val is not None:
+                if isinstance(bw, QLineEdit): bw.setText(str(tw_val))
+                elif isinstance(bw, QComboBox): bw.setCurrentText(str(tw_val))
+                self.working_input_dict[KEY_MP_GIRDER_BOTTOM_FLANGE_WIDTH + suffix] = tw_val
+            
+            if bt and tt_val is not None:
+                if isinstance(bt, QLineEdit): bt.setText(str(tt_val))
+                elif isinstance(bt, QComboBox): bt.setCurrentText(str(tt_val))
+                self.working_input_dict[KEY_MP_GIRDER_BOTTOM_FLANGE_THICKNESS + suffix] = tt_val
+            
+            # Since we updated working_input_dict manually, regenerate drawing preview
+            self._update_section_drawing()
+
+    def _on_torsional_restraint_changed(self, restraint: str) -> None:
+        gi, mi = self._get_current_girder_member_indices()
+        
+        from osdagbridge.core.utils.common import KEY_MP_GIRDER_WARPING_RESTRAINT
+        
+        # If the restraint is one of the "Partially Restrained" options (the bottom two)
+        if restraint.startswith("Partially Restrained"):
+            warping_val = "No Restraint"
+            suffix = f".G{gi}.M{mi}"
+            
+            # Update the widget if it exists
+            wr_widget = self.findChild(QWidget, KEY_MP_GIRDER_WARPING_RESTRAINT)
+            if wr_widget and isinstance(wr_widget, QComboBox):
+                wr_widget.setCurrentText(warping_val)
+            
+            # Update the working dict
+            self.working_input_dict[KEY_MP_GIRDER_WARPING_RESTRAINT + suffix] = warping_val
+
+    def _on_warping_restraint_changed(self, warping: str) -> None:
+        gi, mi = self._get_current_girder_member_indices()
+        
+        from osdagbridge.core.utils.common import KEY_MP_GIRDER_TORSIONAL_RESTRAINT
+        
+        if warping.strip().lower() == "both flanges restrained":
+            torsional_val = "Fully Restrained"
+            suffix = f".G{gi}.M{mi}"
+            
+            # Update the widget if it exists
+            tr_widget = self.findChild(QWidget, KEY_MP_GIRDER_TORSIONAL_RESTRAINT)
+            if tr_widget and isinstance(tr_widget, QComboBox):
+                tr_widget.setCurrentText(torsional_val)
+            
+            # Update the working dict
+            self.working_input_dict[KEY_MP_GIRDER_TORSIONAL_RESTRAINT + suffix] = torsional_val
 
     def _update_section_drawing(self) -> None:  # compute: rebuilds the Girder Details section drawing preview from live widget values
         from osdagbridge.core.utils.common import KEY_MP_GD_SECTION_PREVIEW
@@ -996,16 +1084,44 @@ class AdditionalInputs(QDialog):
         if widget is None:
             return
 
-        # Build snapshot — prefer live widget value over working_input_dict
-        # because on_change fires before _on_field_edited updates the dict.
-        snapshot = dict(self.working_input_dict)
-
         from osdagbridge.core.utils.common import (
-            KEY_MP_GIRDER_TYPE, KEY_MP_GIRDER_IS_SECTION,
+            KEY_MP_GIRDER_TYPE, KEY_MP_GIRDER_IS_SECTION, KEY_MP_GIRDER_SYMMETRY,
             KEY_MP_GIRDER_DEPTH, KEY_MP_GIRDER_TOP_FLANGE_WIDTH, KEY_MP_GIRDER_BOTTOM_FLANGE_WIDTH,
             KEY_MP_GIRDER_TOP_FLANGE_THICKNESS, KEY_MP_GIRDER_BOTTOM_FLANGE_THICKNESS,
             KEY_MP_GIRDER_WEB_THICKNESS,
         )
+
+        gi, mi = self._get_current_girder_member_indices()
+        suffix = f".G{gi}.M{mi}"
+
+        def _get_live_val(k):
+            w = self.findChild(QWidget, k)
+            if isinstance(w, QComboBox): return w.currentText()
+            elif isinstance(w, QLineEdit): return w.text().strip()
+            elif hasattr(w, 'currentWidget'):
+                active = w.currentWidget()
+                if isinstance(active, QComboBox): return active.currentText()
+                elif isinstance(active, QLineEdit): return active.text().strip()
+            return None
+
+        # Sync top to bottom if symmetric before snapshot
+        sym_val = self.working_input_dict.get(KEY_MP_GIRDER_SYMMETRY + suffix, "Girder Symmetric")
+        if sym_val.strip().lower() == "girder symmetric":
+            live_tw = _get_live_val(KEY_MP_GIRDER_TOP_FLANGE_WIDTH)
+            if live_tw is not None:
+                bw = self.findChild(QWidget, KEY_MP_GIRDER_BOTTOM_FLANGE_WIDTH)
+                if isinstance(bw, QLineEdit): bw.setText(live_tw)
+                elif hasattr(bw, 'currentWidget') and isinstance(bw.currentWidget(), QLineEdit): bw.currentWidget().setText(live_tw)
+                self.working_input_dict[KEY_MP_GIRDER_BOTTOM_FLANGE_WIDTH + suffix] = live_tw
+                
+            live_tt = _get_live_val(KEY_MP_GIRDER_TOP_FLANGE_THICKNESS)
+            if live_tt is not None:
+                bt = self.findChild(QWidget, KEY_MP_GIRDER_BOTTOM_FLANGE_THICKNESS)
+                if isinstance(bt, QComboBox): bt.setCurrentText(live_tt)
+                elif hasattr(bt, 'currentWidget') and isinstance(bt.currentWidget(), QComboBox): bt.currentWidget().setCurrentText(live_tt)
+                self.working_input_dict[KEY_MP_GIRDER_BOTTOM_FLANGE_THICKNESS + suffix] = live_tt
+
+        snapshot = dict(self.working_input_dict)
 
         for key in [
             KEY_MP_GIRDER_TYPE, KEY_MP_GIRDER_IS_SECTION,
@@ -1013,17 +1129,9 @@ class AdditionalInputs(QDialog):
             KEY_MP_GIRDER_TOP_FLANGE_THICKNESS, KEY_MP_GIRDER_BOTTOM_FLANGE_THICKNESS,
             KEY_MP_GIRDER_WEB_THICKNESS,
         ]:
-            w = self.findChild(QWidget, key)
-            if isinstance(w, QComboBox):
-                snapshot[key] = w.currentText()
-            elif isinstance(w, QLineEdit):
-                snapshot[key] = w.text().strip()
-            elif isinstance(w, AdaptiveWidget):
-                active = w.currentWidget()
-                if isinstance(active, QComboBox):
-                    snapshot[key] = active.currentText()
-                elif isinstance(active, QLineEdit):
-                    snapshot[key] = active.text().strip()
+            val = _get_live_val(key)
+            if val is not None:
+                snapshot[key] = val
 
         widget.update_section(snapshot)
 
