@@ -561,6 +561,10 @@ class CapacityResults:
     Av_mm2: float = 0.0                                 # Cl.603.3.3.2
     Vn_kN: float = 0.0
     Vd_kN: float = 0.0
+    Kv: float = 0.0                                     # Cl.603.3.3.2 post-critical — shear buckling coeff
+    lambda_w: float = 0.0                               # web slenderness
+    tau_b_buck_MPa: float = 0.0                         # design shear stress from buckling
+    Vcr_kN: float = 0.0                                 # critical shear resistance (Vrd)
     Mdv_kNm: float = 0.0                                # Cl.603.3.3.3
     beta_interaction: float = 0.0
     defl_limit_live_mm: float = 0.0                     # Cl.604.3.2
@@ -770,6 +774,34 @@ class IRC22CapacityCalculator:
             "gamma_m0": res["gamma_m0"],
             "clause"  : res["clause"],
             "source"  : "IRC22_2014",
+        }
+
+    # IRC 22:2015 Cl.603.3.3.2 — shear buckling resistance (simple post-critical method).
+    # c_mm_override: pass the decided panel spacing (from guidance or user input).
+    # When None, falls back to config.stiffener.c_mm; if still absent, assumes support-only stiffeners.
+    def compute_shear_buckling(self, Av_mm2: float, c_mm_override: float = None) -> dict:
+        if c_mm_override is not None and c_mm_override > 0:
+            c_mm = c_mm_override
+        else:
+            cfg  = self.cfg.stiffener
+            c_mm = cfg.c_mm if cfg and cfg.c_mm > 0 else None
+        res  = IRC22_2014.cl_603_3_3_2_shear_buckling_post_critical(
+            Av_mm2=Av_mm2,
+            fyw_MPa=self.mat.fy,
+            d_mm=self.sec.dw,
+            tw_mm=self.sec.tw,
+            c_mm=c_mm,
+            stiffeners_at_support_only=(c_mm is None),
+        )
+        return {
+            "Kv"         : res["Kv"],
+            "tau_cr_MPa" : res["tau_cr_MPa"],
+            "lambda_w"   : res["lambda_w"],
+            "tau_b_MPa"  : res["tau_b_MPa"],
+            "Vcr_kN"     : res["Vrd_kN"],
+            "c_mm"       : c_mm if c_mm is not None else 0.0,
+            "clause"     : res["clause"],
+            "source"     : "IRC22_2014",
         }
 
     # IRC 22:2015 Cl.603.3.3.1 — lateral-torsional buckling resistance at construction stage.
@@ -1615,7 +1647,33 @@ class IRC22CapacityCalculator:
         results.Vd_kN = shear["Vd_kN"]
         results.details["shear_capacity"] = shear
 
-        # 4b. Axial resistance for M-N interaction (Cl.603.3.3.3)
+        # 4b. Shear buckling resistance (Cl.603.3.3.2 post-critical, IS 800 Cl.8.4.2.2a)
+        # c_mm for buckling is resolved here so the correct panel spacing is always used:
+        #   • User supplied c_mm → use it directly.
+        #   • No c_mm → run stiffener guidance first to obtain c_req_min_mm, store the
+        #     guidance result early, then use c_req for buckling. Step 18 will re-run
+        #     (guidance mode again) and overwrite with the same result — no harm done.
+        _c_mm_buck: float = 0.0
+        if self.cfg.stiffener is not None:
+            if self.cfg.stiffener.c_mm > 0:
+                _c_mm_buck = self.cfg.stiffener.c_mm
+            else:
+                _is_guid = self.compute_intermediate_stiffener()
+                results.details["intermediate_stiffener"] = _is_guid
+                _c_mm_buck = _is_guid.get("c_req_min_mm", 0.0)
+
+        shear_buck = self.compute_shear_buckling(results.Av_mm2,
+                                                  c_mm_override=_c_mm_buck or None)
+        results.Kv             = shear_buck["Kv"]
+        results.lambda_w       = shear_buck["lambda_w"]
+        results.tau_b_buck_MPa = shear_buck["tau_b_MPa"]
+        results.Vcr_kN         = shear_buck["Vcr_kN"]
+        results.details["shear_buckling"] = shear_buck
+        # Auto-populate Vcr so the full stiffener check (Fq = (V-Vcr)/γm0) uses it.
+        if self.cfg.stiffener is not None and self.cfg.stiffener.Vcr_kN == 0.0:
+            self.cfg.stiffener.Vcr_kN = results.Vcr_kN
+
+        # 4d. Axial resistance for M-N interaction (Cl.603.3.3.3)
         _fyw  = shear["fyw_MPa"]
         _gm0  = self.mat.gamma_m0
         results.NRd_kN = self.sec.A_steel * _fyw / _gm0 / 1e3
@@ -1959,6 +2017,12 @@ class DCREngine:
         self._add_check(2, "ULS Shear", "Cl.603.3.3.2",
                          d.Vu_kN, c.Vd_kN, "kN",
                          note=f"Av={c.Av_mm2:.0f} mm²")
+
+        if c.Vcr_kN > 0:
+            self._add_check(2, "ULS Shear Buckling", "Cl.603.3.3.2",
+                             d.Vu_kN, c.Vcr_kN, "kN",
+                             note=(f"Kv={c.Kv:.3f}, λw={c.lambda_w:.3f}, "
+                                   f"τb={c.tau_b_buck_MPa:.1f} MPa"))
 
         # ── CATEGORY 3: Interaction ───────────────────────────────────────────
         # 3a. Moment–Shear interaction (Cl.603.3.3.3)
@@ -2456,6 +2520,10 @@ class ReportGenerator:
         lines.append(f"     Av = {c.Av_mm2:,.0f} mm²")
         lines.append(f"     Vn = {c.Vn_kN:,.2f} kN")
         lines.append(f"     Vd = {c.Vd_kN:,.2f} kN")
+
+        lines.append(f"\n  4b. Shear Buckling Resistance (Cl.603.3.3.2 — Post-Critical)")
+        lines.append(f"     Kv = {c.Kv:.3f}  |  λw = {c.lambda_w:.3f}")
+        lines.append(f"     τb = {c.tau_b_buck_MPa:.2f} MPa  |  Vcr = {c.Vcr_kN:,.2f} kN")
 
         lines.append(f"\n  5. Buckling Resistance Moment (Cl.603.3.3.1)")
         lines.append(f"     Mcr = {c.Mcr_kNm:,.2f} kNm  |  λ_LT = {c.lambda_LT:.4f}  |  χ_LT = {c.chi_LT:.4f}")
@@ -3188,6 +3256,11 @@ def run_design_check(
         "Av_mm2"                    : capacity.Av_mm2,
         "Vn_kN"                     : capacity.Vn_kN,
         "Vd_kN"                     : capacity.Vd_kN,
+        # -- capacities: shear buckling --
+        "Kv"                        : capacity.Kv,
+        "lambda_w"                  : capacity.lambda_w,
+        "tau_b_buck_MPa"            : capacity.tau_b_buck_MPa,
+        "Vcr_kN"                    : capacity.Vcr_kN,
         # -- capacities: M-V interaction --
         "Mdv_kNm"                   : capacity.Mdv_kNm,
         "beta_interaction"          : capacity.beta_interaction,
