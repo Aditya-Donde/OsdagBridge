@@ -514,30 +514,39 @@ def _on_no_of_girders_changed(working_input_dict: dict) -> None:
             for base_key, value in MP_GIRDER_INPUT_DEFAULTS:
                 working_input_dict[f"{base_key}.G{girder_idx}.M{member_id}"] = value
 
-    # --- Mapping: imported constant value (from common.py) → section_props value ---
     # To add a new property in future, just add one line here.
     # The imported constant's string VALUE is used as the base key,
     # e.g. KEY_MP_GIRDER_DEPTH = "member_properties.girder_details.section_input.depth"
     # produces → "member_properties.girder_details.section_input.depth.G1.M1"
+    
+    import math
+    from osdagbridge.core.utils.common import SAIL_APPROVED_THICKNESS_VALUES
+    
+    def ceil_to_sail(thick: float) -> str:
+        # Convert the float thickness to the next available SAIL thickness
+        for s in SAIL_APPROVED_THICKNESS_VALUES:
+            if float(s) >= thick:
+                return s
+        return str(math.ceil(thick))  # Fallback if it exceeds max SAIL value
     if section_props is not None:
         MP_GIRDER_PROPS = [
             (KEY_MP_GIRDER_SYMMETRY,                section_props['symmetry']),
-            (KEY_MP_GIRDER_DEPTH,                   section_props['D']),
-            (KEY_MP_GIRDER_WEB_DEPTH,               section_props['d_web']),
-            (KEY_MP_GIRDER_TOP_FLANGE_WIDTH,        section_props['B_top']),
-            (KEY_MP_GIRDER_BOTTOM_FLANGE_WIDTH,     section_props['B_bot']),
-            (KEY_MP_GIRDER_SECTIONAL_AREA,          section_props['Area']),
-            (KEY_MP_GIRDER_MASS,                    section_props['Mass']),
-            (KEY_MP_GIRDER_SECTIONAL_IZ,            section_props['I_z']),
-            (KEY_MP_GIRDER_SECTIONAL_IY,            section_props['I_y']),
-            (KEY_MP_GIRDER_RADIUS_GYRATION_Z,       section_props['r_z']),
-            (KEY_MP_GIRDER_RADIUS_GYRATION_Y,       section_props['r_y']),
-            (KEY_MP_GIRDER_ELASTIC_MODULUS_ZZ,      section_props['Z_ez']),
-            (KEY_MP_GIRDER_ELASTIC_MODULUS_ZY,      section_props['Z_ey']),
-            (KEY_MP_GIRDER_PLASTIC_MODULUS_ZUZ,     section_props['Z_pz']),
-            (KEY_MP_GIRDER_PLASTIC_MODULUS_ZUY,     section_props['Z_py']),
-            (KEY_MP_GIRDER_TORSION_CONSTANT_IT,     section_props['I_t']),
-            (KEY_MP_GIRDER_WARPING_CONSTANT_IW,     section_props['I_w']),
+            (KEY_MP_GIRDER_DEPTH,                   math.ceil(section_props['D'] * 1e3)),
+            (KEY_MP_GIRDER_WEB_DEPTH,               math.ceil(section_props['d_web'] * 1e3)),
+            (KEY_MP_GIRDER_TOP_FLANGE_WIDTH,        math.ceil(section_props['B_top'] * 1e3)),
+            (KEY_MP_GIRDER_BOTTOM_FLANGE_WIDTH,     math.ceil(section_props['B_bot'] * 1e3)),
+            (KEY_MP_GIRDER_SECTIONAL_AREA,          round(section_props['Area'] * 1e4, 4)),
+            (KEY_MP_GIRDER_MASS,                    round(section_props['Mass'], 4)),
+            (KEY_MP_GIRDER_SECTIONAL_IZ,            round(section_props['I_z'] * 1e8, 4)),
+            (KEY_MP_GIRDER_SECTIONAL_IY,            round(section_props['I_y'] * 1e8, 4)),
+            (KEY_MP_GIRDER_RADIUS_GYRATION_Z,       round(section_props['r_z'] * 1e2, 4)),
+            (KEY_MP_GIRDER_RADIUS_GYRATION_Y,       round(section_props['r_y'] * 1e2, 4)),
+            (KEY_MP_GIRDER_ELASTIC_MODULUS_ZZ,      round(section_props['Z_ez'] * 1e6, 4)),
+            (KEY_MP_GIRDER_ELASTIC_MODULUS_ZY,      round(section_props['Z_ey'] * 1e6, 4)),
+            (KEY_MP_GIRDER_PLASTIC_MODULUS_ZUZ,     round(section_props['Z_pz'] * 1e6, 4)),
+            (KEY_MP_GIRDER_PLASTIC_MODULUS_ZUY,     round(section_props['Z_py'] * 1e6, 4)),
+            (KEY_MP_GIRDER_TORSION_CONSTANT_IT,     round(section_props['I_t'] * 1e8, 4)),
+            (KEY_MP_GIRDER_WARPING_CONSTANT_IW,     round(section_props['I_w'] * 1e12, 4)),
         ]
 
         if design_mode == 'Optimized':
@@ -548,9 +557,9 @@ def _on_no_of_girders_changed(working_input_dict: dict) -> None:
             ]
         else:
             MP_GIRDER_PROPS += [
-                (KEY_MP_GIRDER_TOP_FLANGE_THICKNESS,    section_props['t_f_top']),
-                (KEY_MP_GIRDER_BOTTOM_FLANGE_THICKNESS, section_props['t_f_bot']),
-                (KEY_MP_GIRDER_WEB_THICKNESS,           section_props['t_w']),
+                (KEY_MP_GIRDER_TOP_FLANGE_THICKNESS,    ceil_to_sail(section_props['t_f_top'] * 1e3)),
+                (KEY_MP_GIRDER_BOTTOM_FLANGE_THICKNESS, ceil_to_sail(section_props['t_f_bot'] * 1e3)),
+                (KEY_MP_GIRDER_WEB_THICKNESS,           ceil_to_sail(section_props['t_w'] * 1e3)),
             ]
 
         # --- Populate dynamic girder keys for each girder and member ---
