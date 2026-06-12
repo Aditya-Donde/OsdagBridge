@@ -1429,7 +1429,7 @@ STIFFENER_DETAILS_DEFAULTS = {
     "outstand_default_text": "NA",
     "min_bearing_spacing_mm": MIN_BEARING_STIFFENER_SPACING_MM,
     "bearing_stiffeners_each_end": VALUES_BEARING_STIFFENER_COUNT[1],
-    "bearing_spacing_mm": "",
+    "bearing_spacing_mm": "50",
     "bearing_thickness_mode": VALUES_PROFILE_SCOPE[0],
     "bearing_thickness_value": SAIL_APPROVED_THICKNESS_VALUES[0],
     "bearing_outstand_mm": "",
