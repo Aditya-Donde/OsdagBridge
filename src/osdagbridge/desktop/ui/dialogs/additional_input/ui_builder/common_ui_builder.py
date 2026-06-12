@@ -389,7 +389,15 @@ class UIBuilder(QWidget):
                     cb.setChecked(default_checked)
                     if cb_id:
                         cb.setObjectName(cb_id)
-                    cb.setStyleSheet("QCheckBox { font-size: 11px; color: #333; spacing: 6px; }")
+                    cb.setStyleSheet("""
+                        QCheckBox { font-size: 11px; color: #333; spacing: 6px; }
+                        QCheckBox:disabled { font-size: 11px; color: #aaaaaa; spacing: 6px; }
+                        QCheckBox::indicator { width: 14px; height: 14px; }
+                        QCheckBox::indicator:disabled {
+                            border: 1px solid #c8c8c8;
+                            background-color: #ebebeb;
+                        }
+                    """)
                     vbox.addWidget(cb)
                     checkboxes.append(cb)
                 vbox.addStretch()
@@ -405,7 +413,20 @@ class UIBuilder(QWidget):
         # ── Normal card with grid ──────────────────────────────────────────
         card, card_layout = self._create_section_card(section.get("title", ""))
         self._build_grid(section, card_layout)
-        parent_layout.addWidget(card)
+        section_id = section.get("id", "")
+        if section_id:
+            # Wrap card so the section can be found/hidden by section_id without
+            # overwriting "sectionCard" on the QFrame (which would break its CSS border).
+            wrapper = QWidget()
+            wrapper.setObjectName(section_id)
+            wrapper.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+            wl = QVBoxLayout(wrapper)
+            wl.setContentsMargins(0, 0, 0, 0)
+            wl.setSpacing(0)
+            wl.addWidget(card)
+            parent_layout.addWidget(wrapper)
+        else:
+            parent_layout.addWidget(card)
 
     def _create_section_card(self, title: str):
         """Create a bordered card frame with optional title."""
@@ -523,6 +544,7 @@ class UIBuilder(QWidget):
                         label = QLabel(field_def.get("label") or "")
                         label.setStyleSheet("font-size: 11px; color: #000;")
                         label.setMinimumWidth(label_width)
+                        label.setObjectName((field_def.get("id") or "") + "_label")
                         grid.addWidget(label, row_idx, col, Qt.AlignLeft)
                         field = self._create_field(field_def)
                         grid.addWidget(field, row_idx, col + 1, Qt.AlignLeft)
@@ -588,7 +610,15 @@ class UIBuilder(QWidget):
             field = QCheckBox(label_text)
             field.setObjectName(field_def.get("id"))
             field.setChecked(field_def.get("default_checked", False))
-            field.setStyleSheet("QCheckBox { font-size: 11px; color: #333; spacing: 6px; }")
+            field.setStyleSheet("""
+                QCheckBox { font-size: 11px; color: #333; spacing: 6px; }
+                QCheckBox:disabled { font-size: 11px; color: #aaaaaa; spacing: 6px; }
+                QCheckBox::indicator { width: 14px; height: 14px; }
+                QCheckBox::indicator:disabled {
+                    border: 1px solid #c8c8c8;
+                    background-color: #ebebeb;
+                }
+            """)
             bind_name = field_def.get("bind")
             if bind_name:
                 setattr(owner, bind_name, field)
@@ -806,7 +836,6 @@ class UIBuilder(QWidget):
             if func_name and hasattr(ai, func_name):
                 def _trigger_compute(_val, _ai=ai, _fn=func_name, _root=self):
                     result = getattr(_ai, _fn)(_ai.working_input_dict)
-                    print(f"@|Update Calculated Value|@: result={result}")
                     if not isinstance(result, dict):
                         return
                     for widget_id, value in result.items():
@@ -1457,10 +1486,15 @@ class UIBuilder(QWidget):
                     lambda _val, k=origin_key, obj=target_widget, h=handler: h(k, obj)
                 )
             
+            elif isinstance(origin_widget, QCheckBox):
+                origin_widget.stateChanged.connect(
+                    lambda _state, k=origin_key, obj=target_widget, h=handler: h(k, obj)
+                )
+
             elif isinstance(origin_widget, SegmentTableWidget):
                 origin_widget.data_changed.connect(
                     lambda data, k=origin_key, obj=target_widget, h=handler: h(k, obj)
                 )
-            
+
             # Trigger immediately to populate target with current working_input_dict value
             handler(origin_key, target_widget)

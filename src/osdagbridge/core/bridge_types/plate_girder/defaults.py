@@ -69,6 +69,7 @@ from osdagbridge.core.utils.common import (
     KEY_MP_ED_MEMBER_ID,
     KEY_MP_ED_TYPE,
     KEY_MP_ED_BRACING_TYPE,
+    KEY_MP_ED_BRACING_CONNECTION,
     KEY_MP_ED_BRACING_SECTION,
     KEY_MP_ED_BRACING_SECTION_DESIGNATION,
     KEY_MP_ED_TOP_CHORD,
@@ -652,6 +653,7 @@ def _on_no_of_girders_changed(working_input_dict: dict) -> None:
         "member_id":                    "",
         "type":                         VALUES_END_DIAPHRAGM_TYPE[0],   # "Cross Bracing"
         "bracing_type":                 "K",
+        "bracing_connection":           "Bolted",
         "bracing_section":              "Angle",
         "bracing_section_designation":  _ED_DEFAULT_ANGLE,
         "top_chord":                    "",
@@ -687,6 +689,7 @@ def _on_no_of_girders_changed(working_input_dict: dict) -> None:
         (KEY_MP_ED_MEMBER_ID,                   "member_id"),
         (KEY_MP_ED_TYPE,                        "type"),
         (KEY_MP_ED_BRACING_TYPE,                "bracing_type"),
+        (KEY_MP_ED_BRACING_CONNECTION,          "bracing_connection"),
         (KEY_MP_ED_BRACING_SECTION,             "bracing_section"),
         (KEY_MP_ED_BRACING_SECTION_DESIGNATION, "bracing_section_designation"),
         (KEY_MP_ED_TOP_CHORD,                   "top_chord"),

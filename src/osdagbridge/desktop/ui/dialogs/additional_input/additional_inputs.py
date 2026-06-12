@@ -6,11 +6,11 @@ from copy import deepcopy
 
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QTabWidget, QTabBar, QLabel, QLineEdit,
-    QComboBox, QGroupBox, QPushButton, QCheckBox, QMessageBox, QSizePolicy,
-    QGridLayout, QDialog, QSizePolicy, QSizeGrip, QFrame, QScrollArea
+    QComboBox, QPushButton, QCheckBox, QSizePolicy,
+    QDialog, QSizePolicy, QSizeGrip
 )
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QDoubleValidator, QIntValidator
+from PySide6.QtGui import QDoubleValidator
 
 from osdagbridge.core.bridge_types.plate_girder.validator import BridgeInputValidator
 from osdagbridge.core.utils.common import *
@@ -367,6 +367,33 @@ class AdditionalInputs(QDialog):
         if seg_table is not None:
             total_span = float(self.working_input_dict.get(KEY_SPAN))
             seg_table.set_total_span(total_span)
+
+        # End Diaphragm fields — disabled when Optimized
+        from osdagbridge.core.utils.common import (
+            KEY_MP_ED_BRACING_SECTION, KEY_MP_ED_BRACING_SECTION_DESIGNATION,
+            KEY_MP_ED_TOP_CHORD_SECTION_TYPE, KEY_MP_ED_TOP_CHORD_SECTION_DESIG,
+            KEY_MP_ED_BOTTOM_CHORD_SECTION_TYPE, KEY_MP_ED_BOTTOM_CHORD_SECTION_DESIG,
+            KEY_MP_ED_IS_SECTION,
+            KEY_MP_ED_TOTAL_DEPTH, KEY_MP_ED_WEB_THICKNESS,
+            KEY_MP_ED_TOP_FLANGE_WIDTH, KEY_MP_ED_TOP_FLANGE_THICKNESS,
+            KEY_MP_ED_BOTTOM_FLANGE_WIDTH, KEY_MP_ED_BOTTOM_FLANGE_THICKNESS,
+        )
+        ed_disable_keys = [
+            KEY_MP_ED_BRACING_SECTION,           KEY_MP_ED_BRACING_SECTION_DESIGNATION,
+            KEY_MP_ED_TOP_CHORD_SECTION_TYPE,    KEY_MP_ED_TOP_CHORD_SECTION_DESIG,
+            KEY_MP_ED_BOTTOM_CHORD_SECTION_TYPE, KEY_MP_ED_BOTTOM_CHORD_SECTION_DESIG,
+            KEY_MP_ED_IS_SECTION,
+            KEY_MP_ED_TOTAL_DEPTH,        KEY_MP_ED_WEB_THICKNESS,
+            KEY_MP_ED_TOP_FLANGE_WIDTH,   KEY_MP_ED_TOP_FLANGE_THICKNESS,
+            KEY_MP_ED_BOTTOM_FLANGE_WIDTH, KEY_MP_ED_BOTTOM_FLANGE_THICKNESS,
+        ]
+        for key in ed_disable_keys:
+            w = self.findChild(QWidget, key)
+            if w:
+                w.setEnabled(not is_optimized)
+
+        # Re-apply End Diaphragm bracing layout state (K-Bracing disables bottom chord, CAD sync)
+        self._on_ed_bracing_layout_changed()
 
     def reset_active_tab_defaults(self) -> None:  # lifecycle: resets current tab's fields to default_input_dict values
         """
@@ -829,7 +856,7 @@ class AdditionalInputs(QDialog):
     def _save_member_fields(self) -> None:  # utility: serialises all Girder Details widget values into working_input_dict under G{i}.M{j} keys
         gi, mi = self._get_current_girder_member_indices()
         suffix = f".G{gi}.M{mi}"
-        print(f"[SAVE_MEMBER_FIELDS] G{gi}.M{mi}")
+        # print(f"[SAVE_MEMBER_FIELDS] G{gi}.M{mi}")
 
         for key in self._MEMBER_FIELD_KEYS:
             w = self.findChild(QWidget, key)
@@ -869,7 +896,7 @@ class AdditionalInputs(QDialog):
 
     def _load_member_fields(self, gi: int, mi: int) -> None:  # utility: restores Girder Details widgets from working_input_dict G{i}.M{j} keys
         suffix = f".G{gi}.M{mi}"
-        print(f"[LOAD] G{gi}.M{mi}")
+        # print(f"[LOAD] G{gi}.M{mi}")
 
         for key in self._MEMBER_FIELD_KEYS:
             value = self.working_input_dict.get(key + suffix)
@@ -1088,7 +1115,7 @@ class AdditionalInputs(QDialog):
         KEY_MP_STIFFENER_LONGITUDINAL_THICKNESS,
         KEY_MP_STIFFENER_DESIGN_METHOD,
     ]
-    
+
     def _on_stiffener_member_ids_refreshed(self, origin_key: str, target_widget: QWidget) -> None:  # END_CONNECTOR: collects member IDs from all girders and populates Stiffener member ID combo
         if not isinstance(target_widget, QComboBox):
             return
@@ -1218,6 +1245,537 @@ class AdditionalInputs(QDialog):
         combo = self.findChild(QComboBox, KEY_MP_STIFFENER_SELECT_MEMBER_ID)
         active_member_id = combo.currentText().strip() if combo else ""
         widget.update_stiffener(self.working_input_dict, active_member_id)
+
+    # ── Member Properties > EndDiaphragm SubTab ────────────────────────────────────
+
+    def _on_ed_girder_count_refreshed(self, origin_key: str, current_object: QComboBox) -> None:
+        """Repopulate End Diaphragm 'Select Girders' combo with girder pairs
+        (G1 to G2, G2 to G3, ...) when No. of Girders changes.
+
+        origin_key      : KEY_TS_NO_OF_GIRDERS — reads count from working_input_dict
+        current_object  : KEY_MP_ED_SELECT_GIRDERS combo to repopulate
+        """
+        value = self.working_input_dict.get(origin_key)
+        try:
+            count = int(float(str(value or 0)))
+        except (ValueError, TypeError):
+            count = 0
+
+        girders = [f"G{i}" for i in range(1, count + 1)] if count > 0 else []
+        if not girders:
+            girders = ["G1", "G2"]
+
+        pairs = [f"{girders[i]} to {girders[i + 1]}" for i in range(len(girders) - 1)] or ["G1 to G2"]
+
+        current = current_object.currentText()
+        current_object.clear()
+        current_object.addItems(pairs)
+        idx = current_object.findText(current)
+        current_object.setCurrentIndex(idx if idx >= 0 else 0)
+
+    def _on_ed_member_id_refreshed(self, origin_key: str, current_object: QLineEdit) -> None:
+        """Update End Diaphragm Member ID display when Select Girders changes.
+
+        origin_key      : KEY_MP_ED_SELECT_GIRDERS — combo holding the girder pair
+        current_object  : KEY_MP_ED_MEMBER_ID read-only textbox to update
+
+        Member ID is software-generated as E{pair_index}M1 / E{pair_index}M2,
+        where pair_index = 1-based position of the selected pair in the combo
+        (G1 to G2 -> 1, G2 to G3 -> 2, ...).
+        """
+        combo = self.findChild(QComboBox, KEY_MP_ED_SELECT_GIRDERS)
+        pair_index = (combo.currentIndex() + 1) if combo is not None else 1
+
+        text = f"E{pair_index}M1 / E{pair_index}M2"
+        current_object.setText(text)
+
+        new_pair_label = combo.currentText().strip() if combo else ""
+        self._load_ed_pair(new_pair_label)
+
+    def _save_ed_pair_connector(self, origin_key: str, target_widget: QWidget) -> None:  # END_CONNECTOR: triggers save of current pair's ED fields on any input change
+        self._save_ed_pair()
+
+    def _save_ed_pair(self) -> None:  # utility: serialises all ED widget values into working_input_dict under G{n}G{n+1}.E{n}M1 and E{n}M2 keys
+        combo = self.findChild(QComboBox, KEY_MP_ED_SELECT_GIRDERS)
+        if combo is None:
+            return
+        import re
+        m = re.match(r"G(\d+) to G(\d+)", combo.currentText().strip())
+        if not m:
+            return
+        gi, gj = int(m.group(1)), int(m.group(2))
+        for mi in (1, 2):
+            suffix = f".G{gi}G{gj}.E{gi}M{mi}"
+            for key in self._ED_FIELD_KEYS:
+                w = self.findChild(QWidget, key)
+                if isinstance(w, QComboBox):
+                    self.working_input_dict[key + suffix] = w.currentText()
+                elif isinstance(w, QCheckBox):
+                    self.working_input_dict[key + suffix] = w.isChecked()
+                elif isinstance(w, QLineEdit):
+                    self.working_input_dict[key + suffix] = w.text()
+
+    def _load_ed_pair(self, pair_label: str) -> None:
+        import re
+        from osdagbridge.core.utils.common import (
+            KEY_MP_ED_BRACING_SECTION,           KEY_MP_ED_BRACING_SECTION_DESIGNATION,
+            KEY_MP_ED_TOP_CHORD_SECTION_TYPE,    KEY_MP_ED_TOP_CHORD_SECTION_DESIG,
+            KEY_MP_ED_BOTTOM_CHORD_SECTION_TYPE, KEY_MP_ED_BOTTOM_CHORD_SECTION_DESIG,
+        )
+        m = re.match(r"G(\d+) to G(\d+)", str(pair_label or "").strip())
+        if not m:
+            return
+        gi, gj = int(m.group(1)), int(m.group(2))
+        suffix = f".G{gi}G{gj}.E{gi}M1"
+
+        # Collect all ED widgets and block their signals to prevent cascade calls mid-load
+        ed_widgets = []
+        for key in self._ED_FIELD_KEYS:
+            w = self.findChild(QWidget, key)
+            if w is not None:
+                w.blockSignals(True)
+                ed_widgets.append(w)
+
+        try:
+            # Restore all saved values with signals blocked
+            for key in self._ED_FIELD_KEYS:
+                value = self.working_input_dict.get(key + suffix)
+                if value is None:
+                    continue
+                w = self.findChild(QWidget, key)
+                if isinstance(w, QComboBox):
+                    w.setCurrentText(str(value))
+                elif isinstance(w, QCheckBox):
+                    w.setChecked(bool(value))
+                elif isinstance(w, QLineEdit) and not w.isReadOnly():
+                    w.setText(str(value))
+
+            # Repopulate designation combos based on the now-loaded section type values,
+            # then restore the saved designation (repopulation resets combo to index 0)
+            _desig_pairs = [
+                (KEY_MP_ED_BRACING_SECTION,        KEY_MP_ED_BRACING_SECTION_DESIGNATION),
+                (KEY_MP_ED_TOP_CHORD_SECTION_TYPE,  KEY_MP_ED_TOP_CHORD_SECTION_DESIG),
+                (KEY_MP_ED_BOTTOM_CHORD_SECTION_TYPE, KEY_MP_ED_BOTTOM_CHORD_SECTION_DESIG),
+            ]
+            for type_key, desig_key in _desig_pairs:
+                type_w  = self.findChild(QComboBox, type_key)
+                desig_w = self.findChild(QComboBox, desig_key)
+                if type_w is None or desig_w is None:
+                    continue
+                self._ed_repopulate_designation_combo(desig_w, type_w.currentText())
+                saved_desig = self.working_input_dict.get(desig_key + suffix)
+                if saved_desig is not None:
+                    desig_w.setCurrentText(str(saved_desig))
+        finally:
+            for w in ed_widgets:
+                w.blockSignals(False)
+
+        # All widgets fully restored — fire refresh once with complete state
+        self._on_ed_bracing_layout_changed()
+        self._update_ed_section_drawing()
+        self._refresh_ed_section_properties()
+
+    # Maps each End Diaphragm field/CAD to (required Type values, optional checkbox key).
+    _ED_VISIBILITY_MAP = {
+        # Cross Bracing — fields
+        KEY_MP_ED_BRACING_TYPE:                (["Cross Bracing"], None, None),
+        KEY_MP_ED_BRACING_CONNECTION:          (["Cross Bracing"], None, None),
+        KEY_MP_ED_BRACING_SECTION:             (["Cross Bracing"], None, None),
+        KEY_MP_ED_BRACING_SECTION_DESIGNATION: (["Cross Bracing"], None, None),
+        KEY_MP_ED_TOP_CHORD:                   (["Cross Bracing"], None, None),
+        KEY_MP_ED_TOP_CHORD_SECTION_TYPE:      (["Cross Bracing"], None, None),
+        KEY_MP_ED_TOP_CHORD_SECTION_DESIG:     (["Cross Bracing"], None, None),
+        KEY_MP_ED_BOTTOM_CHORD:                (["Cross Bracing"], None, None),
+        KEY_MP_ED_BOTTOM_CHORD_SECTION_TYPE:   (["Cross Bracing"], None, None),
+        KEY_MP_ED_BOTTOM_CHORD_SECTION_DESIG:  (["Cross Bracing"], None, None),
+    
+        # Rolled Beam — field
+        KEY_MP_ED_IS_SECTION: (["Rolled Beam"], None, None),
+    
+        # Welded Beam — fields
+        KEY_MP_ED_SYMMETRY:                (["Welded Beam"], None, None),
+        KEY_MP_ED_TOTAL_DEPTH:             (["Welded Beam"], None, None),
+        KEY_MP_ED_WEB_THICKNESS:           (["Welded Beam"], None, None),
+        KEY_MP_ED_TOP_FLANGE_WIDTH:        (["Welded Beam"], None, None),
+        KEY_MP_ED_TOP_FLANGE_THICKNESS:    (["Welded Beam"], None, None),
+        KEY_MP_ED_BOTTOM_FLANGE_WIDTH:     (["Welded Beam"], None, None),
+        KEY_MP_ED_BOTTOM_FLANGE_THICKNESS: (["Welded Beam"], None, None),
+    
+        # CAD previews — whole section, hidden via section id
+        KEY_MP_ED_BRACING_LAYOUT_CAD:      (["Cross Bracing"], None, KEY_MP_ED_BRACING_LAYOUT_SECTION),
+        KEY_MP_ED_BRACING_SECTION_PREVIEW: (["Cross Bracing"], None, KEY_MP_ED_BRACING_PREVIEW_SECTION),
+        KEY_MP_ED_TOP_CHORD_PREVIEW:       (["Cross Bracing"], KEY_MP_ED_TOP_CHORD, KEY_MP_ED_TOP_CHORD_PREVIEW_SECTION),
+        KEY_MP_ED_BOTTOM_CHORD_PREVIEW:    (["Cross Bracing"], KEY_MP_ED_BOTTOM_CHORD, KEY_MP_ED_BOTTOM_CHORD_PREVIEW_SECTION),
+        KEY_MP_ED_ROLLED_PREVIEW:          (["Rolled Beam"], None, KEY_MP_ED_ROLLED_PREVIEW_SECTION),
+        KEY_MP_ED_WELDED_PREVIEW:          (["Welded Beam"], None, KEY_MP_ED_WELDED_PREVIEW_SECTION),
+    
+        # Section Properties — whole section, hidden via section id (one representative field; all 10 share the card)
+        KEY_MP_ED_MASS: (["Rolled Beam", "Welded Beam"], None, KEY_MP_ED_SECTION_PROPERTIES_SECTION),
+    }
+    
+    def _apply_ed_visibility(self) -> None:
+        """Apply _ED_VISIBILITY_MAP against the current Type + chord checkbox
+        state. Re-run wholesale on every change — idempotent, no per-trigger
+        bookkeeping needed."""
+        type_combo = self.findChild(QComboBox, KEY_MP_ED_TYPE)
+        current_type = type_combo.currentText() if type_combo else None
+    
+        for target_key, (required_types, checkbox_key, section_id) in self._ED_VISIBILITY_MAP.items():
+            visible = current_type in required_types
+    
+            if visible and checkbox_key is not None:
+                cb = self.findChild(QCheckBox, checkbox_key)
+                visible = bool(cb and cb.isChecked())
+    
+            if section_id is not None:
+                wrapper = self.findChild(QWidget, section_id)
+                if wrapper:
+                    wrapper.setVisible(visible)
+            else:
+                w = self.findChild(QWidget, target_key)
+                lbl = self.findChild(QLabel, target_key + "_label")
+                if w:   w.setVisible(visible)
+                if lbl: lbl.setVisible(visible)    
+    
+    def _on_end_diaphragm_type_changed(self, type_str: str) -> None:  # on_change: shows Cross Bracing / Rolled Beam / Welded Beam fields + CAD previews + Section Properties based on Type
+        self._apply_ed_visibility()
+        self._update_ed_section_drawing()
+        self._on_ed_bracing_layout_changed()
+        self._refresh_ed_section_properties()
+
+    def _refresh_ed_section_properties(self) -> None:
+        from osdagbridge.core.utils.common import KEY_MP_ED_TYPE
+        type_w  = self.findChild(QComboBox, KEY_MP_ED_TYPE)
+        ed_type = type_w.currentText() if type_w else ""
+        if ed_type == "Rolled Beam":
+            result = self._compute_ed_rolled_section_properties(self.working_input_dict)
+        elif ed_type == "Welded Beam":
+            result = self._compute_ed_welded_section_properties(self.working_input_dict)
+        else:
+            return
+        if not isinstance(result, dict):
+            return
+        for widget_id, value in result.items():
+            w = self.findChild(QLineEdit, widget_id)
+            if w:
+                w.setText(str(value) if value is not None else "")
+
+    def _on_ed_bracing_layout_changed(self, _value=None) -> None:  # on_change: syncs bracing layout CAD + K-Bracing disables bottom chord + enables/disables chord sub-fields
+        bracing_combo = self.findChild(QComboBox, KEY_MP_ED_BRACING_TYPE)
+        bracing_type  = bracing_combo.currentText() if bracing_combo else "K-Bracing"
+        is_k_bracing  = (bracing_type == "K-Bracing")
+
+        top_cb    = self.findChild(QCheckBox, KEY_MP_ED_TOP_CHORD)
+        bottom_cb = self.findChild(QCheckBox, KEY_MP_ED_BOTTOM_CHORD)
+        bottom_lbl = self.findChild(QLabel, KEY_MP_ED_BOTTOM_CHORD + "_label")
+
+        # K-Bracing: disable + uncheck bottom chord and gray its label
+        if is_k_bracing:
+            if bottom_cb:
+                bottom_cb.blockSignals(True)
+                bottom_cb.setChecked(True)
+                bottom_cb.setEnabled(False)
+                bottom_cb.blockSignals(False)
+            if bottom_lbl:
+                bottom_lbl.setStyleSheet("font-size: 11px; color: #aaaaaa;")
+        else:
+            if bottom_cb:
+                bottom_cb.setEnabled(True)
+            if bottom_lbl:
+                bottom_lbl.setStyleSheet("font-size: 11px; color: #000;")
+
+        top_checked          = bool(top_cb    and top_cb.isChecked())
+        bottom_checked       = bool(bottom_cb and bottom_cb.isChecked())
+        bottom_props_enabled = bottom_checked
+
+        is_custom = str(self.working_input_dict.get(KEY_DESIGN_MODE, "Optimized")).strip() == "Custom"
+        for key in (KEY_MP_ED_TOP_CHORD_SECTION_TYPE, KEY_MP_ED_TOP_CHORD_SECTION_DESIG):
+            w = self.findChild(QWidget, key)
+            if w:
+                w.setEnabled(is_custom and top_checked)
+
+        for key in (KEY_MP_ED_BOTTOM_CHORD_SECTION_TYPE, KEY_MP_ED_BOTTOM_CHORD_SECTION_DESIG):
+            w = self.findChild(QWidget, key)
+            if w:
+                w.setEnabled(is_custom and bottom_props_enabled)
+
+        cad = self.findChild(QWidget, KEY_MP_ED_BRACING_LAYOUT_CAD)
+        if cad and hasattr(cad, "set_layout"):
+            member_id_w = self.findChild(QLineEdit, KEY_MP_ED_MEMBER_ID)
+            pair_combo  = self.findChild(QComboBox, KEY_MP_ED_SELECT_GIRDERS)
+            cad.set_layout(
+                bracing_type=bracing_type,
+                top_chord=top_checked,
+                bottom_chord=bottom_checked,
+                member_label=member_id_w.text() if member_id_w else "",
+                girder_pair=pair_combo.currentText() if pair_combo else "",
+            )
+
+        self._apply_ed_visibility()
+        self._refresh_ed_bracing_previews()
+
+    def _refresh_ed_bracing_previews(self) -> None:
+        from osdagbridge.core.utils.common import (
+            KEY_MP_ED_BRACING_SECTION, KEY_MP_ED_BRACING_SECTION_DESIGNATION, KEY_MP_ED_BRACING_SECTION_PREVIEW,
+            KEY_MP_ED_TOP_CHORD_SECTION_TYPE, KEY_MP_ED_TOP_CHORD_SECTION_DESIG, KEY_MP_ED_TOP_CHORD_PREVIEW,
+            KEY_MP_ED_BOTTOM_CHORD_SECTION_TYPE, KEY_MP_ED_BOTTOM_CHORD_SECTION_DESIG, KEY_MP_ED_BOTTOM_CHORD_PREVIEW,
+        )
+        for type_key, desig_key, preview_key in [
+            (KEY_MP_ED_BRACING_SECTION,        KEY_MP_ED_BRACING_SECTION_DESIGNATION, KEY_MP_ED_BRACING_SECTION_PREVIEW),
+            (KEY_MP_ED_TOP_CHORD_SECTION_TYPE,  KEY_MP_ED_TOP_CHORD_SECTION_DESIG,    KEY_MP_ED_TOP_CHORD_PREVIEW),
+            (KEY_MP_ED_BOTTOM_CHORD_SECTION_TYPE, KEY_MP_ED_BOTTOM_CHORD_SECTION_DESIG, KEY_MP_ED_BOTTOM_CHORD_PREVIEW),
+        ]:
+            type_w  = self.findChild(QComboBox, type_key)
+            desig_w = self.findChild(QComboBox, desig_key)
+            if type_w and desig_w:
+                self._ed_update_preview(type_w.currentText(), desig_w.currentText(), preview_key)
+
+    _ED_SECTION_TYPE_MAP = {
+        "Angle":                    "angle",
+        "Double Angle (Long Leg)":  "double_angle_long",
+        "Double Angle (Short Leg)": "double_angle_short",
+        "Channel":                  "channel",
+        "Double Channel":           "double_channel",
+    }
+
+    def _ed_update_preview(self, type_label: str, designation: str, preview_key: str) -> None:
+        from osdagbridge.desktop.ui.widgets.placeholder_section_preview import PlaceholderSectionPreviewWidget
+        widget = self.findChild(PlaceholderSectionPreviewWidget, preview_key)
+        if widget is None:
+            return
+        stype = self._ED_SECTION_TYPE_MAP.get(type_label, "angle")
+        show_double_total = stype not in ("double_angle_long", "double_angle_short")
+        widget.set_section(stype, designation, show_double_total)
+
+    def _on_ed_bracing_preview_changed(self, designation: str) -> None:
+        from osdagbridge.core.utils.common import KEY_MP_ED_BRACING_SECTION, KEY_MP_ED_BRACING_SECTION_PREVIEW
+        type_w = self.findChild(QComboBox, KEY_MP_ED_BRACING_SECTION)
+        self._ed_update_preview(type_w.currentText() if type_w else "Angle", designation, KEY_MP_ED_BRACING_SECTION_PREVIEW)
+
+    def _on_ed_top_chord_preview_changed(self, designation: str) -> None:
+        from osdagbridge.core.utils.common import KEY_MP_ED_TOP_CHORD_SECTION_TYPE, KEY_MP_ED_TOP_CHORD_PREVIEW
+        type_w = self.findChild(QComboBox, KEY_MP_ED_TOP_CHORD_SECTION_TYPE)
+        self._ed_update_preview(type_w.currentText() if type_w else "Angle", designation, KEY_MP_ED_TOP_CHORD_PREVIEW)
+
+    def _on_ed_bottom_chord_preview_changed(self, designation: str) -> None:
+        from osdagbridge.core.utils.common import KEY_MP_ED_BOTTOM_CHORD_SECTION_TYPE, KEY_MP_ED_BOTTOM_CHORD_PREVIEW
+        type_w = self.findChild(QComboBox, KEY_MP_ED_BOTTOM_CHORD_SECTION_TYPE)
+        self._ed_update_preview(type_w.currentText() if type_w else "Angle", designation, KEY_MP_ED_BOTTOM_CHORD_PREVIEW)
+
+    def _ed_repopulate_designation_combo(self, desig_w: QComboBox, type_label: str) -> None:
+        """Repopulate a designation combo with angle or channel designations based on section type."""
+        from osdagbridge.core.utils.common import get_angle_designation_list, get_channel_section_list
+        stype = self._ED_SECTION_TYPE_MAP.get(type_label, "angle")
+        items = get_channel_section_list() if stype in ("channel", "double_channel") else get_angle_designation_list()
+        prev = desig_w.blockSignals(True)
+        try:
+            desig_w.clear()
+            desig_w.addItems(items)
+            if items:
+                desig_w.setCurrentIndex(0)
+        finally:
+            desig_w.blockSignals(prev)
+
+    def _on_ed_bracing_section_type_changed(self, type_label: str) -> None:
+        from osdagbridge.core.utils.common import KEY_MP_ED_BRACING_SECTION_DESIGNATION, KEY_MP_ED_BRACING_SECTION_PREVIEW
+        desig_w = self.findChild(QComboBox, KEY_MP_ED_BRACING_SECTION_DESIGNATION)
+        if desig_w is not None:
+            self._ed_repopulate_designation_combo(desig_w, type_label)
+        self._ed_update_preview(type_label, desig_w.currentText() if desig_w else "", KEY_MP_ED_BRACING_SECTION_PREVIEW)
+
+    def _on_ed_top_chord_section_type_changed(self, type_label: str) -> None:
+        from osdagbridge.core.utils.common import KEY_MP_ED_TOP_CHORD_SECTION_DESIG, KEY_MP_ED_TOP_CHORD_PREVIEW
+        desig_w = self.findChild(QComboBox, KEY_MP_ED_TOP_CHORD_SECTION_DESIG)
+        if desig_w is not None:
+            self._ed_repopulate_designation_combo(desig_w, type_label)
+        self._ed_update_preview(type_label, desig_w.currentText() if desig_w else "", KEY_MP_ED_TOP_CHORD_PREVIEW)
+
+    def _on_ed_bottom_chord_section_type_changed(self, type_label: str) -> None:
+        from osdagbridge.core.utils.common import KEY_MP_ED_BOTTOM_CHORD_SECTION_DESIG, KEY_MP_ED_BOTTOM_CHORD_PREVIEW
+        desig_w = self.findChild(QComboBox, KEY_MP_ED_BOTTOM_CHORD_SECTION_DESIG)
+        if desig_w is not None:
+            self._ed_repopulate_designation_combo(desig_w, type_label)
+        self._ed_update_preview(type_label, desig_w.currentText() if desig_w else "", KEY_MP_ED_BOTTOM_CHORD_PREVIEW)
+
+    def _update_ed_section_drawing(self, *args) -> None:  # on_change/on_editing_finished: updates rolled or welded ED section CAD preview from live widget values
+        from osdagbridge.desktop.ui.dialogs.additional_input.drawings.rolled_section_preview import RolledSectionPreview
+        from osdagbridge.core.utils.common import (
+            KEY_MP_ED_TYPE,
+            KEY_MP_ED_IS_SECTION,
+            KEY_MP_ED_TOTAL_DEPTH, KEY_MP_ED_WEB_THICKNESS,
+            KEY_MP_ED_TOP_FLANGE_WIDTH, KEY_MP_ED_TOP_FLANGE_THICKNESS,
+            KEY_MP_ED_BOTTOM_FLANGE_WIDTH, KEY_MP_ED_BOTTOM_FLANGE_THICKNESS,
+            KEY_MP_ED_ROLLED_PREVIEW, KEY_MP_ED_WELDED_PREVIEW,
+        )
+
+        ed_type_w = self.findChild(QComboBox, KEY_MP_ED_TYPE)
+        ed_type   = ed_type_w.currentText() if ed_type_w else "Rolled Beam"
+
+        if ed_type == "Rolled Beam":
+            widget = self.findChild(RolledSectionPreview, KEY_MP_ED_ROLLED_PREVIEW)
+            if widget is None:
+                return
+            is_w = self.findChild(QComboBox, KEY_MP_ED_IS_SECTION)
+            designation = is_w.currentText() if is_w else self.working_input_dict.get(KEY_MP_ED_IS_SECTION, "")
+            if not designation:
+                widget.clear()
+                return
+            from osdagbridge.core.utils.common import GirderSectionCatalog
+            catalog = GirderSectionCatalog()
+            beam    = catalog.get_beam_profile(str(designation).strip())
+            if beam:
+                widget.set_section(beam)
+                widget._caption = f"Rolled Section • {designation}"
+                widget.update()
+            else:
+                outline = catalog.get_rolled_section(str(designation).strip())
+                if outline:
+                    widget.set_dimensions(
+                        depth_mm=outline["depth_mm"],
+                        flange_width_mm=outline["top_flange_width_mm"],
+                        bottom_flange_width_mm=outline["bottom_flange_width_mm"],
+                        web_thickness_mm=outline["web_thickness_mm"],
+                        flange_thickness_mm=outline["top_flange_thickness_mm"],
+                        bottom_flange_thickness_mm=outline["bottom_flange_thickness_mm"],
+                    )
+                    widget._caption = f"Rolled Section • {designation}"
+                    widget.update()
+                else:
+                    widget.clear()
+
+        else:  # Welded Beam
+            widget = self.findChild(RolledSectionPreview, KEY_MP_ED_WELDED_PREVIEW)
+            if widget is None:
+                return
+
+            def _get(key):
+                w = self.findChild(QWidget, key)
+                if isinstance(w, QComboBox): return w.currentText()
+                if isinstance(w, QLineEdit): return w.text().strip()
+                return self.working_input_dict.get(key, "")
+
+            def _f(v, default=0.0):
+                try:   return float(v) if v else default
+                except (ValueError, TypeError): return default
+
+            depth = _f(_get(KEY_MP_ED_TOTAL_DEPTH))
+            top_w = _f(_get(KEY_MP_ED_TOP_FLANGE_WIDTH))
+            if not depth or not top_w:
+                widget.clear()
+                return
+
+            bot_w = _f(_get(KEY_MP_ED_BOTTOM_FLANGE_WIDTH)) or top_w
+            web_t = _f(_get(KEY_MP_ED_WEB_THICKNESS))
+            top_t = _f(_get(KEY_MP_ED_TOP_FLANGE_THICKNESS))
+            bot_t = _f(_get(KEY_MP_ED_BOTTOM_FLANGE_THICKNESS)) or top_t
+
+            widget.set_dimensions(
+                depth_mm=depth,
+                flange_width_mm=top_w,
+                bottom_flange_width_mm=bot_w,
+                web_thickness_mm=web_t or max(8.0, depth * 0.02),
+                flange_thickness_mm=top_t or max(10.0, depth * 0.03),
+                bottom_flange_thickness_mm=bot_t or max(10.0, depth * 0.03),
+                show_welds=True,
+            )
+            widget._caption = "Welded section preview"
+            widget.update()
+
+    def _compute_ed_rolled_section_properties(self, working_input_dict: dict) -> dict:  # compute: looks up rolled I-section properties from catalog by designation
+        from osdagbridge.core.utils.common import (
+            GirderSectionCatalog, KEY_MP_ED_IS_SECTION,
+            KEY_MP_ED_MASS, KEY_MP_ED_SECTIONAL_AREA,
+            KEY_MP_ED_SECTIONAL_IZ, KEY_MP_ED_SECTIONAL_IY,
+            KEY_MP_ED_RADIUS_GYRATION_Z, KEY_MP_ED_RADIUS_GYRATION_Y,
+            KEY_MP_ED_ELASTIC_MODULUS_ZZ, KEY_MP_ED_ELASTIC_MODULUS_ZY,
+            KEY_MP_ED_PLASTIC_MODULUS_ZUZ, KEY_MP_ED_PLASTIC_MODULUS_ZUY,
+        )
+        designation = working_input_dict.get(KEY_MP_ED_IS_SECTION, "")
+        if not designation:
+            return {}
+        section = GirderSectionCatalog().get_beam_profile(str(designation).strip())
+        if section is None:
+            return {}
+        return {
+            KEY_MP_ED_MASS:                str(section.mass_per_meter_kg),
+            KEY_MP_ED_SECTIONAL_AREA:      str(section.area_cm2),
+            KEY_MP_ED_SECTIONAL_IZ:        str(section.moment_of_inertia_zz_cm4),
+            KEY_MP_ED_SECTIONAL_IY:        str(section.moment_of_inertia_yy_cm4),
+            KEY_MP_ED_RADIUS_GYRATION_Z:   str(section.radius_of_gyration_z_cm),
+            KEY_MP_ED_RADIUS_GYRATION_Y:   str(section.radius_of_gyration_y_cm),
+            KEY_MP_ED_ELASTIC_MODULUS_ZZ:  str(section.elastic_section_modulus_z_cm3),
+            KEY_MP_ED_ELASTIC_MODULUS_ZY:  str(section.elastic_section_modulus_y_cm3),
+            KEY_MP_ED_PLASTIC_MODULUS_ZUZ: str(section.plastic_section_modulus_z_cm3),
+            KEY_MP_ED_PLASTIC_MODULUS_ZUY: str(section.plastic_section_modulus_y_cm3),
+        }
+
+    def _compute_ed_welded_section_properties(self, working_input_dict: dict) -> dict:  # compute: derives welded I-section properties for end diaphragm from flange/web dimensions
+        from osdagbridge.core.bridge_types.plate_girder.initial_sizing import BridgeConfigurationSolver
+        from osdagbridge.core.utils.common import (
+            KEY_SPAN, KEY_MP_ED_SYMMETRY,
+            KEY_MP_ED_TOTAL_DEPTH, KEY_MP_ED_WEB_THICKNESS,
+            KEY_MP_ED_TOP_FLANGE_WIDTH, KEY_MP_ED_TOP_FLANGE_THICKNESS,
+            KEY_MP_ED_BOTTOM_FLANGE_WIDTH, KEY_MP_ED_BOTTOM_FLANGE_THICKNESS,
+            KEY_MP_ED_MASS, KEY_MP_ED_SECTIONAL_AREA,
+            KEY_MP_ED_SECTIONAL_IZ, KEY_MP_ED_SECTIONAL_IY,
+            KEY_MP_ED_RADIUS_GYRATION_Z, KEY_MP_ED_RADIUS_GYRATION_Y,
+            KEY_MP_ED_ELASTIC_MODULUS_ZZ, KEY_MP_ED_ELASTIC_MODULUS_ZY,
+            KEY_MP_ED_PLASTIC_MODULUS_ZUZ, KEY_MP_ED_PLASTIC_MODULUS_ZUY,
+        )
+
+        def _to_m(key: str) -> float:
+            val = working_input_dict.get(key)
+            if val is None or isinstance(val, (dict, list)):
+                return 0.0
+            try:   return float(val) / 1000.0
+            except (ValueError, TypeError): return 0.0
+
+        depth_m  = _to_m(KEY_MP_ED_TOTAL_DEPTH)
+        b_top_m  = _to_m(KEY_MP_ED_TOP_FLANGE_WIDTH)
+        b_bot_m  = _to_m(KEY_MP_ED_BOTTOM_FLANGE_WIDTH)
+        tf_top_m = _to_m(KEY_MP_ED_TOP_FLANGE_THICKNESS)
+        tf_bot_m = _to_m(KEY_MP_ED_BOTTOM_FLANGE_THICKNESS)
+        tw_m     = _to_m(KEY_MP_ED_WEB_THICKNESS)
+
+        if not depth_m or not b_top_m:
+            return {}
+
+        span_m = float(working_input_dict.get(KEY_SPAN))
+        symmetry = str(working_input_dict.get(KEY_MP_ED_SYMMETRY) or "Girder Symmetric")
+
+        result = BridgeConfigurationSolver(carriageway_width=1.0).compute_section_properties(
+            span=span_m, symmetry=symmetry,
+            user_depth=depth_m, B_top=b_top_m, B_bot=b_bot_m,
+            t_f_top=tf_top_m, t_f_bot=tf_bot_m, t_w=tw_m,
+        )
+
+        return {
+            KEY_MP_ED_MASS:                f"{result['Mass']:.4f}",
+            KEY_MP_ED_SECTIONAL_AREA:      f"{result['Area']  * 1e4:.4f}",
+            KEY_MP_ED_SECTIONAL_IZ:        f"{result['I_z']   * 1e8:.4f}",
+            KEY_MP_ED_SECTIONAL_IY:        f"{result['I_y']   * 1e8:.4f}",
+            KEY_MP_ED_RADIUS_GYRATION_Z:   f"{result['r_z']   * 1e2:.4f}",
+            KEY_MP_ED_RADIUS_GYRATION_Y:   f"{result['r_y']   * 1e2:.4f}",
+            KEY_MP_ED_ELASTIC_MODULUS_ZZ:  f"{result['Z_ez']  * 1e6:.4f}",
+            KEY_MP_ED_ELASTIC_MODULUS_ZY:  f"{result['Z_ey']  * 1e6:.4f}",
+            KEY_MP_ED_PLASTIC_MODULUS_ZUZ: f"{result['Z_pz']  * 1e6:.4f}",
+            KEY_MP_ED_PLASTIC_MODULUS_ZUY: f"{result['Z_py']  * 1e6:.4f}",
+        }
+
+    # Keys saved/restored per girder-pair (G{n}G{n+1}.E1M1/M2). TYPE first so its on_change fires before sub-fields are set.
+    _ED_FIELD_KEYS = [
+        KEY_MP_ED_TYPE,
+        KEY_MP_ED_BRACING_TYPE,              KEY_MP_ED_BRACING_CONNECTION,
+        KEY_MP_ED_TOP_CHORD,                 KEY_MP_ED_BOTTOM_CHORD,
+        KEY_MP_ED_BRACING_SECTION,           KEY_MP_ED_BRACING_SECTION_DESIGNATION,
+        KEY_MP_ED_TOP_CHORD_SECTION_TYPE,    KEY_MP_ED_TOP_CHORD_SECTION_DESIG,
+        KEY_MP_ED_BOTTOM_CHORD_SECTION_TYPE, KEY_MP_ED_BOTTOM_CHORD_SECTION_DESIG,
+        KEY_MP_ED_IS_SECTION,
+        KEY_MP_ED_SYMMETRY,
+        KEY_MP_ED_TOTAL_DEPTH,               KEY_MP_ED_WEB_THICKNESS,
+        KEY_MP_ED_TOP_FLANGE_WIDTH,          KEY_MP_ED_TOP_FLANGE_THICKNESS,
+        KEY_MP_ED_BOTTOM_FLANGE_WIDTH,       KEY_MP_ED_BOTTOM_FLANGE_THICKNESS,
+    ]
 
     # ── Loading Tab ───────────────────────────────────────────────────────────────
 

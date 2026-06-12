@@ -7,9 +7,7 @@ from PySide6.QtCore import Qt
 from osdagbridge.core.utils.common import *
 from osdagbridge.desktop.ui.dialogs.additional_input.ui_builder.common_ui_builder import UIBuilder
 
-from osdagbridge.desktop.ui.dialogs.tabs.sub_tabs.section_properties.stiffener_details_tab   import StiffenerDetailsTab
 from osdagbridge.desktop.ui.dialogs.tabs.sub_tabs.section_properties.cross_bracing_details_tab import CrossBracingDetailsTab
-from osdagbridge.desktop.ui.dialogs.tabs.sub_tabs.section_properties.end_diaphragm_details_tab import EndDiaphragmDetailsTab
 
 
 class SectionPropertiesTab(QWidget):
@@ -71,7 +69,16 @@ class SectionPropertiesTab(QWidget):
 
         # ── Tabs 3-4: unchanged specialist tabs ───────────────────────────────
         self.cross_bracing_tab     = CrossBracingDetailsTab()
-        self.end_diaphragm_tab     = EndDiaphragmDetailsTab()
+
+        from osdagbridge.core.bridge_types.plate_girder.ui_fields_additional_input import END_DIAPHRAGM_DETAILS_SCHEMA
+        self.end_diaphragm_tab = UIBuilder(
+            owner=self.additional_input_instance,
+            schema=END_DIAPHRAGM_DETAILS_SCHEMA,
+            card_title="",
+            main_widget_object_name=END_DIAPHRAGM_DETAILS_SCHEMA["id"],
+            additional_input_instance=self.additional_input_instance,
+            with_scroll=True,
+        )
 
         self.section_tabs.addTab(self.girder_details_tab,     "Girder Details")
         self.section_tabs.addTab(self.stiffener_details_tab,  "Stiffener Details")

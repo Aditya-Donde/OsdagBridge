@@ -1539,21 +1539,20 @@ DESIGN_OPTIONS_CONT_SCHEMA = {
                         {"id": KEY_DO_ULS_LONG_SHEAR,  "label": "Resistance to Longitudinal Shear",     "type": TYPE_CHECKBOX},
                         {"id": KEY_DO_ULS_FATIGUE,     "label": "Resistance to Fatigue",                "type": TYPE_CHECKBOX},
                     ],
-        },
-        {
-            
-            "title":           "Serviceability Limit States",
-                    "bind":            "service_checkboxes",
+                },
+                {
+                    
+                    "title":           "Serviceability Limit States",
                     "default_checked": True,
                     "items": [
                         {"id": KEY_DO_SLS_STRESS,      "label": "Stress Limitation",        "type": TYPE_CHECKBOX},
                         {"id": KEY_DO_SLS_LONG_SHEAR,  "label": "Longitudinal Shear (SLS)", "type": TYPE_CHECKBOX},
                         {"id": KEY_DO_SLS_DEFLECTION,  "label": "Deflection Control",       "type": TYPE_CHECKBOX},
                         {"id": KEY_DO_SLS_CRACK_WIDTH,  "label": "Crack Width Check",       "type": TYPE_CHECKBOX},
+                    ],
+                },
             ],
-        },
-    ],
-}
+        }
     ]
 }
 
@@ -1826,7 +1825,7 @@ END_CONNECTORS = [
 
     #------Origin------------------Target-----------------------Callback---------------------- 
     
-    # Update Select Girder Combobox (Target) on change no of girder (Origin)
+    # Update Select Girder (GD sub-tab) Combobox (Target) on change no of girder (Origin)
     (KEY_TS_NO_OF_GIRDERS,     KEY_MP_GD_SELECT_GIRDER,    "_on_girder_count_refreshed"),
     
     # Update Apply buttons visibility
@@ -1870,6 +1869,36 @@ END_CONNECTORS = [
     (KEY_MP_GIRDER_BOTTOM_FLANGE_WIDTH,     KEY_MP_GD_MEMBER_ID, "_save_member_fields_connector"),
     (KEY_MP_GIRDER_BOTTOM_FLANGE_THICKNESS, KEY_MP_GD_MEMBER_ID, "_save_member_fields_connector"),
     (KEY_MP_GIRDER_WEB_THICKNESS,           KEY_MP_GD_MEMBER_ID, "_save_member_fields_connector"),
+
+     # Update Select Girder (End Diaphragm) Combobox (Target) on change no of girder (Origin)
+    (KEY_TS_NO_OF_GIRDERS,     KEY_MP_ED_SELECT_GIRDERS,   "_on_ed_girder_count_refreshed"),
+
+    # Update Member ID (End Diaphragm) Textbox (Target) on change Select Girders (Origin)
+    (KEY_MP_ED_SELECT_GIRDERS, KEY_MP_ED_MEMBER_ID, "_on_ed_member_id_refreshed"),
+
+    # On change of any ED input field — save all ED fields under current pair's dynamic keys
+    (KEY_MP_ED_TYPE,                        KEY_MP_ED_SELECT_GIRDERS, "_save_ed_pair_connector"),
+    (KEY_MP_ED_BRACING_TYPE,                KEY_MP_ED_SELECT_GIRDERS, "_save_ed_pair_connector"),
+    (KEY_MP_ED_BRACING_CONNECTION,          KEY_MP_ED_SELECT_GIRDERS, "_save_ed_pair_connector"),
+    (KEY_MP_ED_BRACING_SECTION,             KEY_MP_ED_SELECT_GIRDERS, "_save_ed_pair_connector"),
+    (KEY_MP_ED_BRACING_SECTION_DESIGNATION, KEY_MP_ED_SELECT_GIRDERS, "_save_ed_pair_connector"),
+    (KEY_MP_ED_TOP_CHORD_SECTION_TYPE,      KEY_MP_ED_SELECT_GIRDERS, "_save_ed_pair_connector"),
+    (KEY_MP_ED_TOP_CHORD_SECTION_DESIG,     KEY_MP_ED_SELECT_GIRDERS, "_save_ed_pair_connector"),
+    (KEY_MP_ED_BOTTOM_CHORD_SECTION_TYPE,   KEY_MP_ED_SELECT_GIRDERS, "_save_ed_pair_connector"),
+    (KEY_MP_ED_BOTTOM_CHORD_SECTION_DESIG,  KEY_MP_ED_SELECT_GIRDERS, "_save_ed_pair_connector"),
+    (KEY_MP_ED_IS_SECTION,                  KEY_MP_ED_SELECT_GIRDERS, "_save_ed_pair_connector"),
+    (KEY_MP_ED_SYMMETRY,                    KEY_MP_ED_SELECT_GIRDERS, "_save_ed_pair_connector"),
+    (KEY_MP_ED_WEB_THICKNESS,               KEY_MP_ED_SELECT_GIRDERS, "_save_ed_pair_connector"),
+    (KEY_MP_ED_TOP_FLANGE_WIDTH,            KEY_MP_ED_SELECT_GIRDERS, "_save_ed_pair_connector"),
+    (KEY_MP_ED_TOP_FLANGE_THICKNESS,        KEY_MP_ED_SELECT_GIRDERS, "_save_ed_pair_connector"),
+    (KEY_MP_ED_BOTTOM_FLANGE_WIDTH,         KEY_MP_ED_SELECT_GIRDERS, "_save_ed_pair_connector"),
+    (KEY_MP_ED_BOTTOM_FLANGE_THICKNESS,     KEY_MP_ED_SELECT_GIRDERS, "_save_ed_pair_connector"),
+    # KEY_MP_ED_TOTAL_DEPTH is a QLineEdit — wired via editingFinished, handled by connector
+    (KEY_MP_ED_TOTAL_DEPTH,                 KEY_MP_ED_SELECT_GIRDERS, "_save_ed_pair_connector"),
+    # Checkboxes — now supported by wire_end_connectors via stateChanged
+    (KEY_MP_ED_TOP_CHORD,                   KEY_MP_ED_SELECT_GIRDERS, "_save_ed_pair_connector"),
+    (KEY_MP_ED_BOTTOM_CHORD,                KEY_MP_ED_SELECT_GIRDERS, "_save_ed_pair_connector"),
+
 ]
 
 GIRDER_DETAILS_SCHEMA = {
@@ -2599,164 +2628,319 @@ CROSS_BRACING_DETAILS_SCHEMA = {
     ],
 }
 
+
+from osdagbridge.desktop.ui.dialogs.additional_input.drawings.end_diaphragm_cad import (
+    EndDiaphragmBracingLayoutCad,
+    BracingSectionPreview,
+    TopChordSectionPreview,
+    BottomChordSectionPreview,
+)
+
 END_DIAPHRAGM_DETAILS_SCHEMA = {
-    "id": "end_diaphragm_details_tab",
-    "views": {
-        "Cross Bracing": {
-            "overview": [
-                {
-                    "id": "type_selector",
-                    "label": "Type:",
-                    "type": "combo",
-                    "choices": VALUES_END_DIAPHRAGM_TYPE,
-                    "default": "Cross Bracing",
-                },
-            ],
-            "section_inputs": [
-                {
-                    "id": "design",
-                    "label": "Design:",
-                    "type": "combo",
-                    "choices": VALUES_GIRDER_DESIGN_MODE,
-                    "default": "Optimized",
-                    "bind": "cross_design_combo",
-                },
-                {
-                    "id": "bracing_type",
-                    "label": "Type of Bracing:",
-                    "type": "combo",
-                    "choices": ["K-Bracing", "X-Bracing"],
-                    "bind": "cross_bracing_type_combo",
-                },
-                {
-                    "id": "bracing_section_type",
-                    "label": "Bracing Section Type:",
-                    "type": "combo",
-                    "choices": [
-                        "Angle",
-                        "Double Angle (Long Leg)",
-                        "Double Angle (Short Leg)",
-                        "Channel",
-                        "Double Channel",
-                    ],
-                    "bind": "cross_bracing_section_type_combo",
-                },
-                {
-                    "id": "bracing_section",
-                    "label": "Bracing Section Designation:",
-                    "type": "combo_dynamic",
-                    "bind": "cross_bracing_section_combo",
-                },
-                {
-                    "id": "top_chord_enabled",
-                    "label": "Top Chord:",
-                    "type": "checkbox",
-                    "default": False,
-                    "bind": "cross_top_chord_checkbox",
-                },
-                {
-                    "id": "top_chord_type",
-                    "label": "Top Chord Section Type:",
-                    "type": "combo",
-                    "choices": [
-                        "Angle",
-                        "Double Angle (Long Leg)",
-                        "Double Angle (Short Leg)",
-                        "Channel",
-                        "Double Channel",
-                    ],
-                    "bind": "cross_top_chord_type_combo",
-                },
-                {
-                    "id": "top_chord_size",
-                    "label": "Top Chord Section Designation:",
-                    "type": "combo_dynamic",
-                    "bind": "cross_top_chord_size_combo",
-                },
-                {
-                    "id": "bottom_chord_enabled",
-                    "label": "Bottom Chord:",
-                    "type": "checkbox",
-                    "default": True,
-                    "bind": "cross_bottom_chord_checkbox",
-                },
-                {
-                    "id": "bottom_chord_type",
-                    "label": "Bottom Chord Section Type:",
-                    "type": "combo",
-                    "choices": [
-                        "Angle",
-                        "Double Angle (Long Leg)",
-                        "Double Angle (Short Leg)",
-                        "Channel",
-                        "Double Channel",
-                    ],
-                    "bind": "cross_bottom_chord_type_combo",
-                },
-                {
-                    "id": "bottom_chord_size",
-                    "label": "Bottom Chord Section Designation:",
-                    "type": "combo_dynamic",
-                    "bind": "cross_bottom_chord_size_combo",
-                },
-            ],
-        },
-        "Rolled Beam": {
-            "overview": [
-                {
-                    "id": "type_selector",
-                    "label": "Type:",
-                    "type": "combo",
-                    "choices": VALUES_END_DIAPHRAGM_TYPE,
-                    "default": "Rolled Beam",
-                },
-            ],
-            "section_inputs": [
-                {
-                    "id": "design",
-                    "label": "Design:",
-                    "type": "combo",
-                    "choices": VALUES_GIRDER_DESIGN_MODE,
-                    "default": "Optimized",
-                    "bind": "rolled_design_combo",
-                },
-                {
-                    "id": "is_section",
-                    "label": "IS Section:",
-                    "type": "combo_dynamic",
-                    "bind": "rolled_is_section_combo",
-                },
-            ],
-        },
-        "Welded Beam": {
-            "overview": [
-                {
-                    "id": "type_selector",
-                    "label": "Type:",
-                    "type": "combo",
-                    "choices": VALUES_END_DIAPHRAGM_TYPE,
-                    "default": "Welded Beam",
-                },
-            ],
-            "section_inputs": [
-                {
-                    "id": "design",
-                    "label": "Design:",
-                    "type": "combo",
-                    "choices": VALUES_GIRDER_DESIGN_MODE,
-                    "default": "Optimized",
-                    "bind": "welded_design_combo",
-                },
-                {
-                    "id": "symmetry",
-                    "label": "Symmetry:",
-                    "type": "combo",
-                    "choices": VALUES_GIRDER_SYMMETRY,
-                    "bind": "welded_symmetry_combo",
-                },
-            ],
-        },
+    "id": KEY_MP_ED_TAB,
+    "layout": {
+        "type":          "columns",
+        "columns":       2,
+        "column_widths": [3, 2],
     },
+    "sections": [
+ 
+        # ── Overview — col 0, always visible ────────────────────────────
+        {
+            "column": 0,
+            "title":  "",
+            "rows": [
+                {"fields": [{
+                    "id": KEY_MP_ED_SELECT_GIRDERS,
+                    "label": "Select Girders:",
+                    "type": TYPE_COMBOBOX,
+                    "choices": [],
+                }]},
+                {"fields": [{
+                    "id": KEY_MP_ED_MEMBER_ID,
+                    "label": "Member ID:",
+                    "type": TYPE_TEXTBOX,
+                    "read_only": True,
+                }]},
+            ],
+        },
+ 
+        # ── Section Inputs — col 0, single card; rows toggle by Type ────
+        {
+            "column": 0,
+            "title":  "Section Inputs",
+            "rows": [
+                {"fields": [{
+                    "id": KEY_MP_ED_TYPE,
+                    "label": "Type:",
+                    "type": TYPE_COMBOBOX,
+                    "choices": VALUES_END_DIAPHRAGM_TYPE,
+                    "on_change": "_on_end_diaphragm_type_changed",
+                }]},
+ 
+                # ═══ Cross Bracing rows — shown/hidden via _on_ed_type_visibility ═══
+                {
+                    "fields": [{
+                        "id": KEY_MP_ED_BRACING_TYPE,
+                        "label": "Type of Bracing:",
+                        "type": TYPE_COMBOBOX,
+                        "choices": ["K-Bracing", "X-Bracing"],
+                        "on_change": "_on_ed_bracing_layout_changed",
+                    }],
+                },
+                {
+                    "fields": [{
+                        "id": KEY_MP_ED_BRACING_CONNECTION,
+                        "label": "Type of Connection:",
+                        "type": TYPE_COMBOBOX,
+                        "choices": ["Bolted", "Welded"],
+                    }],
+                },
+                {
+                    "fields": [{
+                        "id": KEY_MP_ED_BRACING_SECTION,
+                        "label": "Bracing Section Type:",
+                        "type": TYPE_COMBOBOX,
+                        "choices": ["Angle", "Double Angle (Long Leg)", "Double Angle (Short Leg)", "Channel", "Double Channel"],
+                        "on_change": "_on_ed_bracing_section_type_changed",
+                    }],
+                },
+                {
+                    "fields": [{
+                        "id": KEY_MP_ED_BRACING_SECTION_DESIGNATION,
+                        "label": "Bracing Section Designation:",
+                        "type": TYPE_COMBOBOX,
+                        "choices": get_angle_designation_list(),
+                        "on_change": "_on_ed_bracing_preview_changed",
+                    }],
+                },
+                {
+                    "fields": [{
+                        "id": KEY_MP_ED_TOP_CHORD,
+                        "label": "Top Chord",
+                        "type": TYPE_CHECKBOX,
+                        "label_first": True,
+                        "on_change": "_on_ed_bracing_layout_changed",
+                    }],
+                },
+                {
+                    "fields": [{
+                        "id": KEY_MP_ED_TOP_CHORD_SECTION_TYPE,
+                        "label": "  Top Chord Section Type:",
+                        "type": TYPE_COMBOBOX,
+                        "choices": ["Angle", "Double Angle (Long Leg)", "Double Angle (Short Leg)", "Channel", "Double Channel"],
+                        "on_change": "_on_ed_top_chord_section_type_changed",
+                    }],
+                },
+                {
+                    "fields": [{
+                        "id": KEY_MP_ED_TOP_CHORD_SECTION_DESIG,
+                        "label": "  Top Chord Section Designation:",
+                        "type": TYPE_COMBOBOX,
+                        "choices": get_angle_designation_list(),
+                        "on_change": "_on_ed_top_chord_preview_changed",
+                    }],
+                },
+                {
+                    "fields": [{
+                        "id": KEY_MP_ED_BOTTOM_CHORD,
+                        "label": "Bottom Chord",
+                        "type": TYPE_CHECKBOX,
+                        "label_first": True,
+                        "on_change": "_on_ed_bracing_layout_changed",
+                    }],
+                },
+                {
+                    "fields": [{
+                        "id": KEY_MP_ED_BOTTOM_CHORD_SECTION_TYPE,
+                        "label": "  Bottom Chord Section Type:",
+                        "type": TYPE_COMBOBOX,
+                        "choices": ["Angle", "Double Angle (Long Leg)", "Double Angle (Short Leg)", "Channel", "Double Channel"],
+                        "on_change": "_on_ed_bottom_chord_section_type_changed",
+                    }],
+                },
+                {
+                    "fields": [{
+                        "id": KEY_MP_ED_BOTTOM_CHORD_SECTION_DESIG,
+                        "label": "  Bottom Chord Section Designation:",
+                        "type": TYPE_COMBOBOX,
+                        "choices": get_angle_designation_list(),
+                        "on_change": "_on_ed_bottom_chord_preview_changed",
+                    }],
+                },
+ 
+                # ═══ Rolled Beam row — shown/hidden via _on_ed_type_visibility ═══
+                {
+                    "fields": [{
+                        "id": KEY_MP_ED_IS_SECTION,
+                        "label": "IS Section:",
+                        "type": TYPE_COMBOBOX,
+                        "choices": get_is_section_list(),
+                        "on_change": "_update_ed_section_drawing",
+                        "on_change_compute": {"function": "_compute_ed_rolled_section_properties"},
+                    }],
+                },
+
+                # ═══ Welded Beam rows — shown/hidden via _on_ed_type_visibility ═══
+                # Order matches reference layout: Symmetry, Total Depth, Web Thickness,
+                # Top Flange Width, Top Flange Thickness, Bottom Flange Width, Bottom Flange Thickness.
+                {
+                    "fields": [{
+                        "id": KEY_MP_ED_SYMMETRY, "label": "Symmetry:", "type": TYPE_COMBOBOX,
+                        "choices": VALUES_GIRDER_SYMMETRY,
+                    }],
+                },
+                {
+                    "fields": [{
+                        "id": KEY_MP_ED_TOTAL_DEPTH, "label": "Total Depth, d (mm):", "type": TYPE_TEXTBOX,
+                        "on_editing_finished": "_update_ed_section_drawing",
+                        "on_change_compute": {"function": "_compute_ed_welded_section_properties"},
+                    }],
+                },
+                {
+                    "fields": [{
+                        "id": KEY_MP_ED_WEB_THICKNESS, "label": "Web Thickness, w<sub>t</sub> (mm):", "type": TYPE_COMBOBOX,
+                        "choices": [str(v) for v in SAIL_APPROVED_THICKNESS_VALUES],
+                        "on_change": "_update_ed_section_drawing",
+                        "on_change_compute": {"function": "_compute_ed_welded_section_properties"},
+                    }],
+                },
+                {
+                    "fields": [{
+                        "id": KEY_MP_ED_TOP_FLANGE_WIDTH, "label": "Width of Top Flange, t<sub>fw</sub> (mm):", "type": TYPE_TEXTBOX,
+                        "on_editing_finished": "_update_ed_section_drawing",
+                        "on_change_compute": {"function": "_compute_ed_welded_section_properties"},
+                    }],
+                },
+                {
+                    "fields": [{
+                        "id": KEY_MP_ED_TOP_FLANGE_THICKNESS, "label": "Top Flange Thickness, t<sub>ft</sub> (mm):", "type": TYPE_COMBOBOX,
+                        "choices": [str(v) for v in SAIL_APPROVED_THICKNESS_VALUES],
+                        "on_change": "_update_ed_section_drawing",
+                        "on_change_compute": {"function": "_compute_ed_welded_section_properties"},
+                    }],
+                },
+                {
+                    "fields": [{
+                        "id": KEY_MP_ED_BOTTOM_FLANGE_WIDTH, "label": "Width of Bottom Flange, b<sub>fw</sub> (mm):", "type": TYPE_TEXTBOX,
+                        "on_editing_finished": "_update_ed_section_drawing",
+                        "on_change_compute": {"function": "_compute_ed_welded_section_properties"},
+                    }],
+                },
+                {
+                    "fields": [{
+                        "id": KEY_MP_ED_BOTTOM_FLANGE_THICKNESS, "label": "Bottom Flange Thickness, b<sub>ft</sub> (mm):", "type": TYPE_COMBOBOX,
+                        "choices": [str(v) for v in SAIL_APPROVED_THICKNESS_VALUES],
+                        "on_change": "_update_ed_section_drawing",
+                        "on_change_compute": {"function": "_compute_ed_welded_section_properties"},
+                    }],
+                },
+            ],
+        },
+ 
+        # ══════════════ COL 1 — CAD: Type of Bracing layout diagram ════════
+        {
+            "column": 1,
+            "title":  "Type of Bracing",
+            "id":     KEY_MP_ED_BRACING_LAYOUT_SECTION,
+            "rows": [
+                {"fields": [{
+                    "id": KEY_MP_ED_BRACING_LAYOUT_CAD,
+                    "type": TYPE_DIRECT_WIDGET,
+                    "widget_class": EndDiaphragmBracingLayoutCad,
+                }]},
+            ],
+        },
+ 
+        # ══════════════ COL 1 — CAD: Bracing section preview ═══════════════
+        {
+            "column": 1,
+            "title":  "Bracing",
+            "id":     KEY_MP_ED_BRACING_PREVIEW_SECTION,
+            "rows": [
+                {"fields": [{
+                    "id": KEY_MP_ED_BRACING_SECTION_PREVIEW,
+                    "type": TYPE_DIRECT_WIDGET,
+                    "widget_class": BracingSectionPreview,
+                }]},
+            ],
+        },
+ 
+        # ══════════════ COL 1 — CAD: Top Chord preview — only if checked ═══
+        {
+            "column": 1,
+            "title":  "Top Chord",
+            "id":     KEY_MP_ED_TOP_CHORD_PREVIEW_SECTION,
+            "rows": [
+                {"fields": [{
+                    "id": KEY_MP_ED_TOP_CHORD_PREVIEW,
+                    "type": TYPE_DIRECT_WIDGET,
+                    "widget_class": TopChordSectionPreview,
+                }]},
+            ],
+        },
+ 
+        # ══════════════ COL 1 — CAD: Bottom Chord preview — only if checked ═
+        {
+            "column": 1,
+            "title":  "Bottom Chord",
+            "id":     KEY_MP_ED_BOTTOM_CHORD_PREVIEW_SECTION,
+            "rows": [
+                {"fields": [{
+                    "id": KEY_MP_ED_BOTTOM_CHORD_PREVIEW,
+                    "type": TYPE_DIRECT_WIDGET,
+                    "widget_class": BottomChordSectionPreview,
+                }]},
+            ],
+        },
+ 
+        # ══════════════ COL 1 — CAD: Rolled section preview ════════════════
+        {
+            "column": 1,
+            "title":  "",
+            "id":     KEY_MP_ED_ROLLED_PREVIEW_SECTION,
+            "rows": [
+                {"fields": [{
+                    "id": KEY_MP_ED_ROLLED_PREVIEW,
+                    "type": TYPE_DIRECT_WIDGET,
+                    "widget_class": RolledSectionPreview,
+                }]},
+            ],
+        },
+ 
+        # ══════════════ COL 1 — CAD: Welded section preview ════════════════
+        {
+            "column": 1,
+            "title":  "",
+            "id":     KEY_MP_ED_WELDED_PREVIEW_SECTION,
+            "rows": [
+                {"fields": [{
+                    "id": KEY_MP_ED_WELDED_PREVIEW,
+                    "type": TYPE_DIRECT_WIDGET,
+                    "widget_class": RolledSectionPreview,
+                }]},
+            ],
+        },
+ 
+        # ══════════════ COL 1 — Section Properties, below active preview ═══
+        {
+            "column": 1,
+            "title":  "Section Properties",
+            "id":     KEY_MP_ED_SECTION_PROPERTIES_SECTION,
+            "rows": [
+                {"fields": [{"id": KEY_MP_ED_MASS,               "label": "Mass, M (Kg/m)",               "type": TYPE_TEXTBOX, "read_only": True}]},
+                {"fields": [{"id": KEY_MP_ED_SECTIONAL_AREA,      "label": "Sectional Area, a (cm²)",      "type": TYPE_TEXTBOX, "read_only": True}]},
+                {"fields": [{"id": KEY_MP_ED_SECTIONAL_IZ,        "label": "2nd Moment of Area, Iz (cm⁴)", "type": TYPE_TEXTBOX, "read_only": True}]},
+                {"fields": [{"id": KEY_MP_ED_SECTIONAL_IY,        "label": "2nd Moment of Area, Iy (cm⁴)", "type": TYPE_TEXTBOX, "read_only": True}]},
+                {"fields": [{"id": KEY_MP_ED_RADIUS_GYRATION_Z,   "label": "Radius of Gyration, rz (cm)",  "type": TYPE_TEXTBOX, "read_only": True}]},
+                {"fields": [{"id": KEY_MP_ED_RADIUS_GYRATION_Y,   "label": "Radius of Gyration, ry (cm)",  "type": TYPE_TEXTBOX, "read_only": True}]},
+                {"fields": [{"id": KEY_MP_ED_ELASTIC_MODULUS_ZZ,  "label": "Elastic Modulus, Zz (cm³)",    "type": TYPE_TEXTBOX, "read_only": True}]},
+                {"fields": [{"id": KEY_MP_ED_ELASTIC_MODULUS_ZY,  "label": "Elastic Modulus, Zy (cm³)",    "type": TYPE_TEXTBOX, "read_only": True}]},
+                {"fields": [{"id": KEY_MP_ED_PLASTIC_MODULUS_ZUZ, "label": "Plastic Modulus, Zpz (cm³)",   "type": TYPE_TEXTBOX, "read_only": True}]},
+                {"fields": [{"id": KEY_MP_ED_PLASTIC_MODULUS_ZUY, "label": "Plastic Modulus, Zpy (cm³)",   "type": TYPE_TEXTBOX, "read_only": True}]},
+            ],
+        },
+    ],
 }
 
 # Versioned contract for schema-driven Member Properties migration.
