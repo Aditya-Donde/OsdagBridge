@@ -190,9 +190,21 @@ from osdagbridge.core.utils.common import (
     KEY_SD_SECTION_DESIGNATION,
     # Permanent Load
     KEY_PL_SELF_WEIGHT_FACTOR,
+    KEY_MATERIAL_GIRDER_DENSITY,
+    KEY_MATERIAL_DECK_DENSITY,
     # Live Load
     KEY_LL_FOOTPATH_PRESSURE_VALUE,
+    KEY_LL_IRC_CLASS_A,
+    KEY_LL_IRC_70R_WHEELED,
+    KEY_LL_IRC_70R_TRACKED,
+    KEY_LL_IRC_AA_WHEELED,
+    KEY_LL_IRC_AA_TRACKED,
+    KEY_LL_IRC_CLASS_SV,
+    KEY_LL_IRC_70R_BOGIE,
+    KEY_LL_IRC_CLASS_FATIGUE,
+    KEY_LL_CUSTOM_VEHICLES,
     # Wind Load (computed values)
+    KEY_WL_BASIC_WIND_SPEED,
     KEY_WL_TERRAIN_TYPE,
     KEY_WL_AVG_EXPOSED_HEIGHT,
     KEY_WL_HOURLY_MEAN_WIND,
@@ -201,6 +213,7 @@ from osdagbridge.core.utils.common import (
     KEY_WL_LONGITUDINAL_WIND_FORCE,
     KEY_WL_VERTICAL_WIND_FORCE,
     # Seismic Load (computed values)
+    KEY_SL_SEISMIC_ZONE,
     KEY_SL_ZONE_FACTOR,
     KEY_SL_IMPORTANCE_FACTOR,
     KEY_SL_SOIL_TYPE,
@@ -1145,6 +1158,128 @@ def _safety_factors_table(input_dict):
 
 
 def ch3_loads(input_dict):
+    # Live load vehicle names mapping
+    vehicles = []
+    if input_dict.get(KEY_LL_IRC_CLASS_A):
+        vehicles.append("Class A")
+    if input_dict.get(KEY_LL_IRC_70R_WHEELED):
+        vehicles.append("Class 70R (Wheeled)")
+    if input_dict.get(KEY_LL_IRC_70R_TRACKED):
+        vehicles.append("Class 70R (Tracked)")
+    if input_dict.get(KEY_LL_IRC_AA_WHEELED):
+        vehicles.append("Class AA (Wheeled)")
+    if input_dict.get(KEY_LL_IRC_AA_TRACKED):
+        vehicles.append("Class AA (Tracked)")
+    if input_dict.get(KEY_LL_IRC_CLASS_SV):
+        vehicles.append("Class SV")
+    if input_dict.get(KEY_LL_IRC_70R_BOGIE):
+        vehicles.append("Class 70R (Bogie)")
+    if input_dict.get(KEY_LL_IRC_CLASS_FATIGUE):
+        vehicles.append("Class Fatigue")
+    
+    custom = input_dict.get(KEY_LL_CUSTOM_VEHICLES)
+    if custom and isinstance(custom, list):
+        for c in custom:
+            if isinstance(c, dict) and c.get('name'):
+                vehicles.append(c['name'])
+            elif isinstance(c, str):
+                vehicles.append(c)
+                
+    vehicles_str = ", ".join(vehicles) if vehicles else "None"
+
+    from osdagbridge.core.utils.codes.irc6_2017 import IRC6_2017
+    span = input_dict.get(KEY_SPAN)
+    impact_factor_str = ""
+    if span not in (None, ""):
+        try:
+            span_m = float(span)
+            factors = []
+            if input_dict.get(KEY_LL_IRC_CLASS_A):
+                im_a = IRC6_2017.cl_208_2_impact_factor(span_m)
+                factors.append(f"Class A: {1.0 + im_a:.3f}")
+            is_wheeled_heavy = (
+                input_dict.get(KEY_LL_IRC_70R_WHEELED) or 
+                input_dict.get(KEY_LL_IRC_AA_WHEELED) or 
+                input_dict.get(KEY_LL_IRC_70R_BOGIE)
+            )
+            is_tracked_heavy = (
+                input_dict.get(KEY_LL_IRC_70R_TRACKED) or 
+                input_dict.get(KEY_LL_IRC_AA_TRACKED)
+            )
+            if is_wheeled_heavy or is_tracked_heavy:
+                im_aa = IRC6_2017.cl_208_3_impact_factor(span_m)
+                factors.append(f"Class AA/70R: {1.0 + im_aa:.3f}")
+            
+            if factors:
+                impact_factor_str = ", ".join(factors)
+            else:
+                impact_factor_str = "N/A"
+        except Exception:
+            impact_factor_str = "N/A"
+    else:
+        impact_factor_str = "N/A"
+
+    lanes = input_dict.get(KEY_WC_LD_LANE_TABLE_COUNT)
+    braking_force_str = ""
+    if lanes not in (None, ""):
+        try:
+            lanes_int = int(lanes)
+            braking_force_t = IRC6_2017.cl_211_2_braking_force(lanes_int)
+            braking_force_kN = braking_force_t * 9.81
+            braking_force_str = f"{braking_force_kN:.2f} kN ({braking_force_t:.2f} tonnes)"
+        except Exception:
+            braking_force_str = "N/A"
+    else:
+        braking_force_str = "N/A"
+
+    # --- Table 3.7: Load Combinations (dynamically generated from IRC 6) ---
+    _LOAD_LABEL_MAP = {
+        'dead_load':         'DL',
+        'surfacing':         'SIDL',
+        'live_load':         'LL',
+        'wind_load':         'WL',
+        'thermal_load':      'TL',
+        'vehicle_collision': 'VC',
+        'barge_impact':      'BI',
+        'floating_bodies':   'FB',
+        'seismic':           'EQ',
+    }
+
+    def _fmt_factors(factors):
+        """Format a factors dict into a compact load-case string for the table."""
+        parts = []
+        for load, val in factors.items():
+            label = _LOAD_LABEL_MAP.get(load, load.upper())
+            if isinstance(val, dict):  # permanent load with adding/relieving
+                add = val.get('adding')
+                rel = val.get('relieving')
+                add_s = f"{add:.2f}" if add is not None else '--'
+                rel_s = f"{rel:.2f}" if rel is not None else '--'
+                parts.append(f"{label}({add_s}/{rel_s})")
+            else:
+                if val is None:
+                    continue  # skip N/A factors
+                parts.append(f"{label}({val:.2f})")
+        return ', '.join(parts)
+
+    uls_combos = IRC6_2017.uls_load_combinations()
+    sls_combos = IRC6_2017.sls_load_combinations()
+    lc_rows = []
+    for i, combo in enumerate(uls_combos, start=1):
+        cases = _fmt_factors(combo['factors'])
+        lc_rows.append(
+            f"ULS-{i:02d}" + r" & " + cases + r" \\[6pt]" + "\n"
+            + r"\hline"
+        )
+    for i, combo in enumerate(sls_combos, start=1):
+        cases = _fmt_factors(combo['factors'])
+        lc_rows.append(
+            f"SLS-{i:02d}" + r" & " + cases + r" \\[6pt]" + "\n"
+            + r"\hline"
+        )
+
+    lc_rows_str = "\n".join(lc_rows)
+
     return r"""
 \chapter{Loads and Load Combinations}
 
@@ -1155,9 +1290,9 @@ This section summarizes all loads applied to the bridge and the load combination
 
 \begin{longtable}{|L{5.5cm}|p{10.0cm}|}
 \hline
-\textbf{Steel Self-Weight Applied} &  \\[6pt]
+\textbf{Steel Self-Weight Applied} & """ + (_render_value(input_dict, KEY_MATERIAL_GIRDER_DENSITY, ' kN/m\\textsuperscript{3}')) + r""" \\[6pt]
 \hline
-\textbf{Concrete Deck Weight} &  \\[6pt]
+\textbf{Concrete Deck Weight} & """ + (_render_value(input_dict, KEY_MATERIAL_DECK_DENSITY, ' kN/m\\textsuperscript{3}')) + r""" \\[6pt]
 \hline
 \textbf{Self-Weight Factor} & """ + (_render_value(input_dict, KEY_PL_SELF_WEIGHT_FACTOR)) + r""" \\[6pt]
 \hline
@@ -1181,11 +1316,11 @@ This section summarizes all loads applied to the bridge and the load combination
 
 \begin{longtable}{|L{5.5cm}|p{10.0cm}|}
 \hline
-\textbf{Vehicles Considered} & """ + '' + r""" \\[6pt]
+\textbf{Vehicles Considered} & """ + _tex(vehicles_str) + r""" \\[6pt]
 \hline
-\textbf{Impact Factor (IRC 6)} & """ + '' + r""" \\[6pt]
+\textbf{Impact Factor (IRC 6)} & """ + _tex(impact_factor_str) + r""" \\[6pt]
 \hline
-\textbf{Braking Load (IRC 6)} & """ + '' + r""" \\[6pt]
+\textbf{Braking Load (IRC 6)} & """ + _tex(braking_force_str) + r""" \\[6pt]
 \hline
 \textbf{Footpath Live Load (if applicable)} & """ + (_render_value(input_dict, KEY_LL_FOOTPATH_PRESSURE_VALUE, ' kN/m\\textsuperscript{2}')) + r""" \\[6pt]
 \hline
@@ -1260,20 +1395,11 @@ This section summarizes all loads applied to the bridge and the load combination
 \vspace{0.4em}
 The following load combinations were evaluated per IRC 6. The governing combination for each member is identified in the design checks section.
 
-\begin{longtable}{|C{3.2cm}|C{3.5cm}|C{4.5cm}|>{\centering\arraybackslash}p{4.3cm}|}
+\begin{longtable}{|C{4.0cm}|p{11.5cm}|}
 \hline
-\textbf{Combination ID} & \textbf{Description} & \textbf{Load Cases} & \textbf{Governs For} \\[6pt]
+\textbf{Combination ID} & \textbf{Load Cases} \\[6pt]
 \hline
-""" + '' + r""" & """ + '' + r""" & """ + '' + r""" & """ + '' + r""" \\[6pt]
-\hline
-""" + '' + r""" & """ + '' + r""" & """ + '' + r""" & """ + '' + r""" \\[6pt]
-\hline
-""" + '' + r""" & """ + '' + r""" & """ + '' + r""" & """ + '' + r""" \\[6pt]
-\hline
-""" + '' + r""" & """ + '' + r""" & """ + '' + r""" & """ + '' + r""" \\[6pt]
-\hline
-""" + '' + r""" & """ + '' + r""" & """ + '' + r""" & """ + '' + r""" \\[6pt]
-\hline
+""" + lc_rows_str + r"""
 \end{longtable}
 
 \noindent\textit{Note: All IRC 6 load combinations are auto-generated by OsdagBridge. User-defined custom combinations, if any, are appended.}
@@ -2925,7 +3051,7 @@ def generate_report(payload, request):
             secs = payload.options.sections
             if 'Input Parameters' in secs:
                 doc_parts.append(ch2_input_parameters(payload.metadata, payload.inputs, payload.output_dict))
-
+    
             doc_parts.append(ch3_loads(payload.inputs))
             doc_parts.append(ch4_analysis(payload.analysis_summary, fig_paths, bridge, span_m))
 
