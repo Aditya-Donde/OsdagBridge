@@ -1176,20 +1176,9 @@ def resolve_stress_reinf_service(input_dict: dict, bridge=None) -> dict | None:
 # ── Resolvers — Fatigue ───────────────────────────────────────────────────────
 
 def resolve_fatigue_assessment_girder(input_dict: dict, bridge=None) -> dict | None:
-    fatigue   = input_dict.get(KEY_DO_ULS_FATIGUE)
-    n_girders = input_dict.get(KEY_TS_NO_OF_GIRDERS)
-
-    if not _has(n_girders):
+    rows = _uls_check_rows(bridge, "fatigue")
+    if rows is None:
         return None
-    n = _uls_girder_rows(n_girders)
-    if n is None:
-        return None
-
-    rows = [
-        [f"Girder {i}", _val(fatigue) if _has(fatigue) else EMPTY, EMPTY, EMPTY]
-        for i in range(1, n + 1)
-    ]
-
     return {
         "id":    "fatigue_assessment_girder",
         "label": "Fatigue Assessment - Girder",
@@ -1197,32 +1186,43 @@ def resolve_fatigue_assessment_girder(input_dict: dict, bridge=None) -> dict | N
             "Girder",
             "Stress Range, Δσ (MPa)",
             "Fatigue Limit, ffd (MPa)",
+            "Utilization Ratio",
             "Status",
         ],
         "rows": rows,
     }
 
 
-# ── Resolvers — Shear Connector Capacity (partial) ───────────────────────────
+# ── Resolvers — Shear Connector (all 5 tables) ───────────────────────────────
 
-def resolve_shear_connector_capacity(input_dict: dict, bridge=None) -> dict | None:
-    """
-    Populate columns that come directly from user inputs.
-    Computed columns (Qu, Qd, ΣQd, Clause) remain EMPTY until analysis runs.
-    """
-    diameter  = input_dict.get(KEY_DS_STUD_DIAMETER)
-    height    = input_dict.get(KEY_DS_STUD_HEIGHT)
-    fu_stud   = input_dict.get(KEY_DS_STUD_ULTIMATE_STRENGTH)
-    count     = input_dict.get(KEY_DS_STUD_COUNT)
+def _get_sc_dr(bridge) -> dict:
+    """Return design_results dict, or {} if design not yet run."""
+    if bridge is None:
+        return {}
+    try:
+        return getattr(bridge, "output_dict", {}).get("design_results") or {}
+    except Exception:
+        return {}
+
+
+def _sc_girder_rows(input_dict, bridge) -> int | None:
+    """Return the number of non-EB girder rows for shear connector tables."""
     n_girders = input_dict.get(KEY_TS_NO_OF_GIRDERS)
-
     if not _has(n_girders):
         return None
-    n = _uls_girder_rows(n_girders)
+    return _uls_girder_rows(n_girders)
+
+
+def resolve_shear_connector_capacity(input_dict: dict, bridge=None) -> dict | None:
+    n = _sc_girder_rows(input_dict, bridge)
     if n is None:
         return None
 
-    # fck comes from the material DB via bridge if available
+    diameter = input_dict.get(KEY_DS_STUD_DIAMETER)
+    height   = input_dict.get(KEY_DS_STUD_HEIGHT)
+    fu_stud  = input_dict.get(KEY_DS_STUD_ULTIMATE_STRENGTH)
+    count    = input_dict.get(KEY_DS_STUD_COUNT)
+
     fck = EMPTY
     ecm = EMPTY
     try:
@@ -1232,6 +1232,15 @@ def resolve_shear_connector_capacity(input_dict: dict, bridge=None) -> dict | No
     except Exception:
         pass
 
+    dr     = _get_sc_dr(bridge)
+    Qu     = _num(dr.get(KEY_SD_SC_Qu_kN)) if dr.get(KEY_SD_SC_Qu_kN) is not None else EMPTY
+    n_stud = _val(count) if _has(count) else EMPTY
+    try:
+        sum_Qd = _num(float(dr[KEY_SD_SC_Qu_kN]) * int(count)) if (dr.get(KEY_SD_SC_Qu_kN) and _has(count)) else EMPTY
+    except Exception:
+        sum_Qd = EMPTY
+    clause = (dr.get("capacity_details") or {}).get("stud_capacity", {}).get("clause") or "IRC 22 Cl. 606.3.1"
+
     rows = [
         [
             f"Girder {i}",
@@ -1240,11 +1249,11 @@ def resolve_shear_connector_capacity(input_dict: dict, bridge=None) -> dict | No
             _num(fu_stud)  if _has(fu_stud)  else EMPTY,
             fck,
             ecm,
-            EMPTY,   # Qu — computed
-            EMPTY,   # Qd — computed
-            _val(count) if _has(count) else EMPTY,
-            EMPTY,   # ΣQd — computed
-            EMPTY,   # Clause
+            Qu,
+            Qu,       # Qd = Qu (formula already includes γv)
+            n_stud,
+            sum_Qd,
+            clause,
         ]
         for i in range(1, n + 1)
     ]
@@ -1264,6 +1273,189 @@ def resolve_shear_connector_capacity(input_dict: dict, bridge=None) -> dict | No
             "No. of Studs per Section",
             "Total Design Capacity, ΣQd (kN)",
             "Clause Reference",
+        ],
+        "rows": rows,
+    }
+
+
+def resolve_shear_connector_spacing_uls(input_dict: dict, bridge=None) -> dict | None:
+    n = _sc_girder_rows(input_dict, bridge)
+    if n is None:
+        return None
+
+    count = input_dict.get(KEY_DS_STUD_COUNT)
+    dr    = _get_sc_dr(bridge)
+
+    VL    = _num(dr[KEY_SD_SC_VL])      if dr.get(KEY_SD_SC_VL)  is not None else EMPTY
+    Qu    = dr.get(KEY_SD_SC_Qu_kN)
+    try:
+        sum_Qd = _num(float(Qu) * int(count)) if (Qu is not None and _has(count)) else EMPTY
+    except Exception:
+        sum_Qd = EMPTY
+    SL1   = _num(dr[KEY_SD_SC_SL1])     if dr.get(KEY_SD_SC_SL1) is not None else EMPTY
+    H     = _num(dr[KEY_SD_SC_H_kN])    if dr.get(KEY_SD_SC_H_kN) is not None else EMPTY
+    SL2   = _num(dr[KEY_SD_SC_SL2])     if dr.get(KEY_SD_SC_SL2) is not None else EMPTY
+    try:
+        sl1_v = float(dr[KEY_SD_SC_SL1]) if dr.get(KEY_SD_SC_SL1) else None
+        sl2_v = float(dr[KEY_SD_SC_SL2]) if dr.get(KEY_SD_SC_SL2) else None
+        min_sl = _num(min(v for v in [sl1_v, sl2_v] if v is not None)) if any(v is not None for v in [sl1_v, sl2_v]) else EMPTY
+    except Exception:
+        min_sl = EMPTY
+    cd     = (dr.get("capacity_details") or {})
+    clause = cd.get("stud_spacing", {}).get("clause") or "IRC 22 Cl. 606.4.1"
+
+    rows = [
+        [f"Girder {i}", VL, sum_Qd, SL1, H, SL2, min_sl, clause]
+        for i in range(1, n + 1)
+    ]
+
+    return {
+        "id":    "shear_connector_spacing_uls",
+        "label": "Shear Connector Spacing - ULS Strength",
+        "columns": [
+            "Girder",
+            "Design Vertical Shear, VL (kN)",
+            "Total Stud Capacity, ΣQd (kN)",
+            "Spacing from Vertical Shear, SL1 (mm)",
+            "Full Shear Connection Force, H (kN)",
+            "Spacing from Full Shear Force, SL2 (mm)",
+            "Governing ULS Spacing, min(SL1, SL2) (mm)",
+            "Clause Reference",
+        ],
+        "rows": rows,
+    }
+
+
+def resolve_shear_connector_spacing_fatigue(input_dict: dict, bridge=None) -> dict | None:
+    n = _sc_girder_rows(input_dict, bridge)
+    if n is None:
+        return None
+
+    count = input_dict.get(KEY_DS_STUD_COUNT)
+    dr    = _get_sc_dr(bridge)
+
+    Vr     = _num(dr[KEY_SD_SC_Vr_kN])  if dr.get(KEY_SD_SC_Vr_kN) is not None else EMPTY
+    Qr     = _num(dr[KEY_SD_SC_Qr_kN])  if dr.get(KEY_SD_SC_Qr_kN) is not None else EMPTY
+    n_stud = _val(count) if _has(count) else EMPTY
+    SR     = _num(dr[KEY_SD_SC_SR])      if dr.get(KEY_SD_SC_SR)    is not None else EMPTY
+    cd     = (dr.get("capacity_details") or {})
+    clause = cd.get("stud_spacing_fatigue", {}).get("clause") or "IRC 22 Cl. 606.4.2"
+
+    rows = [
+        [f"Girder {i}", Vr, Qr, n_stud, SR, clause]
+        for i in range(1, n + 1)
+    ]
+
+    return {
+        "id":    "shear_connector_spacing_fatigue",
+        "label": "Shear Connector Spacing - Fatigue",
+        "columns": [
+            "Girder",
+            "Fatigue Shear Range, Vr (kN)",
+            "Fatigue Capacity per Stud, Qr (kN)",
+            "No. of Studs per Section",
+            "Fatigue Governing Spacing, SR (mm)",
+            "Clause Reference",
+        ],
+        "rows": rows,
+    }
+
+
+def resolve_governing_shear_connector_spacing(input_dict: dict, bridge=None) -> dict | None:
+    n = _sc_girder_rows(input_dict, bridge)
+    if n is None:
+        return None
+
+    dr = _get_sc_dr(bridge)
+    if not dr:
+        return None
+
+    try:
+        sl1 = float(dr[KEY_SD_SC_SL1]) if dr.get(KEY_SD_SC_SL1) else None
+        sl2 = float(dr[KEY_SD_SC_SL2]) if dr.get(KEY_SD_SC_SL2) else None
+        sl  = min(v for v in [sl1, sl2] if v is not None) if any(v is not None for v in [sl1, sl2]) else None
+    except Exception:
+        sl = None
+    SL     = _num(sl) if sl is not None else EMPTY
+    SR     = _num(dr[KEY_SD_SC_SR])           if dr.get(KEY_SD_SC_SR)           is not None else EMPTY
+    gov    = _num(dr.get("stud_spacing_governing_mm")) if dr.get("stud_spacing_governing_mm") else EMPTY
+    lim600 = _num(dr[KEY_SD_SC_LIMIT_600])    if dr.get(KEY_SD_SC_LIMIT_600)    is not None else 600
+    lim3t  = _num(dr[KEY_SD_SC_LIMIT_3TSLAB]) if dr.get(KEY_SD_SC_LIMIT_3TSLAB) is not None else EMPTY
+    lim4h  = _num(dr[KEY_SD_SC_LIMIT_4HSTUD]) if dr.get(KEY_SD_SC_LIMIT_4HSTUD) is not None else EMPTY
+    adopted = _num(dr.get("stud_spacing_max_mm")) if dr.get("stud_spacing_max_mm") else EMPTY
+    try:
+        prov = float(dr.get("stud_spacing_provided_mm") or 0)
+        maxs = float(dr.get("stud_spacing_max_mm") or 0)
+        status = "PASS" if (maxs > 0 and prov <= maxs) else ("FAIL" if maxs > 0 else EMPTY)
+    except Exception:
+        status = EMPTY
+
+    rows = [
+        [f"Girder {i}", SL, SR, gov, lim600, lim3t, lim4h, adopted, status]
+        for i in range(1, n + 1)
+    ]
+
+    return {
+        "id":    "governing_shear_connector_spacing",
+        "label": "Governing Shear Connector Spacing",
+        "columns": [
+            "Girder",
+            "ULS Spacing, SL (mm)",
+            "Fatigue Spacing, SR (mm)",
+            "Governing Spacing, min(SL, SR) (mm)",
+            "Max Permissible — 600 mm",
+            "Max Permissible — 3·t_slab (mm)",
+            "Max Permissible — 4·h_stud (mm)",
+            "Adopted Permissible Limit (mm)",
+            "Status",
+        ],
+        "rows": rows,
+    }
+
+
+def resolve_shear_connector_detailing_checks(input_dict: dict, bridge=None) -> dict | None:
+    n = _sc_girder_rows(input_dict, bridge)
+    if n is None:
+        return None
+
+    diameter = input_dict.get(KEY_DS_STUD_DIAMETER)
+    height   = input_dict.get(KEY_DS_STUD_HEIGHT)
+    dr       = _get_sc_dr(bridge)
+
+    d      = _num(diameter) if _has(diameter) else EMPTY
+    h      = _num(height)   if _has(height)   else EMPTY
+    tf     = _num(float(dr[KEY_SD_SC_D_LIMIT]) / 2.0) if dr.get(KEY_SD_SC_D_LIMIT) else EMPTY
+    d_lim  = _num(dr[KEY_SD_SC_D_LIMIT])   if dr.get(KEY_SD_SC_D_LIMIT)   is not None else EMPTY
+    h_min  = _num(dr[KEY_SD_SC_H_MIN])     if dr.get(KEY_SD_SC_H_MIN)     is not None else EMPTY
+    e_dist = _num(dr[KEY_SD_SC_EDGE_DIST]) if dr.get(KEY_SD_SC_EDGE_DIST) is not None else EMPTY
+    e_req  = _num(dr[KEY_SD_SC_REQ_EDGE_DIST]) if dr.get(KEY_SD_SC_REQ_EDGE_DIST) is not None else 25
+    cover  = _num(dr[KEY_SD_SC_CLEAR_COVER])   if dr.get(KEY_SD_SC_CLEAR_COVER)   is not None else EMPTY
+    c_req  = _num(dr[KEY_SD_SC_REQ_CLEAR_COVER]) if dr.get(KEY_SD_SC_REQ_CLEAR_COVER) is not None else 25
+    cd     = (dr.get("capacity_details") or {})
+    clause = cd.get("stud_detailing", {}).get("clause") or "IRC 22 Cl. 606.6"
+    status = ("PASS" if dr.get("stud_detailing_ok") else "FAIL") if "stud_detailing_ok" in dr else EMPTY
+
+    rows = [
+        [f"Girder {i}", d, tf, d_lim, h, h_min, e_dist, e_req, cover, c_req, clause, status]
+        for i in range(1, n + 1)
+    ]
+
+    return {
+        "id":    "shear_connector_detailing_checks",
+        "label": "Shear Connector Detailing Checks",
+        "columns": [
+            "Girder",
+            "Stud Diameter, d (mm)",
+            "Flange Thickness, tf (mm)",
+            "d ≤ 2·tf Check (mm)",
+            "Stud Height, h (mm)",
+            "h ≥ 4·d Check (mm)",
+            "Longitudinal Edge Distance (mm)",
+            "Min. Edge Distance Required (mm)",
+            "Slab Embedment Above Stud (mm)",
+            "Min. Embedment Required (mm)",
+            "Clause Reference",
+            "Status",
         ],
         "rows": rows,
     }
@@ -1711,7 +1903,11 @@ RESOLVER_MAP: dict[str, callable] = {
     "fatigue_assessment_girder":          resolve_fatigue_assessment_girder,
 
     # ── Shear Connector ───────────────────────────────────────────────────
-    "shear_connector_capacity":           resolve_shear_connector_capacity,
+    "shear_connector_capacity":              resolve_shear_connector_capacity,
+    "shear_connector_spacing_uls":           resolve_shear_connector_spacing_uls,
+    "shear_connector_spacing_fatigue":       resolve_shear_connector_spacing_fatigue,
+    "governing_shear_connector_spacing":     resolve_governing_shear_connector_spacing,
+    "shear_connector_detailing_checks":      resolve_shear_connector_detailing_checks,
 
     # ── Crack Width ───────────────────────────────────────────────────────
     "crack_width_check":                  resolve_crack_width_check,

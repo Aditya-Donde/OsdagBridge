@@ -3840,26 +3840,15 @@ GENERATE_RESULTS_DEFAULTS = {
                     "Girder",
                     "Stress Range, Δσ (MPa)",
                     "Fatigue Limit, ffd (MPa)",
+                    "Utilization Ratio",
                     "Status",
                 ],
                 "rows": [
-                    [EMPTY, EMPTY, EMPTY, EMPTY],
+                    [EMPTY, EMPTY, EMPTY, EMPTY, EMPTY],
                 ],
             },
 
-            "fatigue_assessment_shear_connectors": {
-                "id": "fatigue_assessment_shear_connectors",
-                "label": "Fatigue Assessment - Shear Connectors",
-                "columns": [
-                    "Stud Group",
-                    "Shear Stress Range, Δτ (MPa)",
-                    "Fatigue Limit for Shear, τfd (MPa)",
-                    "Status",
-                ],
-                "rows": [
-                    [EMPTY, EMPTY, EMPTY, EMPTY],
-                ],
-            },
+
         },
 
         "shear_connector_design": {
@@ -3883,10 +3872,7 @@ GENERATE_RESULTS_DEFAULTS = {
                     "Clause Reference",
                 ],
                 "rows": [
-                    ["Girder 1", 20, 100, 495, 40, 34000, 98.5, 83.7, 2, 167.4, "IRC 22 Cl. 606.3.1"],
-                    ["Girder 2", 20, 100, 495, 40, 34000, 98.5, 83.7, 2, 167.4, "IRC 22 Cl. 606.3.1"],
-                    ["Girder 3", 20, 100, 495, 40, 34000, 98.5, 83.7, 2, 167.4, "IRC 22 Cl. 606.3.1"],
-                    ["Girder 4", 20, 100, 495, 40, 34000, 98.5, 83.7, 2, 167.4, "IRC 22 Cl. 606.3.1"],
+                    [EMPTY] * 11
                 ],
             },
 
@@ -3984,10 +3970,7 @@ GENERATE_RESULTS_DEFAULTS = {
                     "Status",
                 ],
                 "rows": [
-                    ["Girder 1", 285, 198, 245, 443, 0.64, "IRC 22 Cl. 606.10", "PASS"],
-                    ["Girder 2", 278, 198, 245, 443, 0.63, "IRC 22 Cl. 606.10", "PASS"],
-                    ["Girder 3", 278, 198, 245, 443, 0.63, "IRC 22 Cl. 606.10", "PASS"],
-                    ["Girder 4", 285, 198, 245, 443, 0.64, "IRC 22 Cl. 606.10", "PASS"],
+                    [EMPTY] * 8
                 ],
             },
 
