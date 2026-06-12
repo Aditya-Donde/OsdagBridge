@@ -1280,6 +1280,55 @@ class AdditionalInputs(QDialog):
         if lbl: lbl.setEnabled(is_yes)
         self._update_stiffener_cad()
 
+    def _on_stiffener_apply_all_clicked(self) -> None:  # on_click: copies current stiffener config to all other girders/members
+        import re
+        combo = self.findChild(QComboBox, KEY_MP_STIFFENER_SELECT_MEMBER_ID)
+        if combo is None:
+            return
+        source_member_id = combo.currentText().strip()
+        m = re.match(r"G(\d+)M(\d+)", source_member_id)
+        if not m:
+            return
+        source_suffix = f".G{m.group(1)}.M{m.group(2)}"
+
+        # Step 1: Save current widget values into working_input_dict for the source member
+        self._save_stiffener_member_data(source_member_id)
+
+        # Step 2: Read saved source values from working_input_dict (reliable source of truth)
+        source_values = {}
+        for key in self._STIFFENER_FIELD_KEYS:
+            val = self.working_input_dict.get(f"{key}{source_suffix}")
+            if val is not None:
+                source_values[key] = val
+
+        # Step 3: Copy to all other members across all girders
+        girder_count = int(float(str(self.working_input_dict.get(KEY_TS_NO_OF_GIRDERS) or 1)))
+        for gi in range(1, girder_count + 1):
+            seg_key = f"{KEY_MP_GD_SEGMENT_TABLE}.G{gi}"
+            segments = self.working_input_dict.get(seg_key) or []
+            for seg in segments:
+                mid = str(seg.get("id") or "").strip()
+                tm = re.match(r"G(\d+)M(\d+)", mid)
+                if not tm:
+                    continue
+                target_suffix = f".G{tm.group(1)}.M{tm.group(2)}"
+                if target_suffix == source_suffix:
+                    continue
+                for key, val in source_values.items():
+                    self.working_input_dict[f"{key}{target_suffix}"] = val
+
+        # Step 4: Reload to refresh UI with updated values
+        self._load_stiffener_member_data(source_member_id)
+        self._update_stiffener_cad()
+
+        from osdagbridge.desktop.ui.dialogs.custom_messagebox import CustomMessageBox, MessageBoxType
+        CustomMessageBox(
+            title="Applied",
+            text="Stiffener configuration copied to all girders/members.",
+            buttons=["OK"],
+            dialogType=MessageBoxType.Success,
+        ).exec()
+
     def _save_stiffener_member_data(self, member_id: str) -> None:  # utility: serialises stiffener widget values into working_input_dict under G{i}.M{j} suffix
         import re
         m = re.match(r"G(\d+)M(\d+)", str(member_id or "").strip())

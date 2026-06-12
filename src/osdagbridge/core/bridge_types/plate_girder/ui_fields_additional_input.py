@@ -2421,7 +2421,7 @@ STIFFENER_DETAILS_SCHEMA = {
                         "id":       KEY_MP_STIFFENER_APPLY_ALL,
                         "type":     TYPE_BUTTON,
                         "text":     "Apply changes to all custom",
-                        # "on_click": "_on_stiffener_apply_all_clicked",
+                        "on_click": "_on_stiffener_apply_all_clicked",
                     }]
                 },
             ],
