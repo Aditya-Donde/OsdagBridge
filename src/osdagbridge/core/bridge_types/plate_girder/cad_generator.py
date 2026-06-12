@@ -151,7 +151,7 @@ class PlateGirderCADGenerator:
         self.girder_section_tf = design_params.girder_section_tf
         self.girder_section_tf_b = design_params.girder_section_tf_b
         self.girder_section_tw = design_params.girder_section_tw
-        self.num_girders = design_params.num_girders
+        self.num_girders = int(design_params.num_girders)
         self.girder_spacing = design_params.girder_spacing
 
         self.girder_segments = [
