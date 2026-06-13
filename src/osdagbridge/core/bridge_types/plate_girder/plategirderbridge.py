@@ -3023,6 +3023,10 @@ class PlateGirderBridge:
         if cached is not None:
             return cached
         return self.grillage_model.model.get_results()
+    
+    def get_results(self) -> dict:
+        """Return the dictionary of design check outputs and results."""
+        return dict(self.output_dict)
 
     # ─────────────────────────────────────────────────────────────────────────
     # 2-D analysis result factory
