@@ -182,16 +182,14 @@ class SegmentTableWidget(QWidget):
         # show ~2 rows then scroll
         row_h = int(self._table.verticalHeader().defaultSectionSize() or 34)
 
+        self._table.setEnabled(False)
         self._table.setStyleSheet(
-            "QTableWidget { background: #ffffff; border: 1px solid #d6d6d6;"
-            " border-radius: 6px; gridline-color: #d0d0d0; }"
-            "QTableWidget::item { color: #1f1f1f; padding: 4px 6px; }"
-            "QTableWidget::item:selected { background: #e8f0c9; color: #1a1a1a; }"
-            "QTableWidget::item:focus { outline: none; }"
-            "QTableWidget QLineEdit { background: #ffffff; color: #000000; }"
-            "QHeaderView::section { background: #f3f3f3; color: #2b2b2b;"
+            "QTableWidget { background: #f5f5f5; border: 1px solid #d6d6d6; border-radius: 6px; }"
+            "QTableWidget::item { color: #aaaaaa; background: #efefef; }"
+            "QTableWidget::item:selected { background: #efefef; color: #aaaaaa; }"
+            "QHeaderView::section { background: #e8e8e8; color: #aaaaaa;"
             " font-weight: 700; border: 1px solid #d0d0d0; padding: 6px; }"
-            "QTableCornerButton::section { background: #f3f3f3; border: 1px solid #d0d0d0; }"
+            "QTableCornerButton::section { background: #e8e8e8; border: 1px solid #d0d0d0; }"
         )
 
         ro = _ReadOnlyCellDelegate(self._table)
@@ -276,14 +274,14 @@ class SegmentTableWidget(QWidget):
         add_btn.setIconSize(QSize(12, 12))
         add_btn.setFocusPolicy(Qt.NoFocus)
         add_btn.setCursor(Qt.PointingHandCursor)
-        add_btn.setEnabled(False)
-        add_btn.setToolTip("Segment addition disabled for now")
+        add_btn.setToolTip("Split/Add segment")
         add_btn.setStyleSheet(
-            "QPushButton { background-color: #90AF13; border: 1px solid #6f850f; border-radius: 8px; }"
-            "QPushButton:hover { background-color: #7a9410; }"
-            "QPushButton:pressed { background-color: #6a840d; }"
+            "QPushButton { background-color: #d6d6d6; border: 1px solid #b0b0b0; border-radius: 8px; }"
+            "QPushButton:hover { background-color: #c0c0c0; }"
+            "QPushButton:pressed { background-color: #b0b0b0; }"
             "QPushButton:disabled { background-color: #d6d6d6; color: #8c8c8c; border-color: #d6d6d6; }"
         )
+        add_btn.setEnabled(False)
         add_btn.clicked.connect(lambda _=False, r=row: self._on_add_clicked(r))
 
         rem_btn = QPushButton("")
@@ -293,14 +291,14 @@ class SegmentTableWidget(QWidget):
         rem_btn.setIconSize(QSize(12, 12))
         rem_btn.setFocusPolicy(Qt.NoFocus)
         rem_btn.setCursor(Qt.PointingHandCursor)
-        rem_btn.setEnabled(False)
-        rem_btn.setToolTip("Segment removal disabled for now")
+        rem_btn.setToolTip("Remove this segment")
         rem_btn.setStyleSheet(
-            "QPushButton { background-color: #c72626; border: 1px solid #8f1c1c; border-radius: 8px; }"
-            "QPushButton:hover { background-color: #ae1f1f; }"
-            "QPushButton:pressed { background-color: #991a1a; }"
+            "QPushButton { background-color: #d6d6d6; border: 1px solid #b0b0b0; border-radius: 8px; }"
+            "QPushButton:hover { background-color: #c0c0c0; }"
+            "QPushButton:pressed { background-color: #b0b0b0; }"
             "QPushButton:disabled { background-color: #d6d6d6; color: #8c8c8c; border-color: #d6d6d6; }"
         )
+        rem_btn.setEnabled(False)
         rem_btn.clicked.connect(lambda _=False, r=row: self._on_remove_clicked(r))
 
         layout.addWidget(add_btn)
@@ -326,11 +324,15 @@ class SegmentTableWidget(QWidget):
         return icon
 
     def _update_action_highlight(self, selected_row: int) -> None:
+        is_enabled = self._table.isEnabled()
         for row in range(self._table.rowCount()):
             w = self._table.cellWidget(row, 4)
             if w is None:
                 continue
-            bg = "#e8f0c9" if row == selected_row else "transparent"
+            if not is_enabled:
+                bg = "#e8e8e8"   # flat grey when whole table is disabled
+            else:
+                bg = "#e8f0c9" if row == selected_row else "transparent"
             w.setStyleSheet(
                 f"QWidget#segmentActionCell {{ background: {bg}; border: none; }}"
             )

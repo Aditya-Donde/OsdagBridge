@@ -660,12 +660,6 @@ class AdditionalInputs(QDialog):
 
         self._update_additional_input_cad()
 
-        if key.startswith(KEY_MP_GIRDER_TOP_FLANGE_WIDTH) or key.startswith(KEY_MP_GIRDER_TOP_FLANGE_THICKNESS):
-            gi, mi = self._get_current_girder_member_indices()
-            sym_val = self.working_input_dict.get(f"{KEY_MP_GIRDER_SYMMETRY}.G{gi}.M{mi}", "Girder Symmetric")
-            if sym_val.strip().lower() == "girder symmetric":
-                self._on_symmetry_changed(sym_val)
-
     def _on_field_editing(self, current_text: str, key: str):  # on_change: soft validation while typing — updates dict/CAD only when valid, no popups
         if not current_text.strip():
             self._update_input_dict(key, "")
@@ -973,6 +967,9 @@ class AdditionalInputs(QDialog):
                         inner_line.blockSignals(False)
                 else:
                     print(f"  [LOAD] {key} — widget not found: {type(w)}")
+        
+        # Update symmetry-dependent widget states after loading
+        self._on_symmetry_changed()
 
     def _on_bounds_accepted(self, field_id: str, result: dict) -> None:  # on_change: stores BoundsButton result under the current member's dynamic key
         gi, mi = self._get_current_girder_member_indices()
@@ -1011,35 +1008,71 @@ class AdditionalInputs(QDialog):
             self._copy_girder_properties(gi, target_g)
         print(f"@@: Applied Girder {gi} settings to interior girders: {targets}")
 
-    def _on_symmetry_changed(self, symmetry: str) -> None:
+    def _on_top_flange_changed(self) -> None:
         gi, mi = self._get_current_girder_member_indices()
-        is_symmetric = (symmetry.strip().lower() == "girder symmetric")
+        suffix = f".G{gi}.M{mi}"
         
-        from osdagbridge.core.utils.common import KEY_MP_GIRDER_TOP_FLANGE_WIDTH, KEY_MP_GIRDER_TOP_FLANGE_THICKNESS
-        from osdagbridge.core.utils.common import KEY_MP_GIRDER_BOTTOM_FLANGE_WIDTH, KEY_MP_GIRDER_BOTTOM_FLANGE_THICKNESS
+        sym_val = self.working_input_dict.get(KEY_MP_GIRDER_SYMMETRY + suffix, "Girder Symmetric")
+        if sym_val.strip().lower() != "girder symmetric":
+            return  # unsymmetric — nothing to mirror
         
-        # Disable or enable bottom flange inputs
+        # Read live widget values
+        tw_w = self.findChild(QWidget, KEY_MP_GIRDER_TOP_FLANGE_WIDTH)
+        tt_w = self.findChild(QWidget, KEY_MP_GIRDER_TOP_FLANGE_THICKNESS)
+        bw_w = self.findChild(QWidget, KEY_MP_GIRDER_BOTTOM_FLANGE_WIDTH)
+        bt_w = self.findChild(QWidget, KEY_MP_GIRDER_BOTTOM_FLANGE_THICKNESS)
+
+        def _read(w):
+            if isinstance(w, QLineEdit): return w.text().strip() or None
+            if isinstance(w, QComboBox): return w.currentText() or None
+            if isinstance(w, AdaptiveWidget):
+                a = w.currentWidget()
+                if isinstance(a, QLineEdit): return a.text().strip() or None
+                if isinstance(a, QComboBox): return a.currentText() or None
+            return None
+
+        def _write(w, val):
+            if isinstance(w, QLineEdit): w.blockSignals(True); w.setText(str(val)); w.blockSignals(False)
+            elif isinstance(w, QComboBox): w.blockSignals(True); w.setCurrentText(str(val)); w.blockSignals(False)
+            elif isinstance(w, AdaptiveWidget):
+                a = w.currentWidget()
+                if isinstance(a, QLineEdit): a.blockSignals(True); a.setText(str(val)); a.blockSignals(False)
+                elif isinstance(a, QComboBox): a.blockSignals(True); a.setCurrentText(str(val)); a.blockSignals(False)
+
+        tw_val = _read(tw_w)
+        tt_val = _read(tt_w)
+
+        if tw_val is not None:
+            _write(bw_w, tw_val)
+            self.working_input_dict[KEY_MP_GIRDER_BOTTOM_FLANGE_WIDTH + suffix] = tw_val
+            self.working_input_dict[KEY_MP_GIRDER_BOTTOM_FLANGE_WIDTH] = tw_val
+
+        if tt_val is not None:
+            _write(bt_w, tt_val)
+            self.working_input_dict[KEY_MP_GIRDER_BOTTOM_FLANGE_THICKNESS + suffix] = tt_val
+            self.working_input_dict[KEY_MP_GIRDER_BOTTOM_FLANGE_THICKNESS] = tt_val
+
+        self._update_section_drawing()
+
+    def _on_symmetry_changed(self, symmetry: str = None) -> None:
+        gi, mi = self._get_current_girder_member_indices()
+        suffix = f".G{gi}.M{mi}"
+
+        if symmetry is None:
+            symmetry = str(self.working_input_dict.get(KEY_MP_GIRDER_SYMMETRY + suffix, "Girder Symmetric"))
+
+        self.working_input_dict[KEY_MP_GIRDER_SYMMETRY + suffix] = symmetry
+
+        is_symmetric = symmetry.strip().lower() == "girder symmetric"
+
         bw = self.findChild(QWidget, KEY_MP_GIRDER_BOTTOM_FLANGE_WIDTH)
         bt = self.findChild(QWidget, KEY_MP_GIRDER_BOTTOM_FLANGE_THICKNESS)
         if bw: bw.setEnabled(not is_symmetric)
         if bt: bt.setEnabled(not is_symmetric)
-        
+
         if is_symmetric:
-            suffix = f".G{gi}.M{mi}"
-            tw_val = self.working_input_dict.get(KEY_MP_GIRDER_TOP_FLANGE_WIDTH + suffix)
-            tt_val = self.working_input_dict.get(KEY_MP_GIRDER_TOP_FLANGE_THICKNESS + suffix)
-            
-            if bw and tw_val is not None:
-                if isinstance(bw, QLineEdit): bw.setText(str(tw_val))
-                elif isinstance(bw, QComboBox): bw.setCurrentText(str(tw_val))
-                self.working_input_dict[KEY_MP_GIRDER_BOTTOM_FLANGE_WIDTH + suffix] = tw_val
-            
-            if bt and tt_val is not None:
-                if isinstance(bt, QLineEdit): bt.setText(str(tt_val))
-                elif isinstance(bt, QComboBox): bt.setCurrentText(str(tt_val))
-                self.working_input_dict[KEY_MP_GIRDER_BOTTOM_FLANGE_THICKNESS + suffix] = tt_val
-            
-            # Since we updated working_input_dict manually, regenerate drawing preview
+            self._on_top_flange_changed()  # reuse — does the mirror + drawing update
+        else:
             self._update_section_drawing()
 
     def _on_torsional_restraint_changed(self, restraint: str) -> None:
@@ -1084,44 +1117,16 @@ class AdditionalInputs(QDialog):
         if widget is None:
             return
 
+        # Build snapshot — prefer live widget value over working_input_dict
+        # because on_change fires before _on_field_edited updates the dict.
+        snapshot = dict(self.working_input_dict)
+
         from osdagbridge.core.utils.common import (
-            KEY_MP_GIRDER_TYPE, KEY_MP_GIRDER_IS_SECTION, KEY_MP_GIRDER_SYMMETRY,
+            KEY_MP_GIRDER_TYPE, KEY_MP_GIRDER_IS_SECTION,
             KEY_MP_GIRDER_DEPTH, KEY_MP_GIRDER_TOP_FLANGE_WIDTH, KEY_MP_GIRDER_BOTTOM_FLANGE_WIDTH,
             KEY_MP_GIRDER_TOP_FLANGE_THICKNESS, KEY_MP_GIRDER_BOTTOM_FLANGE_THICKNESS,
             KEY_MP_GIRDER_WEB_THICKNESS,
         )
-
-        gi, mi = self._get_current_girder_member_indices()
-        suffix = f".G{gi}.M{mi}"
-
-        def _get_live_val(k):
-            w = self.findChild(QWidget, k)
-            if isinstance(w, QComboBox): return w.currentText()
-            elif isinstance(w, QLineEdit): return w.text().strip()
-            elif hasattr(w, 'currentWidget'):
-                active = w.currentWidget()
-                if isinstance(active, QComboBox): return active.currentText()
-                elif isinstance(active, QLineEdit): return active.text().strip()
-            return None
-
-        # Sync top to bottom if symmetric before snapshot
-        sym_val = self.working_input_dict.get(KEY_MP_GIRDER_SYMMETRY + suffix, "Girder Symmetric")
-        if sym_val.strip().lower() == "girder symmetric":
-            live_tw = _get_live_val(KEY_MP_GIRDER_TOP_FLANGE_WIDTH)
-            if live_tw is not None:
-                bw = self.findChild(QWidget, KEY_MP_GIRDER_BOTTOM_FLANGE_WIDTH)
-                if isinstance(bw, QLineEdit): bw.setText(live_tw)
-                elif hasattr(bw, 'currentWidget') and isinstance(bw.currentWidget(), QLineEdit): bw.currentWidget().setText(live_tw)
-                self.working_input_dict[KEY_MP_GIRDER_BOTTOM_FLANGE_WIDTH + suffix] = live_tw
-                
-            live_tt = _get_live_val(KEY_MP_GIRDER_TOP_FLANGE_THICKNESS)
-            if live_tt is not None:
-                bt = self.findChild(QWidget, KEY_MP_GIRDER_BOTTOM_FLANGE_THICKNESS)
-                if isinstance(bt, QComboBox): bt.setCurrentText(live_tt)
-                elif hasattr(bt, 'currentWidget') and isinstance(bt.currentWidget(), QComboBox): bt.currentWidget().setCurrentText(live_tt)
-                self.working_input_dict[KEY_MP_GIRDER_BOTTOM_FLANGE_THICKNESS + suffix] = live_tt
-
-        snapshot = dict(self.working_input_dict)
 
         for key in [
             KEY_MP_GIRDER_TYPE, KEY_MP_GIRDER_IS_SECTION,
@@ -1129,9 +1134,17 @@ class AdditionalInputs(QDialog):
             KEY_MP_GIRDER_TOP_FLANGE_THICKNESS, KEY_MP_GIRDER_BOTTOM_FLANGE_THICKNESS,
             KEY_MP_GIRDER_WEB_THICKNESS,
         ]:
-            val = _get_live_val(key)
-            if val is not None:
-                snapshot[key] = val
+            w = self.findChild(QWidget, key)
+            if isinstance(w, QComboBox):
+                snapshot[key] = w.currentText()
+            elif isinstance(w, QLineEdit):
+                snapshot[key] = w.text().strip()
+            elif isinstance(w, AdaptiveWidget):
+                active = w.currentWidget()
+                if isinstance(active, QComboBox):
+                    snapshot[key] = active.currentText()
+                elif isinstance(active, QLineEdit):
+                    snapshot[key] = active.text().strip()
 
         widget.update_section(snapshot)
 

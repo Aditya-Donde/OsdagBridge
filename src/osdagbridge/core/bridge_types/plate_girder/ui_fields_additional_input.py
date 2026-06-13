@@ -2065,7 +2065,7 @@ GIRDER_DETAILS_SCHEMA = {
                             "Custom": {
                                 "type":              TYPE_TEXTBOX,
                                 "placeholder":       "",
-                                "on_editing_finished": "_update_section_drawing",
+                                "on_editing_finished": "_on_top_flange_changed",
                                 "on_change_compute": {"function": "_compute_welded_section_properties"},
                             },
                         },
@@ -2085,7 +2085,7 @@ GIRDER_DETAILS_SCHEMA = {
                             "Custom": {
                                 "type":              TYPE_COMBOBOX,
                                 "choices":           [str(v) for v in SAIL_APPROVED_THICKNESS_VALUES],
-                                "on_change":         "_update_section_drawing",
+                                "on_change":         "_on_top_flange_changed",
                                 "on_change_compute": {"function": "_compute_welded_section_properties"},
                             },
                         },
