@@ -2246,14 +2246,14 @@ GIRDER_DETAILS_SCHEMA = {
                     "fields": 
                         [{
                             "id": KEY_MP_GIRDER_SECTIONAL_AREA,  
-                            "label": "Sectional Area, a (cm<sup>2</sup>)",                
+                            "label": "Sectional Area, a (m<sup>2</sup>)",                
                             "type": TYPE_TEXTBOX, "read_only": True,
                         }]},
                 {
                     "fields": 
                         [{
                             "id": KEY_MP_GIRDER_SECTIONAL_IZ,  
-                            "label": "2nd Moment of Area, I<sub>z</sub> (cm<sup>4</sup>)",  
+                            "label": "2nd Moment of Area, I<sub>z</sub> (m<sup>4</sup>)",  
                             "type": TYPE_TEXTBOX, "read_only": True
                         }]
                 },
@@ -2261,7 +2261,7 @@ GIRDER_DETAILS_SCHEMA = {
                     "fields": 
                         [{
                             "id": KEY_MP_GIRDER_SECTIONAL_IY,  
-                            "label": "2nd Moment of Area, I<sub>y</sub> (cm<sup>4</sup>)",  
+                            "label": "2nd Moment of Area, I<sub>y</sub> (m<sup>4</sup>)",  
                             "type": TYPE_TEXTBOX, "read_only": True
                         }]
                 },
@@ -2269,7 +2269,7 @@ GIRDER_DETAILS_SCHEMA = {
                     "fields": 
                         [{
                             "id": KEY_MP_GIRDER_RADIUS_GYRATION_Z,  
-                            "label": "Radius of Gyration, r<sub>z</sub> (cm)",              
+                            "label": "Radius of Gyration, r<sub>z</sub> (m)",              
                             "type": TYPE_TEXTBOX, "read_only": True
                         }]
                 },
@@ -2277,7 +2277,7 @@ GIRDER_DETAILS_SCHEMA = {
                     "fields": 
                         [{
                             "id": KEY_MP_GIRDER_RADIUS_GYRATION_Y,  
-                            "label": "Radius of Gyration, r<sub>y</sub> (cm)",              
+                            "label": "Radius of Gyration, r<sub>y</sub> (m)",              
                             "type": TYPE_TEXTBOX, "read_only": True
                         }]
                 },
@@ -2285,7 +2285,7 @@ GIRDER_DETAILS_SCHEMA = {
                     "fields": 
                         [{
                             "id": KEY_MP_GIRDER_ELASTIC_MODULUS_ZZ,  
-                            "label": "Elastic Modulus, Z<sub>z</sub> (cm<sup>3</sup>)",     
+                            "label": "Elastic Modulus, Z<sub>z</sub> (m<sup>3</sup>)",     
                             "type": TYPE_TEXTBOX, "read_only": True
                         }]
                 },
@@ -2293,7 +2293,7 @@ GIRDER_DETAILS_SCHEMA = {
                     "fields": 
                         [{
                             "id": KEY_MP_GIRDER_ELASTIC_MODULUS_ZY,  
-                            "label": "Elastic Modulus, Z<sub>y</sub> (cm<sup>3</sup>)",     
+                            "label": "Elastic Modulus, Z<sub>y</sub> (m<sup>3</sup>)",     
                             "type": TYPE_TEXTBOX, "read_only": True
                         }]
                 },
@@ -2301,7 +2301,7 @@ GIRDER_DETAILS_SCHEMA = {
                     "fields": 
                         [{
                             "id": KEY_MP_GIRDER_PLASTIC_MODULUS_ZUZ,  
-                            "label": "Plastic Modulus, Z<sub>pz</sub> (cm<sup>3</sup>)",     
+                            "label": "Plastic Modulus, Z<sub>pz</sub> (m<sup>3</sup>)",     
                             "type": TYPE_TEXTBOX, "read_only": True
                         }]
                 },
@@ -2309,7 +2309,7 @@ GIRDER_DETAILS_SCHEMA = {
                     "fields": 
                         [{
                             "id": KEY_MP_GIRDER_PLASTIC_MODULUS_ZUY,  
-                            "label": "Plastic Modulus, Z<sub>py</sub> (cm<sup>3</sup>)",     
+                            "label": "Plastic Modulus, Z<sub>py</sub> (m<sup>3</sup>)",     
                             "type": TYPE_TEXTBOX, "read_only": True
                         }]
                 },
@@ -2317,7 +2317,7 @@ GIRDER_DETAILS_SCHEMA = {
                     "fields": 
                         [{
                             "id": KEY_MP_GIRDER_TORSION_CONSTANT_IT,  
-                            "label": "Torsion Constant, I<sub>t</sub> (cm<sup>4</sup>)",     
+                            "label": "Torsion Constant, I<sub>t</sub> (m<sup>4</sup>)",     
                             "type": TYPE_TEXTBOX, "read_only": True
                         }]
                 },
@@ -2325,7 +2325,7 @@ GIRDER_DETAILS_SCHEMA = {
                     "fields": 
                         [{
                             "id": KEY_MP_GIRDER_WARPING_CONSTANT_IW,  
-                            "label": "Warping Constant, I<sub>w</sub> (cm<sup>6</sup>)",     
+                            "label": "Warping Constant, I<sub>w</sub> (m<sup>6</sup>)",     
                             "type": TYPE_TEXTBOX, "read_only": True
                         }]
                 },
