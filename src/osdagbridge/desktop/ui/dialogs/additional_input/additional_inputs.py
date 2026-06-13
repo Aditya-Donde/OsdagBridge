@@ -18,13 +18,13 @@ from osdagbridge.desktop.ui.utils.custom_titlebar import CustomTitleBar
 from osdagbridge.desktop.ui.dialogs.tabs.common import apply_field_style, create_action_button_bar
 from osdagbridge.desktop.ui.dialogs.custom_messagebox import CustomMessageBox, MessageBoxType
 from osdagbridge.desktop.ui.dialogs.additional_input.tabs.typical_section.typical_section_details import TypicalSectionDetailsTab
-from osdagbridge.desktop.ui.dialogs.tabs.section_properties_tab import SectionPropertiesTab
 from osdagbridge.desktop.ui.utils.custom_widgets import SmartCursorComboBoxView
 from osdagbridge.desktop.ui.dialogs.additional_input.ui_builder.common_ui_builder import UIBuilder
 from osdagbridge.core.bridge_types.plate_girder.ui_fields_additional_input import (
     DESIGN_OPTIONS_SCHEMA,
     DESIGN_OPTIONS_CONT_SCHEMA,
     SUPPORT_CONDITIONS_SCHEMA,
+    MEMBER_PROPERTIES_SCHEMA,
 )
 from osdagbridge.desktop.ui.dialogs.additional_input.ui_builder._load_combination_widget import LoadCombinationWidget
 from osdagbridge.desktop.ui.dialogs.additional_input.ui_builder.common_ui_builder import AdaptiveWidget
@@ -148,18 +148,15 @@ class AdditionalInputs(QDialog):
         self.tabs.addTab(self.typical_section_tab, "Typical Section Details")
 
         # Sub-Tab 2: Member Properties
-        self.section_properties_tab = SectionPropertiesTab(
-            additiona_input_instance=self
+        self.section_properties_tab = UIBuilder(
+            owner=self,
+            schema=MEMBER_PROPERTIES_SCHEMA,
+            card_title="",
+            with_scroll=False,
+            main_widget_object_name="member_properties.main",
+            additional_input_instance=self,
         )
         self.tabs.addTab(self.section_properties_tab, "Member Properties")
-        self.section_properties_tab.set_editable_mode(self._member_properties_editable)
-
-        # Keep girder count in sync across tabs
-        try:
-            self.typical_section_tab.girder_count_changed.connect(self.section_properties_tab.set_girder_count)
-            self._sync_member_properties_girder_count()
-        except Exception:
-            pass
 
         # Sub-Tab 3: Loading
         from osdagbridge.core.bridge_types.plate_girder.ui_fields_additional_input import LOADING_TAB_SCHEMA
@@ -205,7 +202,6 @@ class AdditionalInputs(QDialog):
         )
         self.tabs.addTab(self.design_options_cont_tab, "Design Options (Cont.)")
 
-        self.tabs.currentChanged.connect(self._on_top_tab_changed)
         main_layout.addWidget(self.tabs)
 
         action_bar, self.defaults_button, self.save_button = create_action_button_bar()
@@ -474,93 +470,19 @@ class AdditionalInputs(QDialog):
             if hasattr(tab_widget, "refresh_active_tab"):
                 tab_widget.refresh_active_tab()
 
-    def _on_top_tab_changed(self, index: int) -> None:  # on_change: prompts save when leaving Member Properties with unsaved changes
-        if index < 0:
-            return
-
-        previous = getattr(self, "_last_top_tab_index", 0)
-        if previous == index:
-            return
-
-        leaving_member_properties = (
-            previous == self.tabs.indexOf(getattr(self, "section_properties_tab", None))
-        )
-        if leaving_member_properties:
-            try:
-                if hasattr(self, "section_properties_tab") and hasattr(self.section_properties_tab, "has_unsaved_changes"):
-                    if self.section_properties_tab.has_unsaved_changes():
-                        CustomMessageBox(
-                            title="Unsaved Inputs",
-                            text="Please save Member Properties before switching tabs.",
-                            buttons=["OK"],
-                            dialogType=MessageBoxType.Warning,
-                        ).exec()
-                        prev = self.tabs.blockSignals(True)
-                        self.tabs.setCurrentIndex(previous)
-                        self.tabs.blockSignals(prev)
-                        return
-
-                if hasattr(self, "section_properties_tab") and hasattr(self.section_properties_tab, "save_properties"):
-                    self._last_saved_data = self.section_properties_tab.save_properties() or {}
-            except Exception:
-                pass
-
-        self._last_top_tab_index = index
-
     # ── Dialog Persistence ───────────────────────────────────────────────────────
 
     def _save_inputs(self):  # on_change: validates all tabs then commits working_input_dict and emits CAD update signal
-        saved = {}
-        """
-        Save additional inputs.
-        Validate all fields first.
-        If errors exist -> show popup and DO NOT close dialog.
-        """
-        errors = []
-
-        for tab in [self.loading_tab]:
-            if hasattr(tab, "validate_tab"):
-                tab_errors = tab.validate_tab()
-                if tab_errors:
-                    errors.extend(tab_errors)
-
-        if errors:
-            self._show_validation_errors(errors)
-            return
-
-        self.saved_values.clear()
-        self._collect_all_values()
-
-        saved = self.saved_values.copy()
-
-        tabs = [
-            getattr(self, "typical_section_tab", None),
-            getattr(self, "section_properties_tab", None),
-            getattr(self, "loading_tab", None),
-            getattr(self, "support_tab", None),
-            getattr(self, "design_options_tab", None),
-            getattr(self, "design_options_cont_tab", None),
-        ]
-
-        for tab in tabs:
-            if not tab:
-                continue
-            if hasattr(tab, "save_values"):
-                saved.update(tab.save_values() or {})
-            if hasattr(tab, "save_properties"):
-                saved.update(tab.save_properties() or {})
-
-        self._last_saved_data = saved
-
+        
+        self.default_input_dict.update(self.working_input_dict)
+        self.update_template_page_2d_cad.emit(self.typical_section_tab.cad_preview.params)
+        
         CustomMessageBox(
             title="Saved",
             text="Inputs saved successfully.",
             buttons=["OK"],
             dialogType=MessageBoxType.Success,
         ).exec()
-
-        self.default_input_dict.update(self.working_input_dict)
-        self.update_template_page_2d_cad.emit(self.typical_section_tab.cad_preview.params)
 
     def _show_validation_errors(self, errors):  # utility: displays validation error list in a warning popup
         message = "\n\n".join(f"• {err}" for err in errors)
@@ -588,50 +510,6 @@ class AdditionalInputs(QDialog):
     def get_saved_data(self) -> dict:  # public API: returns the last saved properties snapshot
         """Get the last saved properties data."""
         return self._last_saved_data.copy()
-
-    def set_properties_data(self, data: dict) -> None:  # public API: restores all tab widgets from a previously saved data dict
-        """
-        @author: Faizan
-        Restore previously saved UI and CAD properties across all tabs.
-        """
-        tabs = [
-            getattr(self, "typical_section_tab", None),
-            getattr(self, "section_properties_tab", None),
-            getattr(self, "loading_tab", None),
-            getattr(self, "support_tab", None),
-            getattr(self, "design_options_tab", None),
-            getattr(self, "design_options_cont_tab", None),
-        ]
-
-        for tab in tabs:
-            if not tab:
-                continue
-            if hasattr(tab, "restore_values"):
-                try:
-                    tab.restore_values(data)
-                except Exception:
-                    pass
-            if hasattr(tab, "restore_properties"):
-                try:
-                    tab.restore_properties(data)
-                except Exception:
-                    pass
-
-        # Generic restore fallback
-        try:
-            for widget in self.findChildren(QWidget):
-                name = widget.objectName()
-                if not name or name not in data:
-                    continue
-                value = data[name]
-                if isinstance(widget, QLineEdit):
-                    widget.setText(str(value))
-                elif isinstance(widget, QComboBox):
-                    widget.setCurrentText(str(value))
-                elif isinstance(widget, QCheckBox):
-                    widget.setChecked(bool(value))
-        except Exception:
-            pass
 
     # ── Field Change Handling ────────────────────────────────────────────────────
 
@@ -2416,9 +2294,6 @@ class AdditionalInputs(QDialog):
         d[KEY_TS_OVERALL_WIDTH] = result.overall_width
         d[KEY_TS_NO_OF_FOOTPATHS] = n_footpaths
 
-        if hasattr(self, "section_properties_tab") and hasattr(self.section_properties_tab, "set_girder_count"):
-            self.section_properties_tab.set_girder_count(int(result.no_of_girders))
-
         reason_parts = []
         if abs(result.girder_spacing - spacing_old) > 0.01:
             reason_parts.append(f"spacing {spacing_old:.2f}->{result.girder_spacing:.2f}")
@@ -2612,9 +2487,6 @@ class AdditionalInputs(QDialog):
         if hasattr(ts, "median_post_height") and ts.median_post_height.text():
             values["median_post_height"] = float(ts.median_post_height.text())
 
-
-        self._sync_member_properties_girder_count()
-
         return values
 
     def update_footpath_value(self, footpath_value):  # public API: propagates footpath configuration change to Typical Section tab and CAD preview
@@ -2630,23 +2502,6 @@ class AdditionalInputs(QDialog):
         if self.working_input_dict is not None:
             self.working_input_dict[KEY_FOOTPATH] = footpath_value
         self.typical_section_tab.update_footpath_value(footpath_value)
-
-    def update_project_location(self, location_data):  # public API: propagates project location change to temperature, seismic, and wind Loading sub-tabs
-        if hasattr(self, "loading_tab"):
-            if hasattr(self.loading_tab, "temperature_load_tab") and hasattr(self.loading_tab.temperature_load_tab, "update_project_location"):
-                self.loading_tab.temperature_load_tab.update_project_location(location_data)
-            if hasattr(self.loading_tab, "seismic_load_tab") and hasattr(self.loading_tab.seismic_load_tab, "update_project_location"):
-                self.loading_tab.seismic_load_tab.update_project_location(location_data)
-            if hasattr(self.loading_tab, "wind_load_tab") and hasattr(self.loading_tab.wind_load_tab, "update_project_location"):
-                self.loading_tab.wind_load_tab.update_project_location(location_data)
-
-    def set_member_properties_editable(self, editable: bool) -> None:  # public API: enables or disables all Member Properties fields
-        self._member_properties_editable = bool(editable)
-        if hasattr(self, "section_properties_tab") and self.section_properties_tab is not None:
-            try:
-                self.section_properties_tab.set_editable_mode(self._member_properties_editable)
-            except Exception:
-                pass
 
     # ── Utilities ─────────────────────────────────────────────────────────────────
 
@@ -2675,19 +2530,6 @@ class AdditionalInputs(QDialog):
                 line_edit.setText(fmt.format(val))
             except ValueError:
                 continue
-
-    def _sync_member_properties_girder_count(self) -> None:  # utility: pushes current girder count from Typical Section to Member Properties tab
-        try:
-            count_text = ""
-            if hasattr(self, "typical_section_tab") and hasattr(self.typical_section_tab, "no_of_girders"):
-                count_text = str(self.typical_section_tab.no_of_girders.text() or "").strip()
-            if not count_text:
-                return
-            count = int(float(count_text))
-            if hasattr(self, "section_properties_tab") and hasattr(self.section_properties_tab, "set_girder_count"):
-                self.section_properties_tab.set_girder_count(count)
-        except Exception:
-            pass
 
     def _find_inner_tab_index(self, tab_widget, tab_name: str) -> int:  # utility: returns the index of an inner tab by its label text, or -1 if not found
         """

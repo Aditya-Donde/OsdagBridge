@@ -3051,6 +3051,17 @@ END_DIAPHRAGM_DETAILS_SCHEMA = {
     ],
 }
 
+MEMBER_PROPERTIES_SCHEMA = {
+    "id":     "member_properties.main",
+    "layout": {"type": "tabs"},
+    "tabs": [
+        {"title": "Girder Details",        "schema": GIRDER_DETAILS_SCHEMA},
+        {"title": "Stiffener Details",     "schema": STIFFENER_DETAILS_SCHEMA},
+        {"title": "Cross-Bracing Details", "schema": CROSS_BRACING_DETAILS_SCHEMA},
+        {"title": "End Diaphragm Details", "schema": END_DIAPHRAGM_DETAILS_SCHEMA},
+    ],
+}
+
 # Versioned contract for schema-driven Member Properties migration.
 # This keeps existing schema constants intact while providing a single
 # top-level structure that builders can consume incrementally.
