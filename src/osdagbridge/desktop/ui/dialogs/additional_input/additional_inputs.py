@@ -400,6 +400,24 @@ class AdditionalInputs(QDialog):
         if cad:
             cad.update_cad_state(self.working_input_dict)
 
+        # Cross Bracing section fields — disabled when Optimized
+        cb_disable_keys = [
+            KEY_MP_CB_BRACING_SECTION_TYPE,       KEY_MP_CB_BRACING_SECTION_DESIGNATION,
+            KEY_MP_CB_TOP_CHORD_SECTION_TYPE,      KEY_MP_CB_TOP_CHORD_SECTION_DESIG,
+            KEY_MP_CB_BOTTOM_CHORD_SECTION_TYPE,   KEY_MP_CB_BOTTOM_CHORD_SECTION_DESIG,
+        ]
+        for key in cb_disable_keys:
+            w = self.findChild(QWidget, key)
+            if w:
+                w.setEnabled(not is_optimized)
+
+        # Re-apply CB layout state so checkbox-gating is respected on top of mode
+        self._on_cb_bracing_layout_changed("", None)
+
+        # Recompute CB spacing from current span and no. of cross bracings
+        spacing_w = self.findChild(QLineEdit, KEY_MP_CB_SPACING)
+        self._on_cb_spacing_computed("", spacing_w)
+
     def reset_active_tab_defaults(self) -> None:  # lifecycle: resets current tab's fields to default_input_dict values
         """
         Reset only the currently active tab's fields to their default values
@@ -1791,6 +1809,332 @@ class AdditionalInputs(QDialog):
         KEY_MP_ED_BOTTOM_FLANGE_WIDTH,       KEY_MP_ED_BOTTOM_FLANGE_THICKNESS,
     ]
 
+    # Keys saved/restored per girder-pair (G{n}G{n+1}) for Cross Bracing.
+    # KEY_MP_CB_NO_OF_CROSS_BRACINGS is stored at pair-level (.G1G2, .G2G3) — handled separately.
+    _CB_FIELD_KEYS = [
+        KEY_MP_CB_TYPE,              KEY_MP_CB_BRACING_CONNECTION,
+        KEY_MP_CB_TOP_CHORD,         KEY_MP_CB_BOTTOM_CHORD,
+        KEY_MP_CB_BRACING_SECTION_TYPE,      KEY_MP_CB_BRACING_SECTION_DESIGNATION,
+        KEY_MP_CB_TOP_CHORD_SECTION_TYPE,    KEY_MP_CB_TOP_CHORD_SECTION_DESIG,
+        KEY_MP_CB_BOTTOM_CHORD_SECTION_TYPE, KEY_MP_CB_BOTTOM_CHORD_SECTION_DESIG,
+    ]
+
+    # ── Member Properties > Cross Bracing SubTab ──────────────────────────────────
+
+    def _on_cb_spacing_computed(self, origin_key: str, target_widget: QLineEdit) -> None:
+        if target_widget is None:
+            return
+        no_bracings_w = self.findChild(QLineEdit, KEY_MP_CB_NO_OF_CROSS_BRACINGS)
+        count = int(float(no_bracings_w.text() or "1")) if no_bracings_w else 1
+
+        span = float(self.working_input_dict.get(KEY_SPAN))
+        if span > 0:
+            target_widget.setText(f"{span / (count + 1):.3f}")
+        else:
+            target_widget.setText("")
+
+        if count > 0:
+            girder_count = int(float(str(self.working_input_dict.get(KEY_TS_NO_OF_GIRDERS) or 1)))
+            # Write count at pair-level for every pair — same value for all
+            for gi in range(1, girder_count):
+                pair_key = f"{KEY_MP_CB_NO_OF_CROSS_BRACINGS}.G{gi}G{gi + 1}"
+                self.working_input_dict[pair_key] = count
+            from osdagbridge.core.bridge_types.plate_girder.defaults import extend_cb_dynamic_keys
+            extend_cb_dynamic_keys(self.working_input_dict, girder_count, count)
+
+    def _on_cb_girder_count_refreshed(self, origin_key: str, current_object: QComboBox) -> None:
+        if current_object is None:
+            return
+        value = self.working_input_dict.get(origin_key)
+        try:
+            count = int(float(str(value or 0)))
+        except (ValueError, TypeError):
+            count = 0
+        girders = [f"G{i}" for i in range(1, count + 1)] if count > 0 else ["G1", "G2"]
+        pairs = [f"{girders[i]} to {girders[i + 1]}" for i in range(len(girders) - 1)] or ["G1 to G2"]
+        current = current_object.currentText()
+        current_object.clear()
+        current_object.addItems(pairs)
+        idx = current_object.findText(current)
+        current_object.setCurrentIndex(idx if idx >= 0 else 0)
+
+    def _on_cb_member_id_refreshed(self, origin_key: str, target_widget: QLineEdit) -> None:
+        if target_widget is None:
+            return
+        import re
+        girder_combo   = self.findChild(QComboBox,  KEY_MP_CB_SELECT_GIRDERS)
+        no_bracings_w  = self.findChild(QLineEdit,   KEY_MP_CB_NO_OF_CROSS_BRACINGS)
+        pair_text = girder_combo.currentText().strip() if girder_combo else "G1 to G2"
+        m = re.match(r"G(\d+) to G(\d+)", pair_text)
+        pair_index = int(m.group(1)) if m else 1
+        try:
+            count = int(float(no_bracings_w.text() or "0")) if no_bracings_w else 0
+        except (ValueError, TypeError):
+            count = 0
+        member_id = f"B{pair_index}M1" if count <= 1 else f"B{pair_index}M1 to B{pair_index}M{count}"
+        target_widget.setText(member_id)
+
+        if origin_key == KEY_MP_CB_SELECT_GIRDERS:
+            self._load_cb_pair(pair_text)
+        else:
+            self._update_cb_layout_cad(member_id, pair_text)
+
+    def _save_cb_pair_connector(self, origin_key: str, target_widget: QWidget) -> None:  # END_CONNECTOR: triggers save of current pair's CB fields on any input change
+        self._save_cb_pair()
+
+    def _save_cb_pair(self) -> None:  # utility: serialises all CB widget values into working_input_dict under G{n}G{n+1}.B{n}Mk per-member keys
+        combo = self.findChild(QComboBox, KEY_MP_CB_SELECT_GIRDERS)
+        if combo is None:
+            return
+        import re
+        m = re.match(r"G(\d+) to G(\d+)", combo.currentText().strip())
+        if not m:
+            return
+        gi, gj = int(m.group(1)), int(m.group(2))
+        g_pair = f"G{gi}G{gj}"
+
+        no_bracings_w = self.findChild(QLineEdit, KEY_MP_CB_NO_OF_CROSS_BRACINGS)
+        try:
+            count = max(1, int(float(no_bracings_w.text() or "1"))) if no_bracings_w else 1
+        except (ValueError, TypeError):
+            count = 1
+
+        values = {}
+        for key in self._CB_FIELD_KEYS:
+            w = self.findChild(QWidget, key)
+            if isinstance(w, QComboBox):
+                values[key] = w.currentText()
+            elif isinstance(w, QCheckBox):
+                values[key] = w.isChecked()
+            elif isinstance(w, QLineEdit):
+                values[key] = w.text()
+
+        for mk in range(1, count + 1):
+            suffix = f".{g_pair}.B{gi}M{mk}"
+            for key, value in values.items():
+                self.working_input_dict[key + suffix] = value
+
+    def _load_cb_pair(self, pair_label: str) -> None:  # utility: restores CB widgets from first member's (B{n}M1) per-member keys, then refreshes CAD
+        import re
+        m = re.match(r"G(\d+) to G(\d+)", str(pair_label or "").strip())
+        if not m:
+            return
+        gi, gj = int(m.group(1)), int(m.group(2))
+        # Load from the first member as representative — all members share the same values
+        suffix = f".G{gi}G{gj}.B{gi}M1"
+
+        cb_widgets = []
+        for key in self._CB_FIELD_KEYS:
+            w = self.findChild(QWidget, key)
+            if w is not None:
+                w.blockSignals(True)
+                cb_widgets.append(w)
+
+        try:
+            for key in self._CB_FIELD_KEYS:
+                value = self.working_input_dict.get(key + suffix)
+                if value is None:
+                    continue
+                w = self.findChild(QWidget, key)
+                if isinstance(w, QComboBox):
+                    w.setCurrentText(str(value))
+                elif isinstance(w, QCheckBox):
+                    w.setChecked(bool(value))
+                elif isinstance(w, QLineEdit) and not w.isReadOnly():
+                    w.setText(str(value))
+
+            _desig_pairs = [
+                (KEY_MP_CB_BRACING_SECTION_TYPE,      KEY_MP_CB_BRACING_SECTION_DESIGNATION),
+                (KEY_MP_CB_TOP_CHORD_SECTION_TYPE,    KEY_MP_CB_TOP_CHORD_SECTION_DESIG),
+                (KEY_MP_CB_BOTTOM_CHORD_SECTION_TYPE, KEY_MP_CB_BOTTOM_CHORD_SECTION_DESIG),
+            ]
+            for type_key, desig_key in _desig_pairs:
+                type_w  = self.findChild(QComboBox, type_key)
+                desig_w = self.findChild(QComboBox, desig_key)
+                if type_w is None or desig_w is None:
+                    continue
+                self._cb_repopulate_designation(desig_w, type_w.currentText())
+                saved_desig = self.working_input_dict.get(desig_key + suffix)
+                if saved_desig is not None:
+                    desig_w.setCurrentText(str(saved_desig))
+        finally:
+            for w in cb_widgets:
+                w.blockSignals(False)
+
+        self._on_cb_bracing_layout_changed("", None)
+        self._refresh_cb_section_previews()
+
+    def _update_cb_layout_cad(self, member_label: str, girder_pair: str) -> None:
+        cad_w = self.findChild(QWidget, "member_properties.cross_bracing_details.layout_cad")
+        if cad_w is None or not hasattr(cad_w, "set_layout"):
+            return
+        bracing_combo = self.findChild(QComboBox, KEY_MP_CB_TYPE)
+        top_cb        = self.findChild(QCheckBox, KEY_MP_CB_TOP_CHORD)
+        bottom_cb     = self.findChild(QCheckBox, KEY_MP_CB_BOTTOM_CHORD)
+        cad_w.set_layout(
+            bracing_type = bracing_combo.currentText() if bracing_combo else "K-Bracing",
+            top_chord    = top_cb.isChecked()    if top_cb    else False,
+            bottom_chord = bottom_cb.isChecked() if bottom_cb else True,
+            member_label = member_label,
+            girder_pair  = girder_pair,
+        )
+
+    def _on_cb_bracing_layout_changed(self, origin_key: str, _target_widget) -> None:
+        bracing_combo = self.findChild(QComboBox, KEY_MP_CB_TYPE)
+        bracing_type  = bracing_combo.currentText() if bracing_combo else "K-Bracing"
+        is_k_bracing  = (bracing_type == "K-Bracing")
+
+        top_cb     = self.findChild(QCheckBox, KEY_MP_CB_TOP_CHORD)
+        bottom_cb  = self.findChild(QCheckBox, KEY_MP_CB_BOTTOM_CHORD)
+        bottom_lbl = self.findChild(QLabel,    KEY_MP_CB_BOTTOM_CHORD + "_label")
+
+        # K-Bracing: force bottom chord checked and disable it
+        if is_k_bracing:
+            if bottom_cb:
+                bottom_cb.blockSignals(True)
+                bottom_cb.setChecked(True)
+                bottom_cb.setEnabled(False)
+                bottom_cb.blockSignals(False)
+            if bottom_lbl:
+                bottom_lbl.setStyleSheet("font-size: 11px; color: #aaaaaa;")
+        else:
+            if bottom_cb:
+                bottom_cb.setEnabled(True)
+            if bottom_lbl:
+                bottom_lbl.setStyleSheet("font-size: 11px; color: #000;")
+
+        top_checked    = bool(top_cb    and top_cb.isChecked())
+        bottom_checked = bool(bottom_cb and bottom_cb.isChecked())
+        is_custom      = str(self.working_input_dict.get(KEY_DESIGN_MODE, "Optimized")).strip() == "Custom"
+
+        # Enable/disable Bracing section type & designation
+        for key in (KEY_MP_CB_BRACING_SECTION_TYPE, KEY_MP_CB_BRACING_SECTION_DESIGNATION):
+            w = self.findChild(QWidget, key)
+            if w:
+                w.setEnabled(is_custom)
+
+        # Enable/disable Top Chord section type & designation
+        for key in (KEY_MP_CB_TOP_CHORD_SECTION_TYPE, KEY_MP_CB_TOP_CHORD_SECTION_DESIG):
+            w = self.findChild(QWidget, key)
+            if w:
+                w.setEnabled(is_custom and top_checked)
+
+        # Enable/disable Bottom Chord section type & designation
+        for key in (KEY_MP_CB_BOTTOM_CHORD_SECTION_TYPE, KEY_MP_CB_BOTTOM_CHORD_SECTION_DESIG):
+            w = self.findChild(QWidget, key)
+            if w:
+                w.setEnabled(is_custom and bottom_checked)
+
+        # Show/hide Top Chord CAD section card
+        top_section = self.findChild(QWidget, KEY_MP_CB_TOP_CHORD_PREVIEW_SECTION)
+        if top_section:
+            top_section.setVisible(top_checked)
+
+        # Show/hide Bottom Chord CAD section card
+        bottom_section = self.findChild(QWidget, KEY_MP_CB_BOTTOM_CHORD_PREVIEW_SECTION)
+        if bottom_section:
+            bottom_section.setVisible(bottom_checked)
+
+        # Sync layout CAD diagram
+        member_id_w  = self.findChild(QLineEdit, KEY_MP_CB_MEMBER_ID)
+        girder_combo = self.findChild(QComboBox, KEY_MP_CB_SELECT_GIRDERS)
+        self._update_cb_layout_cad(
+            member_label = member_id_w.text()         if member_id_w  else "",
+            girder_pair  = girder_combo.currentText() if girder_combo else "",
+        )
+
+        # Sync section preview CADs
+        self._refresh_cb_section_previews()
+
+    _CB_SECTION_TYPE_MAP = {
+        "Angle":                    "angle",
+        "Double Angle (Long Leg)":  "double_angle_long",
+        "Double Angle (Short Leg)": "double_angle_short",
+        "Channel":                  "channel",
+        "Double Channel":           "double_channel",
+    }
+
+    def _cb_update_preview(self, type_label: str, designation: str, preview_key: str) -> None:
+        from osdagbridge.desktop.ui.widgets.placeholder_section_preview import PlaceholderSectionPreviewWidget
+        widget = self.findChild(PlaceholderSectionPreviewWidget, preview_key)
+        if widget is None:
+            return
+        stype = self._CB_SECTION_TYPE_MAP.get(type_label, "angle")
+        show_double_total = stype not in ("double_angle_long", "double_angle_short")
+        widget.set_section(stype, designation, show_double_total)
+
+    def _refresh_cb_section_previews(self) -> None:
+        for type_key, desig_key, preview_key in [
+            (KEY_MP_CB_BRACING_SECTION_TYPE,      KEY_MP_CB_BRACING_SECTION_DESIGNATION, KEY_MP_CB_BRACING_PREVIEW),
+            (KEY_MP_CB_TOP_CHORD_SECTION_TYPE,     KEY_MP_CB_TOP_CHORD_SECTION_DESIG,    KEY_MP_CB_TOP_CHORD_PREVIEW),
+            (KEY_MP_CB_BOTTOM_CHORD_SECTION_TYPE,  KEY_MP_CB_BOTTOM_CHORD_SECTION_DESIG, KEY_MP_CB_BOTTOM_CHORD_PREVIEW),
+        ]:
+            type_w  = self.findChild(QComboBox, type_key)
+            desig_w = self.findChild(QComboBox, desig_key)
+            if type_w and desig_w:
+                self._cb_update_preview(type_w.currentText(), desig_w.currentText(), preview_key)
+
+    def _cb_repopulate_designation(self, desig_w: QComboBox, type_label: str) -> None:
+        from osdagbridge.core.utils.common import get_angle_designation_list, get_channel_section_list
+        stype = self._CB_SECTION_TYPE_MAP.get(type_label, "angle")
+        items = get_channel_section_list() if stype in ("channel", "double_channel") else get_angle_designation_list()
+        prev = desig_w.blockSignals(True)
+        try:
+            desig_w.clear()
+            desig_w.addItems(items)
+            if items:
+                desig_w.setCurrentIndex(0)
+        finally:
+            desig_w.blockSignals(prev)
+
+    def _on_cb_bracing_section_type_changed(self, origin_key: str, target_widget: QComboBox) -> None:
+        type_w = self.findChild(QComboBox, origin_key)
+        type_label = type_w.currentText() if type_w else "Angle"
+        if target_widget:
+            self._cb_repopulate_designation(target_widget, type_label)
+        self._cb_update_preview(type_label, target_widget.currentText() if target_widget else "", KEY_MP_CB_BRACING_PREVIEW)
+
+    def _on_cb_top_chord_section_type_changed(self, origin_key: str, target_widget: QComboBox) -> None:
+        type_w = self.findChild(QComboBox, origin_key)
+        type_label = type_w.currentText() if type_w else "Angle"
+        if target_widget:
+            self._cb_repopulate_designation(target_widget, type_label)
+        self._cb_update_preview(type_label, target_widget.currentText() if target_widget else "", KEY_MP_CB_TOP_CHORD_PREVIEW)
+
+    def _on_cb_bottom_chord_section_type_changed(self, origin_key: str, target_widget: QComboBox) -> None:
+        type_w = self.findChild(QComboBox, origin_key)
+        type_label = type_w.currentText() if type_w else "Angle"
+        if target_widget:
+            self._cb_repopulate_designation(target_widget, type_label)
+        self._cb_update_preview(type_label, target_widget.currentText() if target_widget else "", KEY_MP_CB_BOTTOM_CHORD_PREVIEW)
+
+    def _on_cb_bracing_preview_changed(self, origin_key: str, _target_widget) -> None:
+        desig_w = self.findChild(QComboBox, origin_key)
+        type_w  = self.findChild(QComboBox, KEY_MP_CB_BRACING_SECTION_TYPE)
+        self._cb_update_preview(
+            type_w.currentText()  if type_w  else "Angle",
+            desig_w.currentText() if desig_w else "",
+            KEY_MP_CB_BRACING_PREVIEW,
+        )
+
+    def _on_cb_top_chord_preview_changed(self, origin_key: str, _target_widget) -> None:
+        desig_w = self.findChild(QComboBox, origin_key)
+        type_w  = self.findChild(QComboBox, KEY_MP_CB_TOP_CHORD_SECTION_TYPE)
+        self._cb_update_preview(
+            type_w.currentText()  if type_w  else "Angle",
+            desig_w.currentText() if desig_w else "",
+            KEY_MP_CB_TOP_CHORD_PREVIEW,
+        )
+
+    def _on_cb_bottom_chord_preview_changed(self, origin_key: str, _target_widget) -> None:
+        desig_w = self.findChild(QComboBox, origin_key)
+        type_w  = self.findChild(QComboBox, KEY_MP_CB_BOTTOM_CHORD_SECTION_TYPE)
+        self._cb_update_preview(
+            type_w.currentText()  if type_w  else "Angle",
+            desig_w.currentText() if desig_w else "",
+            KEY_MP_CB_BOTTOM_CHORD_PREVIEW,
+        )
+
     # ── Loading Tab ───────────────────────────────────────────────────────────────
 
     def _on_add_custom_vehicle(self, existing=None, widget=None):  # on_change: opens Custom Vehicle dialog and appends or updates the vehicle list
@@ -2268,13 +2612,6 @@ class AdditionalInputs(QDialog):
         if hasattr(ts, "median_post_height") and ts.median_post_height.text():
             values["median_post_height"] = float(ts.median_post_height.text())
 
-        # ---- Cross bracing spacing (Section Properties tab) ----
-        try:
-            bracing_tab = self.section_properties_tab.cross_bracing_details_tab
-            if hasattr(bracing_tab, "bracing_spacing") and bracing_tab.bracing_spacing.text():
-                values[KEY_MP_CB_SPACING] = float(bracing_tab.bracing_spacing.text())
-        except Exception:
-            pass
 
         self._sync_member_properties_girder_count()
 

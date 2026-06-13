@@ -7,7 +7,6 @@ from PySide6.QtCore import Qt
 from osdagbridge.core.utils.common import *
 from osdagbridge.desktop.ui.dialogs.additional_input.ui_builder.common_ui_builder import UIBuilder
 
-from osdagbridge.desktop.ui.dialogs.tabs.sub_tabs.section_properties.cross_bracing_details_tab import CrossBracingDetailsTab
 
 
 class SectionPropertiesTab(QWidget):
@@ -67,8 +66,15 @@ class SectionPropertiesTab(QWidget):
             with_scroll=True,
         )
 
-        # ── Tabs 3-4: unchanged specialist tabs ───────────────────────────────
-        self.cross_bracing_tab     = CrossBracingDetailsTab()
+        from osdagbridge.core.bridge_types.plate_girder.ui_fields_additional_input import CROSS_BRACING_DETAILS_SCHEMA
+        self.cross_bracing_tab = UIBuilder(
+            owner=self.additional_input_instance,
+            schema=CROSS_BRACING_DETAILS_SCHEMA,
+            card_title="",
+            main_widget_object_name=CROSS_BRACING_DETAILS_SCHEMA["id"],
+            additional_input_instance=self.additional_input_instance,
+            with_scroll=True,
+        )
 
         from osdagbridge.core.bridge_types.plate_girder.ui_fields_additional_input import END_DIAPHRAGM_DETAILS_SCHEMA
         self.end_diaphragm_tab = UIBuilder(
@@ -88,20 +94,6 @@ class SectionPropertiesTab(QWidget):
 
         content_layout.addWidget(self.section_tabs)
         main_layout.addWidget(content_frame)
-
-        # Cross-tab bindings
-        try:
-            self.stiffener_details_tab.bind_girder_details_tab(self.girder_details_tab)
-        except Exception:
-            pass
-        try:
-            self.cross_bracing_tab.bind_girder_details_tab(self.girder_details_tab)
-        except Exception:
-            pass
-        try:
-            self.end_diaphragm_tab.bind_girder_details_tab(self.girder_details_tab)
-        except Exception:
-            pass
 
         self.section_tabs.currentChanged.connect(self._on_section_tab_changed)
 

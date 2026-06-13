@@ -446,6 +446,27 @@ KEY_MP_ED_BOTTOM_CHORD_PREVIEW    = "member_properties.end_diaphragm_details.bot
 KEY_MP_ED_ROLLED_PREVIEW          = "member_properties.end_diaphragm_details.rolled_preview"
 KEY_MP_ED_WELDED_PREVIEW          = "member_properties.end_diaphragm_details.welded_preview"
 
+#-------------- Cross Bracing Sub-Tab --------------------------------------------
+KEY_MP_CB_TAB                         = "member_properties.cross_bracing_details"
+KEY_MP_CB_SELECT_GIRDERS              = "member_properties.cross_bracing_details.select_girders"
+KEY_MP_CB_NO_OF_CROSS_BRACINGS        = "member_properties.cross_bracing_details.no_of_cross_bracings"
+KEY_MP_CB_MEMBER_ID                   = "member_properties.cross_bracing_details.member_id"
+KEY_MP_CB_TYPE                        = "member_properties.cross_bracing_details.type"
+KEY_MP_CB_BRACING_CONNECTION          = "member_properties.cross_bracing_details.bracing_connection"
+KEY_MP_CB_BRACING_SECTION_TYPE        = "member_properties.cross_bracing_details.bracing_section_type"
+KEY_MP_CB_BRACING_SECTION_DESIGNATION = "member_properties.cross_bracing_details.bracing_section_designation"
+KEY_MP_CB_BRACING_PREVIEW              = "member_properties.cross_bracing_details.bracing_preview"
+KEY_MP_CB_TOP_CHORD                    = "member_properties.cross_bracing_details.top_chord"
+KEY_MP_CB_TOP_CHORD_SECTION_TYPE       = "member_properties.cross_bracing_details.top_chord_section_type"
+KEY_MP_CB_TOP_CHORD_SECTION_DESIG      = "member_properties.cross_bracing_details.top_chord_section_designation"
+KEY_MP_CB_TOP_CHORD_PREVIEW            = "member_properties.cross_bracing_details.top_chord_preview"
+KEY_MP_CB_TOP_CHORD_PREVIEW_SECTION    = "member_properties.cross_bracing_details.top_chord_preview_section"
+KEY_MP_CB_BOTTOM_CHORD                 = "member_properties.cross_bracing_details.bottom_chord"
+KEY_MP_CB_BOTTOM_CHORD_SECTION_TYPE    = "member_properties.cross_bracing_details.bottom_chord_section_type"
+KEY_MP_CB_BOTTOM_CHORD_SECTION_DESIG   = "member_properties.cross_bracing_details.bottom_chord_section_designation"
+KEY_MP_CB_BOTTOM_CHORD_PREVIEW         = "member_properties.cross_bracing_details.bottom_chord_preview"
+KEY_MP_CB_BOTTOM_CHORD_PREVIEW_SECTION = "member_properties.cross_bracing_details.bottom_chord_preview_section"
+KEY_MP_CB_SPACING                      = "member_properties.cross_bracing_details.spacing"
 
 #══════════════MEMBER-PROPERTIES-TAB-KEY-ENDS═══════════════════════════════════════════════════════
 
@@ -717,20 +738,6 @@ KEY_MP_GIRDER_WEB_DEPTH = "member_properties.girder_details.section_input.web_de
 
 
 
-# Member Properties - Cross Bracing Details (dynamic keys, mirrors KEY_MP_GIRDER_* pattern)
-KEY_MP_CB_TAB                          = "member_properties.cross_bracing_details"
-KEY_MP_CB_SELECT_GIRDERS              = "member_properties.cross_bracing_details.select_girders" # Girder selection for cross bracing details (select girder pair)
-KEY_MP_CB_MEMBER_ID                   = "member_properties.cross_bracing_details.member_id" # Member ID field (auto-populated based on selected girders)
-KEY_MP_CB_TYPE                        = "member_properties.cross_bracing_details.type" # Cross bracing type combo box (X-bracing, K-bracing)
-KEY_MP_CB_BRACING_SECTION_TYPE        = "member_properties.cross_bracing_details.bracing_section_type" # Bracing section type combo box (angle, double angle, channel, double channel)
-KEY_MP_CB_BRACING_SECTION_DESIGNATION = "member_properties.cross_bracing_details.bracing_section_designation" # Bracing section designation combo box (populated based on selected bracing section type)
-KEY_MP_CB_TOP_CHORD                   = "member_properties.cross_bracing_details.top_chord" # Whether top chord is provided or not for cross bracing
-KEY_MP_CB_TOP_CHORD_SECTION_TYPE      = "member_properties.cross_bracing_details.top_chord_section_type" # Top chord section type combo box (angle, double angle, channel, double channel)
-KEY_MP_CB_TOP_CHORD_SECTION_DESIG     = "member_properties.cross_bracing_details.top_chord_section_designation" # Top chord section designation combo box (populated based on selected top chord section type)
-KEY_MP_CB_BOTTOM_CHORD                = "member_properties.cross_bracing_details.bottom_chord" # Whether bottom chord is provided or not for cross bracing
-KEY_MP_CB_BOTTOM_CHORD_SECTION_TYPE   = "member_properties.cross_bracing_details.bottom_chord_section_type" # Bottom chord section type combo box (angle, double angle, channel, double channel)
-KEY_MP_CB_BOTTOM_CHORD_SECTION_DESIG  = "member_properties.cross_bracing_details.bottom_chord_section_designation" # Bottom chord section designation combo box (populated based on selected bottom chord section type)
-KEY_MP_CB_SPACING                     = "member_properties.cross_bracing_details.spacing" # Spacing of cross bracing members along the span
 
 # Loading - Permanent Load
 KEY_SELF_WEIGHT = "Self Weight"
@@ -1022,6 +1029,7 @@ CROSS_BRACING_DEFAULTS = {
     "select_girders":               "",
     "member_id":                    "",
     "type":                         VALUES_CROSS_BRACING_TYPE[0],   # "K-bracing"
+    "bracing_connection":           "Bolted",
     "bracing_section_type":         "",
     "bracing_section_designation":  "",
     "top_chord":                    VALUES_NO_YES[0],               # "No"

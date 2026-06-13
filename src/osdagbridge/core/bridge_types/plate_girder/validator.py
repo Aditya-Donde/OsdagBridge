@@ -460,7 +460,7 @@ class BridgeInputValidator:
                 return max_os, f"Outstand of intermediate stiffener must not exceed {max_os:.1f} mm ((min flange width - web thickness) / 2)."
 
         # ── Cross Bracing Details ─────────────────────────────────────────────
-        elif key == KEY_MP_CB_COUNT:  # placeholder - KEY_NO_C...
+        elif key == KEY_MP_CB_NO_OF_CROSS_BRACINGS:  # placeholder - KEY_NO_C...
             v    = self._to_int(inputs.get(key))
             span = self._to_float(inputs.get(KEY_SPAN))
             max_cb = int(floor(span - 1)) if span is not None and span > 1 else 1

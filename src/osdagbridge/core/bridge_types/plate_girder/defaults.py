@@ -52,6 +52,7 @@ from osdagbridge.core.utils.common import (
 
     KEY_MP_CB_SELECT_GIRDERS,
     KEY_MP_CB_MEMBER_ID,
+    KEY_MP_CB_NO_OF_CROSS_BRACINGS,
     KEY_MP_CB_TYPE,
     KEY_MP_CB_BRACING_SECTION_TYPE,
     KEY_MP_CB_BRACING_SECTION_DESIGNATION,
@@ -376,6 +377,46 @@ def _update_design_options_cont_defaults(input_dict: dict) -> None:
     _update(KEY_DO_SLS_DEFLECTION,     True)
     _update(KEY_DO_SLS_CRACK_WIDTH,    True)
 
+# Per-member CB keys — excludes select_girders/member_id (derived from key structure)
+# and no_of_cross_bracings/spacing (global / computed values).
+_CB_PROPS = [
+    (KEY_MP_CB_TYPE,                        "type"),
+    (KEY_MP_CB_BRACING_SECTION_TYPE,        "bracing_section_type"),
+    (KEY_MP_CB_BRACING_SECTION_DESIGNATION, "bracing_section_designation"),
+    (KEY_MP_CB_TOP_CHORD,                   "top_chord"),
+    (KEY_MP_CB_TOP_CHORD_SECTION_TYPE,      "top_chord_section_type"),
+    (KEY_MP_CB_TOP_CHORD_SECTION_DESIG,     "top_chord_section_desig"),
+    (KEY_MP_CB_BOTTOM_CHORD,                "bottom_chord"),
+    (KEY_MP_CB_BOTTOM_CHORD_SECTION_TYPE,   "bottom_chord_section_type"),
+    (KEY_MP_CB_BOTTOM_CHORD_SECTION_DESIG,  "bottom_chord_section_desig"),
+]
+
+
+def extend_cb_dynamic_keys(working_input_dict: dict, girder_count: int, no_of_bracings: int) -> None:
+    """Add missing CB per-member dynamic keys for all pairs up to no_of_bracings members.
+
+    Only adds keys that are not already present — existing user-edited values are preserved.
+    New member slots beyond M1 are seeded from the pair's M1 entry (if it exists) so that
+    switching back to a pair after increasing the count shows consistent values.
+    """
+    no_of_bracings = max(1, int(no_of_bracings))
+    for girder_idx in range(1, girder_count):
+        g_pair      = f"G{girder_idx}G{girder_idx + 1}"
+        seed_suffix = f".{g_pair}.B{girder_idx}M1"
+
+        for mk in range(1, no_of_bracings + 1):
+            suffix = f".{g_pair}.B{girder_idx}M{mk}"
+            for base_key, defaults_key in _CB_PROPS:
+                full_key = base_key + suffix
+                if full_key in working_input_dict:
+                    continue
+                seed_key = base_key + seed_suffix
+                if seed_key in working_input_dict:
+                    working_input_dict[full_key] = working_input_dict[seed_key]
+                else:
+                    working_input_dict[full_key] = CROSS_BRACING_DEFAULTS[defaults_key]
+
+
 def _extend_member_field_keys(working_input_dict: dict, girder_id: str, member_field_keys: list) -> None:
     """For each member ID ensure dynamic keys exist in working_input_dict.
     New members are seeded from M1 of the same girder.
@@ -600,38 +641,9 @@ def _on_no_of_girders_changed(working_input_dict: dict) -> None:
     for k in stale_cb_keys:
         del working_input_dict[k]
 
-    # --- Cross Bracing props map: (KEY_MP_CB_* constant, default value) ---
-
-    MP_CB_PROPS = [
-        (KEY_MP_CB_SELECT_GIRDERS,              "select_girders"),
-        (KEY_MP_CB_MEMBER_ID,                   "member_id"),
-        (KEY_MP_CB_TYPE,                        "type"),
-        (KEY_MP_CB_BRACING_SECTION_TYPE,        "bracing_section_type"),
-        (KEY_MP_CB_BRACING_SECTION_DESIGNATION, "bracing_section_designation"),
-        (KEY_MP_CB_TOP_CHORD,                   "top_chord"),
-        (KEY_MP_CB_TOP_CHORD_SECTION_TYPE,      "top_chord_section_type"),
-        (KEY_MP_CB_TOP_CHORD_SECTION_DESIG,     "top_chord_section_desig"),
-        (KEY_MP_CB_BOTTOM_CHORD,                "bottom_chord"),
-        (KEY_MP_CB_BOTTOM_CHORD_SECTION_TYPE,   "bottom_chord_section_type"),
-        (KEY_MP_CB_BOTTOM_CHORD_SECTION_DESIG,  "bottom_chord_section_desig"),
-        (KEY_MP_CB_SPACING,                     "spacing"),
-    ]
-    no_of_cb_members = 9
-
-    # --- Populate dynamic cross bracing keys ---
-    for girder_idx in range(1, count):
-        g_pair = f"G{girder_idx}G{girder_idx + 1}"
-        for member_id in range(1, no_of_cb_members + 1):
-            b_member = f"B{girder_idx}M{member_id}"
-            suffix   = f".{g_pair}.{b_member}"
-            for base_key, defaults_key in MP_CB_PROPS:
-                if defaults_key == "select_girders":
-                    value = f"G{girder_idx} to G{girder_idx + 1}"
-                elif defaults_key == "member_id":
-                    value = f"B{girder_idx}M1 to B{girder_idx}M{no_of_cb_members}"
-                else:
-                    value = CROSS_BRACING_DEFAULTS[defaults_key]
-                working_input_dict[f"{base_key}{suffix}"] = value
+    working_input_dict.setdefault(KEY_MP_CB_NO_OF_CROSS_BRACINGS, 1)
+    no_of_bracings = max(1, int(float(str(working_input_dict.get(KEY_MP_CB_NO_OF_CROSS_BRACINGS) or 1))))
+    extend_cb_dynamic_keys(working_input_dict, count, no_of_bracings)
 
     # ── End diaphragm ─────────────────────────────────────────────────────────
     
