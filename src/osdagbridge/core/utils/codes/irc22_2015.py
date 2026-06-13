@@ -774,11 +774,13 @@ class IRC22_2014:
         # 3) Slenderness parameter λ_w
         lambda_w = math.sqrt(fyw_MPa / (math.sqrt(3) * tau_cr))
 
-        # 4) Post-critical shear stress τ_b
-        if lambda_w <= 1.2:
+        # 4) Post-critical shear stress τ_b  — IS 800:2007 Table 11 (three-range)
+        if lambda_w <= 0.8:
             tau_b = fyw_MPa / math.sqrt(3)
+        elif lambda_w <= 1.2:
+            tau_b = (1.0 - 0.8 * (lambda_w - 0.8)) * fyw_MPa / math.sqrt(3)
         else:
-            tau_b = (1.2 / lambda_w) * (fyw_MPa / math.sqrt(3))
+            tau_b = fyw_MPa / (math.sqrt(3) * lambda_w ** 2)
 
         # 5) Design shear resistance
         Vrd_N = Av_mm2 * tau_b
@@ -799,48 +801,42 @@ class IRC22_2014:
         d_mm,
         tw_mm,
         fyw_MPa,
-        bf_mm,
-        tf_mm,
+        bf_top_mm,
+        tf_top_mm,
+        bf_bot_mm,
+        tf_bot_mm,
         fyf_MPa,
-        Nf_N,          
+        Nf_N,
         Av_mm2,
         tau_b_MPa,
-        Vp_kN,
     ):
         """
-        IRC:22-2014 Clause 603.3.3.2 (2)(b)
-        Tension Field Method
-
-        Note:
-        Uses IS 800:2007 Clause 8.4.2.2(b)
+        IRC:22-2014 Clause 603.3.3.2 (2)(b) — Tension Field Method.
+        Uses IS 800:2007 Cl.8.4.2.2(b) unequal-flange implementation.
+        Requires intermediate stiffeners in the panel AND end posts at supports.
+        tau_b_MPa: post-critical shear stress from the simple post-critical method.
+        Vp is computed internally from web geometry and yield stress.
         """
-
-        gamma_m0=GAMMA_M0_STEEL
-        # IS800 function returns V_tf in kN (as per your shared code)
-        phi, Mfr, s, wtf, psi, fv, Vtf = IS800_2007.cl_8_4_2_2_TensionField(
-            c=c_mm,
-            d=d_mm,
-            tw=tw_mm,
-            fyw=fyw_MPa,
-            bf=bf_mm,
-            tf=tf_mm,
-            fyf=fyf_MPa,
-            Nf=Nf_N,
-            gamma_mo=gamma_m0,
-            A_v=Av_mm2,
-            tau_b=tau_b_MPa,
-            V_p=Vp_kN
+        phi, Mfr_t, Mfr_b, s_t, s_b, w_tf, psi, fv, Vtf_N = (
+            IS800_2007.cl_8_4_2_2_TensionField_unequal_Isection(
+                c=c_mm, d=d_mm, tw=tw_mm, fyw=fyw_MPa,
+                bf_top=bf_top_mm, tf_top=tf_top_mm,
+                bf_bot=bf_bot_mm, tf_bot=tf_bot_mm,
+                Nf=Nf_N, gamma_m0=GAMMA_M0_STEEL,
+                A_v=Av_mm2, tau_b=tau_b_MPa,
+            )
         )
-
         return {
-            "phi_deg": round(phi, 3),
-            "Mfr_Nmm": round(Mfr, 3),
-            "s_mm": round(s, 3),
-            "wtf_mm": round(wtf, 3),
-            "psi_MPa": round(psi, 3),
-            "fv_MPa": round(fv, 3),
-            "Vtf_kN": round(Vtf, 3),
-            "clause": "IRC 22:2014 - 603.3.3.2 (2)(b) | Uses IS 800:2007 8.4.2.2(b)"
+            "phi_deg"     : round(phi, 3),
+            "Mfr_top_Nmm" : round(Mfr_t, 3),
+            "Mfr_bot_Nmm" : round(Mfr_b, 3),
+            "s_top_mm"    : round(s_t, 3),
+            "s_bot_mm"    : round(s_b, 3),
+            "wtf_mm"      : round(w_tf, 3),
+            "psi_MPa"     : round(psi, 3),
+            "fv_MPa"      : round(fv, 3),
+            "Vtf_kN"      : round(Vtf_N / 1e3, 3),
+            "clause"      : "IRC 22:2014 - 603.3.3.2 (2)(b) | IS 800:2007 8.4.2.2(b)",
         }
 
 

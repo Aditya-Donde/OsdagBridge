@@ -292,6 +292,9 @@ class StiffenerConfig:
     Iys_mm4: float = 0.0        # provided MI (mm⁴); 0 = auto-compute from flat-plate formula
     V_kN: float = 0.0           # design shear at stiffener location (kN)
     Vcr_kN: float = 0.0         # critical shear resistance at that location (kN)
+    shear_method: str = "post_critical"  # "post_critical" | "tension_field"
+    Nf_kN: float = 0.0          # axial force per flange for tension field (0 = ignore)
+    c_end_mm: float = 0.0       # end panel width from support (0 = use c_mm)
 
     # ── Bearing stiffener (Cl.509.7.3 / IS 800 Cl.8.7.3) ──────────────────────────────
     bs_tq_mm: float = 0.0       # stiffener plate thickness (mm)
@@ -564,7 +567,10 @@ class CapacityResults:
     Kv: float = 0.0                                     # Cl.603.3.3.2 post-critical — shear buckling coeff
     lambda_w: float = 0.0                               # web slenderness
     tau_b_buck_MPa: float = 0.0                         # design shear stress from buckling
-    Vcr_kN: float = 0.0                                 # critical shear resistance (Vrd)
+    Vcr_kN: float = 0.0                                 # governing shear resistance (post-critical or TF)
+    shear_method: str = "post_critical"                 # "post_critical" | "tension_field"
+    Vtf_kN: float = 0.0                                 # tension field resistance (Cl.603.3.3.2(2)(b))
+    phi_tf_deg: float = 0.0                             # tension field angle (deg)
     Mdv_kNm: float = 0.0                                # Cl.603.3.3.3
     beta_interaction: float = 0.0
     defl_limit_live_mm: float = 0.0                     # Cl.604.3.2
@@ -613,7 +619,7 @@ class CapacityResults:
     is_Iys_min_mm4: float = 0.0         # Cl.509.7.2.4 — minimum required MI
     is_Iys_prov_mm4: float = 0.0        # Cl.509.7.2.4 — provided MI
     is_Fqd_kN: float = 0.0             # Cl.509.7.2.5 — stiffener design buckling resistance
-    is_Fq_kN: float = 0.0              # Cl.509.7.2.5 — demand = max((V − Vcr)/γm0, 0)
+    is_Fq_kN: float = 0.0              # Cl.509.7.2.5 — demand = max(V − Vcr_pc, 0)
 
     # ── Bearing stiffener (IRC 24-2010 Cl.509.7.3 / IS 800 Cl.8.7.3) ───────────────
     bs_Fcdw_wb_kN: float = 0.0          # Cl.509.7.3.1 — web bearing zone buckling resistance
@@ -780,12 +786,15 @@ class IRC22CapacityCalculator:
     # c_mm_override: pass the decided panel spacing (from guidance or user input).
     # When None, falls back to config.stiffener.c_mm; if still absent, assumes support-only stiffeners.
     def compute_shear_buckling(self, Av_mm2: float, c_mm_override: float = None) -> dict:
-        if c_mm_override is not None and c_mm_override > 0:
-            c_mm = c_mm_override
-        else:
-            cfg  = self.cfg.stiffener
-            c_mm = cfg.c_mm if cfg and cfg.c_mm > 0 else None
-        res  = IRC22_2014.cl_603_3_3_2_shear_buckling_post_critical(
+        # c_mm_override is always set by compute_all() for both custom and optimised cases.
+        # None → no intermediate stiffeners (support-only bearings), Kv = 5.35.
+        c_mm = c_mm_override if (c_mm_override is not None and c_mm_override > 0) else None
+
+        # Simple post-critical is always computed first:
+        #   • It is the governing method when shear_method == "post_critical".
+        #   • Its tau_b is a required input to the tension field calculation.
+        #   • Its Vcr_pc is the correct Vcr for the stiffener force check (IS 800 Cl.8.7.2.5).
+        res_pc = IRC22_2014.cl_603_3_3_2_shear_buckling_post_critical(
             Av_mm2=Av_mm2,
             fyw_MPa=self.mat.fy,
             d_mm=self.sec.dw,
@@ -793,14 +802,81 @@ class IRC22CapacityCalculator:
             c_mm=c_mm,
             stiffeners_at_support_only=(c_mm is None),
         )
+
+        result = {
+            "Kv"          : res_pc["Kv"],
+            "tau_cr_MPa"  : res_pc["tau_cr_MPa"],
+            "lambda_w"    : res_pc["lambda_w"],
+            "tau_b_MPa"   : res_pc["tau_b_MPa"],
+            "Vcr_pc_kN"   : res_pc["Vrd_kN"],   # post-critical only (for stiffener Fq)
+            "Vcr_kN"      : res_pc["Vrd_kN"],   # governing — overwritten below if TF
+            "shear_method": "post_critical",
+            "c_mm"        : c_mm if c_mm is not None else 0.0,
+            "clause"      : res_pc["clause"],
+            "source"      : "IRC22_2014",
+        }
+
+        method = (self.cfg.stiffener.shear_method
+                  if self.cfg.stiffener is not None else "post_critical")
+
+        if method == "tension_field" and c_mm is not None:
+            # Tension field requires intermediate stiffeners — not valid without c_mm.
+            Nf_N = self.cfg.stiffener.Nf_kN * 1e3
+            res_tf = IRC22_2014.cl_603_3_3_2_tension_field_method(
+                c_mm=c_mm,
+                d_mm=self.sec.dw,
+                tw_mm=self.sec.tw,
+                fyw_MPa=self.mat.fy,
+                bf_top_mm=self.sec.bf_top,
+                tf_top_mm=self.sec.tf_top,
+                bf_bot_mm=self.sec.bf_bot,
+                tf_bot_mm=self.sec.tf_bot,
+                fyf_MPa=self.mat.fy,
+                Nf_N=Nf_N,
+                Av_mm2=Av_mm2,
+                tau_b_MPa=res_pc["tau_b_MPa"],
+            )
+            result["shear_method"]  = "tension_field"
+            result["Vtf_kN"]        = res_tf["Vtf_kN"]
+            result["phi_tf_deg"]    = res_tf["phi_deg"]
+            result["Vcr_kN"]        = res_tf["Vtf_kN"]   # governing = TF resistance
+            result["tension_field"] = res_tf
+            result["clause"]        = res_tf["clause"]
+
+        return result
+
+    def compute_end_panel(self, Av_mm2: float, c_end_mm: float, V_kN: float) -> dict:
+        """IS 800:2007 Cl.8.5.1 — End panel check when tension field method is used.
+
+        The panel adjacent to a support must be designed using the simple post-critical
+        method only (no tension field allowed in the end panel). Two conditions must hold:
+          1. c_end ≤ d  (IS 800 Cl.8.5.2 — end panel must be stocky enough to anchor TF)
+          2. Vcr_end ≥ V_Ed  (end panel carries the full applied shear without TF contribution)
+        """
+        d = self.sec.dw
+        c_limit_ok = c_end_mm <= d
+
+        res_ep = IRC22_2014.cl_603_3_3_2_shear_buckling_post_critical(
+            Av_mm2=Av_mm2,
+            fyw_MPa=self.mat.fy,
+            d_mm=d,
+            tw_mm=self.sec.tw,
+            c_mm=c_end_mm,
+            stiffeners_at_support_only=False,
+        )
+        Vcr_end_kN = res_ep["Vrd_kN"]
+
         return {
-            "Kv"         : res["Kv"],
-            "tau_cr_MPa" : res["tau_cr_MPa"],
-            "lambda_w"   : res["lambda_w"],
-            "tau_b_MPa"  : res["tau_b_MPa"],
-            "Vcr_kN"     : res["Vrd_kN"],
-            "c_mm"       : c_mm if c_mm is not None else 0.0,
-            "clause"     : res["clause"],
+            "c_end_mm"   : round(c_end_mm, 1),
+            "d_mm"       : round(d, 1),
+            "c_limit_ok" : c_limit_ok,         # c_end ≤ d per IS 800 Cl.8.5.2
+            "Kv_end"     : res_ep["Kv"],
+            "lambda_w_end": res_ep["lambda_w"],
+            "tau_b_end_MPa": res_ep["tau_b_MPa"],
+            "Vcr_end_kN" : Vcr_end_kN,
+            "V_kN"       : round(V_kN, 2),
+            "check_ok"   : c_limit_ok and (Vcr_end_kN >= V_kN),
+            "clause"     : "IS 800:2007 Cl.8.5.1",
             "source"     : "IRC22_2014",
         }
 
@@ -1407,9 +1483,11 @@ class IRC22CapacityCalculator:
             # Minimum c such that Iys_min(c) ≤ Iys_des (from 1.5·d³·tw³/c² ≤ Iys_des)
             c_req = (math.sqrt(1.5 * d**3 * tw**3 / Iys_des)
                      if Iys_des > 0 else 0.0)
-            # If c_req/d ≥ √2 the simpler formula 0.75·d·tw³ governs and is always satisfiable
+            # If c_req/d ≥ √2 the simpler formula 0.75·d·tw³ governs (MI check passes for any c).
+            # Use the threshold spacing (√2·d) so shear buckling gets a real c rather than
+            # falling back to stiffeners_at_support_only=True.
             if c_req > 0 and (c_req / d) >= math.sqrt(2.0):
-                c_req = 0.0
+                c_req = math.sqrt(2.0) * d
             return {
                 "design_guidance"    : True,
                 "H_max_mm"           : round(H_max, 1),
@@ -1457,7 +1535,8 @@ class IRC22CapacityCalculator:
 
         fcd    = IS800_2007.cl_7_1_2_1_design_compressisive_stress_plategirder(fy, gm0, KL_r, E)
         Fqd_kN = fcd * Astiff / 1000.0
-        Fq_kN  = max((cfg.V_kN - cfg.Vcr_kN) / gm0, 0.0)
+        # IS 800 Cl.8.7.2.5: Fq = V − Vcr (no γm0 on demand side; γm0 is already in fcd/Fqd).
+        Fq_kN  = max(cfg.V_kN - cfg.Vcr_kN, 0.0)
 
         return {
             "design_guidance"    : False,
@@ -1667,11 +1746,15 @@ class IRC22CapacityCalculator:
         results.Kv             = shear_buck["Kv"]
         results.lambda_w       = shear_buck["lambda_w"]
         results.tau_b_buck_MPa = shear_buck["tau_b_MPa"]
-        results.Vcr_kN         = shear_buck["Vcr_kN"]
+        results.Vcr_kN         = shear_buck["Vcr_kN"]      # governing (TF or PC)
+        results.shear_method   = shear_buck["shear_method"]
+        results.Vtf_kN         = shear_buck.get("Vtf_kN", 0.0)
+        results.phi_tf_deg     = shear_buck.get("phi_tf_deg", 0.0)
         results.details["shear_buckling"] = shear_buck
-        # Auto-populate Vcr so the full stiffener check (Fq = (V-Vcr)/γm0) uses it.
+        # Auto-populate stiffener Vcr with the POST-CRITICAL value — IS 800 Cl.8.7.2.5
+        # uses Vcr from buckling (not the tension field resistance) for the stiffener force.
         if self.cfg.stiffener is not None and self.cfg.stiffener.Vcr_kN == 0.0:
-            self.cfg.stiffener.Vcr_kN = results.Vcr_kN
+            self.cfg.stiffener.Vcr_kN = shear_buck["Vcr_pc_kN"]
 
         # 4d. Axial resistance for M-N interaction (Cl.603.3.3.3)
         _fyw  = shear["fyw_MPa"]
@@ -1864,6 +1947,21 @@ class IRC22CapacityCalculator:
                 results.bs_Fcd_kN     = bs_res["Fcd_kN"]
                 results.bs_R_kN       = bs_res["R_kN"]
 
+        # 20. End panel check (IS 800 Cl.8.5.1) — only when tension field method is used.
+        # The end panel must carry the full applied shear by simple post-critical alone
+        # and satisfy c_end ≤ d so it can anchor the tension field from the interior panel.
+        if (self.cfg.stiffener is not None
+                and self.cfg.stiffener.shear_method == "tension_field"
+                and _c_mm_buck > 0):
+            c_end = (self.cfg.stiffener.c_end_mm
+                     if self.cfg.stiffener.c_end_mm > 0 else _c_mm_buck)
+            ep_res = self.compute_end_panel(
+                Av_mm2=results.Av_mm2,
+                c_end_mm=c_end,
+                V_kN=Vu_kN,
+            )
+            results.details["end_panel"] = ep_res
+
         return results
 
 
@@ -2019,10 +2117,15 @@ class DCREngine:
                          note=f"Av={c.Av_mm2:.0f} mm²")
 
         if c.Vcr_kN > 0:
+            if c.shear_method == "tension_field":
+                _buck_note = (f"Tension field: Vtf={c.Vtf_kN:.1f} kN, φ={c.phi_tf_deg:.1f}°; "
+                              f"PC basis: Kv={c.Kv:.3f}, λw={c.lambda_w:.3f}, "
+                              f"τb={c.tau_b_buck_MPa:.1f} MPa")
+            else:
+                _buck_note = (f"Simple post-critical: Kv={c.Kv:.3f}, "
+                              f"λw={c.lambda_w:.3f}, τb={c.tau_b_buck_MPa:.1f} MPa")
             self._add_check(2, "ULS Shear Buckling", "Cl.603.3.3.2",
-                             d.Vu_kN, c.Vcr_kN, "kN",
-                             note=(f"Kv={c.Kv:.3f}, λw={c.lambda_w:.3f}, "
-                                   f"τb={c.tau_b_buck_MPa:.1f} MPa"))
+                             d.Vu_kN, c.Vcr_kN, "kN", note=_buck_note)
 
         # ── CATEGORY 3: Interaction ───────────────────────────────────────────
         # 3a. Moment–Shear interaction (Cl.603.3.3.3)
@@ -2032,48 +2135,17 @@ class DCREngine:
                          note=f"beta={c.beta_interaction:.4f}")
 
         # 3b. Moment–Axial interaction (Cl.603.3.3.3)
-        # NRd = Ag × fy / γm0  (yielding of gross steel section under compression/tension)
-        if d.Nu_kN > 0.0:                                               
-            # Example for moment_capacity in run_all_checks:
-            _moment_det = c.details.get("moment_capacity")
-            if not _moment_det:
-                raise KeyError(
-                    "'moment_capacity' missing from capacity.details. "
-                    "Ensure compute_all() has been run."
-                )
-            if "gamma_m0" not in _moment_det:
-                raise KeyError(
-                    "'gamma_m0' not found in moment_capacity details. "
-                    "Ensure compute_moment_capacity() has been run before run_all_checks()."
-                )
-            _gamma_m0 = _moment_det["gamma_m0"]          
-            _shear_det = c.details.get("shear_capacity")
-            if not _shear_det:
-                raise KeyError(
-                    "'shear_capacity' missing from capacity.details. "
-                    "Ensure compute_all() has been run."
-                )          
-            # AFTER
-            if "fyw_MPa" not in _shear_det:
-                raise KeyError(
-                    "'fyw_MPa' not found in shear capacity details. "
-                    "Ensure compute_shear_capacity() has been run before compute_combined_bending_shear()."
-                )
-            _fyw = _shear_det["fyw_MPa"]            
-            # FIX
-            if "Av_mm2" not in _shear_det:
-                raise KeyError(
-                    "'Av_mm2' not found in shear capacity details. "
-                    "Ensure compute_shear_capacity() has been run before run_all_checks()."
-                )
-            _Av = _shear_det["Av_mm2"]                           
-            _Ag         = c.Ag_mm2
-            NRd_kN      = _Ag * _fyw / _gamma_m0 / 1e3 if _Ag > 0.0 else 0.0  
-            if NRd_kN > 0.0 and c.Md_kNm > 0.0:                        
-                interaction_ratio = d.Nu_kN / NRd_kN + d.Mu_kNm / c.Md_kNm  
-                self._add_check(4, "M-N Interaction", "Cl.603.3.3.3",  
-                                 interaction_ratio, 1.0, "–",           
-                                 note=f"Nu/NRd + Mu/MRd = {interaction_ratio:.3f}")            
+        # Uses the shear-reduced moment capacity (effective_Md) so that high shear is
+        # accounted for consistently in both the M-V and M-N checks.
+        # NRd is pre-computed by compute_all() as Ag × fyw / γm0.
+        if d.Nu_kN > 0.0:
+            if c.NRd_kN > 0.0 and effective_Md > 0.0:
+                interaction_ratio = d.Nu_kN / c.NRd_kN + d.Mu_kNm / effective_Md
+                self._add_check(4, "M-N Interaction", "Cl.603.3.3.3",
+                                 interaction_ratio, 1.0, "–",
+                                 note=(f"Nu/NRd + Mu/Mdv = {interaction_ratio:.3f}"
+                                       + (f" [Mdv={effective_Md:.1f} kNm, shear-reduced]"
+                                          if c.beta_interaction > 0 else "")))
 
         # ── CATEGORY 4: Lateral Torsional Buckling ────────────────────────────
         # 4a. Construction Stage 1 — girder only, no cross-bracings, LLT = full span.
