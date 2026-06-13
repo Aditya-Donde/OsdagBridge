@@ -3228,12 +3228,9 @@ GENERATE_RESULTS_DEFAULTS = {
                 "label": "Permanent Load Summary",
                 "columns": [
                     "Dead Load, DL (kN/m)",
-                    "Wearing Surface Load, DW (kN/m)",
-                    "Secondary Impact Dead Load, SIDL (kN/m)",
-                    "Total Load (kN/m)",
                 ],
                 "rows": [
-                    [EMPTY, EMPTY, EMPTY, EMPTY],
+                    [EMPTY],
                 ],
             },
 
@@ -3241,11 +3238,28 @@ GENERATE_RESULTS_DEFAULTS = {
                 "id": "live_load_definitions",
                 "label": "Live Load Definitions",
                 "columns": [
-                    "Vehicle Class",
-                    "Impact Factor",
+                    "Type of Live Load",
+                    "Value / Status",
                 ],
                 "rows": [
-                    [EMPTY, EMPTY],
+                    ["Class A",                           EMPTY],
+                    ["Class AA Wheeled",                  EMPTY],
+                    ["Class AA Tracked",                  EMPTY],
+                    ["Class 70R Wheeled",                 EMPTY],
+                    ["Class 70R Tracked",                 EMPTY],
+                    ["Class 70R Bogie",                   EMPTY],
+                    ["Class SV",                          EMPTY],
+                    ["Class Fatigue",                     EMPTY],
+                    ["Breaking Load : Class A",           EMPTY],
+                    ["Breaking Load : Class AA Wheeled",  EMPTY],
+                    ["Breaking Load : Class AA Tracked",  EMPTY],
+                    ["Breaking Load : Class 70R Wheeled", EMPTY],
+                    ["Breaking Load : Class 70R Tracked", EMPTY],
+                    ["Breaking Load : Class 70R Bogie",   EMPTY],
+                    ["Breaking Load : Class SV",          EMPTY],
+                    ["Breaking Load : Class Fatigue",     EMPTY],
+                    ["Breaking Load : Eccentricity",      EMPTY],
+                    ["Footpath Pressure (kN/mm²)",        EMPTY],
                 ],
             },
 
@@ -3253,15 +3267,26 @@ GENERATE_RESULTS_DEFAULTS = {
                 "id": "wind_load_parameters",
                 "label": "Wind Load Parameters",
                 "columns": [
+                    "Girder",
                     "Basic Wind Speed, Vᵦ (m/s)",
-                    "Design Wind Speed at Height z, Vᵤ (m/s)",
-                    "Design Wind Pressure at Height z, Pᵤ (N/m²)",
-                    "Drag Coefficient, Cᴅ",
-                    "Lift Coefficient, Cᴸ",
+                    "Average Exposed Height, H (m)",
+                    "Type of Terrain",
+                    "Site Topography",
                     "Gust Factor, G",
+                    "Drag Coefficient, Cᴅ",
+                    "Drag Coefficient against Live Load, Cᴅʟʟ",
+                    "Lift Coefficient, Cᴸ",
+                    "Superstructure Area in Elevation, A₁ (m²)",
+                    "Superstructure Area in Plain, A₃ (m²)",
+                    "Exposed Frontal Area of Live Load, A₁ʟʟ (m²)",
+                    "Wind Load Eccentricity from Top of Deck (m)",
+                    "Wind on Live Load Eccentricity from Top of Deck (m)",
+                    "Hourly Mean Wind Speed, Vᵤ (m/s)",
+                    "Hourly Wind Pressure, Pᵤ (N/m²)",
                 ],
                 "rows": [
-                    [EMPTY, EMPTY, EMPTY, EMPTY, EMPTY, EMPTY],
+                    [EMPTY, EMPTY, EMPTY, EMPTY, EMPTY, EMPTY, EMPTY, EMPTY,
+                    EMPTY, EMPTY, EMPTY, EMPTY, EMPTY, EMPTY, EMPTY, EMPTY],
                 ],
             },
 
@@ -3269,15 +3294,22 @@ GENERATE_RESULTS_DEFAULTS = {
                 "id": "seismic_load_parameters",
                 "label": "Seismic Load Parameters",
                 "columns": [
+                    "Girder",
                     "Zone",
                     "Seismic Zone Factor, Z",
                     "Importance Factor, I",
+                    "Soil Type",
+                    "Time Period (s)",
+                    "Damping (%)",
+                    "Response Reduction Factor",
                     "Spectral Acceleration / g, Sₐ/g",
                     "Horizontal Acceleration Coefficient, Aₕ",
                     "Vertical Acceleration Coefficient, Aᵥ",
+                    "Dead Load Considered for Seismic (kN/m)",
+                    "Live Load Considered for Seismic (kN/m)",
                 ],
                 "rows": [
-                    [EMPTY, EMPTY, EMPTY, EMPTY, EMPTY, EMPTY],
+                    [EMPTY, EMPTY, EMPTY, EMPTY, EMPTY, EMPTY, EMPTY, EMPTY, EMPTY, EMPTY, EMPTY, EMPTY, EMPTY],
                 ],
             },
 
@@ -3285,13 +3317,17 @@ GENERATE_RESULTS_DEFAULTS = {
                 "id": "temperature_load_parameters",
                 "label": "Temperature Load Parameters",
                 "columns": [
-                    "Maximum Temperature (°C)",
-                    "Minimum Temperature (°C)",
-                    "Temperature Rise Change, ΔTᵣᵢₛₑ (°C)",
-                    "Temperature Fall Change, ΔTfₐₗₗ (°C)",
+                    "Highest Maximum Air Temperature (°C)",
+                    "Lowest Minimum Air Temperature (°C)",
+                    "Coefficient of Thermal Expansion for Steel (1/°C)",
+                    "Coefficient of Thermal Expansion for RCC (1/°C)",
+                    "Effective Bridge Temperature - Minimum (°C)",
+                    "Effective Bridge Temperature - Maximum (°C)",
+                    "Temperature for Design - Rise (°C)",
+                    "Temperature for Design - Fall (°C)",
                 ],
                 "rows": [
-                    [EMPTY, EMPTY, EMPTY, EMPTY],
+                    [EMPTY, EMPTY, EMPTY, EMPTY, EMPTY, EMPTY, EMPTY, EMPTY],
                 ],
             },
 
@@ -3301,9 +3337,42 @@ GENERATE_RESULTS_DEFAULTS = {
                 "columns": [
                     "Combination",
                     "Expression",
+                    "Selected",
                 ],
                 "rows": [
-                    [EMPTY, EMPTY],
+                    # ULS Basic
+                    ["basic_1", "1.35DL + 1.75DW + 1.5LL + 0.9WL + 0.9TL",  EMPTY],
+                    ["basic_2", "1.0DL + 1.0DW + 1.5LL + 0.9WL + 0.9TL",    EMPTY],
+                    ["basic_3", "1.35DL + 1.75DW + 1.15LL + 1.5WL + 0.9TL", EMPTY],
+                    ["basic_4", "1.0DL + 1.0DW + 1.15LL + 1.5WL + 0.9TL",   EMPTY],
+                    ["basic_5", "1.35DL + 1.75DW + 1.15LL + 0.9WL + 1.5TL", EMPTY],
+                    ["basic_6", "1.0DL + 1.0DW + 1.15LL + 0.9WL + 1.5TL",   EMPTY],
+                    # ULS Accidental
+                    ["accidental_1", "1.0DL + 1.0DW + 0.75LL + 0.5TL + 1.0VC", EMPTY],
+                    ["accidental_2", "1.0DL + 1.0DW + 0.75LL + 0.5TL + 1.0BI", EMPTY],
+                    ["accidental_3", "1.0DL + 1.0DW + 0.75LL + 0.5TL + 1.0FB", EMPTY],
+                    # ULS Seismic
+                    ["seismic_1", "1.35DL + 1.75DW + 0.2LL + 0.5TL + 1.5EL",  EMPTY],
+                    ["seismic_2", "1.0DL + 1.0DW + 0.2LL + 0.5TL + 1.5EL",    EMPTY],
+                    ["seismic_3", "1.35DL + 1.75DW + 0.2LL + 0.5TL + 0.75EL", EMPTY],
+                    ["seismic_4", "1.0DL + 1.0DW + 0.2LL + 0.5TL + 0.75EL",   EMPTY],
+                    # SLS Rare
+                    ["rare_1", "1.0DL + 1.2DW + 1.0LL + 0.6WL + 0.6TL",   EMPTY],
+                    ["rare_2", "1.0DL + 1.0DW + 1.0LL + 0.6WL + 0.6TL",   EMPTY],
+                    ["rare_3", "1.0DL + 1.2DW + 0.75LL + 1.0WL + 0.6TL",  EMPTY],
+                    ["rare_4", "1.0DL + 1.0DW + 0.75LL + 1.0WL + 0.6TL",  EMPTY],
+                    ["rare_5", "1.0DL + 1.2DW + 0.75LL + 0.6WL + 1.0TL",  EMPTY],
+                    ["rare_6", "1.0DL + 1.0DW + 0.75LL + 0.6WL + 1.0TL",  EMPTY],
+                    # SLS Frequent
+                    ["frequent_1", "1.0DL + 1.2DW + 0.75LL + 0.5WL + 0.5TL", EMPTY],
+                    ["frequent_2", "1.0DL + 1.0DW + 0.75LL + 0.5WL + 0.5TL", EMPTY],
+                    ["frequent_3", "1.0DL + 1.2DW + 0.2LL + 0.6WL + 0.5TL",  EMPTY],
+                    ["frequent_4", "1.0DL + 1.0DW + 0.2LL + 0.6WL + 0.5TL",  EMPTY],
+                    ["frequent_5", "1.0DL + 1.2DW + 0.2LL + 0.5WL + 0.6TL",  EMPTY],
+                    ["frequent_6", "1.0DL + 1.0DW + 0.2LL + 0.5WL + 0.6TL",  EMPTY],
+                    # SLS Quasi-permanent
+                    ["quasi_permanent_1", "1.0DL + 1.2DW + 0.5TL", EMPTY],
+                    ["quasi_permanent_2", "1.0DL + 1.0DW + 0.5TL", EMPTY],
                 ],
             },
         },
@@ -3316,19 +3385,36 @@ GENERATE_RESULTS_DEFAULTS = {
                 "id": "girder_section_properties",
                 "label": "Girder Section Properties",
                 "columns": [
-                    "Girder",
-                    "Depth, d (mm)",
-                    "Top Flange Width, bfₜₒₚ (mm)",
-                    "Bottom Flange Width, bfᵦₒₜ (mm)",
-                    "Top Flange Thickness, tfₜₒₚ (mm)",
-                    "Bottom Flange Thickness, tfᵦₒₜ (mm)",
-                    "Web Thickness, tᵤ (mm)",
-                    "Cross-sectional Area, A (mm²)",
-                    "Second Moment of Area (z-axis), Iᵤ (mm⁴)",
-                    "Cross-section Class",
+                    "Member",
+                    "Total Span (m)",
+                    "Type",
+                    "Symmetry",
+                    "Total Depth, d (mm)",
+                    "Width of Top Flange (mm)",
+                    "Top Flange Thickness (mm)",
+                    "Width of Bottom Flange (mm)",
+                    "Bottom Flange Thickness (mm)",
+                    "Support Type",
+                    "Support Width (mm)",
+                    "Web Thickness (mm)",
+                    "Torsional Restraint",
+                    "Warping Restraint",
+                    "Web Type",
+                    "Mass, M (kg/m)",
+                    "Sectional Area, a (cm²)",
+                    "2nd Moment of Area, Iᵤ (cm⁴)",
+                    "2nd Moment of Area, Iᵧ (cm⁴)",
+                    "Radius of Gyration, rᵤ (cm)",
+                    "Radius of Gyration, rᵧ (cm)",
+                    "Elastic Modulus, Zᵤ (cm³)",
+                    "Elastic Modulus, Zᵧ (cm³)",
+                    "Plastic Modulus, Zₚᵤ (cm³)",
+                    "Plastic Modulus, Zₚᵧ (cm³)",
+                    "Torsion Constant, Iₜ (cm⁴)",
+                    "Warping Constant, Iᵥᵥ (cm⁶)",
                 ],
                 "rows": [
-                    [EMPTY, EMPTY, EMPTY, EMPTY, EMPTY, EMPTY, EMPTY, EMPTY, EMPTY, EMPTY],
+                    [EMPTY] * 27,
                 ],
             },
 
@@ -3336,40 +3422,55 @@ GENERATE_RESULTS_DEFAULTS = {
                 "id": "cross_bracing_section_properties",
                 "label": "Cross Bracing Section Properties",
                 "columns": [
-                    "Type",
-                    "Section",
+                    "Member",
+                    "Type of Bracing",
+                    "Bracing Section Type",
+                    "Bracing Section Designation",
+                    "Top Chord",
+                    "Top Chord Section Type",
+                    "Top Chord Section Designation",
+                    "Bottom Chord",
+                    "Bottom Chord Section Type",
+                    "Bottom Chord Section Designation",
                     "Spacing (m)",
                 ],
-                "rows": [
-                    [EMPTY, EMPTY, EMPTY],
-                ],
+                "rows": [[EMPTY] * 11],
             },
 
             "end_diaphragm_section_properties": {
                 "id": "end_diaphragm_section_properties",
                 "label": "End Diaphragm Section Properties",
                 "columns": [
+                    "Member ID",
                     "Type",
-                    "Section",
+                    "Type of Bracing",
+                    "Bracing Section Type",
+                    "Bracing Section Designation",
+                    "Top Chord",
+                    "Top Chord Section Type",
+                    "Top Chord Section Designation",
+                    "Bottom Chord",
+                    "Bottom Chord Section Type",
+                    "Bottom Chord Section Designation",
                 ],
                 "rows": [
-                    [EMPTY, EMPTY],
+                    [EMPTY, EMPTY, EMPTY, EMPTY, EMPTY, EMPTY, EMPTY, EMPTY, EMPTY, EMPTY, EMPTY],
                 ],
             },
 
             "shear_stud_properties": {
                 "id": "shear_stud_properties",
-                "label": "Shear Stud Properties",
+                "label": "Shear Connector Details",
                 "columns": [
+                    "Material Yield Strength (MPa)",
+                    "Material Ultimate Strength (MPa)",
                     "Diameter (mm)",
                     "Height (mm)",
-                    "Ultimate Tensile Strength, Fᵤ (MPa)",
-                    "Yield Strength, Fᵧ (MPa)",
-                    "Number per Section",
+                    "Transverse Spacing (mm)",
+                    "No. of Shear Studs per Section",
+                    "Average Longitudinal Spacing (mm)",
                 ],
-                "rows": [
-                    [EMPTY, EMPTY, EMPTY, EMPTY, EMPTY],
-                ],
+                "rows": [[EMPTY] * 7],
             },
 
             "deck_slab_properties": {
@@ -3459,85 +3560,6 @@ GENERATE_RESULTS_DEFAULTS = {
                 ],
             },
         },
-
-        "deflections": {
-            "id": "deflections",
-            "label": "Deflections",
-
-            "deflection_live_load": {
-                "id": "deflection_live_load",
-                "label": "Deflection - Live Load",
-                "columns": [
-                    "Girder",
-                    "Deflection due to Live Load, δ_ₗᵢᵥₑ (mm)",
-                    "Permissible Limit",
-                    "Status",
-                ],
-                "rows": [
-                    [EMPTY, EMPTY, EMPTY, EMPTY],
-                ],
-            },
-
-            "deflection_total_load": {
-                "id": "deflection_total_load",
-                "label": "Deflection - Total Load",
-                "columns": [
-                    "Girder",
-                    "Total Deflection, δₜₒₜₐₗ (mm)",
-                    "Permissible Limit",
-                    "Status",
-                ],
-                "rows": [
-                    [EMPTY, EMPTY, EMPTY, EMPTY],
-                ],
-            },
-        },
-
-        "stress_results": {
-            "id": "stress_results",
-            "label": "Stress Results",
-
-            "stress_steel_service": {
-                "id": "stress_steel_service",
-                "label": "Stress in Structural Steel - Service",
-                "columns": [
-                    "Girder",
-                    "Compression (MPa)",
-                    "Tension (MPa)",
-                    "Shear (MPa)",
-                    "Allowable",
-                ],
-                "rows": [
-                    [EMPTY, EMPTY, EMPTY, EMPTY, EMPTY],
-                ],
-            },
-
-            "stress_concrete_service": {
-                "id": "stress_concrete_service",
-                "label": "Stress in Concrete Deck - Service",
-                "columns": [
-                    "Girder",
-                    "Stress in Concrete, σc (MPa)",
-                    "Allowable Stress (MPa)",
-                ],
-                "rows": [
-                    [EMPTY, EMPTY, EMPTY],
-                ],
-            },
-
-            "stress_reinf_service": {
-                "id": "stress_reinf_service",
-                "label": "Stress in Reinforcement - Service",
-                "columns": [
-                    "Girder",
-                    "Stress in Reinforcement, σᵣₑᵢₙf (MPa)",
-                    "Allowable Stress (MPa)",
-                ],
-                "rows": [
-                    [EMPTY, EMPTY, EMPTY],
-                ],
-            },
-        },
     },
 
     "design_results": {
@@ -3553,9 +3575,9 @@ GENERATE_RESULTS_DEFAULTS = {
                 "label": "Flexural Resistance Check",
                 "columns": [
                     "Girder",
-                    "Ultimate Bending Moment, Mᵤ (kNm)",
-                    "Design Bending Moment, Mᵈ (kNm)",
-                    "Demand to Capacity Ratio, DCR",
+                    "Design Moment, Mᵈ (kNm)",
+                    "Moment Resistance, Mᵣ (kNm)",
+                    "Utilization Ratio",
                     "Status",
                 ],
                 "rows": [
@@ -3568,9 +3590,9 @@ GENERATE_RESULTS_DEFAULTS = {
                 "label": "Shear Resistance Check",
                 "columns": [
                     "Girder",
-                    "Ultimate Shear Force, Vᵤ (kN)",
-                    "Design Shear Force, Vᵈ (kN)",
-                    "Demand to Capacity Ratio, DCR",
+                    "Design Shear, Vᵈ (kN)",
+                    "Shear Resistance, Vᵣ (kN)",
+                    "Utilization Ratio",
                     "Status",
                 ],
                 "rows": [
@@ -3583,14 +3605,13 @@ GENERATE_RESULTS_DEFAULTS = {
                 "label": "Bending-Shear Interaction Check",
                 "columns": [
                     "Girder",
-                    "Ultimate Bending Moment, Mᵤ (kNm)",
-                    "Reduced Design Bending Resistance, Mᵈᵥ (kNm)",
-                    "Demand to Capacity Ratio, DCR",
-                    "Clause Reference",
+                    "Design Moment, Mᵈ (kNm)",
+                    "Reduced Resistance, Mᵈᵥ (kNm)",
+                    "Utilization Ratio",
                     "Status",
                 ],
                 "rows": [
-                    [EMPTY, EMPTY, EMPTY, EMPTY, EMPTY, EMPTY],
+                    [EMPTY, EMPTY, EMPTY, EMPTY, EMPTY],
                 ],
             },
 
@@ -3599,16 +3620,13 @@ GENERATE_RESULTS_DEFAULTS = {
                 "label": "Lateral Torsional Buckling Check - Construction Stage",
                 "columns": [
                     "Girder",
-                    "Ultimate Bending Moment, Mᵤ (kNm)",
-                    "LTB Design Buckling Resistance, Mᵦ (kNm)",
-                    "LTB Reduction Factor, χ_LT",
-                    "Non-Dimensional Slenderness, λ̄_LT",
-                    "Demand to Capacity Ratio, DCR",
-                    "Clause Reference",
+                    "Design Moment, Mᵈ (kNm)",
+                    "LTB Resistance, Mᵦ (kNm)",
+                    "Utilization Ratio",
                     "Status",
                 ],
                 "rows": [
-                    [EMPTY, EMPTY, EMPTY, EMPTY, EMPTY, EMPTY, EMPTY, EMPTY],
+                    [EMPTY, EMPTY, EMPTY, EMPTY, EMPTY],
                 ],
             },
         },
@@ -3617,88 +3635,78 @@ GENERATE_RESULTS_DEFAULTS = {
             "id": "sls_checks",
             "label": "SLS Checks",
 
-            "deflection_control_live": {
-                "id": "deflection_control_live",
-                "label": "Deflection Control - Live Load",
+            "deflection_live_load": {
+                "id": "deflection_live_load",
+                "label": "Deflection - Live Load",
                 "columns": [
                     "Girder",
                     "Deflection due to Live Load, δ_ₗᵢᵥₑ (mm)",
                     "Permissible Limit",
+                    "Utilization Ratio",
                     "Status",
                 ],
                 "rows": [
-                    [EMPTY, EMPTY, EMPTY, EMPTY],
+                    [EMPTY, EMPTY, EMPTY, EMPTY, EMPTY],
                 ],
             },
 
-            "deflection_control_total": {
-                "id": "deflection_control_total",
-                "label": "Deflection Control - Total Load",
+            "deflection_total_load": {
+                "id": "deflection_total_load",
+                "label": "Deflection - Total Load",
                 "columns": [
                     "Girder",
                     "Total Deflection, δₜₒₜₐₗ (mm)",
-                    "Span, L (mm)",
-                    "Permissible Limit, L/600 (mm)",
-                    "Clause Reference",
+                    "Permissible Limit",
+                    "Utilization Ratio",
                     "Status",
                 ],
                 "rows": [
-                    [EMPTY, EMPTY, EMPTY, EMPTY, EMPTY, EMPTY],
+                    [EMPTY, EMPTY, EMPTY, EMPTY, EMPTY],
                 ],
             },
 
-            "max_stress_steel": {
-                "id": "max_stress_steel",
-                "label": "Maximum Stress Limitation - Steel",
+            "stress_steel_service": {
+                "id": "stress_steel_service",
+                "label": "Stress in Structural Steel - Service",
                 "columns": [
-                    "Girder",
-                    "Stress in Steel, σₛ (MPa)",
-                    "Yield Strength, fyk (MPa)",
-                    "Allowable Stress, 0.9·fyk (MPa)",
-                    "Clause Reference",
+                    "Member",
+                    "Steel Stress (MPa)",
+                    "Allowable Stress (MPa)",
+                    "Utilization Ratio",
                     "Status",
                 ],
                 "rows": [
-                    ["Girder 1", 180, 350, 315, "IRC 22 Cl. 604.3.1", "PASS"],
-                    ["Girder 2", 176, 350, 315, "IRC 22 Cl. 604.3.1", "PASS"],
-                    ["Girder 3", 176, 350, 315, "IRC 22 Cl. 604.3.1", "PASS"],
-                    ["Girder 4", 180, 350, 315, "IRC 22 Cl. 604.3.1", "PASS"],
+                    [EMPTY, EMPTY, EMPTY, EMPTY, EMPTY],
                 ],
             },
 
-            "max_stress_concrete": {
-                "id": "max_stress_concrete",
-                "label": "Maximum Stress Limitation - Concrete",
+            "stress_concrete_service": {
+                "id": "stress_concrete_service",
+                "label": "Stress in Concrete Deck - Service",
                 "columns": [
-                    "Girder",
-                    "Stress in Concrete, σc (MPa)",
-                    "Characteristic Compressive Strength, fck (MPa)",
-                    "Allowable Stress, 0.48·fck (MPa)",
+                    "Member",
+                    "Concrete Stress (MPa)",
+                    "Allowable Stress (MPa)",
+                    "Utilization Ratio",
                     "Status",
                 ],
                 "rows": [
-                    ["Girder 1", 12.5, 40, 19.2, "PASS"],
-                    ["Girder 2", 12.1, 40, 19.2, "PASS"],
-                    ["Girder 3", 12.1, 40, 19.2, "PASS"],
-                    ["Girder 4", 12.5, 40, 19.2, "PASS"],
+                    [EMPTY, EMPTY, EMPTY, EMPTY, EMPTY],
                 ],
             },
 
-            "max_stress_reinforcement": {
-                "id": "max_stress_reinforcement",
-                "label": "Maximum Stress Limitation - Reinforcement",
+            "stress_reinf_service": {
+                "id": "stress_reinf_service",
+                "label": "Stress in Reinforcement - Service",
                 "columns": [
-                    "Girder",
-                    "Stress in Reinforcement, σᵣₑᵢₙf (MPa)",
-                    "Characteristic Yield Strength, fyk (MPa)",
-                    "Allowable Stress, 0.8·fyk (MPa)",
+                    "Member",
+                    "Rebar Stress (MPa)",
+                    "Allowable Stress (MPa)",
+                    "Utilization Ratio",
                     "Status",
                 ],
                 "rows": [
-                    ["Girder 1", 220, 500, 400, "PASS"],
-                    ["Girder 2", 215, 500, 400, "PASS"],
-                    ["Girder 3", 215, 500, 400, "PASS"],
-                    ["Girder 4", 220, 500, 400, "PASS"],
+                    [EMPTY, EMPTY, EMPTY, EMPTY, EMPTY],
                 ],
             },
         },
@@ -3714,26 +3722,15 @@ GENERATE_RESULTS_DEFAULTS = {
                     "Girder",
                     "Stress Range, Δσ (MPa)",
                     "Fatigue Limit, ffd (MPa)",
+                    "Utilization Ratio",
                     "Status",
                 ],
                 "rows": [
-                    [EMPTY, EMPTY, EMPTY, EMPTY],
+                    [EMPTY, EMPTY, EMPTY, EMPTY, EMPTY],
                 ],
             },
 
-            "fatigue_assessment_shear_connectors": {
-                "id": "fatigue_assessment_shear_connectors",
-                "label": "Fatigue Assessment - Shear Connectors",
-                "columns": [
-                    "Stud Group",
-                    "Shear Stress Range, Δτ (MPa)",
-                    "Fatigue Limit for Shear, τfd (MPa)",
-                    "Status",
-                ],
-                "rows": [
-                    [EMPTY, EMPTY, EMPTY, EMPTY],
-                ],
-            },
+
         },
 
         "shear_connector_design": {
@@ -3757,10 +3754,7 @@ GENERATE_RESULTS_DEFAULTS = {
                     "Clause Reference",
                 ],
                 "rows": [
-                    ["Girder 1", 20, 100, 495, 40, 34000, 98.5, 83.7, 2, 167.4, "IRC 22 Cl. 606.3.1"],
-                    ["Girder 2", 20, 100, 495, 40, 34000, 98.5, 83.7, 2, 167.4, "IRC 22 Cl. 606.3.1"],
-                    ["Girder 3", 20, 100, 495, 40, 34000, 98.5, 83.7, 2, 167.4, "IRC 22 Cl. 606.3.1"],
-                    ["Girder 4", 20, 100, 495, 40, 34000, 98.5, 83.7, 2, 167.4, "IRC 22 Cl. 606.3.1"],
+                    [EMPTY] * 11
                 ],
             },
 
@@ -3850,18 +3844,15 @@ GENERATE_RESULTS_DEFAULTS = {
                 "columns": [
                     "Girder",
                     "Design Longitudinal Shear per Unit Length, VL (kN/m)",
-                    "Concrete Shear Resistance, 0.9·L·√fck (kN/m)",
-                    "Reinforcement Shear Resistance, 0.8·fyk·Ast (kN/m)",
+                    "Concrete Shear Resistance (kN/m)",
+                    "Concrete + Reinforcement Shear Resistance (kN/m)",
                     "Total Shear Resistance, VRd (kN/m)",
-                    "Demand to Capacity Ratio, DCR",
+                    "Utilization Ratio",
                     "Clause Reference",
                     "Status",
                 ],
                 "rows": [
-                    ["Girder 1", 285, 198, 245, 443, 0.64, "IRC 22 Cl. 606.10", "PASS"],
-                    ["Girder 2", 278, 198, 245, 443, 0.63, "IRC 22 Cl. 606.10", "PASS"],
-                    ["Girder 3", 278, 198, 245, 443, 0.63, "IRC 22 Cl. 606.10", "PASS"],
-                    ["Girder 4", 285, 198, 245, 443, 0.64, "IRC 22 Cl. 606.10", "PASS"],
+                    [EMPTY] * 8
                 ],
             },
 
@@ -3869,7 +3860,7 @@ GENERATE_RESULTS_DEFAULTS = {
                 "id": "crack_width_check",
                 "label": "Crack Width Check",
                 "columns": [
-                    "Girder",
+                    "Member",
                     "Calculated Crack Width, wₖ (mm)",
                     "Permissible Crack Width Limit (mm)",
                     "Minimum Reinforcement Area, As,min (mm²)",
@@ -3894,14 +3885,15 @@ GENERATE_RESULTS_DEFAULTS = {
                 "label": "Design Results Summary",
                 "columns": [
                     "Member",
-                    "Check Name",
-                    "Demand (Units as applicable)",
-                    "Capacity (Units as applicable)",
-                    "Demand to Capacity Ratio, DCR",
+                    "Controlling Load Case / Combination",
+                    "Controlling Design Check",
+                    "Demand",
+                    "Capacity",
+                    "Utilization Ratio",
                     "Status",
                 ],
                 "rows": [
-                    [EMPTY, EMPTY, EMPTY, EMPTY, EMPTY, EMPTY],
+                    [EMPTY, EMPTY, EMPTY, EMPTY, EMPTY, EMPTY, EMPTY],
                 ],
             },
         },

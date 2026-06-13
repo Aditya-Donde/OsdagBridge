@@ -617,6 +617,150 @@ def enrich_crossbracing_dump(pair_designs: dict) -> None:
     print("=" * 60)
 
 
+def build_load_effects_cache(result_handler) -> dict:
+    """
+    Pre-compute per-girder, per-load-case max/min Mz and Vy for all non-vehicle
+    load cases.  Called once at the end of design() and stored on the bridge as
+    ``_load_effects_cache``.
+
+    Structure returned::
+
+        {
+            "G1": {
+                "SW":      {"Mz_max": 123.4, "Mz_min": -45.6, "Vy_max": 78.9, "Vy_min": -12.3},
+                "BASIC_1": {"Mz_max": ..., ...},
+                ...
+            },
+            "G2": { ... },
+        }
+
+    Values are in kNm (Mz) and kN (Vy).
+    Vehicle static / moving load cases are excluded so the table only shows
+    dead loads and combination load cases.  Any load case whose name contains
+    "moving" is also excluded.
+    """
+    ds = result_handler.ds
+    if ds is None:
+        return {}
+
+    g_map, _ = result_handler.build_girders(verbose=False)
+    classified = result_handler.classify_loadcases()
+
+    exclude = set(
+        classified.get("vehicle_static", []) +
+        classified.get("vehicle_moving", [])
+    )
+    lcs = [
+        lc for lc in classified.get("all", [])
+        if lc not in exclude and "moving" not in str(lc).lower()
+    ]
+
+    cache: dict = {}
+    gi = 1
+    for girder, gdata in g_map.items():
+        if girder.startswith("EB"):
+            continue
+        girder_label = f"G{gi}"
+        gi += 1
+        elements = gdata["elements"]
+        cache[girder_label] = {}
+        for lc in lcs:
+            mz_vals: list[float] = []
+            vy_vals: list[float] = []
+            for comp in ("Mz_i", "Mz_j"):
+                for eid in elements:
+                    try:
+                        val = float(ds.sel(Loadcase=lc, Element=eid, Component=comp)["forces"]) / 1000.0
+                        mz_vals.append(val)
+                    except Exception:
+                        pass
+            for comp in ("Vy_i", "Vy_j"):
+                for eid in elements:
+                    try:
+                        val = float(ds.sel(Loadcase=lc, Element=eid, Component=comp)["forces"]) / 1000.0
+                        vy_vals.append(val)
+                    except Exception:
+                        pass
+            if mz_vals or vy_vals:
+                cache[girder_label][str(lc)] = {
+                    "Mz_max": round(max(mz_vals), 3) if mz_vals else None,
+                    "Mz_min": round(min(mz_vals), 3) if mz_vals else None,
+                    "Vy_max": round(max(vy_vals), 3) if vy_vals else None,
+                    "Vy_min": round(min(vy_vals), 3) if vy_vals else None,
+                }
+    return cache
+
+
+def build_deflections_cache(result_handler) -> dict:
+    """
+    Pre-compute maximum vertical (y) deflection per girder for:
+      - live load only  (load case "1.0 LL")
+      - total load      (load case "1.0 DL + 1.0 LL")
+
+    Returns::
+
+        {
+            "G1": {"live_mm": 12.3, "total_mm": 25.6},
+            "G2": {...},
+        }
+
+    Values are in mm (converted from metres, which is OpenSees' native unit).
+    Edge-beam girders (EB1/EB2) are skipped; remaining girders are numbered G1…Gn.
+    """
+    ds = result_handler.ds
+    if ds is None:
+        return {}
+    disp_da = ds.get("displacements")
+    if disp_da is None:
+        return {}
+
+    all_lcs = [str(lc) for lc in ds.coords["Loadcase"].values]
+
+    # Governing LL case created by create_governing_ll_load_case(partial_safety_factor=1.0)
+    ll_case = next(
+        (lc for lc in all_lcs if lc.strip() == "1.0 LL"),
+        None,
+    )
+    # DL + LL combination created by create_dl_ll_combination(dl_factor=1.0, ll_factor=1.0)
+    dl_ll_case = next(
+        (lc for lc in all_lcs if " DL + " in lc and lc.strip().endswith("LL")
+         and not lc.startswith(("BASIC_", "SLS_", "SEISMIC_", "ACCIDENTAL_"))),
+        None,
+    )
+
+    g_map, _ = result_handler.build_girders(verbose=False)
+    node_set = set(disp_da.coords["Node"].values)
+
+    def _max_defl_mm(lc_name: str | None, nodes: list) -> float | None:
+        if lc_name is None or not nodes:
+            return None
+        try:
+            vals = []
+            for node in nodes:
+                if node not in node_set:
+                    continue
+                v = float(disp_da.sel(Loadcase=lc_name, Node=node, Component="y")) * 1000.0
+                vals.append(v)
+            return round(max(abs(v) for v in vals), 3) if vals else None
+        except Exception:
+            return None
+
+    cache: dict = {}
+    gi = 1
+    for girder, gdata in g_map.items():
+        if girder.startswith("EB"):
+            continue
+        girder_label = f"G{gi}"
+        gi += 1
+        nodes = gdata.get("path", [])
+        cache[girder_label] = {
+            "live_mm":  _max_defl_mm(ll_case,    nodes),
+            "total_mm": _max_defl_mm(dl_ll_case, nodes),
+        }
+
+    return cache
+
+
 def _dump(data: dict, filename: str = "bridge_plot_data.json") -> None:
     """Write data to tools/<filename>."""
     _TOOLS_DIR.mkdir(exist_ok=True)

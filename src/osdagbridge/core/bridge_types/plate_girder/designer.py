@@ -23,6 +23,29 @@ from osdagbridge.core.utils.common import (
     KEY_DO_GAMMA_M0,
     KEY_DO_GAMMA_M1,
     KEY_DO_GAMMA_V,
+    KEY_SD_SC_Qu_kN,
+    KEY_SD_SC_Qr_kN,
+    KEY_SD_SC_VL,
+    KEY_SD_SC_SL1,
+    KEY_SD_SC_SL2,
+    KEY_SD_SC_SR,
+    KEY_SD_SC_H_kN,
+    KEY_SD_SC_Vr_kN,
+    KEY_SD_SC_LIMIT_600,
+    KEY_SD_SC_LIMIT_3TSLAB,
+    KEY_SD_SC_LIMIT_4HSTUD,
+    KEY_SD_SC_D_LIMIT,
+    KEY_SD_SC_H_MIN,
+    KEY_SD_SC_EDGE_DIST,
+    KEY_SD_SC_REQ_EDGE_DIST,
+    KEY_SD_SC_CLEAR_COVER,
+    KEY_SD_SC_REQ_CLEAR_COVER,
+    KEY_SD_TS_VL,
+    KEY_SD_TS_VCAP_CONC,
+    KEY_SD_TS_VCAP_REINF,
+    KEY_SD_TS_VRD,
+    KEY_SD_CRACK_AS_MIN,
+    KEY_SD_CRACK_AS_PROV,
 )
 from osdagbridge.core.utils.codes.keyfile import (
     DCR_PASS_THRESHOLD,
@@ -1403,15 +1426,21 @@ class IRC22CapacityCalculator:
             t_slab_mm=slab.thickness,
         )
         return {
-            "stud_diameter_check" : res["stud_diameter_check"],
-            "stud_height_check"   : res["stud_height_check"],
-            "stud_head_check"     : res.get("stud_head_check"),
-            "edge_distance_check" : res.get("edge_distance_check"),
-            "projection_check"    : res.get("projection_check"),
-            "clear_cover_check"   : res.get("clear_cover_check"),
-            "all_ok"              : res["all_requirements_satisfied"],
-            "clause"              : res["clause"],
-            "source"              : "IRC22_2014",
+            "stud_diameter_check"      : res["stud_diameter_check"],
+            "stud_diameter_limit_mm"   : res["stud_diameter_limit_mm"],
+            "stud_height_check"        : res["stud_height_check"],
+            "required_min_height_mm"   : res["required_min_height_mm"],
+            "stud_head_check"          : res.get("stud_head_check"),
+            "edge_distance_check"      : res.get("edge_distance_check"),
+            "edge_distance_mm"         : res.get("edge_distance_mm") or res.get("edge_distance_calculated_mm"),
+            "required_edge_distance_mm": res["required_edge_distance_mm"],
+            "projection_check"         : res.get("projection_check"),
+            "clear_cover_check"        : res.get("clear_cover_check"),
+            "clear_cover_stud_mm"      : res.get("clear_cover_stud_mm") or res.get("clear_cover_calculated_mm"),
+            "required_clear_cover_mm"  : res["required_clear_cover_mm"],
+            "all_ok"                   : res["all_requirements_satisfied"],
+            "clause"                   : res["clause"],
+            "source"                   : "IRC22_2014",
         }
 
     # IRC 22:2015 Cl.606.10 — transverse shear check at the steel–concrete interface.
@@ -3073,19 +3102,65 @@ def _compute_per_lc_dcr(
             "overall_status": lc_engine.overall_status(),
             "max_dcr"       : lc_engine.max_dcr(),
             "category_urs"  : lc_engine.category_urs(),
-            # ── per-check detail (id, label, dcr, status, note) ────────────
+            # ── per-check detail (id, label, demand, capacity, dcr, status) ──
             "checks": [
                 {
-                    "id"    : chk.check_id,
-                    "label" : chk.name,
-                    "clause": chk.clause,
-                    "dcr"   : chk.dcr,
-                    "status": chk.status,
-                    "note"  : chk.note,
+                    "id"      : chk.check_id,
+                    "label"   : chk.name,
+                    "clause"  : chk.clause,
+                    "demand"  : chk.demand,
+                    "capacity": chk.capacity,
+                    "dcr"     : chk.dcr,
+                    "status"  : chk.status,
+                    "note"    : chk.note,
                 }
                 for chk in lc_engine.checks
             ],
         }
+    return result
+
+
+def _build_uls_per_girder(per_girder_results: dict) -> dict:
+    """Build the ULS-check summary consumed by the Generate Results tables.
+
+    Returns a dict keyed by check category (matching KEY_CHECK_* values):
+        {
+          "flexure":     {g_name: {demand, capacity, ur, status}, ...},
+          "shear":       {g_name: {...}, ...},
+          "interaction": {g_name: {...}, ...},   # worst of check_ids 3 & 4
+          "ltb":         {g_name: {...}, ...},
+        }
+    Only non-EB girders are included; checks missing for a girder are omitted.
+    """
+    _CATEGORY_IDS = {
+        "flexure":     (1,),
+        "shear":       (2,),
+        "interaction": (3, 4),
+        "ltb":         (5,),
+        "fatigue":     (8, 9),   # normal + shear fatigue; worst by DCR
+    }
+
+    def _worst(checks, *ids):
+        candidates = [c for c in checks if c["check_id"] in ids]
+        return max(candidates, key=lambda c: c["dcr"]) if candidates else None
+
+    result: Dict[str, Dict[str, dict]] = {cat: {} for cat in _CATEGORY_IDS}
+
+    for g_name, g_data in per_girder_results.items():
+        if g_name.startswith("EB"):
+            continue
+        checks = g_data.get("checks") or []
+        for cat, ids in _CATEGORY_IDS.items():
+            chk = _worst(checks, *ids)
+            if chk is None:
+                continue
+            result[cat][g_name] = {
+                "demand"  : chk["demand"],
+                "capacity": chk["capacity"],
+                "ur"      : chk["dcr"],
+                "status"  : chk["status"],
+            }
+
     return result
 
 
@@ -3203,6 +3278,7 @@ def run_design_check(
             ],
             "category_urs": g_cat_urs,
             "per_lc": _compute_per_lc_dcr(config, g_lc),
+            "sls_fibre_stresses": g_cap.details.get("sls_actual_stresses") or {},
             "_engine"  : g_engine,
             "_capacity": g_cap,
         }
@@ -3346,6 +3422,10 @@ def run_design_check(
         "sigma_c_actual_MPa"        : capacity.sigma_c_actual_MPa,
         "sigma_rebar_actual_MPa"    : capacity.sigma_rebar_actual_MPa,
         "sigma_steel_equiv_MPa"     : capacity.sigma_steel_equiv_MPa,
+        # -- Generate-Results steel stress table (controlling-girder envelope SLS;
+        #    one value applied to every girder/member row) --
+        KEY_SD_STRESS_STEEL           : capacity.sigma_steel_equiv_MPa,
+        KEY_SD_STRESS_STEEL_ALLOWABLE : capacity.sigma_s_limit_MPa,
         "tau_web_actual_MPa"        : capacity.tau_web_actual_MPa,
         # -- composite section --
         "I_comp_short_mm4"          : capacity.I_comp_short_mm4,
@@ -3368,13 +3448,37 @@ def run_design_check(
         "stud_spacing_max_mm"       : capacity.stud_spacing_max_mm,
         "stud_spacing_min_mm"       : capacity.stud_spacing_min_mm,
         "stud_detailing_ok"         : capacity.stud_detailing_ok,
+        # -- shear connector key-mapped computed values --
+        KEY_SD_SC_Qu_kN            : capacity.Qu_kN,
+        KEY_SD_SC_Qr_kN            : capacity.Qr_kN,
+        KEY_SD_SC_VL               : capacity.VL_N_per_mm,
+        KEY_SD_SC_SL1              : capacity.stud_spacing_mm,
+        KEY_SD_SC_SL2              : capacity.stud_spacing_full_shear_mm,
+        KEY_SD_SC_SR               : capacity.stud_spacing_fatigue_mm,
+        KEY_SD_SC_H_kN             : (capacity.details.get("stud_spacing_full_shear") or {}).get("H_governing_kN"),
+        KEY_SD_SC_Vr_kN            : (capacity.details.get("stud_spacing_fatigue")    or {}).get("Vr_kN"),
+        KEY_SD_SC_LIMIT_600        : (capacity.details.get("stud_spacing_limits")     or {}).get("limit_600_mm"),
+        KEY_SD_SC_LIMIT_3TSLAB     : (capacity.details.get("stud_spacing_limits")     or {}).get("limit_3_tslab_mm"),
+        KEY_SD_SC_LIMIT_4HSTUD     : (capacity.details.get("stud_spacing_limits")     or {}).get("limit_4_hstud_mm"),
+        KEY_SD_SC_D_LIMIT          : (capacity.details.get("stud_detailing")          or {}).get("stud_diameter_limit_mm"),
+        KEY_SD_SC_H_MIN            : (capacity.details.get("stud_detailing")          or {}).get("required_min_height_mm"),
+        KEY_SD_SC_EDGE_DIST        : (capacity.details.get("stud_detailing")          or {}).get("edge_distance_mm"),
+        KEY_SD_SC_REQ_EDGE_DIST    : (capacity.details.get("stud_detailing")          or {}).get("required_edge_distance_mm"),
+        KEY_SD_SC_CLEAR_COVER      : (capacity.details.get("stud_detailing")          or {}).get("clear_cover_stud_mm"),
+        KEY_SD_SC_REQ_CLEAR_COVER  : (capacity.details.get("stud_detailing")          or {}).get("required_clear_cover_mm"),
         # -- transverse shear --
         "transverse_shear_ok"       : capacity.transverse_shear_ok,
         "Ast_required_cm2_per_m"    : capacity.Ast_required_cm2_per_m,
         "Ast_provided_cm2_per_m"    : capacity.Ast_provided_cm2_per_m,
+        KEY_SD_TS_VL               : (capacity.details.get("transverse_shear") or {}).get("VL_N_per_mm"),
+        KEY_SD_TS_VCAP_CONC        : (capacity.details.get("transverse_shear") or {}).get("Vcap1_kN_per_m"),
+        KEY_SD_TS_VCAP_REINF       : (capacity.details.get("transverse_shear") or {}).get("Vcap2_kN_per_m"),
+        KEY_SD_TS_VRD              : (capacity.details.get("transverse_shear") or {}).get("governing_capacity_kN_per_m"),
         # -- crack control --
         "As_min_crack_mm2"          : capacity.As_min_crack_mm2,
         "As_provided_crack_mm2"     : capacity.As_provided_crack_mm2,
+        KEY_SD_CRACK_AS_MIN        : capacity.As_min_crack_mm2,
+        KEY_SD_CRACK_AS_PROV       : capacity.As_provided_crack_mm2,
         # -- stiffener inputs (grade = steel_grade above; same material assumed) --
         "is_tq_mm"                  : config.stiffener.tq_mm if config.stiffener else 0.0,
         "is_H_mm"                   : config.stiffener.H_mm if config.stiffener else 0.0,
@@ -3423,6 +3527,8 @@ def run_design_check(
         "report_text"               : report_text,
         # -- all-girder results --
         "per_girder"                : per_girder_results,
+        # -- ULS check table (Generate Results): per-girder demand/capacity/UR/status
+        KEY_SD_ULS_PER_GIRDER       : _build_uls_per_girder(per_girder_results),
     }
 
     return report_text, engine, design_results

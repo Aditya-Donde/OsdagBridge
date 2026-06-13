@@ -169,6 +169,23 @@ KEY_SD_STIFFENER_COL_THICKNESS = "steeldesign.details.stiffener.col.thickness"
 KEY_SD_STIFFENER_COL_WIDTH = "steeldesign.details.stiffener.col.width"
 KEY_SD_STIFFENER_COL_SPACING = "steeldesign.details.stiffener.col.spacing"
 
+# Stiffener inputs
+KEY_SD_STIFFENER_DETAILS = "member_properties.stiffener_details.stiffener_details_cad"
+
+# Steel Design Properties
+KEY_SD_SECTION_PROP_MASS = "steeldesign.details.section_properties.mass"
+KEY_SD_SECTION_PROP_AREA = "steeldesign.details.section_properties.area"
+KEY_SD_SECTION_PROP_IZ = "steeldesign.details.section_properties.iz"
+KEY_SD_SECTION_PROP_IV = "steeldesign.details.section_properties.iv"
+KEY_SD_SECTION_PROP_RZ = "steeldesign.details.section_properties.rz"
+KEY_SD_SECTION_PROP_RV = "steeldesign.details.section_properties.rv"
+KEY_SD_SECTION_PROP_ZZ = "steeldesign.details.section_properties.zz"
+KEY_SD_SECTION_PROP_ZV = "steeldesign.details.section_properties.zv"
+KEY_SD_SECTION_PROP_ZUZ = "steeldesign.details.section_properties.zuz"
+KEY_SD_SECTION_PROP_ZUV = "steeldesign.details.section_properties.zuv"
+KEY_SD_SECTION_PROP_IT = "steeldesign.details.section_properties.it"
+KEY_SD_SECTION_PROP_IW = "steeldesign.details.section_properties.iw"
+
 KEY_BTN_STEEL_DESIGN          = "btn.steel_design"
 KEY_BTN_TRANSVERSE_DESIGN     = "btn.transverse_design"
 KEY_BTN_DECK_DESIGN           = "btn.deck_design"
@@ -306,6 +323,61 @@ KEY_DECK_REINF_MATERIAL = "Deck Reinforcement Material"
 KEY_DECK_REINF_SIZE = "Deck Reinforcement Size"
 KEY_DECK_REINF_SPACING_LONG = "Deck Reinforcement Spacing Longitudinal"
 KEY_DECK_REINF_SPACING_TRANS = "Deck Reinforcement Spacing Transverse"
+
+# ── Generate-Results SLS stress table keys ────────────────────────────────────
+# Structural steel: single envelope-SLS equivalent stress applied to every
+# girder/member row, plus its allowable (0.9·fy). Stored in design_results.
+KEY_SD_STRESS_STEEL           = "steeldesign.stress.steel"
+KEY_SD_STRESS_STEEL_ALLOWABLE = "steeldesign.stress.steel.allowable"
+# Concrete deck (interior panel SLS): bottom & top fibre stress share one limit
+# (0.48·fck). Stored in deck_design_results.
+# ULS check per-girder table (stored in design_results under this key)
+KEY_SD_ULS_PER_GIRDER         = "steeldesign.uls_per_girder"
+KEY_DD_STRESS_CONC_BOTTOM     = "deckdesign.stress.concrete.bottom"
+KEY_DD_STRESS_CONC_TOP        = "deckdesign.stress.concrete.top"
+KEY_DD_STRESS_CONC_ALLOWABLE  = "deckdesign.stress.concrete.allowable"
+# Reinforcement (interior panel SLS): bottom & top fibre stress share one limit
+# (0.80·fyk). Stored in deck_design_results.
+KEY_DD_STRESS_REINF_BOTTOM    = "deckdesign.stress.reinf.bottom"
+KEY_DD_STRESS_REINF_TOP       = "deckdesign.stress.reinf.top"
+KEY_DD_STRESS_REINF_ALLOWABLE = "deckdesign.stress.reinf.allowable"
+
+# ── Generate-Results Shear Connector table keys ───────────────────────────────
+# All stored as flat keys in design_results after run_design_check.
+KEY_SD_SC_Qu_kN            = "steeldesign.shear_connector.qu_kN"
+KEY_SD_SC_Qr_kN            = "steeldesign.shear_connector.qr_kN"
+KEY_SD_SC_VL               = "steeldesign.shear_connector.vl_n_per_mm"
+KEY_SD_SC_SL1              = "steeldesign.shear_connector.sl1_mm"
+KEY_SD_SC_SL2              = "steeldesign.shear_connector.sl2_mm"
+KEY_SD_SC_SR               = "steeldesign.shear_connector.sr_mm"
+KEY_SD_SC_H_kN             = "steeldesign.shear_connector.h_governing_kN"
+KEY_SD_SC_Vr_kN            = "steeldesign.shear_connector.vr_kN"
+KEY_SD_SC_LIMIT_600        = "steeldesign.shear_connector.limit_600_mm"
+KEY_SD_SC_LIMIT_3TSLAB     = "steeldesign.shear_connector.limit_3tslab_mm"
+KEY_SD_SC_LIMIT_4HSTUD     = "steeldesign.shear_connector.limit_4hstud_mm"
+KEY_SD_SC_D_LIMIT          = "steeldesign.shear_connector.d_limit_mm"
+KEY_SD_SC_H_MIN            = "steeldesign.shear_connector.h_min_mm"
+KEY_SD_SC_EDGE_DIST        = "steeldesign.shear_connector.edge_distance_mm"
+KEY_SD_SC_REQ_EDGE_DIST    = "steeldesign.shear_connector.req_edge_distance_mm"
+KEY_SD_SC_CLEAR_COVER      = "steeldesign.shear_connector.clear_cover_mm"
+KEY_SD_SC_REQ_CLEAR_COVER  = "steeldesign.shear_connector.req_clear_cover_mm"
+
+# ── Generate-Results Transverse Shear table keys (design_results) ─────────────
+# IRC 22:2015 Cl.606.10 — interface shear between steel girder and deck slab.
+KEY_SD_TS_VL         = "steeldesign.transverse_shear.vl_kN_per_m"
+KEY_SD_TS_VCAP_CONC  = "steeldesign.transverse_shear.vcap_concrete_kN_per_m"
+KEY_SD_TS_VCAP_REINF = "steeldesign.transverse_shear.vcap_reinf_kN_per_m"
+KEY_SD_TS_VRD        = "steeldesign.transverse_shear.vrd_kN_per_m"
+
+# ── Generate-Results Crack Width table keys ───────────────────────────────────
+# Minimum crack-control reinforcement (IRC 22 Cl.604.4) — design_results.
+KEY_SD_CRACK_AS_MIN  = "steeldesign.crack.as_min_mm2"
+KEY_SD_CRACK_AS_PROV = "steeldesign.crack.as_provided_mm2"
+# Calculated crack width per face (IRC 112:2020 Cl.12.3.4) — deck_design_results.
+KEY_DD_CRACK_WK_BOTTOM = "deckdesign.crack.wk.bottom"
+KEY_DD_CRACK_WK_TOP    = "deckdesign.crack.wk.top"
+KEY_DD_CRACK_WK_LIMIT  = "deckdesign.crack.wk.limit"
+
 KEY_RAILING_PRESENT = "Railing Present"
 KEY_RAILING_WIDTH = "Railing Width"
 KEY_RAILING_HEIGHT = "Railing Height"
@@ -547,6 +619,17 @@ KEY_LL_IRC_AA_TRACKED           = "loading.live_load.irc.aa_tracked"
 KEY_LL_IRC_CLASS_SV             = "loading.live_load.irc.class_sv"
 KEY_LL_IRC_70R_BOGIE            = "loading.live_load.irc.70r_bogie"
 KEY_LL_IRC_CLASS_FATIGUE        = "loading.live_load.irc.class_fatigue"
+
+# Breaking Load keys — mirror the vehicle class keys
+KEY_BL_IRC_CLASS_A        = "bl_irc_class_a"
+KEY_BL_IRC_AA_WHEELED     = "bl_irc_aa_wheeled"
+KEY_BL_IRC_AA_TRACKED     = "bl_irc_aa_tracked"
+KEY_BL_IRC_70R_WHEELED    = "bl_irc_70r_wheeled"
+KEY_BL_IRC_70R_TRACKED    = "bl_irc_70r_tracked"
+KEY_BL_IRC_70R_BOGIE      = "bl_irc_70r_bogie"
+KEY_BL_IRC_CLASS_SV       = "bl_irc_class_sv"
+KEY_BL_IRC_CLASS_FATIGUE  = "bl_irc_class_fatigue"
+KEY_BL_ECCENTRICITY       = "bl_eccentricity"
 
 # Custom Vehicle
 KEY_LL_CUSTOM_VEHICLES = "loading.live_load.custom_vehicles"

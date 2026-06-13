@@ -24,6 +24,8 @@ from osdagbridge.core.utils.common import (
     KEY_TS_GIRDER_SPACING, KEY_TS_DECK_OVERHANG, KEY_TS_DECK_THICKNESS,
     KEY_DS_REINF_MATERIAL, KEY_DS_TOP_CLEAR_COVER, KEY_DS_BOTTOM_CLEAR_COVER,
     KEY_DS_REINF_BOUNDS, KEY_WC_THICKNESS, KEY_MP_CB_SPACING,
+<<<<<<< Updated upstream
+<<<<<<< Updated upstream
     # Report output keys — stored in output_dict["deck_report_values"]
     KEY_DD_VEHICLE, KEY_DD_IMPACT_FACTOR, KEY_DD_GAMMA_DL,
     KEY_DD_GAMMA_LL, KEY_DD_SPAN, KEY_DD_WDL,
@@ -45,6 +47,16 @@ from osdagbridge.core.utils.common import (
     KEY_DD_SPC_OH, KEY_DD_AS_OH, KEY_DD_AS_LONG,
     KEY_DD_MIN_COVER, KEY_DD_COVER_OK, KEY_DD_SPACING_MAX,
     KEY_DD_HAS_OVERHANG,
+=======
+    KEY_DD_STRESS_CONC_BOTTOM, KEY_DD_STRESS_CONC_TOP, KEY_DD_STRESS_CONC_ALLOWABLE,
+    KEY_DD_STRESS_REINF_BOTTOM, KEY_DD_STRESS_REINF_TOP, KEY_DD_STRESS_REINF_ALLOWABLE,
+    KEY_DD_CRACK_WK_BOTTOM, KEY_DD_CRACK_WK_TOP, KEY_DD_CRACK_WK_LIMIT,
+>>>>>>> Stashed changes
+=======
+    KEY_DD_STRESS_CONC_BOTTOM, KEY_DD_STRESS_CONC_TOP, KEY_DD_STRESS_CONC_ALLOWABLE,
+    KEY_DD_STRESS_REINF_BOTTOM, KEY_DD_STRESS_REINF_TOP, KEY_DD_STRESS_REINF_ALLOWABLE,
+    KEY_DD_CRACK_WK_BOTTOM, KEY_DD_CRACK_WK_TOP, KEY_DD_CRACK_WK_LIMIT,
+>>>>>>> Stashed changes
 )
 
 # ── constants ─────────────────────────────────────────────────────────────────
@@ -491,13 +503,27 @@ def design_deck_slab(input_dict: dict, fck: float, fctm: float, fy: float, Es: f
     ur_bot_shear = V_ULS_bot_shear / VRd_c_bot if VRd_c_bot > 0 else 9.999
 
     # Punching shear — wheel on interior slab (load dispersed through wearing course)
+<<<<<<< Updated upstream
+<<<<<<< Updated upstream
     # ULS design wheel load: γ_LL × impact factor × characteristic wheel load (IRC 112 Cl.10.4).
     P_wheel_uls_kN = gamma_ll * impact_factor * P_wheel_kN
+=======
+>>>>>>> Stashed changes
+=======
+>>>>>>> Stashed changes
     wc_t_mm = wc_t_m * 1000.0
     c1_mm = _wheel_contact_width_m(vehicle_class) * 1000.0 + 2.0 * wc_t_mm   # transverse
     c2_mm = _wheel_contact_length_mm(vehicle_class) + 2.0 * wc_t_mm           # longitudinal
     u1_bot_mm = 2.0 * (c1_mm + c2_mm) + 4.0 * math.pi * d_bot_mm
+<<<<<<< Updated upstream
+<<<<<<< Updated upstream
     v_Ed_bot_punch = P_wheel_uls_kN * 1000.0 / (u1_bot_mm * d_bot_mm)
+=======
+    v_Ed_bot_punch = P_wheel_kN * 1000.0 / (u1_bot_mm * d_bot_mm)
+>>>>>>> Stashed changes
+=======
+    v_Ed_bot_punch = P_wheel_kN * 1000.0 / (u1_bot_mm * d_bot_mm)
+>>>>>>> Stashed changes
     punch_bot_ok = v_Rd_c_bot >= v_Ed_bot_punch
     ur_bot_punch = v_Ed_bot_punch / v_Rd_c_bot if v_Rd_c_bot > 0 else 9.999
 
@@ -511,7 +537,15 @@ def design_deck_slab(input_dict: dict, fck: float, fctm: float, fy: float, Es: f
         shear_oh_ok = VRd_c_oh >= V_ULS_oh_shear
         ur_oh_shear = V_ULS_oh_shear / VRd_c_oh if VRd_c_oh > 0 else 9.999
         u1_oh_mm = 2.0 * (c1_mm + c2_mm) + 4.0 * math.pi * d_oh_mm
+<<<<<<< Updated upstream
+<<<<<<< Updated upstream
         v_Ed_oh_punch = P_wheel_uls_kN * 1000.0 / (u1_oh_mm * d_oh_mm)
+=======
+        v_Ed_oh_punch = P_wheel_kN * 1000.0 / (u1_oh_mm * d_oh_mm)
+>>>>>>> Stashed changes
+=======
+        v_Ed_oh_punch = P_wheel_kN * 1000.0 / (u1_oh_mm * d_oh_mm)
+>>>>>>> Stashed changes
         punch_oh_ok = v_Rd_c_oh >= v_Ed_oh_punch
         ur_oh_punch = v_Ed_oh_punch / v_Rd_c_oh if v_Rd_c_oh > 0 else 9.999
         overhang_shear_lines = [
@@ -729,12 +763,33 @@ def design_deck_slab(input_dict: dict, fck: float, fctm: float, fy: float, Es: f
         "rebar_top_spacing"      : f"{spc_top:.0f}",
         "rebar_top_cover"        : f"{cover_top_mm:.0f}",
         "rebar_top_area"         : f"{As_top:.0f}",
+<<<<<<< Updated upstream
+<<<<<<< Updated upstream
         # ── longitudinal (distribution) reinforcement ────────────────────────
         "rebar_long_yield"       : f"{fy:.0f}",
         "rebar_long_dia"         : f"{dia_long:.0f}",
         "rebar_long_spacing"     : f"{spc_long:.0f}",
         "rebar_long_cover"       : f"{cover_bot_mm:.0f}",
         "rebar_long_area"        : f"{As_long:.0f}",
+=======
+=======
+>>>>>>> Stashed changes
+        # ── SLS stress demand / limit (interior) ────────────────────────────
+        # Bottom & top fibre share one material limit (0.48 fck / 0.80 fyk).
+        KEY_DD_STRESS_CONC_BOTTOM    : round(sc_bot["sigma_c"], 3),
+        KEY_DD_STRESS_CONC_TOP       : round(sc_top["sigma_c"], 3),
+        KEY_DD_STRESS_CONC_ALLOWABLE : round(sc_bot["sc_lim"],  3),
+        KEY_DD_STRESS_REINF_BOTTOM   : round(sc_bot["sigma_s"], 3),
+        KEY_DD_STRESS_REINF_TOP      : round(sc_top["sigma_s"], 3),
+        KEY_DD_STRESS_REINF_ALLOWABLE: round(sc_bot["ss_lim"],  3),
+        # ── crack width (interior, frequent combination) ─────────────────────
+        KEY_DD_CRACK_WK_BOTTOM       : round(cw_bot["wk"], 4),
+        KEY_DD_CRACK_WK_TOP          : round(cw_top["wk"], 4),
+        KEY_DD_CRACK_WK_LIMIT        : cw_bot["wk_lim"],
+<<<<<<< Updated upstream
+>>>>>>> Stashed changes
+=======
+>>>>>>> Stashed changes
         # ── utilization ratios (interior) ────────────────────────────────────
         "ur_bot_uls"             : round(ur_bot_uls, 3),
         "ur_top_uls"             : round(ur_top_uls, 3),

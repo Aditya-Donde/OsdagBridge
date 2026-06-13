@@ -827,13 +827,13 @@ class OutputDock(QWidget):
                 cb.toggled.connect(lambda _: callback())
 
     def open_generate_results_dialog(self):
-        if self.backend.get_results_dataset() is None:
-            CustomMessageBox(
-                title="Warning",
-                text="No design created!",
-                dialogType=MessageBoxType.Warning
-            ).exec()
-            return
+        # if self.backend.get_results_dataset() is None:
+        #     CustomMessageBox(
+        #         title="Warning",
+        #         text="No design created!",
+        #         dialogType=MessageBoxType.Warning
+        #     ).exec()
+        #     return
 
         input_dict = getattr(self.parent, "input_dict", {})
 
