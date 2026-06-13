@@ -264,6 +264,241 @@ class BridgeInputValidator:
 
         # ═══TYPICAL-SECTION-TAB-VALIDATORS-ENDS═══════════════════════════════════════════════════════════
 
+        # ═══MEMBER-PROPERTIES-TAB-VALIDATORS-STARTS══════════════════════════════════════════════════════
+
+        # ── Girder Details: Segment Chain ─────────────────────────────────────
+        elif key == "member_properties.girder_details.segment_chain":  # placeholder – KEY_GIRDER_SEGMENT_CHAIN not yet defined
+            chain = inputs.get(key)
+            if not isinstance(chain, list) or len(chain) == 0:
+                return None
+            span = self._to_float(inputs.get(KEY_SPAN))
+            corrected = [dict(seg) if isinstance(seg, dict) else seg for seg in chain]
+            changed = False
+            for i in range(len(chain)):
+                seg = chain[i]
+                if not isinstance(seg, dict):
+                    continue
+                end = self._to_float(seg.get("end"))
+                if end is None:
+                    corrected[i]["end"] = 0.0
+                    changed = True
+                    continue
+                if i < len(chain) - 1:
+                    next_seg = chain[i + 1]
+                    next_end = self._to_float(next_seg.get("end")) if isinstance(next_seg, dict) else None
+                    if next_end is not None and end > next_end:
+                        corrected[i]["end"] = next_end
+                        changed = True
+            if span is not None and len(corrected) > 0:
+                last = corrected[-1]
+                if isinstance(last, dict):
+                    last_end = self._to_float(last.get("end"))
+                    if last_end is None or abs(last_end - span) > 1e-4:
+                        corrected[-1]["end"] = span
+                        changed = True
+            if changed:
+                return corrected, "Segment end values must be numeric, in ascending order, and the last segment end must equal the span length."
+
+        # ── Girder Details: Support Width ─────────────────────────────────────
+        elif key == "member_properties.girder_details.section_input.support_width":  # placeholder – KEY_GIRDER_SUPPORT_WIDTH not yet defined
+            v = self._to_float(inputs.get(key))
+            if v is None: return 400, "Support width must be a numeric value."
+            if v < 150:   return 150, "Support width must be between 150 mm and 800 mm (practical range for composite bridge girders per MoRTH/IRC)."
+            if v > 800:   return 800, "Support width must be between 150 mm and 800 mm (practical range for composite bridge girders per MoRTH/IRC)."
+
+        # ── Girder Details: Total Depth ───────────────────────────────────────
+        elif key == KEY_MP_GIRDER_DEPTH:
+            design_mode = str(inputs.get(KEY_DESIGN_MODE) or "").strip().lower()
+            if design_mode == "optimized":
+                bounds = inputs.get(key)
+                if not isinstance(bounds, dict):
+                    return {"lower": 200, "upper": 2000, "increment": 25}, "Total depth bounds must be specified."
+                lower     = self._to_int(bounds.get("lower"))
+                upper     = self._to_int(bounds.get("upper"))
+                increment = self._to_int(bounds.get("increment"))
+                corrected = dict(bounds)
+                changed   = False
+                if lower is None:     lower = 200;  changed = True
+                if upper is None:     upper = 2000; changed = True
+                if increment is None: increment = 25; changed = True
+                if lower < 200:       lower = 200;  changed = True
+                if lower > 3000:      lower = 3000; changed = True
+                if upper < 200:       upper = 200;  changed = True
+                if upper > 3000:      upper = 3000; changed = True
+                if upper < lower:     upper = lower; changed = True
+                if increment <= 0:    increment = 25; changed = True
+                if upper > lower and increment > (upper - lower):
+                    increment = upper - lower; changed = True
+                if changed:
+                    corrected.update({"lower": lower, "upper": upper, "increment": increment})
+                    return corrected, "Total depth bounds: lower and upper must be integers between 200 and 3000 mm, with upper >= lower. Increment must be a positive integer not exceeding the bound range."
+            else:  # Custom
+                v = self._to_float(inputs.get(key))
+                if v is None: return 200,  "Total depth must be a numeric value."
+                if v < 200:   return 200,  "Total depth must be between 200 and 3000 mm."
+                if v > 3000:  return 3000, "Total depth must be between 200 and 3000 mm."
+
+        # ── Girder Details: Top Flange Width ──────────────────────────────────
+        elif key == KEY_MP_GIRDER_TOP_FLANGE_WIDTH:
+            design_mode = str(inputs.get(KEY_DESIGN_MODE) or "").strip().lower()
+            if design_mode == "optimized":
+                bounds = inputs.get(key)
+                if not isinstance(bounds, dict):
+                    return {"lower": 100, "upper": 1000, "increment": 10}, "Top flange width bounds must be specified."
+                lower     = self._to_int(bounds.get("lower"))
+                upper     = self._to_int(bounds.get("upper"))
+                increment = self._to_int(bounds.get("increment"))
+                corrected = dict(bounds)
+                changed   = False
+                if lower is None:     lower = 100;  changed = True
+                if upper is None:     upper = 1000; changed = True
+                if increment is None: increment = 10; changed = True
+                if lower < 100:       lower = 100;  changed = True
+                if lower > 1500:      lower = 1500; changed = True
+                if upper < 100:       upper = 100;  changed = True
+                if upper > 1500:      upper = 1500; changed = True
+                if upper < lower:     upper = lower; changed = True
+                if increment <= 0:    increment = 10; changed = True
+                if upper > lower and increment > (upper - lower):
+                    increment = upper - lower; changed = True
+                if changed:
+                    corrected.update({"lower": lower, "upper": upper, "increment": increment})
+                    return corrected, "Top flange width bounds: lower and upper must be integers between 100 and 1500 mm, with upper >= lower. Increment must be a positive integer not exceeding the bound range."
+            else:  # Custom
+                v = self._to_float(inputs.get(key))
+                if v is None: return 100,  "Top flange width must be a numeric value."
+                if v < 100:   return 100,  "Top flange width must be between 100 and 1500 mm."
+                if v > 1500:  return 1500, "Top flange width must be between 100 and 1500 mm."
+
+        # ── Girder Details: Bottom Flange Width ───────────────────────────────
+        elif key == KEY_MP_GIRDER_BOTTOM_FLANGE_WIDTH:
+            design_mode = str(inputs.get(KEY_DESIGN_MODE) or "").strip().lower()
+            if design_mode == "optimized":
+                bounds = inputs.get(key)
+                if not isinstance(bounds, dict):
+                    return {"lower": 100, "upper": 1000, "increment": 10}, "Bottom flange width bounds must be specified."
+                lower     = self._to_int(bounds.get("lower"))
+                upper     = self._to_int(bounds.get("upper"))
+                increment = self._to_int(bounds.get("increment"))
+                corrected = dict(bounds)
+                changed   = False
+                if lower is None:     lower = 100;  changed = True
+                if upper is None:     upper = 1000; changed = True
+                if increment is None: increment = 10; changed = True
+                if lower < 100:       lower = 100;  changed = True
+                if lower > 1500:      lower = 1500; changed = True
+                if upper < 100:       upper = 100;  changed = True
+                if upper > 1500:      upper = 1500; changed = True
+                if upper < lower:     upper = lower; changed = True
+                if increment <= 0:    increment = 10; changed = True
+                if upper > lower and increment > (upper - lower):
+                    increment = upper - lower; changed = True
+                if changed:
+                    corrected.update({"lower": lower, "upper": upper, "increment": increment})
+                    return corrected, "Bottom flange width bounds: lower and upper must be integers between 100 and 1500 mm, with upper >= lower. Increment must be a positive integer not exceeding the bound range."
+            else:  # Custom
+                v = self._to_float(inputs.get(key))
+                if v is None: return 100,  "Bottom flange width must be a numeric value."
+                if v < 100:   return 100,  "Bottom flange width must be between 100 and 1500 mm."
+                if v > 1500:  return 1500, "Bottom flange width must be between 100 and 1500 mm."
+
+        # ── Girder Details: Thickness Selections (Optimized only) ─────────────
+        elif key == KEY_MP_GIRDER_TOP_FLANGE_THICKNESS:
+            selected = inputs.get(key)
+            if not isinstance(selected, list) or len(selected) == 0:
+                return SAIL_APPROVED_THICKNESS_VALUES, "At least one top flange thickness value must be selected."
+
+        elif key == KEY_MP_GIRDER_BOTTOM_FLANGE_THICKNESS:
+            selected = inputs.get(key)
+            if not isinstance(selected, list) or len(selected) == 0:
+                return SAIL_APPROVED_THICKNESS_VALUES, "At least one bottom flange thickness value must be selected."
+
+        elif key == KEY_MP_GIRDER_WEB_THICKNESS:
+            selected = inputs.get(key)
+            if not isinstance(selected, list) or len(selected) == 0:
+                return SAIL_APPROVED_THICKNESS_VALUES, "At least one web thickness value must be selected."
+
+        # ── Stiffener Details (Custom design only) ────────────────────────────
+        elif key == KEY_MP_STIFFENER_SPACING:
+            v         = self._to_float(inputs.get(key))
+            support_w = self._to_float(inputs.get("member_properties.girder_details.section_input.support_width")) or 400.0  # placeholder key
+            if v is None: return 75, "Bearing stiffener spacing must be a numeric value."
+            if v < 75:    return 75, "Bearing stiffener spacing must be at least 75 mm."
+            if v > support_w:
+                return support_w, f"Bearing stiffener spacing must not exceed the support width ({support_w:.0f} mm)."
+
+        elif key == KEY_MP_STIFFENER_BEARING_OUTSTAND:
+            v       = self._to_float(inputs.get(key))
+            tf_top  = self._to_float(inputs.get(KEY_MP_GIRDER_TOP_FLANGE_WIDTH))
+            tf_bot  = self._to_float(inputs.get(KEY_MP_GIRDER_BOTTOM_FLANGE_WIDTH))
+            web_t   = self._to_float(inputs.get(KEY_MP_GIRDER_WEB_THICKNESS))
+            flanges = [f for f in [tf_top, tf_bot] if f is not None]
+            max_os  = ((min(flanges) - (web_t or 0.0)) / 2.0) if flanges else None
+            if max_os is not None: max_os = max(max_os, 0.0)
+            if v is None: return 0, "Outstand of bearing stiffener must be a numeric value."
+            if v < 0:     return 0, "Outstand of bearing stiffener must be at least 0 mm."
+            if max_os is not None and v > max_os:
+                return max_os, f"Outstand of bearing stiffener must not exceed {max_os:.1f} mm ((min flange width - web thickness) / 2)."
+
+        elif key == KEY_MP_STIFFENER_INTERMEDIATE_SPACING:
+            v = self._to_float(inputs.get(key))
+            if v is None: return 75,   "Intermediate stiffener spacing must be a numeric value."
+            if v < 75:    return 75,   "Intermediate stiffener spacing must be between 75 and 3000 mm."
+            if v > 3000:  return 3000, "Intermediate stiffener spacing must be between 75 and 3000 mm."
+
+        elif key == KEY_MP_STIFFENER_INTERMEDIATE_OUTSTAND:
+            v       = self._to_float(inputs.get(key))
+            tf_top  = self._to_float(inputs.get(KEY_MP_GIRDER_TOP_FLANGE_WIDTH))
+            tf_bot  = self._to_float(inputs.get(KEY_MP_GIRDER_BOTTOM_FLANGE_WIDTH))
+            web_t   = self._to_float(inputs.get(KEY_MP_GIRDER_WEB_THICKNESS))
+            flanges = [f for f in [tf_top, tf_bot] if f is not None]
+            max_os  = ((min(flanges) - (web_t or 0.0)) / 2.0) if flanges else None
+            if max_os is not None: max_os = max(max_os, 0.0)
+            if v is None: return 0, "Outstand of intermediate stiffener must be a numeric value."
+            if v < 0:     return 0, "Outstand of intermediate stiffener must be at least 0 mm."
+            if max_os is not None and v > max_os:
+                return max_os, f"Outstand of intermediate stiffener must not exceed {max_os:.1f} mm ((min flange width - web thickness) / 2)."
+
+        # ── Cross Bracing Details ─────────────────────────────────────────────
+        elif key == KEY_MP_CB_COUNT:  # placeholder - KEY_NO_C...
+            v    = self._to_int(inputs.get(key))
+            span = self._to_float(inputs.get(KEY_SPAN))
+            max_cb = int(floor(span - 1)) if span is not None and span > 1 else 1
+            if v is None: return 1, "No. of cross bracings must be an integer value."
+            if v < 1:     return 1, "No. of cross bracings must be at least 1."
+            if v > max_cb:
+                return max_cb, f"No. of cross bracings must not exceed {max_cb} for the given span."
+
+        # ── End Diaphragm Details (Custom, Welded Beam only) ──────────────────
+        elif key == "member_properties.end_diaphragm_details.welded_beam.depth":  # placeholder – KEY_END_DIAPHRAGM_WELDED_DEPTH not yet defined
+            end_type    = str(inputs.get(KEY_END_DIAPHRAGM_TYPE) or "").strip()
+            design_mode = str(inputs.get(KEY_DESIGN_MODE) or "").strip().lower()
+            if end_type == "Welded Beam" and design_mode == "custom":
+                v = self._to_float(inputs.get(key))
+                if v is None: return 200,  "End diaphragm (Welded Beam) depth must be a numeric value."
+                if v < 200:   return 200,  "End diaphragm (Welded Beam) depth must be between 200 and 3000 mm."
+                if v > 3000:  return 3000, "End diaphragm (Welded Beam) depth must be between 200 and 3000 mm."
+
+        elif key == "member_properties.end_diaphragm_details.welded_beam.top_flange_width":  # placeholder – KEY_END_DIAPHRAGM_WELDED_TOP_FLANGE_WIDTH not yet defined
+            end_type    = str(inputs.get(KEY_END_DIAPHRAGM_TYPE) or "").strip()
+            design_mode = str(inputs.get(KEY_DESIGN_MODE) or "").strip().lower()
+            if end_type == "Welded Beam" and design_mode == "custom":
+                v = self._to_float(inputs.get(key))
+                if v is None: return 100,  "End diaphragm (Welded Beam) top flange width must be a numeric value."
+                if v < 100:   return 100,  "End diaphragm (Welded Beam) top flange width must be between 100 and 1500 mm."
+                if v > 1500:  return 1500, "End diaphragm (Welded Beam) top flange width must be between 100 and 1500 mm."
+
+        elif key == "member_properties.end_diaphragm_details.welded_beam.bottom_flange_width":  # placeholder – KEY_END_DIAPHRAGM_WELDED_BOTTOM_FLANGE_WIDTH not yet defined
+            end_type    = str(inputs.get(KEY_END_DIAPHRAGM_TYPE) or "").strip()
+            design_mode = str(inputs.get(KEY_DESIGN_MODE) or "").strip().lower()
+            if end_type == "Welded Beam" and design_mode == "custom":
+                v = self._to_float(inputs.get(key))
+                if v is None: return 100,  "End diaphragm (Welded Beam) bottom flange width must be a numeric value."
+                if v < 100:   return 100,  "End diaphragm (Welded Beam) bottom flange width must be between 100 and 1500 mm."
+                if v > 1500:  return 1500, "End diaphragm (Welded Beam) bottom flange width must be between 100 and 1500 mm."
+
+        # ═══MEMBER-PROPERTIES-TAB-VALIDATORS-ENDS════════════════════════════════════════════════════════
+
         # ═══LOADING-TAB-VALIDATORS-STARTS════════════════════════════════════════════════════════════════
         # ── Permanent Load ─────────────────────────────────────────────────────
         elif key == KEY_PL_SELF_WEIGHT_FACTOR:
@@ -413,7 +648,6 @@ class BridgeInputValidator:
         # ═══SUPPORT-CONDITION-TAB-VALIDATORS-STARTS═════════════════════════════════════════════════════
         
         # ═══SUPPORT-CONDITION-TAB-VALIDATORS-ENDS═══════════════════════════════════════════════════════
-
 
         # ═══ANALYSIS/DESIGN-OPTIONS-TAB-VALIDATORS-STARTS═════════════════════════════════════════════════════
 
