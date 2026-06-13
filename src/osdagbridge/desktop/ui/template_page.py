@@ -19,6 +19,7 @@ from osdagbridge.desktop.ui.cad_3d import CAD3DWindow
 from osdagbridge.core.bridge_types.plate_girder.ui_fields import FrontendData
 from osdagbridge.core.bridge_types.plate_girder.defaults import BASIC_INPUT_DICT, solve_extend_basic_input_dict
 from osdagbridge.core.utils.common import *
+from osdagbridge.core.utils.osi_validator import validate_osi_inputs
 from osdagbridge.desktop.ui.utils.custom_widgets import ToolBarWidget
 
 
@@ -670,6 +671,21 @@ class CustomWindow(QWidget):
 
             if not isinstance(data, dict):
                 raise ValueError("File does not contain a valid input dictionary.")
+
+            # Reject hand-edited files with invalid values (e.g. span: abcd)
+            # before they are populated into the UI, so a bad OSI file cannot
+            # silently lead to a failed design.
+            validation = validate_osi_inputs(data)
+            if not validation.is_valid:
+                CustomMessageBox(
+                    title="Invalid OSI File",
+                    text=(
+                        "The OSI file contains invalid values and was not loaded:\n\n"
+                        f"{validation.error_text(limit=10)}"
+                    ),
+                    dialogType=MessageBoxType.Warning
+                ).exec()
+                return
 
             self.input_dock.populate_from_dict(data)
 
