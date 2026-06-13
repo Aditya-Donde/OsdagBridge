@@ -283,7 +283,6 @@ def resolve_girder_section_properties(input_dict: dict, bridge=None) -> dict | N
 
 def resolve_cross_bracing_section_properties(input_dict: dict, bridge=None) -> dict | None:
     cb_type    = input_dict.get(KEY_MP_CB_TYPE)
-    cb_section = input_dict.get(KEY_MP_CB_SECTION )
     cb_spacing = input_dict.get(KEY_MP_CB_SPACING)
 
     if not _has(cb_type, cb_spacing):
@@ -298,8 +297,7 @@ def resolve_cross_bracing_section_properties(input_dict: dict, bridge=None) -> d
             "Spacing (m)",
         ],
         "rows": [[
-            _val(cb_type),
-            _val(cb_section),
+            _val(cb_type),  
             _num(cb_spacing),
         ]],
     }
