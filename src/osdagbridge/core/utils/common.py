@@ -558,6 +558,11 @@ KEY_SD_IS_IYS_MIN       = "steeldesign.details.int_stiffener.iys_min"      # onl
 KEY_SD_IS_IYS_PROV      = "steeldesign.details.int_stiffener.iys_prov"     # only for report
 KEY_SD_IS_FQ            = "steeldesign.details.int_stiffener.fq"           # only for report
 KEY_SD_IS_FQD           = "steeldesign.details.int_stiffener.fqd"          # only for report
+KEY_SD_BS_R             = "steeldesign.details.bearing_stiffener.reaction"     # only for report
+KEY_SD_BS_FCDW_WB       = "steeldesign.details.bearing_stiffener.fcdw_wb"      # only for report
+KEY_SD_BS_FCDW_LC       = "steeldesign.details.bearing_stiffener.fcdw_lc"      # only for report
+KEY_SD_BS_FPSD          = "steeldesign.details.bearing_stiffener.fpsd"         # only for report
+KEY_SD_BS_FCD           = "steeldesign.details.bearing_stiffener.fcd"          # only for report
 KEY_SD_CLASS_FLANGE       = "steeldesign.details.classification.flange_class"        # only for report
 KEY_SD_CLASS_WEB          = "steeldesign.details.classification.web_class"           # only for report
 

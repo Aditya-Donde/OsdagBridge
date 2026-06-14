@@ -195,6 +195,11 @@ from osdagbridge.core.utils.common import (
     KEY_SD_IS_IYS_PROV,
     KEY_SD_IS_FQ,
     KEY_SD_IS_FQD,
+    KEY_SD_BS_R,
+    KEY_SD_BS_FCDW_WB,
+    KEY_SD_BS_FCDW_LC,
+    KEY_SD_BS_FPSD,
+    KEY_SD_BS_FCD,
     # Stiffener table
     KEY_SD_STIFFENER_ROW_INTERMEDIATE,
     KEY_SD_STIFFENER_ROW_LONGITUDINAL,
@@ -3925,6 +3930,15 @@ class PlateGirderBridge:
         out[KEY_SD_IS_IYS_PROV]        = round(dr["is_Iys_prov_mm4"], 0)                          # mm⁴
         out[KEY_SD_IS_FQ]              = round(dr["is_Fq_kN"], 2)                                 # kN
         out[KEY_SD_IS_FQD]             = round(dr["is_Fqd_kN"], 2)                                # kN
+
+        # ── 4i. Bearing stiffener checks (Table 5.9) — IS 800 Cl.8.7.3 ──────────
+        # End panel == bearing stiffener for this bridge. Resistances vs reaction R.
+        # Populated in full-check mode; 0 in guidance-only (optimized w/o outstand).
+        out[KEY_SD_BS_R]               = round(dr["bs_R_kN"], 2)                                  # kN
+        out[KEY_SD_BS_FCDW_WB]         = round(dr["bs_Fcdw_wb_kN"], 2)                            # kN
+        out[KEY_SD_BS_FCDW_LC]         = round(dr["bs_Fcdw_lc_kN"], 2)                            # kN
+        out[KEY_SD_BS_FPSD]            = round(dr["bs_Fpsd_kN"], 2)                               # kN
+        out[KEY_SD_BS_FCD]             = round(dr["bs_Fcd_kN"], 2)                                # kN
 
         # In store_design_results(), replace the stiffener section (── 5. Stiffener table ──) with:
 

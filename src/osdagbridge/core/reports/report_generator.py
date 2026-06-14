@@ -265,6 +265,11 @@ from osdagbridge.core.utils.common import (
     KEY_SD_IS_IYS_PROV,
     KEY_SD_IS_FQ,
     KEY_SD_IS_FQD,
+    KEY_SD_BS_R,
+    KEY_SD_BS_FCDW_WB,
+    KEY_SD_BS_FCDW_LC,
+    KEY_SD_BS_FPSD,
+    KEY_SD_BS_FCD,
     # Utilizations
     KEY_UTIL_FLEXURE,
     KEY_UTIL_SHEAR,
@@ -1644,15 +1649,34 @@ def ch5_design_checks(checks_data, bridge: "ReportDataBridge"):
     else:
         t58_block = ""
 
-    # Generate Table 5.9 rows
+    # Generate Table 5.9 rows — bearing stiffener checks (IS 800 Cl.8.7.3).
+    # End panel == bearing stiffener for this bridge. Each resistance vs reaction R.
+    # Resistances are 0 in guidance-only mode (optimized w/o outstand) → N/A until
+    # the designer defaults outstand to (bf−tw)/2.
+    _bs_r = bridge.output_dict.get(KEY_SD_BS_R)
+    def _bs_check(resist_key):
+        prov = bridge.output_dict.get(resist_key)
+        # Resistance not computed (guidance mode) → N/A.
+        if prov is None or float(prov) <= 0.0 or _bs_r is None:
+            return ("N/A", "N/A", "N/A")
+        req_s  = f"{_bs_r} kN"
+        prov_s = f"{prov} kN"
+        status = "PASS" if float(prov) >= float(_bs_r) else r"\textcolor{red}{FAIL}"
+        return (req_s, prov_s, status)
+    _wb_req, _wb_prov, _wb_st = _bs_check(KEY_SD_BS_FCDW_WB)
+    _lc_req, _lc_prov, _lc_st = _bs_check(KEY_SD_BS_FCDW_LC)
+    _ps_req, _ps_prov, _ps_st = _bs_check(KEY_SD_BS_FPSD)
+    _cb_req, _cb_prov, _cb_st = _bs_check(KEY_SD_BS_FCD)
     t59_rows = []
     for lbl, _ in girder_entries:
         t59_rows.append(
-            r"\multirow{3}{*}{\makecell{" + lbl + r"""}} & Vertical Anchor Force, $V_p$ &  &  & --- \\[6pt]
+            r"\multirow{4}{*}{\makecell{" + lbl + r"""}} & Web Buckling Resistance & """ + _wb_req + r""" & """ + _wb_prov + r""" & """ + _wb_st + r""" \\[6pt]
 \cline{2-5}
- & Tension Flange Reaction, $R_{tf}$ &  &  & --- \\[6pt]
+ & Local Crushing Resistance & """ + _lc_req + r""" & """ + _lc_prov + r""" & """ + _lc_st + r""" \\[6pt]
 \cline{2-5}
- & Tension Flange Moment, $M_{tf}$ &  &  & --- \\[6pt]
+ & Bearing Capacity & """ + _ps_req + r""" & """ + _ps_prov + r""" & """ + _ps_st + r""" \\[6pt]
+\cline{2-5}
+ & Column Buckling Resistance & """ + _cb_req + r""" & """ + _cb_prov + r""" & """ + _cb_st + r""" \\[6pt]
 \hline"""
         )
     t59_content = "\n".join(t59_rows)

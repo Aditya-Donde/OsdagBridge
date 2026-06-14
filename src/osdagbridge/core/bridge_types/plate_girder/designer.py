@@ -452,6 +452,14 @@ class BridgeConfig:
         # max(Vu) in run_design_check().
         def _optfloat(key, default=0.0):
             v = ai.get(key)
+            # Stiffener fields (bearing + intermediate) are stored per-member as
+            # "<key>.G{n}.M{m}", not under the bare base key — fall back to the
+            # first available girder/member value.
+            if v is None:
+                for k in ai:
+                    if k.startswith(key + ".G"):
+                        v = ai[k]
+                        break
             if v is None or str(v).strip() in ("", "NA", "None"):
                 return default
             try:
@@ -1631,7 +1639,10 @@ class IRC22CapacityCalculator:
         # Physical outstand limit (same formula as intermediate stiffener)
         H_max = (min(sec.bf_top, sec.bf_bot) - tw) / 2.0
 
-        full_check = cfg.bs_tq_mm > 0 and cfg.bs_H_mm > 0
+        # Outstand defaults to the physical limit H_max = (bf − tw)/2 when the
+        # user has not provided one (optimized design), so the full verification
+        # still runs instead of falling back to guidance-only sizing.
+        full_check = cfg.bs_tq_mm > 0
 
         if not full_check:
             # Design guidance: minimum tq from bearing contact check at H_max
@@ -1653,7 +1664,7 @@ class IRC22CapacityCalculator:
 
         # ── Full verification ────────────────────────────────────────────────────────
         tq = cfg.bs_tq_mm
-        H  = cfg.bs_H_mm
+        H  = cfg.bs_H_mm if cfg.bs_H_mm > 0 else H_max     # default outstand → (bf − tw)/2
 
         # b1: stiff bearing length — user-provided or auto from IS 800 Cl.8.7.1.3
         if cfg.bs_b1_mm > 0:
