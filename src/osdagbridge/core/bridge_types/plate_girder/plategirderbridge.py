@@ -2829,6 +2829,7 @@ class PlateGirderBridge:
         if forces_dict.get("pairs"):
             self._print_enddiaphragm_design_results(forces_dict, pair_designs)
         
+        self.output_dict["end_diaphragm_forces_dict"] = forces_dict
         self.end_diaphragm_design_results = pair_designs
         return pair_designs
 

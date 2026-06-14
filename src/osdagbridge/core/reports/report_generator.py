@@ -2072,6 +2072,8 @@ Fatigue Shear Resistance, $Q_r$ & IRC 22 Table 8 ($\phi d$, $N_{sc}$) & """
         cb_capacity_rows.append(r"\hline")
     cb_capacity_content = "\n".join(cb_capacity_rows)
 
+
+
     # ── Deck slab design value helpers (Tables 5.17 a/b/c/e/g) ────────────────
     # Read from deck_rpt = output_dict["deck_report_values"] (common.KEY_DD_*).
     # Tables 5.17(d) punching shear and 5.17(f) one-way shear stay as
@@ -2517,47 +2519,46 @@ Cross bracing between adjacent plate girders provides lateral stability during c
 End diaphragms at the supports transfer transverse loads to the bearings, restrain the bottom flanges against lateral displacement, and maintain the girder cross-section geometry during construction and in service. They are designed per IS~800:2007 and IRC~24:2010 Cl.~507.
 
 \vspace{1em}
-\noindent\textbf{Table 5.21(a)  End Diaphragm --- Member Properties and Forces}
+\noindent\textbf{Table 5.21(a)  End Diaphragm --- Connection and Section Properties}
 
-\begin{longtable}{|L{5.5cm}|p{10.0cm}|}
+\vspace{0.4em}
+\noindent
+\setlength{\tabcolsep}{4pt}
+\begin{longtable}{|C{2.0cm}|C{2.0cm}|C{2.2cm}|C{2.5cm}|C{2.0cm}|C{2.0cm}|}
 \hline
-\textbf{End Diaphragm Type} & } \\[6pt]
+\textbf{Panel} & \textbf{Member} & \textbf{Connection} & \textbf{Section} & \textbf{$A_g$ (mm²)} & \textbf{$r_{min}$ (mm)} \\[6pt]
 \hline
-\textbf{Section Designation} &  \\[6pt]
-\hline
-\textbf{Diaphragm Span (c/c girder spacing)} &  mm \\[6pt]
-\hline
-\textbf{Governing Load Combination} &  (DL + LL) \\[6pt]
-\hline
-\textbf{Max.\ Bending Moment, $M_u$} &  kN-m \\[6pt]
-\hline
-\textbf{Max.\ Shear Force, $V_u$} &  kN \\[6pt]
-\hline
-\textbf{Axial Force, $P_u$ (diagonal members)} &  kN \\[6pt]
-\hline
+""" + cb_forces_content + r"""
 \end{longtable}
+\noindent\textit{Note: $A_g$ = gross cross-sectional area; $r_{min}$ = minimum radius of gyration.}
 
 \vspace{1em}
-\noindent\textbf{Table 5.21(b)  End Diaphragm Design --- Capacity Checks}
+\noindent\textbf{Table 5.21(b)  End Diaphragm --- Slenderness Ratio Check (IS~800 Cl.~3.8 \& Table~3)}
 
-\begin{longtable}{|C{4cm}|L{5cm}|>{\arraybackslash}p{6.5cm}|}
+\begin{longtable}{|C{2.2cm}|C{2.2cm}|C{2.5cm}|C{2.5cm}|C{2.5cm}|>{\centering\arraybackslash}p{3.6cm}|}
 \hline
-\multirow{7}{*}{\makecell{\textbf{End Diaphragm}\\\textbf{( and)}\\\textbf{(G2--G3, etc.)}}} & \textbf{Section Designation} &  \\[6pt]
-\cline{2-3}
- & \textbf{Moment Demand, $M_u$} &  \\[6pt]
-\cline{2-3}
- & \textbf{Moment Capacity, $M_d$} &  \\[6pt]
-\cline{2-3}
- & \textbf{Shear Demand, $V_u$} &  \\[6pt]
-\cline{2-3}
- & \textbf{Shear Capacity, $V_d$} &  \\[6pt]
-\cline{2-3}
- & \textbf{Max.\ Utilization Ratio} &  \\[6pt]
-\cline{2-3}
- & \textbf{Status} &  \\[6pt]
+\textbf{Panel} & \textbf{Member} & \textbf{Nature} & \textbf{Eff.\ Length $KL$ (mm)} & \textbf{$KL/r$} & \textbf{Limit / Status} \\[6pt]
 \hline
+""" + cb_slenderness_content + r"""
 \end{longtable}
-\noindent\textit{Note: IS 800:2007 Cl. 8.2 (moment capacity), Cl. 8.4 (shear capacity). IRC 24:2010 Cl. 507 (diaphragm requirements).}
+\noindent\textit{Note:  3. Limit = 250 for compression members, 400 for tension members. $K = 1.0$ for members with both ends pinned.}
+
+
+\vspace{1em}
+\noindent\textbf{Table 5.21(c)  End Diaphragm Design --- Capacity Summary}
+\begin{longtable}{|C{2.0cm}|C{1.8cm}|C{2.2cm}|C{3.0cm}|C{1.8cm}|C{1.8cm}|C{1.2cm}|C{1.8cm}|}
+\hline
+\textbf{Panel} & \textbf{Member} & \textbf{Section} & \textbf{Governing LC} & \textbf{Demand (kN)} & \textbf{Capacity (kN)} & \textbf{UR} & \textbf{Status} \\[6pt]
+\hline
+""" + cb_capacity_content + r"""
+\end{longtable}
+\noindent\textit{Note: Designed per IS 800 Cl. 7 (compression) and Cl. 6 (tension). OsdagBridge cross-bracing module used.}
+
+% ===========================
+\section{Overall Design Check Summary}
+\label{sec:overall-summary}
+% ===========================
+
 \vspace{1em}
 \noindent\textbf{Table 5.22  Overall Design Check Summary --- All Members}
 
@@ -3049,7 +3050,6 @@ class ReportDataBridge:
             return f"{self.get_cb_geometry().get('alpha_deg', 0):.2f}"
         except Exception:
             return ""
-
 
 def _format_project_location(pl_data):
     if not pl_data:
