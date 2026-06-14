@@ -513,6 +513,98 @@ def resolve_shear_stud_properties(input_dict: dict, bridge=None) -> dict | None:
 
 # ── Resolvers — Load Definitions ─────────────────────────────────────────────
 
+def resolve_permanent_load_summary(input_dict: dict, bridge=None) -> dict | None:
+    """
+    Total permanent dead load per girder (kN/m) — single cell, matching schema.
+
+    Recomputed self-contained from inputs (no analysis run required), summing the
+    same dead-load components the analyser applies, expressed as an average line
+    load per girder:
+        SW   girder self-weight × self-weight factor   (per-girder kN/m, averaged)
+        DD   concrete deck slab        (kN/m² × deck width ÷ n girders)
+        DW   wearing course / surfacing (kN/m² × deck width ÷ n girders)
+        SIDL footpath (×2 strips), crash barriers (×2), railings (×2), median (×1)
+             — line/area loads shared equally across girders.
+
+    Area loads use overall bridge width as the tributary basis. Any missing
+    input contributes zero. Sectional area is read as m² (the unit seeded by
+    defaults.py and assumed by the section-property resolvers).
+    """
+    n_girders = input_dict.get(KEY_TS_NO_OF_GIRDERS)
+    if not _has(n_girders):
+        return None
+    try:
+        n = int(n_girders)
+    except Exception:
+        return None
+    if n <= 0:
+        return None
+
+    from osdagbridge.core.bridge_components.super_structure.plate_girder.geometry import (
+        girder_self_weight_kN_m, STEEL_UNIT_WEIGHT_kN_m3,
+    )
+    from osdagbridge.core.bridge_components.super_structure.deck.geometry import (
+        slab_dead_load_kN_m2, wearing_course_dead_load_kN_m2, WET_CONCRETE_DENSITY_kN_m3,
+    )
+    from osdagbridge.core.bridge_components.super_structure.footpath.geometry import (
+        footpath_dead_load_kN_m2,
+    )
+
+    def _f(key, default=None):
+        try:
+            return float(input_dict.get(key))
+        except (TypeError, ValueError):
+            return default
+
+    # ── SW: average girder self-weight × self-weight factor ────────────────
+    sw_factor = _f(KEY_PL_SELF_WEIGHT_FACTOR, 1.0)
+    areas = [
+        a for gi in range(1, n + 1)
+        if (a := _f(f"{KEY_MP_GIRDER_SECTIONAL_AREA}.G{gi}.M1")) is not None
+    ]
+    sw = (
+        (sum(girder_self_weight_kN_m(a, STEEL_UNIT_WEIGHT_kN_m3) for a in areas) / len(areas))
+        if areas else 0.0
+    ) * sw_factor
+
+    # ── Tributary basis for distributing deck-level loads ──────────────────
+    deck_width = _f(KEY_TS_OVERALL_WIDTH, 0.0) or 0.0
+
+    # ── DD: concrete deck slab ─────────────────────────────────────────────
+    deck_t = _f(KEY_TS_DECK_THICKNESS)            # mm
+    dd = (slab_dead_load_kN_m2(deck_t / 1000.0, WET_CONCRETE_DENSITY_kN_m3) * deck_width / n
+          if deck_t else 0.0)
+
+    # ── DW: wearing course / surfacing ─────────────────────────────────────
+    wc_t   = _f(KEY_WC_THICKNESS)                 # mm
+    wc_rho = _f(KEY_WC_DENSITY)
+    if wc_t:
+        wc_kw = {} if wc_rho is None else {"density_kN_m3": wc_rho}
+        dw = wearing_course_dead_load_kN_m2(wc_t / 1000.0, **wc_kw) * deck_width / n
+    else:
+        dw = 0.0
+
+    # ── SIDL: footpath (×2) + crash barriers (×2) + railings (×2) + median ──
+    fp_w     = _f(KEY_TS_FOOTPATH_WIDTH)
+    footpath = (footpath_dead_load_kN_m2() * 2 * fp_w / n) if fp_w else 0.0
+    barrier  = (_f(KEY_CB_LOAD, 0.0) * 2) / n
+    railing  = (_f(KEY_RL_LOAD_VALUE, 0.0) * 2) / n
+    median   = (_f(KEY_MD_LOAD, 0.0)) / n
+
+    total = sw + dd + dw + footpath + barrier + railing + median
+
+    return {
+        "id":    "permanent_load_summary",
+        "label": "Permanent Load Summary",
+        "columns": [
+            "Dead Load, DL (kN/m)",
+        ],
+        "rows": [
+            [round(total, 3)],
+        ],
+    }
+
+
 def resolve_live_load_definitions(input_dict: dict, bridge=None) -> dict | None:
 
     def _yn(key: str) -> str:
@@ -538,16 +630,18 @@ def resolve_live_load_definitions(input_dict: dict, bridge=None) -> dict | None:
     ]
 
     # ── Breaking Load ─────────────────────────────────────────────────────
+    # Braking load is derived from the selected vehicle class (IRC 6 Cl. 211.2):
+    # a class's braking row is "Yes" when that vehicle is selected — except
+    # Class SV, which is an independent opt-in with its own key.
     BREAKING_LOAD_KEYS = [
-        ("Breaking Load : Class A",           KEY_BL_IRC_CLASS_A),
-        ("Breaking Load : Class AA Wheeled",  KEY_BL_IRC_AA_WHEELED),
-        ("Breaking Load : Class AA Tracked",  KEY_BL_IRC_AA_TRACKED),
-        ("Breaking Load : Class 70R Wheeled", KEY_BL_IRC_70R_WHEELED),
-        ("Breaking Load : Class 70R Tracked", KEY_BL_IRC_70R_TRACKED),
-        ("Breaking Load : Class 70R Bogie",   KEY_BL_IRC_70R_BOGIE),
+        ("Breaking Load : Class A",           KEY_LL_IRC_CLASS_A),
+        ("Breaking Load : Class AA Wheeled",  KEY_LL_IRC_AA_WHEELED),
+        ("Breaking Load : Class AA Tracked",  KEY_LL_IRC_AA_TRACKED),
+        ("Breaking Load : Class 70R Wheeled", KEY_LL_IRC_70R_WHEELED),
+        ("Breaking Load : Class 70R Tracked", KEY_LL_IRC_70R_TRACKED),
+        ("Breaking Load : Class 70R Bogie",   KEY_LL_IRC_70R_BOGIE),
         ("Breaking Load : Class SV",          KEY_BL_IRC_CLASS_SV),
-        ("Breaking Load : Class Fatigue",     KEY_BL_IRC_CLASS_FATIGUE),
-        ("Breaking Load : Eccentricity",      KEY_BL_ECCENTRICITY),
+        ("Breaking Load : Class Fatigue",     KEY_LL_IRC_CLASS_FATIGUE),
     ]
 
     rows = []
@@ -563,6 +657,13 @@ def resolve_live_load_definitions(input_dict: dict, bridge=None) -> dict | None:
 
     for label, key in BREAKING_LOAD_KEYS:
         rows.append([label, _yn(key)])
+
+    # Eccentricity is a value (m), not a Yes/No selection.
+    ecc = input_dict.get(KEY_LL_ECCENTRICITY)
+    rows.append([
+        "Breaking Load : Eccentricity from top of Deck (m)",
+        _num(ecc) if _has(ecc) else EMPTY,
+    ])
 
     # ── Footpath Pressure: mode-aware ────────────────────────────────────
     fp_mode  = input_dict.get(KEY_LL_FOOTPATH_PRESSURE_MODE)
@@ -1989,6 +2090,8 @@ RESOLVER_MAP: dict[str, callable] = {
     "deck_slab_properties":               resolve_deck_slab_properties,       # ← overrides original
 
     # ── Load Definitions ──────────────────────────────────────────────────
+    "permanent_load_summary": resolve_permanent_load_summary,
+    "live_load_definitions": resolve_live_load_definitions,
     "seismic_load_parameters": resolve_seismic_load_parameters,
     "wind_load_parameters": resolve_wind_load_parameters,
     "temperature_load_parameters": resolve_temperature_load_parameters,

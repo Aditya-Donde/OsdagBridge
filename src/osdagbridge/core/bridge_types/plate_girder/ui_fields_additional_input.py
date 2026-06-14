@@ -576,7 +576,9 @@ _LIVE_LOAD_TAB_SCHEMA = {
             "rows": [
                 {
                     "fields": [{
-                        "id":              KEY_LL_IRC_CLASS_SV,
+                        # Own key (not the vehicle KEY_LL_IRC_CLASS_SV) so the
+                        # Class SV braking opt-in is independent of vehicle selection.
+                        "id":              KEY_BL_IRC_CLASS_SV,
                         "label":           "Class SV",
                         "type":            TYPE_CHECKBOX,
                         "default_checked": True,
