@@ -448,67 +448,42 @@ def resolve_cross_bracing_section_properties(input_dict: dict, bridge=None) -> d
 
 
 def resolve_end_diaphragm_section_properties(input_dict: dict, bridge=None) -> dict | None:
-    """
-    One row per end diaphragm member ID.
-    With n girders there are (n-1) adjacent pairs. Each pair has 2 end
-    diaphragms sharing the same config: E{i}M1 and E{i}M2 for pair G{i}G{i+1}.
-
-    Key pattern (mirrors defaults.py _on_no_of_girders_changed):
-        <KEY_MP_ED_*>.G{i}G{i+1}.E{i}M{member_id}
-
-    Member ID label in table:  G1G2_E1, G1G2_E2, G2G3_E1, G2G3_E2, ...
-    """
     n_girders = input_dict.get(KEY_TS_NO_OF_GIRDERS)
     if not _has(n_girders):
         return None
-
     try:
         n = int(n_girders)
     except Exception:
         return None
-
     if n < 2:
         return None
 
+    # Type defaults to "Cross Bracing"; welded/rolled-beam geometry fields are
+    # blank unless that ED type is chosen (mirrors defaults.py _ED_DEFAULTS).
+    def _edk(base_key, gi, mi):
+        return input_dict.get(f"{base_key}.G{gi}G{gi + 1}.E{gi}M{mi}")
+
+    def _ed_type(gi, mi):
+        v = _edk(KEY_MP_ED_TYPE, gi, mi)
+        return _val(v) if _has(v) else "Cross Bracing"
+
     rows = []
+    for gi in range(1, n):
+        for mi in (1, 2):
+            rows.append([
+                f"G{gi}G{gi + 1}_E{gi}M{mi}",
+                _ed_type(gi, mi),
+                _val(_edk(KEY_MP_ED_SYMMETRY,                gi, mi)),
+                _num(_edk(KEY_MP_ED_TOTAL_DEPTH,             gi, mi)),
+                _num(_edk(KEY_MP_ED_WEB_THICKNESS,           gi, mi)),
+                _num(_edk(KEY_MP_ED_TOP_FLANGE_WIDTH,        gi, mi)),
+                _num(_edk(KEY_MP_ED_TOP_FLANGE_THICKNESS,    gi, mi)),
+                _num(_edk(KEY_MP_ED_BOTTOM_FLANGE_WIDTH,     gi, mi)),
+                _num(_edk(KEY_MP_ED_BOTTOM_FLANGE_THICKNESS, gi, mi)),
+            ])
 
-    for i in range(1, n):
-        g_pair       = f"G{i}G{i + 1}"          # e.g. "G1G2"
-        pair_label   = f"G{i}G{i + 1}"           # e.g. "G1G2" (used in Member ID)
-
-        # ── Read config from M1 (both members share the same config) ──────
-        suffix = f".{g_pair}.E{i}M1"
-
-        ed_type      = input_dict.get(f"{KEY_MP_ED_TYPE}{suffix}")
-        bracing_type = input_dict.get(f"{KEY_MP_ED_BRACING_TYPE}{suffix}")
-        br_sec_type  = input_dict.get(f"{KEY_MP_ED_BRACING_SECTION}{suffix}")
-        br_sec_desig = input_dict.get(f"{KEY_MP_ED_BRACING_SECTION_DESIGNATION}{suffix}")
-        top_chord    = input_dict.get(f"{KEY_MP_ED_TOP_CHORD}{suffix}")
-        tc_sec_type  = input_dict.get(f"{KEY_MP_ED_TOP_CHORD_SECTION_TYPE}{suffix}")
-        tc_sec_desig = input_dict.get(f"{KEY_MP_ED_TOP_CHORD_SECTION_DESIG}{suffix}")
-        bot_chord    = input_dict.get(f"{KEY_MP_ED_BOTTOM_CHORD}{suffix}")
-        bc_sec_type  = input_dict.get(f"{KEY_MP_ED_BOTTOM_CHORD_SECTION_TYPE}{suffix}")
-        bc_sec_desig = input_dict.get(f"{KEY_MP_ED_BOTTOM_CHORD_SECTION_DESIG}{suffix}")
-
-        def _col(v):
-            return _val(v) if _has(v) else EMPTY
-
-        shared = [
-            _col(ed_type),
-            _col(bracing_type),
-            _col(br_sec_type),
-            _col(br_sec_desig),
-            _col(top_chord),
-            _col(tc_sec_type),
-            _col(tc_sec_desig),
-            _col(bot_chord),
-            _col(bc_sec_type),
-            _col(bc_sec_desig),
-        ]
-
-        # ── Two rows per pair — E{i}M1 and E{i}M2 share the same config ──
-        rows.append([f"{pair_label}_E1"] + shared)
-        rows.append([f"{pair_label}_E2"] + shared)
+    if not rows:
+        return None
 
     return {
         "id":    "end_diaphragm_section_properties",
@@ -516,15 +491,13 @@ def resolve_end_diaphragm_section_properties(input_dict: dict, bridge=None) -> d
         "columns": [
             "Member ID",
             "Type",
-            "Type of Bracing",
-            "Bracing Section Type",
-            "Bracing Section Designation",
-            "Top Chord",
-            "Top Chord Section Type",
-            "Top Chord Section Designation",
-            "Bottom Chord",
-            "Bottom Chord Section Type",
-            "Bottom Chord Section Designation",
+            "Symmetry",
+            "Total Depth, d(mm)",
+            "Web Thickness, wt(mm)",
+            "Width of Top Flange(mm)",
+            "Top Flange Thickness (mm)",
+            "Width of Bottom Flange(mm)",
+            "Bottom Flange Thickness (mm)",
         ],
         "rows": rows,
     }

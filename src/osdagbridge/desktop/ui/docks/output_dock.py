@@ -835,10 +835,44 @@ class OutputDock(QWidget):
             ).exec()
             return
 
-        input_dict = getattr(self.parent, "input_dict", {})
-
+        input_dict   = getattr(self.parent, "input_dict", {})
         input_d_values = getattr(self.parent.input_dock, "input_dock_values", {})
-        merged = {**input_dict, **input_d_values}
+
+        ai_dlg  = getattr(self.parent, '_additional_inputs_dialog', None)
+        ai_dict = getattr(ai_dlg, 'working_input_dict', {}) if ai_dlg else {}
+        out_dict = dict(getattr(self.backend, 'output_dict', {}) or {})
+
+        merged = {**input_dict, **ai_dict, **input_d_values, **out_dict}
+
+        # ── TEMP DIAGNOSTIC (ED) — remove after debugging ─────────────────────
+        try:
+            import json, os
+            from osdagbridge.desktop.ui.dialogs.generate_results_values_builder import resolve_table
+            def _ed(d, src):
+                return {k: v for k, v in d.items()
+                        if k.startswith("member_properties.end_diaphragm_details.")
+                        and ".E" in k
+                        and any(s in k for s in ("type", "symmetry", "total_depth", "web_thickness",
+                                                 "flange_width", "flange_thickness"))
+                        and v not in (None, "")}
+            ed_res = resolve_table("end_diaphragm_section_properties", merged, self.backend)
+            diag = {
+                "ai_dlg_present": ai_dlg is not None,
+                "design_mode": repr(merged.get("design_mode")),
+                "no_of_girders": repr(merged.get("typical_section.no_of_girders")),
+                "ed_vals_in_input_dict": _ed(input_dict, "input"),
+                "ed_vals_in_ai_dict": _ed(ai_dict, "ai"),
+                "ed_vals_in_merged": _ed(merged, "merged"),
+                "ed_resolver_rows": (None if ed_res is None else ed_res.get("rows")),
+            }
+            path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(
+                os.path.dirname(os.path.dirname(__file__))))), "gen_results_diag.json")
+            with open(path, "w", encoding="utf-8") as fh:
+                json.dump(diag, fh, indent=2, default=str)
+            print(f"[GEN-RESULTS DIAG] wrote {path}")
+        except Exception as _e:
+            import traceback; traceback.print_exc()
+        # ── END TEMP DIAGNOSTIC ───────────────────────────────────────────────
 
         dlg = GenerateResultsDialog(parent=None, input_dict=merged, bridge = self.backend)
         dlg.exec()

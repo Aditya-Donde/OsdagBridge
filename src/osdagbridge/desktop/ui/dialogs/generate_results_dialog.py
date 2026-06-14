@@ -1228,6 +1228,7 @@ class ExportTablePage(QWidget):
         for r_idx, row in enumerate(rows):
             for c_idx, val in enumerate(row):
                 cell = QTableWidgetItem(str(val))
+                cell.setFlags(cell.flags() & ~Qt.ItemIsEditable)
                 cell.setForeground(Qt.black)
                 cell.setBackground(QColor("#ffffff"))
                 cell.setTextAlignment(Qt.AlignCenter)
