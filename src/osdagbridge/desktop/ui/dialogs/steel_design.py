@@ -83,7 +83,7 @@ class SteelDesign(QDialog):
         main_layout.setSpacing(0)
 
         self.title_bar = CustomTitleBar()
-        self.title_bar.setTitle("Steel Design")
+        self.title_bar.setTitle("Girder Analysis and Design Results Summary")
         main_layout.addWidget(self.title_bar)
 
         self.content_widget = QWidget(self)
@@ -746,27 +746,26 @@ class SteelDesign(QDialog):
     # =========================================================================
 
     def _populate_member_combo(self):
-        """Populate the member dropdown with human-readable girder names."""
-        def _girder_display_name(key: str, idx: int) -> str:
-            """
-            Map raw BFS girder key to a human-readable dropdown label.
-            EB1/EB2  → 'Edge Beam 1' / 'Edge Beam 2'
-            G1…Gn   → 'Girder 1' … 'Girder n'
-            Anything else → key as-is (safe fallback)
-            """
-            if key == "EB1":
-                return "Edge Beam 1"
-            if key == "EB2":
-                return "Edge Beam 2"
-            if key.startswith("G") and key[1:].isdigit():
-                return f"Girder {key[1:]}"
-            return key   # fallback: show raw key
+        """
+        Populate the member dropdown with human-readable girder names.
 
+        The first and last girders in the traversal order are edge beams —
+        dummy girders required only for analysis calculations, never shown to
+        the user. They are dropped here, and the remaining interior girders are
+        renumbered sequentially starting at 1 for display. The raw girder key
+        is preserved as the item's userData so all downstream lookups (plots,
+        design checks) continue to resolve against the original analysis model.
+        """
         combo = self.member_combo
         combo.blockSignals(True)
         combo.clear()
-        for idx, key in enumerate(self.graph_engine.get_girder_keys()):
-            combo.addItem(_girder_display_name(key, idx), userData=key)
+
+        keys = self.graph_engine.get_girder_keys()
+        # Strip the leading and trailing edge beams (dummy girders).
+        interior_keys = keys[1:-1] if len(keys) > 2 else keys
+
+        for display_idx, key in enumerate(interior_keys, start=1):
+            combo.addItem(f"Girder {display_idx}", userData=key)
         combo.blockSignals(False)
 
     # ── Category-header helper ────────────────────────────────────────────────

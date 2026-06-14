@@ -85,6 +85,22 @@ def _has(*values):
     return all(v not in (None, "", [], {}) for v in values)
 
 
+def _weather_value(input_dict: dict, field: str):
+    """
+    Read a value straight from the project-location weather data, e.g.
+        input_dict["project.location"]["weather_data"]["wind_speed" | "zone" |
+                                                       "max_temp" | "min_temp"]
+    Used as a fallback when the loading-tab sync hasn't persisted the value into
+    its own KEY_WL_*/KEY_SL_*/KEY_TL_* key. Returns None if unavailable.
+    """
+    loc = input_dict.get(KEY_PROJECT_LOCATION)
+    if isinstance(loc, dict):
+        wd = loc.get("weather_data")
+        if isinstance(wd, dict):
+            return wd.get(field)
+    return None
+
+
 # ── Resolver registry ─────────────────────────────────────────────────────────
 # Populated at the bottom of this file after all resolver functions are defined.
 # Maps table schema id → callable(input_dict, bridge) → dict | None
@@ -260,6 +276,27 @@ def resolve_girder_section_properties(input_dict: dict, bridge=None) -> dict | N
         """Return input_dict[base_key.G{gi}.M{mi}] or None."""
         return input_dict.get(f"{base_key}.G{gi}.M{mi}")
 
+    def _dim(base_key, gi, mi):
+        """
+        Display a dimension field that may hold a number (Custom design mode),
+        the marker "Custom" with the chosen options under a '.selected' sub-key,
+        or "All"/a list (Optimized mode, TYPE_ALL_CUSTOM). Always shows something.
+        """
+        v = _gk(base_key, gi, mi)
+        if v in (None, "", [], {}):
+            return EMPTY
+        if isinstance(v, str) and v.strip().lower() == "custom":
+            sel = input_dict.get(f"{base_key}.selected.G{gi}.M{mi}")
+            if isinstance(sel, (list, tuple)) and sel:
+                return ", ".join(str(s) for s in sel)
+            return "All"
+        if isinstance(v, (list, tuple)):
+            return ", ".join(str(s) for s in v) if v else EMPTY
+        try:
+            return round(float(v), 2)
+        except (ValueError, TypeError):
+            return _val(v)
+
     span = _num(input_dict.get(KEY_SPAN)) if _has(input_dict.get(KEY_SPAN)) else EMPTY
 
     rows = []
@@ -273,27 +310,29 @@ def resolve_girder_section_properties(input_dict: dict, bridge=None) -> dict | N
                 span,
                 _val(_gk(KEY_MP_GIRDER_TYPE,                  gi, mi)),
                 _val(_gk(KEY_MP_GIRDER_SYMMETRY,               gi, mi)),
-                _mm (_gk(KEY_MP_GIRDER_DEPTH,                  gi, mi)),
-                _mm (_gk(KEY_MP_GIRDER_TOP_FLANGE_WIDTH,       gi, mi)),
-                _mm (_gk(KEY_MP_GIRDER_TOP_FLANGE_THICKNESS,   gi, mi)),
-                _mm (_gk(KEY_MP_GIRDER_BOTTOM_FLANGE_WIDTH,    gi, mi)),
-                _mm (_gk(KEY_MP_GIRDER_BOTTOM_FLANGE_THICKNESS,gi, mi)),
-                _mm (_gk(KEY_MP_GIRDER_WEB_THICKNESS,          gi, mi)),
+                _dim(KEY_MP_GIRDER_DEPTH,                  gi, mi),  # stored in mm
+                _dim(KEY_MP_GIRDER_TOP_FLANGE_WIDTH,       gi, mi),  # mm
+                _dim(KEY_MP_GIRDER_TOP_FLANGE_THICKNESS,   gi, mi),  # mm / "All"
+                _dim(KEY_MP_GIRDER_BOTTOM_FLANGE_WIDTH,    gi, mi),  # mm
+                _dim(KEY_MP_GIRDER_BOTTOM_FLANGE_THICKNESS,gi, mi),  # mm / "All"
+                _val(_gk(KEY_MP_GD_SUPPORT_TYPE,               gi, mi)),
+                _num(_gk(KEY_MP_GD_SUPPORT_WIDTH,              gi, mi)),  # mm
+                _dim(KEY_MP_GIRDER_WEB_THICKNESS,          gi, mi),  # mm / "All"
                 _val(_gk(KEY_MP_GIRDER_TORSIONAL_RESTRAINT,    gi, mi)),
                 _val(_gk(KEY_MP_GIRDER_WARPING_RESTRAINT,      gi, mi)),
                 _val(_gk(KEY_MP_GIRDER_WEB_TYPE,               gi, mi)),
                 _num(_gk(KEY_MP_GIRDER_MASS,                   gi, mi)),  # kg/m, no conversion
-                _cm2(_gk(KEY_MP_GIRDER_SECTIONAL_AREA,         gi, mi)),
-                _cm4(_gk(KEY_MP_GIRDER_SECTIONAL_IZ,           gi, mi)),
+                _cm2(_gk(KEY_MP_GIRDER_SECTIONAL_AREA,         gi, mi)),  # m² → cm²
+                _cm4(_gk(KEY_MP_GIRDER_SECTIONAL_IZ,           gi, mi)),  # m⁴ → cm⁴
                 _cm4(_gk(KEY_MP_GIRDER_SECTIONAL_IY,           gi, mi)),
-                _cm (_gk(KEY_MP_GIRDER_RADIUS_GYRATION_Z,      gi, mi)),
+                _cm (_gk(KEY_MP_GIRDER_RADIUS_GYRATION_Z,      gi, mi)),  # m → cm
                 _cm (_gk(KEY_MP_GIRDER_RADIUS_GYRATION_Y,      gi, mi)),
-                _cm3(_gk(KEY_MP_GIRDER_ELASTIC_MODULUS_ZZ,     gi, mi)),
+                _cm3(_gk(KEY_MP_GIRDER_ELASTIC_MODULUS_ZZ,     gi, mi)),  # m³ → cm³
                 _cm3(_gk(KEY_MP_GIRDER_ELASTIC_MODULUS_ZY,     gi, mi)),
                 _cm3(_gk(KEY_MP_GIRDER_PLASTIC_MODULUS_ZUZ,    gi, mi)),
                 _cm3(_gk(KEY_MP_GIRDER_PLASTIC_MODULUS_ZUY,    gi, mi)),
                 _cm4(_gk(KEY_MP_GIRDER_TORSION_CONSTANT_IT,    gi, mi)),
-                _cm6(_gk(KEY_MP_GIRDER_WARPING_CONSTANT_IW,    gi, mi)),
+                _cm6(_gk(KEY_MP_GIRDER_WARPING_CONSTANT_IW,    gi, mi)),  # m⁶ → cm⁶
             ])
             mi += 1
 
@@ -344,30 +383,46 @@ def resolve_cross_bracing_section_properties(input_dict: dict, bridge=None) -> d
         n = int(n_girders)
     except Exception:
         return None
+    if n < 2:
+        return None   # cross bracing needs at least one adjacent girder pair
 
-    def _cbk(base_key, gi, mi):
-        return input_dict.get(f"{base_key}.G{gi}G{gi + 1}.B{gi}M{mi}")
+    from osdagbridge.core.utils.common import (
+        CROSS_BRACING_DEFAULTS, DEFAULT_CROSS_BRACING_SPACING,
+    )
+
+    # Number of bracing members per girder pair (defaults to 1).
+    try:
+        n_brace = max(1, int(float(input_dict.get(KEY_MP_CB_NO_OF_CROSS_BRACINGS) or 1)))
+    except Exception:
+        n_brace = 1
+
+    # Spacing is a single global value (metres) — NOT stored per member.
+    spacing = input_dict.get(KEY_MP_CB_SPACING)
+    spacing_disp = _num(spacing) if _has(spacing) else _num(DEFAULT_CROSS_BRACING_SPACING)
+
+    def _cbk(base_key, gi, mi, default_key):
+        """Per-member CB value, falling back to CROSS_BRACING_DEFAULTS."""
+        v = input_dict.get(f"{base_key}.G{gi}G{gi + 1}.B{gi}M{mi}")
+        if v in (None, ""):
+            return CROSS_BRACING_DEFAULTS.get(default_key, "")
+        return v
 
     rows = []
     for gi in range(1, n):
-        mi = 1
-        while True:
-            if _cbk(KEY_MP_CB_TYPE, gi, mi) is None:
-                break
+        for mi in range(1, n_brace + 1):
             rows.append([
                 f"G{gi}G{gi + 1}_B{gi}M{mi}",
-                _val(_cbk(KEY_MP_CB_TYPE, gi, mi)),
-                _val(_cbk(KEY_MP_CB_BRACING_SECTION_TYPE, gi, mi)),
-                _val(_cbk(KEY_MP_CB_BRACING_SECTION_DESIGNATION, gi, mi)),
-                _val(_cbk(KEY_MP_CB_TOP_CHORD, gi, mi)),
-                _val(_cbk(KEY_MP_CB_TOP_CHORD_SECTION_TYPE, gi, mi)),
-                _val(_cbk(KEY_MP_CB_TOP_CHORD_SECTION_DESIG, gi, mi)),
-                _val(_cbk(KEY_MP_CB_BOTTOM_CHORD, gi, mi)),
-                _val(_cbk(KEY_MP_CB_BOTTOM_CHORD_SECTION_TYPE, gi, mi)),
-                _val(_cbk(KEY_MP_CB_BOTTOM_CHORD_SECTION_DESIG, gi, mi)),
-                _num(_cbk(KEY_MP_CB_SPACING, gi, mi)),
+                _val(_cbk(KEY_MP_CB_TYPE, gi, mi, "type")),
+                _val(_cbk(KEY_MP_CB_BRACING_SECTION_TYPE, gi, mi, "bracing_section_type")),
+                _val(_cbk(KEY_MP_CB_BRACING_SECTION_DESIGNATION, gi, mi, "bracing_section_designation")),
+                _val(_cbk(KEY_MP_CB_TOP_CHORD, gi, mi, "top_chord")),
+                _val(_cbk(KEY_MP_CB_TOP_CHORD_SECTION_TYPE, gi, mi, "top_chord_section_type")),
+                _val(_cbk(KEY_MP_CB_TOP_CHORD_SECTION_DESIG, gi, mi, "top_chord_section_desig")),
+                _val(_cbk(KEY_MP_CB_BOTTOM_CHORD, gi, mi, "bottom_chord")),
+                _val(_cbk(KEY_MP_CB_BOTTOM_CHORD_SECTION_TYPE, gi, mi, "bottom_chord_section_type")),
+                _val(_cbk(KEY_MP_CB_BOTTOM_CHORD_SECTION_DESIG, gi, mi, "bottom_chord_section_desig")),
+                spacing_disp,
             ])
-            mi += 1
 
     if not rows:
         return None
@@ -709,11 +764,17 @@ def resolve_seismic_load_parameters(input_dict: dict, bridge=None) -> dict | Non
 
     # ── User inputs ───────────────────────────────────────────────────────
     zone              = input_dict.get(KEY_SL_SEISMIC_ZONE)
-    importance        = input_dict.get(KEY_SL_IMPORTANCE_FACTOR)
-    soil_type         = input_dict.get(KEY_SL_SOIL_TYPE)
-    time_period       = input_dict.get(KEY_SL_TIME_PERIOD)
-    damping           = input_dict.get(KEY_SL_DAMPING)
-    response_red      = input_dict.get(KEY_SL_RESPONSE_REDUCTION)
+    if not _has(zone):
+        # Fall back to the project-location weather data directly.
+        zone = _weather_value(input_dict, "zone")
+    # Fall back to the IRC/schema defaults (mirrors defaults._update_loading_tab_defaults)
+    # so the table still shows standard values if the loading defaults were never
+    # seeded into this session's input_dict.
+    importance        = input_dict.get(KEY_SL_IMPORTANCE_FACTOR)  or "1.0"
+    soil_type         = input_dict.get(KEY_SL_SOIL_TYPE)          or "Type I – Rocky or Hard"
+    time_period       = input_dict.get(KEY_SL_TIME_PERIOD)        or "0.5"
+    damping           = input_dict.get(KEY_SL_DAMPING)            or "2"
+    response_red      = input_dict.get(KEY_SL_RESPONSE_REDUCTION) or "1"
 
     # ── Computed coefficients ─────────────────────────────────────────────
     zone_factor       = input_dict.get(KEY_SL_ZONE_FACTOR)
@@ -721,8 +782,46 @@ def resolve_seismic_load_parameters(input_dict: dict, bridge=None) -> dict | Non
     horizontal_coeff  = input_dict.get(KEY_SL_HORIZONTAL_COEFF)
     vertical_coeff    = input_dict.get(KEY_SL_VERTICAL_COEFF)
 
+    # Recompute (Z, Sₐ/g, Aₕ, Aᵥ) when absent — mirrors the UI's
+    # _compute_seismic_values so the table populates without the UI compute
+    # having run. Needs a valid seismic zone (synced from the project location).
+    if (not _has(zone_factor) or not _has(spectral_coeff)
+            or not _has(horizontal_coeff) or not _has(vertical_coeff)):
+        try:
+            from osdagbridge.core.utils.codes.irc6_2017 import IRC6_2017
+            zmap = {"1": "I", "2": "II", "3": "III", "4": "IV", "5": "V"}
+            z = str(zone).strip().upper()
+            if z.isdigit():
+                z = zmap.get(z)
+            smap = {
+                "Type I – Rocky or Hard": 1,
+                "Type II – Medium Soil":  2,
+                "Type III – Soft Soil":   3,
+            }
+            st = smap.get(str(soil_type), 1)
+            dl_v = input_dict.get(KEY_SL_DEAD_LOAD_VALUE)
+            ll_v = input_dict.get(KEY_SL_LIVE_LOAD_VALUE)
+            dead_kN = float(dl_v) if (str(input_dict.get(KEY_SL_DEAD_LOAD_MODE)) == "Custom" and dl_v) else 0.0
+            live_kN = float(ll_v) if (str(input_dict.get(KEY_SL_LIVE_LOAD_MODE)) == "Custom" and ll_v) else 0.0
+            res = IRC6_2017.cl_218_5_1(
+                zone=f"Zone {z}", soil_type=st,
+                dead_load_kN=dead_kN, live_load_kN=live_kN,
+                period_T=float(time_period) if time_period else None,
+                damping_percent=float(damping) if damping else 5.0,
+            )
+            if not _has(zone_factor):
+                zone_factor = res.get("Z")
+            if not _has(spectral_coeff):
+                spectral_coeff = res.get("Sa_g_adjusted")
+            if not _has(horizontal_coeff):
+                horizontal_coeff = res.get("Ah")
+            if not _has(vertical_coeff) and res.get("Ah") is not None:
+                vertical_coeff = round(res.get("Ah") * 2 / 3, 4)
+        except Exception:
+            pass
+
     # ── Dead load for seismic: mode + value ───────────────────────────────
-    dl_mode  = input_dict.get(KEY_SL_DEAD_LOAD_MODE)
+    dl_mode  = input_dict.get(KEY_SL_DEAD_LOAD_MODE) or "Automatic"
     dl_value = input_dict.get(KEY_SL_DEAD_LOAD_VALUE)
     if _has(dl_mode) and str(dl_mode).lower() == "automatic":
         dl_display = "Automatic"
@@ -732,7 +831,7 @@ def resolve_seismic_load_parameters(input_dict: dict, bridge=None) -> dict | Non
         dl_display = EMPTY
 
     # ── Live load for seismic: mode + value ───────────────────────────────
-    ll_mode  = input_dict.get(KEY_SL_LIVE_LOAD_MODE)
+    ll_mode  = input_dict.get(KEY_SL_LIVE_LOAD_MODE) or "Automatic"
     ll_value = input_dict.get(KEY_SL_LIVE_LOAD_VALUE)
     if _has(ll_mode) and str(ll_mode).lower() == "automatic":
         ll_display = "Automatic"
@@ -811,6 +910,9 @@ def resolve_wind_load_parameters(input_dict: dict, bridge=None) -> dict | None:
 
     # ── Direct user inputs ────────────────────────────────────────────────
     basic_wind_speed    = input_dict.get(KEY_WL_BASIC_WIND_SPEED)
+    if not _has(basic_wind_speed):
+        # Fall back to the project-location weather data directly.
+        basic_wind_speed = _weather_value(input_dict, "wind_speed")
     avg_exposed_height  = input_dict.get(KEY_WL_AVG_EXPOSED_HEIGHT)
     terrain_type        = input_dict.get(KEY_WL_TERRAIN_TYPE)
     site_topography     = input_dict.get(KEY_WL_SITE_TOPOGRAPHY)
@@ -837,9 +939,26 @@ def resolve_wind_load_parameters(input_dict: dict, bridge=None) -> dict | None:
     wind_ecc_deck       = _mode_val(KEY_WL_WIND_ECC_DECK_MODE,       KEY_WL_WIND_ECC_DECK_VALUE)
     wind_ll_ecc         = _mode_val(KEY_WL_WIND_LL_ECC_MODE,         KEY_WL_WIND_LL_ECC_VALUE)
 
-    # ── Computed values ───────────────────────────────────────────────────
+    # ── Computed values (Vz, Pz) ──────────────────────────────────────────
+    # Prefer the stored computed values; if absent, recompute self-contained
+    # from Vb / H / terrain (same IRC 6 Table 12 the UI compute uses) so the
+    # columns populate without depending on the UI compute having run.
     hourly_mean_wind    = input_dict.get(KEY_WL_HOURLY_MEAN_WIND)
     hourly_wind_pressure = input_dict.get(KEY_WL_HOURLY_WIND_PRESSURE)
+    if not _has(hourly_mean_wind) or not _has(hourly_wind_pressure):
+        try:
+            from osdagbridge.core.utils.codes.irc6_2017 import IRC6_2017
+            terrain = {
+                "Plain Terrain": "plain",
+                "Terrain with Obstructions": "obstructed",
+            }.get(str(terrain_type).strip(), "plain")
+            res = IRC6_2017.table_12(float(avg_exposed_height), terrain, float(basic_wind_speed))
+            if not _has(hourly_mean_wind):
+                hourly_mean_wind = res.get("Vz")
+            if not _has(hourly_wind_pressure):
+                hourly_wind_pressure = res.get("Pz")
+        except Exception:
+            pass
 
     # ── Shared parameter displays ─────────────────────────────────────────
     vb_disp      = _num(basic_wind_speed)   if _has(basic_wind_speed)   else EMPTY
@@ -898,24 +1017,47 @@ def resolve_wind_load_parameters(input_dict: dict, bridge=None) -> dict | None:
 def resolve_temperature_load_parameters(input_dict: dict, bridge=None) -> dict | None:
     """
     Single summary row — temperature load is bridge-level, not per-girder.
-    Inputs: highest/lowest air temp, thermal coefficients for steel and RCC.
-    Computed: effective bridge temp min/max, temperature rise/fall for design.
+    All values come from the Loading tab (self-contained, no analysis needed):
+      • Highest/lowest air temp — synced from the project location.
+      • Thermal coefficients (steel/RCC) — Loading-tab inputs (IRC default 12e-6).
+      • Effective bridge temps + design rise/fall — recomputed per IRC 6 Cl. 215.2.
     """
-    # ── User inputs ───────────────────────────────────────────────────────
-    highest_max_temp     = input_dict.get(KEY_TL_HIGHEST_MAX_TEMP)
-    lowest_min_temp      = input_dict.get(KEY_TL_LOWEST_MIN_TEMP)
-    thermal_coeff_steel  = input_dict.get(KEY_TL_THERMAL_COEFF_STEEL)
-    thermal_coeff_rcc    = input_dict.get(KEY_TL_THERMAL_COEFF_RCC)
+    # ── User inputs (fall back to project-location weather + IRC defaults) ──
+    highest_max_temp = input_dict.get(KEY_TL_HIGHEST_MAX_TEMP)
+    if not _has(highest_max_temp):
+        highest_max_temp = _weather_value(input_dict, "max_temp")
+    lowest_min_temp = input_dict.get(KEY_TL_LOWEST_MIN_TEMP)
+    if not _has(lowest_min_temp):
+        lowest_min_temp = _weather_value(input_dict, "min_temp")
 
-    # ── Computed values ───────────────────────────────────────────────────
-    bridge_temp_min      = input_dict.get(KEY_TL_BRIDGE_TEMP_MIN)
-    bridge_temp_max      = input_dict.get(KEY_TL_BRIDGE_TEMP_MAX)
-    temp_rise            = input_dict.get(KEY_TL_TEMP_RISE)
-    temp_fall            = input_dict.get(KEY_TL_TEMP_FALL)
+    thermal_coeff_steel = input_dict.get(KEY_TL_THERMAL_COEFF_STEEL) or "12.0e-6"
+    thermal_coeff_rcc   = input_dict.get(KEY_TL_THERMAL_COEFF_RCC)   or "12.0e-6"
 
-    # Require at least the primary user inputs to emit a row
-    if not _has(highest_max_temp, lowest_min_temp):
-        return None
+    # ── Computed values — recompute from air temps when absent ─────────────
+    bridge_temp_min = input_dict.get(KEY_TL_BRIDGE_TEMP_MIN)
+    bridge_temp_max = input_dict.get(KEY_TL_BRIDGE_TEMP_MAX)
+    temp_rise       = input_dict.get(KEY_TL_TEMP_RISE)
+    temp_fall       = input_dict.get(KEY_TL_TEMP_FALL)
+
+    if (not _has(bridge_temp_min) or not _has(bridge_temp_max)
+            or not _has(temp_rise) or not _has(temp_fall)):
+        try:
+            from osdagbridge.core.utils.codes.irc6_2017 import IRC6_2017
+            res = IRC6_2017.cl_215_2_effective_bridge_temperature(
+                float(highest_max_temp), float(lowest_min_temp), 'metallic', False)
+            t_min = res.get('T_min', 0)
+            t_max = res.get('T_max', 0)
+            mean  = (t_max + t_min) / 2.0
+            if not _has(bridge_temp_min):
+                bridge_temp_min = t_min
+            if not _has(bridge_temp_max):
+                bridge_temp_max = t_max
+            if not _has(temp_rise):
+                temp_rise = t_max - mean
+            if not _has(temp_fall):
+                temp_fall = mean - t_min
+        except Exception:
+            pass
 
     return {
         "id":    "temperature_load_parameters",
@@ -931,75 +1073,94 @@ def resolve_temperature_load_parameters(input_dict: dict, bridge=None) -> dict |
             "Temperature for Design - Fall (°C)",
         ],
         "rows": [[
-            _num(highest_max_temp),
-            _num(lowest_min_temp),
-            _num(thermal_coeff_steel, decimals=6) if _has(thermal_coeff_steel) else EMPTY,
-            _num(thermal_coeff_rcc,   decimals=6) if _has(thermal_coeff_rcc)   else EMPTY,
-            _num(bridge_temp_min)  if _has(bridge_temp_min) else EMPTY,
-            _num(bridge_temp_max)  if _has(bridge_temp_max) else EMPTY,
-            _num(temp_rise)        if _has(temp_rise)       else EMPTY,
-            _num(temp_fall)        if _has(temp_fall)       else EMPTY,
+            _num(highest_max_temp)    if _has(highest_max_temp)    else EMPTY,
+            _num(lowest_min_temp)     if _has(lowest_min_temp)     else EMPTY,
+            _num(thermal_coeff_steel, decimals=8) if _has(thermal_coeff_steel) else EMPTY,
+            _num(thermal_coeff_rcc,   decimals=8) if _has(thermal_coeff_rcc)   else EMPTY,
+            _num(bridge_temp_min)     if _has(bridge_temp_min)     else EMPTY,
+            _num(bridge_temp_max)     if _has(bridge_temp_max)     else EMPTY,
+            _num(temp_rise)           if _has(temp_rise)           else EMPTY,
+            _num(temp_fall)           if _has(temp_fall)           else EMPTY,
         ]],
     }
 
 def resolve_load_combinations(input_dict: dict, bridge=None) -> dict | None:
     """
-    One fixed row per IRC 6 load combination.
-    'Selected' = Yes/No based on the checkbox state stored in input_dict.
-    Keys map to KEY_BASIC_*, KEY_ACCIDENTAL_*, KEY_SEISMIC_*, KEY_SLS_* from common.py.
+    Load combinations table — sourced entirely from the Loading tab.
+
+    IRC 6 default combinations are stored by LoadCombinationWidget as a list under
+    'irc6_default_combinations' (each {name: "<label> : <expr>", included, key, expr});
+    user-defined ones under KEY_LC_COMBINATIONS (each {name, included, items}).
+    'Selected' reflects each combination's included checkbox. Falls back to the
+    standard IRC 6 set (all included) when the list hasn't been built yet.
     """
 
-    def _selected(key: str) -> str:
-        raw = input_dict.get(key)
-        if raw is None:
-            return "No"
+    def _yesno(raw) -> str:
         selected = (
             raw is True
             or str(raw).strip().lower() in ("true", "yes", "1", "checked")
         )
         return "Yes" if selected else "No"
 
-    # (display name, expression string, common.py key)
-    COMBINATIONS = [
-        # ULS Basic — LL leading adding / relieving
-        ("basic_1", "1.35DL + 1.75DW + 1.5LL + 0.9WL + 0.9TL",  KEY_BASIC_LL_ADD_CASE),
-        ("basic_2", "1.0DL + 1.0DW + 1.5LL + 0.9WL + 0.9TL",    KEY_BASIC_LL_REL_CASE),
-        ("basic_3", "1.35DL + 1.75DW + 1.15LL + 1.5WL + 0.9TL", KEY_BASIC_WL_ADD_CASE),
-        ("basic_4", "1.0DL + 1.0DW + 1.15LL + 1.5WL + 0.9TL",   KEY_BASIC_WL_REL_CASE),
-        ("basic_5", "1.35DL + 1.75DW + 1.15LL + 0.9WL + 1.5TL", KEY_BASIC_TL_ADD_CASE),
-        ("basic_6", "1.0DL + 1.0DW + 1.15LL + 0.9WL + 1.5TL",   KEY_BASIC_TL_REL_CASE),
-        # ULS Accidental
-        ("accidental_1", "1.0DL + 1.0DW + 0.75LL + 0.5TL + 1.0VC", KEY_ACCIDENTAL_VC_LL_ADD_CASE),
-        ("accidental_2", "1.0DL + 1.0DW + 0.75LL + 0.5TL + 1.0BI", KEY_ACCIDENTAL_BI_LL_ADD_CASE),
-        ("accidental_3", "1.0DL + 1.0DW + 0.75LL + 0.5TL + 1.0FB", KEY_ACCIDENTAL_FB_LL_ADD_CASE),
-        # ULS Seismic
-        ("seismic_1", "1.35DL + 1.75DW + 0.2LL + 0.5TL + 1.5EL",  KEY_SEISMIC_SERVICE_ADD_CASE),
-        ("seismic_2", "1.0DL + 1.0DW + 0.2LL + 0.5TL + 1.5EL",    KEY_SEISMIC_SERVICE_REL_CASE),
-        ("seismic_3", "1.35DL + 1.75DW + 0.2LL + 0.5TL + 0.75EL", KEY_SEISMIC_CONSTRUCTION_ADD_CASE),
-        ("seismic_4", "1.0DL + 1.0DW + 0.2LL + 0.5TL + 0.75EL",   KEY_SEISMIC_CONSTRUCTION_REL_CASE),
-        # SLS Rare
-        ("rare_1", "1.0DL + 1.2DW + 1.0LL + 0.6WL + 0.6TL",   KEY_SLS_RARE_LL_ADD_CASE),
-        ("rare_2", "1.0DL + 1.0DW + 1.0LL + 0.6WL + 0.6TL",   KEY_SLS_RARE_LL_REL_CASE),
-        ("rare_3", "1.0DL + 1.2DW + 0.75LL + 1.0WL + 0.6TL",  KEY_SLS_RARE_WL_ADD_CASE),
-        ("rare_4", "1.0DL + 1.0DW + 0.75LL + 1.0WL + 0.6TL",  KEY_SLS_RARE_WL_REL_CASE),
-        ("rare_5", "1.0DL + 1.2DW + 0.75LL + 0.6WL + 1.0TL",  KEY_SLS_RARE_TL_ADD_CASE),
-        ("rare_6", "1.0DL + 1.0DW + 0.75LL + 0.6WL + 1.0TL",  KEY_SLS_RARE_TL_REL_CASE),
-        # SLS Frequent
-        ("frequent_1", "1.0DL + 1.2DW + 0.75LL + 0.5WL + 0.5TL", KEY_SLS_FREQ_LL_ADD_CASE),
-        ("frequent_2", "1.0DL + 1.0DW + 0.75LL + 0.5WL + 0.5TL", KEY_SLS_FREQ_LL_REL_CASE),
-        ("frequent_3", "1.0DL + 1.2DW + 0.2LL + 0.6WL + 0.5TL",  KEY_SLS_FREQ_WL_ADD_CASE),
-        ("frequent_4", "1.0DL + 1.0DW + 0.2LL + 0.6WL + 0.5TL",  KEY_SLS_FREQ_WL_REL_CASE),
-        ("frequent_5", "1.0DL + 1.2DW + 0.2LL + 0.5WL + 0.6TL",  KEY_SLS_FREQ_TL_ADD_CASE),
-        ("frequent_6", "1.0DL + 1.0DW + 0.2LL + 0.5WL + 0.6TL",  KEY_SLS_FREQ_TL_REL_CASE),
-        # SLS Quasi-permanent
-        ("quasi_permanent_1", "1.0DL + 1.2DW + 0.5TL", KEY_SLS_QP_ADD_CASE),
-        ("quasi_permanent_2", "1.0DL + 1.0DW + 0.5TL", KEY_SLS_QP_REL_CASE),
-    ]
+    rows = []
 
-    rows = [
-        [name, expr, _selected(key)]
-        for name, expr, key in COMBINATIONS
-    ]
+    # ── IRC 6 default combinations (the list the widget persists) ──────────
+    combos = input_dict.get("irc6_default_combinations")
+    if combos:
+        for c in combos:
+            if not isinstance(c, dict):
+                continue
+            name = str(c.get("name", ""))
+            if " : " in name:
+                label, expr = name.split(" : ", 1)
+            else:
+                label, expr = name, str(c.get("expr", ""))
+            rows.append([label, _val(expr), _yesno(c.get("included"))])
+    else:
+        # Fallback: standard IRC 6 set, all included (matches the widget's
+        # default_checked state) so the table still populates.
+        DEFAULTS = [
+            ("basic_1", "1.35DL + 1.75DW + 1.5LL + 0.9WL + 0.9TL"),
+            ("basic_2", "1.0DL + 1.0DW + 1.5LL + 0.9WL + 0.9TL"),
+            ("basic_3", "1.35DL + 1.75DW + 1.15LL + 1.5WL + 0.9TL"),
+            ("basic_4", "1.0DL + 1.0DW + 1.15LL + 1.5WL + 0.9TL"),
+            ("basic_5", "1.35DL + 1.75DW + 1.15LL + 0.9WL + 1.5TL"),
+            ("basic_6", "1.0DL + 1.0DW + 1.15LL + 0.9WL + 1.5TL"),
+            ("accidental_1", "1.0DL + 1.0DW + 0.75LL + 0.5TL + 1.0VC"),
+            ("accidental_2", "1.0DL + 1.0DW + 0.75LL + 0.5TL + 1.0BI"),
+            ("accidental_3", "1.0DL + 1.0DW + 0.75LL + 0.5TL + 1.0FB"),
+            ("seismic_1", "1.35DL + 1.75DW + 0.2LL + 0.5TL + 1.5EL"),
+            ("seismic_2", "1.0DL + 1.0DW + 0.2LL + 0.5TL + 1.5EL"),
+            ("seismic_3", "1.35DL + 1.75DW + 0.2LL + 0.5TL + 0.75EL"),
+            ("seismic_4", "1.0DL + 1.0DW + 0.2LL + 0.5TL + 0.75EL"),
+            ("rare_1", "1.0DL + 1.2DW + 1.0LL + 0.6WL + 0.6TL"),
+            ("rare_2", "1.0DL + 1.0DW + 1.0LL + 0.6WL + 0.6TL"),
+            ("rare_3", "1.0DL + 1.2DW + 0.75LL + 1.0WL + 0.6TL"),
+            ("rare_4", "1.0DL + 1.0DW + 0.75LL + 1.0WL + 0.6TL"),
+            ("rare_5", "1.0DL + 1.2DW + 0.75LL + 0.6WL + 1.0TL"),
+            ("rare_6", "1.0DL + 1.0DW + 0.75LL + 0.6WL + 1.0TL"),
+            ("frequent_1", "1.0DL + 1.2DW + 0.75LL + 0.5WL + 0.5TL"),
+            ("frequent_2", "1.0DL + 1.0DW + 0.75LL + 0.5WL + 0.5TL"),
+            ("frequent_3", "1.0DL + 1.2DW + 0.2LL + 0.6WL + 0.5TL"),
+            ("frequent_4", "1.0DL + 1.0DW + 0.2LL + 0.6WL + 0.5TL"),
+            ("frequent_5", "1.0DL + 1.2DW + 0.2LL + 0.5WL + 0.6TL"),
+            ("frequent_6", "1.0DL + 1.0DW + 0.2LL + 0.5WL + 0.6TL"),
+            ("quasi_permanent_1", "1.0DL + 1.2DW + 0.5TL"),
+            ("quasi_permanent_2", "1.0DL + 1.0DW + 0.5TL"),
+        ]
+        rows = [[name, expr, "Yes"] for name, expr in DEFAULTS]
+
+    # ── User-defined custom combinations (if any) ──────────────────────────
+    for c in (input_dict.get(KEY_LC_COMBINATIONS) or []):
+        if not isinstance(c, dict):
+            continue
+        label = str(c.get("name", "Custom"))
+        items = c.get("items") or []
+        expr  = " + ".join(
+            f"{i.get('factor', '')}{i.get('case', '')}"
+            for i in items if isinstance(i, dict)
+        )
+        rows.append([label, _val(expr), _yesno(c.get("included"))])
 
     return {
         "id":    "load_combinations",
