@@ -278,8 +278,6 @@ def resolve_girder_section_properties(input_dict: dict, bridge=None) -> dict | N
                 _mm (_gk(KEY_MP_GIRDER_TOP_FLANGE_THICKNESS,   gi, mi)),
                 _mm (_gk(KEY_MP_GIRDER_BOTTOM_FLANGE_WIDTH,    gi, mi)),
                 _mm (_gk(KEY_MP_GIRDER_BOTTOM_FLANGE_THICKNESS,gi, mi)),
-                _val(_gk(KEY_MP_SUPPORT_TYPE,                  gi, mi)),
-                _num(_gk(KEY_MP_SUPPORT_WIDTH,                 gi, mi)),  # stored in mm
                 _mm (_gk(KEY_MP_GIRDER_WEB_THICKNESS,          gi, mi)),
                 _val(_gk(KEY_MP_GIRDER_TORSIONAL_RESTRAINT,    gi, mi)),
                 _val(_gk(KEY_MP_GIRDER_WARPING_RESTRAINT,      gi, mi)),
