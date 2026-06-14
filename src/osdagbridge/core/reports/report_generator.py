@@ -1806,11 +1806,48 @@ def ch5_design_checks(checks_data, bridge: "ReportDataBridge"):
         )
     t512_content = "\n".join(t512_rows)
 
-    # Generate Table 5.13 rows
+    # Generate Table 5.13 rows — per-girder design summary, mirroring the Generate
+    # Results dialog's resolve_design_results_summary: one row per girder showing
+    # the CONTROLLING check (highest DCR among all checks) plus the real load
+    # case/combination that drives it. Source: design_results["per_girder"][G{i}].
+    _pg_summary = (bridge.output_dict.get("design_results", {}) or {}).get("per_girder", {}) or {}
+
+    def _with_unit(value, unit):
+        s = _dfmt(value, nd=2)
+        if not s:
+            return ""
+        return (s + " " + unit) if unit and str(unit) not in ("-", "–") else s
+
     g_summary_rows = []
-    for lbl, _ in girder_entries:
+    for _gi, (lbl, _) in enumerate(girder_entries, start=1):
+        g_data = _pg_summary.get(f"G{_gi}", {}) or {}
+        checks = g_data.get("checks") or []
+        if not checks:
+            g_summary_rows.append(lbl + r""" &  &  &  &  &  &  \\[6pt]
+\hline""")
+            continue
+
+        ctrl = max(checks, key=lambda c: c.get("dcr") or 0.0)
+
+        # Worst real load case for the controlling check id (skip Envelope pseudo-LCs)
+        ctrl_lc, best_dcr = None, None
+        for lc_name, lc_data in (g_data.get("per_lc") or {}).items():
+            if str(lc_name).lower().startswith("envelope"):
+                continue
+            for chk in lc_data.get("checks") or []:
+                if chk.get("id") == ctrl.get("check_id"):
+                    d = chk.get("dcr") or 0.0
+                    if best_dcr is None or d > best_dcr:
+                        best_dcr, ctrl_lc = d, lc_name
+        if ctrl_lc is None:
+            ctrl_lc = (g_data.get("demand") or {}).get("governing_combination") or ""
+
         g_summary_rows.append(
-            lbl + r""" &  & """ + _render_value(bridge.output_dict, KEY_UTIL_FLEXURE) + r""" & """ + _render_value(bridge.output_dict, KEY_UTIL_SHEAR) + r""" & """ + _render_value(bridge.output_dict, KEY_UTIL_LTB) + r""" & """ + _render_value(bridge.output_dict, KEY_UTIL_DEFLECTION_CRACK) + r""" &  \\[6pt]
+            lbl + r""" & """ + _tex(str(ctrl_lc)) + r""" & """ + _tex(str(ctrl.get("name", "")))
+            + r""" & """ + _with_unit(ctrl.get("demand"),   ctrl.get("demand_unit"))
+            + r""" & """ + _with_unit(ctrl.get("capacity"), ctrl.get("capacity_unit"))
+            + r""" & """ + _dfmt(ctrl.get("dcr"), nd=3)
+            + r""" & """ + _fat_status(ctrl.get("status")) + r""" \\[6pt]
 \hline"""
         )
     g_summary_table_content = "\n".join(g_summary_rows)
@@ -2102,13 +2139,13 @@ This section presents all structural design checks performed by OsdagBridge. For
 \noindent\textbf{Table 5.13  Girder Design Summary (DCR / Utilization Ratio)}
 
 \vspace{0.4em}
-\begin{longtable}{|C{1.6cm}|C{2.8cm}|C{1.7cm}|C{1.7cm}|C{1.7cm}|C{1.8cm}|>{\centering\arraybackslash}p{4.2cm}|}
+\begin{longtable}{|C{1.6cm}|>{\centering\arraybackslash}p{3.4cm}|C{2.4cm}|C{2.1cm}|C{2.1cm}|C{1.7cm}|C{1.6cm}|}
 \hline
-\textbf{Girder} & \textbf{Governing Check} & \textbf{Moment UR} & \textbf{Shear UR} & \textbf{LTB UR} & \textbf{Deflection UR} & \textbf{Status} \\[6pt]
+\textbf{Girder} & \textbf{Controlling LC / Combination} & \textbf{Controlling Check} & \textbf{Demand} & \textbf{Capacity} & \textbf{UR} & \textbf{Status} \\[6pt]
 \hline
 """ + g_summary_table_content + r"""
 \end{longtable}
-\noindent\textit{Note: UR = Demand / Capacity. A value $\leq 1.0$ indicates a passing check. Governing check identifies the critical design criterion for each girder.}
+\noindent\textit{Note: UR = Demand / Capacity. A value $\leq 1.0$ indicates a passing check. The controlling check is the criterion with the highest UR for each girder, with the real load case/combination that drives it.}
 
 \vspace{1em}
 \noindent\textbf{Table 5.14  Shear Connector Capacity}
