@@ -275,6 +275,11 @@ from osdagbridge.core.utils.common import (
     KEY_SD_DEFL_TOTAL,
     KEY_SD_DEFL_ALLOW_LIVE,
     KEY_SD_DEFL_ALLOW_TOTAL,
+    # SLS stress-limitation keys (Table 5.11) — nested in output_dict["design_results"]
+    KEY_SD_STRESS_STEEL,
+    KEY_SD_STRESS_STEEL_ALLOWABLE,
+    # Per-girder ULS/SLS check summary (Table 5.12 fatigue) — nested in design_results
+    KEY_SD_ULS_PER_GIRDER,
     # Utilizations
     KEY_UTIL_FLEXURE,
     KEY_UTIL_SHEAR,
@@ -1742,26 +1747,61 @@ def ch5_design_checks(checks_data, bridge: "ReportDataBridge"):
         )
     t510_content = "\n".join(t510_rows)
 
-    # Generate Table 5.11 rows
+    # Generate Table 5.11 rows — SLS steel stress limitation (IRC 22 Cl. 604.3.1).
+    # Concrete & rebar deck stresses are deck-global and belong with the deck
+    # checks, so this table shows only the per-girder steel check. Steel stress is
+    # a single envelope-SLS value (same for every girder); allowable = 0.9·fy.
+    # Both live in the nested output_dict["design_results"] dict, not as flat keys.
+    def _mpa(v):
+        s = _dfmt(v, nd=2)
+        return (s + " MPa") if s else ""
+
+    def _stress_status(actual, allow):
+        try:
+            return "PASS" if float(actual) <= float(allow) else r"\textcolor{red}{FAIL}"
+        except (TypeError, ValueError):
+            return "---"
+
+    _dr_511        = bridge.output_dict.get("design_results", {}) or {}
+    _steel_sigma   = _dr_511.get(KEY_SD_STRESS_STEEL)
+    _steel_allow   = _dr_511.get(KEY_SD_STRESS_STEEL_ALLOWABLE)
+    _steel_sig_str = _mpa(_steel_sigma)
+    _steel_alw_str = _mpa(_steel_allow)
+    _steel_status  = _stress_status(_steel_sigma, _steel_allow)
+
     t511_rows = []
     for lbl, _ in girder_entries:
         t511_rows.append(
-            r"\multirow{2}{*}{\makecell{" + lbl + r"""}} & Concrete (0.48 fck) &  &  &  \\[6pt]
-\cline{2-5}
- & Steel (0.66 fy) &  &  &  \\[6pt]
+            r"\makecell{" + lbl + r"""} & Structural Steel ($0.9\,f_y$) & """
+            + _steel_alw_str + r""" & """
+            + _steel_sig_str + r""" & """
+            + _steel_status + r""" \\[6pt]
 \hline"""
         )
     t511_content = "\n".join(t511_rows)
 
-    # Generate Table 5.12 rows
+    # Generate Table 5.12 rows — per-girder fatigue assessment (IRC 22 Cl. 605),
+    # mirroring the Generate Results dialog: one row per girder showing the
+    # GOVERNING fatigue check (worst of normal/shear by DCR). Source is the nested
+    # design_results["steeldesign.uls_per_girder"]["fatigue"][G{i}] dict, keyed by
+    # the canonical girder index, with {demand, capacity, ur, status}.
+    _fat_cat = ((bridge.output_dict.get("design_results", {}) or {})
+                .get(KEY_SD_ULS_PER_GIRDER, {}) or {}).get("fatigue", {}) or {}
+
+    def _fat_status(s):
+        if s is None or str(s).strip() == "":
+            return "---"
+        return r"\textcolor{red}{" + str(s) + "}" if "FAIL" in str(s).upper() else str(s)
+
     t512_rows = []
-    for lbl, _ in girder_entries:
+    for _gi, (lbl, _) in enumerate(girder_entries, start=1):
+        _g = _fat_cat.get(f"G{_gi}", {}) or {}
         t512_rows.append(
-            r"\multirow{3}{*}{\makecell{" + lbl + r"""}} & Welded Girder Web &  &  &  \\[6pt]
-\cline{2-5}
- & Welded Girder Flange &  &  &  \\[6pt]
-\cline{2-5}
- & Shear Connectors &  &  &  \\[6pt]
+            r"\makecell{" + lbl + r"""} & """
+            + _mpa(_g.get("demand")) + r""" & """
+            + _mpa(_g.get("capacity")) + r""" & """
+            + _dfmt(_g.get("ur"), nd=2) + r""" & """
+            + _fat_status(_g.get("status")) + r""" \\[6pt]
 \hline"""
         )
     t512_content = "\n".join(t512_rows)
@@ -2052,11 +2092,11 @@ This section presents all structural design checks performed by OsdagBridge. For
 
 \begin{longtable}{|C{2.5cm}|C{3.5cm}|C{3.5cm}|>{\centering\arraybackslash}p{3.5cm}|C{2.5cm}|}
 \hline
-\textbf{} & \textbf{Element} & \textbf{Detail Category} & \textbf{Allowable Stress Range (ffd)} & \textbf{Actual Stress Range ($\gamma_{fft}$ $\times$ f)} \\[6pt]
+\textbf{} & \textbf{Stress Range, $\Delta\sigma$ (MPa)} & \textbf{Fatigue Limit, $f_{fd}$ (MPa)} & \textbf{Utilization Ratio} & \textbf{Status} \\[6pt]
 \hline
 """ + t512_content + r"""
 \end{longtable}
-\noindent\textit{Note: IRC 22 Cl. 605. NSC =  cycles. Capacity reduction factor mu\_r applied where plate thickness > 25 mm.}
+\noindent\textit{Note: IRC 22 Cl. 605 --- governing of normal and shear fatigue (worst by DCR). Capacity reduction factor $\mu_r$ applied where plate thickness > 25 mm.}
 
 \vspace{1em}
 \noindent\textbf{Table 5.13  Girder Design Summary (DCR / Utilization Ratio)}
