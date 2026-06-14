@@ -291,6 +291,7 @@ class ShearStudConfig:
     fu: float = 500.0
     fy: float = 350.0
     n_per_section: int = 2
+    transverse_spacing: float = 100.0   # s_ts (mm) — c/c transverse spacing of studs
 
 
 @dataclass
@@ -444,7 +445,9 @@ class BridgeConfig:
         stud_h  = float(ai.get(KEY_DS_STUD_HEIGHT)            or 150.0)
         stud_fu = float(ai.get(KEY_DS_STUD_ULTIMATE_STRENGTH) or 500.0)
         stud_n  = int(float(ai.get(KEY_DS_STUD_COUNT)         or 2))
-        studs = ShearStudConfig(diameter=stud_d, height=stud_h, fu=stud_fu, n_per_section=stud_n)
+        stud_ts = float(ai.get(KEY_DS_STUD_TRANSVERSE_SPACING) or 100.0)
+        studs = ShearStudConfig(diameter=stud_d, height=stud_h, fu=stud_fu,
+                                n_per_section=stud_n, transverse_spacing=stud_ts)
 
         # Stiffener parameters — all optional. When plate dimensions are not given (default 0.0),
         # compute_intermediate_stiffener() and compute_bearing_stiffener() run in guidance mode,
@@ -1447,6 +1450,10 @@ class IRC22CapacityCalculator:
             h_stud_mm=stud.height,
             t_flange_mm=sec.tf_top,
             t_slab_mm=slab.thickness,
+            # Enable edge-distance computation: e = (b_tf - s_ts*(n_s-1) - d_s)/2
+            b_tf_mm=sec.bf_top,
+            s_ts_mm=stud.transverse_spacing,
+            n_s=stud.n_per_section,
         )
         return {
             "stud_diameter_check"      : res["stud_diameter_check"],

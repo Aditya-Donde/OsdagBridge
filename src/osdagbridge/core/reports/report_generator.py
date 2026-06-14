@@ -287,6 +287,13 @@ from osdagbridge.core.utils.common import (
     KEY_SD_SC_SL1,
     KEY_SD_SC_SL2,
     KEY_SD_SC_SR,
+    # Transverse shear & detailing keys (Table 5.16) — nested in design_results
+    KEY_SD_TS_VL,
+    KEY_SD_TS_VRD,
+    KEY_SD_SC_D_LIMIT,
+    KEY_SD_SC_EDGE_DIST,
+    KEY_SD_SC_REQ_EDGE_DIST,
+    KEY_DS_STUD_DIAMETER,
     # Utilizations
     KEY_UTIL_FLEXURE,
     KEY_UTIL_SHEAR,
@@ -1899,6 +1906,62 @@ Fatigue Shear Resistance, $Q_r$ & IRC 22 Table 8 ($\phi d$, $N_{sc}$) & """
         + _sp_row("Max Spacing Limit (IRC 22)", _dr_sc.get("stud_spacing_max_mm")) + "\n\\hline"
     )
 
+    # ── Table 5.16: Transverse Shear & Detailing Checks (bridge-level) ───────
+    # Transverse shear (Cl.606.10): VL vs slab capacity VRd. Detailing (Cl.606.6):
+    # min transverse reinforcement, stud diameter ≤ 2·tf, edge distance ≥ 25 mm.
+    # All single bridge values in design_results; stud diameter from input_dict.
+    def _cm2m(v):
+        s = _dfmt(v, nd=2)
+        return (s + r" cm$^2$/m") if s else ""
+
+    def _knm(v):
+        s = _dfmt(v, nd=2)
+        return (s + " kN/m") if s else ""
+
+    _ts_vl  = _dr_sc.get(KEY_SD_TS_VL)
+    _ts_vrd = _dr_sc.get(KEY_SD_TS_VRD)
+    try:
+        _ts_ur_str = f"{float(_ts_vl) / float(_ts_vrd):.2f}"
+    except (TypeError, ValueError, ZeroDivisionError):
+        _ts_ur_str = "---"
+    _ts_ok = _dr_sc.get("transverse_shear_ok")
+    _ts_status = (r"\textcolor{red}{FAIL}" if _ts_ok is False else "PASS") if _ts_ok is not None else "---"
+
+    _ast_req  = _dr_sc.get("Ast_required_cm2_per_m")
+    # Provided transverse steel = the deck's main (bottom + top) bars, which run
+    # transversely between girders and cross the shear plane. The deck design
+    # computes these (>= minimum) and they are what is actually provided. The
+    # steel designer's own Ast_provided is 0 because its transverse-shear check
+    # runs before design_deck_slab(), so read the deck-design value here instead.
+    _dd_516 = bridge.output_dict.get("deck_design_results", {}) or {}
+    try:
+        _ast_prov = (float(_dd_516.get("rebar_bottom_area") or 0)
+                     + float(_dd_516.get("rebar_top_area") or 0)) / 100.0
+    except (TypeError, ValueError):
+        _ast_prov = None
+    _stud_d   = bridge.input_dict.get(KEY_DS_STUD_DIAMETER)
+    _d_lim    = _dr_sc.get(KEY_SD_SC_D_LIMIT)
+    _edge     = _dr_sc.get(KEY_SD_SC_EDGE_DIST)
+    _edge_req = _dr_sc.get(KEY_SD_SC_REQ_EDGE_DIST)
+
+    def _row516(check, value, status):
+        return check + r" & " + value + r" & " + status + r" \\[6pt]"
+
+    t516_content = (
+        _row516(r"\textbf{Longitudinal Shear per unit length, $V_L$}", _knm(_ts_vl), "---") + "\n\\hline\n"
+        + _row516(r"\textbf{Transverse Shear Capacity of Slab, $V_{Rd}$}", _knm(_ts_vrd), "---") + "\n\\hline\n"
+        + _row516(r"\textbf{Transverse Shear Check}", r"$V_L/V_{Rd}$ = " + _ts_ur_str, _ts_status) + "\n\\hline\n"
+        + _row516(r"\textbf{Min. Transverse Reinforcement, $A_{st,min}$}",
+                  r"Required " + _cm2m(_ast_req) + r", Provided " + _cm2m(_ast_prov),
+                  _defl_status(_ast_req, _ast_prov)) + "\n\\hline\n"
+        + _row516(r"\textbf{Stud Diameter $\leq 2\,t_f$}",
+                  r"$d$ = " + _mm(_stud_d) + r" $\leq 2t_f$ = " + _mm(_d_lim),
+                  _defl_status(_stud_d, _d_lim)) + "\n\\hline\n"
+        + _row516(r"\textbf{Stud Edge Distance}",
+                  r"Provided " + _mm(_edge) + r" (req. $\geq$ " + _mm(_edge_req) + r")",
+                  _defl_status(_edge_req, _edge)) + "\n\\hline"
+    )
+
     # Generate Table 5.20(a) rows
     cb_forces_rows = []
     pairs = bridge.get_cb_pairs()
@@ -2218,20 +2281,11 @@ This section presents all structural design checks performed by OsdagBridge. For
 \vspace{1em}
 \noindent\textbf{Table 5.16  Transverse Shear and Detailing Checks}
 
-\begin{longtable}{|C{3.5cm}|L{5cm}|>{\arraybackslash}p{7.0cm}|}
+\begin{longtable}{|L{5.3cm}|>{\arraybackslash}p{7.2cm}|C{2.0cm}|}
 \hline
-\multirow{6}{*}{\makecell{}} & \textbf{Longitudinal Shear per unit length, $V_L$} &  \\[6pt]
-\cline{2-3}
- & \textbf{Transverse Shear Capacity of Slab} &  \\[6pt]
-\cline{2-3}
- & \textbf{Transverse Shear Check} & """ + _render_value(bridge.output_dict, KEY_UTIL_LONG_TRANS_SHEAR) + r""" \\[6pt]
-\cline{2-3}
- & \textbf{Min. Transverse Reinforcement, $A_{st,min}$} &  \\[6pt]
-\cline{2-3}
- & \textbf{Stud Diameter $\leq 2\,t_f$} &  \\[6pt]
-\cline{2-3}
- & \textbf{Edge Distance (min 25 mm)} &  \\[6pt]
+\textbf{Check} & \textbf{Value} & \textbf{Status} \\[6pt]
 \hline
+""" + t516_content + r"""
 \end{longtable}
 \noindent\textit{Note: IRC 22 Cl. 606.6, 606.10.}
 
