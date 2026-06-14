@@ -1969,7 +1969,7 @@ Fatigue Shear Resistance, $Q_r$ & IRC 22 Table 8 ($\phi d$, $N_{sc}$) & """
     if not pairs:
         # fallback: one placeholder row
         cb_forces_rows.append(
-            r"""Between Girders & Diagonal &  &  & C / T &  &  \\[6pt]
+            r"""Between Girders & Diagonal &  &  &  &  \\[6pt]
 \hline"""
         )
     else:
@@ -1978,8 +1978,8 @@ Fatigue Shear Resistance, $Q_r$ & IRC 22 Table 8 ($\phi d$, $N_{sc}$) & """
             for member, label in [("diagonal", "Diagonal"),
                                 ("chord", "Top / Bottom chord")]:
                 force_str, ftype = bridge.get_cb_governing_force(pair, member)
+                conn_type = bridge.get_cb_connection(pair, member, ftype)
                 section  = bridge.get_cb_section(pair, member, ftype)
-                nature   = bridge.get_cb_nature(pair, member)
 
                 # Fetch properties from output_dict
                 if member == "diagonal":
@@ -1998,10 +1998,9 @@ Fatigue Shear Resistance, $Q_r$ & IRC 22 Table 8 ($\phi d$, $N_{sc}$) & """
                 rmin_str = f"{float(rv_cm) * 10:.1f}" if rv_cm is not None else ""
                 cb_forces_rows.append(
                     r"\multirow{2}{*}{\makecell{" + _tex(pair) + r"}} & "
-                    + label + r" & " + section + r" & " + force_str
-                    + r" & " + nature
+                    + label + r" & " + conn_type + r" & " + section
                     + r" & " + area_str + r" & " + rmin_str
-                    + r" \\[6pt]\cline{2-7}"
+                    + r" \\[6pt]\cline{2-6}"
                 )
             cb_forces_rows.append(r"\hline")
     cb_forces_content = "\n".join(cb_forces_rows)
@@ -2057,13 +2056,14 @@ Fatigue Shear Resistance, $Q_r$ & IRC 22 Table 8 ($\phi d$, $N_{sc}$) & """
                             ("chord", "Chord")]:
             force_str, ftype = bridge.get_cb_governing_force(pair, member)
             section  = bridge.get_cb_section(pair, member, ftype)
+            gov_lc   = bridge.get_cb_gov_lc(pair, member, ftype)
             capacity = bridge.get_cb_capacity(pair, member, ftype)
             ur       = bridge.get_cb_efficiency(pair, member, ftype)
             status   = bridge.get_cb_status(pair, member, ftype)
             rows_for_pair.append(
                 r" & " + label + r" & " + section
-                + r" & " + force_str + r" & " + capacity
-                + r" & " + ur + r" & " + status + r" \\[6pt]\cline{2-7}"
+                + r" & " + gov_lc + r" & " + force_str + r" & " + capacity
+                + r" & " + ur + r" & " + status + r" \\[6pt]\cline{2-8}"
             )
         first = r"\multirow{2}{*}{\makecell{" + _tex(pair) + r"}}" + rows_for_pair[0]
         rest  = rows_for_pair[1:]
@@ -2474,18 +2474,18 @@ Clear Cover (IRC 112 Cl. 15.2) & $\geq$ """ + _dkf(KEY_DD_MIN_COVER, nd=0) + r""
 Cross bracing between adjacent plate girders provides lateral stability during construction, resists transverse loads (wind, seismic, braking) in service, and prevents lateral torsional buckling of the girders. Members are designed per IS~800:2007 Cl.~7 (compression) and Cl.~6 (tension). Forces are derived from the grillage model under the governing load combination  (DL + LL + WL).
 
 \vspace{1em}
-\noindent\textbf{Table 5.20(a)  Cross Bracing --- Member Forces and Section Properties}
+\noindent\textbf{Table 5.20(a)  Cross Bracing --- Connection and Section Properties}
 
 \vspace{0.4em}
 \noindent
 \setlength{\tabcolsep}{4pt}
-\begin{longtable}{|C{2.0cm}|C{2.0cm}|C{2.2cm}|C{2.0cm}|C{1.6cm}|C{1.6cm}|C{1.6cm}|}
+\begin{longtable}{|C{2.0cm}|C{2.0cm}|C{2.2cm}|C{2.5cm}|C{2.0cm}|C{2.0cm}|}
 \hline
-\textbf{Panel} & \textbf{Member} & \textbf{Section} & \textbf{$P_u$ (kN)} & \textbf{Nature} & \textbf{$A_g$ (mm²)} & \textbf{$r_{min}$ (mm)} \\[6pt]
+\textbf{Panel} & \textbf{Member} & \textbf{Connection} & \textbf{Section} & \textbf{$A_g$ (mm²)} & \textbf{$r_{min}$ (mm)} \\[6pt]
 \hline
 """ + cb_forces_content + r"""
 \end{longtable}
-\noindent\textit{Note: C = Compression; T = Tension. Governing load combination:  (DL + LL + WL). $A_g$ = gross cross-sectional area; $r_{min}$ = minimum radius of gyration.}
+\noindent\textit{Note: $A_g$ = gross cross-sectional area; $r_{min}$ = minimum radius of gyration.}
 
 \vspace{1em}
 \noindent\textbf{Table 5.20(b)  Cross Bracing --- Slenderness Ratio Check (IS~800 Cl.~3.8 \& Table~3)}
@@ -2501,9 +2501,9 @@ Cross bracing between adjacent plate girders provides lateral stability during c
 
 \vspace{1em}
 \noindent\textbf{Table 5.20(c)  Cross Bracing Design --- Capacity Summary}
-\begin{longtable}{|C{2.2cm}|C{2.2cm}|C{2.5cm}|C{2.0cm}|C{2.0cm}|C{1.8cm}|C{2.8cm}|}
+\begin{longtable}{|C{2.0cm}|C{1.8cm}|C{2.2cm}|C{3.0cm}|C{1.8cm}|C{1.8cm}|C{1.2cm}|C{1.8cm}|}
 \hline
-\textbf{Panel} & \textbf{Member} & \textbf{Section} & \textbf{Demand (kN)} & \textbf{Capacity (kN)} & \textbf{UR} & \textbf{Status} \\[6pt]
+\textbf{Panel} & \textbf{Member} & \textbf{Section} & \textbf{Governing LC} & \textbf{Demand (kN)} & \textbf{Capacity (kN)} & \textbf{UR} & \textbf{Status} \\[6pt]
 \hline
 """ + cb_capacity_content + r"""
 \end{longtable}
@@ -3016,14 +3016,20 @@ class ReportDataBridge:
             pass
         return ""
 
-    def get_cb_gov_lc(self, pair: str, force_type: str) -> str:
-        """Governing load case label for diagonal (tension or compression)."""
+    def get_cb_gov_lc(self, pair: str, member: str, force_type: str) -> str:
+        """Governing load case label for member (tension or compression)."""
         try:
-            key = f"diag_{force_type}_gov_lc"
+            pfx = "diag" if member == "diagonal" else "chord"
+            key = f"{pfx}_{force_type}_gov_lc"
             val = self._cb_forces_dict()["pairs"][pair].get(key)
             return _tex(val) if val else ""
         except (KeyError, TypeError):
             return ""
+
+    def get_cb_connection(self, pair: str, member: str, force_type: str) -> str:
+        """Return 'Welded' or 'Bolted'."""
+        val = self._cb_osdag(pair, member, force_type).get("connection")
+        return str(val) if val else ""
 
     def get_cb_effective_length(self, member: str) -> str:
         """Effective length KL in mm from geometry."""
