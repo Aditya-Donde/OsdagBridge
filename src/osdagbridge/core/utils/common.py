@@ -565,6 +565,10 @@ KEY_SD_BS_FPSD          = "steeldesign.details.bearing_stiffener.fpsd"         #
 KEY_SD_BS_FCD           = "steeldesign.details.bearing_stiffener.fcd"          # only for report
 KEY_SD_CLASS_FLANGE       = "steeldesign.details.classification.flange_class"        # only for report
 KEY_SD_CLASS_WEB          = "steeldesign.details.classification.web_class"           # only for report
+KEY_SD_DEFL_LIVE        = "steeldesign.deflection.live_mm"       # only for report
+KEY_SD_DEFL_TOTAL       = "steeldesign.deflection.total_mm"      # only for report
+KEY_SD_DEFL_ALLOW_LIVE  = "steeldesign.deflection.allow_live_mm" # only for report
+KEY_SD_DEFL_ALLOW_TOTAL = "steeldesign.deflection.allow_total_mm"# only for report
 
 #-------------- Stiffener Details Sub-Tab --------------------------------------------
 KEY_SD_STIFFENER_DETAILS            = "member_properties.stiffener_details.stiffener_details_cad"

@@ -200,6 +200,11 @@ from osdagbridge.core.utils.common import (
     KEY_SD_BS_FCDW_LC,
     KEY_SD_BS_FPSD,
     KEY_SD_BS_FCD,
+    # Deflection check keys (Table 5.10)
+    KEY_SD_DEFL_LIVE,
+    KEY_SD_DEFL_TOTAL,
+    KEY_SD_DEFL_ALLOW_LIVE,
+    KEY_SD_DEFL_ALLOW_TOTAL,
     # Stiffener table
     KEY_SD_STIFFENER_ROW_INTERMEDIATE,
     KEY_SD_STIFFENER_ROW_LONGITUDINAL,
@@ -681,14 +686,25 @@ class PlateGirderBridge:
         # and write results into output_dict before it is frozen.
         self.bridge_component_solver()
 
+        # Pre-compute per-girder load-effect & deflection caches (needs solved
+        # results). Run before the freeze so the per-girder deflections can be
+        # persisted into output_dict — the report builds a ReportDataBridge from
+        # output_dict only and has no access to the live _deflections_cache.
+        self.compute_load_effects_cache()
+        for _gi, _vals in (self._deflections_cache or {}).items():
+            _live  = _vals.get("live_mm")
+            _total = _vals.get("total_mm")
+            if _live is not None:
+                self.output_dict[f"{KEY_SD_DEFL_LIVE}.{_gi}"]  = round(float(_live), 3)   # only for report
+            if _total is not None:
+                self.output_dict[f"{KEY_SD_DEFL_TOTAL}.{_gi}"] = round(float(_total), 3)  # only for report
+
         # Freeze output_dict — no further writes allowed after this point
         self.output_dict = types.MappingProxyType(self.output_dict)
 
         import pprint
         sep = "=" * 60
         print(f"\n{sep}\n  OUTPUT DICT (frozen) — {len(self.output_dict)} keys\n{sep}")
-
-        self.compute_load_effects_cache()
 
     def _export_cad_figures(self, cad_generator) -> dict:
         """
@@ -3939,6 +3955,14 @@ class PlateGirderBridge:
         out[KEY_SD_BS_FCDW_LC]         = round(dr["bs_Fcdw_lc_kN"], 2)                            # kN
         out[KEY_SD_BS_FPSD]            = round(dr["bs_Fpsd_kN"], 2)                               # kN
         out[KEY_SD_BS_FCD]             = round(dr["bs_Fcd_kN"], 2)                                # kN
+
+        # ── 4j. Deflection checks (Table 5.10) — IRC 22 Cl. 604.3.2 ──────────────
+        # Values already computed by run_design_check(); just forward them here.
+        # Actual deflections from demand; allowable limits from capacity.
+        out[KEY_SD_DEFL_LIVE]        = round(dr["delta_live_mm"],       3)   # mm — actual live-load deflection
+        out[KEY_SD_DEFL_TOTAL]       = round(dr["delta_total_mm"],      3)   # mm — actual total-load deflection
+        out[KEY_SD_DEFL_ALLOW_LIVE]  = round(dr["defl_limit_live_mm"],  2)   # mm — allowable = L/800
+        out[KEY_SD_DEFL_ALLOW_TOTAL] = round(dr["defl_limit_total_mm"], 2)   # mm — allowable = L/600
 
         # In store_design_results(), replace the stiffener section (── 5. Stiffener table ──) with:
 

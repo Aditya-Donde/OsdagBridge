@@ -270,6 +270,11 @@ from osdagbridge.core.utils.common import (
     KEY_SD_BS_FCDW_LC,
     KEY_SD_BS_FPSD,
     KEY_SD_BS_FCD,
+    # Deflection check keys (Table 5.10)
+    KEY_SD_DEFL_LIVE,
+    KEY_SD_DEFL_TOTAL,
+    KEY_SD_DEFL_ALLOW_LIVE,
+    KEY_SD_DEFL_ALLOW_TOTAL,
     # Utilizations
     KEY_UTIL_FLEXURE,
     KEY_UTIL_SHEAR,
@@ -1681,13 +1686,58 @@ def ch5_design_checks(checks_data, bridge: "ReportDataBridge"):
         )
     t59_content = "\n".join(t59_rows)
 
-    # Generate Table 5.10 rows
+    # ── Table 5.10: Serviceability — Deflection Checks (IRC 22 Cl. 604.3.2) ──────
+    # Allowable limits: span-dependent, same for all girders, from output_dict.
+    # Actual deflections: per-girder from bridge._deflections_cache — the same
+    # source used by resolve_deflection_live_load/total in generate_results_values_builder.py.
+    # Keys: {"G1": {"live_mm": X, "total_mm": Y}, ...}
+    # lbl from girder_entries is "G1", "G2", ... which matches cache keys exactly.
+
+    def _defl_status(actual, allowable):
+        """PASS / red FAIL for deflection; '---' when values are missing."""
+        try:
+            return "PASS" if float(actual) <= float(allowable) else r"\textcolor{red}{FAIL}"
+        except (TypeError, ValueError):
+            return "---"
+
+    def _dfmt(v, nd=2):
+        """Format a numeric value to nd decimal places; empty string when None."""
+        try:
+            return f"{float(v):.{nd}f}"
+        except (TypeError, ValueError):
+            return ""
+
+    # Mirror generate_results_values_builder.resolve_deflection_live/total_load
+    # exactly so the report shows the same numbers as the Generate Results dialog:
+    # allowable from span (L/800, L/600), actual from _deflections_cache.
+    try:
+        _span_m = float(bridge.input_dict.get(KEY_SPAN))
+        _allow_live_mm  = _span_m * 1000.0 / 800.0
+        _allow_total_mm = _span_m * 1000.0 / 600.0
+    except (TypeError, ValueError):
+        _allow_live_mm = _allow_total_mm = None
+    _allow_live_str  = (f"L/800 = {_allow_live_mm:.1f} mm")  if _allow_live_mm  is not None else ""
+    _allow_total_str = (f"L/600 = {_allow_total_mm:.1f} mm") if _allow_total_mm is not None else ""
+
+    # The report has no live _deflections_cache (it builds a ReportDataBridge from
+    # output_dict only). design() persists the same per-girder cache values that
+    # the Generate Results dialog shows into output_dict under the canonical
+    # "G1".."Gn" suffix, so read them from there by loop index.
     t510_rows = []
-    for lbl, _ in girder_entries:
+    for _gi, (lbl, _) in enumerate(girder_entries, start=1):
+        _live_mm  = bridge.output_dict.get(f"{KEY_SD_DEFL_LIVE}.G{_gi}")
+        _total_mm = bridge.output_dict.get(f"{KEY_SD_DEFL_TOTAL}.G{_gi}")
+
         t510_rows.append(
-            r"\multirow{2}{*}{\makecell{" + lbl + r"""}} & Live Load Deflection () &  &  &  \\[6pt]
+            r"\multirow{2}{*}{\makecell{" + lbl + r"""}} & Live Load Deflection, $\delta_{LL}$ (mm) & """
+            + _allow_live_str + r""" & """
+            + _dfmt(_live_mm,  nd=3) + r""" & """
+            + _defl_status(_live_mm,  _allow_live_mm) + r""" \\[6pt]
 \cline{2-5}
- & Total Load Deflection () &  &  &  \\[6pt]
+ & Total Load Deflection, $\delta_{total}$ (mm) & """
+            + _allow_total_str + r""" & """
+            + _dfmt(_total_mm, nd=3) + r""" & """
+            + _defl_status(_total_mm, _allow_total_mm) + r""" \\[6pt]
 \hline"""
         )
     t510_content = "\n".join(t510_rows)
