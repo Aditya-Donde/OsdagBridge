@@ -283,6 +283,10 @@ from osdagbridge.core.utils.common import (
     # Shear connector capacity keys (Table 5.14) — nested in design_results
     KEY_SD_SC_Qu_kN,
     KEY_SD_SC_Qr_kN,
+    # Shear connector spacing keys (Table 5.15) — nested in design_results
+    KEY_SD_SC_SL1,
+    KEY_SD_SC_SL2,
+    KEY_SD_SC_SR,
     # Utilizations
     KEY_UTIL_FLEXURE,
     KEY_UTIL_SHEAR,
@@ -1873,6 +1877,28 @@ Fatigue Shear Resistance, $Q_r$ & IRC 22 Table 8 ($\phi d$, $N_{sc}$) & """
 \hline"""
     )
 
+    # ── Table 5.15: Shear Connector Spacing (bridge-level) ───────────────────
+    # Required spacings SL1/SL2/SR and the max-spacing limit are single bridge
+    # values in design_results. Each criterion passes when the provided spacing
+    # is no larger than that criterion's required spacing (denser = safe).
+    def _mm(v):
+        s = _dfmt(v, nd=1)
+        return (s + " mm") if s else ""
+
+    _sc_prov     = _dr_sc.get("stud_spacing_provided_mm")
+    _sc_prov_str = _mm(_sc_prov)
+
+    def _sp_row(crit, req):
+        return (crit + r" & " + _mm(req) + r" & " + _sc_prov_str + r" & "
+                + _defl_status(_sc_prov, req) + r" \\[6pt]")
+
+    t515_content = (
+        _sp_row("ULS Shear (SL1)",            _dr_sc.get(KEY_SD_SC_SL1)) + "\n\\hline\n"
+        + _sp_row("Full Composite (SL2)",       _dr_sc.get(KEY_SD_SC_SL2)) + "\n\\hline\n"
+        + _sp_row("SLS Fatigue (SR)",           _dr_sc.get(KEY_SD_SC_SR)) + "\n\\hline\n"
+        + _sp_row("Max Spacing Limit (IRC 22)", _dr_sc.get("stud_spacing_max_mm")) + "\n\\hline"
+    )
+
     # Generate Table 5.20(a) rows
     cb_forces_rows = []
     pairs = bridge.get_cb_pairs()
@@ -2181,18 +2207,11 @@ This section presents all structural design checks performed by OsdagBridge. For
 \vspace{1em}
 \noindent\textbf{Table 5.15  Shear Connector Spacing}
 
-\begin{longtable}{|C{2.5cm}|L{2.8cm}|>{\centering\arraybackslash}p{4.3cm}|>{\centering\arraybackslash}p{4.3cm}|C{1.5cm}|}
+\begin{longtable}{|L{3.2cm}|>{\centering\arraybackslash}p{4.3cm}|>{\centering\arraybackslash}p{4.3cm}|C{2.0cm}|}
 \hline
-\textbf{} & \textbf{Criterion} & \textbf{Governing Spacing} & \textbf{Actual Spacing Provided} & \textbf{Status} \\[6pt]
+\textbf{Criterion} & \textbf{Governing Spacing} & \textbf{Actual Spacing Provided} & \textbf{Status} \\[6pt]
 \hline
-\multirow{4}{*}{\makecell{}} & ULS Shear (SL1) &  &  &  \\[6pt]
-\cline{2-5}
- & Full Composite (SL2) &  &  &  \\[6pt]
-\cline{2-5}
- & SLS Fatigue (SR) &  &  &  \\[6pt]
-\cline{2-5}
- & Max Spacing Limit (IRC 22) &  &  &  \\[6pt]
-\hline
+""" + t515_content + r"""
 \end{longtable}
 \noindent\textit{Note: IRC 22 Cl. 606.4, 606.9. Governing spacing $= \min(S_{L1}, S_{L2}, S_R)$.}
 
