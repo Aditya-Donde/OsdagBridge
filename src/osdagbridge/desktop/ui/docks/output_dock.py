@@ -676,7 +676,7 @@ class OutputDock(QWidget):
             # Figure 6.2.3 — Side View of Girder: StiffenerCadPreviewWidget off-screen
             try:
                 from PySide6.QtCore import QBuffer, QIODevice
-                from osdagbridge.desktop.ui.dialogs.tabs.sub_tabs.section_properties.stiffener_details_tab import StiffenerCadPreviewWidget
+                from osdagbridge.desktop.ui.dialogs.additional_input.drawings.stiffener_cad_preview import StiffenerCadPreviewWidget
                 _gen = getattr(cad_3d_widget, 'generator', None)
                 _out = getattr(_gen, 'output_dict', {}) if _gen else {}
                 _depth = _f(_out.get('steeldesign.details.total_depth')) or 0.0
