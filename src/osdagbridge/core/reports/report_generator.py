@@ -2957,7 +2957,7 @@ def export_grillage_figure(grillage_image, output_dir, file_stem):
 
 
 
-from osdagbridge.core.utils.boq_generator import calculate_material_quantities
+from osdagbridge.core.boq.boq_generator import calculate_material_quantities
 
 # ===========================================================================
 # Public entry point

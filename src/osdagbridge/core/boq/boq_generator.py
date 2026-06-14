@@ -167,96 +167,129 @@ def calculate_material_quantities(inputs: dict, outputs: dict) -> dict:
             quantities["steel_girders_wt_total"] = f"{total_girder_wt:.2f}"
 
         # 4. Shear Stud Connectors (Cu.m) and Weight (MT)
-        spacing_mm = float(outputs.get("shear_connectors.stud_spacing_provided_mm", 300.0) or 300.0)
-        studs_per_sec = int(inputs.get("shear_connectors.studs_per_section", 2) or 2)
-        n_sections = int(span * 1000.0 / spacing_mm) + 1
-        total_studs = n_girders * studs_per_sec * n_sections
-        
-        stud_d = float(inputs.get("shear_connectors.stud_diameter", 22.0) or 22.0)
-        stud_h = float(inputs.get("shear_connectors.stud_height", 150.0) or 150.0) / 1000.0  # mm to m
-        stud_area = (3.14159 * (stud_d / 1000.0) ** 2) / 4.0
+        spacing_mm = 0.0
+        studs_per_sec = 0
+        stud_d = 0.0
+        stud_h_mm = 0.0
 
-        stud_vol = stud_area * stud_h
-        quantities["shear_studs_vol_formula"] = f"${stud_area:.6f}\\text{{ m}}^2 \\times {stud_h:.3f}\\text{{ m}} = {stud_vol:.6f}\\text{{ m}}^3$"
-        quantities["shear_studs_qty"] = str(total_studs)
-        
-        studs_total_vol = total_studs * stud_vol
-        quantities["shear_studs_vol_total"] = f"{studs_total_vol:.2f}"
-        
-        # density of steel = 7850 kg/m^3 = 7.85 tonnes/m^3
-        single_stud_wt = stud_vol * 7.85
-        total_studs_wt = studs_total_vol * 7.85
-        quantities["shear_studs_wt_single"] = f"{single_stud_wt:.6f}"
-        quantities["shear_studs_wt_total"] = f"{total_studs_wt:.3f}"
+        try:
+            spacing_mm = float(outputs.get("steeldesign.details.shear.longitudinal_spacing") or 0.0)
+            studs_per_sec = int(outputs.get("steeldesign.details.shear.studs_per_section") or 0)
+            stud_d = float(outputs.get("steeldesign.details.shear.diameter") or inputs.get("design_options.shear_studs.diameter") or 0.0)
+            stud_h_mm = float(outputs.get("steeldesign.details.shear.height") or inputs.get("design_options.shear_studs.height") or 0.0)
+        except Exception:
+            pass
+
+        if spacing_mm > 0.0 and studs_per_sec > 0 and stud_d > 0.0 and stud_h_mm > 0.0:
+            stud_h = stud_h_mm / 1000.0  # mm to m
+            n_sections = int(span * 1000.0 / spacing_mm) + 1
+            total_studs = n_girders * studs_per_sec * n_sections
+            
+            stud_area = (3.14159 * (stud_d / 1000.0) ** 2) / 4.0
+            stud_vol = stud_area * stud_h
+            quantities["shear_studs_vol_formula"] = f"${stud_area:.6f}\\text{{ m}}^2 \\times {stud_h:.3f}\\text{{ m}} = {stud_vol:.6f}\\text{{ m}}^3$"
+            quantities["shear_studs_qty"] = str(total_studs)
+            
+            studs_total_vol = total_studs * stud_vol
+            quantities["shear_studs_vol_total"] = f"{studs_total_vol:.2f}"
+            
+            # density of steel = 7850 kg/m^3 = 7.85 tonnes/m^3
+            single_stud_wt = stud_vol * 7.85
+            total_studs_wt = studs_total_vol * 7.85
+            quantities["shear_studs_wt_single"] = f"{single_stud_wt:.6f}"
+            quantities["shear_studs_wt_total"] = f"{total_studs_wt:.3f}"
+        else:
+            quantities["shear_studs_vol_formula"] = "---"
+            quantities["shear_studs_qty"] = "---"
+            quantities["shear_studs_vol_total"] = "---"
+            quantities["shear_studs_wt_single"] = "---"
+            quantities["shear_studs_wt_total"] = "---"
 
         # 5. Steel Bracings (Cu.m) and Weight (MT)
-        # Find bracing section properties from G1G2 or input defaults
+        # Find bracing section properties from outputs or skip if not present
         bracing_area = 0.0
         bracing_len = 0.0
         top_chord_enabled = True
         bot_chord_enabled = True
 
         try:
-            bracing_area = float(outputs.get("transverse_member_design.section_properties.bracing.G1G2.A") or 0.0)
-            bracing_len = float(outputs.get("transverse_member_design.section_properties.bracing.G1G2.length") or 0.0)
+            # Try to resolve bracing area from outputs (comes in cm² from database)
+            bracing_area_cm2 = float(outputs.get("transverse_member_design.cb.section_properties.bracing.G1G2.A") or 0.0)
+            bracing_area = bracing_area_cm2 / 10000.0  # Convert cm² to m²
+        except Exception:
+            bracing_area = 0.0
+
+        try:
+            cb_forces = outputs.get("crossbracing_forces_dict", {}) or {}
+            cb_geom = cb_forces.get("geometry", {}) or {}
+            bracing_len = float(cb_geom.get("diagonal_length_m", 0.0) or 0.0)
+        except Exception:
+            bracing_len = 0.0
+
+        try:
             top_chord_enabled = outputs.get("member_properties.cross_bracing_details.top_chord", True)
             bot_chord_enabled = outputs.get("member_properties.cross_bracing_details.bottom_chord", True)
         except Exception:
             pass
 
-        # Fallbacks
         spacing = float(inputs.get(KEY_TS_GIRDER_SPACING, 2.5) or 2.5)
-        try:
-            dw_m = float(resolve_girder_value(inputs, "member_properties.girder_details.section_input.web_depth", 0) or 1000.0) / 1000.0
-        except Exception:
-            dw_m = 1.0
-        
-        if bracing_len <= 0:
-            bracing_len = math.sqrt(spacing**2 + dw_m**2)
 
-        if bracing_area <= 0:
-            bracing_area = 0.001539  # Default ISA 100x100x8
+        # Only perform calculations if bracing is designed (area and length are positive)
+        if bracing_area > 0.0 and bracing_len > 0.0:
+            cb_forces = outputs.get("crossbracing_forces_dict", {}) or {}
+            cb_geom = cb_forces.get("geometry", {}) or {}
+            cb_spacing = float(cb_geom.get("cb_spacing_m") or 0.0)
+            if cb_spacing > 0.0:
+                n_panels = max(1, round(span / cb_spacing) - 1)
+            else:
+                n_panels = max(3, int(span / 5.0))
 
-        n_panels = max(3, int(span / 5.0))
-        
-        # 5a. Top Chord
-        top_chord_qty = (n_girders - 1) * n_panels if top_chord_enabled else 0
-        top_chord_vol_single = bracing_area * spacing
-        top_chord_vol_total = top_chord_qty * top_chord_vol_single
-        top_chord_wt_single = top_chord_vol_single * 7.85
-        top_chord_wt_total = top_chord_vol_total * 7.85
-        
-        quantities["bracing_top_vol_formula"] = f"${bracing_area:.5f}\\text{{ m}}^2 \\times {spacing:.2f}\\text{{ m}} = {top_chord_vol_single:.5f}\\text{{ m}}^3$"
-        quantities["bracing_top_qty"] = str(top_chord_qty)
-        quantities["bracing_top_vol_total"] = f"{top_chord_vol_total:.2f}" if top_chord_enabled else "0.00"
-        quantities["bracing_top_wt_single"] = f"{top_chord_wt_single:.4f}"
-        quantities["bracing_top_wt_total"] = f"{top_chord_wt_total:.2f}" if top_chord_enabled else "0.00"
+            # 5a. Top Chord
+            top_chord_qty = (n_girders - 1) * n_panels if top_chord_enabled else 0
+            top_chord_vol_single = bracing_area * spacing
+            top_chord_vol_total = top_chord_qty * top_chord_vol_single
+            top_chord_wt_single = top_chord_vol_single * 7.85
+            top_chord_wt_total = top_chord_vol_total * 7.85
+            
+            quantities["bracing_top_vol_formula"] = f"${bracing_area:.5f}\\text{{ m}}^2 \\times {spacing:.2f}\\text{{ m}} = {top_chord_vol_single:.5f}\\text{{ m}}^3$"
+            quantities["bracing_top_qty"] = str(top_chord_qty)
+            quantities["bracing_top_vol_total"] = f"{top_chord_vol_total:.2f}" if top_chord_enabled else "0.00"
+            quantities["bracing_top_wt_single"] = f"{top_chord_wt_single:.4f}"
+            quantities["bracing_top_wt_total"] = f"{top_chord_wt_total:.2f}" if top_chord_enabled else "0.00"
 
-        # 5b. Bottom Chord
-        bot_chord_qty = (n_girders - 1) * n_panels if bot_chord_enabled else 0
-        bot_chord_vol_single = bracing_area * spacing
-        bot_chord_vol_total = bot_chord_qty * bot_chord_vol_single
-        bot_chord_wt_single = bot_chord_vol_single * 7.85
-        bot_chord_wt_total = bot_chord_vol_total * 7.85
-        
-        quantities["bracing_bot_vol_formula"] = f"${bracing_area:.5f}\\text{{ m}}^2 \\times {spacing:.2f}\\text{{ m}} = {bot_chord_vol_single:.5f}\\text{{ m}}^3$"
-        quantities["bracing_bot_qty"] = str(bot_chord_qty)
-        quantities["bracing_bot_vol_total"] = f"{bot_chord_vol_total:.2f}" if bot_chord_enabled else "0.00"
-        quantities["bracing_bot_wt_single"] = f"{bot_chord_wt_single:.4f}"
-        quantities["bracing_bot_wt_total"] = f"{bot_chord_wt_total:.2f}" if bot_chord_enabled else "0.00"
+            # 5b. Bottom Chord
+            bot_chord_qty = (n_girders - 1) * n_panels if bot_chord_enabled else 0
+            bot_chord_vol_single = bracing_area * spacing
+            bot_chord_vol_total = bot_chord_qty * bot_chord_vol_single
+            bot_chord_wt_single = bot_chord_vol_single * 7.85
+            bot_chord_wt_total = bot_chord_vol_total * 7.85
+            
+            quantities["bracing_bot_vol_formula"] = f"${bracing_area:.5f}\\text{{ m}}^2 \\times {spacing:.2f}\\text{{ m}} = {bot_chord_vol_single:.5f}\\text{{ m}}^3$"
+            quantities["bracing_bot_qty"] = str(bot_chord_qty)
+            quantities["bracing_bot_vol_total"] = f"{bot_chord_vol_total:.2f}" if bot_chord_enabled else "0.00"
+            quantities["bracing_bot_wt_single"] = f"{bot_chord_wt_single:.4f}"
+            quantities["bracing_bot_wt_total"] = f"{bot_chord_wt_total:.2f}" if bot_chord_enabled else "0.00"
 
-        # 5c. Diagonal
-        diags_qty = (n_girders - 1) * n_panels * 2
-        diag_vol_single = bracing_area * bracing_len
-        diag_vol_total = diags_qty * diag_vol_single
-        diag_wt_single = diag_vol_single * 7.85
-        diag_wt_total = diag_vol_total * 7.85
-        
-        quantities["bracing_diag_vol_formula"] = f"${bracing_area:.5f}\\text{{ m}}^2 \\times {bracing_len:.2f}\\text{{ m}} = {diag_vol_single:.5f}\\text{{ m}}^3$"
-        quantities["bracing_diag_qty"] = str(diags_qty)
-        quantities["bracing_diag_vol_total"] = f"{diag_vol_total:.2f}"
-        quantities["bracing_diag_wt_single"] = f"{diag_wt_single:.4f}"
-        quantities["bracing_diag_wt_total"] = f"{diag_wt_total:.2f}"
+            # 5c. Diagonal
+            diags_qty = (n_girders - 1) * n_panels * 2
+            diag_vol_single = bracing_area * bracing_len
+            diag_vol_total = diags_qty * diag_vol_single
+            diag_wt_single = diag_vol_single * 7.85
+            diag_wt_total = diag_vol_total * 7.85
+            
+            quantities["bracing_diag_vol_formula"] = f"${bracing_area:.5f}\\text{{ m}}^2 \\times {bracing_len:.2f}\\text{{ m}} = {diag_vol_single:.5f}\\text{{ m}}^3$"
+            quantities["bracing_diag_qty"] = str(diags_qty)
+            quantities["bracing_diag_vol_total"] = f"{diag_vol_total:.2f}"
+            quantities["bracing_diag_wt_single"] = f"{diag_wt_single:.4f}"
+            quantities["bracing_diag_wt_total"] = f"{diag_wt_total:.2f}"
+        else:
+            # Keep all bracing volumes, quantities, and weights as default placeholder "---"
+            for prefix in ("bracing_top", "bracing_bot", "bracing_diag"):
+                quantities[f"{prefix}_vol_formula"] = "---"
+                quantities[f"{prefix}_qty"] = "---"
+                quantities[f"{prefix}_vol_total"] = "---"
+                quantities[f"{prefix}_wt_single"] = "---"
+                quantities[f"{prefix}_wt_total"] = "---"
 
         # 6. Crash Barrier (Cu.m) and Weight (MT)
         KEY_CB_AREA = "typical_section.crash_barrier.area"
@@ -265,20 +298,25 @@ def calculate_material_quantities(inputs: dict, outputs: dict) -> dict:
             cb_area = float(inputs.get(KEY_CB_AREA, 0.0) or 0.0) / 1e6
         except Exception:
             pass
-        if cb_area <= 0:
-            cb_area = 0.301875  # Default area in m²
         
-        cb_vol = cb_area * span
-        quantities["crash_barrier_vol_formula"] = f"${cb_area:.5f}\\text{{ m}}^2 \\times {span:.2f}\\text{{ m}} = {cb_vol:.5f}\\text{{ m}}^3$"
-        quantities["crash_barrier_qty"] = "2"
-        
-        cb_total_vol = 2 * cb_vol
-        quantities["crash_barrier_vol_total"] = f"{cb_total_vol:.2f}"
-        
-        single_cb_wt = cb_vol * 2.5
-        total_cb_wt = cb_total_vol * 2.5
-        quantities["crash_barrier_wt_single"] = f"{single_cb_wt:.2f}"
-        quantities["crash_barrier_wt_total"] = f"{total_cb_wt:.2f}"
+        if cb_area > 0.0:
+            cb_vol = cb_area * span
+            quantities["crash_barrier_vol_formula"] = f"${cb_area:.5f}\\text{{ m}}^2 \\times {span:.2f}\\text{{ m}} = {cb_vol:.5f}\\text{{ m}}^3$"
+            quantities["crash_barrier_qty"] = "2"
+            
+            cb_total_vol = 2 * cb_vol
+            quantities["crash_barrier_vol_total"] = f"{cb_total_vol:.2f}"
+            
+            single_cb_wt = cb_vol * 2.5
+            total_cb_wt = cb_total_vol * 2.5
+            quantities["crash_barrier_wt_single"] = f"{single_cb_wt:.2f}"
+            quantities["crash_barrier_wt_total"] = f"{total_cb_wt:.2f}"
+        else:
+            quantities["crash_barrier_vol_formula"] = "---"
+            quantities["crash_barrier_qty"] = "---"
+            quantities["crash_barrier_vol_total"] = "---"
+            quantities["crash_barrier_wt_single"] = "---"
+            quantities["crash_barrier_wt_total"] = "---"
 
     except Exception as exc:
         logger.warning(f"Error calculating material quantities: {exc}")
