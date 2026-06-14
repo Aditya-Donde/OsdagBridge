@@ -280,6 +280,9 @@ from osdagbridge.core.utils.common import (
     KEY_SD_STRESS_STEEL_ALLOWABLE,
     # Per-girder ULS/SLS check summary (Table 5.12 fatigue) — nested in design_results
     KEY_SD_ULS_PER_GIRDER,
+    # Shear connector capacity keys (Table 5.14) — nested in design_results
+    KEY_SD_SC_Qu_kN,
+    KEY_SD_SC_Qr_kN,
     # Utilizations
     KEY_UTIL_FLEXURE,
     KEY_UTIL_SHEAR,
@@ -1852,6 +1855,24 @@ def ch5_design_checks(checks_data, bridge: "ReportDataBridge"):
         )
     g_summary_table_content = "\n".join(g_summary_rows)
 
+    # ── Table 5.14: Shear Connector Capacity (bridge-level) ──────────────────
+    # Qu (Cl.606.3.1, Eq.6.1) and Qr (Cl.606.3.2, Table 8) are single per-stud
+    # values for the bridge, stored flat inside output_dict["design_results"].
+    _dr_sc = bridge.output_dict.get("design_results", {}) or {}
+
+    def _kn(v):
+        s = _dfmt(v, nd=2)
+        return (s + " kN") if s else ""
+
+    t514_content = (
+        r"Design Resistance, $Q_u$ & \footnotesize\makecell{$Q_u=\min(Q_{u,s},\,Q_{u,c})$\\[3pt]$Q_{u,s}=\dfrac{0.8\,f_u\,(\pi d^2/4)}{\gamma_v}$\\[3pt]$Q_{u,c}=\dfrac{0.29\,\alpha\,d^2\sqrt{f_{ck}\,E_{cm}}}{\gamma_v}$} & "
+        + _kn(_dr_sc.get(KEY_SD_SC_Qu_kN)) + r""" & IRC 22 Cl. 606.3.1 (Eq. 6.1) \\[6pt]
+\hline
+Fatigue Shear Resistance, $Q_r$ & IRC 22 Table 8 ($\phi d$, $N_{sc}$) & """
+        + _kn(_dr_sc.get(KEY_SD_SC_Qr_kN)) + r""" & IRC 22 Cl. 606.3.2 (Table 8) \\[6pt]
+\hline"""
+    )
+
     # Generate Table 5.20(a) rows
     cb_forces_rows = []
     pairs = bridge.get_cb_pairs()
@@ -2150,14 +2171,11 @@ This section presents all structural design checks performed by OsdagBridge. For
 \vspace{1em}
 \noindent\textbf{Table 5.14  Shear Connector Capacity}
 
-\begin{longtable}{|C{4cm}|C{5cm}|>{\centering\arraybackslash}p{3.0cm}|C{3.5cm}|}
+\begin{longtable}{|C{3.6cm}|C{5.6cm}|>{\centering\arraybackslash}p{2.6cm}|C{3.0cm}|}
 \hline
 \textbf{Parameter} & \textbf{Formula} & \textbf{Value} & \textbf{Reference} \\[6pt]
 \hline
-Design Resistance, $Q_u$ &  &  &  \\[6pt]
-\hline
-Fatigue Shear Resistance, Qr &  &  &  \\[6pt]
-\hline
+""" + t514_content + r"""
 \end{longtable}
 
 \vspace{1em}
