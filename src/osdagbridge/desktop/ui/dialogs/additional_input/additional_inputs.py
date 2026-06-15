@@ -844,7 +844,10 @@ class AdditionalInputs(QDialog):
 
             elif isinstance(w, QLineEdit):
                 w.blockSignals(True)
-                w.setText(str(value))
+                if ("section_properties" in key or "material_properties" in key) and isinstance(value, (int, float)):
+                    w.setText(f"{value:.2e}")
+                else:
+                    w.setText(str(value))
                 w.blockSignals(False)
 
             else:
@@ -908,6 +911,9 @@ class AdditionalInputs(QDialog):
         gi, mi = self._get_current_girder_member_indices()
         suffix = f".G{gi}.M{mi}"
         
+        # Always update drawing with the changed top flange value
+        self._update_section_drawing()
+        
         sym_val = self.working_input_dict.get(KEY_MP_GIRDER_SYMMETRY + suffix, "Girder Symmetric")
         if sym_val.strip().lower() != "girder symmetric":
             return  # unsymmetric — nothing to mirror
@@ -928,12 +934,12 @@ class AdditionalInputs(QDialog):
             return None
 
         def _write(w, val):
-            if isinstance(w, QLineEdit): w.blockSignals(True); w.setText(str(val)); w.blockSignals(False)
-            elif isinstance(w, QComboBox): w.blockSignals(True); w.setCurrentText(str(val)); w.blockSignals(False)
+            if isinstance(w, QLineEdit): w.setText(str(val))
+            elif isinstance(w, QComboBox): w.setCurrentText(str(val))
             elif isinstance(w, AdaptiveWidget):
                 a = w.currentWidget()
-                if isinstance(a, QLineEdit): a.blockSignals(True); a.setText(str(val)); a.blockSignals(False)
-                elif isinstance(a, QComboBox): a.blockSignals(True); a.setCurrentText(str(val)); a.blockSignals(False)
+                if isinstance(a, QLineEdit): a.setText(str(val))
+                elif isinstance(a, QComboBox): a.setCurrentText(str(val))
 
         tw_val = _read(tw_w)
         tt_val = _read(tt_w)
@@ -1056,19 +1062,20 @@ class AdditionalInputs(QDialog):
         if section is None:
             return {}
 
+        # DB columns are _cm2, _cm4, _cm, _cm3, _cm6 → convert to m², m⁴, m, m³, m⁶ (match UI labels)
         return {
-            KEY_MP_GIRDER_MASS:                str(section.mass_per_meter_kg),
-            KEY_MP_GIRDER_SECTIONAL_AREA:      str(section.area_cm2),
-            KEY_MP_GIRDER_SECTIONAL_IZ:        str(section.moment_of_inertia_zz_cm4),
-            KEY_MP_GIRDER_SECTIONAL_IY:        str(section.moment_of_inertia_yy_cm4),
-            KEY_MP_GIRDER_RADIUS_GYRATION_Z:   str(section.radius_of_gyration_z_cm),
-            KEY_MP_GIRDER_RADIUS_GYRATION_Y:   str(section.radius_of_gyration_y_cm),
-            KEY_MP_GIRDER_ELASTIC_MODULUS_ZZ:  str(section.elastic_section_modulus_z_cm3),
-            KEY_MP_GIRDER_ELASTIC_MODULUS_ZY:  str(section.elastic_section_modulus_y_cm3),
-            KEY_MP_GIRDER_PLASTIC_MODULUS_ZUZ: str(section.plastic_section_modulus_z_cm3),
-            KEY_MP_GIRDER_PLASTIC_MODULUS_ZUY: str(section.plastic_section_modulus_y_cm3),
-            KEY_MP_GIRDER_TORSION_CONSTANT_IT: str(section.torsion_constant_cm4),
-            KEY_MP_GIRDER_WARPING_CONSTANT_IW: str(section.warping_constant_cm6),
+            KEY_MP_GIRDER_MASS:                f"{section.mass_per_meter_kg:.2e}",
+            KEY_MP_GIRDER_SECTIONAL_AREA:      f"{section.area_cm2 * 1e-4:.2e}",          # cm² → m²
+            KEY_MP_GIRDER_SECTIONAL_IZ:        f"{section.moment_of_inertia_zz_cm4 * 1e-8:.2e}",  # cm⁴ → m⁴
+            KEY_MP_GIRDER_SECTIONAL_IY:        f"{section.moment_of_inertia_yy_cm4 * 1e-8:.2e}",  # cm⁴ → m⁴
+            KEY_MP_GIRDER_RADIUS_GYRATION_Z:   f"{section.radius_of_gyration_z_cm * 1e-2:.2e}",  # cm → m
+            KEY_MP_GIRDER_RADIUS_GYRATION_Y:   f"{section.radius_of_gyration_y_cm * 1e-2:.2e}",  # cm → m
+            KEY_MP_GIRDER_ELASTIC_MODULUS_ZZ:  f"{section.elastic_section_modulus_z_cm3 * 1e-6:.2e}",  # cm³ → m³
+            KEY_MP_GIRDER_ELASTIC_MODULUS_ZY:  f"{section.elastic_section_modulus_y_cm3 * 1e-6:.2e}",  # cm³ → m³
+            KEY_MP_GIRDER_PLASTIC_MODULUS_ZUZ: f"{section.plastic_section_modulus_z_cm3 * 1e-6:.2e}",  # cm³ → m³
+            KEY_MP_GIRDER_PLASTIC_MODULUS_ZUY: f"{section.plastic_section_modulus_y_cm3 * 1e-6:.2e}",  # cm³ → m³
+            KEY_MP_GIRDER_TORSION_CONSTANT_IT: f"{section.torsion_constant_cm4 * 1e-8:.2e}",  # cm⁴ → m⁴
+            KEY_MP_GIRDER_WARPING_CONSTANT_IW: f"{section.warping_constant_cm6 * 1e-12:.2e}", # cm⁶ → m⁶
         }
 
     def _compute_welded_section_properties(self, working_input_dict: dict) -> dict:  # compute: derives welded I-section properties from flange/web dimensions
@@ -1114,20 +1121,20 @@ class AdditionalInputs(QDialog):
         except Exception:
             return {}
 
-        # Outputs are in SI metres; convert to cm-based display units
+        # Outputs are already in SI (m², m⁴, m³, m⁶) — same as UI labels
         return {
-            KEY_MP_GIRDER_MASS:                f"{result['Mass']:.4f}",
-            KEY_MP_GIRDER_SECTIONAL_AREA:      f"{result['Area']  * 1e4:.4f}",   # m²  → cm²
-            KEY_MP_GIRDER_SECTIONAL_IZ:        f"{result['I_z']   * 1e8:.4f}",   # m⁴  → cm⁴
-            KEY_MP_GIRDER_SECTIONAL_IY:        f"{result['I_y']   * 1e8:.4f}",   # m⁴  → cm⁴
-            KEY_MP_GIRDER_RADIUS_GYRATION_Z:   f"{result['r_z']   * 1e2:.4f}",   # m   → cm
-            KEY_MP_GIRDER_RADIUS_GYRATION_Y:   f"{result['r_y']   * 1e2:.4f}",   # m   → cm
-            KEY_MP_GIRDER_ELASTIC_MODULUS_ZZ:  f"{result['Z_ez']  * 1e6:.4f}",   # m³  → cm³
-            KEY_MP_GIRDER_ELASTIC_MODULUS_ZY:  f"{result['Z_ey']  * 1e6:.4f}",   # m³  → cm³
-            KEY_MP_GIRDER_PLASTIC_MODULUS_ZUZ: f"{result['Z_pz']  * 1e6:.4f}",   # m³  → cm³
-            KEY_MP_GIRDER_PLASTIC_MODULUS_ZUY: f"{result['Z_py']  * 1e6:.4f}",   # m³  → cm³
-            KEY_MP_GIRDER_TORSION_CONSTANT_IT: f"{result['I_t']   * 1e8:.4f}",   # m⁴  → cm⁴
-            KEY_MP_GIRDER_WARPING_CONSTANT_IW: f"{result['I_w']   * 1e12:.4f}",  # m⁶  → cm⁶
+            KEY_MP_GIRDER_MASS:                f"{result['Mass']:.2e}",
+            KEY_MP_GIRDER_SECTIONAL_AREA:      f"{result['Area']:.2e}",
+            KEY_MP_GIRDER_SECTIONAL_IZ:        f"{result['I_z']:.2e}",
+            KEY_MP_GIRDER_SECTIONAL_IY:        f"{result['I_y']:.2e}",
+            KEY_MP_GIRDER_RADIUS_GYRATION_Z:   f"{result['r_z']:.2e}",
+            KEY_MP_GIRDER_RADIUS_GYRATION_Y:   f"{result['r_y']:.2e}",
+            KEY_MP_GIRDER_ELASTIC_MODULUS_ZZ:  f"{result['Z_ez']:.2e}",
+            KEY_MP_GIRDER_ELASTIC_MODULUS_ZY:  f"{result['Z_ey']:.2e}",
+            KEY_MP_GIRDER_PLASTIC_MODULUS_ZUZ: f"{result['Z_pz']:.2e}",
+            KEY_MP_GIRDER_PLASTIC_MODULUS_ZUY: f"{result['Z_py']:.2e}",
+            KEY_MP_GIRDER_TORSION_CONSTANT_IT: f"{result['I_t']:.2e}",
+            KEY_MP_GIRDER_WARPING_CONSTANT_IW: f"{result['I_w']:.2e}",
         }
 
     # ── Member Properties > Stiffener Details ────────────────────────────────────
