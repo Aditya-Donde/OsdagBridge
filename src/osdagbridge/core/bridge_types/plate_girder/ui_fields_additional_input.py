@@ -2462,7 +2462,7 @@ STIFFENER_DETAILS_SCHEMA = {
                         "label":   "No. of Bearing Stiffeners<br>(on one side only):",
                         "type":    TYPE_COMBOBOX,
                         "choices": VALUES_BEARING_STIFFENER_COUNT,
-                        "on_change": "_update_stiffener_cad",
+                        "on_change": "_on_bearing_stiffener_count_changed",
                     }]
                 },
                 {
@@ -2788,6 +2788,7 @@ END_DIAPHRAGM_DETAILS_SCHEMA = {
                     "label": "Type:",
                     "type": TYPE_COMBOBOX,
                     "choices": VALUES_END_DIAPHRAGM_TYPE,
+                    "enabled_choices": ["Cross Bracing"],
                     "on_change": "_on_end_diaphragm_type_changed",
                 }]},
  

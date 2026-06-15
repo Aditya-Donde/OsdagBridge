@@ -294,7 +294,7 @@ class CadPreviewWidget(QWidget):
         self._mode_buttons["side"].clicked.connect(
             lambda: self._set_view_mode("side")
         )
-        self._set_view_mode("side")
+        self._set_view_mode("cross")
 
     def _set_view_mode(self, mode: str) -> None:
         self._view_mode = mode

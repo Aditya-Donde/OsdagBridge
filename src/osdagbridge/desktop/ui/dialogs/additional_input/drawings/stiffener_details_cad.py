@@ -95,7 +95,14 @@ class StiffenerDetailsCad(QWidget):
         active_member_id = str(active_member_id or "").strip()
 
         if active_member_id:
-            self._stiffener_by_member[active_member_id] = dict(working_input_dict)
+            state = dict(working_input_dict)
+            match = re.match(r"G(\d+)M(\d+)", active_member_id)
+            suffix = f".G{match.group(1)}.M{match.group(2)}" if match else ""
+            if suffix:
+                for k, v in working_input_dict.items():
+                    if k.endswith(suffix):
+                        state[k[:-len(suffix)]] = v
+            self._stiffener_by_member[active_member_id] = state
 
         match = re.match(r"G(\d+)M\d+", active_member_id)
         if match:

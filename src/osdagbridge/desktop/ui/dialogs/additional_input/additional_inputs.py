@@ -1,4 +1,4 @@
-"""
+﻿"""
 Additional Inputs Widget for Highway Bridge Design
 Provides detailed input fields for manual bridge parameter definition
 """
@@ -964,11 +964,14 @@ class AdditionalInputs(QDialog):
         self.working_input_dict[KEY_MP_GIRDER_SYMMETRY + suffix] = symmetry
 
         is_symmetric = symmetry.strip().lower() == "girder symmetric"
+        is_optimized = str(self.working_input_dict.get(KEY_DESIGN_MODE, "Optimized")).strip() == "Optimized"
 
         bw = self.findChild(QWidget, KEY_MP_GIRDER_BOTTOM_FLANGE_WIDTH)
         bt = self.findChild(QWidget, KEY_MP_GIRDER_BOTTOM_FLANGE_THICKNESS)
-        if bw: bw.setEnabled(not is_symmetric)
-        if bt: bt.setEnabled(not is_symmetric)
+        # Disable bottom flange fields when symmetric OR when in Optimized mode
+        disable_bottom = is_symmetric or is_optimized
+        if bw: bw.setEnabled(not disable_bottom)
+        if bt: bt.setEnabled(not disable_bottom)
 
         if is_symmetric:
             self._on_top_flange_changed()  # reuse — does the mirror + drawing update
@@ -1217,6 +1220,9 @@ class AdditionalInputs(QDialog):
         w = self.findChild(QComboBox, KEY_MP_STIFFENER_LONGITUDINAL)
         if w:
             self._on_longitudinal_stiffener_changed(w.currentText())
+        w = self.findChild(QComboBox, KEY_MP_STIFFENER_NO_BEARING_STIFFENERS)
+        if w:
+            self._on_bearing_stiffener_count_changed(w.currentText())
 
         self._update_stiffener_cad()
 
@@ -1267,6 +1273,28 @@ class AdditionalInputs(QDialog):
                 if m:
                     suffix = f".G{m.group(1)}.M{m.group(2)}"
                     self.working_input_dict[KEY_MP_STIFFENER_INTERMEDIATE_SPACING + suffix] = "NA"
+
+        self._update_stiffener_cad()
+
+    def _on_bearing_stiffener_count_changed(self, value: str) -> None:  # on_change: toggles spacing field enabled/disabled based on bearing stiffener count
+        """Disable spacing when count=1, enable + default 50mm when count>1."""
+        try:
+            count = int(value)
+        except (ValueError, TypeError):
+            count = 1
+
+        spacing_w   = self.findChild(QWidget, KEY_MP_STIFFENER_SPACING)
+        spacing_lbl = self.findChild(QLabel,  KEY_MP_STIFFENER_SPACING + "_label")
+        enable = count > 1
+        if spacing_w:
+            spacing_w.setEnabled(enable)
+            if isinstance(spacing_w, QLineEdit):
+                if enable and (not spacing_w.text().strip() or spacing_w.text().strip() == "0"):
+                    spacing_w.setText("50")
+                elif not enable:
+                    spacing_w.setText("")
+        if spacing_lbl:
+            spacing_lbl.setEnabled(enable)
 
         self._update_stiffener_cad()
 

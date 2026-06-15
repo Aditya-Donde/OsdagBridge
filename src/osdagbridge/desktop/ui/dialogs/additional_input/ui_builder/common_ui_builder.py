@@ -983,6 +983,11 @@ class UIBuilder(QWidget):
             }
             QPushButton:hover   { background-color: #e6e6e6; color: #2b2b2b; }
             QPushButton:pressed { background-color: #d0d0d0; }
+            QPushButton:disabled {
+                background-color: #f0f0f0;
+                border: 1px solid #d0d0d0;
+                color: #a8a8a8;
+            }
         """)
 
         if bind_name:
