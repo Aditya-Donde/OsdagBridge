@@ -74,8 +74,6 @@ where = ["src"]
 #  ------------------------------
 [project.scripts]
 osdagbridge-cli = "osdagbridge.cli.__main__:main"
-
-[project.gui-scripts]
 osdagbridge = "osdagbridge.desktop.__main__:main"
 
 
