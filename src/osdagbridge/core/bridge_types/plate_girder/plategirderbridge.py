@@ -2122,7 +2122,7 @@ class PlateGirderBridge:
     def _run_dcr_checks(self, dataset) -> None:
         """Run structural capacity checks and push DCR percentages to the output dock."""
         results = PlateGirderAnalysisResults(dataset=dataset, bridge=self.grillage_model)
-<<<<<<< HEAD
+
         config = BridgeConfig.from_plate_girder_bridge(self)
         if config.stiffener is None:
             config.stiffener = StiffenerConfig()
