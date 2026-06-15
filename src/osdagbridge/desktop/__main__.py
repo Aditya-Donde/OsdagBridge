@@ -1,4 +1,32 @@
 import sys
+import os
+
+
+def _ensure_std_streams():
+    """Guarantee sys.stdout/sys.stderr are writable.
+
+    When launched as a gui-script, Windows runs this under pythonw.exe, which
+    has no console: sys.stdout/sys.stderr are None. The desktop app prints a lot
+    of debug output, and the first print() against None raises AttributeError
+    and kills the app silently. Redirect the missing stream(s) to a log file
+    (falling back to os.devnull) so the GUI can launch without a console window.
+    """
+    if sys.stdout is not None and sys.stderr is not None:
+        return
+    try:
+        import tempfile
+        log_path = os.path.join(tempfile.gettempdir(), "osdagbridge.log")
+        stream = open(log_path, "a", buffering=1, encoding="utf-8")
+    except Exception:
+        stream = open(os.devnull, "w")
+    if sys.stdout is None:
+        sys.stdout = stream
+    if sys.stderr is None:
+        sys.stderr = stream
+
+
+_ensure_std_streams()
+
 from PySide6.QtWidgets import QApplication
 from PySide6.QtCore import QFile, QTextStream
 from osdagbridge.desktop.resources import resources_rc
