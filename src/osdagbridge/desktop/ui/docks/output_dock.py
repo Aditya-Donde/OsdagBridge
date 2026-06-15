@@ -583,6 +583,18 @@ class OutputDock(QWidget):
 
     # ── Action handlers (called by name from schema) ──────────────────────────
 
+    def _require_design(self) -> bool:
+        """Return True if a design result is available; show an error and return False otherwise."""
+        input_dock = getattr(self.parent, "input_dock", None)
+        if input_dock is None or not input_dock.is_locked:
+            CustomMessageBox(
+                title="Run Design",
+                text="Please run the design first.",
+                dialogType=MessageBoxType.Warning,
+            ).exec()
+            return False
+        return True
+
     def _on_report_clicked(self):
         """
         Resolve Qt-side objects then delegate entirely to
@@ -590,6 +602,8 @@ class OutputDock(QWidget):
         no report logic — it captures CAD figures on the main
         thread (Qt-safe) and passes paths to the report worker.
         """
+        if not self._require_design():
+            return
         import os
 
         # Find cad_3d_widget
@@ -819,14 +833,20 @@ class OutputDock(QWidget):
                 bar.set_value(float(value))
 
     def open_steel_design(self):
+        if not self._require_design():
+            return
         from osdagbridge.desktop.ui.dialogs.steel_design import SteelDesign
         SteelDesign(parent=self.parent).exec()
 
     def open_transverse_design(self):
+        if not self._require_design():
+            return
         from osdagbridge.desktop.ui.dialogs.transverse_member_design import TransverseMemberDesign
         TransverseMemberDesign(parent=self.parent).exec()
 
     def open_deck_design(self):
+        if not self._require_design():
+            return
         from osdagbridge.desktop.ui.dialogs.deck_design import DeckDesign
         DeckDesign(parent=self.parent).exec()
 
@@ -847,12 +867,7 @@ class OutputDock(QWidget):
                 cb.toggled.connect(lambda _: callback())
 
     def open_generate_results_dialog(self):
-        if self.backend.get_results_dataset() is None:
-            CustomMessageBox(
-                title="Warning",
-                text="No design created!",
-                dialogType=MessageBoxType.Warning
-            ).exec()
+        if not self._require_design():
             return
 
         input_dict   = getattr(self.parent, "input_dict", {})
