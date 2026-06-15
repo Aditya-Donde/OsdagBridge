@@ -421,11 +421,9 @@ class BridgeInputValidator:
         # ── Stiffener Details (Custom design only) ────────────────────────────
         elif key == KEY_MP_STIFFENER_SPACING:
             v         = self._to_float(inputs.get(key))
-            support_w = self._to_float(inputs.get("member_properties.girder_details.section_input.support_width")) or 400.0  # placeholder key
-            if v is None: return 75, "Bearing stiffener spacing must be a numeric value."
-            if v < 75:    return 75, "Bearing stiffener spacing must be at least 75 mm."
-            if v > support_w:
-                return support_w, f"Bearing stiffener spacing must not exceed the support width ({support_w:.0f} mm)."
+            if v is None: return 20, "Bearing stiffener spacing must be a numeric value."
+            if v < 20:    return 20, "Bearing stiffener spacing must be at least 20 mm."
+            if v > 75:    return 75, "Bearing stiffener spacing must not exceed 75 mm."
 
         elif key == KEY_MP_STIFFENER_BEARING_OUTSTAND:
             v       = self._to_float(inputs.get(key))
