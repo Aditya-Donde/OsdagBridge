@@ -836,6 +836,7 @@ class OspGrillage:
         member: str = None,
         specific_group: int = None,
         specific_span: int = None,
+        only_group=None,
     ):
         """
         Set `GrillageMember` instance object to elements of grillage members.
@@ -848,6 +849,12 @@ class OspGrillage:
         :type specific_group: int
         :param specific_span: Specific span number to assign member
         :type specific_span: int
+        :param only_group: Inclusive z_group target(s). When given, the member is
+            assigned ONLY to the listed z_group(s) within ``member`` (the rest are
+            skipped). Accepts a single int or a list of ints. This is the
+            complement of ``specific_group`` (which *excludes* groups) and enables
+            per-girder section assignment by isolating one longitudinal grid line.
+        :type only_group: int or list[int]
 
 
          =====================================    ======================================
@@ -874,6 +881,12 @@ class OspGrillage:
         specific_group_list = []
         if not isinstance(specific_group, list):
             specific_group_list = [specific_group]
+        # Inclusive targeting: assign ONLY to the listed z_group(s) when supplied.
+        only_group_list = None
+        if only_group is not None:
+            only_group_list = (
+                only_group if isinstance(only_group, list) else [only_group]
+            )
         # check and write member's section command
         section_tag = self._write_section(grillage_member_obj)
         # check and write member's material command
@@ -985,6 +998,9 @@ class OspGrillage:
                     ele_tag_to_command_dict[ele[0]] = ele_command_list[nth]
             else:
                 for z_group in self.common_grillage_element_z_group[member]:
+                    # inclusive filter: skip everything not in only_group_list
+                    if only_group_list is not None and z_group not in only_group_list:
+                        continue  # go to next group
                     # if specific group is specified, assign grillage member to specific groups only
                     if specific_group and z_group in specific_group_list:
                         continue  # go to next group
