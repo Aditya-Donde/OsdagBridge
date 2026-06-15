@@ -580,8 +580,6 @@ class CustomWindow(QWidget):
     
     def _start_loading(self):
         """Start loading popup"""
-        self._is_designing = True
-        
         # Install global input blocker filter on QApplication instance to shield CustomWindow
         self._blocker_filter = InputBlockerFilter(self)
         QApplication.instance().installEventFilter(self._blocker_filter)
@@ -610,8 +608,6 @@ class CustomWindow(QWidget):
     
     def _finish_loading(self):
         """Close the loading dialog box"""
-        self._is_designing = False
-        
         # Uninstall input blocker filter
         if hasattr(self, '_blocker_filter') and self._blocker_filter is not None:
             try:
@@ -643,7 +639,14 @@ class CustomWindow(QWidget):
         """
         Trigger belongs to one of ["Design", "Save", "Additional Inputs"]
         """
+        # print(f"[DEBUG]plot:{self.plots_view_active}")
+        # print(f"[DEBUG]3d:{self.cad_3d_view_active}")
+        # print(f"[DEBUG]top:{self.top_view_active}")
+        # print(f"[DEBUG]c/s:{self.cross_section_active}")
+        from pprint import pprint
         self.input_dock._prime_material_inputs()
+        print("\n@@input_dictionary_before (common_design_func):\n")
+        pprint(self.input_dict)
         # Check required fields
         required_widget_validated = self.validate_required_inputs()
         if not required_widget_validated:
@@ -684,7 +687,7 @@ class CustomWindow(QWidget):
                     self.input_dock.toggle_lock()
 
                 # Wire up the plots widget with results from the completed analysis
-                ds_all = self.backend.get_results_dataset()
+                ds_all    = self.backend.get_results_dataset()
                 loadcases = self.backend.get_available_loadcases()
                 nodes, members = self.backend.get_nodes_members()
                 edge_dist = self.backend.get_edge_dist()
@@ -701,7 +704,8 @@ class CustomWindow(QWidget):
                     bridge_logger.error(f"Analysis failed: {exc}")
             except Exception:
                 err_trace = traceback.format_exc()
-                print(f"[Design Error]\n{err_trace}")
+                bridge_logger.error(f"[Design Error]\n{err_trace}")
+                self._finish_loading()
                 if self.input_dock and self.input_dock.is_locked:
                     self.input_dock.toggle_lock()
                 lines = [l for l in err_trace.splitlines() if l.strip()]
@@ -1057,18 +1061,6 @@ class CustomWindow(QWidget):
         
         # Update tool bar visibility based on view rules
         self._update_tool_bar_visibility()
-        
-    def _position_log_dock(self):
-        """Position log dock at bottom of central widget as overlay (max 1/5 height)"""
-        if hasattr(self, 'logs_dock') and hasattr(self, 'cad_comp_widget'):
-            cad_geom = self.cad_comp_widget.geometry()
-            log_height = min(cad_geom.height() // 5, 200)  # 1/5 of window height, max 200px
-            self.logs_dock.setGeometry(
-                cad_geom.x(),
-                cad_geom.y() + cad_geom.height() - log_height,
-                cad_geom.width(),
-                log_height
-            )
 
     def update_docking_icons(self, input_is_active=None, log_is_active=None, output_is_active=None):
             

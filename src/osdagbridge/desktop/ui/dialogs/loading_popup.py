@@ -429,10 +429,6 @@ class LoadingDialogManager:
             if self._dialog is not None and hasattr(self._dialog, 'handle_message'):
                 self._dialog.handle_message(msg, level)
 
-    def update_label(self, text: str) -> None:
-        # Update text compatibility method
-        self.send_message(text, "info")
-
     def is_cancelled(self) -> bool:
         # Check if Stop was clicked
         return self.cancel_event.is_set()

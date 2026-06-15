@@ -345,12 +345,11 @@ class PlateGirderBridge:
         self.grillage_geometry: GrillageGeometry | None = None
         self.deck_layout: DeckLayoutProperties | None = None
         self.result_data: dict = {}         # flat restructured dataset, set after analysis
+        # When True, design() writes tools/bridge_full_data.json. Off by default.
+        self.dump_json: bool = False
 
         # Analyser — populated by setup_grillage()
         self.grillage_model: BridgeGrillageModel = BridgeGrillageModel()
-
-        # When True, design() writes tools/bridge_full_data.json. Off by default.
-        self.dump_json: bool = False
 
     def input_values(self) -> list:
         """Return UI field definitions for the InputDock (delegated to FrontendData)."""
@@ -599,7 +598,6 @@ class PlateGirderBridge:
             KEY_TS_OVERALL_WIDTH,
             KEY_TS_NO_OF_GIRDERS,
             KEY_TS_GIRDER_SPACING,
-            KEY_GIRDER_DEPTH,
         ]
         
         missing = [k for k in required_keys if k not in inp or inp[k] is None or str(inp[k]).strip() == ""]
@@ -637,18 +635,18 @@ class PlateGirderBridge:
     def _stage_load_combinations(self):
         bridge_logger.sub_step("Running initial analysis for live load envelope...")
         dataset_initial = self.analyze()
-        bridge_logger.check_cancel()
         
         bridge_logger.sub_step("Creating governing LL load case...")
         self.create_governing_ll_load_case(dataset_initial, partial_safety_factor=1.0)
-        bridge_logger.check_cancel()
         
+        bridge_logger.sub_step("Creating DL+LL combination...")
+        self.create_dl_ll_combination(dl_factor=1.0, ll_factor=1.0)
+        
+        bridge_logger.check_cancel()
         bridge_logger.sub_step("Creating ULS and SLS combinations...")
         self.create_uls_combinations()
-        bridge_logger.check_cancel()
         
         self.create_sls_combinations()
-        bridge_logger.check_cancel()
 
     def _stage_deck_slab_design(self):
         return self.design_deck_slab()
@@ -678,6 +676,10 @@ class PlateGirderBridge:
         bridge_logger.analysis_start()
 
         try:
+            # Pre-stage: Unit conversions (must run before validation)
+            self._resolve_optimized_bounds_to_mm()
+            self._convert_girder_dims_mm_to_m()
+            
             # Stage 1: Input Validation
             self._run_stage("1", self._validate_inputs)
             
@@ -720,37 +722,48 @@ class PlateGirderBridge:
                 f"  No. of girders        : {inp[KEY_TS_NO_OF_GIRDERS]}\n"
                 f"  Girder spacing        : {inp[KEY_TS_GIRDER_SPACING] * 1e3:.1f} mm\n"
                 f"  Deck overhang         : {inp[KEY_TS_DECK_OVERHANG] * 1e3:.1f} mm\n"
-                f"{'-'*60}\n"
-                f"  GIRDER CROSS-SECTION (all dimensions in mm)\n"
-                f"{'-'*60}\n"
-                f"  Total depth      D    : {inp[KEY_GIRDER_DEPTH]                   * 1e3:.1f}\n"
-                f"  Web depth        d_w  : {inp[KEY_GIRDER_WEB_DEPTH]               * 1e3:.1f}\n"
-                f"  Web thickness    t_w  : {inp[KEY_GIRDER_WEB_THICKNESS]           * 1e3:.1f}\n"
-                f"  Top flange width B_ft : {inp[KEY_GIRDER_TOP_FLANGE_WIDTH]        * 1e3:.1f}\n"
-                f"  Top flange thk   T_ft : {inp[KEY_GIRDER_TOP_FLANGE_THICKNESS]    * 1e3:.1f}\n"
-                f"  Bot flange width B_fb : {inp[KEY_GIRDER_BOTTOM_FLANGE_WIDTH]     * 1e3:.1f}\n"
-                f"  Bot flange thk   T_fb : {inp[KEY_GIRDER_BOTTOM_FLANGE_THICKNESS] * 1e3:.1f}\n"
-                f"{'-'*60}\n"
-                f"  SECTION PROPERTIES (SI units)\n"
-                f"{'-'*60}\n"
-                f"  Area   A  : {inp[KEY_GIRDER_SECTIONAL_AREA]:.6f} m^2\n"
-                f"  I_z       : {inp[KEY_GIRDER_SECTIONAL_IZ]:.6f} m^4\n"
-                f"  I_y       : {inp[KEY_GIRDER_SECTIONAL_IY]:.6f} m^4\n"
-                f"  I_t (J)   : {inp[KEY_GIRDER_TORSION_CONSTANT_IT]:.6f} m^3\n"
-                f"{'-'*60}\n"
             )
+            # Per-girder cross-section block (each girder may differ).
+            for gi in range(self._girder_count()):
+                v = lambda key: self._girder_value(key, gi)
+                print(
+                    f"{'-'*60}\n"
+                    f"  GIRDER G{gi + 1} CROSS-SECTION (mm) / PROPERTIES (SI)\n"
+                    f"{'-'*60}\n"
+                    f"  Total depth      D    : {v(KEY_MP_GIRDER_DEPTH)                   * 1e3:.1f}\n"
+                    f"  Web depth        d_w  : {v(KEY_MP_GIRDER_WEB_DEPTH)               * 1e3:.1f}\n"
+                    f"  Web thickness    t_w  : {v(KEY_MP_GIRDER_WEB_THICKNESS)           * 1e3:.1f}\n"
+                    f"  Top flange width B_ft : {v(KEY_MP_GIRDER_TOP_FLANGE_WIDTH)        * 1e3:.1f}\n"
+                    f"  Top flange thk   T_ft : {v(KEY_MP_GIRDER_TOP_FLANGE_THICKNESS)    * 1e3:.1f}\n"
+                    f"  Bot flange width B_fb : {v(KEY_MP_GIRDER_BOTTOM_FLANGE_WIDTH)     * 1e3:.1f}\n"
+                    f"  Bot flange thk   T_fb : {v(KEY_MP_GIRDER_BOTTOM_FLANGE_THICKNESS) * 1e3:.1f}\n"
+                    f"  Area   A  : {v(KEY_MP_GIRDER_SECTIONAL_AREA):.6f} m^2\n"
+                    f"  I_z       : {v(KEY_MP_GIRDER_SECTIONAL_IZ):.6f} m^4\n"
+                    f"  I_y       : {v(KEY_MP_GIRDER_SECTIONAL_IY):.6f} m^4\n"
+                    f"  I_t (J)   : {v(KEY_MP_GIRDER_TORSION_CONSTANT_IT):.6f} m^3\n"
+                    f"{'-'*60}"
+                )
 
             # Stage 5: Girder Design Checks
             self._run_stage("5", self._run_dcr_checks, dataset)
             self.result_data = self.grillage_model.get_result_data()
-            
+
+            if self.dump_json:
+                from osdagbridge.core.bridge_types.plate_girder.results_data import dump_full_data
+                dump_full_data(
+                    self.grillage_model.model,
+                    edge_dist=self.grillage_model.edge_dist or 0.0,
+                    # Use the envelope-augmented dataset so the Envelope ULS / Envelope
+                    # SLS pseudo load cases appear in the dump; falls back to
+                    # model.get_results() if absent.
+                    dataset=getattr(self.grillage_model, "_deduplicated_results", None),
+                )
+
             # Stage 6: Deck Slab Design
             self.deck_design_results = self._run_stage("6", self._stage_deck_slab_design)
-            self.output_dict["deck_design_results"] = self.deck_design_results
             
             # Stage 7: Transverse Member Design
             self.crossbracing_design_results = self._run_stage("7", self._stage_transverse_design)
-            self.output_dict["crossbracing_design_results"] = self.crossbracing_design_results
             
             self.bridge_component_solver()
             self.compute_load_effects_cache()
@@ -773,27 +786,32 @@ class PlateGirderBridge:
             bridge_logger.analysis_failed(str(e))
             raise
 
-    def _export_cad_figures(self, cad_generator) -> dict:
-        """Render off-screen CAD views and return {view_name: filepath} dict.
 
-        Called from ``design()`` after grillage is ready but before
-        ``generate_design_report()`` so that figure bytes can be injected
-        into the report payload.
+    def _export_cad_figures(self, cad_generator) -> dict:
+        """
+        Export 4 CAD views to the fixed internal Images folder.
+        Returns { ReportFigures_attr: absolute_path } for each view.
+        Returns {} on any failure. Never raises.
         """
         import os
         import logging
         _log = logging.getLogger(__name__)
 
-        if not hasattr(self, '_3d_cad_parameters'):
-            _log.warning("_export_cad_figures: _3d_cad_parameters missing — run design first")
-            return {}
+        # ── Resolve save path: core/data/ResourceFiles/Images/ ───────
+        resource_files_dir = os.path.normpath(os.path.join(
+            os.path.dirname(os.path.abspath(__file__)),
+            '..', '..', '..', 'core', 'data', 'ResourceFiles'
+        ))
+        figures_dir = os.path.join(resource_files_dir, 'Images')
+        if not os.path.exists(figures_dir):
+            os.makedirs(figures_dir)
 
-        # ── Resolve output directory ──────────────────────────────────────────
-        figures_dir = os.path.join(os.getcwd(), "output", "figures")
-        os.makedirs(figures_dir, exist_ok=True)
+        if not cad_generator:
+            return {}
 
         core = cad_generator
 
+        # ── Verify model has been generated ───────────────────────────
         if not getattr(core, 'model_data', None):
             _log.warning(
                 "_export_cad_figures: model_data is empty — "
@@ -819,6 +837,7 @@ class PlateGirderBridge:
             return {}
 
         # ── Stub cad_widget for off-screen rendering ─────────────────
+        # osdag_display_shape() calls canvas.model_ais_objects — provide it.
         class _OffscreenCanvas:
             def __init__(self):
                 self.model_ais_objects = {}
@@ -832,6 +851,7 @@ class PlateGirderBridge:
         figure_paths = {}
 
         try:
+            # ── Substitute + render all components onto off-screen display
             core.display    = off_display
             core.cad_widget = off_canvas
 
@@ -896,6 +916,7 @@ class PlateGirderBridge:
                 _log.warning("Side view export failed: %s", exc)
 
         finally:
+            # ── CRITICAL: isolation cleanup — ALWAYS runs ────────────
             try:
                 off_display.EraseAll()
             except Exception:
@@ -909,26 +930,29 @@ class PlateGirderBridge:
             len(figure_paths), figures_dir)
         return figure_paths
 
+
     def generate_design_report(self, request, cad_generator, is_preview=False):
         """Compile the final PDF design report."""
         from osdagbridge.core.reports.report_generator import build_report_payload, generate_report
 
         report_inputs = self.input_dict.copy()
-        output_dict   = dict(self.output_dict)
+        output_dict   = dict(self.output_dict)  # MappingProxyType → dict
 
         payload = build_report_payload(request, report_inputs, output_dict)
 
+        # Collect figure bytes into payload.figure_data — no disk writes here
         figure_data = {}
         if isinstance(cad_generator, dict):
             figure_data.update(cad_generator.get('figure_data', {}))
 
+        # Grillage figure: matplotlib → bytes (already in RAM, no file needed)
         grillage_fig = self.build_figure_grillage() if hasattr(self, 'build_figure_grillage') else None
         if grillage_fig:
             grillage_bytes = self.figure_to_bytes(grillage_fig)
             if grillage_bytes:
                 figure_data['grillage'] = grillage_bytes
 
-        payload.figure_data = figure_data
+        payload.figure_data = figure_data  # handed off; generate_report clears it after writing
 
         return generate_report(payload, request)
 
@@ -1806,7 +1830,7 @@ class PlateGirderBridge:
 
         Delegates to BridgeGrillageModel.create_temperature_load().
         """
-        tl_raw = self.additional_inputs.get("temperature_load_kN_m2")
+        tl_raw = self.input_dict.get("temperature_load_kN_m2")
         if not tl_raw or float(tl_raw) == 0.0:
             bridge_logger.info("Temperature load absent; skipping.")
             return
@@ -1842,7 +1866,6 @@ class PlateGirderBridge:
           - ``"EQ_Y"``            → Vertical seismic, Av = (2/3)×Ah (20% LL)
           - ``"1.5 EQ (a/b/c)"``  → IRC 218.3 design combinations with γ = 1.5
         """
-        bridge_logger.check_cancel()
         inp = self.input_dict
 
         # ── Zone factor Z: from project-location weather_data ──
@@ -2002,7 +2025,6 @@ class PlateGirderBridge:
         """
         bridge_logger.check_cancel()
         result = self.grillage_model.analyze()
-        bridge_logger.check_cancel()
         return result
 
     def create_governing_ll_load_case(self, dataset, partial_safety_factor: float = 1.0):
@@ -2038,8 +2060,6 @@ class PlateGirderBridge:
         Called by design() after load combinations have been registered so that
         combination results are included in the final results dataset.
         """
-        bridge_logger.check_cancel()
-        
         m = self.grillage_model.model
         m.analyze()
         
@@ -2056,7 +2076,6 @@ class PlateGirderBridge:
             ds = ds.isel(Loadcase=unique_idx)
 
         self.grillage_model._deduplicated_results = ds
-        bridge_logger.check_cancel()
         return ds
 
     def create_envelope_load_case(self, dataset=None):
@@ -2193,8 +2212,6 @@ class PlateGirderBridge:
 
     def _run_dcr_checks(self, dataset) -> None:
         """Run structural capacity checks and push DCR percentages to the output dock."""
-        bridge_logger.check_cancel()
-        
         results = PlateGirderAnalysisResults(dataset=dataset, bridge=self.grillage_model)
         _, engine, design_results = run_design_check(
             plate_girder_bridge=self,
@@ -2218,8 +2235,6 @@ class PlateGirderBridge:
         -------
         dict — nested by pair → member → force_type → Osdag result.
         """
-        bridge_logger.check_cancel()
-        
         from osdagbridge.core.bridge_types.plate_girder.crossbracingforces import CrossBracingForces
         from osdagbridge.core.bridge_types.plate_girder.results_data import enrich_crossbracing_dump
 

@@ -12,6 +12,8 @@ from osdagbridge.core.utils.logger import bridge_logger
 class LogDock(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
+        # Ensures automatic deletion when closed
+        self.setAttribute(Qt.WA_DeleteOnClose, True)
         self.setObjectName("logs_dock")
         self.init_ui()
         # Register with the singleton logger so log messages arrive in real time

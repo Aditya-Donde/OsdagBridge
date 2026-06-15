@@ -87,6 +87,7 @@ class BridgeLogger:
         self._emit(f"[{self._ts()}]   ERROR : {message}", "error")
 
     def analysis_start(self) -> None:
+        self._cancelled = False
         self._start_time = time.time()
         self._blank()
         self._emit(f"[{self._ts()}] {_SEP} S T A R T I N G   A N A L Y S I S", "info")
