@@ -719,6 +719,26 @@ class OutputDock(QWidget):
             main_window.open_report_dialog(cad_generator=cad_generator)
 
 
+    def reset(self):
+        """Reset output dock to blank defaults when the lock is released."""
+        dcr_keys = (
+            KEY_UTIL_FLEXURE, KEY_UTIL_SHEAR, KEY_UTIL_INTERACTION, KEY_UTIL_LTB,
+            KEY_UTIL_LONG_TRANS_SHEAR, KEY_UTIL_FATIGUE, KEY_UTIL_STRESS_LIMITATION,
+            KEY_UTIL_DEFLECTION_CRACK,
+        )
+        for key in dcr_keys:
+            bar = self._w(key)
+            if bar is not None:
+                bar.set_value(0.0)
+
+        for key in (KEY_ANALYSIS_LOAD_COMBINATION, KEY_OUTPUT_DOCK_LOAD_COMBINATION,
+                    KEY_OUTPUT_DOCK_MEMBER_ID):
+            combo = self._w(key)
+            if combo is not None:
+                combo.blockSignals(True)
+                combo.clear()
+                combo.blockSignals(False)
+
     def refresh_loadcase_dropdowns(self):
         """Populate both Load Case dropdowns with real load cases after design completes."""
         if not self.backend or not hasattr(self.backend, "get_available_loadcases"):

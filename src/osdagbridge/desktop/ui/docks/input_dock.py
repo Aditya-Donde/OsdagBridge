@@ -774,6 +774,9 @@ class InputDock(QWidget):
         if not self.is_locked:
             # Clear 3D-Cad
             self.parent.cad_3d_widget.clear_3d_cad()
+            # Clear plots and reset output dock values
+            self.parent.plots_widget.clear()
+            self.parent.output_dock.reset()
 
         self.lock_btn.setChecked(self.is_locked)
         self.scroll_area.setDisabled(self.is_locked)

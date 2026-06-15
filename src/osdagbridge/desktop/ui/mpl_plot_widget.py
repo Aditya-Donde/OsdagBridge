@@ -321,6 +321,25 @@ class MplPlotWidget(QWidget):
 
     # public API
 
+    def clear(self):
+        """Reset the plot widget to its initial blank state (called on lock release)."""
+        self._ds_all    = None
+        self._loadcases = []
+        self._nodes     = {}
+        self._members   = {}
+        self._output_dock = None
+        self._summary_data = {}
+
+        plt.close(self._fig)
+        self._fig = plt.figure(figsize=(14, 6), facecolor="white")
+        self._attach_figure(self._fig)
+        self._canvas.draw_idle()
+
+        if hasattr(self, "_title_overlay"):
+            self._title_overlay.hide()
+        if hasattr(self, "_summary_overlay"):
+            self._summary_overlay.hide()
+
     def setup(self, ds_all, loadcases: list, nodes: dict, members: dict,
               edge_dist: float = 0.0):
         self._ds_all    = ds_all
