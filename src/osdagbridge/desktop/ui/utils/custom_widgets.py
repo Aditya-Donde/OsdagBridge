@@ -287,8 +287,9 @@ class PercentBarWidget(QWidget):
         lbl.setWordWrap(True)
         lbl.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         self._lbl = lbl
-        lbl.setVisible(bool(label))
         root.addWidget(lbl)
+        lbl.setVisible(bool(label))
+        # Don't call .setVisible on a widget that has no parent yet, call after adding the widget to the layout, otherwise it can show flickering pop ups
 
         # -- Bar row -----------------------------------------------------------
         bar_row = QHBoxLayout()
