@@ -1,9 +1,10 @@
 name: osdagbridge-env
 
 channels:
+  - osdag
   - conda-forge
   - geompy
-  - defaults 
+  - defaults
 
 dependencies:
   - pip
@@ -11,6 +12,9 @@ dependencies:
   - matplotlib
   - python>=3.10,<3.13
   - pythonocc-core>=7.6
+  - mesalib
+  - glew
+  - vtk
   - pylatex>=1.4
   - fiona
   - shapely
@@ -22,6 +26,8 @@ dependencies:
   - xarray
   - openpyxl
   - navcube
+  - osdag::osdag
   - pip:
     - openseespy>=3.2.2.6
     - opsvis
+    - -e .
