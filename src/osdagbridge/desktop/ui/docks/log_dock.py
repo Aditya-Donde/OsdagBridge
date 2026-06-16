@@ -58,6 +58,9 @@ class LogDock(QWidget):
                 pct = int(message.replace("__progress__", ""))
                 if pct == 0:
                     self.log_window_title.setText("Log Window")
+                    self.log_display.verticalScrollBar().setValue(
+                        self.log_display.verticalScrollBar().maximum()
+                    )
                 elif pct >= 100:
                     self.log_window_title.setText("Log Window  –  Complete (100%)")
                 else:

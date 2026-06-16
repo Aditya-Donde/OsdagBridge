@@ -55,7 +55,6 @@ class AnalysisProgressDialog(QDialog):
         self.setWindowFlags(
             Qt.WindowType.FramelessWindowHint
             | Qt.WindowType.Window
-            | Qt.WindowType.WindowStaysOnTopHint
         )
         self.setModal(False)
         self.setFixedSize(500, 400)
