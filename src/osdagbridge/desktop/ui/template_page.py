@@ -407,7 +407,7 @@ class CustomWindow(QWidget):
 
         # Update Internal 2D CAD State
         # Single Source of Truth = _last_mapped_params dict in BridgeDualCADWidget
-        dlg.typical_section_tab.update_internal_cad_state(self.cad_comp_widget._last_mapped_params)
+        dlg.update_internal_cad_state(self.cad_comp_widget._last_mapped_params)
 
         # Sync design mode to additional_inputs
         if self.input_dock:
@@ -418,7 +418,7 @@ class CustomWindow(QWidget):
         if self.input_dock:
             try:
                 cw = self.input_dock._get_effective_carriageway_width()
-                dlg.typical_section_tab.update_carriageway_width(cw)
+                dlg.update_carriageway_width(cw)
             except Exception:
                 pass
 

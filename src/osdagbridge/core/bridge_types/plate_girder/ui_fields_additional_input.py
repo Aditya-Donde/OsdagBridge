@@ -25,7 +25,6 @@ _DECK_DETAILS_TAB_SCHEMA = {
                     "label": "Deck Thickness (mm):",
                     "type": TYPE_TEXTBOX,
                     "bind": "deck_thickness",
-                    "on_editing_finished": "validate_deck_thickness",
                 },
             ]
         },
@@ -43,7 +42,6 @@ _DECK_DETAILS_TAB_SCHEMA = {
                     "label": "Footpath Thickness (mm):",
                     "type": TYPE_TEXTBOX,
                     "bind": "footpath_thickness",
-                    "on_editing_finished": "validate_footpath_thickness",
                 },
             ]
         },
@@ -265,7 +263,6 @@ _RAILING_TAB_SCHEMA = {
                     "id": KEY_RL_HEIGHT,
                     "label": "Height (m):",
                     "type": TYPE_TEXTBOX,
-                    "on_editing_finished": "validate_railing_height",
                 }
             ]
         },
