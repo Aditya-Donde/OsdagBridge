@@ -774,9 +774,12 @@ class CAD3DWindow(QWidget):
 
             x_m, z_m = float(coord[0]), float(coord[2])
             x_mm = x_m * scale
-            y_mm = (z_m - z_center) * scale
             if skew_tan:
-                x_mm += y_mm * skew_tan
+                # OpenSees skew is relative to Z=0, whereas CAD skew is relative to the centerline (z_center).
+                # This introduces a constant horizontal offset of z_center * scale * skew_tan.
+                # Subtracting this offset aligns the nodes horizontally with the CAD deck.
+                x_mm -= z_center * scale * skew_tan
+            y_mm = (z_m - z_center) * scale
 
             label = f"Node {nid}\nX: {x_m:.2f} m\nZ: {z_m:.2f} m"
 
