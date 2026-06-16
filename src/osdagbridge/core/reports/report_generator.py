@@ -2960,6 +2960,42 @@ def ch6_drawings(fig_paths):
     g3d    = _sec_fig(fig_paths.get('girder_3d'),         '6.2.1', '3D View of Plate Girders')
     gxsec  = _sec_fig(fig_paths.get('section_preview'),   '6.2.2', 'Cross Section of Plate Girder')
     gside  = _sec_fig(fig_paths.get('stiffener_preview'), '6.2.3', 'Side View of Girder')
+    cbdia  = _sec_fig(fig_paths.get('cb_diagram'),        '6.3.1', 'Cross Bracing Layout')
+
+    def _sec_cell(path, label, title):
+        """One minipage cell: image above, numbered label below (for side-by-side row)."""
+        if path:
+            p = path.replace('\\', '/')
+            body = r'\includegraphics[width=\linewidth]{' + p + '}'
+        else:
+            body = r'\fbox{\parbox{0.95\linewidth}{\centering\textit{[ ' + label + ' ' + title + r' ]}}}'
+        return (r'\begin{minipage}[t]{0.31\textwidth}' + '\n'
+                r'\centering' + '\n'
+                + body + '\n'
+                r'\\[4pt]{\small \textbf{' + label + r'}\enspace ' + title + '}\n'
+                r'\end{minipage}')
+
+    # The 3 cross bracing section views in a single row.
+    cb_sections_row = (r'\begin{figure}[H]' + '\n'
+                       r'\centering' + '\n'
+                       + _sec_cell(fig_paths.get('cb_bracing'),      '6.3.2', 'Bracing Section') + '\n'
+                       r'\hfill' + '\n'
+                       + _sec_cell(fig_paths.get('cb_top_chord'),    '6.3.3', 'Top Chord Section') + '\n'
+                       r'\hfill' + '\n'
+                       + _sec_cell(fig_paths.get('cb_bottom_chord'), '6.3.4', 'Bottom Chord Section') + '\n'
+                       r'\end{figure}')
+
+    eddia  = _sec_fig(fig_paths.get('ed_diagram'),        '6.4.1', 'End Diaphragm Layout')
+
+    # The 3 end diaphragm section views in a single row.
+    ed_sections_row = (r'\begin{figure}[H]' + '\n'
+                       r'\centering' + '\n'
+                       + _sec_cell(fig_paths.get('ed_bracing'),      '6.4.2', 'Bracing Section') + '\n'
+                       r'\hfill' + '\n'
+                       + _sec_cell(fig_paths.get('ed_top_chord'),    '6.4.3', 'Top Chord Section') + '\n'
+                       r'\hfill' + '\n'
+                       + _sec_cell(fig_paths.get('ed_bottom_chord'), '6.4.4', 'Bottom Chord Section') + '\n'
+                       r'\end{figure}')
 
     return (r"""
 \chapter{Drawings and Visualizations}
@@ -2986,8 +3022,16 @@ This section presents CAD-generated views of the designed bridge and its compone
 \section{Cross Bracing Detail}
 \label{sec:bracing-detail}
 
+"""
+            + cbdia + '\n\n'
+            + cb_sections_row + r"""
+
 \section{End Diaphragm Detail}
 \label{sec:diaphragm-detail}
+
+"""
+            + eddia + '\n\n'
+            + ed_sections_row + r"""
 
 """)
 
@@ -3522,6 +3566,14 @@ _FIGURE_MAP = [
     ('girder_top',            'girder_top.png'),
     ('section_preview',       'section_preview.png'),
     ('stiffener_preview',     'stiffener_preview.png'),
+    ('cb_diagram',            'cb_diagram.png'),
+    ('cb_bracing',            'cb_bracing.png'),
+    ('cb_top_chord',          'cb_top_chord.png'),
+    ('cb_bottom_chord',       'cb_bottom_chord.png'),
+    ('ed_diagram',            'ed_diagram.png'),
+    ('ed_bracing',            'ed_bracing.png'),
+    ('ed_top_chord',          'ed_top_chord.png'),
+    ('ed_bottom_chord',       'ed_bottom_chord.png'),
     ('bm_envelope',           'bm_envelope.png'),
     ('sf_envelope',           'sf_envelope.png'),
 ]

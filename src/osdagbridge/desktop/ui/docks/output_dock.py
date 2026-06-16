@@ -719,6 +719,46 @@ class OutputDock(QWidget):
             except Exception as exc:
                 logger.warning("Could not capture stiffener preview: %s", exc)
 
+            # Section 6.3 — Cross Bracing Detail: 4 pictures from the crossbracing
+            # tab. The dialog's __init__ auto-loads data from the backend and
+            # populates these widgets; we just resize + grab each, same as above.
+            try:
+                from PySide6.QtCore import QBuffer, QIODevice
+                from osdagbridge.desktop.ui.dialogs.transverse_member_design import TransverseMemberDesign
+                _tmd = TransverseMemberDesign(parent=self.parent)   # auto-loads + populates widgets
+                def _grab_cb(_widget, _key, _wpx, _hpx):
+                    if _widget is None:
+                        return
+                    try:
+                        _widget.resize(_wpx, _hpx)
+                        _b = QBuffer()
+                        _b.open(QIODevice.WriteOnly)
+                        _widget.grab().save(_b, 'PNG')
+                        figure_data[_key] = bytes(_b.data())
+                        _b.close()
+                    except Exception as exc:
+                        logger.warning("Could not capture %s: %s", _key, exc)
+                _grab_cb(_tmd._tab_bracing_widgets.get('cb'),        'cb_diagram',      700, 250)  # cross bracing layout
+                _grab_cb(_tmd._section_previews.get('Bracing'),      'cb_bracing',      300, 300)  # bracing section
+                _grab_cb(_tmd._section_previews.get('Top Chord'),    'cb_top_chord',    300, 300)  # top chord section
+                _grab_cb(_tmd._section_previews.get('Bottom Chord'), 'cb_bottom_chord', 300, 300)  # bottom chord section
+
+                # Section 6.4 — End Diaphragm Detail: same 4 pictures from the ED tab.
+                # The ED bracing diagram only fills when the ED tab is current, so
+                # switch to it and refresh before grabbing.
+                try:
+                    _tmd.tabs.setCurrentIndex(1)
+                    _tmd._refresh_bracing_layout()
+                except Exception as exc:
+                    logger.warning("Could not activate ED tab: %s", exc)
+                _grab_cb(_tmd._tab_bracing_widgets.get('ed'),           'ed_diagram',      700, 250)  # end diaphragm layout
+                _grab_cb(_tmd._section_previews.get('ed_End Diaphragm'),'ed_bracing',      300, 300)  # bracing section
+                _grab_cb(_tmd._section_previews.get('ed_Top Chord'),    'ed_top_chord',    300, 300)  # top chord section
+                _grab_cb(_tmd._section_previews.get('ed_Bottom Chord'), 'ed_bottom_chord', 300, 300)  # bottom chord section
+                _tmd.deleteLater()
+            except Exception as exc:
+                logger.warning("Could not capture cross bracing / end diaphragm figures: %s", exc)
+
             cad_generator = {
                 'generator':   getattr(cad_3d_widget, 'generator', None),
                 'figure_data': figure_data,
