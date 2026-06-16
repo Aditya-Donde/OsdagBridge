@@ -665,7 +665,7 @@ class OutputDock(QWidget):
                     buf = QBuffer()
                     buf.open(QIODevice.WriteOnly)
                     pixmap.save(buf, 'PNG')
-                    figure_data['girder_top'] = bytes(buf.data())
+                    figure_data['plan'] = bytes(buf.data())
                     buf.close()
             except Exception as exc:
                 logger.warning("Could not capture top view: %s", exc)

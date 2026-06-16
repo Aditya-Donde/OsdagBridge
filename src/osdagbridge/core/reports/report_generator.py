@@ -655,9 +655,9 @@ def toc_section():
 def executive_summary(input_dict, output_dict, fig_paths) -> str:
     plan_fig = _fig_or_placeholder(fig_paths.get('plan'), 'Figure 1 -- Overall Bridge Plan')
     cs_fig = _fig_or_placeholder(fig_paths.get('cross_section'),
-                                  'Figure 2 -- Typical Cross-Section (with girder, deck, barriers, footpath)')
+                                  'Figure 2 -- Typical Cross-Section (with girder, deck, barriers, footpath)', width=r'\textwidth,height=0.45\textheight,keepaspectratio')
     geom_fig = _fig_or_placeholder(fig_paths.get('final_geometry'),
-                                    'Figure 3 -- 3D View of Bridge Superstructure')
+                                    'Figure 3 -- 3D View of Bridge Superstructure', width=r'\textwidth,height=0.45\textheight,keepaspectratio')
 
     # All girders share the same section, governing check, and UR
     sec = _render_value(input_dict, KEY_SD_SECTION_DESIGNATION)
@@ -755,6 +755,7 @@ This section provides a concise summary of the bridge design, key inputs, govern
 \hline
 \end{tabular}
 
+\vspace{2.5cm}
 
 """ + plan_fig + r"""
 
@@ -865,7 +866,7 @@ This section documents all inputs provided to OsdagBridge. User-provided inputs 
 \noindent\textbf{Table 2.1 Project Location}
 \label{subsec:project-location}
 
-
+\vspace{0.4em}
 \begin{tabular}{|L{5.5cm}|L{8.5cm}|}
 \hline
 \textbf{Project Location} & """ + _tex(m.project_location) + r""" \\
@@ -884,7 +885,7 @@ This section documents all inputs provided to OsdagBridge. User-provided inputs 
 \noindent\textbf{Table 2.2 Bridge Geometry}
 \label{subsec:bridge-geometry}
 
-
+\vspace{0.4em}
 \begin{tabular}{|L{5.5cm}|L{8.5cm}|}
 \hline
 \textbf{Type of Structure} & """ + (_render_value(input_dict, KEY_STRUCTURE_TYPE)) + r""" \\
@@ -905,7 +906,7 @@ This section documents all inputs provided to OsdagBridge. User-provided inputs 
 \noindent\textbf{Table 2.3 Material Selection}
 \label{subsec:material}
 
-
+\vspace{0.4em}
 \begin{tabular}{|L{5.5cm}|L{8.5cm}|}
 \hline
 \textbf{Girder Steel Grade (IS 2062)} & """ + (_render_value(input_dict, KEY_GIRDER)) + r""" \\
@@ -954,9 +955,9 @@ Where the user has modified additional inputs, those values are reported here. W
 \hline
 \textbf{Crash Barrier Load (kN/m)} & """ + (_render_value(input_dict, KEY_CB_LOAD)) + r""" \\[6pt]
 \hline
-\textbf{Median Type} & """ + (_render_value(input_dict, KEY_MD_TYPE)) + r""" \\[6pt]
+""" + (r"""\textbf{Median Type} & """ + _render_value(input_dict, KEY_MD_TYPE) + r""" \\[6pt]
 \hline
-\textbf{Railing Type} & """ + (_render_value(input_dict, KEY_RL_TYPE)) + r""" \\[6pt]
+""" if input_dict.get(KEY_MD_TYPE) and input_dict.get(KEY_MD_TYPE) not in ('None', '-', '') else "") + r"""\textbf{Railing Type} & """ + (_render_value(input_dict, KEY_RL_TYPE)) + r""" \\[6pt]
 \hline
 \textbf{Railing Load (kN/m)} & """ + (_render_value(input_dict, KEY_RL_LOAD_VALUE)) + r""" \\[6pt]
 \hline
@@ -1050,7 +1051,7 @@ def _girder_tables(input_dict, n_girders):
     rst_rows = "".join([_rst_row(g_lbl, i) for g_lbl, _, i in entries_for_table])
 
     return (r"""
-\newpage
+\vspace{1.45em}
 \noindent\textbf{Table 2.6  Member Properties: Girder Details}
 
 \vspace{0.4em}
@@ -1140,7 +1141,7 @@ def _bracing_tables(input_dict, n_girders):
     ed_rows = "".join([_ed_row(ed_loc, ed_ids, i) for _, _, ed_loc, ed_ids, i in panels])
 
     return (r"""
-\newpage
+\vspace{1.5em}
 \noindent\textbf{Table 2.7  Member Properties: Cross Bracing Details}
 
 \vspace{0.4em}
@@ -1154,6 +1155,7 @@ def _bracing_tables(input_dict, n_girders):
             + cb_rows
             + r"""\end{longtable}
 
+\newpage
 \noindent\textbf{Table 2.8  Member Properties: End Diaphragm Details}
 
 \vspace{0.4em}
@@ -1562,7 +1564,8 @@ A grillage model was used for structural analysis. The deck is idealized as a gr
 
 # Chapter 5: Design Checks — exact LaTeX template match
 
-def ch5_design_checks(checks_data, bridge: "ReportDataBridge"):
+def ch5_design_checks(checks_data, bridge: "ReportDataBridge", secs=None):
+    secs = secs or []
     girder_entries = get_girder_entries(bridge.input_dict)
     if not girder_entries:
         n = int(bridge.input_dict.get(KEY_TS_NO_OF_GIRDERS, 1))
@@ -2757,12 +2760,13 @@ def _fig_embed(path, caption, width=r'0.9\textwidth'):
             r'}}')
 
 
-def ch6_drawings(fig_paths):
+def ch6_drawings(fig_paths, secs=None):
     """Chapter 6 – Drawings and Visualizations.
 
     Layout: section heading → figure → small numbered label below.
     No subsection headers. 6.3 and 6.4 are headings only (no figures).
     """
+    secs = secs or []
 
     def _sec_fig(path, label, title):
         """Figure block: image first, numbered label below. Placeholder if no path."""
@@ -2781,42 +2785,54 @@ def ch6_drawings(fig_paths):
                 r'}}' + '\n'
                 + label_line)
 
-    sup3d  = _sec_fig(fig_paths.get('final_geometry'),    '6.1.1', 'Overall 3D Bridge Superstructure')
-    cs     = _sec_fig(fig_paths.get('cross_section'),     '6.1.2', 'Typical Cross Section')
-    gtop   = _sec_fig(fig_paths.get('girder_top'),        '6.1.3', 'Top View')
-    g3d    = _sec_fig(fig_paths.get('girder_3d'),         '6.2.1', '3D View of Plate Girders')
-    gxsec  = _sec_fig(fig_paths.get('section_preview'),   '6.2.2', 'Cross Section of Plate Girder')
-    gside  = _sec_fig(fig_paths.get('stiffener_preview'), '6.2.3', 'Side View of Girder')
+    # Only build figure blocks for checked subsections
+    _show_layout   = not secs or 'Bridge Configuration and Layout' in secs
+    _show_detailed = not secs or 'Plate Girder — Detailed Views' in secs
+    _show_bracing  = not secs or 'Cross Bracing Detail' in secs
+    _show_ed       = not secs or 'End Diaphragm Detail' in secs
 
-    return (r"""
+    sup3d  = _sec_fig(fig_paths.get('final_geometry'),    '6.1.1', 'Overall 3D Bridge Superstructure')  if (not secs or 'Overall 3D Bridge Superstructure' in secs)  else ''
+    cs     = _sec_fig(fig_paths.get('cross_section'),     '6.1.2', 'Typical Cross Section')             if (not secs or 'Typical Cross Section' in secs)             else ''
+    gtop   = _sec_fig(fig_paths.get('plan'),        '6.1.3', 'Top View')                         if (not secs or 'Top View' in secs)                         else ''
+    g3d    = _sec_fig(fig_paths.get('girder_3d'),         '6.2.1', '3D View of Plate Girders')          if (not secs or '3D View of Plate Girders' in secs)          else ''
+    gxsec  = _sec_fig(fig_paths.get('section_preview'),   '6.2.2', 'Cross Section of Plate Girder')     if (not secs or 'Cross Section of Plate Girder' in secs)     else ''
+    gside  = _sec_fig(fig_paths.get('stiffener_preview'), '6.2.3', 'Side View of Girder')               if (not secs or 'Side View of Girder' in secs)               else ''
+
+    parts = [r"""
 \chapter{Drawings and Visualizations}
 \label{ch:drawings}
 
 This section presents CAD-generated views of the designed bridge and its components. All views are generated automatically by OsdagBridge using pythonOCC.
+"""]
 
+    if _show_layout:
+        parts.append(r"""
 \section{Bridge Configuration and Layout}
 \label{sec:bridge-layout}
 
-"""
-            + sup3d + '\n\n'
-            + cs + '\n\n'
-            + gtop + r"""
+""" + sup3d + '\n\n' + cs + '\n\n' + gtop)
 
+    if _show_detailed:
+        parts.append(r"""
 \section{Plate Girder --- Detailed Views}
 \label{sec:girder-views}
 
-"""
-            + g3d + '\n\n'
-            + gxsec + '\n\n'
-            + gside + r"""
+""" + g3d + '\n\n' + gxsec + '\n\n' + gside)
 
+    if _show_bracing:
+        parts.append(r"""
 \section{Cross Bracing Detail}
 \label{sec:bracing-detail}
+""")
 
+    if _show_ed:
+        parts.append(r"""
 \section{End Diaphragm Detail}
 \label{sec:diaphragm-detail}
-
 """)
+
+    return '\n'.join(parts)
+
 
 
 def ch7_quantities(input_dict):
@@ -3434,28 +3450,38 @@ def generate_report(payload, request):
             if payload.options.include_toc:
                 doc_parts.append(toc_section())
 
-            doc_parts.append(executive_summary(payload.inputs, payload.output_dict, fig_paths))
-            doc_parts.append(ch1_project_info(payload.metadata))
-
             secs = payload.options.sections
-            if 'Input Parameters' in secs:
+
+            if not secs or 'Executive Summary' in secs:
+                doc_parts.append(executive_summary(payload.inputs, payload.output_dict, fig_paths))
+
+            if not secs or 'Project Information' in secs:
+                doc_parts.append(ch1_project_info(payload.metadata))
+
+            if not secs or 'Input Parameters' in secs:
                 doc_parts.append(ch2_input_parameters(payload.metadata, payload.inputs, payload.output_dict))
-    
-            doc_parts.append(ch3_loads(payload.inputs))
-            doc_parts.append(ch4_analysis(payload.analysis_summary, fig_paths, bridge, span_m))
+
+            if not secs or 'Loads and Load Combinations' in secs:
+                doc_parts.append(ch3_loads(payload.inputs))
+
+            if not secs or 'Analysis Results' in secs:
+                doc_parts.append(ch4_analysis(payload.analysis_summary, fig_paths, bridge, span_m))
 
             if 'Design Checks' in secs:
-                doc_parts.append(ch5_design_checks(payload.design_checks, bridge))
+                doc_parts.append(ch5_design_checks(payload.design_checks, bridge, secs))
 
             if payload.options.include_figures:
-                doc_parts.append(ch6_drawings(fig_paths))
+                doc_parts.append(ch6_drawings(fig_paths, secs))
 
-            doc_parts.append(ch7_quantities(payload.inputs))
+            if not secs or 'Material Take-off & Quantity Summary' in secs:
+                doc_parts.append(ch7_quantities(payload.inputs))
 
             if 'Design Log' in secs:
                 doc_parts.append(ch8_design_log(payload.log_entries))
 
-            doc_parts.append(ch9_references())
+            if not secs or 'References' in secs:
+                doc_parts.append(ch9_references())
+
             doc_parts.append(r"\end{document}")
 
             full_tex = "\n".join(doc_parts)

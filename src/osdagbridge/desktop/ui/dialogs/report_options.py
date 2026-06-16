@@ -276,24 +276,61 @@ class ReportOptionsDialog(QDialog):
         self.tree.setHeaderHidden(True)
         layout.addWidget(self.tree)
 
+        # (parent_label, is_mandatory, [children])
         sections = [
-            ("1. Cover Page", []),
-            ("2. Bridge Configuration", []),
-            ("3. Structural Loading", []),
-            ("4. Design Analysis", []),
-            ("5. Steel Section Design Checks", []),
-            ("6. Drawings and Visualizations", []),
-            ("7. Bill of Materials", []),
-            ("8. Design Log & Verification", []),
-            ("9. References", [])
+            ("Executive Summary",                   False, []),
+            ("Project Overview",                    False, []),
+            ("Key Design Outcomes Summary",          False, []),
+            ("Design Assumptions and Limitations",  False, []),
+            ("Project Information",                 False, [
+                "Project and Design Team Details",
+                "Applicable Codes and Standards",
+            ]),
+            ("Input Parameters",                    True,  [
+                "Basic Inputs (User-Defined)",
+                "Additional Inputs",
+            ]),
+            ("Loads and Load Combinations",         False, []),
+            ("Analysis Results",                    False, []),
+            ("Design Checks",                       False, [
+                "Plate Girder Design",
+                "Deck Slab Design",
+                "Cross Bracing Design",
+                "End Diaphragm Design",
+            ]),
+            ("Drawings and Visualizations",         False, [
+                "Bridge Configuration and Layout",
+                "Overall 3D Bridge Superstructure",
+                "Typical Cross Section",
+                "Top View",
+                "Plate Girder — Detailed Views",
+                "3D View of Plate Girders",
+                "Cross Section of Plate Girder",
+                "Side View of Girder",
+                "Cross Bracing Detail",
+                "End Diaphragm Detail",
+            ]),
+            ("Material Take-off & Quantity Summary", False, []),
+            ("Standards & Assumptions",             False, [
+                "Design Standards",
+                "Analysis and Design Assumptions of This Version",
+                "Known Limitations of This Version",
+            ]),
+            ("Design Log",                          False, []),
+            ("References",                          False, []),
         ]
 
-        for parent_text, children in sections:
-            parent_item = QTreeWidgetItem(self.tree, [parent_text])
-            parent_item.setFlags(
-                parent_item.flags() | Qt.ItemIsUserCheckable | Qt.ItemIsAutoTristate
-            )
-            parent_item.setCheckState(0, Qt.Checked)
+        for label, mandatory, children in sections:
+            parent_item = QTreeWidgetItem(self.tree, [label])
+            if mandatory:
+                # Mandatory sections: visible but not user-toggleable
+                parent_item.setFlags(parent_item.flags() & ~Qt.ItemIsUserCheckable)
+                parent_item.setCheckState(0, Qt.Checked)
+            else:
+                parent_item.setFlags(
+                    parent_item.flags() | Qt.ItemIsUserCheckable | Qt.ItemIsAutoTristate
+                )
+                parent_item.setCheckState(0, Qt.Checked)
 
             for child_text in children:
                 child_item = QTreeWidgetItem(parent_item, [child_text])
@@ -476,14 +513,20 @@ class ReportOptionsDialog(QDialog):
         self.stacked_widget.setCurrentIndex(0)
         self.title_bar.setTitle("Design Report")
 
-    def get_checked_leaf_sections(self):
-        sections = []
-        # Walk all top-level items
+    def get_checked_sections(self):
+        """Return labels of every checked item (parent + children)."""
+        checked = []
         for i in range(self.tree.topLevelItemCount()):
-            item = self.tree.topLevelItem(i)
-            if item.checkState(0) == Qt.Checked:
-                sections.append(item.text(0))
-        return sections
+            parent = self.tree.topLevelItem(i)
+            # Include parent if checked or mandatory (no checkbox flag)
+            if parent.checkState(0) in (Qt.Checked, Qt.PartiallyChecked) \
+                    or not (parent.flags() & Qt.ItemIsUserCheckable):
+                checked.append(parent.text(0))
+            for j in range(parent.childCount()):
+                child = parent.child(j)
+                if child.checkState(0) == Qt.Checked:
+                    checked.append(child.text(0))
+        return checked
 
     # ── build report request ─────────────────────────────────────────
 
@@ -511,8 +554,8 @@ class ReportOptionsDialog(QDialog):
             report_date=datetime.date.today().isoformat()
         )
 
-        checked_sections = self.get_checked_leaf_sections()
-        include_figures = "6. Drawings and Visualizations" in checked_sections
+        checked_sections = self.get_checked_sections()
+        include_figures = "Drawings and Visualizations" in checked_sections
 
         options = ReportOptions(
             sections=checked_sections,
