@@ -150,7 +150,7 @@ class BridgeMetadataMapper:
             "DeckThickness": self._to_meters(getattr(cad, "deck_thickness", 0)),
             "CarriagewayWidth": self._to_meters(getattr(cad, "carriageway_width", 0)),
             "SpanLength": self._to_meters(getattr(cad, "span_length_L", 0)),
-            "SkewAngle": getattr(cad, "skew_angle", 0),
+            "SkewAngle": -cad.skew_angle if hasattr(cad, "generate") else cad.skew_angle,
             "Material": concrete_grade
         }
         

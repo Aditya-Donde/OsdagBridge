@@ -200,8 +200,10 @@ class PlateGirderCADGenerator:
             }
 
 
-        # GEOMETRY PARAMETERS
-        self.skew_angle = design_params.skew_angle
+        # Negate skew angle to align with the 2D drawing coordinate systems (Y-inversion)
+        # This is a temporary measure to maintain consistency with existing geometry generation logic and test cases.
+        # TODO: Refactor geometry generation to use a consistent coordinate system and remove the need for skew angle negation.
+        self.skew_angle = -design_params.skew_angle
 
         # DECK PARAMETERS
         self.carriageway_width = design_params.carriageway_width

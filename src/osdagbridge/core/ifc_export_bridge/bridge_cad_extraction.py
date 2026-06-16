@@ -55,11 +55,14 @@ class PlateGirderIFCExtractor:
     """
     def __init__(self, cad_generator):
         self.cad = cad_generator
+        # If self.cad is the DTO, the skew_angle is positive.
+        # If self.cad is the CAD generator, it has already been negated.
+        self.skew_angle = self.cad.skew_angle if hasattr(self.cad, "generate") else -self.cad.skew_angle
         
     def _calculate_skew_offset(self, lateral_position, reference_position=0):
-        if self.cad.skew_angle == 0:
+        if self.skew_angle == 0:
             return 0.0
-        skew_rad = math.radians(self.cad.skew_angle)
+        skew_rad = math.radians(self.skew_angle)
         return (lateral_position - reference_position) * math.tan(skew_rad)
 
     def _build_design_dict(self):
@@ -307,7 +310,7 @@ class PlateGirderIFCExtractor:
 
             if is_end:
                 base_offset = self.cad.end_diaphragm_spacing if self.cad.end_diaphragm_spacing > 0 else 200.0
-                extra_offset = 300.0 * math.tan(math.radians(abs(self.cad.skew_angle)))
+                extra_offset = 300.0 * math.tan(math.radians(abs(self.skew_angle)))
                 offset = base_offset + extra_offset
                 x_eff = (x + offset) if is_first else (x - offset)
                 x_l_eff = x_eff + self._calculate_skew_offset(yL)
@@ -420,10 +423,10 @@ class PlateGirderIFCExtractor:
         
         # Left barrier
         components.append(ExtractedObject("BarrierSweep", type=self.cad.barrier_type, subtype=self.cad.crash_barrier_subtype, 
-            span=L, z_base=z_base, y_offset=y_l, skew=self.cad.skew_angle, geo=barrier_geo, ifc_name="Crash Barrier L"))
+            span=L, z_base=z_base, y_offset=y_l, skew=self.skew_angle, geo=barrier_geo, ifc_name="Crash Barrier L"))
         # Right barrier
         components.append(ExtractedObject("BarrierSweep", type=self.cad.barrier_type, subtype=self.cad.crash_barrier_subtype, 
-            span=L, z_base=z_base, y_offset=y_r, skew=self.cad.skew_angle, geo=barrier_geo, ifc_name="Crash Barrier R"))
+            span=L, z_base=z_base, y_offset=y_r, skew=self.skew_angle, geo=barrier_geo, ifc_name="Crash Barrier R"))
                 
         # Median
         if self.cad.enable_median:
@@ -447,7 +450,7 @@ class PlateGirderIFCExtractor:
 
             median_geo = MedianGeometry.get_geometry(median_label)
             components.append(ExtractedObject("BarrierSweep", type="Median", subtype=self.cad.median_type, span=L, 
-                z_base=z_base, y_offset=median_y, skew=self.cad.skew_angle, geo=median_geo, ifc_name="Median Barrier"))
+                z_base=z_base, y_offset=median_y, skew=self.skew_angle, geo=median_geo, ifc_name="Median Barrier"))
                 
         # Railings
         railing_label = "IRC 5 - RCC Railing" if "rcc" in str(self.cad.railing_type).lower() else "IRC 5 - Steel Railing"
@@ -455,11 +458,11 @@ class PlateGirderIFCExtractor:
         if self.cad.footpath_config in ("LEFT", "BOTH"):
             y_railing_left = -total_deck_width / 2.0 + actual_railing_width / 2.0
             components.append(ExtractedObject("RailingSweep", type=self.cad.railing_type, count=self.cad.rail_count, span=L, 
-                z_base=z_base, y_offset=y_railing_left, skew=self.cad.skew_angle, geo=railing_geo, ifc_name="Footpath Railing L"))
+                z_base=z_base, y_offset=y_railing_left, skew=self.skew_angle, geo=railing_geo, ifc_name="Footpath Railing L"))
         if self.cad.footpath_config in ("RIGHT", "BOTH"):
             y_railing_right = total_deck_width / 2.0 - actual_railing_width / 2.0
             components.append(ExtractedObject("RailingSweep", type=self.cad.railing_type, count=self.cad.rail_count, span=L, 
-                z_base=z_base, y_offset=y_railing_right, skew=self.cad.skew_angle, geo=railing_geo, ifc_name="Footpath Railing R"))
+                z_base=z_base, y_offset=y_railing_right, skew=self.skew_angle, geo=railing_geo, ifc_name="Footpath Railing R"))
                 
         return components
 
