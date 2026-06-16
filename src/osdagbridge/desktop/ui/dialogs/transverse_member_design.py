@@ -124,14 +124,21 @@ _COMBO_STYLE = """
     QComboBox QAbstractItemView {
         background-color: white;
         border: 1px solid #888;
+        outline: none;
+    }
+    QComboBox QAbstractItemView::item {
+        padding: 4px 8px;
+        min-height: 24px;
+        color: black;
+        background-color: white;
     }
     QComboBox QAbstractItemView::item:hover {
         background-color: #90AF13;
-        color: black;
+        color: white;
     }
     QComboBox QAbstractItemView::item:selected {
         background-color: #90AF13;
-        color: black;
+        color: white;
     }
     QComboBox:disabled {
         color: #333;
@@ -179,7 +186,8 @@ class TransverseMemberDesign(QDialog):
         self._pair_keys:        list[str]     = []
         self._members_per_pair: dict[str, int] = {}
         self._ed_group_widgets: dict[str, list[QWidget]] = {"crossbracing": [], "welded_beam": []}
-        self._backend: object = None   # ← ADD THIS 
+        self._backend: object = None
+        self._cb_forces_df = None   # full compute_panel_forces() DataFrame for per-LC queries
 
 
         # All schema-driven widgets keyed by their schema "id"
@@ -300,6 +308,11 @@ class TransverseMemberDesign(QDialog):
         girder_combo = self._widgets.get(KEY_TD_SELECT_GIRDER)
         if girder_combo is not None:
             girder_combo.currentTextChanged.connect(self._on_girder_pair_changed)
+
+        # Wire Load Combination change signal
+        lc_combo = self._widgets.get(KEY_TD_LOAD_COMBINATION)
+        if lc_combo is not None:
+            lc_combo.currentTextChanged.connect(self._on_load_combination_changed)
 
         return container
 
@@ -765,12 +778,77 @@ class TransverseMemberDesign(QDialog):
             self._populate_cb_pair_details(pair_key)
             self._populate_ed_pair_details(pair_key)
             if self._forces_dict:   # forces are enough; designs just add capacity column
-                cb_html = self._build_cb_design_check_html(pair_key, self._forces_dict, self._designs_dict)
+                lc_combo = self._widgets.get(KEY_TD_LOAD_COMBINATION)
+                current_lc = lc_combo.currentText() if lc_combo else "Envelope"
+                forces_for_display = (
+                    self._forces_dict if current_lc == "Envelope"
+                    else self._get_forces_for_lc(current_lc)
+                )
+                cb_html = self._build_cb_design_check_html(pair_key, forces_for_display, self._designs_dict)
                 if self._tab_result_texts.get("cb"):
                     self._tab_result_texts["cb"].setHtml(cb_html)
-                ed_html = self._build_ed_design_check_html(pair_key, self._forces_dict, self._designs_dict)
+                ed_html = self._build_ed_design_check_html(pair_key, forces_for_display, self._designs_dict)
                 if self._tab_result_texts.get("ed"):
                     self._tab_result_texts["ed"].setHtml(ed_html)
+
+    def _on_load_combination_changed(self, text: str):
+        """Recompute displayed forces when the selected load combination changes."""
+        if not self._forces_dict or not self._pair_keys:
+            return
+        pair_combo = self._widgets.get(KEY_TD_SELECT_GIRDER)
+        pair_key = pair_combo.currentText() if pair_combo else ""
+        if not pair_key:
+            return
+        forces_for_display = (
+            self._forces_dict if text == "Envelope"
+            else self._get_forces_for_lc(text)
+        )
+        cb_html = self._build_cb_design_check_html(pair_key, forces_for_display, self._designs_dict)
+        if self._tab_result_texts.get("cb"):
+            self._tab_result_texts["cb"].setHtml(cb_html)
+        ed_html = self._build_ed_design_check_html(pair_key, forces_for_display, self._designs_dict)
+        if self._tab_result_texts.get("ed"):
+            self._tab_result_texts["ed"].setHtml(ed_html)
+
+    def _get_forces_for_lc(self, lc: str) -> dict:
+        """Build a forces_dict slice for a single load case from the stored DataFrame."""
+        if self._cb_forces_df is None or self._cb_forces_df.empty:
+            return self._forces_dict
+
+        df = self._cb_forces_df
+        base: dict = {
+            "brace_type":   self._forces_dict.get("brace_type"),
+            "top_chord":    self._forces_dict.get("top_chord"),
+            "bottom_chord": self._forces_dict.get("bottom_chord"),
+            "geometry":     self._forces_dict.get("geometry", {}),
+            "pairs":        {},
+        }
+        for pair_key in self._pair_keys:
+            mask = (df["LoadCase"] == lc) & (df["Girder Pair"] == pair_key)
+            rows = df[mask]
+            if rows.empty:
+                base["pairs"][pair_key] = {
+                    "diag_tension_kN": None, "diag_compression_kN": None,
+                    "chord_tension_kN": None, "chord_compression_kN": None,
+                }
+                continue
+            # Worst case over multiple chain stations for this LC
+            f_diag_max  = float(rows["F_diag (kN)"].max())
+            f_diag_min  = float(rows["F_diag (kN)"].min())
+            f_chord_max = float(rows["F_chord (kN)"].max())
+            f_chord_min = float(rows["F_chord (kN)"].min())
+            _tol = 5e-3
+            base["pairs"][pair_key] = {
+                "diag_tension_kN":          round(f_diag_max,       3) if f_diag_max  >  _tol else None,
+                "diag_compression_kN":      round(abs(f_diag_min),  3) if f_diag_min  < -_tol else None,
+                "chord_tension_kN":         round(f_chord_max,      3) if f_chord_max >  _tol else None,
+                "chord_compression_kN":     round(abs(f_chord_min), 3) if f_chord_min < -_tol else None,
+                "diag_tension_gov_lc":      lc,
+                "diag_compression_gov_lc":  lc,
+                "chord_tension_gov_lc":     lc,
+                "chord_compression_gov_lc": lc,
+            }
+        return base
 
     def _on_bracing_type_changed(self, _text: str):
         self._refresh_bracing_layout()
@@ -812,9 +890,12 @@ class TransverseMemberDesign(QDialog):
         try:
             from osdagbridge.core.bridge_types.plate_girder.crossbracingforces import CrossBracingForces
             cb = CrossBracingForces(bridge=backend)
+            self._cb_forces_df = cb.compute_panel_forces()
             forces_dict = cb.get_design_forces_dict()
             if not forces_dict or not forces_dict.get("pairs"):
                 return
+
+            all_lcs = [str(lc) for lc in backend.result_data.get("loadcases", [])]
 
             cb_designs = getattr(backend, "crossbracing_design_results", {}) or {}
             ed_designs = getattr(backend, "end_diaphragm_design_results", {}) or {}
@@ -841,7 +922,7 @@ class TransverseMemberDesign(QDialog):
 
             self._backend = backend
             members_per_pair = self._compute_members_per_pair(backend, forces_dict)
-            self.load_data(forces_dict, designs_dict, members_per_pair)
+            self.load_data(forces_dict, designs_dict, members_per_pair, all_lcs=all_lcs)
         except Exception as e:
             import traceback
             print(f"[TransverseMemberDesign] _try_load_data error: {e}")
@@ -870,6 +951,7 @@ class TransverseMemberDesign(QDialog):
         forces_dict:      dict,
         designs_dict:     dict | None = None,
         members_per_pair: dict | None = None,
+        all_lcs:          list[str] | None = None,
     ) -> None:
         if not forces_dict:
             return
@@ -921,22 +1003,28 @@ class TransverseMemberDesign(QDialog):
         # members_per_pair tracks how many cross-bracings exist between each girder pair
         self._members_per_pair = members_per_pair or {p: 1 for p in self._pair_keys}
 
-        # Populate Load Combination combo
-        lcs: set[str] = set()
-        for pdata in pairs.values():
-            for key in (
-                "diag_tension_gov_lc", "diag_compression_gov_lc",
-                "chord_tension_gov_lc", "chord_compression_gov_lc",
-            ):
-                lc = pdata.get(key)
-                if lc:
-                    lcs.add(str(lc))
+        # Populate Load Combination combo — all LCs from backend, or fall back to governing LCs
         load_combo = self._widgets.get(KEY_TD_LOAD_COMBINATION)
         if load_combo:
+            load_combo.blockSignals(True)
             load_combo.clear()
             load_combo.addItem("Envelope")
-            for lc in sorted(lcs):
-                load_combo.addItem(lc)
+            if all_lcs:
+                for lc in all_lcs:
+                    load_combo.addItem(str(lc))
+            else:
+                lcs: set[str] = set()
+                for pdata in pairs.values():
+                    for key in (
+                        "diag_tension_gov_lc", "diag_compression_gov_lc",
+                        "chord_tension_gov_lc", "chord_compression_gov_lc",
+                    ):
+                        lc_val = pdata.get(key)
+                        if lc_val:
+                            lcs.add(str(lc_val))
+                for lc in sorted(lcs):
+                    load_combo.addItem(lc)
+            load_combo.blockSignals(False)
 
         girder_combo = self._widgets.get(KEY_TD_SELECT_GIRDER)
         if girder_combo:
