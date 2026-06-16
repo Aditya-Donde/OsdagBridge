@@ -24,7 +24,6 @@ _DECK_DETAILS_TAB_SCHEMA = {
                     "id": KEY_TS_DECK_THICKNESS,
                     "label": "Deck Thickness (mm):",
                     "type": TYPE_TEXTBOX,
-                    "bind": "deck_thickness",
                 },
             ]
         },
@@ -34,14 +33,12 @@ _DECK_DETAILS_TAB_SCHEMA = {
                     "id": KEY_TS_FOOTPATH_WIDTH,
                     "label": "Footpath Width (m):",
                     "type": TYPE_TEXTBOX,
-                    "bind": "footpath_width",
                     "on_text_changed": "on_layout_width_changed",
                 },
                 {
                     "id": KEY_TS_FOOTPATH_THICKNESS,
                     "label": "Footpath Thickness (mm):",
                     "type": TYPE_TEXTBOX,
-                    "bind": "footpath_thickness",
                 },
             ]
         },
