@@ -10,8 +10,7 @@ source:
   path: ..
 
 build:
-  number: 0
-  noarch: python
+  number: 1
 
   script: |
     {{ PYTHON }} -m pip install . --no-deps --ignore-installed -vv
@@ -24,42 +23,19 @@ build:
   pre-unlink: pre-unlink.bat
 
 
-channels:
-  - osdag
-  - conda-forge
-  - geompy
-  - defaults
-
 requirements:
   host:
-    - python >=3.10,<3.13
+    - python >=3.11,<3.13
     - pip
-    - numpy
-    - setuptools
-    - wheel
-  build:
-    - python >=3.10,<3.13
-    - pip
-    - numpy
     - setuptools
     - wheel
   run:
-    - python >=3.10,<3.13
-    - pip
-    - PySide6<=6.9.3
-    - matplotlib
-    - pythonocc-core>=7.6
-    - pylatex>=1.4
+    - python >=3.11,<3.13
     - fiona
     - shapely
-    - navcube
-    - numpy>=1.26
-    - pandas
     - scipy>=1.10.1
-    - pyyaml
     - pydantic
     - xarray
-    - openpyxl
     - osdag
 
 
@@ -69,3 +45,8 @@ test:
     - python -c "import PySide6"
 about:
   summary: "Osdag bridge environment with PySide6 via pip"
+
+extra:
+  recipe-maintainers:
+    - garvit000
+    
