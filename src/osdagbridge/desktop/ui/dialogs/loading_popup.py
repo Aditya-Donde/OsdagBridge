@@ -182,10 +182,6 @@ class AnalysisProgressDialog(QDialog):
         """)
         card_layout.addWidget(self._progress)
 
-        # Sub-status label (Created as hidden to avoid printing text below progress bar, keeping layout clean)
-        self._sub_lbl = QLabel(self)
-        self._sub_lbl.hide()
-
         c.addWidget(self._status_card)
 
         self._log = QTextEdit()
@@ -308,7 +304,6 @@ class AnalysisProgressDialog(QDialog):
     def _on_stop(self):
         self._cancel_event.set()
         self._stage_lbl.setText("Stopping analysis…")
-        self._sub_lbl.setText("Please wait for the current step to finish.")
         self._stop_btn.setEnabled(False)
 
     def closeEvent(self, event):
@@ -316,7 +311,7 @@ class AnalysisProgressDialog(QDialog):
         super().closeEvent(event)
 
 
-def run_loading_dialog_process(stop_event, is_light_theme=True, label_queue=None, cancel_event=None, ready_event=None):
+def run_loading_dialog_process(stop_event, is_light_theme=True, label_queue=None, cancel_event=None):
     """Entry point for the subprocess that owns the loading dialog window."""
     app = QApplication(sys.argv)
     dialog = AnalysisProgressDialog(cancel_event, is_light_theme=is_light_theme)
@@ -340,12 +335,6 @@ def run_loading_dialog_process(stop_event, is_light_theme=True, label_queue=None
     timer.start(50)
 
     dialog.show()
-    if ready_event is not None:
-        try:
-            # Signal the parent process that the dialog is visible and ready to receive messages
-            ready_event.set()
-        except Exception:
-            pass
     app.exec()
 
 
@@ -377,20 +366,11 @@ class LoadingDialogManager:
             
             self.stop_event = mp.Event()
             self.label_queue = mp.Queue()
-            self.ready_event = mp.Event()
             self.process = mp.Process(
                 target=run_loading_dialog_process,
-                args=(self.stop_event, self.is_light_theme, self.label_queue, self.cancel_event, self.ready_event)
+                args=(self.stop_event, self.is_light_theme, self.label_queue, self.cancel_event)
             )
             self.process.start()
-
-            # Wait for ready_event to be set, up to 1.5 seconds (yielding to Qt events using QApplication.processEvents)
-            import time
-            from PySide6.QtWidgets import QApplication
-            start_t = time.time()
-            while not self.ready_event.is_set() and (time.time() - start_t) < 1.5:
-                QApplication.processEvents()
-                time.sleep(0.01)
         else:
             # Linux - use in-process dialog to avoid duplicate window issues
             if self._dialog is None:
@@ -408,7 +388,6 @@ class LoadingDialogManager:
                 self.process = None
                 self.stop_event = None
                 self.label_queue = None
-                self.ready_event = None
         else:
             # Linux in-process mode: just hide the dialog
             if self._dialog is not None:

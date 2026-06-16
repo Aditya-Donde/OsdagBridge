@@ -109,7 +109,7 @@ class BridgeLogger:
         self._emit(f"[{self._ts()}]   ELAPSED .. : {elapsed:.2f} [SEC]", "error")
         self._blank()
 
-    def stage_start(self, stage: str, **details) -> None:
+    def stage_start(self, stage: str) -> None:
         idx = next((i for i, (sid, name) in enumerate(self.STAGE_MAP) if sid == stage), -1)
         name = self._stage_name(stage)
         self._blank()
@@ -125,10 +125,6 @@ class BridgeLogger:
                 f"[{self._ts()}]   STAGE {stage} : {name}",
                 "info"
             )
-            
-        for key, val in details.items():
-            label = key.replace("_", " ").upper()
-            self._emit(f"[{self._ts()}]     {label:<35} : {val}", "info")
             
         if idx != -1:
             self.stage_progress(idx)
@@ -154,12 +150,9 @@ class BridgeLogger:
         pct = int(stages_done / len(self.STAGE_MAP) * 100)
         self._emit(f"__progress__{pct}", "progress")
         
-    def sub_step(self, message: str, count: int = None, total: int = None) -> None:
-        """Log a named sub-step, optionally with a running counter."""
-        if count is not None and total is not None:
-            self._emit(f"[{self._ts()}]     {message:<44} {count} / {total}", "info")
-        else:
-            self._emit(f"[{self._ts()}]     {message}", "info")
+    def sub_step(self, message: str) -> None:
+        """Log a named sub-step."""
+        self._emit(f"[{self._ts()}]     {message}", "info")
 
     def cancel(self) -> None:
         self._cancelled = True

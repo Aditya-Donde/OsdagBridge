@@ -83,7 +83,6 @@ class InputBlockerFilter(QObject):
         self.target = target_widget
 
     def eventFilter(self, obj, event):
-        from PySide6.QtWidgets import QWidget
         if self.target and isinstance(obj, QWidget) and (obj == self.target or self.target.isAncestorOf(obj)):
             if event.type() in (
                 QEvent.Type.MouseButtonPress,
@@ -657,6 +656,9 @@ class CustomWindow(QWidget):
         if self.input_dock.is_require_field_changed:
             solve_extend_basic_input_dict(self.input_dict)
             self.input_dock.is_require_field_changed = False
+
+        print("\n@@input_dictionary_after (common_design_func):\n")
+        pprint(self.input_dict)
 
         if trigger == "Design":
             import traceback

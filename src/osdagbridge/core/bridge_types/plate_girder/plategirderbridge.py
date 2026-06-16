@@ -345,11 +345,12 @@ class PlateGirderBridge:
         self.grillage_geometry: GrillageGeometry | None = None
         self.deck_layout: DeckLayoutProperties | None = None
         self.result_data: dict = {}         # flat restructured dataset, set after analysis
-        # When True, design() writes tools/bridge_full_data.json. Off by default.
-        self.dump_json: bool = False
 
         # Analyser — populated by setup_grillage()
         self.grillage_model: BridgeGrillageModel = BridgeGrillageModel()
+
+        # When True, design() writes tools/bridge_full_data.json. Off by default.
+        self.dump_json: bool = False
 
     def input_values(self) -> list:
         """Return UI field definitions for the InputDock (delegated to FrontendData)."""
@@ -592,44 +593,32 @@ class PlateGirderBridge:
     def _validate_inputs(self):
         """Perform strict validation on essential input dictionary keys."""
         inp = self.input_dict
-        
         required_keys = [
             KEY_SPAN,
             KEY_TS_OVERALL_WIDTH,
             KEY_TS_NO_OF_GIRDERS,
             KEY_TS_GIRDER_SPACING,
         ]
-        
         missing = [k for k in required_keys if k not in inp or inp[k] is None or str(inp[k]).strip() == ""]
         if missing:
             raise ValueError(f"Missing required input parameters: {', '.join(missing)}")
-            
-        try:
-            span = float(inp[KEY_SPAN])
-            if span <= 0:
-                raise ValueError(f"Span must be strictly positive, got {span}.")
-            
-            n_girders = int(inp[KEY_TS_NO_OF_GIRDERS])
-            if n_girders < 2:
-                raise ValueError(f"Minimum 2 girders required, got {n_girders}.")
-                
-            spacing = float(inp[KEY_TS_GIRDER_SPACING])
-            if spacing <= 0:
-                raise ValueError(f"Girder spacing must be positive, got {spacing}.")
-                
-        except ValueError as e:
-            # Re-raise so the orchestrator catches it and calls analysis_failed
-            raise ValueError(f"Input validation failed: {str(e)}")
-            
-        bridge_logger.sub_step("Input validation completed successfully.")
+
+        span = float(inp[KEY_SPAN])
+        if span <= 0:
+            raise ValueError(f"Span must be strictly positive, got {span}.")
+        n_girders = int(inp[KEY_TS_NO_OF_GIRDERS])
+        if n_girders < 2:
+            raise ValueError(f"Minimum 2 girders required, got {n_girders}.")
+        spacing = float(inp[KEY_TS_GIRDER_SPACING])
+        if spacing <= 0:
+            raise ValueError(f"Girder spacing must be positive, got {spacing}.")
 
     def _solve_bridge_layout(self):
-        # Layout was solved in the UI frontend, we just snapshot it here
+        """Snapshot input_dict into mutable output_dict for the pipeline."""
         self.output_dict = dict(self.input_dict)
         
     def _stage_grillage_setup(self):
         self._build_dtos()
-        bridge_logger.check_cancel()
         self.setup_grillage()
 
     def _stage_load_combinations(self):
@@ -647,9 +636,6 @@ class PlateGirderBridge:
         self.create_uls_combinations()
         
         self.create_sls_combinations()
-
-    def _stage_deck_slab_design(self):
-        return self.design_deck_slab()
 
     def _stage_cad_generation(self):
         from osdagbridge.core.bridge_types.plate_girder.cad_generator import PlateGirderCADGenerator
@@ -760,7 +746,7 @@ class PlateGirderBridge:
                 )
 
             # Stage 6: Deck Slab Design
-            self.deck_design_results = self._run_stage("6", self._stage_deck_slab_design)
+            self.deck_design_results = self._run_stage("6", self.design_deck_slab)
             
             # Stage 7: Transverse Member Design
             self.crossbracing_design_results = self._run_stage("7", self._stage_transverse_design)
@@ -1318,7 +1304,6 @@ class PlateGirderBridge:
         bridge_logger.check_cancel()
         
         model.create_moving_vehicle_load_cases()
-        bridge_logger.check_cancel()
 
     # ─────────────────────────────────────────────────────────────────────────
     # Wind loads — applied after dead and live loads, before analysis
@@ -2261,7 +2246,6 @@ class PlateGirderBridge:
         bridge_logger.check_cancel()
         pair_designs = cb.run_member_designs(forces_dict)
         self.output_dict["crossbracing_forces_dict"] = forces_dict
-        bridge_logger.check_cancel()
 
         enrich_crossbracing_dump(pair_designs)
         self._print_crossbracing_design_results(forces_dict, pair_designs)

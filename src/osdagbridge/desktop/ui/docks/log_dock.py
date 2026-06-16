@@ -3,7 +3,7 @@ Log dock widget for Osdag GUI.
 Displays log messages and status updates.
 """
 
-from PySide6.QtWidgets import QWidget, QVBoxLayout, QTextEdit, QLabel
+from PySide6.QtWidgets import QWidget, QVBoxLayout, QTextEdit, QLabel, QApplication
 from PySide6.QtCore import Qt, QDateTime
 
 from osdagbridge.core.utils.logger import bridge_logger
@@ -53,8 +53,6 @@ class LogDock(QWidget):
 
     def append_log(self, message, log_level="info"):
         """Append a message to the log display with specified color."""
-        from PySide6.QtWidgets import QApplication
-
         if log_level == "progress":
             try:
                 pct = int(message.replace("__progress__", ""))
