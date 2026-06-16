@@ -170,68 +170,95 @@ def _add_grillage_background(
     include_end_transverse=True,
     show_inner_nodes=True,
 ):
-        """
-        Draw the structural grid by grouping nodes rather than tracing element tags.
-        """
-        from collections import defaultdict
+    """
+    Draw the structural grid using actual member connectivity.
+    Uses the members dict (element → [n1, n2]) so that skewed bridges
+    where nodes are shifted longitudinally still render correctly.
+    """
+    # Colour scheme (same as before)
+    long_kw  = dict(color="#388E3C", linewidth=1.0, alpha=0.3, zorder=1)
+    trans_kw = dict(color="slategrey", linewidth=1.2, alpha=0.4, zorder=1)
 
-        by_z = defaultdict(list)   # z_key → [x, ...]
-        by_x = defaultdict(list)   # x_key → [z, ...]
+    # ================================================================
+    # 1. Classify every member: longitudinal (along span) vs transverse (cross)
+    # ================================================================
+    # A member is longitudinal when both end-nodes share a similar Z (lateral pos).
+    # A member is transverse   when both end-nodes share a similar X (longitudinal pos).
+    # For skewed bridges the X values of a transverse member differ slightly
+    # (dx = tan(skew) × girder_spacing), so we compare |dx| vs |dz|.
 
-        for coord in nodes.values():
-            rx = round(coord[0], x_tol)
-            rz = round(coord[2], z_tol)
-            by_z[rz].append(coord[0])
-            by_x[rx].append(coord[2])
+    long_members: list[tuple] = []   # (x1, z1, x2, z2)
+    trans_members: list[tuple] = []  # (x1, z1, x2, z2)
 
-        # ==========================================
-        # 1. THE LINES (Transparent Green & Grey)
-        # ==========================================
-        # Original structural green (#388E3C) but 70% transparent (alpha=0.3)
-        long_kw  = dict(color="#388E3C", linewidth=1.0, alpha=0.3, zorder=1)
-        
-        # Soft grey for the transverse cross-beams (alpha=0.4)
-        trans_kw = dict(color="slategrey", linewidth=1.2, alpha=0.4, zorder=1)
+    all_x: list[float] = []
+    all_z: list[float] = []
 
-        # longitudinal lines (along span)
-        z_keys = sorted(by_z.keys())
-        edge_z_min = z_keys[0] if z_keys else None
-        edge_z_max = z_keys[-1] if z_keys else None
-        for z_val, x_vals in by_z.items():
-            if not include_edge_longitudinals and z_val in (edge_z_min, edge_z_max):
+    for _ele_tag, (n1, n2) in members.items():
+        x1, _, z1 = nodes[n1]
+        x2, _, z2 = nodes[n2]
+        dx = abs(x1 - x2)
+        dz = abs(z1 - z2)
+        all_x.extend([x1, x2])
+        all_z.extend([z1, z2])
+
+        if dz > dx:
+            # Transverse (cross-beam): lateral difference dominates
+            trans_members.append((x1, z1, x2, z2))
+        else:
+            # Longitudinal (girder): span-wise difference dominates
+            long_members.append((x1, z1, x2, z2))
+
+    if not all_x:
+        return
+
+    # Extreme X positions (start / end of bridge) for end-line detection
+    x_all_sorted = sorted(set(all_x))
+    min_x = x_all_sorted[0]
+    max_x = x_all_sorted[-1]
+
+    # Extreme Z positions (outermost girder lines)
+    z_all_sorted = sorted(set(all_z))
+    edge_z_min = z_all_sorted[0]
+    edge_z_max = z_all_sorted[-1]
+
+    # Tolerance for comparing node X coordinates (accounts for skew shift)
+    TOL = 1e-2
+
+    # ================================================================
+    # 2. DRAW LONGITUDINAL LINES (green, along span)
+    # ================================================================
+    for x1, z1, x2, z2 in long_members:
+        # Skip outermost girders when requested
+        if not include_edge_longitudinals:
+            if abs(z1 - edge_z_min) < TOL or abs(z1 - edge_z_max) < TOL:
                 continue
-            x_sorted = sorted(set(x_vals))
-            if len(x_sorted) > 1:
-                ax.plot(x_sorted, [z_val] * len(x_sorted), [0] * len(x_sorted), **long_kw)
+        ax.plot([x1, x2], [z1, z2], [0, 0], **long_kw)
 
-        if by_x:  # Quick safety check to ensure we have data
-            min_x = min(by_x.keys())
-            max_x = max(by_x.keys())
+    # ================================================================
+    # 3. DRAW TRANSVERSE LINES (grey, cross-beams)
+    # ================================================================
+    for x1, z1, x2, z2 in trans_members:
+        # Check if this transverse member lies at an extreme X (end of bridge)
+        is_end_line = (abs(x1 - min_x) < TOL or abs(x1 - max_x) < TOL)
 
-            for x_val, z_vals in by_x.items():
-                # Check if this specific line is at the absolute start or end of the bridge
-                is_end_line = (x_val == min_x or x_val == max_x)
+        if show_transverse or (include_end_transverse and is_end_line):
+            ax.plot([x1, x2], [z1, z2], [0, 0], **trans_kw)
 
-                # Draw it if the Master Switch is ON, OR if it's an end line AND allowed
-                if show_transverse or (include_end_transverse and is_end_line):
-                    z_sorted = sorted(set(z_vals))
-                    if len(z_sorted) > 1:
-                        ax.plot([x_val] * len(z_sorted), z_sorted, [0] * len(z_sorted), **trans_kw)
-        # ==========================================
-        # 3. THE DOTS (Sniper Fix for Z-Fighting)
-        # ==========================================
-        if show_inner_nodes:
-            inner_xs, inner_zs, inner_ys = [], [], []
-            if by_x:
-                min_x = min(by_x.keys())
-                max_x = max(by_x.keys())
-                # Only collect dots that are NOT at the absolute ends of the bridge
-                for coord in nodes.values():
-                    if coord[0] != min_x and coord[0] != max_x:
-                        inner_xs.append(coord[0])
-                        inner_zs.append(coord[2])
-                        inner_ys.append(0) # Base elevation
-                ax.scatter(inner_xs, inner_zs, inner_ys, color="#388E3C", alpha=0.4, s=5, zorder=2, depthshade=False)
+    # ================================================================
+    # 4. INNER NODE DOTS
+    # ================================================================
+    if show_inner_nodes:
+        inner_xs, inner_zs, inner_ys = [], [], []
+        for coord in nodes.values():
+            x = coord[0]
+            if abs(x - min_x) > TOL and abs(x - max_x) > TOL:
+                inner_xs.append(coord[0])
+                inner_zs.append(coord[2])
+                inner_ys.append(0)
+        if inner_xs:
+            ax.scatter(inner_xs, inner_zs, inner_ys,
+                       color="#388E3C", alpha=0.4, s=5,
+                       zorder=2, depthshade=False)
 
 class Arrow3D(Annotation):
     def __init__(self, start, end, *args, **kwargs):
