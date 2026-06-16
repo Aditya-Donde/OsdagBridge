@@ -3092,12 +3092,8 @@ class PlateGirderBridge:
         # keyed to common.KEY_DD_*.
         self.output_dict["deck_report_values"] = report_values
 
-        import pprint
         sep = "=" * 60
         print(f"\n{sep}\n  DECK SLAB DESIGN RESULTS\n{sep}")
-        # pprint the structured summary; print the design-check report as text
-        summary = {k: v for k, v in result.items() if k != "deck_design_check"}
-        pprint.pprint(summary, indent=4, width=120)
         if result.get("deck_design_check"):
             print(result["deck_design_check"])
         print(sep)

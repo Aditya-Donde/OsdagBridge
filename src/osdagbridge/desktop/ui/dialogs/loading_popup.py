@@ -58,6 +58,7 @@ class AnalysisProgressDialog(QDialog):
         )
         self.setModal(False)
         self.setFixedSize(500, 400)
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, False)
 
         try:
@@ -80,13 +81,12 @@ class AnalysisProgressDialog(QDialog):
 
         self.setStyleSheet(f"""
             QDialog {{
-                background-color: {bg};
-                border: 1px solid #90AF13;
+                background-color: #90AF13;
             }}
         """)
 
         root = QVBoxLayout(self)
-        root.setContentsMargins(0, 0, 0, 0)
+        root.setContentsMargins(2, 2, 2, 2)
         root.setSpacing(0)
 
         title_row = QWidget()
