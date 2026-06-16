@@ -407,18 +407,27 @@ def resolve_cross_bracing_section_properties(input_dict: dict, bridge=None) -> d
             return CROSS_BRACING_DEFAULTS.get(default_key, "")
         return v
 
+    def _cb_chord(gi, mi, base_key, default_key):
+        """Display a chord checkbox as Yes/No (blank → EMPTY)."""
+        v = _cbk(base_key, gi, mi, default_key)
+        if v in (None, ""):
+            return EMPTY
+        on = v is True or str(v).strip().lower() in ("true", "yes", "1", "checked")
+        return "Yes" if on else "No"
+
     rows = []
     for gi in range(1, n):
         for mi in range(1, n_brace + 1):
             rows.append([
                 f"G{gi}G{gi + 1}_B{gi}M{mi}",
                 _val(_cbk(KEY_MP_CB_TYPE, gi, mi, "type")),
+                _val(_cbk(KEY_MP_CB_BRACING_CONNECTION, gi, mi, "bracing_connection")),
                 _val(_cbk(KEY_MP_CB_BRACING_SECTION_TYPE, gi, mi, "bracing_section_type")),
                 _val(_cbk(KEY_MP_CB_BRACING_SECTION_DESIGNATION, gi, mi, "bracing_section_designation")),
-                _val(_cbk(KEY_MP_CB_TOP_CHORD, gi, mi, "top_chord")),
+                _cb_chord(gi, mi, KEY_MP_CB_TOP_CHORD, "top_chord"),
                 _val(_cbk(KEY_MP_CB_TOP_CHORD_SECTION_TYPE, gi, mi, "top_chord_section_type")),
                 _val(_cbk(KEY_MP_CB_TOP_CHORD_SECTION_DESIG, gi, mi, "top_chord_section_desig")),
-                _val(_cbk(KEY_MP_CB_BOTTOM_CHORD, gi, mi, "bottom_chord")),
+                _cb_chord(gi, mi, KEY_MP_CB_BOTTOM_CHORD, "bottom_chord"),
                 _val(_cbk(KEY_MP_CB_BOTTOM_CHORD_SECTION_TYPE, gi, mi, "bottom_chord_section_type")),
                 _val(_cbk(KEY_MP_CB_BOTTOM_CHORD_SECTION_DESIG, gi, mi, "bottom_chord_section_desig")),
                 spacing_disp,
@@ -433,6 +442,7 @@ def resolve_cross_bracing_section_properties(input_dict: dict, bridge=None) -> d
         "columns": [
             "Member",
             "Type of Bracing",
+            "Type of Connection",
             "Bracing Section Type",
             "Bracing Section Designation",
             "Top Chord",
@@ -458,8 +468,6 @@ def resolve_end_diaphragm_section_properties(input_dict: dict, bridge=None) -> d
     if n < 2:
         return None
 
-    # Type defaults to "Cross Bracing"; welded/rolled-beam geometry fields are
-    # blank unless that ED type is chosen (mirrors defaults.py _ED_DEFAULTS).
     def _edk(base_key, gi, mi):
         return input_dict.get(f"{base_key}.G{gi}G{gi + 1}.E{gi}M{mi}")
 
@@ -467,38 +475,108 @@ def resolve_end_diaphragm_section_properties(input_dict: dict, bridge=None) -> d
         v = _edk(KEY_MP_ED_TYPE, gi, mi)
         return _val(v) if _has(v) else "Cross Bracing"
 
+    def _chord(gi, mi, key):
+        """Display a chord checkbox as Yes/No (blank → EMPTY)."""
+        v = _edk(key, gi, mi)
+        if v in (None, ""):
+            return EMPTY
+        on = v is True or str(v).strip().lower() in ("true", "yes", "1", "checked")
+        return "Yes" if on else "No"
+
+    # The End Diaphragm "Section Inputs" card swaps its fields based on Type
+    # (mirrors the Additional Inputs UI; see ui_fields_additional_input.py):
+    #   • "Cross Bracing" (default) — bracing + top/bottom chord sections.
+    #   • "Rolled Beam"             — a single IS rolled section.
+    #   • "Welded Beam"             — symmetry + web/flange plate geometry.
+    # The UI applies one configuration to all girder pairs, so pick the column
+    # set from the first member's type and show only that type's fields.
+    dominant_type = str(_ed_type(1, 1)).strip().lower()
+    if dominant_type in ("welded beam", "welded"):
+        layout = "welded"
+    elif dominant_type in ("rolled beam", "rolled"):
+        layout = "rolled"
+    else:
+        layout = "cross_bracing"
+
     rows = []
     for gi in range(1, n):
         for mi in (1, 2):
-            rows.append([
-                f"G{gi}G{gi + 1}_E{gi}M{mi}",
-                _ed_type(gi, mi),
-                _val(_edk(KEY_MP_ED_SYMMETRY,                gi, mi)),
-                _num(_edk(KEY_MP_ED_TOTAL_DEPTH,             gi, mi)),
-                _num(_edk(KEY_MP_ED_WEB_THICKNESS,           gi, mi)),
-                _num(_edk(KEY_MP_ED_TOP_FLANGE_WIDTH,        gi, mi)),
-                _num(_edk(KEY_MP_ED_TOP_FLANGE_THICKNESS,    gi, mi)),
-                _num(_edk(KEY_MP_ED_BOTTOM_FLANGE_WIDTH,     gi, mi)),
-                _num(_edk(KEY_MP_ED_BOTTOM_FLANGE_THICKNESS, gi, mi)),
-            ])
+            member = f"G{gi}G{gi + 1}_E{gi}M{mi}"
+            if layout == "welded":
+                rows.append([
+                    member,
+                    _ed_type(gi, mi),
+                    _val(_edk(KEY_MP_ED_SYMMETRY,                gi, mi)),
+                    _num(_edk(KEY_MP_ED_TOTAL_DEPTH,             gi, mi)),
+                    _num(_edk(KEY_MP_ED_WEB_THICKNESS,           gi, mi)),
+                    _num(_edk(KEY_MP_ED_TOP_FLANGE_WIDTH,        gi, mi)),
+                    _num(_edk(KEY_MP_ED_TOP_FLANGE_THICKNESS,    gi, mi)),
+                    _num(_edk(KEY_MP_ED_BOTTOM_FLANGE_WIDTH,     gi, mi)),
+                    _num(_edk(KEY_MP_ED_BOTTOM_FLANGE_THICKNESS, gi, mi)),
+                ])
+            elif layout == "rolled":
+                rows.append([
+                    member,
+                    _ed_type(gi, mi),
+                    _val(_edk(KEY_MP_ED_IS_SECTION, gi, mi)),
+                ])
+            else:  # cross_bracing
+                rows.append([
+                    member,
+                    _ed_type(gi, mi),
+                    _val(_edk(KEY_MP_ED_BRACING_TYPE,                gi, mi)),
+                    _val(_edk(KEY_MP_ED_BRACING_CONNECTION,          gi, mi)),
+                    _val(_edk(KEY_MP_ED_BRACING_SECTION,             gi, mi)),
+                    _val(_edk(KEY_MP_ED_BRACING_SECTION_DESIGNATION, gi, mi)),
+                    _chord(gi, mi, KEY_MP_ED_TOP_CHORD),
+                    _val(_edk(KEY_MP_ED_TOP_CHORD_SECTION_TYPE,      gi, mi)),
+                    _val(_edk(KEY_MP_ED_TOP_CHORD_SECTION_DESIG,     gi, mi)),
+                    _chord(gi, mi, KEY_MP_ED_BOTTOM_CHORD),
+                    _val(_edk(KEY_MP_ED_BOTTOM_CHORD_SECTION_TYPE,   gi, mi)),
+                    _val(_edk(KEY_MP_ED_BOTTOM_CHORD_SECTION_DESIG,  gi, mi)),
+                ])
 
     if not rows:
         return None
 
-    return {
-        "id":    "end_diaphragm_section_properties",
-        "label": "End Diaphragm Section Properties",
-        "columns": [
+    if layout == "welded":
+        columns = [
             "Member ID",
             "Type",
             "Symmetry",
-            "Total Depth, d(mm)",
-            "Web Thickness, wt(mm)",
-            "Width of Top Flange(mm)",
-            "Top Flange Thickness (mm)",
-            "Width of Bottom Flange(mm)",
-            "Bottom Flange Thickness (mm)",
-        ],
+            "Total Depth, d (mm)",
+            "Web Thickness, wₜ (mm)",
+            "Width of Top Flange, tᶠʷ (mm)",
+            "Top Flange Thickness, tᶠₜ (mm)",
+            "Width of Bottom Flange, bᶠʷ (mm)",
+            "Bottom Flange Thickness, bᶠₜ (mm)",
+        ]
+    elif layout == "rolled":
+        columns = [
+            "Member ID",
+            "Type",
+            "IS Section",
+        ]
+    else:  # cross_bracing
+        columns = [
+            "Member ID",
+            "Type",
+            "Type of Bracing",
+            "Type of Connection",
+            "Bracing Section Type",
+            "Bracing Section Designation",
+            "Top Chord",
+            "Top Chord Section Type",
+            "Top Chord Section Designation",
+            "Bottom Chord",
+            "Bottom Chord Section Type",
+            "Bottom Chord Section Designation",
+        ]
+
+    return {
+        "id":    "end_diaphragm_section_properties",
+        "label": "End Diaphragm Section Properties",
+        "columns": columns,
         "rows": rows,
     }
 

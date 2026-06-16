@@ -843,6 +843,21 @@ class OutputDock(QWidget):
         out_dict = dict(getattr(self.backend, 'output_dict', {}) or {})
 
         merged = {**input_dict, **ai_dict, **input_d_values, **out_dict}
+
+        # Member-property selections (cross bracing / end diaphragm) reflect the user's
+        # live UI choice. The backend's output_dict carries re-seeded *defaults* for these
+        # keys (from solve_extend_basic_input_dict), merged last, which would otherwise mask
+        # the actual choices. Overlay the user's selections so they win: prefer input_dict
+        # (persisted by _save_ed_pair/_save_cb_pair) and then the live dialog's dict.
+        def _is_member_prop(k):
+            return (k.startswith("member_properties.cross_bracing_details.")
+                    or k.startswith("member_properties.end_diaphragm_details."))
+
+        for source in (input_dict, ai_dict):
+            for k, v in (source or {}).items():
+                if _is_member_prop(k):
+                    merged[k] = v
+
         dlg = GenerateResultsDialog(parent=None, input_dict=merged, bridge = self.backend)
         dlg.exec()
 

@@ -1425,16 +1425,25 @@ class AdditionalInputs(QDialog):
         if not m:
             return
         gi, gj = int(m.group(1)), int(m.group(2))
+        # Persist to the main input_dict too (default_input_dict is the live
+        # reference passed by the template page), so the selection survives a
+        # dialog reopen and reaches the backend / Generate Results table.
+        main_dict = getattr(self, "default_input_dict", None)
         for mi in (1, 2):
             suffix = f".G{gi}G{gj}.E{gi}M{mi}"
             for key in self._ED_FIELD_KEYS:
                 w = self.findChild(QWidget, key)
                 if isinstance(w, QComboBox):
-                    self.working_input_dict[key + suffix] = w.currentText()
+                    value = w.currentText()
                 elif isinstance(w, QCheckBox):
-                    self.working_input_dict[key + suffix] = w.isChecked()
+                    value = w.isChecked()
                 elif isinstance(w, QLineEdit):
-                    self.working_input_dict[key + suffix] = w.text()
+                    value = w.text()
+                else:
+                    continue
+                self.working_input_dict[key + suffix] = value
+                if isinstance(main_dict, dict):
+                    main_dict[key + suffix] = value
 
     def _load_ed_pair(self, pair_label: str) -> None:
         import re
@@ -1998,10 +2007,16 @@ class AdditionalInputs(QDialog):
             elif isinstance(w, QLineEdit):
                 values[key] = w.text()
 
+        # Persist to the main input_dict too (default_input_dict is the live
+        # reference passed by the template page), so the selection survives a
+        # dialog reopen and reaches the backend / Generate Results table.
+        main_dict = getattr(self, "default_input_dict", None)
         for mk in range(1, count + 1):
             suffix = f".{g_pair}.B{gi}M{mk}"
             for key, value in values.items():
                 self.working_input_dict[key + suffix] = value
+                if isinstance(main_dict, dict):
+                    main_dict[key + suffix] = value
 
     def _load_cb_pair(self, pair_label: str) -> None:  # utility: restores CB widgets from first member's (B{n}M1) per-member keys, then refreshes CAD
         import re

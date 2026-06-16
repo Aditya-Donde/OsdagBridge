@@ -3563,20 +3563,26 @@ GENERATE_RESULTS_DEFAULTS = {
 
             "end_diaphragm_section_properties": {
                 "id": "end_diaphragm_section_properties",
+                # Default type is "Cross Bracing" — the placeholder columns and
+                # values mirror that schema. The resolver swaps the column set
+                # when the user selects "Rolled Beam" / "Welded Beam".
                 "label": "End Diaphragm Section Properties",
                 "columns": [
                     "Member ID",
                     "Type",
-                    "Symmetry",
-                    "Total Depth, d(mm)",
-                    "Web Thickness, wt(mm)",
-                    "Width of Top Flange(mm)",
-                    "Top Flange Thickness (mm)",
-                    "Width of Bottom Flange(mm)",
-                    "Bottom Flange Thickness (mm)",
+                    "Type of Bracing",
+                    "Type of Connection",
+                    "Bracing Section Type",
+                    "Bracing Section Designation",
+                    "Top Chord",
+                    "Top Chord Section Type",
+                    "Top Chord Section Designation",
+                    "Bottom Chord",
+                    "Bottom Chord Section Type",
+                    "Bottom Chord Section Designation",
                 ],
                 "rows": [
-                    [EMPTY, EMPTY, EMPTY, EMPTY, EMPTY, EMPTY, EMPTY, EMPTY, EMPTY],
+                    [EMPTY] * 12,
                 ],
             },
 
