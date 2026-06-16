@@ -286,15 +286,15 @@ class LoadCombinationWidget(QWidget):
                 expr = ' + '.join(parts)
 
                 if ctype == "basic":
-                    combo_name = f"basic_{basic_count}"
+                    combo_name = f"Basic_{basic_count}"
                     basic_count += 1
 
                 elif ctype == "accidental":
-                    combo_name = f"accidental_{accidental_count}"
+                    combo_name = f"Accidental_{accidental_count}"
                     accidental_count += 1
 
                 elif ctype == "seismic":
-                    combo_name = f"seismic_{seismic_count}"
+                    combo_name = f"Seismic_{seismic_count}"
                     seismic_count += 1
 
                 display = f"{combo_name} : {expr}"
@@ -369,15 +369,15 @@ class LoadCombinationWidget(QWidget):
                 expr = ' + '.join(parts)
 
                 if ctype == "rare":
-                    combo_name = f"rare_{rare_count}"
+                    combo_name = f"Rare_{rare_count}"
                     rare_count += 1
 
                 elif ctype == "frequent":
-                    combo_name = f"frequent_{frequent_count}"
+                    combo_name = f"Frequent_{frequent_count}"
                     frequent_count += 1
 
                 elif ctype == "quasi_permanent":
-                    combo_name = f"quasi_permanent_{qp_count}"
+                    combo_name = f"Quasi-Permanent_{qp_count}"
                     qp_count += 1
 
                 display = f"{combo_name} : {expr}"

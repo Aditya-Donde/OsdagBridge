@@ -1,4 +1,4 @@
-﻿"""
+"""
 Additional Inputs Widget for Highway Bridge Design
 Provides detailed input fields for manual bridge parameter definition
 """
@@ -256,6 +256,8 @@ class AdditionalInputs(QDialog):
                 try:
                     if name == "design_options_cont.fatigue.load_cycles":
                         text = str(int(value))
+                    elif "thermal_coeff" in name:
+                        text = f"{float(value):.2e}"
                     else:
                         text = f"{float(value):.2f}"
                 except (ValueError, TypeError):
@@ -274,6 +276,11 @@ class AdditionalInputs(QDialog):
                 widget.setChecked(bool(value))
                 widget.blockSignals(False)
 
+            elif isinstance(widget, LoadCombinationWidget):
+                widget.blockSignals(True)
+                if isinstance(value, list):
+                    widget.update(value)
+                widget.blockSignals(False)
         # ── Sync AdaptiveWidgets from working_input_dict ──────────────────────
         from osdagbridge.desktop.ui.dialogs.additional_input.ui_builder.common_ui_builder import AdaptiveWidget
         for adaptive in self.findChildren(AdaptiveWidget):
@@ -460,6 +467,11 @@ class AdditionalInputs(QDialog):
             elif isinstance(widget, QCheckBox):
                 widget.blockSignals(True)
                 widget.setChecked(bool(value))
+                widget.blockSignals(False)
+            elif isinstance(widget, LoadCombinationWidget):
+                widget.blockSignals(True)
+                if isinstance(value, list):
+                    widget.update(value)
                 widget.blockSignals(False)
 
             self.working_input_dict[name] = value
@@ -2771,6 +2783,8 @@ class AdditionalInputs(QDialog):
 
     def _enforce_decimal_places(self, places=2):  # utility: caps QDoubleValidator decimal places for all standard-notation line edits
         for line_edit in self.findChildren(QLineEdit):
+            if "thermal_coeff" in line_edit.objectName():
+                continue
             validator = line_edit.validator()
             if isinstance(validator, QDoubleValidator):
                 if validator.notation() != QDoubleValidator.ScientificNotation:
@@ -2780,6 +2794,8 @@ class AdditionalInputs(QDialog):
     def _normalize_numeric_texts(self, places=2):  # utility: reformats existing numeric QLineEdit text to the given decimal places
         fmt = f"{{:.{places}f}}"
         for line_edit in self.findChildren(QLineEdit):
+            if "thermal_coeff" in line_edit.objectName():
+                continue
             validator = line_edit.validator()
             if isinstance(validator, QDoubleValidator) and validator.notation() == QDoubleValidator.ScientificNotation:
                 continue

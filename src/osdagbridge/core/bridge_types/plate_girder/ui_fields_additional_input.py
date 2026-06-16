@@ -931,8 +931,8 @@ _TEMPERATURE_LOAD_TAB_SCHEMA = {
                         "on_change_compute": {"function": "_compute_temperature_values"}
                     }]
                 },
-                {"fields": [{"id": KEY_TL_THERMAL_COEFF_STEEL, "label": "Coefficient of Thermal Expansion for Steel (1/°C)",       "type": TYPE_TEXTBOX, "placeholder": "e.g. 12.0e-6",        "bind": "thermal_coeff_steel_input"}]},
-                {"fields": [{"id": KEY_TL_THERMAL_COEFF_RCC,   "label": "Coefficient of Thermal Expansion for RCC (1/°C)",         "type": TYPE_TEXTBOX, "placeholder": "e.g. 12.0e-6",        "bind": "thermal_coeff_rcc_input"}]},
+                {"fields": [{"id": KEY_TL_THERMAL_COEFF_STEEL, "label": "Coefficient of Thermal Expansion for Steel (1/°C)",       "type": TYPE_TEXTBOX, "placeholder": "e.g. 11.7e-6",        "bind": "thermal_coeff_steel_input"}]},
+                {"fields": [{"id": KEY_TL_THERMAL_COEFF_RCC,   "label": "Coefficient of Thermal Expansion for RCC (1/°C)",         "type": TYPE_TEXTBOX, "placeholder": "e.g. 11.7e-6",        "bind": "thermal_coeff_rcc_input"}]},
             ],
         },
 
