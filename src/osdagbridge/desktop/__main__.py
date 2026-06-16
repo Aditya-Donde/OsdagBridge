@@ -122,6 +122,61 @@ def create_sqlite():
 
 create_sqlite()
 
+
+def ensure_osdag_core_db():
+    """Build the osdag_core sqlite database if it is missing or empty.
+
+    The installed `osdag` package ships a 0-byte placeholder
+    `Intg_osdag.sqlite` alongside the `Intg_osdag.sql` that defines its
+    tables (Beams, Angles, Columns, ...), but nothing populates it. When the
+    desktop app queries it via osdag_core.Common, every lookup fails with
+    "no such table: Beams/Angles". Build the database from the bundled SQL on
+    startup so those section tables are always available.
+    """
+    import sqlite3
+    from importlib.resources import files
+
+    try:
+        db_dir = files('osdag_core.data.ResourceFiles.Database')
+        sqlpath = db_dir.joinpath('Intg_osdag.sql')
+        sqlitepath = db_dir.joinpath('Intg_osdag.sqlite')
+
+        if not sqlpath.exists():
+            print(f"[ERROR] osdag_core SQL file not found: {sqlpath}")
+            return
+
+        # Decide whether the database needs (re)building: missing, empty, or
+        # has no tables at all.
+        needs_build = True
+        if sqlitepath.exists() and sqlitepath.stat().st_size > 0:
+            try:
+                conn = sqlite3.connect(str(sqlitepath))
+                has_tables = conn.execute(
+                    "SELECT 1 FROM sqlite_master WHERE type='table' LIMIT 1"
+                ).fetchone()
+                conn.close()
+                needs_build = has_tables is None
+            except Exception:
+                needs_build = True
+
+        if not needs_build:
+            return
+
+        with open(sqlpath, 'r', encoding='utf-8') as sql_file:
+            sql_content = sql_file.read()
+
+        conn = sqlite3.connect(str(sqlitepath))
+        conn.executescript(sql_content)
+        conn.commit()
+        conn.close()
+        print("[INFO] osdag_core Intg_osdag sqlite database built from SQL")
+
+    except Exception as e:
+        print(f"[ERROR] osdag_core database setup failed: {e}")
+
+
+ensure_osdag_core_db()
+
 # Import template_page
 from osdagbridge.desktop.ui.template_page import CustomWindow
 from osdagbridge.core.bridge_types.plate_girder.plategirderbridge import PlateGirderBridge
