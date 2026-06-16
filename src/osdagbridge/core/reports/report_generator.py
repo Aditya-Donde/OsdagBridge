@@ -370,7 +370,8 @@ def _render_value(source_dict, key, unit=""):
     val = source_dict.get(key)
     if val in ("", None):
         return ""
-    return _tex(val) + unit
+    val_str = _tex(val)
+    return val_str + unit
 
 
 def get_girder_entries(input_dict):
@@ -2247,219 +2248,6 @@ Fatigue Shear Resistance, $Q_r$ & IRC 22 Table 8 ($\phi d$, $N_{sc}$) & """
     _dk_gov_wk_str = (f"{_dk_gov_wk:.4f}" if _dk_has else _DKPH)
     _dk_crack_ok = _dk_has and _dk_gov_wk <= _dkv(KEY_DD_WK_LIMIT)
 
-    # ── Table 5.22: Overall Design Check Summary — fill all rows ─────────────
-    # Three row families:
-    #  (1) Girder DCR-engine checks: one source (design_results["per_girder"])
-    #      gives Demand, Capacity, UR, and the governing LC together. Worst
-    #      girder = highest DCR. Most checks fire on the envelope demand (units
-    #      available in per_girder["checks"]); SLS-conditional checks (e.g.
-    #      deflection) only appear per-LC, so fall back to per_lc for those.
-    #  (2) Deck slab: URs from deck_design_results (Demand/Capacity not stored).
-    #  (3) Cross bracing: existing get_cb_* helpers (worst pair/member by UR).
-    #      End diaphragm has no report helpers yet → "---" for now.
-    _pg_522 = (bridge.output_dict.get("design_results", {}) or {}).get("per_girder", {}) or {}
-    _dd_522 = bridge.output_dict.get("deck_design_results", {}) or {}
-
-    def _vu_522(v, unit):
-        s = _dfmt(v, nd=2)
-        if not s:
-            return ""
-        u = (unit or "").strip()
-        return (s + " " + u) if u else s
-
-    def _ur_522(v):
-        try:
-            f = float(v)
-        except (TypeError, ValueError):
-            return ""
-        s = f"{f:.2f}"
-        return (r"\textcolor{red}{" + s + "}") if f > 1.0 else s
-
-    def _lc_short(lc):
-        # Show the full combination expression as-is, e.g.
-        # "ACCIDENTAL 1: 1.0DL + 1.0DW + 0.75LL" (the per_lc key).
-        return _tex(str(lc).strip())
-
-    def _gov_lc_in_522(g, check_ids):
-        gd = _pg_522.get(g) or {}
-        best = None
-        for _lc, _ld in (gd.get("per_lc") or {}).items():
-            if str(_lc).lower().startswith("envelope"):
-                continue
-            for _chk in (_ld.get("checks") or []):
-                if _chk.get("id") in check_ids:
-                    _d = _chk.get("dcr") or 0.0
-                    if best is None or _d > best[0]:
-                        best = (_d, _lc)
-        return _lc_short(best[1]) if best else "---"
-
-    def _dcr_row(check_ids, fallback_unit=""):
-        # Prefer per_girder["checks"] (carries units); worst girder by DCR.
-        best = None  # (dcr, demand, capacity, dunit, cunit, g)
-        for g, gd in _pg_522.items():
-            if str(g).startswith("EB"):
-                continue
-            for chk in (gd.get("checks") or []):
-                if chk.get("check_id") in check_ids:
-                    d = chk.get("dcr") or 0.0
-                    if best is None or d > best[0]:
-                        best = (d, chk.get("demand"), chk.get("capacity"),
-                                chk.get("demand_unit") or "", chk.get("capacity_unit") or "", g)
-        if best is not None:
-            d, dem, cap, du, cu, g = best
-            return (_gov_lc_in_522(g, check_ids),
-                    _vu_522(dem, du) or "---", _vu_522(cap, cu) or "---", _ur_522(d) or "---")
-        # Fallback: per_lc (no units) for SLS-conditional checks (e.g. deflection).
-        best = None  # (dcr, demand, capacity, lc)
-        for g, gd in _pg_522.items():
-            if str(g).startswith("EB"):
-                continue
-            for _lc, _ld in (gd.get("per_lc") or {}).items():
-                if str(_lc).lower().startswith("envelope"):
-                    continue
-                for chk in (_ld.get("checks") or []):
-                    if chk.get("id") in check_ids:
-                        d = chk.get("dcr") or 0.0
-                        if best is None or d > best[0]:
-                            best = (d, chk.get("demand"), chk.get("capacity"), _lc)
-        if best is None:
-            return ("---", "---", "---", "---")
-        d, dem, cap, _lc = best
-        return (_lc_short(_lc),
-                _vu_522(dem, fallback_unit) or "---", _vu_522(cap, fallback_unit) or "---",
-                _ur_522(d) or "---")
-
-    # (3) Cross bracing — worst pair/member by UR for the given force type.
-    _cb_pairs_522 = bridge.get_cb_pairs()
-
-    def _cb_row(force_type):
-        best = None  # (ur, pair, member, capacity_str)
-        for pair in _cb_pairs_522:
-            for member in ("diagonal", "chord"):
-                cap = bridge.get_cb_capacity(pair, member, force_type)
-                eff = bridge.get_cb_efficiency(pair, member, force_type)
-                try:
-                    ur = float(eff)
-                except (TypeError, ValueError):
-                    continue
-                if best is None or ur > best[0]:
-                    best = (ur, pair, member, cap)
-        if best is None:
-            return ("---", "---", "---", "---")
-        ur, pair, member, cap = best
-        gov = bridge.get_cb_gov_lc(pair, member, force_type) or "---"
-        dem = f"{float(cap) * ur:.2f} kN" if cap else "---"
-        cap_s = (cap + " kN") if cap else "---"
-        return (gov, dem, cap_s, _ur_522(ur))
-
-    def _cb_slender_row():
-        best = None  # (ratio, slend, limit)
-        for pair in _cb_pairs_522:
-            for member in ("diagonal", "chord"):
-                s = bridge.get_cb_slenderness(pair, member)
-                try:
-                    sf = float(s)
-                except (TypeError, ValueError):
-                    continue
-                lim = 400.0 if member == "chord" else 250.0
-                ratio = sf / lim
-                if best is None or ratio > best[0]:
-                    best = (ratio, sf, lim)
-        if best is None:
-            return ("---", "---", "---", "---")
-        ratio, sf, lim = best
-        return ("---", f"{sf:.1f}", f"{lim:.0f}", _ur_522(ratio))
-
-    def _row522(label, cells):
-        c = [x if x else "---" for x in cells]
-        return label + r" & " + r" & ".join(c) + r" \\[6pt]" + "\n\\hline"
-
-    # Deck rows: Demand/Capacity from deck_report_values (KEY_DD_*, the same dict
-    # the 5.17 tables use); UR = Demand/Capacity. The deck is designed for the
-    # IRC:6 Basic ULS combination — build that combo string from the stored
-    # partial factors (gamma_dl, gamma_ll).
-    _deck_combo = (
-        r"Basic ULS: " + _tex(f"{_dkv(KEY_DD_GAMMA_DL):g}DL + {_dkv(KEY_DD_GAMMA_LL):g}LL")
-    ) if _dk_has else "---"
-
-    def _deck_row(dem_key, cap_key, unit, is_oh=False):
-        if not _dk_has:
-            return ("---", "---", "---", "---")
-        if is_oh and not _dk_oh:
-            return (_deck_combo, "N/A", "N/A", "N/A")
-        dem = _dkv(dem_key)
-        cap = _dkv(cap_key)
-        ur = (dem / cap) if cap > 0 else None
-        return (_deck_combo, f"{dem:.2f} {unit}", f"{cap:.2f} {unit}", _ur_522(ur))
-
-    def _row522_msg(label, msg):
-        # Single message spanning the 4 data columns.
-        return label + r" & \multicolumn{4}{c|}{" + msg + r"} \\[6pt]" + "\n\\hline"
-
-    # End diaphragm: when configured as Cross Bracing it is designed as bracing
-    # members → mirror the cross-bracing axial rows. For Rolled / Welded beam end
-    # diaphragms the moment/shear design is not implemented yet → show a message.
-    _ed_type = ""
-    for _k, _v in bridge.input_dict.items():
-        if str(_k).startswith(KEY_MP_ED_TYPE) and _v:
-            _ed_type = str(_v)
-            break
-    _ed_is_cb = "brac" in _ed_type.strip().lower()
-    if _ed_is_cb:
-        _ed_moment_row = _row522(r"End Diaphragm --- Moment", _cb_row("compression"))
-        _ed_shear_row  = _row522(r"End Diaphragm --- Shear",  _cb_row("tension"))
-    else:
-        _ed_msg = r"Rolled / Welded section --- design to be added"
-        _ed_moment_row = _row522_msg(r"End Diaphragm --- Moment", _ed_msg)
-        _ed_shear_row  = _row522_msg(r"End Diaphragm --- Shear",  _ed_msg)
-
-    # Crack width (slab): governing crack width vs limit from the deck designer
-    # (frequent SLS combination). _dk_gov_wk is the max of bottom/top/overhang wk.
-    # The governing load combo is the SLS-frequent combination with the highest
-    # DCR (its full expression comes straight from the per_lc keys).
-    def _gov_sls_frequent():
-        best = None  # (dcr, lc)
-        for _g, _gd in _pg_522.items():
-            if str(_g).startswith("EB"):
-                continue
-            for _lc, _ld in (_gd.get("per_lc") or {}).items():
-                if "frequent" not in str(_lc).lower():
-                    continue
-                _d = _ld.get("max_dcr") or 0.0
-                if best is None or _d > best[0]:
-                    best = (_d, _lc)
-        return _tex(str(best[1]).strip()) if best else "Frequent SLS"
-
-    _wk_lim = _dkv(KEY_DD_WK_LIMIT)
-    _crack_cells = (
-        (_gov_sls_frequent() if _dk_has else "---"),
-        (f"{_dk_gov_wk:.3f} mm" if _dk_has else "---"),
-        (f"{_wk_lim:.3f} mm" if _dk_has else "---"),
-        (_ur_522(_dk_gov_wk / _wk_lim) if (_dk_has and _wk_lim > 0) else "---"),
-    )
-
-    _t522 = [
-        _row522(r"Girder --- Moment",             _dcr_row({1})),
-        _row522(r"Girder --- Shear",              _dcr_row({2})),
-        _row522(r"Girder --- LTB (constr.)",      _dcr_row({5})),
-        _row522(r"Girder --- Deflection",         _dcr_row({13, 14}, fallback_unit="mm")),
-        _row522(r"Girder --- Stress",             _dcr_row({11}, fallback_unit="MPa")),
-        _row522(r"Girder --- Fatigue",            _dcr_row({8, 9}, fallback_unit="MPa")),
-        _row522(r"Transverse Shear (slab)",       _dcr_row({16})),
-        _row522(r"Crack Width (slab)",            _crack_cells),
-        _row522(r"Deck --- Flexure (sagging)",    _deck_row(KEY_DD_M_ULS_SAG, KEY_DD_MU_BOT, "kN-m/m")),
-        _row522(r"Deck --- Flexure (hogging)",    _deck_row(KEY_DD_M_ULS_HOG, KEY_DD_MU_TOP, "kN-m/m")),
-        _row522(r"Deck --- Cantilever Overhang",  _deck_row(KEY_DD_M_ULS_OH, KEY_DD_MU_OH, "kN-m/m", is_oh=True)),
-        _row522(r"Deck --- Punching Shear",       _deck_row(KEY_DD_PUNCH_VED, KEY_DD_VRD_C_MPA, "MPa")),
-        _row522(r"Deck --- One-Way Shear",        _deck_row(KEY_DD_SHEAR_VED, KEY_DD_SHEAR_VRDC, "kN/m")),
-        _row522(r"Cross Bracing --- Compression", _cb_row("compression")),
-        _row522(r"Cross Bracing --- Tension",     _cb_row("tension")),
-        _row522(r"Cross Bracing --- Slenderness", _cb_slender_row()),
-        _ed_moment_row,
-        _ed_shear_row,
-    ]
-    t522_content = "\n".join(_t522)
-
     return r"""
 \chapter{Design Checks}
 
@@ -2901,11 +2689,50 @@ End diaphragms at the supports transfer transverse loads to the bearings, restra
 \vspace{1em}
 \noindent\textbf{Table 5.22  Overall Design Check Summary --- All Members}
 
-\begin{longtable}{|C{3.4cm}|C{4.5cm}|C{2.3cm}|C{2.3cm}|>{\centering\arraybackslash}p{1.6cm}|}
+\begin{longtable}{|C{4cm}|C{3cm}|C{2.5cm}|C{2.5cm}|>{\centering\arraybackslash}p{3.5cm}|}
 \hline
 \textbf{Member / Check} & \textbf{Governing Load Combo} & \textbf{Demand} & \textbf{Capacity} & \textbf{UR} \\[6pt]
 \hline
-""" + t522_content + r"""
+Girder --- Moment &  &  &  &  \\[6pt]
+\hline
+Girder --- Shear &  &  &  &  \\[6pt]
+\hline
+Girder --- LTB (constr.) &  &  &  &  \\[6pt]
+\hline
+Girder --- Deflection &  &  &  &  \\[6pt]
+\hline
+Girder --- Stress &  &  &  &  \\[6pt]
+\hline
+Girder --- Fatigue &  &  &  &  \\[6pt]
+\hline
+Shear Connectors &  &  &  &  \\[6pt]
+\hline
+Transverse Shear (slab) &  &  &  &  \\[6pt]
+\hline
+Crack Width (slab) &  &  &  &  \\[6pt]
+\hline
+Deck --- Flexure (sagging) &  & $} & $} &  \\[6pt]
+\hline
+Deck --- Flexure (hogging) &  & $} & $} &  \\[6pt]
+\hline
+Deck --- Cantilever Overhang &  & $} & $} &  \\[6pt]
+\hline
+Deck --- Punching Shear &  & $} & $} &  \\[6pt]
+\hline
+Deck --- One-Way Shear &  & $} & $} &  \\[6pt]
+\hline
+Cross Bracing --- Compression &  &  &  &  \\[6pt]
+\hline
+Cross Bracing --- Tension &  &  &  &  \\[6pt]
+\hline
+Cross Bracing --- Slenderness & --- &  &  & PASS \\[6pt]
+\hline
+End Diaphragm --- Moment &  &  &  &  \\[6pt]
+\hline
+End Diaphragm --- Shear &  &  &  &  \\[6pt]
+\hline
+Inter. Stiffener ($I_s$) & --- & $} & $} & PASS \\[6pt]
+\hline
 \end{longtable}
 \noindent\textit{Note: UR = Demand / Capacity. All values $\leq 1.0$ indicate passing checks. The governing check for each component is highlighted in the individual design check sections above.}
 
@@ -2960,42 +2787,6 @@ def ch6_drawings(fig_paths):
     g3d    = _sec_fig(fig_paths.get('girder_3d'),         '6.2.1', '3D View of Plate Girders')
     gxsec  = _sec_fig(fig_paths.get('section_preview'),   '6.2.2', 'Cross Section of Plate Girder')
     gside  = _sec_fig(fig_paths.get('stiffener_preview'), '6.2.3', 'Side View of Girder')
-    cbdia  = _sec_fig(fig_paths.get('cb_diagram'),        '6.3.1', 'Cross Bracing Layout')
-
-    def _sec_cell(path, label, title):
-        """One minipage cell: image above, numbered label below (for side-by-side row)."""
-        if path:
-            p = path.replace('\\', '/')
-            body = r'\includegraphics[width=\linewidth]{' + p + '}'
-        else:
-            body = r'\fbox{\parbox{0.95\linewidth}{\centering\textit{[ ' + label + ' ' + title + r' ]}}}'
-        return (r'\begin{minipage}[t]{0.31\textwidth}' + '\n'
-                r'\centering' + '\n'
-                + body + '\n'
-                r'\\[4pt]{\small \textbf{' + label + r'}\enspace ' + title + '}\n'
-                r'\end{minipage}')
-
-    # The 3 cross bracing section views in a single row.
-    cb_sections_row = (r'\begin{figure}[H]' + '\n'
-                       r'\centering' + '\n'
-                       + _sec_cell(fig_paths.get('cb_bracing'),      '6.3.2', 'Bracing Section') + '\n'
-                       r'\hfill' + '\n'
-                       + _sec_cell(fig_paths.get('cb_top_chord'),    '6.3.3', 'Top Chord Section') + '\n'
-                       r'\hfill' + '\n'
-                       + _sec_cell(fig_paths.get('cb_bottom_chord'), '6.3.4', 'Bottom Chord Section') + '\n'
-                       r'\end{figure}')
-
-    eddia  = _sec_fig(fig_paths.get('ed_diagram'),        '6.4.1', 'End Diaphragm Layout')
-
-    # The 3 end diaphragm section views in a single row.
-    ed_sections_row = (r'\begin{figure}[H]' + '\n'
-                       r'\centering' + '\n'
-                       + _sec_cell(fig_paths.get('ed_bracing'),      '6.4.2', 'Bracing Section') + '\n'
-                       r'\hfill' + '\n'
-                       + _sec_cell(fig_paths.get('ed_top_chord'),    '6.4.3', 'Top Chord Section') + '\n'
-                       r'\hfill' + '\n'
-                       + _sec_cell(fig_paths.get('ed_bottom_chord'), '6.4.4', 'Bottom Chord Section') + '\n'
-                       r'\end{figure}')
 
     return (r"""
 \chapter{Drawings and Visualizations}
@@ -3022,16 +2813,8 @@ This section presents CAD-generated views of the designed bridge and its compone
 \section{Cross Bracing Detail}
 \label{sec:bracing-detail}
 
-"""
-            + cbdia + '\n\n'
-            + cb_sections_row + r"""
-
 \section{End Diaphragm Detail}
 \label{sec:diaphragm-detail}
-
-"""
-            + eddia + '\n\n'
-            + ed_sections_row + r"""
 
 """)
 
@@ -3069,176 +2852,29 @@ def ch7_quantities(input_dict):
 """
 
 
-def ch8_design_log(log_entries: List[str], input_dict: dict) -> str:
-    """Render Chapter 8 using real log_entries, matching Osdag color convention."""
-    lines_tex = []
-    if log_entries:
-        for entry in log_entries:
-            for raw_line in entry.split('\n'):
-                line = raw_line.strip()
-                if not line:
-                    continue
-                escaped = (line
-                    .replace('_', r'\_')
-                    .replace('%', r'\%')
-                    .replace('&', r'\&')
-                    .replace('#', r'\#'))
-                upper = line.upper()
-                if 'WARNING' in upper:
-                    lines_tex.append(
-                        rf'\textcolor{{blue}}{{{escaped}}}\\')
-                elif 'ERROR' in upper:
-                    lines_tex.append(
-                        rf'\textcolor{{red}}{{{escaped}}}\\')
-                elif 'INFO' in upper:
-                    lines_tex.append(
-                        rf'\textcolor{{osdagGreen}}{{{escaped}}}\\')
-                else:
-                    continue  # skip lines without a known level — Osdag patter
-
-    mode = str(input_dict.get(KEY_DESIGN_MODE, 'Optimized')).strip().lower()
-    is_custom = mode in {'custom', 'customized'}
-
-    log_body = '\n'.join(lines_tex)
-
-    return _ch8_assumptions(is_custom) + '\n\n' + log_body
-
-
-def _ch8_assumptions(is_custom: bool) -> str:
-    assumptions = [
+def ch8_design_log(log_entries: List[str]) -> str:
+    """Render Chapter 8 (blank per Pure Renderer requirements)."""
+    return (
         r"""
-\chapter{Standards \& Assumptions}
-\label{ch:Design Standards}
+\chapter{Design Log \& Verification}
+\label{ch:verification}
 
-This section provides references to standards used to calibrate the OsdagBridge
+This section provides references to verification used to calibrate the OsdagBridge
 design modules, and notes the limitations of the current software version.
 
-\section{Design Standards}
-\label{sec:design_standards}
+\section{Verification}
+\label{sec:verification}
 
-The following Indian Road Congress (IRC) codes and Indian Standards (IS) 
-form the basis of all design calculations in this software.
+\begin{flushleft}
+\end{flushleft}
 
-
-\begin{table}[H]
-\caption{IRC Codes}
-\begin{tabular}{|c|c|p{13cm}|}
-\hline
-Code & Year & Title / Scope \\ 
-\hline
-IRC 5 & 2015 & General Features of Design - carriageway widths, kerb, footpath dimensions \\ 
-\hline
-IRC 6 & 2017 & Loads and Load Combinations - dead load, live load, impact, wind, temperature, etc. \\ 
-\hline
-IRC 22 & 2015 & Composite Construction (LS) - Composite section properties, ULS/SLS design, shear connectors \\ 
-\hline
-IRC 24 & 2010 & Steel Road Bridges (LS) - Stiffener design, skew angle limits, diaphragm requirements \\ 
-\hline
-IRC 112 & 2020 & Concrete Road Bridges - Deck slab flexure, shear, crack width, reinforcement \\ 
-\hline
-IRC SP 114 & 2018 & Seismic Design of Road Bridges \\ 
-\hline
-\end{tabular}
-\end{table}
-
-
-\begin{table}[H]
-\caption{IS Codes}
-\begin{tabular}{|c|c|p{13cm}|}
-\hline
-Code & Year & Scope \\
-\hline
-IS 800 & 2007 & Steel construction - tension, compression, bending, shear, LTB, stiffeners, combined checks \\
-\hline
-IS 456 & 2000 & Concrete - simplified stress-block for deck moment capacity \\
-\hline
-IS 1786 & 2008 & Reinforcement steel properties \\
-\hline
-IS 1893 (Part 3) & 2014 & Earthquake resistant design \\
-\hline
-IS 2062 & 2011 & Structural steel - yield and ultimate strength by grade \\
-\hline
-\end{tabular}
-\end{table}
-
-\clearpage
-\section{Analysis and Design Assumptions of This Version}
-\label{sec:assumptions}
-
-
-\textbf{Structural Analysis}
-
+\vspace{1em}
 \begin{itemize}
-    \item All girders are modelled as simply supported; continuous spans are not currently supported.
-    \item A 3D grillage model (OSPGrillage) is used for load distribution. Grillage members carry composite section properties after the construction stage.
-    \item The transverse member forces are computed using an approximate 2D frame analogy. For irregular or skewed geometries, a 3D FEM is recommended.
-    \item Fixed bearing stiffness is modelled as $k = 1{,}000{,}000 \,\text{kN/m}$ (virtually rigid); free/expansion bearing as $k = 100 \, \text{kN/m}$.
-    \item Construction stage sequence analysis is approximate. Detailed staged analysis should be performed for long-term deflection checks.
+\item List of all code clauses used (IRC 5, 6, 22, 24, IS 800, IRC 112, IRC SP 114, etc.)
+\item Software version \& build date: OsdagBridge
+\item Note on assumptions (if any) and recommendations for site-specific checks
 \end{itemize}
 
-\textbf{Composite Action}
-
-\begin{itemize}
-    \item Full shear connection is assumed at ULS with headed stud connectors designed per IRC 22:2015 Cl.606.
-    \item Short-term composite section properties (modular ratio $n = E_s/E_{cm}$) are used for ULS checks.
-    \item Long-term composite section properties (with creep-adjusted modular ratio) are used for SLS deflection and crack-width checks.
-    \item Pre-composite stage: the steel girder alone resists all construction loads prior to concrete gaining strength.
-\end{itemize}
-"""
-    ]
-
-    if not is_custom:
-        assumptions.append(r"""
-\textbf{Material Properties (IRC 22:2015 Annex III)}
-
-\begin{itemize}
-\item Steel: $E_s = 200{,}000 \, \text{MPa}, \ G_s = 80{,}000 \, \text{MPa}, \ \nu = 0.30, \ \alpha = 11.7 \times 10^{-6}/^\circ\mathrm{C}$ (grade-independent).
-\item Minimum structural concrete grade: M25.
-\item Default reinforcement grade: Fe500.
-\end{itemize}
-
-\textbf{Partial Safety Factors (IRC 22:2015 Cl.601.4)}
-
-\begin{itemize}
-\item $\gamma_{m0}$ (steel yield, ULS) = 1.10
-\item $\gamma_{m1}$ (steel ultimate, ULS) = 1.25
-\item Reinforcement (ULS) = 1.15
-\item Welds -- shop: 1.25; field: 1.50
-\item Fatigue ($\gamma_{mft}$) = 1.35
-\end{itemize}
-
-\textbf{Loading}
-
-\begin{itemize}
-\item Dead load densities per IRC 6:2017 Cl.203: structural steel $78.5 \ \text{kN/m}^3$, concrete $25.0 \ \text{kN/m}^3$, bituminous wearing course $24.0 \ \text{kN/m}^3$.
-\item Multi-lane live load reduction factors per IRC 6:2017 Cl.204.4 Table 6A: 1st lane = 1.0, 2nd lane = 0.8, 3rd lane onwards = 0.4.
-\item Impact factor (dynamic load allowance) computed from span per IRC 6:2017 Cl.208.2/208.3.
-\item Wind load applied as transverse, longitudinal, and vertical components per IRC 6:2017 Cl.209.3.3--209.3.5.
-\end{itemize}
-
-\textbf{Serviceability Limits}
-
-\begin{itemize}
-\item Deflection limits (IRC 22:2015 Cl.604.3.2): live load + impact $\leq L/800$; total $\leq L/600$.
-\item SLS stress limits: concrete $\sigma_c \leq 0.48 f_{ck}$; rebar $\sigma_s \leq 0.80 f_{yk}$; steel $f_e \leq 0.9 f_y$.
-\item Permissible crack width: $w_k \leq 0.3 \ \text{mm}$ (bridge deck, exposure class XS2/XD2 per IRC 112:2020 Cl.12.3.2).
-\end{itemize}
-
-\textbf{Fatigue}
-
-\begin{itemize}
-\item Reference fatigue life: $N_{sc} = 2 \times 10^6$ cycles (IRC 22:2015 Cl.605).
-\item Constant stress range is assumed. A thickness correction factor $\mu_r$ is applied for plate thickness $> 25 \ \text{mm}$.
-\end{itemize}
-
-\textbf{Stiffener Design}
-
-\begin{itemize}
-\item Intermediate transverse stiffener and bearing stiffener design follows IS 800:2007 Cl.8.7.2/8.7.3 and IRC 24:2010 Cl.509.7.2/509.7.3.
-\end{itemize}
-""")
-
-    assumptions.append(r"""
 \section{Known Limitations of This Version}
 \label{sec:limitations}
 
@@ -3251,9 +2887,8 @@ IS 2062 & 2011 & Structural steel - yield and ultimate strength by grade \\
 \item The grillage analysis assumes simply supported boundary conditions;
   continuous spans are not currently supported.
 \end{itemize}
-""")
-
-    return "\n".join(assumptions)
+"""
+    )
 
 
 def ch9_references():
@@ -3715,14 +3350,6 @@ _FIGURE_MAP = [
     ('girder_top',            'girder_top.png'),
     ('section_preview',       'section_preview.png'),
     ('stiffener_preview',     'stiffener_preview.png'),
-    ('cb_diagram',            'cb_diagram.png'),
-    ('cb_bracing',            'cb_bracing.png'),
-    ('cb_top_chord',          'cb_top_chord.png'),
-    ('cb_bottom_chord',       'cb_bottom_chord.png'),
-    ('ed_diagram',            'ed_diagram.png'),
-    ('ed_bracing',            'ed_bracing.png'),
-    ('ed_top_chord',          'ed_top_chord.png'),
-    ('ed_bottom_chord',       'ed_bottom_chord.png'),
     ('bm_envelope',           'bm_envelope.png'),
     ('sf_envelope',           'sf_envelope.png'),
 ]
@@ -3757,6 +3384,28 @@ def generate_report(payload, request):
 
         # Write to temp dir first, compile there, then copy back
         with tempfile.TemporaryDirectory() as tmp_dir:
+            
+            assets_dir = os.path.join(tmp_dir, 'assets')
+            os.makedirs(assets_dir, exist_ok=True)
+
+            osdag_logo_src = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'data', 'ResourceFiles', 'vectors', 'osdag_logo.png')
+            iit_logo_src = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'assets', 'IIT Bombay Logo.png')
+
+            osdag_logo_latex = None
+            if os.path.exists(osdag_logo_src):
+                osdag_dest = os.path.join(assets_dir, 'osdag_logo.png')
+                shutil.copy2(osdag_logo_src, osdag_dest)
+                osdag_logo_latex = 'assets/osdag_logo.png'
+
+            org_logo_latex = None
+            if payload.metadata.logo_path and os.path.exists(payload.metadata.logo_path):
+                org_dest = os.path.join(assets_dir, 'org_logo.png')
+                shutil.copy2(payload.metadata.logo_path, org_dest)
+                org_logo_latex = 'assets/org_logo.png'
+            elif os.path.exists(iit_logo_src):
+                org_dest = os.path.join(assets_dir, 'org_logo.png')
+                shutil.copy2(iit_logo_src, org_dest)
+                org_logo_latex = 'assets/org_logo.png'
 
             # ── Write figure bytes into tmp_dir/images/ then free RAM immediately ──
             tmp_images = os.path.join(tmp_dir, 'images')
@@ -3769,25 +3418,6 @@ def generate_report(payload, request):
                         fh.write(img_bytes)
                     fig_paths[attr] = p.replace('\\', '/')
             payload.figure_data.clear()  # bytes no longer needed — free RAM now
-
-            # ── Write title-page logos into tmp_dir/assets (auto-deleted) ──
-            # Nothing is left next to the PDF. Latex paths are relative to tmp_dir.
-            tmp_assets = os.path.join(tmp_dir, 'assets')
-            os.makedirs(tmp_assets, exist_ok=True)
-
-            osdag_logo_src = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'data', 'ResourceFiles', 'vectors', 'Osdag Logo.png')
-            iit_logo_src   = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'assets', 'IIT Bombay Logo.png')
-
-            osdag_logo_latex = None
-            if os.path.exists(osdag_logo_src):
-                shutil.copy2(osdag_logo_src, os.path.join(tmp_assets, 'osdag_logo.png'))
-                osdag_logo_latex = 'assets/osdag_logo.png'
-
-            org_logo_latex = None
-            org_logo_src = payload.metadata.logo_path if (payload.metadata.logo_path and os.path.exists(payload.metadata.logo_path)) else (iit_logo_src if os.path.exists(iit_logo_src) else None)
-            if org_logo_src:
-                shutil.copy2(org_logo_src, os.path.join(tmp_assets, 'org_logo.png'))
-                org_logo_latex = 'assets/org_logo.png'
 
             # Compute and inject quantities for Chapter 7
             quantities = calculate_material_quantities(payload.inputs, payload.output_dict)
@@ -3823,7 +3453,7 @@ def generate_report(payload, request):
             doc_parts.append(ch7_quantities(payload.inputs))
 
             if 'Design Log' in secs:
-                doc_parts.append(ch8_design_log(payload.log_entries, payload.inputs))
+                doc_parts.append(ch8_design_log(payload.log_entries))
 
             doc_parts.append(ch9_references())
             doc_parts.append(r"\end{document}")
@@ -3835,7 +3465,6 @@ def generate_report(payload, request):
 
             with open(tmp_tex, 'w', encoding='utf-8') as f:
                 f.write(full_tex)
-
             # Compile twice for TOC and references
             for _ in range(2):
                 try:
