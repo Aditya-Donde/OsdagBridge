@@ -2470,7 +2470,7 @@ STIFFENER_DETAILS_SCHEMA = {
                         "id":    KEY_MP_STIFFENER_SPACING,
                         "label": "Bearing Stiffener Spacing (mm):",
                         "type":  TYPE_TEXTBOX,
-                        "on_text_changed": "_update_stiffener_cad",
+                        "on_editing_finished": "_update_stiffener_cad",
                     }]
                 },
                 {
@@ -2479,6 +2479,7 @@ STIFFENER_DETAILS_SCHEMA = {
                         "label":   "Bearing Stiffener Thickness (mm):",
                         "type":    TYPE_COMBOBOX,
                         "choices": [str(v) for v in SAIL_APPROVED_THICKNESS_VALUES],
+                        "on_change": "_update_stiffener_cad",
                     }]
                 },
                 {
@@ -2486,6 +2487,7 @@ STIFFENER_DETAILS_SCHEMA = {
                         "id":    KEY_MP_STIFFENER_BEARING_OUTSTAND,
                         "label": "Outstand of Bearing Stiffener (mm):",
                         "type":  TYPE_TEXTBOX,
+                        "on_editing_finished": "_update_stiffener_cad",
                     }]
                 },
                 {
@@ -2502,7 +2504,7 @@ STIFFENER_DETAILS_SCHEMA = {
                         "id":    KEY_MP_STIFFENER_INTERMEDIATE_SPACING,
                         "label": "Intermediate Stiffener Spacing (mm):",
                         "type":  TYPE_TEXTBOX,
-                        "on_text_changed": "_update_stiffener_cad",
+                        "on_editing_finished": "_update_stiffener_cad",
                     }]
                 },
                 {
@@ -2511,6 +2513,7 @@ STIFFENER_DETAILS_SCHEMA = {
                         "label":   "Intermediate Stiffener Thickness (mm):",
                         "type":    TYPE_COMBOBOX,
                         "choices": [str(v) for v in SAIL_APPROVED_THICKNESS_VALUES],
+                        "on_change": "_update_stiffener_cad",
                     }]
                 },
                 {
@@ -2518,6 +2521,7 @@ STIFFENER_DETAILS_SCHEMA = {
                         "id":    KEY_MP_STIFFENER_INTERMEDIATE_OUTSTAND,
                         "label": "Outstand of Intermediate Stiffener (mm):",
                         "type":  TYPE_TEXTBOX,
+                        "on_editing_finished": "_update_stiffener_cad",
                     }]
                 },
                 {
@@ -2535,6 +2539,7 @@ STIFFENER_DETAILS_SCHEMA = {
                         "label":   "Longitudinal Stiffener Thickness (mm):",
                         "type":    TYPE_COMBOBOX,
                         "choices": [str(v) for v in SAIL_APPROVED_THICKNESS_VALUES],
+                        "on_change": "_update_stiffener_cad",
                     }]
                 },
             ],
@@ -2551,6 +2556,7 @@ STIFFENER_DETAILS_SCHEMA = {
                         "label":   "Shear Buckling Design Method:",
                         "type":    TYPE_COMBOBOX,
                         "choices": VALUES_STIFFENER_DESIGN,
+                        "on_change": "_update_stiffener_cad",
                     }]
                 },
             ],

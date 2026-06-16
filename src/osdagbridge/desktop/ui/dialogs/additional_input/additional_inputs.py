@@ -170,15 +170,16 @@ class AdditionalInputs(QDialog):
         )
         self.tabs.addTab(self.loading_tab, "Loading")
 
-        self.support_tab = UIBuilder(
-            owner=self,
-            schema=SUPPORT_CONDITIONS_SCHEMA,
-            card_title="",
-            with_scroll=True,
-            main_widget_object_name="support_conditions.main",
-            additional_input_instance=self,
-        )
-        self.tabs.addTab(self.support_tab, "Support Conditions")
+        # self.support_tab = UIBuilder(
+        #     owner=self,
+        #     schema=SUPPORT_CONDITIONS_SCHEMA,
+        #     card_title="",
+        #     with_scroll=True,
+        #     main_widget_object_name="support_conditions.main",
+        #     additional_input_instance=self,
+        # )
+        self.support_tab = None
+        # self.tabs.addTab(self.support_tab, "Support Conditions")
 
         # Sub-Tab 5: Analysis/Design Options
         self.design_options_tab = UIBuilder(
@@ -838,7 +839,9 @@ class AdditionalInputs(QDialog):
                     print(f"  [LOAD] {key} — AdaptiveWidget active child unknown: {type(active)}")
 
             elif isinstance(w, QComboBox):
+                w.blockSignals(True)
                 w.setCurrentText(str(value))
+                w.blockSignals(False)
 
             elif isinstance(w, QLineEdit):
                 w.blockSignals(True)
@@ -1379,12 +1382,20 @@ class AdditionalInputs(QDialog):
         for key in self._STIFFENER_FIELD_KEYS:
             stored = self.working_input_dict.get(f"{key}{suffix}")
             if stored is None:
-                continue
+                # Fall back to base key value so newly-selected members
+                # don't keep the previous member's widget values.
+                stored = self.working_input_dict.get(key, "")
+                if stored is None or stored == "":
+                    continue
             w = self.findChild(QWidget, key)
             if isinstance(w, QComboBox):
+                w.blockSignals(True)
                 w.setCurrentText(str(stored))
+                w.blockSignals(False)
             elif isinstance(w, QLineEdit):
+                w.blockSignals(True)
                 w.setText(str(stored))
+                w.blockSignals(False)
 
     def _update_stiffener_cad(self) -> None:  # compute: pushes current working_input_dict and active member ID to the Stiffener Details CAD widget
         from osdagbridge.desktop.ui.dialogs.additional_input.drawings.stiffener_details_cad import StiffenerDetailsCad
@@ -1393,7 +1404,18 @@ class AdditionalInputs(QDialog):
             return
         combo = self.findChild(QComboBox, KEY_MP_STIFFENER_SELECT_MEMBER_ID)
         active_member_id = combo.currentText().strip() if combo else ""
-        widget.update_stiffener(self.working_input_dict, active_member_id)
+
+        # Build snapshot — prefer live widget value over working_input_dict
+        # (same pattern as _update_section_drawing)
+        snapshot = dict(self.working_input_dict)
+        for key in self._STIFFENER_FIELD_KEYS:
+            w = self.findChild(QWidget, key)
+            if isinstance(w, QComboBox):
+                snapshot[key] = w.currentText()
+            elif isinstance(w, QLineEdit):
+                snapshot[key] = w.text().strip()
+
+        widget.update_stiffener(snapshot, active_member_id)
 
     # ── Member Properties > EndDiaphragm SubTab ────────────────────────────────────
 

@@ -101,7 +101,14 @@ class StiffenerDetailsCad(QWidget):
             if suffix:
                 for k, v in working_input_dict.items():
                     if k.endswith(suffix):
-                        state[k[:-len(suffix)]] = v
+                        base_key = k[:-len(suffix)]
+                        # Only apply per-member value when the base key is not
+                        # already set (live widget values from the snapshot
+                        # passed by _update_stiffener_cad take precedence).
+                        # This prevents stale per-member values from
+                        # overwriting freshly edited base-key values.
+                        if base_key not in state or state.get(base_key) is None or str(state.get(base_key, "")).strip() == "":
+                            state[base_key] = v
             self._stiffener_by_member[active_member_id] = state
 
         match = re.match(r"G(\d+)M\d+", active_member_id)
