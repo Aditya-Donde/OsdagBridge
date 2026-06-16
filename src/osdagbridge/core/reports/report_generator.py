@@ -3600,27 +3600,6 @@ def generate_report(payload, request):
         logger.info("Compiler: %s", compiler)
 
         os.makedirs(request.output_dir, exist_ok=True)
-        assets_dir = os.path.join(request.output_dir, 'assets')
-        os.makedirs(assets_dir, exist_ok=True)
-
-        osdag_logo_src = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'data', 'ResourceFiles', 'vectors', 'Osdag Logo.png')
-        iit_logo_src = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'assets', 'IIT Bombay Logo.png')
-
-        osdag_logo_latex = None
-        if os.path.exists(osdag_logo_src):
-            osdag_dest = os.path.join(assets_dir, 'osdag_logo.png')
-            shutil.copy2(osdag_logo_src, osdag_dest)
-            osdag_logo_latex = 'assets/osdag_logo.png'
-
-        org_logo_latex = None
-        if payload.metadata.logo_path and os.path.exists(payload.metadata.logo_path):
-            org_dest = os.path.join(assets_dir, 'org_logo.png')
-            shutil.copy2(payload.metadata.logo_path, org_dest)
-            org_logo_latex = 'assets/org_logo.png'
-        elif os.path.exists(iit_logo_src):
-            org_dest = os.path.join(assets_dir, 'org_logo.png')
-            shutil.copy2(iit_logo_src, org_dest)
-            org_logo_latex = 'assets/org_logo.png'
 
         # fig_paths is built inside TemporaryDirectory (see below) after bytes are written
 
@@ -3641,6 +3620,25 @@ def generate_report(payload, request):
                         fh.write(img_bytes)
                     fig_paths[attr] = p.replace('\\', '/')
             payload.figure_data.clear()  # bytes no longer needed — free RAM now
+
+            # ── Write title-page logos into tmp_dir/assets (auto-deleted) ──
+            # Nothing is left next to the PDF. Latex paths are relative to tmp_dir.
+            tmp_assets = os.path.join(tmp_dir, 'assets')
+            os.makedirs(tmp_assets, exist_ok=True)
+
+            osdag_logo_src = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'data', 'ResourceFiles', 'vectors', 'Osdag Logo.png')
+            iit_logo_src   = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'assets', 'IIT Bombay Logo.png')
+
+            osdag_logo_latex = None
+            if os.path.exists(osdag_logo_src):
+                shutil.copy2(osdag_logo_src, os.path.join(tmp_assets, 'osdag_logo.png'))
+                osdag_logo_latex = 'assets/osdag_logo.png'
+
+            org_logo_latex = None
+            org_logo_src = payload.metadata.logo_path if (payload.metadata.logo_path and os.path.exists(payload.metadata.logo_path)) else (iit_logo_src if os.path.exists(iit_logo_src) else None)
+            if org_logo_src:
+                shutil.copy2(org_logo_src, os.path.join(tmp_assets, 'org_logo.png'))
+                org_logo_latex = 'assets/org_logo.png'
 
             # Compute and inject quantities for Chapter 7
             quantities = calculate_material_quantities(payload.inputs, payload.output_dict)
@@ -3689,11 +3687,6 @@ def generate_report(payload, request):
             with open(tmp_tex, 'w', encoding='utf-8') as f:
                 f.write(full_tex)
 
-            # Mirror assets (logos) so LaTeX can find them
-            tmp_assets = os.path.join(tmp_dir, 'assets')
-            if os.path.exists(assets_dir):
-                shutil.copytree(assets_dir, tmp_assets, dirs_exist_ok=True)
-                
             # Compile twice for TOC and references
             for _ in range(2):
                 try:
