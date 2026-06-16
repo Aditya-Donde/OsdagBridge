@@ -611,6 +611,18 @@ class OutputDock(QWidget):
         main_window = self.parent
         while main_window and not hasattr(main_window, 'cad_3d_widget'):
             main_window = getattr(main_window, 'parent', None)
+            
+        if main_window:
+            backend = getattr(main_window, 'backend', None)
+            if not backend or not getattr(backend, 'output_dict', None):
+                from osdagbridge.desktop.ui.dialogs.custom_messagebox import CustomMessageBox, MessageBoxType
+                CustomMessageBox(
+                    title="Report Error",
+                    text="Create a design first to generate report.",
+                    dialogType=MessageBoxType.Critical,
+                ).exec()
+                return
+
         if main_window and hasattr(main_window, 'cad_3d_widget'):
             cad_3d_widget = main_window.cad_3d_widget
 

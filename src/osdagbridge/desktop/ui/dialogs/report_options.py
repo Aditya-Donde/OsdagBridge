@@ -277,14 +277,15 @@ class ReportOptionsDialog(QDialog):
         layout.addWidget(self.tree)
 
         sections = [
-            ("Input Parameters", []),
-            ("Design Checks", [
-                "Section Classification", "Moment Capacity", "Shear Capacity",
-                "LTB Check", "Stiffener Checks", "Deflection Checks",
-                "Shear Connectors", "Cross Bracing", "End Diaphragm", "Design Summary"
-            ]),
-            ("Views", []),
-            ("Design Log", [])
+            ("1. Cover Page", []),
+            ("2. Bridge Configuration", []),
+            ("3. Structural Loading", []),
+            ("4. Design Analysis", []),
+            ("5. Steel Section Design Checks", []),
+            ("6. Drawings and Visualizations", []),
+            ("7. Bill of Materials", []),
+            ("8. Design Log & Verification", []),
+            ("9. References", [])
         ]
 
         for parent_text, children in sections:
@@ -477,15 +478,11 @@ class ReportOptionsDialog(QDialog):
 
     def get_checked_leaf_sections(self):
         sections = []
-        # Walk all top-level and child items
+        # Walk all top-level items
         for i in range(self.tree.topLevelItemCount()):
-            parent = self.tree.topLevelItem(i)
-            if parent.checkState(0) in (Qt.Checked, Qt.PartiallyChecked):
-                sections.append(parent.text(0))
-            for j in range(parent.childCount()):
-                child = parent.child(j)
-                if child.checkState(0) in (Qt.Checked, Qt.PartiallyChecked):
-                    sections.append(child.text(0))
+            item = self.tree.topLevelItem(i)
+            if item.checkState(0) == Qt.Checked:
+                sections.append(item.text(0))
         return sections
 
     # ── build report request ─────────────────────────────────────────
@@ -515,7 +512,7 @@ class ReportOptionsDialog(QDialog):
         )
 
         checked_sections = self.get_checked_leaf_sections()
-        include_figures = "Views" in checked_sections
+        include_figures = "6. Drawings and Visualizations" in checked_sections
 
         options = ReportOptions(
             sections=checked_sections,
