@@ -172,6 +172,16 @@ _SCHEMA = TRANSVERSE_MEMBER_DESIGN_SCHEMA
 class TransverseMemberDesign(QDialog):
     """Schema-driven Transverse Member Design dialog."""
 
+    # Load Combination dropdown shows only these categories — accidental/quasi-
+    # permanent and other intermediate combos are hidden to keep the list short.
+    _LC_PREFIXES = ("BASIC", "SEISMIC", "SLS_RARE", "SLS_FREQUENT")
+    _LC_EXACT    = ("ENVELOPE ULS", "ENVELOPE SLS")
+
+    @classmethod
+    def _is_displayable_lc(cls, lc: str) -> bool:
+        head = lc.split(":", 1)[0].strip().upper()
+        return head in cls._LC_EXACT or head.startswith(cls._LC_PREFIXES)
+
     def __init__(self, parent=None):
         super().__init__(None)
         self._main_window = parent
@@ -895,7 +905,10 @@ class TransverseMemberDesign(QDialog):
             if not forces_dict or not forces_dict.get("pairs"):
                 return
 
-            all_lcs = [str(lc) for lc in backend.result_data.get("loadcases", [])]
+            all_lcs = [
+                str(lc) for lc in backend.result_data.get("loadcases", [])
+                if self._is_displayable_lc(str(lc))
+            ]
 
             cb_designs = getattr(backend, "crossbracing_design_results", {}) or {}
             ed_designs = getattr(backend, "end_diaphragm_design_results", {}) or {}
