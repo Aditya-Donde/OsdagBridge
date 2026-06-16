@@ -8,17 +8,27 @@ version = "1.0.0"
 description = "OsdagBridge - Shared core for analysis and design of steel bridges (CLI, Desktop, Web)"
 readme = "README.md"
 license = { file = "LICENSE" }
-authors = [
-  { name = "Osdag", email = "contact-osdag@efossee.in" }
-]
-requires-python = ">=3.10,<3.13"
 
-keywords = ["bridge", "steel", "structural engineering", "analysis", "IRC", "IS 800", "Osdag"]
+authors = [
+  { name = "Osdag", email = "contact-osdag@fossee.in" }
+]
+
+requires-python = ">=3.11,<3.13"
+
+keywords = [
+  "bridge",
+  "steel",
+  "structural engineering",
+  "analysis",
+  "IRC",
+  "IS 800",
+  "Osdag"
+]
 
 classifiers = [
   "Programming Language :: Python :: 3",
-  "Programming Language :: Python :: 3.10",
   "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
   "License :: OSI Approved :: MIT License",
   "Operating System :: OS Independent",
   "Intended Audience :: Science/Research",
@@ -26,56 +36,44 @@ classifiers = [
   "Topic :: Scientific/Engineering",
 ]
 
-# ------------------------------
-# Package data (non-code files to be included in the distribution)
-# ------------------------------
-[tool.setuptools.package-data]
-osdagbridge = [
-    "core/data/**/*",
-    "core/reports/templates/**/*",
-    "desktop/resources/**/*",
+# Runtime dependencies
 
-]
-
-# ------------------------------
-# Core runtime dependencies
-# ------------------------------
 dependencies = [
-  "numpy>=1.21",
-  "scipy>=1.8",
-  "pyyaml>=6.0",
+  "scipy>=1.10.1",
+  "fiona",
+  "shapely",
   "pydantic>=2.0",
   "matplotlib>=3.5",
-  "ifcopenshell",
   "openseespy>=3.2.2.6",
   "opsvis>=1.0",
   "xarray",
-  "openpyxl",
 ]
 
 [project.optional-dependencies]
-test = ["pytest >= 6.2.2"]
-gui = ["PySide6<=6.9",]
-occ = ["pythonocc-core"]
-latex = ["pylatex>=1.4"]
-legacy-viz = ["vfo>=0.0.6"]
+test = [
+  "pytest>=6.2.2",
+]
 
-# ------------------------------
+dev = [
+  "pytest>=6.2.2",
+]
+
+# Package data
+[tool.setuptools.package-data]
+osdagbridge = [
+  "core/data/**/*",
+  "core/reports/templates/**/*",
+  "desktop/resources/**/*",
+]
+
 # setuptools config
-# ------------------------------
 [tool.setuptools]
 package-dir = {"" = "src"}
 
 [tool.setuptools.packages.find]
 where = ["src"]
 
-#  ------------------------------
-# Console scripts for CLI and Desktop entry points
-#  ------------------------------
+# Entry points
 [project.scripts]
 osdagbridge-cli = "osdagbridge.cli.__main__:main"
 osdagbridge = "osdagbridge.desktop.__main__:main"
-
-
-
-
