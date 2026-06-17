@@ -445,6 +445,7 @@ class TopViewCADWidget(QWidget):
             if event.type() == event.Type.Resize:
                 # Viewport resized - reposition buttons
                 self._position_zoom_buttons()
+                self.fit_to_screen()
         return super().eventFilter(obj, event)
 
     def update_params(self, params: dict):
