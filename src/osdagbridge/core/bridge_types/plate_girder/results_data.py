@@ -760,6 +760,152 @@ def build_deflections_cache(result_handler) -> dict:
 
     return cache
 
+def build_forces_summary(result_handler, load_effects_cache: dict) -> dict:
+    """
+    Build Chapter 4 Table 4.1 data by reusing load_effects_cache for Mz/Vy
+    values and fetching only x-locations and reactions from the dataset.
+
+    Called once from compute_load_effects_cache() immediately after
+    build_load_effects_cache() so the cache is already available.
+
+    Parameters
+    ----------
+    result_handler   : PlateGirderAnalysisResults
+    load_effects_cache : dict — output of build_load_effects_cache()
+        Structure: {girder_label: {lc_name: {Mz_max, Mz_min, Vy_max, Vy_min}}}
+
+    Returns
+    -------
+    dict with two keys:
+        "load_cases" : {lc_name: {max_bm, bm_girder, bm_location,
+                                   max_sf, sf_girder, sf_location}}
+        "reactions"  : {lc_name: {left_kN, right_kN}}
+    """
+    ds = result_handler.ds
+    if ds is None or not load_effects_cache:
+        return {"load_cases": {}, "reactions": {}}
+
+    # Build girder map and node coords once — reused for both location and reactions
+    g_map, _ = result_handler.build_girders(verbose=False)
+    nodes_coords, _, _ = result_handler.build_grillage_connectivity()
+
+    # Map cache labels (G1, G2, …) → g_map keys (which may be EB1/G2/G3/EB2 when edge_dist > 0)
+    # Mirrors the exact skip-and-recount logic in build_load_effects_cache
+    cache_label_to_gmap_key = {}
+    gi = 1
+    for girder_name in g_map:
+        if girder_name.startswith("EB"):
+            continue
+        cache_label_to_gmap_key[f"G{gi}"] = girder_name
+        gi += 1
+
+    # Collect the same filtered load case list the cache was built with
+    all_lcs = set()
+    for girder_data in load_effects_cache.values():
+        all_lcs.update(girder_data.keys())
+
+    lc_summary = {}
+    rxn_summary = {}
+
+    for lc in all_lcs:
+        # ── 1. Derive max_bm / bm_girder and max_sf / sf_girder from cache ──
+        global_bm, bm_girder = 0.0, "—"
+        global_sf, sf_girder = 0.0, "—"
+
+        for girder_label, lc_data in load_effects_cache.items():
+            entry = lc_data.get(lc)
+            if not entry:
+                continue
+
+            # correct — check both max and min, take whichever has larger magnitude
+            mz_max = entry.get("Mz_max")
+            mz_min = entry.get("Mz_min")
+            mz = mz_max if (mz_max is not None and abs(mz_max) >= abs(mz_min or 0.0)) else mz_min
+
+            vy_max = entry.get("Vy_max")
+            vy_min = entry.get("Vy_min")
+            vy = vy_max if (vy_max is not None and abs(vy_max) >= abs(vy_min or 0.0)) else vy_min
+
+            if mz is not None and abs(mz) > abs(global_bm):
+                global_bm = mz
+                bm_girder = girder_label
+            if vy is not None and abs(vy) > abs(global_sf):
+                global_sf = vy
+                sf_girder = girder_label
+
+        # ── 2. Fetch x-location for the winning girder's max Mz and max Vy ──
+        bm_location = None
+        sf_location = None
+
+        bm_gmap_key = cache_label_to_gmap_key.get(bm_girder)
+        sf_gmap_key = cache_label_to_gmap_key.get(sf_girder)
+
+        if bm_gmap_key:
+            best_abs = 0.0
+            for eid, n1, n2 in g_map[bm_gmap_key].get("element_map", []):
+                for comp, node in (("Mz_i", n1), ("Mz_j", n2)):
+                    try:
+                        val = float(ds.sel(
+                            Loadcase=lc, Element=eid, Component=comp
+                        )["forces"]) / 1000.0
+                        if abs(val) > best_abs:
+                            best_abs = abs(val)
+                            bm_location = round(nodes_coords[node][0], 3)
+                    except Exception:
+                        pass
+
+        if sf_gmap_key:
+            best_abs = 0.0
+            for eid, n1, n2 in g_map[sf_gmap_key].get("element_map", []):
+                for comp, node in (("Vy_i", n1), ("Vy_j", n2)):
+                    try:
+                        val = float(ds.sel(
+                            Loadcase=lc, Element=eid, Component=comp
+                        )["forces"]) / 1000.0
+                        if abs(val) > best_abs:
+                            best_abs = abs(val)
+                            sf_location = round(nodes_coords[node][0], 3)
+                    except Exception:
+                        pass
+
+        lc_summary[lc] = {
+            "max_bm":      round(global_bm, 3),
+            "bm_girder":   bm_girder,
+            "bm_location": bm_location,
+            "max_sf":      round(global_sf, 3),
+            "sf_girder":   sf_girder,
+            "sf_location": sf_location,
+        }
+
+        # ── 3. Reactions — sum Ra and Rb across all interior girders ──
+        left_total  = 0.0
+        right_total = 0.0
+
+        for gmap_key in cache_label_to_gmap_key.values():
+            element_map = g_map[gmap_key].get("element_map", [])
+            if not element_map:
+                continue
+            eid_start, n1_start, _ = element_map[0]
+            eid_end,   _,  n2_end  = element_map[-1]
+            try:
+                ra = float(ds.sel(
+                    Loadcase=lc, Element=eid_start, Component="Vy_i"
+                )["forces"]) / 1000.0
+                rb = -float(ds.sel(
+                    Loadcase=lc, Element=eid_end, Component="Vy_j"
+                )["forces"]) / 1000.0
+                left_total  += ra
+                right_total += rb
+            except Exception:
+                pass
+
+        rxn_summary[lc] = {
+            "left_kN":  round(left_total,  3),
+            "right_kN": round(right_total, 3),
+        }
+
+    return {"load_cases": lc_summary, "reactions": rxn_summary}
+
 
 def _dump(data: dict, filename: str = "bridge_plot_data.json") -> None:
     """Write data to tools/<filename>."""

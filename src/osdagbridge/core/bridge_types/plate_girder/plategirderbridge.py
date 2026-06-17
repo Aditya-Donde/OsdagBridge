@@ -924,6 +924,15 @@ class PlateGirderBridge:
         report_inputs = self.input_dict.copy()
         output_dict   = dict(self.output_dict)  # MappingProxyType → dict
 
+        # ── Chapter 4: analysis summary for Tables ──────────────────
+        lc_sum  = getattr(self, '_lc_summary',       None)
+        rxn_sum = getattr(self, '_reaction_summary',  None)
+        if lc_sum is not None or rxn_sum is not None:
+            output_dict['analysis_summary'] = {
+                'load_cases': lc_sum  or {},
+                'reactions':  rxn_sum or {},
+            }
+
         payload = build_report_payload(request, report_inputs, output_dict)
 
         # Collect figure bytes into payload.figure_data — no disk writes here
@@ -3164,12 +3173,14 @@ class PlateGirderBridge:
         overhang exists — allowing build_load_effects_cache() to skip them.
         """
         from osdagbridge.core.bridge_types.plate_girder.results_data import (
-            build_load_effects_cache, build_deflections_cache,
+            build_load_effects_cache, build_deflections_cache, build_forces_summary,
         )
         results = self.get_results_dataset()
         if results is None:
-            self._load_effects_cache = {}
-            self._deflections_cache = {}
+            self._load_effects_cache        = {}
+            self._deflections_cache         = {}
+            self._lc_summary       = {}
+            self._reaction_summary= {}
             return
         edge_dist = self.get_edge_dist()
         rh = PlateGirderAnalysisResults(
@@ -3178,7 +3189,10 @@ class PlateGirderBridge:
             edge_dist=edge_dist,
         )
         self._load_effects_cache = build_load_effects_cache(rh)
-        self._deflections_cache = build_deflections_cache(rh)
+        self._deflections_cache  = build_deflections_cache(rh)
+        ch4 = build_forces_summary(rh, self._load_effects_cache)
+        self._lc_summary       = ch4["load_cases"]
+        self._reaction_summary= ch4["reactions"]
 
     def get_3d_cad_parameters(self) -> BridgeParametersDTO:
         """

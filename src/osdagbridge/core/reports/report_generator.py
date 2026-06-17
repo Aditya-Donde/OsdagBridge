@@ -360,9 +360,11 @@ def _tex(value):
         return r''
     s = s.replace('\\', r'\textbackslash{}')
     for ch, esc in [('&', r'\&'), ('%', r'\%'), ('$', r'\$'), ('#', r'\#'),
-                    ('_', r'\_'), ('~', r'\textasciitilde{}'), ('^', r'\^{}'),
-                    ('{', r'\{'), ('}', r'\}')]:
+                    ('{', r'\{'), ('}', r'\}'),          
+                    ('_', r'\_\allowbreak{}'),            
+                    ('~', r'\textasciitilde{}'), ('^', r'\^{}')]:
         s = s.replace(ch, esc)
+    s = s.replace(':', r':\allowbreak{}')
     return s
 
 
@@ -465,6 +467,7 @@ def preamble(project_name, job_number, report_date, report_version='Rev 0'):
 \usepackage{multirow}
 \usepackage{colortbl}
 \usepackage{longtable}
+\usepackage{changepage}
 \usepackage{titlesec}
 \usepackage{titletoc}
 \usepackage{lastpage}
@@ -1479,6 +1482,44 @@ The following load combinations were evaluated per IRC 6. The governing combinat
 
 
 def ch4_analysis(asum, fig_paths, bridge: "ReportDataBridge", span_m: float):
+    lc_summary  = (asum or {}).get('load_cases', {})
+    rxn_summary = (asum or {}).get('reactions',  {})
+
+    def _is_moving(lc_name: str) -> bool:
+        n = str(lc_name).lower()
+        return "moving" in n or " pos_" in n
+
+    lc_summary  = {k: v for k, v in lc_summary.items()  if not _is_moving(k)}
+    rxn_summary = {k: v for k, v in rxn_summary.items() if not _is_moving(k)}
+
+    def _fmt(val, nd=3):
+        try:
+            return f"{float(val):.{nd}f}"
+        except (TypeError, ValueError):
+            return r"---"
+
+    def _merged_row(lc, bm_d, rxn_d):
+        bm_d  = bm_d  or {}
+        rxn_d = rxn_d or {}
+        return (
+            _tex(lc)                              + r" & "
+            + _fmt(bm_d.get('max_bm'))           + r" & "
+            + _tex(bm_d.get('bm_girder', '---')) + r" & "
+            + _fmt(bm_d.get('bm_location'))      + r" & "
+            + _fmt(bm_d.get('max_sf'))           + r" & "
+            + _tex(bm_d.get('sf_girder', '---')) + r" & "
+            + _fmt(bm_d.get('sf_location'))      + r" & "
+            + _fmt(rxn_d.get('left_kN'))         + r" & "
+            + _fmt(rxn_d.get('right_kN'))        + r" \\[6pt]"
+        )
+
+    all_lcs = list(lc_summary.keys()) + [k for k in rxn_summary if k not in lc_summary]
+
+    merged_body = ("\n\\hline\n").join(
+        _merged_row(lc, lc_summary.get(lc), rxn_summary.get(lc))
+        for lc in all_lcs
+    ) if all_lcs else r"--- & --- & --- & --- & --- & --- & --- & --- & --- \\[6pt]"
+
     _span_m         = float(bridge.input_dict.get(KEY_SPAN, 0) or 0)
     _allow_live_mm  = _span_m * 1000.0 / 800.0
     _allow_total_mm = _span_m * 1000.0 / 600.0
@@ -1511,53 +1552,38 @@ def ch4_analysis(asum, fig_paths, bridge: "ReportDataBridge", span_m: float):
 A grillage model was used for structural analysis. The deck is idealized as a grid of elastic beam elements --- longitudinal members represent the composite steel girders with effective slab, and transverse members represent the slab or cross frames. This section summarizes the critical output from that analysis.
 
 \vspace{1em}
-\noindent\textbf{Table 4.1  Summary of Maximum Demands}
+\noindent\textbf{Table 4.1  Summary of Maximum Demands and Reactions}
 
-\begin{longtable}{|>{\centering\arraybackslash}p{4.0cm}|>{\centering\arraybackslash}C{2.8cm}|>{\centering\arraybackslash}C{2.2cm}|>{\centering\arraybackslash}C{2.5cm}|>{\centering\arraybackslash}C{2.2cm}|>{\centering\arraybackslash}C{1.8cm}|}
+\begingroup
+\setlength\LTleft{-1.6cm}
+\setlength\LTright{-1.4cm}
+\setlength{\tabcolsep}{4pt}
+\renewcommand{\arraystretch}{1.3}
+\begin{longtable}{|C{3.1cm}|C{2cm}|C{1.3cm}|C{1.7cm}|C{2cm}|C{1.3cm}|C{1.7cm}|C{1.7cm}|C{1.7cm}|}
 \hline
-\textbf{Load Case} & \textbf{Max BM (kN-m)} & \textbf{Location (m)} & \textbf{Max SF (kN)} & \textbf{Location (m)} & \textbf{Girder} \\[6pt]
+\multirow{2}{*}{\makecell{\textbf{Load} \\ \textbf{Case/Combin-} \\ \textbf{ation}}} & \multicolumn{3}{c|}{\textbf{Bending Moment}} & \multicolumn{3}{c|}{\textbf{Shear Force}} & \multicolumn{2}{c|}{\textbf{Reaction (kN)}} \\
+\cline{2-9}
+ & \textbf{Maximum Value (kNm)} & \textbf{Girder} & \textbf{Location (m)} & \textbf{Maximum Value (kN)} & \textbf{Girder} & \textbf{Location (m)} & \textbf{Left Support} & \textbf{Right Support} \\[6pt]
 \hline
- & """ + '' + r""" & """ + '' + r""" & """ + '' + r""" & """ + '' + r""" & \\[6pt]
-\hline
- & """ + '' + r""" & """ + '' + r""" & """ + '' + r""" & """ + '' + r""" & \\[6pt]
-\hline
- & """ + '' + r""" & """ + '' + r""" & """ + '' + r""" & """ + '' + r""" & \\[6pt]
-\hline
- & """ + '' + r""" & """ + '' + r""" & """ + '' + r""" & """ + '' + r""" & \\[6pt]
-\hline
- & """ + '' + r""" & """ + '' + r""" & """ + '' + r""" & """ + '' + r""" & \\[6pt]
+""" + merged_body + r"""
 \hline
 \end{longtable}
+\endgroup
 
 \vspace{1em}
-\noindent\textbf{Table 4.2  Reactions at Supports}
-
-\begin{longtable}{|>{\centering\arraybackslash}p{5.2cm}|>{\centering\arraybackslash}p{5.2cm}|>{\centering\arraybackslash}p{5.2cm}|}
-\hline
-\textbf{Load Case} & \textbf{Left Support (kN)} & \textbf{Right Support (kN)} \\[6pt]
-\hline
- & """ + '' + r""" & """ + '' + r""" \\[6pt]
-\hline
- & """ + '' + r""" & """ + '' + r""" \\[6pt]
-\hline
- & """ + '' + r""" & """ + '' + r""" \\[6pt]
-\hline
-\end{longtable}
-
-\vspace{1em}
-\noindent\textbf{Table 4.3  Deflection Summary (Live Load \& Total Load)}
+\noindent\textbf{Table 4.2  Deflection Summary}
 
 \begin{longtable}{|L{7cm}|p{8.5cm}|}
 \hline
 \textbf{Deflection due to Live Load, delta\_LL} & """ + _live_str + r""" \\[6pt]
 \hline
-\textbf{Allowable Live Load Deflection ()} & """ + _allow_live_str + r""" \\[6pt]
+\textbf{Allowable Live Load Deflection} & """ + _allow_live_str + r""" \\[6pt]
 \hline
 \textbf{Live Load Deflection Check Status} & """ + _live_status + r""" \\[6pt]
 \hline
 \textbf{Deflection due to Total Load, delta\_total} & """ + _total_str + r""" \\[6pt]
 \hline
-\textbf{Allowable Total Deflection ()} & """ + _allow_total_str + r""" \\[6pt]
+\textbf{Allowable Total Deflection} & """ + _allow_total_str + r""" \\[6pt]
 \hline
 \textbf{Total Load Deflection Check Status} & """ + _total_status + r""" \\[6pt]
 \hline
@@ -1861,6 +1887,7 @@ def ch5_design_checks(checks_data, bridge: "ReportDataBridge"):
         """Format a numeric value to nd decimal places; empty string when None."""
         try:
             return f"{float(v):.{nd}f}"
+            
         except (TypeError, ValueError):
             return ""
 
