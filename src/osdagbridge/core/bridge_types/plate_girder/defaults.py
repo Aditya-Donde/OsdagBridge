@@ -674,6 +674,7 @@ def _on_no_of_girders_changed(working_input_dict: dict) -> None:
     # Default bracing is an angle; its section properties are queried live from
     # the Angles table rather than hardcoded.
     _ED_DEFAULT_ANGLE = "IS 100 x 100 x 10"
+    _ED_DEFAULT_SECTION_TYPE = "Double Angle (Long Leg)"
     _ed_angle = get_angle_section_properties(_ED_DEFAULT_ANGLE)
     _ED_DEFAULTS = {
         "select_girders":               "",
@@ -681,13 +682,13 @@ def _on_no_of_girders_changed(working_input_dict: dict) -> None:
         "type":                         VALUES_END_DIAPHRAGM_TYPE[0],   # "Cross Bracing"
         "bracing_type":                 "K",
         "bracing_connection":           "Bolted",
-        "bracing_section":              "Angle",
+        "bracing_section":              _ED_DEFAULT_SECTION_TYPE,
         "bracing_section_designation":  _ED_DEFAULT_ANGLE,
         "top_chord":                    "",
-        "top_chord_section_type":       "",
+        "top_chord_section_type":       _ED_DEFAULT_SECTION_TYPE,
         "top_chord_section_desig":      "",
         "bottom_chord":                 "",
-        "bottom_chord_section_type":    "",
+        "bottom_chord_section_type":    _ED_DEFAULT_SECTION_TYPE,
         "bottom_chord_section_desig":   "",
         # Welded/rolled-only fields stay blank until that ED type is chosen.
         "symmetry":                     "",
