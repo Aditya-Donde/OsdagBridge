@@ -780,6 +780,8 @@ class InputDock(QWidget):
 
         self.lock_btn.setChecked(self.is_locked)
         self.scroll_area.setDisabled(self.is_locked)
+        # While locked, the design must not be re-run until the user unlocks.
+        self.design_btn.setDisabled(self.is_locked)
         self._sync_lock_icon()
 
     def _apply_lock_state(self):

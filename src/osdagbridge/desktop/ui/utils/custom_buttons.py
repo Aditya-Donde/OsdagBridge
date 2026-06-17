@@ -28,6 +28,9 @@ class DockCustomButton(QPushButton):
             QPushButton:hover {
                 background-color: #7a9a12;
             }
+            QPushButton:disabled {
+                background-color: #D0D0D0;
+            }
         """)
 
         # Layout for icons and text
@@ -55,6 +58,9 @@ class DockCustomButton(QPushButton):
             QLabel {
                 background: transparent;
                 color: white;
+            }
+            QLabel:disabled {
+                color: #666;
             }
         """)
         layout.addWidget(text_label)

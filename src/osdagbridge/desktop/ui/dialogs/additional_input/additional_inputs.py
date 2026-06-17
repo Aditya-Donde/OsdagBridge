@@ -6,7 +6,8 @@ from copy import deepcopy
 
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QTabWidget, QTabBar, QLabel, QLineEdit,
-    QComboBox, QPushButton, QCheckBox, QSizePolicy,
+    QComboBox, QPushButton, QCheckBox, QRadioButton, QAbstractSpinBox,
+    QAbstractItemView, QSizePolicy,
     QDialog, QSizePolicy, QSizeGrip
 )
 from PySide6.QtCore import Qt, Signal
@@ -68,6 +69,8 @@ class AdditionalInputs(QDialog):
         self.footpath_value = footpath_value
         self.carriageway_width = carriageway_width
         self._member_properties_editable = True
+        self._read_only = False
+        self._ro_state = {}  # widget -> prior readOnly/enabled state, for restore on unlock
         self._last_saved_data = {}
         self.saved_values = {}  # Store all input values here
         self.init_ui()
@@ -235,6 +238,54 @@ class AdditionalInputs(QDialog):
             self.interacted_first = False
             from osdagbridge.core.bridge_types.plate_girder.ui_fields_additional_input import END_CONNECTORS
             UIBuilder.wire_end_connectors(END_CONNECTORS, ai=self)
+
+    def set_read_only(self, read_only: bool) -> None:  # lifecycle: toggles view-only mode while the input dock is locked
+        """
+        Toggle the dialog between editable and view-only.
+
+        When the input dock is locked (after a Design run), Additional Inputs may
+        still be opened to review values, but nothing should be editable or
+        saveable until the user unlocks. Only the editable *leaf* widgets are
+        locked — containers, tab bars (including sub-tabs) and scroll areas are
+        left alone, so the user can still navigate every tab/sub-tab and read all
+        values. Text inputs use setReadOnly (value stays clearly visible);
+        choosers (combos/checkboxes/buttons/tables) are disabled.
+
+        The previous state of every touched widget is recorded so unlocking
+        restores exactly what the optimization / design-mode logic had set — this
+        is safe because nothing can change those states while the dock is locked.
+
+        Call this AFTER the per-open sync (set_input_dictionary / design_mode_trigger).
+        """
+        self._read_only = read_only
+
+        # Restore anything a prior read-only pass had touched.
+        for widget, prev in self._ro_state.items():
+            try:
+                if isinstance(widget, (QLineEdit, QAbstractSpinBox)):
+                    widget.setReadOnly(prev)
+                else:
+                    widget.setEnabled(prev)
+            except RuntimeError:
+                pass  # widget was destroyed since it was recorded
+        self._ro_state = {}
+
+        if not read_only:
+            self.save_button.setEnabled(True)
+            self.defaults_button.setEnabled(True)
+            return
+
+        for widget in self.tabs.findChildren(QWidget):
+            if isinstance(widget, (QLineEdit, QAbstractSpinBox)):
+                self._ro_state[widget] = widget.isReadOnly()
+                widget.setReadOnly(True)
+            elif isinstance(widget, (QComboBox, QCheckBox, QRadioButton,
+                                     QPushButton, QAbstractItemView)):
+                self._ro_state[widget] = widget.isEnabled()
+                widget.setEnabled(False)
+
+        self.save_button.setEnabled(False)
+        self.defaults_button.setEnabled(False)
 
     def set_defaults(self) -> None:  # lifecycle: populates all widgets from working_input_dict; called at init time only
         """

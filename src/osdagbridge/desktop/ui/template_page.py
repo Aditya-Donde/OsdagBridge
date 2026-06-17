@@ -498,6 +498,11 @@ class CustomWindow(QWidget):
             except Exception:
                 pass
 
+        # When the input dock is locked (after Design), open Additional Inputs as
+        # view-only — values can be reviewed but not edited or saved until unlock.
+        # Applied last so it overrides the enabled states set by the syncs above.
+        dlg.set_read_only(bool(self.input_dock and self.input_dock.is_locked))
+
         dlg.show()
         dlg.raise_()
         dlg.activateWindow()
