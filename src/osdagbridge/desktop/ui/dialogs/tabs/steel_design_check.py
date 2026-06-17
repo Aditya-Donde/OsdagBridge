@@ -257,6 +257,7 @@ class SteelDesignCheckTab(QWidget):
         self.check_bars       : dict[str, PercentBarWidget]  = {}
         self.check_badges     : dict[str, StatusBadge]       = {}
         self.check_cards      : dict[str, QFrame]            = {}
+        self.checks_grid      : QGridLayout | None           = None
 
         self.summary_passed_label : QLabel | None      = None
         self.summary_failed_label : QLabel | None      = None
@@ -326,11 +327,29 @@ class SteelDesignCheckTab(QWidget):
         grid.setContentsMargins(0, 0, 0, 0)
         grid.setColumnStretch(0, 1)
         grid.setColumnStretch(1, 1)
+        self.checks_grid = grid
         for idx, (key, title) in enumerate(DESIGN_CHECKS):
             widget = self._build_check_card(key, title)
             grid.addWidget(widget, idx // 2, idx % 2)
             grid.setRowMinimumHeight(idx // 2, 0)   # don't force row height
         return grid
+
+    def _relayout_visible_cards(self) -> None:
+        """Re-pack visible cards into contiguous grid cells so hidden cards
+        leave no empty gaps. Card order (DESIGN_CHECK_ORDER) is preserved."""
+        grid = self.checks_grid
+        if grid is None:
+            return
+        for key in DESIGN_CHECK_ORDER:
+            card = self.check_cards.get(key)
+            if card is not None:
+                grid.removeWidget(card)
+        idx = 0
+        for key in DESIGN_CHECK_ORDER:
+            card = self.check_cards.get(key)
+            if card is not None and not card.isHidden():
+                grid.addWidget(card, idx // 2, idx % 2)
+                idx += 1
 
     def _build_check_card(self, key: str, title: str) -> QFrame:
         # Calculate total card height: title + eq_view + labels + bar + badge + spacing + margins
@@ -464,6 +483,7 @@ class SteelDesignCheckTab(QWidget):
                 badge.set_neutral()
                 badge.setVisible(False)
         self.design_results = []
+        self._relayout_visible_cards()
         self._refresh_summary()
 
     def populate_from_results(self, demand, capacity, engine) -> None:
@@ -518,6 +538,7 @@ class SteelDesignCheckTab(QWidget):
             card = self.check_cards.get(key)
             if card is not None:
                 card.setVisible(key in results_by_key)
+        self._relayout_visible_cards()
         self._refresh_summary()
 
 
