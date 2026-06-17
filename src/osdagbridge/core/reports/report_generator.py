@@ -1479,6 +1479,32 @@ The following load combinations were evaluated per IRC 6. The governing combinat
 
 
 def ch4_analysis(asum, fig_paths, bridge: "ReportDataBridge", span_m: float):
+    _span_m         = float(bridge.input_dict.get(KEY_SPAN, 0) or 0)
+    _allow_live_mm  = _span_m * 1000.0 / 800.0
+    _allow_total_mm = _span_m * 1000.0 / 600.0
+
+    # Find governing girder — worst (max) deflection across all girders
+    try:
+        n = int(bridge.input_dict.get(KEY_TS_NO_OF_GIRDERS, 1) or 1)
+    except (TypeError, ValueError):
+        n = 1
+
+    _live_mm  = None
+    _total_mm = None
+    for _gi in range(1, n + 1):
+        _l = bridge.output_dict.get(f"{KEY_SD_DEFL_LIVE}.G{_gi}")
+        _t = bridge.output_dict.get(f"{KEY_SD_DEFL_TOTAL}.G{_gi}")
+        if _l is not None:
+            _live_mm  = max(_live_mm, float(_l))  if _live_mm  is not None else float(_l)
+        if _t is not None:
+            _total_mm = max(_total_mm, float(_t)) if _total_mm is not None else float(_t)
+
+    _live_str        = f"{_live_mm:.3f} mm"  if _live_mm  is not None else "---"
+    _total_str       = f"{_total_mm:.3f} mm" if _total_mm is not None else "---"
+    _allow_live_str  = f"L/800 = {_allow_live_mm:.1f} mm"
+    _allow_total_str = f"L/600 = {_allow_total_mm:.1f} mm"
+    _live_status     = ("PASS" if _live_mm  <= _allow_live_mm  else r"\textcolor{red}{FAIL}") if _live_mm  is not None else "---"
+    _total_status    = ("PASS" if _total_mm <= _allow_total_mm else r"\textcolor{red}{FAIL}") if _total_mm is not None else "---"
     return r"""
 \chapter{Analysis Results}
 
@@ -1523,17 +1549,17 @@ A grillage model was used for structural analysis. The deck is idealized as a gr
 
 \begin{longtable}{|L{7cm}|p{8.5cm}|}
 \hline
-\textbf{Deflection due to Live Load, delta\_LL} & """ + '' + r""" \\[6pt]
+\textbf{Deflection due to Live Load, delta\_LL} & """ + _live_str + r""" \\[6pt]
 \hline
-\textbf{Allowable Live Load Deflection ()} & """ + '' + r""" \\[6pt]
+\textbf{Allowable Live Load Deflection ()} & """ + _allow_live_str + r""" \\[6pt]
 \hline
-\textbf{Live Load Deflection Check Status} & """ + '' + r""" \\[6pt]
+\textbf{Live Load Deflection Check Status} & """ + _live_status + r""" \\[6pt]
 \hline
-\textbf{Deflection due to Total Load, delta\_total} & """ + '' + r""" \\[6pt]
+\textbf{Deflection due to Total Load, delta\_total} & """ + _total_str + r""" \\[6pt]
 \hline
-\textbf{Allowable Total Deflection ()} & """ + '' + r""" \\[6pt]
+\textbf{Allowable Total Deflection ()} & """ + _allow_total_str + r""" \\[6pt]
 \hline
-\textbf{Total Load Deflection Check Status} & """ + '' + r""" \\[6pt]
+\textbf{Total Load Deflection Check Status} & """ + _total_status + r""" \\[6pt]
 \hline
 \end{longtable}
 
