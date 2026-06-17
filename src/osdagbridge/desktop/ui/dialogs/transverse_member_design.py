@@ -62,6 +62,9 @@ from osdagbridge.core.utils.common import (
     KEY_TD_ED_SECTION_PROPS_BOTTOM_CHORD,
     KEY_TD_ED_DESIGN_CHECK_RESULTS,
     KEY_TD_ED_BRACING_DIAGRAM,
+    KEY_MP_ED_BRACING_SECTION,
+    KEY_MP_ED_TOP_CHORD_SECTION_TYPE,
+    KEY_MP_ED_BOTTOM_CHORD_SECTION_TYPE,
 )
 
 # ── Style constants ───────────────────────────────────────────────────────────
@@ -1125,16 +1128,15 @@ class TransverseMemberDesign(QDialog):
         if conn_w:
             conn_w.setText("Bolted")
 
-        if not self._designs_dict:
-            return
-
-        pair_designs = self._designs_dict.get(pair_key, {})
+        pair_designs = self._designs_dict.get(pair_key, {}) if self._designs_dict else {}
         ed_type      = pair_designs.get("ed_type") or ""
         type_w = self._widgets.get(KEY_TD_ED_SECTION_INPUTS_TYPE)
         if type_w:
             type_w.setText(ed_type)
 
         if ed_type == "Welded Beam":
+            if not pair_designs:
+                return
             wb = pair_designs.get("welded_beam", {})
             for key, fid in (
                 ("is_section",        KEY_TD_ED_SECTION_INPUTS_IS_SECTION),
@@ -1153,26 +1155,28 @@ class TransverseMemberDesign(QDialog):
             self._fill_section_card("ED Welded Beam", wb.get("designation", ""), "Welded Beam")
 
         else:  # Cross Bracing
-            od      = getattr(self._backend, "output_dict", {}) or {}
             pair_id = pair_key.replace("-", "")
 
-            diag_des  = self._get_governing_section(pair_designs, "diagonal")
-            chord_des = self._get_governing_section(pair_designs, "chord")
+            diag_des  = self._get_governing_section(pair_designs, "diagonal") if pair_designs else ""
+            chord_des = self._get_governing_section(pair_designs, "chord") if pair_designs else ""
 
-            btype_raw = pair_designs.get("ed_bracing_type")
+            btype_raw = pair_designs.get("ed_bracing_type") if pair_designs else None
             brace_lbl = ("K-Bracing" if "K" in str(btype_raw).upper() else "X-Bracing") if btype_raw else ""
 
-            if diag_des:
-                diag_type_lbl = self._section_type_label(
-                    od.get(f"member_properties.end_diaphragm_details.{pair_id}.diagonal.section_type", "")
-                )
-            else:
-                diag_type_lbl = ""
+            idict = getattr(self._backend, "input_dict", {}) or {}
+            m = re.match(r"G(\d+)G", pair_id)
+            girder_idx = m.group(1) if m else "1"
+            e_suffix = f".{pair_id}.E{girder_idx}M1"
 
-            tc_type_lbl   = self._section_type_label(
-                od.get(f"member_properties.end_diaphragm_details.{pair_id}.top_chord.section_type", ""))
-            bc_type_lbl   = self._section_type_label(
-                od.get(f"member_properties.end_diaphragm_details.{pair_id}.bottom_chord.section_type", ""))
+            diag_type_lbl = self._section_type_label(
+                idict.get(f"{KEY_MP_ED_BRACING_SECTION}{e_suffix}", "")
+            )
+            tc_type_lbl = self._section_type_label(
+                idict.get(f"{KEY_MP_ED_TOP_CHORD_SECTION_TYPE}{e_suffix}", "")
+            )
+            bc_type_lbl = self._section_type_label(
+                idict.get(f"{KEY_MP_ED_BOTTOM_CHORD_SECTION_TYPE}{e_suffix}", "")
+            )
 
             for fid, val in (
                 (KEY_TD_ED_SECTION_INPUTS_BRACING_TYPE,                  brace_lbl),
