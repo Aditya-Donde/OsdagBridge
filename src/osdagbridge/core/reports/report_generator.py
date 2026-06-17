@@ -193,6 +193,8 @@ from osdagbridge.core.utils.common import (
     KEY_MATERIAL_GIRDER_DENSITY,
     KEY_MATERIAL_DECK_DENSITY,
     # Live Load
+    KEY_LL_ECCENTRICITY,
+    KEY_LL_FOOTPATH_PRESSURE_MODE,
     KEY_LL_FOOTPATH_PRESSURE_VALUE,
     KEY_LL_IRC_CLASS_A,
     KEY_LL_IRC_70R_WHEELED,
@@ -212,15 +214,25 @@ from osdagbridge.core.utils.common import (
     KEY_WL_TRANSVERSE_WIND_FORCE,
     KEY_WL_LONGITUDINAL_WIND_FORCE,
     KEY_WL_VERTICAL_WIND_FORCE,
-    # Seismic Load (computed values)
+    # Seismic Load (input values)
     KEY_SL_SEISMIC_ZONE,
-    KEY_SL_ZONE_FACTOR,
     KEY_SL_IMPORTANCE_FACTOR,
     KEY_SL_SOIL_TYPE,
+    KEY_SL_TIME_PERIOD,
+    KEY_SL_DAMPING,
+    KEY_SL_RESPONSE_REDUCTION,
+    KEY_SL_DEAD_LOAD_MODE,
+    KEY_SL_DEAD_LOAD_VALUE,
+    KEY_SL_LIVE_LOAD_MODE,
+    KEY_SL_LIVE_LOAD_VALUE,
+    # Seismic Load (computed values)
+    KEY_SL_ZONE_FACTOR,
     KEY_SL_SPECTRAL_COEFF,
     KEY_SL_HORIZONTAL_COEFF,
     KEY_SL_VERTICAL_COEFF,
-    # Temperature Load (computed values)
+    # Temperature Load
+    KEY_TL_HIGHEST_MAX_TEMP,
+    KEY_TL_LOWEST_MIN_TEMP,
     KEY_TL_BRIDGE_TEMP_MIN,
     KEY_TL_BRIDGE_TEMP_MAX,
     KEY_TL_TEMP_RISE,
@@ -1307,6 +1319,94 @@ def ch3_loads(input_dict):
     else:
         braking_force_str = "N/A"
 
+    fp_mode  = input_dict.get(KEY_LL_FOOTPATH_PRESSURE_MODE, "")
+    fp_value = input_dict.get(KEY_LL_FOOTPATH_PRESSURE_VALUE, "")
+    if str(fp_mode).strip().lower() in ("as per irc 6", "as per irc6", "automatic"):
+        try:
+            fp_str = f"{IRC6_2017.cl_206_1_footway_load():.3f} kN/m² (IRC 6 Cl. 206.1)"
+        except Exception:
+            fp_str = "N/A"
+    elif fp_value not in (None, ""):
+        fp_str = f"{fp_value} kN/m²"
+    else:
+        fp_str = "N/A"
+
+    # Vz / Pz — prefer stored computed values; fall back to IRC6 Table 12
+    vz_val = input_dict.get(KEY_WL_HOURLY_MEAN_WIND)
+    pz_val = input_dict.get(KEY_WL_HOURLY_WIND_PRESSURE)
+    if not vz_val or not pz_val:
+        try:
+            _vb  = input_dict.get(KEY_WL_BASIC_WIND_SPEED) or input_dict.get('wind_speed')
+            _h   = input_dict.get(KEY_WL_AVG_EXPOSED_HEIGHT)
+            _ter = {
+                "Plain Terrain": "plain",
+                "Terrain with Obstructions": "obstructed",
+            }.get(str(input_dict.get(KEY_WL_TERRAIN_TYPE, "")).strip(), "plain")
+            _res = IRC6_2017.table_12(float(_h), _ter, float(_vb))
+            if not vz_val:
+                vz_val = _res.get("Vz")
+            if not pz_val:
+                pz_val = _res.get("Pz")
+        except Exception:
+            pass
+    vz_str = f"{float(vz_val):.2f} m/s" if vz_val not in (None, "") else "N/A"
+    pz_str = f"{float(pz_val):.2f} N/m²" if pz_val not in (None, "") else "N/A"
+
+    # Table 3.5 — Seismic: prefer stored computed values; fall back to IRC6 cl_218_5_1
+    sl_zone_factor = input_dict.get(KEY_SL_ZONE_FACTOR)
+    sl_spectral    = input_dict.get(KEY_SL_SPECTRAL_COEFF)
+    sl_ah          = input_dict.get(KEY_SL_HORIZONTAL_COEFF)
+    sl_av          = input_dict.get(KEY_SL_VERTICAL_COEFF)
+    if not sl_ah or not sl_zone_factor:
+        try:
+            _zone = input_dict.get(KEY_SL_SEISMIC_ZONE) or input_dict.get('seismic_zone')
+            _zmap = {"1": "I", "2": "II", "3": "III", "4": "IV", "5": "V"}
+            _z    = str(_zone).strip().upper()
+            if _z.isdigit():
+                _z = _zmap.get(_z)
+            _smap = {"Type I – Rocky or Hard": 1, "Type II – Medium Soil": 2, "Type III – Soft Soil": 3}
+            _st   = _smap.get(str(input_dict.get(KEY_SL_SOIL_TYPE, "")), 1)
+            _tp   = input_dict.get(KEY_SL_TIME_PERIOD)
+            _damp = input_dict.get(KEY_SL_DAMPING) or "5"
+            _dl_v = input_dict.get(KEY_SL_DEAD_LOAD_VALUE)
+            _ll_v = input_dict.get(KEY_SL_LIVE_LOAD_VALUE)
+            _dead = float(_dl_v) if str(input_dict.get(KEY_SL_DEAD_LOAD_MODE, "")) == "Custom" and _dl_v else 0.0
+            _live = float(_ll_v) if str(input_dict.get(KEY_SL_LIVE_LOAD_MODE, "")) == "Custom" and _ll_v else 0.0
+            _res  = IRC6_2017.cl_218_5_1(zone=f"Zone {_z}", soil_type=_st, dead_load_kN=_dead,
+                        live_load_kN=_live, period_T=float(_tp) if _tp else None,
+                        damping_percent=float(_damp))
+            if not sl_zone_factor:
+                sl_zone_factor = _res.get("Z")
+            if not sl_spectral:
+                sl_spectral    = _res.get("Sa_g_adjusted")
+            if not sl_ah:
+                sl_ah          = _res.get("Ah")
+            if not sl_av:
+                sl_av          = round(_res.get("Ah", 0) * 2 / 3, 4)
+        except Exception:
+            pass
+
+    def _sl(v, unit=""):
+        return f"{float(v):.4f}{unit}" if v not in (None, "") else "N/A"
+
+    # Table 3.6 — Temperature: compute effective bridge temp range from shade temps
+    tl_temp_min = tl_temp_max = tl_rise = tl_fall = "N/A"
+    try:
+        _tmax = input_dict.get(KEY_TL_HIGHEST_MAX_TEMP) or input_dict.get('shade_temp_max')
+        _tmin = input_dict.get(KEY_TL_LOWEST_MIN_TEMP)  or input_dict.get('shade_temp_min')
+        if _tmax and _tmin:
+            _res    = IRC6_2017.cl_215_2_effective_bridge_temperature(
+                          float(_tmax), float(_tmin), 'metallic', False)
+            _bt_min = _res.get('T_min', 0)
+            _bt_max = _res.get('T_max', 0)
+            _mean   = (_bt_max + _bt_min) / 2.0
+            tl_temp_min = f"{_bt_min:.2f}"
+            tl_temp_max = f"{_bt_max:.2f}"
+            tl_rise     = f"{_bt_max - _mean:.2f}"
+            tl_fall     = f"{_mean - _bt_min:.2f}"
+    except Exception:
+        pass
+
     # --- Table 3.7: Load Combinations (dynamically generated from IRC 6) ---
     _LOAD_LABEL_MAP = {
         'dead_load':         'DL',
@@ -1335,7 +1435,7 @@ def ch3_loads(input_dict):
                 if val is None:
                     continue  # skip N/A factors
                 parts.append(f"{label}({val:.2f})")
-        return ', '.join(parts)
+        return ' + '.join(parts)
 
     uls_combos = IRC6_2017.uls_load_combinations()
     sls_combos = IRC6_2017.sls_load_combinations()
@@ -1395,9 +1495,9 @@ This section summarizes all loads applied to the bridge and the load combination
 \hline
 \textbf{Impact Factor (IRC 6)} & """ + _tex(impact_factor_str) + r""" \\[6pt]
 \hline
-\textbf{Braking Load (IRC 6)} & """ + _tex(braking_force_str) + r""" \\[6pt]
+\textbf{Eccentricity Braking Load} & """ + (_render_value(input_dict, KEY_LL_ECCENTRICITY, ' m')) + r""" \\[6pt]
 \hline
-\textbf{Footpath Live Load (if applicable)} & """ + (_render_value(input_dict, KEY_LL_FOOTPATH_PRESSURE_VALUE, ' kN/m\\textsuperscript{2}')) + r""" \\[6pt]
+\textbf{Footpath Pressure} & """ + _tex(fp_str) + r""" \\[6pt]
 \hline
 \end{longtable}
 
@@ -1412,15 +1512,9 @@ This section summarizes all loads applied to the bridge and the load combination
 \hline
 \textbf{Average Exposed Height, H (m)} & """ + (_render_value(input_dict, KEY_WL_AVG_EXPOSED_HEIGHT, ' m')) + r""" \\[6pt]
 \hline
-\textbf{Hourly Mean Wind Speed, Vz} & """ + (_render_value(input_dict, KEY_WL_HOURLY_MEAN_WIND, ' m/s')) + r""" \\[6pt]
+\textbf{Hourly Mean Wind Speed, Vz} & """ + _tex(vz_str) + r""" \\[6pt]
 \hline
-\textbf{Hourly Wind Pressure, Pz} & """ + (_render_value(input_dict, KEY_WL_HOURLY_WIND_PRESSURE, ' N/m\\textsuperscript{2}')) + r""" \\[6pt]
-\hline
-\textbf{Transverse Wind Force} & """ + (_render_value(input_dict, KEY_WL_TRANSVERSE_WIND_FORCE, ' kN')) + r""" \\[6pt]
-\hline
-\textbf{Longitudinal Wind Force} & """ + (_render_value(input_dict, KEY_WL_LONGITUDINAL_WIND_FORCE, ' kN')) + r""" \\[6pt]
-\hline
-\textbf{Vertical Wind Force} & """ + (_render_value(input_dict, KEY_WL_VERTICAL_WIND_FORCE, ' kN')) + r""" \\[6pt]
+\textbf{Hourly Wind Pressure, Pz} & """ + _tex(pz_str) + r""" \\[6pt]
 \hline
 \end{longtable}
 
@@ -1431,21 +1525,17 @@ This section summarizes all loads applied to the bridge and the load combination
 \hline
 \textbf{Seismic Zone} & """ + (_render_value(input_dict,'seismic_zone')) + r""" [from Project Location] \\[6pt]
 \hline
-\textbf{Zone Factor, Z} & """ + (_render_value(input_dict, KEY_SL_ZONE_FACTOR)) + r""" \\[6pt]
+\textbf{Zone Factor, Z} & """ + _tex(_sl(sl_zone_factor)) + r""" \\[6pt]
 \hline
 \textbf{Importance Factor, I} & """ + (_render_value(input_dict, KEY_SL_IMPORTANCE_FACTOR)) + r""" \\[6pt]
 \hline
 \textbf{Type of Soil} & """ + (_render_value(input_dict, KEY_SL_SOIL_TYPE)) + r""" \\[6pt]
 \hline
-\textbf{Sa/g} & """ + (_render_value(input_dict, KEY_SL_SPECTRAL_COEFF)) + r""" \\[6pt]
+\textbf{Sa/g} & """ + _tex(_sl(sl_spectral)) + r""" \\[6pt]
 \hline
-\textbf{Horizontal Seismic Coefficient, Ah} & """ + (_render_value(input_dict, KEY_SL_HORIZONTAL_COEFF)) + r""" \\[6pt]
+\textbf{Horizontal Seismic Coefficient, Ah} & """ + _tex(_sl(sl_ah)) + r""" \\[6pt]
 \hline
-\textbf{Vertical Seismic Coefficient, Av} & """ + (_render_value(input_dict, KEY_SL_VERTICAL_COEFF)) + r""" \\[6pt]
-\hline
-\textbf{Horizontal Seismic Force (longitudinal)} & """ + '' + r""" kN \\[6pt]
-\hline
-\textbf{Horizontal Seismic Force (transverse)} & """ + '' + r""" kN \\[6pt]
+\textbf{Vertical Seismic Coefficient, Av} & """ + _tex(_sl(sl_av)) + r""" \\[6pt]
 \hline
 \end{longtable}
 
@@ -1458,9 +1548,9 @@ This section summarizes all loads applied to the bridge and the load combination
 \hline
 \textbf{Minimum Shade Temperature} & """ + (_render_value(input_dict,'shade_temp_min')) + r""" $^\circ$C \\[6pt]
 \hline
-\textbf{Effective Bridge Temp. Range} & """ + (_render_value(input_dict, KEY_TL_BRIDGE_TEMP_MIN)) + r""" to """ + (_render_value(input_dict, KEY_TL_BRIDGE_TEMP_MAX)) + r""" $^\circ$C \\[6pt]
+\textbf{Effective Bridge Temp. Range} & """ + tl_temp_min + r""" to """ + tl_temp_max + r""" $^\circ$C \\[6pt]
 \hline
-\textbf{Temperature Rise / Fall for Design} & +""" + (_render_value(input_dict, KEY_TL_TEMP_RISE)) + r""" $^\circ$C / \textminus{}""" + (_render_value(input_dict, KEY_TL_TEMP_FALL)) + r""" $^\circ$C \\[6pt]
+\textbf{Temperature Rise / Fall for Design} & +""" + tl_rise + r""" $^\circ$C / \textminus{}""" + tl_fall + r""" $^\circ$C \\[6pt]
 \hline
 \end{longtable}
 
@@ -3691,6 +3781,33 @@ def build_report_payload(request, input_dict, output_dict):
                     input_dict['shade_temp_min'] = weather.get('min_temp')
         except Exception as e:
             logger.warning(f"Failed to parse project location data: {e}")
+
+        # ── Table 3.6 rows 3 & 4: effective bridge temp range and rise/fall ────
+        # The computed keys live in output_dict (which is a snapshot of input_dict
+        # at design time). Merge them into input_dict if not already present.
+        for _tkey in (KEY_TL_BRIDGE_TEMP_MIN, KEY_TL_BRIDGE_TEMP_MAX,
+                      KEY_TL_TEMP_RISE, KEY_TL_TEMP_FALL):
+            if not input_dict.get(_tkey) and output_dict.get(_tkey):
+                input_dict[_tkey] = output_dict[_tkey]
+
+        # If still missing, compute from whatever temperature inputs are available.
+        if not input_dict.get(KEY_TL_BRIDGE_TEMP_MIN):
+            try:
+                max_str = input_dict.get(KEY_TL_HIGHEST_MAX_TEMP) or input_dict.get('shade_temp_max')
+                min_str = input_dict.get(KEY_TL_LOWEST_MIN_TEMP)  or input_dict.get('shade_temp_min')
+                if max_str and min_str:
+                    from osdagbridge.core.utils.codes.irc6_2017 import IRC6_2017
+                    res   = IRC6_2017.cl_215_2_effective_bridge_temperature(
+                                float(max_str), float(min_str), 'metallic', False)
+                    t_min = res.get('T_min', 0)
+                    t_max = res.get('T_max', 0)
+                    mean  = (t_max + t_min) / 2.0
+                    input_dict[KEY_TL_BRIDGE_TEMP_MIN] = f"{t_min:.2f}"
+                    input_dict[KEY_TL_BRIDGE_TEMP_MAX] = f"{t_max:.2f}"
+                    input_dict[KEY_TL_TEMP_RISE]       = f"{t_max - mean:.2f}"
+                    input_dict[KEY_TL_TEMP_FALL]       = f"{mean - t_min:.2f}"
+            except Exception as _te:
+                logger.warning(f"Could not compute temperature values for report: {_te}")
 
         asum = {}
         if output_dict:
