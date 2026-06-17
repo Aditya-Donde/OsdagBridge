@@ -1555,3 +1555,123 @@ def figure_to_bytes(fig, fmt="png", dpi=150):
     buf.seek(0)
     plt.close(fig)
     return buf.read()
+
+def _render_report_figure(fig, show_max: bool, show_min: bool):
+    """Apply report annotations, set isometric view, save to PNG bytes, close figure.
+
+    Returns PNG bytes (whitespace auto-cropped via PIL) or None on failure.
+    """
+    import logging
+    _log = logging.getLogger(__name__)
+    try:
+        for ax in fig.axes:
+            for artist in list(ax.lines) + list(ax.texts):
+                gid = artist.get_gid()
+                if gid == "max_line":
+                    artist.set_visible(show_max)
+                elif gid == "min_line":
+                    artist.set_visible(show_min)
+                elif gid == "all_vals":
+                    artist.set_visible(False)
+
+        if fig.axes:
+            ax = fig.axes[0]
+            if hasattr(ax, 'view_init'):
+                ax.view_init(elev=30, azim=-60)
+
+        # dpi=150 is enough for PDF; bbox_inches='tight' intentionally
+        # omitted — it triggers multiple extra render passes on 3D axes.
+        raw_buf = io.BytesIO()
+        fig.savefig(raw_buf, format='png', dpi=150, facecolor='white')
+        plt.close(fig)
+        raw_buf.seek(0)
+
+        try:
+            from PIL import Image, ImageChops
+            img  = Image.open(raw_buf).convert('RGB')
+            bg   = Image.new('RGB', img.size, (255, 255, 255))
+            bbox = ImageChops.difference(img, bg).getbbox()
+            if bbox:
+                pad = 4
+                w, h = img.size
+                bbox = (max(0, bbox[0] - pad), max(0, bbox[1] - pad),
+                        min(w, bbox[2] + pad), min(h, bbox[3] + pad))
+                img = img.crop(bbox)
+            out = io.BytesIO()
+            img.save(out, format='PNG')
+            return out.getvalue()
+        except Exception:
+            raw_buf.seek(0)
+            return raw_buf.read()
+    except Exception as exc:
+        _log.warning("_render_report_figure: %s", exc)
+        try:
+            plt.close(fig)
+        except Exception:
+            pass
+    return None
+
+
+def capture_report_figures(ds_all, nodes, members, edge_dist=0.0, eng_scale=1.0) -> dict:
+    """Build the Envelope ULS analysis plots for the report — fully off-screen.
+
+    Builds each figure directly via the build_figure_* generators. No UI,
+    no canvas, nothing written to disk.
+
+    Captures:
+      • bm_envelope — Mz (bending moment), Max annotation, isometric
+      • sf_envelope — Vy (shear),           Max + Min annotations, isometric
+      • defl_ll     — Dy (deflection),       Max annotation, isometric (1.0 LL)
+
+    Returns {key: bytes} — PNG data in RAM.
+    """
+    import logging
+    _log = logging.getLogger(__name__)
+
+    if ds_all is None:
+        _log.warning("capture_report_figures: plot data not ready — skipped")
+        return {}
+
+    data = {}
+
+    # Bending Moment Envelope (Mz, Envelope ULS) — Max annotation
+    try:
+        ds_env = ds_all.sel(Loadcase="Envelope ULS")
+        fig, _ = build_figure_bmd(
+            ds_env, "Mz", nodes, members,
+            edge_dist=edge_dist, eng_scale=eng_scale, selected_girder="All",
+        )
+        b = _render_report_figure(fig, show_max=True, show_min=False)
+        if b:
+            data['bm_envelope'] = b
+    except Exception as exc:
+        _log.warning("capture_report_figures: bm_envelope failed: %s", exc)
+
+    # Shear Force Envelope (Vy, Envelope ULS) — Max + Min annotations
+    try:
+        ds_env = ds_all.sel(Loadcase="Envelope ULS")
+        fig, _ = build_figure_sfd(
+            ds_env, "Fy", nodes, members,
+            edge_dist=edge_dist, eng_scale=eng_scale, selected_girder="All",
+        )
+        b = _render_report_figure(fig, show_max=True, show_min=True)
+        if b:
+            data['sf_envelope'] = b
+    except Exception as exc:
+        _log.warning("capture_report_figures: sf_envelope failed: %s", exc)
+
+    # Deflection (Dy, 1.0 LL) — Max annotation
+    try:
+        ds_ll = ds_all.sel(Loadcase="1.0 LL")
+        fig, _ = build_figure_deflection(
+            ds_ll, "Dy", nodes, members,
+            edge_dist=edge_dist, eng_scale=eng_scale, selected_girder="All",
+        )
+        b = _render_report_figure(fig, show_max=True, show_min=False)
+        if b:
+            data['defl_ll'] = b
+    except Exception as exc:
+        _log.warning("capture_report_figures: defl_ll failed: %s", exc)
+
+    _log.info("capture_report_figures: %d plot(s) captured", len(data))
+    return data

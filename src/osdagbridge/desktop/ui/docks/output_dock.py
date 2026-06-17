@@ -759,6 +759,22 @@ class OutputDock(QWidget):
             except Exception as exc:
                 logger.warning("Could not capture cross bracing / end diaphragm figures: %s", exc)
 
+            # Analysis envelope plot: live plot widget → temp PNG → bytes → deleted.
+            # Switch the central area to the plots view first (like the CAD does) so
+            # the widget is visible and renders the right condition before capture.
+            try:
+                plots_widget = getattr(main_window, 'plots_widget', None)
+                if plots_widget is not None and getattr(plots_widget, '_ds_all', None) is not None:
+                    from osdagbridge.core.bridge_types.plate_girder.plot_generator import (
+                        capture_report_figures,
+                    )
+                    figure_data.update(capture_report_figures(
+                        plots_widget._ds_all, plots_widget._nodes, plots_widget._members,
+                        edge_dist=plots_widget._edge_dist, eng_scale=plots_widget._eng_scale,
+                    ))
+            except Exception as exc:
+                logger.warning("Could not capture envelope plot: %s", exc)
+
             cad_generator = {
                 'generator':   getattr(cad_3d_widget, 'generator', None),
                 'figure_data': figure_data,

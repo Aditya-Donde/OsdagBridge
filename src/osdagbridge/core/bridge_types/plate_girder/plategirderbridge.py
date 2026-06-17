@@ -931,13 +931,6 @@ class PlateGirderBridge:
         if isinstance(cad_generator, dict):
             figure_data.update(cad_generator.get('figure_data', {}))
 
-        # Grillage figure: matplotlib → bytes (already in RAM, no file needed)
-        grillage_fig = self.build_figure_grillage() if hasattr(self, 'build_figure_grillage') else None
-        if grillage_fig:
-            grillage_bytes = self.figure_to_bytes(grillage_fig)
-            if grillage_bytes:
-                figure_data['grillage'] = grillage_bytes
-
         payload.figure_data = figure_data  # handed off; generate_report clears it after writing
 
         return generate_report(payload, request)

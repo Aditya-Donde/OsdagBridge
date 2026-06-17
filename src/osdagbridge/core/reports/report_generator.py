@@ -1539,23 +1539,9 @@ A grillage model was used for structural analysis. The deck is idealized as a gr
 
 \vspace{1em}
 \noindent
-\fbox{
-\parbox{0.97\textwidth}{
-\textit{[ PLACEHOLDER: FIGURE --- Bending Moment Envelope: Plot of max/min BM along span for governing ULS and SLS combinations. X-axis: distance from left support (m). Y-axis: Bending Moment (kN-m). ]}
-}
-}
-
-\vspace{1em}
-\noindent
-\fbox{
-\parbox{0.97\textwidth}{
-\textit{[ PLACEHOLDER: FIGURE --- Shear Force Envelope: Plot of max/min SF along span. X-axis: distance from left support (m). Y-axis: Shear Force (kN). ]}
-}
-}
-
-\vspace{1em}
-\noindent
-""" + _fig_embed(fig_paths.get('grillage'), 'Figure 3 -- 3D Grillage Model with deformed shape') + r"""
+""" + _fig_embed(fig_paths.get('bm_envelope'), 'Bending Moment Envelope (Envelope ULS): Max/min BM along span. X-axis: distance from left support (m). Y-axis: Bending Moment (kN-m).', width=r'0.75\textwidth') + r"""
+""" + _fig_embed(fig_paths.get('sf_envelope'), 'Shear Force Envelope (Envelope ULS): Max/min SF along span. X-axis: distance from left support (m). Y-axis: Shear Force (kN).', width=r'0.75\textwidth') + r"""
+""" + _fig_embed(fig_paths.get('defl_ll'), 'Vertical Deflection D$_y$ (1.0 LL): Maximum deflection along span. Load Case: 1.0 LL, Combination: $D_y$. Nodes shown. Isometric view.', width=r'0.75\textwidth') + r"""
 """
 
 
@@ -2915,14 +2901,20 @@ End diaphragms at the supports transfer transverse loads to the bearings, restra
 # Chapters 6-9: Drawings, Quantities, Logs, References
 
 
-def _fig_embed(path, caption, width=r'0.9\textwidth'):
+def _fig_embed(path, caption, width=r'\textwidth', height=None):
     """Embed a real figure when path is provided (already copied); otherwise use an fbox placeholder."""
     if path:
         p = path.replace('\\', '/')
+        opts = 'width=' + width
+        if height:
+            opts += ',height=' + height + ',keepaspectratio'
         return (r'\begin{figure}[H]' + '\n'
+                r'\vspace{-0.5em}' + '\n'
                 r'\centering' + '\n'
-                r'\includegraphics[width=' + width + ']{' + p + '}\n'
-                r'\caption*{' + caption + '}\n'
+                r'\includegraphics[' + opts + ']{' + p + '}\n'
+                r'\vspace{-0.5em}' + '\n'
+                r'\caption*{\small ' + caption + '}\n'
+                r'\vspace{-0.5em}' + '\n'
                 r'\end{figure}')
     # fbox placeholder — matches template exactly
     return (r'\noindent\fbox{\parbox{0.97\textwidth}{' + '\n'
@@ -3326,7 +3318,6 @@ class ReportRequest:
 
 @dataclass
 class ReportFigures:
-    grillage:        Optional[str] = None
     plan:            Optional[str] = None
     cross_section:   Optional[str] = None
     final_geometry:  Optional[str] = None
@@ -3337,6 +3328,7 @@ class ReportFigures:
     girder_end:      Optional[str] = None
     bm_envelope:     Optional[str] = None
     sf_envelope:     Optional[str] = None
+    defl_ll:         Optional[str] = None
     shear_connector: Optional[str] = None
     cross_bracing:   Optional[str] = None
 
@@ -3675,26 +3667,6 @@ def build_report_payload(request, input_dict, output_dict):
 
 
 # ---------------------------------------------------------------------------
-# Figure export helper (unchanged)
-# ---------------------------------------------------------------------------
-
-def export_grillage_figure(grillage_image, output_dir, file_stem):
-    try:
-        ad = os.path.join(output_dir, f"{file_stem}_assets")
-        os.makedirs(ad, exist_ok=True)
-        op = os.path.join(ad, "grillage.png")
-        if grillage_image:
-            img = grillage_image
-            if hasattr(img, 'save'):
-                img.save(op)
-            elif isinstance(img, bytes):
-                with open(op, 'wb') as fh:
-                    fh.write(img)
-            if os.path.exists(op):
-                return os.path.abspath(op)
-    except Exception as exc:
-        logger.warning("grillage export: %s", exc)
-    return None
 
 
 
@@ -3708,7 +3680,6 @@ _FIGURE_MAP = [
     ('plan',                  'plan.png'),
     ('cross_section',         'cross_section.png'),
     ('final_geometry',        'final_geometry.png'),
-    ('grillage',              'grillage.png'),
     ('longitudinal_elevation','longitudinal_elevation.png'),
     ('girder_3d',             'girder_3d.png'),
     ('girder_top',            'girder_top.png'),
@@ -3724,6 +3695,7 @@ _FIGURE_MAP = [
     ('ed_bottom_chord',       'ed_bottom_chord.png'),
     ('bm_envelope',           'bm_envelope.png'),
     ('sf_envelope',           'sf_envelope.png'),
+    ('defl_ll',               'defl_ll.png'),
 ]
 
 def generate_report(payload, request):
