@@ -26,32 +26,10 @@
 # 2   | Table 2.1                 | 'longitude'                  | injected from weather_data; no KEY_ yet
 # 3   | Table 2.4 / Exec Summary  | 'num_lanes'                  | design lane count; NOT the UI counter
 #     |                           |                              | KEY_WC_LD_LANE_TABLE_COUNT; stays GAP
-# 4   | Exec Summary (Proj Ovw)   | 'overall_design_status'      | output_dict value; no KEY_ needed
-# 5   | Exec Summary (Proj Ovw)   | 'governing_check'            | output_dict value; no KEY_ needed
-# 6   | Exec Summary (Proj Ovw)   | 'overall_utilization_ratio'  | output_dict value; no KEY_ needed
-# 7   | Exec Summary (Table 1)    | 'section_designation'        | output_dict value; no KEY_ needed
-# 8   | Table 2.7 / 2.8           | ''              | no. of bracing panels; no KEY_ yet
-# 9   | Table 2.8                 | ''              | ED spacing; no KEY_ yet
-# 10  | Table 4.1, 4.2            | ''             | Load Cases (DL only, Seismic (EL)); ADD_BACKEND_KEY
-# 11  | Table 4.1, 5.22           | ''             | Load Combinations (LC-ULS-1, LC-SLS-1); ADD_BACKEND_KEY
-# 12  | Table 5.12                | ''                | tau_fn (67 MPa); PLACEHOLDER
-# 13  | Table 5.20b, 5.22         | ''                 | Slenderness limits (250, 400); PLACEHOLDER
-# 14  | Table 3.4, 3.5, 3.6       | 'wind_speed', 'seismic_zone' | Weather inputs; no KEY_ yet
-# 15  | Table 4.1 - 4.3           | ''             | Analysis solver demands (Max BM, SF, Defl)
-# 16  | Table 5.7 - 5.9           | 'stiffener_by_member'        | Stiffener capacities; no KEY_ yet
-# 17  | Table 5.14 - 5.17         | ''             | Deck slab / shear connector forces
-# 18  | Table 5.20 - 5.21         | ''             | Cross-bracing / Diaphragm forces
-# 19  | Table 7.1                 | 'steel_girders_mt' (etc)     | All BOM quantities; no KEY_ yet
-# 20  | Chapter 8                 | ''             | Design log; no structural KEY_
-# =============================================================================
-
-# =============================================================================
-# MISSING DATA REPORT — values needed by templates but not yet confirmed
-# as provided by the backend in input_dict
-# =============================================================================
-# #  | KEY_ constant used                        | Template   | Backend action needed
-# ─────────────────────────────────────────────────────────────────────────────
-# (All missing data cases for Chapters 1-9 resolved or moved to GAPS)
+# 4   | Exec Summary (Proj Ovw)   | 'overall_design_status'      | 
+# 5   | Exec Summary (Proj Ovw)   | 'governing_check'            | 
+# 6   | Exec Summary (Proj Ovw)   | 'overall_utilization_ratio'  | 
+# 7   | Exec Summary (Table 1)    | 'section_designation'        | 
 # =============================================================================
 
 #==============================================================================
@@ -61,7 +39,9 @@
 #        │
 #        ▼
 #[output_dock.py] OutputDock._on_report_clicked()
-#        │  traverses UI tree to locate `cad_generator` widget
+#        │  Traverses UI tree to locate `cad_3d_widget`
+#        │  Captures CAD views as raw bytes (no disk writes) → `figure_data` dict
+#        │  Wraps it in `cad_generator = {'generator': ..., 'figure_data': ...}`
 #        └──► [template_page.py] CustomWindow.open_report_dialog(cad_generator)
 #                    │
 #                    ├── ReportOptionsDialog(parent=self).exec()
@@ -80,22 +60,19 @@
 #                                            ├──► [report_generator.py] build_report_payload(request, report_inputs, output_dict)
 #                                            │           └── returns ReportPayload dataclass
 #                                            │
-#                                            ├── self._export_cad_figures(cad_generator)
-#                                            │    └── exports 4 headless views to ResourceFiles/Images
-#                                            │    └── wires paths onto payload.figures (girder_3d, etc.)
-#                                            │
+#                                            ├── Extracts figure_data from cad_generator
 #                                            ├── self.build_figure_grillage() → grillage_fig (matplotlib)
 #                                            ├── self.figure_to_bytes(grillage_fig) → grillage_bytes
-#                                            ├──► [report_generator.py] export_grillage_figure(grillage_bytes, output_dir, file_stem)
-#                                            │           └── writes grillage.png → payload.figures.grillage = path
+#                                            ├── Attaches grillage_bytes to figure_data
+#                                            ├── Assigns payload.figure_data = figure_data
 #                                            │
 #                                            └──► [report_generator.py] generate_report(payload, request)
 #                                                        │
 #                                                        ├── OsdagLatexEnv() → discovers pdflatex binary
-#                                                        ├── Creates output_dir/assets/
-#                                                        ├── Copies logos & payload figures → assets/
+#                                                        ├── Creates tmp_dir/assets/ (via TemporaryDirectory)
+#                                                        ├── Copies logos & writes payload.figure_data bytes → tmp_dir/assets/
 #                                                        ├── Calls 10 chapter functions → full_tex string
-#                                                        ├── Writes full_tex to tempdir/stem.tex
+#                                                        ├── Writes full_tex to tmp_dir/stem.tex
 #                                                        ├── subprocess.run(pdflatex) × 2 passes
 #                                                        ├── shutil.copy2(tmp_pdf → output_dir/stem.pdf)
 #                                                        └── returns ReportResult(pdf_path, tex_path)
@@ -3235,6 +3212,21 @@ IS 2062 & 2011 & Structural steel - yield and ultimate strength by grade \\
 \end{itemize}
 """)
 
+    assumptions.append(r"""
+\section{Known Limitations of This Version}
+\label{sec:limitations}
+
+\begin{itemize}
+\item Substructure (piers, pile caps, foundations) and bearing design are not included.
+\item Splice connection design is not implemented.
+\item Skew angle $>$ 15 degrees requires independent manual analysis (IRC 24 Cl. 504.8).
+\item Construction stage sequence analysis is approximate; detailed staged analysis
+  should be performed for long-term deflection checks.
+\item The grillage analysis assumes simply supported boundary conditions;
+  continuous spans are not currently supported.
+\end{itemize}
+""")
+
     return "\n".join(assumptions)
 
 
@@ -3699,6 +3691,14 @@ _FIGURE_MAP = [
     ('stiffener_preview',     'stiffener_preview.png'),
     ('bm_envelope',           'bm_envelope.png'),
     ('sf_envelope',           'sf_envelope.png'),
+    ('cb_diagram',            'cb_diagram.png'),
+    ('cb_bracing',            'cb_bracing.png'),
+    ('cb_top_chord',          'cb_top_chord.png'),
+    ('cb_bottom_chord',       'cb_bottom_chord.png'),
+    ('ed_diagram',            'ed_diagram.png'),
+    ('ed_bracing',            'ed_bracing.png'),
+    ('ed_top_chord',          'ed_top_chord.png'),
+    ('ed_bottom_chord',       'ed_bottom_chord.png'),
 ]
 
 def generate_report(payload, request):
