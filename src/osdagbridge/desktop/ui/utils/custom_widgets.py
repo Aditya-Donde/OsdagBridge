@@ -234,6 +234,7 @@ class _BarPainter(QWidget):
         # -- Full rounded track pill -------------------------------------------
         track_path = QPainterPath()
         track_path.addRoundedRect(QRectF(0, 0, w, h), radius, radius)
+
         painter.setBrush(COLOR_TRACK)
         painter.drawPath(track_path)
 

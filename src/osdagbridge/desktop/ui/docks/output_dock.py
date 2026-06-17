@@ -39,7 +39,7 @@ from osdagbridge.core.utils.common import (
     KEY_UTIL_LONG_TRANS_SHEAR, KEY_UTIL_FATIGUE, KEY_UTIL_STRESS_LIMITATION,
     KEY_UTIL_DEFLECTION_CRACK, KEY_ANALYSIS_LOAD_COMBINATION,
     KEY_OUTPUT_DOCK_MEMBER_ID, KEY_OUTPUT_DOCK_LOAD_COMBINATION,
-    KEY_TS_NO_OF_GIRDERS
+    KEY_TS_NO_OF_GIRDERS,
 )
 from osdagbridge.desktop.ui.utils.custom_buttons import DockCustomButton
 from osdagbridge.desktop.ui.docks.dock_utils import apply_field_style
@@ -783,6 +783,7 @@ class OutputDock(QWidget):
         for key in dcr_keys:
             bar = self._w(key)
             if bar is not None:
+                bar.setVisible(True)
                 bar.set_value(0.0)
 
         for key in (KEY_ANALYSIS_LOAD_COMBINATION, KEY_OUTPUT_DOCK_LOAD_COMBINATION,
@@ -884,7 +885,12 @@ class OutputDock(QWidget):
 
         for key, value in dcr_values.items():
             bar = self._w(key)
-            if bar is not None:
+            if bar is None:
+                continue
+            if value is None:
+                bar.setVisible(False)
+            else:
+                bar.setVisible(True)
                 bar.set_value(float(value))
 
     def open_steel_design(self):

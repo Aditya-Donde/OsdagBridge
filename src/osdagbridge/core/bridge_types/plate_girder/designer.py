@@ -2849,17 +2849,22 @@ def _extract_demands_from_analysis_results(
     # SW individual case for construction stage 1.
     _sw_lcs = list(lc_groups.get("sw", lc_groups.get("SW",
               lc_groups.get("girder_sw", lc_groups.get("self_weight", [])))))
+    # "X.X DL" case from create_dead_load_combination() — SW+DC for construction stage 2 LTB.
+    _dead_lcs    = list(lc_groups.get("dead", []))
+    _dl_only_lcs = [lc for lc in _dead_lcs if str(lc).upper().endswith(" DL")]
 
     _uls_set          = set(str(lc) for lc in _uls_all_lcs)
     _sls_set          = set(str(lc) for lc in _sls_all_lcs)
     _sls_frequent_set = set(str(lc) for lc in _sls_frequent_lcs)
     _dl_ll_set        = set(str(lc) for lc in _dl_ll_lcs)
+    _dl_only_set      = set(str(lc) for lc in _dl_only_lcs)
 
     # Single-LC handles used directly for demand extraction (None = case not available → skip).
     _uls_env_lc  = str(_uls_env_lcs[0])    if _uls_env_lcs    else None
     _sls_env_lc  = str(_sls_env_lcs[0])    if _sls_env_lcs    else None
     _dl_ll_lc    = str(_dl_ll_lcs[0])      if _dl_ll_lcs      else None
     _sw_lc       = str(_sw_lcs[0])         if _sw_lcs         else None
+    _dl_only_lc  = str(_dl_only_lcs[0])    if _dl_only_lcs    else None
 
     def _lc_type(lc_str: str) -> str:
         """Classify a single LC string into a type tag for check scoping.
@@ -2879,6 +2884,7 @@ def _extract_demands_from_analysis_results(
             return "SLS"
         # Fallback to set membership for user-named individual cases
         if lc_str in _dl_ll_set:   return "DL_LL"
+        if lc_str in _dl_only_set: return "DL"
         if lc_str in live_set:     return "live_only"
         return "individual"
 
@@ -2940,8 +2946,8 @@ def _extract_demands_from_analysis_results(
         Nu_kN  = _fmax_lc(_uls_env_lc, "Vx_i", "Vx_j") / 1e3   # N → kN (axial Fx)
 
         # (2) Construction moments — from analyser's SW case (stage 1) and DL+LL case (service).
-        M_girder_sw_kNm = _fmax_lc(_sw_lc,    "Mz_i", "Mz_j") / 1e3
-        M_const_kNm     = _fmax_lc(_dl_ll_lc, "Mz_i", "Mz_j") / 1e3
+        M_girder_sw_kNm = _fmax_lc(_sw_lc,     "Mz_i", "Mz_j") / 1e3
+        M_const_kNm     = _fmax_lc(_dl_only_lc, "Mz_i", "Mz_j") / 1e3
 
         # (3) Deflections — fetched directly from analyser cases; no summing, no fallback.
         disp_y = analysis_results.ds.displacements.sel(Component="y", Node=nodes)
@@ -3069,10 +3075,9 @@ def _extract_demands_from_analysis_results(
             _is_sls = lc_t != "ULS"
             _m_sls  = round(Mz, 2) if _is_sls else 0.0
             _v_sls  = round(Vy, 2) if _is_sls else 0.0
-            # Construction moment: this LC's Mz when it IS the DL+LL case
-            # (equals Mu there; check 5b's Mu fallback already covers it —
-            # populated for data-model consistency).
-            _m_const = round(Mz, 2) if lc_t == "DL_LL" else 0.0
+            # Construction moment: this LC's Mz when it IS the dead-load-only case ("X.X DL")
+            # from create_dead_load_combination() — SW+DC, the correct Stage 2 LTB demand.
+            _m_const = round(Mz, 2) if lc_t == "DL" else 0.0
             # Girder self-weight moment: this LC's Mz when it IS the SW case —
             # enables the Stage-1 LTB check (5a, vs Mb_stage1) in the per-LC view.
             _m_sw    = round(Mz, 2) if (_sw_lc is not None and lc_str == _sw_lc) else 0.0

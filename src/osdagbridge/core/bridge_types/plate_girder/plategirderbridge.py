@@ -3672,18 +3672,19 @@ class PlateGirderBridge:
             if c.check_id not in by_id or c.dcr > by_id[c.check_id]:
                 by_id[c.check_id] = c.dcr
 
+        def _max_ids(*ids):
+            vals = [by_id[i] for i in ids if i in by_id]
+            return (max(vals) * 100) if vals else None
+
         return {
-            KEY_UTIL_FLEXURE:           by_id.get(1,  0.0) * 100,
-            KEY_UTIL_SHEAR:             by_id.get(2,  0.0) * 100,
-            KEY_UTIL_INTERACTION:       max(by_id.get(3, 0.0), by_id.get(4, 0.0)) * 100,
-            KEY_UTIL_LTB:               by_id.get(5,  0.0) * 100,
-            KEY_UTIL_LONG_TRANS_SHEAR:  max(by_id.get(6,  0.0), by_id.get(7,  0.0),
-                                            by_id.get(16, 0.0), by_id.get(17, 0.0)) * 100,
-            KEY_UTIL_FATIGUE:           max(by_id.get(8,  0.0), by_id.get(9,  0.0)) * 100,
-            KEY_UTIL_STRESS_LIMITATION: max(by_id.get(10, 0.0), by_id.get(11, 0.0),
-                                            by_id.get(12, 0.0)) * 100,
-            KEY_UTIL_DEFLECTION_CRACK:  max(by_id.get(13, 0.0), by_id.get(14, 0.0),
-                                            by_id.get(15, 0.0)) * 100,
+            KEY_UTIL_FLEXURE:           _max_ids(1),
+            KEY_UTIL_SHEAR:             _max_ids(2),
+            KEY_UTIL_INTERACTION:       _max_ids(3, 4),
+            KEY_UTIL_LTB:               _max_ids(5),
+            KEY_UTIL_LONG_TRANS_SHEAR:  _max_ids(6, 7, 16, 17),
+            KEY_UTIL_FATIGUE:           _max_ids(8, 9),
+            KEY_UTIL_STRESS_LIMITATION: _max_ids(10, 11, 12),
+            KEY_UTIL_DEFLECTION_CRACK:  _max_ids(13, 14, 15),
         }
 
     def get_nodes_members(self) -> tuple[dict, dict]:
