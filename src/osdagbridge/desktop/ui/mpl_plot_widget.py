@@ -568,6 +568,12 @@ class MplPlotWidget(QWidget):
         if has_3d:
             self._resize_navcube()
             self._position_navcube()
+            # Until mark_ready() is called, NavCube.paintEvent is a no-op (it
+            # guards against painting before an OCC/OpenGL context is live).
+            # The matplotlib QtAgg canvas has no such context, so mark it ready
+            # once or the cube stays invisible.
+            if hasattr(self._navcube, "mark_ready"):
+                self._navcube.mark_ready()
             self._navcube.show()
             self._navcube.raise_()
             self._navcube_sync.force_sync()
