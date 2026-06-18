@@ -178,7 +178,7 @@ class InputDock(QWidget):
         self.lock_btn.setObjectName("lock_btn")
         self.lock_btn.setCheckable(True)
         self.lock_btn.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
-        self.lock_btn.clicked.connect(self.toggle_lock)
+        self.lock_btn.clicked.connect(lambda _: self.toggle_lock())
         top_bar.addWidget(self.lock_btn)
 
         self.lock_btn_tooltip = QLabel("🔒 Unlock to Edit")
