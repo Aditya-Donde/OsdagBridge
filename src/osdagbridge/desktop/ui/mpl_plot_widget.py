@@ -135,9 +135,12 @@ class SummaryOverlay(QFrame):
         self.text_label.setAlignment(Qt.AlignLeft | Qt.AlignTop)
         layout.addWidget(self.text_label)
 
-    def update_data(self, summary_data):
-        hud_text = "<b>Extreme Values Summary</b><br>" + "-" * 38 + "<br>"
-        
+    def update_data(self, summary_data, unit=""):
+        title = "Extreme Values Summary"
+        if unit:
+            title += f" ({unit})"
+        hud_text = f"<b>{title}</b><br>" + "-" * 38 + "<br>"
+
         h_girder = "Girder".ljust(8).replace(" ", "&nbsp;")
         h_max = "Max".rjust(10).replace(" ", "&nbsp;")
         h_min = "Min".rjust(12).replace(" ", "&nbsp;")
@@ -505,7 +508,10 @@ class MplPlotWidget(QWidget):
         
         # (Your existing HUD logic)
         if self._summary_data:
-            self._summary_overlay.update_data(self._summary_data)
+            self._summary_overlay.update_data(
+                self._summary_data,
+                unit=self._value_unit_for_force_key(force_key),
+            )
             if self._is_summary_checked:
                 self._summary_overlay.show()
                 self._summary_overlay.raise_()
