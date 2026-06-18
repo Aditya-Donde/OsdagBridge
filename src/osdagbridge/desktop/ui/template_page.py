@@ -663,7 +663,7 @@ class CustomWindow(QWidget):
                 bridge_logger.error(f"[Design Error]\n{err_trace}")
                 self._finish_loading()
                 if self.input_dock and self.input_dock.is_locked:
-                    self.input_dock.toggle_lock()
+                    self.input_dock.toggle_lock(confirm=False)
                 lines = [l for l in err_trace.splitlines() if l.strip()]
                 short_summary = "\n".join(lines[-2:]) if len(lines) >= 2 else err_trace
                 CustomMessageBox(
