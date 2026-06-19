@@ -673,6 +673,43 @@ def toc_section():
 # EXECUTIVE SUMMARY
 # ═══════════════════════════════════════════════════════════════════════════════
 
+def _max_float(values):
+    """Return the largest value coercible to float, or None if there are none."""
+    out = None
+    for v in values:
+        try:
+            f = float(v)
+        except (TypeError, ValueError):
+            continue
+        if out is None or f > out:
+            out = f
+    return out
+
+
+def _max_member_efficiency(pair_designs):
+    """Maximum Osdag 'efficiency' (utilization ratio) over a cross-bracing or
+    end-diaphragm result dump (nested pair -> member -> force_type -> raw).
+    Reads already-computed results only; nothing is recalculated here."""
+    from osdagbridge.core.bridge_types.plate_girder.results_data import _extract_osdag_summary
+    if not isinstance(pair_designs, dict):
+        return None
+    best = None
+    for members in pair_designs.values():
+        if not isinstance(members, dict):
+            continue
+        for force_types in members.values():
+            if not isinstance(force_types, dict):
+                continue
+            for raw in force_types.values():
+                try:
+                    f = float(_extract_osdag_summary(raw or {}).get("efficiency"))
+                except (TypeError, ValueError, AttributeError):
+                    continue
+                if best is None or f > best:
+                    best = f
+    return best
+
+
 def executive_summary(input_dict, output_dict, fig_paths) -> str:
     plan_fig = _fig_or_placeholder(fig_paths.get('girder_top'), 'Figure 1 -- Overall Bridge Plan')
     cs_fig = _fig_or_placeholder(fig_paths.get('cross_section'),
@@ -680,14 +717,70 @@ def executive_summary(input_dict, output_dict, fig_paths) -> str:
     geom_fig = _fig_or_placeholder(fig_paths.get('final_geometry'),
                                     'Figure 3 -- 3D View of Bridge Superstructure')
 
-    # All girders share the same section, governing check, and UR
-    sec = _render_value(input_dict, KEY_SD_SECTION_DESIGNATION)
+    # All girders share the same section, governing check, and UR.
+    # The section designation is produced by the designer pipeline, so it lives
+    # in output_dict (not input_dict).
+    sec = _render_value(output_dict, KEY_SD_SECTION_DESIGNATION)
 
-    gov_val = output_dict.get('governing_check', '')
-    gov = _tex(gov_val) if gov_val not in (None, '', 'None') else ''
+    # ── Pull the stored result dicts once, then work off these locals ─────────
+    # (no value is recomputed here — the pipeline already filled these in).
+    design_results = output_dict.get("design_results", {}) or {}
+    per_girder     = design_results.get("per_girder", {}) or {}
+    deck_results   = output_dict.get("deck_design_results", {}) or {}
+    cb_results     = output_dict.get("crossbracing_design_results", {}) or {}
+    ed_results     = output_dict.get("end_diaphragm_design_results", {}) or {}
 
-    ur_val = output_dict.get('overall_utilization_ratio', '')
-    ur = _tex(ur_val) if ur_val not in (None, '', 'None') else ''
+    # Overall Design Status — girder checks only: Pass if every check passes,
+    # otherwise Fail with the names of the failing checks. Each check carries a
+    # pre-computed {name, dcr, status}.
+    failing = []                        # failing check names (order-preserving, deduped)
+    gov_name, gov_dcr = "", None
+    girder_max_ur = None
+    for g, gd in per_girder.items():
+        if str(g).startswith("EB"):     # skip edge-beam pseudo girders
+            continue
+        for chk in (gd.get("checks") or []):
+            try:
+                dcr = float(chk.get("dcr"))
+            except (TypeError, ValueError):
+                dcr = None
+            name = str(chk.get("name", "")).strip()
+            is_fail = ("FAIL" in str(chk.get("status", "")).upper()) or (dcr is not None and dcr > 1.0)
+            if is_fail and name and name not in failing:
+                failing.append(name)
+            if dcr is not None:
+                if gov_dcr is None or dcr > gov_dcr:
+                    gov_dcr, gov_name = dcr, name
+                if girder_max_ur is None or dcr > girder_max_ur:
+                    girder_max_ur = dcr
+
+    if not per_girder:
+        overall_design_status = ""
+    elif failing:
+        overall_design_status = "Fail (" + ", ".join(failing) + ")"
+    else:
+        overall_design_status = "Pass"
+
+    # Overall Utilization Ratio — the maximum UR across all bridge components,
+    # tagged with the governing component (e.g. "1.05 (Deck slab)").
+    component_urs = []                  # (ur_value, component_label)
+    if girder_max_ur is not None:
+        component_urs.append((girder_max_ur, "Girder"))
+    deck_max = _max_float([v for k, v in deck_results.items() if str(k).startswith("ur_")])
+    if deck_max is not None:
+        component_urs.append((deck_max, "Deck slab"))
+    for results, label in ((cb_results, "Cross bracing"), (ed_results, "End diaphragm")):
+        m = _max_member_efficiency(results)
+        if m is not None:
+            component_urs.append((m, label))
+    if component_urs:
+        max_ur, max_label = max(component_urs, key=lambda t: t[0])
+        overall_utilization_ratio = f"{max_ur:.2f} ({max_label})"
+    else:
+        overall_utilization_ratio = ""
+
+    gov = _tex(gov_name) if gov_name not in (None, '', 'None') else ''
+    ur = _tex(overall_utilization_ratio) if overall_utilization_ratio else ''
 
     # --- Dynamic Table 1: fetch backend-populated labels via exact suffix pattern ---
     # defaults.py populates: KEY_MP_GD_SELECT_GIRDER + '.G{i}' = 'G{i}'
@@ -766,11 +859,11 @@ This section provides a concise summary of the bridge design, key inputs, govern
 \hline
 \textbf{Deck Thickness} & """ + (_render_value(input_dict, KEY_TS_DECK_THICKNESS)) + r""" \\
 \hline
-\textbf{Overall Design Status} & """ + (_tex(output_dict.get('overall_design_status', ''))) + r""" \\
+\textbf{Overall Design Status} & """ + (_tex(overall_design_status)) + r""" \\
 \hline
-\textbf{Governing Check} & """ + (_tex(output_dict.get('governing_check', ''))) + r""" \\
+\textbf{Governing Check} & """ + gov + r""" \\
 \hline
-\textbf{Overall Utilization Ratio (max)} & """ + (_tex(output_dict.get('overall_utilization_ratio', ''))) + r""" \\
+\textbf{Overall Utilization Ratio (max)} & """ + ur + r""" \\
 \hline
 \end{tabular}
 
