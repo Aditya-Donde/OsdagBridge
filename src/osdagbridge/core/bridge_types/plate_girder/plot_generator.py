@@ -448,7 +448,7 @@ def _add_node_number_labels(ax, nodes, visible: bool = False):
         t = ax.text(
             x, z, y,
             f" {nid}",
-            fontsize=7,
+            fontsize=9,
             color="#1565C0",
             fontweight="normal",
             ha="left",
@@ -492,7 +492,7 @@ def _add_element_number_labels(ax, nodes, members, visible: bool = False):
         t = ax.text(
             mx, mz, 0.0,
             f" E{eid}",
-            fontsize=6,
+            fontsize=8,
             color="#BF360C",          # deep orange — distinct from node blue
             fontweight="normal",
             ha="center",
