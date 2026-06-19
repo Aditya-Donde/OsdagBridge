@@ -708,9 +708,11 @@ class ToolBarController:
         The .click() call fires all existing toggle/render logic already wired
         inside MplPlotWidget — we do not duplicate any of that logic here.
 
-        Navigation buttons (Rotate, Pan, Zoom Window, Zoom Fit, Zoom In, Zoom
-        Out) are NOT connected in this binding — they only apply to the 3D CAD
-        view (CAD3DWindow in cad_3d.py).
+        Navigation buttons (Rotate, Pan, Zoom Window) are connected here to the
+        equivalent MplPlotWidget methods (_toggle_rotate / _toggle_pan /
+        _toggle_zoom_window) and are mutually exclusive. The one-shot zoom
+        actions (Zoom Fit, Zoom In, Zoom Out) map to MplPlotWidget._zoom_reset /
+        _zoom_in / _zoom_out at the bottom of this method.
         """
         self._disconnect_all()
 
@@ -733,6 +735,7 @@ class ToolBarController:
         supports_init      = _initial_plot_state('_show_supports', True)
         pan_init           = _initial_plot_state('_pan_active', False)
         rotate_init        = _initial_plot_state('_rotate_active', False)
+        zoom_window_init   = _initial_plot_state('_zoom_window_active', False)
         girder_labels_init = _initial_plot_state('_show_girder_labels', True)
 
         self._make_checkable(self._btn_grillage,      grillage_init)
@@ -744,6 +747,7 @@ class ToolBarController:
         self._make_checkable(self._btn_supports,       supports_init)
         self._make_checkable(self._btn_pan,            pan_init)
         self._make_checkable(self._btn_rotate,         rotate_init)
+        self._make_checkable(self._btn_zoom_win,       zoom_window_init)
         self._make_checkable(self._btn_girder_labels,  girder_labels_init)
 
         # ── Grillage — direct call to MplPlotWidget._on_grillage_toggled ──────
@@ -854,9 +858,10 @@ class ToolBarController:
         # ── Pan — direct call to MplPlotWidget._toggle_pan ─────────────────────
         def _plots_toggle_pan():
             checked = self._btn_pan.isChecked()
-            # Mutual exclusion: deactivate Rotate when Pan is activated
+            # Mutual exclusion: deactivate Rotate and Zoom Window when Pan is activated
             if checked:
                 self._sync_btn_to(self._btn_rotate, False)
+                self._sync_btn_to(self._btn_zoom_win, False)
             try:
                 plots_widget._toggle_pan(checked)
                 self._sync_btn_to(self._btn_pan, checked)
@@ -868,9 +873,10 @@ class ToolBarController:
         # ── Rotate — direct call to MplPlotWidget._toggle_rotate ───────────────
         def _plots_toggle_rotate():
             checked = self._btn_rotate.isChecked()
-            # Mutual exclusion: deactivate Pan when Rotate is activated
+            # Mutual exclusion: deactivate Pan and Zoom Window when Rotate is activated
             if checked:
                 self._sync_btn_to(self._btn_pan, False)
+                self._sync_btn_to(self._btn_zoom_win, False)
             try:
                 plots_widget._toggle_rotate(checked)
                 self._sync_btn_to(self._btn_rotate, checked)
@@ -878,6 +884,26 @@ class ToolBarController:
                 pass
 
         self._connect(self._btn_rotate, _plots_toggle_rotate)
+
+        # ── Zoom Window — direct call to MplPlotWidget._toggle_zoom_window ──────
+        # TOGGLE LOGIC: MplPlotWidget._toggle_zoom_window() arms rubber-band mode;
+        #   on release MplPlotWidget._execute_zoom_window() scales the canvas so
+        #   the selected rectangle fills the QScrollArea viewport (mpl_plot_widget.py).
+        #   This mirrors the CAD 3D Zoom Window result (custom_3dviewer.py) without
+        #   a true camera WindowFit, which Matplotlib 3D does not provide.
+        def _plots_toggle_zoom_window():
+            checked = self._btn_zoom_win.isChecked()
+            # Mutual exclusion: deactivate Pan and Rotate when Zoom Window is activated
+            if checked:
+                self._sync_btn_to(self._btn_pan, False)
+                self._sync_btn_to(self._btn_rotate, False)
+            try:
+                plots_widget._toggle_zoom_window(checked)
+                self._sync_btn_to(self._btn_zoom_win, checked)
+            except Exception:
+                pass
+
+        self._connect(self._btn_zoom_win, _plots_toggle_zoom_window)
 
         # ── Girder Labels — direct call to MplPlotWidget._on_girder_labels_toggled ──
         # TOGGLE LOGIC: MplPlotWidget._on_girder_labels_toggled() / _apply_girder_labels_visibility()

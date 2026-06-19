@@ -897,6 +897,17 @@ class MplPlotWidget(QWidget):
                 self._zoom_out()
             return True
 
+        elif self._zoom_window_active:                         # Zoom Window: rubber-band drag
+            if etype == QEvent.Type.MouseButtonPress and event.button() == Qt.LeftButton:
+                self._zwin_on_press(event)
+                return True
+            elif etype == QEvent.Type.MouseMove:
+                self._zwin_on_motion(event)
+                return True
+            elif etype == QEvent.Type.MouseButtonRelease and event.button() == Qt.LeftButton:
+                self._zwin_on_release(event)
+                return True
+
         elif self._pan_active:                                 # ← NEW: viewport drag
             if etype == QEvent.Type.MouseButtonPress and event.button() == Qt.LeftButton:
                 # Call the pan press handler instead of handling here
@@ -1096,6 +1107,122 @@ class MplPlotWidget(QWidget):
                 self._pan_dragging = False
                 self._pan_start = None
                 self._canvas.setCursor(Qt.OpenHandCursor)
+
+    # ── Zoom Window (rubber-band region zoom) ──────────────────────────────
+    def _toggle_zoom_window(self, enabled: bool):
+        """
+        Enable/disable rubber-band Zoom Window mode.
+
+        Called by ToolBarController._plots_toggle_zoom_window() (toolbar_controller.py).
+        When enabled, the user drags a rectangle on the canvas; on release the
+        view zooms so that region fills the viewport.
+
+        This produces the same visible RESULT as the CAD 3D Zoom Window
+        (CustomViewer3d._execute_zoom_window in custom_3dviewer.py) — the
+        selected rectangle fills the view — but the mechanism differs: OCC has a
+        true camera WindowFit, whereas Matplotlib 3D has no such API, so here we
+        physically scale the canvas inside the QScrollArea and scroll to the
+        region (the same image-scaling mechanism used by _apply_zoom()).
+
+        Mutually exclusive with Pan and Rotate.
+        """
+        self._disconnect_pan_rotate()
+        if enabled:
+            # Deactivate the other navigation modes
+            self._pan_active = False
+            self._rotate_active = False
+            self._stop_auto_rotate()
+            self._zoom_window_active = True
+            self._zwin_origin = None
+            # Free the left mouse button from native 3-D rotate so the drag is
+            # interpreted as a rubber-band selection in the eventFilter.
+            self._set_native_3d_mouse(rotate_btn=[], zoom_btn=[])
+            self._canvas.setCursor(Qt.CrossCursor)
+        else:
+            self._zoom_window_active = False
+            self._zwin_origin = None
+            if self._rubber_band is not None:
+                self._rubber_band.hide()
+            self._canvas.setCursor(Qt.ArrowCursor)
+            # Restore native 3-D mouse defaults so rotate works if switched to
+            self._set_native_3d_mouse(rotate_btn=1, zoom_btn=3)
+
+    def _zwin_event_point(self, event):
+        """Return the event position as a QPoint in canvas widget coordinates."""
+        try:
+            return event.position().toPoint()   # PySide6
+        except AttributeError:
+            return event.pos()                   # older Qt
+
+    def _zwin_on_press(self, event):
+        from PySide6.QtCore import QRect, QSize
+        self._zwin_origin = self._zwin_event_point(event)
+        if self._rubber_band is None:
+            self._rubber_band = QRubberBand(QRubberBand.Rectangle, self._canvas)
+        self._rubber_band.setGeometry(QRect(self._zwin_origin, QSize()))
+        self._rubber_band.show()
+
+    def _zwin_on_motion(self, event):
+        if self._zwin_origin is None or self._rubber_band is None:
+            return
+        from PySide6.QtCore import QRect
+        rect = QRect(self._zwin_origin, self._zwin_event_point(event)).normalized()
+        self._rubber_band.setGeometry(rect)
+
+    def _zwin_on_release(self, event):
+        if self._zwin_origin is None:
+            return
+        from PySide6.QtCore import QRect
+        rect = QRect(self._zwin_origin, self._zwin_event_point(event)).normalized()
+        self._zwin_origin = None
+        if self._rubber_band is not None:
+            self._rubber_band.hide()
+        # Ignore accidental clicks / tiny selections
+        if rect.width() > 4 and rect.height() > 4:
+            self._execute_zoom_window(rect)
+
+    def _execute_zoom_window(self, rect):
+        """
+        Zoom so the selected screen rectangle *rect* (canvas widget pixels)
+        fills the scroll-area viewport, then scroll to centre on it.
+
+        Uses the same image-style scaling as _apply_zoom(): the canvas is
+        physically resized to base_size * _zoom_scale and the QScrollArea
+        provides panning via its scrollbars.
+        """
+        if rect.width() < 1 or rect.height() < 1:
+            return
+
+        viewport = self._scroll_area.viewport()
+        vp_w = max(1, viewport.width())
+        vp_h = max(1, viewport.height())
+
+        # Factor that makes the selection fill the viewport (zoom in only).
+        factor = min(vp_w / rect.width(), vp_h / rect.height())
+        if factor <= 1.0:
+            return
+
+        old_scale = self._zoom_scale
+        new_scale = min(old_scale * factor, 8.0)
+        actual_factor = new_scale / old_scale
+        if actual_factor <= 1.0:
+            return
+
+        # Centre of the selection in current canvas coordinates.
+        center_x = rect.center().x()
+        center_y = rect.center().y()
+
+        self._zoom_scale = new_scale
+        self._apply_zoom()   # physically resizes the canvas by actual_factor
+
+        # After resizing, the selection centre has moved by actual_factor;
+        # scroll so it sits in the middle of the viewport.
+        h_bar = self._scroll_area.horizontalScrollBar()
+        v_bar = self._scroll_area.verticalScrollBar()
+        new_cx = center_x * actual_factor
+        new_cy = center_y * actual_factor
+        h_bar.setValue(int(new_cx - vp_w / 2))
+        v_bar.setValue(int(new_cy - vp_h / 2))
 
     # WITH
     def _toggle_rotate(self, enabled: bool):
