@@ -443,9 +443,10 @@ class BridgeConfig:
         stud_d  = float(ai.get(KEY_DS_STUD_DIAMETER)          or 22.0)
         stud_h  = float(ai.get(KEY_DS_STUD_HEIGHT)            or 150.0)
         stud_fu = float(ai.get(KEY_DS_STUD_ULTIMATE_STRENGTH) or 500.0)
+        stud_fy = float(ai.get(KEY_DS_STUD_YIELD_STRENGTH)   or 350.0)
         stud_n  = int(float(ai.get(KEY_DS_STUD_COUNT)         or 2))
         stud_ts = float(ai.get(KEY_DS_STUD_TRANSVERSE_SPACING) or 100.0)
-        studs = ShearStudConfig(diameter=stud_d, height=stud_h, fu=stud_fu,
+        studs = ShearStudConfig(diameter=stud_d, height=stud_h, fu=stud_fu, fy=stud_fy,
                                 n_per_section=stud_n, transverse_spacing=stud_ts)
 
         # Stiffener parameters — all optional. When plate dimensions are not given (default 0.0),

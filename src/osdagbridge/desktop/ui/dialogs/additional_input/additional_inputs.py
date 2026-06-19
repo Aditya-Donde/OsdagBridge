@@ -488,7 +488,15 @@ class AdditionalInputs(QDialog):
     # ── Dialog Persistence ───────────────────────────────────────────────────────
 
     def _save_inputs(self):  # on_change: validates all tabs then commits working_input_dict and emits CAD update signal
-        
+
+        # Flush the currently-displayed stiffener member's widgets before committing.
+        # _save_stiffener_member_data otherwise only runs when switching *away* from a
+        # member (via _on_stiffener_member_load), so the last-viewed girder (e.g. G4)
+        # would never be persisted. This gives it the same save the other girders get.
+        combo = self.findChild(QComboBox, KEY_MP_STIFFENER_SELECT_MEMBER_ID)
+        if combo and combo.currentText().strip():
+            self._save_stiffener_member_data(combo.currentText().strip())
+
         self.default_input_dict.update(self.working_input_dict)
         from osdagbridge.desktop.ui.docks.cad_cross_section import CrossSectionCADWidget
         cad = self.findChild(CrossSectionCADWidget, KEY_TS_CAD_PREVIEW)
