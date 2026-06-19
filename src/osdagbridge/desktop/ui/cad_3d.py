@@ -202,6 +202,11 @@ class CAD3DWindow(QWidget):
         if hasattr(self.viewer, "model_hover_labels_by_ais"):
             self.viewer.model_hover_labels_by_ais.clear()
 
+        # Release OCCT shape handles so the C++ kernel can free the geometry.
+        if hasattr(self, "generator") and hasattr(self.generator, "model_data"):
+            self.generator.model_data = {}
+        self.design_params = None
+
         # Hide component selector
         self.component_selector.hide()
 

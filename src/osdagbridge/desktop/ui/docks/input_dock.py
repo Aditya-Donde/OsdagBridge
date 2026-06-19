@@ -777,6 +777,10 @@ class InputDock(QWidget):
             # Clear plots and reset output dock values
             self.parent.plots_widget.clear()
             self.parent.output_dock.reset()
+            # Release all heavy backend data (xarray datasets, grillage model,
+            # CAD geometry, load-effect caches) so the GC can reclaim memory.
+            if hasattr(self.parent, 'backend') and hasattr(self.parent.backend, 'reset'):
+                self.parent.backend.reset()
 
         self.lock_btn.setChecked(self.is_locked)
         self.scroll_area.setDisabled(self.is_locked)

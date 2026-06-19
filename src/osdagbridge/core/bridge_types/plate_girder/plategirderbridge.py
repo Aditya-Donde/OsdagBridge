@@ -772,6 +772,44 @@ class PlateGirderBridge:
             bridge_logger.analysis_failed(str(e))
             raise
 
+    def reset(self) -> None:
+        """Release all heavy data structures so the GC can reclaim memory.
+
+        Called when the user unlocks the design (clears results).  Replaces
+        the grillage model with a fresh instance so the xarray Dataset,
+        OpenSeesPy model references, and all cached load-effect arrays are
+        dropped.  Does not touch input_dict so the UI values are preserved.
+        """
+        import gc
+        self.output_dict = types.MappingProxyType({})
+        self.result_data = {}
+        self.grillage_geometry = None
+        self.deck_layout = None
+
+        # Drop all dynamically-created design-result attributes
+        for _attr in (
+            "cad_components",
+            "crossbracing_design_results",
+            "end_diaphragm_design_results",
+            "deck_design_results",
+            "_load_effects_cache",
+            "_deflections_cache",
+        ):
+            if hasattr(self, _attr):
+                setattr(self, _attr, None)
+
+        # Replace the grillage model with a blank instance
+        self.grillage_model = BridgeGrillageModel()
+
+        # Dropping Python references does NOT free it — ops.wipe() is
+        # the only way to release that memory.
+        try:
+            import openseespy.opensees as ops
+            ops.wipe()
+        except Exception:
+            pass
+
+        gc.collect()
 
     def _export_cad_figures(self, cad_generator) -> dict:
         """
