@@ -1559,3 +1559,51 @@ class TopViewCADWidget(QWidget):
         for i, note in enumerate(notes):
             note_y = notes_y + 22 + i * 13
             painter.drawText(32, note_y, note)
+
+    def render_to_bytes(self, width: int = 1400, height: int = 700) -> bytes:
+        """Render this top view to PNG bytes off-screen, for the report.
+
+        Uses the widget's own paintEvent (NOT a live-screen grab): sizes an
+        off-screen canvas, fits the drawing to it, paints, auto-crops the white
+        border, and returns PNG bytes. Nothing is shown on screen.
+        """
+        from PySide6.QtCore import QBuffer, QIODevice
+        from PySide6.QtGui import QPixmap
+
+        # Size the canvas and fit the drawing to it (no scroll area attached).
+        self.scroll_area = None
+        self.resize(width, height)
+        self.zoom_level = self.compute_fit_zoom(mode="full")
+
+        pixmap = QPixmap(width, height)
+        pixmap.fill(Qt.white)
+        # DrawWindowBackground paints the content but skips child zoom-buttons.
+        self.render(pixmap, renderFlags=QWidget.RenderFlag.DrawWindowBackground)
+
+        # Auto-crop the white border so the drawing fills the frame.
+        img = pixmap.toImage()
+        w, h = img.width(), img.height()
+        minx, miny, maxx, maxy = w, h, -1, -1
+        for y in range(h):
+            for x in range(w):
+                px = img.pixel(x, y)
+                r = (px >> 16) & 0xFF
+                g = (px >> 8) & 0xFF
+                b = px & 0xFF
+                if r < 245 or g < 245 or b < 245:
+                    if x < minx: minx = x
+                    if x > maxx: maxx = x
+                    if y < miny: miny = y
+                    if y > maxy: maxy = y
+        if maxx > minx and maxy > miny:
+            pad = 20
+            minx = max(0, minx - pad); miny = max(0, miny - pad)
+            maxx = min(w - 1, maxx + pad); maxy = min(h - 1, maxy + pad)
+            pixmap = pixmap.copy(minx, miny, maxx - minx + 1, maxy - miny + 1)
+
+        buf = QBuffer()
+        buf.open(QIODevice.WriteOnly)
+        pixmap.save(buf, 'PNG')
+        data = bytes(buf.data())
+        buf.close()
+        return data
