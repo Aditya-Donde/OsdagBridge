@@ -324,7 +324,7 @@ class CAD3DWindow(QWidget):
             "Intermediate Stiffener",
             f"Intermediate Stiffener\nSpacing: {params.intermediate_stiffener_spacing:.2f} mm\nThickness: {params.intermediate_stiffener_thickness:.2f} mm\nSteel Grade: {params.steel_grade}",
             STIFFENER_COLOR,
-            selectable=False
+            selectable=True
         )
 
         display_and_register(
@@ -332,7 +332,7 @@ class CAD3DWindow(QWidget):
             "Bearing Stiffener",
             f"Bearing Stiffener\nPairs: {params.num_end_stiffener_pairs}\nThickness: {params.end_stiffener_thickness:.2f} mm\nSteel Grade: {params.steel_grade}",
             STIFFENER_COLOR,
-            selectable=False
+            selectable=True
         )
 
         display_and_register(
@@ -340,7 +340,7 @@ class CAD3DWindow(QWidget):
             "Longitudinal Stiffener",
             f"Longitudinal Stiffener\nCount: {params.num_longitudinal_stiffeners}\nThickness: {params.longitudinal_stiffener_thickness:.2f} mm\nSteel Grade: {params.steel_grade}",
             STIFFENER_COLOR,
-            selectable=False
+            selectable=True
         )
 
         display_and_register(
