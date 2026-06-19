@@ -169,6 +169,9 @@ from osdagbridge.core.utils.common import (
     KEY_MP_STIFFENER_INTERMEDIATE_SPACING,
     KEY_MP_STIFFENER_INTERMEDIATE_THICKNESS,
     KEY_MP_STIFFENER_LONGITUDINAL,
+    KEY_MP_STIFFENER_NO_BEARING_STIFFENERS,
+    KEY_MP_STIFFENER_SPACING,
+    KEY_MP_STIFFENER_BEARING_THICKNESS,
     # Cross Bracing
     KEY_MP_CB_SELECT_GIRDERS,
     KEY_MP_CB_MEMBER_ID,
@@ -370,6 +373,10 @@ def _tex(value):
     s = str(value) if value is not None else ''
     if not s:
         return r''
+    # Normalise non-ASCII glyphs from section designations (e.g. "∠ 100 ⅹ 100ⅹ 10")
+    # that pdflatex cannot render.
+    for uni, ascii_ in [('∠', 'L'), ('ⅹ', 'x'), ('×', 'x')]:
+        s = s.replace(uni, ascii_)
     s = s.replace('\\', r'\textbackslash{}')
     for ch, esc in [('&', r'\&'), ('%', r'\%'), ('$', r'\$'), ('#', r'\#'),
                     ('{', r'\{'), ('}', r'\}'),          
@@ -753,8 +760,6 @@ This section provides a concise summary of the bridge design, key inputs, govern
 \hline
 \textbf{Carriageway Width} & """ + (_render_value(input_dict, KEY_CARRIAGEWAY_WIDTH, ' m')) + r""" \\
 \hline
-\textbf{No. of Traffic Lanes} & """ + (_render_value(input_dict, KEY_WC_LD_LANE_TABLE_COUNT)) + r""" \\
-\hline
 \textbf{No. of Girders} & """ + (_render_value(input_dict, KEY_TS_NO_OF_GIRDERS)) + r""" \\
 \hline
 \textbf{Girder Spacing} & """ + (_render_value(input_dict, KEY_TS_GIRDER_SPACING)) + r""" \\
@@ -863,6 +868,14 @@ This section records all project metadata as entered by the designer.
 def ch2_input_parameters(m, input_dict, output_dict=None):
     girder_entries = get_girder_entries(input_dict)
     n_girders = len(girder_entries)
+    # Median row only shown when the user included a median
+    median_row = ""
+    if str(input_dict.get(KEY_INCLUDE_MEDIAN, "")).strip().lower() in ("yes", "true", "1"):
+        median_row = (r"\textbf{Median Type} & "
+                      + _render_value(input_dict, KEY_MD_TYPE)
+                      + r""" \\[6pt]
+\hline
+""")
     return r"""
 \chapter{Input Parameters}
 
@@ -911,7 +924,7 @@ This section documents all inputs provided to OsdagBridge. User-provided inputs 
 \hline
 \textbf{Footpath} & """ + (_render_value(input_dict, KEY_FOOTPATH)) + r""" \\
 \hline
-\textbf{Skew Angle (degrees)} & """ + (_render_value(input_dict, KEY_SKEW_ANGLE, '°')) + r""" (IRC 24 Cl. 504.8 limit: $\pm$15°) \\
+\textbf{Skew Angle (degrees)} & """ + (str(input_dict.get(KEY_SKEW_ANGLE) or '0') + '°') + r""" \\
 \hline
 \end{tabular}
 \vspace{0.4cm}
@@ -953,9 +966,7 @@ Where the user has modified additional inputs, those values are reported here. W
 \hline
 \textbf{Deck Thickness (mm)} & """ + (_render_value(input_dict, KEY_TS_DECK_THICKNESS, ' mm')) + r""" \\[6pt]
 \hline
-\textbf{Footpath Width (m)} & """ + (_render_value(input_dict, KEY_TS_FOOTPATH_WIDTH, ' m')) + r""" (IRC 5 Cl. 104.3.6 min: 1.5 m) \\[6pt]
-\hline
-\textbf{No. of Traffic Lanes} & """ + (_render_value(input_dict, KEY_WC_LD_LANE_TABLE_COUNT)) + r""" (per IRC 5 Cl. 104.3.1) \\[6pt]
+\textbf{Footpath Width (m)} & """ + (_render_value(input_dict, KEY_TS_FOOTPATH_WIDTH, ' m')) + r""" \\[6pt]
 \hline
 \end{longtable}
 
@@ -968,9 +979,7 @@ Where the user has modified additional inputs, those values are reported here. W
 \hline
 \textbf{Crash Barrier Load (kN/m)} & """ + (_render_value(input_dict, KEY_CB_LOAD)) + r""" \\[6pt]
 \hline
-\textbf{Median Type} & """ + (_render_value(input_dict, KEY_MD_TYPE)) + r""" \\[6pt]
-\hline
-\textbf{Railing Type} & """ + (_render_value(input_dict, KEY_RL_TYPE)) + r""" \\[6pt]
+""" + median_row + r"""\textbf{Railing Type} & """ + (_render_value(input_dict, KEY_RL_TYPE)) + r""" \\[6pt]
 \hline
 \textbf{Railing Load (kN/m)} & """ + (_render_value(input_dict, KEY_RL_LOAD_VALUE)) + r""" \\[6pt]
 \hline
@@ -1051,10 +1060,14 @@ def _girder_tables(input_dict, n_girders):
                 + (_render_value(input_dict, f"{KEY_MP_STIFFENER_INTERMEDIATE_SPACING}.G{i}.M1", ' mm'))
                 + '; Thickness: '
                 + (_render_value(input_dict, f"{KEY_MP_STIFFENER_INTERMEDIATE_THICKNESS}.G{i}.M1", ' mm'))
-                + r""" & Longitudinal: """
+                + r""" & """
                 + (_render_value(input_dict, f"{KEY_MP_STIFFENER_LONGITUDINAL}.G{i}.M1"))
-                + r"""; End Panel: """
-                + ''
+                + r""" & No.: """
+                + (_render_value(input_dict, f"{KEY_MP_STIFFENER_NO_BEARING_STIFFENERS}.G{i}.M1"))
+                + '; Spacing: '
+                + (_render_value(input_dict, f"{KEY_MP_STIFFENER_SPACING}.G{i}.M1", ' mm'))
+                + '; Thickness: '
+                + (_render_value(input_dict, f"{KEY_MP_STIFFENER_BEARING_THICKNESS}.G{i}.M1", ' mm'))
                 + r""" \\[8pt]
 \hline
 """)
@@ -1099,9 +1112,11 @@ def _girder_tables(input_dict, n_girders):
 \captionsetup{justification=raggedright,singlelinecheck=false}
 \caption*{\textbf{Table 2.6(c)  Girder Restraint and Stiffener Details}}
 \vspace{4pt}
-\begin{longtable}{|L{1.8cm}|p{3.4cm}|p{3.4cm}|p{3.4cm}|p{3.4cm}|}
+\setlength{\tabcolsep}{4pt}
+\setlength\LTleft{0pt}\setlength\LTright{\fill}
+\begin{longtable}{|L{1.3cm}|p{2.3cm}|p{2.0cm}|p{2.7cm}|p{2.6cm}|p{2.7cm}|}
 \hline
-\textbf{Girder} & \textbf{Torsional / Warping Restraint} & \textbf{Web Philosophy} & \textbf{Intermediate Stiffeners} & \textbf{Longitudinal / End Panel Stiffeners} \\[6pt]
+\textbf{Girder} & \textbf{Torsional / Warping Restraint} & \textbf{Web Philosophy} & \textbf{Intermediate Stiffeners} & \textbf{Longitudinal Stiffeners} & \textbf{Bearing Stiffener} \\[6pt]
 \hline
 """
             + rst_rows
@@ -1130,8 +1145,6 @@ def _bracing_tables(input_dict, n_girders):
                 + (_render_value(input_dict, f"{KEY_MP_CB_BRACING_SECTION_DESIGNATION}.G{i}G{i+1}.B{i}M1"))
                 + r""" & """
                 + (_render_value(input_dict, f"{KEY_MP_CB_SPACING}.G{i}G{i+1}.B{i}M1", ' m'))
-                + r""" & """
-                + ''  # GAP — no KEY_ for number of bracing panels
                 + r""" \\[6pt]
 \hline
 """)
@@ -1142,10 +1155,6 @@ def _bracing_tables(input_dict, n_girders):
                 + (_render_value(input_dict, f"{KEY_MP_ED_TYPE}.G{i}G{i+1}.E{i}M1"))
                 + r""" & """
                 + (_render_value(input_dict, f"{KEY_MP_ED_BRACING_SECTION_DESIGNATION}.G{i}G{i+1}.E{i}M1"))
-                + r""" & """
-                + ''
-                + r""" & """
-                + ''  # GAP — no KEY_ for number of bracing panels
                 + r""" \\[6pt]
 \hline
 """)
@@ -1160,9 +1169,10 @@ def _bracing_tables(input_dict, n_girders):
 \vspace{0.4em}
 \noindent
 \setlength{\tabcolsep}{4pt}
-\begin{longtable}{|L{2.2cm}|L{2.2cm}|L{3.0cm}|L{2.5cm}|C{1.8cm}|C{1.8cm}|}
+\setlength\LTleft{0pt}\setlength\LTright{\fill}
+\begin{longtable}{|L{2.2cm}|L{2.2cm}|L{3.0cm}|L{3.5cm}|C{1.8cm}|}
 \hline
-\textbf{Location} & \textbf{Member IDs} & \textbf{Type of Bracing} & \textbf{Bracing Section} & \textbf{Spacing (m)} & \textbf{No. of Panels} \\
+\textbf{Location} & \textbf{Member IDs} & \textbf{Type of Bracing} & \textbf{Bracing Section} & \textbf{Spacing (m)} \\
 \hline
 """
             + cb_rows
@@ -1173,13 +1183,15 @@ def _bracing_tables(input_dict, n_girders):
 \vspace{0.4em}
 \noindent
 \setlength{\tabcolsep}{4pt}
-\begin{longtable}{|L{2.2cm}|L{2.2cm}|L{3.0cm}|L{2.5cm}|C{1.8cm}|C{1.8cm}|}
+\setlength\LTleft{0pt}\setlength\LTright{\fill}
+\begin{longtable}{|L{2.2cm}|L{2.2cm}|L{3.0cm}|L{4.0cm}|}
 \hline
-\textbf{Location} & \textbf{Member IDs} & \textbf{Type of Bracing} & \textbf{Bracing Section} & \textbf{Spacing (m)} & \textbf{No. of Panels} \\
+\textbf{Location} & \textbf{Member IDs} & \textbf{Type of Bracing} & \textbf{Bracing Section} \\
 \hline
 """
             + ed_rows
             + r"""\end{longtable}
+\setlength\LTleft{\fill}\setlength\LTright{\fill}
 """)
 
 
