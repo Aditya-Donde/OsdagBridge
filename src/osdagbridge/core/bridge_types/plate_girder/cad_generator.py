@@ -440,6 +440,9 @@ class PlateGirderCADGenerator:
         supports_cyl = []
         raw_shear_studs = []
         raw_stiffeners = []
+        raw_intermediate_stiffeners = []
+        raw_bearing_stiffeners = []
+        raw_longitudinal_stiffeners = []
 
         total_width = (self.num_girders - 1) * self.girder_spacing
         reference_position = 0.0  # Centerline reference for skew
@@ -530,6 +533,14 @@ class PlateGirderCADGenerator:
                     raw_stiffeners.append(_translate(stiff, dx=x_offset, dy=y_offset))
                 )
 
+            # Place typed stiffeners
+            for stiff in pg.get("intermediate_stiffeners", []):
+                raw_intermediate_stiffeners.append(_translate(stiff, dx=x_offset, dy=y_offset))
+            for stiff in pg.get("bearing_stiffeners", []):
+                raw_bearing_stiffeners.append(_translate(stiff, dx=x_offset, dy=y_offset))
+            for stiff in pg.get("longitudinal_stiffeners", []):
+                raw_longitudinal_stiffeners.append(_translate(stiff, dx=x_offset, dy=y_offset))
+
             # Place shear studs
             for stud in pg.get("shear_studs", []):
                 shear_studs.append(
@@ -554,6 +565,22 @@ class PlateGirderCADGenerator:
             for s in raw_stiffeners:
                 builder.Add(compound, s)
             stiffeners = [compound]
+
+        def _make_compound(shapes):
+            if not shapes:
+                return []
+            from OCC.Core.BRep import BRep_Builder
+            from OCC.Core.TopoDS import TopoDS_Compound
+            b = BRep_Builder()
+            c = TopoDS_Compound()
+            b.MakeCompound(c)
+            for s in shapes:
+                b.Add(c, s)
+            return [c]
+
+        intermediate_stiffeners_cad = _make_compound(raw_intermediate_stiffeners)
+        bearing_stiffeners_cad      = _make_compound(raw_bearing_stiffeners)
+        longitudinal_stiffeners_cad = _make_compound(raw_longitudinal_stiffeners)
 
         # Compound shear studs
         if raw_shear_studs:
@@ -863,8 +890,11 @@ class PlateGirderCADGenerator:
             "girder_top_flanges": girder_top_flanges,
             "girder_bottom_flanges": girder_bottom_flanges,
             
-            # Stiffeners
+            # Stiffeners (combined and typed)
             "stiffeners": stiffeners,
+            "intermediate_stiffeners": intermediate_stiffeners_cad,
+            "bearing_stiffeners": bearing_stiffeners_cad,
+            "longitudinal_stiffeners": longitudinal_stiffeners_cad,
             
             # Shear Studs
             "shear_studs": shear_studs,

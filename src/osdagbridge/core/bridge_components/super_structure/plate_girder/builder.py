@@ -251,8 +251,10 @@ def build_plate_girder_geometry(
 
         current_y += seg.length
 
-    # Stiffeners
-    stiffeners = []
+    # Stiffeners — three separate typed lists
+    intermediate_stiffeners = []
+    bearing_stiffeners = []
+    longitudinal_stiffeners = []
     
     def get_segment_at(y):
         curr = 0.0
@@ -289,7 +291,7 @@ def build_plate_girder_geometry(
 
             seg, seg_z_center = get_segment_at(y)
 
-            stiffeners.append(
+            intermediate_stiffeners.append(
                 _create_stiffener_plate(
                     position=[ seg.tw / 2, y, seg_z_center ],
                     width=int_stiff_width,
@@ -300,7 +302,7 @@ def build_plate_girder_geometry(
                 )
             )
 
-            stiffeners.append(
+            intermediate_stiffeners.append(
                 _create_stiffener_plate(
                     position=[ -seg.tw / 2, y, seg_z_center ],
                     width=int_stiff_width,
@@ -329,7 +331,7 @@ def build_plate_girder_geometry(
 
     for y in end_positions:
         seg, seg_z_center = get_segment_at(y)
-        stiffeners.append(
+        bearing_stiffeners.append(
             _create_stiffener_plate(
                 position=[ seg.tw / 2, y, seg_z_center ],
                 width=end_stiff_width,
@@ -340,7 +342,7 @@ def build_plate_girder_geometry(
             )
         )
 
-        stiffeners.append(
+        bearing_stiffeners.append(
             _create_stiffener_plate(
                 position=[ -seg.tw / 2, y, seg_z_center ],
                 width=end_stiff_width,
@@ -383,7 +385,7 @@ def build_plate_girder_geometry(
                         u_dir=np.array([0., 0., 1.]),
                         w_dir=np.array([0., 1., 0.])
                     )
-                    stiffeners.append(long_stiff)
+                    longitudinal_stiffeners.append(long_stiff)
             
             curr_y += seg.length
 
@@ -557,9 +559,10 @@ def build_plate_girder_geometry(
     top_flange_shapes = [ _rotate_about_z(tf, -90) for tf in top_flange_shapes ]
     bottom_flange_shapes = [ _rotate_about_z(bf, -90) for bf in bottom_flange_shapes ]
 
-    stiffeners = [
-        _rotate_about_z(s, -90) for s in stiffeners
-    ]
+    intermediate_stiffeners = [_rotate_about_z(s, -90) for s in intermediate_stiffeners]
+    bearing_stiffeners      = [_rotate_about_z(s, -90) for s in bearing_stiffeners]
+    longitudinal_stiffeners = [_rotate_about_z(s, -90) for s in longitudinal_stiffeners]
+    stiffeners = intermediate_stiffeners + bearing_stiffeners + longitudinal_stiffeners
 
     '''supports_tri = [
         _rotate_about_z(s, -90) for s in supports_tri
@@ -639,6 +642,9 @@ def build_plate_girder_geometry(
         "top_flange": top_flange_shapes,
         "bottom_flange": bottom_flange_shapes,
         "stiffeners": stiffeners,
+        "intermediate_stiffeners": intermediate_stiffeners,
+        "bearing_stiffeners": bearing_stiffeners,
+        "longitudinal_stiffeners": longitudinal_stiffeners,
         "supports_tri": supports_vertical + supports_wide_horiz + supports_long_horiz,  # backward compat
         "supports_vertical": supports_vertical,
         "supports_wide_horiz": supports_wide_horiz,

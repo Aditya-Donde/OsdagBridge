@@ -320,9 +320,25 @@ class CAD3DWindow(QWidget):
 
 
         display_and_register(
-            cad_data.get("stiffeners", []),
-            "Stiffener",
-            f"Stiffener\nSpacing: {params.intermediate_stiffener_spacing:.2f} mm\nThickness: {params.intermediate_stiffener_thickness:.2f} mm\nEnd Pairs: {params.num_end_stiffener_pairs}",
+            cad_data.get("intermediate_stiffeners", []),
+            "Intermediate Stiffener",
+            f"Intermediate Stiffener\nSpacing: {params.intermediate_stiffener_spacing:.2f} mm\nThickness: {params.intermediate_stiffener_thickness:.2f} mm\nSteel Grade: {params.steel_grade}",
+            STIFFENER_COLOR,
+            selectable=False
+        )
+
+        display_and_register(
+            cad_data.get("bearing_stiffeners", []),
+            "Bearing Stiffener",
+            f"Bearing Stiffener\nPairs: {params.num_end_stiffener_pairs}\nThickness: {params.end_stiffener_thickness:.2f} mm\nSteel Grade: {params.steel_grade}",
+            STIFFENER_COLOR,
+            selectable=False
+        )
+
+        display_and_register(
+            cad_data.get("longitudinal_stiffeners", []),
+            "Longitudinal Stiffener",
+            f"Longitudinal Stiffener\nCount: {params.num_longitudinal_stiffeners}\nThickness: {params.longitudinal_stiffener_thickness:.2f} mm\nSteel Grade: {params.steel_grade}",
             STIFFENER_COLOR,
             selectable=False
         )
@@ -666,8 +682,9 @@ class CAD3DWindow(QWidget):
 
         # Map checkbox keys → internal model_ais_objects keys
         component_map = {
-            "Girder":        ["Girder Web", "Girder Top Flange", "Girder Bottom Flange", "Stiffener", "Shear Stud",
-                              "Support Vertical", "Support Transverse", "Support Longitudinal"],
+            "Girder":        ["Girder Web", "Girder Top Flange", "Girder Bottom Flange",
+                              "Intermediate Stiffener", "Bearing Stiffener", "Longitudinal Stiffener",
+                              "Shear Stud", "Support Vertical", "Support Transverse", "Support Longitudinal"],
             "Deck":          ["Deck"],
             "Cross Bracing": ["Cross Bracing"],
             "Crash Barrier": ["Crash Barrier", "Crash Barrier W-Beam"],
