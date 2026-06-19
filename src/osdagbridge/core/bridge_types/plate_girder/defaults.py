@@ -398,7 +398,7 @@ _CB_PROPS = [
 ]
 
 
-def extend_cb_dynamic_keys(working_input_dict: dict, girder_count: int, no_of_bracings: int) -> None:
+def extend_cb_dynamic_keys(working_input_dict: dict, girder_count: int, no_of_bracings: int,section_defaults: dict | None = None) -> None:
     """Add missing CB per-member dynamic keys for all pairs up to no_of_bracings members.
 
     Only adds keys that are not already present — existing user-edited values are preserved.
@@ -406,12 +406,29 @@ def extend_cb_dynamic_keys(working_input_dict: dict, girder_count: int, no_of_br
     switching back to a pair after increasing the count shows consistent values.
     """
     no_of_bracings = max(1, int(no_of_bracings))
+
+    # Spacing is not stored by the CB UI form; it is computed and displayed only
+    # (_on_cb_spacing_computed). Recompute it here with the same formula so report
+    # Table 2.7 reflects the current No. of Cross Bracings: span / (count + 1).
+    try:
+        span = float(working_input_dict.get(KEY_SPAN) or 0)
+    except (ValueError, TypeError):
+        span = 0.0
+    cb_spacing = round(span / (no_of_bracings + 1), 3) if span > 0 else ""
+
     for girder_idx in range(1, girder_count):
         g_pair      = f"G{girder_idx}G{girder_idx + 1}"
         seed_suffix = f".{g_pair}.B{girder_idx}M1"
 
         for mk in range(1, no_of_bracings + 1):
             suffix = f".{g_pair}.B{girder_idx}M{mk}"
+            # Location / Member ID are derived from the key structure (mirrors the
+            # End Diaphragm population above) so report Table 2.7 can read them.
+            working_input_dict[KEY_MP_CB_SELECT_GIRDERS + suffix] = \
+                f"G{girder_idx} to G{girder_idx + 1}"
+            working_input_dict[KEY_MP_CB_MEMBER_ID + suffix] = \
+                f"B{girder_idx}M1 to B{girder_idx}M{no_of_bracings}"
+            working_input_dict[KEY_MP_CB_SPACING + suffix] = cb_spacing
             for base_key, defaults_key in _CB_PROPS:
                 full_key = base_key + suffix
                 if full_key in working_input_dict:
@@ -419,6 +436,8 @@ def extend_cb_dynamic_keys(working_input_dict: dict, girder_count: int, no_of_br
                 seed_key = base_key + seed_suffix
                 if seed_key in working_input_dict:
                     working_input_dict[full_key] = working_input_dict[seed_key]
+                elif section_defaults and defaults_key in section_defaults:
+                    working_input_dict[full_key] = section_defaults[defaults_key]
                 else:
                     working_input_dict[full_key] = CROSS_BRACING_DEFAULTS[defaults_key]
 
@@ -656,9 +675,18 @@ def _on_no_of_girders_changed(working_input_dict: dict) -> None:
     for k in stale_cb_keys:
         del working_input_dict[k]
 
+    # --- Cross Bracing section default ---
+    # Default bracing is an angle (same convention as the End Diaphragm below).
+    _CB_DEFAULT_ANGLE = "IS 100 x 100 x 10"
+    _CB_DEFAULT_SECTION_TYPE = "Double Angle (Long Leg)"
+    _CB_SECTION_DEFAULTS = {
+        "bracing_section_type":        _CB_DEFAULT_SECTION_TYPE,
+        "bracing_section_designation": _CB_DEFAULT_ANGLE,
+    }
+
     working_input_dict.setdefault(KEY_MP_CB_NO_OF_CROSS_BRACINGS, 1)
     no_of_bracings = max(1, int(float(str(working_input_dict.get(KEY_MP_CB_NO_OF_CROSS_BRACINGS) or 1))))
-    extend_cb_dynamic_keys(working_input_dict, count, no_of_bracings)
+    extend_cb_dynamic_keys(working_input_dict, count, no_of_bracings, _CB_SECTION_DEFAULTS)
 
     # ── End diaphragm ─────────────────────────────────────────────────────────
     
