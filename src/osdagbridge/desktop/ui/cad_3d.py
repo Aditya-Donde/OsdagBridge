@@ -300,14 +300,21 @@ class CAD3DWindow(QWidget):
         display_and_register(
             cad_data.get("girder_web", []),
             "Girder Web",
-            f"Girder Web\nDepth: {params.girder_section_d:.2f} mm\nWeb Thickness: {params.girder_section_tw:.2f} mm\nSpan: {params.span_length_L / 1000:.2f} m\nSteel Grade: {params.steel_grade}",
+            f"Girder Web\nDepth: {params.girder_section_d:.2f} mm\nWeb Thickness: {params.girder_section_tw:.2f} mm\nSteel Grade: {params.steel_grade}",
             WEB_COLOR
         )
 
         display_and_register(
-            cad_data.get("girder_flanges", []),
-            "Girder Flange",
-            f"Girder Flange\nTop Flange Width: {params.girder_section_bf:.2f} mm\nTop Flange Thickness: {params.girder_section_tf:.2f} mm\nBottom Flange Width: {params.girder_section_bf_b:.2f} mm\nBottom Flange Thickness: {params.girder_section_tf_b:.2f} mm",
+            cad_data.get("girder_top_flanges", []),
+            "Girder Top Flange",
+            f"Top Flange\nWidth: {params.girder_section_bf:.2f} mm\nThickness: {params.girder_section_tf:.2f} mm\nSteel Grade: {params.steel_grade}",
+            FLANGE_COLOR
+        )
+
+        display_and_register(
+            cad_data.get("girder_bottom_flanges", []),
+            "Girder Bottom Flange",
+            f"Bottom Flange\nWidth: {params.girder_section_bf_b:.2f} mm\nThickness: {params.girder_section_tf_b:.2f} mm\nSteel Grade: {params.steel_grade}",
             FLANGE_COLOR
         )
 
@@ -659,7 +666,7 @@ class CAD3DWindow(QWidget):
 
         # Map checkbox keys → internal model_ais_objects keys
         component_map = {
-            "Girder":        ["Girder Web", "Girder Flange", "Stiffener", "Shear Stud",
+            "Girder":        ["Girder Web", "Girder Top Flange", "Girder Bottom Flange", "Stiffener", "Shear Stud",
                               "Support Vertical", "Support Transverse", "Support Longitudinal"],
             "Deck":          ["Deck"],
             "Cross Bracing": ["Cross Bracing"],

@@ -431,6 +431,8 @@ class PlateGirderCADGenerator:
         shear_studs = []
         girder_web = []
         girder_flanges = []
+        girder_top_flanges = []
+        girder_bottom_flanges = []
         supports_tri = []
         supports_vertical = []
         supports_wide_horiz = []
@@ -513,12 +515,14 @@ class PlateGirderCADGenerator:
                 top_flange = _translate(tf, dx=x_offset, dy=y_offset)
                 girders.append(top_flange)
                 girder_flanges.append(top_flange)
+                girder_top_flanges.append(top_flange)
 
             # Place bottom flange
             for bf in pg.get("bottom_flange", []):
                 bottom_flange = _translate(bf, dx=x_offset, dy=y_offset)
                 girders.append(bottom_flange)
                 girder_flanges.append(bottom_flange)
+                girder_bottom_flanges.append(bottom_flange)
 
             # Place stiffeners (follow parent girder's offset)
             for stiff in pg["stiffeners"]:
@@ -856,6 +860,8 @@ class PlateGirderCADGenerator:
             "girders": girders,
             "girder_web": girder_web,
             "girder_flanges": girder_flanges,
+            "girder_top_flanges": girder_top_flanges,
+            "girder_bottom_flanges": girder_bottom_flanges,
             
             # Stiffeners
             "stiffeners": stiffeners,
