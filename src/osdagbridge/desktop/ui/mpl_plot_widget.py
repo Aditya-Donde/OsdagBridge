@@ -352,6 +352,8 @@ class MplPlotWidget(QWidget):
             self._title_overlay.hide()
         if hasattr(self, "_summary_overlay"):
             self._summary_overlay.hide()
+        if hasattr(self, "_navcube"):
+            self._navcube.hide()
 
     def _disconnect_output_dock_signals(self):
         """Disconnect all signals wired in link_output_dock() to prevent dangling refs."""
