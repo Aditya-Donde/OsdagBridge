@@ -781,6 +781,9 @@ class InputDock(QWidget):
             # CAD geometry, load-effect caches) so the GC can reclaim memory.
             if hasattr(self.parent, 'backend') and hasattr(self.parent.backend, 'reset'):
                 self.parent.backend.reset()
+            # Clear log history and restore initial state.
+            if hasattr(self.parent, 'logs_dock') and self.parent.logs_dock is not None:
+                self.parent.logs_dock.reset()
 
         self.lock_btn.setChecked(self.is_locked)
         self.scroll_area.setDisabled(self.is_locked)
