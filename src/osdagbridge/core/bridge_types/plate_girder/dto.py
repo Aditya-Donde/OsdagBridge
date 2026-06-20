@@ -395,5 +395,6 @@ class BridgeParametersDTO:
     # remain empty to use the base girder section values.
     girder_segments: list[GirderSegmentDTO] = field(default_factory=list)
     girder_segments_dict: dict[int, list[GirderSegmentDTO]] = field(default_factory=dict)
+    stiffeners_dict: dict[int, dict] = field(default_factory=dict)
 
 

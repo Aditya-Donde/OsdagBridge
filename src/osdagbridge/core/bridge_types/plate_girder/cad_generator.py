@@ -238,6 +238,7 @@ class PlateGirderCADGenerator:
         self.num_longitudinal_stiffeners = design_params.num_longitudinal_stiffeners
         self.longitudinal_stiffener_thickness = design_params.longitudinal_stiffener_thickness
         self.longitudinal_stiffener_outstand = design_params.longitudinal_stiffener_outstand
+        self.stiffeners_dict = getattr(design_params, 'stiffeners_dict', {}) or {}
 
         # SHEAR STUD PARAMETERS
         ss = design_params.shear_stud_params
@@ -454,6 +455,33 @@ class PlateGirderCADGenerator:
                 current_segments = self.girder_segments_dict[i]
             else:
                 current_segments = self.girder_segments
+
+            # Fetch stiffeners for this particular girder if defined
+            if self.stiffeners_dict and i in self.stiffeners_dict:
+                g_stiff = self.stiffeners_dict[i]
+                g_include_intermediate = g_stiff.get("include_intermediate_stiffeners", self.include_intermediate_stiffeners)
+                g_intermediate_spacing = g_stiff.get("intermediate_stiffener_spacing", self.intermediate_stiffener_spacing)
+                g_intermediate_thickness = g_stiff.get("intermediate_stiffener_thickness", self.intermediate_stiffener_thickness)
+                g_intermediate_outstand = g_stiff.get("intermediate_stiffener_outstand", self.intermediate_stiffener_outstand)
+                g_num_end_pairs = g_stiff.get("num_end_stiffener_pairs", self.num_end_stiffener_pairs)
+                g_end_thickness = g_stiff.get("end_stiffener_thickness", self.end_stiffener_thickness)
+                g_end_outstand = g_stiff.get("end_stiffener_outstand", self.end_stiffener_outstand)
+                g_include_longitudinal = g_stiff.get("include_longitudinal_stiffeners", self.include_longitudinal_stiffeners)
+                g_num_longitudinal = g_stiff.get("num_longitudinal_stiffeners", self.num_longitudinal_stiffeners)
+                g_longitudinal_thickness = g_stiff.get("longitudinal_stiffener_thickness", self.longitudinal_stiffener_thickness)
+                g_longitudinal_outstand = g_stiff.get("longitudinal_stiffener_outstand", self.longitudinal_stiffener_outstand)
+            else:
+                g_include_intermediate = self.include_intermediate_stiffeners
+                g_intermediate_spacing = self.intermediate_stiffener_spacing
+                g_intermediate_thickness = self.intermediate_stiffener_thickness
+                g_intermediate_outstand = self.intermediate_stiffener_outstand
+                g_num_end_pairs = self.num_end_stiffener_pairs
+                g_end_thickness = self.end_stiffener_thickness
+                g_end_outstand = self.end_stiffener_outstand
+                g_include_longitudinal = self.include_longitudinal_stiffeners
+                g_num_longitudinal = self.num_longitudinal_stiffeners
+                g_longitudinal_thickness = self.longitudinal_stiffener_thickness
+                g_longitudinal_outstand = self.longitudinal_stiffener_outstand
             
             # Guided rule: girder j (1-indexed) has a transverse-constrained right support when
             # j's parity differs from N's parity and j is not the first or last girder.
@@ -471,18 +499,18 @@ class PlateGirderCADGenerator:
                 B_ft=self.girder_section_bf,
                 B_fb=self.girder_section_bf_b,
                 segments=current_segments,
-                include_intermediate_stiffeners=self.include_intermediate_stiffeners,
-                intermediate_stiffener_spacing=self.intermediate_stiffener_spacing,
-                intermediate_stiffener_thickness=self.intermediate_stiffener_thickness,
+                include_intermediate_stiffeners=g_include_intermediate,
+                intermediate_stiffener_spacing=g_intermediate_spacing,
+                intermediate_stiffener_thickness=g_intermediate_thickness,
                 chamfer_length=40,
-                num_end_stiffener_pairs=self.num_end_stiffener_pairs,
-                T_es=self.end_stiffener_thickness,
-                intermediate_stiffener_outstand=self.intermediate_stiffener_outstand,
-                end_stiffener_outstand=self.end_stiffener_outstand,
-                include_longitudinal_stiffeners=self.include_longitudinal_stiffeners,
-                num_longitudinal_stiffeners=self.num_longitudinal_stiffeners,
-                longitudinal_stiffener_thickness=self.longitudinal_stiffener_thickness,
-                longitudinal_stiffener_outstand=self.longitudinal_stiffener_outstand,
+                num_end_stiffener_pairs=g_num_end_pairs,
+                T_es=g_end_thickness,
+                intermediate_stiffener_outstand=g_intermediate_outstand,
+                end_stiffener_outstand=g_end_outstand,
+                include_longitudinal_stiffeners=g_include_longitudinal,
+                num_longitudinal_stiffeners=g_num_longitudinal,
+                longitudinal_stiffener_thickness=g_longitudinal_thickness,
+                longitudinal_stiffener_outstand=g_longitudinal_outstand,
                 shear_stud_base_diameter=self.shear_stud_base_diameter,
                 shear_stud_top_diameter=self.shear_stud_top_diameter,
                 shear_stud_base_height=self.shear_stud_base_height,

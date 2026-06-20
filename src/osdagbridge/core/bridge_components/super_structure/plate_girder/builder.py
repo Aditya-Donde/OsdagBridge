@@ -377,7 +377,8 @@ def build_plate_girder_geometry(
                     heights.append(seg_z_web_center + seg.D / 2 - 2 * seg.D / 3)
                     
                 for h in heights:
-                    long_stiff = _make_plate(
+                    # Right side longitudinal stiffener
+                    long_stiff_r = _make_plate(
                         origin=np.array([seg.tw / 2 + long_stiff_width / 2, seg_start_y, h]),
                         length=long_stiff_width,
                         width=seg_len,
@@ -385,7 +386,18 @@ def build_plate_girder_geometry(
                         u_dir=np.array([0., 0., 1.]),
                         w_dir=np.array([0., 1., 0.])
                     )
-                    longitudinal_stiffeners.append(long_stiff)
+                    longitudinal_stiffeners.append(long_stiff_r)
+
+                    # Left side longitudinal stiffener
+                    long_stiff_l = _make_plate(
+                        origin=np.array([-seg.tw / 2 - long_stiff_width / 2, seg_start_y, h]),
+                        length=long_stiff_width,
+                        width=seg_len,
+                        thickness=longitudinal_stiffener_thickness,
+                        u_dir=np.array([0., 0., 1.]),
+                        w_dir=np.array([0., 1., 0.])
+                    )
+                    longitudinal_stiffeners.append(long_stiff_l)
             
             curr_y += seg.length
 

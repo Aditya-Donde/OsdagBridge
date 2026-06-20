@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+
 
 from osdagbridge.core.utils.codes.irc5_2015 import IRC5_2015
 from osdagbridge.core.utils.codes.keyfile import (
@@ -451,7 +453,6 @@ def _extend_member_field_keys(working_input_dict: dict, girder_id: str, member_f
     member_ids = [str(seg.get("id", "")) for seg in segments if seg.get("id")]
 
     for member_id in member_ids:
-        import re
         match = re.match(r"G\d+M(\d+)", str(member_id or "").strip())
         if not match:
             continue
@@ -520,10 +521,12 @@ def _on_no_of_girders_changed(working_input_dict: dict) -> None:
     
     # --- Remove all stale dynamic girder keys first (handles girder count change) ---
     # which all start with "member_properties.girder_details." and contain ".G"
-    stale_girder_keys = [
-        k for k in working_input_dict
-        if k.startswith("member_properties.girder_details.") and ".G" in k
-    ]
+    stale_girder_keys = []
+    for k in working_input_dict:
+        if k.startswith("member_properties.girder_details.") and ".G" in k:
+            girders = [int(g) for g in re.findall(r'G(\d+)', k)]
+            if any(g > count for g in girders):
+                stale_girder_keys.append(k)
     for k in stale_girder_keys:
         del working_input_dict[k]
 
@@ -539,10 +542,12 @@ def _on_no_of_girders_changed(working_input_dict: dict) -> None:
     # --- Per-girder/member section-input defaults: <base_key>.G{n}.M{m} ---
     # KEY_MP_GD_MEMBER_ID lives under "member_properties.member_id" (not
     # ".girder_details."), so it isn't covered by stale_girder_keys above.
-    stale_member_id_keys = [
-        k for k in working_input_dict
-        if k.startswith(f"{KEY_MP_GD_MEMBER_ID}.G")
-    ]
+    stale_member_id_keys = []
+    for k in working_input_dict:
+        if k.startswith(f"{KEY_MP_GD_MEMBER_ID}.G"):
+            girders = [int(g) for g in re.findall(r'G(\d+)', k)]
+            if any(g > count for g in girders):
+                stale_member_id_keys.append(k)
     for k in stale_member_id_keys:
         del working_input_dict[k]
 
@@ -559,7 +564,9 @@ def _on_no_of_girders_changed(working_input_dict: dict) -> None:
         for member_id in [1]:
             working_input_dict[f"{KEY_MP_GD_MEMBER_ID}.G{girder_idx}.M{member_id}"] = f"G{girder_idx}M{member_id}"
             for base_key, value in MP_GIRDER_INPUT_DEFAULTS:
-                working_input_dict[f"{base_key}.G{girder_idx}.M{member_id}"] = value
+                key = f"{base_key}.G{girder_idx}.M{member_id}"
+                if key not in working_input_dict:
+                    working_input_dict[key] = value
 
     # To add a new property in future, just add one line here.
     # The imported constant's string VALUE is used as the base key,
@@ -615,15 +622,19 @@ def _on_no_of_girders_changed(working_input_dict: dict) -> None:
         for girder_idx in range(1, count + 1):
             for member_id in [1]:
                 for base_key, value in MP_GIRDER_PROPS:
-                    working_input_dict[f"{base_key}.G{girder_idx}.M{member_id}"] = value
+                    key = f"{base_key}.G{girder_idx}.M{member_id}"
+                    if design_mode == 'Optimized' or key not in working_input_dict or working_input_dict[key] in (None, "", "All"):
+                        working_input_dict[key] = value
 
     # ── Stiffener ─────────────────────────────────────────────────────────────
 
     # --- Remove all stale dynamic stiffener keys (handles girder count change) ---
-    stale_stiffener_keys = [
-        k for k in working_input_dict
-        if k.startswith("member_properties.stiffener_details.") and ".G" in k
-    ]
+    stale_stiffener_keys = []
+    for k in working_input_dict:
+        if k.startswith("member_properties.stiffener_details.") and ".G" in k:
+            girders = [int(g) for g in re.findall(r'G(\d+)', k)]
+            if any(g > count for g in girders):
+                stale_stiffener_keys.append(k)
     for k in stale_stiffener_keys:
         del working_input_dict[k]
 
@@ -644,29 +655,40 @@ def _on_no_of_girders_changed(working_input_dict: dict) -> None:
         for member_id in [1]:
             working_input_dict[f"{KEY_MP_STIFFENER_SELECT_MEMBER_ID}.G{girder_idx}.M{member_id}"] = f"G{girder_idx}M{member_id}"
             for base_key, defaults_key in MP_STIFFENER_PROPS:
-                working_input_dict[f"{base_key}.G{girder_idx}.M{member_id}"] = \
-                    STIFFENER_DETAILS_DEFAULTS[defaults_key]
+                key = f"{base_key}.G{girder_idx}.M{member_id}"
+                if key not in working_input_dict:
+                    working_input_dict[key] = \
+                        STIFFENER_DETAILS_DEFAULTS[defaults_key]
 
     # ── Cross bracing ─────────────────────────────────────────────────────────
     # --- Remove all stale dynamic cross bracing keys ---
-    stale_cb_keys = [
-        k for k in working_input_dict
-        if k.startswith("member_properties.cross_bracing_details.") and ".G" in k
-    ]
+    working_input_dict.setdefault(KEY_MP_CB_NO_OF_CROSS_BRACINGS, 1)
+    no_of_bracings = max(1, int(float(str(working_input_dict.get(KEY_MP_CB_NO_OF_CROSS_BRACINGS) or 1))))
+
+    stale_cb_keys = []
+    for k in working_input_dict:
+        if k.startswith("member_properties.cross_bracing_details.") and ".G" in k:
+            girders = [int(g) for g in re.findall(r'G(\d+)', k)]
+            if any(g > count for g in girders):
+                stale_cb_keys.append(k)
+                continue
+            members = [int(m) for m in re.findall(r'M(\d+)', k)]
+            if any(m > no_of_bracings for m in members):
+                stale_cb_keys.append(k)
     for k in stale_cb_keys:
         del working_input_dict[k]
 
-    working_input_dict.setdefault(KEY_MP_CB_NO_OF_CROSS_BRACINGS, 1)
-    no_of_bracings = max(1, int(float(str(working_input_dict.get(KEY_MP_CB_NO_OF_CROSS_BRACINGS) or 1))))
     extend_cb_dynamic_keys(working_input_dict, count, no_of_bracings)
 
     # ── End diaphragm ─────────────────────────────────────────────────────────
     
     # --- Remove all stale dynamic end diaphragm keys ---
-    stale_ed_keys = [
-        k for k in working_input_dict
-        if k.startswith("member_properties.end_diaphragm_details.") and ".G" in k
-    ]
+    stale_ed_keys = []
+    for k in working_input_dict:
+        if k.startswith("member_properties.end_diaphragm_details.") and ".G" in k:
+            girders = [int(g) for g in re.findall(r'G(\d+)', k)]
+            if any(g > count for g in girders):
+                stale_ed_keys.append(k)
     for k in stale_ed_keys:
         del working_input_dict[k]
 
@@ -754,13 +776,15 @@ def _on_no_of_girders_changed(working_input_dict: dict) -> None:
             e_member = f"E{girder_idx}M{member_id}"
             suffix   = f".{g_pair}.{e_member}"
             for base_key, defaults_key in MP_ED_PROPS:
-                if defaults_key == "select_girders":
-                    value = f"G{girder_idx} to G{girder_idx + 1}"
-                elif defaults_key == "member_id":
-                    value = f"E{girder_idx}M1 to E{girder_idx}M{no_of_ed_members}"
-                else:
-                    value = _ED_DEFAULTS[defaults_key]
-                working_input_dict[f"{base_key}{suffix}"] = value
+                key = f"{base_key}{suffix}"
+                if key not in working_input_dict:
+                    if defaults_key == "select_girders":
+                        value = f"G{girder_idx} to G{girder_idx + 1}"
+                    elif defaults_key == "member_id":
+                        value = f"E{girder_idx}M1 to E{girder_idx}M{no_of_ed_members}"
+                    else:
+                        value = _ED_DEFAULTS[defaults_key]
+                    working_input_dict[key] = value
 
 
 def solve_extend_basic_input_dict(basic_input_dict: dict) -> None:

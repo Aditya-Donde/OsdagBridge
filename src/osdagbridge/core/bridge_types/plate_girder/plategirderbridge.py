@@ -3332,82 +3332,116 @@ class PlateGirderBridge:
         print("DEBUG girder spacing dto mm:", self.output_dict[KEY_TS_GIRDER_SPACING] * 1e3)
 
         # --- Stiffeners: read from flat per-girder keys in output_dict ---
-        # Keys are stored as  "<KEY_MP_STIFFENER_xxx>.G1.M1" (girder 1 used as representative).
-        # Intermediate stiffener: KEY_MP_STIFFENER_INTERMEDIATE holds "Yes" / "No".
-        # Longitudinal stiffener: KEY_MP_STIFFENER_LONGITUDINAL holds "No" / "Yes and 1 stiffener" / "Yes and 2 stiffeners".
-        # Bearing stiffener count: KEY_MP_STIFFENER_NO_BEARING_STIFFENERS holds the pair count.
+        # Keys are stored as  "<KEY_MP_STIFFENER_xxx>.G{gi}.M1".
         _is_optimized = str(inp.get(KEY_DESIGN_MODE, "Optimized")).strip() == "Optimized"
 
-        def _stiff_inp(base_key, fallback=None):
-            """Read the G1.M1 variant of a stiffener key from output_dict."""
-            v = inp.get(f"{base_key}.G1.M1")
-            if v is None:
-                v = inp.get(base_key)          # fallback: key without suffix
-            if v is not None and str(v).strip() not in ("", "None", "NA"):
-                return str(v).strip()
-            return fallback
+        num_girders = int(self.output_dict[KEY_TS_NO_OF_GIRDERS])
+        stiffeners_dict = {}
 
-        # Intermediate stiffeners:
-        # - Optimized design: always render them (they exist by design).
-        # - Custom design: respect the Yes/No toggle set by the user.
-        if _is_optimized:
-            _int_stiff_on = True
-        else:
-            _int_stiff_flag = _stiff_inp(KEY_MP_STIFFENER_INTERMEDIATE, "No")
-            _int_stiff_on   = str(_int_stiff_flag).strip().lower() == "yes"
+        for i in range(num_girders):
+            gi = i + 1
+            # Fetch girder-specific inputs
+            def _stiff_inp_gi(base_key, fallback=None):
+                v = inp.get(f"{base_key}.G{gi}.M1")
+                if v is not None and str(v).strip() not in ("", "None", "NA"):
+                    return str(v).strip()
+                return fallback
 
-        _int_spacing_raw = _stiff_inp(KEY_MP_STIFFENER_INTERMEDIATE_SPACING)
-        try:
-            _int_spacing = float(_int_spacing_raw) if _int_spacing_raw else cross_bracing_mm / 2
-        except (ValueError, TypeError):
-            _int_spacing = cross_bracing_mm / 2
+            if _is_optimized:
+                g_int_stiff_on = True
+            else:
+                g_int_stiff_flag = _stiff_inp_gi(KEY_MP_STIFFENER_INTERMEDIATE, "No")
+                g_int_stiff_on   = str(g_int_stiff_flag).strip().lower() == "yes"
 
-        _int_thick_raw = _stiff_inp(KEY_MP_STIFFENER_INTERMEDIATE_THICKNESS)
-        try:
-            _int_thickness = float(_int_thick_raw) if _int_thick_raw else 20.0
-        except (ValueError, TypeError):
-            _int_thickness = 20.0
+            g_int_spacing_raw = _stiff_inp_gi(KEY_MP_STIFFENER_INTERMEDIATE_SPACING)
+            g_int_thick_raw = _stiff_inp_gi(KEY_MP_STIFFENER_INTERMEDIATE_THICKNESS)
+            g_int_outstand_raw = _stiff_inp_gi(KEY_MP_STIFFENER_INTERMEDIATE_OUTSTAND)
 
-        # Longitudinal stiffeners:
-        # Stored value is "No", "Yes and 1 stiffener", "Yes and 2 stiffeners"
-        _long_stiff_raw = _stiff_inp(KEY_MP_STIFFENER_LONGITUDINAL, "No")
-        _long_stiff_on  = str(_long_stiff_raw).strip().lower() not in ("no", "none", "")
-        # Extract the count from the phrase (e.g. "Yes and 2 stiffeners" → 2)
-        _num_long_stiff = 1  # default if parsing fails
-        if _long_stiff_on:
-            import re as _re
-            _m = _re.search(r"\d+", _long_stiff_raw)
-            _num_long_stiff = int(_m.group()) if _m else 1
+            if not _is_optimized:
+                if g_int_stiff_on:
+                    if g_int_spacing_raw is None or str(g_int_spacing_raw).strip() == "":
+                        raise ValueError(f"Missing intermediate stiffener spacing for Girder {gi}")
+                    g_int_spacing = float(g_int_spacing_raw)
 
-        _bear_pairs_raw = _stiff_inp(KEY_MP_STIFFENER_NO_BEARING_STIFFENERS, "4")
-        try:
-            _num_bear_pairs = max(1, int(float(_bear_pairs_raw)))
-        except (ValueError, TypeError):
-            _num_bear_pairs = 4
+                    if g_int_thick_raw is None or str(g_int_thick_raw).strip() == "":
+                        raise ValueError(f"Missing intermediate stiffener thickness for Girder {gi}")
+                    g_int_thickness = float(g_int_thick_raw)
 
-        _int_outstand_raw = _stiff_inp(KEY_MP_STIFFENER_INTERMEDIATE_OUTSTAND)
-        try:
-            _int_outstand = float(_int_outstand_raw) if _int_outstand_raw else None
-        except (ValueError, TypeError):
-            _int_outstand = None
+                    g_int_outstand = float(g_int_outstand_raw) if (g_int_outstand_raw and str(g_int_outstand_raw).strip().lower() not in ("", "none", "na")) else None
+                else:
+                    g_int_spacing = 0.0
+                    g_int_thickness = 0.0
+                    g_int_outstand = None
+            else:
+                g_int_spacing = float(g_int_spacing_raw) if g_int_spacing_raw is not None else 0.0
+                g_int_thickness = float(g_int_thick_raw) if g_int_thick_raw is not None else 0.0
+                g_int_outstand = float(g_int_outstand_raw) if (g_int_outstand_raw and str(g_int_outstand_raw).strip().lower() not in ("", "none", "na")) else None
 
-        _bear_thick_raw = _stiff_inp(KEY_MP_STIFFENER_BEARING_THICKNESS)
-        try:
-            _bear_thickness = float(_bear_thick_raw) if _bear_thick_raw else 30.0
-        except (ValueError, TypeError):
-            _bear_thickness = 30.0
+            g_long_stiff_raw = _stiff_inp_gi(KEY_MP_STIFFENER_LONGITUDINAL, "No")
+            g_long_stiff_on  = str(g_long_stiff_raw).strip().lower() not in ("no", "none", "")
+            g_num_long_stiff = 1
+            if g_long_stiff_on:
+                import re as _re
+                _m = _re.search(r"\d+", g_long_stiff_raw)
+                g_num_long_stiff = int(_m.group()) if _m else 1
 
-        _bear_outstand_raw = _stiff_inp(KEY_MP_STIFFENER_BEARING_OUTSTAND)
-        try:
-            _bear_outstand = float(_bear_outstand_raw) if _bear_outstand_raw else None
-        except (ValueError, TypeError):
-            _bear_outstand = None
+            g_long_thick_raw = _stiff_inp_gi(KEY_MP_STIFFENER_LONGITUDINAL_THICKNESS)
 
-        _long_thick_raw = _stiff_inp(KEY_MP_STIFFENER_LONGITUDINAL_THICKNESS)
-        try:
-            _long_thickness = float(_long_thick_raw) if _long_thick_raw else 20.0
-        except (ValueError, TypeError):
-            _long_thickness = 20.0
+            if not _is_optimized:
+                if g_long_stiff_on:
+                    if g_long_thick_raw is None or str(g_long_thick_raw).strip() == "":
+                        raise ValueError(f"Missing longitudinal stiffener thickness for Girder {gi}")
+                    g_long_thickness = float(g_long_thick_raw)
+                else:
+                    g_long_thickness = 0.0
+            else:
+                g_long_thickness = float(g_long_thick_raw) if g_long_thick_raw is not None else 0.0
+
+            g_bear_pairs_raw = _stiff_inp_gi(KEY_MP_STIFFENER_NO_BEARING_STIFFENERS)
+            g_bear_thick_raw = _stiff_inp_gi(KEY_MP_STIFFENER_BEARING_THICKNESS)
+            g_bear_outstand_raw = _stiff_inp_gi(KEY_MP_STIFFENER_BEARING_OUTSTAND)
+
+            if not _is_optimized:
+                if g_bear_pairs_raw is None or str(g_bear_pairs_raw).strip() == "":
+                    raise ValueError(f"Missing bearing stiffener pairs for Girder {gi}")
+                g_num_bear_pairs = max(1, int(float(g_bear_pairs_raw)))
+
+                if g_bear_thick_raw is None or str(g_bear_thick_raw).strip() == "":
+                    raise ValueError(f"Missing bearing stiffener thickness for Girder {gi}")
+                g_bear_thickness = float(g_bear_thick_raw)
+
+                g_bear_outstand = float(g_bear_outstand_raw) if (g_bear_outstand_raw and str(g_bear_outstand_raw).strip().lower() not in ("", "none", "na")) else None
+            else:
+                g_num_bear_pairs = max(1, int(float(g_bear_pairs_raw))) if g_bear_pairs_raw is not None else 1
+                g_bear_thickness = float(g_bear_thick_raw) if g_bear_thick_raw is not None else 0.0
+                g_bear_outstand = float(g_bear_outstand_raw) if (g_bear_outstand_raw and str(g_bear_outstand_raw).strip().lower() not in ("", "none", "na")) else None
+
+            stiffeners_dict[i] = {
+                "include_intermediate_stiffeners": g_int_stiff_on,
+                "intermediate_stiffener_spacing": g_int_spacing,
+                "intermediate_stiffener_thickness": g_int_thickness,
+                "intermediate_stiffener_outstand": g_int_outstand,
+                "num_end_stiffener_pairs": g_num_bear_pairs,
+                "end_stiffener_thickness": g_bear_thickness,
+                "end_stiffener_outstand": g_bear_outstand,
+                "include_longitudinal_stiffeners": g_long_stiff_on,
+                "num_longitudinal_stiffeners": max(1, g_num_long_stiff) if g_long_stiff_on else 1,
+                "longitudinal_stiffener_thickness": g_long_thickness,
+                "longitudinal_stiffener_outstand": None,
+            }
+
+        # Keep representative (first girder) values for DTO scalar fields
+        rep = stiffeners_dict[0]
+        _int_stiff_on = rep["include_intermediate_stiffeners"]
+        _int_spacing = rep["intermediate_stiffener_spacing"]
+        _int_thickness = rep["intermediate_stiffener_thickness"]
+        _int_outstand = rep["intermediate_stiffener_outstand"]
+        _num_bear_pairs = rep["num_end_stiffener_pairs"]
+        _bear_thickness = rep["end_stiffener_thickness"]
+        _bear_outstand = rep["end_stiffener_outstand"]
+        _long_stiff_on = rep["include_longitudinal_stiffeners"]
+        _num_long_stiff = rep["num_longitudinal_stiffeners"]
+        _long_thickness = rep["longitudinal_stiffener_thickness"]
 
         print(f"DEBUG stiffeners | mode={'Optimized' if _is_optimized else 'Custom'} | intermediate_on={_int_stiff_on} spacing={_int_spacing} thick={_int_thickness} outstand={_int_outstand} | longitudinal_on={_long_stiff_on} count={_num_long_stiff} thick={_long_thickness} | bearing_pairs={_num_bear_pairs} thick={_bear_thickness} outstand={_bear_outstand}")
         print(f"DEBUG stiffeners raw keys | intermediate={inp.get(KEY_MP_STIFFENER_INTERMEDIATE+'.G1.M1')!r} longitudinal={inp.get(KEY_MP_STIFFENER_LONGITUDINAL+'.G1.M1')!r}")
@@ -3512,6 +3546,7 @@ class PlateGirderBridge:
             # --- Girder segments (single uniform segment) ---
             girder_segments=[girder_segment],
             girder_segments_dict={},
+            stiffeners_dict=stiffeners_dict,
         )
 
     def get_ifc_export_parameters(self, input_dict: dict | None = None) -> BridgeParametersDTO:
