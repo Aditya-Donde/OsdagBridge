@@ -30,6 +30,7 @@ from osdagbridge.desktop.ui.dialogs.material_properties import (
 from osdagbridge.desktop.ui.dialogs.custom_messagebox import CustomMessageBox, MessageBoxType
 from osdagbridge.core.bridge_types.plate_girder.defaults import BASIC_INPUT_DICT
 from osdagbridge.core.bridge_types.plate_girder.validator import BridgeInputValidator
+from osdagbridge.desktop.ui.utils.custom_cursors import pointing_hand_cursor
 
 
 MATERIAL_CUSTOM_OPTION = "Custom"
@@ -155,7 +156,7 @@ class InputDock(QWidget):
         top_bar.addWidget(basic_btn)
 
         self.additional_inputs_btn = QPushButton("Additional Inputs")
-        self.additional_inputs_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.additional_inputs_btn.setCursor(pointing_hand_cursor())
         self.additional_inputs_btn.setStyleSheet("""
             QPushButton { background-color:white; color:black; font-weight:bold; font-size:13px;
                           border-radius:5px; border:1px solid black; padding:7px 20px; }
@@ -174,7 +175,7 @@ class InputDock(QWidget):
             QPushButton:checked  { background-color:#FFA500; }
             QPushButton:checked:hover { background-color:#fa7a02; }
         """)
-        self.lock_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.lock_btn.setCursor(pointing_hand_cursor())
         self.lock_btn.setObjectName("lock_btn")
         self.lock_btn.setCheckable(True)
         self.lock_btn.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
@@ -464,7 +465,7 @@ class InputDock(QWidget):
         btn_text = meta.get("button_label")
         btn = QPushButton(btn_text)
         btn.setObjectName(key)
-        btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn.setCursor(pointing_hand_cursor())
         btn.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         btn.setStyleSheet(ACTION_BTN_STYLE)
         cb = getattr(self, meta.get("action", ""), None)
@@ -495,7 +496,7 @@ class InputDock(QWidget):
             clo.setSpacing(4)
             clo.addWidget(widget, 1)
             info = QToolButton()
-            info.setCursor(Qt.CursorShape.PointingHandCursor)
+            info.setCursor(pointing_hand_cursor())
             info.setAutoRaise(True)
             info.setIcon(QIcon(":/vectors/msg_about.svg"))
             info.setFixedSize(20, 20)
@@ -532,7 +533,7 @@ class InputDock(QWidget):
         header.addStretch()
 
         toggle = QPushButton()
-        toggle.setCursor(Qt.CursorShape.PointingHandCursor)
+        toggle.setCursor(pointing_hand_cursor())
         toggle.setCheckable(True)
         toggle.setChecked(True)
         toggle.setIcon(QIcon(":/vectors/arrow_up_light.svg"))
@@ -570,7 +571,7 @@ class InputDock(QWidget):
         sl.setAlignment(Qt.AlignVCenter | Qt.AlignLeft)
 
         self.toggle_btn = QPushButton("❮")
-        self.toggle_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.toggle_btn.setCursor(pointing_hand_cursor())
         self.toggle_btn.setFixedSize(6, 60)
         self.toggle_btn.setToolTip("Hide panel")
         self.toggle_btn.clicked.connect(self.toggle_input_dock)

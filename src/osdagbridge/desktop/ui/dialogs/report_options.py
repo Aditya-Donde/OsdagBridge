@@ -15,6 +15,7 @@ from osdagbridge.core.reports.report_generator import (
 
 from osdagbridge.desktop.ui.utils.custom_titlebar import CustomTitleBar
 from osdagbridge.desktop.ui.dialogs.custom_messagebox import CustomMessageBox, MessageBoxType
+from osdagbridge.desktop.ui.utils.custom_cursors import pointing_hand_cursor
 
 class ReportOptionsDialog(QDialog):
     """Design Report options dialog — Page 1 collects project metadata
@@ -185,11 +186,11 @@ class ReportOptionsDialog(QDialog):
         profile_layout.setSpacing(8)
         use_profile_btn = QPushButton("Use Profile")
         use_profile_btn.setObjectName("ghost")
-        use_profile_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        use_profile_btn.setCursor(pointing_hand_cursor())
         use_profile_btn.clicked.connect(self.load_profile)
         save_profile_btn = QPushButton("Save Profile")
         save_profile_btn.setObjectName("ghost")
-        save_profile_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        save_profile_btn.setCursor(pointing_hand_cursor())
         save_profile_btn.clicked.connect(self.save_profile)
         profile_layout.addWidget(use_profile_btn)
         profile_layout.addWidget(save_profile_btn)
@@ -203,7 +204,7 @@ class ReportOptionsDialog(QDialog):
         self.org_logo = QLineEdit()
         browse_btn = QPushButton("Browse")
         browse_btn.setObjectName("ghost")
-        browse_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        browse_btn.setCursor(pointing_hand_cursor())
         browse_btn.clicked.connect(self.browse_logo)
         logo_layout = QHBoxLayout()
         logo_layout.setContentsMargins(0, 0, 0, 0)
@@ -252,11 +253,11 @@ class ReportOptionsDialog(QDialog):
         btn_layout.addStretch()
         next_btn = QPushButton("Next")
         next_btn.setObjectName("primary")
-        next_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        next_btn.setCursor(pointing_hand_cursor())
         next_btn.clicked.connect(self.go_next)
         cancel_btn = QPushButton("Cancel")
         cancel_btn.setObjectName("ghost")
-        cancel_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        cancel_btn.setCursor(pointing_hand_cursor())
         cancel_btn.clicked.connect(self.reject)
         btn_layout.addWidget(next_btn)
         btn_layout.addWidget(cancel_btn)
@@ -304,22 +305,22 @@ class ReportOptionsDialog(QDialog):
         btn_layout = QHBoxLayout()
         preview_btn = QPushButton("Preview PDF")
         preview_btn.setObjectName("ghost")
-        preview_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        preview_btn.setCursor(pointing_hand_cursor())
         preview_btn.clicked.connect(self.preview_pdf)
         btn_layout.addWidget(preview_btn)
         btn_layout.addStretch()
 
         back_btn = QPushButton("Back")
         back_btn.setObjectName("ghost")
-        back_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        back_btn.setCursor(pointing_hand_cursor())
         back_btn.clicked.connect(self.go_back)
         save_btn = QPushButton("Save PDF")
         save_btn.setObjectName("primary")
-        save_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        save_btn.setCursor(pointing_hand_cursor())
         save_btn.clicked.connect(self.save_pdf)
         cancel_btn = QPushButton("Cancel")
         cancel_btn.setObjectName("ghost")
-        cancel_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        cancel_btn.setCursor(pointing_hand_cursor())
         cancel_btn.clicked.connect(self.reject)
 
         btn_layout.addWidget(back_btn)

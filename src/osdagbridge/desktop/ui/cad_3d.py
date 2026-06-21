@@ -69,6 +69,7 @@ from osdagbridge.core.bridge_types.plate_girder.dto import (
     ShearStudParamsDTO,
     GirderSegmentDTO,
 )
+from osdagbridge.desktop.ui.utils.custom_cursors import pointing_hand_cursor
 
 class CAD3DWindow(QWidget):
     """
@@ -1159,7 +1160,7 @@ class BridgeComponentCheckbox(QWidget):
         for label, key in self.COMPONENTS:
             cb = QCheckBox(label, self)
             cb.setObjectName(label)
-            cb.setCursor(Qt.PointingHandCursor)
+            cb.setCursor(pointing_hand_cursor())
             cb.clicked.connect(lambda checked, k=key, c=cb: self._on_click(k, c, checked))
             layout.addWidget(cb)
             self._checkboxes.append(cb)

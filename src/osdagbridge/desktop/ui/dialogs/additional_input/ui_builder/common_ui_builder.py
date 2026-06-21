@@ -21,6 +21,7 @@ ADDITIONAL_INPUTS_SCROLL_STYLE = """
 """
 
 from PySide6.QtWidgets import QStackedWidget
+from osdagbridge.desktop.ui.utils.custom_cursors import pointing_hand_cursor
 class AdaptiveWidget(QStackedWidget):
     """Switches between different field types based on a controller value."""
 
@@ -774,7 +775,7 @@ class UIBuilder(QWidget):
         elif ftype == TYPE_BUTTON:
             btn = QPushButton(field_def.get("text", ""))
             btn.setObjectName(field_def.get("id", ""))
-            btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            btn.setCursor(pointing_hand_cursor())
             btn.setStyleSheet("""
                 QPushButton {
                     background-color: #ffffff;
@@ -1102,7 +1103,7 @@ class UIBuilder(QWidget):
 
         btn = QPushButton(title)
         btn.setObjectName(field_id)
-        btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn.setCursor(pointing_hand_cursor())
         
         btn.setFixedHeight(28)
         btn.setFixedWidth(200)

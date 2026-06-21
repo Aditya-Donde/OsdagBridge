@@ -13,6 +13,7 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCore import Qt, QRectF, QRect
 from PySide6.QtGui import QColor, QPainterPath, QPen, QFontMetrics, QIcon, QCursor
+from osdagbridge.desktop.ui.utils.custom_cursors import pointing_hand_cursor
 
 # =================================================================================
 #   ITEM DELEGATE FOR DISABLED ITEMS
@@ -79,9 +80,9 @@ class SmartCursorComboBoxView(QListView):
             if item and not item.isEnabled():
                 self.setCursor(Qt.ForbiddenCursor)
             else:
-                self.setCursor(Qt.PointingHandCursor)
+                self.setCursor(pointing_hand_cursor())
         else:
-            self.setCursor(Qt.PointingHandCursor)
+            self.setCursor(pointing_hand_cursor())
 
         super().mouseMoveEvent(event)
 
@@ -514,7 +515,7 @@ class ToolBarWidget(QWidget):
             btn.setIconSize(icon_size)
             btn.setToolTip(tooltip)
             btn.setFixedSize(24, 24)
-            btn.setCursor(QCursor(Qt.PointingHandCursor))
+            btn.setCursor(pointing_hand_cursor())
             btn.setStyleSheet(button_qss)
             btn.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
             return btn
@@ -667,7 +668,7 @@ class ToolBarWidget(QWidget):
 #---------Standalone-Testing------------------------------------
 import sys
 from PySide6.QtWidgets import QApplication, QWidget, QVBoxLayout
- 
+
 if __name__ == "__main__":
     app = QApplication(sys.argv)
  

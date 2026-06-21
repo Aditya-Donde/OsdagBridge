@@ -22,6 +22,7 @@ from osdagbridge.core.utils.common import *
 from osdagbridge.core.utils.osi_validator import validate_osi_inputs
 from osdagbridge.core.utils.logger import bridge_logger
 from osdagbridge.desktop.ui.utils.custom_widgets import ToolBarWidget
+from osdagbridge.desktop.ui.utils.custom_cursors import pointing_hand_cursor
 
 class LoggerStdoutRedirector:
     def __init__(self, logger_func, original_stdout=None):
@@ -203,7 +204,7 @@ class CustomWindow(QWidget):
             clicked = Signal()  # Define a custom clicked signal
             def __init__(self, parent=None):
                 super().__init__(parent)
-                self.setCursor(Qt.CursorShape.PointingHandCursor)
+                self.setCursor(pointing_hand_cursor())
 
             def mousePressEvent(self, event):
                 if event.button() == Qt.MouseButton.LeftButton:
@@ -1805,7 +1806,7 @@ class InputDockIndicator(QWidget):
 
         self.toggle_btn = QPushButton("❯")  # Right-pointing chevron for input dock
         self.toggle_btn.setFixedSize(6, 60)
-        self.toggle_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.toggle_btn.setCursor(pointing_hand_cursor())
         self.toggle_btn.clicked.connect(self.parent.input_dock_toggle)
         self.toggle_btn.setToolTip("Show input panel")
         self.toggle_btn.setObjectName("toggle_strip_button")
@@ -1850,7 +1851,7 @@ class OutputDockIndicator(QWidget):
         toggle_layout.setAlignment(Qt.AlignVCenter | Qt.AlignLeft)
 
         self.toggle_btn = QPushButton("❮")  # Show state initially
-        self.toggle_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.toggle_btn.setCursor(pointing_hand_cursor())
         self.toggle_btn.setFixedSize(6, 60)
         self.toggle_btn.clicked.connect(self.parent.output_dock_toggle)
         self.toggle_btn.setToolTip("Show panel")

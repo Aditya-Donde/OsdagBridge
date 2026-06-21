@@ -28,6 +28,7 @@ from PySide6.QtWidgets import (
     QTableWidgetItem,
     QWidget,
 )
+from osdagbridge.desktop.ui.utils.custom_cursors import pointing_hand_cursor
 
 
 # ── Delegates (identical to GirderDetailsTab) ─────────────────────────────────
@@ -273,7 +274,7 @@ class SegmentTableWidget(QWidget):
         add_btn.setIcon(self._icon("add"))
         add_btn.setIconSize(QSize(12, 12))
         add_btn.setFocusPolicy(Qt.NoFocus)
-        add_btn.setCursor(Qt.PointingHandCursor)
+        add_btn.setCursor(pointing_hand_cursor())
         add_btn.setToolTip("Split/Add segment")
         add_btn.setStyleSheet(
             "QPushButton { background-color: #d6d6d6; border: 1px solid #b0b0b0; border-radius: 8px; }"
@@ -290,7 +291,7 @@ class SegmentTableWidget(QWidget):
         rem_btn.setIcon(self._icon("remove"))
         rem_btn.setIconSize(QSize(12, 12))
         rem_btn.setFocusPolicy(Qt.NoFocus)
-        rem_btn.setCursor(Qt.PointingHandCursor)
+        rem_btn.setCursor(pointing_hand_cursor())
         rem_btn.setToolTip("Remove this segment")
         rem_btn.setStyleSheet(
             "QPushButton { background-color: #d6d6d6; border: 1px solid #b0b0b0; border-radius: 8px; }"

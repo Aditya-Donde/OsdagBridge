@@ -46,6 +46,7 @@ from osdagbridge.desktop.ui.docks.dock_utils import apply_field_style
 from osdagbridge.desktop.ui.utils.custom_widgets import RichCheckBox, PercentBarWidget, CustomRadioButton
 from osdagbridge.desktop.ui.dialogs.generate_results_dialog import GenerateResultsDialog
 from osdagbridge.desktop.ui.dialogs.custom_messagebox import CustomMessageBox, MessageBoxType
+from osdagbridge.desktop.ui.utils.custom_cursors import pointing_hand_cursor
 # ── Styles ────────────────────────────────────────────────────────────────────
 
 GROUPBOX_STYLE = (
@@ -119,7 +120,7 @@ class OutputDock(QWidget):
         sl.setAlignment(Qt.AlignVCenter | Qt.AlignLeft)
 
         self.toggle_btn = QPushButton("❯")
-        self.toggle_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.toggle_btn.setCursor(pointing_hand_cursor())
         self.toggle_btn.setFixedSize(6, 60)
         self.toggle_btn.setToolTip("Hide panel")
         self.toggle_btn.clicked.connect(self.toggle_output_dock)
@@ -335,7 +336,7 @@ class OutputDock(QWidget):
         header.addStretch()
 
         toggle = QPushButton()
-        toggle.setCursor(Qt.CursorShape.PointingHandCursor)
+        toggle.setCursor(pointing_hand_cursor())
         toggle.setCheckable(True)
         toggle.setChecked(True)
         toggle.setIcon(QIcon(":/vectors/arrow_up_light.svg"))
@@ -379,7 +380,7 @@ class OutputDock(QWidget):
         row.addWidget(lbl)
 
         btn = QPushButton(meta.get("button_label", "Here"))
-        btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn.setCursor(pointing_hand_cursor())
         btn.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         btn.setStyleSheet(ACTION_BTN_STYLE)
         cb = getattr(self, meta.get("action", ""), None)
@@ -397,7 +398,7 @@ class OutputDock(QWidget):
         row.setSpacing(8)
 
         btn = QPushButton(label)
-        btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn.setCursor(pointing_hand_cursor())
         btn.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         btn.setStyleSheet(ACTION_BTN_STYLE)
         cb = getattr(self, meta.get("action", ""), None)

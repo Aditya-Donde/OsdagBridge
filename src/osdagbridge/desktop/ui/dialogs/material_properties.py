@@ -25,6 +25,7 @@ from osdagbridge.core.utils.common import (
     DISP_MATERIAL_DECK_FCK, DISP_MATERIAL_DECK_FCTM, DISP_MATERIAL_DECK_ECM, DISP_MATERIAL_DECK_THERMAL,
     DISP_MATERIAL_DECK_DENSITY,
 )
+from osdagbridge.desktop.ui.utils.custom_cursors import pointing_hand_cursor
 
 concrete_properies = connectdb("Concrete_Grade_Properties")
 
@@ -288,7 +289,7 @@ class MaterialPropertiesDialog(QDialog):
         if self.read_only:
             ok_btn = QPushButton("OK")
             ok_btn.setObjectName("primary")
-            ok_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            ok_btn.setCursor(pointing_hand_cursor())
             ok_btn.setMinimumWidth(90)
             ok_btn.setAutoDefault(False)
             ok_btn.clicked.connect(self.accept)
@@ -296,7 +297,7 @@ class MaterialPropertiesDialog(QDialog):
         else:
             add_btn = QPushButton("Add")
             add_btn.setObjectName("primary")
-            add_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            add_btn.setCursor(pointing_hand_cursor())
             add_btn.setMinimumWidth(90)
             add_btn.setAutoDefault(False)
             add_btn.clicked.connect(self._validate_and_save)
@@ -304,7 +305,7 @@ class MaterialPropertiesDialog(QDialog):
 
             cancel_btn = QPushButton("Cancel")
             cancel_btn.setObjectName("ghost")
-            cancel_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            cancel_btn.setCursor(pointing_hand_cursor())
             cancel_btn.setMinimumWidth(90)
             cancel_btn.setAutoDefault(False)
             cancel_btn.clicked.connect(self.reject)

@@ -18,6 +18,7 @@ from osdagbridge.core.bridge_types.plate_girder.ui_fields_additional_input impor
 from osdagbridge.desktop.ui.utils.custom_titlebar import CustomTitleBar
 from osdagbridge.desktop.ui.dialogs.custom_messagebox import CustomMessageBox, MessageBoxType
 from osdagbridge.desktop.ui.dialogs.generate_results_values_builder import resolve_table
+from osdagbridge.desktop.ui.utils.custom_cursors import pointing_hand_cursor
 
 
 class CheckboxDelegate(QStyledItemDelegate):
@@ -932,7 +933,7 @@ class ExportTablePage(QWidget):
 
         self.toggle_btn = QPushButton("‹")
         self.toggle_btn.setFixedSize(20, 56)
-        self.toggle_btn.setCursor(Qt.PointingHandCursor)
+        self.toggle_btn.setCursor(pointing_hand_cursor())
         self.toggle_btn.clicked.connect(self._toggle_tree_panel)
         self.toggle_btn.setStyleSheet(self._toggle_btn_style_expanded)
         left_container_layout.addWidget(self.toggle_btn, 0, Qt.AlignVCenter)

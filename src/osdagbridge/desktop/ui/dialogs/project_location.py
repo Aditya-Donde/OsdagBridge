@@ -15,6 +15,7 @@ from osdagbridge.core.bridge_types.plate_girder.ui_fields_project_location impor
 )
 from osdagbridge.desktop.ui.widgets.native_map import NativeMapWidget
 from osdagbridge.core.data.project_location.zone_lookup import get_zones_for_coordinates, get_temperature_for_coordinates
+from osdagbridge.desktop.ui.utils.custom_cursors import pointing_hand_cursor
 
 # Session-level state to persist values across dialog open/close cycles
 # so that reopening the dialog retains user-entered or looked-up data.
@@ -245,7 +246,7 @@ class ProjectLocationDialog(QDialog):
         self.method_custom_data = CustomRadioButton(text="Input Custom Data")
 
         for radio in (self.method_radio_location, self.method_radio_map, self.method_custom_data):
-            radio.setCursor(Qt.PointingHandCursor)
+            radio.setCursor(pointing_hand_cursor())
             self.method_group.addButton(radio)
             bar.addWidget(radio)
 
@@ -515,7 +516,7 @@ class ProjectLocationDialog(QDialog):
         # Apply button
         apply_btn = QPushButton("Apply")
         apply_btn.setObjectName("primary")
-        apply_btn.setCursor(Qt.PointingHandCursor)
+        apply_btn.setCursor(pointing_hand_cursor())
         apply_btn.setAutoDefault(False)
         apply_btn.clicked.connect(self._apply_custom_data_inline)
         vbox.addWidget(apply_btn, 0, Qt.AlignLeft)
@@ -595,7 +596,7 @@ class ProjectLocationDialog(QDialog):
 
         ok_btn = QPushButton("OK")
         ok_btn.setObjectName("primary")
-        ok_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        ok_btn.setCursor(pointing_hand_cursor())
         ok_btn.setMinimumWidth(90)
         ok_btn.clicked.connect(self.validate_and_save)
         ok_btn.setAutoDefault(False)
@@ -603,7 +604,7 @@ class ProjectLocationDialog(QDialog):
 
         cancel_btn = QPushButton("Cancel")
         cancel_btn.setObjectName("ghost")
-        cancel_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        cancel_btn.setCursor(pointing_hand_cursor())
         cancel_btn.setMinimumWidth(90)
         cancel_btn.clicked.connect(self.reject)
         cancel_btn.setAutoDefault(False)

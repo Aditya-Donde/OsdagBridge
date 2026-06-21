@@ -9,11 +9,12 @@ from PySide6.QtWidgets import (
 from PySide6.QtSvgWidgets import QSvgWidget
 from PySide6.QtCore import Qt, Signal, QSize, QEvent, QRect, QPropertyAnimation, QEasingCurve
 from PySide6.QtGui import QFont, QIcon, QPainter
+from osdagbridge.desktop.ui.utils.custom_cursors import pointing_hand_cursor
 
 class DockCustomButton(QPushButton):
     def __init__(self, text: str, icon_path: str, parent=None):
         super().__init__(parent)
-        self.setCursor(Qt.PointingHandCursor)
+        self.setCursor(pointing_hand_cursor())
         self.setObjectName("dock_custom_button")
         self.setStyleSheet("""
             QPushButton {
