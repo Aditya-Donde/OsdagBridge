@@ -278,8 +278,9 @@ class ReportOptionsDialog(QDialog):
         ("Chapter 5 — Design Checks",                    "design_checks",    False),
         ("Chapter 6 — Drawings & Visualizations",        "drawings",         False),
         ("Chapter 7 — Material Take-off & Quantities",   "quantities",       False),
-        ("Chapter 8 — Design Log & Verification",        "design_log",       False),
-        ("Chapter 9 — References",                       "references",       False),
+        ("Chapter 8 — Standards & Assumptions",          "standards",        False),
+        ("Chapter 9 — Design Log",                       "design_log_window", False),
+        ("Chapter 10 — References",                      "references",       False),
     ]
 
     def setup_page2(self):
