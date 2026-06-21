@@ -266,6 +266,22 @@ class ReportOptionsDialog(QDialog):
 
     # ── page 2 — customise report sections ───────────────────────────
 
+    # ── Report chapters (Table of Contents) ──────────────────────────
+    # (display label, canonical section key, locked)
+    # Locked chapters are always included and cannot be unchecked.
+    _REPORT_CHAPTERS = [
+        ("Executive Summary",                            "exec_summary",     True),
+        ("Chapter 1 — Project Information",              "project_info",     True),
+        ("Chapter 2 — Input Parameters",                 "input_parameters", True),
+        ("Chapter 3 — Loads & Load Combinations",        "loads",            True),
+        ("Chapter 4 — Analysis Results",                 "analysis",         False),
+        ("Chapter 5 — Design Checks",                    "design_checks",    False),
+        ("Chapter 6 — Drawings & Visualizations",        "drawings",         False),
+        ("Chapter 7 — Material Take-off & Quantities",   "quantities",       False),
+        ("Chapter 8 — Design Log & Verification",        "design_log",       False),
+        ("Chapter 9 — References",                       "references",       False),
+    ]
+
     def setup_page2(self):
         layout = QVBoxLayout(self.page2)
 
@@ -273,32 +289,26 @@ class ReportOptionsDialog(QDialog):
         title_lbl.setObjectName("headline")
         layout.addWidget(title_lbl)
 
+        hint_lbl = QLabel(
+            "Select the chapters to include in the report."
+        )
+        hint_lbl.setWordWrap(True)
+        layout.addWidget(hint_lbl)
+
         self.tree = QTreeWidget()
         self.tree.setHeaderHidden(True)
+        self.tree.setRootIsDecorated(False)
         layout.addWidget(self.tree)
 
-        sections = [
-            ("Input Parameters", []),
-            ("Design Checks", [
-                "Section Classification", "Moment Capacity", "Shear Capacity",
-                "LTB Check", "Stiffener Checks", "Deflection Checks",
-                "Shear Connectors", "Cross Bracing", "End Diaphragm", "Design Summary"
-            ]),
-            ("Views", []),
-            ("Design Log", [])
-        ]
-
-        for parent_text, children in sections:
-            parent_item = QTreeWidgetItem(self.tree, [parent_text])
-            parent_item.setFlags(
-                parent_item.flags() | Qt.ItemIsUserCheckable | Qt.ItemIsAutoTristate
-            )
-            parent_item.setCheckState(0, Qt.Checked)
-
-            for child_text in children:
-                child_item = QTreeWidgetItem(parent_item, [child_text])
-                child_item.setFlags(child_item.flags() | Qt.ItemIsUserCheckable)
-                child_item.setCheckState(0, Qt.Checked)
+        for label, key, locked in self._REPORT_CHAPTERS:
+            item = QTreeWidgetItem(self.tree, [label])
+            item.setData(0, Qt.UserRole, key)
+            item.setFlags(item.flags() | Qt.ItemIsUserCheckable)
+            item.setCheckState(0, Qt.Checked)
+            if locked:
+                # Locked chapters stay ticked and cannot be toggled.
+                item.setFlags(item.flags() & ~Qt.ItemIsUserCheckable)
+                item.setDisabled(True)
 
         self.tree.expandAll()
 
@@ -477,16 +487,15 @@ class ReportOptionsDialog(QDialog):
         self.title_bar.setTitle("Design Report")
 
     def get_checked_leaf_sections(self):
+        """Return the canonical section keys of every ticked chapter
+        (locked chapters are always ticked, so always included)."""
         sections = []
-        # Walk all top-level and child items
         for i in range(self.tree.topLevelItemCount()):
-            parent = self.tree.topLevelItem(i)
-            if parent.checkState(0) in (Qt.Checked, Qt.PartiallyChecked):
-                sections.append(parent.text(0))
-            for j in range(parent.childCount()):
-                child = parent.child(j)
-                if child.checkState(0) in (Qt.Checked, Qt.PartiallyChecked):
-                    sections.append(child.text(0))
+            item = self.tree.topLevelItem(i)
+            if item.checkState(0) == Qt.Checked:
+                key = item.data(0, Qt.UserRole)
+                if key:
+                    sections.append(key)
         return sections
 
     # ── build report request ─────────────────────────────────────────
@@ -516,7 +525,7 @@ class ReportOptionsDialog(QDialog):
         )
 
         checked_sections = self.get_checked_leaf_sections()
-        include_figures = "Views" in checked_sections
+        include_figures = "drawings" in checked_sections
 
         options = ReportOptions(
             sections=checked_sections,

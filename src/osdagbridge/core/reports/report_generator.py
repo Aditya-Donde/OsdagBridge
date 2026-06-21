@@ -4050,28 +4050,29 @@ def generate_report(payload, request):
             if payload.options.include_toc:
                 doc_parts.append(toc_section())
 
+            # Chapter inclusion is driven by the canonical section keys
+            # selected in the report-options dialog (TOC). The first three
+            # chapters are locked in the UI, so they are always present.
+            secs = payload.options.sections
+
             doc_parts.append(executive_summary(payload.inputs, payload.output_dict, fig_paths))
             doc_parts.append(ch1_project_info(payload.metadata))
+            doc_parts.append(ch2_input_parameters(payload.metadata, payload.inputs, payload.output_dict))
 
-            secs = payload.options.sections
-            if 'Input Parameters' in secs:
-                doc_parts.append(ch2_input_parameters(payload.metadata, payload.inputs, payload.output_dict))
-    
-            doc_parts.append(ch3_loads(payload.inputs))
-            doc_parts.append(ch4_analysis(payload.analysis_summary, fig_paths, bridge, span_m))
-
-            if 'Design Checks' in secs:
+            if 'loads' in secs:
+                doc_parts.append(ch3_loads(payload.inputs))
+            if 'analysis' in secs:
+                doc_parts.append(ch4_analysis(payload.analysis_summary, fig_paths, bridge, span_m))
+            if 'design_checks' in secs:
                 doc_parts.append(ch5_design_checks(payload.design_checks, bridge))
-
-            if payload.options.include_figures:
+            if 'drawings' in secs and payload.options.include_figures:
                 doc_parts.append(ch6_drawings(fig_paths))
-
-            doc_parts.append(ch7_quantities(payload.inputs))
-
-            if 'Design Log' in secs:
+            if 'quantities' in secs:
+                doc_parts.append(ch7_quantities(payload.inputs))
+            if 'design_log' in secs:
                 doc_parts.append(ch8_design_log(payload.log_entries, payload.inputs))
-
-            doc_parts.append(ch9_references())
+            if 'references' in secs:
+                doc_parts.append(ch9_references())
             doc_parts.append(r"\end{document}")
 
             full_tex = "\n".join(doc_parts)
