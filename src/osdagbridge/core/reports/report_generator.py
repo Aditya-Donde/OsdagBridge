@@ -13,8 +13,9 @@
 #   • Chapter 5  Design Checks (Tables 18-39, all IRC 22 / IS 800 checks)
 #   • Chapter 6  Drawings & Visualizations (6 sub-sections, 8 figures)
 #   • Chapter 7  Material Take-off & Quantity Summary (Table 40)
-#   • Chapter 8  Design Log & Verification
-#   • Chapter 9  References (13 entries)
+#   • Chapter 8  Standards & Assumptions
+#   • Chapter 9  Design Log (window log — green stage-completion lines)
+#   • Chapter 10 References
 # =============================================================================
 
 # =============================================================================
@@ -42,7 +43,7 @@
 # 17  | Table 5.14 - 5.17         | ''             | Deck slab / shear connector forces
 # 18  | Table 5.20 - 5.21         | ''             | Cross-bracing / Diaphragm forces
 # 19  | Table 7.1                 | 'steel_girders_mt' (etc)     | All BOM quantities; no KEY_ yet
-# 20  | Chapter 8                 | ''             | Design log; no structural KEY_
+# 20  | Chapter 9                 | ''             | Window log; no structural KEY_
 # =============================================================================
 
 # =============================================================================
@@ -3309,39 +3310,11 @@ def ch7_quantities(input_dict):
 """
 
 
-def ch8_design_log(log_entries: List[str], input_dict: dict) -> str:
-    """Render Chapter 8 using real log_entries, matching Osdag color convention."""
-    lines_tex = []
-    if log_entries:
-        for entry in log_entries:
-            for raw_line in entry.split('\n'):
-                line = raw_line.strip()
-                if not line:
-                    continue
-                escaped = (line
-                    .replace('_', r'\_')
-                    .replace('%', r'\%')
-                    .replace('&', r'\&')
-                    .replace('#', r'\#'))
-                upper = line.upper()
-                if 'WARNING' in upper:
-                    lines_tex.append(
-                        rf'\textcolor{{blue}}{{{escaped}}}\\')
-                elif 'ERROR' in upper:
-                    lines_tex.append(
-                        rf'\textcolor{{red}}{{{escaped}}}\\')
-                elif 'INFO' in upper:
-                    lines_tex.append(
-                        rf'\textcolor{{osdagGreen}}{{{escaped}}}\\')
-                else:
-                    continue  # skip lines without a known level — Osdag patter
-
+def ch8_standards(input_dict: dict) -> str:
+    """Render Chapter 8 — Standards & Assumptions."""
     mode = str(input_dict.get(KEY_DESIGN_MODE, 'Optimized')).strip().lower()
     is_custom = mode in {'custom', 'customized'}
-
-    log_body = '\n'.join(lines_tex)
-
-    return _ch8_assumptions(is_custom) + '\n\n' + log_body
+    return _ch8_assumptions(is_custom)
 
 
 def _ch8_assumptions(is_custom: bool) -> str:
@@ -3494,6 +3467,45 @@ IS 2062 & 2011 & Structural steel - yield and ultimate strength by grade \\
 """)
 
     return "\n".join(assumptions)
+
+
+def ch9_design_log(log_entries: List[str]) -> str:
+    """Render the Design Log chapter — the green (success) stage-completion
+    lines exactly as they appear in the UI Log Window."""
+    lines_tex = []
+    for entry in (log_entries or []):
+        for raw_line in str(entry).split('\n'):
+            line = raw_line.strip()
+            if not line:
+                continue
+            escaped = (line
+                .replace('\\', r'\textbackslash{}')
+                .replace('_', r'\_')
+                .replace('%', r'\%')
+                .replace('&', r'\&')
+                .replace('#', r'\#')
+                .replace('$', r'\$')
+                .replace('{', r'\{')
+                .replace('}', r'\}'))
+            lines_tex.append(rf'\textcolor{{osdagGreen}}{{{escaped}}}\\')
+
+    if lines_tex:
+        log_body = (r'\begingroup\ttfamily\footnotesize\setlength{\parindent}{0pt}'
+                    + '\n' + '\n'.join(lines_tex) + '\n'
+                    + r'\endgroup')
+    else:
+        log_body = r'\textit{No design log entries were recorded for this run.}'
+
+    return r"""
+\chapter{Design Log}
+\label{ch:design-log}
+
+The stage-completion messages, recording each design stage that completed successfully during
+this run.
+
+\vspace{0.6em}
+
+""" + log_body + '\n'
 
 
 def ch9_references():
@@ -3927,6 +3939,15 @@ def build_report_payload(request, input_dict, output_dict):
             if 'design_log' in output_dict:
                 le = output_dict['design_log']
 
+        # Design Log chapter content: the green (success) stage-completion lines
+        # captured by the singleton logger during the most recent run.
+        if not le:
+            try:
+                from osdagbridge.core.utils.logger import bridge_logger
+                le = bridge_logger.get_success_log()
+            except Exception as _le:
+                logger.warning("Could not read design log from logger: %s", _le)
+
         return ReportPayload(metadata=md, options=request.options, inputs=input_dict,
                              analysis_summary=asum, design_checks=dc,
                              figures=ReportFigures(), log_entries=le,
@@ -4069,8 +4090,10 @@ def generate_report(payload, request):
                 doc_parts.append(ch6_drawings(fig_paths))
             if 'quantities' in secs:
                 doc_parts.append(ch7_quantities(payload.inputs))
-            if 'design_log' in secs:
-                doc_parts.append(ch8_design_log(payload.log_entries, payload.inputs))
+            if 'standards' in secs:
+                doc_parts.append(ch8_standards(payload.inputs))
+            if 'design_log_window' in secs:
+                doc_parts.append(ch9_design_log(payload.log_entries))
             if 'references' in secs:
                 doc_parts.append(ch9_references())
             doc_parts.append(r"\end{document}")
