@@ -36,6 +36,9 @@ class BridgeLogger:
         self._cancel_pollers: List[Callable[[], bool]] = []
         self._cancelled: bool = False
         self._start_time: float = 0.0
+        # History of "success" (green) log lines from the most recent run.
+        # Consumed by the report generator to build the "Design Log" chapter.
+        self._success_log: List[str] = []
 
     @classmethod
     def get_instance(cls) -> "BridgeLogger":
@@ -65,6 +68,8 @@ class BridgeLogger:
 
     def _emit(self, raw: str, level: str = "info") -> None:
         log.info(raw)
+        if level == "success":
+            self._success_log.append(raw)
         for cb in list(self._callbacks):
             try:
                 cb(raw, level)
@@ -86,9 +91,14 @@ class BridgeLogger:
     def error(self, message: str) -> None:
         self._emit(f"[{self._ts()}]   ERROR : {message}", "error")
 
+    def get_success_log(self) -> List[str]:
+        """Return the green (success) log lines captured during the last run."""
+        return list(self._success_log)
+
     def analysis_start(self) -> None:
         self._cancelled = False
         self._start_time = time.time()
+        self._success_log = []  # start a fresh design log for this run
         self._blank()
         self._emit(f"[{self._ts()}] {_SEP} S T A R T I N G   A N A L Y S I S", "info")
         self._blank()
