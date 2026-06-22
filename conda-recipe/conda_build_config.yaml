@@ -1,0 +1,5 @@
+channel_sources:
+  - osdag
+  - geompy
+  - conda-forge
+  - defaults
