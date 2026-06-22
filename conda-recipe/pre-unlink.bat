@@ -1,8 +1,7 @@
 @echo off
 echo Running pre-unlink script for osdagbridge...
 
-set PIP_EXE=%PREFIX%\python.exe -m pip
-
-%PIP_EXE% uninstall -y openseespy opsvis
+%PREFIX%\python.exe -m pip uninstall -y openseespy opsvis
 
 echo Pre-unlink completed.
+exit /b 0
