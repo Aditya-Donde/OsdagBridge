@@ -320,6 +320,7 @@ def run_loading_dialog_process(stop_event, is_light_theme=True, label_queue=None
     def check_events():
         if stop_event.is_set():
             dialog.close()
+            app.quit()
             return
         if label_queue is not None:
             while True:
