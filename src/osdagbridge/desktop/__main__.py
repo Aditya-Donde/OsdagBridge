@@ -66,8 +66,37 @@ def _ensure_std_streams():
 _ensure_std_streams()
 
 from PySide6.QtWidgets import QApplication
+from PySide6.QtGui import QIcon
 from PySide6.QtCore import QFile, QTextStream
 from osdagbridge.desktop.resources import resources_rc
+
+
+def _app_icon():
+    """Return the OsdagBridge application icon (the same .ico used for the
+    desktop / Start Menu shortcut), or an empty QIcon if it can't be found."""
+    try:
+        from importlib.resources import files
+        ico = files('osdagbridge.desktop.resources').joinpath('osdagbridge.ico')
+        if ico.is_file():
+            return QIcon(str(ico))
+    except Exception:
+        pass
+    return QIcon()
+
+
+def _set_windows_app_id():
+    """Give the app its own Windows taskbar identity so the taskbar shows the
+    OsdagBridge icon instead of the generic Python/pythonw icon. Must run before
+    the main window is shown. No-op on non-Windows."""
+    if os.name != "nt":
+        return
+    try:
+        import ctypes
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(
+            "Osdag.OsdagBridge.Desktop.1"
+        )
+    except Exception:
+        pass
 
 # Create Intg_osdag.sqlite if not Exist
 def create_sqlite():
@@ -230,15 +259,26 @@ def load_stylesheet():
     return ""
 
 def main():
+    # Establish the Windows taskbar identity before the QApplication so the
+    # taskbar uses our icon, not the host Python interpreter's.
+    _set_windows_app_id()
+
     # Create the Qt application instance
     app = QApplication(sys.argv)
-    
+
+    # Application-wide icon: taskbar, Alt-Tab, and default window icon.
+    icon = _app_icon()
+    if not icon.isNull():
+        app.setWindowIcon(icon)
+
     # Load and apply the global stylesheet
     stylesheet = load_stylesheet()
     if stylesheet:
         app.setStyleSheet(stylesheet)
-    
+
     window = CustomWindow("OsdagBridge", PlateGirderBridge)
+    if not icon.isNull():
+        window.setWindowIcon(icon)
     window.showMaximized()
     window.show()
 
