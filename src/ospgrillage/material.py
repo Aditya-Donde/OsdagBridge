@@ -7,8 +7,14 @@ This module contains the user interface function and class to manage
 
 import json
 import logging
+import os
 
 logger = logging.getLogger(__name__)
+
+# Resolve the material library next to this module so the lookup is independent
+# of the process working directory. A bare "mat_lib.json" relative path breaks in
+# packaged/installed apps where the launch CWD is read-only (e.g. Program Files).
+_MAT_LIB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "mat_lib.json")
 
 __all__ = ["Material", "create_material"]
 
@@ -279,10 +285,21 @@ class Material:
         Not to be used in the ordinary course of events at risk of overwriting
         manual edits to the mat_lib
         Used for initial creation of the mat_lib
-        """
 
-        with open("mat_lib.json", "w") as f:
-            json.dump(mat_lib, f, indent=4)
+        Writing is best-effort: if the target location is not writable (e.g. a
+        packaged/installed app under a read-only directory), the failure is logged
+        and swallowed since the in-memory default library is fully sufficient.
+        """
+        try:
+            with open(_MAT_LIB_PATH, "w") as f:
+                json.dump(mat_lib, f, indent=4)
+        except OSError as e:
+            logger.warning(
+                "Material library could not be written to %s (%s); "
+                "continuing with in-memory library",
+                _MAT_LIB_PATH,
+                e,
+            )
 
     def _read_mat_lib(self):
         """
@@ -290,7 +307,7 @@ class Material:
         """
         mat_lib = {}
         try:
-            with open("mat_lib.json", "r") as f:
+            with open(_MAT_LIB_PATH, "r") as f:
                 mat_lib = json.load(f)
         except (FileNotFoundError, IOError):
             logger.warning("Material library unable to be read; using default library")

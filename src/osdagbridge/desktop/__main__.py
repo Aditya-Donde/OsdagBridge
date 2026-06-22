@@ -2,6 +2,44 @@ import sys
 import os
 
 
+def _register_conda_dll_directories():
+    """Add the active conda environment's native DLL folders to the Windows DLL
+    search path before numpy/scipy/openseespy are imported.
+
+    A conda-constructor-installed app launched from its shortcut does not
+    "activate" the environment, so ``<prefix>/Library/bin`` (MKL/OpenBLAS, Qt,
+    etc.) is not on the DLL search path. Native extensions then crash the whole
+    process with ``ERROR_MOD_NOT_FOUND`` (``0xc06d007f``) the first time they
+    delay-load a backend DLL — e.g. ``numpy.linalg.lstsq`` during grillage
+    meshing, which silently closes the window and hangs the loader. No-op on
+    non-Windows and in already-activated environments.
+    """
+    if os.name != "nt":
+        return
+    prefix = sys.prefix
+    candidates = [
+        os.path.join(prefix, "Library", "bin"),
+        os.path.join(prefix, "Library", "mingw-w64", "bin"),
+        os.path.join(prefix, "Library", "usr", "bin"),
+        os.path.join(prefix, "DLLs"),
+        prefix,
+    ]
+    path_entries = os.environ.get("PATH", "").split(os.pathsep)
+    for path in candidates:
+        if not os.path.isdir(path):
+            continue
+        try:
+            os.add_dll_directory(path)
+        except (OSError, AttributeError):
+            pass
+        if path not in path_entries:
+            os.environ["PATH"] = path + os.pathsep + os.environ.get("PATH", "")
+            path_entries.insert(0, path)
+
+
+_register_conda_dll_directories()
+
+
 def _ensure_std_streams():
     """Guarantee sys.stdout/sys.stderr are writable.
 

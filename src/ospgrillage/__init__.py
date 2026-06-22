@@ -1,4 +1,47 @@
+import os as _os
+import sys as _sys
 import warnings as _warnings
+
+
+def _register_conda_dll_directories():
+    """Add the active conda environment's native DLL folders to the Windows DLL
+    search path.
+
+    Installer-launched apps (e.g. a conda-constructor build) do not "activate"
+    the environment, so ``<prefix>/Library/bin`` — where the BLAS/LAPACK backend
+    (MKL ``mkl_rt``/``libblas`` or OpenBLAS) lives — is absent from the DLL search
+    path. numpy/scipy/openseespy then import fine but crash the whole process
+    with a native ``ERROR_MOD_NOT_FOUND`` (``0xc06d007f``) the first time they
+    delay-load LAPACK (e.g. ``numpy.linalg.lstsq`` during grillage meshing).
+    Registering these directories before numpy is imported prevents that crash.
+    No-op on non-Windows platforms and in already-activated environments.
+    """
+    if _os.name != "nt":
+        return
+    prefix = _sys.prefix
+    candidates = [
+        _os.path.join(prefix, "Library", "bin"),
+        _os.path.join(prefix, "Library", "mingw-w64", "bin"),
+        _os.path.join(prefix, "Library", "usr", "bin"),
+        _os.path.join(prefix, "DLLs"),
+        prefix,
+    ]
+    path_entries = _os.environ.get("PATH", "").split(_os.pathsep)
+    for path in candidates:
+        if not _os.path.isdir(path):
+            continue
+        try:
+            _os.add_dll_directory(path)
+        except (OSError, AttributeError):
+            pass
+        # Some native libraries resolve dependents via PATH rather than the
+        # secure add_dll_directory list; prepend for completeness.
+        if path not in path_entries:
+            _os.environ["PATH"] = path + _os.pathsep + _os.environ.get("PATH", "")
+            path_entries.insert(0, path)
+
+
+_register_conda_dll_directories()
 
 import numpy as np  # re-exported: tests and users access ospgrillage.np
 import openseespy.opensees as ops  # re-exported: tests and users access ospgrillage.ops

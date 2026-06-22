@@ -65,6 +65,9 @@ osdagbridge = [
   "core/reports/templates/**/*",
   "desktop/resources/**/*",
 ]
+ospgrillage = [
+  "mat_lib.json",
+]
 
 # setuptools config
 [tool.setuptools]
