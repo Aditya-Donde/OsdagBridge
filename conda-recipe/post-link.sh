@@ -3,10 +3,15 @@ echo "Running post-link script for osdagbridge..."
 
 PIP_EXE="$PREFIX/bin/python -m pip"
 
-# Install pip-only dependencies
-$PIP_EXE install --no-cache-dir openseespy>=3.2.2.6 opsvis
+$PIP_EXE install --upgrade pip || echo "pip upgrade skipped"
 
-# # Save installed packages list
-# $PREFIX/bin/python -m pip freeze > "$PREFIX/conda-meta/osdagbridge-pip.txt"
+$PIP_EXE install --no-cache-dir "openseespy>=3.2.2.6" opsvis
+
+if [ $? -ne 0 ]; then
+    echo "WARNING: Optional pip dependencies failed."
+    echo "Run manually: pip install openseespy opsvis"
+    exit 0
+fi
 
 echo "Post-link completed."
+exit 0
