@@ -1,0 +1,47 @@
+name: Build and Publish Conda Package
+
+on:
+  push:
+    branches:
+      - packaging
+
+jobs:
+  build-upload:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout latest code
+        uses: actions/checkout@v4
+
+
+      - name: Setup Miniconda
+        uses: conda-incubator/setup-miniconda@v3
+        with:
+          auto-update-conda: true
+
+
+      - name: Install build tools
+        shell: bash -l {0}
+        run: |
+          conda install -y conda-build anaconda-client
+
+
+      - name: Build package
+        shell: bash -l {0}
+        run: |
+          conda-build conda-recipe -c osdag -c geompy -c conda-forge
+
+
+      - name: Upload package
+        shell: bash -l {0}
+        env:
+          ANACONDA_API_TOKEN: ${{ secrets.ANACONDA_TOKEN }}
+        run: |
+          OUTPUT_DIR=$(conda info --base)/envs/test/conda-bld
+          PACKAGE=$(find "$OUTPUT_DIR" -name "osdagbridge-*.conda" | head -n 1)
+          echo "Uploading $PACKAGE"
+          anaconda upload "$PACKAGE" --force
