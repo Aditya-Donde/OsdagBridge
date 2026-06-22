@@ -1,0 +1,57 @@
+# yaml-language-server: $schema=https://schemas.conda.org/constructor/v0/construct.schema.json
+
+name: OsdagBridge
+version: 1.0.0
+uninstall_name: ${NAME}
+
+installer_type: exe  # [win]
+installer_type: sh   # [linux]
+
+icon_image: icon.ico
+
+welcome_text: |
+  Welcome to the OsdagBridge Installer.
+  This will install OsdagBridge with all required runtime components.
+
+channels:
+  - https://conda.anaconda.org/gsrathore
+  - https://conda.anaconda.org/osdag
+  - https://conda.anaconda.org/geompy
+  - https://conda.anaconda.org/conda-forge
+
+specs:
+  - python >=3.11,<3.13
+  - osdagbridge
+
+# Files copied into the install prefix; used by the post-install scripts.
+extra_files:
+  - icon.ico
+  - post_install.bat        # [win]
+  - pre_uninstall.bat       # [win]
+  - launch_osdagbridge.vbs  # [win]
+  - create_shortcuts.ps1    # [win]
+  - remove_shortcuts.ps1    # [win]
+  - post_install.sh         # [linux]
+  - Uninstall-OsdagBridge.sh  # [linux]
+
+initialize_conda: false
+register_python: false
+
+# Default installation location.
+default_prefix: "%LOCALAPPDATA%\\OsdagBridge"            # [win]
+default_prefix_all_users: "%ProgramData%\\OsdagBridge"   # [win]
+default_prefix: "$HOME/OsdagBridge"                      # [linux]
+default_prefix_all_users: "/opt/OsdagBridge"             # [linux]
+
+# Create / remove the shortcuts (desktop + start menu) and registry entries.
+post_install: post_install.bat   # [win]
+pre_uninstall: pre_uninstall.bat # [win]
+post_install: post_install.sh    # [linux]
+
+post_install_desc: |
+  This will create shortcuts for OsdagBridge and add it to the Start Menu,
+  along with a desktop shortcut. (Recommended)
+
+conclusion_text: |
+  OsdagBridge has been successfully installed.
+  You can launch it from the Start Menu or the desktop shortcut.
