@@ -656,9 +656,26 @@ def _on_no_of_girders_changed(working_input_dict: dict) -> None:
             working_input_dict[f"{KEY_MP_STIFFENER_SELECT_MEMBER_ID}.G{girder_idx}.M{member_id}"] = f"G{girder_idx}M{member_id}"
             for base_key, defaults_key in MP_STIFFENER_PROPS:
                 key = f"{base_key}.G{girder_idx}.M{member_id}"
-                if key not in working_input_dict:
-                    working_input_dict[key] = \
-                        STIFFENER_DETAILS_DEFAULTS[defaults_key]
+                if key not in working_input_dict or str(working_input_dict[key]).strip() in ("", "None", "NA"):
+                    if base_key in (KEY_MP_STIFFENER_BEARING_OUTSTAND, KEY_MP_STIFFENER_INTERMEDIATE_OUTSTAND):
+                        # Calculate default max outstand: ((min(bf_top, bf_bot) - tw) / 2)
+                        b_top = float(working_input_dict.get(f"{KEY_MP_GIRDER_TOP_FLANGE_WIDTH}.G{girder_idx}.M{member_id}") or 0.0)
+                        b_bot = float(working_input_dict.get(f"{KEY_MP_GIRDER_BOTTOM_FLANGE_WIDTH}.G{girder_idx}.M{member_id}") or 0.0)
+                        tw_val = working_input_dict.get(f"{KEY_MP_GIRDER_WEB_THICKNESS}.G{girder_idx}.M{member_id}")
+                        try:
+                            tw_mm = float(tw_val)
+                        except (TypeError, ValueError):
+                            tw_mm = float(section_props['t_w'] * 1e3) if section_props else 0.0
+
+                        if b_top > 0.0 and b_bot > 0.0:
+                            max_os = max(0.0, (min(b_top, b_bot) - tw_mm) / 2.0)
+                            val_str = str(int(max_os)) if max_os.is_integer() else f"{max_os:.1f}"
+                            working_input_dict[key] = val_str
+                        else:
+                            working_input_dict[key] = STIFFENER_DETAILS_DEFAULTS[defaults_key]
+                    else:
+                        if key not in working_input_dict:
+                            working_input_dict[key] = STIFFENER_DETAILS_DEFAULTS[defaults_key]
 
     # ── Cross bracing ─────────────────────────────────────────────────────────
     # --- Remove all stale dynamic cross bracing keys ---

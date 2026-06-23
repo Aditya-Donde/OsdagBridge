@@ -3347,17 +3347,23 @@ class PlateGirderBridge:
                     return str(v).strip()
                 return fallback
 
-            if _is_optimized:
-                g_int_stiff_on = True
-            else:
-                g_int_stiff_flag = _stiff_inp_gi(KEY_MP_STIFFENER_INTERMEDIATE, "No")
-                g_int_stiff_on   = str(g_int_stiff_flag).strip().lower() == "yes"
-
             g_int_spacing_raw = _stiff_inp_gi(KEY_MP_STIFFENER_INTERMEDIATE_SPACING)
             g_int_thick_raw = _stiff_inp_gi(KEY_MP_STIFFENER_INTERMEDIATE_THICKNESS)
             g_int_outstand_raw = _stiff_inp_gi(KEY_MP_STIFFENER_INTERMEDIATE_OUTSTAND)
 
-            if not _is_optimized:
+            if _is_optimized:
+                if g_int_spacing_raw is not None and str(g_int_spacing_raw).strip() not in ("", "0", "0.0"):
+                    g_int_stiff_on = True
+                    g_int_spacing = float(g_int_spacing_raw)
+                else:
+                    g_int_stiff_on = False
+                    g_int_spacing = 0.0
+                g_int_thickness = float(g_int_thick_raw) if g_int_thick_raw is not None else 0.0
+                g_int_outstand = float(g_int_outstand_raw) if (g_int_outstand_raw and str(g_int_outstand_raw).strip().lower() not in ("", "none", "na")) else None
+            else:
+                g_int_stiff_flag = _stiff_inp_gi(KEY_MP_STIFFENER_INTERMEDIATE, "No")
+                g_int_stiff_on   = str(g_int_stiff_flag).strip().lower() == "yes"
+
                 if g_int_stiff_on:
                     if g_int_spacing_raw is None or str(g_int_spacing_raw).strip() == "":
                         raise ValueError(f"Missing intermediate stiffener spacing for Girder {gi}")
@@ -3372,10 +3378,6 @@ class PlateGirderBridge:
                     g_int_spacing = 0.0
                     g_int_thickness = 0.0
                     g_int_outstand = None
-            else:
-                g_int_spacing = float(g_int_spacing_raw) if g_int_spacing_raw is not None else 0.0
-                g_int_thickness = float(g_int_thick_raw) if g_int_thick_raw is not None else 0.0
-                g_int_outstand = float(g_int_outstand_raw) if (g_int_outstand_raw and str(g_int_outstand_raw).strip().lower() not in ("", "none", "na")) else None
 
             g_long_stiff_raw = _stiff_inp_gi(KEY_MP_STIFFENER_LONGITUDINAL, "No")
             g_long_stiff_on  = str(g_long_stiff_raw).strip().lower() not in ("no", "none", "")
