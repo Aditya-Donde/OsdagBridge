@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg"
+     width="256"
+     height="256"
+     viewBox="0 20 256 180">
+
+    <text x="-5"
+          y="145"
+          font-family="Arial, Helvetica, sans-serif"
+          font-size="135"
+          font-weight="bold"
+          fill="#000000">
+        Dim.
+    </text>
+
+    <circle cx="32"
+            cy="175"
+            r="15"
+            fill="#22B8E6"/>
+</svg>

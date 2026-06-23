@@ -1,4 +1,5 @@
 """
+Author: Om Pathania
 toolbar_controller.py
 ─────────────────────
 This file is the CONTROLLER layer for the shared ToolBarWidget.
@@ -137,6 +138,7 @@ class ToolBarController:
     _TIP_ZOOM_IN      = "Zoom In"     # one-shot action — not a toggle
     _TIP_ZOOM_OUT     = "Zoom Out"    # one-shot action — not a toggle
     _TIP_AXIS         = "Axis"
+    _TIP_LEGEND       = "Legends"     # CAD-only toggle — show/hide the bottom-left info table
     _TIP_GRID         = "Grid Lines"
     _TIP_SUPPORTS     = "Supports"
     _TIP_LOADS        = "Loads"
@@ -172,6 +174,9 @@ class ToolBarController:
         self._btn_loads:         QPushButton | None = self._find_button(self._TIP_LOADS)
         self._btn_girder_labels: QPushButton | None = self._find_button(self._TIP_GIRDER_LABELS)
 
+        # CAD-only toggle button — shown in CAD view, hidden in Plots view:
+        self._btn_legend:        QPushButton | None = self._find_button(self._TIP_LEGEND)
+
         # Managed toggle buttons — bulk checkable/restore in reset() and bind_to_*()
         # NOTE: _btn_loads is intentionally excluded — it is never made checkable,
         #       it is simply hidden in CAD view and shown in Plots view.
@@ -180,7 +185,7 @@ class ToolBarController:
                 self._btn_grillage, self._btn_node, self._btn_node_number,
                 self._btn_element_number,
                 self._btn_zoom_win, self._btn_pan, self._btn_rotate,
-                self._btn_axis, self._btn_grid, self._btn_supports,
+                self._btn_axis, self._btn_legend, self._btn_grid, self._btn_supports,
                 self._btn_girder_labels,
             )
             if b is not None
@@ -314,6 +319,8 @@ class ToolBarController:
             self._restore_plain(btn)
         # Show all widgets — reset is the neutral state where everything is visible
         self._show_plots_only_widgets()
+        if self._btn_legend is not None:
+            self._btn_legend.show()
 
     def bind_to_cad_3d(self, cad_widget: "CAD3DWindow") -> None:
         """
@@ -540,6 +547,39 @@ class ToolBarController:
 
         self._connect(self._btn_axis, _cad_toggle_axis)
 
+        # ── Legend (info table) toggle ─────────────────────────────────────────
+        # CAD-only feature. The legend is the bottom-left info-table overlay built
+        # in cad_3d.py → CAD3DWindow.create_cad_view_controls() (self._info_table).
+        # ON  → _info_table.show();  OFF → _info_table.hide().
+        # The button is hidden entirely in the Plots view (see bind_to_plots).
+        if self._btn_legend is not None:
+            self._btn_legend.show()
+
+        def _initial_legend_state() -> bool:
+            try:
+                return cad_widget._info_table.isVisible()
+            except Exception:
+                return True
+
+        self._make_checkable(self._btn_legend, _initial_legend_state())
+
+        def _cad_toggle_legend():
+            """Show/hide the bottom-left info-table legend overlay (cad_3d.py)."""
+            want = self._btn_legend.isChecked()
+            try:
+                table = getattr(cad_widget, "_info_table", None)
+                if table is not None:
+                    if want:
+                        table.show()
+                        cad_widget._position_info_table()
+                    else:
+                        table.hide()
+            except Exception:
+                pass
+            self._sync_btn_to(self._btn_legend, want)
+
+        self._connect(self._btn_legend, _cad_toggle_legend)
+
         self._connect(self._btn_grillage,   _cad_toggle_grillage)
         self._connect(self._btn_node,        _cad_toggle_node)
         self._connect(self._btn_node_number, _cad_toggle_node_number)
@@ -718,6 +758,11 @@ class ToolBarController:
 
         # Show all plots-only widgets now that we are in Plots view
         self._show_plots_only_widgets()
+
+        # The Legend toggle is CAD-only (controls the 3D info-table overlay) —
+        # hide it entirely in the Plots view.
+        if self._btn_legend is not None:
+            self._btn_legend.hide()
 
         # Read the current state of MplPlotWidget's internal state variables so the
         # toolbar buttons start in the correct checked/unchecked state.

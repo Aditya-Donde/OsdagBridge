@@ -567,13 +567,13 @@ class ToolBarWidget(QWidget):
         self.layout.addWidget(self.btn_show_node)
         self.layout.addWidget(self.btn_show_node_number)
         self.layout.addWidget(self.btn_show_element_number)
-
         self.layout.addWidget(add_separator())  # after element number
 
         # Model display group
         self.layout.addWidget(create_button(":/vectors/tool_bar/grillage_view_light.svg", "Grillage View"))
 
         self.layout.addWidget(create_button(":/vectors/tool_bar/show_axis_light.svg", "Axis"))
+        self.layout.addWidget(create_button(":/vectors/tool_bar/legend_icon.svg", "Legends"))
         self.layout.addWidget(create_button(":/vectors/tool_bar/show_grid_lines_light.svg", "Grid Lines"))
         self.layout.addWidget(create_button(":/vectors/tool_bar/show_support_light.svg", "Supports"))
         self.layout.addWidget(create_button(":/vectors/tool_bar/show_load_light.svg", "Loads"))
