@@ -928,8 +928,10 @@ KEY_DO_GAMMA_MF             = "design_options_cont.partial_factor.fatigue_streng
 # Fatigue
 KEY_DO_LOAD_CYCLES          = "design_options_cont.fatigue.load_cycles"
 
-# Deflection
-KEY_DO_DEFLECTION_LIMIT     = "design_options_cont.deflection.limit"
+# Camber
+KEY_DO_CAMBER       = "design_options_cont.camber"
+KEY_DO_CAMBER_MODE  = "design_options_cont.camber.mode"
+KEY_DO_CAMBER_VALUE = "design_options_cont.camber.value"
 
 # Ultimate Limit States
 KEY_DO_ULS_BENDING          = "design_options_cont.uls.bending_resistance"

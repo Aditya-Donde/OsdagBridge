@@ -803,12 +803,14 @@ class BridgeInputValidator:
             if v < 100000:      return 100000, "No. of load cycles must be between 100,000 and 100,000,000."
             if v > 100000000:   return 100000000, "No. of load cycles must be between 100,000 and 100,000,000."
 
-        # ── Deflection ──────────────────────────────────────────────────────────
-        elif key == KEY_DO_DEFLECTION_LIMIT:
+        # ── Camber ──────────────────────────────────────────────────────────────
+        elif key == KEY_DO_CAMBER_VALUE:
+            if inputs.get(KEY_DO_CAMBER_MODE) != "Custom":
+                return None
             v = self._to_float(inputs.get(key))
-            if v is None: return 300, "Deflection limit denominator must be a numeric value."
-            if v < 300:   return 300, "Deflection limit denominator must be between 300 and 800."
-            if v > 800:   return 800, "Deflection limit denominator must be between 300 and 800."
+            if v is None: return 0, "Camber must be a numeric value."
+            if v < 0:     return 0, "Camber must be between 0 and 4 m."
+            if v > 4:     return 4, "Camber must be between 0 and 4 m."
 
         # ═══DESIGN-OPTIONS-CONT-TAB-VALIDATORS-ENDS═══════════════════════════════════════════════════════
 

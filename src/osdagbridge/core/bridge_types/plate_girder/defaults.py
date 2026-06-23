@@ -101,7 +101,7 @@ from osdagbridge.core.utils.common import (
     get_angle_section_properties, get_is_section_list,
 
     KEY_DO_GAMMA_C_BASIC, KEY_DO_GAMMA_C_ACCIDENTAL, KEY_DO_GAMMA_M0, KEY_DO_GAMMA_M1, KEY_DO_GAMMA_S,
-    KEY_DO_GAMMA_V, KEY_DO_GAMMA_FLT, KEY_DO_GAMMA_MF, KEY_DO_LOAD_CYCLES, KEY_DO_DEFLECTION_LIMIT,
+    KEY_DO_GAMMA_V, KEY_DO_GAMMA_FLT, KEY_DO_GAMMA_MF, KEY_DO_LOAD_CYCLES, KEY_DO_CAMBER_MODE,
     KEY_DO_ULS_BENDING, KEY_DO_ULS_SHEAR, KEY_DO_ULS_LTB, KEY_DO_ULS_TRANSVERSE, KEY_DO_ULS_LONG_SHEAR, KEY_DO_ULS_FATIGUE,
     KEY_DO_SLS_STRESS, KEY_DO_SLS_LONG_SHEAR, KEY_DO_SLS_DEFLECTION, KEY_DO_SLS_CRACK_WIDTH,
 
@@ -371,7 +371,7 @@ def _update_design_options_cont_defaults(input_dict: dict) -> None:
     _update(KEY_DO_GAMMA_FLT,          "1.00")
     _update(KEY_DO_GAMMA_MF,           "1.35")
     _update(KEY_DO_LOAD_CYCLES,        "2000000")
-    _update(KEY_DO_DEFLECTION_LIMIT,   "600.00")
+    _update(KEY_DO_CAMBER_MODE,        "Default")
     _update(KEY_DO_ULS_BENDING,        True)
     _update(KEY_DO_ULS_SHEAR,          True)
     _update(KEY_DO_ULS_LTB,            True)
