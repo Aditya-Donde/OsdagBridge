@@ -73,9 +73,21 @@ class AxisTriadOverlay(QWidget):
         super().__init__(parent or viewer_widget)
         self._viewer = viewer_widget
 
+        # Host the axis triad as a frameless, translucent top-level overlay
+        # window — the SAME way the NavCube avoids a backing box.  A translucent
+        # *child* widget over the OpenGL canvas can't composite on Linux, which
+        # is why a backing rect (the "box") was previously required.
+        self.setWindowFlags(
+            Qt.Tool
+            | Qt.FramelessWindowHint
+            | Qt.NoDropShadowWindowHint
+            | Qt.WindowDoesNotAcceptFocus
+        )
         self.setAttribute(Qt.WA_TransparentForMouseEvents, True)
+        self.setAttribute(Qt.WA_TranslucentBackground,     True)
+        self.setAttribute(Qt.WA_ShowWithoutActivating,     True)
         self.setAttribute(Qt.WA_NoSystemBackground,        True)
-        self.setStyleSheet("background: transparent;")
+        self.setAutoFillBackground(False)
 
         # Default screen projections — identity (front view, Z-up OCC convention):
         #   X → right,  Y → into screen (near zero),  Z → up
@@ -164,13 +176,8 @@ class AxisTriadOverlay(QWidget):
     def paintEvent(self, event):          # noqa: N802
         p = QPainter(self)
 
-        # Erase the previous frame by painting a solid background first.
-        # This is the safest cross-platform approach — no Qt translucent-window
-        # attributes needed, works on macOS+OpenGL without crashing.
+        # Transparent background — only the axis arrows are drawn.
         p.setRenderHint(QPainter.Antialiasing, True)
-        p.setPen(Qt.NoPen)
-        p.setBrush(QColor(245, 245, 245, 200))   # light grey, slightly transparent
-        p.drawRoundedRect(self.rect(), 8, 8)
 
         cx = cy = self._SIZE // 2
         L  = self._ARM_LEN
@@ -810,8 +817,12 @@ class CustomViewer3d(qtViewer3d):
     # ------------------------------------------------------------------
     # View Cube Display
     # ------------------------------------------------------------------
-    def display_view_cube(self):
-        """Displays the NaviCube overlay and starts the axis triad after CAD init."""
+    def display_view_cube(self, start_triad=False):
+        """Displays the NaviCube overlay and (optionally) starts the axis triad.
+
+        start_triad is True only when an actual CAD model has been created — the
+        axis triad must not appear on the empty viewer at init time.
+        """
         if not (hasattr(self, "navcube") and self.navcube and self.view):
             return
 
@@ -855,8 +866,9 @@ class CustomViewer3d(qtViewer3d):
 
         QTimer.singleShot(0, self._show_navcube_when_ready)
 
-        # Show axis triad (pure Qt — no OCC init needed)
-        if hasattr(self, "_axis_triad") and self._axis_triad:
+        # Show axis triad (pure Qt — no OCC init needed) only once a CAD model
+        # actually exists; never on the empty viewer at init time.
+        if start_triad and hasattr(self, "_axis_triad") and self._axis_triad:
             self._position_axis_triad()
             self._axis_triad._started = True   # flag so showEvent can re-show it
             self._axis_triad.start()

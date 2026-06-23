@@ -403,7 +403,7 @@ class CAD3DWindow(QWidget):
         display.FitAll()
 
         if hasattr(self.viewer, "display_view_cube"):
-            self.viewer.display_view_cube()
+            self.viewer.display_view_cube(start_triad=True)
 
         self.component_selector.show()
 
