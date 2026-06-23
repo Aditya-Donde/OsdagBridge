@@ -1399,12 +1399,13 @@ DESIGN_OPTIONS_SCHEMA = {
 DESIGN_OPTIONS_CONT_SCHEMA = {
     "id": KEY_DO_TAB,
     "layout": {
-        "type":    "rows",   # single column, sections stacked vertically
-        "columns": 1,
+        "type":          "columns",
+        "columns":       2,
+        "column_widths": [3, 2],
     },
     "sections": [
 
-        # ──────────────────── Partial Factor ────────────────────
+        # ──────────────────── Partial Factor + Description (grid row 0) ────────────────────
         {
             "column": 0,
             "title":  "Partial Factor",
@@ -1484,6 +1485,17 @@ DESIGN_OPTIONS_CONT_SCHEMA = {
             ],
         },
 
+        # col 1 paired with Partial Factor, spans 3 rows (Partial Factor / Resistance to Fatigue / Deflection Control)
+        {
+            "column":   1,
+            "type":     TYPE_DESCRIPTION,
+            "title":    "Design Options",
+            "row_span": 3,
+            "text":   (
+                    "Deflection limit considered for live load case is L/800 and for DL+LL case is L/600 per IRC 6."
+            ),
+        },
+
         # ──────────────────── Resistance to Fatigue ────────────────────
         {
             "column": 0,
@@ -1507,26 +1519,24 @@ DESIGN_OPTIONS_CONT_SCHEMA = {
             "title":  "Deflection Control",
             "rows": [
                 {
-                    "row_fields": [
-                        {"label": "Limit :", "type": "label", "after_spacing": 408},
-                        {"label": "L /",    "type": "label"},
-                        {
-                            "id":          KEY_DO_DEFLECTION_LIMIT,
-                            "type":        TYPE_TEXTBOX,
-                            "bind":        "limit_input",
-                            "width":       150,
-                            "placeholder": "300 - 800",
-                        },
-                        {"label": "m", "type": "label"},
-                    ]
+                    "fields": [{
+                        "id":           KEY_DO_CAMBER,
+                        "label":        "Camber (m)",
+                        "type":         TYPE_MODE_LINE,
+                        "mode_choices": ["Default", "Custom"],
+                        "bind_mode":    "camber_mode_combo",
+                        "bind_value":   "camber_value_input",
+                        "placeholder":  "0 - 4",
+                    }]
                 },
             ],
         },
 
         # ──────────────────── Limit States ────────────────────
         {
-            "column": 0,
-            "title":  "Limit States",
+            "column":   0,
+            "col_span": 2,
+            "title":    "Limit States",
             "checkbox_groups": [
                 {
                     "title":           "Ultimate Limit States",
