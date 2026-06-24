@@ -3358,22 +3358,17 @@ class PlateGirderBridge:
                 else:
                     g_int_stiff_on = False
                     g_int_spacing = 0.0
-                g_int_thickness = float(g_int_thick_raw) if g_int_thick_raw is not None else 0.0
-                g_int_outstand = float(g_int_outstand_raw) if (g_int_outstand_raw and str(g_int_outstand_raw).strip().lower() not in ("", "none", "na")) else None
+                g_int_thickness = float(g_int_thick_raw)
+                g_int_outstand = float(g_int_outstand_raw)
             else:
                 g_int_stiff_flag = _stiff_inp_gi(KEY_MP_STIFFENER_INTERMEDIATE, "No")
                 g_int_stiff_on   = str(g_int_stiff_flag).strip().lower() == "yes"
 
                 if g_int_stiff_on:
-                    if g_int_spacing_raw is None or str(g_int_spacing_raw).strip() == "":
-                        raise ValueError(f"Missing intermediate stiffener spacing for Girder {gi}")
                     g_int_spacing = float(g_int_spacing_raw)
-
-                    if g_int_thick_raw is None or str(g_int_thick_raw).strip() == "":
-                        raise ValueError(f"Missing intermediate stiffener thickness for Girder {gi}")
                     g_int_thickness = float(g_int_thick_raw)
 
-                    g_int_outstand = float(g_int_outstand_raw) if (g_int_outstand_raw and str(g_int_outstand_raw).strip().lower() not in ("", "none", "na")) else None
+                    g_int_outstand = float(g_int_outstand_raw)
                 else:
                     g_int_spacing = 0.0
                     g_int_thickness = 0.0
@@ -3391,32 +3386,26 @@ class PlateGirderBridge:
 
             if not _is_optimized:
                 if g_long_stiff_on:
-                    if g_long_thick_raw is None or str(g_long_thick_raw).strip() == "":
-                        raise ValueError(f"Missing longitudinal stiffener thickness for Girder {gi}")
                     g_long_thickness = float(g_long_thick_raw)
                 else:
                     g_long_thickness = 0.0
             else:
-                g_long_thickness = float(g_long_thick_raw) if g_long_thick_raw is not None else 0.0
+                g_long_thickness = float(g_long_thick_raw)
 
             g_bear_pairs_raw = _stiff_inp_gi(KEY_MP_STIFFENER_NO_BEARING_STIFFENERS)
             g_bear_thick_raw = _stiff_inp_gi(KEY_MP_STIFFENER_BEARING_THICKNESS)
             g_bear_outstand_raw = _stiff_inp_gi(KEY_MP_STIFFENER_BEARING_OUTSTAND)
 
             if not _is_optimized:
-                if g_bear_pairs_raw is None or str(g_bear_pairs_raw).strip() == "":
-                    raise ValueError(f"Missing bearing stiffener pairs for Girder {gi}")
                 g_num_bear_pairs = max(1, int(float(g_bear_pairs_raw)))
 
-                if g_bear_thick_raw is None or str(g_bear_thick_raw).strip() == "":
-                    raise ValueError(f"Missing bearing stiffener thickness for Girder {gi}")
                 g_bear_thickness = float(g_bear_thick_raw)
 
-                g_bear_outstand = float(g_bear_outstand_raw) if (g_bear_outstand_raw and str(g_bear_outstand_raw).strip().lower() not in ("", "none", "na")) else None
+                g_bear_outstand = float(g_bear_outstand_raw)
             else:
-                g_num_bear_pairs = max(1, int(float(g_bear_pairs_raw))) if g_bear_pairs_raw is not None else 1
-                g_bear_thickness = float(g_bear_thick_raw) if g_bear_thick_raw is not None else 0.0
-                g_bear_outstand = float(g_bear_outstand_raw) if (g_bear_outstand_raw and str(g_bear_outstand_raw).strip().lower() not in ("", "none", "na")) else None
+                g_num_bear_pairs = max(1, int(float(g_bear_pairs_raw))) 
+                g_bear_thickness = float(g_bear_thick_raw)
+                g_bear_outstand = float(g_bear_outstand_raw)
 
             stiffeners_dict[i] = {
                 "include_intermediate_stiffeners": g_int_stiff_on,

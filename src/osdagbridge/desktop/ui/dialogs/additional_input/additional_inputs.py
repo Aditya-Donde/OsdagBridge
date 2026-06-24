@@ -1,4 +1,4 @@
-"""
+﻿"""
 Additional Inputs Widget for Highway Bridge Design
 Provides detailed input fields for manual bridge parameter definition
 """
@@ -488,12 +488,6 @@ class AdditionalInputs(QDialog):
     # ── Dialog Persistence ───────────────────────────────────────────────────────
 
     def _save_inputs(self):  # on_change: validates all tabs then commits working_input_dict and emits CAD update signal
-        # Ensure active stiffener member data is serialized before saving
-        combo = self.findChild(QComboBox, KEY_MP_STIFFENER_SELECT_MEMBER_ID)
-        if combo:
-            active_member_id = combo.currentText().strip()
-            if active_member_id:
-                self._save_stiffener_member_data(active_member_id)
         
         self.default_input_dict.update(self.working_input_dict)
         from osdagbridge.desktop.ui.docks.cad_cross_section import CrossSectionCADWidget
