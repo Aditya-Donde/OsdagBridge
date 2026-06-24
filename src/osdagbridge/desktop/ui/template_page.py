@@ -884,7 +884,10 @@ class CustomWindow(QWidget):
 
 
     def cad_3d_view_toggle(self, force_show=False):
-        self.cad_3d_view_active = not self.cad_3d_view_active
+        if force_show:
+            self.cad_3d_view_active = True
+        else:
+            self.cad_3d_view_active = not self.cad_3d_view_active
 
         if self.cad_3d_view_active or force_show:
             # 3D CAD is mutually exclusive — deactivate Plots & update icon
