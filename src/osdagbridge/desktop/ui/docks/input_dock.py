@@ -790,6 +790,9 @@ class InputDock(QWidget):
         if not self.is_locked:
             # Clear 3D-Cad
             self.parent.cad_3d_widget.clear_3d_cad()
+            # Resync toolbar so the Legend / Axis toggles no longer look selected
+            if hasattr(self.parent, "toolbar_ctrl"):
+                self.parent.toolbar_ctrl.sync_cad_overlays_off()
             # Clear plots and reset output dock values
             self.parent.plots_widget.clear()
             self.parent.output_dock.reset()

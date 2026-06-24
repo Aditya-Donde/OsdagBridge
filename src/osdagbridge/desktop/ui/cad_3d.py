@@ -208,6 +208,30 @@ class CAD3DWindow(QWidget):
         # Reset checkboxes to default state (Model checked)
         self.component_selector.reset()
 
+        # Hide the legend info table and clear its values so it never shows
+        # stale data from the previous CAD model (e.g. after an unlock).
+        if hasattr(self, "_info_value_labels"):
+            for lbl in self._info_value_labels.values():
+                lbl.setText("—")
+        if hasattr(self, "_info_table") and self._info_table:
+            self._info_table.hide()
+
+        # Hide the axis triad — it belongs to a generated model only.
+        triad = getattr(self.viewer, "_axis_triad", None)
+        if triad is not None:
+            try:
+                triad.stop()
+            except Exception:
+                pass
+
+        # Force a full viewport repaint so the translucent overlays don't leave
+        # a faint "ghost" of their last frame on the OpenGL surface (Linux).
+        try:
+            self.viewer.update()
+            self.display.Repaint()
+        except Exception:
+            pass
+
     # ── CAD DISPLAY ───────────────────────────────────────────────────────────
     def load_bridge(self):
         if not self._is_display_ready():
@@ -455,7 +479,9 @@ class CAD3DWindow(QWidget):
             self._info_value_labels[keys[i]] = val
 
         self._info_table.adjustSize()
-        self._info_table.show()
+        # Start hidden — the legend only appears once a CAD model is generated
+        # (revealed by update_info_table). It must not show on the empty viewer.
+        self._info_table.hide()
         self._position_info_table()
 
         self._orig_resize_event = self.viewer.resizeEvent
@@ -499,6 +525,9 @@ class CAD3DWindow(QWidget):
         self._info_value_labels["deck_thickness"].setText(f"{params.deck_thickness:.0f}")
 
         self._info_table.adjustSize()
+        # A CAD model now exists — reveal the legend (unless the user toggled it
+        # off via the toolbar; that toggle drives show/hide independently).
+        self._info_table.show()
         self._position_info_table()
 
     def show_full_model(self):

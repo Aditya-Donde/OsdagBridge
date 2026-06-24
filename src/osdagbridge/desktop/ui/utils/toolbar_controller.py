@@ -309,6 +309,13 @@ class ToolBarController:
 
     # ── PUBLIC API ────────────────────────────────────────────────────────────
 
+    def sync_cad_overlays_off(self) -> None:
+        """Force the CAD overlay toggle buttons (Legend, Axis) to the unchecked
+        state without firing their handlers.  Called when the 3D model is cleared
+        (e.g. on unlock) so the toolbar matches the now-hidden overlays."""
+        self._sync_btn_to(self._btn_legend, False)
+        self._sync_btn_to(self._btn_axis, False)
+
     def reset(self) -> None:
         """
         Tear down all connections and restore buttons to their original
