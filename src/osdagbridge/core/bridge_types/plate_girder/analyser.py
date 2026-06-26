@@ -1926,7 +1926,7 @@ class BridgeGrillageModel:
         """
         Identify the governing static vehicle load case (max |Mz_i|), create a
         single ``"{partial_safety_factor} LL"`` load case from it, register it with the
-        given partial_safety_factor, and re-run the analysis.
+        given partial_safety_factor, and solve just that case.
 
         Must be called after analyze() so the dataset is available.
 
@@ -1939,8 +1939,9 @@ class BridgeGrillageModel:
 
         Returns
         -------
-        xarray.Dataset
-            Updated results dataset that includes the new LL load case.
+        None
+            The LL case is solved selectively; the combined dataset is built once
+            in ``_reanalyze_with_dedup()`` after all combinations are registered.
         """
         model = model or self.model
         if model is None:
@@ -2029,26 +2030,14 @@ class BridgeGrillageModel:
         self.ll_load_case = LL
         self.governing_ll_name = str(governing_lc)
 
-        # Re-analyze to include LL in the results dataset.
-        # ospgrillage appends results for all load cases on each analyze() call,
-        # so deduplicate the Loadcase coordinate by keeping the first occurrence.
-        model.analyze()
-        ds = model.get_results()
-
-        lc_vals = ds.coords["Loadcase"].values
-        seen: set = set()
-        unique_idx = []
-        for i, val in enumerate(lc_vals):
-            if val not in seen:
-                seen.add(val)
-                unique_idx.append(i)
-        if len(unique_idx) < len(lc_vals):
-            ds = ds.isel(Loadcase=unique_idx)
-
-        # Cache the clean dataset so get_results_dataset() returns it instead
-        # of calling model.get_results() which always has duplicates.
-        self._deduplicated_results = ds
-        return ds
+        # Solve ONLY the new LL case. A bare analyze() re-solves every registered
+        # case — including all ~50 increments of each moving load — and ospgrillage's
+        # record store (extract_analysis -> dict.setdefault) then discards the repeated
+        # results, so a full re-analysis here is pure wasted compute and allocation
+        # churn. The combined dataset is materialized once, in _reanalyze_with_dedup(),
+        # after the load combinations have been registered; nothing consumes it earlier.
+        model.analyze(load_case=[LL.name])
+        return None
 
     # ============================================================
     #   Result Envelope  (max / min across ALL load cases)
@@ -2671,8 +2660,16 @@ class BridgeGrillageModel:
             )
         return restructure_data_direct(
             model=self.model,
+            # Reuse the dataset already materialized by _reanalyze_with_dedup();
+            # omitting it would make restructure_data call model.get_results() and
+            # rebuild the entire xarray Dataset from the raw records a second time.
+            dataset=getattr(self, "_deduplicated_results", None),
             edge_dist=self.edge_dist or 0.0,
             dev=dev,
+            # Serve forces/displacements lazily from the dataset instead of
+            # duplicating every load case as nested dicts of Python floats.
+            # dev mode needs eager tables for its JSON dumps.
+            lazy=not dev,
         )
 
     def plot(self, model=None):

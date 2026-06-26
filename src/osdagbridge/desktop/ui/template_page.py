@@ -4,7 +4,7 @@ from PySide6.QtWidgets import (
     QMenuBar, QSplitter, QSizePolicy, QPushButton, QLineEdit, QComboBox, QFileDialog,
 )
 from PySide6.QtSvgWidgets import QSvgWidget
-from PySide6.QtCore import Qt, QFile, QTextStream, Signal, QTimer, QObject, QEvent
+from PySide6.QtCore import Qt, QFile, QTextStream, Signal, QTimer, QObject, QEvent, QThread
 from PySide6.QtGui import QIcon, QAction, QKeySequence
 
 from osdagbridge.desktop.ui.docks.input_dock import InputDock
@@ -102,6 +102,11 @@ class InputBlockerFilter(QObject):
 
 class CustomWindow(QWidget):
     export_finished = Signal(bool, str)
+    # Thread-safe relay for bridge_logger messages: the design run now executes on
+    # a worker thread, so UI observers (loading popup) must not be called directly
+    # from logger callbacks. The relay's .emit is registered with bridge_logger and
+    # Qt queues cross-thread emissions onto the GUI thread.
+    logger_message = Signal(str, str)
 
     def __init__(self, title: str, backend: object, parent=None):
         super().__init__()
@@ -553,10 +558,15 @@ class CustomWindow(QWidget):
             self.loading.send_message(msg, level)
             if self.loading.is_cancelled():
                 bridge_logger.cancel()
-                
+
+        # Register the signal relay (not the widget-touching callback) with
+        # bridge_logger: logger calls arrive on the design worker thread, and the
+        # queued signal marshals them onto the GUI thread before _loading_cb runs.
         self._loading_cb = _loading_cb
+        self._logger_relay = self.logger_message.emit
+        self.logger_message.connect(self._loading_cb)
         self._cancel_poller = self.loading.is_cancelled
-        bridge_logger.add_callback(self._loading_cb)
+        bridge_logger.add_callback(self._logger_relay)
         bridge_logger.add_cancel_poller(self._cancel_poller)
       
     
@@ -576,8 +586,14 @@ class CustomWindow(QWidget):
                     bridge_logger.remove_cancel_poller(self._cancel_poller)
                     self._cancel_poller = None
                 self.loading.hide()
+            if hasattr(self, '_logger_relay') and self._logger_relay is not None:
+                bridge_logger.remove_callback(self._logger_relay)
+                self._logger_relay = None
             if hasattr(self, '_loading_cb') and self._loading_cb is not None:
-                bridge_logger.remove_callback(self._loading_cb)
+                try:
+                    self.logger_message.disconnect(self._loading_cb)
+                except Exception:
+                    pass
                 self._loading_cb = None
             if hasattr(self, 'logs_dock') and self.logs_dock is not None:
                 try:
@@ -588,78 +604,6 @@ class CustomWindow(QWidget):
             QApplication.restoreOverrideCursor()
             if hasattr(self, 'input_dock') and self.input_dock is not None:
                 self.input_dock.setEnabled(True)
-
-    def _handle_design_finished(self, result):
-        """Post-design handler. Runs on the GUI thread (queued connection).
-
-        `result` is None on success, the string "cancelled", or an Exception.
-        """
-        import traceback
-        self._design_thread.quit()
-        self._design_thread.wait()
-
-        if result is None:
-            # Close the loader first so it can never get stuck behind CAD rendering.
-            self._finish_loading()
-            try:
-                self.output_dock.refresh_loadcase_dropdowns()
-                self.output_dock.refresh_member_dropdown()
-                self.output_dock.connect_design_dropdowns()
-                self.output_dock._on_design_selection_changed()
-                if self.input_dock and not self.input_dock.is_locked:
-                    self.input_dock.toggle_lock()
-                ds_all    = self.backend.get_results_dataset()
-                loadcases = self.backend.get_available_loadcases()
-                nodes, members = self.backend.get_nodes_members()
-                edge_dist = self.backend.get_edge_dist()
-                self.plots_widget.setup(ds_all, loadcases, nodes, members, edge_dist=edge_dist)
-                self.plots_widget.link_output_dock(self.output_dock)
-                self.cad_3d_widget.render_3d_cad(self.backend.get_3d_cad_parameters())
-                self.cad_3d_view_toggle(force_show=True)
-            except Exception:
-                err_trace = traceback.format_exc()
-                bridge_logger.error(f"[Design Error]\n{err_trace}")
-                if self.input_dock and self.input_dock.is_locked:
-                    self.input_dock.toggle_lock(confirm=False)
-                lines = [l for l in err_trace.splitlines() if l.strip()]
-                short_summary = "\n".join(lines[-2:]) if len(lines) >= 2 else err_trace
-                CustomMessageBox(
-                    title="Design Error",
-                    text=(
-                        "An error occurred during design. Please check your inputs and try again.\n\n"
-                        f"{short_summary}"
-                    ),
-                    informativeText=f"Full traceback:\n{err_trace}",
-                    dialogType=MessageBoxType.Critical,
-                ).exec()
-
-        elif result == "cancelled":
-            bridge_logger.warning("Analysis was stopped by the user.")
-            self._finish_loading()
-
-        else:
-            exc = result
-            self._finish_loading()
-            if isinstance(exc, RuntimeError):
-                bridge_logger.error(f"Analysis failed: {exc}")
-            else:
-                err_trace = "".join(
-                    traceback.format_exception(type(exc), exc, exc.__traceback__)
-                )
-                bridge_logger.error(f"[Design Error]\n{err_trace}")
-                if self.input_dock and self.input_dock.is_locked:
-                    self.input_dock.toggle_lock(confirm=False)
-                lines = [l for l in err_trace.splitlines() if l.strip()]
-                short_summary = "\n".join(lines[-2:]) if len(lines) >= 2 else err_trace
-                CustomMessageBox(
-                    title="Design Error",
-                    text=(
-                        "An error occurred during design. Please check your inputs and try again.\n\n"
-                        f"{short_summary}"
-                    ),
-                    informativeText=f"Full traceback:\n{err_trace}",
-                    dialogType=MessageBoxType.Critical,
-                ).exec()
 
     def common_design_func(self, trigger: str, target_tab: str = None):
         """
@@ -688,55 +632,58 @@ class CustomWindow(QWidget):
         pprint(self.input_dict)
 
         if trigger == "Design":
-            import traceback, sys
-            from PySide6.QtCore import QThread, QObject, Signal as QSignal
+            import sys
+            import traceback
+
+            # Ignore Design clicks while a run is already in flight.
+            if getattr(self, "_design_running", False):
+                return
+            self._design_running = True
 
             self._start_loading()
+
+            # Redirect stdout on the main thread before the worker starts; the
+            # worker's prints are marshalled to the log via bridge_logger.
             original_stdout = sys.stdout
+            sys.stdout = LoggerStdoutRedirector(
+                lambda msg: bridge_logger._emit(f"[{bridge_logger._ts()}]   {msg}", "stdout_print"),
+                original_stdout,
+            )
+            self._design_original_stdout = original_stdout
 
+            backend = self.backend
+            input_dict = self.input_dict
+
+            # Run the analysis/design pipeline on a worker thread so the Qt event
+            # loop stays responsive; all UI wiring happens on the main thread in
+            # _on_design_done (queued signal).
             class _DesignWorker(QObject):
-                # Emits None on success, "cancelled" string, or an Exception instance
-                finished = QSignal(object)
-
-                def __init__(self, backend, input_dict, orig_stdout):
-                    super().__init__()
-                    self._backend = backend
-                    self._input_dict = input_dict
-                    self._orig_stdout = orig_stdout
+                finished = Signal(object, str, bool)  # (exception, traceback, cancelled)
 
                 def run(self):
-                    import sys as _sys
-                    _sys.stdout = LoggerStdoutRedirector(
-                        lambda msg: bridge_logger._emit(
-                            f"[{bridge_logger._ts()}]   {msg}", "stdout_print"
-                        ),
-                        self._orig_stdout,
-                    )
+                    exc_obj, err_trace, cancelled = None, "", False
                     try:
-                        self._backend.set_input(self._input_dict)
-                        self._backend.design()
-                        _sys.stdout = self._orig_stdout
-                        self.finished.emit(None)
+                        backend.set_input(input_dict)
+                        backend.design()
                     except RuntimeError as exc:
-                        _sys.stdout = self._orig_stdout
-                        self.finished.emit("cancelled" if "cancelled" in str(exc).lower() else exc)
+                        if "cancelled" in str(exc).lower():
+                            cancelled = True
+                        else:
+                            exc_obj, err_trace = exc, traceback.format_exc()
                     except Exception as exc:
-                        _sys.stdout = self._orig_stdout
-                        self.finished.emit(exc)
+                        exc_obj, err_trace = exc, traceback.format_exc()
+                    self.finished.emit(exc_obj, err_trace, cancelled)
 
-            self._design_thread = QThread()
-            self._design_worker = _DesignWorker(self.backend, self.input_dict, original_stdout)
+            self._design_thread = QThread(self)
+            self._design_worker = _DesignWorker()
             self._design_worker.moveToThread(self._design_thread)
-            # IMPORTANT: connect to a bound method of `self` (a QWidget that lives on the
-            # GUI thread). Connecting to a nested closure would default to a DirectConnection
-            # and run the handler on the worker thread, hanging the CAD rendering and leaving
-            # the loader stuck. QueuedConnection guarantees it runs on the main thread.
-            self._design_worker.finished.connect(
-                self._handle_design_finished, Qt.ConnectionType.QueuedConnection
-            )
             self._design_thread.started.connect(self._design_worker.run)
+            self._design_worker.finished.connect(self._on_design_done)
+            self._design_worker.finished.connect(self._design_thread.quit)
+            self._design_thread.finished.connect(self._design_worker.deleteLater)
+            self._design_thread.finished.connect(self._design_thread.deleteLater)
             self._design_thread.start()
-            return  # Event loop stays free; _handle_design_finished handles all post-steps
+            return
 
         if trigger == "Save":
             self.saveOSI_inputs()
@@ -745,8 +692,73 @@ class CustomWindow(QWidget):
         elif trigger == "Additional Inputs":
             self._show_additional_inputs(target_tab=target_tab)
 
+    def _on_design_done(self, exc_obj, err_trace, cancelled):
+        """Main-thread completion handler for the background design run."""
+        import sys
+        import traceback
+
+        # Worker is done printing; restore the real stdout.
+        if getattr(self, "_design_original_stdout", None) is not None:
+            sys.stdout = self._design_original_stdout
+            self._design_original_stdout = None
+        self._design_running = False
+
+        try:
+            if cancelled:
+                bridge_logger.warning("Analysis was stopped by the user.")
+            elif isinstance(exc_obj, RuntimeError):
+                bridge_logger.error(f"Analysis failed: {exc_obj}")
+            elif exc_obj is not None:
+                self._show_design_error(err_trace)
+            else:
+                try:
+                    self.output_dock.refresh_loadcase_dropdowns()
+                    self.output_dock.refresh_member_dropdown()
+                    self.output_dock.connect_design_dropdowns()
+                    self.output_dock._on_design_selection_changed()
+                    # Lock the input dock after design is triggered
+                    if self.input_dock and not self.input_dock.is_locked:
+                        self.input_dock.toggle_lock()
+
+                    # Wire up the plots widget with results from the completed analysis
+                    ds_all    = self.backend.get_results_dataset()
+                    loadcases = self.backend.get_available_loadcases()
+                    nodes, members = self.backend.get_nodes_members()
+                    edge_dist = self.backend.get_edge_dist()
+                    self.plots_widget.setup(ds_all, loadcases, nodes, members, edge_dist=edge_dist)
+                    self.plots_widget.link_output_dock(self.output_dock)
+
+                    # Render 3D cad using the parameters from Backend
+                    self.cad_3d_widget.render_3d_cad(self.backend.get_3d_cad_parameters())
+                except Exception:
+                    self._show_design_error(traceback.format_exc())
+        finally:
+            self._finish_loading()
+
+        if not cancelled:
+            # Focus 3D-Cad widget
+            self.cad_3d_view_toggle(force_show=True)
+
+    def _show_design_error(self, err_trace):
+        """Log a design failure and surface it to the user (main thread only)."""
+        bridge_logger.error(f"[Design Error]\n{err_trace}")
+        self._finish_loading()
+        if self.input_dock and self.input_dock.is_locked:
+            self.input_dock.toggle_lock(confirm=False)
+        lines = [l for l in err_trace.splitlines() if l.strip()]
+        short_summary = "\n".join(lines[-2:]) if len(lines) >= 2 else err_trace
+        CustomMessageBox(
+            title="Design Error",
+            text=(
+                "An error occurred during design. Please check your inputs and try again.\n\n"
+                f"{short_summary}"
+            ),
+            informativeText=f"Full traceback:\n{err_trace}",
+            dialogType=MessageBoxType.Critical,
+        ).exec()
+
     #-------Common-Design-Save-Additional-Inputs-Functionality-END---------
-    
+
     def setup_cad_connections(self):
         """Connect input dock field changes to CAD widget for real-time updates"""
         # Connect to input dock's value changed signals
@@ -1451,6 +1463,30 @@ class CustomWindow(QWidget):
                 pass
 
     # ── End Report Generation ─────────────────────────────────────────────────
+
+    def closeEvent(self, event):
+        # Refuse to close while the design worker is running: tearing down the
+        # window (and with it the OpenSees/OCC state the worker is using) would
+        # crash the process. The user can Stop the analysis first.
+        if getattr(self, "_design_running", False):
+            bridge_logger.warning("Analysis is still running — stop it before closing the window.")
+            event.ignore()
+            return
+        # Ordered CAD teardown before shutdown so pythonocc/PySide6 don't segfault on exit.
+        try:
+            cad = getattr(self, "cad_3d_widget", None)
+            if cad is not None and hasattr(cad, "cleanup"):
+                cad.cleanup()
+        except Exception:
+            pass
+        # Release the OpenSeesPy native domain + cached datasets on shutdown (via OpsMemoryGuard).
+        try:
+            backend = getattr(self, "backend", None)
+            if backend is not None and hasattr(backend, "reset"):
+                backend.reset()
+        except Exception:
+            pass
+        super().closeEvent(event)
 
     def resizeEvent(self, event):
 

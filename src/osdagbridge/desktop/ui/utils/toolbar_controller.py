@@ -477,17 +477,9 @@ class ToolBarController:
                     # Render labels directly — no checkbox involved
                     cad_widget._render_node_numbers()
                 else:
-                    # Erase all NodeNumbers AIS objects directly
-                    context = cad_widget.viewer.context
-                    for ais in cad_widget.viewer.model_ais_objects.pop("NodeNumbers", []):
-                        try:
-                            context.Erase(ais, False)
-                        except Exception:
-                            pass
-                    try:
-                        cad_widget.display.Repaint()
-                    except Exception:
-                        pass
+                    # Guarded ordered removal of NodeNumbers AIS (Remove, not Erase).
+                    cad_widget.viewer.safety.remove_model_keys(
+                        ["NodeNumbers"], cad_widget.display)
             except Exception:
                 pass
             self._sync_btn_to(self._btn_node_number, want)
@@ -512,16 +504,8 @@ class ToolBarController:
                 if want:
                     cad_widget._render_element_numbers()
                 else:
-                    context = cad_widget.viewer.context
-                    for ais in cad_widget.viewer.model_ais_objects.pop("ElementNumbers", []):
-                        try:
-                            context.Erase(ais, False)
-                        except Exception:
-                            pass
-                    try:
-                        cad_widget.display.Repaint()
-                    except Exception:
-                        pass
+                    cad_widget.viewer.safety.remove_model_keys(
+                        ["ElementNumbers"], cad_widget.display)
             except Exception:
                 pass
             self._sync_btn_to(self._btn_element_number, want)

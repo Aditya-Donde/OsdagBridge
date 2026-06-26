@@ -21,6 +21,7 @@ from .defaults import (
 )
 from .initial_sizing import DEFAULT_FOOTPATH_WIDTH
 from .analyser import BridgeGrillageModel
+from osdagbridge.core.utils.memory_guard import OpsMemoryGuard, log_memory, tracemalloc_mark_start
 from .analysis_results import PlateGirderAnalysisResults
 from .designer import run_design_check
 from . import deckdesign
@@ -351,6 +352,9 @@ class PlateGirderBridge:
         # Analyser — populated by setup_grillage()
         self.grillage_model: BridgeGrillageModel = BridgeGrillageModel()
 
+        # Central ospgrillage / OpenSeesPy memory-release policy (see OpsMemoryGuard).
+        self.memory = OpsMemoryGuard(self)
+
         # When True, design() writes tools/bridge_full_data.json. Off by default.
         self.dump_json: bool = False
 
@@ -640,14 +644,13 @@ class PlateGirderBridge:
         self.create_sls_combinations()
 
     def _stage_cad_generation(self):
-        from osdagbridge.core.bridge_types.plate_girder.cad_generator import PlateGirderCADGenerator
-        
-        params = self.get_3d_cad_parameters()
-        bridge_logger.sub_step("CAD parameters prepared.")
-        
-        generator = PlateGirderCADGenerator()
-        self.cad_components = generator.generate(params)
-        bridge_logger.sub_step("3D CAD components generated successfully.")
+        # Validate that the CAD parameter DTO can be assembled, but do NOT build
+        # the OCC solid model here: the desktop 3D viewer regenerates its own
+        # copy from these parameters at render time (cad_3d.render_3d_cad), and
+        # the copy previously stored on self.cad_components had no consumers —
+        # it just kept a second full solid model resident until release().
+        self.get_3d_cad_parameters()
+        bridge_logger.sub_step("CAD parameters prepared; geometry is built by the viewer at render time.")
 
     def _stage_transverse_design(self):
         self.crossbracing_design_results = self._design_cross_bracing_members()
@@ -662,6 +665,17 @@ class PlateGirderBridge:
         Orchestrates the 14 linear stages mapping exactly to the revised architecture.
         """
         bridge_logger.analysis_start()
+
+        # Log memory at the start of every design so per-iteration growth is visible.
+        log_memory("design: START")
+        # Mark the Python-allocation baseline (opt-in via OSDAGBRIDGE_MEM_TRACE=1) so release()
+        # can name the top Python growers per cycle — the decisive Python-vs-native leak test.
+        tracemalloc_mark_start()
+
+        # Release the previous run's OpenSeesPy domain + cached datasets before rebuilding,
+        # so a redesign (even while the input dock is still locked) starts clean.
+        # set_input() has already run, so input_dict is untouched by this.
+        self.memory.release()
 
         try:
             # Pre-stage: Unit conversions (must run before validation)
@@ -698,6 +712,13 @@ class PlateGirderBridge:
             # Stage 4G: Structural Analysis
             dataset = self._run_stage("4G", self._reanalyze_with_dedup)
             dataset = self.create_envelope_load_case(dataset)
+            dataset = self._drop_moving_increment_cases(dataset)
+
+            # Drop the raw ospgrillage per-load-case records as soon as the
+            # deduplicated dataset is cached: everything downstream (design checks,
+            # get_result_data, plots, output dock) reads that cached dataset, so
+            # holding the records through stages 5-8 only inflates the peak RSS.
+            self.memory.clear_intermediate_results()
             
             # Print Summary
             inp = self.input_dict
@@ -768,12 +789,17 @@ class PlateGirderBridge:
 
             # Freeze output_dict — no further writes allowed after this point
             self.output_dict = types.MappingProxyType(self.output_dict)
+            # Log memory after the design completes so growth per iteration is visible.
+            log_memory("design: COMPLETE")
             bridge_logger.analysis_complete()
 
         except Exception as e:
             bridge_logger.analysis_failed(str(e))
             raise
 
+    def reset(self) -> None:
+        # Release all heavy analysis memory (unlock / app-close entry point).
+        self.memory.release()
 
     def _export_cad_figures(self, cad_generator) -> dict:
         """
@@ -837,6 +863,11 @@ class PlateGirderBridge:
         original_component  = getattr(core, 'component', None)
 
         figure_paths = {}
+
+        # Freeze GC around this guard-less headless viewer's render/teardown (Shiboken-GC segfault guard).
+        import gc
+        _gc_was_enabled = gc.isenabled()
+        gc.disable()
 
         try:
             # ── Substitute + render all components onto off-screen display
@@ -905,6 +936,20 @@ class PlateGirderBridge:
 
         finally:
             # ── CRITICAL: isolation cleanup — ALWAYS runs ────────────
+            # Ordered teardown: Remove each AIS's C++ ref before EraseAll, then restore GC.
+            try:
+                ctx = off_display.Context
+                for ais_list in off_canvas.model_ais_objects.values():
+                    items = ais_list if isinstance(ais_list, (list, tuple)) else [ais_list]
+                    for ais in items:
+                        try:
+                            if ctx.IsDisplayed(ais):
+                                ctx.Remove(ais, False)
+                        except Exception:
+                            pass
+                off_canvas.model_ais_objects.clear()
+            except Exception:
+                pass
             try:
                 off_display.EraseAll()
             except Exception:
@@ -912,6 +957,8 @@ class PlateGirderBridge:
             core.display    = original_display
             core.cad_widget = original_cad_widget
             core.component  = original_component
+            if _gc_was_enabled:
+                gc.enable()
 
         _log.info(
             "_export_cad_figures: exported %d view(s) to %s",
@@ -2019,7 +2066,7 @@ class PlateGirderBridge:
     def create_governing_ll_load_case(self, dataset, partial_safety_factor: float = 1.0):
         """
         Identify the governing static vehicle load case, create a
-        ``"{partial_safety_factor} LL"`` load case from it, and re-analyze.
+        ``"{partial_safety_factor} LL"`` load case from it, and solve just that case.
 
         Must be called after analyze().
 
@@ -2032,8 +2079,8 @@ class PlateGirderBridge:
 
         Returns
         -------
-        xarray.Dataset
-            Updated dataset including the LL load case.
+        None
+            The combined dataset is built once by _reanalyze_with_dedup().
         """
         return self.grillage_model.create_governing_ll_load_case(
             dataset=dataset,
@@ -2042,18 +2089,38 @@ class PlateGirderBridge:
 
     def _reanalyze_with_dedup(self):
         """
-        Re-run the OpenSees analysis, deduplicate the Loadcase axis (ospgrillage
-        appends results on every analyze() call), cache the clean dataset on the
-        grillage model, and return it.
+        Solve the load cases added since the initial analysis (the DL+LL case and
+        the ULS/SLS combinations), build the combined results dataset once, cache
+        it on the grillage model, and return it.
+
+        A bare analyze() would re-solve EVERY registered case — including all
+        ~50 increments of each moving load — and ospgrillage's record store
+        (extract_analysis -> dict.setdefault) would then discard the repeated
+        results, so only the new cases are passed to analyze().
 
         Called by design() after load combinations have been registered so that
         combination results are included in the final results dataset.
         """
-        m = self.grillage_model.model
-        m.analyze()
-        
+        g = self.grillage_model
+        m = g.model
+
+        new_cases = [
+            lc.name
+            for lc in (
+                [getattr(g, "dl_ll_combination", None)]
+                + list(getattr(g, "uls_combinations", None) or [])
+                + list(getattr(g, "sls_combinations", None) or [])
+            )
+            if lc is not None
+        ]
+        if new_cases:
+            m.analyze(load_case=new_cases)
+
         ds = m.get_results()
 
+        # Safety net only: with the installed ospgrillage the records are keyed by
+        # load-case name, so no duplicate Loadcase labels occur; keep the axis
+        # unique anyway in case a future ospgrillage version changes behaviour.
         lc_vals = ds.coords["Loadcase"].values
         seen: set = set()
         unique_idx = []
@@ -2065,6 +2132,31 @@ class PlateGirderBridge:
             ds = ds.isel(Loadcase=unique_idx)
 
         self.grillage_model._deduplicated_results = ds
+        return ds
+
+    def _drop_moving_increment_cases(self, ds):
+        """
+        Drop the per-position "Moving CaseN at global position ..." rows from the
+        cached results dataset once the envelopes exist.
+
+        These ~50-increments-per-vehicle rows dominate the Loadcase axis (about
+        two thirds of it) but have no post-design consumer: governing-LL
+        detection uses the static vehicle cases during stage 4F, envelopes cover
+        the combinations, the plots dropdown deliberately hides them
+        (mpl_plot_widget.link_output_dock), and the load-effects table excludes
+        them. Keeping them just multiplies the resident dataset (and everything
+        derived from it, e.g. result_data) roughly 3x.
+        """
+        lcs = ds.coords["Loadcase"].values
+        keep = [lc for lc in lcs if not str(lc).startswith("Moving ")]
+        if len(keep) == len(lcs):
+            return ds
+        ds = ds.sel(Loadcase=keep)
+        self.grillage_model._deduplicated_results = ds
+        log_memory(
+            f"design: dropped {len(lcs) - len(keep)} moving-increment load cases "
+            f"from cached dataset ({len(lcs)} -> {len(keep)})"
+        )
         return ds
 
     def create_envelope_load_case(self, dataset=None):
@@ -2626,6 +2718,10 @@ class PlateGirderBridge:
 
                 for lc in self.result_data["loadcases"]:
                     lc_str = str(lc)
+                    # Envelope pseudo cases copy the governing combination's values;
+                    # skip them so they can't steal the governing-LC label here.
+                    if lc_str.startswith("Envelope"):
+                        continue
                     for m in elements:
                         if lc_str not in self.result_data["forces"] or m not in self.result_data["forces"][lc_str]:
                             continue
@@ -2665,6 +2761,7 @@ class PlateGirderBridge:
                 from osdagbridge.core.utils.connect import (
                     design_dict_struts_bolted,
                     design_dict_tension_bolted,
+                    design_pool,
                     run_calculation,
                 )
                 jobs = []
@@ -2684,10 +2781,11 @@ class PlateGirderBridge:
                         jobs.append((pair, member, "compression", d))
 
                 if jobs:
-                    from concurrent.futures import ProcessPoolExecutor
                     cpu_count = __import__("os").cpu_count() or 4
                     max_workers = min(cpu_count, len(jobs))
-                    with ProcessPoolExecutor(max_workers=max_workers) as executor:
+                    # spawn-context pool: forking under the design worker thread
+                    # deadlocks (see connect.design_pool).
+                    with design_pool(max_workers) as executor:
                         futures = {executor.submit(run_calculation, j[3]): j for j in jobs}
                         for future, (p, member, force_type, _) in futures.items():
                             try:
@@ -3117,11 +3215,10 @@ class PlateGirderBridge:
     def get_results_dataset(self):
         """Return the xarray Dataset of analysis results.
 
-        After create_governing_ll_load_case() runs a second analysis pass, the
-        raw model.get_results() contains duplicate Loadcase entries.  The
-        deduplicated copy is cached on the grillage model and returned here so
-        that all downstream consumers (plot widgets, result handlers) always
-        see a clean, uniquely-indexed dataset.
+        Returns the dataset cached by _reanalyze_with_dedup() so downstream
+        consumers (plot widgets, result handlers) never trigger a fresh
+        model.get_results() rebuild — after clear_intermediate_results() the raw
+        records are empty, so the cached copy is the only complete dataset.
         """
         if self.grillage_model.model is None:
             return None

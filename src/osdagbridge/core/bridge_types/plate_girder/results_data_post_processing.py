@@ -147,6 +147,12 @@ def compute_mid_coords(chain, members_dict, node_coords):
 
 def clean_forces(forces_dict):
 
+    # Lazy tables (LazyLoadcaseResults, a Mapping rather than a dict) apply the
+    # FORCE_KEEP whitelist during materialization — nothing to strip, and
+    # mutating them here would be lost on LRU eviction anyway.
+    if not isinstance(forces_dict, dict):
+        return
+
     for loadcase in forces_dict.values():
         for _, values in loadcase.items():
             for k in list(values.keys()):
@@ -157,6 +163,10 @@ def clean_forces(forces_dict):
 # ---------------- CLEAN DISPLACEMENTS ---------------- #
 
 def clean_displacements(disp_dict):
+
+    # See clean_forces: lazy tables whitelist during materialization.
+    if not isinstance(disp_dict, dict):
+        return
 
     for loadcase in disp_dict.values():
         for _, values in loadcase.items():

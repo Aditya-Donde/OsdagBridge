@@ -3,6 +3,7 @@ from collections import defaultdict
 
 import matplotlib
 import matplotlib.pyplot as plt
+from matplotlib.figure import Figure
 import matplotlib.colors as mcolors
 from matplotlib.ticker import FuncFormatter
 from matplotlib.ticker import MaxNLocator
@@ -523,7 +524,7 @@ def build_figure_grillage(nodes, members, edge_dist=0.0, selected_girder="All"):
     -------
     fig : matplotlib.figure.Figure
     """
-    fig = plt.figure(figsize=(14, 6), dpi=110, facecolor="white")
+    fig = Figure(figsize=(14, 6), dpi=110, facecolor="white")
     ax  = fig.add_subplot(111, projection="3d", facecolor="white")
 
     all_xs = [coord[0] for coord in nodes.values()]
@@ -661,7 +662,7 @@ def build_figure_sfd(ds, force_key, nodes, members, edge_dist=0.0, eng_scale=1.0
     # Use muted gray/slate for standard non-active node values
     standard_gray = "#455A64"
 
-    fig = plt.figure(figsize=(14, 6), dpi=110, facecolor="white")
+    fig = Figure(figsize=(14, 6), dpi=110, facecolor="white")
     ax = fig.add_subplot(111, projection="3d", facecolor="white")
 
     all_xs = [coord[0] for coord in nodes.values()]
@@ -921,7 +922,7 @@ def build_figure_bmd(ds, force_key, nodes, members, edge_dist=0.0, eng_scale=1.0
     disp_key = FORCE_DISPLAY.get(force_key, force_key)
     girders = _find_girders(nodes, members)
 
-    fig = plt.figure(figsize=(14, 6), dpi=110, facecolor="white")
+    fig = Figure(figsize=(14, 6), dpi=110, facecolor="white")
     ax = fig.add_subplot(111, projection="3d", facecolor="white")
 
     all_xs = [coord[0] for coord in nodes.values()]
@@ -1295,7 +1296,7 @@ def build_figure_deflection(ds, disp_key, nodes, members, edge_dist=0.0, eng_sca
     disp_label = DISP_DISPLAY.get(disp_key, disp_key)
     girders    = _find_girders(nodes, members)
 
-    fig = plt.figure(figsize=(14, 6), dpi=110, facecolor="white")
+    fig = Figure(figsize=(14, 6), dpi=110, facecolor="white")
     ax  = fig.add_subplot(111, projection="3d", facecolor="white")
 
     all_xs = [coord[0] for coord in nodes.values()]

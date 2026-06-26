@@ -10,11 +10,73 @@ bridge-wrapper dependency.
 
 from __future__ import annotations
 import json
+from collections import OrderedDict
+from collections.abc import Mapping
 from pathlib import Path
 
 import openseespy.opensees as ops
 
-from .results_data_post_processing import post_process
+from .results_data_post_processing import post_process, FORCE_KEEP, DISP_KEEP
+
+
+class LazyLoadcaseResults(Mapping):
+    """
+    Per-loadcase results table backed by the xarray dataset.
+
+    Behaves like ``{loadcase: {id: {component: value}}}`` but materializes a
+    load case's nested dict only on access and holds at most ``_MAX_CACHED``
+    of them resident. Consumers (the governing-force scans, dumps, dialogs)
+    walk load cases sequentially, so the small LRU yields one materialization
+    per case instead of keeping every case's tree of Python floats alive —
+    previously ~n_loadcases full nested dicts duplicating the dataset.
+
+    The FORCE_KEEP/DISP_KEEP component whitelist (post_process's cleaning
+    step) is applied during materialization, so entries look exactly like the
+    cleaned eager dicts.
+    """
+    _MAX_CACHED = 8
+
+    def __init__(self, ds_all, var: str, keep=None):
+        self._ds = ds_all
+        self._var = var
+        self._keep = keep
+        self._keys = [str(lc) for lc in ds_all.coords["Loadcase"].values]
+        self._key_set = set(self._keys)
+        self._cache: OrderedDict = OrderedDict()
+
+    def _materialize(self, lc: str) -> dict:
+        da = self._ds[self._var].sel(Loadcase=lc)
+        cids = [str(c) for c in da.coords["Component"].values]
+        col_idx = (
+            list(range(len(cids))) if self._keep is None
+            else [i for i, c in enumerate(cids) if c in self._keep]
+        )
+        kept = [cids[i] for i in col_idx]
+        dim = "Element" if "Element" in da.coords else "Node"
+        ids = da.coords[dim].values
+        return {
+            str(int(i)): {c: row[j] for c, j in zip(kept, col_idx)}
+            for i, row in zip(ids, da.values.tolist())
+        }
+
+    def __getitem__(self, lc):
+        lc = str(lc)
+        if lc in self._cache:
+            self._cache.move_to_end(lc)
+            return self._cache[lc]
+        if lc not in self._key_set:
+            raise KeyError(lc)
+        table = self._materialize(lc)
+        self._cache[lc] = table
+        if len(self._cache) > self._MAX_CACHED:
+            self._cache.popitem(last=False)
+        return table
+
+    def __iter__(self):
+        return iter(self._keys)
+
+    def __len__(self):
+        return len(self._keys)
 
 _TOOLS_DIR = Path(__file__).resolve().parents[5] / "tools"
 
@@ -84,6 +146,7 @@ def restructure_data(
     edge_dist: float = 0.0,
     dev: bool = False,
     dataset=None,
+    lazy: bool = False,
 ) -> dict:
     """
     Restructure xarray analysis results into a flat dict for plot_generator and
@@ -276,9 +339,10 @@ def restructure_data(
         }
     }
     """
-    data = _build_full_data(model, edge_dist, dataset=dataset)
+    data = _build_full_data(model, edge_dist, dataset=dataset, lazy=lazy)
 
     if dev:
+        # dev dumps require eager (JSON-serializable) tables.
         _dump(data, "bridge_plot_data_raw.json")
 
     data = post_process(data)
@@ -291,7 +355,7 @@ def restructure_data(
     return data
 
 
-def _build_full_data(model, edge_dist: float = 0.0, dataset=None) -> dict:
+def _build_full_data(model, edge_dist: float = 0.0, dataset=None, lazy: bool = False) -> dict:
     """
     Build the complete, un-filtered result data dict from the live model and
     its xarray results.  This is the shared extraction step used by both
@@ -374,6 +438,16 @@ def _build_full_data(model, edge_dist: float = 0.0, dataset=None) -> dict:
         "stresses_shell": {},
     }
 
+    # Lazy mode: the two big per-loadcase tables are served straight from the
+    # dataset on demand (LRU of a few load cases) instead of being duplicated
+    # up front as nested dicts of Python floats. The minor tables (reactions /
+    # shell results) stay eager below.
+    if lazy:
+        if "forces" in ds_all.data_vars:
+            data["forces"] = LazyLoadcaseResults(ds_all, "forces", FORCE_KEEP)
+        if "displacements" in ds_all.data_vars:
+            data["displacements"] = LazyLoadcaseResults(ds_all, "displacements", DISP_KEEP)
+
     # ── 2. Results from xarray Dataset ────────────────────────────────
     # Extract full numpy arrays once per load case instead of one .sel()
     # call per (element/node × component) — avoids tens of thousands of
@@ -383,7 +457,7 @@ def _build_full_data(model, edge_dist: float = 0.0, dataset=None) -> dict:
         str_lc = str(lc)
 
         # Displacements — one .values call → (n_nodes, n_comps) numpy array
-        if "displacements" in ds.data_vars:
+        if not lazy and "displacements" in ds.data_vars:
             arr  = ds["displacements"].values
             nids = ds["displacements"].coords["Node"].values
             cids = [str(c) for c in ds["displacements"].coords["Component"].values]
@@ -393,7 +467,7 @@ def _build_full_data(model, edge_dist: float = 0.0, dataset=None) -> dict:
             }
 
         # Forces — one .values call → (n_elems, n_comps) numpy array
-        if "forces" in ds.data_vars:
+        if not lazy and "forces" in ds.data_vars:
             arr  = ds["forces"].values
             eids = ds["forces"].coords["Element"].values
             cids = [str(c) for c in ds["forces"].coords["Component"].values]

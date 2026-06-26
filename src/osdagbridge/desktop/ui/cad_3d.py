@@ -92,6 +92,9 @@ class CAD3DWindow(QWidget):
         self._node_data: dict = {}
         self._members = {}
 
+        # Set once cleanup() has run, so app-exit teardown happens exactly once.
+        self._cleanup_done = False
+
         # UI + CAD setup
         self.setup_ui()
         self.init_display()  # Only initializes the viewer, does NOT render
@@ -152,6 +155,21 @@ class CAD3DWindow(QWidget):
     def _is_display_ready(self):
         return self.display is not None and not self._cad_init_pending
 
+    def cleanup(self):
+        # Ordered OCC teardown for app/tab exit, runs once (delegates to the safety guard).
+        if self._cleanup_done:
+            return
+        self._cleanup_done = True
+
+        viewer = getattr(self, "viewer", None)
+        if viewer is None or not hasattr(viewer, "safety"):
+            return
+        display = self.display if self._is_display_ready() else None
+        try:
+            viewer.safety.for_app_exit(display)
+        except Exception:
+            pass
+
     # ── RENDER / CLEAR ────────────────────────────────────────────────────────
 
     def render_3d_cad(self, design_params: BridgeParametersDTO):
@@ -192,23 +210,20 @@ class CAD3DWindow(QWidget):
         if not self._is_display_ready():
             return
 
-        # Clear all AIS objects from context
-        if hasattr(self.viewer, "cleanup_for_new_model"):
-            self.viewer.cleanup_for_new_model()
-        self.display.EraseAll()
-        self.display.Repaint()
+        # Ordered, GC-frozen teardown + erase inside the safety guard's scoped section.
+        self.viewer.safety.clear(self.display)
 
-        # Reset tracked objects
+        # Reset tracked objects (the guard's teardown_model() owns the viewer's
+        # model_* dicts and deck_texture_ais).
         self._node_data = {}
         self._members = {}
-        self.viewer.model_ais_objects = {}
-        self.viewer.model_hover_labels = {}
-        if hasattr(self.viewer, "deck_texture_ais"):
-            self.viewer.deck_texture_ais = []
         if hasattr(self.viewer, "set_node_hover_data"):
             self.viewer.set_node_hover_data([])
-        if hasattr(self.viewer, "model_hover_labels_by_ais"):
-            self.viewer.model_hover_labels_by_ais.clear()
+
+        # Release OCCT shape handles so the C++ kernel can free the geometry.
+        if hasattr(self, "generator") and hasattr(self.generator, "model_data"):
+            self.generator.model_data = {}
+        self.design_params = None
 
         # Hide component selector
         self.component_selector.hide()
@@ -245,16 +260,21 @@ class CAD3DWindow(QWidget):
         if not self._is_display_ready():
             return
 
+        # Teardown + rebuild share one scoped guard so overlays auto-resume even if rebuild raises.
+        with self.viewer.safety.critical_section():
+            self.viewer.safety.teardown_model()
+            self._render_model_body()
+
+    def _render_model_body(self):
+        # Build and display the model AIS — must run inside safety.critical_section() (see load_bridge).
         params = self.design_params
         cad_data = self.generator.model_data
         display = self.display
         context = self.viewer.context
 
-        if hasattr(self.viewer, "cleanup_for_new_model"):
-            self.viewer.cleanup_for_new_model()
         display.EraseAll()
 
-        # COLORS 
+        # COLORS
         WEB_COLOR = Quantity_Color(47/255.0, 47/255.0, 35/255.0, Quantity_TOC_RGB)
         FLANGE_COLOR = Quantity_Color(134/255.0, 134/255.0, 100/255.0, Quantity_TOC_RGB)
         STIFFENER_COLOR = Quantity_Color(72/255, 72/255, 54/255, Quantity_TOC_RGB)
@@ -298,11 +318,9 @@ class CAD3DWindow(QWidget):
             self.viewer.model_ais_objects[key] = ais_list
             self.viewer.model_hover_labels[key] = label
 
-      
+        # teardown_model() already emptied the model_* dicts — do not re-assign them here.
 
-        self.viewer.model_ais_objects = {}
-
-        #  PLATE GIRDER (WEB + FLANGES SEPARATE COLORS) 
+        #  PLATE GIRDER (WEB + FLANGES SEPARATE COLORS)
 
         display_and_register(
             cad_data.get("girder_web", []),
@@ -465,6 +483,7 @@ class CAD3DWindow(QWidget):
         # Trigger lookup dictionary rebuild
         self.viewer.rebuild_ais_lookup_map()
         self.component_selector.apply_selection()
+        # Overlays auto-resume when load_bridge's critical_section() exits.
 
     # CAD OVERLAY CONTROLS
 
@@ -977,12 +996,8 @@ class CAD3DWindow(QWidget):
         if not self._is_display_ready() or not self._node_data:
             return
 
-        # Clear any previous labels
-        for ais in self.viewer.model_ais_objects.pop("NodeNumbers", []):
-            try:
-                self.viewer.context.Erase(ais, False)
-            except Exception:
-                pass
+        # Clear previous labels via guarded ordered Remove (re-entrant inside load_bridge's section).
+        self.viewer.safety.remove_model_keys(["NodeNumbers"], self.display)
 
         # Very dark charcoal — visible against the light deck without a box
         text_color = Quantity_Color(0.05, 0.05, 0.05, Quantity_TOC_RGB)
@@ -1078,12 +1093,8 @@ class CAD3DWindow(QWidget):
         if not self._is_display_ready() or not self._members or not self._node_data:
             return
 
-        # Clear any existing element-number labels
-        for ais in self.viewer.model_ais_objects.pop("ElementNumbers", []):
-            try:
-                self.viewer.context.Erase(ais, False)
-            except Exception:
-                pass
+        # Clear any existing element-number labels (guarded, ordered Remove).
+        self.viewer.safety.remove_model_keys(["ElementNumbers"], self.display)
 
         # Deep orange — distinct from node numbers (dark charcoal)
         elem_color = Quantity_Color(0.749, 0.212, 0.047, Quantity_TOC_RGB)  # #BF360C

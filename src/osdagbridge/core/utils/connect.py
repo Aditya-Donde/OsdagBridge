@@ -84,11 +84,40 @@ def run_calculation(design_dict: Dict[str, Any], quiet: bool = True) -> Dict[str
 
         return output_dict
 
+_forkserver_preloaded = False
+
+
+def design_pool(max_workers: int) -> ProcessPoolExecutor:
+    """Executor for osdag_core design checks with a thread-safe start method.
+
+    The default fork start method is unsafe here: the design pipeline runs on a
+    QThread while the GUI thread spins the Qt event loop, and a fork taken at that
+    moment inherits mutexes locked by other threads — the child deadlocks before it
+    ever reaches run_calculation (observed hang in stage 7).
+
+    forkserver avoids that (the server is launched via fork+exec, so workers fork
+    from its clean single-threaded state) while staying fast: this module is
+    preloaded into the server once, so every worker starts with osdag_core already
+    imported and shares those pages copy-on-write. Windows has no forkserver and
+    falls back to spawn — its default start method anyway.
+    """
+    import multiprocessing
+    try:
+        ctx = multiprocessing.get_context("forkserver")
+        global _forkserver_preloaded
+        if not _forkserver_preloaded:
+            ctx.set_forkserver_preload(["osdagbridge.core.utils.connect"])
+            _forkserver_preloaded = True
+    except ValueError:
+        ctx = multiprocessing.get_context("spawn")
+    return ProcessPoolExecutor(max_workers=max_workers, mp_context=ctx)
+
+
 def run_parallel_designs(design_dicts: List[Dict[str, Any]], quiet: bool = True) -> List[Dict[str, Any]]:
     cpu_count = os.cpu_count() or 4
     max_workers = min(cpu_count, len(design_dicts))
 
-    with ProcessPoolExecutor(max_workers=max_workers) as executor:
+    with design_pool(max_workers) as executor:
         futures = [
             executor.submit(run_calculation, design_dict, quiet) 
             for design_dict in design_dicts

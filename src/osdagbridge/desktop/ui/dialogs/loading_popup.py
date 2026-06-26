@@ -315,10 +315,14 @@ def run_loading_dialog_process(stop_event, is_light_theme=True, label_queue=None
     app = QApplication(sys.argv)
     dialog = AnalysisProgressDialog(cancel_event, is_light_theme=is_light_theme)
 
+    # If the main process dies (e.g. crashes) without setting stop_event,
+    # exit anyway so the popup is never left orphaned on screen.
+    parent = mp.parent_process()
+
     # Poll stop event; dispatch queued messages every 50ms
     timer = QTimer()
     def check_events():
-        if stop_event.is_set():
+        if stop_event.is_set() or (parent is not None and not parent.is_alive()):
             dialog.close()
             app.quit()
             return

@@ -13,6 +13,8 @@ from OCC.Display.qtDisplay import qtViewer3d
 from navcube import NavCubeOverlay, NavCubeStyle
 from navcube.connectors.occ import OCCNavCubeSync
 
+from osdagbridge.desktop.ui.utils.cad_safety import CADSafetyGuard
+
 
 # =============================================================================
 # OCC-FREE AXIS TRIAD OVERLAY  (drawing is pure QPainter; camera sync via poll)
@@ -278,6 +280,10 @@ class CustomViewer3d(qtViewer3d):
         self.last_mouse_pos = None
         self._auto_rotate_timer: QTimer | None = None   # turntable timer
 
+        # Owns the safe context teardown/rebuild policy (see cad_safety.CADSafetyGuard).
+        self.safety = CADSafetyGuard(self)
+        self._overlay_state = {}
+
         # Axis triad overlay — parented as a sibling of the OCC canvas so
         # Qt can composit it over the OpenGL surface on all platforms.
         self._axis_triad = AxisTriadOverlay(self, parent=overlay_parent)
@@ -520,6 +526,9 @@ class CustomViewer3d(qtViewer3d):
     # Mouse Move Event
     # ------------------------------------------------------------------
     def mouseMoveEvent(self, event):
+        # Do not touch the AIS context while it is being torn down / rebuilt.
+        if self.safety.in_progress:
+            return
 
         # ---------------- NAVIGATION MOVE ----------------
         if self.is_dragging_nav and self.active_nav_mode:
@@ -676,6 +685,8 @@ class CustomViewer3d(qtViewer3d):
     # Tooltip
     # ------------------------------------------------------------------
     def show_tooltip(self):
+        if self.safety.in_progress:
+            return
         if not self.hover_position:
             return
 
@@ -701,6 +712,9 @@ class CustomViewer3d(qtViewer3d):
         self.current_hovered_model = None
         self.current_hovered_label = None
 
+        if self.safety.in_progress:
+            return
+
         if self.current_highlighted_ais_list:
             for obj in self.current_highlighted_ais_list:
                 try:
@@ -715,34 +729,63 @@ class CustomViewer3d(qtViewer3d):
         super().leaveEvent(event)
 
     def cleanup_for_new_model(self):
-        """
-        Clean up all internal state before displaying a new model.
-        This prevents memory corruption from stale OCC object references.
+        # Compat shim: one-shot teardown; rebuilders should use safety.critical_section() directly.
+        with self.safety.critical_section():
+            self.safety.teardown_model()
 
-        Uses IsDisplayed/IsHilighted checks for OS-independent safety:
-        - Windows requires explicit Remove before EraseAll for AIS_ViewCube
-        - Linux crashes with double-free if Remove is called on already-freed objects
-        - Checking first avoids both issues.
-        """
-        if self.current_highlighted_ais_list and self.context:
-            for obj in self.current_highlighted_ais_list:
-                try:
-                    if self.context.IsHilighted(obj):
-                        self.context.Unhilight(obj, False)
-                except Exception:
-                    pass
-        self.current_highlighted_ais_list = []
-        self.current_highlighted_owner = None
-        self.current_hovered_model = None
+    def _pause_overlays(self):
+        # Stop overlay/hover timers and record prior state for _resume_overlays (called by the guard).
+        state = {}
 
-        self.model_ais_objects.clear()
-        self.model_hover_labels.clear()
-        self.model_hover_labels_by_ais.clear()
-        self._node_hover_data = []
+        at = getattr(self, "_axis_triad", None)
+        state["axis"] = bool(at and getattr(at, "_started", False))
+        if at is not None:
+            try:
+                at._timer.stop()
+            except Exception:
+                pass
 
-        # NOTE: Do NOT call gc.collect() here!
-        # The gdb backtrace shows the crash happens during GC when trying to clean up
-        # Shiboken MetaObjectBuilder objects. Let Python handle GC naturally.
+        nc = getattr(self, "navcube", None)
+        state["navcube"] = bool(nc and nc.isVisible())
+        if nc is not None:
+            try:
+                nc._tmr.stop()
+            except Exception:
+                pass
+
+        state["auto_rotate"] = self._auto_rotate_timer is not None
+        self._stop_auto_rotate()
+
+        try:
+            self.hover_timer.stop()
+        except Exception:
+            pass
+
+        self._overlay_state = state
+
+    def _resume_overlays(self):
+        # Restart only the timers that were running when paused (guard clears in_progress).
+        state = getattr(self, "_overlay_state", {}) or {}
+
+        at = getattr(self, "_axis_triad", None)
+        if at is not None and state.get("axis"):
+            try:
+                at._timer.start()
+            except Exception:
+                pass
+
+        nc = getattr(self, "navcube", None)
+        if nc is not None and state.get("navcube"):
+            try:
+                nc._tmr.start()
+            except Exception:
+                pass
+
+        if state.get("auto_rotate"):
+            try:
+                self._start_auto_rotate()
+            except Exception:
+                pass
 
     def rebuild_ais_lookup_map(self):
         """Rebuilds the fast O(1) hash map mapping C++ pointer addresses to model names."""

@@ -376,7 +376,13 @@ class CrossBracingForces:
             LoadCase, Girder Pair, Vz_i (kN), Vz_j (kN), F_diag (kN), F_chord (kN)
         """
         chain_stations = self._build_chain_map()
-        all_lcs = self.bridge.result_data["loadcases"]
+        # Skip the "Envelope ULS"/"Envelope SLS" pseudo load cases: their values are
+        # per-element copies of the governing combination, so they add no new extreme
+        # but would show up as table rows and could steal the governing-LC label.
+        all_lcs = [
+            lc for lc in self.bridge.result_data["loadcases"]
+            if not str(lc).startswith("Envelope")
+        ]
 
         if load_case_filter:
             all_lcs = [lc for lc in all_lcs if load_case_filter in str(lc)]
@@ -631,8 +637,7 @@ class CrossBracingForces:
             f"  diag L={L_diag_mm} mm  chord L={L_chord_mm} mm\n"
             f"{sep}"
         )
-        from concurrent.futures import ProcessPoolExecutor
-        from osdagbridge.core.utils.connect import run_calculation
+        from osdagbridge.core.utils.connect import design_pool, run_calculation
 
         cpu_count = __import__("os").cpu_count() or 4
         max_workers = min(cpu_count, len(jobs))
@@ -640,7 +645,8 @@ class CrossBracingForces:
         t0 = time.perf_counter()
         results: dict = {}
 
-        with ProcessPoolExecutor(max_workers=max_workers) as executor:
+        # spawn-context pool: forking under the design worker thread deadlocks (see design_pool).
+        with design_pool(max_workers) as executor:
             futures = {
                 executor.submit(run_calculation, j[3]): j
                 for j in jobs

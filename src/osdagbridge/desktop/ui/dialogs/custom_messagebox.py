@@ -1,6 +1,6 @@
 import sys
 from PySide6.QtWidgets import QApplication, QDialog, QVBoxLayout, QLabel, QPushButton, QHBoxLayout, QWidget, QSizeGrip
-from PySide6.QtCore import Qt, QPoint
+from PySide6.QtCore import Qt, QPoint, QEvent
 from PySide6.QtGui import QIcon, QPixmap
 
 # for standalone testing
@@ -212,7 +212,19 @@ class CustomMessageBox(QDialog):
 
     def exec(self):
         super().exec()
-        return self.result
+        result = self.result
+        # This dialog is parentless, so Qt never auto-deletes it. deleteLater() alone is
+        # NOT enough: it only *posts* a DeferredDelete event, and that event class is not
+        # delivered by processEvents() nor by an unwinding modal loop at the same level —
+        # so the whole widget tree (CustomTitleBar/QSvgWidget/QToolButton/QPushButton/
+        # layouts) leaks once per box shown (e.g. the unlock confirmation each redesign).
+        # Post the deletion, then force-flush that event for this object so the C++ tree
+        # and its shiboken wrappers are destroyed synchronously before we return.
+        self.deleteLater()
+        app = QApplication.instance()
+        if app is not None:
+            app.sendPostedEvents(self, QEvent.DeferredDelete)
+        return result
 
 
 # Test different dialog types

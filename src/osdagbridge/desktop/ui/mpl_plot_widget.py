@@ -2,6 +2,7 @@ import matplotlib
 matplotlib.use("QtAgg")
 
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
+from matplotlib.figure import Figure
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d.art3d import Path3DCollection 
 from html import escape
@@ -219,7 +220,7 @@ class MplPlotWidget(QWidget):
         self._zwin_origin = None
 
         # matplotlib canvas
-        self._fig    = plt.figure(figsize=(14, 6), facecolor="white")
+        self._fig    = Figure(figsize=(14, 6), facecolor="white")
         self._canvas = FigureCanvasQTAgg(self._fig)
         self._canvas.setMinimumHeight(300)
         self._canvas.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
@@ -326,15 +327,25 @@ class MplPlotWidget(QWidget):
 
     def clear(self):
         """Reset the plot widget to its initial blank state (called on lock release)."""
+        # Stop auto-rotate before touching the figure
+        self._stop_auto_rotate()
+
+        # Disconnect all signal-slot connections made in link_output_dock() so
+        # the output-dock widgets don't keep a live reference to this widget.
+        if self._output_dock is not None:
+            self._disconnect_output_dock_signals()
+
         self._ds_all    = None
         self._loadcases = []
         self._nodes     = {}
         self._members   = {}
         self._output_dock = None
         self._summary_data = {}
+        self._cb_max = None
+        self._cb_min = None
 
         plt.close(self._fig)
-        self._fig = plt.figure(figsize=(14, 6), facecolor="white")
+        self._fig = Figure(figsize=(14, 6), facecolor="white")
         self._attach_figure(self._fig)
         self._canvas.draw_idle()
 
@@ -342,6 +353,58 @@ class MplPlotWidget(QWidget):
             self._title_overlay.hide()
         if hasattr(self, "_summary_overlay"):
             self._summary_overlay.hide()
+        if hasattr(self, "_navcube"):
+            self._navcube.hide()
+
+    def _disconnect_output_dock_signals(self):
+        """Disconnect all signals wired in link_output_dock() to prevent dangling refs."""
+        if self._output_dock is None:
+            return
+        from osdagbridge.desktop.ui.utils.custom_widgets import CustomRadioButton
+
+        combo_lc = self._output_dock.output_widget.findChild(QComboBox, "analysis.load_combination")
+        if combo_lc is not None:
+            try:
+                combo_lc.currentTextChanged.disconnect(self.update_plot)
+            except RuntimeError:
+                pass
+
+        combo_member = self._output_dock.output_widget.findChild(QComboBox, "analysis.member")
+        if combo_member is not None:
+            try:
+                combo_member.currentTextChanged.disconnect(self.update_plot)
+            except RuntimeError:
+                pass
+
+        for rb in self._output_dock.output_widget.findChildren(CustomRadioButton):
+            if rb.text() in _RICH_LABEL_TO_FORCE:
+                try:
+                    rb.toggled.disconnect(self.update_plot)
+                except RuntimeError:
+                    pass
+
+        for cb in self._output_dock.output_widget.findChildren(QCheckBox):
+            text = cb.text().strip().lower()
+            if "summary" in text:
+                try:
+                    cb.toggled.disconnect(self._on_summary_toggled)
+                except RuntimeError:
+                    pass
+            elif "max" in text:
+                try:
+                    cb.toggled.disconnect(self._on_max_toggled)
+                except RuntimeError:
+                    pass
+            elif "min" in text:
+                try:
+                    cb.toggled.disconnect(self._on_min_toggled)
+                except RuntimeError:
+                    pass
+            elif "all" in text:
+                try:
+                    cb.toggled.disconnect(self._on_all_vals_toggled)
+                except RuntimeError:
+                    pass
 
     def setup(self, ds_all, loadcases: list, nodes: dict, members: dict,
               edge_dist: float = 0.0):

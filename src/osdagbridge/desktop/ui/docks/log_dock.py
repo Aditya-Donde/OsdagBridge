@@ -3,13 +3,19 @@ Log dock widget for Osdag GUI.
 Displays log messages and status updates.
 """
 
-from PySide6.QtWidgets import QWidget, QVBoxLayout, QTextEdit, QLabel, QApplication
-from PySide6.QtCore import Qt, QDateTime
+from PySide6.QtWidgets import QWidget, QVBoxLayout, QTextEdit, QLabel
+from PySide6.QtCore import Qt, QDateTime, Signal
 
 from osdagbridge.core.utils.logger import bridge_logger
 
 
 class LogDock(QWidget):
+    # Thread-safe relay: the design pipeline runs on a worker thread, so logger
+    # callbacks must not touch the QTextEdit directly. The relay's .emit is
+    # registered with bridge_logger; Qt queues cross-thread emissions onto the
+    # GUI thread before append_log runs.
+    _message = Signal(str, str)
+
     def __init__(self, parent=None):
         super().__init__(parent)
         # Ensures automatic deletion when closed
@@ -17,11 +23,13 @@ class LogDock(QWidget):
         self.setObjectName("logs_dock")
         self.init_ui()
         # Register with the singleton logger so log messages arrive in real time
-        bridge_logger.add_callback(self.append_log)
+        self._message.connect(self.append_log)
+        self._logger_relay = self._message.emit
+        bridge_logger.add_callback(self._logger_relay)
 
     def closeEvent(self, event):
         # Deregister callback when the dock is closed to prevent stale references
-        bridge_logger.remove_callback(self.append_log)
+        bridge_logger.remove_callback(self._logger_relay)
         super().closeEvent(event)
 
     def init_ui(self):
@@ -51,6 +59,15 @@ class LogDock(QWidget):
         self.setLayout(layout)
         self.show()  # Show init text
 
+    def reset(self):
+        """Clear all log content and restore the initial 'Log initialized' state."""
+        self.log_display.clear()
+        self.log_window_title.setText("Log Window")
+        self.append_log(
+            f"[{QDateTime.currentDateTime().toString('yyyy-MM-dd hh:mm:ss')}] Log initialized",
+            "info",
+        )
+
     def append_log(self, message, log_level="info"):
         """Append a message to the log display with specified color."""
         if log_level == "progress":
@@ -67,7 +84,6 @@ class LogDock(QWidget):
                     self.log_window_title.setText(f"Log Window  –  Analysing… {pct}%")
             except ValueError:
                 pass
-            QApplication.processEvents()
             return
 
         if log_level == "error":
@@ -96,4 +112,3 @@ class LogDock(QWidget):
 
         if was_at_bottom:
             scrollbar.setValue(scrollbar.maximum())
-        QApplication.processEvents()

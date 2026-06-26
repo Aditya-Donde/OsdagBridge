@@ -1,6 +1,13 @@
 import sys
 import os
 
+# Print a Python traceback instead of a bare core dump on a native crash (stderr may be None).
+import faulthandler
+try:
+    faulthandler.enable()
+except Exception:
+    pass
+
 
 def _register_conda_dll_directories():
     """Add the active conda environment's native DLL folders to the Windows DLL
