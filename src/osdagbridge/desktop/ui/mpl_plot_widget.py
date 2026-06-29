@@ -551,21 +551,21 @@ class MplPlotWidget(QWidget):
             self._fig, self._summary_data = build_figure_sfd(
                 ds, force_key, self._nodes, self._members,
                 edge_dist=self._edge_dist, eng_scale=eng_scale,
-                selected_girder=sel_girder
+                selected_girder=sel_girder,
                 nodal_fy=nodal_fy, load_mode=self._load_mode
             )
         elif force_key in _DEFL_KEYS:
             self._fig, self._summary_data = build_figure_deflection(
                 ds, force_key, self._nodes, self._members,
                 edge_dist=self._edge_dist, eng_scale=eng_scale,
-                selected_girder=sel_girder
+                selected_girder=sel_girder,
                 nodal_fy=nodal_fy, load_mode=self._load_mode
             )
         else:
             self._fig, self._summary_data = build_figure_bmd(
                 ds, force_key, self._nodes, self._members,
                 edge_dist=self._edge_dist, eng_scale=eng_scale,
-                selected_girder=sel_girder
+                selected_girder=sel_girder,
                 nodal_fy=nodal_fy, load_mode=self._load_mode
             )
 
