@@ -414,35 +414,21 @@ class ProjectLocationDialog(QDialog):
         coord_layout = QVBoxLayout(coord_container)
         coord_layout.setContentsMargins(10, 10, 10, 10)
 
-        coord_label = QLabel("Enter Coordinates or Select on Map")
+        coord_label = QLabel("Select on Map")
         coord_label.setStyleSheet("font-weight: bold; color: #2d2d2d;")
         coord_layout.addWidget(coord_label)
 
-        row = QHBoxLayout()
-        row.setSpacing(10)
-
-        lat_col = QVBoxLayout()
-        lat_lbl = QLabel("Latitude (°)")
+        # Keep inputs for logic but hide them from UI
         self.latitude_input = QLineEdit()
-        apply_field_style(self.latitude_input)
-        lat_col.addWidget(lat_lbl)
-        lat_col.addWidget(self.latitude_input)
-
-        lng_col = QVBoxLayout()
-        lng_lbl = QLabel("Longitude (°)")
+        self.latitude_input.hide()
+        
         self.longitude_input = QLineEdit()
-        apply_field_style(self.longitude_input)
-        lng_col.addWidget(lng_lbl)
-        lng_col.addWidget(self.longitude_input)
-
-        row.addLayout(lat_col)
-        row.addLayout(lng_col)
-        coord_layout.addLayout(row)
+        self.longitude_input.hide()
 
         # -----------------------------------------------------------------
         # 2️⃣  Add read‑only fields that will display the nearest station and
         #     state after a map selection. These are placed directly below the
-        #     coordinate inputs so the user gets immediate visual feedback.
+        #     map in place of the coordinates.
         # -----------------------------------------------------------------
         station_state_row = QHBoxLayout()
         station_state_row.setSpacing(10)
@@ -462,6 +448,8 @@ class ProjectLocationDialog(QDialog):
         station_state_row.addWidget(self.state_line)
 
         coord_layout.addLayout(station_state_row)
+
+
 
         vbox.addWidget(coord_container)
 

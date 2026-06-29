@@ -505,43 +505,28 @@ class InputDock(QWidget):
         top_row.addWidget(btn, 1)
         container.addLayout(top_row)
 
-        # Station row
-        self.project_location_station_row = QWidget()
-        station_row = QHBoxLayout(self.project_location_station_row)
-        station_row.setContentsMargins(0, 0, 0, 0)
-        station_row.setSpacing(8)
-        station_lbl = QLabel("Station:")
-        station_lbl.setStyleSheet(LABEL_STYLE)
-        station_lbl.setMinimumWidth(110)
-        station_row.addWidget(station_lbl)
-        self.station_display = QLineEdit("")
-        self.station_display.setReadOnly(True)
-        self.station_display.setStyleSheet(READONLY_FIELD_STYLE)
-        self.station_display.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-        self.station_display.setMinimumHeight(28)
-        station_row.addWidget(self.station_display, 1)
+        # Single location display row
+        self.project_location_display_row = QWidget()
+        loc_row = QHBoxLayout(self.project_location_display_row)
+        loc_row.setContentsMargins(0, 10, 0, 0)
+        loc_row.setSpacing(6)
+        
+        loc_row.addStretch()
+        
+        self.location_pin_label = QLabel()
+        self.location_pin_label.setPixmap(QIcon(":/vectors/locate-location-pin.svg").pixmap(20, 20))
+        self.location_pin_label.setStyleSheet("background: transparent;")
+        loc_row.addWidget(self.location_pin_label)
 
-        # State row
-        self.project_location_state_row = QWidget()
-        state_row = QHBoxLayout(self.project_location_state_row)
-        state_row.setContentsMargins(0, 0, 0, 0)
-        state_row.setSpacing(8)
-        state_lbl = QLabel("State:")
-        state_lbl.setStyleSheet(LABEL_STYLE)
-        state_lbl.setMinimumWidth(110)
-        state_row.addWidget(state_lbl)
-        self.state_display = QLineEdit("")
-        self.state_display.setReadOnly(True)
-        self.state_display.setStyleSheet(READONLY_FIELD_STYLE)
-        self.state_display.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-        self.state_display.setMinimumHeight(28)
-        state_row.addWidget(self.state_display, 1)
+        self.location_text_label = QLabel("")
+        self.location_text_label.setStyleSheet("font-size: 13px; font-weight: normal ; color: #333; background: transparent;")
+        self.location_text_label.setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Fixed)
+        loc_row.addWidget(self.location_text_label)
+        
+        loc_row.addStretch()
 
-        container.addWidget(self.project_location_station_row)
-        container.addWidget(self.project_location_state_row)
-
-        self.project_location_station_row.setVisible(False)
-        self.project_location_state_row.setVisible(False)
+        container.addWidget(self.project_location_display_row)
+        self.project_location_display_row.setVisible(False)
 
         return container
 
@@ -864,15 +849,18 @@ class InputDock(QWidget):
             state = ""
             show_rows = False
 
-        if hasattr(self, "station_display"):
-            self.station_display.setText(station)
-        if hasattr(self, "state_display"):
-            self.state_display.setText(state)
+        if hasattr(self, "location_text_label"):
+            if station and state:
+                self.location_text_label.setText(f"{station}, {state}")
+            elif station:
+                self.location_text_label.setText(station)
+            elif state:
+                self.location_text_label.setText(state)
+            else:
+                self.location_text_label.setText("Location not selected")
 
-        if hasattr(self, "project_location_station_row"):
-            self.project_location_station_row.setVisible(show_rows)
-        if hasattr(self, "project_location_state_row"):
-            self.project_location_state_row.setVisible(show_rows)
+        if hasattr(self, "project_location_display_row"):
+            self.project_location_display_row.setVisible(show_rows)
 
     # To open additional input from additional geometry
     def show_additional_inputs(self):
