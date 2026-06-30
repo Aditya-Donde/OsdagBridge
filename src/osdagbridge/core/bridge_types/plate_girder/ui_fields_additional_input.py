@@ -1599,6 +1599,20 @@ END_CONNECTORS = [
     # Save old member data and load new member data when member ID selection changes
     (KEY_MP_STIFFENER_SELECT_MEMBER_ID, KEY_MP_STIFFENER_DESIGN_METHOD, "_on_stiffener_member_load"),
 
+    # On change of any stiffener input field — save all stiffener fields for the
+    # current member so the selection reaches the backend / Steel Design table.
+    (KEY_MP_STIFFENER_NO_BEARING_STIFFENERS,  KEY_MP_STIFFENER_SELECT_MEMBER_ID, "_save_stiffener_field_connector"),
+    (KEY_MP_STIFFENER_SPACING,                KEY_MP_STIFFENER_SELECT_MEMBER_ID, "_save_stiffener_field_connector"),
+    (KEY_MP_STIFFENER_BEARING_THICKNESS,      KEY_MP_STIFFENER_SELECT_MEMBER_ID, "_save_stiffener_field_connector"),
+    (KEY_MP_STIFFENER_BEARING_OUTSTAND,       KEY_MP_STIFFENER_SELECT_MEMBER_ID, "_save_stiffener_field_connector"),
+    (KEY_MP_STIFFENER_INTERMEDIATE,           KEY_MP_STIFFENER_SELECT_MEMBER_ID, "_save_stiffener_field_connector"),
+    (KEY_MP_STIFFENER_INTERMEDIATE_SPACING,   KEY_MP_STIFFENER_SELECT_MEMBER_ID, "_save_stiffener_field_connector"),
+    (KEY_MP_STIFFENER_INTERMEDIATE_THICKNESS, KEY_MP_STIFFENER_SELECT_MEMBER_ID, "_save_stiffener_field_connector"),
+    (KEY_MP_STIFFENER_INTERMEDIATE_OUTSTAND,  KEY_MP_STIFFENER_SELECT_MEMBER_ID, "_save_stiffener_field_connector"),
+    (KEY_MP_STIFFENER_LONGITUDINAL,           KEY_MP_STIFFENER_SELECT_MEMBER_ID, "_save_stiffener_field_connector"),
+    (KEY_MP_STIFFENER_LONGITUDINAL_THICKNESS, KEY_MP_STIFFENER_SELECT_MEMBER_ID, "_save_stiffener_field_connector"),
+    (KEY_MP_STIFFENER_DESIGN_METHOD,          KEY_MP_STIFFENER_SELECT_MEMBER_ID, "_save_stiffener_field_connector"),
+
     # On change of member_id the fields below will be changed according to Girder & Member
     (KEY_MP_GD_MEMBER_ID,      KEY_MP_GD_MEMBER_ID,        "_on_member_id_load"),
 
@@ -3037,67 +3051,67 @@ STEEL_DESIGN_DETAILS_SCHEMA = {
                 },
                 {
                     "id": KEY_MP_GIRDER_SECTIONAL_AREA,
-                    "label": "Sectional Area, a (cm<sup>2</sup>)",
+                    "label": "Sectional Area, a (m<sup>2</sup>)",
                     "data_key": "area",
                     "group": "section",
                 },
                 {
                     "id": KEY_MP_GIRDER_SECTIONAL_IZ,
-                    "label": "2nd Moment of Area, I<sub>z</sub> (cm<sup>4</sup>)",
+                    "label": "2nd Moment of Area, I<sub>z</sub> (m<sup>4</sup>)",
                     "data_key": "iz",
                     "group": "section",
                 },
                 {
                     "id": KEY_MP_GIRDER_SECTIONAL_IY,
-                    "label": "2nd Moment of Area, I<sub>y</sub> (cm<sup>4</sup>)",
+                    "label": "2nd Moment of Area, I<sub>y</sub> (m<sup>4</sup>)",
                     "data_key": "iv",
                     "group": "section",
                 },
                 {
                     "id": KEY_MP_GIRDER_RADIUS_GYRATION_Z,
-                    "label": "Radius of Gyration, r<sub>z</sub> (cm)",
+                    "label": "Radius of Gyration, r<sub>z</sub> (m)",
                     "data_key": "rz",
                     "group": "section",
                 },
                 {
                     "id": KEY_MP_GIRDER_RADIUS_GYRATION_Y,
-                    "label": "Radius of Gyration, r<sub>y</sub> (cm)",
+                    "label": "Radius of Gyration, r<sub>y</sub> (m)",
                     "data_key": "rv",
                     "group": "section",
                 },
                 {
                     "id": KEY_MP_GIRDER_ELASTIC_MODULUS_ZZ,
-                    "label": "Elastic Modulus, Z<sub>z</sub> (cm<sup>3</sup>)",
+                    "label": "Elastic Modulus, Z<sub>z</sub> (m<sup>3</sup>)",
                     "data_key": "zz",
                     "group": "section",
                 },
                 {
                     "id": KEY_MP_GIRDER_ELASTIC_MODULUS_ZY,
-                    "label": "Elastic Modulus, Z<sub>y</sub> (cm<sup>3</sup>)",
+                    "label": "Elastic Modulus, Z<sub>y</sub> (m<sup>3</sup>)",
                     "data_key": "zv",
                     "group": "section",
                 },
                 {
                     "id": KEY_MP_GIRDER_PLASTIC_MODULUS_ZUZ,
-                    "label": "Plastic Modulus, Z<sub>pz</sub> (cm<sup>3</sup>)",
+                    "label": "Plastic Modulus, Z<sub>pz</sub> (m<sup>3</sup>)",
                     "data_key": "zuz",
                     "group": "section",
                 },
                 {
                     "id": KEY_MP_GIRDER_PLASTIC_MODULUS_ZUY,
-                    "label": "Plastic Modulus, Z<sub>py</sub> (cm<sup>3</sup>)",
+                    "label": "Plastic Modulus, Z<sub>py</sub> (m<sup>3</sup>)",
                     "data_key": "zuv",
                     "group": "section",
                 },
                 {
                     "id": KEY_MP_GIRDER_TORSION_CONSTANT_IT,
-                    "label": "Torsion Constant, I<sub>t</sub> (cm<sup>4</sup>)",
+                    "label": "Torsion Constant, I<sub>t</sub> (m<sup>4</sup>)",
                     "data_key": "it",
                     "group": "section",
                 },
                 {
                     "id": KEY_MP_GIRDER_WARPING_CONSTANT_IW,
-                    "label": "Warping Constant, I<sub>w</sub> (cm<sup>6</sup>)",
+                    "label": "Warping Constant, I<sub>w</sub> (m<sup>6</sup>)",
                     "data_key": "iw",
                     "group": "section",
                 },

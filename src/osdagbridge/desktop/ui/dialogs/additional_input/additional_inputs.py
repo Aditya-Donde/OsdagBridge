@@ -1922,19 +1922,29 @@ class AdditionalInputs(QDialog):
             dialogType=MessageBoxType.Success,
         ).exec()
 
-    def _save_stiffener_member_data(self, member_id: str) -> None:  # utility: serialises stiffener widget values into working_input_dict under G{i}.M{j} suffix
+    def _save_stiffener_member_data(self, member_id: str | None = None) -> None:  # utility: serialises stiffener widget values into working_input_dict under G{i}.M{j} suffix; defaults to current selection
         import re
+        if member_id is None:
+            combo = self.findChild(QComboBox, KEY_MP_STIFFENER_SELECT_MEMBER_ID)
+            member_id = combo.currentText().strip() if combo is not None else ""
         m = re.match(r"G(\d+)M(\d+)", str(member_id or "").strip())
         suffix = f".G{m.group(1)}.M{m.group(2)}" if m else ""
-
         if not suffix:
             return
+
+        # Read every stiffener value and store it into working_input_dict.
         for key in self._STIFFENER_FIELD_KEYS:
             w = self.findChild(QWidget, key)
             if isinstance(w, QComboBox):
-                self.working_input_dict[f"{key}{suffix}"] = w.currentText()
+                value = w.currentText()
             elif isinstance(w, QLineEdit):
-                self.working_input_dict[f"{key}{suffix}"] = w.text()
+                value = w.text()
+            else:
+                continue
+            self.working_input_dict[f"{key}{suffix}"] = value
+
+    def _save_stiffener_field_connector(self, origin_key: str, target_widget: QWidget) -> None:  # END_CONNECTOR: saves all stiffener fields for the current member on any input change
+        self._save_stiffener_member_data()
 
     def _load_stiffener_member_data(self, member_id: str) -> None:  # utility: restores stiffener widgets from working_input_dict G{i}.M{j} entries
         import re

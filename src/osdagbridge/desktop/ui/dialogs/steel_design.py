@@ -152,7 +152,8 @@ class SteelDesign(QDialog):
 
         backend = getattr(self._main_window, "backend", None)
         if backend is not None and backend.output_dict:
-            self.details_tab.load_data(backend.output_dict)
+            # All values come straight from the backend's output_dict.
+            self.details_tab.load_data(dict(backend.output_dict))
 
         if self._result_handler is not None:
             # Inject the matplotlib canvas into the Analysis Results tab
