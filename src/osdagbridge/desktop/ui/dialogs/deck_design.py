@@ -363,6 +363,9 @@ class DeckDesign(QDialog):
                 "FAIL",
                 '<span style="color:#8b0000;font-weight:bold">FAIL</span>',
             )
+            esc = esc.replace("&lt;sub&gt;", "<sub>")
+            esc = esc.replace("&lt;/sub&gt;", "</sub>")
+            
             lines.append(esc)
         return (
             "<pre style='font-family:monospace;font-size:11px;"
