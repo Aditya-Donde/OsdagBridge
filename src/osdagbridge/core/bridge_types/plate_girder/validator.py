@@ -121,6 +121,9 @@ class BridgeInputValidator:
             result = IRC5_2015.cl_104_3_6_footpath_width(footpath, v)
             if result["applicable"] and not result["is_compliant"]:
                 return MIN_FOOTPATH_WIDTH, result["remarks"]
+            cw = self._to_float(inputs.get(KEY_CARRIAGEWAY_WIDTH))
+            if cw is not None and v is not None and v > cw:
+                return cw, "Footpath width is outside the practical range allowed in the software."
 
         elif key == KEY_TS_FOOTPATH_THICKNESS:
             v = self._to_float(inputs.get(key))
@@ -300,7 +303,7 @@ class BridgeInputValidator:
                 return corrected, "Segment end values must be numeric, in ascending order, and the last segment end must equal the span length."
 
         # ── Girder Details: Support Width ─────────────────────────────────────
-        elif key == "member_properties.girder_details.section_input.support_width":  # placeholder – KEY_GIRDER_SUPPORT_WIDTH not yet defined
+        elif key == KEY_MP_GD_SUPPORT_WIDTH:
             v = self._to_float(inputs.get(key))
             if v is None: return 400, "Support width must be a numeric value."
             if v < 150:   return 150, "Support width must be between 150 mm and 800 mm (practical range for composite bridge girders per MoRTH/IRC)."
@@ -548,6 +551,8 @@ class BridgeInputValidator:
                 return None
             v = self._to_float(inputs.get(key))
             if v is None: return 0.0, "Dead load must be a numeric value."
+            if v < 0.0:   return 0.0, "Dead load is outside the practical range allowed in the software."
+            if v > 30000.0: return 30000.0, "Dead load is outside the practical range allowed in the software."
 
         elif key == KEY_SL_LIVE_LOAD_VALUE:
             mode = inputs.get(KEY_SL_LIVE_LOAD_MODE)
@@ -555,11 +560,14 @@ class BridgeInputValidator:
                 return None
             v = self._to_float(inputs.get(key))
             if v is None: return 0.0, "Live load must be a numeric value."
+            if v < 0.0:   return 0.0, "Live load is outside the practical range allowed in the software."
+            if v > 30000.0: return 30000.0, "Live load is outside the practical range allowed in the software."
 
         # ── Wind Load ──────────────────────────────────────────────────────────
         elif key == KEY_WL_AVG_EXPOSED_HEIGHT:
             v = self._to_float(inputs.get(key))
             if v is None: return 0.0, "Average exposed height must be a numeric value."
+            if v < 0.0:   return 0.0, "Average exposed height is outside the practical range allowed in the software."
             if v > 100.0: return 100.0, "Average exposed height must not exceed 100 m (outside IRC 6 range)."
 
         elif key == KEY_WL_GUST_FACTOR_VALUE:
@@ -604,6 +612,8 @@ class BridgeInputValidator:
                 return None
             v = self._to_float(inputs.get(key))
             if v is None: return 0.0, "Superstructure area in elevation must be a numeric value."
+            if v < 0.0:   return 0.0, "Superstructure area in elevation is outside the practical range allowed in the software."
+            if v > 1000.0: return 1000.0, "Superstructure area in elevation is outside the practical range allowed in the software."
 
         elif key == KEY_WL_SUPER_AREA_PLAIN_VALUE:
             mode = inputs.get(KEY_WL_SUPER_AREA_PLAIN_MODE)
@@ -611,6 +621,8 @@ class BridgeInputValidator:
                 return None
             v = self._to_float(inputs.get(key))
             if v is None: return 0.0, "Superstructure area in plan must be a numeric value."
+            if v < 0.0:   return 0.0, "Superstructure area in plan is outside the practical range allowed in the software."
+            if v > 2000.0: return 2000.0, "Superstructure area in plan is outside the practical range allowed in the software."
 
         elif key == KEY_WL_EXPOSED_FRONTAL_VALUE:
             mode = inputs.get(KEY_WL_EXPOSED_FRONTAL_MODE)
@@ -618,6 +630,8 @@ class BridgeInputValidator:
                 return None
             v = self._to_float(inputs.get(key))
             if v is None: return 0.0, "Exposed frontal area of live load must be a numeric value."
+            if v < 0.0:   return 0.0, "Exposed frontal area of live load is outside the practical range allowed in the software."
+            if v > 500.0:  return 500.0, "Exposed frontal area of live load is outside the practical range allowed in the software."
 
         elif key == KEY_WL_WIND_ECC_DECK_VALUE:
             v = self._to_float(inputs.get(key))
