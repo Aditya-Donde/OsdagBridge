@@ -769,7 +769,7 @@ class TopViewCADWidget(QWidget):
         fp_config = self.params.get('footpath_config', 'both')
         median_present = self.params.get('median_present', False)
         median_width = self.params.get(KEY_MD_WIDTH, 1200)
-        RAILING_WIDTH = 375 # Standard outer width of RCC railing in mm
+        railing_width = self.params.get('railing_width', 375)
         
         if fp_config == 'both':
             num_fp = 2
@@ -793,11 +793,11 @@ class TopViewCADWidget(QWidget):
             deck_total = (carriageway * 2 +  # Full carriageway on each side
                           median_width +
                           2 * crash_barrier + 
-                          num_fp * (footpath_width + RAILING_WIDTH))
+                          num_fp * (footpath_width + railing_width))
         else:
             deck_total = (carriageway + 
                           2 * crash_barrier + 
-                          num_fp * (footpath_width + RAILING_WIDTH))
+                          num_fp * (footpath_width + railing_width))
         
         return deck_total, num_fp
 

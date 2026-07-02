@@ -243,6 +243,10 @@ class BridgeDualCADWidget(QWidget):
                     if "width" in geom:
                         params["railing_width"] = geom["width"]
 
+        if KEY_RL_WIDTH in input_dict:
+            if input_dict[KEY_RL_WIDTH] is not None:
+                params["railing_width"] = float(input_dict[KEY_RL_WIDTH]) * 1000
+
         if KEY_MD_TYPE in input_dict:
             if input_dict[KEY_MD_TYPE] is not None:
                 median_type = input_dict[KEY_MD_TYPE]
@@ -258,7 +262,11 @@ class BridgeDualCADWidget(QWidget):
                         params[KEY_MD_HEIGHT] = geom["barrier_height"]
                     elif "kerb_height" in geom:
                         params[KEY_MD_HEIGHT] = geom["kerb_height"]
-                    
+
+        if KEY_MD_WIDTH in input_dict:
+            if input_dict[KEY_MD_WIDTH] is not None:
+                params[KEY_MD_WIDTH] = float(input_dict[KEY_MD_WIDTH]) * 1000
+
         # ---- Wearing Coat ----
         if KEY_WC_THICKNESS in input_dict:
             if input_dict[KEY_WC_THICKNESS] is not None:
