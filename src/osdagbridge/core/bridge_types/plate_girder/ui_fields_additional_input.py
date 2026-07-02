@@ -914,7 +914,7 @@ _TEMPERATURE_LOAD_TAB_SCHEMA = {
                         "label": "Highest Maximum Air Temperature (°C)",
                         "type": TYPE_TEXTBOX,
                         "placeholder": "From Project Location",
-                        "enabled": False,
+                        "read_only": True,
                         "bind": "highest_max_temp_input",
                         "on_change_compute": {"function": "_compute_temperature_values"}
                     }]
@@ -925,13 +925,13 @@ _TEMPERATURE_LOAD_TAB_SCHEMA = {
                         "label": "Lowest Minimum Air Temperature (°C)",
                         "type": TYPE_TEXTBOX,
                         "placeholder": "From Project Location",
-                        "enabled": False,
+                        "read_only": True,
                         "bind": "lowest_min_temp_input",
                         "on_change_compute": {"function": "_compute_temperature_values"}
                     }]
                 },
-                {"fields": [{"id": KEY_TL_THERMAL_COEFF_STEEL, "label": "Coefficient of Thermal Expansion for Steel (1/°C)",       "type": TYPE_TEXTBOX, "placeholder": "e.g. 11.7e-6",        "bind": "thermal_coeff_steel_input"}]},
-                {"fields": [{"id": KEY_TL_THERMAL_COEFF_RCC,   "label": "Coefficient of Thermal Expansion for RCC (1/°C)",         "type": TYPE_TEXTBOX, "placeholder": "e.g. 11.7e-6",        "bind": "thermal_coeff_rcc_input"}]},
+                {"fields": [{"id": KEY_TL_THERMAL_COEFF_STEEL, "label": "Coefficient of Thermal Expansion for Steel (1/°C)",       "type": TYPE_TEXTBOX, "read_only": True, "placeholder": "e.g. 11.7e-6",        "bind": "thermal_coeff_steel_input"}]},
+                {"fields": [{"id": KEY_TL_THERMAL_COEFF_RCC,   "label": "Coefficient of Thermal Expansion for RCC (1/°C)",         "type": TYPE_TEXTBOX, "read_only": True, "placeholder": "e.g. 11.7e-6",        "bind": "thermal_coeff_rcc_input"}]},
             ],
         },
 

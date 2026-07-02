@@ -1807,7 +1807,8 @@ class AdditionalInputs(QDialog):
             self._set_enabled(w, is_yes)
             self._set_enabled(lbl, is_yes)
 
-        spacing_widget = self.findChild(QWidget, KEY_MP_STIFFENER_INTERMEDIATE_SPACING)
+        spacing_widget  = self.findChild(QWidget, KEY_MP_STIFFENER_INTERMEDIATE_SPACING)
+        outstand_widget = self.findChild(QWidget, KEY_MP_STIFFENER_INTERMEDIATE_OUTSTAND)
         if is_yes:
             # Auto-calculate intermediate spacing = 1.5 × web_depth of active member
             combo = self.findChild(QComboBox, KEY_MP_STIFFENER_SELECT_MEMBER_ID)
@@ -1830,9 +1831,11 @@ class AdditionalInputs(QDialog):
                         except (ValueError, TypeError):
                             pass
         else:
-            # Reset spacing to "NA" when intermediate stiffener is turned off
+            # Reset spacing to "NA" and outstand to blank when intermediate stiffener is turned off
             if spacing_widget and isinstance(spacing_widget, QLineEdit):
                 spacing_widget.setText("NA")
+            if outstand_widget and isinstance(outstand_widget, QLineEdit):
+                outstand_widget.setText("")
             # Save to working_input_dict
             combo = self.findChild(QComboBox, KEY_MP_STIFFENER_SELECT_MEMBER_ID)
             if combo:
@@ -1841,6 +1844,7 @@ class AdditionalInputs(QDialog):
                 if m:
                     suffix = f".G{m.group(1)}.M{m.group(2)}"
                     self.working_input_dict[KEY_MP_STIFFENER_INTERMEDIATE_SPACING + suffix] = "NA"
+                    self.working_input_dict[KEY_MP_STIFFENER_INTERMEDIATE_OUTSTAND + suffix] = ""
 
         self._update_stiffener_cad()
 
