@@ -3,7 +3,7 @@ from PySide6.QtWidgets import (
     QFrame, QPushButton, QComboBox, QSizePolicy, QSizeGrip,
     QButtonGroup, QStackedWidget, QSpacerItem, QCheckBox
 )
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QTimer
 from osdagbridge.desktop.ui.utils.custom_titlebar import CustomTitleBar
 from osdagbridge.desktop.ui.utils.custom_widgets import CustomRadioButton
 from osdagbridge.desktop.ui.dialogs.custom_messagebox import CustomMessageBox, MessageBoxType
@@ -19,13 +19,14 @@ from osdagbridge.desktop.ui.utils.custom_cursors import pointing_hand_cursor
 # Database utilities for nearest‑station lookup (used for map feedback)
 from osdagbridge.core.data.project_location.database import Database
 from osdagbridge.core.bridge_types.plate_girder.ui_fields_project_location import DB_PATH
+from osdagbridge.core.bridge_types.plate_girder.validator import BridgeInputValidator
 
 # Session-level state to persist values across dialog open/close cycles
-# so that reopening the dialog retains user-entered or looked-up data.
-LAST_CUSTOM_WEATHER_DATA = None  # Custom data entered via the Custom Data dialog
+# so that reopening the dialog retains looked-up location data.
 LAST_WEATHER_DATA = None  # Looked-up or persisted weather data (wind, seismic, temp)
-LAST_LOCATION_METHOD = None  # "location_name" or "map"
+LAST_LOCATION_METHOD = None  # "location_name", "map", or "custom_data"
 LAST_LOCATION_DATA = None  # {"state": ..., "district": ...} or {"latitude": ..., "longitude": ...}
+LAST_CUSTOM_DATA = None  # {"wind_speed": ..., "zone": ..., "max_temp": ..., "min_temp": ...}
 
 class NoScrollComboBox(QComboBox):
     def wheelEvent(self, event):
@@ -117,8 +118,9 @@ class ProjectLocationDialog(QDialog):
         self._initial_session_state = None
         
         # Restore session-level state
-        self.custom_weather_data = LAST_CUSTOM_WEATHER_DATA
+        self.custom_weather_data = None
         self._current_weather_data = LAST_WEATHER_DATA  # Track current displayed weather
+        self.validator = BridgeInputValidator()
 
         self.setStyleSheet("""
             QDialog#project_location_dialog {
@@ -159,22 +161,22 @@ class ProjectLocationDialog(QDialog):
     def _capture_initial_session_state(self):
         """Capture module-level session state at dialog open time for cancel rollback."""
         self._initial_session_state = {
-            "custom_weather": LAST_CUSTOM_WEATHER_DATA,
             "weather": LAST_WEATHER_DATA,
             "location_method": LAST_LOCATION_METHOD,
             "location_data": LAST_LOCATION_DATA,
+            "custom_data": LAST_CUSTOM_DATA,
         }
 
     def _restore_initial_session_state(self):
         """Restore module-level session state captured when dialog was opened."""
-        global LAST_CUSTOM_WEATHER_DATA, LAST_WEATHER_DATA, LAST_LOCATION_METHOD, LAST_LOCATION_DATA
+        global LAST_WEATHER_DATA, LAST_LOCATION_METHOD, LAST_LOCATION_DATA, LAST_CUSTOM_DATA
         if not self._initial_session_state:
             return
 
-        LAST_CUSTOM_WEATHER_DATA = self._initial_session_state.get("custom_weather")
         LAST_WEATHER_DATA = self._initial_session_state.get("weather")
         LAST_LOCATION_METHOD = self._initial_session_state.get("location_method")
         LAST_LOCATION_DATA = self._initial_session_state.get("location_data")
+        LAST_CUSTOM_DATA = self._initial_session_state.get("custom_data")
 
     def accept(self):
         self._session_committed = True
@@ -222,6 +224,14 @@ class ProjectLocationDialog(QDialog):
         self._add_method_toggle(main_layout)
         self._build_body(main_layout)
         self._add_footer_buttons(main_layout)
+
+        # Debounce timer for coordinate text-field live lookup.
+        # Fires 700 ms after the user stops typing to avoid hammering the
+        # zone-lookup (and its error popup) on every single keystroke.
+        self._coord_lookup_timer = QTimer(self)
+        self._coord_lookup_timer.setSingleShot(True)
+        self._coord_lookup_timer.setInterval(700)
+        self._coord_lookup_timer.timeout.connect(self._sync_map_from_inputs_live)
     
     def _add_code_selector(self, layout):
         self.code_widget = QWidget()
@@ -321,6 +331,24 @@ class ProjectLocationDialog(QDialog):
 
         right_layout.addItem(QSpacerItem(0, 6))
 
+        # City / State display – shown for all tabs that resolve a named location
+        self.location_title_label = QLabel("Location:")
+        self.location_title_label.setObjectName("valueTitle")
+        self.location_title_label.setVisible(False)
+        right_layout.addWidget(self.location_title_label)
+
+        self.location_city_label = QLabel("City: —")
+        self.location_city_label.setObjectName("valueLabel")
+        self.location_city_label.setVisible(False)
+        right_layout.addWidget(self.location_city_label)
+
+        self.location_state_label = QLabel("State: —")
+        self.location_state_label.setObjectName("valueLabel")
+        self.location_state_label.setVisible(False)
+        right_layout.addWidget(self.location_state_label)
+
+        right_layout.addItem(QSpacerItem(0, 6))
+
         # Zone Legend (shown when overlay is active)
         self.legend_container = QWidget()
         self.legend_container.setVisible(False)
@@ -380,7 +408,14 @@ class ProjectLocationDialog(QDialog):
         row.addLayout(district_col)
         row.addStretch()
         vbox.addLayout(row)
+
+        label = QLabel("<i>Note: Only districts with data available in IRC 6 (2017) are listed.</i>")
+        label.setObjectName("hint")
+        label.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)
+        label.setStyleSheet("font-size: 12px; font-weight: 400; color: grey;")
+        vbox.addWidget(label)
         vbox.addStretch()
+
 
         self.method_stack.addWidget(page)
 
@@ -414,42 +449,32 @@ class ProjectLocationDialog(QDialog):
         coord_layout = QVBoxLayout(coord_container)
         coord_layout.setContentsMargins(10, 10, 10, 10)
 
-        coord_label = QLabel("Select on Map")
+        coord_label = QLabel("Enter Coordinates or Select on Map")
         coord_label.setStyleSheet("font-weight: bold; color: #2d2d2d;")
         coord_layout.addWidget(coord_label)
 
-        # Keep inputs for logic but hide them from UI
+        row = QHBoxLayout()
+        row.setSpacing(10)
+
+        lat_col = QVBoxLayout()
+        lat_lbl = QLabel("Latitude (°)")
         self.latitude_input = QLineEdit()
-        self.latitude_input.hide()
-        
+        self.latitude_input.setPlaceholderText("e.g. 28.6139")
+        apply_field_style(self.latitude_input)
+        lat_col.addWidget(lat_lbl)
+        lat_col.addWidget(self.latitude_input)
+
+        lng_col = QVBoxLayout()
+        lng_lbl = QLabel("Longitude (°)")
         self.longitude_input = QLineEdit()
-        self.longitude_input.hide()
+        self.longitude_input.setPlaceholderText("e.g. 77.2090")
+        apply_field_style(self.longitude_input)
+        lng_col.addWidget(lng_lbl)
+        lng_col.addWidget(self.longitude_input)
 
-        # -----------------------------------------------------------------
-        # 2️⃣  Add read‑only fields that will display the nearest station and
-        #     state after a map selection. These are placed directly below the
-        #     map in place of the coordinates.
-        # -----------------------------------------------------------------
-        station_state_row = QHBoxLayout()
-        station_state_row.setSpacing(10)
-
-        # Station name field
-        self.station_line = QLineEdit()
-        self.station_line.setReadOnly(True)
-        self.station_line.setPlaceholderText("Nearest Station")
-        apply_field_style(self.station_line)
-        station_state_row.addWidget(self.station_line)
-
-        # State name field
-        self.state_line = QLineEdit()
-        self.state_line.setReadOnly(True)
-        self.state_line.setPlaceholderText("State")
-        apply_field_style(self.state_line)
-        station_state_row.addWidget(self.state_line)
-
-        coord_layout.addLayout(station_state_row)
-
-
+        row.addLayout(lat_col)
+        row.addLayout(lng_col)
+        coord_layout.addLayout(row)
 
         vbox.addWidget(coord_container)
 
@@ -518,30 +543,22 @@ class ProjectLocationDialog(QDialog):
         vbox.addWidget(temp_lbl)
         temp_row = QHBoxLayout()
         temp_row.setSpacing(10)
-        self.custom_max_temp = QLineEdit()
-        self.custom_max_temp.setPlaceholderText("Max")
-        apply_field_style(self.custom_max_temp)
         self.custom_min_temp = QLineEdit()
         self.custom_min_temp.setPlaceholderText("Min")
         apply_field_style(self.custom_min_temp)
-        temp_row.addWidget(self.custom_max_temp)
+        self.custom_max_temp = QLineEdit()
+        self.custom_max_temp.setPlaceholderText("Max")
+        apply_field_style(self.custom_max_temp)
         temp_row.addWidget(self.custom_min_temp)
+        temp_row.addWidget(self.custom_max_temp)
         vbox.addLayout(temp_row)
-
-        # Apply button
-        apply_btn = QPushButton("Apply")
-        apply_btn.setObjectName("primary")
-        apply_btn.setCursor(pointing_hand_cursor())
-        apply_btn.setAutoDefault(False)
-        apply_btn.clicked.connect(self._apply_custom_data_inline)
-        vbox.addWidget(apply_btn, 0, Qt.AlignLeft)
 
         vbox.addStretch()
         self.method_stack.addWidget(page)
 
     def _apply_custom_data_inline(self):
         """Validate and apply the inline custom data fields."""
-        global LAST_CUSTOM_WEATHER_DATA, LAST_WEATHER_DATA, LAST_LOCATION_METHOD, LAST_LOCATION_DATA
+        global LAST_WEATHER_DATA, LAST_LOCATION_METHOD, LAST_LOCATION_DATA, LAST_CUSTOM_DATA
         wind = self.custom_wind_input.text().strip()
         zone = self.custom_zone_combo.currentText()
         max_t = self.custom_max_temp.text().strip()
@@ -564,19 +581,88 @@ class ProjectLocationDialog(QDialog):
             "min_temp": min_t,
         }
         self.custom_weather_data = data
-        LAST_CUSTOM_WEATHER_DATA = data
         LAST_WEATHER_DATA = data
-        LAST_LOCATION_METHOD = None
+        LAST_LOCATION_METHOD = "custom_data"
         LAST_LOCATION_DATA = None
+        LAST_CUSTOM_DATA = {
+            "wind_speed": wind,
+            "zone": zone,
+            "max_temp": max_t,
+            "min_temp": min_t,
+        }
+        self._current_weather_data = data
+        self._update_irc_values(data)
+
+    def _apply_custom_data_live(self):
+        """Silently update the right-panel IRC values as the user edits
+        custom data fields. This provides live preview without validation
+        popups — it just shows what's entered, or clears if incomplete.
+        
+        Only fires when the custom data tab is active to avoid state bleeding.
+        """
+        if not self.method_custom_data.isChecked():
+            return
+        wind = self.custom_wind_input.text().strip()
+        zone = self.custom_zone_combo.currentText()
+        max_t = self.custom_max_temp.text().strip()
+        min_t = self.custom_min_temp.text().strip()
+
+        # Silently clear if any field is missing (no popup)
+        if not wind or not max_t or not min_t or zone == "Select Zone":
+            self._update_irc_values(None)
+            self._current_weather_data = None
+            return
+
+        _zone_to_z = {"II": "0.10", "III": "0.16", "IV": "0.24", "V": "0.36"}
+        data = {
+            "wind_speed": wind,
+            "zone": zone,
+            "z_value": _zone_to_z.get(zone, ""),
+            "max_temp": max_t,
+            "min_temp": min_t,
+        }
         self._current_weather_data = data
         self._update_irc_values(data)
 
     def validate_and_save(self):
-        # If custom_data radio is selected, auto-apply first
         if self.method_custom_data.isChecked():
+            wind = self.custom_wind_input.text().strip()
+            zone = self.custom_zone_combo.currentText()
+            max_t = self.custom_max_temp.text().strip()
+            min_t = self.custom_min_temp.text().strip()
+            is_valid, error_msg = self.validator.validate_custom_weather_data(wind, zone, max_t, min_t)
+            if not is_valid:
+                CustomMessageBox(
+                    title="Validation Error",
+                    text=error_msg,
+                    dialogType=MessageBoxType.Warning
+                ).exec()
+                return
             self._apply_custom_data_inline()
             if not self._current_weather_data:
                 return
+        elif self.method_radio_map.isChecked():
+            lat = self.latitude_input.text().strip()
+            lon = self.longitude_input.text().strip()
+            is_valid, error_msg = self.validator.validate_map_coordinates(lat, lon)
+            if not is_valid:
+                CustomMessageBox(
+                    title="Validation Error",
+                    text=error_msg,
+                    dialogType=MessageBoxType.Warning
+                ).exec()
+                return
+            if not self._current_weather_data:
+                try:
+                    if not self._lookup_zones_for_coordinates(float(lat), float(lon)):
+                        return
+                except ValueError:
+                    CustomMessageBox(
+                        title="Invalid Coordinates",
+                        text="Please enter valid numeric latitude and longitude values.",
+                        dialogType=MessageBoxType.Warning
+                    ).exec()
+                    return
 
         if not self._current_weather_data:
             CustomMessageBox(
@@ -609,7 +695,7 @@ class ProjectLocationDialog(QDialog):
         footer = QHBoxLayout()
         footer.addStretch()
 
-        ok_btn = QPushButton("OK")
+        ok_btn = QPushButton("Save")
         ok_btn.setObjectName("primary")
         ok_btn.setCursor(pointing_hand_cursor())
         ok_btn.setMinimumWidth(90)
@@ -635,16 +721,26 @@ class ProjectLocationDialog(QDialog):
         # Auto-update on district change
         self.district_combo.currentTextChanged.connect(self._on_district_changed)
         
-        # Enter key on coordinates updates map
-        self.latitude_input.returnPressed.connect(self._sync_map_from_inputs)
-        self.longitude_input.returnPressed.connect(self._sync_map_from_inputs)
+        # Live-update map + IRC values as user types coordinates (debounced)
+        self.latitude_input.textChanged.connect(self._schedule_coord_lookup)
+        self.longitude_input.textChanged.connect(self._schedule_coord_lookup)
         
+        # Live-update IRC values as user edits custom data fields
+        self.custom_wind_input.textChanged.connect(self._apply_custom_data_live)
+        self.custom_zone_combo.currentTextChanged.connect(self._apply_custom_data_live)
+        self.custom_max_temp.textChanged.connect(self._apply_custom_data_live)
+        self.custom_min_temp.textChanged.connect(self._apply_custom_data_live)
+
         # Zone overlay dropdown
         self.zone_overlay_combo.currentTextChanged.connect(self._on_zone_overlay_changed)
         self.boundary_overlay_checkbox.toggled.connect(self._on_boundary_overlay_toggled)
 
     def _set_active_method(self, method):
         if method == "location_name" and self.method_radio_location.isChecked():
+            self._clear_weather_state(clear_custom=True)
+            self._clear_map_selection()
+            self._update_irc_values(None)
+            self._update_location_display(None, None)
             self.method_stack.setCurrentIndex(0)
             self.code_widget.setVisible(True)
             self.latitude_input.setEnabled(False)
@@ -654,6 +750,11 @@ class ProjectLocationDialog(QDialog):
             self.map_view.setEnabled(False)
             self.irc_title_label.setText("IRC 6 (2017) Values:")
         elif method == "map" and self.method_radio_map.isChecked():
+            self._clear_weather_state(clear_custom=True)
+            self._clear_location_selection()
+            self._clear_map_selection()
+            self._update_irc_values(None)
+            self._update_location_display(None, None)
             self.method_stack.setCurrentIndex(1)
             self.code_widget.setVisible(True)
             self.latitude_input.setEnabled(True)
@@ -663,11 +764,13 @@ class ProjectLocationDialog(QDialog):
             self.map_view.setEnabled(True)
             self.irc_title_label.setText("IRC 6 (2017) Values:")
             self.boundary_overlay_checkbox.setChecked(False)
-            # Clear any previous station/state display – a new map selection will fill them.
-            if hasattr(self, "station_line"):
-                self.station_line.clear()
-                self.state_line.clear()
         elif method == "custom_data" and self.method_custom_data.isChecked():
+            self._clear_weather_state(clear_custom=True)
+            self._clear_location_selection()
+            self._clear_map_selection()
+            self._clear_custom_inputs()
+            self._update_irc_values(None)
+            self._update_location_display(None, None)
             self.method_stack.setCurrentIndex(2)
             self.code_widget.setVisible(False)
             self.latitude_input.setEnabled(False)
@@ -676,19 +779,6 @@ class ProjectLocationDialog(QDialog):
             self.district_combo.setEnabled(False)
             self.map_view.setEnabled(False)
             self.irc_title_label.setText("Custom Values:")
-            # Ensure station/state fields are cleared when not using the map.
-            if hasattr(self, "station_line"):
-                self.station_line.clear()
-                self.state_line.clear()
-            # Pre-fill inline fields from any previously saved custom data
-            if self.custom_weather_data:
-                self.custom_wind_input.setText(str(self.custom_weather_data.get("wind_speed", "")))
-                zone = self.custom_weather_data.get("zone", "")
-                idx = self.custom_zone_combo.findText(zone)
-                if idx >= 0:
-                    self.custom_zone_combo.setCurrentIndex(idx)
-                self.custom_max_temp.setText(str(self.custom_weather_data.get("max_temp", "")))
-                self.custom_min_temp.setText(str(self.custom_weather_data.get("min_temp", "")))
 
     def _apply_default_location(self):
         state = self.default_location.get("state", "")
@@ -702,6 +792,10 @@ class ProjectLocationDialog(QDialog):
             idx = self.state_combo.findText(state)
             if idx >= 0:
                 self.state_combo.setCurrentIndex(idx)
+                # Populate districts for selected state (filtered by complete data)
+                districts = self._get_districts_with_complete_data(state)
+                self.district_combo.clear()
+                self.district_combo.addItems(districts)
 
         if station:
             idx = self.district_combo.findText(station)
@@ -713,20 +807,39 @@ class ProjectLocationDialog(QDialog):
 
     def _restore_session_state(self):
         """Restore previous session state or apply defaults if first open."""
-        global LAST_LOCATION_METHOD, LAST_LOCATION_DATA, LAST_WEATHER_DATA
+        global LAST_LOCATION_METHOD, LAST_LOCATION_DATA, LAST_WEATHER_DATA, LAST_CUSTOM_DATA
 
-        if self.custom_weather_data:
-            self._clear_map_selection()
-            self._clear_location_selection()
-            LAST_LOCATION_METHOD = None
-            LAST_LOCATION_DATA = None
-            self._current_weather_data = self.custom_weather_data
-            self._update_irc_values(self.custom_weather_data)
-            return
+        saved_method = LAST_LOCATION_METHOD
+        saved_location_data = dict(LAST_LOCATION_DATA) if isinstance(LAST_LOCATION_DATA, dict) else None
+        saved_weather_data = dict(LAST_WEATHER_DATA) if isinstance(LAST_WEATHER_DATA, dict) else None
+        saved_custom_data = dict(LAST_CUSTOM_DATA) if isinstance(LAST_CUSTOM_DATA, dict) else None
 
-        if LAST_LOCATION_METHOD and LAST_LOCATION_DATA:
+        if saved_method and saved_method == "custom_data" and saved_custom_data:
+            # Restore custom data tab
+            self.method_custom_data.setChecked(True)
+            self._set_active_method("custom_data")
+
+            self.custom_wind_input.setText(str(saved_custom_data.get("wind_speed", "")))
+            zone_val = str(saved_custom_data.get("zone", ""))
+            idx = self.custom_zone_combo.findText(zone_val)
+            if idx >= 0:
+                self.custom_zone_combo.setCurrentIndex(idx)
+            self.custom_max_temp.setText(str(saved_custom_data.get("max_temp", "")))
+            self.custom_min_temp.setText(str(saved_custom_data.get("min_temp", "")))
+
+            # Restore weather data so OK works without re-typing
+            if saved_weather_data:
+                LAST_WEATHER_DATA = saved_weather_data
+                LAST_LOCATION_METHOD = "custom_data"
+                LAST_LOCATION_DATA = None
+                LAST_CUSTOM_DATA = saved_custom_data
+                self._current_weather_data = saved_weather_data
+                self.custom_weather_data = saved_weather_data
+                self._update_irc_values(saved_weather_data)
+
+        elif saved_method and saved_location_data:
             # Restore the previously selected method
-            if LAST_LOCATION_METHOD == "location_name":
+            if saved_method == "location_name":
                 self.method_radio_location.setChecked(True)
                 self._set_active_method("location_name")
                 
@@ -734,15 +847,15 @@ class ProjectLocationDialog(QDialog):
                 self.state_combo.blockSignals(True)
                 self.district_combo.blockSignals(True)
                 
-                state = LAST_LOCATION_DATA.get("state", "")
-                district = LAST_LOCATION_DATA.get("district", "")
+                state = saved_location_data.get("state", "")
+                district = saved_location_data.get("district", "")
                 
                 if state:
                     idx = self.state_combo.findText(state)
                     if idx >= 0:
                         self.state_combo.setCurrentIndex(idx)
-                        # Populate districts for selected state
-                        districts = get_station_list(state, include_placeholder=True)
+                        # Populate districts for selected state (filtered by complete data)
+                        districts = self._get_districts_with_complete_data(state)
                         self.district_combo.clear()
                         self.district_combo.addItems(districts)
                 
@@ -754,13 +867,13 @@ class ProjectLocationDialog(QDialog):
                 self.state_combo.blockSignals(False)
                 self.district_combo.blockSignals(False)
                 
-            elif LAST_LOCATION_METHOD == "map":
+            elif saved_method == "map":
                 self.method_radio_map.setChecked(True)
                 self._set_active_method("map")
                 
                 # Restore coordinates
-                lat = LAST_LOCATION_DATA.get("latitude", "")
-                lon = LAST_LOCATION_DATA.get("longitude", "")
+                lat = saved_location_data.get("latitude", "")
+                lon = saved_location_data.get("longitude", "")
                 
                 if lat:
                     self.latitude_input.setText(str(lat))
@@ -770,15 +883,21 @@ class ProjectLocationDialog(QDialog):
                 # Update map marker if coordinates are valid
                 try:
                     if lat and lon:
-                        self.map_view.set_marker_location(float(lat), float(lon))
+                        self.map_view.blockSignals(True)
+                        try:
+                            self.map_view.set_marker_location(float(lat), float(lon))
+                        finally:
+                            self.map_view.blockSignals(False)
                 except (ValueError, TypeError):
                     pass
             
-            # Restore weather data (custom or looked-up)
-            if self.custom_weather_data:
-                self._update_irc_values(self.custom_weather_data)
-            elif LAST_WEATHER_DATA:
-                self._update_irc_values(LAST_WEATHER_DATA)
+            # Restore weather data (from location-based lookup)
+            if saved_weather_data:
+                LAST_WEATHER_DATA = saved_weather_data
+                LAST_LOCATION_METHOD = saved_method
+                LAST_LOCATION_DATA = saved_location_data
+                self._current_weather_data = saved_weather_data
+                self._update_irc_values(saved_weather_data)
         else:
             # First time opening - apply defaults
             self._apply_default_location()
@@ -788,51 +907,79 @@ class ProjectLocationDialog(QDialog):
         """Handle a location selection from the map widget.
 
         The map widget emits the latitude and longitude of the point the user
-        clicked. We update the coordinate line‑edits, perform the existing zone
-        lookup, and **additionally** query the weather‑station database to find
-        the nearest station. The resulting station name and state are displayed
-        in the read‑only fields added to the UI (``self.station_line`` and
-        ``self.state_line``).
+        clicked. We update the coordinate line‑edits (blocking their textChanged
+        signal to avoid a double-lookup), then perform a single zone lookup and
+        nearest-station query to live-update the right panel.
         """
+        # Block textChanged so we don't trigger _sync_map_from_inputs_live twice
+        self.latitude_input.blockSignals(True)
+        self.longitude_input.blockSignals(True)
         self.latitude_input.setText(f"{lat:.6f}")
         self.longitude_input.setText(f"{lng:.6f}")
+        self.latitude_input.blockSignals(False)
+        self.longitude_input.blockSignals(False)
         # Perform zone lookup for coordinates (updates IRC values)
         self._lookup_zones_for_coordinates(lat, lng)
 
-        # -----------------------------------------------------------------
-        # 3️⃣  Resolve the nearest weather station for visual feedback.
-        # -----------------------------------------------------------------
+        # Resolve the nearest weather station for visual feedback.
+        self._update_nearest_station_display(lat, lng)
+
+    def _update_nearest_station_display(self, lat, lng):
+        """Query the nearest weather station and update the right-side city/state panel."""
         try:
             db = Database(DB_PATH)
             db.connect()
             nearest = db.get_nearest_station_temperature(lat, lng)
             db.close()
             if nearest:
-                # Populate the UI fields with the station and state names.
-                self.station_line.setText(nearest.get("station", ""))
-                self.state_line.setText(nearest.get("state", ""))
+                self._update_location_display(
+                    nearest.get("station", ""),
+                    nearest.get("state", "")
+                )
             else:
-                # Clear fields if lookup failed – user will still see the map
-                # coordinates and can rely on the IRC values.
-                self.station_line.clear()
-                self.state_line.clear()
+                self._update_location_display(None, None)
         except Exception as exc:  # pragma: no cover – defensive, should not happen
             print(f"[ProjectLocationDialog] nearest‑station lookup error: {exc}")
-            self.station_line.clear()
-            self.state_line.clear()
+            self._update_location_display(None, None)
+
+    def _schedule_coord_lookup(self):
+        """Restart the debounce timer on every keystroke.
+        The actual lookup fires 700 ms after the user stops typing.
         
-    def _sync_map_from_inputs(self):
-        """Called when Enter is pressed on manual coordinate inputs."""
+        While the user is actively typing, clear the map pin so it
+        does not show a stale/offset marker — only the debounced
+        lookup re-places it once the user finishes editing.
+        """
+        # Clear marker immediately while typing
+        self.map_view.marker_lat = None
+        self.map_view.marker_lon = None
+        self.map_view.update()
+        self._coord_lookup_timer.start()  # restarts if already running
+
+    def _sync_map_from_inputs_live(self):
+        """Called live as the user edits lat/lon text fields.
+        Only triggers a full lookup when both fields contain valid floats.
+        """
+        if not self.method_radio_map.isChecked():
+            return
         try:
             lat = float(self.latitude_input.text())
             lon = float(self.longitude_input.text())
-            # Update map
-            self.map_view.set_marker_location(lat, lon)
-            # Perform zone lookup for coordinates
+            # Update map marker
+            self.map_view.blockSignals(True)
+            try:
+                self.map_view.set_marker_location(lat, lon)
+            finally:
+                self.map_view.blockSignals(False)
+            # Perform zone lookup for coordinates (IRC values)
             self._lookup_zones_for_coordinates(lat, lon)
+            # Update nearest station city/state display
+            self._update_nearest_station_display(lat, lon)
         except ValueError:
-            # Optionally show error or just ignore invalid input until valid
-            pass
+            # Both fields not yet valid floats — clear IRC + location display
+            self._clear_weather_state(clear_custom=True)
+            self._update_irc_values(None)
+            self._update_location_display(None, None)
     
     def _on_zone_overlay_changed(self, text: str):
         """Handle zone overlay dropdown change."""
@@ -918,9 +1065,13 @@ class ProjectLocationDialog(QDialog):
         self.map_view.marker_lon = None
         self.map_view.update()
         
-        # Clear coordinate inputs
+        # Clear coordinate inputs without triggering live-update logic
+        self.latitude_input.blockSignals(True)
+        self.longitude_input.blockSignals(True)
         self.latitude_input.clear()
         self.longitude_input.clear()
+        self.latitude_input.blockSignals(False)
+        self.longitude_input.blockSignals(False)
     
     def _clear_location_selection(self):
         """Reset location name dropdowns to default state."""
@@ -938,10 +1089,37 @@ class ProjectLocationDialog(QDialog):
         
         self.state_combo.blockSignals(False)
         self.district_combo.blockSignals(False)
+
+    def _clear_custom_inputs(self):
+        """Clear inline custom weather inputs without applying them."""
+        self.custom_wind_input.blockSignals(True)
+        self.custom_zone_combo.blockSignals(True)
+        self.custom_max_temp.blockSignals(True)
+        self.custom_min_temp.blockSignals(True)
+        self.custom_wind_input.clear()
+        self.custom_zone_combo.setCurrentIndex(0)
+        self.custom_zone_value.clear()
+        self.custom_max_temp.clear()
+        self.custom_min_temp.clear()
+        self.custom_wind_input.blockSignals(False)
+        self.custom_zone_combo.blockSignals(False)
+        self.custom_max_temp.blockSignals(False)
+        self.custom_min_temp.blockSignals(False)
+
+    def _clear_weather_state(self, clear_custom: bool = False):
+        """Clear backing weather/session state for method isolation."""
+        global LAST_WEATHER_DATA, LAST_LOCATION_METHOD, LAST_LOCATION_DATA
+        self._coord_lookup_timer.stop()
+        self._current_weather_data = None
+        LAST_WEATHER_DATA = None
+        LAST_LOCATION_METHOD = None
+        LAST_LOCATION_DATA = None
+        if clear_custom:
+            self.custom_weather_data = None
     
     def _lookup_zones_for_coordinates(self, lat: float, lon: float):
         """Lookup wind, seismic zones and temperature for given coordinates and update UI."""
-        global LAST_CUSTOM_WEATHER_DATA, LAST_WEATHER_DATA, LAST_LOCATION_METHOD, LAST_LOCATION_DATA
+        global LAST_WEATHER_DATA, LAST_LOCATION_METHOD, LAST_LOCATION_DATA
         
         zone_data = get_zones_for_coordinates(lat, lon)
         temp_data = get_temperature_for_coordinates(lat, lon)
@@ -960,14 +1138,14 @@ class ProjectLocationDialog(QDialog):
             self._clear_map_selection()
             # Clear IRC values
             self._update_irc_values(None)
+            self._update_location_display(None, None)
             # Clear global session variables
             self.custom_weather_data = None
-            LAST_CUSTOM_WEATHER_DATA = None
             LAST_WEATHER_DATA = None
             LAST_LOCATION_METHOD = None
             LAST_LOCATION_DATA = None
             self._current_weather_data = None
-            return
+            return False
         # Convert to weather dict format for _update_irc_values
         weather = {
             "wind_speed": zone_data.get("wind_Vb"),
@@ -981,7 +1159,6 @@ class ProjectLocationDialog(QDialog):
         self._clear_location_selection()
         
         self.custom_weather_data = None 
-        LAST_CUSTOM_WEATHER_DATA = None
         
         # Save looked-up weather and location data
         LAST_WEATHER_DATA = weather
@@ -992,32 +1169,64 @@ class ProjectLocationDialog(QDialog):
         }
         self._current_weather_data = weather
         self._update_irc_values(weather)
+        return True
     
+    def _get_districts_with_complete_data(self, state_name):
+        """Return all districts, filtering out only those without any wind speed."""
+        all_districts = get_station_list(state_name, include_placeholder=True)
+        valid_districts = []
+        
+        for district in all_districts:
+            # Keep placeholder
+            if district == "Select District":
+                valid_districts.append(district)
+                continue
+            
+            # Check wind speed from DB or shapefile
+            weather = get_weather(state_name, district)
+            wind_speed = weather.get("wind_speed") if weather else None
+            
+            # If missing from DB, try shapefile
+            if wind_speed in (None, ""):
+                lat = weather.get("latitude") if weather else None
+                lon = weather.get("longitude") if weather else None
+                if lat and lon:
+                    zone_data = get_zones_for_coordinates(float(lat), float(lon))
+                    wind_speed = zone_data.get("wind_Vb") if zone_data else None
+            
+            # Include if wind speed exists
+            if wind_speed not in (None, ""):
+                valid_districts.append(district)
+        
+        return valid_districts
+
     def _on_state_changed(self, state_name):
         global LAST_WEATHER_DATA, LAST_LOCATION_METHOD, LAST_LOCATION_DATA
 
-        districts = get_station_list(state_name, include_placeholder=True)
+        # Filter districts to only show those with complete weather data
+        districts = self._get_districts_with_complete_data(state_name)
         self.district_combo.blockSignals(True) # Prevent premature triggering
         self.district_combo.clear()
         self.district_combo.addItems(districts)
         self.district_combo.blockSignals(False)
         self._current_weather_data = None
+        self.custom_weather_data = None
         LAST_WEATHER_DATA = None
         LAST_LOCATION_METHOD = None
         LAST_LOCATION_DATA = None
         self._update_irc_values(None) # Clear values on state change
 
     def _on_district_changed(self, district_name):
-        global LAST_CUSTOM_WEATHER_DATA, LAST_WEATHER_DATA, LAST_LOCATION_METHOD, LAST_LOCATION_DATA
+        global LAST_WEATHER_DATA, LAST_LOCATION_METHOD, LAST_LOCATION_DATA
 
         if not district_name or district_name == "Select District":
             self.custom_weather_data = None
-            LAST_CUSTOM_WEATHER_DATA = None
             LAST_WEATHER_DATA = None
             LAST_LOCATION_METHOD = None
             LAST_LOCATION_DATA = None
             self._current_weather_data = None
             self._update_irc_values(None)
+            self._update_location_display(None, None)
             return
         
         state = self.state_combo.currentText()
@@ -1048,7 +1257,6 @@ class ProjectLocationDialog(QDialog):
         
         # Clear custom data if user selects a new district, implying they want database values
         self.custom_weather_data = None 
-        LAST_CUSTOM_WEATHER_DATA = None
         
         # Save looked-up weather and location data
         LAST_WEATHER_DATA = weather
@@ -1059,6 +1267,8 @@ class ProjectLocationDialog(QDialog):
         }
         self._current_weather_data = weather
         self._update_irc_values(weather)
+        # Live-update city/state on right panel
+        self._update_location_display(district_name, state)
 
 
     def _update_irc_values(self, weather):
@@ -1083,6 +1293,19 @@ class ProjectLocationDialog(QDialog):
         self.seismic_zone_label.setText(f"Seismic Zone: {zone_txt}    Z = {z_txt}")
         self.temp_label.setText(f"Shade Air Temperature (°C): {max_txt} / {min_txt}")
 
+    def _update_location_display(self, city: str | None, state: str | None):
+        """Show or hide the city/state section on the right panel."""
+        if city or state:
+            self.location_title_label.setVisible(True)
+            self.location_city_label.setVisible(True)
+            self.location_state_label.setVisible(True)
+            self.location_city_label.setText(f"City: {city or '—'}")
+            self.location_state_label.setText(f"State: {state or '—'}")
+        else:
+            self.location_title_label.setVisible(False)
+            self.location_city_label.setVisible(False)
+            self.location_state_label.setVisible(False)
+
     # To extract the location selected in popup
     def get_selected_location(self):
         result = {'method': None, 'data': {}, 'weather_data': None}
@@ -1093,28 +1316,26 @@ class ProjectLocationDialog(QDialog):
                 'state': self.state_combo.currentText(),
                 'district': self.district_combo.currentText()
             }
+            result['weather_data'] = self._current_weather_data
         elif self.method_radio_map.isChecked():
             result['method'] = 'map'
             result['data'] = {
                 'latitude': self.latitude_input.text(),
                 'longitude': self.longitude_input.text()
             }
-            # Include nearest station and state information populated in the read‑only fields.
-            # These fields are set in _on_map_location_selected when a map point is chosen.
-            result['data']['station'] = self.station_line.text() if hasattr(self, 'station_line') else ''
-            result['data']['state'] = self.state_line.text() if hasattr(self, 'state_line') else ''
+            # Read city/state from the right-panel labels (populated on map click / coord edit)
+            city_text = self.location_city_label.text().removeprefix("City: ")
+            state_text = self.location_state_label.text().removeprefix("State: ")
+            result['data']['station'] = city_text if city_text != '—' else ''
+            result['data']['state'] = state_text if state_text != '—' else ''
+            result['weather_data'] = self._current_weather_data
         elif self.method_custom_data.isChecked():
             result['method'] = 'custom_data'
             result['data'] = {}
-        
-        # Include weather data (custom or looked-up) for backend calculations
-        if self.custom_weather_data:
-            result['weather_data'] = self.custom_weather_data
-        elif self._current_weather_data:
-            result['weather_data'] = self._current_weather_data
+            result['weather_data'] = self.custom_weather_data or self._current_weather_data
         
         # Deprecated: kept for backward compatibility
-        if self.custom_weather_data:
+        if self.method_custom_data.isChecked() and self.custom_weather_data:
             result['custom_weather_data'] = self.custom_weather_data
 
         return result

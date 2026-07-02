@@ -830,7 +830,62 @@ class BridgeInputValidator:
 
 
         return None
-    
+
+    # ==========================================================
+    # PROJECT LOCATION VALIDATION (DDCL 2.1.x)
+    # ==========================================================
+
+    def validate_custom_weather_data(self, wind: str, zone: str, max_temp: str, min_temp: str) -> tuple:
+        """
+        Validate custom weather data inputs (wind speed, seismic zone,
+        min/max shade air temperature).
+
+        Returns (is_valid, error_message).
+        ``is_valid`` is True when all checks pass; ``error_message`` is the
+        user-facing description when validation fails.
+        """
+        if not wind or not max_temp or not min_temp or zone == "Select Zone":
+            return False, "Please fill in all fields (Wind Speed, Seismic Zone, Min/Max Temperature)."
+
+        try:
+            wind_val = float(wind)
+            max_val  = float(max_temp)
+            min_val  = float(min_temp)
+        except ValueError:
+            return False, "Wind speed and temperature values must be numeric."
+
+        if not 15.0 <= wind_val <= 100.0:
+            return False, "Basic Wind Speed must be between 15.0 and 100.0 m/s."
+
+        if not -50.0 <= min_val <= 40.0:
+            return False, "Min Shade Air Temperature must be between -50.0 and 40.0 °C."
+
+        if not 20.0 <= max_val <= 60.0:
+            return False, "Max Shade Air Temperature must be between 20.0 and 60.0 °C."
+
+        if max_val <= min_val:
+            return False, f"Max temperature ({max_temp}°C) must be greater than Min temperature ({min_temp}°C)."
+
+        return True, ""
+
+    def validate_map_coordinates(self, lat: str, lon: str) -> tuple:
+        """
+        Validate map / coordinate inputs.
+
+        Returns (is_valid, error_message).
+        ``is_valid`` is True when both lat and lon are non-empty numerics.
+        """
+        if not lat or not lon:
+            return False, "Please select a location on the map or enter latitude and longitude."
+
+        try:
+            float(lat)
+            float(lon)
+        except ValueError:
+            return False, "Please enter valid numeric latitude and longitude values."
+
+        return True, ""
+
     # def validate_additional_inputs(self, inputs: dict) -> dict:
 
     #     errors = {}

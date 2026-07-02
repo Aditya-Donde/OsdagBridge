@@ -144,6 +144,12 @@ def get_zones_for_coordinates(lat: float, lon: float) -> Dict[str, Any]:
             if z_factor is None:
                 z_factor = seismic_props.get("zone_facto")
             
+            # Convert Arabic zone numeral to Roman (2->II, 3->III, 4->IV, 5->V)
+            arabic_to_roman = {"2": "II", "3": "III", "4": "IV", "5": "V"}
+            s_zone_str = str(s_zone).strip()
+            if s_zone_str in arabic_to_roman:
+                s_zone = arabic_to_roman[s_zone_str]
+            
             result["seismic_zone"] = s_zone
             result["zone_factor"] = z_factor
     

@@ -18,7 +18,7 @@ from PySide6.QtWidgets import (
     QDialog, QFrame, QToolButton
 )
 from PySide6.QtCore import Qt, QRegularExpression, QSize, QTimer, QPoint, QEvent, Signal
-from PySide6.QtGui import QDoubleValidator, QRegularExpressionValidator, QIcon, QColor, QBrush, QFontMetrics
+from PySide6.QtGui import QDoubleValidator, QRegularExpressionValidator, QIcon, QColor, QBrush
 
 from osdagbridge.core.utils.common import *
 from osdagbridge.desktop.ui.utils.custom_buttons import DockCustomButton
@@ -50,9 +50,6 @@ ACTION_BTN_STYLE = (
     "QPushButton[error='true']:disabled { background:#D0D0D0; color:#666; border: 1px solid #FF0000; }"
 )
 LABEL_STYLE = "QLabel { color:#000; font-size:12px; background:transparent; }"
-READONLY_FIELD_STYLE = (
-    "QLineEdit { padding: 1px 7px;border: 1px solid #d0d0d0; border-radius: 6px; background-color: #ededed; color: #2f2f2f; font-weight: normal; }"
-)
 
 class NoScrollComboBox(QComboBox):
     def wheelEvent(self, event):
@@ -519,7 +516,7 @@ class InputDock(QWidget):
         loc_row.addWidget(self.location_pin_label)
 
         self.location_text_label = QLabel("")
-        self.location_text_label.setStyleSheet("font-size: 13px; font-weight: normal ; color: #333; background: transparent;")
+        self.location_text_label.setStyleSheet(LABEL_STYLE + "font-weight:normal;")
         self.location_text_label.setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Fixed)
         loc_row.addWidget(self.location_text_label)
         
