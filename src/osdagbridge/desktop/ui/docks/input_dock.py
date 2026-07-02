@@ -414,7 +414,9 @@ class InputDock(QWidget):
         if validator == "Int Validator":
             widget.setValidator(QRegularExpressionValidator(QRegularExpression(r"^(0|[1-9]\d*)(\.\d+)?$")))
         elif validator == "Double Validator":
-            widget.setValidator(QDoubleValidator())
+            double_val = QDoubleValidator()
+            double_val.setNotation(QDoubleValidator.StandardNotation)
+            widget.setValidator(double_val)
 
         # Placeholder
         if meta.get("placeholder"):
@@ -631,6 +633,9 @@ class InputDock(QWidget):
         # enabled state — flag so solve_extend_basic_input_dict runs on next open.
         self.is_require_field_changed = True
 
+    def _validate_carriageway_width_silent(self, value=None):
+        self._validate_field_silently(KEY_CARRIAGEWAY_WIDTH)
+
     def _on_design_mode_changed(self, mode_text: str = ""):
         self._current_design_mode = str(mode_text or "Optimized").strip()
         if self._current_design_mode.lower() == "custom":
@@ -651,6 +656,20 @@ class InputDock(QWidget):
         min_w, max_w = self._carriageway_limits()
         width = max(min_w, min(self._float(KEY_CARRIAGEWAY_WIDTH, min_w), max_w))
         return width * 2.0 if self._is_median_included() else width
+
+    def _validate_field_silently(self, key):
+        # Validates and corrects a field after a dependency change — no popup.
+        widget = self._w(key)
+        if not widget:
+            return
+        self._update_input_dict(key, widget.text().strip())
+        result = self.validator.validate_basic_inputs(key, self.parent.input_dict)
+        if result is not None:
+            corrected, _ = result
+            widget.blockSignals(True)
+            widget.setText(str(corrected))
+            widget.blockSignals(False)
+            self._update_input_dict(key, str(corrected))
 
     # ══════════════════════════════════════════════════════════════════════════
     # Material helpers
