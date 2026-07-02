@@ -386,43 +386,60 @@ def resolve_cross_bracing_section_properties(input_dict: dict, bridge=None) -> d
     if n < 2:
         return None   # cross bracing needs at least one adjacent girder pair
 
-    from osdagbridge.core.utils.common import (
-        CROSS_BRACING_DEFAULTS, DEFAULT_CROSS_BRACING_SPACING,
-    )
+    # All values come from output_dict. Cross-bracing keys are stored as
+    # "<base>.<field>.<pair>.<member>" (e.g. ".bracing_section_type.G1G2.B1M1");
+    # "no_of_cross_bracings" is a single global key. Absent keys render as EMPTY.
+    od = getattr(bridge, "output_dict", {}) or {}
 
-    # Number of bracing members per girder pair (defaults to 1).
-    try:
-        n_brace = max(1, int(float(input_dict.get(KEY_MP_CB_NO_OF_CROSS_BRACINGS) or 1)))
-    except Exception:
-        n_brace = 1
+    def _od(key, pair):
+        """First non-blank value of "<key>.<pair>.<member>" for the given pair."""
+        prefix = f"{key}.{pair}."
+        for k, v in od.items():
+            if k.startswith(prefix) and v not in (None, "", [], {}):
+                return v
+        return None
 
-    # Spacing is a single global value (metres) — NOT stored per member.
-    spacing = input_dict.get(KEY_MP_CB_SPACING)
-    spacing_disp = _num(spacing) if _has(spacing) else _num(DEFAULT_CROSS_BRACING_SPACING)
+    def _yes_no(key, pair):
+        """'Yes'/'No' from the per-pair flag; EMPTY only when the key is absent."""
+        prefix = f"{key}.{pair}."
+        for k, v in od.items():
+            if k.startswith(prefix):
+                return "Yes" if str(v).strip().lower() in ("yes", "true", "1") else "No"
+        return EMPTY
 
-    def _cbk(base_key, gi, mi, default_key):
-        """Per-member CB value, falling back to CROSS_BRACING_DEFAULTS."""
-        v = input_dict.get(f"{base_key}.G{gi}G{gi + 1}.B{gi}M{mi}")
-        if v in (None, ""):
-            return CROSS_BRACING_DEFAULTS.get(default_key, "")
-        return v
+    SECTION_LABELS = {
+        "ANGLE": "Angle", "CHANNEL": "Channel", "BEAM": "Beam",
+        "DOUBLE_ANGLE": "Double Angles", "DOUBLE_ANGLES": "Double Angles",
+        "DOUBLE_CHANNEL": "Double Channel",
+    }
+
+    def _sec_label(v):
+        return SECTION_LABELS.get(str(v).strip().upper(), str(v)) if v is not None else EMPTY
+
+    def _brace_label(v):
+        return ("K-Bracing" if "K" in str(v).upper() else "X-Bracing") if v is not None else EMPTY
+
+    # No. of cross bracings is a single global value in output_dict.
+    n_cb_disp = _val(od.get(KEY_MP_CB_NO_OF_CROSS_BRACINGS))
 
     rows = []
-    for gi in range(1, n):
-        for mi in range(1, n_brace + 1):
-            rows.append([
-                f"G{gi}G{gi + 1}_B{gi}M{mi}",
-                _val(_cbk(KEY_MP_CB_TYPE, gi, mi, "type")),
-                _val(_cbk(KEY_MP_CB_BRACING_SECTION_TYPE, gi, mi, "bracing_section_type")),
-                _val(_cbk(KEY_MP_CB_BRACING_SECTION_DESIGNATION, gi, mi, "bracing_section_designation")),
-                _val(_cbk(KEY_MP_CB_TOP_CHORD, gi, mi, "top_chord")),
-                _val(_cbk(KEY_MP_CB_TOP_CHORD_SECTION_TYPE, gi, mi, "top_chord_section_type")),
-                _val(_cbk(KEY_MP_CB_TOP_CHORD_SECTION_DESIG, gi, mi, "top_chord_section_desig")),
-                _val(_cbk(KEY_MP_CB_BOTTOM_CHORD, gi, mi, "bottom_chord")),
-                _val(_cbk(KEY_MP_CB_BOTTOM_CHORD_SECTION_TYPE, gi, mi, "bottom_chord_section_type")),
-                _val(_cbk(KEY_MP_CB_BOTTOM_CHORD_SECTION_DESIG, gi, mi, "bottom_chord_section_desig")),
-                spacing_disp,
-            ])
+    for i in range(1, n):
+        pair = f"G{i}G{i + 1}"
+        sp = _od(KEY_MP_CB_SPACING, pair)
+        rows.append([
+            pair,
+            _brace_label(_od(KEY_MP_CB_TYPE, pair)),
+            n_cb_disp,
+            _sec_label(_od(KEY_MP_CB_BRACING_SECTION_TYPE, pair)),
+            _val(_od(KEY_MP_CB_BRACING_SECTION_DESIGNATION, pair)),
+            _yes_no(KEY_MP_CB_TOP_CHORD, pair),
+            _sec_label(_od(KEY_MP_CB_TOP_CHORD_SECTION_TYPE, pair)),
+            _val(_od(KEY_MP_CB_TOP_CHORD_SECTION_DESIG, pair)),
+            _yes_no(KEY_MP_CB_BOTTOM_CHORD, pair),
+            _sec_label(_od(KEY_MP_CB_BOTTOM_CHORD_SECTION_TYPE, pair)),
+            _val(_od(KEY_MP_CB_BOTTOM_CHORD_SECTION_DESIG, pair)),
+            _num(sp) if sp is not None else EMPTY,
+        ])
 
     if not rows:
         return None
@@ -433,6 +450,7 @@ def resolve_cross_bracing_section_properties(input_dict: dict, bridge=None) -> d
         "columns": [
             "Member",
             "Type of Bracing",
+            "No. of Cross Bracing",
             "Bracing Section Type",
             "Bracing Section Designation",
             "Top Chord",
@@ -458,29 +476,86 @@ def resolve_end_diaphragm_section_properties(input_dict: dict, bridge=None) -> d
     if n < 2:
         return None
 
-    # Type defaults to "Cross Bracing"; welded/rolled-beam geometry fields are
-    # blank unless that ED type is chosen (mirrors defaults.py _ED_DEFAULTS).
-    def _edk(base_key, gi, mi):
-        return input_dict.get(f"{base_key}.G{gi}G{gi + 1}.E{gi}M{mi}")
+    # All values come from output_dict. End-diaphragm keys are stored as
+    # "<base>.<field>.<pair>.<member>" (e.g. ".bracing_section.G1G2.E1M1"). There is
+    # no count key, so "No. of End Diaphragm" is the number of E* member slots per
+    # pair. Absent keys render as EMPTY.
+    od = getattr(bridge, "output_dict", {}) or {}
 
-    def _ed_type(gi, mi):
-        v = _edk(KEY_MP_ED_TYPE, gi, mi)
-        return _val(v) if _has(v) else "Cross Bracing"
+    def _od(key, pair):
+        """First non-blank value of "<key>.<pair>.<member>" for the given pair."""
+        prefix = f"{key}.{pair}."
+        for k, v in od.items():
+            if k.startswith(prefix) and v not in (None, "", [], {}):
+                return v
+        return None
+
+    def _yes_no(key, pair):
+        """'Yes'/'No' from the per-pair flag; EMPTY only when the key is absent."""
+        prefix = f"{key}.{pair}."
+        for k, v in od.items():
+            if k.startswith(prefix):
+                return "Yes" if str(v).strip().lower() in ("yes", "true", "1") else "No"
+        return EMPTY
+
+    def _member_count(pair):
+        """Number of distinct E* member slots for the pair (= no. of end diaphragms)."""
+        prefix = f"{KEY_MP_ED_TYPE}.{pair}."
+        members = {k[len(prefix):].split(".")[0] for k in od if k.startswith(prefix)}
+        return len(members) or None
+
+    SECTION_LABELS = {
+        "ANGLE": "Angle", "CHANNEL": "Channel", "BEAM": "Beam",
+        "DOUBLE_ANGLE": "Double Angles", "DOUBLE_ANGLES": "Double Angles",
+        "DOUBLE_CHANNEL": "Double Channel",
+    }
+
+    def _sec_label(v):
+        return SECTION_LABELS.get(str(v).strip().upper(), str(v)) if v is not None else EMPTY
+
+    def _brace_label(v):
+        return ("K-Bracing" if "K" in str(v).upper() else "X-Bracing") if v is not None else EMPTY
+
+    columns = [
+        "Member ID",
+        "Type",
+        "No. of End Diaphragm",
+        "Bracing Type",
+        "Type of Connection",
+        "Bracing Section Type",
+        "Bracing Section Designation",
+        "Top Chord",
+        "Top Chord Section Type",
+        "Top Chord Section Designation",
+        "Bottom Chord",
+        "Bottom Chord Section Type",
+        "Bottom Chord Section Designation",
+    ]
 
     rows = []
-    for gi in range(1, n):
-        for mi in (1, 2):
-            rows.append([
-                f"G{gi}G{gi + 1}_E{gi}M{mi}",
-                _ed_type(gi, mi),
-                _val(_edk(KEY_MP_ED_SYMMETRY,                gi, mi)),
-                _num(_edk(KEY_MP_ED_TOTAL_DEPTH,             gi, mi)),
-                _num(_edk(KEY_MP_ED_WEB_THICKNESS,           gi, mi)),
-                _num(_edk(KEY_MP_ED_TOP_FLANGE_WIDTH,        gi, mi)),
-                _num(_edk(KEY_MP_ED_TOP_FLANGE_THICKNESS,    gi, mi)),
-                _num(_edk(KEY_MP_ED_BOTTOM_FLANGE_WIDTH,     gi, mi)),
-                _num(_edk(KEY_MP_ED_BOTTOM_FLANGE_THICKNESS, gi, mi)),
-            ])
+    for i in range(1, n):
+        pair  = f"G{i}G{i + 1}"
+        cells = {c: EMPTY for c in columns}
+        cells["Member ID"] = pair
+
+        ed_type = _od(KEY_MP_ED_TYPE, pair)
+        cells["Type"] = _val(ed_type)
+        cells["No. of End Diaphragm"] = _val(_member_count(pair))
+
+        if ed_type is not None and "brac" in str(ed_type).strip().lower():
+            # Cross Bracing diaphragm — bracing/chord sections.
+            cells["Type of Connection"]               = _val(_od(KEY_MP_ED_BRACING_CONNECTION, pair))
+            cells["Bracing Type"]                     = _brace_label(_od(KEY_MP_ED_BRACING_TYPE, pair))
+            cells["Bracing Section Type"]             = _sec_label(_od(KEY_MP_ED_BRACING_SECTION, pair))
+            cells["Bracing Section Designation"]      = _val(_od(KEY_MP_ED_BRACING_SECTION_DESIGNATION, pair))
+            cells["Top Chord"]                        = _yes_no(KEY_MP_ED_TOP_CHORD, pair)
+            cells["Top Chord Section Type"]           = _sec_label(_od(KEY_MP_ED_TOP_CHORD_SECTION_TYPE, pair))
+            cells["Top Chord Section Designation"]    = _val(_od(KEY_MP_ED_TOP_CHORD_SECTION_DESIG, pair))
+            cells["Bottom Chord"]                     = _yes_no(KEY_MP_ED_BOTTOM_CHORD, pair)
+            cells["Bottom Chord Section Type"]        = _sec_label(_od(KEY_MP_ED_BOTTOM_CHORD_SECTION_TYPE, pair))
+            cells["Bottom Chord Section Designation"] = _val(_od(KEY_MP_ED_BOTTOM_CHORD_SECTION_DESIG, pair))
+
+        rows.append([cells[c] for c in columns])
 
     if not rows:
         return None
@@ -488,17 +563,7 @@ def resolve_end_diaphragm_section_properties(input_dict: dict, bridge=None) -> d
     return {
         "id":    "end_diaphragm_section_properties",
         "label": "End Diaphragm Section Properties",
-        "columns": [
-            "Member ID",
-            "Type",
-            "Symmetry",
-            "Total Depth, d(mm)",
-            "Web Thickness, wt(mm)",
-            "Width of Top Flange(mm)",
-            "Top Flange Thickness (mm)",
-            "Width of Bottom Flange(mm)",
-            "Bottom Flange Thickness (mm)",
-        ],
+        "columns": columns,
         "rows": rows,
     }
 
