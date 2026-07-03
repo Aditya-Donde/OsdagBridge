@@ -1357,7 +1357,6 @@ DESIGN_OPTIONS_SCHEMA = {
                         "id":          KEY_DS_STUD_HEIGHT,
                         "label":       "Height (mm)",
                         "type":        TYPE_TEXTBOX,
-                        "placeholder": "0 - 500",
                         "bind":        "shear_stud_height_input",
                     }]
                 },
@@ -1375,7 +1374,6 @@ DESIGN_OPTIONS_SCHEMA = {
                         "id":          KEY_DS_STUD_TRANSVERSE_SPACING,
                         "label":       "Transverse Spacing (mm)",
                         "type":        TYPE_TEXTBOX,
-                        "placeholder": "0 - 500",
                         "bind":        "shear_stud_spacing_input",
                     }]
                 },
