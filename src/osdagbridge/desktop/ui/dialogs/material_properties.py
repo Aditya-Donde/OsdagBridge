@@ -8,6 +8,7 @@ import sqlite3
 import re
 
 from osdagbridge.core.utils.codes.irc6_2017 import IRC6_2017
+from osdagbridge.core.bridge_types.plate_girder.validator import BridgeInputValidator
 
 from osdagbridge.desktop.ui.utils.custom_titlebar import CustomTitleBar
 from osdagbridge.desktop.ui.dialogs.custom_messagebox import CustomMessageBox, MessageBoxType
@@ -170,6 +171,8 @@ def deck_material_properties_values():
 class MaterialPropertiesDialog(QDialog):
     def __init__(self, parent=None, read_only=False, selected_material=None, member=None, custom_fields=None):
         super().__init__(parent)
+
+        self.validator = BridgeInputValidator()
         self.read_only = read_only
         self.selected_material = selected_material or ""
         self.member = member
@@ -331,13 +334,6 @@ class MaterialPropertiesDialog(QDialog):
                 
             try:
                 val = float(text)
-                if val <= 0.0:
-                    CustomMessageBox(
-                        title="Validation Error",
-                        text=f"{display_name} must be greater than 0.",
-                        dialogType=MessageBoxType.Critical,
-                    ).exec()
-                    return
             except ValueError:
                 CustomMessageBox(
                     title="Validation Error",
@@ -345,9 +341,50 @@ class MaterialPropertiesDialog(QDialog):
                     dialogType=MessageBoxType.Critical,
                 ).exec()
                 return
-                
+            
+            # Range check against the code-defined limits in BridgeInputValidator.
+            # Covers steel members (Girder / Cross Bracing / End Diaphragm) and
+            # the concrete deck.
+            result = self.validator.validate_material_inputs(key, {key: val})
+            if result is not None:
+                corrected, message = result
+                self._warn_and_autofill(widget, corrected, message)
+                return
+
         self._save_form()
         self.accept()
+
+    def _on_material_field_edited(self, key, widget):
+        """Live validation on focus-out.
+
+        Connected to every material box — steel (Weight Density, Fy, Fu, E, G,
+        Poisson's Ratio, Thermal Expansion) and deck (Weight Density, fck, fctm,
+        Ecm, Thermal Expansion). When the user finishes a field and moves to the
+        next one, an out-of-range value pops the warning.
+        """
+        if self.read_only:
+            return
+        text = widget.text().strip()
+        if not text:
+            return
+        result = self.validator.validate_material_inputs(key, {key: text})
+        if result is not None:
+            corrected, message = result
+            self._warn_and_autofill(widget, corrected, message)
+
+    def _warn_and_autofill(self, widget, corrected, message):
+        """Show the range warning, then fill the field with the nearest valid
+        value once the user dismisses it (same behaviour as the Span field)."""
+        CustomMessageBox(
+            title="Input Error",
+            text=message,
+            dialogType=MessageBoxType.Warning,
+        ).exec()
+        widget.blockSignals(True)
+        widget.setText(str(corrected))
+        widget.blockSignals(False)
+        # Rebuild the custom-material name from the corrected value.
+        self._update_custom_material_name()
 
     def _build_fields_form(self):
         widget = QWidget()
@@ -379,6 +416,12 @@ class MaterialPropertiesDialog(QDialog):
                 line_edit.textEdited.connect(self._update_custom_material_name)
             elif (not self.is_deck_material) and key in (KEY_MATERIAL_GIRDER_FU, KEY_MATERIAL_GIRDER_FY):
                 line_edit.textEdited.connect(self._update_custom_material_name)
+            # Live range validation on focus-out for every material field
+            # (steel: Density, Fy, Fu, E, G, Poisson, Thermal; deck: Density,
+            # fck, fctm, Ecm, Thermal)
+            line_edit.editingFinished.connect(
+                lambda k=key, w=line_edit: self._on_material_field_edited(k, w)
+            )
             self.field_inputs[key] = line_edit
             
             row.addWidget(label)

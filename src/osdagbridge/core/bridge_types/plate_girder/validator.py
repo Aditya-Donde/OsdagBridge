@@ -67,7 +67,105 @@ class BridgeInputValidator:
             if skew_angle > SKEW_ANGLE_MAX:
                 return SKEW_ANGLE_MAX, f"Skew angle must be between {SKEW_ANGLE_MIN}° and {SKEW_ANGLE_MAX}°."
 
-        return None		
+        return None
+
+    # ==========================================================
+    # CUSTOM MATERIAL PROPERTY VALIDATION
+    # Steel members: Girder, Cross Bracing, End Diaphragm.
+    # Concrete member: Deck.
+    # ==========================================================
+
+    def validate_material_inputs(self, key: str, inputs: dict):
+        """
+        Per-field validation for custom material properties (steel and concrete/deck).
+        Returns (corrected_value, message) on error, None if valid.
+        """
+
+        # ── Weight Density (kN/m³) ──────────────────────────────────────────────
+        if key == KEY_MATERIAL_GIRDER_DENSITY:
+            v = self._to_float(inputs.get(key))
+            if v is None:  return 50.0,  "Weight Density must be a numeric value."
+            if v < 50.0:   return 50.0,  "Weight Density must be between 50.0 and 120.0 kN/m³."
+            if v > 120.0:  return 120.0, "Weight Density must be between 50.0 and 120.0 kN/m³."
+
+        # ── Yield Strength, Fy (MPa) ────────────────────────────────────────────
+        elif key == KEY_MATERIAL_GIRDER_FY:
+            v = self._to_float(inputs.get(key))
+            if v is None:   return 100.0,  "Yield Strength, Fy must be a numeric value."
+            if v < 100.0:   return 100.0,  "Yield Strength, Fy must be between 100.0 and 1200.0 MPa."
+            if v > 1200.0:  return 1200.0, "Yield Strength, Fy must be between 100.0 and 1200.0 MPa."
+
+        # ── Ultimate Tensile Strength, Fu (MPa) ─────────────────────────────────
+        elif key == KEY_MATERIAL_GIRDER_FU:
+            v = self._to_float(inputs.get(key))
+            if v is None:   return 100.0,  "Ultimate Tensile Strength, Fu must be a numeric value."
+            if v < 100.0:   return 100.0,  "Ultimate Tensile Strength, Fu must be between 100.0 and 1500.0 MPa."
+            if v > 1500.0:  return 1500.0, "Ultimate Tensile Strength, Fu must be between 100.0 and 1500.0 MPa."
+
+        # ── Modulus of Elasticity, E (GPa) ──────────────────────────────────────
+        elif key == KEY_MATERIAL_GIRDER_E:
+            v = self._to_float(inputs.get(key))
+            if v is None:  return 100.0, "Modulus of Elasticity, E must be a numeric value."
+            if v < 100.0:  return 100.0, "Modulus of Elasticity, E must be between 100.0 and 300.0 GPa."
+            if v > 300.0:  return 300.0, "Modulus of Elasticity, E must be between 100.0 and 300.0 GPa."
+
+        # ── Modulus of Rigidity, G (GPa) ────────────────────────────────────────
+        elif key == KEY_MATERIAL_GIRDER_G:
+            v = self._to_float(inputs.get(key))
+            if v is None:  return 30.0,  "Modulus of Rigidity, G must be a numeric value."
+            if v < 30.0:   return 30.0,  "Modulus of Rigidity, G must be between 30.0 and 120.0 GPa."
+            if v > 120.0:  return 120.0, "Modulus of Rigidity, G must be between 30.0 and 120.0 GPa."
+
+        # ── Poisson's Ratio, ν ──────────────────────────────────────────────────
+        elif key == KEY_MATERIAL_GIRDER_POISSON:
+            v = self._to_float(inputs.get(key))
+            if v is None: return 0.0, "Poisson's Ratio must be a numeric value."
+            if v < 0.0:   return 0.0, "Poisson's Ratio must be between 0.0 and 0.5."
+            if v > 0.5:   return 0.5, "Poisson's Ratio must be between 0.0 and 0.5."
+
+        # ── Thermal Expansion Coefficient (×10⁻⁶/°C) ────────────────────────────
+        elif key == KEY_MATERIAL_GIRDER_THERMAL:
+            v = self._to_float(inputs.get(key))
+            if v is None: return 1.0,  "Thermal Expansion Coefficient must be a numeric value."
+            if v < 1.0:   return 1.0,  "Thermal Expansion Coefficient must be between 1.0 and 30.0 (×10⁻⁶/°C)."
+            if v > 30.0:  return 30.0, "Thermal Expansion Coefficient must be between 1.0 and 30.0 (×10⁻⁶/°C)."
+
+        # ── Deck: Weight Density (kN/m³) ────────────────────────────────────────
+        elif key == KEY_MATERIAL_DECK_DENSITY:
+            v = self._to_float(inputs.get(key))
+            if v is None: return 18.0, "Weight Density must be a numeric value."
+            if v < 18.0:  return 18.0, "Weight Density must be between 18.0 and 28.0 kN/m³."
+            if v > 28.0:  return 28.0, "Weight Density must be between 18.0 and 28.0 kN/m³."
+
+        # ── Deck: Char. Compressive (Cube) Strength, fck (MPa) ──────────────────
+        elif key == KEY_MATERIAL_DECK_FCK:
+            v = self._to_float(inputs.get(key))
+            if v is None: return 10.0, "Characteristic Compressive Strength, fck must be a numeric value."
+            if v < 10.0:  return 10.0, "Characteristic Compressive Strength, fck must be between 10.0 and 80.0 MPa."
+            if v > 80.0:  return 80.0, "Characteristic Compressive Strength, fck must be between 10.0 and 80.0 MPa."
+
+        # ── Deck: Mean Tensile Strength, fctm (MPa) ─────────────────────────────
+        elif key == KEY_MATERIAL_DECK_FCTM:
+            v = self._to_float(inputs.get(key))
+            if v is None: return 0.5, "Mean Tensile Strength, fctm must be a numeric value."
+            if v < 0.5:   return 0.5, "Mean Tensile Strength, fctm must be between 0.5 and 6.0 MPa."
+            if v > 6.0:   return 6.0, "Mean Tensile Strength, fctm must be between 0.5 and 6.0 MPa."
+
+        # ── Deck: Secant Modulus of Elasticity, Ecm (GPa) ───────────────────────
+        elif key == KEY_MATERIAL_DECK_ECM:
+            v = self._to_float(inputs.get(key))
+            if v is None: return 15.0, "Secant Modulus of Elasticity, Ecm must be a numeric value."
+            if v < 15.0:  return 15.0, "Secant Modulus of Elasticity, Ecm must be between 15.0 and 50.0 GPa."
+            if v > 50.0:  return 50.0, "Secant Modulus of Elasticity, Ecm must be between 15.0 and 50.0 GPa."
+
+        # ── Deck: Thermal Expansion Coefficient (×10⁻⁶/°C) ──────────────────────
+        elif key == KEY_MATERIAL_DECK_THERMAL:
+            v = self._to_float(inputs.get(key))
+            if v is None: return 5.0,  "Thermal Expansion Coefficient must be a numeric value."
+            if v < 5.0:   return 5.0,  "Thermal Expansion Coefficient must be between 5.0 and 15.0 (×10⁻⁶/°C)."
+            if v > 15.0:  return 15.0, "Thermal Expansion Coefficient must be between 5.0 and 15.0 (×10⁻⁶/°C)."
+
+        return None
 
     # ==========================================================
     # ADDITIONAL INPUT VALIDATION (DDCL 2.1.3)
