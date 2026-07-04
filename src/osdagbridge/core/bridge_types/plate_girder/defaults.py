@@ -317,9 +317,6 @@ def _update_loading_tab_defaults(input_dict: dict) -> None:
     _update(KEY_WL_WIND_LL_ECC_MODE,        "As per IRC 6")
     _update(KEY_WL_WIND_LL_ECC_VALUE,       "")
 
-    # ── Temperature Load ───────────────────────────────────────────────────
-    _update(KEY_TL_THERMAL_COEFF_STEEL,     "11.7e-6")
-    _update(KEY_TL_THERMAL_COEFF_RCC,       "11.7e-6")
 
     # ── Load Combination ───────────────────────────────────────────────────
     _update(KEY_LC_COMBINATIONS,            [])

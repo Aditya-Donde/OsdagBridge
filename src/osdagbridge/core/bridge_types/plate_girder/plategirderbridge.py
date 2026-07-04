@@ -3476,11 +3476,13 @@ class PlateGirderBridge:
                 if g_int_spacing_raw is not None and str(g_int_spacing_raw).strip() not in ("", "0", "0.0"):
                     g_int_stiff_on = True
                     g_int_spacing = float(g_int_spacing_raw)
+                    g_int_thickness = float(g_int_thick_raw)
+                    g_int_outstand = float(g_int_outstand_raw)
                 else:
                     g_int_stiff_on = False
                     g_int_spacing = 0.0
-                g_int_thickness = float(g_int_thick_raw)
-                g_int_outstand = float(g_int_outstand_raw)
+                    g_int_thickness = 0.0
+                    g_int_outstand = None
             else:
                 g_int_stiff_flag = _stiff_inp_gi(KEY_MP_STIFFENER_INTERMEDIATE, "No")
                 g_int_stiff_on   = str(g_int_stiff_flag).strip().lower() == "yes"

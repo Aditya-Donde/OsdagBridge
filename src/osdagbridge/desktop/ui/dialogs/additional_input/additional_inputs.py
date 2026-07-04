@@ -1,4 +1,4 @@
-"""
+﻿"""
 Additional Inputs Widget for Highway Bridge Design
 Provides detailed input fields for manual bridge parameter definition
 """
@@ -1840,6 +1840,7 @@ class AdditionalInputs(QDialog):
             self._set_enabled(lbl, is_yes)
 
         spacing_widget = self.findChild(QWidget, KEY_MP_STIFFENER_INTERMEDIATE_SPACING)
+        outstand_widget = self.findChild(QWidget, KEY_MP_STIFFENER_INTERMEDIATE_OUTSTAND)
         if restore_default:
             if is_yes:
                 # Auto-calculate intermediate spacing = 1.5 × web_depth of active member
@@ -1866,6 +1867,8 @@ class AdditionalInputs(QDialog):
                 # Reset spacing to "NA" when intermediate stiffener is turned off
                 if spacing_widget and isinstance(spacing_widget, QLineEdit):
                     spacing_widget.setText("NA")
+                if outstand_widget and isinstance(outstand_widget, QLineEdit):
+                    outstand_widget.setText("")
                 # Save to working_input_dict
                 combo = self.findChild(QComboBox, KEY_MP_STIFFENER_SELECT_MEMBER_ID)
                 if combo:
@@ -1874,6 +1877,7 @@ class AdditionalInputs(QDialog):
                     if m:
                         suffix = f".G{m.group(1)}.M{m.group(2)}"
                         self.working_input_dict[KEY_MP_STIFFENER_INTERMEDIATE_SPACING + suffix] = "NA"
+                        self.working_input_dict[KEY_MP_STIFFENER_INTERMEDIATE_OUTSTAND + suffix] = ""
 
         self._update_stiffener_cad()
 
