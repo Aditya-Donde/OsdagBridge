@@ -552,7 +552,9 @@ def _extract_osdag_summary(result: dict) -> dict:
     def _first(*keys):
         for k in keys:
             v = result.get(k)
-            if v is not None:
+            if isinstance(v, str):
+                v = v.strip()
+            if v not in (None, ""):
                 return v
         return None
 
@@ -560,7 +562,7 @@ def _extract_osdag_summary(result: dict) -> dict:
         "section":     _first("section_size.designation", "Optimum.Designation"),
         "capacity_kN": _first("Member.tension_capacity",  "Design.Strength"),
         "efficiency":  _first("Member.efficiency",        "Optimum.UR"),
-        "slenderness": result.get("Member.Slenderness"),
+        "slenderness": _first("Member.Slenderness"),
         "connection":  "Welded" if "Weld.Type" in result else "Bolted",
     }
 
