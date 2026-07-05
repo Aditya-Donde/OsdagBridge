@@ -1,5 +1,6 @@
 {% set name = "osdagbridge" %}
 {% set version = "1.0.0" %}
+{% set build_number = environ.get("BUILD_NUMBER", "1") %}
 
 package:
   name: {{ name|lower }}
@@ -9,7 +10,7 @@ source:
   path: ..
 
 build:
-  number: 1
+  number: {{ build_number }}
 
   script: |
     {{ PYTHON }} -m pip install . --no-deps --ignore-installed -vv
