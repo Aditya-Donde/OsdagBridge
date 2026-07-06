@@ -448,36 +448,14 @@ class InputDock(QWidget):
         return widget
 
     def _make_button_row(self, key: str, label: str, meta: dict) -> QVBoxLayout | QHBoxLayout:
-        if key != KEY_PROJECT_LOCATION:
-            row = QHBoxLayout()
-            row.setContentsMargins(0, 0, 0, 0)
-            row.setSpacing(8)
+        """Build a schema-driven button row.
 
-            lbl = QLabel(label)
-            lbl.setStyleSheet(LABEL_STYLE)
-            lbl.setMinimumWidth(110)
-            row.addWidget(lbl)
-
-            btn_text = meta.get("button_label")
-            btn = QPushButton(btn_text)
-            btn.setObjectName(key)
-            btn.setCursor(Qt.CursorShape.PointingHandCursor)
-            btn.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-            btn.setStyleSheet(ACTION_BTN_STYLE)
-            cb = getattr(self, meta.get("action", ""), None)
-            if callable(cb):
-                btn.clicked.connect(cb)
-            else:
-                btn.setEnabled(False)
-            btn.clicked.connect(lambda _, widget=btn: self.reset_error_state(widget))
-            row.addWidget(btn, 1)
-            return row
-
-        # KEY_PROJECT_LOCATION: button + station + state rows stacked
-        container = QVBoxLayout()
-        container.setContentsMargins(0, 0, 0, 0)
-        container.setSpacing(6)
-
+        By default, returns an HBoxLayout with [label | button].
+        If *meta* contains a ``post_row`` dict, the row is wrapped in a VBox
+        and the extra widgets described by ``post_row`` are appended below the
+        button.  No key-specific branches — every behaviour is driven by the
+        metadata declared in ``input_values()``.
+        """
         top_row = QHBoxLayout()
         top_row.setContentsMargins(0, 0, 0, 0)
         top_row.setSpacing(8)
@@ -498,34 +476,46 @@ class InputDock(QWidget):
             btn.clicked.connect(cb)
         else:
             btn.setEnabled(False)
+        # Reset required-validation error-state (red)
         btn.clicked.connect(lambda _, widget=btn: self.reset_error_state(widget))
         top_row.addWidget(btn, 1)
-        container.addLayout(top_row)
 
-        # Single location display row
-        self.project_location_display_row = QWidget()
-        loc_row = QHBoxLayout(self.project_location_display_row)
-        loc_row.setContentsMargins(0, 10, 0, 0)
-        loc_row.setSpacing(6)
-        
-        loc_row.addStretch()
-        
-        self.location_pin_label = QLabel()
-        self.location_pin_label.setPixmap(QIcon(":/vectors/locate-location-pin.svg").pixmap(20, 20))
-        self.location_pin_label.setStyleSheet("background: transparent;")
-        loc_row.addWidget(self.location_pin_label)
+        # ── Schema-driven post_row ──────────────────────────────────────────
+        post_row_meta = meta.get("post_row")
+        if post_row_meta:
+            container = QVBoxLayout()
+            container.setContentsMargins(0, 0, 0, 0)
+            container.setSpacing(6)
+            container.addLayout(top_row)
 
-        self.location_text_label = QLabel("")
-        self.location_text_label.setStyleSheet(LABEL_STYLE + "font-weight:normal;")
-        self.location_text_label.setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Fixed)
-        loc_row.addWidget(self.location_text_label)
-        
-        loc_row.addStretch()
+            row_kind = post_row_meta.get("kind")
+            if row_kind == "info_row":
+                row_widget = QWidget()
+                info_row = QHBoxLayout(row_widget)
+                info_row.setContentsMargins(0, 10, 0, 0)
+                info_row.setSpacing(6)
+                info_row.addStretch()
 
-        container.addWidget(self.project_location_display_row)
-        self.project_location_display_row.setVisible(False)
+                icon_lbl = QLabel()
+                icon_lbl.setPixmap(QIcon(post_row_meta.get("icon", "")).pixmap(20, 20))
+                icon_lbl.setStyleSheet("background: transparent;")
+                info_row.addWidget(icon_lbl)
 
-        return container
+                text_lbl = QLabel("")
+                text_lbl.setObjectName(f"{key}_info_label")
+                text_lbl.setStyleSheet(LABEL_STYLE + "font-weight:normal;")
+                text_lbl.setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Fixed)
+                info_row.addWidget(text_lbl)
+
+                info_row.addStretch()
+                row_widget.setObjectName(f"{key}_info_row")
+                container.addWidget(row_widget)
+                row_widget.setVisible(False)
+
+            return container
+
+        # No post_row — return a simple label + button row
+        return top_row
 
     def _field_row(self, label: str, widget: QWidget, meta: dict) -> QHBoxLayout:
         """[Label | widget] row. Material combos get an extra info (ℹ) button."""
@@ -830,34 +820,16 @@ class InputDock(QWidget):
         loc = dialog.get_selected_location()
         self._update_input_dict(KEY_PROJECT_LOCATION, loc)
 
-        method = loc.get("method")
-        data = loc.get("data", {}) if isinstance(loc, dict) else {}
+        # Update display — all mapping is done inside get_selected_location()
+        display_text = loc.get("display_text", "")
+        show_display = loc.get("show_display", False)
 
-        if method == "location_name":
-            station = data.get("district", "")
-            state = data.get("state", "")
-            show_rows = True
-        elif method == "map":
-            station = data.get("station", "")
-            state = data.get("state", "")
-            show_rows = True
-        else:  # custom_data
-            station = ""
-            state = ""
-            show_rows = False
-
-        if hasattr(self, "location_text_label"):
-            if station and state:
-                self.location_text_label.setText(f"{station}, {state}")
-            elif station:
-                self.location_text_label.setText(station)
-            elif state:
-                self.location_text_label.setText(state)
-            else:
-                self.location_text_label.setText("Location not selected")
-
-        if hasattr(self, "project_location_display_row"):
-            self.project_location_display_row.setVisible(show_rows)
+        info_lbl = self._w(f"{KEY_PROJECT_LOCATION}_info_label")
+        info_row = self._w(f"{KEY_PROJECT_LOCATION}_info_row")
+        if info_lbl:
+            info_lbl.setText(display_text or "Location not selected")
+        if info_row:
+            info_row.setVisible(show_display)
 
     # To open additional input from additional geometry
     def show_additional_inputs(self):

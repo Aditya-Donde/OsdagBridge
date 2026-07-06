@@ -126,6 +126,10 @@ class FrontendData:
                     "action":       "show_project_location_dialog",
                     "button_label": "Select Location",
                     "required":      True,
+                    "post_row": {
+                        "kind": "info_row",
+                        "icon": ":/vectors/location_pin.svg",
+                    },
                 }),
 
             # ── Geometric Details ─────────────────────────────────────────────

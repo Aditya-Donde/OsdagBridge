@@ -120,6 +120,8 @@ class ProjectLocationDialog(QDialog):
         # Restore session-level state
         self.custom_weather_data = None
         self._current_weather_data = LAST_WEATHER_DATA  # Track current displayed weather
+        self._current_city = None   
+        self._current_state = None  
         self.validator = BridgeInputValidator()
 
         self.setStyleSheet("""
@@ -1295,6 +1297,8 @@ class ProjectLocationDialog(QDialog):
 
     def _update_location_display(self, city: str | None, state: str | None):
         """Show or hide the city/state section on the right panel."""
+        self._current_city = city
+        self._current_state = state
         if city or state:
             self.location_title_label.setVisible(True)
             self.location_city_label.setVisible(True)
@@ -1308,31 +1312,47 @@ class ProjectLocationDialog(QDialog):
 
     # To extract the location selected in popup
     def get_selected_location(self):
-        result = {'method': None, 'data': {}, 'weather_data': None}
+        result = {
+            'method': None,
+            'data': {},
+            'weather_data': None,
+            # Pre-formatted display fields so callers don't need to map
+            'display_text': '',
+            'show_display': False,
+        }
 
         if self.method_radio_location.isChecked():
             result['method'] = 'location_name'
+            state = self.state_combo.currentText()
+            district = self.district_combo.currentText()
             result['data'] = {
-                'state': self.state_combo.currentText(),
-                'district': self.district_combo.currentText()
+                'state': state,
+                'district': district,
             }
             result['weather_data'] = self._current_weather_data
+            result['display_text'] = f"{district}, {state}" if district and state else (district or state or "")
+            result['show_display'] = bool(district or state)
+
         elif self.method_radio_map.isChecked():
             result['method'] = 'map'
+            station = self._current_city or ''
+            state = self._current_state or ''
             result['data'] = {
                 'latitude': self.latitude_input.text(),
-                'longitude': self.longitude_input.text()
+                'longitude': self.longitude_input.text(),
+                'station': station,
+                'state': state,
             }
-            # Read city/state from the right-panel labels (populated on map click / coord edit)
-            city_text = self.location_city_label.text().removeprefix("City: ")
-            state_text = self.location_state_label.text().removeprefix("State: ")
-            result['data']['station'] = city_text if city_text != '—' else ''
-            result['data']['state'] = state_text if state_text != '—' else ''
             result['weather_data'] = self._current_weather_data
+            result['display_text'] = f"{station}, {state}" if station and state else (station or state or "")
+            result['show_display'] = bool(station or state)
+
         elif self.method_custom_data.isChecked():
             result['method'] = 'custom_data'
             result['data'] = {}
             result['weather_data'] = self.custom_weather_data or self._current_weather_data
+            result['display_text'] = ''
+            result['show_display'] = False
         
         # Deprecated: kept for backward compatibility
         if self.method_custom_data.isChecked() and self.custom_weather_data:
