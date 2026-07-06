@@ -973,6 +973,8 @@ class ToolBarController:
                 checked = self._btn_loads.isChecked()
                 plots_widget._load_mode = "all" if checked else "off"
                 self._sync_btn_to(self._btn_loads, checked)
+                # Loads are shown on the plots (inherent grillage grid) and, in the
+                # exclusive grillage view, on the standalone grillage figure.
                 plots_widget.update_plot()
             except Exception:
                 pass
