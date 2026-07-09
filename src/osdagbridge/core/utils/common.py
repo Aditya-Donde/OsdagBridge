@@ -96,6 +96,19 @@ KEY_MATERIAL_DECK_ECM = "material.deck.ecm"
 KEY_MATERIAL_DECK_THERMAL = "material.deck.thermal"
 KEY_MATERIAL_DECK_DENSITY = "material.deck.density"
 
+# ── Composite section property keys ───────────────────────────────────────────
+# Keys of the dict returned by composite_section_properties() (initial_sizing.py).
+# Transformed steel-concrete composite section; all lengths in mm, origin at bottom
+# of steel section (upward +ve). Use these everywhere instead of literal strings.
+KEY_COMP_N            = "n"                    # modular ratio Es/Ecm used for the transform
+KEY_COMP_AC_TRANS_MM2 = "Ac_trans_mm2"         # transformed (steel-equivalent) concrete area
+KEY_COMP_Y_FROM_BOT   = "y_comp_from_bot_mm"   # composite NA from bottom of steel
+KEY_COMP_Y_TOP        = "y_top_mm"             # composite NA to top of slab (compression arm)
+KEY_COMP_Y_BOT        = "y_bot_mm"             # composite NA to bottom of steel (tension arm)
+KEY_COMP_I            = "I_comp_mm4"           # transformed second moment of area
+KEY_COMP_S_TOP        = "S_top_mm3"            # section modulus to top of slab (I_comp / y_top)
+KEY_COMP_S_BOT        = "S_bot_mm3"            # section modulus to bottom steel fibre (I_comp / y_bot)
+
 # Display labels for material property fields
 DISP_MATERIAL_GIRDER_DENSITY = "Weight Density (kN/m³)"
 DISP_MATERIAL_GIRDER_FY = "Yield Strength, F<sub>y</sub> (MPa)"
@@ -513,6 +526,10 @@ KEY_MP_GIRDER_PLASTIC_MODULUS_ZUZ = "member_properties.girder_details.material_p
 KEY_MP_GIRDER_PLASTIC_MODULUS_ZUY = "member_properties.girder_details.material_properties.plastic_modulus_zuy"
 KEY_MP_GIRDER_TORSION_CONSTANT_IT = "member_properties.girder_details.section_properties.torsion_constant_it"
 KEY_MP_GIRDER_WARPING_CONSTANT_IW = "member_properties.girder_details.section_properties.warping_constant_iw"
+KEY_MP_GIRDER_CENTROID_YCG = "member_properties.girder_details.section_properties.y_cg_from_bot"
+KEY_MP_GIRDER_FLANGE_AREA_TOP = "member_properties.girder_details.section_properties.flange_area_top"
+KEY_MP_GIRDER_FLANGE_AREA_BOT = "member_properties.girder_details.section_properties.flange_area_bot"
+KEY_MP_GIRDER_WEB_AREA = "member_properties.girder_details.section_properties.web_area"
 KEY_SD_SECTION_PROP_MASS = "steeldesign.details.section_properties.mass"
 KEY_SD_SECTION_PROP_AREA = "steeldesign.details.section_properties.area"
 KEY_SD_SECTION_PROP_IZ = "steeldesign.details.section_properties.iz"
@@ -1187,13 +1204,13 @@ DESIGN_CHECK_ORDER = [
 # Human-readable titles for each check card
 DESIGN_CHECK_TITLES = {
     KEY_CHECK_FLEXURE:          "Strength Limit State (Flexure)",
-    KEY_CHECK_SHEAR_LONG_TRANS: "Resistance to Longitudinal and Transverse Shear",
+    KEY_CHECK_SHEAR_LONG_TRANS: "Resistance to Longitudinal Shear",
     KEY_CHECK_SHEAR:            "Strength Limit State (Shear)",
     KEY_CHECK_FATIGUE:          "Resistance to Fatigue",
     KEY_CHECK_INTERACTION:      "Interaction",
     KEY_CHECK_STRESS:           "Stress Limitation",
     KEY_CHECK_LTB:              "Lateral Torsional Buckling",
-    KEY_CHECK_DEFLECTION:       "Deflection and Crack Control",
+    KEY_CHECK_DEFLECTION:       "Deflection",
 }
 
 # Units shown next to demand / capacity values in each card

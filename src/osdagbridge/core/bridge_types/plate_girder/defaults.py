@@ -345,7 +345,7 @@ def _update_design_options_defaults(input_dict: dict) -> None:
                                                 "lower":     None,
                                                 "upper":     None,
                                             })
-    _update(KEY_DS_REINF_MATERIAL,          "Fe 415")
+    _update(KEY_DS_REINF_MATERIAL,          "Fe 500")
     _update(KEY_DS_TOP_CLEAR_COVER,         "50")
     _update(KEY_DS_BOTTOM_CLEAR_COVER,      "50")
     _update(KEY_DS_SIDE_CLEAR_COVER,        "50")

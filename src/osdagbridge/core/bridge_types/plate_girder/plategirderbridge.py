@@ -77,6 +77,7 @@ from osdagbridge.core.utils.common import (
     KEY_MD_WIDTH,
     KEY_RL_WIDTH,
     KEY_TS_DECK_OVERHANG,
+    KEY_TS_DECK_THICKNESS,
     KEY_TS_NO_OF_GIRDERS,
     KEY_TS_GIRDER_SPACING,
     KEY_TS_OVERALL_WIDTH,
@@ -274,7 +275,7 @@ from osdagbridge.core.bridge_components.super_structure.shear_studs.geometry imp
     min_stud_head_height,
 )
 from osdagbridge.core.utils.logger import bridge_logger
-
+from osdagbridge.core.bridge_types.plate_girder.designer import (BridgeConfig, IRC22CapacityCalculator, DCREngine, DemandEnvelope, design_envelope_engine,)
 
 _DB_PATH = Path(__file__).resolve().parents[2] / "data" / "ResourceFiles" / "Intg_osdag.sqlite"
 
@@ -3089,7 +3090,13 @@ class PlateGirderBridge:
         fy = self._lookup_material(rebar_grade, "fy")
         Es = self._lookup_material(rebar_grade, "Es")
 
-        result, report_values = deckdesign.design_deck_slab(self.input_dict, fck=fck, fctm=fctm, fy=fy, Ecm=Ecm, Es=Es)
+        # Stage-5 steel design_results (composite beff / VL, SLS stresses) are passed in so deckdesign can run the composite interface checks (Cl.606.10 transverse shear, Cl.604.4 crack control) with the real designed deck reinforcement and write the values back into design_results (report/tables) and the deck dialog utilization bars. bf_top_mm is resolved here so deckdesign stays free of girder-resolution logic.
+        result, report_values = deckdesign.design_deck_slab(
+            self.input_dict, fck=fck, fctm=fctm, fy=fy, Ecm=Ecm, Es=Es,
+            design_results=self.design_results,
+            bf_top_mm=resolve_girder_value(self.input_dict, KEY_MP_GIRDER_TOP_FLANGE_WIDTH) * 1000.0,
+            stud_height_mm=float(self.input_dict[KEY_DS_STUD_HEIGHT]),
+        )
         self.output_dict["deck_design_results"] = result
         # Raw numeric values for the report generator (Tables 5.17(a)-(g)),
         # keyed to common.KEY_DD_*.
@@ -3670,9 +3677,7 @@ class PlateGirderBridge:
         Both the Output Dock percent bars and the Steel Design check cards
         call this — never compute DCR anywhere else.
         """
-        from osdagbridge.core.bridge_types.plate_girder.designer import (
-            BridgeConfig, IRC22CapacityCalculator, DCREngine, DemandEnvelope,
-        )
+
 
         dr = getattr(self, "design_results", None)
         if not dr:
@@ -3686,6 +3691,10 @@ class PlateGirderBridge:
             girder_names = [girder_name]
         else:
             girder_names = list(per_girder)
+
+        # "Design Envelope": for each check, the worst (highest) utilization across only the load cases that affect that check. Built from the already-computed per-LC check results rather than a single synthetic demand — see designer.design_envelope_engine. Check gating by lc_type means a load case only contributes the checks it actually influences (LTB from SW/DL-stage cases, fatigue from frequent-SLS cases, etc.).
+        if load_case == "Design Envelope":
+            return design_envelope_engine(girder_names, per_girder)
 
         # per_girder's key order is already edge-beam-free and in physical girder
         # order (built from build_girders() minus EB1/EB2) — its position is the
@@ -3762,7 +3771,6 @@ class PlateGirderBridge:
                 continue
 
         return best_engine
-
 
     def get_dcr_for_selection(
         self, girder_name: str | None, load_case: str | None

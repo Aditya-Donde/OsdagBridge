@@ -16,8 +16,12 @@ from __future__ import annotations
 
 import math
 
+from osdagbridge.core.bridge_components.super_structure.deck_reinforcement.geometry import (
+    bar_area_mm2, reinforcement_area_per_m_mm2,
+)
 from osdagbridge.core.utils.codes.irc6_2017 import IRC6_2017
 from osdagbridge.core.utils.codes.irc112_2019 import IRC112_2019
+from osdagbridge.core.utils.codes.irc22_2015 import IRC22_2014
 from osdagbridge.core.utils.codes.keyfile import KEY_VEHICLE
 from osdagbridge.core.utils.common import (
     KEY_SPAN, KEY_CARRIAGEWAY_WIDTH, KEY_DECK_CONCRETE_GRADE_BASIC,
@@ -48,13 +52,18 @@ from osdagbridge.core.utils.common import (
     KEY_DD_STRESS_CONC_BOTTOM, KEY_DD_STRESS_CONC_TOP, KEY_DD_STRESS_CONC_ALLOWABLE,
     KEY_DD_STRESS_REINF_BOTTOM, KEY_DD_STRESS_REINF_TOP, KEY_DD_STRESS_REINF_ALLOWABLE,
     KEY_DD_CRACK_WK_BOTTOM, KEY_DD_CRACK_WK_TOP, KEY_DD_CRACK_WK_LIMIT,
+    # Composite interface check output keys — mutated into design_results.
+    KEY_SD_TS_VL, KEY_SD_TS_VCAP_CONC, KEY_SD_TS_VCAP_REINF, KEY_SD_TS_VRD,
+    KEY_SD_CRACK_AS_MIN, KEY_SD_CRACK_AS_PROV,
 )
 
 # ── constants ─────────────────────────────────────────────────────────────────
 _STANDARD_DIAS_MM = [8, 10, 12, 16, 20, 25, 32]
+_PREFERRED_MIN_DIA_MM = 12            # prefer ≥12 mm bars when the bounds allow it
 _SPACING_MAX_MM = 300.0
 _SPACING_MIN_MM = 75.0
 _SPACING_ROUND_MM = 5.0               # round spacing down to nearest 5 mm
+_TIGHTEN_TARGET_UR = 0.95
 
 
 # ── structural mechanics helpers ──────────────────────────────────────────────
@@ -81,8 +90,8 @@ def _required_steel_mm2(M_ULS_kNm: float, fy_MPa: float, d_mm: float,
     if M_ULS_kNm <= 0:
         return 0.0
     M_Nmm = M_ULS_kNm * 1.0e6
-    # (0.87fy)²/(0.36 fck b) · As² - (0.87 fy d) · As + M = 0
-    a = (0.87 * fy_MPa) ** 2 / (0.36 * fck_MPa * b_mm)
+    # Exact inverse of _moment_capacity_kNm: Mu = 0.87·fy·As·(d − 0.42·xu), xu = 0.87·fy·As/(0.36·fck·b). Substituting xu gives the quadratic 0.42·(0.87fy)²/(0.36 fck b) · As² − (0.87 fy d) · As + M = 0 The 0.42 (rectangular stress-block lever-arm factor) MUST match the capacity formula, otherwise the solver hits disc<0 ("over-stressed") far too early.
+    a = 0.42 * (0.87 * fy_MPa) ** 2 / (0.36 * fck_MPa * b_mm)
     b = 0.87 * fy_MPa * d_mm
     disc = b ** 2 - 4.0 * a * M_Nmm
     if disc < 0:
@@ -97,6 +106,22 @@ def _min_steel_mm2(fctm_MPa: float, fy_MPa: float, d_mm: float,
     return max(As_min, 0.0013 * b_mm * d_mm)
 
 
+def _crack_control_min_top_steel_mm2_per_m(fctm_MPa: float, fy_MPa: float,
+                                           t_slab_mm: float, kc: float = 0.5,
+                                           k: float = 0.65) -> float:
+    """
+    IRC 22:2015 Cl.604.4 crack-control minimum, expressed as the top (tension-face)
+    reinforcement per metre width.
+
+    The composite check compares As_min = kc·k·fctm·(beff·t_slab)/fy (total over the
+    effective flange) against As_top·beff/1000. The effective width beff cancels, so
+    the per-metre requirement on the top mat is:
+        As_top ≥ kc·k·fctm·t_slab·1000/fy
+    k = 0.65 mirrors the composite flange (width > 800 mm) used in the interface check.
+    """
+    return kc * k * fctm_MPa * t_slab_mm * 1000.0 / fy_MPa
+
+
 def _pick_rebar(As_req_mm2: float,
                 dias: list = _STANDARD_DIAS_MM) -> tuple[float, float, float]:
     """
@@ -106,21 +131,20 @@ def _pick_rebar(As_req_mm2: float,
     `dias` is pre-filtered by KEY_DS_REINF_BOUNDS before this call.
     """
     for dia in dias:
-        a_bar = math.pi * dia ** 2 / 4.0
+        a_bar = bar_area_mm2(dia)
         spacing = a_bar * 1000.0 / As_req_mm2
         spacing = min(spacing, _SPACING_MAX_MM)
         spacing = max(spacing, _SPACING_MIN_MM)
         # round down to nearest _SPACING_ROUND_MM
         spacing = math.floor(spacing / _SPACING_ROUND_MM) * _SPACING_ROUND_MM
         spacing = max(spacing, _SPACING_MIN_MM)
-        As_prov = a_bar * 1000.0 / spacing
+        As_prov = reinforcement_area_per_m_mm2(dia, spacing)
         if As_prov >= As_req_mm2:
             return dia, spacing, As_prov
     # largest allowed bar at minimum spacing
     dia = dias[-1]
-    a_bar = math.pi * dia ** 2 / 4.0
     spacing = _SPACING_MIN_MM
-    return dia, spacing, a_bar * 1000.0 / spacing
+    return dia, spacing, reinforcement_area_per_m_mm2(dia, spacing)
 
 
 # ── shear helpers ─────────────────────────────────────────────────────────────
@@ -145,6 +169,35 @@ def _v_Rd_c_MPa(As_mm2: float, d_mm: float, fck_MPa: float,
         0.12 * k * (80.0 * rho1 * fck_MPa) ** 0.33,
         0.031 * k ** 1.5 * math.sqrt(fck_MPa),
     )
+
+
+def _tighten_for_oneway_shear(V_ULS_kN_per_m: float, dia: float, spc: float,
+                              As: float, deck_t_mm: float, cover_mm: float,
+                              fck: float, allowed_dias: list,
+                              target_ur: float = _TIGHTEN_TARGET_UR) -> tuple:
+    """
+    Increase reinforcement until the one-way shear capacity (IRC 112:2020
+    Cl.10.3.2, VRd,c = v_Rd,c·d, no links) leaves the wanted margin. v_Rd,c rises
+    with the reinforcement ratio ρ1 (capped at 0.02), so adding steel helps until
+    that cap. The target capacity is V_ULS/target_ur so the reported utilisation
+    (V_ULS/VRd,c) lands at ≈target_ur. Returns (dia, spc, As, d). Only adds steel;
+    stops when the target is met, the ρ1 cap is reached, or the bars are maxed out
+    (capacity can't grow further — the check still passes, just nearer 100%).
+    """
+    V_target = V_ULS_kN_per_m / target_ur
+    d_mm = deck_t_mm - cover_mm - dia / 2.0
+    for _ in range(60):
+        VRd_c = _v_Rd_c_MPa(As, d_mm, fck) * d_mm        # MPa·mm = N/mm = kN/m
+        if VRd_c >= V_target:
+            break
+        if As / (1000.0 * d_mm) >= 0.02:                 # ρ1 cap — steel can't help more
+            break
+        dia_new, spc_new, As_new = _pick_rebar(As * 1.03, allowed_dias)
+        if As_new <= As:                                 # bars maxed out
+            break
+        dia, spc, As = dia_new, spc_new, As_new
+        d_mm = deck_t_mm - cover_mm - dia / 2.0
+    return dia, spc, As, d_mm
 
 
 # ── SLS helpers ───────────────────────────────────────────────────────────────
@@ -183,6 +236,33 @@ def _sls_stress(M_SLS_kNm: float, As_mm2: float, d_mm: float,
         "ok": sigma_c <= sc_lim and sigma_s <= ss_lim,
     }
 
+
+def _tighten_for_sls_stress(M_SLS_char_kNm: float, dia: float, spc: float,
+                            As: float, deck_t_mm: float, cover_mm: float,
+                            fck: float, fy: float, Es: float, Ecm: float,
+                            allowed_dias: list,
+                            target_ur: float = _TIGHTEN_TARGET_UR) -> tuple:
+    """
+    Increase the reinforcement until the SLS steel stress leaves the wanted margin
+    (IRC 112:2020 Cl.12.2.1, σs ≤ 0.8·fy). The target is target_ur·(0.8·fy) so the
+    reported utilisation (σs/0.8fy) lands at ≈target_ur. σs is non-linear in As, so
+    the bars are bumped (+3 %) and re-picked iteratively. Returns (dia, spc, As, d).
+    Only ever adds steel, so any ULS/crack/minimum requirement already met by the
+    incoming bars is preserved. Stops if the bars are maxed out (largest allowed
+    diameter at minimum spacing) so the section cannot reach the target.
+    """
+    ss_target = target_ur * 0.80 * fy
+    d_mm = deck_t_mm - cover_mm - dia / 2.0
+    for _ in range(60):
+        sigma_s = _sls_stress(M_SLS_char_kNm, As, d_mm, fck, fy, Es, Ecm)["sigma_s"]
+        if sigma_s <= ss_target:
+            break
+        dia_new, spc_new, As_new = _pick_rebar(As * 1.03, allowed_dias)
+        if As_new <= As:          # bars maxed out — cannot add more steel
+            break
+        dia, spc, As = dia_new, spc_new, As_new
+        d_mm = deck_t_mm - cover_mm - dia / 2.0
+    return dia, spc, As, d_mm
 
 def _sls_crack_width(M_SLS_kNm: float, As_mm2: float, dia_mm: float,
                      d_mm: float, h_mm: float, cover_mm: float,
@@ -256,9 +336,80 @@ def _wheel_contact_width_m(vehicle_class: str) -> float:
     return 0.250                       # Class A:   250 mm transverse contact
 
 
+# ── composite steel–concrete interface checks (IRC 22:2015) ──────────────────
+# These are steel/composite-girder checks, but they need the slab reinforcement
+# area that is sized in this module — so they live here and are called by the
+# steel-design pipeline with its own beff / VL, while the slab steel is supplied
+# from here. Return dicts match the original IRC22CapacityCalculator methods.
+
+def crack_control_As_min(beff_mm: float, fctm_MPa: float, fy_rebar_MPa: float,
+                         t_slab_mm: float, As_total_mm2: float) -> dict:
+    """
+    IRC 22:2015 Cl.604.4 + IRC 112-2011 Cl.12.3.3 — minimum reinforcement for crack control.
+    As_provided = total top reinforcement over the effective width (tension-face steel);
+    0 ⇒ guidance mode.
+    """
+    res = IRC22_2014.cl_604_4_crack_control_As_min(
+        fctm=fctm_MPa,
+        beff=beff_mm,
+        t_slab=t_slab_mm,
+        fy=fy_rebar_MPa,
+        kc=0.5,
+        width_mm=beff_mm,
+        element_type="flange",
+        As_provided=As_total_mm2 if As_total_mm2 > 0.0 else None,
+    )
+    return {
+        "As_min_mm2"      : res["As_min_mm2"],
+        "As_provided_mm2" : As_total_mm2,
+        "is_ok"           : res.get("is_ok"),    # None if As_provided = 0
+        "kc"              : res["kc"],
+        "k"               : res["k"],
+        "fctm_MPa"        : res["fctm_MPa"],
+        "clause"          : res["clause"],
+        "source"          : "IRC22_2014",
+    }
+
+
+def transverse_shear_check(VL_N_per_mm: float, fck_MPa: float, fy_rebar_MPa: float,
+                           bf_top_mm: float, stud_height_mm: float, t_slab_mm: float,
+                           As_total_mm2: float, n_layers: int = 6) -> dict:
+    """
+    IRC 22:2015 Cl.606.10 — transverse shear check at the steel–concrete interface.
+    Shear plane length for an interior girder: shorter of slab thickness or
+    (2·h_stud + bf_top). n_layers=6 ≈ bars within 1 m at 200 mm longitudinal spacing.
+    """
+    L_mm = min(t_slab_mm, 2.0 * stud_height_mm + bf_top_mm)
+    Ast_cm2_per_m = As_total_mm2 / 100.0   # mm²/m → cm²/m
+    res = IRC22_2014.cl_606_10_transverse_shear_check(
+        VL_kN=VL_N_per_mm,          # N/mm ≡ kN/m
+        fck=fck_MPa,
+        fyk=fy_rebar_MPa,
+        L_mm=L_mm,
+        Ast_cm2_per_m=Ast_cm2_per_m,
+        n_layers=n_layers,
+    )
+    return {
+        "VL_N_per_mm"                : VL_N_per_mm,
+        "L_shear_plane_mm"           : L_mm,
+        "Ast_provided_cm2_per_m"     : Ast_cm2_per_m,
+        "n_layers"                   : n_layers,
+        "Vcap1_kN_per_m"             : res["Vcap1_kN_per_m"],
+        "Vcap2_kN_per_m"             : res["Vcap2_kN_per_m"],
+        "governing_capacity_kN_per_m": res["governing_capacity_kN_per_m"],
+        "check_ok"                   : res["check_ok"],
+        "min_Ast_required_cm2_per_m" : res["min_Ast_required_cm2_per_m"],
+        "Ast_provided_ok"            : res["Ast_provided_ok"],
+        "clause"                     : res["clause"],
+        "source"                     : "IRC22_2014",
+    }
+
+
 # ── main design function ──────────────────────────────────────────────────────
 
-def design_deck_slab(input_dict: dict, fck: float, fctm: float, fy: float, Es: float, Ecm: float) -> tuple[dict, dict]:
+def design_deck_slab(input_dict: dict, fck: float, fctm: float, fy: float, Es: float, Ecm: float,
+                     *, design_results: dict | None = None,
+                     bf_top_mm: float = 0.0, stud_height_mm: float = 0.0) -> tuple[dict, dict]:
     """
     Design the concrete deck slab of a plate girder bridge.
 
@@ -277,6 +428,19 @@ def design_deck_slab(input_dict: dict, fck: float, fctm: float, fy: float, Es: f
         Modulus of elasticity of reinforcement (MPa), from the material DB.
     Ecm : float
         Modulus of elasticity of concrete (MPa), from the material DB.
+    design_results : dict, optional
+        The Stage-5 steel-design results dict (``output_dict["design_results"]``).
+        When it carries the composite ``beff_mm`` and longitudinal shear
+        ``VL_N_per_mm``, the composite steel–concrete interface checks (Cl.606.10
+        transverse shear, Cl.604.4 crack control) are run with the deck-designed
+        reinforcement and their values written back into it in place (report /
+        generate-results tables). If None/incomplete, those checks are skipped.
+    bf_top_mm : float, optional
+        Girder top-flange width (mm) — resolved by the caller (girder resolution
+        stays out of this module). Required for the transverse-shear check.
+    stud_height_mm : float, optional
+        Shear-stud height (mm) from the caller's ``input_dict``. Used by the
+        transverse-shear check.
 
     Returns
     -------
@@ -316,6 +480,11 @@ def design_deck_slab(input_dict: dict, fck: float, fctm: float, fy: float, Es: f
     lower_dia = int(bounds["lower"]) if bounds["lower"] is not None else _STANDARD_DIAS_MM[0]
     upper_dia = int(bounds["upper"]) if bounds["upper"] is not None else _STANDARD_DIAS_MM[-1]
     allowed_dias = [d for d in _STANDARD_DIAS_MM if lower_dia <= d <= upper_dia]
+    # 8/10 mm bars are impractically small for a bridge deck — prefer to start the
+    # bar selection at 12 mm, but only when the user's bounds actually allow it.
+    practical_dias = [d for d in allowed_dias if d >= _PREFERRED_MIN_DIA_MM]
+    if practical_dias:
+        allowed_dias = practical_dias
 
     # ── 2. material properties (fck, fctm, fy resolved from the material DB) ───
     # concrete_grade / rebar_grade are read above only for the report text.
@@ -368,28 +537,46 @@ def design_deck_slab(input_dict: dict, fck: float, fctm: float, fy: float, Es: f
 
     # ── 7. design bottom (sagging) reinforcement ──────────────────────────────
     d_bot_mm = deck_t_mm - cover_bot_mm - 6.0    # initial estimate (6 mm = half 12 mm bar)
-    As_req_bot = max(_required_steel_mm2(M_ULS_bot_kNm, fy, d_bot_mm, fck),
+    As_req_bot = max(_required_steel_mm2(M_ULS_bot_kNm / _TIGHTEN_TARGET_UR, fy, d_bot_mm, fck),
                      _min_steel_mm2(fctm, fy, d_bot_mm))
     dia_bot, spc_bot, As_bot = _pick_rebar(As_req_bot, allowed_dias)
     d_bot_mm = deck_t_mm - cover_bot_mm - dia_bot / 2.0   # refined with actual bar
     # Second pass — recheck with refined d to guard against d decreasing for larger bars
-    As_req_bot2 = max(_required_steel_mm2(M_ULS_bot_kNm, fy, d_bot_mm, fck),
+    As_req_bot2 = max(_required_steel_mm2(M_ULS_bot_kNm / _TIGHTEN_TARGET_UR, fy, d_bot_mm, fck),
                       _min_steel_mm2(fctm, fy, d_bot_mm))
     if As_req_bot2 > As_bot:
         dia_bot, spc_bot, As_bot = _pick_rebar(As_req_bot2, allowed_dias)
         d_bot_mm = deck_t_mm - cover_bot_mm - dia_bot / 2.0
+    # Bottom mat must also satisfy the SLS steel-stress limit (Cl.12.2.1).
+    dia_bot, spc_bot, As_bot, d_bot_mm = _tighten_for_sls_stress(
+        M_DL_kNm + impact_factor * M_LL_kNm, dia_bot, spc_bot, As_bot,
+        deck_t_mm, cover_bot_mm, fck, fy, Es, Ecm, allowed_dias)
+    # …and the interior one-way (cantilever) shear demand at the support face —
+    # v_Rd,c rises with the reinforcement ratio, so add steel if the demand isn't met.
+    V_ULS_bot_demand = (gamma_dl * (w_DL_kN_m2 * S / 2.0)
+                        + gamma_ll * impact_factor * (P_wheel_kN / beff_m))
+    dia_bot, spc_bot, As_bot, d_bot_mm = _tighten_for_oneway_shear(
+        V_ULS_bot_demand, dia_bot, spc_bot, As_bot,
+        deck_t_mm, cover_bot_mm, fck, allowed_dias)
 
     # ── 8. design top (hogging) reinforcement ────────────────────────────────
     d_top_mm = deck_t_mm - cover_top_mm - 6.0
-    As_req_top = max(_required_steel_mm2(M_ULS_top_kNm, fy, d_top_mm, fck),
-                     _min_steel_mm2(fctm, fy, d_top_mm))
+    # Top mat must also satisfy the composite crack-control minimum (Cl.604.4) so
+    # that a thicker slab cannot fail crack control (which scales with slab depth).
+    As_crack_min_top = _crack_control_min_top_steel_mm2_per_m(fctm, fy, deck_t_mm)
+    As_req_top = max(_required_steel_mm2(M_ULS_top_kNm / _TIGHTEN_TARGET_UR, fy, d_top_mm, fck),
+                     _min_steel_mm2(fctm, fy, d_top_mm), As_crack_min_top)
     dia_top, spc_top, As_top = _pick_rebar(As_req_top, allowed_dias)
     d_top_mm = deck_t_mm - cover_top_mm - dia_top / 2.0
-    As_req_top2 = max(_required_steel_mm2(M_ULS_top_kNm, fy, d_top_mm, fck),
-                      _min_steel_mm2(fctm, fy, d_top_mm))
+    As_req_top2 = max(_required_steel_mm2(M_ULS_top_kNm / _TIGHTEN_TARGET_UR, fy, d_top_mm, fck),
+                      _min_steel_mm2(fctm, fy, d_top_mm), As_crack_min_top)
     if As_req_top2 > As_top:
         dia_top, spc_top, As_top = _pick_rebar(As_req_top2, allowed_dias)
         d_top_mm = deck_t_mm - cover_top_mm - dia_top / 2.0
+    # Top mat must also satisfy the SLS steel-stress limit (Cl.12.2.1).
+    dia_top, spc_top, As_top, d_top_mm = _tighten_for_sls_stress(
+        0.75 * (M_DL_kNm + impact_factor * M_LL_kNm), dia_top, spc_top, As_top,
+        deck_t_mm, cover_top_mm, fck, fy, Es, Ecm, allowed_dias)
 
     # ── 9. moment capacity check ─────────────────────────────────────────────
     Mu_bot = _moment_capacity_kNm(fy, As_bot, d_bot_mm, fck)
@@ -441,16 +628,24 @@ def design_deck_slab(input_dict: dict, fck: float, fctm: float, fy: float, Es: f
 
         # Design top (hogging) reinforcement for overhang
         d_oh_mm = deck_t_mm - cover_top_mm - 6.0
-        As_req_oh = max(_required_steel_mm2(M_ULS_oh, fy, d_oh_mm, fck),
+        As_req_oh = max(_required_steel_mm2(M_ULS_oh / _TIGHTEN_TARGET_UR, fy, d_oh_mm, fck),
                         _min_steel_mm2(fctm, fy, d_oh_mm))
         dia_oh, spc_oh, As_oh = _pick_rebar(As_req_oh, allowed_dias)
         d_oh_mm = deck_t_mm - cover_top_mm - dia_oh / 2.0
         # Second pass — recheck with refined d (larger bars reduce d below d_init)
-        As_req_oh2 = max(_required_steel_mm2(M_ULS_oh, fy, d_oh_mm, fck),
+        As_req_oh2 = max(_required_steel_mm2(M_ULS_oh / _TIGHTEN_TARGET_UR, fy, d_oh_mm, fck),
                          _min_steel_mm2(fctm, fy, d_oh_mm))
         if As_req_oh2 > As_oh:
             dia_oh, spc_oh, As_oh = _pick_rebar(As_req_oh2, allowed_dias)
             d_oh_mm = deck_t_mm - cover_top_mm - dia_oh / 2.0
+        # Overhang bars must also pass one-way (cantilever) shear — v_Rd,c rises
+        # with the reinforcement ratio, so add steel if the demand isn't met.
+        V_DL_oh_v = w_DL_kN_m2 * overhang_m + railing_kN_m
+        V_LL_oh_v = P_wheel_kN / beff_oh if arm_wheel > 0.0 else 0.0
+        V_ULS_oh_demand = gamma_dl * V_DL_oh_v + gamma_ll * impact_factor * V_LL_oh_v
+        dia_oh, spc_oh, As_oh, d_oh_mm = _tighten_for_oneway_shear(
+            V_ULS_oh_demand, dia_oh, spc_oh, As_oh,
+            deck_t_mm, cover_top_mm, fck, allowed_dias)
 
         Mu_oh = _moment_capacity_kNm(fy, As_oh, d_oh_mm, fck)
         oh_ok = Mu_oh >= M_ULS_oh
@@ -558,6 +753,44 @@ def design_deck_slab(input_dict: dict, fck: float, fctm: float, fy: float, Es: f
         *overhang_shear_lines,
     ]
 
+    # ── 10c. composite steel–concrete interface checks  [IRC 22:2015 Cl.606.10
+    #         transverse shear, Cl.604.4 crack control] ──────────────────────────
+    # Run with the deck-designed reinforcement (As_bot/As_top). Needs the steel
+    # girder's beff / VL from the Stage-5 DCR run (design_results); when present the
+    # check values are written back into design_results in place (report /
+    # generate-results tables). Crack control uses the slab **top** (tension-face)
+    # steel, not the longitudinal distribution steel. Skipped if beff/VL are absent.
+    dr = design_results
+    has_composite = bool(dr and dr.get("beff_mm") and dr.get("VL_N_per_mm") is not None)
+    if has_composite:
+        beff_comp_mm = dr["beff_mm"]
+        VL           = dr["VL_N_per_mm"]
+
+        ts = transverse_shear_check(
+            VL_N_per_mm=VL, fck_MPa=fck, fy_rebar_MPa=fy,
+            bf_top_mm=bf_top_mm, stud_height_mm=stud_height_mm, t_slab_mm=deck_t_mm,
+            As_total_mm2=As_bot + As_top,
+        )
+        crack = crack_control_As_min(
+            beff_mm=beff_comp_mm, fctm_MPa=fctm, fy_rebar_MPa=fy, t_slab_mm=deck_t_mm,
+            As_total_mm2=As_top * beff_comp_mm / 1000.0,
+        )
+
+        dr["transverse_shear_ok"]    = ts["check_ok"]
+        dr["Ast_required_cm2_per_m"] = ts["min_Ast_required_cm2_per_m"]
+        dr["Ast_provided_cm2_per_m"] = ts["Ast_provided_cm2_per_m"]
+        dr[KEY_SD_TS_VL]         = ts["VL_N_per_mm"]
+        dr[KEY_SD_TS_VCAP_CONC]  = ts["Vcap1_kN_per_m"]
+        dr[KEY_SD_TS_VCAP_REINF] = ts["Vcap2_kN_per_m"]
+        dr[KEY_SD_TS_VRD]        = ts["governing_capacity_kN_per_m"]
+
+        dr["As_min_crack_mm2"]      = crack["As_min_mm2"]
+        dr["As_provided_crack_mm2"] = crack["As_provided_mm2"]
+        dr[KEY_SD_CRACK_AS_MIN]  = crack["As_min_mm2"]
+        dr[KEY_SD_CRACK_AS_PROV] = crack["As_provided_mm2"]
+    else:
+        print("  [INFO] composite interface checks skipped — beff/VL not in design_results.")
+
     # ── 11. SLS checks (IRC 112:2020) ────────────────────────────────────────
     # Characteristic combination (stress, Cl.12.2.1): γ_DL=1.0, γ_LL=1.0
     # Frequent combination    (crack width, Cl.12.3.4): γ_DL=1.0, γ_LL=0.75
@@ -608,6 +841,19 @@ def design_deck_slab(input_dict: dict, fck: float, fctm: float, fy: float, Es: f
     ur_top_sls_s = sc_top["sigma_s"] / sc_top["ss_lim"]
     ur_bot_crack = cw_bot["wk"] / cw_bot["wk_lim"]
     ur_top_crack = cw_top["wk"] / cw_top["wk_lim"]
+
+    # Composite interface utilization ratios (demand / capacity) — only when the
+    # composite checks ran. Concrete / rebar SLS-stress URs are read back from
+    # design_results (computed in Stage 5).
+    if has_composite:
+        def _ur(demand, capacity):
+            return round(demand / capacity, 4) if capacity else 0.0
+        ur_composite_trans_shear  = _ur(ts["VL_N_per_mm"], ts["governing_capacity_kN_per_m"])
+        ur_composite_crack        = _ur(crack["As_min_mm2"], crack["As_provided_mm2"])
+        ur_composite_conc_stress  = _ur(dr.get("sigma_c_actual_MPa") or 0.0,
+                                        dr.get("sigma_c_limit_MPa") or 0.0)
+        ur_composite_rebar_stress = _ur(dr.get("sigma_rebar_actual_MPa") or 0.0,
+                                        dr.get("sigma_rebar_limit_MPa") or 0.0)
 
     sls_lines = [
         "",
@@ -780,6 +1026,14 @@ def design_deck_slab(input_dict: dict, fck: float, fctm: float, fy: float, Es: f
             "ur_oh_shear"            : round(ur_oh_shear, 3),
             "ur_oh_punch"            : round(ur_oh_punch, 3),
         })
+    if has_composite:
+        result.update({
+            # ── composite steel–concrete interface utilization ratios ────────
+            "ur_composite_trans_shear"  : ur_composite_trans_shear,
+            "ur_composite_crack"        : ur_composite_crack,
+            "ur_composite_conc_stress"  : ur_composite_conc_stress,
+            "ur_composite_rebar_stress" : ur_composite_rebar_stress,
+        })
 
     # ── 14. report values dict (keyed to common.KEY_DD_*) ──────────────
     # Raw numeric values consumed by the report generator (Tables 5.17(a)-(g)),
@@ -852,4 +1106,5 @@ def design_deck_slab(input_dict: dict, fck: float, fctm: float, fy: float, Es: f
         KEY_DD_SPACING_MAX    : _SPACING_MAX_MM,
         KEY_DD_HAS_OVERHANG   : has_overhang,
     }
+
     return result, report_values

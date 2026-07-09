@@ -808,6 +808,12 @@ class OutputDock(QWidget):
                 combo.blockSignals(True)
                 combo.clear()
                 combo.addItems(loadcases)
+                # "Design Envelope" is a UI-only pseudo load case — worst utilization
+                # per check across the load cases that affect it. It drives the DCR
+                # bars only, so it goes in the design dropdown, not the analysis one
+                # (which plots real dataset load cases).
+                if key == KEY_OUTPUT_DOCK_LOAD_COMBINATION:
+                    combo.addItem("Design Envelope")
                 combo.setCurrentIndex(0)  # first real load case is default
                 combo.setSizeAdjustPolicy(QComboBox.AdjustToMinimumContentsLengthWithIcon)
                 combo.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Fixed)

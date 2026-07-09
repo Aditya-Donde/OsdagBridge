@@ -9,7 +9,34 @@ from osdagbridge.core.utils.common import (
     DEFAULT_CRASH_BARRIER_WIDTH,
     DEFAULT_RAILING_WIDTH,
     MIN_FOOTPATH_WIDTH,
+    KEY_COMP_N,
+    KEY_COMP_AC_TRANS_MM2,
+    KEY_COMP_Y_FROM_BOT,
+    KEY_COMP_Y_TOP,
+    KEY_COMP_Y_BOT,
+    KEY_COMP_I,
+    KEY_COMP_S_TOP,
+    KEY_COMP_S_BOT,
+    KEY_MP_GIRDER_MASS,
+    KEY_MP_GIRDER_SECTIONAL_AREA,
+    KEY_MP_GIRDER_SECTIONAL_IZ,
+    KEY_MP_GIRDER_SECTIONAL_IY,
+    KEY_MP_GIRDER_RADIUS_GYRATION_Z,
+    KEY_MP_GIRDER_RADIUS_GYRATION_Y,
+    KEY_MP_GIRDER_ELASTIC_MODULUS_ZZ,
+    KEY_MP_GIRDER_ELASTIC_MODULUS_ZY,
+    KEY_MP_GIRDER_PLASTIC_MODULUS_ZUZ,
+    KEY_MP_GIRDER_PLASTIC_MODULUS_ZUY,
+    KEY_MP_GIRDER_TORSION_CONSTANT_IT,
+    KEY_MP_GIRDER_WARPING_CONSTANT_IW,
+    KEY_MP_GIRDER_CENTROID_YCG,
+    KEY_MP_GIRDER_WEB_DEPTH,
+    KEY_MP_GIRDER_FLANGE_AREA_TOP,
+    KEY_MP_GIRDER_FLANGE_AREA_BOT,
+    KEY_MP_GIRDER_WEB_AREA,
 )
+
+STEEL_DENSITY_KG_M3 = 7850.0  # IRC 24 / IS 2062 structural-steel density
 
 # Import IRC 5:2015 for footpath width per Clause 104.3.6
 from osdagbridge.core.utils.codes.irc5_2015 import IRC5_2015
@@ -380,11 +407,8 @@ class BridgeConfigurationSolver:
         float
             Preliminary girder depth in meters.
         """
-        min_d, max_d = self.get_preliminary_depth_bounds(span)
-        
         if user_value is not None:
-            return max(min_d, min(max_d, user_value))
-        
+            return user_value
         return span / DEFAULT_DEPTH_SPAN_RATIO
     
     # =========================================================================
@@ -447,38 +471,28 @@ class BridgeConfigurationSolver:
             t_f = t_f_top if t_f_top > 0 else b_f / 24.0  # Eq. 3.3
             d_web = D - 2 * t_f  # Eq. 3.4
             tw = t_w if t_w > 0 else d_web / 200.0  # Eq. 3.5
-            
-            # Area (m²)
-            A = (2 * b_f * t_f) + (d_web * tw)
-            
+
+            # Strong-axis + area properties come from the shared equation source
+            # (unit-agnostic; here everything is in metres). Symmetric section =
+            # top flange equal to bottom flange.
+            _p = steel_i_section_properties(
+                D=D, bf_top=b_f, tf_top=t_f, bf_bot=b_f, tf_bot=t_f, tw=tw,
+            )
+            A = _p[KEY_MP_GIRDER_SECTIONAL_AREA]
+            I_z = _p[KEY_MP_GIRDER_SECTIONAL_IZ]
+            Z_ez = _p[KEY_MP_GIRDER_ELASTIC_MODULUS_ZZ]
+            Z_pz = _p[KEY_MP_GIRDER_PLASTIC_MODULUS_ZUZ]
+            I_y = _p[KEY_MP_GIRDER_SECTIONAL_IY]
+            r_z = _p[KEY_MP_GIRDER_RADIUS_GYRATION_Z]
+            r_y = _p[KEY_MP_GIRDER_RADIUS_GYRATION_Y]
+            Z_ey = _p[KEY_MP_GIRDER_ELASTIC_MODULUS_ZY]
+            Z_py = _p[KEY_MP_GIRDER_PLASTIC_MODULUS_ZUY]
+            I_t = _p[KEY_MP_GIRDER_TORSION_CONSTANT_IT]
+            I_w = _p[KEY_MP_GIRDER_WARPING_CONSTANT_IW]
+
             # Mass (kg/m) - density 7850 kg/m³
-            M = 7850 * A
-            
-            # Second moment of area about Z-axis (m⁴)
-            I_z = (tw * d_web**3 / 12) + (b_f * t_f**3 / 6) + (b_f * t_f * ((D - t_f) / 2)**2) * 2
-            
-            # Second moment of area about Y-axis (m⁴)
-            I_y = (d_web * tw**3 / 12) + (2 * t_f * b_f**3 / 12)
-            
-            # Radius of gyration (m)
-            r_z = sqrt(I_z / A)
-            r_y = sqrt(I_y / A)
-            
-            # Elastic section modulus (m³)
-            Z_ez = I_z / (D / 2)
-            Z_ey = I_y / (b_f / 2)
-            
-            # Plastic section modulus (m³)
-            Z_pz = (b_f * t_f * (D - t_f)) + (tw * d_web**2 / 4)
-            Z_py = (2 * t_f * b_f**2 / 4) + (d_web * tw**2 / 4)
-            
-            # Torsion constant (m⁴)
-            I_t = (2 * b_f * t_f**3 / 3) + (d_web * tw**3 / 3)
-            
-            # Warping constant (m⁶)
-            h = D - t_f  # distance between flange centroids
-            I_w = (t_f * b_f**3 * h**2) / 24
-            
+            M = STEEL_DENSITY_KG_M3 * A
+
             return {
                 "symmetry": "Girder Symmetric",
                 # Input dimensions (m)
@@ -514,76 +528,28 @@ class BridgeConfigurationSolver:
             tf_bot = t_f_bot if t_f_bot > 0 else bf_bot / 24.0
             d_web = D - tf_top - tf_bot
             tw = t_w if t_w > 0 else d_web / 200.0
-            
-            # Area (m²)
-            A = (bf_top * tf_top) + (bf_bot * tf_bot) + (d_web * tw)
-            
+
+            # Strong-axis + area properties come from the shared equation source
+            # (unit-agnostic; here everything is in metres).
+            _p = steel_i_section_properties(
+                D=D, bf_top=bf_top, tf_top=tf_top,
+                bf_bot=bf_bot, tf_bot=tf_bot, tw=tw,
+            )
+            A = _p[KEY_MP_GIRDER_SECTIONAL_AREA]
+            I_z = _p[KEY_MP_GIRDER_SECTIONAL_IZ]
+            Z_ez = _p[KEY_MP_GIRDER_ELASTIC_MODULUS_ZZ]
+            Z_pz = _p[KEY_MP_GIRDER_PLASTIC_MODULUS_ZUZ]
+            I_y = _p[KEY_MP_GIRDER_SECTIONAL_IY]
+            r_z = _p[KEY_MP_GIRDER_RADIUS_GYRATION_Z]
+            r_y = _p[KEY_MP_GIRDER_RADIUS_GYRATION_Y]
+            Z_ey = _p[KEY_MP_GIRDER_ELASTIC_MODULUS_ZY]
+            Z_py = _p[KEY_MP_GIRDER_PLASTIC_MODULUS_ZUY]
+            I_t = _p[KEY_MP_GIRDER_TORSION_CONSTANT_IT]
+            I_w = _p[KEY_MP_GIRDER_WARPING_CONSTANT_IW]
+
             # Mass (kg/m)
-            M = 7850 * A
-            
-            # Centroid from bottom (m)
-            A_top = bf_top * tf_top
-            A_bot = bf_bot * tf_bot
-            A_web = d_web * tw
-            y_top = D - tf_top / 2
-            y_bot = tf_bot / 2
-            y_web = tf_bot + d_web / 2
-            y_c = (A_top * y_top + A_bot * y_bot + A_web * y_web) / A
-            
-            # Second moment of area about Z-axis (m⁴)
-            I_top = (bf_top * tf_top**3) / 12 + A_top * (y_top - y_c)**2
-            I_bot = (bf_bot * tf_bot**3) / 12 + A_bot * (y_c - y_bot)**2
-            I_web = (tw * d_web**3) / 12 + A_web * (y_c - y_web)**2
-            I_z = I_top + I_bot + I_web
-            
-            # Second moment of area about Y-axis (m⁴)
-            I_y = (tf_top * bf_top**3 / 12) + (tf_bot * bf_bot**3 / 12) + (d_web * tw**3 / 12)
-            
-            # Radius of gyration (m)
-            r_z = sqrt(I_z / A)
-            r_y = sqrt(I_y / A)
-            
-            # Elastic section modulus (m³) - min of top/bottom
-            Z_ez_top = I_z / (D - y_c)
-            Z_ez_bot = I_z / y_c
-            Z_ez = min(Z_ez_top, Z_ez_bot)
-            
-            B_max = max(bf_top, bf_bot)
-            Z_ey = (I_y * 2) / B_max
-            
-            # Plastic section modulus about Z (m³)
-            half_A = A / 2
-            # Find plastic neutral axis
-            if A_bot >= half_A:
-                y_pna = half_A / bf_bot
-            elif A_bot + A_web >= half_A:
-                y_pna = tf_bot + (half_A - A_bot) / tw
-            else:
-                y_pna = D - (A - half_A) / bf_top
-            
-            # Plastic modulus when PNA is in web
-            if y_pna >= tf_bot and y_pna <= D - tf_top:
-                Z_pz = (
-                    bf_bot * y_pna**2 - 
-                    (bf_bot - tw) * max(0, y_pna - tf_bot)**2 + 
-                    bf_top * (D - y_pna)**2 - 
-                    (bf_top - tw) * max(0, D - tf_top - y_pna)**2
-                ) / 2
-            else:
-                Z_pz = A_top * abs(D - tf_top/2 - D/2) + A_bot * abs(D/2 - tf_bot/2) + A_web * abs(D/2 - y_web)
-            
-            # Plastic section modulus about Y (m³)
-            Z_py = (tf_top * bf_top**2 / 4) + (tf_bot * bf_bot**2 / 4) + (d_web * tw**2 / 4)
-            
-            # Torsion constant (m⁴)
-            h = D - (tf_top + tf_bot) / 2
-            I_t = (bf_top * tf_top**3 + bf_bot * tf_bot**3 + h * tw**3) / 3
-            
-            # Warping constant (m⁶)
-            numerator = (h**2) * tf_top * tf_bot * (bf_top**3) * (bf_bot**3)
-            denominator = 12 * (tf_top * bf_top**3 + tf_bot * bf_bot**3)
-            I_w = numerator / denominator if denominator != 0 else 0
-            
+            M = STEEL_DENSITY_KG_M3 * A
+
             return {
                 "symmetry": "Girder Unsymmetric",
                 # Input dimensions (m)
@@ -608,6 +574,138 @@ class BridgeConfigurationSolver:
                 "I_t": round(I_t, 12),  # m⁴
                 "I_w": round(I_w, 14),  # m⁶
             }
+
+
+def steel_i_section_properties(
+    D: float,
+    bf_top: float,
+    tf_top: float,
+    bf_bot: float,
+    tf_bot: float,
+    tw: float,
+) -> dict:
+    """Bare-steel geometric/section properties of a welded I-girder.
+
+    Single source of the steel-section equations (area, centroid, second moment,
+    elastic/plastic section moduli). Callers must *read* these values, not
+    recompute them, so a future custom girder shape only needs its equations
+    changed here.
+
+    Unit-agnostic: pass a consistent unit set (the designer passes mm) and the
+    outputs follow (mm, mm2, mm3, mm4). Coordinate origin at the bottom fibre,
+    upward positive.
+    """
+    dw = D - tf_top - tf_bot
+    Af_top = bf_top * tf_top
+    Af_bot = bf_bot * tf_bot
+    Aw = dw * tw
+    A_steel = Af_top + Aw + Af_bot
+
+    # Steel centroid measured from bottom fibre.
+    y_b = tf_bot / 2.0
+    y_w = tf_bot + dw / 2.0
+    y_t = tf_bot + dw + tf_top / 2.0
+    y_cg_from_bot = (Af_bot * y_b + Aw * y_w + Af_top * y_t) / A_steel
+
+    # Second moment of area about the centroidal strong axis.
+    yc = y_cg_from_bot
+    Iz_steel = (
+        bf_bot * tf_bot ** 3 / 12.0
+        + Af_bot * (yc - y_b) ** 2
+        + tw * dw ** 3 / 12.0
+        + Aw * (yc - y_w) ** 2
+        + bf_top * tf_top ** 3 / 12.0
+        + Af_top * (yc - y_t) ** 2
+    )
+
+    # Plastic section modulus about the strong axis.
+    half_area = A_steel / 2.0
+    if Af_bot >= half_area:
+        y_pna = half_area / bf_bot
+    elif Af_bot + Aw >= half_area:
+        y_pna = tf_bot + (half_area - Af_bot) / tw
+    else:
+        y_pna = tf_bot + dw + (half_area - Af_bot - Aw) / bf_top
+
+    def _rect_moment(b, t, y_bot_of_rect):
+        y_top = y_bot_of_rect + t
+        if y_pna >= y_top:
+            return b * t * (y_pna - (y_bot_of_rect + t / 2.0))
+        elif y_pna <= y_bot_of_rect:
+            return b * t * ((y_bot_of_rect + t / 2.0) - y_pna)
+        else:
+            t_below = y_pna - y_bot_of_rect
+            t_above = y_top - y_pna
+            return b * t_below * t_below / 2.0 + b * t_above * t_above / 2.0
+
+    Zp_steel = (
+        _rect_moment(bf_bot, tf_bot, 0.0)
+        + _rect_moment(tw, dw, tf_bot)
+        + _rect_moment(bf_top, tf_top, tf_bot + dw)
+    )
+
+    # Elastic section modulus about the strong axis (governing extreme fibre).
+    Ze_steel = Iz_steel / max(yc, D - yc)
+
+    # --- Weak (minor) axis, torsion and warping -----------------------------
+    # Second moment of area about the weak axis.
+    Iy_steel = (
+        tf_top * bf_top ** 3 / 12.0
+        + tf_bot * bf_bot ** 3 / 12.0
+        + dw * tw ** 3 / 12.0
+    )
+
+    # Radii of gyration.
+    rz_steel = sqrt(Iz_steel / A_steel)
+    ry_steel = sqrt(Iy_steel / A_steel)
+
+    # Weak-axis elastic section modulus (extreme fibre = widest flange).
+    Zey_steel = Iy_steel / (max(bf_top, bf_bot) / 2.0)
+
+    # Weak-axis plastic section modulus.
+    Zpy_steel = (
+        tf_top * bf_top ** 2 / 4.0
+        + tf_bot * bf_bot ** 2 / 4.0
+        + dw * tw ** 2 / 4.0
+    )
+
+    # St. Venant torsion constant of a thin open section: (1/3)·Sum(b·t^3).
+    # The web contributes its clear depth dw (its actual plate length).
+    It_steel = (bf_top * tf_top ** 3 + bf_bot * tf_bot ** 3 + dw * tw ** 3) / 3.0
+
+    # Warping constant about the shear centre (h_f = distance between flange centroids).
+    h_f = D - (tf_top + tf_bot) / 2.0
+    _flange_iy = tf_top * bf_top ** 3 + tf_bot * bf_bot ** 3
+    Iw_steel = (
+        h_f ** 2 * tf_top * tf_bot * bf_top ** 3 * bf_bot ** 3
+        / (12.0 * _flange_iy)
+        if _flange_iy != 0 else 0.0
+    )
+
+    # Keyed output only — every value is addressed by its member-property key so
+    # the whole pipeline speaks one vocabulary. Mass = density x area is only
+    # meaningful when dimensions are in metres (kg/m). (The section designation is
+    # a mm-formatted label, not a unit-agnostic number, so it is built by the
+    # caller from its own dimensions, not here.)
+    return {
+        KEY_MP_GIRDER_SECTIONAL_AREA:      A_steel,
+        KEY_MP_GIRDER_MASS:                STEEL_DENSITY_KG_M3 * A_steel,
+        KEY_MP_GIRDER_SECTIONAL_IZ:        Iz_steel,
+        KEY_MP_GIRDER_SECTIONAL_IY:        Iy_steel,
+        KEY_MP_GIRDER_RADIUS_GYRATION_Z:   rz_steel,
+        KEY_MP_GIRDER_RADIUS_GYRATION_Y:   ry_steel,
+        KEY_MP_GIRDER_ELASTIC_MODULUS_ZZ:  Ze_steel,
+        KEY_MP_GIRDER_ELASTIC_MODULUS_ZY:  Zey_steel,
+        KEY_MP_GIRDER_PLASTIC_MODULUS_ZUZ: Zp_steel,
+        KEY_MP_GIRDER_PLASTIC_MODULUS_ZUY: Zpy_steel,
+        KEY_MP_GIRDER_TORSION_CONSTANT_IT: It_steel,
+        KEY_MP_GIRDER_WARPING_CONSTANT_IW: Iw_steel,
+        KEY_MP_GIRDER_CENTROID_YCG:        y_cg_from_bot,
+        KEY_MP_GIRDER_WEB_DEPTH:           dw,
+        KEY_MP_GIRDER_FLANGE_AREA_TOP:     Af_top,
+        KEY_MP_GIRDER_FLANGE_AREA_BOT:     Af_bot,
+        KEY_MP_GIRDER_WEB_AREA:            Aw,
+    }
 
 
 def composite_section_properties(
@@ -640,14 +738,14 @@ def composite_section_properties(
     y_top     = total_depth - y_comp_bot
     y_bot     = y_comp_bot
     return {
-        "n"                  : round(n, 3),
-        "Ac_trans_mm2"       : round(Ac_trans, 1),
-        "y_comp_from_bot_mm" : round(y_comp_bot, 3),
-        "y_top_mm"           : round(y_top, 3),
-        "y_bot_mm"           : round(y_bot, 3),
-        "I_comp_mm4"         : round(I_comp, 0),
-        "S_top_mm3"          : round(I_comp / y_top, 0),
-        "S_bot_mm3"          : round(I_comp / y_bot, 0),
+        KEY_COMP_N            : round(n, 3),
+        KEY_COMP_AC_TRANS_MM2 : round(Ac_trans, 1),
+        KEY_COMP_Y_FROM_BOT   : round(y_comp_bot, 3),
+        KEY_COMP_Y_TOP        : round(y_top, 3),
+        KEY_COMP_Y_BOT        : round(y_bot, 3),
+        KEY_COMP_I            : round(I_comp, 0),
+        KEY_COMP_S_TOP        : round(I_comp / y_top, 0),
+        KEY_COMP_S_BOT        : round(I_comp / y_bot, 0),
     }
 
 

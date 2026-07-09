@@ -3303,6 +3303,11 @@ DECK_DESIGN_SUMMARY_SCHEMA = {
             {"key": "ur_oh_sls_c",  "label": "SLS - Overhang Concrete Stress", "is_overhang": True},
             {"key": "ur_oh_sls_s",  "label": "SLS - Overhang Steel Stress",    "is_overhang": True},
             {"key": "ur_oh_crack",  "label": "SLS - Overhang Crack Width",     "is_overhang": True},
+            # Composite steel–concrete interface checks (moved from steel design).
+            {"key": "ur_composite_trans_shear",  "label": "Composite - Transverse Shear (Cl.606.10)",   "is_overhang": False},
+            {"key": "ur_composite_crack",        "label": "Composite - Crack Control, Aₛ,min (Cl.604.4)", "is_overhang": False},
+            {"key": "ur_composite_conc_stress",  "label": "Composite - Concrete Stress SLS (Cl.604.3.1)", "is_overhang": False},
+            {"key": "ur_composite_rebar_stress", "label": "Composite - Rebar Stress SLS (Cl.604.3.1)",    "is_overhang": False},
         ]
     },
     "design_check_card": {
