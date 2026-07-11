@@ -396,5 +396,6 @@ class BridgeParametersDTO:
     girder_segments: list[GirderSegmentDTO] = field(default_factory=list)
     girder_segments_dict: dict[int, list[GirderSegmentDTO]] = field(default_factory=dict)
     stiffeners_dict: dict[int, dict] = field(default_factory=dict)
+    output_dict: dict = field(default_factory=dict)
 
 

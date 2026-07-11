@@ -31,6 +31,54 @@ from OCC.Core.BRepPrimAPI import BRepPrimAPI_MakeBox
 from OCC.Core.BRepAlgoAPI import BRepAlgoAPI_Fuse
 from OCC.Core.BRepBuilderAPI import BRepBuilderAPI_Transform
 
+from osdagbridge.core.utils.common import (
+    KEY_MP_CB_TYPE, KEY_MP_CB_TOP_CHORD, KEY_MP_CB_BOTTOM_CHORD,
+    KEY_MP_CB_BRACING_SECTION_TYPE,
+    KEY_MP_CB_TOP_CHORD_SECTION_TYPE,
+    KEY_MP_CB_BOTTOM_CHORD_SECTION_TYPE,
+    KEY_MP_CB_DIAGONAL_LEG_H, KEY_MP_CB_DIAGONAL_LEG_W, KEY_MP_CB_DIAGONAL_THICKNESS,
+    KEY_MP_CB_TOP_CHORD_LEG_H, KEY_MP_CB_TOP_CHORD_LEG_W, KEY_MP_CB_TOP_CHORD_THICKNESS,
+    KEY_MP_CB_BOTTOM_CHORD_LEG_H, KEY_MP_CB_BOTTOM_CHORD_LEG_W, KEY_MP_CB_BOTTOM_CHORD_THICKNESS,
+    KEY_MP_ED_BRACING_TYPE, KEY_MP_ED_TOP_CHORD, KEY_MP_ED_BOTTOM_CHORD,
+    KEY_MP_ED_BRACING_SECTION,
+    KEY_MP_ED_TOP_CHORD_SECTION_TYPE,
+    KEY_MP_ED_BOTTOM_CHORD_SECTION_TYPE,
+    KEY_MP_ED_DIAGONAL_LEG_H, KEY_MP_ED_DIAGONAL_LEG_W, KEY_MP_ED_DIAGONAL_THICKNESS,
+    KEY_MP_ED_TOP_CHORD_LEG_H, KEY_MP_ED_TOP_CHORD_LEG_W, KEY_MP_ED_TOP_CHORD_THICKNESS,
+    KEY_MP_ED_BOTTOM_CHORD_LEG_H, KEY_MP_ED_BOTTOM_CHORD_LEG_W, KEY_MP_ED_BOTTOM_CHORD_THICKNESS,
+)
+
+
+def _parse_sec_type(raw):
+    """Convert a UI section-type string to an OCC builder type identifier."""
+    if raw is None:
+        return None
+    s = str(raw).strip().upper()
+    if "DOUBLE" in s:
+        return "DOUBLE_CHANNEL" if "CHANNEL" in s else "DOUBLE_ANGLE"
+    if "CHANNEL" in s:
+        return "CHANNEL"
+    if "ANGLE" in s:
+        return "ANGLE"
+    if "I_SECTION" in s or "I-SECTION" in s or "ISECTION" in s:
+        return "I_SECTION"
+    return None
+
+
+def _is_enabled(val):
+    """Return True unless val explicitly means disabled."""
+    return str(val).strip().lower() not in ("no", "false", "0", "none")
+
+
+def _pk(key, pair_key):
+    """Insert pair_key into a KEY constant path right after its module-prefix segment.
+
+    e.g. _pk(KEY_MP_CB_DIAGONAL_LEG_H, 'G1G2')
+         -> 'member_properties.cross_bracing_details.G1G2.diagonal.leg_h'
+    """
+    idx = key.index(".", key.index(".") + 1)  # position of second '.'
+    return key[:idx + 1] + pair_key + "." + key[idx + 1:]
+
 
 # SECTION GEOMETRY CREATORS
 
@@ -316,6 +364,22 @@ def _create_section_solid(section_type, length, thickness, dims):
     Raises:
         ValueError: If section type is not supported
     """
+    dims = dict(dims)  # shallow copy — lines below mutate dims to fill missing keys
+
+    if "depth" not in dims and "leg_h" in dims:
+        dims["depth"] = dims["leg_h"]
+    if "flange_width" not in dims and "leg_w" in dims:
+        dims["flange_width"] = dims["leg_w"]
+    if "leg_h" not in dims and "depth" in dims:
+        dims["leg_h"] = dims["depth"]
+    if "leg_w" not in dims and "flange_width" in dims:
+        dims["leg_w"] = dims["flange_width"]
+
+    if "web_thickness" not in dims:
+        dims["web_thickness"] = thickness
+    if "flange_thickness" not in dims:
+        dims["flange_thickness"] = thickness
+
     if section_type == "ANGLE":
         # Support both angle-specific and generic dimension keys
         h = dims.get("leg_h", dims.get("depth", 100))
@@ -616,6 +680,8 @@ def _diaphragm_bracing(x, yL, yR, depth, tf, thickness, section_type, dims, skew
     Returns:
         list: List containing the diaphragm member shape
     """
+    dims = dict(dims)  # shallow copy — avoid mutating caller's dict
+
     # Place exactly at the bottom of the girder top flange
     # top edge of web is at +depth / 2
     # diaphragm is centered at gp_Pnt, so center = (top_edge) - (member_depth / 2)
@@ -704,7 +770,8 @@ def build_cross_bracings(
     # For Rolled/Welded beam diaphragms
     end_diaphragm_section="I_SECTION",
     end_diaphragm_dims=None,
-    end_diaphragm_spacing=0
+    end_diaphragm_spacing=0,
+    output_dict=None,
 ):
 
     bracings = []
@@ -784,64 +851,146 @@ def build_cross_bracings(
 
                 if end_diaphragm_type == "Cross Bracing":
                     # Use end diaphragm section configurations
-                    if end_diaphragm_bracing_type == "X":
+                    p_ed_bracing_type = end_diaphragm_bracing_type
+                    p_ed_diag_thick = end_diaphragm_diagonal_thickness
+                    p_ed_diag_sec_type = end_diaphragm_diagonal_section_type
+                    p_ed_diag_dims = end_diaphragm_diagonal_section_dims
+                    
+                    p_ed_tc_thick = end_diaphragm_top_chord_thickness
+                    p_ed_tc_sec_type = end_diaphragm_top_chord_section_type
+                    p_ed_tc_dims = end_diaphragm_top_chord_section_dims
+                    
+                    p_ed_bc_thick = end_diaphragm_bottom_chord_thickness
+                    p_ed_bc_sec_type = end_diaphragm_bottom_chord_section_type
+                    p_ed_bc_dims = end_diaphragm_bottom_chord_section_dims
+                    
+                    p_ed_bracket_option = "BOTH"
+                    p_ed_top_bracket = True
+
+                    if output_dict:
+                        pair_key = f"G{i+1}G{i+2}"
+                        ed_suffix = f".{pair_key}.E{i+1}M1"
+
+                        # bracing type
+                        _bt = output_dict.get(KEY_MP_ED_BRACING_TYPE + ed_suffix)
+                        if _bt is not None:
+                            p_ed_bracing_type = "K" if "K" in str(_bt).upper() else "X"
+
+                        # top / bottom chord enabled
+                        _tc_en = _is_enabled(output_dict.get(KEY_MP_ED_TOP_CHORD + ed_suffix))
+                        _bc_en = _is_enabled(output_dict.get(KEY_MP_ED_BOTTOM_CHORD + ed_suffix))
+
+                        # section types (UI keys, then designed output keys)
+                        _diag_st = (
+                            _parse_sec_type(output_dict.get(KEY_MP_ED_BRACING_SECTION + ed_suffix))
+                        )
+                        if _diag_st:
+                            p_ed_diag_sec_type = _diag_st
+
+                        _tc_st = (
+                            _parse_sec_type(output_dict.get(KEY_MP_ED_TOP_CHORD_SECTION_TYPE + ed_suffix))
+                        )
+                        if _tc_st:
+                            p_ed_tc_sec_type = _tc_st
+
+                        _bc_st = (
+                            _parse_sec_type(output_dict.get(KEY_MP_ED_BOTTOM_CHORD_SECTION_TYPE + ed_suffix))
+                        )
+                        if _bc_st:
+                            p_ed_bc_sec_type = _bc_st
+
+                        # section dimensions from designed output keys
+                        _d_lh = output_dict.get(_pk(KEY_MP_ED_DIAGONAL_LEG_H, pair_key))
+                        _d_lw = output_dict.get(_pk(KEY_MP_ED_DIAGONAL_LEG_W, pair_key))
+                        _d_tw = output_dict.get(_pk(KEY_MP_ED_DIAGONAL_THICKNESS, pair_key))
+                        if _d_lh is not None and _d_lw is not None:
+                            p_ed_diag_dims = {"leg_h": float(_d_lh), "leg_w": float(_d_lw), "connection_type": "LONGER_LEG"}
+                        if _d_tw is not None:
+                            p_ed_diag_thick = float(_d_tw)
+
+                        _tc_lh = output_dict.get(_pk(KEY_MP_ED_TOP_CHORD_LEG_H, pair_key))
+                        _tc_lw = output_dict.get(_pk(KEY_MP_ED_TOP_CHORD_LEG_W, pair_key))
+                        _tc_tw = output_dict.get(_pk(KEY_MP_ED_TOP_CHORD_THICKNESS, pair_key))
+                        if _tc_lh is not None and _tc_lw is not None:
+                            p_ed_tc_dims = {"leg_h": float(_tc_lh), "leg_w": float(_tc_lw), "connection_type": "LONGER_LEG"}
+                        if _tc_tw is not None:
+                            p_ed_tc_thick = float(_tc_tw)
+
+                        _bc_lh = output_dict.get(_pk(KEY_MP_ED_BOTTOM_CHORD_LEG_H, pair_key))
+                        _bc_lw = output_dict.get(_pk(KEY_MP_ED_BOTTOM_CHORD_LEG_W, pair_key))
+                        _bc_tw = output_dict.get(_pk(KEY_MP_ED_BOTTOM_CHORD_THICKNESS, pair_key))
+                        if _bc_lh is not None and _bc_lw is not None:
+                            p_ed_bc_dims = {"leg_h": float(_bc_lh), "leg_w": float(_bc_lw), "connection_type": "LONGER_LEG"}
+                        if _bc_tw is not None:
+                            p_ed_bc_thick = float(_bc_tw)
+
+                        # bracket configuration
+                        if _tc_en and _bc_en:
+                            p_ed_bracket_option = "BOTH"
+                        elif _tc_en:
+                            p_ed_bracket_option = "UPPER"
+                        elif _bc_en:
+                            p_ed_bracket_option = "LOWER"
+                        else:
+                            p_ed_bracket_option = "NONE"
+                        p_ed_top_bracket = _tc_en
+
+                    if p_ed_bracing_type == "X":
                         frame = _x_bracing(
                                 x_eff, yL, yR,
                                 eff_depth, flange_thickness, flange_width,
-                                end_diaphragm_diagonal_thickness,
-                                end_diaphragm_diagonal_section_type,
-                                end_diaphragm_diagonal_section_dims,
-                                end_diaphragm_top_chord_thickness,
-                                end_diaphragm_top_chord_section_type,
-                                end_diaphragm_top_chord_section_dims,
-                                end_diaphragm_bottom_chord_thickness,
-                                end_diaphragm_bottom_chord_section_type,
-                                end_diaphragm_bottom_chord_section_dims,
-                                bracket_option,
+                                p_ed_diag_thick,
+                                p_ed_diag_sec_type,
+                                p_ed_diag_dims,
+                                p_ed_tc_thick,
+                                p_ed_tc_sec_type,
+                                p_ed_tc_dims,
+                                p_ed_bc_thick,
+                                p_ed_bc_sec_type,
+                                p_ed_bc_dims,
+                                p_ed_bracket_option,
                                 skew_angle=skew_angle
                         )
                         bracings.extend(_apply_z_offset(frame, z_offset))
-                    elif end_diaphragm_bracing_type == "K":
+                    elif p_ed_bracing_type == "K":
                         frame = _k_bracing(
                                 x_eff, yL, yR,
                                 eff_depth, flange_thickness, flange_width,
-                                end_diaphragm_diagonal_thickness,
-                                end_diaphragm_diagonal_section_type,
-                                end_diaphragm_diagonal_section_dims,
-                                end_diaphragm_top_chord_thickness,
-                                end_diaphragm_top_chord_section_type,
-                                end_diaphragm_top_chord_section_dims,
-                                end_diaphragm_bottom_chord_thickness,
-                                end_diaphragm_bottom_chord_section_type,
-                                end_diaphragm_bottom_chord_section_dims,
-                                top_bracket,
+                                p_ed_diag_thick,
+                                p_ed_diag_sec_type,
+                                p_ed_diag_dims,
+                                p_ed_tc_thick,
+                                p_ed_tc_sec_type,
+                                p_ed_tc_dims,
+                                p_ed_bc_thick,
+                                p_ed_bc_sec_type,
+                                p_ed_bc_dims,
+                                p_ed_top_bracket,
                                 skew_angle=skew_angle
                         )
                         bracings.extend(_apply_z_offset(frame, z_offset))
                 
                 elif end_diaphragm_type == "Rolled Beam" or end_diaphragm_type == "Welded Beam":
-                    # Use I-section for rolled beam diaphragm
                     diaphragm_dims = end_diaphragm_dims if end_diaphragm_dims is not None else {
                         "depth": eff_depth * 0.8,
                         "flange_width": 200,
                         "web_thickness": 10,
                         "flange_thickness": 15
                     }
-                    
                     # Validate dimensions or use defaults (slightly larger than rolled)
                     if "depth" not in diaphragm_dims or "flange_width" not in diaphragm_dims:
                         diaphragm_dims = {
-                            "depth": eff_depth * 0.85,  
-                            "flange_width": 250,            
-                            "web_thickness": 12,            
-                            "flange_thickness": 20          
+                            "depth": eff_depth * 0.85,
+                            "flange_width": 250,
+                            "web_thickness": 12,
+                            "flange_thickness": 20
                         }
                     frame = _diaphragm_bracing(
                                 x_eff, yL, yR,
                                 eff_depth, flange_thickness,
-                                end_diaphragm_thickness,
+                                diaphragm_dims.get("web_thickness", 10),
                                 end_diaphragm_section,
-                                end_diaphragm_dims,
+                                diaphragm_dims,
                                 skew_angle=skew_angle
                     )
                     bracings.extend(_apply_z_offset(frame, z_offset))
@@ -850,26 +999,107 @@ def build_cross_bracings(
             
             # INTERNAL BRACING HANDLING
             # Build normal X or K bracing for internal panels using separate sections
-            if bracing_type == "X":
+            p_bracing_type = bracing_type
+            p_diag_thick = diagonal_thickness
+            p_diag_sec_type = diagonal_section_type
+            p_diag_dims = diagonal_section_dims
+            p_tc_thick = top_chord_thickness
+            p_tc_sec_type = top_chord_section_type
+            p_tc_dims = top_chord_section_dims
+            p_bc_thick = bottom_chord_thickness
+            p_bc_sec_type = bottom_chord_section_type
+            p_bc_dims = bottom_chord_section_dims
+            p_bracket_option = bracket_option
+            p_top_bracket = top_bracket
+
+            pair_key = f"G{i+1}G{i+2}"
+            cb_suffix = f".{pair_key}.B{i+1}M1"
+
+            if output_dict:
+                # --- bracing type ---
+                _bt = output_dict.get(KEY_MP_CB_TYPE + cb_suffix)
+                if _bt is not None:
+                    p_bracing_type = "K" if "K" in str(_bt).upper() else "X"
+
+                # --- top / bottom chord enabled ---
+                _tc_en = _is_enabled(output_dict.get(KEY_MP_CB_TOP_CHORD + cb_suffix))
+                _bc_en = _is_enabled(output_dict.get(KEY_MP_CB_BOTTOM_CHORD + cb_suffix))
+
+                # --- section types (UI keys, then designed output keys) ---
+                _diag_st = (
+                    _parse_sec_type(output_dict.get(KEY_MP_CB_BRACING_SECTION_TYPE + cb_suffix))
+                )
+                if _diag_st:
+                    p_diag_sec_type = _diag_st
+
+                _tc_st = (
+                    _parse_sec_type(output_dict.get(KEY_MP_CB_TOP_CHORD_SECTION_TYPE + cb_suffix))
+                )
+                if _tc_st:
+                    p_tc_sec_type = _tc_st
+
+                _bc_st = (
+                    _parse_sec_type(output_dict.get(KEY_MP_CB_BOTTOM_CHORD_SECTION_TYPE + cb_suffix))
+                )
+                if _bc_st:
+                    p_bc_sec_type = _bc_st
+
+                # --- section dimensions from designed output keys ---
+                _d_lh = output_dict.get(_pk(KEY_MP_CB_DIAGONAL_LEG_H, pair_key))
+                _d_lw = output_dict.get(_pk(KEY_MP_CB_DIAGONAL_LEG_W, pair_key))
+                _d_tw = output_dict.get(_pk(KEY_MP_CB_DIAGONAL_THICKNESS, pair_key))
+                if _d_lh is not None and _d_lw is not None:
+                    p_diag_dims = {"leg_h": float(_d_lh), "leg_w": float(_d_lw), "connection_type": "LONGER_LEG"}
+                if _d_tw is not None:
+                    p_diag_thick = float(_d_tw)
+
+                _tc_lh = output_dict.get(_pk(KEY_MP_CB_TOP_CHORD_LEG_H, pair_key))
+                _tc_lw = output_dict.get(_pk(KEY_MP_CB_TOP_CHORD_LEG_W, pair_key))
+                _tc_tw = output_dict.get(_pk(KEY_MP_CB_TOP_CHORD_THICKNESS, pair_key))
+                if _tc_lh is not None and _tc_lw is not None:
+                    p_tc_dims = {"leg_h": float(_tc_lh), "leg_w": float(_tc_lw), "connection_type": "LONGER_LEG"}
+                if _tc_tw is not None:
+                    p_tc_thick = float(_tc_tw)
+
+                _bc_lh = output_dict.get(_pk(KEY_MP_CB_BOTTOM_CHORD_LEG_H, pair_key))
+                _bc_lw = output_dict.get(_pk(KEY_MP_CB_BOTTOM_CHORD_LEG_W, pair_key))
+                _bc_tw = output_dict.get(_pk(KEY_MP_CB_BOTTOM_CHORD_THICKNESS, pair_key))
+                if _bc_lh is not None and _bc_lw is not None:
+                    p_bc_dims = {"leg_h": float(_bc_lh), "leg_w": float(_bc_lw), "connection_type": "LONGER_LEG"}
+                if _bc_tw is not None:
+                    p_bc_thick = float(_bc_tw)
+
+                # --- bracket configuration ---
+                if _tc_en and _bc_en:
+                    p_bracket_option = "BOTH"
+                elif _tc_en:
+                    p_bracket_option = "UPPER"
+                elif _bc_en:
+                    p_bracket_option = "LOWER"
+                else:
+                    p_bracket_option = "NONE"
+                p_top_bracket = _tc_en
+
+            if p_bracing_type == "X":
                 frame = _x_bracing(
                     x, yL, yR,
                     eff_depth, flange_thickness, flange_width,
-                    diagonal_thickness, diagonal_section_type, diagonal_section_dims,
-                    top_chord_thickness, top_chord_section_type, top_chord_section_dims,
-                    bottom_chord_thickness, bottom_chord_section_type, bottom_chord_section_dims,
-                    bracket_option,
+                    p_diag_thick, p_diag_sec_type, p_diag_dims,
+                    p_tc_thick, p_tc_sec_type, p_tc_dims,
+                    p_bc_thick, p_bc_sec_type, p_bc_dims,
+                    p_bracket_option,
                     skew_angle=skew_angle
                 )
                 bracings.extend(_apply_z_offset(frame, z_offset))
             
-            elif bracing_type == "K":
+            elif p_bracing_type == "K":
                 frame = _k_bracing(
                     x, yL, yR,
                     eff_depth, flange_thickness, flange_width,
-                    diagonal_thickness, diagonal_section_type, diagonal_section_dims,
-                    top_chord_thickness, top_chord_section_type, top_chord_section_dims,
-                    bottom_chord_thickness, bottom_chord_section_type, bottom_chord_section_dims,
-                    top_bracket,
+                    p_diag_thick, p_diag_sec_type, p_diag_dims,
+                    p_tc_thick, p_tc_sec_type, p_tc_dims,
+                    p_bc_thick, p_bc_sec_type, p_bc_dims,
+                    p_top_bracket,
                     skew_angle=skew_angle
                 )
                 bracings.extend(_apply_z_offset(frame, z_offset))

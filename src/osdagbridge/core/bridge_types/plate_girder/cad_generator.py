@@ -255,6 +255,7 @@ class PlateGirderCADGenerator:
         self.bracing_type = design_params.bracing_type
         self.x_bracket_option = design_params.x_bracket_option
         self.k_top_bracket = design_params.k_top_bracket
+        self.output_dict = design_params.output_dict
 
         self.diagonal_section_type = design_params.diagonal_section_type
         self.diagonal_section_dims = {
@@ -284,6 +285,7 @@ class PlateGirderCADGenerator:
         self.end_diaphragm_type = design_params.end_diaphragm_type
         self.end_diaphragm_spacing = design_params.end_diaphragm_spacing
         self.end_diaphragm_bracing_type = design_params.end_diaphragm_bracing_type
+
 
         self.end_diaphragm_diagonal_section_type = design_params.end_diaphragm_diagonal_section_type
         self.end_diaphragm_diagonal_section_dims = {
@@ -700,7 +702,8 @@ class PlateGirderCADGenerator:
             # For Rolled/Welded beam diaphragms
             end_diaphragm_section=self.end_diaphragm_section,
             end_diaphragm_dims=self.end_diaphragm_dims,
-            end_diaphragm_spacing=self.end_diaphragm_spacing
+            end_diaphragm_spacing=self.end_diaphragm_spacing,
+            output_dict=self.output_dict,
         )
 
         # STEP 6: CONFIGURE CRASH BARRIER SPECIFICATIONS (IRC 5:2015)

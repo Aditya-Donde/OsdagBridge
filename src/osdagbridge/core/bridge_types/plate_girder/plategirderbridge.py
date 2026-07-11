@@ -229,9 +229,26 @@ from osdagbridge.core.utils.common import (
     KEY_MP_STIFFENER_LONGITUDINAL,
 
     # Cross Bracing Details
+    KEY_MP_CB_TYPE,
     KEY_MP_CB_BRACING_SECTION_TYPE,
+    KEY_MP_CB_BRACING_SECTION_DESIGNATION,
+    KEY_MP_CB_TOP_CHORD,
+    KEY_MP_CB_TOP_CHORD_SECTION_TYPE,
     KEY_MP_CB_TOP_CHORD_SECTION_DESIG,
+    KEY_MP_CB_BOTTOM_CHORD,
+    KEY_MP_CB_BOTTOM_CHORD_SECTION_TYPE,
     KEY_MP_CB_BOTTOM_CHORD_SECTION_DESIG,
+
+    # End Diaphragm Details
+    KEY_MP_ED_BRACING_TYPE,
+    KEY_MP_ED_BRACING_SECTION,
+    KEY_MP_ED_BRACING_SECTION_DESIGNATION,
+    KEY_MP_ED_TOP_CHORD,
+    KEY_MP_ED_TOP_CHORD_SECTION_TYPE,
+    KEY_MP_ED_TOP_CHORD_SECTION_DESIG,
+    KEY_MP_ED_BOTTOM_CHORD,
+    KEY_MP_ED_BOTTOM_CHORD_SECTION_TYPE,
+    KEY_MP_ED_BOTTOM_CHORD_SECTION_DESIG,
 
     # Transverse member properties
     KEY_TD_CB_PROP_L, KEY_TD_CB_PROP_H, KEY_TD_CB_PROP_B, KEY_TD_CB_PROP_TW, KEY_TD_CB_PROP_TF,
@@ -2691,9 +2708,9 @@ class PlateGirderBridge:
             if ed_type == "Cross Bracing":
                 bracing_type = self.input_dict.get(f"{KEY_MP_ED_BRACING_TYPE}{member_suffix}")
                 top_chord_enabled = self.input_dict.get(f"{KEY_MP_ED_TOP_CHORD}{member_suffix}")
-                top_chord_enabled = str(top_chord_enabled).strip().lower() not in ("no", "false", "0")
+                top_chord_enabled = str(top_chord_enabled).strip().lower() not in ("no", "false", "0", "none", "")
                 bottom_chord_enabled = self.input_dict.get(f"{KEY_MP_ED_BOTTOM_CHORD}{member_suffix}")
-                bottom_chord_enabled = str(bottom_chord_enabled).strip().lower() not in ("no", "false", "0")
+                bottom_chord_enabled = str(bottom_chord_enabled).strip().lower() not in ("no", "false", "0", "none", "")
 
                 self.output_dict[make_pair_key(KEY_MP_ED_BRACING_TYPE, pair_id)] = bracing_type
                 self.output_dict[make_pair_key(KEY_MP_ED_TOP_CHORD, pair_id)] = top_chord_enabled
@@ -3589,7 +3606,7 @@ class PlateGirderBridge:
             longitudinal_stiffener_outstand=None,
             # --- Cross bracing ---
             cross_bracing_spacing=cross_bracing_mm,
-            bracing_type="X",
+            bracing_type="K" if "K" in str(inp.get(KEY_MP_CB_TYPE, "X")).upper() else "X",
             x_bracket_option="BOTH",
             k_top_bracket=True,
             diagonal_section_type="ANGLE",
@@ -3642,7 +3659,10 @@ class PlateGirderBridge:
             girder_segments=[girder_segment],
             girder_segments_dict={},
             stiffeners_dict=stiffeners_dict,
+            output_dict=self.output_dict,
         )
+
+
 
     def get_ifc_export_parameters(self, input_dict: dict | None = None) -> BridgeParametersDTO:
         """

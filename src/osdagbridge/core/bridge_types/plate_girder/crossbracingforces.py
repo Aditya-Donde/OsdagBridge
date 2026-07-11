@@ -212,10 +212,15 @@ class CrossBracingForces:
         if brace_type is not None:
             raw = str(brace_type).strip().upper()
         else:
-            raw = str(ai.get(KEY_MP_CB_BRACING_SECTION_TYPE)).strip().upper()
+            # KEY_MP_CB_TYPE stores "K-Bracing" or "X-Bracing" (the pattern type)
+            raw = str(ai.get(KEY_MP_CB_TYPE, "")).strip().upper()
 
         if raw not in (BRACE_X, BRACE_K):
-            raw = BRACE_X  # TODO: remove fallback once UI always sets brace type
+            # Normalise display labels like "K-BRACING" → "K", "X-BRACING" → "X"
+            if "K" in raw:
+                raw = BRACE_K
+            else:
+                raw = BRACE_X  # default to X when unrecognised
         self.brace_type: str = raw
 
         if top_chord is not None:
