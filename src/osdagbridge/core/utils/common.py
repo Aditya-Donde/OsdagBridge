@@ -97,19 +97,19 @@ KEY_MATERIAL_DECK_THERMAL = "material.deck.thermal"
 KEY_MATERIAL_DECK_DENSITY = "material.deck.density"
 
 # Display labels for material property fields
-DISP_MATERIAL_GIRDER_DENSITY = "Weight Density (kN/m³)"
+DISP_MATERIAL_GIRDER_DENSITY = "Weight Density, &gamma; (kN/m³)"
 DISP_MATERIAL_GIRDER_FY = "Yield Strength, F<sub>y</sub> (MPa)"
 DISP_MATERIAL_GIRDER_FU = "Ultimate Tensile Strength, F<sub>u</sub> (MPa)"
 DISP_MATERIAL_GIRDER_E = "Modulus of Elasticity, E (GPa)"
 DISP_MATERIAL_GIRDER_G = "Modulus of Rigidity, G (GPa)"
 DISP_MATERIAL_GIRDER_POISSON = "Poisson&apos;s Ratio, &nu;"
-DISP_MATERIAL_GIRDER_THERMAL = "Thermal Expansion Coefficient, (&times;10<sup>&minus;6</sup>/°C)"
+DISP_MATERIAL_GIRDER_THERMAL = "Thermal Expansion Coefficient, &alpha; (&times;10<sup>&minus;6</sup>/°C)"
 
-DISP_MATERIAL_DECK_DENSITY = "Weight Density (kN/m³)"
+DISP_MATERIAL_DECK_DENSITY = "Weight Density, &gamma; (kN/m³)"
 DISP_MATERIAL_DECK_FCK = "Characteristic Compressive (Cube) Strength of Concrete, f<sub>ck</sub> (MPa)"
 DISP_MATERIAL_DECK_FCTM = "Mean Tensile Strength of Concrete, f<sub>ctm</sub> (MPa)"
 DISP_MATERIAL_DECK_ECM = "Secant Modulus of Elasticity of Concrete, E<sub>cm</sub> (GPa)"
-DISP_MATERIAL_DECK_THERMAL = "Thermal Expansion Coefficient, (&times;10<sup>&minus;6</sup>/°C)"
+DISP_MATERIAL_DECK_THERMAL = "Thermal Expansion Coefficient, &alpha; (&times;10<sup>&minus;6</sup>/°C)"
 
 # ── Output section keys ───────────────────────────────────────────────────────
 KEY_SECTION_OUTPUT_ANALYSIS       = "section.output.analysis"
