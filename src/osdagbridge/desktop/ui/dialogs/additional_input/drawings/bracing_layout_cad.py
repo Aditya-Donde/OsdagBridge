@@ -111,10 +111,11 @@ class BracingLayoutCadWidget(QWidget):
                     return f"{parts[0]} - {parts[1]}"
             return text or "B1M1"
 
-        pair_text = self._girder_pair or "G1 to G2"
+        pair_text = self._girder_pair or "G1-G2"
         left_girder, right_girder = "G1", "G2"
-        if " to " in pair_text:
-            parts = [p.strip() for p in pair_text.split(" to ", 1)]
+        sep = " to " if " to " in pair_text else ("-" if "-" in pair_text else None)
+        if sep:
+            parts = [p.strip() for p in pair_text.split(sep, 1)]
             if len(parts) == 2 and parts[0] and parts[1]:
                 left_girder, right_girder = parts[0], parts[1]
 

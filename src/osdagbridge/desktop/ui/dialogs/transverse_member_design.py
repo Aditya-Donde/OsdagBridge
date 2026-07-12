@@ -884,9 +884,21 @@ class TransverseMemberDesign(QDialog):
         top     = tc_w.isChecked() if tc_w else True
         bottom  = bc_w.isChecked() if bc_w else True
 
+        pair_combo = self._widgets.get(KEY_TD_SELECT_GIRDER)
+        pair_key = pair_combo.currentText() if pair_combo else ""
+        if not pair_key and self._pair_keys:
+            pair_key = self._pair_keys[0]
+        pair_num = (self._pair_keys.index(pair_key) + 1) if pair_key in self._pair_keys else 1
+        prefix = "E" if is_ed_tab else "B"
+        n_members = 2 if is_ed_tab else self._members_per_pair.get(pair_key, 1)
+        if n_members > 1:
+            member_label = f"{prefix}{pair_num}M1 to {prefix}{pair_num}M{n_members}"
+        else:
+            member_label = f"{prefix}{pair_num}M1"
+
         active_widget = self._tab_bracing_widgets["ed" if is_ed_tab else "cb"]
         if active_widget is not None:
-            active_widget.set_layout(bracing, top, bottom, "", "")
+            active_widget.set_layout(bracing, top, bottom, member_label, pair_key)
 
     # ── Data loading ──────────────────────────────────────────────────────
 
@@ -1542,6 +1554,9 @@ class TransverseMemberDesign(QDialog):
         active = self._tab_result_texts.get(tab_key)
         if active:
             self.design_check_text = active
+        # The newly-active tab's CAD preview may be stale (last drawn before
+        # this tab became visible), so refresh it for the current selection.
+        self._refresh_bracing_layout()
     
     @staticmethod
     def _section_type_label(backend_type: str) -> str:
