@@ -7,7 +7,15 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor, QPainter, QPen
 from PySide6.QtWidgets import QSizePolicy, QWidget
 
-from osdagbridge.core.utils.common import MIN_BEARING_STIFFENER_SPACING_MM
+from osdagbridge.core.utils.common import (
+    MIN_BEARING_STIFFENER_SPACING_MM,
+    KEY_SD_SHEAR_DIAMETER, KEY_SD_SHEAR_HEIGHT, KEY_SD_SHEAR_LONGITUDINAL_SPACING,
+    KEY_DS_STUD_DIAMETER, KEY_DS_STUD_HEIGHT
+)
+
+from osdagbridge.core.bridge_components.super_structure.shear_studs.geometry import (
+    min_stud_head_diameter, min_stud_head_height
+)
 
 MIN_BEARING_SPACING_MM = MIN_BEARING_STIFFENER_SPACING_MM
 
@@ -117,7 +125,7 @@ class StiffenerCadPreviewWidget(QWidget):
         cad_bg = draw.adjusted(0, 14, 0, -8)
         painter.fillRect(cad_bg, self.THEME_CANVAS)
 
-        girder_rect = cad_bg.adjusted(14, 18, -14, -18)
+        girder_rect = cad_bg.adjusted(14, 38, -14, -18)
         painter.fillRect(girder_rect, self.THEME_GIRDER)
 
         active_dims = self._dims_for(self._active_member_id)
@@ -197,7 +205,7 @@ class StiffenerCadPreviewWidget(QWidget):
             segment_rects.append({"id": seg["id"], "left": x, "right": x + width})
             x += width
 
-        label_gap = 4
+        label_gap = 22  # Gap to avoid shear studs
         label_height = 20
         label_bottom = int(max(draw.top() + label_height, girder_rect.top() - label_gap))
         label_top = int(max(draw.top(), label_bottom - label_height))
@@ -275,3 +283,66 @@ class StiffenerCadPreviewWidget(QWidget):
                 painter.setPen(QPen(self.LONG_COLOR, 3.0))
                 for y_pos in levels:
                     painter.drawLine(int(left), int(y_pos), int(right), int(y_pos))
+
+        # Draw shear studs on top flange globally
+        global_state = self._state_for(self._active_member_id)
+        if global_state:
+            stud_d_val = global_state.get(KEY_SD_SHEAR_DIAMETER) or global_state.get(KEY_DS_STUD_DIAMETER)
+            stud_h_val = global_state.get(KEY_SD_SHEAR_HEIGHT) or global_state.get(KEY_DS_STUD_HEIGHT)
+            pitch_val = global_state.get(KEY_SD_SHEAR_LONGITUDINAL_SPACING) or 500.0
+            
+            if stud_d_val and stud_h_val:
+                try:
+                    stud_base_dia = float(stud_d_val)
+                    stud_base_ht = float(stud_h_val)
+                    stud_pitch = float(pitch_val)
+                    if stud_base_dia > 0 and stud_pitch > 0 and stud_base_ht > 0:
+                        stud_head_dia = min_stud_head_diameter(stud_base_dia)
+                        stud_head_ht = min_stud_head_height(stud_base_dia)
+                        
+                        stud_color = self.THEME_GIRDER_BORDER
+                        
+                        top_y = girder_rect.top()
+                        
+                        y_scale = web_height / depth_mm if depth_mm > 0 else px_per_mm
+                        
+                        h_base_px = stud_base_ht * y_scale
+                        h_head_px = stud_head_ht * y_scale
+                        
+                        # Minimum visual size so it's visible, max 15px so it doesn't overflow
+                        h_base_px = min(15.0, max(5.0, h_base_px))
+                        h_head_px = min(4.0, max(2.0, h_head_px))
+                        
+                        head_w_px = max(4.0, stud_head_dia * px_per_mm)
+                        stem_w_px = max(2.0, stud_base_dia * px_per_mm)
+                        
+                        pitch_px = stud_pitch * px_per_mm
+                        curr_x = girder_rect.left() + pitch_px / 2.0
+                        
+                        painter.setPen(Qt.NoPen)
+                        painter.setBrush(stud_color)
+                        
+                        import PySide6.QtCore as QtCore
+                        while curr_x < girder_rect.right() - pitch_px / 2.0:
+                            # Draw base (stem)
+                            stem_rect = QtCore.QRectF(
+                                curr_x - stem_w_px / 2.0, 
+                                top_y - h_base_px, 
+                                stem_w_px, 
+                                h_base_px
+                            )
+                            painter.drawRect(stem_rect)
+                            
+                            # Draw head (small rect)
+                            head_rect = QtCore.QRectF(
+                                curr_x - head_w_px / 2.0,
+                                top_y - h_base_px - h_head_px,
+                                head_w_px,
+                                h_head_px
+                            )
+                            painter.drawRect(head_rect)
+                            
+                            curr_x += pitch_px
+                            
+                except Exception:
+                    pass

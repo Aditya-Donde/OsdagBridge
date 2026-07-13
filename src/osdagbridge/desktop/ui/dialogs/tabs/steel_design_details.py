@@ -666,6 +666,9 @@ class SteelDesignDetailsTab(QWidget):
                 "intermediate_stiffener":      normalized_state.get("stiff_intermediate_on"),
                 "intermediate_spacing_mm":     _cad_num("stiff_intermediate_spacing"),
                 "longitudinal_stiffener":      normalized_state.get("stiff_longitudinal_mode"),
+                KEY_SD_SHEAR_DIAMETER:         normalized_state.get("shear_diameter"),
+                KEY_SD_SHEAR_HEIGHT:           normalized_state.get("shear_height"),
+                KEY_SD_SHEAR_LONGITUDINAL_SPACING: normalized_state.get("shear_longitudinal_spacing"),
             }
 
             stiffener_by_member = {"G1M1": stiff_state}
