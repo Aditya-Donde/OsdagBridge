@@ -1,4 +1,4 @@
-﻿"""
+"""
 Additional Inputs Widget for Highway Bridge Design
 Provides detailed input fields for manual bridge parameter definition
 """
@@ -56,8 +56,16 @@ class AdditionalInputs(QDialog):
         self.interacted_first = True
 
         self.setObjectName("AdditionalInputs")
-        self.resize(1024, 900)
         self.setMinimumSize(900, 520)
+        
+        # Resize dynamically based on screen height to prevent clipping on smaller screens
+        screen_height = self.screen().availableGeometry().height()
+        if screen_height <= 900:
+            new_height = max(520, int(screen_height * 0.9))
+            self.resize(1024, new_height)
+        else:
+            self.resize(1024, 900)
+            
         self.setSizeGripEnabled(True)
         self.init_ui()
         self.setStyleSheet("""
