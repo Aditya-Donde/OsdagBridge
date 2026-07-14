@@ -2011,6 +2011,7 @@ class CheckResult:
     dcr: float
     status: str                                         # PASS | WARN | FAIL | INFO
     note: str = ""
+    governing_method: str = ""
 
 
 class DCREngine:
@@ -2056,7 +2057,7 @@ class DCREngine:
             return "WARN"
         return "FAIL"
 
-    def _add_check(self, check_id, name, clause, demand, capacity, unit, note=""):
+    def _add_check(self, check_id, name, clause, demand, capacity, unit, note, governing_method=""):
         if capacity > 0:
             dcr = demand / capacity
             status = self.classify(dcr)
@@ -2068,7 +2069,7 @@ class DCREngine:
             check_id=check_id, name=name, clause=clause,
             demand=round(demand, 2), demand_unit=unit,
             capacity=round(capacity, 2), capacity_unit=unit,
-            dcr=round(dcr, 4), status=status, note=note,
+            dcr=round(dcr, 4), status=status, note=note,  governing_method=governing_method,
         )
         self.checks.append(result)
         return result
@@ -2140,10 +2141,17 @@ class DCREngine:
                          d.Mu_kNm, c.Md_kNm, "kNm",
                          note=f"PNA in {c.pna_location}, xu={c.xu_mm:.1f} mm")
 
-        # ── CATEGORY 2: Strength Limit State (Shear) ─────────────────────────
-        self._add_check(2, "ULS Shear", "Cl.603.3.3.2",
-                         d.Vu_kN, c.Vd_kN, "kN",
-                         note=f"Av={c.Av_mm2:.0f} mm²")
+            # ── CATEGORY 2: Strength Limit State (Shear) ─────────────────────────
+            self._add_check(
+                2,
+                "ULS Shear",
+                "Cl.603.3.3.2",
+                d.Vu_kN,
+                c.Vd_kN,
+                "kN",
+                note=f"Av={c.Av_mm2:.0f} mm²",
+                governing_method=c.shear_method,
+            )
 
         if c.Vcr_kN > 0:
             if c.shear_method == "tension_field":
