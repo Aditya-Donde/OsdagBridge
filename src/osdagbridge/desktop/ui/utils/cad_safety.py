@@ -5,8 +5,8 @@ from contextlib import contextmanager
 
 
 def _dbg(msg):
-    # Monitoring print, on by default; set OSDAGBRIDGE_CAD_DEBUG=0 to silence.
-    if os.environ.get("OSDAGBRIDGE_CAD_DEBUG", "1") != "0":
+    # Monitoring print, off by default; set OSDAGBRIDGE_CAD_DEBUG=1 to enable.
+    if os.environ.get("OSDAGBRIDGE_CAD_DEBUG", "0") == "1":
         print(f"[CAD-SAFETY] {msg}", flush=True)
 
 

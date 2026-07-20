@@ -6,8 +6,8 @@ import types
 
 
 def _dbg(msg):
-    # Monitoring print, on by default; set OSDAGBRIDGE_OPS_DEBUG=0 to silence.
-    if os.environ.get("OSDAGBRIDGE_OPS_DEBUG", "1") != "0":
+    # Monitoring print, off by default; set OSDAGBRIDGE_OPS_DEBUG=1 to enable.
+    if os.environ.get("OSDAGBRIDGE_OPS_DEBUG", "0") == "1":
         print(f"[OPS-MEMORY] {msg}", flush=True)
 
 
@@ -78,7 +78,7 @@ def census_opensees_domain(tag):
     # wipe MUST report 0 nodes / 0 elements. Non-zero counts here are a genuine native leak —
     # the domain (and its C++ Node/Element/Pattern objects, invisible to Python's gc) survived
     # wipe(), which is the #1 suspect for the residual per-cycle in-use growth.
-    if os.environ.get("OSDAGBRIDGE_OPS_DEBUG", "1") == "0":
+    if os.environ.get("OSDAGBRIDGE_OPS_DEBUG", "0") != "1":
         return
     try:
         import openseespy.opensees as ops
@@ -153,8 +153,8 @@ def log_live_objects(tag):
     # Diagnostic: full gc type-histogram with cross-call deltas + explicit OCC/Qt counts, to name
     # exactly which object type accumulates across designs (the earlier counters proved numpy/
     # xarray/matplotlib are flat, so the residual native memory is held by some other type).
-    # Gated on the same flag as _dbg (on by default). Walks the whole heap once per design.
-    if os.environ.get("OSDAGBRIDGE_OPS_DEBUG", "1") == "0":
+    # Gated on the same flag as _dbg (off by default). Walks the whole heap once per design.
+    if os.environ.get("OSDAGBRIDGE_OPS_DEBUG", "0") != "1":
         return
     try:
         hist = {}
