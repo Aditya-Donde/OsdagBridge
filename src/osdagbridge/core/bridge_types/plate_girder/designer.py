@@ -370,6 +370,7 @@ class BridgeConfig:
         # falls back to the representative (first) girder — see resolve_girder_value().
         from osdagbridge.core.bridge_types.plate_girder.plategirderbridge import (
             resolve_girder_value as _gv,
+            resolve_cb_value as _cbv,
         )
         section = SteelSection(
             D=_gv(inp, KEY_MP_GIRDER_DEPTH, girder_index)                   * 1000,
@@ -402,7 +403,7 @@ class BridgeConfig:
         edge_dist = geom.edge_dist
 
         # Cross-bracing spacing drives the lateral unbraced length for LTB.
-        cb_spacing = float(bridge.additional_inputs.get(KEY_MP_CB_SPACING) or
+        cb_spacing = float(_cbv(inp, KEY_MP_CB_SPACING) or
                                 DEFAULT_CROSS_BRACING_SPACING)
 
         # beam_type (Cl.603.2.1 effective width) is a girder *position* property, not a user

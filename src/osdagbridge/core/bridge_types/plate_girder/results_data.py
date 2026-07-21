@@ -630,11 +630,21 @@ def _extract_osdag_summary(result: dict) -> dict:
                 return v
         return None
 
+    def _num(v):
+        # Osdag returns these as float OR numeric string ("123.45") depending on
+        # the module/section; coerce so downstream formatting/comparison is safe.
+        if v is None:
+            return None
+        try:
+            return float(v)
+        except (TypeError, ValueError):
+            return None
+
     return {
         "section":     _first("section_size.designation", "Optimum.Designation"),
-        "capacity_kN": _first("Member.tension_capacity",  "Design.Strength"),
-        "efficiency":  _first("Member.efficiency",        "Optimum.UR"),
-        "slenderness": result.get("Member.Slenderness"),
+        "capacity_kN": _num(_first("Member.tension_capacity", "Design.Strength")),
+        "efficiency":  _num(_first("Member.efficiency",       "Optimum.UR")),
+        "slenderness": _num(result.get("Member.Slenderness")),
         "connection":  "Welded" if "Weld.Type" in result else "Bolted",
     }
 

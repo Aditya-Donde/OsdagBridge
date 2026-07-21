@@ -469,7 +469,8 @@ def design_deck_slab(input_dict: dict, fck: float, fctm: float, fy: float, Es: f
     overhang_m = float(inp[KEY_TS_DECK_OVERHANG])
     deck_t_mm = float(inp[KEY_TS_DECK_THICKNESS])
     wc_t_m = float(inp[KEY_WC_THICKNESS]) / 1000.0   # wearing course thickness (m)
-    cb_spacing_m = float(inp.get(KEY_MP_CB_SPACING) or 3.0)  # longitudinal cross-bracing spacing (m)
+    from osdagbridge.core.bridge_types.plate_girder.plategirderbridge import resolve_cb_value
+    cb_spacing_m = float(resolve_cb_value(inp, KEY_MP_CB_SPACING) or 3.0)  # longitudinal cross-bracing spacing (m)
 
     rebar_grade = str(inp[KEY_DS_REINF_MATERIAL]).strip()
     cover_top_mm = float(inp[KEY_DS_TOP_CLEAR_COVER])

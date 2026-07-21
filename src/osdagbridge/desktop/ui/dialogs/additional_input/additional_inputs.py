@@ -294,7 +294,7 @@ class AdditionalInputs(QDialog):
 
             elif isinstance(widget, QCheckBox):
                 widget.blockSignals(True)
-                widget.setChecked(bool(value))
+                widget.setChecked(as_bool(value))
                 widget.blockSignals(False)
 
             elif isinstance(widget, LoadCombinationWidget):
@@ -494,7 +494,7 @@ class AdditionalInputs(QDialog):
 
             elif isinstance(widget, QCheckBox):
                 widget.blockSignals(True)
-                widget.setChecked(bool(value))
+                widget.setChecked(as_bool(value))
                 widget.blockSignals(False)
             elif isinstance(widget, LoadCombinationWidget):
                 widget.blockSignals(True)
@@ -2199,9 +2199,7 @@ class AdditionalInputs(QDialog):
                 if isinstance(w, QComboBox):
                     w.setCurrentText(str(value))
                 elif isinstance(w, QCheckBox):
-                    # Convert string representations to bool properly
-                    val_bool = str(value).strip().lower() not in ("no", "false", "0", "") if isinstance(value, str) else bool(value)
-                    w.setChecked(val_bool)
+                    w.setChecked(as_bool(value))
                 elif isinstance(w, QLineEdit) and not w.isReadOnly():
                     w.setText(str(value))
 
@@ -2762,9 +2760,7 @@ class AdditionalInputs(QDialog):
                 if isinstance(w, QComboBox):
                     w.setCurrentText(str(value))
                 elif isinstance(w, QCheckBox):
-                    # Convert string representations to bool properly
-                    val_bool = str(value).strip().lower() not in ("no", "false", "0", "") if isinstance(value, str) else bool(value)
-                    w.setChecked(val_bool)
+                    w.setChecked(as_bool(value))
                 elif isinstance(w, QLineEdit) and not w.isReadOnly():
                     w.setText(str(value))
 

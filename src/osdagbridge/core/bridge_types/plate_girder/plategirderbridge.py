@@ -1,4 +1,5 @@
 from __future__ import annotations
+import re
 import sqlite3
 import types
 from pathlib import Path
@@ -231,12 +232,11 @@ from osdagbridge.core.utils.common import (
 
     # Cross Bracing Details
     KEY_MP_CB_TYPE,
+    KEY_MP_CB_SPACING,
     KEY_MP_CB_BRACING_SECTION_TYPE,
     KEY_MP_CB_BRACING_SECTION_DESIGNATION,
-    KEY_MP_CB_TOP_CHORD,
     KEY_MP_CB_TOP_CHORD_SECTION_TYPE,
     KEY_MP_CB_TOP_CHORD_SECTION_DESIG,
-    KEY_MP_CB_BOTTOM_CHORD,
     KEY_MP_CB_BOTTOM_CHORD_SECTION_TYPE,
     KEY_MP_CB_BOTTOM_CHORD_SECTION_DESIG,
 
@@ -330,6 +330,46 @@ def resolve_girder_value(source: dict, base_key: str, i: int | None = None):
         if key in source:
             return source[key]
     raise KeyError(base_key)
+
+
+def resolve_cb_value(source: dict, base_key: str, default=None, pair: str | None = None):
+    """
+    Resolve a cross-bracing property from an input dict, tolerating both the
+    per-member dynamic key scheme and the legacy flat key.
+
+    Per-member values are stored under ``<base_key>.G{i}G{i+1}.B{i}M{k}``
+    (see ``defaults.extend_cb_dynamic_keys``); the No.-of-Cross-Bracings count
+    is stored at pair level (``<base_key>.G{i}G{i+1}``). Resolution order:
+
+      1. ``<base_key>.{pair}.B{i}M1`` — the requested pair (only when ``pair``
+         is given, e.g. ``"G1G2"``),
+      2. the first per-member/per-pair key found (keys sorted, so G1G2.B1M1 is
+         the representative fallback),
+      3. the legacy flat ``<base_key>``,
+      4. ``default``.
+
+    ``None`` and empty strings count as missing; ``False`` is a real value.
+    """
+    def _present(v) -> bool:
+        return v is not None and v != ""
+
+    if pair:
+        m = re.match(r"G(\d+)G\d+", pair)
+        if m:
+            val = source.get(f"{base_key}.{pair}.B{m.group(1)}M1")
+            if _present(val):
+                return val
+            val = source.get(f"{base_key}.{pair}")
+            if _present(val):
+                return val
+
+    prefix = base_key + "."
+    for key in sorted(k for k in source if k.startswith(prefix)):
+        if _present(source[key]):
+            return source[key]
+
+    val = source.get(base_key)
+    return val if _present(val) else default
 
 
 class PlateGirderBridge:
@@ -2448,24 +2488,40 @@ class PlateGirderBridge:
         forces_dict = cb.get_design_forces_dict()
         if not forces_dict or not forces_dict.get("pairs"):
             return {}
-        
-        # Store configuration in output_dict
-        self.output_dict["member_properties.cross_bracing_details.type"] = forces_dict.get("brace_type", "X")
-        self.output_dict["member_properties.cross_bracing_details.top_chord"] = forces_dict.get("top_chord", True)
-        self.output_dict["member_properties.cross_bracing_details.bottom_chord"] = forces_dict.get("bottom_chord", True)
-        
+
         cb.print_critical_forces(forces_dict)
-
-        bridge_logger.check_cancel()
-        pair_designs = cb.run_member_designs(forces_dict)
-        self.output_dict["crossbracing_forces_dict"] = forces_dict
-
-        enrich_crossbracing_dump(pair_designs)
-        self._print_crossbracing_design_results(forces_dict, pair_designs)
 
         # Resolve all possible intermediate girder pairs
         n_girders = int(self.input_dict[KEY_TS_NO_OF_GIRDERS])
         pairs = [f"G{i}-G{i+1}" for i in range(1, n_girders)]
+
+        # In Custom mode the user picked the sections in Additional Inputs —
+        # restrict each Osdag design to that section instead of optimizing.
+        is_custom = str(self.input_dict.get(KEY_DESIGN_MODE, "Optimized")).strip().lower() in {"custom", "customized"}
+        custom_sections = None
+        if is_custom:
+            custom_sections = {}
+            for i in range(1, n_girders):
+                suffix = f".G{i}G{i+1}.B{i}M1"
+                custom_sections[f"G{i}-G{i+1}"] = {
+                    "diagonal": {
+                        "designation":  self.input_dict.get(KEY_MP_CB_BRACING_SECTION_DESIGNATION + suffix),
+                        "section_type": self.input_dict.get(KEY_MP_CB_BRACING_SECTION_TYPE + suffix),
+                    },
+                    "chord": {
+                        "designation":  self.input_dict.get(KEY_MP_CB_TOP_CHORD_SECTION_DESIG + suffix)
+                                        or self.input_dict.get(KEY_MP_CB_BOTTOM_CHORD_SECTION_DESIG + suffix),
+                        "section_type": self.input_dict.get(KEY_MP_CB_TOP_CHORD_SECTION_TYPE + suffix)
+                                        or self.input_dict.get(KEY_MP_CB_BOTTOM_CHORD_SECTION_TYPE + suffix),
+                    },
+                }
+
+        bridge_logger.check_cancel()
+        pair_designs = cb.run_member_designs(forces_dict, custom_sections=custom_sections)
+        self.output_dict["crossbracing_forces_dict"] = forces_dict
+
+        enrich_crossbracing_dump(pair_designs)
+        self._print_crossbracing_design_results(forces_dict, pair_designs)
 
         # Key mapping function
         def make_pair_key(key: str, pair_id: str) -> str:
@@ -2486,7 +2542,17 @@ class PlateGirderBridge:
         # Initialize keys to None for all pairs (both brace & chords)
         for pair in pairs:
             pair_id = pair.replace("-", "")
-            
+
+            # Store this pair's own brace type / chord flags (brace type and
+            # chords are independent per girder pair — G1-G2 may be K-Bracing
+            # while G2-G3 is X-Bracing).
+            self.output_dict[make_pair_key("member_properties.cross_bracing_details.type", pair_id)] = \
+                forces_dict.get("brace_type", {}).get(pair, "X")
+            self.output_dict[make_pair_key("member_properties.cross_bracing_details.top_chord", pair_id)] = \
+                forces_dict.get("top_chord", {}).get(pair, True)
+            self.output_dict[make_pair_key("member_properties.cross_bracing_details.bottom_chord", pair_id)] = \
+                forces_dict.get("bottom_chord", {}).get(pair, True)
+
             # Diagonal/bracing
             for k in (
                 KEY_TD_CB_PROP_L, KEY_TD_CB_PROP_H, KEY_TD_CB_PROP_B, KEY_TD_CB_PROP_TW, KEY_TD_CB_PROP_TF,
@@ -2514,12 +2580,15 @@ class PlateGirderBridge:
         # Process design results and query database per pair
         from osdagbridge.core.bridge_types.plate_girder.results_data import _extract_osdag_summary
 
-        top_chord_enabled = self.output_dict.get("member_properties.cross_bracing_details.top_chord", True)
-        bottom_chord_enabled = self.output_dict.get("member_properties.cross_bracing_details.bottom_chord", True)
-
         for pair in pairs:
             pair_id = pair.replace("-", "")
             member_designs = pair_designs.get(pair, {}) if pair_designs else {}
+            _pm = re.match(r"G(\d+)G\d+", pair_id)
+            member_suffix = f".{pair_id}.B{_pm.group(1)}M1" if _pm else ""
+
+            # Chord enable flags are per-pair (G1-G2 may differ from G2-G3).
+            top_chord_enabled = forces_dict.get("top_chord", {}).get(pair, True)
+            bottom_chord_enabled = forces_dict.get("bottom_chord", {}).get(pair, True)
 
             # Diagonal section designation for this pair
             diag_des = ""
@@ -2530,6 +2599,9 @@ class PlateGirderBridge:
                 if sec:
                     diag_des = str(sec)
                     break
+            if not diag_des:
+                diag_des = str(self.input_dict.get(
+                    f"{KEY_MP_CB_BRACING_SECTION_DESIGNATION}{member_suffix}") or "")
 
             # Chord section designation for this pair
             chord_des = ""
@@ -2540,10 +2612,16 @@ class PlateGirderBridge:
                 if sec:
                     chord_des = str(sec)
                     break
+            if not chord_des:
+                chord_des = str(
+                    self.input_dict.get(f"{KEY_MP_CB_TOP_CHORD_SECTION_DESIG}{member_suffix}")
+                    or self.input_dict.get(f"{KEY_MP_CB_BOTTOM_CHORD_SECTION_DESIG}{member_suffix}")
+                    or ""
+                )
 
             # Query database and populate diagonal section properties
             if diag_des:
-                self.output_dict[make_pair_key(KEY_MP_CB_BRACING_SECTION_TYPE, pair_id)] = diag_des
+                self.output_dict[make_pair_key(KEY_MP_CB_BRACING_SECTION_DESIGNATION, pair_id)] = diag_des
                 diag_details = self._query_crossbracing_section(diag_des)
                 if diag_details:
                     self.output_dict[make_pair_key("member_properties.cross_bracing_details.diagonal.section_type", pair_id)] = diag_details["type"]
@@ -2614,34 +2692,44 @@ class PlateGirderBridge:
                         self.output_dict[make_pair_key(KEY_TD_CB_TOP_CHORD_PROP_ZUV, pair_id)] = chord_details["Zuv"]
 
                     if bottom_chord_enabled:
-                        self.output_dict[make_pair_key("member_properties.cross_bracing_details.bottom_chord.section_type", pair_id)] = chord_details["type"]
+                        # The bottom chord may be a different section than the top
+                        # (the single Osdag "chord" design used the top section).
+                        # Prefer the user's bottom-chord section when it differs.
+                        bc_des = str(self.input_dict.get(
+                            f"{KEY_MP_CB_BOTTOM_CHORD_SECTION_DESIG}{member_suffix}") or "").strip()
+                        bc_details = self._query_crossbracing_section(bc_des) if bc_des else None
+                        if not bc_details:
+                            bc_des, bc_details = chord_des, chord_details
+                        self.output_dict[make_pair_key(KEY_MP_CB_BOTTOM_CHORD_SECTION_DESIG, pair_id)] = bc_des
+
+                        self.output_dict[make_pair_key("member_properties.cross_bracing_details.bottom_chord.section_type", pair_id)] = bc_details["type"]
                         bc_h_key = make_pair_key("member_properties.cross_bracing_details.bottom_chord.leg_h", pair_id)
                         bc_w_key = make_pair_key("member_properties.cross_bracing_details.bottom_chord.leg_w", pair_id)
                         bc_t_key = make_pair_key("member_properties.cross_bracing_details.bottom_chord.thickness", pair_id)
-                        if chord_details["type"] == "ANGLE":
-                            self.output_dict[bc_h_key] = chord_details["H"] * 1000.0
-                            self.output_dict[bc_w_key] = chord_details["B"] * 1000.0
-                            self.output_dict[bc_t_key] = chord_details["tw"] * 1000.0
-                        elif chord_details["type"] == "CHANNEL":
-                            self.output_dict[bc_h_key] = chord_details["L"] * 1000.0
-                            self.output_dict[bc_w_key] = chord_details["B"] * 1000.0
-                            self.output_dict[bc_t_key] = chord_details["tw"] * 1000.0
+                        if bc_details["type"] == "ANGLE":
+                            self.output_dict[bc_h_key] = bc_details["H"] * 1000.0
+                            self.output_dict[bc_w_key] = bc_details["B"] * 1000.0
+                            self.output_dict[bc_t_key] = bc_details["tw"] * 1000.0
+                        elif bc_details["type"] == "CHANNEL":
+                            self.output_dict[bc_h_key] = bc_details["L"] * 1000.0
+                            self.output_dict[bc_w_key] = bc_details["B"] * 1000.0
+                            self.output_dict[bc_t_key] = bc_details["tw"] * 1000.0
 
-                        self.output_dict[make_pair_key(KEY_TD_CB_BOTTOM_CHORD_PROP_L, pair_id)] = chord_details["L"]
-                        self.output_dict[make_pair_key(KEY_TD_CB_BOTTOM_CHORD_PROP_H, pair_id)] = chord_details["H"]
-                        self.output_dict[make_pair_key(KEY_TD_CB_BOTTOM_CHORD_PROP_B, pair_id)] = chord_details["B"]
-                        self.output_dict[make_pair_key(KEY_TD_CB_BOTTOM_CHORD_PROP_TW, pair_id)] = chord_details["tw"]
-                        self.output_dict[make_pair_key(KEY_TD_CB_BOTTOM_CHORD_PROP_TF, pair_id)] = chord_details["tF"]
-                        self.output_dict[make_pair_key(KEY_TD_CB_BOTTOM_CHORD_PROP_RZ, pair_id)] = chord_details["rz"]
-                        self.output_dict[make_pair_key(KEY_TD_CB_BOTTOM_CHORD_PROP_M, pair_id)] = chord_details["M"]
-                        self.output_dict[make_pair_key(KEY_TD_CB_BOTTOM_CHORD_PROP_A, pair_id)] = chord_details["A"]
-                        self.output_dict[make_pair_key(KEY_TD_CB_BOTTOM_CHORD_PROP_IZ, pair_id)] = chord_details["Iz"]
-                        self.output_dict[make_pair_key(KEY_TD_CB_BOTTOM_CHORD_PROP_IV, pair_id)] = chord_details["Iv"]
-                        self.output_dict[make_pair_key(KEY_TD_CB_BOTTOM_CHORD_PROP_RV, pair_id)] = chord_details["rv"]
-                        self.output_dict[make_pair_key(KEY_TD_CB_BOTTOM_CHORD_PROP_ZZ, pair_id)] = chord_details["Zz"]
-                        self.output_dict[make_pair_key(KEY_TD_CB_BOTTOM_CHORD_PROP_ZV, pair_id)] = chord_details["Zv"]
-                        self.output_dict[make_pair_key(KEY_TD_CB_BOTTOM_CHORD_PROP_ZUZ, pair_id)] = chord_details["Zuz"]
-                        self.output_dict[make_pair_key(KEY_TD_CB_BOTTOM_CHORD_PROP_ZUV, pair_id)] = chord_details["Zuv"]
+                        self.output_dict[make_pair_key(KEY_TD_CB_BOTTOM_CHORD_PROP_L, pair_id)] = bc_details["L"]
+                        self.output_dict[make_pair_key(KEY_TD_CB_BOTTOM_CHORD_PROP_H, pair_id)] = bc_details["H"]
+                        self.output_dict[make_pair_key(KEY_TD_CB_BOTTOM_CHORD_PROP_B, pair_id)] = bc_details["B"]
+                        self.output_dict[make_pair_key(KEY_TD_CB_BOTTOM_CHORD_PROP_TW, pair_id)] = bc_details["tw"]
+                        self.output_dict[make_pair_key(KEY_TD_CB_BOTTOM_CHORD_PROP_TF, pair_id)] = bc_details["tF"]
+                        self.output_dict[make_pair_key(KEY_TD_CB_BOTTOM_CHORD_PROP_RZ, pair_id)] = bc_details["rz"]
+                        self.output_dict[make_pair_key(KEY_TD_CB_BOTTOM_CHORD_PROP_M, pair_id)] = bc_details["M"]
+                        self.output_dict[make_pair_key(KEY_TD_CB_BOTTOM_CHORD_PROP_A, pair_id)] = bc_details["A"]
+                        self.output_dict[make_pair_key(KEY_TD_CB_BOTTOM_CHORD_PROP_IZ, pair_id)] = bc_details["Iz"]
+                        self.output_dict[make_pair_key(KEY_TD_CB_BOTTOM_CHORD_PROP_IV, pair_id)] = bc_details["Iv"]
+                        self.output_dict[make_pair_key(KEY_TD_CB_BOTTOM_CHORD_PROP_RV, pair_id)] = bc_details["rv"]
+                        self.output_dict[make_pair_key(KEY_TD_CB_BOTTOM_CHORD_PROP_ZZ, pair_id)] = bc_details["Zz"]
+                        self.output_dict[make_pair_key(KEY_TD_CB_BOTTOM_CHORD_PROP_ZV, pair_id)] = bc_details["Zv"]
+                        self.output_dict[make_pair_key(KEY_TD_CB_BOTTOM_CHORD_PROP_ZUZ, pair_id)] = bc_details["Zuz"]
+                        self.output_dict[make_pair_key(KEY_TD_CB_BOTTOM_CHORD_PROP_ZUV, pair_id)] = bc_details["Zuv"]
         
         self.crossbracing_design_results = pair_designs
         return pair_designs
@@ -3470,7 +3558,11 @@ class PlateGirderBridge:
         cw_mm = cw_m * 1e3
 
         deck_t_mm = deck_thickness_from_inputs(self.output_dict, _DEFAULT_DECK_THICKNESS_MM) * 1e3
-        cross_bracing_mm = DEFAULT_CROSS_BRACING_SPACING * 1e3
+        cross_bracing_mm = float(
+            resolve_cb_value(inp, KEY_MP_CB_SPACING) or DEFAULT_CROSS_BRACING_SPACING
+        ) * 1e3
+        _cb_type_raw = str(resolve_cb_value(inp, KEY_MP_CB_TYPE, "") or "").strip().upper()
+        cb_bracing_type = "K" if _cb_type_raw.startswith("K") else "X"
 
         girder_segment = GirderSegmentDTO(
             length=span_mm,
@@ -3708,7 +3800,7 @@ class PlateGirderBridge:
             longitudinal_stiffener_outstand=None,
             # --- Cross bracing ---
             cross_bracing_spacing=cross_bracing_mm,
-            bracing_type="K" if "K" in str(inp.get(KEY_MP_CB_TYPE, "X")).upper() else "X",
+            bracing_type=cb_bracing_type,
             x_bracket_option="BOTH",
             k_top_bracket=True,
             diagonal_section_type="ANGLE",
@@ -4108,8 +4200,10 @@ class PlateGirderBridge:
                         (designation,)
                     )
                     row = cur.fetchone()
-                if not row:
-                    # Fallback to LIKE with numbers
+                if not row and len(nums) >= 3:
+                    # Fallback to LIKE with numbers — only for angle-shaped
+                    # designations (3 numbers); a 1-number channel like "JC 100"
+                    # must not LIKE-match an angle and shadow the Channels table.
                     cur.execute(
                         f'SELECT Designation, Mass, Area, a, b, t, Iz, Iy, "Iv(min)", rz, ry, "rv(min)", Zz, Zy, Zpz, Zpy FROM {table} WHERE Designation LIKE ?',
                         (like_pattern,)
