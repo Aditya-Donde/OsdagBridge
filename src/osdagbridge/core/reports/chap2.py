@@ -78,7 +78,7 @@ def ch2_input_parameters(m, input_dict, output_dict=None):
     # Median row only shown when the user included a median
     median_row = ""
     if str(input_dict.get(KEY_INCLUDE_MEDIAN, "")).strip().lower() in ("yes", "true", "1"):
-        median_row = (r"\textbf{Median Type} & "
+        median_row = (r"\textnormal{Median Type} & "
                       + _render_value(input_dict, KEY_MD_TYPE)
                       + r""" \\[6pt]
 \hline
@@ -199,8 +199,7 @@ Where the user has modified additional inputs, those values are reported here. W
 \hline
 \textnormal{Crash Barrier Load (kN/m)} & """ + (_render_value(input_dict, KEY_CB_LOAD)) + r""" \\[6pt]
 \hline
-\textnormal{Median Type} & """ + (_render_value(input_dict, KEY_MD_TYPE)) + r""" \\[6pt]
-\hline
+""" + median_row + r"""
 \textnormal{Railing Type} & """ + (_render_value(input_dict, KEY_RL_TYPE)) + r""" \\[6pt]
 \hline
 \textnormal{Railing Load (kN/m)} & """ + (_render_value(input_dict, KEY_RL_LOAD_VALUE)) + r""" \\[6pt]

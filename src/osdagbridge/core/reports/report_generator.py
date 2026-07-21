@@ -177,7 +177,6 @@ def preamble(project_name, job_number, report_date, report_version='Rev 0'):
     singlelinecheck=false,
     format=plain
 }
-
 \usepackage{subcaption}
 \usepackage{multirow}
 \usepackage{colortbl}
@@ -905,7 +904,7 @@ def generate_report(payload, request):
             span_m = float(payload.inputs.get(KEY_SPAN, 0) or 0)
 
             doc_parts = []
-            doc_parts.append(preamble(payload.metadata.project_name, payload.metadata.job_number, payload.metadata.report_date, payload.metadata.subtitle or ''))
+            doc_parts.append(preamble(payload.metadata.project_name, payload.metadata.job_number, payload.metadata.report_date, payload.metadata.subtitle or 'Rev 0'))
             doc_parts.append(title_page(payload.metadata, osdag_logo_latex, org_logo_latex))
 
             if payload.options.include_toc:
