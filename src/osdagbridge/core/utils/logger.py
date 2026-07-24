@@ -4,6 +4,8 @@ import time
 from datetime import datetime
 from typing import Callable, Optional, List
 
+from osdagbridge.core.utils.common import KEY_SD_VERDICT
+
 log = logging.getLogger("osdagbridge")
 _SEP = "-" * 45
 
@@ -90,6 +92,57 @@ class BridgeLogger:
 
     def error(self, message: str) -> None:
         self._emit(f"[{self._ts()}]   ERROR : {message}", "error")
+
+    # Per-category display label + remedy. Keyed by the same check keys stored in
+    # the verdict dict / output_dict (common.KEY_CHECK_* string values). The remedy
+    # is printed only when that category fails — see girder_verdict().
+    _VERDICT_CHECKS = {
+        "flexure":          ("Flexure",
+                             "Increase girder depth D or flange area (b_f x t_f)."),
+        "shear":            ("Shear",
+                             "Increase web thickness t_w or depth D; if buckling governs, reduce stiffener spacing."),
+        "interaction":      ("Interaction",
+                             "Relieve the dominant term: thicken the web, or deepen the girder / thicken flanges."),
+        "ltb":              ("Lateral Torsional Buckling",
+                             "Reduce cross-bracing spacing (shorter L_LT), or widen the compression flange."),
+        "shear_long_trans": ("Longitudinal Shear",
+                             "Reduce stud longitudinal spacing, or increase stud diameter / count."),
+        "fatigue":          ("Fatigue",
+                             "Lower the stress range: deeper girder / thicker flanges, or a better weld detail."),
+        "stress":           ("Stress Limitation",
+                             "Increase the section modulus Z (deeper girder or thicker flanges)."),
+        "deflection":       ("Deflection",
+                             "Increase girder depth D or moment of inertia I_z."),
+    }
+
+    def girder_verdict(self, output_dict: dict) -> None:
+        """Print the girder verdict read from output_dict[KEY_SD_VERDICT].
+
+        Passing categories print one green line; failing categories print a red
+        line then their remedy. Remedies never print for a passing check.
+        """
+        verdict = (output_dict or {}).get(KEY_SD_VERDICT) or {}
+        if not verdict:
+            return
+
+        status = verdict.get("status", "FAIL")
+        max_ur = verdict.get("max_ur", 0.0)
+        headline = f"GIRDER : {status}  (max UR = {max_ur:.3f})"
+        self._emit(f"[{self._ts()}]   {headline}",
+                   "success" if status == "PASS" else "error")
+
+        for key, (label, remedy) in self._VERDICT_CHECKS.items():
+            row = verdict.get(key)
+            if not row:
+                continue
+            ur = row.get("ur", 0.0)
+            if row.get("pass", True):
+                self._emit(f"[{self._ts()}]     PASS : {label} (UR = {ur:.3f})",
+                           "success")
+            else:
+                self._emit(f"[{self._ts()}]     FAIL : {label} (UR = {ur:.3f})",
+                           "error")
+                self._emit(f"[{self._ts()}]       -> {remedy}", "warning")
 
     def get_success_log(self) -> List[str]:
         """Return the green (success) log lines captured during the last run."""

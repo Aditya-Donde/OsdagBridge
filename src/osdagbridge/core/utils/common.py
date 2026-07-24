@@ -1237,6 +1237,32 @@ KEY_CHECK_FATIGUE          = "fatigue"
 KEY_CHECK_STRESS           = "stress"
 KEY_CHECK_DEFLECTION       = "deflection"
 
+# =============================================================================
+# GIRDER DESIGN VERDICT  (added)
+# Per-category PASS/FAIL summary of the 8 girder design checks. Built by
+# collect_girder_verdict() in designer.py, stored in design_results and mirrored
+# into output_dict, and rendered by BridgeLogger.girder_verdict(). Stiffener
+# checks (ids 20/21) are intentionally excluded — verdict covers the 8
+# structural categories only.
+# =============================================================================
+STATUS_PASS = "PASS"
+STATUS_FAIL = "FAIL"
+
+# output_dict / design_results key for the verdict dict
+KEY_SD_VERDICT = "steeldesign.verdict"
+
+# DCR category number (1-8, from DCREngine.CATEGORY_MAP) -> check key
+DESIGN_CHECK_CATEGORY_KEYS = {
+    1: KEY_CHECK_FLEXURE,
+    2: KEY_CHECK_SHEAR,
+    3: KEY_CHECK_INTERACTION,
+    4: KEY_CHECK_LTB,
+    5: KEY_CHECK_SHEAR_LONG_TRANS,
+    6: KEY_CHECK_FATIGUE,
+    7: KEY_CHECK_STRESS,
+    8: KEY_CHECK_DEFLECTION,
+}
+
 # Ordered list used for card layout (left-col, right-col alternating)
 DESIGN_CHECK_ORDER = [
     KEY_CHECK_FLEXURE,

@@ -71,6 +71,7 @@ from osdagbridge.core.utils.common import (
     KEY_UTIL_FATIGUE,
     KEY_UTIL_LONG_TRANS_SHEAR,
     KEY_UTIL_STRESS_LIMITATION,
+    KEY_SD_VERDICT,
     KEY_SL_IMPORTANCE_FACTOR, KEY_SL_SOIL_TYPE, KEY_SL_TIME_PERIOD,
     KEY_SL_DAMPING, KEY_SL_RESPONSE_REDUCTION,
     KEY_SL_DEAD_LOAD_MODE, KEY_SL_DEAD_LOAD_VALUE,
@@ -2424,6 +2425,9 @@ class PlateGirderBridge:
         # below is redundant — but kept for the _frontend.set_output_value calls.
         self.store_design_results(design_results)
 
+        # Log the girder verdict (reads it from output_dict)
+        bridge_logger.girder_verdict(self.output_dict)
+
     def _design_cross_bracing_members(self) -> dict:
         """
         Run Osdag member designs for cross-bracing diagonals and chords.
@@ -3412,6 +3416,9 @@ class PlateGirderBridge:
         out[KEY_UTIL_FATIGUE]          = cat_urs.get(6, {}).get("max_dcr", 0.0) * 100
         out[KEY_UTIL_STRESS_LIMITATION]= cat_urs.get(7, {}).get("max_dcr", 0.0) * 100
         out[KEY_UTIL_DEFLECTION_CRACK] = cat_urs.get(8, {}).get("max_dcr", 0.0) * 100
+
+        # Girder verdict — per-category PASS/FAIL dict
+        out[KEY_SD_VERDICT] = dr.get(KEY_SD_VERDICT, {})
 
         # ── 2. Dimensional card ─────────────────────────────────────────────────
         # Grade, type, designation, class, and all plate dimensions in mm.

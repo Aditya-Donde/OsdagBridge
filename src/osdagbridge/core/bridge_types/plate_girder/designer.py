@@ -3253,6 +3253,46 @@ def _build_uls_per_girder(per_girder_results: dict) -> dict:
     return result
 
 
+def collect_girder_verdict(per_girder_results: dict) -> dict:
+    """Reduce the 8 girder design categories, across all girders, to one verdict.
+
+    Each category is PASS unless it FAILs on some girder — a check in the WARN
+    band still passes. Stiffener checks (ids 20/21) and deck checks fall outside
+    DCREngine.CATEGORY_MAP and are therefore excluded automatically.
+
+    Returns::
+
+        { KEY_CHECK_FLEXURE: {"pass": bool, "ur": float}, ... (all 8),
+          "status": STATUS_PASS | STATUS_FAIL,
+          "max_ur": float }
+    """
+    # Seed every category as passing with UR 0, so a category with no applicable
+    # checks (e.g. fatigue when no SLS-frequent LC ran) stays a clean pass.
+    cats = {key: {"pass": True, "ur": 0.0}
+            for key in DESIGN_CHECK_CATEGORY_KEYS.values()}
+    max_ur = 0.0
+
+    for g_name, g_data in per_girder_results.items():
+        if g_name.startswith("EB"):          # edge beams are not designed girders
+            continue
+        for chk in g_data.get("checks") or []:
+            cat_entry = DCREngine.CATEGORY_MAP.get(chk["check_id"])
+            if cat_entry is None:            # stiffener / deck check -> not in verdict
+                continue
+            cat_no, _ = cat_entry
+            key = DESIGN_CHECK_CATEGORY_KEYS[cat_no]
+            dcr = float(chk["dcr"])
+            cats[key]["ur"] = round(max(cats[key]["ur"], dcr), 3)
+            max_ur = max(max_ur, dcr)
+            if chk["status"] == STATUS_FAIL:
+                cats[key]["pass"] = False
+
+    cats["status"] = STATUS_FAIL if any(not c["pass"] for c in cats.values()
+                                        if isinstance(c, dict)) else STATUS_PASS
+    cats["max_ur"] = round(max_ur, 3)
+    return cats
+
+
 def run_design_check(
     config: "BridgeConfig | None" = None,
     plate_girder_bridge: Any | None = None,
@@ -3695,6 +3735,8 @@ def run_design_check(
         "per_girder"                : per_girder_results,
         # -- ULS check table (Generate Results): per-girder demand/capacity/UR/status
         KEY_SD_ULS_PER_GIRDER       : _build_uls_per_girder(per_girder_results),
+        # -- girder verdict: per-category PASS/FAIL + overall status (added)
+        KEY_SD_VERDICT              : collect_girder_verdict(per_girder_results),
     }
 
     return report_text, engine, design_results
