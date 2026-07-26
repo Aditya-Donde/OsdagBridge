@@ -71,7 +71,7 @@ from osdagbridge.core.utils.common import (
     KEY_UTIL_FATIGUE,
     KEY_UTIL_LONG_TRANS_SHEAR,
     KEY_UTIL_STRESS_LIMITATION,
-    KEY_SD_VERDICT,
+    KEY_SD_VERDICT, KEY_DD_VERDICT,
     KEY_SL_IMPORTANCE_FACTOR, KEY_SL_SOIL_TYPE, KEY_SL_TIME_PERIOD,
     KEY_SL_DAMPING, KEY_SL_RESPONSE_REDUCTION,
     KEY_SL_DEAD_LOAD_MODE, KEY_SL_DEAD_LOAD_VALUE,
@@ -2494,9 +2494,14 @@ class PlateGirderBridge:
             stud_height_mm=float(self.input_dict[KEY_DS_STUD_HEIGHT]),
         )
         self.output_dict["deck_design_results"] = result
+        # Deck verdict — per-check PASS/FAIL dict
+        self.output_dict[KEY_DD_VERDICT] = result.get(KEY_DD_VERDICT, {})
         # Raw numeric values for the report generator (Tables 5.17(a)-(g)),
         # keyed to common.KEY_DD_*.
         self.output_dict["deck_report_values"] = report_values
+
+        # Log the deck verdict (reads it from output_dict)
+        bridge_logger.deck_verdict(self.output_dict)
 
         sep = "=" * 60
         print(f"\n{sep}\n  DECK SLAB DESIGN RESULTS\n{sep}")

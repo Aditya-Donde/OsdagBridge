@@ -4,7 +4,7 @@ import time
 from datetime import datetime
 from typing import Callable, Optional, List
 
-from osdagbridge.core.utils.common import KEY_SD_VERDICT
+from osdagbridge.core.utils.common import KEY_SD_VERDICT, KEY_DD_VERDICT
 
 log = logging.getLogger("osdagbridge")
 _SEP = "-" * 45
@@ -132,6 +132,55 @@ class BridgeLogger:
                    "success" if status == "PASS" else "error")
 
         for key, (label, remedy) in self._VERDICT_CHECKS.items():
+            row = verdict.get(key)
+            if not row:
+                continue
+            ur = row.get("ur", 0.0)
+            if row.get("pass", True):
+                self._emit(f"[{self._ts()}]     PASS : {label} (UR = {ur:.3f})",
+                           "success")
+            else:
+                self._emit(f"[{self._ts()}]     FAIL : {label} (UR = {ur:.3f})",
+                           "error")
+                self._emit(f"[{self._ts()}]       -> {remedy}", "warning")
+
+    # Per-check display label + remedy for the deck verdict. Keyed by the deck
+    # check keys stored in the verdict dict (common.KEY_DD_CHECK_* string values).
+    _DECK_VERDICT_CHECKS = {
+        "deck.flexure":            ("ULS Flexure",
+                                    "Increase the deck thickness, or raise the upper bar-diameter bound so a larger reinforcement area can be provided."),
+        "deck.oneway_shear":       ("One-Way Shear",
+                                    "Increase the deck thickness: v_Rd,c grows with the effective depth d, and the reinforcement ratio is capped at 0.02 so extra steel cannot raise capacity beyond that."),
+        "deck.punching_shear":     ("Punching Shear",
+                                    "Increase the deck thickness (deeper d and longer control perimeter), or raise the concrete grade."),
+        "deck.sls_stress_concrete":("SLS Concrete Stress",
+                                    "Raise the concrete grade (limit is 0.48 f_ck) or increase the deck thickness."),
+        "deck.sls_stress_reinforcement":("SLS Reinforcement Stress",
+                                    "Increase the deck thickness, or raise the upper bar-diameter bound so more tension steel can be provided (limit is 0.80 f_y)."),
+        "deck.crack_width":        ("Crack Width",
+                                    "Use smaller bars at closer spacing for the same steel area, reduce the clear cover, or raise the concrete grade."),
+        "deck.composite_transverse_shear":("Composite Transverse Shear",
+                                    "Increase the transverse reinforcement crossing the shear plane, the deck thickness, or the concrete grade (IRC 22:2015 Cl.606.10)."),
+        "deck.composite_crack_control":("Composite Crack Control",
+                                    "Increase the top-mat reinforcement over the girder to meet the IRC 22:2015 Cl.604.4 minimum area."),
+    }
+
+    def deck_verdict(self, output_dict: dict) -> None:
+        """Print the deck verdict read from output_dict[KEY_DD_VERDICT].
+
+        Passing checks print one green line; failing checks print a red line
+        then their remedy. Remedies never print for a passing check.
+        """
+        verdict = (output_dict or {}).get(KEY_DD_VERDICT) or {}
+        if not verdict:
+            return
+
+        status = verdict.get("status", "FAIL")
+        max_ur = verdict.get("max_ur", 0.0)
+        self._emit(f"[{self._ts()}]   DECK SLAB : {status}  (max UR = {max_ur:.3f})",
+                   "success" if status == "PASS" else "error")
+
+        for key, (label, remedy) in self._DECK_VERDICT_CHECKS.items():
             row = verdict.get(key)
             if not row:
                 continue

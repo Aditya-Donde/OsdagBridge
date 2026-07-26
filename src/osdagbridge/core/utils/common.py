@@ -1263,6 +1263,24 @@ DESIGN_CHECK_CATEGORY_KEYS = {
     8: KEY_CHECK_DEFLECTION,
 }
 
+# =============================================================================
+# DECK DESIGN VERDICT  (added)
+# Per-check PASS/FAIL summary of the deck slab checks. Built by
+# collect_deck_verdict() in deckdesign.py, stored in output_dict, and rendered
+# by BridgeLogger.deck_verdict(). Same shape as the girder verdict.
+# =============================================================================
+KEY_DD_VERDICT = "deckdesign.verdict"
+
+# deck check keys
+KEY_DD_CHECK_FLEXURE          = "deck.flexure"
+KEY_DD_CHECK_SHEAR            = "deck.oneway_shear"
+KEY_DD_CHECK_PUNCHING         = "deck.punching_shear"
+KEY_DD_CHECK_STRESS_CONC      = "deck.sls_stress_concrete"
+KEY_DD_CHECK_STRESS_REINF     = "deck.sls_stress_reinforcement"
+KEY_DD_CHECK_CRACK            = "deck.crack_width"
+KEY_DD_CHECK_COMP_TRANS_SHEAR = "deck.composite_transverse_shear"
+KEY_DD_CHECK_COMP_CRACK       = "deck.composite_crack_control"
+
 # Ordered list used for card layout (left-col, right-col alternating)
 DESIGN_CHECK_ORDER = [
     KEY_CHECK_FLEXURE,
