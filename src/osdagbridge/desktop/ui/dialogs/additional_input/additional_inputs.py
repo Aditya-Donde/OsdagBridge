@@ -1434,9 +1434,8 @@ class AdditionalInputs(QDialog):
                     print(f"  [LOAD] {key} — AdaptiveWidget active child unknown: {type(active)}")
 
             elif isinstance(w, QComboBox):
-                w.blockSignals(True)
+                # Not blocking signals to let the related fields be updated
                 w.setCurrentText(str(value))
-                w.blockSignals(False)
 
             elif isinstance(w, QLineEdit):
                 w.blockSignals(True)

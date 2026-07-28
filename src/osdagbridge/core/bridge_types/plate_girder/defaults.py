@@ -580,14 +580,17 @@ def _on_no_of_girders_changed(working_input_dict: dict) -> None:
             working_input_dict[f"{KEY_MP_GD_MEMBER_ID}.G{girder_idx}.M{member_id}"] = f"G{girder_idx}M{member_id}"
             for base_key, value in MP_GIRDER_INPUT_DEFAULTS:
                 key = f"{base_key}.G{girder_idx}.M{member_id}"
-                if key not in working_input_dict:
+                # Optimized mode only sizes welded girders, enforce Welded here
+                # even if a Rolled section was picked earlier while in Custom mode
+                if base_key == KEY_MP_GIRDER_TYPE and design_mode == 'Optimized':
+                    working_input_dict[key] = "Welded"
+                elif key not in working_input_dict:
                     working_input_dict[key] = value
 
-    # To add a new property in future, just add one line here.
-    # The imported constant's string VALUE is used as the base key,
-    # e.g. KEY_MP_GIRDER_DEPTH = "member_properties.girder_details.section_input.depth"
-    # produces → "member_properties.girder_details.section_input.depth.G1.M1"
-    
+    # Also enforce base key to be 'Welded' on 'Optimized'
+    if design_mode == 'Optimized':
+        working_input_dict[KEY_MP_GIRDER_TYPE] = "Welded"
+
     import math
     from osdagbridge.core.utils.common import SAIL_APPROVED_THICKNESS_VALUES
     
