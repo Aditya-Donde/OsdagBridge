@@ -390,8 +390,8 @@ class AdditionalInputs(QDialog):
         from osdagbridge.desktop.ui.dialogs.additional_input.ui_builder._segment_table_widget import SegmentTableWidget
         seg_table = self.findChild(SegmentTableWidget, KEY_MP_GD_SEGMENT_TABLE)
         if seg_table is not None:
-            total_span = float(self.working_input_dict.get(KEY_SPAN))
-            seg_table.set_total_span(total_span)
+            # This would prevent stale segment for selected girder on reopen of additional input dialog
+            self._on_girder_segments_load(KEY_MP_GD_SELECT_GIRDER, seg_table)
 
         # End Diaphragm fields — disabled when Optimized----------------------
         from osdagbridge.core.utils.common import (
@@ -1224,6 +1224,11 @@ class AdditionalInputs(QDialog):
 
         count = int(float(str(value)))
         current = current_object.currentText()
+
+        # clear() drops the combo to 0 items -> currentIndex() == -1
+        # And this causes for girder_id G0
+        # Block the signal until combobox has final values
+        current_object.blockSignals(True)
         current_object.clear()
         for i in range(1, count + 1):
             if i == 1 or i == count:
@@ -1232,6 +1237,10 @@ class AdditionalInputs(QDialog):
                 current_object.addItem(f"Girder {i} (Interior)", f"G{i}")
         idx = current_object.findText(current)
         current_object.setCurrentIndex(idx if idx >= 0 else 0)
+        current_object.blockSignals(False)
+
+        # Fire the signal exactly after combo reflects its final correct state
+        current_object.currentTextChanged.emit(current_object.currentText())
 
         cad = self.findChild(QWidget, KEY_MP_GD_CAD_PREVIEW)
         if cad:
@@ -1317,12 +1326,11 @@ class AdditionalInputs(QDialog):
             return
 
         idx       = self.findChild(QComboBox, KEY_MP_GD_SELECT_GIRDER)
-        girder_id = f"G{idx.currentIndex() + 1}" if idx else "G1"
+        girder_id = f"G{idx.currentIndex() + 1}"
         seg_key   = f"{KEY_MP_GD_SEGMENT_TABLE}.{girder_id}"
-        segments  = self.working_input_dict.get(seg_key, [])
+        segments  = self.working_input_dict.get(seg_key)
 
-        member_ids = [str(seg.get("id", "")) for seg in segments if seg.get("id")]
-
+        member_ids = [str(seg.get("id")) for seg in segments if seg.get("id")]
         current = target_widget.currentText()
         target_widget.clear()
         target_widget.addItems(member_ids)
