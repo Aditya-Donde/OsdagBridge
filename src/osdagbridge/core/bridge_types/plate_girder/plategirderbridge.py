@@ -4163,6 +4163,38 @@ class PlateGirderBridge:
         # Effective slab width from the composite capacity check (mm)
         out[KEY_SD_EFFECTIVE_SLAB_WIDTH] = dr["beff_mm"]
 
+        # ── 2b. Per-girder dimensional values ───────────────────────────────────
+        # The flat KEY_SD_* keys above hold the controlling girder (the Details tab's
+        # default). Publish each girder's own section under ".G{n}.M1" so the Steel
+        # Design Details tab can show the girder picked in its selector — read only
+        # from output_dict. Per-girder sections come from design_results["per_girder"]
+        # (see designer.run_design_check); grade/type are global, restraint/web-type
+        # are per-girder inputs echoed from input_dict.
+        def _gv_or_empty(inp, base_key, gi):
+            """Per-girder input value, or '—' when no key variant is present."""
+            return resolve_girder_value(inp, base_key, gi)
+
+        per_girder = dr.get("per_girder", {})
+        for gi, g_name in enumerate(per_girder):
+            sec = per_girder[g_name].get("section")
+            if not sec:
+                continue
+            suf = f".G{gi + 1}.M1"
+            out[KEY_SD_GRADE_OF_MATERIAL + suf]       = dr["steel_grade"]
+            out[KEY_SD_SECTION_TYPE + suf]            = sec["fabrication"].title()
+            out[KEY_SD_SECTION_DESIGNATION + suf]     = sec["designation"]
+            out[KEY_SD_SECTION_CLASS + suf]           = sec["section_class"]
+            out[KEY_SD_TOTAL_DEPTH + suf]             = sec["D_mm"]
+            out[KEY_SD_WEB_THICKNESS + suf]           = sec["tw_mm"]
+            out[KEY_SD_TOP_FLANGE_WIDTH + suf]        = sec["bf_top_mm"]
+            out[KEY_SD_TOP_FLANGE_THICKNESS + suf]    = sec["tf_top_mm"]
+            out[KEY_SD_BOTTOM_FLANGE_WIDTH + suf]     = sec["bf_bot_mm"]
+            out[KEY_SD_BOTTOM_FLANGE_THICKNESS + suf] = sec["tf_bot_mm"]
+            out[KEY_SD_EFFECTIVE_SLAB_WIDTH + suf]    = sec["beff_mm"]
+            out[KEY_SD_TORSIONAL_RESTRAINT + suf] = _gv_or_empty(inp, KEY_MP_GIRDER_TORSIONAL_RESTRAINT, gi)
+            out[KEY_SD_WARPING_RESTRAINT + suf]   = _gv_or_empty(inp, KEY_MP_GIRDER_WARPING_RESTRAINT, gi)
+            out[KEY_SD_WEB_TYPE + suf]            = _gv_or_empty(inp, KEY_MP_GIRDER_WEB_TYPE, gi)
+
         # ── 3. Shear connector card ─────────────────────────────────────────────
         # All stud dimensions in mm; strengths in MPa; count and spacing as numbers.
         out[KEY_SD_SHEAR_YIELD_STRENGTH]      = dr.get("stud_fy_MPa", 350.0)   # MPa

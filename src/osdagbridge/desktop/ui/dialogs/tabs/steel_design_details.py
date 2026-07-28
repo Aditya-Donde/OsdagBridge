@@ -419,12 +419,12 @@ class SteelDesignDetailsTab(QWidget):
     # LOAD DATA (unchanged logic)
     # ─────────────────────────────────────────────────────────────────────────
 
-    def load_data(self, output_dict: dict):
-        """Populate all field widgets from an output_dict snapshot; normalizes schema keys to flat dict."""
+    def load_data(self, output_dict: dict, girder_index: int = 0):
+        """Populate all field widgets from an output_dict snapshot for the given girder."""
         if not output_dict:
             return
-            
-        normalized_state = self._normalize_output_dict(output_dict)
+        self._girder_index = girder_index
+        normalized_state = self._normalize_output_dict(output_dict, girder_index)
 
         for group_fields in self._field_groups.values():
             for key, field in group_fields.items():
@@ -454,7 +454,7 @@ class SteelDesignDetailsTab(QWidget):
                     
         self._update_cad_previews(normalized_state, output_dict)
 
-    def _normalize_output_dict(self, output_dict: dict) -> dict:
+    def _normalize_output_dict(self, output_dict: dict, girder_index: int = 0) -> dict:
         """
         Build a flat dict keyed by schema data_key strings, suitable for
         field.setText() in load_data().
@@ -462,15 +462,23 @@ class SteelDesignDetailsTab(QWidget):
         Every value is read directly from output_dict, which store_design_results()
         populates after a design run (both Optimized and Custom modes). There are
         no raw-input fallbacks, so the tab stays blank until a design has run.
+
+        The Dimensional card reads the selected girder's per-girder ".G{n}.M1" keys,
+        falling back to the flat (controlling-girder) key when a per-girder value is
+        absent (e.g. an older snapshot).
         """
         out = {}
+        gsuf = f".G{girder_index + 1}.M1"
 
         # ── Helpers ──────────────────────────────────────────────────────────────
         def _str(val):
             if val is None or val == "":
                 return ""
             return str(val)
-
+        def _sd(base_key):
+            """Per-girder KEY_SD_* value for the selected girder."""
+            return output_dict.get(base_key + gsuf, "")
+        
         def _round1(val):
             """Value already in mm → 1 dp string."""
             try:
@@ -481,22 +489,22 @@ class SteelDesignDetailsTab(QWidget):
         # ─────────────────────────────────────────────────────────────────────────
         # DIMENSIONAL DETAILS — flat KEY_SD_* keys (dimensions already in mm).
         # ─────────────────────────────────────────────────────────────────────────
-        out["grade_of_material"]   = _str(output_dict.get(KEY_SD_GRADE_OF_MATERIAL))
-        out["section_type"]        = _str(output_dict.get(KEY_SD_SECTION_TYPE))
-        out["section_designation"] = _str(output_dict.get(KEY_SD_SECTION_DESIGNATION))
-        out["section_class"]       = _str(output_dict.get(KEY_SD_SECTION_CLASS))
+        out["grade_of_material"]   = _str(_sd(KEY_SD_GRADE_OF_MATERIAL))
+        out["section_type"]        = _str(_sd(KEY_SD_SECTION_TYPE))
+        out["section_designation"] = _str(_sd(KEY_SD_SECTION_DESIGNATION))
+        out["section_class"]       = _str(_sd(KEY_SD_SECTION_CLASS))
 
-        out["total_depth"]             = _round1(output_dict.get(KEY_SD_TOTAL_DEPTH))
-        out["web_thickness"]           = _round1(output_dict.get(KEY_SD_WEB_THICKNESS))
-        out["top_flange_width"]        = _round1(output_dict.get(KEY_SD_TOP_FLANGE_WIDTH))
-        out["top_flange_thickness"]    = _round1(output_dict.get(KEY_SD_TOP_FLANGE_THICKNESS))
-        out["bottom_flange_width"]     = _round1(output_dict.get(KEY_SD_BOTTOM_FLANGE_WIDTH))
-        out["bottom_flange_thickness"] = _round1(output_dict.get(KEY_SD_BOTTOM_FLANGE_THICKNESS))
+        out["total_depth"]             = _round1(_sd(KEY_SD_TOTAL_DEPTH))
+        out["web_thickness"]           = _round1(_sd(KEY_SD_WEB_THICKNESS))
+        out["top_flange_width"]        = _round1(_sd(KEY_SD_TOP_FLANGE_WIDTH))
+        out["top_flange_thickness"]    = _round1(_sd(KEY_SD_TOP_FLANGE_THICKNESS))
+        out["bottom_flange_width"]     = _round1(_sd(KEY_SD_BOTTOM_FLANGE_WIDTH))
+        out["bottom_flange_thickness"] = _round1(_sd(KEY_SD_BOTTOM_FLANGE_THICKNESS))
 
-        out["torsional_restraint"]  = _str(output_dict.get(KEY_SD_TORSIONAL_RESTRAINT))
-        out["warping_restraint"]    = _str(output_dict.get(KEY_SD_WARPING_RESTRAINT))
-        out["web_type"]             = _str(output_dict.get(KEY_SD_WEB_TYPE))
-        out["effective_slab_width"] = _round1(output_dict.get(KEY_SD_EFFECTIVE_SLAB_WIDTH))
+        out["torsional_restraint"]  = _str(_sd(KEY_SD_TORSIONAL_RESTRAINT))
+        out["warping_restraint"]    = _str(_sd(KEY_SD_WARPING_RESTRAINT))
+        out["web_type"]             = _str(_sd(KEY_SD_WEB_TYPE))
+        out["effective_slab_width"] = _round1(_sd(KEY_SD_EFFECTIVE_SLAB_WIDTH))
 
         # ─────────────────────────────────────────────────────────────────────────
         # SHEAR CONNECTOR DETAILS — flat KEY_SD_SHEAR_* keys.
@@ -514,10 +522,8 @@ class SteelDesignDetailsTab(QWidget):
         # The example key locates the active member's ".G{n}.M{m}" suffix.
         # ─────────────────────────────────────────────────────────────────────────
         def _suffix_for(base: str) -> str:
-            for k in output_dict:
-                if k.startswith(base + ".G"):
-                    return k[len(base):]   # e.g. ".G1.M1"
-            return ".G1.M1"
+            """Return the selected girder suffix only."""
+            return gsuf if base + gsuf in output_dict else ""
 
         sec_suf = _suffix_for(KEY_MP_GIRDER_SECTIONAL_AREA)
 
@@ -666,6 +672,9 @@ class SteelDesignDetailsTab(QWidget):
                 "intermediate_stiffener":      normalized_state.get("stiff_intermediate_on"),
                 "intermediate_spacing_mm":     _cad_num("stiff_intermediate_spacing"),
                 "longitudinal_stiffener":      normalized_state.get("stiff_longitudinal_mode"),
+                KEY_SD_SHEAR_DIAMETER:         normalized_state.get("shear_diameter"),
+                KEY_SD_SHEAR_HEIGHT:           normalized_state.get("shear_height"),
+                KEY_SD_SHEAR_LONGITUDINAL_SPACING: normalized_state.get("shear_longitudinal_spacing"),
             }
 
             stiffener_by_member = {"G1M1": stiff_state}
