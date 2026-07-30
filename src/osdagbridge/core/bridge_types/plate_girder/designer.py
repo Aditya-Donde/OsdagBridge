@@ -2829,6 +2829,13 @@ def _extract_demands_from_analysis_results(
     _uls_seismic_lcs  = list(lc_groups.get("uls_seismic",       lc_groups.get("ULS_seismic",       [])))
     _uls_acc_lcs      = list(lc_groups.get("uls_accidental",    lc_groups.get("ULS_accidental",    [])))
     _uls_all_lcs      = _uls_basic_lcs + _uls_seismic_lcs + _uls_acc_lcs
+    # Fatigue-vehicle cases (IRC:6 Cl.204.6) — the static "Fatigue" case plus every
+    # increment of "Moving Fatigue ...". These drive the fatigue checks: the stress
+    # range comes from the fatigue truck alone, not from the full Table 6A live-load
+    # cases. Falls back to the live-load cases when the model carries no fatigue
+    # truck (results produced before add_fatigue_vehicle_load_case() was wired in).
+    _fatigue_lcs = list(lc_groups.get("fatigue", []))
+    _fatigue_range_lcs = _fatigue_lcs or all_live_lcs
     # DL+LL combination case from analyser's create_dl_ll_combination(), e.g. "1.0 DL + 1.0 LL".
     _dl_ll_lcs = list(lc_groups.get("dl_ll", []))
     # Analyser-provided pre-combined envelopes (single load case each).
@@ -2967,31 +2974,33 @@ def _extract_demands_from_analysis_results(
             except Exception:
                 pass
 
-        # (4) Fatigue stress/shear ranges — true range (max − min) across ALL SLS_FREQUENT_*
-        # combinations (IRC 22 Cl.604.5), matching the Vr_kN range pattern below.
+        # (4) Fatigue stress/shear ranges — IRC 22 Cl.604.5. Fatigue is driven by the
+        # FATIGUE VEHICLE (IRC:6 Cl.204.6) ALONE — permanent loads are steady and don't
+        # cycle, and the Table 6A design vehicles are not the fatigue load model. The
+        # range is measured AT A GIVEN SECTION as the truck moves on/off: per-element
+        # (max − min, against the unloaded 0 state), worst section. These two values
+        # feed only the fatigue checks (8/9); other checks keep SLS_frequent.
         stress_range_MPa = shear_range_MPa = 0.0
-        if _sls_frequent_lcs:
+        if _fatigue_range_lcs:
             try:
-                ds = analysis_results.ds
-                mz_all = np.concatenate([
-                    np.asarray(ds.forces.sel(Loadcase=_sls_frequent_lcs, Element=elements,
-                               Component=c).values, dtype=float).flatten()
-                    for c in ("Mz_i", "Mz_j")
-                ])
-                mz_all = mz_all[~np.isnan(mz_all)]
-                if mz_all.size and Ze_comp_bot_mm3 > 0:
-                    mz_range_Nm = max(float(mz_all.max()), 0.0) - min(float(mz_all.min()), 0.0)
-                    # Composite section modulus — live-load stress acts on the composite section.
-                    stress_range_MPa = mz_range_Nm * 1000.0 / Ze_comp_bot_mm3
-                vy_all = np.concatenate([
-                    np.asarray(ds.forces.sel(Loadcase=_sls_frequent_lcs, Element=elements,
-                               Component=c).values, dtype=float).flatten()
-                    for c in ("Vy_i", "Vy_j")
-                ])
-                vy_all = vy_all[~np.isnan(vy_all)]
-                if vy_all.size and Aw_mm2 > 0:
-                    vy_range_N = max(float(vy_all.max()), 0.0) - min(float(vy_all.min()), 0.0)
-                    shear_range_MPa = vy_range_N / Aw_mm2
+                f = analysis_results.ds.forces.sel(Loadcase=_fatigue_range_lcs, Element=elements)
+
+                def _sec_range(comp_i, comp_j):
+                    """Worst per-section (max − min) across truck positions, incl. the 0 state."""
+                    rng = 0.0
+                    for c in (comp_i, comp_j):
+                        da   = f.sel(Component=c)
+                        emax = da.max("Loadcase").clip(min=0)   # vehicle on  (or 0 if never +)
+                        emin = da.min("Loadcase").clip(max=0)   # vehicle off (0) or hogging
+                        v    = float((emax - emin).max())
+                        if v == v:                              # skip NaN
+                            rng = max(rng, v)
+                    return rng
+
+                if Ze_comp_bot_mm3 > 0:
+                    stress_range_MPa = _sec_range("Mz_i", "Mz_j") * 1000.0 / Ze_comp_bot_mm3
+                if Aw_mm2 > 0:
+                    shear_range_MPa = _sec_range("Vy_i", "Vy_j") / Aw_mm2
             except Exception:
                 pass
 

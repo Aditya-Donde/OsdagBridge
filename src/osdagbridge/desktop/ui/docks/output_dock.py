@@ -814,7 +814,9 @@ class OutputDock(QWidget):
                 # (which plots real dataset load cases).
                 if key == KEY_OUTPUT_DOCK_LOAD_COMBINATION:
                     combo.addItem("Design Envelope")
-                combo.setCurrentIndex(0)  # first real load case is default
+                    combo.setCurrentText("Design Envelope")  # default for design dropdown
+                else:
+                    combo.setCurrentIndex(0)  # first real load case is default
                 combo.setSizeAdjustPolicy(QComboBox.AdjustToMinimumContentsLengthWithIcon)
                 combo.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Fixed)
                 combo.blockSignals(False)

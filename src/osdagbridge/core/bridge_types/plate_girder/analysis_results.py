@@ -216,10 +216,19 @@ class PlateGirderAnalysisResults:
         envelope_uls      = []
         envelope_sls      = []
         dl_ll_cases       = []
+        fatigue_cases     = []
 
         for lc in all_lc:
             name       = str(lc)
             name_lower = name.lower()
+
+            # Fatigue vehicle (IRC:6 Cl.204.6) — the static "Fatigue" case and every
+            # increment of "Moving Fatigue at global position [...]". Matched early:
+            # these names hit none of the rules below and would otherwise fall through
+            # to the dead-load bucket at the end of the loop.
+            if name_lower.startswith("fatigue") or name_lower.startswith("moving fatigue"):
+                fatigue_cases.append(lc)
+                continue
 
             # Envelope pseudo-LCs injected by create_envelope_load_case()
             if name == "Envelope ULS":
@@ -287,6 +296,7 @@ class PlateGirderAnalysisResults:
             "envelope_uls":         envelope_uls,
             "envelope_sls":         envelope_sls,
             "dl_ll":                dl_ll_cases,
+            "fatigue":              fatigue_cases,
         }
 
     # ========================================================
