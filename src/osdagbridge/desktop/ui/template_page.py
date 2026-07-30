@@ -452,10 +452,7 @@ class CustomWindow(QWidget):
         This updates the 2D CAD using cad state of Typical section cad
         """
         if self._additional_inputs_dialog is not None:
-
-            # This is updated directly because 
-            # there is some mapping that takes place in BridgeDualCADWidget which can worst the things
-            self.cad_comp_widget.cross_section_widget.update_params(cad_state)
+            self.cad_comp_widget.update_from_osdag_inputs(self.input_dict)
 
     def _show_additional_inputs(self, target_tab: str | None = None):
         """

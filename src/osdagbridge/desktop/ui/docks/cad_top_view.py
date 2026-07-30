@@ -1088,7 +1088,7 @@ class TopViewCADWidget(QWidget):
             span_length = self.params['span_length']
             bracing_spacing = self.params['cross_bracing_spacing']
             
-            num_braces = max(1, int(math.ceil(span_length / bracing_spacing)))
+            num_braces = max(1, int(round(span_length / bracing_spacing)))
             actual_spacing_px = span_length_px / num_braces
             
             bracing_color = CROSS_BRACING_HIGHLIGHT if bracing_hovered else CROSS_BRACING_COLOR

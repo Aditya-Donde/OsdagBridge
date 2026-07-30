@@ -22,7 +22,7 @@ from osdagbridge.desktop.ui.dialogs.additional_input.ui_builder.common_ui_builde
 from osdagbridge.core.bridge_types.plate_girder.ui_fields_additional_input import ADDITIONAL_INPUTS_SCHEMA
 from osdagbridge.desktop.ui.dialogs.additional_input.ui_builder._load_combination_widget import LoadCombinationWidget
 from osdagbridge.desktop.ui.dialogs.additional_input.ui_builder.common_ui_builder import AdaptiveWidget
-
+from osdagbridge.core.bridge_types.plate_girder.defaults import extend_cb_dynamic_keys
 # =================================================================================
 #   MAIN IMPLEMENTATION
 # =================================================================================
@@ -520,6 +520,11 @@ class AdditionalInputs(QDialog):
             self._save_stiffener_member_data(combo.currentText().strip())
 
         self.default_input_dict.update(self.working_input_dict)
+        
+        # Purge stale keys natively on the main dictionary using our robust extend_cb function
+        girder_count = int(float(str(self.default_input_dict.get(KEY_TS_NO_OF_GIRDERS) or 1)))
+        cb_count = int(float(str(self.default_input_dict.get(KEY_MP_CB_NO_OF_CROSS_BRACINGS) or 1)))
+        extend_cb_dynamic_keys(self.default_input_dict, girder_count, cb_count)
         from osdagbridge.desktop.ui.docks.cad_cross_section import CrossSectionCADWidget
         cad = self.findChild(CrossSectionCADWidget, KEY_TS_CAD_PREVIEW)
         if cad:
@@ -2578,12 +2583,15 @@ class AdditionalInputs(QDialog):
 
         span = float(self.working_input_dict.get(KEY_SPAN))
         if span > 0:
-            target_widget.setText(f"{span / (count + 1):.3f}")
+            spacing_val = span / (count + 1)
+            target_widget.setText(f"{spacing_val:.3f}")
+            self.working_input_dict[KEY_MP_CB_SPACING] = round(spacing_val, 3)
         else:
             target_widget.setText("")
 
         if count > 0:
             girder_count = int(float(str(self.working_input_dict.get(KEY_TS_NO_OF_GIRDERS) or 1)))
+            self.working_input_dict[KEY_MP_CB_NO_OF_CROSS_BRACINGS] = count
             # Write count at pair-level for every pair — same value for all
             for gi in range(1, girder_count):
                 pair_key = f"{KEY_MP_CB_NO_OF_CROSS_BRACINGS}.G{gi}G{gi + 1}"
