@@ -624,6 +624,7 @@ class CustomWindow(QWidget):
                     break
             if val is None:
                 continue
+            # print(f"\n@@refresh_entry:{widget_id} value:\n{val}")
             self.input_dict[widget_id] = val
 
     def _sync_compute_results_to_input_dict(self) -> None:
@@ -671,13 +672,14 @@ class CustomWindow(QWidget):
 
         print("\n@@input_dictionary_after (common_design_func):\n")
         pprint(self.input_dict)
-
-        # Update Computed Values in input_dict before Design
-        self._sync_compute_results_to_input_dict()
-        # Update refreshed tab values in input_dict before Design
-        self._sync_refresh_entries_to_input_dict()
-
+        
         if trigger == "Design":
+
+            # Update Computed Values in input_dict before Design
+            self._sync_compute_results_to_input_dict()
+            # read a refresh-synced key (KEY_WL_BASIC_WIND_SPEED) as their input.
+            self._sync_refresh_entries_to_input_dict()
+
             import sys
             import traceback
 

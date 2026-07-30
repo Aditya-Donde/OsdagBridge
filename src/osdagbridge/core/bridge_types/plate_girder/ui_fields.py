@@ -271,9 +271,9 @@ class FrontendData:
                 True, "No Validator",
                 {"exclusive": False}),
 
-            (KEY_ANALYSIS_UTILIZATION, "Utilization Ratio",
-                TYPE_CHECKBOX, None, True, "No Validator",
-                {"group_end": True}),             # closes the Display Options box
+            # (KEY_ANALYSIS_UTILIZATION, "Utilization Ratio",
+            #     TYPE_CHECKBOX, None, True, "No Validator",
+            #     {"group_end": True}),             # closes the Display Options box
 
             # ── Superstructure ────────────────────────────────────────────────
             (KEY_SECTION_OUTPUT_SUPERSTRUCTURE, "Superstructure",
