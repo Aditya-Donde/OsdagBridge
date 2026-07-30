@@ -18,6 +18,11 @@ ADDITIONAL_INPUTS_SCROLL_STYLE = """
     QScrollArea QScrollBar::handle:vertical:hover { background:#a0a0a0; }
     QScrollArea QScrollBar::add-line:vertical,
     QScrollArea QScrollBar::sub-line:vertical { border:none; background:none; }
+    QScrollArea QScrollBar:horizontal { border:none; background:#f0f0f0; height:8px; }
+    QScrollArea QScrollBar::handle:horizontal { background:#c0c0c0; border-radius:4px; min-width:20px; }
+    QScrollArea QScrollBar::handle:horizontal:hover { background:#a0a0a0; }
+    QScrollArea QScrollBar::add-line:horizontal,
+    QScrollArea QScrollBar::sub-line:horizontal { border:none; background:none; }
 """
 
 from PySide6.QtWidgets import QStackedWidget
