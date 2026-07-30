@@ -1364,14 +1364,22 @@ class PlateGirderBridge:
         Apply all live loads to the grillage model in order:
           1. Vehicle load cases — static placements per IRC:6 Table 6A
           2. Moving vehicle load cases — moving paths for each vehicle
+          3. Fatigue vehicle — IRC:6 Cl.204.6 truck on the carriageway centreline
+          4. Moving fatigue vehicle — the fatigue truck traversing the span
 
         Must be called after setup_grillage() has built and registered the model.
         """
         model = self.grillage_model
         model.add_vehicle_load_cases_from_combinations()
         bridge_logger.check_cancel()
-        
+
         model.create_moving_vehicle_load_cases()
+        bridge_logger.check_cancel()
+
+        model.add_fatigue_vehicle_load_case()
+        bridge_logger.check_cancel()
+
+        model.create_moving_fatigue_load_cases()
 
     # ─────────────────────────────────────────────────────────────────────────
     # Wind loads — applied after dead and live loads, before analysis
@@ -2058,6 +2066,48 @@ class PlateGirderBridge:
         return self.grillage_model.create_moving_vehicle_load_cases(
             span=span,
         )
+
+    def add_fatigue_vehicle_load_case(self, apply_dla: bool = True) -> list:
+        """
+        Create the static IRC:6-2017 Cl.204.6 fatigue-truck load case — a single
+        case holding one truck on the centreline of each carriageway (two trucks
+        when a median splits the deck).
+
+        Delegates to BridgeGrillageModel.add_fatigue_vehicle_load_case().
+
+        Parameters
+        ----------
+        apply_dla : bool
+            Apply the Cl.208.3 dynamic load allowance to the load case
+            (default True).
+
+        Returns
+        -------
+        list
+            A single-element list holding the created static fatigue load case.
+        """
+        return self.grillage_model.add_fatigue_vehicle_load_case(apply_dla=apply_dla)
+
+    def create_moving_fatigue_load_cases(self, span: float | None = None) -> list:
+        """
+        Create the moving fatigue load case for the trucks previously created by
+        add_fatigue_vehicle_load_case(). All trucks share one path and move
+        together from -vehicle_length to span + vehicle_length, each along its
+        own carriageway centreline.
+
+        Delegates to BridgeGrillageModel.create_moving_fatigue_load_cases().
+
+        Parameters
+        ----------
+        span : float, optional
+            Override the bridge span (m); defaults to the analysed span.
+
+        Returns
+        -------
+        list
+            A single-element list holding the created moving fatigue load case.
+        """
+        return self.grillage_model.create_moving_fatigue_load_cases(span=span)
 
     def analyze(self):
         """

@@ -34,6 +34,11 @@ from osdagbridge.core.bridge_types.plate_girder.dto import (SectionProperties, S
 from osdagbridge.core.bridge_types.plate_girder.results_data import restructure_data as restructure_data_direct
 
 
+#: Axle-span length (m) of the IRC:6-2017 Cl.204.6 fatigue truck — axles at
+#: 0.0, 4.5 and 5.9 m, per ospgrillage LoadModel.create_fatigue_vehicle().
+FATIGUE_VEHICLE_LENGTH = 5.9
+
+
 class BridgeGrillageModel:
 
     def __init__(self):
@@ -90,6 +95,11 @@ class BridgeGrillageModel:
         # -------------------- LIVE LOAD --------------------
         self.vehicle_moving_loads_by_case: dict = {}  # {case_num: [vehicle, ...]}
         self.vehicle_type_map: dict = {}              # {id(vehicle): vehicle_type_str}
+
+        # -------------------- FATIGUE LOAD (IRC:6 Cl.204.6) --------------------
+        self.fatigue_load_cases_list: list = []        # static fatigue load cases
+        self.fatigue_vehicles_by_case: dict = {}       # {load_case_name: [vehicle, ...]}
+        self.moving_fatigue_load_cases_list: list = []  # moving fatigue load cases
 
         # self.geometry = GeometryDefinitions(self.L, self.w, self.model)
 
@@ -1862,6 +1872,10 @@ class BridgeGrillageModel:
                 data = IRC6_2017.cl_204_1_Class70R_vehicle_wheel()
             elif vehicle_type == 'ClassA':
                 data = IRC6_2017.cl_204_1_ClassA_vehicle()
+            elif vehicle_type == 'Fatigue':
+                # IRC:6-2017 Cl.204.6 fatigue truck: axles at 0, 4.5, 5.9 m
+                # (matches ospgrillage LoadModel.create_fatigue_vehicle()).
+                return FATIGUE_VEHICLE_LENGTH
             else:
                 return 25.0
             return float(max(data['x']))
@@ -1921,6 +1935,166 @@ class BridgeGrillageModel:
 
         return self.moving_load_cases_list
 
+    # ------------------------------------------------------------------
+    #   Fatigue vehicle (IRC:6-2017 Cl.204.6)
+    # ------------------------------------------------------------------
+
+    def carriageway_center_coordinates(self):
+        """
+        Return the transverse (z) centreline of every carriageway on the deck.
+
+        The cross-section layout already stores each component's extents, so the
+        centre comes straight from ``SectionComponent.center`` — no separate
+        derivation is needed here.  ``vehicle_lane_coordinates()`` computes lane
+        centres (``z_start + (i + 0.5) * lane_width``); this is the carriageway
+        centre, which is what the fatigue truck is placed on.
+
+        Returns
+        -------
+        list of tuple
+            ``[(component_name, z_center), ...]`` — one entry for a single
+            carriageway, two entries (left, right) for a split carriageway
+            with a median.
+
+        Raises
+        ------
+        ValueError
+            If the layout contains no carriageway component.
+        """
+        layout = self.layout
+        centers = []
+
+        # ---------- Single carriageway ----------
+        if layout.has_component("carriageway"):
+            cw = layout.get_component("carriageway")
+            centers.append(("carriageway", cw.center))
+
+        # ---------- Split carriageway (with median) ----------
+        else:
+            for name in ("carriageway_left", "carriageway_right"):
+                if layout.has_component(name):
+                    centers.append((name, layout.get_component(name).center))
+
+        if not centers:
+            raise ValueError("No carriageway component found in the deck layout")
+
+        return centers
+
+    def add_fatigue_vehicle_load_case(self, model=None, apply_dla: bool = True):
+        """
+        Create the static fatigue-truck load case, with one truck straddling the
+        centreline of each carriageway.
+
+        The fatigue truck is the IRC:6-2017 Cl.204.6 3-axle vehicle built by
+        ``ospgrillage``'s ``LoadModel(model_type="FATIGUE")``.  When a median
+        splits the deck there is one truck per carriageway, but they belong to a
+        single load case named "Fatigue" — the trucks are checked side by side,
+        not as independent load cases.  Unlike the Table 6A live-load cases no
+        multi-lane reduction factor (alf) applies; only the dynamic load
+        allowance is registered on the load case.
+
+        Parameters
+        ----------
+        model : Grillage, optional
+            Target model; defaults to ``self.model``.
+        apply_dla : bool
+            Apply the Cl.208.3 dynamic load allowance as the load-case factor
+            (default True).
+
+        Returns
+        -------
+        list
+            A single-element list holding the created static fatigue load case.
+        """
+        model = model or self.model
+        if model is None:
+            raise ValueError("Model not created yet.")
+
+        # IRC 6:2017 Cl.208.3 — dynamic load allowance computed from actual span.
+        dla = 1.0 + IRC6_2017.cl_208_3_impact_factor(self.L) if apply_dla else 1.0
+
+        self.fatigue_load_cases_list = []
+        self.fatigue_vehicles_by_case = {}
+
+        centers = self.carriageway_center_coordinates()
+
+        # One load case for the whole deck. The name deliberately does not start
+        # with "case" so the governing-LL detection in
+        # create_governing_ll_load_case() does not pick it up.
+        lc_name = "Fatigue"
+        lc = og.create_load_case(name=lc_name)
+        vehicles = []
+
+        for _cw_name, z_center in centers:
+            vehicle_generator = og.create_load_model(model_type="FATIGUE")
+            vehicle = vehicle_generator.create()
+            vehicle.set_global_coord(og.Point(0.0, 0.0, z_center))
+
+            lc.add_load(load=vehicle)
+
+            vehicles.append(vehicle)
+            self.vehicle_type_map[id(vehicle)] = "Fatigue"
+
+        model.add_load_case(lc, load_factor=dla)
+
+        self.fatigue_load_cases_list.append(lc)
+        self.fatigue_vehicles_by_case[lc_name] = vehicles
+
+        return self.fatigue_load_cases_list
+
+    def create_moving_fatigue_load_cases(self, model=None, span=None):
+        """
+        Create the moving fatigue load case corresponding to the static fatigue
+        case created by ``add_fatigue_vehicle_load_case()``.
+
+        All fatigue trucks share one moving path and therefore advance together:
+        start = ``-vehicle_length``, end = ``span + vehicle_length``, so they
+        fully enter and exit the bridge.  Each truck keeps its own transverse
+        (z) offset from its global coordinate, so a two-carriageway deck is
+        loaded on both carriageways simultaneously at every path increment.
+
+        Parameters
+        ----------
+        model : Grillage, optional
+            Target model; defaults to ``self.model``.
+        span : float, optional
+            Override the bridge span (m); defaults to ``self.L``.
+
+        Returns
+        -------
+        list
+            A single-element list holding the created moving fatigue load case.
+        """
+        model = model or self.model
+        if model is None:
+            raise ValueError("Model not created yet.")
+
+        if not getattr(self, "fatigue_vehicles_by_case", None):
+            raise ValueError(
+                "No fatigue vehicles found. Call add_fatigue_vehicle_load_case() first."
+            )
+
+        span = span or self.L
+        veh_len = self._vehicle_length("Fatigue")
+
+        start = og.create_point(x=-veh_len, y=0, z=0)
+        end = og.Point(span + veh_len, 0, 0)
+
+        self.moving_fatigue_load_cases_list = []
+
+        for lc_name, vehicles in self.fatigue_vehicles_by_case.items():
+            moving_path = og.create_moving_path(start_point=start, end_point=end)
+
+            moving_load = og.create_moving_load(name=f"Moving {lc_name}")
+            moving_load.set_path(moving_path)
+
+            for vehicle in vehicles:
+                moving_load.add_load(vehicle)
+
+            model.add_load_case(moving_load)
+            self.moving_fatigue_load_cases_list.append(moving_load)
+
+        return self.moving_fatigue_load_cases_list
 
     def create_governing_ll_load_case(self, dataset, model=None, partial_safety_factor: float = 1.0):
         """
@@ -2831,6 +3005,8 @@ if __name__ == "__main__":
     bridge.create_vehicle_load_cases()
     bridge.add_vehicle_load_cases_from_combinations()
     bridge.create_moving_vehicle_load_cases()
+    bridge.add_fatigue_vehicle_load_case()
+    bridge.create_moving_fatigue_load_cases()
     # bridge.plot()
 
     results = bridge.analyze()
