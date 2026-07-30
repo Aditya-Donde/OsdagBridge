@@ -452,10 +452,6 @@ def extend_cb_dynamic_keys(working_input_dict: dict, girder_count: int, no_of_br
     stale_cb_keys = []
     for k in working_input_dict:
         if k.startswith("member_properties.cross_bracing_details.") and ".G" in k:
-            girders = [int(g) for g in re.findall(r'G(\d+)', k)]
-            if any(g > girder_count for g in girders):
-                stale_cb_keys.append(k)
-                continue
             members = [int(m) for m in re.findall(r'M(\d+)', k)]
             if any(m > no_of_bracings for m in members):
                 stale_cb_keys.append(k)
@@ -950,6 +946,8 @@ def solve_extend_basic_input_dict(basic_input_dict: dict) -> None:
     _update_design_options_defaults(basic_input_dict)
     
     _update_design_options_cont_defaults(basic_input_dict)
+
+    # Enforces the _calc_crossbracing_spacing_and_no input into the working dictionary
     _update_cross_bracing_defaults(basic_input_dict)
     
     if footpath_str in ('None', ''):

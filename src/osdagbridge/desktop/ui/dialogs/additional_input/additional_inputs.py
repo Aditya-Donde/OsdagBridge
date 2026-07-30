@@ -901,7 +901,7 @@ class AdditionalInputs(QDialog):
         result = self.compute_crash_barrier_values(self.working_input_dict)
         for k, v in result.items():
             self._update_input_dict(k, str(v))
-        self.update_girder_layout()
+        self.update_girder_layout("spacing")
 
     def compute_crash_barrier_values(self, input_dict: dict) -> dict:
         from osdagbridge.core.utils.codes.irc5_2015 import IRC5_2015
@@ -1002,7 +1002,7 @@ class AdditionalInputs(QDialog):
         result = self.compute_median_values(self.working_input_dict)
         for k, v in result.items():
             self._update_input_dict(k, str(v))
-        self.update_girder_layout()
+        self.update_girder_layout("spacing")
 
     def compute_median_values(self, input_dict: dict) -> dict:
         from osdagbridge.core.utils.codes.irc5_2015 import IRC5_2015
@@ -1053,7 +1053,7 @@ class AdditionalInputs(QDialog):
         return {}
 
     def on_layout_width_changed(self):  # on_editing_finished: triggers girder layout recalculation when CB/MD/RL/footpath width is edited
-        self.update_girder_layout()
+        self.update_girder_layout("spacing")
 
     # ── Railing Sub-Tab ──────────────────────────────────────────────────────────────────────
 
@@ -1062,7 +1062,7 @@ class AdditionalInputs(QDialog):
         result = self.compute_railing_values(self.working_input_dict)
         for k, v in result.items():
             self._update_input_dict(k, str(v))
-        self.update_girder_layout()
+        self.update_girder_layout("spacing")
 
     def compute_railing_values(self, input_dict: dict) -> dict:
         from osdagbridge.core.utils.codes.irc5_2015 import IRC5_2015
