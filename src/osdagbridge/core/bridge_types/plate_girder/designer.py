@@ -2967,31 +2967,32 @@ def _extract_demands_from_analysis_results(
             except Exception:
                 pass
 
-        # (4) Fatigue stress/shear ranges — true range (max − min) across ALL SLS_FREQUENT_*
-        # combinations (IRC 22 Cl.604.5), matching the Vr_kN range pattern below.
+        # (4) Fatigue stress/shear ranges — IRC 22 Cl.604.5. Fatigue is driven by the
+        # LIVE (fatigue-vehicle) load ALONE — permanent loads are steady and don't
+        # cycle. The range is measured AT A GIVEN SECTION as the vehicle moves on/off:
+        # per-element (max − min, against the unloaded 0 state), worst section. These
+        # two values feed only the fatigue checks (8/9); other checks keep SLS_frequent.
         stress_range_MPa = shear_range_MPa = 0.0
-        if _sls_frequent_lcs:
+        if all_live_lcs:
             try:
-                ds = analysis_results.ds
-                mz_all = np.concatenate([
-                    np.asarray(ds.forces.sel(Loadcase=_sls_frequent_lcs, Element=elements,
-                               Component=c).values, dtype=float).flatten()
-                    for c in ("Mz_i", "Mz_j")
-                ])
-                mz_all = mz_all[~np.isnan(mz_all)]
-                if mz_all.size and Ze_comp_bot_mm3 > 0:
-                    mz_range_Nm = max(float(mz_all.max()), 0.0) - min(float(mz_all.min()), 0.0)
-                    # Composite section modulus — live-load stress acts on the composite section.
-                    stress_range_MPa = mz_range_Nm * 1000.0 / Ze_comp_bot_mm3
-                vy_all = np.concatenate([
-                    np.asarray(ds.forces.sel(Loadcase=_sls_frequent_lcs, Element=elements,
-                               Component=c).values, dtype=float).flatten()
-                    for c in ("Vy_i", "Vy_j")
-                ])
-                vy_all = vy_all[~np.isnan(vy_all)]
-                if vy_all.size and Aw_mm2 > 0:
-                    vy_range_N = max(float(vy_all.max()), 0.0) - min(float(vy_all.min()), 0.0)
-                    shear_range_MPa = vy_range_N / Aw_mm2
+                f = analysis_results.ds.forces.sel(Loadcase=all_live_lcs, Element=elements)
+
+                def _sec_range(comp_i, comp_j):
+                    """Worst per-section (max − min) across live positions, incl. the 0 state."""
+                    rng = 0.0
+                    for c in (comp_i, comp_j):
+                        da   = f.sel(Component=c)
+                        emax = da.max("Loadcase").clip(min=0)   # vehicle on  (or 0 if never +)
+                        emin = da.min("Loadcase").clip(max=0)   # vehicle off (0) or hogging
+                        v    = float((emax - emin).max())
+                        if v == v:                              # skip NaN
+                            rng = max(rng, v)
+                    return rng
+
+                if Ze_comp_bot_mm3 > 0:
+                    stress_range_MPa = _sec_range("Mz_i", "Mz_j") * 1000.0 / Ze_comp_bot_mm3
+                if Aw_mm2 > 0:
+                    shear_range_MPa = _sec_range("Vy_i", "Vy_j") / Aw_mm2
             except Exception:
                 pass
 
