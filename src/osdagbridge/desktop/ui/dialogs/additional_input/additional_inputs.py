@@ -278,6 +278,9 @@ class AdditionalInputs(QDialog):
                         text = str(value).strip()
                     else:
                         text = f"{float(value):.2f}"
+                        # If section properties, than format as .2e
+                        if "section_properties" in name:
+                            text = f"{float(value):.2e}"
                 except (ValueError, TypeError):
                     text = str(value)
                 widget.blockSignals(True)
@@ -475,6 +478,9 @@ class AdditionalInputs(QDialog):
                         text = str(value).strip()
                     else:
                         text = f"{float(value):.2f}"
+                        # If section properties, than format as .2e
+                        if "section_properties" in name:
+                            text = f"{float(value):.2e}"
                 except (ValueError, TypeError):
                     text = str(value)
                 widget.blockSignals(True)
@@ -607,6 +613,9 @@ class AdditionalInputs(QDialog):
             except (ValueError, TypeError):
                 try:
                     self.working_input_dict[key] = float(value)
+                    # If section properties, than format as .2e
+                    if "section_properties" in key:
+                        self.working_input_dict[key] = f"{float(value):.2e}"
                 except (ValueError, TypeError):
                     self.working_input_dict[key] = value
 
@@ -1255,17 +1264,45 @@ class AdditionalInputs(QDialog):
         ]
         rolled_keys = [KEY_MP_GIRDER_IS_SECTION]
 
+        def _live_widget(key: str):
+            # Get actual widget visible
+            # Required due to AdaptiveWidget (QStackedWidget)
+            w = self.findChild(QWidget, key)
+            if isinstance(w, AdaptiveWidget):
+                return w.currentWidget()
+            return w
+
         for key in welded_keys:
             w   = self.findChild(QWidget, key)
             lbl = self.findChild(QLabel, key + "_label")
             if w:   w.setVisible(is_welded)
             if lbl: lbl.setVisible(is_welded)
+            # Block hidden fields' signals so they can't fire while off-screen;
+            # Unblock the ones now shown so they behave normally again.
+            # Especially for Section-Property which changes by both Rolled & Welded fields
+            live = _live_widget(key)
+            if live: live.blockSignals(not is_welded)
 
         for key in rolled_keys:
             w   = self.findChild(QWidget, key)
             lbl = self.findChild(QLabel, key + "_label")
             if w:   w.setVisible(not is_welded)
             if lbl: lbl.setVisible(not is_welded)
+            live = _live_widget(key)
+            if live: live.blockSignals(is_welded)
+
+        if is_welded:
+            # Refresh welded section properties now that Depth is visible/live again.
+            # To Update Section Properties
+            depth_w = _live_widget(KEY_MP_GIRDER_DEPTH)
+            if isinstance(depth_w, QLineEdit):
+                depth_w.textChanged.emit(depth_w.text())
+        else:
+            # Refresh rolled section properties now that IS Section is visible/live again.
+            # To Update Section Properties
+            is_section_w = _live_widget(KEY_MP_GIRDER_IS_SECTION)
+            if isinstance(is_section_w, QComboBox):
+                is_section_w.currentTextChanged.emit(is_section_w.currentText())
 
         self._update_section_drawing()
 

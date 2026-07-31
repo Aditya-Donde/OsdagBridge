@@ -486,7 +486,6 @@ class CustomWindow(QWidget):
             print(f"\n@@ Syncing design mode to Additional Inputs: {self.input_dock._current_design_mode}")
             dlg.design_mode_trigger(self.input_dock._current_design_mode)
 
-
         dlg.show()
         dlg.raise_()
         dlg.activateWindow()
@@ -656,8 +655,8 @@ class CustomWindow(QWidget):
         # print(f"[DEBUG]c/s:{self.cross_section_active}")
         from pprint import pprint
         self.input_dock._prime_material_inputs()
-        print("\n@@input_dictionary_before (common_design_func):\n")
-        pprint(self.input_dict)
+        # print("\n@@input_dictionary_before (common_design_func):\n")
+        # pprint(self.input_dict)
 
         # Check required fields
         required_widget_validated = self.validate_required_inputs()
