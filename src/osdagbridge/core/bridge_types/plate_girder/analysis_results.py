@@ -423,17 +423,21 @@ class PlateGirderAnalysisResults:
 
         nodes, elements, adj = self.build_grillage_connectivity()
 
-        # AUTO EXTRACT START / END
-        x_coords = {n: coord[0] for n, coord in nodes.items()}
+        # AUTO EXTRACT START / END — per-girder-line, skew-robust.
+        # Each girder is a longitudinal line of nodes at a constant transverse
+        # position z; its two supports are that line's extreme-x nodes. Grouping by
+        # z (rather than a single global min_x/max_x) is what makes this work under
+        # skew: a skewed deck staggers the supports in x, so global-equality matching
+        # collapsed every girder onto one corner node and left no interior girders.
+        z_lines = defaultdict(list)
+        for n, coord in nodes.items():
+            z_lines[round(coord[2], 6)].append(n)
 
-        min_x = min(x_coords.values())
-        max_x = max(x_coords.values())
-
-        start_nodes = [n for n, x in x_coords.items() if x == min_x]
-        end_nodes = [n for n, x in x_coords.items() if x == max_x]
-
-        start_nodes.sort(key=lambda n: nodes[n][2])
-        end_nodes.sort(key=lambda n: nodes[n][2])
+        start_nodes, end_nodes = [], []
+        for z in sorted(z_lines):                       # order girders across the width
+            line = z_lines[z]
+            start_nodes.append(min(line, key=lambda n: nodes[n][0]))   # furthest back  (min x)
+            end_nodes.append(max(line, key=lambda n: nodes[n][0]))     # furthest ahead (max x)
 
         if verbose:
             print("\nStart edge nodes :", start_nodes)
