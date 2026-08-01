@@ -3019,7 +3019,14 @@ class AdditionalInputs(QDialog):
 
         max_str = working_input_dict.get(KEY_TL_HIGHEST_MAX_TEMP)
         min_str = working_input_dict.get(KEY_TL_LOWEST_MIN_TEMP)
-        if not max_str or not min_str or max_str == "—" or min_str == "—":
+        if (
+            max_str is None
+            or min_str is None
+            or max_str == "—"
+            or min_str == "—"
+        ):
+            print("Value None")
+            print(f"Max: {max_str}, Min: {min_str}")
             return {}
 
         try:
