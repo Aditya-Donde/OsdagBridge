@@ -305,9 +305,7 @@ class AdditionalInputs(QDialog):
 
     def design_mode_trigger(self, mode_str: str):  # lifecycle: syncs Optimized/Custom mode across all affected widgets and AdaptiveWidgets
         # Ensures IS Section hidden and welded fields shown correctly on first open
-        gd_type_w = self.findChild(QComboBox, KEY_MP_GIRDER_TYPE)
-        if gd_type_w:
-            self._on_girder_type_changed(gd_type_w.currentText())
+        self._sync_girder_type_ui()
 
         value = str(mode_str or "").strip().lower()
         if value in {"custom", "customized"}:
@@ -1470,6 +1468,15 @@ class AdditionalInputs(QDialog):
         
         # Update symmetry-dependent widget states after loading
         self._on_symmetry_changed()
+
+        # Update girder type-dependent widget states after loading
+        self._sync_girder_type_ui()
+
+    def _sync_girder_type_ui(self) -> None:
+        """Sync girder input visibility with the currently selected girder type."""
+        girder_type = self.findChild(QComboBox, KEY_MP_GIRDER_TYPE)
+        if girder_type:
+            self._on_girder_type_changed(girder_type.currentText())
 
     def _on_bounds_accepted(self, field_id: str, result: dict) -> None:  # on_change: stores BoundsButton result under the current member's dynamic key
         gi, mi = self._get_current_girder_member_indices()
