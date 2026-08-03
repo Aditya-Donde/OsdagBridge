@@ -193,6 +193,56 @@ class BridgeLogger:
                            "error")
                 self._emit(f"[{self._ts()}]       -> {remedy}", "warning")
 
+    def final_verdict(self, output_dict: dict) -> None:
+        """Print one combined verdict for the girder and deck designs.
+
+        Lists every failing check from either section, worst UR first, each with
+        its remedy. When nothing fails, prints a single PASS line — passing
+        checks are not repeated here; girder_verdict() / deck_verdict() already
+        give the per-section breakdown.
+        """
+        out = output_dict or {}
+        sections = (
+            ("Girder", out.get(KEY_SD_VERDICT) or {}, self._VERDICT_CHECKS),
+            ("Deck",   out.get(KEY_DD_VERDICT) or {}, self._DECK_VERDICT_CHECKS),
+        )
+        if not any(verdict for _, verdict, _ in sections):
+            return                       # neither design ran — nothing to report
+
+        failures = []                    # (section, label, ur, remedy)
+        failed_sections = []
+        max_ur = 0.0
+        for name, verdict, checks in sections:
+            if not verdict:
+                continue
+            max_ur = max(max_ur, float(verdict.get("max_ur", 0.0)))
+            if verdict.get("status", "FAIL") != "PASS":
+                failed_sections.append(name)
+            for key, (label, remedy) in checks.items():
+                row = verdict.get(key)
+                if row and not row.get("pass", True):
+                    failures.append((name, label, float(row.get("ur", 0.0)), remedy))
+
+        failures.sort(key=lambda f: f[2], reverse=True)   # worst offender first
+
+        self._blank()
+        if not failures and not failed_sections:
+            self._emit(f"[{self._ts()}]   FINAL VERDICT : PASS  (max UR = {max_ur:.3f})",
+                       "success")
+            self._emit(f"[{self._ts()}]     All girder and deck design checks are satisfied.",
+                       "success")
+            return
+
+        self._emit(f"[{self._ts()}]   FINAL VERDICT : FAIL  (max UR = {max_ur:.3f})", "error")
+        for name, label, ur, remedy in failures:
+            self._emit(f"[{self._ts()}]     FAIL : {name} - {label} (UR = {ur:.3f})", "error")
+            self._emit(f"[{self._ts()}]       -> {remedy}", "warning")
+        if not failures:
+            # Section status says FAIL but no individual check is flagged — report
+            # it rather than printing a bare FAIL headline with nothing under it.
+            self._emit(f"[{self._ts()}]     {' and '.join(failed_sections)} design reported "
+                       f"FAIL with no failing check listed.", "error")
+
     def get_success_log(self) -> List[str]:
         """Return the green (success) log lines captured during the last run."""
         return list(self._success_log)
