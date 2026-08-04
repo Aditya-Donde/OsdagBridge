@@ -101,6 +101,9 @@ class BridgeGrillageModel:
         self.fatigue_vehicles_by_case: dict = {}       # {load_case_name: [vehicle, ...]}
         self.moving_fatigue_load_cases_list: list = []  # moving fatigue load cases
 
+        # -------------------- BRAKING LOAD (IRC:6 Cl.211) --------------------
+        self.braking_load_case = None                  # "Braking Load" — from the governing LL case
+
         # self.geometry = GeometryDefinitions(self.L, self.w, self.model)
 
         # -------------------- GEOMETRY / LAYOUT --------------------
@@ -1073,14 +1076,26 @@ class BridgeGrillageModel:
             pass
         return 0.0
 
-    def _get_governing_ll_kN(self) -> float:
-        """Total unfactored vehicle weight (kN) for the governing live load case."""
+    def _governing_case_num(self) -> int | None:
+        """
+        Table 6A case number of the governing live-load case, parsed out of
+        ``self.governing_ll_name`` (e.g. ``"Case2 1xClassA + 1xClass70R"`` → 2).
+
+        Returns ``None`` when no governing case has been identified yet or the
+        name does not carry a parsable case number.
+        """
         governing_name = getattr(self, 'governing_ll_name', None)
         if not governing_name:
-            return 0.0
+            return None
         try:
-            case_num = int(str(governing_name).split('Case')[1].split(' ')[0])
+            return int(str(governing_name).split('Case')[1].split(' ')[0])
         except (IndexError, ValueError):
+            return None
+
+    def _get_governing_ll_kN(self) -> float:
+        """Total unfactored vehicle weight (kN) for the governing live load case."""
+        case_num = self._governing_case_num()
+        if case_num is None:
             return 0.0
         vehicles = self.vehicle_moving_loads_by_case.get(case_num, [])
         return sum(
@@ -2095,6 +2110,148 @@ class BridgeGrillageModel:
             self.moving_fatigue_load_cases_list.append(moving_load)
 
         return self.moving_fatigue_load_cases_list
+
+    # ------------------------------------------------------------------
+    #   Braking load (IRC:6-2017 Cl.211)
+    # ------------------------------------------------------------------
+
+    def create_braking_load_case(self, model=None, eccentricity: float | None = None):
+        """
+        Creates the single ``"Braking Load"`` load case for the governing
+        live-load case.
+
+        The braking force comes from the vehicles standing in the case that
+        ``create_governing_ll_load_case()`` picked as governing — the same case
+        that became ``"1.0 LL"``. Of the vehicle types in that case the heaviest
+        single vehicle governs (Class70R at 981 kN always beats ClassA at
+        543 kN when both appear), and
+
+            ``Fx = 0.20 × W``          (Cl.211.2 — 20% of the vertical load)
+            ``Mz = Fx × eccentricity`` (Cl.211.3 — Fx acts 1.2 m above the deck)
+
+        ``Fx`` is longitudinal (+x) and ``Mz`` is the couple it produces about
+        the transverse (z) axis by acting at height ``eccentricity`` above the
+        deck surface, so the pair reproduces the overturning effect that adds to
+        girder major-axis bending.
+
+        Both are shared equally between the nodes on the main girder grid lines
+        (the overhang edge-beam lines are excluded), so the braking force enters
+        the model where it is actually carried down to the bearings. The summed
+        nodal ``Fx`` equals the total braking force exactly.
+
+        The case is registered **unfactored** — no partial safety factor is
+        applied here, matching the way ``"1.0 LL"`` carries the raw governing
+        vehicle loads and leaves γ to the combination builders.
+
+        Must be called after ``create_governing_ll_load_case()`` so that
+        ``self.governing_ll_name`` identifies which case to derive from. The
+        case is solved selectively on creation, the same way the LL case is,
+        because ``_reanalyze_with_dedup()`` only re-solves the combinations.
+
+        Parameters
+        ----------
+        model : Grillage, optional
+            Target model; defaults to ``self.model``.
+        eccentricity : float, optional
+            Height of the braking force above the top of the deck (m). Defaults
+            to ``IRC6_2017.cl_211_3_braking_force_location()`` (1.2 m).
+
+        Returns
+        -------
+        LoadCase or None
+            The created ``"Braking Load"`` load case, or ``None`` when no
+            governing live-load case is available to derive it from.
+        """
+        model = model or self.model
+        if model is None:
+            raise ValueError("Model not created yet.")
+
+        if eccentricity is None:
+            eccentricity = IRC6_2017.cl_211_3_braking_force_location()["height_m"]
+
+        self.braking_load_case = None
+
+        # -------------------------------------------------
+        # Governing live-load case → its vehicles → heaviest one
+        # -------------------------------------------------
+        case_num = self._governing_case_num()
+        if case_num is None:
+            warnings.warn(
+                "create_braking_load_case: no governing live-load case available "
+                "— call create_governing_ll_load_case() first; skipping the braking load."
+            )
+            return None
+
+        vehicle_types = {
+            self.vehicle_type_map.get(id(v), '')
+            for v in self.vehicle_moving_loads_by_case.get(case_num, [])
+        }
+        vehicle_types.discard('')
+
+        if not vehicle_types:
+            warnings.warn(
+                f"create_braking_load_case: governing Case{case_num} carries no "
+                "identifiable vehicles; skipping the braking load."
+            )
+            return None
+
+        governing_type = max(vehicle_types, key=self._vehicle_total_weight_kN)
+        W_kN = self._vehicle_total_weight_kN(governing_type)
+
+        if W_kN <= 0:
+            warnings.warn(
+                f"create_braking_load_case: no weight available for vehicle type "
+                f"'{governing_type}'; skipping the braking load."
+            )
+            return None
+
+        Fx_total = 0.20 * W_kN * kN  # N
+
+        # -------------------------------------------------
+        # Main girder nodes
+        # -------------------------------------------------
+        # Transverse positions of the main girders — the two outermost grid
+        # lines are overhang edge beams when an overhang exists, so drop them.
+        noz_sorted = sorted(model.Mesh_obj.noz)
+        girder_z = noz_sorted[1:-1] if self.edge_dist > 0 else noz_sorted
+
+        TOL = 1e-3  # coordinate matching tolerance (m)
+        girder_tags = [
+            tag for tag, spec in model.Mesh_obj.node_spec.items()
+            if any(abs(spec["coordinate"][2] - z) <= TOL for z in girder_z)
+        ]
+        if not girder_tags:
+            raise ValueError(
+                "No main girder nodes found; cannot apply the braking force."
+            )
+
+        Fx = Fx_total / len(girder_tags)  # N — equal share per girder node
+
+        BL = og.create_load_case(name="Braking Load")
+        for tag in girder_tags:
+            BL.add_load(og.create_load(
+                loadtype="nodal", node_tag=tag,
+                Fx=Fx, Fy=0, Fz=0,
+                Mx=0, My=0, Mz=Fx * eccentricity,  # N·m
+            ))
+
+        # Unfactored: no load_factor argument.
+        model.add_load_case(BL)
+        self.braking_load_case = BL
+
+        print(
+            f"Braking Load from governing {self.governing_ll_name}: "
+            f"vehicle {governing_type} W={W_kN:.2f} kN  "
+            f"Fx={Fx_total / 1000:.2f} kN  "
+            f"Mz={Fx_total * eccentricity / 1000:.2f} kNm "
+            f"(e={eccentricity:.2f} m) over {len(girder_tags)} girder nodes"
+        )
+
+        # Solve only the new case — see create_governing_ll_load_case() for why
+        # a bare analyze() here would be wasted work.
+        model.analyze(load_case=[BL.name])
+
+        return BL
 
     def create_governing_ll_load_case(self, dataset, model=None, partial_safety_factor: float = 1.0):
         """

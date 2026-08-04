@@ -86,6 +86,7 @@ from osdagbridge.core.utils.common import (
     KEY_TS_NO_OF_FOOTPATHS,
     KEY_WC_THICKNESS,
     KEY_WC_DENSITY,
+    KEY_LL_ECCENTRICITY,
     KEY_MP_GIRDER_SYMMETRY, KEY_MP_GIRDER_DEPTH, KEY_MP_GIRDER_WEB_DEPTH, KEY_MP_GIRDER_WEB_THICKNESS,
     KEY_MP_GIRDER_TOP_FLANGE_WIDTH, KEY_MP_GIRDER_TOP_FLANGE_THICKNESS,
     KEY_MP_GIRDER_BOTTOM_FLANGE_WIDTH, KEY_MP_GIRDER_BOTTOM_FLANGE_THICKNESS,
@@ -650,7 +651,10 @@ class PlateGirderBridge:
         
         bridge_logger.sub_step("Creating governing LL load case...")
         self.create_governing_ll_load_case(dataset_initial, partial_safety_factor=1.0)
-        
+
+        bridge_logger.sub_step("Creating braking load case...")
+        self.create_braking_load_case()
+
         bridge_logger.sub_step("Creating DL+LL combination...")
         self.create_dl_ll_combination(dl_factor=1.0, ll_factor=1.0)
         
@@ -1366,6 +1370,10 @@ class PlateGirderBridge:
           2. Moving vehicle load cases — moving paths for each vehicle
           3. Fatigue vehicle — IRC:6 Cl.204.6 truck on the carriageway centreline
           4. Moving fatigue vehicle — the fatigue truck traversing the span
+
+        The braking load (IRC:6 Cl.211) is not created here: it derives from
+        whichever case turns out to govern, so it is built in
+        _stage_load_combinations() once create_governing_ll_load_case() has run.
 
         Must be called after setup_grillage() has built and registered the model.
         """
@@ -2108,6 +2116,43 @@ class PlateGirderBridge:
             A single-element list holding the created moving fatigue load case.
         """
         return self.grillage_model.create_moving_fatigue_load_cases(span=span)
+
+    def create_braking_load_case(self):
+        """
+        Create the single unfactored ``"Braking Load"`` case for the governing
+        live-load case.
+
+        The heaviest vehicle in the governing case sets the force: Fx = 20% of
+        its total vertical load (Cl.211.2), applied with the couple Mz = Fx × e
+        it produces by acting e above the deck (Cl.211.3). Both are shared
+        equally between the main girder nodes. No partial safety factor is
+        applied — γ belongs to the combination builders.
+
+        The eccentricity e is read from ``self.additional_inputs``
+        (``KEY_LL_ECCENTRICITY``, "Eccentricity from top of Deck"); when absent
+        it falls back to the IRC 1.2 m value inside the grillage model.
+
+        Must be called after create_governing_ll_load_case() so the governing
+        case is known.
+
+        Delegates to BridgeGrillageModel.create_braking_load_case().
+
+        Returns
+        -------
+        LoadCase or None
+            The created ``"Braking Load"`` case, or None when no governing
+            live-load case is available.
+        """
+        ecc_raw = self.additional_inputs.get(KEY_LL_ECCENTRICITY)
+        try:
+            eccentricity = float(ecc_raw) if ecc_raw not in (None, "") else None
+        except (TypeError, ValueError):
+            bridge_logger.info(
+                f"Braking eccentricity {ecc_raw!r} is not numeric; using the IRC default."
+            )
+            eccentricity = None
+
+        return self.grillage_model.create_braking_load_case(eccentricity=eccentricity)
 
     def analyze(self):
         """
