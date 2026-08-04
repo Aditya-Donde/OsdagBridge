@@ -16,9 +16,6 @@ from .dto import (
     ShearStudParamsDTO,
     GirderSegmentDTO,
 )
-from .defaults import (
-    BASIC_INPUT_DICT,
-)
 from .initial_sizing import DEFAULT_FOOTPATH_WIDTH
 from .analyser import BridgeGrillageModel
 from osdagbridge.core.utils.memory_guard import OpsMemoryGuard, log_memory, tracemalloc_mark_start
@@ -487,13 +484,13 @@ class PlateGirderBridge:
             KEY_MP_GIRDER_TOP_FLANGE_THICKNESS, KEY_MP_GIRDER_BOTTOM_FLANGE_THICKNESS,
             KEY_MP_GIRDER_WEB_THICKNESS
         """
-        import math
-        from .initial_sizing import BridgeConfigurationSolver
-        from osdagbridge.core.utils.common import SAIL_APPROVED_THICKNESS_VALUES
-
         inp = self.input_dict
         if str(inp.get(KEY_DESIGN_MODE, '')).strip() != 'Optimized':
             return
+        
+        import math
+        from .initial_sizing import BridgeConfigurationSolver
+        from osdagbridge.core.utils.common import SAIL_APPROVED_THICKNESS_VALUES
 
         sail_mm = sorted(float(s) for s in SAIL_APPROVED_THICKNESS_VALUES)
 
@@ -676,7 +673,7 @@ class PlateGirderBridge:
         self.output_dict["end_diaphragm_design_results"] = self.end_diaphragm_design_results
         return self.crossbracing_design_results
 
-    def design(self) -> None:
+    def customized_design(self) -> None:
         """
         Run the full analysis/design pipeline.
         Orchestrates the 14 linear stages mapping exactly to the revised architecture.
@@ -2310,7 +2307,8 @@ class PlateGirderBridge:
 
     def _run_dcr_checks(self, dataset) -> None:
         """Run structural capacity checks and push DCR percentages to the output dock."""
-        results = PlateGirderAnalysisResults(dataset=dataset, bridge=self.grillage_model)
+        edge_dist = self.input_dict[KEY_TS_DECK_OVERHANG]
+        results = PlateGirderAnalysisResults(dataset=dataset, bridge=self.grillage_model, edge_dist = edge_dist)
         _, engine, design_results = run_design_check(
             plate_girder_bridge=self,
             analysis_results=results,
@@ -4394,3 +4392,35 @@ class PlateGirderBridge:
         out[KEY_SD_WEB_TYPE] = str(
             inp.get(KEY_MP_GIRDER_WEB_TYPE) or "Thin Web with ITS"
         )
+
+
+    # Wrapper design function for customized and optimized
+    def design(self):
+        
+        if self.input_dict[KEY_DESIGN_MODE] == "Optimized":
+            
+            import copy
+                        
+            try:
+                from .optimiser import optimize_dict
+                """
+                In optmized case we just populate the input dictionary with optimum values 
+                i.e the input dictionary becomes our optimal design vector
+                """
+            
+                optimised_dict = copy.deepcopy(self.input_dict)
+                optimize_dict(optimised_dict)
+            
+            except Exception as e:
+                print(f"Something went wrong during optimisation! Error type: {type(e).__name__}")               
+                optimised_dict = copy.deepcopy(self.input_dict)    # safe fallback in case of any failure
+            
+            finally:
+            
+                self.input_dict = self._normalize_input_dict(optimised_dict)
+                from .defaults import solve_extend_basic_input_dict
+                solve_extend_basic_input_dict(self.input_dict, optimised_dict, optimisation = True)                
+                self.set_input(self.input_dict)
+                
+        
+        self.customized_design()

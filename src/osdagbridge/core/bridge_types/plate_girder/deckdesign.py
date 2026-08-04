@@ -409,7 +409,7 @@ def transverse_shear_check(VL_N_per_mm: float, fck_MPa: float, fy_rebar_MPa: flo
 
 def design_deck_slab(input_dict: dict, fck: float, fctm: float, fy: float, Es: float, Ecm: float,
                      *, design_results: dict | None = None,
-                     bf_top_mm: float = 0.0, stud_height_mm: float = 0.0) -> tuple[dict, dict]:
+                     bf_top_mm: float = 0.0, stud_height_mm: float = 0.0, optimisation: bool = True) -> tuple[dict, dict]:
     """
     Design the concrete deck slab of a plate girder bridge.
 
@@ -854,7 +854,39 @@ def design_deck_slab(input_dict: dict, fck: float, fctm: float, fy: float, Es: f
                                         dr.get("sigma_c_limit_MPa") or 0.0)
         ur_composite_rebar_stress = _ur(dr.get("sigma_rebar_actual_MPa") or 0.0,
                                         dr.get("sigma_rebar_limit_MPa") or 0.0)
+    
+    if optimisation:   # Return only dcr values and status in case of optimisation scenario
+        
+        dcr : dict ={}
+        dcr["ur_bot_uls"] = ur_bot_uls
+        dcr["ur_top_uls"] = ur_top_uls
+        dcr["ur_bot_sls_c"] = ur_bot_sls_c
+        dcr["ur_bot_sls_s"] = ur_bot_sls_s
+        dcr["ur_top_sls_c"] = ur_top_sls_c
+        dcr["ur_top_sls_s"] = ur_top_sls_s
+        dcr["ur_bot_crack"] = ur_bot_crack
+        dcr["ur_top_crack"] = ur_top_crack
+        
+        if has_composite:
+            
+            dcr["ur_composite_trans_shear"]  = ur_composite_trans_shear
+            dcr["ur_composite_crack"]        = ur_composite_crack 
+            dcr["ur_composite_conc_stress"]  = ur_composite_conc_stress
+            dcr["ur_composite_rebar_stress"] = ur_composite_rebar_stress    
+        
+        # returns status of the deck slab design
+        status: dict = {}
+        
+        status["max_dcr"] = max(dcr.values())
+        status["min_dcr"] = min(dcr.values())
+        
+        from osdagbridge.core.utils.codes.keyfile import DCR_FAIL_THRESHOLD
 
+        status["overall_status"] = "PASS" if (status["max_dcr"] < DCR_FAIL_THRESHOLD) else "FAIL"
+        
+        return dcr,status
+    
+    
     sls_lines = [
         "",
         "=" * 52,
