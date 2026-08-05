@@ -2806,14 +2806,23 @@ class ReportGenerator:
 def _extract_demands_from_analysis_results(
     analysis_results: PlateGirderAnalysisResults,
     config: BridgeConfig,
+    result_data: dict | None = None,
 ) -> tuple:
     # Build per_girder_demands and per_girder_per_lc using the existing
     # pandas-based methods on PlateGirderAnalysisResults.
     # Returns (Dict[girder_name, DemandEnvelope], Dict[girder_name, Dict[lc, DemandEnvelope]])
     import numpy as np
 
-    girders, _   = analysis_results.build_girders(verbose=False)
-    girders      = {k: v for k, v in girders.items() if k not in ("EB1", "EB2")}
+    # result_data stores member ids as strings; the dataset selects on the int
+    # element tags from ops.getEleTags(), so cast them back. "nodes" is only ever
+    # used below as a selection set for max/abs, never as an ordered path.
+    girders      = {
+        name: {
+            "elements": [int(m) for m in g.get("members", [])],
+            "path":     g.get("nodes", []),
+        }
+        for name, g in result_data.get("girders").items()
+    }
     lc_groups    = analysis_results.classify_loadcases()
     live_static  = lc_groups["vehicle_static"]
     all_live_lcs = live_static
@@ -2913,8 +2922,6 @@ def _extract_demands_from_analysis_results(
     per_girder_per_lc:  Dict[str, Dict[str, DemandEnvelope]] = {}
 
     for g_name, g_info in girders.items():
-        if g_name in ("EB1", "EB2"):
-            continue
         elements = list(g_info.get("elements", []))
         nodes    = list(g_info.get("path", []))
         if not elements:
@@ -3183,7 +3190,8 @@ def _build_uls_per_girder(per_girder_results: dict) -> dict:
           "interaction": {g_name: {...}, ...},   # worst of check_ids 3 & 4
           "ltb":         {g_name: {...}, ...},
         }
-    Only non-EB girders are included; checks missing for a girder are omitted.
+    Girders are keyed G1..Gn (they come from result_data["girders"], which already
+    excludes the edge members); checks missing for a girder are omitted.
     """
     _CATEGORY_IDS = {
         "flexure":     (1,),
@@ -3200,8 +3208,6 @@ def _build_uls_per_girder(per_girder_results: dict) -> dict:
     result: Dict[str, Dict[str, dict]] = {cat: {} for cat in _CATEGORY_IDS}
 
     for g_name, g_data in per_girder_results.items():
-        if g_name.startswith("EB"):
-            continue
         checks = g_data.get("checks") or []
         for cat, ids in _CATEGORY_IDS.items():
             chk = _worst(checks, *ids)
@@ -3246,8 +3252,15 @@ def run_design_check(
     print(f"  Config: {config.summary()}")
 
     if per_girder_demands is None and analysis_results is not None:
+        result_data = getattr(plate_girder_bridge, "result_data", None)
+        if not result_data.get("girders"):
+            raise ValueError(
+                "plate_girder_bridge.result_data must contain a 'girders' key "
+                "produced by results_data_post_processing.post_process(). "
+                "Run the analysis before run_design_check()."
+            )
         per_girder_demands, per_girder_per_lc = _extract_demands_from_analysis_results(
-            analysis_results, config
+            analysis_results, config, result_data
         )
 
     if not per_girder_demands:

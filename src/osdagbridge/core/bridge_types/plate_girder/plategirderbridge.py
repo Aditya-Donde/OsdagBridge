@@ -770,9 +770,14 @@ class PlateGirderBridge:
                     f"{'-'*60}"
                 )
 
+            # Built before Stage 5: the designer reads result_data["girders"] for the
+            # canonical G1..Gn girder set (edge members already excluded), the same
+            # source CrossBracingForces uses. Safe here — the analysis completed in
+            # Stage 4G above, and nothing in Stage 5 mutates the OpenSees model.
+            self.result_data = self.grillage_model.get_result_data()
+
             # Stage 5: Girder Design Checks
             self._run_stage("5", self._run_dcr_checks, dataset)
-            self.result_data = self.grillage_model.get_result_data()
 
             if self.dump_json:
                 from osdagbridge.core.bridge_types.plate_girder.results_data import dump_full_data
