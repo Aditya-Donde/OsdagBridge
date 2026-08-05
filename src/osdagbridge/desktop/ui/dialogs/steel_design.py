@@ -607,8 +607,12 @@ class SteelDesign(QDialog):
             if backend is None:
                 return
 
-            # Resolve current selection from the dialog's own dropdowns
-            girder_key = self.member_combo.currentData() or self.member_combo.currentText()
+            # Resolve current selection from the dialog's own dropdowns.
+            # member_combo lists only the interior girders in physical order, so its
+            # 0-based index gives the canonical G1..Gn key design_results["per_girder"]
+            # is stored under. currentData() holds the raw analysis-model key instead
+            # (needed by the plots at _update_analysis_plots) and must not be used here.
+            girder_key = f"G{max(0, self.member_combo.currentIndex()) + 1}"
             load_case  = self.load_combo.currentText()
 
             if not girder_key or not load_case or load_case.startswith(_COMBO_HEADER_PREFIX):
