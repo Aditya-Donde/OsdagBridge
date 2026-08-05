@@ -3392,10 +3392,9 @@ GENERATE_RESULTS_DEFAULTS = {
                     "Secant Modulus of Elasticity, Eₘ (MPa)",
                     "Modular Ratio",
                     "Density (kN/m³)",
-                    "Poisson's Ratio, ν",
                 ],
                 "rows": [
-                    ["Deck Slab", EMPTY, EMPTY, EMPTY, EMPTY, EMPTY, EMPTY, EMPTY],
+                    ["Deck Slab", EMPTY, EMPTY, EMPTY, EMPTY, EMPTY, EMPTY],
                 ],
             },
         },
@@ -3408,10 +3407,17 @@ GENERATE_RESULTS_DEFAULTS = {
                 "id": "permanent_load_summary",
                 "label": "Permanent Load Summary",
                 "columns": [
-                    "Dead Load, DL (kN/m)",
+                    "Girder",
+                    "Self-weight Factor",
+                    "Self Weight, SW (kN/m)",
+                    "Other Steel, DC (kN/m)",
+                    "Deck Slab, DD (kN/m)",
+                    "Wearing Course, DW (kN/m)",
+                    "Superimposed DL, SIDL (kN/m)",
+                    "Total Dead Load, DL (kN/m)",
                 ],
                 "rows": [
-                    [EMPTY],
+                    [EMPTY, EMPTY, EMPTY, EMPTY, EMPTY, EMPTY, EMPTY, EMPTY],
                 ],
             },
 
@@ -3814,6 +3820,21 @@ GENERATE_RESULTS_DEFAULTS = {
             "id": "sls_checks",
             "label": "SLS Checks",
 
+            "deflection_dead_load": {
+                "id": "deflection_dead_load",
+                "label": "Deflection - Dead Load",
+                "columns": [
+                    "Girder",
+                    "Deflection due to Dead Load (post-camber), δ_DL (mm)",
+                    "Permissible Limit",
+                    "Utilization Ratio",
+                    "Status",
+                ],
+                "rows": [
+                    [EMPTY, EMPTY, EMPTY, EMPTY, EMPTY],
+                ],
+            },
+
             "deflection_live_load": {
                 "id": "deflection_live_load",
                 "label": "Deflection - Live Load",
@@ -3930,10 +3951,9 @@ GENERATE_RESULTS_DEFAULTS = {
                     "Design Capacity per Stud, Qd (kN)",
                     "No. of Studs per Section",
                     "Total Design Capacity, ΣQd (kN)",
-                    "Clause Reference",
                 ],
                 "rows": [
-                    [EMPTY] * 11
+                    [EMPTY] * 10
                 ],
             },
 
@@ -3948,10 +3968,9 @@ GENERATE_RESULTS_DEFAULTS = {
                     "Full Shear Connection Force, H (kN)",
                     "Spacing from Full Shear Force, SL2 (mm)",
                     "Governing ULS Spacing, min(SL1, SL2) (mm)",
-                    "Clause Reference",
                 ],
                 "rows": [
-                    [EMPTY, EMPTY, EMPTY, EMPTY, EMPTY, EMPTY, EMPTY, EMPTY],
+                    [EMPTY, EMPTY, EMPTY, EMPTY, EMPTY, EMPTY, EMPTY],
                 ],
             },
 
@@ -3964,10 +3983,9 @@ GENERATE_RESULTS_DEFAULTS = {
                     "Fatigue Capacity per Stud, Qr (kN)",
                     "No. of Studs per Section",
                     "Fatigue Governing Spacing, SR (mm)",
-                    "Clause Reference",
                 ],
                 "rows": [
-                    [EMPTY, EMPTY, EMPTY, EMPTY, EMPTY, EMPTY],
+                    [EMPTY, EMPTY, EMPTY, EMPTY, EMPTY],
                 ],
             },
 
@@ -4004,11 +4022,10 @@ GENERATE_RESULTS_DEFAULTS = {
                     "Min. Edge Distance Required (mm)",
                     "Slab Embedment Above Stud (mm)",
                     "Min. Embedment Required (mm)",
-                    "Clause Reference",
                     "Status",
                 ],
                 "rows": [
-                    [EMPTY, EMPTY, EMPTY, EMPTY, EMPTY, EMPTY, EMPTY, EMPTY, EMPTY, EMPTY, EMPTY, EMPTY],
+                    [EMPTY, EMPTY, EMPTY, EMPTY, EMPTY, EMPTY, EMPTY, EMPTY, EMPTY, EMPTY, EMPTY],
                 ],
             },
         },
@@ -4027,11 +4044,10 @@ GENERATE_RESULTS_DEFAULTS = {
                     "Concrete + Reinforcement Shear Resistance (kN/m)",
                     "Total Shear Resistance, VRd (kN/m)",
                     "Utilization Ratio",
-                    "Clause Reference",
                     "Status",
                 ],
                 "rows": [
-                    [EMPTY] * 8
+                    [EMPTY] * 7
                 ],
             },
 
@@ -4046,11 +4062,10 @@ GENERATE_RESULTS_DEFAULTS = {
                     "Reinforcement Area Provided, As,prov (mm²)",
                     "Bar Diameter, φ (mm)",
                     "Bar Spacing, s (mm)",
-                    "Clause Reference",
                     "Status",
                 ],
                 "rows": [
-                    [EMPTY, EMPTY, EMPTY, EMPTY, EMPTY, EMPTY, EMPTY, EMPTY, EMPTY],
+                    [EMPTY, EMPTY, EMPTY, EMPTY, EMPTY, EMPTY, EMPTY, EMPTY,]
                 ],
             },
         },

@@ -1396,10 +1396,9 @@ class GenerateResultsDialog(QDialog):
     Navigation is handled by a QStackedWidget.
     """
 
-    def __init__(self, parent=None, input_dict: dict = None, bridge=None):
+    def __init__(self, parent=None, output_dict: dict = None):
         super().__init__(parent)
-        self._input_dict = input_dict or {}
-        self._bridge = bridge
+        self._output_dict = output_dict or {}
         self.setMinimumWidth(1080)
         self.setMinimumHeight(720)
         self.setObjectName("generate_results_dialog")
@@ -1481,8 +1480,7 @@ class GenerateResultsDialog(QDialog):
                         continue
                     resolved = resolve_table(
                         table_data["id"],
-                        self._input_dict,
-                        self._bridge,
+                        self._output_dict,
                     )
                     if resolved is not None:
                         table_data.update(resolved)

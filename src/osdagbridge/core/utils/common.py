@@ -95,6 +95,7 @@ KEY_MATERIAL_DECK_FCTM = "material.deck.fctm"
 KEY_MATERIAL_DECK_ECM = "material.deck.ecm"
 KEY_MATERIAL_DECK_THERMAL = "material.deck.thermal"
 KEY_MATERIAL_DECK_DENSITY = "material.deck.density"
+KEY_MATERIAL_DECK_MODULAR = "material.deck.modular_ratio"
 
 # ── Composite section property keys ───────────────────────────────────────────
 # Keys of the dict returned by composite_section_properties() (initial_sizing.py).
@@ -585,8 +586,16 @@ KEY_SD_CLASS_FLANGE       = "steeldesign.details.classification.flange_class"   
 KEY_SD_CLASS_WEB          = "steeldesign.details.classification.web_class"           # only for report
 KEY_SD_DEFL_LIVE        = "steeldesign.deflection.live_mm"       # only for report
 KEY_SD_DEFL_TOTAL       = "steeldesign.deflection.total_mm"      # only for report
+KEY_SD_DEFL_AFTER_CAMBER = "steeldesign.deflection.dl_mm"        # only for report (post-camber DL deflection)
+KEY_SD_APPLIED_CAMBER   = "steeldesign.deflection.camber_mm"    # only for report (applied camber)
 KEY_SD_DEFL_ALLOW_LIVE  = "steeldesign.deflection.allow_live_mm" # only for report
 KEY_SD_DEFL_ALLOW_TOTAL = "steeldesign.deflection.allow_total_mm"# only for report
+KEY_SD_PERMANENT_DL     = "steeldesign.loads.permanent_dl_kN_m"  # total DL per girder ("<key>.G{i}"), only for report
+KEY_SD_DL_SW            = "steeldesign.loads.sw_kN_m"            # self-weight load per girder ("<key>.G{i}")
+KEY_SD_DL_DC            = "steeldesign.loads.dc_kN_m"            # other steel (bracing + diaphragm), shared
+KEY_SD_DL_DD            = "steeldesign.loads.dd_kN_m"            # deck slab, shared
+KEY_SD_DL_DW            = "steeldesign.loads.dw_kN_m"            # wearing course, shared
+KEY_SD_DL_SIDL          = "steeldesign.loads.sidl_kN_m"         # footpath + barrier + railing + median, shared
 
 #-------------- Stiffener Details Sub-Tab --------------------------------------------
 KEY_SD_STIFFENER_DETAILS            = "member_properties.stiffener_details.stiffener_details_cad"
@@ -850,6 +859,7 @@ KEY_TL_TEMP_FALL                = "loading.temperature_load.computed.temp_fall"
 
 KEY_LC_COMBINATIONS   = "loading.load_combination.combinations"
 KEY_LC_TAB            = "loading.load_combination.tab"
+KEY_ALL_LOAD_COMBINATIONS = "loading.load_combination.all_load_combbinations"
 
 # ── ULS Load Combination Case Keys ─────────────────────────────────────────
 

@@ -937,15 +937,8 @@ class OutputDock(QWidget):
         if not self._require_design():
             return
 
-        input_dict   = getattr(self.parent, "input_dict", {})
-        input_d_values = getattr(self.parent.input_dock, "input_dock_values", {})
-
-        ai_dlg  = getattr(self.parent, '_additional_inputs_dialog', None)
-        ai_dict = getattr(ai_dlg, 'working_input_dict', {}) if ai_dlg else {}
-        out_dict = dict(getattr(self.backend, 'output_dict', {}) or {})
-
-        merged = {**input_dict, **ai_dict, **input_d_values, **out_dict}
-        dlg = GenerateResultsDialog(parent=None, input_dict=merged, bridge = self.backend)
+        output_dict = dict(getattr(self.backend, 'output_dict'))
+        dlg = GenerateResultsDialog(parent=None, output_dict=output_dict)
         dlg.exec()
 
 
