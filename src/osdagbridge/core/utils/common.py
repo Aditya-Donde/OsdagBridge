@@ -666,6 +666,7 @@ KEY_MP_ED_BOTTOM_CHORD                = "member_properties.end_diaphragm_details
 KEY_MP_ED_BOTTOM_CHORD_SECTION_TYPE   = "member_properties.end_diaphragm_details.bottom_chord_section_type"
 KEY_MP_ED_BOTTOM_CHORD_SECTION_DESIG  = "member_properties.end_diaphragm_details.bottom_chord_section_designation"
 # Designed output dimension keys (written by design phase, read by builder)
+KEY_MP_ED_DIAGONAL_SECTION_TYPE       = "member_properties.end_diaphragm_details.diagonal.section_type"
 KEY_MP_ED_DIAGONAL_LEG_H              = "member_properties.end_diaphragm_details.diagonal.leg_h"
 KEY_MP_ED_DIAGONAL_LEG_W              = "member_properties.end_diaphragm_details.diagonal.leg_w"
 KEY_MP_ED_DIAGONAL_THICKNESS          = "member_properties.end_diaphragm_details.diagonal.thickness"
@@ -722,6 +723,7 @@ KEY_MP_CB_BOTTOM_CHORD_PREVIEW         = "member_properties.cross_bracing_detail
 KEY_MP_CB_BOTTOM_CHORD_PREVIEW_SECTION = "member_properties.cross_bracing_details.bottom_chord_preview_section"
 KEY_MP_CB_SPACING                      = "member_properties.cross_bracing_details.spacing"
 # Designed output dimension keys (written by design phase, read by builder)
+KEY_MP_CB_DIAGONAL_SECTION_TYPE       = "member_properties.cross_bracing_details.diagonal.section_type"
 KEY_MP_CB_DIAGONAL_LEG_H              = "member_properties.cross_bracing_details.diagonal.leg_h"
 KEY_MP_CB_DIAGONAL_LEG_W              = "member_properties.cross_bracing_details.diagonal.leg_w"
 KEY_MP_CB_DIAGONAL_THICKNESS          = "member_properties.cross_bracing_details.diagonal.thickness"

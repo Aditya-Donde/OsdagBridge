@@ -230,6 +230,7 @@ from osdagbridge.core.utils.common import (
     KEY_MP_STIFFENER_LONGITUDINAL,
 
     # Cross Bracing Details
+    KEY_MP_CB_NO_OF_CROSS_BRACINGS,
     KEY_MP_CB_TYPE,
     KEY_MP_CB_BRACING_SECTION_TYPE,
     KEY_MP_CB_BRACING_SECTION_DESIGNATION,
@@ -239,6 +240,16 @@ from osdagbridge.core.utils.common import (
     KEY_MP_CB_BOTTOM_CHORD,
     KEY_MP_CB_BOTTOM_CHORD_SECTION_TYPE,
     KEY_MP_CB_BOTTOM_CHORD_SECTION_DESIG,
+    KEY_MP_CB_DIAGONAL_SECTION_TYPE,
+    KEY_MP_CB_DIAGONAL_LEG_H, 
+    KEY_MP_CB_DIAGONAL_LEG_W, 
+    KEY_MP_CB_DIAGONAL_THICKNESS,
+    KEY_MP_CB_TOP_CHORD_LEG_H,
+    KEY_MP_CB_TOP_CHORD_LEG_W,
+    KEY_MP_CB_TOP_CHORD_THICKNESS,
+    KEY_MP_CB_BOTTOM_CHORD_LEG_H,
+    KEY_MP_CB_BOTTOM_CHORD_LEG_W,
+    KEY_MP_CB_BOTTOM_CHORD_THICKNESS,
 
     # End Diaphragm Details
     KEY_MP_ED_BRACING_TYPE,
@@ -250,6 +261,17 @@ from osdagbridge.core.utils.common import (
     KEY_MP_ED_BOTTOM_CHORD,
     KEY_MP_ED_BOTTOM_CHORD_SECTION_TYPE,
     KEY_MP_ED_BOTTOM_CHORD_SECTION_DESIG,
+    KEY_MP_ED_DIAGONAL_SECTION_TYPE,
+    KEY_MP_ED_DIAGONAL_LEG_H,
+    KEY_MP_ED_DIAGONAL_LEG_W,
+    KEY_MP_ED_DIAGONAL_THICKNESS,
+    KEY_MP_ED_TOP_CHORD_LEG_H,
+    KEY_MP_ED_TOP_CHORD_LEG_W,
+    KEY_MP_ED_TOP_CHORD_THICKNESS,
+    KEY_MP_ED_BOTTOM_CHORD_LEG_H,
+    KEY_MP_ED_BOTTOM_CHORD_LEG_W,
+    KEY_MP_ED_BOTTOM_CHORD_THICKNESS,
+    
 
     # Transverse member properties
     KEY_TD_CB_PROP_L, KEY_TD_CB_PROP_H, KEY_TD_CB_PROP_B, KEY_TD_CB_PROP_TW, KEY_TD_CB_PROP_TF,
@@ -302,6 +324,14 @@ _DB_PATH = Path(__file__).resolve().parents[2] / "data" / "ResourceFiles" / "Int
 _STEEL_E0       = 200 * GPa    # Initial elastic modulus (Pa)
 _STEEL_B        = 0.01         # Strain-hardening ratio
 _STEEL_FY_DEFAULT = 250 * MPa  # Fallback Fy if material not found in DB (Pa)
+
+# Helper for boolean-like input values. Accepts strings, numbers, and bools.
+def _is_enabled(val):
+    """Return True unless val explicitly means disabled."""
+    return str(val).strip().lower() not in ("no", "false", "0", "none")
+
+def make_pair_key(key: str, pair_id: str) -> str:
+            return f"{key}.{pair_id}"
 
 
 def resolve_girder_value(source: dict, base_key: str, i: int | None = None):
@@ -2466,22 +2496,14 @@ class PlateGirderBridge:
         # Resolve all possible intermediate girder pairs
         n_girders = int(self.input_dict[KEY_TS_NO_OF_GIRDERS])
         pairs = [f"G{i}-G{i+1}" for i in range(1, n_girders)]
-
-        # Key mapping function
-        def make_pair_key(key: str, pair_id: str) -> str:
-            for pfx in (
-                "transverse_member_design.cb.section_properties.bracing",
-                "transverse_member_design.cb.section_properties.top_chord",
-                "transverse_member_design.cb.section_properties.bottom_chord",
-            ):
-                if key.startswith(pfx):
-                    suffix = key[len(pfx):].lstrip(".")
-                    return f"{pfx}.{pair_id}.{suffix}"
-            pfx = "member_properties.cross_bracing_details"
-            if key.startswith(pfx):
-                suffix = key[len(pfx):].lstrip(".")
-                return f"{pfx}.{pair_id}.{suffix}"
-            return f"{key}.{pair_id}"
+        
+        n_cb = int(self.input_dict.get(KEY_MP_CB_NO_OF_CROSS_BRACINGS))
+        cb_suffix = {
+            f"G{i}G{i+1}": [f"B{i}M{j}" for j in range(1, n_cb + 1)]
+            for i in range(1, n_girders)
+        }
+        
+        is_optimized = True if self.input_dict.get(KEY_DESIGN_MODE) == "Optimized" else False
 
         # Initialize keys to None for all pairs (both brace & chords)
         for pair in pairs:
@@ -2514,134 +2536,141 @@ class PlateGirderBridge:
         # Process design results and query database per pair
         from osdagbridge.core.bridge_types.plate_girder.results_data import _extract_osdag_summary
 
-        top_chord_enabled = self.output_dict.get("member_properties.cross_bracing_details.top_chord", True)
-        bottom_chord_enabled = self.output_dict.get("member_properties.cross_bracing_details.bottom_chord", True)
-
         for pair in pairs:
             pair_id = pair.replace("-", "")
             member_designs = pair_designs.get(pair, {}) if pair_designs else {}
+            for  suffix in cb_suffix[pair_id]:
+                
+                full_suffix = f".{pair_id}.{suffix}"
+                
+                print(f"[CrossBracing] Processing pair {full_suffix}...")
+            
+                top_chord_enabled = _is_enabled(self.output_dict.get(KEY_MP_CB_TOP_CHORD + full_suffix))
+                bottom_chord_enabled = _is_enabled(self.output_dict.get(KEY_MP_CB_BOTTOM_CHORD + full_suffix))
 
-            # Diagonal section designation for this pair
-            diag_des = ""
-            diag_data = member_designs.get("diagonal", {})
-            for force_type in ("tension", "compression"):
-                res = _extract_osdag_summary(diag_data.get(force_type) or {})
-                sec = res.get("section")
-                if sec:
-                    diag_des = str(sec)
-                    break
+                if is_optimized:
+                    # Diagonal section designation for this pair
+                    diag_des = ""
+                    diag_data = member_designs.get("diagonal", {})
+                    for force_type in ("tension", "compression"):
+                        res = _extract_osdag_summary(diag_data.get(force_type) or {})
+                        sec = res.get("section")
+                        if sec:
+                            diag_des = str(sec)
+                            break
 
-            # Chord section designation for this pair
-            chord_des = ""
-            chord_data = member_designs.get("chord", {})
-            for force_type in ("tension", "compression"):
-                res = _extract_osdag_summary(chord_data.get(force_type) or {})
-                sec = res.get("section")
-                if sec:
-                    chord_des = str(sec)
-                    break
+                    # Chord section designation for this pair
+                    chord_des = ""
+                    chord_data = member_designs.get("chord", {})
+                    for force_type in ("tension", "compression"):
+                        res = _extract_osdag_summary(chord_data.get(force_type) or {})
+                        sec = res.get("section")
+                        if sec:
+                            chord_des = str(sec)
+                            break
 
-            # Query database and populate diagonal section properties
-            if diag_des:
-                self.output_dict[make_pair_key(KEY_MP_CB_BRACING_SECTION_TYPE, pair_id)] = diag_des
-                diag_details = self._query_crossbracing_section(diag_des)
-                if diag_details:
-                    self.output_dict[make_pair_key("member_properties.cross_bracing_details.diagonal.section_type", pair_id)] = diag_details["type"]
-                    
-                    # Set diagonal dimensions
-                    leg_h_key = make_pair_key("member_properties.cross_bracing_details.diagonal.leg_h", pair_id)
-                    leg_w_key = make_pair_key("member_properties.cross_bracing_details.diagonal.leg_w", pair_id)
-                    thick_key = make_pair_key("member_properties.cross_bracing_details.diagonal.thickness", pair_id)
-                    if diag_details["type"] == "ANGLE":
-                        self.output_dict[leg_h_key] = diag_details["H"] * 1000.0
-                        self.output_dict[leg_w_key] = diag_details["B"] * 1000.0
-                        self.output_dict[thick_key] = diag_details["tw"] * 1000.0
-                    elif diag_details["type"] == "CHANNEL":
-                        self.output_dict[leg_h_key] = diag_details["L"] * 1000.0
-                        self.output_dict[leg_w_key] = diag_details["B"] * 1000.0
-                        self.output_dict[thick_key] = diag_details["tw"] * 1000.0
+                    # Query database and populate diagonal section properties
+                    if diag_des:
+                        self.output_dict[KEY_MP_CB_BRACING_SECTION_DESIGNATION + full_suffix] = diag_des
+                        diag_details = self._query_crossbracing_section(diag_des)
+                        if diag_details:
+                            self.output_dict[make_pair_key(KEY_MP_CB_DIAGONAL_SECTION_TYPE, pair_id)] = diag_details["type"]
+                            self.output_dict[KEY_MP_CB_BRACING_SECTION_TYPE + full_suffix] = diag_details["type"]
+                            
+                            # Set diagonal dimensions
+                            leg_h_key = make_pair_key(KEY_MP_CB_DIAGONAL_LEG_H, pair_id)
+                            leg_w_key = make_pair_key(KEY_MP_CB_DIAGONAL_LEG_W, pair_id)
+                            thick_key = make_pair_key(KEY_MP_CB_DIAGONAL_THICKNESS, pair_id)
+                            if diag_details["type"] == "ANGLE":
+                                self.output_dict[leg_h_key] = diag_details["H"] * 1000.0
+                                self.output_dict[leg_w_key] = diag_details["B"] * 1000.0
+                                self.output_dict[thick_key] = diag_details["tw"] * 1000.0
+                            elif diag_details["type"] == "CHANNEL":
+                                self.output_dict[leg_h_key] = diag_details["L"] * 1000.0
+                                self.output_dict[leg_w_key] = diag_details["B"] * 1000.0
+                                self.output_dict[thick_key] = diag_details["tw"] * 1000.0
 
-                    self.output_dict[make_pair_key(KEY_TD_CB_PROP_L, pair_id)] = diag_details["L"]
-                    self.output_dict[make_pair_key(KEY_TD_CB_PROP_H, pair_id)] = diag_details["H"]
-                    self.output_dict[make_pair_key(KEY_TD_CB_PROP_B, pair_id)] = diag_details["B"]
-                    self.output_dict[make_pair_key(KEY_TD_CB_PROP_TW, pair_id)] = diag_details["tw"]
-                    self.output_dict[make_pair_key(KEY_TD_CB_PROP_TF, pair_id)] = diag_details["tF"]
-                    self.output_dict[make_pair_key(KEY_TD_CB_PROP_RZ, pair_id)] = diag_details["rz"]
-                    self.output_dict[make_pair_key(KEY_TD_CB_PROP_M, pair_id)] = diag_details["M"]
-                    self.output_dict[make_pair_key(KEY_TD_CB_PROP_A, pair_id)] = diag_details["A"]
-                    self.output_dict[make_pair_key(KEY_TD_CB_PROP_IZ, pair_id)] = diag_details["Iz"]
-                    self.output_dict[make_pair_key(KEY_TD_CB_PROP_IV, pair_id)] = diag_details["Iv"]
-                    self.output_dict[make_pair_key(KEY_TD_CB_PROP_RV, pair_id)] = diag_details["rv"]
-                    self.output_dict[make_pair_key(KEY_TD_CB_PROP_ZZ, pair_id)] = diag_details["Zz"]
-                    self.output_dict[make_pair_key(KEY_TD_CB_PROP_ZV, pair_id)] = diag_details["Zv"]
-                    self.output_dict[make_pair_key(KEY_TD_CB_PROP_ZUZ, pair_id)] = diag_details["Zuz"]
-                    self.output_dict[make_pair_key(KEY_TD_CB_PROP_ZUV, pair_id)] = diag_details["Zuv"]
+                            self.output_dict[make_pair_key(KEY_TD_CB_PROP_L, pair_id)] = diag_details["L"]
+                            self.output_dict[make_pair_key(KEY_TD_CB_PROP_H, pair_id)] = diag_details["H"]
+                            self.output_dict[make_pair_key(KEY_TD_CB_PROP_B, pair_id)] = diag_details["B"]
+                            self.output_dict[make_pair_key(KEY_TD_CB_PROP_TW, pair_id)] = diag_details["tw"]
+                            self.output_dict[make_pair_key(KEY_TD_CB_PROP_TF, pair_id)] = diag_details["tF"]
+                            self.output_dict[make_pair_key(KEY_TD_CB_PROP_RZ, pair_id)] = diag_details["rz"]
+                            self.output_dict[make_pair_key(KEY_TD_CB_PROP_M, pair_id)] = diag_details["M"]
+                            self.output_dict[make_pair_key(KEY_TD_CB_PROP_A, pair_id)] = diag_details["A"]
+                            self.output_dict[make_pair_key(KEY_TD_CB_PROP_IZ, pair_id)] = diag_details["Iz"]
+                            self.output_dict[make_pair_key(KEY_TD_CB_PROP_IV, pair_id)] = diag_details["Iv"]
+                            self.output_dict[make_pair_key(KEY_TD_CB_PROP_RV, pair_id)] = diag_details["rv"]
+                            self.output_dict[make_pair_key(KEY_TD_CB_PROP_ZZ, pair_id)] = diag_details["Zz"]
+                            self.output_dict[make_pair_key(KEY_TD_CB_PROP_ZV, pair_id)] = diag_details["Zv"]
+                            self.output_dict[make_pair_key(KEY_TD_CB_PROP_ZUZ, pair_id)] = diag_details["Zuz"]
+                            self.output_dict[make_pair_key(KEY_TD_CB_PROP_ZUV, pair_id)] = diag_details["Zuv"]
 
-            # Query database and populate top/bottom chords section properties
-            if chord_des:
-                self.output_dict[make_pair_key(KEY_MP_CB_TOP_CHORD_SECTION_DESIG, pair_id)] = chord_des
-                self.output_dict[make_pair_key(KEY_MP_CB_BOTTOM_CHORD_SECTION_DESIG, pair_id)] = chord_des
-                chord_details = self._query_crossbracing_section(chord_des)
-                if chord_details:
-                    if top_chord_enabled:
-                        self.output_dict[make_pair_key("member_properties.cross_bracing_details.top_chord.section_type", pair_id)] = chord_details["type"]
-                        tc_h_key = make_pair_key("member_properties.cross_bracing_details.top_chord.leg_h", pair_id)
-                        tc_w_key = make_pair_key("member_properties.cross_bracing_details.top_chord.leg_w", pair_id)
-                        tc_t_key = make_pair_key("member_properties.cross_bracing_details.top_chord.thickness", pair_id)
-                        if chord_details["type"] == "ANGLE":
-                            self.output_dict[tc_h_key] = chord_details["H"] * 1000.0
-                            self.output_dict[tc_w_key] = chord_details["B"] * 1000.0
-                            self.output_dict[tc_t_key] = chord_details["tw"] * 1000.0
-                        elif chord_details["type"] == "CHANNEL":
-                            self.output_dict[tc_h_key] = chord_details["L"] * 1000.0
-                            self.output_dict[tc_w_key] = chord_details["B"] * 1000.0
-                            self.output_dict[tc_t_key] = chord_details["tw"] * 1000.0
+                    # Query database and populate top/bottom chords section properties
+                    if chord_des:
+                        self.output_dict[KEY_MP_CB_TOP_CHORD_SECTION_DESIG + full_suffix] = chord_des
+                        self.output_dict[KEY_MP_CB_BOTTOM_CHORD_SECTION_DESIG + full_suffix] = chord_des
+                        chord_details = self._query_crossbracing_section(chord_des)
+                        if chord_details:
+                            if top_chord_enabled:
+                                self.output_dict[KEY_MP_CB_TOP_CHORD_SECTION_TYPE + full_suffix] = chord_details["type"]
+                                tc_h_key = make_pair_key(KEY_MP_CB_TOP_CHORD_LEG_H, pair_id)
+                                tc_w_key = make_pair_key(KEY_MP_CB_TOP_CHORD_LEG_W, pair_id)
+                                tc_t_key = make_pair_key(KEY_MP_CB_TOP_CHORD_THICKNESS, pair_id)
+                                if chord_details["type"] == "ANGLE":
+                                    self.output_dict[tc_h_key] = chord_details["H"] * 1000.0
+                                    self.output_dict[tc_w_key] = chord_details["B"] * 1000.0
+                                    self.output_dict[tc_t_key] = chord_details["tw"] * 1000.0
+                                elif chord_details["type"] == "CHANNEL":
+                                    self.output_dict[tc_h_key] = chord_details["L"] * 1000.0
+                                    self.output_dict[tc_w_key] = chord_details["B"] * 1000.0
+                                    self.output_dict[tc_t_key] = chord_details["tw"] * 1000.0
 
-                        self.output_dict[make_pair_key(KEY_TD_CB_TOP_CHORD_PROP_L, pair_id)] = chord_details["L"]
-                        self.output_dict[make_pair_key(KEY_TD_CB_TOP_CHORD_PROP_H, pair_id)] = chord_details["H"]
-                        self.output_dict[make_pair_key(KEY_TD_CB_TOP_CHORD_PROP_B, pair_id)] = chord_details["B"]
-                        self.output_dict[make_pair_key(KEY_TD_CB_TOP_CHORD_PROP_TW, pair_id)] = chord_details["tw"]
-                        self.output_dict[make_pair_key(KEY_TD_CB_TOP_CHORD_PROP_TF, pair_id)] = chord_details["tF"]
-                        self.output_dict[make_pair_key(KEY_TD_CB_TOP_CHORD_PROP_RZ, pair_id)] = chord_details["rz"]
-                        self.output_dict[make_pair_key(KEY_TD_CB_TOP_CHORD_PROP_M, pair_id)] = chord_details["M"]
-                        self.output_dict[make_pair_key(KEY_TD_CB_TOP_CHORD_PROP_A, pair_id)] = chord_details["A"]
-                        self.output_dict[make_pair_key(KEY_TD_CB_TOP_CHORD_PROP_IZ, pair_id)] = chord_details["Iz"]
-                        self.output_dict[make_pair_key(KEY_TD_CB_TOP_CHORD_PROP_IV, pair_id)] = chord_details["Iv"]
-                        self.output_dict[make_pair_key(KEY_TD_CB_TOP_CHORD_PROP_RV, pair_id)] = chord_details["rv"]
-                        self.output_dict[make_pair_key(KEY_TD_CB_TOP_CHORD_PROP_ZZ, pair_id)] = chord_details["Zz"]
-                        self.output_dict[make_pair_key(KEY_TD_CB_TOP_CHORD_PROP_ZV, pair_id)] = chord_details["Zv"]
-                        self.output_dict[make_pair_key(KEY_TD_CB_TOP_CHORD_PROP_ZUZ, pair_id)] = chord_details["Zuz"]
-                        self.output_dict[make_pair_key(KEY_TD_CB_TOP_CHORD_PROP_ZUV, pair_id)] = chord_details["Zuv"]
+                                self.output_dict[make_pair_key(KEY_TD_CB_TOP_CHORD_PROP_L, pair_id)] = chord_details["L"]
+                                self.output_dict[make_pair_key(KEY_TD_CB_TOP_CHORD_PROP_H, pair_id)] = chord_details["H"]
+                                self.output_dict[make_pair_key(KEY_TD_CB_TOP_CHORD_PROP_B, pair_id)] = chord_details["B"]
+                                self.output_dict[make_pair_key(KEY_TD_CB_TOP_CHORD_PROP_TW, pair_id)] = chord_details["tw"]
+                                self.output_dict[make_pair_key(KEY_TD_CB_TOP_CHORD_PROP_TF, pair_id)] = chord_details["tF"]
+                                self.output_dict[make_pair_key(KEY_TD_CB_TOP_CHORD_PROP_RZ, pair_id)] = chord_details["rz"]
+                                self.output_dict[make_pair_key(KEY_TD_CB_TOP_CHORD_PROP_M, pair_id)] = chord_details["M"]
+                                self.output_dict[make_pair_key(KEY_TD_CB_TOP_CHORD_PROP_A, pair_id)] = chord_details["A"]
+                                self.output_dict[make_pair_key(KEY_TD_CB_TOP_CHORD_PROP_IZ, pair_id)] = chord_details["Iz"]
+                                self.output_dict[make_pair_key(KEY_TD_CB_TOP_CHORD_PROP_IV, pair_id)] = chord_details["Iv"]
+                                self.output_dict[make_pair_key(KEY_TD_CB_TOP_CHORD_PROP_RV, pair_id)] = chord_details["rv"]
+                                self.output_dict[make_pair_key(KEY_TD_CB_TOP_CHORD_PROP_ZZ, pair_id)] = chord_details["Zz"]
+                                self.output_dict[make_pair_key(KEY_TD_CB_TOP_CHORD_PROP_ZV, pair_id)] = chord_details["Zv"]
+                                self.output_dict[make_pair_key(KEY_TD_CB_TOP_CHORD_PROP_ZUZ, pair_id)] = chord_details["Zuz"]
+                                self.output_dict[make_pair_key(KEY_TD_CB_TOP_CHORD_PROP_ZUV, pair_id)] = chord_details["Zuv"]
 
-                    if bottom_chord_enabled:
-                        self.output_dict[make_pair_key("member_properties.cross_bracing_details.bottom_chord.section_type", pair_id)] = chord_details["type"]
-                        bc_h_key = make_pair_key("member_properties.cross_bracing_details.bottom_chord.leg_h", pair_id)
-                        bc_w_key = make_pair_key("member_properties.cross_bracing_details.bottom_chord.leg_w", pair_id)
-                        bc_t_key = make_pair_key("member_properties.cross_bracing_details.bottom_chord.thickness", pair_id)
-                        if chord_details["type"] == "ANGLE":
-                            self.output_dict[bc_h_key] = chord_details["H"] * 1000.0
-                            self.output_dict[bc_w_key] = chord_details["B"] * 1000.0
-                            self.output_dict[bc_t_key] = chord_details["tw"] * 1000.0
-                        elif chord_details["type"] == "CHANNEL":
-                            self.output_dict[bc_h_key] = chord_details["L"] * 1000.0
-                            self.output_dict[bc_w_key] = chord_details["B"] * 1000.0
-                            self.output_dict[bc_t_key] = chord_details["tw"] * 1000.0
+                            if bottom_chord_enabled:
+                                self.output_dict[KEY_MP_CB_BOTTOM_CHORD_SECTION_TYPE + full_suffix] = chord_details["type"]
+                                bc_h_key = make_pair_key(KEY_MP_CB_BOTTOM_CHORD_LEG_H, pair_id)
+                                bc_w_key = make_pair_key(KEY_MP_CB_BOTTOM_CHORD_LEG_W, pair_id)
+                                bc_t_key = make_pair_key(KEY_MP_CB_BOTTOM_CHORD_THICKNESS, pair_id)
+                                if chord_details["type"] == "ANGLE":
+                                    self.output_dict[bc_h_key] = chord_details["H"] * 1000.0
+                                    self.output_dict[bc_w_key] = chord_details["B"] * 1000.0
+                                    self.output_dict[bc_t_key] = chord_details["tw"] * 1000.0
+                                elif chord_details["type"] == "CHANNEL":
+                                    self.output_dict[bc_h_key] = chord_details["L"] * 1000.0
+                                    self.output_dict[bc_w_key] = chord_details["B"] * 1000.0
+                                    self.output_dict[bc_t_key] = chord_details["tw"] * 1000.0
 
-                        self.output_dict[make_pair_key(KEY_TD_CB_BOTTOM_CHORD_PROP_L, pair_id)] = chord_details["L"]
-                        self.output_dict[make_pair_key(KEY_TD_CB_BOTTOM_CHORD_PROP_H, pair_id)] = chord_details["H"]
-                        self.output_dict[make_pair_key(KEY_TD_CB_BOTTOM_CHORD_PROP_B, pair_id)] = chord_details["B"]
-                        self.output_dict[make_pair_key(KEY_TD_CB_BOTTOM_CHORD_PROP_TW, pair_id)] = chord_details["tw"]
-                        self.output_dict[make_pair_key(KEY_TD_CB_BOTTOM_CHORD_PROP_TF, pair_id)] = chord_details["tF"]
-                        self.output_dict[make_pair_key(KEY_TD_CB_BOTTOM_CHORD_PROP_RZ, pair_id)] = chord_details["rz"]
-                        self.output_dict[make_pair_key(KEY_TD_CB_BOTTOM_CHORD_PROP_M, pair_id)] = chord_details["M"]
-                        self.output_dict[make_pair_key(KEY_TD_CB_BOTTOM_CHORD_PROP_A, pair_id)] = chord_details["A"]
-                        self.output_dict[make_pair_key(KEY_TD_CB_BOTTOM_CHORD_PROP_IZ, pair_id)] = chord_details["Iz"]
-                        self.output_dict[make_pair_key(KEY_TD_CB_BOTTOM_CHORD_PROP_IV, pair_id)] = chord_details["Iv"]
-                        self.output_dict[make_pair_key(KEY_TD_CB_BOTTOM_CHORD_PROP_RV, pair_id)] = chord_details["rv"]
-                        self.output_dict[make_pair_key(KEY_TD_CB_BOTTOM_CHORD_PROP_ZZ, pair_id)] = chord_details["Zz"]
-                        self.output_dict[make_pair_key(KEY_TD_CB_BOTTOM_CHORD_PROP_ZV, pair_id)] = chord_details["Zv"]
-                        self.output_dict[make_pair_key(KEY_TD_CB_BOTTOM_CHORD_PROP_ZUZ, pair_id)] = chord_details["Zuz"]
-                        self.output_dict[make_pair_key(KEY_TD_CB_BOTTOM_CHORD_PROP_ZUV, pair_id)] = chord_details["Zuv"]
+                                self.output_dict[make_pair_key(KEY_TD_CB_BOTTOM_CHORD_PROP_L, pair_id)] = chord_details["L"]
+                                self.output_dict[make_pair_key(KEY_TD_CB_BOTTOM_CHORD_PROP_H, pair_id)] = chord_details["H"]
+                                self.output_dict[make_pair_key(KEY_TD_CB_BOTTOM_CHORD_PROP_B, pair_id)] = chord_details["B"]
+                                self.output_dict[make_pair_key(KEY_TD_CB_BOTTOM_CHORD_PROP_TW, pair_id)] = chord_details["tw"]
+                                self.output_dict[make_pair_key(KEY_TD_CB_BOTTOM_CHORD_PROP_TF, pair_id)] = chord_details["tF"]
+                                self.output_dict[make_pair_key(KEY_TD_CB_BOTTOM_CHORD_PROP_RZ, pair_id)] = chord_details["rz"]
+                                self.output_dict[make_pair_key(KEY_TD_CB_BOTTOM_CHORD_PROP_M, pair_id)] = chord_details["M"]
+                                self.output_dict[make_pair_key(KEY_TD_CB_BOTTOM_CHORD_PROP_A, pair_id)] = chord_details["A"]
+                                self.output_dict[make_pair_key(KEY_TD_CB_BOTTOM_CHORD_PROP_IZ, pair_id)] = chord_details["Iz"]
+                                self.output_dict[make_pair_key(KEY_TD_CB_BOTTOM_CHORD_PROP_IV, pair_id)] = chord_details["Iv"]
+                                self.output_dict[make_pair_key(KEY_TD_CB_BOTTOM_CHORD_PROP_RV, pair_id)] = chord_details["rv"]
+                                self.output_dict[make_pair_key(KEY_TD_CB_BOTTOM_CHORD_PROP_ZZ, pair_id)] = chord_details["Zz"]
+                                self.output_dict[make_pair_key(KEY_TD_CB_BOTTOM_CHORD_PROP_ZV, pair_id)] = chord_details["Zv"]
+                                self.output_dict[make_pair_key(KEY_TD_CB_BOTTOM_CHORD_PROP_ZUZ, pair_id)] = chord_details["Zuz"]
+                                self.output_dict[make_pair_key(KEY_TD_CB_BOTTOM_CHORD_PROP_ZUV, pair_id)] = chord_details["Zuv"]
         
         self.crossbracing_design_results = pair_designs
         return pair_designs
@@ -2732,25 +2761,10 @@ class PlateGirderBridge:
                 pair = f"{g1}-{g2}" if idx1 <= idx2 else f"{g2}-{g1}"
                 pair_to_elements.setdefault(pair, []).append(m)
 
-        # 2. Key mapping function for end diaphragm details
-        def make_pair_key(key: str, pair_id: str) -> str:
-            for pfx in (
-                "transverse_member_design.ed.section_properties.end_diaphragm",
-                "transverse_member_design.ed.section_properties.top_chord",
-                "transverse_member_design.ed.section_properties.bottom_chord",
-            ):
-                if key.startswith(pfx):
-                    suffix = key[len(pfx):].lstrip(".")
-                    return f"{pfx}.{pair_id}.{suffix}"
-            pfx = "member_properties.end_diaphragm_details"
-            if key.startswith(pfx):
-                suffix = key[len(pfx):].lstrip(".")
-                return f"{pfx}.{pair_id}.{suffix}"
-            return f"{key}.{pair_id}"
-
-        # 3. Resolve possible intermediate girder pairs
+        # 2. Resolve possible intermediate girder pairs
         n_girders = int(self.input_dict[KEY_TS_NO_OF_GIRDERS])
         pairs = [f"G{i}-G{i+1}" for i in range(1, n_girders)]
+        is_optimized = True if self.input_dict.get(KEY_DESIGN_MODE) == "Optimized" else False
 
         # Initialize output keys to None
         for pair in pairs:
@@ -2780,12 +2794,12 @@ class PlateGirderBridge:
             ):
                 self.output_dict[make_pair_key(k, pair_id)] = None
 
-        # 4. Sizing and Geometry
+        # 3. Sizing and Geometry
         D = float(_gv(self.input_dict, KEY_MP_GIRDER_DEPTH))
         h = D * 0.85  # Default depth ratio
         s = float(self.input_dict[KEY_TS_GIRDER_SPACING])
 
-        # 5. Process design results and queries
+        # 4. Process design results and queries
         forces_dict = {"pairs": {}}
         pair_designs = {}
         for pair in pairs:
@@ -2799,23 +2813,27 @@ class PlateGirderBridge:
             _m2 = f".{pair_id}.E{i}M2"
             member_suffix = _m1 if self.input_dict.get(f"{KEY_MP_ED_TYPE}{_m1}") else _m2
 
-            ed_type = self.input_dict.get(f"{KEY_MP_ED_TYPE}{member_suffix}") or ""
-            if not ed_type:
-                continue   # no data for this pair, skip cleanly
-            self.output_dict[make_pair_key(KEY_MP_ED_TYPE, pair_id)] = ed_type
+            ed_type = self.input_dict.get(KEY_MP_ED_TYPE + member_suffix)
+            
+            self.output_dict[KEY_MP_ED_TYPE + _m1] = ed_type
+            self.output_dict[KEY_MP_ED_TYPE + _m2] = ed_type
+            
             
             # -- CASE A: CROSS BRACING DIAPHRAGM --
             if ed_type == "Cross Bracing":
                 bracing_type = self.input_dict.get(f"{KEY_MP_ED_BRACING_TYPE}{member_suffix}")
-                top_chord_enabled = self.input_dict.get(f"{KEY_MP_ED_TOP_CHORD}{member_suffix}")
-                top_chord_enabled = str(top_chord_enabled).strip().lower() not in ("no", "false", "0", "none", "")
-                bottom_chord_enabled = self.input_dict.get(f"{KEY_MP_ED_BOTTOM_CHORD}{member_suffix}")
-                bottom_chord_enabled = str(bottom_chord_enabled).strip().lower() not in ("no", "false", "0", "none", "")
+                top_chord_enabled = _is_enabled(self.input_dict.get(f"{KEY_MP_ED_TOP_CHORD}{member_suffix}"))
+                bottom_chord_enabled = _is_enabled(self.input_dict.get(f"{KEY_MP_ED_BOTTOM_CHORD}{member_suffix}"))
 
-                self.output_dict[make_pair_key(KEY_MP_ED_BRACING_TYPE, pair_id)] = bracing_type
-                self.output_dict[make_pair_key(KEY_MP_ED_TOP_CHORD, pair_id)] = top_chord_enabled
-                self.output_dict[make_pair_key(KEY_MP_ED_BOTTOM_CHORD, pair_id)] = bottom_chord_enabled
-
+                self.output_dict[KEY_MP_ED_BRACING_TYPE + _m1] = bracing_type
+                self.output_dict[KEY_MP_ED_BRACING_TYPE + _m2] = bracing_type
+                
+                self.output_dict[KEY_MP_ED_TOP_CHORD + _m1] = top_chord_enabled
+                self.output_dict[KEY_MP_ED_TOP_CHORD + _m2] = top_chord_enabled
+                
+                self.output_dict[KEY_MP_ED_BOTTOM_CHORD + _m1] = bottom_chord_enabled
+                self.output_dict[KEY_MP_ED_BOTTOM_CHORD + _m2] = bottom_chord_enabled
+                
                 # Compute Diagonal length
                 horiz_proj = s if bracing_type in ("X", "X-Bracing") else s / 2.0
                 L_d = math.sqrt(horiz_proj ** 2 + h ** 2)
@@ -2914,130 +2932,145 @@ class PlateGirderBridge:
 
                 # Fetch selected designations
                 member_designs = pair_designs.get(pair, {})
-                diag_des = ""
-                diag_data = member_designs.get("diagonal", {})
-                for force_type in ("tension", "compression"):
-                    res = _extract_osdag_summary(diag_data.get(force_type) or {})
-                    sec = res.get("section")
-                    if sec:
-                        diag_des = str(sec)
-                        break
-                if not diag_des:
-                    diag_des = self.input_dict.get(f"{KEY_MP_ED_BRACING_SECTION_DESIGNATION}{member_suffix}")
 
-                chord_des = ""
-                chord_data = member_designs.get("chord", {})
-                for force_type in ("tension", "compression"):
-                    res = _extract_osdag_summary(chord_data.get(force_type) or {})
-                    sec = res.get("section")
-                    if sec:
-                        chord_des = str(sec)
-                        break
+                if is_optimized:
+                    diag_des = ""
+                    diag_data = member_designs.get("diagonal", {})
+                    for force_type in ("tension", "compression"):
+                        res = _extract_osdag_summary(diag_data.get(force_type) or {})
+                        sec = res.get("section")
+                        if sec:
+                            diag_des = str(sec)
+                            break
+                    if not diag_des:
+                        diag_des = self.input_dict.get(f"{KEY_MP_ED_BRACING_SECTION_DESIGNATION}{member_suffix}")
 
-                top_chord_des = chord_des if chord_des else self.input_dict.get(f"{KEY_MP_ED_TOP_CHORD_SECTION_DESIG}{member_suffix}")
-                bottom_chord_des = chord_des if chord_des else self.input_dict.get(f"{KEY_MP_ED_BOTTOM_CHORD_SECTION_DESIG}{member_suffix}")
-
-                # Populate diagonal properties
-                if diag_des:
-                    self.output_dict[make_pair_key(KEY_MP_ED_BRACING_SECTION_DESIGNATION, pair_id)] = diag_des
-                    diag_details = self._query_crossbracing_section(diag_des)
-                    if diag_details:
-                        self.output_dict[make_pair_key("member_properties.end_diaphragm_details.diagonal.section_type", pair_id)] = diag_details["type"]
+                    chord_des = ""
+                    chord_data = member_designs.get("chord", {})
+                    for force_type in ("tension", "compression"):
+                        res = _extract_osdag_summary(chord_data.get(force_type) or {})
+                        sec = res.get("section")
+                        if sec:
+                            chord_des = str(sec)
+                            break
                         
-                        leg_h_key = make_pair_key("member_properties.end_diaphragm_details.diagonal.leg_h", pair_id)
-                        leg_w_key = make_pair_key("member_properties.end_diaphragm_details.diagonal.leg_w", pair_id)
-                        thick_key = make_pair_key("member_properties.end_diaphragm_details.diagonal.thickness", pair_id)
-                        if diag_details["type"] == "ANGLE":
-                            self.output_dict[leg_h_key] = diag_details["H"] * 1000.0
-                            self.output_dict[leg_w_key] = diag_details["B"] * 1000.0
-                            self.output_dict[thick_key] = diag_details["tw"] * 1000.0
-                        elif diag_details["type"] == "CHANNEL":
-                            self.output_dict[leg_h_key] = diag_details["L"] * 1000.0
-                            self.output_dict[leg_w_key] = diag_details["B"] * 1000.0
-                            self.output_dict[thick_key] = diag_details["tw"] * 1000.0
+                    top_chord_des = chord_des
+                    bottom_chord_des = chord_des
 
-                        self.output_dict[make_pair_key(KEY_TD_ED_PROP_L, pair_id)] = diag_details["L"]
-                        self.output_dict[make_pair_key(KEY_TD_ED_PROP_H, pair_id)] = diag_details["H"]
-                        self.output_dict[make_pair_key(KEY_TD_ED_PROP_B, pair_id)] = diag_details["B"]
-                        self.output_dict[make_pair_key(KEY_TD_ED_PROP_TW, pair_id)] = diag_details["tw"]
-                        self.output_dict[make_pair_key(KEY_TD_ED_PROP_TF, pair_id)] = diag_details["tF"]
-                        self.output_dict[make_pair_key(KEY_TD_ED_PROP_RZ, pair_id)] = diag_details["rz"]
-                        self.output_dict[make_pair_key(KEY_TD_ED_PROP_M, pair_id)] = diag_details["M"]
-                        self.output_dict[make_pair_key(KEY_TD_ED_PROP_A, pair_id)] = diag_details["A"]
-                        self.output_dict[make_pair_key(KEY_TD_ED_PROP_IZ, pair_id)] = diag_details["Iz"]
-                        self.output_dict[make_pair_key(KEY_TD_ED_PROP_IV, pair_id)] = diag_details["Iv"]
-                        self.output_dict[make_pair_key(KEY_TD_ED_PROP_RV, pair_id)] = diag_details["rv"]
-                        self.output_dict[make_pair_key(KEY_TD_ED_PROP_ZZ, pair_id)] = diag_details["Zz"]
-                        self.output_dict[make_pair_key(KEY_TD_ED_PROP_ZV, pair_id)] = diag_details["Zv"]
-                        self.output_dict[make_pair_key(KEY_TD_ED_PROP_ZUZ, pair_id)] = diag_details["Zuz"]
-                        self.output_dict[make_pair_key(KEY_TD_ED_PROP_ZUV, pair_id)] = diag_details["Zuv"]
+                    # Populate diagonal properties
+                    if diag_des:
+                        self.output_dict[KEY_MP_ED_BRACING_SECTION_DESIGNATION + _m1] = diag_des
+                        self.output_dict[KEY_MP_ED_BRACING_SECTION_DESIGNATION + _m2] = diag_des
 
-                # Populate chords
-                if top_chord_enabled and top_chord_des:
-                    self.output_dict[make_pair_key(KEY_MP_ED_TOP_CHORD_SECTION_DESIG, pair_id)] = top_chord_des
-                    chord_details = self._query_crossbracing_section(top_chord_des)
-                    if chord_details:
-                        self.output_dict[make_pair_key("member_properties.end_diaphragm_details.top_chord.section_type", pair_id)] = chord_details["type"]
-                        tc_h_key = make_pair_key("member_properties.end_diaphragm_details.top_chord.leg_h", pair_id)
-                        tc_w_key = make_pair_key("member_properties.end_diaphragm_details.top_chord.leg_w", pair_id)
-                        tc_t_key = make_pair_key("member_properties.end_diaphragm_details.top_chord.thickness", pair_id)
-                        if chord_details["type"] == "ANGLE":
-                            self.output_dict[tc_h_key] = chord_details["H"] * 1000.0
-                            self.output_dict[tc_w_key] = chord_details["B"] * 1000.0
-                            self.output_dict[tc_t_key] = chord_details["tw"] * 1000.0
-                        elif chord_details["type"] == "CHANNEL":
-                            self.output_dict[tc_h_key] = chord_details["L"] * 1000.0
-                            self.output_dict[tc_w_key] = chord_details["B"] * 1000.0
-                            self.output_dict[tc_t_key] = chord_details["tw"] * 1000.0
+                        diag_details = self._query_crossbracing_section(diag_des)
+                        if diag_details:
+                            self.output_dict[make_pair_key(KEY_MP_ED_DIAGONAL_SECTION_TYPE, pair_id)] = diag_details["type"]
+                            self.output_dict[KEY_MP_ED_BRACING_SECTION + _m1] = diag_details["type"]
+                            self.output_dict[KEY_MP_ED_BRACING_SECTION + _m2] = diag_details["type"]
+                            
+                            leg_h_key = make_pair_key(KEY_MP_ED_DIAGONAL_LEG_H, pair_id)
+                            leg_w_key = make_pair_key(KEY_MP_ED_DIAGONAL_LEG_W, pair_id)
+                            thick_key = make_pair_key(KEY_MP_ED_DIAGONAL_THICKNESS, pair_id)
+                            
+                            if diag_details["type"] == "ANGLE":
+                                self.output_dict[leg_h_key] = diag_details["H"] * 1000.0
+                                self.output_dict[leg_w_key] = diag_details["B"] * 1000.0
+                                self.output_dict[thick_key] = diag_details["tw"] * 1000.0
+                            elif diag_details["type"] == "CHANNEL":
+                                self.output_dict[leg_h_key] = diag_details["L"] * 1000.0
+                                self.output_dict[leg_w_key] = diag_details["B"] * 1000.0
+                                self.output_dict[thick_key] = diag_details["tw"] * 1000.0
 
-                        self.output_dict[make_pair_key(KEY_TD_ED_TOP_CHORD_PROP_L, pair_id)] = chord_details["L"]
-                        self.output_dict[make_pair_key(KEY_TD_ED_TOP_CHORD_PROP_H, pair_id)] = chord_details["H"]
-                        self.output_dict[make_pair_key(KEY_TD_ED_TOP_CHORD_PROP_B, pair_id)] = chord_details["B"]
-                        self.output_dict[make_pair_key(KEY_TD_ED_TOP_CHORD_PROP_TW, pair_id)] = chord_details["tw"]
-                        self.output_dict[make_pair_key(KEY_TD_ED_TOP_CHORD_PROP_TF, pair_id)] = chord_details["tF"]
-                        self.output_dict[make_pair_key(KEY_TD_ED_TOP_CHORD_PROP_RZ, pair_id)] = chord_details["rz"]
-                        self.output_dict[make_pair_key(KEY_TD_ED_TOP_CHORD_PROP_M, pair_id)] = chord_details["M"]
-                        self.output_dict[make_pair_key(KEY_TD_ED_TOP_CHORD_PROP_A, pair_id)] = chord_details["A"]
-                        self.output_dict[make_pair_key(KEY_TD_ED_TOP_CHORD_PROP_IZ, pair_id)] = chord_details["Iz"]
-                        self.output_dict[make_pair_key(KEY_TD_ED_TOP_CHORD_PROP_IV, pair_id)] = chord_details["Iv"]
-                        self.output_dict[make_pair_key(KEY_TD_ED_TOP_CHORD_PROP_RV, pair_id)] = chord_details["rv"]
-                        self.output_dict[make_pair_key(KEY_TD_ED_TOP_CHORD_PROP_ZZ, pair_id)] = chord_details["Zz"]
-                        self.output_dict[make_pair_key(KEY_TD_ED_TOP_CHORD_PROP_ZV, pair_id)] = chord_details["Zv"]
-                        self.output_dict[make_pair_key(KEY_TD_ED_TOP_CHORD_PROP_ZUZ, pair_id)] = chord_details["Zuz"]
-                        self.output_dict[make_pair_key(KEY_TD_ED_TOP_CHORD_PROP_ZUV, pair_id)] = chord_details["Zuv"]
+                            self.output_dict[make_pair_key(KEY_TD_ED_PROP_L, pair_id)] = diag_details["L"]
+                            self.output_dict[make_pair_key(KEY_TD_ED_PROP_H, pair_id)] = diag_details["H"]
+                            self.output_dict[make_pair_key(KEY_TD_ED_PROP_B, pair_id)] = diag_details["B"]
+                            self.output_dict[make_pair_key(KEY_TD_ED_PROP_TW, pair_id)] = diag_details["tw"]
+                            self.output_dict[make_pair_key(KEY_TD_ED_PROP_TF, pair_id)] = diag_details["tF"]
+                            self.output_dict[make_pair_key(KEY_TD_ED_PROP_RZ, pair_id)] = diag_details["rz"]
+                            self.output_dict[make_pair_key(KEY_TD_ED_PROP_M, pair_id)] = diag_details["M"]
+                            self.output_dict[make_pair_key(KEY_TD_ED_PROP_A, pair_id)] = diag_details["A"]
+                            self.output_dict[make_pair_key(KEY_TD_ED_PROP_IZ, pair_id)] = diag_details["Iz"]
+                            self.output_dict[make_pair_key(KEY_TD_ED_PROP_IV, pair_id)] = diag_details["Iv"]
+                            self.output_dict[make_pair_key(KEY_TD_ED_PROP_RV, pair_id)] = diag_details["rv"]
+                            self.output_dict[make_pair_key(KEY_TD_ED_PROP_ZZ, pair_id)] = diag_details["Zz"]
+                            self.output_dict[make_pair_key(KEY_TD_ED_PROP_ZV, pair_id)] = diag_details["Zv"]
+                            self.output_dict[make_pair_key(KEY_TD_ED_PROP_ZUZ, pair_id)] = diag_details["Zuz"]
+                            self.output_dict[make_pair_key(KEY_TD_ED_PROP_ZUV, pair_id)] = diag_details["Zuv"]
 
-                if bottom_chord_enabled and bottom_chord_des:
-                    self.output_dict[make_pair_key(KEY_MP_ED_BOTTOM_CHORD_SECTION_DESIG, pair_id)] = bottom_chord_des
-                    chord_details = self._query_crossbracing_section(bottom_chord_des)
-                    if chord_details:
-                        self.output_dict[make_pair_key("member_properties.end_diaphragm_details.bottom_chord.section_type", pair_id)] = chord_details["type"]
-                        bc_h_key = make_pair_key("member_properties.end_diaphragm_details.bottom_chord.leg_h", pair_id)
-                        bc_w_key = make_pair_key("member_properties.end_diaphragm_details.bottom_chord.leg_w", pair_id)
-                        bc_t_key = make_pair_key("member_properties.end_diaphragm_details.bottom_chord.thickness", pair_id)
-                        if chord_details["type"] == "ANGLE":
-                            self.output_dict[bc_h_key] = chord_details["H"] * 1000.0
-                            self.output_dict[bc_w_key] = chord_details["B"] * 1000.0
-                            self.output_dict[bc_t_key] = chord_details["tw"] * 1000.0
-                        elif chord_details["type"] == "CHANNEL":
-                            self.output_dict[bc_h_key] = chord_details["L"] * 1000.0
-                            self.output_dict[bc_w_key] = chord_details["B"] * 1000.0
-                            self.output_dict[bc_t_key] = chord_details["tw"] * 1000.0
+                    # Populate chords
+                    if top_chord_enabled and top_chord_des:
+                        self.output_dict[KEY_MP_ED_TOP_CHORD_SECTION_DESIG + _m1] = top_chord_des
+                        self.output_dict[KEY_MP_ED_TOP_CHORD_SECTION_DESIG + _m2] = top_chord_des
 
-                        self.output_dict[make_pair_key(KEY_TD_ED_BOTTOM_CHORD_PROP_L, pair_id)] = chord_details["L"]
-                        self.output_dict[make_pair_key(KEY_TD_ED_BOTTOM_CHORD_PROP_H, pair_id)] = chord_details["H"]
-                        self.output_dict[make_pair_key(KEY_TD_ED_BOTTOM_CHORD_PROP_B, pair_id)] = chord_details["B"]
-                        self.output_dict[make_pair_key(KEY_TD_ED_BOTTOM_CHORD_PROP_TW, pair_id)] = chord_details["tw"]
-                        self.output_dict[make_pair_key(KEY_TD_ED_BOTTOM_CHORD_PROP_TF, pair_id)] = chord_details["tF"]
-                        self.output_dict[make_pair_key(KEY_TD_ED_BOTTOM_CHORD_PROP_RZ, pair_id)] = chord_details["rz"]
-                        self.output_dict[make_pair_key(KEY_TD_ED_BOTTOM_CHORD_PROP_M, pair_id)] = chord_details["M"]
-                        self.output_dict[make_pair_key(KEY_TD_ED_BOTTOM_CHORD_PROP_A, pair_id)] = chord_details["A"]
-                        self.output_dict[make_pair_key(KEY_TD_ED_BOTTOM_CHORD_PROP_IZ, pair_id)] = chord_details["Iz"]
-                        self.output_dict[make_pair_key(KEY_TD_ED_BOTTOM_CHORD_PROP_IV, pair_id)] = chord_details["Iv"]
-                        self.output_dict[make_pair_key(KEY_TD_ED_BOTTOM_CHORD_PROP_RV, pair_id)] = chord_details["rv"]
-                        self.output_dict[make_pair_key(KEY_TD_ED_BOTTOM_CHORD_PROP_ZZ, pair_id)] = chord_details["Zz"]
-                        self.output_dict[make_pair_key(KEY_TD_ED_BOTTOM_CHORD_PROP_ZV, pair_id)] = chord_details["Zv"]
-                        self.output_dict[make_pair_key(KEY_TD_ED_BOTTOM_CHORD_PROP_ZUZ, pair_id)] = chord_details["Zuz"]
-                        self.output_dict[make_pair_key(KEY_TD_ED_BOTTOM_CHORD_PROP_ZUV, pair_id)] = chord_details["Zuv"]
+                        chord_details = self._query_crossbracing_section(top_chord_des)
+                        if chord_details:
+                            self.output_dict[KEY_MP_ED_TOP_CHORD_SECTION_TYPE + _m1] = chord_details["type"]
+                            self.output_dict[KEY_MP_ED_TOP_CHORD_SECTION_TYPE + _m2] = chord_details["type"]
+
+                            tc_h_key = make_pair_key(KEY_MP_ED_TOP_CHORD_LEG_H, pair_id)
+                            tc_w_key = make_pair_key(KEY_MP_ED_TOP_CHORD_LEG_W, pair_id)
+                            tc_t_key = make_pair_key(KEY_MP_ED_TOP_CHORD_THICKNESS, pair_id)
+                            if chord_details["type"] == "ANGLE":
+                                self.output_dict[tc_h_key] = chord_details["H"] * 1000.0
+                                self.output_dict[tc_w_key] = chord_details["B"] * 1000.0
+                                self.output_dict[tc_t_key] = chord_details["tw"] * 1000.0
+                            elif chord_details["type"] == "CHANNEL":
+                                self.output_dict[tc_h_key] = chord_details["L"] * 1000.0
+                                self.output_dict[tc_w_key] = chord_details["B"] * 1000.0
+                                self.output_dict[tc_t_key] = chord_details["tw"] * 1000.0
+
+                            self.output_dict[make_pair_key(KEY_TD_ED_TOP_CHORD_PROP_L, pair_id)] = chord_details["L"]
+                            self.output_dict[make_pair_key(KEY_TD_ED_TOP_CHORD_PROP_H, pair_id)] = chord_details["H"]
+                            self.output_dict[make_pair_key(KEY_TD_ED_TOP_CHORD_PROP_B, pair_id)] = chord_details["B"]
+                            self.output_dict[make_pair_key(KEY_TD_ED_TOP_CHORD_PROP_TW, pair_id)] = chord_details["tw"]
+                            self.output_dict[make_pair_key(KEY_TD_ED_TOP_CHORD_PROP_TF, pair_id)] = chord_details["tF"]
+                            self.output_dict[make_pair_key(KEY_TD_ED_TOP_CHORD_PROP_RZ, pair_id)] = chord_details["rz"]
+                            self.output_dict[make_pair_key(KEY_TD_ED_TOP_CHORD_PROP_M, pair_id)] = chord_details["M"]
+                            self.output_dict[make_pair_key(KEY_TD_ED_TOP_CHORD_PROP_A, pair_id)] = chord_details["A"]
+                            self.output_dict[make_pair_key(KEY_TD_ED_TOP_CHORD_PROP_IZ, pair_id)] = chord_details["Iz"]
+                            self.output_dict[make_pair_key(KEY_TD_ED_TOP_CHORD_PROP_IV, pair_id)] = chord_details["Iv"]
+                            self.output_dict[make_pair_key(KEY_TD_ED_TOP_CHORD_PROP_RV, pair_id)] = chord_details["rv"]
+                            self.output_dict[make_pair_key(KEY_TD_ED_TOP_CHORD_PROP_ZZ, pair_id)] = chord_details["Zz"]
+                            self.output_dict[make_pair_key(KEY_TD_ED_TOP_CHORD_PROP_ZV, pair_id)] = chord_details["Zv"]
+                            self.output_dict[make_pair_key(KEY_TD_ED_TOP_CHORD_PROP_ZUZ, pair_id)] = chord_details["Zuz"]
+                            self.output_dict[make_pair_key(KEY_TD_ED_TOP_CHORD_PROP_ZUV, pair_id)] = chord_details["Zuv"]
+
+                    if bottom_chord_enabled and bottom_chord_des:
+                        self.output_dict[KEY_MP_ED_BOTTOM_CHORD_SECTION_DESIG + _m1] = bottom_chord_des
+                        self.output_dict[KEY_MP_ED_BOTTOM_CHORD_SECTION_DESIG + _m2] = bottom_chord_des
+                        
+                        chord_details = self._query_crossbracing_section(bottom_chord_des)
+                        if chord_details:
+                            self.output_dict[KEY_MP_ED_BOTTOM_CHORD_SECTION_TYPE + _m1] = chord_details["type"]
+                            self.output_dict[KEY_MP_ED_BOTTOM_CHORD_SECTION_TYPE + _m2] = chord_details["type"]
+                            
+                            bc_h_key = make_pair_key(KEY_MP_ED_BOTTOM_CHORD_LEG_H, pair_id)
+                            bc_w_key = make_pair_key(KEY_MP_ED_BOTTOM_CHORD_LEG_W, pair_id)
+                            bc_t_key = make_pair_key(KEY_MP_ED_BOTTOM_CHORD_THICKNESS, pair_id)
+                            if chord_details["type"] == "ANGLE":
+                                self.output_dict[bc_h_key] = chord_details["H"] * 1000.0
+                                self.output_dict[bc_w_key] = chord_details["B"] * 1000.0
+                                self.output_dict[bc_t_key] = chord_details["tw"] * 1000.0
+                            elif chord_details["type"] == "CHANNEL":
+                                self.output_dict[bc_h_key] = chord_details["L"] * 1000.0
+                                self.output_dict[bc_w_key] = chord_details["B"] * 1000.0
+                                self.output_dict[bc_t_key] = chord_details["tw"] * 1000.0
+
+                            self.output_dict[make_pair_key(KEY_TD_ED_BOTTOM_CHORD_PROP_L, pair_id)] = chord_details["L"]
+                            self.output_dict[make_pair_key(KEY_TD_ED_BOTTOM_CHORD_PROP_H, pair_id)] = chord_details["H"]
+                            self.output_dict[make_pair_key(KEY_TD_ED_BOTTOM_CHORD_PROP_B, pair_id)] = chord_details["B"]
+                            self.output_dict[make_pair_key(KEY_TD_ED_BOTTOM_CHORD_PROP_TW, pair_id)] = chord_details["tw"]
+                            self.output_dict[make_pair_key(KEY_TD_ED_BOTTOM_CHORD_PROP_TF, pair_id)] = chord_details["tF"]
+                            self.output_dict[make_pair_key(KEY_TD_ED_BOTTOM_CHORD_PROP_RZ, pair_id)] = chord_details["rz"]
+                            self.output_dict[make_pair_key(KEY_TD_ED_BOTTOM_CHORD_PROP_M, pair_id)] = chord_details["M"]
+                            self.output_dict[make_pair_key(KEY_TD_ED_BOTTOM_CHORD_PROP_A, pair_id)] = chord_details["A"]
+                            self.output_dict[make_pair_key(KEY_TD_ED_BOTTOM_CHORD_PROP_IZ, pair_id)] = chord_details["Iz"]
+                            self.output_dict[make_pair_key(KEY_TD_ED_BOTTOM_CHORD_PROP_IV, pair_id)] = chord_details["Iv"]
+                            self.output_dict[make_pair_key(KEY_TD_ED_BOTTOM_CHORD_PROP_RV, pair_id)] = chord_details["rv"]
+                            self.output_dict[make_pair_key(KEY_TD_ED_BOTTOM_CHORD_PROP_ZZ, pair_id)] = chord_details["Zz"]
+                            self.output_dict[make_pair_key(KEY_TD_ED_BOTTOM_CHORD_PROP_ZV, pair_id)] = chord_details["Zv"]
+                            self.output_dict[make_pair_key(KEY_TD_ED_BOTTOM_CHORD_PROP_ZUZ, pair_id)] = chord_details["Zuz"]
+                            self.output_dict[make_pair_key(KEY_TD_ED_BOTTOM_CHORD_PROP_ZUV, pair_id)] = chord_details["Zuv"]
 
             # -- CASE B: ROLLED BEAM DIAPHRAGM --
             elif ed_type == "Rolled Beam":
@@ -3576,13 +3609,11 @@ class PlateGirderBridge:
                 if g_int_spacing_raw is not None and str(g_int_spacing_raw).strip() not in ("", "0", "0.0"):
                     g_int_stiff_on = True
                     g_int_spacing = float(g_int_spacing_raw)
-                    g_int_thickness = float(g_int_thick_raw)
-                    g_int_outstand = float(g_int_outstand_raw)
                 else:
                     g_int_stiff_on = False
                     g_int_spacing = 0.0
-                    g_int_thickness = 0.0
-                    g_int_outstand = None
+                g_int_thickness = float(g_int_thick_raw)
+                g_int_outstand = float(g_int_outstand_raw)
             else:
                 g_int_stiff_flag = _stiff_inp_gi(KEY_MP_STIFFENER_INTERMEDIATE, "No")
                 g_int_stiff_on   = str(g_int_stiff_flag).strip().lower() == "yes"
