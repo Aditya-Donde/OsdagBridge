@@ -86,7 +86,7 @@ def valid_additional_inputs():
         KEY_RL_HEIGHT: 1.15,  # in metres
         KEY_DS_STUD_HEIGHT: 120,
         KEY_DS_STUD_DIAMETER: 22,
-        KEY_MP_GIRDER_TOP_FLANGE_WIDTH: 0.3,
+        KEY_MP_GIRDER_TOP_FLANGE_WIDTH: 300,
         KEY_DS_STUD_COUNT: 3,  # Added for cross-field dependencies
         KEY_DS_STUD_TRANSVERSE_SPACING: 30,
         KEY_FOOTPATH: "None",
@@ -1419,7 +1419,7 @@ def test_validate_ds_stud_count(validator, valid_additional_inputs, sc, d, fw, e
     inputs = valid_additional_inputs.copy()
     inputs[KEY_DS_STUD_COUNT] = sc
     inputs[KEY_DS_STUD_DIAMETER] = d
-    inputs[KEY_MP_GIRDER_TOP_FLANGE_WIDTH] = fw  # in metres
+    inputs[KEY_MP_GIRDER_TOP_FLANGE_WIDTH] = fw  # in metres for count validation
     result = validator.validate_additional_inputs(KEY_DS_STUD_COUNT, inputs)
     if expected_valid and sc is not None:
         assert result is None
@@ -1431,12 +1431,12 @@ def test_validate_ds_stud_count(validator, valid_additional_inputs, sc, d, fw, e
 # Behavior: Minimum = 2.5 × diameter, maximum depends on flange and count
 # Test boundary behaviors without encoding exact formula values
 @pytest.mark.parametrize("sts, d, sc, fw, expected_valid", [
-    (1, 22, 5, 0.3, False),     # Way below minimum (2.5*d = 55)
-    (30, 22, 5, 0.3, False),    # Below minimum
-    (55, 22, 5, 0.3, True),     # Exact minimum boundary (2.5*d = 55)
-    (100, 22, 5, 0.3, True),    # Mid-range valid
-    (300, 22, 5, 0.3, False),   # Clearly exceeds available flange (300mm)
-    (None, 22, 5, 0.3, False),  # None is never valid
+    (1, 22, 5, 300, False),     # Way below minimum (2.5*d = 55)
+    (30, 22, 5, 300, False),    # Below minimum
+    (55, 22, 5, 300, True),     # Exact minimum boundary (2.5*d = 55)
+    (100, 22, 5, 300, True),    # Mid-range valid
+    (300, 22, 5, 300, False),   # Clearly exceeds available flange (300mm)
+    (None, 22, 5, 300, False),  # None is never valid
 ])
 def test_validate_ds_stud_transverse_spacing(validator, valid_additional_inputs, sts, d, sc, fw, expected_valid):
     inputs = valid_additional_inputs.copy()
@@ -2119,6 +2119,8 @@ def test_validate_stud_geometry_extreme_cases(validator, valid_additional_inputs
     # Test each field - all should pass for valid cases
     res_h = validator.validate_additional_inputs(KEY_DS_STUD_HEIGHT, inputs)
     res_c = validator.validate_additional_inputs(KEY_DS_STUD_COUNT, inputs)
+    
+    inputs[KEY_MP_GIRDER_TOP_FLANGE_WIDTH] = flange_width * 1000.0 if flange_width < 10.0 else flange_width
     res_s = validator.validate_additional_inputs(KEY_DS_STUD_TRANSVERSE_SPACING, inputs)
     
     # For valid cases, should all be None
@@ -2226,7 +2228,7 @@ def test_validate_stud_count_exceeding_maximum(validator, valid_additional_input
 def test_validate_stud_transverse_spacing_min_boundary(validator, valid_additional_inputs):
     """Stud spacing at minimum boundary (2.5*d) should pass."""
     inputs = valid_additional_inputs.copy()
-    inputs[KEY_MP_GIRDER_TOP_FLANGE_WIDTH] = 0.3  # 300 mm
+    inputs[KEY_MP_GIRDER_TOP_FLANGE_WIDTH] = 300  # 300 mm
     inputs[KEY_DS_STUD_DIAMETER] = 16
     inputs[KEY_DS_STUD_COUNT] = 3
     # min_sp = 2.5*16 = 40 mm
@@ -2240,7 +2242,7 @@ def test_validate_stud_transverse_spacing_min_boundary(validator, valid_addition
 def test_validate_stud_transverse_spacing_max_boundary(validator, valid_additional_inputs):
     """Stud spacing at maximum boundary should pass."""
     inputs = valid_additional_inputs.copy()
-    inputs[KEY_MP_GIRDER_TOP_FLANGE_WIDTH] = 0.3  # 300 mm
+    inputs[KEY_MP_GIRDER_TOP_FLANGE_WIDTH] = 300  # 300 mm
     inputs[KEY_DS_STUD_DIAMETER] = 16
     inputs[KEY_DS_STUD_COUNT] = 3
     # min_sp = 2.5*16 = 40 mm
@@ -2254,7 +2256,7 @@ def test_validate_stud_transverse_spacing_max_boundary(validator, valid_addition
 def test_validate_stud_transverse_spacing_below_minimum(validator, valid_additional_inputs):
     """Stud spacing below minimum should be corrected."""
     inputs = valid_additional_inputs.copy()
-    inputs[KEY_MP_GIRDER_TOP_FLANGE_WIDTH] = 0.3  # 300 mm
+    inputs[KEY_MP_GIRDER_TOP_FLANGE_WIDTH] = 300  # 300 mm
     inputs[KEY_DS_STUD_DIAMETER] = 16
     inputs[KEY_DS_STUD_COUNT] = 3
     # min_sp = 2.5*16 = 40 mm
@@ -2277,7 +2279,7 @@ def test_validate_stud_transverse_spacing_below_minimum(validator, valid_additio
 def test_validate_stud_transverse_spacing_exceeds_maximum(validator, valid_additional_inputs):
     """Stud spacing exceeding maximum should be corrected."""
     inputs = valid_additional_inputs.copy()
-    inputs[KEY_MP_GIRDER_TOP_FLANGE_WIDTH] = 0.3  # 300 mm
+    inputs[KEY_MP_GIRDER_TOP_FLANGE_WIDTH] = 300  # 300 mm
     inputs[KEY_DS_STUD_DIAMETER] = 16
     inputs[KEY_DS_STUD_COUNT] = 3
     # max_sp = 300 - 50 - 16*2 = 218 mm
@@ -2387,7 +2389,7 @@ def test_validate_stud_diameter_affects_height_bounds(validator, valid_additiona
 def test_validate_stud_diameter_affects_count_bounds(validator, valid_additional_inputs):
     """Changing stud diameter affects count maximum (inverse relationship). Cross-field dependency."""
     inputs = valid_additional_inputs.copy()
-    inputs[KEY_MP_GIRDER_TOP_FLANGE_WIDTH] = 0.3  # 300 mm flange
+    inputs[KEY_MP_GIRDER_TOP_FLANGE_WIDTH] = 0.3  # 0.3 m flange
     
     # Smaller diameter allows more studs for same flange width
     # Larger diameter allows fewer studs for same flange width
@@ -2405,7 +2407,7 @@ def test_validate_stud_diameter_affects_count_bounds(validator, valid_additional
 def test_validate_stud_diameter_affects_spacing_bounds(validator, valid_additional_inputs):
     """Changing stud diameter changes spacing bounds (min = 2.5 × d). Cross-field dependency."""
     inputs = valid_additional_inputs.copy()
-    inputs[KEY_MP_GIRDER_TOP_FLANGE_WIDTH] = 0.3  # 300 mm
+    inputs[KEY_MP_GIRDER_TOP_FLANGE_WIDTH] = 300  # 300 mm
     inputs[KEY_DS_STUD_COUNT] = 3
     
     # Smaller diameter allows smaller spacing
@@ -2426,7 +2428,7 @@ def test_validate_stud_diameter_affects_spacing_bounds(validator, valid_addition
 def test_validate_cross_field_diameter_increase_invalidates_count(validator, valid_additional_inputs):
     """When diameter increases, stud count max decreases. Should invalidate previously-valid counts."""
     inputs = valid_additional_inputs.copy()
-    inputs[KEY_MP_GIRDER_TOP_FLANGE_WIDTH] = 0.3  # 300 mm
+    inputs[KEY_MP_GIRDER_TOP_FLANGE_WIDTH] = 0.3  # 0.3 m
     
     # Start: diameter 12, count 8 valid
     inputs[KEY_DS_STUD_DIAMETER] = 12
@@ -2449,6 +2451,7 @@ def test_validate_cross_field_diameter_increase_invalidates_count(validator, val
 def test_validate_cross_field_diameter_increase_invalidates_spacing(validator, valid_additional_inputs):
     """When diameter increases, spacing min increases. Should invalidate previously-valid spacing."""
     inputs = valid_additional_inputs.copy()
+    inputs[KEY_MP_GIRDER_TOP_FLANGE_WIDTH] = 300  # 300 mm
     
     # Start: diameter 10, spacing 25 valid (at or near minimum)
     inputs[KEY_DS_STUD_DIAMETER] = 10

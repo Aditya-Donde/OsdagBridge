@@ -217,6 +217,7 @@ class TestCreateMaterial:
 class TestAssignMembers:
     def test_create_member_called_four_times(self, mock_create_member, bridge):
         bridge.longitudinal_section = MagicMock()
+        bridge.girder_sections = [bridge.longitudinal_section]
         bridge.edge_longitudinal_section = MagicMock()
         bridge.transverse_section = MagicMock()
         bridge.end_transverse_section = MagicMock()
@@ -226,6 +227,7 @@ class TestAssignMembers:
 
     def test_longitudinal_beam_stored(self, mock_create_member, bridge):
         bridge.longitudinal_section = MagicMock()
+        bridge.girder_sections = [bridge.longitudinal_section]
         bridge.edge_longitudinal_section = MagicMock()
         bridge.transverse_section = MagicMock()
         bridge.end_transverse_section = MagicMock()
@@ -235,6 +237,7 @@ class TestAssignMembers:
 
     def test_edge_longitudinal_beam_stored(self, mock_create_member, bridge):
         bridge.longitudinal_section = MagicMock()
+        bridge.girder_sections = [bridge.longitudinal_section]
         bridge.edge_longitudinal_section = MagicMock()
         bridge.transverse_section = MagicMock()
         bridge.end_transverse_section = MagicMock()
@@ -244,6 +247,7 @@ class TestAssignMembers:
 
     def test_transverse_and_end_transverse_stored(self, mock_create_member, bridge):
         bridge.longitudinal_section = MagicMock()
+        bridge.girder_sections = [bridge.longitudinal_section]
         bridge.edge_longitudinal_section = MagicMock()
         bridge.transverse_section = MagicMock()
         bridge.end_transverse_section = MagicMock()
@@ -350,8 +354,10 @@ class TestDeadLoads:
         bridge.load_manager = MagicMock()
         bridge.layout = MagicMock()
         bridge.L = 33.5
+        bridge.edge_dist = 1.1
         bridge.longitudinal_props = MagicMock()
         bridge.longitudinal_props.A = 1.025
+        bridge.girder_props = [bridge.longitudinal_props]
         bridge.model.Mesh_obj.noz = [0.0, 2.0, 4.0, 6.0, 8.0]
         
         point_mock = MagicMock()
@@ -402,7 +408,7 @@ class TestDeadLoads:
     def test_self_weight_load_case_has_correct_name(self, mock_median, mock_railing, mock_crash, mock_footpath, mock_wearing, mock_slab, mock_girder, mock_vtx, mock_ld, mock_lc, bridge):
         self._ready_bridge(bridge, mock_median, mock_railing, mock_crash, mock_footpath, mock_wearing, mock_slab, mock_girder)
         bridge.create_self_weight_load()
-        mock_lc.assert_any_call(name="girder self weight")
+        mock_lc.assert_any_call(name="SW")
 
     def test_deck_raises_valueerror_when_no_model(self, mock_median, mock_railing, mock_crash, mock_footpath, mock_wearing, mock_slab, mock_girder, mock_vtx, mock_ld, mock_lc, bridge):
         with pytest.raises(ValueError):
@@ -421,7 +427,7 @@ class TestDeadLoads:
     def test_deck_load_case_name(self, mock_median, mock_railing, mock_crash, mock_footpath, mock_wearing, mock_slab, mock_girder, mock_vtx, mock_ld, mock_lc, bridge):
         self._ready_bridge(bridge, mock_median, mock_railing, mock_crash, mock_footpath, mock_wearing, mock_slab, mock_girder)
         bridge.create_deck_load(slab_thickness_m=0.200)
-        mock_lc.assert_any_call(name="Deck slab load")
+        mock_lc.assert_any_call(name="DD")
 
     def test_wearing_course_raises_when_no_thickness(self, mock_median, mock_railing, mock_crash, mock_footpath, mock_wearing, mock_slab, mock_girder, mock_vtx, mock_ld, mock_lc, bridge):
         self._ready_bridge(bridge, mock_median, mock_railing, mock_crash, mock_footpath, mock_wearing, mock_slab, mock_girder)
@@ -1302,7 +1308,7 @@ class TestPlot:
             bridge.model, mock_results, member="exterior_main_beam_1", option="nodes", loadcase='girder self weight'
         )
         mock_force.assert_called_once_with(
-            bridge.model, mock_results, member="exterior_main_beam_1", component="Mz", loadcase='Deck slab load'
+            bridge.model, mock_results, member="exterior_main_beam_1", component="Mz", loadcase='DW'
         )
         mock_plt.show.assert_any_call()
 
@@ -1330,9 +1336,9 @@ class TestPlot:
             f"plot() should call model.get_results() twice (general + load-case-specific), got {bridge.model.get_results.call_count}"
         )
         first_call_kwargs = bridge.model.get_results.call_args_list[1]
-        # Second call must include 'Deck slab load' as the load case
-        assert first_call_kwargs == call(load_case=['Deck slab load']), (
-            f"Second get_results() call should use load_case=['Deck slab load'], got {first_call_kwargs}"
+        # Second call must include 'DW' as the load case
+        assert first_call_kwargs == call(load_case=['DW']), (
+            f"Second get_results() call should use load_case=['DW'], got {first_call_kwargs}"
         )
 
 @patch("osdagbridge.core.bridge_types.plate_girder.analyser.og.create_load_case")
