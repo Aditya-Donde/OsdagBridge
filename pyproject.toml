@@ -60,7 +60,6 @@ test = [
 
 dev = [
   "pytest>=6.2.2",
-  "pytest-cov>=4.0",
 ]
 
 # Package data
@@ -73,7 +72,6 @@ osdagbridge = [
 ospgrillage = [
   "mat_lib.json",
 ]
-"*" = ["*.sqlite", "*.sql", "*.geojson", "*.shp", "*.shx", "*.dbf", "*.prj", "*.cpg", "*.qmd", "*.png", "*.awk"]
 
 # setuptools config
 [tool.setuptools]
@@ -81,27 +79,8 @@ package-dir = {"" = "src"}
 
 [tool.setuptools.packages.find]
 where = ["src"]
-exclude = ["tests*", "examples*"]
-
-[tool.setuptools.dynamic]
-readme = { file = "README.md" }
-
-# ------------------------------
-# Tools: Ruff, Black, Mypy, Pytest
-# ------------------------------
-
-[tool.ruff]
-line-length = 100
-target-version = "py39"
-
-[tool.mypy]
-python_version = "3.9"
-ignore_missing_imports = true
-strict = false
 
 [tool.pytest.ini_options]
-minversion = "7.0"
-addopts = "-ra -q"
 testpaths = [
   "tests"
 ]
