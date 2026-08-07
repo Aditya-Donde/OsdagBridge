@@ -2712,7 +2712,7 @@ def test_validate_thickness_selections(validator, valid_additional_inputs):
 def test_validate_stiffener_spacing(validator, valid_additional_inputs):
     assert validator.validate_additional_inputs(KEY_MP_STIFFENER_SPACING, {KEY_MP_STIFFENER_SPACING: None}) == (20, "Bearing stiffener spacing must be a numeric value.")
     assert validator.validate_additional_inputs(KEY_MP_STIFFENER_SPACING, {KEY_MP_STIFFENER_SPACING: 10}) == (20, "Bearing stiffener spacing must be at least 20 mm.")
-    assert validator.validate_additional_inputs(KEY_MP_STIFFENER_SPACING, {KEY_MP_STIFFENER_SPACING: 90}) == (75, "Bearing stiffener spacing must not exceed 75 mm.")
+    assert validator.validate_additional_inputs(KEY_MP_STIFFENER_SPACING, {KEY_MP_STIFFENER_SPACING: 200}) == (150, "Bearing stiffener spacing must not exceed 150 mm.")
     assert validator.validate_additional_inputs(KEY_MP_STIFFENER_SPACING, {KEY_MP_STIFFENER_SPACING: 50}) is None
 
 def test_validate_stiffener_bearing_outstand(validator, valid_additional_inputs):
@@ -2740,9 +2740,9 @@ def test_validate_stiffener_bearing_outstand(validator, valid_additional_inputs)
     assert validator.validate_additional_inputs(KEY_MP_STIFFENER_BEARING_OUTSTAND, inputs) is None
 
 def test_validate_stiffener_intermediate_spacing(validator, valid_additional_inputs):
-    assert validator.validate_additional_inputs(KEY_MP_STIFFENER_INTERMEDIATE_SPACING, {KEY_MP_STIFFENER_INTERMEDIATE_SPACING: None}) == (75, "Intermediate stiffener spacing must be a numeric value.")
-    assert validator.validate_additional_inputs(KEY_MP_STIFFENER_INTERMEDIATE_SPACING, {KEY_MP_STIFFENER_INTERMEDIATE_SPACING: 50}) == (75, "Intermediate stiffener spacing must be between 75 and 3000 mm.")
-    assert validator.validate_additional_inputs(KEY_MP_STIFFENER_INTERMEDIATE_SPACING, {KEY_MP_STIFFENER_INTERMEDIATE_SPACING: 3500}) == (3000, "Intermediate stiffener spacing must be between 75 and 3000 mm.")
+    assert validator.validate_additional_inputs(KEY_MP_STIFFENER_INTERMEDIATE_SPACING, {KEY_MP_STIFFENER_INTERMEDIATE_SPACING: None}) == (150, "Intermediate stiffener spacing must be a numeric value.")
+    assert validator.validate_additional_inputs(KEY_MP_STIFFENER_INTERMEDIATE_SPACING, {KEY_MP_STIFFENER_INTERMEDIATE_SPACING: 50}) == (150, "Intermediate stiffener spacing must be between 150 and 3000 mm.")
+    assert validator.validate_additional_inputs(KEY_MP_STIFFENER_INTERMEDIATE_SPACING, {KEY_MP_STIFFENER_INTERMEDIATE_SPACING: 3500}) == (3000, "Intermediate stiffener spacing must be between 150 and 3000 mm.")
     assert validator.validate_additional_inputs(KEY_MP_STIFFENER_INTERMEDIATE_SPACING, {KEY_MP_STIFFENER_INTERMEDIATE_SPACING: 500}) is None
 
 def test_validate_stiffener_intermediate_outstand(validator, valid_additional_inputs):
