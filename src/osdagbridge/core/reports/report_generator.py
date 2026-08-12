@@ -190,7 +190,6 @@ def preamble(project_name, job_number, report_date, report_version='Rev 0'):
 \usepackage{etoolbox}
 \usepackage{needspace}
 
-\numberwithin{table}{chapter}
 \numberwithin{figure}{chapter}
 % Table layout and spacing: consistent padding, row height, and longtable pre/post skips
 \setlength{\tabcolsep}{6pt}
@@ -200,6 +199,7 @@ def preamble(project_name, job_number, report_date, report_version='Rev 0'):
 % Table rules (outline thickness) and small extra row height for clarity
 \setlength{\arrayrulewidth}{0.5pt}
 \setlength{\extrarowheight}{0.6pt}
+\setlength{\footskip}{42pt}
 
 % Prevent tables from overflowing past the page bottom:
 % if fewer than 5 baseline-skips remain, break to the next page first.
@@ -217,11 +217,11 @@ def preamble(project_name, job_number, report_date, report_version='Rev 0'):
   \renewcommand{\headrule}{\color{osdagGreen}\hrule width\headwidth height 1pt \vspace{2pt}}
   \renewcommand{\footrule}{%
     \ifbool{hasSDonPage}{%
-      \vspace{-20pt}%
+      \vspace{2pt}%
       \hbox to \headwidth{\textcolor{black}{\footnotesize\textit{* Software default value}}\hfil}%
       \vspace{4pt}%
     }{%
-      \vspace{-8pt}%
+      \vspace{2pt}%
     }%
     \color{osdagGreen}\hrule width\headwidth height 1pt \vspace{6pt}%
   }
@@ -235,11 +235,11 @@ def preamble(project_name, job_number, report_date, report_version='Rev 0'):
   \renewcommand{\headrule}{\color{osdagGreen}\hrule width\headwidth height 1pt \vspace{2pt}}
   \renewcommand{\footrule}{%
     \ifbool{hasSDonPage}{%
-      \vspace{-20pt}%
+      \vspace{2pt}%
       \hbox to \headwidth{\textcolor{black}{\footnotesize\textit{* Software default value}}\hfil}%
       \vspace{4pt}%
     }{%
-      \vspace{-8pt}%
+      \vspace{2pt}%
     }%
     \color{osdagGreen}\hrule width\headwidth height 1pt \vspace{6pt}%
   }
