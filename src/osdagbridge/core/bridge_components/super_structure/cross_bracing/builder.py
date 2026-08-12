@@ -70,14 +70,8 @@ def _is_enabled(val):
     return str(val).strip().lower() not in ("no", "false", "0", "none")
 
 
-def _pk(key, pair_key):
-    """Insert pair_key into a KEY constant path right after its module-prefix segment.
-
-    e.g. _pk(KEY_MP_CB_DIAGONAL_LEG_H, 'G1G2')
-         -> 'member_properties.cross_bracing_details.G1G2.diagonal.leg_h'
-    """
-    idx = key.index(".", key.index(".") + 1)  # position of second '.'
-    return key[:idx + 1] + pair_key + "." + key[idx + 1:]
+def make_pair_key(key, pair_key):
+    return f"{key}.{pair_key}"
 
 
 # SECTION GEOMETRY CREATORS
@@ -900,25 +894,25 @@ def build_cross_bracings(
                             p_ed_bc_sec_type = _bc_st
 
                         # section dimensions from designed output keys
-                        _d_lh = output_dict.get(_pk(KEY_MP_ED_DIAGONAL_LEG_H, pair_key))
-                        _d_lw = output_dict.get(_pk(KEY_MP_ED_DIAGONAL_LEG_W, pair_key))
-                        _d_tw = output_dict.get(_pk(KEY_MP_ED_DIAGONAL_THICKNESS, pair_key))
+                        _d_lh = output_dict.get(make_pair_key(KEY_MP_ED_DIAGONAL_LEG_H, pair_key))
+                        _d_lw = output_dict.get(make_pair_key(KEY_MP_ED_DIAGONAL_LEG_W, pair_key))
+                        _d_tw = output_dict.get(make_pair_key(KEY_MP_ED_DIAGONAL_THICKNESS, pair_key))
                         if _d_lh is not None and _d_lw is not None:
                             p_ed_diag_dims = {"leg_h": float(_d_lh), "leg_w": float(_d_lw), "connection_type": "LONGER_LEG"}
                         if _d_tw is not None:
                             p_ed_diag_thick = float(_d_tw)
 
-                        _tc_lh = output_dict.get(_pk(KEY_MP_ED_TOP_CHORD_LEG_H, pair_key))
-                        _tc_lw = output_dict.get(_pk(KEY_MP_ED_TOP_CHORD_LEG_W, pair_key))
-                        _tc_tw = output_dict.get(_pk(KEY_MP_ED_TOP_CHORD_THICKNESS, pair_key))
+                        _tc_lh = output_dict.get(make_pair_key(KEY_MP_ED_TOP_CHORD_LEG_H, pair_key))
+                        _tc_lw = output_dict.get(make_pair_key(KEY_MP_ED_TOP_CHORD_LEG_W, pair_key))
+                        _tc_tw = output_dict.get(make_pair_key(KEY_MP_ED_TOP_CHORD_THICKNESS, pair_key))
                         if _tc_lh is not None and _tc_lw is not None:
                             p_ed_tc_dims = {"leg_h": float(_tc_lh), "leg_w": float(_tc_lw), "connection_type": "LONGER_LEG"}
                         if _tc_tw is not None:
                             p_ed_tc_thick = float(_tc_tw)
 
-                        _bc_lh = output_dict.get(_pk(KEY_MP_ED_BOTTOM_CHORD_LEG_H, pair_key))
-                        _bc_lw = output_dict.get(_pk(KEY_MP_ED_BOTTOM_CHORD_LEG_W, pair_key))
-                        _bc_tw = output_dict.get(_pk(KEY_MP_ED_BOTTOM_CHORD_THICKNESS, pair_key))
+                        _bc_lh = output_dict.get(make_pair_key(KEY_MP_ED_BOTTOM_CHORD_LEG_H, pair_key))
+                        _bc_lw = output_dict.get(make_pair_key(KEY_MP_ED_BOTTOM_CHORD_LEG_W, pair_key))
+                        _bc_tw = output_dict.get(make_pair_key(KEY_MP_ED_BOTTOM_CHORD_THICKNESS, pair_key))
                         if _bc_lh is not None and _bc_lw is not None:
                             p_ed_bc_dims = {"leg_h": float(_bc_lh), "leg_w": float(_bc_lw), "connection_type": "LONGER_LEG"}
                         if _bc_tw is not None:
@@ -1045,25 +1039,25 @@ def build_cross_bracings(
                     p_bc_sec_type = _bc_st
 
                 # --- section dimensions from designed output keys ---
-                _d_lh = output_dict.get(_pk(KEY_MP_CB_DIAGONAL_LEG_H, pair_key))
-                _d_lw = output_dict.get(_pk(KEY_MP_CB_DIAGONAL_LEG_W, pair_key))
-                _d_tw = output_dict.get(_pk(KEY_MP_CB_DIAGONAL_THICKNESS, pair_key))
+                _d_lh = output_dict.get(make_pair_key(KEY_MP_CB_DIAGONAL_LEG_H, pair_key))
+                _d_lw = output_dict.get(make_pair_key(KEY_MP_CB_DIAGONAL_LEG_W, pair_key))
+                _d_tw = output_dict.get(make_pair_key(KEY_MP_CB_DIAGONAL_THICKNESS, pair_key))
                 if _d_lh is not None and _d_lw is not None:
                     p_diag_dims = {"leg_h": float(_d_lh), "leg_w": float(_d_lw), "connection_type": "LONGER_LEG"}
                 if _d_tw is not None:
                     p_diag_thick = float(_d_tw)
 
-                _tc_lh = output_dict.get(_pk(KEY_MP_CB_TOP_CHORD_LEG_H, pair_key))
-                _tc_lw = output_dict.get(_pk(KEY_MP_CB_TOP_CHORD_LEG_W, pair_key))
-                _tc_tw = output_dict.get(_pk(KEY_MP_CB_TOP_CHORD_THICKNESS, pair_key))
+                _tc_lh = output_dict.get(make_pair_key(KEY_MP_CB_TOP_CHORD_LEG_H, pair_key))
+                _tc_lw = output_dict.get(make_pair_key(KEY_MP_CB_TOP_CHORD_LEG_W, pair_key))
+                _tc_tw = output_dict.get(make_pair_key(KEY_MP_CB_TOP_CHORD_THICKNESS, pair_key))
                 if _tc_lh is not None and _tc_lw is not None:
                     p_tc_dims = {"leg_h": float(_tc_lh), "leg_w": float(_tc_lw), "connection_type": "LONGER_LEG"}
                 if _tc_tw is not None:
                     p_tc_thick = float(_tc_tw)
 
-                _bc_lh = output_dict.get(_pk(KEY_MP_CB_BOTTOM_CHORD_LEG_H, pair_key))
-                _bc_lw = output_dict.get(_pk(KEY_MP_CB_BOTTOM_CHORD_LEG_W, pair_key))
-                _bc_tw = output_dict.get(_pk(KEY_MP_CB_BOTTOM_CHORD_THICKNESS, pair_key))
+                _bc_lh = output_dict.get(make_pair_key(KEY_MP_CB_BOTTOM_CHORD_LEG_H, pair_key))
+                _bc_lw = output_dict.get(make_pair_key(KEY_MP_CB_BOTTOM_CHORD_LEG_W, pair_key))
+                _bc_tw = output_dict.get(make_pair_key(KEY_MP_CB_BOTTOM_CHORD_THICKNESS, pair_key))
                 if _bc_lh is not None and _bc_lw is not None:
                     p_bc_dims = {"leg_h": float(_bc_lh), "leg_w": float(_bc_lw), "connection_type": "LONGER_LEG"}
                 if _bc_tw is not None:

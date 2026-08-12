@@ -29,6 +29,49 @@ from OCC.Core.gp import gp_Pnt
 from OCC.Core.BRepPrimAPI import BRepPrimAPI_MakeSphere
 from OCC.Core.BRepBuilderAPI import BRepBuilderAPI_MakeEdge
 from OCC.Display.backend import load_backend
+from osdagbridge.core.utils.common import (
+    KEY_GIRDER,
+    KEY_DECK_CONCRETE_GRADE_BASIC,
+    KEY_CARRIAGEWAY_WIDTH,
+    KEY_MP_GIRDER_DEPTH,
+    KEY_MP_GIRDER_WEB_THICKNESS,
+    KEY_MP_GIRDER_TOP_FLANGE_WIDTH,
+    KEY_MP_GIRDER_TOP_FLANGE_THICKNESS,
+    KEY_MP_GIRDER_BOTTOM_FLANGE_WIDTH,
+    KEY_MP_GIRDER_BOTTOM_FLANGE_THICKNESS,
+    KEY_MP_STIFFENER_INTERMEDIATE_SPACING,
+    KEY_MP_STIFFENER_INTERMEDIATE_THICKNESS,
+    KEY_MP_STIFFENER_NO_BEARING_STIFFENERS,
+    KEY_MP_STIFFENER_BEARING_THICKNESS,
+    KEY_MP_STIFFENER_LONGITUDINAL,
+    KEY_MP_STIFFENER_LONGITUDINAL_THICKNESS,
+    KEY_DS_STUD_DIAMETER,
+    KEY_DS_STUD_HEIGHT,
+    KEY_DS_STUD_HEAD_HEIGHT,
+    KEY_DS_STUD_COUNT,
+    KEY_DS_STUD_TRANSVERSE_SPACING,
+    KEY_MP_CB_TYPE,
+    KEY_MP_CB_SPACING,
+    KEY_MP_CB_BRACING_SECTION_TYPE,
+    KEY_MP_CB_BRACING_SECTION_DESIGNATION,
+    KEY_MP_CB_DIAGONAL_LEG_H,
+    KEY_MP_CB_DIAGONAL_LEG_W,
+    KEY_TD_CB_SECTION_INPUTS_BRACING_TYPE,
+    KEY_CB_TYPE,
+    KEY_MD_TYPE,
+    KEY_RL_TYPE,
+    KEY_RL_WIDTH,
+    KEY_CRASH_BARRIER_TYPE,
+    KEY_TS_DECK_THICKNESS,
+    KEY_TS_NO_OF_FOOTPATHS,
+    KEY_TS_NO_OF_GIRDERS,
+    KEY_MP_ED_TYPE,
+    KEY_MP_ED_BRACING_TYPE,
+    KEY_MP_ED_BRACING_SECTION,
+    KEY_MP_ED_BRACING_SECTION_DESIGNATION,
+    KEY_MP_ED_DIAGONAL_LEG_H,
+    KEY_MP_ED_DIAGONAL_LEG_W,
+)
 
 try:
     from OCC.Core.AIS import AIS_TextLabel
@@ -86,6 +129,7 @@ class CAD3DWindow(QWidget):
         self.viewer = None
         self.display = None
         self._cad_init_pending = True
+        self.output_dict = {}
 
         # Node state — single source of truth
         # _node_data: nid -> {x, y, z (mm), label}
@@ -182,6 +226,7 @@ class CAD3DWindow(QWidget):
             return
 
         self.design_params = design_params
+        self.output_dict = getattr(design_params, "output_dict", {}) or {}
 
         # Generate fresh model data
         self.generator.model_data = self.generator.generate(design_params)
@@ -224,6 +269,7 @@ class CAD3DWindow(QWidget):
         if hasattr(self, "generator") and hasattr(self.generator, "model_data"):
             self.generator.model_data = {}
         self.design_params = None
+        self.output_dict = {}
 
         # Hide component selector
         self.component_selector.hide()
@@ -267,7 +313,7 @@ class CAD3DWindow(QWidget):
 
     def _render_model_body(self):
         # Build and display the model AIS — must run inside safety.critical_section() (see load_bridge).
-        params = self.design_params
+        output_dict = self.output_dict
         cad_data = self.generator.model_data
         display = self.display
         context = self.viewer.context
@@ -279,13 +325,15 @@ class CAD3DWindow(QWidget):
         FLANGE_COLOR = Quantity_Color(134/255.0, 134/255.0, 100/255.0, Quantity_TOC_RGB)
         STIFFENER_COLOR = Quantity_Color(72/255, 72/255, 54/255, Quantity_TOC_RGB)
         DECK_COLOR = Quantity_Color(100/255, 100/255, 100/255, Quantity_TOC_RGB)
-        BARRIER_COLOR = Quantity_Color(40/255, 40/255, 40/255, Quantity_TOC_RGB)  #Quantity_Color(120/255, 120/255, 120/255, Quantity_TOC_RGB)
+        BARRIER_COLOR = Quantity_Color(40/255, 40/255, 40/255, Quantity_TOC_RGB)
         BRACING_COLOR = Quantity_Color(60/255, 60/255, 60/255, Quantity_TOC_RGB)
         WBEAM_COLOR = Quantity_Color(128/255, 128/255, 128/255, Quantity_TOC_RGB)
         BARRIER_POST_COLOR = Quantity_Color(20/255, 20/255, 20/255, Quantity_TOC_RGB)
         SUPPORT_COLOR = Quantity_Color(20/255.0, 20/255.0, 20/255.0, Quantity_TOC_RGB)
 
-
+        # HELPER TO INSERT PAIR KEY INTO KEY CONSTANT
+        def make_pair_key(key, pair_key):
+            return f"{key}.{pair_key}"
 
         # HELPER 
         def display_and_register(shapes, key, label, color, transparency=None, line_width=None, selectable=True):
@@ -321,57 +369,80 @@ class CAD3DWindow(QWidget):
         # teardown_model() already emptied the model_* dicts — do not re-assign them here.
 
         #  PLATE GIRDER (WEB + FLANGES SEPARATE COLORS)
+        steel_grade = output_dict.get(KEY_GIRDER)
+        girder_depth = output_dict.get(KEY_MP_GIRDER_DEPTH)
+        web_thickness = output_dict.get(KEY_MP_GIRDER_WEB_THICKNESS)
 
         display_and_register(
             cad_data.get("girder_web", []),
             "Girder Web",
-            f"Girder Web\nDepth: {params.girder_section_d:.2f} mm\nWeb Thickness: {params.girder_section_tw:.2f} mm\nSteel Grade: {params.steel_grade}",
+            f"Girder Web\nDepth: {girder_depth} mm\nWeb Thickness: {web_thickness} mm\nSteel Grade: {steel_grade}",
             WEB_COLOR
         )
+
+        top_flange_w = output_dict.get(KEY_MP_GIRDER_TOP_FLANGE_WIDTH)
+        top_flange_t = output_dict.get(KEY_MP_GIRDER_TOP_FLANGE_THICKNESS)
 
         display_and_register(
             cad_data.get("girder_top_flanges", []),
             "Girder Top Flange",
-            f"Top Flange\nWidth: {params.girder_section_bf:.2f} mm\nThickness: {params.girder_section_tf:.2f} mm\nSteel Grade: {params.steel_grade}",
+            f"Top Flange\nWidth: {top_flange_w} mm\nThickness: {top_flange_t} mm\nSteel Grade: {steel_grade}",
             FLANGE_COLOR
         )
+
+        bot_flange_w = output_dict.get(KEY_MP_GIRDER_BOTTOM_FLANGE_WIDTH)
+        bot_flange_t = output_dict.get(KEY_MP_GIRDER_BOTTOM_FLANGE_THICKNESS)
 
         display_and_register(
             cad_data.get("girder_bottom_flanges", []),
             "Girder Bottom Flange",
-            f"Bottom Flange\nWidth: {params.girder_section_bf_b:.2f} mm\nThickness: {params.girder_section_tf_b:.2f} mm\nSteel Grade: {params.steel_grade}",
+            f"Bottom Flange\nWidth: {bot_flange_w} mm\nThickness: {bot_flange_t} mm\nSteel Grade: {steel_grade}",
             FLANGE_COLOR
         )
 
+        int_stiff_spacing = output_dict.get(KEY_MP_STIFFENER_INTERMEDIATE_SPACING)
+        int_stiff_thick = output_dict.get(KEY_MP_STIFFENER_INTERMEDIATE_THICKNESS)
 
         display_and_register(
             cad_data.get("intermediate_stiffeners", []),
             "Intermediate Stiffener",
-            f"Intermediate Stiffener\nSpacing: {params.intermediate_stiffener_spacing:.2f} mm\nThickness: {params.intermediate_stiffener_thickness:.2f} mm\nSteel Grade: {params.steel_grade}",
+            f"Intermediate Stiffener\nSpacing: {int_stiff_spacing} mm\nThickness: {int_stiff_thick} mm\nSteel Grade: {steel_grade}",
             STIFFENER_COLOR,
             selectable=True
         )
+
+        bearing_stiff_pairs = output_dict.get(KEY_MP_STIFFENER_NO_BEARING_STIFFENERS)
+        bearing_stiff_thick = output_dict.get(KEY_MP_STIFFENER_BEARING_THICKNESS)
 
         display_and_register(
             cad_data.get("bearing_stiffeners", []),
             "Bearing Stiffener",
-            f"Bearing Stiffener\nPairs: {params.num_end_stiffener_pairs}\nThickness: {params.end_stiffener_thickness:.2f} mm\nSteel Grade: {params.steel_grade}",
+            f"Bearing Stiffener\nPairs: {bearing_stiff_pairs}\nThickness: {bearing_stiff_thick} mm\nSteel Grade: {steel_grade}",
             STIFFENER_COLOR,
             selectable=True
         )
+
+        long_stiff_count = output_dict.get(KEY_MP_STIFFENER_LONGITUDINAL)
+        long_stiff_thick = output_dict.get(KEY_MP_STIFFENER_LONGITUDINAL_THICKNESS)
 
         display_and_register(
             cad_data.get("longitudinal_stiffeners", []),
             "Longitudinal Stiffener",
-            f"Longitudinal Stiffener\nCount: {params.num_longitudinal_stiffeners}\nThickness: {params.longitudinal_stiffener_thickness:.2f} mm\nSteel Grade: {params.steel_grade}",
+            f"Longitudinal Stiffener\nCount: {long_stiff_count}\nThickness: {long_stiff_thick} mm\nSteel Grade: {steel_grade}",
             STIFFENER_COLOR,
             selectable=True
         )
 
+        stud_base_dia = output_dict.get(KEY_DS_STUD_DIAMETER)
+        stud_base_h = output_dict.get(KEY_DS_STUD_HEIGHT)
+        stud_top_h = output_dict.get(KEY_DS_STUD_HEAD_HEIGHT)
+        stud_pitch = output_dict.get(KEY_DS_STUD_TRANSVERSE_SPACING)
+        stud_num_per_sec = output_dict.get(KEY_DS_STUD_COUNT)
+
         display_and_register(
             cad_data.get("shear_studs", []),
             "Shear Stud",
-            f"Shear Stud\nBase Dia: {params.shear_stud_params.base_diameter:.2f} mm\nHeight: {params.shear_stud_params.base_height + params.shear_stud_params.top_height:.2f} mm\nPitch: {params.shear_stud_params.pitch:.2f} mm\nPer Section: {params.shear_stud_params.num_per_section}",
+            f"Shear Stud\nBase Dia: {stud_base_dia} mm\nHeight: {stud_base_h + stud_top_h} mm\nPitch: {stud_pitch} mm\nPer Section: {stud_num_per_sec}",
             STIFFENER_COLOR,
             selectable=False
         )
@@ -379,7 +450,6 @@ class CAD3DWindow(QWidget):
         SUPPORT_VERTICAL_COLOR   = Quantity_Color(0.0, 0.35, 0.0,  Quantity_TOC_RGB)  # Green
         SUPPORT_TRANSVERSE_COLOR = Quantity_Color(0.1,  0.1, 0.85, Quantity_TOC_RGB)  # Blue
         SUPPORT_LONGIT_COLOR     = Quantity_Color(0.85, 0.1, 0.1, Quantity_TOC_RGB)  # Red
-
 
         display_and_register(
             cad_data.get("supports_vertical",   []), 
@@ -403,19 +473,67 @@ class CAD3DWindow(QWidget):
             line_width=2.0)
 
 
+        num_girders = int(output_dict.get(KEY_TS_NO_OF_GIRDERS))
+        cb_pairs = [f"G{i}G{i + 1}" for i in range(1, num_girders)]
+
+        label_lines = ["Cross Bracing"]
+        for idx, pair_key in enumerate(cb_pairs, start=1):
+            cb_suffix = f".{pair_key}.B{idx}M1"
+
+            cb_type_val = output_dict.get(KEY_MP_CB_TYPE + cb_suffix)
+            cb_spacing = output_dict.get(KEY_MP_CB_SPACING + cb_suffix)
+            cb_section = output_dict.get(KEY_MP_CB_BRACING_SECTION_TYPE + cb_suffix)
+            cb_leg_h = output_dict.get(make_pair_key(KEY_MP_CB_DIAGONAL_LEG_H, pair_key))
+            cb_leg_w = output_dict.get(make_pair_key(KEY_MP_CB_DIAGONAL_LEG_W, pair_key))
+
+            label_lines.append(
+                f"{pair_key} — Type: {cb_type_val}, Spacing: {cb_spacing} mm, "
+                f"Section: {cb_section}, Leg H: {cb_leg_h} mm, Leg W: {cb_leg_w} mm"
+            )
+            
+        # END DIAPHRAGM — per girder pair details
+        ed_label_lines = ["End Diaphragm"]
+        for idx, pair_key in enumerate(cb_pairs, start=1):
+            ed_suffix = f".{pair_key}.E{idx}M1"
+
+            ed_type_val = output_dict.get(KEY_MP_ED_TYPE + ed_suffix)
+            ed_bracing_type = output_dict.get(KEY_MP_ED_BRACING_TYPE + ed_suffix)
+            ed_section = output_dict.get(KEY_MP_ED_BRACING_SECTION + ed_suffix)
+
+            ed_leg_h = output_dict.get(make_pair_key(KEY_MP_ED_DIAGONAL_LEG_H, pair_key))
+            ed_leg_w = output_dict.get(make_pair_key(KEY_MP_ED_DIAGONAL_LEG_W, pair_key))
+
+            ed_label_lines.append(
+                f"{pair_key} — Type: {ed_type_val}, Bracing: {ed_bracing_type}, "
+                f"Section: {ed_section}, Leg H: {ed_leg_h} mm, Leg W: {ed_leg_w} mm"
+            )
+
         display_and_register(
             cad_data.get("cross_bracings", []),
             "Cross Bracing",
-            f"Cross Bracing\nType: {params.bracing_type}-Bracing\nSpacing: {params.cross_bracing_spacing:.2f} mm\nSection: {params.diagonal_section_type}\nLeg H: {params.diagonal_section_dims.leg_h:.2f} mm\nLeg W: {params.diagonal_section_dims.leg_w:.2f} mm",
+            "\n".join(label_lines) + "\n\n" + "\n".join(ed_label_lines),
             BRACING_COLOR
         )
 
+        
+
+
+        deck_thick = output_dict.get(KEY_TS_DECK_THICKNESS)
+        cw_width = output_dict.get(KEY_CARRIAGEWAY_WIDTH)
+        conc_grade = output_dict.get(KEY_DECK_CONCRETE_GRADE_BASIC)
+        fp_config = output_dict.get(KEY_TS_NO_OF_FOOTPATHS)
+        if fp_config == 1:
+            footpath = "Single Side"
+        else:
+            footpath = "Both Sides" if fp_config == 2 else "None"
+            
         display_and_register(
             cad_data.get("deck_slab"),
             "Deck",
-            f"Deck Slab\nThickness: {params.deck_thickness:.2f} mm\nCarriageway Width: {params.carriageway_width:.2f} mm\nConcrete Grade: {params.concrete_grade}\nFootpath: {params.footpath_config}",
+            f"Deck Slab\nThickness: {deck_thick} mm\nCarriageway Width: {cw_width} mm\nConcrete Grade: {conc_grade}\nFootpath: {footpath}",
             DECK_COLOR
         )
+
         # DECK TEXTURES (DISPLAY ONLY, NO HOVER)
         self.viewer.deck_texture_ais = []
 
@@ -428,8 +546,6 @@ class CAD3DWindow(QWidget):
             ais = ais[0] if isinstance(ais, list) else ais
             self.viewer.deck_texture_ais.append(ais)
 
-
-
         display_and_register(
             cad_data.get("crash_barrier_w_beams", []),
             "Crash Barrier W-Beam",
@@ -437,7 +553,6 @@ class CAD3DWindow(QWidget):
             WBEAM_COLOR
         )
 
-        
         display_and_register(
             cad_data.get("median_w_beams", []),
             "Median W-Beam",
@@ -445,25 +560,52 @@ class CAD3DWindow(QWidget):
             WBEAM_COLOR
         )
 
+        raw_cb_value = output_dict.get(KEY_CB_TYPE)
+        cb_str = str(raw_cb_value).strip() if raw_cb_value else ""
+        if cb_str == "IRC 5 - RCC Crash Barrier":
+            barrier_type, barrier_subtype = "Rigid", "IRC-5R"
+        elif cb_str == "IRC 5 - High Containment RCC Crash Barrier":
+            barrier_type, barrier_subtype = "Rigid", "High Containment"
+        elif cb_str == "IRC 5 - Metallic Crash Barrier with Single W-Beam":
+            barrier_type, barrier_subtype = "Semi-Rigid", "Single W-Beam"
+        elif cb_str == "IRC 5 - Metallic Crash Barrier with Double W-Beam":
+            barrier_type, barrier_subtype = "Semi-Rigid", "Double W-Beam"
+        else:
+            barrier_type, barrier_subtype = cb_str, ""
+
         display_and_register(
             cad_data.get("crash_barriers", []),
             "Crash Barrier",
-            f"Crash Barrier\nType: {params.barrier_type}\nSubtype: {params.crash_barrier_subtype}",
+            f"Crash Barrier\nType: {barrier_type}\nSubtype: {barrier_subtype}",
             BARRIER_POST_COLOR
         )
 
+        raw_md_value = output_dict.get(KEY_MD_TYPE)
+        md_str = str(raw_md_value).strip() if raw_md_value else ""
+        if md_str == "IRC 5 - Raised Kerb":
+            median_type = "Raised Kerb"
+        elif md_str == "IRC 5 - RCC Crash Barrier":
+            median_type = "RCC Crash Barrier"
+        elif md_str.startswith("IRC 5 - Metallic Crash Barrier"):
+            median_type = "Metallic Crash Barrier"
+        else:
+            median_type = md_str
 
         display_and_register(
             cad_data.get("median_barriers", []),
             "Median",
-            f"Median Barrier\nType: {params.median_type}",
+            f"Median Barrier\nType: {median_type}",
             BARRIER_COLOR
         )
+
+        railing_type = output_dict.get(KEY_RL_TYPE)
+        rail_count = 3
+        railing_w = 375.0
 
         display_and_register(
             cad_data.get("railings", []),
             "Railing",
-            f"Railing\nType: {params.railing_type.upper()}\nRails: {params.rail_count}\nWidth: {params.railing_width:.2f} mm",
+            f"Railing\nType: {railing_type}\nRails: {rail_count}\nWidth: {railing_w} mm",
             BARRIER_COLOR
         )
 
