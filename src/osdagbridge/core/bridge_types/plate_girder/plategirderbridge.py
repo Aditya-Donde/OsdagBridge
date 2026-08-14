@@ -2285,16 +2285,12 @@ class PlateGirderBridge:
                 # Top and bottom chords are designed against their own sections
                 # (the user can pick a different section/type for each).
                 top_chord = {
-                    "designation":  self.input_dict.get(KEY_MP_CB_TOP_CHORD_SECTION_DESIG + suffix)
-                                    or self.input_dict.get(KEY_MP_CB_BOTTOM_CHORD_SECTION_DESIG + suffix),
-                    "section_type": self.input_dict.get(KEY_MP_CB_TOP_CHORD_SECTION_TYPE + suffix)
-                                    or self.input_dict.get(KEY_MP_CB_BOTTOM_CHORD_SECTION_TYPE + suffix),
+                    "designation":  self.input_dict.get(KEY_MP_CB_TOP_CHORD_SECTION_DESIG + suffix),
+                    "section_type": self.input_dict.get(KEY_MP_CB_TOP_CHORD_SECTION_TYPE + suffix),
                 }
                 bottom_chord = {
-                    "designation":  self.input_dict.get(KEY_MP_CB_BOTTOM_CHORD_SECTION_DESIG + suffix)
-                                    or self.input_dict.get(KEY_MP_CB_TOP_CHORD_SECTION_DESIG + suffix),
-                    "section_type": self.input_dict.get(KEY_MP_CB_BOTTOM_CHORD_SECTION_TYPE + suffix)
-                                    or self.input_dict.get(KEY_MP_CB_TOP_CHORD_SECTION_TYPE + suffix),
+                    "designation":  self.input_dict.get(KEY_MP_CB_BOTTOM_CHORD_SECTION_DESIG + suffix),
+                    "section_type": self.input_dict.get(KEY_MP_CB_BOTTOM_CHORD_SECTION_TYPE + suffix),
                 }
                 custom_sections[f"G{i}-G{i+1}"] = {
                     "diagonal": {
@@ -2405,14 +2401,10 @@ class PlateGirderBridge:
                 return ""
 
             top_chord_des = _designed_section("top_chord") or str(
-                self.input_dict.get(f"{KEY_MP_CB_TOP_CHORD_SECTION_DESIG}{member_suffix}")
-                or self.input_dict.get(f"{KEY_MP_CB_BOTTOM_CHORD_SECTION_DESIG}{member_suffix}")
-                or ""
+                self.input_dict.get(f"{KEY_MP_CB_TOP_CHORD_SECTION_DESIG}{member_suffix}") or ""
             )
             bottom_chord_des = _designed_section("bottom_chord") or str(
-                self.input_dict.get(f"{KEY_MP_CB_BOTTOM_CHORD_SECTION_DESIG}{member_suffix}")
-                or self.input_dict.get(f"{KEY_MP_CB_TOP_CHORD_SECTION_DESIG}{member_suffix}")
-                or ""
+                self.input_dict.get(f"{KEY_MP_CB_BOTTOM_CHORD_SECTION_DESIG}{member_suffix}") or ""
             )
 
             # Query database and populate diagonal section properties
