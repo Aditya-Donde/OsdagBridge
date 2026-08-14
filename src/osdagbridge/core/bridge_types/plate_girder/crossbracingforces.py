@@ -795,7 +795,10 @@ class CrossBracingForces:
                     result = future.result()
                 except Exception as exc:
                     print(f"  [CrossBracing] SKIP {pair} {member} {force_type}: {exc}")
-                    result = None
+                    # Keep the failure visible instead of dropping it
+                    # (a dropped result renders as N/A, not FAIL).
+                    result = {"design_status": False,
+                              "design_error": f"{type(exc).__name__}: {exc}"}
                 results.setdefault(pair, {}).setdefault(member, {})[force_type] = result
 
         print(f"  Total time : {time.perf_counter() - t0:.3f}s  |  {len(jobs)} designs\n{sep}")

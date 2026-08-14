@@ -74,7 +74,17 @@ def run_calculation(design_dict: Dict[str, Any], quiet: bool = True) -> Dict[str
         module_instance = module_class()
         module_instance.set_osdaglogger(None, None)
 
-        validation_errors = module_instance.func_for_validation(design_dict)
+        try:
+            validation_errors = module_instance.func_for_validation(design_dict)
+        except Exception as exc:
+            # Some section families are not implemented in osdag_core and blow
+            # up mid-design (e.g. channels raise UnboundLocalError 'min_rad').
+            # Report that as an un-designable section rather than losing the
+            # result entirely — the caller shows it as a failed check.
+            return {
+                "design_status": False,
+                "design_error": f"{type(exc).__name__}: {exc}",
+            }
 
         if validation_errors:
             print(f"[Osdag] Validation errors: {validation_errors}")

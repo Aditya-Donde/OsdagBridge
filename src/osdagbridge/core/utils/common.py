@@ -1418,19 +1418,6 @@ DESIGN_CHECK_CAP_PFX = {
     KEY_CHECK_DEFLECTION:       "<i>L / x</i>",
 }
 
-def as_bool(value) -> bool:
-    """Interpret a stored flag as a checkbox state.
-
-    Values reach the input dict as bool (from a live QCheckBox) OR as strings
-    like "No"/"Yes"/"False" (from defaults). ``bool("No")`` is True — every
-    non-empty string is truthy — so a plain ``bool()`` cannot be used here.
-    Truthy iff the value is a real bool True or a yes-like string.
-    """
-    if isinstance(value, bool):
-        return value
-    return str(value).strip().lower() in ("yes", "true", "1")
-
-
 # Value Lists for Additional Inputs
 VALUES_NO_YES = ["No", "Yes"]
 VALUES_REINF_MATERIAL = ["Fe 415", "Fe 500", "Fe 550"]

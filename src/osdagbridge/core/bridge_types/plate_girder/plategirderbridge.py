@@ -2775,10 +2775,13 @@ class PlateGirderBridge:
             KEY_MP_GIRDER_DEPTH,
             KEY_MP_ED_TYPE,
             KEY_MP_ED_BRACING_TYPE,
+            KEY_MP_ED_BRACING_SECTION,
             KEY_MP_ED_BRACING_SECTION_DESIGNATION,
             KEY_MP_ED_TOP_CHORD,
+            KEY_MP_ED_TOP_CHORD_SECTION_TYPE,
             KEY_MP_ED_TOP_CHORD_SECTION_DESIG,
             KEY_MP_ED_BOTTOM_CHORD,
+            KEY_MP_ED_BOTTOM_CHORD_SECTION_TYPE,
             KEY_MP_ED_BOTTOM_CHORD_SECTION_DESIG,
             KEY_MP_ED_IS_SECTION,
             KEY_MP_ED_SYMMETRY,
@@ -2829,9 +2832,12 @@ class PlateGirderBridge:
 
         pair_to_elements = {}
         for m in all_edge_elements:
-            if m not in self.result_data.get("members", {}):
+            m_key = m
+            if m_key not in self.result_data.get("members", {}) and int(m_key) in self.result_data.get("members", {}):
+                m_key = int(m_key)
+            if m_key not in self.result_data.get("members", {}):
                 continue
-            n1, n2 = self.result_data["members"][m]
+            n1, n2 = self.result_data["members"][m_key]
             g1 = _find_girder(n1)
             g2 = _find_girder(n2)
             if g1 and g2 and g1 != g2:
@@ -2893,6 +2899,8 @@ class PlateGirderBridge:
         h = D * 0.85  # Default depth ratio
         s = float(self.input_dict[KEY_TS_GIRDER_SPACING])
 
+        is_custom = str(self.input_dict.get(KEY_DESIGN_MODE, "Optimized")).strip().lower() in {"custom", "customized"}
+
         # 5. Process design results and queries
         forces_dict = {"pairs": {}}
         pair_designs = {}
@@ -2907,18 +2915,35 @@ class PlateGirderBridge:
             _m2 = f".{pair_id}.E{i}M2"
             member_suffix = _m1 if self.input_dict.get(f"{KEY_MP_ED_TYPE}{_m1}") else _m2
 
-            ed_type = self.input_dict.get(f"{KEY_MP_ED_TYPE}{member_suffix}") or ""
-            if not ed_type:
-                continue   # no data for this pair, skip cleanly
+            ed_type = (
+                self.input_dict.get(f"{KEY_MP_ED_TYPE}{_m1}")
+                or self.input_dict.get(f"{KEY_MP_ED_TYPE}{_m2}")
+                or self.input_dict.get(KEY_MP_ED_TYPE)
+                or "Cross Bracing"
+            )
             self.output_dict[make_pair_key(KEY_MP_ED_TYPE, pair_id)] = ed_type
             
             # -- CASE A: CROSS BRACING DIAPHRAGM --
             if ed_type == "Cross Bracing":
-                bracing_type = self.input_dict.get(f"{KEY_MP_ED_BRACING_TYPE}{member_suffix}")
-                top_chord_enabled = self.input_dict.get(f"{KEY_MP_ED_TOP_CHORD}{member_suffix}")
-                top_chord_enabled = str(top_chord_enabled).strip().lower() not in ("no", "false", "0", "none", "")
-                bottom_chord_enabled = self.input_dict.get(f"{KEY_MP_ED_BOTTOM_CHORD}{member_suffix}")
-                bottom_chord_enabled = str(bottom_chord_enabled).strip().lower() not in ("no", "false", "0", "none", "")
+                bracing_type = (
+                    self.input_dict.get(f"{KEY_MP_ED_BRACING_TYPE}{_m1}")
+                    or self.input_dict.get(f"{KEY_MP_ED_BRACING_TYPE}{_m2}")
+                    or self.input_dict.get(KEY_MP_ED_BRACING_TYPE)
+                    or "X"
+                )
+                top_chord_enabled = self.input_dict.get(f"{KEY_MP_ED_TOP_CHORD}{_m1}")
+                if top_chord_enabled is None:
+                    top_chord_enabled = self.input_dict.get(f"{KEY_MP_ED_TOP_CHORD}{_m2}")
+                if top_chord_enabled is None:
+                    top_chord_enabled = self.input_dict.get(KEY_MP_ED_TOP_CHORD, True)
+                top_chord_enabled = str(top_chord_enabled).strip().lower() not in ("no", "false", "0")
+
+                bottom_chord_enabled = self.input_dict.get(f"{KEY_MP_ED_BOTTOM_CHORD}{_m1}")
+                if bottom_chord_enabled is None:
+                    bottom_chord_enabled = self.input_dict.get(f"{KEY_MP_ED_BOTTOM_CHORD}{_m2}")
+                if bottom_chord_enabled is None:
+                    bottom_chord_enabled = self.input_dict.get(KEY_MP_ED_BOTTOM_CHORD, True)
+                bottom_chord_enabled = str(bottom_chord_enabled).strip().lower() not in ("no", "false", "0")
 
                 self.output_dict[make_pair_key(KEY_MP_ED_BRACING_TYPE, pair_id)] = bracing_type
                 self.output_dict[make_pair_key(KEY_MP_ED_TOP_CHORD, pair_id)] = top_chord_enabled
@@ -2948,9 +2973,13 @@ class PlateGirderBridge:
                     if lc_str.startswith("Envelope"):
                         continue
                     for m in elements:
-                        if lc_str not in self.result_data["forces"] or m not in self.result_data["forces"][lc_str]:
+                        m_key = m
+                        lc_forces = self.result_data["forces"].get(lc_str, {})
+                        if m_key not in lc_forces and int(m_key) in lc_forces:
+                            m_key = int(m_key)
+                        if m_key not in lc_forces:
                             continue
-                        vz_i = self.result_data["forces"][lc_str][m].get("Vz_i")
+                        vz_i = lc_forces[m_key].get("Vz_i")
                         if vz_i is None:
                             continue
                         vz_kn = vz_i / 1000.0
@@ -2980,6 +3009,15 @@ class PlateGirderBridge:
                     "chord_compression_kN": round(abs(chord_comp_max), 3) if chord_comp_max < -_tol else None,
                     "chord_compression_gov_lc": chord_comp_lc if chord_comp_max < -_tol else None,
                 }
+                # Fallback to CrossBracingForces if edge elements yield no forces
+                if not any(v is not None for k, v in pair_forces.items() if k.endswith("_kN")):
+                    from osdagbridge.core.bridge_types.plate_girder.crossbracingforces import CrossBracingForces
+                    cb = CrossBracingForces(bridge=self)
+                    cb_forces = cb.get_design_forces_dict()
+                    fallback_pair_forces = (cb_forces.get("pairs") or {}).get(pair)
+                    if fallback_pair_forces:
+                        pair_forces = fallback_pair_forces
+
                 forces_dict["pairs"][pair] = pair_forces
 
                 # Run Osdag design checks
@@ -2989,20 +3027,58 @@ class PlateGirderBridge:
                     design_pool,
                     run_calculation,
                 )
+                from osdagbridge.core.bridge_types.plate_girder.crossbracingforces import (
+                    _apply_section_override,
+                )
+
+                # In Custom mode the user picked the sections in Additional
+                # Inputs — restrict each design to that section instead of
+                # optimizing. Top and bottom chords can be different sections.
+                ed_overrides: dict = {}
+                if is_custom:
+                    ed_overrides = {
+                        "diagonal": {
+                            "designation":  self.input_dict.get(f"{KEY_MP_ED_BRACING_SECTION_DESIGNATION}{member_suffix}"),
+                            "section_type": self.input_dict.get(f"{KEY_MP_ED_BRACING_SECTION}{member_suffix}"),
+                        },
+                        "top_chord": {
+                            "designation":  self.input_dict.get(f"{KEY_MP_ED_TOP_CHORD_SECTION_DESIG}{member_suffix}")
+                                            or self.input_dict.get(f"{KEY_MP_ED_BOTTOM_CHORD_SECTION_DESIG}{member_suffix}"),
+                            "section_type": self.input_dict.get(f"{KEY_MP_ED_TOP_CHORD_SECTION_TYPE}{member_suffix}")
+                                            or self.input_dict.get(f"{KEY_MP_ED_BOTTOM_CHORD_SECTION_TYPE}{member_suffix}"),
+                        },
+                        "bottom_chord": {
+                            "designation":  self.input_dict.get(f"{KEY_MP_ED_BOTTOM_CHORD_SECTION_DESIG}{member_suffix}")
+                                            or self.input_dict.get(f"{KEY_MP_ED_TOP_CHORD_SECTION_DESIG}{member_suffix}"),
+                            "section_type": self.input_dict.get(f"{KEY_MP_ED_BOTTOM_CHORD_SECTION_TYPE}{member_suffix}")
+                                            or self.input_dict.get(f"{KEY_MP_ED_TOP_CHORD_SECTION_TYPE}{member_suffix}"),
+                        },
+                    }
+
+                # Top and bottom chords carry the same force but may be
+                # different sections, so each is designed against its own.
+                # They collapse to one shared "chord" run when they match.
+                ed_members = [("diagonal", round(L_d * 1000), "diag_tension_kN", "diag_compression_kN", "diagonal")]
+                if ed_overrides.get("top_chord") != ed_overrides.get("bottom_chord"):
+                    ed_members.append(("top_chord",    round(s * 1000), "chord_tension_kN", "chord_compression_kN", "top_chord"))
+                    ed_members.append(("bottom_chord", round(s * 1000), "chord_tension_kN", "chord_compression_kN", "bottom_chord"))
+                else:
+                    ed_members.append(("chord",        round(s * 1000), "chord_tension_kN", "chord_compression_kN", "top_chord"))
+
                 jobs = []
-                for member, L_mm, t_key, c_key in (
-                    ("diagonal", round(L_d * 1000), "diag_tension_kN", "diag_compression_kN"),
-                    ("chord", round(s * 1000), "chord_tension_kN", "chord_compression_kN"),
-                ):
+                for member, L_mm, t_key, c_key, ov_key in ed_members:
+                    override = ed_overrides.get(ov_key)
                     if pair_forces.get(t_key) is not None:
                         d = copy.deepcopy(design_dict_tension_bolted)
                         d["Load.Axial"] = str(float(pair_forces[t_key]))
                         d["Member.Length"] = str(L_mm)
+                        _apply_section_override(d, override)
                         jobs.append((pair, member, "tension", d))
                     if pair_forces.get(c_key) is not None:
                         d = copy.deepcopy(design_dict_struts_bolted)
                         d["Load.Axial"] = str(float(pair_forces[c_key]))
                         d["Member.Length"] = str(L_mm)
+                        _apply_section_override(d, override)
                         jobs.append((pair, member, "compression", d))
 
                 if jobs:
@@ -3017,7 +3093,10 @@ class PlateGirderBridge:
                                 res = future.result()
                             except Exception as exc:
                                 print(f"  [EndDiaphragm] SKIP {p} {member} {force_type}: {exc}")
-                                res = None
+                                # Keep the failure visible instead of dropping it
+                                # (a dropped result renders as N/A, not FAIL).
+                                res = {"design_status": False,
+                                       "design_error": f"{type(exc).__name__}: {exc}"}
                             pair_designs.setdefault(p, {}).setdefault(member, {})[force_type] = res
 
                 # Fetch selected designations
@@ -3033,17 +3112,23 @@ class PlateGirderBridge:
                 if not diag_des:
                     diag_des = self.input_dict.get(f"{KEY_MP_ED_BRACING_SECTION_DESIGNATION}{member_suffix}")
 
-                chord_des = ""
-                chord_data = member_designs.get("chord", {})
-                for force_type in ("tension", "compression"):
-                    res = _extract_osdag_summary(chord_data.get(force_type) or {})
-                    sec = res.get("section")
-                    if sec:
-                        chord_des = str(sec)
-                        break
+                # Top and bottom chords are designed against their own sections
+                # when they differ, so resolve each separately (falling back to
+                # the shared "chord" run when they match).
+                def _ed_designed_section(member: str) -> str:
+                    data = member_designs.get(member) or member_designs.get("chord", {})
+                    for force_type in ("tension", "compression"):
+                        res = _extract_osdag_summary(data.get(force_type) or {})
+                        sec = res.get("section")
+                        if sec:
+                            return str(sec)
+                    return ""
 
-                top_chord_des = chord_des if chord_des else self.input_dict.get(f"{KEY_MP_ED_TOP_CHORD_SECTION_DESIG}{member_suffix}")
-                bottom_chord_des = chord_des if chord_des else self.input_dict.get(f"{KEY_MP_ED_BOTTOM_CHORD_SECTION_DESIG}{member_suffix}")
+                top_chord_des = _ed_designed_section("top_chord") or \
+                    self.input_dict.get(f"{KEY_MP_ED_TOP_CHORD_SECTION_DESIG}{member_suffix}")
+                bottom_chord_des = _ed_designed_section("bottom_chord") or \
+                    self.input_dict.get(f"{KEY_MP_ED_BOTTOM_CHORD_SECTION_DESIG}{member_suffix}")
+                chord_des = top_chord_des or bottom_chord_des
 
                 # Populate diagonal properties
                 if diag_des:

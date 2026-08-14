@@ -646,10 +646,10 @@ def _extract_osdag_summary(result: dict) -> dict:
     status = result.get("design_status")
 
     return {
-        "section":     _first("section_size.designation", "Optimum.Designation"),
-        "capacity_kN": _num(_first("Member.tension_capacity", "Design.Strength")),
-        "efficiency":  _num(_first("Member.efficiency",       "Optimum.UR")),
-        "slenderness": _num(result.get("Member.Slenderness")),
+        "section":     _first("section_size.designation", "Optimum.Designation", "Section", "Designation"),
+        "capacity_kN": _num(_first("Member.tension_capacity", "Member.compression_capacity", "Member.capacity", "Design.Strength", "Capacity")),
+        "efficiency":  _num(_first("Member.efficiency", "Optimum.UR", "Efficiency", "UR")),
+        "slenderness": _num(_first("Member.Slenderness", "Member.slenderness", "Slenderness")),
         "connection":  "Welded" if "Weld.Type" in result else "Bolted",
         "design_status": bool(status) if status is not None else None,
     }
