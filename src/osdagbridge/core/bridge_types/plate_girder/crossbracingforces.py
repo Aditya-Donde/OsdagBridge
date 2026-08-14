@@ -135,7 +135,66 @@ from typing import Optional
 
 import pandas as pd
 
-from osdagbridge.core.utils.common import *
+from osdagbridge.core.utils.common import (
+    KEY_MP_CB_SPACING,
+    KEY_MP_CB_TYPE,
+    KEY_MP_CB_NO_OF_CROSS_BRACINGS,
+    KEY_MP_GIRDER_DEPTH,
+    KEY_MP_GIRDER_WEB_DEPTH,
+    KEY_TS_GIRDER_SPACING,
+    KEY_TS_NO_OF_GIRDERS,
+    KEY_DESIGN_MODE,
+    KEY_MP_CB_BRACING_SECTION_TYPE,
+    KEY_MP_CB_BRACING_SECTION_DESIGNATION,
+    KEY_MP_CB_TOP_CHORD,
+    KEY_MP_CB_BOTTOM_CHORD,
+    KEY_MP_CB_TOP_CHORD_SECTION_DESIG,
+    KEY_MP_CB_TOP_CHORD_SECTION_TYPE,
+    KEY_MP_CB_BOTTOM_CHORD_SECTION_DESIG,
+    KEY_MP_CB_BOTTOM_CHORD_SECTION_TYPE,
+    KEY_MP_CB_DIAGONAL_LEG_H, KEY_MP_CB_DIAGONAL_LEG_W, KEY_MP_CB_DIAGONAL_THICKNESS,
+    KEY_MP_CB_TOP_CHORD_LEG_H, KEY_MP_CB_TOP_CHORD_LEG_W, KEY_MP_CB_TOP_CHORD_THICKNESS,
+    KEY_MP_CB_BOTTOM_CHORD_LEG_H, KEY_MP_CB_BOTTOM_CHORD_LEG_W, KEY_MP_CB_BOTTOM_CHORD_THICKNESS,
+    KEY_MP_ED_DIAGONAL_LEG_H, KEY_MP_ED_DIAGONAL_LEG_W, KEY_MP_ED_DIAGONAL_THICKNESS,
+    KEY_MP_ED_TOP_CHORD_LEG_H, KEY_MP_ED_TOP_CHORD_LEG_W, KEY_MP_ED_TOP_CHORD_THICKNESS,
+    KEY_MP_ED_BOTTOM_CHORD_LEG_H, KEY_MP_ED_BOTTOM_CHORD_LEG_W, KEY_MP_ED_BOTTOM_CHORD_THICKNESS,
+    KEY_MP_ED_TYPE,
+    KEY_MP_ED_BRACING_TYPE,
+    KEY_MP_ED_TOP_CHORD,
+    KEY_MP_ED_BOTTOM_CHORD,
+    KEY_MP_ED_BRACING_SECTION,
+    KEY_MP_ED_BRACING_SECTION_DESIGNATION,
+    KEY_MP_ED_TOP_CHORD_SECTION_TYPE,
+    KEY_MP_ED_TOP_CHORD_SECTION_DESIG,
+    KEY_MP_ED_BOTTOM_CHORD_SECTION_TYPE,
+    KEY_MP_ED_BOTTOM_CHORD_SECTION_DESIG,
+    KEY_MP_ED_IS_SECTION,
+    KEY_MP_ED_SYMMETRY,
+    KEY_MP_ED_TOTAL_DEPTH,
+    KEY_MP_ED_WEB_THICKNESS,
+    KEY_MP_ED_TOP_FLANGE_WIDTH,
+    KEY_MP_ED_TOP_FLANGE_THICKNESS,
+    KEY_MP_ED_BOTTOM_FLANGE_WIDTH,
+    KEY_MP_ED_BOTTOM_FLANGE_THICKNESS,
+    KEY_TD_CB_PROP_L, KEY_TD_CB_PROP_H, KEY_TD_CB_PROP_B, KEY_TD_CB_PROP_TW, KEY_TD_CB_PROP_TF,
+    KEY_TD_CB_PROP_RZ, KEY_TD_CB_PROP_M, KEY_TD_CB_PROP_A, KEY_TD_CB_PROP_IZ, KEY_TD_CB_PROP_IV,
+    KEY_TD_CB_PROP_RV, KEY_TD_CB_PROP_ZZ, KEY_TD_CB_PROP_ZV, KEY_TD_CB_PROP_ZUZ, KEY_TD_CB_PROP_ZUV,
+    KEY_TD_CB_TOP_CHORD_PROP_L, KEY_TD_CB_TOP_CHORD_PROP_H, KEY_TD_CB_TOP_CHORD_PROP_B, KEY_TD_CB_TOP_CHORD_PROP_TW, KEY_TD_CB_TOP_CHORD_PROP_TF,
+    KEY_TD_CB_TOP_CHORD_PROP_RZ, KEY_TD_CB_TOP_CHORD_PROP_M, KEY_TD_CB_TOP_CHORD_PROP_A, KEY_TD_CB_TOP_CHORD_PROP_IZ, KEY_TD_CB_TOP_CHORD_PROP_IV,
+    KEY_TD_CB_TOP_CHORD_PROP_RV, KEY_TD_CB_TOP_CHORD_PROP_ZZ, KEY_TD_CB_TOP_CHORD_PROP_ZV, KEY_TD_CB_TOP_CHORD_PROP_ZUZ, KEY_TD_CB_TOP_CHORD_PROP_ZUV,
+    KEY_TD_CB_BOTTOM_CHORD_PROP_L, KEY_TD_CB_BOTTOM_CHORD_PROP_H, KEY_TD_CB_BOTTOM_CHORD_PROP_B, KEY_TD_CB_BOTTOM_CHORD_PROP_TW, KEY_TD_CB_BOTTOM_CHORD_PROP_TF,
+    KEY_TD_CB_BOTTOM_CHORD_PROP_RZ, KEY_TD_CB_BOTTOM_CHORD_PROP_M, KEY_TD_CB_BOTTOM_CHORD_PROP_A, KEY_TD_CB_BOTTOM_CHORD_PROP_IZ, KEY_TD_CB_BOTTOM_CHORD_PROP_IV,
+    KEY_TD_CB_BOTTOM_CHORD_PROP_RV, KEY_TD_CB_BOTTOM_CHORD_PROP_ZZ, KEY_TD_CB_BOTTOM_CHORD_PROP_ZV, KEY_TD_CB_BOTTOM_CHORD_PROP_ZUZ, KEY_TD_CB_BOTTOM_CHORD_PROP_ZUV,
+    KEY_TD_ED_PROP_L, KEY_TD_ED_PROP_H, KEY_TD_ED_PROP_B, KEY_TD_ED_PROP_TW, KEY_TD_ED_PROP_TF,
+    KEY_TD_ED_PROP_RZ, KEY_TD_ED_PROP_M, KEY_TD_ED_PROP_A, KEY_TD_ED_PROP_IZ, KEY_TD_ED_PROP_IV,
+    KEY_TD_ED_PROP_RV, KEY_TD_ED_PROP_ZZ, KEY_TD_ED_PROP_ZV, KEY_TD_ED_PROP_ZUZ, KEY_TD_ED_PROP_ZUV,
+    KEY_TD_ED_TOP_CHORD_PROP_L, KEY_TD_ED_TOP_CHORD_PROP_H, KEY_TD_ED_TOP_CHORD_PROP_B, KEY_TD_ED_TOP_CHORD_PROP_TW, KEY_TD_ED_TOP_CHORD_PROP_TF,
+    KEY_TD_ED_TOP_CHORD_PROP_RZ, KEY_TD_ED_TOP_CHORD_PROP_M, KEY_TD_ED_TOP_CHORD_PROP_A, KEY_TD_ED_TOP_CHORD_PROP_IZ, KEY_TD_ED_TOP_CHORD_PROP_IV,
+    KEY_TD_ED_TOP_CHORD_PROP_RV, KEY_TD_ED_TOP_CHORD_PROP_ZZ, KEY_TD_ED_TOP_CHORD_PROP_ZV, KEY_TD_ED_TOP_CHORD_PROP_ZUZ, KEY_TD_ED_TOP_CHORD_PROP_ZUV,
+    KEY_TD_ED_BOTTOM_CHORD_PROP_L, KEY_TD_ED_BOTTOM_CHORD_PROP_H, KEY_TD_ED_BOTTOM_CHORD_PROP_B, KEY_TD_ED_BOTTOM_CHORD_PROP_TW, KEY_TD_ED_BOTTOM_CHORD_PROP_TF,
+    KEY_TD_ED_BOTTOM_CHORD_PROP_RZ, KEY_TD_ED_BOTTOM_CHORD_PROP_M, KEY_TD_ED_BOTTOM_CHORD_PROP_A, KEY_TD_ED_BOTTOM_CHORD_PROP_IZ, KEY_TD_ED_BOTTOM_CHORD_PROP_IV,
+    KEY_TD_ED_BOTTOM_CHORD_PROP_RV, KEY_TD_ED_BOTTOM_CHORD_PROP_ZZ, KEY_TD_ED_BOTTOM_CHORD_PROP_ZV, KEY_TD_ED_BOTTOM_CHORD_PROP_ZUZ, KEY_TD_ED_BOTTOM_CHORD_PROP_ZUV,
+)
 
 _DB_PATH = Path(__file__).resolve().parents[2] / "data" / "ResourceFiles" / "Intg_osdag.sqlite"
 
@@ -224,35 +283,18 @@ def populate_section_properties(
     make_pair_key,
     pair_id: str,
     details: dict,
-    details_prefix: str,
     prop_keys: dict,
+    section_type_key: str,
+    leg_keys: tuple[str, str, str] = None,
 ) -> None:
-    """
-    Write one queried DB section (angle/channel/beam) into output_dict under
-    both the "member_properties.*_details.<member>" leg/thickness keys and the
-    "transverse_member_design.*.section_properties.<member>" full property
-    keys. Shared by CrossBracingForces and EndDiaphragmForces — identical
-    bookkeeping, only the key namespace (cb vs ed) differs.
+    output_dict[make_pair_key(section_type_key, pair_id)] = details["type"]
 
-    Parameters
-    ----------
-    details_prefix : str
-        e.g. "member_properties.cross_bracing_details.diagonal" or
-        "...end_diaphragm_details.top_chord".
-    prop_keys : dict
-        Maps each name in _SECTION_PROP_FIELDS to the KEY_TD_*_PROP_* constant
-        for this member (diagonal / top_chord / bottom_chord).
-    """
-    output_dict[make_pair_key(f"{details_prefix}.section_type", pair_id)] = details["type"]
-
-    if details["type"] in ("ANGLE", "CHANNEL"):
-        h_key = make_pair_key(f"{details_prefix}.leg_h", pair_id)
-        w_key = make_pair_key(f"{details_prefix}.leg_w", pair_id)
-        t_key = make_pair_key(f"{details_prefix}.thickness", pair_id)
+    if leg_keys and details["type"] in ("ANGLE", "CHANNEL"):
+        h_k, w_k, t_k = leg_keys
         h_src = "H" if details["type"] == "ANGLE" else "L"
-        output_dict[h_key] = details[h_src] * 1000.0
-        output_dict[w_key] = details["B"] * 1000.0
-        output_dict[t_key] = details["tw"] * 1000.0
+        output_dict[make_pair_key(h_k, pair_id)] = details[h_src] * 1000.0
+        output_dict[make_pair_key(w_k, pair_id)] = details["B"] * 1000.0
+        output_dict[make_pair_key(t_k, pair_id)] = details["tw"] * 1000.0
 
     for field, details_key in _SECTION_PROP_FIELDS.items():
         output_dict[make_pair_key(prop_keys[field], pair_id)] = details[details_key]
@@ -671,6 +713,7 @@ class CrossBracingForces:
             "horiz_proj_m":      round(cfg["horiz_proj"], 4),
             "alpha_deg":         round(math.degrees(cfg["alpha_rad"]), 2),
             "cb_spacing_m":      round(cfg["cb_spacing"], 3),
+            "no_of_cross_bracings": cfg.get("no_of_cross_bracings", 1),
             "depth_ratio":       self.depth_ratio,
         }
 
@@ -859,10 +902,227 @@ class CrossBracingForces:
             print(df.to_string(index=False))
         print("=" * 95)
 
+    def design(self) -> dict:
+        """
+        Run Osdag member designs for cross-bracing members (diagonals/chords)
+        and populate section properties into bridge.output_dict.
+
+        Mutates ``self.bridge.output_dict`` and returns the pair -> member ->
+        force_type -> Osdag result dict (also cached on
+        ``self.bridge.crossbracing_design_results``).
+        """
+        bridge = self.bridge
+
+        if not bridge.result_data:
+            print("[CrossBracing] No analysis results available — skipping.")
+            return {}
+
+        if not self.get_crossbracing_count():
+            print("[CrossBracing] No cross-bracing panels found — skipping.")
+            return {}
+
+        forces_dict = self.get_design_forces_dict()
+        if not forces_dict or not forces_dict.get("pairs"):
+            return {}
+
+        self.print_critical_forces(forces_dict)
+
+        # Resolve all possible intermediate girder pairs
+        n_girders = int(bridge.input_dict[KEY_TS_NO_OF_GIRDERS])
+        pairs = [f"G{i}-G{i+1}" for i in range(1, n_girders)]
+
+        # In Custom mode the user picked the sections in Additional Inputs —
+        # restrict each Osdag design to that section instead of optimizing.
+        is_custom = str(bridge.input_dict.get(KEY_DESIGN_MODE, "Optimized")).strip().lower() in {"custom", "customized"}
+        custom_sections = None
+        if is_custom:
+            custom_sections = {}
+            for i in range(1, n_girders):
+                suffix = f".G{i}G{i+1}.B{i}M1"
+                top_chord = {
+                    "designation":  bridge.input_dict.get(KEY_MP_CB_TOP_CHORD_SECTION_DESIG + suffix),
+                    "section_type": bridge.input_dict.get(KEY_MP_CB_TOP_CHORD_SECTION_TYPE + suffix),
+                }
+                bottom_chord = {
+                    "designation":  bridge.input_dict.get(KEY_MP_CB_BOTTOM_CHORD_SECTION_DESIG + suffix),
+                    "section_type": bridge.input_dict.get(KEY_MP_CB_BOTTOM_CHORD_SECTION_TYPE + suffix),
+                }
+                custom_sections[f"G{i}-G{i+1}"] = {
+                    "diagonal": {
+                        "designation":  bridge.input_dict.get(KEY_MP_CB_BRACING_SECTION_DESIGNATION + suffix),
+                        "section_type": bridge.input_dict.get(KEY_MP_CB_BRACING_SECTION_TYPE + suffix),
+                    },
+                    "top_chord":    top_chord,
+                    "bottom_chord": bottom_chord,
+                }
+
+        from osdagbridge.core.utils.logger import bridge_logger
+        bridge_logger.check_cancel()
+        pair_designs = self.run_member_designs(forces_dict, custom_sections=custom_sections)
+        bridge.output_dict["crossbracing_forces_dict"] = forces_dict
+
+        from osdagbridge.core.bridge_types.plate_girder.results_data import (
+            enrich_crossbracing_dump,
+            _extract_osdag_summary,
+        )
+        enrich_crossbracing_dump(pair_designs)
+        self._print_crossbracing_design_results(forces_dict, pair_designs)
+
+        def make_pair_key(key: str, pair_id: str) -> str:
+            return f"{key}.{pair_id}"
+
+        # Initialize keys to None for all pairs (both brace & chords)
+        for pair in pairs:
+            pair_id = pair.replace("-", "")
+
+            bridge.output_dict[make_pair_key(KEY_MP_CB_TYPE, pair_id)] = \
+                forces_dict.get("brace_type", {}).get(pair, "X")
+            bridge.output_dict[make_pair_key(KEY_MP_CB_TOP_CHORD, pair_id)] = \
+                forces_dict.get("top_chord", {}).get(pair, True)
+            bridge.output_dict[make_pair_key(KEY_MP_CB_BOTTOM_CHORD, pair_id)] = \
+                forces_dict.get("bottom_chord", {}).get(pair, True)
+
+            for k in _CB_DIAG_PROP_KEYS.values():
+                bridge.output_dict[make_pair_key(k, pair_id)] = None
+            for k in _CB_TOP_CHORD_PROP_KEYS.values():
+                bridge.output_dict[make_pair_key(k, pair_id)] = None
+            for k in _CB_BOTTOM_CHORD_PROP_KEYS.values():
+                bridge.output_dict[make_pair_key(k, pair_id)] = None
+
+        for pair in pairs:
+            pair_id = pair.replace("-", "")
+            member_designs = pair_designs.get(pair, {}) if pair_designs else {}
+            _pm = re.match(r"G(\d+)G\d+", pair_id)
+            member_suffix = f".{pair_id}.B{_pm.group(1)}M1" if _pm else ""
+
+            top_chord_enabled = forces_dict.get("top_chord", {}).get(pair, True)
+            bottom_chord_enabled = forces_dict.get("bottom_chord", {}).get(pair, True)
+
+            diag_des = ""
+            diag_data = member_designs.get("diagonal", {})
+            for force_type in ("tension", "compression"):
+                res = _extract_osdag_summary(diag_data.get(force_type) or {})
+                sec = res.get("section")
+                if sec:
+                    diag_des = str(sec)
+                    break
+            if not diag_des:
+                diag_des = str(bridge.input_dict.get(
+                    f"{KEY_MP_CB_BRACING_SECTION_DESIGNATION}{member_suffix}") or "")
+
+            def _designed_section(member: str) -> str:
+                data = member_designs.get(member) or member_designs.get("chord", {})
+                for force_type in ("tension", "compression"):
+                    res = _extract_osdag_summary(data.get(force_type) or {})
+                    sec = res.get("section")
+                    if sec:
+                        return str(sec)
+                return ""
+
+            top_chord_des = _designed_section("top_chord") or str(
+                bridge.input_dict.get(f"{KEY_MP_CB_TOP_CHORD_SECTION_DESIG}{member_suffix}") or ""
+            )
+            bottom_chord_des = _designed_section("bottom_chord") or str(
+                bridge.input_dict.get(f"{KEY_MP_CB_BOTTOM_CHORD_SECTION_DESIG}{member_suffix}") or ""
+            )
+
+            if diag_des:
+                bridge.output_dict[make_pair_key(KEY_MP_CB_BRACING_SECTION_DESIGNATION, pair_id)] = diag_des
+                diag_details = bridge._query_crossbracing_section(diag_des)
+                if diag_details:
+                    populate_section_properties(
+                        bridge.output_dict, make_pair_key, pair_id, diag_details,
+                        _CB_DIAG_PROP_KEYS, section_type_key=KEY_MP_CB_BRACING_SECTION_TYPE,
+                        leg_keys=(KEY_MP_CB_DIAGONAL_LEG_H, KEY_MP_CB_DIAGONAL_LEG_W, KEY_MP_CB_DIAGONAL_THICKNESS),
+                    )
+
+            top_details = None
+            if top_chord_enabled and top_chord_des:
+                top_details = bridge._query_crossbracing_section(top_chord_des)
+                if top_details:
+                    bridge.output_dict[make_pair_key(KEY_MP_CB_TOP_CHORD_SECTION_DESIG, pair_id)] = top_chord_des
+                    populate_section_properties(
+                        bridge.output_dict, make_pair_key, pair_id, top_details,
+                        _CB_TOP_CHORD_PROP_KEYS, section_type_key=KEY_MP_CB_TOP_CHORD_SECTION_TYPE,
+                        leg_keys=(KEY_MP_CB_TOP_CHORD_LEG_H, KEY_MP_CB_TOP_CHORD_LEG_W, KEY_MP_CB_TOP_CHORD_THICKNESS),
+                    )
+
+            if bottom_chord_enabled and bottom_chord_des:
+                bc_details = top_details if (top_chord_des == bottom_chord_des and top_details) \
+                             else bridge._query_crossbracing_section(bottom_chord_des)
+                if bc_details:
+                    bridge.output_dict[make_pair_key(KEY_MP_CB_BOTTOM_CHORD_SECTION_DESIG, pair_id)] = bottom_chord_des
+                    populate_section_properties(
+                        bridge.output_dict, make_pair_key, pair_id, bc_details,
+                        _CB_BOTTOM_CHORD_PROP_KEYS, section_type_key=KEY_MP_CB_BOTTOM_CHORD_SECTION_TYPE,
+                        leg_keys=(KEY_MP_CB_BOTTOM_CHORD_LEG_H, KEY_MP_CB_BOTTOM_CHORD_LEG_W, KEY_MP_CB_BOTTOM_CHORD_THICKNESS),
+                    )
+
+        bridge.crossbracing_design_results = pair_designs
+        return pair_designs
+
+    @staticmethod
+    def _print_crossbracing_design_results(forces_dict: dict, pair_designs: dict) -> None:
+        from osdagbridge.core.bridge_types.plate_girder.results_data import _extract_osdag_summary
+
+        sep = "=" * 75
+        print(f"\n{sep}")
+        print(f"{'CROSS BRACING — OSDAG DESIGN RESULTS':^75}")
+        print(sep)
+
+        for pair, vals in forces_dict.get("pairs", {}).items():
+            designs = pair_designs.get(pair, {})
+            print(f"  Pair : {pair}")
+
+            _chords = [m for m in ("chord", "top_chord", "bottom_chord") if m in designs] or ["chord"]
+            for label, t_key, c_key, member in (
+                [("Diagonal", "diag_tension_kN", "diag_compression_kN", "diagonal")]
+                + [(m.replace("_", " ").title(), "chord_tension_kN", "chord_compression_kN", m)
+                   for m in _chords]
+            ):
+                member_designs = designs.get(member, {})
+                for force_type, force_key in (("Tension", t_key), ("Compression", c_key)):
+                    force_kn = vals.get(force_key)
+                    if force_kn is None:
+                        continue
+                    res  = _extract_osdag_summary(member_designs.get(force_type.lower()) or {})
+                    sec  = res.get("section")     or "—"
+                    cap  = res.get("capacity_kN") or "—"
+                    eff  = res.get("efficiency")
+                    slnd = res.get("slenderness")
+                    conn = res.get("connection")  or "—"
+
+                    eff_str  = f"  eff={float(eff):.2f}" if eff  not in (None, "") else ""
+                    slnd_str = f"  λ={float(slnd):.1f}"  if slnd not in (None, "") else ""
+
+                    print(
+                        f"    {label:<8} [{force_type:>11}  {force_kn:>8.3f} kN]"
+                        f"  →  {sec}   cap={cap} kN{eff_str}{slnd_str}  {conn}"
+                    )
+
+        print(sep)
+
 
 def make_prop_keys(*consts) -> dict:
     """Zip the 15 _SECTION_PROP_FIELDS names onto a member's KEY_TD_*_PROP_* constants."""
     return dict(zip(_SECTION_PROP_FIELDS.keys(), consts))
+
+
+_CB_DIAG_PROP_KEYS = make_prop_keys(
+    KEY_TD_CB_PROP_L, KEY_TD_CB_PROP_H, KEY_TD_CB_PROP_B, KEY_TD_CB_PROP_TW, KEY_TD_CB_PROP_TF,
+    KEY_TD_CB_PROP_RZ, KEY_TD_CB_PROP_M, KEY_TD_CB_PROP_A, KEY_TD_CB_PROP_IZ, KEY_TD_CB_PROP_IV,
+    KEY_TD_CB_PROP_RV, KEY_TD_CB_PROP_ZZ, KEY_TD_CB_PROP_ZV, KEY_TD_CB_PROP_ZUZ, KEY_TD_CB_PROP_ZUV,
+)
+_CB_TOP_CHORD_PROP_KEYS = make_prop_keys(
+    KEY_TD_CB_TOP_CHORD_PROP_L, KEY_TD_CB_TOP_CHORD_PROP_H, KEY_TD_CB_TOP_CHORD_PROP_B, KEY_TD_CB_TOP_CHORD_PROP_TW, KEY_TD_CB_TOP_CHORD_PROP_TF,
+    KEY_TD_CB_TOP_CHORD_PROP_RZ, KEY_TD_CB_TOP_CHORD_PROP_M, KEY_TD_CB_TOP_CHORD_PROP_A, KEY_TD_CB_TOP_CHORD_PROP_IZ, KEY_TD_CB_TOP_CHORD_PROP_IV,
+    KEY_TD_CB_TOP_CHORD_PROP_RV, KEY_TD_CB_TOP_CHORD_PROP_ZZ, KEY_TD_CB_TOP_CHORD_PROP_ZV, KEY_TD_CB_TOP_CHORD_PROP_ZUZ, KEY_TD_CB_TOP_CHORD_PROP_ZUV,
+)
+_CB_BOTTOM_CHORD_PROP_KEYS = make_prop_keys(
+    KEY_TD_CB_BOTTOM_CHORD_PROP_L, KEY_TD_CB_BOTTOM_CHORD_PROP_H, KEY_TD_CB_BOTTOM_CHORD_PROP_B, KEY_TD_CB_BOTTOM_CHORD_PROP_TW, KEY_TD_CB_BOTTOM_CHORD_PROP_TF,
+    KEY_TD_CB_BOTTOM_CHORD_PROP_RZ, KEY_TD_CB_BOTTOM_CHORD_PROP_M, KEY_TD_CB_BOTTOM_CHORD_PROP_A, KEY_TD_CB_BOTTOM_CHORD_PROP_IZ, KEY_TD_CB_BOTTOM_CHORD_PROP_IV,
+    KEY_TD_CB_BOTTOM_CHORD_PROP_RV, KEY_TD_CB_BOTTOM_CHORD_PROP_ZZ, KEY_TD_CB_BOTTOM_CHORD_PROP_ZV, KEY_TD_CB_BOTTOM_CHORD_PROP_ZUZ, KEY_TD_CB_BOTTOM_CHORD_PROP_ZUV,
+)
 
 
 _ED_DIAG_PROP_KEYS = make_prop_keys(
@@ -1032,18 +1292,6 @@ class EndDiaphragmForces:
 
         # 2. Key mapping function for end diaphragm details
         def make_pair_key(key: str, pair_id: str) -> str:
-            for pfx in (
-                "transverse_member_design.ed.section_properties.end_diaphragm",
-                "transverse_member_design.ed.section_properties.top_chord",
-                "transverse_member_design.ed.section_properties.bottom_chord",
-            ):
-                if key.startswith(pfx):
-                    suffix = key[len(pfx):].lstrip(".")
-                    return f"{pfx}.{pair_id}.{suffix}"
-            pfx = "member_properties.end_diaphragm_details"
-            if key.startswith(pfx):
-                suffix = key[len(pfx):].lstrip(".")
-                return f"{pfx}.{pair_id}.{suffix}"
             return f"{key}.{pair_id}"
 
         # 3. Resolve possible intermediate girder pairs
@@ -1258,7 +1506,8 @@ class EndDiaphragmForces:
                     if diag_details:
                         populate_section_properties(
                             bridge.output_dict, make_pair_key, pair_id, diag_details,
-                            "member_properties.end_diaphragm_details.diagonal", _ED_DIAG_PROP_KEYS,
+                            _ED_DIAG_PROP_KEYS, section_type_key=KEY_MP_ED_BRACING_SECTION,
+                            leg_keys=(KEY_MP_ED_DIAGONAL_LEG_H, KEY_MP_ED_DIAGONAL_LEG_W, KEY_MP_ED_DIAGONAL_THICKNESS),
                         )
 
                 # Populate chords
@@ -1268,7 +1517,8 @@ class EndDiaphragmForces:
                     if chord_details:
                         populate_section_properties(
                             bridge.output_dict, make_pair_key, pair_id, chord_details,
-                            "member_properties.end_diaphragm_details.top_chord", _ED_TOP_CHORD_PROP_KEYS,
+                            _ED_TOP_CHORD_PROP_KEYS, section_type_key=KEY_MP_ED_TOP_CHORD_SECTION_TYPE,
+                            leg_keys=(KEY_MP_ED_TOP_CHORD_LEG_H, KEY_MP_ED_TOP_CHORD_LEG_W, KEY_MP_ED_TOP_CHORD_THICKNESS),
                         )
 
                 if bottom_chord_enabled and bottom_chord_des:
@@ -1277,7 +1527,8 @@ class EndDiaphragmForces:
                     if chord_details:
                         populate_section_properties(
                             bridge.output_dict, make_pair_key, pair_id, chord_details,
-                            "member_properties.end_diaphragm_details.bottom_chord", _ED_BOTTOM_CHORD_PROP_KEYS,
+                            _ED_BOTTOM_CHORD_PROP_KEYS, section_type_key=KEY_MP_ED_BOTTOM_CHORD_SECTION_TYPE,
+                            leg_keys=(KEY_MP_ED_BOTTOM_CHORD_LEG_H, KEY_MP_ED_BOTTOM_CHORD_LEG_W, KEY_MP_ED_BOTTOM_CHORD_THICKNESS),
                         )
 
             # -- CASE B: ROLLED BEAM DIAPHRAGM --

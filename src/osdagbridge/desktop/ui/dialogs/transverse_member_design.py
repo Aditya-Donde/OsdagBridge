@@ -19,7 +19,72 @@ from osdagbridge.desktop.ui.utils.styled_scroll_area import StyledScrollArea
 from osdagbridge.core.bridge_types.plate_girder.ui_fields_additional_input import (
     TRANSVERSE_MEMBER_DESIGN_SCHEMA,
 )
-from osdagbridge.core.utils.common import *
+from osdagbridge.core.utils.common import (
+    KEY_TD_MEMBER_ID,
+    KEY_TD_SELECT_GIRDER,
+    KEY_TD_LOAD_COMBINATION,
+    KEY_TD_CB_SECTION_INPUTS_BRACING_TYPE,
+    KEY_TD_CB_SECTION_INPUTS_TOP_CHORD_ENABLED,
+    KEY_TD_CB_SECTION_INPUTS_BOTTOM_CHORD_ENABLED,
+    KEY_TD_CB_SECTION_INPUTS_SPACING,
+    KEY_TD_CB_SECTION_INPUTS_BRACING_SECTION_DESIGNATION,
+    KEY_TD_CB_SECTION_INPUTS_TOP_CHORD_SECTION_DESIGNATION,
+    KEY_TD_CB_SECTION_INPUTS_BOTTOM_CHORD_SECTION_DESIGNATION,
+    KEY_TD_CB_SECTION_INPUTS_DESIGN,
+    KEY_TD_CB_SECTION_INPUTS_NO_OF_CB,
+    KEY_TD_CB_SECTION_INPUTS_CONNECTION_TYPE,
+    KEY_TD_CB_SECTION_INPUTS_BRACING_SECTION_TYPE,
+    KEY_TD_CB_SECTION_INPUTS_TOP_CHORD_SECTION_TYPE,
+    KEY_TD_CB_SECTION_INPUTS_BOTTOM_CHORD_SECTION_TYPE,
+    KEY_TD_ED_SECTION_INPUTS_TYPE,
+    KEY_TD_ED_SECTION_INPUTS_DESIGN,
+    KEY_TD_ED_SECTION_INPUTS_NO_OF_CB,
+    KEY_TD_ED_SECTION_INPUTS_BRACING_TYPE,
+    KEY_TD_ED_SECTION_INPUTS_CONNECTION_TYPE,
+    KEY_TD_ED_SECTION_INPUTS_BRACING_SECTION_TYPE,
+    KEY_TD_ED_SECTION_INPUTS_BRACING_SECTION_DESIGNATION,
+    KEY_TD_ED_SECTION_INPUTS_TOP_CHORD_ENABLED,
+    KEY_TD_ED_SECTION_INPUTS_TOP_CHORD_SECTION_TYPE,
+    KEY_TD_ED_SECTION_INPUTS_TOP_CHORD_SECTION_DESIGNATION,
+    KEY_TD_ED_SECTION_INPUTS_BOTTOM_CHORD_ENABLED,
+    KEY_TD_ED_SECTION_INPUTS_BOTTOM_CHORD_SECTION_TYPE,
+    KEY_TD_ED_SECTION_INPUTS_BOTTOM_CHORD_SECTION_DESIGNATION,
+    KEY_TD_ED_SECTION_INPUTS_IS_SECTION,
+    KEY_TD_ED_SECTION_INPUTS_SYMMETRY,
+    KEY_TD_ED_SECTION_INPUTS_TOTAL_DEPTH,
+    KEY_TD_ED_SECTION_INPUTS_WEB_THICKNESS,
+    KEY_TD_ED_SECTION_INPUTS_TOP_FLANGE_WIDTH,
+    KEY_TD_ED_SECTION_INPUTS_BOTTOM_FLANGE_WIDTH,
+    KEY_TD_ED_SECTION_INPUTS_TOP_FLANGE_THICKNESS,
+    KEY_TD_ED_SECTION_INPUTS_BOTTOM_FLANGE_THICKNESS,
+    KEY_TD_ED_SECTION_PROPS_BRACING,
+    KEY_TD_ED_SECTION_PROPS_TOP_CHORD,
+    KEY_TD_ED_SECTION_PROPS_BOTTOM_CHORD,
+    KEY_TD_ED_DESIGN_CHECK_RESULTS,
+    KEY_TD_ED_BRACING_DIAGRAM,
+    KEY_MP_ED_BRACING_SECTION,
+    KEY_MP_ED_TOP_CHORD_SECTION_TYPE,
+    KEY_MP_ED_BOTTOM_CHORD_SECTION_TYPE,
+    KEY_MP_CB_BRACING_SECTION_DESIGNATION,
+    KEY_MP_CB_BRACING_SECTION_TYPE,
+    KEY_MP_CB_TOP_CHORD_SECTION_DESIG,
+    KEY_MP_CB_TOP_CHORD_SECTION_TYPE,
+    KEY_MP_CB_BOTTOM_CHORD_SECTION_DESIG,
+    KEY_MP_CB_BOTTOM_CHORD_SECTION_TYPE,
+    KEY_MP_CB_TOP_CHORD,
+    KEY_MP_CB_BOTTOM_CHORD,
+    KEY_MP_CB_BRACING_CONNECTION,
+    KEY_MP_ED_BRACING_SECTION_DESIGNATION,
+    KEY_MP_ED_TOP_CHORD_SECTION_DESIG,
+    KEY_MP_ED_BOTTOM_CHORD_SECTION_DESIG,
+    KEY_MP_ED_TOP_CHORD,
+    KEY_MP_ED_BOTTOM_CHORD,
+    KEY_MP_ED_TYPE,
+    KEY_MP_ED_BRACING_TYPE,
+    KEY_MP_CB_NO_OF_CROSS_BRACINGS,
+    KEY_MP_CB_SPACING,
+    KEY_DESIGN_MODE,
+)
 
 # ── Style constants ───────────────────────────────────────────────────────────
 
@@ -895,8 +960,8 @@ class TransverseMemberDesign(QDialog):
             designs_dict: dict = {p: dict(v) for p, v in cb_designs.items()}
             for pair, ed_pair_data in ed_designs.items():
                 pair_id   = pair.replace("-", "")
-                ed_type  = od.get(f"member_properties.end_diaphragm_details.{pair_id}.type") or ""
-                ed_btype = od.get(f"member_properties.end_diaphragm_details.{pair_id}.bracing_type") or ""
+                ed_type  = od.get(f"{KEY_MP_ED_TYPE}.{pair_id}") or ""
+                ed_btype = od.get(f"{KEY_MP_ED_BRACING_TYPE}.{pair_id}") or ""
                 entry = designs_dict.setdefault(pair, {})
                 # Only attach ED metadata if real ED design exists
                 # ALWAYS store ED type metadata (UI needs this)
@@ -1054,17 +1119,17 @@ class TransverseMemberDesign(QDialog):
         # "Channel" left over from a Custom run next to a designed angle).
         diag_type_lbl = self._resolve_section(
             self._section_type_label(
-                od.get(f"member_properties.cross_bracing_details.{pair_id}.diagonal.section_type", "")),
+                od.get(f"{KEY_MP_CB_BRACING_SECTION_TYPE}.{pair_id}", "")),
             od.get(f"{KEY_MP_CB_BRACING_SECTION_TYPE}{member_suffix}"),
         )
         tc_type_lbl = self._resolve_section(
             self._section_type_label(
-                od.get(f"member_properties.cross_bracing_details.{pair_id}.top_chord.section_type", "")),
+                od.get(f"{KEY_MP_CB_TOP_CHORD_SECTION_TYPE}.{pair_id}", "")),
             od.get(f"{KEY_MP_CB_TOP_CHORD_SECTION_TYPE}{member_suffix}"),
         )
         bc_type_lbl = self._resolve_section(
             self._section_type_label(
-                od.get(f"member_properties.cross_bracing_details.{pair_id}.bottom_chord.section_type", "")),
+                od.get(f"{KEY_MP_CB_BOTTOM_CHORD_SECTION_TYPE}.{pair_id}", "")),
             od.get(f"{KEY_MP_CB_BOTTOM_CHORD_SECTION_TYPE}{member_suffix}"),
         )
 
@@ -1164,17 +1229,16 @@ class TransverseMemberDesign(QDialog):
             # Section types follow the same mode rule as the designations, so
             # the type and designation shown never disagree (e.g. a "Channel"
             # left over from a Custom run next to a designed angle).
-            _ed_pfx = f"member_properties.end_diaphragm_details.{pair_id}"
             diag_type_lbl = self._resolve_section(
-                self._section_type_label(od.get(f"{_ed_pfx}.diagonal.section_type", "")),
+                self._section_type_label(od.get(f"{KEY_MP_ED_BRACING_SECTION}.{pair_id}", "")),
                 od.get(f"{KEY_MP_ED_BRACING_SECTION}{e_suffix}", ""),
             )
             tc_type_lbl = self._resolve_section(
-                self._section_type_label(od.get(f"{_ed_pfx}.top_chord.section_type", "")),
+                self._section_type_label(od.get(f"{KEY_MP_ED_TOP_CHORD_SECTION_TYPE}.{pair_id}", "")),
                 od.get(f"{KEY_MP_ED_TOP_CHORD_SECTION_TYPE}{e_suffix}", ""),
             )
             bc_type_lbl = self._resolve_section(
-                self._section_type_label(od.get(f"{_ed_pfx}.bottom_chord.section_type", "")),
+                self._section_type_label(od.get(f"{KEY_MP_ED_BOTTOM_CHORD_SECTION_TYPE}.{pair_id}", "")),
                 od.get(f"{KEY_MP_ED_BOTTOM_CHORD_SECTION_TYPE}{e_suffix}", ""),
             )
 
