@@ -2419,8 +2419,10 @@ class DCREngine:
                              d.delta_live_mm, c.defl_limit_live_mm, "mm",
                              note="Limit = L/800")
 
-        # Total deflection: only for DL+LL combination (DL=SW+DC+SIDL, not DW).
-        if _dl_ll and d.delta_total_mm > 0:
+        # Total deflection: only for DL+LL combination (DL=SW+DC+SIDL, not DW). Gated on the
+        # LIMIT, not the value — a large camber clamps the sag to 0 mm, and 0 is a real result
+        # that must still be shown (same reasoning as check 18 below).
+        if _dl_ll and c.defl_limit_total_mm > 0:
             self._add_check(14, "SLS Deflection (Total)", "Cl.604.3.2",
                              d.delta_total_mm, c.defl_limit_total_mm, "mm",
                              note="Limit = L/600")
