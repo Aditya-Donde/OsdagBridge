@@ -2391,11 +2391,12 @@ CROSS_BRACING_DETAILS_SCHEMA = {
                     "choices": VALUES_CROSS_BRACING_TYPE,
                 }]},
                 {"fields": [{
+                    # Welded is not wired to an Osdag design module yet, so the
+                    # only selectable connection is Bolted.
                     "id":      KEY_MP_CB_BRACING_CONNECTION,
                     "label":   "Type of Connection:",
                     "type":    TYPE_COMBOBOX,
-                    "choices": ["Bolted", "Welded"],
-                    "enabled_choices": ["Bolted"],
+                    "choices": ["Bolted"],
                 }]},
 
                 # ── Bracing section ──────────────────────────────────────────
@@ -2591,11 +2592,12 @@ END_DIAPHRAGM_DETAILS_SCHEMA = {
                 },
                 {
                     "fields": [{
+                        # Welded is not wired to an Osdag design module yet, so
+                        # the only selectable connection is Bolted.
                         "id": KEY_MP_ED_BRACING_CONNECTION,
                         "label": "Type of Connection:",
                         "type": TYPE_COMBOBOX,
-                        "choices": ["Bolted", "Welded"],
-                        "enabled_choices": ["Bolted"],
+                        "choices": ["Bolted"],
                     }],
                 },
                 {

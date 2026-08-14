@@ -189,17 +189,20 @@ def _apply_section_override(design_dict: dict, override: Optional[dict]) -> None
         design_dict["Conn_Location"] = conn_loc
 
 
-def brace_geometry(D: float, s: float, brace_type: str, h_val: float | None = None) -> dict:
+def brace_geometry(D: float, s: float, brace_type: str, depth_ratio: float) -> dict:
     """
-    Shared X/K-brace geometry: clear web height, diagonal horizontal projection,
-    length and cos(alpha).
+    Shared X/K-brace geometry: clear height, diagonal horizontal projection,
+    length and cos(alpha). Used by both CrossBracingForces (mid-span panels)
+    and EndDiaphragmForces (support-line diaphragms) — same formula, only the
+    force source (chain Vz vs edge-element Vz) differs between the two.
     """
+    h = D * depth_ratio
     horiz_proj = s if brace_type in (BRACE_X, "X-Bracing") else s / 2.0
-    L_d = math.sqrt(horiz_proj ** 2 + h_val ** 2)
-    alpha_rad = math.atan2(h_val, horiz_proj)
+    L_d = math.sqrt(horiz_proj ** 2 + h ** 2)
+    alpha_rad = math.atan2(h, horiz_proj)
     cos_alpha = math.cos(alpha_rad)
     return {
-        "h": h_val, "horiz_proj": horiz_proj, "L_d": L_d,
+        "h": h, "horiz_proj": horiz_proj, "L_d": L_d,
         "alpha_rad": alpha_rad, "cos_alpha": cos_alpha,
     }
 
@@ -288,12 +291,24 @@ class CrossBracingForces:
     def __init__(
         self,
         bridge,
+        brace_type:    Optional[str]   = None,
+        top_chord:     Optional[bool]  = None,
+        bottom_chord:  Optional[bool]  = None,
+        cb_spacing:    Optional[float] = None,
         depth_ratio:   float = 0.85,
         include_edge_beams: bool = False,
     ):
         self.bridge = bridge
         self.depth_ratio = depth_ratio
         self.include_edge_beams = include_edge_beams
+
+        # Explicit overrides (constructor args) apply to every pair; None means
+        # "read this pair's own input dict value" — brace type and chords are
+        # independent per girder pair (G1-G2 can be K-Bracing, G2-G3 X-Bracing).
+        self._override_brace_type   = brace_type
+        self._override_top_chord    = top_chord
+        self._override_bottom_chord = bottom_chord
+        self._override_cb_spacing   = cb_spacing
 
         # Per-pair config, keyed by the no-dash pair id used in input keys
         # (e.g. "G2G3"). Populated lazily per pair the first time it's needed,
@@ -324,15 +339,30 @@ class CrossBracingForces:
         inp = getattr(self.bridge, "input_dict", {}) or {}
         pair_id = self._pair_id(girder_pair)
 
-        # Stored per member as "K-Bracing" / "X-Bracing" (legacy: flat "K"/"X")
-        raw = str(_cb(inp, KEY_MP_CB_TYPE, "", pair=pair_id) or "").strip().upper()
-        brace_type = BRACE_K if raw.startswith(BRACE_K) else BRACE_X
+        if self._override_brace_type is not None:
+            raw = str(self._override_brace_type).strip().upper()
+        else:
+            # Stored per member as "K-Bracing" / "X-Bracing" (legacy: flat "K"/"X")
+            raw = str(_cb(inp, KEY_MP_CB_TYPE, "", pair=pair_id) or "").strip().upper()
 
-        val = _cb(inp, KEY_MP_CB_TOP_CHORD, True, pair=pair_id)
-        top_chord = str(val).strip().lower() not in ("no", "false", "0")
+        if raw.startswith(BRACE_K):
+            brace_type = BRACE_K
+        elif raw.startswith(BRACE_X):
+            brace_type = BRACE_X
+        else:
+            brace_type = BRACE_X  # fallback when the UI never set a brace type
 
-        val = _cb(inp, KEY_MP_CB_BOTTOM_CHORD, True, pair=pair_id)
-        bottom_chord = str(val).strip().lower() not in ("no", "false", "0")
+        if self._override_top_chord is not None:
+            top_chord = bool(self._override_top_chord)
+        else:
+            val = _cb(inp, KEY_MP_CB_TOP_CHORD, True, pair=pair_id)
+            top_chord = str(val).strip().lower() not in ("no", "false", "0")
+
+        if self._override_bottom_chord is not None:
+            bottom_chord = bool(self._override_bottom_chord)
+        else:
+            val = _cb(inp, KEY_MP_CB_BOTTOM_CHORD, True, pair=pair_id)
+            bottom_chord = str(val).strip().lower() not in ("no", "false", "0")
 
         cfg = {
             "brace_type":   brace_type,
@@ -360,16 +390,31 @@ class CrossBracingForces:
         )
         inp = getattr(self.bridge, "input_dict", {}) or {}
 
-        cb_spacing = float(_cb(inp, KEY_MP_CB_SPACING, pair=pair_id))
-        count = int(_cb(inp, KEY_MP_CB_NO_OF_CROSS_BRACINGS, 0, pair=pair_id))
+        if self._override_cb_spacing is not None:
+            cb_spacing = float(self._override_cb_spacing)
+        else:
+            spacing = _cb(inp, KEY_MP_CB_SPACING, pair=pair_id)
+            if not spacing:
+                # Recompute from span / (count + 1) — same formula the UI uses.
+                try:
+                    span  = float(inp.get(KEY_SPAN) or 0)
+                    count = int(float(str(_cb(inp, KEY_MP_CB_NO_OF_CROSS_BRACINGS, 0, pair=pair_id) or 0)))
+                except (TypeError, ValueError):
+                    span, count = 0.0, 0
+                spacing = span / (count + 1) if span > 0 and count > 0 else 0.0
+            cb_spacing = float(spacing or 3.0)
+
+        try:
+            count = int(float(str(_cb(inp, KEY_MP_CB_NO_OF_CROSS_BRACINGS, 0, pair=pair_id) or 0)))
+        except (TypeError, ValueError):
+            count = 0
 
         # --- Girder section dimensions (metres) ---
         # Representative (first) girder; resolve_girder_value tolerates both the
         # per-girder dynamic keys and legacy scalar keys.
         D = float(_gv(inp, KEY_MP_GIRDER_DEPTH))
-        h = float(_gv(inp, KEY_MP_GIRDER_WEB_DEPTH))
         s = float(inp[KEY_TS_GIRDER_SPACING])
-        geom = brace_geometry(D, s, brace_type, h_val=h)
+        geom = brace_geometry(D, s, brace_type, self.depth_ratio)
 
         return {"D": D, "s": s, "cb_spacing": cb_spacing, "no_of_cross_bracings": count, **geom}
 
@@ -859,236 +904,10 @@ class CrossBracingForces:
             print(df.to_string(index=False))
         print("=" * 95)
 
-    def design(self) -> dict:
-        """
-        Run Osdag member designs for cross-bracing members (diagonals/chords)
-        and populate section properties into bridge.output_dict.
-
-        Mutates ``self.bridge.output_dict`` and returns the pair -> member ->
-        force_type -> Osdag result dict (also cached on
-        ``self.bridge.crossbracing_design_results``).
-        """
-        bridge = self.bridge
-
-        if not bridge.result_data:
-            print("[CrossBracing] No analysis results available — skipping.")
-            return {}
-
-        if not self.get_crossbracing_count():
-            print("[CrossBracing] No cross-bracing panels found — skipping.")
-            return {}
-
-        forces_dict = self.get_design_forces_dict()
-        if not forces_dict or not forces_dict.get("pairs"):
-            return {}
-
-        self.print_critical_forces(forces_dict)
-
-        # Resolve all possible intermediate girder pairs
-        n_girders = int(bridge.input_dict[KEY_TS_NO_OF_GIRDERS])
-        pairs = [f"G{i}-G{i+1}" for i in range(1, n_girders)]
-
-        # In Custom mode the user picked the sections in Additional Inputs —
-        # restrict each Osdag design to that section instead of optimizing.
-        is_custom = str(bridge.input_dict.get(KEY_DESIGN_MODE, "Optimized")).strip().lower() in {"custom", "customized"}
-        custom_sections = None
-        if is_custom:
-            custom_sections = {}
-            for i in range(1, n_girders):
-                suffix = f".G{i}G{i+1}.B{i}M1"
-                top_chord = {
-                    "designation":  bridge.input_dict.get(KEY_MP_CB_TOP_CHORD_SECTION_DESIG + suffix),
-                    "section_type": bridge.input_dict.get(KEY_MP_CB_TOP_CHORD_SECTION_TYPE + suffix),
-                }
-                bottom_chord = {
-                    "designation":  bridge.input_dict.get(KEY_MP_CB_BOTTOM_CHORD_SECTION_DESIG + suffix),
-                    "section_type": bridge.input_dict.get(KEY_MP_CB_BOTTOM_CHORD_SECTION_TYPE + suffix),
-                }
-                custom_sections[f"G{i}-G{i+1}"] = {
-                    "diagonal": {
-                        "designation":  bridge.input_dict.get(KEY_MP_CB_BRACING_SECTION_DESIGNATION + suffix),
-                        "section_type": bridge.input_dict.get(KEY_MP_CB_BRACING_SECTION_TYPE + suffix),
-                    },
-                    "top_chord":    top_chord,
-                    "bottom_chord": bottom_chord,
-                }
-
-        from osdagbridge.core.utils.logger import bridge_logger
-        bridge_logger.check_cancel()
-        pair_designs = self.run_member_designs(forces_dict, custom_sections=custom_sections)
-        bridge.output_dict["crossbracing_forces_dict"] = forces_dict
-
-        from osdagbridge.core.bridge_types.plate_girder.results_data import (
-            enrich_crossbracing_dump,
-            _extract_osdag_summary,
-        )
-        enrich_crossbracing_dump(pair_designs)
-        self._print_crossbracing_design_results(forces_dict, pair_designs)
-
-        def make_pair_key(key: str, pair_id: str) -> str:
-            for pfx in (
-                "transverse_member_design.cb.section_properties.bracing",
-                "transverse_member_design.cb.section_properties.top_chord",
-                "transverse_member_design.cb.section_properties.bottom_chord",
-            ):
-                if key.startswith(pfx):
-                    suffix = key[len(pfx):].lstrip(".")
-                    return f"{pfx}.{pair_id}.{suffix}"
-            pfx = "member_properties.cross_bracing_details"
-            if key.startswith(pfx):
-                suffix = key[len(pfx):].lstrip(".")
-                return f"{pfx}.{pair_id}.{suffix}"
-            return f"{key}.{pair_id}"
-
-        # Initialize keys to None for all pairs (both brace & chords)
-        for pair in pairs:
-            pair_id = pair.replace("-", "")
-
-            bridge.output_dict[make_pair_key(KEY_MP_CB_TYPE, pair_id)] = \
-                forces_dict.get("brace_type", {}).get(pair, "X")
-            bridge.output_dict[make_pair_key(KEY_MP_CB_TOP_CHORD, pair_id)] = \
-                forces_dict.get("top_chord", {}).get(pair, True)
-            bridge.output_dict[make_pair_key(KEY_MP_CB_BOTTOM_CHORD, pair_id)] = \
-                forces_dict.get("bottom_chord", {}).get(pair, True)
-
-            for k in _CB_DIAG_PROP_KEYS.values():
-                bridge.output_dict[make_pair_key(k, pair_id)] = None
-            for k in _CB_TOP_CHORD_PROP_KEYS.values():
-                bridge.output_dict[make_pair_key(k, pair_id)] = None
-            for k in _CB_BOTTOM_CHORD_PROP_KEYS.values():
-                bridge.output_dict[make_pair_key(k, pair_id)] = None
-
-        for pair in pairs:
-            pair_id = pair.replace("-", "")
-            member_designs = pair_designs.get(pair, {}) if pair_designs else {}
-            _pm = re.match(r"G(\d+)G\d+", pair_id)
-            member_suffix = f".{pair_id}.B{_pm.group(1)}M1" if _pm else ""
-
-            top_chord_enabled = forces_dict.get("top_chord", {}).get(pair, True)
-            bottom_chord_enabled = forces_dict.get("bottom_chord", {}).get(pair, True)
-
-            diag_des = ""
-            diag_data = member_designs.get("diagonal", {})
-            for force_type in ("tension", "compression"):
-                res = _extract_osdag_summary(diag_data.get(force_type) or {})
-                sec = res.get("section")
-                if sec:
-                    diag_des = str(sec)
-                    break
-            if not diag_des:
-                diag_des = str(bridge.input_dict.get(
-                    f"{KEY_MP_CB_BRACING_SECTION_DESIGNATION}{member_suffix}") or "")
-
-            def _designed_section(member: str) -> str:
-                data = member_designs.get(member) or member_designs.get("chord", {})
-                for force_type in ("tension", "compression"):
-                    res = _extract_osdag_summary(data.get(force_type) or {})
-                    sec = res.get("section")
-                    if sec:
-                        return str(sec)
-                return ""
-
-            top_chord_des = _designed_section("top_chord") or str(
-                bridge.input_dict.get(f"{KEY_MP_CB_TOP_CHORD_SECTION_DESIG}{member_suffix}") or ""
-            )
-            bottom_chord_des = _designed_section("bottom_chord") or str(
-                bridge.input_dict.get(f"{KEY_MP_CB_BOTTOM_CHORD_SECTION_DESIG}{member_suffix}") or ""
-            )
-
-            if diag_des:
-                bridge.output_dict[make_pair_key(KEY_MP_CB_BRACING_SECTION_DESIGNATION, pair_id)] = diag_des
-                diag_details = bridge._query_crossbracing_section(diag_des)
-                if diag_details:
-                    populate_section_properties(
-                        bridge.output_dict, make_pair_key, pair_id, diag_details,
-                        "member_properties.cross_bracing_details.diagonal", _CB_DIAG_PROP_KEYS,
-                    )
-
-            top_details = None
-            if top_chord_enabled and top_chord_des:
-                top_details = bridge._query_crossbracing_section(top_chord_des)
-                if top_details:
-                    bridge.output_dict[make_pair_key(KEY_MP_CB_TOP_CHORD_SECTION_DESIG, pair_id)] = top_chord_des
-                    populate_section_properties(
-                        bridge.output_dict, make_pair_key, pair_id, top_details,
-                        "member_properties.cross_bracing_details.top_chord", _CB_TOP_CHORD_PROP_KEYS,
-                    )
-
-            if bottom_chord_enabled and bottom_chord_des:
-                bc_details = top_details if (top_chord_des == bottom_chord_des and top_details) \
-                             else bridge._query_crossbracing_section(bottom_chord_des)
-                if bc_details:
-                    bridge.output_dict[make_pair_key(KEY_MP_CB_BOTTOM_CHORD_SECTION_DESIG, pair_id)] = bottom_chord_des
-                    populate_section_properties(
-                        bridge.output_dict, make_pair_key, pair_id, bc_details,
-                        "member_properties.cross_bracing_details.bottom_chord", _CB_BOTTOM_CHORD_PROP_KEYS,
-                    )
-
-        bridge.crossbracing_design_results = pair_designs
-        return pair_designs
-
-    @staticmethod
-    def _print_crossbracing_design_results(forces_dict: dict, pair_designs: dict) -> None:
-        from osdagbridge.core.bridge_types.plate_girder.results_data import _extract_osdag_summary
-
-        sep = "=" * 75
-        print(f"\n{sep}")
-        print(f"{'CROSS BRACING — OSDAG DESIGN RESULTS':^75}")
-        print(sep)
-
-        for pair, vals in forces_dict.get("pairs", {}).items():
-            designs = pair_designs.get(pair, {})
-            print(f"  Pair : {pair}")
-
-            _chords = [m for m in ("chord", "top_chord", "bottom_chord") if m in designs] or ["chord"]
-            for label, t_key, c_key, member in (
-                [("Diagonal", "diag_tension_kN", "diag_compression_kN", "diagonal")]
-                + [(m.replace("_", " ").title(), "chord_tension_kN", "chord_compression_kN", m)
-                   for m in _chords]
-            ):
-                member_designs = designs.get(member, {})
-                for force_type, force_key in (("Tension", t_key), ("Compression", c_key)):
-                    force_kn = vals.get(force_key)
-                    if force_kn is None:
-                        continue
-                    res  = _extract_osdag_summary(member_designs.get(force_type.lower()) or {})
-                    sec  = res.get("section")     or "—"
-                    cap  = res.get("capacity_kN") or "—"
-                    eff  = res.get("efficiency")
-                    slnd = res.get("slenderness")
-                    conn = res.get("connection")  or "—"
-
-                    eff_str  = f"  eff={float(eff):.2f}" if eff  not in (None, "") else ""
-                    slnd_str = f"  λ={float(slnd):.1f}"  if slnd not in (None, "") else ""
-
-                    print(
-                        f"    {label:<8} [{force_type:>11}  {force_kn:>8.3f} kN]"
-                        f"  →  {sec}   cap={cap} kN{eff_str}{slnd_str}  {conn}"
-                    )
-
-        print(sep)
-
 
 def make_prop_keys(*consts) -> dict:
     """Zip the 15 _SECTION_PROP_FIELDS names onto a member's KEY_TD_*_PROP_* constants."""
     return dict(zip(_SECTION_PROP_FIELDS.keys(), consts))
-
-
-_CB_DIAG_PROP_KEYS = make_prop_keys(
-    KEY_TD_CB_PROP_L, KEY_TD_CB_PROP_H, KEY_TD_CB_PROP_B, KEY_TD_CB_PROP_TW, KEY_TD_CB_PROP_TF,
-    KEY_TD_CB_PROP_RZ, KEY_TD_CB_PROP_M, KEY_TD_CB_PROP_A, KEY_TD_CB_PROP_IZ, KEY_TD_CB_PROP_IV,
-    KEY_TD_CB_PROP_RV, KEY_TD_CB_PROP_ZZ, KEY_TD_CB_PROP_ZV, KEY_TD_CB_PROP_ZUZ, KEY_TD_CB_PROP_ZUV,
-)
-_CB_TOP_CHORD_PROP_KEYS = make_prop_keys(
-    KEY_TD_CB_TOP_CHORD_PROP_L, KEY_TD_CB_TOP_CHORD_PROP_H, KEY_TD_CB_TOP_CHORD_PROP_B, KEY_TD_CB_TOP_CHORD_PROP_TW, KEY_TD_CB_TOP_CHORD_PROP_TF,
-    KEY_TD_CB_TOP_CHORD_PROP_RZ, KEY_TD_CB_TOP_CHORD_PROP_M, KEY_TD_CB_TOP_CHORD_PROP_A, KEY_TD_CB_TOP_CHORD_PROP_IZ, KEY_TD_CB_TOP_CHORD_PROP_IV,
-    KEY_TD_CB_TOP_CHORD_PROP_RV, KEY_TD_CB_TOP_CHORD_PROP_ZZ, KEY_TD_CB_TOP_CHORD_PROP_ZV, KEY_TD_CB_TOP_CHORD_PROP_ZUZ, KEY_TD_CB_TOP_CHORD_PROP_ZUV,
-)
-_CB_BOTTOM_CHORD_PROP_KEYS = make_prop_keys(
-    KEY_TD_CB_BOTTOM_CHORD_PROP_L, KEY_TD_CB_BOTTOM_CHORD_PROP_H, KEY_TD_CB_BOTTOM_CHORD_PROP_B, KEY_TD_CB_BOTTOM_CHORD_PROP_TW, KEY_TD_CB_BOTTOM_CHORD_PROP_TF,
-    KEY_TD_CB_BOTTOM_CHORD_PROP_RZ, KEY_TD_CB_BOTTOM_CHORD_PROP_M, KEY_TD_CB_BOTTOM_CHORD_PROP_A, KEY_TD_CB_BOTTOM_CHORD_PROP_IZ, KEY_TD_CB_BOTTOM_CHORD_PROP_IV,
-    KEY_TD_CB_BOTTOM_CHORD_PROP_RV, KEY_TD_CB_BOTTOM_CHORD_PROP_ZZ, KEY_TD_CB_BOTTOM_CHORD_PROP_ZV, KEY_TD_CB_BOTTOM_CHORD_PROP_ZUZ, KEY_TD_CB_BOTTOM_CHORD_PROP_ZUV,
-)
 
 
 _ED_DIAG_PROP_KEYS = make_prop_keys(
@@ -1133,9 +952,8 @@ class EndDiaphragmForces:
         inp = getattr(self.bridge, "input_dict", {}) or {}
 
         D = float(_gv(inp, KEY_MP_GIRDER_DEPTH))
-        h = float(_gv(inp, KEY_MP_GIRDER_WEB_DEPTH))
         s = float(inp[KEY_TS_GIRDER_SPACING])
-        geom = brace_geometry(D, s, brace_type, h_val=h)
+        geom = brace_geometry(D, s, brace_type, self.depth_ratio)
         return {"D": D, "s": s, **geom}
 
     def get_pair_forces(self, girder_pair: str, cos_alpha: float) -> dict:
@@ -1393,12 +1211,16 @@ class EndDiaphragmForces:
                             "section_type": bridge.input_dict.get(f"{KEY_MP_ED_BRACING_SECTION}{member_suffix}"),
                         },
                         "top_chord": {
-                            "designation":  bridge.input_dict.get(f"{KEY_MP_ED_TOP_CHORD_SECTION_DESIG}{member_suffix}"),
-                            "section_type": bridge.input_dict.get(f"{KEY_MP_ED_TOP_CHORD_SECTION_TYPE}{member_suffix}"),
+                            "designation":  bridge.input_dict.get(f"{KEY_MP_ED_TOP_CHORD_SECTION_DESIG}{member_suffix}")
+                                            or bridge.input_dict.get(f"{KEY_MP_ED_BOTTOM_CHORD_SECTION_DESIG}{member_suffix}"),
+                            "section_type": bridge.input_dict.get(f"{KEY_MP_ED_TOP_CHORD_SECTION_TYPE}{member_suffix}")
+                                            or bridge.input_dict.get(f"{KEY_MP_ED_BOTTOM_CHORD_SECTION_TYPE}{member_suffix}"),
                         },
                         "bottom_chord": {
-                            "designation":  bridge.input_dict.get(f"{KEY_MP_ED_BOTTOM_CHORD_SECTION_DESIG}{member_suffix}"),
-                            "section_type": bridge.input_dict.get(f"{KEY_MP_ED_BOTTOM_CHORD_SECTION_TYPE}{member_suffix}"),
+                            "designation":  bridge.input_dict.get(f"{KEY_MP_ED_BOTTOM_CHORD_SECTION_DESIG}{member_suffix}")
+                                            or bridge.input_dict.get(f"{KEY_MP_ED_TOP_CHORD_SECTION_DESIG}{member_suffix}"),
+                            "section_type": bridge.input_dict.get(f"{KEY_MP_ED_BOTTOM_CHORD_SECTION_TYPE}{member_suffix}")
+                                            or bridge.input_dict.get(f"{KEY_MP_ED_TOP_CHORD_SECTION_TYPE}{member_suffix}"),
                         },
                     }
 

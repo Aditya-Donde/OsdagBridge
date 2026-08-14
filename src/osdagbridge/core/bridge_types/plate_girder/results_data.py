@@ -623,17 +623,22 @@ def _dump_crossbracing(data: dict) -> None:
 def _extract_osdag_summary(result: dict) -> dict:
     if not result:
         return {}
-    def _first(*keys, as_float: bool = False):
+    def _first(*keys):
         for k in keys:
             v = result.get(k)
-            if v is not None and v != "":
-                if as_float:
-                    try:
-                        return float(v)
-                    except (TypeError, ValueError):
-                        continue
+            if v is not None:
                 return v
         return None
+
+    def _num(v):
+        # Osdag returns these as float OR numeric string ("123.45") depending on
+        # the module/section; coerce so downstream formatting/comparison is safe.
+        if v is None:
+            return None
+        try:
+            return float(v)
+        except (TypeError, ValueError):
+            return None
 
     # A failed Osdag design returns every value as "" (no section satisfied the
     # demand), so "no values" alone cannot tell failure apart from "not run" —
@@ -642,9 +647,9 @@ def _extract_osdag_summary(result: dict) -> dict:
 
     return {
         "section":     _first("section_size.designation", "Optimum.Designation", "Section", "Designation"),
-        "capacity_kN": _first("Member.tension_capacity", "Member.compression_capacity", "Member.capacity", "Design.Strength", "Capacity", as_float=True),
-        "efficiency":  _first("Member.efficiency", "Optimum.UR", "Efficiency", "UR", as_float=True),
-        "slenderness": _first("Member.Slenderness", "Member.slenderness", "Slenderness", as_float=True),
+        "capacity_kN": _num(_first("Member.tension_capacity", "Member.compression_capacity", "Member.capacity", "Design.Strength", "Capacity")),
+        "efficiency":  _num(_first("Member.efficiency", "Optimum.UR", "Efficiency", "UR")),
+        "slenderness": _num(_first("Member.Slenderness", "Member.slenderness", "Slenderness")),
         "connection":  "Welded" if "Weld.Type" in result else "Bolted",
         "design_status": bool(status) if status is not None else None,
     }
