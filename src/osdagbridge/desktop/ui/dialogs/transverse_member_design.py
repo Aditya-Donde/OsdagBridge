@@ -19,69 +19,7 @@ from osdagbridge.desktop.ui.utils.styled_scroll_area import StyledScrollArea
 from osdagbridge.core.bridge_types.plate_girder.ui_fields_additional_input import (
     TRANSVERSE_MEMBER_DESIGN_SCHEMA,
 )
-from osdagbridge.core.utils.common import (
-    KEY_TD_MEMBER_ID,
-    KEY_TD_SELECT_GIRDER,
-    KEY_TD_LOAD_COMBINATION,
-    KEY_TD_CB_SECTION_INPUTS_BRACING_TYPE,
-    KEY_TD_CB_SECTION_INPUTS_TOP_CHORD_ENABLED,
-    KEY_TD_CB_SECTION_INPUTS_BOTTOM_CHORD_ENABLED,
-    KEY_TD_CB_SECTION_INPUTS_SPACING,
-    KEY_TD_CB_SECTION_INPUTS_BRACING_SECTION_DESIGNATION,
-    KEY_TD_CB_SECTION_INPUTS_TOP_CHORD_SECTION_DESIGNATION,
-    KEY_TD_CB_SECTION_INPUTS_BOTTOM_CHORD_SECTION_DESIGNATION,
-    KEY_TD_CB_SECTION_INPUTS_DESIGN,
-    KEY_TD_CB_SECTION_INPUTS_NO_OF_CB,
-    KEY_TD_CB_SECTION_INPUTS_CONNECTION_TYPE,
-    KEY_TD_CB_SECTION_INPUTS_BRACING_SECTION_TYPE,
-    KEY_TD_CB_SECTION_INPUTS_TOP_CHORD_SECTION_TYPE,
-    KEY_TD_CB_SECTION_INPUTS_BOTTOM_CHORD_SECTION_TYPE,
-    KEY_TD_ED_SECTION_INPUTS_TYPE,
-    KEY_TD_ED_SECTION_INPUTS_DESIGN,
-    KEY_TD_ED_SECTION_INPUTS_NO_OF_CB,
-    KEY_TD_ED_SECTION_INPUTS_BRACING_TYPE,
-    KEY_TD_ED_SECTION_INPUTS_CONNECTION_TYPE,
-    KEY_TD_ED_SECTION_INPUTS_BRACING_SECTION_TYPE,
-    KEY_TD_ED_SECTION_INPUTS_BRACING_SECTION_DESIGNATION,
-    KEY_TD_ED_SECTION_INPUTS_TOP_CHORD_ENABLED,
-    KEY_TD_ED_SECTION_INPUTS_TOP_CHORD_SECTION_TYPE,
-    KEY_TD_ED_SECTION_INPUTS_TOP_CHORD_SECTION_DESIGNATION,
-    KEY_TD_ED_SECTION_INPUTS_BOTTOM_CHORD_ENABLED,
-    KEY_TD_ED_SECTION_INPUTS_BOTTOM_CHORD_SECTION_TYPE,
-    KEY_TD_ED_SECTION_INPUTS_BOTTOM_CHORD_SECTION_DESIGNATION,
-    KEY_TD_ED_SECTION_INPUTS_IS_SECTION,
-    KEY_TD_ED_SECTION_INPUTS_SYMMETRY,
-    KEY_TD_ED_SECTION_INPUTS_TOTAL_DEPTH,
-    KEY_TD_ED_SECTION_INPUTS_WEB_THICKNESS,
-    KEY_TD_ED_SECTION_INPUTS_TOP_FLANGE_WIDTH,
-    KEY_TD_ED_SECTION_INPUTS_BOTTOM_FLANGE_WIDTH,
-    KEY_TD_ED_SECTION_INPUTS_TOP_FLANGE_THICKNESS,
-    KEY_TD_ED_SECTION_INPUTS_BOTTOM_FLANGE_THICKNESS,
-    KEY_TD_ED_SECTION_PROPS_BRACING,
-    KEY_TD_ED_SECTION_PROPS_TOP_CHORD,
-    KEY_TD_ED_SECTION_PROPS_BOTTOM_CHORD,
-    KEY_TD_ED_DESIGN_CHECK_RESULTS,
-    KEY_TD_ED_BRACING_DIAGRAM,
-    KEY_MP_ED_BRACING_SECTION,
-    KEY_MP_ED_TOP_CHORD,
-    KEY_MP_ED_BOTTOM_CHORD,
-    KEY_MP_ED_TOP_CHORD_SECTION_TYPE,
-    KEY_MP_ED_BOTTOM_CHORD_SECTION_TYPE,
-    KEY_DESIGN_MODE,
-    KEY_MP_ED_BRACING_SECTION_DESIGNATION,
-    KEY_MP_ED_TOP_CHORD_SECTION_DESIG,
-    KEY_MP_ED_BOTTOM_CHORD_SECTION_DESIG,
-    KEY_MP_CB_NO_OF_CROSS_BRACINGS,
-    KEY_MP_CB_TOP_CHORD,
-    KEY_MP_CB_BOTTOM_CHORD,
-    KEY_MP_CB_BRACING_CONNECTION,
-    KEY_MP_CB_BRACING_SECTION_TYPE,
-    KEY_MP_CB_BRACING_SECTION_DESIGNATION,
-    KEY_MP_CB_TOP_CHORD_SECTION_TYPE,
-    KEY_MP_CB_TOP_CHORD_SECTION_DESIG,
-    KEY_MP_CB_BOTTOM_CHORD_SECTION_TYPE,
-    KEY_MP_CB_BOTTOM_CHORD_SECTION_DESIG,
-)
+from osdagbridge.core.utils.common import *
 
 # ── Style constants ───────────────────────────────────────────────────────────
 
@@ -972,59 +910,16 @@ class TransverseMemberDesign(QDialog):
                     entry["ed_designs"] = ed_pair_data
 
             self._backend = backend
-            members_per_pair = self._compute_members_per_pair(backend, forces_dict)
-            self.load_data(forces_dict, designs_dict, members_per_pair, all_lcs=all_lcs)
+            self.load_data(forces_dict, designs_dict, all_lcs=all_lcs)
         except Exception as e:
             import traceback
             print(f"[TransverseMemberDesign] _try_load_data error: {e}")
             traceback.print_exc()
 
-    def _compute_members_per_pair(self, backend, forces_dict: dict) -> dict[str, int]:
-        pairs = list(forces_dict.get("pairs", {}).keys())
-        if not pairs:
-            return {}
-
-        # Geometry (including spacing) is per-pair — different pairs can have
-        # different cross-bracing spacing.
-        geometry = forces_dict.get("geometry", {})
-
-        span   = None
-        sizing = getattr(backend, "sizing_result", None)
-        if sizing is not None:
-            span = getattr(sizing, "span", None)
-        if span is None:
-            span = float(getattr(backend, "basic_inputs", {}).get("span", 30) or 30)
-        span = float(span)
-
-        # Prefer the user-entered count: the per-pair key when present, else the
-        # flat key the Additional Inputs field writes (the per-pair copies are
-        # only made when the spacing callback fires). The span/spacing
-        # derivation is the last resort.
-        od = getattr(backend, "output_dict", {}) or {}
-
-        def _as_count(value) -> int:
-            try:
-                return int(float(str(value))) if value not in (None, "") else 0
-            except (TypeError, ValueError):
-                return 0
-
-        flat_cnt = _as_count(od.get(KEY_MP_CB_NO_OF_CROSS_BRACINGS))
-        result: dict[str, int] = {}
-        for p in pairs:
-            pair_id = p.replace("-", "")
-            cnt = _as_count(od.get(f"{KEY_MP_CB_NO_OF_CROSS_BRACINGS}.{pair_id}")) or flat_cnt
-            if cnt > 0:
-                result[p] = cnt
-            else:
-                cb_spacing = float(geometry.get(p, {}).get("cb_spacing_m") or 4.0)
-                result[p] = max(1, round(span / cb_spacing) - 1)
-        return result
-
     def load_data(
         self,
         forces_dict:      dict,
         designs_dict:     dict | None = None,
-        members_per_pair: dict | None = None,
         all_lcs:          list[str] | None = None,
     ) -> None:
         if not forces_dict:
@@ -1053,7 +948,11 @@ class TransverseMemberDesign(QDialog):
         # _populate_cb_pair_details, not here.
 
         # members_per_pair tracks how many cross-bracings exist between each girder pair
-        self._members_per_pair = members_per_pair or {p: 1 for p in self._pair_keys}
+        geom_dict = forces_dict.get("geometry", {})
+        self._members_per_pair = {
+            p: int(geom_dict.get(p, {}).get("no_of_cross_bracings", 1))
+            for p in self._pair_keys
+        }
 
         # Populate Load Combination combo — all LCs from backend, or fall back to governing LCs
         load_combo = self._widgets.get(KEY_TD_LOAD_COMBINATION)
@@ -1193,7 +1092,7 @@ class TransverseMemberDesign(QDialog):
             (KEY_TD_CB_SECTION_INPUTS_BRACING_SECTION_TYPE,             diag_type_lbl),
             (KEY_TD_CB_SECTION_INPUTS_TOP_CHORD_SECTION_TYPE,           tc_type),
             (KEY_TD_CB_SECTION_INPUTS_BOTTOM_CHORD_SECTION_TYPE,        bc_type),
-            (KEY_TD_CB_SECTION_INPUTS_BRACING_SECTION_DESIGNATION,      diag_des or ""),
+            (KEY_TD_CB_SECTION_INPUTS_BRACING_SECTION_DESIGNATION,      diag_des),
             (KEY_TD_CB_SECTION_INPUTS_TOP_CHORD_SECTION_DESIGNATION,    tc_des),
             (KEY_TD_CB_SECTION_INPUTS_BOTTOM_CHORD_SECTION_DESIGNATION, bc_des),
         ):
@@ -1305,7 +1204,7 @@ class TransverseMemberDesign(QDialog):
             for fid, val in (
                 (KEY_TD_ED_SECTION_INPUTS_BRACING_TYPE,                  brace_lbl),
                 (KEY_TD_ED_SECTION_INPUTS_BRACING_SECTION_TYPE,          diag_type_lbl),
-                (KEY_TD_ED_SECTION_INPUTS_BRACING_SECTION_DESIGNATION,   diag_des or ""),
+                (KEY_TD_ED_SECTION_INPUTS_BRACING_SECTION_DESIGNATION,   diag_des),
                 (KEY_TD_ED_SECTION_INPUTS_TOP_CHORD_SECTION_TYPE,        tc_type),
                 (KEY_TD_ED_SECTION_INPUTS_TOP_CHORD_SECTION_DESIGNATION, tc_des),
                 (KEY_TD_ED_SECTION_INPUTS_BOTTOM_CHORD_SECTION_TYPE,     bc_type),
