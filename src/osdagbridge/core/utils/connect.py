@@ -82,6 +82,11 @@ def run_calculation(design_dict: Dict[str, Any], quiet: bool = True) -> Dict[str
 
         output_dict = _get_output_dictionary(module_instance)
 
+        # On a failed design Osdag returns every value as "", with no flag to
+        # distinguish "failed" from "not run". Carry the module's own pass/fail
+        # status so consumers can report FAIL instead of N/A.
+        output_dict["design_status"] = bool(module_instance.design_status)
+
         return output_dict
 
 _forkserver_preloaded = False

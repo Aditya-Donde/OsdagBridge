@@ -476,15 +476,28 @@ class ReportDataBridge:
         """
         Extract the _extract_osdag_summary dict for one member.
         pair      e.g. "G1-G2"
-        member    "diagonal" or "chord"
+        member    "diagonal", "chord", "top_chord" or "bottom_chord"
         force_type "tension" or "compression"
+
+        Top and bottom chords are designed separately only when their sections
+        differ; otherwise both share the single "chord" run, so "chord" falls
+        back to the top chord (and vice versa).
         """
         from osdagbridge.core.bridge_types.plate_girder.results_data import _extract_osdag_summary
-        try:
-            raw = self._cb_pair_designs()[pair][member][force_type]
-            return _extract_osdag_summary(raw or {})
-        except (KeyError, TypeError):
-            return {}
+        designs = self._cb_pair_designs().get(pair) or {}
+        candidates = [member]
+        if member == "chord":
+            candidates += ["top_chord", "bottom_chord"]
+        elif member in ("top_chord", "bottom_chord"):
+            candidates.append("chord")
+        for name in candidates:
+            try:
+                raw = designs[name][force_type]
+            except (KeyError, TypeError):
+                continue
+            if raw:
+                return _extract_osdag_summary(raw)
+        return {}
 
     def get_cb_pairs(self) -> list:
         """Return sorted list of girder pair keys e.g. ['G1-G2', 'G2-G3']."""

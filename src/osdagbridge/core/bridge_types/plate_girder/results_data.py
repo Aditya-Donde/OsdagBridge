@@ -640,12 +640,18 @@ def _extract_osdag_summary(result: dict) -> dict:
         except (TypeError, ValueError):
             return None
 
+    # A failed Osdag design returns every value as "" (no section satisfied the
+    # demand), so "no values" alone cannot tell failure apart from "not run" —
+    # run_calculation records the module's own design_status for that.
+    status = result.get("design_status")
+
     return {
         "section":     _first("section_size.designation", "Optimum.Designation"),
         "capacity_kN": _num(_first("Member.tension_capacity", "Design.Strength")),
         "efficiency":  _num(_first("Member.efficiency",       "Optimum.UR")),
         "slenderness": _num(result.get("Member.Slenderness")),
         "connection":  "Welded" if "Weld.Type" in result else "Bolted",
+        "design_status": bool(status) if status is not None else None,
     }
 
 
@@ -675,7 +681,10 @@ def enrich_crossbracing_dump(pair_designs: dict) -> None:
         designs = pair_designs.get(pair, {})
 
         diag_designs  = designs.get("diagonal", {})
-        chord_designs = designs.get("chord",    {})
+        # Top/bottom chords are split into their own entries only when their
+        # sections differ; otherwise both share the single "chord" run.
+        chord_designs = designs.get("chord") or designs.get("top_chord") or \
+                        designs.get("bottom_chord") or {}
 
         if entry.get("critical_tension"):
             entry["critical_tension"]["osdag_diagonal"] = _extract_osdag_summary(

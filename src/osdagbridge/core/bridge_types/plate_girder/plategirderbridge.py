@@ -2503,17 +2503,27 @@ class PlateGirderBridge:
             custom_sections = {}
             for i in range(1, n_girders):
                 suffix = f".G{i}G{i+1}.B{i}M1"
+                # Top and bottom chords are designed against their own sections
+                # (the user can pick a different section/type for each).
+                top_chord = {
+                    "designation":  self.input_dict.get(KEY_MP_CB_TOP_CHORD_SECTION_DESIG + suffix)
+                                    or self.input_dict.get(KEY_MP_CB_BOTTOM_CHORD_SECTION_DESIG + suffix),
+                    "section_type": self.input_dict.get(KEY_MP_CB_TOP_CHORD_SECTION_TYPE + suffix)
+                                    or self.input_dict.get(KEY_MP_CB_BOTTOM_CHORD_SECTION_TYPE + suffix),
+                }
+                bottom_chord = {
+                    "designation":  self.input_dict.get(KEY_MP_CB_BOTTOM_CHORD_SECTION_DESIG + suffix)
+                                    or self.input_dict.get(KEY_MP_CB_TOP_CHORD_SECTION_DESIG + suffix),
+                    "section_type": self.input_dict.get(KEY_MP_CB_BOTTOM_CHORD_SECTION_TYPE + suffix)
+                                    or self.input_dict.get(KEY_MP_CB_TOP_CHORD_SECTION_TYPE + suffix),
+                }
                 custom_sections[f"G{i}-G{i+1}"] = {
                     "diagonal": {
                         "designation":  self.input_dict.get(KEY_MP_CB_BRACING_SECTION_DESIGNATION + suffix),
                         "section_type": self.input_dict.get(KEY_MP_CB_BRACING_SECTION_TYPE + suffix),
                     },
-                    "chord": {
-                        "designation":  self.input_dict.get(KEY_MP_CB_TOP_CHORD_SECTION_DESIG + suffix)
-                                        or self.input_dict.get(KEY_MP_CB_BOTTOM_CHORD_SECTION_DESIG + suffix),
-                        "section_type": self.input_dict.get(KEY_MP_CB_TOP_CHORD_SECTION_TYPE + suffix)
-                                        or self.input_dict.get(KEY_MP_CB_BOTTOM_CHORD_SECTION_TYPE + suffix),
-                    },
+                    "top_chord":    top_chord,
+                    "bottom_chord": bottom_chord,
                 }
 
         bridge_logger.check_cancel()
@@ -2603,21 +2613,29 @@ class PlateGirderBridge:
                 diag_des = str(self.input_dict.get(
                     f"{KEY_MP_CB_BRACING_SECTION_DESIGNATION}{member_suffix}") or "")
 
-            # Chord section designation for this pair
-            chord_des = ""
-            chord_data = member_designs.get("chord", {})
-            for force_type in ("tension", "compression"):
-                res = _extract_osdag_summary(chord_data.get(force_type) or {})
-                sec = res.get("section")
-                if sec:
-                    chord_des = str(sec)
-                    break
-            if not chord_des:
-                chord_des = str(
-                    self.input_dict.get(f"{KEY_MP_CB_TOP_CHORD_SECTION_DESIG}{member_suffix}")
-                    or self.input_dict.get(f"{KEY_MP_CB_BOTTOM_CHORD_SECTION_DESIG}{member_suffix}")
-                    or ""
-                )
+            # Chord section designations — top and bottom are designed against
+            # their own sections when they differ, so resolve each separately
+            # (falling back to the shared "chord" run when they match).
+            def _designed_section(member: str) -> str:
+                data = member_designs.get(member) or member_designs.get("chord", {})
+                for force_type in ("tension", "compression"):
+                    res = _extract_osdag_summary(data.get(force_type) or {})
+                    sec = res.get("section")
+                    if sec:
+                        return str(sec)
+                return ""
+
+            top_chord_des = _designed_section("top_chord") or str(
+                self.input_dict.get(f"{KEY_MP_CB_TOP_CHORD_SECTION_DESIG}{member_suffix}")
+                or self.input_dict.get(f"{KEY_MP_CB_BOTTOM_CHORD_SECTION_DESIG}{member_suffix}")
+                or ""
+            )
+            bottom_chord_des = _designed_section("bottom_chord") or str(
+                self.input_dict.get(f"{KEY_MP_CB_BOTTOM_CHORD_SECTION_DESIG}{member_suffix}")
+                or self.input_dict.get(f"{KEY_MP_CB_TOP_CHORD_SECTION_DESIG}{member_suffix}")
+                or ""
+            )
+            chord_des = top_chord_des or bottom_chord_des
 
             # Query database and populate diagonal section properties
             if diag_des:
@@ -2655,13 +2673,19 @@ class PlateGirderBridge:
                     self.output_dict[make_pair_key(KEY_TD_CB_PROP_ZUZ, pair_id)] = diag_details["Zuz"]
                     self.output_dict[make_pair_key(KEY_TD_CB_PROP_ZUV, pair_id)] = diag_details["Zuv"]
 
-            # Query database and populate top/bottom chords section properties
+            # Query database and populate top/bottom chords section properties.
+            # Top and bottom may be different sections, so each is queried
+            # against its own designation.
             if chord_des:
-                self.output_dict[make_pair_key(KEY_MP_CB_TOP_CHORD_SECTION_DESIG, pair_id)] = chord_des
-                self.output_dict[make_pair_key(KEY_MP_CB_BOTTOM_CHORD_SECTION_DESIG, pair_id)] = chord_des
-                chord_details = self._query_crossbracing_section(chord_des)
-                if chord_details:
+                fallback_details = self._query_crossbracing_section(chord_des)
+                if fallback_details:
                     if top_chord_enabled:
+                        chord_details = (
+                            self._query_crossbracing_section(top_chord_des)
+                            if top_chord_des else None
+                        ) or fallback_details
+                        self.output_dict[make_pair_key(KEY_MP_CB_TOP_CHORD_SECTION_DESIG, pair_id)] = \
+                            top_chord_des or chord_des
                         self.output_dict[make_pair_key("member_properties.cross_bracing_details.top_chord.section_type", pair_id)] = chord_details["type"]
                         tc_h_key = make_pair_key("member_properties.cross_bracing_details.top_chord.leg_h", pair_id)
                         tc_w_key = make_pair_key("member_properties.cross_bracing_details.top_chord.leg_w", pair_id)
@@ -2692,14 +2716,10 @@ class PlateGirderBridge:
                         self.output_dict[make_pair_key(KEY_TD_CB_TOP_CHORD_PROP_ZUV, pair_id)] = chord_details["Zuv"]
 
                     if bottom_chord_enabled:
-                        # The bottom chord may be a different section than the top
-                        # (the single Osdag "chord" design used the top section).
-                        # Prefer the user's bottom-chord section when it differs.
-                        bc_des = str(self.input_dict.get(
-                            f"{KEY_MP_CB_BOTTOM_CHORD_SECTION_DESIG}{member_suffix}") or "").strip()
+                        bc_des = bottom_chord_des
                         bc_details = self._query_crossbracing_section(bc_des) if bc_des else None
                         if not bc_details:
-                            bc_des, bc_details = chord_des, chord_details
+                            bc_des, bc_details = chord_des, fallback_details
                         self.output_dict[make_pair_key(KEY_MP_CB_BOTTOM_CHORD_SECTION_DESIG, pair_id)] = bc_des
 
                         self.output_dict[make_pair_key("member_properties.cross_bracing_details.bottom_chord.section_type", pair_id)] = bc_details["type"]
@@ -3297,9 +3317,11 @@ class PlateGirderBridge:
             designs = pair_designs.get(pair, {})
             print(f"  Pair : {pair}")
 
+            _chords = [m for m in ("chord", "top_chord", "bottom_chord") if m in designs] or ["chord"]
             for label, t_key, c_key, member in (
-                ("Diagonal", "diag_tension_kN",  "diag_compression_kN",  "diagonal"),
-                ("Chord",    "chord_tension_kN", "chord_compression_kN", "chord"),
+                [("Diagonal", "diag_tension_kN", "diag_compression_kN", "diagonal")]
+                + [(m.replace("_", " ").title(), "chord_tension_kN", "chord_compression_kN", m)
+                   for m in _chords]
             ):
                 member_designs = designs.get(member, {})
                 for force_type, force_key in (("Tension", t_key), ("Compression", c_key)):
@@ -3337,9 +3359,11 @@ class PlateGirderBridge:
             designs = pair_designs.get(pair, {})
             print(f"  Pair : {pair}")
 
+            _chords = [m for m in ("chord", "top_chord", "bottom_chord") if m in designs] or ["chord"]
             for label, t_key, c_key, member in (
-                ("Diagonal", "diag_tension_kN",  "diag_compression_kN",  "diagonal"),
-                ("Chord",    "chord_tension_kN", "chord_compression_kN", "chord"),
+                [("Diagonal", "diag_tension_kN", "diag_compression_kN", "diagonal")]
+                + [(m.replace("_", " ").title(), "chord_tension_kN", "chord_compression_kN", m)
+                   for m in _chords]
             ):
                 member_designs = designs.get(member, {})
                 for force_type, force_key in (("Tension", t_key), ("Compression", c_key)):

@@ -686,8 +686,9 @@ class CrossBracingForces:
         custom_sections : dict, optional
             Custom-design-mode section overrides per pair::
 
-                {"G1-G2": {"diagonal": {"designation": ..., "section_type": ...},
-                           "chord":    {...}}, ...}
+                {"G1-G2": {"diagonal":     {"designation": ..., "section_type": ...},
+                           "top_chord":    {...},
+                           "bottom_chord": {...}}, ...}
 
             When given, each design run is restricted to the user-selected
             section instead of optimizing over the full candidate list.
@@ -703,6 +704,10 @@ class CrossBracingForces:
                 },
                 ...
             }
+
+        When the top and bottom chords use different sections, "chord" is
+        replaced by separate "top_chord" and "bottom_chord" entries of the
+        same shape.
         """
         if dev:
             out = Path(__file__).parents[5] / "tools" / "crossbracing_forces_dict.json"
@@ -731,11 +736,23 @@ class CrossBracingForces:
             geom       = all_geometry.get(pair, {})
             L_diag_mm  = round(geom.get("diagonal_length_m", 0) * 1000)
             L_chord_mm = round(geom.get("horiz_proj_m",      0) * 1000)
-            for member, L_mm, t_key, c_key in (
-                ("diagonal", L_diag_mm, "diag_tension_kN",  "diag_compression_kN"),
-                ("chord",    L_chord_mm, "chord_tension_kN", "chord_compression_kN"),
-            ):
-                override = pair_overrides.get(member)
+
+            # Top and bottom chords carry the same force but may be different
+            # sections (the user picks each separately), so each is designed
+            # against its own section. They collapse back to a single "chord"
+            # run when their sections match — the usual case, and always so in
+            # Optimized mode — to avoid duplicating identical Osdag jobs.
+            members = [("diagonal", L_diag_mm, "diag_tension_kN", "diag_compression_kN", "diagonal")]
+            top_ov = pair_overrides.get("top_chord")
+            bot_ov = pair_overrides.get("bottom_chord")
+            if top_ov != bot_ov:
+                members.append(("top_chord",    L_chord_mm, "chord_tension_kN", "chord_compression_kN", "top_chord"))
+                members.append(("bottom_chord", L_chord_mm, "chord_tension_kN", "chord_compression_kN", "bottom_chord"))
+            else:
+                members.append(("chord",        L_chord_mm, "chord_tension_kN", "chord_compression_kN", "top_chord"))
+
+            for member, L_mm, t_key, c_key, ov_key in members:
+                override = pair_overrides.get(ov_key)
                 if vals.get(t_key) is not None:
                     d = copy.deepcopy(design_dict_tension_bolted)
                     d["Load.Axial"]    = str(float(vals[t_key]))
