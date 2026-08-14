@@ -61,6 +61,7 @@ MAX_DECK_THICKNESS = 250  # mm
 DEFAULT_DEPTH_SPAN_RATIO = 18  # D = Span / 18
 MIN_DEPTH_SPAN_RATIO = 25  # D_min = Span / 25 (shallower)
 MAX_DEPTH_SPAN_RATIO = 15  # D_max = Span / 15 (deeper)
+KEY_MAX_CAMBER_M = 4.0  # m
 
 # Plate dimensions are ordered in 10 mm increments, so the empirical depth and
 # flange widths are rounded up to that grid before any property is derived.

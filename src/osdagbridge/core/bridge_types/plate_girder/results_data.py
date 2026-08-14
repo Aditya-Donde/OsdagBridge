@@ -17,6 +17,9 @@ from pathlib import Path
 import openseespy.opensees as ops
 
 from .results_data_post_processing import post_process, FORCE_KEEP, DISP_KEEP
+from .initial_sizing import composite_section_properties
+from osdagbridge.core.utils.codes.irc22_2015 import IRC22_2014
+from osdagbridge.core.utils.common import KEY_COMP_I
 
 
 class LazyLoadcaseResults(Mapping):
@@ -779,21 +782,60 @@ def build_load_effects_cache(result_handler) -> dict:
     return cache
 
 
-def build_deflections_cache(result_handler) -> dict:
+def composite_stiffness_props(config) -> tuple[dict, float]:
+    """Short-term composite section properties + the composite/steel stiffness ratio.
+
+    The grillage is modelled on the BARE STEEL section, so every displacement it
+    reports is a steel-basis value. Dividing by ``I_comp / I_steel`` refers it to
+    the stiffer composite section that actually carries the load — an extraction
+    correction that applies to *every* deflection, which is why it lives here in
+    the results layer and not in the designer.
+
+    Single source of truth: ``build_deflections_cache`` uses it for the cached
+    deflections, and the designer uses it for the per-load-case deflections it
+    reads straight off the dataset — so the two can never disagree.
+
+    Returns ``(props, stiffness_ratio)``. The ratio is floored at 1.0: the
+    composite section is never softer than the bare steel it is built on.
+    """
+    sec, mat, slab, geo = config.section, config.material, config.slab, config.geometry
+    beff_mm = min(geo.span * 1000.0 / 4.0, geo.beam_spacing * 1000.0)
+    mod = IRC22_2014.cl_604_3_modular_ratio(Ecm=mat.Ecm, Kc=0.5)
+    props = composite_section_properties(
+        beff_mm=beff_mm, ds_mm=slab.thickness, h_haunch_mm=slab.haunch_depth,
+        A_steel_mm2=sec.A_steel, Iz_steel_mm4=sec.Iz_steel,
+        y_cg_from_bot_mm=sec.y_cg_from_bot, D_steel_mm=sec.D, n=mod["m_short_term"],
+    )
+    return props, max(props[KEY_COMP_I] / sec.Iz_steel, 1.0)
+
+
+def build_deflections_cache(result_handler, config, result_data) -> dict:
     """
     Pre-compute maximum vertical (y) deflection per girder for:
-      - live load only  (load case "1.0 LL")
+      - live load only  (worst of every vehicle arrangement)
+      - dead load only  (load case "1.0 DL"    = SW+DC+DD+SIDL, not DW)
       - total load      (load case "1.0 DL + 1.0 LL")
+      - per_lc          (that girder's sag in each individual load case)
 
+    All are divided by the composite/steel stiffness ratio (see
+    ``composite_stiffness_props``) so the values leaving here are already on the
+    composite section — the raw grillage numbers are steel-basis and must never
+    be reported as-is. This is the only place that correction is applied, so
+    per-case and summary values cannot drift apart. Camber is NOT applied here:
+    it is a design decision, and the designer layer subtracts it via
+    ``apply_camber_to_deflections_cache``.
     Returns::
 
         {
-            "G1": {"live_mm": 12.3, "total_mm": 25.6},
+            "G1": {"live_mm": 12.3, "total_mm": 25.6, "dl_mm": 13.3,
+                   "per_lc": {"case1": 8.0, "case2": 12.3, ...}},
             "G2": {...},
         }
 
     Values are in mm (converted from metres, which is OpenSees' native unit).
-    Edge-beam girders (EB1/EB2) are skipped; remaining girders are numbered G1…Gn.
+
+    Girders come from ``result_data["girders"]`` (post-processing) — the same skew-safe,
+    transverse-projection source ``_extract_demands`` uses.
     """
     ds = result_handler.ds
     if ds is None:
@@ -804,20 +846,31 @@ def build_deflections_cache(result_handler) -> dict:
 
     all_lcs = [str(lc) for lc in ds.coords["Loadcase"].values]
 
-    # Governing LL case created by create_governing_ll_load_case(partial_safety_factor=1.0)
-    ll_case = next(
-        (lc for lc in all_lcs if lc.strip() == "1.0 LL"),
-        None,
-    )
+    # All individual vehicle positions — NOT the single "1.0 LL" case, which is the position
+    # with the largest moment, not the largest sag. Deflection needs the worst sag per girder,
+    # so take the max over every position; "1.0 LL" alone can under-report it.
+    live_lcs = [str(lc) for lc in result_handler.classify_loadcases()["vehicle_static"]]
+
     # DL + LL combination created by create_dl_ll_combination(dl_factor=1.0, ll_factor=1.0)
     dl_ll_case = next(
         (lc for lc in all_lcs if " DL + " in lc and lc.strip().endswith("LL")
          and not lc.startswith(("BASIC_", "SLS_", "SEISMIC_", "ACCIDENTAL_"))),
         None,
     )
+    # DL-only case created by create_dead_load_combination() — "X.X DL" (no "+").
+    dl_case = next(
+        (lc for lc in all_lcs if lc.strip().upper().endswith(" DL") and "+" not in lc
+         and not lc.startswith(("BASIC_", "SLS_", "SEISMIC_", "ACCIDENTAL_"))),
+        None,
+    )
 
-    g_map, _ = result_handler.build_girders(verbose=False)
+    # Skew-safe girders from post-processing result_data (NOT result_handler.build_girders(),
+    # whose x-equality support detection collapses under skew). Keyed G1..Gn, main girders only.
+    girders  = result_data.get("girders")
     node_set = set(disp_da.coords["Node"].values)
+
+    # Steel-basis → composite-basis correction, applied to every case below.
+    _, stiffness_ratio = composite_stiffness_props(config)
 
     def _max_defl_mm(lc_name: str | None, nodes: list) -> float | None:
         if lc_name is None or not nodes:
@@ -829,21 +882,36 @@ def build_deflections_cache(result_handler) -> dict:
                     continue
                 v = float(disp_da.sel(Loadcase=lc_name, Node=node, Component="y")) * 1000.0
                 vals.append(v)
-            return round(max(abs(v) for v in vals), 3) if vals else None
+            return round(max(abs(v) for v in vals) / stiffness_ratio, 3) if vals else None
         except Exception:
             return None
 
+    def _per_lc_defl(nodes: list) -> dict:
+        # Worst sag for one girder in EVERY load case: {lc: mm}. One vectorised select per
+        # girder (not per node per case), then max|y| over the girder's nodes. Same
+        # composite-basis correction as _max_defl_mm, so per-case and summary values agree.
+        valid = [n for n in nodes if n in node_set]
+        if not valid:
+            return {}
+        da = (abs(disp_da.sel(Node=valid, Component="y")) * 1000.0 / stiffness_ratio).max(dim="Node")
+        return {str(lc): round(float(v), 3)
+                for lc, v in zip(da.coords["Loadcase"].values, da.values)}
+
+    def _max_defl_over_lcs(lc_names: list, nodes: list) -> float | None:
+        # Worst sag for one girder across the given load cases — the max of each case's own max.
+        # Only ever called with live_lcs (the vehicle arrangements); DL, DL+LL and the ULS/SLS
+        # combinations are separate groups and are never passed in here.
+        vals = [v for v in (_max_defl_mm(lc, nodes) for lc in lc_names) if v is not None]
+        return max(vals) if vals else None
+
     cache: dict = {}
-    gi = 1
-    for girder, gdata in g_map.items():
-        if girder.startswith("EB"):
-            continue
-        girder_label = f"G{gi}"
-        gi += 1
-        nodes = gdata.get("path", [])
+    for girder_label, g in girders.items():
+        nodes = g.get("nodes", [])
         cache[girder_label] = {
-            "live_mm":  _max_defl_mm(ll_case,    nodes),
+            "live_mm":  _max_defl_over_lcs(live_lcs, nodes),
             "total_mm": _max_defl_mm(dl_ll_case, nodes),
+            "dl_mm":    _max_defl_mm(dl_case,    nodes),
+            "per_lc":   _per_lc_defl(nodes),
         }
 
     return cache

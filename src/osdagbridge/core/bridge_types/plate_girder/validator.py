@@ -8,6 +8,7 @@ from math import isclose, floor, ceil
 from osdagbridge.core.utils.codes.keyfile import *
 from osdagbridge.core.utils.codes.irc5_2015 import IRC5_2015
 from osdagbridge.core.utils.common import *
+from osdagbridge.core.bridge_types.plate_girder.initial_sizing import KEY_MAX_CAMBER_M
 
 class BridgeInputValidator:
 
@@ -919,9 +920,10 @@ class BridgeInputValidator:
             if inputs.get(KEY_DO_CAMBER_MODE) != "Custom":
                 return None
             v = self._to_float(inputs.get(key))
-            if v is None: return 0, "Camber must be a numeric value."
-            if v < 0:     return 0, "Camber must be between 0 and 4 m."
-            if v > 4:     return 4, "Camber must be between 0 and 4 m."
+            _msg = f"Camber must be between 0 and {KEY_MAX_CAMBER_M:g} m."
+            if v is None:               return 0, "Camber must be a numeric value."
+            if v < 0:                   return 0, _msg
+            if v > KEY_MAX_CAMBER_M:    return KEY_MAX_CAMBER_M, _msg
 
         # ═══DESIGN-OPTIONS-CONT-TAB-VALIDATORS-ENDS═══════════════════════════════════════════════════════
 

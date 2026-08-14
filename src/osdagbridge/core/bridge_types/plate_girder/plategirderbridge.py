@@ -214,6 +214,8 @@ from osdagbridge.core.utils.common import (
     # Deflection check keys (Table 5.10)
     KEY_SD_DEFL_LIVE,
     KEY_SD_DEFL_TOTAL,
+    KEY_SD_DEFL_AFTER_CAMBER,
+    KEY_SD_APPLIED_CAMBER,
     KEY_SD_DEFL_ALLOW_LIVE,
     KEY_SD_DEFL_ALLOW_TOTAL,
     # Stiffener table
@@ -368,6 +370,7 @@ class PlateGirderBridge:
         self.grillage_geometry: GrillageGeometry | None = None
         self.deck_layout: DeckLayoutProperties | None = None
         self.result_data: dict = {}         # flat restructured dataset, set after analysis
+        self._deflections_cache: dict = {}
 
         # Analyser — populated by setup_grillage()
         self.grillage_model: BridgeGrillageModel = BridgeGrillageModel()
@@ -807,10 +810,16 @@ class PlateGirderBridge:
             for _gi, _vals in (self._deflections_cache or {}).items():
                 _live = _vals.get("live_mm")
                 _total = _vals.get("total_mm")
+                _dl = _vals.get("dl_mm")
+                _camber = _vals.get("camber_mm")
                 if _live is not None:
                     self.output_dict[f"{KEY_SD_DEFL_LIVE}.{_gi}"] = round(float(_live), 3)
                 if _total is not None:
                     self.output_dict[f"{KEY_SD_DEFL_TOTAL}.{_gi}"] = round(float(_total), 3)
+                if _dl is not None:
+                    self.output_dict[f"{KEY_SD_DEFL_AFTER_CAMBER}.{_gi}"] = round(float(_dl), 3)
+                if _camber is not None:
+                    self.output_dict[f"{KEY_SD_APPLIED_CAMBER}.{_gi}"] = round(float(_camber), 3)
             
             # Stage 8: 3D CAD & Drawing Generation
             self._run_stage("8", self._stage_cad_generation)
@@ -2426,7 +2435,9 @@ class PlateGirderBridge:
 
     def _run_dcr_checks(self, dataset) -> None:
         """Run structural capacity checks and push DCR percentages to the output dock."""
-        results = PlateGirderAnalysisResults(dataset=dataset, bridge=self.grillage_model)
+        # builds the analysis with the real edge distance so girder labels (EB1/EB2, G1…Gn) line up with the cache.
+        edge_dist = self.get_edge_dist()
+        results = PlateGirderAnalysisResults(dataset=dataset, bridge=self.grillage_model, edge_dist=edge_dist,)
         _, engine, design_results = run_design_check(
             plate_girder_bridge=self,
             analysis_results=results,
@@ -2613,7 +2624,6 @@ class PlateGirderBridge:
             edge_dist=edge_dist,
         )
         self._load_effects_cache = build_load_effects_cache(rh)
-        self._deflections_cache  = build_deflections_cache(rh)
         ch4 = build_forces_summary(rh, self._load_effects_cache)
         self._lc_summary       = ch4["load_cases"]
         self._reaction_summary= ch4["reactions"]
@@ -3162,6 +3172,8 @@ class PlateGirderBridge:
                 V_sls_kN             = lc_demand.get("V_sls_kN",            0.0),
                 delta_live_mm        = lc_demand.get("delta_live_mm",       0.0),
                 delta_total_mm       = lc_demand.get("delta_total_mm",      0.0),
+                delta_dl_mm          = lc_demand.get("delta_dl_mm",         0.0),
+                camber_mm            = lc_demand.get("camber_mm",           0.0),
                 stress_range_MPa     = lc_demand.get("stress_range_MPa",    0.0),
                 shear_range_MPa      = lc_demand.get("shear_range_MPa",     0.0),
                 Mx_kNm               = lc_demand.get("Mx_kNm",              0.0),
@@ -3231,7 +3243,7 @@ class PlateGirderBridge:
             KEY_UTIL_LONG_TRANS_SHEAR:  _max_ids(6, 7, 16, 17),
             KEY_UTIL_FATIGUE:           _max_ids(8, 9),
             KEY_UTIL_STRESS_LIMITATION: _max_ids(10, 11, 12),
-            KEY_UTIL_DEFLECTION_CRACK:  _max_ids(13, 14, 15),
+            KEY_UTIL_DEFLECTION_CRACK:  _max_ids(13, 14, 15, 18),
         }
 
     def get_nodes_members(self) -> tuple[dict, dict]:

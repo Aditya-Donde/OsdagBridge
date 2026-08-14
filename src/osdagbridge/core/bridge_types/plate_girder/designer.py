@@ -12,7 +12,12 @@ from datetime import datetime
 from typing import Dict, List, Optional, Any
 
 from osdagbridge.core.bridge_types.plate_girder.analysis_results import PlateGirderAnalysisResults
+from osdagbridge.core.bridge_types.plate_girder.results_data import (
+    build_deflections_cache,
+    composite_stiffness_props,
+)
 from osdagbridge.core.bridge_types.plate_girder.initial_sizing import (
+    KEY_MAX_CAMBER_M,
     composite_section_properties,
     steel_i_section_properties,
 )
@@ -67,6 +72,62 @@ _fat_w = IRC22_2014.cl_605_3_fatigue_strength(5_000_000, "welded")
 FATIGUE_STRENGTH_ROLLED_MPA = _fat_r["ffn_MPa_used"]   # 118.0
 FATIGUE_STRENGTH_WELDED_MPA = _fat_w["ffn_MPa_used"]   # 92.0
 FATIGUE_SHEAR_STRENGTH_MPA  = _fat_r["tfn_MPa_used"]   # 59.0
+
+MAX_CAMBER_MM = KEY_MAX_CAMBER_M * 1000.0   # buildable camber limit (m → mm)
+
+
+def apply_camber(dl_defl_mm, total_defl_mm, camber_mode, camber_value_m):
+    """Subtract the fabrication camber from one girder's DL and total sag.
+
+    Takes the composite-basis DL and DL+LL sags (mm) from ``build_deflections_cache``,
+    and the camber mode/value from ``config.geometry`` (Deflection Control inputs).
+
+    Camber is the full DL sag in Default mode, or the user value in Custom mode, capped
+    at ``MAX_CAMBER_MM``. It is subtracted from both sags, clamped at zero; live-load sag
+    is untouched. If the cap bites, the residual sag survives so check #18 flags it.
+
+    Returns ``(dl_adj_mm, total_adj_mm, camber_mm)``.
+    """
+    dl = float(dl_defl_mm)
+    total = float(total_defl_mm)
+    mode = str(camber_mode).strip().lower()
+    if mode == "default":
+        camber = max(dl, 0.0)
+    else:
+        camber = max(float(camber_value_m) * 1000.0, 0.0)
+
+    if camber > MAX_CAMBER_MM:
+        camber = MAX_CAMBER_MM
+
+    return max(dl - camber, 0.0), max(total - camber, 0.0), camber
+
+def apply_camber_to_deflections_cache(raw_cache, camber_mode, camber_value_m):
+    """Apply camber to every girder in a deflection cache.
+
+    Takes the ``{girder: {"live_mm", "total_mm", "dl_mm"}}`` cache from
+    ``build_deflections_cache`` (composite-basis, no camber yet), and the camber
+    mode/value from ``config.geometry``.
+
+    Runs ``apply_camber`` per girder — camber is a design decision, so it belongs in this
+    layer, not the results layer. ``live_mm`` passes through; the input is not mutated.
+
+    Returns a new dict with ``dl_mm``/``total_mm`` post-camber and ``camber_mm`` added
+    (3 dp).
+    """
+    out = {}
+    for label, d in raw_cache.items():
+        dl_adj, total_adj, camber_mm = apply_camber(
+            d["dl_mm"], d["total_mm"], camber_mode, camber_value_m
+        )
+        out[label] = {
+            "live_mm":   d.get("live_mm"),
+            "total_mm":  round(total_adj, 3),
+            "dl_mm":     round(dl_adj, 3),
+            "camber_mm": round(camber_mm, 3),
+            "per_lc":    d.get("per_lc", {}),   # per-case sags, no camber (live is uncambered)
+        }
+    return out
+
 
 def _req(value: Any, key: str, source: str) -> Any:
     """Validate that a required value is not None and not an empty string.
@@ -195,6 +256,8 @@ class GeometryConfig:
     beam_type: str = "inner"
     support_type: str = "simply_supported"
     cross_bracing_spacing_m: float = DEFAULT_CROSS_BRACING_SPACING
+    camber_mode: str = field(kw_only=True)
+    camber_value_m: float = 0.0         # metres; only read in Custom mode
 
 
 
@@ -428,6 +491,13 @@ class BridgeConfig:
         else:
             support_type = f"{left_support}-{right_support}".lower().replace(" ", "_")
 
+        # Source: bridge.additional_inputs — the Design Options (Cont.) tab.
+        # Previously: read straight from the flat bridge.input_dict by read_camber_inputs()
+        camber_mode = str(_req(bridge.additional_inputs.get(KEY_DO_CAMBER_MODE), KEY_DO_CAMBER_MODE, "additional_inputs")).strip()
+        camber_value_m = (float(_req(bridge.additional_inputs.get(KEY_DO_CAMBER_VALUE), KEY_DO_CAMBER_VALUE, "additional_inputs"))
+            if camber_mode.lower() == "custom" else 0.0
+        )
+
         geometry = GeometryConfig(
             span=float(span),
             beam_spacing=float(beam_spacing),
@@ -437,6 +507,8 @@ class BridgeConfig:
             beam_type=beam_type,
             support_type=support_type,
             cross_bracing_spacing_m=cb_spacing,
+            camber_mode=camber_mode,
+            camber_value_m=camber_value_m,
         )
 
 
@@ -591,7 +663,9 @@ class DemandEnvelope:
     # Semantic envelope fields
     M_construction_kNm: float = 0.0
     delta_live_mm: float = 0.0
-    delta_total_mm: float = 0.0
+    delta_total_mm: float = 0.0                           # DL+LL deflection, post-camber
+    delta_dl_mm: float = 0.0                              # DL-only deflection, post-camber
+    camber_mm: float = 0.0                                # applied camber (informational)
     stress_range_MPa: float = 0.0
     shear_range_MPa: float = 0.0
     Nsc: int = field(kw_only=True)
@@ -2046,6 +2120,7 @@ class DCREngine:
     _SLS_FREQUENT_TYPES = frozenset({"SLS_frequent"})
     _LIVE_ONLY_TYPES    = frozenset({"live_only"})
     _DL_LL_TYPES        = frozenset({"DL_LL"})
+    _DL_ONLY_TYPES      = frozenset({"DL"})
 
     CATEGORY_MAP: Dict[int, tuple] = {
     1 : (1, "Strength – Flexure"),
@@ -2060,6 +2135,7 @@ class DCREngine:
     11: (7, "SLS Stress Limitation"),
     13: (8, "Deflection Check"),
     14: (8, "Deflection Check"),
+    18: (8, "Deflection Check"),   # DL-only deflection (post-camber)
     # Deck-only checks moved to deck design: concrete σc (10) + rebar stress (12),
     # crack control (15), transverse shear (16, 17). See PlateGirderBridge.design_deck_slab.
     # 20, 21 — stiffener: excluded from the 8-category aggregation
@@ -2152,6 +2228,7 @@ class DCREngine:
         _sls_freq  = (not t) or (t in self._SLS_FREQUENT_TYPES)
         _live_only = (not t) or (t in self._LIVE_ONLY_TYPES)
         _dl_ll     = (not t) or (t in self._DL_LL_TYPES)
+        _dl_only   = (not t) or (t in self._DL_ONLY_TYPES)
 
         # ── CATEGORIES 1-3: Flexure / Shear / Interaction ─────────────────────
         # Intentionally ungated — run for every load case & combination, so the
@@ -2347,6 +2424,14 @@ class DCREngine:
             self._add_check(14, "SLS Deflection (Total)", "Cl.604.3.2",
                              d.delta_total_mm, c.defl_limit_total_mm, "mm",
                              note="Limit = L/600")
+
+        # DL deflection: only for the DL-only case (SW+DC+DD+SIDL, not DW), post-camber. Shown even at 0 mm (a "Default" camber cancels the full DL sag) so the camber effect is visible; limit is L/600 (same as total).
+        if _dl_only and c.defl_limit_total_mm > 0:
+            _camber_note = (f"Limit = L/600 | camber = {d.camber_mm:.1f} mm"
+                            if d.camber_mm > 0 else "Limit = L/600")
+            self._add_check(18, "SLS Deflection (DL)", "Cl.604.3.2",
+                             d.delta_dl_mm, c.defl_limit_total_mm, "mm",
+                             note=_camber_note)
 
         # Crack control (Cl.604.4) and transverse shear (Cl.606.10) are deck-only checks —
         # computed in deck design (Stage 6) and shown in the deck dialog, not in the steel
@@ -2827,6 +2912,7 @@ class ReportGenerator:
 def _extract_demands_from_analysis_results(
     analysis_results: PlateGirderAnalysisResults,
     config: BridgeConfig,
+    deflections_cache: dict,
     result_data: dict | None = None,
 ) -> tuple:
     # Build per_girder_demands and per_girder_per_lc using the existing
@@ -2834,9 +2920,9 @@ def _extract_demands_from_analysis_results(
     # Returns (Dict[girder_name, DemandEnvelope], Dict[girder_name, Dict[lc, DemandEnvelope]])
     import numpy as np
 
-    # result_data stores member ids as strings; the dataset selects on the int
-    # element tags from ops.getEleTags(), so cast them back. "nodes" is only ever
-    # used below as a selection set for max/abs, never as an ordered path.
+    # Girders come pre-separated (edge beams already excluded, labelled G1..Gn) from the 
+    # post-processing result_data. result_data stores member ids as strings; the dataset selects on the int
+    # element tags from ops.getEleTags(), so cast them back. "nodes" is only ever used below as a selection set for max/abs, never as an ordered path.
     girders      = {
         name: {
             "elements": [int(m) for m in g.get("members", [])],
@@ -2844,6 +2930,11 @@ def _extract_demands_from_analysis_results(
         }
         for name, g in result_data.get("girders").items()
     }
+    # Raise hard error if deflections cache empty
+    if not deflections_cache:
+        raise ValueError(
+            "deflections_cache is required — DL/total deflection and camber are "
+            "resolved from it, not recomputed here.")
     lc_groups    = analysis_results.classify_loadcases()
     live_static  = lc_groups["vehicle_static"]
     all_live_lcs = live_static
@@ -2887,7 +2978,6 @@ def _extract_demands_from_analysis_results(
     # Single-LC handles used directly for demand extraction (None = case not available → skip).
     _uls_env_lc  = str(_uls_env_lcs[0])    if _uls_env_lcs    else None
     _sls_env_lc  = str(_sls_env_lcs[0])    if _sls_env_lcs    else None
-    _dl_ll_lc    = str(_dl_ll_lcs[0])      if _dl_ll_lcs      else None
     _sw_lc       = str(_sw_lcs[0])         if _sw_lcs         else None
     _dl_only_lc  = str(_dl_only_lcs[0])    if _dl_only_lcs    else None
 
@@ -2913,18 +3003,10 @@ def _extract_demands_from_analysis_results(
         if lc_str in live_set:     return "live_only"
         return "individual"
 
-    # Composite stiffness ratio for SLS deflection correction
-
-    sec, mat, slab, geo = config.section, config.material, config.slab, config.geometry
-    beff_mm = min(geo.span * 1000.0 / 4.0, geo.beam_spacing * 1000.0)
-    mod   = IRC22_2014.cl_604_3_modular_ratio(Ecm=mat.Ecm, Kc=0.5)
-    props = composite_section_properties(
-        beff_mm=beff_mm, ds_mm=slab.thickness, h_haunch_mm=slab.haunch_depth,
-        A_steel_mm2=sec.A_steel, Iz_steel_mm4=sec.Iz_steel,
-        y_cg_from_bot_mm=sec.y_cg_from_bot, D_steel_mm=sec.D, n=mod["m_short_term"],
-    )
-    stiffness_ratio = max(props[KEY_COMP_I] / sec.Iz_steel, 1.0)
-
+    # Composite section properties (for the section moduli below). The steel→composite
+    # deflection correction is NOT applied here — every deflection now comes from
+    # build_deflections_cache, which is the single place that correction happens.
+    props, _ = composite_stiffness_props(config)
 
     Ze_steel_mm3 = float(config.section.Ze_steel)
     # Composite section modulus to the bottom steel fibre (I_comp / y_bot, short-term
@@ -2977,30 +3059,14 @@ def _extract_demands_from_analysis_results(
         M_girder_sw_kNm = _fmax_lc(_sw_lc,     "Mz_i", "Mz_j") / 1e3
         M_const_kNm     = _fmax_lc(_dl_only_lc, "Mz_i", "Mz_j") / 1e3
 
-        # (3) Deflections — fetched directly from analyser cases; no summing, no fallback.
-        disp_y = analysis_results.ds.displacements.sel(Component="y", Node=nodes)
-
-        # delta_live: max displacement across individual live-only LCs.
-        delta_live_mm = 0.0
-        if all_live_lcs:
-            try:
-                lv = np.asarray(disp_y.sel(Loadcase=all_live_lcs).values, dtype=float)
-                lv = lv[~np.isnan(lv)]
-                if lv.size:
-                    delta_live_mm = float(np.abs(lv).max()) / stiffness_ratio * 1000.0
-            except Exception:
-                pass
-
-        # delta_total: Dy from analyser's DL+LL case (DL = SW+DC+DD+SIDL, not DW).
-        delta_total_mm = 0.0
-        if _dl_ll_lc:
-            try:
-                tv = np.asarray(disp_y.sel(Loadcase=_dl_ll_lc).values, dtype=float)
-                tv = tv[~np.isnan(tv)]
-                if tv.size:
-                    delta_total_mm = float(np.abs(tv).max()) / stiffness_ratio * 1000.0
-            except Exception:
-                pass
+        # (3) Deflections — all resolved from the deflection cache; no summing, no fallback.
+        # Keyed by girder name directly — the cache is built from the same result_data["girders"], so the keys are identical by construction.
+        # Live is the per-girder max over every vehicle position (see build_deflections_cache);
+        # unlike DL/total it is not camber-adjusted — camber cancels dead-load sag, not live.
+        delta_live_mm  = float(deflections_cache[g_name]["live_mm"])
+        delta_dl_mm    = float(deflections_cache[g_name]["dl_mm"])       # post-camber DL deflection
+        delta_total_mm = float(deflections_cache[g_name]["total_mm"])    # post-camber DL+LL deflection
+        camber_mm      = float(deflections_cache[g_name]["camber_mm"])   # applied camber (informational)
 
         # (4) Fatigue stress/shear ranges — IRC 22 Cl.604.5. Fatigue is driven by the
         # FATIGUE VEHICLE (IRC:6 Cl.204.6) ALONE — permanent loads are steady and don't
@@ -3056,6 +3122,7 @@ def _extract_demands_from_analysis_results(
             Mu_kNm=round(Mu_kNm, 2), Vu_kN=round(Vu_kN, 2), Nu_kN=round(Nu_kN, 2),
             M_construction_kNm=round(M_const_kNm, 2), M_girder_sw_kNm=round(M_girder_sw_kNm, 2),
             delta_live_mm=round(delta_live_mm, 3), delta_total_mm=round(delta_total_mm, 3),
+            delta_dl_mm=round(delta_dl_mm, 3), camber_mm=round(camber_mm, 3),
             stress_range_MPa=round(stress_range_MPa, 3), shear_range_MPa=round(shear_range_MPa, 3),
             Nsc=Nsc, governing_combination=_uls_env_lc or "Envelope_ULS",
             location="critical element", member=g_name, source="grillage_analysis",
@@ -3099,8 +3166,12 @@ def _extract_demands_from_analysis_results(
             # Every semantic field below is derived from THIS LC's own response,
             # gated by its type — the per-LC contract. Cross-LC aggregates
             # (Vr_kN) stay at girder level; Nsc (config constant) is carried through.
-            _d_live  = round(Dy / stiffness_ratio, 3) if lc_t == "live_only" else 0.0
-            _d_total = round(Dy / stiffness_ratio, 3) if lc_t == "DL_LL" else 0.0
+            # Camber counters the DL sag → subtract it from DL and DL+LL deflections
+            # (clamped at 0); live-load deflection is unaffected. camber_mm is the
+            # per-girder value resolved above from the DL-only case + Deflection Control.
+            _d_live  = float(deflections_cache[g_name]["per_lc"].get(lc_str, 0.0)) if lc_t == "live_only" else 0.0
+            _d_total = round(float(deflections_cache[g_name]["total_mm"]), 3) if lc_t == "DL_LL" else 0.0
+            _d_dl    = round(float(deflections_cache[g_name]["dl_mm"]),    3) if lc_t == "DL" else 0.0
             # Service-level by elimination — every non-ULS LC (SW, DL, DD, DL_LL, live_only,
             # SLS, SLS_frequent, individual, etc.) is eligible for the SLS stress checks.
             _is_sls = lc_t != "ULS"
@@ -3133,6 +3204,8 @@ def _extract_demands_from_analysis_results(
                 Dz_mm=round(Dz, 3),    # transverse displacement
                 delta_live_mm=_d_live,
                 delta_total_mm=_d_total,
+                delta_dl_mm=_d_dl,
+                camber_mm=round(camber_mm, 3),
                 M_sls_kNm=_m_sls,
                 V_sls_kN=_v_sls,
                 M_construction_kNm=_m_const,
@@ -3183,6 +3256,8 @@ def _compute_per_lc_dcr(
             "V_sls_kN"        : lc_d.V_sls_kN,
             "delta_live_mm"   : lc_d.delta_live_mm,
             "delta_total_mm"  : lc_d.delta_total_mm,
+            "delta_dl_mm"     : lc_d.delta_dl_mm,
+            "camber_mm"       : lc_d.camber_mm,
             "stress_range_MPa": lc_d.stress_range_MPa,
             "shear_range_MPa" : lc_d.shear_range_MPa,
             "M_construction_kNm": lc_d.M_construction_kNm,
@@ -3299,6 +3374,7 @@ def run_design_check(
     analysis_results: Optional[PlateGirderAnalysisResults] = None,
     per_girder_demands: "Dict[str, DemandEnvelope] | None" = None,
     per_girder_per_lc: "Dict[str, Dict[str, DemandEnvelope]] | None" = None,
+    deflections_cache: "dict | None" = None,
     print_report: bool = True,
 ) -> tuple:
     print("=" * 60)
@@ -3321,16 +3397,29 @@ def run_design_check(
         print("  [INFO] stiffener not set — using default StiffenerConfig() (guidance mode)")
     print(f"  Config: {config.summary()}")
 
+    # Skew-safe girders come from post-processing result_data (set on the bridge before
+    # Stage 5). Shared by both the deflection cache and the demand extraction so they agree.
+    result_data = getattr(plate_girder_bridge, "result_data", None) if plate_girder_bridge is not None else None
+    if analysis_results is not None and not (result_data and result_data.get("girders")):
+        raise ValueError(
+            "plate_girder_bridge.result_data must contain a 'girders' key "
+            "produced by results_data_post_processing.post_process(). "
+            "Run the analysis before run_design_check()."
+        )
+
+    # Build the (camber-adjusted) per-girder deflection cache here. The composite
+    # correction is already applied by build_deflections_cache (results layer);
+    # only camber — a design decision — is added on top. Written back onto the
+    # bridge so plategirderbridge can read self._deflections_cache afterward.
+    if deflections_cache is None and analysis_results is not None and plate_girder_bridge is not None:
+        deflections_cache = apply_camber_to_deflections_cache(
+            build_deflections_cache(analysis_results, config, result_data), config.geometry.camber_mode, config.geometry.camber_value_m,
+        )
+        plate_girder_bridge._deflections_cache = deflections_cache
+
     if per_girder_demands is None and analysis_results is not None:
-        result_data = getattr(plate_girder_bridge, "result_data", None)
-        if not result_data.get("girders"):
-            raise ValueError(
-                "plate_girder_bridge.result_data must contain a 'girders' key "
-                "produced by results_data_post_processing.post_process(). "
-                "Run the analysis before run_design_check()."
-            )
         per_girder_demands, per_girder_per_lc = _extract_demands_from_analysis_results(
-            analysis_results, config, result_data
+            analysis_results, config, deflections_cache, result_data
         )
 
     if not per_girder_demands:
@@ -3537,6 +3626,8 @@ def run_design_check(
         "M_construction_kNm"        : demand.M_construction_kNm,
         "delta_live_mm"             : demand.delta_live_mm,
         "delta_total_mm"            : demand.delta_total_mm,
+        "delta_dl_mm"               : demand.delta_dl_mm,
+        "camber_mm"                 : demand.camber_mm,
         "stress_range_MPa"          : demand.stress_range_MPa,
         "shear_range_MPa"           : demand.shear_range_MPa,
         "Nsc"                       : demand.Nsc,

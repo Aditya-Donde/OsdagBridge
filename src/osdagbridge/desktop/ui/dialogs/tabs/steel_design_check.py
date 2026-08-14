@@ -639,7 +639,7 @@ class SteelDesignCheckTab(QWidget):
             (KEY_CHECK_SHEAR_LONG_TRANS, (6, 7)),            # longitudinal stud spacing + detailing
             (KEY_CHECK_FATIGUE,          (8, 9)),           # normal + shear fatigue
             (KEY_CHECK_STRESS,           (11,)),             # steel-equivalent stress (concrete + rebar moved to deck)
-            (KEY_CHECK_DEFLECTION,       (13, 14)),          # live + total deflection (crack moved to deck)
+            (KEY_CHECK_DEFLECTION,       (13, 14, 18)),      # live + total + DL (post-camber) deflection (crack moved to deck)
         ]
 
         results_by_key: dict[str, dict] = {}
