@@ -441,7 +441,7 @@ _PERMANENT_LOAD_TAB_SCHEMA = {
                         "label":       "Self-weight modification factor",
                         "type":        TYPE_TEXTBOX,
                         "placeholder": "",
-                        "bind":        "self_weight_factor_input",
+                        
                     }]
                 },
             ],
@@ -590,7 +590,7 @@ _LIVE_LOAD_TAB_SCHEMA = {
                         "label":       "Eccentricity from top of Deck (m)",
                         "type":        TYPE_TEXTBOX,
                         "placeholder": "",
-                        "bind":        "eccentricity_input",
+                        
                     }]
                 },
             ],
@@ -607,8 +607,8 @@ _LIVE_LOAD_TAB_SCHEMA = {
                         "label":          "Footpath Pressure (kN/mm²)",
                         "type":           TYPE_MODE_LINE,
                         "mode_choices":   ["As per IRC 6", "Custom"],
-                        "bind_mode":      "footpath_mode_combo",
-                        "bind_value":     "footpath_value_input",
+                        
+                        
                         "on_mode_change": "_on_footpath_mode_changed",
                     }]
                 },
@@ -704,7 +704,7 @@ _SEISMIC_LOAD_TAB_SCHEMA = {
                         "label":   "Response Reduction Factor, R",
                         "type":    TYPE_COMBOBOX,
                         "choices": ["1", "2", "3", "4", "5"],
-                        "bind":    "response_factor_combo",
+                        
                         "on_change_compute": _COMPUTE_SEISMIC,
                     }]
                 },
@@ -714,8 +714,8 @@ _SEISMIC_LOAD_TAB_SCHEMA = {
                         "label":          "Dead Load for Seismic Force (kN)",
                         "type":           TYPE_MODE_LINE,
                         "mode_choices":   ["Automatic", "Custom"],
-                        "bind_mode":      "dead_load_seismic_combo",
-                        "bind_value":     "dead_load_custom_input",
+                        
+                        
                         "on_mode_change": "_on_seismic_dead_load_mode_changed",
                         "on_change_compute": _COMPUTE_SEISMIC,
                     }]
@@ -726,8 +726,8 @@ _SEISMIC_LOAD_TAB_SCHEMA = {
                         "label":          "Live Load for Seismic Force (kN)",
                         "type":           TYPE_MODE_LINE,
                         "mode_choices":   ["Automatic", "Custom"],
-                        "bind_mode":      "live_load_seismic_combo",
-                        "bind_value":     "live_load_custom_input",
+                        
+                        
                         "on_mode_change": "_on_seismic_live_load_mode_changed",
                         "on_change_compute": _COMPUTE_SEISMIC,
                     }]
@@ -745,7 +745,7 @@ _SEISMIC_LOAD_TAB_SCHEMA = {
                         "id":       KEY_SL_ZONE_FACTOR,
                         "label":    "Zone Factor, Z",
                         "type":     TYPE_TEXTBOX,
-                        "bind":     "zone_factor_input",
+                        
                         "read_only": True,
                     }]
                 },
@@ -754,7 +754,7 @@ _SEISMIC_LOAD_TAB_SCHEMA = {
                         "id":       KEY_SL_SPECTRAL_COEFF,
                         "label":    "Spectral Acceleration Coefficient, S&#x2090;/g",
                         "type":     TYPE_TEXTBOX,
-                        "bind":     "spectral_coeff_input",
+                        
                         "read_only": True,
                     }]
                 },
@@ -763,7 +763,7 @@ _SEISMIC_LOAD_TAB_SCHEMA = {
                         "id":       KEY_SL_HORIZONTAL_COEFF,
                         "label":    "Horizontal Seismic Coefficient, A&#x2095;",
                         "type":     TYPE_TEXTBOX,
-                        "bind":     "horizontal_coeff_input",
+                        
                         "read_only": True,
                     }]
                 },
@@ -772,7 +772,7 @@ _SEISMIC_LOAD_TAB_SCHEMA = {
                         "id":       KEY_SL_VERTICAL_COEFF,
                         "label":    "Vertical Seismic Coefficient, A&#x1D65;",
                         "type":     TYPE_TEXTBOX,
-                        "bind":     "vertical_coeff_input",
+                        
                         "read_only": True,
                     }]
                 },
@@ -819,7 +819,7 @@ _WIND_LOAD_TAB_SCHEMA = {
                         "label": "Basic Wind Speed, V<sub>b</sub> (m/s)",
                         "type": TYPE_TEXTBOX,
                         "read_only": True,
-                        "bind": "basic_wind_speed_input",
+                        
                         "on_change_compute": {"function": "_compute_wind_values"}
                     }]
                 },
@@ -830,7 +830,7 @@ _WIND_LOAD_TAB_SCHEMA = {
                         "type": TYPE_TEXTBOX,
                         "placeholder": "10",
                         "default": "10",
-                        "bind": "avg_exposed_height_input",
+                        
                         "on_change_compute": {"function": "_compute_wind_values"}
                     }]
                 },
@@ -841,20 +841,20 @@ _WIND_LOAD_TAB_SCHEMA = {
                         "type": TYPE_COMBOBOX,
                         "choices": ["Plain Terrain", "Terrain with Obstructions"],
                         "default": "Plain Terrain",
-                        "bind": "terrain_type_combo",
+                        
                         "on_change_compute": {"function": "_compute_wind_values"}
                     }]
                 },
-                {"fields": [{"id": KEY_WL_SITE_TOPOGRAPHY,        "label": "Site Topography",                                                 "type": TYPE_COMBOBOX, "choices": ["Flat", "Hill, ridge, escarpment or cliff"], "bind": "site_topography_combo"}]},
-                {"fields": [{"id": KEY_WL_GUST_FACTOR,            "label": "Gust Factor, G",                                                  "type": TYPE_MODE_LINE, "mode_choices": ["As per IRC 6", "Custom"], "bind_mode": "gust_factor_combo",       "bind_value": "gust_factor_value",       "on_mode_change": "_toggle_wind_custom_input"}]},
-                {"fields": [{"id": KEY_WL_DRAG_COEFF,             "label": "Drag Coefficient, C<sub>D</sub>",                                 "type": TYPE_MODE_LINE, "mode_choices": ["As per IRC 6", "Custom"], "bind_mode": "drag_coeff_combo",         "bind_value": "drag_coeff_value",        "on_mode_change": "_toggle_wind_custom_input"}]},
-                {"fields": [{"id": KEY_WL_DRAG_COEFF_LL,          "label": "Drag Coefficient against Live Load, C<sub>DLL</sub>",             "type": TYPE_MODE_LINE, "mode_choices": ["As per IRC 6", "Custom"], "bind_mode": "drag_coeff_ll_combo",      "bind_value": "drag_coeff_ll_value",     "on_mode_change": "_toggle_wind_custom_input"}]},
-                {"fields": [{"id": KEY_WL_LIFT_COEFF,             "label": "Lift Coefficient, C<sub>L</sub>",                                 "type": TYPE_MODE_LINE, "mode_choices": ["As per IRC 6", "Custom"], "bind_mode": "lift_coeff_combo",         "bind_value": "lift_coeff_value",        "on_mode_change": "_toggle_wind_custom_input"}]},
-                {"fields": [{"id": KEY_WL_SUPER_AREA_ELEV,        "label": "Superstructure Area in Elevation, A<sub>1</sub> (m²)",            "type": TYPE_MODE_LINE, "mode_choices": ["Automatic", "Custom"],   "bind_mode": "super_area_elev_combo",    "bind_value": "super_area_elev_value",   "on_mode_change": "_toggle_wind_custom_input"}]},
-                {"fields": [{"id": KEY_WL_SUPER_AREA_PLAIN,       "label": "Superstructure Area in Plain, A<sub>3</sub> (m²)",                "type": TYPE_MODE_LINE, "mode_choices": ["Automatic", "Custom"],   "bind_mode": "super_area_plain_combo",   "bind_value": "super_area_plain_value",  "on_mode_change": "_toggle_wind_custom_input"}]},
-                {"fields": [{"id": KEY_WL_EXPOSED_FRONTAL,        "label": "Exposed Frontal Area of Live Load, A<sub>1LL</sub> (m²)",         "type": TYPE_MODE_LINE, "mode_choices": ["Automatic", "Custom"],   "bind_mode": "exposed_frontal_area_combo","bind_value":"exposed_frontal_area_value","on_mode_change": "_toggle_wind_custom_input"}]},
-                {"fields": [{"id": KEY_WL_WIND_ECC_DECK,          "label": "Wind Load Eccentricity from Top of Deck (m)",                     "type": TYPE_MODE_LINE, "mode_choices": ["As per IRC 6","Custom"], "bind_mode":"wind_ecc_deck_combo",      "bind_value":"wind_ecc_deck_value",     "on_mode_change":"_toggle_wind_custom_input"}]},
-                {"fields": [{"id": KEY_WL_WIND_LL_ECC,            "label": "Wind on Live Load Eccentricity from Top of Deck (m)",             "type": TYPE_MODE_LINE, "mode_choices": ["As per IRC 6", "Custom"], "bind_mode": "wind_ll_ecc_combo",        "bind_value": "wind_ll_ecc_value",       "on_mode_change": "_toggle_wind_custom_input"}]},
+                {"fields": [{"id": KEY_WL_SITE_TOPOGRAPHY,        "label": "Site Topography",                                                 "type": TYPE_COMBOBOX, "choices": ["Flat", "Hill, ridge, escarpment or cliff"], }]},
+                {"fields": [{"id": KEY_WL_GUST_FACTOR,            "label": "Gust Factor, G",                                                  "type": TYPE_MODE_LINE, "mode_choices": ["As per IRC 6", "Custom"],               "on_mode_change": "_toggle_wind_custom_input"}]},
+                {"fields": [{"id": KEY_WL_DRAG_COEFF,             "label": "Drag Coefficient, C<sub>D</sub>",                                 "type": TYPE_MODE_LINE, "mode_choices": ["As per IRC 6", "Custom"],                  "on_mode_change": "_toggle_wind_custom_input"}]},
+                {"fields": [{"id": KEY_WL_DRAG_COEFF_LL,          "label": "Drag Coefficient against Live Load, C<sub>DLL</sub>",             "type": TYPE_MODE_LINE, "mode_choices": ["As per IRC 6", "Custom"],            "on_mode_change": "_toggle_wind_custom_input"}]},
+                {"fields": [{"id": KEY_WL_LIFT_COEFF,             "label": "Lift Coefficient, C<sub>L</sub>",                                 "type": TYPE_MODE_LINE, "mode_choices": ["As per IRC 6", "Custom"],                  "on_mode_change": "_toggle_wind_custom_input"}]},
+                {"fields": [{"id": KEY_WL_SUPER_AREA_ELEV,        "label": "Superstructure Area in Elevation, A<sub>1</sub> (m²)",            "type": TYPE_MODE_LINE, "mode_choices": ["Automatic", "Custom"],          "on_mode_change": "_toggle_wind_custom_input"}]},
+                {"fields": [{"id": KEY_WL_SUPER_AREA_PLAIN,       "label": "Superstructure Area in Plain, A<sub>3</sub> (m²)",                "type": TYPE_MODE_LINE, "mode_choices": ["Automatic", "Custom"],        "on_mode_change": "_toggle_wind_custom_input"}]},
+                {"fields": [{"id": KEY_WL_EXPOSED_FRONTAL,        "label": "Exposed Frontal Area of Live Load, A<sub>1LL</sub> (m²)",         "type": TYPE_MODE_LINE, "mode_choices": ["Automatic", "Custom"],   "on_mode_change": "_toggle_wind_custom_input"}]},
+                {"fields": [{"id": KEY_WL_WIND_ECC_DECK,          "label": "Wind Load Eccentricity from Top of Deck (m)",                     "type": TYPE_MODE_LINE, "mode_choices": ["As per IRC 6","Custom"],            "on_mode_change":"_toggle_wind_custom_input"}]},
+                {"fields": [{"id": KEY_WL_WIND_LL_ECC,            "label": "Wind on Live Load Eccentricity from Top of Deck (m)",             "type": TYPE_MODE_LINE, "mode_choices": ["As per IRC 6", "Custom"],                "on_mode_change": "_toggle_wind_custom_input"}]},
             ],
         },
 
@@ -863,13 +863,13 @@ _WIND_LOAD_TAB_SCHEMA = {
             "column": 0,
             "title":  "Computed Values",
             "rows": [
-                {"fields": [{"id": KEY_WL_HOURLY_MEAN_WIND,        "label": "Hourly Mean Wind Speed, V<sub>z</sub> (m/s)",                    "type": TYPE_TEXTBOX, "read_only": True, "bind": "hourly_mean_wind_input"}]},
-                {"fields": [{"id": KEY_WL_HOURLY_WIND_PRESSURE,    "label": "Hourly Wind Pressure, P<sub>z</sub> (N/m²)",                     "type": TYPE_TEXTBOX, "read_only": True, "bind": "hourly_wind_pressure_input"}]},
-                # {"fields": [{"id": KEY_WL_TRANSVERSE_WIND_FORCE,   "label": "Transverse Wind Force, F<sub>T</sub> (N)",                       "type": TYPE_TEXTBOX, "read_only": True, "bind": "transverse_wind_force_input"}]},
-                # {"fields": [{"id": KEY_WL_LONGITUDINAL_WIND_FORCE, "label": "Longitudinal Wind Force, F<sub>L</sub> (N)",                     "type": TYPE_TEXTBOX, "read_only": True, "bind": "longitudinal_wind_force_input"}]},
-                # {"fields": [{"id": KEY_WL_VERTICAL_WIND_FORCE,     "label": "Vertical Wind Force, F<sub>V</sub> (N)",                         "type": TYPE_TEXTBOX, "read_only": True, "bind": "vertical_wind_force_input"}]},
-                # {"fields": [{"id": KEY_WL_TRANSVERSE_WIND_LL,      "label": "Transverse Wind Force on Live Load, F<sub>TLL</sub> (N)",        "type": TYPE_TEXTBOX, "read_only": True, "bind": "transverse_wind_ll_input"}]},
-                # {"fields": [{"id": KEY_WL_LONGITUDINAL_WIND_LL,    "label": "Longitudinal Wind Force on Live Load, F<sub>LLL</sub> (N)", "type": TYPE_TEXTBOX, "read_only": True, "bind": "longitudinal_wind_ll_input"}]},
+                {"fields": [{"id": KEY_WL_HOURLY_MEAN_WIND,        "label": "Hourly Mean Wind Speed, V<sub>z</sub> (m/s)",                    "type": TYPE_TEXTBOX, "read_only": True, }]},
+                {"fields": [{"id": KEY_WL_HOURLY_WIND_PRESSURE,    "label": "Hourly Wind Pressure, P<sub>z</sub> (N/m²)",                     "type": TYPE_TEXTBOX, "read_only": True, }]},
+                # {"fields": [{"id": KEY_WL_TRANSVERSE_WIND_FORCE,   "label": "Transverse Wind Force, F<sub>T</sub> (N)",                       "type": TYPE_TEXTBOX, "read_only": True, }]},
+                # {"fields": [{"id": KEY_WL_LONGITUDINAL_WIND_FORCE, "label": "Longitudinal Wind Force, F<sub>L</sub> (N)",                     "type": TYPE_TEXTBOX, "read_only": True, }]},
+                # {"fields": [{"id": KEY_WL_VERTICAL_WIND_FORCE,     "label": "Vertical Wind Force, F<sub>V</sub> (N)",                         "type": TYPE_TEXTBOX, "read_only": True, }]},
+                # {"fields": [{"id": KEY_WL_TRANSVERSE_WIND_LL,      "label": "Transverse Wind Force on Live Load, F<sub>TLL</sub> (N)",        "type": TYPE_TEXTBOX, "read_only": True, }]},
+                # {"fields": [{"id": KEY_WL_LONGITUDINAL_WIND_LL,    "label": "Longitudinal Wind Force on Live Load, F<sub>LLL</sub> (N)", "type": TYPE_TEXTBOX, "read_only": True, }]},
                 # Commented the additional fields here to stop render in 'Computed Values' .
             ],
         },
@@ -916,7 +916,7 @@ _TEMPERATURE_LOAD_TAB_SCHEMA = {
                         "placeholder": "From Project Location",
                         "enabled": False,
                         "read_only": True,
-                        "bind": "highest_max_temp_input",
+                        
                         "on_change_compute": {"function": "_compute_temperature_values"}
                     }]
                 },
@@ -928,12 +928,12 @@ _TEMPERATURE_LOAD_TAB_SCHEMA = {
                         "placeholder": "From Project Location",
                         "enabled": False,
                         "read_only": True,
-                        "bind": "lowest_min_temp_input",
+                        
                         "on_change_compute": {"function": "_compute_temperature_values"}
                     }]
                 },
-                {"fields": [{"id": KEY_TL_THERMAL_COEFF_STEEL, "label": "Coefficient of Thermal Expansion for Steel (1/°C)",       "type": TYPE_TEXTBOX, "read_only": True, "placeholder": "e.g. 11.7e-6",        "bind": "thermal_coeff_steel_input"}]},
-                {"fields": [{"id": KEY_TL_THERMAL_COEFF_RCC,   "label": "Coefficient of Thermal Expansion for RCC (1/°C)",         "type": TYPE_TEXTBOX, "read_only": True, "placeholder": "e.g. 11.7e-6",        "bind": "thermal_coeff_rcc_input"}]},
+                {"fields": [{"id": KEY_TL_THERMAL_COEFF_STEEL, "label": "Coefficient of Thermal Expansion for Steel (1/°C)",       "type": TYPE_TEXTBOX, "read_only": True, "placeholder": "e.g. 11.7e-6",        }]},
+                {"fields": [{"id": KEY_TL_THERMAL_COEFF_RCC,   "label": "Coefficient of Thermal Expansion for RCC (1/°C)",         "type": TYPE_TEXTBOX, "read_only": True, "placeholder": "e.g. 11.7e-6",        }]},
             ],
         },
 
@@ -942,8 +942,8 @@ _TEMPERATURE_LOAD_TAB_SCHEMA = {
             "column": 0,
             "title":  "Range of Effective Bridge Temperature",
             "rows": [
-                {"fields": [{"id": KEY_TL_BRIDGE_TEMP_MIN, "label": "Minimum (°C)", "type": TYPE_TEXTBOX, "read_only": True, "bind": "bridge_temp_min_input"}]},
-                {"fields": [{"id": KEY_TL_BRIDGE_TEMP_MAX, "label": "Maximum (°C)", "type": TYPE_TEXTBOX, "read_only": True, "bind": "bridge_temp_max_input"}]},
+                {"fields": [{"id": KEY_TL_BRIDGE_TEMP_MIN, "label": "Minimum (°C)", "type": TYPE_TEXTBOX, "read_only": True, }]},
+                {"fields": [{"id": KEY_TL_BRIDGE_TEMP_MAX, "label": "Maximum (°C)", "type": TYPE_TEXTBOX, "read_only": True, }]},
             ],
         },
 
@@ -952,8 +952,8 @@ _TEMPERATURE_LOAD_TAB_SCHEMA = {
             "column": 0,
             "title":  "Temperature for Design",
             "rows": [
-                {"fields": [{"id": KEY_TL_TEMP_RISE, "label": "Rise (°C)", "type": TYPE_TEXTBOX, "read_only": True, "bind": "temp_rise_input"}]},
-                {"fields": [{"id": KEY_TL_TEMP_FALL, "label": "Fall (°C)", "type": TYPE_TEXTBOX, "read_only": True, "bind": "temp_fall_input"}]},
+                {"fields": [{"id": KEY_TL_TEMP_RISE, "label": "Rise (°C)", "type": TYPE_TEXTBOX, "read_only": True, }]},
+                {"fields": [{"id": KEY_TL_TEMP_FALL, "label": "Fall (°C)", "type": TYPE_TEXTBOX, "read_only": True, }]},
             ],
         },
 
@@ -991,34 +991,34 @@ _CUSTOM_LOAD_TAB_SCHEMA = {
             "id": "custom_load_case",
             "label": "Load Case",
             "type": "combo",
-            "bind": "custom_load_case_combo",
+            
         },
         "custom_load_case_name": {
             "id": "custom_load_case_name",
             "label": "",  # Hidden label, uses spacer
             "type": "line",
             "placeholder": "Custom",
-            "bind": "custom_load_case_name_input",
+            
             "enabled": False,
         },
         "load_type": {
             "id": "custom_load_type",
             "label": "Load Type",
             "type": "combo",
-            "bind": "custom_load_type_combo",
+            
         },
         "point_left": {
             "id": "custom_point_left",
             "label": "Distance from Left Edge of Bridge (m)",
             "type": "line",
-            "bind": "custom_point_left_input",
+            
             "validator": {"type": "double_range", "bottom": 0.0, "top": 1000.0, "decimals": 3},
         },
         "point_bearing": {
             "id": "custom_point_bearing",
             "label": "Distance from Center Line of Bearing (m)",
             "type": "line",
-            "bind": "custom_point_bearing_input",
+            
             "validator": {"type": "double_range", "bottom": -1000.0, "top": 1000.0, "decimals": 3},
         },
         "line_left_start": {
@@ -1026,7 +1026,7 @@ _CUSTOM_LOAD_TAB_SCHEMA = {
             "label": "Distance from Left Edge of Bridge (m):",
             "sub_label": "Start",
             "type": "line",
-            "bind": "custom_line_left_start",
+            
             "field_width": 70,
             "validator": {"type": "double_range", "bottom": 0.0, "top": 1000.0, "decimals": 3},
         },
@@ -1034,7 +1034,7 @@ _CUSTOM_LOAD_TAB_SCHEMA = {
             "id": "custom_line_left_end",
             "sub_label": "End",
             "type": "line",
-            "bind": "custom_line_left_end",
+            
             "field_width": 70,
             "validator": {"type": "double_range", "bottom": 0.0, "top": 1000.0, "decimals": 3},
         },
@@ -1043,7 +1043,7 @@ _CUSTOM_LOAD_TAB_SCHEMA = {
             "label": "Distance from Center Line of Bearing (m):",
             "sub_label": "Start",
             "type": "line",
-            "bind": "custom_line_bearing_start",
+            
             "field_width": 70,
             "validator": {"type": "double_range", "bottom": -1000.0, "top": 1000.0, "decimals": 3},
         },
@@ -1051,7 +1051,7 @@ _CUSTOM_LOAD_TAB_SCHEMA = {
             "id": "custom_line_bearing_end",
             "sub_label": "End",
             "type": "line",
-            "bind": "custom_line_bearing_end",
+            
             "field_width": 70,
             "validator": {"type": "double_range", "bottom": -1000.0, "top": 1000.0, "decimals": 3},
         },
@@ -1267,7 +1267,7 @@ DESIGN_OPTIONS_SCHEMA = {
                         "label":   "Include default",
                         "type":    TYPE_COMBOBOX,
                         "choices": ["Yes", "No"],
-                        "bind":    "construction_stage_combo",
+                        
                     }]
                 },
             ],
@@ -1297,7 +1297,7 @@ DESIGN_OPTIONS_SCHEMA = {
                         "label":   "Reinforcement Material",
                         "type":    TYPE_COMBOBOX,
                         "choices": ["Fe 415", "Fe 415D", "Fe 500", "Fe 500D", "Fe 550", "Fe 550D", "Fe 600"],
-                        "bind":    "reinforcement_material_combo",
+                        
                     }]
                 },
                 {
@@ -1306,7 +1306,7 @@ DESIGN_OPTIONS_SCHEMA = {
                         "label":       "Top Clear Cover (mm)",
                         "type":        TYPE_TEXTBOX,
                         "placeholder": "40 - 75",
-                        "bind":        "top_clear_cover_input",
+                        
                     }]
                 },
                 {
@@ -1315,7 +1315,7 @@ DESIGN_OPTIONS_SCHEMA = {
                         "label":       "Bottom Clear Cover (mm)",
                         "type":        TYPE_TEXTBOX,
                         "placeholder": "35 - 75",
-                        "bind":        "bottom_clear_cover_input",
+                        
                     }]
                 },
                 {
@@ -1324,7 +1324,7 @@ DESIGN_OPTIONS_SCHEMA = {
                         "label":       "Side Clear Cover (mm)",
                         "type":        TYPE_TEXTBOX,
                         "placeholder": "35 - 75",
-                        "bind":        "side_clear_cover_input",
+                        
                     }]
                 },
             ],
@@ -1341,7 +1341,7 @@ DESIGN_OPTIONS_SCHEMA = {
                         "label":       "Yield Strength (MPa)",
                         "type":        TYPE_TEXTBOX,
                         "placeholder": "350 - 600",
-                        "bind":        "shear_stud_yield_strength_input",
+                        
                     }]
                 },
                 {
@@ -1350,7 +1350,7 @@ DESIGN_OPTIONS_SCHEMA = {
                         "label":       "Ultimate Strength (MPa)",
                         "type":        TYPE_TEXTBOX,
                         "placeholder": "350 - 600",
-                        "bind":        "shear_stud_ultimate_strength_input",
+                        
                     }]
                 },
                 {
@@ -1359,7 +1359,7 @@ DESIGN_OPTIONS_SCHEMA = {
                         "label":   "Diameter (mm)",
                         "type":    TYPE_COMBOBOX,
                         "choices": ["12", "16", "20", "22", "25"],
-                        "bind":    "shear_stud_diameter_combo",
+                        
                     }]
                 },
                 {
@@ -1367,7 +1367,7 @@ DESIGN_OPTIONS_SCHEMA = {
                         "id":          KEY_DS_STUD_HEIGHT,
                         "label":       "Height (mm)",
                         "type":        TYPE_TEXTBOX,
-                        "bind":        "shear_stud_height_input",
+                        
                     }]
                 },
                 {
@@ -1376,7 +1376,7 @@ DESIGN_OPTIONS_SCHEMA = {
                         "label":   "No. of Shear Studs per Section",
                         "type":    TYPE_COMBOBOX,
                         "choices": [str(i) for i in range(1, 11)],
-                        "bind":    "shear_stud_count_combo",
+                        
                     }]
                 },
                 {
@@ -1384,7 +1384,7 @@ DESIGN_OPTIONS_SCHEMA = {
                         "id":          KEY_DS_STUD_TRANSVERSE_SPACING,
                         "label":       "Transverse Spacing (mm)",
                         "type":        TYPE_TEXTBOX,
-                        "bind":        "shear_stud_spacing_input",
+                        
                     }]
                 },
             ],
@@ -1423,7 +1423,7 @@ DESIGN_OPTIONS_CONT_SCHEMA = {
                         "id":          KEY_DO_GAMMA_C_BASIC,
                         "label":       "Concrete basic & seismic, &#947;<sub>c</sub>",
                         "type":        TYPE_TEXTBOX,
-                        "bind":        "gamma_c_basic_input",
+                        
                         "placeholder": "1.0 - 2.0",
                     }]
                 },
@@ -1432,7 +1432,7 @@ DESIGN_OPTIONS_CONT_SCHEMA = {
                         "id":          KEY_DO_GAMMA_C_ACCIDENTAL,
                         "label":       "Concrete Accidental, &#947;<sub>c</sub>",
                         "type":        TYPE_TEXTBOX,
-                        "bind":        "gamma_c_accidental_input",
+                        
                         "placeholder": "1.0 - 2.0",
                     }]
                 },
@@ -1441,7 +1441,7 @@ DESIGN_OPTIONS_CONT_SCHEMA = {
                         "id":          KEY_DO_GAMMA_M0,
                         "label":       "Structural steel for Yielding and Buckling, &#947;<sub>M0</sub>",
                         "type":        TYPE_TEXTBOX,
-                        "bind":        "gamma_m0_input",
+                        
                         "placeholder": "1.0 - 2.0",
                     }]
                 },
@@ -1450,7 +1450,7 @@ DESIGN_OPTIONS_CONT_SCHEMA = {
                         "id":          KEY_DO_GAMMA_M1,
                         "label":       "Structural Steel For Ultimate Stress, &#947;<sub>M1</sub>",
                         "type":        TYPE_TEXTBOX,
-                        "bind":        "gamma_m1_input",
+                        
                         "placeholder": "1.0 - 2.0",
                     }]
                 },
@@ -1459,7 +1459,7 @@ DESIGN_OPTIONS_CONT_SCHEMA = {
                         "id":          KEY_DO_GAMMA_S,
                         "label":       "Reinforcing Steel, &#947;<sub>s</sub>",
                         "type":        TYPE_TEXTBOX,
-                        "bind":        "gamma_s_input",
+                        
                         "placeholder": "1.0 - 2.0",
                     }]
                 },
@@ -1468,7 +1468,7 @@ DESIGN_OPTIONS_CONT_SCHEMA = {
                         "id":          KEY_DO_GAMMA_V,
                         "label":       "Shear Connectors For Yield, &#947;<sub>v</sub>",
                         "type":        TYPE_TEXTBOX,
-                        "bind":        "gamma_v_input",
+                        
                         "placeholder": "1.0 - 2.0",
                     }]
                 },
@@ -1477,7 +1477,7 @@ DESIGN_OPTIONS_CONT_SCHEMA = {
                         "id":          KEY_DO_GAMMA_FLT,
                         "label":       "Fatigue Load, &#947;<sub>flt</sub>",
                         "type":        TYPE_TEXTBOX,
-                        "bind":        "gamma_flt_input",
+                        
                         "placeholder": "1.0 - 2.0",
                     }]
                 },
@@ -1486,7 +1486,7 @@ DESIGN_OPTIONS_CONT_SCHEMA = {
                         "id":          KEY_DO_GAMMA_MF,
                         "label":       "Fatigue Strength, &#947;<sub>Mf,t</sub>",
                         "type":        TYPE_TEXTBOX,
-                        "bind":        "gamma_mf_input",
+                        
                         "placeholder": "1.0 - 2.0",
                     }]
                 },
@@ -1514,7 +1514,7 @@ DESIGN_OPTIONS_CONT_SCHEMA = {
                         "id":          KEY_DO_LOAD_CYCLES,
                         "label":       "Number of Load Cycles",
                         "type":        TYPE_TEXTBOX,
-                        "bind":        "load_cycles_input",
+                        
                         "placeholder": "100000 - 100000000",
                     }]
                 },
@@ -1532,8 +1532,8 @@ DESIGN_OPTIONS_CONT_SCHEMA = {
                         "label":        "Camber (m)",
                         "type":         TYPE_MODE_LINE,
                         "mode_choices": ["Default", "Custom"],
-                        "bind_mode":    "camber_mode_combo",
-                        "bind_value":   "camber_value_input",
+                        
+                        
                         "placeholder":  "0 - 4",
                     }]
                 },
@@ -1548,7 +1548,7 @@ DESIGN_OPTIONS_CONT_SCHEMA = {
             "checkbox_groups": [
                 {
                     "title":           "Ultimate Limit States",
-                    "bind":            "ultimate_checkboxes",
+                    
                     "default_checked": True,
                     "items": [
                         {"id": KEY_DO_ULS_BENDING,    "label": "Bending Resistance",                    "type": TYPE_CHECKBOX},
