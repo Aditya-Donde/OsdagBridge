@@ -80,6 +80,11 @@ package-dir = {"" = "src"}
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.pytest.ini_options]
+testpaths = [
+  "tests"
+]
+
 # Entry points
 [project.scripts]
 osdagbridge-cli = "osdagbridge.cli.__main__:main"

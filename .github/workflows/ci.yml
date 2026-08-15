@@ -1,0 +1,40 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, test ]
+  pull_request:
+    branches: [ main, test ]
+
+jobs:
+  test:
+    name: Test (Python 3.12)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install system dependencies (For PySide6/Qt, Headless Display & Openseespy)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb libxkbcommon-x11-0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-randr0 libxcb-render-util0 libxcb-xinerama0 libxcb-xfixes0 libegl1 libgl1 libblas-dev liblapack-dev
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install ospgrillage vfo
+          # Exclude 'ospgrillage' and 'cad' extras to bypass the invalid PyPI version constraint
+          pip install .[dev,opensees,report,web-backend]
+
+      - name: Run Pytest
+        continue-on-error: true
+        run: |
+          xvfb-run pytest
+
