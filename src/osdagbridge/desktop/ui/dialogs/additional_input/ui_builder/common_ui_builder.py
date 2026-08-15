@@ -1274,8 +1274,6 @@ class UIBuilder(QWidget):
             id             : str           — composite; widgets get '<id>.mode' and '<id>.value'
             mode_choices   : list[str]
             value_choices  : list[str]     — pre-populated; tab may call addItems later
-            bind_mode      : str optional
-            bind_value     : str optional
             on_mode_change : str optional  — owner method name
         """
         field_id      = field_def.get("id", "")
@@ -1381,7 +1379,6 @@ class UIBuilder(QWidget):
 
         Schema fields:
             id              : str — objectName
-            bind            : str — owner attribute name
             on_row_select   : str — owner/ai method(row_index, member_id)
             on_data_changed : str — owner/ai method(segments_list)
             min_rows        : int — minimum rows (disable remove below this)
@@ -1517,7 +1514,6 @@ class UIBuilder(QWidget):
 
         Schema:
             id   : str
-            bind : str optional
         """
         from osdagbridge.core.utils.common import SAIL_APPROVED_THICKNESS_VALUES
 
