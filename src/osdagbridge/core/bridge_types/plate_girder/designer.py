@@ -111,8 +111,10 @@ def apply_camber_to_deflections_cache(raw_cache, camber_mode, camber_value_m):
     Runs ``apply_camber`` per girder — camber is a design decision, so it belongs in this
     layer, not the results layer. ``live_mm`` passes through; the input is not mutated.
 
-    Returns a new dict with ``dl_mm``/``total_mm`` post-camber and ``camber_mm`` added
-    (3 dp).
+    Returns a new dict carrying BOTH versions: ``dl_mm``/``total_mm`` post-camber (used by
+    the design checks) and ``*_raw_mm`` pre-camber (what the analysis produced, used by
+    report Chapter 4 so its table keeps matching the deflection plots). ``camber_mm`` is
+    the camber actually applied. All 3 dp.
     """
     out = {}
     for label, d in raw_cache.items():
@@ -120,11 +122,15 @@ def apply_camber_to_deflections_cache(raw_cache, camber_mode, camber_value_m):
             d["dl_mm"], d["total_mm"], camber_mode, camber_value_m
         )
         out[label] = {
-            "live_mm":   d.get("live_mm"),
-            "total_mm":  round(total_adj, 3),
-            "dl_mm":     round(dl_adj, 3),
-            "camber_mm": round(camber_mm, 3),
-            "per_lc":    d.get("per_lc", {}),   # per-case sags, no camber (live is uncambered)
+            "live_mm":      d.get("live_mm"),
+            "total_mm":     round(total_adj, 3),
+            "dl_mm":        round(dl_adj, 3),
+            "camber_mm":    round(camber_mm, 3),
+            "per_lc":       d.get("per_lc", {}),   # per-case sags, no camber (live is uncambered)
+            # Pre-camber originals — analysis-stage truth, never used by the checks.
+            "live_raw_mm":  d.get("live_mm"),      # live is uncambered, so raw == adjusted
+            "total_raw_mm": d.get("total_mm"),
+            "dl_raw_mm":    d.get("dl_mm"),
         }
     return out
 
@@ -3409,10 +3415,11 @@ def run_design_check(
             "Run the analysis before run_design_check()."
         )
 
-    # Build the (camber-adjusted) per-girder deflection cache here. The composite
-    # correction is already applied by build_deflections_cache (results layer);
-    # only camber — a design decision — is added on top. Written back onto the
-    # bridge so plategirderbridge can read self._deflections_cache afterward.
+    # Build the per-girder deflection cache here. The composite correction is already
+    # applied by build_deflections_cache (results layer); only camber — a design
+    # decision — is added on top. Each girder entry carries both the post-camber values
+    # (design checks) and the pre-camber *_raw_mm originals (report Chapter 4). Written
+    # back onto the bridge so plategirderbridge can read self._deflections_cache after.
     if deflections_cache is None and analysis_results is not None and plate_girder_bridge is not None:
         deflections_cache = apply_camber_to_deflections_cache(
             build_deflections_cache(analysis_results, config, result_data), config.geometry.camber_mode, config.geometry.camber_value_m,

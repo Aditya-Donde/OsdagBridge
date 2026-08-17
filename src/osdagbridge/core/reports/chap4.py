@@ -2,8 +2,8 @@ from typing import TYPE_CHECKING
 from osdagbridge.core.utils.common import (
     KEY_SPAN,
     KEY_TS_NO_OF_GIRDERS,
-    KEY_SD_DEFL_LIVE,
-    KEY_SD_DEFL_TOTAL,
+    KEY_SD_DEFL_LIVE_RAW,
+    KEY_SD_DEFL_TOTAL_RAW,
 )
 from osdagbridge.core.reports.report_utils import _tex, _fig_embed
 
@@ -62,8 +62,10 @@ def ch4_analysis(asum, fig_paths, bridge: "ReportDataBridge"):
     _live_mm  = None
     _total_mm = None
     for _gi in range(1, n + 1):
-        _l = bridge.output_dict.get(f"{KEY_SD_DEFL_LIVE}.G{_gi}")
-        _t = bridge.output_dict.get(f"{KEY_SD_DEFL_TOTAL}.G{_gi}")
+        # RAW (pre-camber) — this is the Analysis Results chapter, so it must report what
+        # the analysis produced and match the deflection plots below.
+        _l = bridge.output_dict.get(f"{KEY_SD_DEFL_LIVE_RAW}.G{_gi}")
+        _t = bridge.output_dict.get(f"{KEY_SD_DEFL_TOTAL_RAW}.G{_gi}")
         if _l is not None:
             _live_mm  = max(_live_mm, float(_l))  if _live_mm  is not None else float(_l)
         if _t is not None:

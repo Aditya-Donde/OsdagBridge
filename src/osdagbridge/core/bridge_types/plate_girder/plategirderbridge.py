@@ -216,6 +216,9 @@ from osdagbridge.core.utils.common import (
     KEY_SD_DEFL_TOTAL,
     KEY_SD_DEFL_AFTER_CAMBER,
     KEY_SD_APPLIED_CAMBER,
+    KEY_SD_DEFL_LIVE_RAW,
+    KEY_SD_DEFL_TOTAL_RAW,
+    KEY_SD_DEFL_DL_RAW,
     KEY_SD_DEFL_ALLOW_LIVE,
     KEY_SD_DEFL_ALLOW_TOTAL,
     # Stiffener table
@@ -820,6 +823,14 @@ class PlateGirderBridge:
                     self.output_dict[f"{KEY_SD_DEFL_AFTER_CAMBER}.{_gi}"] = round(float(_dl), 3)
                 if _camber is not None:
                     self.output_dict[f"{KEY_SD_APPLIED_CAMBER}.{_gi}"] = round(float(_camber), 3)
+                # Pre-camber originals — what the analysis produced. Report Chapter 4 reads
+                # these so its table agrees with the deflection plots.
+                for _key, _field in ((KEY_SD_DEFL_LIVE_RAW,  "live_raw_mm"),
+                                     (KEY_SD_DEFL_TOTAL_RAW, "total_raw_mm"),
+                                     (KEY_SD_DEFL_DL_RAW,    "dl_raw_mm")):
+                    _v = _vals.get(_field)
+                    if _v is not None:
+                        self.output_dict[f"{_key}.{_gi}"] = round(float(_v), 3)
             
             # Stage 8: 3D CAD & Drawing Generation
             self._run_stage("8", self._stage_cad_generation)
