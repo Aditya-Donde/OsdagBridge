@@ -898,14 +898,16 @@ class TopViewCADWidget(QWidget):
         END_DIAPHRAGM_HIGHLIGHT = CAD_HOVER_GREY
         BEARING_HIGHLIGHT = CAD_HOVER_GREY
         
-        # Use base canvas dimensions for consistent drawing regardless of zoom
-        width = 900 * self.zoom_level
-        height = 750 * self.zoom_level
-
-        # Reduced margins for better space utilization in split view
+        # Base canvas dimensions with reduced margins for better space
+        # utilization in split view. Margins are applied at zoom 1.0 only: the
+        # scale is then linear in zoom_level, matching compute_fit_zoom() and
+        # _update_widget_size(). Scaling the canvas but not the margins would
+        # make the available area (and hence the scale) negative at small zoom,
+        # which mirrors the whole drawing.
+        base_width, base_height = 900, 750
         margin = 60
-        available_width = width - 2 * margin
-        available_height = height - 2 * margin - 60
+        available_width = base_width - 2 * margin
+        available_height = base_height - 2 * margin - 60
 
         n = self.params['num_girders']
         
@@ -918,7 +920,7 @@ class TopViewCADWidget(QWidget):
 
         span_scale = available_width / max(self.params['span_length'], 1.0)
         width_scale = available_height / max(total_model_width, 1.0)
-        scale = min(span_scale, width_scale)  # zoom_level already applied to width/height
+        scale = min(span_scale, width_scale) * self.zoom_level
 
         center_x = self.width() / 2
         center_y = self.height() / 2
