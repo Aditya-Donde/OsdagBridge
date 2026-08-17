@@ -1553,12 +1553,16 @@ class CrossSectionCADWidget(QWidget):
                               self.crash_barrier['height'] * scale + 
                               self.railing['height'] * scale)
         
-        # Ensure proper positioning
+        # Ensure proper positioning. Center vertically on the real widget
+        # height, mirroring center_x above. The canvas height (600 * zoom) is a
+        # scaling reference only: the widget never shrinks below the viewport,
+        # so anchoring to it drifts the drawing towards the top of the frame as
+        # the zoom level goes down, and eventually out of view entirely.
         if is_preview:
             # Perfectly center within the preview height, slightly shifted up for bottom labels
             base_y = (height + total_bridge_height) / 2 - 20
         else:
-            base_y = (height + total_bridge_height) / 2 - 70
+            base_y = (self.height() + total_bridge_height) / 2 - 70
 
         girder_depth_visual = self.girder['depth'] * scale * self.girder_visual_scale['depth']
         girder_top_y = base_y - girder_depth_visual
