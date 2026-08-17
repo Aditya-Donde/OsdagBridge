@@ -7,7 +7,7 @@ Author: Arushi
 import math
 from PySide6.QtWidgets import QWidget, QPushButton, QScrollArea
 from PySide6.QtCore import Qt, QRectF, QPointF, QTimer, QSize
-from PySide6.QtGui import QPainter, QPen, QColor, QFont, QBrush, QPolygonF, QIcon, QPixmap
+from PySide6.QtGui import QPainter, QPen, QColor, QFont, QBrush, QPolygonF, QIcon, QPixmap, QPainterPath
 from osdagbridge.core.utils.common import *
 from osdagbridge.desktop.cad.irc5_geometry import (
     CrashBarrierGeometry,
@@ -44,11 +44,17 @@ class CrossSectionCADWidget(QWidget):
         self.crash_barrier_type = "IRC 5 - RCC Crash Barrier"
         self.railing_type = None
         self.median_type = None
-        # hover label regions: list of (QRectF, text, bg_color, text_color)
+        # hover label regions: list of (shape, text, bg_color, text_color) where
+        # shape is the exact painted geometry (QPainterPath) or a QRectF fallback
         self.hover_labels = []
         self.hovered_label_index = -1
         self.hovered_element = None  # Track hovered element for highlighting
-        self.cross_section_hover_zones = []  # Store hover zones as (QRectF, element_type)
+        self.cross_section_hover_zones = []  # Store hover zones as (shape, element_type)
+        # Exact painted geometry per element instance, keyed by e.g. 'girder_0',
+        # 'bracing_0', 'crash_barrier_left'. Rebuilt on every paint and shared by
+        # the label and the highlight hover systems so both hit-test the pixels
+        # that were actually drawn instead of a bounding box.
+        self._exact_hit_shapes = {}
         self.interactive_hover = True
         self.highlighted_girder_index = -1
 
@@ -692,16 +698,68 @@ class CrossSectionCADWidget(QWidget):
 
         self.update_params(params)
 
+    def _register_hover_shape(self, key, element_type, *shapes):
+        """Record the exact painted geometry of an element as its hover hit area.
+
+        Hit testing then matches the pixels that were actually drawn, so hovering
+        only registers when the cursor is over the element itself and not over the
+        empty space inside its bounding box. Pass every piece the element paints
+        (QRectF or QPolygonF); they are unioned into one shape, which also leaves
+        genuine gaps - such as the notches either side of a girder web - outside
+        the hit area.
+
+        Calling this again with the same key extends the existing shape, so an
+        element painted by more than one function (a girder and its stiffeners)
+        ends up as a single hit area. element_type may be None for elements that
+        only need a hover label and have no highlight branch.
+        """
+        path = self._exact_hit_shapes.get(key)
+        is_new = path is None
+        if is_new:
+            path = QPainterPath()
+            path.setFillRule(Qt.WindingFill)
+
+        added = False
+        for shape in shapes:
+            if shape is None:
+                continue
+            if isinstance(shape, QPolygonF):
+                if shape.isEmpty():
+                    continue
+                path.addPolygon(shape)
+                path.closeSubpath()
+            else:
+                rect = QRectF(shape).normalized()
+                if rect.isEmpty():
+                    continue
+                path.addRect(rect)
+            added = True
+
+        if not added:
+            return self._exact_hit_shapes.get(key)
+
+        if is_new:
+            self._exact_hit_shapes[key] = path
+            if element_type:
+                # Stored by reference, so later additions to the path (e.g. the
+                # stiffeners joining their girder) extend the highlight zone too.
+                self.cross_section_hover_zones.append((path, element_type))
+        return path
+
     def mouseMoveEvent(self, event):
         """Handle mouse hover for both labels and structural elements"""
         if not getattr(self, 'interactive_hover', True):
             return
         pos = event.position() if hasattr(event, 'position') else event.pos()
         
+        # Shapes are registered in paint order (back to front), so walk them in
+        # reverse: where elements genuinely overlap, the one painted last is the
+        # one visible under the cursor and so the one that should answer.
         # Check label hover first
         new_hovered = -1
-        for i, (rect, text, bg_color, text_color) in enumerate(self.hover_labels):
-            if rect.contains(pos):
+        for i in range(len(self.hover_labels) - 1, -1, -1):
+            shape = self.hover_labels[i][0]
+            if shape.contains(pos):
                 new_hovered = i
                 break
         
@@ -711,8 +769,8 @@ class CrossSectionCADWidget(QWidget):
         
         # Check element hover
         new_hovered_element = None
-        for rect, element_type in self.cross_section_hover_zones:
-            if rect.contains(pos):
+        for shape, element_type in reversed(self.cross_section_hover_zones):
+            if shape.contains(pos):
                 new_hovered_element = element_type
                 break
         
@@ -729,6 +787,7 @@ class CrossSectionCADWidget(QWidget):
         # clear hover labels and zones at start of each paint
         self.hover_labels = []
         self.cross_section_hover_zones = []
+        self._exact_hit_shapes = {}
         
         painter = QPainter(self)
         try:
@@ -1241,6 +1300,10 @@ class CrossSectionCADWidget(QWidget):
                 v_radius = corner_radius * 0.8
                 painter.drawRoundedRect(void_rect, v_radius, v_radius)
         
+        # Register the painted base and post so the railing highlight can fire.
+        self._register_hover_shape(
+            f'railing_{side}', 'railing', base_rect, post_rect,
+        )
         return (rect_x, post_top_y, rect_x + outer_w, y_base, outer_w)
 
     def draw_steel_railing(self, painter, x, y, scale, side, geo):
@@ -1294,6 +1357,12 @@ class CrossSectionCADWidget(QWidget):
         mid_rail_rect = QRectF(post_x, mid_rail_y, post_size, rail_size)
         painter.drawRect(mid_rail_rect)
         
+        # The post is drawn as an outline with no fill, so the open gaps between
+        # the rails stay part of the railing here - the outline is what you see
+        # and what you would point at.
+        self._register_hover_shape(
+            f'railing_{side}', 'railing', base_rect, post_rect,
+        )
         return (rect_x, railing_top_y, rect_x + base_w, y, base_w)
 
     def draw_raised_kerb_median(self, painter, median_start_x, median_end_x, deck_top_y, scale, median_color, geo, dashed_border=False):
@@ -1330,10 +1399,11 @@ class CrossSectionCADWidget(QWidget):
             border_pen.setDashPattern([6, 4])
 
         painter.setPen(border_pen)
-        painter.drawPolygon(QPolygonF(points))
-        
-        hover_rect = QRectF(median_start_x, y_top, median_width_px, h)
-        self.cross_section_hover_zones.append((hover_rect, 'median'))
+        kerb_polygon = QPolygonF(points)
+        painter.drawPolygon(kerb_polygon)
+        # Hover zone is the trapezoid itself, not the full median width: the kerb
+        # is narrower than the median and its sides slope in.
+        self._register_hover_shape('median', 'median', kerb_polygon)
 
     def draw_rcc_barrier_median(self, painter, median_start_x, median_end_x, deck_top_y, scale, median_color, geo, dashed_border=False):
         """Draw two RCC crash barriers for median following standard shape"""
@@ -1377,8 +1447,9 @@ class CrossSectionCADWidget(QWidget):
             QPointF(x_l - left_at_top, y_top), QPointF(x_l - right_at_top, y_top),
             QPointF(x_l - right_at_mid, y_mid), QPointF(x_l - bottom_w, y_base_top)
         ]
-        painter.drawPolygon(QPolygonF(points_l))
         
+        left_barrier_polygon = QPolygonF(points_l)
+        painter.drawPolygon(left_barrier_polygon)
         # RIGHT assembly (faces RIGHT)
         x_r = median_end_x - bottom_w
         points_r = [
@@ -1386,10 +1457,13 @@ class CrossSectionCADWidget(QWidget):
             QPointF(x_r + right_at_mid, y_mid), QPointF(x_r + right_at_top, y_top),
             QPointF(x_r + left_at_top, y_top), QPointF(x_r, y_base_top)
         ]
-        painter.drawPolygon(QPolygonF(points_r))
-        
-        hover_rect = QRectF(median_start_x, y_top, median_width_px, h)
-        self.cross_section_hover_zones.append((hover_rect, 'median'))
+        right_barrier_polygon = QPolygonF(points_r)
+        painter.drawPolygon(right_barrier_polygon)
+
+        # Two separate barriers: the gap between them is not part of the median.
+        self._register_hover_shape(
+            'median', 'median', left_barrier_polygon, right_barrier_polygon,
+        )
 
     def draw_metallic_median(self, painter, median_start_x, median_end_x, deck_top_y, scale, median_color, geo):
         """Draw Metallic median with a common kerb base and beams on both sides"""
@@ -1413,7 +1487,9 @@ class CrossSectionCADWidget(QWidget):
         
         painter.setBrush(QBrush(QColor(255, 250, 220)) if self.hovered_element == 'median' else self.concrete_brush)
         painter.setPen(QPen(border_color, max(1.0, scale)))
-        painter.drawPolygon(QPolygonF([QPointF(x_bl, y_bottom), QPointF(x_br, y_bottom), QPointF(x_tr, y_top_kerb), QPointF(x_tl, y_top_kerb)]))
+        median_kerb_polygon = QPolygonF([QPointF(x_bl, y_bottom), QPointF(x_br, y_bottom), QPointF(x_tr, y_top_kerb), QPointF(x_tl, y_top_kerb)])
+        painter.drawPolygon(median_kerb_polygon)
+        self._register_hover_shape('median', 'median', median_kerb_polygon)
         
         post_w, post_offset = 150.0 * scale, 75.0 * scale
         spacer_w, spacer_h = 200.0 * scale, 330.0 * scale
@@ -1439,7 +1515,9 @@ class CrossSectionCADWidget(QWidget):
             # Draw Post
             painter.setBrush(QBrush(post_color))
             painter.setPen(QPen(border_color, 1))
-            painter.drawRect(QRectF(p_x, y_top_kerb - post_h, post_w, post_h))
+            median_post_rect = QRectF(p_x, y_top_kerb - post_h, post_w, post_h)
+            painter.drawRect(median_post_rect)
+            self._register_hover_shape('median', 'median', median_post_rect)
             
             h_centers = [post_h_mm - 165] if n_beams == 1 else [post_h_mm - 165, post_h_mm - 165 - 145 - 330]
             for hc_mm in h_centers:
@@ -1447,7 +1525,9 @@ class CrossSectionCADWidget(QWidget):
                 
                 # Draw Spacer
                 painter.setBrush(QBrush(post_color))
-                painter.drawRect(QRectF(s_x, sy, spacer_w, spacer_h))
+                median_spacer_rect = QRectF(s_x, sy, spacer_w, spacer_h)
+                painter.drawRect(median_spacer_rect)
+                self._register_hover_shape('median', 'median', median_spacer_rect)
                 
                 # Draw W-Beam Profile (Wave)
                 num_pts = 15
@@ -1467,12 +1547,12 @@ class CrossSectionCADWidget(QWidget):
                         inner_wave.insert(0, QPointF(wx - w_beam_thk, curr_y))
                 
                 painter.setBrush(QBrush(QColor(120, 120, 120)))
-                painter.drawPolygon(QPolygonF(outer_wave + inner_wave))
+                median_beam_polygon = QPolygonF(outer_wave + inner_wave)
+                painter.drawPolygon(median_beam_polygon)
+                self._register_hover_shape('median', 'median', median_beam_polygon)
 
         draw_side_assembly(True)
         draw_side_assembly(False)
-        hover_rect = QRectF(median_start_x, y_top_kerb - post_h, median_width_px, post_h + h_kerb)
-        self.cross_section_hover_zones.append((hover_rect, 'median'))
 
 
     def _get_crash_barrier_rendered_width_mm(self):
@@ -1720,6 +1800,9 @@ class CrossSectionCADWidget(QWidget):
         painter.setPen(Qt.NoPen)
         painter.drawPolygon(deck_polygon)
 
+        # Hover zone for the deck is the curved slab polygon that was painted,
+        # cross slope and footpath steps included, rather than a bounding box.
+        self._register_hover_shape('deck', 'deck', deck_polygon)
 
             
         # ===== WEARING COURSE (CURVED) =====
@@ -1746,7 +1829,13 @@ class CrossSectionCADWidget(QWidget):
                     seg_bottom_pts.insert(0, QPointF(x, y_bottom))
 
                 if seg_top_pts and seg_bottom_pts:
-                    painter.drawPolygon(QPolygonF(seg_top_pts + seg_bottom_pts))
+                    segment = QPolygonF(seg_top_pts + seg_bottom_pts)
+                    painter.drawPolygon(segment)
+                    # Each carriageway strip is a separate painted piece; they
+                    # union into one wearing-course hit area.
+                    self._register_hover_shape(
+                        'wearing_course', 'wearing_course', segment,
+                    )
 
             if median_present and median_start_x is not None and median_end_x is not None:
                 # Left carriageway strip
@@ -1756,27 +1845,6 @@ class CrossSectionCADWidget(QWidget):
             else:
                 # Single carriageway strip
                 draw_wearing_segment(left_barrier_visual_end, right_barrier_visual_start)
-
-        wc_hover_rect = QRectF(
-            carriageway_start_x,
-            deck_top_y - slope_height,
-            carriageway_end_x - carriageway_start_x,
-            wc_thickness_px + slope_height
-        )
-        self.cross_section_hover_zones.append((wc_hover_rect, 'wearing_course'))
-
-
-        
-        # Register hover zone for deck - full width
-        # approximate bounding box for curved deck
-        deck_hover_rect = QRectF(
-            deck_slab_left,
-            deck_top_y - slope_height,
-            deck_slab_right - deck_slab_left,
-            deck_thick_px + slope_height
-        )
-        self.cross_section_hover_zones.append((deck_hover_rect, 'deck'))
-
 
         # footpath to deck connecting line
         dashed_pen = QPen(QColor(0, 0, 0), 1.5, Qt.DashLine)
@@ -1790,21 +1858,29 @@ class CrossSectionCADWidget(QWidget):
 
             painter.setPen(Qt.NoPen)
             # Raise slab under left railing as well so railing stays on top
+            left_rail_slab_rect = None
             if left_railing_present and left_rail_w_px > 0:
-                painter.drawRect(QRectF(
+                left_rail_slab_rect = QRectF(
                     deck_left_x,
                     fp_top_y,
                     left_rail_w_px,
                     fp_thick_px
-                ))
+                )
+                painter.drawRect(left_rail_slab_rect)
 
-            painter.drawRect(QRectF(
+            left_fp_rect = QRectF(
                 left_fp_x,
                 fp_top_y,
                 left_fp_width_px,
                 fp_thick_px
-            ))
-            
+            )
+            painter.drawRect(left_fp_rect)
+            # The footpath sits on top of the deck slab, so it has to claim its
+            # own area even though it has no highlight branch of its own -
+            # otherwise the deck polygon underneath answers for it.
+            self._register_hover_shape(
+                'footpath_left', 'footpath', left_rail_slab_rect, left_fp_rect,
+            )
             
             # Top edge
             painter.setPen(deck_outline_pen)
@@ -1816,17 +1892,23 @@ class CrossSectionCADWidget(QWidget):
             painter.setBrush(self.concrete_brush)
             painter.setPen(Qt.NoPen)
             # Raise slab under right railing as well so railing stays on top
+            right_rail_slab_rect = None
             if right_railing_present and right_rail_w_px > 0:
-                painter.drawRect(QRectF(
+                right_rail_slab_rect = QRectF(
                     deck_right_x - right_rail_w_px,
                     fp_top_y,
                     right_rail_w_px,
                     fp_thick_px
-                ))
+                )
+                painter.drawRect(right_rail_slab_rect)
 
-            painter.drawRect(QRectF(right_fp_x, fp_top_y,
-                                right_fp_width_px, fp_thick_px))
-            
+            right_fp_rect_painted = QRectF(right_fp_x, fp_top_y,
+                                right_fp_width_px, fp_thick_px)
+            painter.drawRect(right_fp_rect_painted)
+
+            self._register_hover_shape(
+                'footpath_right', 'footpath', right_rail_slab_rect, right_fp_rect_painted,
+            )
             # Draw horizontal edges as solid
             painter.setPen(deck_outline_pen)
             painter.setBrush(Qt.NoBrush)
@@ -1921,6 +2003,12 @@ class CrossSectionCADWidget(QWidget):
 
             # Geometry vector (true bracing direction)
             dx = x2 - x1
+            bracing_hovered = self.hovered_element == 'cross_bracing'
+            bracing_fill = (
+                self.CROSS_BRACING_COLOR.lighter(115) if bracing_hovered
+                else self.CROSS_BRACING_COLOR
+            )
+            bracing_arms = []
             if is_preview:
                 # scale for preview to stay proportional to bridge size
                 thickness = max(1.2, (10 * scale * self.girder_visual_scale['web_thickness'])) * (self.zoom_level / 1.2)
@@ -1942,9 +2030,12 @@ class CrossSectionCADWidget(QWidget):
                 p3 = QPointF(x2 - off_x_bs, bottom_R - off_y_bs)
                 p4 = QPointF(x1 - off_x_bs, top_L    - off_y_bs)
 
+                backslash_arm = QPolygonF([p1, p2, p3, p4])
+                bracing_arms.append(backslash_arm)
+
                 painter.setPen(Qt.NoPen)
-                painter.setBrush(QBrush(self.CROSS_BRACING_COLOR))
-                painter.drawPolygon(QPolygonF([p1, p2, p3, p4]))
+                painter.setBrush(QBrush(bracing_fill))
+                painter.drawPolygon(backslash_arm)
 
                 painter.setPen(QPen(self.CROSS_BRACING_COLOR.darker(220), 1.5))
                 painter.drawLine(p1, p2)
@@ -1964,14 +2055,20 @@ class CrossSectionCADWidget(QWidget):
                 p2 = QPointF(x2 + off_x_sl, top_R    + off_y_sl)
                 p3 = QPointF(x2 - off_x_sl, top_R    - off_y_sl)
                 p4 = QPointF(x1 - off_x_sl, bottom_L - off_y_sl)
+                
+                slash_arm = QPolygonF([p1, p2, p3, p4])
+                bracing_arms.append(slash_arm)
 
                 painter.setPen(Qt.NoPen)
-                painter.setBrush(QBrush(self.CROSS_BRACING_COLOR))
-                painter.drawPolygon(QPolygonF([p1, p2, p3, p4]))
+                painter.setBrush(QBrush(bracing_fill))
+                painter.drawPolygon(slash_arm)
 
                 painter.setPen(QPen(self.CROSS_BRACING_COLOR.darker(220), 1.5))
                 painter.drawLine(p1, p2)
                 painter.drawLine(p4, p3)
+            # Hover zone is the two painted arms, not the bay between the girders,
+            # so the open triangles inside the X are not part of the bracing.
+            self._register_hover_shape(f'bracing_{i}', 'cross_bracing', *bracing_arms)
         # Draw railings
         left_railing_rect = None
         right_railing_rect = None
@@ -2318,26 +2415,28 @@ class CrossSectionCADWidget(QWidget):
         # Common label line Y position (below girders)
         label_line_y = base_y + 25
         
+        # Each component carries the key of its exact painted geometry, recorded
+        # during drawing. The rect stays as a fallback for anything without one.
         components = []
         
         # Deck slab - straight line below girder
         deck_rect = QRectF(deck_slab_left, deck_top_y, deck_slab_right - deck_slab_left, deck_thick_px)
         deck_center_x = (deck_slab_left + deck_slab_right) / 2
-        components.append((deck_rect, "Deck", deck_center_x, deck_bottom_y, 'straight_line', None))
+        components.append((deck_rect, "Deck", deck_center_x, deck_bottom_y, 'straight_line', None, 'deck'))
         
         # Left crash barrier - text on top of figure
         left_cb_rect = QRectF(left_barrier_x, deck_top_y - cb_height,
                             crash_barrier_width_px, cb_height)
         left_cb_center_x = left_barrier_x + crash_barrier_width_px / 2
         left_cb_top_y = deck_top_y - cb_height
-        components.append((left_cb_rect, "Crash Barrier", left_cb_center_x, left_cb_top_y, 'on_figure_top', None))
+        components.append((left_cb_rect, "Crash Barrier", left_cb_center_x, left_cb_top_y, 'on_figure_top', None, 'crash_barrier_left'))
         
         # Right crash barrier - text on top of figure
         right_cb_rect = QRectF(right_barrier_x, deck_top_y - cb_height,
                             crash_barrier_width_px, cb_height)
         right_cb_center_x = right_barrier_x + crash_barrier_width_px / 2
         right_cb_top_y = deck_top_y - cb_height
-        components.append((right_cb_rect, "Crash Barrier", right_cb_center_x, right_cb_top_y, 'on_figure_top', None))
+        components.append((right_cb_rect, "Crash Barrier", right_cb_center_x, right_cb_top_y, 'on_figure_top', None, 'crash_barrier_right'))
         
         # Left footpath - tilted line towards left
         if fp_config in ['left', 'both'] and left_fp_width > 0 and fp_thick_px > 5:
@@ -2345,7 +2444,7 @@ class CrossSectionCADWidget(QWidget):
                                 left_fp_width * scale - railing_width_px, fp_thick_px)
             fp_center_x = (left_fp_x + railing_width_px + left_barrier_x) / 2
             fp_center_y = fp_top_y + fp_thick_px / 2
-            components.append((left_fp_rect, "Footpath", fp_center_x, fp_center_y, 'tilted_line_left', None))
+            components.append((left_fp_rect, "Footpath", fp_center_x, fp_center_y, 'tilted_line_left', None, 'footpath_left'))
         
         # Right footpath - straight line same level as deck
         if fp_config in ['right', 'both'] and right_fp_width > 0 and fp_thick_px > 5:
@@ -2354,7 +2453,7 @@ class CrossSectionCADWidget(QWidget):
                                 deck_right_x - right_barrier_end_x - railing_width_px, fp_thick_px)
             fp_center_x = (right_barrier_end_x + deck_right_x - railing_width_px) / 2
             fp_center_y = fp_top_y + fp_thick_px / 2
-            components.append((right_fp_rect, "Footpath", fp_center_x, fp_center_y, 'straight_line', None))
+            components.append((right_fp_rect, "Footpath", fp_center_x, fp_center_y, 'straight_line', None, 'footpath_right'))
         
         # Left railing - text on top of figure
         if left_railing_rect is not None:
@@ -2362,7 +2461,7 @@ class CrossSectionCADWidget(QWidget):
                                 left_railing_rect[4], left_railing_rect[3] - left_railing_rect[1])
             railing_center_x = left_railing_rect[0] + left_railing_rect[4] / 2
             railing_top_y = left_railing_rect[1]
-            components.append((railing_rect, "Railing", railing_center_x, railing_top_y, 'on_figure_top', None))
+            components.append((railing_rect, "Railing", railing_center_x, railing_top_y, 'on_figure_top', None, 'railing_left'))
         
         # Right railing - text on top of figure
         if right_railing_rect is not None:
@@ -2370,7 +2469,7 @@ class CrossSectionCADWidget(QWidget):
                                 right_railing_rect[4], right_railing_rect[3] - right_railing_rect[1])
             railing_center_x = right_railing_rect[0] + right_railing_rect[4] / 2
             railing_top_y = right_railing_rect[1]
-            components.append((railing_rect, "Railing", railing_center_x, railing_top_y, 'on_figure_top', None))
+            components.append((railing_rect, "Railing", railing_center_x, railing_top_y, 'on_figure_top', None, 'railing_right'))
         
         # Median - text on top of figure (like railing or crash barrier)
         if median_present and median_start_x is not None:
@@ -2403,7 +2502,8 @@ class CrossSectionCADWidget(QWidget):
                 median_center_x,
                 median_top_y,
                 'on_figure_top',
-                None
+                None,
+                'median'
             ))
         
         # Girders with stiffeners - pointer 50 below
@@ -2414,7 +2514,7 @@ class CrossSectionCADWidget(QWidget):
             girder_rect = QRectF(girder_x - total_width/2, base_y - girder_depth_visual, 
                                 total_width, girder_depth_visual)
             components.append((girder_rect, "Girder",
-                            girder_x, base_y - girder_depth_visual / 2, 'lower_pointer', None))
+                            girder_x, base_y - girder_depth_visual / 2, 'lower_pointer', None, f'girder_{i}'))
         
         # Cross bracing zones - pointer 50 below
         if n > 1:
@@ -2425,15 +2525,17 @@ class CrossSectionCADWidget(QWidget):
                     bracing_rect = QRectF(x1, base_y - girder_depth_visual, x2 - x1, girder_depth_visual)
                     center_x = (x1 + x2) / 2
                     components.append((bracing_rect, "Cross Bracing",
-                                    center_x, base_y - girder_depth_visual / 2, 'lower_pointer', None))
-        
-        # Register all for hover detection
-        for rect, name, tx, ty, ltype, extra in components:
-            self.hover_labels.append((rect, name, QColor(255, 255, 255, 255), QColor(60, 60, 60)))
-        
+                                    center_x, base_y - girder_depth_visual / 2, 'lower_pointer', None, f'bracing_{i}'))
+        # Register all for hover detection, preferring the exact painted geometry
+        # so a label only appears when the cursor is on the element itself.
+        for rect, name, tx, ty, ltype, extra, key in components:
+            shape = self._exact_hit_shapes.get(key)
+            if shape is None:
+                shape = rect
+            self.hover_labels.append((shape, name, QColor(255, 255, 255, 255), QColor(60, 60, 60)))
         # Draw label only for hovered component
         if self.hovered_label_index >= 0 and self.hovered_label_index < len(components):
-            rect, name, target_x, target_y, label_type, extra = components[self.hovered_label_index]
+            rect, name, target_x, target_y, label_type, extra, key = components[self.hovered_label_index]
             
             if label_type == 'on_figure_top':
                 font = QFont('Arial', 9, QFont.Normal)
@@ -2609,23 +2711,23 @@ class CrossSectionCADWidget(QWidget):
         painter.setPen(QPen(QColor(0, 0, 0), 1.5))
         
         # Draw bottom flange
-        painter.drawRect(QRectF(x - bf_bottom/2, base_y - tf_bottom, bf_bottom, tf_bottom))
+        bottom_flange_rect = QRectF(x - bf_bottom/2, base_y - tf_bottom, bf_bottom, tf_bottom)
+        painter.drawRect(bottom_flange_rect)
         
         # Draw web
         web_height = d - tf_top - tf_bottom
-        painter.drawRect(QRectF(x - tw/2, base_y - d + tf_top, tw, web_height))
+        web_rect = QRectF(x - tw/2, base_y - d + tf_top, tw, web_height)
+        painter.drawRect(web_rect)
         
         # Draw top flange
-        painter.drawRect(QRectF(x - bf_top/2, base_y - d, bf_top, tf_top))
-        
-        # Register hover zone for this girder (use the widest flange as width)
-        max_flange = max(bf_top, bf_bottom)
-        hover_padding = 10
-        hover_rect = QRectF(x - max_flange/2 - hover_padding, 
-                           base_y - d - hover_padding,
-                           max_flange + 2*hover_padding, 
-                           d + 2*hover_padding)
-        self.cross_section_hover_zones.append((hover_rect, 'girder'))
+        top_flange_rect = QRectF(x - bf_top/2, base_y - d, bf_top, tf_top)
+        painter.drawRect(top_flange_rect)
+        # Hover zone is the painted I-section itself, so the open notches either
+        # side of the web are correctly not part of the girder.
+        self._register_hover_shape(
+            f'girder_{index}', 'girder',
+            top_flange_rect, web_rect, bottom_flange_rect,
+        )
         
     def draw_stiffeners(self, painter, x, base_y, scale, stiffener_color, index=None):
         """Draw vertical stiffeners with chamfered inner corners"""
@@ -2703,6 +2805,11 @@ class CrossSectionCADWidget(QWidget):
 
         painter.drawPolygon(right_stiffener)
 
+        # Stiffeners belong to their girder: extend that girder's hit area rather
+        # than registering a competing zone.
+        self._register_hover_shape(
+            f'girder_{index}', 'girder', left_stiffener, right_stiffener,
+        )
     def draw_crash_barrier(self, painter, x, y, scale, side='left'):
         """Draw crash barrier cross-section using IRC 5 geometry spec.
         """
@@ -2763,7 +2870,6 @@ class CrossSectionCADWidget(QWidget):
                     QPointF(x + left_at_top, y_top),       # TL (inner wall top, leans in)
                     QPointF(x, y_base_top),  # L1 (inner, vertical base)
                 ]
-                hover_rect = QRectF(x, y_top, bottom_w, h)
             else:
                 # Same as median LEFT barrier (carriageway-facing curve on the left)
                 # x is the RIGHT edge of this barrier
@@ -2776,10 +2882,13 @@ class CrossSectionCADWidget(QWidget):
                     QPointF(x - right_at_mid, y_mid),       # L2 (outer wall kink)
                     QPointF(x - bottom_w, y_base_top),  # L1 (outer, vertical base)
                 ]
-                hover_rect = QRectF(x - bottom_w, y_top, bottom_w, h)
-
-            self.cross_section_hover_zones.append((hover_rect, 'crash_barrier'))
-            painter.drawPolygon(QPolygonF(points))
+            barrier_polygon = QPolygonF(points)
+            # Hover zone is the barrier profile itself, so the space beside its
+            # sloping face is not part of the barrier.
+            self._register_hover_shape(
+                f'crash_barrier_{side}', 'crash_barrier', barrier_polygon,
+            )
+            painter.drawPolygon(barrier_polygon)
             return
 
 
@@ -2858,7 +2967,8 @@ class CrossSectionCADWidget(QWidget):
         # Draw Kerb
         painter.setBrush(QBrush(QColor(255, 250, 220)) if self.hovered_element == 'crash_barrier' else self.concrete_brush)
         painter.setPen(QPen(border_color, max(1.0, scale)))
-        painter.drawPolygon(QPolygonF(kerb_points))
+        kerb_polygon = QPolygonF(kerb_points)
+        painter.drawPolygon(kerb_polygon)
         
         # Draw Post
         # Match metallic post fill with stiffener color used in cross-section rendering.
@@ -2866,7 +2976,13 @@ class CrossSectionCADWidget(QWidget):
         if self.hovered_element == 'crash_barrier':
             post_color = QColor(255, 250, 220)
         painter.setBrush(QBrush(post_color))
-        painter.drawRect(QRectF(post_rect_x, y - kerb_h - post_h, post_w, post_h))
+        post_rect = QRectF(post_rect_x, y - kerb_h - post_h, post_w, post_h)
+        painter.drawRect(post_rect)
+
+        # Collect the painted pieces of the assembly for the hover hit area.
+        self._register_hover_shape(
+            f'crash_barrier_{side}', 'crash_barrier', kerb_polygon, post_rect,
+        )
         
         # Draw Spacer and W-Beam
         if n_beams == 1:
@@ -2883,7 +2999,8 @@ class CrossSectionCADWidget(QWidget):
             
             # Draw Spacer
             painter.setBrush(QBrush(post_color))
-            painter.drawRect(QRectF(spacer_x_start, spacer_y, spacer_width_val, spacer_h))
+            spacer_rect = QRectF(spacer_x_start, spacer_y, spacer_width_val, spacer_h)
+            painter.drawRect(spacer_rect)
             
             # Draw W-Beam Profile (The double wave)
             # Generate wave points
@@ -2921,17 +3038,11 @@ class CrossSectionCADWidget(QWidget):
             painter.setBrush(QBrush(QColor(120, 120, 120)))
             painter.drawPolygon(w_beam_polygon)
 
-        # Hover rect for the whole assembly
-        assembly_top_y = y - kerb_h - post_h
-        assembly_bottom_y = y
-        if side == 'left':
-            assembly_width = max(kerb_bottom_w, (beam_root_x + w_beam_depth - x))
-            hover_rect = QRectF(x, assembly_top_y, abs(assembly_width), assembly_bottom_y - assembly_top_y)
-        else:
-            assembly_width = max(kerb_bottom_w, (x - (beam_root_x - w_beam_depth)))
-            hover_rect = QRectF(x - assembly_width, assembly_top_y, abs(assembly_width), assembly_bottom_y - assembly_top_y)
-            
-        self.cross_section_hover_zones.append((hover_rect, 'crash_barrier'))
+            # Each spacer and beam joins the assembly's hit area, so the open air
+            # between the kerb and the beams is not part of the barrier.
+            self._register_hover_shape(
+                f'crash_barrier_{side}', 'crash_barrier', spacer_rect, w_beam_polygon,
+            )
 
     def _effective_crash_barrier_type(self):
         if self.crash_barrier_type == "Custom":
