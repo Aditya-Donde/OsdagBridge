@@ -546,7 +546,7 @@ def _extend_member_field_keys(working_input_dict: dict, girder_id: str, member_f
                 print(f"@@: Update {key+suffix} = {seed_val}")
                 working_input_dict[key + suffix] = seed_val
 
-def _on_no_of_girders_changed(working_input_dict: dict) -> None:
+def _on_no_of_girders_changed(working_input_dict: dict, optimisation: bool = False) -> None:
     """
     Regenerate all dynamic per-girder/member keys for the given girder count.
     Called by:
@@ -589,7 +589,14 @@ def _on_no_of_girders_changed(working_input_dict: dict) -> None:
     span = float(working_input_dict.get(KEY_SPAN))
     design_mode  = str(working_input_dict.get(KEY_DESIGN_MODE, 'Optimized')).strip()
     symmetry = 'Girder Symmetric' if design_mode == 'Optimized' else 'Girder Unsymmetric'
-    section_props = solver.compute_section_properties(span=span, symmetry=symmetry)
+    if optimisation:
+        depth = working_input_dict[KEY_MP_GIRDER_DEPTH] / 1e3
+        bf = working_input_dict[KEY_MP_GIRDER_TOP_FLANGE_WIDTH] / 1e3
+        tf = working_input_dict[KEY_MP_GIRDER_TOP_FLANGE_THICKNESS] / 1e3
+        tw = working_input_dict[KEY_MP_GIRDER_WEB_THICKNESS] / 1e3
+        section_props = solver.compute_section_properties(span=span, symmetry=symmetry, user_depth=depth, B_top=bf, B_bot=bf, t_f_top=tf, t_f_bot=tf, t_w=tw)
+    else:
+        section_props = solver.compute_section_properties(span=span, symmetry=symmetry)
 
     count = int(float(str(working_input_dict.get(KEY_TS_NO_OF_GIRDERS)).strip()))
 
@@ -924,7 +931,7 @@ def seed_no_of_girders(overall_width: float) -> int:
         raise ValueError("Overall bridge width must be positive.")
     return max(2, math.ceil(overall_width / DEFAULT_GIRDER_SPACING))
 
-def solve_extend_basic_input_dict(basic_input_dict: dict) -> None:
+def solve_extend_basic_input_dict(basic_input_dict: dict, optimised_dict:dict = {}, optimisation: bool = False) -> None:
     """Parse basic inputs and solve bridge layout. Updates basic_input_dict in-place."""
     from .initial_sizing import BridgeConfigurationSolver
 
@@ -950,6 +957,9 @@ def solve_extend_basic_input_dict(basic_input_dict: dict) -> None:
 
     # Enforces the _calc_crossbracing_spacing_and_no input into the working dictionary
     _update_cross_bracing_defaults(basic_input_dict)
+    
+    if optimised_dict:
+        basic_input_dict.update(optimised_dict)
     
     if footpath_str in ('None', ''):
         n_footpaths, footpath_width, railing_width = 0, 0.0, 0.0
@@ -977,11 +987,12 @@ def solve_extend_basic_input_dict(basic_input_dict: dict) -> None:
     )
     sizing_result = solver._solve_layout(no_of_girders=no_of_girders, changed_field='girders')
 
-    print("[DEBUG] Bridge Layout Sizing Result:")
-    print(f"  overall_width = {sizing_result.overall_width} m")
-    print(f"  no_of_girders = {sizing_result.no_of_girders}")
-    print(f"  girder_spacing = {sizing_result.girder_spacing} m")
-    print(f"  deck_overhang = {sizing_result.deck_overhang} m")
+    if not optimisation:
+        print("[DEBUG] Bridge Layout Sizing Result:")
+        print(f"  overall_width = {sizing_result.overall_width} m")
+        print(f"  no_of_girders = {sizing_result.no_of_girders}")
+        print(f"  girder_spacing = {sizing_result.girder_spacing} m")
+        print(f"  deck_overhang = {sizing_result.deck_overhang} m")
 
     basic_input_dict.update({
         KEY_TS_NO_OF_FOOTPATHS: n_footpaths,
@@ -994,5 +1005,5 @@ def solve_extend_basic_input_dict(basic_input_dict: dict) -> None:
     })
 
     # Update Dynamic per-girder/member keys
-    _on_no_of_girders_changed(basic_input_dict)
+    _on_no_of_girders_changed(basic_input_dict, optimisation)
 
