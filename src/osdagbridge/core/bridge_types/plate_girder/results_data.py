@@ -19,7 +19,12 @@ import openseespy.opensees as ops
 from .results_data_post_processing import post_process, FORCE_KEEP, DISP_KEEP
 from .initial_sizing import composite_section_properties
 from osdagbridge.core.utils.codes.irc22_2015 import IRC22_2014
-from osdagbridge.core.utils.common import KEY_COMP_I
+from osdagbridge.core.utils.common import (
+    KEY_COMP_I,
+    KEY_SD_DEFL_LIVE_RAW,
+    KEY_SD_DEFL_TOTAL_RAW,
+    KEY_SD_DEFL_DL_RAW,
+)
 
 
 class LazyLoadcaseResults(Mapping):
@@ -827,7 +832,8 @@ def build_deflections_cache(result_handler, config, result_data) -> dict:
     Returns::
 
         {
-            "G1": {"live_mm": 12.3, "total_mm": 25.6, "dl_mm": 13.3,
+            "G1": {KEY_SD_DEFL_LIVE_RAW: 12.3, KEY_SD_DEFL_TOTAL_RAW: 25.6,
+                   KEY_SD_DEFL_DL_RAW: 13.3,
                    "per_lc": {"case1": 8.0, "case2": 12.3, ...}},
             "G2": {...},
         }
@@ -908,10 +914,13 @@ def build_deflections_cache(result_handler, config, result_data) -> dict:
     for girder_label, g in girders.items():
         nodes = g.get("nodes", [])
         cache[girder_label] = {
-            "live_mm":  _max_defl_over_lcs(live_lcs, nodes),
-            "total_mm": _max_defl_mm(dl_ll_case, nodes),
-            "dl_mm":    _max_defl_mm(dl_case,    nodes),
-            "per_lc":   _per_lc_defl(nodes),
+            # Keyed by the KEY_SD_DEFL_*_RAW constants: these are the pre-camber,
+            # composite-basis values, which is exactly what those keys name. The
+            # designer subtracts camber and adds its own post-camber fields.
+            KEY_SD_DEFL_LIVE_RAW:  _max_defl_over_lcs(live_lcs, nodes),
+            KEY_SD_DEFL_TOTAL_RAW: _max_defl_mm(dl_ll_case, nodes),
+            KEY_SD_DEFL_DL_RAW:    _max_defl_mm(dl_case,    nodes),
+            "per_lc":              _per_lc_defl(nodes),
         }
 
     return cache

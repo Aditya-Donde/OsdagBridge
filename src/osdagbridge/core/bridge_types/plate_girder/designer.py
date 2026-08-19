@@ -24,6 +24,9 @@ from osdagbridge.core.bridge_types.plate_girder.initial_sizing import (
 from osdagbridge.core.utils.codes.irc22_2015 import IRC22_2014
 from osdagbridge.core.utils.codes.irc6_2017 import IRC6_2017
 from osdagbridge.core.utils.common import (
+    KEY_SD_DEFL_LIVE_RAW,
+    KEY_SD_DEFL_TOTAL_RAW,
+    KEY_SD_DEFL_DL_RAW,
     KEY_MATERIAL_GIRDER_E,
     KEY_MATERIAL_GIRDER_G,
     KEY_MATERIAL_GIRDER_POISSON,
@@ -76,10 +79,11 @@ FATIGUE_SHEAR_STRENGTH_MPA  = _fat_r["tfn_MPa_used"]   # 59.0
 MAX_CAMBER_MM = KEY_MAX_CAMBER_M * 1000.0   # buildable camber limit (m → mm)
 
 
-def apply_camber(dl_defl_mm, total_defl_mm, camber_mode, camber_value_m):
+def apply_camber(girder_defl, camber_mode, camber_value_m):
     """Subtract the fabrication camber from one girder's DL and total sag.
 
-    Takes the composite-basis DL and DL+LL sags (mm) from ``build_deflections_cache``,
+    Takes one girder's entry from ``build_deflections_cache`` — the composite-basis,
+    pre-camber sags (mm) under ``KEY_SD_DEFL_DL_RAW`` and ``KEY_SD_DEFL_TOTAL_RAW`` —
     and the camber mode/value from ``config.geometry`` (Deflection Control inputs).
 
     Camber is the full DL sag in Default mode, or the user value in Custom mode, capped
@@ -88,8 +92,8 @@ def apply_camber(dl_defl_mm, total_defl_mm, camber_mode, camber_value_m):
 
     Returns ``(dl_adj_mm, total_adj_mm, camber_mm)``.
     """
-    dl = float(dl_defl_mm)
-    total = float(total_defl_mm)
+    dl = float(girder_defl[KEY_SD_DEFL_DL_RAW])
+    total = float(girder_defl[KEY_SD_DEFL_TOTAL_RAW])
     mode = str(camber_mode).strip().lower()
     if mode == "default":
         camber = max(dl, 0.0)
@@ -104,33 +108,33 @@ def apply_camber(dl_defl_mm, total_defl_mm, camber_mode, camber_value_m):
 def apply_camber_to_deflections_cache(raw_cache, camber_mode, camber_value_m):
     """Apply camber to every girder in a deflection cache.
 
-    Takes the ``{girder: {"live_mm", "total_mm", "dl_mm"}}`` cache from
-    ``build_deflections_cache`` (composite-basis, no camber yet), and the camber
-    mode/value from ``config.geometry``.
+    Takes the pre-camber cache from ``build_deflections_cache`` (composite-basis,
+    keyed by ``KEY_SD_DEFL_LIVE_RAW`` / ``_TOTAL_RAW`` / ``_DL_RAW``), and the
+    camber mode/value from ``config.geometry``.
 
     Runs ``apply_camber`` per girder — camber is a design decision, so it belongs in this
     layer, not the results layer. ``live_mm`` passes through; the input is not mutated.
 
     Returns a new dict carrying BOTH versions: ``dl_mm``/``total_mm`` post-camber (used by
-    the design checks) and ``*_raw_mm`` pre-camber (what the analysis produced, used by
-    report Chapter 4 so its table keeps matching the deflection plots). ``camber_mm`` is
-    the camber actually applied. All 3 dp.
+    the design checks) and the ``KEY_SD_DEFL_*_RAW`` entries passed through unchanged
+    (what the analysis produced, used by report Chapter 4 so its table keeps matching the
+    deflection plots). ``camber_mm`` is the camber actually applied. All 3 dp.
     """
     out = {}
     for label, d in raw_cache.items():
-        dl_adj, total_adj, camber_mm = apply_camber(
-            d["dl_mm"], d["total_mm"], camber_mode, camber_value_m
-        )
+        dl_adj, total_adj, camber_mm = apply_camber(d, camber_mode, camber_value_m)
         out[label] = {
-            "live_mm":      d.get("live_mm"),
+            "live_mm":      d.get(KEY_SD_DEFL_LIVE_RAW),   # live is uncambered
             "total_mm":     round(total_adj, 3),
             "dl_mm":        round(dl_adj, 3),
             "camber_mm":    round(camber_mm, 3),
             "per_lc":       d.get("per_lc", {}),   # per-case sags, no camber (live is uncambered)
             # Pre-camber originals — analysis-stage truth, never used by the checks.
-            "live_raw_mm":  d.get("live_mm"),      # live is uncambered, so raw == adjusted
-            "total_raw_mm": d.get("total_mm"),
-            "dl_raw_mm":    d.get("dl_mm"),
+            # Carried under the same raw keys build_deflections_cache produced them with,
+            # so plategirderbridge can copy them into output_dict by key.
+            KEY_SD_DEFL_LIVE_RAW:  d.get(KEY_SD_DEFL_LIVE_RAW),
+            KEY_SD_DEFL_TOTAL_RAW: d.get(KEY_SD_DEFL_TOTAL_RAW),
+            KEY_SD_DEFL_DL_RAW:    d.get(KEY_SD_DEFL_DL_RAW),
         }
     return out
 
