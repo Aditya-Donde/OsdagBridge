@@ -10,7 +10,7 @@ from PySide6.QtWidgets import (
     QTableWidget, QTableWidgetItem, QHeaderView, QCheckBox, QSizePolicy,
 )
 from osdagbridge.core.utils.codes.irc6_2017 import IRC6_2017
-from osdagbridge.core.utils.common import *
+
 class LoadCombinationWidget(QWidget):
     """
     Self-contained widget — table + Add/Modify/Delete buttons.
@@ -29,18 +29,6 @@ class LoadCombinationWidget(QWidget):
         self._owner    = owner
         self._ai       = ai
         self._data: list = []
-
-        try:
-            self._irc6_data = IRC6_2017.uls_load_combinations()
-        except Exception as e:
-            print("Error loading IRC6 ULS combinations:", e)
-            self._irc6_data = []
-
-        try:
-            self._irc6_sls_data = IRC6_2017.sls_load_combinations()
-        except Exception as e:
-            print("Error loading IRC6 SLS combinations:", e)
-            self._irc6_sls_data = []    
 
         self.setObjectName(field_id)
         self._build_ui()
@@ -220,25 +208,26 @@ class LoadCombinationWidget(QWidget):
         'floating_bodies':    'FB',
     }
 
-    # Combination → KEY maps live in core (single source of truth shared with the
-    # analyser's combination builder); aliased here for brevity.
-    _ULS_CASE_KEYS = IRC6_2017.ULS_COMBINATION_KEYS
-    _SLS_CASE_KEYS = IRC6_2017.SLS_COMBINATION_KEYS
+    @staticmethod
+    def default_load_combination_entries() -> list[dict]:
+        """
+        Expand the IRC:6-2017 ULS + SLS load combinations into display entries.
 
-    def _populate_default_combinations(self):
+        Single source of truth shared by the Additional Inputs load-combination
+        widget and the results/report pipeline. Each entry is::
+
+            {"name": "<label> : <expr>", "included": True, "key": <str>, "expr": <str>}
+
+        ``included`` defaults to True; callers overlay the user's selection.
         """
-        Expand each IRC6 ULS combination into adding/relieving cases,
-        collapse to single case when adding == relieving for all permanent loads.
-        """
-        self.table.setRowCount(0)
-        self._data = []
+        abbr    = LoadCombinationWidget._ABBREV
+        entries = []
 
         basic_count = 1
         accidental_count = 1
         seismic_count = 1
-
-        #ULS Combination------------------------------------
-        for combo in self._irc6_data:
+       #ULS Combination------------------------------------
+        for combo in IRC6_2017.uls_load_combinations():
             ctype   = combo['combination_type']
             factors = combo['factors']
             name    = combo['name']
@@ -281,60 +270,29 @@ class LoadCombinationWidget(QWidget):
                             'seismic', 'vehicle_collision', 'barge_impact', 'floating_bodies']:
                     val = factors.get(load)
                     if val is not None:
-                        parts.append(f"{val}{self._ABBREV.get(load, load)}")
-
+                        parts.append(f"{val}{abbr.get(load, load)}")
                 expr = ' + '.join(parts)
 
-                if ctype == "basic":
-                    combo_name = f"Basic_{basic_count}"
-                    basic_count += 1
+                if ctype == 'basic':
+                    combo_name = f"Basic_{basic_count}"; basic_count += 1
+                elif ctype == 'accidental':
+                    combo_name = f"Accidental_{accidental_count}"; accidental_count += 1
+                else:
+                    combo_name = f"Seismic_{seismic_count}"; seismic_count += 1
 
-                elif ctype == "accidental":
-                    combo_name = f"Accidental_{accidental_count}"
-                    accidental_count += 1
-
-                elif ctype == "seismic":
-                    combo_name = f"Seismic_{seismic_count}"
-                    seismic_count += 1
-
-                display = f"{combo_name} : {expr}"
-
-                # Look up key
-                key = self._ULS_CASE_KEYS.get((ctype, leading, acc_load, direction), '')
-
-                entry = {
-                    'name':     display,
+                key = IRC6_2017.ULS_COMBINATION_KEYS.get(
+                    (ctype, leading, acc_load, direction), ''
+                )
+                entries.append({
+                    'name':     f"{combo_name} : {expr}",
                     'included': True,
                     'key':      key,
                     'expr':     expr,
-                }
-                self._data.append(entry)
+                })
 
-                row = self.table.rowCount()
-                self.table.insertRow(row)
-
-                name_item = QTableWidgetItem(display)
-                name_item.setFlags(name_item.flags() & ~Qt.ItemIsEditable)
-                self.table.setItem(row, 0, name_item)
-
-                cb_container = QWidget()
-                cb_layout = QHBoxLayout(cb_container)
-                cb_layout.setContentsMargins(0, 0, 0, 0)
-                cb_layout.setAlignment(Qt.AlignCenter)
-                cb = QCheckBox()
-                cb.setChecked(True)
-                cb.stateChanged.connect(
-                    lambda state, i=row: self._on_included_changed(i, bool(state))
-                )
-                cb_layout.addWidget(cb)
-                self.table.setCellWidget(row, 1, cb_container)
-
-        rare_count = 1
-        frequent_count = 1
-        qp_count = 1
-
-        # ── SLS combinations ───────────────────────────────────────────────
-        for combo in self._irc6_sls_data:
+        # ── SLS combinations ────────────────────────────────────────────────
+        rare_count = frequent_count = qp_count = 1
+        for combo in IRC6_2017.sls_load_combinations():
             ctype   = combo['combination_type']
             factors = combo['factors']
             name    = combo['name']
@@ -351,11 +309,10 @@ class LoadCombinationWidget(QWidget):
             # Determine leading load for key lookup
             if ctype == 'quasi_permanent':
                 leading  = None
-                directions = ['adding'] if same_surf else ['adding', 'relieving']
             else:
                 # name format: "SLS Rare — live_load leading"
                 leading = name.split('—')[1].strip().replace(' leading', '')
-                directions = ['adding'] if same_surf else ['adding', 'relieving']
+            directions = ['adding'] if same_surf else ['adding', 'relieving']
 
             for direction in directions:
                 dw_f = dw_add if direction == 'adding' else dw_rel
@@ -364,52 +321,107 @@ class LoadCombinationWidget(QWidget):
                 for load in ['live_load', 'wind_load', 'thermal_load']:
                     val = factors.get(load)
                     if val is not None and val != 0:
-                        parts.append(f"{val}{self._ABBREV.get(load, load)}")
-
+                        parts.append(f"{val}{abbr.get(load, load)}")
                 expr = ' + '.join(parts)
 
-                if ctype == "rare":
-                    combo_name = f"Rare_{rare_count}"
-                    rare_count += 1
+                if ctype == 'rare':
+                    combo_name = f"Rare_{rare_count}"; rare_count += 1
+                elif ctype == 'frequent':
+                    combo_name = f"Frequent_{frequent_count}"; frequent_count += 1
+                else:
+                    combo_name = f"Quasi-Permanent_{qp_count}"; qp_count += 1
 
-                elif ctype == "frequent":
-                    combo_name = f"Frequent_{frequent_count}"
-                    frequent_count += 1
-
-                elif ctype == "quasi_permanent":
-                    combo_name = f"Quasi-Permanent_{qp_count}"
-                    qp_count += 1
-
-                display = f"{combo_name} : {expr}"
-
-                key = self._SLS_CASE_KEYS.get((ctype, leading, direction), '')
-
-                entry = {
-                    'name':     display,
+                key = IRC6_2017.SLS_COMBINATION_KEYS.get((ctype, leading, direction), '')
+                entries.append({
+                    'name':     f"{combo_name} : {expr}",
                     'included': True,
                     'key':      key,
                     'expr':     expr,
-                }
-                self._data.append(entry)
+                })
 
-                row = self.table.rowCount()
-                self.table.insertRow(row)
+        return entries
 
-                name_item = QTableWidgetItem(display)
-                name_item.setFlags(name_item.flags() & ~Qt.ItemIsEditable)
-                self.table.setItem(row, 0, name_item)
+    @staticmethod
+    def build_load_combinations_report(saved_selection, custom_combinations) -> list[dict]:
+        """
+        Build the authoritative load-combinations report list for the results table.
 
-                cb_container = QWidget()
-                cb_layout = QHBoxLayout(cb_container)
-                cb_layout.setContentsMargins(0, 0, 0, 0)
-                cb_layout.setAlignment(Qt.AlignCenter)
-                cb = QCheckBox()
-                cb.setChecked(True)
-                cb.stateChanged.connect(
-                    lambda state, i=row: self._on_included_changed(i, bool(state))
-                )
-                cb_layout.addWidget(cb)
-                self.table.setCellWidget(row, 1, cb_container)
+        Regenerates the IRC:6 default combinations
+        (`default_load_combination_entries`), overlays the user's
+        include/exclude selection (matched by key first, then display name), then
+        appends the user's custom combinations. Each returned entry is
+        ``{"name", "expr", "included"}``.
+
+        Parameters
+        ----------
+        saved_selection : list[dict] | None
+            The per-combination selection saved by the load-combination widget
+            (each ``{"key", "name", "included", ...}``).
+        custom_combinations : list[dict] | None
+            User-defined combinations (each ``{"name", "included", "items"}``,
+            where each item is ``{"case", "factor"}``).
+        """
+        entries = LoadCombinationWidget.default_load_combination_entries()
+
+        sel_by_key  = {e.get("key"):  e.get("included") for e in (saved_selection or [])
+                       if isinstance(e, dict) and e.get("key")}
+        sel_by_name = {e.get("name"): e.get("included") for e in (saved_selection or [])
+                       if isinstance(e, dict)}
+        for e in entries:
+            if e["key"] in sel_by_key:
+                e["included"] = bool(sel_by_key[e["key"]])
+            elif e["name"] in sel_by_name:
+                e["included"] = bool(sel_by_name[e["name"]])
+
+        report = [
+            {"name": e["name"], "expr": e["expr"], "included": e["included"]}
+            for e in entries
+        ]
+
+        for c in (custom_combinations or []):
+            if not isinstance(c, dict):
+                continue
+            items = c.get("items") or []
+            expr  = " + ".join(
+                f"{i.get('factor', '')}{i.get('case', '')}"
+                for i in items if isinstance(i, dict)
+            )
+            report.append({
+                "name":     str(c.get("name", "Custom")),
+                "expr":     expr,
+                "included": bool(c.get("included", True)),
+            })
+
+        return report
+
+    def _populate_default_combinations(self):
+        """
+        Populate the table from the shared IRC6 combination expansion
+        (single source of truth in ``default_load_combination_entries``,
+        also used by the backend to build the results table).
+        """
+        self.table.setRowCount(0)
+        self._data = [dict(e) for e in self.default_load_combination_entries()]
+
+        for entry in self._data:
+            row = self.table.rowCount()
+            self.table.insertRow(row)
+
+            name_item = QTableWidgetItem(entry['name'])
+            name_item.setFlags(name_item.flags() & ~Qt.ItemIsEditable)
+            self.table.setItem(row, 0, name_item)
+
+            cb_container = QWidget()
+            cb_layout = QHBoxLayout(cb_container)
+            cb_layout.setContentsMargins(0, 0, 0, 0)
+            cb_layout.setAlignment(Qt.AlignCenter)
+            cb = QCheckBox()
+            cb.setChecked(bool(entry.get('included', True)))
+            cb.stateChanged.connect(
+                lambda state, i=row: self._on_included_changed(i, bool(state))
+            )
+            cb_layout.addWidget(cb)
+            self.table.setCellWidget(row, 1, cb_container)
 
         self.table.setVisible(True)
         self._adjust_table_height()   

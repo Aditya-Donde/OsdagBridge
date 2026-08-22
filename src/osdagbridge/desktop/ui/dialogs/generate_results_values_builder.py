@@ -571,7 +571,7 @@ def resolve_shear_stud_properties(output_dict: dict) -> dict | None:
 def resolve_permanent_load_summary(output_dict: dict) -> dict | None:
     """
     Permanent (dead) load breakdown per girder (kN/m). All values are computed at
-    design time (see _store_permanent_load_breakdown) and read straight from
+    design time and read straight from
     output_dict. SW and DL vary per girder; SW-factor / DC / DD / DW / SIDL are
     shared. DL = SW + DC + DD + DW + SIDL.
     """
@@ -963,7 +963,7 @@ def resolve_load_combinations(output_dict: dict) -> dict | None:
     Load combinations table — sourced entirely from output_dict.
 
     The backend builds the authoritative report at design time (IRC6 defaults +
-    custom, each {name, expr, included}) and stores it under KEY_LC_REPORT.
+    custom, each {name, expr, included}) and stores it under KEY_ALL_LOAD_COMBINATIONS.
     'Selected' reflects each combination's included flag.
     """
     od = output_dict

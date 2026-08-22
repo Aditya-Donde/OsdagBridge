@@ -1210,9 +1210,10 @@ class BridgeGrillageModel:
         )
 
         # ── 1. Seismic coefficients (IRC:6-2017 Cl.218.5.1) ──
-        # Use Ah/Av from UI if available; otherwise compute from IRC formula.
+        # Sa/g depends only on soil/period, so compute it always (for the
+        # results table). Use Ah/Av from UI if available; else from IRC formula.
+        sa_g = self._spectral_sa_g(soil_type, time_period)
         if not Ah:
-            sa_g = self._spectral_sa_g(soil_type, time_period)
             damping_factor = IRC6_2017.table_18(damping_percent)
             Ah = (z_value / 2.0) * importance_factor * sa_g * damping_factor
         if not Av:
@@ -1327,6 +1328,7 @@ class BridgeGrillageModel:
             "EQ_X": EQ_X, "EQ_Z": EQ_Z, "EQ_Y": EQ_Y,
             "EQ_a": combo_cases[0], "EQ_b": combo_cases[1], "EQ_c": combo_cases[2],
             "Feq_X_kN": Feq_X_kN, "Feq_Z_kN": Feq_Z_kN,
+            "Z": z_value, "Sa_g": sa_g, "Ah": Ah, "Av": Av,
         }
 
     # ============================================================
