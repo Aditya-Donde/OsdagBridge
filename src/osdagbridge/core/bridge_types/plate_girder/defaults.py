@@ -66,6 +66,7 @@ from osdagbridge.core.utils.common import (
     KEY_MP_CB_BOTTOM_CHORD_SECTION_TYPE,
     KEY_MP_CB_BOTTOM_CHORD_SECTION_DESIG,
     KEY_MP_CB_SPACING,
+    VALUES_CROSS_BRACING_TYPE,
     DEFAULT_CROSS_BRACING_SPACING,
 
     KEY_MP_ED_SELECT_GIRDERS,
@@ -260,7 +261,7 @@ def _update_typical_section_defaults(input_dict: dict) -> None:
         _update(KEY_MD_WIDTH,        0.0)
         _update(KEY_MD_HEIGHT,       None)
         _update(KEY_MD_AREA,         None)
-        _update(KEY_MD_LOAD,         None)
+        _update(KEY_MD_LOAD,         0.0)   # no median contributes 0 kN/m, not None
         _update(KEY_MD_POST_SPACING, None)
 
     # --- Railing sub-tab ---
@@ -438,8 +439,27 @@ _CB_PROPS = [
     (KEY_MP_CB_BOTTOM_CHORD_SECTION_DESIG,  "bottom_chord_section_desig"),
 ]
 
+# Default per-member cross-bracing values. Default bracing is an angle (same
+# convention as the End Diaphragm).
+_CB_DEFAULT_ANGLE = "IS 100 x 100 x 10"
+_CB_DEFAULT_SECTION_TYPE = "Double Angle (Long Leg)"
+_CB_DEFAULTS = {
+    "select_girders":               "",
+    "member_id":                    "",
+    "type":                         VALUES_CROSS_BRACING_TYPE[1],   # "X-bracing"
+    "bracing_connection":           "Bolted",
+    "bracing_section_type":         _CB_DEFAULT_SECTION_TYPE,
+    "bracing_section_designation":  _CB_DEFAULT_ANGLE,
+    "top_chord":                    VALUES_NO_YES[1],               # "Yes"
+    "top_chord_section_type":       _CB_DEFAULT_SECTION_TYPE,
+    "top_chord_section_desig":      _CB_DEFAULT_ANGLE,
+    "bottom_chord":                 VALUES_NO_YES[1],               # "Yes"
+    "bottom_chord_section_type":    _CB_DEFAULT_SECTION_TYPE,
+    "bottom_chord_section_desig":   _CB_DEFAULT_ANGLE,
+    "spacing":                      DEFAULT_CROSS_BRACING_SPACING,  # 3.0
+}
 
-def extend_cb_dynamic_keys(working_input_dict: dict, girder_count: int, no_of_bracings: int,section_defaults: dict | None = None) -> None:
+def extend_cb_dynamic_keys(working_input_dict: dict, girder_count: int, no_of_bracings: int,section_defaults: dict | None =  _CB_DEFAULTS) -> None:
     """Add missing CB per-member dynamic keys for all pairs up to no_of_bracings members.
 
     Only adds keys that are not already present — existing user-edited values are preserved.
@@ -782,26 +802,6 @@ def _on_no_of_girders_changed(working_input_dict: dict) -> None:
                 stale_cb_keys.append(k)
     for k in stale_cb_keys:
         del working_input_dict[k]
-
-    # --- Cross Bracing section default ---
-    # Default bracing is an angle (same convention as the End Diaphragm below).
-    _CB_DEFAULT_ANGLE = "IS 100 x 100 x 10"
-    _CB_DEFAULT_SECTION_TYPE = "Double Angle (Long Leg)"
-    _CB_DEFAULTS = {
-        "select_girders":               "",
-        "member_id":                    "",
-        "type":                         VALUES_CROSS_BRACING_TYPE[1],   # "X-bracing"
-        "bracing_connection":           "Bolted",
-        "bracing_section_type":         _CB_DEFAULT_SECTION_TYPE,
-        "bracing_section_designation":  _CB_DEFAULT_ANGLE,
-        "top_chord":                    VALUES_NO_YES[1],               # "Yes"
-        "top_chord_section_type":       _CB_DEFAULT_SECTION_TYPE,
-        "top_chord_section_desig":      _CB_DEFAULT_ANGLE,
-        "bottom_chord":                 VALUES_NO_YES[1],               # "Yes"
-        "bottom_chord_section_type":    _CB_DEFAULT_SECTION_TYPE,
-        "bottom_chord_section_desig":   _CB_DEFAULT_ANGLE,
-        "spacing":                      DEFAULT_CROSS_BRACING_SPACING,  # 3.0
-    }
 
     extend_cb_dynamic_keys(working_input_dict, count, no_of_bracings, _CB_DEFAULTS)
 
