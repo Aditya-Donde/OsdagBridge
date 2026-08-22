@@ -2922,7 +2922,6 @@ class ReportGenerator:
 
 
 def _extract_demands_from_analysis_results(
-    analysis_results: PlateGirderAnalysisResults,
     config: BridgeConfig,
     deflections_cache: dict,
     result_data: dict | None = None,
@@ -3383,7 +3382,6 @@ def collect_girder_verdict(per_girder_results: dict) -> dict:
 def run_design_check(
     config: "BridgeConfig | None" = None,
     plate_girder_bridge: Any | None = None,
-    analysis_results: Optional[PlateGirderAnalysisResults] = None,
     per_girder_demands: "Dict[str, DemandEnvelope] | None" = None,
     per_girder_per_lc: "Dict[str, Dict[str, DemandEnvelope]] | None" = None,
     deflections_cache: "dict | None" = None,
