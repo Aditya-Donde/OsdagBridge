@@ -22,7 +22,6 @@ from osdagbridge.core.bridge_types.plate_girder.initial_sizing import (
     steel_i_section_properties,
 )
 from osdagbridge.core.utils.codes.irc22_2015 import IRC22_2014
-from osdagbridge.core.utils.codes.irc6_2017 import IRC6_2017
 from osdagbridge.core.utils.common import (
     KEY_SD_DEFL_LIVE_RAW,
     KEY_SD_DEFL_TOTAL_RAW,
@@ -2921,7 +2920,7 @@ class ReportGenerator:
 # ======================================================================
 
 
-def _extract_demands_from_analysis_results(
+def _extract_demands_from_result_data(
     config: BridgeConfig,
     deflections_cache: dict,
     result_data: dict | None = None,
@@ -3383,7 +3382,6 @@ def collect_girder_verdict(per_girder_results: dict) -> dict:
 
 
 def run_design_check(
-    config: "BridgeConfig | None" = None,
     plate_girder_bridge: Any | None = None,
     per_girder_demands: "Dict[str, DemandEnvelope] | None" = None,
     per_girder_per_lc: "Dict[str, Dict[str, DemandEnvelope]] | None" = None,
@@ -3396,15 +3394,14 @@ def run_design_check(
 
     # -- Step 1: Configuration --
     print("\n[Step 1] Loading bridge configuration ...")
-    if plate_girder_bridge is not None:
-        config = BridgeConfig.from_plate_girder_bridge(plate_girder_bridge)
-    elif config is None:
+    if plate_girder_bridge is None:
         raise ValueError(
-            "Either config (BridgeConfig) or plate_girder_bridge must be supplied to run_design_check()."
+            "plate_girder_bridge must be supplied to run_design_check()."
         )
+    config = BridgeConfig.from_plate_girder_bridge(plate_girder_bridge)
 
-    # If stiffener was not set at all (e.g. config built manually without from_plate_girder_bridge),
-    # create a default StiffenerConfig so the pipeline always runs in guidance mode at minimum.
+    # If stiffener was not set at all, create a default StiffenerConfig so the
+    # pipeline always runs in guidance mode at minimum.
     if config.stiffener is None:
         config.stiffener = StiffenerConfig()
         print("  [INFO] stiffener not set — using default StiffenerConfig() (guidance mode)")
@@ -3412,7 +3409,7 @@ def run_design_check(
 
     # Skew-safe girders come from post-processing result_data (set on the bridge before
     # Stage 5). Shared by both the deflection cache and the demand extraction so they agree.
-    result_data = getattr(plate_girder_bridge, "result_data", None) if plate_girder_bridge is not None else None
+    result_data = getattr(plate_girder_bridge, "result_data", None)
     if not (result_data and result_data.get("girders")):
         raise ValueError(
             "plate_girder_bridge.result_data must contain a 'girders' key "
@@ -3432,7 +3429,7 @@ def run_design_check(
         plate_girder_bridge._deflections_cache = deflections_cache
 
     if per_girder_demands is None:
-        per_girder_demands, per_girder_per_lc = _extract_demands_from_analysis_results(
+        per_girder_demands, per_girder_per_lc = _extract_demands_from_result_data(
             config, deflections_cache, result_data
         )
 

@@ -968,7 +968,7 @@ def build_deflections_cache(config, result_data) -> dict:
     Values are in mm (converted from metres, which is OpenSees' native unit).
 
     Girders come from ``result_data["girders"]`` (post-processing) — the same skew-safe,
-    transverse-projection source ``_extract_demands`` uses.
+    transverse-projection source ``_extract_demands_from_result_data`` uses.
     """
     disps = result_data.get("displacements")
     if not disps:

@@ -789,7 +789,7 @@ class PlateGirderBridge:
             self.result_data = self.grillage_model.get_result_data()
 
             # Stage 5: Girder Design Checks
-            self._run_stage("5", self._run_dcr_checks, dataset)
+            self._run_stage("5", self._run_dcr_checks)
 
             if self.dump_json:
                 from osdagbridge.core.bridge_types.plate_girder.results_data import dump_full_data
@@ -2444,7 +2444,7 @@ class PlateGirderBridge:
     # DCR checks
     # ─────────────────────────────────────────────────────────────────────────
 
-    def _run_dcr_checks(self, dataset) -> None:
+    def _run_dcr_checks(self) -> None:
         """Run structural capacity checks and push DCR percentages to the output dock."""
         # Forces, displacements, load-case names and girders all come from
         # self.result_data (built just before stage 5), so no result handler is
@@ -2618,12 +2618,11 @@ class PlateGirderBridge:
         overhang exists — allowing build_load_effects_cache() to skip them.
         """
         from osdagbridge.core.bridge_types.plate_girder.results_data import (
-            build_load_effects_cache, build_deflections_cache, build_forces_summary,
+            build_load_effects_cache, build_forces_summary,
         )
         results = self.get_results_dataset()
         if results is None:
             self._load_effects_cache        = {}
-            self._deflections_cache         = {}
             self._lc_summary       = {}
             self._reaction_summary= {}
             return
