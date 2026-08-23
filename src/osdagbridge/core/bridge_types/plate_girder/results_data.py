@@ -941,7 +941,7 @@ def composite_stiffness_props(config) -> tuple[dict, float]:
     return props, max(props[KEY_COMP_I] / sec.Iz_steel, 1.0)
 
 
-def build_deflections_cache(result_handler, config, result_data) -> dict:
+def build_deflections_cache(config, result_data) -> dict:
     """
     Pre-compute maximum vertical (y) deflection per girder for:
       - live load only  (worst of every vehicle arrangement)
@@ -970,14 +970,11 @@ def build_deflections_cache(result_handler, config, result_data) -> dict:
     Girders come from ``result_data["girders"]`` (post-processing) — the same skew-safe,
     transverse-projection source ``_extract_demands`` uses.
     """
-    ds = result_handler.ds
-    if ds is None:
-        return {}
-    disp_da = ds.get("displacements")
-    if disp_da is None:
+    disps = result_data.get("displacements")
+    if not disps:
         return {}
 
-    all_lcs = [str(lc) for lc in ds.coords["Loadcase"].values]
+    all_lcs = [str(lc) for lc in result_data.get("loadcases", [])]
     lc_groups = classify_loadcases(all_lcs)
 
     # All individual vehicle positions — NOT the single "1.0 LL" case, which is the position
@@ -993,7 +990,10 @@ def build_deflections_cache(result_handler, config, result_data) -> dict:
     # Skew-safe girders from post-processing result_data (NOT result_handler.build_girders(),
     # whose x-equality support detection collapses under skew). Keyed G1..Gn, main girders only.
     girders  = result_data.get("girders")
-    node_set = set(disp_da.coords["Node"].values)
+    # Node tags the displacement tables actually carry. Every load case covers the
+    # same nodes, so the first is representative. Tables are keyed by string while
+    # the girders' node lists hold ints, hence the cast.
+    node_set = {int(n) for n in next(iter(disps.values()), {})}
 
     # Steel-basis → composite-basis correction, applied to every case below.
     _, stiffness_ratio = composite_stiffness_props(config)
@@ -1002,26 +1002,31 @@ def build_deflections_cache(result_handler, config, result_data) -> dict:
         if lc_name is None or not nodes:
             return None
         try:
+            table = disps[str(lc_name)]
             vals = []
             for node in nodes:
                 if node not in node_set:
                     continue
-                v = float(disp_da.sel(Loadcase=lc_name, Node=node, Component="y")) * 1000.0
+                v = float(table[str(node)]["y"]) * 1000.0
                 vals.append(v)
             return round(max(abs(v) for v in vals) / stiffness_ratio, 3) if vals else None
         except Exception:
             return None
 
     def _per_lc_defl(nodes: list) -> dict:
-        # Worst sag for one girder in EVERY load case: {lc: mm}. One vectorised select per
-        # girder (not per node per case), then max|y| over the girder's nodes. Same
-        # composite-basis correction as _max_defl_mm, so per-case and summary values agree.
+        # Worst sag for one girder in EVERY load case: {lc: mm} — max|y| over the girder's
+        # nodes, case by case. Same composite-basis correction as _max_defl_mm, so per-case
+        # and summary values agree. Scaling by 1000/stiffness_ratio is positive, so taking
+        # the max before it rather than after gives the same answer.
         valid = [n for n in nodes if n in node_set]
         if not valid:
             return {}
-        da = (abs(disp_da.sel(Node=valid, Component="y")) * 1000.0 / stiffness_ratio).max(dim="Node")
-        return {str(lc): round(float(v), 3)
-                for lc, v in zip(da.coords["Loadcase"].values, da.values)}
+        out: dict = {}
+        for lc in all_lcs:
+            table = disps[lc]
+            worst = max(abs(float(table[str(n)]["y"])) for n in valid)
+            out[lc] = round(worst * 1000.0 / stiffness_ratio, 3)
+        return out
 
     def _max_defl_over_lcs(lc_names: list, nodes: list) -> float | None:
         # Worst sag for one girder across the given load cases — the max of each case's own max.

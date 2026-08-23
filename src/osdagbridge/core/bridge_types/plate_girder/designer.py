@@ -11,7 +11,6 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Dict, List, Optional, Any
 
-from osdagbridge.core.bridge_types.plate_girder.analysis_results import PlateGirderAnalysisResults
 from osdagbridge.core.bridge_types.plate_girder.results_data import (
     build_deflections_cache,
     classify_loadcases,
@@ -2927,10 +2926,9 @@ def _extract_demands_from_analysis_results(
     deflections_cache: dict,
     result_data: dict | None = None,
 ) -> tuple:
-    # Build per_girder_demands and per_girder_per_lc using the existing
-    # pandas-based methods on PlateGirderAnalysisResults.
+    # Build per_girder_demands and per_girder_per_lc from result_data alone — the
+    # forces, displacements and load-case names all come out of the results layer.
     # Returns (Dict[girder_name, DemandEnvelope], Dict[girder_name, Dict[lc, DemandEnvelope]])
-    import numpy as np
 
     # Girders come pre-separated (edge beams already excluded, labelled G1..Gn) from the 
     # post-processing result_data. result_data stores member ids as strings; the dataset selects on the int
@@ -3039,6 +3037,10 @@ def _extract_demands_from_analysis_results(
                     _seen_lcs.add(_s)
                     _all_lcs_for_per_lc.append(_s)
 
+    def _num(v):
+        # Missing component or NaN → 0.0, as np.nan_to_num(nan=0.0) did.
+        return 0.0 if v is None or v != v else float(v)
+
     per_girder_demands: Dict[str, DemandEnvelope] = {}
     per_girder_per_lc:  Dict[str, Dict[str, DemandEnvelope]] = {}
 
@@ -3054,9 +3056,9 @@ def _extract_demands_from_analysis_results(
             if lc_name is None:
                 return 0.0
             try:
-                f = analysis_results.ds.forces.sel(Loadcase=lc_name, Element=elements)
-                vi = float(np.nan_to_num(np.asarray(f.sel(Component=comp_i).values, dtype=float), nan=0.0).max())
-                vj = float(np.nan_to_num(np.asarray(f.sel(Component=comp_j).values, dtype=float), nan=0.0).max())
+                lc_rows = [result_data["forces"][str(lc_name)][str(e)] for e in elements]
+                vi = max(_num(r.get(comp_i)) for r in lc_rows)
+                vj = max(_num(r.get(comp_j)) for r in lc_rows)
                 return max(abs(vi), abs(vj))
             except Exception:
                 return 0.0
@@ -3088,18 +3090,18 @@ def _extract_demands_from_analysis_results(
         stress_range_MPa = shear_range_MPa = 0.0
         if _fatigue_range_lcs:
             try:
-                f = analysis_results.ds.forces.sel(Loadcase=_fatigue_range_lcs, Element=elements)
+                _fat_tables = [result_data["forces"][str(lc)] for lc in _fatigue_range_lcs]
 
                 def _sec_range(comp_i, comp_j):
                     """Worst per-section (max − min) across truck positions, incl. the 0 state."""
                     rng = 0.0
                     for c in (comp_i, comp_j):
-                        da   = f.sel(Component=c)
-                        emax = da.max("Loadcase").clip(min=0)   # vehicle on  (or 0 if never +)
-                        emin = da.min("Loadcase").clip(max=0)   # vehicle off (0) or hogging
-                        v    = float((emax - emin).max())
-                        if v == v:                              # skip NaN
-                            rng = max(rng, v)
+                        for e in elements:
+                            vals = [v for v in (t[str(e)].get(c) for t in _fat_tables)
+                                    if v is not None and v == v]    # NaN skipped, as .max() did
+                            if not vals:
+                                continue
+                            rng = max(rng, max(max(vals), 0.0) - min(min(vals), 0.0))
                     return rng
 
                 if Ze_comp_bot_mm3 > 0:
@@ -3116,15 +3118,17 @@ def _extract_demands_from_analysis_results(
         Vr_kN = 0.0
         if all_live_lcs:
             try:
-                f_ll = analysis_results.ds.forces.sel(Loadcase=all_live_lcs, Element=elements)
-                vy_ll = np.concatenate([
-                    np.asarray(f_ll.sel(Component=c).values, dtype=float).flatten()
-                    for c in ("Vy_i", "Vy_j")
-                ])
-                vy_ll = vy_ll[~np.isnan(vy_ll)]
-                if vy_ll.size:
-                    Vr_kN = (max(float(vy_ll.max()), 0.0)
-                             - min(float(vy_ll.min()), 0.0)) / 1e3   # N → kN
+                _forces = result_data["forces"]
+                vy_ll = [
+                    v
+                    for lc in all_live_lcs
+                    for row in (_forces[str(lc)][str(e)] for e in elements)
+                    for v in (row.get("Vy_i"), row.get("Vy_j"))
+                    if v is not None and v == v          # drop NaN, as the dataset version did
+                ]
+                if vy_ll:
+                    Vr_kN = (max(max(vy_ll), 0.0)
+                             - min(min(vy_ll), 0.0)) / 1e3   # N → kN
             except Exception as e:
                 warnings.warn(f"Could not compute Vr for girder {g_name}: {e}. Defaulting to 0.0 kN.")
                 Vr_kN = 0.0
@@ -3147,10 +3151,10 @@ def _extract_demands_from_analysis_results(
         for lc_str in _all_lcs_for_per_lc:
             # ── Forces: max(|i|, |j|) per component across girder elements ──
             try:
-                lc_forces = analysis_results.ds.forces.sel(Loadcase=lc_str, Element=elements)
+                lc_rows = [result_data["forces"][lc_str][str(e)] for e in elements]
                 def _fmax(comp_i, comp_j):
-                    vi = float(np.nan_to_num(np.asarray(lc_forces.sel(Component=comp_i).values, dtype=float), nan=0.0).max())
-                    vj = float(np.nan_to_num(np.asarray(lc_forces.sel(Component=comp_j).values, dtype=float), nan=0.0).max())
+                    vi = max(_num(r.get(comp_i)) for r in lc_rows)
+                    vj = max(_num(r.get(comp_j)) for r in lc_rows)
                     return max(abs(vi), abs(vj))
                 Mz = _fmax("Mz_i", "Mz_j") / 1e3   # N·m → kN·m
                 Vy = _fmax("Vy_i", "Vy_j") / 1e3   # N → kN
@@ -3163,10 +3167,9 @@ def _extract_demands_from_analysis_results(
 
             # ── Displacements: max abs across girder nodes ──────────────────
             try:
-                lc_disps = analysis_results.ds.displacements.sel(Loadcase=lc_str, Node=nodes)
+                lc_disp_rows = [result_data["displacements"][lc_str][str(n)] for n in nodes]
                 def _dmax(comp):
-                    v = np.nan_to_num(np.asarray(lc_disps.sel(Component=comp).values, dtype=float), nan=0.0)
-                    return float(np.abs(v).max())
+                    return max(abs(_num(r.get(comp))) for r in lc_disp_rows)
                 Dx = _dmax("x") * 1e3   # m → mm
                 Dy = _dmax("y") * 1e3
                 Dz = _dmax("z") * 1e3
@@ -3410,7 +3413,7 @@ def run_design_check(
     # Skew-safe girders come from post-processing result_data (set on the bridge before
     # Stage 5). Shared by both the deflection cache and the demand extraction so they agree.
     result_data = getattr(plate_girder_bridge, "result_data", None) if plate_girder_bridge is not None else None
-    if analysis_results is not None and not (result_data and result_data.get("girders")):
+    if not (result_data and result_data.get("girders")):
         raise ValueError(
             "plate_girder_bridge.result_data must contain a 'girders' key "
             "produced by results_data_post_processing.post_process(). "
@@ -3422,21 +3425,21 @@ def run_design_check(
     # decision — is added on top. Each girder entry carries both the post-camber values
     # (design checks) and the pre-camber *_raw_mm originals (report Chapter 4). Written
     # back onto the bridge so plategirderbridge can read self._deflections_cache after.
-    if deflections_cache is None and analysis_results is not None and plate_girder_bridge is not None:
+    if deflections_cache is None:
         deflections_cache = apply_camber_to_deflections_cache(
-            build_deflections_cache(analysis_results, config, result_data), config.geometry.camber_mode, config.geometry.camber_value_m,
+            build_deflections_cache(config, result_data), config.geometry.camber_mode, config.geometry.camber_value_m,
         )
         plate_girder_bridge._deflections_cache = deflections_cache
 
-    if per_girder_demands is None and analysis_results is not None:
+    if per_girder_demands is None:
         per_girder_demands, per_girder_per_lc = _extract_demands_from_analysis_results(
-            analysis_results, config, deflections_cache, result_data
+            config, deflections_cache, result_data
         )
 
     if not per_girder_demands:
         raise ValueError(
-            "Supply either analysis_results or per_girder_demands "
-            "(Dict[girder_name, DemandEnvelope] from the analyser)."
+            "No girder demands could be extracted — result_data['girders'] "
+            "carries no girder with elements."
         )
 
     # -- Step 2: Run IRC 22:2015 checks for every girder (1 to N) --

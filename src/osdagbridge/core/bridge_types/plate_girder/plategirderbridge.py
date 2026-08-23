@@ -2446,12 +2446,11 @@ class PlateGirderBridge:
 
     def _run_dcr_checks(self, dataset) -> None:
         """Run structural capacity checks and push DCR percentages to the output dock."""
-        # builds the analysis with the real edge distance so girder labels (EB1/EB2, G1…Gn) line up with the cache.
-        edge_dist = self.get_edge_dist()
-        results = PlateGirderAnalysisResults(dataset=dataset, bridge=self.grillage_model, edge_dist=edge_dist,)
+        # Forces, displacements, load-case names and girders all come from
+        # self.result_data (built just before stage 5), so no result handler is
+        # needed here — run_design_check reads that dict directly.
         _, engine, design_results = run_design_check(
             plate_girder_bridge=self,
-            analysis_results=results,
             print_report=True,
         )
         self._dcr_engine = engine
