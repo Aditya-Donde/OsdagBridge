@@ -14,6 +14,7 @@ from typing import Dict, List, Optional, Any
 from osdagbridge.core.bridge_types.plate_girder.analysis_results import PlateGirderAnalysisResults
 from osdagbridge.core.bridge_types.plate_girder.results_data import (
     build_deflections_cache,
+    classify_loadcases,
     composite_stiffness_props,
 )
 from osdagbridge.core.bridge_types.plate_girder.initial_sizing import (
@@ -2946,7 +2947,7 @@ def _extract_demands_from_analysis_results(
         raise ValueError(
             "deflections_cache is required — DL/total deflection and camber are "
             "resolved from it, not recomputed here.")
-    lc_groups    = analysis_results.classify_loadcases()
+    lc_groups    = classify_loadcases(result_data["loadcases"])
     live_static  = lc_groups["vehicle_static"]
     all_live_lcs = live_static
     live_set     = set(str(lc) for lc in all_live_lcs)
@@ -2977,8 +2978,7 @@ def _extract_demands_from_analysis_results(
     _sw_lcs = list(lc_groups.get("sw", lc_groups.get("SW",
               lc_groups.get("girder_sw", lc_groups.get("self_weight", [])))))
     # "X.X DL" case from create_dead_load_combination() — SW+DC for construction stage 2 LTB.
-    _dead_lcs    = list(lc_groups.get("dead", []))
-    _dl_only_lcs = [lc for lc in _dead_lcs if str(lc).upper().endswith(" DL")]
+    _dl_only_lcs = list(lc_groups.get("dl_only", []))
 
     _uls_set          = set(str(lc) for lc in _uls_all_lcs)
     _sls_set          = set(str(lc) for lc in _sls_all_lcs)

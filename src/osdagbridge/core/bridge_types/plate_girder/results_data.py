@@ -88,6 +88,133 @@ class LazyLoadcaseResults(Mapping):
 
 _TOOLS_DIR = Path(__file__).resolve().parents[5] / "tools"
 
+# ---------------- LOADCASE CLASSIFICATION ---------------- #
+
+def classify_loadcases(loadcases) -> dict:
+    """
+    Group load-case names into the buckets the design layer scopes its checks by.
+
+    Purely name-based: the only input is the list of load-case names, which is
+    exactly ``result_data["loadcases"]``. Nothing here touches the xarray
+    dataset, so the designer can classify from ``result_data`` alone, with no
+    analysis-results handler in sight.
+
+    Items are returned *as passed in*, never coerced to ``str``, so callers
+    handing in numpy string scalars from ``ds.coords["Loadcase"]`` get those
+    same objects back and can feed them straight to ``.sel()``.
+
+    Returns a dict of ``{group_name: [load cases]}`` — see the literal at the
+    end for the full key set. Every key is always present (empty list when the
+    model carries no case of that kind).
+    """
+    all_lc = list(loadcases)
+
+    vehicle_static    = []
+    dead_loads        = []
+    sw_cases          = []
+    uls_basic         = []
+    uls_accidental    = []
+    uls_seismic       = []
+    sls_frequent      = []
+    sls_rare          = []
+    sls_quasi         = []
+    envelope_uls      = []
+    envelope_sls      = []
+    dl_ll_cases       = []
+    dl_only_cases     = []
+    fatigue_cases     = []
+
+    for lc in all_lc:
+        name       = str(lc)
+        name_lower = name.lower()
+
+        # Fatigue vehicle (IRC:6 Cl.204.6) — the static "Fatigue" case and every
+        # increment of "Moving Fatigue at global position [...]". Matched early:
+        # these names hit none of the rules below and would otherwise fall through
+        # to the dead-load bucket at the end of the loop.
+        if name_lower.startswith("fatigue") or name_lower.startswith("moving fatigue"):
+            fatigue_cases.append(lc)
+            continue
+
+        # Envelope pseudo-LCs injected by create_envelope_load_case()
+        if name == "Envelope ULS":
+            envelope_uls.append(lc)
+            continue
+        if name == "Envelope SLS":
+            envelope_sls.append(lc)
+            continue
+
+        # ULS combinations (BASIC_*, ACCIDENTAL_*, SEISMIC_*)
+        if name.startswith("BASIC_"):
+            uls_basic.append(lc)
+            continue
+        if name.startswith("ACCIDENTAL_"):
+            uls_accidental.append(lc)
+            continue
+        if name.startswith("SEISMIC_"):
+            uls_seismic.append(lc)
+            continue
+
+        # SLS combinations (SLS_FREQUENT_*, SLS_RARE_*, SLS_QP_*)
+        if name.startswith("SLS_FREQUENT_"):
+            sls_frequent.append(lc)
+            continue
+        if name.startswith("SLS_RARE_"):
+            sls_rare.append(lc)
+            continue
+        if name.startswith("SLS_QP_") or name.startswith("SLS_OP_"):
+            sls_quasi.append(lc)
+            continue
+
+        # Total-service combination from create_dl_ll_combination(), e.g. "1.0 DL + 1.0 LL".
+        # Must be checked before the live-load rule below — it also ends in "LL" and
+        # would otherwise be swallowed into vehicle_static (live-load-only) by mistake.
+        if " DL + " in name and name_lower.endswith("ll"):
+            dl_ll_cases.append(lc)
+            continue
+
+        # Live load: Class A, 70R, and LL envelope cases
+        if name_lower.startswith("case") or "classa" in name_lower or "70r" in name_lower or name_lower.endswith("ll"):
+            vehicle_static.append(lc)
+            continue
+
+        # Self-weight individual case
+        if name == "SW":
+            sw_cases.append(lc)
+            dead_loads.append(lc)
+            continue
+
+        # Dead-load-only combination from create_dead_load_combination() — "X.X DL".
+        # The "+" guard rejects a combination that merely ends in a DL term
+        # ("… + 1.0 DL"), which the name test alone would accept. Also kept in
+        # dead_loads, as SW is, so consumers of "dead" are unaffected.
+        if name.strip().upper().endswith(" DL") and "+" not in name:
+            dl_only_cases.append(lc)
+            dead_loads.append(lc)
+            continue
+
+        # Dead loads (DL, DD, DW, SIDL, etc.)
+        dead_loads.append(lc)
+
+    return {
+        "all":                  all_lc,
+        "dead":                 dead_loads,
+        "vehicle_static":       vehicle_static,
+        "vehicle_moving":       [],          # moving load cases removed from analyser
+        "sw":                   sw_cases,
+        "uls_basic":            uls_basic,
+        "uls_accidental":       uls_accidental,
+        "uls_seismic":          uls_seismic,
+        "sls_frequent":         sls_frequent,
+        "sls_rare":             sls_rare,
+        "sls_quasi_permanent":  sls_quasi,
+        "envelope_uls":         envelope_uls,
+        "envelope_sls":         envelope_sls,
+        "dl_ll":                dl_ll_cases,
+        "dl_only":              dl_only_cases,
+        "fatigue":              fatigue_cases,
+    }
+
 
 def _build_nodes_members() -> tuple[dict, dict]:
     """Read node coords and element connectivity from the live openseespy model."""
@@ -851,24 +978,17 @@ def build_deflections_cache(result_handler, config, result_data) -> dict:
         return {}
 
     all_lcs = [str(lc) for lc in ds.coords["Loadcase"].values]
+    lc_groups = classify_loadcases(all_lcs)
 
     # All individual vehicle positions — NOT the single "1.0 LL" case, which is the position
     # with the largest moment, not the largest sag. Deflection needs the worst sag per girder,
     # so take the max over every position; "1.0 LL" alone can under-report it.
-    live_lcs = [str(lc) for lc in result_handler.classify_loadcases()["vehicle_static"]]
+    live_lcs = list(lc_groups["vehicle_static"])
 
     # DL + LL combination created by create_dl_ll_combination(dl_factor=1.0, ll_factor=1.0)
-    dl_ll_case = next(
-        (lc for lc in all_lcs if " DL + " in lc and lc.strip().endswith("LL")
-         and not lc.startswith(("BASIC_", "SLS_", "SEISMIC_", "ACCIDENTAL_"))),
-        None,
-    )
+    dl_ll_case = next(iter(lc_groups["dl_ll"]), None)
     # DL-only case created by create_dead_load_combination() — "X.X DL" (no "+").
-    dl_case = next(
-        (lc for lc in all_lcs if lc.strip().upper().endswith(" DL") and "+" not in lc
-         and not lc.startswith(("BASIC_", "SLS_", "SEISMIC_", "ACCIDENTAL_"))),
-        None,
-    )
+    dl_case = next(iter(lc_groups["dl_only"]), None)
 
     # Skew-safe girders from post-processing result_data (NOT result_handler.build_girders(),
     # whose x-equality support detection collapses under skew). Keyed G1..Gn, main girders only.

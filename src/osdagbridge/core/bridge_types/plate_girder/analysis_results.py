@@ -138,6 +138,7 @@ import openseespy.opensees as ops
 import pandas as pd
 from osdagbridge.core.utils.common import kN, m, m2
 from osdagbridge.core.utils.codes.irc6_2017 import IRC6_2017
+from .results_data import classify_loadcases
 
 
 class PlateGirderAnalysisResults:
@@ -201,103 +202,16 @@ class PlateGirderAnalysisResults:
             print(f"- Moving Vehicles: {', '.join(unique_moving)} (Total positions: {len(lc_groups['vehicle_moving'])})")
 
     def classify_loadcases(self):
+        """Group this dataset's load cases — see
+        ``results_data.classify_loadcases`` for the rules and the
+        returned key set.
 
-        all_lc = self.get_available_loadcases()
-
-        vehicle_static    = []
-        dead_loads        = []
-        sw_cases          = []
-        uls_basic         = []
-        uls_accidental    = []
-        uls_seismic       = []
-        sls_frequent      = []
-        sls_rare          = []
-        sls_quasi         = []
-        envelope_uls      = []
-        envelope_sls      = []
-        dl_ll_cases       = []
-        fatigue_cases     = []
-
-        for lc in all_lc:
-            name       = str(lc)
-            name_lower = name.lower()
-
-            # Fatigue vehicle (IRC:6 Cl.204.6) — the static "Fatigue" case and every
-            # increment of "Moving Fatigue at global position [...]". Matched early:
-            # these names hit none of the rules below and would otherwise fall through
-            # to the dead-load bucket at the end of the loop.
-            if name_lower.startswith("fatigue") or name_lower.startswith("moving fatigue"):
-                fatigue_cases.append(lc)
-                continue
-
-            # Envelope pseudo-LCs injected by create_envelope_load_case()
-            if name == "Envelope ULS":
-                envelope_uls.append(lc)
-                continue
-            if name == "Envelope SLS":
-                envelope_sls.append(lc)
-                continue
-
-            # ULS combinations (BASIC_*, ACCIDENTAL_*, SEISMIC_*)
-            if name.startswith("BASIC_"):
-                uls_basic.append(lc)
-                continue
-            if name.startswith("ACCIDENTAL_"):
-                uls_accidental.append(lc)
-                continue
-            if name.startswith("SEISMIC_"):
-                uls_seismic.append(lc)
-                continue
-
-            # SLS combinations (SLS_FREQUENT_*, SLS_RARE_*, SLS_QP_*)
-            if name.startswith("SLS_FREQUENT_"):
-                sls_frequent.append(lc)
-                continue
-            if name.startswith("SLS_RARE_"):
-                sls_rare.append(lc)
-                continue
-            if name.startswith("SLS_QP_") or name.startswith("SLS_OP_"):
-                sls_quasi.append(lc)
-                continue
-
-            # Total-service combination from create_dl_ll_combination(), e.g. "1.0 DL + 1.0 LL".
-            # Must be checked before the live-load rule below — it also ends in "LL" and
-            # would otherwise be swallowed into vehicle_static (live-load-only) by mistake.
-            if " DL + " in name and name_lower.endswith("ll"):
-                dl_ll_cases.append(lc)
-                continue
-
-            # Live load: Class A, 70R, and LL envelope cases
-            if name_lower.startswith("case") or "classa" in name_lower or "70r" in name_lower or name_lower.endswith("ll"):
-                vehicle_static.append(lc)
-                continue
-
-            # Self-weight individual case
-            if name == "SW":
-                sw_cases.append(lc)
-                dead_loads.append(lc)
-                continue
-
-            # Dead loads (DL, DD, DW, SIDL, etc.)
-            dead_loads.append(lc)
-
-        return {
-            "all":                  all_lc,
-            "dead":                 dead_loads,
-            "vehicle_static":       vehicle_static,
-            "vehicle_moving":       [],          # moving load cases removed from analyser
-            "sw":                   sw_cases,
-            "uls_basic":            uls_basic,
-            "uls_accidental":       uls_accidental,
-            "uls_seismic":          uls_seismic,
-            "sls_frequent":         sls_frequent,
-            "sls_rare":             sls_rare,
-            "sls_quasi_permanent":  sls_quasi,
-            "envelope_uls":         envelope_uls,
-            "envelope_sls":         envelope_sls,
-            "dl_ll":                dl_ll_cases,
-            "fatigue":              fatigue_cases,
-        }
+        The logic is purely name-based, so it lives in the results layer where
+        consumers holding only ``result_data`` (the designer) can reach it without
+        a result handler. This method stays as the handler-side entry point and
+        simply feeds it this dataset's load-case names.
+        """
+        return classify_loadcases(self.get_available_loadcases())
 
     # ========================================================
     # OPENSEES NODAL DEFLECTION (FINAL STATE)
