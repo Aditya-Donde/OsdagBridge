@@ -53,6 +53,18 @@ except ImportError:
     except ImportError:
         _TODT_NORMAL = 0  # numeric fallback
 
+# Projection orientations used by the silent report capture (capture_for_report).
+# display.View_Right() / View_Iso() wrap exactly these constants, but always end
+# with a repaint; setting the projection directly lets us aim the camera without
+# refreshing the on-screen window.
+try:
+    from OCC.Core.V3d import (
+        V3d_Xpos as _V3D_RIGHT,
+        V3d_XposYnegZpos as _V3D_ISO,
+    )
+except ImportError:
+    _V3D_RIGHT = _V3D_ISO = None  # capture falls back to the pythonocc wrappers
+
 # CAD generator
 from osdagbridge.core.bridge_types.plate_girder.cad_generator import (
     PlateGirderCADGenerator
@@ -610,8 +622,15 @@ class CAD3DWindow(QWidget):
         NamedTemporaryFile, bytes are read immediately, file deleted right away.
         Nothing is written permanently to the user's disk.
         girder_top is NOT captured here; output_dock adds it via QBuffer.
+
+        The viewport does NOT move while this runs. An OCC window only refreshes
+        when something asks it to, so every step here is silent: camera and
+        visibility are snapshotted up front, changed with the update flags off,
+        rendered into an off-screen buffer, then restored — followed by a single
+        repaint which, because the restored state matches, reproduces the exact
+        frame the user was already looking at.
         """
-        import os, tempfile, logging
+        import logging
         _log = logging.getLogger(__name__)
 
         if not self._is_display_ready():
@@ -620,63 +639,231 @@ class CAD3DWindow(QWidget):
 
         ALL         = ['Girder', 'Deck', 'Cross Bracing', 'Crash Barrier', 'Median', 'Railing']
         GIRDER_ONLY = ['Girder']
-        GIRDER_DECK = ['Girder', 'Deck']
 
-        def _snap(attr, components, view_fn):
-            """Set visibility, render, read PNG bytes, delete temp file. Returns bytes or None."""
-            tmp_path = None
-            try:
-                self.update_component_visibility(components)
-                view_fn()
-                self.display.FitAll()
-                tmp = tempfile.NamedTemporaryFile(suffix='.png', delete=False)
-                tmp_path = tmp.name
-                tmp.close()
-                self.display.ExportToImage(tmp_path)
-                if os.path.exists(tmp_path):
-                    with open(tmp_path, 'rb') as fh:
-                        return fh.read()
-            except Exception as exc:
-                _log.warning("capture_for_report: %s failed: %s", attr, exc)
-            finally:
-                if tmp_path and os.path.exists(tmp_path):
-                    try:
-                        os.unlink(tmp_path)
-                    except OSError:
-                        pass
-            return None
+        view = self.display.View
+
+        # Snapshot first — everything below is undone before the single repaint.
+        saved = self._capture_view_state()
+
+        # Master mute: most V3d_View setters end with ImmediateUpdate(), which
+        # refreshes the window only while this flag is on. Turning it off silences
+        # the implicit repaints inside SetProj / ZFitAll / etc.
+        prev_immediate = None
+        try:
+            prev_immediate = view.SetImmediateUpdate(False)
+        except Exception as exc:
+            _log.debug("capture_for_report: SetImmediateUpdate unavailable: %s", exc)
 
         data = {}
-
-        # Figure 6.1 — Typical Cross Section: all components, end-on view
-        b = _snap('cross_section', ALL, self.display.View_Right)
-        if b: data['cross_section'] = b
-
-        # Figure 6.2 — 3D View of Plate Girder: girders only, isometric
-        b = _snap('girder_3d', GIRDER_ONLY, self.display.View_Iso)
-        if b: data['girder_3d'] = b
-
-        # Figure 6.1.3 — Top View: added by output_dock via QBuffer (skipped here)
-
-        # Figure 6.1.1 — Overall 3D Bridge Superstructure: all components, isometric
-        b = _snap('final_geometry', ALL, self.display.View_Iso)
-        if b: data['final_geometry'] = b
-
-        # Restore: show all components, iso view
         try:
-            self.update_component_visibility(ALL)
-            self.display.View_Iso()
-            self.display.FitAll()
-        except Exception:
-            pass
+            # Figure 6.1 — Typical Cross Section: all components, end-on view
+            b = self._snap_offscreen('cross_section', ALL, _V3D_RIGHT,
+                                     self.display.View_Right)
+            if b: data['cross_section'] = b
+
+            # Figure 6.2 — 3D View of Plate Girder: girders only, isometric
+            b = self._snap_offscreen('girder_3d', GIRDER_ONLY, _V3D_ISO,
+                                     self.display.View_Iso)
+            if b: data['girder_3d'] = b
+
+            # Figure 6.1.3 — Top View: added by output_dock via QBuffer (skipped here)
+
+            # Figure 6.1.1 — Overall 3D Bridge Superstructure: all components, isometric
+            b = self._snap_offscreen('final_geometry', ALL, _V3D_ISO,
+                                     self.display.View_Iso)
+            if b: data['final_geometry'] = b
+
+        finally:
+            # Put the viewer back exactly as the user left it — component
+            # selection and camera included — then refresh once. A failure above
+            # must not strand the viewer mid-capture, hence try/finally.
+            self._restore_view_state(saved)
+            if prev_immediate is not None:
+                try:
+                    view.SetImmediateUpdate(prev_immediate)
+                except Exception:
+                    pass
+            try:
+                view.Invalidate()
+            except Exception:
+                pass
+            try:
+                self.display.Repaint()
+            except Exception:
+                pass
 
         _log.info("capture_for_report: %d figure(s) in RAM", len(data))
         return data
 
+    def _capture_view_state(self) -> dict:
+        """Snapshot everything capture_for_report() is about to disturb.
+
+        Returns {'camera', 'ais', 'hover'}; any entry may be None/empty if it
+        could not be read, in which case _restore_view_state skips that part.
+        """
+        import logging
+        _log = logging.getLogger(__name__)
+
+        state = {'camera': None, 'ais': [], 'hover': None}
+        view    = self.display.View
+        context = self.viewer.context
+
+        # Camera: a copy of the position/direction/zoom, not the live object.
+        try:
+            from OCC.Core.Graphic3d import Graphic3d_Camera
+            cam = Graphic3d_Camera()
+            cam.Copy(view.Camera())
+            state['camera'] = cam
+        except Exception as exc:
+            _log.debug("_capture_view_state: camera snapshot failed: %s", exc)
+
+        # Visibility: (ais, was_displayed) for every registered object, so the
+        # user's checkbox selection survives report generation.
+        ais_groups = list(self.viewer.model_ais_objects.values())
+        ais_groups.append(getattr(self.viewer, 'deck_texture_ais', []))
+        for ais_list in ais_groups:
+            for ais in ais_list:
+                try:
+                    state['ais'].append((ais, context.IsDisplayed(ais)))
+                except Exception:
+                    pass
+
+        # Node hover data follows the Node checkbox; _apply_visibility rewrites it.
+        try:
+            state['hover'] = list(getattr(self.viewer, '_node_hover_data', []) or [])
+        except Exception:
+            pass
+
+        return state
+
+    def _restore_view_state(self, state: dict) -> None:
+        """Undo _capture_view_state's snapshot. Silent — the caller repaints."""
+        if not state:
+            return
+
+        context = self.viewer.context
+
+        for ais, was_displayed in state.get('ais', []):
+            try:
+                if was_displayed:
+                    context.Display(ais, False)
+                else:
+                    context.Erase(ais, False)
+            except Exception:
+                pass
+
+        hover = state.get('hover')
+        if hover is not None and hasattr(self.viewer, 'set_node_hover_data'):
+            try:
+                self.viewer.set_node_hover_data(hover)
+            except Exception:
+                pass
+
+        cam = state.get('camera')
+        if cam is not None:
+            try:
+                self.display.View.Camera().Copy(cam)
+            except Exception:
+                pass
+
+    def _snap_offscreen(self, attr, components, orientation, fallback_view_fn):
+        """Render one report figure without refreshing the on-screen window.
+
+        orientation is a V3d_TypeOfOrientation constant; fallback_view_fn is the
+        pythonocc wrapper, used only if those constants could not be imported (it
+        does repaint, so the model is briefly visible — correct figures matter
+        more than the cosmetics). Returns PNG bytes, or None on failure.
+        """
+        import logging
+        _log = logging.getLogger(__name__)
+
+        view = self.display.View
+        try:
+            self._apply_visibility(components)
+
+            if orientation is not None:
+                view.SetProj(orientation)
+            else:
+                fallback_view_fn()
+
+            try:
+                view.ZFitAll()
+            except Exception:
+                pass
+            # FitAll's second argument is theToUpdate — False keeps it silent.
+            try:
+                view.FitAll(0.01, False)
+            except TypeError:
+                view.FitAll()   # older signature without the update flag
+
+            return self._render_to_png_bytes()
+        except Exception as exc:
+            _log.warning("capture_for_report: %s failed: %s", attr, exc)
+            return None
+
+    def _render_to_png_bytes(self):
+        """Render the current view and return the PNG bytes (or None).
+
+        Unchanged from the original inline _snap: OCC has no API that hands back
+        image bytes — display.ExportToImage() wraps V3d_View.Dump(), which takes a
+        file path — so the PNG goes to a NamedTemporaryFile, is read straight back
+        into RAM, and the file is deleted in the finally. Nothing is left on the
+        user's disk; the bytes are what travel on to the report.
+
+        Dump is documented by OCCT as an alias for ToPixMap(), i.e. it redraws
+        into an off-screen buffer, so this step never touches the visible window.
+        (Calling ToPixMap directly would allow an arbitrary capture resolution,
+        but Image_PixMap / Image_AlienPixMap are unwrapped in pythonocc 7.9 —
+        ClassNotWrappedError — so figures come out at the viewport's own size.)
+        """
+        import os, tempfile, logging
+        _log = logging.getLogger(__name__)
+
+        tmp_path = None
+        try:
+            tmp = tempfile.NamedTemporaryFile(suffix='.png', delete=False)
+            tmp_path = tmp.name
+            tmp.close()
+
+            self.display.ExportToImage(tmp_path)
+
+            if os.path.exists(tmp_path) and os.path.getsize(tmp_path) > 0:
+                with open(tmp_path, 'rb') as fh:
+                    return fh.read()
+        except Exception as exc:
+            _log.warning("_render_to_png_bytes failed: %s", exc)
+        finally:
+            if tmp_path and os.path.exists(tmp_path):
+                try:
+                    os.unlink(tmp_path)
+                except OSError:
+                    pass
+        return None
+
 
     def update_component_visibility(self, selected_components: list) -> None:
         """
+        Show or hide model AIS objects, then reframe and refresh the viewport.
+
+        Thin wrapper over _apply_visibility(): it adds the FitAll + Repaint that
+        interactive callers need — without them a ticked checkbox would change
+        nothing on screen. capture_for_report() calls _apply_visibility() directly
+        so it can change visibility silently. See _apply_visibility for the full
+        contract and the caller list.
+        """
+        if not self._is_display_ready():
+            return
+
+        self._apply_visibility(selected_components)
+        self.display.FitAll()
+        self.display.Repaint()
+
+    def _apply_visibility(self, selected_components: list) -> None:
+        """
         Show or hide model AIS objects based on which component keys are selected.
+
+        Makes no on-screen change by itself: every Display/Erase below passes
+        update=False, so the caller decides when (or whether) to refresh.
 
         CALLED FROM
         ───────────
@@ -767,8 +954,7 @@ class CAD3DWindow(QWidget):
             except Exception:
                 pass
 
-        self.display.FitAll()
-        self.display.Repaint()
+        # No FitAll/Repaint here — update_component_visibility() adds those.
 
     def regenerate_bridge(self):
         self.load_bridge()
