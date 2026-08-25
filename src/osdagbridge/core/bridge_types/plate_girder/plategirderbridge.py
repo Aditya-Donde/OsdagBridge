@@ -2673,18 +2673,26 @@ class PlateGirderBridge:
         footpath_str   = str(self.output_dict.get(KEY_FOOTPATH,       "None")).strip()
         include_median = str(self.output_dict.get(KEY_INCLUDE_MEDIAN, "No")).strip().lower() == "yes"
 
+        # Footpath width (Additional Inputs > Typical Section) is entered in m.
+        # Falls back to the IRC 5 minimum when the key is absent.
+        _fp_w_raw = self.output_dict.get(KEY_TS_FOOTPATH_WIDTH)
+        if _fp_w_raw in (None, ""):
+            footpath_w_m = DEFAULT_FOOTPATH_WIDTH
+        else:
+            footpath_w_m = float(_fp_w_raw)
+
         if footpath_str in ("None", ""):
             footpath_config   = "NONE"
             footpath_width_mm = 0.0
             railing_width_mm  = 0.0
         elif "Both" in footpath_str:
             footpath_config   = "BOTH"
-            footpath_width_mm = DEFAULT_FOOTPATH_WIDTH * 1e3
-            railing_width_mm  = DEFAULT_RAILING_WIDTH  * 1e3
+            footpath_width_mm = footpath_w_m * 1e3
+            railing_width_mm  = DEFAULT_RAILING_WIDTH * 1e3
         else:
             footpath_config   = "LEFT"
-            footpath_width_mm = DEFAULT_FOOTPATH_WIDTH * 1e3
-            railing_width_mm  = DEFAULT_RAILING_WIDTH  * 1e3
+            footpath_width_mm = footpath_w_m * 1e3
+            railing_width_mm  = DEFAULT_RAILING_WIDTH * 1e3
 
         # geometry.carriageway_width is entered as "Each way" in UI.
         # For divided carriageway with median, CAD expects total traffic width.
