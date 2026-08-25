@@ -234,8 +234,15 @@ def build_railings(
     total_deck_width,
     footpath_config,
     design_dict,
-    skew_angle=0
+    skew_angle=0,
+    footpath_y_ranges=None
 ):
+    """Railings stand on the outer edge of each footpath.
+
+    ``footpath_y_ranges`` are the (y_start, y_end) bands of the footpath slabs
+    (see footpath/builder.py); ``deck_top_z`` is the footpath walking surface.
+    Without them the railings fall back to the edges of ``total_deck_width``.
+    """
     import math
 
     if footpath_config == "NONE":
@@ -254,6 +261,11 @@ def build_railings(
     deck_half = total_deck_width / 2.0
     railings = []
 
+    # Outer edge of each footpath, falling back to the deck edges.
+    ranges = list(footpath_y_ranges or [])
+    left_edge = min((y_start for y_start, _ in ranges), default=-deck_half)
+    right_edge = max((y_end for _, y_end in ranges), default=deck_half)
+
     # Helper to create correct type
     def create_shape(side):
         # Invert skew for RIGHT side to compensate for mirror_y
@@ -271,10 +283,10 @@ def build_railings(
 
     # Placement Logic
     # Left Railing:
-    # Center Y = -deck_half + width/2
+    # Center Y = outer edge of the left footpath + width/2
     if footpath_config in ("LEFT", "BOTH"):
         shape = create_shape("LEFT")
-        y_pos = -deck_half + railing_width / 2.0
+        y_pos = left_edge + railing_width / 2.0
         railings.append(
             translate(
                 shape,
@@ -285,10 +297,10 @@ def build_railings(
         )
 
     # Right Railing:
-    # Center Y = +deck_half - width/2
+    # Center Y = outer edge of the right footpath - width/2
     if footpath_config in ("RIGHT", "BOTH"):
         shape = create_shape("RIGHT")
-        y_pos = deck_half - railing_width / 2.0
+        y_pos = right_edge - railing_width / 2.0
         railings.append(
             translate(
                 shape,

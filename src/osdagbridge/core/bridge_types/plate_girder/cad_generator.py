@@ -35,6 +35,9 @@ from osdagbridge.core.bridge_components.super_structure.plate_girder.builder imp
 from osdagbridge.core.bridge_components.super_structure.deck.builder import (
     build_deck
 )
+from osdagbridge.core.bridge_components.super_structure.footpath.builder import (
+    build_footpaths
+)
 from osdagbridge.core.bridge_components.super_structure.crash_barrier.builder import (
     build_crash_barriers
 )
@@ -210,6 +213,7 @@ class PlateGirderCADGenerator:
         self.deck_thickness = design_params.deck_thickness
         self.footpath_config = design_params.footpath_config
         self.footpath_width = design_params.footpath_width
+        self.footpath_thickness = design_params.footpath_thickness
         self.railing_width = design_params.railing_width
 
         # CRASH BARRIER PARAMETERS
@@ -778,38 +782,47 @@ class PlateGirderCADGenerator:
             span_length_L=self.span_length_L,
             girder_section_d=girder_top_z,
             deck_thickness=self.deck_thickness,
-            footpath_config=self.footpath_config,
             carriageway_width=self.carriageway_width,
             crash_barrier_base_width=actual_base_width,
+            skew_angle=self.skew_angle
+        )
+
+        # STEP 7a: BUILD FOOTPATHS
+
+        footpath_out = build_footpaths(
+            span_length_L=self.span_length_L,
+            girder_section_d=girder_top_z,
+            deck_thickness=self.deck_thickness,
+            deck_width=deck_out["total_deck_width"],
+            footpath_config=self.footpath_config,
             footpath_width=self.footpath_width,
+            footpath_thickness=self.footpath_thickness,
             railing_width=actual_railing_width,
             skew_angle=self.skew_angle
         )
 
+        # Compound the deck and footpath concrete textures into one shape each
+        for _out, _key in ((deck_out, "deck_textures"), (footpath_out, "footpath_textures")):
+            raw_textures = _out.get(_key, [])
+            if raw_textures:
+                from OCC.Core.BRep import BRep_Builder
+                from OCC.Core.TopoDS import TopoDS_Compound
+                builder = BRep_Builder()
+                compound = TopoDS_Compound()
+                builder.MakeCompound(compound)
+                for t in raw_textures:
+                    builder.Add(compound, t)
+                _out[_key] = [compound]
+
         # STEP 8: BUILD CRASH BARRIERS
 
-        # Compound deck textures into a single shape
-        raw_textures = deck_out.get("deck_textures", [])
-        if raw_textures:
-            from OCC.Core.BRep import BRep_Builder
-            from OCC.Core.TopoDS import TopoDS_Compound
-            builder = BRep_Builder()
-            compound = TopoDS_Compound()
-            builder.MakeCompound(compound)
-            for t in raw_textures:
-                builder.Add(compound, t)
-            deck_out["deck_textures"] = [compound]
-        
         crash_barrier_w_beams = []
         crash_barrier_other = []
 
         crash_barriers_raw = build_crash_barriers(
             span_length_L=self.span_length_L,
             deck_top_z=deck_out["deck_top_z"],
-            footpath_config=self.footpath_config,
-            carriageway_width=self.carriageway_width,
-            footpath_width=self.footpath_width,
-            railing_width=actual_railing_width,
+            total_deck_width=deck_out["total_deck_width"],
             design_dict=design_dict,
             barrier_type=self.barrier_type,
             skew_angle=self.skew_angle
@@ -877,13 +890,15 @@ class PlateGirderCADGenerator:
 
         # STEP 10: BUILD RAILINGS
         
+        # Railings stand on the footpath, not on the carriageway deck.
         railings = build_railings(
             span_length=self.span_length_L,
-            deck_top_z=deck_out["deck_top_z"],
+            deck_top_z=footpath_out["footpath_top_z"],
             total_deck_width=deck_out["total_deck_width"],
             footpath_config=self.footpath_config,
             design_dict=design_dict,
-            skew_angle=self.skew_angle
+            skew_angle=self.skew_angle,
+            footpath_y_ranges=footpath_out["footpath_y_ranges"]
         )
 
         # STEP 11: CONSOLIDATE SUPPORT STRUCTURES
@@ -949,7 +964,11 @@ class PlateGirderCADGenerator:
             "deck_textures": deck_out["deck_textures"],
             "deck_top_z": deck_out["deck_top_z"],
             "total_deck_width": deck_out["total_deck_width"],
-            
+            # Footpaths
+            "footpaths": footpath_out["footpath_slabs"],
+            "footpath_textures": footpath_out["footpath_textures"],
+            "footpath_top_z": footpath_out["footpath_top_z"],
+
             # Crash barriers
             "crash_barriers": crash_barriers,
             "crash_barrier_w_beams": crash_barrier_w_beams,
