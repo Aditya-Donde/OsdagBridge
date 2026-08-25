@@ -309,6 +309,7 @@ class BridgeParametersDTO:
     deck_thickness: float
     footpath_config: str        # "NONE" / "LEFT" / "RIGHT" / "BOTH"
     footpath_width: float
+    footpath_thickness: float   # from the deck soffit, mm
     railing_width: float
 
     # --- Crash Barrier ---
