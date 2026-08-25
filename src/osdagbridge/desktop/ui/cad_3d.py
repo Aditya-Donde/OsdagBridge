@@ -197,10 +197,11 @@ class CAD3DWindow(QWidget):
 
         # Generate fresh model data
         self.generator.model_data = self.generator.generate(design_params)
-        # Railing exists only when there is a footpath; Median only when enabled.
+        # Footpath and its railing exist together; Median only when enabled.
         available = set()
         if getattr(design_params, "footpath_config", "NONE") != "NONE":
             available.add("Railing")
+            available.add("Footpath")
         if getattr(design_params, "enable_median", False):
             available.add("Median")
         self.component_selector.set_available_components(available)
@@ -428,6 +429,13 @@ class CAD3DWindow(QWidget):
             f"Deck Slab\nThickness: {params.deck_thickness:.2f} mm\nCarriageway Width: {params.carriageway_width:.2f} mm\nConcrete Grade: {params.concrete_grade}\nFootpath: {params.footpath_config}",
             DECK_COLOR
         )
+        # Same concrete as the deck; thickness from Typical Section.
+        display_and_register(
+            cad_data.get("footpaths", []),
+            "Footpath",
+            f"Footpath\nThickness: {params.footpath_thickness:.2f} mm\nWidth: {params.footpath_width:.2f} mm\nConcrete Grade: {params.concrete_grade}\nConfiguration: {params.footpath_config}",
+            DECK_COLOR
+        )
         # DECK TEXTURES (DISPLAY ONLY, NO HOVER)
         self.viewer.deck_texture_ais = []
 
@@ -439,6 +447,16 @@ class CAD3DWindow(QWidget):
             )
             ais = ais[0] if isinstance(ais, list) else ais
             self.viewer.deck_texture_ais.append(ais)
+
+        # Footpath concrete finish — same texture, but follows the Footpath
+        # checkbox rather than the Deck one.
+        display_and_register(
+            cad_data.get("footpath_textures", []),
+            "Footpath Texture",
+            "Footpath",
+            Quantity_Color(0.2, 0.2, 0.2, Quantity_TOC_RGB),
+            selectable=False
+        )
 
 
 
@@ -902,6 +920,7 @@ class CAD3DWindow(QWidget):
             "Cross Bracing": ["Cross Bracing"],
             "Crash Barrier": ["Crash Barrier", "Crash Barrier W-Beam"],
             "Median":        ["Median", "Median W-Beam"],
+            "Footpath":      ["Footpath", "Footpath Texture"],
             "Railing":       ["Railing"],
             "Grillage":      ["Grillage"],
             "Node":          ["Node"],
@@ -1394,6 +1413,7 @@ class BridgeComponentCheckbox(QWidget):
         ("Cross Bracing", "Cross Bracing"),
         ("Crash Barrier", "Crash Barrier"),
         ("Median",        "Median"),
+        ("Footpath",      "Footpath"),
         ("Railing",       "Railing"),
         ("Grillage view", "Grillage"),
         ("Node",          "Node"),
@@ -1402,7 +1422,7 @@ class BridgeComponentCheckbox(QWidget):
     OVERLAY_KEYS = {"Grillage", "Node", "NodeNumbers"}
     # Base components that are only present in some designs. Their checkboxes
     # are hidden when the component is not part of the current design.
-    OPTIONAL_KEYS = {"Railing", "Median"}
+    OPTIONAL_KEYS = {"Railing", "Median", "Footpath"}
 
     def __init__(self, parent: CAD3DWindow):
         super().__init__(parent)
@@ -1637,6 +1657,7 @@ def main():
         deck_thickness=400,
         footpath_config="BOTH",
         footpath_width=1_500,
+        footpath_thickness=400,
         railing_width=300,
 
         # --- Crash Barrier ---

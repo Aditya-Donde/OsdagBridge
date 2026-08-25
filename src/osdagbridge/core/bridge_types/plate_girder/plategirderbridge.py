@@ -87,6 +87,7 @@ from osdagbridge.core.utils.common import (
     KEY_TS_GIRDER_SPACING,
     KEY_TS_OVERALL_WIDTH,
     KEY_TS_FOOTPATH_WIDTH,
+    KEY_TS_FOOTPATH_THICKNESS,
     KEY_TS_NO_OF_FOOTPATHS,
     KEY_WC_THICKNESS,
     KEY_LL_ECCENTRICITY,
@@ -2691,6 +2692,17 @@ class PlateGirderBridge:
         cw_mm = cw_m * 1e3
 
         deck_t_mm = deck_thickness_from_inputs(self.output_dict, _DEFAULT_DECK_THICKNESS_MM) * 1e3
+
+        # Footpath thickness (Additional Inputs > Typical Section), in mm.
+        # Defaults to the deck thickness, i.e. flush with the carriageway.
+        _fp_t_raw = self.output_dict.get(KEY_TS_FOOTPATH_THICKNESS)
+        if footpath_config == "NONE":
+            footpath_t_mm = 0.0
+        elif _fp_t_raw in (None, ""):
+            footpath_t_mm = deck_t_mm
+        else:
+            footpath_t_mm = float(_fp_t_raw)
+
         cross_bracing_mm = float(
             resolve_cb_value(inp, KEY_MP_CB_SPACING) or DEFAULT_CROSS_BRACING_SPACING
         ) * 1e3
@@ -2907,6 +2919,7 @@ class PlateGirderBridge:
             deck_thickness=deck_t_mm,
             footpath_config=footpath_config,
             footpath_width=footpath_width_mm,
+            footpath_thickness=footpath_t_mm,
             railing_width=railing_width_mm,
             # --- Crash barrier (defaults until additional inputs wired) ---
             barrier_type=resolved_barrier_type,
@@ -3030,6 +3043,9 @@ class PlateGirderBridge:
         # --- Footpath / railing widths (additional input may override default) ---
         if KEY_TS_FOOTPATH_WIDTH in ai:
             params.footpath_width = float(ai[KEY_TS_FOOTPATH_WIDTH]) * 1000
+        # Footpath thickness is edited in mm.
+        if ai.get(KEY_TS_FOOTPATH_THICKNESS) not in (None, ""):
+            params.footpath_thickness = float(ai[KEY_TS_FOOTPATH_THICKNESS])
         if KEY_RAILING_WIDTH in ai:
             params.railing_width = float(ai[KEY_RAILING_WIDTH]) * 1000
 
