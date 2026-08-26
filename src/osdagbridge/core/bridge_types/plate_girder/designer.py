@@ -2571,61 +2571,6 @@ class DCREngine:
         return sum(1 for c in self._structural_checks() if c.status == "FAIL")
 
 
-def design_envelope_engine(girder_names, per_girder):
-    """Build the "Design Envelope" engine: per check id, keep the load case
-    with the highest DCR (across all real load cases for a girder), then
-    return the girder whose worst check governs.
-
-    Reuses the per-LC check results already computed in run_design_check —
-    no demand is re-synthesised. Because each per-LC engine only emits the
-    checks its load case influences (gated by lc_type), taking the per-id
-    maximum naturally yields "worst UR over the load cases that affect that
-    check" for every one of the 8 categories.
-    """
-    best_engine = None
-    best_max    = -1.0
-
-    for g_name in girder_names:
-        per_lc = per_girder.get(g_name, {}).get("per_lc", {})
-        worst_by_id: dict[int, CheckResult] = {}
-        for lc_res in per_lc.values():
-            for chk in lc_res.get("checks", []):
-                cid = chk.get("id")
-                if cid is None:
-                    continue
-                dcr  = float(chk.get("dcr", 0.0) or 0.0)
-                prev = worst_by_id.get(cid)
-                if prev is None or dcr > prev.dcr:
-                    worst_by_id[cid] = CheckResult(
-                        check_id=cid,
-                        name=chk.get("label", ""),
-                        clause=chk.get("clause", ""),
-                        demand=float(chk.get("demand", 0.0) or 0.0),
-                        demand_unit="",
-                        capacity=float(chk.get("capacity", 0.0) or 0.0),
-                        capacity_unit="",
-                        dcr=dcr,
-                        status=chk.get("status", ""),
-                        note=chk.get("note", ""),
-                    )
-        if not worst_by_id:
-            continue
-
-        # Synthetic engine — only .checks/.demand/.capacity are consumed by the
-        # output-dock bars and the steel-design check tab, so skip __init__.
-        engine = DCREngine.__new__(DCREngine)
-        engine.demand   = None
-        engine.capacity = None
-        engine.checks   = list(worst_by_id.values())
-
-        g_max = max(c.dcr for c in engine.checks)
-        if g_max > best_max:
-            best_max    = g_max
-            best_engine = engine
-
-    return best_engine
-
-
 # ======================================================================
 #  SECTION 5 -- REPORT GENERATOR
 # ======================================================================
@@ -3195,12 +3140,10 @@ def _extract_demands_from_analysis_results(
             # Girder self-weight moment: this LC's Mz when it IS the SW case —
             # enables the Stage-1 LTB check (5a, vs Mb_stage1) in the per-LC view.
             _m_sw    = round(Mz, 2) if (_sw_lc is not None and lc_str == _sw_lc) else 0.0
-            # Fatigue ranges (checks 8/9) apply only to frequent SLS cases (Cl.604.5).
-            # Mz is in kN·m here → ×1e6 = N·mm; Vy in kN → ×1e3 = N.
-            _is_fat     = (lc_t == "SLS_frequent")
-            # Composite section modulus — live-load fatigue stress acts on the composite section.
-            _stress_rng = round(Mz * 1e6 / Ze_comp_bot_mm3, 3) if _is_fat and Ze_comp_bot_mm3 > 0 else 0.0
-            _shear_rng  = round(Vy * 1e3 / Aw_mm2, 3)       if _is_fat and Aw_mm2 > 0 else 0.0
+            # Fatigue ranges (checks 8/9) are deliberately NOT set per-LC, so they
+            # stay at the dataclass default of 0.0 and the checks never fire. A
+            # stress RANGE is the swing between the loaded and unloaded state, so
+            # it is a cross-load-case quantity that no single LC can carry.
 
             per_lc[lc_str] = DemandEnvelope(
                 # Strong-axis moment, vertical shear, axial — directly usable as ULS demands
@@ -3222,8 +3165,6 @@ def _extract_demands_from_analysis_results(
                 V_sls_kN=_v_sls,
                 M_construction_kNm=_m_const,
                 M_girder_sw_kNm=_m_sw,
-                stress_range_MPa=_stress_rng,
-                shear_range_MPa=_shear_rng,
                 Nsc=Nsc,
                 governing_combination=lc_str,
                 location="critical element", member=g_name, source="grillage_analysis_per_lc",
@@ -3274,6 +3215,8 @@ def _compute_per_lc_dcr(
             "shear_range_MPa" : lc_d.shear_range_MPa,
             "M_construction_kNm": lc_d.M_construction_kNm,
             "M_girder_sw_kNm" : lc_d.M_girder_sw_kNm,
+            "Mdv_kNm"         : lc_cap.Mdv_kNm,
+            "NRd_kN"          : lc_cap.NRd_kN,
 
             # ── DCR summary ─────────────────────────────────────────────────
             "overall_status": lc_engine.overall_status(),
@@ -3282,14 +3225,17 @@ def _compute_per_lc_dcr(
             # ── per-check detail (id, label, demand, capacity, dcr, status) ──
             "checks": [
                 {
-                    "id"      : chk.check_id,
-                    "label"   : chk.name,
-                    "clause"  : chk.clause,
-                    "demand"  : chk.demand,
-                    "capacity": chk.capacity,
-                    "dcr"     : chk.dcr,
-                    "status"  : chk.status,
-                    "note"    : chk.note,
+                    "check_id"     : chk.check_id,
+                    "name"         : chk.name,
+                    "clause"       : chk.clause,
+                    "demand"       : chk.demand,
+                    "demand_unit"  : chk.demand_unit,
+                    "capacity"     : chk.capacity,
+                    "capacity_unit": chk.capacity_unit,
+                    "dcr"          : chk.dcr,
+                    "status"       : chk.status,
+                    "note"         : chk.note,
+                    "governing_method": chk.governing_method,
                 }
                 for chk in lc_engine.checks
             ],
@@ -3297,87 +3243,188 @@ def _compute_per_lc_dcr(
     return result
 
 
-def _build_uls_per_girder(per_girder_results: dict) -> dict:
-    """Build the ULS-check summary consumed by the Generate Results tables.
+# Stiffener check ids. These are intermediate sizing steps, NOT final design checks
+STIFFENER_CHECK_IDS = (20, 21)
 
-    Returns a dict keyed by check category (matching KEY_CHECK_* values):
-        {
-          "flexure":     {g_name: {demand, capacity, ur, status}, ...},
-          "shear":       {g_name: {...}, ...},
-          "interaction": {g_name: {...}, ...},   # worst of check_ids 3 & 4
-          "ltb":         {g_name: {...}, ...},
-        }
-    Girders are keyed G1..Gn (they come from result_data["girders"], which already
-    excludes the edge members); checks missing for a girder are omitted.
+
+def _summary_row(chk: dict, *, load_case: str, source: str, note: str = "") -> dict:
+    """Copy one check row into the summary, adding where it came from.
+
+    Both sources - the girder-level envelope rows and the per-LC rows - already
+    use the same keys, so this only renames ``dcr`` to the ``ur`` every consumer
+    reads, and attaches the three fields neither source carries: the load case,
+    why there is none when there is none, and which source won.
     """
-    _CATEGORY_IDS = {
-        "flexure":     (1,),
-        "shear":       (2,),
-        "interaction": (3, 4),
-        "ltb":         (5,),
-        "fatigue":     (8, 9),   # normal + shear fatigue; worst by DCR
+    return {
+        "check_id"     : chk.get("check_id"),
+        "name"         : chk.get("name", ""),
+        "clause"       : chk.get("clause", ""),
+        "demand"       : float(chk.get("demand") or 0.0),
+        "demand_unit"  : chk.get("demand_unit", ""),
+        "capacity"     : float(chk.get("capacity") or 0.0),
+        "capacity_unit": chk.get("capacity_unit", ""),
+        "ur"           : float(chk.get("dcr") or 0.0),
+        "note"         : chk.get("note", ""),
+        "governing_method": chk.get("governing_method", ""),
+        "load_case"    : load_case,
+        "load_case_note": note,
+        "source"       : source,
     }
 
-    def _worst(checks, *ids):
-        candidates = [c for c in checks if c["check_id"] in ids]
-        return max(candidates, key=lambda c: c["dcr"]) if candidates else None
 
-    result: Dict[str, Dict[str, dict]] = {cat: {} for cat in _CATEGORY_IDS}
+def build_design_summary(per_girder_results: dict) -> dict:
+    """Reduce every girder's design checks to ONE summary — the single source.
 
-    for g_name, g_data in per_girder_results.items():
-        checks = g_data.get("checks") or []
-        for cat, ids in _CATEGORY_IDS.items():
-            chk = _worst(checks, *ids)
-            if chk is None:
-                continue
-            result[cat][g_name] = {
-                "demand"  : chk["demand"],
-                "capacity": chk["capacity"],
-                "ur"      : chk["dcr"],
-                "status"  : chk["status"],
-            }
+    The logger, output dock, Design Check tab, results tables and report all read
+    this and none of them recompute it. Every rule that decides pass/fail lives
+    here and nowhere else:
 
-    return result
-
-
-def collect_girder_verdict(per_girder_results: dict) -> dict:
-    """Reduce the 8 girder design categories, across all girders, to one verdict.
-
-    Each category is PASS unless it FAILs on some girder — a check in the WARN
-    band still passes. Stiffener checks (ids 20/21) and deck checks fall outside
-    DCREngine.CATEGORY_MAP and are therefore excluded automatically.
+    * FAIL at UR >= DCR_FAIL_THRESHOLD, via DCREngine.classify() — one threshold.
+    * Stiffener checks (STIFFENER_CHECK_IDS) never reach a verdict or max_ur;
+      they are returned under "stiffener" for display only.
+    * A category takes the worst UR over BOTH the girder-level envelope demand
+      and every per-LC demand, so no consumer sees a lower UR than the most
+      conservative one available, and the winning row records where it came from.
+    * The named load case is the worst REAL load case for that check (the
+      "Envelope *" pseudo-cases are combinations, not cases anyone can act on).
 
     Returns::
 
-        { KEY_CHECK_FLEXURE: {"pass": bool, "ur": float}, ... (all 8),
-          "status": STATUS_PASS | STATUS_FAIL,
-          "max_ur": float }
+        {"per_girder": {g: {"categories": {KEY_CHECK_*: row}, "max_ur", "status",
+                            "controlling"}},
+         "governing" : {"categories": {KEY_CHECK_*: row}, "max_ur", "status",
+                        "controlling"},
+         "stiffener" : {g: [row, ...]},
+         "status", "max_ur"}
+
+    where every ``row`` carries check_id, name, clause, demand(+unit),
+    capacity(+unit), ur, status, pass, note, girder, load_case and source.
+    A category with no applicable check is omitted rather than reported as a
+    pass at UR 0 — it did not run, which is not the same as passing.
     """
-    # Seed every category as passing with UR 0, so a category with no applicable
-    # checks (e.g. fatigue when no SLS-frequent LC ran) stays a clean pass.
-    cats = {key: {"pass": True, "ur": 0.0}
-            for key in DESIGN_CHECK_CATEGORY_KEYS.values()}
-    max_ur = 0.0
+    per_girder: Dict[str, dict] = {}
+    stiffener:  Dict[str, list] = {}
 
     for g_name, g_data in per_girder_results.items():
-        if g_name.startswith("EB"):          # edge beams are not designed girders
-            continue
-        for chk in g_data.get("checks") or []:
-            cat_entry = DCREngine.CATEGORY_MAP.get(chk["check_id"])
-            if cat_entry is None:            # stiffener / deck check -> not in verdict
-                continue
-            cat_no, _ = cat_entry
-            key = DESIGN_CHECK_CATEGORY_KEYS[cat_no]
-            dcr = float(chk["dcr"])
-            cats[key]["ur"] = round(max(cats[key]["ur"], dcr), 3)
-            max_ur = max(max_ur, dcr)
-            if chk["status"] == STATUS_FAIL:
-                cats[key]["pass"] = False
+        env_checks = g_data.get("checks") or []
+        per_lc     = g_data.get("per_lc") or {}
 
-    cats["status"] = STATUS_FAIL if any(not c["pass"] for c in cats.values()
-                                        if isinstance(c, dict)) else STATUS_PASS
-    cats["max_ur"] = round(max_ur, 3)
-    return cats
+        # Worst real load case per check id, and the spread of URs across those
+        # cases - together they say whether naming a load case means anything.
+        worst_lc: Dict[int, tuple] = {}
+        lc_spread: Dict[int, set] = {}
+        lc_count:  Dict[int, int] = {}
+        for lc_name, lc_data in per_lc.items():
+            if str(lc_name).lower().startswith("envelope"):
+                continue
+            # Reduce to one UR per check id FIRST. A single load case emits
+            # several rows under the same id (id 7 is stud spacing-max, spacing-
+            # min and detailing), and their URs differ from each other. Comparing
+            # raw rows would read that within-case variation as variation BETWEEN
+            # cases, and wrongly pin a geometry-only check on a load case.
+            per_id_max: Dict[int, float] = {}
+            for chk in lc_data.get("checks") or []:
+                cid = chk.get("check_id")
+                if cid is None:
+                    continue
+                ur = float(chk.get("dcr") or 0.0)
+                if cid not in per_id_max or ur > per_id_max[cid]:
+                    per_id_max[cid] = ur
+            for cid, ur in per_id_max.items():
+                if cid not in worst_lc or ur > worst_lc[cid][0]:
+                    worst_lc[cid] = (ur, str(lc_name))
+                lc_spread.setdefault(cid, set()).add(round(ur, 6))
+                lc_count[cid] = lc_count.get(cid, 0) + 1
+
+        def _attribute(cid) -> tuple:
+            """Return (load_case, note) for a check id.
+
+            Naming a load case is only honest when the check actually varies
+            between them. Two cases where it does not:
+
+            * No per-LC rows at all (fatigue - a stress RANGE is measured across
+              load cases, so it belongs to none of them).
+            * The same UR across several cases (stud spacing / detailing,
+              which depend on geometry, not on load). A check carried by a
+              single case is not this - that case is its real driver.
+
+            Both return an empty load case plus a note saying why, rather than
+            pinning the result on whichever case happened to be scanned first.
+            """
+            seen = lc_spread.get(cid)
+            if not seen:
+                return "", "not load-case specific"
+            # One load case carries the check (LTB stage 1 fires only for SW,
+            # live deflection only for live-only cases): that case IS the answer.
+            if lc_count.get(cid, 0) > 1 and len(seen) == 1:
+                return "", "same in every load case"
+            return worst_lc[cid][1], ""
+
+        rows = []
+        for c in env_checks:
+            lc_name, note = _attribute(c.get("check_id"))
+            rows.append(_summary_row(c, source="envelope",
+                                     load_case=lc_name, note=note))
+        for lc_name, lc_data in per_lc.items():
+            for c in (lc_data.get("checks") or []):
+                _, note = _attribute(c.get("check_id"))
+                rows.append(_summary_row(c, source="load_case",
+                                         load_case="" if note else str(lc_name),
+                                         note=note))
+
+        cats: Dict[str, dict] = {}
+        stiff: list = []
+        for row in rows:
+            cat_entry = DCREngine.CATEGORY_MAP.get(row["check_id"])
+            if cat_entry is None:
+                # Stiffener rows are taken from the envelope pass only; every
+                # per-LC engine re-emits identical copies of them.
+                if row["check_id"] in STIFFENER_CHECK_IDS and row["source"] == "envelope":
+                    stiff.append(row)
+                continue
+            key = DESIGN_CHECK_CATEGORY_KEYS[cat_entry[0]]
+            if key not in cats or row["ur"] > cats[key]["ur"]:
+                cats[key] = row
+
+        # One status rule, applied once, for every consumer.
+        for row in list(cats.values()) + stiff:
+            row["status"] = DCREngine.classify(row["ur"])
+            row["pass"]   = row["status"] != STATUS_FAIL
+            row["girder"] = g_name
+            row["ur"]     = round(row["ur"], 3)
+
+        per_girder[g_name] = {
+            "categories" : cats,
+            "max_ur"     : round(max((r["ur"] for r in cats.values()), default=0.0), 3),
+            "status"     : STATUS_FAIL if any(not r["pass"] for r in cats.values()) else STATUS_PASS,
+            "controlling": max(cats, key=lambda k: cats[k]["ur"]) if cats else None,
+        }
+        if stiff:
+            stiffener[g_name] = stiff
+
+    # Governing = the worst girder for each category; each row already names its
+    # own girder, so the failing girder is visible wherever the row is rendered.
+    gov_cats: Dict[str, dict] = {}
+    for g_data in per_girder.values():
+        for key, row in g_data["categories"].items():
+            if key not in gov_cats or row["ur"] > gov_cats[key]["ur"]:
+                gov_cats[key] = row
+
+    max_ur = round(max((r["ur"] for r in gov_cats.values()), default=0.0), 3)
+    status = STATUS_FAIL if any(not r["pass"] for r in gov_cats.values()) else STATUS_PASS
+
+    return {
+        "per_girder": per_girder,
+        "governing" : {
+            "categories" : gov_cats,
+            "max_ur"     : max_ur,
+            "status"     : status,
+            "controlling": max(gov_cats, key=lambda k: gov_cats[k]["ur"]) if gov_cats else None,
+        },
+        "stiffener" : stiffener,
+        "status"    : status,
+        "max_ur"    : max_ur,
+    }
 
 
 def run_design_check(
@@ -3532,6 +3579,7 @@ def run_design_check(
                     "dcr"          : chk.dcr,
                     "status"       : chk.status,
                     "note"         : chk.note,
+                    "governing_method": chk.governing_method,
                 }
                 for chk in g_engine.checks
             ],
@@ -3828,6 +3876,7 @@ def run_design_check(
                 "dcr"          : chk.dcr,
                 "status"       : chk.status,
                 "note"         : chk.note,
+                "governing_method": chk.governing_method,
             }
             for chk in engine.checks
         ],
@@ -3835,12 +3884,10 @@ def run_design_check(
         "capacity_details"          : capacity.details,
         # -- formatted report text --
         "report_text"               : report_text,
-        # -- all-girder results --
+        # -- all-girder results (raw per-girder / per-LC check rows) --
         "per_girder"                : per_girder_results,
-        # -- ULS check table (Generate Results): per-girder demand/capacity/UR/status
-        KEY_SD_ULS_PER_GIRDER       : _build_uls_per_girder(per_girder_results),
-        # -- girder verdict: per-category PASS/FAIL + overall status (added)
-        KEY_SD_VERDICT              : collect_girder_verdict(per_girder_results),
+        # -- THE single source for girder pass/fail, URs and governing load cases.
+        KEY_SD_SUMMARY              : build_design_summary(per_girder_results),
     }
 
     return report_text, engine, design_results

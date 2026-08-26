@@ -6,6 +6,7 @@ from osdagbridge.core.reports.report_utils import _fig_or_placeholder, _render_v
 from osdagbridge.core.utils.common import (
     KEY_CARRIAGEWAY_WIDTH,
     KEY_SD_SECTION_DESIGNATION,
+    KEY_SD_SUMMARY,
     KEY_SPAN,
     KEY_STRUCTURE_TYPE,
     KEY_TS_DECK_THICKNESS,
@@ -124,40 +125,33 @@ def executive_summary(input_dict, output_dict, fig_paths) -> str:
     # ── Pull the stored result dicts once, then work off these locals ─────────
     # (no value is recomputed here — the pipeline already filled these in).
     design_results = output_dict.get("design_results", {}) or {}
-    per_girder     = design_results.get("per_girder", {}) or {}
     deck_results   = output_dict.get("deck_design_results", {}) or {}
     cb_results     = output_dict.get("crossbracing_design_results", {}) or {}
     ed_results     = output_dict.get("end_diaphragm_design_results", {}) or {}
 
-    # Overall Design Status — girder checks only: Pass if every check passes,
-    # otherwise Fail with the names of the failing checks. Each check carries a
-    # pre-computed {name, dcr, status}.
+    # Overall Design Status — read straight off the design summary's governing
+    # rows, the same source the logger, dock, check tab and results tables use.
+    # Nothing is recomputed here, so this page cannot disagree with them. Note
+    # the summary already excludes the stiffener checks: those are intermediate
+    # sizing steps ("Brg.Stiff: Web Buckling" FAILs whenever a bearing stiffener
+    # is required, i.e. normally) and must drive neither the status nor the UR.
+    _summary = design_results.get(KEY_SD_SUMMARY) or {}
+    gov_cats = (_summary.get("governing") or {}).get("categories") or {}
+
     failing = []                        # failing check names (order-preserving, deduped)
     gov_name, gov_dcr = "", None
     girder_max_ur = None
-    for g, gd in per_girder.items():
-        if str(g).startswith("EB"):     # skip edge-beam pseudo girders
-            continue
-        for chk in (gd.get("checks") or []):
-            try:
-                _val = chk.get("dcr")
-                if _val is None:
-                    dcr = None
-                else:
-                    dcr = float(_val)
-            except (TypeError, ValueError):
-                dcr = None
-            name = str(chk.get("name", "")).strip()
-            is_fail = ("FAIL" in str(chk.get("status", "")).upper()) or (dcr is not None and dcr > 1.0)
-            if is_fail and name and name not in failing:
-                failing.append(name)
-            if dcr is not None:
-                if gov_dcr is None or dcr > gov_dcr:
-                    gov_dcr, gov_name = dcr, name
-                if girder_max_ur is None or dcr > girder_max_ur:
-                    girder_max_ur = dcr
+    for row in gov_cats.values():
+        dcr  = float(row.get("ur", 0.0))
+        name = str(row.get("name", "")).strip()
+        if not row.get("pass", True) and name and name not in failing:
+            failing.append(name)
+        if gov_dcr is None or dcr > gov_dcr:
+            gov_dcr, gov_name = dcr, name
+        if girder_max_ur is None or dcr > girder_max_ur:
+            girder_max_ur = dcr
 
-    if not per_girder:
+    if not gov_cats:
         overall_design_status = ""
     elif failing:
         overall_design_status = "Fail (" + ", ".join(failing) + ")"
@@ -248,7 +242,7 @@ def executive_summary(input_dict, output_dict, fig_paths) -> str:
     _dk_ur, _dk_check = _deck_governing(deck_results)
 
     outcome_rows = "\n".join([
-        _outcome_row("Girder Design", gov_name, girder_max_ur, bool(failing)) if per_girder
+        _outcome_row("Girder Design", gov_name, girder_max_ur, bool(failing)) if gov_cats
             else _outcome_row("Girder Design", "", None, False),
         _outcome_row("Cross Bracing Design", _cb_check, _cb_ur, _cb_ur is not None and _cb_ur > 1.0),
         _outcome_row("End Diaphragm Design", _ed_check, _ed_ur, _ed_ur is not None and _ed_ur > 1.0),

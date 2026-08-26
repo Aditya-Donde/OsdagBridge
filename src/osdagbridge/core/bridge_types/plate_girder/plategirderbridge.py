@@ -71,7 +71,10 @@ from osdagbridge.core.utils.common import (
     KEY_UTIL_FATIGUE,
     KEY_UTIL_LONG_TRANS_SHEAR,
     KEY_UTIL_STRESS_LIMITATION,
-    KEY_SD_VERDICT, KEY_DD_VERDICT,
+    KEY_SD_SUMMARY, KEY_DD_VERDICT,
+    KEY_CHECK_FLEXURE, KEY_CHECK_SHEAR, KEY_CHECK_INTERACTION, KEY_CHECK_LTB,
+    KEY_CHECK_SHEAR_LONG_TRANS, KEY_CHECK_FATIGUE, KEY_CHECK_STRESS,
+    KEY_CHECK_DEFLECTION, DESIGN_CHECK_UTIL_KEYS,
     KEY_SL_IMPORTANCE_FACTOR, KEY_SL_SOIL_TYPE, KEY_SL_TIME_PERIOD,
     KEY_SL_DAMPING, KEY_SL_RESPONSE_REDUCTION,
     KEY_SL_DEAD_LOAD_MODE, KEY_SL_DEAD_LOAD_VALUE,
@@ -261,7 +264,6 @@ from osdagbridge.core.bridge_components.super_structure.shear_studs.geometry imp
     min_stud_head_height,
 )
 from osdagbridge.core.utils.logger import bridge_logger
-from osdagbridge.core.bridge_types.plate_girder.designer import (BridgeConfig, IRC22CapacityCalculator, DCREngine, DemandEnvelope, design_envelope_engine,)
 
 _DB_PATH = Path(__file__).resolve().parents[2] / "data" / "ResourceFiles" / "Intg_osdag.sqlite"
 
@@ -3114,14 +3116,23 @@ class PlateGirderBridge:
         handler = PlateGirderAnalysisResults(dataset=results, bridge=self.grillage_model)
         return [str(lc) for lc in handler.get_available_loadcases()]
     
-    def get_dcr_engine_for_selection(
+    def get_dcr_rows_for_selection(
         self, girder_name: str | None, load_case: str | None
-    ) -> "DCREngine | None":
-        """
-        Single source of truth for DCR computation.
-        Returns a fully-run DCREngine for the given (girder, loadcase).
-        Both the Output Dock percent bars and the Steel Design check cards
-        call this — never compute DCR anywhere else.
+    ) -> dict | None:
+        """Return one load case's stored check rows for a girder.
+
+        Computes nothing: these rows were produced once by run_design_check()
+        and are only read back here, so the Design Check tab and the output dock
+        cannot drift from each other or from the verdict.
+
+        The returned dict is the stored per-LC entry - its "checks" list plus
+        that case's scalar values (Mu_kNm, Mdv_kNm, Nu_kN, NRd_kN, ...) that the
+        interaction card renders. Without a girder name, the girder whose worst
+        check governs wins.
+
+        A single load case only carries the checks it drives, so this is a
+        drill-down, not the verdict. The verdict is the design summary, which
+        get_dcr_for_selection() reads directly for the dock's "Design Envelope".
         """
 
 
@@ -3133,128 +3144,78 @@ class PlateGirderBridge:
         if not per_girder:
             return None
 
-        if girder_name and girder_name in per_girder:
-            girder_names = [girder_name]
-        else:
-            girder_names = list(per_girder)
+        girder_names = ([girder_name] if girder_name and girder_name in per_girder
+                        else list(per_girder))
 
-        # "Design Envelope": for each check, the worst (highest) utilization across only the load cases that affect that check. Built from the already-computed per-LC check results rather than a single synthetic demand — see designer.design_envelope_engine. Check gating by lc_type means a load case only contributes the checks it actually influences (LTB from SW/DL-stage cases, fatigue from frequent-SLS cases, etc.).
-        if load_case == "Design Envelope":
-            return design_envelope_engine(girder_names, per_girder)
-
-        # per_girder's key order is already edge-beam-free and in physical girder
-        # order (built from build_girders() minus EB1/EB2) — its position is the
-        # 0-based girder_index that resolve_girder_value()'s ".G{i+1}.M1" keys expect.
-        _girder_order = list(per_girder)
-
-        stored_r = dr.get("bs_R_kN", 0.0)
-
-        best_engine = None
-
+        best, best_max = None, -1.0
         for g_name in girder_names:
-            try:
-                config = BridgeConfig.from_plate_girder_bridge(
-                    self, girder_index=_girder_order.index(g_name)
-                )
-            except Exception:
+            lc_data = (per_girder.get(g_name, {}).get("per_lc") or {}).get(load_case)
+            rows = (lc_data or {}).get("checks") or []
+            if not rows:
                 continue
+            g_max = max(float(r.get("dcr") or 0.0) for r in rows)
+            if g_max > best_max:
+                best_max, best = g_max, lc_data
 
-            # Mirror the bearing reaction resolved during run_design_check so
-            # bearing stiffener checks fire here too (from_plate_girder_bridge
-            # always leaves bs_R_kN=0.0).
-            if config.stiffener is not None and stored_r and stored_r > 0.0:
-                config.stiffener.bs_R_kN = float(stored_r)
-
-            g_data = per_girder.get(g_name, {})
-            per_lc = g_data.get("per_lc", {})
-            lc_demand = per_lc.get(load_case)
-            if not lc_demand:
-                continue
-
-            g_env = g_data.get("demand", {})
-
-            demand = DemandEnvelope(
-                Mu_kNm               = lc_demand.get("Mu_kNm",              0.0),
-                Vu_kN                = lc_demand.get("Vu_kN",               0.0),
-                Nu_kN                = lc_demand.get("Nu_kN",               0.0),
-                M_construction_kNm   = lc_demand.get("M_construction_kNm",  0.0),
-                M_girder_sw_kNm      = lc_demand.get("M_girder_sw_kNm",     0.0),
-                M_sls_kNm            = lc_demand.get("M_sls_kNm",           0.0),
-                V_sls_kN             = lc_demand.get("V_sls_kN",            0.0),
-                delta_live_mm        = lc_demand.get("delta_live_mm",       0.0),
-                delta_total_mm       = lc_demand.get("delta_total_mm",      0.0),
-                delta_dl_mm          = lc_demand.get("delta_dl_mm",         0.0),
-                camber_mm            = lc_demand.get("camber_mm",           0.0),
-                stress_range_MPa     = lc_demand.get("stress_range_MPa",    0.0),
-                shear_range_MPa      = lc_demand.get("shear_range_MPa",     0.0),
-                Mx_kNm               = lc_demand.get("Mx_kNm",              0.0),
-                My_kNm               = lc_demand.get("My_kNm",              0.0),
-                Vz_kN                = lc_demand.get("Vz_kN",               0.0),
-                Dx_mm                = lc_demand.get("Dx_mm",               0.0),
-                Dy_mm                = lc_demand.get("Dy_mm",               0.0),
-                Dz_mm                = lc_demand.get("Dz_mm",               0.0),
-                Vr_kN                = g_env.get("Vr_kN", 0.0),        # cross-LC aggregate → girder level
-                Nsc                  = int(dr.get("Nsc", 2_000_000)),  # config constant
-                governing_combination = load_case,
-                member               = g_name,
-                source               = "per_lc",
-                lc_type              = lc_demand.get("lc_type", ""),
-            )
-            try:
-                capacity = IRC22CapacityCalculator(config).compute_all(
-                    Vu_kN=demand.Vu_kN,
-                    stress_range_MPa=demand.stress_range_MPa,
-                    M_sls_kNm=demand.M_sls_kNm,
-                    V_sls_kN=demand.V_sls_kN,
-                    Vr_kN=demand.Vr_kN,
-                )
-                engine = DCREngine(demand, capacity)
-                engine.run_all_checks()
-
-                max_dcr  = engine.max_dcr()
-                best_max = best_engine.max_dcr() if best_engine else -1.0
-                if max_dcr > best_max:
-                    best_engine = engine
-            except Exception:
-                continue
-
-        return best_engine
+        return best
 
     def get_dcr_for_selection(
         self, girder_name: str | None, load_case: str | None
     ) -> dict[str, float]:
-        """
-        Return DCR percentages for the Output Dock percent bars.
-        Thin wrapper around get_dcr_engine_for_selection — no computation here.
-        """
-        from osdagbridge.core.utils.common import (
-            KEY_UTIL_FLEXURE, KEY_UTIL_SHEAR, KEY_UTIL_INTERACTION,
-            KEY_UTIL_LTB, KEY_UTIL_LONG_TRANS_SHEAR, KEY_UTIL_FATIGUE,
-            KEY_UTIL_STRESS_LIMITATION, KEY_UTIL_DEFLECTION_CRACK,
-        )
+        """Return DCR percentages for the Output Dock percent bars.
+        "Design Envelope" comes straight off the design summary, which already
+        holds exactly one row per category - the eight numbers this returns. Any
+        other load case is that case's stored rows, keyed by check id, so those
+        need folding into categories first.
 
-        engine = self.get_dcr_engine_for_selection(girder_name, load_case)
-        if engine is None:
+        Computes nothing either way.
+        """
+        summary = (getattr(self, "design_results", None) or {}).get(KEY_SD_SUMMARY) or {}
+
+        if load_case == "Design Envelope":
+            per_girder = summary.get("per_girder") or {}
+            block = (per_girder.get(girder_name) if girder_name in per_girder
+                     else summary.get("governing"))
+            cats = (block or {}).get("categories") or {}
+            if not cats:
+                return {}
+            return {
+                util_key: (cats[cat_key]["ur"] * 100) if cat_key in cats else None
+                for cat_key, util_key in DESIGN_CHECK_UTIL_KEYS.items()
+            }
+
+        lc_data = self.get_dcr_rows_for_selection(girder_name, load_case)
+        if not lc_data:
             return {}
 
         by_id: dict[int, float] = {}
-        for c in engine.checks:
-            if c.check_id not in by_id or c.dcr > by_id[c.check_id]:
-                by_id[c.check_id] = c.dcr
+        for row in lc_data.get("checks") or []:
+            cid = row.get("check_id")
+            dcr = float(row.get("dcr") or 0.0)
+            if cid is not None and (cid not in by_id or dcr > by_id[cid]):
+                by_id[cid] = dcr
 
         def _max_ids(*ids):
             vals = [by_id[i] for i in ids if i in by_id]
             return (max(vals) * 100) if vals else None
 
+        # Check ids that feed each category, mirroring DCREngine.CATEGORY_MAP
+        # (plus the deck ids 10/12/15/16/17, kept so an older stored result still
+        # renders). Only this per-load-case path needs them; the envelope path
+        # above is already keyed by category.
+        _CATEGORY_CHECK_IDS = {
+            KEY_CHECK_FLEXURE:          (1,),
+            KEY_CHECK_SHEAR:            (2,),
+            KEY_CHECK_INTERACTION:      (3, 4),
+            KEY_CHECK_LTB:              (5,),
+            KEY_CHECK_SHEAR_LONG_TRANS: (6, 7, 16, 17),
+            KEY_CHECK_FATIGUE:          (8, 9),
+            KEY_CHECK_STRESS:           (10, 11, 12),
+            KEY_CHECK_DEFLECTION:       (13, 14, 15, 18),
+        }
         return {
-            KEY_UTIL_FLEXURE:           _max_ids(1),
-            KEY_UTIL_SHEAR:             _max_ids(2),
-            KEY_UTIL_INTERACTION:       _max_ids(3, 4),
-            KEY_UTIL_LTB:               _max_ids(5),
-            KEY_UTIL_LONG_TRANS_SHEAR:  _max_ids(6, 7, 16, 17),
-            KEY_UTIL_FATIGUE:           _max_ids(8, 9),
-            KEY_UTIL_STRESS_LIMITATION: _max_ids(10, 11, 12),
-            KEY_UTIL_DEFLECTION_CRACK:  _max_ids(13, 14, 15, 18),
+            DESIGN_CHECK_UTIL_KEYS[cat_key]: _max_ids(*ids)
+            for cat_key, ids in _CATEGORY_CHECK_IDS.items()
         }
 
     def get_nodes_members(self) -> tuple[dict, dict]:
@@ -3451,18 +3412,26 @@ class PlateGirderBridge:
         out = self.output_dict        # must be mutable dict at this point
 
         # ── 1. Category URs — eight utilisation percent values ─────────────────
-        cat_urs = dr.get("category_urs", {})
-        out[KEY_UTIL_FLEXURE]          = cat_urs.get(1, {}).get("max_dcr", 0.0) * 100
-        out[KEY_UTIL_SHEAR]            = cat_urs.get(2, {}).get("max_dcr", 0.0) * 100
-        out[KEY_UTIL_INTERACTION]      = cat_urs.get(3, {}).get("max_dcr", 0.0) * 100
-        out[KEY_UTIL_LTB]              = cat_urs.get(4, {}).get("max_dcr", 0.0) * 100
-        out[KEY_UTIL_LONG_TRANS_SHEAR] = cat_urs.get(5, {}).get("max_dcr", 0.0) * 100
-        out[KEY_UTIL_FATIGUE]          = cat_urs.get(6, {}).get("max_dcr", 0.0) * 100
-        out[KEY_UTIL_STRESS_LIMITATION]= cat_urs.get(7, {}).get("max_dcr", 0.0) * 100
-        out[KEY_UTIL_DEFLECTION_CRACK] = cat_urs.get(8, {}).get("max_dcr", 0.0) * 100
+        # Read straight off the design summary's governing row per category (the
+        # worst girder), so the dock bars show the same numbers the logger and the
+        # report do. Nothing is recomputed here.
+        summary  = dr.get(KEY_SD_SUMMARY) or {}
+        gov_cats = (summary.get("governing") or {}).get("categories") or {}
 
-        # Girder verdict — per-category PASS/FAIL dict
-        out[KEY_SD_VERDICT] = dr.get(KEY_SD_VERDICT, {})
+        def _util(check_key: str) -> float:
+            return float((gov_cats.get(check_key) or {}).get("ur", 0.0)) * 100
+
+        out[KEY_UTIL_FLEXURE]          = _util(KEY_CHECK_FLEXURE)
+        out[KEY_UTIL_SHEAR]            = _util(KEY_CHECK_SHEAR)
+        out[KEY_UTIL_INTERACTION]      = _util(KEY_CHECK_INTERACTION)
+        out[KEY_UTIL_LTB]              = _util(KEY_CHECK_LTB)
+        out[KEY_UTIL_LONG_TRANS_SHEAR] = _util(KEY_CHECK_SHEAR_LONG_TRANS)
+        out[KEY_UTIL_FATIGUE]          = _util(KEY_CHECK_FATIGUE)
+        out[KEY_UTIL_STRESS_LIMITATION]= _util(KEY_CHECK_STRESS)
+        out[KEY_UTIL_DEFLECTION_CRACK] = _util(KEY_CHECK_DEFLECTION)
+
+        # The design summary itself — the single source every other surface reads.
+        out[KEY_SD_SUMMARY] = summary
 
         # ── 2. Dimensional card ─────────────────────────────────────────────────
         # Grade, type, designation, class, and all plate dimensions in mm.
