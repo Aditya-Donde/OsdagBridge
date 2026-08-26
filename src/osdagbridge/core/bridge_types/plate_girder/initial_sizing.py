@@ -320,22 +320,27 @@ class BridgeConfigurationSolver:
                     f"which is below the minimum ({spacing_bounds[0]:.2f} m)."
                 )
         
-        # Build result
+        # Verify using full-precision values before any display/report rounding.
+        # Rounding spacing/overhang to 4 dp before reconstruction can accumulate
+        # millimetre-level error across multiple girder intervals.
+        # Keep the strict tolerance here so genuine geometry inconsistencies are
+        # still detected.
+        self.verify_bridge_width(
+            no_of_girders=n,
+            girder_spacing=spacing_use,
+            deck_overhang=overhang_use,
+            tol=1e-6,
+        )
+
+        # Store full-precision values.  Callers are responsible for rounding
+        # at the display / report layer (e.g. f"{spacing:.4f}"), never before.
+        # (Prevents edge issues like #372)
         result = BridgeLayoutResult(
             overall_width=overall_width,
             no_of_girders=n,
-            girder_spacing=round(spacing_use, 4),
-            deck_overhang=round(overhang_use, 4),
+            girder_spacing=spacing_use,
+            deck_overhang=overhang_use,
         )
-        
-        # Verify using CrossSectionLayout.verify_bridge_width (with tolerance for rounding)
-        self.verify_bridge_width(
-            no_of_girders=result.no_of_girders,
-            girder_spacing=result.girder_spacing,
-            deck_overhang=result.deck_overhang,
-            tol=1e-3,  # Larger tolerance due to rounding
-        )
-        
         return result
     
     # =========================================================================
