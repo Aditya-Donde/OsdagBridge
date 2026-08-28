@@ -220,11 +220,13 @@ def resolve_girder_section_properties(output_dict: dict) -> dict | None:
         """Return output_dict[base_key.G{gi}.M{mi}] or None."""
         return od.get(f"{base_key}.G{gi}.M{mi}")
 
-    def _dim(base_key, gi, mi):
+    def _dim(base_key, gi, mi, scale=1.0):
         """
         Display a dimension field that may hold a number (Custom design mode),
         the marker "Custom" with the chosen options under a '.selected' sub-key,
         or "All"/a list (Optimized mode, TYPE_ALL_CUSTOM). Always shows something.
+
+        ``scale`` multiplies numeric values only, for unit conversion.
         """
         v = _gk(base_key, gi, mi)
         if v in (None, "", [], {}):
@@ -237,9 +239,27 @@ def resolve_girder_section_properties(output_dict: dict) -> dict | None:
         if isinstance(v, (list, tuple)):
             return ", ".join(str(s) for s in v) if v else EMPTY
         try:
-            return round(float(v), 2)
+            return round(float(v) * scale, 2)
         except (ValueError, TypeError):
             return _val(v)
+
+    def _dim_mm(sd_base_key, mp_base_key, gi, mi):
+        """
+        Plate dimension in mm, matching the design report.
+
+        Reads the designed section published under KEY_SD_* (compute_report_values,
+        already mm). Those are the *final* plate sizes; the KEY_MP_GIRDER_* inputs
+        still hold the initial sizing in Optimized mode, so the report and this
+        table would otherwise disagree. Falls back to the member-property key,
+        which the design pipeline has converted from mm to SI metres
+        (_convert_girder_dims_mm_to_m) — hence the ×1000.
+        """
+        v = _gk(sd_base_key, gi, mi)
+        if v is None and gi == 1 and mi == 1:
+            v = od.get(sd_base_key)  # flat key = controlling girder
+        if v not in (None, "", [], {}):
+            return _num(v)
+        return _dim(mp_base_key, gi, mi, scale=1e3)
 
     span = _num(od.get(KEY_SPAN)) if _has(od.get(KEY_SPAN)) else EMPTY
 
@@ -254,14 +274,14 @@ def resolve_girder_section_properties(output_dict: dict) -> dict | None:
                 span,
                 _val(_gk(KEY_MP_GIRDER_TYPE,                  gi, mi)),
                 _val(_gk(KEY_MP_GIRDER_SYMMETRY,               gi, mi)),
-                _dim(KEY_MP_GIRDER_DEPTH,                  gi, mi),  # stored in mm
-                _dim(KEY_MP_GIRDER_TOP_FLANGE_WIDTH,       gi, mi),  # mm
-                _dim(KEY_MP_GIRDER_TOP_FLANGE_THICKNESS,   gi, mi),  # mm / "All"
-                _dim(KEY_MP_GIRDER_BOTTOM_FLANGE_WIDTH,    gi, mi),  # mm
-                _dim(KEY_MP_GIRDER_BOTTOM_FLANGE_THICKNESS,gi, mi),  # mm / "All"
+                _dim_mm(KEY_SD_TOTAL_DEPTH,             KEY_MP_GIRDER_DEPTH,                   gi, mi),  # mm
+                _dim_mm(KEY_SD_TOP_FLANGE_WIDTH,        KEY_MP_GIRDER_TOP_FLANGE_WIDTH,        gi, mi),  # mm
+                _dim_mm(KEY_SD_TOP_FLANGE_THICKNESS,    KEY_MP_GIRDER_TOP_FLANGE_THICKNESS,    gi, mi),  # mm
+                _dim_mm(KEY_SD_BOTTOM_FLANGE_WIDTH,     KEY_MP_GIRDER_BOTTOM_FLANGE_WIDTH,     gi, mi),  # mm
+                _dim_mm(KEY_SD_BOTTOM_FLANGE_THICKNESS, KEY_MP_GIRDER_BOTTOM_FLANGE_THICKNESS, gi, mi),  # mm
                 _val(_gk(KEY_MP_GD_SUPPORT_TYPE,               gi, mi)),
-                _num(_gk(KEY_MP_GD_SUPPORT_WIDTH,              gi, mi)),  # mm
-                _dim(KEY_MP_GIRDER_WEB_THICKNESS,          gi, mi),  # mm / "All"
+                _num(_gk(KEY_MP_GD_SUPPORT_WIDTH,              gi, mi)),  # mm, never converted
+                _dim_mm(KEY_SD_WEB_THICKNESS,           KEY_MP_GIRDER_WEB_THICKNESS,           gi, mi),  # mm
                 _val(_gk(KEY_MP_GIRDER_TORSIONAL_RESTRAINT,    gi, mi)),
                 _val(_gk(KEY_MP_GIRDER_WARPING_RESTRAINT,      gi, mi)),
                 _val(_gk(KEY_MP_GIRDER_WEB_TYPE,               gi, mi)),
