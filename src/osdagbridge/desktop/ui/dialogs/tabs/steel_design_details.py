@@ -61,16 +61,17 @@ from osdagbridge.core.utils.common import (
     KEY_MP_GIRDER_PLASTIC_MODULUS_ZUY,
     KEY_MP_GIRDER_TORSION_CONSTANT_IT,
     KEY_MP_GIRDER_WARPING_CONSTANT_IW,
-    KEY_MP_STIFFENER_NO_BEARING_STIFFENERS,
-    KEY_MP_STIFFENER_BEARING_THICKNESS,
-    KEY_MP_STIFFENER_BEARING_OUTSTAND,
-    KEY_MP_STIFFENER_SPACING,
-    KEY_MP_STIFFENER_INTERMEDIATE,
-    KEY_MP_STIFFENER_INTERMEDIATE_THICKNESS,
-    KEY_MP_STIFFENER_INTERMEDIATE_OUTSTAND,
-    KEY_MP_STIFFENER_INTERMEDIATE_SPACING,
-    KEY_MP_STIFFENER_LONGITUDINAL,
-    KEY_MP_STIFFENER_LONGITUDINAL_THICKNESS,
+    KEY_SD_STIFF_INT_THICK,
+    KEY_SD_STIFF_INT_SPACING,
+    KEY_SD_STIFF_INT_WIDTH,
+    KEY_SD_STIFF_END_THICK,
+    KEY_SD_STIFF_END_WIDTH,
+    KEY_SD_STIFF_END_SPACING,
+    KEY_SD_STIFF_END_COUNT,
+    KEY_SD_STIFF_LONG,
+    KEY_SD_STIFF_LONG_THICK,
+    KEY_SD_STIFF_LONG_WIDTH,
+    KEY_SD_STIFF_LONG_SPACING,
 )
 
 # Greyed-out read-only style for combos mirroring the Output Dock selection.
@@ -551,56 +552,47 @@ class SteelDesignDetailsTab(QWidget):
         out["iw"]   = _sec(KEY_MP_GIRDER_WARPING_CONSTANT_IW)
 
         # ─────────────────────────────────────────────────────────────────────────
-        # STIFFENER DETAILS — per-member member_properties.stiffener_details.* keys.
-        # Values are per-girder (".G{n}.M{m}"); _suffix_for picks the active member.
-        # Grade is the girder material grade (no per-member grade is stored).
+        # STIFFENER DETAILS — designer-computed KEY_SD_STIFF_* keys, the same source
+        # report Table 5.7 reads. store_design_results() publishes them per-girder
+        # (".G{n}.M1") and flat (controlling girder); raw inputs are never read here,
+        # so Optimized mode shows the designed sizes rather than the input defaults.
+        # Grade is the girder material grade (stiffeners use the same material).
         # ─────────────────────────────────────────────────────────────────────────
-        grade = _str(output_dict.get(KEY_SD_GRADE_OF_MATERIAL))
-        stiff_suf = _suffix_for(KEY_MP_STIFFENER_BEARING_THICKNESS)
-
-        def _mp_stiff(base_key):
-            """Per-member stiffener value from the suffixed key."""
-            v = output_dict.get(base_key + stiff_suf)
+        def _sd_stiff(base_key):
+            """Per-girder stiffener-summary value, falling back to the flat key."""
+            v = output_dict.get(base_key + gsuf, output_dict.get(base_key))
             return str(v) if v is not None and str(v).strip() not in ("", "None", "NA") else ""
 
         def _na(value):
             return value if value and str(value).strip() not in ("", "None") else "NA"
 
+        grade = _na(_str(_sd(KEY_SD_GRADE_OF_MATERIAL) or output_dict.get(KEY_SD_GRADE_OF_MATERIAL)))
+
         # Bearing (always present); count drives the CAD preview (no table column).
-        out["stiff_bearing_grade"]     = _na(grade)
-        out["stiff_bearing_thickness"] = _na(_mp_stiff(KEY_MP_STIFFENER_BEARING_THICKNESS))
-        out["stiff_bearing_width"]     = _na(_mp_stiff(KEY_MP_STIFFENER_BEARING_OUTSTAND))
-        out["stiff_bearing_spacing"]   = _na(_mp_stiff(KEY_MP_STIFFENER_SPACING))
-        out["stiff_bearing_count"]     = _na(_mp_stiff(KEY_MP_STIFFENER_NO_BEARING_STIFFENERS))
+        out["stiff_bearing_grade"]     = grade
+        out["stiff_bearing_thickness"] = _na(_sd_stiff(KEY_SD_STIFF_END_THICK))
+        out["stiff_bearing_width"]     = _na(_sd_stiff(KEY_SD_STIFF_END_WIDTH))
+        out["stiff_bearing_spacing"]   = _na(_sd_stiff(KEY_SD_STIFF_END_SPACING))
+        out["stiff_bearing_count"]     = _na(_sd_stiff(KEY_SD_STIFF_END_COUNT))
 
-        # Intermediate (only when enabled).
-        int_on = _mp_stiff(KEY_MP_STIFFENER_INTERMEDIATE).strip().lower() in ("yes", "true", "1")
+        # Intermediate — present whenever the design produced a size for them.
+        int_thickness = _sd_stiff(KEY_SD_STIFF_INT_THICK)
+        int_spacing   = _sd_stiff(KEY_SD_STIFF_INT_SPACING)
+        int_on = bool(int_thickness or int_spacing)
         out["stiff_intermediate_on"] = "Yes" if int_on else "No"
-        if int_on:
-            out["stiff_intermediate_grade"]     = _na(grade)
-            out["stiff_intermediate_thickness"] = _na(_mp_stiff(KEY_MP_STIFFENER_INTERMEDIATE_THICKNESS))
-            out["stiff_intermediate_width"]     = _na(_mp_stiff(KEY_MP_STIFFENER_INTERMEDIATE_OUTSTAND))
-            out["stiff_intermediate_spacing"]   = _na(_mp_stiff(KEY_MP_STIFFENER_INTERMEDIATE_SPACING))
-        else:
-            out["stiff_intermediate_grade"]     = "NA"
-            out["stiff_intermediate_thickness"] = "NA"
-            out["stiff_intermediate_width"]     = "NA"
-            out["stiff_intermediate_spacing"]   = "NA"
+        out["stiff_intermediate_grade"]     = grade if int_on else "NA"
+        out["stiff_intermediate_thickness"] = _na(int_thickness)
+        out["stiff_intermediate_width"]     = _na(_sd_stiff(KEY_SD_STIFF_INT_WIDTH))
+        out["stiff_intermediate_spacing"]   = _na(int_spacing)
 
-        # Longitudinal (only when enabled; width/spacing not user-defined → NA).
-        long_mode = _mp_stiff(KEY_MP_STIFFENER_LONGITUDINAL)
-        long_on = bool(long_mode) and long_mode.strip().lower() != "no"
+        # Longitudinal — mode string is "No"/"None" when the design has none.
+        long_mode = _sd_stiff(KEY_SD_STIFF_LONG)
+        long_on = bool(long_mode) and long_mode.strip().lower() not in ("no", "none")
         out["stiff_longitudinal_mode"] = long_mode.strip() if long_on else "No"
-        if long_on:
-            out["stiff_longitudinal_grade"]     = _na(grade)
-            out["stiff_longitudinal_thickness"] = _na(_mp_stiff(KEY_MP_STIFFENER_LONGITUDINAL_THICKNESS))
-            out["stiff_longitudinal_width"]     = "NA"
-            out["stiff_longitudinal_spacing"]   = "NA"
-        else:
-            out["stiff_longitudinal_grade"]     = "NA"
-            out["stiff_longitudinal_thickness"] = "NA"
-            out["stiff_longitudinal_width"]     = "NA"
-            out["stiff_longitudinal_spacing"]   = "NA"
+        out["stiff_longitudinal_grade"]     = grade if long_on else "NA"
+        out["stiff_longitudinal_thickness"] = _na(_sd_stiff(KEY_SD_STIFF_LONG_THICK))   if long_on else "NA"
+        out["stiff_longitudinal_width"]     = _na(_sd_stiff(KEY_SD_STIFF_LONG_WIDTH))   if long_on else "NA"
+        out["stiff_longitudinal_spacing"]   = _na(_sd_stiff(KEY_SD_STIFF_LONG_SPACING)) if long_on else "NA"
 
         return out
 

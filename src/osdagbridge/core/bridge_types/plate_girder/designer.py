@@ -3791,10 +3791,14 @@ def run_design_check(
         "bs_H_mm"                   : config.stiffener.bs_H_mm if config.stiffener else 0.0,
         "bs_n_plates"               : config.stiffener.bs_n_plates if config.stiffener else 0,
         # -- stiffener design summary (Table 5.7): method + computed (optimized) values --
+        # Outstands are the physical limit H_max = (min(bf) - tw)/2 — the outstand the
+        # required thicknesses above are derived at.
         "stiff_method"              : capacity.shear_method,
         "stiff_int_thick_req"       : capacity.details.get("intermediate_stiffener", {}).get("tq_req_1sided_mm"),
         "stiff_int_space_req"       : capacity.details.get("intermediate_stiffener", {}).get("c_req_min_mm"),
+        "stiff_int_width_req"       : capacity.details.get("intermediate_stiffener", {}).get("H_max_mm"),
         "stiff_end_thick_req"       : capacity.details.get("bearing_stiffener", {}).get("tq_req_bearing_mm"),
+        "stiff_end_width_req"       : capacity.details.get("bearing_stiffener", {}).get("H_max_mm"),
         # -- stiffener capacities --
         "is_H_limit_mm"             : capacity.is_H_limit_mm,
         "is_Iys_min_mm4"            : capacity.is_Iys_min_mm4,
