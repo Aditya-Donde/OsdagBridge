@@ -3624,6 +3624,7 @@ class PlateGirderBridge:
         out[KEY_SD_STIFF_METHOD]       = dr["stiff_method"]
         out[KEY_SD_STIFF_INT_THICK]    = _rnum(dr["is_tq_mm"] if _is_custom_stiff else dr["stiff_int_thick_req"])
         out[KEY_SD_STIFF_INT_SPACING]  = _rnum(dr["is_c_mm"]  if _is_custom_stiff else dr["stiff_int_space_req"])
+        out[KEY_SD_STIFF_INT_WIDTH]    = _rnum(dr["is_H_mm"]  if _is_custom_stiff else dr["stiff_int_width_req"])
         out[KEY_SD_STIFF_END_THICK]    = _rnum(dr["bs_tq_mm"] if _is_custom_stiff else dr["stiff_end_thick_req"])
         out[KEY_SD_STIFF_END_COUNT]    = dr["bs_n_plates"]
         # Longitudinal: only the user can specify them; optimizer adds none.
