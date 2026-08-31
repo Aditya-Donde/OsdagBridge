@@ -653,8 +653,8 @@ def design_deck_slab(input_dict: dict, fck: float, fctm: float, fy: float, Es: f
         # Railing dead load — IRC 6:2017 Cl.206.5 (kg/m → kN/m)
         railing_kN_m = IRC6_2017.cl_206_5_railing_load() * 9.81 / 1000.0
 
-        # Crash barrier horizontal moment — IRC 6:2017 Cl.206.4
-        barrier = IRC6_2017.cl_206_4_crash_barrier_load()
+        # Crash barrier horizontal moment — IRC 6:2017 Cl.206.6
+        barrier = IRC6_2017.cl_206_6_crash_barrier_load()
         M_barrier_kNm = barrier["moment_at_base_kNm_per_m"]
 
         # DL cantilever moments at root (kNm/m)
@@ -711,7 +711,7 @@ def design_deck_slab(input_dict: dict, fck: float, fctm: float, fy: float, Es: f
             f"  Overhang length L<sub>oh</sub> : {overhang_m * 1000:.0f} mm  ({overhang_m:.3f} m)",
             f"  Edge clearance f      : {f_edge:.3f} m  [IRC 6:2017 Table 3]",
             f"  Railing DL load       : {railing_kN_m:.3f} kN/m  [IRC 6:2017 Cl.206.5]",
-            f"  Crash barrier moment  : {M_barrier_kNm:.2f} kNm/m  [IRC 6:2017 Cl.206.4]",
+            f"  Crash barrier moment  : {M_barrier_kNm:.2f} kNm/m  [IRC 6:2017 Cl.206.6]",
             f"  Wheel arm from root   : {arm_wheel:.3f} m",
             f"  M<sub>DL</sub> (overhang)       : {M_DL_oh:.3f} kNm/m  (slab {M_DL_slab_oh:.3f} + railing {M_DL_railing_oh:.3f})",
             f"  M<sub>LL</sub> (overhang)       : {M_LL_oh:.3f} kNm/m",

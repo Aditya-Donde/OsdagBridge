@@ -459,9 +459,9 @@ class IRC6_2017:
 
 
     @staticmethod
-    def cl_206_4_crash_barrier_load():
+    def cl_206_6_crash_barrier_load():
         """
-        IRC:6-2017 Clause 206.4 — Crash Barrier Load.
+        IRC:6-2017 Clause 206.6 — Crash Barrier Load.
 
         A horizontal load of 7.5 kN/m is applied at 1.0 m above the deck
         surface for design of the deck overhang and crash barrier anchorage.
@@ -480,7 +480,7 @@ class IRC6_2017:
             "horizontal_load_kN_per_m" : horizontal_load,
             "height_m"                 : height_m,
             "moment_at_base_kNm_per_m" : horizontal_load * height_m,
-            "clause"                   : "IRC 6:2017 - 206.4",
+            "clause"                   : "IRC 6:2017 - 206.6",
         }
 
     @staticmethod
