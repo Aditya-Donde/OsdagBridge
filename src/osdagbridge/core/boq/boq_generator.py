@@ -6,7 +6,21 @@ import logging
 import math
 from typing import Any
 
+from osdagbridge.core.bridge_components.super_structure.crash_barrier.properties import RCC_DENSITY
 from osdagbridge.core.utils.common import (
+    KEY_CB_AREA,
+    KEY_CB_DENSITY,
+    KEY_CB_LOAD,
+    KEY_MP_GIRDER_BOTTOM_FLANGE_THICKNESS,
+    KEY_MP_GIRDER_DEPTH,
+    KEY_MP_GIRDER_TOP_FLANGE_THICKNESS,
+    KEY_MP_STIFFENER_BEARING_OUTSTAND,
+    KEY_MP_STIFFENER_BEARING_THICKNESS,
+    KEY_MP_STIFFENER_INTERMEDIATE,
+    KEY_MP_STIFFENER_INTERMEDIATE_OUTSTAND,
+    KEY_MP_STIFFENER_INTERMEDIATE_SPACING,
+    KEY_MP_STIFFENER_INTERMEDIATE_THICKNESS,
+    KEY_MP_STIFFENER_NO_BEARING_STIFFENERS,
     KEY_SPAN,
     KEY_TS_NO_OF_GIRDERS,
     KEY_TS_DECK_THICKNESS,
@@ -29,6 +43,164 @@ def resolve_girder_value(source: dict, base_key: str, i: int = 0) -> Any:
         if key in source:
             return source[key]
     raise KeyError(base_key)
+
+
+STEEL_DENSITY_T_PER_M3 = 7.85
+
+# Connection material (splices, gussets, bolts, cleats) is taken as a
+# percentage of the girder steel it joins, per standard take-off practice.
+CONNECTION_ALLOWANCE = 0.10
+
+
+def _num(value):
+    """Best-effort float conversion; returns None for blank/placeholder text."""
+    if value in ("", None, "N.A.", "NA", "None", "---"):
+        return None
+    try:
+        return float(str(value).strip())
+    except Exception:
+        return None
+
+
+def _truth(value):
+    if isinstance(value, bool):
+        return value
+    text = str(value).strip().lower()
+    if text in {"yes", "true", "1"}:
+        return True
+    return False
+
+
+def _girder_value_safe(inputs: dict, base_key: str, i: int):
+    """Per-girder property, or None when the key is absent."""
+    try:
+        return resolve_girder_value(inputs, base_key, i)
+    except KeyError:
+        return None
+
+
+def _girder_num(inputs: dict, base_key: str, i: int):
+    """Numeric per-girder property, tolerant of the legacy scalar key."""
+    return _num(_girder_value_safe(inputs, base_key, i))
+
+
+def _fmt_small(value: float, decimals: int = 2) -> str:
+    """Format a take-off figure to ``decimals`` places.
+
+    A figure too small to survive the rounding is switched to scientific
+    notation instead of collapsing to ``0.00``; the LaTeX form keeps it inside
+    its column rather than overflowing into the neighbouring one.
+    """
+    rounded = f"{value:.{decimals}f}"
+    if value and float(rounded) == 0.0:
+        mantissa, _, exponent = f"{value:.{decimals}e}".partition("e")
+        return f"${mantissa} \\times 10^{{{int(exponent)}}}$"
+    return rounded
+
+
+def _plate_quantities(prefix: str, length_mm: float, thickness_mm: float,
+                      width_mm: float, qty: int, total_vol: float) -> dict:
+    """Take-off entries for a rectangular plate item (stiffeners).
+
+    The volume column carries the plate's own dimensions only. The plate count
+    belongs in the quantity column -- multiplying by it here as well made the
+    volume column read as the total, contradicting the total volume column.
+    """
+    length_m = length_mm / 1000.0
+    thickness_m = thickness_mm / 1000.0
+    width_m = width_mm / 1000.0
+    single_vol = length_m * thickness_m * width_m
+    return {
+        f"{prefix}_vol_formula": (
+            f"${length_m:.3f}\\text{{ m}} \\times {thickness_m:.3f}\\text{{ m}}"
+            f" \\times {width_m:.3f}\\text{{ m}} = {single_vol:.6f}\\text{{ m}}^3$"
+        ),
+        f"{prefix}_qty": str(qty),
+        f"{prefix}_vol_total": _fmt_small(total_vol),
+        f"{prefix}_wt_single": _fmt_small(single_vol * STEEL_DENSITY_T_PER_M3),
+        f"{prefix}_wt_total": _fmt_small(total_vol * STEEL_DENSITY_T_PER_M3),
+    }
+
+
+def calculate_stiffener_quantities(inputs: dict, span: float, n_girders: int) -> dict:
+    """Bearing and intermediate stiffener take-off, summed over all girders.
+
+    Stiffener plates span the web, not the overall girder depth, so the flange
+    thicknesses are deducted where the section input is available.
+    """
+    quantities = {}
+
+    bearing_qty = 0
+    bearing_vol = 0.0
+    bearing_dims = None
+
+    int_qty = 0
+    int_vol = 0.0
+    int_dims = None
+
+    for gi in range(n_girders):
+        web_depth = _girder_num(inputs, "member_properties.girder_details.section_input.web_depth", gi)
+        if web_depth is None:
+            depth = _girder_num(inputs, KEY_MP_GIRDER_DEPTH, gi)
+            if depth is None:
+                continue
+            tft = _girder_num(inputs, KEY_MP_GIRDER_TOP_FLANGE_THICKNESS, gi) or 0.0
+            tfb = _girder_num(inputs, KEY_MP_GIRDER_BOTTOM_FLANGE_THICKNESS, gi) or 0.0
+            web_depth = depth - tft - tfb
+        if web_depth <= 0:
+            continue
+
+        # The same input drives plates-per-end for bearing stiffeners and the
+        # one-sided/two-sided count for intermediate ones (see StiffenerConfig).
+        n_plates = _girder_num(inputs, KEY_MP_STIFFENER_NO_BEARING_STIFFENERS, gi)
+        bearing_t = _girder_num(inputs, KEY_MP_STIFFENER_BEARING_THICKNESS, gi)
+        bearing_w = _girder_num(inputs, KEY_MP_STIFFENER_BEARING_OUTSTAND, gi)
+
+        if n_plates and bearing_t and bearing_w:
+            qty = int(n_plates) * 2  # two ends per girder
+            bearing_qty += qty
+            bearing_vol += qty * web_depth * bearing_t * bearing_w / 1e9
+            if bearing_dims is None:
+                bearing_dims = (web_depth, bearing_t, bearing_w)
+
+        if _truth(_girder_value_safe(inputs, KEY_MP_STIFFENER_INTERMEDIATE, gi)):
+            spacing = _girder_num(inputs, KEY_MP_STIFFENER_INTERMEDIATE_SPACING, gi)
+            int_t = _girder_num(inputs, KEY_MP_STIFFENER_INTERMEDIATE_THICKNESS, gi)
+            int_w = _girder_num(inputs, KEY_MP_STIFFENER_INTERMEDIATE_OUTSTAND, gi)
+            if spacing and int_t and int_w and spacing > 0:
+                n_locations = max(0, int((span * 1000.0) / spacing) - 1)
+                qty = n_locations * int(n_plates or 1)
+                int_qty += qty
+                int_vol += qty * web_depth * int_t * int_w / 1e9
+                if int_dims is None:
+                    int_dims = (web_depth, int_t, int_w)
+
+    if bearing_qty and bearing_dims:
+        quantities.update(_plate_quantities("stiffener_bearing", *bearing_dims,
+                                            bearing_qty, bearing_vol))
+    if int_qty and int_dims:
+        quantities.update(_plate_quantities("stiffener_int", *int_dims,
+                                            int_qty, int_vol))
+    return quantities
+
+
+def calculate_connection_quantities(girder_vol: float, girder_wt: float) -> dict:
+    """Connection steel, taken as a fixed percentage of the girder steel."""
+    if girder_vol <= 0.0 or girder_wt <= 0.0:
+        return {}
+    conn_vol = girder_vol * CONNECTION_ALLOWANCE
+    conn_wt = girder_wt * CONNECTION_ALLOWANCE
+    pct = f"{CONNECTION_ALLOWANCE * 100:g}"
+    return {
+        "connections_vol_formula": (
+            f"${pct}\\% \\times {girder_vol:.5f}\\text{{ m}}^3"
+            f" = {conn_vol:.5f}\\text{{ m}}^3$"
+        ),
+        "connections_qty": "1",
+        "connections_vol_total": _fmt_small(conn_vol),
+        "connections_wt_single": _fmt_small(conn_wt),
+        "connections_wt_total": _fmt_small(conn_wt),
+    }
 
 
 def calculate_material_quantities(inputs: dict, outputs: dict) -> dict:
@@ -78,6 +250,24 @@ def calculate_material_quantities(inputs: dict, outputs: dict) -> dict:
         "rebar_deck_wt_single": "N.A.",
         "rebar_deck_wt_total": "N.A.",
         
+        "stiffener_bearing_vol_formula": "N.A.",
+        "stiffener_bearing_qty": "N.A.",
+        "stiffener_bearing_vol_total": "N.A.",
+        "stiffener_bearing_wt_single": "N.A.",
+        "stiffener_bearing_wt_total": "N.A.",
+
+        "stiffener_int_vol_formula": "N.A.",
+        "stiffener_int_qty": "N.A.",
+        "stiffener_int_vol_total": "N.A.",
+        "stiffener_int_wt_single": "N.A.",
+        "stiffener_int_wt_total": "N.A.",
+
+        "connections_vol_formula": "N.A.",
+        "connections_qty": "N.A.",
+        "connections_vol_total": "N.A.",
+        "connections_wt_single": "N.A.",
+        "connections_wt_total": "N.A.",
+
         "shear_studs_vol_formula": r"\placeholder{Area $\times$ Height}",
         "shear_studs_qty": "N.A.",
         "shear_studs_vol_total": "N.A.",
@@ -105,7 +295,7 @@ def calculate_material_quantities(inputs: dict, outputs: dict) -> dict:
         if span <= 0 or n_girders <= 0:
             return quantities
 
-        # 1. Concrete deck volume (Cu.m) and Weight (MT)
+        # 1. Concrete deck volume (Cu.m) and Weight (t)
         overall_width_val = inputs.get("typical_section.overall_bridge_width")
         deck_thickness_val = inputs.get(KEY_TS_DECK_THICKNESS)
         
@@ -117,25 +307,25 @@ def calculate_material_quantities(inputs: dict, outputs: dict) -> dict:
                     concrete_vol = span * overall_width * deck_thickness
                     quantities["concrete_deck_vol_formula"] = f"${overall_width:.2f}\\text{{ m}} \\times {deck_thickness:.2f}\\text{{ m}} \\times {span:.2f}\\text{{ m}} = {concrete_vol:.2f}\\text{{ m}}^3$"
                     quantities["concrete_deck_qty"] = "1"
-                    quantities["concrete_deck_vol_total"] = f"{concrete_vol:.2f}"
-                    quantities["concrete_deck_wt_single"] = f"{(concrete_vol * 2.5):.2f}"
-                    quantities["concrete_deck_wt_total"] = f"{(concrete_vol * 2.5):.2f}"
+                    quantities["concrete_deck_vol_total"] = _fmt_small(concrete_vol)
+                    quantities["concrete_deck_wt_single"] = _fmt_small((concrete_vol * 2.5))
+                    quantities["concrete_deck_wt_total"] = _fmt_small((concrete_vol * 2.5))
 
-                    # 2. Reinforcement Steel (Cu.m) and Weight (MT)
+                    # 2. Reinforcement Steel (Cu.m) and Weight (t)
                     rebar_wt_kg = concrete_vol * 120.0
                     rebar_vol = rebar_wt_kg / 7850.0
                     rebar_area = rebar_vol / span if span > 0 else 0.0
                     quantities["rebar_deck_vol_formula"] = f"${rebar_area:.6f}\\text{{ m}}^2 \\times {span:.2f}\\text{{ m}} = {rebar_vol:.5f}\\text{{ m}}^3$"
                     quantities["rebar_deck_qty"] = "1"
-                    quantities["rebar_deck_vol_total"] = f"{rebar_vol:.2f}"
+                    quantities["rebar_deck_vol_total"] = _fmt_small(rebar_vol)
                     
                     rebar_wt_mt = rebar_wt_kg / 1000.0
-                    quantities["rebar_deck_wt_single"] = f"{rebar_wt_mt:.2f}"
-                    quantities["rebar_deck_wt_total"] = f"{rebar_wt_mt:.2f}"
+                    quantities["rebar_deck_wt_single"] = _fmt_small(rebar_wt_mt)
+                    quantities["rebar_deck_wt_total"] = _fmt_small(rebar_wt_mt)
             except Exception:
                 pass
 
-        # 3. Steel Girders (Cu.m) and Weight (MT)
+        # 3. Steel Girders (Cu.m) and Weight (t)
         girder_area = 0.0
         try:
             # Resolve representative girder sectional area
@@ -184,14 +374,20 @@ def calculate_material_quantities(inputs: dict, outputs: dict) -> dict:
                     total_girder_mass += girder_area * span * 7850.0
             
             girder_total_vol = n_girders * girder_vol
-            quantities["steel_girders_vol_total"] = f"{girder_total_vol:.2f}"
+            quantities["steel_girders_vol_total"] = _fmt_small(girder_total_vol)
             
             single_girder_wt = (total_girder_mass / n_girders) / 1000.0
             total_girder_wt = total_girder_mass / 1000.0
-            quantities["steel_girders_wt_single"] = f"{single_girder_wt:.2f}"
-            quantities["steel_girders_wt_total"] = f"{total_girder_wt:.2f}"
+            quantities["steel_girders_wt_single"] = _fmt_small(single_girder_wt)
+            quantities["steel_girders_wt_total"] = _fmt_small(total_girder_wt)
 
-        # 4. Shear Stud Connectors (Cu.m) and Weight (MT)
+            # Connections are an allowance on the girder steel they join.
+            quantities.update(calculate_connection_quantities(girder_total_vol, total_girder_wt))
+
+        # 3a. Bearing and intermediate stiffeners
+        quantities.update(calculate_stiffener_quantities(inputs, span, n_girders))
+
+        # 4. Shear Stud Connectors (Cu.m) and Weight (t)
         spacing_mm = 0.0
         studs_per_sec = 0
         stud_d = 0.0
@@ -222,13 +418,13 @@ def calculate_material_quantities(inputs: dict, outputs: dict) -> dict:
             quantities["shear_studs_qty"] = str(total_studs)
             
             studs_total_vol = total_studs * stud_vol
-            quantities["shear_studs_vol_total"] = f"{studs_total_vol:.2f}"
+            quantities["shear_studs_vol_total"] = _fmt_small(studs_total_vol)
             
             # density of steel = 7850 kg/m^3 = 7.85 tonnes/m^3
             single_stud_wt = stud_vol * 7.85
             total_studs_wt = studs_total_vol * 7.85
-            quantities["shear_studs_wt_single"] = f"{single_stud_wt:.6f}"
-            quantities["shear_studs_wt_total"] = f"{total_studs_wt:.3f}"
+            quantities["shear_studs_wt_single"] = _fmt_small(single_stud_wt)
+            quantities["shear_studs_wt_total"] = _fmt_small(total_studs_wt)
         else:
             quantities["shear_studs_vol_formula"] = "N.A."
             quantities["shear_studs_qty"] = "N.A."
@@ -236,7 +432,7 @@ def calculate_material_quantities(inputs: dict, outputs: dict) -> dict:
             quantities["shear_studs_wt_single"] = "N.A."
             quantities["shear_studs_wt_total"] = "N.A."
 
-        # 5. Steel Bracings (Cu.m) and Weight (MT)
+        # 5. Steel Bracings (Cu.m) and Weight (t)
         # Find bracing section properties from outputs or skip if not present
         bracing_area = 0.0
         bracing_len = 0.0
@@ -292,9 +488,9 @@ def calculate_material_quantities(inputs: dict, outputs: dict) -> dict:
             
             quantities["bracing_top_vol_formula"] = f"${bracing_area:.5f}\\text{{ m}}^2 \\times {spacing:.2f}\\text{{ m}} = {top_chord_vol_single:.5f}\\text{{ m}}^3$"
             quantities["bracing_top_qty"] = str(top_chord_qty)
-            quantities["bracing_top_vol_total"] = f"{top_chord_vol_total:.2f}" if top_chord_enabled else "0.00"
-            quantities["bracing_top_wt_single"] = f"{top_chord_wt_single:.4f}"
-            quantities["bracing_top_wt_total"] = f"{top_chord_wt_total:.2f}" if top_chord_enabled else "0.00"
+            quantities["bracing_top_vol_total"] = _fmt_small(top_chord_vol_total) if top_chord_enabled else "0.00"
+            quantities["bracing_top_wt_single"] = _fmt_small(top_chord_wt_single)
+            quantities["bracing_top_wt_total"] = _fmt_small(top_chord_wt_total) if top_chord_enabled else "0.00"
 
             # 5b. Bottom Chord
             bot_chord_qty = (n_girders - 1) * n_panels if bot_chord_enabled else 0
@@ -305,9 +501,9 @@ def calculate_material_quantities(inputs: dict, outputs: dict) -> dict:
             
             quantities["bracing_bot_vol_formula"] = f"${bracing_area:.5f}\\text{{ m}}^2 \\times {spacing:.2f}\\text{{ m}} = {bot_chord_vol_single:.5f}\\text{{ m}}^3$"
             quantities["bracing_bot_qty"] = str(bot_chord_qty)
-            quantities["bracing_bot_vol_total"] = f"{bot_chord_vol_total:.2f}" if bot_chord_enabled else "0.00"
-            quantities["bracing_bot_wt_single"] = f"{bot_chord_wt_single:.4f}"
-            quantities["bracing_bot_wt_total"] = f"{bot_chord_wt_total:.2f}" if bot_chord_enabled else "0.00"
+            quantities["bracing_bot_vol_total"] = _fmt_small(bot_chord_vol_total) if bot_chord_enabled else "0.00"
+            quantities["bracing_bot_wt_single"] = _fmt_small(bot_chord_wt_single)
+            quantities["bracing_bot_wt_total"] = _fmt_small(bot_chord_wt_total) if bot_chord_enabled else "0.00"
 
             # 5c. Diagonal
             diags_qty = (n_girders - 1) * n_panels * 2
@@ -318,9 +514,9 @@ def calculate_material_quantities(inputs: dict, outputs: dict) -> dict:
             
             quantities["bracing_diag_vol_formula"] = f"${bracing_area:.5f}\\text{{ m}}^2 \\times {bracing_len:.2f}\\text{{ m}} = {diag_vol_single:.5f}\\text{{ m}}^3$"
             quantities["bracing_diag_qty"] = str(diags_qty)
-            quantities["bracing_diag_vol_total"] = f"{diag_vol_total:.2f}"
-            quantities["bracing_diag_wt_single"] = f"{diag_wt_single:.4f}"
-            quantities["bracing_diag_wt_total"] = f"{diag_wt_total:.2f}"
+            quantities["bracing_diag_vol_total"] = _fmt_small(diag_vol_total)
+            quantities["bracing_diag_wt_single"] = _fmt_small(diag_wt_single)
+            quantities["bracing_diag_wt_total"] = _fmt_small(diag_wt_total)
         else:
             # Keep all bracing volumes, quantities, and weights as default placeholder "N.A."
             for prefix in ("bracing_top", "bracing_bot", "bracing_diag"):
@@ -330,29 +526,53 @@ def calculate_material_quantities(inputs: dict, outputs: dict) -> dict:
                 quantities[f"{prefix}_wt_single"] = "N.A."
                 quantities[f"{prefix}_wt_total"] = "N.A."
 
-        # 6. Crash Barrier (Cu.m) and Weight (MT)
-        KEY_CB_AREA = "typical_section.crash_barrier.area"
+        # 6. Crash Barrier (Cu.m) and Weight (t)
+        # Density is entered in kN/m³ (RCC default 25); convert to T/m³ for the take-off.
+        cb_density_kn = 0.0
+        try:
+            cb_density_kn = float(inputs.get(KEY_CB_DENSITY))
+        except Exception:
+            cb_density_kn = 0.0
+        if cb_density_kn <= 0.0:
+            cb_density_kn = RCC_DENSITY
+        cb_density_t = cb_density_kn / 9.81
+
+        # The barrier area reaches us in either unit: defaults.py seeds it in
+        # mm², while compute_crash_barrier_values() writes m². Normalise here
+        # rather than at the source, since the UI reads the defaults as-is.
+        # A barrier cross-section is well under 10 m², so a larger value is mm².
         cb_area = 0.0
         cb_area_val = inputs.get(KEY_CB_AREA)
-        
         if cb_area_val is not None:
             try:
-                cb_area = float(cb_area_val) / 1e6
+                cb_area = float(cb_area_val)
+            except Exception:
+                cb_area = 0.0
+            if cb_area > 10.0:
+                cb_area /= 1e6
+
+        # Metallic barriers carry no area input; recover it from the udl,
+        # since that load is itself derived as area x density.
+        if cb_area <= 0.0:
+            try:
+                cb_load = float(inputs.get(KEY_CB_LOAD))
+                if cb_load > 0.0:
+                    cb_area = cb_load / cb_density_kn
             except Exception:
                 pass
-        
+
         if cb_area > 0.0:
             cb_vol = cb_area * span
             quantities["crash_barrier_vol_formula"] = f"${cb_area:.5f}\\text{{ m}}^2 \\times {span:.2f}\\text{{ m}} = {cb_vol:.5f}\\text{{ m}}^3$"
             quantities["crash_barrier_qty"] = "2"
-            
+
             cb_total_vol = 2 * cb_vol
-            quantities["crash_barrier_vol_total"] = f"{cb_total_vol:.2f}"
-            
-            single_cb_wt = cb_vol * 2.5
-            total_cb_wt = cb_total_vol * 2.5
-            quantities["crash_barrier_wt_single"] = f"{single_cb_wt:.2f}"
-            quantities["crash_barrier_wt_total"] = f"{total_cb_wt:.2f}"
+            quantities["crash_barrier_vol_total"] = _fmt_small(cb_total_vol)
+
+            single_cb_wt = cb_vol * cb_density_t
+            total_cb_wt = cb_total_vol * cb_density_t
+            quantities["crash_barrier_wt_single"] = _fmt_small(single_cb_wt)
+            quantities["crash_barrier_wt_total"] = _fmt_small(total_cb_wt)
         else:
             quantities["crash_barrier_vol_formula"] = "N.A."
             quantities["crash_barrier_qty"] = "N.A."
