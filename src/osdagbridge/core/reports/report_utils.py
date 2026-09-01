@@ -1,8 +1,13 @@
+import os
+import re
+
+import matplotlib
+import matplotlib.pyplot as plt
+
 from osdagbridge.core.utils.common import (
     KEY_MP_GD_MEMBER_ID,
     KEY_MP_GD_SELECT_GIRDER,
-    KEY_MP_GIRDER_DEPTH,
-    KEY_TS_NO_OF_GIRDERS
+    KEY_TS_NO_OF_GIRDERS,
 )
 
 _GROUPED_TABLE_PROBE = False
@@ -47,7 +52,8 @@ def _render_value(source_dict, key, unit=""):
     return _tex(val) + unit
 
 
-def render_report_table(caption, rows, headers=None, widths=None, align=None, longtable=False, escape=True, header_rows=None, header_clines=None, body_latex=None):
+def _table_layout(headers, rows, widths=None, align=None):
+    """Column count, scaled column widths (cm) and alignment shared by the table renderers."""
     headers = headers or []
     ncols = max(1, len(headers) or max((len(row) for row in rows), default=1))
     max_content_width = 15.5 - (0.43 * ncols) - (0.02 * (ncols + 1))
@@ -74,7 +80,13 @@ def render_report_table(caption, rows, headers=None, widths=None, align=None, lo
         widths = widths[:ncols]
     scale = max_content_width / sum(widths) if sum(widths) > 0 else 1
     widths = [round(w * scale, 2) for w in widths]
-    align = align or ["L"] * ncols
+    
+    return ncols, widths, align or ["L"] * ncols
+
+
+def render_report_table(caption, rows, headers=None, widths=None, align=None, longtable=False, escape=True, header_rows=None, header_clines=None, body_latex=None):
+    headers = headers or []
+    ncols, widths, align = _table_layout(headers, rows, widths, align)
 
     def _header(cell):
         text = str(cell or "")
@@ -180,7 +192,7 @@ def render_parameter_value_table(caption, rows, longtable=False):
 
 
 def render_grouped_report_table(caption, groups, headers=None, widths=None, align=None, escape=True,
-                                longtable_min_rows=19, first_page_rows=19, next_page_rows=24):
+                                longtable_min_rows=19):
     headers = headers or []
     groups = [(label, [list(row) for row in group_rows]) for label, group_rows in groups]
     rows = [[label] + row for label, group_rows in groups for row in group_rows]
@@ -411,7 +423,7 @@ class ReportChartGenerator:
         self.latex_dir = latex_dir
 
     def _number(self, value):
-        import re
+        
         text = str(value or "").strip()
         if not text or text.upper() in {"N.A.", "NA", "N/A", "---"}:
             return 0.0
@@ -426,15 +438,15 @@ class ReportChartGenerator:
         return 0.0
 
     def _save_bar_chart(self, filename, labels, values, xlabel, ylabel, title, colors):
-        import os
+       
         os.makedirs(self.output_dir, exist_ok=True)
         os.environ.setdefault("MPLCONFIGDIR", os.path.join(self.output_dir, "mplconfig"))
         os.makedirs(os.environ["MPLCONFIGDIR"], exist_ok=True)
-        import matplotlib
+        
         matplotlib.use("Agg", force=True)
         matplotlib.rcParams["pdf.fonttype"] = 42
         matplotlib.rcParams["ps.fonttype"] = 42
-        import matplotlib.pyplot as plt
+        
 
         fig, ax = plt.subplots(figsize=(7.0, 3.8), dpi=220)
         bars = ax.bar(labels, values, color=colors, width=0.55)
@@ -456,15 +468,15 @@ class ReportChartGenerator:
         return (self.latex_dir.rstrip("/\\") + "/" + filename).replace("\\", "/")
 
     def _save_ur_chart(self, filename, labels, values):
-        import os
+        
         os.makedirs(self.output_dir, exist_ok=True)
         os.environ.setdefault("MPLCONFIGDIR", os.path.join(self.output_dir, "mplconfig"))
         os.makedirs(os.environ["MPLCONFIGDIR"], exist_ok=True)
-        import matplotlib
+        
         matplotlib.use("Agg", force=True)
         matplotlib.rcParams["pdf.fonttype"] = 42
         matplotlib.rcParams["ps.fonttype"] = 42
-        import matplotlib.pyplot as plt
+        
 
         plot_values = [v if v is not None else 0.0 for v in values]
         colors = ["#b55353" if (v is not None and v > 1.0) else "#6aa84f" if v is not None else "#9e9e9e" for v in values]

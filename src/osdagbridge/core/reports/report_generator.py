@@ -107,16 +107,7 @@ import os, shutil, logging, datetime, tempfile, subprocess, io, re
 from dataclasses import dataclass, field
 from typing import Optional, List, Literal
 
-from osdagbridge.core.utils.common import (
-    KEY_DESIGN_MODE,
-    KEY_SPAN,
-    KEY_TL_BRIDGE_TEMP_MAX,
-    KEY_TL_BRIDGE_TEMP_MIN,
-    KEY_TL_HIGHEST_MAX_TEMP,
-    KEY_TL_LOWEST_MIN_TEMP,
-    KEY_TL_TEMP_FALL,
-    KEY_TL_TEMP_RISE
-)
+
 
 from osdagbridge.core.reports.report_utils import _tex, ReportChartGenerator, configure_grouped_table_breaks
 from .executive_summary import executive_summary
@@ -931,8 +922,7 @@ def generate_report(payload, request):
 
                 doc_parts.append(ch7_quantities(payload.inputs, payload.output_dict, quantity_chart_paths))
 
-                mode = str(payload.inputs.get(KEY_DESIGN_MODE, "Optimized")).strip().lower()
-                is_custom = mode in {"custom", "customized"}
+                
 
 
                 doc_parts.append(ch8_design_log(payload.log_entries, payload.inputs))
