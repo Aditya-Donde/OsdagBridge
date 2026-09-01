@@ -196,32 +196,7 @@ def render_grouped_report_table(caption, groups, headers=None, widths=None, alig
     headers = headers or []
     groups = [(label, [list(row) for row in group_rows]) for label, group_rows in groups]
     rows = [[label] + row for label, group_rows in groups for row in group_rows]
-    ncols = max(1, len(headers) or max((len(row) for row in rows), default=1))
-    max_content_width = 15.5 - (0.43 * ncols) - (0.02 * (ncols + 1))
-    if widths is None:
-        def _score(cell):
-            text = str(cell or "").replace("\\allowbreak{}", "")
-            for ch in "\\{}$_^":
-                text = text.replace(ch, "")
-            longest = max((len(part) for part in text.split()), default=0)
-            return max(1.0, min(18.0, longest * 0.65 + len(text) * 0.12))
-        widths = [
-            max(_score(headers[i] if i < len(headers) else ""),
-                max((_score(row[i]) for row in rows if i < len(row)), default=1.0))
-            for i in range(ncols)
-        ]
-        min_width = min(2.0, max(1.2, max_content_width / ncols * 0.65))
-        remaining = max_content_width - (min_width * ncols)
-        widths = ([min_width + remaining * w / sum(widths) for w in widths]
-                  if remaining > 0 and sum(widths) > 0 else [max_content_width / ncols] * ncols)
-    else:
-        widths = list(widths)
-        if len(widths) < ncols:
-            widths.extend([widths[-1] if widths else round(14.0 / ncols, 2)] * (ncols - len(widths)))
-        widths = widths[:ncols]
-    scale = max_content_width / sum(widths) if sum(widths) > 0 else 1
-    widths = [round(w * scale, 2) for w in widths]
-    align = align or ["L"] * ncols
+    ncols, widths, align = _table_layout(headers, rows, widths, align)
 
     def _header(cell, width):
         text = str(cell or "")
