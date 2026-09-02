@@ -92,6 +92,7 @@ from osdagbridge.core.utils.common import (
     KEY_LL_ECCENTRICITY,
     KEY_WC_DENSITY,
     KEY_MP_GIRDER_SYMMETRY, KEY_MP_GIRDER_DEPTH, KEY_MP_GIRDER_WEB_DEPTH, KEY_MP_GIRDER_WEB_THICKNESS,
+    KEY_MP_GIRDER_TYPE, KEY_MP_GIRDER_IS_SECTION,
     KEY_MP_GIRDER_TOP_FLANGE_WIDTH, KEY_MP_GIRDER_TOP_FLANGE_THICKNESS,
     KEY_MP_GIRDER_BOTTOM_FLANGE_WIDTH, KEY_MP_GIRDER_BOTTOM_FLANGE_THICKNESS,
     KEY_MP_GIRDER_SECTIONAL_AREA, KEY_MP_GIRDER_MASS,
@@ -100,6 +101,7 @@ from osdagbridge.core.utils.common import (
     KEY_MP_GIRDER_ELASTIC_MODULUS_ZZ, KEY_MP_GIRDER_ELASTIC_MODULUS_ZY,
     KEY_MP_GIRDER_PLASTIC_MODULUS_ZUZ, KEY_MP_GIRDER_PLASTIC_MODULUS_ZUY,
     KEY_MP_GIRDER_TORSION_CONSTANT_IT, KEY_MP_GIRDER_WARPING_CONSTANT_IW,
+    girder_catalog,                     # rolled-section (IS designation) database
     KEY_METALLIC_CRASH_BARRIER_TYPE,
     KEY_RIGID_CRASH_BARRIER_TYPE,
     KEY_CRASH_BARRIER_TYPE,
@@ -614,6 +616,81 @@ class PlateGirderBridge:
             for gi in range(count):
                 _to_m(f"{base_key}.G{gi + 1}.M1")
 
+    def _apply_rolled_section_inputs(self) -> None:
+        """
+        Replace the section inputs of every Rolled girder with its IS catalogue values.
+
+        Girder Details offers two section types. A Welded girder is described by the
+        plate dimensions the user types in; a Rolled one is described only by its IS
+        designation — the dialog hides the plate fields and leaves them at whatever
+        the welded sizing last produced. Everything downstream (grillage stiffness,
+        self weight, design checks, CAD, output dock) reads the dimension and
+        section-property keys, so the designation is resolved here, once, before the
+        pipeline starts: the rolled girder is then the same section everywhere.
+
+        Runs after _convert_girder_dims_mm_to_m(), so dimensions are written in SI
+        metres and properties in the SI units the rest of the pipeline expects
+        (m, m^2, m^4, m^3, m^6, kg/m).
+        """
+        inp = self.input_dict
+
+        def _member_value(base_key: str, suffix: str):
+            """Per-member value, falling back to the legacy scalar key."""
+            if base_key + suffix in inp:
+                return inp[base_key + suffix]
+            return inp.get(base_key)
+
+        for gi in range(self._girder_count()):
+            suffix = f".G{gi + 1}.M1"
+            if str(_member_value(KEY_MP_GIRDER_TYPE, suffix) or "").strip().lower() != "rolled":
+                continue
+
+            designation = str(_member_value(KEY_MP_GIRDER_IS_SECTION, suffix) or "").strip()
+            beam = girder_catalog.get_beam_profile(designation)
+            if beam is None:
+                raise ValueError(
+                    f"Girder G{gi + 1} is of type 'Rolled' but its IS section "
+                    f"'{designation}' is not in the section catalogue. Pick a listed "
+                    "section in Additional Inputs -> Member Properties -> Girder Details."
+                )
+
+            # Rolled I-sections are symmetric: one flange width/thickness for both.
+            web_depth_mm = beam.depth_mm - 2.0 * beam.flange_thickness_mm
+            dims_m = {
+                KEY_MP_GIRDER_DEPTH:                   beam.depth_mm            / 1000.0,
+                KEY_MP_GIRDER_WEB_DEPTH:               web_depth_mm             / 1000.0,
+                KEY_MP_GIRDER_WEB_THICKNESS:           beam.web_thickness_mm    / 1000.0,
+                KEY_MP_GIRDER_TOP_FLANGE_WIDTH:        beam.flange_width_mm     / 1000.0,
+                KEY_MP_GIRDER_BOTTOM_FLANGE_WIDTH:     beam.flange_width_mm     / 1000.0,
+                KEY_MP_GIRDER_TOP_FLANGE_THICKNESS:    beam.flange_thickness_mm / 1000.0,
+                KEY_MP_GIRDER_BOTTOM_FLANGE_THICKNESS: beam.flange_thickness_mm / 1000.0,
+                KEY_MP_GIRDER_SYMMETRY:                "Girder Symmetric",
+            }
+            # Catalogue properties (cm-based columns) converted to SI. These include
+            # the root fillets, so they are used as published rather than recomputed
+            # from the plate idealisation.
+            props_si = {
+                KEY_MP_GIRDER_MASS:                beam.mass_per_meter_kg,                      # kg/m
+                KEY_MP_GIRDER_SECTIONAL_AREA:      beam.area_cm2                     * 1e-4,    # cm^2 -> m^2
+                KEY_MP_GIRDER_SECTIONAL_IZ:        beam.moment_of_inertia_zz_cm4     * 1e-8,    # cm^4 -> m^4
+                KEY_MP_GIRDER_SECTIONAL_IY:        beam.moment_of_inertia_yy_cm4     * 1e-8,
+                KEY_MP_GIRDER_RADIUS_GYRATION_Z:   beam.radius_of_gyration_z_cm      * 1e-2,    # cm -> m
+                KEY_MP_GIRDER_RADIUS_GYRATION_Y:   beam.radius_of_gyration_y_cm      * 1e-2,
+                KEY_MP_GIRDER_ELASTIC_MODULUS_ZZ:  beam.elastic_section_modulus_z_cm3 * 1e-6,   # cm^3 -> m^3
+                KEY_MP_GIRDER_ELASTIC_MODULUS_ZY:  beam.elastic_section_modulus_y_cm3 * 1e-6,
+                KEY_MP_GIRDER_PLASTIC_MODULUS_ZUZ: beam.plastic_section_modulus_z_cm3 * 1e-6,
+                KEY_MP_GIRDER_PLASTIC_MODULUS_ZUY: beam.plastic_section_modulus_y_cm3 * 1e-6,
+                KEY_MP_GIRDER_TORSION_CONSTANT_IT: beam.torsion_constant_cm4         * 1e-8,
+                KEY_MP_GIRDER_WARPING_CONSTANT_IW: beam.warping_constant_cm6         * 1e-12,   # cm^6 -> m^6
+            }
+
+            for base_key, value in {**dims_m, **props_si}.items():
+                inp[base_key + suffix] = value
+                # The legacy scalar key is resolved first by no-index consumers,
+                # and mirrors the first girder (see resolve_girder_value).
+                if gi == 0:
+                    inp[base_key] = value
+
     def _run_stage(self, stage_num: str, func, *args, **kwargs):
         # Check for user cancel before entering each stage, then emit start/complete markers
         bridge_logger.check_cancel()
@@ -710,6 +787,7 @@ class PlateGirderBridge:
             # Pre-stage: Unit conversions (must run before validation)
             self._resolve_optimized_bounds_to_mm()
             self._convert_girder_dims_mm_to_m()
+            self._apply_rolled_section_inputs()
             
             # Stage 1: Input Validation
             self._run_stage("1", self._validate_inputs)
@@ -3467,18 +3545,16 @@ class PlateGirderBridge:
         out[KEY_SD_GRADE_OF_MATERIAL]       = dr["steel_grade"]
         out[KEY_SD_SECTION_TYPE]            = dr["fabrication"].title()   # "Welded" / "Rolled"
 
-        # Designation: "D × bf_top × tf_top × bf_bot × tf_bot" (overall depth D, not clear web)
-        # Built directly here from design_results plate dimensions (all in mm).
-        dw  = dr["dw_mm"]
+        # Designation: the section's own label — the IS catalogue designation for a
+        # rolled girder, else "D × bf_top × tf_top × bf_bot × tf_bot" built by
+        # SteelSection from the plate dimensions (overall depth D, not clear web).
         D   = dr["D_mm"]
         bft = dr["bf_top_mm"]
         tft = dr["tf_top_mm"]
         bfb = dr["bf_bot_mm"]
         tfb = dr["tf_bot_mm"]
         tw  = dr["tw_mm"]
-        out[KEY_SD_SECTION_DESIGNATION] = (
-            f"{D:.0f} × {bft:.0f} × {tft:.0f} × {bfb:.0f} × {tfb:.0f}"
-        )
+        out[KEY_SD_SECTION_DESIGNATION] = dr["designation"]
         out[KEY_SD_SECTION_CLASS]           = dr["section_class_governing"]
         out[KEY_SD_TOTAL_DEPTH]             = D          # mm
         out[KEY_SD_WEB_THICKNESS]           = tw         # mm
