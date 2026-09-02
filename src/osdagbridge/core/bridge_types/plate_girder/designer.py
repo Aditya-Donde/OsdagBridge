@@ -214,6 +214,9 @@ class SteelSection:
     tf_bot: float
     tw: float
     fabrication: str = "welded"
+    # Catalogue label for a rolled section (e.g. "JB 150"). Left blank for a welded
+    # plate girder, which gets the plate-dimension label built in __post_init__.
+    designation: str = ""
 
     def __post_init__(self) -> None:
         # Steel-section equations live in the single source
@@ -236,10 +239,12 @@ class SteelSection:
         self.Ze_steel = props[KEY_MP_GIRDER_ELASTIC_MODULUS_ZZ]   # elastic section modulus (mm^3)
         # Section label built from the mm dimensions (a formatted string, not a
         # unit-agnostic number, so it is not part of the keyed property output).
-        self.designation = (                                     # "D x bf_top x tf_top x bf_bot x tf_bot"
-            f"{self.D:.0f} x {self.bf_top:.0f} x {self.tf_top:.0f}"
-            f" x {self.bf_bot:.0f} x {self.tf_bot:.0f}"
-        )
+        # A rolled section carries its catalogue designation instead.
+        if not self.designation:
+            self.designation = (                                 # "D x bf_top x tf_top x bf_bot x tf_bot"
+                f"{self.D:.0f} x {self.bf_top:.0f} x {self.tf_top:.0f}"
+                f" x {self.bf_bot:.0f} x {self.tf_bot:.0f}"
+            )
 
 
 @dataclass
@@ -340,8 +345,9 @@ class BridgeConfig:
             KEY_SPAN, KEY_CARRIAGEWAY_WIDTH, KEY_MP_CB_SPACING,
             KEY_MP_GIRDER_DEPTH, KEY_MP_GIRDER_TOP_FLANGE_WIDTH, KEY_MP_GIRDER_TOP_FLANGE_THICKNESS,
             KEY_MP_GIRDER_BOTTOM_FLANGE_WIDTH, KEY_MP_GIRDER_BOTTOM_FLANGE_THICKNESS,
-            KEY_MP_GIRDER_WEB_THICKNESS,
+            KEY_MP_GIRDER_WEB_THICKNESS, KEY_MP_GIRDER_TYPE, KEY_MP_GIRDER_IS_SECTION,
             KEY_MATERIAL_DECK_FCK, KEY_MATERIAL_DECK_FCTM, KEY_MATERIAL_DECK_ECM,
+            girder_catalog,
         )
 
         if not getattr(bridge, "material_props", None):
@@ -444,6 +450,31 @@ class BridgeConfig:
             resolve_girder_value as _gv,
             resolve_cb_value as _cbv,
         )
+        # Fabrication (Rolled / Welded) is the user's Girder Details "Type" input. It
+        # drives alpha_LT, the shear area and the flange class limits, and is echoed
+        # back in the Details tab, so it must follow the input rather than the
+        # SteelSection default. Older snapshots without the key stay "welded".
+        try:
+            fabrication = str(_gv(inp, KEY_MP_GIRDER_TYPE, girder_index) or "").strip().lower()
+        except KeyError:
+            fabrication = ""
+        if fabrication not in ("rolled", "welded"):
+            fabrication = "welded"
+
+        # A rolled girder carries its IS catalogue label instead of the
+        # plate-dimension designation. Its dimensions are already the catalogue
+        # ones: PlateGirderBridge._apply_rolled_section_inputs() writes them into
+        # input_dict before the pipeline runs, so analysis, design and CAD all
+        # size the same section.
+        designation = ""
+        if fabrication == "rolled":
+            try:
+                is_section = str(_gv(inp, KEY_MP_GIRDER_IS_SECTION, girder_index) or "").strip()
+            except KeyError:
+                is_section = ""
+            beam = girder_catalog.get_beam_profile(is_section)
+            designation = beam.designation if beam else ""
+
         section = SteelSection(
             D=_gv(inp, KEY_MP_GIRDER_DEPTH, girder_index)                   * 1000,
             bf_top=_gv(inp, KEY_MP_GIRDER_TOP_FLANGE_WIDTH, girder_index)        * 1000,
@@ -451,6 +482,8 @@ class BridgeConfig:
             bf_bot=_gv(inp, KEY_MP_GIRDER_BOTTOM_FLANGE_WIDTH, girder_index)     * 1000,
             tf_bot=_gv(inp, KEY_MP_GIRDER_BOTTOM_FLANGE_THICKNESS, girder_index) * 1000,
             tw=_gv(inp, KEY_MP_GIRDER_WEB_THICKNESS, girder_index)               * 1000,
+            fabrication=fabrication,
+            designation=designation,
         )
 
         geom = bridge.grillage_geometry
@@ -854,7 +887,9 @@ class IRC22CapacityCalculator:
             width_mm=b_outstanding,
             thickness_mm=sec.tf_top,
             fy_MPa=fy,
-            section_type=sec.fabrication,   # "rolled" or "welded" — as stored in SteelSection
+            # Table 2 (i) compares against 'Rolled'/'Welded'; SteelSection stores
+            # the fabrication lowercase, so title-case it for this call.
+            section_type=sec.fabrication.title(),
         )
         # cl_602 wrapper returns [section_class, b/t ratio, class_limit]
         flange_class = flange_result[0]
@@ -937,7 +972,8 @@ class IRC22CapacityCalculator:
         res = IRC22_2014.cl_603_3_3_2_plastic_shear_resistance(
             section_type="i_major",
             fyw=self.mat.fy,
-            fabrication=self.sec.fabrication,   # "welded" → Av = dw × tw
+            fabrication=self.sec.fabrication,   # "welded" → Av = dw × tw; "rolled" → Av = D × tw
+            h=self.sec.D,
             d=self.sec.dw,
             tw=self.sec.tw,
         )
@@ -3619,6 +3655,7 @@ def run_design_check(
         "Zp_steel_mm3"              : round(_sec.Zp_steel, 0),
         "y_cg_from_bot_mm"          : round(_sec.y_cg_from_bot, 2),
         "fabrication"               : _sec.fabrication,
+        "designation"               : _sec.designation,
         # -- slab --
         "slab_thickness_mm"         : config.slab.thickness,
         "haunch_depth_mm"           : config.slab.haunch_depth,
