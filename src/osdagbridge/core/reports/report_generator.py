@@ -886,8 +886,8 @@ def generate_report(payload, request):
 
             # Compute and inject quantities for Chapter 7
             quantities = calculate_material_quantities(payload.inputs, payload.output_dict)
-            payload.inputs.update(quantities)
-            quantity_chart_paths = ReportChartGenerator(tmp_assets).generate_material_quantity_charts(payload.inputs)
+            payload.output_dict["chapter7_material_quantities"] = quantities
+            quantity_chart_paths = ReportChartGenerator(tmp_assets).generate_material_quantity_charts(quantities)
 
             # ── Assemble LaTeX document (fig_paths now has tmp_dir paths) ──
             bridge = ReportDataBridge(payload.output_dict, payload.inputs, payload)
