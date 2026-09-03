@@ -50,6 +50,7 @@ from osdagbridge.core.utils.common import (
     KEY_DD_SPC_BOT,
     KEY_DD_SPC_OH,
     KEY_DD_TYRE_LENGTH,
+    KEY_DD_TYRE_REF,
     KEY_DD_TYRE_WIDTH,
     KEY_DD_VEHICLE,
     KEY_DD_VRD_C_MPA,
@@ -164,7 +165,7 @@ from osdagbridge.core.utils.common import (
     KEY_UTIL_FLEXURE,
     KEY_UTIL_INTERACTION,
     KEY_UTIL_LTB,
-    KEY_UTIL_SHEAR
+    KEY_UTIL_SHEAR,
 )
 
 from osdagbridge.core.reports.report_utils import _tex, _render_value, get_girder_entries
@@ -1117,6 +1118,13 @@ Fatigue Shear Resistance, $Q_r$ & IRC 22 Table 8 ($\phi d$, $N_{sc}$) & """
     _dk_oh = bool(deck_rpt.get(KEY_DD_HAS_OVERHANG))
     _DKPH = r"\placeholder{---}"
 
+    # Ground-contact-dimension reference (IRC 6:2017 Cl. 204.1) — computed by
+    # deckdesign.design_deck_slab() via IRC6_2017.contact_dimension_reference()
+    # and stored in deck_rpt; not derived here to avoid duplicating IRC data
+    # in the report layer. Placeholder (not "Table 2") when deck design hasn't
+    # run, or on the unexpected case that the key is missing.
+    _dk_tyre_ref = deck_rpt.get(KEY_DD_TYRE_REF, _DKPH) if _dk_has else _DKPH
+
     def _dkv(key, default=0.0):
         """Raw float for status comparisons (0.0 if missing/non-numeric)."""
         v = deck_rpt.get(key)
@@ -1579,7 +1587,7 @@ The reinforced concrete deck slab is designed per IRC~112:2011 (flexure, shear, 
 \hline
 \textnormal{IRC 6 Wheel Load (Class A / 70R)} & """ + _dkf(KEY_DD_WHEEL_LOAD, nd=1) + r""" kN \\[6pt]
 \hline
-\textnormal{Tyre Contact Width (IRC 6 Annex~A)} & """ + _dkf(KEY_DD_TYRE_WIDTH, nd=0, scale=1000.0) + r""" mm (transverse) \\[6pt]
+\textnormal{Tyre Contact Dimension $B$, along traffic (""" + _dk_tyre_ref + r""")} & """ + _dkf(KEY_DD_TYRE_WIDTH, nd=0, scale=1000.0) + r""" mm \\[6pt]
 \hline
 \textnormal{Impact Factor Fraction, $i$ (IRC 6 Cl. 208.2)} & """ + (f"{_dkv(KEY_DD_IMPACT_FACTOR) - 1.0:.3f}" if _dk_has else _DKPH) + r""" \\[6pt]
 \hline
@@ -1647,7 +1655,7 @@ Moment Capacity (top steel), $M_{Rd,oh}$ & IRC 112 Cl. 9.2, Cl. 8.2.1 & """ + _d
 \hline
 Design Wheel Load (ULS), $V_{Ed}$ & $\gamma_Q\,(1+i)\,P_w$ & """ + _dkf(KEY_DD_PUNCH_VED_KN, nd=1) + r""" kN & --- \\[6pt]
 \hline
-Tyre Contact Area & $a \times b$ (IRC 6 Annex~A) & """ + _dkf(KEY_DD_TYRE_WIDTH, nd=0, scale=1000.0) + r""" $\times$ """ + _dkf(KEY_DD_TYRE_LENGTH, nd=0) + r""" mm & --- \\[6pt]
+Tyre Contact Dimensions, $B \times W$ & """ + _dk_tyre_ref + r""" & """ + _dkf(KEY_DD_TYRE_WIDTH, nd=0, scale=1000.0) + r""" $\times$ """ + _dkf(KEY_DD_TYRE_LENGTH, nd=0) + r""" mm & --- \\[6pt]
 \hline
 Loaded Area at mid-depth, $b_0$ & $c_1 \times c_2$ (incl.\ WC dispersion) & """ + _dkf(KEY_DD_PUNCH_C1, nd=0) + r""" $\times$ """ + _dkf(KEY_DD_PUNCH_C2, nd=0) + r""" mm & --- \\[6pt]
 \hline
