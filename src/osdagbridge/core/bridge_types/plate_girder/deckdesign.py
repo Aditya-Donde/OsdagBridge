@@ -35,9 +35,13 @@ from osdagbridge.core.utils.common import (
     KEY_DD_M_DL, KEY_DD_M_LL, KEY_DD_M_ULS_SAG,
     KEY_DD_M_ULS_HOG, KEY_DD_D_BOT, KEY_DD_D_TOP,
     KEY_DD_MU_BOT, KEY_DD_MU_TOP, KEY_DD_AS_REQ_BOT,
-    KEY_DD_AS_REQ_TOP, KEY_DD_M_BARRIER,
+    KEY_DD_AS_REQ_TOP, KEY_DD_XU_BOT, KEY_DD_XU_TOP, KEY_DD_M_BARRIER,
     KEY_DD_M_DL_OH, KEY_DD_M_LL_OH, KEY_DD_M_ULS_OH,
     KEY_DD_D_OH, KEY_DD_MU_OH, KEY_DD_AS_REQ_OH,
+    KEY_DD_OVERHANG_LEN, KEY_DD_EDGE_CLEARANCE,
+    KEY_DD_RAILING_LOAD_KGM, KEY_DD_RAILING_LOAD_KNM,
+    KEY_DD_M_DL_SLAB_OH, KEY_DD_M_RAILING_OH, KEY_DD_ARM_WHEEL_OH,
+    KEY_DD_WC_THICKNESS_M, KEY_DD_B1_OH, KEY_DD_BEFF_OH,
     KEY_DD_PUNCH_VED_KN, KEY_DD_TYRE_LENGTH, KEY_DD_PUNCH_C1,
     KEY_DD_PUNCH_C2, KEY_DD_PUNCH_U1, KEY_DD_PUNCH_VED,
     KEY_DD_VRD_C_MPA, KEY_DD_PUNCH_OK,
@@ -73,6 +77,12 @@ _TIGHTEN_TARGET_UR = 0.95
 
 # ── structural mechanics helpers ──────────────────────────────────────────────
 
+def _neutral_axis_depth_mm(fy_MPa: float, As_mm2: float,
+                           fck_MPa: float, b_mm: float = 1000.0) -> float:
+    """Neutral-axis depth xu (mm), IS 456 / IRC 112 simplified stress-block."""
+    return (0.87 * fy_MPa * As_mm2) / (0.36 * fck_MPa * b_mm)
+
+
 def _moment_capacity_kNm(fy_MPa: float, As_mm2: float, d_mm: float,
                          fck_MPa: float, b_mm: float = 1000.0) -> float:
     """
@@ -81,7 +91,7 @@ def _moment_capacity_kNm(fy_MPa: float, As_mm2: float, d_mm: float,
         xu = 0.87 fy As / (0.36 fck b)
         Mu = 0.87 fy As (d - 0.42 xu)
     """
-    xu = (0.87 * fy_MPa * As_mm2) / (0.36 * fck_MPa * b_mm)
+    xu = _neutral_axis_depth_mm(fy_MPa, As_mm2, fck_MPa, b_mm)
     Mu_Nmm = 0.87 * fy_MPa * As_mm2 * (d_mm - 0.42 * xu)
     return Mu_Nmm / 1.0e6
 
@@ -637,6 +647,10 @@ def design_deck_slab(input_dict: dict, fck: float, fctm: float, fy: float, Es: f
     Mu_top = _moment_capacity_kNm(fy, As_top, d_top_mm, fck)
     bot_ok = Mu_bot >= M_ULS_bot_kNm
     top_ok = Mu_top >= M_ULS_top_kNm
+    # Neutral-axis depth — report traceability (same value _moment_capacity_kNm
+    # uses internally; exposed here so the report never re-derives it).
+    xu_bot = _neutral_axis_depth_mm(fy, As_bot, fck)
+    xu_top = _neutral_axis_depth_mm(fy, As_top, fck)
 
     # ── 9a. longitudinal (distribution) reinforcement ────────────────────────
     # IRC 112:2020 Cl.16.6.1: secondary reinforcement ≥ 20 % of main transverse.
@@ -651,7 +665,8 @@ def design_deck_slab(input_dict: dict, fck: float, fctm: float, fy: float, Es: f
         f_edge = float(table3["f"])
 
         # Railing dead load — IRC 6:2017 Cl.206.5 (kg/m → kN/m)
-        railing_kN_m = IRC6_2017.cl_206_5_railing_load() * 9.81 / 1000.0
+        railing_kg_m = IRC6_2017.cl_206_5_railing_load()
+        railing_kN_m = railing_kg_m * 9.81 / 1000.0
 
         # Crash barrier horizontal moment — IRC 6:2017 Cl.206.4
         barrier = IRC6_2017.cl_206_4_crash_barrier_load()
@@ -663,11 +678,11 @@ def design_deck_slab(input_dict: dict, fck: float, fctm: float, fy: float, Es: f
         M_DL_oh = M_DL_slab_oh + M_DL_railing_oh
 
         # LL cantilever moment: wheel placed at f_edge clearance from the free (kerb) edge
+        # IRC 112:2020 Eq. B3.2 — cantilever effective width
+        # b1 = tyre contact width + 2 × wearing course thickness
+        b1_oh = _wheel_contact_width_m(vehicle_class) + 2.0 * wc_t_m
         arm_wheel = overhang_m - f_edge
         if arm_wheel > 0.0:
-            # IRC 112:2020 Eq. B3.2 — cantilever effective width
-            # b1 = tyre contact width + 2 × wearing course thickness
-            b1_oh = _wheel_contact_width_m(vehicle_class) + 2.0 * wc_t_m
             beff_oh = IRC112_2019.eq_B32_effective_width_cantilever(arm_wheel, b1_oh, span_m)
             M_LL_oh = P_wheel_kN * arm_wheel / beff_oh
         else:
@@ -726,8 +741,9 @@ def design_deck_slab(input_dict: dict, fck: float, fctm: float, fy: float, Es: f
             f"  Status                : {'PASS' if oh_ok else 'FAIL'}",
         ]
     else:
-        f_edge = railing_kN_m = M_barrier_kNm = 0.0
+        f_edge = railing_kg_m = railing_kN_m = M_barrier_kNm = 0.0
         M_DL_oh = M_LL_oh = M_ULS_oh = arm_wheel = 0.0
+        M_DL_slab_oh = M_DL_railing_oh = b1_oh = beff_oh = 0.0
         dia_oh = spc_oh = As_oh = As_req_oh = d_oh_mm = Mu_oh = 0.0
         oh_ok = True
         overhang_lines = []
@@ -1120,6 +1136,8 @@ def design_deck_slab(input_dict: dict, fck: float, fctm: float, fy: float, Es: f
         KEY_DD_MU_TOP         : Mu_top,
         KEY_DD_AS_REQ_BOT     : As_req_bot,
         KEY_DD_AS_REQ_TOP     : As_req_top,
+        KEY_DD_XU_BOT         : xu_bot,
+        KEY_DD_XU_TOP         : xu_top,
         # -- 5.17(c) cantilever overhang flexure --
         KEY_DD_M_BARRIER      : M_barrier_kNm,
         KEY_DD_M_DL_OH        : M_DL_oh,
@@ -1128,6 +1146,16 @@ def design_deck_slab(input_dict: dict, fck: float, fctm: float, fy: float, Es: f
         KEY_DD_D_OH           : d_oh_mm,
         KEY_DD_MU_OH          : Mu_oh,
         KEY_DD_AS_REQ_OH      : As_req_oh,
+        KEY_DD_OVERHANG_LEN     : overhang_m,
+        KEY_DD_EDGE_CLEARANCE   : f_edge,
+        KEY_DD_RAILING_LOAD_KGM : railing_kg_m,
+        KEY_DD_RAILING_LOAD_KNM : railing_kN_m,
+        KEY_DD_M_DL_SLAB_OH     : M_DL_slab_oh,
+        KEY_DD_M_RAILING_OH     : M_DL_railing_oh,
+        KEY_DD_ARM_WHEEL_OH     : arm_wheel,
+        KEY_DD_WC_THICKNESS_M   : wc_t_m,
+        KEY_DD_B1_OH            : b1_oh,
+        KEY_DD_BEFF_OH          : beff_oh,
         # -- 5.17(d) punching shear --
         KEY_DD_PUNCH_VED_KN   : P_wheel_uls_kN,
         KEY_DD_TYRE_LENGTH    : _wheel_contact_length_mm(vehicle_class),

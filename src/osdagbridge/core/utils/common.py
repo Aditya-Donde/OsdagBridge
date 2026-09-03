@@ -243,6 +243,8 @@ KEY_DD_MU_BOT           = "deck.report.mu_bot"          # bottom moment capacity
 KEY_DD_MU_TOP           = "deck.report.mu_top"          # top moment capacity (kNm/m)
 KEY_DD_AS_REQ_BOT       = "deck.report.as_req_bot"      # bottom required steel (mm2/m)
 KEY_DD_AS_REQ_TOP       = "deck.report.as_req_top"      # top required steel (mm2/m)
+KEY_DD_XU_BOT           = "deck.report.xu_bot"          # bottom neutral-axis depth xu (mm)
+KEY_DD_XU_TOP           = "deck.report.xu_top"          # top neutral-axis depth xu (mm)
 
 # -- 5.17(c) Cantilever overhang flexure --
 KEY_DD_M_BARRIER        = "deck.report.m_barrier"       # crash barrier moment (kNm/m)
@@ -252,6 +254,16 @@ KEY_DD_M_ULS_OH         = "deck.report.m_uls_oh"        # overhang ULS hogging m
 KEY_DD_D_OH             = "deck.report.d_oh"            # overhang effective depth (mm)
 KEY_DD_MU_OH            = "deck.report.mu_oh"           # overhang moment capacity (kNm/m)
 KEY_DD_AS_REQ_OH        = "deck.report.as_req_oh"       # overhang required steel (mm2/m)
+KEY_DD_OVERHANG_LEN     = "deck.report.overhang_len_m"  # overhang length l_oh (m)
+KEY_DD_EDGE_CLEARANCE   = "deck.report.edge_clearance_m" # wheel-to-edge clearance f, IRC 6 Table 3 (m)
+KEY_DD_RAILING_LOAD_KGM = "deck.report.railing_load_kgm" # railing dead load, IRC 6 Cl.206.5 (kg/m)
+KEY_DD_RAILING_LOAD_KNM = "deck.report.railing_load_knm" # railing dead load (kN/m)
+KEY_DD_M_DL_SLAB_OH     = "deck.report.m_dl_slab_oh"    # overhang slab-only dead load moment (kNm/m)
+KEY_DD_M_RAILING_OH     = "deck.report.m_railing_oh"    # overhang railing moment (kNm/m)
+KEY_DD_ARM_WHEEL_OH     = "deck.report.arm_wheel_oh"    # eccentric wheel arm e = l_oh - f (m)
+KEY_DD_WC_THICKNESS_M   = "deck.report.wc_thickness_m"  # wearing course thickness (m)
+KEY_DD_B1_OH            = "deck.report.b1_oh_m"         # overhang load concentration breadth b1 (m)
+KEY_DD_BEFF_OH          = "deck.report.beff_oh_m"       # overhang effective width beff (m)
 
 # -- 5.17(d) Punching shear (IRC 112 Cl.10.4) --
 KEY_DD_PUNCH_VED_KN     = "deck.report.punch_ved_kn"    # ULS design wheel load, γ_LL·(1+IF)·P_w (kN)
