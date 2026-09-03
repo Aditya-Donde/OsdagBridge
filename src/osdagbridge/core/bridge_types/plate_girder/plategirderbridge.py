@@ -3657,10 +3657,10 @@ class PlateGirderBridge:
         out[KEY_SD_STIFF_LONG_SPACING] = _long_spacing(out[KEY_SD_STIFF_LONG], dr["dw_mm"])
 
         # Longitudinal outstand: neither an input nor designed — nothing in the
-        # capacity engine models longitudinal stiffeners — so it stays blank rather
-        # than implying a size the design never chose. Key exists so the Details tab
-        # reads the whole table from this namespace.
-        out[KEY_SD_STIFF_LONG_WIDTH]   = ""
+        # capacity engine models longitudinal stiffeners. Assumed equal to the
+        # intermediate stiffener outstand so the Details tab and report show a
+        # usable size; the Details tab carries a note stating the assumption.
+        out[KEY_SD_STIFF_LONG_WIDTH]   = out[KEY_SD_STIFF_INT_WIDTH]
 
         # Per-girder stiffener summary — mirrors 2b. The designed values are computed
         # for the controlling girder only, so every girder repeats them (the report
@@ -3702,7 +3702,8 @@ class PlateGirderBridge:
                 out[KEY_SD_STIFF_END_WIDTH + suf]   = out[KEY_SD_STIFF_END_WIDTH]
                 out[KEY_SD_STIFF_LONG + suf]        = out[KEY_SD_STIFF_LONG]
             out[KEY_SD_STIFF_LONG_SPACING + suf] = _long_spacing(out[KEY_SD_STIFF_LONG + suf], _g_dw)
-            out[KEY_SD_STIFF_LONG_WIDTH + suf]   = ""
+            # Assumed equal to this girder's intermediate stiffener outstand.
+            out[KEY_SD_STIFF_LONG_WIDTH + suf]   = out[KEY_SD_STIFF_INT_WIDTH + suf]
 
         # ── 4h. Intermediate stiffener checks (Table 5.8 — Custom only) ──────────
         # Verification values; only meaningful in Custom mode (table is omitted in

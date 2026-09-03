@@ -584,7 +584,7 @@ KEY_SD_STIFF_END_SPACING= "steeldesign.details.stiffener_summary.end_spacing"   
 KEY_SD_STIFF_END_COUNT  = "steeldesign.details.stiffener_summary.end_count"
 KEY_SD_STIFF_LONG       = "steeldesign.details.stiffener_summary.longitudinal"
 KEY_SD_STIFF_LONG_THICK = "steeldesign.details.stiffener_summary.long_thickness"  # input-echoed (not designed)
-KEY_SD_STIFF_LONG_WIDTH = "steeldesign.details.stiffener_summary.long_width"      # no source — never designed
+KEY_SD_STIFF_LONG_WIDTH = "steeldesign.details.stiffener_summary.long_width"      # assumed = intermediate outstand
 KEY_SD_STIFF_LONG_SPACING = "steeldesign.details.stiffener_summary.long_spacing"  # derived from web depth
 KEY_SD_IS_IYS_MIN       = "steeldesign.details.int_stiffener.iys_min"      # only for report
 KEY_SD_IS_IYS_PROV      = "steeldesign.details.int_stiffener.iys_prov"     # only for report

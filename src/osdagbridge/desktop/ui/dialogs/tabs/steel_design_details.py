@@ -398,6 +398,19 @@ class SteelDesignDetailsTab(QWidget):
 
         card_layout.addWidget(self.stiffener_table)
 
+        # Assumption note — the capacity engine never sizes longitudinal
+        # stiffeners, so their outstand is taken from the intermediate ones.
+        self.stiffener_note = QLabel(
+            "Note: The longitudinal stiffener width is assumed equal to the "
+            "intermediate stiffener width."
+        )
+        self.stiffener_note.setWordWrap(True)
+        self.stiffener_note.setStyleSheet(
+            "QLabel { font-size: 10px; color: #666666; border: none; "
+            "padding-top: 2px; font-style: italic; background: transparent; }"
+        )
+        card_layout.addWidget(self.stiffener_note)
+
         # Add CAD preview below the table
         self.stiffener_preview = StiffenerCadPreviewWidget()
         self.stiffener_preview.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
