@@ -5,20 +5,22 @@
 from __future__ import annotations
 from typing import TYPE_CHECKING
 
-from osdagbridge.core.utils.codes.irc6_2017 import IRC6_2017
-
 from osdagbridge.core.utils.common import (
+    KEY_DD_ARM_WHEEL_OH,
     KEY_DD_AS_BOT,
     KEY_DD_AS_LONG,
     KEY_DD_AS_MIN,
     KEY_DD_AS_REQ_BOT,
     KEY_DD_AS_REQ_TOP,
     KEY_DD_AS_TOP,
+    KEY_DD_B1_OH,
+    KEY_DD_BEFF_OH,
     KEY_DD_COVER_OK,
     KEY_DD_DIA_BOT,
     KEY_DD_DIA_TOP,
     KEY_DD_D_BOT,
     KEY_DD_D_TOP,
+    KEY_DD_EDGE_CLEARANCE,
     KEY_DD_FY,
     KEY_DD_GAMMA_DL,
     KEY_DD_GAMMA_LL,
@@ -31,17 +33,22 @@ from osdagbridge.core.utils.common import (
     KEY_DD_M_BARRIER,
     KEY_DD_M_DL,
     KEY_DD_M_DL_OH,
+    KEY_DD_M_DL_SLAB_OH,
     KEY_DD_M_LL,
     KEY_DD_M_LL_OH,
+    KEY_DD_M_RAILING_OH,
     KEY_DD_M_ULS_HOG,
     KEY_DD_M_ULS_OH,
     KEY_DD_M_ULS_SAG,
+    KEY_DD_OVERHANG_LEN,
     KEY_DD_PUNCH_C1,
     KEY_DD_PUNCH_C2,
     KEY_DD_PUNCH_OK,
     KEY_DD_PUNCH_U1,
     KEY_DD_PUNCH_VED,
     KEY_DD_PUNCH_VED_KN,
+    KEY_DD_RAILING_LOAD_KGM,
+    KEY_DD_RAILING_LOAD_KNM,
     KEY_DD_SHEAR_OK,
     KEY_DD_SHEAR_VED,
     KEY_DD_SHEAR_VRDC,
@@ -53,12 +60,15 @@ from osdagbridge.core.utils.common import (
     KEY_DD_TYRE_WIDTH,
     KEY_DD_VEHICLE,
     KEY_DD_VRD_C_MPA,
+    KEY_DD_WC_THICKNESS_M,
     KEY_DD_WDL,
     KEY_DD_WHEEL_LOAD,
     KEY_DD_WK_BOT,
     KEY_DD_WK_LIMIT,
     KEY_DD_WK_OH,
     KEY_DD_WK_TOP,
+    KEY_DD_XU_BOT,
+    KEY_DD_XU_TOP,
     KEY_DECK_CONCRETE_GRADE_BASIC,
     KEY_DESIGN_MODE,
     KEY_DS_BOTTOM_CLEAR_COVER,
@@ -164,7 +174,8 @@ from osdagbridge.core.utils.common import (
     KEY_UTIL_FLEXURE,
     KEY_UTIL_INTERACTION,
     KEY_UTIL_LTB,
-    KEY_UTIL_SHEAR
+    KEY_UTIL_SHEAR,
+    KEY_VEHICLE,
 )
 
 from osdagbridge.core.reports.report_utils import _tex, _render_value, get_girder_entries
@@ -1143,31 +1154,6 @@ Fatigue Shear Resistance, $Q_r$ & IRC 22 Table 8 ($\phi d$, $N_{sc}$) & """
         """PASS/FAIL status; '---' when deck design not run."""
         return ("PASS" if ok else "FAIL") if _dk_has else "---"
 
-    def _inv(key, default=0.0):
-        """Raw float from bridge.input_dict (material properties, not deck_rpt)."""
-        v = bridge.input_dict.get(key)
-        if v is None or v == "":
-            return default
-        try:
-            return float(v)
-        except (TypeError, ValueError):
-            return default
-
-    def _dk_xu_mm(as_key):
-        """
-        Neutral-axis depth xu (mm) for the given provided-steel key — same
-        formula as deckdesign._moment_capacity_kNm() (b = 1000 mm strip),
-        re-derived here for report traceability only; M_Rd itself is
-        unchanged and still comes from KEY_DD_MU_BOT / KEY_DD_MU_TOP.
-        """
-        if not _dk_has:
-            return _DKPH
-        fck = _inv(KEY_MATERIAL_DECK_FCK)
-        if fck <= 0:
-            return _DKPH
-        xu = (0.87 * _dkv(KEY_DD_FY) * _dkv(as_key)) / (0.36 * fck * 1000.0)
-        return f"{xu:.1f}"
-
     def _dkoh(key, nd=2, scale=1.0, unit=""):
         """Overhang value; 'N/A' when there is no overhang."""
         if not _dk_has:
@@ -1184,14 +1170,16 @@ Fatigue Shear Resistance, $Q_r$ & IRC 22 Table 8 ($\phi d$, $N_{sc}$) & """
             return "N/A"
         return f"{x:.{nd}f}" + unit
 
-    # Overhang dead-load moment breakdown (railing + slab) — report
-    # traceability only (Issue #355); KEY_DD_M_DL_OH itself is unchanged and
-    # still comes from deckdesign.py (M_DL_slab_oh + M_DL_railing_oh there).
-    _dk_railing_kg_m = IRC6_2017.cl_206_5_railing_load()
-    _dk_railing_kN_m = _dk_railing_kg_m * 9.81 / 1000.0
-    _dk_l_oh = _inv(KEY_TS_DECK_OVERHANG)
-    _dk_M_DL_slab_oh = _dkv(KEY_DD_WDL) * _dk_l_oh ** 2 / 2.0
-    _dk_M_railing_oh = _dk_railing_kN_m * _dk_l_oh
+    # Overhang moment breakdown (railing, slab DL, eccentric-wheel LL) —
+    # every component below is computed once in deckdesign.design_deck_slab()
+    # and stored in deck_rpt; KEY_DD_M_DL_OH / KEY_DD_M_LL_OH (the totals)
+    # are unchanged and still come from there too.
+    _dk_i_frac = _dkv(KEY_DD_IMPACT_FACTOR) - 1.0
+    _dk_ll_ref = (
+        "IRC 6-2017 Cl. 208.3"
+        if deck_rpt.get(KEY_DD_VEHICLE) in (KEY_VEHICLE[0], KEY_VEHICLE[1])
+        else "IRC 6-2017 Cl. 208.2"
+    )
 
     # Governing crack width = max(bottom, top[, overhang]) vs the limit.
     _dk_wks = [_dkv(KEY_DD_WK_BOT), _dkv(KEY_DD_WK_TOP)]
@@ -1645,7 +1633,7 @@ The reinforced concrete deck slab is designed per IRC~112:2011 (flexure, shear, 
 \cline{2-5}
  & Provided Reinforcement, $A_s$ & $\phi$""" + _dkf(KEY_DD_DIA_BOT, nd=0) + r"""\,@\,""" + _dkf(KEY_DD_SPC_BOT, nd=0) + r"""\,mm c/c & """ + _dkf(KEY_DD_AS_BOT, nd=0) + r""" mm²/m & --- \\[6pt]
 \cline{2-5}
- & Neutral-axis depth, $x_u$ & $0.87\,f_y\,A_s / (0.36\,f_{ck}\,b)$ & """ + _dk_xu_mm(KEY_DD_AS_BOT) + r""" mm & --- \\[6pt]
+ & Neutral-axis depth, $x_u$ & $0.87\,f_y\,A_s / (0.36\,f_{ck}\,b)$ & """ + _dkf(KEY_DD_XU_BOT, nd=1) + r""" mm & --- \\[6pt]
 \cline{2-5}
  & Moment Capacity, $M_{Rd}$ & $0.87\,f_y\,A_s\,(d-0.42\,x_u)$ (IRC 112 Cl. 8.2.1, Cl. 9.2) & """ + _dkf(KEY_DD_MU_BOT, nd=2) + r""" kN-m/m & """ + _dks(_dkv(KEY_DD_MU_BOT) >= _dkv(KEY_DD_M_ULS_SAG)) + r""" \\[6pt]
 \hline
@@ -1657,7 +1645,7 @@ The reinforced concrete deck slab is designed per IRC~112:2011 (flexure, shear, 
 \cline{2-5}
  & Provided Top Reinforcement, $A_s$ & $\phi$""" + _dkf(KEY_DD_DIA_TOP, nd=0) + r"""\,@\,""" + _dkf(KEY_DD_SPC_TOP, nd=0) + r"""\,mm c/c & """ + _dkf(KEY_DD_AS_TOP, nd=0) + r""" mm²/m & --- \\[6pt]
 \cline{2-5}
- & Neutral-axis depth, $x_u$ & $0.87\,f_y\,A_s / (0.36\,f_{ck}\,b)$ & """ + _dk_xu_mm(KEY_DD_AS_TOP) + r""" mm & --- \\[6pt]
+ & Neutral-axis depth, $x_u$ & $0.87\,f_y\,A_s / (0.36\,f_{ck}\,b)$ & """ + _dkf(KEY_DD_XU_TOP, nd=1) + r""" mm & --- \\[6pt]
 \cline{2-5}
  & Moment Capacity, $M_{Rd}$ & $0.87\,f_y\,A_s\,(d-0.42\,x_u)$ (IRC 112 Cl. 8.2.1, Cl. 9.2) & """ + _dkf(KEY_DD_MU_TOP, nd=2) + r""" kN-m/m & """ + _dks(_dkv(KEY_DD_MU_TOP) >= _dkv(KEY_DD_M_ULS_HOG)) + r""" \\[6pt]
 \hline
@@ -1674,17 +1662,35 @@ Overhang Length, $l_{oh}$ & --- & """ + _render_value(bridge.input_dict, KEY_TS_
 \hline
 Crash Barrier Load Moment & IRC 6 Cl. 206.4 & """ + _dkoh(KEY_DD_M_BARRIER, nd=2, unit=" kN-m/m") + r""" & --- \\[6pt]
 \hline
-Railing Load, $w_{railing}$ & """ + _dk_ohnum(_dk_railing_kg_m, nd=0, unit=" kg/m") + r""" (IRC 6-2017 Cl. 206.5) & """ + _dk_ohnum(_dk_railing_kN_m, nd=4, unit=" kN/m") + r""" & --- \\[6pt]
+Railing Load, $w_{railing}$ & """ + _dkoh(KEY_DD_RAILING_LOAD_KGM, nd=0, unit=" kg/m") + r""" (IRC 6-2017 Cl. 206.5) & """ + _dkoh(KEY_DD_RAILING_LOAD_KNM, nd=4, unit=" kN/m") + r""" & --- \\[6pt]
 \hline
-Railing Lever Arm, $e_r$ & $= l_{oh}$ (at overhang tip) & """ + _dk_ohnum(_dk_l_oh, nd=3, unit=" m") + r""" & --- \\[6pt]
+Railing Lever Arm, $e_r$ & $= l_{oh}$ (at overhang tip) & """ + _dkoh(KEY_DD_OVERHANG_LEN, nd=3, unit=" m") + r""" & --- \\[6pt]
 \hline
-Railing Moment, $M_{railing}$ & $w_{railing}\,e_r$ & """ + _dk_ohnum(_dk_M_railing_oh, nd=2, unit=" kN-m/m") + r""" & --- \\[6pt]
+Railing Moment, $M_{railing}$ & $w_{railing}\,e_r$ & """ + _dkoh(KEY_DD_M_RAILING_OH, nd=2, unit=" kN-m/m") + r""" & --- \\[6pt]
 \hline
-Slab Dead Load Moment, $M_{DL,slab}$ & $w_{DL}\,l_{oh}^2/2$ & """ + _dk_ohnum(_dk_M_DL_slab_oh, nd=2, unit=" kN-m/m") + r""" & --- \\[6pt]
+Slab Dead Load Moment, $M_{DL,slab}$ & $w_{DL}\,l_{oh}^2/2$ & """ + _dkoh(KEY_DD_M_DL_SLAB_OH, nd=2, unit=" kN-m/m") + r""" & --- \\[6pt]
 \hline
 Dead Load Moment, $M_{DL}$ & $M_{DL,slab} + M_{railing}$ & """ + _dkoh(KEY_DD_M_DL_OH, nd=2, unit=" kN-m/m") + r""" & --- \\[6pt]
 \hline
-Live Load Moment (eccentric wheel) & Wheel load $\times$ arm & """ + _dkoh(KEY_DD_M_LL_OH, nd=2, unit=" kN-m/m") + r""" & --- \\[6pt]
+Wheel Load, $P_w$ & IRC 6-2017 Cl. 204.1 & """ + _dkoh(KEY_DD_WHEEL_LOAD, nd=2, unit=" kN") + r""" & --- \\[6pt]
+\hline
+Edge Clearance, $f$ & IRC 6-2017 Table 3 & """ + _dkoh(KEY_DD_EDGE_CLEARANCE, nd=3, unit=" m") + r""" & --- \\[6pt]
+\hline
+Eccentric Wheel Arm, $e$ & $e = l_{oh} - f$ & """ + _dkoh(KEY_DD_ARM_WHEEL_OH, nd=3, unit=" m") + r""" & --- \\[6pt]
+\hline
+Tyre Contact Width & IRC 6-2017 Table 2 / Fig.\ 1 & """ + _dkoh(KEY_DD_TYRE_WIDTH, nd=0, scale=1000.0, unit=" mm") + r""" & --- \\[6pt]
+\hline
+Wearing Course Thickness & --- & """ + _dkoh(KEY_DD_WC_THICKNESS_M, nd=0, scale=1000.0, unit=" mm") + r""" & --- \\[6pt]
+\hline
+Load Concentration Breadth, $b_1$ & tyre width $+\,2\times$ WC thickness & """ + _dkoh(KEY_DD_B1_OH, nd=0, scale=1000.0, unit=" mm") + r""" & --- \\[6pt]
+\hline
+Effective Width, $b_{eff}$ & IRC 112:2020 Eq.\ B3.2, $1.2e+b_1 \leq L/3$ & """ + _dkoh(KEY_DD_BEFF_OH, nd=3, unit=" m") + r""" & --- \\[6pt]
+\hline
+Impact Factor Fraction, $i$ & """ + _dk_ll_ref + r""" & """ + _dk_ohnum(_dk_i_frac, nd=3) + r""" & --- \\[6pt]
+\hline
+Impact Multiplier, $(1+i)$ & \textit{applied later, in $M_{u,oh}$ below --- not included in $M_{LL,oh}$} & """ + _dkoh(KEY_DD_IMPACT_FACTOR, nd=3) + r""" & --- \\[6pt]
+\hline
+Live Load Moment (eccentric wheel), $M_{LL,oh}$ & $P_w\,e / b_{eff}$ & """ + _dkoh(KEY_DD_M_LL_OH, nd=2, unit=" kN-m/m") + r""" & --- \\[6pt]
 \hline
 Total Hogging Moment, $M_{u,oh}$ & """ + _dkf(KEY_DD_GAMMA_DL, nd=2) + r""" DL + """ + _dkf(KEY_DD_GAMMA_LL, nd=2) + r""" (LL + CB) & """ + _dkoh(KEY_DD_M_ULS_OH, nd=2, unit=" kN-m/m") + r""" & --- \\[6pt]
 \hline
