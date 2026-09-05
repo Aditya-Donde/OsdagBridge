@@ -650,6 +650,17 @@ def ch5_design_checks(checks_data, bridge) -> str:
     # Table 5.12 – Supporting Calculations
     # ------------------------------------------------------------------
 
+    # The flat KEY_SD_FATIGUE_* values are the CONTROLLING girder's, while the
+    # Table 5.12 rows above are per-girder — so name the girder this derivation
+    # belongs to, otherwise it reads as though it backed the first row.
+    _fat_g_label = ""
+    if _ctrl_girder and str(_ctrl_girder).startswith("G"):
+        try:
+            _fat_g_label = girder_entries[int(str(_ctrl_girder)[1:]) - 1][0]
+        except (ValueError, IndexError):
+            _fat_g_label = str(_ctrl_girder)
+    _fat_g_ref = (" (" + _tex(_fat_g_label) + ")") if _fat_g_label else ""
+
     _fat_stress_range = _dr_511.get(KEY_SD_FATIGUE_STRESS_RANGE_MPA)
     _fat_mu_r         = _dr_511.get(KEY_SD_FATIGUE_MU_R)
     _fat_gamma_mft    = bridge.output_dict.get(KEY_DO_GAMMA_MF)
@@ -666,7 +677,11 @@ def ch5_design_checks(checks_data, bridge) -> str:
     \medskip
     \noindent\textbf{{Supporting Calculations}}
     \small
-    Illustrative fatigue calculation corresponding to the reported assessment.
+    Fatigue calculation for the controlling girder{_fat_g_ref}. $\Delta\sigma$ is the
+    normal stress RANGE at the worst section produced by the fatigue vehicle
+    (IRC:6 Cl.204.6) traversing the span, referred to the short-term composite
+    section modulus --- not the total stress under any single load combination.
+    The remaining girders are listed row-wise in the table above.
 
     \normalsize
 
