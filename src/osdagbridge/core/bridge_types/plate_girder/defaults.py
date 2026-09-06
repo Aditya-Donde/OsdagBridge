@@ -209,7 +209,7 @@ def _update_typical_section_defaults(input_dict: dict) -> None:
     # --- Deck Detail sub-tab ---
     _update(KEY_TS_DECK_THICKNESS,     250.0)                        # mm
     _update(KEY_TS_FOOTPATH_WIDTH,     IS_DEFAULT_FOOTPATH_WIDTH_M)  # m
-    _update(KEY_TS_FOOTPATH_THICKNESS, 100.0)                        # mm
+    _update(KEY_TS_FOOTPATH_THICKNESS, 250.0)                        # mm
 
     # --- Crash Barrier sub-tab ---
     _cb_dims = IRC5_2015.cl_109_6_3_shapes(
