@@ -17,7 +17,10 @@ from PySide6.QtGui import QColor, QFont, QPainter, QPainterPath, QPen
 from osdagbridge.core.bridge_types.plate_girder.ui_fields_additional_input import GENERATE_RESULTS_DEFAULTS
 from osdagbridge.desktop.ui.utils.custom_titlebar import CustomTitleBar
 from osdagbridge.desktop.ui.dialogs.custom_messagebox import CustomMessageBox, MessageBoxType
-from osdagbridge.desktop.ui.dialogs.generate_results_values_builder import resolve_table
+from osdagbridge.core.utils.common import KEY_TS_NO_OF_GIRDERS
+from osdagbridge.desktop.ui.dialogs.generate_results_values_builder import (
+    resolve_table, available_load_cases, filter_table
+)
 from osdagbridge.desktop.ui.utils.custom_cursors import pointing_hand_cursor
 
 
@@ -190,9 +193,10 @@ class VerticalLabel(QWidget):
 class GenerateResultsPage(QWidget):
     """Page 1 — table selection + load case/member combos."""
 
-    def __init__(self, on_show_selections, parent=None):
+    def __init__(self, on_show_selections, output_dict: dict = None, parent=None):
         super().__init__(parent)
         self._on_show_selections = on_show_selections
+        self._output_dict = output_dict or {}
         self._setup_ui()
 
     def _setup_ui(self):
@@ -434,25 +438,15 @@ class GenerateResultsPage(QWidget):
         right_layout.addWidget(member_label)
 
         self.member_combo = NoScrollComboBox()
-        self.member_combo.addItems([
-            "All Girders",
-            "Girder 1",
-            "Girder 2",
-            "Girder 3",
-            "Girder 4"
-        ])
         apply_field_style(self.member_combo)
+        self._populate_member_combo()
         right_layout.addWidget(self.member_combo)
 
         right_layout.addWidget(lc_label)
 
         self.load_case_combo = NoScrollComboBox()
-        self.load_case_combo.addItems([
-            "Dead Load", "Wering Surface Load", "Secondary impact Dead Load", "Live Load",
-            "Wind Load", "Seismic Load", "Temperature Load",
-            "ULS Combo", "SLS Combo"
-        ])
         apply_field_style(self.load_case_combo)
+        self._populate_load_case_combo()
         right_layout.addWidget(self.load_case_combo)
 
         right_layout.addStretch()
@@ -496,6 +490,50 @@ class GenerateResultsPage(QWidget):
         main_layout.addLayout(footer)
 
         self._build_tree()
+
+    # ── Combo Population ──────────────────────────────────────────────────────
+    def _populate_member_combo(self):
+        """Girder list straight from KEY_TS_NO_OF_GIRDERS — never a fixed count.
+        Item data is the 1-based girder number, or None for 'All Girders'.
+
+        The key is always present and >= 2 here: _validate_inputs() rejects a
+        missing, blank or sub-2 count before design() runs, output_dict is a
+        straight copy of the validated input_dict, and the dialog only opens
+        once a design has completed.
+        """
+        n = int(float(str(self._output_dict[KEY_TS_NO_OF_GIRDERS]).strip()))
+
+        self.member_combo.blockSignals(True)
+        self.member_combo.clear()
+        self.member_combo.addItem("All Girders", None)
+        for i in range(1, n + 1):
+            self.member_combo.addItem(f"Girder {i}", i)
+        self.member_combo.setCurrentIndex(0)
+        self.member_combo.blockSignals(False)
+
+    def _populate_load_case_combo(self):
+        """Load cases the model actually holds — the analysis cases the force
+        tables are built from, then any combination the analysis did not run.
+        Item data is the load-case name, or None for 'All Load Cases'."""
+        load_cases = available_load_cases(self._output_dict)
+
+        self.load_case_combo.blockSignals(True)
+        self.load_case_combo.clear()
+        self.load_case_combo.addItem("All Load Cases", None)
+        for lc in load_cases:
+            self.load_case_combo.addItem(str(lc), str(lc))
+        self.load_case_combo.setCurrentIndex(0)
+        self.load_case_combo.blockSignals(False)
+        self.load_case_combo.setEnabled(bool(load_cases))
+
+    # ── Selected Filters ──────────────────────────────────────────────────────
+    def get_selected_girder(self):
+        """1-based girder number, or None when 'All Girders' is selected."""
+        return self.member_combo.currentData()
+
+    def get_selected_load_case(self):
+        """Load-case name, or None when 'All Load Cases' is selected."""
+        return self.load_case_combo.currentData()
 
     # ── Tree Build ──────────────────────────────────────────────────────────
     def _build_tree(self):
@@ -1449,7 +1487,8 @@ class GenerateResultsDialog(QDialog):
         content_layout.addWidget(self.stack)
 
         self.page_generate = GenerateResultsPage(
-            on_show_selections=self._handle_show_selections
+            on_show_selections=self._handle_show_selections,
+            output_dict=self._output_dict,
         )
         self.page_generate._cancel_btn.clicked.connect(self.reject)
 
@@ -1499,6 +1538,9 @@ class GenerateResultsDialog(QDialog):
             ).exec()
             return
 
+        girder_no = self.page_generate.get_selected_girder()
+        load_case = self.page_generate.get_selected_load_case()
+
         live_defaults = self._get_live_defaults()
         export_data = {}
 
@@ -1515,7 +1557,11 @@ class GenerateResultsDialog(QDialog):
                     if table_key in ("id", "label"):
                         continue
                     if table_data["label"] in selected_names:
-                        group_bucket[table_data["label"]] = table_data
+                        # One filtered payload feeds the tree, the preview and
+                        # the Excel export, so all three always agree.
+                        group_bucket[table_data["label"]] = filter_table(
+                            table_data, girder_no, load_case
+                        )
 
                 if group_bucket:
                     main_bucket[sub_val["label"]] = group_bucket
