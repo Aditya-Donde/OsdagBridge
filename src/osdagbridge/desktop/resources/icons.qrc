@@ -1,0 +1,67 @@
+<!-- Design / template UI icons. Regenerate after changing any file listed here: -->
+<!-- pyside6-rcc osdagbridge/desktop/resources/icons.qrc -o osdagbridge/desktop/resources/icons_rc.py -->
+<!-- (run from the /src folder) -->
+
+<RCC>
+    <qresource prefix="/">
+        <file>vectors/arrow_down_light.svg</file>
+        <file>vectors/arrow_down_dark.svg</file>
+        <file>vectors/arrow_up_light.svg</file>
+        <file>vectors/arrow_up_dark.svg</file>
+        <file>vectors/location_pin.svg</file>
+
+        <file>themes/lightstyle.qss</file>
+
+        <file>vectors/design.svg</file>
+        <file>vectors/save.svg</file>
+        <file>vectors/checked.svg</file>
+        <file>vectors/design_result_table.svg</file>
+        <file>vectors/design_report.svg</file>
+        <file>vectors/lock_open.svg</file>
+        <file>vectors/lock_close.svg</file>
+        <file>vectors/Osdag_logo.svg</file>
+
+        <file>vectors/inputs_label_light.svg</file>
+        <file>vectors/outputs_label_light.svg</file>
+
+        <file>vectors/view_btn/input_dock_active.svg</file>
+        <file>vectors/view_btn/input_dock_inactive.svg</file>
+        <file>vectors/view_btn/logs_dock_active.svg</file>
+        <file>vectors/view_btn/logs_dock_inactive.svg</file>
+        <file>vectors/view_btn/output_dock_active.svg</file>
+        <file>vectors/view_btn/output_dock_inactive.svg</file>
+        <file>vectors/view_btn/cross_section_active.svg</file>
+        <file>vectors/view_btn/cross_section_inactive.svg</file>
+        <file>vectors/view_btn/top_view_active.svg</file>
+        <file>vectors/view_btn/top_view_inactive.svg</file>
+        <file>vectors/view_btn/3d_cad_active.svg</file>
+        <file>vectors/view_btn/3d_cad_inactive.svg</file>
+        <file>vectors/view_btn/plots_active.svg</file>
+        <file>vectors/view_btn/plots_inactive.svg</file>
+
+        <file>vectors/msg_success.svg</file>
+        <file>vectors/msg_warning.svg</file>
+        <file>vectors/msg_critical.svg</file>
+        <file>vectors/msg_about.svg</file>
+        <file>vectors/fit_to_screen.svg</file>
+
+        <!-- Toolbar Icons -->
+        <file>vectors/tool_bar/grillage_view_light.svg</file>
+        <file>vectors/tool_bar/node_element_light.svg</file>
+        <file>vectors/tool_bar/node_light.svg</file>
+        <file>vectors/tool_bar/pan_light.svg</file>
+        <file>vectors/tool_bar/rotate_light.svg</file>
+        <file>vectors/tool_bar/show_axis_light.svg</file>
+        <file>vectors/tool_bar/legend_icon.svg</file>
+        <file>vectors/tool_bar/show_grid_lines_light.svg</file>
+        <file>vectors/tool_bar/show_load_light.svg</file>
+        <file>vectors/tool_bar/show_support_light.svg</file>
+        <file>vectors/tool_bar/zoom_fit_light.svg</file>
+        <file>vectors/tool_bar/zoom_in_light.svg</file>
+        <file>vectors/tool_bar/zoom_out_light.svg</file>
+        <file>vectors/tool_bar/zoom_window_light.svg</file>
+        <file>vectors/tool_bar/Node_Number.svg</file>
+        <file>vectors/tool_bar/Element_number.svg</file>
+        <file>vectors/tool_bar/Girder_label.svg</file>
+    </qresource>
+</RCC>
