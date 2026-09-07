@@ -138,7 +138,6 @@
 
         <file>images/modules/plate_girder_bridge.png</file>
 
-        <file>themes/darkstyle.qss</file>
 
     </qresource>
 </RCC>
