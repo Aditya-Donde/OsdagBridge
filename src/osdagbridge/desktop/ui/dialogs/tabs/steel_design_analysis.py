@@ -15,7 +15,7 @@ from PySide6.QtWidgets import (
     QApplication,
 )
 from PySide6.QtCore import Qt, QSize
-from PySide6.QtGui import QTextDocument
+from PySide6.QtGui import QTextDocument, QDoubleValidator
 
 from osdagbridge.desktop.ui.docks.output_dock import (
     NoScrollComboBox,
@@ -596,6 +596,7 @@ class SteelDesignAnalysisTab(QWidget):
         self.x_input.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         self.x_input.setStyleSheet(_FIELD_STYLE_WHITE)
         self.x_input.setAlignment(Qt.AlignCenter)  # P3: centre-align position readout
+        self.x_input.setValidator(QDoubleValidator(0.0, 999999.0, 3, self.x_input))
         right_layout.addSpacing(35)
         right_layout.addLayout(self._diagram_side_row(self.lbl_x, self.x_input))
 
