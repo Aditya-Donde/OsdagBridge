@@ -388,6 +388,8 @@ class SteelDesign(QDialog):
         self.radio_max.setChecked(True)
         self.radio_max.toggled.connect(self._on_interaction_mode_changed)
         self.radio_scroll.toggled.connect(self._on_interaction_mode_changed)
+        if hasattr(self.analysis_tab, "x_input"):
+            self.analysis_tab.x_input.setReadOnly(True)
 
         radio_row_layout.addWidget(self.radio_max)
         radio_row_layout.addWidget(self.radio_scroll)
@@ -508,6 +510,8 @@ class SteelDesign(QDialog):
         self.canvas.mpl_connect('button_press_event', self._on_canvas_click)
         self.canvas.mpl_connect('key_press_event', self._on_key_press)
         self.canvas.setFocusPolicy(Qt.StrongFocus)
+        if hasattr(self.analysis_tab, "x_input"):
+            self.analysis_tab.x_input.editingFinished.connect(self._on_user_x_entered)
 
         # ── Interactive cursor state ──────────────────────────────────────────
         self._current_x    = None
@@ -647,6 +651,8 @@ class SteelDesign(QDialog):
         """
         if checked is False:
             return
+        if hasattr(self.analysis_tab, "x_input"):
+            self.analysis_tab.x_input.setReadOnly(self._interaction_mode == "Maximum Values")
         if self._interaction_mode == "Scroll for Values":
             self._cursor_idx = 0
             self._cursor_x   = None
@@ -715,6 +721,42 @@ class SteelDesign(QDialog):
             getattr(self, '_current_max_dict', {}),
             self.canvas,
         )
+
+    def _on_user_x_entered(self):
+        """
+        Handle direct numerical input in the x (m) field during Scroll for Values mode.
+        Clamps the input to the girder span, updates the cursor position,
+        refreshes the interpolated diagram readouts, and redraws the cursor line.
+        """
+        if self._interaction_mode != "Scroll for Values":
+            return
+        if self._current_x is None or len(self._current_x) == 0:
+            return
+
+        text = self.analysis_tab.x_input.text().strip()
+        try:
+            val = float(text)
+        except ValueError:
+            cx = getattr(self, "_cursor_x", float(self._current_x[0]))
+            self.analysis_tab.x_input.setText(f"{cx:.2f}")
+            return
+
+        min_x = float(self._current_x[0])
+        max_x = float(self._current_x[-1])
+        clamped_x = float(np.clip(val, min_x, max_x))
+        self._cursor_x = clamped_x
+        idx = int(np.searchsorted(self._current_x, self._cursor_x, side='right')) - 1
+        self._cursor_idx = max(0, min(len(self._current_x) - 1, idx))
+
+        self._update_right_panel_for_mode()
+        self.graph_engine.draw_cursors(
+            self._interaction_mode,
+            getattr(self, '_cursor_x', None),
+            self._current_x,
+            getattr(self, '_current_max_dict', {}),
+            self.canvas,
+        )
+
 
 
 
@@ -1084,6 +1126,7 @@ class SteelDesign(QDialog):
                       "{:.2f}<br>at x = {x:.2f} m"]
 
             if hasattr(self.analysis_tab, "x_input"):
+                self.analysis_tab.x_input.setReadOnly(True)
                 self.analysis_tab.x_input.setText("Multiple")
                 self.analysis_tab.x_input.setFixedHeight(55)
 
@@ -1114,6 +1157,7 @@ class SteelDesign(QDialog):
             fmts_scalar = ["{:.2f}", "{:.2f}", "{:.2f}"]
 
             if hasattr(self.analysis_tab, "x_input"):
+                self.analysis_tab.x_input.setReadOnly(False)
                 self.analysis_tab.x_input.setText(f"{cx:.2f}")  # numerical position only
                 self.analysis_tab.x_input.setFixedHeight(35)
 
