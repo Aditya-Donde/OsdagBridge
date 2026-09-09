@@ -17,7 +17,7 @@ from osdagbridge.core.bridge_types.plate_girder.results_data import (
     composite_stiffness_props,
 )
 from osdagbridge.core.bridge_types.plate_girder.initial_sizing import (
-    KEY_MAX_CAMBER_M,
+    KEY_MAX_CAMBER_MM,
     composite_section_properties,
     steel_i_section_properties,
 )
@@ -75,10 +75,8 @@ FATIGUE_STRENGTH_ROLLED_MPA = _fat_r["ffn_MPa_used"]   # 118.0
 FATIGUE_STRENGTH_WELDED_MPA = _fat_w["ffn_MPa_used"]   # 92.0
 FATIGUE_SHEAR_STRENGTH_MPA  = _fat_r["tfn_MPa_used"]   # 59.0
 
-MAX_CAMBER_MM = KEY_MAX_CAMBER_M * 1000.0   # buildable camber limit (m → mm)
 
-
-def apply_camber(girder_defl, camber_mode, camber_value_m):
+def apply_camber(girder_defl, camber_mode, camber_value_mm):
     """Subtract the fabrication camber from one girder's DL and total sag.
 
     Takes one girder's entry from ``build_deflections_cache`` — the composite-basis,
@@ -86,7 +84,7 @@ def apply_camber(girder_defl, camber_mode, camber_value_m):
     and the camber mode/value from ``config.geometry`` (Deflection Control inputs).
 
     Camber is the full DL sag in Default mode, or the user value in Custom mode, capped
-    at ``MAX_CAMBER_MM``. It is subtracted from both sags, clamped at zero; live-load sag
+    at ``KEY_MAX_CAMBER_MM``. It is subtracted from both sags, clamped at zero; live-load sag
     is untouched. If the cap bites, the residual sag survives so check #18 flags it.
 
     Returns ``(dl_adj_mm, total_adj_mm, camber_mm)``.
@@ -97,14 +95,14 @@ def apply_camber(girder_defl, camber_mode, camber_value_m):
     if mode == "default":
         camber = max(dl, 0.0)
     else:
-        camber = max(float(camber_value_m) * 1000.0, 0.0)
+        camber = max(float(camber_value_mm), 0.0)
 
-    if camber > MAX_CAMBER_MM:
-        camber = MAX_CAMBER_MM
+    if camber > KEY_MAX_CAMBER_MM:
+        camber = KEY_MAX_CAMBER_MM
 
     return max(dl - camber, 0.0), max(total - camber, 0.0), camber
 
-def apply_camber_to_deflections_cache(raw_cache, camber_mode, camber_value_m):
+def apply_camber_to_deflections_cache(raw_cache, camber_mode, camber_value_mm):
     """Apply camber to every girder in a deflection cache.
 
     Takes the pre-camber cache from ``build_deflections_cache`` (composite-basis,
@@ -121,7 +119,7 @@ def apply_camber_to_deflections_cache(raw_cache, camber_mode, camber_value_m):
     """
     out = {}
     for label, d in raw_cache.items():
-        dl_adj, total_adj, camber_mm = apply_camber(d, camber_mode, camber_value_m)
+        dl_adj, total_adj, camber_mm = apply_camber(d, camber_mode, camber_value_mm)
         out[label] = {
             "live_mm":      d.get(KEY_SD_DEFL_LIVE_RAW),   # live is uncambered
             "total_mm":     round(total_adj, 3),
@@ -266,7 +264,7 @@ class GeometryConfig:
     support_type: str = "simply_supported"
     cross_bracing_spacing_m: float = DEFAULT_CROSS_BRACING_SPACING
     camber_mode: str = field(kw_only=True)
-    camber_value_m: float = 0.0         # metres; only read in Custom mode
+    camber_value_mm: float = 0.0         # mm; only read in Custom mode
 
 
 
@@ -503,7 +501,7 @@ class BridgeConfig:
         # Source: bridge.additional_inputs — the Design Options (Cont.) tab.
         # Previously: read straight from the flat bridge.input_dict by read_camber_inputs()
         camber_mode = str(_req(bridge.additional_inputs.get(KEY_DO_CAMBER_MODE), KEY_DO_CAMBER_MODE, "additional_inputs")).strip()
-        camber_value_m = (float(_req(bridge.additional_inputs.get(KEY_DO_CAMBER_VALUE), KEY_DO_CAMBER_VALUE, "additional_inputs"))
+        camber_value_mm = (float(_req(bridge.additional_inputs.get(KEY_DO_CAMBER_VALUE), KEY_DO_CAMBER_VALUE, "additional_inputs"))
             if camber_mode.lower() == "custom" else 0.0
         )
 
@@ -517,7 +515,7 @@ class BridgeConfig:
             support_type=support_type,
             cross_bracing_spacing_m=cb_spacing,
             camber_mode=camber_mode,
-            camber_value_m=camber_value_m,
+            camber_value_mm=camber_value_mm,
         )
 
 
@@ -3424,7 +3422,7 @@ def run_design_check(
     # back onto the bridge so plategirderbridge can read self._deflections_cache after.
     if deflections_cache is None:
         deflections_cache = apply_camber_to_deflections_cache(
-            build_deflections_cache(config, result_data), config.geometry.camber_mode, config.geometry.camber_value_m,
+            build_deflections_cache(config, result_data), config.geometry.camber_mode, config.geometry.camber_value_mm,
         )
         plate_girder_bridge._deflections_cache = deflections_cache
 

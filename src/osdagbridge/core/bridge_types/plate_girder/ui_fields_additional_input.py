@@ -1,7 +1,7 @@
 # Main schema: ADDITIONAL_INPUTS_SCHEMA (bottom of file)
 
 from osdagbridge.core.utils.common import *
-from osdagbridge.core.bridge_types.plate_girder.initial_sizing import KEY_MAX_CAMBER_M
+from osdagbridge.core.bridge_types.plate_girder.initial_sizing import KEY_MAX_CAMBER_MM
 
 
 # ── Typical Section Details Tab ───────────────────────────────────────────────
@@ -1534,12 +1534,12 @@ DESIGN_OPTIONS_CONT_SCHEMA = {
                 {
                     "fields": [{
                         "id":           KEY_DO_CAMBER,
-                        "label":        "Camber (m)",
+                        "label":        "Camber (mm)",
                         "type":         TYPE_MODE_LINE,
                         "mode_choices": ["Default", "Custom"],
                         "bind_mode":    "camber_mode_combo",
                         "bind_value":   "camber_value_input",
-                        "placeholder":  f"0 - {KEY_MAX_CAMBER_M:g}",
+                        "placeholder":  f"0 - {KEY_MAX_CAMBER_MM:g}",
                     }]
                 },
             ],
