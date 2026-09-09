@@ -1189,13 +1189,17 @@ class UIBuilder(QWidget):
         value_input.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         value_input.setObjectName(field_id + ".value")
         value_input.setEnabled(False)
+        placeholder = field_def.get("placeholder")
+        if placeholder:
+            value_input.setPlaceholderText(str(placeholder))
         if hasattr(owner, "style_input_field"):
             owner.style_input_field(value_input)
         else:
             from osdagbridge.desktop.ui.dialogs.tabs.common import apply_field_style
             apply_field_style(value_input)
 
-        def _on_mode_changed(text, _vi=value_input, _choices=choices, _h=h):
+        def _on_mode_changed(text, _vi=value_input, _choices=choices, _h=h, _ai=ai):
+            is_locked = getattr(_ai, "_locked", False) if _ai else False
             if _choices and text == _choices[0]:
                 _vi.hide()
                 _vi.setEnabled(False)
@@ -1203,11 +1207,12 @@ class UIBuilder(QWidget):
                 _h.setStretch(1, 0)
             else:
                 _vi.show()
-                _vi.setEnabled(True)
+                _vi.setEnabled(not is_locked)
                 _h.setStretch(0, 1)
                 _h.setStretch(1, 1)
 
         mode_combo.currentTextChanged.connect(_on_mode_changed)
+        mode_combo._sync_mode = _on_mode_changed
 
         if on_change and hasattr(owner, on_change):
             mode_combo.currentTextChanged.connect(getattr(owner, on_change))
@@ -1309,7 +1314,8 @@ class UIBuilder(QWidget):
             from osdagbridge.desktop.ui.dialogs.tabs.common import apply_field_style
             apply_field_style(value_combo)
 
-        def _on_mode_changed(text, _vc=value_combo, _choices=mode_choices, _h=h):
+        def _on_mode_changed(text, _vc=value_combo, _choices=mode_choices, _h=h, _ai=ai):
+            is_locked = getattr(_ai, "_locked", False) if _ai else False
             if _choices and text == _choices[0]:
                 _vc.hide()
                 _vc.setEnabled(False)
@@ -1317,11 +1323,12 @@ class UIBuilder(QWidget):
                 _h.setStretch(1, 0)
             else:
                 _vc.show()
-                _vc.setEnabled(True)
+                _vc.setEnabled(not is_locked)
                 _h.setStretch(0, 1)
                 _h.setStretch(1, 1)
 
         mode_combo.currentTextChanged.connect(_on_mode_changed)
+        mode_combo._sync_mode = _on_mode_changed
 
         if on_change and hasattr(owner, on_change):
             mode_combo.currentTextChanged.connect(getattr(owner, on_change))
