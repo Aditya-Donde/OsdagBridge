@@ -464,6 +464,28 @@ QTabBar#main_tabs::close-button:hover {
     image: url(:/vectors/window_close_hover.svg);
 }
 
+QPushButton#new_tab_button {
+    background: transparent;
+    border: none;
+    border-radius: 4px;
+    color: #4a4a4a;
+    font-size: 18px;
+    font-weight: normal;
+    padding: 0px;
+    margin-left: 4px;
+    text-align: center;
+}
+
+QPushButton#new_tab_button:hover {
+    background: #e6efd0;
+    border-radius: 4px;
+    color: #000000;
+}
+
+QPushButton#new_tab_button:pressed {
+    background: #d6e6be;
+}
+
 QFrame#navbar_header {
     background-color: #ffffff;
 }
@@ -890,4 +912,13 @@ QLabel#splash_loading_label {
         background: transparent;
         font-weight: bold;
         font-family: Arial;
+}
+
+QLabel#splash_description_label {
+        background: transparent;
+        border-left: 3px solid #91b014;
+        padding-left: 10px;
+        color: #4a4a4a;
+        font-family: Arial;
+        font-size: 12px;
 }

@@ -1,14 +1,14 @@
 import sys
-from PySide6.QtWidgets import QApplication, QDialog, QVBoxLayout, QLabel, QPushButton, QHBoxLayout, QWidget, QSizeGrip
+from PySide6.QtWidgets import QApplication, QDialog, QVBoxLayout, QLabel, QPushButton, QHBoxLayout, QWidget, QSizeGrip, QCheckBox
 from PySide6.QtCore import Qt, QPoint, QEvent
 from PySide6.QtGui import QIcon, QPixmap
 
 # for standalone testing
 # from custom_titlebar import CustomTitleBar
-# from resources_rc import *
+# from icons_rc import *
 
 from osdagbridge.desktop.ui.utils.custom_titlebar import CustomTitleBar
-from osdagbridge.desktop.resources.resources_rc import *
+from osdagbridge.desktop.resources.icons_rc import *
 
 class MessageBoxType:
     Information = "Information"
@@ -18,7 +18,8 @@ class MessageBoxType:
     About = "About"
 
 class CustomMessageBox(QDialog):
-    def __init__(self, title="Message", text="Message", informativeText="", buttons=["OK"], dialogType=MessageBoxType.Information):
+    def __init__(self, title="Message", text="Message", informativeText="", buttons=["OK"], dialogType=MessageBoxType.Information,
+                 checkbox_text=None, checkbox_checked=False):
         super().__init__()
         self.setWindowFlags(Qt.FramelessWindowHint)
         self.setAttribute(Qt.WA_StyledBackground, True)
@@ -83,10 +84,19 @@ class CustomMessageBox(QDialog):
         contentInnerLayout.addLayout(textLayout)
         contentLayout.addLayout(contentInnerLayout)
 
+        # Optional "remember this choice" checkbox, shown left of the buttons
+        self.checkBox = None
+        if checkbox_text:
+            self.checkBox = QCheckBox(checkbox_text, self)
+            self.checkBox.setChecked(bool(checkbox_checked))
+            self.checkBox.setStyleSheet("font-size: 12px; color: #555555;")
+
         # Button layout
         buttonLayout = QHBoxLayout()
         buttonLayout.setSpacing(6)
         buttonLayout.setContentsMargins(0, 8, 0, 0)
+        if self.checkBox is not None:
+            buttonLayout.addWidget(self.checkBox, alignment=Qt.AlignmentFlag.AlignLeft)
         buttonLayout.addStretch()
 
         # Button styling based on dialog type
@@ -206,6 +216,12 @@ class CustomMessageBox(QDialog):
         }
         return style_map.get(dialogType, style_map[MessageBoxType.Information])
 
+    def is_checked(self) -> bool:
+        """Return whether the optional checkbox was ticked (False when absent)."""
+        if hasattr(self, '_checked'):
+            return self._checked
+        return self.checkBox is not None and self.checkBox.isChecked()
+
     def buttonClicked(self, buttonText):
         self.result = buttonText
         self.accept()
@@ -213,6 +229,9 @@ class CustomMessageBox(QDialog):
     def exec(self):
         super().exec()
         result = self.result
+        # Cache the checkbox state: callers read is_checked() after exec() returns,
+        # by which point the underlying QCheckBox has been destroyed below.
+        self._checked = self.checkBox is not None and self.checkBox.isChecked()
         # This dialog is parentless, so Qt never auto-deletes it. deleteLater() alone is
         # NOT enough: it only *posts* a DeferredDelete event, and that event class is not
         # delivered by processEvents() nor by an unwinding modal loop at the same level —

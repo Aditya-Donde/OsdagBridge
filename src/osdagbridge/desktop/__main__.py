@@ -72,10 +72,10 @@ def _ensure_std_streams():
 
 _ensure_std_streams()
 
-from PySide6.QtWidgets import QApplication
-from PySide6.QtGui import QIcon
-from PySide6.QtCore import QFile, QTextStream
-from osdagbridge.desktop.resources import resources_rc
+from PySide6.QtWidgets import QApplication, QMainWindow
+from PySide6.QtGui import QIcon, QFont, QFontDatabase
+from PySide6.QtCore import QElapsedTimer, QThread, QTimer, Signal
+from osdagbridge.desktop.resources import icons_rc, mainPageIcons_rc
 
 
 def _app_icon():
@@ -251,19 +251,81 @@ def ensure_osdag_core_db():
 
 ensure_osdag_core_db()
 
-# Import template_page
-from osdagbridge.desktop.ui.template_page import CustomWindow
-from osdagbridge.core.bridge_types.plate_girder.plategirderbridge import PlateGirderBridge
+from osdagbridge.desktop.ui.utils.theme_manager import ThemeManager
+from osdagbridge.desktop.ui.windows.launch_screen import OsdagBridgeLaunchScreen
 
-def load_stylesheet():
-    """Load the global QSS stylesheet from resources."""
-    file = QFile(":/themes/lightstyle.qss")
-    if file.open(QFile.ReadOnly | QFile.Text):
-        stream = QTextStream(file)
-        stylesheet = stream.readAll()
-        file.close()
-        return stylesheet
-    return ""
+# Keep the launch screen up for at least this long, however fast startup is.
+SPLASH_MIN_MS = 5000
+
+
+class LoadingThread(QThread):
+    """Do the slow startup work while the splash screen is on show."""
+    ready = Signal()
+
+    def run(self):
+        from osdagbridge.desktop.data.database.database_config import (
+            create_user_database, refactor_database,
+        )
+        # Create the user database if it does not exist yet
+        create_user_database()
+        # Prune it to 10 records, at most 60 days old, whose .osi still exists
+        try:
+            refactor_database()
+        except Exception as e:
+            print(f"[ERROR] Failed to clean the recents database: {e}")
+
+        # Pull in the main window's (large) dependency tree here rather than on
+        # the GUI thread, so the splash animation keeps running through it. This
+        # only imports modules - no widget is built until the GUI thread asks.
+        import osdagbridge.desktop.main_window  # noqa: F401
+
+        self.ready.emit()
+
+
+class LaunchScreenPopup(QMainWindow):
+    """Splash screen that hands straight over to the main window.
+
+    The main window is built *behind* the splash and only shown once it is
+    ready, so there is never a moment with neither window on screen.
+    """
+
+    def __init__(self, build_main_window):
+        super().__init__()
+        self.ui = OsdagBridgeLaunchScreen()
+        self.ui.setupUi(self)
+        self.build_main_window = build_main_window
+        self.main_window = None
+        self.show()
+
+        self.uptime = QElapsedTimer()
+        self.uptime.start()
+
+        self.loader = LoadingThread()
+        self.loader.ready.connect(self.on_database_ready)
+        self.loader.start()
+
+    def on_database_ready(self):
+        # Build the main window now, while the splash is still on screen. This
+        # overlaps construction with the minimum splash time instead of running
+        # after it. Widgets must be created on the GUI thread, so this part
+        # cannot move into LoadingThread.
+        self.main_window = self.build_main_window()
+
+        remaining = SPLASH_MIN_MS - self.uptime.elapsed()
+        QTimer.singleShot(max(0, remaining), self.hand_over)
+
+    def hand_over(self):
+        """Show the main window, then drop the splash once it has painted."""
+        self.main_window.show()
+        self.main_window.raise_()
+        self.main_window.activateWindow()
+        QApplication.instance().setQuitOnLastWindowClosed(True)
+
+        # Flush the show/paint events so the main window is actually on screen
+        # before the splash disappears - otherwise the desktop flashes through.
+        QApplication.processEvents()
+        self.close()
+
 
 def main():
     # Establish the Windows taskbar identity before the QApplication so the
@@ -272,22 +334,34 @@ def main():
 
     # Create the Qt application instance
     app = QApplication(sys.argv)
+    app.setStyle("Fusion")
+
+    # Bundled Ubuntu Sans - works on every OS without the font being installed
+    font_id = QFontDatabase.addApplicationFont(":/fonts/UbuntuSans-Regular.ttf")
+    if font_id != -1:
+        font_family = QFontDatabase.applicationFontFamilies(font_id)[0]
+        app.setFont(QFont(font_family, 10))  # Set as default app font
+    else:
+        print("[WARNING] Failed to load Ubuntu Sans font from resources")
 
     # Application-wide icon: taskbar, Alt-Tab, and default window icon.
     icon = _app_icon()
     if not icon.isNull():
         app.setWindowIcon(icon)
 
-    # Load and apply the global stylesheet
-    stylesheet = load_stylesheet()
-    if stylesheet:
-        app.setStyleSheet(stylesheet)
+    # Theme plumbing: every home-page widget reads this off the app instance
+    app.theme_manager = ThemeManager(app)
+    app.theme_manager.load_theme()
 
-    window = CustomWindow("OsdagBridge", PlateGirderBridge)
-    if not icon.isNull():
-        window.setWindowIcon(icon)
-    window.showMaximized()
-    window.show()
+    def build_main_window():
+        # Already imported by LoadingThread, so this resolves from sys.modules.
+        from osdagbridge.desktop.main_window import MainWindow
+        app.main_window = MainWindow()
+        return app.main_window
+
+    # Nothing must quit the app while the splash is the only window on screen.
+    app.setQuitOnLastWindowClosed(False)
+    app.splash = LaunchScreenPopup(build_main_window)
 
     # Execute the event loop
     sys.exit(app.exec())
