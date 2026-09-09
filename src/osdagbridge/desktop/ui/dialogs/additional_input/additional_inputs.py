@@ -1,4 +1,4 @@
-﻿"""
+"""
 Additional Inputs Widget for Highway Bridge Design
 Provides detailed input fields for manual bridge parameter definition
 """
@@ -291,6 +291,8 @@ class AdditionalInputs(QDialog):
                 widget.blockSignals(True)
                 widget.setCurrentText(str(value))
                 widget.blockSignals(False)
+                if hasattr(widget, "_sync_mode"):
+                    widget._sync_mode(widget.currentText())
 
             elif isinstance(widget, QCheckBox):
                 widget.blockSignals(True)
@@ -491,6 +493,8 @@ class AdditionalInputs(QDialog):
                 widget.blockSignals(True)
                 widget.setCurrentText(str(value))
                 widget.blockSignals(False)
+                if hasattr(widget, "_sync_mode"):
+                    widget._sync_mode(widget.currentText())
 
             elif isinstance(widget, QCheckBox):
                 widget.blockSignals(True)
