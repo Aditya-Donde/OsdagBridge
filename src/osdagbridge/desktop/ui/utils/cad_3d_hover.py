@@ -161,10 +161,25 @@ class HoverController:
     def pick_scale(self):
         """Factor converting Qt cursor coordinates into the space ``MoveTo`` expects.
 
-        Carried over unchanged from the viewer so this refactor alters no behaviour.
-        It is wrong on HiDPI displays — fixed in a separate commit.
+        It is 1.0 — there is no conversion.  ``AIS_InteractiveContext.MoveTo`` takes
+        **logical** coordinates, the ones Qt already reports, on every platform.
+        Upstream pythonocc passes ``pt.x()`` through unscaled
+        (qtDisplay.mouseMoveEvent) and is correct.
+
+        This viewer used to multiply by ``devicePixelRatioF()``.  That is 1.0 on an
+        ordinary display, so it did nothing and went unnoticed, but 2.0 on a Retina
+        screen and 1.25-1.5 under Windows display scaling.  Every pick then landed at
+        a multiple of the cursor position, and anything past ``viewport_width / dpr``
+        fell outside the window, where OCC detects nothing — leaving hover and click
+        working only in the top-left ``1/dpr`` of the viewport, a 75% dead area at 2x.
+        Measured on a 937 px-wide viewport: picks succeeded up to qt_x = 468
+        (occ_x = 936) and failed from qt_x = 470 (occ_x = 939) on.
+
+        ``view.Window().Size()`` is not a usable source for this factor: it reports
+        the backing-store size, 2x logical on Retina, so deriving the scale from it
+        reproduces exactly this bug.
         """
-        return self.viewer.devicePixelRatioF()
+        return 1.0
 
     # ------------------------------------------------------------------
     # Events — called by the viewer's Qt handlers
