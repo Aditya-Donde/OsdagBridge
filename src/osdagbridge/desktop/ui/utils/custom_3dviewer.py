@@ -14,6 +14,7 @@ from navcube import NavCubeOverlay, NavCubeStyle
 from navcube.connectors.occ import OCCNavCubeSync
 
 from osdagbridge.desktop.ui.utils.cad_safety import CADSafetyGuard
+from osdagbridge.desktop.ui.utils.cad_3d_hover import HoverController
 
 
 # =============================================================================
@@ -245,23 +246,14 @@ class CustomViewer3d(qtViewer3d):
         self.context = None
         self.view = None
 
-        self.model_ais_objects = {}
-        self.model_hover_labels = {}
-        self.ais_to_model = {}
-        self.model_hover_labels_by_ais = {}
+        # Bridge-component hover — labels, hit-test, highlight and tooltip timing all
+        # live in the controller; this widget only forwards its Qt mouse events.
+        self.hover = HoverController(self)
+
+        # Node marker hover stays here, unchanged: the screen-space picker below is
+        # handed to the controller through node_hover_label().
         self._node_hover_data = []
         self._node_pick_px = 14
-
-        self.current_hovered_model = None
-        self.current_hovered_label = None
-        self.current_highlighted_ais_list = []
-        self.current_highlighted_owner = None
-
-        self.hover_timer = QTimer(self)
-        self.hover_timer.setSingleShot(True)
-        self.hover_timer.setInterval(40)
-        self.hover_timer.timeout.connect(self.show_tooltip)
-        self.hover_position = None
 
         # Host the overlay as a sibling widget instead of a child of the
         # OCC/OpenGL canvas. This avoids corrupted transparent repaints on Linux.
@@ -445,6 +437,15 @@ class CustomViewer3d(qtViewer3d):
                     self._axis_triad.raise_()
         return super().eventFilter(watched, event)
 
+    def node_hover_label(self, phys_x: float, phys_y: float,
+                         log_x: float, log_y: float) -> str | None:
+        """Hook the hover controller calls to let node markers answer first.
+
+        Node hover is not owned by the controller — it keeps its own screen-space
+        picking, below, unchanged.  This is the single point where the two meet.
+        """
+        return self._pick_node_label(phys_x, phys_y, log_x, log_y)
+
     def set_node_hover_data(self, nodes: list | None) -> None:
         self._node_hover_data = nodes or []
 
@@ -560,172 +561,17 @@ class CustomViewer3d(qtViewer3d):
             super().mouseMoveEvent(event)
             return
 
-        try:
-            pr    = self.devicePixelRatioF()
-            x_log = float(event.position().x())
-            y_log = float(event.position().y())
-            x     = int(x_log * pr)
-            y     = int(y_log * pr)
-
-            self.context.MoveTo(x, y, self.view, True)
-
-            hovered_model = None
-            hovered_label = None
-
-            if self.context.HasDetected():
-                detected = None
-                detected_list = []
-
-                if hasattr(self.context, "InitDetected"):
-                    try:
-                        self.context.InitDetected()
-                        while self.context.MoreDetected():
-                            detected_list.append(self.context.DetectedInteractive())
-                            self.context.NextDetected()
-                    except Exception:
-                        detected_list = []
-
-                if not detected_list:
-                    detected_list = [self.context.DetectedInteractive()]
-
-                is_node_hit = False
-                for cand in detected_list:
-                    if cand in self.model_hover_labels_by_ais:
-                        detected = cand
-                        hovered_label = self.model_hover_labels_by_ais.get(cand)
-                        is_node_hit = True
-                        break
-
-                if detected is None and detected_list:
-                    detected = detected_list[0]
-
-                # Standard model highlighting
-                ptr = self.get_occ_ptr(detected)
-                hovered_model = self.ais_to_model.get(ptr)
-
-                objects_to_highlight = []
-
-                if not is_node_hit:
-                    if hovered_model in ("Bolt", "Nut"):
-                        objects_to_highlight.extend(self.model_ais_objects.get("Bolt", []))
-                        objects_to_highlight.extend(self.model_ais_objects.get("Nut", []))
-                    elif detected:
-                        objects_to_highlight.append(detected)
-
-                if set(objects_to_highlight) != set(self.current_highlighted_ais_list):
-                    for obj in self.current_highlighted_ais_list:
-                        try:
-                            self.context.Unhilight(obj, False)
-                        except Exception:
-                            pass
-
-                    self.current_highlighted_ais_list = objects_to_highlight
-
-                    for obj in self.current_highlighted_ais_list:
-                        try:
-                            self.context.HilightWithColor(
-                                obj, self.context.HighlightStyle(), False
-                            )
-                        except Exception:
-                            pass
-
-                    self.view.Redraw()
-
-                if hovered_label is None and detected in self.model_hover_labels_by_ais:
-                    hovered_label = self.model_hover_labels_by_ais.get(detected)
-
-            else:
-                # Nothing detected → cleanup
-                if self.current_highlighted_ais_list:
-                    for obj in self.current_highlighted_ais_list:
-                        try:
-                            self.context.Unhilight(obj, False)
-                        except Exception:
-                            pass
-                    self.current_highlighted_ais_list = []
-                    self.view.Redraw()
-
-            # Screen-space node hover fallback
-            fallback_label = self._pick_node_label(x, y, x_log, y_log)
-            if fallback_label:
-                hovered_label = fallback_label
-                hovered_model = None
-                if self.current_highlighted_ais_list:
-                    for obj in self.current_highlighted_ais_list:
-                        try:
-                            self.context.Unhilight(obj, False)
-                        except Exception:
-                            pass
-                    self.current_highlighted_ais_list = []
-                    self.view.Redraw()
-                if self.hover_position and hovered_label != self.current_hovered_label:
-                    self.current_hovered_label = hovered_label
-                    self.hover_timer.stop()
-                    QToolTip.showText(self.hover_position, hovered_label, self)
-
-            self.hover_position = event.globalPosition().toPoint()
-            if (hovered_model != self.current_hovered_model or
-                    hovered_label != self.current_hovered_label):
-                self.current_hovered_model = hovered_model
-                self.current_hovered_label = hovered_label
-                if self.current_hovered_model or self.current_hovered_label:
-                    self.hover_timer.start(100)
-                else:
-                    QToolTip.hideText()
-            elif hovered_model is None and hovered_label is None:
-                QToolTip.hideText()
-
-        except Exception as e:
-            print(f"mouseMoveEvent error: {e}")
-            QToolTip.hideText()
+        # Hover is owned by the controller (cad_3d_hover.HoverController); it calls
+        # back into node_hover_label() so node markers keep their own picking.
+        self.hover.handle_move(event)
 
         super().mouseMoveEvent(event)
-
-    # ------------------------------------------------------------------
-    # Tooltip
-    # ------------------------------------------------------------------
-    def show_tooltip(self):
-        if self.safety.in_progress:
-            return
-        if not self.hover_position:
-            return
-
-        if self.current_hovered_label:
-            QToolTip.showText(self.hover_position, self.current_hovered_label, self)
-            return
-
-        if (
-            self.current_hovered_model
-            and self.current_hovered_model in self.model_hover_labels
-        ):
-            QToolTip.showText(
-                self.hover_position,
-                self.model_hover_labels[self.current_hovered_model],
-                self,
-            )
 
     # ------------------------------------------------------------------
     # Leave Event
     # ------------------------------------------------------------------
     def leaveEvent(self, event):
-        self.hover_timer.stop()
-        self.current_hovered_model = None
-        self.current_hovered_label = None
-
-        if self.safety.in_progress:
-            return
-
-        if self.current_highlighted_ais_list:
-            for obj in self.current_highlighted_ais_list:
-                try:
-                    self.context.Unhilight(obj, False)
-                except Exception:
-                    pass
-            self.current_highlighted_ais_list = []
-            if self.view:
-                self.view.Redraw()
-
-        QToolTip.hideText()
+        self.hover.handle_leave()
         super().leaveEvent(event)
 
     def cleanup_for_new_model(self):
@@ -756,10 +602,7 @@ class CustomViewer3d(qtViewer3d):
         state["auto_rotate"] = self._auto_rotate_timer is not None
         self._stop_auto_rotate()
 
-        try:
-            self.hover_timer.stop()
-        except Exception:
-            pass
+        self.hover.pause()
 
         self._overlay_state = state
 
@@ -786,45 +629,6 @@ class CustomViewer3d(qtViewer3d):
                 self._start_auto_rotate()
             except Exception:
                 pass
-
-    def rebuild_ais_lookup_map(self):
-        """Rebuilds the fast O(1) hash map mapping C++ pointer addresses to model names."""
-        self.ais_to_model = {}
-        for model_name, ais_list in self.model_ais_objects.items():
-            for ais in ais_list:
-                ptr = self.get_occ_ptr(ais)
-                self.ais_to_model[ptr] = model_name
-    def get_occ_ptr(self, obj):
-        """Recursively resolves the raw C++ pointer address from a SWIG/pythonOCC object."""
-        import re
-        current = obj
-        for _ in range(5):  # Limit depth to prevent infinite loops
-            if not hasattr(current, "this"):
-                break
-            
-            # Try converting the SWIG pointer directly to an integer
-            try:
-                return int(current.this)
-            except TypeError:
-                pass
-                
-            # Try parsing the C++ hex address string representation of the SWIG pointer
-            try:
-                s = str(current.this)
-                # s is formatted like "_000001859d3f34b0_p_Handle_AIS_Shape"
-                match = re.match(r"^_[0-9a-fA-F]+", s)
-                if match:
-                    return int(match.group(0)[1:], 16)
-            except Exception:
-                pass
-                
-            # Go one level deeper (e.g., Handle_AIS_Shape -> AIS_Shape)
-            next_obj = getattr(current, "this")
-            if next_obj is current:
-                break
-            current = next_obj
-            
-        return hash(obj)
 
     # ------------------------------------------------------------------
     # NaviCube teardown
@@ -937,7 +741,8 @@ class CustomViewer3d(qtViewer3d):
         if self._navcube_sync is not None:
             self._navcube_sync.set_interaction_active(True)
 
-        pr = self.devicePixelRatioF()
+        # Same pick space as hover — see HoverController.pick_scale().
+        pr = self.hover.pick_scale()
         x  = int(event.position().x() * pr)
         y  = int(event.position().y() * pr)
 

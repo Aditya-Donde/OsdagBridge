@@ -49,26 +49,24 @@ class CADSafetyGuard:
     def teardown_model(self):
         # Ordered AIS teardown (call inside critical_section): C++ Remove before dropping Python refs.
         viewer = self._viewer
+        hover = viewer.hover
         ctx = viewer.context
 
         # Unhilight first (IsHilighted guard — Linux double-frees on Remove-of-freed).
-        if getattr(viewer, "current_highlighted_ais_list", None) and ctx:
-            for obj in viewer.current_highlighted_ais_list:
+        if hover.current_highlighted_ais_list and ctx:
+            for obj in hover.current_highlighted_ais_list:
                 try:
                     if ctx.IsHilighted(obj):
                         ctx.Unhilight(obj, False)
                 except Exception:
                     pass
-        viewer.current_highlighted_ais_list = []
-        viewer.current_highlighted_owner = None
-        viewer.current_hovered_model = None
 
         # Release the C++ side before the Python refs drop; include deck-texture AIS (own list) under the same ordered teardown.
         n_ais = 0
-        n_keys = len(viewer.model_ais_objects)
+        n_keys = len(hover.model_ais_objects)
         if ctx is not None:
             deck_ais = getattr(viewer, "deck_texture_ais", None) or []
-            for ais_list in list(viewer.model_ais_objects.values()) + [deck_ais]:
+            for ais_list in list(hover.model_ais_objects.values()) + [deck_ais]:
                 items = ais_list if isinstance(ais_list, (list, tuple)) else [ais_list]
                 for ais in items:
                     n_ais += 1
@@ -79,10 +77,7 @@ class CADSafetyGuard:
                         pass
 
         # Now drop the last Python wrapper references.
-        viewer.model_ais_objects.clear()
-        viewer.model_hover_labels.clear()
-        viewer.model_hover_labels_by_ais.clear()
-        viewer.ais_to_model = {}
+        hover.clear()
         viewer._node_hover_data = []
         if hasattr(viewer, "deck_texture_ais"):
             viewer.deck_texture_ais = []
@@ -99,10 +94,11 @@ class CADSafetyGuard:
     def _remove_keys(self, keys, display=None):
         # Ordered teardown for the given keys: C++ Remove before dropping refs.
         viewer = self._viewer
+        hover = viewer.hover
         ctx = viewer.context
         removed = 0
         for key in keys:
-            ais_list = viewer.model_ais_objects.pop(key, None)
+            ais_list = hover.model_ais_objects.pop(key, None)
             if ais_list is None:
                 continue
             items = ais_list if isinstance(ais_list, (list, tuple)) else [ais_list]
@@ -110,7 +106,7 @@ class CADSafetyGuard:
                 removed += 1
                 # Drop any hover ref pointing at this AIS before releasing it.
                 try:
-                    viewer.model_hover_labels_by_ais.pop(ais, None)
+                    hover.drop_ais(ais)
                 except Exception:
                     pass
                 try:
