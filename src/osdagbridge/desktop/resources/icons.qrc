@@ -1,8 +1,6 @@
-<!-- Must Recompile this if any changes are made and these files -->
-<!-- Like changes in QSS, SVGs, etc -->
-<!-- Use the command in next comment while in /osdagbridge/src folder -->
-<!-- pyside6-rcc osdagbridge/desktop/resources/resources.qrc -o osdagbridge/desktop/resources/resources_rc.py -->
-
+<!-- Design / template UI icons. Regenerate after changing any file listed here: -->
+<!-- pyside6-rcc osdagbridge/desktop/resources/icons.qrc -o osdagbridge/desktop/resources/icons_rc.py -->
+<!-- (run from the /src folder) -->
 
 <RCC>
     <qresource prefix="/">
@@ -13,7 +11,7 @@
         <file>vectors/location_pin.svg</file>
 
         <file>themes/lightstyle.qss</file>
-        
+
         <file>vectors/design.svg</file>
         <file>vectors/save.svg</file>
         <file>vectors/checked.svg</file>
@@ -65,6 +63,5 @@
         <file>vectors/tool_bar/Node_Number.svg</file>
         <file>vectors/tool_bar/Element_number.svg</file>
         <file>vectors/tool_bar/Girder_label.svg</file>
-
     </qresource>
 </RCC>

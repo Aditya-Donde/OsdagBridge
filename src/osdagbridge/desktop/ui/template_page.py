@@ -100,6 +100,13 @@ class InputBlockerFilter(QObject):
         return False
 
 
+# The input dock's own sizeHint follows its widest child, which makes the dock
+# open far wider than it needs to be. Cap the startup width to a fraction of the
+# page, with a floor so narrow windows still show a usable dock.
+INPUT_DOCK_WIDTH_FRACTION = 0.32
+INPUT_DOCK_MIN_WIDTH = 340
+
+
 class CustomWindow(QWidget):
     export_finished = Signal(bool, str)
     # Thread-safe relay for bridge_logger messages: the design run now executes on
@@ -119,6 +126,14 @@ class CustomWindow(QWidget):
         # Source for all input values.
         # Initialised from BASIC_INPUT_DICT; updated live as the user edits fields.
         self.input_dict = dict(BASIC_INPUT_DICT)
+
+        # "Save Project" state: the recents row this page is bound to, and
+        # whether it has been saved as a project at least once (which decides
+        # between the overwrite prompt and a fresh Save As).
+        self.project_id = None
+        self.project_path = None
+        self.save_state = False
+        self._design_complete = False
 
         # AdditionalInputs dialog 
         self._additional_inputs_dialog: AdditionalInputs | None = None
@@ -313,7 +328,7 @@ class CustomWindow(QWidget):
         self.splitter = QSplitter(Qt.Horizontal, self.body_widget)
         self.splitter.setHandleWidth(2)
         self.input_dock = InputDock(backend=self.backend, parent=self)
-        input_dock_width = self.input_dock.sizeHint().width()
+        input_dock_width = self._default_input_dock_width()
         self._input_dock_default_width = input_dock_width
         self.splitter.addWidget(self.input_dock)
 
@@ -406,6 +421,11 @@ class CustomWindow(QWidget):
         target_sizes[2] = 0
         remaining_width = total_width - input_dock_width
         target_sizes[1] = max(0, remaining_width)
+        # Only the central area absorbs extra space, so a later window resize
+        # cannot inflate the docks proportionally.
+        self.splitter.setStretchFactor(0, 0)
+        self.splitter.setStretchFactor(1, 1)
+        self.splitter.setStretchFactor(2, 0)
         self.splitter.setSizes(target_sizes)
         self.layout.activate()
         main_v_layout.addWidget(self.body_widget)
@@ -732,7 +752,11 @@ class CustomWindow(QWidget):
         if trigger == "Save":
             self.saveOSI_inputs()
             return
-        
+
+        elif trigger == "Save Project":
+            self.saveDesign()
+            return
+
         elif trigger == "Additional Inputs":
             self._show_additional_inputs(target_tab=target_tab)
 
@@ -774,6 +798,8 @@ class CustomWindow(QWidget):
 
                     # Render 3D cad using the parameters from Backend
                     self.cad_3d_widget.render_3d_cad(self.backend.get_3d_cad_parameters())
+
+                    self._design_complete = True
                 except Exception:
                     self._show_design_error(traceback.format_exc())
         finally:
@@ -810,6 +836,84 @@ class CustomWindow(QWidget):
         if hasattr(self.input_dock, 'input_value_changed'):
             self.input_dock.input_value_changed.connect(self.update_cad_from_inputs)        
             
+    # Saves the design as a project when one has been run; otherwise offers to
+    # fall back to saving the inputs alone.
+    def saveDesign(self):
+        from osdagbridge.desktop.data.database.database_config import (
+            get_project_by_id, PROJECT_NAME, PROJECT_PATH,
+        )
+
+        if not self._design_complete:
+            result = CustomMessageBox(
+                title="Save Options",
+                text="To Save As Project Perform Design First.",
+                buttons=["Save OSI Only", "Cancel"],
+                dialogType=MessageBoxType.Information,
+            ).exec()
+
+            if result == "Save OSI Only":
+                self.saveOSI_inputs()
+            return
+
+        if self.save_state and self.project_id is not None:
+            record = get_project_by_id(self.project_id)
+            if record is None:
+                # The row was pruned (file moved or 60-day cutoff); start over.
+                self.save_state = False
+                filePath = None
+            else:
+                filePath = record.get(PROJECT_PATH)
+                result = CustomMessageBox(
+                    title="Save Options",
+                    text=f"Do you want to Overwrite\nthe existing project "
+                         f"'{record.get(PROJECT_NAME)}.osi'?",
+                    buttons=["Yes Overwrite", "Save as New", "Cancel"],
+                    dialogType=MessageBoxType.Information,
+                ).exec()
+
+                if result == "Cancel":
+                    return
+                if result == "Save as New":
+                    filePath = None
+        else:
+            filePath = None
+
+        if not filePath:
+            filePath, _ = QFileDialog.getSaveFileName(
+                self,
+                "Save Design as Project",
+                os.path.join(get_documents_folder(), "Project.osi"),
+                "Project Files(*.osi)",
+                None,
+            )
+            if not filePath:
+                return
+
+        try:
+            solve_extend_basic_input_dict(self.input_dict)
+        except Exception:
+            pass
+
+        try:
+            with open(filePath, 'w') as input_file:
+                yaml.dump(self.input_dict, input_file)
+
+            self._record_in_recents(filePath)
+            self.save_state = True
+
+            CustomMessageBox(
+                title="Success",
+                text="Saved OSI as Project Successfully!",
+                dialogType=MessageBoxType.Success,
+            ).exec()
+
+        except Exception as e:
+            CustomMessageBox(
+                title="Unsaved File",
+                text=f"Project not saved:\n{e}",
+                dialogType=MessageBoxType.Warning,
+            ).exec()
+
     # Function for saving input dictionary into an OSI file
     def saveOSI_inputs(self):
         # Populate additional input defaults so they appear in the saved file
@@ -832,6 +936,8 @@ class CustomWindow(QWidget):
             with open(filePath, 'w') as input_file:
                 yaml.dump(self.input_dict, input_file)
 
+            self._record_in_recents(filePath)
+
             CustomMessageBox(
                 title="Success",
                 text="Saved OSI Successfully!",
@@ -844,6 +950,29 @@ class CustomWindow(QWidget):
                 text=f"OSI file not saved:\n{e}",
                 dialogType=MessageBoxType.Warning
             ).exec()
+
+    def _record_in_recents(self, osi_path: str):
+        """Add (or refresh) this design in the home page's Recent Projects list.
+
+        Called after a successful Save; the stored report path lets the home
+        page's "Download Report" rebuild the PDF without reopening the design.
+        """
+        try:
+            from osdagbridge.desktop.data.database.database_config import (
+                insert_recent_project, PROJECT_NAME, PROJECT_PATH, MODULE_KEY,
+                REPORT_FILE_PATH,
+            )
+            from osdagbridge.desktop.data.module_keys import KEY_DISP_PLATE_GIRDER_BRIDGE
+
+            self.project_id = insert_recent_project({
+                PROJECT_NAME: os.path.splitext(os.path.basename(osi_path))[0],
+                PROJECT_PATH: osi_path,
+                MODULE_KEY: KEY_DISP_PLATE_GIRDER_BRIDGE,
+                REPORT_FILE_PATH: getattr(self, "_report_source_path", "") or "",
+            })
+            self.project_path = osi_path
+        except Exception as e:
+            print(f"[ERROR] Failed to record the project in recents: {e}")
 
     def loadOSI_inputs(self):
         filePath, _ = QFileDialog.getOpenFileName(
@@ -1302,6 +1431,13 @@ class CustomWindow(QWidget):
         timer.start(interval)
         self._splitter_anim = timer
 
+    def _default_input_dock_width(self):
+        """Startup width of the input dock: its sizeHint, capped to a share of the page."""
+        hint = self.input_dock.sizeHint().width()
+        available = self.width() or self.sizeHint().width()
+        cap = max(INPUT_DOCK_MIN_WIDTH, int(available * INPUT_DOCK_WIDTH_FRACTION))
+        return min(hint, cap)
+
     def finalize_dock_toggle(self, show, dock_widget, target_sizes):
         self.splitter.setSizes(target_sizes)
         if not show:
@@ -1423,6 +1559,12 @@ class CustomWindow(QWidget):
                         request.metadata.project_name,
                 }
 
+                # Remember where the report was written so the home page's
+                # "Download Report" can rebuild it for this saved project.
+                self._report_source_path = result.tex_path or result.pdf_path or ""
+                if getattr(self, 'project_id', None) and getattr(self, 'project_path', None):
+                    self._record_in_recents(self.project_path)
+
                 if result.pdf_path and \
                         os.path.exists(result.pdf_path):
                     if dialog.is_preview:
@@ -1532,6 +1674,35 @@ class CustomWindow(QWidget):
             pass
         super().closeEvent(event)
 
+    def showEvent(self, event):
+        super().showEvent(event)
+        # The startup setSizes() runs before the page has its real width, so the
+        # splitter re-spreads those sizes once the window is finally laid out.
+        # Re-apply them after the first show, when self.width() is truthful.
+        if not getattr(self, "_input_dock_width_applied", False):
+            self._input_dock_width_applied = True
+            QTimer.singleShot(0, self._apply_default_splitter_sizes)
+
+    def _apply_default_splitter_sizes(self):
+        """Reset the splitter to the default dock widths using the settled page width."""
+        try:
+            if not hasattr(self, "splitter") or self.splitter is None:
+                return
+            if self.splitter.count() < 3:
+                return
+            input_width = self._default_input_dock_width() if self.input_dock.isVisible() else 0
+            output_width = self.output_dock.sizeHint().width() if self.output_dock.isVisible() else 0
+            total_width = (self.width()
+                           - self.splitter.contentsMargins().left()
+                           - self.splitter.contentsMargins().right())
+            target_sizes = [0] * self.splitter.count()
+            target_sizes[0] = input_width
+            target_sizes[2] = output_width
+            target_sizes[1] = max(0, total_width - input_width - output_width)
+            self.splitter.setSizes(target_sizes)
+        except (IndexError, RuntimeError, AttributeError):
+            return
+
     def resizeEvent(self, event):
 
         """Override resizeEvent with safety check."""
@@ -1547,7 +1718,7 @@ class CustomWindow(QWidget):
                 return
             
             if self.input_dock.isVisible():
-                input_dock_width = self.input_dock.sizeHint().width()
+                input_dock_width = self._default_input_dock_width()
             else:
                 input_dock_width = 0
             
@@ -1769,8 +1940,13 @@ class CustomWindow(QWidget):
 
         file_menu.addSeparator()
 
+        save_project_action = QAction("Save Project", self)
+        save_project_action.setShortcut(QKeySequence("Ctrl+S"))
+        save_project_action.triggered.connect(lambda: self.common_design_func("Save Project"))
+        file_menu.addAction(save_project_action)
+
         save_input_action = QAction("Save Input", self)
-        save_input_action.setShortcut(QKeySequence("Ctrl+S"))
+        save_input_action.setShortcut(QKeySequence("Ctrl+Shift+S"))
         save_input_action.triggered.connect(lambda: self.common_design_func("Save"))
         file_menu.addAction(save_input_action)
 
@@ -1842,6 +2018,7 @@ class CustomWindow(QWidget):
         database_menu.addAction(output_csv_action)
 
         input_osi_action = QAction("Save Inputs (.osi)", self)
+        input_osi_action.triggered.connect(lambda: self.common_design_func("Save"))
         database_menu.addAction(input_osi_action)
 
         download_database_menu = database_menu.addMenu("Download Database")
