@@ -63,7 +63,10 @@ from osdagbridge.core.bridge_types.plate_girder import results_data
 from osdagbridge.desktop.ui.utils.custom_3dviewer import CustomViewer3d
 
 # Hover for the bridge components — labels and hit-testing both live there.
-from osdagbridge.desktop.ui.utils.cad_3d_hover import build_component_labels
+from osdagbridge.desktop.ui.utils.cad_3d_hover import (
+    build_component_labels,
+    build_bracing_hover_shapes,
+)
 
 from osdagbridge.core.bridge_types.plate_girder.dto import (
     BridgeParametersDTO,
@@ -294,7 +297,11 @@ class CAD3DWindow(QWidget):
 
 
         # HELPER 
-        def display_and_register(shapes, key, label, color, transparency=None, line_width=None, selectable=True):
+        def display_and_register(shapes, key, label, color, transparency=None, line_width=None,
+                                 selectable=True, per_ais_labels=None):
+            # per_ais_labels, when given, is one label per shape in the same order.
+            # Those take precedence over `label`, which stays as the fallback — that is
+            # how one registration key can still show different text per member.
             if not shapes:
                 return
 
@@ -323,7 +330,7 @@ class CAD3DWindow(QWidget):
 
             # Hover is owned by cad_3d_hover.HoverController — see that module for the
             # label text and the hit-testing.
-            self.viewer.hover.register(key, ais_list, label)
+            self.viewer.hover.register(key, ais_list, label, per_ais_labels)
 
         # teardown_model() already emptied the model_* dicts — do not re-assign them here.
 
@@ -410,11 +417,22 @@ class CAD3DWindow(QWidget):
             line_width=2.0)
 
 
-        display_and_register(
+        # Cross bracing and end diaphragm.  Both stay under the single key
+        # "Cross Bracing" so the visibility checkbox keeps working, but each member
+        # gets its own tooltip — its girder pair's designed section, and whether it is
+        # a diagonal, a top chord or a bottom chord.
+        bracing_shapes, bracing_labels = build_bracing_hover_shapes(
+            getattr(params, "output_dict", None),
+            cad_data.get("cross_bracing_groups"),
             cad_data.get("cross_bracings", []),
+        )
+
+        display_and_register(
+            bracing_shapes,
             "Cross Bracing",
             labels["Cross Bracing"],
-            BRACING_COLOR
+            BRACING_COLOR,
+            per_ais_labels=bracing_labels
         )
 
         display_and_register(
@@ -852,7 +870,11 @@ class CAD3DWindow(QWidget):
         self.viewer.hover.model_ais_objects.pop("Node", None)
         if hasattr(self.viewer, "set_node_hover_data"):
             self.viewer.set_node_hover_data([])
-        self.viewer.hover.clear_ais_labels()
+        # Do NOT clear the per-shape labels here.  This runs near the end of
+        # _render_model_body, after the components have already registered theirs —
+        # cross bracing puts one label per member in that same map — so clearing would
+        # wipe them and leave every brace falling back to the generic per-key label.
+        # teardown_model() -> hover.clear() already empties it before each render.
 
         for nid, coord in nodes.items():
             if not coord:
@@ -898,7 +920,9 @@ class CAD3DWindow(QWidget):
                 self.viewer.context.SetSelectionSensitivity(pick, 0, 30)
             except Exception:
                 pass
-            self.viewer.hover.register_ais_label(pick, label)
+            # highlight=False: the pick sphere is transparent, so hilighting it would
+            # flash a blob over the node marker.
+            self.viewer.hover.register_ais_label(pick, label, highlight=False)
             node_ais_list.append(pick)
 
             hover_nodes.append({"x": x_mm, "y": y_mm, "z": z_base, "label": label})

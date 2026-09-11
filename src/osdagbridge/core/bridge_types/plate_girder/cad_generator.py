@@ -648,7 +648,9 @@ class PlateGirderCADGenerator:
                 frame_depths.append(depth)
             girder_depths_matrix.append(frame_depths)
 
-        cross_bracings = build_cross_bracings(
+        # bracing_groups holds the same shapes indexed by (component, pair_id, role),
+        # so the CAD layer can label each member with its own girder pair's section.
+        cross_bracings, bracing_groups = build_cross_bracings(
             span_length_L=self.span_length_L,
             num_girders=self.num_girders,
             girder_spacing=self.girder_spacing,
@@ -942,7 +944,11 @@ class PlateGirderCADGenerator:
             "supports_long_horiz": supports_long_horiz,
             
             # Cross bracing system
+            # "cross_bracings" stays a flat list — the IFC export and the legacy
+            # display path both read it.  The grouped view is an addition, not a
+            # replacement, and is only used for hover labels.
             "cross_bracings": cross_bracings,
+            "cross_bracing_groups": bracing_groups,
             
             # Deck system
             "deck_slab": deck_out["deck_slab"],
