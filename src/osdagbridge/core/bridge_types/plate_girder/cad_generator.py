@@ -648,7 +648,9 @@ class PlateGirderCADGenerator:
                 frame_depths.append(depth)
             girder_depths_matrix.append(frame_depths)
 
-        cross_bracings = build_cross_bracings(
+        # bracing_groups holds the same shapes indexed by (component, pair_id, role),
+        # so the CAD layer can label each member with its own girder pair's section.
+        cross_bracings, bracing_groups = build_cross_bracings(
             span_length_L=self.span_length_L,
             num_girders=self.num_girders,
             girder_spacing=self.girder_spacing,
@@ -942,7 +944,11 @@ class PlateGirderCADGenerator:
             "supports_long_horiz": supports_long_horiz,
             
             # Cross bracing system
+            # "cross_bracings" stays a flat list — the IFC export and the legacy
+            # display path both read it.  The grouped view is an addition, not a
+            # replacement, and is only used for hover labels.
             "cross_bracings": cross_bracings,
+            "cross_bracing_groups": bracing_groups,
             
             # Deck system
             "deck_slab": deck_out["deck_slab"],
@@ -1050,14 +1056,9 @@ class PlateGirderCADGenerator:
 
     def display_3dModel(self, component):
 
-        hover_dict = {
-                            KEY_CAD_GIRDER: "Girder",
-                            KEY_CAD_STIFFENER: "Stiffener",
-                            KEY_CAD_DECK: "Deck",
-                            KEY_CAD_CRASH_BARRIER: "Crash Barrier",
-                            KEY_CAD_RAILING: "Railing",
-                            KEY_CAD_MEDIAN: "Median"
-        }
+        # No hover text here: this path renders offscreen for the report figures, and
+        # osdag_display_shape() only ever reads label[0] as its model_ais_objects key.
+        # The label[1] strings that used to sit in a hover_dict were never displayed.
 
         GIRDER_COLOR = Quantity_Color(72/255, 72/255, 54/255, Quantity_TOC_RGB)
         STIFFENER_COLOR = Quantity_Color(30/255, 30/255, 30/255, Quantity_TOC_RGB)
@@ -1070,37 +1071,37 @@ class PlateGirderCADGenerator:
         self.component = component  
         
         if self.component == "Girder":
-            label = [KEY_CAD_GIRDER, hover_dict.get(KEY_CAD_GIRDER)]
+            label = [KEY_CAD_GIRDER]
             shapes = self.model_data["girders"]
             osdag_display_shape(self.display, shapes, color=GIRDER_COLOR, update=True, label=label, canvas=self.cad_widget)
 
         elif self.component == "Stiffener":
-            label = [KEY_CAD_STIFFENER, hover_dict.get(KEY_CAD_STIFFENER)]
+            label = [KEY_CAD_STIFFENER]
             shapes = self.model_data["stiffeners"]
             osdag_display_shape(self.display, shapes, color=STIFFENER_COLOR, update=True, label=label, canvas=self.cad_widget)
 
         elif self.component == "Cross Bracing":
-            label = [KEY_CAD_CROSS_BRACING, hover_dict.get(KEY_CAD_CROSS_BRACING)]
+            label = [KEY_CAD_CROSS_BRACING]
             shapes = self.model_data["cross_bracings"]
             osdag_display_shape(self.display, shapes, color=BRACING_COLOR, update=True, label=label, canvas=self.cad_widget)
 
         elif self.component == "Deck":
-            label = [KEY_CAD_DECK, hover_dict.get(KEY_CAD_DECK)]
+            label = [KEY_CAD_DECK]
             shapes = self.model_data["deck_slab"]
             osdag_display_shape(self.display, shapes, color=DECK_COLOR, update=True, label=label, canvas=self.cad_widget)
 
         elif self.component == "Crash Barrier":
-            label = [KEY_CAD_CRASH_BARRIER, hover_dict.get(KEY_CAD_CRASH_BARRIER)]
+            label = [KEY_CAD_CRASH_BARRIER]
             shapes = self.model_data["crash_barriers"]
             osdag_display_shape(self.display, shapes, color=BARRIER_COLOR, update=True, label=label, canvas=self.cad_widget)
 
         elif self.component == "Railing":
-            label = [KEY_CAD_RAILING, hover_dict.get(KEY_CAD_RAILING)]
+            label = [KEY_CAD_RAILING]
             shapes = self.model_data["railings"]
             osdag_display_shape(self.display, shapes, color=RAILING_COLOR, update=True, label=label, canvas=self.cad_widget)
 
         elif self.component == "Median":
-            label = [KEY_CAD_MEDIAN, hover_dict.get(KEY_CAD_MEDIAN)]
+            label = [KEY_CAD_MEDIAN]
             shapes = self.model_data["median_barriers"]
             osdag_display_shape(self.display, shapes, color=MEDIAN_COLOR, update=True, label=label, canvas=self.cad_widget)
 
