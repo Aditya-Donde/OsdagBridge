@@ -4,7 +4,7 @@ Custom 3D CAD Viewer with stable hover highlighting for models and ViewCube.
 import math
 from PySide6.QtCore import QEvent, QPoint, QRect, QSize, QTimer, Qt
 from PySide6.QtGui  import QColor, QFont, QPainter, QPen, QPolygon
-from PySide6.QtWidgets import QApplication, QRubberBand, QToolTip, QWidget
+from PySide6.QtWidgets import QApplication, QRubberBand, QWidget
 
 from OCC.Display import backend
 backend.load_backend("pyside6")
