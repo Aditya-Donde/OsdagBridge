@@ -1221,6 +1221,9 @@ class UIBuilder(QWidget):
             mode_combo.currentTextChanged.connect(
                 lambda text, k=field_id + ".mode": ai._on_field_edited(k, text)
             )
+            value_input.textChanged.connect(
+                lambda text, k=field_id + ".value": ai._on_field_editing(text, k)
+            )
             value_input.editingFinished.connect(
                 lambda k=field_id + ".value", w=value_input: ai._on_field_edited(k, w)
             )
