@@ -11,6 +11,38 @@ from PySide6.QtCore import Qt, Signal, QSize, QEvent, QRect, QPropertyAnimation,
 from PySide6.QtGui import QFont, QIcon, QPainter
 from osdagbridge.desktop.ui.utils.custom_cursors import pointing_hand_cursor
 
+class MenuButton(QPushButton):
+    """Base class for menu buttons to manage selected/unselected styles."""
+    def __init__(self, text, parent=None):
+        super().__init__(text, parent)
+        self._is_selected = False
+        self.setCheckable(False)  # We manage selection via stylesheet directly
+        self._update_style()  # Apply initial default style
+        self.setObjectName("menu_button")
+
+    def _update_style(self):
+        """Applies the appropriate stylesheet based on the selected state."""
+        if self._is_selected:
+            self.setProperty("selected", "true")
+        else:
+            self.setProperty("selected", "false")
+
+        # Force style refresh
+        self.style().unpolish(self)
+        self.style().polish(self)
+        self.update()
+
+    def is_selected(self):
+        """Returns True if the button is currently selected, False otherwise."""
+        return self._is_selected
+
+    def set_selected(self, selected):
+        """Sets the selected state of the button and updates its style."""
+        if self._is_selected != selected:  # Only update if state changes
+            self._is_selected = selected
+            self._update_style()
+
+
 class DockCustomButton(QPushButton):
     def __init__(self, text: str, icon_path: str, parent=None):
         super().__init__(parent)

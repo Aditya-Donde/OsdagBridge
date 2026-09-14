@@ -1,0 +1,77 @@
+<!-- Home page: navbar, cards, recents, branding, splash. -->
+<!-- Regenerate after changing any file listed here: -->
+<!-- pyside6-rcc osdagbridge/desktop/resources/mainPageIcons.qrc -o osdagbridge/desktop/resources/mainPageIcons_rc.py -->
+<!-- (run from the /src folder) -->
+
+<RCC>
+    <qresource prefix="/">
+        <file>vectors/ConstructSteel_dark.svg</file>
+        <file>vectors/ConstructSteel_light.svg</file>
+        <file>vectors/FOSSEE_dark.svg</file>
+        <file>vectors/FOSSEE_light.svg</file>
+        <file>vectors/IITB_Launch.svg</file>
+        <file>vectors/IITB_logo_dark.svg</file>
+        <file>vectors/IITB_logo_light.svg</file>
+        <file>vectors/INSDAG_dark.svg</file>
+        <file>vectors/INSDAG_light.svg</file>
+        <file>vectors/MOE_dark.svg</file>
+        <file>vectors/MOE_light.svg</file>
+        <file>vectors/MOS_dark.svg</file>
+        <file>vectors/MOS_light.svg</file>
+        <file>vectors/OsdagBridge_label_dark.svg</file>
+        <file>vectors/OsdagBridge_label_light.svg</file>
+        <file>vectors/OsdagBridge_tagline_dark.svg</file>
+        <file>vectors/OsdagBridge_tagline_light.svg</file>
+        <file>vectors/background_dark.svg</file>
+        <file>vectors/background_light.svg</file>
+        <file>vectors/contour_lines.svg</file>
+        <file>vectors/day_button.svg</file>
+        <file>vectors/info_default.svg</file>
+        <file>vectors/info_hover.svg</file>
+        <file>vectors/load_default.svg</file>
+        <file>vectors/load_hover.svg</file>
+        <file>vectors/night_button.svg</file>
+        <file>vectors/no_modules_dark.svg</file>
+        <file>vectors/no_modules_light.svg</file>
+        <file>vectors/no_projects_dark.svg</file>
+        <file>vectors/no_projects_light.svg</file>
+        <file>vectors/plugin_default.svg</file>
+        <file>vectors/plugin_hover.svg</file>
+        <file>vectors/resources_default.svg</file>
+        <file>vectors/resources_hover.svg</file>
+        <file>vectors/search_icon.svg</file>
+        <file>vectors/supported_by.svg</file>
+        <file>vectors/window_close_dark.svg</file>
+        <file>vectors/window_close_hover.svg</file>
+        <file>vectors/window_close_light.svg</file>
+        <file>vectors/window_maximize_dark.svg</file>
+        <file>vectors/window_maximize_light.svg</file>
+        <file>vectors/window_minimize_dark.svg</file>
+        <file>vectors/window_minimize_light.svg</file>
+        <file>vectors/window_restore_dark.svg</file>
+        <file>vectors/window_restore_light.svg</file>
+
+        <file>vectors/nav_icons/2d_frame.svg</file>
+        <file>vectors/nav_icons/2d_frame_dark.svg</file>
+        <file>vectors/nav_icons/beam_column.svg</file>
+        <file>vectors/nav_icons/beam_column_dark.svg</file>
+        <file>vectors/nav_icons/compression_member.svg</file>
+        <file>vectors/nav_icons/compression_member_dark.svg</file>
+        <file>vectors/nav_icons/flexural_member.svg</file>
+        <file>vectors/nav_icons/flexural_member_dark.svg</file>
+        <file>vectors/nav_icons/home_clicked.svg</file>
+        <file>vectors/nav_icons/home_default.svg</file>
+        <file>vectors/nav_icons/truss.svg</file>
+        <file>vectors/nav_icons/truss_dark.svg</file>
+
+        <file>vectors/recents/2d_frame.svg</file>
+        <file>vectors/recents/beam_column.svg</file>
+        <file>vectors/recents/compression_member.svg</file>
+        <file>vectors/recents/flexural_member.svg</file>
+        <file>vectors/recents/truss.svg</file>
+
+        <file>fonts/UbuntuSans-Regular.ttf</file>
+
+        <file>images/modules/plate_girder_bridge.png</file>
+    </qresource>
+</RCC>
