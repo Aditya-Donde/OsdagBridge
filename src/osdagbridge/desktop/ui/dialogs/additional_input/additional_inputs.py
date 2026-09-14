@@ -1,4 +1,4 @@
-﻿"""
+"""
 Additional Inputs Widget for Highway Bridge Design
 Provides detailed input fields for manual bridge parameter definition
 """
@@ -291,6 +291,8 @@ class AdditionalInputs(QDialog):
                 widget.blockSignals(True)
                 widget.setCurrentText(str(value))
                 widget.blockSignals(False)
+                if hasattr(widget, "_sync_mode"):
+                    widget._sync_mode(widget.currentText())
 
             elif isinstance(widget, QCheckBox):
                 widget.blockSignals(True)
@@ -491,6 +493,8 @@ class AdditionalInputs(QDialog):
                 widget.blockSignals(True)
                 widget.setCurrentText(str(value))
                 widget.blockSignals(False)
+                if hasattr(widget, "_sync_mode"):
+                    widget._sync_mode(widget.currentText())
 
             elif isinstance(widget, QCheckBox):
                 widget.blockSignals(True)
@@ -514,6 +518,24 @@ class AdditionalInputs(QDialog):
     # ── Dialog Persistence ───────────────────────────────────────────────────────
 
     def _save_inputs(self):  # on_change: validates all tabs then commits working_input_dict and emits CAD update signal
+
+        # Validate custom camber if mode is Custom
+        if self.working_input_dict.get(KEY_DO_CAMBER_MODE) == "Custom":
+            result = self.validator.validate_additional_inputs(KEY_DO_CAMBER_VALUE, self.working_input_dict)
+            if result is not None:
+                corrected, message = result
+                CustomMessageBox(
+                    title="Input Error",
+                    text=message,
+                    dialogType=MessageBoxType.Warning,
+                ).exec()
+                widget = self.findChild(QLineEdit, KEY_DO_CAMBER_VALUE)
+                if widget:
+                    widget.blockSignals(True)
+                    widget.setText(str(corrected))
+                    widget.blockSignals(False)
+                self._update_input_dict(KEY_DO_CAMBER_VALUE, str(corrected))
+                return
 
         # Flush the currently-displayed stiffener member's widgets before committing.
         # _save_stiffener_member_data otherwise only runs when switching *away* from a
