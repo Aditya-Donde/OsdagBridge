@@ -1150,35 +1150,35 @@ def _uls_girder_rows(n_girders) -> int | None:
         return None
 
 
-def _get_uls_per_girder(output_dict) -> dict:
-    """Return design_results[KEY_SD_ULS_PER_GIRDER], or {} if unavailable."""
-    return ((output_dict or {}).get("design_results") or {}).get(KEY_SD_ULS_PER_GIRDER) or {}
+def _get_design_summary(output_dict) -> dict:
+    """Return design_results[KEY_SD_SUMMARY], or {} if unavailable."""
+    return ((output_dict or {}).get("design_results") or {}).get(KEY_SD_SUMMARY) or {}
 
 
 def _uls_check_rows(output_dict, category: str) -> list | None:
     """Return ordered (girder_label, demand, capacity, ur, status) rows for one check category.
 
-    Girder order and all values come from output_dict["design_results"]
-    [uls_per_girder] (stored by _build_uls_per_girder in the designer).
-    Returns None if the data is not available yet.
+    Girder order and all values come from the design summary's per-girder
+    categories — the same rows the logger, output dock, Design Check tab and
+    report render. Nothing is recomputed here. Returns None if the data is not
+    available yet, or if no girder ran that check.
     """
-    uls_pg = _get_uls_per_girder(output_dict)
-    cat_data = uls_pg.get(category)
-    if not cat_data:
+    per_girder = _get_design_summary(output_dict).get("per_girder") or {}
+    if not per_girder:
         return None
 
     rows = []
-    for girder, g_chk in cat_data.items():
-        if g_chk is None:
-            rows.append([f"{girder}M1", EMPTY, EMPTY, EMPTY, EMPTY])
-        else:
-            rows.append([
-                f"{girder}M1",
-                _num(g_chk["demand"]),
-                _num(g_chk["capacity"]),
-                _num(g_chk["ur"]),
-                g_chk.get("status", EMPTY),
-            ])
+    for girder, g_data in per_girder.items():
+        row = (g_data.get("categories") or {}).get(category)
+        if not row:
+            continue
+        rows.append([
+            f"{girder}M1",
+            _num(row["demand"]),
+            _num(row["capacity"]),
+            _num(row["ur"]),
+            row.get("status", EMPTY),
+        ])
     return rows if rows else None
 
 
@@ -1622,12 +1622,15 @@ def resolve_crack_width_check(output_dict: dict) -> dict | None:
 # ── Resolvers — Design Results Summary ────────────────────────────────────────
 
 def resolve_design_results_summary(output_dict: dict) -> dict | None:
-    """One row per girder: the controlling check (highest UR among the 8 design
-    checks, from envelope demands) plus the real load case / combination that
-    drives that check (worst per-LC UR for the same check id, envelope
-    pseudo-cases excluded)."""
-    pg = _get_per_girder(output_dict)
-    if not pg:
+    """One row per girder: that girder's controlling check and the load case
+    driving it, read from the design summary.
+
+    The summary already picked the controlling category and named its governing
+    load case — the same row the logger, output dock, Design Check tab and report
+    render for that girder. Nothing is recomputed here.
+    """
+    per_girder = _get_design_summary(output_dict).get("per_girder") or {}
+    if not per_girder:
         return None
 
     def _with_unit(value, unit):
@@ -1637,35 +1640,20 @@ def resolve_design_results_summary(output_dict: dict) -> dict | None:
         return f"{v} {unit}".strip() if unit and unit not in ("–", "-") else v
 
     rows = []
-    for girder in pg:
-        g_data = pg.get(girder) or {}
-        checks = g_data.get("checks") or []
-        if not checks:
+    for girder, g_data in per_girder.items():
+        ctrl_key = g_data.get("controlling")
+        ctrl = (g_data.get("categories") or {}).get(ctrl_key) if ctrl_key else None
+        if not ctrl:
             rows.append([f"{girder}M1", EMPTY, EMPTY, EMPTY, EMPTY, EMPTY, EMPTY])
             continue
 
-        ctrl = max(checks, key=lambda c: c.get("dcr") or 0.0)
-
-        # Worst real LC for the controlling check id (skip Envelope pseudo-LCs)
-        ctrl_lc, best_dcr = None, None
-        for lc_name, lc_data in (g_data.get("per_lc") or {}).items():
-            if str(lc_name).lower().startswith("envelope"):
-                continue
-            for chk in lc_data.get("checks") or []:
-                if chk.get("id") == ctrl.get("check_id"):
-                    d = chk.get("dcr") or 0.0
-                    if best_dcr is None or d > best_dcr:
-                        best_dcr, ctrl_lc = d, lc_name
-        if ctrl_lc is None:
-            ctrl_lc = (g_data.get("demand") or {}).get("governing_combination") or EMPTY
-
         rows.append([
             f"{girder}M1",
-            ctrl_lc,
+            ctrl.get("load_case") or EMPTY,
             ctrl.get("name", EMPTY),
             _with_unit(ctrl.get("demand"),   ctrl.get("demand_unit")),
             _with_unit(ctrl.get("capacity"), ctrl.get("capacity_unit")),
-            _num(ctrl.get("dcr"), 3),
+            _num(ctrl.get("ur"), 3),
             ctrl.get("status", EMPTY),
         ])
 

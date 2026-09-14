@@ -616,14 +616,13 @@ class SteelDesign(QDialog):
             if not girder_key or not load_case or load_case.startswith(_COMBO_HEADER_PREFIX):
                 return
 
-            # Single computation path — same method the Output Dock uses
-            engine = backend.get_dcr_engine_for_selection(girder_key, load_case)
-            if engine is None:
+            # Stored rows for this selection - the same ones the Output Dock
+            # reads. Nothing is computed here or in the tab.
+            lc_data = backend.get_dcr_rows_for_selection(girder_key, load_case)
+            if not lc_data:
                 return
 
-            self.check_tab.populate_from_results(
-                engine.demand, engine.capacity, engine,
-            )
+            self.check_tab.populate_from_results(lc_data)
 
             self._checks_ran = True
             self._dcr_dirty  = False

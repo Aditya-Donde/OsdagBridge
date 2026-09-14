@@ -148,7 +148,13 @@ from osdagbridge.core.utils.common import (
     KEY_SD_TS_VRD,
     KEY_SD_TS_AEC,
     KEY_SD_TS_Y,
-    KEY_SD_ULS_PER_GIRDER,
+    KEY_SD_SUMMARY,
+    KEY_CHECK_FLEXURE,
+    KEY_CHECK_SHEAR,
+    KEY_CHECK_LTB,
+    KEY_CHECK_DEFLECTION,
+    KEY_CHECK_STRESS,
+    KEY_CHECK_FATIGUE,
     KEY_SD_WEB_CLASS_LIMIT,
     KEY_SD_WEB_SLENDERNESS,
     KEY_SD_WEB_THICKNESS,
@@ -623,11 +629,16 @@ def ch5_design_checks(checks_data, bridge) -> str:
 
     # Generate Table 5.12 rows — per-girder fatigue assessment (IRC 22 Cl. 605),
     # mirroring the Generate Results dialog: one row per girder showing the
-    # GOVERNING fatigue check (worst of normal/shear by DCR). Source is the nested
-    # design_results["steeldesign.uls_per_girder"]["fatigue"][G{i}] dict, keyed by
-    # the canonical girder index, with {demand, capacity, ur, status}.
-    _fat_cat = ((bridge.output_dict.get("design_results", {}) or {})
-                .get(KEY_SD_ULS_PER_GIRDER, {}) or {}).get("fatigue", {}) or {}
+    # GOVERNING fatigue check (worst of normal/shear by DCR). Source is the design
+    # summary's per-girder fatigue category — the same row the logger, dock and
+    # Design Check tab render for that girder.
+    _pg_summary_512 = (bridge.output_dict.get("design_results", {})
+                       .get(KEY_SD_SUMMARY, {})
+                       .get("per_girder", {}))
+    _fat_cat = {
+        _g: _gd.get("categories", {}).get(KEY_CHECK_FATIGUE, {})
+        for _g, _gd in _pg_summary_512.items()
+    }
 
     def _fat_status(s):
         if s is None or str(s).strip() == "":
@@ -736,7 +747,7 @@ def ch5_design_checks(checks_data, bridge) -> str:
             if str(lc_name).lower().startswith("envelope"):
                 continue
             for chk in lc_data.get("checks") or []:
-                if chk.get("id") == ctrl.get("check_id"):
+                if chk.get("check_id") == ctrl.get("check_id"):
                     d = chk.get("dcr") or 0.0
                     if best_dcr is None or d > best_dcr:
                         best_dcr, ctrl_lc = d, lc_name
@@ -1156,16 +1167,17 @@ Fatigue Shear Resistance, $Q_r$ & IRC 22 Table 8 ($\phi d$, $N_{sc}$) & """
 
     # ── Table 5.22: Overall Design Check Summary — fill all rows ─────────────
     # Three row families:
-    #  (1) Girder DCR-engine checks: one source (design_results["per_girder"])
-    #      gives Demand, Capacity, UR, and the governing LC together. Worst
-    #      girder = highest DCR. Most checks fire on the envelope demand (units
-    #      available in per_girder["checks"]); SLS-conditional checks (e.g.
-    #      deflection) only appear per-LC, so fall back to per_lc for those.
+    #  (1) Girder checks: the design summary's governing row per category, which
+    #      already carries Demand, Capacity (with units), UR, the worst girder
+    #      and the real governing load case. Single source — see
+    #      designer.build_design_summary().
     #  (2) Deck slab: URs from deck_design_results (Demand/Capacity not stored).
     #  (3) Cross bracing: existing get_cb_* helpers (worst pair/member by UR).
     #      End diaphragm has no report helpers yet → "---" for now.
-    _pg_522 = (bridge.output_dict.get("design_results", {}) or {}).get("per_girder", {}) or {}
-    _dd_522 = bridge.output_dict.get("deck_design_results", {}) or {}
+    _dr_522  = bridge.output_dict.get("design_results", {})
+    _pg_522  = _dr_522.get("per_girder", {})
+    _gov_522 = _dr_522.get(KEY_SD_SUMMARY, {}).get("governing", {}).get("categories", {})
+    _dd_522 = bridge.output_dict.get("deck_design_results", {})
 
     def _vu_522(v, unit):
         s = _dfmt(v, nd=2)
@@ -1187,54 +1199,23 @@ Fatigue Shear Resistance, $Q_r$ & IRC 22 Table 8 ($\phi d$, $N_{sc}$) & """
         # "ACCIDENTAL 1: 1.0DL + 1.0DW + 0.75LL" (the per_lc key).
         return _tex(str(lc).strip())
 
-    def _gov_lc_in_522(g, check_ids):
-        gd = _pg_522.get(g) or {}
-        best = None
-        for _lc, _ld in (gd.get("per_lc") or {}).items():
-            if str(_lc).lower().startswith("envelope"):
-                continue
-            for _chk in (_ld.get("checks") or []):
-                if _chk.get("id") in check_ids:
-                    _d = _chk.get("dcr") or 0.0
-                    if best is None or _d > best[0]:
-                        best = (_d, _lc)
-        return _lc_short(best[1]) if best else "---"
+    def _dcr_row(check_key):
+        """One Table 5.22 girder row, read from the design summary.
 
-    def _dcr_row(check_ids, fallback_unit=""):
-        # Prefer per_girder["checks"] (carries units); worst girder by DCR.
-        best = None  # (dcr, demand, capacity, dunit, cunit, g)
-        for g, gd in _pg_522.items():
-            if str(g).startswith("EB"):
-                continue
-            for chk in (gd.get("checks") or []):
-                if chk.get("check_id") in check_ids:
-                    d = chk.get("dcr") or 0.0
-                    if best is None or d > best[0]:
-                        best = (d, chk.get("demand"), chk.get("capacity"),
-                                chk.get("demand_unit") or "", chk.get("capacity_unit") or "", g)
-        if best is not None:
-            d, dem, cap, du, cu, g = best
-            return (_gov_lc_in_522(g, check_ids),
-                    _vu_522(dem, du) or "---", _vu_522(cap, cu) or "---", _ur_522(d) or "---")
-        # Fallback: per_lc (no units) for SLS-conditional checks (e.g. deflection).
-        best = None  # (dcr, demand, capacity, lc)
-        for g, gd in _pg_522.items():
-            if str(g).startswith("EB"):
-                continue
-            for _lc, _ld in (gd.get("per_lc") or {}).items():
-                if str(_lc).lower().startswith("envelope"):
-                    continue
-                for chk in (_ld.get("checks") or []):
-                    if chk.get("id") in check_ids:
-                        d = chk.get("dcr") or 0.0
-                        if best is None or d > best[0]:
-                            best = (d, chk.get("demand"), chk.get("capacity"), _lc)
-        if best is None:
+        The summary's governing row for a category already carries the worst
+        girder, its demand/capacity with units, its UR and the real load case
+        that drives it — so this table shows exactly what the logger, the output
+        dock and the Design Check tab show. No scanning, no recomputation.
+        """
+        row = _gov_522.get(check_key)
+        if not row:
             return ("---", "---", "---", "---")
-        d, dem, cap, _lc = best
-        return (_lc_short(_lc),
-                _vu_522(dem, fallback_unit) or "---", _vu_522(cap, fallback_unit) or "---",
-                _ur_522(d) or "---")
+        return (
+            _lc_short(row.get("load_case")) if row.get("load_case") else "---",
+            _vu_522(row.get("demand"),   row.get("demand_unit"))   or "---",
+            _vu_522(row.get("capacity"), row.get("capacity_unit")) or "---",
+            _ur_522(row.get("ur")) or "---",
+        )
 
     # (3) Cross bracing — worst pair/member by UR for the given force type.
     _cb_pairs_522 = bridge.get_cb_pairs()
@@ -1299,6 +1280,32 @@ Fatigue Shear Resistance, $Q_r$ & IRC 22 Table 8 ($\phi d$, $N_{sc}$) & """
         ur = (dem / cap) if cap > 0 else None
         return (_deck_combo, f"{dem:.2f} {unit}", f"{cap:.2f} {unit}", _ur_522(ur))
 
+    def _comp_trans_shear_row():
+        """Composite transverse shear (Cl.606.10) — a deck-design row, not a
+        girder one. The girder engine stopped emitting check 16 when this check
+        moved to Stage 6, so it is read from where Stage 6 leaves it: deckdesign
+        writes the demand and capacity back into design_results under
+        KEY_SD_TS_VL / KEY_SD_TS_VRD (both kN/m), and stores the UR it already
+        computed in deck_design_results. Prefer that stored UR so this row and
+        the deck dialog's bar cannot disagree; fall back to demand/capacity only
+        when the composite checks did not run.
+        """
+        dem = _dr_522.get(KEY_SD_TS_VL)
+        cap = _dr_522.get(KEY_SD_TS_VRD)
+        if dem is None or cap is None:
+            return ("---", "---", "---", "---")
+        try:
+            dem_f, cap_f = float(dem), float(cap)
+        except (TypeError, ValueError):
+            return ("---", "---", "---", "---")
+        ur = _dd_522.get("ur_composite_trans_shear")
+        if ur is None:
+            ur = (dem_f / cap_f) if cap_f > 0 else None
+        return (_deck_combo,
+                _vu_522(dem_f, "kN/m") or "---",
+                _vu_522(cap_f, "kN/m") or "---",
+                _ur_522(ur) or "---")
+
     def _row522_msg(label, msg):
         # Single message spanning the 4 data columns.
         return label + r" & \multicolumn{4}{c|}{" + msg + r"} \\[6pt]" + "\n\\hline"
@@ -1346,13 +1353,13 @@ Fatigue Shear Resistance, $Q_r$ & IRC 22 Table 8 ($\phi d$, $N_{sc}$) & """
     )
 
     _t522 = [
-        _row522(r"Girder --- Moment",             _dcr_row({1})),
-        _row522(r"Girder --- Shear",              _dcr_row({2})),
-        _row522(r"Girder --- LTB (constr.)",      _dcr_row({5})),
-        _row522(r"Girder --- Deflection",         _dcr_row({13, 14}, fallback_unit="mm")),
-        _row522(r"Girder --- Stress",             _dcr_row({11}, fallback_unit="MPa")),
-        _row522(r"Girder --- Fatigue",            _dcr_row({8, 9}, fallback_unit="MPa")),
-        _row522(r"Transverse Shear (slab)",       _dcr_row({16})),
+        _row522(r"Girder --- Moment",             _dcr_row(KEY_CHECK_FLEXURE)),
+        _row522(r"Girder --- Shear",              _dcr_row(KEY_CHECK_SHEAR)),
+        _row522(r"Girder --- LTB (constr.)",      _dcr_row(KEY_CHECK_LTB)),
+        _row522(r"Girder --- Deflection",         _dcr_row(KEY_CHECK_DEFLECTION)),
+        _row522(r"Girder --- Stress",             _dcr_row(KEY_CHECK_STRESS)),
+        _row522(r"Girder --- Fatigue",            _dcr_row(KEY_CHECK_FATIGUE)),
+        _row522(r"Transverse Shear (slab)",       _comp_trans_shear_row()),
         _row522(r"Crack Width (slab)",            _crack_cells),
         _row522(r"Deck --- Flexure (sagging)",    _deck_row(KEY_DD_M_ULS_SAG, KEY_DD_MU_BOT, "kN-m/m")),
         _row522(r"Deck --- Flexure (hogging)",    _deck_row(KEY_DD_M_ULS_HOG, KEY_DD_MU_TOP, "kN-m/m")),
