@@ -1210,9 +1210,10 @@ class BridgeGrillageModel:
         )
 
         # ── 1. Seismic coefficients (IRC:6-2017 Cl.218.5.1) ──
-        # Use Ah/Av from UI if available; otherwise compute from IRC formula.
+        # Sa/g depends only on soil/period, so compute it always (for the
+        # results table). Use Ah/Av from UI if available; else from IRC formula.
+        sa_g = self._spectral_sa_g(soil_type, time_period)
         if not Ah:
-            sa_g = self._spectral_sa_g(soil_type, time_period)
             damping_factor = IRC6_2017.table_18(damping_percent)
             Ah = (z_value / 2.0) * importance_factor * sa_g * damping_factor
         if not Av:
@@ -1327,6 +1328,7 @@ class BridgeGrillageModel:
             "EQ_X": EQ_X, "EQ_Z": EQ_Z, "EQ_Y": EQ_Y,
             "EQ_a": combo_cases[0], "EQ_b": combo_cases[1], "EQ_c": combo_cases[2],
             "Feq_X_kN": Feq_X_kN, "Feq_Z_kN": Feq_Z_kN,
+            "Z": z_value, "Sa_g": sa_g, "Ah": Ah, "Av": Av,
         }
 
     # ============================================================
@@ -2598,7 +2600,7 @@ class BridgeGrillageModel:
     #   ULS Load Combinations  (IRC:6-2017 Table B.2)
     # ============================================================
 
-    def create_uls_combinations(self, model=None, included_keys=None):
+    def create_uls_combinations(self, model=None, included_keys=None, name_by_key=None):
         """
         Creates the selected ULS load combinations per IRC:6-2017 Table B.2.
 
@@ -2694,6 +2696,7 @@ class BridgeGrillageModel:
             # passes so a mapping miss can never silently drop a combination.
             if included_keys is not None and key and key not in included_keys:
                 return
+            name = (name_by_key or {}).get(key)   # report display name → same string everywhere
 
             # Resolve which sub-cases actually contribute (mirrors _copy_loads:
             # a load is included only when its factor is non-zero and its
@@ -2736,7 +2739,7 @@ class BridgeGrillageModel:
                 return
 
             counters[prefix] = seq
-            lc_name  = f"{prefix}_{seq}: " + " + ".join(terms)
+            lc_name  = name or f"{prefix}_{seq}: " + " + ".join(terms)
             combo_lc = og.create_load_case(name=lc_name)
             for src, fac in to_copy:
                 _copy_loads(combo_lc, src, fac)
@@ -2803,7 +2806,7 @@ class BridgeGrillageModel:
     #   SLS Load Combinations  (IRC:6-2017 Table B.3)
     # ============================================================
 
-    def create_sls_combinations(self, model=None, included_keys=None):
+    def create_sls_combinations(self, model=None, included_keys=None, name_by_key=None):
         """
         Creates the selected SLS load combinations per IRC:6-2017 Table B.3.
 
@@ -2889,6 +2892,7 @@ class BridgeGrillageModel:
             # passes so a mapping miss can never silently drop a combination.
             if included_keys is not None and key and key not in included_keys:
                 return
+            name = (name_by_key or {}).get(key)   # report display name → same string everywhere
 
             # Resolve which sub-cases actually contribute (mirrors _copy_loads:
             # a load is included only when its factor is non-zero and its
@@ -2923,7 +2927,7 @@ class BridgeGrillageModel:
                 return
 
             counters[prefix] = seq
-            lc_name  = f"{prefix}_{seq}: " + " + ".join(terms)
+            lc_name  = name or f"{prefix}_{seq}: " + " + ".join(terms)
             combo_lc = og.create_load_case(name=lc_name)
             for src, fac in to_copy:
                 _copy_loads(combo_lc, src, fac)
