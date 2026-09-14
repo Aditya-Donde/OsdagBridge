@@ -83,6 +83,35 @@ _EQ_LATEX: dict[str, tuple[tuple[str, int, bool], ...]] = {
         (r"$\mathrm{(Default}\ x = 600\mathrm{)}$",                 160, False),
     ),
 }
+
+# ---------------------------------------------------------------------------
+# Deflection card — x in "delta <= L/x" is NOT a constant. IRC 22:2015
+# Cl.604.3.2 sets it per load case: live load + impact -> L/800, total load
+# (DL+LL) and the dead-load-only case -> L/600. The card must show the x that
+# was actually used for the selected load combination, otherwise the stated
+# criterion contradicts the allowable value printed right below it.
+# check_id -> (x, label) mirrors the three deflection checks raised in
+# designer._add_check (13 live / 14 total / 18 DL, all Cl.604.3.2).
+# ---------------------------------------------------------------------------
+_DEFL_CRITERIA = {
+    13: (800, r"live\ load"),
+    14: (600, r"total\ load"),
+    18: (600, r"dead\ load"),
+}
+
+
+def _deflection_eq_lines(check_id: int | None, x_value: int) -> tuple[tuple[str, int, bool], ...]:
+    """Return the deflection equations with x resolved for this load case."""
+    _, label = _DEFL_CRITERIA.get(check_id, (600, ""))
+    caption = (rf"$\mathrm{{(}}x = {x_value},\ \mathrm{{{label}}}\mathrm{{)}}$"
+               if label else rf"$\mathrm{{(}}x = {x_value}\mathrm{{)}}$")
+    return (
+        (r"$\delta \leq L / x$",                        80, False),
+        (caption,                                        190, False),
+        (r"$\mathrm{(IRC\ 22:2015\ Cl.604.3.2)}$",       200, False),
+    )
+
+
 def _get_shear_latex(governing_method: str):
     """
     Return the governing shear equations for the Design Check panel.
@@ -671,6 +700,16 @@ class SteelDesignCheckTab(QWidget):
                     else:
                         m = re.search(r"beta=([\d.]+)", note)
                         entry["is_high_shear"] = bool(m) and float(m.group(1)) > 0
+                if key == KEY_CHECK_DEFLECTION:
+                    # Which of the three Cl.604.3.2 deflection checks governs decides
+                    # x (L/800 live, L/600 total & DL). Read it off the note the
+                    # designer wrote ("Limit = L/800") so the card can never state a
+                    # different criterion from the one the limit was computed with;
+                    # fall back to the check_id map if the note is absent.
+                    entry["check_id"] = worst.check_id
+                    m = re.search(r"L/(\d+)", worst.note or "")
+                    entry["defl_x"] = (int(m.group(1)) if m
+                                       else _DEFL_CRITERIA.get(worst.check_id, (600, ""))[0])
                 results_by_key[key] = entry
             except Exception:
                 logger.exception("Failed to load checks %s for key %s", ids, key)
@@ -700,6 +739,12 @@ class SteelDesignCheckTab(QWidget):
             eq_view = self.check_eq_views.get(key)
             if eq_view is not None:
                 eq_view.set_lines(_flexure_eq_lines(res.get("pna_location", "")))
+        if key == KEY_CHECK_DEFLECTION:
+            eq_view = self.check_eq_views.get(key)
+            if eq_view is not None:
+                eq_view.set_lines(
+                    _deflection_eq_lines(res.get("check_id"), res.get("defl_x", 600))
+                )
         if key == KEY_CHECK_SHEAR:
     
             governing_method = res.get("governing_method")
@@ -782,6 +827,10 @@ class SteelDesignCheckTab(QWidget):
                     cap_pfx = "<i>V<sub>cr</sub></i>"
                 elif method == "tension_field":
                     cap_pfx = "<i>V<sub>tf</sub></i>"
+
+            if key == KEY_CHECK_DEFLECTION:
+                # "L / x" is a placeholder; show the x this limit was built from.
+                cap_pfx = f"<i>L / {res.get('defl_x', 600)}</i>"
 
             val_text = (
                 f"{dem_pfx} = {demand:.2f}{unit_str}<br>"
