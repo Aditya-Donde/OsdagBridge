@@ -199,9 +199,15 @@ from osdagbridge.core.utils.common import (
     KEY_SD_STIFF_METHOD,
     KEY_SD_STIFF_INT_THICK,
     KEY_SD_STIFF_INT_SPACING,
+    KEY_SD_STIFF_INT_WIDTH,
     KEY_SD_STIFF_END_THICK,
+    KEY_SD_STIFF_END_WIDTH,
+    KEY_SD_STIFF_END_SPACING,
     KEY_SD_STIFF_END_COUNT,
     KEY_SD_STIFF_LONG,
+    KEY_SD_STIFF_LONG_THICK,
+    KEY_SD_STIFF_LONG_WIDTH,
+    KEY_SD_STIFF_LONG_SPACING,
     KEY_SD_IS_IYS_MIN,
     KEY_SD_IS_IYS_PROV,
     KEY_SD_IS_FQ,
@@ -3624,7 +3630,9 @@ class PlateGirderBridge:
         out[KEY_SD_STIFF_METHOD]       = dr["stiff_method"]
         out[KEY_SD_STIFF_INT_THICK]    = _rnum(dr["is_tq_mm"] if _is_custom_stiff else dr["stiff_int_thick_req"])
         out[KEY_SD_STIFF_INT_SPACING]  = _rnum(dr["is_c_mm"]  if _is_custom_stiff else dr["stiff_int_space_req"])
+        out[KEY_SD_STIFF_INT_WIDTH]    = _rnum(dr["is_H_mm"]  if _is_custom_stiff else dr["stiff_int_width_req"])
         out[KEY_SD_STIFF_END_THICK]    = _rnum(dr["bs_tq_mm"] if _is_custom_stiff else dr["stiff_end_thick_req"])
+        out[KEY_SD_STIFF_END_WIDTH]    = _rnum(dr["bs_H_mm"]  if _is_custom_stiff else dr["stiff_end_width_req"])
         out[KEY_SD_STIFF_END_COUNT]    = dr["bs_n_plates"]
         # Longitudinal: only the user can specify them; optimizer adds none.
         _stiff_data  = inp.get("stiffener_by_member") or {}
@@ -3632,6 +3640,70 @@ class PlateGirderBridge:
         _long_val    = str((_first_stiff or {}).get("longitudinal_stiffener", "No")).strip()
         out[KEY_SD_STIFF_LONG]         = ((_long_val if _long_val and _long_val not in ("None", "NA", "") else "No")
                                           if _is_custom_stiff else "None")
+
+        # Bearing spacing and longitudinal thickness have no designer counterpart —
+        # nothing in the capacity engine sizes them. Echo the input through the same
+        # namespace so the Details tab reads one source for the whole table.
+        out[KEY_SD_STIFF_END_SPACING]  = _rnum(resolve_girder_value(inp, KEY_MP_STIFFENER_SPACING, 0))
+        out[KEY_SD_STIFF_LONG_THICK]   = _rnum(resolve_girder_value(inp, KEY_MP_STIFFENER_LONGITUDINAL_THICKNESS, 0))
+
+        # Longitudinal spacing follows the placement convention the stiffener CAD
+        # draws: levels at dw/3 (1 stiffener) or dw/3 and 2·dw/3 (2), so the gap is
+        # dw/3 either way.
+        def _long_spacing(long_val, dw_mm):
+            if str(long_val).strip().lower() in ("", "no", "none", "na"):
+                return ""
+            return _rnum(dw_mm / 3.0) if dw_mm else ""
+        out[KEY_SD_STIFF_LONG_SPACING] = _long_spacing(out[KEY_SD_STIFF_LONG], dr["dw_mm"])
+
+        # Longitudinal outstand: neither an input nor designed — nothing in the
+        # capacity engine models longitudinal stiffeners. Assumed equal to the
+        # intermediate stiffener outstand so the Details tab and report show a
+        # usable size; the Details tab carries a note stating the assumption.
+        out[KEY_SD_STIFF_LONG_WIDTH]   = out[KEY_SD_STIFF_INT_WIDTH]
+
+        # Per-girder stiffener summary — mirrors 2b. The designed values are computed
+        # for the controlling girder only, so every girder repeats them (the report
+        # does the same); in Custom mode each girder shows its own inputs.
+        for gi, _g_name in enumerate(per_girder):
+            suf = f".G{gi + 1}.M1"
+            _g_sec = per_girder[_g_name].get("section") or {}
+            _g_dw  = 0.0
+            try:
+                _g_dw = (float(_g_sec["D_mm"]) - float(_g_sec["tf_top_mm"])
+                         - float(_g_sec["tf_bot_mm"]))
+            except (KeyError, TypeError, ValueError):
+                _g_dw = 0.0
+
+            def _gs(base_key, gi=gi):
+                """Per-girder stiffener input, blank when unset."""
+                v = resolve_girder_value(inp, base_key, gi)
+                return "" if v is None or str(v).strip() in ("", "None", "NA") else v
+
+            out[KEY_SD_STIFF_METHOD + suf]      = out[KEY_SD_STIFF_METHOD]
+            out[KEY_SD_STIFF_END_COUNT + suf]   = (_gs(KEY_MP_STIFFENER_NO_BEARING_STIFFENERS)
+                                                   if _is_custom_stiff else out[KEY_SD_STIFF_END_COUNT])
+            out[KEY_SD_STIFF_END_SPACING + suf] = _rnum(_gs(KEY_MP_STIFFENER_SPACING))
+            out[KEY_SD_STIFF_LONG_THICK + suf]  = _rnum(_gs(KEY_MP_STIFFENER_LONGITUDINAL_THICKNESS))
+            if _is_custom_stiff:
+                _g_int_on = str(_gs(KEY_MP_STIFFENER_INTERMEDIATE)).strip().lower() == "yes"
+                out[KEY_SD_STIFF_INT_THICK + suf]   = _rnum(_gs(KEY_MP_STIFFENER_INTERMEDIATE_THICKNESS)) if _g_int_on else ""
+                out[KEY_SD_STIFF_INT_SPACING + suf] = _rnum(_gs(KEY_MP_STIFFENER_INTERMEDIATE_SPACING))   if _g_int_on else ""
+                out[KEY_SD_STIFF_INT_WIDTH + suf]   = _rnum(_gs(KEY_MP_STIFFENER_INTERMEDIATE_OUTSTAND))  if _g_int_on else ""
+                out[KEY_SD_STIFF_END_THICK + suf]   = _rnum(_gs(KEY_MP_STIFFENER_BEARING_THICKNESS))
+                out[KEY_SD_STIFF_END_WIDTH + suf]   = _rnum(_gs(KEY_MP_STIFFENER_BEARING_OUTSTAND))
+                _g_long = str(_gs(KEY_MP_STIFFENER_LONGITUDINAL) or "No").strip()
+                out[KEY_SD_STIFF_LONG + suf]        = _g_long if _g_long else "No"
+            else:
+                out[KEY_SD_STIFF_INT_THICK + suf]   = out[KEY_SD_STIFF_INT_THICK]
+                out[KEY_SD_STIFF_INT_SPACING + suf] = out[KEY_SD_STIFF_INT_SPACING]
+                out[KEY_SD_STIFF_INT_WIDTH + suf]   = out[KEY_SD_STIFF_INT_WIDTH]
+                out[KEY_SD_STIFF_END_THICK + suf]   = out[KEY_SD_STIFF_END_THICK]
+                out[KEY_SD_STIFF_END_WIDTH + suf]   = out[KEY_SD_STIFF_END_WIDTH]
+                out[KEY_SD_STIFF_LONG + suf]        = out[KEY_SD_STIFF_LONG]
+            out[KEY_SD_STIFF_LONG_SPACING + suf] = _long_spacing(out[KEY_SD_STIFF_LONG + suf], _g_dw)
+            # Assumed equal to this girder's intermediate stiffener outstand.
+            out[KEY_SD_STIFF_LONG_WIDTH + suf]   = out[KEY_SD_STIFF_INT_WIDTH + suf]
 
         # ── 4h. Intermediate stiffener checks (Table 5.8 — Custom only) ──────────
         # Verification values; only meaningful in Custom mode (table is omitted in
@@ -3658,58 +3730,6 @@ class PlateGirderBridge:
         out[KEY_SD_DEFL_ALLOW_LIVE]  = round(dr["defl_limit_live_mm"],  2)   # mm — allowable = L/800
         out[KEY_SD_DEFL_ALLOW_TOTAL] = round(dr["defl_limit_total_mm"], 2)   # mm — allowable = L/600
 
-        # In store_design_results(), replace the stiffener section (── 5. Stiffener table ──) with:
-
-        grade = str(inp.get(KEY_GIRDER, ""))
-
-        # Read stiffener state from the nested structure saved by StiffenerDetailsTab.collect_data()
-        stiffener_data = inp.get("stiffener_by_member") or {}
-        # Use the first member's state as the representative (bearing stiffeners are per bridge end)
-        first_member_state = {}
-        if stiffener_data:
-            first_key = next(iter(stiffener_data), None)
-            if first_key:
-                first_member_state = stiffener_data[first_key] or {}
-
-        def _stiff_from_member(key, fallback="NA"):
-            v = first_member_state.get(key)
-            if v is not None and str(v).strip() not in ("", "None", "NA"):
-                return str(v)
-            return fallback
-
-        # ── Bearing ─────────────────────────────────────────────────────────────────
-        out["stiff_bearing_grade"]     = grade
-        out["stiff_bearing_thickness"] = _stiff_from_member("bearing_thickness_value")
-        out["stiff_bearing_width"]     = _stiff_from_member("bearing_outstand_mm")
-        out["stiff_bearing_spacing"]   = _stiff_from_member("bearing_spacing_mm")
-
-        # ── Intermediate ────────────────────────────────────────────────────────────
-        int_stiff_on = _stiff_from_member("intermediate_stiffener", "No") == "Yes"
-        if int_stiff_on:
-            out["stiff_intermediate_grade"]     = grade
-            out["stiff_intermediate_thickness"] = _stiff_from_member("intermediate_thickness_value")
-            out["stiff_intermediate_width"]     = _stiff_from_member("intermediate_outstand_mm")
-            out["stiff_intermediate_spacing"]   = _stiff_from_member("intermediate_spacing_mm")
-        else:
-            out["stiff_intermediate_grade"]     = "NA"
-            out["stiff_intermediate_thickness"] = "NA"
-            out["stiff_intermediate_width"]     = "NA"
-            out["stiff_intermediate_spacing"]   = "NA"
-
-        # ── Longitudinal ─────────────────────────────────────────────────────────────
-        long_val = _stiff_from_member("longitudinal_stiffener", "No")
-        long_stiff_on = (long_val != "No")
-        if long_stiff_on:
-            out["stiff_longitudinal_grade"]     = grade
-            out["stiff_longitudinal_thickness"] = _stiff_from_member("longitudinal_thickness_value")
-            out["stiff_longitudinal_width"]     = "NA"
-            out["stiff_longitudinal_spacing"]   = "NA"
-        else:
-            out["stiff_longitudinal_grade"]     = "NA"
-            out["stiff_longitudinal_thickness"] = "NA"
-            out["stiff_longitudinal_width"]     = "NA"
-            out["stiff_longitudinal_spacing"]   = "NA"
-            
         # ── 6. Full design_results blob — consumed by dialogs / report tab ──────
         # Store the entire dict under a single key so any tab that needs deeper
         # data (capacity details, per-girder breakdown, report text) can get it
