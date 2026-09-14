@@ -154,11 +154,59 @@ def _pick_rebar(As_req_mm2: float,
 
 # ── shear helpers ─────────────────────────────────────────────────────────────
 
+# IRC 6:2017 Table 2 — Class A ground-contact dimensions, keyed by governing
+# axle load (tonnes). For each axle:
+#   B = contact dimension along the direction of travel — at right angles
+#       to the deck span, so it feeds b1 in IRC 112:2020 Eq. B3.1/B3.2.
+#   W = contact dimension transverse to the direction of travel — feeds c2
+#       for punching-shear dispersion.
+_TABLE_2_CLASS_A_BW_MM = {
+    11.4: (250.0, 500.0),
+    6.8:  (200.0, 380.0),
+    2.7:  (150.0, 200.0),
+}
+
+
+def _governing_axle_load_N(vehicle_class: str) -> float:
+    """
+    Heaviest axle load (N) for the vehicle class — the single source of
+    which axle governs both the per-wheel load (_max_wheel_load_kN) and,
+    for Class A, the IRC 6:2017 Table 2 ground-contact dimensions.
+    """
+    if vehicle_class in (KEY_VEHICLE[0], KEY_VEHICLE[1]):  # Class 70R
+        axle_loads = IRC6_2017.cl_204_1_Class70R_vehicle_wheel()["wheel_loads"]
+    else:                                                   # Class A / B
+        axle_loads = IRC6_2017.cl_204_1_ClassA_vehicle()["wheel_loads"]
+    return max(axle_loads)
+
+
+def _class_a_contact_bw_mm(axle_load_N: float) -> tuple:
+    """
+    IRC 6:2017 Table 2 — (B, W) in mm for the given governing Class A axle
+    load (N). B = along direction of travel (feeds b1 in Eq. B3.1/B3.2);
+    W = transverse to direction of travel (feeds c2 for punching shear).
+    """
+    axle_t = round(axle_load_N / 9810.0, 1)   # N → tonnes (t = kN*g = 9810 N)
+    try:
+        return _TABLE_2_CLASS_A_BW_MM[axle_t]
+    except KeyError:
+        raise ValueError(
+            f"IRC 6:2017 Table 2 has no ground-contact dimensions for a "
+            f"{axle_t} t Class A axle (expected one of "
+            f"{sorted(_TABLE_2_CLASS_A_BW_MM, reverse=True)} t)"
+        ) from None
+
+
 def _wheel_contact_length_mm(vehicle_class: str) -> float:
-    """Longitudinal wheel-contact length (mm) for punching — IRC 6:2017 drawings."""
+    """
+    Wheel-contact dimension W (mm) — transverse to the direction of travel
+    — used for punching-shear dispersion (c2). IRC 6:2017 Table 2 (Class A,
+    per governing axle) / Table 4 (Class 70R).
+    """
     if vehicle_class in (KEY_VEHICLE[0], KEY_VEHICLE[1]):
         return 150.0   # Class 70R
-    return 200.0       # Class A
+    _, W_mm = _class_a_contact_bw_mm(_governing_axle_load_N(vehicle_class))
+    return W_mm
 
 
 def _v_Rd_c_MPa(As_mm2: float, d_mm: float, fck_MPa: float,
@@ -324,21 +372,21 @@ def _governing_vehicle(carriageway_width_m: float) -> str:
 def _max_wheel_load_kN(vehicle_class: str) -> float:
     """
     Maximum single wheel load (kN) for the governing vehicle per IRC 6:2017.
-    wheel_loads are per-axle totals stored in Newtons (IRC6 unit system uses
-    t = kN*g = 9810 N); divide by 2 for per-wheel and by 1000 to get kN.
+    Divides the governing axle load (N) by 2 for per-wheel and by 1000 for kN.
     """
-    if vehicle_class in (KEY_VEHICLE[0], KEY_VEHICLE[1]):  # Class 70R
-        axle_loads = IRC6_2017.cl_204_1_Class70R_vehicle_wheel()["wheel_loads"]
-    else:                                                   # Class A / B
-        axle_loads = IRC6_2017.cl_204_1_ClassA_vehicle()["wheel_loads"]
-    return max(axle_loads) / 2.0 / 1000.0   # N → kN, axle → per-wheel
+    return _governing_axle_load_N(vehicle_class) / 2.0 / 1000.0   # N → kN, axle → per-wheel
 
 
 def _wheel_contact_width_m(vehicle_class: str) -> float:
-    """Transverse wheel-contact width (m) for dispersion — IRC 6:2017 drawings."""
+    """
+    Wheel-contact dimension B (m) — along the direction of travel, at right
+    angles to the deck span — used as b1 in IRC 112:2020 Eq. B3.1/B3.2.
+    IRC 6:2017 Table 2 (Class A, per governing axle) / Table 4 (Class 70R).
+    """
     if vehicle_class in (KEY_VEHICLE[0], KEY_VEHICLE[1]):
-        return 0.300                   # Class 70R: 300 mm transverse contact
-    return 0.250                       # Class A:   250 mm transverse contact
+        return 0.300                   # Class 70R: 300 mm
+    B_mm, _ = _class_a_contact_bw_mm(_governing_axle_load_N(vehicle_class))
+    return B_mm / 1000.0
 
 
 # ── composite steel–concrete interface checks (IRC 22:2015) ──────────────────
