@@ -3197,11 +3197,17 @@ def _extract_demands_from_result_data(
             # enables the Stage-1 LTB check (5a, vs Mb_stage1) in the per-LC view.
             _m_sw    = round(Mz, 2) if (_sw_lc is not None and lc_str == _sw_lc) else 0.0
             # Fatigue ranges (checks 8/9) apply only to frequent SLS cases (Cl.604.5).
-            # Mz is in kN·m here → ×1e6 = N·mm; Vy in kN → ×1e3 = N.
+            # The RANGE itself is a property of the fatigue vehicle (IRC:6 Cl.204.6)
+            # moving on and off the section — NOT of this combination's own total
+            # stress, which includes the steady permanent loads that never cycle.
+            # So reuse the girder-level ranges computed in (4) above rather than
+            # deriving anything from this LC's Mz/Vy: the frequent-SLS combination
+            # only GATES the check (Cl.604.5), it does not define the demand.
+            # This is what keeps the Design Check panel and the report's fatigue
+            # tables on the same Δσ — both now read the same fatigue-truck range.
             _is_fat     = (lc_t == "SLS_frequent")
-            # Composite section modulus — live-load fatigue stress acts on the composite section.
-            _stress_rng = round(Mz * 1e6 / Ze_comp_bot_mm3, 3) if _is_fat and Ze_comp_bot_mm3 > 0 else 0.0
-            _shear_rng  = round(Vy * 1e3 / Aw_mm2, 3)       if _is_fat and Aw_mm2 > 0 else 0.0
+            _stress_rng = round(stress_range_MPa, 3) if _is_fat else 0.0
+            _shear_rng  = round(shear_range_MPa, 3)  if _is_fat else 0.0
 
             per_lc[lc_str] = DemandEnvelope(
                 # Strong-axis moment, vertical shear, axial — directly usable as ULS demands
