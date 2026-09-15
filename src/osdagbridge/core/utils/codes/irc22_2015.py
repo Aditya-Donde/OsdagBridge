@@ -1652,9 +1652,12 @@ class IRC22_2014:
         Equation:
             tau_f = tau_fn * (5e6 / Nsc)^(1/5)
 
-        Optional:
-            Returns Table 8 nominal fatigue strength Qr (kN) for headed studs (phi 16/20/22/25)
-            using log interpolation for intermediate Nsc.
+        Fatigue strength of one stud (shank area):
+            Qr = tau_f * pi * d^2 / 4
+
+        Table 8 tabulates Qr only for phi 16/20/22/25; the equation above reproduces
+        those values within rounding, so it is used for every diameter (e.g. 12 mm).
+        The tabulated value is returned alongside as a reference when available.
         """
 
 
@@ -1669,11 +1672,18 @@ class IRC22_2014:
             "clause": "IRC 22:2015 - 606.3.2"
         }
 
-        #  Table 8 values
-        if use_table8:
-            if stud_d_mm is None:
-                raise ValueError("stud_d_mm must be provided when use_table8=True")
+        if stud_d_mm is None:
+            raise ValueError("stud_d_mm must be provided")
 
+        if stud_d_mm <= 0:
+            raise ValueError("stud_d_mm must be positive")
+
+        # Qr from the clause equation, valid for any stud diameter.
+        A_shank_mm2 = math.pi * (stud_d_mm ** 2) / 4.0
+        result["Qr_kN"] = round(tau_f_MPa * A_shank_mm2 / 1000.0, 3)
+
+        #  Table 8 values (reference only, phi 16/20/22/25)
+        if use_table8:
             TABLE8_Qr_kN = {
                 25: {1e5: 71, 5e5: 52, 2e6: 39, 1e7: 28, 1e8: 18},
                 22: {1e5: 55, 5e5: 40, 2e6: 30, 1e7: 22, 1e8: 14},
@@ -1683,7 +1693,7 @@ class IRC22_2014:
 
             d_key = int(round(stud_d_mm))
             if d_key not in TABLE8_Qr_kN:
-                raise ValueError("stud_d_mm must be one of 16, 20, 22, 25 as per Table 8")
+                return result
 
             # log interpolation between nearest points
             points = sorted(TABLE8_Qr_kN[d_key].items())  # list of (N, Qr)
