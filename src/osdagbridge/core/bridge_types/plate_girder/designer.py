@@ -296,6 +296,11 @@ class StiffenerConfig:
     # Set c_mm > 0 to enable intermediate stiffener checks; bs_R_kN > 0 for bearing stiffener checks.
 
     # ── Intermediate transverse stiffener (Cl.509.7.2 / IS 800 Cl.8.7.2) ─────────────
+    # False = the user explicitly chose Intermediate Stiffener = No. The web is then
+    # designed as unstiffened between bearings: no guidance spacing is invented, so
+    # shear buckling uses Kv = 5.35 and the ULS check fails honestly when the web is
+    # too slender to work without them.
+    intermediate_enabled: bool = True
     c_mm: float = 0.0           # panel spacing between adjacent stiffeners (mm)
     tq_mm: float = 0.0          # stiffener plate thickness (mm)
     H_mm: float = 0.0           # outstanding leg height (mm)
@@ -609,10 +614,28 @@ class BridgeConfig:
                 f"expected one of {list(_shear_method_map)}."
             )
 
+        # Intermediate stiffener on/off — the user's Custom-mode choice
+        # (KEY_MP_STIFFENER_INTERMEDIATE, stored per-member like the other stiffener
+        # fields). "No" must reach the capacity engine: without it a blank spacing is
+        # indistinguishable from "not filled in yet" and the engine silently assumes a
+        # guidance spacing, inflating the shear resistance. In Optimized mode the field
+        # is greyed out and the software sizes the stiffeners, so it is always enabled.
+        _is_custom_mode = (str(inp.get(KEY_DESIGN_MODE, "Optimized")).strip().lower()
+                           in {"custom", "customized"})
+        _int_flag = _member_value(KEY_MP_STIFFENER_INTERMEDIATE)
+        intermediate_enabled = (
+            str(_int_flag).strip().lower() == "yes"
+            if (_is_custom_mode and _int_flag is not None) else True
+        )
+
+        # When disabled, the intermediate plate dims are dropped: the thickness combo
+        # keeps its last value even after the user switches to "No", and a stale size
+        # must not look like a provided stiffener downstream.
         stiffener = StiffenerConfig(
-            c_mm        = _optfloat(KEY_MP_STIFFENER_INTERMEDIATE_SPACING),
-            tq_mm       = _optfloat(KEY_MP_STIFFENER_INTERMEDIATE_THICKNESS),
-            H_mm        = _optfloat(KEY_MP_STIFFENER_INTERMEDIATE_OUTSTAND),
+            intermediate_enabled = intermediate_enabled,
+            c_mm        = _optfloat(KEY_MP_STIFFENER_INTERMEDIATE_SPACING)   if intermediate_enabled else 0.0,
+            tq_mm       = _optfloat(KEY_MP_STIFFENER_INTERMEDIATE_THICKNESS) if intermediate_enabled else 0.0,
+            H_mm        = _optfloat(KEY_MP_STIFFENER_INTERMEDIATE_OUTSTAND)  if intermediate_enabled else 0.0,
             n_sides     = int(_optfloat(KEY_MP_STIFFENER_NO_BEARING_STIFFENERS, 1)),
             shear_method= shear_method,
             bs_tq_mm    = _optfloat(KEY_MP_STIFFENER_BEARING_THICKNESS),
@@ -1872,9 +1895,21 @@ class IRC22CapacityCalculator:
         #   • No c_mm → run stiffener guidance first to obtain c_req_min_mm, store the
         #     guidance result early, then use c_req for buckling. Step 18 will re-run
         #     (guidance mode again) and overwrite with the same result — no harm done.
+        #   • Intermediate stiffeners switched off by the user → no panel spacing at all:
+        #     c stays 0 so the web is checked as unstiffened (Kv = 5.35, bearings only).
         _c_mm_buck: float = 0.0
         if self.cfg.stiffener is not None:
-            if self.cfg.stiffener.c_mm > 0:
+            if not self.cfg.stiffener.intermediate_enabled:
+                # The user chose Intermediate Stiffener = No. Inventing a guidance
+                # spacing here would credit the web with stiffeners the design does not
+                # have; leaving c at 0 makes the ULS shear-buckling check reflect the
+                # configuration that was actually asked for.
+                results.details["intermediate_stiffener"] = {
+                    "skipped": True,
+                    "user_disabled": True,
+                    "requested_shear_method": self.cfg.stiffener.shear_method,
+                }
+            elif self.cfg.stiffener.c_mm > 0:
                 _c_mm_buck = self.cfg.stiffener.c_mm
             else:
                 _is_guid = self.compute_intermediate_stiffener()
@@ -2057,7 +2092,9 @@ class IRC22CapacityCalculator:
 
         # 18. Intermediate stiffener checks (IRC 24-2010 Cl.509.7.2 / IS 800 Cl.8.7.2).
         # Opt-in by setting cfg.stiffener to any StiffenerConfig. Runs guidance when c/tq/H not given.
-        if self.cfg.stiffener is not None:
+        # Skipped entirely when the user switched intermediate stiffeners off — the
+        # "user_disabled" marker written in step 4b stays in place for the DCR engine.
+        if self.cfg.stiffener is not None and self.cfg.stiffener.intermediate_enabled:
             is_res = self.compute_intermediate_stiffener()
             results.details["intermediate_stiffener"] = is_res
             if not is_res.get("skipped") and not is_res.get("design_guidance"):
@@ -2268,6 +2305,11 @@ class DCREngine:
             else:
                 _buck_note = (f"Simple post-critical: Kv={c.Kv:.3f}, "
                               f"λw={c.lambda_w:.3f}, τb={c.tau_b_buck_MPa:.1f} MPa")
+            # The Shear card reads the worst id-2 check, so the "no intermediate
+            # stiffeners" caveat has to travel on this note to reach the user.
+            if (c.details.get("intermediate_stiffener") or {}).get("user_disabled"):
+                _buck_note += ("; no intermediate stiffeners (Intermediate Stiffener = No) "
+                               "— web checked as unstiffened")
             self._add_check(2, "ULS Shear Buckling", "Cl.603.3.3.2",
                              d.Vu_kN, c.Vcr_kN, "kN", note=_buck_note)
 
@@ -2451,7 +2493,22 @@ class DCREngine:
         # ── IRC 24-2010 STIFFENER CHECKS (Cl.509.7 / IS 800 Cl.8.7) ─────────────────
         # Intermediate transverse stiffener
         is_det = c.details.get("intermediate_stiffener", {"skipped": True})
-        if is_det and not is_det.get("skipped"):
+        if is_det and is_det.get("user_disabled"):
+            # Intermediate Stiffener = No. The web was checked as unstiffened, so this
+            # row states the consequence outright instead of leaving the user to infer
+            # it from the shear-buckling row: PASS means the configuration stands, FAIL
+            # means intermediate stiffeners are required and the input is not adequate.
+            _off_note = ("Intermediate Stiffener = No: web designed as unstiffened "
+                         "(Kv=5.35, stiffeners at supports only). On FAIL, intermediate "
+                         "stiffeners are required for this design — enable them or "
+                         "thicken the web.")
+            if is_det.get("requested_shear_method") == "tension_field":
+                _off_note += (" Tension Field was selected but needs intermediate "
+                              "stiffeners; simple post-critical was used instead.")
+            if c.Vcr_kN > 0:
+                self._add_check(20, "Int.Stiff: Not Provided", "Cl.603.3.3.2",
+                                 d.Vu_kN, c.Vcr_kN, "kN", note=_off_note)
+        elif is_det and not is_det.get("skipped"):
             if "design_guidance" not in is_det:
                 raise KeyError("'design_guidance' key missing from intermediate_stiffener details.")
             if is_det["design_guidance"]:
@@ -3792,6 +3849,10 @@ def run_design_check(
         "bs_n_plates"               : config.stiffener.bs_n_plates if config.stiffener else 0,
         # -- stiffener design summary (Table 5.7): method + computed (optimized) values --
         "stiff_method"              : capacity.shear_method,
+        # False when the user chose Intermediate Stiffener = No — the summary below
+        # then carries no intermediate sizes, so consumers must not print any.
+        "stiff_int_enabled"         : (config.stiffener.intermediate_enabled
+                                       if config.stiffener else False),
         "stiff_int_thick_req"       : capacity.details.get("intermediate_stiffener", {}).get("tq_req_1sided_mm"),
         "stiff_int_space_req"       : capacity.details.get("intermediate_stiffener", {}).get("c_req_min_mm"),
         "stiff_end_thick_req"       : capacity.details.get("bearing_stiffener", {}).get("tq_req_bearing_mm"),
