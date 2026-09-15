@@ -62,6 +62,12 @@ from osdagbridge.core.bridge_types.plate_girder import results_data
 # Custom 3D Viewer
 from osdagbridge.desktop.ui.utils.custom_3dviewer import CustomViewer3d
 
+# Hover for the bridge components — labels and hit-testing both live there.
+from osdagbridge.desktop.ui.utils.cad_3d_hover import (
+    build_component_labels,
+    build_bracing_hover_shapes,
+)
+
 from osdagbridge.core.bridge_types.plate_girder.dto import (
     BridgeParametersDTO,
     SectionDimsDTO,
@@ -272,6 +278,9 @@ class CAD3DWindow(QWidget):
         display = self.display
         context = self.viewer.context
 
+        # Tooltip text for all 17 bridge components, keyed by registration key.
+        labels = build_component_labels(params)
+
         display.EraseAll()
 
         # COLORS
@@ -288,7 +297,11 @@ class CAD3DWindow(QWidget):
 
 
         # HELPER 
-        def display_and_register(shapes, key, label, color, transparency=None, line_width=None, selectable=True):
+        def display_and_register(shapes, key, label, color, transparency=None, line_width=None,
+                                 selectable=True, per_ais_labels=None):
+            # per_ais_labels, when given, is one label per shape in the same order.
+            # Those take precedence over `label`, which stays as the fallback — that is
+            # how one registration key can still show different text per member.
             if not shapes:
                 return
 
@@ -315,8 +328,9 @@ class CAD3DWindow(QWidget):
                     context.Deactivate(ais)
                 ais_list.append(ais)
 
-            self.viewer.model_ais_objects[key] = ais_list
-            self.viewer.model_hover_labels[key] = label
+            # Hover is owned by cad_3d_hover.HoverController — see that module for the
+            # label text and the hit-testing.
+            self.viewer.hover.register(key, ais_list, label, per_ais_labels)
 
         # teardown_model() already emptied the model_* dicts — do not re-assign them here.
 
@@ -325,21 +339,21 @@ class CAD3DWindow(QWidget):
         display_and_register(
             cad_data.get("girder_web", []),
             "Girder Web",
-            f"Girder Web\nDepth: {params.girder_section_d:.2f} mm\nWeb Thickness: {params.girder_section_tw:.2f} mm\nSteel Grade: {params.steel_grade}",
+            labels["Girder Web"],
             WEB_COLOR
         )
 
         display_and_register(
             cad_data.get("girder_top_flanges", []),
             "Girder Top Flange",
-            f"Top Flange\nWidth: {params.girder_section_bf:.2f} mm\nThickness: {params.girder_section_tf:.2f} mm\nSteel Grade: {params.steel_grade}",
+            labels["Girder Top Flange"],
             FLANGE_COLOR
         )
 
         display_and_register(
             cad_data.get("girder_bottom_flanges", []),
             "Girder Bottom Flange",
-            f"Bottom Flange\nWidth: {params.girder_section_bf_b:.2f} mm\nThickness: {params.girder_section_tf_b:.2f} mm\nSteel Grade: {params.steel_grade}",
+            labels["Girder Bottom Flange"],
             FLANGE_COLOR
         )
 
@@ -347,7 +361,7 @@ class CAD3DWindow(QWidget):
         display_and_register(
             cad_data.get("intermediate_stiffeners", []),
             "Intermediate Stiffener",
-            f"Intermediate Stiffener\nSpacing: {params.intermediate_stiffener_spacing:.2f} mm\nThickness: {params.intermediate_stiffener_thickness:.2f} mm\nSteel Grade: {params.steel_grade}",
+            labels["Intermediate Stiffener"],
             STIFFENER_COLOR,
             selectable=True
         )
@@ -355,7 +369,7 @@ class CAD3DWindow(QWidget):
         display_and_register(
             cad_data.get("bearing_stiffeners", []),
             "Bearing Stiffener",
-            f"Bearing Stiffener\nPairs: {params.num_end_stiffener_pairs}\nThickness: {params.end_stiffener_thickness:.2f} mm\nSteel Grade: {params.steel_grade}",
+            labels["Bearing Stiffener"],
             STIFFENER_COLOR,
             selectable=True
         )
@@ -363,7 +377,7 @@ class CAD3DWindow(QWidget):
         display_and_register(
             cad_data.get("longitudinal_stiffeners", []),
             "Longitudinal Stiffener",
-            f"Longitudinal Stiffener\nCount: {params.num_longitudinal_stiffeners}\nThickness: {params.longitudinal_stiffener_thickness:.2f} mm\nSteel Grade: {params.steel_grade}",
+            labels["Longitudinal Stiffener"],
             STIFFENER_COLOR,
             selectable=True
         )
@@ -371,7 +385,7 @@ class CAD3DWindow(QWidget):
         display_and_register(
             cad_data.get("shear_studs", []),
             "Shear Stud",
-            f"Shear Stud\nBase Dia: {params.shear_stud_params.base_diameter:.2f} mm\nHeight: {params.shear_stud_params.base_height + params.shear_stud_params.top_height:.2f} mm\nPitch: {params.shear_stud_params.pitch:.2f} mm\nPer Section: {params.shear_stud_params.num_per_section}",
+            labels["Shear Stud"],
             STIFFENER_COLOR,
             selectable=False
         )
@@ -384,36 +398,47 @@ class CAD3DWindow(QWidget):
         display_and_register(
             cad_data.get("supports_vertical",   []), 
             "Support Vertical",   
-            "Support - Vertical",      
+            labels["Support Vertical"],
             SUPPORT_VERTICAL_COLOR,
             line_width=2.0)
         
         display_and_register(
             cad_data.get("supports_wide_horiz", []), 
             "Support Transverse", 
-            "Support - Transverse",    
+            labels["Support Transverse"],
             SUPPORT_TRANSVERSE_COLOR,
             line_width=2.0)
         
         display_and_register(
             cad_data.get("supports_long_horiz", []), 
             "Support Longitudinal",
-            "Support - Longitudinal", 
+            labels["Support Longitudinal"],
             SUPPORT_LONGIT_COLOR,
             line_width=2.0)
 
 
-        display_and_register(
+        # Cross bracing and end diaphragm.  Both stay under the single key
+        # "Cross Bracing" so the visibility checkbox keeps working, but each member
+        # gets its own tooltip — its girder pair's designed section, and whether it is
+        # a diagonal, a top chord or a bottom chord.
+        bracing_shapes, bracing_labels = build_bracing_hover_shapes(
+            getattr(params, "output_dict", None),
+            cad_data.get("cross_bracing_groups"),
             cad_data.get("cross_bracings", []),
+        )
+
+        display_and_register(
+            bracing_shapes,
             "Cross Bracing",
-            f"Cross Bracing\nType: {params.bracing_type}-Bracing\nSpacing: {params.cross_bracing_spacing:.2f} mm\nSection: {params.diagonal_section_type}\nLeg H: {params.diagonal_section_dims.leg_h:.2f} mm\nLeg W: {params.diagonal_section_dims.leg_w:.2f} mm",
-            BRACING_COLOR
+            labels["Cross Bracing"],
+            BRACING_COLOR,
+            per_ais_labels=bracing_labels
         )
 
         display_and_register(
             cad_data.get("deck_slab"),
             "Deck",
-            f"Deck Slab\nThickness: {params.deck_thickness:.2f} mm\nCarriageway Width: {params.carriageway_width:.2f} mm\nConcrete Grade: {params.concrete_grade}\nFootpath: {params.footpath_config}",
+            labels["Deck"],
             DECK_COLOR
         )
         # DECK TEXTURES (DISPLAY ONLY, NO HOVER)
@@ -433,7 +458,7 @@ class CAD3DWindow(QWidget):
         display_and_register(
             cad_data.get("crash_barrier_w_beams", []),
             "Crash Barrier W-Beam",
-            "W-Beam",
+            labels["Crash Barrier W-Beam"],
             WBEAM_COLOR
         )
 
@@ -441,14 +466,14 @@ class CAD3DWindow(QWidget):
         display_and_register(
             cad_data.get("median_w_beams", []),
             "Median W-Beam",
-            "Median W-Beam",
+            labels["Median W-Beam"],
             WBEAM_COLOR
         )
 
         display_and_register(
             cad_data.get("crash_barriers", []),
             "Crash Barrier",
-            f"Crash Barrier\nType: {params.barrier_type}\nSubtype: {params.crash_barrier_subtype}",
+            labels["Crash Barrier"],
             BARRIER_POST_COLOR
         )
 
@@ -456,14 +481,14 @@ class CAD3DWindow(QWidget):
         display_and_register(
             cad_data.get("median_barriers", []),
             "Median",
-            f"Median Barrier\nType: {params.median_type}",
+            labels["Median"],
             BARRIER_COLOR
         )
 
         display_and_register(
             cad_data.get("railings", []),
             "Railing",
-            f"Railing\nType: {params.railing_type.upper()}\nRails: {params.rail_count}\nWidth: {params.railing_width:.2f} mm",
+            labels["Railing"],
             BARRIER_COLOR
         )
 
@@ -481,7 +506,7 @@ class CAD3DWindow(QWidget):
         self.component_selector.show()
 
         # Trigger lookup dictionary rebuild
-        self.viewer.rebuild_ais_lookup_map()
+        self.viewer.hover.rebuild_lookup()
         self.component_selector.apply_selection()
         # Overlays auto-resume when load_bridge's critical_section() exits.
 
@@ -590,7 +615,7 @@ class CAD3DWindow(QWidget):
         context = self.viewer.context
 
         # Show all structural components
-        for ais_list in self.viewer.model_ais_objects.values():
+        for ais_list in self.viewer.hover.model_ais_objects.values():
             for ais in ais_list:
                 context.Display(ais, False)
 
@@ -743,7 +768,7 @@ class CAD3DWindow(QWidget):
             self.viewer.set_node_hover_data([])
 
         # ── Show / hide all registered AIS objects ────────────────────────────
-        for key, ais_list in self.viewer.model_ais_objects.items():
+        for key, ais_list in self.viewer.hover.model_ais_objects.items():
             if key in _TOOLBAR_OVERLAYS:
                 continue  # toolbar-only overlays: never touched here
             should_show = key in visible_keys
@@ -842,11 +867,14 @@ class CAD3DWindow(QWidget):
         node_ais_list = []
         hover_nodes = []
 
-        self.viewer.model_ais_objects.pop("Node", None)
+        self.viewer.hover.model_ais_objects.pop("Node", None)
         if hasattr(self.viewer, "set_node_hover_data"):
             self.viewer.set_node_hover_data([])
-        if hasattr(self.viewer, "model_hover_labels_by_ais"):
-            self.viewer.model_hover_labels_by_ais.clear()
+        # Do NOT clear the per-shape labels here.  This runs near the end of
+        # _render_model_body, after the components have already registered theirs —
+        # cross bracing puts one label per member in that same map — so clearing would
+        # wipe them and leave every brace falling back to the generic per-key label.
+        # teardown_model() -> hover.clear() already empties it before each render.
 
         for nid, coord in nodes.items():
             if not coord:
@@ -892,14 +920,15 @@ class CAD3DWindow(QWidget):
                 self.viewer.context.SetSelectionSensitivity(pick, 0, 30)
             except Exception:
                 pass
-            if hasattr(self.viewer, "model_hover_labels_by_ais"):
-                self.viewer.model_hover_labels_by_ais[pick] = label
+            # highlight=False: the pick sphere is transparent, so hilighting it would
+            # flash a blob over the node marker.
+            self.viewer.hover.register_ais_label(pick, label, highlight=False)
             node_ais_list.append(pick)
 
             hover_nodes.append({"x": x_mm, "y": y_mm, "z": z_base, "label": label})
             self._node_data[nid] = {"x": x_mm, "y": y_mm, "z": z_base, "label": label}
 
-        self.viewer.model_ais_objects["Node"] = node_ais_list
+        self.viewer.hover.model_ais_objects["Node"] = node_ais_list
         if hasattr(self.viewer, "set_node_hover_data"):
             self.viewer.set_node_hover_data(hover_nodes)
 
@@ -968,7 +997,7 @@ class CAD3DWindow(QWidget):
                 grillage_ais.append(ais)
 
         if grillage_ais:
-            self.viewer.model_ais_objects["Grillage"] = grillage_ais
+            self.viewer.hover.model_ais_objects["Grillage"] = grillage_ais
 
     # ── RENDER NODE NUMBERS ───────────────────────────────────────────────────────
     # Called by update_component_visibility() when "NodeNumbers" is in the
@@ -1054,7 +1083,7 @@ class CAD3DWindow(QWidget):
                     pass
 
         if label_ais_list:
-            self.viewer.model_ais_objects["NodeNumbers"] = label_ais_list
+            self.viewer.hover.model_ais_objects["NodeNumbers"] = label_ais_list
             try:
                 self.display.Repaint()
             except Exception:
@@ -1163,7 +1192,7 @@ class CAD3DWindow(QWidget):
                     pass
 
         if label_ais_list:
-            self.viewer.model_ais_objects["ElementNumbers"] = label_ais_list
+            self.viewer.hover.model_ais_objects["ElementNumbers"] = label_ais_list
         try:
             self.display.Repaint()
         except Exception:
