@@ -591,8 +591,8 @@ class OutputDock(QWidget):
 
     def _require_design(self) -> bool:
         """Return True if a design result is available; show an error and return False otherwise."""
-        input_dock = getattr(self.parent, "input_dock", None)
-        if input_dock is None or not input_dock.is_locked:
+        backend = self.parent.backend
+        if not backend.design_completed:
             CustomMessageBox(
                 title="Run Design",
                 text="Please run the design first.",

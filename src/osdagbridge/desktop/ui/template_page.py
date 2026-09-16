@@ -99,7 +99,6 @@ class InputBlockerFilter(QObject):
                 return True
         return False
 
-
 class CustomWindow(QWidget):
     export_finished = Signal(bool, str)
     # Thread-safe relay for bridge_logger messages: the design run now executes on
@@ -683,6 +682,7 @@ class CustomWindow(QWidget):
             if getattr(self, "_design_running", False):
                 return
             self._design_running = True
+            self.backend.design_completed = False
 
             self._start_loading()
 
@@ -774,6 +774,9 @@ class CustomWindow(QWidget):
 
                     # Render 3D cad using the parameters from Backend
                     self.cad_3d_widget.render_3d_cad(self.backend.get_3d_cad_parameters())
+                    # Update design status
+                    self.backend.design_completed = True
+
                 except Exception:
                     self._show_design_error(traceback.format_exc())
         finally:

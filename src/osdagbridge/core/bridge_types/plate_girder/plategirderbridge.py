@@ -361,6 +361,8 @@ class PlateGirderBridge:
     })
 
     def __init__(self) -> None:
+        # To keep track of Design Status
+        self.design_completed = False
         self.input_dict: dict = {}
         self.basic_inputs: dict = {}
         self.additional_inputs: dict = {}
