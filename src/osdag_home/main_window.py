@@ -22,7 +22,7 @@ from PySide6.QtWidgets import (
     QMainWindow, QTabBar, QTabWidget, QLabel, QTextBrowser, QScrollArea, QDialog
 )
 from PySide6.QtSvgWidgets import QSvgWidget
-from PySide6.QtCore import Qt, QSize, QEvent, QTimer, QPoint, QRect, QPropertyAnimation
+from PySide6.QtCore import Qt, QSize, QEvent, QTimer, QPoint, QRect, QPropertyAnimation, QFile, QTextStream
 from PySide6.QtGui import QIcon, QGuiApplication, QPixmap, QPainter, QColor, QCursor
 
 from .ui.windows.home_window import HomeWindow
@@ -1376,7 +1376,8 @@ class MainWindow(QMainWindow):
 
     # Open Plate Girder Bridge Module
     def open_plategirder_bridge(self):
-
+        
+        print("**START**")
         self.clear_layout(self.main_widget_layout)
         title = "Plate Girder Bridge"
         from osdagbridge.desktop.ui.template_page import CustomWindow
@@ -1386,6 +1387,8 @@ class MainWindow(QMainWindow):
             backend=PlateGirderBridge, 
             parent=self
         )
+
+        print("**END**")
 
         template_page.setWindowFlags(Qt.Widget)
         template_page.setAttribute(Qt.WA_DontCreateNativeAncestors, True)
