@@ -17,8 +17,8 @@ class ThemeManager(QObject):
         self.current_theme = self.settings.value("theme", "light")
         self.control_btn_pos = self.settings.value("control_btn_pos", "right")
         self.themes = {
-            "light": ":/themes/lightstyle.qss",
-            "dark": ":/themes/darkstyle.qss"
+            "light": ":/themes/lightstyle_home.qss",
+            "dark": ":/themes/darkstyle_home.qss"
         }
         self.theme_cache = {}
         self._preload_themes()

@@ -11,19 +11,31 @@ from PySide6.QtGui import QFontDatabase, QFont, QIcon
 # This is critical for Linux systems with Intel/Mesa graphics drivers
 QApplication.setAttribute(Qt.ApplicationAttribute.AA_DontUseNativeDialogs, True)
 from .ui.utils.theme_manager import ThemeManager
-from .resources import resources_rc
 import sys
+
+def get_osdagbridge_qss():
+    # Load QSS of the OsdagBridge
+    import osdagbridge.desktop.resources.resources_rc
+    file = QFile(":/themes/lightstyle.qss")
+    if file.open(QFile.ReadOnly | QFile.Text):
+        stream = QTextStream(file)
+        bridge_style = stream.readAll()
+        file.close()
+        return bridge_style
 
 def gui():
 
+    app = QApplication(sys.argv)
+    app.setStyle("Fusion")
+    bridge_qss = get_osdagbridge_qss()
+
+    from .resources import resources_rc
     from .data.database.database_config import refactor_database, create_user_database
     # Create user database if not exist
     create_user_database()
     # Clean up user database to ensure 10 records and atmost 60 days older with path exist
     refactor_database()
 
-    app = QApplication(sys.argv)
-    app.setStyle("Fusion")
     # Load bundled Ubuntu Sans font - works on all OS without needing font installed
     fid = QFontDatabase.addApplicationFont(":/fonts/UbuntuSans-Regular.ttf")
     if fid != -1:
@@ -36,15 +48,15 @@ def gui():
     app.theme_manager.load_theme(app.theme_manager.current_theme)
 
     if app.theme_manager.is_light():
-        file = QFile(":/themes/lightstyle.qss")
+        file = QFile(":/themes/lightstyle_home.qss")
     else:
-        file = QFile(":/themes/darkstyle.qss")
+        file = QFile(":/themes/darkstyle_home.qss")
 
     if file.open(QFile.ReadOnly | QFile.Text):
         stream = QTextStream(file)
         stylesheet = stream.readAll()
         file.close()
-        app.setStyleSheet(stylesheet)
+        app.setStyleSheet(stylesheet + "\n" + bridge_qss)
     
     def show_main_window():
         from .main_window import MainWindow
