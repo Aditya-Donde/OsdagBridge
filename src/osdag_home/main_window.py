@@ -1376,19 +1376,20 @@ class MainWindow(QMainWindow):
 
     # Open Plate Girder Bridge Module
     def open_plategirder_bridge(self):
-        
-        print("**START**")
+
+        from .ui.components.dialogs.loading_popup import LoadingDialogManager
+        _bridge_loading = LoadingDialogManager(self.theme.is_light())
+        _bridge_loading.show()
+
         self.clear_layout(self.main_widget_layout)
         title = "Plate Girder Bridge"
         from osdagbridge.desktop.ui.template_page import CustomWindow
         from osdagbridge.core.bridge_types.plate_girder.plategirderbridge import PlateGirderBridge
         template_page = CustomWindow(
             title=title,
-            backend=PlateGirderBridge, 
+            backend=PlateGirderBridge,
             parent=self
         )
-
-        print("**END**")
 
         template_page.setWindowFlags(Qt.Widget)
         template_page.setAttribute(Qt.WA_DontCreateNativeAncestors, True)
@@ -1405,6 +1406,9 @@ class MainWindow(QMainWindow):
 
         index = self.tab_bar.currentIndex()
         self.tab_bar.setTabText(index, title)
+
+        _bridge_loading.hide()
+        _bridge_loading = None
 
     def open_home_page(self, module):
         self.clear_layout(self.main_widget_layout)
