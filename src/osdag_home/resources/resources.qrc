@@ -85,8 +85,8 @@ Contains SVGs, images, backgrounds, and theme files for the application.
         <file>vectors/no_projects_dark.svg</file>
         <file>vectors/no_modules_dark.svg</file>
 
-        <file>themes/darkstyle.qss</file>
-        <file>themes/lightstyle.qss</file>
+        <file>themes/darkstyle_home.qss</file>
+        <file>themes/lightstyle_home.qss</file>
 
         <file>images/iitb_logo.png</file>
         <file>images/fossee_logo.png</file>
