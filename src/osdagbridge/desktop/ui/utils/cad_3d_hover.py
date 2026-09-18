@@ -42,6 +42,11 @@ from PySide6.QtWidgets import QToolTip
 # steel grade keys are extra: the builder has no use for them, but the label does.
 from osdagbridge.core.utils.common import (
     KEY_GIRDER,
+    KEY_RL_WIDTH,
+    KEY_RL_HEIGHT,
+    KEY_MD_TYPE,
+    KEY_MD_WIDTH,
+    KEY_MD_HEIGHT,
     KEY_MP_CB_TYPE,
     KEY_MP_CB_SPACING,
     KEY_MP_CB_BRACING_SECTION_TYPE,
@@ -459,14 +464,78 @@ def build_component_labels(params):
             f"Crash Barrier\nType: {params.barrier_type}"
             f"\nSubtype: {params.crash_barrier_subtype}",
 
-        "Median":
-            f"Median Barrier\nType: {params.median_type}",
+        "Median": _median_label(params),
 
-        "Railing":
-            f"Railing\nType: {params.railing_type.upper()}"
-            f"\nRails: {params.rail_count}"
-            f"\nWidth: {params.railing_width:.2f} mm",
+        "Railing": _railing_label(params),
     }
+
+
+def _median_label(params):
+    """Median tooltip, read from the design snapshot rather than the DTO.
+
+    The DTO cannot keep the subtype.  It folds every metallic option into the broad
+    category with a single branch::
+
+        elif raw_md_string.startswith("IRC 5 - Metallic Crash Barrier"):
+            resolved_median_type = KEY_MEDIAN_TYPE[2]   # "Metallic Crash Barrier"
+
+    so "Single W-Beam" and "Double W-Beam" become indistinguishable.  There is a TODO
+    beside it asking for a dedicated median_subtype field on the DTO; the tooltip does
+    not need one, because reading KEY_MD_TYPE here keeps the full string.  That TODO
+    still stands for anyone who needs the subtype in the CAD generator.
+
+    Width and height are stored in **metres** and converted here.  Both are omitted
+    when the median is disabled, where they are written as None / 0.
+    """
+    output_dict = getattr(params, "output_dict", None) or {}
+
+    # The form has stored this as a bare string and as a single-item list at different
+    # times; get_3d_cad_parameters guards for both, so this does too.
+    raw = _resolve(output_dict, KEY_MD_TYPE, None)
+    if isinstance(raw, list):
+        raw = raw[0] if raw else None
+    median_type = str(raw).strip() if _present(raw) else str(params.median_type).strip()
+
+    lines = [f"Median Barrier\nType: {median_type}"]
+
+    for key, caption in ((KEY_MD_WIDTH, "Width"), (KEY_MD_HEIGHT, "Height")):
+        value = _resolve(output_dict, key, None)
+        try:
+            mm = float(value) * 1e3
+        except (TypeError, ValueError):
+            continue
+        if mm > 0:
+            lines.append(f"{caption}: {mm:.2f} mm")
+
+    return "\n".join(lines)
+
+
+def _railing_label(params):
+    """Railing tooltip, read from the design snapshot rather than the DTO.
+
+    The DTO cannot answer for width or height: it sets ``railing_width`` from the
+    constant ``DEFAULT_RAILING_WIDTH`` and never reads ``KEY_RL_WIDTH`` at all, so the
+    tooltip reported 375.00 mm whatever the user entered.  ``KEY_RL_HEIGHT`` was not
+    shown anywhere.  Both are stored in **metres** and converted here.
+
+    The type still comes from the DTO, which already maps the IRC label
+    ("IRC 5 - RCC Railing") onto the internal value — no reason to repeat that here.
+
+    The old "Rails: 3" line is gone.  There is no rail-count key in common.py; the 3
+    was a literal in the DTO, so the line could never vary with the design.
+    """
+    output_dict = getattr(params, "output_dict", None) or {}
+
+    lines = [f"Railing\nType: {params.railing_type.upper()}"]
+
+    for key, caption in ((KEY_RL_WIDTH, "Width"), (KEY_RL_HEIGHT, "Height")):
+        value = _resolve(output_dict, key, None)
+        try:
+            lines.append(f"{caption}: {float(value) * 1e3:.2f} mm")
+        except (TypeError, ValueError):
+            continue
+
+    return "\n".join(lines)
 
 
 # =============================================================================
