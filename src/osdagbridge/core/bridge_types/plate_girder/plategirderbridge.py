@@ -36,9 +36,13 @@ from .plot_generator import (
     figure_to_bytes,
 )
 from osdagbridge.core.utils.codes.irc6_2017 import IRC6_2017
+from osdagbridge.core.bridge_types.plate_girder.load_combinations import build_load_combinations
 from osdagbridge.core.utils.common import (
     KEY_STRUCTURE_TYPE,
     KEY_PROJECT_LOCATION,
+    KEY_WL_BASIC_WIND_SPEED,
+    KEY_WL_AVG_EXPOSED_HEIGHT,
+    KEY_WL_TERRAIN_TYPE,
     KEY_SPAN,
     KEY_CARRIAGEWAY_WIDTH,
     KEY_INCLUDE_MEDIAN,
@@ -55,6 +59,7 @@ from osdagbridge.core.utils.common import (
     KEY_MATERIAL_GIRDER_E, KEY_MATERIAL_GIRDER_G, KEY_MATERIAL_GIRDER_POISSON,
     KEY_MATERIAL_GIRDER_FY, KEY_MATERIAL_GIRDER_FU, KEY_MATERIAL_GIRDER_THERMAL,
     KEY_MATERIAL_DECK_FCK, KEY_MATERIAL_DECK_FCTM, KEY_MATERIAL_DECK_ECM,
+    KEY_MATERIAL_DECK_MODULAR,
     DEFAULT_CRASH_BARRIER_WIDTH,
     DEFAULT_RAILING_WIDTH,
     DEFAULT_GIRDER_SPACING,
@@ -79,6 +84,12 @@ from osdagbridge.core.utils.common import (
     KEY_SL_HORIZONTAL_COEFF, KEY_SL_VERTICAL_COEFF,
     KEY_SL_FORCE_LONGITUDINAL, KEY_SL_FORCE_TRANSVERSE,
     KEY_WL_TRANSVERSE_WIND_FORCE, KEY_WL_LONGITUDINAL_WIND_FORCE, KEY_WL_VERTICAL_WIND_FORCE,
+    KEY_SL_SEISMIC_ZONE, KEY_SL_ZONE_FACTOR, KEY_SL_SPECTRAL_COEFF,
+    KEY_TL_HIGHEST_MAX_TEMP, KEY_TL_LOWEST_MIN_TEMP,
+    KEY_TL_THERMAL_COEFF_STEEL, KEY_TL_THERMAL_COEFF_RCC,
+    KEY_TL_BRIDGE_TEMP_MIN, KEY_TL_BRIDGE_TEMP_MAX,
+    KEY_TL_TEMP_RISE, KEY_TL_TEMP_FALL,
+    KEY_LC_COMBINATIONS, KEY_ALL_LOAD_COMBINATIONS,
     KEY_MD_WIDTH,
     KEY_RL_WIDTH,
     KEY_TS_DECK_OVERHANG,
@@ -676,6 +687,7 @@ class PlateGirderBridge:
         
         bridge_logger.check_cancel()
         bridge_logger.sub_step("Creating ULS and SLS combinations...")
+        self._store_load_combinations_for_widget()
         self.create_uls_combinations()
         
         self.create_sls_combinations()
@@ -1449,13 +1461,13 @@ class PlateGirderBridge:
         inp = self.input_dict
 
         # ── Wind speed / terrain ─────────────────────────────────────────
-        basic_wind_speed = float(ai.get("basic_wind_speed") or 33.0)
+        basic_wind_speed = float(inp.get(KEY_WL_BASIC_WIND_SPEED))
         if basic_wind_speed == 0.0:
             bridge_logger.info("Wind load absent (speed=0); skipping.")
             return
 
-        height_for_pz = float(ai.get("avg_exposed_height") or 10.0)
-        terrain_raw   = str(ai.get("terrain_type") or "Plain Terrain")
+        height_for_pz = float(inp.get(KEY_WL_AVG_EXPOSED_HEIGHT))
+        terrain_raw = str(inp.get(KEY_WL_TERRAIN_TYPE))
         terrain       = "plain" if "plain" in terrain_raw.lower() else "obstructed"
 
         # ── Exposed height components ────────────────────────────────────
@@ -1943,13 +1955,28 @@ class PlateGirderBridge:
 
         Delegates to BridgeGrillageModel.create_temperature_load().
         """
-        tl_raw = self.input_dict.get("temperature_load_kN_m2")
+        inp = self.input_dict
+        max_temp = inp.get(KEY_TL_HIGHEST_MAX_TEMP)
+        min_temp = inp.get(KEY_TL_LOWEST_MIN_TEMP)
+
+        res = IRC6_2017.cl_215_2_effective_bridge_temperature(
+            float(max_temp), float(min_temp), 'metallic', False
+        )
+        t_min = res.get('T_min', 0.0)
+        t_max = res.get('T_max', 0.0)
+        mean  = (t_max + t_min) / 2.0
+        self.output_dict[KEY_TL_BRIDGE_TEMP_MIN] = round(t_min, 2)
+        self.output_dict[KEY_TL_BRIDGE_TEMP_MAX] = round(t_max, 2)
+        self.output_dict[KEY_TL_TEMP_RISE]       = round(t_max - mean, 2)
+        self.output_dict[KEY_TL_TEMP_FALL]       = round(mean - t_min, 2)
+
+        # ── Apply the temperature patch load, if any (optional) ──────────
+        tl_raw = inp.get("temperature_load_kN_m2")
         if not tl_raw or float(tl_raw) == 0.0:
-            bridge_logger.info("Temperature load absent; skipping.")
+            bridge_logger.info("Temperature load absent; skipping patch load.")
             return
-        tl_kN_m2 = float(tl_raw)
         self.grillage_model.create_temperature_load(
-            temperature_load_kN_m2=tl_kN_m2,
+            temperature_load_kN_m2=float(tl_raw),
             partial_safety_factor=1.0,
         )
 
@@ -1981,20 +2008,11 @@ class PlateGirderBridge:
         """
         inp = self.input_dict
 
-        # ── Zone factor Z: from project-location weather_data ──
-        location = inp.get(KEY_PROJECT_LOCATION) or {}
-        if isinstance(location, str) and '{' in location:
-            import ast
-            try:
-                location = ast.literal_eval(location)
-            except (ValueError, SyntaxError):
-                location = {}
-        z_value = 0.10  # Zone II default (lowest hazard)
-        if isinstance(location, dict):
-            weather = location.get('weather_data') or {}
-            z_val = weather.get('z_value')
-            if z_val is not None:
-                z_value = float(z_val)
+        # ── Zone factor Z : from Key
+        zone_name = inp.get(KEY_SL_SEISMIC_ZONE)
+        z_value   = IRC6_2017.table_16().get(
+            str(zone_name).strip(), 0.10          # Zone II default (lowest hazard)
+        )
 
         # ── Soil type from the seismic tab ──
         soil_str = str(inp.get(KEY_SL_SOIL_TYPE) or "")
@@ -2037,7 +2055,7 @@ class PlateGirderBridge:
         dead_load_kN = _custom_load(KEY_SL_DEAD_LOAD_MODE, KEY_SL_DEAD_LOAD_VALUE)
         live_load_kN = _custom_load(KEY_SL_LIVE_LOAD_MODE, KEY_SL_LIVE_LOAD_VALUE)
 
-        eq_result = self.grillage_model.create_seismic_load_cases(
+        seismic = self.grillage_model.create_seismic_load_cases(
             z_value=z_value,
             soil_type=soil_type,
             importance_factor=importance_factor,
@@ -2052,9 +2070,14 @@ class PlateGirderBridge:
         )
 
         # Persist the horizontal seismic forces for the report (Table 3.5).
-        if eq_result:
-            self.output_dict[KEY_SL_FORCE_LONGITUDINAL] = round(eq_result["Feq_X_kN"], 3)
-            self.output_dict[KEY_SL_FORCE_TRANSVERSE]   = round(eq_result["Feq_Z_kN"], 3)
+        if seismic:
+            self.output_dict[KEY_SL_FORCE_LONGITUDINAL] = round(seismic["Feq_X_kN"], 3)
+            self.output_dict[KEY_SL_FORCE_TRANSVERSE]   = round(seismic["Feq_Z_kN"], 3)
+        # Adds seismic load parameters to output_dict
+        self.output_dict[KEY_SL_ZONE_FACTOR]      = seismic["Z"]
+        self.output_dict[KEY_SL_SPECTRAL_COEFF]   = seismic["Sa_g"]
+        self.output_dict[KEY_SL_HORIZONTAL_COEFF] = seismic["Ah"]
+        self.output_dict[KEY_SL_VERTICAL_COEFF]   = seismic["Av"]
 
     def vehicle_lane_coordinates(self) -> list:
         """
@@ -2357,6 +2380,21 @@ class PlateGirderBridge:
     #: persisted by the load-combination checkbox widget (LoadCombinationWidget).
     _LC_SELECTION_KEY = "irc6_default_combinations"
 
+    def _store_load_combinations_for_widget(self) -> None:
+        """
+        Build the authoritative load-combinations list (IRC6 defaults overlaid
+        with the user's selection + custom combinations) and store it in
+        output_dict under ``KEY_ALL_LOAD_COMBINATIONS``. The results table reads this one
+        key, so it no longer depends on the fragile dialog→input_dict commit for
+        the default list. The expansion lives in core (load_combinations.py) and
+        is shared with the load-combination widget and the analyser, which names
+        its load cases from the same entries (single source of truth).
+        """
+        self.output_dict[KEY_ALL_LOAD_COMBINATIONS] = build_load_combinations(
+            self.input_dict.get(self._LC_SELECTION_KEY),
+            self.input_dict.get(KEY_LC_COMBINATIONS),
+        )
+
     def _combination_keys(self, namespace_filter):
         """
         Return the set of selected (included) combination keys, or ``None``.
@@ -2633,6 +2671,7 @@ class PlateGirderBridge:
             self._load_effects_cache        = {}
             self._lc_summary       = {}
             self._reaction_summary= {}
+            self.output_dict["load_effects_cache"] = {}
             return
         edge_dist = self.get_edge_dist()
         rh = PlateGirderAnalysisResults(
@@ -2644,6 +2683,10 @@ class PlateGirderBridge:
         ch4 = build_forces_summary(rh, self._load_effects_cache)
         self._lc_summary       = ch4["load_cases"]
         self._reaction_summary= ch4["reactions"]
+
+        # Persist the envelope cache so the strict output_dict-only resolvers
+        # (bending/shear envelope + by-load-case results tables) can read it.
+        self.output_dict["load_effects_cache"] = self._load_effects_cache
 
     def get_3d_cad_parameters(self) -> BridgeParametersDTO:
         """
@@ -3666,6 +3709,12 @@ class PlateGirderBridge:
         out[KEY_SD_DEFL_ALLOW_LIVE]  = round(dr["defl_limit_live_mm"],  2)   # mm — allowable = L/800
         out[KEY_SD_DEFL_ALLOW_TOTAL] = round(dr["defl_limit_total_mm"], 2)   # mm — allowable = L/600
 
+        # ── Modular ratio — promote designer's short-term n = Es/Ecm to a flat key ──
+        # for the concrete material-properties table (IRC 22:2015 Cl.604.3).
+        _mod = (dr.get("capacity_details")).get("modular_ratio")
+        if _mod.get("m_short") is not None:
+            out[KEY_MATERIAL_DECK_MODULAR] = round(float(_mod["m_short"]), 2)
+
         # In store_design_results(), replace the stiffener section (── 5. Stiffener table ──) with:
 
         grade = str(inp.get(KEY_GIRDER, ""))
@@ -3728,11 +3777,11 @@ class PlateGirderBridge:
         # These are Additional Inputs fields. If the user never opened the dialog
         # the keys are absent from input_dict — fall back to IRC 22 design defaults.
         out[KEY_SD_TORSIONAL_RESTRAINT] = str(
-            inp.get(KEY_MP_GIRDER_TORSIONAL_RESTRAINT) or "Fully Restrained"
+            inp.get(KEY_MP_GIRDER_TORSIONAL_RESTRAINT)
         )
         out[KEY_SD_WARPING_RESTRAINT] = str(
-            inp.get(KEY_MP_GIRDER_WARPING_RESTRAINT) or "Both Flanges Restrained"
+            inp.get(KEY_MP_GIRDER_WARPING_RESTRAINT)
         )
         out[KEY_SD_WEB_TYPE] = str(
-            inp.get(KEY_MP_GIRDER_WEB_TYPE) or "Thin Web with ITS"
+            inp.get(KEY_MP_GIRDER_WEB_TYPE)
         )
