@@ -28,6 +28,7 @@ from osdagbridge.core.bridge_components.super_structure.median.geometry import (
 )
 from osdagbridge.core.bridge_types.plate_girder.bridge_geometry import BridgeGeometry, CrossSectionLayout
 from osdagbridge.core.bridge_types.plate_girder.load_placement import LoadPlacementManager
+from osdagbridge.core.bridge_types.plate_girder.load_combinations import default_load_combination_entries
 import warnings
 from osdagbridge.core.bridge_types.plate_girder.analysis_results import PlateGirderAnalysisResults
 from osdagbridge.core.bridge_types.plate_girder.dto import (SectionProperties, SteelProperties, ConcreteProperties, MaterialProperties, GrillageGeometry, DeckLayoutProperties)
@@ -37,7 +38,6 @@ from osdagbridge.core.bridge_types.plate_girder.results_data import restructure_
 #: Axle-span length (m) of the IRC:6-2017 Cl.204.6 fatigue truck — axles at
 #: 0.0, 4.5 and 5.9 m, per ospgrillage LoadModel.create_fatigue_vehicle().
 FATIGUE_VEHICLE_LENGTH = 5.9
-
 
 class BridgeGrillageModel:
 
@@ -1210,9 +1210,10 @@ class BridgeGrillageModel:
         )
 
         # ── 1. Seismic coefficients (IRC:6-2017 Cl.218.5.1) ──
-        # Use Ah/Av from UI if available; otherwise compute from IRC formula.
+        # Sa/g depends only on soil/period, so compute it always (for the
+        # results table). Use Ah/Av from UI if available; else from IRC formula.
+        sa_g = self._spectral_sa_g(soil_type, time_period)
         if not Ah:
-            sa_g = self._spectral_sa_g(soil_type, time_period)
             damping_factor = IRC6_2017.table_18(damping_percent)
             Ah = (z_value / 2.0) * importance_factor * sa_g * damping_factor
         if not Av:
@@ -1327,6 +1328,7 @@ class BridgeGrillageModel:
             "EQ_X": EQ_X, "EQ_Z": EQ_Z, "EQ_Y": EQ_Y,
             "EQ_a": combo_cases[0], "EQ_b": combo_cases[1], "EQ_c": combo_cases[2],
             "Feq_X_kN": Feq_X_kN, "Feq_Z_kN": Feq_Z_kN,
+            "Z": z_value, "Sa_g": sa_g, "Ah": Ah, "Av": Av,
         }
 
     # ============================================================
@@ -2694,6 +2696,8 @@ class BridgeGrillageModel:
             # passes so a mapping miss can never silently drop a combination.
             if included_keys is not None and key and key not in included_keys:
                 return
+            # Shared display name (same string as the widget and results tables).
+            name = next((e['name'] for e in default_load_combination_entries() if e['key'] == key), None)
 
             # Resolve which sub-cases actually contribute (mirrors _copy_loads:
             # a load is included only when its factor is non-zero and its
@@ -2736,7 +2740,7 @@ class BridgeGrillageModel:
                 return
 
             counters[prefix] = seq
-            lc_name  = f"{prefix}_{seq}: " + " + ".join(terms)
+            lc_name  = name or f"{prefix}_{seq}: " + " + ".join(terms)
             combo_lc = og.create_load_case(name=lc_name)
             for src, fac in to_copy:
                 _copy_loads(combo_lc, src, fac)
@@ -2889,6 +2893,8 @@ class BridgeGrillageModel:
             # passes so a mapping miss can never silently drop a combination.
             if included_keys is not None and key and key not in included_keys:
                 return
+            # Shared display name (same string as the widget and results tables).
+            name = next((e['name'] for e in default_load_combination_entries() if e['key'] == key), None)
 
             # Resolve which sub-cases actually contribute (mirrors _copy_loads:
             # a load is included only when its factor is non-zero and its
@@ -2923,7 +2929,7 @@ class BridgeGrillageModel:
                 return
 
             counters[prefix] = seq
-            lc_name  = f"{prefix}_{seq}: " + " + ".join(terms)
+            lc_name  = name or f"{prefix}_{seq}: " + " + ".join(terms)
             combo_lc = og.create_load_case(name=lc_name)
             for src, fac in to_copy:
                 _copy_loads(combo_lc, src, fac)

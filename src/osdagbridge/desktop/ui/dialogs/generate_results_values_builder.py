@@ -1,4 +1,5 @@
 import logging
+import re
 from osdagbridge.core.utils.common import *
 
 logger = logging.getLogger(__name__)
@@ -550,7 +551,7 @@ def resolve_shear_stud_properties(output_dict: dict) -> dict | None:
 def resolve_permanent_load_summary(output_dict: dict) -> dict | None:
     """
     Permanent (dead) load breakdown per girder (kN/m). All values are computed at
-    design time (see _store_permanent_load_breakdown) and read straight from
+    design time and read straight from
     output_dict. SW and DL vary per girder; SW-factor / DC / DD / DW / SIDL are
     shared. DL = SW + DC + DD + DW + SIDL.
     """
@@ -941,8 +942,8 @@ def resolve_load_combinations(output_dict: dict) -> dict | None:
     """
     Load combinations table — sourced entirely from output_dict.
 
-    The backend builds the authoritative report at design time (IRC6 defaults +
-    custom, each {name, expr, included}) and stores it under KEY_LC_REPORT.
+    The backend builds the authoritative list at design time (IRC6 defaults +
+    custom, each {name, expr, included}) and stores it under KEY_ALL_LOAD_COMBINATIONS.
     'Selected' reflects each combination's included flag.
     """
     od = output_dict
@@ -2041,3 +2042,88 @@ RESOLVER_MAP: dict[str, callable] = {
     # ── Design Summary ────────────────────────────────────────────────────
     "design_results_summary":             resolve_design_results_summary,
 }
+
+
+# ── Member / Load Case filtering ────────────────────────────────────────
+# Drive the two dropdowns on the Generate Results page from output_dict, and
+# narrow a resolved table to the chosen girder / load case.
+
+#: First-column headers that identify the girder a row belongs to. Tables whose
+#: first column is anything else (e.g. "Component") carry no girder dimension.
+GIRDER_ID_COLUMNS = ("Girder", "Member", "Member ID")
+
+#: Tables where the load case is a *column pair* ("<LC> - Max", "<LC> - Min").
+LOAD_CASE_COLUMN_TABLES = ("bending_moment_by_load_case", "shear_force_by_load_case")
+
+#: Tables where the load case is a *row* (first cell is the combination name).
+LOAD_CASE_ROW_TABLES = ("load_combinations",)
+
+# "G1", "G1M1", "G1G2", "Girder 1" — every girder number a row label mentions.
+_GIRDER_TOKEN_RE = re.compile(r"G(?:irder)?\s*0*(\d+)", re.IGNORECASE)
+
+
+def available_load_cases(output_dict: dict) -> list:
+    """Ordered, de-duplicated load-case names the analysis actually ran.
+
+    These are the ``load_effects_cache`` keys — SW, DC, "1.0 DL",
+    "BASIC_1 : 1.35DL + …" — the names the by-load-case force tables are built
+    from. Unticked or custom combinations are deliberately absent: the analyser
+    never builds them, so they would filter every table down to nothing.
+    """
+
+    return list(dict.fromkeys(
+        str(lc) for lc_data in output_dict.get("load_effects_cache").values() for lc in lc_data
+    ))
+
+
+def _row_girder_numbers(label) -> list:
+    """Every girder number named by a row label ("G1G2" spans two girders)."""
+    return [int(n) for n in _GIRDER_TOKEN_RE.findall(str(label))]
+
+
+def filter_table(table_data: dict, selected_girder_no=None, load_case=None) -> dict:
+    """Return a copy of ``table_data`` narrowed to one girder and/or load case.
+
+    ``selected_girder_no`` — 1-based girder number, or None for all girders. Only tables
+    whose first column is a girder identity column react; within those, a row is
+    kept when it names the selected girder, and rows that name no girder at all
+    (e.g. "Deck Slab (Top)") always stay.
+
+    ``load_case`` — a name from :func:`available_load_cases`, or None for all.
+    Only the load-case-aware tables react: the by-load-case force tables keep the
+    identity column plus that case's Max/Min columns, and the load-combinations
+    table keeps that combination's row. Every other table is load-case
+    independent and is returned with all of its data.
+
+    A table that has no column matching the selected case (the placeholder
+    defaults used before a design is run) is left untouched rather than emptied.
+    """
+
+    columns = list(table_data.get("columns"))
+    rows    = [list(r) for r in table_data.get("rows")]
+    table_id = str(table_data.get("id", ""))
+
+    if load_case:
+        if table_id in LOAD_CASE_COLUMN_TABLES:
+            keep = [0] + [i for i, col in enumerate(columns)
+                          if i and str(col).rsplit(" - ", 1)[0] == load_case]
+            if len(keep) > 1:
+                columns = [columns[i] for i in keep]
+                rows    = [[r[i] if i < len(r) else EMPTY for i in keep] for r in rows]
+
+        elif table_id in LOAD_CASE_ROW_TABLES:
+            # first cell is the label part only ("Basic_1"), not the full name
+            label = load_case.split(" : ", 1)[0]
+            rows  = [r for r in rows if r and str(r[0]) == label]
+
+    if selected_girder_no and str(columns[0]).strip() in GIRDER_ID_COLUMNS:
+        rows = [
+            r for r in rows
+            if not _row_girder_numbers(r[0] if r else "")
+            or int(selected_girder_no) in _row_girder_numbers(r[0])
+        ]
+
+    filtered = dict(table_data)
+    filtered["columns"] = columns
+    filtered["rows"]    = rows
+    return filtered
