@@ -66,6 +66,7 @@ from osdagbridge.desktop.ui.utils.custom_3dviewer import CustomViewer3d
 from osdagbridge.desktop.ui.utils.cad_3d_hover import (
     build_component_labels,
     build_bracing_hover_shapes,
+    build_girder_hover_shapes,
 )
 
 from osdagbridge.core.bridge_types.plate_girder.dto import (
@@ -335,27 +336,22 @@ class CAD3DWindow(QWidget):
         # teardown_model() already emptied the model_* dicts — do not re-assign them here.
 
         #  PLATE GIRDER (WEB + FLANGES SEPARATE COLORS)
+        # Each keeps its own registration key so the visibility checkbox still matches
+        # component_map, while every girder gets its own tooltip via the per-shape
+        # label channel — see cad_3d_hover.build_girder_hover_shapes.
+        _gd = getattr(params, "output_dict", None)
+        _gg = cad_data.get("girder_groups")
 
-        display_and_register(
-            cad_data.get("girder_web", []),
-            "Girder Web",
-            labels["Girder Web"],
-            WEB_COLOR
-        )
+        def display_girder(flat_key, key, color):
+            shapes, per_shape = build_girder_hover_shapes(
+                _gd, _gg, key, cad_data.get(flat_key, []),
+            )
+            display_and_register(shapes, key, labels[key], color,
+                                 per_ais_labels=per_shape)
 
-        display_and_register(
-            cad_data.get("girder_top_flanges", []),
-            "Girder Top Flange",
-            labels["Girder Top Flange"],
-            FLANGE_COLOR
-        )
-
-        display_and_register(
-            cad_data.get("girder_bottom_flanges", []),
-            "Girder Bottom Flange",
-            labels["Girder Bottom Flange"],
-            FLANGE_COLOR
-        )
+        display_girder("girder_web",            "Girder Web",           WEB_COLOR)
+        display_girder("girder_top_flanges",    "Girder Top Flange",    FLANGE_COLOR)
+        display_girder("girder_bottom_flanges", "Girder Bottom Flange", FLANGE_COLOR)
 
 
         display_and_register(

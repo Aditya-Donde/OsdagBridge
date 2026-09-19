@@ -42,6 +42,12 @@ from PySide6.QtWidgets import QToolTip
 # steel grade keys are extra: the builder has no use for them, but the label does.
 from osdagbridge.core.utils.common import (
     KEY_GIRDER,
+    KEY_MP_GIRDER_DEPTH,
+    KEY_MP_GIRDER_WEB_THICKNESS,
+    KEY_MP_GIRDER_TOP_FLANGE_WIDTH,
+    KEY_MP_GIRDER_TOP_FLANGE_THICKNESS,
+    KEY_MP_GIRDER_BOTTOM_FLANGE_WIDTH,
+    KEY_MP_GIRDER_BOTTOM_FLANGE_THICKNESS,
     KEY_RL_WIDTH,
     KEY_RL_HEIGHT,
     KEY_MD_TYPE,
@@ -75,7 +81,8 @@ from osdagbridge.core.bridge_components.super_structure.cross_bracing.builder im
     COMPONENT_CROSS_BRACING,
 )
 
-__all__ = ["HoverController", "build_component_labels", "build_bracing_hover_shapes"]
+__all__ = ["HoverController", "build_component_labels",
+           "build_bracing_hover_shapes", "build_girder_hover_shapes"]
 
 
 # =============================================================================
@@ -508,6 +515,115 @@ def _median_label(params):
             lines.append(f"{caption}: {mm:.2f} mm")
 
     return "\n".join(lines)
+
+
+# =============================================================================
+# GIRDERS — per girder, not one representative
+# =============================================================================
+# Every girder currently reports girder 1's dimensions.  The values are stored per
+# girder under "<base>.G{i+1}.M1", but get_3d_cad_parameters resolves them with
+#
+#     gv = lambda key: resolve_girder_value(inp, key)
+#
+# which passes no index, so resolve_girder_value falls through to its last resort —
+# girder 1 — for every girder on the bridge.
+
+# (base key, caption, is_length) per component.  is_length marks the values needing
+# the metre -> millimetre conversion the DTO applies.
+_GIRDER_ROLE_KEYS = {
+    "Girder Web": [
+        (KEY_MP_GIRDER_DEPTH,                   "Depth",         True),
+        (KEY_MP_GIRDER_WEB_THICKNESS,           "Web Thickness", True),
+    ],
+    "Girder Top Flange": [
+        (KEY_MP_GIRDER_TOP_FLANGE_WIDTH,        "Width",         True),
+        (KEY_MP_GIRDER_TOP_FLANGE_THICKNESS,    "Thickness",     True),
+    ],
+    "Girder Bottom Flange": [
+        (KEY_MP_GIRDER_BOTTOM_FLANGE_WIDTH,     "Width",         True),
+        (KEY_MP_GIRDER_BOTTOM_FLANGE_THICKNESS, "Thickness",     True),
+    ],
+}
+
+# Heading each one keeps, matching what the DTO-based labels said.
+_GIRDER_ROLE_NAMES = {
+    "Girder Web":           "Girder Web",
+    "Girder Top Flange":    "Top Flange",
+    "Girder Bottom Flange": "Bottom Flange",
+}
+
+
+def _girder_label(output_dict, component, girder_index):
+    """Tooltip for one component of one girder.
+
+    ``girder_index`` is zero-based, as the build loop counts it, and is shown to the
+    user as G1, G2, ...  Values come through ``resolve_girder_value(inp, key, i)`` —
+    the function that already understands the "<base>.G{i+1}.M1" scheme and is simply
+    never called with an index today.
+
+    Lengths get the same ``* 1e3`` the DTO applies.  Note that KEY_MP_GIRDER_DEPTH has
+    two writers that disagree about units: defaults.py stores ``D * 1e3`` while
+    get_3d_cad_parameters multiplies by 1e3 again.  Converting the same way the DTO
+    does keeps the tooltip consistent with the drawn geometry whichever is right; if
+    both are wrong that is a pre-existing bug in the DTO, not one introduced here.
+    """
+    from osdagbridge.core.bridge_types.plate_girder.plategirderbridge import (
+        resolve_girder_value,
+    )
+
+    lines = [_GIRDER_ROLE_NAMES.get(component, component),
+             f"Girder: G{girder_index + 1}"]
+
+    for base_key, caption, is_length in _GIRDER_ROLE_KEYS.get(component, []):
+        try:
+            value = resolve_girder_value(output_dict, base_key, girder_index)
+        except KeyError:
+            continue
+        if not _present(value):
+            continue
+        try:
+            lines.append(f"{caption}: {float(value) * 1e3:.2f} mm" if is_length
+                         else f"{caption}: {value}")
+        except (TypeError, ValueError):
+            continue
+
+    steel_grade = output_dict.get(KEY_GIRDER)
+    if _present(steel_grade):
+        lines.append(f"Steel Grade: {str(steel_grade).strip()}")
+
+    return "\n".join(lines)
+
+
+def build_girder_hover_shapes(output_dict, girder_groups, component, fallback_shapes=None):
+    """Flatten one girder component's groups into shapes paired with their text.
+
+    Mirrors ``build_bracing_hover_shapes``: the CAD layer hands both lists straight to
+    ``HoverController.register`` and does no label work of its own.
+
+    ``girder_groups`` is ``(component key, girder index) -> [shapes]`` from
+    cad_generator.  Only entries matching ``component`` are used, so the three girder
+    components register separately while sharing one map.
+
+    Returns ``(shapes, labels)``.  ``labels`` is ``None`` when there is nothing to
+    label with, which tells the caller to fall back to the generic per-key label.
+    """
+    if not girder_groups or not output_dict:
+        return list(fallback_shapes or []), None
+
+    mine = {k: v for k, v in girder_groups.items() if k[0] == component}
+    if not mine:
+        return list(fallback_shapes or []), None
+
+    shapes, labels = [], []
+    for key in sorted(mine, key=lambda k: k[1]):
+        group_shapes = mine[key]
+        text = _girder_label(output_dict, component, key[1])
+        shapes.extend(group_shapes)
+        labels.extend([text] * len(group_shapes))
+
+    if not shapes:
+        return list(fallback_shapes or []), None
+    return shapes, labels
 
 
 def _railing_label(params):

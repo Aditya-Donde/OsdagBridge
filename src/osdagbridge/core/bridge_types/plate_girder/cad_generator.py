@@ -436,6 +436,10 @@ class PlateGirderCADGenerator:
         girder_flanges = []
         girder_top_flanges = []
         girder_bottom_flanges = []
+        # Same shapes as the flat lists above, indexed by (component key, girder index),
+        # so the CAD layer can label each girder with its own designed section instead of
+        # showing girder 1's values on all of them.  The flat lists are unchanged.
+        girder_groups = {}
         supports_tri = []
         supports_vertical = []
         supports_wide_horiz = []
@@ -542,6 +546,7 @@ class PlateGirderCADGenerator:
                 web = _translate(w, dx=x_offset, dy=y_offset)
                 girders.append(web)
                 girder_web.append(web)
+                girder_groups.setdefault(("Girder Web", i), []).append(web)
 
             # Place top flange
             for tf in pg.get("top_flange", []):
@@ -549,6 +554,7 @@ class PlateGirderCADGenerator:
                 girders.append(top_flange)
                 girder_flanges.append(top_flange)
                 girder_top_flanges.append(top_flange)
+                girder_groups.setdefault(("Girder Top Flange", i), []).append(top_flange)
 
             # Place bottom flange
             for bf in pg.get("bottom_flange", []):
@@ -556,6 +562,7 @@ class PlateGirderCADGenerator:
                 girders.append(bottom_flange)
                 girder_flanges.append(bottom_flange)
                 girder_bottom_flanges.append(bottom_flange)
+                girder_groups.setdefault(("Girder Bottom Flange", i), []).append(bottom_flange)
 
             # Place stiffeners (follow parent girder's offset)
             for stiff in pg["stiffeners"]:
@@ -922,6 +929,10 @@ class PlateGirderCADGenerator:
             "girder_flanges": girder_flanges,
             "girder_top_flanges": girder_top_flanges,
             "girder_bottom_flanges": girder_bottom_flanges,
+            # The same girder shapes indexed by (component key, girder index),
+            # used only for per-girder hover labels.  The flat lists above are
+            # what everything else reads.
+            "girder_groups": girder_groups,
             
             # Stiffeners (combined and typed)
             "stiffeners": stiffeners,
