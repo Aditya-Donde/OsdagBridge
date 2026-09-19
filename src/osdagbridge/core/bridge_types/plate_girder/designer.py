@@ -3194,12 +3194,11 @@ def _extract_demands_from_result_data(
             # Girder self-weight moment: this LC's Mz when it IS the SW case —
             # enables the Stage-1 LTB check (5a, vs Mb_stage1) in the per-LC view.
             _m_sw    = round(Mz, 2) if (_sw_lc is not None and lc_str == _sw_lc) else 0.0
-            # Fatigue ranges (checks 8/9) apply only to frequent SLS cases (Cl.604.5).
-            # Mz is in kN·m here → ×1e6 = N·mm; Vy in kN → ×1e3 = N.
-            _is_fat     = (lc_t == "SLS_frequent")
-            # Composite section modulus — live-load fatigue stress acts on the composite section.
-            _stress_rng = round(Mz * 1e6 / Ze_comp_bot_mm3, 3) if _is_fat and Ze_comp_bot_mm3 > 0 else 0.0
-            _shear_rng  = round(Vy * 1e3 / Aw_mm2, 3)       if _is_fat and Aw_mm2 > 0 else 0.0
+            # Fatigue ranges (checks 8/9): the frequent-SLS case only gates whether
+            # the check applies (Cl.604.5). The demand is the girder-level stress /
+            # shear range from the fatigue vehicle (IRC:6 Cl.204.6), since permanent
+            # loads in this LC's Mz/Vy do not cycle and so contribute no range.
+            _is_fat = (lc_t == "SLS_frequent")
 
             per_lc[lc_str] = DemandEnvelope(
                 # Strong-axis moment, vertical shear, axial — directly usable as ULS demands
@@ -3221,8 +3220,8 @@ def _extract_demands_from_result_data(
                 V_sls_kN=_v_sls,
                 M_construction_kNm=_m_const,
                 M_girder_sw_kNm=_m_sw,
-                stress_range_MPa=_stress_rng,
-                shear_range_MPa=_shear_rng,
+                stress_range_MPa=round(stress_range_MPa, 3) if _is_fat else 0.0,
+                shear_range_MPa=round(shear_range_MPa, 3) if _is_fat else 0.0,
                 Nsc=Nsc,
                 governing_combination=lc_str,
                 location="critical element", member=g_name, source="grillage_analysis_per_lc",
