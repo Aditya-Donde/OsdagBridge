@@ -1376,18 +1376,35 @@ class MainWindow(QMainWindow):
 
     # Open Plate Girder Bridge Module
     def open_plategirder_bridge(self):
+        if getattr(self, "_loading_tab_index", None) is not None:
+            return          # a load is already in flight
 
-        from .ui.components.dialogs.loading_popup import LoadingDialogManager
-        _bridge_loading = LoadingDialogManager(self.theme.is_light())
-        _bridge_loading.show()
+        index = self.tab_bar.currentIndex()
+        self._loading_tab_index = index
+        self._tab_text_before_load = self.tab_bar.tabText(index)
+        icon = ":/vectors/hourglass_top_light.svg" if self.theme.is_light() else ":/vectors/hourglass_top_dark.svg"
+        self.tab_bar.setIconSize(QSize(14, 14))
+        self.tab_bar.setTabIcon(index, QIcon(icon))
+        self.tab_bar.setTabText(index, "Loading ...")
 
+        # Halt the UI while the module is being constructed
+        self.tab_widget.setEnabled(False)
+        self.tab_bar.setEnabled(False)
+        QApplication.setOverrideCursor(Qt.WaitCursor)
+        QApplication.processEvents()
+
+        # Let the tab repaint before the blocking construction starts
+        QTimer.singleShot(0, self._load_plategirder_bridge)
+
+    def _load_plategirder_bridge(self):
         self.clear_layout(self.main_widget_layout)
         title = "Plate Girder Bridge"
         from osdagbridge.desktop.ui.template_page import CustomWindow
         from osdagbridge.core.bridge_types.plate_girder.plategirderbridge import PlateGirderBridge
+        backend = PlateGirderBridge
         template_page = CustomWindow(
             title=title,
-            backend=PlateGirderBridge,
+            backend=backend,
             parent=self
         )
 
@@ -1404,11 +1421,21 @@ class MainWindow(QMainWindow):
         self._update_sidebar_visibility()
         self.main_widget_layout.addWidget(template_page)
 
-        index = self.tab_bar.currentIndex()
-        self.tab_bar.setTabText(index, title)
+        # Update Recent Module
+        from osdag_home.data.database.database_config import insert_recent_module
+        insert_recent_module(backend.module_name())
 
-        _bridge_loading.hide()
-        _bridge_loading = None
+        self._finish_tab_loading(title)
+
+    def _finish_tab_loading(self, title):
+        if getattr(self, "_loading_tab_index", None) is None:
+            return
+        self.tab_bar.setTabIcon(self._loading_tab_index, QIcon())
+        self.tab_bar.setTabText(self._loading_tab_index, title)
+        self._loading_tab_index = None
+        self.tab_widget.setEnabled(True)
+        self.tab_bar.setEnabled(True)
+        QApplication.restoreOverrideCursor()
 
     def open_home_page(self, module):
         self.clear_layout(self.main_widget_layout)
