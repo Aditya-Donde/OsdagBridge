@@ -1,6 +1,8 @@
 from pathlib import Path
 from importlib.resources import files
 
+from osdagbridge.core.utils.common import KEY_MODULE_PLATE_GIRDER
+
 SQLITE_FILE = files('osdag_home.data.database')/ 'user_data.sqlite'
 
 PROJECT_TABLE = 'recent_projects'
@@ -186,11 +188,8 @@ def search_projects_and_modules(query: str) -> dict[str, list]:
 MODULE_MAP = {
     #----------------------------Connections-start-------------------------------------
     #--------------------Submodule---------Module---------Open-module-function-------Related-Navbar-Parent-
-    # KEY_DISP_FINPLATE: ['Fin Plate', 'Shear Connection', 'open_fin_plate_shear_conn', "Connection"],
-    # KEY_DISP_ENDPLATE: ['Header Plate', 'Shear Connection', 'open_header_plate_shear_conn', "Connection"],
-    # KEY_DISP_CLEATANGLE: ['Cleat Angle', 'Shear Connection', 'open_cleat_angle_shear_conn', "Connection"],
-    # KEY_DISP_SEATED_ANGLE: ['Seated Angle', 'Shear Connection', 'open_seated_angle_shear_conn', "Connection"],
-
+    KEY_MODULE_PLATE_GIRDER: ['OsdagBridge', 'PlateGirder Bridge', 'open_plategirder_bridge', "OsdagBridge"],
+    
 }
 
 # To retrieve the name of a module function that can open the required module
