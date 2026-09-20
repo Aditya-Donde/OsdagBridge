@@ -386,6 +386,12 @@ class PlateGirderBridge:
         # When True, design() writes tools/bridge_full_data.json. Off by default.
         self.dump_json: bool = False
 
+    @staticmethod
+    def module_name() -> str:
+        """Return the module name for this bridge type."""
+        from osdagbridge.core.utils.common import KEY_MODULE_PLATE_GIRDER
+        return KEY_MODULE_PLATE_GIRDER
+
     def input_values(self) -> list:
         """Return UI field definitions for the InputDock (delegated to FrontendData)."""
         return self._frontend.input_values()
