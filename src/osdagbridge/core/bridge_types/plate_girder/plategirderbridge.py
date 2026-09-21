@@ -2981,6 +2981,16 @@ class PlateGirderBridge:
             # top_height         [KEY_DS_STUD_HEAD_HEIGHT]          : min head height = 0.667 x d  [IS 3935:1966]
             # num_per_section    [KEY_DS_STUD_COUNT]                : studs per section
             # transverse_spacing [KEY_DS_STUD_TRANSVERSE_SPACING]   : transverse spacing (mm)
+            # pitch              [KEY_SD_SHEAR_LONGITUDINAL_SPACING]: longitudinal spacing of the
+            #                                                         stud rows, designed from the
+            #                                                         shear flow  [IRC 22:2015 Cl. 606.4]
+            #                                                         and clamped by Cl. 606.9.
+            #
+            # pitch was a literal 500 until now.  It was written that way on 05-05-2026, when the
+            # DTO was first assembled and store_design_results() did not yet publish the designed
+            # spacing; that key arrived a month later (02-06-2026) for the results dock and the CAD
+            # path was never updated.  The literal drove the geometry too, so every bridge drew its
+            # stud rows 500 mm apart whatever the design produced.
             shear_stud_params=ShearStudParamsDTO(
                 base_diameter      = float(inp[KEY_DS_STUD_DIAMETER]),
                 top_diameter       = float(inp[KEY_DS_STUD_HEAD_DIAMETER]),
@@ -2988,7 +2998,7 @@ class PlateGirderBridge:
                 top_height         = float(inp[KEY_DS_STUD_HEAD_HEIGHT]),
                 num_per_section    = int(float(inp[KEY_DS_STUD_COUNT])),
                 transverse_spacing = float(inp[KEY_DS_STUD_TRANSVERSE_SPACING]),
-                pitch=500,
+                pitch              = float(inp[KEY_SD_SHEAR_LONGITUDINAL_SPACING]),
             ),
             # --- Girder segments (single uniform segment) ---
             girder_segments=[girder_segment],
