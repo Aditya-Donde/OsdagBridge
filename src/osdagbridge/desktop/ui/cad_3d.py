@@ -68,6 +68,7 @@ from osdagbridge.desktop.ui.utils.cad_3d_hover import (
     build_bracing_hover_shapes,
     build_girder_hover_shapes,
     build_stiffener_hover_shapes,
+    build_support_hover_shapes,
 )
 
 from osdagbridge.core.bridge_types.plate_girder.dto import (
@@ -386,26 +387,22 @@ class CAD3DWindow(QWidget):
         SUPPORT_LONGIT_COLOR     = Quantity_Color(0.85, 0.1, 0.1, Quantity_TOC_RGB)  # Red
 
 
-        display_and_register(
-            cad_data.get("supports_vertical",   []), 
-            "Support Vertical",   
-            labels["Support Vertical"],
-            SUPPORT_VERTICAL_COLOR,
-            line_width=2.0)
-        
-        display_and_register(
-            cad_data.get("supports_wide_horiz", []), 
-            "Support Transverse", 
-            labels["Support Transverse"],
-            SUPPORT_TRANSVERSE_COLOR,
-            line_width=2.0)
-        
-        display_and_register(
-            cad_data.get("supports_long_horiz", []), 
-            "Support Longitudinal",
-            labels["Support Longitudinal"],
-            SUPPORT_LONGIT_COLOR,
-            line_width=2.0)
+        #  SUPPORTS
+        # The flat lists mix every girder's left and right bars, so they can only carry
+        # one tooltip per key.  support_groups holds the same bars tagged by girder and
+        # end — see cad_3d_hover.build_support_hover_shapes.
+        _sg = cad_data.get("support_groups")
+
+        def display_support(flat_key, key, color):
+            shapes, per_shape = build_support_hover_shapes(
+                _sg, key, cad_data.get(flat_key, []),
+            )
+            display_and_register(shapes, key, labels[key], color,
+                                 line_width=2.0, per_ais_labels=per_shape)
+
+        display_support("supports_vertical",   "Support Vertical",     SUPPORT_VERTICAL_COLOR)
+        display_support("supports_wide_horiz", "Support Transverse",   SUPPORT_TRANSVERSE_COLOR)
+        display_support("supports_long_horiz", "Support Longitudinal", SUPPORT_LONGIT_COLOR)
 
 
         # Cross bracing and end diaphragm.  Both stay under the single key

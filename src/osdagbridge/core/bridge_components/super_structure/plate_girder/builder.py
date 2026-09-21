@@ -592,6 +592,10 @@ def build_plate_girder_geometry(
     supports_vertical = []
     supports_wide_horiz = []
     supports_long_horiz = []
+    # The same bars grouped by (component key, end).  Only this function knows which
+    # end a bar belongs to — the flat lists above mix left and right — so the tag is
+    # recorded here, at each append, for the hover labels.  The flat lists are unchanged.
+    support_groups = {}
 
     # ── LEFT (PIN) SUPPORT at builder y = 0 ──────────────────────────────────
     z_L  = z_contact_left
@@ -604,6 +608,7 @@ def build_plate_girder_geometry(
         gp_Pnt( w_narrow/2, 0, z_L - h_tall),
         gp_Pnt(-w_narrow/2, 0, z_L - h_tall),
     ))
+    support_groups.setdefault(("Support Vertical", "Left"), []).append(supports_vertical[-1])
 
     # 2. Wide horizontal bar
     if right_guided:
@@ -613,6 +618,7 @@ def build_plate_girder_geometry(
             gp_Pnt( sw_L/2, 0, z_L - h_short),
             gp_Pnt(-sw_L/2, 0, z_L - h_short),
         ))
+        support_groups.setdefault(("Support Transverse", "Left"), []).append(supports_wide_horiz[-1])
 
     # 3. Longitudinal bar
     supports_long_horiz.append(_rect_wire(
@@ -621,6 +627,7 @@ def build_plate_girder_geometry(
         gp_Pnt(0, w_supp, z_L - h_short),
         gp_Pnt(0, 0,      z_L - h_short),
     ))
+    support_groups.setdefault(("Support Longitudinal", "Left"), []).append(supports_long_horiz[-1])
 
     # ── RIGHT (ROLLER) SUPPORT at builder y = length ─────────────────────────
     z_R  = z_contact_right
@@ -633,6 +640,7 @@ def build_plate_girder_geometry(
         gp_Pnt( w_narrow/2, length, z_R - h_tall),
         gp_Pnt(-w_narrow/2, length, z_R - h_tall),
     ))
+    support_groups.setdefault(("Support Vertical", "Right"), []).append(supports_vertical[-1])
 
     # 2. Wide horizontal bar
     if right_guided:
@@ -642,11 +650,14 @@ def build_plate_girder_geometry(
             gp_Pnt( sw_R/2, length, z_R - h_short),
             gp_Pnt(-sw_R/2, length, z_R - h_short),
         ))
+        support_groups.setdefault(("Support Transverse", "Right"), []).append(supports_wide_horiz[-1])
 
     # Rotate all three
     supports_vertical   = [_rotate_about_z(s, -90) for s in supports_vertical]
     supports_wide_horiz = [_rotate_about_z(s, -90) for s in supports_wide_horiz]
     supports_long_horiz = [_rotate_about_z(s, -90) for s in supports_long_horiz]
+    # _rotate_about_z returns new shapes, so the grouped bars need the same rotation.
+    support_groups = {k: [_rotate_about_z(s, -90) for s in v] for k, v in support_groups.items()}
 
 
     return {
@@ -661,6 +672,7 @@ def build_plate_girder_geometry(
         "supports_vertical": supports_vertical,
         "supports_wide_horiz": supports_wide_horiz,
         "supports_long_horiz": supports_long_horiz,
+        "support_groups": support_groups,
         "supports_cyl": supports_cyl,
         "shear_studs": shear_studs
     }
