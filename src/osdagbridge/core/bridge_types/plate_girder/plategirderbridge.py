@@ -3469,18 +3469,16 @@ class PlateGirderBridge:
         out[KEY_SD_GRADE_OF_MATERIAL]       = dr["steel_grade"]
         out[KEY_SD_SECTION_TYPE]            = dr["fabrication"].title()   # "Welded" / "Rolled"
 
-        # Designation: "D × bf_top × tf_top × bf_bot × tf_bot" (overall depth D, not clear web)
-        # Built directly here from design_results plate dimensions (all in mm).
-        dw  = dr["dw_mm"]
+        # Designation: the section's own label — the IS catalogue designation for a
+        # rolled girder, else "D × bf_top × tf_top × bf_bot × tf_bot" built by
+        # SteelSection from the plate dimensions (overall depth D, not clear web).
         D   = dr["D_mm"]
         bft = dr["bf_top_mm"]
         tft = dr["tf_top_mm"]
         bfb = dr["bf_bot_mm"]
         tfb = dr["tf_bot_mm"]
         tw  = dr["tw_mm"]
-        out[KEY_SD_SECTION_DESIGNATION] = (
-            f"{D:.0f} × {bft:.0f} × {tft:.0f} × {bfb:.0f} × {tfb:.0f}"
-        )
+        out[KEY_SD_SECTION_DESIGNATION] = dr["designation"]
         out[KEY_SD_SECTION_CLASS]           = dr["section_class_governing"]
         out[KEY_SD_TOTAL_DEPTH]             = D          # mm
         out[KEY_SD_WEB_THICKNESS]           = tw         # mm

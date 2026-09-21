@@ -1996,7 +1996,7 @@ GIRDER_DETAILS_SCHEMA = {
                         "label":            "IS Section:",
                         "type":             TYPE_COMBOBOX,
                         "choices":          get_is_section_list(),
-                        "on_change":        "_update_section_drawing",
+                        "on_change":        "_on_is_section_changed",
                         "on_change_compute": {"function": "_compute_rolled_section_properties"},
                     }]
                 },
