@@ -720,6 +720,73 @@ def build_stiffener_hover_shapes(stiffeners_dict, output_dict, girder_groups, co
     return shapes, labels
 
 
+# =============================================================================
+# SUPPORTS — per girder and per end
+# =============================================================================
+#
+# The three support keys are restraint directions of one support, not three kinds of
+# support: "Support Vertical" is the bar that stops the girder moving up and down, and
+# so on.  Every bar used to share one flat list per key, so the left and right bars of
+# every girder all showed the same bare name.
+#
+# The builder now tags each bar with its end and cad_generator adds the girder index,
+# so a tooltip can say which bar it is.  No design value is shown — the support-type
+# dropdowns do not control what is drawn, and the bearing-length input is not read by
+# the design or the geometry, so either would describe something the model is not.
+
+# Restraint line per component key.
+_SUPPORT_RESTRAINTS = {
+    "Support Vertical":     "Vertical",
+    "Support Transverse":   "Transverse",
+    "Support Longitudinal": "Longitudinal",
+}
+
+# Left before right when sorting within a girder.
+_SUPPORT_END_ORDER = {"Left": 0, "Right": 1}
+
+
+def _support_label(component, girder_index, end):
+    """Tooltip for one support bar: which girder, which end, which restraint.
+
+    ``girder_index`` is zero-based, as the build loop counts it, and is shown as G1,
+    G2, ...  ``end`` is "Left" or "Right" as tagged by the plate girder builder.
+    """
+    lines = ["Support", f"Girder: G{girder_index + 1}", f"End: {end}"]
+    restraint = _SUPPORT_RESTRAINTS.get(component)
+    if restraint:
+        lines.append(f"Restraint: {restraint}")
+    return "\n".join(lines)
+
+
+def build_support_hover_shapes(support_groups, component, fallback_shapes=None):
+    """Flatten one support component's groups into shapes paired with their text.
+
+    Same contract as ``build_girder_hover_shapes``.  ``support_groups`` is
+    ``(component key, girder index, end) -> [shapes]`` from cad_generator; only entries
+    matching ``component`` are used.
+
+    Returns ``(shapes, labels)``, with ``labels`` set to ``None`` when there is nothing
+    to label with, telling the caller to keep the generic per-key label.
+    """
+    if not support_groups:
+        return list(fallback_shapes or []), None
+
+    mine = {k: v for k, v in support_groups.items() if k[0] == component}
+    if not mine:
+        return list(fallback_shapes or []), None
+
+    shapes, labels = [], []
+    for key in sorted(mine, key=lambda k: (k[1], _SUPPORT_END_ORDER.get(k[2], 9))):
+        group_shapes = mine[key]
+        text = _support_label(component, key[1], key[2])
+        shapes.extend(group_shapes)
+        labels.extend([text] * len(group_shapes))
+
+    if not shapes:
+        return list(fallback_shapes or []), None
+    return shapes, labels
+
+
 def _railing_label(params):
     """Railing tooltip, read from the design snapshot rather than the DTO.
 
