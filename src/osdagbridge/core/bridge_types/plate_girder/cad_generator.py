@@ -450,6 +450,9 @@ class PlateGirderCADGenerator:
         raw_intermediate_stiffeners = []
         raw_bearing_stiffeners = []
         raw_longitudinal_stiffeners = []
+        # Stiffeners collected per girder before compounding, so each girder ends up with
+        # its own shape.  Merged into girder_groups once _make_compound is in scope.
+        per_girder_stiffeners = {}
 
         total_width = (self.num_girders - 1) * self.girder_spacing
         reference_position = 0.0  # Centerline reference for skew
@@ -572,11 +575,17 @@ class PlateGirderCADGenerator:
 
             # Place typed stiffeners
             for stiff in pg.get("intermediate_stiffeners", []):
-                raw_intermediate_stiffeners.append(_translate(stiff, dx=x_offset, dy=y_offset))
+                s = _translate(stiff, dx=x_offset, dy=y_offset)
+                raw_intermediate_stiffeners.append(s)
+                per_girder_stiffeners.setdefault(("Intermediate Stiffener", i), []).append(s)
             for stiff in pg.get("bearing_stiffeners", []):
-                raw_bearing_stiffeners.append(_translate(stiff, dx=x_offset, dy=y_offset))
+                s = _translate(stiff, dx=x_offset, dy=y_offset)
+                raw_bearing_stiffeners.append(s)
+                per_girder_stiffeners.setdefault(("Bearing Stiffener", i), []).append(s)
             for stiff in pg.get("longitudinal_stiffeners", []):
-                raw_longitudinal_stiffeners.append(_translate(stiff, dx=x_offset, dy=y_offset))
+                s = _translate(stiff, dx=x_offset, dy=y_offset)
+                raw_longitudinal_stiffeners.append(s)
+                per_girder_stiffeners.setdefault(("Longitudinal Stiffener", i), []).append(s)
 
             # Place shear studs
             for stud in pg.get("shear_studs", []):
@@ -618,6 +627,15 @@ class PlateGirderCADGenerator:
         intermediate_stiffeners_cad = _make_compound(raw_intermediate_stiffeners)
         bearing_stiffeners_cad      = _make_compound(raw_bearing_stiffeners)
         longitudinal_stiffeners_cad = _make_compound(raw_longitudinal_stiffeners)
+
+        # The flat compounds above merge every girder's stiffeners into one shape, which
+        # leaves the viewer with a single AIS per type and therefore a single tooltip.
+        # Compound per girder as well so each girder is its own shape, and hand those to
+        # the CAD layer through the same (component key, girder index) map the web and
+        # flanges use.  One compound per girder rather than one per stiffener keeps the
+        # object count low.
+        for _gkey, _shapes in per_girder_stiffeners.items():
+            girder_groups[_gkey] = _make_compound(_shapes)
 
         # Compound shear studs
         if raw_shear_studs:
