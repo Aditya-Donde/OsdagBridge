@@ -626,6 +626,100 @@ def build_girder_hover_shapes(output_dict, girder_groups, component, fallback_sh
     return shapes, labels
 
 
+# =============================================================================
+# STIFFENERS — per girder, straight off the DTO
+# =============================================================================
+#
+# Unlike the girder sections, the per-girder stiffener values never had to be dug out
+# of the design snapshot: get_3d_cad_parameters already builds stiffeners_dict[i] for
+# every girder and passes the whole map to the DTO, where the CAD generator reads it to
+# draw each girder's stiffeners.  Only the tooltip was left on the flat scalar fields,
+# which plategirderbridge fills from stiffeners_dict[0] — see the comment there that
+# calls them "representative (first girder) values".
+#
+# So the bridge was drawn right and described wrong, and the fix is a dictionary read.
+#
+# No unit conversion here, deliberately.  Those flat DTO fields are unconverted copies
+# of these same entries, so reading the dict prints the number the tooltip has always
+# printed — just from the girder under the cursor.
+
+# (field in stiffeners_dict, caption, is_length) per component.  is_length separates the
+# millimetre values from the plain counts.
+_STIFFENER_ROLE_FIELDS = {
+    "Intermediate Stiffener": [
+        ("intermediate_stiffener_spacing",   "Spacing",   True),
+        ("intermediate_stiffener_thickness", "Thickness", True),
+    ],
+    "Bearing Stiffener": [
+        ("num_end_stiffener_pairs",          "Pairs",     False),
+        ("end_stiffener_thickness",          "Thickness", True),
+    ],
+    "Longitudinal Stiffener": [
+        ("num_longitudinal_stiffeners",      "Count",     False),
+        ("longitudinal_stiffener_thickness", "Thickness", True),
+    ],
+}
+
+
+def _stiffener_label(stiffeners_dict, output_dict, component, girder_index):
+    """Tooltip for one stiffener type on one girder.
+
+    ``girder_index`` is zero-based, as the build loop counts it, and is shown as G1,
+    G2, ...  Values come from ``stiffeners_dict[girder_index]``; a girder missing from
+    the map falls back to whatever fields are present, which in practice means the
+    heading alone rather than another girder's numbers.
+    """
+    entry = (stiffeners_dict or {}).get(girder_index) or {}
+
+    lines = [component, f"Girder: G{girder_index + 1}"]
+
+    for field, caption, is_length in _STIFFENER_ROLE_FIELDS.get(component, []):
+        value = entry.get(field)
+        if not _present(value):
+            continue
+        try:
+            lines.append(f"{caption}: {float(value):.2f} mm" if is_length
+                         else f"{caption}: {value}")
+        except (TypeError, ValueError):
+            continue
+
+    steel_grade = (output_dict or {}).get(KEY_GIRDER)
+    if _present(steel_grade):
+        lines.append(f"Steel Grade: {str(steel_grade).strip()}")
+
+    return "\n".join(lines)
+
+
+def build_stiffener_hover_shapes(stiffeners_dict, output_dict, girder_groups, component,
+                                 fallback_shapes=None):
+    """Flatten one stiffener type's per-girder groups into shapes paired with their text.
+
+    Same contract as ``build_girder_hover_shapes`` — it reads the same
+    ``(component key, girder index)`` map, which cad_generator now fills with one
+    compound per girder for each stiffener type.
+
+    Returns ``(shapes, labels)``, with ``labels`` set to ``None`` when there is nothing
+    to label with, telling the caller to keep the generic per-key label.
+    """
+    if not girder_groups or not stiffeners_dict:
+        return list(fallback_shapes or []), None
+
+    mine = {k: v for k, v in girder_groups.items() if k[0] == component}
+    if not mine:
+        return list(fallback_shapes or []), None
+
+    shapes, labels = [], []
+    for key in sorted(mine, key=lambda k: k[1]):
+        group_shapes = mine[key]
+        text = _stiffener_label(stiffeners_dict, output_dict, component, key[1])
+        shapes.extend(group_shapes)
+        labels.extend([text] * len(group_shapes))
+
+    if not shapes:
+        return list(fallback_shapes or []), None
+    return shapes, labels
+
+
 def _railing_label(params):
     """Railing tooltip, read from the design snapshot rather than the DTO.
 

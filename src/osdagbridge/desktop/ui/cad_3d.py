@@ -67,6 +67,7 @@ from osdagbridge.desktop.ui.utils.cad_3d_hover import (
     build_component_labels,
     build_bracing_hover_shapes,
     build_girder_hover_shapes,
+    build_stiffener_hover_shapes,
 )
 
 from osdagbridge.core.bridge_types.plate_girder.dto import (
@@ -354,29 +355,23 @@ class CAD3DWindow(QWidget):
         display_girder("girder_bottom_flanges", "Girder Bottom Flange", FLANGE_COLOR)
 
 
-        display_and_register(
-            cad_data.get("intermediate_stiffeners", []),
-            "Intermediate Stiffener",
-            labels["Intermediate Stiffener"],
-            STIFFENER_COLOR,
-            selectable=True
-        )
+        #  STIFFENERS
+        # The flat cad_data entries are one compound for the whole bridge, so they can
+        # only ever carry one tooltip.  girder_groups holds the same shapes compounded
+        # per girder, which is what gets displayed when the stiffener data is available —
+        # see cad_3d_hover.build_stiffener_hover_shapes.
+        _sd = getattr(params, "stiffeners_dict", None) or {}
 
-        display_and_register(
-            cad_data.get("bearing_stiffeners", []),
-            "Bearing Stiffener",
-            labels["Bearing Stiffener"],
-            STIFFENER_COLOR,
-            selectable=True
-        )
+        def display_stiffener(flat_key, key):
+            shapes, per_shape = build_stiffener_hover_shapes(
+                _sd, _gd, _gg, key, cad_data.get(flat_key, []),
+            )
+            display_and_register(shapes, key, labels[key], STIFFENER_COLOR,
+                                 per_ais_labels=per_shape)
 
-        display_and_register(
-            cad_data.get("longitudinal_stiffeners", []),
-            "Longitudinal Stiffener",
-            labels["Longitudinal Stiffener"],
-            STIFFENER_COLOR,
-            selectable=True
-        )
+        display_stiffener("intermediate_stiffeners", "Intermediate Stiffener")
+        display_stiffener("bearing_stiffeners",      "Bearing Stiffener")
+        display_stiffener("longitudinal_stiffeners", "Longitudinal Stiffener")
 
         display_and_register(
             cad_data.get("shear_studs", []),
