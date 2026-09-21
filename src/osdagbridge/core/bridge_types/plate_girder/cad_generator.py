@@ -444,6 +444,9 @@ class PlateGirderCADGenerator:
         supports_vertical = []
         supports_wide_horiz = []
         supports_long_horiz = []
+        # Support bars keyed by (component key, girder index, end).  The builder tags the
+        # end; the girder index is added here, where the loop knows it.
+        support_groups = {}
         supports_cyl = []
         raw_shear_studs = []
         raw_stiffeners = []
@@ -543,6 +546,10 @@ class PlateGirderCADGenerator:
                 supports_wide_horiz.append(_translate(s, dx=x_offset, dy=y_offset))
             for s in pg.get("supports_long_horiz", []):
                 supports_long_horiz.append(_translate(s, dx=x_offset, dy=y_offset))
+            for (component, end), shapes in pg.get("support_groups", {}).items():
+                for s in shapes:
+                    support_groups.setdefault((component, i, end), []).append(
+                        _translate(s, dx=x_offset, dy=y_offset))
 
             # Place web
             for w in pg.get("web", []):
@@ -971,6 +978,7 @@ class PlateGirderCADGenerator:
             "supports_vertical":   supports_vertical,
             "supports_wide_horiz": supports_wide_horiz,
             "supports_long_horiz": supports_long_horiz,
+            "support_groups":      support_groups,
             
             # Cross bracing system
             # "cross_bracings" stays a flat list — the IFC export and the legacy
