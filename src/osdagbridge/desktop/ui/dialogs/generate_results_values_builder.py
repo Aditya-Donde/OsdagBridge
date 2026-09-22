@@ -2050,7 +2050,7 @@ RESOLVER_MAP: dict[str, callable] = {
 
 #: First-column headers that identify the girder a row belongs to. Tables whose
 #: first column is anything else (e.g. "Component") carry no girder dimension.
-GIRDER_ID_COLUMNS = ("Girder", "Member", "Member ID")
+GIRDER_ID_ROWS = ("Girder", "Member", "Member ID")
 
 #: Tables where the load case is a *column pair* ("<LC> - Max", "<LC> - Min").
 LOAD_CASE_COLUMN_TABLES = ("bending_moment_by_load_case", "shear_force_by_load_case")
@@ -2116,7 +2116,7 @@ def filter_table(table_data: dict, selected_girder_no=None, load_case=None) -> d
             label = load_case.split(" : ", 1)[0]
             rows  = [r for r in rows if r and str(r[0]) == label]
 
-    if selected_girder_no and str(columns[0]).strip() in GIRDER_ID_COLUMNS:
+    if selected_girder_no and str(columns[0]).strip() in GIRDER_ID_ROWS:
         rows = [
             r for r in rows
             if not _row_girder_numbers(r[0] if r else "")
