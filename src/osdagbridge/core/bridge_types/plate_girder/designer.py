@@ -1483,7 +1483,7 @@ class IRC22CapacityCalculator:
         )
         return {
             "tau_f_MPa" : res["tau_f_MPa"],
-            "Qr_kN"     : res.get("Qr_table8_kN"),
+            "Qr_kN"     : res.get("Qr_kN"),
             "Nsc"       : fat.Nsc,
             "clause"    : res["clause"],
             "source"    : "IRC22_2014",

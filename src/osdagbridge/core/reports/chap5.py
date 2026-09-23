@@ -754,7 +754,7 @@ def ch5_design_checks(checks_data, bridge) -> str:
     g_summary_table_content = "\n".join(g_summary_rows)
 
     # ── Table 5.14: Shear Connector Capacity (bridge-level) ──────────────────
-    # Qu (Cl.606.3.1, Eq.6.1) and Qr (Cl.606.3.2, Table 8) are single per-stud
+    # Qu (Cl.606.3.1, Eq.6.1) and Qr (Cl.606.3.2) are single per-stud
     # values for the bridge, stored flat inside output_dict["design_results"].
     _dr_sc = bridge.output_dict.get("design_results", {}) or {}
 
@@ -766,8 +766,8 @@ def ch5_design_checks(checks_data, bridge) -> str:
         r"Design Resistance, $Q_u$ & \footnotesize\makecell{$Q_u=\min(Q_{u,s},\,Q_{u,c})$\\[3pt]$Q_{u,s}=\dfrac{0.8\,f_u\,(\pi d^2/4)}{\gamma_v}$\\[3pt]$Q_{u,c}=\dfrac{0.29\,\alpha\,d^2\sqrt{f_{ck}\,E_{cm}}}{\gamma_v}$} & "
         + _kn(_dr_sc.get(KEY_SD_SC_Qu_kN)) + r""" & IRC 22 Cl. 606.3.1 (Eq. 6.1) \\[6pt]
 \hline
-Fatigue Shear Resistance, $Q_r$ & IRC 22 Table 8 ($\phi d$, $N_{sc}$) & """
-        + _kn(_dr_sc.get(KEY_SD_SC_Qr_kN)) + r""" & IRC 22 Cl. 606.3.2 (Table 8) \\[6pt]
+Fatigue Shear Resistance, $Q_r$ & \footnotesize\makecell{$Q_r=\tau_f\,(\pi d^2/4)$\\[3pt]$\tau_f=\tau_{fn}\left(5\times10^6/N_{sc}\right)^{1/5}$} & """
+        + _kn(_dr_sc.get(KEY_SD_SC_Qr_kN)) + r""" & IRC 22 Cl. 606.3.2 \\[6pt]
 \hline"""
     )
 
