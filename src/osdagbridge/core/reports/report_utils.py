@@ -2,6 +2,7 @@ import os
 import re
 
 import matplotlib
+matplotlib.use("Agg", force=True)
 import matplotlib.pyplot as plt
 
 from osdagbridge.core.utils.common import (
