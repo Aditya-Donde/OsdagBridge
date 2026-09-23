@@ -613,22 +613,31 @@ class SteelDesignCheckTab(QWidget):
         self._relayout_visible_cards()
         self._refresh_summary()
 
-    def populate_from_results(self, demand, capacity, engine) -> None:
+    def populate_from_results(self, lc_data: dict) -> None:
+        """Fill the cards from one load case's stored rows.
+
+        ``lc_data`` is the stored per-LC entry from
+        PlateGirderBridge.get_dcr_rows_for_selection(): its "checks" list, plus
+        that case's scalar values for the interaction card. Every number was
+        computed once during the design - nothing is recomputed here, so these
+        cards cannot disagree with the logger, dock, results tables or report.
+        """
         self.clear_results()
 
-        # Multiple checks share the same check_id (e.g. several checks all have id=5 or id=7).
-        # Build a list-of-lists so _worst picks the highest DCR across ALL checks with those IDs.
+        # Several rows share one check id (ids 5 and 7 each cover more than one
+        # clause), so bucket by id and let _worst pick the highest DCR.
         from collections import defaultdict
         by_id: dict[int, list] = defaultdict(list)
-        for chk in engine.checks:
-            by_id[chk.check_id].append(chk)
+        for row in (lc_data or {}).get("checks") or []:
+            if row.get("check_id") is not None:
+                by_id[row["check_id"]].append(row)
 
         def _worst(*ids):
-            """Return the check with the highest DCR among all checks with the given IDs."""
+            """Return the row with the highest DCR among all rows with these ids."""
             candidates = []
             for i in ids:
                 candidates.extend(by_id.get(i, []))
-            return max(candidates, key=lambda c: c.dcr) if candidates else None
+            return max(candidates, key=lambda r: r.get("dcr") or 0.0) if candidates else None
 
         mapping = [
             # (ui_key,               check_ids to pick worst from)
@@ -642,6 +651,7 @@ class SteelDesignCheckTab(QWidget):
             (KEY_CHECK_DEFLECTION,       (13, 14, 18)),      # live + total + DL (post-camber) deflection (crack moved to deck)
         ]
 
+        values = lc_data or {}
         results_by_key: dict[str, dict] = {}
 
         for key, ids in mapping:
@@ -650,24 +660,25 @@ class SteelDesignCheckTab(QWidget):
                 if worst is None:
                     continue
                 entry = {
-                    "demand":   worst.demand,
-                    "capacity": worst.capacity,
-                    "ratio":    worst.dcr,
-                    "passed":   worst.status != "FAIL",
-                    "governing_method": worst.governing_method,
+                    "demand":   worst.get("demand", 0.0),
+                    "capacity": worst.get("capacity", 0.0),
+                    "ratio":    worst.get("dcr", 0.0),
+                    "passed":   worst.get("status") != "FAIL",
+                    "governing_method": worst.get("governing_method", ""),
                 }
+                note = worst.get("note") or ""
                 if key == KEY_CHECK_FLEXURE:
-                    m = re.search(r"PNA in (\w+)", worst.note or "")
+                    m = re.search(r"PNA in (\w+)", note)
                     entry["pna_location"] = m.group(1) if m else ""
                 if key == KEY_CHECK_INTERACTION:
-                    note = worst.note or ""
-                    entry["check_id"] = worst.check_id
-                    entry["Mu_kNm"]  = getattr(demand, "Mu_kNm", 0.0)
-                    entry["Mdv_kNm"] = getattr(capacity, "Mdv_kNm", 0.0)
-                    if worst.check_id == 4:
+                    check_id = worst.get("check_id")
+                    entry["check_id"] = check_id
+                    entry["Mu_kNm"]  = values.get("Mu_kNm", 0.0)
+                    entry["Mdv_kNm"] = values.get("Mdv_kNm", 0.0)
+                    if check_id == 4:
                         entry["is_high_shear"] = "shear-reduced" in note
-                        entry["Nu_kN"]  = getattr(demand, "Nu_kN", 0.0)
-                        entry["NRd_kN"] = getattr(capacity, "NRd_kN", 0.0)
+                        entry["Nu_kN"]  = values.get("Nu_kN", 0.0)
+                        entry["NRd_kN"] = values.get("NRd_kN", 0.0)
                     else:
                         m = re.search(r"beta=([\d.]+)", note)
                         entry["is_high_shear"] = bool(m) and float(m.group(1)) > 0

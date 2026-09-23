@@ -348,8 +348,6 @@ KEY_SD_STRESS_STEEL           = "steeldesign.stress.steel"
 KEY_SD_STRESS_STEEL_ALLOWABLE = "steeldesign.stress.steel.allowable"
 # Concrete deck (interior panel SLS): bottom & top fibre stress share one limit
 # (0.48·fck). Stored in deck_design_results.
-# ULS check per-girder table (stored in design_results under this key)
-KEY_SD_ULS_PER_GIRDER         = "steeldesign.uls_per_girder"
 KEY_DD_STRESS_CONC_BOTTOM     = "deckdesign.stress.concrete.bottom"
 KEY_DD_STRESS_CONC_TOP        = "deckdesign.stress.concrete.top"
 KEY_DD_STRESS_CONC_ALLOWABLE  = "deckdesign.stress.concrete.allowable"
@@ -1245,16 +1243,20 @@ KEY_CHECK_DEFLECTION       = "deflection"
 # =============================================================================
 # GIRDER DESIGN VERDICT  (added)
 # Per-category PASS/FAIL summary of the 8 girder design checks. Built by
-# collect_girder_verdict() in designer.py, stored in design_results and mirrored
-# into output_dict, and rendered by BridgeLogger.girder_verdict(). Stiffener
-# checks (ids 20/21) are intentionally excluded — verdict covers the 8
-# structural categories only.
+# build_design_summary() in designer.py, stored in design_results and mirrored
+# into output_dict. It is the SINGLE SOURCE for girder pass/fail: the logger,
+# output dock, Design Check tab, results tables and report all read it and none
+# of them recompute it. Stiffener checks (ids 20/21) are intentionally excluded
+# from every verdict and from max_ur — they are intermediate sizing steps, not
+# final design checks (e.g. "Brg.Stiff: Web Buckling" FAILs precisely when a
+# bearing stiffener is required, which is the normal case). They are carried in
+# the summary's "stiffener" block for display only.
 # =============================================================================
 STATUS_PASS = "PASS"
 STATUS_FAIL = "FAIL"
 
-# output_dict / design_results key for the verdict dict
-KEY_SD_VERDICT = "steeldesign.verdict"
+# output_dict / design_results key for the girder design summary (single source)
+KEY_SD_SUMMARY = "steeldesign.summary"
 
 # DCR category number (1-8, from DCREngine.CATEGORY_MAP) -> check key
 DESIGN_CHECK_CATEGORY_KEYS = {
@@ -1266,6 +1268,20 @@ DESIGN_CHECK_CATEGORY_KEYS = {
     6: KEY_CHECK_FATIGUE,
     7: KEY_CHECK_STRESS,
     8: KEY_CHECK_DEFLECTION,
+}
+
+# Check category -> the output-dock utilisation key that renders it. Both the
+# stored KEY_UTIL_* values and the dock's live per-selection bars are built from
+# this one mapping, so a category can never be wired to two different bars.
+DESIGN_CHECK_UTIL_KEYS = {
+    KEY_CHECK_FLEXURE:          KEY_UTIL_FLEXURE,
+    KEY_CHECK_SHEAR:            KEY_UTIL_SHEAR,
+    KEY_CHECK_INTERACTION:      KEY_UTIL_INTERACTION,
+    KEY_CHECK_LTB:              KEY_UTIL_LTB,
+    KEY_CHECK_SHEAR_LONG_TRANS: KEY_UTIL_LONG_TRANS_SHEAR,
+    KEY_CHECK_FATIGUE:          KEY_UTIL_FATIGUE,
+    KEY_CHECK_STRESS:           KEY_UTIL_STRESS_LIMITATION,
+    KEY_CHECK_DEFLECTION:       KEY_UTIL_DEFLECTION_CRACK,
 }
 
 # =============================================================================

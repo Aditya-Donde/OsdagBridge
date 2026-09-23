@@ -4,7 +4,7 @@ import time
 from datetime import datetime
 from typing import Callable, Optional, List
 
-from osdagbridge.core.utils.common import KEY_SD_VERDICT, KEY_DD_VERDICT
+from osdagbridge.core.utils.common import KEY_SD_SUMMARY, KEY_DD_VERDICT
 
 log = logging.getLogger("osdagbridge")
 _SEP = "-" * 25
@@ -115,33 +115,57 @@ class BridgeLogger:
                              "Increase girder depth D or moment of inertia I_z."),
     }
 
-    def girder_verdict(self, output_dict: dict) -> None:
-        """Print the girder verdict read from output_dict[KEY_SD_VERDICT].
+    @staticmethod
+    def _where(row: dict) -> str:
+        """Return "  [G3, BASIC_1: 1.35DL + 1.5LL]" for one summary row.
 
-        Passing categories print one green line; failing categories print a red
-        line then their remedy. Remedies never print for a passing check.
+        Every summary row carries its own girder and governing load case, so a
+        FAIL line names the thing to go and look at instead of leaving the reader
+        to guess which girder the verdict was talking about. Empty when the row
+        carries neither.
         """
-        verdict = (output_dict or {}).get(KEY_SD_VERDICT) or {}
-        if not verdict:
+        bits = [str(row.get(k)).strip() for k in ("girder", "load_case")
+                if str(row.get(k) or "").strip()]
+        # No load case means the check does not vary between them (a fatigue
+        # stress range, or a geometry-only check) - say so rather than leaving
+        # the reader to wonder which case it was.
+        if not str(row.get("load_case") or "").strip():
+            note = str(row.get("load_case_note") or "").strip()
+            if note:
+                bits.append(note)
+        return f"  [{', '.join(bits)}]" if bits else ""
+
+    def girder_verdict(self, output_dict: dict) -> None:
+        """Print the girder verdict read from output_dict[KEY_SD_SUMMARY].
+
+        Renders the governing row per category straight from the design summary —
+        the same rows the output dock, Design Check tab, results tables and report
+        show. Nothing is recomputed here. Passing categories print one green line;
+        failing categories print a red line then their remedy. Remedies never
+        print for a passing check.
+        """
+        summary = (output_dict or {}).get(KEY_SD_SUMMARY) or {}
+        categories = (summary.get("governing") or {}).get("categories") or {}
+        if not categories:
             return
 
-        status = verdict.get("status", "FAIL")
-        max_ur = verdict.get("max_ur", 0.0)
+        status = summary.get("status", "FAIL")
+        max_ur = summary.get("max_ur", 0.0)
         headline = f"GIRDER : {status}  (max UR = {max_ur:.3f})"
         self._emit(f"[{self._ts()}]   {headline}",
                    "success" if status == "PASS" else "error")
 
         for key, (label, remedy) in self._VERDICT_CHECKS.items():
-            row = verdict.get(key)
+            row = categories.get(key)
             if not row:
                 continue
             ur = row.get("ur", 0.0)
             if row.get("pass", True):
-                self._emit(f"[{self._ts()}]     PASS : {label} (UR = {ur:.3f})",
-                           "success")
+                self._emit(f"[{self._ts()}]     PASS : {label} (UR = {ur:.3f})"
+                           f"{self._where(row)}", "success")
             else:
-                self._emit(f"[{self._ts()}]     FAIL : {label} (UR = {ur:.3f})",
-                           "error")
+                self._emit(f"[{self._ts()}]     FAIL : {label} (UR = {ur:.3f})"
+                           f"{self._where(row)}", "error")
                 self._emit(f"[{self._ts()}]       -> {remedy}", "warning")
 
     # Per-check display label + remedy for the deck verdict. Keyed by the deck
@@ -202,26 +226,35 @@ class BridgeLogger:
         give the per-section breakdown.
         """
         out = output_dict or {}
+        # Girder rows come from the design summary's governing categories; deck
+        # rows from the deck verdict. Both are read as-is — no recomputation.
+        girder = ((out.get(KEY_SD_SUMMARY) or {}).get("governing") or {})
         sections = (
-            ("Girder", out.get(KEY_SD_VERDICT) or {}, self._VERDICT_CHECKS),
-            ("Deck",   out.get(KEY_DD_VERDICT) or {}, self._DECK_VERDICT_CHECKS),
+            ("Girder", girder.get("categories") or {},
+             (out.get(KEY_SD_SUMMARY) or {}).get("status"),
+             (out.get(KEY_SD_SUMMARY) or {}).get("max_ur", 0.0),
+             self._VERDICT_CHECKS),
+            ("Deck",   out.get(KEY_DD_VERDICT) or {},
+             (out.get(KEY_DD_VERDICT) or {}).get("status"),
+             (out.get(KEY_DD_VERDICT) or {}).get("max_ur", 0.0),
+             self._DECK_VERDICT_CHECKS),
         )
-        if not any(verdict for _, verdict, _ in sections):
+        if not any(rows for _, rows, _, _, _ in sections):
             return True                      # neither design ran — nothing to report
 
-        failures = []                    # (section, label, ur, remedy)
+        failures = []                    # (section, label, ur, remedy, row)
         failed_sections = []
         max_ur = 0.0
-        for name, verdict, checks in sections:
-            if not verdict:
+        for name, rows, status, sec_max_ur, checks in sections:
+            if not rows:
                 continue
-            max_ur = max(max_ur, float(verdict.get("max_ur", 0.0)))
-            if verdict.get("status", "FAIL") != "PASS":
+            max_ur = max(max_ur, float(sec_max_ur or 0.0))
+            if (status or "FAIL") != "PASS":
                 failed_sections.append(name)
             for key, (label, remedy) in checks.items():
-                row = verdict.get(key)
+                row = rows.get(key)
                 if row and not row.get("pass", True):
-                    failures.append((name, label, float(row.get("ur", 0.0)), remedy))
+                    failures.append((name, label, float(row.get("ur", 0.0)), remedy, row))
 
         failures.sort(key=lambda f: f[2], reverse=True)   # worst offender first
 
@@ -234,8 +267,9 @@ class BridgeLogger:
             return True
 
         self._emit(f"[{self._ts()}]   FINAL VERDICT : FAIL  (max UR = {max_ur:.3f})", "error")
-        for name, label, ur, remedy in failures:
-            self._emit(f"[{self._ts()}]     FAIL : {name} - {label} (UR = {ur:.3f})", "error")
+        for name, label, ur, remedy, row in failures:
+            self._emit(f"[{self._ts()}]     FAIL : {name} - {label} (UR = {ur:.3f})"
+                       f"{self._where(row)}", "error")
             self._emit(f"[{self._ts()}]       -> {remedy}", "warning")
         if not failures:
             # Section status says FAIL but no individual check is flagged — report
