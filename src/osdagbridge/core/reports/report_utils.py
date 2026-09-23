@@ -82,7 +82,15 @@ def _table_layout(headers, rows, widths=None, align=None):
     scale = max_content_width / sum(widths) if sum(widths) > 0 else 1
     widths = [round(w * scale, 2) for w in widths]
     
-    return ncols, widths, align or ["L"] * ncols
+    if align is None:
+        align = ["L"] * ncols
+    else:
+        align = list(align)
+        if len(align) < ncols:
+            align.extend([align[-1] if align else "L"] * (ncols - len(align)))
+        align = align[:ncols]
+
+    return ncols, widths, align
 
 
 def render_report_table(caption, rows, headers=None, widths=None, align=None, longtable=False, escape=True, header_rows=None, header_clines=None, body_latex=None):
