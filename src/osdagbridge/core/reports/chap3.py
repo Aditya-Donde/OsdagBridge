@@ -54,7 +54,14 @@ from osdagbridge.core.utils.common import (
     KEY_WL_LONGITUDINAL_WIND_FORCE,
     KEY_WL_TERRAIN_TYPE,
     KEY_WL_TRANSVERSE_WIND_FORCE,
-    KEY_WL_VERTICAL_WIND_FORCE
+    KEY_WL_VERTICAL_WIND_FORCE, 
+    KEY_LL_IMPACT_FACTOR_CLASS_A,
+    KEY_LL_IMPACT_FACTOR_CLASS_AA_70R,
+    KEY_LL_VEHICLE_TOTAL_LOAD_CLASS_A,
+    KEY_LL_VEHICLE_TOTAL_LOAD_70R_WHEELED,
+    KEY_LL_VEHICLE_TOTAL_LOAD_70R_TRACKED,
+    KEY_LL_VEHICLE_TOTAL_LOAD_FATIGUE,
+    KEY_LL_VEHICLE_TOTAL_LOAD_CLASS_SV,
 )
 
 from osdagbridge.core.reports.report_utils import (
@@ -83,7 +90,7 @@ def ch3_loads(input_dict, output_dict=None):
     if input_dict.get(KEY_LL_IRC_CLASS_FATIGUE):
         vehicles.append("Class Fatigue")
     
-    custom = input_dict.get(KEY_LL_CUSTOM_VEHICLES)
+    custom = output_dict.get(KEY_LL_CUSTOM_VEHICLES)
     if custom and isinstance(custom, list):
         for c in custom:
             if isinstance(c, dict) and c.get('name'):
@@ -94,36 +101,7 @@ def ch3_loads(input_dict, output_dict=None):
     vehicles_str = ", ".join(vehicles) if vehicles else "None"
 
     from osdagbridge.core.utils.codes.irc6_2017 import IRC6_2017
-    span = input_dict.get(KEY_SPAN)
-    impact_factor_str = ""
-    if span not in (None, ""):
-        try:
-            span_m = float(span)
-            factors = []
-            if input_dict.get(KEY_LL_IRC_CLASS_A):
-                im_a = IRC6_2017.cl_208_2_impact_factor(span_m)
-                factors.append(f"Class A: {1.0 + im_a:.3f}")
-            is_wheeled_heavy = (
-                input_dict.get(KEY_LL_IRC_70R_WHEELED) or 
-                input_dict.get(KEY_LL_IRC_AA_WHEELED) or 
-                input_dict.get(KEY_LL_IRC_70R_BOGIE)
-            )
-            is_tracked_heavy = (
-                input_dict.get(KEY_LL_IRC_70R_TRACKED) or 
-                input_dict.get(KEY_LL_IRC_AA_TRACKED)
-            )
-            if is_wheeled_heavy or is_tracked_heavy:
-                im_aa = IRC6_2017.cl_208_3_impact_factor(span_m)
-                factors.append(f"Class AA/70R: {1.0 + im_aa:.3f}")
-            
-            if factors:
-                impact_factor_str = ", ".join(factors)
-            else:
-                impact_factor_str = "N/A"
-        except Exception:
-            impact_factor_str = "N/A"
-    else:
-        impact_factor_str = "N/A"
+    
 
     def _vehicle_braking_value(kind):
         total = _vehicle_total_load(kind)
@@ -182,42 +160,32 @@ def ch3_loads(input_dict, output_dict=None):
         return val is True or str(val).strip().lower() in ("1", "true", "yes", "checked")
 
     def _vehicle_total_load(kind):
-        try:
-            if kind == "class_a":
-                return f"{sum(IRC6_2017.cl_204_1_ClassA_vehicle().get('wheel_loads', [])) / 1000.0:.2f}"
-            if kind == "70r_wheeled":
-                return f"{sum(IRC6_2017.cl_204_1_Class70R_vehicle_wheel().get('wheel_loads', [])) / 1000.0:.2f}"
-            if kind == "70r_tracked":
-                v = IRC6_2017.cl_204_1_Class70R_vehicle_track()
-                return f"{v.get('wheel_loads_udl', 0) * (max(v.get('x', [0])) - min(v.get('x', [0]))) * len(v.get('z', [])) / 1000.0:.2f}"
-            if kind == "fatigue":
-                return f"{sum(IRC6_2017.cl_204_6_fatigue_load().get('wheel_loads', [])) / 1000.0:.2f}"
-            if kind == "sv":
-                return f"{IRC6_2017.cl_204_5_1_special_vehicle().get('total_load_kN', 'N/A')}"
-        except Exception:
-            pass
-        return "N/A"
+        key_map = {
+            "class_a": KEY_LL_VEHICLE_TOTAL_LOAD_CLASS_A,
+            "70r_wheeled": KEY_LL_VEHICLE_TOTAL_LOAD_70R_WHEELED,
+            "70r_tracked": KEY_LL_VEHICLE_TOTAL_LOAD_70R_TRACKED,
+            "fatigue": KEY_LL_VEHICLE_TOTAL_LOAD_FATIGUE,
+            "sv": KEY_LL_VEHICLE_TOTAL_LOAD_CLASS_SV,
+        }
+        value = output_dict.get(key_map.get(kind))
+        return f"{float(value):.2f}" if value not in (None, "", "N/A") else "N/A"
 
     def _vehicle_impact(kind):
-        if span in (None, ""):
-            return "N/A"
-        try:
-            span_m = float(span)
-            if kind == "class_a":
-                return f"{1.0 + IRC6_2017.cl_208_2_impact_factor(span_m):.3f}"
-            if kind in ("70r_wheeled", "70r_tracked", "aa_wheeled", "aa_tracked", "fatigue"):
-                return f"{1.0 + IRC6_2017.cl_208_3_impact_factor(span_m):.3f}"
-        except Exception:
-            pass
-        return "N/A"
+        if kind == "class_a":
+            value = output_dict.get(KEY_LL_IMPACT_FACTOR_CLASS_A)
+        elif kind in ("70r_wheeled", "70r_tracked", "aa_wheeled", "aa_tracked", "fatigue"):
+            value = output_dict.get(KEY_LL_IMPACT_FACTOR_CLASS_AA_70R)
+        else:
+            value = None
+        return f"{float(value):.3f}" if value not in (None, "", "N/A") else "N/A"
 
-    brk_ecc_table = brk_ecc_str if brk_ecc_str != "N/A" else (_render_value(input_dict, KEY_LL_ECCENTRICITY, " m") or "1.2 m")
+    brk_ecc_table = brk_ecc_str if brk_ecc_str != "N/A" else (_render_value(output_dict, KEY_LL_ECCENTRICITY, " m") or "1.2 m")
     vehicle_rows = []
     for name, key, kind in vehicle_defs:
-        if _checked(input_dict, key):
+        if _checked(output_dict, key):
             braking_considered = "Yes"
             if kind == "sv":
-                braking_considered = "Yes" if (_checked(input_dict, KEY_BL_IRC_CLASS_SV) or _checked(output_dict, KEY_BL_IRC_CLASS_SV)) else "No"
+                braking_considered = "Yes" if _checked(output_dict, KEY_BL_IRC_CLASS_SV) else "No"
             if kind == "fatigue":
                 braking_considered = "No"
             vehicle_rows.append([
