@@ -103,11 +103,13 @@
 #                                                          else → CustomMessageBox("Report Saved")
 #==============================================================================
 
-import os, shutil, logging, datetime, tempfile, subprocess
+import os, shutil, logging, datetime, tempfile, subprocess, io, re
 from dataclasses import dataclass, field
 from typing import Optional, List, Literal
 
-from osdagbridge.core.reports.report_utils import _tex
+
+
+from osdagbridge.core.reports.report_utils import _tex, ReportChartGenerator, configure_grouped_table_breaks
 from .executive_summary import executive_summary
 from .chap1 import ch1_project_info
 from .chap2 import ch2_input_parameters
@@ -179,7 +181,6 @@ def preamble(project_name, job_number, report_date, report_version='Rev 0'):
 \usepackage{etoolbox}
 \usepackage{needspace}
 
-\numberwithin{table}{chapter}
 \numberwithin{figure}{chapter}
 % Table layout and spacing: consistent padding, row height, and longtable pre/post skips
 \setlength{\tabcolsep}{6pt}
@@ -189,11 +190,12 @@ def preamble(project_name, job_number, report_date, report_version='Rev 0'):
 % Table rules (outline thickness) and small extra row height for clarity
 \setlength{\arrayrulewidth}{0.5pt}
 \setlength{\extrarowheight}{0.6pt}
+\setlength{\footskip}{42pt}
 
 % Prevent tables from overflowing past the page bottom:
 % if fewer than 5 baseline-skips remain, break to the next page first.
 \BeforeBeginEnvironment{table}{\needspace{5\baselineskip}}
-\BeforeBeginEnvironment{longtable}{\needspace{5\baselineskip}}
+\BeforeBeginEnvironment{longtable}{\Needspace{5\baselineskip}}
 
 \definecolor{osdagGreen}{HTML}{91B014}
 
@@ -201,16 +203,16 @@ def preamble(project_name, job_number, report_date, report_version='Rev 0'):
   \fancyhf{}
   \fancyhead[L]{""" + pn + r""" $|$ """ + jn + r"""}
   \fancyhead[R]{""" + rd + r""" $|$ """ + rv + r"""}
-  \fancyfoot[L]{Osdag $|$ FOSSEE $|$ Indian Institute of Technology Bombay}
+  \fancyfoot[L]{Prepared with OsdagBridge}
   \fancyfoot[R]{Page \thepage\ of \pageref{LastPage}}
   \renewcommand{\headrule}{\color{osdagGreen}\hrule width\headwidth height 1pt \vspace{2pt}}
   \renewcommand{\footrule}{%
     \ifbool{hasSDonPage}{%
-      \vspace{-20pt}%
+      \vspace{2pt}%
       \hbox to \headwidth{\textcolor{black}{\footnotesize\textit{* Software default value}}\hfil}%
       \vspace{4pt}%
     }{%
-      \vspace{-8pt}%
+      \vspace{2pt}%
     }%
     \color{osdagGreen}\hrule width\headwidth height 1pt \vspace{6pt}%
   }
@@ -219,16 +221,16 @@ def preamble(project_name, job_number, report_date, report_version='Rev 0'):
   \fancyhf{}
   \fancyhead[L]{""" + pn + r""" $|$ """ + jn + r"""}
   \fancyhead[R]{""" + rd + r""" $|$ """ + rv + r"""}
-  \fancyfoot[L]{Osdag $|$ FOSSEE $|$ Indian Institute of Technology Bombay}
+  \fancyfoot[L]{Prepared with OsdagBridge}
   \fancyfoot[R]{Page \thepage\ of \pageref{LastPage}}
   \renewcommand{\headrule}{\color{osdagGreen}\hrule width\headwidth height 1pt \vspace{2pt}}
   \renewcommand{\footrule}{%
     \ifbool{hasSDonPage}{%
-      \vspace{-20pt}%
+      \vspace{2pt}%
       \hbox to \headwidth{\textcolor{black}{\footnotesize\textit{* Software default value}}\hfil}%
       \vspace{4pt}%
     }{%
-      \vspace{-8pt}%
+      \vspace{2pt}%
     }%
     \color{osdagGreen}\hrule width\headwidth height 1pt \vspace{6pt}%
   }
@@ -236,7 +238,7 @@ def preamble(project_name, job_number, report_date, report_version='Rev 0'):
 \fancypagestyle{firstpage}{
   \fancyhf{}
   \renewcommand{\headrulewidth}{0pt}
-  \fancyfoot[L]{Osdag $|$ FOSSEE $|$ Indian Institute of Technology Bombay}
+  \fancyfoot[L]{Prepared with OsdagBridge}
   \fancyfoot[R]{Page \thepage\ of \pageref{LastPage}}
   \renewcommand{\footrule}{\vspace{-8pt}\color{osdagGreen}\hrule width\headwidth height 1pt \vspace{6pt}}
 }
@@ -845,6 +847,18 @@ def generate_report(payload, request):
             fig_paths = {}
             for attr, img_bytes in list(payload.figure_data.items()):
                 if img_bytes:
+                    if attr == 'final_geometry':
+                        try:
+                            from PIL import Image, ImageOps
+                            with Image.open(io.BytesIO(img_bytes)) as im:
+                                pad_x = max(48, int(im.size[0] * 0.10))
+                                pad_y = max(28, int(im.size[1] * 0.06))
+                                padded = ImageOps.expand(im.convert("RGB"), border=(pad_x, pad_y), fill="white")
+                                out = io.BytesIO()
+                                padded.save(out, format="PNG")
+                                img_bytes = out.getvalue()
+                        except Exception as exc:
+                            logger.warning("Could not pad final_geometry image: %s", exc)
                     p = os.path.join(tmp_images, attr + '.png')
                     with open(p, 'wb') as fh:
                         fh.write(img_bytes)
@@ -872,44 +886,50 @@ def generate_report(payload, request):
 
             # Compute and inject quantities for Chapter 7
             quantities = calculate_material_quantities(payload.inputs, payload.output_dict)
-            payload.inputs.update(quantities)
+            payload.output_dict["chapter7_material_quantities"] = quantities
+            quantity_chart_paths = ReportChartGenerator(tmp_assets).generate_material_quantity_charts(quantities)
 
             # ── Assemble LaTeX document (fig_paths now has tmp_dir paths) ──
             bridge = ReportDataBridge(payload.output_dict, payload.inputs, payload)
+            ur_chart_paths = ReportChartGenerator(tmp_assets).generate_utilization_ratio_charts(bridge)
 
-            doc_parts = []
-            doc_parts.append(preamble(payload.metadata.project_name, payload.metadata.job_number, payload.metadata.report_date, payload.metadata.subtitle or 'Rev 0'))
-            doc_parts.append(title_page(payload.metadata, osdag_logo_latex, org_logo_latex))
+            def _build_full_tex():
+                doc_parts = []
+                doc_parts.append(preamble(payload.metadata.project_name, payload.metadata.job_number, payload.metadata.report_date, payload.metadata.subtitle or 'Rev 0'))
+                doc_parts.append(title_page(payload.metadata, osdag_logo_latex, org_logo_latex))
 
-            if payload.options.include_toc:
-                doc_parts.append(toc_section())
+                if payload.options.include_toc:
+                    doc_parts.append(toc_section())
 
-            # Chapter inclusion is driven by the canonical section keys
-            # selected in the report-options dialog (TOC). The first three
-            # chapters are locked in the UI, so they are always present.
-            secs = payload.options.sections
+                # Chapter inclusion is driven by the canonical section keys
+                # selected in the report-options dialog (TOC). The first three
+                # chapters are locked in the UI, so they are always present.
+                secs = payload.options.sections
 
-            doc_parts.append(executive_summary(payload.inputs, payload.output_dict, fig_paths))
-            doc_parts.append(ch1_project_info(payload.metadata))
-            doc_parts.append(ch2_input_parameters(payload.metadata, payload.inputs, payload.output_dict))
+                doc_parts.append(executive_summary(payload.inputs, payload.output_dict, fig_paths))
+                doc_parts.append(ch1_project_info(payload.metadata))
+                doc_parts.append(ch2_input_parameters(payload.metadata, payload.inputs, payload.output_dict))
 
-            if 'loads' in secs:
-                doc_parts.append(ch3_loads(payload.inputs, payload.output_dict))
-            if 'analysis' in secs:
-                doc_parts.append(ch4_analysis(payload.analysis_summary, fig_paths, bridge))
-            if 'design_checks' in secs:
-                doc_parts.append(ch5_design_checks(payload.design_checks, bridge))
-            if 'drawings' in secs and payload.options.include_figures:
-                doc_parts.append(ch6_drawings(fig_paths))
+                if 'loads' in secs:
+                    doc_parts.append(ch3_loads(payload.inputs, payload.output_dict))
+                if 'analysis' in secs:
+                    doc_parts.append(ch4_analysis(payload.analysis_summary, fig_paths, bridge))
+                if 'design_checks' in secs:
+                    doc_parts.append(ch5_design_checks(payload.design_checks, bridge, ur_chart_paths))
+                if 'drawings' in secs and payload.options.include_figures:
+                    doc_parts.append(ch6_drawings(fig_paths))
 
-            doc_parts.append(ch7_quantities(payload.inputs))
+                doc_parts.append(ch7_quantities(payload.inputs, payload.output_dict, quantity_chart_paths))
 
-            doc_parts.append(ch8_design_log(payload.log_entries, payload.inputs))
+                
 
-            doc_parts.append(references())
-            doc_parts.append(r"\end{document}")
 
-            full_tex = "\n".join(doc_parts)
+                doc_parts.append(ch8_design_log(payload.log_entries, payload.inputs))
+
+                doc_parts.append(references())
+                doc_parts.append(r"\end{document}")
+
+                return "\n".join(doc_parts)
 
 
             # NOTE: longtable header repetition is handled per-table in each
@@ -920,28 +940,83 @@ def generate_report(payload, request):
             tmp_tex = os.path.join(tmp_dir, request.file_stem + '.tex')
             tmp_pdf = os.path.join(tmp_dir, request.file_stem + '.pdf')
 
-            with open(tmp_tex, 'w', encoding='utf-8') as f:
-                f.write(full_tex)
+            def _write_tex(tex):
+                with open(tmp_tex, 'w', encoding='utf-8') as f:
+                    f.write(tex)
 
-            # Compile twice for TOC and references
-            for _ in range(2):
-                try:
-                    kwargs = {
-                        'cwd': tmp_dir,
-                        'stdout': subprocess.PIPE,
-                        'stderr': subprocess.PIPE,
-                        'check': False,
-                        'env': os.environ.copy()
-                    }
-                    if os.name == 'nt':
-                        kwargs['creationflags'] = subprocess.CREATE_NO_WINDOW
-                    
-                    res = subprocess.run(
-                        [compiler, '-interaction=nonstopmode', request.file_stem + '.tex'],
-                        **kwargs
-                    )
-                except Exception as exc:
-                    logger.warning(f"pdflatex run failed: {exc}")
+            res = None
+
+            def _run_latex(passes=2):
+                nonlocal res
+                for _ in range(passes):
+                    try:
+                        kwargs = {
+                            'cwd': tmp_dir,
+                            'stdout': subprocess.PIPE,
+                            'stderr': subprocess.PIPE,
+                            'check': False,
+                            'env': os.environ.copy()
+                        }
+                        if os.name == 'nt':
+                            kwargs['creationflags'] = subprocess.CREATE_NO_WINDOW
+
+                        res = subprocess.run(
+                            [compiler, '-interaction=nonstopmode', request.file_stem + '.tex'],
+                            **kwargs
+                        )
+                    except Exception as exc:
+                        logger.warning(f"pdflatex run failed: {exc}")
+
+            def _split_breaks_from_aux():
+                aux_path = os.path.join(tmp_dir, request.file_stem + '.aux')
+                if not os.path.exists(aux_path):
+                    return set()
+                with open(aux_path, 'r', encoding='utf-8', errors='ignore') as fh:
+                    aux = fh.read()
+                row_pages = {}
+                start_pages = {}
+                start_pattern = r"\\newlabel\{osdaggrpstart:([^}]+)\}\{\{.*?\}\{(\d+)\}"
+                for table_key, page in re.findall(start_pattern, aux):
+                    start_pages[table_key] = int(page)
+                pattern = r"\\newlabel\{osdaggrp:([^:}]+):(\d+):(\d+):([se])\}\{\{.*?\}\{(\d+)\}"
+                for table_key, group_idx, row_idx, edge, page in re.findall(pattern, aux):
+                    key = (table_key, group_idx)
+                    row_pages.setdefault(key, {}).setdefault(int(row_idx), {})[edge] = int(page)
+
+                breaks = set()
+                for table_key, start_page in start_pages.items():
+                    first_row_page = row_pages.get((table_key, '0'), {}).get(0, {}).get('s')
+                    if first_row_page is not None and first_row_page != start_page:
+                        breaks.add(f"{table_key}:__start__")
+                for (table_key, group_idx), rows in row_pages.items():
+                    current_page = None
+                    for row_idx in sorted(rows):
+                        start_page = rows[row_idx].get('s')
+                        end_page = rows[row_idx].get('e')
+                        if start_page is None:
+                            continue
+                        if current_page is None:
+                            current_page = start_page
+                        if row_idx > 0 and (start_page != current_page or (end_page and end_page != start_page)):
+                            breaks.add(f"{table_key}:{group_idx}:{row_idx}")
+                            current_page = start_page
+                        if end_page:
+                            current_page = end_page
+                return breaks
+
+            try:
+                configure_grouped_table_breaks(probe=True)
+                _write_tex(_build_full_tex())
+                _run_latex(2)
+
+                split_breaks = _split_breaks_from_aux()
+                if split_breaks:
+                    logger.info("Chapter 5 probe detected %d split girder row break(s).", len(split_breaks))
+                configure_grouped_table_breaks(probe=False, breaks=split_breaks)
+                _write_tex(_build_full_tex())
+                _run_latex(2)
+            finally:
+                configure_grouped_table_breaks()
 
             if os.path.exists(tmp_tex):
                 shutil.copy2(tmp_tex, tex_path)
@@ -953,7 +1028,7 @@ def generate_report(payload, request):
             return ReportResult(pdf_path=pdf_path, tex_path=tex_path)
 
         logger.error("pdflatex ran but no PDF was produced.")
-        if 'res' in locals():
+        if 'res' in locals() and res is not None:
             logger.error("pdflatex STDOUT:\n%s", res.stdout.decode('utf-8', 'ignore'))
             logger.error("pdflatex STDERR:\n%s", res.stderr.decode('utf-8', 'ignore'))
         return ReportResult(pdf_path=None, tex_path=tex_path)

@@ -236,6 +236,14 @@ from osdagbridge.core.utils.common import (
     KEY_MP_STIFFENER_INTERMEDIATE_OUTSTAND,
     KEY_MP_STIFFENER_INTERMEDIATE_SPACING,
     KEY_MP_STIFFENER_LONGITUDINAL,
+    #Loads
+    KEY_LL_IMPACT_FACTOR_CLASS_A,
+    KEY_LL_IMPACT_FACTOR_CLASS_AA_70R,
+    KEY_LL_VEHICLE_TOTAL_LOAD_CLASS_A,
+    KEY_LL_VEHICLE_TOTAL_LOAD_70R_WHEELED,
+    KEY_LL_VEHICLE_TOTAL_LOAD_70R_TRACKED,
+    KEY_LL_VEHICLE_TOTAL_LOAD_FATIGUE,
+    KEY_LL_VEHICLE_TOTAL_LOAD_CLASS_SV,
 
     )
 
@@ -653,6 +661,34 @@ class PlateGirderBridge:
         
         bridge_logger.sub_step("Creating governing LL load case...")
         self.create_governing_ll_load_case(dataset_initial, partial_safety_factor=1.0)
+
+        span_m = float(self.output_dict[KEY_SPAN])
+        self.output_dict[KEY_LL_IMPACT_FACTOR_CLASS_A] = round(
+            1.0 + IRC6_2017.cl_208_2_impact_factor(span_m), 3
+        )
+        self.output_dict[KEY_LL_IMPACT_FACTOR_CLASS_AA_70R] = round(
+            1.0 + IRC6_2017.cl_208_3_impact_factor(span_m), 3
+        )
+        self.output_dict[KEY_LL_VEHICLE_TOTAL_LOAD_CLASS_A] = round(
+            sum(IRC6_2017.cl_204_1_ClassA_vehicle().get("wheel_loads", [])) / 1000.0, 2
+        )
+        self.output_dict[KEY_LL_VEHICLE_TOTAL_LOAD_70R_WHEELED] = round(
+            sum(IRC6_2017.cl_204_1_Class70R_vehicle_wheel().get("wheel_loads", [])) / 1000.0, 2
+        )
+        tracked_vehicle = IRC6_2017.cl_204_1_Class70R_vehicle_track()
+        self.output_dict[KEY_LL_VEHICLE_TOTAL_LOAD_70R_TRACKED] = round(
+            tracked_vehicle.get("wheel_loads_udl", 0)
+            * (max(tracked_vehicle.get("x", [0])) - min(tracked_vehicle.get("x", [0])))
+            * len(tracked_vehicle.get("z", []))
+            / 1000.0,
+            2,
+        )
+        self.output_dict[KEY_LL_VEHICLE_TOTAL_LOAD_FATIGUE] = round(
+            sum(IRC6_2017.cl_204_6_fatigue_load().get("wheel_loads", [])) / 1000.0, 2
+        )
+        self.output_dict[KEY_LL_VEHICLE_TOTAL_LOAD_CLASS_SV] = IRC6_2017.cl_204_5_1_special_vehicle().get(
+            "total_load_kN", "N/A"
+        )
 
         bridge_logger.sub_step("Creating braking load case...")
         self.create_braking_load_case()

@@ -5,7 +5,9 @@ from osdagbridge.core.utils.common import (
     KEY_SD_DEFL_LIVE,
     KEY_SD_DEFL_TOTAL,
 )
-from osdagbridge.core.reports.report_utils import _tex, _fig_embed
+from osdagbridge.core.reports.report_utils import (
+    _tex, _fig_embed, render_analysis_demands_table, render_report_table,
+)
 
 if TYPE_CHECKING:
     from .report_generator import ReportDataBridge
@@ -75,6 +77,14 @@ def ch4_analysis(asum, fig_paths, bridge: "ReportDataBridge"):
     _allow_total_str = f"L/600 = {_allow_total_mm:.1f} mm"
     _live_status     = ("PASS" if _live_mm  <= _allow_live_mm  else r"\textcolor{red}{FAIL}") if _live_mm  is not None else "---"
     _total_status    = ("PASS" if _total_mm <= _allow_total_mm else r"\textcolor{red}{FAIL}") if _total_mm is not None else "---"
+    defl_rows = [
+        [r"Deflection due to Live Load, $\delta_{LL}$", _live_str],
+        [r"Allowable Live Load Deflection ($\Delta_{allow}$)", _allow_live_str],
+        ["Live Load Deflection Check Status", _live_status],
+        [r"Deflection due to Total Load, $\delta_{total}$", _total_str],
+        [r"Allowable Total Deflection ($\Delta_{allow}$)", _allow_total_str],
+        ["Total Load Deflection Check Status", _total_status],
+    ]
 
     # Table 4.2 rows — reactions per load case, taken straight from rxn_summary.
     rxn_body = ("\n\\hline\n").join(
@@ -89,95 +99,18 @@ def ch4_analysis(asum, fig_paths, bridge: "ReportDataBridge"):
 
 A grillage model was used for structural analysis. The deck is idealized as a grid of elastic beam elements --- longitudinal members represent the composite steel girders with effective slab, and transverse members represent the slab or cross frames. This section summarizes the critical output from that analysis.
 
-\vspace{1em}
-\begingroup
-\footnotesize
-\setlength{\tabcolsep}{3pt}
-\renewcommand{\arraystretch}{1.25}
+""" + render_analysis_demands_table(merged_body) + r"""
 
-\begin{longtable}{|
->{\centering\arraybackslash}p{3.1cm}|
->{\centering\arraybackslash}p{1.7cm}|
->{\centering\arraybackslash}p{1.2cm}|
->{\centering\arraybackslash}p{1.3cm}|
->{\centering\arraybackslash}p{1.7cm}|
->{\centering\arraybackslash}p{1.2cm}|
->{\centering\arraybackslash}p{1.3cm}|
->{\centering\arraybackslash}p{1.6cm}|
->{\centering\arraybackslash}p{1.6cm}|}
+""" + render_report_table(
+    "Reactions at Supports", [],
+    headers=["Load Case", "Left Support (kN)", "Right Support (kN)"],
+    widths=[5.2, 5.2, 5.2], align=["C", "C", "C"],
+    longtable=True, escape=False, body_latex=rxn_body + "\n\\hline") + r"""
 
-\caption{\textbf{Summary of Maximum Demands}}\\
-\hline
-\multirow{2}{*}{\makecell{\textbf{Load}\\\textbf{Case/}\\\textbf{Comb.}}}
-& \multicolumn{3}{c|}{\textbf{Bending Moment}}
-& \multicolumn{3}{c|}{\textbf{Shear Force}}
-& \multicolumn{2}{c|}{\textbf{Reaction at Supports}}\\
-\cline{2-9}
-
-& \makecell{\textbf{Max}\\\textbf{(kNm)}}
-& \textbf{Girder}
-& \makecell{\textbf{Loc.}\\\textbf{(m)}}
-& \makecell{\textbf{Max}\\\textbf{(kN)}}
-& \textbf{Girder}
-& \makecell{\textbf{Loc.}\\\textbf{(m)}}
-& \makecell{\textbf{Left}}
-& \makecell{\textbf{Right }}\\
-\hline
-\endfirsthead
-
-\hline
-\multirow{2}{*}{\makecell{\textbf{Load}\\\textbf{Case/}\\\textbf{Comb.}}}
-& \multicolumn{3}{c|}{\textbf{Bending Moment}}
-& \multicolumn{3}{c|}{\textbf{Shear Force}}
-& \multicolumn{2}{c|}{\textbf{Reaction at Supports}}\\
-\cline{2-9}
-
-& \makecell{\textbf{Max}\\\textbf{(kNm)}}
-& \textbf{Girder}
-& \makecell{\textbf{Loc.}\\\textbf{(m)}}
-& \makecell{\textbf{Max}\\\textbf{(kN)}}
-& \textbf{Girder}
-& \makecell{\textbf{Loc.}\\\textbf{(m)}}
-& \makecell{\textbf{Left}}
-& \makecell{\textbf{Right}}\\
-\hline
-\endhead
-
-""" + merged_body + r"""
-
-\hline
-\end{longtable}
-\endgroup
-
-\vspace{1em}
-\begin{longtable}{|>{\centering\arraybackslash}p{5.2cm}|>{\centering\arraybackslash}p{5.2cm}|>{\centering\arraybackslash}p{5.2cm}|}
-\caption{\textbf{Reactions at Supports}}
-\hline
-\textbf{Load Case} & \textbf{Left Support (kN)} & \textbf{Right Support (kN)} \\[6pt]
-\hline
-""" + rxn_body + r"""
-\hline
-\end{longtable}
-
-\vspace{1em}
-\begin{longtable}{|L{7cm}|p{8.5cm}|}
-\caption{\textbf{Deflection Summary (Live Load \& Total Load)}}
-\hline
-\textbf{parameter} & \textbf{value} \\
-\hline
-\textnormal{Deflection due to Live Load, $\delta_{LL}$} & """ + _live_str + r""" \\[6pt]
-\hline
-\textnormal{Allowable Live Load Deflection ($\Delta_{allow}$)} & """ + _allow_live_str + r""" \\[6pt]
-\hline
-\textnormal{Live Load Deflection Check Status} & """ + _live_status + r""" \\[6pt]
-\hline
-\textnormal{Deflection due to Total Load, $\delta_{total}$} & """ + _total_str + r""" \\[6pt]
-\hline
-\textnormal{Allowable Total Deflection ($\Delta_{allow}$)} & """ + _allow_total_str + r""" \\[6pt]
-\hline
-\textnormal{Total Load Deflection Check Status} & """ + _total_status + r""" \\[6pt]
-\hline
-\end{longtable}
+""" + render_report_table(
+    "Deflection Summary (Live Load & Total Load)", defl_rows,
+    headers=["parameter", "value"], widths=[7.0, 8.5],
+    align=["L", "L"], longtable=True, escape=False) + r"""
 
 \vspace{1em}
 \noindent

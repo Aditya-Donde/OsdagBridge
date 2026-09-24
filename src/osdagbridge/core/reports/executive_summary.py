@@ -1,8 +1,8 @@
-# ═══════════════════════════════════════════════════════════════════════════════
+# =============================================================================
 # EXECUTIVE SUMMARY
-# ═══════════════════════════════════════════════════════════════════════════════
+# =============================================================================
 
-from osdagbridge.core.reports.report_utils import _fig_or_placeholder, _render_value, _tex, get_girder_entries
+from osdagbridge.core.reports.report_utils import _fig_or_placeholder, _render_value, _tex, get_girder_entries, render_report_table
 from osdagbridge.core.utils.common import (
     KEY_CARRIAGEWAY_WIDTH,
     KEY_SD_SECTION_DESIGNATION,
@@ -121,15 +121,15 @@ def executive_summary(input_dict, output_dict, fig_paths) -> str:
     # in output_dict (not input_dict).
     sec = _render_value(output_dict, KEY_SD_SECTION_DESIGNATION)
 
-    # ── Pull the stored result dicts once, then work off these locals ─────────
-    # (no value is recomputed here — the pipeline already filled these in).
+    # Pull the stored result dicts once, then work off these locals.
+    # No value is recomputed here; the pipeline already filled these in.
     design_results = output_dict.get("design_results", {}) or {}
     per_girder     = design_results.get("per_girder", {}) or {}
     deck_results   = output_dict.get("deck_design_results", {}) or {}
     cb_results     = output_dict.get("crossbracing_design_results", {}) or {}
     ed_results     = output_dict.get("end_diaphragm_design_results", {}) or {}
 
-    # Overall Design Status — girder checks only: Pass if every check passes,
+    # Overall Design Status: girder checks only; Pass if every check passes,
     # otherwise Fail with the names of the failing checks. Each check carries a
     # pre-computed {name, dcr, status}.
     failing = []                        # failing check names (order-preserving, deduped)
@@ -164,7 +164,7 @@ def executive_summary(input_dict, output_dict, fig_paths) -> str:
     else:
         overall_design_status = "Pass"
 
-    # Overall Utilization Ratio — the maximum UR across all bridge components,
+    # Overall Utilization Ratio: maximum UR across all bridge components,
     # tagged with the governing component (e.g. "1.05 (Deck slab)").
     component_urs = []                  # (ur_value, component_label)
     if girder_max_ur is not None:
@@ -182,8 +182,11 @@ def executive_summary(input_dict, output_dict, fig_paths) -> str:
     else:
         overall_utilization_ratio = ""
 
-    gov = _tex(gov_name) if gov_name not in (None, '', 'None') else ''
+    gov_raw = str(gov_name).strip() if gov_name not in (None, '', 'None') else ''
+    gov = _tex(gov_raw) if gov_raw else ''
     ur = _tex(overall_utilization_ratio) if overall_utilization_ratio else ''
+    gov_table = (r"\makecell[c]{" + r"\\".join(_tex(p) for p in gov_raw.replace(".", ". ").replace(":", ": ").split()) + "}"
+                 if gov_raw else '')
 
     # --- Dynamic Table 1: fetch backend-populated labels via exact suffix pattern ---
     # defaults.py populates: KEY_MP_GD_SELECT_GIRDER + '.G{i}' = 'G{i}'
@@ -195,7 +198,7 @@ def executive_summary(input_dict, output_dict, fig_paths) -> str:
 
     # Column widths: row-label column fixed at 2.8cm; girder columns share remainder
     label_col_cm = 2.8
-    # Available width ≈ 15.0cm for A4 with 1in margins; each girder col gets equal share
+    # Available width is about 15.0cm for A4 with 1in margins; each girder col gets equal share
     girder_col_cm = round(max(1.5, (15.0 - label_col_cm) / n_cols), 1)
     col_spec = '|C{' + str(label_col_cm) + 'cm}|' + '|'.join(['C{' + str(girder_col_cm) + 'cm}'] * n_cols) + '|'
 
@@ -231,35 +234,65 @@ def executive_summary(input_dict, output_dict, fig_paths) -> str:
               + urs + '\n'
               r'\hline' + '\n'
               r'\end{tabular}')
+    table1 = render_report_table(
+        "Final Bridge Geometry (after optimization)",
+        [["Member ID"] + [mid for _, mid in labels],
+         ["Section Designation"] + [sec] * n_cols,
+         [r"Govern-\linebreak{}ing\linebreak{}Check"] + [gov_table] * n_cols,
+         [r"Utiliza-\linebreak{}tion Ratio"] + [ur] * n_cols],
+        headers=[""] + [lbl for lbl, _ in labels],
+        widths=[1.6] + [1.25] * n_cols,
+        align=["L"] + ["C"] * n_cols,
+        escape=False)
+    table1 = r"{\footnotesize" + "\n" + table1 + "\n}"
 
     # Key Design Outcomes rows: controlling check, its UR, and pass/fail per component.
-    def _outcome_row(component, check, ur, is_fail):
+    def _outcome_cells(component, check, ur, is_fail):
         chk_cell = _tex(check) if check else "---"
         if ur is None:
             ur_cell, status_cell = "---", "---"
         else:
             ur_cell = f"{ur:.2f}"
             status_cell = r"\textcolor{red}{Fail}" if is_fail else "Pass"
-        return (component + r" & " + chk_cell + r" & " + ur_cell + r" & "
-                + status_cell + r" \\" + "\n\\hline")
+        return [component, chk_cell, ur_cell, status_cell]
 
     _cb_ur, _cb_check = _governing_member(cb_results)
     _ed_ur, _ed_check = _governing_member(ed_results)
     _dk_ur, _dk_check = _deck_governing(deck_results)
 
-    outcome_rows = "\n".join([
-        _outcome_row("Girder Design", gov_name, girder_max_ur, bool(failing)) if per_girder
-            else _outcome_row("Girder Design", "", None, False),
-        _outcome_row("Cross Bracing Design", _cb_check, _cb_ur, _cb_ur is not None and _cb_ur > 1.0),
-        _outcome_row("End Diaphragm Design", _ed_check, _ed_ur, _ed_ur is not None and _ed_ur > 1.0),
-        _outcome_row("Deck Design", _dk_check, _dk_ur, _dk_ur is not None and _dk_ur > 1.0),
-    ])
+    overview_table = render_report_table(
+        "Project Overview",
+        [[r"\textbf{Bridge Type}", _render_value(input_dict, KEY_STRUCTURE_TYPE)],
+         [r"\textbf{Design Standard}", "IRC 5, IRC 6, IRC 22, IRC 24, IS 800"],
+         [r"\textbf{Span}", _render_value(input_dict, KEY_SPAN, ' m')],
+         [r"\textbf{Carriageway Width}", _render_value(input_dict, KEY_CARRIAGEWAY_WIDTH, ' m')],
+         [r"\textbf{No. of Girders}", _render_value(input_dict, KEY_TS_NO_OF_GIRDERS)],
+         [r"\textbf{Girder Spacing}", _render_value(input_dict, KEY_TS_GIRDER_SPACING)],
+         [r"\textbf{Deck Thickness}", _render_value(input_dict, KEY_TS_DECK_THICKNESS)],
+         [r"\textbf{Overall Design Status}", _tex(overall_design_status)],
+         [r"\textbf{Governing Check}", gov],
+         [r"\textbf{Overall Utilization Ratio (max)}", ur]],
+        widths=[5.5, 8.5], align=["L", "L"], escape=False)
+
+    outcome_rows = [
+        _outcome_cells("Girder Design", gov_name, girder_max_ur, bool(failing)) if per_girder
+            else _outcome_cells("Girder Design", "", None, False),
+        _outcome_cells("Cross Bracing Design", _cb_check, _cb_ur, _cb_ur is not None and _cb_ur > 1.0),
+        _outcome_cells("End Diaphragm Design", _ed_check, _ed_ur, _ed_ur is not None and _ed_ur > 1.0),
+        _outcome_cells("Deck Design", _dk_check, _dk_ur, _dk_ur is not None and _dk_ur > 1.0),
+    ]
+    outcome_table = render_report_table(
+        "Design Outcome Summary", outcome_rows,
+        headers=["component", "controlling check", "utilization ratio", "status"],
+        widths=[4.0, 5.5, 2.8, 1.8], align=["L", "L", "C", "C"], escape=False)
 
     return r"""
 \newpage
 {\centering\Large\bfseries Executive Summary\par}
 \addcontentsline{toc}{chapter}{Executive Summary}
 \vspace{0.8em}
+\setcounter{table}{0}
+\renewcommand{\thetable}{E.\arabic{table}}
 
 This section provides a concise summary of the bridge design, key inputs, governing loads, and final design outcomes.
 
@@ -267,40 +300,14 @@ This section provides a concise summary of the bridge design, key inputs, govern
 \addcontentsline{toc}{section}{Project Overview}
 \label{sec:project-overview}
 
-
-\begin{tabular}{|L{5.5cm}|L{8.5cm}|}
-\hline
-\textbf{Bridge Type} & """ + (_render_value(input_dict, KEY_STRUCTURE_TYPE)) + r""" \\
-\hline
-\textbf{Design Standard} & IRC 5, IRC 6, IRC 22, IRC 24, IS 800 \\
-\hline
-\textbf{Span} & """ + (_render_value(input_dict, KEY_SPAN, ' m')) + r""" \\
-\hline
-\textbf{Carriageway Width} & """ + (_render_value(input_dict, KEY_CARRIAGEWAY_WIDTH, ' m')) + r""" \\
-\hline
-\textbf{No. of Girders} & """ + (_render_value(input_dict, KEY_TS_NO_OF_GIRDERS)) + r""" \\
-\hline
-\textbf{Girder Spacing} & """ + (_render_value(input_dict, KEY_TS_GIRDER_SPACING)) + r""" \\
-\hline
-\textbf{Deck Thickness} & """ + (_render_value(input_dict, KEY_TS_DECK_THICKNESS)) + r""" \\
-\hline
-\textbf{Overall Design Status} & """ + (_tex(overall_design_status)) + r""" \\
-\hline
-\textbf{Governing Check} & """ + gov + r""" \\
-\hline
-\textbf{Overall Utilization Ratio (max)} & """ + ur + r""" \\
-\hline
-\end{tabular}
-
-
-""" + plan_fig + r"""
+""" + overview_table + "\n\n" + plan_fig + r"""
 
 \newpage
 
 """ + cs_fig + '\n\n' + geom_fig + '\n\n' + table1 + r"""
 
-\vspace{0.4em}
-\noindent\textit{Note: Utilization ratio (UR) = demand / capacity. A value $< 1.0$ indicates a passing check.}
+\vspace{0.25em}\nopagebreak
+\noindent\parbox{\linewidth}{\textit{Note: UR = demand / capacity; UR $< 1.0$ indicates a passing check.}}
 
 \vspace{1em}
 
@@ -308,12 +315,7 @@ This section provides a concise summary of the bridge design, key inputs, govern
 \addcontentsline{toc}{section}{Key Design Outcomes Summary}
 \label{sec:key-outcomes}
 
-\begin{tabular}{|L{4.0cm}|L{5.5cm}|C{2.8cm}|C{1.8cm}|}
-\hline
-\textbf{Component} & \textbf{Controlling Check} & \textbf{Utilization Ratio} & \textbf{Status} \\
-\hline
-""" + outcome_rows + r"""
-\end{tabular}
+""" + outcome_table + r"""
 
 \section*{Design Assumptions and Limitations}
 \addcontentsline{toc}{section}{Design Assumptions and Limitations}
@@ -327,6 +329,7 @@ This section provides a concise summary of the bridge design, key inputs, govern
 \end{itemize}
 
 % Restore numbered chapter format
+\renewcommand{\thetable}{\thechapter.\arabic{table}}
 \titleformat{\chapter}[block]{\normalfont\Large\bfseries\centering}{\thechapter}{1em}{}
 \titlespacing*{\chapter}{0pt}{-30pt}{10pt}
 """
