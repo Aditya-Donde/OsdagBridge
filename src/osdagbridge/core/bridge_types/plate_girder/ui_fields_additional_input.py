@@ -753,7 +753,7 @@ _SEISMIC_LOAD_TAB_SCHEMA = {
                 {
                     "fields": [{
                         "id":       KEY_SL_SPECTRAL_COEFF,
-                        "label":    "Spectral Acceleration Coefficient, S&#x2090;/g",
+                        "label":    "Spectral Acceleration Coefficient, S&#x2090;/g &#xD7; Damping Factor",
                         "type":     TYPE_TEXTBOX,
                         
                         "read_only": True,
