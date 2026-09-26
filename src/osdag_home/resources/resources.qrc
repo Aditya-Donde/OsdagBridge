@@ -36,6 +36,9 @@ Contains SVGs, images, backgrounds, and theme files for the application.
         <file>vectors/Plugin_tagline_dark.svg</file>
         <file>vectors/description_label.svg</file>
         <file>vectors/version.svg</file>
+        <file>vectors/contour_lines.svg</file>
+        <file>vectors/Osdag_label_light.svg</file>
+        <file>vectors/Osdag_tagline_light.svg</file>
 
         <file>vectors/recently_used_module_icon_light.svg</file>
         <file>vectors/recently_used_module_icon_dark.svg</file>

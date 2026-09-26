@@ -3,8 +3,8 @@ Entry point for Osdag GUI application.
 Handles splash screen and main window launch.
 """
 
-from PySide6.QtWidgets import QApplication
-from PySide6.QtCore import Qt, QFile, QTextStream, QTimer
+from PySide6.QtWidgets import QApplication, QMainWindow
+from PySide6.QtCore import Qt, QFile, QTextStream, QTimer, QThread, Signal
 from PySide6.QtGui import QFontDatabase, QFont, QIcon
 
 # Disable native file dialogs globally to prevent OpenGL context conflicts
@@ -23,6 +23,39 @@ def get_osdagbridge_qss():
         file.close()
         return bridge_style
 
+class LoadingThread(QThread):
+    finished = Signal()
+
+    def run(self):
+        import time
+        # database_config also imports common.py which can also cause empty Material list issue
+        from .data.database.database_config import refactor_database, create_user_database
+        # Create user database if not exist
+        create_user_database()
+        # Clean up user database to ensure 10 records and atmost 60 days older with path exist
+        refactor_database()
+        # Show launch screen for at least 5 seconds
+        time.sleep(5)
+        self.finished.emit()
+
+class LaunchScreenPopup(QMainWindow):
+    def __init__(self, on_finish):
+        super().__init__()
+        from .ui.windows.launch_screen import OsdagLaunchScreen
+        self.ui = OsdagLaunchScreen()
+        self.ui.setupUi(self)
+        self.show()
+
+        self.loader = LoadingThread()
+        self.loader.finished.connect(self.close_and_launch)
+        self.on_finish = on_finish
+        self.loader.start()
+
+    def close_and_launch(self):
+        self.close()
+        if self.on_finish:
+            self.on_finish()
+
 def gui():
 
     app = QApplication(sys.argv)
@@ -30,12 +63,6 @@ def gui():
     bridge_qss = get_osdagbridge_qss()
 
     from .resources import resources_rc
-    from .data.database.database_config import refactor_database, create_user_database
-    # Create user database if not exist
-    create_user_database()
-    # Clean up user database to ensure 10 records and atmost 60 days older with path exist
-    refactor_database()
-
     # Load bundled Ubuntu Sans font - works on all OS without needing font installed
     fid = QFontDatabase.addApplicationFont(":/fonts/UbuntuSans-Regular.ttf")
     if fid != -1:
@@ -68,8 +95,9 @@ def gui():
         QTimer.singleShot(50, show_final)
         app.setWindowIcon(QIcon(":/images/osdag_logo.png"))
 
+    splash = LaunchScreenPopup(on_finish=show_main_window)
     app.setQuitOnLastWindowClosed(False)
-    show_main_window()
+    splash.show()
     sys.exit(app.exec())
 
 if __name__ == "__main__":
