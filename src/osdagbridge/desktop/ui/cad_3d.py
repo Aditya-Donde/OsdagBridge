@@ -29,6 +29,7 @@ from OCC.Core.gp import gp_Pnt
 from OCC.Core.BRepPrimAPI import BRepPrimAPI_MakeSphere
 from OCC.Core.BRepBuilderAPI import BRepBuilderAPI_MakeEdge
 from OCC.Display.backend import load_backend
+from osdagbridge.desktop.__config__ import CAD_BACKEND
 
 try:
     from OCC.Core.AIS import AIS_TextLabel
@@ -118,7 +119,7 @@ class CAD3DWindow(QWidget):
         Does NOT generate or render any geometry.
         Call render_3d_cad() to render the model.
         """
-        load_backend("pyside6")
+        load_backend(CAD_BACKEND)
 
         self.viewer = CustomViewer3d(self)
         self.viewer.setMouseTracking(True)

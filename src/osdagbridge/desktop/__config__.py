@@ -1,0 +1,3 @@
+VERSION = "v1.0.0"
+INSTALLATION_TYPE = "conda"
+CAD_BACKEND = "pyside6"
