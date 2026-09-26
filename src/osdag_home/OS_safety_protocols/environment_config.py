@@ -16,6 +16,7 @@ Author: Nishi Kant Mandal
 
 import os, sys
 import platform
+from osdagbridge.desktop.__config__ import CAD_BACKEND
 
 def _has_hardware_gl_support() -> bool:
     """
@@ -93,7 +94,7 @@ def setup_environment() -> None:
         _setup_windows_environment()
     
     # Common settings for all platforms
-    os.environ.setdefault("PYTHONOCC_DISPLAY_BACKEND", "pyside6")
+    os.environ.setdefault("PYTHONOCC_DISPLAY_BACKEND", CAD_BACKEND)
 
 def _setup_linux_environment() -> None:
     """Configure environment for Linux systems."""
