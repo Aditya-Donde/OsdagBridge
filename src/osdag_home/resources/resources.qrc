@@ -30,10 +30,10 @@ Contains SVGs, images, backgrounds, and theme files for the application.
         <file>vectors/MOS_dark.svg</file>
         <file>vectors/MOE_light.svg</file>
         <file>vectors/MOE_dark.svg</file>
-        <file>vectors/Osdag_label_light.svg</file>
-        <file>vectors/Osdag_tagline_light.svg</file>
-        <file>vectors/Osdag_label_dark.svg</file>
-        <file>vectors/Osdag_tagline_dark.svg</file>
+        <file>vectors/Plugin_label_light.svg</file>
+        <file>vectors/Plugin_tagline_light.svg</file>
+        <file>vectors/Plugin_label_dark.svg</file>
+        <file>vectors/Plugin_tagline_dark.svg</file>
         <file>vectors/description_label.svg</file>
         <file>vectors/version.svg</file>
 
