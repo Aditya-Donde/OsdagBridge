@@ -1,0 +1,1016 @@
+"""
+Hover for the 3D CAD's bridge components — the owning module.
+==============================================================
+
+Everything about hovering a *bridge component* in the 3D CAD lives here: the
+registered labels, the hit-test, the hover highlight, the tooltip timing, and the
+label text itself.  ``CustomViewer3d`` forwards its Qt mouse events to
+:class:`HoverController`; ``cad_3d.py`` registers components through it;
+``cad_safety.py`` clears it on teardown.
+
+Deliberately not owned here
+---------------------------
+The analysis-mesh overlays: node markers, node numbers, element numbers and the
+grillage.  Node markers keep their screen-space picking in ``custom_3dviewer``
+exactly as written — the controller gives it a turn through the ``node_hover_label``
+hook and takes its answer as-is, so node hover behaves exactly as before.  Node
+numbers, element numbers and the grillage have no hover at all; they are 3D text and
+lines drawn into the scene and toggled from the toolbar.
+
+Two label channels
+------------------
+``labels_by_key``  one string per registered component key — the default, for a
+                   component whose shapes are interchangeable.
+``labels_by_ptr``  one string per individual shape, which takes precedence.  This is
+                   how one registration key can still show different text per member,
+                   so a girder pair's braces can report their own designed section
+                   while the visibility checkbox keeps working off the single key.
+
+Both AIS-keyed maps use the raw C++ pointer address rather than the Python object:
+pythonocc can hand back a different Python wrapper for the same C++ object, so object
+identity is not reliable across a MoveTo round-trip.
+"""
+
+import re
+
+from PySide6.QtCore import QTimer
+from PySide6.QtWidgets import QToolTip
+
+# The section type and dimension keys below are the same ones cross_bracing/builder.py
+# reads to draw the geometry, resolved through the same <base>.<pair> scheme — which is
+# what stops the tooltip and the drawn shape disagreeing.  The designation, spacing and
+# steel grade keys are extra: the builder has no use for them, but the label does.
+from osdagbridge.core.utils.common import (
+    KEY_GIRDER,
+    KEY_MP_GIRDER_DEPTH,
+    KEY_MP_GIRDER_WEB_THICKNESS,
+    KEY_MP_GIRDER_TOP_FLANGE_WIDTH,
+    KEY_MP_GIRDER_TOP_FLANGE_THICKNESS,
+    KEY_MP_GIRDER_BOTTOM_FLANGE_WIDTH,
+    KEY_MP_GIRDER_BOTTOM_FLANGE_THICKNESS,
+    KEY_RL_WIDTH,
+    KEY_RL_HEIGHT,
+    KEY_MD_TYPE,
+    KEY_MD_WIDTH,
+    KEY_MD_HEIGHT,
+    KEY_MP_CB_TYPE,
+    KEY_MP_CB_SPACING,
+    KEY_MP_CB_BRACING_SECTION_TYPE,
+    KEY_MP_CB_BRACING_SECTION_DESIGNATION,
+    KEY_MP_CB_TOP_CHORD_SECTION_TYPE,
+    KEY_MP_CB_TOP_CHORD_SECTION_DESIG,
+    KEY_MP_CB_BOTTOM_CHORD_SECTION_TYPE,
+    KEY_MP_CB_BOTTOM_CHORD_SECTION_DESIG,
+    KEY_MP_CB_DIAGONAL_LEG_H, KEY_MP_CB_DIAGONAL_LEG_W, KEY_MP_CB_DIAGONAL_THICKNESS,
+    KEY_MP_CB_TOP_CHORD_LEG_H, KEY_MP_CB_TOP_CHORD_LEG_W, KEY_MP_CB_TOP_CHORD_THICKNESS,
+    KEY_MP_CB_BOTTOM_CHORD_LEG_H, KEY_MP_CB_BOTTOM_CHORD_LEG_W, KEY_MP_CB_BOTTOM_CHORD_THICKNESS,
+    KEY_MP_ED_TYPE,
+    KEY_MP_ED_BRACING_TYPE,
+    KEY_MP_ED_BRACING_SECTION,
+    KEY_MP_ED_BRACING_SECTION_DESIGNATION,
+    KEY_MP_ED_TOP_CHORD_SECTION_TYPE,
+    KEY_MP_ED_TOP_CHORD_SECTION_DESIG,
+    KEY_MP_ED_BOTTOM_CHORD_SECTION_TYPE,
+    KEY_MP_ED_BOTTOM_CHORD_SECTION_DESIG,
+    KEY_MP_ED_DIAGONAL_LEG_H, KEY_MP_ED_DIAGONAL_LEG_W, KEY_MP_ED_DIAGONAL_THICKNESS,
+    KEY_MP_ED_TOP_CHORD_LEG_H, KEY_MP_ED_TOP_CHORD_LEG_W, KEY_MP_ED_TOP_CHORD_THICKNESS,
+    KEY_MP_ED_BOTTOM_CHORD_LEG_H, KEY_MP_ED_BOTTOM_CHORD_LEG_W, KEY_MP_ED_BOTTOM_CHORD_THICKNESS,
+)
+from osdagbridge.core.bridge_components.super_structure.cross_bracing.builder import (
+    ROLE_DIAGONAL, ROLE_TOP_CHORD, ROLE_BOTTOM_CHORD, ROLE_NAMES,
+    COMPONENT_CROSS_BRACING,
+)
+
+__all__ = ["HoverController", "build_component_labels",
+           "build_bracing_hover_shapes", "build_girder_hover_shapes"]
+
+
+# =============================================================================
+# THE CONTROLLER
+# =============================================================================
+
+class HoverController:
+    """Owns hover for the bridge components in the 3D CAD viewer.
+
+    Parameters
+    ----------
+    viewer : CustomViewer3d
+        Used for its ``context``, ``view``, safety guard, and the node hover hook.
+        Held as a plain reference; the controller's lifetime matches the viewer's.
+    """
+
+    # Delay between the cursor settling and the tooltip appearing (ms).
+    TOOLTIP_DELAY_MS = 100
+
+    def __init__(self, viewer):
+        self.viewer = viewer
+
+        # Registered model objects and their labels.
+        self.model_ais_objects = {}      # key -> [AIS]
+        self.labels_by_key = {}          # key -> label text
+        self.labels_by_ptr = {}          # ptr -> label text (wins over labels_by_key)
+        self.ais_to_model = {}           # ptr -> key
+
+        # Shapes that carry their own label but must not be hilighted — the invisible
+        # node pick spheres, where a highlight would flash a blob over the marker.
+        # Membership is explicit rather than inferred from "has a label", because
+        # cross bracings also carry per-shape labels and must still highlight.
+        self.no_highlight_ptrs = set()
+
+        # What the cursor is currently over.
+        self.current_hovered_model = None
+        self.current_hovered_label = None
+        self.current_highlighted_ais_list = []
+
+        self.hover_position = None
+        self.hover_timer = QTimer(viewer)
+        self.hover_timer.setSingleShot(True)
+        self.hover_timer.timeout.connect(self._show_tooltip)
+
+    # ------------------------------------------------------------------
+    # Registration — called while the model is being built
+    # ------------------------------------------------------------------
+    def register(self, key, ais_list, label, per_ais_labels=None):
+        """Register a component's AIS objects and the text they hover with.
+
+        ``per_ais_labels``, when given, is a list parallel to ``ais_list`` holding one
+        label per shape.  Those take precedence over ``label``, which remains the
+        fallback for any shape the list does not cover.
+        """
+        self.model_ais_objects[key] = ais_list
+        self.labels_by_key[key] = label
+
+        if per_ais_labels:
+            for ais, text in zip(ais_list, per_ais_labels):
+                if text is not None:
+                    self.labels_by_ptr[self.get_occ_ptr(ais)] = text
+
+    def register_ais_label(self, ais, label, highlight=True):
+        """Give one AIS its own label, outside any component key.
+
+        Pass ``highlight=False`` for a shape that should never be hilighted on hover —
+        the transparent node pick spheres use this.
+        """
+        ptr = self.get_occ_ptr(ais)
+        self.labels_by_ptr[ptr] = label
+        if not highlight:
+            self.no_highlight_ptrs.add(ptr)
+
+    def drop_ais(self, ais):
+        """Forget one AIS, before the C++ object behind it is released."""
+        ptr = self.get_occ_ptr(ais)
+        self.labels_by_ptr.pop(ptr, None)
+        self.no_highlight_ptrs.discard(ptr)
+
+    def clear(self):
+        """Drop all hover state.  Called from the safety guard's teardown."""
+        self.hover_timer.stop()
+        self.model_ais_objects.clear()
+        self.labels_by_key.clear()
+        self.labels_by_ptr.clear()
+        self.no_highlight_ptrs.clear()
+        self.ais_to_model = {}
+        self.current_hovered_model = None
+        self.current_hovered_label = None
+        self.current_highlighted_ais_list = []
+
+    def rebuild_lookup(self):
+        """Rebuild the O(1) map from C++ pointer address to component key."""
+        self.ais_to_model = {}
+        for key, ais_list in self.model_ais_objects.items():
+            for ais in ais_list:
+                self.ais_to_model[self.get_occ_ptr(ais)] = key
+
+    @staticmethod
+    def get_occ_ptr(obj):
+        """Resolve the raw C++ pointer address behind a SWIG/pythonocc object."""
+        current = obj
+        for _ in range(5):  # Limit depth to prevent infinite loops
+            if not hasattr(current, "this"):
+                break
+
+            # Try converting the SWIG pointer directly to an integer
+            try:
+                return int(current.this)
+            except TypeError:
+                pass
+
+            # Try parsing the C++ hex address string representation of the SWIG pointer
+            try:
+                s = str(current.this)
+                # s is formatted like "_000001859d3f34b0_p_Handle_AIS_Shape"
+                match = re.match(r"^_[0-9a-fA-F]+", s)
+                if match:
+                    return int(match.group(0)[1:], 16)
+            except Exception:
+                pass
+
+            # Go one level deeper (e.g., Handle_AIS_Shape -> AIS_Shape)
+            next_obj = getattr(current, "this")
+            if next_obj is current:
+                break
+            current = next_obj
+
+        return hash(obj)
+
+    # ------------------------------------------------------------------
+    # Pick geometry
+    # ------------------------------------------------------------------
+    def pick_scale(self):
+        """Factor converting Qt cursor coordinates into the space ``MoveTo`` expects.
+
+        Carried over unchanged from the viewer so this refactor alters no behaviour.
+        It is wrong on HiDPI displays — fixed in a separate commit.
+        """
+        return self.viewer.devicePixelRatioF()
+
+    # ------------------------------------------------------------------
+    # Events — called by the viewer's Qt handlers
+    # ------------------------------------------------------------------
+    def handle_move(self, event):
+        """Hit-test under the cursor, update the highlight, schedule the tooltip."""
+        viewer = self.viewer
+        context, view = viewer.context, viewer.view
+        if not context or not view:
+            return
+
+        try:
+            pr    = self.pick_scale()
+            x_log = float(event.position().x())
+            y_log = float(event.position().y())
+            x     = int(x_log * pr)
+            y     = int(y_log * pr)
+
+            context.MoveTo(x, y, view, True)
+
+            hovered_model = None
+            hovered_label = None
+
+            if context.HasDetected():
+                detected, skip_highlight = self._detect()
+                ptr = self.get_occ_ptr(detected)
+                hovered_label = self.labels_by_ptr.get(ptr)
+                hovered_model = self.ais_to_model.get(ptr)
+
+                objects_to_highlight = []
+                if not skip_highlight:
+                    if hovered_model in ("Bolt", "Nut"):
+                        objects_to_highlight.extend(self.model_ais_objects.get("Bolt", []))
+                        objects_to_highlight.extend(self.model_ais_objects.get("Nut", []))
+                    elif detected:
+                        objects_to_highlight.append(detected)
+
+                self._set_highlight(objects_to_highlight)
+            else:
+                self._set_highlight([])
+
+            # Node markers keep their own screen-space picking in the viewer.  Give it
+            # a turn and take its answer as-is, including its precedence over a solid.
+            node_label = viewer.node_hover_label(x, y, x_log, y_log)
+            if node_label:
+                hovered_label = node_label
+                hovered_model = None
+                self._set_highlight([])
+                if self.hover_position and hovered_label != self.current_hovered_label:
+                    self.current_hovered_label = hovered_label
+                    self.hover_timer.stop()
+                    QToolTip.showText(self.hover_position, hovered_label, viewer)
+
+            self.hover_position = event.globalPosition().toPoint()
+
+            if (hovered_model != self.current_hovered_model
+                    or hovered_label != self.current_hovered_label):
+                self.current_hovered_model = hovered_model
+                self.current_hovered_label = hovered_label
+                if hovered_model or hovered_label:
+                    self.hover_timer.start(self.TOOLTIP_DELAY_MS)
+                else:
+                    QToolTip.hideText()
+            elif hovered_model is None and hovered_label is None:
+                QToolTip.hideText()
+
+        except Exception as exc:
+            print(f"hover handle_move error: {exc}")
+            QToolTip.hideText()
+
+    def handle_leave(self):
+        """Cursor left the viewport — drop the tooltip and any highlight."""
+        self.hover_timer.stop()
+        self.current_hovered_model = None
+        self.current_hovered_label = None
+
+        if self.viewer.safety.in_progress:
+            return
+
+        self._set_highlight([])
+        QToolTip.hideText()
+
+    def pause(self):
+        """Stop the pending tooltip (overlay pause / model teardown)."""
+        try:
+            self.hover_timer.stop()
+        except Exception:
+            pass
+
+    # ------------------------------------------------------------------
+    # Internals
+    # ------------------------------------------------------------------
+    def _detect(self):
+        """Return ``(detected, skip_highlight)`` for what is under the cursor.
+
+        Take the entity ``DetectedInteractive`` reports first — it orders them nearest
+        the camera first, so that is what is visibly under the cursor.
+
+        Do *not* scan the list for a shape carrying its own label and prefer that one.
+        The node pick spheres are transparent balls of radius 120 on the topmost
+        Z-layer, so they sit over much of the deck; preferring them swallows the hover
+        of every component behind them.
+
+        ``skip_highlight`` comes from the explicit no_highlight_ptrs set, not from
+        "has its own label" — cross bracings carry per-shape labels too and must still
+        light up on hover.
+        """
+        context = self.viewer.context
+        detected_list = []
+
+        if hasattr(context, "InitDetected"):
+            try:
+                context.InitDetected()
+                while context.MoreDetected():
+                    detected_list.append(context.DetectedInteractive())
+                    context.NextDetected()
+            except Exception:
+                detected_list = []
+
+        if not detected_list:
+            detected_list = [context.DetectedInteractive()]
+
+        if not detected_list:
+            return None, False
+
+        detected = detected_list[0]
+        return detected, self.get_occ_ptr(detected) in self.no_highlight_ptrs
+
+    def _set_highlight(self, objects):
+        """Hilight exactly ``objects``, leaving the view untouched if unchanged."""
+        if set(objects) == set(self.current_highlighted_ais_list):
+            return
+
+        context = self.viewer.context
+        for obj in self.current_highlighted_ais_list:
+            try:
+                context.Unhilight(obj, False)
+            except Exception:
+                pass
+
+        self.current_highlighted_ais_list = objects
+
+        for obj in objects:
+            try:
+                context.HilightWithColor(obj, context.HighlightStyle(), False)
+            except Exception:
+                pass
+
+        if self.viewer.view:
+            self.viewer.view.Redraw()
+
+    def _show_tooltip(self):
+        """QTimer callback: show the text for whatever the cursor settled on."""
+        if self.viewer.safety.in_progress or not self.hover_position:
+            return
+
+        text = self.current_hovered_label
+        if text is None and self.current_hovered_model is not None:
+            text = self.labels_by_key.get(self.current_hovered_model)
+
+        if text:
+            QToolTip.showText(self.hover_position, text, self.viewer)
+
+
+# =============================================================================
+# LABEL TEXT — the 17 bridge components
+# =============================================================================
+
+def build_component_labels(params):
+    """Tooltip text for every bridge component, keyed by its registration key.
+
+    ``params`` is the ``BridgeParametersDTO`` for the rendered bridge.  The keys match
+    the ones ``cad_3d._render_model_body`` registers under, and the ones the
+    ``component_map`` in ``update_component_visibility`` maps checkboxes to.
+
+    Known limitations, all unchanged by moving the text here:
+
+    * The values come from the DTO's flat scalar fields, which hold one representative
+      girder and one representative girder pair — so every girder shows identical text,
+      and so does every cross bracing.
+    * The cross-bracing section is a hardcoded literal on the DTO, which is what issue
+      #247 reports.  Fixing it means reading ``params.output_dict`` per member.
+    * Five components carry no data at all: the three supports and the two W-beams.
+    * Shear Stud has text but is registered ``selectable=False``, so it cannot be
+      hovered at all.
+    """
+    return {
+        "Girder Web":
+            f"Girder Web\nDepth: {params.girder_section_d:.2f} mm"
+            f"\nWeb Thickness: {params.girder_section_tw:.2f} mm"
+            f"\nSteel Grade: {params.steel_grade}",
+
+        "Girder Top Flange":
+            f"Top Flange\nWidth: {params.girder_section_bf:.2f} mm"
+            f"\nThickness: {params.girder_section_tf:.2f} mm"
+            f"\nSteel Grade: {params.steel_grade}",
+
+        "Girder Bottom Flange":
+            f"Bottom Flange\nWidth: {params.girder_section_bf_b:.2f} mm"
+            f"\nThickness: {params.girder_section_tf_b:.2f} mm"
+            f"\nSteel Grade: {params.steel_grade}",
+
+        "Intermediate Stiffener":
+            f"Intermediate Stiffener"
+            f"\nSpacing: {params.intermediate_stiffener_spacing:.2f} mm"
+            f"\nThickness: {params.intermediate_stiffener_thickness:.2f} mm"
+            f"\nSteel Grade: {params.steel_grade}",
+
+        "Bearing Stiffener":
+            f"Bearing Stiffener\nPairs: {params.num_end_stiffener_pairs}"
+            f"\nThickness: {params.end_stiffener_thickness:.2f} mm"
+            f"\nSteel Grade: {params.steel_grade}",
+
+        "Longitudinal Stiffener":
+            f"Longitudinal Stiffener\nCount: {params.num_longitudinal_stiffeners}"
+            f"\nThickness: {params.longitudinal_stiffener_thickness:.2f} mm"
+            f"\nSteel Grade: {params.steel_grade}",
+
+        "Shear Stud":
+            f"Shear Stud\nBase Dia: {params.shear_stud_params.base_diameter:.2f} mm"
+            f"\nHeight: {params.shear_stud_params.base_height + params.shear_stud_params.top_height:.2f} mm"
+            f"\nPitch: {params.shear_stud_params.pitch:.2f} mm"
+            f"\nPer Section: {params.shear_stud_params.num_per_section}",
+
+        "Support Vertical":     "Support - Vertical",
+        "Support Transverse":   "Support - Transverse",
+        "Support Longitudinal": "Support - Longitudinal",
+
+        "Cross Bracing":
+            f"Cross Bracing\nType: {params.bracing_type}-Bracing"
+            f"\nSpacing: {params.cross_bracing_spacing:.2f} mm"
+            f"\nSection: {params.diagonal_section_type}"
+            f"\nLeg H: {params.diagonal_section_dims.leg_h:.2f} mm"
+            f"\nLeg W: {params.diagonal_section_dims.leg_w:.2f} mm",
+
+        "Deck":
+            f"Deck Slab\nThickness: {params.deck_thickness:.2f} mm"
+            f"\nCarriageway Width: {params.carriageway_width:.2f} mm"
+            f"\nConcrete Grade: {params.concrete_grade}"
+            f"\nFootpath: {params.footpath_config}",
+
+        "Crash Barrier W-Beam": "W-Beam",
+        "Median W-Beam":        "Median W-Beam",
+
+        "Crash Barrier":
+            f"Crash Barrier\nType: {params.barrier_type}"
+            f"\nSubtype: {params.crash_barrier_subtype}",
+
+        "Median": _median_label(params),
+
+        "Railing": _railing_label(params),
+    }
+
+
+def _median_label(params):
+    """Median tooltip, read from the design snapshot rather than the DTO.
+
+    The DTO cannot keep the subtype.  It folds every metallic option into the broad
+    category with a single branch::
+
+        elif raw_md_string.startswith("IRC 5 - Metallic Crash Barrier"):
+            resolved_median_type = KEY_MEDIAN_TYPE[2]   # "Metallic Crash Barrier"
+
+    so "Single W-Beam" and "Double W-Beam" become indistinguishable.  There is a TODO
+    beside it asking for a dedicated median_subtype field on the DTO; the tooltip does
+    not need one, because reading KEY_MD_TYPE here keeps the full string.  That TODO
+    still stands for anyone who needs the subtype in the CAD generator.
+
+    Width and height are stored in **metres** and converted here.  Both are omitted
+    when the median is disabled, where they are written as None / 0.
+    """
+    output_dict = getattr(params, "output_dict", None) or {}
+
+    # The form has stored this as a bare string and as a single-item list at different
+    # times; get_3d_cad_parameters guards for both, so this does too.
+    raw = _resolve(output_dict, KEY_MD_TYPE, None)
+    if isinstance(raw, list):
+        raw = raw[0] if raw else None
+    median_type = str(raw).strip() if _present(raw) else str(params.median_type).strip()
+
+    lines = [f"Median Barrier\nType: {median_type}"]
+
+    for key, caption in ((KEY_MD_WIDTH, "Width"), (KEY_MD_HEIGHT, "Height")):
+        value = _resolve(output_dict, key, None)
+        try:
+            mm = float(value) * 1e3
+        except (TypeError, ValueError):
+            continue
+        if mm > 0:
+            lines.append(f"{caption}: {mm:.2f} mm")
+
+    return "\n".join(lines)
+
+
+# =============================================================================
+# GIRDERS — per girder, not one representative
+# =============================================================================
+# Every girder currently reports girder 1's dimensions.  The values are stored per
+# girder under "<base>.G{i+1}.M1", but get_3d_cad_parameters resolves them with
+#
+#     gv = lambda key: resolve_girder_value(inp, key)
+#
+# which passes no index, so resolve_girder_value falls through to its last resort —
+# girder 1 — for every girder on the bridge.
+
+# (base key, caption, is_length) per component.  is_length marks the values needing
+# the metre -> millimetre conversion the DTO applies.
+_GIRDER_ROLE_KEYS = {
+    "Girder Web": [
+        (KEY_MP_GIRDER_DEPTH,                   "Depth",         True),
+        (KEY_MP_GIRDER_WEB_THICKNESS,           "Web Thickness", True),
+    ],
+    "Girder Top Flange": [
+        (KEY_MP_GIRDER_TOP_FLANGE_WIDTH,        "Width",         True),
+        (KEY_MP_GIRDER_TOP_FLANGE_THICKNESS,    "Thickness",     True),
+    ],
+    "Girder Bottom Flange": [
+        (KEY_MP_GIRDER_BOTTOM_FLANGE_WIDTH,     "Width",         True),
+        (KEY_MP_GIRDER_BOTTOM_FLANGE_THICKNESS, "Thickness",     True),
+    ],
+}
+
+# Heading each one keeps, matching what the DTO-based labels said.
+_GIRDER_ROLE_NAMES = {
+    "Girder Web":           "Girder Web",
+    "Girder Top Flange":    "Top Flange",
+    "Girder Bottom Flange": "Bottom Flange",
+}
+
+
+def _girder_label(output_dict, component, girder_index):
+    """Tooltip for one component of one girder.
+
+    ``girder_index`` is zero-based, as the build loop counts it, and is shown to the
+    user as G1, G2, ...  Values come through ``resolve_girder_value(inp, key, i)`` —
+    the function that already understands the "<base>.G{i+1}.M1" scheme and is simply
+    never called with an index today.
+
+    Lengths get the same ``* 1e3`` the DTO applies.  Note that KEY_MP_GIRDER_DEPTH has
+    two writers that disagree about units: defaults.py stores ``D * 1e3`` while
+    get_3d_cad_parameters multiplies by 1e3 again.  Converting the same way the DTO
+    does keeps the tooltip consistent with the drawn geometry whichever is right; if
+    both are wrong that is a pre-existing bug in the DTO, not one introduced here.
+    """
+    from osdagbridge.core.bridge_types.plate_girder.plategirderbridge import (
+        resolve_girder_value,
+    )
+
+    lines = [_GIRDER_ROLE_NAMES.get(component, component),
+             f"Girder: G{girder_index + 1}"]
+
+    for base_key, caption, is_length in _GIRDER_ROLE_KEYS.get(component, []):
+        try:
+            value = resolve_girder_value(output_dict, base_key, girder_index)
+        except KeyError:
+            continue
+        if not _present(value):
+            continue
+        try:
+            lines.append(f"{caption}: {float(value) * 1e3:.2f} mm" if is_length
+                         else f"{caption}: {value}")
+        except (TypeError, ValueError):
+            continue
+
+    steel_grade = output_dict.get(KEY_GIRDER)
+    if _present(steel_grade):
+        lines.append(f"Steel Grade: {str(steel_grade).strip()}")
+
+    return "\n".join(lines)
+
+
+def build_girder_hover_shapes(output_dict, girder_groups, component, fallback_shapes=None):
+    """Flatten one girder component's groups into shapes paired with their text.
+
+    Mirrors ``build_bracing_hover_shapes``: the CAD layer hands both lists straight to
+    ``HoverController.register`` and does no label work of its own.
+
+    ``girder_groups`` is ``(component key, girder index) -> [shapes]`` from
+    cad_generator.  Only entries matching ``component`` are used, so the three girder
+    components register separately while sharing one map.
+
+    Returns ``(shapes, labels)``.  ``labels`` is ``None`` when there is nothing to
+    label with, which tells the caller to fall back to the generic per-key label.
+    """
+    if not girder_groups or not output_dict:
+        return list(fallback_shapes or []), None
+
+    mine = {k: v for k, v in girder_groups.items() if k[0] == component}
+    if not mine:
+        return list(fallback_shapes or []), None
+
+    shapes, labels = [], []
+    for key in sorted(mine, key=lambda k: k[1]):
+        group_shapes = mine[key]
+        text = _girder_label(output_dict, component, key[1])
+        shapes.extend(group_shapes)
+        labels.extend([text] * len(group_shapes))
+
+    if not shapes:
+        return list(fallback_shapes or []), None
+    return shapes, labels
+
+
+# =============================================================================
+# STIFFENERS — per girder, straight off the DTO
+# =============================================================================
+#
+# Unlike the girder sections, the per-girder stiffener values never had to be dug out
+# of the design snapshot: get_3d_cad_parameters already builds stiffeners_dict[i] for
+# every girder and passes the whole map to the DTO, where the CAD generator reads it to
+# draw each girder's stiffeners.  Only the tooltip was left on the flat scalar fields,
+# which plategirderbridge fills from stiffeners_dict[0] — see the comment there that
+# calls them "representative (first girder) values".
+#
+# So the bridge was drawn right and described wrong, and the fix is a dictionary read.
+#
+# No unit conversion here, deliberately.  Those flat DTO fields are unconverted copies
+# of these same entries, so reading the dict prints the number the tooltip has always
+# printed — just from the girder under the cursor.
+
+# (field in stiffeners_dict, caption, is_length) per component.  is_length separates the
+# millimetre values from the plain counts.
+_STIFFENER_ROLE_FIELDS = {
+    "Intermediate Stiffener": [
+        ("intermediate_stiffener_spacing",   "Spacing",   True),
+        ("intermediate_stiffener_thickness", "Thickness", True),
+    ],
+    "Bearing Stiffener": [
+        ("num_end_stiffener_pairs",          "Pairs",     False),
+        ("end_stiffener_thickness",          "Thickness", True),
+    ],
+    "Longitudinal Stiffener": [
+        ("num_longitudinal_stiffeners",      "Count",     False),
+        ("longitudinal_stiffener_thickness", "Thickness", True),
+    ],
+}
+
+
+def _stiffener_label(stiffeners_dict, output_dict, component, girder_index):
+    """Tooltip for one stiffener type on one girder.
+
+    ``girder_index`` is zero-based, as the build loop counts it, and is shown as G1,
+    G2, ...  Values come from ``stiffeners_dict[girder_index]``; a girder missing from
+    the map falls back to whatever fields are present, which in practice means the
+    heading alone rather than another girder's numbers.
+    """
+    entry = (stiffeners_dict or {}).get(girder_index) or {}
+
+    lines = [component, f"Girder: G{girder_index + 1}"]
+
+    for field, caption, is_length in _STIFFENER_ROLE_FIELDS.get(component, []):
+        value = entry.get(field)
+        if not _present(value):
+            continue
+        try:
+            lines.append(f"{caption}: {float(value):.2f} mm" if is_length
+                         else f"{caption}: {value}")
+        except (TypeError, ValueError):
+            continue
+
+    steel_grade = (output_dict or {}).get(KEY_GIRDER)
+    if _present(steel_grade):
+        lines.append(f"Steel Grade: {str(steel_grade).strip()}")
+
+    return "\n".join(lines)
+
+
+def build_stiffener_hover_shapes(stiffeners_dict, output_dict, girder_groups, component,
+                                 fallback_shapes=None):
+    """Flatten one stiffener type's per-girder groups into shapes paired with their text.
+
+    Same contract as ``build_girder_hover_shapes`` — it reads the same
+    ``(component key, girder index)`` map, which cad_generator now fills with one
+    compound per girder for each stiffener type.
+
+    Returns ``(shapes, labels)``, with ``labels`` set to ``None`` when there is nothing
+    to label with, telling the caller to keep the generic per-key label.
+    """
+    if not girder_groups or not stiffeners_dict:
+        return list(fallback_shapes or []), None
+
+    mine = {k: v for k, v in girder_groups.items() if k[0] == component}
+    if not mine:
+        return list(fallback_shapes or []), None
+
+    shapes, labels = [], []
+    for key in sorted(mine, key=lambda k: k[1]):
+        group_shapes = mine[key]
+        text = _stiffener_label(stiffeners_dict, output_dict, component, key[1])
+        shapes.extend(group_shapes)
+        labels.extend([text] * len(group_shapes))
+
+    if not shapes:
+        return list(fallback_shapes or []), None
+    return shapes, labels
+
+
+# =============================================================================
+# SUPPORTS — per girder and per end
+# =============================================================================
+#
+# The three support keys are restraint directions of one support, not three kinds of
+# support: "Support Vertical" is the bar that stops the girder moving up and down, and
+# so on.  Every bar used to share one flat list per key, so the left and right bars of
+# every girder all showed the same bare name.
+#
+# The builder now tags each bar with its end and cad_generator adds the girder index,
+# so a tooltip can say which bar it is.  No design value is shown — the support-type
+# dropdowns do not control what is drawn, and the bearing-length input is not read by
+# the design or the geometry, so either would describe something the model is not.
+
+# Restraint line per component key.
+_SUPPORT_RESTRAINTS = {
+    "Support Vertical":     "Vertical",
+    "Support Transverse":   "Transverse",
+    "Support Longitudinal": "Longitudinal",
+}
+
+# Left before right when sorting within a girder.
+_SUPPORT_END_ORDER = {"Left": 0, "Right": 1}
+
+
+def _support_label(component, girder_index, end):
+    """Tooltip for one support bar: which girder, which end, which restraint.
+
+    ``girder_index`` is zero-based, as the build loop counts it, and is shown as G1,
+    G2, ...  ``end`` is "Left" or "Right" as tagged by the plate girder builder.
+    """
+    lines = ["Support", f"Girder: G{girder_index + 1}", f"End: {end}"]
+    restraint = _SUPPORT_RESTRAINTS.get(component)
+    if restraint:
+        lines.append(f"Restraint: {restraint}")
+    return "\n".join(lines)
+
+
+def build_support_hover_shapes(support_groups, component, fallback_shapes=None):
+    """Flatten one support component's groups into shapes paired with their text.
+
+    Same contract as ``build_girder_hover_shapes``.  ``support_groups`` is
+    ``(component key, girder index, end) -> [shapes]`` from cad_generator; only entries
+    matching ``component`` are used.
+
+    Returns ``(shapes, labels)``, with ``labels`` set to ``None`` when there is nothing
+    to label with, telling the caller to keep the generic per-key label.
+    """
+    if not support_groups:
+        return list(fallback_shapes or []), None
+
+    mine = {k: v for k, v in support_groups.items() if k[0] == component}
+    if not mine:
+        return list(fallback_shapes or []), None
+
+    shapes, labels = [], []
+    for key in sorted(mine, key=lambda k: (k[1], _SUPPORT_END_ORDER.get(k[2], 9))):
+        group_shapes = mine[key]
+        text = _support_label(component, key[1], key[2])
+        shapes.extend(group_shapes)
+        labels.extend([text] * len(group_shapes))
+
+    if not shapes:
+        return list(fallback_shapes or []), None
+    return shapes, labels
+
+
+def _railing_label(params):
+    """Railing tooltip, read from the design snapshot rather than the DTO.
+
+    The DTO cannot answer for width or height: it sets ``railing_width`` from the
+    constant ``DEFAULT_RAILING_WIDTH`` and never reads ``KEY_RL_WIDTH`` at all, so the
+    tooltip reported 375.00 mm whatever the user entered.  ``KEY_RL_HEIGHT`` was not
+    shown anywhere.  Both are stored in **metres** and converted here.
+
+    The type still comes from the DTO, which already maps the IRC label
+    ("IRC 5 - RCC Railing") onto the internal value — no reason to repeat that here.
+
+    The old "Rails: 3" line is gone.  There is no rail-count key in common.py; the 3
+    was a literal in the DTO, so the line could never vary with the design.
+    """
+    output_dict = getattr(params, "output_dict", None) or {}
+
+    lines = [f"Railing\nType: {params.railing_type.upper()}"]
+
+    for key, caption in ((KEY_RL_WIDTH, "Width"), (KEY_RL_HEIGHT, "Height")):
+        value = _resolve(output_dict, key, None)
+        try:
+            lines.append(f"{caption}: {float(value) * 1e3:.2f} mm")
+        except (TypeError, ValueError):
+            continue
+
+    return "\n".join(lines)
+
+
+# =============================================================================
+# CROSS BRACING AND END DIAPHRAGM — per girder pair, per member
+# =============================================================================
+# These read output_dict rather than the DTO.  The DTO has one scalar slot per field
+# and so cannot hold G1G2=CHANNEL and G2G3=ANGLE at the same time — which is why the
+# label above reports a fixed ANGLE 100x50 whatever the user entered (issue #247).
+# output_dict holds every pair's designed values, keyed by girder pair.
+
+
+def _present(value):
+    """True unless the value is genuinely absent.
+
+    Only None and "" count as missing — False and 0 are real answers, so a legitimate
+    zero thickness is not mistaken for "no value".
+    """
+    return value is not None and value != ""
+
+
+def _resolve(output_dict, base_key, pair_id):
+    """Look up one value for one girder pair.
+
+    The same value can be stored under three different key shapes depending on which
+    stage wrote it:
+
+      1. ``<base>.<pair>``            — written by the design phase
+      2. ``<base>.<pair>.<member id>``— written by the input form
+      3. ``<base>``                   — a few legacy flat values
+
+    Tried most specific first.  Taking the first member is correct: extend_cb_dynamic_keys()
+    in defaults.py writes every member of a pair identically, so M1..Mn always agree.
+    """
+    if pair_id:
+        exact = f"{base_key}.{pair_id}"
+        value = output_dict.get(exact)
+        if _present(value):
+            return value
+
+        prefix = exact + "."
+        for key in sorted(k for k in output_dict if k.startswith(prefix)):
+            if _present(output_dict[key]):
+                return output_dict[key]
+
+    value = output_dict.get(base_key)
+    return value if _present(value) else None
+
+
+def _fmt_mm(value):
+    """Format a millimetre dimension, or None if it cannot be read as a number.
+
+    Returning None lets the caller drop the line entirely rather than print "None mm".
+    """
+    try:
+        return f"{float(value):.2f} mm"
+    except (TypeError, ValueError):
+        return None
+
+
+def _pair_label(pair_id):
+    """'G1G2' -> 'G1 to G2', for display."""
+    head, _, tail = pair_id.partition("G")[2].partition("G")
+    return f"G{head} to G{tail}" if head and tail else pair_id
+
+
+# Per role: (section type key, designation key, leg_h, leg_w, thickness).
+# The type and dimension entries must stay in step with the lookups in
+# cross_bracing/builder.py, so the label and the drawn shape describe the same section.
+_CB_ROLE_KEYS = {
+    ROLE_DIAGONAL: (
+        KEY_MP_CB_BRACING_SECTION_TYPE, KEY_MP_CB_BRACING_SECTION_DESIGNATION,
+        KEY_MP_CB_DIAGONAL_LEG_H, KEY_MP_CB_DIAGONAL_LEG_W, KEY_MP_CB_DIAGONAL_THICKNESS,
+    ),
+    ROLE_TOP_CHORD: (
+        KEY_MP_CB_TOP_CHORD_SECTION_TYPE, KEY_MP_CB_TOP_CHORD_SECTION_DESIG,
+        KEY_MP_CB_TOP_CHORD_LEG_H, KEY_MP_CB_TOP_CHORD_LEG_W, KEY_MP_CB_TOP_CHORD_THICKNESS,
+    ),
+    ROLE_BOTTOM_CHORD: (
+        KEY_MP_CB_BOTTOM_CHORD_SECTION_TYPE, KEY_MP_CB_BOTTOM_CHORD_SECTION_DESIG,
+        KEY_MP_CB_BOTTOM_CHORD_LEG_H, KEY_MP_CB_BOTTOM_CHORD_LEG_W, KEY_MP_CB_BOTTOM_CHORD_THICKNESS,
+    ),
+}
+
+_ED_ROLE_KEYS = {
+    ROLE_DIAGONAL: (
+        KEY_MP_ED_BRACING_SECTION, KEY_MP_ED_BRACING_SECTION_DESIGNATION,
+        KEY_MP_ED_DIAGONAL_LEG_H, KEY_MP_ED_DIAGONAL_LEG_W, KEY_MP_ED_DIAGONAL_THICKNESS,
+    ),
+    ROLE_TOP_CHORD: (
+        KEY_MP_ED_TOP_CHORD_SECTION_TYPE, KEY_MP_ED_TOP_CHORD_SECTION_DESIG,
+        KEY_MP_ED_TOP_CHORD_LEG_H, KEY_MP_ED_TOP_CHORD_LEG_W, KEY_MP_ED_TOP_CHORD_THICKNESS,
+    ),
+    ROLE_BOTTOM_CHORD: (
+        KEY_MP_ED_BOTTOM_CHORD_SECTION_TYPE, KEY_MP_ED_BOTTOM_CHORD_SECTION_DESIG,
+        KEY_MP_ED_BOTTOM_CHORD_LEG_H, KEY_MP_ED_BOTTOM_CHORD_LEG_W, KEY_MP_ED_BOTTOM_CHORD_THICKNESS,
+    ),
+}
+
+
+def _section_line(output_dict, pair_id, type_key, desig_key):
+    """'CHANNEL (JC 100)', falling back to whichever half is available."""
+    sec_type = _resolve(output_dict, type_key, pair_id)
+    desig    = _resolve(output_dict, desig_key, pair_id)
+
+    sec_type = str(sec_type).strip().upper() if _present(sec_type) else ""
+    desig    = str(desig).strip()            if _present(desig)    else ""
+
+    if sec_type and desig:
+        return f"{sec_type} ({desig})"
+    return sec_type or desig or "not designed"
+
+
+def _bracing_member_label(output_dict, component, pair_id, role):
+    """Build the tooltip for one (component, girder pair, member role).
+
+    Lines whose value is missing are left out rather than printed empty, so a
+    partially designed bridge still gives a readable tooltip.
+    """
+    is_cross_bracing = component == COMPONENT_CROSS_BRACING
+    role_keys = _CB_ROLE_KEYS if is_cross_bracing else _ED_ROLE_KEYS
+
+    lines = [f"{component} - {ROLE_NAMES.get(role, role)}",
+             f"Location: {_pair_label(pair_id)}"]
+
+    if role in role_keys:
+        type_key, desig_key, h_key, w_key, t_key = role_keys[role]
+        lines.append(f"Section: {_section_line(output_dict, pair_id, type_key, desig_key)}")
+
+        leg_h = _fmt_mm(_resolve(output_dict, h_key, pair_id))
+        leg_w = _fmt_mm(_resolve(output_dict, w_key, pair_id))
+        if leg_h and leg_w:
+            lines.append(f"Leg H x W: {leg_h} x {leg_w}")
+        thickness = _fmt_mm(_resolve(output_dict, t_key, pair_id))
+        if thickness:
+            lines.append(f"Thickness: {thickness}")
+
+    if is_cross_bracing:
+        brace_type = _resolve(output_dict, KEY_MP_CB_TYPE, pair_id)
+        if _present(brace_type):
+            lines.append(f"Bracing Type: {str(brace_type).strip()}")
+
+        # KEY_MP_CB_SPACING is stored in metres (see extend_cb_dynamic_keys).
+        try:
+            spacing_mm = float(_resolve(output_dict, KEY_MP_CB_SPACING, pair_id)) * 1e3
+            lines.append(f"Spacing: {spacing_mm:.2f} mm")
+        except (TypeError, ValueError):
+            pass
+    else:
+        for key, caption in ((KEY_MP_ED_TYPE, "Diaphragm Type"),
+                             (KEY_MP_ED_BRACING_TYPE, "Bracing Type")):
+            value = _resolve(output_dict, key, pair_id)
+            if _present(value):
+                lines.append(f"{caption}: {str(value).strip()}")
+
+    steel_grade = output_dict.get(KEY_GIRDER)
+    if _present(steel_grade):
+        lines.append(f"Steel Grade: {str(steel_grade).strip()}")
+
+    return "\n".join(lines)
+
+
+def build_bracing_hover_shapes(output_dict, bracing_groups, fallback_shapes=None):
+    """Flatten the bracing groups into shapes paired with their tooltip text.
+
+    The CAD layer hands both lists straight to ``HoverController.register`` and does no
+    label work of its own.
+
+    Parameters
+    ----------
+    output_dict : dict or None
+        The design snapshot, from ``BridgeParametersDTO.output_dict``.
+    bracing_groups : dict or None
+        ``(component, pair_id, role) -> [shapes]``, from build_cross_bracings().
+    fallback_shapes : list, optional
+        The flat, ungrouped bracing list.  Used when there are no groups, or no design
+        snapshot to label them with, so the shapes are still displayed.
+
+    Returns
+    -------
+    (list, list | None)
+        Shapes, and a parallel list of labels — one per shape, in the same order, so
+        shape *i* gets label *i*.  The label list is ``None`` when there is nothing to
+        label with, telling the caller to fall back to the generic per-key label.
+    """
+    if not bracing_groups:
+        return list(fallback_shapes or []), None
+
+    labels_by_group = (
+        {gk: _bracing_member_label(output_dict, *gk) for gk in bracing_groups}
+        if output_dict else {}
+    )
+
+    shapes, labels = [], []
+    for group_key, group_shapes in bracing_groups.items():
+        shapes.extend(group_shapes)
+        labels.extend([labels_by_group.get(group_key)] * len(group_shapes))
+
+    if not shapes:
+        return list(fallback_shapes or []), None
+
+    return shapes, (labels if labels_by_group else None)
