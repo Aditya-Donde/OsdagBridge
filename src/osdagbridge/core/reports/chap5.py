@@ -378,14 +378,21 @@ def ch5_design_checks(checks_data, bridge) -> str:
     t56_content = "\n".join(t56_rows)
 
     # Generate Table 5.7 rows
+    # Intermediate stiffener sizes are blank when the design carries none (the user
+    # chose Intermediate Stiffener = No). Say so outright — an empty cell reads as
+    # missing data rather than as a deliberate configuration.
+    def _int_stiff_value(key):
+        rendered = _render_value(bridge.output_dict, key)
+        return rendered if rendered else 'Not Provided'
+
     t57_rows = []
     for lbl, _ in girder_entries:
         t57_rows.append(
             r"\multirow{6}{*}{\makecell{" + lbl + r"""}} & \textnormal{Shear Buckling Design Method} & """ + str(_render_value(bridge.output_dict, KEY_SD_STIFF_METHOD)).replace("_", " ").title() + r""" \\[6pt]
 \cline{2-3}
- & \textnormal{Intermediate Stiffener Thickness (mm)} & """ + _render_value(bridge.output_dict, KEY_SD_STIFF_INT_THICK) + r""" \\[6pt]
+ & \textnormal{Intermediate Stiffener Thickness (mm)} & """ + _int_stiff_value(KEY_SD_STIFF_INT_THICK) + r""" \\[6pt]
 \cline{2-3}
- & \textnormal{Intermediate Stiffener Spacing (mm)} & """ + _render_value(bridge.output_dict, KEY_SD_STIFF_INT_SPACING) + r""" \\[6pt]
+ & \textnormal{Intermediate Stiffener Spacing (mm)} & """ + _int_stiff_value(KEY_SD_STIFF_INT_SPACING) + r""" \\[6pt]
 \cline{2-3}
  & \textnormal{End Panel Stiffener Thickness (mm)} & """ + _render_value(bridge.output_dict, KEY_SD_STIFF_END_THICK) + r""" \\[6pt]
 \cline{2-3}
@@ -421,8 +428,12 @@ def ch5_design_checks(checks_data, bridge) -> str:
     # has data when the user supplied stiffener sizes (Design Type = Custom). In
     # Optimized mode the stiffeners are auto-sized (nothing to verify), so the
     # whole table is omitted from the report.
+    # It is also omitted when the design carries no intermediate stiffeners at all
+    # (Intermediate Stiffener = No) — there is nothing to verify, and printing the
+    # zeroed rows would read as a passed check on stiffeners that do not exist.
     _is_custom = str(bridge.input_dict.get(KEY_DESIGN_MODE, "Optimized")).strip().lower() in {"custom", "customized"}
-    if _is_custom:
+    _has_int_stiff = str(bridge.output_dict.get(KEY_SD_STIFF_INT_SPACING) or "").strip() not in ("", "0", "0.0", "None", "NA")
+    if _is_custom and _has_int_stiff:
         t58_block = r"""
 \vspace{1em}
 
