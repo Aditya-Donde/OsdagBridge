@@ -22,15 +22,8 @@ from osdagbridge.core.utils.common import (
     KEY_RIGID_CRASH_BARRIER_TYPE, KEY_METALLIC_CRASH_BARRIER_TYPE,
     KEY_MEDIAN_TYPE, KEY_RAILING_TYPE, VALUES_FOOTPATH, VALUES_RAILING_TYPE
 )
-from osdagbridge.core.bridge_components.super_structure.deck.builder import (
-    calculate_deck_width,
-    calculate_carriageway_center_y
-)
 from osdagbridge.core.utils.common import (
     DEFAULT_GIRDER_SPACING
-)
-from osdagbridge.core.bridge_components.super_structure.crash_barrier.builder import (
-    calculate_carriageway_offset
 )
 from osdagbridge.core.bridge_components.super_structure.plate_girder.builder import (
     END_STIFFENER_SPACING

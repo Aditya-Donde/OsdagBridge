@@ -424,72 +424,25 @@ def create_semi_rigid_metallic_barrier(
 
 
 
-def calculate_deck_width(
-    footpath_config,
-    carriageway_width,
-    crash_barrier_base_width,
-    footpath_width,
-    railing_width
-):
-    if footpath_config == "NONE":
-        return carriageway_width + 2 * crash_barrier_base_width
-
-    elif footpath_config in ("LEFT", "RIGHT"):
-        return (
-            carriageway_width
-            + 2 * crash_barrier_base_width
-            + footpath_width
-            + railing_width
-        )
-
-    elif footpath_config == "BOTH":
-        return (
-            carriageway_width
-            + 2 * crash_barrier_base_width
-            + 2 * footpath_width
-            + 2 * railing_width
-        )
-
-    else:
-        raise ValueError(f"Invalid footpath_config: {footpath_config}")
-
-
-def calculate_carriageway_offset(
-    footpath_config,
-    footpath_width,
-    railing_width
-):
-    if footpath_config in ("NONE", "BOTH"):
-        return 0.0
-
-    elif footpath_config == "LEFT":
-        return (footpath_width + railing_width ) / 2.0
-
-    elif footpath_config == "RIGHT":
-        return -(footpath_width + railing_width) / 2.0
-
-    else:
-        raise ValueError(f"Invalid footpath_config: {footpath_config}")
-
-
 
 def build_crash_barriers(
     *,
     span_length_L,
     deck_top_z,
-    footpath_config,
-    carriageway_width,
-    footpath_width,
-    railing_width,
+    total_deck_width,
     design_dict,
     barrier_type="Rigid",
     skew_angle=0
 ):
     """
-    Returns list of crash barrier shapes.
-    
+    Returns list of crash barrier shapes, one along each deck edge.
+
     Parameters
     ----------
+    total_deck_width : float
+        Width of the deck slab, from build_deck().  The barriers sit on the
+        deck, so they ride its edges whatever the footpath configuration —
+        footpaths are separate slabs outboard of the deck.
     barrier_type : str
         Type of crash barrier: "Rigid" (RCC) or "Semi-Rigid" (metallic W-beam)
     """
@@ -510,52 +463,11 @@ def build_crash_barriers(
 
     crash_barriers = []
 
-    total_deck_width = calculate_deck_width(
-        footpath_config,
-        carriageway_width,
-        crash_barrier_base_width,
-        footpath_width,
-        railing_width
-    )
-
     deck_half = total_deck_width / 2.0
 
-    carriageway_offset = calculate_carriageway_offset(
-        footpath_config,
-        footpath_width,
-        railing_width
-    )
-
-    cw_half = carriageway_width / 2.0
-    cw_left = carriageway_offset - cw_half
-    cw_right = carriageway_offset + cw_half
-
-    # NONE
-    if footpath_config == "NONE":
-
-        y_r = deck_half - crash_barrier_base_width/2
-        y_l = -deck_half + crash_barrier_base_width/2
-
-    # LEFT footpath
-    elif footpath_config == "LEFT":
-
-        y_r = deck_half - crash_barrier_base_width / 2.0 
-        y_l = cw_left + crash_barrier_base_width / 2.0
-
-    # RIGHT footpath
-    elif footpath_config == "RIGHT":
-
-        y_l = -deck_half + crash_barrier_base_width / 2.0
-        y_r = cw_right + crash_barrier_base_width / 2.0
-
-    # BOTH footpaths
-    elif footpath_config == "BOTH":
-
-        y_r = cw_right + crash_barrier_base_width / 2.0
-        y_l = cw_left - crash_barrier_base_width / 2.0
-
-    else:
-        raise ValueError(f"Invalid footpath_config: {footpath_config}")
+    # One barrier along each deck edge.
+    y_r = deck_half - crash_barrier_base_width / 2.0
+    y_l = -deck_half + crash_barrier_base_width / 2.0
 
     # SKEW OFFSET CALCULATION
     def get_skew_x(y):
