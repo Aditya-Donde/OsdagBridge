@@ -224,7 +224,7 @@ class HomeWindow(QWidget):
         self.top_right_container.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
 
         self.top_svg_widget_1 = QSvgWidget()
-        self.top_svg_widget_1.setFixedSize(181, 80)
+        self.top_svg_widget_1.setFixedSize(340, 80)
         # No explicit stylesheet for QSvgWidget here. It will rely on its parent's background.
         self.top_right_h_layout.addWidget(self.top_svg_widget_1)
 
@@ -287,7 +287,7 @@ class HomeWindow(QWidget):
         self.middle_top_svg_layout_wrapper = QHBoxLayout(self.middle_top_svg_layout_wrapper_widget) # Layout inside wrapper
 
         self.middle_top_svg_widget = QSvgWidget()
-        self.middle_top_svg_widget.setFixedSize(420, 35)
+        self.middle_top_svg_widget.setFixedSize(552, 35)
         # No explicit stylesheet for QSvgWidget here. It will rely on its parent's background.
 
         # To align it to the left, remove the stretch before and add it after:
@@ -393,15 +393,15 @@ class HomeWindow(QWidget):
 
     def paintEvent(self, event: QPaintEvent):
         if self.theme_manager.is_light():
-            self.top_svg_widget_1.load(":/vectors/Osdag_label_light.svg")
-            self.middle_top_svg_widget.load(":/vectors/Osdag_tagline_light.svg")
+            self.top_svg_widget_1.load(":/vectors/Plugin_label_light.svg")
+            self.middle_top_svg_widget.load(":/vectors/Plugin_tagline_light.svg")
             self.bottom_svg_widget_1.load(":/vectors/MOE_light.svg")
             self.bottom_svg_widget_2.load(":/vectors/MOS_light.svg")
             self.bottom_svg_widget_3.load(":/vectors/ConstructSteel_light.svg")
             self.bottom_svg_widget_4.load(":/vectors/INSDAG_light.svg")
         else:
-            self.top_svg_widget_1.load(":/vectors/Osdag_label_dark.svg")
-            self.middle_top_svg_widget.load(":/vectors/Osdag_tagline_dark.svg")
+            self.top_svg_widget_1.load(":/vectors/Plugin_label_dark.svg")
+            self.middle_top_svg_widget.load(":/vectors/Plugin_tagline_dark.svg")
             self.bottom_svg_widget_1.load(":/vectors/MOE_dark.svg")
             self.bottom_svg_widget_2.load(":/vectors/MOS_dark.svg")
             self.bottom_svg_widget_3.load(":/vectors/ConstructSteel_dark.svg")
