@@ -11,7 +11,7 @@ from PySide6.QtCore import Qt, QSize, QEvent, Signal
 from ...utils.custom_cursors import pointing_hand_cursor
 from PySide6.QtSvgWidgets import QSvgWidget
 
-from osdag_gui.__config__ import VERSION
+from osdagbridge.desktop.__config__ import VERSION
 from ....resources import resources_rc
 
 class CustomButton(QPushButton):
