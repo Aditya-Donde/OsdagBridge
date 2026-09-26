@@ -230,6 +230,7 @@ KEY_DD_SPAN             = "deck.report.span"               # effective span = gi
 KEY_DD_WDL              = "deck.report.w_dl"               # slab dead load (kN/m2)
 KEY_DD_WHEEL_LOAD       = "deck.report.wheel_load"         # max single wheel load (kN)
 KEY_DD_TYRE_WIDTH       = "deck.report.tyre_contact_width" # transverse tyre contact width (m)
+KEY_DD_TYRE_REF         = "deck.report.tyre_reference"     # IRC 6 Cl.204.1 ground-contact dimension source (Table 2/4/Fig.1)
 KEY_DD_FY               = "deck.report.fy"                # rebar fy (MPa)
 
 # -- 5.17(b) Interior panel flexure --
