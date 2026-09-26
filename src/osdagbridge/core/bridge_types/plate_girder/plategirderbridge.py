@@ -2473,6 +2473,20 @@ class PlateGirderBridge:
         # Log the girder verdict (reads it from output_dict)
         bridge_logger.girder_verdict(self.output_dict)
 
+        # Custom mode with Intermediate Stiffener = No: the web was checked as
+        # unstiffened. If shear buckling fails on any girder, say so outright —
+        # the "Shear" FAIL line above alone does not tell the user that the
+        # stiffener choice is the cause.
+        _needs_int_stiff = design_results.get("int_stiff_required_but_disabled") or []
+        if _needs_int_stiff:
+            bridge_logger.error(
+                "Intermediate stiffeners are required for the current design "
+                f"(girder(s): {', '.join(_needs_int_stiff)}). The selected "
+                "configuration (Intermediate Stiffener = No) is not adequate. "
+                "Please enable intermediate stiffeners, or switch to Optimized "
+                "design mode to let the software size them automatically."
+            )
+
     def _design_cross_bracing_members(self) -> dict:
         """
         Run Osdag member designs for cross-bracing diagonals and chords.
